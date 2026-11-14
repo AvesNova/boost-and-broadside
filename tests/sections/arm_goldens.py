@@ -1,4 +1,5 @@
-"""The arms' step loops and unrolls on the spread-fit golden's inputs (offset seed 11),
+"""The arms' step loops and unrolls on the spread-fit golden's inputs (the step loop's
+decision keys draw the offsets, `yemong_cases.step_loop`),
 recorded as float64 tensors (`ARMS_GOLDEN`): the switches later arms add leave arms 1 and 2, and
 C-fixed (the same without the acceleration inputs), as they were, to float64 rounding
 (`yemong_cases.assert_matches_golden`). The spread-fit golden's own outputs (`v1`) are
@@ -40,7 +41,6 @@ def outputs(settings: dict) -> dict[str, torch.Tensor]:
     golden = torch.load(SPREAD_GOLDEN, weights_only=True)
     obs = cases.cast(cases.golden_obs(golden), F64)
     net = cases.double(cases.model(**settings))
-    torch.manual_seed(11)
     carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
     with torch.no_grad():
         decisions, final = cases.step_loop(net, net.step, carry, obs, golden["joint"])

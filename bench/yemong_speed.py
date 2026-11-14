@@ -87,7 +87,8 @@ def record_replay(model, carry, obs, reset):
     (L, R, ...)."""
     replays = []
     for t in range(reset.shape[0]):
-        decision = model.step(carry, time_slice(obs, t), reset[t])
+        keys = torch.arange(reset.shape[1]) + t * reset.shape[1]
+        decision = model.step(carry, time_slice(obs, t), reset[t], keys)
         carry = decision.carry
         replays.append(decision.replay)
     leaves, spec = zip(*(_pytree.tree_flatten(r) for r in replays))

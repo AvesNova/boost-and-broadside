@@ -65,7 +65,7 @@ from torch.utils import _pytree
 from bnb.contracts import ASPECTS, Action, GameConfig, Obs, Outputs, Pool
 from bnb.contracts.obs import SHIP
 from bnb.contracts.tree import contract
-from bnb.controllers.scripted import Scripted, uniform_actions
+from bnb.controllers.scripted import Scripted, floored_actions
 from bnb.controllers.scripted_defaults import MODE_DEFAULTS
 from bnb.controllers.scripted_memory import ScriptedCarry
 from bnb.controllers.scripted_parameters import ScriptedParameters, table, unpack
@@ -285,16 +285,17 @@ class _Decision(torch.nn.Module):
         carry,
         obs: Obs,
         reset: torch.Tensor,
+        decision_key: torch.Tensor,
         temperature: torch.Tensor,
         ablations: Ablations | None = None,
     ):
         if ablations is None:
             action, carry, outputs = self.controller.step(
-                carry, obs, reset, temperature=temperature
+                carry, obs, reset, decision_key, temperature=temperature
             )
         else:
             action, carry, outputs = self.controller.step(
-                carry, obs, reset, ablations, temperature=temperature
+                carry, obs, reset, decision_key, ablations, temperature=temperature
             )
         return action.packed(), carry, outputs.entropy
 
@@ -435,6 +436,7 @@ class MatchSeat:
         carry,
         obs: Obs,
         reset: torch.Tensor,
+        decision_key: torch.Tensor,
     ):
         """Group `group`'s network on its lanes, as one forward over the lanes' stacked
         weights (`bnb.runtime.stacked`), each lane on its slot's rows at their temperatures:
@@ -442,7 +444,7 @@ class MatchSeat:
         entropies (R, S), with the active lanes' rows written, and the group's network carry
         with theirs (an idle lane's rows keep their values; a group's lanes are always on
         different slots)."""
-        arguments = (carry, obs, reset, self.network_temperature)
+        arguments = (carry, obs, reset, decision_key, self.network_temperature)
         if self.ablations is not None and self.ablatable[group]:
             arguments += (self.ablations,)
         lanes, slots = self.lanes[group], self.lane_slot[group]
@@ -469,7 +471,7 @@ class MatchSeat:
         updated = None if lane_carry is None else _pytree.tree_map(written, carry, lane_carry)
         return network, entropy, updated
 
-    def step(self, carry: MatchCarry, obs: Obs, reset: torch.Tensor):
+    def step(self, carry: MatchCarry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
         """One decision for every row; see `Controller.step`. The rollout probes its
         learner's outputs on one row when it is built; the seat gives none, and answers a
         view count other than its own rows' with idle actions."""
@@ -477,19 +479,15 @@ class MatchSeat:
         if views != self.rows:
             idle = torch.zeros((views, self.ships_per_team, 3), dtype=torch.int32)
             return Action.unpack(idle.to(reset.device)), carry, Outputs()
-        scripted, scripted_carry, _ = self.agent.step(carry.scripted, obs, reset)
-        action = scripted.packed()
-        uniform = torch.rand(action.shape[:-1], device=action.device) < self.floor[:, None]
-        action = torch.where(
-            uniform[..., None], uniform_actions(action.shape[:-1], action.device), action
-        )
+        scripted, scripted_carry, _ = self.agent.step(carry.scripted, obs, reset, decision_key)
+        action = floored_actions(scripted.packed(), self.floor, decision_key)
         model_carry = dict(carry.model)
         entropy = torch.zeros(action.shape[:-1], device=action.device)
         if self.decisions:
             network = torch.zeros_like(action)
             for group in range(len(self.decisions)):
                 network, entropy, updated = self._network(
-                    group, network, entropy, carry.model.get(str(group)), obs, reset
+                    group, network, entropy, carry.model.get(str(group)), obs, reset, decision_key
                 )
                 if updated is not None:
                     model_carry[str(group)] = updated
@@ -652,13 +650,16 @@ class ArenaConfig:
     split evenly between the seats); length: ticks per rollout segment (the host checks
     whether every game has ended once per segment); compiled: compile the rollout's stages
     (else eager); graph_ticks: the most ticks in one captured graph on a GPU (as training's:
-    a graph holds every slot's kernels for each of its ticks)."""
+    a graph holds every slot's kernels for each of its ticks); seed: keys every game's draws
+    (`bnb.runtime.rollout`): batch k's environment e plays the same map and draws in every
+    engine of one seed, whoever plays it."""
 
     blocks: int = 8
     block_environments: int = 128
     length: int = 32
     compiled: bool = True
     graph_ticks: int = 8
+    seed: int = 0
 
     def __post_init__(self) -> None:
         if self.blocks < 1:
@@ -764,7 +765,9 @@ class Arena:
     card: the card to play (the players' by default, `card_of`); doctrine: the scripted
     agent's set for scripted players without their own (`Player.parameters`; None: the
     mode's set, and no player may bring one); benching: the batches may give the players
-    active ship counts (`play`). `set_card` writes a new card in place."""
+    active ship counts (`play`); first_batch: the first batch's number (each batch's keys
+    its games, `Rollout.restart`; a resumed tournament starts past its recorded batches).
+    `set_card` writes a new card in place."""
 
     def __init__(
         self,
@@ -776,8 +779,10 @@ class Arena:
         card: api.ShipTypes | None = None,
         doctrine: ScriptedParameters | None = None,
         benching: bool = False,
+        first_batch: int = 0,
     ) -> None:
         self.players, self.config, self.device = players, config, device
+        self.batch = first_batch  # the next batch's number, which keys its games
         self.ships_per_team = game.ships_per_team
         self.states: dict[int, dict[str, torch.Tensor]] = {}
         self.groups: list[torch.nn.Module] = []
@@ -842,6 +847,7 @@ class Arena:
             staggered=False,
             ship_type=ship_type,
             benching=benching,
+            seed=config.seed,
         )
         # environment i seats its block's first player on team i mod 2
         self.seats = torch.arange(config.games, device=device) % 2
@@ -964,7 +970,8 @@ class Arena:
             self._load(2 * block + 1, second)
         if self.rollout.ship_type is not None:
             self.rollout.ship_type.copy_(self._ship_types(matchups))
-        self.rollout.restart(None if active is None else self._active(active))
+        self.rollout.restart(None if active is None else self._active(active), self.batch)
+        self.batch += 1
         self.rollout.carry["seat"].copy_(self.seats)
         counts = torch.zeros(self.config.blocks * len(OUTCOMES), dtype=torch.int64)
         ticks = 0

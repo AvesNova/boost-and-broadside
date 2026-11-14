@@ -6,7 +6,21 @@ A tick is four stages over one carry (a dict of persistent device buffers):
   resolve   phases 4-8 (hits through episode end), rewards and their ledger, seat redraw
             at resets
   perceive  visibility, the observation and the truth of the new state
-Each stage is a pure function of the carry whose outputs are copied back in. Stages are
+Each stage is a pure function of the carry whose outputs are copied back in.
+
+Every random draw is keyed (`bnb.streams`), never a position in a shared sequence, so two
+rollouts of one seed that differ elsewhere (a model option, map-size sampling, a policy)
+draw alike wherever they are alike. The carry counts each environment's episodes
+(`episode`) and the ticks of its current one (`clock`):
+  episode draws   keyed by (seed, environment, episode): the map, the arena scale, the
+                  formations and the first spawns of an environment's k-th episode
+                  (`api.resolve`'s next_episode_uniforms), and the seat it is played from
+  tick draws      keyed by (seed, environment, episode, clock): the tick uniforms a running
+                  episode reads (respawns) and the bullet spread
+  decision keys   per controller row, the tick's key and the row's role: each controller
+                  draws its decision's randomness from it (`Controller.step`)
+  stagger         keyed by (seed, environment): each environment's starting clock
+`restart`'s batch number keys a restart's episodes apart from every earlier batch's. Stages are
 compiled separately (the cut list is this tuple), and on a GPU a block of ticks is captured
 as one CUDA graph, so a rollout is a few graph replays.
 
@@ -28,12 +42,27 @@ from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.game import api
 from bnb.learn import rewards
 from bnb.learn.shots import ShotCapture
+from bnb.streams import (
+    MASK,
+    keyed_hash,
+    keyed_normal,
+    keyed_uniform,
+    purpose_key,
+    stream_key,
+)
 
 from . import analytics
 from .analytics import EPISODE_COLUMNS
 from .lineup import Lineup
 from .opponents import OUTCOMES
 from .store import SegmentStore
+
+# The keyed draws' uses (`bnb.streams.purpose_key`): each of the tick's and episode's keys
+# feeds several.
+GAME_DRAWS = purpose_key("game uniforms")
+SPREAD_DRAWS = purpose_key("bullet spread")
+SEAT_DRAWS = purpose_key("seat")
+DECISION_DRAWS = purpose_key("decision")
 
 PARTS = ("ships", "fields", "globals", "zones")
 COUNTERS = ("shots", "hits", "deaths", "resets")
@@ -71,7 +100,8 @@ class Rollout:
     `self.ship_type`, which a `restart` reads (the match engine writes it between
     batches); benching: the games take each team's active ship count as an input
     (`bnb.game.api`; the carry's `active`, (B, 2) int32, every ship until `restart` is
-    given counts), for the crossover's unequal teams; off, the game is called without it."""
+    given counts), for the crossover's unequal teams; off, the game is called without it.
+    seed: the run's seed, which keys every draw (the module docstring)."""
 
     def __init__(
         self,
@@ -93,6 +123,7 @@ class Rollout:
         lookahead: int = 0,
         ship_type: torch.Tensor | None = None,
         benching: bool = False,
+        seed: int = 0,
     ) -> None:
         self.reward_config = reward_config or rewards.RewardConfig()
         self.rules = api.with_deathmatch_outcome(
@@ -128,6 +159,15 @@ class Rollout:
         self.lookahead = lookahead
         self.ring = min(length, 2 * self.block)  # the staging ring: two blocks of records
         self.episode_ticks = api.episode_ticks(self.rules, environments, device).float()
+        self.tick_stream = stream_key(seed, "tick")
+        self.episode_stream = stream_key(seed, "episode")
+        self.stagger_stream = stream_key(seed, "stagger")
+        self.environment_index = torch.arange(environments, device=device)
+        self.slot_index = torch.arange(self.rules.tick_uniform_count, device=device)
+        self.spread_index = (  # (ship, component) of the (B, N, 2) spread
+            torch.arange(self.ship_count, device=device)[:, None],
+            torch.arange(2, device=device),
+        )
         self.carry = self._initial_carry(types, staggered)
         records = self.carry["records"]
         ticks = _pytree.tree_map_only(torch.Tensor, lambda x: x[0], records)
@@ -152,8 +192,46 @@ class Rollout:
 
     # ---- carry ------------------------------------------------------------------------
 
+    # ---- keyed draws ------------------------------------------------------------------
+
+    def _episode_keys(self, episode: torch.Tensor) -> torch.Tensor:
+        """(B,) each environment's key for its episode `episode` (B,) int64 (a batch number
+        in the high 32 bits, `restart`)."""
+        return keyed_hash(
+            self.episode_stream, self.environment_index, episode & MASK, episode >> 32
+        )
+
+    def _episode_uniforms(self, episode: torch.Tensor) -> torch.Tensor:
+        """(B, U) the tick uniforms that start each environment's episode `episode`."""
+        return keyed_uniform(GAME_DRAWS, self._episode_keys(episode)[:, None], self.slot_index)
+
+    def _seats(self, episode: torch.Tensor) -> torch.Tensor:
+        """(B,) int64 the seat each environment's episode `episode` is played from."""
+        uniform = keyed_uniform(SEAT_DRAWS, self._episode_keys(episode))
+        return (uniform * self.teams).long().clamp_max(self.teams - 1)
+
+    def _decision_keys(self, ticks: torch.Tensor, name: str) -> torch.Tensor:
+        """(R,) the decision keys of controller `name`'s rows: their environment's tick key
+        (`_tick_keys`) and their role."""
+        return keyed_hash(
+            DECISION_DRAWS, ticks[self.lineup.environments[name]], self.lineup.role[name]
+        )
+
+    def _tick_keys(self, carry: dict) -> torch.Tensor:
+        """(B,) each environment's key for this tick: its episode and its clock."""
+        episode = carry["episode"]
+        return keyed_hash(
+            self.tick_stream, self.environment_index, episode & MASK, episode >> 32, carry["clock"]
+        )
+
+    # ---- carry ------------------------------------------------------------------------
+
     def _initial_carry(
-        self, types: api.ShipTypes, staggered: bool, active: torch.Tensor | None = None
+        self,
+        types: api.ShipTypes,
+        staggered: bool,
+        active: torch.Tensor | None = None,
+        batch: int = 0,
     ) -> dict:
         rules, B, device = self.rules, self.environments, self.device
         types = _pytree.tree_map_only(torch.Tensor, lambda x: x.to(device, copy=True), types)
@@ -161,19 +239,21 @@ class Rollout:
             active = torch.full((B, self.teams), self.ships_per_team, dtype=torch.int32)
         if active is not None:
             active = active.to(device=device, dtype=torch.int32)
+        episode = torch.full((B,), batch << 32, dtype=torch.int64, device=device)
         state = api.reset(
             rules,
             types,
-            api.uniforms(rules, B, device),
+            self._episode_uniforms(episode),
             self.lineup.fogged,
             ship_type=self.ship_type,
             active=active,
         )
+        clock = torch.zeros(B, dtype=torch.int64, device=device)
         if staggered:
             episode_ticks = api.episode_ticks(rules, B, device)
-            state = api.start_clocks(
-                state, torch.randint(0, 1 << 30, (B,), device=device) % episode_ticks
-            )
+            uniform = keyed_uniform(self.stagger_stream, self.environment_index)
+            clock = torch.minimum((uniform * episode_ticks).long(), episode_ticks.long() - 1)
+            state = api.start_clocks(state, clock)
         state, obs, truth = api.perceive(rules, state, active)
         views, ring, S, N = (
             self.lineup.rows(self.learner),
@@ -196,6 +276,7 @@ class Rollout:
             action=Action.unpack(
                 torch.zeros((ring, views, N, 3), dtype=torch.int32, device=device)
             ),
+            decision_key=torch.zeros((ring, views), dtype=torch.int64, device=device),
             log_probability=torch.zeros((ring, views, S), device=device),
             value=torch.zeros((ring, views, S), device=device),
             reward=torch.zeros((ring, views, S, len(REWARD_LEVELS)), device=device),
@@ -231,7 +312,9 @@ class Rollout:
             types=types,
             obs={part: getattr(obs, part) for part in PARTS},
             truth=truth.ships,
-            seat=torch.randint(0, self.teams, (B,), device=device),
+            seat=self._seats(episode),
+            episode=episode,
+            clock=clock,
             actions=torch.zeros((B, self.ship_count, 3), dtype=torch.int32, device=device),
             spread=torch.zeros((B, self.ship_count, 2), device=device),
             uniforms=torch.zeros((B, rules.tick_uniform_count), device=device),
@@ -274,7 +357,8 @@ class Rollout:
         view = Obs(**{part: getattr(obs, part)[environments, team] for part in PARTS})
         reset = view.globals[..., GLOBAL["reset"]] > 0.5
         one_row = _pytree.tree_map_only(torch.Tensor, lambda x: x[:1].clone(), learner_carry)
-        _, _, outputs = self.controllers[self.learner].step(one_row, view, reset)
+        key = torch.zeros(1, dtype=torch.int64, device=device)  # a probe: its draws are unused
+        _, _, outputs = self.controllers[self.learner].step(one_row, view, reset, key)
         outputs = dict(
             values=outputs.values,
             outcome=outputs.outcome,
@@ -323,11 +407,15 @@ class Rollout:
         B, T, S, device = self.environments, self.teams, self.ships_per_team, self.device
         actions = torch.zeros((B, T, S, 3), dtype=torch.int32, device=device)
         slot, records = self._slot(carry), carry["records"]
+        ticks = self._tick_keys(carry)
         for name, controller in self.controllers.items():
             reads = self.reads if name == self.learner else controller.reads
             view = self._view(carry, name, reads + ("globals",))
             reset = view.globals[..., GLOBAL["reset"]] > 0.5
-            action, new_carry, outputs = controller.step(carry["controllers"][name], view, reset)
+            keys = self._decision_keys(ticks, name)
+            action, new_carry, outputs = controller.step(
+                carry["controllers"][name], view, reset, keys
+            )
             if new_carry is not None:
                 _assign(carry["controllers"][name], new_carry)
             packed = action.packed()
@@ -335,6 +423,7 @@ class Rollout:
                 (self.lineup.environments[name], self._team(name, carry["seat"])), packed
             )
             if name == self.learner:
+                records["decision_key"].index_copy_(0, slot, keys[None])
                 for part in self.reads:
                     getattr(records["obs"], part).index_copy_(0, slot, getattr(view, part)[None])
                 ships = carry["obs"]["ships"][
@@ -375,8 +464,9 @@ class Rollout:
         ):
             stored.index_copy_(0, slot, given[None])
         records["truth"].index_copy_(0, slot, carry["truth"][environments, team][None, :, S:])
-        carry["spread"].copy_(api.spread(self.rules, B, device))
-        carry["uniforms"].copy_(api.uniforms(self.rules, B, device))
+        ship, component = self.spread_index
+        carry["spread"].copy_(keyed_normal(SPREAD_DRAWS, ticks[:, None, None], ship, component))
+        carry["uniforms"].copy_(keyed_uniform(GAME_DRAWS, ticks[:, None], self.slot_index))
 
     def _advance(self, carry: dict) -> None:
         state = carry["state"]
@@ -407,6 +497,7 @@ class Rollout:
             Action.unpack(carry["actions"]),
             carry["uniforms"],
             carry.get("active"),
+            next_episode_uniforms=self._episode_uniforms(carry["episode"] + 1),
         )
         _assign(carry["state"], state)
         team = api.ship_team(self.ships_per_team, self.device)
@@ -463,8 +554,10 @@ class Rollout:
         ended = events.done.float()
         timeout = ticks >= self.episode_ticks - 0.5
         carry["episodes"].add_(torch.stack([ended, ended * timeout, ended * ticks], -1))
-        redraw = torch.randint(0, self.teams, (self.environments,), device=self.device)
-        carry["seat"].copy_(torch.where(events.done, redraw, carry["seat"]))
+        episode = carry["episode"] + events.done.long()
+        carry["episode"].copy_(episode)
+        carry["clock"].copy_(torch.where(events.done, 0, carry["clock"] + 1))
+        carry["seat"].copy_(torch.where(events.done, self._seats(episode), carry["seat"]))
         carry["counters"].add_(
             torch.stack(
                 [
@@ -522,23 +615,27 @@ class Rollout:
         return taken
 
     @torch.no_grad()
-    def restart(self, active: torch.Tensor | None = None) -> None:
+    def restart(self, active: torch.Tensor | None = None, batch: int = 0) -> None:
         """Every environment starts a fresh game from its clock's start, and the whole carry
         is a new rollout's (every controller's carry, the seats, the tallies, the sums),
         copied in place so a captured graph stays valid: the offline match engine's batch
         (`bnb.league.matches.Arena`). active (B, 2) int32: each team's active ships from
-        now on, for a rollout built with benching (None: every ship)."""
+        now on, for a rollout built with benching (None: every ship). batch: the batch's
+        number, which keys its episodes (the same number plays the same maps and draws)."""
         if active is not None and not self.benching:
             raise ValueError("active ship counts need a rollout built with benching")
-        _assign(self.carry, self._initial_carry(self.carry["types"], False, active))
+        if not 0 <= batch < 1 << 31:
+            raise ValueError(f"batch {batch} must be in [0, 2^31)")
+        _assign(self.carry, self._initial_carry(self.carry["types"], False, active, batch))
 
     # ---- checkpoints --------------------------------------------------------------------
 
     def saved_carry(self) -> dict:
         """The carry a resume needs (runs spec 3): the game state, the observation, every
-        controller's carry, the seats, the reward ledger, the counters and the games' running
-        state (`game`, the outcome ledger). Not the staging ring or the segment buffers, which
-        every segment writes before it reads them, nor the update's sums (the episodes', the
+        controller's carry, the seats, the episode counts and clocks that key the draws, the
+        reward ledger, the counters and the games' running state (`game`, the outcome
+        ledger). Not the staging ring or the segment buffers, which every segment writes
+        before it reads them, nor the update's sums (the episodes', the
         games', the outcome tables), which every update takes, nor the active ship counts
         (`benching`: the offline match engine's, which no training run resumes)."""
         excluded = ("records", "segment", "episodes", "game_sums", "outcome_tables", "active")
@@ -556,14 +653,9 @@ class Rollout:
             stage(self.carry)
 
     def _capture(self) -> None:
-        """Compile, warm up and capture `block` ticks, leaving the carry and the device's
-        default generator as they were: the capture draws nothing a replay would, so a run
-        resumed in a fresh process (which captures again) draws what the first did."""
+        """Compile, warm up and capture `block` ticks, leaving the carry as it was (every
+        draw is keyed by the carry, so the warm-up's leave nothing behind)."""
         saved = _clone(self.carry)
-        generator = torch.cuda.default_generators[
-            self.device.index if self.device.index is not None else torch.cuda.current_device()
-        ]
-        generator_state = generator.get_state()
         side = torch.cuda.Stream(self.device)
         side.wait_stream(torch.cuda.current_stream(self.device))
         with torch.cuda.stream(side):
@@ -575,7 +667,6 @@ class Rollout:
             for _ in range(self.block):
                 self._tick()
         _assign(self.carry, saved)
-        generator.set_state(generator_state)
 
     def _reusable(self, key) -> None:
         """Before the compute stream writes a ring slot or segment buffer again, wait for
@@ -665,7 +756,8 @@ class Rollout:
         the Outputs (values, outcome) of the next segment's first observation."""
         view = self._view(self.carry, self.learner, self.reads + ("globals",))
         reset = view.globals[..., GLOBAL["reset"]] > 0.5
-        _, _, outputs = self._evaluate(self.carry["controllers"][self.learner], view, reset)
+        keys = self._decision_keys(self._tick_keys(self.carry), self.learner)
+        _, _, outputs = self._evaluate(self.carry["controllers"][self.learner], view, reset, keys)
         return outputs
 
     def counters(self) -> dict[str, int]:

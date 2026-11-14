@@ -68,15 +68,6 @@ def test_every_part_of_a_training_checkpoint_round_trips(trained):
     assert (loaded.updates_done, loaded.ppo.environment_steps) == (2, trainer.ppo.environment_steps)
 
 
-def test_the_default_generators_are_restored_by_the_entry_points_call(trained):
-    _, directory = trained
-    stored = safetensors.torch.load_file(directory / checkpoint.TRAINING)
-    with torch.random.fork_rng(devices=[]):
-        torch.manual_seed(123)
-        checkpoint.restore_default_generators(directory, cases.CPU)
-        assert torch.equal(torch.get_rng_state(), stored["default_generator.cpu"])
-
-
 def test_a_training_checkpoint_is_also_a_policy_file(trained):
     trainer, directory = trained
     model = checkpoint.load_policy(directory, cases.CPU)

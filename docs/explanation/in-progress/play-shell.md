@@ -170,7 +170,8 @@ the game it was trained on and its ship card; the shell loads it only when both 
 match's (and the lineup is the game's default), and otherwise names what differs. The
 agent keeps its carry from tick to tick, handing the model the view's reset flag as
 training does, and samples its policy at a temperature with Gumbel-max from its own
-generator. Flying one of its ships replaces that ship's action only: the agent decides for
+generator; its model's own draws (the position offset) are keyed by a decision key from a
+second generator of its own. Flying one of its ships replaces that ship's action only: the agent decides for
 all its ships as usual and keeps its carry.
 
 ## Replays
@@ -210,8 +211,8 @@ have their own lock, and the window only waits for their results:
   (`bnb.runtime.scripted_step`, about 15 s): from the shapes of the agent's first step,
   with the ship characteristics an input (a tuned card plays on the same library), keyed by
   the code, the parameters and the shapes. Built, it takes about 0.1 ms a side. Its random
-  draws come from torch's default generator, as uncompiled, so the agent's own generator,
-  swapped in, gives the same actions either way. Until it is in, the agent steps
+  draws are keyed by the decision key it is given, drawn from the agent's own generator,
+  so built and uncompiled give the same actions. Until it is in, the agent steps
   uncompiled.
 - **The scripted agent's characteristics** are measured once per card, in a child process
   (`bnb.game.handling.characteristics.measure_aside`), and kept in the same cache. A side

@@ -79,9 +79,9 @@ On a GPU the rollout captures a block of ticks as one CUDA graph and replays it:
 - The block is the largest divisor of the rollout length up to the rollout's
   `graph_ticks`.
 - Capture runs warm-up ticks on a side stream, which compiles every stage, records the
-  block, then restores the carry and the device's default generator, so capture changes
-  nothing (and a run resumed in a new process, which captures again, draws what the first
-  process drew: [Runs and checkpoints](runs.md)).
+  block, then restores the carry, so capture changes nothing: every draw is keyed by the
+  carry (below), and a run resumed in a new process, which captures again, draws what the
+  first process drew ([Runs and checkpoints](runs.md)).
 - A rollout of `length` ticks is then `length / block` graph replays.
 
 Two rules keep the captured graph correct:
@@ -92,8 +92,44 @@ Two rules keep the captured graph correct:
   graph always reads the current weights. The league copies an opponent's weights into its
   slots' stacked parameters in place, between segments.
 
-Random draws come from torch's default generator, which a captured graph draws afresh on
-every replay (`tests/sections/test_game_section.py::test_compiled_rollout_graph_replays_draw_fresh_randomness`).
+## Random draws
+
+Every random draw of training, evaluation, behaviour cloning and the rating matches is
+keyed (`bnb.streams`): a pure function of the run's seed and of what the draw is for, never
+a position in a shared sequence. Arms of an experiment that differ in one setting therefore
+draw alike wherever they are alike (common random numbers), and the difference between two
+arms within one seed is not buried under unrelated re-rolls.
+
+| Draw | Keyed by |
+| --- | --- |
+| a parameter's initial values (`bnb.models.initialise`) | the seed, the path of the module that draws them, the parameter's name (a generator on the CPU) |
+| an episode's map, arena scale, formations and first spawns; its seat | the seed, the environment, the environment's episode count (the batch number in a rating match) |
+| a running episode's tick uniforms (respawns) and the bullet spread | the seed, the environment, the episode, the tick within it |
+| a decision's draws (the action, Yemong's position offset at a reset, the scripted agent's plan switches and flags, the uniform floor) | the tick's key and the row's role: the decision key each controller's `step` receives |
+| a row's starting clock (staggered starts) | the seed, the environment |
+| the league's swaps | the seed, the swap count |
+| the learner's minibatch order and shot spread | the seed and the stream's name (a seeded generator) |
+
+The hash is lowbias32, one round per coordinate, on int64 tensors, so it runs inside a
+compiled stage and a captured graph with no state and no host read; a replay draws afresh
+because the carry's clock has moved
+(`tests/sections/test_game_section.py::test_compiled_rollout_graph_replays_draw_fresh_randomness`).
+Actions are sampled by the inverse CDF of each factor in turn (the power, the stick given
+the power, the shoot given both), one uniform each, so two policies that are close pick the
+same action from the same uniform wherever their cumulative probabilities agree. The arena
+scale's draw is made whether or not a pool samples map sizes, so turning sampling on or off
+moves no other draw. Consequences:
+
+- a model option that adds a module or changes another module's shape leaves every other
+  parameter's initial values bit-identical, and the maps and draws of every episode;
+- environment e's k-th episode plays the same map in every arm of one seed, even after the
+  arms' episode lengths diverge;
+- the same configuration on the CPU reproduces exactly; on the GPU within rounding.
+
+The game itself draws nothing: `bnb.game.api.resolve` takes the tick's uniforms and the
+next episode's (`next_episode_uniforms`). The play shell keys its sides' decisions from
+generators of its own (`bnb.play.sides`). Runs from before the keyed streams (rl-v20 and
+earlier) do not reproduce under them.
 
 On the CPU the rollout runs the stages tick by tick. The realtime path
 (`bnb.runtime.realtime.Realtime`) runs one match at batch size 1 with the whole tick

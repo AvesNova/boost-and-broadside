@@ -72,9 +72,9 @@ other languages read it.
   file's SHA-256.
 - **A training checkpoint** (`bnb.runs.checkpoint.save_training`) is a policy file plus
   the full `TrainConfig`, the optimizer, the opponent slots, the league's state (its
-  entries, gauges, sampling state, and the averages' and snapshots' weights), every random
-  generator, the rollout carry (the game state, every controller's carry, the seats, the
-  reward ledger), the step counters, the trigger rules' state and, for a BC run, the stop
+  entries, gauges, sampling state, and the averages' and snapshots' weights), the
+  learner's random generators, the rollout carry (the game state, every controller's carry,
+  the seats, the episode counts and clocks that key the draws, the reward ledger), the step counters, the trigger rules' state and, for a BC run, the stop
   rule's (its score window, the KL's average and its history). The ratings' record is
   part of the league's state (a BC run's, of its lanes' hooks). The carry saved is the state
   after the update's lookahead, where the next update begins. `bnb.runs.checkpoint.load_policy`
@@ -172,13 +172,12 @@ A fork or a warm start whose command sets no model setting takes the file's
   continuation is bitwise too. On the GPU it is the same run within rounding, not the same
   bits (`tests/runs/test_resume.py`). Three things make the restore and the continuation
   hold:
-  - the checkpoint holds every generator: the learner's named streams, and the default
-    CPU and CUDA generators, which the rollout's draws and the policy's sampling inside the
-    captured graph use. The entry point restores the default ones
-    (`bnb.runs.checkpoint.restore_default_generators`), the one process-wide effect of a
-    resume;
-  - the rollout's graph capture restores the device's generator after its warm-up, as it
-    restores the carry, so a process that captures again draws what the first one did;
+  - the checkpoint holds the learner's named streams, and the rollout carry holds each
+    environment's episode count and clock, which key every other draw
+    ([Random draws](architecture.md#random-draws)): nothing is left in torch's default
+    generators;
+  - the rollout's graph capture restores the carry after its warm-up, so a process that
+    captures again draws what the first one did;
   - the per-pool metrics are masked sums, not atomic adds, so the same data gives the same
     numbers.
 

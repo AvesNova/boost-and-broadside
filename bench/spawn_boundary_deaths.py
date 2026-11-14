@@ -23,6 +23,7 @@ from bnb.contracts import Action, Obs
 from bnb.controllers import scripted
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
+from bnb.streams import decision_key_from
 
 
 def measure(preset: str, environments: int, ticks: int, hold: int, window: int, seed: int) -> dict:
@@ -55,7 +56,8 @@ def measure(preset: str, environments: int, ticks: int, hold: int, window: int, 
                 }
             )
             first = torch.full((2 * B,), tick == 0)
-            action, carry, _ = agent.step(carry, view, first)
+            keys = decision_key_from(torch.default_generator, 2 * B)
+            action, carry, _ = agent.step(carry, view, first, keys)
             packed = action.packed().reshape(B, N, 3)
             holding = ((age >= 0) & (age < hold))[..., None]
             packed = torch.where(holding, 0, packed).to(torch.int32)  # coast, straight

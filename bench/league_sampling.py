@@ -3,7 +3,7 @@
 and the training checkpoints' league state, nothing else.
 
 Four parts, each driven by the league's own code (`bnb.league.pool.sampling_weights`,
-`bnb.league.ratings`, `bnb.runtime.opponents.counter_uniform` and `draw`):
+`bnb.league.ratings`, `bnb.streams.keyed_uniform` and `inverse_cdf`):
 
 1. **The weights.** Every update's logged sampling share per mode and entry, recomputed from
    the logged ratings. Before the fit first rates the live policy its rating is not logged;
@@ -44,7 +44,7 @@ import torch
 
 from bnb.league.pool import sampling_weights
 from bnb.league.ratings import SCALE, _maximise, win_probability
-from bnb.runtime.opponents import counter_uniform, draw, stream_key
+from bnb.streams import inverse_cdf, keyed_uniform, stream_key
 
 MODES = ("frontline", "deathmatch")
 KINDS = ("scripted", "rung", "average", "checkpoint")  # `bnb.league.league.ENTRY_KINDS`
@@ -204,8 +204,8 @@ def mixed_weights(update: Update) -> torch.Tensor:
 
 def host_draw(key: int, swaps: int, weights: torch.Tensor) -> int:
     """The entry index the league's `_draw` takes at swap counter `swaps`."""
-    uniform = counter_uniform(key, torch.tensor(swaps), torch.zeros(1, dtype=torch.int64))
-    return int(draw(weights, uniform.double())[0])
+    uniform = keyed_uniform(key, torch.tensor([swaps]))
+    return int(inverse_cdf(weights, uniform.double())[0])
 
 
 def logged_view(update: Update) -> list[int | None]:
@@ -793,7 +793,7 @@ def simulate(
                 dtype=torch.float64,
             )
             uniform = torch.rand(1, generator=generator, dtype=torch.float64)
-            return names[int(draw(mixed, uniform)[0])]
+            return names[int(inverse_cdf(mixed, uniform)[0])]
 
         held = [pick(weights[0]) for _ in range(slots)]
         incoming = [pick(weights[0]) for _ in range(slots if concurrent else 1)]

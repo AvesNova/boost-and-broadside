@@ -64,9 +64,6 @@ class GatedMLP(nn.Module):
         super().__init__()
         self.gate_up = nn.Linear(width, 2 * hidden, bias=False)
         self.down = nn.Linear(hidden, width, bias=False)
-        with torch.no_grad():  # each half as nn.Linear(width, hidden) would start
-            for half in self.gate_up.weight.chunk(2):
-                nn.init.kaiming_uniform_(half, a=5**0.5)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         """down(gelu(gate x) * up x), shaped like the inputs (..., width)."""

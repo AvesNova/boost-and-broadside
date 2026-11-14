@@ -151,7 +151,8 @@ class TrainConfig:
     setting, which the entry point applies with `bnb.cli.set_precision`). reward: the reward
     levels' weights. host_store: stream the segments through pinned host memory (on a GPU)
     rather than keep them on the device.
-    seed: the learner's random streams; the entry point seeds the process with it too.
+    seed: keys every random draw (`bnb.streams`): the model's initial weights, the
+    rollout's maps, seats and decisions, the league's swaps, the learner's streams.
     objective: "ppo", or "bc" (clone the scripted agent; `learner` should then be
     `bnb.learn.bc.config()`, `teacher` sets its labels and how the scripted opponent
     plays, `bnb.learn.bc.TeacherOpponent`, and `stop` when it stops, its budget included).
@@ -302,11 +303,13 @@ def model_build(config: TrainConfig) -> Build:
     return yemong_build(architecture, api.rules_of(game, types=types), types)
 
 
-def build_model(build: Build, device: torch.device) -> torch.nn.Module:
-    """A fresh model of the build record, on `device`."""
+def build_model(build: Build, device: torch.device, seed: int = 0) -> torch.nn.Module:
+    """A fresh model of the build record, initialised on the CPU from `seed` by parameter
+    path (`bnb.models.initialise`), then moved to `device`."""
     if isinstance(build, NearestBuild):
-        return Nearest(build).to(device)
-    return (Relational(build) if isinstance(build, RelationalBuild) else Yemong(build)).to(device)
+        return Nearest(build, seed).to(device)
+    kind = Relational if isinstance(build, RelationalBuild) else Yemong
+    return kind(build, seed).to(device)
 
 
 def model_controller(model: torch.nn.Module, game: GameConfig, distribution: bool = False):
@@ -368,7 +371,7 @@ class Trainer:
     def __init__(self, config: TrainConfig, device: torch.device, diagnostics: bool = True) -> None:
         game = config.game
         self.config = config
-        self.model = build_model(model_build(config), device)
+        self.model = build_model(model_build(config), device, config.seed)
         self.league: LeagueHooks | None = None
         # the trigger rules (`bnb.runs.triggers`), attached by the run's recorder: their
         # state is part of the training checkpoint
@@ -460,6 +463,7 @@ class Trainer:
             else torch.tensor(lineup_indices(config.lineup, game) * api.TEAMS).repeat(
                 self.batch_environments, 1
             ),
+            seed=config.seed,
         )
         lineup = self.rollout.lineup
         self.pool_names = tuple(pool.name for pool in lineup.pools)
@@ -627,6 +631,7 @@ def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> di
             device,
             config.length,
             config.compiled,
+            seed=config.seed,
         )
     )
 

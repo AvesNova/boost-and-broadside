@@ -278,7 +278,7 @@ def _past_first_games(seat: LaneSeat, views: int) -> LaneCarry:
     carry = seat.init_carry(views, lc.CPU)
     obs = observation(views=views)
     for reset in (True, True):
-        _, carry, _ = seat.step(carry, obs, torch.full((views,), reset))
+        _, carry, _ = seat.step(carry, obs, torch.full((views,), reset), torch.arange(views))
     return carry
 
 
@@ -292,9 +292,11 @@ def test_a_rows_first_game_is_never_tallied():
     result = torch.tensor([1, 0, -1, 0], dtype=torch.int32)
     for first_reset in (True, False):
         carry = seat.init_carry(4, lc.CPU)
-        _, carry, _ = seat.step(carry, obs, torch.full((4,), first_reset))
+        _, carry, _ = seat.step(carry, obs, torch.full((4,), first_reset), torch.arange(4))
         assert seat.tally(carry, done, result).tolist() == [0, 0, 0]
-        _, carry, _ = seat.step(carry, obs, torch.ones(4, dtype=torch.bool))  # the next game
+        _, carry, _ = seat.step(
+            carry, obs, torch.ones(4, dtype=torch.bool), torch.arange(4)
+        )  # the next game
         assert seat.tally(carry, done, result).tolist() == [1, 0, 0]
 
 
@@ -312,7 +314,9 @@ def test_a_game_whose_players_weights_changed_since_it_began_is_not_tallied():
     seat.load("league_0", state, fresh=True)  # another snapshot: games in progress are out
     assert seat.tally(carry, done, result).tolist() == [0, 0, 0]
     obs = observation(views=4)
-    _, carry, _ = seat.step(carry, obs, torch.ones(4, dtype=torch.bool))  # games begin anew
+    _, carry, _ = seat.step(
+        carry, obs, torch.ones(4, dtype=torch.bool), torch.arange(4)
+    )  # games begin anew
     assert seat.tally(carry, done, result).tolist() == [1, 0, 1]
 
 
@@ -804,18 +808,10 @@ def test_a_lane_seat_with_unequal_players_compiles_whole_and_plays_as_uncompiled
     reset = torch.zeros(views, dtype=torch.bool)
     carry = seat.init_carry(views, lc.CPU)
     compiled = torch.compile(seat.step, fullgraph=True, dynamic=False)
-    import torch._inductor.config as inductor_config
-
-    # compiled code draws its own random numbers unless told to draw eager's
-    with (
-        torch.random.fork_rng(devices=[]),
-        torch.no_grad(),
-        inductor_config.patch(fallback_random=True),
-    ):
-        torch.manual_seed(3)
-        eager_action, _, _ = seat.step(carry, obs, reset)
-        torch.manual_seed(3)
-        compiled_action, _, _ = compiled(carry, obs, reset)
+    keys = torch.arange(views)  # keyed draws: compiled and eager draw the same numbers
+    with torch.no_grad():
+        eager_action, _, _ = seat.step(carry, obs, reset, keys)
+        compiled_action, _, _ = compiled(carry, obs, reset, keys)
     assert torch.equal(eager_action.packed(), compiled_action.packed())
 
 

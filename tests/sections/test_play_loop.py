@@ -96,7 +96,9 @@ def test_the_pilot_flies_and_hands_over():
     loop.next_pilot()
     assert loop.pilot == 1
     assert loop.actions()[1].tolist() == [1, 5, 1]
-    chaser = loop.sides[0].chaser.step(None, *_first_view(loop))[0].packed()[0]
+    view, reset = _first_view(loop)
+    chaser = loop.sides[0].chaser.step(None, view, reset, torch.arange(reset.shape[0]))
+    chaser = chaser[0].packed()[0]
     assert torch.equal(loop.actions()[0], chaser[0])  # the released ship plays the chaser
 
 

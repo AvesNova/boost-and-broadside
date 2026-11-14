@@ -4,6 +4,7 @@ import torch
 
 from bnb.contracts import Obs, Outputs
 from bnb.models.heads import sample
+from bnb.streams import action_uniforms
 
 
 class ModelController:
@@ -17,8 +18,9 @@ class ModelController:
         """No carry: the model is stateless."""
         return None
 
-    def step(self, carry: None, obs: Obs, reset: torch.Tensor):
+    def step(self, carry: None, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
         """One decision for views (R, ...); see `Controller.step`."""
         logits, value = self.model(obs)
-        action, log_probability, entropy = sample(logits)
+        uniforms = action_uniforms(decision_key, logits.shape[-2])
+        action, log_probability, entropy = sample(logits, uniforms)
         return action, carry, Outputs(log_probability=log_probability, entropy=entropy, value=value)

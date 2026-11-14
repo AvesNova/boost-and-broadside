@@ -18,6 +18,7 @@ from bnb.contracts import REWARD_LEVELS, Obs
 from bnb.contracts.action import NUM_JOINT
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.tree import contract
+from bnb.models.initialise import initialise
 
 from .yemong import critic
 from .yemong.heads import critic_values
@@ -163,7 +164,7 @@ class Relational(nn.Module):
     VERSION = 1
     reads = ("ships", "globals")
 
-    def __init__(self, build: RelationalBuild) -> None:
+    def __init__(self, build: RelationalBuild, seed: int = 0) -> None:
         super().__init__()
         config = build.config
         self.build, self.config, self.ships_per_team = build, config, build.ships_per_team
@@ -176,12 +177,16 @@ class Relational(nn.Module):
         self.policy = nn.Linear(hidden, NUM_JOINT)
         self.value = nn.Linear(hidden, levels * config.value_bins)
         self.outcome = nn.Linear(hidden, critic.OUTCOMES)
-        for head in (self.policy, self.value, self.outcome):  # uniform at the start
-            nn.init.zeros_(head.weight)
-            nn.init.zeros_(head.bias)
         self.register_buffer(
             "bins", critic.value_bins(config.value_bins, config.value_limit), persistent=False
         )
+        initialise(self, seed)
+
+    def initialise_parameters(self, generator) -> None:
+        """The heads zero: a uniform policy and level values at the start (no draw)."""
+        for head in (self.policy, self.value, self.outcome):
+            nn.init.zeros_(head.weight)
+            nn.init.zeros_(head.bias)
 
     def initial_carry(self, views: int, device=None) -> None:
         """No carry: the model is stateless."""

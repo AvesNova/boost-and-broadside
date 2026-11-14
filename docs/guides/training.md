@@ -285,9 +285,10 @@ print(win_rate(trainer, games=256))
 
 ## Seeds and process settings
 
-The `bnb` command seeds torch's default generator from `--seed` (the run's
-`TrainConfig.seed`, which also seeds the learner's streams; `--set seed=N` is the same)
-and sets the matmul precision (`bnb.cli.set_precision`) once, before training,
+`--seed` (the run's `TrainConfig.seed`; `--set seed=N` is the same) keys every random
+draw of the run ([Random draws](../explanation/architecture.md#random-draws)): two runs
+of one seed that differ in a setting draw alike wherever they are alike. The `bnb`
+command sets the matmul precision (`bnb.cli.set_precision`) once, before training,
 and sets `TRITON_DEFAULT_FP_FUSION` before torch is imported and
 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` before the first CUDA allocation (less
 reserved memory, a slightly faster update; an explicit setting wins). A script that calls

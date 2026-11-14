@@ -97,7 +97,10 @@ def _game(environments: int, ticks: int, fogged: bool = True, seed: int = 2):
         )
         views.append(team0)
         resets.append(team0.globals[:, GLOBAL["reset"]] > 0.5)
-        actions = [chaser.step(None, view, None)[0] for view in (team0, team1)]
+        actions = [
+            chaser.step(None, view, None, torch.arange(view.ships.shape[0]))[0]
+            for view in (team0, team1)
+        ]
         joints.append(to_joint(actions[0]).to(torch.int32))
         packed = torch.cat([action.packed() for action in actions], 1)
         state, _ = api.step(
@@ -117,7 +120,7 @@ def _loop(net, carry, views, resets, joints, start, stop):
     time, the carry after)."""
     decisions = []
     for t in range(start, stop):
-        decision = net.step(carry, views[t], resets[t])
+        decision = net.step(carry, views[t], resets[t], torch.arange(views[t].ships.shape[0]))
         carry = dataclasses.replace(decision.carry, previous_action=joints[t])
         decisions.append(decision)
     return _pytree.tree_map(lambda *x: torch.stack(x), *decisions), carry
@@ -130,7 +133,12 @@ def _stacked(views, start, stop) -> Obs:
 def _decision(net, view, environments):
     with torch.no_grad(), _default_generator(7):
         carry = net.initial_carry(environments, S, N)
-        return net.step(carry, view, torch.ones(environments, dtype=torch.bool))
+        return net.step(
+            carry,
+            view,
+            torch.ones(environments, dtype=torch.bool),
+            torch.arange(view.ships.shape[0]),
+        )
 
 
 # ------------------------------------------------------------------ items 23 to 25: compose
@@ -237,7 +245,10 @@ def test_the_ship_token_reads_the_benched_flag_and_the_model_steps_with_it():
     with torch.no_grad(), _default_generator(7):
         carry = net.initial_carry(2, S, N)
         decision = net.step(
-            carry, dataclasses.replace(view, ships=benched), torch.ones(2, dtype=torch.bool)
+            carry,
+            dataclasses.replace(view, ships=benched),
+            torch.ones(2, dtype=torch.bool),
+            torch.arange(dataclasses.replace(view, ships=benched).ships.shape[0]),
         )
     assert all(
         bool(torch.isfinite(leaf).all())
@@ -269,7 +280,10 @@ def _benched_views(ticks: int):
             for team in (0, 1)
         )
         views.append(team0)
-        actions = [chaser.step(None, view, None)[0] for view in (team0, team1)]
+        actions = [
+            chaser.step(None, view, None, torch.arange(view.ships.shape[0]))[0]
+            for view in (team0, team1)
+        ]
         packed = torch.cat([action.packed() for action in actions], 1)
         state, _ = api.step(
             rules,
@@ -321,7 +335,10 @@ def _masked_run(net, game, views, benched, noise: torch.Generator | None):
             ships = torch.where(benched[..., None], junk, ships)
         with torch.no_grad(), _default_generator(11 + t):  # the reset's offset draw
             decision = net.step(
-                carry, dataclasses.replace(view, ships=ships), torch.full((2,), t == 0)
+                carry,
+                dataclasses.replace(view, ships=ships),
+                torch.full((2,), t == 0),
+                torch.arange(dataclasses.replace(view, ships=ships).ships.shape[0]),
             )
         joint = decision.policy_logits.argmax(-1).to(torch.int32)
         if noise is not None:
@@ -410,7 +427,9 @@ def test_the_forecast_position_of_a_hidden_enemy_is_the_image_nearest_its_belief
     )
     carry = dataclasses.replace(carry, belief=belief)
     with torch.no_grad():
-        decision = net.step(carry, view, torch.zeros(2, dtype=torch.bool))
+        decision = net.step(
+            carry, view, torch.zeros(2, dtype=torch.bool), torch.arange(view.ships.shape[0])
+        )
     forecast = decision.carry.belief.means[:, S:, 0:2]
     assert bool(((forecast - reference).abs() <= 0.5 * POSITION_PERIOD).all()), forecast
 

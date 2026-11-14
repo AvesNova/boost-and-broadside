@@ -105,7 +105,7 @@ def single_step(model: torch.nn.Module, obs: Obs, carry=None) -> dict[str, torch
     with torch.no_grad():
         if isinstance(model, Yemong):
             reset = torch.zeros(obs.ships.shape[0], dtype=torch.bool, device=obs.ships.device)
-            out = model.step(carry, obs, reset)
+            out = model.step(carry, obs, reset, torch.arange(obs.ships.shape[0]))
         elif isinstance(model, MLP):
             logits, value = model(obs)
             return dict(logits=logits, value=value)

@@ -25,6 +25,7 @@ from .scripted_combat import (
     Context,
     Marginals,
     blend,
+    choice_uniforms,
     column,
     either,
     far,
@@ -67,9 +68,11 @@ class Frontline(NamedTuple):
     recovering: torch.Tensor
 
 
-def _choice(fleet: Context, committed: torch.Tensor, margin: torch.Tensor, shape) -> torch.Tensor:
-    """A two-way plan choice from its rule's margin (positive: the first option, True):
-    the committed option switches at `shape`'s rate on the other's margin."""
+def _choice(
+    fleet: Context, name: str, committed: torch.Tensor, margin: torch.Tensor, shape
+) -> torch.Tensor:
+    """A two-way plan choice `name` from its rule's margin (positive: the first option,
+    True): the committed option switches at `shape`'s rate on the other's margin."""
     advantage = torch.where(committed, -margin, margin)
     return commit(
         committed,
@@ -79,7 +82,7 @@ def _choice(fleet: Context, committed: torch.Tensor, margin: torch.Tensor, shape
         in_own_time(shape, fleet.time_unit),
         fleet.temperature,
         fleet.seconds,
-        fleet.switching,
+        choice_uniforms(fleet, name, advantage),
     )
 
 
@@ -144,7 +147,11 @@ def frontline(
         torch.log(threat.clamp_min(TINY)) - _log(parameters.recovery_threat),
     )
     recovering = _choice(
-        fleet, fleet.carry.recovering, recovery_margin, parameters.recovery_switch_in_log_ratio
+        fleet,
+        "recovering",
+        fleet.carry.recovering,
+        recovery_margin,
+        parameters.recovery_switch_in_log_ratio,
     )
 
     # Who defends: the defense wants the floor, or the enemy's strength near it plus a
@@ -188,7 +195,9 @@ def frontline(
     margin = torch.maximum(hopeless, wanted - strength_ahead)
     if doctrines is not None:
         margin = margin + lock_press(fleet, zones, doctrines)
-    defending = _choice(fleet, fleet.carry.defending, margin, parameters.goal_switch_in_strength)
+    defending = _choice(
+        fleet, "defending", fleet.carry.defending, margin, parameters.goal_switch_in_strength
+    )
     goal_x = torch.where(defending, to_defense[0], to_attack[0])
     goal_y = torch.where(defending, to_defense[1], to_attack[1])
 

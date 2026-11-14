@@ -357,20 +357,12 @@ OVERRIDABLE = (
 
 
 def _generators(trainer: Trainer) -> dict[str, torch.Generator]:
-    """The named streams a trainer draws from beyond the default generators."""
+    """The seeded generators a trainer draws from (every other draw is keyed by the carry,
+    `bnb.streams`)."""
     return {
         "shot_spread": trainer.ppo.spread_generator,
         "minibatch_order": trainer.ppo.order_generator,
     }
-
-
-def default_generator_states(device: torch.device) -> dict[str, torch.Tensor]:
-    """The default CPU generator's state and, on a GPU, the device's: the rollout's draws
-    and the policy's sampling inside the captured graph come from it."""
-    states = {"cpu": torch.get_rng_state()}
-    if device.type == "cuda":
-        states["cuda"] = torch.cuda.get_rng_state(device)
-    return states
 
 
 def _training_tensors(trainer: Trainer, optimizer_state: dict) -> dict[str, torch.Tensor]:
@@ -389,8 +381,6 @@ def _training_tensors(trainer: Trainer, optimizer_state: dict) -> dict[str, torc
         tensors.update(named_tensors(teacher_carry, TEACHER_CARRY))
     for name, generator in _generators(trainer).items():
         tensors[f"generator.{name}"] = generator.get_state()
-    for name, state in default_generator_states(trainer.rollout.device).items():
-        tensors[f"default_generator.{name}"] = state
     return {
         name: tensor.detach().to("cpu", copy=True).contiguous() for name, tensor in tensors.items()
     }
@@ -587,20 +577,6 @@ def _check_card(trainer: Trainer, record: dict, directory) -> None:
         )
 
 
-def restore_default_generators(directory: str | os.PathLike, device: torch.device) -> None:
-    """Set the process's default CPU (and on a GPU, the device's) generator to a training
-    checkpoint's. The one process-wide effect of a resume, so the entry point calls it."""
-    stored = safetensors.torch.load_file(pathlib.Path(directory) / TRAINING)
-    torch.set_rng_state(stored["default_generator.cpu"])
-    if device.type == "cuda":
-        if "default_generator.cuda" not in stored:
-            raise CheckpointError(
-                f"{directory} was saved on the CPU: it holds no CUDA "
-                f"generator to resume on {device}"
-            )
-        torch.cuda.set_rng_state(stored["default_generator.cuda"], device)
-
-
 def training_config(directory: str | os.PathLike) -> tuple[TrainConfig, list[str]]:
     """(the TrainConfig a training checkpoint ran with, the fields its defaults filled)."""
     record = read_record(directory)
@@ -618,8 +594,7 @@ def load_training(
     """The trainer of a training checkpoint, ready to continue exactly where it stopped:
     built from the checkpoint's own TrainConfig (its model's settings and ship card
     included), or `config`, which may differ from it only in OVERRIDABLE fields; its model
-    must match the checkpoint's build record. The default generators are the caller's
-    (`restore_default_generators`)."""
+    must match the checkpoint's build record."""
     directory = pathlib.Path(directory)
     saved, filled = training_config(directory)
     if filled:

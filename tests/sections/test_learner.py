@@ -28,7 +28,6 @@ from bnb.learn.ppo import (
     WARM_START_ENTROPY,
     LearnerConfig,
     explained_variance,
-    random_stream,
 )
 from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import RelationalConfig
@@ -36,6 +35,7 @@ from bnb.models.yemong import critic, policy
 from bnb.models.yemong.density import HexGrid, poisson_terms
 from bnb.models.yemong.inputs import believed, truth
 from bnb.runtime import metrics
+from bnb.streams import stream_generator
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
@@ -106,7 +106,12 @@ def test_the_compacted_replay_rebuilds_the_own_rows_sight_gave():
     )
     carry = net.initial_carry(obs.ships.shape[0], OWN, 10)
     with torch.no_grad():
-        decision = net.step(carry, obs, torch.zeros(obs.ships.shape[0], dtype=torch.bool))
+        decision = net.step(
+            carry,
+            obs,
+            torch.zeros(obs.ships.shape[0], dtype=torch.bool),
+            torch.arange(obs.ships.shape[0]),
+        )
     valid, age, means, spreads = believed(obs.ships, decision.replay)
     assert decision.replay.means.shape[-2] == 10 - OWN
     assert valid[:, :OWN].all() and (age[:, :OWN] == 0).all() and (spreads[:, :OWN] == 0).all()
@@ -302,7 +307,7 @@ class Constant:
     def init_carry(self, views, device):
         return None
 
-    def step(self, carry, obs, reset):
+    def step(self, carry, obs, reset, decision_key):
         from bnb.contracts.action import from_joint
 
         joint = torch.full((reset.shape[0], self.ships), self.joint, dtype=torch.int32)
@@ -477,7 +482,7 @@ def test_the_stored_shot_labels_are_the_updates_resimulation(segment):
     unchanged."""
     _, runner, learner, _ = segment
     store = runner.store
-    stream = random_stream(0, "shot_spread")
+    stream = stream_generator(0, "shot_spread")
     spread = torch.randn((store.length, store.views, 10, 2), generator=stream)
     moves = runner.rules.longest_bullet_moves
     drawn = torch.randint(

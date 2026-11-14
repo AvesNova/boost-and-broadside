@@ -139,6 +139,7 @@ name). Top-level layout mirrors the seams:
 src/bnb/
   contracts/      # types only, no logic: config, state, obs, action, events, trajectory,
                   #   privileged labels, carry protocol; SCHEMA_VERSION per type
+  streams.py      # keyed random streams (counter-based hashes), at the contracts' layer
   game/           # pure rules; imports contracts only
     physics/      #   medium (fields), flight, bullets, combat, spawn   <- race arm
     perception/   #   sight, observe (raw, team-canonical), privileged
@@ -167,7 +168,7 @@ tests/
 Dependency rule, checked by a test that walks imports:
 
 ```
-contracts <- game <- controllers/models <- learn <- runtime <- league <- play
+contracts, streams <- game <- controllers/models <- learn <- runtime <- league <- play
 ```
 
 Nothing imports `runtime` except entry points. `play` uses `runtime` but adds no rules.

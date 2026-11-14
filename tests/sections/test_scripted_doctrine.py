@@ -56,8 +56,8 @@ def _duel(
 
 
 def _decide(obs: Obs, doctrines=None, seed: int = 0):
-    torch.manual_seed(seed)
-    return decide(obs, CHARACTERISTICS, PARAMETERS, switching=True, doctrines=doctrines)[0]
+    keys = torch.arange(obs.ships.shape[0]) + seed * obs.ships.shape[0]
+    return decide(obs, CHARACTERISTICS, PARAMETERS, decision_key=keys, doctrines=doctrines)[0]
 
 
 def _every_type(doctrine: Doctrine) -> torch.Tensor:
@@ -304,7 +304,8 @@ def test_the_sense_draws_its_choice_once_as_its_gate_opens():
         }
     )
     doctrines = _every_type(Doctrine(sense=1.0, sense_one_circle=0.5))
-    parts, carry = decide(obs, CHARACTERISTICS, PARAMETERS, switching=True, doctrines=doctrines)
+    keys = torch.arange(obs.ships.shape[0])
+    parts, carry = decide(obs, CHARACTERISTICS, PARAMETERS, decision_key=keys, doctrines=doctrines)
     draw = carry.sense_draw[:, 0]
     assert bool((draw >= 0.0).all())
     one = parts.stick[:, 0, 5] > 0.9

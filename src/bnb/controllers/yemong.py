@@ -1,7 +1,7 @@
 """Yemong as a controller: one team's views in, its ships' actions out.
 
-The controller samples the joint action (Gumbel-max) and makes the sample the carry's
-previous action; everything else is the model's.
+The controller samples the joint action (`policy.sample`, by the decision key's uniforms)
+and makes the sample the carry's previous action; everything else is the model's.
 """
 
 import dataclasses
@@ -12,6 +12,7 @@ from bnb.contracts import Action, Obs, Outputs
 from bnb.contracts.action import from_joint
 from bnb.models.yemong import policy
 from bnb.models.yemong.model import Ablations, Carry, Replay, Unrolled, Yemong
+from bnb.streams import action_uniforms
 
 
 class YemongController:
@@ -54,6 +55,7 @@ class YemongController:
         carry: Carry,
         obs: Obs,
         reset: torch.Tensor,
+        decision_key: torch.Tensor,
         ablations: Ablations | None = None,
         temperature: torch.Tensor | None = None,
     ) -> tuple[Action, Carry, Outputs]:
@@ -61,11 +63,12 @@ class YemongController:
         inference-time ablations per view (`Ablations`; none by default); temperature: (R,)
         each view's sampling temperature (`policy.tempered`; None: the policy as it is), the
         outputs' log-probability and entropy then the tempered distribution's."""
-        decision = self.model.step(carry, obs, reset, ablations)
+        decision = self.model.step(carry, obs, reset, decision_key, ablations)
         logits = decision.policy_logits
         if temperature is not None:
             logits = policy.tempered(logits, temperature)
-        joint, log_probability, entropy = policy.sample(logits)
+        uniforms = action_uniforms(decision_key, logits.shape[-2])
+        joint, log_probability, entropy = policy.sample(logits, uniforms)
         carry = dataclasses.replace(decision.carry, previous_action=joint)
         outputs = Outputs(
             log_probability=log_probability,

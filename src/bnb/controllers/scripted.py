@@ -16,6 +16,7 @@ from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.game.handling.characteristics import Characteristics
 from bnb.game.modes.rules import PRESETS
 from bnb.game.rules import FlightConstants, Rules, rules_of
+from bnb.streams import action_uniforms, inverse_cdf, purpose_key, row_uniforms
 
 from .scripted_combat import Marginals, combat, context
 from .scripted_defaults import MODE_DEFAULTS
@@ -36,16 +37,34 @@ STANDARD_GUN_RANGE = 220.78790283203125  # m
 STANDARD_CORNER_RADIUS = 45.45454775076505  # m
 
 
-def uniform_actions(shape: tuple, device) -> torch.Tensor:
-    """Actions (*shape, 3) int32 drawn uniformly from the global generator, in the order power,
-    stick, shoot."""
-    draws = torch.rand(shape + (3,), device=device)
+RANDOM_REDRAW = purpose_key("random redraw")
+AGENT_FLAGS = purpose_key("scripted agent flags")
+FLOOR_DRAWS = purpose_key("uniform floor")
+
+
+def uniform_actions(uniforms: torch.Tensor) -> torch.Tensor:
+    """Actions (..., 3) int32 drawn uniformly by uniforms (..., 3) in [0, 1), in the order
+    power, stick, shoot."""
     # scalar factors, not a tensor built from host values: a host copy cannot run inside a
     # CUDA graph capture (an eager rollout's, such as the head-to-head's)
     scaled = [
-        draws[..., index] * count for index, count in enumerate((NUM_POWER, NUM_STICK, NUM_SHOOT))
+        uniforms[..., index] * count
+        for index, count in enumerate((NUM_POWER, NUM_STICK, NUM_SHOOT))
     ]
     return torch.stack(scaled, -1).to(torch.int32)
+
+
+def floored_actions(action: torch.Tensor, floor: float | torch.Tensor, decision_key: torch.Tensor):
+    """The packed actions (R, S, 3) with each ship's replaced, with probability `floor` (a
+    float, or (R,) per row), by a uniform joint action. The choice is keyed by the decision's
+    key (R,) apart from the actions' uniforms, so the mixture is the floor's whatever the
+    agent's action; the uniform action is drawn by the actions' uniforms
+    (`bnb.streams.action_uniforms`)."""
+    floor = floor[:, None] if isinstance(floor, torch.Tensor) else floor
+    ships = action.shape[1]
+    chosen = row_uniforms(FLOOR_DRAWS, decision_key, (ships,)) < floor
+    uniform = uniform_actions(action_uniforms(decision_key, ships))
+    return torch.where(chosen[..., None], uniform, action)
 
 
 class Random:
@@ -57,14 +76,15 @@ class Random:
         self.ships_per_team = ships_per_team
 
     def init_carry(self, views: int, device: torch.device) -> torch.Tensor:
-        """The held actions (R, S, 3) int32, drawn uniformly."""
-        return uniform_actions((views, self.ships_per_team), device)
+        """The held actions (R, S, 3) int32: none yet (-1), so the first decision draws."""
+        return torch.full((views, self.ships_per_team, 3), -1, dtype=torch.int32, device=device)
 
-    def step(self, carry: torch.Tensor, obs: Obs, reset: torch.Tensor):
+    def step(self, carry: torch.Tensor, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
         """One decision for views (R, ...): each ship keeps its held action or, with probability
-        REDRAW, draws a new one. The carry is the held actions."""
-        redraw = torch.rand(carry.shape[:-1], device=carry.device) < REDRAW
-        drawn = uniform_actions(carry.shape[:-1], carry.device)
+        REDRAW (always without one), draws a new one. The carry is the held actions."""
+        redraw = row_uniforms(RANDOM_REDRAW, decision_key, carry.shape[1:-1]) < REDRAW
+        redraw = redraw | (carry[..., 0] < 0)
+        drawn = uniform_actions(action_uniforms(decision_key, carry.shape[1]))
         held = torch.where(redraw[..., None], drawn, carry)
         return Action.unpack(held), held, Outputs()
 
@@ -111,8 +131,9 @@ class Chaser:
         """No carry: the chaser is stateless."""
         return None
 
-    def step(self, carry: None, obs: Obs, reset: torch.Tensor):
-        """Each own ship turns toward and shoots at its nearest visible living enemy."""
+    def step(self, carry: None, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
+        """Each own ship turns toward and shoots at its nearest visible living enemy (no
+        draw)."""
         S = self.ships_per_team
         own, enemy = obs.ships[:, :S], obs.ships[:, S:]  # rows are ordered by team_relative
         to_x = enemy[:, None, :, SHIP["x"]] - own[:, :, None, SHIP["x"]]  # (R, own, enemy)
@@ -202,7 +223,7 @@ def decide(
     carry: ScriptedCarry | None = None,
     reset: torch.Tensor | None = None,
     seconds: float = Rules.tick_length,
-    switching: bool = False,
+    decision_key: torch.Tensor | None = None,
     doctrines: torch.Tensor | None = None,
 ) -> tuple[Marginals, ScriptedCarry]:
     """The scripted agent's power, stick and shoot marginals per own ship at a temperature (a
@@ -212,9 +233,10 @@ def decide(
     is off, a living ship plays uniformly (random).
 
     carry None is a fresh one (nothing remembered: the memoryless agent); reset (R,) the
-    views whose episode reset before this observation. With `switching` the plan choices may
-    switch (a decision); without, only a fresh ship or a lost target re-chooses, so a carry
-    `decide` returned gives the same marginals again (a label's re-reading). parameters: one
+    views whose episode reset before this observation. With a `decision_key` (R,) int64
+    (`Controller.step`) the plan choices may switch, drawn from it (a decision); without,
+    only a fresh ship or a lost target re-chooses, so a carry `decide` returned gives the
+    same marginals again (a label's re-reading). parameters: one
     set, per view, or per mode (`ModeParameters`: each view its mode's). doctrines: each
     ship type's doctrine (`bnb.controllers.scripted_doctrine`), a table (T, D) or per view
     (R, T, D); None flies none."""
@@ -227,7 +249,7 @@ def decide(
         reset = torch.zeros(views, dtype=torch.bool, device=ships.device)
     carry, recall = remember(carry, obs, reset, characteristics, parameters, temperature)
     fleet = context(
-        obs, characteristics, parameters, temperature, carry, recall, seconds, switching
+        obs, characteristics, parameters, temperature, carry, recall, seconds, decision_key
     )
     fighting = combat(fleet, characteristics, parameters, doctrines)
     strategy = frontline(fleet, obs.zones, characteristics, parameters, fighting, doctrines)
@@ -299,12 +321,14 @@ def distribution(
     return joint(marginals(obs, characteristics, parameters, temperature, carry))
 
 
-def sample(probabilities: torch.Tensor) -> torch.Tensor:
-    """One index per row of (..., K) probabilities, by the inverse CDF (a category of
-    probability 0 is never drawn)."""
-    cumulative = probabilities.cumsum(-1)
-    draw = torch.rand(probabilities.shape[:-1] + (1,), device=probabilities.device)
-    return (draw * cumulative[..., -1:] >= cumulative[..., :-1]).sum(-1)
+def sample(parts: Marginals, decision_key: torch.Tensor) -> torch.Tensor:
+    """(R, S, 3) one action per own ship from the marginals (power, stick, shoot), each by
+    the inverse CDF of its uniform (`action_uniforms`; a category of probability 0 is
+    never drawn)."""
+    uniforms = action_uniforms(decision_key, parts.power.shape[1])
+    return torch.stack(
+        [inverse_cdf(part, uniforms[..., index]) for index, part in enumerate(parts)], -1
+    )
 
 
 class Scripted:
@@ -365,20 +389,23 @@ class Scripted:
         temperature = self.temperature
         return temperature[:, None] if isinstance(temperature, torch.Tensor) else temperature
 
-    def _agent_flags(self, carry: ScriptedCarry, reset: torch.Tensor) -> ScriptedCarry:
+    def _agent_flags(
+        self, carry: ScriptedCarry, reset: torch.Tensor, decision_key: torch.Tensor
+    ) -> ScriptedCarry:
         """The agent flags, redrawn at each reset by the share."""
         share = self.share
         if not isinstance(share, torch.Tensor) and share == 1.0:
             return carry
         share = share[:, None] if isinstance(share, torch.Tensor) else share
-        drawn = torch.rand(carry.agent.shape, device=carry.agent.device) < share
+        drawn = row_uniforms(AGENT_FLAGS, decision_key, carry.agent.shape[1:]) < share
         return dataclasses.replace(carry, agent=torch.where(reset[:, None], drawn, carry.agent))
 
     def decide(
-        self, carry: ScriptedCarry, obs: Obs, reset: torch.Tensor
+        self, carry: ScriptedCarry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor
     ) -> tuple[Marginals, ScriptedCarry]:
-        """One decision's marginals and the carry after it (`decide`, switching)."""
-        carry = self._agent_flags(carry, reset)
+        """One decision's marginals and the carry after it (`decide`, switching by the
+        decision's key)."""
+        carry = self._agent_flags(carry, reset, decision_key)
         if not self.memory:
             carry = forgotten(carry)
         return decide(
@@ -389,7 +416,7 @@ class Scripted:
             carry,
             reset,
             self.seconds,
-            switching=True,
+            decision_key=decision_key,
             doctrines=self.doctrines,
         )
 
@@ -408,8 +435,9 @@ class Scripted:
         """(R, S, NUM_JOINT) the distribution given a carry `decide` returned."""
         return joint(self.marginals(obs, carry))
 
-    def step(self, carry: ScriptedCarry, obs: Obs, reset: torch.Tensor):
-        """One decision for views (R, ...): an action sampled from each marginal."""
-        parts, carry = self.decide(carry, obs, reset)
-        action = torch.stack([sample(part) for part in parts], -1)
+    def step(self, carry: ScriptedCarry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
+        """One decision for views (R, ...): an action sampled from each marginal by the
+        decision's key."""
+        parts, carry = self.decide(carry, obs, reset, decision_key)
+        action = sample(parts, decision_key)
         return Action.unpack(action.to(torch.int32)), carry, Outputs()

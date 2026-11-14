@@ -191,16 +191,17 @@ def commit(
     shape: Switch,
     temperature,
     seconds: float,
-    switching: bool,
+    uniform: torch.Tensor | None,
 ) -> torch.Tensor:
     """A plan choice after one decision: `best` where `forced`, else `best` with the switch's
-    probability at `advantage` (best's over the committed option's), else `committed`.
-    Without `switching` (re-reading a carry that has made its choices) only `forced`
+    probability at `advantage` (best's over the committed option's), drawn by `uniform`
+    (shaped like the advantage; `scripted_combat.choice_uniforms`), else `committed`.
+    Without a uniform (re-reading a carry that has made its choices) only `forced`
     changes it."""
-    if not switching:
+    if uniform is None:
         return torch.where(forced, best, committed)
     probability = switch_probability(advantage, shape, temperature, seconds)
-    switch = torch.rand_like(probability) < probability
+    switch = uniform < probability
     return torch.where(forced | switch, best, committed)
 
 

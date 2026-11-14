@@ -11,7 +11,7 @@ entry from the sampling weights), and the metrics.
 
 A slot's entry is drawn from the modes' sampling weights mixed by the modes' shares of the
 opponent rows (a slot plays every mode), by counter-based uniforms
-(`bnb.runtime.opponents.counter_uniform`) keyed by the run's seed. The pool's one scripted
+(`bnb.streams.keyed_uniform` of the swap count) keyed by the run's seed. The pool's one scripted
 entry is the full-strength scripted agent: no weaker rung and no random player.
 """
 
@@ -35,11 +35,9 @@ from bnb.runtime.opponents import (
     OUTCOMES,
     SCRIPTED_KIND,
     SCRIPTED_PLAYER,
-    counter_uniform,
-    draw,
-    stream_key,
 )
 from bnb.runtime.train import Trainer
+from bnb.streams import inverse_cdf, keyed_uniform, stream_key
 
 from .gauge import GAUGE_TOP, Gauge, Record
 from .lanes import RunRatings
@@ -199,11 +197,9 @@ class League:
 
     def _draw(self) -> Entry:
         """The next slot's entry, from the mixed weights (the swap counter's uniform)."""
-        uniform = counter_uniform(
-            self.swap_key, torch.tensor(self.swaps), torch.zeros(1, dtype=torch.int64)
-        )
+        uniform = keyed_uniform(self.swap_key, torch.tensor([self.swaps]))
         self.swaps += 1
-        index = int(draw(self.mixed, uniform.double())[0])
+        index = int(inverse_cdf(self.mixed, uniform.double())[0])
         return self.entries[list(self.entries)[index]]
 
     def _weights_of(self, entry: Entry) -> dict[str, torch.Tensor]:

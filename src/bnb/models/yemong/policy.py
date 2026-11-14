@@ -1,20 +1,34 @@
-"""The joint policy over NUM_JOINT actions: Gumbel-max sampling, log-probabilities and entropy."""
+"""The joint policy over NUM_JOINT actions: sampling by the inverse CDF, log-probabilities
+and entropy."""
 
 import torch
 import torch.nn.functional as F
 
 from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
+from bnb.streams import inverse_cdf
 
-GUMBEL_FLOOR = 1e-20
 
-
-def sample(logits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """A Gumbel-max sample of (..., NUM_JOINT) logits: (joint int32, log-prob, entropy), each (...).
-
-    Draws from the default generator, so a captured graph draws fresh noise on every replay.
-    """
-    uniform = torch.rand_like(logits).clamp_min(GUMBEL_FLOOR)
-    joint = torch.argmax(logits - torch.log(-torch.log(uniform)), -1)
+def sample(
+    logits: torch.Tensor, uniforms: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """A sample of (..., NUM_JOINT) logits by the inverse CDF of each factor in `to_joint`'s
+    order, one uniform each (uniforms (..., 3)): the power from its marginal, the stick
+    given the power, the shoot given both. (joint int32, log-prob, entropy), each (...).
+    The same uniforms pick the same action from two distributions wherever their
+    cumulative probabilities put it in the same category, so close policies mostly agree."""
+    probabilities = torch.softmax(logits.float(), -1).unflatten(
+        -1, (NUM_POWER, NUM_STICK, NUM_SHOOT)
+    )
+    power = inverse_cdf(probabilities.sum((-1, -2)), uniforms[..., 0])
+    given_power = probabilities.gather(
+        -3, power[..., None, None, None].expand(power.shape + (1, NUM_STICK, NUM_SHOOT))
+    )[..., 0, :, :]
+    stick = inverse_cdf(given_power.sum(-1), uniforms[..., 1])
+    given_stick = given_power.gather(
+        -2, stick[..., None, None].expand(stick.shape + (1, NUM_SHOOT))
+    )[..., 0, :]
+    shoot = inverse_cdf(given_stick, uniforms[..., 2])
+    joint = (power * NUM_STICK + stick) * NUM_SHOOT + shoot
     log_probability, entropy = evaluate(logits, joint)
     return joint.to(torch.int32), log_probability, entropy
 
