@@ -306,7 +306,9 @@ class HeadToHead:
 
     players: the pairs; games: games per pair and preset (even); presets; device;
     runs_directory: as for bnb train; deathmatch_score: how a team deathmatch game is
-    scored, kill_share (the default) or win_loss (as for bnb ratings).
+    scored, kill_share (the default) or win_loss (as for bnb ratings); lineup: each slot's
+    ship type by name, both teams, for every player (as for bnb ratings; empty: the game's
+    own).
     """
 
     players: tyro.conf.Positional[tuple[str, ...]]
@@ -315,6 +317,7 @@ class HeadToHead:
     device: str = "cuda"
     runs_directory: str | None = None
     deathmatch_score: Literal["kill_share", "win_loss"] = "kill_share"
+    lineup: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1432,6 +1435,8 @@ def head_to_head(options: HeadToHead) -> None:
     _check_presets(options.presets)
     runs_directory = runs_directory_of(options.runs_directory)
     players = _players(options.players, runs_directory)
+    if options.lineup:
+        players = with_lineup(players, options.lineup, options.presets)
     try:
         rows = tournament.head_to_head(
             players,
@@ -1467,6 +1472,7 @@ def head_to_head(options: HeadToHead) -> None:
         games=options.games,
         presets=list(options.presets),
         deathmatch_score=options.deathmatch_score,
+        lineup=list(options.lineup),
     )
     print(provenance.write_result(owner, "head_to_head", payload, inputs))
 

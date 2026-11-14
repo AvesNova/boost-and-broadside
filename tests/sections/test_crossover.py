@@ -209,3 +209,23 @@ def test_the_command_flies_its_lineup_for_both_players(monkeypatch, tmp_path):
     with pytest.raises(SystemExit, match="stop"):
         cli.crossover(options)
     assert seen["types"] == ((0, 0, 1, 1, 1), (0, 0, 1, 1, 1))
+
+
+def test_head_to_head_flies_its_lineup_for_every_player(monkeypatch):
+    from bnb import cli
+    from bnb.league import tournament
+
+    seen = {}
+
+    def fake(players, games, presets, device, deathmatch_score):
+        seen["types"] = [one.ship_type for one in players]
+        raise ValueError("stop")
+
+    monkeypatch.setattr(tournament, "head_to_head", fake)
+    lineup = ("Yongma", "Yongma", "Jujak", "Jujak", "Jujak")
+    options = cli.HeadToHead(
+        players=("scripted", "random"), presets=("real_scale_deathmatch",), lineup=lineup
+    )
+    with pytest.raises(SystemExit, match="stop"):
+        cli.head_to_head(options)
+    assert seen["types"] == [(0, 0, 1, 1, 1)] * 2
