@@ -11,6 +11,7 @@ import dataclasses
 
 import torch
 
+from bnb.controllers.scripted_cheese import agent_of
 from bnb.runtime.lanes import EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE
 from bnb.runtime.opponents import SCRIPTED_PLAYER, LeagueConfig
 
@@ -23,10 +24,11 @@ HISTORY_FROM = 3  # then the snapshot nearest each age 2^k snapshots back, k >= 
 
 @dataclasses.dataclass(frozen=True)
 class Entry:
-    """One pool entry. kind: "checkpoint", "average" or "scripted" (the full-strength
-    scripted agent, the pool's one scripted entry); steps: a checkpoint's environment steps
-    at its snapshot; ordinal: a checkpoint's place in the order of snapshots (0, 1, 2,
-    ...)."""
+    """One pool entry. kind: "checkpoint", "average", "scripted" (the full-strength
+    scripted agent, the pool's one scripted entry) or "cheese" (a cheese agent, named
+    `scripted:<agent>`, in the pool only when `LeagueConfig.cheese` lists it); steps: a
+    checkpoint's environment steps at its snapshot; ordinal: a checkpoint's place in the
+    order of snapshots (0, 1, 2, ...)."""
 
     name: str
     kind: str
@@ -38,11 +40,13 @@ class Entry:
             raise ValueError(f"entry kind {self.kind!r} is not one of {KINDS}")
         if (self.kind == "scripted") != (self.name == SCRIPTED_PLAYER):
             raise ValueError(f"{self.name}: the scripted entry is {SCRIPTED_PLAYER!r}")
+        if (self.kind == "cheese") != (agent_of(self.name) is not None):
+            raise ValueError(f"{self.name}: a cheese entry is named scripted:<agent>")
 
     @property
     def network(self) -> bool:
         """Whether the entry is a network (a checkpoint or an average), loaded into a slot."""
-        return self.kind != "scripted"
+        return self.kind not in ("scripted", "cheese")
 
 
 SCRIPTED_ENTRY = Entry(SCRIPTED_PLAYER, "scripted")  # the pool's one scripted entry

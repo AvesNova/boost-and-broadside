@@ -20,7 +20,7 @@ from bnb.runtime.lanes import LIVE
 from .ratings import win_probability
 
 GAUGE_TOP = 1000.0  # the scripted agent's fixed rating, its start in the gauge
-KINDS = ("checkpoint", "average", "scripted")
+KINDS = ("checkpoint", "average", "scripted", "cheese")
 
 
 @dataclasses.dataclass

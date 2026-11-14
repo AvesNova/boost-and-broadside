@@ -25,6 +25,7 @@ import time
 import torch
 
 from bnb.contracts.series import Table
+from bnb.controllers.scripted_cheese import agent_of, player_name
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
 from bnb.runs.session import CADENCE_UPDATES
@@ -52,7 +53,8 @@ from .pool import (
 )
 
 # The opponent kinds the league's scores and game shares are sliced by (diagnostics audit,
-# group 20): the scripted agent, the averages and the checkpoints.
+# group 20): the scripted agent, the averages and the checkpoints (and the cheese agents,
+# when the pool holds any: `League.entry_kinds`).
 ENTRY_KINDS = ("scripted", "average", "checkpoint")
 SNAPSHOT_SECONDS = 30 * 60  # the measured snapshot cadence's target (league spec 5)
 SNAPSHOT_DIRECTORY = "step_{steps}"
@@ -85,6 +87,7 @@ class League:
         if trainer.opponents is None:
             raise ValueError("the trainer's lineup has no league seat (`bnb.runtime.opponents`)")
         self.config = trainer.config.league
+        self.entry_kinds = ENTRY_KINDS + (("cheese",) if self.config.cheese else ())
         self.opponents = trainer.opponents
         self.directory = pathlib.Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -130,6 +133,11 @@ class League:
             self.entries[name] = Entry(name, "average")
             for gauge in self.gauges.values():
                 gauge.add(name, "average")
+        for agent in self.config.cheese:  # unrated by the lanes: the games' fit rates them
+            name = player_name(agent)
+            self.entries[name] = Entry(name, "cheese")
+            for gauge in self.gauges.values():
+                gauge.add(name, "cheese")
         self.snapshots: dict[str, dict[str, torch.Tensor]] = {}
         self.snapshot_every = self.config.snapshot_every
         self.ordinal = 0
@@ -241,7 +249,10 @@ class League:
     def _load(self, slot: int, entry: Entry) -> None:
         if entry.network:
             self.opponents.load(slot, self._weights_of(entry))
-        self.opponents.set_kind(slot, NETWORK if entry.network else SCRIPTED_KIND)
+        if entry.kind == "cheese":
+            self.opponents.set_cheese(slot, agent_of(entry.name))
+        else:
+            self.opponents.set_kind(slot, NETWORK if entry.network else SCRIPTED_KIND)
 
     def _cut(self, trainer: Trainer) -> None:
         """The clean cut, when due: `cut_slots` slots (round robin) each draw an entry; a
@@ -394,7 +405,7 @@ class League:
         Per mode: the run's ratings (`rating/live`, `rating/average` and every rated player's,
         with their standard errors: `bnb.league.lanes.RunRatings.series`), the update's
         training games against the entries and the sampling distribution's normalised
-        entropy. By opponent kind (ENTRY_KINDS): the live policy's score and its share of
+        entropy. By opponent kind (`entry_kinds`): the live policy's score and its share of
         the games. The pool's size, its snapshots; the update's cut (`pool/cut/*`: the slots
         drawn, the slots that took another entry, their rows, the games left uncredited and
         the rows whose opponent carry was reset) and the slots' mix after it
@@ -403,8 +414,8 @@ class League:
         games, score, and the slot holding it after the cut), as JSON
         (`bnb.contracts.series.Table.as_json`)."""
         out: dict = {}
-        games_by_kind = dict.fromkeys(ENTRY_KINDS, 0.0)
-        points_by_kind = dict.fromkeys(ENTRY_KINDS, 0.0)
+        games_by_kind = dict.fromkeys(self.entry_kinds, 0.0)
+        points_by_kind = dict.fromkeys(self.entry_kinds, 0.0)
         rows = []
         out.update(self.ratings.series())
         for mode, gauge in self.gauges.items():
@@ -427,7 +438,7 @@ class League:
             out[f"rating/window_games/{mode}"] = window
             out[f"pool/gauge_anomalies/{mode}"] = len(self.gauge_anomalies(mode))
         total = sum(games_by_kind.values())
-        for kind in ENTRY_KINDS:
+        for kind in self.entry_kinds:
             if games_by_kind[kind]:
                 out[f"pool/score/{kind}"] = points_by_kind[kind] / games_by_kind[kind]
             if total:
@@ -437,7 +448,7 @@ class League:
         for name, value in self.last_cut.items():
             out[f"pool/cut/{name}"] = value
         held = [self.entries[name] for name in self.held if name in self.entries]
-        for kind in ENTRY_KINDS:
+        for kind in self.entry_kinds:
             out[f"pool/slot_share/{kind}"] = sum(entry.kind == kind for entry in held) / len(
                 self.held
             )

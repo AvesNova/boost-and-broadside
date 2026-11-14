@@ -29,6 +29,7 @@ import math
 
 import torch
 
+from bnb.controllers.scripted_cheese import agent_of
 from bnb.runtime.lanes import (
     EXPONENTIAL_AVERAGE,
     LEAGUE_PREFIX,
@@ -53,8 +54,12 @@ SNAPSHOT_PREFIX = "snapshot_"  # a league snapshot's name (`bnb.league.pool.snap
 
 
 def stationary(player: str) -> bool:
-    """A ladder player or a league snapshot: its play never changes."""
-    return ladder_rung(player) is not None or player.startswith(SNAPSHOT_PREFIX)
+    """A ladder player, a cheese agent or a league snapshot: its play never changes."""
+    return (
+        ladder_rung(player) is not None
+        or agent_of(player) is not None
+        or player.startswith(SNAPSHOT_PREFIX)
+    )
 
 
 class RunRatings:

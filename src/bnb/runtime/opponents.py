@@ -9,8 +9,10 @@ One controller, `OpponentSlots`, plays every opponent row of the batch:
   training pool holds no other scripted player, no weaker rung and no random player (the
   author, 2026-11-12); the rating lanes and the offline tournament still play the ladder.
 - per row, the kind it plays (a network set or the scripted agent) is selected with `where`.
+- when `LeagueConfig.cheese` names any, the cheese agents (`bnb.controllers.scripted_cheese`):
+  one pass over every row, each slot holding a cheese entry playing its agent on its rows.
 
-A slot holds a network entry or the scripted agent.
+A slot holds a network entry, the scripted agent or a cheese agent.
 
 The clean cut (`cut`): the host loads a new entry into a slot's set in place, at an update
 boundary. The games in progress on its rows play on against the new entry; their results
@@ -19,7 +21,7 @@ those rows is reset (its trunk; the belief part is kept) or kept. Every host-sid
 an in-place copy between segments, so a captured graph stays valid.
 
 Each row's column (`OpponentCarry.column`) names what it plays for the record: a slot's
-set, or the scripted agent (the column after the slots'). The rollout tallies each
+set or cheese agent, or the scripted agent (the column after the slots'). The rollout tallies each
 episode's result from the learner's side by column and mode (`tally`).
 """
 
@@ -32,6 +34,8 @@ from torch.utils import _pytree
 from bnb.contracts import Action, Obs, Outputs
 from bnb.contracts.tree import contract
 from bnb.controllers.scripted import Scripted
+from bnb.controllers.scripted_cheese import NAMES as CHEESE_NAMES
+from bnb.controllers.scripted_cheese import Cheese
 from bnb.controllers.scripted_memory import ScriptedCarry
 from bnb.game.handling.characteristics import Characteristics
 
@@ -103,7 +107,7 @@ def ladder_rung(name: str) -> Rung | None:
     return None
 
 
-NETWORK, SCRIPTED_KIND = 0, 1  # what a slot holds
+NETWORK, SCRIPTED_KIND, CHEESE_KIND = 0, 1, 2  # what a slot holds
 OUTCOMES = ("wins", "ties", "losses")  # the tally's last axis, from the learner's side
 
 
@@ -123,7 +127,9 @@ class LeagueConfig:
     learning-rate warm-up (`LearnerConfig.warmup_steps`, `uniform_start`), so a fine-tune's
     shorter warm-up starts its average sooner; snapshot_every: environment steps between
     snapshots (None: measured once, about 30 minutes of the run's throughput, and
-    recorded)."""
+    recorded); cheese: the cheese agents that are pool entries, by name
+    (`bnb.controllers.scripted_cheese.NAMES`; none by default), each `scripted:<name>`,
+    sampled with the other entries; fixed at a run's start."""
 
     slots: int = 4
     # the author's clean cut, 2026-11-06 (decisions: round four)
@@ -135,8 +141,14 @@ class LeagueConfig:
     # the run's warm-up (author, 2026-11-07: decisions, run control)
     uniform_from: int | None = None
     snapshot_every: int | None = None
+    cheese: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        unknown = [name for name in self.cheese if name not in CHEESE_NAMES]
+        if unknown or len(set(self.cheese)) < len(self.cheese):
+            raise ValueError(
+                f"league cheese {list(self.cheese)}: each of {CHEESE_NAMES}, at most once"
+            )
         if self.slots < 1:
             raise ValueError(f"league slots {self.slots} must be at least 1")
         if self.cut_every < 1 or not 1 <= self.cut_slots <= self.slots:
@@ -224,6 +236,10 @@ class OpponentSlots:
         self.decision.requires_grad_(False)
         self.reads = tuple(dict.fromkeys(controller.reads + Scripted.reads))
         self.scripted_agent = Scripted(characteristics, ships_per_team)  # full strength
+        # the cheese agents, only when the pool holds any: each slot's agent (an index into
+        # `CHEESE_NAMES`, -1 for a slot holding another kind), written in place
+        self.cheese = Cheese(characteristics, ships_per_team) if config.cheese else None
+        self.cheese_of_slot = torch.full((slots,), -1, dtype=torch.int64, device=device)
         state = self.decision.state_dict()
         # The stacked sets, one per slot.
         self.parameters = {
@@ -273,11 +289,15 @@ class OpponentSlots:
     def step(self, carry: OpponentCarry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
         """One decision for every opponent row; see `Controller.step`."""
         network_action, model_carry = self._network(carry.model, obs, reset, decision_key)
-        scripted = self.kind[self.slot_of_row] == SCRIPTED_KIND  # (R,)
+        kind = self.kind[self.slot_of_row]  # (R,)
+        scripted = kind == SCRIPTED_KIND
         scripted_action, scripted_carry, _ = self.scripted_agent.step(
             carry.scripted, obs, reset, decision_key
         )
         action = torch.where(scripted[:, None, None], scripted_action.packed(), network_action)
+        if self.cheese is not None:  # a cheese slot's rows keep the slot's column
+            played = self.cheese.play(obs, self.cheese_of_slot[self.slot_of_row]).packed()
+            action = torch.where((kind == CHEESE_KIND)[:, None, None], played, action)
         column = torch.where(scripted, self.scripted_column, self.slot_of_row)
         carry = OpponentCarry(
             model=model_carry,
@@ -313,10 +333,19 @@ class OpponentSlots:
         for index in range(self.slots):
             self.load(index, state)
         self.kind.fill_(NETWORK)
+        self.cheese_of_slot.fill_(-1)
 
     def set_kind(self, slot: int, kind: int) -> None:
-        """What slot `slot` holds: NETWORK or SCRIPTED_KIND."""
+        """What slot `slot` holds: NETWORK or SCRIPTED_KIND (`set_cheese` for a cheese agent)."""
         self.kind[slot] = kind
+        self.cheese_of_slot[slot] = -1
+
+    def set_cheese(self, slot: int, name: str) -> None:
+        """Slot `slot` holds the cheese agent `name` (a pool entry of `LeagueConfig.cheese`)."""
+        if self.cheese is None:
+            raise ValueError("the league was built without cheese agents (LeagueConfig.cheese)")
+        self.kind[slot] = CHEESE_KIND
+        self.cheese_of_slot[slot] = CHEESE_NAMES.index(name)
 
     @torch.no_grad()
     def cut(self, carry: OpponentCarry, slot: int, keep_memory: bool) -> int:
@@ -342,6 +371,8 @@ class OpponentSlots:
         """The sets and what each holds (a resume restores them with `load_state_dict`)."""
         state = {f"parameters.{name}": value for name, value in self.parameters.items()}
         state.update(kind=self.kind)
+        if self.cheese is not None:
+            state.update(cheese_of_slot=self.cheese_of_slot)
         return state
 
     @torch.no_grad()

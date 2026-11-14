@@ -299,7 +299,8 @@ class Cheese:
     a tensor (R,) int64 of each view's agent, an index into `NAMES` (-1: none, the no-op),
     written in place between segments (the league seat and the match seat set their rows'
     kinds); every agent's decision is then computed and each view takes its own. With a
-    name only that agent is computed."""
+    name only that agent is computed. kinds None: a seat that holds the kinds itself calls
+    `play`."""
 
     reads = ("ships", "zones", "globals")
 
@@ -307,7 +308,7 @@ class Cheese:
         self,
         characteristics: Characteristics,
         ships_per_team: int,
-        kinds: str | torch.Tensor,
+        kinds: str | torch.Tensor | None = None,
     ) -> None:
         if isinstance(kinds, str) and kinds not in NAMES:
             raise ValueError(f"cheese agent {kinds!r} is not one of {NAMES}")
@@ -324,17 +325,22 @@ class Cheese:
     def step(self, carry: None, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
         """One decision for views (R, ...): each view's agent's action per own ship. Draws
         nothing, so the decision key is unused."""
+        if self.kinds is None:
+            raise ValueError("a cheese controller built without kinds is played through `play`")
+        return self.play(obs, self.kinds), carry, Outputs()
+
+    def play(self, obs: Obs, kinds: str | torch.Tensor) -> Action:
+        """The decision of `kinds` (a name, or a tensor (R,) of indices into `NAMES`, -1 for
+        the no-op) on views (R, ...), for a caller that holds the kinds itself."""
         sight = look(obs, self.characteristics, self.ships_per_team)
-        globals_ = obs.globals
-        shrink = 1.0 - globals_[:, GLOBAL["boundary_fraction"]]
-        names = (self.kinds,) if isinstance(self.kinds, str) else NAMES
+        shrink = 1.0 - obs.globals[:, GLOBAL["boundary_fraction"]]
+        names = (kinds,) if isinstance(kinds, str) else NAMES
         packed = torch.zeros(sight.x.shape + (3,), dtype=torch.int32, device=sight.x.device)
         for name in names:
             play = POLICIES[name](sight, shrink)
             action = torch.stack([play.power, play.stick, play.shoot], -1).to(torch.int32)
-            if isinstance(self.kinds, str):
+            if isinstance(kinds, str):
                 packed = action
             else:
-                mine = (self.kinds == NAMES.index(name))[:, None, None]
-                packed = torch.where(mine, action, packed)
-        return Action.unpack(packed), carry, Outputs()
+                packed = torch.where((kinds == NAMES.index(name))[:, None, None], action, packed)
+        return Action.unpack(packed)
