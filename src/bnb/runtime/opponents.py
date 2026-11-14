@@ -128,7 +128,8 @@ class LeagueConfig:
     shorter warm-up starts its average sooner; snapshot_every: environment steps between
     snapshots (None: measured once, about 30 minutes of the run's throughput, and
     recorded); cheese: the cheese agents that are pool entries, by name
-    (`bnb.controllers.scripted_cheese.NAMES`; none by default), each `scripted:<name>`,
+    (`bnb.controllers.scripted_cheese.NAMES`; all six by default, `()` turns them off), each
+    `scripted:<name>`,
     sampled with the other entries; fixed at a run's start."""
 
     slots: int = 4
@@ -141,7 +142,7 @@ class LeagueConfig:
     # the run's warm-up (author, 2026-11-07: decisions, run control)
     uniform_from: int | None = None
     snapshot_every: int | None = None
-    cheese: tuple[str, ...] = ()
+    cheese: tuple[str, ...] = CHEESE_NAMES
 
     def __post_init__(self) -> None:
         unknown = [name for name in self.cheese if name not in CHEESE_NAMES]

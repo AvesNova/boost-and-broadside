@@ -229,7 +229,9 @@ class Ratings:
     layout; device; runs_directory: as for bnb train. ladder: the stationary ladder's rungs
     below the scripted agent (the scripted agent always plays: it anchors the scale at
     1000). league: the run's `league/` policies (else only `--with`'s players and the
-    ladder). scripted_plays: the only players the scripted agent plays (by the names given;
+    ladder). cheese: the six cheese agents (`scripted:<name>`, `bnb.controllers.scripted_cheese`)
+    play, to check the policies against crude strategies (`--no-cheese` leaves them out).
+    scripted_plays: the only players the scripted agent plays (by the names given;
     all by default). out: the directory whose `artifacts/ratings/` the result goes to.
     Each preset's batches are recorded as they end in `<preset>.batches.jsonl`, in `--out`
     (else the run's `artifacts/ratings/`), and a tournament that finds its record goes on
@@ -281,6 +283,7 @@ class Ratings:
     runs_directory: str | None = None
     ladder: bool = True
     league: bool = True
+    cheese: bool = True
     scripted_plays: tuple[str, ...] | None = None
     out: str | None = None
     reuse: tuple[str, ...] = ()
@@ -1337,6 +1340,8 @@ def ratings(options: Ratings) -> None:
     """`bnb ratings`: the offline tournament and its leaderboard."""
     import torch
 
+    from bnb.controllers.scripted_cheese import NAMES as CHEESE_NAMES
+    from bnb.controllers.scripted_cheese import player_name
     from bnb.league import tournament
     from bnb.league.matches import ArenaConfig, Player, player
     from bnb.runs import provenance
@@ -1362,6 +1367,8 @@ def ratings(options: Ratings) -> None:
         for rung in LADDER
         if options.ladder or ladder_name(rung) == SCRIPTED_PLAYER
     ]
+    if options.cheese:
+        field += _players([player_name(name) for name in CHEESE_NAMES], runs_directory)
     field += [
         p for p in _players(options.with_, runs_directory) if p.name not in {f.name for f in field}
     ]

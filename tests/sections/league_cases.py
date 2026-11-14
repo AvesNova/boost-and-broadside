@@ -33,7 +33,9 @@ def config(device: str = "cpu", **changes) -> TrainConfig:
         relational=RelationalConfig(hidden=16),
         learner=LearnerConfig(epochs=1, minibatches=2, warmup_steps=1000, micro_batch_rows=64),
         compiled=device == "cuda",
-        league=LeagueConfig(snapshot_every=16 * 16),
+        league=LeagueConfig(
+            snapshot_every=16 * 16, cheese=()
+        ),  # the base pool; the cheese is its own test
     )
     values.update(changes)
     return TrainConfig(**values)

@@ -12,8 +12,8 @@ from bnb.runtime.opponents import OPPONENTS, SCRIPTED_KIND, LeagueConfig
 pytestmark = pytest.mark.usefixtures("global_generator")
 
 
-def test_cheese_is_off_by_default_and_checked():
-    assert LeagueConfig().cheese == ()
+def test_cheese_is_on_by_default_and_checked():
+    assert LeagueConfig().cheese == NAMES
     with pytest.raises(ValueError, match="cheese"):
         LeagueConfig(cheese=("nobody",))
     with pytest.raises(ValueError, match="at most once"):
@@ -23,8 +23,12 @@ def test_cheese_is_off_by_default_and_checked():
     assert not Entry(player_name("kiter"), "cheese").network
 
 
-def test_the_default_pool_has_no_cheese_entry(tmp_path):
-    trainer, league = cases.league(tmp_path)
+def test_the_pool_has_all_six_by_default_and_none_when_turned_off(tmp_path):
+    _, default = cases.league(tmp_path / "default", league=LeagueConfig(snapshot_every=256))
+    assert [e.name for e in default.entries.values() if e.kind == "cheese"] == [
+        player_name(name) for name in NAMES
+    ]
+    trainer, league = cases.league(tmp_path / "off", league=LeagueConfig(cheese=()))
     assert not any(entry.kind == "cheese" for entry in league.entries.values())
     assert trainer.opponents.cheese is None
     assert "cheese_of_slot" not in trainer.opponents.state_dict()
