@@ -390,3 +390,4 @@ Deathmatch Elo on win/loss against Baekho, averaged policy:
 - **rl-mix-kl,** the mixed-mode version, is still running to test the same switch in the production mix. On this evidence I expect no gain.
 - **What it means for the deathmatch question:** together with E2, the gap to v2.1 was entirely the rating scale. The reward shape and frontline crowding are both ruled out.
 - **09:10, masked-zone test in elimination (RL 150M, masked against unmasked):** 138–342 over 480 games, a score of 0.287 (0.247–0.328), **−158 Elo** (−194 to −125). The masked side's kill share is 0.369. The dependence holds in both zone-less modes; it is smaller in elimination. The BC deathmatch run should finish about 09:30.
+- **09:30, masked-zone test with the BC policy in deathmatch:** 50–430, a score of 0.104 (0.077–0.131), **−374 Elo** (−432 to −328). BC already depends on the placeholder as much as RL does, so the sink is learned during imitation, not by RL.
