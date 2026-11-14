@@ -11,7 +11,6 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 
 Ordered for working through:
 
-1. **Mode weights and training mix (proposal):** keep thirds in the evaluation score. The no-regression gate already blocks the coupled-modes drift, each mode is a separate product feature, and the coupling evidence is one-directional. Make the training mix (6/5/5 against 8/4/4) a cheap early RL-only arm, keeping 6/5/5 until then. Optional: elimination-only and frontline-only RL forks to complete the coupling measurement.
 2. **Freezing the game:** the frontline lock is being re-tuned to a random walk (with fields on). The deathmatch tickets, elimination shrink timing and other freeze items wait for the measurements.
 3. **The run budget, the final arm list, and the review of every arm idea.**
 4. **The averaging sweep:** which early arm saves the live weights every update, and which variants to sweep.
@@ -75,6 +74,12 @@ Ordered for working through:
   | rl-kl (deathmatch only) | +205 | +713 | +598 (peaked +873 at 56M) |
 
   Deathmatch-only training gains as much elimination as the generalist, or more. Frontline gains early, then forgets. There's no elimination-only or frontline-only run, so the reverse directions are unmeasured.
+- **Evaluation weights: thirds** (decided 2026-11-15), with the no-regression gate.
+- **Challenger rule (decided 2026-11-15):** the challenger, normally the more complex or slower option, must:
+  - beat the incumbent past the gating threshold on the overall score;
+  - and not lose to it in any single mode by the set amount.
+- **Training mix arm (decided 2026-11-15):** 6/5/5 against 8/4/4, as a cheap RL-only arm. 6/5/5 stays the default until it reports.
+- **Game fingerprint:** Claude's call. Keep records consistent: one correct fingerprint and version after the merge, and stored tournaments from older versions are never reused across versions.
 - **References:** a list of papers with what we take from each, where it applies in the code, and how it affected a decision ([references.md](references.md)).
 - **Early arms:** variable map sizes against fixed (first; it decides whether variable maps stay in the game and the paper, and if they don't, the colour codes and rotary frequencies are re-tuned for fixed sizes); variable ship and field counts against fixed.
 - **Deferred to the later review of all arms:** self-play training both sides against one side; the separate critic (too much work for an arm now).
