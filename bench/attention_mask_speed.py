@@ -1,14 +1,18 @@
-"""What masking the absent zone slots out of attention would cost a training run: the learner's
-micro-batch step (labels, loss, backward, as `Learner.gradient`) and the rollout's learner
-policy step, at a run's own shapes, with each spatial attention on one path.
+"""What masking the absent zone slots out of attention, or gating the attention output,
+would cost a training run: the learner's micro-batch step (labels, loss, backward, as
+`Learner.gradient`) and the rollout's learner policy step, at a run's own shapes, with each
+spatial attention on one path.
 
 Variants, one process each (the attention switch and the patch are read at trace time):
-  fused   the default: no key mask, the fused Triton attention (`kernels.attention.attend`)
-  masked  every view's absent zone slots masked out (`model.absent_zone_key_mask`, as the
-          `Ablations.absent_zones` evaluation ablation, here on every view and in the learn
-          too): the plain path, SDPA with a boolean mask
-  plain   no mask, the attention switch off: SDPA without a mask (separates the cost of
-          leaving the fused kernel from the cost of the mask itself)
+  fused             the default: no key mask, the fused Triton attention
+                    (`kernels.attention.attend`)
+  fused_masked      every view's absent zone slots masked out (`model.absent_zone_key_mask`,
+                    as the `Ablations.absent_zones` evaluation ablation, here on every view
+                    and in the learn too), through the fused kernel's key mask
+  masked            the same mask with the attention switch off: SDPA with a boolean mask
+  plain             no mask, the attention switch off: SDPA without a mask
+  gate_elementwise  the fused default with `YemongConfig.gate` "elementwise"
+  gate_headwise     the fused default with `YemongConfig.gate` "headwise"
 
 Each process builds the run's Trainer (`run`: a directory with a config.json), collects one
 update (the rollout compiles; a realistic carry and store), captures the update's first
@@ -17,8 +21,7 @@ replays of the learner's compiled policy step on the rollout's views, captured i
 graph as the rollout runs its stages (CUDA events per repeat). Prints the medians and the
 quartiles as one JSON line last.
 
-Usage: `python bench/attention_mask_speed.py run=DIR variant=fused|masked|plain
-[repeats=30] [warmup=5]`
+Usage: `python bench/attention_mask_speed.py run=DIR variant=VARIANT [repeats=30] [warmup=5]`
 """
 
 import dataclasses
@@ -33,7 +36,7 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import torch  # noqa: E402
 
 START = time.perf_counter()
-VARIANTS = ("fused", "masked", "plain")
+VARIANTS = ("fused", "fused_masked", "masked", "plain", "gate_elementwise", "gate_headwise")
 
 
 def log(message: str) -> None:
@@ -46,9 +49,9 @@ def apply_variant(variant: str) -> None:
     from bnb.models.yemong import kernels
     from bnb.models.yemong.model import Yemong, absent_zone_key_mask
 
-    if variant == "plain":
+    if variant in ("plain", "masked"):
         kernels.switches.attention = False
-    elif variant == "masked":
+    if variant in ("fused_masked", "masked"):
         original = Yemong.tokens
 
         def tokens(self, *arguments, **keywords):
@@ -59,6 +62,23 @@ def apply_variant(variant: str) -> None:
             return dataclasses.replace(built, key_mask=absent_zone_key_mask(built, every_view))
 
         Yemong.tokens = tokens
+
+
+def trainer_of(options: dict, variant: str):
+    """The run's Trainer on the GPU, seeded as the profile's (`bench.learn_micro.trainer_of`),
+    with the variant's gate."""
+    from bnb.cli import compile_limits
+    from bnb.runs.serialise import from_json
+    from bnb.runtime.train import TrainConfig, Trainer
+
+    compile_limits()
+    with open(os.path.join(options["run"], "config.json")) as file:
+        config, _ = from_json(TrainConfig, json.load(file))
+    if variant.startswith("gate_"):
+        gate = variant.removeprefix("gate_")
+        config = dataclasses.replace(config, yemong=dataclasses.replace(config.yemong, gate=gate))
+    torch.manual_seed(0)
+    return Trainer(config, torch.device("cuda"))
 
 
 def quantiles(times: list[float]) -> dict:
@@ -179,9 +199,7 @@ def main() -> None:
         raise SystemExit(f"variant one of {VARIANTS}")
     repeats, warmup = int(options.get("repeats", 30)), int(options.get("warmup", 5))
     apply_variant(variant)
-    from bench.learn_micro import trainer_of
-
-    trainer = trainer_of(options)
+    trainer = trainer_of(options, variant)
     log(f"built ({variant}); collecting")
     saved = micro_batch(trainer)
     log("collected; micro-batch captured")
