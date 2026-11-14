@@ -25,7 +25,6 @@ episode's result from the learner's side by column and mode (`tally`).
 
 import dataclasses
 import math
-import zlib
 
 import torch
 from torch.utils import _pytree
@@ -106,7 +105,6 @@ def ladder_rung(name: str) -> Rung | None:
 
 NETWORK, SCRIPTED_KIND = 0, 1  # what a slot holds
 OUTCOMES = ("wins", "ties", "losses")  # the tally's last axis, from the learner's side
-MASK = (1 << 32) - 1
 
 
 CARRY_AT_CUT = ("reset", "keep")
@@ -163,50 +161,12 @@ class LeagueConfig:
         return warmup_steps if self.uniform_from is None else self.uniform_from
 
 
-def stream_key(seed: int, name: str) -> int:
-    """A counter-based stream's 32-bit key, from the run's seed and the stream's name."""
-    return zlib.crc32(f"{seed}/{name}".encode()) & MASK
-
-
-def _multiply(value: torch.Tensor, constant: int) -> torch.Tensor:
-    """(value * constant) mod 2^32 for int64 values below 2^32, without int64 overflow."""
-    high, low = constant >> 16, constant & 0xFFFF
-    return (value * low + (((value * high) & 0xFFFF) << 16)) & MASK
-
-
-def _mix(value: torch.Tensor) -> torch.Tensor:
-    """A 32-bit integer hash (lowbias32), on int64 values below 2^32."""
-    value = value ^ (value >> 16)
-    value = _multiply(value, 0x7FEB352D)
-    value = value ^ (value >> 15)
-    value = _multiply(value, 0x846CA68B)
-    return value ^ (value >> 16)
-
-
-def counter_uniform(key: int, counter: torch.Tensor, index: torch.Tensor) -> torch.Tensor:
-    """Uniform draws in [0, 1) float32, one per `index` (int64), a pure function of the key,
-    the counter (int64, broadcast) and the index: the same arguments give the same draws on
-    every device."""
-    value = _mix((index & MASK) ^ key)
-    value = _mix(value ^ (counter & MASK))
-    value = _mix(value ^ ((counter >> 32) & MASK))
-    return (value >> 8).to(torch.float32) * (1.0 / (1 << 24))
-
-
 def whole_game_begins(reset: torch.Tensor, stepped: torch.Tensor) -> torch.Tensor:
     """Whether each row begins a whole game at this tick (`reset` (R,), `stepped` (R,), the
     row has played a tick before): every game but the row's first, which the rollout's
     staggered clocks cut short. Cut-short games lean to ties and read as a rating near the
     scripted agent's, so neither the lanes nor the league tally a row's first game."""
     return reset & stepped
-
-
-def draw(weights: torch.Tensor, uniform: torch.Tensor) -> torch.Tensor:
-    """One category per row of non-negative `weights` (..., E), by the inverse CDF of
-    `uniform` (...): int64. A category of weight 0 is never drawn."""
-    cumulative = weights.cumsum(-1)
-    target = uniform[..., None] * cumulative[..., -1:]
-    return (target >= cumulative[..., :-1]).sum(-1)
 
 
 @contract

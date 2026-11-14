@@ -23,10 +23,8 @@ from bnb.runtime.opponents import (
     SCRIPTED_KIND,
     SCRIPTED_PLAYER,
     LeagueConfig,
-    counter_uniform,
-    draw,
-    stream_key,
 )
+from bnb.streams import inverse_cdf, keyed_uniform, stream_key
 
 pytestmark = pytest.mark.usefixtures("global_generator")
 
@@ -44,23 +42,22 @@ def _assert_shares(counts: torch.Tensor, weights: torch.Tensor) -> None:
 def test_counter_draws_match_p_times_one_minus_p_plus_the_floor():
     probability = torch.tensor([0.5, 0.7, 0.95, 0.99, 0.2, 0.05], dtype=torch.float64)
     weights = sampling_weights(probability, 0.05)
-    uniform = counter_uniform(
-        stream_key(0, "test"), torch.arange(DRAWS), torch.zeros(DRAWS, dtype=torch.int64)
-    )
-    drawn = draw(weights, uniform.double())
+    uniform = keyed_uniform(stream_key(0, "test"), torch.arange(DRAWS))
+    drawn = inverse_cdf(weights, uniform.double())
     _assert_shares(torch.bincount(drawn, minlength=6).double(), weights)
 
 
-def test_counter_uniforms_are_uniform_and_depend_on_every_argument():
+def test_keyed_uniforms_are_uniform_and_depend_on_every_argument():
     key = stream_key(0, "test")
     rows = torch.arange(DRAWS)
-    uniform = counter_uniform(key, torch.tensor(7), rows)
+    uniform = keyed_uniform(key, torch.tensor(7), rows)
     assert 0.0 <= float(uniform.min()) and float(uniform.max()) < 1.0
     histogram = torch.histc(uniform, bins=10, min=0.0, max=1.0)
     _assert_shares(histogram.double(), torch.full((10,), 0.1, dtype=torch.float64))
-    assert not torch.equal(uniform, counter_uniform(key, torch.tensor(8), rows))
-    assert not torch.equal(uniform, counter_uniform(stream_key(1, "test"), torch.tensor(7), rows))
-    assert torch.equal(uniform, counter_uniform(key, torch.tensor(7), rows))
+    assert not torch.equal(uniform, keyed_uniform(key, torch.tensor(8), rows))
+    assert not torch.equal(uniform, keyed_uniform(stream_key(1, "test"), torch.tensor(7), rows))
+    assert not torch.equal(uniform, keyed_uniform(key, rows, torch.tensor(7)))  # order matters
+    assert torch.equal(uniform, keyed_uniform(key, torch.tensor(7), rows))
 
 
 def test_a_slot_draws_entries_by_the_mixed_weights(tmp_path):

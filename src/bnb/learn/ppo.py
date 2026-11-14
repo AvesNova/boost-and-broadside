@@ -24,7 +24,6 @@ such field (or None) and that term is skipped.
 import dataclasses
 import functools
 import math
-import zlib
 from collections.abc import Callable, Iterator
 from typing import ClassVar, Protocol
 
@@ -40,6 +39,7 @@ from bnb.game.ship_types import ShipTypes
 from bnb.models.yemong import codes, critic, geometry, policy
 from bnb.models.yemong import shots as shot_codes
 from bnb.models.yemong.density import HexGrid, poisson_terms
+from bnb.streams import stream_generator
 
 from . import advantages as level_advantages
 from . import gradients, head_statistics, labels, losses, returns, shots, statistics
@@ -243,12 +243,6 @@ class Segments(Protocol):
         views."""
 
 
-def random_stream(seed: int, name: str, device: torch.device | None = None) -> torch.Generator:
-    """The learner's random stream `name`: its own generator, seeded from the seed and the
-    name, so a new stream shifts no other's draws and the global generator none of them."""
-    return torch.Generator(device).manual_seed(seed << 32 | zlib.crc32(name.encode()))
-
-
 def learning_rate(config: LearnerConfig, steps: int) -> float:
     """Linear warmup from warmup_start over the first warmup_steps environment steps."""
     fraction = min(1.0, steps / config.warmup_steps) if config.warmup_steps else 1.0
@@ -386,8 +380,8 @@ class Learner:
         self.return_scale = critic.ReturnScale(
             config.return_scale_decay, config.return_scale_floor, device
         )
-        self.spread_generator = random_stream(seed, "shot_spread", device)  # spread, ages
-        self.order_generator = random_stream(seed, "minibatch_order")  # host indices
+        self.spread_generator = stream_generator(seed, "shot_spread", device)  # spread, ages
+        self.order_generator = stream_generator(seed, "minibatch_order")  # host indices
         self.auxiliary = hasattr(model, "state_code")
         if self.auxiliary:
             self.grid = HexGrid(model.config.hex_rings, device)

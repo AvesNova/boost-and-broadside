@@ -28,7 +28,6 @@ from bnb.learn.ppo import (
     WARM_START_ENTROPY,
     LearnerConfig,
     explained_variance,
-    random_stream,
 )
 from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import RelationalConfig
@@ -36,6 +35,7 @@ from bnb.models.yemong import critic, policy
 from bnb.models.yemong.density import HexGrid, poisson_terms
 from bnb.models.yemong.inputs import believed, truth
 from bnb.runtime import metrics
+from bnb.streams import stream_generator
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
@@ -477,7 +477,7 @@ def test_the_stored_shot_labels_are_the_updates_resimulation(segment):
     unchanged."""
     _, runner, learner, _ = segment
     store = runner.store
-    stream = random_stream(0, "shot_spread")
+    stream = stream_generator(0, "shot_spread")
     spread = torch.randn((store.length, store.views, 10, 2), generator=stream)
     moves = runner.rules.longest_bullet_moves
     drawn = torch.randint(
