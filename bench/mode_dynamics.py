@@ -471,6 +471,7 @@ def main() -> None:
         help="JSON overrides of the mode's scripted set for side B (A plays the default); "
         "A sits on team 0 in even environments",
     )
+    parser.add_argument("--eager", action="store_true", help="no torch.compile (CPU runs)")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     arguments = parser.parse_args()
     if arguments.preset is None:
@@ -516,12 +517,15 @@ def main() -> None:
         device,
         staggered=False,
         ship_type=lineup_of(arguments.lineup, game, environments),
+        compiled=not arguments.eager,
     )
     if mode_overrides(arguments):
         rollout.rules = api.tuning.tuned(rollout.rules, mode_overrides(arguments))
     rollout.carry["trace"] = blank_trace(environments, length, device)
     rollout.stages = rollout.stages + (
-        torch.compile(trace_stage(length), fullgraph=True, dynamic=False),
+        trace_stage(length)
+        if arguments.eager
+        else torch.compile(trace_stage(length), fullgraph=True, dynamic=False),
     )
     threshold = rollout.rules.pools[0].mode.front_threshold
     while done < arguments.games:
