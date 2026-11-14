@@ -69,3 +69,11 @@ def test_ratings_fly_the_lineup_for_every_player_without_one_of_its_own():
     assert flown[0].ship_type == indices and flown[1].ship_type == 0
     with pytest.raises(SystemExit, match="other ship sets"):
         cli.with_lineup(field, lineup, ("frontline", "real_scale_frontline"))
+
+
+def test_ratings_play_a_preset_at_an_arena_scale_floored_at_the_mode_minimum():
+    assert cli.rated_game("real_scale_deathmatch", None).arena_radius == 4200.0
+    assert cli.rated_game("real_scale_elimination", 2.0).arena_radius == 15600.0
+    assert cli.rated_game("real_scale_deathmatch", 0.5).arena_radius == 3000.0  # the minimum
+    with pytest.raises(SystemExit, match="above 0"):
+        cli.rated_game("real_scale_deathmatch", 0.0)

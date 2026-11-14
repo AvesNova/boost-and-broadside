@@ -257,6 +257,11 @@ class Ratings:
     its own scoring's results, is not resumed (choose another --out) or reused under the
     other.
 
+    arena_scale: an evaluation-only map size, every preset played at its own arena radius
+    times this scale, at least its mode's minimum (`bnb.game.api.arena_radius_for`, the
+    radius a training draw of that scale plays; `rated_game`); None: the preset's own. A
+    record keeps no scale: give each scale its own --out.
+
     A budget of 0 plays no games: the field is refitted from the record in `--out` and the
     `--reuse` records alone, under `--deathmatch-score`, so a tournament can be re-rated
     under the other scoring, or with players added or left out (a field other than the
@@ -280,6 +285,7 @@ class Ratings:
     lineup: tuple[str, ...] = ()
     seed: int | None = None
     deathmatch_score: Literal["kill_share", "win_loss"] = "kill_share"
+    arena_scale: float | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1300,6 +1306,22 @@ def with_lineup(field: list, lineup: tuple[str, ...], presets: tuple[str, ...]) 
     ]
 
 
+def rated_game(preset: str, arena_scale: float | None):
+    """The preset's game at an evaluation-only arena scale (`Ratings.arena_scale`): its radius
+    times the scale, at least the mode's minimum (`arena_radius_for`); None: the preset's
+    own game."""
+    from bnb.game.api import PRESETS
+    from bnb.game.modes.rules import arena_radius_for
+
+    game = PRESETS[preset]
+    if arena_scale is None:
+        return game
+    if not arena_scale > 0.0:
+        raise SystemExit(f"--arena-scale {arena_scale}: a scale above 0")
+    radius = arena_radius_for(game, game.ships_per_team, arena_scale)
+    return dataclasses.replace(game, arena_radius=radius)
+
+
 def ratings(options: Ratings) -> None:
     """`bnb ratings`: the offline tournament and its leaderboard."""
     import torch
@@ -1376,6 +1398,7 @@ def ratings(options: Ratings) -> None:
                 reuse=reused[preset],
                 resolve=lambda name: player(name, runs_directory),
                 deathmatch_score=options.deathmatch_score,
+                game=rated_game(preset, options.arena_scale),
             )
     except ValueError as error:
         raise SystemExit(str(error)) from error
@@ -1390,6 +1413,7 @@ def ratings(options: Ratings) -> None:
         config=dataclasses.asdict(config),
         scripted_plays=options.scripted_plays,
         deathmatch_score=options.deathmatch_score,
+        arena_scale=options.arena_scale,
         reused={preset: [str(record) for record in records] for preset, records in reused.items()},
     )
     print(provenance.write_result(owner, "ratings", payload, inputs))
