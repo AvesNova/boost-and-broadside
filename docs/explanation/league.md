@@ -11,8 +11,8 @@ and rates finished policies afterwards. The training side is `bnb.league.league.
 attached to a trainer as its hooks; inside the rollout it acts through one controller, the
 league's seat (`bnb.runtime.opponents.OpponentSlots`). The offline side is
 `bnb.league.tournament`, behind `bnb ratings` and `bnb head-to-head`, `bnb.league.rating_pool`,
-behind `bnb pool`, and
-`bnb.league.crossover`, behind `bnb crossover`.
+behind `bnb pool`, `bnb.league.crossover`, behind `bnb crossover`, and
+`bnb.league.evaluation`, behind `bnb evaluate`.
 
 ## The pool
 
@@ -566,6 +566,28 @@ The scripted agent's own temperature is the teacher's syntax, `scripted@T=<tempe
 <!-- not-runnable: needs CUDA and a run -->
 ```bash
 uv run --no-sync bnb ratings RUN --with POLICY@T=0.7 POLICY POLICY@T=1.4
+```
+
+## The decision suite
+
+`bnb evaluate A B --out DIR` (`bnb.league.evaluation`) decides between two policies,
+normally two arms' final checkpoints, by win probability over a fixed set of conditions:
+head-to-head A against B in each mode and at several team sizes, and each policy's
+break-even curve against 20 scripted ships (the crossover's fit). A group-sequential test
+(`bnb.league.sequential`) on the overall score stops at a planned look with A wins, B
+wins or a tie, and a gate holds a winner that is clearly worse in one mode to a tie.
+Batches go to the conditions where they most reduce the overall score's variance per
+engine second; the weights stay fixed. Each process appends its batches and looks to its
+own files in DIR, so the conditions may run as separate processes, and
+`bnb evaluate decide DIR` takes a look at any time. The conditions, the score, the test's
+settings and the pilot that set them are in
+[the evaluation suite](../rewrite/evaluation-suite.md).
+
+<!-- not-runnable: needs CUDA and two policies -->
+```bash
+uv run --no-sync bnb evaluate RUN_A/policies/step_N/exponential_average \
+    RUN_B/policies/step_N/exponential_average --out evaluations/a-against-b
+uv run --no-sync bnb evaluate decide evaluations/a-against-b --peek
 ```
 
 ## The shared rating pool

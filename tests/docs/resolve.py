@@ -41,7 +41,7 @@ def dotted_name(name: str) -> str | None:
             except AttributeError:
                 return f"{'.'.join(parts[:index])} has no attribute {attribute!r}"
             if obj is None and index + 1 < len(parts):
-                return f"cannot look inside {'.'.join(parts[:index + 1])}"
+                return f"cannot look inside {'.'.join(parts[: index + 1])}"
         return None
     return f"no module {parts[0]!r}"
 
@@ -53,8 +53,11 @@ def repository_path(reference: str) -> str | None:
     if not target.exists():
         return f"{path} does not exist"
     if test:
-        names = {node.name for node in ast.walk(ast.parse(target.read_text()))
-                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+        names = {
+            node.name
+            for node in ast.walk(ast.parse(target.read_text()))
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        }
         if test not in names:
             return f"{path} defines no {test!r}"
     return None
@@ -74,10 +77,12 @@ def python_imports(code: str) -> list[tuple[int, str]]:
             if node.module.split(".")[0] in ("bnb", "bench"):
                 out.extend((node.lineno, f"{node.module}.{alias.name}") for alias in node.names)
         elif isinstance(node, ast.Import):
-            out.extend((node.lineno, alias.name) for alias in node.names
-                       if alias.name.split(".")[0] in ("bnb", "bench"))
+            out.extend(
+                (node.lineno, alias.name)
+                for alias in node.names
+                if alias.name.split(".")[0] in ("bnb", "bench")
+            )
     return out
-
 
 
 SHORT = re.compile(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$")
@@ -102,12 +107,20 @@ def short_name(span: str) -> str | None:
     if not SHORT.match(span) or parts[0] in ("bnb", "bench"):
         return None
     if len(parts) == 1 and (span[0].islower() or span[0] == "_" or len(span) == 1):
-        return None if names.is_word(span) else f"`{span}` is not a name in the code; " \
+        return (
+            None
+            if names.is_word(span)
+            else f"`{span}` is not a name in the code; "
             "write it without backticks, or add {.plain} if it is code but not Python"
+        )
     if len(parts) == 1 and (span in dir(builtins) or names.is_string(span)):
         return None
-    if len(parts) > 1 and parts[0] != "tests" and parts[0] not in _CLASS_LIKE() \
-            and importlib.util.find_spec(parts[0]) is not None:
+    if (
+        len(parts) > 1
+        and parts[0] != "tests"
+        and parts[0] not in _CLASS_LIKE()
+        and importlib.util.find_spec(parts[0]) is not None
+    ):
         return dotted_name(span)
     found = names.matches(span)
     if len(found) == 1:
@@ -124,12 +137,14 @@ def _CLASS_LIKE() -> set[str]:
 
 def _options(cls) -> set[str]:
     """A command dataclass's flags: each field's, or the name `tyro.conf.arg` gives it; a
-    positional field (`tyro.conf.Positional`) has none."""
+    positional field (`tyro.conf.Positional`) has none; a nested config's are `--name.field`,
+    or its own flags under `tyro.conf.OmitArgPrefixes`."""
     import typing
 
     import tyro
 
     positional = typing.get_args(tyro.conf.Positional[int])[1]
+    unprefixed = typing.get_args(tyro.conf.OmitArgPrefixes[int])[1]
     hints = typing.get_type_hints(cls, include_extras=True)
     options = set()
     for field in dataclasses.fields(cls):
@@ -138,7 +153,9 @@ def _options(cls) -> set[str]:
             continue
         names = [getattr(meta, "name", None) for meta in metadata]
         name = next((name for name in names if name), field.name)
-        if dataclasses.is_dataclass(hints[field.name]):  # a nested config: --name.field
+        if unprefixed in metadata:  # a nested config's own flags
+            options |= _options(typing.get_args(hints[field.name])[0])
+        elif dataclasses.is_dataclass(hints[field.name]):  # a nested config: --name.field
             options |= {f"--{name}.{option[2:]}" for option in _options(hints[field.name])}
         else:
             options.add("--" + name.replace("_", "-"))
@@ -148,9 +165,9 @@ def _options(cls) -> set[str]:
 def command(arguments: str) -> str | None:
     """None if `bnb <arguments>` names a command (`bnb.cli.COMMANDS`) and uses only its
     options (`bnb.cli.Train`, `Runs`, `ShipCard`, `Ratings`, `HeadToHead`, `Crossover`,
-    `Pool` or
-    `Figures`, and
-    `FiguresVideo` and `FiguresWatch` for `bnb figures video` and `bnb figures watch`;
+    `Evaluate`, `Pool` or `Figures`, and `EvaluateDecide` and `EvaluateDesign` for `bnb evaluate
+    decide` and `bnb evaluate design`, `FiguresVideo` and `FiguresWatch` for `bnb figures video`
+    and `bnb figures watch`;
     `bnb queue`'s own, `bnb.cli.QUEUE_FLAGS`, and for `bnb queue add KIND` the job's
     command's), with a known preset and mode (for `bnb play`, also a saved map's name)."""
     import shlex
@@ -159,6 +176,9 @@ def command(arguments: str) -> str | None:
         COMMANDS,
         QUEUE_FLAGS,
         Crossover,
+        Evaluate,
+        EvaluateDecide,
+        EvaluateDesign,
         Figures,
         FiguresVideo,
         FiguresWatch,
@@ -187,6 +207,7 @@ def command(arguments: str) -> str | None:
         "ratings": Ratings,
         "head-to-head": HeadToHead,
         "crossover": Crossover,
+        "evaluate": Evaluate,
         "pool": Pool,
         "figures": Figures,
     }
@@ -199,6 +220,8 @@ def command(arguments: str) -> str | None:
         chosen = commands[tokens[0]]
         if tokens[0] == "figures" and tokens[1:2] in (["video"], ["watch"]):
             chosen = FiguresVideo if tokens[1] == "video" else FiguresWatch
+        if tokens[0] == "evaluate" and tokens[1:2] in (["decide"], ["design"]):
+            chosen = EvaluateDecide if tokens[1] == "decide" else EvaluateDesign
         options = _options(chosen)
     values = {"--preset": set(PRESETS) | {"mixed"}, "--mode": set(MODES)}
     for index, token in enumerate(tokens):
