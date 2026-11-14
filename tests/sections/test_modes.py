@@ -55,7 +55,7 @@ def test_modes_take_their_clocks_and_presets_build():
 
 def test_tick_uniform_counts_are_exact_functions_of_the_sizes():
     N, M, K = 10, 10, 8
-    game = 4 * M + 1 + 2 + N
+    game = 4 * M + 1 + 2 + N + 1  # the arena scale's draw, always
     assert api.rules_of(GameConfig(5, M, 2600.0, mode="sandbox")).tick_uniform_count == game
     assert api.rules_of(GameConfig(5, M, 2600.0)).tick_uniform_count == game + N * (2 * K + 1)
     grouped = api.rules_of(GameConfig(5, M, 2600.0, spawn_groups=(2, 2, 1)))

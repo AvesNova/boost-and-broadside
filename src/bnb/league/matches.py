@@ -652,13 +652,16 @@ class ArenaConfig:
     split evenly between the seats); length: ticks per rollout segment (the host checks
     whether every game has ended once per segment); compiled: compile the rollout's stages
     (else eager); graph_ticks: the most ticks in one captured graph on a GPU (as training's:
-    a graph holds every slot's kernels for each of its ticks)."""
+    a graph holds every slot's kernels for each of its ticks); seed: keys every game's draws
+    (`bnb.runtime.rollout`): batch k's environment e plays the same map and draws in every
+    engine of one seed, whoever plays it."""
 
     blocks: int = 8
     block_environments: int = 128
     length: int = 32
     compiled: bool = True
     graph_ticks: int = 8
+    seed: int = 0
 
     def __post_init__(self) -> None:
         if self.blocks < 1:
@@ -764,7 +767,9 @@ class Arena:
     card: the card to play (the players' by default, `card_of`); doctrine: the scripted
     agent's set for scripted players without their own (`Player.parameters`; None: the
     mode's set, and no player may bring one); benching: the batches may give the players
-    active ship counts (`play`). `set_card` writes a new card in place."""
+    active ship counts (`play`); first_batch: the first batch's number (each batch's keys
+    its games, `Rollout.restart`; a resumed tournament starts past its recorded batches).
+    `set_card` writes a new card in place."""
 
     def __init__(
         self,
@@ -776,8 +781,10 @@ class Arena:
         card: api.ShipTypes | None = None,
         doctrine: ScriptedParameters | None = None,
         benching: bool = False,
+        first_batch: int = 0,
     ) -> None:
         self.players, self.config, self.device = players, config, device
+        self.batch = first_batch  # the next batch's number, which keys its games
         self.ships_per_team = game.ships_per_team
         self.states: dict[int, dict[str, torch.Tensor]] = {}
         self.groups: list[torch.nn.Module] = []
@@ -842,6 +849,7 @@ class Arena:
             staggered=False,
             ship_type=ship_type,
             benching=benching,
+            seed=config.seed,
         )
         # environment i seats its block's first player on team i mod 2
         self.seats = torch.arange(config.games, device=device) % 2
@@ -964,7 +972,8 @@ class Arena:
             self._load(2 * block + 1, second)
         if self.rollout.ship_type is not None:
             self.rollout.ship_type.copy_(self._ship_types(matchups))
-        self.rollout.restart(None if active is None else self._active(active))
+        self.rollout.restart(None if active is None else self._active(active), self.batch)
+        self.batch += 1
         self.rollout.carry["seat"].copy_(self.seats)
         counts = torch.zeros(self.config.blocks * len(OUTCOMES), dtype=torch.int64)
         ticks = 0

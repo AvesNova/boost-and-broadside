@@ -12,6 +12,7 @@ import functools
 import json
 import os
 import pathlib
+import secrets
 import subprocess
 import sys
 from typing import Annotated, Literal
@@ -247,8 +248,9 @@ class Ratings:
     lineup: each slot's ship type by name, both teams, for every player (the scripted agent
     and its ladder too) in every preset (`TrainConfig.lineup`; empty: the game's own). A
     record keeps no lineup: reuse only records played with the same one.
-    seed: the process's seed (the games' draws; None: torch's default), so several
-    tournaments of one field, run at once and reused together, play different games.
+    seed: the games' draws (`bnb.league.matches.ArenaConfig.seed`; None: a fresh one,
+    recorded with the result), so several tournaments of one field, run at once and reused
+    together, play different games.
     deathmatch_score: how the fit scores a team deathmatch game: kill_share (the default),
     its kill share, or win_loss, a win, draw or loss by the sign of the final kill
     difference (`bnb.league.tournament.kill_share_scored`). Each batch records every
@@ -308,7 +310,8 @@ class HeadToHead:
     runs_directory: as for bnb train; deathmatch_score: how a team deathmatch game is
     scored, kill_share (the default) or win_loss (as for bnb ratings); lineup: each slot's
     ship type by name, both teams, for every player (as for bnb ratings; empty: the game's
-    own); blocks and block_environments: the engine's layout at most (as for bnb crossover).
+    own); blocks and block_environments: the engine's layout at most (as for bnb crossover);
+    seed: the games' draws (`bnb.league.matches.ArenaConfig.seed`).
     """
 
     players: tyro.conf.Positional[tuple[str, ...]]
@@ -320,6 +323,7 @@ class HeadToHead:
     lineup: tuple[str, ...] = ()
     blocks: int = 8
     block_environments: int = 128
+    seed: int = 0
 
 
 @dataclasses.dataclass(frozen=True)
@@ -343,10 +347,10 @@ class Crossover:
     players: A, and B (default scripted); pairs: the active counts, a:b each (A's, B's;
     each from 1 to the ships per team); preset; ships_per_team: the game's size M (the
     largest count any pair needs, at least); games: per pair (even); blocks and
-    block_environments: the engine's layout at most; seed: the process's seed (the games'
-    draws); device; out; runs_directory: as for bnb train; lineup: each slot's ship type by
-    name, both teams, for both players (as for bnb ratings; empty: the game's own), so a
-    team's benched ships are its lineup's last ones.
+    block_environments: the engine's layout at most; seed: the games' draws
+    (`bnb.league.matches.ArenaConfig.seed`); device; out; runs_directory: as for bnb train;
+    lineup: each slot's ship type by name, both teams, for both players (as for bnb ratings;
+    empty: the game's own), so a team's benched ships are its lineup's last ones.
     """
 
     players: tyro.conf.Positional[tuple[str, ...]]
@@ -1163,6 +1167,7 @@ def calibrate(options: Train, config, device) -> None:
         config.environments,
         options.calibration_segments,
         device,
+        seed=config.seed,
     )
     tokens = distributions(1.0)
     natural = bc.mean_entropy(tokens)
@@ -1342,8 +1347,7 @@ def ratings(options: Ratings) -> None:
     from bnb.runtime.opponents import LADDER, ladder_name
 
     _check_presets(options.presets)
-    if options.seed is not None:
-        torch.manual_seed(options.seed)  # every device's generator
+    seed = secrets.randbits(31) if options.seed is None else options.seed
     runs_directory = runs_directory_of(options.runs_directory)
     try:
         run = Run.open(runs_directory, options.run)
@@ -1368,7 +1372,9 @@ def ratings(options: Ratings) -> None:
     try:
         allowed = tournament.allowed_pairs([p.name for p in field], options.scripted_plays)
         config = tournament.TournamentConfig(
-            arena=ArenaConfig(blocks=options.blocks, block_environments=options.block_environments),
+            arena=ArenaConfig(
+                blocks=options.blocks, block_environments=options.block_environments, seed=seed
+            ),
             target_stderr=options.target_stderr,
             budget=options.budget,
         )
@@ -1446,7 +1452,11 @@ def head_to_head(options: HeadToHead) -> None:
             options.games,
             options.presets,
             torch.device(options.device),
-            ArenaConfig(blocks=options.blocks, block_environments=options.block_environments),
+            ArenaConfig(
+                blocks=options.blocks,
+                block_environments=options.block_environments,
+                seed=options.seed,
+            ),
             deathmatch_score=options.deathmatch_score,
         )
     except ValueError as error:
@@ -1477,6 +1487,7 @@ def head_to_head(options: HeadToHead) -> None:
         presets=list(options.presets),
         deathmatch_score=options.deathmatch_score,
         lineup=list(options.lineup),
+        seed=options.seed,
     )
     print(provenance.write_result(owner, "head_to_head", payload, inputs))
 
@@ -1503,10 +1514,11 @@ def crossover(options: Crossover) -> None:
         game = PRESETS[options.preset]
         if options.ships_per_team is not None:
             game = dataclasses.replace(game, ships_per_team=options.ships_per_team)
-        layout = ArenaConfig(blocks=options.blocks, block_environments=options.block_environments)
+        layout = ArenaConfig(
+            blocks=options.blocks, block_environments=options.block_environments, seed=options.seed
+        )
     except ValueError as error:
         raise SystemExit(str(error)) from error
-    torch.manual_seed(options.seed)  # the games' draws
     try:
         rows = fights.crossover(
             first, second, pairs, options.games, game, torch.device(options.device), layout
@@ -1566,7 +1578,7 @@ def figures(options: Figures) -> None:
 
     from bnb.figures.command import figures as draw
 
-    torch.manual_seed(options.seed)  # the capture's rollout and spread draws
+    torch.manual_seed(options.seed)  # the shot figure's spread samples
     try:
         draw(options, runs_directory_of(options.runs_directory))
     except ImportError as error:

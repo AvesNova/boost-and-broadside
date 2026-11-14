@@ -218,9 +218,10 @@ class Rules:
     @property
     def game_uniform_count(self) -> int:
         """Uniforms per environment per tick for the game (game spec 2): the map, a
-        formation rotation per team, a formation key per ship, and the arena scale's draw
-        when some pool samples it (`samples_arena`; without, the draws are as before)."""
-        return self.map_uniform_count + TEAMS + self.num_ships + int(self.samples_arena)
+        formation rotation per team, a formation key per ship, and the arena scale's draw,
+        there whether or not a pool samples it (`samples_arena`), so turning map-size
+        sampling on or off moves no other draw."""
+        return self.map_uniform_count + TEAMS + self.num_ships + 1
 
     @property
     def tick_uniform_count(self) -> int:

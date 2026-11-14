@@ -61,7 +61,7 @@ def test_a_pool_without_sampling_keeps_its_arena_and_its_draws():
     fixed = _rules("deathmatch", 8, scale=None)
     plain = api.rules_of(api.PRESETS["deathmatch"])
     assert not fixed.samples_arena and fixed.tick_uniform_count == plain.tick_uniform_count
-    assert _rules("deathmatch", 8).tick_uniform_count == plain.tick_uniform_count + 1
+    assert _rules("deathmatch", 8).tick_uniform_count == plain.tick_uniform_count
     arena = environment(fixed, 4)
     torch.testing.assert_close(draw_arena_scale(arena, torch.linspace(0.0, 0.9, 4)), torch.ones(4))
     torch.testing.assert_close(sized(arena, torch.full((4,), 0.5)).arena_radius, arena.arena_radius)

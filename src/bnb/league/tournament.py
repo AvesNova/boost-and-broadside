@@ -616,10 +616,12 @@ def rate(
     groups = network_groups(players)
     lanes = default_lanes(groups, 2 * config.arena.blocks)
     arenas: list[Arena] = []
+    # a resumed record's batches were played: the next batch's games are keyed past them
+    recorded = 0 if record is None or not record.exists() else len(record.read_text().splitlines())
 
     def play(matchups: list[tuple[int, int]]):
         if not arenas:
-            arenas.append(Arena(players, game, device, config.arena, lanes))
+            arenas.append(Arena(players, game, device, config.arena, lanes, first_batch=recorded))
         results, extra = outcomes(arenas[0], matchups)
         if statistics:
             extra["statistics"] = arenas[0].statistics().tolist()

@@ -462,6 +462,7 @@ class Trainer:
             else torch.tensor(lineup_indices(config.lineup, game) * api.TEAMS).repeat(
                 self.batch_environments, 1
             ),
+            seed=config.seed,
         )
         lineup = self.rollout.lineup
         self.pool_names = tuple(pool.name for pool in lineup.pools)
@@ -629,6 +630,7 @@ def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> di
             device,
             config.length,
             config.compiled,
+            seed=config.seed,
         )
     )
 

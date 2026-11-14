@@ -206,7 +206,9 @@ def preset_lineup(name: str) -> tuple[int, ...] | None:
 
 
 def uniforms(rules: Rules, batch: int, device=None, generator=None) -> torch.Tensor:
-    """(B, U) uniforms in [0, 1): a tick's map, formation rotations and keys."""
+    """(B, U) uniforms in [0, 1): a tick's map, formation rotations and keys, the arena
+    scale's draw and the mode's spawn draws, from a generator (U: `Rules.tick_uniform_count`;
+    the training runtime keys its own, `bnb.runtime.rollout`)."""
     return torch.rand((batch, rules.tick_uniform_count), device=device, generator=generator)
 
 

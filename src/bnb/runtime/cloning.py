@@ -169,13 +169,14 @@ def teacher_distributions(
     device: torch.device,
     length: int = 128,
     compiled: bool = True,
+    seed: int = 0,
 ) -> Callable[[float], torch.Tensor]:
     """The scripted agent's distributions over the living own ships of its own games with
     the ship card `types` (on `device`), as a function of its temperature: T -> (tokens,
     42). It plays every seat of these pools (each pool's seats renamed to it) at T = 1,
     from staggered clocks, for `segments` segments of `length` ticks; the observations are
     kept and relabelled at each T asked, by the agent at T with its own carry run over
-    them."""
+    them. seed: the games' draws (`Rollout`)."""
     agent = Scripted(characteristics(types, api.rules_of(game)), game.ships_per_team)
     own_pools = tuple(
         Pool(
@@ -201,6 +202,7 @@ def teacher_distributions(
         length,
         device,
         compiled=compiled,
+        seed=seed,
     )
     observed = [rollout.run().obs for _ in range(segments)]
 

@@ -44,9 +44,9 @@ SEAT = "policy"  # the one controller, in both seats
 @dataclasses.dataclass(frozen=True)
 class CaptureConfig:
     """preset: the game preset (`bnb.game.modes.rules.PRESETS`); environments: games played
-    at once (two views each); ticks: the segment's length; seed: the seed `bnb figures`
-    gives the process generators before it captures (the rollout and the spread draw from
-    them), and the scenario lab's spread fan; spread_samples: spread draws per shot beyond
+    at once (two views each); ticks: the segment's length; seed: keys the rollout's draws
+    (`bnb.runtime.rollout`), seeds the process generator the shot figure's spread samples
+    draw from, and the scenario lab's spread fan; spread_samples: spread draws per shot beyond
     the learner's one (the fan in the shot figure); game_segments: segments of `ticks`
     played on after the first, the same games going on, of which only the critic's record
     is kept (`games`: whole games for the outcome head's reliability)."""
@@ -104,6 +104,7 @@ def play(model, types: api.ShipTypes, config: CaptureConfig, device: torch.devic
         device,
         compiled=False,
         staggered=False,
+        seed=config.seed,
     )
     return rollout, rollout.run()
 

@@ -3,10 +3,12 @@
 The tick is split where the runtime may cut stages: `move` (phases 1-3, the motions) and
 `resolve` (phases 4-8, everything that depends on both motions, with the mode phase after
 damage). Randomness comes in as inputs: spread (B, N, 2) standard normals and the (B, U)
-tick uniforms. `types` is the ship card, tensors, so a sweep can vary it without
-recompiling. Each environment's mode owns its win rule, objective, spawn placement and
-spawn protection; those steps run on the mode's slices of the batch (`layout.per_mode`), the
-rest once over the batch with the per-environment rules (`layout.environment`).
+tick uniforms; `resolve` may take a second set for the environments whose episode ends
+(`next_episode_uniforms`), so a caller can key an episode's map by the episode alone.
+`types` is the ship card, tensors, so a sweep can vary it without recompiling. Each
+environment's mode owns its win rule, objective, spawn placement and spawn protection;
+those steps run on the mode's slices of the batch (`layout.per_mode`), the rest once over
+the batch with the per-environment rules (`layout.environment`).
 
 Benched ships (unequal teams at one static size): `active` (B, 2) int32, each team's active
 ship count per environment, a runtime input of `reset`, `resolve` and `step` (None: every
@@ -244,11 +246,14 @@ def resolve(
     action: Action,
     uniforms: torch.Tensor,
     active: torch.Tensor | None = None,
+    next_episode_uniforms: torch.Tensor | None = None,
 ) -> tuple[State, Events]:
     """Phases 4-8 on the moved state: hits, damage, the mode phase, clocks, death and
     respawn, episode end. action: the tick's action, as `move` was given (the shield's
     recharge runs only on a quiet one, `combat.quiet`). active (B, 2) int32: each team's
-    active ships, as `reset` was given (default every ship)."""
+    active ships, as `reset` was given (default every ship). next_episode_uniforms (B, U):
+    the uniforms an environment whose episode ends this tick reads for its next episode
+    (its map, arena scale and spawns; None: `uniforms`, as every other environment)."""
     ships, bullets, match = state.ships, state.bullets, state.match
     B = ships.x.shape[0]
     pools = environment(rules, B, ships.x.device)
@@ -330,6 +335,8 @@ def resolve(
     # cleared slots and flags, and all its ships spawn. Its fog setting stays.
     # A finished environment draws its next episode's arena scale (map-size sampling);
     # the new map and every spawn of this tick read the arena as it will be.
+    if next_episode_uniforms is not None:
+        uniforms = torch.where(done[:, None], next_episode_uniforms, uniforms)
     tick = TickUniforms(rules, uniforms)
     arena_scale = match.arena_scale
     if tick.arena_scale is not None:
