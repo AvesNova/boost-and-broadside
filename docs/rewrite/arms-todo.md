@@ -9,13 +9,15 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 
 ## Open for the author
 
-2. **League:** the uniform floor's size (about 15%?), and latest's share if self-play becomes a league member.
-3. **The averaging sweep:** which early arm saves the live weights every update, and which averaging variants to sweep.
-4. **Freezing the game:** what goes in (see "First, before the game freeze"), and the clock-end tuning.
-5. **The rest of the decision rule:** when to extend both arms, the no-regression gate, and the SE target (from the 2 × 2 seed measurement).
-6. **The run budget, the final arm list, and a review of every arm idea:** whether each is settled by theory, a test or an arm, and in what order.
-7. **The counts arm:** whether frontline goes down to 3v3.
-8. **Fields:** removing fields from the game and masking their slots (check whether it exists; benched ships are already masked).
+1. **League mix:** about 35% latest at a fixed share, about 55% (1−p)² over the other members, and about 10% uniform to keep every member's p fresh, or another split. None of AlphaStar, OpenAI Five or AlphaZero uses an explicit uniform floor. This is linked to the deferred both-sides/one-side choice.
+2. **Arena size for larger games:** the density rule (20 a side: 15600 m for frontline and elimination, 8400 m for deathmatch) or the preset's 5v5 arena. The same rule should apply to the 10v10 condition.
+3. **The break-even SE target:** 0.3 ships was met in 1–6 batches on synthetic data, so 0.1–0.15 is suggested.
+4. **The averaging sweep:** which early arm saves the live weights every update, and which averaging variants to sweep.
+5. **Freezing the game:** what goes in (see "First, before the game freeze"), and the clock-end tuning.
+6. **The rest of the decision rule:** when to extend both arms, the no-regression gate, and the SE target (from the 2 × 2 seed measurement).
+7. **The run budget, the final arm list, and a review of every arm idea:** whether each is settled by theory, a test or an arm, and in what order.
+8. **The counts arm:** whether frontline goes down to 3v3.
+9. **Fields:** removing fields from the game and masking their slots (check whether it exists; benched ships are already masked).
 
 ## Decisions
 
@@ -58,7 +60,7 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 | Seed isolation | `feat/seed-isolation` (a13173da) | Done on the CPU. Waits for the GPU speed check, the GPU tests and the ONNX export test. |
 | Rating allocator, shared pool, placement-only prior | `feat/rating-allocator` (6538fa81) | Done on the CPU. Waits for the layout probe on the GPU. |
 | Cheese agents | `feat/cheese-agents` (30a5dd66, from seed isolation) | Done on the CPU. Waits for the first exploit check on the GPU. |
-| Break-even ratio | `feat/break-even` (from seed isolation) | Agent working. |
+| Break-even ratio | `feat/break-even` (66fd2ba0, from seed isolation) | Done on the CPU: a logistic fit in log count; blocks go to the count that most reduces the variance of log N*; stops at SE ≤ 0.3 ships, 8192 games or a bound; per-batch records with resume; mirrored coin-flip lineups (`Arena(game_lineups=True)`). A benched slot costs about as much as an active one, so every break-even game costs a full 20v20. Waits for the first GPU measurement. |
 | References list | docs only (dab3a8de) | 26 entries, about 35 papers. Only 5 are verified online so far; the rest are marked "(unverified)". Update the code locations of the loop check and the allocator after the rating branch merges. |
 | Seed twin of rl-v20 (`rl-v20-seed1`, seed 1) | laptop GPU, old code | Running; ETA 01:10 (worst 02:15). |
 
