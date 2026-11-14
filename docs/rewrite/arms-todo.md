@@ -11,7 +11,13 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 
 Ordered for working through:
 
-2. **Freezing the game:** the frontline lock is being re-tuned to a random walk (with fields on). The deathmatch tickets, elimination shrink timing and other freeze items wait for the measurements.
+1. **Frontline break-even** (pilot, 2026-11-15). On the 20-a-side map (15.6 km), an agent trained on the 7.8 km map loses every game, so the condition measures map transfer, not skill. Options:
+   - (a) leave it out of the score until the map-size arm (A1) shows variable-map training (Claude's recommendation);
+   - (b) play it on the preset map (crowded at 20; rl-v20 is about even with Imugi there, so our count would need to go above 20);
+   - (c) keep it as is.
+
+   Separately: whether break-even's count may go above 20 (now capped at Imugi's 20), so an arm weaker than Imugi at parity is measured rather than extrapolated.
+2. **Freezing the game:** the proposal is under "Freeze values" below (frontline ±2 with a 12-minute clock and minimum 3v3; deathmatch 12 minutes with 50 tickets; elimination shrink from about 90 s).
 3. **The run budget, the final arm list, and the review of every arm idea.**
 4. **The averaging sweep:** which early arm saves the live weights every update, and which variants to sweep.
 
@@ -90,7 +96,7 @@ Ordered for working through:
 | Work | Branch | State |
 |---|---|---|
 | Seed isolation | `feat/seed-isolation` (a13173da) | Done on the CPU. Waits for the GPU speed check, the GPU tests and the ONNX export test. |
-| Rating allocator, shared pool, placement-only prior | `feat/rating-allocator` (6538fa81) | Done on the CPU. Waits for the layout probe on the GPU. |
+| Rating allocator, shared pool, placement-only prior | `feat/rating-allocator` (6538fa81, merged) | Merged. The layout probe has been running on the laptop GPU since 07:01 (`rating-layout-probe` unit, performance profile). |
 | Cheese agents | `feat/cheese-agents` (30a5dd66, from seed isolation) | Done on the CPU. Waits for the first exploit check on the GPU. |
 | Break-even ratio | `feat/break-even` (66fd2ba0, from seed isolation) | Done on the CPU: a logistic fit in log count; blocks go to the count that most reduces the variance of log N*; stops at SE ≤ 0.3 ships, 8192 games or a bound; per-batch records with resume; mirrored coin-flip lineups (`Arena(game_lineups=True)`). A benched slot costs about as much as an active one, so every break-even game costs a full 20v20. Waits for the first GPU measurement. |
 | References list | docs only (dab3a8de) | 26 entries, about 35 papers. Only 5 are verified online so far; the rest are marked "(unverified)". Update the code locations of the loop check and the allocator after the rating branch merges. |
@@ -146,7 +152,10 @@ Ordered for working through:
     - Open: frontline's minimum team size of 3v3; whether its clock scales with fleet size.
   - **Deathmatch:** 12-minute clock with 50 tickets per team (about 75–80% end by tickets; Halo-like).
   - **Elimination:** keep the 3-minute clock and start the shrink at about 90 s (the 80th percentile of time to wipe) instead of 36 s.
-- [ ] **The evaluation-suite command, then the sequential-test pilot** (rl-v20 against rl-mix-kl and against rl-dm at 75M, every condition) and the design simulation.
+- [x] **The evaluation-suite command, then the sequential-test pilot** (rl-v20 against rl-mix-kl and against rl-dm at 75M, every condition) and the design simulation. Merged 2026-11-15 (a7f647cc); the results are in [evaluation-suite.md](evaluation-suite.md#design-pilot) (75c215a7).
+  - **Design:** K = 4, δ = 0.02 (about 14 Elo), α 0.05, power 0.8. Simulated false-winner rate 3.8%, power 0.81. At most about 0.6–0.85 laptop engine-hours per decision.
+  - **Seed noise, not games, limits a decision.** δ will be set from arm A3.
+  - **Frontline break-even has no fit:** both arms lose every game at every count, including 20 against 20. That's the 15.6 km map, not the code: rl-v20 wins every 5v5 and 10v10 frontline game against Imugi on the preset map, 26 of 64 at 20v20 on the preset map, and 0 of 64 at 20v20 on 15.6 km. Open for the author.
 - [ ] The split offence/defence critic, before the shared BC, with advantage weights per part and the premium schedule as a setting (default 1:1).
 - [ ] **Front reversal (decided 2026-11-14).** Measure P(reversal) now, on the current game with the scripted agent on both sides (in progress, `bench/front-reversal`). Measure it again at the end of the first arm, to check the front stays roughly a random walk in self-play. The 0.84 figure is from September (v1); the later lock was meant to make it a random walk.
   - **First result (2026-11-15, CPU, scripted against scripted, fields off; `bench/front-reversal` b18f8cce):** the front is **persistent, not a random walk.**
