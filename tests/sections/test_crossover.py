@@ -217,15 +217,20 @@ def test_head_to_head_flies_its_lineup_for_every_player(monkeypatch):
 
     seen = {}
 
-    def fake(players, games, presets, device, deathmatch_score):
+    def fake(players, games, presets, device, layout, deathmatch_score):
         seen["types"] = [one.ship_type for one in players]
+        seen["layout"] = (layout.blocks, layout.block_environments)
         raise ValueError("stop")
 
     monkeypatch.setattr(tournament, "head_to_head", fake)
     lineup = ("Yongma", "Yongma", "Jujak", "Jujak", "Jujak")
     options = cli.HeadToHead(
-        players=("scripted", "random"), presets=("real_scale_deathmatch",), lineup=lineup
+        players=("scripted", "random"),
+        presets=("real_scale_deathmatch",),
+        lineup=lineup,
+        blocks=2,
+        block_environments=96,
     )
     with pytest.raises(SystemExit, match="stop"):
         cli.head_to_head(options)
-    assert seen["types"] == [(0, 0, 1, 1, 1)] * 2
+    assert seen["types"] == [(0, 0, 1, 1, 1)] * 2 and seen["layout"] == (2, 96)

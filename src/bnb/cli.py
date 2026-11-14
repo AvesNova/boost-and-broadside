@@ -308,7 +308,7 @@ class HeadToHead:
     runs_directory: as for bnb train; deathmatch_score: how a team deathmatch game is
     scored, kill_share (the default) or win_loss (as for bnb ratings); lineup: each slot's
     ship type by name, both teams, for every player (as for bnb ratings; empty: the game's
-    own).
+    own); blocks and block_environments: the engine's layout at most (as for bnb crossover).
     """
 
     players: tyro.conf.Positional[tuple[str, ...]]
@@ -318,6 +318,8 @@ class HeadToHead:
     runs_directory: str | None = None
     deathmatch_score: Literal["kill_share", "win_loss"] = "kill_share"
     lineup: tuple[str, ...] = ()
+    blocks: int = 8
+    block_environments: int = 128
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1430,6 +1432,7 @@ def head_to_head(options: HeadToHead) -> None:
     import torch
 
     from bnb.league import tournament
+    from bnb.league.matches import ArenaConfig
     from bnb.runs import provenance, records
 
     _check_presets(options.presets)
@@ -1443,6 +1446,7 @@ def head_to_head(options: HeadToHead) -> None:
             options.games,
             options.presets,
             torch.device(options.device),
+            ArenaConfig(blocks=options.blocks, block_environments=options.block_environments),
             deathmatch_score=options.deathmatch_score,
         )
     except ValueError as error:
