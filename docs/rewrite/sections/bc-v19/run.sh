@@ -7,6 +7,8 @@
 set -euo pipefail
 NAME=${NAME:-bc-v20}
 BUDGET=${BUDGET:-150000000}
+MAP_SIZES=${MAP_SIZES:-fixed}  # fixed: each pool's own arena; variable: TrainConfig.arena_scale's sampling
+SIZES=(); [ "$MAP_SIZES" = fixed ] && SIZES=(--set arena_scale=null)
 RUNS=${RUNS:-/workspace/runs}
 CACHE=${CACHE:-/workspace/cache}
 mkdir -p "$RUNS" "$CACHE/inductor" "$CACHE/triton" "$CACHE/bnb"
@@ -18,5 +20,5 @@ echo "commit $(git rev-parse HEAD) $(date -u +%FT%TZ)" >> "$RUNS/$NAME.log"
   --runs-directory "$RUNS" --update-policies False --objective bc \
   --set stop.budget_steps="$BUDGET" --set lanes.environments=0 --set host_store=false \
   --set policy_snapshot_every=5000000 --set learner.micro_batch_rows=480 \
-  --set 'lineup=["Yongma", "Yongma", "Jujak", "Jujak", "Jujak"]' --set arena_scale=null \
+  --set 'lineup=["Yongma", "Yongma", "Jujak", "Jujak", "Jujak"]' "${SIZES[@]}" \
   >> "$RUNS/$NAME.log" 2>&1
