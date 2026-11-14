@@ -57,6 +57,8 @@ Ordered for working through:
 - **The averaging sweep:** an early arm saves the live weights every update. Uniform, exponential at several decays and windowed uniform averages are then built after training and rated in one tournament. The exponential average folds once per update, so this reproduces a training-time average exactly.
 - **Split critic for every arm:** each reward level has an offence and a defence value, and one shared BC serves every arm. No split-against-unsplit arm.
 - **Offensive premium levels:** 2:1 on damage and kill/death only. Objective progress, objective and outcome stay zero-sum, since a capture premium would reward swapping zones in self-play.
+- **The decision is a sequential test with a fixed number of planned looks** (group sequential). The number of looks and the acceptance thresholds are fixed in advance.
+- **Decisions don't need the ladder.** Per condition, the two finals play each other directly (win rate minus 0.5), and break-even plays against Imugi. The full Elo ladder (curves) is for the paper (proposal: rated in one batch at the end, see Open).
 - **References:** a list of papers with what we take from each, where it applies in the code, and how it affected a decision ([references.md](references.md)).
 - **Early arms:** variable map sizes against fixed (first; it decides whether variable maps stay in the game and the paper, and if they don't, the colour codes and rotary frequencies are re-tuned for fixed sizes); variable ship and field counts against fixed.
 - **Deferred to the later review of all arms:** self-play training both sides against one side; the separate critic (too much work for an arm now).
@@ -98,7 +100,7 @@ Ordered for working through:
 ## Decided, to implement
 
 - [ ] The split offence/defence critic, before the shared BC, with advantage weights per part and the premium schedule as a setting (default 1:1).
-- [ ] Measure frontline's front persistence (reversal rate) with a trained agent on the current game, during the clock-end tuning. The 0.84 reversal figure is from September (v1); the later lock was meant to make it a random walk.
+- [ ] **Front reversal (decided 2026-11-14).** Measure P(reversal) now, on the current game with the scripted agent on both sides (in progress, `bench/front-reversal`). Measure it again at the end of the first arm, to check the front stays roughly a random walk in self-play. The 0.84 figure is from September (v1); the later lock was meant to make it a random walk.
 - [ ] Snapshot schedule: `policy_snapshot_every` takes one number today, so it needs a list plus a tail.
 - [ ] Deathmatch outcome `kill_lead` as the default.
 - [ ] Mirrored 50/50 coin-flip lineups.
