@@ -339,7 +339,9 @@ class Crossover:
     each from 1 to the ships per team); preset; ships_per_team: the game's size M (the
     largest count any pair needs, at least); games: per pair (even); blocks and
     block_environments: the engine's layout at most; seed: the process's seed (the games'
-    draws); device; out; runs_directory: as for bnb train.
+    draws); device; out; runs_directory: as for bnb train; lineup: each slot's ship type by
+    name, both teams, for both players (as for bnb ratings; empty: the game's own), so a
+    team's benched ships are its lineup's last ones.
     """
 
     players: tyro.conf.Positional[tuple[str, ...]]
@@ -353,6 +355,7 @@ class Crossover:
     device: str = "cuda"
     out: str | None = None
     runs_directory: str | None = None
+    lineup: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1483,6 +1486,8 @@ def crossover(options: Crossover) -> None:
     names = (*options.players, "scripted")[:2]
     runs_directory = runs_directory_of(options.runs_directory)
     first, second = _players(names, runs_directory)
+    if options.lineup:
+        first, second = with_lineup([first, second], options.lineup, (options.preset,))
     try:
         pairs = [fights.parse_pair(text) for text in options.pairs]
         game = PRESETS[options.preset]

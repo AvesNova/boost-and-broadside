@@ -190,3 +190,22 @@ def test_an_engine_with_benching_masks_a_yemongs_benched_ships(tmp_path):
         network = player(str(directory))
         arena = Arena([network, _scripted()], game, CPU, layout, benching=benching)
         assert arena.groups[0].mask_benched is benching
+
+
+def test_the_command_flies_its_lineup_for_both_players(monkeypatch, tmp_path):
+    from bnb import cli
+
+    seen = {}
+
+    def fake(first, second, pairs, games, game, device, layout):
+        seen["types"] = (first.ship_type, second.ship_type)
+        raise ValueError("stop")
+
+    monkeypatch.setattr(fights, "crossover", fake)
+    lineup = ("Yongma", "Yongma", "Jujak", "Jujak", "Jujak")
+    options = cli.Crossover(
+        players=("scripted",), pairs=("5:4",), preset="real_scale_deathmatch", lineup=lineup
+    )
+    with pytest.raises(SystemExit, match="stop"):
+        cli.crossover(options)
+    assert seen["types"] == ((0, 0, 1, 1, 1), (0, 0, 1, 1, 1))
