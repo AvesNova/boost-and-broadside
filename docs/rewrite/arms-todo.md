@@ -17,6 +17,9 @@ Ordered for working through:
    - (c) keep it as is.
 
    Separately: whether break-even's count may go above 20 (now capped at Imugi's 20), so an arm weaker than Imugi at parity is measured rather than extrapolated.
+   Also from the training-defaults merge (2026-11-15):
+   - **Per-update policy files:** PPO still writes every update's policy files by default (`update_policies`), so the RL snapshot schedule governs only runs without them. Claude's recommendation: off by default, on for the early arm that feeds the averaging sweep.
+   - **League retention** (the newest 8, then one per 2^k) still applies on top of the member schedule; at 160M it drops the 20, 25, 30 and 40M members. Claude's recommendation: no retention when a schedule is set, if the members fit the limit on networks loaded at once.
 2. **Freezing the game:** the proposal is under "Freeze values" below (frontline ±2 with a 12-minute clock and minimum 3v3; deathmatch 12 minutes with 50 tickets; elimination shrink from about 90 s).
 3. **The run budget, the final arm list, and the review of every arm idea.**
 4. **The averaging sweep:** which early arm saves the live weights every update, and which variants to sweep.
@@ -169,14 +172,14 @@ Ordered for working through:
     - Still 0.435 at front ±2, so a little momentum near the win.
     - **56% of games end on the 600 s clock** (mean 484 s); for the clock tuning.
   - Re-tuning the lock is a game-freeze item.
-- [ ] Snapshot schedule: `policy_snapshot_every` takes one number today, so it needs a list plus a tail.
-- [ ] Deathmatch outcome `kill_lead` as the default.
-- [ ] Mirrored 50/50 coin-flip lineups.
-- [ ] Mode mix 6/5/5.
-- [ ] League: (1−p)² sampling, and the league snapshot schedule. **In progress (2026-11-15 07:10):** an agent on `feat/training-defaults` implements this with kill_lead, mirrored lineups, mode mix 6/5/5, the snapshot schedules and BC at 100M (CPU only).
+- [x] Snapshot schedules (32d1622a): RL at 1–20M then every 5M; league members 5…160M then every 30M.
+- [x] Deathmatch outcome `kill_lead` as the default (d93e8498; the rating score keeps its recorded name `win_loss`).
+- [x] Mirrored 50/50 coin-flip lineups in training (10856169, `TrainConfig.lineup_draw`, on by default).
+- [x] Mode mix 6/5/5 (fa7bf3ba).
+- [x] League: (1−p)² over every member, no floor (3df94c64; p(1−p) with a floor stays as an ablation). Merged with the items above in d81c133e.
 - [ ] Saving the live weights every update (for the early arm), and the post-hoc averaging tool.
 - [ ] The Imugi rename.
-- [ ] BC fixed at 100M, with the plateau stop logging only.
+- [x] BC fixed at 100M, plateau stop logging only (85ffcd72). A chain's BC stage takes min(combined budget, 100M).
 - [ ] One committed settings file per arm, with no hand-typed overrides.
 - [ ] The evaluation suite as a command: the conditions above, their pools and the combined score.
 
