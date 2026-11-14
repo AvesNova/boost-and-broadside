@@ -410,11 +410,7 @@ def measure(
                 game_lineups=True,
                 first_batch=1 + max((line["batch"] for line in stored), default=-1),
             )
-        counts = (
-            _spread(config.bracket_counts(), layout.blocks)
-            if not stored and played == 0
-            else allocate(current, by_count, config, layout.blocks, layout.block_environments)
-        )
+        counts = allocate(current, by_count, config, layout.blocks, layout.block_environments)
         number = arena.batch
         lineups = lineup_draw(
             layout.seed, number, layout.games, game.ships_per_team, config.lineup_types

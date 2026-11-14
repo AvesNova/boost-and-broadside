@@ -411,26 +411,63 @@ them under `artifacts/head_to_head/`.
 uv run --no-sync bnb head-to-head 2026-11-02-mixed-purple-pumpkin scripted --games 64
 ```
 
-**Crossover fights.** `bnb crossover A [B] --pairs a:b ...` (`bnb.league.crossover`) plays
-A (B is `scripted` by default) at unequal ship counts, to find the handicap at which A's
-score crosses one half: each pair `a:b` gives A `a` active ships and B `b`, the rest of
-each team's slots benched ([benched ships](game/modes.md#benched-ships)), in the game of
-`--preset` built at `--ships-per-team` ships per team (default the preset's own; it must
-hold the largest count). The engine is built with benching and gives every block its
-pair's counts on the right sides whatever the seat, so every pair plays in the same
-batches, `--games` games each, split evenly between the seats, from `--seed`. Per pair it
-prints and records A's wins, draws and losses and its score (a draw half a win) with a 95%
-Wilson interval, and where the score crosses one half between neighbouring pairs, in the
-order given, by linear interpolation; `pairs.jsonl`{.plain} and `result.json`{.plain} (with the command and
-the players' SHA-256) go to `artifacts/crossover/<time>/`{.plain}. Refining is explicit: play a
-finer grid, or more games, around the crossing.
+**The break-even ship count.** `bnb crossover POLICY` (`bnb.league.crossover`) measures
+how many of a policy's ships hold 20 of the scripted agent's, per mode. The opponent always
+fields `--opponent-count` ships (20); the policy fields a varying number, from
+`--minimum-count` to `--maximum-count` (1 to 20). Each mode's game (by default the
+real-scale frontline, deathmatch and elimination presets) is built once at the larger
+fleet's size, its arena grown by the density rule (`bnb.game.api.arena_radius_for`), with
+the policy's unused slots benched ([benched ships](game/modes.md#benched-ships)): they stay
+dead and out of play, and team deathmatch's winning score counts the enemy's active ships.
+Every game draws its own lineup, each slot Yongma or Jujak with equal chance
+(`--lineup-types`), both teams flying it slot for slot, keyed by the seed, the batch and
+the game; the policy's benched ships are its lineup's last slots. A game is scored by its
+own rule: a win, a draw (half a win) or a loss.
+
+The measurement runs in batches of the engine's layout, `--blocks` blocks of
+`--block-environments` games, each block at one count, its games split evenly between the
+seats; a network's blocks run as one stacked forward, as in head-to-head.
+
+- **Fit.** One logistic regression of the policy's score on log(count) over every game so
+  far, with a binomial likelihood on the score. The break-even count N\* is where the
+  fitted curve crosses one half, and its standard error comes from the fit's covariance by
+  the delta method; the ratio 20 / N\* carries the same relative error. Draws make the
+  binomial standard error a slight overestimate. While the outcomes are separated (every
+  count below some point lost outright, every count above it won outright), the fit has no
+  maximum, and the result is a bound on N\* instead.
+- **Allocation.** The first batch spreads its blocks over `--bracket` (6, 10, 14, 20).
+  After that, with a crossing, each block goes in turn to the count that most reduces the
+  predicted variance of log N\*, averaged over N\* at the estimate and one standard error
+  either side, so the games gather at the counts next to the crossing. With separated
+  outcomes the blocks go inside the bound, or halve the lowest count played (every game
+  won) or double the highest (every game lost) to extend the range.
+- **Stop.** A mode stops when N\*'s standard error reaches `--target-stderr` ships (0.3),
+  when its games reach `--budget-games` (8192; the batch that reaches it is the last), or
+  when the bound is final: every game won at the minimum count, or lost at the maximum.
+
+Every batch is appended to `artifacts/crossover/<preset>.batches.jsonl`{.plain} of `--out`
+(else the policy's run, else the runs directory) as it ends: each block's count and its
+wins, draws and losses, and the fit after it. A line per batch prints the counts, the games,
+N\* with its standard error (or the bound) and an ETA as a clock time, with the budget's as
+the worst case. A rerun reuses the record's batches of the same measurement (the players'
+identities, the game, the seed, the opponent's count and the lineup types) and continues
+past them, so an interrupted measurement resumes and a finished one only reports. The
+result (per mode N\*, the ratio, the stop reason and the games per count, with the command
+and the policy's SHA-256) goes to `artifacts/crossover/<time>/result.json`{.plain}.
+
+A benched slot costs about what an active one does: the game, the scripted agent and the
+network run at fixed shapes over every slot, so a benched ship is a dead ship carried
+through the same kernels. A 20v20 tick on the CPU (128 games, eager) took the same time
+with the policy at 4, 10 or 20 ships, within the measurement's noise of about 10%, and a
+12v12 game about two thirds of it. At a count N the game therefore spends 20 - N of its 40
+slots on benched ships; a smaller game cannot hold the opponent's 20.
 
 <!-- not-runnable: needs CUDA and a policy -->
 ```bash
-# A with 5 ships against the scripted agent with 5 to 8, in an 8v8 deathmatch game
-uv run --no-sync bnb crossover POLICY --preset deathmatch --ships-per-team 8 --pairs 5:5 5:6 5:7 5:8
-# A with 5 down to 1 ship against 5, in the 5v5 training deathmatch
-uv run --no-sync bnb crossover POLICY --preset deathmatch --pairs 5:5 4:5 3:5 2:5 1:5
+# N* against 20 scripted ships in the three real-scale modes
+uv run --no-sync bnb crossover RUN/policies/step_<steps>/exponential_average
+# one mode, a tighter target
+uv run --no-sync bnb crossover POLICY --presets real_scale_deathmatch --target-stderr 0.15
 ```
 
 **Ablated players.** A Yemong policy may play ablated, in `--with` or in head-to-head:
