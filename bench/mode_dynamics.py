@@ -105,6 +105,16 @@ def mode_overrides(arguments) -> dict:
 
 BINS = 900  # 1 s histogram bins (the last one holds every longer time)
 HISTOGRAMS = ("engage", "life", "objective", "zone_to_zone", "contest")
+# Frontline: ship-ticks of the team under a capture lock while the lock holds (first games
+# only): alive, inside the zone it is locked out of, inside its own defense zone; and of
+# the other team (the capturer) over the same ticks: alive, inside its attack zone.
+LOCK_TALLIES = (
+    "locked_alive",
+    "locked_in_locked_zone",
+    "locked_in_own_defense",
+    "capturer_alive",
+    "capturer_in_attack_zone",
+)
 
 
 class Probe:
@@ -131,6 +141,7 @@ class Probe:
             front=torch.zeros(environments, dtype=torch.long, device=device),
             first_hit=torch.full((environments,), -1, dtype=torch.long, device=device),
             **{name: torch.zeros(BINS, dtype=torch.long, device=device) for name in HISTOGRAMS},
+            **{name: torch.zeros(1, dtype=torch.long, device=device) for name in LOCK_TALLIES},
         )
         self.ticks_per_bin = 30
 
@@ -194,6 +205,22 @@ class Probe:
             quiet = (mode.progress.abs() == 0).all(-1)
             b["quiet_tick"].copy_(torch.where(quiet, b["tick"], b["quiet_tick"]))
             b["front"].copy_(mode.front.long())
+            # the capture lock's occupancy: a team locked out of a zone (mode.lock, (B, 2, Z))
+            held = mode.lock > 0  # (B, 2, Z) by team
+            ship_held = held[:, team, :]  # (B, N, Z): the ship's team is locked out of it
+            under = ship_held.any(-1) & alive & b["live"][:, None]  # (B, N)
+            own_defense_role = torch.where(team == 0, frontline.TEAM0_DEFENSE, frontline.TEAM1_DEFENSE)
+            attack_role = torch.where(team == 0, frontline.TEAM1_DEFENSE, frontline.TEAM0_DEFENSE)
+            own_defense = mode.role[:, None, :] == own_defense_role[None, :, None]
+            attack = mode.role[:, None, :] == attack_role[None, :, None]
+            team_held = held.any(-1)  # (B, 2)
+            other_held = team_held.flip(-1)[:, team]  # (B, N): the enemy is locked out
+            other = other_held & ~ship_held.any(-1) & alive & b["live"][:, None]
+            b["locked_alive"].add_(under.sum())
+            b["locked_in_locked_zone"].add_((under & (inside & ship_held).any(-1)).sum())
+            b["locked_in_own_defense"].add_((under & (inside & own_defense).any(-1)).sum())
+            b["capturer_alive"].add_(other.sum())
+            b["capturer_in_attack_zone"].add_((other & (inside & attack).any(-1)).sum())
         b["engaged"].copy_(engaged & ~events.spawned & alive)
         b["since_spawn"].copy_(torch.where(events.spawned, 0, since))
         b["live"].copy_(b["live"] & ~events.done)
@@ -551,6 +578,7 @@ def main() -> None:
         for game_record, hit_tick in zip(games, first_hit):
             game_record["first_hit"] = hit_tick
         histograms = {name: probe.buffers[name].cpu().tolist() for name in HISTOGRAMS}
+        lock_tallies = {name: int(probe.buffers[name].item()) for name in LOCK_TALLIES}
         entry = dict(
             label=arguments.label,
             kind=arguments.kind,
@@ -577,6 +605,7 @@ def main() -> None:
                 settings=arguments.set,
             ),
             histograms=histograms,
+            lock_tallies=lock_tallies,
             games=games,
         )
         with arguments.out.open("a") as file:

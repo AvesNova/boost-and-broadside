@@ -44,11 +44,15 @@ def counts(game: dict) -> tuple[int, int]:
 
 def main() -> None:
     """Report the files named on the command line."""
-    games, headers = [], set()
+    games, headers, tallies, tick_lengths, lengths = [], set(), {}, set(), []
     for name in sys.argv[1:]:
         for line in pathlib.Path(name).read_text().splitlines():
             entry = json.loads(line)
             games += entry["games"]
+            tick_lengths.add(entry["tick_length"])
+            lengths += [game["end_tick"] * entry["tick_length"] for game in entry["games"]]
+            for key, value in entry.get("lock_tallies", {}).items():
+                tallies[key] = tallies.get(key, 0) + value
             headers.add(
                 (entry["preset"], entry["ships"], entry["fog"], entry["lineup"], entry["tick_length"])
             )
@@ -97,6 +101,29 @@ def main() -> None:
     for count in moves:
         histogram[count] = histogram.get(count, 0) + 1
     print("games by number of moves:", dict(sorted(histogram.items())))
+    print(f"mean game length {sum(lengths) / len(lengths):.0f} s")
+    # The time from a capture to the next, by whether the next one reverses it.
+    (tick,) = tick_lengths
+    gaps: dict[bool, list[float]] = {True: [], False: []}
+    for game in games:
+        for (t0, a), (t1, b) in zip(game["events"], game["events"][1:]):
+            gaps[a != b].append((t1 - t0) * tick)
+    for reversal, values in gaps.items():
+        values.sort()
+        if values:
+            q = lambda f: values[min(len(values) - 1, int(f * len(values)))]  # noqa: E731
+            print(
+                f"  time to the next capture, {'reversal' if reversal else 'same team'}: "
+                f"n {len(values)}, quartiles {q(0.25):.0f} / {q(0.5):.0f} / {q(0.75):.0f} s"
+            )
+    if tallies.get("locked_alive"):
+        alive = tallies["locked_alive"]
+        print(
+            f"while a team is locked out: its living ships' time in the locked zone "
+            f"{tallies['locked_in_locked_zone'] / alive:.1%}, in its own defense zone "
+            f"{tallies['locked_in_own_defense'] / alive:.1%}; the capturer's in its attack "
+            f"zone {tallies['capturer_in_attack_zone'] / max(1, tallies['capturer_alive']):.1%}"
+        )
 
 
 if __name__ == "__main__":
