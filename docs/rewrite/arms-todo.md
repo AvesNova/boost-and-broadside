@@ -11,7 +11,7 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 
 Ordered for working through:
 
-1. **Mode weights:** equal thirds, or weighted by skill cluster (frontline ½, deathmatch ¼, elimination ¼). The existing runs show deathmatch → elimination transfer at full strength (see Decisions, 2026-11-15). Elimination-only and frontline-only RL forks would complete the transfer matrix (proposal).
+1. **Mode weights and training mix (proposal):** keep thirds in the evaluation score. The no-regression gate already blocks the coupled-modes drift, each mode is a separate product feature, and the coupling evidence is one-directional. Make the training mix (6/5/5 against 8/4/4) a cheap early RL-only arm, keeping 6/5/5 until then. Optional: elimination-only and frontline-only RL forks to complete the coupling measurement.
 2. **Freezing the game:** the frontline lock is being re-tuned to a random walk (with fields on). The deathmatch tickets, elimination shrink timing and other freeze items wait for the measurements.
 3. **The run budget, the final arm list, and the review of every arm idea.**
 4. **The averaging sweep:** which early arm saves the live weights every update, and which variants to sweep.
@@ -162,6 +162,8 @@ Ordered for working through:
 - [ ] **DPPO divergence.** The distribution of the total variation between old and new policies under today's clipping, to see what `dppo_delta` = 0.15 would mask.
 
 ## Candidate arms (for the later review)
+
+- **Training mix:** frontline/deathmatch/elimination 6/5/5 against 8/4/4, as RL-only forks from the shared BC. Deathmatch and elimination share skill (rl-dm gained more elimination than the generalist), and frontline is the distinct skill still climbing.
 
 - **Offensive premium (the author, 2026-11-14; split critic decided for it):** three RL forks from one split-critic BC: zero-sum 1:1 throughout, 2:1 throughout, and 2:1 annealed slowly to 1:1. The author's hypothesis: passive play is an equilibrium of zero-sum self-play when aggression is risky and the winning aggressive line is hard to find; a premium on offence makes searching for it worthwhile, and once found, passivity stops being safe. Predictions to check: fewer draws, shorter lifespans and more engagements early in the premium arms; the deciding measure stays win/loss Elo.
 - **Original note:** offence weighted 2:1 over defence, against zero-sum 1:1, or annealed slowly from 2:1 to 1:1. The author recalls an earlier test (v1 or v2.1) where it trained to a clearly higher Elo; v2 dropped the premium on 2026-10-30 so the critic's targets never move. The proposed infrastructure is a split critic: each reward level gets an offence value and a defence value (10 outputs instead of 5), and the weights combine their advantages. Changing or annealing the ratio then never moves a critic target, so one BC run serves every ratio and the arms are cheap RL forks. The split would go in before the shared BC, on by default at 1:1.
