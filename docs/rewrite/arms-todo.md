@@ -130,6 +130,8 @@ Ordered for working through:
 
 ## Candidate arms (for the later review)
 
+- **Offensive premium (the author, 2026-11-14):** offence weighted 2:1 over defence, against zero-sum 1:1, or annealed slowly from 2:1 to 1:1. The author recalls an earlier test (v1 or v2.1) where it trained to a clearly higher Elo; v2 dropped the premium on 2026-10-30 so the critic's targets never move. The proposed infrastructure is a split critic: each reward level gets an offence value and a defence value (10 outputs instead of 5), and the weights combine their advantages. Changing or annealing the ratio then never moves a critic target, so one BC run serves every ratio and the arms are cheap RL forks. The split would go in before the shared BC, on by default at 1:1.
+
 - Self-play: train both sides, or one side with more environments and "latest" as a league member at a fixed share.
 - Clipping against DPPO (before the learning-rate arm).
 - The rest of the numbered list in [ideas.md](ideas.md), with the comments from 2026-11-14.
