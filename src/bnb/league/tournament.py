@@ -344,10 +344,17 @@ def _replay(
 ) -> tuple[int, int, list]:
     """The batches a record holds, added to the wins and the pair games: (batches, games,
     the batch seconds). Its field must be `names` (and `identities`, where it records them),
-    and every batch readable under scoring (`recorded_results`; `fit_field`)."""
+    every batch of this game version (`bnb.game.VERSION`; a batch without one is version
+    1's) and readable under scoring (`recorded_results`; `fit_field`)."""
     batches, played, seconds = 0, 0, []
     for line in record.read_text().splitlines():
         entry = json.loads(line)
+        version = entry.get("game_version", 1)
+        if version != GAME_VERSION:
+            raise ValueError(
+                f"{record} holds games of game version {version}, not {GAME_VERSION}; move it "
+                "aside or name another --out"
+            )
         results = recorded_results(entry, scoring)
         if results is None:
             raise ValueError(
@@ -533,7 +540,8 @@ def fit_field(
     and standard error, the worst error, the batch's seconds and the wall time, the games
     reused, the targets left out as out of reach, and the players' identities (`identity`)
     when `identities` are given. A record that exists already is read first (its field
-    must be this one), and the tournament goes on from its games.
+    must be this one, its games of this game version), and the tournament goes on from its
+    games.
 
     lanes: the engine's network groups and lanes, which each batch's blocks keep to
     (`TournamentConfig.layout`); None for an engine without lanes. reused: earlier

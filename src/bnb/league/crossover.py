@@ -45,6 +45,7 @@ from collections.abc import Callable
 import torch
 
 from bnb.contracts import GameConfig
+from bnb.game import VERSION as GAME_VERSION
 from bnb.streams import keyed_hash, stream_key
 
 from .matches import Arena, ArenaConfig, Player
@@ -325,9 +326,11 @@ def lineup_draw(
 
 
 def record_key(policy: Player, opponent: Player, game: GameConfig, seed: int, config) -> dict:
-    """What makes a record's batches one measurement: the players' identities, the game,
-    the seed, the opponent's count and the lineup's types (as the record holds it: JSON)."""
+    """What makes a record's batches one measurement: the game version (`bnb.game.VERSION`),
+    the players' identities, the game, the seed, the opponent's count and the lineup's types
+    (as the record holds it: JSON)."""
     key = dict(
+        game_version=GAME_VERSION,
         policy=identity(policy),
         opponent=identity(opponent),
         game=dataclasses.asdict(game),

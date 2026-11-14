@@ -296,6 +296,19 @@ def test_a_measurement_records_every_batch_and_resumes_from_its_record(tmp_path)
     assert fourth["batches"] >= 1 and fourth["games"] == 16 * fourth["batches"]
 
 
+def test_a_record_of_another_game_version_is_another_measurement(tmp_path):
+    """The key names the game version: batches of an earlier game are not reused."""
+    from bnb.game import VERSION
+
+    record = tmp_path / "small.batches.jsonl"
+    key = break_even.record_key(_scripted(), _scripted(), SHORT, 0, SMALL)
+    assert key["game_version"] == VERSION
+    older = dict(key, game_version=VERSION - 1)
+    record.write_text(json.dumps(dict(key=older, batch=0)) + "\n")
+    assert break_even.stored_batches(record, key) == []
+    assert len(break_even.stored_batches(record, older)) == 1
+
+
 @pytest.mark.usefixtures("global_generator")
 def test_a_network_plays_a_measurement(tmp_path):
     game = GameConfig(2, 2, 700.0, episode_seconds=4.0, respawn_seconds=1.0)

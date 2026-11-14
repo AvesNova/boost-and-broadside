@@ -799,6 +799,11 @@ def test_a_record_of_another_game_version_is_not_reused(tmp_path):
         assert found.games == 0 and float(found.pair_games.sum()) == 0.0
         assert all("game version" in why for why in found.skipped.values())
         assert set(found.skipped) == set(names)
+        # nor resumed: a tournament writing to it refuses it
+        count = len(names)
+        wins = torch.zeros((count, count), dtype=torch.float64)
+        with pytest.raises(ValueError, match="game version"):
+            tournament._replay(record, names, wins, wins.clone(), identities)
 
 
 def test_games_of_one_deathmatch_scoring_are_not_resumed_or_reused_under_the_other(tmp_path):
