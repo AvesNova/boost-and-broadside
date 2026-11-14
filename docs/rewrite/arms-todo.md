@@ -102,6 +102,13 @@ Ordered for working through:
 
 - [ ] The split offence/defence critic, before the shared BC, with advantage weights per part and the premium schedule as a setting (default 1:1).
 - [ ] **Front reversal (decided 2026-11-14).** Measure P(reversal) now, on the current game with the scripted agent on both sides (in progress, `bench/front-reversal`). Measure it again at the end of the first arm, to check the front stays roughly a random walk in self-play. The 0.84 figure is from September (v1); the later lock was meant to make it a random walk.
+  - **First result (2026-11-15, CPU, scripted against scripted, fields off; `bench/front-reversal` b18f8cce):** the front is **persistent, not a random walk.**
+    - P(reversal) = 0.19 [0.14, 0.25], from 208 pairs of consecutive moves in 64 games.
+    - 66% of games are 3-0 sweeps (25% expected for a fair coin).
+    - 86% of games end by capture and 14% on the clock (mean 296 s of 600 s).
+    - This contradicts the docs' claim that the lock was tuned so the capturing team is no more likely to capture next.
+    - A GPU rerun with fields on, measuring where the persistence comes from, is queued.
+  - Re-tuning the lock is a game-freeze item.
 - [ ] Snapshot schedule: `policy_snapshot_every` takes one number today, so it needs a list plus a tail.
 - [ ] Deathmatch outcome `kill_lead` as the default.
 - [ ] Mirrored 50/50 coin-flip lineups.
