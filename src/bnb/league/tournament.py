@@ -5,9 +5,13 @@ The ratings are an offline tournament over a field, game preset by game preset, 
 of the engine's fixed matchup blocks. Before each batch the blocks are planned
 (`bnb.league.design.plan_batch`: an A-optimal design over the allowed pairs for the unmet
 standard-error targets, at the current posterior, rounded to whole blocks within the
-batch's players and lanes); after it, the Bradley-Terry posterior on every game so far
-(`bnb.league.design.fit_posterior`, draws as half a win, a Gaussian prior about the
-anchor), shifted so the scripted agent is 1000: only it is pinned. The targets
+batch's players and lanes); after it, the maximum-likelihood Bradley-Terry fit on every
+game so far (`bnb.league.design.fit_posterior`, draws as half a win, no prior), shifted so
+the scripted agent is 1000: only it is pinned. A player the likelihood sets no finite
+rating for (it won or lost every game, or sits in a group joined to the others only by
+sweeps) is reported as a bound (`status` "above" or "below", `calibrated_elo` the bound) or
+as undetermined, without a standard error, and its own target is left out of the met
+check (`bnb.league.design.Targets.met`). The targets
 (`TournamentConfig`) are a standard error for every player, a tighter one for the decision
 players, and one for each named contrast (a difference between two players' ratings). The
 tournament stops when every target is met, when the next batch would pass the game budget,
@@ -58,10 +62,13 @@ from bnb.game.api import PRESETS
 from bnb.runs import checkpoint
 
 from .design import (
+    ABOVE,
+    BOUNDED,
     HOPELESS,
     INFORMATION_MARGIN,
-    PRIOR_STDERR,
+    RATED,
     Layout,
+    Posterior,
     Targets,
     fit_posterior,
     plan_batch,
@@ -99,13 +106,13 @@ class TournamentConfig:
     batches), 0 to play none and refit from the recorded games; allocation: how a batch's
     blocks choose their pairs, "a_optimal" (`bnb.league.design.plan_batch`) or "balanced"
     (`balanced_blocks`); players_per_batch: the distinct players a batch may hold at most
-    (None: as many as its slots); prior_stderr: the posterior's prior about the anchor
-    (Elo); information_margin: the standard errors of a pair's difference its games are
-    planned at (`bnb.league.design.planning_information`); triangle_share: the share of a
-    batch's blocks that goes first to the least-played pairs among the decision players
-    (closing their triangles for the loop check); hopeless: when every unmet target is out
-    of reach, the tournament stops if each needs more than this many times the batches its
-    budget has left (`bnb.league.design.plan_batch`; inf: it plays its budget)."""
+    (None: as many as its slots); information_margin: the standard errors of a pair's
+    difference its games are planned at (`bnb.league.design.planning_information`);
+    triangle_share: the share of a batch's blocks that goes first to the least-played pairs
+    among the decision players (closing their triangles for the loop check); hopeless: when
+    every unmet target is out of reach, the tournament stops if each needs more than this
+    many times the batches its budget has left (`bnb.league.design.plan_batch`; inf: it
+    plays its budget)."""
 
     arena: ArenaConfig = ArenaConfig()
     target_stderr: float = 25.0
@@ -116,7 +123,6 @@ class TournamentConfig:
     contrasts: tuple[tuple[str, str], ...] = ()
     contrast_stderr: float = 25.0
     players_per_batch: int | None = None
-    prior_stderr: float = PRIOR_STDERR
     information_margin: float = INFORMATION_MARGIN
     triangle_share: float = 0.0
     hopeless: float = HOPELESS
@@ -124,7 +130,7 @@ class TournamentConfig:
     def __post_init__(self) -> None:
         if self.allocation not in ALLOCATIONS:
             raise ValueError(f"allocation {self.allocation!r} is not one of {ALLOCATIONS}")
-        for name in ("target_stderr", "decision_stderr", "contrast_stderr", "prior_stderr"):
+        for name in ("target_stderr", "decision_stderr", "contrast_stderr"):
             if getattr(self, name) <= 0.0:
                 raise ValueError(f"{name} {getattr(self, name)} must be positive")
         if self.budget < 0 or 0 < self.budget < self.arena.games:
@@ -514,7 +520,7 @@ def fit_field(
     identities: list[str] | None = None,
     reused: tuple[torch.Tensor, torch.Tensor] | None = None,
     scoring: tuple[str, str] | None = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[Posterior, torch.Tensor]:
     """The tournament's batches over a field of players `names`: `play` plays one batch (a
     pair per block, first player and second) and gives each block's (wins, ties, losses)
     from its first player's side, or those and a dict of more of the batch's results, which
@@ -558,7 +564,7 @@ def fit_field(
         reused_games = round(float(reused[1].sum()) / 2)
     if config.budget == 0 and batches == 0 and reused_games == 0:
         raise ValueError(f"{label}: a budget of 0 refits recorded games, and none are recorded")
-    posterior = fit_posterior(wins, anchor, config.prior_stderr)
+    posterior = fit_posterior(wins, anchor)
     while config.budget > 0 and (
         (batches == 0 and reused_games == 0)
         or (not targets.met(posterior) and played + arena.games <= config.budget)
@@ -597,10 +603,10 @@ def fit_field(
             line["scoring"] = scoring[0]
         counted = recorded_results(line, scoring)
         played += _add(wins, pair_games, matchups, counted)
-        posterior = fit_posterior(wins, anchor, config.prior_stderr)
+        posterior = fit_posterior(wins, anchor)
         ratings, stderr = posterior.ratings, posterior.stderr
         seconds.append(time.perf_counter() - started)
-        worst = float(stderr.max())
+        worst = max((float(error) for error in stderr if math.isfinite(error)), default=0.0)
         if record is not None:
             _append(
                 record,
@@ -613,7 +619,12 @@ def fit_field(
                     games=played,
                     reused_games=reused_games,
                     ratings=[
-                        dict(player=name, rating=float(ratings[i]), stderr=float(stderr[i]))
+                        dict(
+                            player=name,
+                            rating=_finite(ratings[i]),
+                            stderr=_finite(stderr[i]),
+                            status=posterior.status[i],
+                        )
                         for i, name in enumerate(names)
                     ],
                     worst_stderr=worst,
@@ -628,7 +639,11 @@ def fit_field(
         left = (config.budget - played) // arena.games
         # the errors fall as one over the root of the games: the batches to the targets
         errors, goals = targets.standard_errors(posterior)
-        playing = [t for t in range(len(goals)) if t not in out_of_reach]
+        playing = [
+            t
+            for t in range(len(goals))
+            if t not in out_of_reach and math.isfinite(float(errors[t]))
+        ]
         ratio = max((float(errors[t] / goals[t]) for t in playing), default=1.0)
         total = played + reused_games
         needed = math.ceil(total * (ratio**2 - 1.0) / arena.games)
@@ -636,11 +651,30 @@ def fit_field(
         mean = sum(seconds) / len(seconds)
         log(
             f"{label}: batch {batches}, {played} games, the largest standard error {worst:.1f}"
+            f"{_bounds_note(names, posterior)}"
             f"{'' if not out_of_reach else f' ({_reach_note(labels, out_of_reach)})'} (the "
             f"batch took {seconds[-1]:.0f} s); done about {_clock(expected * mean)} "
             f"({expected} batches), by {_clock(left * mean)} at the latest ({left} batches)"
         )
-    return posterior.ratings, posterior.stderr, pair_games
+    if config.budget > 0 and targets.met(posterior) and _bounds_note(names, posterior):
+        log(f"{label}: stopped: every target is met{_bounds_note(names, posterior)}")
+    return posterior, pair_games
+
+
+def _finite(value) -> float | None:
+    """A float, or None for one that is not finite (a record's JSON keeps no inf or nan)."""
+    value = float(value)
+    return value if math.isfinite(value) else None
+
+
+def _bounds_note(names: list[str], posterior: Posterior) -> str:
+    """The players without a rating, by status, for a log line (empty when there are none)."""
+    others = [
+        f"{name} {status}"
+        for name, status in zip(names, posterior.status, strict=True)
+        if status != RATED
+    ]
+    return f"; without a rating: {', '.join(others)}" if others else ""
 
 
 def _reach_note(labels: list[str], out_of_reach: dict[int, float]) -> str:
@@ -719,7 +753,7 @@ def rate(
             extra["statistics"] = arenas[0].statistics().tolist()
         return results, extra
 
-    ratings, stderr, pair_games = fit_field(
+    posterior, pair_games = fit_field(
         play,
         names,
         names.index(anchor),
@@ -740,12 +774,39 @@ def rate(
         dict(
             key,
             player=name,
-            calibrated_elo=float(ratings[index]) + GAUGE_TOP,
-            stderr=float(stderr[index]),
+            **rating_columns(posterior, index),
             games=int(pair_games[index].sum()),
         )
         for index, name in enumerate(names)
     ]
+
+
+def rating_columns(posterior: Posterior, index: int) -> dict:
+    """A leaderboard row's rating columns for player `index`: `calibrated_elo` (the rating,
+    or a bound's value; None when undetermined or unplayed), `stderr` (None without a
+    rating) and `status` (`bnb.league.design`'s: "rated", "above", "below", "undetermined",
+    "unplayed")."""
+    return dict(
+        calibrated_elo=_finite(posterior.ratings[index] + GAUGE_TOP),
+        stderr=_finite(posterior.stderr[index]),
+        status=posterior.status[index],
+    )
+
+
+def describe_rating(row: dict) -> str:
+    """A row's rating for a table: "1234.5 +- 12.3", "> 2400.0" (a lower bound), "< 450.0"
+    (an upper bound), or its status."""
+    status, elo = row["status"], row["calibrated_elo"]
+    if status == RATED:
+        return f"{elo:8.1f} +- {row['stderr']:5.1f}"
+    if status in BOUNDED:
+        return f"{'>' if status == ABOVE else '<'} {elo:6.1f} (bound)"
+    return f"{status:>17s}"
+
+
+def rating_order(row: dict) -> float:
+    """A sort key, highest first: the rating or bound, the undetermined last."""
+    return -row["calibrated_elo"] if row["calibrated_elo"] is not None else math.inf
 
 
 def head_to_head_layout(pairs: int, games: int, config: ArenaConfig) -> ArenaConfig:

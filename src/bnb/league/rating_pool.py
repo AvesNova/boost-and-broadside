@@ -31,13 +31,20 @@ players' identities and the game version, and are scored at fit time
 one asked for. Records of `bnb ratings` are brought in once by `import_records` (their
 names mapped to pool names, their batches given ids from their content).
 
-**Rating** (`rate`): every game of the preset is fitted (`bnb.league.design.fit_posterior`),
-and a session plays batches among at most `session_players` players that can be played on
-this machine (the players the continuous design over every playable pair weighs most), each
-batch planned on the posterior's marginal over them (`plan_batch`). Before each batch the
-pool is read again, so the games other writers have added count. A new player starts at
-the prior, so its first games go to players whose ratings are well known and near the
-middle of the field; as it is rated, to the players closest to it.
+**Rating** (`rate`): every game of the preset is fitted by maximum likelihood
+(`bnb.league.design.fit_posterior`; a player without a finite maximum is reported as a
+bound), and a session plays batches among at most `session_players` players that can be
+played on this machine (the players the continuous design over every playable pair weighs
+most), each batch planned on the fit's marginal over them (`plan_batch`). Before each batch
+the pool is read again, so the games other writers have added count.
+
+**Placement** (`placement`): a player the fit gives nothing (a new checkpoint, no games
+yet) is planned at a guess, which chooses its first opponents and nothing else: the mean
+of the other runs' checkpoints of its weights kind at its steps; without one at its steps,
+the means at the nearest steps below and above, interpolated in steps (the nearest one's
+when only one side has any); with no other run in the pool, its own run's latest earlier
+checkpoint; else the anchor. A checkpoint's value here is its rating or its bound. Once it
+has games the plan uses the fit only.
 """
 
 import dataclasses
@@ -58,8 +65,7 @@ from bnb.game import VERSION as GAME_VERSION
 from bnb.runs import checkpoint
 
 from . import goodness_of_fit
-from .design import Posterior, fit_posterior, pair_weights, plan_batch
-from .gauge import GAUGE_TOP
+from .design import BOUNDED, RATED, Posterior, fit_posterior, pair_weights, plan_batch
 from .matches import default_lanes, network_groups
 from .tournament import (
     ANCHOR,
@@ -67,6 +73,8 @@ from .tournament import (
     _append,
     _legacy_identities,
     _reach_note,
+    rating_columns,
+    rating_order,
     recorded_results,
 )
 
@@ -331,26 +339,63 @@ def tally(batches: list[dict], players: dict[str, PoolPlayer], scoring: tuple[st
 
 
 def fit(
-    pool: RatingPool, preset: str, scoring: tuple[str, str], prior_stderr: float
+    pool: RatingPool, preset: str, scoring: tuple[str, str]
 ) -> tuple[Tally, Posterior, dict[str, PoolPlayer], list[str]]:
-    """A preset's tally and posterior over every registered player, the players, and the
-    notes (conflicts, damaged lines, blocks left out)."""
+    """A preset's tally and fit over every registered player, the players, and the notes
+    (conflicts, damaged lines, blocks left out)."""
     players, notes = pool.players()
     batches, damaged = pool.batches(preset)
     counted = tally(batches, players, scoring)
     if damaged:
         notes.append(f"{damaged} damaged batch lines skipped")
     notes += [f"{blocks} blocks left out: {reason}" for reason, blocks in counted.skipped.items()]
-    return counted, fit_posterior(counted.wins, 0, prior_stderr), players, notes
+    return counted, fit_posterior(counted.wins, 0), players, notes
+
+
+def placement(posterior: Posterior, names: list[str], players: dict[str, PoolPlayer]):
+    """(K,) each player's placement guess in Elo, the anchor at 0 (module docstring); 0
+    for a player the fit gives a rating or a bound (the plan does not read it)."""
+    count = len(names)
+    known = [posterior.status[k] in (RATED, *BOUNDED) for k in range(count)]
+    value = [float(posterior.ratings[k]) for k in range(count)]
+    guesses = torch.zeros(count, dtype=torch.float64)
+    for k, name in enumerate(names):
+        one = players[name]
+        if known[k] or one.run is None or one.step is None:
+            continue
+        others: dict[int, list[float]] = {}
+        earlier: list[tuple[int, float]] = []
+        for j, other_name in enumerate(names):
+            other = players[other_name]
+            if not known[j] or other.run is None or other.step is None or other.kind != one.kind:
+                continue
+            if other.run != one.run:
+                others.setdefault(other.step, []).append(value[j])
+            elif other.step < one.step:
+                earlier.append((other.step, value[j]))
+        if others:
+            means = {step: sum(values) / len(values) for step, values in others.items()}
+            below = [step for step in means if step <= one.step]
+            above = [step for step in means if step >= one.step]
+            if below and above:
+                low, high = max(below), min(above)
+                share = 0.0 if high == low else (one.step - low) / (high - low)
+                guesses[k] = means[low] + share * (means[high] - means[low])
+            else:
+                guesses[k] = means[max(below) if below else min(above)]
+        elif earlier:
+            guesses[k] = max(earlier)[1]
+    return guesses
 
 
 def table(
-    pool: RatingPool, preset: str, scoring: tuple[str, str], prior_stderr: float
+    pool: RatingPool, preset: str, scoring: tuple[str, str]
 ) -> tuple[list[dict], dict, list[str]]:
     """The preset's leaderboard over the players with games (each row: name, run, steps,
-    kind, calibrated_elo, stderr, games), the goodness of fit (`goodness_of_fit.report`)
+    kind, calibrated_elo, stderr, status, games: `tournament.rating_columns`, a bound's
+    value in calibrated_elo and no stderr), the goodness of fit (`goodness_of_fit.report`)
     and the notes."""
-    counted, posterior, players, notes = fit(pool, preset, scoring, prior_stderr)
+    counted, posterior, players, notes = fit(pool, preset, scoring)
     rows = []
     for number, name in enumerate(counted.names):
         games = int(counted.pair_games[number].sum())
@@ -364,12 +409,11 @@ def table(
                 run=one.run,
                 step=one.step,
                 kind=one.kind,
-                calibrated_elo=float(posterior.ratings[number]) + GAUGE_TOP,
-                stderr=float(posterior.stderr[number]),
+                **rating_columns(posterior, number),
                 games=games,
             )
         )
-    rows.sort(key=lambda row: -row["calibrated_elo"])
+    rows.sort(key=rating_order)
     check = goodness_of_fit.report(counted.wins, posterior, counted.names)
     return rows, check, notes
 
@@ -380,6 +424,7 @@ def _session(
     playable: list[int],
     config: TournamentConfig,
     session_players: int,
+    guesses: torch.Tensor,
 ) -> list[int]:
     """The session's players (indices, the anchor first): every playable one when they are
     few enough, else the anchor and the playable players the design over every playable
@@ -392,7 +437,12 @@ def _session(
     allowed[index[:, None], index[None, :]] = True
     allowed.fill_diagonal_(False)
     weights = pair_weights(
-        posterior, config.targets(names), allowed, config.budget, config.information_margin
+        posterior,
+        config.targets(names),
+        allowed,
+        config.budget,
+        config.information_margin,
+        guesses,
     )
     mass = torch.zeros(count, dtype=torch.float64)
     for (first, second), weight in weights.items():
@@ -422,10 +472,11 @@ def rate(
     into them), its outcome and the record's further columns (`tournament.outcomes`); the
     engine is the caller's, built on the players with the default lanes
     (`bnb.league.matches.default_lanes`), which the plan keeps to. config: the targets, the
-    layout (its players per batch too), the prior and the budget (the
-    games this session may play); its decision players and contrasts name pool players.
+    layout (its players per batch too) and the budget (the games this session may play);
+    its decision players and contrasts name pool players. A target on a bound is left out of
+    the session's met check (`bnb.league.design.Targets.met`).
     extra: columns every batch line records (the seed, for one)."""
-    counted, posterior, players, notes = fit(pool, preset, scoring, config.prior_stderr)
+    counted, posterior, players, notes = fit(pool, preset, scoring)
     for note in notes:
         log(f"{preset}: {note}")
     names = counted.names
@@ -440,7 +491,8 @@ def rate(
     ]
     if unknown:
         raise ValueError(f"decision players and contrasts {unknown} are not in the pool")
-    session = _session(posterior, names, playable, config, session_players)
+    guesses = placement(posterior, names, players)
+    session = _session(posterior, names, playable, config, session_players, guesses)
     field = [made[names[number]] for number in session]
     groups = network_groups(field)
     lanes = default_lanes(groups, 2 * config.arena.blocks)
@@ -460,9 +512,11 @@ def rate(
     played = batches = 0
     seconds: list[float] = []
     while played + config.arena.games <= config.budget:
-        counted, posterior, players, _ = fit(pool, preset, scoring, config.prior_stderr)
+        counted, posterior, players, _ = fit(pool, preset, scoring)
         index = {name: number for number, name in enumerate(counted.names)}
-        marginal = posterior.restrict([index[name] for name in session_names])
+        chosen = [index[name] for name in session_names]
+        marginal = posterior.restrict(chosen)
+        guesses = placement(posterior, counted.names, players)[torch.tensor(chosen)]
         if targets.met(marginal):
             log(f"{preset}: every target of the session is met")
             break
@@ -477,6 +531,7 @@ def rate(
             config.triangle_share,
             decision,
             config.hopeless,
+            guesses,
         )
         if plan.criterion <= 0.0:
             log(
@@ -506,7 +561,8 @@ def rate(
         played += config.arena.games
         batches += 1
         errors, goals = targets.standard_errors(marginal)
-        ratio = float((errors / goals).max()) if len(goals) else 1.0
+        finite = torch.isfinite(errors)
+        ratio = float((errors[finite] / goals[finite]).max()) if bool(finite.any()) else 1.0
         mean = sum(seconds) / len(seconds)
         later = datetime.datetime.now().astimezone() + datetime.timedelta(seconds=mean * (left - 1))
         log(
@@ -519,7 +575,7 @@ def rate(
 
 def curves(rows: list[dict]) -> list[dict]:
     """The policies' rows by run and steps (`table`'s rows): Elo against steps per run and
-    weights kind, each with its standard error."""
+    weights kind, each with its standard error, or its status where it is a bound."""
     return sorted(
         (row for row in rows if row["run"] is not None),
         key=lambda row: (row["preset"], row["run"], row["kind"], row["step"]),

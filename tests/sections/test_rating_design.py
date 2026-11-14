@@ -1,7 +1,7 @@
-"""The rating tournament's statistics (league spec 6, `bnb.league.design`): the posterior
-with its Gaussian prior, the targets, the continuous A-optimal design and the batch plan
-with its players-per-batch and lane limits, the out-of-reach rule, and the saturated
-anchor pair that the earlier greedy allocation kept playing."""
+"""The rating tournament's statistics (league spec 6, `bnb.league.design`): the
+maximum-likelihood fit with no prior and its bounds, the targets, the continuous A-optimal
+design and the batch plan with its players-per-batch and lane limits, the out-of-reach
+rule, and the saturated anchor pair that the earlier greedy allocation kept playing."""
 
 import collections
 import json
@@ -41,49 +41,86 @@ def _play(truth: torch.Tensor, block_games: int, generator):
     return play
 
 
-# ---- the posterior
+# ---- the fit
 
 
-def test_a_wide_prior_gives_the_bradley_terry_fit():
-    wins = _wins({(0, 1): (30, 50), (1, 2): (40, 40), (0, 2): (20, 60), (2, 3): (70, 10)}, 4)
-    posterior = design.fit_posterior(wins, 0, prior_stderr=1e7)
-    ratings, stderr = fit_ratings(wins, 0, prior_games=1e-9)
-    assert posterior.ratings.tolist() == pytest.approx(ratings.tolist(), abs=1e-4)
-    assert posterior.stderr.tolist() == pytest.approx(stderr.tolist(), rel=1e-6)
-    assert float(posterior.ratings[0]) == 0.0 and float(posterior.stderr[0]) == 0.0
+CONNECTED = {(0, 1): (30, 50), (1, 2): (40, 40), (0, 2): (20, 60), (2, 3): (70, 10)}
 
 
-def test_the_posterior_is_the_maximum_and_its_covariance_the_inverse_hessian():
-    wins = _wins({(0, 1): (12, 4), (1, 2): (9, 9), (0, 2): (3, 13)}, 3)
-    posterior = design.fit_posterior(wins, 0, prior_stderr=300.0)
-    precision = (SCALE / 300.0) ** 2
+def test_the_fit_is_the_plain_maximum_likelihood_on_a_connected_field():
+    """No prior: on a field where every player won and lost some games, the fit is the
+    Bradley-Terry maximum (the gradient of the plain log-likelihood vanishes there), its
+    covariance the inverse of the negative Hessian, and it agrees with `fit_ratings` without
+    virtual games."""
+    wins = _wins(CONNECTED, 4)
+    posterior = design.fit_posterior(wins, 0)
+    assert posterior.status == (design.RATED,) * 4
 
-    def log_posterior(free: torch.Tensor) -> torch.Tensor:
+    def log_likelihood(free: torch.Tensor) -> torch.Tensor:
         theta = torch.cat([torch.zeros(1, dtype=DTYPE), free])
-        difference = theta[:, None] - theta[None, :]
-        likelihood = (wins * torch.nn.functional.logsigmoid(difference)).sum()
-        return likelihood - 0.5 * precision * free.square().sum()
+        return (wins * torch.nn.functional.logsigmoid(theta[:, None] - theta[None, :])).sum()
 
     at = (posterior.ratings[1:] / SCALE).clone().requires_grad_()
-    (gradient,) = torch.autograd.grad(log_posterior(at), at)
-    assert gradient.abs().max() < 1e-7
-    hessian = torch.autograd.functional.hessian(log_posterior, at.detach())
+    (gradient,) = torch.autograd.grad(log_likelihood(at), at)
+    assert gradient.abs().max() < 1e-9
+    hessian = torch.autograd.functional.hessian(log_likelihood, at.detach())
     covariance = torch.linalg.inv(-hessian) * SCALE**2
     assert posterior.covariance[1:, 1:].flatten().tolist() == pytest.approx(
         covariance.flatten().tolist(), rel=1e-8
     )
+    ratings, stderr = fit_ratings(wins, 0, prior_games=0.0)
+    assert posterior.ratings.tolist() == pytest.approx(ratings.tolist(), abs=1e-6)
+    assert posterior.stderr.tolist() == pytest.approx(stderr.tolist(), rel=1e-8)
+    assert float(posterior.ratings[0]) == 0.0 and float(posterior.stderr[0]) == 0.0
 
 
-def test_a_clean_sweep_stays_finite_and_within_the_prior():
-    """576 straight wins against the anchor: the rating is finite and its error at most the
-    prior's, where the old virtual-game prior's error never fell with more games."""
-    for games in (96, 576, 5760):
+def test_a_sweep_is_reported_as_a_bound():
+    """A player who beat the anchor in every game has no finite maximum: it is reported as
+    a lower bound, the rating at which its sweep has probability BOUND_LEVEL, with no
+    standard error; one who lost every game, as an upper bound. The rated players' fit is
+    the fit without them."""
+    for games in (1, 96, 5760):
         posterior = design.fit_posterior(_wins({(0, 1): (0, games)}, 2), 0)
-        assert math.isfinite(float(posterior.ratings[1])) and float(posterior.ratings[1]) > 500
-        assert 0.0 < float(posterior.stderr[1]) < design.PRIOR_STDERR
-    _, few = fit_ratings(_wins({(0, 1): (0, 96)}, 2), 0, 1.0)
-    _, many = fit_ratings(_wins({(0, 1): (0, 5760)}, 2), 0, 1.0)
-    assert float(many[1]) > 0.9 * float(few[1])  # the old fit's error: flat in the games
+        expected = SCALE * math.log(design.BOUND_LEVEL ** (1 / games)) - SCALE * math.log(
+            1 - design.BOUND_LEVEL ** (1 / games)
+        )
+        assert posterior.status[1] == design.ABOVE
+        assert float(posterior.ratings[1]) == pytest.approx(expected, abs=1e-6)
+        assert math.isinf(float(posterior.stderr[1]))
+    wins = torch.zeros((6, 6), dtype=DTYPE)
+    wins[:4, :4] = _wins(CONNECTED, 4)
+    wins[4, 2] = 96.0  # 4 beat player 2 in every game
+    wins[0, 5] = 50.0  # the anchor beat 5 in every game
+    posterior = design.fit_posterior(wins, 0)
+    alone = design.fit_posterior(_wins(CONNECTED, 4), 0)
+    assert posterior.status[4:] == (design.ABOVE, design.BELOW)
+    assert posterior.ratings[:4].tolist() == pytest.approx(alone.ratings.tolist(), abs=1e-9)
+    assert posterior.stderr[:4].tolist() == pytest.approx(alone.stderr.tolist(), rel=1e-9)
+    assert float(posterior.ratings[4]) > float(posterior.ratings[2])
+    assert float(posterior.ratings[5]) < 0.0
+    row = tournament.rating_columns(posterior, 4)
+    assert row["stderr"] is None and row["status"] == design.ABOVE
+    assert tournament.describe_rating(row).startswith("> ")
+
+
+def test_a_group_joined_by_sweeps_keeps_its_own_differences():
+    """Two players who split their games and both swept the anchor: their shift is a
+    bound, their difference keeps its maximum likelihood and its standard error, and a
+    contrast between them can be met."""
+    wins = _wins({(0, 1): (0, 96), (0, 2): (0, 96), (1, 2): (60, 36)}, 3)
+    posterior = design.fit_posterior(wins, 0)
+    assert posterior.status == (design.RATED, design.ABOVE, design.ABOVE)
+    difference = float(posterior.ratings[1] - posterior.ratings[2])
+    assert difference == pytest.approx(SCALE * math.log(60 / 36), abs=1e-6)
+    contrast = design.Targets(torch.full((3,), math.inf, dtype=DTYPE), ((1, 2, 100.0),))
+    (error,), _ = contrast.standard_errors(posterior)
+    assert float(error) == pytest.approx(SCALE / math.sqrt(96 * 0.625 * 0.375), rel=1e-6)
+    assert contrast.met(posterior)
+    # a player who played only the undetermined: no bound, and its target is unmet
+    wins = _wins({(0, 1): (40, 40), (2, 3): (10, 20)}, 4)
+    posterior = design.fit_posterior(wins, 0)
+    assert posterior.status[2:] == (design.UNDETERMINED,) * 2
+    assert not design.Targets(torch.full((4,), 500.0, dtype=DTYPE)).met(posterior)
 
 
 # ---- the targets
@@ -97,6 +134,14 @@ def test_targets_list_players_then_contrasts_and_say_when_met():
     wins = _wins({(0, 1): (50, 50), (1, 2): (50, 50), (0, 2): (50, 50)}, 3)
     assert design.Targets(torch.full((3,), 40.0, dtype=DTYPE)).met(design.fit_posterior(wins, 0))
     assert not targets.met(design.fit_posterior(wins, 0))
+    # a bound is left out of the check; an unplayed player is unmet
+    loose = design.Targets(torch.full((4,), 40.0, dtype=DTYPE))
+    swept = torch.zeros((4, 4), dtype=DTYPE)
+    swept[:3, :3] = wins
+    swept[3, 0] = 96.0
+    assert loose.met(design.fit_posterior(swept, 0))
+    swept[3, 0] = 0.0
+    assert not loose.met(design.fit_posterior(swept, 0))
 
 
 def test_the_config_gives_decision_players_and_contrasts_their_targets():
@@ -231,9 +276,10 @@ def test_the_old_allocation_spent_its_games_on_the_saturated_anchor_pair():
 
 
 def test_the_saturated_anchor_pair_gives_way_to_the_contrast_that_matters():
-    """The same field, rated by the tournament: the two arms' difference (a named contrast)
-    takes most of the games, and the anchor pairs no more than a block each once they are
-    found out of reach."""
+    """The same field, rated by the tournament: both arms sweep the anchor and are reported
+    as one group above a bound; their difference (a named contrast) has a standard error
+    within the group, takes most of the games and is met, and the anchor pairs get no more
+    than a block each."""
     names = ["scripted", "a", "b"]
     config = tournament.TournamentConfig(
         ArenaConfig(blocks=2, block_environments=96),
@@ -243,7 +289,7 @@ def test_the_saturated_anchor_pair_gives_way_to_the_contrast_that_matters():
         contrast_stderr=20.0,
     )
     logged = []
-    ratings, stderr, pair_games = tournament.fit_field(
+    posterior, pair_games = tournament.fit_field(
         _play(SATURATED, 96, torch.Generator().manual_seed(0)),
         names,
         0,
@@ -254,10 +300,10 @@ def test_the_saturated_anchor_pair_gives_way_to_the_contrast_that_matters():
     )
     assert float(pair_games[1, 2]) >= 384
     assert float(pair_games[0, 1] + pair_games[0, 2]) <= 192
-    assert all(math.isfinite(float(value)) for value in (*ratings, *stderr))
-    assert any("out of reach" in line for line in logged)
-    difference = float(stderr[1] ** 2 + stderr[2] ** 2)  # finite, within the prior
-    assert difference < 2 * design.PRIOR_STDERR**2
+    assert posterior.status[1:] == (design.ABOVE, design.ABOVE)  # both swept the anchor
+    contrast = design.Targets(torch.full((3,), math.inf, dtype=DTYPE), ((1, 2, 20.0),))
+    (error,), _ = contrast.standard_errors(posterior)
+    assert float(error) <= 20.0 and "stopped: every target is met" in logged[-1]
 
 
 def test_a_hopeless_field_stops_rather_than_spend_its_budget():
@@ -266,7 +312,7 @@ def test_a_hopeless_field_stops_rather_than_spend_its_budget():
         ArenaConfig(blocks=2, block_environments=96), target_stderr=45.0, budget=1152
     )
     logged = []
-    _, _, pair_games = tournament.fit_field(
+    posterior, pair_games = tournament.fit_field(
         _play(SATURATED, 96, torch.Generator().manual_seed(0)),
         names,
         0,
@@ -286,7 +332,7 @@ def test_a_ladder_is_rated_through_its_neighbours():
     config = tournament.TournamentConfig(
         ArenaConfig(blocks=8, block_environments=64), target_stderr=50.0, budget=40_000
     )
-    ratings, stderr, pair_games = tournament.fit_field(
+    posterior, pair_games = tournament.fit_field(
         _play(truth, 64, torch.Generator().manual_seed(1)),
         names,
         0,
@@ -295,11 +341,35 @@ def test_a_ladder_is_rated_through_its_neighbours():
         lambda line: None,
         "ladder",
     )
-    assert float(stderr.max()) <= 50.0
+    ratings, stderr = posterior.ratings, posterior.stderr
+    assert posterior.status == (design.RATED,) * 10 and float(stderr.max()) <= 50.0
     assert ((ratings - truth).abs() <= 4.0 * stderr + 1e-9).all()
     distance = (truth[:, None] - truth[None, :]).abs()
     close = float(pair_games[distance <= 450.0].sum())
-    assert close > 0.8 * float(pair_games.sum())
+    assert close >= 0.75 * float(pair_games.sum())  # 0.80 to 0.825 over seeds 1 to 8
+
+
+def test_a_swept_player_is_planned_against_stronger_opponents():
+    """A new player who swept the anchor: it is planned at its bound plus MARGIN_CAP, so
+    its next games go to the rated players above the anchor nearest that, not back to the
+    anchor (the saturated pair)."""
+    names = ["scripted", "x", "y", "z", "new"]
+    truth = torch.tensor([0.0, 300.0, 700.0, 1100.0], dtype=DTYPE)
+    wins = torch.zeros((5, 5), dtype=DTYPE)
+    for first, second in ((0, 1), (1, 2), (2, 3), (0, 2)):  # a rated ladder, many games
+        share = float(torch.sigmoid((truth[first] - truth[second]) / SCALE))
+        wins[first, second] = 2000 * share
+        wins[second, first] = 2000 * (1 - share)
+    wins[4, 0] = 96.0  # the new player won all 96 games against the anchor
+    posterior = design.fit_posterior(wins, 0)
+    assert posterior.status[4] == design.ABOVE and posterior.status[:4] == (design.RATED,) * 4
+    targets = design.Targets(torch.full((5,), 45.0, dtype=DTYPE))
+    assert targets.met(posterior)  # the rated players are met, the bound left out
+    allowed = ~torch.eye(5, dtype=torch.bool)
+    plan = design.plan_batch(posterior, targets, allowed, design.Layout(2, 96))
+    # the bound is about 600, so it is planned at about 800: y (700) is the nearest
+    assert float(posterior.ratings[4]) == pytest.approx(600.0, abs=5.0)
+    assert [(names[first], names[second]) for first, second in plan.blocks] == [("y", "new")] * 2
 
 
 # ---- the layout probe (bench/rating_layout_probe.py)

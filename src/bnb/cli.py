@@ -496,8 +496,10 @@ class Pool:
     a batch may hold (None: as many as its slots); `--session-players`: the players a
     session's engine holds; `--triangle-share`: a share of each batch for the least-played
     pairs among the decision players; `--hopeless`: the factor on the batches left past
-    which targets all out of reach stop the session (inf: it plays its budget);
-    `--prior-stderr`: the posterior's prior about the anchor (Elo). A policy is played from
+    which targets all out of reach stop the session (inf: it plays its budget). The fit has
+    no prior: a player without a finite maximum-likelihood rating is shown as a bound
+    ("> 2400.0 (bound)") in `table` and has status "above" or "below" in `curves`, its
+    calibrated_elo the bound and no stderr (`bnb.league.design`). A policy is played from
     a path where it was registered, else from `--runs-directory`'s `<run>/policies/`, with
     its weights' hash checked. `--seed`: the games' draws (None: a fresh one, recorded with
     each batch).
@@ -523,7 +525,6 @@ class Pool:
     session_players: int = 16
     triangle_share: float = 0.0
     hopeless: float = 10.0
-    prior_stderr: float = 1000.0
     device: str = "cuda"
     seed: int | None = None
     runs_directory: str | None = None
@@ -1503,10 +1504,10 @@ def ratings(options: Ratings) -> None:
             )
     except ValueError as error:
         raise SystemExit(str(error)) from error
-    for row in sorted(rows, key=lambda row: (row["map"], -row["calibrated_elo"])):
+    for row in sorted(rows, key=lambda row: (row["map"], tournament.rating_order(row))):
         print(
-            f"{row['map']:16s} {row['player']:60s} {row['calibrated_elo']:8.1f} "
-            f"+- {row['stderr']:5.1f}  {row['games']:6d} games"
+            f"{row['map']:16s} {row['player']:60s} {tournament.describe_rating(row)}  "
+            f"{row['games']:6d} games"
         )
     inputs = {player.name: player.policy for player in field if player.policy is not None}
     payload = dict(
@@ -1954,28 +1955,37 @@ def _pool_import(opened, options: Pool) -> None:
 def _pool_table(opened, options: Pool) -> None:
     import csv
 
-    from bnb.league import goodness_of_fit, rating_pool
+    from bnb.league import goodness_of_fit, rating_pool, tournament
 
     _check_presets(options.presets)
     every = []
     for preset in options.presets:
         scoring = _pool_scoring(opened, preset, options.deathmatch_score)
-        rows, check, notes = rating_pool.table(opened, preset, scoring, options.prior_stderr)
+        rows, check, notes = rating_pool.table(opened, preset, scoring)
         every += rows
         if options.action == "curves":
             continue
         print(f"{preset} (scored by {scoring[0]})")
         for row in rows:
             print(
-                f"  {row['player']:56s} {row['calibrated_elo']:8.1f} +- {row['stderr']:5.1f} "
-                f"{row['games']:7d} games"
+                f"  {row['player']:56s} {tournament.describe_rating(row)} {row['games']:7d} games"
             )
         for line in [*notes, *goodness_of_fit.describe(check)]:
             print(f"  {line}")
     if options.action == "curves":
         if options.out is None:
             raise SystemExit("bnb pool curves: --out FILE.csv")
-        columns = ["preset", "run", "kind", "step", "player", "calibrated_elo", "stderr", "games"]
+        columns = [
+            "preset",
+            "run",
+            "kind",
+            "step",
+            "player",
+            "calibrated_elo",
+            "stderr",
+            "status",
+            "games",
+        ]
         with open(options.out, "w", newline="") as file:
             writer = csv.DictWriter(file, columns, extrasaction="ignore")
             writer.writeheader()
@@ -2040,7 +2050,6 @@ def _pool_rate(opened, options: Pool) -> None:
             contrasts=contrasts,
             contrast_stderr=options.contrast_stderr,
             players_per_batch=options.players_per_batch,
-            prior_stderr=options.prior_stderr,
             triangle_share=options.triangle_share,
             hopeless=options.hopeless,
         )

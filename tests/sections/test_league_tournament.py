@@ -591,9 +591,10 @@ def test_the_tournament_recovers_a_known_field():
     )
     generator = torch.Generator().manual_seed(3)
     logged = []
-    ratings, stderr, pair_games = tournament.fit_field(
+    posterior, pair_games = tournament.fit_field(
         _bradley_terry(truth, 32, generator), names, 0, allowed, config, logged.append, "test"
     )
+    ratings, stderr = posterior.ratings, posterior.stderr
     assert float(stderr.max()) < 30.0 and len(logged) < 40_000 // 256
     assert float(pair_games[0, 3:].sum()) == 0.0  # the scripted agent played only a and b
     assert ((ratings - truth).abs() <= 4.0 * stderr + 1e-9).all(), (ratings, stderr)
@@ -632,9 +633,10 @@ def test_the_tournament_recovers_a_known_field_from_kill_shares():
     )
     torch.manual_seed(5)
     generator = torch.Generator().manual_seed(5)
-    ratings, stderr, _ = tournament.fit_field(
+    posterior, _ = tournament.fit_field(
         _kill_shares(truth, 32, generator), names, 0, allowed, config, lambda line: None, "test"
     )
+    ratings, stderr = posterior.ratings, posterior.stderr
     assert float(stderr.max()) < 30.0 and bool((stderr[1:] > 0.0).all())
     assert ((ratings - truth).abs() <= 4.0 * stderr + 1e-9).all(), (ratings, stderr)
 
@@ -655,7 +657,8 @@ def test_each_batch_is_recorded_and_a_tournament_resumes_from_its_record(tmp_pat
         fitted = tournament.fit_field(play, names, 0, allowed, config, logged.append, "f", record)
         return fitted, logged
 
-    (ratings, stderr, pair_games), logged = fit(3 * 64, 1)
+    (posterior, pair_games), logged = fit(3 * 64, 1)
+    ratings, stderr = posterior.ratings, posterior.stderr
     lines = [json.loads(line) for line in record.read_text().splitlines()]
     assert [line["batch"] for line in lines] == [0, 1, 2] and lines[-1]["games"] == 192
     assert [row["player"] for row in lines[-1]["ratings"]] == names
@@ -664,12 +667,12 @@ def test_each_batch_is_recorded_and_a_tournament_resumes_from_its_record(tmp_pat
     assert all(len(line["matchups"]) == len(line["results"]) == 4 for line in lines)
     assert "at the latest (0 batches)" in logged[-1]
     # a larger budget goes on from the record: its games kept, two batches more
-    (_, _, resumed), logged = fit(5 * 64, 2)
+    (_, resumed), logged = fit(5 * 64, 2)
     assert "resumed" in logged[0] and len(record.read_text().splitlines()) == 5
     assert float(resumed.sum()) == 2 * 5 * 64
     assert ((resumed - pair_games) >= 0).all()
     # a finished record plays nothing more
-    (_, _, again), _ = fit(5 * 64, 3)
+    (_, again), _ = fit(5 * 64, 3)
     assert torch.equal(again, resumed)
     with pytest.raises(ValueError, match="another field"):
         tournament.fit_field(
@@ -991,7 +994,7 @@ def test_reused_games_that_meet_the_target_play_no_batch(tmp_path):
         raise AssertionError("no batch is played")
 
     own = tmp_path / "own.batches.jsonl"
-    ratings, stderr, pair_games = tournament.fit_field(
+    posterior, pair_games = tournament.fit_field(
         play,
         names,
         0,
@@ -1004,7 +1007,7 @@ def test_reused_games_that_meet_the_target_play_no_batch(tmp_path):
         names,
         (found.wins, found.pair_games),
     )
-    assert float(stderr.max()) < 200.0 and torch.equal(pair_games, found.pair_games)
+    assert float(posterior.stderr.max()) < 200.0 and torch.equal(pair_games, found.pair_games)
     assert not own.exists()
     # unmet, the batches go on from the reused games, the budget counting only the new
     logged = []
@@ -1230,7 +1233,7 @@ def test_the_balanced_allocation_is_a_round_robin():
         allocation="balanced",
     )
     play = _bradley_terry(truth, 8, torch.Generator().manual_seed(4))
-    _, _, pair_games = tournament.fit_field(
+    _, pair_games = tournament.fit_field(
         lambda matchups: (play(matchups), dict(extra=len(matchups))),
         names,
         0,

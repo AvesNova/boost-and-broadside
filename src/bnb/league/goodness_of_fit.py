@@ -10,11 +10,14 @@ posterior's predicted win probability p, with the signed deviance residual
     sign(s - p) sqrt(2 n [s log(s / p) + (1 - s) log((1 - s) / (1 - p))]).
 
 The deviance is the sum of their squares over the played pairs, against a chi-square with
-P - (K - 1) degrees of freedom (P played pairs among K players with games): a large one says
-the pairs' results do not sit on one line of ratings. The deviance residual is used, not
-Pearson's (s - p) / sqrt(p (1 - p) / n), because a pair predicted at p near 0 or 1 that
-loses or draws one game in hundreds gives a Pearson residual of many units on one game.
-The prediction is the posterior's (with its prior).
+P - (K - C) degrees of freedom (P played pairs within the fit's components, among K players
+with games in C components): a large one says the pairs' results do not sit on one line of
+ratings. A pair across two components (`bnb.league.design.fit_posterior`: one side won every
+game, the maximum puts them apart without bound) is fitted exactly and left out. The
+deviance residual is used, not Pearson's (s - p) / sqrt(p (1 - p) / n), because a pair
+predicted at p near 0 or 1 that loses or draws one game in hundreds gives a Pearson
+residual of many units on one game.
+The prediction is the maximum-likelihood fit's (each component's own ratings).
 
 **Loops** (`cyclic_test`). Bradley-Terry (k = 0) and mElo-2 (k = 1: each player's rating and
 a 2-vector, the log-odds r_i - r_j + c_i' W c_j) fitted by maximum likelihood on the same
@@ -57,17 +60,19 @@ def _relative_entropy_term(observed: float, predicted: float) -> float:
 
 
 def pair_table(wins: torch.Tensor, posterior: Posterior) -> list[dict]:
-    """Every played pair i < j: its games, i's observed score, the predicted probability and
-    the signed deviance residual (module docstring), by player index."""
+    """Every played pair i < j within a component of the fit: its games, i's observed score,
+    the predicted probability and the signed deviance residual (module docstring), by player
+    index."""
     wins = wins.to(DTYPE)
     games = wins + wins.T
-    theta = posterior.ratings / SCALE
+    theta = posterior.relative / SCALE
+    component = posterior.component
     rows = []
     count = wins.shape[0]
     for first in range(count):
         for second in range(first + 1, count):
             played = float(games[first, second])
-            if played <= 0.0:
+            if played <= 0.0 or bool(component[first] != component[second]):
                 continue
             score = min(max(float(wins[first, second]) / played, 0.0), 1.0)
             predicted = float(torch.sigmoid(theta[first] - theta[second]))
@@ -107,8 +112,10 @@ def chi_square_survival(statistic: float, degrees: int) -> float:
 def deviance(wins: torch.Tensor, posterior: Posterior) -> dict:
     """The deviance over the played pairs, its degrees of freedom and p-value."""
     table = pair_table(wins, posterior)
-    players = int(_played(wins + wins.T).sum())
-    degrees = len(table) - (players - 1)
+    played = _played(wins + wins.T)
+    players = int(played.sum())
+    components = int(posterior.component[played].unique().shape[0])
+    degrees = len(table) - (players - components)
     statistic = sum(row["residual"] ** 2 for row in table)
     return dict(
         statistic=statistic,

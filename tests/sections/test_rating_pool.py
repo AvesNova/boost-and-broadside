@@ -1,7 +1,8 @@
 """The shared rating pool (league spec 6, `bnb.league.rating_pool`): stable names, one file
 per writer merged on read, the import of `bnb ratings` records, a rating session over the
-pool, and the goodness-of-fit report (`bnb.league.goodness_of_fit`), on the CPU with
-scripted players and a Bradley-Terry model of the games."""
+pool, a new checkpoint's placement, and the goodness-of-fit report
+(`bnb.league.goodness_of_fit`), on the CPU with scripted players and a Bradley-Terry model
+of the games."""
 
 import json
 import math
@@ -150,7 +151,7 @@ def test_a_session_rates_the_pool_and_a_new_player_joins_it(tmp_path):
         extra=dict(seed=7),
     )
     assert batches > 0 and "every target of the session is met" in logged[-1]
-    rows, check, notes = rating_pool.table(pool, "frontline", SCORING, 1000.0)
+    rows, check, notes = rating_pool.table(pool, "frontline", SCORING)
     by_name = {row["player"]: row for row in rows}
     assert by_name["scripted"]["calibrated_elo"] == 1000.0
     for name, rating in truth.items():
@@ -176,7 +177,7 @@ def test_a_session_rates_the_pool_and_a_new_player_joins_it(tmp_path):
         SCORING,
         log=logged.append,
     )
-    rows, _, _ = rating_pool.table(pool, "frontline", SCORING, 1000.0)
+    rows, _, _ = rating_pool.table(pool, "frontline", SCORING)
     new = next(row for row in rows if row["player"] == "rung_T1.5")
     assert new["stderr"] <= 60.0 and sum(row["games"] for row in rows) > before
 
@@ -321,6 +322,51 @@ def _counts_wins(scores: dict[tuple[int, int], float], count: int, games: float)
         wins[first, second] = score * games
         wins[second, first] = (1.0 - score) * games
     return wins
+
+
+def _placed(rated: dict[str, float], new: list[str]) -> dict[str, float]:
+    """The placement guesses of the `new` players (pool names, no games) in a pool whose
+    `rated` players (pool names) each played the scripted agent to the score their rating
+    gives, so each is fitted at its rating exactly."""
+    names = ["scripted", *rated, *new]
+    count = len(names)
+    wins = torch.zeros((count, count), dtype=DTYPE)
+    for index, rating in enumerate(rated.values(), start=1):
+        share = float(win_probability(torch.tensor(rating, dtype=DTYPE), torch.tensor(0.0)))
+        wins[index, 0], wins[0, index] = 1000 * share, 1000 * (1 - share)
+    posterior = fit_posterior(wins, 0)
+    players = {"scripted": PoolPlayer("scripted", "scripted")}
+    for name in names[1:]:
+        _, run, step, kind = rating_pool.policy_name(
+            f"/x/{name.replace('/step_', '/policies/step_')}"
+        )
+        players[name] = PoolPlayer(name, name, run, step, kind)
+    guesses = rating_pool.placement(posterior, names, players)
+    return {name: float(guesses[names.index(name)]) for name in new}
+
+
+def test_a_new_checkpoint_is_placed_by_the_other_runs_at_its_steps():
+    """Placement (allocation only): the mean of the other runs' checkpoints at the same
+    steps; between steps, interpolated; past the last, the nearest steps'; with no other
+    run, the run's previous checkpoint; else the anchor. Another weights kind is not used."""
+    average = "exponential_average"
+    rated = {
+        f"a/step_100/{average}": 100.0,
+        f"b/step_100/{average}": 300.0,
+        f"a/step_200/{average}": 400.0,
+        f"b/step_200/{average}": 600.0,
+        "b/step_100/live": 900.0,
+    }
+    new = [f"c/step_{step}/{average}" for step in (100, 150, 300, 50)]
+    placed = _placed(rated, new)
+    assert placed[new[0]] == pytest.approx(200.0, abs=1e-6)  # the mean at 100
+    assert placed[new[1]] == pytest.approx(350.0, abs=1e-6)  # halfway from 200 to 500
+    assert placed[new[2]] == pytest.approx(500.0, abs=1e-6)  # the nearest, 200's mean
+    assert placed[new[3]] == pytest.approx(200.0, abs=1e-6)  # the nearest, 100's mean
+    # one run alone: its previous checkpoint; none earlier: the anchor
+    alone = {f"a/step_100/{average}": 100.0, f"a/step_200/{average}": 400.0}
+    placed = _placed(alone, [f"a/step_300/{average}", f"a/step_50/{average}"])
+    assert placed == {f"a/step_300/{average}": pytest.approx(400.0), f"a/step_50/{average}": 0.0}
 
 
 def test_a_transitive_field_fits_and_a_cycle_is_found():
