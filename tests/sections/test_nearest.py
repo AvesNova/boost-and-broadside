@@ -12,6 +12,7 @@ import torch
 
 from bnb.contracts import GameConfig, Obs, Pool
 from bnb.contracts.obs import (
+    FIELD,
     FIELD_COLUMNS,
     GLOBAL,
     GLOBAL_COLUMNS,
@@ -119,6 +120,7 @@ def _constructed() -> Obs:
     fields[0, :, 2] = torch.tensor([100.0, 50.0])  # radius
     fields[0, :, 3] = 40.0
     fields[0, :, 4] = 2.0
+    fields[0, :, FIELD["present"]] = 1.0
     globals_ = torch.zeros(1, len(GLOBAL_COLUMNS))
     globals_[0, GLOBAL["arena_radius"]] = 2000.0
     zones = torch.zeros(1, ZONE_SLOTS, len(ZONE_COLUMNS))

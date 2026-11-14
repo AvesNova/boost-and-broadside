@@ -78,6 +78,7 @@ def no_fields(count: int = 1) -> Fields:
         radius=torch.ones(1, count),
         band_width=torch.full((1, count), 40.0),
         level=torch.ones(1, count, dtype=torch.int32),
+        present=torch.ones(1, count, dtype=torch.bool),
     )
 
 
@@ -162,7 +163,8 @@ def sweep(
             fields = Fields(x=torch.tensor([[0.0, 380.0]]), y=torch.zeros(1, 2),
                             radius=torch.full((1, 2), 200.0),
                             band_width=torch.full((1, 2), rules.field_band_width),
-                            level=torch.tensor([[first, second]], dtype=torch.int32))  # fmt: skip
+                            level=torch.tensor([[first, second]], dtype=torch.int32),
+                            present=torch.ones(1, 2, dtype=torch.bool))  # fmt: skip
             for stick_index in range(len(STICK_LEVELS)):
                 for power_index in range(len(POWER_MODES)):
                     distance, bearing = (

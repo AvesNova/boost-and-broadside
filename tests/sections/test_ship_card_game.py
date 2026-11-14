@@ -69,6 +69,7 @@ def _no_fields(like):
         radius=ones,
         band_width=ones,
         level=torch.ones((like.shape[0], 1), dtype=torch.int32),
+        present=torch.ones((like.shape[0], 1), dtype=torch.bool),
     )
 
 

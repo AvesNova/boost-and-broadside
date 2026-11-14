@@ -61,7 +61,10 @@ SHIP_COLUMNS = (
     "benched",
 )
 SHIP_HIDDEN_ZERO = 20  # the first this-many columns are zero for a ship the team cannot see
-FIELD_COLUMNS = ("x", "y", "radius", "band_width", "level")
+# Fields: centre, radius, band width (m) and level; present, 1 for a field of this episode's
+# map and 0 for an absent slot (field-count sampling, `bnb.contracts.ActiveFields`), whose
+# other columns are 0.
+FIELD_COLUMNS = ("x", "y", "radius", "band_width", "level", "present")
 # Zones (Frontline's), for the viewer: role 0 own spawn, 1 own defense, 2 neutral, 3 enemy
 # defense, 4 enemy spawn; progress, the meter in [0, 1]; direction +1 when the meter moves
 # in the viewer's favour, -1 in the enemy's, 0 still; the distances: captures to the

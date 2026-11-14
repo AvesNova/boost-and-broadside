@@ -317,9 +317,10 @@ class Tokens:
     an absent zone at the map centre (the global token's rotation). Positions are shifted.
     Given the Motion the tick before (the acceleration inputs or the extrapolation
     baseline): motion, the enemy rows' Motion (the next tick's previous), and accelerations,
-    whether or not the ship token reads them (None without). key_mask (..., N) bool, with
-    mask_benched: the ships attention reads as keys, every one but the benched (None
-    without).
+    whether or not the ship token reads them (None without). key_mask (..., K) bool, the
+    keys attention reads among its first K (`SpatialBlock.forward`): with mask_benched the N
+    ships, every one but the benched; with mask_absent_fields the N ships, the global token
+    and the M fields, every field but the absent (None with neither).
     """
 
     ship: torch.Tensor
@@ -369,6 +370,7 @@ def compose(
     timers: bool = False,
     mask_benched: bool = False,
     read_arena: bool = False,
+    mask_absent_fields: bool = False,
 ) -> Tokens:
     """The Tokens of one team's views (...) from the observation and the replay: the ships' belief
     codes and features, the global token, the fields and the zones, every position shifted by the
@@ -387,7 +389,8 @@ def compose(
     its time to zero, coded as a timer (elimination's shrinking boundary; 1 and 0
     elsewhere). With mask_benched a benched row (the observation's benched flag) counts in
     no ship's presence and the Tokens carry the key mask that hides it from attention
-    (`Yemong.mask_benched`).
+    (`Yemong.mask_benched`). With mask_absent_fields an absent field (the observation's
+    present flag 0) is no key of attention (`Yemong.mask_absent_fields`).
     With read_arena the global token reads the arena radius's code before the boundary's
     inputs (`global_inputs`). The position codes' period is the state code's
     (`ShipStateCode.position_period`)."""
@@ -421,6 +424,10 @@ def compose(
         presence = local_presence(position, team, valid & key_mask, presence_radius)
     else:
         presence = local_presence(position, team, valid, presence_radius)
+    if mask_absent_fields:
+        shown = torch.ones_like(visible) if key_mask is None else key_mask
+        present_fields = obs.fields[..., FIELD["present"]] > 0.5
+        key_mask = torch.cat([shown, torch.ones_like(shown[..., :1]), present_fields], -1)
     since_seen = age.to(dtype) * tick_length
     now, change = None, None
     if previous is not None:

@@ -157,6 +157,11 @@ Inside a field a ship or a bullet keeps its proper speed while its world speed i
 divided by `n`, and its path bends toward higher `n`. Each field also has a core and a band
 that shape sight (see [Perception and fog](perception.md)).
 
+A game may play fewer fields than it has slots (`GameConfig.active_fields`, drawn per
+episode; [Mixed batches](mixed-batches.md#field-count-sampling)). An absent field
+(`Fields.present` false) adds exactly nothing to the medium: its profile is 0 and its
+complement 1 at every point, so `n` is the same as on a map without it.
+
 ## Bullets and combat
 
 - **Firing.** A ship fires when it is alive, its gun is cooled down and its store holds the

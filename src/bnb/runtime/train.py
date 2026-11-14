@@ -16,7 +16,7 @@ from typing import Protocol
 
 import torch
 
-from bnb.contracts import ArenaScale, GameConfig, Pool
+from bnb.contracts import ActiveFields, ArenaScale, GameConfig, Pool
 from bnb.contracts.pools import pool_game
 from bnb.controllers.relational import RelationalController
 from bnb.controllers.scripted import Chaser, Random, Scripted
@@ -117,8 +117,22 @@ def mixed(
 
 
 def training_pools(config: TrainConfig) -> tuple[Pool, ...]:
-    """The config's training pools with its map-size sampling (`TrainConfig.arena_scale`)."""
-    return tuple(dataclasses.replace(pool, arena_scale=config.arena_scale) for pool in config.pools)
+    """The config's training pools with its map-size sampling (`TrainConfig.arena_scale`) and
+    its field-count sampling (`TrainConfig.active_fields`)."""
+    return tuple(
+        dataclasses.replace(
+            pool, arena_scale=config.arena_scale, active_fields=config.active_fields
+        )
+        for pool in config.pools
+    )
+
+
+def samples_field_counts(game: GameConfig, pools: tuple[Pool, ...] = ()) -> bool:
+    """Some game of the batch draws its active field count per episode: the game's
+    (`GameConfig.active_fields`) or a pool's. A Yemong playing it masks the absent fields
+    (`Yemong.mask_absent_fields`)."""
+    games = [pool_game(game, pool) for pool in pools] or [game]
+    return any(one.active_fields is not None for one in games)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -164,6 +178,10 @@ class TrainConfig:
     author, 2026-11-13: ln scale ~ Normal(0, 0.35) truncated to [0.5, 2], each
     environment's arena drawn at every reset), or None for each pool's own arena every
     episode. The rating lanes, evaluation and play keep their games' own sizes.
+    active_fields: field-count sampling for the training pools (`bnb.contracts.ActiveFields`:
+    each episode plays a drawn number of the game's field slots, the rest absent, and the
+    model masks the absent ones, `Yemong.mask_absent_fields`), or None for the games' own
+    (every field in every preset). The rating lanes play their games' own fields.
     lineup: each slot's ship type by name in the game's ship set (`api.type_names`), the
     same for both teams, in every game of the batch (the rating lanes' too); None plays the
     game's own lineup (`Rules.team_types`). A tournament of such policies plays the same
@@ -221,6 +239,7 @@ class TrainConfig:
     # every 10M environment steps (author, 2026-11-07: decisions, run control)
     policy_snapshot_every: int = 10_000_000
     arena_scale: ArenaScale | None = ArenaScale()
+    active_fields: ActiveFields | None = None
     lineup: tuple[str, ...] | None = None
     # end a PPO run after this many consecutive updates with a combat-collapse alert
     # (`bnb.runs.triggers.CombatCollapse`), recording why; 0: never (the default)
@@ -237,6 +256,8 @@ class TrainConfig:
             raise ValueError(f"precision {self.precision!r} is not one of {PRECISIONS}")
         if self.policy_snapshot_every < 1:
             raise ValueError(f"policy_snapshot_every {self.policy_snapshot_every} must be positive")
+        if self.active_fields is not None:  # the game checks the range against its fields
+            dataclasses.replace(self.game, active_fields=self.active_fields)
         if self.shards < 1 or self.lookahead < 0:
             raise ValueError(f"{self.shards} shards and a lookahead of {self.lookahead} ticks")
         for name in MODELS:
@@ -372,6 +393,8 @@ class Trainer:
         game = config.game
         self.config = config
         self.model = build_model(model_build(config), device, config.seed)
+        if isinstance(self.model, Yemong) and samples_field_counts(game, training_pools(config)):
+            self.model.mask_absent_fields = True  # its copies (the seats', lanes') keep it
         self.league: LeagueHooks | None = None
         # the trigger rules (`bnb.runs.triggers`), attached by the run's recorder: their
         # state is part of the training checkpoint

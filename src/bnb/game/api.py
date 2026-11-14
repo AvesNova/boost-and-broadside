@@ -43,6 +43,7 @@ it for them).
 
 For display (the play shell), with no rules of their own: `display` (the state's values a
 display draws, by name), `log_index` and `log_index_gradient` (the medium at points),
+`observed_fields` (an observation's field rows as fields, to re-simulate the medium),
 `core_radius` and `outer_radius` (the band edges, where the sight test changes), `zone_sides`
 (Frontline's zone owners and attackers), `visible` (each team's observation in sim order),
 `vision_range`, `per_ship`, `bullet_moves` (a card's bullet lives in moves), `type_names`
@@ -58,7 +59,7 @@ mode's minimum, `minimum_arena_radius`).
 import torch
 
 from bnb.contracts import Obs
-from bnb.contracts.obs import SHIP
+from bnb.contracts.obs import FIELD, SHIP
 
 from . import ships, tuning
 from .handling import FLOWN as FLOWN_HANDLES
@@ -151,6 +152,7 @@ __all__ = [
     "log_index_gradient",
     "measure_handles",
     "move",
+    "observed_fields",
     "outer_radius",
     "per_ship",
     "perceive",
@@ -288,7 +290,7 @@ DISPLAYED = {
         "energy", "alive", "ship_type", "fired", "spawned", "respawn_wait",
     ),
     "bullets": ("x", "y", "direction_x", "direction_y", "moves_left"),
-    "fields": ("x", "y", "radius", "band_width", "level"),
+    "fields": ("x", "y", "radius", "band_width", "level", "present"),
     "mode": (
         "role", "zone_x", "zone_y", "zone_radius", "progress", "score", "front", "lock",
         "wave_wait",
@@ -315,12 +317,13 @@ def log_index(
     level: torch.Tensor,
     x: torch.Tensor,
     y: torch.Tensor,
+    present: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """(B, P) ln n, the medium's log refractive index, at points x, y (B, P) for the fields
-    given as (B, M) centres, radii and band widths (m) and int32 levels: the game's
-    `medium`, for a caller that holds fields outside a state (such as a subset of them)."""
-    fields = Fields(x=centre_x, y=centre_y, radius=radius, band_width=band_width, level=level)
-    return medium(fields, x, y)[0]
+    given as (B, M) centres, radii and band widths (m), int32 levels and present flags
+    (None: every one present): the game's `medium`, for a caller that holds fields outside
+    a state (such as a subset of them, or an observation's rows)."""
+    return medium(_fields(centre_x, centre_y, radius, band_width, level, present), x, y)[0]
 
 
 def log_index_gradient(
@@ -331,11 +334,34 @@ def log_index_gradient(
     level: torch.Tensor,
     x: torch.Tensor,
     y: torch.Tensor,
+    present: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """(ln n, d/dx ln n, d/dy ln n), each (B, P), at points x, y (B, P): `log_index` with
     the gradient a ship's row shows (`log_index_gradient_x`, `log_index_gradient_y`)."""
-    fields = Fields(x=centre_x, y=centre_y, radius=radius, band_width=band_width, level=level)
-    return medium(fields, x, y)
+    return medium(_fields(centre_x, centre_y, radius, band_width, level, present), x, y)
+
+
+def _fields(centre_x, centre_y, radius, band_width, level, present) -> Fields:
+    """Fields from their values (B, M), every one present where present is None."""
+    if present is None:
+        present = torch.ones_like(centre_x, dtype=torch.bool)
+    return Fields(
+        x=centre_x, y=centre_y, radius=radius, band_width=band_width, level=level, present=present
+    )
+
+
+def observed_fields(rows: torch.Tensor) -> Fields:
+    """An observation's field rows (..., M, len(FIELD_COLUMNS)) as the game's Fields (the
+    same values; an absent row, `present` 0, is an absent field): what a learner or a
+    figure re-simulating the medium from stored observations reads."""
+    return Fields(
+        x=rows[..., FIELD["x"]],
+        y=rows[..., FIELD["y"]],
+        radius=rows[..., FIELD["radius"]],
+        band_width=rows[..., FIELD["band_width"]],
+        level=rows[..., FIELD["level"]].to(torch.int32),
+        present=rows[..., FIELD["present"]] > 0.5,
+    )
 
 
 def core_radius(state: State) -> torch.Tensor:

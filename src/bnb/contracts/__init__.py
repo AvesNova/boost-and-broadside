@@ -4,7 +4,7 @@ See docs/rewrite/contracts.md for the reasoning behind each field.
 """
 
 from .action import Action
-from .config import GameConfig, ticks_of
+from .config import ActiveFields, GameConfig, ticks_of
 from .controller import Controller, Outputs
 from .events import ASPECT_BOUNDS, ASPECTS, Events
 from .obs import Obs, Privileged
@@ -13,6 +13,7 @@ from .trajectory import REWARD_LEVELS, SUMMED_LEVEL, Trajectory
 
 __all__ = [
     "ASPECTS",
+    "ActiveFields",
     "ASPECT_BOUNDS",
     "Action",
     "Controller",

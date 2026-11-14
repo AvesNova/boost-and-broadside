@@ -69,13 +69,17 @@ class Bullets:
 
 @contract
 class Fields:
-    """(B, M): centre, radius and band width (m), level in {-2, -1, 1, 2}."""
+    """(B, M): centre, radius and band width (m), level in {-2, -1, 1, 2}; present, the
+    field is in this episode's map. An absent field (field-count sampling,
+    `bnb.contracts.ActiveFields`) keeps its drawn values and has no effect: the medium and
+    the sight test leave it out, and the observation shows its row absent."""
 
     x: torch.Tensor
     y: torch.Tensor
     radius: torch.Tensor
     band_width: torch.Tensor
     level: torch.Tensor
+    present: torch.Tensor
 
 
 @contract
@@ -177,7 +181,9 @@ SHIP_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Ships)} | dict(
     ship_type=INT,
 )
 BULLET_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Bullets)} | dict(moves_left=INT)
-FIELD_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Fields)} | dict(level=INT)
+FIELD_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Fields)} | dict(
+    level=INT, present=BOOL
+)
 MODE_INTEGERS = ("score", "front", "role", "movement", "lock", "wave_wait")
 
 

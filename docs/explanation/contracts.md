@@ -57,7 +57,8 @@ The parts and their columns, from `bnb.contracts.obs`:
 
 <!-- generated: ship-columns -->
 
-**Fields**, `(..., M, len(FIELD_COLUMNS))`, the same in every view:
+**Fields**, `(..., M, len(FIELD_COLUMNS))`, the same in every view. A slot absent from the
+episode's map (field-count sampling) has `present` 0 and every other column 0:
 
 <!-- generated: field-columns -->
 

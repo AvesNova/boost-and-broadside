@@ -858,6 +858,10 @@ class Arena:
             for template in self.groups:
                 if isinstance(template, Yemong):
                     template.mask_benched = True
+        if game.active_fields is not None:  # a Yemong reads no absent field
+            for template in self.groups:
+                if isinstance(template, Yemong):
+                    template.mask_absent_fields = True
         controllers = [model_controller(template, game) for template in self.groups]
         self.seat = MatchSeat(
             controllers,

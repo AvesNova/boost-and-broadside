@@ -424,19 +424,16 @@ class Ablations:
 def absent_zone_key_mask(tokens: Tokens, masked: torch.Tensor) -> torch.Tensor:
     """The key mask (R, N + 1 + M + Z) bool over every key of the spatial attention (the N
     ships, the global token, the M fields, the Z zone slots; `SpatialBlock.forward`) that
-    hides the absent zone slots on the masked views (R,) bool, with the tokens' own ship
-    mask (`Yemong.mask_benched`) kept."""
-    ships = tokens.code.shape[:-1]
-    shown = (
-        tokens.key_mask
-        if tokens.key_mask is not None
-        else torch.ones(ships, dtype=torch.bool, device=masked.device)
-    )
-    fields = torch.ones(
-        ships[:-1] + (1 + tokens.field.shape[-2],), dtype=torch.bool, device=masked.device
-    )
+    hides the absent zone slots on the masked views (R,) bool, with the tokens' own mask
+    (`Yemong.mask_benched`, `Yemong.mask_absent_fields`) kept."""
+    leading = tokens.code.shape[:-2]
+    keys = tokens.code.shape[-2] + 1 + tokens.field.shape[-2]
+    own = tokens.key_mask
+    if own is None:
+        own = torch.ones(leading + (0,), dtype=torch.bool, device=masked.device)
+    shown = torch.ones(leading + (keys - own.shape[-1],), dtype=torch.bool, device=masked.device)
     zones = tokens.zone_present | ~masked[..., None]
-    return torch.cat([shown, fields, zones], -1)
+    return torch.cat([own, shown, zones], -1)
 
 
 @contract
@@ -576,6 +573,13 @@ class Yemong(nn.Module):
         # model computes exactly what it did before the switch. On wherever uneven teams
         # are evaluated (`bnb.league.matches.Arena` with benching).
         self.mask_benched = False
+        # The runtime switch for field-count sampling (`bnb.contracts.ActiveFields`; not a
+        # build field either). On, an absent field (the observation's present flag 0) is no
+        # key or value of any attention, so no output depends on its row. Off, the model
+        # computes exactly what it did before the switch, reading an absent field's zero row
+        # as a field. On wherever field counts vary: training with `TrainConfig.active_fields`
+        # and an `Arena` whose game samples them.
+        self.mask_absent_fields = False
         config = build.config
         self.build, self.config = build, config
         width, hidden = config.width, 2 * config.width
@@ -1013,6 +1017,7 @@ class Yemong(nn.Module):
             self.config.frontline_timer_inputs,
             self.mask_benched,
             self.config.arena_code,
+            self.mask_absent_fields,
         )
 
     def preceding_motion(

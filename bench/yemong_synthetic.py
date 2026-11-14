@@ -101,6 +101,7 @@ def random_segment(
     field[..., 2] = uniform(views, fields, low=100, high=500)
     field[..., 3] = uniform(views, fields, low=20, high=60)
     field[..., 4] = uniform(views, fields, low=0.5, high=2.0)
+    field[..., FIELD_COLUMNS.index("present")] = 1.0
 
     reset = torch.zeros(steps, views, dtype=torch.bool)
     for t in reset_steps:

@@ -8,14 +8,17 @@ from ..state import Fields, State, by_team, enemy
 
 def core_radius(fields: Fields) -> torch.Tensor:
     """(B, M) each field's core radius (m): the inner edge of its band, the radius less half
-    the band, and 0 for a field with no flat interior (game spec 10.1)."""
-    return (fields.radius - 0.5 * fields.band_width).clamp_min(0.0)
+    the band, and 0 for a field with no flat interior (game spec 10.1) or an absent one
+    (`Fields.present`), which then holds no point and blocks no line."""
+    core = (fields.radius - 0.5 * fields.band_width).clamp_min(0.0)
+    return torch.where(fields.present, core, 0.0)
 
 
 def outer_radius(fields: Fields) -> torch.Tensor:
     """(B, M) each field's outer radius (m): the outer edge of its band, the radius plus
-    half the band (game spec 10.1)."""
-    return fields.radius + 0.5 * fields.band_width
+    half the band (game spec 10.1); 0 for an absent field (`Fields.present`), which holds no
+    point."""
+    return torch.where(fields.present, fields.radius + 0.5 * fields.band_width, 0.0)
 
 
 def membership(discs: tuple, x: torch.Tensor, y: torch.Tensor) -> tuple:

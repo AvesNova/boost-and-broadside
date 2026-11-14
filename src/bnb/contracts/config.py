@@ -88,6 +88,30 @@ def layout_of(data: dict) -> MapLayout:
 
 
 @dataclasses.dataclass(frozen=True)
+class ActiveFields:
+    """Field-count sampling: each episode plays `low` to `high` of the game's field slots,
+    the rest absent (no effect on the game, and shown absent: `bnb.game.physics.spawning`).
+    The count is drawn uniformly among the counts the map's symmetry allows in the range:
+    fields come in point-symmetric pairs, with one centre field when the slot count is odd,
+    so an even slot count plays even counts only. The active fields are the first pairs
+    (and the centre field for an odd count); a map's fields are independent draws, so they
+    lie as a map of that many fields would."""
+
+    low: int
+    high: int
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.low <= self.high:
+            raise ValueError(f"{self}: need 0 <= low <= high")
+
+    def counts(self, num_fields: int) -> tuple[int, ...]:
+        """The active field counts a game of num_fields slots draws from, in order."""
+        step = 1 if num_fields % 2 else 2
+        top = min(self.high, num_fields)
+        return tuple(count for count in range(self.low, top + 1) if count % step == 0)
+
+
+@dataclasses.dataclass(frozen=True)
 class GameConfig:
     """Sizes and rules of one match. Everything else comes from the game's constants.
 
@@ -113,6 +137,8 @@ class GameConfig:
         The whole batch shares it (a pool cannot change it).
     layout: a fixed map (`MapLayout`: fields, spawn points) in team deathmatch or
         elimination; None draws the map at random at every new match.
+    active_fields: field-count sampling (`ActiveFields`): each episode plays a drawn number
+        of the num_fields slots, the rest absent; None plays every field.
     """
 
     ships_per_team: int
@@ -125,6 +151,7 @@ class GameConfig:
     kills_per_ship: int = 5
     ship_set: str = STANDARD_SHIP_SET
     layout: MapLayout | None = None
+    active_fields: ActiveFields | None = None
 
     def __post_init__(self) -> None:
         if not 1 <= self.ships_per_team or self.num_ships > MAX_SHIPS:
@@ -150,6 +177,16 @@ class GameConfig:
             raise ValueError("elimination has no respawn: leave respawn_seconds out")
         if self.layout is not None:
             self._check_layout(self.layout)
+        if self.active_fields is not None:
+            if self.active_fields.high > self.num_fields:
+                raise ValueError(
+                    f"{self.active_fields}: at most the game's {self.num_fields} fields"
+                )
+            if not self.active_fields.counts(self.num_fields):
+                raise ValueError(
+                    f"{self.active_fields}: {self.num_fields} fields in pairs play even "
+                    "counts only, and the range holds none"
+                )
 
     def _check_layout(self, layout: MapLayout) -> None:
         if self.mode not in LAYOUT_MODES:

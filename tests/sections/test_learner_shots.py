@@ -308,7 +308,7 @@ def test_a_miss_records_its_closest_pass_and_that_ships_side(shooter, positions,
     rules, types = api.rules_of(GameConfig(2, 2, 1500.0)), api.ship_types()
     length, rows = MOVES, 4
     capture = _still(rows, length, positions)
-    far_field = torch.tensor([1e5, 1e5, 1.0, 1.0, 0.0]).expand(length, 1, 1, 5)
+    far_field = torch.tensor([1e5, 1e5, 1.0, 1.0, 0.0, 1.0]).expand(length, 1, 1, 6)
     shots = resimulate(
         rules,
         types,
@@ -330,8 +330,9 @@ def test_a_miss_records_its_closest_pass_and_that_ships_side(shooter, positions,
 
 
 def _straight_shot(positions, field_rows, alive=None):
-    """The shots of ships standing at `positions` (2v2) through `field_rows` (M, 5), the
-    first fired along +x at tick 0; alive (rows,) which stand alive (all by default)."""
+    """The shots of ships standing at `positions` (2v2) through `field_rows` (M, 5: x, y,
+    radius, band width, level; each present), the first fired along +x at tick 0; alive
+    (rows,) which stand alive (all by default)."""
     rules, types = api.rules_of(GameConfig(2, 2, 1500.0)), api.ship_types()
     length, rows = MOVES, len(positions)
     capture = _still(rows, length, positions)
@@ -342,7 +343,8 @@ def _straight_shot(positions, field_rows, alive=None):
             displacement_y=capture.displacement_y,
             alive=torch.tensor(alive).expand(length, 1, rows).clone(),
         )
-    fields = torch.tensor(field_rows, dtype=torch.float32).expand(length, 1, -1, 5)
+    present = [row + [1.0] for row in field_rows]
+    fields = torch.tensor(present, dtype=torch.float32).expand(length, 1, -1, 6)
     return resimulate(
         rules,
         types,

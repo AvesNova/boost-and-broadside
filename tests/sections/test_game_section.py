@@ -401,6 +401,7 @@ def _fields(x, y, radius, level):
         radius=row(radius),
         band_width=torch.full((1, len(x)), 40.0),
         level=row(level, torch.int32),
+        present=torch.ones((1, len(x)), dtype=torch.bool),
     )
 
 

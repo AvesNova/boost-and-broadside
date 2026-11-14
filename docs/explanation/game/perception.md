@@ -74,7 +74,9 @@ observation shows it in seconds, in `time_since_seen`.
   roster), so no agent has to infer a bench from a frozen respawn wait. It is 0 in a game
   with every ship active, and comes from the `active` given to `perceive` (the rollout
   passes its own; the play shell plays full teams).
-- The fields are the same in every view. The zones and the mode's global columns come from
+- The fields are the same in every view. A field slot absent from the episode's map
+  (field-count sampling, [Mixed batches](mixed-batches.md#field-count-sampling)) has a row
+  of zeros but for `present` 0, and blocks no sight line. The zones and the mode's global columns come from
   the mode, on its own slice of the batch (see [Modes](modes.md)).
   Frontline's capture locks are public zone columns. Each view's `next_wave_own` is its own
   team's wave clock only, and an enemy ship's `respawn_wait` shows only its minimum wait,

@@ -322,7 +322,7 @@ cut; where they differ, this section and the code win.
     match (a team's last S - active slots), shown to both teams under fog.
 
   Times are in seconds.
-- **Field columns:** x, y, radius, band_width, level.
+- **Field columns:** x, y, radius, band_width, level, present (0 for a slot absent from the episode's map, whose other columns are 0).
 - **Global columns:** episode_progress, arena_radius, fogged, reset, boundary_fraction,
   boundary_time_to_zero, then the mode's columns (see the modes section below):
   mode_team_deathmatch, mode_frontline, mode_elimination, score_own, score_enemy,
@@ -424,6 +424,12 @@ cut; where they differ, this section and the code win.
     (1 where the pool does not sample); the episode's arena radius is the pool's radius
     times it, at least the mode's minimum (`bnb.game.layout.sized`). Training samples by
     default (`TrainConfig.arena_scale`).
+  - **Field-count sampling (2026-11-15):** `GameConfig.active_fields` and
+    `Pool.active_fields` (`ActiveFields`: low, high; None, every field) draw each
+    episode's active field count from the counts in range that keep the map's pair
+    symmetry, from one extra tick uniform (the last; only where a pool samples). The state
+    keeps `Fields.present` (B, M); the observation's field rows gain `present`, an absent
+    row zero but for it. `TrainConfig.active_fields` sets it on the training pools.
   - **`Rules.pools`** (a tuple of `PoolRules`: environments, mode, arena radius, episode
     and respawn ticks) replaces `Rules.mode`, `arena_radius`, `episode_ticks` and
     `respawn_ticks`. Adjacent pools of one game merge; without pools, one game covers the

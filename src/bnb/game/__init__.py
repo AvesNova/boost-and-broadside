@@ -165,7 +165,16 @@ and every map length follows its map scale. `Match.arena_scale` (B,) holds it (1
 sampling); that new leaf is the fingerprint's only change.
 Frontline's arena has a floor too (`MINIMUM_ARENA_RADIUS`, 1400 m at map scale 1, 4200 m at
 real scale), so a sampled small Frontline map keeps its floored zones inside the boundary.
+
+Version 20 (2026-11-15): absent fields. `Fields.present` (B, M) and the observation's field
+column `present`: a game or pool with `active_fields` (`bnb.contracts.ActiveFields`) draws
+each episode's active field count (the first point-symmetric pairs, and the centre field
+for an odd count) from one more tick uniform, the last (only when some pool samples); an
+absent field adds nothing to the medium, blocks no sight line and shows a zero row with
+`present` 0. Every preset plays every field and computes the same numbers: without the new
+leaf and column the fingerprint is the base's (7f35d79ccfe509be; the keyed rollout draws of
+feat/seed-isolation had moved it from version 19's e16ea10c244756ab).
 """
 
-VERSION = 19
-FINGERPRINT = "e16ea10c244756ab"
+VERSION = 20
+FINGERPRINT = "477cbfae2f748b1e"

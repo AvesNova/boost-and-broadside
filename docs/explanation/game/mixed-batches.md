@@ -66,6 +66,29 @@ Training samples by default (`TrainConfig.arena_scale`: sigma 0.35, bounds 0.5 t
 play keep their games' own sizes. To rate at another size, give the game that radius
 (`api.arena_radius_for(game, ships_per_team, scale)`).
 
+## Field-count sampling
+
+A game or pool with `active_fields` (`bnb.contracts.ActiveFields`: low, high) plays a drawn
+number of its `num_fields` slots each episode; the rest are absent. The fields come in
+point-symmetric pairs (with one centre field when the slot count is odd), so the count is
+drawn uniformly among the counts in [low, high] that keep the map symmetric: even counts
+only for an even slot count. The active fields are the first pairs, plus the centre field
+for an odd count (`bnb.game.physics.spawning.draw_active_fields`). A map's fields are
+independent draws, so the active ones lie as a map of that many fields would.
+
+The state keeps the result as `Fields.present` (B, M). An absent field keeps its drawn
+values and has no effect: the medium gives it a profile of exactly 0 (so flight, bullets
+and spawns see the map without it), the sight test gives it no core and no outer disc,
+and its observation row is zero but for `present` 0. The draw takes one tick uniform,
+placed after every other, and only when some pool samples, so a batch without sampling
+draws exactly as before and turning sampling on moves no other draw. In the rollout that
+uniform is keyed by (seed, environment, episode) like the rest of the episode's map.
+
+Training samples when `TrainConfig.active_fields` is set (default None: every field, in
+every preset); the rating lanes keep their games' own fields. `bnb ratings --active-fields
+LOW HIGH` rates on games that sample. A Yemong playing such games masks the absent fields
+(`Yemong.mask_absent_fields`, [Yemong](../yemong.md)).
+
 ## Fixed shapes across modes
 
 - **Zones.** Every environment carries the same zone slots. In a mode without zones they
