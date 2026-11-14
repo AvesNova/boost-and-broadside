@@ -185,9 +185,10 @@ PRESETS["clover"] = GameConfig(
 LINEUPS = {"arena": ("Yongma", "Jujak")}
 
 # Team deathmatch's outcome for the learner (`ModeRules.deathmatch_outcome`,
-# `bnb.game.modes.phase.win_loss`): "kill_share", the game's kill share (share, 1 - share),
-# as the ratings score it by default; "kill_lead", the result one-hot by the sign of the
-# final kill difference (a draw neither), as the other modes' outcomes are.
+# `bnb.game.modes.phase.win_loss`): "kill_lead", the default (decided 2026-11-14), the
+# result one-hot by the sign of the final kill difference (a draw neither), as the other
+# modes' outcomes are and as the ratings score it by default; "kill_share", the game's
+# kill share (share, 1 - share).
 DEATHMATCH_OUTCOMES = ("kill_share", "kill_lead")
 
 # Fleet-size evaluation presets (zero-shot: training is 5v5 only), of each base game:
@@ -291,7 +292,7 @@ class ModeRules:
     shrink_end_lead_seconds: float = 8.0
     shrink_law: int = 0
     layout: MapLayout | None = None
-    deathmatch_outcome: str = "kill_share"
+    deathmatch_outcome: str = "kill_lead"
 
     def __post_init__(self) -> None:
         if self.deathmatch_outcome not in DEATHMATCH_OUTCOMES:

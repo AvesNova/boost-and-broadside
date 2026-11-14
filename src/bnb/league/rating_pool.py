@@ -69,6 +69,7 @@ from .design import BOUNDED, RATED, Posterior, fit_posterior, pair_weights, plan
 from .matches import default_lanes, network_groups
 from .tournament import (
     ANCHOR,
+    DEATHMATCH_SCORE,
     TournamentConfig,
     _append,
     _legacy_identities,
@@ -172,7 +173,7 @@ class RatingPool:
         root: str | os.PathLike,
         lineup: tuple[str, ...] = (),
         arena_scale: float | None = None,
-        deathmatch_score: str = "kill_share",
+        deathmatch_score: str = DEATHMATCH_SCORE,
     ) -> RatingPool:
         """A new pool at `root` (an existing one is opened, its conditions unchanged when they
         agree): every game in it is played with `lineup` (each slot's ship type by name, both

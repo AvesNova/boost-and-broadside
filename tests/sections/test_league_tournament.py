@@ -480,21 +480,22 @@ def test_the_aspect_statistics_split_each_rows_kills_and_hit_damage():
 
 
 def test_a_deathmatch_block_is_scored_by_its_games_kill_shares():
-    """Team deathmatch is rated by kill share (the author, 2026-11-13): each game's score is
-    the second player's deaths over both sides' (any cause, as the mode's score counts
-    them; 0.5 with none), a block's result (score, 0, games - score); elimination and
-    frontline keep win, draw and loss."""
+    """With deathmatch_score "kill_share" team deathmatch is rated by kill share: each
+    game's score is the second player's deaths over both sides' (any cause, as the mode's
+    score counts them; 0.5 with none), a block's result (score, 0, games - score);
+    elimination and frontline keep win, draw and loss."""
     from bnb.contracts.config import ELIMINATION, FRONTLINE
     from bnb.league.matches import STATISTICS
 
     game = dataclasses.replace(GAME, arena_radius=600.0, episode_seconds=12.0)
-    assert tournament.kill_share_scored(game)
+    assert tournament.kill_share_scored(game, "kill_share")
     eliminated = dataclasses.replace(game, mode=ELIMINATION, respawn_seconds=None)
-    assert not tournament.kill_share_scored(eliminated)
-    assert not tournament.kill_share_scored(dataclasses.replace(game, mode=FRONTLINE))
+    assert not tournament.kill_share_scored(eliminated, "kill_share")
+    frontline = dataclasses.replace(game, mode=FRONTLINE)
+    assert not tournament.kill_share_scored(frontline, "kill_share")
     arena = Arena([SCRIPTED, RANDOM], game, CPU, SMALL)
     torch.manual_seed(3)
-    results = tournament.scored(arena, game, [(0, 1), (1, 0)])
+    results = tournament.scored(arena, game, [(0, 1), (1, 0)], "kill_share")
     rows = arena.rollout.carry["controllers"][SEAT].statistics.double()
     deaths = rows[:, STATISTICS.index("deaths")].reshape(2, 2, SMALL.block_environments)
     assert float(deaths.sum()) > 0.0  # the test means something: games with deaths
@@ -510,19 +511,21 @@ def test_a_deathmatch_block_is_scored_by_its_games_kill_shares():
 
 
 def test_a_deathmatch_block_scored_by_win_loss_counts_each_games_kill_lead():
-    """With deathmatch_score "win_loss" a team deathmatch game is a win, draw or loss by the
-    sign of its final kill difference (the first player's kills are the second's deaths)."""
+    """With deathmatch_score "win_loss" (the default) a team deathmatch game is a win, draw
+    or loss by the sign of its final kill difference (the first player's kills are the
+    second's deaths); a recorded batch that names no scoring was scored by kill share."""
     from bnb.league.matches import STATISTICS
 
     game = dataclasses.replace(GAME, arena_radius=600.0, episode_seconds=12.0)
-    assert not tournament.kill_share_scored(game, "win_loss")
-    assert tournament.scoring_of(game, "win_loss") == "win_loss"
-    assert tournament.scoring_of(game) == "kill_share"
+    assert not tournament.kill_share_scored(game)
+    assert tournament.scoring_of(game, "kill_share") == "kill_share"
+    assert tournament.scoring_of(game) == "win_loss"
+    assert tournament.unnamed_scoring(game) == "kill_share"
     with pytest.raises(ValueError, match="deathmatch score"):
         tournament.kill_share_scored(game, "kill_lead")
     arena = Arena([SCRIPTED, RANDOM], game, CPU, SMALL)
     torch.manual_seed(3)
-    results = tournament.scored(arena, game, [(0, 1), (1, 0)], "win_loss")
+    results = tournament.scored(arena, game, [(0, 1), (1, 0)])
     rows = arena.rollout.carry["controllers"][SEAT].statistics.double()
     deaths = rows[:, STATISTICS.index("deaths")].reshape(2, 2, SMALL.block_environments)
     lead = torch.sign(deaths[:, 1] - deaths[:, 0])  # (blocks, games): the first player's
@@ -897,7 +900,16 @@ def test_a_record_keeps_full_outcomes_and_is_refitted_under_either_scoring(tmp_p
     names = [p.name for p in field]
     torch.manual_seed(3)
     played = tournament.TournamentConfig(SMALL, target_stderr=1.0, hopeless=math.inf, budget=16)
-    tournament.rate(field, "small", CPU, played, lambda line: None, game, record=record)
+    tournament.rate(
+        field,
+        "small",
+        CPU,
+        played,
+        lambda line: None,
+        game,
+        record=record,
+        deathmatch_score="kill_share",
+    )
     lines = [json.loads(line) for line in record.read_text().splitlines()]
     assert len(lines) == 2 and all(line["scoring"] == "kill_share" for line in lines)
     for line in lines:
@@ -923,7 +935,16 @@ def test_a_record_keeps_full_outcomes_and_is_refitted_under_either_scoring(tmp_p
         assert sum(row["games"] for row in rows) == 2 * 16
     assert len(record.read_text().splitlines()) == 2  # nothing appended
     recorded = [row["rating"] + GAUGE_TOP for row in lines[-1]["ratings"]]
-    kill_share = tournament.rate(field, "small", CPU, refit, lambda line: None, game, record=record)
+    kill_share = tournament.rate(
+        field,
+        "small",
+        CPU,
+        refit,
+        lambda line: None,
+        game,
+        record=record,
+        deathmatch_score="kill_share",
+    )
     assert [row["calibrated_elo"] for row in kill_share] == pytest.approx(recorded)
     # reused under either scoring, into another field (one player left out)
     for scoring in (("win_loss", "kill_share"), ("kill_share", "kill_share")):

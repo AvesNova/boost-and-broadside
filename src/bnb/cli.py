@@ -26,8 +26,9 @@ from bnb.figures.video import VideoConfig
 from bnb.league.evaluation_settings import EvaluationConfig
 
 # The rating games (`bnb.league.tournament.PRESET_NAMES`, kept here so the CLI starts
-# without torch): frontline, elimination and team deathmatch, rated by kill share
-# (`bnb.league.tournament.kill_share_scored`) unless --deathmatch-score win_loss.
+# without torch): frontline, elimination and team deathmatch, team deathmatch rated by the
+# kill lead (a win, draw or loss) unless --deathmatch-score kill_share
+# (`bnb.league.tournament.kill_share_scored`).
 RATED_PRESETS = ("frontline", "elimination", "deathmatch")
 
 
@@ -255,9 +256,9 @@ class Ratings:
     seed: the games' draws (`bnb.league.matches.ArenaConfig.seed`; None: a fresh one,
     recorded with the result), so several tournaments of one field, run at once and reused
     together, play different games.
-    deathmatch_score: how the fit scores a team deathmatch game: kill_share (the default),
-    its kill share, or win_loss, a win, draw or loss by the sign of the final kill
-    difference (`bnb.league.tournament.kill_share_scored`). Each batch records every
+    deathmatch_score: how the fit scores a team deathmatch game: win_loss (the default), a
+    win, draw or loss by the sign of the final kill difference, or kill_share, its kill
+    share (`bnb.league.tournament.kill_share_scored`). Each batch records every
     block's full outcome (wins, draws, losses, summed kill shares and kills), so a record
     is resumed and reused under either; a record written before that, which holds only
     its own scoring's results, is not resumed (choose another --out) or reused under the
@@ -304,7 +305,7 @@ class Ratings:
     reuse: tuple[str, ...] = ()
     lineup: tuple[str, ...] = ()
     seed: int | None = None
-    deathmatch_score: Literal["kill_share", "win_loss"] = "kill_share"
+    deathmatch_score: Literal["win_loss", "kill_share"] = "win_loss"
     arena_scale: float | None = None
     active_fields: tuple[int, int] | None = None
     decision: tuple[str, ...] = ()
@@ -333,7 +334,7 @@ class HeadToHead:
 
     players: the pairs; games: games per pair and preset (even); presets; device;
     runs_directory: as for bnb train; deathmatch_score: how a team deathmatch game is
-    scored, kill_share (the default) or win_loss (as for bnb ratings); lineup: each slot's
+    scored, win_loss (the default) or kill_share (as for bnb ratings); lineup: each slot's
     ship type by name, both teams, for every player (as for bnb ratings; empty: the game's
     own); blocks and block_environments: the engine's layout at most;
     seed: the games' draws (`bnb.league.matches.ArenaConfig.seed`).
@@ -344,7 +345,7 @@ class HeadToHead:
     presets: tuple[str, ...] = RATED_PRESETS
     device: str = "cuda"
     runs_directory: str | None = None
-    deathmatch_score: Literal["kill_share", "win_loss"] = "kill_share"
+    deathmatch_score: Literal["win_loss", "kill_share"] = "win_loss"
     lineup: tuple[str, ...] = ()
     blocks: int = 8
     block_environments: int = 128
@@ -610,7 +611,7 @@ class Pool:
     name: str | None = None
     lineup: tuple[str, ...] = ()
     arena_scale: float | None = None
-    deathmatch_score: Literal["kill_share", "win_loss"] | None = None
+    deathmatch_score: Literal["win_loss", "kill_share"] | None = None
     presets: tuple[str, ...] = RATED_PRESETS
     target_stderr: float = 45.0
     decision: tuple[str, ...] = ()
@@ -2122,7 +2123,7 @@ def pool(options: Pool) -> None:
                 options.pool,
                 options.lineup,
                 options.arena_scale,
-                options.deathmatch_score or "kill_share",
+                options.deathmatch_score or "win_loss",
             )
         except ValueError as error:
             raise SystemExit(str(error)) from error
@@ -2146,10 +2147,10 @@ def _pool_scoring(opened, preset: str, deathmatch_score: str | None) -> tuple[st
     """(how the fit scores a preset's games, the scoring a batch that names none was
     fitted under; `bnb.league.tournament.recorded_results`)."""
     from bnb.game.api import PRESETS
-    from bnb.league.tournament import scoring_of
+    from bnb.league.tournament import scoring_of, unnamed_scoring
 
-    chosen = deathmatch_score or opened.settings.get("deathmatch_score", "kill_share")
-    return scoring_of(PRESETS[preset], chosen), scoring_of(PRESETS[preset])
+    chosen = deathmatch_score or opened.settings["deathmatch_score"]
+    return scoring_of(PRESETS[preset], chosen), unnamed_scoring(PRESETS[preset])
 
 
 def _pool_add(opened, options: Pool) -> None:
