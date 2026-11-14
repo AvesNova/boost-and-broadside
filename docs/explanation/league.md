@@ -305,7 +305,9 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   both sides' (0.5 with none), taken by the fit as a draw's half is
   (`bnb.league.tournament.kill_share_scored`). `--deathmatch-score win_loss` scores it
   instead as a win, a draw or a loss by the sign of the final kill difference, as the
-  other modes are. `bnb head-to-head` takes the same option.
+  other modes are. `bnb head-to-head` takes the same option. The scoring is applied when
+  the games are fitted, not when they are recorded (see the record below), so the option
+  chooses only how the fit reads the games.
 - The tournament stops when every standard error is under `--target-stderr`, or when the
   next batch would pass `--budget` games.
 - The leaderboard rows (`calibrated_elo`) are keyed by game version, mode, map and fleet
@@ -313,14 +315,50 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   `artifacts/ratings/` with the inputs' hashes.
 - **The record:** after each batch one JSON line is appended, and synced to disk, to
   `<preset>.batches.jsonl` in `--out` (else the run's `artifacts/ratings/`): the batch's
-  index, its blocks' matchups and results, the games so far, every player's rating and
-  standard error, the worst error, the batch's seconds and the wall time, the games reused
-  (`reused_games`), each player's identity (`identities`, name to identity) and the
-  scoring (`scoring`: `kill_share` or `win_loss`; a batch without one was scored by the
-  default). A tournament that finds its preset's record rebuilds the games from it and
+  index, its blocks' matchups and each block's full outcome, the games so far, every
+  player's rating and standard error, the worst error, the batch's seconds and the wall
+  time, the games reused (`reused_games`), each player's identity (`identities`, name to
+  identity) and the scoring the batch's ratings were fitted under (`scoring`: `kill_share`
+  or `win_loss`). A block's full outcome is kept in every mode, whatever the scoring
+  (`bnb.league.tournament.outcomes`): `results`, the first player's wins, draws and losses
+  by the game's own rule (in team deathmatch the sign of the final kill difference);
+  `kill_share`, the sum of its games' kill shares; and `kills`, the first player's and the
+  second player's kills summed over the block's games. A batch line looks like
+
+  ```json
+  {"batch": 0, "game_version": 19, "scoring": "kill_share",
+   "matchups": [["scripted", "a"], ["a", "b"]],
+   "results": [[31, 4, 93], [70, 9, 49]], "kill_share": [41.2, 72.9],
+   "kills": [[210, 402], [377, 241]], "games": 256, ...}
+  ```
+
+  The record keeps sums per block, not per game: the fit uses only each pair's sums, and
+  a batch of 8 blocks of 128 games would otherwise carry 1024 rows a line. The kills are
+  read once after the batch, from the counts the games keep on the device, as the
+  kill-share scoring always read them; nothing is added per game.
+- **Scoring at fit time** (`bnb.league.tournament.recorded_results`): a batch with its
+  full outcome is read under either scoring, as its wins, draws and losses or as (the
+  summed shares, 0, the games less them). A record written before the full outcome was
+  kept holds only the results of the scoring it names (a batch that names none was
+  scored by the default: kill share in team deathmatch, a win, draw or loss elsewhere),
+  and is read only under that scoring; in a record that mixes the two, each batch is
+  judged on its own.
+- **Resuming:** a tournament that finds its preset's record rebuilds the games from it and
   goes on (the record's field must be its own: same names, same order, same identities,
-  and the same scoring, else it stops and asks for another `--out`); a finished one plays
-  nothing.
+  else it stops and asks for another `--out`; an older batch of the other scoring stops
+  it too); a finished one plays nothing.
+- **Refitting without playing:** `--budget 0` plays no games and builds no engine. The
+  field is fitted from its record in `--out` and the `--reuse` records alone, under
+  `--deathmatch-score`, and the leaderboard is written as usual. A tournament is
+  re-rated under the other scoring with
+
+  ```
+  bnb ratings RUN --out DIR --budget 0 --deathmatch-score win_loss
+  ```
+
+  and with players added or left out by naming the new field, a fresh `--out` and the old
+  directory as `--reuse DIR` (only games whose two players are both in the field count,
+  so a newcomer needs a budget to be rated).
 - **Reusing earlier games** (`--reuse DIR [DIR ...]`, `bnb.league.tournament.reuse_record`):
   every `<preset>.batches.jsonl` below the directories (as `--out` writes them; the run's
   own record is left out) adds each recorded game whose two players are both in the field
@@ -331,8 +369,9 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   weights file as its checkpoint.json records it (with its ablations), so a moved
   policy still matches and other weights at the same path do not; a scripted player's
   (the ladder's, a teacher's) is its name. Each record's reused games, matched players and
-  skipped names are logged. A record of the other deathmatch scoring is not reused; its
-  players are reported skipped with the reason. A **legacy record** (written before identities were recorded)
+  skipped names are logged. Older batches of the other deathmatch scoring are left out
+  and counted in the log; a record made only of them is reported with every player
+  skipped and the reason. A **legacy record** (written before identities were recorded)
   holds no hashes, so it trusts its paths: each name is resolved as it would be now, and
   is skipped when it no longer resolves, or when its policy's checkpoint.json `time` is
   after the record's first batch ended. That catches a rewind, which moves a policy to

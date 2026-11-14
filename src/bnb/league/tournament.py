@@ -26,9 +26,14 @@ weights, a scripted player by its name), starts the fit, and only the batches st
 are played.
 
 Team deathmatch is scored by kill share by default, or by win, draw or loss by the sign of
-the final kill difference (`deathmatch_score`, `DEATHMATCH_SCORES`). Each record's batches
-name their scoring (`scoring`), and games of one scoring are never resumed or reused under
-the other (`scoring_of`).
+the final kill difference (`deathmatch_score`, `DEATHMATCH_SCORES`). The scoring is applied
+when the games are fitted, not when they are recorded: each block of a batch keeps its full
+outcome (`outcomes`: wins, draws and losses by the game's win rule, the summed kill shares
+and each side's summed kills), so a record is resumed and reused under either scoring
+(`recorded_results`). A record written before the full outcome was kept holds only the
+results of the scoring it names (`scoring`; none named, the default's), and is used only
+under that scoring. A budget of 0 plays nothing: the field is refitted from its record and
+the reused records alone.
 """
 
 import dataclasses
@@ -49,7 +54,15 @@ from bnb.game.api import PRESETS
 from bnb.runs import checkpoint
 
 from .gauge import GAUGE_TOP
-from .matches import Arena, ArenaConfig, Player, default_lanes, network_groups, player
+from .matches import (
+    Arena,
+    ArenaConfig,
+    Player,
+    default_lanes,
+    kill_share_sums,
+    network_groups,
+    player,
+)
 from .ratings import allocate_blocks, fit_ratings
 
 # The rating games (the author, 2026-11-13): frontline, elimination (the clock to the team
@@ -68,8 +81,9 @@ ALLOCATIONS = ("a_optimal", "balanced")
 class TournamentConfig:
     """arena: the match engine's layout (a batch is its blocks' games); target_stderr:
     rating points every standard error must be under to stop; budget: games per preset at
-    most (whole batches); allocation: how a batch's blocks choose their pairs, "a_optimal"
-    (`allocate_blocks`) or "balanced" (`balanced_blocks`)."""
+    most (whole batches), 0 to play none and refit from the recorded games; allocation:
+    how a batch's blocks choose their pairs, "a_optimal" (`allocate_blocks`) or "balanced"
+    (`balanced_blocks`)."""
 
     arena: ArenaConfig = ArenaConfig()
     target_stderr: float = 25.0
@@ -81,9 +95,10 @@ class TournamentConfig:
             raise ValueError(f"allocation {self.allocation!r} is not one of {ALLOCATIONS}")
         if self.target_stderr <= 0.0:
             raise ValueError(f"target_stderr {self.target_stderr} must be positive")
-        if self.budget < self.arena.games:
+        if self.budget < 0 or 0 < self.budget < self.arena.games:
             raise ValueError(
-                f"a budget of {self.budget} games is less than one batch ({self.arena.games})"
+                f"a budget of {self.budget} games is less than one batch ({self.arena.games}) "
+                "and not 0 (refit only)"
             )
 
 
@@ -173,6 +188,44 @@ def scoring_of(game: GameConfig, deathmatch_score: str = "kill_share") -> str:
     return "kill_share" if kill_share_scored(game, deathmatch_score) else "win_loss"
 
 
+def outcomes(arena: Arena, matchups: list[tuple[int, int]]) -> tuple[torch.Tensor, dict]:
+    """One batch's full outcome by block, whatever the scoring: (blocks, 3) int64 the first
+    player's (wins, draws, losses) by the game's win rule (`Arena.play`; in team deathmatch
+    the sign of the final kill difference), and the record's further columns, "kill_share"
+    each block's summed kill shares (`kill_share_sums`) and "kills" each block's (first
+    player's, second player's) kills summed over its games. The kills are read once after
+    the batch (`Arena.deaths`), as the kill-share scoring always read them."""
+    results = arena.play(matchups)
+    deaths = arena.deaths()
+    kills = torch.stack([deaths[:, 1].sum(-1), deaths[:, 0].sum(-1)], -1)
+    return results, dict(
+        kill_share=kill_share_sums(deaths).tolist(), kills=kills.round().long().tolist()
+    )
+
+
+def score_results(results: list, kill_share: list, scoring: str) -> list[list[float]]:
+    """Full outcomes by block (`outcomes`) as `scoring` rates them: "win_loss" the (wins,
+    draws, losses) as they are; "kill_share" (the summed shares, 0, the games less them)."""
+    if scoring == "kill_share":
+        return [
+            [share, 0.0, sum(row) - share] for row, share in zip(results, kill_share, strict=True)
+        ]
+    return [list(row) for row in results]
+
+
+def recorded_results(entry: dict, scoring: tuple[str, str] | None) -> list | None:
+    """A recorded batch's results by block as a fit of scoring[0] reads them, or None when
+    it cannot. A batch with its full outcome (a "kill_share" column; `outcomes`) is scored
+    as asked (`score_results`); an older one holds only the results of the scoring it names
+    (none named: scoring[1], the default's), usable only under that scoring. scoring None:
+    the results as they were recorded."""
+    if scoring is None:
+        return entry["results"]
+    if "kill_share" in entry:
+        return score_results(entry["results"], entry["kill_share"], scoring[0])
+    return entry["results"] if entry.get("scoring", scoring[1]) == scoring[0] else None
+
+
 def scored(
     arena: Arena,
     game: GameConfig,
@@ -192,7 +245,7 @@ def _add(wins, pair_games, matchups, results) -> int:
     for (first, second), (won, tied, lost) in zip(matchups, results, strict=True):
         wins[first, second] += won + tied / 2
         wins[second, first] += lost + tied / 2
-        games = won + tied + lost
+        games = round(won + tied + lost)  # whole games; a kill-share row sums to them
         pair_games[first, second] += games
         pair_games[second, first] += games
         played += games
@@ -218,14 +271,16 @@ def _replay(
 ) -> tuple[int, int, list]:
     """The batches a record holds, added to the wins and the pair games: (batches, games,
     the batch seconds). Its field must be `names` (and `identities`, where it records them),
-    and its scoring scoring[0] (a batch that names none was scored scoring[1]; `fit_field`)."""
+    and every batch readable under scoring (`recorded_results`; `fit_field`)."""
     batches, played, seconds = 0, 0, []
     for line in record.read_text().splitlines():
         entry = json.loads(line)
-        if scoring is not None and entry.get("scoring", scoring[1]) != scoring[0]:
+        results = recorded_results(entry, scoring)
+        if results is None:
             raise ValueError(
-                f"{record} was scored by {entry.get('scoring', scoring[1])}, not {scoring[0]}; "
-                "move it aside or name another --out"
+                f"{record} was scored by {entry.get('scoring', scoring[1])}, not {scoring[0]}, "
+                "before records kept every game's full outcome; move it aside or name another "
+                "--out"
             )
         recorded = entry.get("identities")
         if [row["player"] for row in entry["ratings"]] != names or (
@@ -236,7 +291,7 @@ def _replay(
             raise ValueError(f"{record} rates another field; move it aside to start over")
         index = {name: number for number, name in enumerate(names)}
         matchups = [(index[first], index[second]) for first, second in entry["matchups"]]
-        played += _add(wins, pair_games, matchups, entry["results"])
+        played += _add(wins, pair_games, matchups, results)
         batches += 1
         seconds.append(entry["seconds"])
     return batches, played, seconds
@@ -293,7 +348,8 @@ class Reused:
     pair_games (K, K) as `fit_field` keeps them, games the games added, batches and recorded
     the record's batches and players; matched: each recorded name in the field and the
     field's name for it; skipped: each recorded name left out and why (a name merely not in
-    the field is in neither)."""
+    the field is in neither); unscored: the batches left out because they hold only
+    another scoring's results (`recorded_results`)."""
 
     wins: torch.Tensor
     pair_games: torch.Tensor
@@ -302,6 +358,7 @@ class Reused:
     recorded: tuple[str, ...]
     matched: dict[str, str]
     skipped: dict[str, str]
+    unscored: int = 0
 
 
 def reuse_record(
@@ -317,9 +374,10 @@ def reuse_record(
     matched by them; a legacy one (none recorded) by the players its names mean now
     (`resolve`, `_legacy_identities`). A recorded identity that two of the field's players
     share is left out (ambiguous). A record of another game version (`bnb.game.VERSION`; a
-    record without one is version 1's) is not reused: its games were another game's. Nor is
-    one of another scoring: scoring is (this tournament's, the one a record that names none
-    was scored by; `scoring_of`), None to take any record."""
+    record without one is version 1's) is not reused: its games were another game's. scoring:
+    (this tournament's scoring, the one a batch that names none was scored by; `scoring_of`),
+    None to take the results as recorded: a batch with its full outcome is read under any
+    scoring, an older one only under its own (`recorded_results`)."""
     count = len(names)
     wins = torch.zeros((count, count), dtype=torch.float64)
     pair_games = torch.zeros((count, count), dtype=torch.float64)
@@ -329,12 +387,12 @@ def reuse_record(
     first = entries[0]
     recorded = [row["player"] for row in first["ratings"]]
     version = first.get("game_version", 1)
-    recorded_scoring = None if scoring is None else first.get("scoring", scoring[1])
+    readable = [recorded_results(entry, scoring) for entry in entries]
     reason = None
     if version != GAME_VERSION:
         reason = f"game version {version}, not {GAME_VERSION}"
-    elif scoring is not None and recorded_scoring != scoring[0]:
-        reason = f"scored by {recorded_scoring}, not {scoring[0]}"
+    elif all(results is None for results in readable):
+        reason = f"scored by {first.get('scoring', scoring[1])}, not {scoring[0]}"
     if reason is not None:
         return Reused(
             wins, pair_games, 0, len(entries), tuple(recorded), {}, dict.fromkeys(recorded, reason)
@@ -355,10 +413,12 @@ def reuse_record(
         elif held:
             skipped[name] = f"ambiguous: {[names[number] for number in held]} share its weights"
     games = 0
-    for entry in entries:
+    for entry, results in zip(entries, readable, strict=True):
+        if results is None:
+            continue
         kept = [
             (pair, result)
-            for pair, result in zip(entry["matchups"], entry["results"], strict=True)
+            for pair, result in zip(entry["matchups"], results, strict=True)
             if all(name in index for name in pair) and index[pair[0]] != index[pair[1]]
         ]
         games += _add(
@@ -368,7 +428,10 @@ def reuse_record(
             [result for _, result in kept],
         )
     matched = {name: names[number] for name, number in index.items()}
-    return Reused(wins, pair_games, games, len(entries), tuple(recorded), matched, skipped)
+    unscored = sum(results is None for results in readable)
+    return Reused(
+        wins, pair_games, games, len(entries), tuple(recorded), matched, skipped, unscored
+    )
 
 
 def fit_field(
@@ -388,8 +451,9 @@ def fit_field(
     """The tournament's batches over a field of players `names`: `play` plays one batch (a
     pair per block, first player and second) and gives each block's (wins, ties, losses)
     from its first player's side, or those and a dict of more of the batch's results, which
-    the record keeps. Returns the ratings (K,) with the anchor at 0, their standard errors
-    (K,) and the games of each pair (K, K).
+    the record keeps; with a "kill_share" among them (`outcomes`) the results are the full
+    outcome, scored as `scoring` says (`recorded_results`). Returns the ratings (K,) with
+    the anchor at 0, their standard errors (K,) and the games of each pair (K, K).
 
     record: a JSON-lines file of the batches, one line appended (and synced) after each:
     its index, the blocks' matchups and results, the games so far, every player's rating
@@ -402,9 +466,11 @@ def fit_field(
     blocks keep to; None for an engine without lanes. reused: earlier tournaments' wins and
     pair games (`reuse_record`), added to the record's before the first fit: the batches
     are played only while an error is above the target (none when the reused games meet
-    it), and the budget counts only the games played here. scoring: (how `play` scores
-    its games, recorded with each batch as "scoring"; the scoring of a recorded batch
-    that names none): a record of another scoring is not resumed (`scoring_of`)."""
+    it), and the budget counts only the games played here; a budget of 0 plays none, the
+    fit then the recorded and reused games' alone. scoring: (how the fit scores the games,
+    recorded with each batch as "scoring", the scoring of its ratings; the scoring of a
+    recorded batch that names none): a record whose batches hold only another scoring's
+    results is not resumed (`recorded_results`)."""
     if not _connected(allowed, anchor):
         raise ValueError("every player must reach the scripted agent through allowed pairs")
     arena, count = config.arena, len(names)
@@ -419,9 +485,12 @@ def fit_field(
         wins += reused[0]
         pair_games += reused[1]
         reused_games = round(float(reused[1].sum()) / 2)
+    if config.budget == 0 and batches == 0 and reused_games == 0:
+        raise ValueError(f"{label}: a budget of 0 refits recorded games, and none are recorded")
     ratings, stderr = fit_ratings(wins, anchor, PRIOR_GAMES)
-    while (batches == 0 and reused_games == 0) or (
-        float(stderr.max()) >= config.target_stderr and played + arena.games <= config.budget
+    while config.budget > 0 and (
+        (batches == 0 and reused_games == 0)
+        or (float(stderr.max()) >= config.target_stderr and played + arena.games <= config.budget)
     ):
         started = time.perf_counter()
         if config.allocation == "balanced":
@@ -441,7 +510,11 @@ def fit_field(
         if isinstance(outcome, tuple):
             outcome, extra = outcome
         results = outcome.tolist()
-        played += _add(wins, pair_games, matchups, results)
+        line = dict(results=results, **extra)
+        if scoring is not None:
+            line["scoring"] = scoring[0]
+        counted = recorded_results(line, scoring)
+        played += _add(wins, pair_games, matchups, counted)
         ratings, stderr = fit_ratings(wins, anchor, PRIOR_GAMES)
         seconds.append(time.perf_counter() - started)
         worst = float(stderr.max())
@@ -505,10 +578,12 @@ def rate(
     also keeps each block's game statistics (`Arena.statistics`, under "statistics").
     reuse: earlier tournaments' records of this preset whose games among the field start
     the fit (`reuse_record`, a legacy record's names resolved by `resolve`; `record` itself
-    is left out of them), each logged. deathmatch_score: how a team deathmatch game is
-    scored (`DEATHMATCH_SCORES`, `kill_share_scored`); records and reused records of the
-    other scoring are refused or left out (`scoring_of`). The engine is built at the first
-    batch, so a finished record plays nothing."""
+    is left out of them), each logged. deathmatch_score: how the fit scores a team
+    deathmatch game (`DEATHMATCH_SCORES`, `kill_share_scored`); each batch records its full
+    outcome (`outcomes`), so any record is read under either, except an older one that
+    holds only the other scoring's results (refused on resume, left out of reuse;
+    `recorded_results`). The engine is built at the first batch, so a finished record, or
+    a budget of 0, plays nothing."""
     game = PRESETS[preset] if game is None else game
     scoring = (scoring_of(game, deathmatch_score), scoring_of(game))
     names = [p.name for p in players]
@@ -527,6 +602,11 @@ def rate(
             f"{len(found.matched)} of its {len(found.recorded)} players matched: "
             f"{sorted(found.matched.values())}"
             + "".join(f"; skipped {name}: {why}" for name, why in found.skipped.items())
+            + (
+                f"; left out {found.unscored} batches scored by another scoring"
+                if found.unscored and found.unscored < found.batches
+                else ""
+            )
         )
         reused = (
             (found.wins, found.pair_games)
@@ -540,10 +620,10 @@ def rate(
     def play(matchups: list[tuple[int, int]]):
         if not arenas:
             arenas.append(Arena(players, game, device, config.arena, lanes))
-        results = scored(arenas[0], game, matchups, deathmatch_score)
-        if not statistics:
-            return results
-        return results, dict(statistics=arenas[0].statistics().tolist())
+        results, extra = outcomes(arenas[0], matchups)
+        if statistics:
+            extra["statistics"] = arenas[0].statistics().tolist()
+        return results, extra
 
     ratings, stderr, pair_games = fit_field(
         play,

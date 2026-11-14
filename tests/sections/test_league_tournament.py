@@ -908,6 +908,144 @@ def test_games_of_one_deathmatch_scoring_are_not_resumed_or_reused_under_the_oth
         )
 
 
+def test_a_batchs_full_outcome_scores_as_each_scoring_did_when_it_was_played():
+    """`outcomes` keeps a block's wins, draws and losses by the game's win rule, its summed
+    kill shares and each side's kills: scored by kill share it is what kill-share scoring
+    gave (`Arena.kill_shares`), and scored by win, draw and loss it is the batch's own
+    results."""
+    from bnb.league.matches import STATISTICS
+
+    game = dataclasses.replace(GAME, arena_radius=600.0, episode_seconds=12.0)
+    arena = Arena([SCRIPTED, RANDOM], game, CPU, SMALL)
+    torch.manual_seed(3)
+    results, extra = tournament.outcomes(arena, [(0, 1), (1, 0)])
+    rows = arena.rollout.carry["controllers"][SEAT].statistics.double()
+    deaths = rows[:, STATISTICS.index("deaths")].reshape(2, 2, SMALL.block_environments)
+    assert float(deaths.sum()) > 0.0  # the test means something: games with deaths
+    assert results.dtype == torch.int64 and int(results.sum()) == SMALL.games
+    assert extra["kills"] == [[int(deaths[b, 1].sum()), int(deaths[b, 0].sum())] for b in (0, 1)]
+    by_share = tournament.score_results(results.tolist(), extra["kill_share"], "kill_share")
+    assert torch.equal(torch.tensor(by_share, dtype=torch.float64), arena.kill_shares())
+    by_win_loss = tournament.score_results(results.tolist(), extra["kill_share"], "win_loss")
+    assert by_win_loss == results.tolist()
+
+
+def _wins_of(lines: list[dict], names: list[str], scoring: str) -> torch.Tensor:
+    """The wins (K, K) a record's lines give under a scoring, draws as half a win."""
+    index = {name: number for number, name in enumerate(names)}
+    wins = torch.zeros((len(names), len(names)), dtype=torch.float64)
+    for line in lines:
+        scored = tournament.score_results(line["results"], line["kill_share"], scoring)
+        for (first, second), (won, tied, lost) in zip(line["matchups"], scored, strict=True):
+            wins[index[first], index[second]] += won + tied / 2
+            wins[index[second], index[first]] += lost + tied / 2
+    return wins
+
+
+def test_a_record_keeps_full_outcomes_and_is_refitted_under_either_scoring(tmp_path, monkeypatch):
+    """A deathmatch record played under kill share holds each block's wins, draws, losses,
+    summed kill shares and kills; a budget of 0 refits it without playing, under kill share
+    to the ratings it recorded and under win, draw and loss to the fit of its win counts; it
+    is resumed and reused under either scoring."""
+    from bnb.league.gauge import GAUGE_TOP
+    from bnb.league.ratings import fit_ratings
+
+    game = dataclasses.replace(GAME, arena_radius=600.0, episode_seconds=12.0)
+    record = tmp_path / "deathmatch.batches.jsonl"
+    field = [SCRIPTED, RANDOM, HALF]
+    names = [p.name for p in field]
+    torch.manual_seed(3)
+    played = tournament.TournamentConfig(SMALL, target_stderr=1.0, budget=16)
+    tournament.rate(field, "small", CPU, played, lambda line: None, game, record=record)
+    lines = [json.loads(line) for line in record.read_text().splitlines()]
+    assert len(lines) == 2 and all(line["scoring"] == "kill_share" for line in lines)
+    for line in lines:
+        assert all(isinstance(count, int) for row in line["results"] for count in row)
+        assert len(line["kill_share"]) == len(line["kills"]) == len(line["matchups"])
+    # a budget of 0 builds no engine and plays no game
+    monkeypatch.setattr(tournament, "Arena", None)
+    refit = tournament.TournamentConfig(SMALL, target_stderr=1.0, budget=0)
+    for scoring in tournament.DEATHMATCH_SCORES:
+        rows = tournament.rate(
+            field,
+            "small",
+            CPU,
+            refit,
+            lambda line: None,
+            game,
+            record=record,
+            deathmatch_score=scoring,
+        )
+        ratings, _ = fit_ratings(_wins_of(lines, names, scoring), 0, tournament.PRIOR_GAMES)
+        expected = [float(rating) + GAUGE_TOP for rating in ratings]
+        assert [row["calibrated_elo"] for row in rows] == pytest.approx(expected)
+        assert sum(row["games"] for row in rows) == 2 * 16
+    assert len(record.read_text().splitlines()) == 2  # nothing appended
+    recorded = [row["rating"] + GAUGE_TOP for row in lines[-1]["ratings"]]
+    kill_share = tournament.rate(field, "small", CPU, refit, lambda line: None, game, record=record)
+    assert [row["calibrated_elo"] for row in kill_share] == pytest.approx(recorded)
+    # reused under either scoring, into another field (one player left out)
+    for scoring in (("win_loss", "kill_share"), ("kill_share", "kill_share")):
+        found = tournament.reuse_record(record, ["scripted", "random"], names[:2], scoring=scoring)
+        assert found.games > 0 and found.unscored == 0 and not found.skipped
+        wins = _wins_of(lines, names, scoring[0])[:2, :2]
+        assert torch.equal(found.wins, wins)
+
+
+def test_a_budget_of_0_with_no_recorded_games_is_refused(tmp_path):
+    names = ["scripted", "a"]
+    config = tournament.TournamentConfig(ArenaConfig(blocks=4, block_environments=16), 1.0, 0)
+    with pytest.raises(ValueError, match="none are recorded"):
+        tournament.fit_field(
+            lambda matchups: None,
+            names,
+            0,
+            tournament.allowed_pairs(names),
+            config,
+            record=tmp_path / "none.batches.jsonl",
+        )
+
+
+def test_an_older_record_mixed_with_full_outcomes_is_read_batch_by_batch(tmp_path):
+    """A record a live service began in the older format (kill shares only, no scoring
+    named) and newer code went on with: under kill share every batch is read; under win,
+    draw and loss only the full-outcome batches are reused, and resuming it is refused."""
+    from bnb.game import VERSION
+
+    names = ["scripted", "a", "b"]
+    full = [
+        dict(
+            batch=0,
+            game_version=VERSION,
+            matchups=[["scripted", "a"], ["a", "b"]],
+            results=[[3, 1, 0], [0, 0, 4]],
+            kill_share=[2.5, 1.0],
+            kills=[[6, 2], [1, 5]],
+            scoring="win_loss",
+            ratings=[dict(player=name, rating=0.0, stderr=1.0) for name in names],
+            seconds=1.0,
+            wall_time="2026-11-14T00:00:00+00:00",
+            identities=dict(zip(names, names, strict=True)),
+        )
+    ]
+    older = dict(full[0], results=[[2.5, 0.0, 1.5], [1.0, 0.0, 3.0]])
+    for key in ("kill_share", "kills", "scoring"):
+        older.pop(key)
+    record = tmp_path / "deathmatch.batches.jsonl"
+    record.write_text("".join(json.dumps(line) + "\n" for line in [older, *full]))
+    win_loss, kill_share = ("win_loss", "kill_share"), ("kill_share", "kill_share")
+    found = tournament.reuse_record(record, names, names, scoring=kill_share)
+    assert found.games == 16 and found.unscored == 0
+    assert float(found.wins[0, 1]) == 2.5 + 2.5 and float(found.wins[1, 2]) == 1.0 + 1.0
+    found = tournament.reuse_record(record, names, names, scoring=win_loss)
+    assert found.games == 8 and found.unscored == 1
+    assert float(found.wins[0, 1]) == 3.5 and float(found.wins[1, 2]) == 0.0
+    count = len(names)
+    wins, pair_games = torch.zeros((count, count)), torch.zeros((count, count))
+    with pytest.raises(ValueError, match="scored by kill_share, not win_loss"):
+        tournament._replay(record, names, wins, pair_games, scoring=win_loss)
+
+
 def test_reused_games_that_meet_the_target_play_no_batch(tmp_path):
     record = tmp_path / "earlier.batches.jsonl"
     names = ["scripted", "a", "b"]

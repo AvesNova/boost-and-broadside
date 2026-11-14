@@ -103,8 +103,10 @@ def summary(record: pathlib.Path) -> list[dict]:
     index = {name: number for number, name in enumerate(names)}
     wins = torch.zeros((len(names), len(names)), dtype=torch.float64)
     for line in lines:
+        scoring = line.get("scoring")  # the fit's, as each line's ratings were scored
+        results = tournament.recorded_results(line, None if scoring is None else (scoring,) * 2)
         for (first, second), result, (mine, theirs) in zip(
-            line["matchups"], line["results"], line["statistics"], strict=True
+            line["matchups"], results, line["statistics"], strict=True
         ):
             sums[first] += torch.tensor(mine, dtype=torch.float64)
             sums[second] += torch.tensor(theirs, dtype=torch.float64)

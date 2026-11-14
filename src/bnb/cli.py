@@ -249,10 +249,18 @@ class Ratings:
     record keeps no lineup: reuse only records played with the same one.
     seed: the process's seed (the games' draws; None: torch's default), so several
     tournaments of one field, run at once and reused together, play different games.
-    deathmatch_score: how a team deathmatch game is scored: kill_share (the default), its
-    kill share, or win_loss, a win, draw or loss by the sign of the final kill difference
-    (`bnb.league.tournament.kill_share_scored`). Each batch records its scoring; a record
-    of the other scoring is not resumed (choose another --out) and not reused.
+    deathmatch_score: how the fit scores a team deathmatch game: kill_share (the default),
+    its kill share, or win_loss, a win, draw or loss by the sign of the final kill
+    difference (`bnb.league.tournament.kill_share_scored`). Each batch records every
+    block's full outcome (wins, draws, losses, summed kill shares and kills), so a record
+    is resumed and reused under either; a record written before that, which holds only
+    its own scoring's results, is not resumed (choose another --out) or reused under the
+    other.
+
+    A budget of 0 plays no games: the field is refitted from the record in `--out` and the
+    `--reuse` records alone, under `--deathmatch-score`, so a tournament can be re-rated
+    under the other scoring, or with players added or left out (a field other than the
+    record's takes a fresh `--out` and the old directory as `--reuse`).
     """
 
     run: tyro.conf.Positional[str]

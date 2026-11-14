@@ -637,6 +637,15 @@ class MatchSeat:
         return bool(carry.finished.all())
 
 
+def kill_share_sums(deaths: torch.Tensor) -> torch.Tensor:
+    """(blocks,) float64 each block's summed kill shares from its games' deaths (blocks, 2,
+    games) (`Arena.deaths`). A game's share is the first player's points over both sides',
+    0.5 in a game with none, a side's points the other side's deaths of any cause, as team
+    deathmatch's own score counts them."""
+    first, both = deaths[:, 1], deaths.sum(1)  # the first player's points: its foe's deaths
+    return torch.where(both > 0.0, first / both.clamp_min(1.0), 0.5).sum(-1)
+
+
 @dataclasses.dataclass(frozen=True)
 class ArenaConfig:
     """blocks: matchup blocks per batch; block_environments: games per block (even, so they
@@ -894,21 +903,21 @@ class Arena:
         rows = self.rollout.carry["controllers"][SEAT].statistics.double().cpu()
         return rows.reshape(self.config.blocks, 2, self.config.block_environments, -1).sum(2)
 
+    def deaths(self) -> torch.Tensor:
+        """(blocks, 2, block_environments) float64 the last batch's first games' deaths of
+        any cause (`STATISTICS`' "deaths"; the boundary's and friendly fire's too) per
+        block, its first player's ships' then its second's (one host read)."""
+        rows = self.rollout.carry["controllers"][SEAT].statistics.double().cpu()
+        return rows[:, STATISTICS.index("deaths")].reshape(
+            self.config.blocks, 2, self.config.block_environments
+        )
+
     def kill_shares(self) -> torch.Tensor:
         """(blocks, 3) float64 the last batch's first games scored by kill share, as
         `play`'s (wins, ties, losses) are: (the sum of the first player's shares, 0, the
-        block's games less that sum). A game's share is the first player's points over both
-        sides', 0.5 in a game with none, a side's points the other side's deaths of any cause
-        (`STATISTICS`' "deaths"; the boundary's and friendly fire's too), as team
-        deathmatch's own score counts them. Team deathmatch's rating score
-        (`bnb.league.tournament.kill_share_scored`)."""
-        rows = self.rollout.carry["controllers"][SEAT].statistics.double().cpu()
-        deaths = rows[:, STATISTICS.index("deaths")].reshape(
-            self.config.blocks, 2, self.config.block_environments
-        )
-        first, both = deaths[:, 1], deaths.sum(1)  # the first player's points: its foe's deaths
-        share = torch.where(both > 0.0, first / both.clamp_min(1.0), 0.5)
-        score = share.sum(-1)
+        block's games less that sum; `kill_share_sums` of `deaths`). Team deathmatch's
+        rating score (`bnb.league.tournament.kill_share_scored`)."""
+        score = kill_share_sums(self.deaths())
         games = torch.full_like(score, float(self.config.block_environments))
         return torch.stack([score, torch.zeros_like(score), games - score], -1)
 
