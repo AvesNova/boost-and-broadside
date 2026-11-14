@@ -6,6 +6,7 @@ Work to finish before renting the 5090s for the pairwise arms, whatever arms are
 
 - [ ] **Seed isolation** (branch `feat/seed-isolation`). Initial weights keyed by parameter path; maps by (seed, environment, episode); actions by (seed, environment, tick, ship, part) through the policy's cumulative distribution; the scripted agent, seats, stagger and view offsets on their own keyed streams. Still to do after it lands: a steps-per-second check on the GPU.
 - [ ] **Cheese agents** (branch `feat/cheese-agents`). Simple scripted agents that exploit one behaviour: zone rusher, turtle, evader, deathball, jouster, kiter. Available as league members and as an exploit check in evaluation.
+- [ ] **Break-even ratio** (branch `feat/break-even`, decided 2026-11-14). "N of ours hold 20 Imugi": the scripted agent fixed at 20 ships, our count varied. A logistic fit in log ship count, adaptive counts near the crossing, and a stop on the crossing's SE.
 - [ ] **Rating allocator and shared pool** (branch `feat/rating-allocator`).
   - Fix the bug where most games go to saturated pairs.
   - Allocate by expected information, as a design distribution rather than greedy, with a limit on distinct players per batch.
@@ -32,6 +33,10 @@ Work to finish before renting the 5090s for the pairwise arms, whatever arms are
 - [ ] **Mode mix (decided 2026-11-14): frontline 6/16, deathmatch 5/16, elimination 5/16** (768 / 640 / 640 of 2048 environments). Today's mix is 8/16, 5/16, 3/16.
 - [ ] **League snapshot schedule.** About 100–200 Elo between league members, read off the RL curve. Re-derive it after the game freeze.
 - [ ] **Rating prior.** The author's direction: priors only place a new checkpoint's first opponents, at a typical arm's rating for that step, and must not bias the Elo. To settle: how swept checkpoints are reported.
+- [ ] **Averaged agents in the league.** Already there: the uniform and exponential averages are league entries (`bnb.league.pool`). Check that they stay in under (1−p)² sampling.
+- [ ] **League sampling (decided 2026-11-14): (1−p)²** over all members, the cheese agents included as ordinary members. Still open: the uniform floor's size and latest's share.
+- [ ] **Save the live weights every update in an early arm (decided 2026-11-14)**, then sweep averages after training (uniform, exponential at several decays, windowed uniform) in one tournament. The exponential average folds once per update, so a sweep from saved weights matches a training-time average exactly.
+- [ ] **Rename the scripted agent to Imugi (decided 2026-11-14)**, after the open branches merge.
 - [ ] **BC fixed at 100M** for every arm. The plateau stop only logs.
 - [ ] **One committed settings file per arm.** No hand-typed overrides.
 
@@ -73,6 +78,10 @@ Work to finish before renting the 5090s for the pairwise arms, whatever arms are
 
 - [ ] **Freezing the game.** Deathmatch on win/loss; clock and ticket tuning so about 25% of games end on the clock; frontline's minimum team size; bullet-drag units (75); pending flight and balance work. One game-version bump, before the first arm.
 - [ ] **Removing fields from the game and masking their slots.** Check whether it exists; benched ships are already masked.
+
+## Candidate arms (to decide together, later)
+
+- **Self-play: train both sides against one side** with more environments and a single league ("latest" as a member). The author has deferred the choice between a decision by theory, a test or an arm to a later review of all arm ideas.
 
 ## Early arms (decided)
 
