@@ -89,13 +89,16 @@ Ordered for working through:
 | Cheese agents | `feat/cheese-agents` (30a5dd66, from seed isolation) | Done on the CPU. Waits for the first exploit check on the GPU. |
 | Break-even ratio | `feat/break-even` (66fd2ba0, from seed isolation) | Done on the CPU: a logistic fit in log count; blocks go to the count that most reduces the variance of log N*; stops at SE ≤ 0.3 ships, 8192 games or a bound; per-batch records with resume; mirrored coin-flip lineups (`Arena(game_lineups=True)`). A benched slot costs about as much as an active one, so every break-even game costs a full 20v20. Waits for the first GPU measurement. |
 | References list | docs only (dab3a8de) | 26 entries, about 35 papers. Only 5 are verified online so far; the rest are marked "(unverified)". Update the code locations of the loop check and the allocator after the rating branch merges. |
-| Seed twin of rl-v20 (`rl-v20-seed1`, seed 1) | laptop GPU, old code | Running; ETA 01:10 (worst 02:15). |
+| Absent fields | `feat/absent-fields` (7f588608, from seed isolation) | Done on the CPU. Field counts per episode keep the map point-symmetric; absent fields have exactly no physical effect; `Yemong.mask_absent_fields` masks them; 16 new tests pass. Game version raised to 20. Waits for the fused-kernel test with the longer key mask on the GPU. |
+| Seed twin of rl-v20 (`rl-v20-seed1`, seed 1) | laptop GPU, old code | Running: update 135 of 143 at 01:23, ETA 02:00 (worst 02:15). |
 
 **GPU queue after the twin:**
 1. The seed-streams steps-per-second check, old against new. Merge only if throughput holds.
-2. The GPU tests and the ONNX export test.
+2. The GPU tests, the ONNX export test, and the fused attention kernel with absent fields' longer key mask.
 3. The rating layout probe.
-4. Merge seed isolation, then the cheese agents, the rating allocator and break-even.
+4. Merge seed isolation, then the cheese agents, the rating allocator, break-even and absent fields.
+   - **One game version at the merge.** The seed-isolation branch changed the game's draws without updating the recorded game fingerprint (it records e16ea10c but computes 7f35d79c). The absent-fields branch raised the version to 20. Settle the fingerprint once at the merge; the freeze will bump the version again.
+   - Fix the failing docstring test on `bench/attention_shares.py`.
 5. The first exploit check and break-even measurement of rl-v20's final checkpoint.
 6. Rate the twin against rl-v20 at matching steps (the noise floor).
 
