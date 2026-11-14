@@ -95,7 +95,8 @@ Ordered for working through:
 | Break-even ratio | `feat/break-even` (66fd2ba0, from seed isolation) | Done on the CPU: a logistic fit in log count; blocks go to the count that most reduces the variance of log N*; stops at SE ≤ 0.3 ships, 8192 games or a bound; per-batch records with resume; mirrored coin-flip lineups (`Arena(game_lineups=True)`). A benched slot costs about as much as an active one, so every break-even game costs a full 20v20. Waits for the first GPU measurement. |
 | References list | docs only (dab3a8de) | 26 entries, about 35 papers. Only 5 are verified online so far; the rest are marked "(unverified)". Update the code locations of the loop check and the allocator after the rating branch merges. |
 | Absent fields | `feat/absent-fields` (7f588608, from seed isolation) | Done on the CPU. Field counts per episode keep the map point-symmetric; absent fields have exactly no physical effect; `Yemong.mask_absent_fields` masks them; 16 new tests pass. Game version raised to 20. Waits for the fused-kernel test with the longer key mask on the GPU. |
-| Seed twin of rl-v20 (`rl-v20-seed1`, seed 1) | laptop GPU, old code | Running: update 135 of 143 at 01:23, ETA 02:00 (worst 02:15). |
+| Seed twin of rl-v20 (`rl-v20-seed1`, seed 1) | laptop GPU, old code | Finished 02:11 at 149.9M steps (30 snapshots). The noise read against rl-v20 is queued. |
+| Seed-streams speed check | laptop GPU (`seed-speed` unit) | Running since 02:21: 4 updates from bc-v20 on the old tree, then the new. |
 
 **GPU queue after the twin:**
 1. The seed-streams steps-per-second check, old against new. Merge only if throughput holds.
@@ -133,7 +134,11 @@ Ordered for working through:
     - 66% of games are 3-0 sweeps (25% expected for a fair coin).
     - 86% of games end by capture and 14% on the clock (mean 296 s of 600 s).
     - This contradicts the docs' claim that the lock was tuned so the capturing team is no more likely to capture next.
-    - A GPU rerun with fields on, measuring where the persistence comes from, is queued.
+    - **Cause (diagnosed):** the 45 s lock outlasts the capturing team's run to the next zone. The same team's next capture comes a median 36 s later, a reversal 91 s later.
+  - **Re-tuned (2026-11-15, game v20, `game/frontline-lock` e5bed5a1):** `lock_seconds_per_root_km` 19 → 6 (about 14 s at 5v5).
+    - With fields on and the scripted agent on both sides: P(reversal) = 0.490 [0.468, 0.512] over 512 games (19 gives 0.29).
+    - Still 0.435 at front ±2, so a little momentum near the win.
+    - **56% of games end on the 600 s clock** (mean 484 s); for the clock tuning.
   - Re-tuning the lock is a game-freeze item.
 - [ ] Snapshot schedule: `policy_snapshot_every` takes one number today, so it needs a list plus a tail.
 - [ ] Deathmatch outcome `kill_lead` as the default.
