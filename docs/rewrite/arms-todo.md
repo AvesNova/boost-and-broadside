@@ -173,7 +173,7 @@ Ordered for working through:
 - [ ] Deathmatch outcome `kill_lead` as the default.
 - [ ] Mirrored 50/50 coin-flip lineups.
 - [ ] Mode mix 6/5/5.
-- [ ] League: (1−p)² sampling, and the league snapshot schedule.
+- [ ] League: (1−p)² sampling, and the league snapshot schedule. **In progress (2026-11-15 07:10):** an agent on `feat/training-defaults` implements this with kill_lead, mirrored lineups, mode mix 6/5/5, the snapshot schedules and BC at 100M (CPU only).
 - [ ] Saving the live weights every update (for the early arm), and the post-hoc averaging tool.
 - [ ] The Imugi rename.
 - [ ] BC fixed at 100M, with the plateau stop logging only.
