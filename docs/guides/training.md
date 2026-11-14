@@ -167,8 +167,8 @@ uv run --no-sync bnb train --preset mixed --model nearest
 
 ## Chain BC and RL
 
-A model is trained in two stages: behaviour cloning of the scripted agent until its
-imitation plateaus, then PPO from the clone. `--objective chain` runs both in one command,
+A model is trained in two stages: behaviour cloning of the scripted agent for a fixed
+budget, then PPO from the clone. `--objective chain` runs both in one command,
 to a combined budget of environment steps:
 
 <!-- not-runnable: needs CUDA and runs for hours -->
@@ -180,8 +180,9 @@ uv run --no-sync bnb train --resume 2026-11-12-chain-example
 uv run --no-sync bnb train --resume 2026-11-12-chain-example --chain-budget-steps 300000000
 ```
 
-The BC stage is `bnb train --objective bc` with the combined budget as its own, a cap: in a
-chain that goes as planned its plateau rule stops it first
+The BC stage is `bnb train --objective bc` with its own budget, 100M environment steps for
+every arm, at most the combined one (`bnb.cli.chain_bc_budget`; `--bc-set
+stop.budget_steps=N` sets another); its plateau rule only logs
 ([When it stops](../explanation/behaviour-cloning.md#when-it-stops)). The RL stage is a warm
 start (`--init-from`) from the BC stage's exponential average, `policy-exponential/`{.plain},
 for every model: a fresh optimizer and step count, so the learning-rate warm-up runs again,

@@ -79,13 +79,15 @@ class Train:
     teacher_temperature and teacher_floor set the teacher (the scripted agent at its own
     temperature, its labels mixed with uniform by the floor; T = 1 and floor 0 by
     default); bc_budget_steps: BC's budget in environment steps
-    (TrainConfig.stop.budget_steps).
+    (TrainConfig.stop.budget_steps; None: `bnb.learn.bc.StopConfig`'s, 100M, the same for
+    every arm; BC's plateau rule only logs unless `--set stop.plateau_stops=true`).
     Or chain (`bnb.runs.chain`): BC until its stop rule fires, then PPO from the clone's
     exponential average (a warm start: a fresh optimizer, its warm-up and
     WARM_START_ENTROPY), to chain_budget_steps environment steps in all (BC's budget is
-    the same number, a cap), as two runs, `<name>-bc` and `<name>-rl`, with the chain's
-    record in `<name>/`. Every other option applies to both stages; bc_set and rl_set are
-    --set lines for one stage (after --set). `--resume NAME` continues the chain at the
+    its own, 100M, at most the combined one: `chain_bc_budget`), as two runs,
+    `<name>-bc` and `<name>-rl`, with the chain's record in `<name>/`. Every other option
+    applies to both stages; bc_set and rl_set are --set lines for one stage (after
+    --set). `--resume NAME` continues the chain at the
     stage it reached; it takes only --chain-budget-steps (raised, or lowered before the
     handover), --device, --runs-directory, --checkpoint-every and --wandb.
     wandb: stream each update's record to W&B (project `boost-and-broadside-v2`, the run's
@@ -124,7 +126,7 @@ class Train:
     objective: str = "ppo"
     teacher_temperature: float = 1.0
     teacher_floor: float = 0.0
-    bc_budget_steps: int = 50_000_000
+    bc_budget_steps: int | None = None
     chain_budget_steps: int | None = None
     bc_set: Annotated[tuple[str, ...], tyro.conf.UseAppendAction] = ()
     rl_set: Annotated[tuple[str, ...], tyro.conf.UseAppendAction] = ()
@@ -878,7 +880,9 @@ def _requested(options: Train):
             seed=options.seed,
             objective=options.objective,
             teacher=bc.TeacherConfig(options.teacher_temperature, options.teacher_floor),
-            stop=bc.StopConfig(budget_steps=options.bc_budget_steps),
+            stop=bc.StopConfig()
+            if options.bc_budget_steps is None
+            else bc.StopConfig(budget_steps=options.bc_budget_steps),
         )
     except ValueError as error:
         raise SystemExit(str(error)) from error
@@ -1219,11 +1223,15 @@ def chain(options: Train, given_options: set[str], stop) -> None:
         bc_run = Run.open(runs_directory, stage) if (runs_directory / stage).exists() else None
         if bc_run is None or bc_run.record["status"] != "finished":
             if bc_run is None:
-                bc_options = stage_options(base, "bc", name=stage, bc_budget_steps=budget)
+                bc_options = stage_options(
+                    base, "bc", name=stage, bc_budget_steps=chain_bc_budget(budget)
+                )
                 given_stage, entry = set(), chained.stage_record("bc", 0)
             else:
-                # the stage's own budget: the combined one, or a --bc-set stop.budget_steps
-                own = _requested(stage_options(original, "bc", bc_budget_steps=budget))
+                # the stage's own budget (`chain_bc_budget`), or a --bc-set stop.budget_steps
+                own = _requested(
+                    stage_options(original, "bc", bc_budget_steps=chain_bc_budget(budget))
+                )
                 bc_options = Train(resume=stage, bc_budget_steps=own.stop.budget_steps, **passed)
                 given_stage, entry = {"resume", "bc_budget_steps"}, None
             bc_run = _train(bc_options, given_stage, stop, entry)
@@ -1257,6 +1265,14 @@ def chain(options: Train, given_options: set[str], stop) -> None:
         _train(rl_options, {"resume", "updates"}, stop)
 
 
+def chain_bc_budget(combined: int) -> int:
+    """A chain's BC stage budget: BC's own (`bnb.learn.bc.StopConfig.budget_steps`, 100M,
+    fixed for every arm: decided 2026-11-14), at most the chain's combined budget."""
+    from bnb.learn.bc import StopConfig
+
+    return min(combined, StopConfig().budget_steps)
+
+
 def chained_options(chained) -> Train:
     """The options a chain was started with, parsed from its record's arguments."""
     return tyro.cli(Train, args=chained.record["arguments"], prog="bnb train")
@@ -1280,13 +1296,13 @@ def stage_options(options: Train, stage: str, **changes) -> Train:
 
 
 def chain_configs(options: Train) -> dict:
-    """Both stages' resolved TrainConfigs as JSON (`--print-config`): BC's with the
-    combined budget as its own, RL's with the warm start's entropy coefficients (the model's
+    """Both stages' resolved TrainConfigs as JSON (`--print-config`): BC's with its own
+    budget (`chain_bc_budget`), RL's with the warm start's entropy coefficients (the model's
     settings, which a warm start takes from the clone, are the same run's)."""
     from bnb.runs.serialise import to_json
 
     budget = options.chain_budget_steps
-    bc_config = _requested(stage_options(options, "bc", bc_budget_steps=budget))
+    bc_config = _requested(stage_options(options, "bc", bc_budget_steps=chain_bc_budget(budget)))
     rl_options = stage_options(options, "rl")
     rl_config = warm_start_entropy(_requested(rl_options), rl_options.set)
     return dict(bc=to_json(bc_config), rl=to_json(rl_config))
@@ -1327,6 +1343,7 @@ def log_cloning(row: dict) -> None:
     plateau = (
         f"  plateau {row['bc/stop/plateau/fraction']:.3f} "
         f"held {row['bc/stop/plateau/held_steps']:,}"
+        f"{' (reached)' if row.get('bc/stop/plateau/reached') else ''}"
         if "bc/stop/plateau/fraction" in row
         else ""
     )

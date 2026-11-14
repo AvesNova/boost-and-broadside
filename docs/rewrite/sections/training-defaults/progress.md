@@ -90,3 +90,18 @@ defaults of [arms-todo.md](../../arms-todo.md) ("Decided, to implement"). CPU on
   test_league_graph, test_league_metrics, test_league_ratings, test_update_policies,
   test_training_checkpoints, test_references, test_formatting: 679 passed.
 - **Next:** BC fixed at 100M, the plateau logging only.
+
+## 08:45 to 09:15: BC fixed at 100M, the plateau logging only
+
+- **Worked:** `StopConfig.budget_steps = 100_000_000` and `StopConfig.plateau_stops =
+  False`: the plateau rule is still computed and logged (`bc/stop/plateau/reached`, new,
+  beside `fraction` and `held_steps`; "(reached)" on the update line), and stops BC only
+  with `--set stop.plateau_stops=true`. `bnb train --bc-budget-steps` defaults to None,
+  StopConfig's 100M.
+- **Also changed (the decision implies it):** a chain's BC stage took the combined budget
+  as its own and relied on the plateau to stop first. With the plateau logging only it
+  would have used the whole combined budget, so its budget is now
+  `cli.chain_bc_budget(combined) = min(combined, 100M)`. The chain tests set
+  `stop.plateau_stops=true`, as they test the hand-over at a fired rule.
+- **Tests:** test_bc, test_chain, test_cli, test_bc_toy, test_references,
+  test_formatting: 676 passed.

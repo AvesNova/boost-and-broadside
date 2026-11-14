@@ -441,6 +441,7 @@ PLATEAU = dict(
     plateau_smoothing_steps=200,
     plateau_window_steps=1000,
     plateau_hold_steps=300,
+    plateau_stops=True,
 )
 
 
@@ -456,6 +457,23 @@ def test_each_stop_rule_fires_alone():
     rule = bc.StopRule(config)
     _run(rule, update, 100, 0.2, flat)  # one update earlier it had not plateaued
     assert rule.score == pytest.approx(0.2)
+
+
+def test_the_plateau_only_logs_by_default():
+    """BC runs its fixed budget (decided 2026-11-14): the plateau rule fires as it would,
+    `plateaued` says so, and the run stops by the budget."""
+    assert not bc.StopConfig().plateau_stops
+    logging = dict(PLATEAU, plateau_stops=False)
+    config = bc.StopConfig(score_window=100, budget_steps=10_000, **logging)
+    flat = lambda update: 1.0 + 0.5 * 0.5**update  # noqa: E731 - converges, then plateaus
+    stopping = bc.StopConfig(score_window=100, budget_steps=10_000, **PLATEAU)
+    plateau_update, _ = _run(bc.StopRule(stopping), 200, 100, 0.2, flat)
+    rule, reasons, plateaued = bc.StopRule(config), [], []
+    for update in range(100):
+        reasons.append(rule.observe((update + 1) * 100, {EXPONENTIAL: (4, 0, 16)}, flat(update)))
+        plateaued.append(rule.plateaued)
+    assert reasons == [None] * 99 + ["budget"]
+    assert plateaued.index(True) == plateau_update
 
 
 def test_the_score_window_trims_whole_updates_without_favouring_a_result():
@@ -503,11 +521,11 @@ def test_the_score_stop_fires_at_its_target_and_is_off_by_default():
     assert off.read == EXPONENTIAL and off.score == pytest.approx(1.0)
 
 
-def test_the_budget_stops_bc_at_v1s_time_to_parity_by_default():
-    assert bc.StopConfig().budget_steps == 50_000_000
+def test_the_budget_stops_bc_at_100m_steps_by_default():
+    assert bc.StopConfig().budget_steps == 100_000_000
     rule = bc.StopRule(bc.StopConfig())
-    assert rule.observe(49_999_999, {EXPONENTIAL: (0, 0, 0)}, 1.0) is None
-    assert rule.observe(50_000_000, {EXPONENTIAL: (0, 0, 0)}, 1.0) == "budget"
+    assert rule.observe(99_999_999, {EXPONENTIAL: (0, 0, 0)}, 1.0) is None
+    assert rule.observe(100_000_000, {EXPONENTIAL: (0, 0, 0)}, 1.0) == "budget"
 
 
 def test_the_score_stop_reads_the_better_average_and_only_logs_the_live_clone():
