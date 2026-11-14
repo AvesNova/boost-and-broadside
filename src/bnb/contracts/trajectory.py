@@ -39,7 +39,9 @@ class Trajectory:
     enemy rows of the fog-off privileged view (`Privileged.ships`; an own row equals the
     observation's); final_truth (R, N, len(SHIP_COLUMNS)), the privileged rows of the
     observation after the last step; capture, the shot capture (a pytree, (L, R, N, ...):
-    each row's launch state and its move this tick, `bnb.learn.shots.ShotCapture`).
+    each row's launch state and its move this tick, `bnb.learn.shots.ShotCapture`);
+    decision_key (L, R) int64, each view's decision key at the step (`Controller.step`),
+    which BC's teacher re-reads the observations with.
     """
 
     obs: Obs
@@ -60,3 +62,4 @@ class Trajectory:
     truth: torch.Tensor | None = None
     final_truth: torch.Tensor | None = None
     capture: Any = None
+    decision_key: torch.Tensor | None = None

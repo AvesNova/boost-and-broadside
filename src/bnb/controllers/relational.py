@@ -1,5 +1,5 @@
 """The toy relational model (and the nearest-neighbour MLP, which has its outputs) as a
-controller: sample the joint action (Gumbel-max), report its log-probability, entropy and
+controller: sample the joint action (`policy.sample`), report its log-probability, entropy and
 the critic. Stateless."""
 
 import torch
@@ -9,6 +9,7 @@ from bnb.contracts.action import from_joint
 from bnb.models.nearest import Nearest
 from bnb.models.relational import Relational, outcome_probabilities
 from bnb.models.yemong import policy
+from bnb.streams import action_uniforms
 
 
 class RelationalController:
@@ -25,7 +26,12 @@ class RelationalController:
         return None
 
     def step(
-        self, carry: None, obs: Obs, reset: torch.Tensor, temperature: torch.Tensor | None = None
+        self,
+        carry: None,
+        obs: Obs,
+        reset: torch.Tensor,
+        decision_key: torch.Tensor,
+        temperature: torch.Tensor | None = None,
     ) -> tuple[Action, None, Outputs]:
         """One decision for views (R, ...); see `Controller.step`. temperature: (R,) each
         view's sampling temperature (`policy.tempered`; None: the policy as it is)."""
@@ -33,7 +39,8 @@ class RelationalController:
         logits = decision.policy_logits
         if temperature is not None:
             logits = policy.tempered(logits, temperature)
-        joint, log_probability, entropy = policy.sample(logits)
+        uniforms = action_uniforms(decision_key, logits.shape[-2])
+        joint, log_probability, entropy = policy.sample(logits, uniforms)
         outputs = Outputs(
             log_probability=log_probability,
             entropy=entropy,

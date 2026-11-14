@@ -284,8 +284,10 @@ def test_a_new_build_reads_the_elimination_flag_and_an_older_one_does_not():
         net = yemong_cases.model(mode_inputs=modes)
         carry = net.initial_carry(view.ships.shape[0], 5, 10)
         with torch.no_grad():
-            first = net.step(carry, view, reset).policy_logits
-            second = net.step(carry, no_mode, reset).policy_logits
+            first = net.step(carry, view, reset, torch.arange(view.ships.shape[0])).policy_logits
+            second = net.step(
+                carry, no_mode, reset, torch.arange(no_mode.ships.shape[0])
+            ).policy_logits
         assert torch.equal(first, second) != reads, modes
 
 

@@ -104,7 +104,7 @@ def _chased(chaser: Chaser, distance: float):
     """(power, shoot) of the chaser's first ship with one enemy dead ahead at `distance`."""
     enemy = ship(x=distance, team_relative=1)
     view = observation([ship(), absent(team_relative=0)], [enemy, absent()])
-    action = chaser.step(None, view, None)[0]
+    action = chaser.step(None, view, None, torch.arange(view.ships.shape[0]))[0]
     return int(action.power[0, 0]), int(action.shoot[0, 0])
 
 

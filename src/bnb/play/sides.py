@@ -7,9 +7,9 @@ otherwise; the sim stays on the CPU, so each tick moves the view to the agent's 
 the actions back. Its carry is kept per side and handed the view's reset flag, so the
 model clears it at each episode boundary as in training. It samples the policy's
 distribution at a temperature (1 is the policy's own), on the CPU from its own generator,
-so it never touches torch's global one (a model's own draws, such as Yemong's position
-offsets, come from a second stream of its own, swapped in for the default generator, or
-for the device's, and back).
+so it never touches torch's global one; a model's own draws (Yemong's position offsets) and
+the scripted agent's are keyed by a decision key (`Controller.step`) drawn from a second
+generator of its own.
 
 A policy file loads only when the game it was trained on and its ship card equal the
 match's; otherwise `load_agent` raises `AgentError` naming the difference. With `any_mode`
@@ -26,7 +26,6 @@ steps eagerly, never from its CUDA graph (whose carry lives in static buffers, s
 step keeps no inspection).
 """
 
-import contextlib
 import dataclasses
 import json
 import math
@@ -51,13 +50,14 @@ from bnb.runs.serialise import to_json
 from bnb.runtime import built
 from bnb.runtime.built import clone
 from bnb.runtime.scripted_step import ScriptedStep, library_path
+from bnb.streams import decision_key_from
 
 from .overlays import MEMORY, NETWORK
 
 GUMBEL_FLOOR = 1e-20
 SUPPORTED_MODELS = ("yemong", "relational", "nearest")
 POLICY_RECORD = "checkpoint.json"
-MODEL_DRAWS_OFFSET = 1_000_003  # the model's own draws: a stream apart from the sampling
+MODEL_DRAWS_OFFSET = 1_000_003  # the decision keys' stream: apart from the sampling
 
 
 def _copy_leaves(targets, sources) -> None:
@@ -152,16 +152,17 @@ class Scripted:
         self.chaser.retune(traits)
 
     def act(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
-        """The team's (S, 3) actions for its view (1, ...)."""
-        return self.chaser.step(None, view, reset)[0].packed()[0]
+        """The team's (S, 3) actions for its view (1, ...) (the chaser draws nothing)."""
+        key = torch.zeros(1, dtype=torch.int64)
+        return self.chaser.step(None, view, reset, key)[0].packed()[0]
 
 
 class ScriptedAgent:
     """The scripted agent (`bnb.controllers.scripted.Scripted`, memory on, temperature 1)
     flying a doctrine of `DOCTRINES` by name: it remembers each enemy it saw and dead
-    reckons it while hidden. Its draws come from
-    its own generator, swapped in for torch's default one and back, so it is reproducible
-    from its seed and leaves the process's generator alone.
+    reckons it while hidden. Its draws are keyed by a decision key per step from its own
+    generator, so it is reproducible from its seed and leaves the process's generator
+    alone.
 
     compiled: step with the built step (`bnb.runtime.scripted_step`) for the shapes of its
     first step, which runs uncompiled; without `background` it is built or loaded right
@@ -246,14 +247,12 @@ class ScriptedAgent:
     def act(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
         """The team's (S, 3) actions for its view (1, ...); the carry moves on."""
         before = self.carry
-        arguments = (before, view, reset, self.characteristics)
+        key = decision_key_from(self.draws, 1)
+        arguments = (before, view, reset, key, self.characteristics)
         loaded = built.loaded(self._path) if self._path is not None else None
         self.uses_compiled = loaded is not None
         step = self.step if loaded is None else loaded
-        with torch.random.fork_rng(devices=[]):
-            torch.default_generator.set_state(self.draws.get_state())
-            actions, self.carry = step(*arguments)
-            self.draws.set_state(torch.default_generator.get_state())
+        actions, self.carry = step(*arguments)
         self.inspection = Inspection(before, view, reset)
         if self.compiled and self._path is None:
             self._start_compiling(arguments, (actions, self.carry))
@@ -294,17 +293,12 @@ class Agent:
         self.warning: str | None = None  # set by load_agent: trained with another card or lineup
         self.temperature = temperature
         self.generator = torch.Generator().manual_seed(seed)
-        self.model_draws = torch.Generator().manual_seed(seed + MODEL_DRAWS_OFFSET)
+        self.decision_keys = torch.Generator().manual_seed(seed + MODEL_DRAWS_OFFSET)
         self.device = next(model.parameters()).device
         self.recurrent = name == "yemong"
         self.carry = None
-        self.device_draws = None  # a GPU's own stream of the model's draws (its generator state)
-        if self.device.type == "cuda":
-            draws = torch.Generator(device=self.device).manual_seed(seed + MODEL_DRAWS_OFFSET)
-            self.device_draws = draws.get_state()
         if self.recurrent:
-            with self._local_draws():
-                self.carry = model.initial_carry(1, ships_per_team, num_ships, self.device)
+            self.carry = model.initial_carry(1, ships_per_team, num_ships, self.device)
         # Yemong's step on a GPU is replayed from a CUDA graph (captured on the first tick):
         # eager, it is bound by kernel launches and slower than the CPU.
         self.graphed = (self.recurrent and self.device.type == "cuda") if graph is None else graph
@@ -320,15 +314,15 @@ class Agent:
         captures its own on its first tick."""
         return {**self.__dict__, "_graph": None, "_inputs": None, "_outputs": None}
 
-    def _capture(self, view: Obs, reset: torch.Tensor) -> None:
-        """Capture one step on static buffers: the view and reset are copied in, the carry
-        advances in place (its previous action is set after sampling), and the policy logits
-        are read out. The carry, the generator states and the model's state are left as
-        they were."""
+    def _capture(self, view: Obs, reset: torch.Tensor, key: torch.Tensor) -> None:
+        """Capture one step on static buffers: the view, reset and decision key are copied
+        in, the carry advances in place (its previous action is set after sampling), and the
+        policy logits are read out. The carry and the model's state are left as they were."""
         device = self.device
         self._inputs = (
             _pytree.tree_map(lambda t: t.to(device).clone(), view),
             reset.to(device).clone(),
+            key.to(device).clone(),
         )
         saved = _pytree.tree_map(torch.clone, self.carry)
         side = torch.cuda.Stream(device)
@@ -343,14 +337,13 @@ class Agent:
                     )
             return decision.policy_logits
 
-        with torch.random.fork_rng(devices=[device]):
-            with torch.cuda.stream(side):
-                for _ in range(2):
-                    step()
-            torch.cuda.current_stream(device).wait_stream(side)
-            self._graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(self._graph, capture_error_mode="thread_local"):
-                self._outputs = step()
+        with torch.cuda.stream(side):
+            for _ in range(2):
+                step()
+        torch.cuda.current_stream(device).wait_stream(side)
+        self._graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(self._graph, capture_error_mode="thread_local"):
+            self._outputs = step()
         _copy_leaves(self.carry, saved)
 
     def prepare(self, view: Obs, reset: torch.Tensor) -> None:
@@ -359,47 +352,29 @@ class Agent:
         the window)."""
         if self.graphed and self._graph is None:
             with torch.no_grad():
-                self._capture(view, reset)
+                self._capture(view, reset, torch.zeros(1, dtype=torch.int64))
 
-    def _graphed_logits(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
+    def _graphed_logits(self, view: Obs, reset: torch.Tensor, key: torch.Tensor) -> torch.Tensor:
         if self._graph is None:
-            self._capture(view, reset)
-        view_in, reset_in = self._inputs
+            self._capture(view, reset, key)
         for target, new in zip(
-            _pytree.tree_leaves((view_in, reset_in)),
-            _pytree.tree_leaves((view, reset)),
+            _pytree.tree_leaves(self._inputs),
+            _pytree.tree_leaves((view, reset, key)),
             strict=True,
         ):
             target.copy_(new)
-        with self._local_draws():
-            self._graph.replay()
+        self._graph.replay()
         return self._outputs.cpu()
-
-    @contextlib.contextmanager
-    def _local_draws(self):
-        """The model's own draws from the default generator (Yemong's position offsets)
-        come from the agent's `model_draws` stream instead (on a GPU, from the device's
-        generator, with its own state): torch's global generators are swapped for it and
-        restored, so the agent is reproducible from its seed and the process's generators
-        are untouched."""
-        cuda = [self.device] if self.device.type == "cuda" else []
-        with torch.random.fork_rng(devices=cuda):
-            torch.default_generator.set_state(self.model_draws.get_state())
-            if cuda:
-                torch.cuda.set_rng_state(self.device_draws, self.device)
-            yield
-            self.model_draws.set_state(torch.default_generator.get_state())
-            if cuda:
-                self.device_draws = torch.cuda.get_rng_state(self.device)
 
     @torch.no_grad()
     def act(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
         """The team's (S, 3) actions for its view (1, ...), on the CPU; the carry moves on."""
         if self.watched:
             self._graph = None  # the eager step replaces the carry: capture afresh after
+        key = decision_key_from(self.decision_keys, 1)
         if self.graphed and not self.watched:
             self.inspection = None
-            logits = self._graphed_logits(view, reset)
+            logits = self._graphed_logits(view, reset, key)
             joint = sample(logits, self.temperature, self.generator).to(torch.int32)
             self.carry.previous_action.copy_(joint)
             self.last_logits = logits
@@ -409,11 +384,11 @@ class Agent:
             reset = reset.to(self.device)
         before, unrolled = self.carry, None
         if self.recurrent:
-            with self._local_draws():
-                if self.watched:
-                    decision, unrolled = self.model.inspect(self.carry, view, reset)
-                else:
-                    decision = self.model.step(self.carry, view, reset)
+            key = key.to(self.device)
+            if self.watched:
+                decision, unrolled = self.model.inspect(self.carry, view, reset, key)
+            else:
+                decision = self.model.step(self.carry, view, reset, key)
         else:
             decision = self.model(view)
         if self.recurrent:

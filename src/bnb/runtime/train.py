@@ -151,7 +151,8 @@ class TrainConfig:
     setting, which the entry point applies with `bnb.cli.set_precision`). reward: the reward
     levels' weights. host_store: stream the segments through pinned host memory (on a GPU)
     rather than keep them on the device.
-    seed: the learner's random streams; the entry point seeds the process with it too.
+    seed: keys every random draw (`bnb.streams`): the model's initial weights, the
+    rollout's maps, seats and decisions, the league's swaps, the learner's streams.
     objective: "ppo", or "bc" (clone the scripted agent; `learner` should then be
     `bnb.learn.bc.config()`, `teacher` sets its labels and how the scripted opponent
     plays, `bnb.learn.bc.TeacherOpponent`, and `stop` when it stops, its budget included).

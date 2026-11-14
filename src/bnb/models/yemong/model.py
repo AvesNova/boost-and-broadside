@@ -24,6 +24,7 @@ from bnb.contracts.tree import contract
 from bnb.game.rules import Rules
 from bnb.game.ship_types import ShipTypes
 from bnb.models.initialise import initialise
+from bnb.streams import purpose_key, row_uniforms
 
 from . import belief as beliefs
 from . import critic, density, geometry, shots
@@ -397,6 +398,10 @@ class Carry:
 
 # the inference-time ablations `Ablations` carries
 ABLATIONS = ("rotary", "forecast", "absent_zones")
+
+# A carry's position offset before its first step: none drawn yet (offsets are in [0, P)).
+UNDRAWN_OFFSET = -1.0
+OFFSET_DRAWS = purpose_key("position offset")
 
 
 @contract
@@ -788,8 +793,8 @@ class Yemong(nn.Module):
     # ------------------------------------------------------------------ carry
 
     def initial_carry(self, views: int, ships_per_team: int, num_ships: int, device=None) -> Carry:
-        """No history: the trunk carry zero, no beliefs, every previous action null, a
-        fresh position offset per view."""
+        """No history: the trunk carry zero, no beliefs, every previous action null, no
+        position offset yet (`UNDRAWN_OFFSET`: the first step draws one)."""
         config, dtype = self.config, self.bins.dtype
         queries = num_ships + 1
         state = torch.zeros(
@@ -816,7 +821,7 @@ class Yemong(nn.Module):
             convolution_buffer=state.new_zeros(state.shape[:-1] + (3, config.width)),
             belief=belief,
             previous_action=torch.zeros((views, ships_per_team), dtype=torch.int32, device=device),
-            offset=config.position_period * torch.rand((views, 2), dtype=dtype, device=device),
+            offset=torch.full((views, 2), UNDRAWN_OFFSET, dtype=dtype, device=device),
             nonfinite=torch.zeros(views, dtype=torch.int64, device=device),
             motion=rows,
             previous=(
@@ -836,9 +841,9 @@ class Yemong(nn.Module):
             ),
         )
 
-    def _cleared(self, carry: Carry, reset: torch.Tensor) -> Carry:
+    def _cleared(self, carry: Carry, reset: torch.Tensor, decision_key: torch.Tensor) -> Carry:
         """The carry with every view whose environment reset made fresh, with a new offset
-        drawn (from the default generator: a captured graph draws afresh on each replay)."""
+        drawn from the decision's key (as is one never drawn, `UNDRAWN_OFFSET`)."""
         keep = ~reset
 
         def masked(tensor: torch.Tensor, fill=0):
@@ -853,10 +858,11 @@ class Yemong(nn.Module):
             spreads=masked(prior.spreads),
             action=masked(prior.action, 1.0 / NUM_JOINT),
         )
+        drawn = row_uniforms(OFFSET_DRAWS, decision_key, (2,)).to(carry.offset.dtype)
         offset = torch.where(
-            keep[..., None],
+            (keep[..., None] & (carry.offset >= 0.0)),
             carry.offset,
-            self.config.position_period * torch.rand_like(carry.offset),
+            self.config.position_period * drawn,
         )
         rows = carry.motion
         if rows is not None:  # nothing is present before a reset
@@ -1078,28 +1084,37 @@ class Yemong(nn.Module):
     # ------------------------------------------------------------------ step
 
     def step(
-        self, carry: Carry, obs: Obs, reset: torch.Tensor, ablations: Ablations | None = None
+        self,
+        carry: Carry,
+        obs: Obs,
+        reset: torch.Tensor,
+        decision_key: torch.Tensor,
+        ablations: Ablations | None = None,
     ) -> Decision:
         """One decision for views (R, ...); reset (R,) bool: the environment reset before
-        this observation; ablations: the inference-time ablations per view (none by
-        default)."""
-        return self._step(carry, obs, reset, inspect=False, ablations=ablations)[0]
+        this observation; decision_key (R,) int64: the decision's key (`Controller.step`),
+        which draws a reset view's position offset; ablations: the inference-time ablations
+        per view (none by default)."""
+        return self._step(carry, obs, reset, decision_key, inspect=False, ablations=ablations)[0]
 
-    def inspect(self, carry: Carry, obs: Obs, reset: torch.Tensor) -> tuple[Decision, Unrolled]:
+    def inspect(
+        self, carry: Carry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor
+    ) -> tuple[Decision, Unrolled]:
         """One decision, as `step` makes it, and every head's output at it, as `unroll`
         gives them for a segment of this one step ((1, R, ...) leading), from the same
         trunk pass: what the play shell's prediction overlays read."""
-        return self._step(carry, obs, reset, inspect=True)
+        return self._step(carry, obs, reset, decision_key, inspect=True)
 
     def _step(
         self,
         carry: Carry,
         obs: Obs,
         reset: torch.Tensor,
+        decision_key: torch.Tensor,
         inspect: bool,
         ablations: Ablations | None = None,
     ) -> tuple[Decision, Unrolled | None]:
-        carry = self._cleared(carry, reset)
+        carry = self._cleared(carry, reset, decision_key)
         ships, dtype = obs.ships, self.bins.dtype
         own = carry.previous_action.shape[-1]
         visible = ships[..., SHIP["visible"]] > 0.5

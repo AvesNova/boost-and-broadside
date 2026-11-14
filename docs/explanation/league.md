@@ -121,9 +121,8 @@ uv run --no-sync python -m bench.memory_handover $P/step_73400320-live \
   slot every update, at one network pass per slot instead of slots + 1; the author chose
   one slot every 2 to 4 updates. The cost is the cut games' results and the new
   opponent's first seconds of play away from its own (the hand-over test above).
-- **The draws** use counter-based uniforms (`bnb.runtime.opponents.counter_uniform`, a
-  hash of the stream's key, the counter and the index), so they need no generator state
-  and repeat exactly.
+- **The draws** use keyed uniforms (`bnb.streams.keyed_uniform` of the run's swap key
+  and the swap count), so they need no generator state and repeat exactly.
 - **The results:** the rollout tallies every ended game but each row's first by what the
   opponent row played and by mode, from the learner's side; the league reads the tally
   once per segment.

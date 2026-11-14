@@ -70,6 +70,7 @@ from bnb.controllers.scripted_parameters import Logistic
 from bnb.game import api, ships
 from bnb.game.handling.characteristics import characteristics
 from bnb.game.physics.combat import MEAN_CLOSENESS
+from bnb.streams import decision_key_from
 
 PRESET = "real_scale_elimination"
 SHIP_SET = "real-scale"
@@ -219,7 +220,8 @@ def games(
                 }
             )
             rows = done.shape[0]
-            action, carry, _ = agent.step(carry, view, torch.full((2 * rows,), tick == 0))
+            keys = decision_key_from(torch.default_generator, 2 * rows)
+            action, carry, _ = agent.step(carry, view, torch.full((2 * rows,), tick == 0), keys)
             action = Action.unpack(action.packed().reshape(rows, N, 3).to(torch.int32))
             moved, sweep = api.move(
                 rules, types, state, action, api.spread(rules, rows, generator=draws)

@@ -259,5 +259,7 @@ def test_a_policy_file_round_trips_and_loads_as_ratings_do(tmp_path):
     cases.assert_equal(cases.single_step(loaded, obs), cases.single_step(model, obs))
     # the league's controllers (`bnb.league.matches`) wrap a loaded file the trainer's way
     controller = model_controller(loaded.requires_grad_(False), PRESETS["frontline"])
-    action, carry, outputs = controller.step(None, obs, torch.zeros(2, dtype=torch.bool))
+    action, carry, outputs = controller.step(
+        None, obs, torch.zeros(2, dtype=torch.bool), torch.arange(obs.ships.shape[0])
+    )
     assert carry is None and outputs.values.shape == (2, 5, 5)

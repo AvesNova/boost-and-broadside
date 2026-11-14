@@ -34,9 +34,10 @@ GPU by every process on the machine. `tests/conftest.py` keeps them apart:
   process on the GPU cannot make it run out of memory;
 - a test without `gpu` that initialises CUDA fails, so `-m "not gpu"` never does;
 - a test that leaves the default CPU generator changed fails. Draw from a local
-  `torch.Generator`; where the code under test draws from the default generator (a
-  model's initialisation, the rollout), use the `global_generator` fixture, which seeds it
-  and restores it afterwards;
+  `torch.Generator`; where a test's own inputs draw from the default generator, use the
+  `global_generator` fixture, which seeds it and restores it afterwards (the code under
+  test draws keyed streams, and a controller's `step` takes its decision keys:
+  `torch.arange(rows)` in a test);
 - `fresh_compiler` empties dynamo's caches for a test whose compiles must not depend on
   the tests before it.
 

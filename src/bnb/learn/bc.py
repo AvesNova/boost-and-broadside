@@ -22,7 +22,7 @@ from bnb.contracts import Action, Obs, Outputs, Trajectory
 from bnb.contracts.action import NUM_JOINT, NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import GLOBAL
 from bnb.contracts.series import Mean
-from bnb.controllers.scripted import Scripted, uniform_actions
+from bnb.controllers.scripted import Scripted, floored_actions
 from bnb.controllers.scripted_defaults import MODE_DEFAULTS
 from bnb.controllers.scripted_memory import ScriptedCarry
 from bnb.controllers.scripted_parameters import ModeParameters, ScriptedParameters
@@ -128,16 +128,13 @@ class TeacherOpponent:
         (None: memoryless): the labels'."""
         return labels(self.agent.action_distribution(obs, carry), self.teacher.floor)
 
-    def step(self, carry: ScriptedCarry, obs: Obs, reset: torch.Tensor):
+    def step(self, carry: ScriptedCarry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
         """One decision for views (R, ...), drawn from the labels' distribution; see
         `Controller.step`."""
-        action, carry, _ = self.agent.step(carry, obs, reset)
+        action, carry, _ = self.agent.step(carry, obs, reset, decision_key)
         action, floor = action.packed(), self.teacher.floor
         if floor != 0.0:
-            uniform = torch.rand(action.shape[:-1], device=action.device) < floor
-            action = torch.where(
-                uniform[..., None], uniform_actions(action.shape[:-1], action.device), action
-            )
+            action = floored_actions(action, floor, decision_key)
         return Action.unpack(action), carry, Outputs()
 
 
@@ -163,16 +160,17 @@ def flat_views(obs: Obs) -> Obs:
 
 @torch.no_grad()
 def teacher_carries(
-    teacher: Scripted, obs: Obs, carry: ScriptedCarry
+    teacher: Scripted, obs: Obs, carry: ScriptedCarry, decision_key: torch.Tensor
 ) -> tuple[ScriptedCarry, ScriptedCarry]:
     """The teacher run over stored observations (L, n, ...) in time order from its carry
-    (n, ...), each tick's reset read from the observation: (its carry after every tick,
-    (L, n, ...), and after the last, (n, ...))."""
+    (n, ...), each tick's reset read from the observation and its plan choices drawn from
+    the stored decision keys (L, n) (`Trajectory.decision_key`): (its carry after every
+    tick, (L, n, ...), and after the last, (n, ...))."""
     steps = []
     for tick in range(obs.ships.shape[0]):
         view = _pytree.tree_map_only(torch.Tensor, lambda x, t=tick: x[t], obs)
         reset = view.globals[:, GLOBAL["reset"]] > 0.5
-        _, carry = teacher.decide(carry, view, reset)
+        _, carry = teacher.decide(carry, view, reset, decision_key[tick])
         steps.append(carry)
     return _pytree.tree_map(lambda *leaves: torch.stack(leaves), *steps), carry
 
@@ -243,8 +241,9 @@ class BehaviourCloning(Learner):
         ticks = max(1, self.micro_views * segments.length // rows)
         shards = []
         for shard in range(segments.shards):
-            obs = segments.shard(("obs",), shard)["obs"]
-            carries, carry = teacher_carries(self.teacher, obs, carry)
+            stored = segments.shard(("obs", "decision_key"), shard)
+            obs = stored["obs"]
+            carries, carry = teacher_carries(self.teacher, obs, carry, stored["decision_key"])
             chunks = []
             for start in range(0, segments.length, ticks):
                 part = slice(start, start + ticks)

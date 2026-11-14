@@ -417,7 +417,9 @@ def test_temperature_one_samples_exactly_as_without_one():
     decisions = []
     for temperature in (None, torch.ones(obs.ships.shape[0])):
         torch.manual_seed(3)
-        action, _, outputs = controller.step(None, obs, reset, temperature=temperature)
+        action, _, outputs = controller.step(
+            None, obs, reset, torch.arange(obs.ships.shape[0]), temperature=temperature
+        )
         decisions.append((action.packed(), outputs.log_probability, outputs.entropy))
     for one, two in zip(*decisions, strict=True):
         assert torch.equal(one, two)

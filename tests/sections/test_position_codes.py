@@ -15,7 +15,13 @@ from bnb.learn.ppo import LearnerConfig
 from bnb.models.yemong import codes, geometry
 from bnb.models.yemong.inputs import ARENA_CODE, ARENA_CODE_RADIUS, arena_code
 from bnb.models.yemong.layers import rotary_tables
-from bnb.models.yemong.model import ROTARY_TURN, Yemong, YemongConfig, yemong_build
+from bnb.models.yemong.model import (
+    ROTARY_TURN,
+    UNDRAWN_OFFSET,
+    Yemong,
+    YemongConfig,
+    yemong_build,
+)
 from bnb.models.yemong.state_code import POSITION_LEVELS, POSITION_PERIOD
 from bnb.runs.serialise import SerialiseError, from_json, to_json
 from bnb.runtime.train import TrainConfig
@@ -122,8 +128,11 @@ def test_a_new_runs_colour_code_spans_36_m_to_236_km():
 
 
 def test_a_new_views_offsets_span_the_new_period():
+    """A fresh carry holds none (`UNDRAWN_OFFSET`); its first decision draws each view's."""
     net = cases.model(position_period=NEW.position_period)
-    offsets = net.initial_carry(4096, 5, 10).offset
+    carry = net.initial_carry(4096, 5, 10)
+    assert (carry.offset == UNDRAWN_OFFSET).all()
+    offsets = net._cleared(carry, torch.zeros(4096, dtype=torch.bool), torch.arange(4096)).offset
     assert ((offsets >= 0) & (offsets < NEW.position_period)).all()
     assert offsets.max() > 0.9 * NEW.position_period
 

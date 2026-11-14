@@ -134,9 +134,12 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
 - **The game takes its randomness as input:** the uniform draws for a tick
   (`bnb.game.api.uniforms`) and for a spread (`bnb.game.api.spread`) are arguments, so
   the game is a deterministic function of its inputs.
-- **Draws come from named streams:** one `torch.Generator` per stream, seeded from the
-  run's root seed and the stream's name. A new consumer of randomness gets its own
-  stream, so adding it does not shift any other draw.
+- **Draws are keyed** (`bnb.streams`): a counter-based hash of the run's seed and of
+  what the draw is for (an environment, an episode, a tick, a row, a use's name), or for a
+  host-side draw a `torch.Generator` seeded from the seed and the stream's name. A new
+  consumer of randomness gets its own key, so adding it does not shift any other draw;
+  nothing in the training, evaluation and rating paths draws from torch's default
+  generator ([Random draws](../explanation/architecture.md#random-draws)).
 - **No global seeding** outside the entry points. Tests use a local generator for every
   draw.
 

@@ -5,6 +5,7 @@ import torch.nn.functional as F
 
 from bnb.contracts import Action
 from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
+from bnb.streams import inverse_cdf
 
 SIZES = (NUM_POWER, NUM_STICK, NUM_SHOOT)
 
@@ -14,12 +15,14 @@ def split(logits: torch.Tensor) -> tuple[torch.Tensor, ...]:
     return logits.split(SIZES, -1)
 
 
-def sample(logits: torch.Tensor) -> tuple[Action, torch.Tensor, torch.Tensor]:
-    """A Gumbel-max sample per component. Returns (action, log-prob, entropy) per ship."""
+def sample(
+    logits: torch.Tensor, uniforms: torch.Tensor
+) -> tuple[Action, torch.Tensor, torch.Tensor]:
+    """A sample per component by the inverse CDF of its uniform (uniforms (..., 3), power,
+    stick, shoot). Returns (action, log-prob, entropy) per ship."""
     picks, log_probability, entropy = [], 0.0, 0.0
-    for part in split(logits):
-        u = torch.rand_like(part).clamp_min(1e-20)
-        pick = torch.argmax(part - torch.log(-torch.log(u)), -1)
+    for index, part in enumerate(split(logits)):
+        pick = inverse_cdf(torch.softmax(part.float(), -1), uniforms[..., index])
         logs = F.log_softmax(part, -1)
         picks.append(pick.to(torch.int32))
         log_probability = log_probability + logs.gather(-1, pick[..., None])[..., 0]

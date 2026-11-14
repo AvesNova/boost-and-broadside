@@ -144,7 +144,6 @@ def main() -> None:
             with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
                 fresh = Trainer(settings, device).ppo.return_scale
             trainer.ppo.return_scale.low, trainer.ppo.return_scale.high = fresh.low, fresh.high
-        checkpoint.restore_default_generators(directory / "checkpoint", device)
         trainer.triggers = Triggers(
             state=checkpoint.triggers_state(directory / "checkpoint"), objective=objective
         )

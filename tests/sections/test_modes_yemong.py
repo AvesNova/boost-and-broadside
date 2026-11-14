@@ -42,7 +42,12 @@ def test_zones_are_memory_tokens_after_the_fields():
         ships=obs.ships[-1], fields=obs.fields[-1], globals=obs.globals[-1], zones=obs.zones[-1]
     )
     carry = net.initial_carry(view.ships.shape[0], OWN, 10)
-    replay = net.step(carry, view, torch.ones(view.ships.shape[0], dtype=torch.bool)).replay
+    replay = net.step(
+        carry,
+        view,
+        torch.ones(view.ships.shape[0], dtype=torch.bool),
+        torch.arange(view.ships.shape[0]),
+    ).replay
     tokens = net.tokens(view, replay)
     assert tokens.zone.shape == view.zones.shape[:-1] + (ZONE_INPUTS,)
     assert tokens.memory_position.shape[-2] == view.fields.shape[-2] + 5
@@ -63,7 +68,9 @@ def test_zones_are_memory_tokens_after_the_fields():
     assert squad.zones.shape[-2] == 5 and not squad.zones.any()
     carry = net.initial_carry(1, OWN, 10)
     with torch.no_grad():
-        replay = net.step(carry, squad, torch.zeros(1, dtype=torch.bool)).replay
+        replay = net.step(
+            carry, squad, torch.zeros(1, dtype=torch.bool), torch.arange(squad.ships.shape[0])
+        ).replay
         _, memory, _, _ = net._encode(net.tokens(squad, replay))
     fields = squad.fields.shape[-2]
     assert torch.equal(memory[0, fields:], net.encoder.absent_zone.expand(5, -1))
@@ -72,7 +79,12 @@ def test_zones_are_memory_tokens_after_the_fields():
 def _decide(net, view):
     carry = net.initial_carry(view.ships.shape[0], OWN, 10)
     with torch.no_grad():
-        return net.step(carry, view, torch.ones(view.ships.shape[0], dtype=torch.bool))
+        return net.step(
+            carry,
+            view,
+            torch.ones(view.ships.shape[0], dtype=torch.bool),
+            torch.arange(view.ships.shape[0]),
+        )
 
 
 def test_zone_rows_and_mode_globals_reach_the_decision():
@@ -128,7 +140,10 @@ def test_the_offset_reaches_zones_only_through_their_position_code():
     shifted = dataclasses.replace(carry, offset=carry.offset + delta)
     reset = torch.zeros(views, dtype=torch.bool)
     with torch.no_grad():
-        plain, moved = net.step(carry, view, reset), net.step(shifted, view, reset)
+        plain, moved = (
+            net.step(carry, view, reset, torch.arange(view.ships.shape[0])),
+            net.step(shifted, view, reset, torch.arange(view.ships.shape[0])),
+        )
     torch.testing.assert_close(moved.policy_logits, plain.policy_logits, rtol=1e-8, atol=1e-8)
 
 
@@ -155,7 +170,9 @@ def test_frontline_timer_inputs_code_the_locks_and_the_own_wave_as_the_respawn_w
         torch.manual_seed(1)  # the same position offsets for both builds
         carry = net.initial_carry(2, config.ships_per_team, config.num_ships)
         with torch.no_grad():
-            replay = net.step(carry, view, torch.ones(2, dtype=torch.bool)).replay
+            replay = net.step(
+                carry, view, torch.ones(2, dtype=torch.bool), torch.arange(view.ships.shape[0])
+            ).replay
         tokens.append(net.tokens(view, replay))
     width = TIMER_INPUTS
     assert tokens[1].zone.shape[-1] == zone_inputs(True) == ZONE_INPUTS + 2 * width

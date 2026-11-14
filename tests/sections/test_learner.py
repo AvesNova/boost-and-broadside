@@ -106,7 +106,12 @@ def test_the_compacted_replay_rebuilds_the_own_rows_sight_gave():
     )
     carry = net.initial_carry(obs.ships.shape[0], OWN, 10)
     with torch.no_grad():
-        decision = net.step(carry, obs, torch.zeros(obs.ships.shape[0], dtype=torch.bool))
+        decision = net.step(
+            carry,
+            obs,
+            torch.zeros(obs.ships.shape[0], dtype=torch.bool),
+            torch.arange(obs.ships.shape[0]),
+        )
     valid, age, means, spreads = believed(obs.ships, decision.replay)
     assert decision.replay.means.shape[-2] == 10 - OWN
     assert valid[:, :OWN].all() and (age[:, :OWN] == 0).all() and (spreads[:, :OWN] == 0).all()
@@ -302,7 +307,7 @@ class Constant:
     def init_carry(self, views, device):
         return None
 
-    def step(self, carry, obs, reset):
+    def step(self, carry, obs, reset, decision_key):
         from bnb.contracts.action import from_joint
 
         joint = torch.full((reset.shape[0], self.ships), self.joint, dtype=torch.int32)

@@ -47,6 +47,7 @@ from bnb.game.modes.rules import PRESETS
 from bnb.models.yemong import policy
 from bnb.runs import checkpoint
 from bnb.runtime.rollout import Rollout
+from bnb.streams import action_uniforms
 
 LEARNER, SEAT = "learner", "opponent"
 BINS = (0.0, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0)  # seconds after the switch
@@ -104,15 +105,15 @@ class HandOver:
                 self.carries[(name, "c")] = reset_trunk(_clone(self.carries[("A", "A")]))
             self.fresh = torch.ones_like(reset)
         logits = {}
+        # one decision key per tick for every model: the offsets drawn at a reset are A's
+        keys = torch.arange(reset.shape[0]) + tick * reset.shape[0]
         for key, value in self.carries.items():
-            # one seed per tick for every model: the offsets drawn at a reset are A's
-            with torch.random.fork_rng(devices=[]):
-                torch.manual_seed(tick)
-                decision = self._model(key).step(value, obs, reset)
+            decision = self._model(key).step(value, obs, reset, keys)
             logits[key] = decision.policy_logits
             self.carries[key] = decision.carry
         driver = ("A", "A") if tick < self.switch_tick else (next(iter(self.seconds)), "a")
-        joint, _, _ = policy.sample(logits[driver])
+        uniforms = action_uniforms(keys, logits[driver].shape[-2])
+        joint, _, _ = policy.sample(logits[driver], uniforms)
         for key, value in self.carries.items():
             self.carries[key] = dataclasses.replace(value, previous_action=joint)
         if tick >= self.switch_tick:

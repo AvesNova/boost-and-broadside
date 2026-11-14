@@ -96,7 +96,7 @@ def test_a_slot_holding_the_scripted_agent_plays_it_at_full_strength(tmp_path):
         return outputs
 
     opponents.scripted_agent.step = step
-    action, after, _ = opponents.step(carry, view, reset)
+    action, after, _ = opponents.step(carry, view, reset, torch.arange(reset.shape[0]))
     scripted = opponents.slot_of_row == 0
     expected = torch.where(scripted, slots, opponents.slot_of_row)
     assert torch.equal(after.column, expected)
@@ -255,8 +255,14 @@ def test_a_cut_game_is_credited_to_no_one(tmp_path):
         seen = tally.clone()
         for column, (wins, ties, losses) in enumerate(ended.tolist()):
             if wins + ties + losses:
-                assert begun[column], (tick, column)
-                total = expected.setdefault(league.held[column], [0.0, 0.0, 0.0])
+                if column < slots:
+                    assert begun[column], (tick, column)
+                    name = league.held[column]
+                else:  # the scripted agent's column: the slots that hold it
+                    holders = (opponents.kind == SCRIPTED_KIND).nonzero()[:, 0].tolist()
+                    assert any(begun[slot] for slot in holders), (tick, column)
+                    name = SCRIPTED_PLAYER
+                total = expected.setdefault(name, [0.0, 0.0, 0.0])
                 for index, count in enumerate((wins, losses, ties)):
                     total[index] += count
         if tick % 8 == 7:
@@ -420,9 +426,9 @@ def test_a_rows_first_game_is_never_tallied(tmp_path):
     every, none = torch.ones(rows, dtype=torch.bool), torch.zeros(rows, dtype=torch.bool)
     result = torch.zeros(rows, dtype=torch.int32)
     for reset in (every, none):  # the first game: begun at the first tick, then ended
-        _, carry, _ = opponents.step(carry, view, reset)
+        _, carry, _ = opponents.step(carry, view, reset, torch.arange(rows))
         assert int(opponents.tally(carry, every, result).sum()) == 0
-    _, carry, _ = opponents.step(carry, view, every)  # the second game begins
+    _, carry, _ = opponents.step(carry, view, every, torch.arange(rows))  # the second game begins
     assert int(opponents.tally(carry, every, result).sum()) == rows
 
 

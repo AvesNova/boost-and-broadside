@@ -174,11 +174,11 @@ class Mixed:
         """Every part's carry."""
         return tuple(controller.init_carry(views, device) for controller in self.controllers)
 
-    def step(self, carry: tuple, obs: Obs, reset: torch.Tensor):
+    def step(self, carry: tuple, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
         """Every part's action on every row, each row keeping its own player's."""
         action, carries = None, []
         for index, (controller, part_carry) in enumerate(zip(self.controllers, carry, strict=True)):
-            part, part_carry, _ = controller.step(part_carry, obs, reset)
+            part, part_carry, _ = controller.step(part_carry, obs, reset, decision_key)
             part = part.packed()
             carries.append(part_carry)
             mine = (self.choice == index)[:, None, None]

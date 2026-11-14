@@ -1,8 +1,9 @@
 """Yemong's single-step forward exports to ONNX and matches eager (client play, rule 9).
 
-The exported surface is one view: the observation, the reset flag and the carry in; the
-policy logits, the values, the outcome and the next carry out. Sampling is the client's,
-and so is writing the sample into the carry's previous action.
+The exported surface is one view: the observation, the reset flag, the decision key (which
+draws a reset view's position offset) and the carry in; the policy logits, the values, the
+outcome and the next carry out. Sampling is the client's, and so is writing the sample into
+the carry's previous action.
 """
 
 import numpy as np
@@ -32,11 +33,12 @@ class Step(torch.nn.Module):
         super().__init__()
         self.model, self.carry_spec = model, carry_spec
 
-    def forward(self, ships, fields, globals, zones, reset, *carry):
+    def forward(self, ships, fields, globals, zones, reset, decision_key, *carry):
         decision = self.model.step(
             _pytree.tree_unflatten(list(carry), self.carry_spec),
             Obs(ships=ships, fields=fields, globals=globals, zones=zones),
             reset,
+            decision_key,
         )
         return (
             decision.policy_logits,
@@ -63,7 +65,8 @@ def _mid_game(config: GameConfig, ticks: int):
                 zones=obs.zones[:, 0],
             )
         )
-        action, _, _ = chaser.step(None, Obs(ships=obs.ships[0], fields=None, globals=None), None)
+        own = Obs(ships=obs.ships[0], fields=None, globals=None)
+        action, _, _ = chaser.step(None, own, None, torch.arange(own.ships.shape[0]))
         packed = action.packed().reshape(1, config.num_ships, 3)
         state, _ = api.step(
             rules,
@@ -99,13 +102,14 @@ def test_yemong_step_exports_to_onnx(tmp_path, settings):
         carry = model.initial_carry(1, config.ships_per_team, config.num_ships)
         reset = torch.ones(1, dtype=torch.bool)
         for view in views[:-1]:  # a carry with history and beliefs about hidden ships
-            carry = model.step(carry, view, reset).carry
+            carry = model.step(carry, view, reset, torch.arange(view.ships.shape[0])).carry
             reset = torch.zeros(1, dtype=torch.bool)
     assert (views[-1].ships[0, :, SHIP["visible"]] < 0.5).any(), "the last view should hide a ship"
     leaves, spec = _pytree.tree_flatten(carry)
     step = Step(model, spec).eval()
     view = views[-1]
-    args = (view.ships, view.fields, view.globals, view.zones, reset, *leaves)
+    key = torch.tensor([7], dtype=torch.int64)
+    args = (view.ships, view.fields, view.globals, view.zones, reset, key, *leaves)
     path = tmp_path / "yemong.onnx"
     torch.onnx.export(step, args, str(path), dynamo=True)
     session = onnxruntime.InferenceSession(str(path), providers=["CPUExecutionProvider"])

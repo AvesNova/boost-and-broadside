@@ -44,7 +44,7 @@ class Train:
     precision: bfloat16 (the model's matmuls), float32 or tf32; old_log_probabilities:
     rollout or recomputed (by unroll before the first epoch).
     updates: the updates to train (a resume continues to the run's total).
-    seed: the run's seed (TrainConfig.seed: the process and the learner's streams).
+    seed: the run's seed (TrainConfig.seed: every keyed draw and the learner's streams).
     set: TrainConfig fields by dotted path, such as learner.entropy_shoot=-0.01 or
     yemong.width=256 (JSON values); fields inside tuples (such as pools) cannot be set.
     resume: continue the run named (PPO or BC; a chain: see objective), from its newest
@@ -844,7 +844,6 @@ def _train(options: Train, given_options: set[str], stop, chain_entry: dict | No
         if options.print_config:
             print(json.dumps(to_json(config), indent=1))
             return
-        torch.manual_seed(config.seed)
         set_precision(config.precision)
         if options.calibrate_entropy is not None:
             calibrate(options, config, device)
@@ -863,7 +862,6 @@ def _train(options: Train, given_options: set[str], stop, chain_entry: dict | No
             return
         if options.resume:
             trainer = checkpoint.load_training(source, device, config)
-            checkpoint.restore_default_generators(source, device)
             step = trainer.ppo.environment_steps
             rewound = run.set_aside_after(step)
             overrides = dict(settings)

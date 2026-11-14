@@ -26,8 +26,10 @@ in, the marginals and the carry after the decision out. `bnb.controllers.scripte
 gives the `(R, S, 42)` distribution over the joint action given a carry (`None`: a fresh
 one, the memoryless agent), in `bnb.contracts.action.to_joint` order. The joint is the outer product of three marginals, power (3), stick (7) and shoot
 (2), which `bnb.controllers.scripted.marginals` returns. `Scripted.step` samples each
-marginal by its inverse CDF from the default generator, so a captured graph draws fresh
-numbers on every replay. A dead ship, or one waiting to respawn, takes the no-op action
+marginal by its inverse CDF from the decision key's uniforms (`bnb.streams.action_uniforms`,
+the same every controller reads), and its plan switches, its sense choice and a mixture
+rung's agent flags from the same key under their own names
+([Random draws](architecture.md#random-draws)). A dead ship, or one waiting to respawn, takes the no-op action
 with probability 1; a living ship never has an action at probability 0 or 1 (see
 [Softness](#softness-logistics-the-floor-and-the-temperature)).
 

@@ -17,8 +17,8 @@ class _Step(torch.nn.Module):
         super().__init__()
         self.model = model
 
-    def forward(self, carry, obs, reset):
-        decision = self.model.step(carry, obs, reset)
+    def forward(self, carry, obs, reset, decision_key):
+        decision = self.model.step(carry, obs, reset, decision_key)
         return decision.policy_logits.float(), decision.carry
 
 
@@ -34,9 +34,9 @@ def test_a_stacked_forward_is_each_sets_own_forward(global_generator, bfloat16):
     rows = obs.ships.shape[0]
     module = _Step(nets[0])
     carry = cases.controller(nets[0], config).init_carry(rows, cases.CPU)
-    # no resets: a reset draws the view's position offset, and vmap's draws (one batched
-    # draw, `randomness="different"`) are not a separate forward's
-    arguments = (carry, obs, torch.zeros(rows, dtype=torch.bool))
+    # resets draw the views' position offsets, keyed by the decision keys: the stacked
+    # forward draws what each set's own forward does
+    arguments = (carry, obs, torch.ones(rows, dtype=torch.bool), torch.arange(rows))
     sets = [{f"model.{name}": value for name, value in net.state_dict().items()} for net in nets]
     parameters = {name: torch.stack([s[name] for s in sets]) for name in sets[0]}
     per_set = rows // len(nets)

@@ -19,8 +19,9 @@ pytestmark = pytest.mark.usefixtures("global_generator")
 
 OWN = 5
 # The step outputs of the case model on the first 40 ticks of `cases.rollout`, its step loop
-# from offset seed 11 (first recorded by the pre-fix tree, commit 67be0bca; re-recorded by
-# `arm_goldens.py --record`).
+# with `cases.step_loop`'s decision keys (first recorded by the pre-fix tree, commit
+# 67be0bca; re-recorded by `arm_goldens.py --record`, last for the keyed initialisation and
+# offsets).
 GOLDEN = pathlib.Path(__file__).parent / "golden" / "yemong_v1_spread_steps.pt"
 
 
@@ -30,7 +31,6 @@ def _steps(net, golden):
     obs = cases.golden_obs(golden)
     dtype = next(net.parameters()).dtype
     obs = cases.cast(obs, dtype)
-    torch.manual_seed(11)
     carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
     with torch.no_grad():
         decisions, final = cases.step_loop(net, net.step, carry, obs, golden["joint"])

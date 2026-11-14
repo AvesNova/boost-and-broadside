@@ -754,9 +754,12 @@ always visible, so its row is the observation's truth with no spread, and
 stores the record, so `unroll` composes the same tokens without replaying the belief. **`unroll` equals a loop of `step`** over the same segment;
 `tests/sections/test_yemong_model.py` and `tests/sections/test_modes_yemong.py` check it.
 
-The controller samples the joint action from the policy logits by Gumbel-max
-(`bnb.models.yemong.policy.sample`), stores the sample as the previous action, and
-converts it to the factored `Action` with `bnb.contracts.action.from_joint`.
+The controller samples the joint action from the policy logits by the inverse CDF of each
+factor in turn, one uniform each from the decision key (`bnb.models.yemong.policy.sample`:
+the power, the stick given the power, the shoot given both), stores the sample as the
+previous action, and converts it to the factored `Action` with
+`bnb.contracts.action.from_joint`. The view's position offset is drawn from the same key at
+a reset (and at the first step, which a fresh carry, holding none, makes).
 
 ### Decoding the heads
 

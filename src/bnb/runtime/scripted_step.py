@@ -6,9 +6,8 @@ thread whatever the fight; built, about 0.1 ms. The ship characteristics are an 
 tuned card plays on the same library; it is keyed (`library_path`) by the code it holds,
 the parameters, the doctrines it flies (a stored-doctrine file, `scripted_doctrine.stored`:
 its contents and the doctrine table's width, which the library holds as constants) and the
-shapes of its inputs (the fleet, the fields, the zones). Its draws
-come from torch's default generator, built or not, so a side that swaps its own generator
-in gets the same draws from either.
+shapes of its inputs (the fleet, the fields, the zones). Its draws are keyed by the
+decision key it is given (`Controller.step`), so built or not it draws the same.
 """
 
 import hashlib
@@ -58,6 +57,7 @@ class ScriptedStep:
         carry: ScriptedCarry,
         view: Obs,
         reset: torch.Tensor,
+        decision_key: torch.Tensor,
         characteristics: Characteristics,
     ) -> tuple[torch.Tensor, ScriptedCarry]:
         controller = scripted.Scripted(
@@ -66,7 +66,7 @@ class ScriptedStep:
             self.parameters,
             doctrines=self.table(characteristics),
         )
-        action, after, _ = controller.step(carry, view, reset)
+        action, after, _ = controller.step(carry, view, reset, decision_key)
         return action.packed()[0], after
 
 

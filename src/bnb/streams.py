@@ -36,6 +36,17 @@ def purpose_key(name: str) -> int:
     return zlib.crc32(name.encode()) & MASK
 
 
+# Every controller draws its action (power, stick, shoot) from the decision's key under this
+# one use, so two controllers on the same row draw from the same uniforms.
+ACTION_DRAWS = purpose_key("action")
+
+
+def decision_key_from(generator: torch.Generator, views: int) -> torch.Tensor:
+    """(views,) int64 decision keys drawn from a generator: for a caller outside the
+    rollout that steps a controller with its own stream (the play shell, a test)."""
+    return torch.randint(0, 1 << 32, (views,), generator=generator, dtype=torch.int64)
+
+
 def stream_generator(seed: int, name: str, device: torch.device | None = None) -> torch.Generator:
     """The stream `name`'s own generator, seeded by `stream_key`, so a new stream shifts no
     other's draws. A 32-bit seed: the CPU generator (Mersenne twister) reads only a seed's
@@ -101,6 +112,12 @@ def row_uniforms(key: int, rows: torch.Tensor, shape: tuple[int, ...]) -> torch.
     array of draws keyed by `key` (the use's), the row's key and the element's index."""
     index = element_index(shape, rows.device)
     return keyed_uniform(key, rows.reshape(rows.shape + (1,) * len(shape)), index)
+
+
+def action_uniforms(decision_key: torch.Tensor, ships: int) -> torch.Tensor:
+    """(R, S, 3) the uniforms a decision samples its ships' actions by (power, stick, shoot),
+    keyed by its key (R,) under `ACTION_DRAWS`, every controller's."""
+    return row_uniforms(ACTION_DRAWS, decision_key, (ships, 3))
 
 
 def inverse_cdf(weights: torch.Tensor, uniform: torch.Tensor) -> torch.Tensor:

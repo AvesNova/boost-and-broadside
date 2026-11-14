@@ -231,8 +231,8 @@ class _Decision(torch.nn.Module):
         self.model = controller.model
         self.controller = controller
 
-    def forward(self, carry, obs: Obs, reset: torch.Tensor):
-        action, carry, _ = self.controller.step(carry, obs, reset)
+    def forward(self, carry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
+        action, carry, _ = self.controller.step(carry, obs, reset, decision_key)
         return action.packed(), carry
 
 
@@ -369,7 +369,7 @@ class LaneSeat:
             ladder=self.ladder_agent.init_carry(self.ladder_rows.numel(), device),
         )
 
-    def step(self, carry: LaneCarry, obs: Obs, reset: torch.Tensor):
+    def step(self, carry: LaneCarry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
         """One decision for every lane row; see `Controller.step`."""
         S = obs.ships.shape[-2] // 2
         action = torch.zeros((self.rows, S, 3), dtype=torch.int32, device=reset.device)
@@ -378,7 +378,7 @@ class LaneSeat:
             inputs = _pytree.tree_map_only(
                 torch.Tensor,
                 lambda x, index=index: x[index.reshape(-1)].unflatten(0, index.shape),
-                (carry.model, obs, reset),
+                (carry.model, obs, reset, decision_key),
             )
             weights = {name: value[players] for name, value in self.parameters.items()}
             packed, chosen = stacked.call(self.decision, weights, inputs)
@@ -396,7 +396,7 @@ class LaneSeat:
             rows = self.ladder_rows
             ladder_obs = _pytree.tree_map_only(torch.Tensor, lambda x: x[rows], obs)
             ladder_action, ladder_carry, _ = self.ladder_agent.step(
-                carry.ladder, ladder_obs, reset[rows]
+                carry.ladder, ladder_obs, reset[rows], decision_key[rows]
             )
             action = action.index_copy(0, rows, ladder_action.packed())
         generation = self.generation[self.player_generation]

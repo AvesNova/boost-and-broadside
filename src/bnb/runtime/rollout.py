@@ -210,6 +210,13 @@ class Rollout:
         uniform = keyed_uniform(SEAT_DRAWS, self._episode_keys(episode))
         return (uniform * self.teams).long().clamp_max(self.teams - 1)
 
+    def _decision_keys(self, ticks: torch.Tensor, name: str) -> torch.Tensor:
+        """(R,) the decision keys of controller `name`'s rows: their environment's tick key
+        (`_tick_keys`) and their role."""
+        return keyed_hash(
+            DECISION_DRAWS, ticks[self.lineup.environments[name]], self.lineup.role[name]
+        )
+
     def _tick_keys(self, carry: dict) -> torch.Tensor:
         """(B,) each environment's key for this tick: its episode and its clock."""
         episode = carry["episode"]
@@ -269,6 +276,7 @@ class Rollout:
             action=Action.unpack(
                 torch.zeros((ring, views, N, 3), dtype=torch.int32, device=device)
             ),
+            decision_key=torch.zeros((ring, views), dtype=torch.int64, device=device),
             log_probability=torch.zeros((ring, views, S), device=device),
             value=torch.zeros((ring, views, S), device=device),
             reward=torch.zeros((ring, views, S, len(REWARD_LEVELS)), device=device),
@@ -349,7 +357,8 @@ class Rollout:
         view = Obs(**{part: getattr(obs, part)[environments, team] for part in PARTS})
         reset = view.globals[..., GLOBAL["reset"]] > 0.5
         one_row = _pytree.tree_map_only(torch.Tensor, lambda x: x[:1].clone(), learner_carry)
-        _, _, outputs = self.controllers[self.learner].step(one_row, view, reset)
+        key = torch.zeros(1, dtype=torch.int64, device=device)  # a probe: its draws are unused
+        _, _, outputs = self.controllers[self.learner].step(one_row, view, reset, key)
         outputs = dict(
             values=outputs.values,
             outcome=outputs.outcome,
@@ -398,11 +407,15 @@ class Rollout:
         B, T, S, device = self.environments, self.teams, self.ships_per_team, self.device
         actions = torch.zeros((B, T, S, 3), dtype=torch.int32, device=device)
         slot, records = self._slot(carry), carry["records"]
+        ticks = self._tick_keys(carry)
         for name, controller in self.controllers.items():
             reads = self.reads if name == self.learner else controller.reads
             view = self._view(carry, name, reads + ("globals",))
             reset = view.globals[..., GLOBAL["reset"]] > 0.5
-            action, new_carry, outputs = controller.step(carry["controllers"][name], view, reset)
+            keys = self._decision_keys(ticks, name)
+            action, new_carry, outputs = controller.step(
+                carry["controllers"][name], view, reset, keys
+            )
             if new_carry is not None:
                 _assign(carry["controllers"][name], new_carry)
             packed = action.packed()
@@ -410,6 +423,7 @@ class Rollout:
                 (self.lineup.environments[name], self._team(name, carry["seat"])), packed
             )
             if name == self.learner:
+                records["decision_key"].index_copy_(0, slot, keys[None])
                 for part in self.reads:
                     getattr(records["obs"], part).index_copy_(0, slot, getattr(view, part)[None])
                 ships = carry["obs"]["ships"][
@@ -450,7 +464,6 @@ class Rollout:
         ):
             stored.index_copy_(0, slot, given[None])
         records["truth"].index_copy_(0, slot, carry["truth"][environments, team][None, :, S:])
-        ticks = self._tick_keys(carry)
         ship, component = self.spread_index
         carry["spread"].copy_(keyed_normal(SPREAD_DRAWS, ticks[:, None, None], ship, component))
         carry["uniforms"].copy_(keyed_uniform(GAME_DRAWS, ticks[:, None], self.slot_index))
@@ -640,14 +653,9 @@ class Rollout:
             stage(self.carry)
 
     def _capture(self) -> None:
-        """Compile, warm up and capture `block` ticks, leaving the carry and the device's
-        default generator as they were: the capture draws nothing a replay would, so a run
-        resumed in a fresh process (which captures again) draws what the first did."""
+        """Compile, warm up and capture `block` ticks, leaving the carry as it was (every
+        draw is keyed by the carry, so the warm-up's leave nothing behind)."""
         saved = _clone(self.carry)
-        generator = torch.cuda.default_generators[
-            self.device.index if self.device.index is not None else torch.cuda.current_device()
-        ]
-        generator_state = generator.get_state()
         side = torch.cuda.Stream(self.device)
         side.wait_stream(torch.cuda.current_stream(self.device))
         with torch.cuda.stream(side):
@@ -659,7 +667,6 @@ class Rollout:
             for _ in range(self.block):
                 self._tick()
         _assign(self.carry, saved)
-        generator.set_state(generator_state)
 
     def _reusable(self, key) -> None:
         """Before the compute stream writes a ring slot or segment buffer again, wait for
@@ -749,7 +756,8 @@ class Rollout:
         the Outputs (values, outcome) of the next segment's first observation."""
         view = self._view(self.carry, self.learner, self.reads + ("globals",))
         reset = view.globals[..., GLOBAL["reset"]] > 0.5
-        _, _, outputs = self._evaluate(self.carry["controllers"][self.learner], view, reset)
+        keys = self._decision_keys(self._tick_keys(self.carry), self.learner)
+        _, _, outputs = self._evaluate(self.carry["controllers"][self.learner], view, reset, keys)
         return outputs
 
     def counters(self) -> dict[str, int]:

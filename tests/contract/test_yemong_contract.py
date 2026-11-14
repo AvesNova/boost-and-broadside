@@ -29,7 +29,9 @@ def test_yemong_outputs():
     controller = YemongController(Yemong(yemong_build(YemongConfig(), rules, types)), 2, 4)
     carry = controller.init_carry(4, torch.device("cpu"))
     with torch.no_grad():
-        action, carry, out = controller.step(carry, view, torch.ones(4, dtype=torch.bool))
+        action, carry, out = controller.step(
+            carry, view, torch.ones(4, dtype=torch.bool), torch.arange(view.ships.shape[0])
+        )
     assert action.power.shape == (4, 2) and action.power.dtype == torch.int32
     assert out.log_probability.shape == out.entropy.shape == out.value.shape == (4, 2)
     assert out.values.shape == (4, 2, len(REWARD_LEVELS)) and out.outcome.shape == (4, 4)

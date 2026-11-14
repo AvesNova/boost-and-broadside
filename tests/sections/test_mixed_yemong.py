@@ -93,8 +93,10 @@ def test_absent_zone_columns_change_no_output():
     carry = net.initial_carry(views, OWN, 10)
     reset = torch.zeros(views, dtype=torch.bool)
     with torch.no_grad():
-        plain = net.step(carry, view, reset)
-        noisy = net.step(carry, _garbage(view, 1), reset)
+        plain = net.step(carry, view, reset, torch.arange(view.ships.shape[0]))
+        noisy = net.step(
+            carry, _garbage(view, 1), reset, torch.arange(_garbage(view, 1).ships.shape[0])
+        )
         for name in (
             "policy_logits",
             "enemy_action_logits",
@@ -123,7 +125,9 @@ def test_an_absent_zone_is_the_learned_token_at_the_global_tokens_rotation():
     views = view.ships.shape[0]
     carry = net.initial_carry(views, OWN, 10)
     with torch.no_grad():
-        replay = net.step(carry, view, torch.zeros(views, dtype=torch.bool)).replay
+        replay = net.step(
+            carry, view, torch.zeros(views, dtype=torch.bool), torch.arange(view.ships.shape[0])
+        ).replay
         tokens = net.tokens(view, replay)
         _, memory, token_tables, map_tables = net._encode(tokens)
     M, N = view.fields.shape[-2], view.ships.shape[-2]
@@ -173,7 +177,10 @@ def test_the_offset_stays_hidden_with_absent_zones():
         )
         reset = torch.zeros(views, dtype=torch.bool)
         view = _last(obs)
-        plain, moved = net.step(carry, view, reset), net.step(shifted, view, reset)
+        plain, moved = (
+            net.step(carry, view, reset, torch.arange(view.ships.shape[0])),
+            net.step(shifted, view, reset, torch.arange(view.ships.shape[0])),
+        )
     assert (view.zones[..., ZONE["present"]] < 0.5).any()
     for name in ("policy_logits", "enemy_action_logits", "values", "outcome_probabilities"):
         torch.testing.assert_close(getattr(moved, name), getattr(plain, name), rtol=1e-8, atol=1e-8)

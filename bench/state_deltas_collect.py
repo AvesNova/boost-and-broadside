@@ -37,6 +37,7 @@ from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.runs import checkpoint
 from bnb.runtime.train import model_controller
+from bnb.streams import decision_key_from
 
 PARTS = ("ships", "fields", "globals", "zones")
 CALM_FERN = "/home/vizia/avesnova/runs-v2/players-calm-fern/step_100663296-exponential_average"
@@ -109,7 +110,8 @@ def main() -> None:
             rows[t] = truth.numpy()
             view = Obs(**{part: getattr(obs, part).flatten(0, 1) for part in PARTS})
             reset = view.globals[..., GLOBAL["reset"]] > 0.5
-            action, new_carry, _ = controller.step(carry, view, reset)
+            keys = decision_key_from(torch.default_generator, reset.shape[0])
+            action, new_carry, _ = controller.step(carry, view, reset, keys)
             if new_carry is not None:
                 carry = new_carry
             packed = action.packed().reshape(B, N, 3)  # sim order (team-major)

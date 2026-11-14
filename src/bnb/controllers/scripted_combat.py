@@ -16,6 +16,7 @@ from bnb.contracts.obs import GLOBAL, SHIP, ZONE
 from bnb.game.handling.characteristics import Characteristics, time_of_flight
 from bnb.game.rules import Rules
 from bnb.game.ship_types import per_ship
+from bnb.streams import purpose_key, row_uniforms
 
 from .scripted_doctrine import Doctrine
 from .scripted_doctrine import per_ship as doctrine_of
@@ -82,7 +83,9 @@ class Context(NamedTuple):
     recall: Recall  # the enemies as the agent believes them
     seconds: float  # a decision's length
     time_unit: torch.Tensor  # the ship's own time unit in seconds (`time_unit`)
-    switching: bool  # the plan choices may switch (else only a forced re-choice)
+    # the decision's key (R,) int64 (`Controller.step`): the plan choices may switch,
+    # drawn from it (`choice_uniforms`); None: only a forced re-choice
+    decision_key: torch.Tensor | None
     # Frontline's timers, s (0 in the other modes): the own team's next respawn wave (R,)
     # (the enemy's is hidden), and each zone's capture lock on the own team and on the
     # enemy's (R, Z), by the observation's zone rows. Read by the Frontline layer's
@@ -90,6 +93,15 @@ class Context(NamedTuple):
     next_wave: torch.Tensor
     zone_lock_own: torch.Tensor
     zone_lock_enemy: torch.Tensor
+
+
+def choice_uniforms(fleet: Context, name: str, like: torch.Tensor) -> torch.Tensor | None:
+    """Uniforms shaped like `like` (R, ...) for the decision's draw `name` (a plan choice's
+    switch, the sense), keyed by the decision's key; None for a decision that does not
+    switch (`Context.decision_key`)."""
+    if fleet.decision_key is None:
+        return None
+    return row_uniforms(purpose_key(f"scripted {name}"), fleet.decision_key, like.shape[1:])
 
 
 def column(rows: torch.Tensor, name: str) -> torch.Tensor:
@@ -105,7 +117,7 @@ def context(
     carry: ScriptedCarry | None = None,
     recall: Recall | None = None,
     seconds: float = Rules.tick_length,
-    switching: bool = False,
+    decision_key: torch.Tensor | None = None,
 ) -> Context:
     """The Context both layers read, from one team's views (R, ...), own rows first, at the
     agent's temperature (a float, or (R, 1) per view), with its memory (`remember`'s carry
@@ -169,7 +181,7 @@ def context(
         recall=recall,
         seconds=seconds,
         time_unit=time_unit(characteristics, own_type, parameters),
-        switching=switching,
+        decision_key=decision_key,
         next_wave=obs.globals[:, GLOBAL["next_wave_own"]],
         zone_lock_own=obs.zones[..., ZONE["lock_own"]],
         zone_lock_enemy=obs.zones[..., ZONE["lock_enemy"]],
@@ -242,7 +254,7 @@ def stick_marginal(
         in_own_time(parameters.side_switch_in_radians, fleet.time_unit),
         temperature,
         fleet.seconds,
-        fleet.switching,
+        choice_uniforms(fleet, "side", longer),
     )
     weight = logistic(size, parameters.side_commit_in_stall_angle, temperature)
     left = weight * committed_left.float() + (1.0 - weight) * sign_left.float()
@@ -342,7 +354,7 @@ def choose_target(fleet: Context, offset_x: torch.Tensor, offset_y: torch.Tensor
         in_own_time(parameters.target_switch_in_log_distance, fleet.time_unit),
         fleet.temperature,
         fleet.seconds,
-        fleet.switching,
+        choice_uniforms(fleet, "target", advantage),
     )
     return torch.where(recall.known.any(-1, keepdim=True), target, -1)
 
@@ -559,10 +571,11 @@ def maneuvers(
     )
     # the choice: one-circle with probability sense_one_circle, drawn once as the gate opens
     opened = geometry_gate > 0.5
-    if fleet.switching:
+    fresh_draw = choice_uniforms(fleet, "sense", distance)
+    if fresh_draw is not None:
         draw = torch.where(
             opened,
-            torch.where(carry.sense_draw < 0.0, torch.rand_like(distance), carry.sense_draw),
+            torch.where(carry.sense_draw < 0.0, fresh_draw, carry.sense_draw),
             -1.0,
         )
     else:

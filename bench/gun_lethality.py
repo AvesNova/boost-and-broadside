@@ -45,6 +45,7 @@ from bnb.controllers import scripted
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.game.physics.combat import MEAN_CLOSENESS
+from bnb.streams import decision_key_from
 
 PRESET = "real_scale_deathmatch"
 ARENA_RADIUS = api.arena_radius_for(api.PRESETS[PRESET], 1)  # the 1v1 radius, floored (v16)
@@ -114,7 +115,8 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
                     for name in ("ships", "fields", "globals", "zones")
                 }
             )
-            action, carry, _ = agent.step(carry, view, torch.full((2 * B,), tick == 0))
+            keys = decision_key_from(torch.default_generator, 2 * B)
+            action, carry, _ = agent.step(carry, view, torch.full((2 * B,), tick == 0), keys)
             action = Action.unpack(action.packed().reshape(B, 2, 3).to(torch.int32))
             moved, sweep = api.move(
                 rules, types, state, action, api.spread(rules, B, generator=draws)

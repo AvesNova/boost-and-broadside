@@ -37,12 +37,11 @@ def _loop(net, trajectory, ablations=None):
     """The step loop over the segment (decisions stacked over time, the final carry), from
     a fixed offset draw."""
     obs = trajectory.obs
-    torch.manual_seed(11)  # the offsets the initial carry and each reset draw
     carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
     with torch.no_grad():
         return cases.step_loop(
             net,
-            lambda c, v, r: net.step(c, v, r, ablations),
+            lambda c, v, r, k: net.step(c, v, r, k, ablations),
             carry,
             obs,
             cases.joint_actions(trajectory),

@@ -59,7 +59,8 @@ def _run(agent: Scripted, views: list[Obs], carry=None):
     out = []
     for index, view in enumerate(views):
         reset = torch.full((view.ships.shape[0],), index == 0 and carry.fresh.all().item())
-        _, carry = agent.decide(carry, view, reset)
+        keys = torch.arange(view.ships.shape[0]) + index * view.ships.shape[0]
+        _, carry = agent.decide(carry, view, reset, keys)
         out.append(carry)
     return out
 
@@ -146,13 +147,15 @@ def test_a_reset_and_the_ships_death_clear_the_memory():
     assert not bool(carry.fresh.any()) and bool(carry.known.all())
     hidden = _view([_enemy(0.0, visible=False, since=0.1), absent()], views=4)
     reset = torch.tensor([True, False, False, False])
-    _, after = agent.decide(carry, hidden, reset)
+    _, after = agent.decide(carry, hidden, reset, torch.arange(reset.shape[0]))
     assert not bool(after.known[0].any()) and bool(after.known[1:, 0].all())
     dead_own = _view([_enemy(gun * 1.5), _enemy(gun * 1.0)], views=1)
     dead_own.ships[0, 0, SHIP["alive"]] = 0.0
     one = type(carry)(**{f.name: getattr(carry, f.name)[:1] for f in dataclasses.fields(carry)})
     # a dead ship is fresh before its choices: it re-chooses outright
-    _, after = agent.decide(one, dead_own, torch.zeros(1, dtype=torch.bool))
+    _, after = agent.decide(
+        one, dead_own, torch.zeros(1, dtype=torch.bool), torch.zeros(1, dtype=torch.int64)
+    )
     assert not bool(after.fresh.any())
 
 
@@ -191,10 +194,12 @@ def test_a_mixture_rungs_ships_play_the_agent_by_its_share():
     agent = Scripted(CHARACTERISTICS, 2, PARAMETERS, temperature=2.0, share=0.3)
     obs = _view([_enemy(500.0), absent()])
     carry = agent.init_carry(VIEWS, CPU)
-    _, carry = agent.decide(carry, obs, torch.ones(VIEWS, dtype=torch.bool))
+    _, carry = agent.decide(carry, obs, torch.ones(VIEWS, dtype=torch.bool), torch.arange(VIEWS))
     share = float(carry.agent.float().mean())
     assert abs(share - 0.3) < 0.03
-    _, kept = agent.decide(carry, obs, torch.zeros(VIEWS, dtype=torch.bool))
+    _, kept = agent.decide(
+        carry, obs, torch.zeros(VIEWS, dtype=torch.bool), torch.arange(VIEWS) + VIEWS
+    )
     assert torch.equal(kept.agent, carry.agent)  # drawn per game
     parts = agent.marginals(obs, carry)
     uniform = ~carry.agent[:, 0]

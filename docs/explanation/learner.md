@@ -268,8 +268,9 @@ an epoch whose mean approximate KL divergence exceeds `target_kl` (None: never).
 policy's terms and statistics are one method, `Learner._policy`{.plain}; behaviour cloning
 (`bnb.learn.bc.BehaviourCloning`) replaces it and keeps the rest of the update, with 256
 minibatches instead of 32: its progress follows its optimizer steps. The minibatch order and
-the shot spread come from the learner's own random streams (`bnb.learn.ppo.random_stream`,
-seeded from the run's `TrainConfig.seed`), so the global generator does not change an update. The old log-probabilities are
+the shot spread come from the learner's own random streams (`bnb.streams.stream_generator`,
+seeded from the run's `TrainConfig.seed` and the stream's name), so no other draw changes an
+update. The old log-probabilities are
 the rollout's, or recomputed by `unroll` before the first epoch
 (`LearnerConfig.old_log_probabilities`).
 

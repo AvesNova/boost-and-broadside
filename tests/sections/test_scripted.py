@@ -401,11 +401,12 @@ def _game_views(mode: str, seed: int = 3):
     agent = Scripted(CHARACTERISTICS, config.ships_per_team, PARAMETERS)
     carries = [agent.init_carry(B, torch.device("cpu")) for _ in range(2)]
     torch.manual_seed(seed)
-    for _ in range(90):
+    for tick in range(90):
         state, obs, _ = api.perceive(rules, state)
         actions = []
         for team in (0, 1):
-            action, carries[team], _ = agent.step(carries[team], _view(obs, team), None)
+            keys = torch.arange(B) * 2 + team + tick * 2 * B
+            action, carries[team], _ = agent.step(carries[team], _view(obs, team), None, keys)
             actions.append(action)
         action = type(actions[0])(
             *(torch.cat(parts, 1) for parts in zip(*[(a.power, a.stick, a.shoot) for a in actions]))
@@ -513,7 +514,8 @@ def test_a_rung_plays_the_agent_at_its_temperature_and_infinity_is_uniform():
     expected = rung.action_distribution(many)[0, 0]
     torch.testing.assert_close(expected, distribution(obs, CHARACTERISTICS, PARAMETERS, 2.0)[0, 0])
     # a fresh carry makes every plan choice afresh: the memoryless distribution
-    action, carry, _ = rung.step(rung.init_carry(views, many.ships.device), many, None)
+    keys = torch.arange(views)
+    action, carry, _ = rung.step(rung.init_carry(views, many.ships.device), many, None, keys)
     assert isinstance(carry, ScriptedCarry) and not bool(carry.fresh.any())
     counts = torch.bincount(to_joint(action)[:, 0].long(), minlength=NUM_JOINT).float() / views
     assert (counts - expected).abs().max() < 0.01

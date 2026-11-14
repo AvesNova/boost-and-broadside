@@ -122,16 +122,15 @@ def test_the_bc_loss_matches_an_independent_computation(segment):
     cross, kl = torch.zeros(()), torch.zeros(())
     views = trajectory.done.shape[1]
     # The teacher's memory over the segment, from a fresh carry, and the labels `prepare`
-    # makes from it, with the same draws (the teacher's memory draws from the default
-    # generator).
-    with torch.random.fork_rng(devices=[]):
-        torch.manual_seed(7)
-        carries, _ = bc.teacher_carries(
-            learner.teacher, trajectory.obs, learner.teacher.init_carry(views, lc.CPU)
-        )
-        torch.manual_seed(7)
-        learner.teacher_carry = None
-        made = learner._teacher_labels(runner.store)
+    # makes from it, with the same draws (the stored decision keys).
+    carries, _ = bc.teacher_carries(
+        learner.teacher,
+        trajectory.obs,
+        learner.teacher.init_carry(views, lc.CPU),
+        trajectory.decision_key,
+    )
+    learner.teacher_carry = None
+    made = learner._teacher_labels(runner.store)
     prepared = dict(prepared, derived=dict(prepared["derived"], **{bc.TEACHER_LABELS: made}))
     for tick in range(trajectory.done.shape[0]):  # the teacher tick by tick, on its views
         obs = Obs(
@@ -195,9 +194,9 @@ class Recording(Scripted):
         super().__init__(CHARACTERISTICS, 5, PARAMETERS, memory=False)
         self.decisions: list[torch.Tensor] = []
 
-    def step(self, carry, obs, reset):
+    def step(self, carry, obs, reset, decision_key):
         self.decisions.append(memoryless(obs))
-        return super().step(carry, obs, reset)
+        return super().step(carry, obs, reset, decision_key)
 
 
 def _recorded_segment():
@@ -235,7 +234,9 @@ def test_the_update_time_labels_are_the_rollout_time_distribution():
     # so a batch of another shape may differ at the ulp level: measured at most 1.2e-7 (on
     # 0.15% of entries). The tolerance is 2.5e-7, about two float32 ulps at 1.
     views = trajectory.obs.ships.shape[1]
-    carries, _ = bc.teacher_carries(recording, trajectory.obs, recording.init_carry(views, lc.CPU))
+    carries, _ = bc.teacher_carries(
+        recording, trajectory.obs, recording.init_carry(views, lc.CPU), trajectory.decision_key
+    )
     labels = bc.teacher_distribution(recording, trajectory.obs, carries)
     torch.testing.assert_close(labels, decided, rtol=0, atol=2.5e-7)
 
@@ -255,14 +256,16 @@ def test_a_label_is_the_teachers_decision_given_its_carry():
             zones=trajectory.obs.zones[tick],
         )
         reset = view.globals[:, GLOBAL["reset"]] > 0.5
-        parts, carry = TEACHER.decide(carry, view, reset)
+        parts, carry = TEACHER.decide(carry, view, reset, trajectory.decision_key[tick])
         decided.append(joint(parts))
         kept.append(carry)
     carries = _pytree.tree_map(lambda *leaves: torch.stack(leaves), *kept)
     labels = bc.teacher_distribution(TEACHER, trajectory.obs, carries)
     torch.testing.assert_close(labels, torch.stack(decided), rtol=0, atol=2.5e-7)
     torch.manual_seed(5)
-    scanned, last = bc.teacher_carries(TEACHER, trajectory.obs, TEACHER.init_carry(views, lc.CPU))
+    scanned, last = bc.teacher_carries(
+        TEACHER, trajectory.obs, TEACHER.init_carry(views, lc.CPU), trajectory.decision_key
+    )
     assert torch.equal(scanned.target, carries.target) and torch.equal(last.known, carry.known)
 
 
@@ -378,7 +381,8 @@ def test_the_scored_opponent_plays_the_labels_distribution():
     times = 20_000
     torch.manual_seed(0)
     many = _repeated(view, times)
-    action, _, _ = opponent.step(opponent.init_carry(many.ships.shape[0], lc.CPU), many, None)
+    keys = torch.arange(many.ships.shape[0])
+    action, _, _ = opponent.step(opponent.init_carry(many.ships.shape[0], lc.CPU), many, None, keys)
     joint = to_joint(action).long().unflatten(0, (times, -1))  # (times, R, S)
     frequency = torch.nn.functional.one_hot(joint, NUM_JOINT).float().mean(0)
     error = (expected * (1 - expected) / times).sqrt()
@@ -400,8 +404,9 @@ def test_floor_0_and_temperature_1_leave_the_scripted_agents_play_unchanged():
     for player in (opponent, agent):  # two steps each: the second sees the first's draws
         torch.manual_seed(1)
         carry, steps = player.init_carry(views.ships.shape[0], lc.CPU), []
-        for _ in range(2):
-            action, carry, _ = player.step(carry, views, None)
+        for tick in range(2):
+            keys = torch.arange(views.ships.shape[0]) + tick * views.ships.shape[0]
+            action, carry, _ = player.step(carry, views, None, keys)
             steps.append(action.packed())
         draws.append(steps)
     for drawn, scripted in zip(*draws, strict=True):

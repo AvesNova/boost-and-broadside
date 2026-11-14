@@ -12,6 +12,7 @@ temperature is calibrated offline on the scripted agent's own games
 from collections.abc import Callable
 
 import torch
+from torch.utils import _pytree
 
 from bnb.contracts import GameConfig, Pool
 from bnb.contracts.obs import SHIP
@@ -204,16 +205,23 @@ def teacher_distributions(
         compiled=compiled,
         seed=seed,
     )
-    observed = [rollout.run().obs for _ in range(segments)]
+    observed = []
+    for _ in range(segments):  # copies: a run's trajectory is a view the next run rewrites
+        trajectory = rollout.run()
+        observed.append(
+            _pytree.tree_map_only(
+                torch.Tensor, torch.clone, (trajectory.obs, trajectory.decision_key)
+            )
+        )
 
     def at(temperature: float) -> torch.Tensor:
         teacher = Scripted(
             agent.characteristics, game.ships_per_team, agent.parameters, temperature
         )
-        carry = teacher.init_carry(observed[0].ships.shape[1], device)
+        carry = teacher.init_carry(observed[0][0].ships.shape[1], device)
         rows = []
-        for obs in observed:  # the teacher's carry runs on through the segments
-            carries, carry = teacher_carries(teacher, obs, carry)
+        for obs, decision_key in observed:  # the teacher's carry runs on through the segments
+            carries, carry = teacher_carries(teacher, obs, carry, decision_key)
             probabilities = teacher_distribution(teacher, obs, carries).flatten(0, 1)
             views = flat_views(obs)
             alive = views.ships[:, : probabilities.shape[1], SHIP["alive"]] > 0.5

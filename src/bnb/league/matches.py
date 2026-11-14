@@ -65,7 +65,7 @@ from torch.utils import _pytree
 from bnb.contracts import ASPECTS, Action, GameConfig, Obs, Outputs, Pool
 from bnb.contracts.obs import SHIP
 from bnb.contracts.tree import contract
-from bnb.controllers.scripted import Scripted, uniform_actions
+from bnb.controllers.scripted import Scripted, floored_actions
 from bnb.controllers.scripted_defaults import MODE_DEFAULTS
 from bnb.controllers.scripted_memory import ScriptedCarry
 from bnb.controllers.scripted_parameters import ScriptedParameters, table, unpack
@@ -285,16 +285,17 @@ class _Decision(torch.nn.Module):
         carry,
         obs: Obs,
         reset: torch.Tensor,
+        decision_key: torch.Tensor,
         temperature: torch.Tensor,
         ablations: Ablations | None = None,
     ):
         if ablations is None:
             action, carry, outputs = self.controller.step(
-                carry, obs, reset, temperature=temperature
+                carry, obs, reset, decision_key, temperature=temperature
             )
         else:
             action, carry, outputs = self.controller.step(
-                carry, obs, reset, ablations, temperature=temperature
+                carry, obs, reset, decision_key, ablations, temperature=temperature
             )
         return action.packed(), carry, outputs.entropy
 
@@ -435,6 +436,7 @@ class MatchSeat:
         carry,
         obs: Obs,
         reset: torch.Tensor,
+        decision_key: torch.Tensor,
     ):
         """Group `group`'s network on its lanes, as one forward over the lanes' stacked
         weights (`bnb.runtime.stacked`), each lane on its slot's rows at their temperatures:
@@ -442,7 +444,7 @@ class MatchSeat:
         entropies (R, S), with the active lanes' rows written, and the group's network carry
         with theirs (an idle lane's rows keep their values; a group's lanes are always on
         different slots)."""
-        arguments = (carry, obs, reset, self.network_temperature)
+        arguments = (carry, obs, reset, decision_key, self.network_temperature)
         if self.ablations is not None and self.ablatable[group]:
             arguments += (self.ablations,)
         lanes, slots = self.lanes[group], self.lane_slot[group]
@@ -469,7 +471,7 @@ class MatchSeat:
         updated = None if lane_carry is None else _pytree.tree_map(written, carry, lane_carry)
         return network, entropy, updated
 
-    def step(self, carry: MatchCarry, obs: Obs, reset: torch.Tensor):
+    def step(self, carry: MatchCarry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
         """One decision for every row; see `Controller.step`. The rollout probes its
         learner's outputs on one row when it is built; the seat gives none, and answers a
         view count other than its own rows' with idle actions."""
@@ -477,19 +479,15 @@ class MatchSeat:
         if views != self.rows:
             idle = torch.zeros((views, self.ships_per_team, 3), dtype=torch.int32)
             return Action.unpack(idle.to(reset.device)), carry, Outputs()
-        scripted, scripted_carry, _ = self.agent.step(carry.scripted, obs, reset)
-        action = scripted.packed()
-        uniform = torch.rand(action.shape[:-1], device=action.device) < self.floor[:, None]
-        action = torch.where(
-            uniform[..., None], uniform_actions(action.shape[:-1], action.device), action
-        )
+        scripted, scripted_carry, _ = self.agent.step(carry.scripted, obs, reset, decision_key)
+        action = floored_actions(scripted.packed(), self.floor, decision_key)
         model_carry = dict(carry.model)
         entropy = torch.zeros(action.shape[:-1], device=action.device)
         if self.decisions:
             network = torch.zeros_like(action)
             for group in range(len(self.decisions)):
                 network, entropy, updated = self._network(
-                    group, network, entropy, carry.model.get(str(group)), obs, reset
+                    group, network, entropy, carry.model.get(str(group)), obs, reset, decision_key
                 )
                 if updated is not None:
                     model_carry[str(group)] = updated

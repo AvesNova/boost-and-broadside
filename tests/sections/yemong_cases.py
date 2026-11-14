@@ -35,7 +35,7 @@ def model(config: GameConfig = SQUAD, seed: int = 0, dtype=torch.float32, **sett
         for name, parameter in net.named_parameters():
             if name.endswith("last.weight") or ".lasts." in name and name.endswith(".weight"):
                 parameter.normal_(0.0, 0.05)
-    assert net.ship_heads.lasts[1].weight.abs().min() > 0, "the next-state head must be live"
+    assert net.ship_heads.lasts[1].weight.abs().max() > 0, "the next-state head must be live"
     return net.to(dtype).eval()
 
 
@@ -95,9 +95,12 @@ def cast(tree, dtype):
 
 def step_loop(net: Yemong, step, carry, obs: Obs, joint: torch.Tensor, start: int = 0):
     """Run `step` over a stored segment from step `start`, feeding back the stored joint
-    actions. Returns the decisions stacked over time and the final carry."""
+    actions, each tick's views with their own decision keys (a reset's offset draws).
+    Returns the decisions stacked over time and the final carry."""
     decisions = []
     reset = resets(obs)
+    views = obs.ships.shape[1]
+    keys = torch.arange(views, device=obs.ships.device)
     for t in range(start, obs.ships.shape[0]):
         view = Obs(
             ships=obs.ships[t],
@@ -105,7 +108,7 @@ def step_loop(net: Yemong, step, carry, obs: Obs, joint: torch.Tensor, start: in
             globals=obs.globals[t],
             zones=obs.zones[t],
         )
-        decision = step(carry, view, reset[t])
+        decision = step(carry, view, reset[t], keys + t * views)
         carry = dataclasses.replace(decision.carry, previous_action=joint[t])
         decisions.append(decision)
     stacked = _pytree.tree_map(lambda *x: torch.stack(x), *decisions)

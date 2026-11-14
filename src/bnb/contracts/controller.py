@@ -50,7 +50,12 @@ class Controller(Protocol):
         """The carry before the first step of R = views views, on device (None for a stateless
         controller)."""
 
-    def step(self, carry: Carry, obs: Obs, reset: torch.Tensor) -> tuple[Action, Carry, Outputs]:
+    def step(
+        self, carry: Carry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor
+    ) -> tuple[Action, Carry, Outputs]:
         """obs: views (R, ...); reset: (R,) bool, the view's environment reset before this
-        observation (a lifecycle flag, also in obs.globals)."""
+        observation (a lifecycle flag, also in obs.globals); decision_key: (R,) int64 in
+        [0, 2^32), the decision's key: every random draw of the decision is a pure function
+        of it (`bnb.streams`; the rollout keys it by the seed, the environment, its episode
+        and tick, and the row's role)."""
         ...

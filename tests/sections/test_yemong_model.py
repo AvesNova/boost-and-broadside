@@ -121,8 +121,8 @@ def test_inspect_is_the_step_with_every_head_as_unroll_gives_it(segment):
         _, middle = cases.step_loop(net, net.step, carry, head, joint)
         view = _pytree.tree_map_only(torch.Tensor, lambda x: x[40], obs)
         reset = cases.resets(obs)[40]
-        stepped = net.step(middle, view, reset)
-        decision, inspected = net.inspect(middle, view, reset)
+        stepped = net.step(middle, view, reset, torch.arange(view.ships.shape[0]))
+        decision, inspected = net.inspect(middle, view, reset, torch.arange(view.ships.shape[0]))
         leading = _pytree.tree_map_only(torch.Tensor, lambda x: x[None], (view, decision.replay))
         unrolled = net.unroll(middle, *leading, reset[None])
     for (path, expected), (_, actual) in zip(
@@ -211,7 +211,10 @@ def _view_sequence(config: GameConfig, fogged: bool, ticks: int, seed: int = 0) 
         if tick == ticks:
             break
         action, _, _ = chaser.step(
-            None, Obs(ships=views[-1].ships, fields=None, globals=None), None
+            None,
+            Obs(ships=views[-1].ships, fields=None, globals=None),
+            None,
+            torch.arange(Obs(ships=views[-1].ships, fields=None, globals=None).ships.shape[0]),
         )
         packed = action.packed().reshape(batch, config.num_ships, 3)
         state, _ = api.step(
@@ -234,7 +237,7 @@ def _run(net, views: list[Obs], carry):
     """Steps over views (the first a reset); returns the carry after them."""
     reset = torch.ones(views[0].ships.shape[0], dtype=torch.bool)
     for view in views:
-        decision = net.step(carry, view, reset)
+        decision = net.step(carry, view, reset, torch.arange(view.ships.shape[0]))
         carry = dataclasses.replace(
             decision.carry, previous_action=decision.policy_logits.argmax(-1).int()
         )
@@ -248,7 +251,7 @@ def test_visible_ship_code_is_the_sharp_code_of_its_observation():
     carry = net.initial_carry(view.ships.shape[0], OWN, 10)
     no_reset = torch.zeros(view.ships.shape[0], dtype=torch.bool)
     with torch.no_grad():
-        decision = net.step(carry, view, no_reset)
+        decision = net.step(carry, view, no_reset, torch.arange(view.ships.shape[0]))
         tokens = net.tokens(view, decision.replay)
     visible = view.ships[..., SHIP["visible"]] > 0.5
     ship_type = view.ships[..., SHIP["ship_type"]].long()
@@ -279,7 +282,12 @@ def test_spawning_voids_a_belief():
     ships[:, 5, SHIP["spawned"]] = 1.0  # spawned out of sight: the old belief is void
     no_reset = torch.zeros(views, dtype=torch.bool)
     with torch.no_grad():
-        replay = net.step(carry, dataclasses.replace(view, ships=ships), no_reset).replay
+        replay = net.step(
+            carry,
+            dataclasses.replace(view, ships=ships),
+            no_reset,
+            torch.arange(dataclasses.replace(view, ships=ships).ships.shape[0]),
+        ).replay
     # The replay holds the enemy rows: row 5 is its row 0.
     assert not replay.valid[:, 0].any() and replay.valid[:, 1:5].all()
     assert (replay.means[:, 0] == 0).all() and (replay.spreads[:, 0] == 0).all()
@@ -318,8 +326,13 @@ def test_hidden_columns_of_hidden_ships_are_not_read():
     )
     reset = torch.zeros(view.ships.shape[0], dtype=torch.bool)
     with torch.no_grad():
-        first = net.step(carry, view, reset)
-        second = net.step(carry, dataclasses.replace(view, ships=ships), reset)
+        first = net.step(carry, view, reset, torch.arange(view.ships.shape[0]))
+        second = net.step(
+            carry,
+            dataclasses.replace(view, ships=ships),
+            reset,
+            torch.arange(dataclasses.replace(view, ships=ships).ships.shape[0]),
+        )
     for a, b in zip(_pytree.tree_leaves(first), _pytree.tree_leaves(second), strict=True):
         assert torch.equal(a, b)
 
@@ -405,20 +418,25 @@ def test_unroll_equals_steps_with_forecast_feedback_off(segment):
 # ------------------------------------------------------------------ the position offset
 
 
-def test_resets_draw_fresh_offsets_and_keep_them_within_a_match():
+def test_resets_draw_fresh_offsets_by_the_decision_key_and_keep_them_within_a_match():
     net = cases.model(dtype=torch.float64)
     view = cases.cast(_views(cases.SQUAD, fogged=True), torch.float64)
     views = view.ships.shape[0]
     carry = net.initial_carry(views, OWN, 10)
     reset = torch.ones(views, dtype=torch.bool)
+    keys = torch.arange(views)
     with torch.no_grad():
-        first = net.step(carry, view, reset)
-        second = net.step(carry, view, reset)
-        kept = net.step(first.carry, view, ~reset)
+        first = net.step(carry, view, reset, keys)
+        again = net.step(carry, view, reset, keys)
+        second = net.step(carry, view, reset, keys + views)
+        kept = net.step(first.carry, view, ~reset, keys + 2 * views)
+        unreset = net.step(carry, view, ~reset, keys)  # a fresh carry has none: drawn
     offsets = first.replay.offset
     assert ((offsets >= 0) & (offsets < POSITION_PERIOD)).all()
+    assert torch.equal(again.replay.offset, offsets)  # the same key, the same offset
     assert (offsets != second.replay.offset).all()
     assert torch.equal(kept.replay.offset, offsets)
+    assert torch.equal(unreset.replay.offset, offsets)
 
 
 def test_the_offset_reaches_the_outputs_only_through_the_position_codes():
@@ -449,7 +467,10 @@ def test_the_offset_reaches_the_outputs_only_through_the_position_codes():
             belief=dataclasses.replace(carry.belief, means=means),
         )
         reset = torch.zeros(views, dtype=torch.bool)
-        plain, moved = net.step(carry, sequence[-1], reset), net.step(shifted, sequence[-1], reset)
+        plain, moved = (
+            net.step(carry, sequence[-1], reset, torch.arange(sequence[-1].ships.shape[0])),
+            net.step(shifted, sequence[-1], reset, torch.arange(sequence[-1].ships.shape[0])),
+        )
     for name in ("policy_logits", "enemy_action_logits", "values", "outcome_probabilities"):
         torch.testing.assert_close(getattr(moved, name), getattr(plain, name), rtol=1e-8, atol=1e-8)
     torch.testing.assert_close(
@@ -474,13 +495,18 @@ def test_permuting_ships_within_a_team_permutes_every_output():
     carry = net.initial_carry(views, OWN, 10)  # one offset for both orders
     reset = torch.zeros(views, dtype=torch.bool)
     with torch.no_grad():
-        plain, swapped = net.step(carry, view, reset), net.step(carry, permuted, reset)
+        plain, swapped = (
+            net.step(carry, view, reset, torch.arange(view.ships.shape[0])),
+            net.step(carry, permuted, reset, torch.arange(permuted.ships.shape[0])),
+        )
         # and a second step from each carry, the previous actions permuted alike
         joint = torch.randint(0, 42, (views, OWN), dtype=torch.int32)
         plain_carry = dataclasses.replace(plain.carry, previous_action=joint)
         swapped_carry = dataclasses.replace(swapped.carry, previous_action=joint[:, own])
-        plain_next = net.step(plain_carry, view, reset)
-        swapped_next = net.step(swapped_carry, permuted, reset)
+        plain_next = net.step(plain_carry, view, reset, torch.arange(view.ships.shape[0]))
+        swapped_next = net.step(
+            swapped_carry, permuted, reset, torch.arange(permuted.ships.shape[0])
+        )
     for first, second in ((plain, swapped), (plain_next, swapped_next)):
         for name, index in (
             ("policy_logits", own),
@@ -507,7 +533,9 @@ def test_one_set_of_weights_plays_every_size(config):
     views, own, ships = view.ships.shape[0], config.ships_per_team, config.num_ships
     carry = net.initial_carry(views, own, ships)
     with torch.no_grad():
-        decision = net.step(carry, view, torch.ones(views, dtype=torch.bool))
+        decision = net.step(
+            carry, view, torch.ones(views, dtype=torch.bool), torch.arange(view.ships.shape[0])
+        )
     assert decision.policy_logits.shape == (views, own, 42)
     assert decision.values.shape == (views, own, len(REWARD_LEVELS))
     assert decision.next_state_logits.shape == (views, ships - own, 544)

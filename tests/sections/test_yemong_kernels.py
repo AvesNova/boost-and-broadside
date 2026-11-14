@@ -524,7 +524,12 @@ def segment(module_global_generator):
     replays, stepped = [], carry
     with torch.no_grad():
         for t in range(steps):
-            decision = net.step(stepped, time_slice(obs, t), reset[t])
+            decision = net.step(
+                stepped,
+                time_slice(obs, t),
+                reset[t],
+                torch.arange(time_slice(obs, t).ships.shape[0]),
+            )
             stepped = decision.carry
             replays.append(decision.replay)
     replay = _pytree.tree_map(lambda *x: torch.stack(x), *replays)

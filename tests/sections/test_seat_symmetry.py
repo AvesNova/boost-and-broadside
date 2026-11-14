@@ -370,7 +370,15 @@ def test_chaser_games_and_their_mirror_agree_every_tick(preset):
     for tick in range(warm + compared):
         action = Action.unpack(
             torch.cat(
-                [chaser.step(None, _view(observation, view), reset)[0].packed() for view in (0, 1)],
+                [
+                    chaser.step(
+                        None,
+                        _view(observation, view),
+                        reset,
+                        torch.arange(_view(observation, view).ships.shape[0]),
+                    )[0].packed()
+                    for view in (0, 1)
+                ],
                 1,
             )
         )

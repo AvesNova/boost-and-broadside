@@ -48,6 +48,7 @@ from bnb.controllers.scripted_doctrine import WIDTH, Doctrine, from_named, pack
 from bnb.game import api, ships
 from bnb.game.handling.characteristics import characteristics
 from bnb.game.ship_types import ShipTypes
+from bnb.streams import decision_key_from
 
 PRESET = "real_scale_deathmatch"
 # The harness's games (game v13: the rating games are elimination and frontline): each the
@@ -494,7 +495,8 @@ class Loop:
         )
         reset = first_tick.expand(2 * B)
         alive_start = api.display(state)["ships.alive"].bool()
-        action, carry, _ = self.agent.step(carry, view, reset)
+        keys = decision_key_from(torch.default_generator, reset.shape[0])
+        action, carry, _ = self.agent.step(carry, view, reset, keys)
         action = Action.unpack(action.packed().reshape(B, N, 3).to(torch.int32))
         moved, sweep = api.move(rules, types, state, action, api.spread(rules, B, self.device))
         state, events = api.resolve(

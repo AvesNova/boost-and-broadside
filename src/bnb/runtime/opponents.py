@@ -193,8 +193,8 @@ class _Decision(torch.nn.Module):
         self.model = controller.model
         self.controller = controller
 
-    def forward(self, carry, obs: Obs, reset: torch.Tensor):
-        action, carry, _ = self.controller.step(carry, obs, reset)
+    def forward(self, carry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
+        action, carry, _ = self.controller.step(carry, obs, reset, decision_key)
         return action.packed(), carry
 
 
@@ -248,7 +248,7 @@ class OpponentSlots:
             scripted=self.scripted_agent.init_carry(views, device),
         )
 
-    def _network(self, carry, obs: Obs, reset: torch.Tensor):
+    def _network(self, carry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
         """Every set's decision on its own rows, as one forward over the sets' stacked
         parameters (`bnb.runtime.stacked`): (packed actions (R, S, 3), the network
         carry)."""
@@ -257,7 +257,7 @@ class OpponentSlots:
         inputs = _pytree.tree_map_only(
             torch.Tensor,
             lambda x: x[by_set.reshape(-1)].unflatten(0, by_set.shape),
-            (carry, obs, reset),
+            (carry, obs, reset, decision_key),
         )
         outputs = stacked.call(self.decision, self.parameters, inputs)
         own_rows = by_set.reshape(-1)
@@ -270,11 +270,13 @@ class OpponentSlots:
 
         return _pytree.tree_map(assemble, outputs, is_leaf=lambda x: x is None)
 
-    def step(self, carry: OpponentCarry, obs: Obs, reset: torch.Tensor):
+    def step(self, carry: OpponentCarry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
         """One decision for every opponent row; see `Controller.step`."""
-        network_action, model_carry = self._network(carry.model, obs, reset)
+        network_action, model_carry = self._network(carry.model, obs, reset, decision_key)
         scripted = self.kind[self.slot_of_row] == SCRIPTED_KIND  # (R,)
-        scripted_action, scripted_carry, _ = self.scripted_agent.step(carry.scripted, obs, reset)
+        scripted_action, scripted_carry, _ = self.scripted_agent.step(
+            carry.scripted, obs, reset, decision_key
+        )
         action = torch.where(scripted[:, None, None], scripted_action.packed(), network_action)
         column = torch.where(scripted, self.scripted_column, self.slot_of_row)
         carry = OpponentCarry(
