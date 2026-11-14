@@ -105,3 +105,23 @@ Branch `feat/rating-allocator` from `integrate/next-runs` (997a700e).
 - **Next:** unchanged (the GPU probe). Open: `rating_layout_probe` and `bnb ratings` on a
   fresh field place everyone at the anchor (no runs to place by); the training lanes'
   `fit_ratings` keeps its virtual game (not a reported Elo).
+
+## 2026-11-15 07:01 to 07:56: the GPU probe (laptop RTX 4070, performance profile)
+
+Frontline, four players (scripted, rl-v20 at 30M and 75M, rl-mix-kl at 75M), records in
+`probe-frontline.jsonl`. The first run was OOM-killed at the third layout under an 8 GB cap;
+the rest ran again under 16 GB with 2 batches each.
+
+| Layout (blocks x games x segment) | Games/s | Information/s | Warm-up s |
+|---|---|---|---|
+| 2x96x32 | 2.77 | 0.63 | 260 |
+| 2x96x64 | 2.79 | 0.64 | 93 (warm cache) |
+| 4x96x32 | 2.74 | 0.47 | 356 |
+| 4x128x32 | 2.95 | 0.43 | 315 |
+| 8x96x32 | 2.71 | 0.30 | 346 |
+
+- **The laptop GPU is saturated at 2 blocks:** games per second is flat (2.7 to 2.95), and
+  more blocks spread the games over pairs the planner values less, so information per second
+  falls. `bnb pool rate` keeps 2 x 96. The segment length doesn't matter.
+- **Next:** probe again on the 5090 (many more SMs), where more blocks may pay.
+- Give the probe a 16 GB cap; at 8 blocks it needs more than 8 GB of host memory.
