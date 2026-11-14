@@ -433,3 +433,20 @@ Live Elo of the averaged policy against Baekho:
   - **If training ever masks:** add an optional key mask, or the sink, to the fused kernel.
 - **bc-v21** (6a78c172, `MAP_SIZES=variable`, arena_scale σ 0.35 over [0.5, 2], redrawn every reset): otherwise identical to bc-v20, with the plateau stop and a 150M cap. RL `rl-v21` follows at 75M. Live Elo and the watcher are on bc-v21.
 - **10:10, tournament records (54970186):** every batch line stores each block's wins, draws and losses by the game's own rule (deathmatch by the sign of the kill difference), plus the summed kill share and each side's kills. Scoring is applied at fit time. `bnb ratings RUN --out DIR --budget 0 --deathmatch-score win_loss` re-rates stored games without playing; `--reuse` adds or drops players. Old lines stay readable under their own scoring. The live Elo service and the rating worktree have moved to it (655aff84), so bc-v21's records are complete.
+
+## 11:25 — fused key mask (6985a342) and Qwen gate (59987b0a): both effectively free
+
+Laptop GPU, reduced size, medians of 40:
+
+| variant | learn step | policy step |
+|---|---|---|
+| fused (default) | 22.83 ms | 4.707 ms |
+| fused, key-masked | 22.02 ms (−3.5%) | 4.718 ms (+0.2%) |
+| masked through SDPA (old path) | 23.36 ms (+2.3%) | 5.309 ms (+12.8%) |
+| plain SDPA | 23.14 ms (+1.4%) | 5.752 ms (+22.2%) |
+| gate, elementwise | 22.12 ms | 4.755 ms (+1.0%) |
+| gate, headwise | 21.94 ms | 4.693 ms |
+
+- **The negative learn-step percentages are noise:** single processes, with quartiles about 1 ms wide.
+- **Masked training now costs nothing over unmasked.** That reopens benched-ship training as a cheap arm.
+- **Gates:** about 66k parameters for elementwise, 1k for headwise. `--set yemong.gate=elementwise|headwise`, default none.
