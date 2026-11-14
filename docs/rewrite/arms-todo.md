@@ -11,10 +11,12 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 
 Ordered for working through:
 
+0. **The offensive premium and split critic** (see Candidate arms): approve building the split offence/defence critic before the shared BC.
+
 1. **Arena size for games at other fleet sizes: deferred (2026-11-14)** until the map-size arm shows whether the agent trains on varied maps. Until then evaluations use the game's density rule provisionally, the same for both arms of a pair.
 2. **The explicit list of evaluation games:** drafted in [evaluation-suite.md](evaluation-suite.md), for the author to review.
-3. **The break-even SE target:** 0.15 ships is recommended (0.3 was met in 1–6 batches on synthetic data).
-4. **The rest of the decision rule:** when to extend both arms, the no-regression gate, and the SE target (from the 2 × 2 seed measurement).
+3. **The break-even SE target:** 0.15 ships provisionally (decided 2026-11-14); final after a GPU probe of what 20-a-side batches cost.
+4. **The rest of the decision rule:** proposal (the author's idea): decide by a sequential test on the combined win-probability score, as in chess-engine testing (Stockfish's fishtest uses a sequential probability ratio test). Play until the combined score's interval excludes zero or falls inside an indifference zone, with a maximum budget. Big gaps stop early. The reported scalars keep a fixed precision floor for the curves and the paper. Also open: when to extend both arms, the no-regression gate, and the SE target (from the 2 × 2 seed measurement).
 5. **Freezing the game:** what goes in (see "First, before the game freeze"), and the clock-end tuning.
 6. **Fields for the counts arm:** removing fields from the game and masking their slots isn't implemented. Only absent zone slots and benched ships are masked. It needs building if field counts vary.
 7. **The counts arm:** whether frontline goes down to 3v3; and since the density rule scales maps with fleet size, varying counts also varies map size.
