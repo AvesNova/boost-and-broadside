@@ -11,24 +11,10 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 
 Ordered for working through:
 
-
-1. **Arena size for games at other fleet sizes: deferred (2026-11-14)** until the map-size arm shows whether the agent trains on varied maps. Until then evaluations use the game's density rule provisionally, the same for both arms of a pair.
-2. **The explicit list of evaluation games:** drafted in [evaluation-suite.md](evaluation-suite.md), for the author to review.
-3. **The break-even SE target:** 0.15 ships provisionally (decided 2026-11-14); final after a GPU probe of what 20-a-side batches cost.
-4. **The decision rule's numbers and gate (proposals, 2026-11-15):**
-   - **Design the sequential test from a pilot plus simulation.**
-     - The indifference zone δ comes from the 2 × 2 seed noise of an arm difference (placeholder 0.02 win probability).
-     - α = 0.05 and β = 0.2.
-     - Each condition's per-game variance and cost come from a pilot of a few hundred games per condition: rl-v20 against rl-mix-kl (close) and against rl-dm (far).
-     - Then the fixed-sample size, 4 looks with O'Brien-Fleming boundaries, the maximum budget, and games per look. Check the error rates and expected cost by simulation at gaps of 0, δ and 2δ.
-   - **Allocation within a round:** cost-aware (the most interval reduction per GPU-hour) or cost-blind (the author's pushback). The score's weights are fixed either way; cost only changes where games are played.
-   - **No-regression gate:** a change can't win if it's significantly worse (about 2 SE) in any mode. A 2-against-1 split is a tie under the tie rule, and if it's still split, the incumbent (the champion's config) stays.
-   - **Mode weights and coupling:** deathmatch and elimination look coupled (rl-dm improved elimination by about 92 Elo without training on it). Equal thirds double-count that skill. Option: frontline ½, deathmatch ¼, elimination ¼. Decide after measuring the coupling on existing runs. Cross-mode Elo levels aren't comparable (each anchors Imugi at 1000).
-5. **Freezing the game:** what goes in (see "First, before the game freeze"), and the clock-end tuning.
-6. **Fields for the counts arm:** removing fields from the game and masking their slots isn't implemented. Only absent zone slots and benched ships are masked. It needs building if field counts vary.
-7. **The counts arm:** whether frontline goes down to 3v3; and since the density rule scales maps with fleet size, varying counts also varies map size.
-8. **The run budget, the final arm list, and a review of every arm idea:** whether each is settled by theory, a test or an arm, and in what order.
-9. **The averaging sweep:** which early arm saves the live weights every update, and which variants to sweep.
+1. **Mode weights:** equal thirds, or weighted by skill cluster (frontline ½, deathmatch ¼, elimination ¼). The existing runs show deathmatch → elimination transfer at full strength (see Decisions, 2026-11-15). Elimination-only and frontline-only RL forks would complete the transfer matrix (proposal).
+2. **Freezing the game:** the frontline lock is being re-tuned to a random walk (with fields on). The deathmatch tickets, elimination shrink timing and other freeze items wait for the measurements.
+3. **The run budget, the final arm list, and the review of every arm idea.**
+4. **The averaging sweep:** which early arm saves the live weights every update, and which variants to sweep.
 
 ## Decisions
 
@@ -68,6 +54,27 @@ Ordered for working through:
 - **The decision is a sequential test with a fixed number of planned looks** (group sequential). The number of looks and the acceptance thresholds are fixed in advance.
 - **Decisions don't need the ladder.** Per condition, the two finals play each other directly (win rate minus 0.5), and break-even plays against Imugi. The full Elo ladder (curves) is for the paper.
 - **Ladder timing (decided 2026-11-15):** mostly in one batch at the end. Earlier only on an idle GPU, and only when it doesn't compete with compilation on the CPU. On a tie, each arm's last 5 snapshots (Claude's choice, about 20–25M steps) are rated on demand for the slope check.
+### 2026-11-15
+
+- **Allocation within a round is cost-aware** (the most interval reduction per GPU-hour). It adds no bias: the score is a fixed-weight sum of per-condition means, each unbiased however many games it gets. A bias would appear only if games were pooled with weights proportional to their counts, which we don't do. The design simulation checks it.
+- **The sequential test's numbers come from a pilot plus simulation**, without waiting for the 2 × 2 seed measurement. The pilot needs the evaluation-suite command and the merged branches.
+- **No-regression gate:** significantly worse (about 2 SE) in any mode means no win. A 2-against-1 split is a tie under the tie rule; if it's still split, the incumbent stays.
+- **Ladder scope:** curves at 5v5 for the arms. For the first proper run (the baseline) and the final winner, the full ladder in every condition (1v1, 2v2, 10v10, all). Fix as many rules as possible before the first run, and the rest from its data.
+- **Frontline lock:** re-tune it to a random walk, measured with fields on (the training conditions).
+- **Deathmatch clock:** a standard Halo deathmatch time limit (Halo Infinite's team slayer is 50 kills in 12 minutes; to verify), with tickets set from Imugi's deaths per minute so that about 80% of games end before the clock.
+- **Elimination shrink:** from Imugi's time to wipe with no shrink, time the shrink so about 80% of games end before the boundary decides, rounded to a nice number.
+- **Fields:** build field removal and masking, like benched ships (branch `feat/absent-fields`, in progress).
+- **Frontline team sizes:** 1v1 is out (it likely degenerates to rush, defend or duel); 2v2 and up are in, pending the small-team sanity check (mode-timing bench).
+- **Mode coupling, first read from existing runs** (gain from bc-v20 at 75M, each run in its own pool):
+
+  | run (trained on) | deathmatch | elimination | frontline |
+  |---|---|---|---|
+  | rl-v20 (all modes) | +212 | +662 | +1366 |
+  | rl-mix-kl (all modes) | +191 | +743 | +1393 |
+  | rl-dm (deathmatch only) | +251 | +916 | +22 (peaked +690 at 45M) |
+  | rl-kl (deathmatch only) | +205 | +713 | +598 (peaked +873 at 56M) |
+
+  Deathmatch-only training gains as much elimination as the generalist, or more. Frontline gains early, then forgets. There's no elimination-only or frontline-only run, so the reverse directions are unmeasured.
 - **References:** a list of papers with what we take from each, where it applies in the code, and how it affected a decision ([references.md](references.md)).
 - **Early arms:** variable map sizes against fixed (first; it decides whether variable maps stay in the game and the paper, and if they don't, the colour codes and rotary frequencies are re-tuned for fixed sizes); variable ship and field counts against fixed.
 - **Deferred to the later review of all arms:** self-play training both sides against one side; the separate critic (too much work for an arm now).
@@ -108,6 +115,9 @@ Ordered for working through:
 
 ## Decided, to implement
 
+- [ ] **Mode timing (in progress, `bench/mode-timing`, CPU):** deathmatch deaths per minute, then tickets for 10/12/15-minute limits; elimination time-to-wipe percentiles with no shrink; frontline 2v2 and 3v3 sanity.
+- [ ] **Frontline lock re-tune** to a random walk with fields on, after the fields-on reversal result.
+- [ ] **The evaluation-suite command, then the sequential-test pilot** (rl-v20 against rl-mix-kl and against rl-dm at 75M, every condition) and the design simulation.
 - [ ] The split offence/defence critic, before the shared BC, with advantage weights per part and the premium schedule as a setting (default 1:1).
 - [ ] **Front reversal (decided 2026-11-14).** Measure P(reversal) now, on the current game with the scripted agent on both sides (in progress, `bench/front-reversal`). Measure it again at the end of the first arm, to check the front stays roughly a random walk in self-play. The 0.84 figure is from September (v1); the later lock was meant to make it a random walk.
   - **First result (2026-11-15, CPU, scripted against scripted, fields off; `bench/front-reversal` b18f8cce):** the front is **persistent, not a random walk.**
