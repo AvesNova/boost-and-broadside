@@ -1,4 +1,4 @@
-"""Mode dynamics of the scripted agent (T = 1, both sides, the game's lineup or `--lineup`): the
+"""Mode dynamics of the scripted agent (kinds: deathmatch, elimination, frontline; `--fields` keeps the preset's fields) (T = 1, both sides, the game's lineup or `--lineup`): the
 deathmatch's kill rate and the Frontline's captures, on a preset with no fields (the agent
 ignores fields; Frontline keeps its zones).
 
@@ -57,10 +57,14 @@ def clock(seconds: float) -> str:
 
 def game_of(arguments) -> tuple:
     """The game config and rules (and the card) of the run."""
-    game = dataclasses.replace(api.PRESETS[arguments.preset], num_fields=0)
+    game = api.PRESETS[arguments.preset]
+    if not arguments.fields:
+        game = dataclasses.replace(game, num_fields=0)
     changes = {}
     if arguments.ships:
         changes["ships_per_team"] = arguments.ships
+    if arguments.density and arguments.ships:
+        changes["arena_radius"] = api.arena_radius_for(game, arguments.ships)
     if arguments.radius:
         changes["arena_radius"] = arguments.radius
     if arguments.episode_seconds:
@@ -81,9 +85,13 @@ def lineup_of(lineup: str | None, game, environments: int) -> torch.Tensor | Non
     if lineup is None:
         return None
     keys = [ship.key for ship in ships.load(game.ship_set)]
-    chosen = [keys.index(key) for key in lineup.split(",")]
-    team = [chosen[slot % len(chosen)] for slot in range(game.ships_per_team)]
-    return torch.tensor(team + team, dtype=torch.int32).repeat(environments, 1)
+    rows = []
+    for environment in range(environments):  # patterns split by ";" alternate over environments
+        patterns = lineup.split(";")
+        chosen = [keys.index(key) for key in patterns[environment % len(patterns)].split(",")]
+        team = [chosen[slot % len(chosen)] for slot in range(game.ships_per_team)]
+        rows.append(team + team)
+    return torch.tensor(rows, dtype=torch.int32)
 
 
 def mode_overrides(arguments) -> dict:
@@ -128,6 +136,8 @@ class Probe:
             quiet_tick=torch.zeros(environments, dtype=torch.long, device=device),
             front=torch.zeros(environments, dtype=torch.long, device=device),
             first_hit=torch.full((environments,), -1, dtype=torch.long, device=device),
+            deaths=torch.zeros(environments, dtype=torch.long, device=device),
+            boundary_deaths=torch.zeros(environments, dtype=torch.long, device=device),
             **{name: torch.zeros(BINS, dtype=torch.long, device=device) for name in HISTOGRAMS},
         )
         self.ticks_per_bin = 30
@@ -162,6 +172,8 @@ class Probe:
         first_engage = hit & ~b["engaged"] & live
         self._count("engage", since, first_engage)
         self._count("life", since, events.died & live)
+        b["deaths"].add_((events.died & live).sum(-1))
+        b["boundary_deaths"].add_((events.died & (events.killer < 0) & live).sum(-1))
         game_hit = (hit.any(-1) & (b["first_hit"] < 0)) & b["live"]
         b["first_hit"].copy_(torch.where(game_hit, b["tick"], b["first_hit"]))
         engaged = b["engaged"] | hit
@@ -405,7 +417,7 @@ def first_games(trace: dict, episode: int, threshold: int, kind: str) -> list[di
         restart = ((ticks[1:] < ticks[:-1]).nonzero()[:, 0] + 1).tolist()
         end = restart[0] - 1 if restart else ticks.shape[0] - 1  # the game's last state
         events = []
-        if kind == "deathmatch":
+        if kind != "frontline":
             points = score[environment, : end + 1]
             steps = torch.diff(points, dim=0, prepend=torch.zeros_like(points[:1]))
             for at, team in steps.nonzero().tolist():
@@ -435,7 +447,7 @@ def first_games(trace: dict, episode: int, threshold: int, kind: str) -> list[di
 def main() -> None:
     """The run the module describes."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("kind", choices=("deathmatch", "frontline"))
+    parser.add_argument("kind", choices=("deathmatch", "frontline", "elimination"))
     parser.add_argument("--out", type=pathlib.Path, required=True)
     parser.add_argument("--preset", default=None)
     parser.add_argument("--games", type=int, default=256)
@@ -470,6 +482,12 @@ def main() -> None:
         default=None,
         help="JSON overrides of the mode's scripted set for side B (A plays the default); "
         "A sits on team 0 in even environments",
+    )
+    parser.add_argument(
+        "--fields", action="store_true", help="keep the preset's fields (default: none)"
+    )
+    parser.add_argument(
+        "--density", action="store_true", help="with --ships: the arena by `api.arena_radius_for`"
     )
     parser.add_argument("--eager", action="store_true", help="no torch.compile (CPU runs)")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -542,8 +560,14 @@ def main() -> None:
         rollout.carry["seat"].copy_(seat)
         for _ in range(math.ceil(length / rollout.length)):
             rollout.run()
+            if not bool(probe.buffers["live"].any()):  # every first game is over
+                break
         host = {name: value.cpu() for name, value in trace.items()}
         games = first_games(host, episode, threshold, arguments.kind)
+        deaths = probe.buffers["deaths"].cpu().tolist()
+        boundary = probe.buffers["boundary_deaths"].cpu().tolist()
+        for game_record, d, bd in zip(games, deaths, boundary):
+            game_record["deaths"], game_record["boundary_deaths"] = d, bd
         first_hit = probe.buffers["first_hit"].cpu().tolist()
         for game_record, hit_tick in zip(games, first_hit):
             game_record["first_hit"] = hit_tick
@@ -562,6 +586,7 @@ def main() -> None:
             temperature=arguments.temperature,
             lineup=arguments.lineup,
             fog=arguments.fog,
+            fields=game.num_fields,
             respawn_seconds=rollout.rules.pools[0].respawn_ticks * rules.tick_length,
             experiments=dict(
                 lock_seconds=arguments.lock_seconds,

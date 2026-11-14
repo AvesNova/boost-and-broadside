@@ -1,0 +1,56 @@
+## deathmatch: 80 games, clock 900 s, 5v5, arena 4200.0 m, fields 10, respawn 10.0 s
+per team (deaths per minute): mean 4.570, sd 1.083, 95% [4.402, 4.738], n 160
+per game, both teams: mean 9.140, sd 2.110, 95% [8.678, 9.602], n 80
+per game, team-mean: mean 4.570, sd 1.055, 95% [4.339, 4.801], n 80
+time profile (both teams, deaths per game-minute, mean over games [sd]):
+  minute  1: 8.44 [3.05]
+  minute  2: 9.07 [2.75]
+  minute  3: 9.22 [2.96]
+  minute  4: 9.32 [2.77]
+  minute  5: 9.60 [2.77]
+  minute  6: 9.30 [2.82]
+  minute  7: 8.96 [2.66]
+  minute  8: 8.97 [2.76]
+  minute  9: 8.96 [2.61]
+  minute 10: 8.94 [2.83]
+  minute 11: 9.39 [2.63]
+  minute 12: 9.09 [2.72]
+  minute 13: 9.10 [2.67]
+  minute 14: 9.40 [2.97]
+  minute 15: 9.32 [2.70]
+first death at 12.7 s mean (median 9.9)
+tickets T (kills per team to end the game) -> share of games ended by tickets before L:
+  L=10 min: 70%: T=42 (share 0.75); 80%: T=40 (share 0.80); 90%: T=30 (share 0.93)
+  L=12 min: 70%: T=51 (share 0.70); 80%: T=47 (share 0.81); 90%: T=38 (share 0.90)
+  L=15 min: 70%: T=65 (share 0.70); 80%: T=55 (share 0.82); 90%: T=48 (share 0.90)
+  share ended by tickets at each (L, T):
+   L=10: T10=1.00 T12=1.00 T14=1.00 T16=1.00 T18=1.00 T20=1.00 T22=0.99 T24=0.99 T26=0.96 T28=0.95 T30=0.93 T32=0.86 T34=0.86 T36=0.82 T38=0.82 T40=0.80
+   L=12: T10=1.00 T12=1.00 T14=1.00 T16=1.00 T18=1.00 T20=1.00 T22=1.00 T24=1.00 T26=1.00 T28=0.97 T30=0.97 T32=0.96 T34=0.96 T36=0.94 T38=0.90 T40=0.85
+   L=15: T10=1.00 T12=1.00 T14=1.00 T16=1.00 T18=1.00 T20=1.00 T22=1.00 T24=1.00 T26=1.00 T28=1.00 T30=1.00 T32=1.00 T34=1.00 T36=0.99 T38=0.97 T40=0.97
+
+## elimination_noshrink: 128 games, clock 600 s, ended 124, never ended 4
+  wipe time (s) percentiles of ended games: p5 32, p10 38, p25 43, p50 51, p75 69, p80 84, p90 108
+  mean 68 s, sd 54 s
+  percentiles over all games (never ended = inf): p5 32, p10 38, p25 43, p50 52, p75 75, p80 90, p90 120
+  deaths 834, by the boundary 3 (0.4%); games with a boundary death 3 (2.3%)
+
+## elimination_shrink: 128 games, clock 180 s, ended 128, never ended 0
+  wipe time (s) percentiles of ended games: p5 32, p10 38, p25 43, p50 52, p75 70, p80 90, p90 126
+  mean 64 s, sd 33 s
+  percentiles over all games (never ended = inf): p5 32, p10 38, p25 43, p50 52, p75 70, p80 90, p90 126
+  deaths 880, by the boundary 21 (2.4%); games with a boundary death 14 (10.9%)
+
+## frontline_2v2: 128 games, 2v2, arena 4933.2 m, clock 600 s, fields 10
+  moves per game 1.86 [95% 1.62, 2.10], sd 1.37
+  game length 566 s [95% 549, 583], median 600
+  ended by capture 19 (14.8%, Wilson [0.097, 0.220]); on the clock 109
+  consecutive pairs 139; reversals 31; P(reversal) 0.223 Wilson [0.162, 0.299] bootstrap [0.146, 0.300]
+  games by moves: {0: 29, 1: 29, 2: 10, 3: 55, 4: 1, 5: 4}
+
+## frontline_3v3: 128 games, 3v3, arena 6041.9 m, clock 600 s, fields 10
+  moves per game 3.55 [95% 3.25, 3.85], sd 1.73
+  game length 469 s [95% 440, 498], median 570
+  ended by capture 67 (52.3%, Wilson [0.437, 0.608]); on the clock 61
+  consecutive pairs 326; reversals 91; P(reversal) 0.279 Wilson [0.233, 0.330] bootstrap [0.235, 0.323]
+  games by moves: {1: 12, 2: 9, 3: 70, 4: 4, 5: 20, 7: 9, 8: 1, 9: 3}
+
