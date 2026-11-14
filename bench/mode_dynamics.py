@@ -57,7 +57,9 @@ def clock(seconds: float) -> str:
 
 def game_of(arguments) -> tuple:
     """The game config and rules (and the card) of the run."""
-    game = dataclasses.replace(api.PRESETS[arguments.preset], num_fields=0)
+    game = api.PRESETS[arguments.preset]
+    if not arguments.fields:
+        game = dataclasses.replace(game, num_fields=0)
     changes = {}
     if arguments.ships:
         changes["ships_per_team"] = arguments.ships
@@ -77,13 +79,18 @@ def game_of(arguments) -> tuple:
 
 def lineup_of(lineup: str | None, game, environments: int) -> torch.Tensor | None:
     """(environments, N) int32 ship types: the keys cycled over each team's slots, the same
-    for both teams; None for the game's lineup."""
+    for both teams; None for the game's lineup. Several lineups separated by ';' alternate
+    by pairs of environments (both seats of a pair play the same lineup)."""
     if lineup is None:
         return None
     keys = [ship.key for ship in ships.load(game.ship_set)]
-    chosen = [keys.index(key) for key in lineup.split(",")]
-    team = [chosen[slot % len(chosen)] for slot in range(game.ships_per_team)]
-    return torch.tensor(team + team, dtype=torch.int32).repeat(environments, 1)
+    rows = []
+    for one in lineup.split(";"):
+        chosen = [keys.index(key) for key in one.split(",")]
+        team = [chosen[slot % len(chosen)] for slot in range(game.ships_per_team)]
+        rows.append(team + team)
+    table = torch.tensor(rows, dtype=torch.int32)
+    return table[(torch.arange(environments) // 2) % len(rows)]
 
 
 def mode_overrides(arguments) -> dict:
@@ -103,6 +110,16 @@ def mode_overrides(arguments) -> dict:
 
 BINS = 900  # 1 s histogram bins (the last one holds every longer time)
 HISTOGRAMS = ("engage", "life", "objective", "zone_to_zone", "contest")
+# Frontline: ship-ticks of the team under a capture lock while the lock holds (first games
+# only): alive, inside the zone it is locked out of, inside its own defense zone; and of
+# the other team (the capturer) over the same ticks: alive, inside its attack zone.
+LOCK_TALLIES = (
+    "locked_alive",
+    "locked_in_locked_zone",
+    "locked_in_own_defense",
+    "capturer_alive",
+    "capturer_in_attack_zone",
+)
 
 
 class Probe:
@@ -129,6 +146,7 @@ class Probe:
             front=torch.zeros(environments, dtype=torch.long, device=device),
             first_hit=torch.full((environments,), -1, dtype=torch.long, device=device),
             **{name: torch.zeros(BINS, dtype=torch.long, device=device) for name in HISTOGRAMS},
+            **{name: torch.zeros(1, dtype=torch.long, device=device) for name in LOCK_TALLIES},
         )
         self.ticks_per_bin = 30
 
@@ -192,6 +210,24 @@ class Probe:
             quiet = (mode.progress.abs() == 0).all(-1)
             b["quiet_tick"].copy_(torch.where(quiet, b["tick"], b["quiet_tick"]))
             b["front"].copy_(mode.front.long())
+            # the capture lock's occupancy: a team locked out of a zone (mode.lock, (B, 2, Z))
+            held = mode.lock > 0  # (B, 2, Z) by team
+            ship_held = held[:, team, :]  # (B, N, Z): the ship's team is locked out of it
+            under = ship_held.any(-1) & alive & b["live"][:, None]  # (B, N)
+            own_defense_role = torch.where(
+                team == 0, frontline.TEAM0_DEFENSE, frontline.TEAM1_DEFENSE
+            )
+            attack_role = torch.where(team == 0, frontline.TEAM1_DEFENSE, frontline.TEAM0_DEFENSE)
+            own_defense = mode.role[:, None, :] == own_defense_role[None, :, None]
+            attack = mode.role[:, None, :] == attack_role[None, :, None]
+            team_held = held.any(-1)  # (B, 2)
+            other_held = team_held.flip(-1)[:, team]  # (B, N): the enemy is locked out
+            other = other_held & ~ship_held.any(-1) & alive & b["live"][:, None]
+            b["locked_alive"].add_(under.sum())
+            b["locked_in_locked_zone"].add_((under & (inside & ship_held).any(-1)).sum())
+            b["locked_in_own_defense"].add_((under & (inside & own_defense).any(-1)).sum())
+            b["capturer_alive"].add_(other.sum())
+            b["capturer_in_attack_zone"].add_((other & (inside & attack).any(-1)).sum())
         b["engaged"].copy_(engaged & ~events.spawned & alive)
         b["since_spawn"].copy_(torch.where(events.spawned, 0, since))
         b["live"].copy_(b["live"] & ~events.done)
@@ -471,6 +507,10 @@ def main() -> None:
         help="JSON overrides of the mode's scripted set for side B (A plays the default); "
         "A sits on team 0 in even environments",
     )
+    parser.add_argument(
+        "--fields", action="store_true", help="keep the preset's fields (else none)"
+    )
+    parser.add_argument("--eager", action="store_true", help="no torch.compile (CPU runs)")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     arguments = parser.parse_args()
     if arguments.preset is None:
@@ -516,12 +556,15 @@ def main() -> None:
         device,
         staggered=False,
         ship_type=lineup_of(arguments.lineup, game, environments),
+        compiled=not arguments.eager,
     )
     if mode_overrides(arguments):
         rollout.rules = api.tuning.tuned(rollout.rules, mode_overrides(arguments))
     rollout.carry["trace"] = blank_trace(environments, length, device)
     rollout.stages = rollout.stages + (
-        torch.compile(trace_stage(length), fullgraph=True, dynamic=False),
+        trace_stage(length)
+        if arguments.eager
+        else torch.compile(trace_stage(length), fullgraph=True, dynamic=False),
     )
     threshold = rollout.rules.pools[0].mode.front_threshold
     while done < arguments.games:
@@ -544,6 +587,7 @@ def main() -> None:
         for game_record, hit_tick in zip(games, first_hit):
             game_record["first_hit"] = hit_tick
         histograms = {name: probe.buffers[name].cpu().tolist() for name in HISTOGRAMS}
+        lock_tallies = {name: int(probe.buffers[name].item()) for name in LOCK_TALLIES}
         entry = dict(
             label=arguments.label,
             kind=arguments.kind,
@@ -570,6 +614,7 @@ def main() -> None:
                 settings=arguments.set,
             ),
             histograms=histograms,
+            lock_tallies=lock_tallies,
             games=games,
         )
         with arguments.out.open("a") as file:

@@ -166,14 +166,18 @@ sampling); that new leaf is the fingerprint's only change.
 Frontline's arena has a floor too (`MINIMUM_ARENA_RADIUS`, 1400 m at map scale 1, 4200 m at
 real scale), so a sampled small Frontline map keeps its floored zones inside the boundary.
 
-Version 20 (2026-11-15): absent fields. `Fields.present` (B, M) and the observation's field
-column `present`: a game or pool with `active_fields` (`bnb.contracts.ActiveFields`) draws
-each episode's active field count (the first point-symmetric pairs, and the centre field
-for an odd count) from one more tick uniform, the last (only when some pool samples); an
-absent field adds nothing to the medium, blocks no sight line and shows a zero row with
-`present` 0. Every preset plays every field and computes the same numbers: without the new
-leaf and column the fingerprint is the base's (7f35d79ccfe509be; the keyed rollout draws of
-feat/seed-isolation had moved it from version 19's e16ea10c244756ab).
+Version 20 (2026-11-15) holds three changes. Keyed random draws (`bnb.streams`): every
+game draw of a rollout comes from a stream keyed by (seed, environment, episode[, tick]),
+each a pure function of the seed and of what the draw is for. Absent
+fields: `Fields.present` (B, M) and the observation's field column `present`; a game or
+pool with `active_fields` (`bnb.contracts.ActiveFields`) draws each episode's active field
+count (the first point-symmetric pairs, and the centre field for an odd count) from one
+more tick uniform, the last (only when some pool samples); an absent field adds nothing to
+the medium, blocks no sight line and shows a zero row with `present` 0, and every preset
+still plays every field. Frontline's capture lock re-tuned to 6 s per sqrt(km) (was 19),
+so the front moves as a random walk with the scripted agent on both sides and fields on
+(P(reversal) 0.490 over 512 games, against 0.29). Ratings and records of version 19 or
+earlier are not reused for version-20 games.
 """
 
 VERSION = 20

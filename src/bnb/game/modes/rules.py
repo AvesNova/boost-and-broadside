@@ -267,10 +267,11 @@ class ModeRules:
     capture_seconds: float = 10.0
     front_threshold: int = 3
     spawn_zone_fraction: float = 0.35
-    # The author, 2026-11-13: about 45 s at 5v5 on the real-scale map (d = 5.64 km), 54 s
-    # at 10v10 and 64 s at 20v20 (bench/frontline_design.py: the hard lock that gives an
-    # even P(same team captures next)); to be calibrated again on the final ship card.
-    lock_seconds_per_root_km: float = 19.0  # s / sqrt(km)
+    # Re-tuned 2026-11-15 on the final ship card, fields on, the scripted agent on both
+    # sides (bench/front_reversal.py, docs/rewrite/sections/frontline-lock/results.md):
+    # 6 gives P(reversal) 0.490 [0.468, 0.512] over 512 games (19 gave 0.29). About 14 s at
+    # 5v5 on the real-scale map (d = 5.64 km).
+    lock_seconds_per_root_km: float = 6.0  # s / sqrt(km)
     wave_seconds: float = 10.0  # s: 20 s at real scale (the set's [mode])
     side_area_fraction: float = 0.15
     side_heading_jitter: float = math.radians(15.0)
