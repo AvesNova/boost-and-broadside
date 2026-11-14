@@ -156,7 +156,7 @@ def test_round_two_unit_weights_match_the_league_and_the_ladder_as_one_entry():
     p = torch.tensor([0.99, 0.95, 0.9, 0.7, 0.5], dtype=torch.float64)
     ladder = torch.tensor([True, True, True, False, False])
     units, split = two.unit_weights(p, ladder, "entries", "p(1-p)", True)
-    today = sampling_weights(p, sim.FLOOR)
+    today = sampling_weights(p, "variance", sim.FLOOR)
     assert units[0] == pytest.approx(float(today[ladder].sum()))
     assert units[1:].tolist() == pytest.approx(today[~ladder].tolist())
     assert float(split.sum()) == pytest.approx(1.0)

@@ -173,7 +173,7 @@ def weights_at(live: float, rows: list[Row], floor: float = FLOOR) -> torch.Tens
     rows' ratings."""
     ratings = torch.tensor([row.rating for row in rows], dtype=torch.float64)
     probability = win_probability(torch.tensor(live, dtype=torch.float64), ratings)
-    return sampling_weights(probability, floor)
+    return sampling_weights(probability, "variance", floor)
 
 
 def check_weights(updates: list[Update]) -> dict:
@@ -583,7 +583,7 @@ def probabilities(update: Update, mode: str, ratings: dict[str, float]) -> torch
 
 def today(p: torch.Tensor, update: Update) -> torch.Tensor:
     """The league's rule: p (1 - p) plus the floor spread over every entry."""
-    return sampling_weights(p, FLOOR)
+    return sampling_weights(p, "variance", FLOOR)
 
 
 def no_floor_over_beaten(p: torch.Tensor, update: Update) -> torch.Tensor:
@@ -613,7 +613,7 @@ def fixed_share(p: torch.Tensor, update: Update, share: float = 0.4) -> torch.Te
     mask[chosen] = True
     out = torch.zeros(len(rows), dtype=torch.float64)
     out[mask] = share / int(mask.sum())
-    out[~mask] = (1 - share) * sampling_weights(p[~mask], FLOOR)
+    out[~mask] = (1 - share) * sampling_weights(p[~mask], "variance", FLOOR)
     return out
 
 
