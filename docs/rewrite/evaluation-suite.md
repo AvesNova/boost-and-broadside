@@ -98,7 +98,47 @@ Each batch prints a line with the overall score so far and the next look's ETA a
 
 ## Design pilot
 
-To be filled in from the pilot (rl-v20 against rl-mix-kl and against rl-dm at 75M).
+rl-v20 against rl-mix-kl (a close pair, 1024 games per head-to-head condition) and against rl-dm (a far pair, 512), every arm's 75M exponential average, on the laptop's RTX 4070 in the performance profile, 2026-11-15.
+
+**Per condition (close pair):**
+
+| Condition | Score (A − ½) | SE | Variance per game | Seconds per game |
+|---|---|---|---|---|
+| frontline 5v5 | +0.046 | 0.015 | 0.228 | 0.66 |
+| deathmatch 5v5 | +0.098 | 0.015 | 0.241 | 0.48 |
+| elimination 5v5 | +0.024 | 0.016 | 0.249 | 0.14 |
+| deathmatch 1v1 | +0.219 | 0.013 | 0.159 | 0.45 |
+| deathmatch 2v2 | +0.028 | 0.016 | 0.247 | 0.50 |
+| elimination 1v1 | +0.013 | 0.016 | 0.250 | 0.07 |
+| elimination 2v2 | +0.014 | 0.016 | 0.250 | 0.10 |
+| frontline 10v10 | −0.149 | 0.014 | 0.188 | 0.91 |
+| deathmatch 10v10 | +0.049 | 0.016 | 0.248 | 0.63 |
+| elimination 10v10 | −0.007 | 0.016 | 0.250 | 0.23 |
+| frontline break-even | no fit | | | 0.53 |
+| deathmatch break-even | +0.316 | 0.047 | 1.15 | 0.50 |
+| elimination break-even | +0.300 | 0.042 | 0.90 | 0.17 |
+
+**The design** (the close pair's variances; frontline break-even stood in at the mean of the other two break-even variances): δ = 0.02 (52% against 50%, about 14 Elo), α = 0.05, power 0.8.
+
+- **Cost:** at most about 0.6 engine-hours on the laptop for any K from 2 to 5. The first batch of every condition costs about 0.7 hours by itself, so the expected cost is 0.7 to 0.85 hours whatever the difference.
+- **Simulated** (400 repeats of the whole procedure, with estimated variances, batch-sized steps and the cost-aware allocation):
+  - K = 3: a false winner in 2.8% of repeats, and power 0.80 at δ;
+  - K = 4: a false winner in 3.8%, and power 0.81.
+  - The estimate at the stop runs about 5% high (0.0416 to 0.0421 for a true 0.04). That's the usual bias of stopping early, not the allocation's.
+- **K:** 4, the default. It costs nothing over 3 here and stops earlier on large differences.
+- **Seed noise limits a decision, not games.** At δ = 0.02 the test resolves about 14 Elo, while two seeds of one configuration differ by about 110 Elo. δ will be set from the seed pairs (arm A3); the game budget is not the constraint.
+
+**Frontline break-even has no fit.** Both arms lost all 32 games at every count from 6 to 20, including 20 against 20. The cause is the map, not the code. Head-to-head against Imugi in frontline, rl-v20 won:
+
+- 5v5 and 10v10 on the preset map (7.8 km): every game;
+- 10v10 on the density map (11 km): 58 of 64;
+- 14v14 on 13 km: 15 of 64, though it outkilled Imugi (61 kills against 52 per game);
+- 20v20 on the preset map: 26 of 64, with 14 draws;
+- 20v20 on 15.6 km: none of 64, with about 8 kills against 27 deaths per game, and every game over in about 2 minutes.
+
+Break-even always plays on the 20-a-side map. For an agent trained on one map size, frontline break-even therefore measures transfer to a map twice the size, not skill. Deathmatch's 20-a-side map (8.4 km) and elimination's (15.6 km, no zones) work. **(open: the author's decision)**
+
+**Break-even's range.** Our count stops at 20, Imugi's count. An arm weaker than Imugi at parity has no crossing inside the range, so its fit extrapolates past 20; rl-dm in deathmatch won 5 of 32 at 20 against 20. If neither arm crosses, the run stops with an error after `initial_batch_limit` batches.
 
 ## The ladder (for the paper, not for decisions)
 
