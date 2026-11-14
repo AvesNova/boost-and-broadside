@@ -124,7 +124,10 @@ Ordered for working through:
 
 ## Decided, to implement
 
-- [ ] **Mode timing (in progress, `bench/mode-timing`, CPU):** deathmatch deaths per minute, then tickets for 10/12/15-minute limits; elimination time-to-wipe percentiles with no shrink; frontline 2v2 and 3v3 sanity.
+- [x] **Mode timing (`bench/mode-timing` eecbacce; CPU, the scripted agent on both sides, fields on):**
+  - **Deathmatch:** 4.57 deaths per team per minute (sd 1.08), steady after the first minute. Tickets per team for 80% of games ending by tickets: 40 at 10 min, 47 at 12 min, 55 at 15 min (±5). Today's 25 end 99% of games within 10 min.
+  - **Elimination, time to wipe** (no shrink): p50 52 s, p80 90 s, p90 120 s. Today's shrink (hold 36 s, clock 180 s) causes only 2.4% of deaths.
+  - **Frontline 2v2:** captures are rare (1.9 per game) and 85% of games end on the clock. 3v3 ends by capture 52% of the time. Both measured at the old lock value of 19.
 - [ ] **Frontline lock re-tune** to a random walk with fields on, after the fields-on reversal result.
 - [ ] **The evaluation-suite command, then the sequential-test pilot** (rl-v20 against rl-mix-kl and against rl-dm at 75M, every condition) and the design simulation.
 - [ ] The split offence/defence critic, before the shared BC, with advantage weights per part and the premium schedule as a setting (default 1:1).
