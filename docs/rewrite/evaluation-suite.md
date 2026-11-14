@@ -1,6 +1,6 @@
-# Evaluation suite (draft for review)
+# Evaluation suite
 
-These are the games that decide each pairwise arm, and the Elo ladder we build for the paper. It is a draft dated 2026-11-15, for the author to review. Items marked **(open)** are still to be decided; **(provisional)** marks a working choice until a test settles it. The decisions behind it are in [arms-todo.md](arms-todo.md).
+These are the games that decide each pairwise arm, and the Elo ladder we build for the paper. `bnb evaluate` (`bnb.league.evaluation`) plays the decision part; this page is its reference. Items marked **(open)** are still to be decided; **(provisional)** marks a working choice until a test settles it. The decisions behind it are in [arms-todo.md](arms-todo.md), and the command's build and pilot notes in [sections/evaluation-suite/progress.md](sections/evaluation-suite/progress.md).
 
 **Decisions use win probability, never Elo.** Every condition is scored by how often one arm's final checkpoint wins. Elo appears only in the ladder (the curves), which is rated separately and doesn't decide anything.
 
@@ -8,55 +8,103 @@ These are the games that decide each pairwise arm, and the Elo ladder we build f
 
 - **Decision players:** each arm's final checkpoint (its exponential-average weights, the ones we ship).
 - **Play:** actions are sampled exactly as in training (temperature 1, never greedy), with fog of war on in every game.
-- **Lineups:** each slot is a 50/50 coin flip between Yongma and Jujak, the same for both teams, drawn from the keyed stream so both arms see the same lineups.
-- **Seats** alternate evenly within each block of games.
+- **Lineups:** each slot is a 50/50 coin flip between Yongma and Jujak (`--lineup-types`), the same for both teams, drawn from the keyed stream `evaluation_lineup/<condition>` by the seed and the batch, so both arms see the same lineups.
+- **Seats** alternate from game to game within each block.
+- **Games are keyed by batch number,** and each condition's numbers continue past its recorded batches, so a resumed or parallel process never replays a game.
 
 ## Conditions
 
-| # | Mode | Teams | Map | Games |
+| # | Name | Mode | Teams | Map |
 |---|---|---|---|---|
-| 1 | frontline | 5v5 | preset | A final against B final |
-| 2 | deathmatch | 5v5 | preset | A against B |
-| 3 | elimination | 5v5 | preset | A against B |
-| 4 | deathmatch | 1v1 | density rule **(provisional)** | A against B |
-| 5 | deathmatch | 2v2 | density rule **(provisional)** | A against B |
-| 6 | elimination | 1v1 | density rule **(provisional)** | A against B |
-| 7 | elimination | 2v2 | density rule **(provisional)** | A against B |
-| 8 | frontline | 10v10 | density rule **(provisional)** | A against B |
-| 9 | deathmatch | 10v10 | density rule **(provisional)** | A against B |
-| 10 | elimination | 10v10 | density rule **(provisional)** | A against B |
-| 11 | frontline | break-even: each arm against 20 Imugi | density rule at 20 **(provisional)** | each arm against Imugi, our count varied |
-| 12 | deathmatch | break-even | density rule at 20 **(provisional)** | each arm against Imugi |
-| 13 | elimination | break-even | density rule at 20 **(provisional)** | each arm against Imugi |
-| 14–19 | all | 5v5 at map scales 0.5× and 2× | scaled | A against B (**only if variable maps survive their arm**) |
+| 1 | `frontline_5v5` | frontline | 5v5 | preset |
+| 2 | `deathmatch_5v5` | deathmatch | 5v5 | preset |
+| 3 | `elimination_5v5` | elimination | 5v5 | preset |
+| 4 | `deathmatch_1v1` | deathmatch | 1v1 | density rule **(provisional)** |
+| 5 | `deathmatch_2v2` | deathmatch | 2v2 | density rule **(provisional)** |
+| 6 | `elimination_1v1` | elimination | 1v1 | density rule **(provisional)** |
+| 7 | `elimination_2v2` | elimination | 2v2 | density rule **(provisional)** |
+| 8 | `frontline_10v10` | frontline | 10v10 | density rule **(provisional)** |
+| 9 | `deathmatch_10v10` | deathmatch | 10v10 | density rule **(provisional)** |
+| 10 | `elimination_10v10` | elimination | 10v10 | density rule **(provisional)** |
+| 11 | `frontline_break_even` | frontline | each arm against 20 Imugi, its own count varied | density rule at 20 **(provisional)** |
+| 12 | `deathmatch_break_even` | deathmatch | break-even | density rule at 20 **(provisional)** |
+| 13 | `elimination_break_even` | elimination | break-even | density rule at 20 **(provisional)** |
+| 14–19 | — | all | 5v5 at map scales 0.5× and 2× | scaled (**only if variable maps survive their arm**; not in the command) |
 
-**Map rule (provisional):** every size other than 5v5 uses the game's density rule (`api.arena_radius_for`). The radius scales with the fleet, down to each mode's minimum. The final choice between this and the preset's 5v5 map is deferred until the map-size arm shows whether the agent trains on varied maps. Both arms of a pair always use the same rule.
+- **Games:** conditions 1–10 are A against B. The base games are the real-scale presets (`--presets`), and Imugi is the scripted agent (`--opponent scripted`).
+- **Map rule (provisional):** every size other than 5v5 uses the game's density rule (`api.arena_radius_for`). The radius scales with the fleet, down to each mode's minimum. The final choice between this and the preset's 5v5 map is deferred until the map-size arm shows whether the agent trains on varied maps. Both arms of a pair always use the same rule.
+- **Break-even** reuses `bnb crossover`'s fit and allocation (`bnb.league.crossover`). One engine plays both arms: half of each batch's blocks are A against 20 Imugi, half B, each at the counts its own fit asks for, on the same lineups and maps.
 
 ## Score
 
 1. **Per condition, a win probability minus 0.5:**
-   - **Head-to-head conditions (1–10, 14–19):** A's score against B (a win is 1, a draw ½), minus 0.5. It's positive when A is better.
-   - **Break-even (11–13):** each arm's win probability against 20 Imugi when fielding the other arm's break-even count N*, from each arm's fitted curve. Symmetrised: ½ (A's win rate at N*_B − 0.5) − ½ (B's win rate at N*_A − 0.5).
+   - **Head-to-head conditions (1–10):** A's mean score against B (a win is 1, a draw ½), minus 0.5. It's positive when A is better. Its variance is the games' sample variance over their number.
+   - **Break-even (11–13):** each arm's win probability against 20 Imugi when fielding the other arm's break-even count N*, from each arm's fitted curve. Symmetrised: ½ (A's win rate at N*_B − 0.5) − ½ (B's win rate at N*_A − 0.5). Its variance comes from the two fits' covariances by the delta method, with the fits taken as independent.
 2. **Per mode:** the mean over that mode's conditions, each weighted equally.
-   - frontline: 1, 8 and 11 (plus 14–19 if they apply);
+   - frontline: 1, 8 and 11;
    - deathmatch: 2, 4, 5, 9 and 12;
    - elimination: 3, 6, 7, 10 and 13.
-3. **Overall:** the mean of the three modes, each weighted equally. This is one number with one interval.
+3. **Overall:** the mean of the three modes, each weighted equally (thirds). This is one number with one standard error: the weighted sum of the conditions' variances.
+
+**The weights stay fixed** whatever the games. Each condition's estimate is unbiased however many games it has, so allocating games by cost moves no weight. A bias would appear only if games were pooled with weights proportional to their counts, which the score never does. A test checks it by simulation (`test_the_cost_aware_allocation_leaves_the_score_unbiased`).
 
 ## Decision
 
-- **A group-sequential test on the overall score,** with a fixed number of planned looks and acceptance thresholds set in advance **(open: the number of looks, the thresholds, the indifference zone, the maximum budget)**.
-- **Each round** adds games to the conditions where the overall score's uncertainty comes from, per unit of cost. A 1v1 game is cheap; a 20-a-side break-even game is not.
-- **Each condition runs as its own steady stream,** a separate process writing to the shared records, and the test reads the pooled records at each look.
-- **Outcomes:** A wins, B wins, or a tie (the interval falls inside the indifference zone).
-- **Tie rule:** rate each arm's last **5** snapshots on demand, against each other and the two finals (about the last 20–25M steps). If the slopes differ by more than about 2 SE, extend both arms once, by 10–20M steps, and run the test again. Otherwise choose the cheaper or simpler arm.
-- **No-regression gate (open):** whether a winner may be clearly worse than the loser in any single mode.
+- **A group-sequential test on the overall score** (`bnb.league.sequential`). At a look, Z = score / SE, and the information fraction is t = SE⁻² / I_max.
+- **Boundaries.** A wins at Z ≥ u_k, B wins at Z ≤ −u_k, and the test stops with a tie at |Z| ≤ l_k. Otherwise it continues.
+  - u_k spends a two-sided α (`--alpha`, 0.05) by an O'Brien-Fleming-type function (Lan and DeMets), at the looks' actual fractions.
+  - l_k spends β (`--beta`, 0.2) the same way under a true difference of ±δ (`--delta`, the indifference zone).
+  - The last look always decides (l = u). It comes at t ≥ 1, or once the budget is spent (`--budget-hours` of measured engine time, every process's).
+- **I_max** is the information at which the planned looks (`--looks` K, at t = k / K) spend α and β exactly: I_max = (η_δ / δ)², with η_δ found by bisection.
+- **Outcomes:** A wins, B wins, or a tie.
+- **No-regression gate:** a mode where a player's score is at least `--gate-stderrs` (2) standard errors below zero. A winner caught by the gate is held to a tie (a 2-against-1 split goes to the tie rule; if it's still split, the incumbent stays).
+- **Tie rule:** rate each arm's last **5** snapshots on demand, against each other and the two finals (about the last 20–25M steps). If the slopes differ by more than about 2 SE, extend both arms once, by 10–20M steps, and run the test again. Otherwise choose the cheaper or simpler arm. (Not in the command.)
+- **Settings (open until the pilot below is reviewed):** K, α, β, δ and the budget.
+
+## Allocation
+
+- **First,** every condition plays `--initial-batches` (1). Break-even keeps playing until both arms' fits cross, at most `--initial-batch-limit` (8) batches, after which the suite stops with the reason.
+- **Toward each planned look:** the next look needs the overall variance 1 / (t_next · I_max). Batches are added one at a time where the next batch most reduces the overall variance per engine second, until the variance is reached.
+  - **Per-game variance:** from the condition's games. A head-to-head condition's is shrunk toward ¼ by one pseudo-game, for the allocation only.
+  - **Cost:** the measured engine seconds per game. An engine's first batch, which compiles, is left out where there are others.
+- **The targets are recomputed** from the pooled records before every batch. The look is taken when no condition is short.
+
+## Records and processes
+
+One directory per comparison:
+
+- `settings.json`{.plain}: the players (name, path and identity, the SHA-256 of the weights) and the settings. Written by the first process, and checked by every later one (another policy, game version or setting is refused).
+- `batches/<writer>.jsonl`{.plain}: every batch, with its condition, number, seconds, games, whether its engine compiled in it, and each block's full outcome (wins, draws, losses; break-even's also the arm and its count).
+- `looks/<writer>.jsonl`{.plain}: every look, with its fraction, score, SE, Z, boundaries, the test's decision, the gate and the decision after it.
+
+A writer is one process (host, process id and start time), and only it appends to its files, as in the shared rating pool. Readers merge every file, keeping the first of a repeated (condition, batch) or look number. So each condition may run as its own process (`--play CONDITION`): a process plays its own conditions toward the look, waits (`--poll-seconds`) while another's are short, and whichever process finds the look's information reached takes the look.
+
+## Command
+
+<!-- not-runnable: needs CUDA and two policies -->
+```bash
+# one process for the whole suite
+uv run --no-sync bnb evaluate A_POLICY B_POLICY --out evaluations/a-against-b
+# or one process per condition, sharing the directory
+uv run --no-sync bnb evaluate A_POLICY B_POLICY --out evaluations/a-against-b --play deathmatch_1v1
+# the scores and the test at a look now (--peek: without recording the look)
+uv run --no-sync bnb evaluate decide evaluations/a-against-b --peek
+# a pilot: every condition to 512 games, no looks; then the design from pilots
+uv run --no-sync bnb evaluate A_POLICY B_POLICY --out pilot/close --games 512
+uv run --no-sync bnb evaluate design pilot/close pilot/far --looks 2 3 4 5 --simulations 400
+```
+
+Each batch prints a line with the overall score so far and the next look's ETA as a clock time (and the budget's end). `decide` prints the per-condition table (score, SE, games, per-game variance, seconds per game), the per-mode and overall scores with their SEs, and the look.
+
+## Design pilot
+
+To be filled in from the pilot (rl-v20 against rl-mix-kl and against rl-dm at 75M).
 
 ## The ladder (for the paper, not for decisions)
 
 - **What:** Elo curves for every arm, in the shared pool, at standard 5v5 per mode. Every saved snapshot is rated, to about ±40–50 Elo.
 - **When:** mostly in one batch at the end, when the allocator can plan over every checkpoint at once. Earlier only on an idle GPU, and only when it doesn't compete with compilation on the CPU.
-- **Curves at the other conditions (open):** whether the paper also wants curves at 1v1, 2v2 and 10v10, or only the finals there.
+- **Curves at the other conditions:** for the arms, curves at 5v5 only. For the first proper run (the baseline) and the final winner, the full ladder in every condition (decided 2026-11-15).
 
 ## Reported but not scored
 
@@ -64,9 +112,3 @@ These are the games that decide each pairwise arm, and the Elo ladder we build f
 - **Loop check:** goodness of fit, and a likelihood-ratio test against mElo, in the ladder's pools.
 - **Seat symmetry:** the mirror match, a checkpoint against itself, scored by seat.
 - **Front reversal:** P(reversal) in frontline, after the first arm, to check the front stays roughly a random walk.
-
-## Cost (to measure)
-
-- Games per second at each condition's size come from the rating layout probe on the GPU.
-- Break-even games cost a full 20v20 each, because a benched slot costs about as much as an active one.
-- **Break-even precision:** the SE of N* stops at 0.15 ships **(provisional)**, to be set from a GPU probe of what 20-a-side batches cost.
