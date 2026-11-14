@@ -107,7 +107,9 @@ def keep_inside(sight: Sight, direction_x: torch.Tensor, direction_y: torch.Tens
     radius = sight.boundary[:, None]
     margin = EDGE_MARGIN * radius + 1.0
     weight = ((distance - (radius - margin)) / margin + extra).clamp(0.0, 1.0)
-    return (1.0 - weight) * ahead_x + weight * centre_x, (1.0 - weight) * ahead_y + weight * centre_y
+    return (1.0 - weight) * ahead_x + weight * centre_x, (
+        1.0 - weight
+    ) * ahead_y + weight * centre_y
 
 
 def orbit(offset_x: torch.Tensor, offset_y: torch.Tensor, radius: torch.Tensor):
@@ -309,7 +311,11 @@ class Cheese:
     ) -> None:
         if isinstance(kinds, str) and kinds not in NAMES:
             raise ValueError(f"cheese agent {kinds!r} is not one of {NAMES}")
-        self.characteristics, self.ships_per_team, self.kinds = characteristics, ships_per_team, kinds
+        self.characteristics, self.ships_per_team, self.kinds = (
+            characteristics,
+            ships_per_team,
+            kinds,
+        )
 
     def init_carry(self, views: int, device: torch.device) -> None:
         """No carry: the agents are stateless."""
