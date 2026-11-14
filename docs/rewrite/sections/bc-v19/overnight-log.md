@@ -366,3 +366,26 @@ The dead-ship slots get about 1–3%. Self-play is within 2–3 points, and the 
   - The caveat: masking any input a trained model relies on is out of distribution. So this proves dependence, not that an explicit sink would beat the placeholder.
   - It does strengthen the case for an explicit sink, a per-head sink logit or a gate, as an arm. Then frontline's zone heads also get a clean no-op, which they don't have today.
 - **Still running:** RL elimination and BC deathmatch, in the `absent-zones-queue` unit on the laptop. Results land in the scratchpad's `absent/*.jsonl`; ETA about 10:00.
+
+## 09:05 — outcome A/B, deathmatch only (rl-dm kill share against rl-kl kill lead): kill lead does not help
+
+Deathmatch Elo on win/loss against Baekho, averaged policy:
+
+| step | rl-dm, kill-share outcome | rl-kl, kill-lead outcome |
+|---|---|---|
+| 30M | 1697 ± 95 | 1860 ± 143 |
+| 50M | 2297 ± 118 | 2281 ± 154 |
+| 75M | **2866 ± 151** | **2520 ± 157** |
+
+- **Kill lead is a little faster early, within noise, ties at 50M and ends lower at 75M**, about −350, around 1.6σ.
+- **The 3× larger outcome advantage did not buy faster learning.** Kill share's finer-grained signal is at least as good, so the author's choice of kill share as deathmatch's RL outcome stands.
+- **Transfer at 75M, measured on the live Elo scale:**
+
+  | | elimination | frontline |
+  |---|---|---|
+  | rl-kl | 1643 | 1490 |
+  | rl-dm | 1847 | 914 |
+
+  rl-kl kept frontline. It is one seed each, so this is not read as an effect of the outcome.
+- **rl-mix-kl,** the mixed-mode version, is still running to test the same switch in the production mix. On this evidence I expect no gain.
+- **What it means for the deathmatch question:** together with E2, the gap to v2.1 was entirely the rating scale. The reward shape and frontline crowding are both ruled out.
