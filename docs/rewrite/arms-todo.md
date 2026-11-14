@@ -9,7 +9,7 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 
 ## Open for the author
 
-1. **League mix:** about 35% latest at a fixed share, about 55% (1−p)² over the other members, and about 10% uniform to keep every member's p fresh, or another split. None of AlphaStar, OpenAI Five or AlphaZero uses an explicit uniform floor. This is linked to the deferred both-sides/one-side choice.
+1. **League mix (revised proposal, the author's idea):** about 35% latest at a fixed share and about 65% (1−p)² over the other members, with no uniform floor in training. The rating lanes, which are never trained on, rotate the live weights through every league member to keep each p fresh, so a forgotten opponent's weight comes back through (1−p)². This needs the lanes to rotate over the league; today they play a fixed list of matchups. It's linked to the deferred both-sides/one-side choice.
 2. **Arena size for larger games:** the density rule (20 a side: 15600 m for frontline and elimination, 8400 m for deathmatch) or the preset's 5v5 arena. The same rule should apply to the 10v10 condition.
 3. **The break-even SE target:** 0.3 ships was met in 1–6 batches on synthetic data, so 0.1–0.15 is suggested.
 4. **The averaging sweep:** which early arm saves the live weights every update, and which averaging variants to sweep.
