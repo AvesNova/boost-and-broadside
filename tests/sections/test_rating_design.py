@@ -4,6 +4,7 @@ with its players-per-batch and lane limits, the out-of-reach rule, and the satur
 anchor pair that the earlier greedy allocation kept playing."""
 
 import collections
+import json
 import math
 
 import pytest
@@ -299,3 +300,34 @@ def test_a_ladder_is_rated_through_its_neighbours():
     distance = (truth[:, None] - truth[None, :]).abs()
     close = float(pair_games[distance <= 450.0].sum())
     assert close > 0.8 * float(pair_games.sum())
+
+
+# ---- the layout probe (bench/rating_layout_probe.py)
+
+
+def test_the_probe_reads_layouts_and_more_blocks_plan_more_information():
+    from bench import rating_layout_probe as probe
+
+    assert probe.parse_layouts("2x96,8x128x16") == [(2, 96, 32), (8, 128, 16)]
+    with pytest.raises(ValueError, match="blocks x environments"):
+        probe.parse_layouts("2")
+    few, _ = probe.reference_information(2, 512, None)
+    many, _ = probe.reference_information(8, 128, None)
+    assert many > few > 0.0  # the same games over more pairs
+
+
+@pytest.mark.usefixtures("global_generator")
+def test_the_probe_measures_a_tiny_layout_on_the_cpu(tmp_path):
+    from bench import rating_layout_probe as probe
+    from bnb.contracts import GameConfig
+    from bnb.league.matches import player
+
+    game = GameConfig(2, 2, 1500.0, episode_seconds=2.0, respawn_seconds=1.0)
+    out = tmp_path / "probe.jsonl"
+    field = [player("scripted"), player("random"), player("rung_T2")]
+    summaries = probe.measure(
+        field, game, [(2, 4, 16)], torch.device("cpu"), 1, False, None, out, lambda line: None
+    )
+    assert summaries[0]["games_per_batch"] == 8 and summaries[0]["games_per_second"] > 0.0
+    lines = [json.loads(line) for line in out.read_text().splitlines()]
+    assert lines[0]["games"] == 8 and "summary" in lines[-1]
