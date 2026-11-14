@@ -10,7 +10,8 @@ The league chooses the learner's opponents during training, rates the learner as
 and rates finished policies afterwards. The training side is `bnb.league.league.League`,
 attached to a trainer as its hooks; inside the rollout it acts through one controller, the
 league's seat (`bnb.runtime.opponents.OpponentSlots`). The offline side is
-`bnb.league.tournament`, behind `bnb ratings` and `bnb head-to-head`, and
+`bnb.league.tournament`, behind `bnb ratings` and `bnb head-to-head`, `bnb.league.rating_pool`,
+behind `bnb pool`, and
 `bnb.league.crossover`, behind `bnb crossover`.
 
 ## The pool
@@ -292,14 +293,48 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
 
 **The tournament:**
 
-- Before each batch every block is given a pair (`bnb.league.ratings.allocate_blocks`),
-  greedily: the allowed pair whose block of games most lowers the summed rating variance
-  at the current ratings, given every game so far and the blocks already chosen, among
-  the pairs that still fit the engine's lanes. The information includes the fit's prior
-  games, so the first batch is chosen the same way.
-- After each batch the ratings are the Bradley–Terry fit on every game so far
-  (`bnb.league.ratings.fit_ratings`, draws as half a win, one prior game), shifted so the
-  scripted agent is at 1000. Only the scripted agent is pinned; random is fitted.
+- **Targets.** Every player's standard error should be under `--target-stderr`; the
+  players named by `--decision` under the stricter `--decision-stderr`; and each
+  `--contrast A:B`, the difference between two players' ratings (two arms' final
+  checkpoints, say), under `--contrast-stderr`. The errors are relative to the scripted
+  agent, so a contrast is the target to name when what matters is how two strong players
+  compare: their difference can be resolved by their games with each other even when
+  both beat the scripted agent every game.
+- **The plan of a batch** (`bnb.league.design.plan_batch`). The batch's blocks minimise the
+  weighted A-optimal criterion, the sum over the unmet targets of each one's variance
+  after the batch over its target squared. The variance after the batch counts every game
+  so far and the prior, so a pair that has had many games is worth less. A game is valued
+  at its information p (1 − p) at the far end of a one-standard-error interval of the
+  pair's rating difference (at most 200 Elo wide), so a pair whose result is near certain
+  is discounted. The plan first finds the continuous design, the share of the batch's
+  games each allowed pair should get (the multiplicative algorithm for A-optimality), then
+  rounds it to whole blocks one at a time: each block goes to the design's heaviest pair,
+  and the design is solved again for the games left over the pairs that still fit the
+  batch, at most `--players-per-batch` distinct players (the engine loads each player a
+  batch holds; default as many as its slots) and each network group's lanes. A new player
+  starts at the prior, so its first games go to players near the middle of the field whose
+  ratings are well known; once it is rated, to the players closest to it.
+- **The fit** (`bnb.league.design.fit_posterior`). After each batch the ratings are the
+  Bradley–Terry posterior on every game so far, draws as half a win, with a Gaussian
+  prior on each player about the scripted agent (standard deviation 1000 Elo), shifted so
+  the scripted agent is at 1000. Only the scripted agent is pinned; random is fitted. The
+  standard errors are the posterior's (the inverse of the Fisher information plus the
+  prior's precision), so no error exceeds the prior's and no rating is infinite.
+- **Why a Gaussian prior.** The earlier fit's prior was one virtual game against the
+  scripted agent, half won. A virtual game's information is p (1 − p) at the estimate,
+  which vanishes as a clean sweep drives the estimate out: after a sweep the estimate
+  grows as the log of the games and the information stays about one game's, so the
+  player's standard error never falls (about 175 Elo after 96 games or after 960). The
+  earlier greedy allocation valued the next block at the current estimate, saw the largest
+  variance there and kept choosing that pair: in one evaluation it spent 672 of 1152 games
+  on a policy against the scripted agent (576 wins, no losses) and 96 on the pair that
+  mattered. `tests/sections/test_rating_design.py` reproduces both allocations.
+- **Out of reach.** A target the remaining budget cannot bring in is left out of the
+  criterion while other targets can be met (its batches needed at the better of the plan's
+  rate for it and its best single pair's). When every unmet target needs more than
+  `--hopeless` times the batches left (default 10), the tournament stops and logs which
+  targets and why, rather than spend its budget on games that hardly move them;
+  `--hopeless inf` plays the budget.
 - **Scoring:** frontline and elimination games count as a win, a draw or a loss. A team
   deathmatch game counts, by default, as its kill share: the first player's kills over
   both sides' (0.5 with none), taken by the fit as a draw's half is
@@ -308,8 +343,8 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   other modes are. `bnb head-to-head` takes the same option. The scoring is applied when
   the games are fitted, not when they are recorded (see the record below), so the option
   chooses only how the fit reads the games.
-- The tournament stops when every standard error is under `--target-stderr`, or when the
-  next batch would pass `--budget` games.
+- The tournament stops when every target is met, when the next batch would pass `--budget`
+  games, or when the targets left are out of reach (above).
 - The leaderboard rows (`calibrated_elo`) are keyed by game version, mode, map and fleet
   size, with the standard error and the games behind each. They are written to the run's
   `artifacts/ratings/` with the inputs' hashes.
@@ -317,8 +352,8 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   `<preset>.batches.jsonl` in `--out` (else the run's `artifacts/ratings/`): the batch's
   index, its blocks' matchups and each block's full outcome, the games so far, every
   player's rating and standard error, the worst error, the batch's seconds and the wall
-  time, the games reused (`reused_games`), each player's identity (`identities`, name to
-  identity) and the scoring the batch's ratings were fitted under (`scoring`: `kill_share`
+  time, the games reused (`reused_games`), the targets the plan left out as out of reach
+  (`out_of_reach`), each player's identity (`identities`, name to identity) and the scoring the batch's ratings were fitted under (`scoring`: `kill_share`
   or `win_loss`). A block's full outcome is kept in every mode, whatever the scoring
   (`bnb.league.tournament.outcomes`): `results`, the first player's wins, draws and losses
   by the game's own rule (in team deathmatch the sign of the final kill difference);
@@ -352,7 +387,8 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   `--deathmatch-score`, and the leaderboard is written as usual. A tournament is
   re-rated under the other scoring with
 
-  ```
+  <!-- not-runnable: needs a run and its record -->
+  ```bash
   bnb ratings RUN --out DIR --budget 0 --deathmatch-score win_loss
   ```
 
@@ -396,6 +432,7 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
 <!-- not-runnable: needs CUDA and a run -->
 ```bash
 uv run --no-sync bnb ratings 2026-11-02-mixed-purple-pumpkin --target-stderr 25
+uv run --no-sync bnb ratings RUN --with ARM_A ARM_B --contrast ARM_A:ARM_B --contrast-stderr 20
 ```
 
 `bnb head-to-head A B [C D ...] --games N` plays only the named pairs on the same engine,
@@ -471,3 +508,69 @@ The scripted agent's own temperature is the teacher's syntax, `scripted@T=<tempe
 ```bash
 uv run --no-sync bnb ratings RUN --with POLICY@T=0.7 POLICY POLICY@T=1.4
 ```
+
+## The shared rating pool
+
+`bnb pool` keeps one pool per directory: every rated checkpoint of many runs and arms, and
+every game played among them, rated per game preset against the scripted agent at 1000
+(`bnb.league.rating_pool`). It is meant for a shared volume that more than one machine
+writes at once.
+
+- **Players** have stable names: a policy's is `<run>/step_<steps>/<weights kind>`, read
+  from its directory (`<run>/policies/step_<n>/<kind>`, or a run's `league/` or
+  `checkpoints/`), not the machine's absolute path; a scripted player's is its own name.
+  Each is registered with its identity, the SHA-256 of its weights from its checkpoint.json
+  after every file's hash is checked, and the paths where writers found it. A name
+  registered again with other weights is refused, and games recorded under other weights
+  are not counted.
+- **Storage:** `pool.json`{.plain} (the conditions every game shares: the lineup, the arena scale
+  and the default team-deathmatch scoring, written once), `players/<writer>.jsonl`{.plain} and
+  `games/<preset>/<writer>.jsonl`{.plain}. A writer is one process (host, process id and start
+  time) and only it appends to its files; a reader lists the directories and merges every
+  file. No file is written by two processes, so no lock is needed: file locks are
+  unreliable across machines on network and synchronised volumes, and appends from two
+  machines to one file can interleave. A last line without its newline (a write in
+  progress) is skipped; every batch carries an id, so a file copied in twice counts once.
+- **Batches** keep each block's full outcome, as `bnb ratings` records do, with the
+  players' identities, the game version and the seed; the scoring is applied when the
+  pool is fitted.
+- **Rating** (`bnb pool rate`): every stored game of the preset is fitted; a session then
+  plays among at most `--session-players` players that can be played on this machine
+  (those the continuous design over every playable pair weighs most, the scripted agent
+  always among them), each batch planned on the posterior's marginal over them, so games
+  elsewhere in the pool count. Before each batch the pool is read again, so another
+  machine's games count as they arrive. The targets and limits are `bnb ratings`'
+  (`--target-stderr`, default 45 for a ladder of checkpoints; `--decision`,
+  `--contrast`, `--players-per-batch`, `--hopeless`).
+- **The table** (`bnb pool table`) prints each preset's leaderboard and how well one rating
+  per player fits the games (`bnb.league.goodness_of_fit`): the deviance of the directly
+  played pairs' observed scores against the predicted ones, with its p-value and the
+  pairs with the largest deviance residuals, and a likelihood-ratio test of Bradley–Terry
+  against mElo-2, the multidimensional Elo with one cyclic component (Balduzzi et al.
+  2018): a small p-value is evidence of a rock-paper-scissors structure among the
+  played pairs. With kill-share games both tests are conservative (a kill share varies
+  less than a win or a loss). `--triangle-share` reserves a share of each batch for the
+  least-played pairs among the decision players, so their triangles are played.
+- **Curves** (`bnb pool curves --out FILE.csv`): each run's Elo against steps, per preset
+  and weights kind, with the standard error and the games.
+- **Importing** (`bnb pool import POOL DIR ...`): every `<preset>.batches.jsonl` below the
+  directories is brought in once (its batches' ids come from their content), its players
+  registered under their pool names; a policy the pool already holds under another name,
+  by its weights, keeps the pool's name. The records are read, not changed.
+
+<!-- not-runnable: needs CUDA and runs -->
+```bash
+uv run --no-sync bnb pool create /shared/rating-pool --lineup Yongma Yongma Jujak Jujak Jujak
+uv run --no-sync bnb pool import /shared/rating-pool ~/avesnova/live-elo
+uv run --no-sync bnb pool add /shared/rating-pool runs/RUN/policies/step_75497472/exponential_average
+uv run --no-sync bnb pool rate /shared/rating-pool --presets real_scale_frontline --runs-directory runs
+uv run --no-sync bnb pool table /shared/rating-pool --presets real_scale_frontline
+```
+
+Refitted from the live-Elo records of seven runs (bc-v19, bc-v20, rl-v20, rl-dm, rl-kl,
+rl-mix-kl and the win/loss re-ratings, 377 batches), the pool's kill-share and win/loss
+curves agree with each run's own last table to a median of 1 to 10 Elo (0.03 to 0.3 of the
+earlier standard errors); the BC snapshots that lose every elimination and frontline game
+to the scripted agent move by 50 to 125 Elo (within one standard error), where the prior
+now bounds them, and the win/loss deathmatch re-ratings by 30 to 100 Elo, as their few
+games are pooled with the other records' (docs/rewrite/sections/rating-allocator/progress.md).

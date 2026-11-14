@@ -147,7 +147,8 @@ def _options(cls) -> set[str]:
 
 def command(arguments: str) -> str | None:
     """None if `bnb <arguments>` names a command (`bnb.cli.COMMANDS`) and uses only its
-    options (`bnb.cli.Train`, `Runs`, `ShipCard`, `Ratings`, `HeadToHead`, `Crossover` or
+    options (`bnb.cli.Train`, `Runs`, `ShipCard`, `Ratings`, `HeadToHead`, `Crossover`,
+    `Pool` or
     `Figures`, and
     `FiguresVideo` and `FiguresWatch` for `bnb figures video` and `bnb figures watch`;
     `bnb queue`'s own, `bnb.cli.QUEUE_FLAGS`, and for `bnb queue add KIND` the job's
@@ -162,6 +163,7 @@ def command(arguments: str) -> str | None:
         FiguresVideo,
         FiguresWatch,
         HeadToHead,
+        Pool,
         Ratings,
         Runs,
         ShipCard,
@@ -185,6 +187,7 @@ def command(arguments: str) -> str | None:
         "ratings": Ratings,
         "head-to-head": HeadToHead,
         "crossover": Crossover,
+        "pool": Pool,
         "figures": Figures,
     }
     if tokens[0] == "queue":

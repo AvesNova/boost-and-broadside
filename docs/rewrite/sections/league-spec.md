@@ -108,17 +108,25 @@ rating from the run's one fit of the lanes' and the league's games
 
 - **`bnb ratings`:** an offline tournament over a field (the run's snapshots, the
   averages, the ladder, other runs' entries), in batches.
-  - The first batch is spread evenly. Later batches are split by A-optimal value
-    (`allocate`, fixture `league_allocation`), with at least one game per pair, and
-    every pair's games split evenly between the seats.
+  - Each batch's blocks follow the weighted A-optimal design for the unmet targets,
+    rounded to whole blocks within the batch's players and lanes
+    (`bnb.league.design.plan_batch`, 2026-11-14), and every pair's games are split evenly
+    between the seats.
   - Draws are scored as half a win.
-- **The fit:** Bradley–Terry with standard errors (`fit_ratings`, fixtures
-  `league_ratings*`), prior 1 game, then shifted so the scripted agent is 1000. **Only
-  the scripted agent is pinned**; random is fitted too.
-- **Stopping:** when every rating's standard error is below a target (default 25 points)
-  or a game budget runs out (author, 2026-11-02).
+- **The fit:** the Bradley–Terry posterior with standard errors
+  (`bnb.league.design.fit_posterior`), a Gaussian prior of 1000 Elo about the scripted
+  agent, then shifted so the scripted agent is 1000. **Only the scripted agent is
+  pinned**; random is fitted too. (Until 2026-11-14 the prior was one virtual game, whose
+  information vanishes in a sweep: `docs/explanation/league.md`.)
+- **Targets:** every player's standard error under `--target-stderr` (default 25 points),
+  the decision players' under `--decision-stderr`, each named contrast's under
+  `--contrast-stderr`.
+- **Stopping:** when every target is met, a game budget runs out (author, 2026-11-02), or
+  every unmet target is out of reach within the budget (2026-11-14).
 - **The leaderboard:** keyed by game version × mode × map × fleet size; each row has the
   rating, its standard error and the games behind it. Named `calibrated_elo`.
+- **The shared pool** (`bnb pool`, 2026-11-14): every rated checkpoint of many runs in one
+  directory per pool, written by several machines at once, one file per writer.
 
 ### Head-to-head (author, 2026-11-02)
 
