@@ -150,6 +150,7 @@ nav:
       - reference/index.md
       - bnb.contracts: reference/contracts.md
       - bnb.reference: reference/reference.md
+      - bnb.streams: reference/streams.md
       - bnb.game: reference/game.md
       - bnb.controllers: reference/controllers.md
       - bnb.models: reference/models.md

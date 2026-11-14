@@ -10,6 +10,9 @@
 - package: reference
   holds: "data only: the researched real WWII fighters and their ship files, kept for reference"
   reference: reference/reference.md
+- package: streams
+  holds: "the keyed random streams: counter-based hashes of the seed and a draw's coordinates, seeded generators"
+  reference: reference/streams.md
 - package: game
   holds: "the rules: physics, perception, modes, the batch layout"
   reference: reference/game.md

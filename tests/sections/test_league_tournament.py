@@ -30,14 +30,14 @@ HALF = Player("rung_T2", rung=Rung(2.0))
 SMALL = ArenaConfig(blocks=2, block_environments=4, length=16, compiled=False)
 
 
-def _network(directory, seed: int, hidden: int = 16) -> Player:
-    """A policy file of a small relational model with random weights throughout (its
-    initial policy head is zero, so every such model would play alike)."""
+def _network(directory, seed: int, hidden: int = 16, scale: float = 1.0) -> Player:
+    """A policy file of a small relational model with random weights throughout, N(0,
+    scale^2) (its initial policy head is zero, so every such model would play alike)."""
     torch.manual_seed(seed)
     model = Relational(RelationalBuild(RelationalConfig(hidden=hidden), 2, 4))
     with torch.no_grad():
         for parameter in model.parameters():
-            parameter.normal_()
+            parameter.normal_(0.0, scale)
     checkpoint.save_policy(directory, model)
     return player(str(directory))
 
@@ -125,13 +125,13 @@ def test_a_block_plays_the_same_games_whatever_the_other_blocks_play(tmp_path):
     arena = Arena([first, second, SCRIPTED, RANDOM], GAME, CPU, SMALL)
     states = []
     for other in ((1, 0), (2, 3)):
-        torch.manual_seed(5)
+        arena.batch = 0  # one batch number: the same maps and draws
         arena.play([(0, 3), other])
         states.append(_block_state(arena, 0))
     assert states[0] and len(states[0]) == len(states[1])
     for one, two in zip(*states, strict=True):
         assert torch.equal(one, two)
-    torch.manual_seed(5)
+    arena.batch = 0
     arena.play([(1, 3), (1, 0)])  # another network in block 0 plays other games
     assert any(not torch.equal(one, two) for one, two in zip(states[0], _block_state(arena, 0)))
 
@@ -159,16 +159,16 @@ def test_a_two_build_field_plays_and_a_block_does_not_depend_on_the_others(tmp_p
     assert results.sum(1).tolist() == [4, 4]
     states = []
     for other in ((1, 0), (2, 3)):
-        torch.manual_seed(5)
+        arena.batch = 0  # one batch number: the same maps and draws
         arena.play([(0, 3), other])
         states.append(_block_state(arena, 0))
     for one, two in zip(*states, strict=True):
         assert torch.equal(one, two)
 
 
-def _greedy(logits):
+def _greedy(logits, uniforms):
     """The policy's most likely joint action, drawing nothing: a network's play then depends
-    on its rows alone, whatever the other lanes draw."""
+    on its rows alone and its weights, not on how close they are to another's."""
     joint = logits.argmax(-1)
     return (joint.to(torch.int32), *policy.evaluate(logits, joint))
 
@@ -189,8 +189,7 @@ def test_a_mixed_field_plays_each_pair_as_the_pair_alone(tmp_path, monkeypatch):
         ([(1, 0), (4, 2)], [(1, 0), (3, 2)]),  # the seats swapped; random against a network
     ):
         states, results = [], []
-        for arena, pairs in ((mixed, matchups), (alone, versus)):
-            torch.manual_seed(5)
+        for arena, pairs in ((mixed, matchups), (alone, versus)):  # batch by batch
             results.append(arena.play(pairs))
             states.append(_block_state(arena, 0))
         assert torch.equal(results[0][0], results[1][0])
@@ -416,10 +415,8 @@ def test_temperature_one_samples_exactly_as_without_one():
     reset = torch.ones(obs.ships.shape[0], dtype=torch.bool)
     decisions = []
     for temperature in (None, torch.ones(obs.ships.shape[0])):
-        torch.manual_seed(3)
-        action, _, outputs = controller.step(
-            None, obs, reset, torch.arange(obs.ships.shape[0]), temperature=temperature
-        )
+        keys = torch.arange(6).reshape(obs.ships.shape[:2])  # (environments, teams)
+        action, _, outputs = controller.step(None, obs, reset, keys, temperature=temperature)
         decisions.append((action.packed(), outputs.log_probability, outputs.entropy))
     for one, two in zip(*decisions, strict=True):
         assert torch.equal(one, two)
@@ -432,7 +429,7 @@ def test_a_low_temperature_concentrates_and_a_high_one_flattens_only_its_rows(tm
     games as in an engine without one."""
     from bnb.league.matches import STATISTICS
 
-    base = _network(tmp_path / "a", 1)
+    base = _network(tmp_path / "a", 1, scale=0.3)  # a policy far from deterministic
     cold, hot = player(f"{base.name}@T=0.25"), player(f"{base.name}@T=4")
     arena = Arena([base, cold, hot, SCRIPTED], GAME, CPU, SMALL, lanes=(4,))
     assert arena.states[0] is arena.states[1] is arena.states[2]

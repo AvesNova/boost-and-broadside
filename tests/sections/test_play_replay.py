@@ -34,7 +34,7 @@ def _same(x: torch.Tensor, y: torch.Tensor) -> bool:
 def recorded(tmp_path_factory):
     """A live scripted match (the human flying a ship part of the time), recorded for
     TICKS ticks: its saved replay, the states after every tick, and the raw events."""
-    loop = MatchLoop(MatchSetup(SMALL, seed=7), compiled=False)
+    loop = MatchLoop(MatchSetup(SMALL, seed=11), compiled=False)  # a seed whose match has kills
     recorder = Recorder(loop.setup, loop.realtime, "test")
     states, raw = [_leaves(loop.realtime.state)], []
 

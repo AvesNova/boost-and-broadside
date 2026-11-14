@@ -509,7 +509,7 @@ def test_grouped_respawns_land_near_a_living_anchor_inside_the_arena():
     config = cases.MODES["grouped"]
     edge = config.arena_radius - 50.0
     landed = clipped = 0
-    for _, events, after in cases.play(config, ticks=300, seed=2):
+    for _, events, after in cases.play(config, ticks=400, seed=2):
         spawned = after.ships.spawned
         reach = torch.hypot(after.ships.x, after.ships.y)
         assert (reach[spawned] <= edge + 1e-2).all()
