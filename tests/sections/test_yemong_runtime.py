@@ -18,25 +18,30 @@ CUDA = torch.device("cuda") if torch.cuda.is_available() else None
 
 
 def test_compiled_step_captures_and_samples_fresh_actions():
-    """A captured decision (no host syncs, static shapes) draws new actions on each replay."""
+    """A captured decision (no host syncs, static shapes) draws new actions on each replay
+    whose decision keys are new (the rollout writes each tick's keys into the graph's key
+    buffer, `bnb.streams`)."""
     net = cases.model().to(CUDA)
     controller = cases.controller(net, cases.SQUAD)
     _, trajectory = cases.rollout(cases.model(), cases.SQUAD, length=4)
     obs = torch.utils._pytree.tree_map_only(torch.Tensor, lambda x: x[-1].to(CUDA), trajectory.obs)
     carry = controller.init_carry(obs.ships.shape[0], CUDA)
     reset = torch.zeros(obs.ships.shape[0], dtype=torch.bool, device=CUDA)
+    views = obs.ships.shape[0]
+    keys = torch.arange(views, device=CUDA)
     step = torch.compile(controller.step, fullgraph=True, dynamic=False)
     side = torch.cuda.Stream()
     side.wait_stream(torch.cuda.current_stream())
     with torch.no_grad(), torch.cuda.stream(side):
         for _ in range(2):
-            step(carry, obs, reset)
+            step(carry, obs, reset, keys)
     torch.cuda.current_stream().wait_stream(side)
     graph = torch.cuda.CUDAGraph()
     with torch.no_grad(), torch.cuda.graph(graph):
-        action, _, outputs = step(carry, obs, reset)
+        action, _, outputs = step(carry, obs, reset, keys)
     draws = []
-    for _ in range(3):
+    for replay in range(3):
+        keys.copy_(torch.arange(views, device=CUDA) + (replay + 1) * views)
         graph.replay()
         draws.append(torch.stack([action.power, action.stick, action.shoot]).clone())
     assert not torch.equal(draws[0], draws[1]) and not torch.equal(draws[1], draws[2])
