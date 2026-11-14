@@ -184,7 +184,8 @@ TRAIN_OPTIONS = (
 
 def current_layout(obs: Obs, recorded: dict) -> Obs:
     """A stored observation whose parts hold the columns `recorded` names (by part), in
-    today's layout: each column moved by name, a column added since zero."""
+    today's layout: each column moved by name, a column added since zero, except the
+    fields' present flag, one (every field was present before game version 20)."""
     parts = {}
     for part in PARTS:
         value = getattr(obs, part)
@@ -194,7 +195,13 @@ def current_layout(obs: Obs, recorded: dict) -> Obs:
         index = {name: i for i, name in enumerate(recorded[part])}
         assert value.shape[-1] == len(index), part
         zero = torch.zeros_like(value[..., 0])
+        one = torch.ones_like(zero)
+
+        def added(name: str, part: str = part) -> torch.Tensor:
+            return one if (part, name) == ("fields", "present") else zero
+
         parts[part] = torch.stack(
-            [value[..., index[name]] if name in index else zero for name in COLUMNS[part]], -1
+            [value[..., index[name]] if name in index else added(name) for name in COLUMNS[part]],
+            -1,
         )
     return Obs(**parts)
