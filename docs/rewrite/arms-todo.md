@@ -9,15 +9,17 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 
 ## Open for the author
 
-1. **Self-play share** within the three-section design (decided structure below): 50% (today), 35% (AlphaStar), 80% (OpenAI Five), or 100% (AlphaZero). Also how the rating lanes measure uncertainty (proposal: the variance of p from discounted counts of live-vs-member games, training games included).
-2. **Arena size for larger games:** the density rule (20 a side: 15600 m for frontline and elimination, 8400 m for deathmatch) or the preset's 5v5 arena. The same rule should apply to the 10v10 condition.
-3. **The break-even SE target:** 0.3 ships was met in 1–6 batches on synthetic data, so 0.1–0.15 is suggested.
-4. **The averaging sweep:** which early arm saves the live weights every update, and which averaging variants to sweep.
+Ordered for working through:
+
+1. **Arena size for games at other fleet sizes.** The game already has a density rule (`api.arena_radius_for`): the radius scales with the fleet down to each mode's minimum, so 20 a side gets 2× the radius. The alternative is the preset's 5v5 map. The density rule couples fleet size to map size, which ties into items 2 and 7.
+2. **The explicit list of evaluation games:** for every condition, the mode, team sizes, map, lineup rule, opponents and pool, SE targets, and the break-even settings. Claude drafts it, the author reviews.
+3. **The break-even SE target:** 0.15 ships is recommended (0.3 was met in 1–6 batches on synthetic data).
+4. **The rest of the decision rule:** when to extend both arms, the no-regression gate, and the SE target (from the 2 × 2 seed measurement).
 5. **Freezing the game:** what goes in (see "First, before the game freeze"), and the clock-end tuning.
-6. **The rest of the decision rule:** when to extend both arms, the no-regression gate, and the SE target (from the 2 × 2 seed measurement).
-7. **The run budget, the final arm list, and a review of every arm idea:** whether each is settled by theory, a test or an arm, and in what order.
-8. **The counts arm:** whether frontline goes down to 3v3.
-9. **Fields:** removing fields from the game and masking their slots (check whether it exists; benched ships are already masked).
+6. **Fields for the counts arm:** removing fields from the game and masking their slots isn't implemented. Only absent zone slots and benched ships are masked. It needs building if field counts vary.
+7. **The counts arm:** whether frontline goes down to 3v3; and since the density rule scales maps with fleet size, varying counts also varies map size.
+8. **The run budget, the final arm list, and a review of every arm idea:** whether each is settled by theory, a test or an arm, and in what order.
+9. **The averaging sweep:** which early arm saves the live weights every update, and which variants to sweep.
 
 ## Decisions
 
@@ -34,9 +36,9 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 - **Lineups:** each slot is a 50/50 coin flip between Yongma and Jujak, the same for both teams.
 - **Mode mix:** frontline 6/16, deathmatch 5/16, elimination 5/16 (768 / 640 / 640 of 2048 environments; it was 8, 5, 3).
 - **League structure: three sections, each with one job,** within a maximum number of networks loaded at once:
-  1. **Self-play:** a fixed share; the share is open.
+  1. **Self-play:** a fixed 50% (decided 2026-11-14), today's value. The loop test finds no significant cycles, so the game looks mostly transitive.
   2. **League training games:** every other game, by (1−p)² over all members, with no uniform floor.
-  3. **Rating lanes (never trained on):** the live agent against the members whose win probability against it is least certain. Members already played often in training are well measured and get few lane games; rarely played members get the rest.
+  3. **Rating lanes (never trained on):** the live agent against the members whose win probability against it is least certain. Members already played often in training are well measured and get few lane games; rarely played members get the rest. **Uncertainty measure (decided):** the variance of p, about p(1−p)/n, where n counts every live-against-member game, training games included, discounted with a half-life of 4 updates (about 4M steps; Claude's choice) so p follows the changing live agent.
 - **League sampling:** (1−p)² over all members, following AlphaStar, plus a uniform floor. The cheese agents are ordinary members with no separate weight. The averaged agents (uniform and exponential) stay members; they already are (`bnb.league.pool`).
 - **League snapshot schedule:** about 100–200 Elo between league members, read off the RL curve. From rl-v20 that's members at 5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 90, 110, 130 and 160M; re-derive it after the game freeze.
 - **Cheese agents:** zone rusher, turtle, evader, deathball, jouster and kiter. They're on by default, in the league and in the exploit check.
