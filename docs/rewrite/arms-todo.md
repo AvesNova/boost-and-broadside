@@ -9,7 +9,7 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 
 ## Open for the author
 
-1. **League mix (revised proposal, the author's idea):** about 35% latest at a fixed share and about 65% (1−p)² over the other members, with no uniform floor in training. The rating lanes, which are never trained on, rotate the live weights through every league member to keep each p fresh, so a forgotten opponent's weight comes back through (1−p)². This needs the lanes to rotate over the league; today they play a fixed list of matchups. It's linked to the deferred both-sides/one-side choice.
+1. **Self-play share** within the three-section design (decided structure below): 50% (today), 35% (AlphaStar), 80% (OpenAI Five), or 100% (AlphaZero). Also how the rating lanes measure uncertainty (proposal: the variance of p from discounted counts of live-vs-member games, training games included).
 2. **Arena size for larger games:** the density rule (20 a side: 15600 m for frontline and elimination, 8400 m for deathmatch) or the preset's 5v5 arena. The same rule should apply to the 10v10 condition.
 3. **The break-even SE target:** 0.3 ships was met in 1–6 batches on synthetic data, so 0.1–0.15 is suggested.
 4. **The averaging sweep:** which early arm saves the live weights every update, and which averaging variants to sweep.
@@ -33,6 +33,10 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 - **Fog:** 100% fog in training, BC and the game. Full information is for debugging only. The scripted agent already reads only visible enemies.
 - **Lineups:** each slot is a 50/50 coin flip between Yongma and Jujak, the same for both teams.
 - **Mode mix:** frontline 6/16, deathmatch 5/16, elimination 5/16 (768 / 640 / 640 of 2048 environments; it was 8, 5, 3).
+- **League structure: three sections, each with one job,** within a maximum number of networks loaded at once:
+  1. **Self-play:** a fixed share; the share is open.
+  2. **League training games:** every other game, by (1−p)² over all members, with no uniform floor.
+  3. **Rating lanes (never trained on):** the live agent against the members whose win probability against it is least certain. Members already played often in training are well measured and get few lane games; rarely played members get the rest.
 - **League sampling:** (1−p)² over all members, following AlphaStar, plus a uniform floor. The cheese agents are ordinary members with no separate weight. The averaged agents (uniform and exponential) stay members; they already are (`bnb.league.pool`).
 - **League snapshot schedule:** about 100–200 Elo between league members, read off the RL curve. From rl-v20 that's members at 5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 90, 110, 130 and 160M; re-derive it after the game freeze.
 - **Cheese agents:** zone rusher, turtle, evader, deathball, jouster and kiter. They're on by default, in the league and in the exploit check.
