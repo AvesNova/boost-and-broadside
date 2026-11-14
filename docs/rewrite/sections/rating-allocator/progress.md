@@ -61,3 +61,47 @@ Branch `feat/rating-allocator` from `integrate/next-runs` (997a700e).
 
 - **Next:** the GPU probe; then choose `--blocks`, `--block-environments` and the segment
   length for `bnb pool rate` (now 2 x 96, as live_elo.sh); the open questions in the report.
+
+## 2026-11-14 20:40 to 21:40: no prior in the fit (the author's decision)
+
+- **Decision (author, 2026-11-14):** priors must not affect the reported Elo; their only
+  role is placing a new checkpoint's first opponents.
+- **Worked:** `fit_posterior` is plain maximum likelihood. The players split into the
+  strongly connected components of "scored anything against"; each component's own games
+  are fitted by Newton (strictly concave there, no safeguard needed: nothing is added to
+  the likelihood); the anchor's component is rated. A component reaching the anchor's by
+  sweeps is `above`, one reached from it `below`: reported as a one-sided 5% bound (the
+  shift at which its sweeps against valued players have probability 0.05; 96 straight wins
+  over the anchor: > 1599.6). Otherwise `undetermined` or `unplayed`. Differences within a
+  component keep their MLE and covariance, so the saturated test's contrast (two arms
+  that both sweep the anchor) is still met. `Targets.met` leaves out targets on a bound;
+  unplayed/undetermined stay unmet. Rows carry `status`; `stderr` is None without a rating;
+  `bnb pool table` prints "> 2400.0 (bound)"; `curves` has a `status` column. Goodness of
+  fit leaves out cross-component pairs (fitted exactly), df P - (K - C).
+- **Worked:** the planner's view (`design.planning`): a bound is planned at bound +/- 200
+  Elo (MARGIN_CAP) on its open side with a shift error of 1000 Elo (planning only), so
+  its next games go to stronger (weaker) opponents. Test: a new player that swept the
+  anchor in 96 games (bound 600) is planned against y (700), not the anchor or z (1100).
+  Placement (`rating_pool.placement`): other runs' same-kind mean at the same steps,
+  interpolated between nearest steps (the nearest step's mean outside them), else the
+  run's previous checkpoint, else the anchor; used only while the fit gives the player
+  nothing. `--prior-stderr` and `TournamentConfig.prior_stderr` removed; `fit_field`
+  returns (posterior, pair_games).
+- **Didn't / cost:** the ladder test's share of games on close pairs fell from 0.80-0.875
+  to 0.80-0.825 (seeds 1-8; the same 2560 games to meet every target): after the first
+  batch the swept checkpoints are planned at their bound + 200, which for the top of a
+  ladder is still below them. Threshold relaxed to 0.75.
+- **Refit of the scratch pool** (the same 377 imported batches; prior version vs no
+  prior): kill-share deathmatch unchanged (max 0.9 Elo, all 54 rated). Elimination: all
+  55 rated, median 2 Elo, bc-v19 -62 (0.5 SE). Frontline: 51 rated, median 5 Elo (bc-v20
+  -16, rl-v20 +16, max 36 = 0.53 SE); bounds: bc-v19 step 10485760 < -216 (was -460 +-
+  193), step 20971520 < -238 (was -481 +- 196), step 25165824 < -20 (was -266 +- 193).
+  Win/loss deathmatch: 16 rated, rising by a median 72 Elo (0.76 SE; rl-v20 +87, max +117,
+  rl-mix-kl +72, rl-dm +63), standard errors up a median 12%: the prior had pulled this
+  sparse, strong field toward 1000; bounds: rl-kl steps 30408704 > 1741 (was 1991 +- 196),
+  50331648 > 2179 (was 2420 +- 202), 75497472 > 2421 (was 2660 +- 205). Deviance:
+  frontline 136.8 on 106 (p 0.024), elimination 80.5 on 89, deathmatch kill share 10.7 on
+  40, win/loss 4.3 on 11. Scripts: scratchpad refit_dump.py / refit_compare.py.
+- **Next:** unchanged (the GPU probe). Open: `rating_layout_probe` and `bnb ratings` on a
+  fresh field place everyone at the anchor (no runs to place by); the training lanes'
+  `fit_ratings` keeps its virtual game (not a reported Elo).

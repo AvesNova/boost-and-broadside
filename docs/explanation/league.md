@@ -303,7 +303,7 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
 - **The plan of a batch** (`bnb.league.design.plan_batch`). The batch's blocks minimise the
   weighted A-optimal criterion, the sum over the unmet targets of each one's variance
   after the batch over its target squared. The variance after the batch counts every game
-  so far and the prior, so a pair that has had many games is worth less. A game is valued
+  so far, so a pair that has had many games is worth less. A game is valued
   at its information p (1 − p) at the far end of a one-standard-error interval of the
   pair's rating difference (at most 200 Elo wide), so a pair whose result is near certain
   is discounted. The plan first finds the continuous design, the share of the batch's
@@ -311,24 +311,43 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   rounds it to whole blocks one at a time: each block goes to the design's heaviest pair,
   and the design is solved again for the games left over the pairs that still fit the
   batch, at most `--players-per-batch` distinct players (the engine loads each player a
-  batch holds; default as many as its slots) and each network group's lanes. A new player
-  starts at the prior, so its first games go to players near the middle of the field whose
-  ratings are well known; once it is rated, to the players closest to it.
+  batch holds; default as many as its slots) and each network group's lanes.
 - **The fit** (`bnb.league.design.fit_posterior`). After each batch the ratings are the
-  Bradley–Terry posterior on every game so far, draws as half a win, with a Gaussian
-  prior on each player about the scripted agent (standard deviation 1000 Elo), shifted so
-  the scripted agent is at 1000. Only the scripted agent is pinned; random is fitted. The
-  standard errors are the posterior's (the inverse of the Fisher information plus the
-  prior's precision), so no error exceeds the prior's and no rating is infinite.
-- **Why a Gaussian prior.** The earlier fit's prior was one virtual game against the
-  scripted agent, half won. A virtual game's information is p (1 − p) at the estimate,
-  which vanishes as a clean sweep drives the estimate out: after a sweep the estimate
-  grows as the log of the games and the information stays about one game's, so the
-  player's standard error never falls (about 175 Elo after 96 games or after 960). The
-  earlier greedy allocation valued the next block at the current estimate, saw the largest
-  variance there and kept choosing that pair: in one evaluation it spent 672 of 1152 games
-  on a policy against the scripted agent (576 wins, no losses) and 96 on the pair that
-  mattered. `tests/sections/test_rating_design.py` reproduces both allocations.
+  Bradley–Terry maximum-likelihood fit on every game so far, draws as half a win, with no
+  prior, shifted so the scripted agent is at 1000. Only the scripted agent is pinned;
+  random is fitted. The standard errors are the inverse of the Fisher information.
+- **Bounds.** The likelihood has no finite maximum for a player who won every game it
+  played, or lost every one, or for a group of players joined to the rest only by such
+  sweeps. Such a player is reported as a bound, not a number: `bnb pool table` shows
+  "> 2400.0 (bound)" or "< -216.1 (bound)", and the `curves` export gives the bound as its
+  `calibrated_elo`, no `stderr` and the status `above` or `below`. The bound is one-sided at
+  5%: the rating at which the sweeps it made (or suffered) against players with a value
+  had a 5% probability, those players held at their values (one who beat the scripted
+  agent in all of 96 games: > 1600). Within a group the differences keep their maximum
+  likelihood and standard errors, so a contrast between two arms that both sweep the
+  scripted agent is still resolved by their games with each other. A target on a bound is
+  left out of the stopping check; a player with games but no route to the scripted agent
+  is shown as undetermined, and its target stays unmet.
+- **Planning around bounds and new players.** For choosing games only, a bounded player is
+  placed 200 Elo beyond its bound on the open side, so its next games go to stronger (or
+  weaker) opponents than the ones it swept. A new checkpoint in a rating pool, with no
+  games, is placed at the mean of the other runs' checkpoints of its weights kind at the
+  same steps (interpolated between the nearest steps, or the nearest steps' mean outside
+  them); with no other run in the pool, at its run's previous checkpoint; else at the
+  scripted agent. After its first batch the plan uses the fit only. None of this placement
+  enters a reported rating.
+- **Why no prior.** A prior moves the reported ratings. The first fit's prior was one
+  virtual game against the scripted agent, half won. A virtual game's information is
+  p (1 − p) at the estimate, which vanishes as a clean sweep drives the estimate out: after
+  a sweep the estimate grows as the log of the games and the information stays about one
+  game's, so the player's standard error never falls (about 175 Elo after 96 games or after
+  960). The earlier greedy allocation valued the next block at the current estimate, saw
+  the largest variance there and kept choosing that pair: in one evaluation it spent 672
+  of 1152 games on a policy against the scripted agent (576 wins, no losses) and 96 on the
+  pair that mattered. `tests/sections/test_rating_design.py` reproduces both allocations. A
+  Gaussian prior of 1000 Elo replaced it for a day (2026-11-14); it pulled a sparse field
+  of strong players toward 1000 (the win/loss deathmatch re-ratings sit 60 to 120 Elo
+  higher without it) and was dropped.
 - **Out of reach.** A target the remaining budget cannot bring in is left out of the
   criterion while other targets can be met (its batches needed at the better of the plan's
   rate for it and its best single pair's). When every unmet target needs more than
@@ -544,7 +563,8 @@ writes at once.
   `--contrast`, `--players-per-batch`, `--hopeless`).
 - **The table** (`bnb pool table`) prints each preset's leaderboard and how well one rating
   per player fits the games (`bnb.league.goodness_of_fit`): the deviance of the directly
-  played pairs' observed scores against the predicted ones, with its p-value and the
+  played pairs' observed scores against the predicted ones (a pair across a bound, which
+  the fit matches exactly, left out), with its p-value and the
   pairs with the largest deviance residuals, and a likelihood-ratio test of Bradley–Terry
   against mElo-2, the multidimensional Elo with one cyclic component (Balduzzi et al.
   2018): a small p-value is evidence of a rock-paper-scissors structure among the
@@ -570,7 +590,10 @@ uv run --no-sync bnb pool table /shared/rating-pool --presets real_scale_frontli
 Refitted from the live-Elo records of seven runs (bc-v19, bc-v20, rl-v20, rl-dm, rl-kl,
 rl-mix-kl and the win/loss re-ratings, 377 batches), the pool's kill-share and win/loss
 curves agree with each run's own last table to a median of 1 to 10 Elo (0.03 to 0.3 of the
-earlier standard errors); the BC snapshots that lose every elimination and frontline game
-to the scripted agent move by 50 to 125 Elo (within one standard error), where the prior
-now bounds them, and the win/loss deathmatch re-ratings by 30 to 100 Elo, as their few
-games are pooled with the other records' (docs/rewrite/sections/rating-allocator/progress.md).
+earlier standard errors). Without a prior, three bc-v19 frontline snapshots, which lost
+every frontline game they played, are upper bounds (< -216, < -238 and < -20), and three
+rl-kl checkpoints are lower bounds in the win/loss deathmatch (> 1741, > 2179, > 2421);
+the kill-share curves are unchanged (under 1 Elo), the other frontline and elimination
+curves move by a median of 2 to 5 Elo, and the win/loss deathmatch curves rise by a median
+of 72 Elo (0.76 of a standard error), the prior's pull on a few hundred games each
+(docs/rewrite/sections/rating-allocator/progress.md).

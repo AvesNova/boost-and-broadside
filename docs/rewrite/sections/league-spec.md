@@ -113,11 +113,16 @@ rating from the run's one fit of the lanes' and the league's games
     (`bnb.league.design.plan_batch`, 2026-11-14), and every pair's games are split evenly
     between the seats.
   - Draws are scored as half a win.
-- **The fit:** the Bradley–Terry posterior with standard errors
-  (`bnb.league.design.fit_posterior`), a Gaussian prior of 1000 Elo about the scripted
-  agent, then shifted so the scripted agent is 1000. **Only the scripted agent is
-  pinned**; random is fitted too. (Until 2026-11-14 the prior was one virtual game, whose
-  information vanishes in a sweep: `docs/explanation/league.md`.)
+- **The fit:** the Bradley–Terry maximum likelihood with standard errors
+  (`bnb.league.design.fit_posterior`), no prior, then shifted so the scripted agent is
+  1000. **Only the scripted agent is pinned**; random is fitted too. A player the
+  likelihood gives no finite rating (a sweep, or a group joined only by sweeps) is reported
+  as a one-sided 5% bound, flagged in the table and the curves, and left out of the
+  targets' met check (author, 2026-11-14: priors must not affect the reported Elo). Priors
+  only place a new checkpoint's first opponents: the other runs' mean at its steps,
+  interpolated; else its run's previous checkpoint; else the anchor. (Until 2026-11-14 the
+  prior was one virtual game, whose information vanishes in a sweep, then for a day a
+  Gaussian of 1000 Elo: `docs/explanation/league.md`.)
 - **Targets:** every player's standard error under `--target-stderr` (default 25 points),
   the decision players' under `--decision-stderr`, each named contrast's under
   `--contrast-stderr`.
