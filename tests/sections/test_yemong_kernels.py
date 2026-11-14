@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:  # `bench` is a top-level package of the repositor
     sys.path.insert(0, str(ROOT))
 
 from bench.yemong_synthetic import random_segment, time_slice  # noqa: E402
+from bnb.models.initialise import initialise  # noqa: E402
 from bnb.models.yemong import kernels  # noqa: E402
 from bnb.models.yemong.heads import HeadGroup, ShotTrajectoryHead  # noqa: E402
 from bnb.models.yemong.kernels import attention, gated, scan, temporal  # noqa: E402
@@ -334,7 +335,9 @@ def _temporal_case(
     seed: int = 0, length: int = 40, views: int = 3, tokens: int = 11, width: int = 128
 ):
     torch.manual_seed(seed)
-    block = TemporalBlock(width).to(CUDA)
+    block = TemporalBlock(width)
+    initialise(block, seed)  # its decays and convolution are keyed draws (`bnb.models.initialise`)
+    block = block.to(CUDA)
     generator = _generator(seed)
     tokens_in = torch.randn(length, views, tokens, width, generator=generator, device=CUDA)
     state = torch.randn(views, tokens, width, generator=generator, device=CUDA)
@@ -533,7 +536,7 @@ def segment(module_global_generator):
                 stepped,
                 time_slice(obs, t),
                 reset[t],
-                torch.arange(time_slice(obs, t).ships.shape[0]),
+                torch.arange(time_slice(obs, t).ships.shape[0], device=CUDA),
             )
             stepped = decision.carry
             replays.append(decision.replay)

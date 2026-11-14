@@ -120,4 +120,4 @@ def test_frontline_snapshot_shows_the_locks_the_waves_and_the_time_to_respawn():
     assert frame.zones.lock[1, 3] == pytest.approx(
         90 * tick
     ) and frame.zones.lock.sum() == pytest.approx(90 * tick)
-    assert frame.zones.lock_length[0] == pytest.approx(45.0, abs=0.5)  # 19 s / sqrt(km), 5v5
+    assert frame.zones.lock_length[0] == pytest.approx(14.2, abs=0.5)  # 6 s / sqrt(km), 5v5

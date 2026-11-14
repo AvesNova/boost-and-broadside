@@ -121,16 +121,17 @@ def test_the_lock_grows_as_the_square_root_of_the_zone_spacing():
 @pytest.mark.parametrize(
     "preset, seconds",
     [
-        ("real_scale_frontline", 45.0),
-        ("real_scale_frontline_10v10_density", 54.0),
-        ("real_scale_frontline_20v20_density", 64.0),
+        ("real_scale_frontline", 14.2),
+        ("real_scale_frontline_10v10_density", 16.9),
+        ("real_scale_frontline_20v20_density", 20.2),
     ],
 )
 def test_the_default_lock_is_the_decided_length_at_each_fleet_size(preset, seconds):
+    """6 s per sqrt(km) since game version 20 (19 before: 45, 54 and 64 s)."""
     rules, state = cases.rules_and_state(PRESETS[preset], batch=1)
     mode_rules = rules.modes[0]
-    assert mode_rules.lock_seconds_per_root_km == 19.0
-    length = frontline.lock_ticks(19.0, state.mode.zone_x, state.mode.zone_y, rules.tick_length)
+    assert mode_rules.lock_seconds_per_root_km == 6.0
+    length = frontline.lock_ticks(6.0, state.mode.zone_x, state.mode.zone_y, rules.tick_length)
     assert abs(float(length[0]) * rules.tick_length - seconds) < 0.5
 
 
