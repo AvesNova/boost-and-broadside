@@ -107,6 +107,16 @@ def corner_radius(characteristics: Characteristics) -> float:
 BOOST_IN_CORNER_RADII = 600.0 / STANDARD_CORNER_RADIUS
 REVERSE_IN_CORNER_RADII = 120.0 / STANDARD_CORNER_RADIUS
 SHOOT_IN_GUN_RANGES = 250.0 / STANDARD_GUN_RANGE
+FIRE_BEARING = math.radians(8.0)  # the chaser shoots inside this bearing to its target
+STICK_BEARINGS = tuple(math.radians(degrees) for degrees in (3.0, 10.0, 30.0))  # per level
+
+
+def stick_toward(signed: torch.Tensor) -> torch.Tensor:
+    """The stick action (int64, same shape) that turns the nose toward a bearing (rad, positive
+    to the left): straight inside the first level's bearing, else the level by the bearing's
+    size, odd indices to the right and even to the left (`Action` order)."""
+    level = sum((signed.abs() >= bearing).int() for bearing in STICK_BEARINGS)
+    return torch.where(level == 0, 0, 2 * level - (signed < 0.0).int())
 
 
 class Chaser:
@@ -146,12 +156,11 @@ class Chaser:
         cos, sin = own[..., SHIP["heading_cos"]], own[..., SHIP["heading_sin"]]
         signed = torch.atan2(cos * to_y - sin * to_x, cos * to_x + sin * to_y)
         bearing, distance = signed.abs(), torch.sqrt(to_x * to_x + to_y * to_y)
-        level = sum((bearing >= math.radians(degrees)).int() for degrees in (3.0, 10.0, 30.0))
-        stick = torch.where(level == 0, 0, 2 * level - (signed < 0.0).int())
+        stick = stick_toward(signed)
         power = torch.where(
             distance > self.boost_distance, 1, torch.where(distance < self.reverse_distance, 2, 0)
         )
-        shoot = ((bearing < math.radians(8.0)) & (distance < self.shoot_distance)).int()
+        shoot = ((bearing < FIRE_BEARING) & (distance < self.shoot_distance)).int()
         any_target = target.any(-1)[:, None]
         action = Action(
             *(torch.where(any_target, part, 0).to(torch.int32) for part in (power, stick, shoot))
