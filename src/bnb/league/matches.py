@@ -52,7 +52,8 @@ from the block's first player's side (`MatchSeat.tally`).
 An engine built with benching plays unequal teams (the crossover, `bnb.league.crossover`):
 each block's batch may give its two players their active ship counts (at most the game's
 ships per team; the rest of a team's slots benched, `bnb.game.api`), set per environment
-with the seats, so one graph plays every handicap at once.
+with the seats, so one graph plays every handicap at once. An engine built with per-game
+lineups takes each game's lineup with the batch, both teams flying it.
 """
 
 import dataclasses
@@ -765,9 +766,10 @@ class Arena:
     card: the card to play (the players' by default, `card_of`); doctrine: the scripted
     agent's set for scripted players without their own (`Player.parameters`; None: the
     mode's set, and no player may bring one); benching: the batches may give the players
-    active ship counts (`play`); first_batch: the first batch's number (each batch's keys
-    its games, `Rollout.restart`; a resumed tournament starts past its recorded batches).
-    `set_card` writes a new card in place."""
+    active ship counts (`play`); game_lineups: the batches may give each game its own
+    lineup, both teams flying it (`play`; no player may fly its own); first_batch: the
+    first batch's number (each batch's keys its games, `Rollout.restart`; a resumed
+    tournament starts past its recorded batches). `set_card` writes a new card in place."""
 
     def __init__(
         self,
@@ -779,6 +781,7 @@ class Arena:
         card: api.ShipTypes | None = None,
         doctrine: ScriptedParameters | None = None,
         benching: bool = False,
+        game_lineups: bool = False,
         first_batch: int = 0,
     ) -> None:
         self.players, self.config, self.device = players, config, device
@@ -810,8 +813,12 @@ class Arena:
         agent = characteristics(self.types, rules)
         # each player's team lineup: its ship type on every ship, else the game's
         self.team_types = [team_lineup(one, rules) for one in players]
+        own_lineups = any(one.ship_type is not None for one in players)
+        if game_lineups and own_lineups:
+            raise ValueError("an engine with per-game lineups seats no player with its own")
+        self.game_lineups = game_lineups
         ship_type = None
-        if any(one.ship_type is not None for one in players):
+        if own_lineups or game_lineups:
             ship_type = torch.tensor(rules.slot_types, dtype=torch.int32).repeat(config.games, 1)
         if benching:  # uneven teams: a Yemong reads no benched ship (`Yemong.mask_benched`)
             for template in self.groups:
@@ -942,11 +949,17 @@ class Arena:
         return torch.where(first_on_team0, rows, rows.flip(-1)).to(self.device)
 
     def play(
-        self, matchups: list[tuple[int, int]], active: list[tuple[int, int]] | None = None
+        self,
+        matchups: list[tuple[int, int]],
+        active: list[tuple[int, int]] | None = None,
+        lineups: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """One batch: block b plays `matchups[b]` (its first player, its second; indices into
         the players), every block's games to their end; active: block b's players' active
-        ship counts (first, second), for an engine built with benching (None: every ship).
+        ship counts (first, second), for an engine built with benching (None: every ship);
+        lineups: (games, ships per team) int each game's lineup as ship type indices, both
+        teams flying it slot for slot, for an engine built with game_lineups (where it is
+        required). A team's benched ships are its lineup's last slots.
         (blocks, 3) int64: each block's first player's wins, ties and losses (`statistics`
         then has the games' statistics). Raises RuntimeError if a game runs past the game
         clock (plus a margin) without ending."""
@@ -968,7 +981,16 @@ class Arena:
         for block, (first, second) in enumerate(matchups):
             self._load(2 * block, first)
             self._load(2 * block + 1, second)
-        if self.rollout.ship_type is not None:
+        if (lineups is not None) != self.game_lineups:
+            raise ValueError("per-game lineups go to, and only to, an engine built with them")
+        if lineups is not None:
+            if tuple(lineups.shape) != (self.config.games, self.ships_per_team):
+                raise ValueError(
+                    f"lineups {tuple(lineups.shape)}: one per game, (games, ships per team) = "
+                    f"{(self.config.games, self.ships_per_team)}"
+                )
+            self.rollout.ship_type.copy_(lineups.repeat(1, 2))
+        elif self.rollout.ship_type is not None:
             self.rollout.ship_type.copy_(self._ship_types(matchups))
         self.rollout.restart(None if active is None else self._active(active), self.batch)
         self.batch += 1
