@@ -73,12 +73,30 @@ distance from 0.5 is about six half-widths, so a larger sample would not change 
 conclusion. For the clock-end tuning: 86% of games end by capture at a mean of under 5
 minutes, 14% on the 600 s clock.
 
-## GPU follow-up (not run)
+## Where the persistence comes from (same 64 CPU games)
 
-The GPU was occupied by a training run until about 01:15. To tighten the interval, run when
-`nvidia-smi --query-compute-apps=pid --format=csv,noheader` lists only PIDs 1180275 and 1180276:
+P(next capture by the team that just captured) = 1 - P(reversal) = 0.812 (Wilson 95%
+[0.754, 0.860]): the lock's tuning target, 0.5 in the design bench, is 0.81 here.
+P(reversal) by the front's size before the move (`bench.front_reversal` prints this):
+
+| front before the move | reversals / pairs | P(reversal) | Wilson 95% |
+|---|---|---|---|
+| 0 (after a return to 0) | 4 / 29 | 0.138 | [0.055, 0.306] |
+| 1 (after a first capture, or a step back) | 20 / 105 | 0.190 | [0.127, 0.276] |
+| 2 (one capture from winning) | 15 / 74 | 0.203 | [0.127, 0.308] |
+
+The persistence is about the same at every front size, so it is not an effect of the win
+threshold; the team that captured keeps the initiative at each step.
+
+## GPU run with fields on: not run
+
+The coordinator's revised follow-up (one GPU job of at most 20 minutes, the preset's fields on,
+about 128 games) was prepared but skipped: the GPU still had compute processes other than PIDs
+1180275 and 1180276 (2117566, 2117567, 2577381) at 01:39, the 01:40 deadline. The CPU games above ran with
+`num_fields=0`; fields change the physics even though the scripted agent ignores them. The
+bench now takes `--fields` (keeps the preset's fields) for this run:
 
     systemd-run --user --unit=front-reversal -p MemoryMax=12G --working-directory=$PWD \
-        --setenv=PYTHONPATH=src bash -c 'for s in "yongma,jujak 21" "jujak,yongma 22"; do set -- $s; \
-        uv run --no-sync python -m bench.mode_dynamics frontline --games 512 --batch 128 \
-        --lineup $1 --label $1 --seed $2 --out docs/rewrite/sections/front-reversal/gpu.jsonl; done'
+        --setenv=PYTHONPATH=src bash -c 'for s in "yongma,jujak 31" "jujak,yongma 32"; do set -- $s; \
+        timeout 1200 uv run --no-sync python -m bench.mode_dynamics frontline --fields --games 64 \
+        --batch 64 --lineup $1 --label $1 --seed $2 --out docs/rewrite/sections/front-reversal/gpu_fields.jsonl; done'

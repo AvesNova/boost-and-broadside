@@ -13,7 +13,7 @@ winning capture included). A reversal is a move whose direction is opposite to t
 move's, in the same game; the first move of a game has no previous move and is not counted.
 P(reversal) = reversals / (moves that have a previous move), pooled over games, with a
 Wilson 95% interval and a game-clustered bootstrap 95% interval (moves within a game are not
-independent). A random walk has P(reversal) = 0.5; below 0.5 is persistence, above it anti-persistence. Also reported: moves per
+independent). A random walk has P(reversal) = 0.5; below 0.5 is persistence, above it anti-persistence. The same number is P(next capture by the team that just captured) = 1 - P(reversal). By the front's size before the move too. Also reported: moves per
 game, and how games ended: by capture (the front reached the threshold) or on the clock.
 """
 
@@ -76,6 +76,23 @@ def main() -> None:
     )
     print(f"ended by capture {by_rule} ({by_rule / len(games):.1%}); on the clock "
           f"{len(games) - by_rule} ({1 - by_rule / len(games):.1%})")
+    # By the front's size after the previous move (the state a move is made from): |front| 0, 1, 2.
+    by_state: dict[int, list[int]] = {}
+    for game in games:
+        front = 0
+        previous = None
+        for _, team in game["events"]:
+            step = 1 if team == 0 else -1
+            if previous is not None:
+                cell = by_state.setdefault(abs(front), [0, 0])
+                cell[0] += step != previous
+                cell[1] += 1
+            front += step
+            previous = step
+    for size, (r, n) in sorted(by_state.items()):
+        lo, hi = wilson(r, n)
+        print(f"  front |{size}| before the move: P(reversal) {r}/{n} = {r / n:.3f} [{lo:.3f}, {hi:.3f}]")
+    print(f"P(next capture by the team that just captured) = {1 - reversals / pairs:.3f}")
     histogram = {}
     for count in moves:
         histogram[count] = histogram.get(count, 0) + 1

@@ -57,7 +57,9 @@ def clock(seconds: float) -> str:
 
 def game_of(arguments) -> tuple:
     """The game config and rules (and the card) of the run."""
-    game = dataclasses.replace(api.PRESETS[arguments.preset], num_fields=0)
+    game = api.PRESETS[arguments.preset]
+    if not arguments.fields:
+        game = dataclasses.replace(game, num_fields=0)
     changes = {}
     if arguments.ships:
         changes["ships_per_team"] = arguments.ships
@@ -471,6 +473,7 @@ def main() -> None:
         help="JSON overrides of the mode's scripted set for side B (A plays the default); "
         "A sits on team 0 in even environments",
     )
+    parser.add_argument("--fields", action="store_true", help="keep the preset's fields (else none)")
     parser.add_argument("--eager", action="store_true", help="no torch.compile (CPU runs)")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     arguments = parser.parse_args()
