@@ -354,3 +354,15 @@ The dead-ship slots get about 1–3%. Self-play is within 2–3 points, and the 
   - **Masking the absent zones alone would be harmful.** The zone heads would have to push that mass onto real tokens.
   - **An explicit sink logit or Qwen-style gate** would let those heads switch off cleanly. With only 2 heads per layer, it would also let them spend their mass on something useful.
   - **The expected gain is modest.** It stays an arm candidate for the 8-GPU stage, testing both variants, and is not urgent.
+
+## 09:05 — masked-zone head-to-head (the author's idea; f48eaf16): the absent slots are used functionally
+
+- **The switch:** an evaluation-only player suffix, `PATH:absent_zones`. It masks the absent zone slots out of every attention. Training and default graphs are unchanged.
+- **RL 150M, deathmatch, win/loss, the same weights masked against unmasked:** 64–416 over 480 games, a score of 0.133 (0.103–0.164), **−325 Elo** (−376 to −283). The masked side's kill share is 0.431.
+- **Against Baekho:** both variants win 240–0, but the kill share drops from 0.772 to 0.715 when masked.
+- **Where the freed mass goes:** mostly to fields, 33% → 41% overall. Layer 3 head 0's fields share goes from 41% to 64%.
+- **Reading:**
+  - The zone-reading heads really do use the placeholder as a learned no-op. Forcing their mass onto real tokens costs a lot.
+  - The caveat: masking any input a trained model relies on is out of distribution. So this proves dependence, not that an explicit sink would beat the placeholder.
+  - It does strengthen the case for an explicit sink, a per-head sink logit or a gate, as an arm. Then frontline's zone heads also get a clean no-op, which they don't have today.
+- **Still running:** RL elimination and BC deathmatch, in the `absent-zones-queue` unit on the laptop. Results land in the scratchpad's `absent/*.jsonl`; ETA about 10:00.
