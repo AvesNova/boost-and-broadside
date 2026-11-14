@@ -49,10 +49,17 @@ step beside it (`uniform_average`, `exponential_average`), all policy files.
 
 ## Sampling
 
-An entry's sampling weight is `p (1 − p)` (`bnb.league.pool.sampling_weights`), where `p`
-is the predicted probability that the live policy beats it under that mode's live gauge,
-plus a floor (`LeagueConfig.floor`) spread evenly over the entries. Each mode samples by
-its own gauge.
+Half of each mode's batch is self-play, a fixed share (`bnb.runtime.train.LINEUP`); the
+league's games are the other half. An entry's sampling weight is `(1 − p)²`
+(`bnb.league.pool.sampling_weights`, `LeagueConfig.sampling = "hard"`), where `p` is the
+predicted probability that the live policy beats it under that mode's live gauge: the
+entries the live policy loses to most weigh most, as in AlphaStar's prioritised fictitious
+self-play (decided 2026-11-14). Every entry is weighed alike: the snapshots, the two
+averages, the scripted agent and the cheese agents, with no uniform floor
+(`LeagueConfig.floor`, 0), so an entry the live policy always beats is not drawn. When every
+weight is zero the draw is even. Each mode samples by its own gauge. For an ablation,
+`sampling = "variance"` weighs `p (1 − p)`, the entries whose result is least certain,
+and `floor` spreads a share of the weight evenly.
 
 ## Slots, the scripted agent and the cut
 

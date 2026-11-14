@@ -198,7 +198,9 @@ class League:
         self.weights = {}
         for mode, gauge in self.gauges.items():
             assert gauge.names() == names, (gauge.names(), names)
-            self.weights[mode] = sampling_weights(gauge.win_probabilities(), self.config.floor)
+            self.weights[mode] = sampling_weights(
+                gauge.win_probabilities(), self.config.sampling, self.config.floor
+            )
         self.mixed = sum(
             share * self.weights[mode] for share, mode in zip(self.mode_shares.tolist(), self.modes)
         )

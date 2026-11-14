@@ -51,3 +51,18 @@ defaults of [arms-todo.md](../../arms-todo.md) ("Decided, to implement"). CPU on
 - **Tests:** test_mixed, test_game_version (the game fingerprint is unchanged by the
   lineup draw's `next_ship_type`), test_references: 622 passed.
 - **Next:** league sampling (1 - p)^2 with no floor.
+
+## 07:50 to 08:15: league sampling (1 - p)^2, no floor
+
+- **Worked:** `sampling_weights(p, sampling, floor)`: `LeagueConfig.sampling = "hard"`,
+  (1 - p)^2 over every entry (snapshots, both averages, the scripted agent, the cheese
+  agents alike), and `LeagueConfig.floor = 0.0`. The old rule stays as an ablation:
+  `sampling="variance"` (p (1 - p)) and a positive floor. Self-play is unchanged (the
+  lineup's fixed 50%). No rating lanes built.
+- **Didn't, then fixed:** two slot tests assumed the initial draws put no scripted agent in
+  a slot; under (1 - p)^2 an unrated live policy draws the scripted agent (rated far above
+  it) often. The tests now set the slots they need.
+- **Tests:** test_league_pool, test_league_slots, test_league_metrics,
+  test_league_ratings, test_league_cheese, test_league_graph, test_lanes,
+  test_dashboards: 72 passed.
+- **Next:** the snapshot schedules.

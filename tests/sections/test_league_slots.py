@@ -39,9 +39,10 @@ def _assert_shares(counts: torch.Tensor, weights: torch.Tensor) -> None:
     assert ((counts - total * expected).abs() <= bound).all(), (counts / total, expected)
 
 
-def test_counter_draws_match_p_times_one_minus_p_plus_the_floor():
+@pytest.mark.parametrize("sampling, floor", [("hard", 0.0), ("variance", 0.05)])
+def test_counter_draws_match_the_sampling_weights(sampling, floor):
     probability = torch.tensor([0.5, 0.7, 0.95, 0.99, 0.2, 0.05], dtype=torch.float64)
-    weights = sampling_weights(probability, 0.05)
+    weights = sampling_weights(probability, sampling, floor)
     uniform = keyed_uniform(stream_key(0, "test"), torch.arange(DRAWS))
     drawn = inverse_cdf(weights, uniform.double())
     _assert_shares(torch.bincount(drawn, minlength=6).double(), weights)
@@ -80,6 +81,8 @@ def test_a_slot_holding_the_scripted_agent_plays_it_at_full_strength(tmp_path):
     trainer, _ = cases.league(tmp_path)
     opponents = trainer.opponents
     slots = opponents.slots
+    for slot in range(slots):  # the league's draws may have put the agent in any slot
+        opponents.set_kind(slot, NETWORK)
     opponents.set_kind(0, SCRIPTED_KIND)
     assert opponents.scripted_agent.temperature == 1.0
     assert opponents.scripted_agent.share == 1.0
@@ -305,7 +308,10 @@ def test_a_cut_resets_the_opponents_memory_or_keeps_it(tmp_path, monkeypatch, ca
     other slots' rows are untouched either way."""
     torch.manual_seed(0)
     trainer, league = _yemong_league(tmp_path, carry_at_cut)
-    _cycling_draws(league, monkeypatch)
+    for slot in range(league.config.slots):  # a network in every slot, then a network drawn
+        league._load(slot, league.entries[UNIFORM_AVERAGE])
+        league.held[slot] = UNIFORM_AVERAGE
+    monkeypatch.setattr(league, "_draw", lambda: league.entries[EXPONENTIAL_AVERAGE])
     trainer.collect()
     carry = trainer.rollout.carry["controllers"][OPPONENTS]
     before = _pytree.tree_map_only(torch.Tensor, torch.clone, carry.model)

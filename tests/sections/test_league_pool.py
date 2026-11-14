@@ -13,7 +13,7 @@ from bnb.league.pool import (
     retained,
     sampling_weights,
 )
-from bnb.runtime.opponents import Rung, ladder_name, ladder_rung
+from bnb.runtime.opponents import LeagueConfig, Rung, ladder_name, ladder_rung
 
 
 def _apply_after_every_snapshot(count: int) -> set[int]:
@@ -54,17 +54,39 @@ def test_retention_spans_the_history_geometrically():
         assert min(abs(age - target) for age in ages) <= target / 2, (target, ages)
 
 
-def test_the_sampling_weight_is_p_times_one_minus_p_plus_the_floor():
+def test_the_sampling_weight_is_one_minus_p_squared_with_no_floor():
+    """By default (`LeagueConfig()`) an entry weighs (1 - p)^2 over every entry, no floor:
+    an entry the live policy always beats is never drawn."""
+    probability = torch.tensor([0.5, 0.9, 0.99, 0.2, 1.0], dtype=torch.float64)
+    config = LeagueConfig()
+    assert (config.sampling, config.floor) == ("hard", 0.0)
+    weights = sampling_weights(probability, config.sampling, config.floor)
+    raw = (1 - probability) ** 2
+    torch.testing.assert_close(weights, raw / raw.sum())
+    assert float(weights[-1]) == 0.0
+    assert float(weights.sum()) == pytest.approx(1.0, abs=1e-12)
+
+
+def test_the_variance_sampling_with_a_floor_is_p_times_one_minus_p_plus_the_floor():
     probability = torch.tensor([0.5, 0.9, 0.99, 0.2], dtype=torch.float64)
-    weights = sampling_weights(probability, 0.05)
+    weights = sampling_weights(probability, "variance", 0.05)
     raw = probability * (1 - probability)
     torch.testing.assert_close(weights, 0.95 * raw / raw.sum() + 0.05 / 4)
-    assert float(weights.sum()) == pytest.approx(1.0, abs=1e-15)
+    assert float(weights.sum()) == pytest.approx(1.0, abs=1e-12)
+    with pytest.raises(ValueError, match="sampling"):
+        sampling_weights(probability, "uniform")
+    with pytest.raises(ValueError, match="sampling"):
+        LeagueConfig(sampling="uniform")
 
 
-def test_a_pool_of_sure_results_samples_evenly():
-    weights = sampling_weights(torch.tensor([1.0, 0.0, 1.0], dtype=torch.float64), 0.05)
-    assert torch.equal(weights, torch.full((3,), 1.0 / 3.0, dtype=torch.float64))
+@pytest.mark.parametrize(
+    "sampling, sure", [("hard", [1.0, 1.0, 1.0]), ("variance", [1.0, 0.0, 1.0])]
+)
+def test_a_pool_of_sure_results_samples_evenly(sampling, sure):
+    """Every weight zero (the live policy beats every entry, or under "variance" every
+    result is sure): the draw is even."""
+    weights = sampling_weights(torch.tensor(sure, dtype=torch.float64), sampling)
+    torch.testing.assert_close(weights, torch.full((3,), 1.0 / 3.0, dtype=torch.float64))
 
 
 def test_the_ladder_names_random_rungs_and_scripted():
