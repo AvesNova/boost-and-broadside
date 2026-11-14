@@ -41,11 +41,12 @@ from ..state import Ships, State, Sweep, apply, benched_of, blank, replace, wher
 from .bullets import fire, move_bullets
 from .combat import apply_damage, boundary_damage, hits, quiet
 from .flight import airframe_of, controls, flight_tick
-from .spawning import TickUniforms, new_map, spawn
+from .spawning import TickUniforms, draw_active_fields, new_map, spawn
 
 
 def _new_matches(rules: Rules, arena: Environment, tick: TickUniforms, previous_mode) -> tuple:
-    """Each environment's new map and mode state (the mode's map on its own slices)."""
+    """Each environment's new map and mode state (the mode's map on its own slices), with
+    its active fields drawn where its pool samples field counts (the rest absent)."""
     fields, axis_x, axis_y = new_map(rules, arena.arena_radius, arena.map_scale, tick.map)
 
     def match(mode_rules: ModeRules, arena, uniforms, map_uniforms, fields, previous_mode):
@@ -64,6 +65,14 @@ def _new_matches(rules: Rules, arena: Environment, tick: TickUniforms, previous_
     mode, fields = per_mode(
         rules, tick.map.shape[0], match, arena, tick.mode, tick.map, fields, previous_mode
     )
+    if tick.active_fields is not None:
+        present = draw_active_fields(
+            rules.num_fields,
+            arena.field_count_first,
+            arena.field_count_options,
+            tick.active_fields,
+        )
+        fields = replace(fields, present=present)
     return mode, fields, axis_x, axis_y
 
 

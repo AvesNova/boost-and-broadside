@@ -173,8 +173,20 @@ def perceive(
         )
         return torch.cat([torch.where(seen[..., None], hidden_rows, 0.0), shown], -1)
 
-    field_rows = torch.stack(
-        [fields.x, fields.y, fields.radius, fields.band_width, fields.level.float()], -1
+    present = fields.present[..., None]
+    field_rows = torch.cat(
+        [
+            torch.where(
+                present,
+                torch.stack(
+                    [fields.x, fields.y, fields.radius, fields.band_width, fields.level.float()],
+                    -1,
+                ),
+                0.0,
+            ),
+            present.float(),
+        ],
+        -1,
     )
     arena = sized(environment(rules, B, device), match.arena_scale)
     episode_progress = match.episode_tick.float() / arena.episode_ticks.float()

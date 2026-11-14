@@ -316,6 +316,7 @@ FIELDS = Fields(
     radius=torch.ones((1, 1), dtype=torch.float64),
     band_width=torch.ones((1, 1), dtype=torch.float64),
     level=torch.ones((1, 1), dtype=torch.int32),
+    present=torch.ones((1, 1), dtype=torch.bool),
 )
 
 

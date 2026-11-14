@@ -67,7 +67,8 @@ class Bullets:
 
 @dataclasses.dataclass(frozen=True)
 class Fields:
-    """(M,): centre, radius and band width (m), level, and the band's two edges where the
+    """(M,) the present fields (an episode's absent ones, field-count sampling, are left
+    out): centre, radius and band width (m), level, and the band's two edges where the
     sight test changes: the core radius and the outer radius (m) (`bnb.game.api.core_radius`
     and `outer_radius`)."""
 
@@ -222,8 +223,10 @@ def _bullets(rules: Rules, types: ShipTypes, state: State, values: dict) -> Bull
 
 
 def _fields(state: State, values: dict) -> Fields:
+    present = _numpy(values["fields.present"][0])
+
     def value(name: str) -> np.ndarray:
-        return _numpy(values[f"fields.{name}"][0])
+        return _numpy(values[f"fields.{name}"][0])[present]
 
     return Fields(
         x=value("x"),
@@ -231,8 +234,8 @@ def _fields(state: State, values: dict) -> Fields:
         radius=value("radius"),
         band_width=value("band_width"),
         level=value("level"),
-        core_radius=_numpy(api.core_radius(state)[0]),
-        outer_radius=_numpy(api.outer_radius(state)[0]),
+        core_radius=_numpy(api.core_radius(state)[0])[present],
+        outer_radius=_numpy(api.outer_radius(state)[0])[present],
     )
 
 

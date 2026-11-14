@@ -18,11 +18,12 @@ from collections.abc import Callable
 import torch
 
 from bnb.contracts.tree import contract
+from bnb.game.api import observed_fields
 from bnb.game.physics.bullets import Launch, launch, move_bullets
 from bnb.game.physics.combat import contacts, first_contact
 from bnb.game.rules import Rules
 from bnb.game.ship_types import ShipTypes, bullet_moves, per_ship
-from bnb.game.state import Bullets, Fields, Sweep, apply, replace
+from bnb.game.state import Bullets, Sweep, apply, replace
 from bnb.models.yemong.shots import HIT_ALLY, HIT_ENEMY, HIT_NONE, SIDE_ALLY, SIDE_ENEMY
 
 
@@ -102,17 +103,6 @@ def _at(tree, time: int):
     return torch.utils._pytree.tree_map_only(torch.Tensor, lambda x: x[time], tree)
 
 
-def _fields(rows: torch.Tensor) -> Fields:
-    """Observation field rows (..., M, 5) as the game's Fields (the same values)."""
-    return Fields(
-        x=rows[..., 0],
-        y=rows[..., 1],
-        radius=rows[..., 2],
-        band_width=rows[..., 3],
-        level=rows[..., 4].to(torch.int32),
-    )
-
-
 def tick(
     rules: Rules,
     types: ShipTypes,
@@ -133,7 +123,9 @@ def tick(
             for name in BULLET_FIELDS
         }
     )
-    moved = move_bullets(rules, types, bullets, _fields(field_rows), capture.launch.ship_type)
+    moved = move_bullets(
+        rules, types, bullets, observed_fields(field_rows), capture.launch.ship_type
+    )
     start = capture.launch
     sweep = Sweep(
         ship_x=start.x,
@@ -179,7 +171,7 @@ def resimulate(
     step: Callable = tick,
     available: torch.Tensor | None = None,
 ) -> Shots:
-    """The shots of a stored segment. capture (L, R, N); fields (L, R, M, 5), the
+    """The shots of a stored segment. capture (L, R, N); fields (L, R, M, F), the
     observation's field rows (the map of each tick); done (L, R), the episode ended after
     the tick; spread (L, R, N, 2) standard normals (the learner's draw); own: S, the
     shooter's side is rows [0, S) or [S, N); step: `tick`, or the runtime's compiled

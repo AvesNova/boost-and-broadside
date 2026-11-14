@@ -165,13 +165,13 @@ def edited_fields(
         slot = int(torch.nonzero(near)[0]) if near.any() else int(reach.argmin())
         centre = field_centre(scenario, start, direction, flight)
         fields[slot] = torch.tensor(
-            [float(centre[0]), float(centre[1]), scenario.radius, BAND, float(scenario.level)]
+            [float(centre[0]), float(centre[1]), scenario.radius, BAND, float(scenario.level), 1.0]
         )
     return fields
 
 
 def _medium(fields: torch.Tensor, x: torch.Tensor, y: torch.Tensor):
-    """(ln n, gradient x, gradient y) of fields (B, M, 5) at points (B, P)."""
+    """(ln n, gradient x, gradient y) of fields (B, M, len(FIELD_COLUMNS)) at points (B, P)."""
     return api.log_index_gradient(
         fields[..., FIELD["x"]],
         fields[..., FIELD["y"]],
@@ -180,6 +180,7 @@ def _medium(fields: torch.Tensor, x: torch.Tensor, y: torch.Tensor):
         fields[..., FIELD["level"]].to(torch.int32),
         x,
         y,
+        fields[..., FIELD["present"]] > 0.5,
     )
 
 

@@ -346,4 +346,5 @@ def mirror_fields(
         radius=fields.radius,
         band_width=fields.band_width,
         level=fields.level,
+        present=fields.present,
     )

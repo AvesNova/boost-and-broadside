@@ -110,6 +110,7 @@ def field_map(
         fields[None, :, FIELD["level"]].to(torch.int32),
         grid_x.reshape(1, -1),
         grid_y.reshape(1, -1),
+        fields[None, :, FIELD["present"]] > 0.5,
     ).reshape(points, points)
     limit = float(api.LN_SQRT2 * 2.0)
     return axis.imshow(

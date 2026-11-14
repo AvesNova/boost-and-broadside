@@ -139,6 +139,7 @@ def empty_map(like: torch.Tensor) -> Fields:
         radius=ones,
         band_width=ones,
         level=torch.ones((B, 1), dtype=torch.int32, device=like.device),
+        present=torch.ones((B, 1), dtype=torch.bool, device=like.device),
     )
 
 

@@ -5,7 +5,7 @@ import dataclasses
 import math
 from fractions import Fraction
 
-from .config import ELIMINATION, GameConfig
+from .config import ELIMINATION, ActiveFields, GameConfig
 
 
 @dataclasses.dataclass(frozen=True)
@@ -39,6 +39,8 @@ class Pool:
         GameConfig's, shared by the whole batch.
     arena_scale: map-size sampling (`ArenaScale`): each episode's arena radius drawn about
         the pool's; None plays the pool's radius every episode (evaluation, ratings, play).
+    active_fields: field-count sampling (`bnb.contracts.ActiveFields`): each episode plays a
+        drawn number of the fields, the rest absent; None takes the GameConfig's.
     """
 
     name: str
@@ -51,9 +53,17 @@ class Pool:
     episode_seconds: float | None = None
     respawn_seconds: float | None = None
     arena_scale: ArenaScale | None = None
+    active_fields: ActiveFields | None = None
 
 
-GAME_FIELDS = ("mode", "arena_radius", "spawn_groups", "episode_seconds", "respawn_seconds")
+GAME_FIELDS = (
+    "mode",
+    "arena_radius",
+    "spawn_groups",
+    "episode_seconds",
+    "respawn_seconds",
+    "active_fields",
+)
 
 
 def pool_game(config: GameConfig, pool: Pool) -> GameConfig:

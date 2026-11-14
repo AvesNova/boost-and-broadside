@@ -11,7 +11,7 @@ slices of the batch, each with its mode, arena and clocks. The sizes are shared.
 import dataclasses
 import math
 
-from bnb.contracts import ArenaScale, GameConfig, Pool, ticks_of
+from bnb.contracts import ActiveFields, ArenaScale, GameConfig, Pool, ticks_of
 from bnb.contracts.config import TEAMS
 from bnb.contracts.obs import ZONE_SLOTS
 from bnb.contracts.pools import environments_per_pool, pool_game
@@ -89,7 +89,8 @@ class PoolRules:
     the whole batch, at any size) playing `mode` in an arena of this radius, with these
     clocks. Adjacent pools of the same game are one PoolRules. arena_scale: map-size
     sampling (`bnb.contracts.ArenaScale`; None: this radius every episode), held at
-    minimum_arena_radius (m, the mode's at the ship set's map scale)."""
+    minimum_arena_radius (m, the mode's at the ship set's map scale). active_fields:
+    field-count sampling (`bnb.contracts.ActiveFields`; None: every field every episode)."""
 
     environments: int | None
     mode: ModeRules
@@ -98,6 +99,7 @@ class PoolRules:
     respawn_ticks: int
     arena_scale: ArenaScale | None = None
     minimum_arena_radius: float = 0.0  # m
+    active_fields: ActiveFields | None = None
 
     @property
     def game(self) -> tuple:
@@ -109,6 +111,7 @@ class PoolRules:
             self.respawn_ticks,
             self.arena_scale,
             self.minimum_arena_radius,
+            self.active_fields,
         )
 
 
@@ -216,6 +219,11 @@ class Rules:
         return any(pool.arena_scale is not None for pool in self.pools)
 
     @property
+    def samples_fields(self) -> bool:
+        """Some pool draws its active field count per episode (`PoolRules.active_fields`)."""
+        return any(pool.active_fields is not None for pool in self.pools)
+
+    @property
     def game_uniform_count(self) -> int:
         """Uniforms per environment per tick for the game (game spec 2): the map, a
         formation rotation per team, a formation key per ship, and the arena scale's draw,
@@ -224,13 +232,18 @@ class Rules:
         return self.map_uniform_count + TEAMS + self.num_ships + 1
 
     @property
+    def mode_uniform_count(self) -> int:
+        """The mode's spawn draws per environment per tick (modes spec 2), as wide as the
+        widest mode needs; each environment reads its own mode's prefix (mixed spec 2)."""
+        return max(mode.uniform_count(self.num_ships) for mode in self.modes)
+
+    @property
     def tick_uniform_count(self) -> int:
         """All uniforms per environment per tick: the game's, then the mode's spawn draws
-        (modes spec 2), as wide as the widest mode needs; each environment reads its own
-        mode's prefix (mixed spec 2)."""
-        return self.game_uniform_count + max(
-            mode.uniform_count(self.num_ships) for mode in self.modes
-        )
+        (`mode_uniform_count`), then, where a pool samples field counts (`samples_fields`),
+        the active field count's draw. It comes last, so turning the sampling on or off
+        moves no other draw."""
+        return self.game_uniform_count + self.mode_uniform_count + int(self.samples_fields)
 
 
 def _pool_rules(
@@ -258,6 +271,7 @@ def _pool_rules(
         respawn_ticks=ticks_of(respawn_seconds, tick_length),
         arena_scale=arena_scale,
         minimum_arena_radius=minimum_arena_radius(game),
+        active_fields=game.active_fields,
     )
 
 

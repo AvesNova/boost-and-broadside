@@ -38,7 +38,10 @@ class Environment:
     normal CDF at its bounds' ln over sigma (0 and 1 where it does not sample), and
     minimum_radius float32 (m), the mode's minimum arena radius a sampled episode keeps.
     `environment` gives the pools' own radii; `sized` the episodes' (each environment's
-    drawn scale, `Match.arena_scale`)."""
+    drawn scale, `Match.arena_scale`). Field-count sampling (`PoolRules.active_fields`,
+    `physics.spawning.draw_active_fields`): field_count_first and field_count_options
+    int32, the fewest active fields an episode draws and how many counts it draws from
+    (every field and 1 where the pool does not sample)."""
 
     arena_radius: torch.Tensor
     map_scale: torch.Tensor
@@ -54,6 +57,15 @@ class Environment:
     scale_cdf_low: torch.Tensor
     scale_cdf_high: torch.Tensor
     minimum_radius: torch.Tensor
+    field_count_first: torch.Tensor
+    field_count_options: torch.Tensor
+
+
+def _field_counts(pool, num_fields: int) -> tuple[int, ...]:
+    """The active field counts a pool's episodes draw from (every field without sampling)."""
+    if pool.active_fields is None:
+        return (num_fields,)
+    return pool.active_fields.counts(num_fields)
 
 
 def _normal_cdf(x: float) -> float:
@@ -179,6 +191,12 @@ def environment(rules: Rules, batch: int, device=None) -> Environment:
         scale_cdf_low=per_pool(lambda pool: _scale_numbers(pool)[1]),
         scale_cdf_high=per_pool(lambda pool: _scale_numbers(pool)[2]),
         minimum_radius=per_pool(lambda pool: pool.minimum_arena_radius),
+        field_count_first=per_pool(
+            lambda pool: _field_counts(pool, rules.num_fields)[0], torch.int32
+        ),
+        field_count_options=per_pool(
+            lambda pool: len(_field_counts(pool, rules.num_fields)), torch.int32
+        ),
     )
 
 

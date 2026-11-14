@@ -21,7 +21,8 @@ class TickUniforms:
     team, a formation key per ship; then the mode's spawn draws (modes spec 2), as wide as
     the widest mode of the batch needs (each mode reads its own prefix). arena_scale:
     the arena scale's uniform (B,) when the rules sample map sizes, else None (the slot is
-    drawn either way)."""
+    drawn either way). active_fields: the active field count's uniform (B,), the last one,
+    when the rules sample field counts (`Rules.samples_fields`), else None (no slot)."""
 
     def __init__(self, rules: Rules, uniforms: torch.Tensor) -> None:
         start = rules.map_uniform_count
@@ -30,7 +31,9 @@ class TickUniforms:
         self.rotation = uniforms[:, start : start + TEAMS]
         self.keys = uniforms[:, start + TEAMS : keys]
         self.arena_scale = uniforms[:, keys] if rules.samples_arena else None
-        self.mode = uniforms[:, rules.game_uniform_count :]
+        mode_end = rules.game_uniform_count + rules.mode_uniform_count
+        self.mode = uniforms[:, rules.game_uniform_count : mode_end]
+        self.active_fields = uniforms[:, mode_end] if rules.samples_fields else None
 
 
 class Placement(NamedTuple):
@@ -60,6 +63,29 @@ def field_level(rules: Rules, uniform: torch.Tensor) -> torch.Tensor:
     return lookup(FIELD_LEVELS, index)
 
 
+def present_fields(num_fields: int, count: torch.Tensor) -> torch.Tensor:
+    """(B, M) bool: the present fields of maps of `count` (B,) int32 active fields each: the
+    first count // 2 point-symmetric pairs (field i and its image P + i, P = M // 2) and, for
+    an odd count, the centre field (the last of an odd M)."""
+    index = torch.arange(num_fields, device=count.device)
+    pairs = num_fields // 2
+    pair = torch.where(index < pairs, index, index - pairs)
+    in_pair = (index < 2 * pairs) & (pair < (count // 2)[:, None])
+    centre = (index == 2 * pairs) & (count % 2 == 1)[:, None]
+    return in_pair | centre
+
+
+def draw_active_fields(
+    num_fields: int, first: torch.Tensor, options: torch.Tensor, uniform: torch.Tensor
+) -> torch.Tensor:
+    """(B, M) bool each environment's present fields this episode: its active field count
+    drawn uniformly from one uniform in [0, 1) (B,) among its `options` (B,) int32 counts,
+    `first` (B,) int32 and up by one (an odd M) or by a pair (an even M; `ActiveFields`)."""
+    step = 1 if num_fields % 2 else 2
+    choice = torch.minimum((uniform * options).to(torch.int32), options - 1)
+    return present_fields(num_fields, first + step * choice)
+
+
 def new_map(
     rules: Rules, arena_radius: torch.Tensor, map_scale: torch.Tensor, uniforms: torch.Tensor
 ) -> tuple[Fields, torch.Tensor, torch.Tensor]:
@@ -67,7 +93,8 @@ def new_map(
     radius and map scale (B,).
 
     Point-symmetric: field P + i is field i rotated by 180 degrees about the centre
-    (P = M // 2), and an odd last field sits at the centre.
+    (P = M // 2), and an odd last field sits at the centre. Every field present (field-count
+    sampling removes some afterwards, `draw_active_fields`).
     """
     B, M = uniforms.shape[0], rules.num_fields
     P = M // 2
@@ -89,6 +116,7 @@ def new_map(
         radius=radius,
         band_width=torch.zeros_like(radius) + rules.field_band_width,
         level=level,
+        present=torch.ones_like(level, dtype=torch.bool),
     )
     axis = 2.0 * math.pi * uniforms[:, 4 * M]
     return fields, torch.cos(axis), torch.sin(axis)

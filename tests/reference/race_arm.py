@@ -136,13 +136,15 @@ def unflat(p: Rules, arrays: dict) -> State:
     parts = {"ships": {}, "bullets": {}, "fields": {}, "match": dataclasses.asdict(base.match)}
     for key, (part, name) in STATE_KEYS.items():
         parts[part][name] = values[key]
+    parts["fields"]["present"] = torch.ones_like(values["flevel"], dtype=torch.bool)
     return State(ships=Ships(**parts["ships"]), bullets=Bullets(**parts["bullets"]),
                  fields=Fields(**parts["fields"]), match=Match(**parts["match"]), mode=base.mode)
 
 
 def fields_of(arrays: dict) -> Fields:
     f = to_torch(arrays)
-    return Fields(x=f["fx"], y=f["fy"], radius=f["fr"], band_width=f["fw"], level=f["flevel"])
+    return Fields(x=f["fx"], y=f["fy"], radius=f["fr"], band_width=f["fw"], level=f["flevel"],
+                  present=torch.ones_like(f["flevel"], dtype=torch.bool))
 
 
 def ships_of(arrays: dict) -> Ships:

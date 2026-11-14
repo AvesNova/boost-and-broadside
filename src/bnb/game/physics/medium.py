@@ -16,19 +16,24 @@ from .numerics import smootherstep
 
 
 def medium(fields: Fields, x: torch.Tensor, y: torch.Tensor):
-    """(ln n, d/dx ln n, d/dy ln n) at points (B, P) for fields (B, M)."""
+    """(ln n, d/dx ln n, d/dy ln n) at points (B, P) for fields (B, M). An absent field
+    (`Fields.present` false) is given a band of 1 m and a radius of minus that band, so its
+    profile is exactly 0 and its complement exactly 1 at every point: it adds exact zeros to
+    every sum and an exact 1 to the product, as if it were not there."""
 
     def per_field(values):  # (B, M) as (B, 1, M), against points (B, P, 1)
         return values[:, None, :]
 
     target = per_field(fields.level.to(torch.float32) * LN_SQRT2)  # target log index L_i
-    band = per_field(fields.band_width)
+    band_width = torch.where(fields.present, fields.band_width, 1.0)
+    radius = torch.where(fields.present, fields.radius, -band_width)
+    band = per_field(band_width)
     offset_x, offset_y = x[..., None] - per_field(fields.x), y[..., None] - per_field(fields.y)
     distance_squared = offset_x * offset_x + offset_y * offset_y
     # The distance, with a gradient that stays finite at a field's exact centre.
     away = distance_squared > 0.0
     distance = torch.where(away, torch.sqrt(torch.where(away, distance_squared, 1.0)), 0.0)
-    depth = 0.5 - (distance - per_field(fields.radius)) / band  # spec: zeta
+    depth = 0.5 - (distance - per_field(radius)) / band  # spec: zeta
     inward = depth.clamp(0.0, 1.0)  # spec: z
     outward = 1.0 - inward
     profile = smootherstep(inward)  # alpha_i

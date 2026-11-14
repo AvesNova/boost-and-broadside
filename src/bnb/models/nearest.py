@@ -187,8 +187,8 @@ def features(obs: Obs, config: NearestConfig) -> torch.Tensor:
         ],
         -1,
     )  # (..., S, M, 7)
-    every = torch.ones_like(centre, dtype=torch.bool)
-    near_fields = _pick(field_rows, *_nearest(centre, every, config.fields))
+    present_fields = (fields[..., FIELD["present"]] > 0.5)[..., None, :].expand(centre.shape)
+    near_fields = _pick(field_rows, *_nearest(centre, present_fields, config.fields))
 
     zones = by_role(obs.zones)  # (..., ZONE_ROLES, len(ZONE_COLUMNS))
     present = zones[..., ZONE["present"]] > 0.5
