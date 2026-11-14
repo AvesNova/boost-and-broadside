@@ -258,3 +258,27 @@ def test_a_short_game_of_each_agent_in_each_mode(name, mode):
     trajectory = rollout.run()
     assert trajectory.obs.ships.shape[0] == 12
     assert torch.isfinite(trajectory.obs.ships).all()
+
+
+# ---- the match engine
+
+
+def test_cheese_players_are_named_scripted_colon_name_and_play_in_the_match_engine():
+    from bnb.league.matches import STATISTICS, Arena, ArenaConfig, player
+
+    assert [player(player_name(name)).cheese for name in NAMES] == list(NAMES)
+    with pytest.raises(ValueError, match="cheese agent"):
+        player("scripted:nobody")
+    game = GameConfig(2, 2, 1500.0, episode_seconds=12.0, respawn_seconds=1.0)
+    field = [player("scripted"), player("scripted:evader"), player("scripted:jouster")]
+    arena = Arena(
+        field,
+        game,
+        torch.device("cpu"),
+        ArenaConfig(blocks=2, block_environments=4, length=16, compiled=False),
+    )
+    results = arena.play([(0, 1), (2, 0)])
+    assert results.sum(1).tolist() == [4, 4]
+    shots = arena.statistics()[..., STATISTICS.index("shots")]  # (blocks, 2)
+    assert shots[0, 1] == 0  # the evader never fires
+    assert shots[0, 0] > 0  # the scripted agent fires at it, so the game was played
