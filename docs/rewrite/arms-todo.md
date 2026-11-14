@@ -28,10 +28,10 @@ Work to finish before renting the 5090s for the pairwise arms, whatever arms are
 - [ ] **Snapshot schedule (decided 2026-11-14).** RL snapshots at 1, 2, 3, 4, 6, 8, 10, 12, 16 and 20M, then every 5M. `policy_snapshot_every` takes one number today, so it needs a list plus a tail.
 - [ ] **Deathmatch outcome: win/loss/tie by the kill difference (`kill_lead`), decided 2026-11-14.** Like a sports result, regardless of margin. Training showed no difference from kill share.
 - [ ] **100% fog in training, BC and the game (decided 2026-11-14).** Full information only for debugging. The scripted agent already reads only visible enemies (`scripted_combat.py`, `scripted_memory.py`).
-- [ ] **Lineups (decided 2026-11-14).** Each slot is a coin flip between Yongma and Jujak, the same for both teams.
-- [ ] **Mode mix in sixteenths: 6/16, 5/16, 5/16.** The 6 goes to the most starved mode (to discuss). Today's mix is frontline 8/16, deathmatch 5/16, elimination 3/16.
+- [ ] **Lineups (decided 2026-11-14).** Each slot is a 50/50 coin flip between Yongma and Jujak, the same for both teams.
+- [ ] **Mode mix (decided 2026-11-14): frontline 6/16, deathmatch 5/16, elimination 5/16** (768 / 640 / 640 of 2048 environments). Today's mix is 8/16, 5/16, 3/16.
 - [ ] **League snapshot schedule.** About 100–200 Elo between league members, read off the RL curve. Re-derive it after the game freeze.
-- [ ] **Rating prior.** Replace the ±1000 prior around Baekho (to discuss: a random walk along each run, or the median of earlier runs at matched steps).
+- [ ] **Rating prior.** The author's direction: priors only place a new checkpoint's first opponents, at a typical arm's rating for that step, and must not bias the Elo. To settle: how swept checkpoints are reported.
 - [ ] **BC fixed at 100M** for every arm. The plateau stop only logs.
 - [ ] **One committed settings file per arm.** No hand-typed overrides.
 
@@ -62,7 +62,14 @@ Work to finish before renting the 5090s for the pairwise arms, whatever arms are
 ## To discuss
 
 - [ ] **A new name for the scripted agent.** Speech-to-text can't pick up "Baekho".
-- [ ] **The evaluation suite's conditions and how they combine.** Generalisation decides; choose the datum points.
+- [ ] **The evaluation suite.** Generalisation decides. Agreed conditions:
+  - 5v5, all modes;
+  - 1v1 and 2v2, deathmatch and elimination;
+  - 10v10, all modes;
+  - outnumbered 10v15, both directions, scored as win rates, not Elo;
+  - map scales 0.5× and 2×, only if variable maps survive.
+
+  Each condition is its own shared pool. Still open: how the conditions are weighted, and whether a condition counts as a win/loss or by its Elo contrast.
 
 - [ ] **Freezing the game.** Deathmatch on win/loss; clock and ticket tuning so about 25% of games end on the clock; frontline's minimum team size; bullet-drag units (75); pending flight and balance work. One game-version bump, before the first arm.
 - [ ] **Removing fields from the game and masking their slots.** Check whether it exists; benched ships are already masked.
