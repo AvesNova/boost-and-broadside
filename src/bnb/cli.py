@@ -1992,7 +1992,10 @@ def _pool_player(one, runs_directory: pathlib.Path, lineup: tuple[str, ...], pre
     from bnb.runs.checkpoint import CheckpointError
 
     if one.run is None:
-        found = resolve(one.name)
+        try:
+            found = resolve(one.name)
+        except ValueError:  # registered elsewhere under a name this checkout cannot play
+            return None
     else:
         candidates = [
             *one.paths,

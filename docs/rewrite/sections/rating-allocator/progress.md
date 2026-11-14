@@ -2,7 +2,7 @@
 
 Branch `feat/rating-allocator` from `integrate/next-runs` (997a700e).
 
-## 2026-11-14 19:10 to 20:30: root cause and the design
+## 2026-11-14 19:10 to 19:30: root cause and the design
 
 - **Tried:** reproduced the 672-of-1152 allocation in a three-player simulation (scripted,
   two arms at +1500 and +1450 Elo, 2 blocks of 96): the old `allocate_blocks` spent 960 of
@@ -24,7 +24,7 @@ Branch `feat/rating-allocator` from `integrate/next-runs` (997a700e).
 - **Next:** the shared pool, the loop check, the CLI, the probe, docs, the refit of the
   live-elo records.
 
-## 2026-11-14 20:30 to 22:00: the shared pool, the loop check, the probe
+## 2026-11-14 19:30 to 20:00: the shared pool, the loop check, the probe
 
 - **Worked:** `bnb.league.rating_pool` and `bnb pool create/add/import/rate/table/curves`.
   One file per writer process, merged on read, batch ids from uuid4 (imports: from the

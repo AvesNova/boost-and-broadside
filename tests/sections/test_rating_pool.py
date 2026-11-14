@@ -376,3 +376,45 @@ def test_the_pool_command_parses_its_options():
     assert options.contrast == ("a:b",) and options.players_per_batch == 4
     added = tyro.cli(Pool, args=["add", "/pool", "p1", "p2"])
     assert added.paths == ("p1", "p2")
+
+
+@pytest.mark.usefixtures("global_generator")
+def test_the_pool_command_adds_rates_and_tables_scripted_players_on_the_cpu(
+    tmp_path, monkeypatch, capsys
+):
+    """`bnb pool` end to end on a small 2v2 game (the engine eager): create, add, rate, table
+    and curves."""
+    import dataclasses
+    import functools
+
+    from bnb import cli
+    from bnb.contracts import GameConfig
+    from bnb.league import matches
+
+    game = GameConfig(2, 2, 1500.0, episode_seconds=2.0, respawn_seconds=1.0)
+    monkeypatch.setattr(cli, "rated_game", lambda preset, scale: game)
+    monkeypatch.setattr(
+        matches, "ArenaConfig", functools.partial(matches.ArenaConfig, length=16, compiled=False)
+    )
+    root = str(tmp_path / "pool")
+    cli.pool(cli.Pool("create", root))
+    cli.pool(cli.Pool("add", root, ("random", "rung_T2")))
+    options = cli.Pool(
+        "rate",
+        root,
+        presets=("frontline",),
+        budget=16,
+        blocks=2,
+        block_environments=4,
+        seed=3,
+        device="cpu",
+    )
+    cli.pool(options)
+    batches, _ = RatingPool(root).batches("frontline")
+    assert len(batches) == 2 and all(entry["seed"] == 3 for entry in batches)
+    assert all(len(entry["kill_share"]) == 2 for entry in batches)
+    cli.pool(dataclasses.replace(options, action="table"))
+    printed = capsys.readouterr().out
+    assert "scripted" in printed and "observed against predicted" in printed
+    with pytest.raises(SystemExit, match="--out"):
+        cli.pool(dataclasses.replace(options, action="curves"))
