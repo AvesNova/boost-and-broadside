@@ -10,7 +10,7 @@ questions for the author. Outcomes move into `decisions.md`.
 ### Shape of the network (shipped `MODEL_CONFIG`)
 
 - d_model 128; 2 blocks of `spatial, spatial, temporal` (S S T | S S T).
-- Spatial = pre-norm transformer block: attention + SwiGLU FFN (4x). Two 64-wide
+- Spatial = pre-norm transformer block: attention + GEGLU FFN (4x, a GELU-gated GLU). Two 64-wide
   heads (`n_spatial_heads=2`), rotary Q/K by world x, y and attitude.
 - Temporal = Griffin / RG-LRU with a causal conv (packed hidden state per token).
 - Token axis: N ships, then 1 global token, then map tokens (fields, zones).
@@ -171,7 +171,7 @@ a per-type first projection (`encoder_split`) and a shared second projection.
 
 - Per token (ships and the global token), per temporal sublayer:
   `norm -> linear1 -> causal depthwise conv (4 taps) -> RG-LRU`, gated by
-  `GELU(linear2)`, `-> linear_out`, residual, then a SwiGLU FFN with residual.
+  `GELU(linear2)`, `-> linear_out`, residual, then a GEGLU FFN with residual.
 - RG-LRU: `a_t = sigmoid(L)^(8 r_t)`, `h_t = a_t h_{t-1} + sqrt(1 - a_t^2) (i_t x_t)`,
   with learned per-channel `L` and input-dependent recurrence and input gates (as in
   the Griffin paper).

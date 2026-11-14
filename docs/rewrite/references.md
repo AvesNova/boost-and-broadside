@@ -133,7 +133,7 @@ Papers and published methods the project relies on or has used to decide somethi
 ### Gated MLP (GLU variants)
 - **Citation:** Shazeer, 2020, "GLU Variants Improve Transformer", arXiv 2002.05202 (unverified).
 - **What we take from it:** a gated feed-forward layer. Ours is `gelu(gate x) * (up x)`.
-- **Where it applies:** `src/bnb/models/yemong/layers.py`, `kernels/gated.py`. The review docs call it SwiGLU; the kernel's gate is GELU.
+- **Where it applies:** `src/bnb/models/yemong/layers.py`, `kernels/gated.py`. The gate is GELU (GEGLU in the GLU-variants naming).
 - **How it affected a decision:** none recorded beyond the architecture choice.
 
 ### Transformer
