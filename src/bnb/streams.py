@@ -25,14 +25,17 @@ MASK = (1 << 32) - 1
 SCALE = 1.0 / (1 << 24)  # a uniform's 24 bits (float32's mantissa) in [0, 1)
 
 
+@torch.compiler.assume_constant_result
 def stream_key(seed: int, name: str) -> int:
-    """A stream's 32-bit key, from the run's seed and the stream's name."""
+    """A stream's 32-bit key, from the run's seed and the stream's name. Constant under
+    torch.compile (Dynamo cannot trace zlib.crc32; the key depends only on its arguments)."""
     return zlib.crc32(f"{seed}/{name}".encode()) & MASK
 
 
+@torch.compiler.assume_constant_result
 def purpose_key(name: str) -> int:
     """A 32-bit key for one use of an already keyed value (a decision's key, a tick's):
-    the use's name alone, as the value carries the seed."""
+    the use's name alone, as the value carries the seed. Constant under torch.compile."""
     return zlib.crc32(name.encode()) & MASK
 
 
