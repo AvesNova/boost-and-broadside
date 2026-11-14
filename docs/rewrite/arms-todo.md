@@ -98,7 +98,13 @@ Ordered for working through:
 | Seed twin of rl-v20 (`rl-v20-seed1`, seed 1) | laptop GPU, old code | Finished 02:11 at 149.9M steps (30 snapshots). The noise read against rl-v20 is queued. |
 | Seed-streams speed check | laptop GPU (`seed-speed` unit) | Running since 02:21: 4 updates from bc-v20 on the old tree, then the new. |
 
-**GPU queue after the twin:**
+**Merged 2026-11-15 (52728ca1):**
+- **Branches:** seed isolation (plus a compile fix, 5589e850: stream keys are compile-time constants), cheese agents, break-even, absent fields, rating allocator, frontline lock, mode timing.
+- **Game version:** VERSION 20, FINGERPRINT 477cbfae. Continuing an old version's tournament record is now refused, and crossover records include the version.
+- **Tests:** 866 CPU and 61 GPU tests pass.
+- **Seed-streams speed check passed:** steady rollout 23.1 s on both trees, and learning equal when the CPU is uncontended (238 s).
+
+**GPU queue (old, before the merge):**
 1. The seed-streams steps-per-second check, old against new. Merge only if throughput holds.
 2. The GPU tests, the ONNX export test, and the fused attention kernel with absent fields' longer key mask.
 3. The rating layout probe.
@@ -128,7 +134,14 @@ Ordered for working through:
   - **Deathmatch:** 4.57 deaths per team per minute (sd 1.08), steady after the first minute. Tickets per team for 80% of games ending by tickets: 40 at 10 min, 47 at 12 min, 55 at 15 min (±5). Today's 25 end 99% of games within 10 min.
   - **Elimination, time to wipe** (no shrink): p50 52 s, p80 90 s, p90 120 s. Today's shrink (hold 36 s, clock 180 s) causes only 2.4% of deaths.
   - **Frontline 2v2:** captures are rare (1.9 per game) and 85% of games end on the clock. 3v3 ends by capture 52% of the time. Both measured at the old lock value of 19.
-- [ ] **Frontline lock re-tune** to a random walk with fields on, after the fields-on reversal result.
+- [x] **Frontline lock re-tuned:** 6 s per √km, game v20.
+- [ ] **Freeze values (proposal, 2026-11-15; measured with the scripted agent, fields on, lock 6, 256 games each with a 30-minute clock):**
+  - **Frontline:** win at ±2 (was ±3) with a 12-minute clock.
+    - At 5v5, ±2 ends 79% by capture within 10 min and 84% within 12 (median 5.0 min). ±3 ends only 53% within 12 min (median 10.7).
+    - Smaller teams are slower: at ±2, 3v3 ends 68% within 12 min, 2v2 36%.
+    - Open: frontline's minimum team size of 3v3; whether its clock scales with fleet size.
+  - **Deathmatch:** 12-minute clock with 50 tickets per team (about 75–80% end by tickets; Halo-like).
+  - **Elimination:** keep the 3-minute clock and start the shrink at about 90 s (the 80th percentile of time to wipe) instead of 36 s.
 - [ ] **The evaluation-suite command, then the sequential-test pilot** (rl-v20 against rl-mix-kl and against rl-dm at 75M, every condition) and the design simulation.
 - [ ] The split offence/defence critic, before the shared BC, with advantage weights per part and the premium schedule as a setting (default 1:1).
 - [ ] **Front reversal (decided 2026-11-14).** Measure P(reversal) now, on the current game with the scripted agent on both sides (in progress, `bench/front-reversal`). Measure it again at the end of the first arm, to check the front stays roughly a random walk in self-play. The 0.84 figure is from September (v1); the later lock was meant to make it a random walk.
