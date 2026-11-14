@@ -5,8 +5,10 @@ A player is a policy file (or a training checkpoint, whose policy part plays), t
 checkpoint of a run, a ladder entry ("scripted", "random" or "rung_T<t>"), or a teacher:
 the scripted agent at its own temperature T with a uniform floor on its actions,
 `scripted@T=<temperature>,floor=<floor>` (either key optional: T defaults to 1, floor to 0;
-BC's teacher is `scripted`, T = 1 and floor 0). A ladder entry and a teacher are scripted
-players; the others are networks. Networks of one build form a group (`Arena.groups`): the
+BC's teacher is `scripted`, T = 1 and floor 0), or a cheese agent, `scripted:<name>`
+(`bnb.controllers.scripted_cheese`: zone_rusher, turtle, evader, deathball, jouster, kiter).
+A ladder entry, a teacher and a cheese agent are scripted players; the others are networks.
+Networks of one build form a group (`Arena.groups`): the
 groups' builds may differ (a field may mix architectures); the networks of one group have
 their weights stacked.
 
@@ -66,6 +68,7 @@ from bnb.contracts import ASPECTS, Action, GameConfig, Obs, Outputs, Pool
 from bnb.contracts.obs import SHIP
 from bnb.contracts.tree import contract
 from bnb.controllers.scripted import Scripted, floored_actions
+from bnb.controllers.scripted_cheese import NAMES, Cheese, agent_of, player_name
 from bnb.controllers.scripted_defaults import MODE_DEFAULTS
 from bnb.controllers.scripted_memory import ScriptedCarry
 from bnb.controllers.scripted_parameters import ScriptedParameters, table, unpack
@@ -94,7 +97,8 @@ class Player:
     ship type as the scripted agent flies it (`ship_type_players`); a tuple gives each ship
     of the team its own type (a mixed team, one entry per ship); parameters: a scripted
     player's own parameter set (its doctrine; only in an arena built with a `doctrine`), else
-    the arena's."""
+    the arena's; cheese: a cheese agent's name (`bnb.controllers.scripted_cheese`), the player
+    `scripted:<cheese>`."""
 
     name: str
     policy: pathlib.Path | None = None
@@ -104,6 +108,7 @@ class Player:
     temperature: float = 1.0
     ship_type: int | tuple[int, ...] | None = None
     parameters: ScriptedParameters | None = None
+    cheese: str | None = None
 
 
 def ship_type_players(ship_set: str, rung: Rung = Rung(1.0)) -> list[Player]:
@@ -195,6 +200,9 @@ def player(name: str, runs_directory: pathlib.Path | None = None) -> Player:
     teacher = teacher_of(name)
     if teacher is not None:
         return Player(name, teacher=teacher)
+    cheese = agent_of(name)
+    if cheese is not None:
+        return Player(name, cheese=cheese)
     path = pathlib.Path(name)
     if (path / checkpoint.RECORD).exists():
         return Player(name, policy=path)
@@ -205,7 +213,7 @@ def player(name: str, runs_directory: pathlib.Path | None = None) -> Player:
         return Player(name, policy=Run.open(pathlib.Path(runs_directory), name).checkpoint_at())
     raise ValueError(
         f"{name!r} is not a policy file, a run or a ladder entry (scripted, random, "
-        "rung_T<t>, rung_T<t>_p<share>)"
+        f"rung_T<t>, rung_T<t>_p<share>) or a cheese agent ({', '.join(map(player_name, NAMES))})"
     )
 
 
@@ -222,7 +230,8 @@ class ScriptedPlay:
 
 
 def scripted_play(player: Player) -> ScriptedPlay | None:
-    """A scripted player's play (a rung's or a teacher's), or None for a network."""
+    """A scripted player's play (a rung's or a teacher's), or None for a network or a cheese
+    agent (`Player.cheese`, played by `MatchSeat.load_cheese`)."""
     if player.rung is not None:
         return ScriptedPlay(
             player.rung.temperature, player.rung.share, parameters=player.parameters
@@ -327,6 +336,7 @@ class MatchSeat:
         ablations: tuple[str, ...] = (),
         lanes: tuple[int, ...] | None = None,
         doctrine: ScriptedParameters | None = None,
+        cheese: bool = False,
     ) -> None:
         self.slots, self.slot_rows = 2 * blocks, block_environments
         self.rows, self.ships_per_team = self.slots * block_environments, ships_per_team
@@ -356,6 +366,10 @@ class MatchSeat:
             temperature=self.temperature,
             share=self.share,
         )
+        # each row's cheese agent (an index into `NAMES`, -1 none; written in place), when the
+        # seat is built for a field with cheese players: they take the rows' scripted action
+        self.cheese_kind = torch.full((self.rows,), -1, dtype=torch.int64, device=device)
+        self.cheese = Cheese(characteristics, ships_per_team, self.cheese_kind) if cheese else None
         self.lanes = (1,) * len(controllers) if lanes is None else tuple(lanes)
         if len(self.lanes) != len(controllers) or not all(
             1 <= count <= self.slots for count in self.lanes
@@ -481,6 +495,9 @@ class MatchSeat:
             return Action.unpack(idle.to(reset.device)), carry, Outputs()
         scripted, scripted_carry, _ = self.agent.step(carry.scripted, obs, reset, decision_key)
         action = floored_actions(scripted.packed(), self.floor, decision_key)
+        if self.cheese is not None:
+            played = self.cheese.step(None, obs, reset, decision_key)[0].packed()
+            action = torch.where((self.cheese_kind >= 0)[:, None, None], played, action)
         model_carry = dict(carry.model)
         entropy = torch.zeros(action.shape[:-1], device=action.device)
         if self.decisions:
@@ -605,6 +622,7 @@ class MatchSeat:
         self.lane_of[slot] = (group, lane)
         rows = self._slot_rows(slot)
         self.scripted[rows] = False
+        self.cheese_kind[rows] = -1
         self.network_temperature[rows] = temperature
         if self.ablations is not None:
             for name in ABLATIONS:
@@ -619,6 +637,7 @@ class MatchSeat:
         self.share[rows] = play.share
         self.floor[rows] = play.floor
         self.scripted[rows] = True
+        self.cheese_kind[rows] = -1
         self.network_temperature[rows] = 1.0
         if self.doctrine_table is not None:
             own = self.doctrine if play.parameters is None else play.parameters
@@ -629,6 +648,21 @@ class MatchSeat:
             for name in ABLATIONS:
                 if getattr(self.ablations, name) is not None:
                     getattr(self.ablations, name)[rows] = False
+
+    @torch.no_grad()
+    def load_cheese(self, slot: int, name: str) -> None:
+        """Slot `slot` plays the cheese agent `name` (written in place; the seat must be built
+        with `cheese=True`)."""
+        if self.cheese is None:
+            raise ValueError("the seat was built without cheese agents")
+        rows = self._slot_rows(slot)
+        self.cheese_kind[rows] = NAMES.index(name)
+        self.scripted[rows] = True
+        self.network_temperature[rows] = 1.0
+        if self.ablations is not None:
+            for ablation in ABLATIONS:
+                if getattr(self.ablations, ablation) is not None:
+                    getattr(self.ablations, ablation)[rows] = False
 
     def finished(self, carry: MatchCarry) -> bool:
         """Whether every row's first game has ended (a host read)."""
@@ -682,7 +716,7 @@ def network_groups(players: list[Player]) -> list[int | None]:
     builds: list[tuple[str, object]] = []
     groups: list[int | None] = []
     for one in players:
-        if scripted_play(one) is not None:
+        if scripted_play(one) is not None or one.cheese is not None:
             groups.append(None)
             continue
         record = checkpoint.read_policy(one.policy)
@@ -828,6 +862,7 @@ class Arena:
             ablations=tuple(sorted({name for one in players for name in one.ablations})),
             lanes=self.lanes,
             doctrine=doctrine,
+            cheese=any(one.cheese is not None for one in players),
         )
         pools = tuple(
             Pool(f"block_{index}", 1.0 / config.blocks, (SEAT, SEAT))
@@ -884,7 +919,9 @@ class Arena:
 
     def _load(self, slot: int, index: int) -> None:
         play = scripted_play(self.players[index])
-        if play is None:
+        if self.players[index].cheese is not None:
+            self.seat.load_cheese(slot, self.players[index].cheese)
+        elif play is None:
             one = self.players[index]
             self.seat.load_network(
                 slot, self.group_of[index], self.states[index], one.ablations, one.temperature

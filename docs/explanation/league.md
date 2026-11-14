@@ -15,6 +15,10 @@ league's seat (`bnb.runtime.opponents.OpponentSlots`). The offline side is
 
 ## The pool
 
+Beside the entries below, the six cheese agents (`scripted:zone_rusher` and the others,
+[the scripted agent](scripted-agent.md#cheese-agents)) are entries by default,
+`LeagueConfig.cheese` (`()` turns them off); they are sampled by the same rule.
+
 The default lineup (`bnb.runtime.train.LINEUP`) gives each game of the training mix two
 pools: self-play and the league's seat, half each. Self-play is not a pool entry; it keeps
 its fixed share. The entries (`bnb.league.pool.Entry`) are:

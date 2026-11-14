@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/controllers/scripted.py, src/bnb/controllers/scripted_parameters.py, src/bnb/controllers/scripted_defaults.py, src/bnb/controllers/scripted_memory.py, src/bnb/controllers/scripted_combat.py, src/bnb/controllers/scripted_doctrine.py, src/bnb/controllers/scripted_frontline.py, src/bnb/game/handling/characteristics.py, src/bnb/runtime/evaluate.py]
+covers: [src/bnb/controllers/scripted.py, src/bnb/controllers/scripted_parameters.py, src/bnb/controllers/scripted_defaults.py, src/bnb/controllers/scripted_memory.py, src/bnb/controllers/scripted_combat.py, src/bnb/controllers/scripted_doctrine.py, src/bnb/controllers/scripted_frontline.py, src/bnb/controllers/scripted_cheese.py, src/bnb/game/handling/characteristics.py, src/bnb/runtime/evaluate.py]
 reviewed: 2026-11-03 09:45
 ---
 
@@ -370,8 +370,69 @@ against random and the chaser on seeds at or above the search's
 `bench.scripted_search.SEED_LIMIT`: at most 2 non-wins in 2048 games against random, and
 above 0.5 against the chaser, at every preset.
 
+## Cheese agents
+
+Six crude players, each one plain strategy, give a check that a trained policy cannot be
+beaten by a single trick, and are league entries by default. They are one controller,
+`bnb.controllers.scripted_cheese.Cheese`, a function of the observation with no carry. They
+read the ship rows, the zone rows and the globals, use an enemy row only where it is visible
+and alive, and draw nothing: the decision key goes unused, and the same observation gives the
+same action. The flight is the chaser's bearing-to-stick rule
+(`bnb.controllers.scripted.stick_toward`), aiming straight at the target with no lead, and
+a shot is the chaser's (inside 8 degrees of the target and 250 m of the standard card).
+Every agent turns toward the map centre as it nears the boundary's radius (the last quarter
+of it), and when it has no visible enemy to play against (the zone agents: always, outside
+Frontline) it flies a circle about the map centre or its zone.
+
+| Player | Behaviour |
+|---|---|
+| `scripted:zone_rusher` | Ignores combat. Full boost to the enemy's defense zone (the one the team has yet to take: the roles rotate at each capture, so it is always the next), then circles inside it, coasting. Never fires. |
+| `scripted:turtle` | Circles the zones its team holds, coasting: even slots its defense zone, odd slots its spawn zone. Engages the nearest visible enemy within 1.5 zone radii of its zone: turns to it, and fires when aligned. |
+| `scripted:evader` | Never engages or fires. Turns directly away from its nearest visible enemy, boosting while it is within two gun ranges, and drifts to the map centre as the boundary shrinks. |
+| `scripted:deathball` | Holds a formation of half a gun range about the team's centre and focuses fire: every ship turns for the visible enemy nearest the centre at full boost and fires when aligned, but a ship outside the formation returns to the centre first. |
+| `scripted:jouster` | Every ship goes at its nearest visible enemy at full boost and fires whenever aligned. No defensive manoeuvre. |
+| `scripted:kiter` | Holds 0.9 gun ranges (a band of 0.1 either side) from its nearest visible enemy: closes at full boost beyond the band, turns away at full boost inside it, and aims, coasts and fires within it. |
+
+The zone agents suit Frontline; outside it they circle the map centre in place of a zone
+(the turtle then engages enemies near the centre). In Frontline a spawn zone shields a ship
+from damage, so the turtle's odd slots are the hardest to dislodge; it is a trick, not an
+oversight. The names are player names: they work wherever the scripted agent does in `bnb
+ratings --with` and `bnb head-to-head`.
+
+**The exploit check.** A policy's score against each, per preset (Frontline, elimination
+and deathmatch by default), 128 games each split between the seats:
+
+<!-- not-runnable: needs CUDA and a run -->
+```bash
+uv run --no-sync bnb head-to-head RUN scripted:zone_rusher RUN scripted:turtle \
+    RUN scripted:evader RUN scripted:deathball RUN scripted:jouster RUN scripted:kiter \
+    --games 128
+```
+
+The command prints each pair's wins, losses and draws, its score with its standard error and
+the split by preset. A policy that cannot beat a crude player in some mode shows it as a
+score near or below one half in that mode's row. The evader and the zone rusher never fire,
+so against them a game is decided by the other side's play alone; the results are a floor to
+read, not a rating.
+
+**League entries.** All six are league entries by default: `LeagueConfig.cheese` lists them
+(`()` turns them off, for an ablation). Each is an entry named `scripted:<name>`, sampled
+with the others as any entry is, by its predicted win probability against the live policy
+(the existing per-entry rule, with its floor); that is provisional for them, as the weights
+across league members are to be decided separately. The slot holding one plays it on its
+rows and tallies to the slot's own column. The lanes do not play them, so they have no
+rating of their own at first: the gauge starts them at the live policy's rating, and the
+league's games against them (`bnb.league.lanes.RunRatings`) rate them from the first update
+that has some. The list is fixed at a run's start. `bnb ratings` also plays all six by
+default (`--no-cheese` leaves them out), so a published rating table carries the policy's
+results against each.
+
 ## Tests
 
+`tests/sections/test_scripted_cheese.py` covers the cheese agents: valid actions per mode,
+that a hidden or dead enemy changes nothing, determinism, each agent's behaviour on
+constructed observations, a short game of each in each mode, and their play in the match
+engine; `tests/sections/test_league_cheese.py` covers them as league entries.
 `tests/sections/test_scripted.py` covers the behaviour on constructed observations for
 both ship types (the stick, the gun, power, the lead with a still and a moving shooter, the
 boundary heading out and heading in, no target; in Frontline the defense assignment with
