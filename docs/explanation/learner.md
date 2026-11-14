@@ -393,8 +393,9 @@ update (`bnb.runs.session.micro_batch_note`); the cadence's halves of the first 
 can add their own. Two diagnostics run eager. The heads' sums (`bnb.learn.head_statistics`)
 are measured on cadence updates over a sample: the first epoch's first micro-batches until
 they hold `HEAD_SUM_VIEWS` (256) views. Over every micro-batch they cost about 8% of RL's
-steady time. The step/unroll drift unrolls the update's first micro-batch
-(`Learner.first_micro_batch`). `TrainConfig.precision` defaults to
+steady time. The step/unroll drift unrolls the first minibatch's first `DRIFT_VIEWS` (48)
+views, in micro-batches (`Learner.drift_views`): a fixed sample, since its max grows with the
+views it reads. `TrainConfig.precision` defaults to
 `"bfloat16"`: the model's matmuls run under bf16 autocast, in the rollout and in the update
 alike. `"float32"` (strict) and `"tf32"` (a process-wide setting the entry point applies with
 `bnb.cli.set_precision`) are the alternatives. The residual stream, norms,
