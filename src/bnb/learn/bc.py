@@ -379,15 +379,18 @@ def calibrate(
 
 @dataclasses.dataclass(frozen=True)
 class StopConfig:
-    """When BC stops (scripted spec B4), whichever comes first: BC's imitation has
-    plateaued (`Plateau`: the BC KL's trailing mean over plateau_smoothing_steps improved
-    by less than plateau_fraction of its improvement since plateau_from_steps over the
-    last plateau_window_steps, at every update for plateau_hold_steps; the default rule,
-    None turns it off); the score against the raw scripted agent in the rating lanes,
+    """When BC stops (scripted spec B4), whichever comes first: budget_steps environment
+    steps (100M by default, the same for every arm: decided 2026-11-14; a run stopped by
+    its budget resumes with a larger one); BC's imitation has plateaued, when
+    plateau_stops is set (`Plateau`: the BC KL's trailing mean over
+    plateau_smoothing_steps improved by less than plateau_fraction of its improvement
+    since plateau_from_steps over the last plateau_window_steps, at every update for
+    plateau_hold_steps; plateau_fraction None turns the rule off; by default it is read
+    and logged, `bc/stop/plateau/*`, and stops nothing: decided 2026-11-14); the score
+    against the raw scripted agent in the rating lanes,
     over the last score_window finished games, of the better of the players `reads` names
     (the averages of the live weights; decisions: BC round three), reaches score_target
-    (None, the default, turns it off: the windows are still kept and logged); or
-    budget_steps environment steps (a run stopped by its budget resumes with a larger one).
+    (None, the default, turns it off: the windows are still kept and logged).
     `reads` is in order of preference: an equal score goes to the earlier. The windows need
     rating lanes: with none (`LaneConfig.environments` 0) they never fill and the score
     stop never fires. Which policy RL starts from is not the stop's choice: it is always
@@ -401,11 +404,13 @@ class StopConfig:
     plateau_from_steps: int = 5_000_000
     plateau_smoothing_steps: int = 5_000_000
     plateau_hold_steps: int = 10_000_000
+    # the plateau is logged only: BC runs its fixed budget (decided 2026-11-14)
+    plateau_stops: bool = False
     # parity with the scripted agent was 0.5 (author, 2026-11-04); off since the plateau
     score_target: float | None = None
     score_window: int = 1000
-    # v1's time to parity (author, 2026-11-04)
-    budget_steps: int = 50_000_000
+    # fixed for every arm (decided 2026-11-14)
+    budget_steps: int = 100_000_000
     # the lane players `bnb.runtime.lanes.EXPONENTIAL_AVERAGE` and `UNIFORM_AVERAGE`
     reads: tuple[str, ...] = ("exponential_average", "uniform_average")
 
@@ -579,7 +584,9 @@ class ScoreWindow:
 class StopRule:
     """Fed once per update; `observe` names the rule that fires, or returns None.
 
-    The plateau rule reads the BC KL (`Plateau`). Each lane player's games against the
+    The plateau rule reads the BC KL (`Plateau`); it stops BC only with
+    `StopConfig.plateau_stops`, and `plateaued` says whether it fired at the last update.
+    Each lane player's games against the
     scripted agent fill a score window of its own (`ScoreWindow`, `windows` by player).
     The score stop, when it has a target, reads the window of the best of the players
     `StopConfig.reads` names whose window is full (`read`; an equal score goes to the
@@ -590,6 +597,7 @@ class StopRule:
 
     def __init__(self, config: StopConfig, state: dict | None = None) -> None:
         self.config = config
+        self.plateaued = False  # the plateau rule fired at the last update
         self.windows: dict[str, ScoreWindow] = {}
         self.plateau = Plateau(config, None if state is None else state["plateau"])
         if state is not None:
@@ -638,11 +646,13 @@ class StopRule:
         """environment_steps: the total so far; results: each lane player's games finished
         against the raw scripted agent this update, (wins, draws, losses) from its side (a
         player left out played none that count); kl: this update's BC KL. The rule that
-        fires: "plateau", "score" or "budget", or None."""
+        fires: "plateau" (only with `StopConfig.plateau_stops`), "score" or "budget", or
+        None."""
         config = self.config
         for player, games in results.items():
             self.windows.setdefault(player, ScoreWindow(config.score_window)).add(*games)
-        if self.plateau.observe(environment_steps, kl):
+        self.plateaued = self.plateau.observe(environment_steps, kl)
+        if self.plateaued and config.plateau_stops:
             return "plateau"
         target = config.score_target
         if target is not None and self.score is not None and self.score >= target:

@@ -51,9 +51,9 @@ class RewardConfig:
 
     deathmatch_outcome: what the outcome level (and the outcome head's target) counts as
     team deathmatch's win and loss (`bnb.game.modes.rules.DEATHMATCH_OUTCOMES`):
-    "kill_share", the kill share (share, 1 - share), as the ratings score it by default; or
-    "kill_lead", the result one-hot by the sign of the final kill difference, a draw neither
-    (the rollout sets it on the rules: `ModeRules.deathmatch_outcome`)."""
+    "kill_lead" (the default), the result one-hot by the sign of the final kill difference,
+    a draw neither, as the ratings score it by default; or "kill_share", the kill share
+    (share, 1 - share) (the rollout sets it on the rules: `ModeRules.deathmatch_outcome`)."""
 
     damage: float = 2.74
     kill_death: float = 2.83
@@ -61,7 +61,7 @@ class RewardConfig:
     objective: float = 20.0
     outcome: float = 10.0
     damage_unit: float = 100.0  # points, for every ship type
-    deathmatch_outcome: str = "kill_share"
+    deathmatch_outcome: str = "kill_lead"
 
     def __post_init__(self) -> None:
         if self.deathmatch_outcome not in DEATHMATCH_OUTCOMES:

@@ -26,8 +26,8 @@ runs/2026-11-02-mixed-purple-pumpkin/
   config.json           the resolved TrainConfig at the start
   checkpoints/step_<environment steps>/   training checkpoints (the newest two and the final)
   policies/step_<environment steps>/{live,exponential_average,uniform_average}/
-                        every update's policy files (PPO), or every 10M steps and at
-                        each segment's end (BC); never pruned
+                        every update's policy files (PPO), or on the snapshot
+                        schedule and at each segment's end (BC); never pruned
   STOP                  a stop request, while the run is asked to stop
   league/               the league's policy snapshots
   policy/               a BC run's policy: the average its stop rule read (bnb train --objective bc)
@@ -223,11 +223,13 @@ the exponential average, then the uniform average too), so a run of 100M steps a
 steps per update keeps about 2 to 3 GB. Their writing time counts in the
 update record's checkpoint seconds.
 
-A run without `--update-policies` (BC by default) writes the same three files every
-`TrainConfig.policy_snapshot_every` environment steps (10M; `--set
-policy_snapshot_every=...`, which a resume may change) and at the end of each process's
-segment (its budget, a stop rule or a stop request). So a BC run continued past its budget
-keeps the averages it had at each 10M and at each earlier end, beside the `policy*/`
+A run without `--update-policies` (BC by default) writes the same three files on the
+snapshot schedule `TrainConfig.policy_snapshots` (`bnb.runtime.snapshots.RL_SNAPSHOTS`,
+decided 2026-11-14: at 1, 2, 3, 4, 6, 8, 10, 12, 16 and 20M environment steps, then every
+5M; `--set policy_snapshots.steps=[...]` and `policy_snapshots.every=...`, which a resume
+may change) and at the end of each process's segment (its budget, a stop rule or a stop
+request). So a BC run continued past its budget keeps the averages it had at each
+scheduled step and at each earlier end, beside the `policy*/`
 files that its newest end replaces. A tournament takes any of them by path, including one
 inside the runs directory: `bnb ratings RUN --with
 RUN/policies/step_50000000/uniform_average`.

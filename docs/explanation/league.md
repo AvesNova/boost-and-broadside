@@ -24,10 +24,13 @@ The default lineup (`bnb.runtime.train.LINEUP`) gives each game of the training 
 pools: self-play and the league's seat, half each. Self-play is not a pool entry; it keeps
 its fixed share. The entries (`bnb.league.pool.Entry`) are:
 
-- **snapshots** of the live policy, taken every `LeagueConfig.snapshot_every` environment
-  steps. Without a set value the league measures it once, about 30 minutes at the pace of the slowest of
-  the second to fourth updates, and records it in `run.json`{.plain}. A snapshot is the weights that played the
-  update it was taken at;
+- **snapshots** of the live policy, taken on the schedule `LeagueConfig.snapshots`
+  (`bnb.runtime.snapshots.LEAGUE_SNAPSHOTS`, decided 2026-11-14: at 5, 10, 15, 20, 25, 30,
+  40, 50, 60, 75, 90, 110, 130 and 160M environment steps, then every 30M, about 100 to
+  200 Elo apart on rl-v20's curve; to be re-derived after the game freeze). With
+  `snapshots=None` the league measures a period once, about 30 minutes at the pace of the
+  slowest of the second to fourth updates, and records it in `run.json`{.plain}. A
+  snapshot is the weights that played the update it was taken at;
 - **the averages:** the uniform average and the exponential moving average of the live
   policy's weights, folded in after every update (`bnb.league.pool.Averages`, through `average_into`, the
   decay `LeagueConfig.exponential_decay` per update; behaviour cloning keeps the same
@@ -49,10 +52,17 @@ step beside it (`uniform_average`, `exponential_average`), all policy files.
 
 ## Sampling
 
-An entry's sampling weight is `p (1 − p)` (`bnb.league.pool.sampling_weights`), where `p`
-is the predicted probability that the live policy beats it under that mode's live gauge,
-plus a floor (`LeagueConfig.floor`) spread evenly over the entries. Each mode samples by
-its own gauge.
+Half of each mode's batch is self-play, a fixed share (`bnb.runtime.train.LINEUP`); the
+league's games are the other half. An entry's sampling weight is `(1 − p)²`
+(`bnb.league.pool.sampling_weights`, `LeagueConfig.sampling = "hard"`), where `p` is the
+predicted probability that the live policy beats it under that mode's live gauge: the
+entries the live policy loses to most weigh most, as in AlphaStar's prioritised fictitious
+self-play (decided 2026-11-14). Every entry is weighed alike: the snapshots, the two
+averages, the scripted agent and the cheese agents, with no uniform floor
+(`LeagueConfig.floor`, 0), so an entry the live policy always beats is not drawn. When every
+weight is zero the draw is even. Each mode samples by its own gauge. For an ablation,
+`sampling = "variance"` weighs `p (1 − p)`, the entries whose result is least certain,
+and `floor` spreads a share of the weight evenly.
 
 ## Slots, the scripted agent and the cut
 
@@ -357,12 +367,12 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   `--hopeless` times the batches left (default 10), the tournament stops and logs which
   targets and why, rather than spend its budget on games that hardly move them;
   `--hopeless inf` plays the budget.
-- **Scoring:** frontline and elimination games count as a win, a draw or a loss. A team
-  deathmatch game counts, by default, as its kill share: the first player's kills over
-  both sides' (0.5 with none), taken by the fit as a draw's half is
-  (`bnb.league.tournament.kill_share_scored`). `--deathmatch-score win_loss` scores it
-  instead as a win, a draw or a loss by the sign of the final kill difference, as the
-  other modes are. `bnb head-to-head` takes the same option. The scoring is applied when
+- **Scoring:** every game counts as a win, a draw or a loss; a team deathmatch game by
+  the sign of the final kill difference (the kill lead, decided 2026-11-14).
+  `--deathmatch-score kill_share` scores a team deathmatch game instead as its kill share:
+  the first player's kills over both sides' (0.5 with none), taken by the fit as a draw's
+  half is (`bnb.league.tournament.kill_share_scored`). `bnb head-to-head` and
+  `bnb pool create` take the same option. The scoring is applied when
   the games are fitted, not when they are recorded (see the record below), so the option
   chooses only how the fit reads the games.
 - The tournament stops when every target is met, when the next batch would pass `--budget`
@@ -383,7 +393,7 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   second player's kills summed over the block's games. A batch line looks like
 
   ```json
-  {"batch": 0, "game_version": 19, "scoring": "kill_share",
+  {"batch": 0, "game_version": 19, "scoring": "win_loss",
    "matchups": [["scripted", "a"], ["a", "b"]],
    "results": [[31, 4, 93], [70, 9, 49]], "kill_share": [41.2, 72.9],
    "kills": [[210, 402], [377, 241]], "games": 256, ...}
@@ -397,7 +407,8 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   full outcome is read under either scoring, as its wins, draws and losses or as (the
   summed shares, 0, the games less them). A record written before the full outcome was
   kept holds only the results of the scoring it names (a batch that names none was
-  scored by the default: kill share in team deathmatch, a win, draw or loss elsewhere),
+  scored by kill share in team deathmatch, the default then, and by a win, draw or loss
+  elsewhere: `bnb.league.tournament.UNNAMED_SCORE`),
   and is read only under that scoring; in a record that mixes the two, each batch is
   judged on its own.
 - **Resuming:** a tournament that finds its preset's record rebuilds the games from it and

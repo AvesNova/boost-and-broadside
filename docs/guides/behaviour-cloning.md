@@ -19,8 +19,9 @@ uv run --no-sync bnb train --preset mixed --objective bc --teacher-temperature 1
 ```
 
 `--objective bc` plays the BC lineup (half self-play, half the scripted agent) in the
-chosen game and runs until a stop rule fires: the plateau of the BC KL, or the budget, a
-cap; a score target (`--set stop.score_target=0.5`, off by default) adds parity against
+chosen game and runs to its budget, 100M environment steps for every arm
+(`--bc-budget-steps`). The plateau of the BC KL is read and logged but stops nothing
+unless `--set stop.plateau_stops=true`; a score target (`--set stop.score_target=0.5`, off by default) adds parity against
 the scripted agent over 1000 lane games, read on the better of the two averages of the
 clone's weights ([When it stops](../explanation/behaviour-cloning.md#when-it-stops)). The
 scripted opponent plays the labels' distribution, at `--teacher-floor` and
@@ -29,7 +30,7 @@ labels' and the student's entropy, the live score per opponent, once an average'
 games have finished the average the score window reads with its window score and standard
 error, and once the plateau reads one its fraction (the KL's recent improvement over its
 improvement since 5M steps; the rule fires once it has stayed below 0.05 for 10M steps)
-and how long it has been below; the last line names the rule that stopped it and the
+and how long it has been below, marked "(reached)" once it has fired; the last line names the rule that stopped it and the
 average the run's policy holds. To clone and then reinforce in one command, chain them
 ([Training](training.md#chain-bc-and-rl)). The other
 options (`--model`, `--environments`, `--shards`, `--precision`, `--micro-batch-rows`,
@@ -50,7 +51,9 @@ counts and its own lane ratings
 | `runs/<run>/policy-exponential/`{.plain} | the exponential moving average |
 | `runs/<run>/policy-live/`{.plain} | the live clone |
 
-Every 10M environment steps (`--set policy_snapshot_every=...`) and at each end, the run
+At 1, 2, 3, 4, 6, 8, 10, 12, 16 and 20M environment steps, then every 5M
+(`TrainConfig.policy_snapshots`; `--set policy_snapshots.every=...` and
+`policy_snapshots.steps=[...]`), and at each end, the run
 also keeps the live clone and both averages under
 `runs/<run>/policies/step_<steps>/{live,exponential_average,uniform_average}/`{.plain},
 never replaced, so a run resumed past its budget keeps its earlier averages; `bnb ratings
@@ -67,17 +70,16 @@ one.
 ## Run a BC experiment to a fixed budget
 
 A comparison between builds (an "arm") trains every build for the same number of
-environment steps, so that no stop rule ends one early:
+environment steps. That is the default: only the budget stops BC (100M), so every arm's
+BC runs the same steps:
 
 <!-- not-runnable: needs CUDA and runs for hours -->
 ```bash
-uv run --no-sync bnb train --preset mixed --objective bc --bc-budget-steps 30000000 \
-    --set stop.plateau_fraction=null --name 2026-11-09-bc-arm-example
+uv run --no-sync bnb train --preset mixed --objective bc --name 2026-11-09-bc-arm-example
 ```
 
-No plateau fraction (`StopConfig.plateau_fraction`) turns the plateau off, and the score
-stop is off without a target, so the budget ends the run (the plateau's reading is still
-logged). The build's own changes go on as more `--set` lines.
+The plateau's reading is still logged (`bc/stop/plateau/*`), and the score stop is off
+without a target. A shorter experiment sets `--bc-budget-steps`. The build's own changes go on as more `--set` lines.
 The model and learner settings the arms build on (the trunk order, BC's discounts and
 trace decays) are the defaults: a run copied from an older arm's command line may carry
 them as `--set` lines too, which changes nothing. The exact command of any run is in its

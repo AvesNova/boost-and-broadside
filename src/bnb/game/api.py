@@ -78,7 +78,14 @@ from .handling.weapons import combat_card, combat_handles
 from .layout import environment, per_mode, sized
 from .modes import frontline, phase
 from .modes.frontline import lock_ticks
-from .modes.rules import FLEET_PRESETS, LINEUPS, PRESETS, arena_radius_for, minimum_arena_radius
+from .modes.rules import (
+    DRAWN_LINEUPS,
+    FLEET_PRESETS,
+    LINEUPS,
+    PRESETS,
+    arena_radius_for,
+    minimum_arena_radius,
+)
 from .perception import sight
 from .perception.observe import perceive, view_order
 from .perception.sight import vision_range
@@ -128,6 +135,7 @@ __all__ = [
     "arena_radius_for",
     "minimum_arena_radius",
     "LINEUPS",
+    "DRAWN_LINEUPS",
     "Rules",
     "ShipTypes",
     "State",
@@ -158,6 +166,7 @@ __all__ = [
     "perceive",
     "perceived",
     "preset_lineup",
+    "drawn_lineup_types",
     "reset",
     "reload_ships",
     "resolve",
@@ -205,6 +214,15 @@ def preset_lineup(name: str) -> tuple[int, ...] | None:
         return None
     names = type_names(PRESETS[name].ship_set)
     return tuple(names.index(type_name) for type_name in LINEUPS[name])
+
+
+def drawn_lineup_types(ship_set: str) -> tuple[int, ...]:
+    """The ship type indices a drawn lineup's slots take in `ship_set` (`DRAWN_LINEUPS`).
+    Raises ValueError for a set without drawn lineup types."""
+    if ship_set not in DRAWN_LINEUPS:
+        raise ValueError(f"ship set {ship_set!r} has no drawn lineup types ({DRAWN_LINEUPS})")
+    names = type_names(ship_set)
+    return tuple(names.index(type_name) for type_name in DRAWN_LINEUPS[ship_set])
 
 
 def uniforms(rules: Rules, batch: int, device=None, generator=None) -> torch.Tensor:

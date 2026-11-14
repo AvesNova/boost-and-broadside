@@ -84,7 +84,9 @@ def update(trainer: Trainer) -> tuple[dict, str | None]:
     """One BC update of `trainer` (objective "bc"), fed to its stop rule
     (`trainer.stop_rule`): (the update's row with the training games' scores, the rule's
     windows over the lanes' games against the scripted agent and the plateau's reading
-    (`bc/stop/plateau/{kl_mean, fraction, held_steps}`), the rule that fired: "plateau",
+    (`bc/stop/plateau/{kl_mean, fraction, held_steps, reached}`: reached 1 when the rule
+    fired at this update, which stops BC only with `StopConfig.plateau_stops`), the rule
+    that fired: "plateau",
     "score" or "budget", or None). The trainer's hooks must be BC's
     (`bnb.league.lanes.LaneHooks`), which keep the averages. The uniform average's games
     count only once it held an update past the warm-up (`TrainConfig.uniform_start`) as
@@ -115,6 +117,7 @@ def update(trainer: Trainer) -> tuple[dict, str | None]:
         ("plateau/kl_mean", plateau.mean),
         ("plateau/fraction", plateau.fraction),
         ("plateau/held_steps", plateau.held_steps(trainer.ppo.environment_steps)),
+        ("plateau/reached", float(rule.plateaued)),
     ):
         if value is not None:
             row[f"bc/stop/{name}"] = value

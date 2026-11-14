@@ -89,6 +89,19 @@ every preset); the rating lanes keep their games' own fields. `bnb ratings --act
 LOW HIGH` rates on games that sample. A Yemong playing such games masks the absent fields
 (`Yemong.mask_absent_fields`, [Yemong](../yemong.md)).
 
+## Lineup draw
+
+Training draws each episode's lineup (`TrainConfig.lineup_draw`, on by default; decided
+2026-11-14). Every slot of a team is one of the ship set's drawn types with equal chance
+(`bnb.game.api.DRAWN_LINEUPS`: Yongma or Jujak in the real-scale set, Fighter or Heavy in
+the standard one), and the other team flies the same lineup slot for slot, so neither side
+gets the better ships. The draw is keyed by (seed, environment, episode), apart from the
+map's tick uniforms, so turning it off moves no other draw (`bnb.runtime.rollout`,
+`Rollout._lineups`). An episode that ends hands the next one's lineup to the game
+(`resolve`'s `next_ship_type`), and its ships spawn as their new types. The rating lanes
+draw too; the evaluation suite draws its games' lineups the same way
+(`bnb.league.crossover.lineup_draw`). A fixed `TrainConfig.lineup` replaces the draw.
+
 ## Fixed shapes across modes
 
 - **Zones.** Every environment carries the same zone slots. In a mode without zones they

@@ -33,15 +33,16 @@ players are in the field, matched by identity (`identity`: a policy by the hash 
 weights, a scripted player by its name), starts the fit, and only the batches still needed
 are played.
 
-Team deathmatch is scored by kill share by default, or by win, draw or loss by the sign of
-the final kill difference (`deathmatch_score`, `DEATHMATCH_SCORES`). The scoring is applied
+Team deathmatch is scored by default by win, draw or loss by the sign of the final kill
+difference, as the other modes are, or by kill share (`deathmatch_score`,
+`DEATHMATCH_SCORES`). The scoring is applied
 when the games are fitted, not when they are recorded: each block of a batch keeps its full
 outcome (`outcomes`: wins, draws and losses by the game's win rule, the summed kill shares
 and each side's summed kills), so a record is resumed and reused under either scoring
 (`recorded_results`). A record written before the full outcome was kept holds only the
-results of the scoring it names (`scoring`; none named, the default's), and is used only
-under that scoring. A budget of 0 plays nothing: the field is refitted from its record and
-the reused records alone.
+results of the scoring it names (`scoring`; none named, kill share's: `UNNAMED_SCORE`),
+and is used only under that scoring. A budget of 0 plays nothing: the field is refitted
+from its record and the reused records alone.
 """
 
 import dataclasses
@@ -86,12 +87,17 @@ from .matches import (
 )
 
 # The rating games (the author, 2026-11-13): frontline, elimination (the clock to the team
-# with more health left) and team deathmatch, rated by kill share (`kill_share_scored`).
+# with more health left) and team deathmatch.
 PRESET_NAMES = ("frontline", "elimination", "deathmatch")
-# How a team deathmatch game is scored (`kill_share_scored`): "kill_share", the default, the
-# game's kill share; "win_loss", a win, draw or loss by the sign of the final kill
-# difference (the mode's score), as the other modes' games are.
-DEATHMATCH_SCORES = ("kill_share", "win_loss")
+# How a team deathmatch game is scored (`kill_share_scored`): "win_loss", the default
+# (the kill lead, decided 2026-11-14), a win, draw or loss by the sign of the final kill
+# difference (the mode's score), as the other modes' games are; "kill_share", the game's
+# kill share.
+DEATHMATCH_SCORES = ("win_loss", "kill_share")
+DEATHMATCH_SCORE = "win_loss"
+# The deathmatch scoring of a recorded batch that names none: batches were written without
+# a "scoring" name only while kill share was the default (until 2026-11-15).
+UNNAMED_SCORE = "kill_share"
 ANCHOR = "scripted"
 ALLOCATIONS = ("a_optimal", "balanced")
 
@@ -242,23 +248,27 @@ def _check_deathmatch_score(deathmatch_score: str) -> None:
         raise ValueError(f"deathmatch score {deathmatch_score!r} is not one of {DEATHMATCH_SCORES}")
 
 
-def kill_share_scored(game: GameConfig, deathmatch_score: str = "kill_share") -> bool:
-    """Whether a game is rated by kill share (the author, 2026-11-13): team deathmatch with
-    deathmatch_score "kill_share" (the default), each game scored by the enemy's deaths over
-    both sides' (any cause, as the mode's score counts them: `Arena.kill_shares`), a
-    fractional outcome the Bradley-Terry fit takes as it takes a draw's half. With
-    deathmatch_score "win_loss" team deathmatch is rated, as elimination and frontline are,
-    on the match's win, draw or loss (in team deathmatch the sign of the final kill
-    difference)."""
+def kill_share_scored(game: GameConfig, deathmatch_score: str = DEATHMATCH_SCORE) -> bool:
+    """Whether a game is rated by kill share: team deathmatch with deathmatch_score
+    "kill_share", each game scored by the enemy's deaths over both sides' (any cause, as
+    the mode's score counts them: `Arena.kill_shares`), a fractional outcome the
+    Bradley-Terry fit takes as it takes a draw's half. With deathmatch_score "win_loss"
+    (the default) team deathmatch is rated, as elimination and frontline are, on the
+    match's win, draw or loss (in team deathmatch the sign of the final kill difference)."""
     _check_deathmatch_score(deathmatch_score)
     return game.mode == TEAM_DEATHMATCH and deathmatch_score == "kill_share"
 
 
-def scoring_of(game: GameConfig, deathmatch_score: str = "kill_share") -> str:
+def scoring_of(game: GameConfig, deathmatch_score: str = DEATHMATCH_SCORE) -> str:
     """How the game's results are scored, as a record names it: "kill_share" or "win_loss"
-    (`kill_share_scored`). A record that names none was scored with the default
-    (`scoring_of(game)`)."""
+    (`kill_share_scored`). A record that names none was scored by kill share in team
+    deathmatch (`unnamed_scoring`)."""
     return "kill_share" if kill_share_scored(game, deathmatch_score) else "win_loss"
+
+
+def unnamed_scoring(game: GameConfig) -> str:
+    """How a recorded batch of `game` that names no scoring was scored (`UNNAMED_SCORE`)."""
+    return scoring_of(game, UNNAMED_SCORE)
 
 
 def outcomes(arena: Arena, matchups: list[tuple[int, int]]) -> tuple[torch.Tensor, dict]:
@@ -290,7 +300,7 @@ def recorded_results(entry: dict, scoring: tuple[str, str] | None) -> list | Non
     """A recorded batch's results by block as a fit of scoring[0] reads them, or None when
     it cannot. A batch with its full outcome (a "kill_share" column; `outcomes`) is scored
     as asked (`score_results`); an older one holds only the results of the scoring it names
-    (none named: scoring[1], the default's), usable only under that scoring. scoring None:
+    (none named: scoring[1], `unnamed_scoring`), usable only under that scoring. scoring None:
     the results as they were recorded."""
     if scoring is None:
         return entry["results"]
@@ -303,7 +313,7 @@ def scored(
     arena: Arena,
     game: GameConfig,
     matchups: list[tuple[int, int]],
-    deathmatch_score: str = "kill_share",
+    deathmatch_score: str = DEATHMATCH_SCORE,
 ) -> torch.Tensor:
     """One batch's results by block, as the game is rated: the first player's (wins, ties,
     losses), or its kill-share score as (score, 0, games - score) (`kill_share_scored`)."""
@@ -455,7 +465,8 @@ def reuse_record(
     (`resolve`, `_legacy_identities`). A recorded identity that two of the field's players
     share is left out (ambiguous). A record of another game version (`bnb.game.VERSION`; a
     record without one is version 1's) is not reused: its games were another game's. scoring:
-    (this tournament's scoring, the one a batch that names none was scored by; `scoring_of`),
+    (this tournament's scoring, the one a batch that names none was scored by;
+    `scoring_of`, `unnamed_scoring`),
     None to take the results as recorded: a batch with its full outcome is read under any
     scoring, an older one only under its own (`recorded_results`)."""
     count = len(names)
@@ -704,7 +715,7 @@ def rate(
     statistics: bool = False,
     reuse: tuple[pathlib.Path, ...] = (),
     resolve: Callable[[str], Player] = player,
-    deathmatch_score: str = "kill_share",
+    deathmatch_score: str = DEATHMATCH_SCORE,
 ) -> list[dict]:
     """The field's ratings in one game preset (`game`: its config, PRESETS[preset] by
     default): a row per player (its name, `calibrated_elo`, its standard error and its
@@ -721,7 +732,7 @@ def rate(
     `recorded_results`). The engine is built at the first batch, so a finished record, or
     a budget of 0, plays nothing."""
     game = PRESETS[preset] if game is None else game
-    scoring = (scoring_of(game, deathmatch_score), scoring_of(game))
+    scoring = (scoring_of(game, deathmatch_score), unnamed_scoring(game))
     names = [p.name for p in players]
     if anchor not in names:
         raise ValueError(f"the field needs its anchor {anchor!r}: it anchors the ratings at 1000")
@@ -837,7 +848,7 @@ def head_to_head(
     device: torch.device,
     config: ArenaConfig = ArenaConfig(),
     games_of: dict[str, GameConfig] | None = None,
-    deathmatch_score: str = "kill_share",
+    deathmatch_score: str = DEATHMATCH_SCORE,
 ) -> list[dict]:
     """Each pair of `players` (in order: the first against the second, the third against
     the fourth, ...) over `games` games per preset (split evenly between the seats; a

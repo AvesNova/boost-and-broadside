@@ -28,6 +28,7 @@ from bnb.contracts.series import Table
 from bnb.controllers.scripted_cheese import agent_of, player_name
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
+from bnb.runs.serialise import from_json, to_json
 from bnb.runs.session import CADENCE_UPDATES
 from bnb.runtime.lanes import UNIFORM_AVERAGE, league_slot
 from bnb.runtime.opponents import (
@@ -37,6 +38,7 @@ from bnb.runtime.opponents import (
     SCRIPTED_KIND,
     SCRIPTED_PLAYER,
 )
+from bnb.runtime.snapshots import SnapshotSchedule
 from bnb.runtime.train import Trainer
 from bnb.streams import inverse_cdf, keyed_uniform, stream_key
 
@@ -139,7 +141,7 @@ class League:
             for gauge in self.gauges.values():
                 gauge.add(name, "cheese")
         self.snapshots: dict[str, dict[str, torch.Tensor]] = {}
-        self.snapshot_every = self.config.snapshot_every
+        self.schedule = self.config.snapshots
         self.ordinal = 0
         self.swaps = 0
         self.next_slot = 0
@@ -168,7 +170,8 @@ class League:
             for name, entry in self.entries.items()
             if entry.kind == "checkpoint"
         }
-        self.snapshot_every = record["snapshot_every"]
+        schedule = record["snapshot_schedule"]
+        self.schedule = None if schedule is None else from_json(SnapshotSchedule, schedule)[0]
         self.ordinal, self.swaps, self.next_slot, self.updates = (
             record["ordinal"],
             record["swaps"],
@@ -198,7 +201,9 @@ class League:
         self.weights = {}
         for mode, gauge in self.gauges.items():
             assert gauge.names() == names, (gauge.names(), names)
-            self.weights[mode] = sampling_weights(gauge.win_probabilities(), self.config.floor)
+            self.weights[mode] = sampling_weights(
+                gauge.win_probabilities(), self.config.sampling, self.config.floor
+            )
         self.mixed = sum(
             share * self.weights[mode] for share, mode in zip(self.mode_shares.tolist(), self.modes)
         )
@@ -305,8 +310,7 @@ class League:
     def collected(self, trainer: Trainer) -> None:
         """When a snapshot is due at this update, keep the weights that played it."""
         before, after = self._steps_after_update(trainer)
-        every = self.snapshot_every
-        if every is not None and after // every > before // every:
+        if self.schedule is not None and self.schedule.due(before, after):
             self.pending = {
                 key: value.detach().to("cpu", copy=True)
                 for key, value in trainer.model.state_dict().items()
@@ -345,19 +349,20 @@ class League:
         return metrics
 
     def _measure_cadence(self, trainer: Trainer) -> None:
-        """Without a set cadence: about SNAPSHOT_SECONDS at the pace of the slowest of the
-        second to fourth updates (the first compiles, and a PPO update that stops early on its
-        KL is several times shorter), in whole updates, recorded in the run."""
-        if self.snapshot_every is not None:
+        """Without a schedule (`LeagueConfig.snapshots` None): a period of about
+        SNAPSHOT_SECONDS at the pace of the slowest of the second to fourth updates (the
+        first compiles, and a PPO update that stops early on its KL is several times
+        shorter), in whole updates, recorded in the run."""
+        if self.schedule is not None:
             return
         now = time.perf_counter()
         if self.started is not None:
             self.durations.append(now - self.started)
             if len(self.durations) == CADENCE_UPDATES:
                 updates = max(1, round(SNAPSHOT_SECONDS / max(self.durations)))
-                self.snapshot_every = updates * trainer.steps_per_update
+                self.schedule = SnapshotSchedule(every=updates * trainer.steps_per_update)
                 if self.run is not None:
-                    self.run.update(snapshot_every=self.snapshot_every)
+                    self.run.update(snapshot_every=self.schedule.every)
         self.started = now
 
     def _snapshot(self, trainer: Trainer, steps: int, weights: dict[str, torch.Tensor]) -> str:
@@ -493,7 +498,7 @@ class League:
             entries=[dataclasses.asdict(entry) for entry in self.entries.values()],
             gauges={mode: gauge.state() for mode, gauge in self.gauges.items()},
             averaged=self.averages.count,
-            snapshot_every=self.snapshot_every,
+            snapshot_schedule=None if self.schedule is None else to_json(self.schedule),
             ordinal=self.ordinal,
             swaps=self.swaps,
             next_slot=self.next_slot,

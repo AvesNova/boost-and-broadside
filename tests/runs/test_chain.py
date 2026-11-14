@@ -2,7 +2,8 @@
 handover to RL from the clone's exponential average (a fresh optimizer, its warm-up and
 the warm start's entropy), the combined budget, the records, and a resume in BC, at the
 handover and in RL. CPU, tiny configurations; the plateau is replaced by a rule that fires
-at a chosen step, so the handover falls where a test puts it."""
+at a chosen step and set to stop BC (`stop.plateau_stops`; by default it only logs), so
+the handover falls where a test puts it."""
 
 import json
 import os
@@ -32,6 +33,8 @@ CHAIN_OPTIONS = (
     "lanes.environments=4",
     "--bc-set",
     "league.uniform_from=0",
+    "--bc-set",
+    "stop.plateau_stops=true",
 )
 
 

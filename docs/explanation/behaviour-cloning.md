@@ -114,9 +114,12 @@ its retained checkpoints from 66M to 151M steps, built offline, 0.350.
 
 `bnb.learn.bc.StopRule`, fed once per update by `bnb.runtime.cloning.update`, names the
 first rule to fire (`bnb.learn.bc.StopConfig`, the run's `TrainConfig.stop`). Its state is
-part of the training checkpoint, so a resumed run continues the same windows:
+part of the training checkpoint, so a resumed run continues the same windows. By default
+only the budget stops BC, at 100M environment steps for every arm (decided 2026-11-14);
+the plateau rule is read and logged, and the score rule has no target:
 
-- **plateau** (the default): BC's imitation has stopped improving, read on the BC KL,
+- **plateau** (logged; it stops BC only with `StopConfig.plateau_stops`): BC's imitation
+  has stopped improving, read on the BC KL,
   `KL(labels ‖ student) = CE − H(labels)` per token (`bnb.learn.bc.Plateau`). Over the
   last 10M environment steps its trailing mean improved by less than 5% of its
   improvement since 5M steps, and that has held at every update for 10M steps
@@ -125,7 +128,9 @@ part of the training checkpoint, so a resumed run continues the same windows:
   (`plateau_smoothing_steps`); the improvement since 5M is measured from the plain mean of
   the updates within 2.5M steps of 5M, which leaves out the untrained policy's first
   updates. It reads neither the teacher nor the model, so it applies to every model and
-  teacher. `--set stop.plateau_fraction=null` turns it off;
+  teacher. Each update logs whether it has fired (`bc/stop/plateau/reached`{.plain}), so
+  the step it would have stopped at is in the record; `--set stop.plateau_stops=true`
+  makes it stop BC again, and `--set stop.plateau_fraction=null` turns it off;
 - **score** (off by default, `StopConfig.score_target`): the score against the raw scripted
   agent in the lanes (wins plus half the draws) over the last 1000 finished lane games of
   the better of the two averages reaches the target (parity, 0.5, was the default before
@@ -144,11 +149,12 @@ part of the training checkpoint, so a resumed run continues the same windows:
   each update's games, points and squared points, drops the oldest updates whole and
   counts the oldest one it keeps by the share of its games the window needs, so trimming
   favours no result;
-- **budget:** 50M environment steps, v1's time to parity: a cap. A run stopped by its
-  budget ends with a checkpoint and its policy files; `bnb train --resume RUN
-  --bc-budget-steps N` with a larger budget continues it. In a chain
-  ([Training](../guides/training.md#chain-bc-and-rl)) the budget is the chain's combined
-  one.
+- **budget** (the default stop): 100M environment steps, the same for every arm, so arms
+  compare at equal BC training (it was 50M, v1's time to parity, as a cap behind the
+  plateau). A run stopped by its budget ends with a checkpoint and its policy files;
+  `bnb train --resume RUN --bc-budget-steps N` with a larger budget continues it. In a
+  chain ([Training](../guides/training.md#chain-bc-and-rl)) it is at most the chain's
+  combined budget.
 
 ### Why the plateau reads like this
 
@@ -195,7 +201,9 @@ full window's (`bc/stop/window_score/<player>`{.plain}) and which average the st
 (`bc/stop/reads/<average>`{.plain}, 1 for the read one); and the plateau's reading: the
 KL's trailing mean (`bc/stop/plateau/kl_mean`{.plain}), the recent improvement over the
 improvement since 5M, once there is one (`bc/stop/plateau/fraction`{.plain}, which fires
-the rule below 0.05), and how long it has been below (`bc/stop/plateau/held_steps`{.plain}).
+the rule below 0.05), how long it has been below (`bc/stop/plateau/held_steps`{.plain})
+and whether the rule has fired (`bc/stop/plateau/reached`{.plain}, 1 from the update it
+fires on while the condition holds).
 
 ## The hand-off
 
@@ -213,8 +221,8 @@ where the RL run's live rating starts:
 
 `policy/` duplicates `policy-exponential/`, so that the hand-off has one path. A
 resumed run replaces these four at its next end; the three
-players of every 10M environment steps and of each end stay under
-`policies/step_<steps>/` (`TrainConfig.policy_snapshot_every`,
+players of each scheduled step and of each end stay under
+`policies/step_<steps>/` (`TrainConfig.policy_snapshots`,
 [Runs and checkpoints](runs.md#every-updates-policy-files)). The return scale is the learner's in all four. `bnb train
 --init-from` starts reinforcement learning from any of them (`bnb.runs.checkpoint.warm_start`): the weights and return scale, a fresh
 optimizer, fresh step counts and no cloning term ([Runs and checkpoints](runs.md)); a

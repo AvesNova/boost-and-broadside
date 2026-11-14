@@ -13,7 +13,7 @@ import torch
 
 from bnb.controllers.scripted_cheese import agent_of
 from bnb.runtime.lanes import EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE
-from bnb.runtime.opponents import SCRIPTED_PLAYER, LeagueConfig
+from bnb.runtime.opponents import SAMPLINGS, SCRIPTED_PLAYER, LeagueConfig
 
 from .gauge import KINDS
 
@@ -57,12 +57,22 @@ def snapshot_name(steps: int) -> str:
     return f"snapshot_{steps}"
 
 
-def sampling_weights(win_probabilities: torch.Tensor, floor: float) -> torch.Tensor:
-    """(K,) float64 summing to 1: each entry's `p (1 - p)` on the predicted probability `p`
-    that the live policy beats it, scaled to `1 - floor` of the pool's weight, plus `floor`
-    spread evenly over the entries (all of it when every `p (1 - p)` is zero)."""
+def sampling_weights(
+    win_probabilities: torch.Tensor, sampling: str = "hard", floor: float = 0.0
+) -> torch.Tensor:
+    """(K,) float64 summing to 1: each entry's weight on the predicted probability `p` that
+    the live policy beats it (`LeagueConfig.sampling`): "hard", `(1 - p)^2` (AlphaStar's
+    prioritised fictitious self-play, f_hard with exponent 2: the entries the live policy
+    most often loses to weigh most), or "variance", `p (1 - p)` (the entries whose result
+    is least certain); scaled to `1 - floor` of the pool's weight, plus `floor` spread
+    evenly over the entries (all of it when every weight is zero)."""
+    if sampling not in SAMPLINGS:
+        raise ValueError(f"sampling {sampling!r} is not one of {SAMPLINGS}")
     probability = win_probabilities.to(torch.float64)
-    weight = probability * (1.0 - probability)
+    if sampling == "hard":
+        weight = (1.0 - probability).square()
+    else:
+        weight = probability * (1.0 - probability)
     count = weight.shape[0]
     total = float(weight.sum())
     if total == 0.0:

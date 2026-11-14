@@ -166,11 +166,12 @@ def test_deathmatch_clock_goes_to_the_higher_score(score, result):
 
 
 @pytest.mark.parametrize("score, share", [((3, 5), 3 / 8), ((6, 2), 0.75), ((0, 0), 0.5)])
-def test_deathmatch_outcome_is_the_kill_share(score, share):
-    """Team deathmatch's learner outcome is its kill share, as its rating is: win_loss is
-    (share, 1 - share), never a draw, and the outcome reward 2 share - 1 to team 0 and its
-    negation to team 1; the result still says who led."""
+def test_deathmatch_kill_share_outcome_is_the_kill_share(score, share):
+    """With `deathmatch_outcome` "kill_share", team deathmatch's learner outcome is its kill
+    share: win_loss is (share, 1 - share), never a draw, and the outcome reward 2 share - 1
+    to team 0 and its negation to team 1; the result still says who led."""
     rules, state = cases.rules_and_state(GameConfig(3, 2, 1200.0), batch=1)
+    rules = api.with_deathmatch_outcome(rules, "kill_share")
     state = cases.edit_mode(state, score=torch.tensor([score], dtype=torch.int32))
     state = replace(
         state,
@@ -190,13 +191,11 @@ def test_deathmatch_outcome_is_the_kill_share(score, share):
 @pytest.mark.parametrize(
     "score, win_loss", [((3, 5), (0.0, 1.0)), ((6, 2), (1.0, 0.0)), ((4, 4), (0.0, 0.0))]
 )
-def test_deathmatch_kill_lead_outcome_is_the_result_one_hot(score, win_loss):
-    """With `deathmatch_outcome` "kill_lead" (the training switch,
-    `RewardConfig.deathmatch_outcome`), team deathmatch's learner outcome is the result
-    one-hot by the sign of the final kill difference, a draw neither; the result is the
-    same as under the default."""
+def test_deathmatch_outcome_is_the_kill_lead(score, win_loss):
+    """Team deathmatch's learner outcome is by default ("kill_lead",
+    `RewardConfig.deathmatch_outcome`) the result one-hot by the sign of the final kill
+    difference, a draw neither, as its rating is."""
     rules, state = cases.rules_and_state(GameConfig(3, 2, 1200.0), batch=1)
-    rules = api.with_deathmatch_outcome(rules, "kill_lead")
     assert rules.pools[0].mode.deathmatch_outcome == "kill_lead"
     state = cases.edit_mode(state, score=torch.tensor([score], dtype=torch.int32))
     state = replace(
@@ -215,18 +214,18 @@ def test_deathmatch_kill_lead_outcome_is_the_result_one_hot(score, win_loss):
 
 
 def test_the_deathmatch_outcome_is_a_reward_setting():
-    """`--set reward.deathmatch_outcome=kill_lead` reaches the TrainConfig; kill_share is the
+    """`--set reward.deathmatch_outcome=kill_share` reaches the TrainConfig; kill_lead is the
     default (rules and reward alike), and an unknown outcome is refused."""
     from bnb.cli import parse_setting, with_settings
     from bnb.runtime.train import TrainConfig
 
     default = TrainConfig(game=GameConfig(5, 10, 2600.0))
-    assert default.reward.deathmatch_outcome == "kill_share"
-    assert api.rules_of(default.game).pools[0].mode.deathmatch_outcome == "kill_share"
+    assert default.reward.deathmatch_outcome == "kill_lead"
+    assert api.rules_of(default.game).pools[0].mode.deathmatch_outcome == "kill_lead"
     rules = api.rules_of(default.game)
-    assert api.with_deathmatch_outcome(rules, "kill_share") is rules
-    config = with_settings(default, [parse_setting("reward.deathmatch_outcome=kill_lead")])
-    assert config.reward.deathmatch_outcome == "kill_lead"
+    assert api.with_deathmatch_outcome(rules, "kill_lead") is rules
+    config = with_settings(default, [parse_setting("reward.deathmatch_outcome=kill_share")])
+    assert config.reward.deathmatch_outcome == "kill_share"
     with pytest.raises(ValueError, match="deathmatch_outcome"):
         rewards.RewardConfig(deathmatch_outcome="kill_count")
     with pytest.raises(SystemExit, match="deathmatch_outcome"):
@@ -260,8 +259,10 @@ def test_the_rollout_plays_its_reward_configs_deathmatch_outcome(outcome):
 
 
 def test_deathmatch_win_by_target_scores_the_final_share():
-    """A match the target ends is scored by the share at its end, the winning kill counted."""
+    """With the kill-share outcome, a match the target ends is scored by the share at its
+    end, the winning kill counted."""
     rules, state = cases.rules_and_state(GameConfig(3, 2, 1200.0), batch=1)
+    rules = api.with_deathmatch_outcome(rules, "kill_share")
     target = rules.pools[0].mode.kills_per_ship * rules.ships_per_team
     state = cases.edit_mode(state, score=torch.tensor([[target - 1, 5]], dtype=torch.int32))
     _, events = cases.tick(rules, _boundary_kill(state, (3,)))

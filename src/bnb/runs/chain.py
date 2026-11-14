@@ -13,8 +13,9 @@ and each record of a stage's metrics carries `counters/chain_environment_steps`,
 on the chain's axis. The chain's record says where the handover happened: the BC stage's
 last step, the rule that stopped it and the policy file the RL stage started from.
 
-BC's budget is the combined budget (a cap: its own stop rule ends it first, in a chain
-that goes as planned); the RL stage trains the whole updates that fit in what is left.
+BC's budget is its own, 100M environment steps for every arm, at most the combined budget
+(`bnb.cli.chain_bc_budget`; its plateau rule only logs by default, decided 2026-11-14);
+the RL stage trains the whole updates that fit in what is left.
 A stage starts with a checkpoint at its step 0, so the chain resumes at any point: in BC,
 at the handover (the BC stage finished, the RL stage not begun or not yet past its first
 checkpoint) and in RL.

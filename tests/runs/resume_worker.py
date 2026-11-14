@@ -44,6 +44,7 @@ from bnb.runs.triggers import Triggers  # noqa: E402
 from bnb.runtime import cloning  # noqa: E402
 from bnb.runtime.lanes import BC_MATCHUPS, LIVE, SCRIPTED_PLAYER, LaneConfig, Matchup  # noqa: E402
 from bnb.runtime.opponents import LeagueConfig  # noqa: E402
+from bnb.runtime.snapshots import SnapshotSchedule  # noqa: E402
 from bnb.runtime.train import TrainConfig, Trainer  # noqa: E402
 
 TIMES = (
@@ -115,7 +116,9 @@ def config(model: str, device: str, objective: str = "ppo") -> TrainConfig:
         relational=RelationalConfig(hidden=32),
         # a cut at every update: the checkpoint falls right after one, the resume runs into
         # more (an unrated average takes the live rating each update)
-        league=LeagueConfig(snapshot_every=ENVIRONMENTS * LENGTH, cut_every=1, cut_slots=2),
+        league=LeagueConfig(
+            snapshots=SnapshotSchedule(every=ENVIRONMENTS * LENGTH), cut_every=1, cut_slots=2
+        ),
         learner=learner,
         compiled=device == "cuda",
     )

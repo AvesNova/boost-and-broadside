@@ -105,8 +105,8 @@ def save_update_policies(
     run: Run, trainer: Trainer, scratch: torch.nn.Module, recorder: Recorder | None = None
 ) -> None:
     """The policy files of the update that just ended (after every update when the run keeps
-    them, `update_policies`, else every `TrainConfig.policy_snapshot_every` environment
-    steps and at each segment's end), at `policies/step_<steps>/`: the live
+    them, `update_policies`, else at each step of `TrainConfig.policy_snapshots` and at
+    each segment's end), at `policies/step_<steps>/`: the live
     weights (`live/`), the exponential average (`exponential_average/`) and, once it has
     started, the uniform average (`uniform_average/`). They are never pruned, so an average
     of another decay can be built afterwards from the live files (`bnb runs ema`). scratch: a
@@ -256,7 +256,7 @@ def train(
             return train(run, trainer, log, margin, recorder, own)
     cloned = trainer.config.objective == "bc"
     every_update = bool(run.record.get("update_policies"))
-    snapshot_every = trainer.config.policy_snapshot_every
+    snapshots = trainer.config.policy_snapshots
     scratch = copy.deepcopy(trainer.model).cpu()
     stop_file = run.directory / STOP_FILE
     if stop.by is None and stop_file.exists():
@@ -298,7 +298,7 @@ def train(
                     reason = combat_collapse(trainer, recorder)
             log(row)
             steps = trainer.ppo.environment_steps
-            if every_update or steps // snapshot_every > before // snapshot_every:
+            if every_update or snapshots.due(before, steps):
                 save_update_policies(run, trainer, scratch, recorder)
             every = run.record["checkpoint_every"]
             if every and trainer.ppo.environment_steps // every > before // every:

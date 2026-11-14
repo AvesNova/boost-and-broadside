@@ -56,6 +56,7 @@ from .lineup import Lineup
 from .metrics import Collector
 from .opponents import OPPONENTS, LeagueConfig, OpponentSlots
 from .rollout import Rollout
+from .snapshots import RL_SNAPSHOTS, SnapshotSchedule
 
 LEARNER = "learner"
 SCRIPTED = "scripted"
@@ -64,17 +65,17 @@ SCRIPTED = "scripted"
 TRAINING_MIX = (("frontline", 0.5), ("deathmatch", 0.5))
 # the mixes `bnb train --preset` names: the standard ship set's, and the real-scale set's
 # (the same two modes on the real-scale maps, `PRESETS["real_scale_*"]`); and
-# real_scale_all_modes, the final experiments' mix (the author, 2026-11-12): the three
-# real-scale modes, frontline 0.5, deathmatch 0.3125, elimination 0.1875 (of 2048
-# environments 1024 / 640 / 384, each mode's two pools whole: 512 / 320 / 192; shares of
-# sixteenths so that 2048 splits exactly and its views divide every minibatch count)
+# real_scale_all_modes, the final experiments' mix: the three real-scale modes, frontline
+# 6/16, deathmatch 5/16, elimination 5/16 (decided 2026-11-14; 8/5/3 from 2026-11-12): of
+# 2048 environments 768 / 640 / 640, each mode's two pools whole: 384 / 320 / 320; shares
+# of sixteenths so that 2048 splits exactly and its views divide every minibatch count
 TRAINING_MIXES = {
     "mixed": TRAINING_MIX,
     "real_scale_mixed": (("real_scale_frontline", 0.5), ("real_scale_deathmatch", 0.5)),
     "real_scale_all_modes": (
-        ("real_scale_frontline", 0.5),
+        ("real_scale_frontline", 0.375),
         ("real_scale_deathmatch", 0.3125),
-        ("real_scale_elimination", 0.1875),
+        ("real_scale_elimination", 0.3125),
     ),
 }
 # Self-play is a fixed share of each mode's batch, the league's seat the rest (league spec 1).
@@ -170,10 +171,12 @@ class TrainConfig:
     objective: "ppo", or "bc" (clone the scripted agent; `learner` should then be
     `bnb.learn.bc.config()`, `teacher` sets its labels and how the scripted opponent
     plays, `bnb.learn.bc.TeacherOpponent`, and `stop` when it stops, its budget included).
-    policy_snapshot_every: for a run that does not write every update's policy files (BC
-    by default: the run's `update_policies`), the environment steps between the policy
-    files it keeps under `policies/step_<steps>/`, the live weights and both averages, and
-    always at the end of each process's segment (`bnb.runs.session.train`).
+    policy_snapshots: for a run that does not write every update's policy files (BC by
+    default: the run's `update_policies`), the environment steps at which it keeps them
+    under `policies/step_<steps>/`, the live weights and both averages
+    (`bnb.runtime.snapshots.SnapshotSchedule`; `RL_SNAPSHOTS` by default, decided
+    2026-11-14: 1, 2, 3, 4, 6, 8, 10, 12, 16 and 20M steps, then every 5M), and always at
+    the end of each process's segment (`bnb.runs.session.train`).
     arena_scale: map-size sampling for the training pools (`bnb.contracts.ArenaScale`; the
     author, 2026-11-13: ln scale ~ Normal(0, 0.35) truncated to [0.5, 2], each
     environment's arena drawn at every reset), or None for each pool's own arena every
@@ -186,6 +189,11 @@ class TrainConfig:
     same for both teams, in every game of the batch (the rating lanes' too); None plays the
     game's own lineup (`Rules.team_types`). A tournament of such policies plays the same
     lineup (`bnb ratings --lineup`).
+    lineup_draw: each episode of the batch (the rating lanes' too) draws its lineup, every
+    slot one of the ship set's drawn types with equal chance (`api.DRAWN_LINEUPS`: Yongma
+    or Jujak in the real-scale set), both teams flying it slot for slot, as the evaluation
+    suite's games do (decided 2026-11-14); keyed by the episode (`bnb.runtime.rollout`).
+    False plays the game's own lineup; a fixed `lineup` replaces the draw.
     compile_split: the learner's micro-batch loss compiles as two units, the unroll and the
     loss over its outputs (`Learner`'s split; compile time only, the same arithmetic within
     float rounding, `docs/rewrite/sections/compile-split`)."""
@@ -236,11 +244,11 @@ class TrainConfig:
     objective: str = "ppo"
     teacher: TeacherConfig = TeacherConfig()
     stop: StopConfig = StopConfig()
-    # every 10M environment steps (author, 2026-11-07: decisions, run control)
-    policy_snapshot_every: int = 10_000_000
+    policy_snapshots: SnapshotSchedule = RL_SNAPSHOTS
     arena_scale: ArenaScale | None = ArenaScale()
     active_fields: ActiveFields | None = None
     lineup: tuple[str, ...] | None = None
+    lineup_draw: bool = True
     # end a PPO run after this many consecutive updates with a combat-collapse alert
     # (`bnb.runs.triggers.CombatCollapse`), recording why; 0: never (the default)
     combat_collapse_stop: int = 0
@@ -254,8 +262,6 @@ class TrainConfig:
             raise ValueError(f"model {self.model!r} is not one of {MODELS}")
         if self.precision not in PRECISIONS:
             raise ValueError(f"precision {self.precision!r} is not one of {PRECISIONS}")
-        if self.policy_snapshot_every < 1:
-            raise ValueError(f"policy_snapshot_every {self.policy_snapshot_every} must be positive")
         if self.active_fields is not None:  # the game checks the range against its fields
             dataclasses.replace(self.game, active_fields=self.active_fields)
         if self.shards < 1 or self.lookahead < 0:
@@ -268,6 +274,8 @@ class TrainConfig:
                 )
         if self.lineup is not None:
             lineup_indices(self.lineup, self.game)  # fails for a wrong size or an unknown name
+        elif self.lineup_draw:
+            api.drawn_lineup_types(self.game.ship_set)  # fails for a set without drawn types
         card = api.default_card(self.game.ship_set)
         if self.ship_card is None:
             object.__setattr__(self, "ship_card", card)
@@ -486,6 +494,9 @@ class Trainer:
             else torch.tensor(lineup_indices(config.lineup, game) * api.TEAMS).repeat(
                 self.batch_environments, 1
             ),
+            lineup_types=api.drawn_lineup_types(game.ship_set)
+            if config.lineup is None and config.lineup_draw
+            else None,
             seed=config.seed,
         )
         lineup = self.rollout.lineup

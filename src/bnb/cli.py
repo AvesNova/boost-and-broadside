@@ -26,8 +26,9 @@ from bnb.figures.video import VideoConfig
 from bnb.league.evaluation_settings import EvaluationConfig
 
 # The rating games (`bnb.league.tournament.PRESET_NAMES`, kept here so the CLI starts
-# without torch): frontline, elimination and team deathmatch, rated by kill share
-# (`bnb.league.tournament.kill_share_scored`) unless --deathmatch-score win_loss.
+# without torch): frontline, elimination and team deathmatch, team deathmatch rated by the
+# kill lead (a win, draw or loss) unless --deathmatch-score kill_share
+# (`bnb.league.tournament.kill_share_scored`).
 RATED_PRESETS = ("frontline", "elimination", "deathmatch")
 
 
@@ -42,6 +43,8 @@ class Train:
     real_scale_frontline), which sets the mode, the sizes, the map and the ship set, or a
     training mix in one batch (`bnb.runtime.train.TRAINING_MIXES`): mixed, frontline and
     deathmatch half each; real_scale_mixed, the same on the real-scale maps and ships;
+    real_scale_all_modes, the three real-scale modes at 6/16 frontline, 5/16 deathmatch and
+    5/16 elimination (the arms' mix);
     without one, the mode and sizes below.
     precision: bfloat16 (the model's matmuls), float32 or tf32; old_log_probabilities:
     rollout or recomputed (by unroll before the first epoch).
@@ -76,13 +79,15 @@ class Train:
     teacher_temperature and teacher_floor set the teacher (the scripted agent at its own
     temperature, its labels mixed with uniform by the floor; T = 1 and floor 0 by
     default); bc_budget_steps: BC's budget in environment steps
-    (TrainConfig.stop.budget_steps).
+    (TrainConfig.stop.budget_steps; None: `bnb.learn.bc.StopConfig`'s, 100M, the same for
+    every arm; BC's plateau rule only logs unless `--set stop.plateau_stops=true`).
     Or chain (`bnb.runs.chain`): BC until its stop rule fires, then PPO from the clone's
     exponential average (a warm start: a fresh optimizer, its warm-up and
     WARM_START_ENTROPY), to chain_budget_steps environment steps in all (BC's budget is
-    the same number, a cap), as two runs, `<name>-bc` and `<name>-rl`, with the chain's
-    record in `<name>/`. Every other option applies to both stages; bc_set and rl_set are
-    --set lines for one stage (after --set). `--resume NAME` continues the chain at the
+    its own, 100M, at most the combined one: `chain_bc_budget`), as two runs,
+    `<name>-bc` and `<name>-rl`, with the chain's record in `<name>/`. Every other option
+    applies to both stages; bc_set and rl_set are --set lines for one stage (after
+    --set). `--resume NAME` continues the chain at the
     stage it reached; it takes only --chain-budget-steps (raised, or lowered before the
     handover), --device, --runs-directory, --checkpoint-every and --wandb.
     wandb: stream each update's record to W&B (project `boost-and-broadside-v2`, the run's
@@ -121,7 +126,7 @@ class Train:
     objective: str = "ppo"
     teacher_temperature: float = 1.0
     teacher_floor: float = 0.0
-    bc_budget_steps: int = 50_000_000
+    bc_budget_steps: int | None = None
     chain_budget_steps: int | None = None
     bc_set: Annotated[tuple[str, ...], tyro.conf.UseAppendAction] = ()
     rl_set: Annotated[tuple[str, ...], tyro.conf.UseAppendAction] = ()
@@ -255,9 +260,9 @@ class Ratings:
     seed: the games' draws (`bnb.league.matches.ArenaConfig.seed`; None: a fresh one,
     recorded with the result), so several tournaments of one field, run at once and reused
     together, play different games.
-    deathmatch_score: how the fit scores a team deathmatch game: kill_share (the default),
-    its kill share, or win_loss, a win, draw or loss by the sign of the final kill
-    difference (`bnb.league.tournament.kill_share_scored`). Each batch records every
+    deathmatch_score: how the fit scores a team deathmatch game: win_loss (the default), a
+    win, draw or loss by the sign of the final kill difference, or kill_share, its kill
+    share (`bnb.league.tournament.kill_share_scored`). Each batch records every
     block's full outcome (wins, draws, losses, summed kill shares and kills), so a record
     is resumed and reused under either; a record written before that, which holds only
     its own scoring's results, is not resumed (choose another --out) or reused under the
@@ -304,7 +309,7 @@ class Ratings:
     reuse: tuple[str, ...] = ()
     lineup: tuple[str, ...] = ()
     seed: int | None = None
-    deathmatch_score: Literal["kill_share", "win_loss"] = "kill_share"
+    deathmatch_score: Literal["win_loss", "kill_share"] = "win_loss"
     arena_scale: float | None = None
     active_fields: tuple[int, int] | None = None
     decision: tuple[str, ...] = ()
@@ -333,7 +338,7 @@ class HeadToHead:
 
     players: the pairs; games: games per pair and preset (even); presets; device;
     runs_directory: as for bnb train; deathmatch_score: how a team deathmatch game is
-    scored, kill_share (the default) or win_loss (as for bnb ratings); lineup: each slot's
+    scored, win_loss (the default) or kill_share (as for bnb ratings); lineup: each slot's
     ship type by name, both teams, for every player (as for bnb ratings; empty: the game's
     own); blocks and block_environments: the engine's layout at most;
     seed: the games' draws (`bnb.league.matches.ArenaConfig.seed`).
@@ -344,7 +349,7 @@ class HeadToHead:
     presets: tuple[str, ...] = RATED_PRESETS
     device: str = "cuda"
     runs_directory: str | None = None
-    deathmatch_score: Literal["kill_share", "win_loss"] = "kill_share"
+    deathmatch_score: Literal["win_loss", "kill_share"] = "win_loss"
     lineup: tuple[str, ...] = ()
     blocks: int = 8
     block_environments: int = 128
@@ -610,7 +615,7 @@ class Pool:
     name: str | None = None
     lineup: tuple[str, ...] = ()
     arena_scale: float | None = None
-    deathmatch_score: Literal["kill_share", "win_loss"] | None = None
+    deathmatch_score: Literal["win_loss", "kill_share"] | None = None
     presets: tuple[str, ...] = RATED_PRESETS
     target_stderr: float = 45.0
     decision: tuple[str, ...] = ()
@@ -875,7 +880,9 @@ def _requested(options: Train):
             seed=options.seed,
             objective=options.objective,
             teacher=bc.TeacherConfig(options.teacher_temperature, options.teacher_floor),
-            stop=bc.StopConfig(budget_steps=options.bc_budget_steps),
+            stop=bc.StopConfig()
+            if options.bc_budget_steps is None
+            else bc.StopConfig(budget_steps=options.bc_budget_steps),
         )
     except ValueError as error:
         raise SystemExit(str(error)) from error
@@ -1216,11 +1223,15 @@ def chain(options: Train, given_options: set[str], stop) -> None:
         bc_run = Run.open(runs_directory, stage) if (runs_directory / stage).exists() else None
         if bc_run is None or bc_run.record["status"] != "finished":
             if bc_run is None:
-                bc_options = stage_options(base, "bc", name=stage, bc_budget_steps=budget)
+                bc_options = stage_options(
+                    base, "bc", name=stage, bc_budget_steps=chain_bc_budget(budget)
+                )
                 given_stage, entry = set(), chained.stage_record("bc", 0)
             else:
-                # the stage's own budget: the combined one, or a --bc-set stop.budget_steps
-                own = _requested(stage_options(original, "bc", bc_budget_steps=budget))
+                # the stage's own budget (`chain_bc_budget`), or a --bc-set stop.budget_steps
+                own = _requested(
+                    stage_options(original, "bc", bc_budget_steps=chain_bc_budget(budget))
+                )
                 bc_options = Train(resume=stage, bc_budget_steps=own.stop.budget_steps, **passed)
                 given_stage, entry = {"resume", "bc_budget_steps"}, None
             bc_run = _train(bc_options, given_stage, stop, entry)
@@ -1254,6 +1265,14 @@ def chain(options: Train, given_options: set[str], stop) -> None:
         _train(rl_options, {"resume", "updates"}, stop)
 
 
+def chain_bc_budget(combined: int) -> int:
+    """A chain's BC stage budget: BC's own (`bnb.learn.bc.StopConfig.budget_steps`, 100M,
+    fixed for every arm: decided 2026-11-14), at most the chain's combined budget."""
+    from bnb.learn.bc import StopConfig
+
+    return min(combined, StopConfig().budget_steps)
+
+
 def chained_options(chained) -> Train:
     """The options a chain was started with, parsed from its record's arguments."""
     return tyro.cli(Train, args=chained.record["arguments"], prog="bnb train")
@@ -1277,13 +1296,13 @@ def stage_options(options: Train, stage: str, **changes) -> Train:
 
 
 def chain_configs(options: Train) -> dict:
-    """Both stages' resolved TrainConfigs as JSON (`--print-config`): BC's with the
-    combined budget as its own, RL's with the warm start's entropy coefficients (the model's
+    """Both stages' resolved TrainConfigs as JSON (`--print-config`): BC's with its own
+    budget (`chain_bc_budget`), RL's with the warm start's entropy coefficients (the model's
     settings, which a warm start takes from the clone, are the same run's)."""
     from bnb.runs.serialise import to_json
 
     budget = options.chain_budget_steps
-    bc_config = _requested(stage_options(options, "bc", bc_budget_steps=budget))
+    bc_config = _requested(stage_options(options, "bc", bc_budget_steps=chain_bc_budget(budget)))
     rl_options = stage_options(options, "rl")
     rl_config = warm_start_entropy(_requested(rl_options), rl_options.set)
     return dict(bc=to_json(bc_config), rl=to_json(rl_config))
@@ -1324,6 +1343,7 @@ def log_cloning(row: dict) -> None:
     plateau = (
         f"  plateau {row['bc/stop/plateau/fraction']:.3f} "
         f"held {row['bc/stop/plateau/held_steps']:,}"
+        f"{' (reached)' if row.get('bc/stop/plateau/reached') else ''}"
         if "bc/stop/plateau/fraction" in row
         else ""
     )
@@ -2122,7 +2142,7 @@ def pool(options: Pool) -> None:
                 options.pool,
                 options.lineup,
                 options.arena_scale,
-                options.deathmatch_score or "kill_share",
+                options.deathmatch_score or "win_loss",
             )
         except ValueError as error:
             raise SystemExit(str(error)) from error
@@ -2146,10 +2166,10 @@ def _pool_scoring(opened, preset: str, deathmatch_score: str | None) -> tuple[st
     """(how the fit scores a preset's games, the scoring a batch that names none was
     fitted under; `bnb.league.tournament.recorded_results`)."""
     from bnb.game.api import PRESETS
-    from bnb.league.tournament import scoring_of
+    from bnb.league.tournament import scoring_of, unnamed_scoring
 
-    chosen = deathmatch_score or opened.settings.get("deathmatch_score", "kill_share")
-    return scoring_of(PRESETS[preset], chosen), scoring_of(PRESETS[preset])
+    chosen = deathmatch_score or opened.settings["deathmatch_score"]
+    return scoring_of(PRESETS[preset], chosen), unnamed_scoring(PRESETS[preset])
 
 
 def _pool_add(opened, options: Pool) -> None:

@@ -1,6 +1,8 @@
 """A training lineup (`TrainConfig.lineup`): every game of the batch flies the named types,
 slot by slot, both teams, through resets; a lineup of the wrong size or an unknown name
-fails at the config; `bnb ratings --lineup` flies it for every player."""
+fails at the config; `bnb ratings --lineup` flies it for every player. Without one, each
+episode draws its lineup (`TrainConfig.lineup_draw`, the default): every slot one of the
+set's drawn types with equal chance, both teams alike, keyed by the episode."""
 
 import pathlib
 
@@ -9,6 +11,7 @@ import torch
 
 from bnb import cli
 from bnb.contracts import GameConfig, Pool
+from bnb.game import api
 from bnb.league.matches import Player
 from bnb.learn.ppo import LearnerConfig
 from bnb.models.nearest import NearestConfig
@@ -20,7 +23,7 @@ pytestmark = pytest.mark.usefixtures("global_generator")
 GAME = GameConfig(3, 2, 1200.0, episode_seconds=1.0)  # short games: resets inside the update
 
 
-def _config(lineup) -> TrainConfig:
+def _config(lineup, lineup_draw: bool = True) -> TrainConfig:
     return TrainConfig(
         game=GAME,
         model="nearest",
@@ -36,6 +39,7 @@ def _config(lineup) -> TrainConfig:
         host_store=False,
         learner=LearnerConfig(minibatches=2),
         lineup=lineup,
+        lineup_draw=lineup_draw,
     )
 
 
@@ -46,10 +50,46 @@ def test_every_game_flies_the_lineup_through_resets():
     assert torch.equal(types, torch.tensor([[1, 1, 0] * 2] * 8, dtype=types.dtype))
 
 
-def test_without_a_lineup_the_game_flies_its_own():
-    trainer = Trainer(_config(None), CPU)
+def test_without_a_lineup_or_its_draw_the_game_flies_its_own():
+    trainer = Trainer(_config(None, lineup_draw=False), CPU)
     types = trainer.rollout.carry["state"].ships.ship_type
-    assert torch.equal(types[0], torch.tensor([0, 1, 0] * 2, dtype=types.dtype))
+    assert torch.equal(types, torch.tensor([[0, 1, 0] * 2] * 8, dtype=types.dtype))
+
+
+def test_each_episode_draws_a_mirrored_lineup_through_resets():
+    """Both teams fly the episode's drawn lineup slot for slot; an episode that ends
+    spawns the next one's lineup (a ship's shield is within its new type's); the
+    environments' lineups differ."""
+    trainer = Trainer(_config(None), CPU)
+    rollout = trainer.rollout
+    first = rollout.carry["state"].ships.ship_type.clone()
+    trainer.update()
+    carry = rollout.carry
+    types = carry["state"].ships.ship_type
+    assert int(carry["episode"].min()) > 0  # every environment has reset
+    assert torch.equal(types, rollout._lineups(carry["episode"]))
+    assert torch.equal(types[:, :3], types[:, 3:])
+    assert not torch.equal(types, first)
+    assert len({tuple(row) for row in types.tolist()}) > 1
+    assert set(types.unique().tolist()) <= set(api.drawn_lineup_types(GAME.ship_set))
+    full = api.per_ship(trainer.types.max_shield, types)
+    assert (carry["state"].ships.shield <= full * (1.0 + 1e-6)).all()
+
+
+def test_a_drawn_slot_is_either_type_with_equal_chance():
+    trainer = Trainer(_config(None), CPU)
+    episodes = torch.arange(2000, dtype=torch.int64)[:, None].expand(-1, 8).reshape(-1)
+    rollout = trainer.rollout
+    rollout.environment_index = torch.arange(8).repeat(2000)  # 2000 episodes of 8 games
+    heavy = rollout._lineups(episodes)[:, :3].float().mean()
+    stderr = (0.25 / (2000 * 8 * 3)) ** 0.5
+    assert abs(float(heavy) - 0.5) < 4 * stderr
+
+
+def test_drawn_lineups_need_a_set_with_drawn_types():
+    assert api.drawn_lineup_types("real-scale") == (0, 1)  # Yongma, Jujak
+    with pytest.raises(ValueError, match="no drawn lineup types"):
+        api.drawn_lineup_types("design-seed")
 
 
 @pytest.mark.parametrize(

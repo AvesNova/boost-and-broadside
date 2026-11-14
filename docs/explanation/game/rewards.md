@@ -31,12 +31,12 @@ critic's bins and the return scale assume ([the learner](../learner.md)):
   (see [Modes](modes.md)).
 - **outcome:** the match's score, to every ship of the team, living or dead, on the final
   tick: the team's win weight less its loss weight (`Events.win_loss`). Elimination and
-  Frontline score the result, +1 or -1 by team or 0 for a draw. Team deathmatch scores its
-  kill share by default, as its default rating does: `2 share - 1`, with share the team's
-  kills over both teams' kills (0.5 when neither scored), so +1 for every kill and -1 for
-  none. With `RewardConfig.deathmatch_outcome = "kill_lead"` (`--set
-  reward.deathmatch_outcome=kill_lead`) it scores the result by the sign of the final
-  kill difference, as the other modes do.
+  Frontline score the result, +1 or -1 by team or 0 for a draw. Team deathmatch scores
+  the result too by default (`RewardConfig.deathmatch_outcome = "kill_lead"`), by the
+  sign of the final kill difference, as its default rating does. With `--set
+  reward.deathmatch_outcome=kill_share` it scores its kill share instead: `2 share - 1`,
+  with share the team's kills over both teams' kills (0.5 when neither scored), so +1 for
+  every kill and -1 for none.
 
 **Every level is zero-sum** over each environment on every tick. A team's gain is the
 other team's loss: damage to an ally blames the shooter and pays the opposing team twice,
