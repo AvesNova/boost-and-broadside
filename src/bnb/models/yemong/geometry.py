@@ -33,9 +33,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from bnb.contracts.obs import SHIP
+from bnb.models.initialise import orthogonal
 
 from . import codes
-from .heads import FIRST_GAIN, LAST_GAIN, _orthogonal
+from .heads import FIRST_GAIN, LAST_GAIN
 from .layers import norm
 
 PARTNERS = 8  # per anchor and tick
@@ -169,11 +170,16 @@ class GeometryHead(nn.Module):
         self.middle = nn.Linear(width, width)
         self.middle_norm = norm(width)
         self.last = nn.Linear(width, WIDTH)
-        for layer, gain in ((self.latent, FIRST_GAIN), (self.middle, FIRST_GAIN)):
-            for block in layer.weight.split(width):
-                _orthogonal(block, gain)
+
+    def initialise_parameters(self, generator) -> None:
+        """As the shot trajectory head: each width-row block of the latent and the middle
+        orthogonal (gain sqrt 2), the last orthogonal (gain 0.01), every bias zero."""
+        for name in ("latent", "middle"):
+            layer = getattr(self, name)
+            for index, block in enumerate(layer.weight.split(self.width)):
+                orthogonal(block, FIRST_GAIN, generator(f"{name}.weight[{index}]"))
             nn.init.zeros_(layer.bias)
-        _orthogonal(self.last.weight, LAST_GAIN)
+        orthogonal(self.last.weight, LAST_GAIN, generator("last.weight"))
         nn.init.zeros_(self.last.bias)
 
     def query(self, latents: torch.Tensor, partners: torch.Tensor) -> torch.Tensor:

@@ -7,17 +7,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from bnb.models.initialise import orthogonal
+
 from . import codes, critic, kernels
 from .kernels import heads as head_kernel
 from .layers import norm
 
 FIRST_GAIN = math.sqrt(2.0)
 LAST_GAIN = 0.01
-
-
-def _orthogonal(weight: torch.Tensor, gain: float) -> None:
-    with torch.no_grad():
-        nn.init.orthogonal_(weight, gain)
 
 
 class HeadGroup(nn.Module):
@@ -34,11 +31,14 @@ class HeadGroup(nn.Module):
         self.first = nn.Linear(inputs, hidden * len(outputs))
         self.norms = nn.ModuleList(norm(hidden) for _ in outputs)
         self.lasts = nn.ModuleList(nn.Linear(hidden, size) for size in outputs)
-        for block in self.first.weight.split(hidden):
-            _orthogonal(block, FIRST_GAIN)
+
+    def initialise_parameters(self, generator) -> None:
+        """Spec 7's initialisation (the class docstring), each head's draws its own."""
+        for index, block in enumerate(self.first.weight.split(self.hidden)):
+            orthogonal(block, FIRST_GAIN, generator(f"first.weight[{index}]"))
         nn.init.zeros_(self.first.bias)
-        for last in self.lasts:
-            _orthogonal(last.weight, LAST_GAIN)
+        for index, last in enumerate(self.lasts):
+            orthogonal(last.weight, LAST_GAIN, generator(f"lasts.{index}.weight"))
             nn.init.zeros_(last.bias)
 
     def forward(self, inputs: torch.Tensor) -> list[torch.Tensor]:
@@ -108,13 +108,17 @@ class ShotTrajectoryHead(nn.Module):
         self.middle = nn.Linear(width, width)
         self.middle_norm = norm(width)
         self.last = nn.Linear(width, outputs)
-        for layer, gain in (
-            (self.latent, FIRST_GAIN),
-            (self.age, FIRST_GAIN),
-            (self.middle, FIRST_GAIN),
-            (self.last, LAST_GAIN),
+
+    def initialise_parameters(self, generator) -> None:
+        """Every weight orthogonal (gain sqrt 2, the last's 0.01), every bias zero."""
+        for name, gain in (
+            ("latent", FIRST_GAIN),
+            ("age", FIRST_GAIN),
+            ("middle", FIRST_GAIN),
+            ("last", LAST_GAIN),
         ):
-            _orthogonal(layer.weight, gain)
+            layer = getattr(self, name)
+            orthogonal(layer.weight, gain, generator(f"{name}.weight"))
             if layer.bias is not None:
                 nn.init.zeros_(layer.bias)
 

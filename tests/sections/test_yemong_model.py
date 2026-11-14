@@ -14,7 +14,7 @@ from bnb.contracts.obs import GLOBAL, SHIP, SHIP_HIDDEN_ZERO
 from bnb.game import api
 from bnb.models.yemong import policy
 from bnb.models.yemong.inputs import ACTION_SCALE, POSITION_CODE, store_action, truth
-from bnb.models.yemong.model import YemongConfig
+from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 from bnb.models.yemong.state_code import POSITION_PERIOD
 
 # The code under test draws from torch's default generator (model initialisation, the
@@ -514,3 +514,43 @@ def test_one_set_of_weights_plays_every_size(config):
     assert all(
         torch.isfinite(x).all() for x in _pytree.tree_leaves(decision) if x.is_floating_point()
     )
+
+
+# ------------------------------------------------------------------ keyed initialisation
+
+
+def _initial(seed: int = 0, **settings) -> dict[str, torch.Tensor]:
+    build = yemong_build(YemongConfig(**settings), api.rules_of(cases.SQUAD), api.ship_types())
+    return {name: value.clone() for name, value in Yemong(build, seed).state_dict().items()}
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"gate": "elementwise"},
+        {"geometry_head": False},
+        {"blocks": YemongConfig().blocks + 1},
+        {"delta_split": False, "physics_hidden_decay": None},
+    ],
+    ids=["gate", "geometry_head", "blocks", "delta_split"],
+)
+def test_an_unrelated_option_leaves_every_shared_initial_weight_bit_identical(settings):
+    """Each parameter draws from its own generator keyed by the seed and its path: a module
+    added or removed shifts no other module's initial values, whatever the default
+    generator holds."""
+    torch.manual_seed(1)
+    reference = _initial()
+    torch.manual_seed(2)
+    other = _initial(**settings)
+    shared = [
+        name for name in reference if name in other and other[name].shape == reference[name].shape
+    ]
+    assert len(shared) >= 0.9 * min(len(reference), len(other))
+    for name in shared:
+        assert torch.equal(reference[name], other[name]), name
+
+
+def test_the_seed_changes_every_drawn_initial_weight():
+    first, second = _initial(0), _initial(1)
+    drawn = [name for name, value in first.items() if value.dim() == 2 and value.std() > 0]
+    assert drawn and all(not torch.equal(first[name], second[name]) for name in drawn)

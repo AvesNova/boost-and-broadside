@@ -37,9 +37,10 @@ def purpose_key(name: str) -> int:
 
 
 def stream_generator(seed: int, name: str, device: torch.device | None = None) -> torch.Generator:
-    """The stream `name`'s own generator, seeded from the seed and the name, so a new stream
-    shifts no other's draws."""
-    return torch.Generator(device).manual_seed(seed << 32 | zlib.crc32(name.encode()))
+    """The stream `name`'s own generator, seeded by `stream_key`, so a new stream shifts no
+    other's draws. A 32-bit seed: the CPU generator (Mersenne twister) reads only a seed's
+    low 32 bits."""
+    return torch.Generator(device).manual_seed(stream_key(seed, name))
 
 
 def _multiply(value: torch.Tensor, constant: int) -> torch.Tensor:

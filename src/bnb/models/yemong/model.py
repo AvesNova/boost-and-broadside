@@ -23,6 +23,7 @@ from bnb.contracts.obs import SHIP
 from bnb.contracts.tree import contract
 from bnb.game.rules import Rules
 from bnb.game.ship_types import ShipTypes
+from bnb.models.initialise import initialise
 
 from . import belief as beliefs
 from . import critic, density, geometry, shots
@@ -560,7 +561,7 @@ class Yemong(nn.Module):
     # 8: exact-x2 velocity code (knee 100, spacing 5)
     VERSION = 8  # 5: x2 velocity spacing, rotary band; 6: closure, decays; 7: thin-air speeds
 
-    def __init__(self, build: YemongBuild) -> None:
+    def __init__(self, build: YemongBuild, seed: int = 0) -> None:
         super().__init__()
         # The runtime switch for uneven teams (not a build field: the same weights serve
         # both). On, a benched ship (the observation's benched flag) is no key or value of
@@ -631,7 +632,7 @@ class Yemong(nn.Module):
         self.shot_trajectory_head = ShotTrajectoryHead(
             width, 1 + 2 * SHOT_HARMONICS, self.shot_code.trajectory_width
         )
-        self._initialise(build.num_ships, cells)
+        self.density_bias = math.log(max(build.num_ships, 2) / 2 / cells)
         # The rotary position pairs' periods and axes (`YemongConfig.rotary_axes`): each
         # band's period on both its axes. At ratio 2 the periods are exact powers of two.
         periods = torch.tensor(config.rotary_periods(), dtype=torch.float64).float()
@@ -649,47 +650,53 @@ class Yemong(nn.Module):
         self.register_buffer(
             "bins", critic.value_bins(config.value_bins, config.value_limit), persistent=False
         )
-        # Last, so no other layer's initialisation depends on it: at the scale of a
-        # normalised memory token (RMS 1), where the norm is well conditioned (at zero its
-        # gradient is 1 / sqrt(eps)).
-        with torch.no_grad():
-            self.encoder.absent_zone.normal_()
-        # The error head (`delta_split`), after every other draw, so the rest initialise as
-        # they would without it: its last layer zero, its bias the measured marginal.
+        # The error head (`delta_split`): its last layer zero, its bias the measured marginal.
         self.correction_code, self.correction_head = None, None
         if config.delta_split:
             self.correction_code = CorrectionCode(build.state_code, config.correction_rate)
             self.correction_head = HeadGroup(width, hidden, (self.correction_code.width,))
-            with torch.no_grad():
-                nn.init.zeros_(self.correction_head.lasts[0].weight)
-                self.correction_head.lasts[0].bias.copy_(self.correction_code.marginal_logits())
-        # The geometry head, likewise after every other draw.
         self.geometry_head = geometry.GeometryHead(width) if config.geometry_head else None
+        initialise(self, seed)
 
-    def _initialise(self, num_ships: int, cells: int) -> None:
-        """Code columns of each first projection ~ N(0, 1 / groups); the next-state head
-        starts as "nothing changes" (absolute) or at the measured marginal (delta); the
-        density head at an even spread of the ships."""
-        with torch.no_grad():
-            self.encoder.ship.first.weight[:, : self.state_code.input_width].normal_(
-                0.0, self.state_code.input_groups**-0.5
+    def initialise_parameters(self, generator) -> None:
+        """After every layer's own (`bnb.models.initialise`): code columns of each first
+        projection ~ N(0, 1 / groups); the next-state head starts as "nothing changes"
+        (absolute) or at the measured marginal (delta); the error head's last layer zero at
+        its marginal; the density head at an even spread of the ships."""
+        ship_weight = self.encoder.ship.first.weight
+        ship_name = "encoder.ship.first.weight"
+        ship_weight[:, : self.state_code.input_width].normal_(
+            0.0, self.state_code.input_groups**-0.5, generator=generator(f"{ship_name}[codes]")
+        )
+        ellipse = self.state_code.ellipse_width
+        end = ship_weight.shape[1] - ellipse
+        if self.config.acceleration_inputs:  # the codes as the state code's (not the flag)
+            ship_weight[:, end - ACCELERATION_INPUTS : end - 1].normal_(
+                0.0,
+                self.state_code.groups**-0.5,
+                generator=generator(f"{ship_name}[accelerations]"),
             )
-            ellipse = self.state_code.ellipse_width
-            end = self.encoder.ship.first.weight.shape[1] - ellipse
-            if self.config.acceleration_inputs:  # the codes as the state code's (not the flag)
-                self.encoder.ship.first.weight[:, end - ACCELERATION_INPUTS : end - 1].normal_(
-                    0.0, self.state_code.groups**-0.5
-                )
-            if ellipse:  # as the state code's columns
-                self.encoder.ship.first.weight[:, end:].normal_(0.0, self.state_code.groups**-0.5)
-            for kind in (self.encoder.field, self.encoder.global_token, self.encoder.zone):
-                kind.first.weight[:, :POSITION_CODE].normal_(0.0, POSITION_LEVELS**-0.5)
-            if self.config.arena_code:  # the arena radius's code ends the token: one group
-                self.encoder.global_token.first.weight[:, -ARENA_CODE:].normal_(0.0, 1.0)
-            nn.init.zeros_(self.ship_heads.lasts[1].weight)
-            if self.delta_code is not None:
-                self.ship_heads.lasts[1].bias.copy_(self.delta_code.marginal_logits())
-            self.density.lasts[0].bias.fill_(math.log(max(num_ships, 2) / 2 / cells))
+        if ellipse:  # as the state code's columns
+            ship_weight[:, end:].normal_(
+                0.0, self.state_code.groups**-0.5, generator=generator(f"{ship_name}[ellipse]")
+            )
+        for name in ("field", "global_token", "zone"):
+            getattr(self.encoder, name).first.weight[:, :POSITION_CODE].normal_(
+                0.0,
+                POSITION_LEVELS**-0.5,
+                generator=generator(f"encoder.{name}.first.weight[position]"),
+            )
+        if self.config.arena_code:  # the arena radius's code ends the token: one group
+            self.encoder.global_token.first.weight[:, -ARENA_CODE:].normal_(
+                0.0, 1.0, generator=generator("encoder.global_token.first.weight[arena]")
+            )
+        nn.init.zeros_(self.ship_heads.lasts[1].weight)
+        if self.delta_code is not None:
+            self.ship_heads.lasts[1].bias.copy_(self.delta_code.marginal_logits())
+        if self.correction_head is not None:
+            nn.init.zeros_(self.correction_head.lasts[0].weight)
+            self.correction_head.lasts[0].bias.copy_(self.correction_code.marginal_logits())
+        self.density.lasts[0].bias.fill_(self.density_bias)
 
     # ------------------------------------------------------------------ next state
 

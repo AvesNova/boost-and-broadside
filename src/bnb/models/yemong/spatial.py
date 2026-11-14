@@ -35,13 +35,17 @@ class SpatialBlock(nn.Module):
         self.gate = None
         if gate != "none":
             self.gate = nn.Linear(width, width if gate == "elementwise" else heads)
-            nn.init.zeros_(self.gate.weight)
-            nn.init.constant_(self.gate.bias, GATE_BIAS)
         self.output = nn.Linear(width, width, bias=False)
         self.map_norm = norm(map_width)
         self.map_key_value = nn.Linear(map_width, 2 * width, bias=False)
         self.feedforward_norm = norm(width)
         self.feedforward = GatedMLP(width, 4 * width)
+
+    def initialise_parameters(self, generator) -> None:
+        """The gate's weight zero and its bias `GATE_BIAS` (no draw)."""
+        if self.gate is not None:
+            nn.init.zeros_(self.gate.weight)
+            nn.init.constant_(self.gate.bias, GATE_BIAS)
 
     def forward(
         self,

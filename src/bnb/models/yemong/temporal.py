@@ -12,6 +12,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from bnb.models.initialise import uniform_by_fan_in
+
 from . import kernels
 from .kernels import scan, temporal
 from .layers import GatedMLP, norm
@@ -71,13 +73,13 @@ class RGLRU(nn.Module):
 
     def __init__(self, width: int) -> None:
         super().__init__()
-        self.log_decay = nn.Parameter(torch.linspace(0.0, 4.0, width))
+        self.log_decay = nn.Parameter(torch.empty(width))
+        # each half of the gates as nn.Linear(width, width) would start: the default
         self.gates = nn.Linear(width, 2 * width)
-        with torch.no_grad():  # each half as nn.Linear(width, width) would start
-            bound = width**-0.5
-            for half in self.gates.weight.chunk(2):
-                nn.init.kaiming_uniform_(half, a=5**0.5)
-            self.gates.bias.uniform_(-bound, bound)
+
+    def initialise_parameters(self, generator) -> None:
+        """The decays' logits spread evenly over [0, 4] (no draw)."""
+        self.log_decay.copy_(torch.linspace(0.0, 4.0, self.log_decay.shape[0]))
 
     def _terms(self, inputs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """(decay a, contribution) of each input."""
@@ -108,9 +110,13 @@ class CausalConvolution(nn.Module):
 
     def __init__(self, width: int) -> None:
         super().__init__()
-        bound = 1.0 / TAPS**0.5  # torch's Conv1d default for a depthwise kernel of 4
-        self.weight = nn.Parameter(torch.empty(width, TAPS).uniform_(-bound, bound))
-        self.bias = nn.Parameter(torch.empty(width).uniform_(-bound, bound))
+        self.weight = nn.Parameter(torch.empty(width, TAPS))
+        self.bias = nn.Parameter(torch.empty(width))
+
+    def initialise_parameters(self, generator) -> None:
+        """torch's Conv1d default for a depthwise kernel of 4: uniform in +-1/2."""
+        uniform_by_fan_in(self.weight, TAPS, generator("weight"))
+        uniform_by_fan_in(self.bias, TAPS, generator("bias"))
 
     def step(self, inputs: torch.Tensor, buffer: torch.Tensor) -> torch.Tensor:
         """inputs (..., D); buffer (..., 3, D) the previous inputs, oldest first."""

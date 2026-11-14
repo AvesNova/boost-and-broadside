@@ -302,11 +302,13 @@ def model_build(config: TrainConfig) -> Build:
     return yemong_build(architecture, api.rules_of(game, types=types), types)
 
 
-def build_model(build: Build, device: torch.device) -> torch.nn.Module:
-    """A fresh model of the build record, on `device`."""
+def build_model(build: Build, device: torch.device, seed: int = 0) -> torch.nn.Module:
+    """A fresh model of the build record, initialised on the CPU from `seed` by parameter
+    path (`bnb.models.initialise`), then moved to `device`."""
     if isinstance(build, NearestBuild):
-        return Nearest(build).to(device)
-    return (Relational(build) if isinstance(build, RelationalBuild) else Yemong(build)).to(device)
+        return Nearest(build, seed).to(device)
+    kind = Relational if isinstance(build, RelationalBuild) else Yemong
+    return kind(build, seed).to(device)
 
 
 def model_controller(model: torch.nn.Module, game: GameConfig, distribution: bool = False):
@@ -368,7 +370,7 @@ class Trainer:
     def __init__(self, config: TrainConfig, device: torch.device, diagnostics: bool = True) -> None:
         game = config.game
         self.config = config
-        self.model = build_model(model_build(config), device)
+        self.model = build_model(model_build(config), device, config.seed)
         self.league: LeagueHooks | None = None
         # the trigger rules (`bnb.runs.triggers`), attached by the run's recorder: their
         # state is part of the training checkpoint

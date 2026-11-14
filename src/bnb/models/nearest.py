@@ -38,6 +38,7 @@ from bnb.contracts import REWARD_LEVELS, Obs
 from bnb.contracts.action import NUM_JOINT
 from bnb.contracts.config import TEAMS
 from bnb.contracts.obs import FIELD, GLOBAL, SHIP, ZONE, ZONE_SLOTS
+from bnb.models.initialise import initialise
 
 from . import relational
 from .mlp import GLOBAL_SCALE
@@ -253,7 +254,7 @@ class Nearest(nn.Module):
     VERSION = 1
     reads = ("ships", "fields", "globals", "zones")
 
-    def __init__(self, build: NearestBuild) -> None:
+    def __init__(self, build: NearestBuild, seed: int = 0) -> None:
         super().__init__()
         config = build.config
         self.build, self.config = build, config
@@ -268,12 +269,16 @@ class Nearest(nn.Module):
         self.policy = nn.Linear(hidden, NUM_JOINT)
         self.value = nn.Linear(hidden, levels * config.value_bins)
         self.outcome = nn.Linear(hidden, critic.OUTCOMES)
-        for head in (self.policy, self.value, self.outcome):  # uniform at the start
-            nn.init.zeros_(head.weight)
-            nn.init.zeros_(head.bias)
         self.register_buffer(
             "bins", critic.value_bins(config.value_bins, config.value_limit), persistent=False
         )
+        initialise(self, seed)
+
+    def initialise_parameters(self, generator) -> None:
+        """The heads zero: a uniform policy and level values at the start (no draw)."""
+        for head in (self.policy, self.value, self.outcome):
+            nn.init.zeros_(head.weight)
+            nn.init.zeros_(head.bias)
 
     def initial_carry(self, views: int, device=None) -> None:
         """No carry: the model is stateless."""

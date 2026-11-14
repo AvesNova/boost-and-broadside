@@ -55,9 +55,12 @@ class Encoder(nn.Module):
         self.shared_norm = norm(width)
         self.map_memory = nn.Linear(width, map_width, bias=False)
         self.map_memory_norm = norm(map_width)
-        # Uninitialised here (no random draw): the model initialises it after every other
-        # layer, so theirs do not depend on it.
         self.absent_zone = nn.Parameter(torch.empty(map_width))
+
+    def initialise_parameters(self, generator) -> None:
+        """The absent zone token ~ N(0, 1): at the scale of a normalised memory token (RMS
+        1), where the norm is well conditioned (at zero its gradient is 1 / sqrt(eps))."""
+        nn.init.normal_(self.absent_zone, generator=generator("absent_zone"))
 
     def _kinds(
         self,

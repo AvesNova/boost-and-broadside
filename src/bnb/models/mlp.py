@@ -17,6 +17,7 @@ import torch.nn as nn
 
 from bnb.contracts import Obs
 from bnb.contracts.obs import COLUMNS, FIELD, GLOBAL, SHIP
+from bnb.models.initialise import initialise
 
 from .heads import SIZES
 
@@ -64,7 +65,7 @@ class MLP(nn.Module):
     reads = ("ships", "fields", "globals")
     reads_by_width = True  # built for recorded columns (`bnb.runs.checkpoint.build_model`)
 
-    def __init__(self, build: MLPBuild, observation: dict | None = None) -> None:
+    def __init__(self, build: MLPBuild, observation: dict | None = None, seed: int = 0) -> None:
         super().__init__()
         columns = dict(COLUMNS, **(observation or {}))
         self.observation = {part: tuple(columns[part]) for part in COLUMNS}
@@ -99,7 +100,11 @@ class MLP(nn.Module):
             )
         }
         self.since = ship_columns.index("time_since_seen")
-        nn.init.zeros_(self.policy.weight)  # a uniform policy at the start
+        initialise(self, seed)
+
+    def initialise_parameters(self, generator) -> None:
+        """The policy head zero: a uniform policy at the start (no draw)."""
+        nn.init.zeros_(self.policy.weight)
         nn.init.zeros_(self.policy.bias)
 
     def _part(self, obs: Obs, part: str) -> torch.Tensor:
