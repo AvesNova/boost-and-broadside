@@ -266,6 +266,15 @@ class Ratings:
     `--reuse` records alone, under `--deathmatch-score`, so a tournament can be re-rated
     under the other scoring, or with players added or left out (a field other than the
     record's takes a fresh `--out` and the old directory as `--reuse`).
+
+    Targets: `--target-stderr` for every player; `--decision NAME ...` players the stricter
+    `--decision-stderr`; `--contrast A:B ...` the difference of two players' ratings, with
+    `--contrast-stderr` (`bnb.league.tournament.TournamentConfig`). Each batch's blocks
+    follow the A-optimal design for the unmet targets (`bnb.league.design.plan_batch`),
+    with at most `--players-per-batch` distinct players a batch (None: as many as its
+    slots). A target the budget cannot bring in is left out while others can be met; when
+    every unmet target needs more than `--hopeless` times the batches left, the tournament
+    stops (inf: it plays its budget).
     """
 
     run: tyro.conf.Positional[str]
@@ -286,6 +295,12 @@ class Ratings:
     seed: int | None = None
     deathmatch_score: Literal["kill_share", "win_loss"] = "kill_share"
     arena_scale: float | None = None
+    decision: tuple[str, ...] = ()
+    decision_stderr: float = 20.0
+    contrast: tuple[str, ...] = ()
+    contrast_stderr: float = 25.0
+    players_per_batch: int | None = None
+    hopeless: float = 10.0
 
 
 @dataclasses.dataclass(frozen=True)
@@ -457,6 +472,65 @@ class FiguresWatch:
 
 
 @dataclasses.dataclass(frozen=True)
+class Pool:
+    """The shared rating pool (`bnb pool ACTION POOL ...`, `bnb.league.rating_pool`): every
+    rated checkpoint of many runs in one directory per pool, which several machines may
+    write at once, rated per game preset against the scripted agent (1000).
+
+    Actions: `create` makes the pool (its games' conditions: `--lineup`, `--arena-scale`,
+    `--deathmatch-score`; creating an existing pool with the same conditions opens it);
+    `add PATH ...` registers policies (`<run>/policies/step_<n>/<kind>` directories, named
+    `<run>/step_<n>/<kind>`; `--name` for one elsewhere) or scripted players by name;
+    `import DIR ...` brings in every `<preset>.batches.jsonl` of `bnb ratings` records
+    below the directories (once: an imported batch is not imported again); `rate` plays a
+    session per preset (`--presets`) among the players that most need games and can be
+    played here, until the targets are met, the budget is spent or the targets left are out
+    of reach; `table` prints each preset's leaderboard and goodness of fit (observed
+    against predicted win rates, and a likelihood-ratio test for loops: Bradley-Terry
+    against mElo-2); `curves` writes Elo against steps per run (with standard errors) as CSV
+    to `--out`.
+
+    Targets (`rate`): `--target-stderr` for every player (the ladder's floor), a tighter
+    `--decision-stderr` for `--decision` players, and `--contrast A:B` (a difference of two
+    players' ratings) with `--contrast-stderr`. `--players-per-batch`: the distinct players
+    a batch may hold (None: as many as its slots); `--session-players`: the players a
+    session's engine holds; `--triangle-share`: a share of each batch for the least-played
+    pairs among the decision players; `--hopeless`: the factor on the batches left past
+    which targets all out of reach stop the session (inf: it plays its budget);
+    `--prior-stderr`: the posterior's prior about the anchor (Elo). A policy is played from
+    a path where it was registered, else from `--runs-directory`'s `<run>/policies/`, with
+    its weights' hash checked. `--seed`: the games' draws (None: a fresh one, recorded with
+    each batch).
+    """
+
+    action: tyro.conf.Positional[Literal["create", "add", "import", "rate", "table", "curves"]]
+    pool: tyro.conf.Positional[str]
+    paths: tyro.conf.Positional[tuple[str, ...]] = ()
+    name: str | None = None
+    lineup: tuple[str, ...] = ()
+    arena_scale: float | None = None
+    deathmatch_score: Literal["kill_share", "win_loss"] | None = None
+    presets: tuple[str, ...] = RATED_PRESETS
+    target_stderr: float = 45.0
+    decision: tuple[str, ...] = ()
+    decision_stderr: float = 20.0
+    contrast: tuple[str, ...] = ()
+    contrast_stderr: float = 25.0
+    budget: int = 768
+    blocks: int = 2
+    block_environments: int = 96
+    players_per_batch: int | None = None
+    session_players: int = 16
+    triangle_share: float = 0.0
+    hopeless: float = 10.0
+    prior_stderr: float = 1000.0
+    device: str = "cuda"
+    seed: int | None = None
+    runs_directory: str | None = None
+    out: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
 class QueueOptions:
     """The GPU job queue (`bnb queue ACTION`, `bnb.runs.queue`): one job at a time per GPU,
     by priority, then in order.
@@ -530,6 +604,7 @@ COMMANDS = (
     "ratings",
     "head-to-head",
     "crossover",
+    "pool",
     "figures",
     "queue",
 )
@@ -540,8 +615,8 @@ def main() -> None:
     `bnb runs ...` lists and shows runs and uploads checkpoints, `bnb ship-card ...` charts a
     card, `bnb ratings ...` and
     `bnb head-to-head ...` rate policies offline, `bnb crossover ...` plays them at unequal
-    ship counts, `bnb figures ...` draws what a policy's
-    heads have learned (`bnb figures video ...` films a game, `bnb figures watch RUN` makes
+    ship counts, `bnb pool ...` keeps the shared rating pool, `bnb figures ...` draws what a
+    policy's heads have learned (`bnb figures video ...` films a game, `bnb figures watch RUN` makes
     both while a run trains), `bnb queue ...` queues and runs GPU jobs."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
     # The CUDA caching allocator grows its segments in place rather than caching fixed blocks:
@@ -550,7 +625,7 @@ def main() -> None:
     # at the first CUDA allocation, so it has to be set here, before any.
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     command, arguments = (sys.argv[1:2] or [""])[0], sys.argv[2:]
-    if command in ("train", "ratings", "head-to-head", "figures"):
+    if command in ("train", "ratings", "head-to-head", "pool", "figures"):
         compile_limits()
     if command == "ship-card":
         os.environ.setdefault("MPLBACKEND", "Agg")  # the charts go to files: no display
@@ -571,6 +646,8 @@ def main() -> None:
         head_to_head(tyro.cli(HeadToHead, args=arguments, prog="bnb head-to-head"))
     elif command == "crossover":
         crossover(tyro.cli(Crossover, args=arguments, prog="bnb crossover"))
+    elif command == "pool":
+        pool(tyro.cli(Pool, args=arguments, prog="bnb pool"))
     elif command == "figures":
         os.environ.setdefault("MPLBACKEND", "Agg")  # the figures go to files: no display
         kind = (arguments[:1] or [""])[0]
@@ -1377,6 +1454,22 @@ def ratings(options: Ratings) -> None:
     device = torch.device(options.device)
     owner = run.directory if options.out is None else pathlib.Path(options.out)
     records_directory = run.directory / "artifacts" / "ratings" if options.out is None else owner
+    contrasts = tuple(tuple(pair.split(":")) for pair in options.contrast)
+    if any(len(pair) != 2 for pair in contrasts):
+        raise SystemExit(f"--contrast A:B, not {list(options.contrast)}")
+    try:  # the decision players' and contrasts' targets, and the batch's limits
+        config = dataclasses.replace(
+            config,
+            decision=options.decision,
+            decision_stderr=options.decision_stderr,
+            contrasts=contrasts,
+            contrast_stderr=options.contrast_stderr,
+            players_per_batch=options.players_per_batch,
+            hopeless=options.hopeless,
+        )
+        config.targets([p.name for p in field])
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     missing = [name for name in options.reuse if not pathlib.Path(name).is_dir()]
     if missing:
         raise SystemExit(f"--reuse: {missing} are not directories")
@@ -1769,3 +1862,209 @@ def queue(options: QueueOptions) -> None:
             raise SystemExit(f"bnb queue {{add,list,remove,log,run}}, not {options.action!r}")
     except QueueError as error:
         raise SystemExit(str(error)) from error
+
+
+def pool(options: Pool) -> None:
+    """`bnb pool`: the shared rating pool's actions (`Pool`)."""
+    from bnb.league import rating_pool
+
+    if options.action == "create":
+        try:
+            created = rating_pool.RatingPool.create(
+                options.pool,
+                options.lineup,
+                options.arena_scale,
+                options.deathmatch_score or "kill_share",
+            )
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
+        print(f"pool {created.root}: {created.settings}")
+        return
+    try:
+        opened = rating_pool.RatingPool(options.pool)
+    except (FileNotFoundError, ValueError) as error:
+        raise SystemExit(f"{error} (bnb pool create {options.pool})") from error
+    if options.action == "add":
+        _pool_add(opened, options)
+    elif options.action == "import":
+        _pool_import(opened, options)
+    elif options.action == "rate":
+        _pool_rate(opened, options)
+    else:
+        _pool_table(opened, options)
+
+
+def _pool_scoring(opened, preset: str, deathmatch_score: str | None) -> tuple[str, str]:
+    """(how the fit scores a preset's games, the scoring a batch that names none was
+    fitted under; `bnb.league.tournament.recorded_results`)."""
+    from bnb.game.api import PRESETS
+    from bnb.league.tournament import scoring_of
+
+    chosen = deathmatch_score or opened.settings.get("deathmatch_score", "kill_share")
+    return scoring_of(PRESETS[preset], chosen), scoring_of(PRESETS[preset])
+
+
+def _pool_add(opened, options: Pool) -> None:
+    from bnb.league.matches import player as resolve
+    from bnb.league.matches import scripted_play
+    from bnb.league.rating_pool import PoolPlayer
+
+    if options.name is not None and len(options.paths) != 1:
+        raise SystemExit("--name names one player: give one path")
+    for path in options.paths:
+        try:
+            if pathlib.Path(path).is_dir():
+                added = opened.add_policy(path, options.name)
+            else:
+                one = resolve(path)
+                if scripted_play(one) is None:
+                    raise ValueError(f"{path} is neither a policy directory nor a scripted player")
+                added = opened.register([PoolPlayer(one.name, one.name)])[0]
+        except (ValueError, OSError) as error:
+            raise SystemExit(f"{path}: {error}") from error
+        print(f"{added.name}  {added.identity}")
+
+
+def _pool_import(opened, options: Pool) -> None:
+    from bnb.league.matches import player as resolve
+    from bnb.league.rating_pool import import_records
+
+    runs_directory = runs_directory_of(options.runs_directory)
+    records = sorted(
+        {
+            record.resolve()
+            for directory in options.paths
+            for record in pathlib.Path(directory).rglob("*.batches.jsonl")
+        }
+    )
+    if not records:
+        raise SystemExit(f"no <preset>.batches.jsonl below {list(options.paths)}")
+
+    def default_scoring(preset: str) -> str:
+        return _pool_scoring(opened, preset, None)[1]
+
+    report = import_records(
+        opened, records, default_scoring, lambda name: resolve(name, runs_directory)
+    )
+    for record, found in report.items():
+        left_out = "".join(f"; left out {name}: {why}" for name, why in found["left_out"].items())
+        print(f"{record}: {found['batches']} batches added{left_out}")
+
+
+def _pool_table(opened, options: Pool) -> None:
+    import csv
+
+    from bnb.league import goodness_of_fit, rating_pool
+
+    _check_presets(options.presets)
+    every = []
+    for preset in options.presets:
+        scoring = _pool_scoring(opened, preset, options.deathmatch_score)
+        rows, check, notes = rating_pool.table(opened, preset, scoring, options.prior_stderr)
+        every += rows
+        if options.action == "curves":
+            continue
+        print(f"{preset} (scored by {scoring[0]})")
+        for row in rows:
+            print(
+                f"  {row['player']:56s} {row['calibrated_elo']:8.1f} +- {row['stderr']:5.1f} "
+                f"{row['games']:7d} games"
+            )
+        for line in [*notes, *goodness_of_fit.describe(check)]:
+            print(f"  {line}")
+    if options.action == "curves":
+        if options.out is None:
+            raise SystemExit("bnb pool curves: --out FILE.csv")
+        columns = ["preset", "run", "kind", "step", "player", "calibrated_elo", "stderr", "games"]
+        with open(options.out, "w", newline="") as file:
+            writer = csv.DictWriter(file, columns, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(rating_pool.curves(every))
+        print(f"{options.out}: {len(rating_pool.curves(every))} rows")
+
+
+def _pool_player(one, runs_directory: pathlib.Path, lineup: tuple[str, ...], preset: str):
+    """A pool player as this machine plays it (`bnb.league.matches.Player`), or None when
+    none of its paths (nor the runs directory's) holds its weights."""
+    from bnb.league.matches import Player
+    from bnb.league.matches import player as resolve
+    from bnb.league.rating_pool import policy_identity
+    from bnb.runs.checkpoint import CheckpointError
+
+    if one.run is None:
+        found = resolve(one.name)
+    else:
+        candidates = [
+            *one.paths,
+            str(runs_directory / one.run / "policies" / f"step_{one.step}" / one.kind),
+        ]
+        found = None
+        for path in candidates:
+            try:
+                if pathlib.Path(path).is_dir() and policy_identity(path) == one.identity:
+                    found = Player(one.name, policy=pathlib.Path(path))
+                    break
+            except CheckpointError, OSError, KeyError:
+                continue
+        if found is None:
+            return None
+    return with_lineup([found], lineup, (preset,))[0] if lineup else found
+
+
+def _pool_rate(opened, options: Pool) -> None:
+    import secrets
+
+    import torch
+
+    from bnb.league import rating_pool, tournament
+    from bnb.league.matches import Arena, ArenaConfig, default_lanes, network_groups
+
+    _check_presets(options.presets)
+    contrasts = tuple(tuple(pair.split(":")) for pair in options.contrast)
+    if any(len(pair) != 2 for pair in contrasts):
+        raise SystemExit(f"--contrast A:B, not {list(options.contrast)}")
+    seed = secrets.randbits(31) if options.seed is None else options.seed
+    torch.manual_seed(seed)  # the games' draws
+    runs_directory = runs_directory_of(options.runs_directory)
+    lineup = tuple(opened.settings.get("lineup", ()))
+    try:
+        config = tournament.TournamentConfig(
+            arena=ArenaConfig(blocks=options.blocks, block_environments=options.block_environments),
+            target_stderr=options.target_stderr,
+            budget=options.budget,
+            decision=options.decision,
+            decision_stderr=options.decision_stderr,
+            contrasts=contrasts,
+            contrast_stderr=options.contrast_stderr,
+            players_per_batch=options.players_per_batch,
+            prior_stderr=options.prior_stderr,
+            triangle_share=options.triangle_share,
+            hopeless=options.hopeless,
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    device = torch.device(options.device)
+    for preset in options.presets:
+        game = rated_game(preset, opened.settings.get("arena_scale"))
+        arenas = []
+
+        def play_batch(field, matchups, game=game, arenas=arenas):
+            if not arenas:
+                lanes = default_lanes(network_groups(field), 2 * config.arena.blocks)
+                arenas.append(Arena(field, game, device, config.arena, lanes))
+            return tournament.outcomes(arenas[0], matchups)
+
+        try:
+            rating_pool.rate(
+                opened,
+                preset,
+                lambda one, preset=preset: _pool_player(one, runs_directory, lineup, preset),
+                play_batch,
+                config,
+                _pool_scoring(opened, preset, options.deathmatch_score),
+                options.session_players,
+                extra=dict(seed=seed),
+            )
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
+        arenas.clear()

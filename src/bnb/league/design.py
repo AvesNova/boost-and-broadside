@@ -97,6 +97,22 @@ class Posterior:
         """(K,) each rating's standard error in Elo (the anchor's 0)."""
         return self.covariance.diagonal().clamp_min(0.0).sqrt()
 
+    def restrict(self, players: list[int]) -> Posterior:
+        """The posterior's marginal over `players` (indices, the anchor among them): their
+        ratings, covariance and games, and the precision of that marginal (the inverse of
+        its covariance), so a plan over their pairs sees every other player's games."""
+        index = torch.tensor(players)
+        anchor = players.index(self.anchor)
+        covariance = self.covariance[index[:, None], index[None, :]]
+        free = torch.arange(len(players)) != anchor
+        precision = torch.zeros_like(covariance)
+        inside = free.nonzero()[:, 0]
+        precision[inside[:, None], inside[None, :]] = torch.linalg.inv(
+            covariance[inside][:, inside] / SCALE**2
+        )
+        games = self.games[index[:, None], index[None, :]]
+        return Posterior(self.ratings[index], covariance, precision, games, anchor)
+
 
 def _as_float(values) -> torch.Tensor:
     return torch.as_tensor(values, dtype=DTYPE).cpu()
@@ -421,6 +437,43 @@ def _plan(
         games[first, second] += layout.block_games
         games[second, first] += layout.block_games
     return weights
+
+
+def pair_weights(
+    posterior: Posterior,
+    targets: Targets,
+    allowed,
+    games: float,
+    margin: float = INFORMATION_MARGIN,
+) -> dict[tuple[int, int], float]:
+    """The continuous design ({(i, j): weight}, summing to 1) over the allowed pairs for
+    `games` more games, for every unmet target (`design_weights`, step 1 of the plan, not
+    rounded); empty when every target is met or no pair is worth a game."""
+    allowed = torch.as_tensor(allowed, dtype=torch.bool).cpu()
+    count = allowed.shape[0]
+    free = torch.arange(count) != posterior.anchor
+    rows, goals = targets.rows(posterior.anchor)
+    errors, _ = targets.standard_errors(posterior)
+    unmet = errors > goals
+    natural = rows[unmet] * SCALE / goals[unmet][:, None]
+    covariance = posterior.covariance / SCALE**2
+    theta = posterior.ratings / SCALE
+    upper = torch.triu_indices(count, count, 1).T
+    upper = upper[allowed[upper[:, 0], upper[:, 1]]]
+    information = planning_information(
+        theta[upper[:, 0]] - theta[upper[:, 1]], _pair_quadratic(covariance, upper), margin
+    )
+    useful = information >= NEGLIGIBLE_INFORMATION
+    if not bool(unmet.any()) or not bool(useful.any()):
+        return {}
+    weights = design_weights(
+        posterior.precision, free, upper[useful], information[useful], games, natural.T @ natural
+    )
+    return {
+        tuple(pair): float(weight)
+        for pair, weight in zip(upper[useful].tolist(), weights.tolist(), strict=True)
+        if weight >= NEGLIGIBLE_WEIGHT
+    }
 
 
 def plan_batch(
