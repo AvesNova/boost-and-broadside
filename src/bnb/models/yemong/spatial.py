@@ -38,8 +38,8 @@ class SpatialBlock(nn.Module):
         """tokens (..., Q, D) attend over themselves and map_memory (..., M, Dm). key_mask
         (..., K) bool, K <= Q + M: which of the first K keys (the tokens, then the map memory)
         are keys and values (the ships, for `Yemong.mask_benched`; every key, for the
-        `Ablations.absent_zones` mask); the rest always are. None: every token,
-        through the fused kernel where it applies (with a mask the plain path runs)."""
+        `Ablations.absent_zones` mask); the rest always are. None: every token. Masked or
+        not, the fused kernel runs where it applies, the plain path elsewhere."""
         query, key, value = (
             self.query_key_value(self.attention_norm(tokens))
             .unflatten(-1, (3, self.heads, -1))
@@ -50,16 +50,14 @@ class SpatialBlock(nn.Module):
             .unflatten(-1, (2, self.heads, -1))
             .unbind(-3)
         )
-        if key_mask is not None:
+        if kernels.switches.attention and attention.applies(query, token_tables):
+            attended = attention.attend(
+                query, key, value, map_key, map_value, token_tables, map_tables, key_mask
+            )
+        else:
             attended = self._attend(
                 query, key, value, map_key, map_value, token_tables, map_tables, key_mask
             )
-        elif kernels.switches.attention and attention.applies(query, token_tables):
-            attended = attention.attend(
-                query, key, value, map_key, map_value, token_tables, map_tables
-            )
-        else:
-            attended = self._attend(query, key, value, map_key, map_value, token_tables, map_tables)
         tokens = tokens + self.output(attended.flatten(-2))
         return tokens + self.feedforward(self.feedforward_norm(tokens))
 

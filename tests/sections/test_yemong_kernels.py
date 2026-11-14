@@ -192,6 +192,85 @@ def test_attention_in_bf16_is_as_close_as_the_plain_attention():
         _assert_as_close(got, slow, want)
 
 
+def _key_masks(views=(3, 4), tokens=11, maps=10, seed=3):
+    """Key masks over the attention's keys, each with a key shown on every view: random over
+    every key; the absent-zone pattern (every key, the last map slots hidden on some views);
+    benched ships (the first tokens - 1 keys, the ships, the global token and maps shown)."""
+    generator = _generator(seed)
+    random = torch.rand(*views, tokens + maps, generator=generator, device=CUDA) < 0.6
+    random[..., tokens - 1] = True
+    zones = torch.ones(*views, tokens + maps, dtype=torch.bool, device=CUDA)
+    hidden = torch.rand(*views, 4, generator=generator, device=CUDA) < 0.5
+    zones[..., -4:] = ~hidden | (torch.arange(views[-1], device=CUDA) % 2 == 0)[:, None]
+    benched = torch.ones(*views, tokens - 1, dtype=torch.bool, device=CUDA)
+    benched[..., 3:5] = False
+    benched[0, 0, :] = False
+    return dict(random=random, absent_zones=zones, benched=benched)
+
+
+@pytest.mark.parametrize("pattern", ["random", "absent_zones", "benched"])
+def test_masked_attention_equals_the_plain_masked_attention(pattern):
+    fused, map_fused, token_angles, map_angles, heads = _attention_inputs(seed=4)
+    key_mask = _key_masks()[pattern]
+
+    def masked(function):
+        return lambda *inputs: _attention(
+            lambda *arguments: function(*arguments, key_mask=key_mask), heads
+        )(*inputs)
+
+    expected = _gradients(
+        masked(SpatialBlock._attend),
+        [fused.double(), map_fused.double(), token_angles.double(), map_angles.double()],
+    )
+    actual = _gradients(
+        lambda f, m: masked(attention.attend)(f, m, token_angles, map_angles), [fused, map_fused]
+    )
+    for got, want in zip(actual[0] + actual[1], expected[0] + expected[1][:2], strict=True):
+        torch.testing.assert_close(got.double(), want, rtol=1e-5, atol=1e-5)
+
+    tables = [token_angles, map_angles]
+    bf16 = [fused.bfloat16(), map_fused.bfloat16()]
+    plain = _gradients(_bf16(lambda f, m: masked(SpatialBlock._attend)(f, m, *tables)), bf16)
+    fast = _gradients(_bf16(lambda f, m: masked(attention.attend)(f, m, *tables)), bf16)
+    for got, slow, want in zip(
+        fast[0] + fast[1], plain[0] + plain[1], expected[0] + expected[1][:2], strict=True
+    ):
+        _assert_as_close(got, slow, want)
+
+
+def test_attention_with_every_key_shown_is_the_unmasked_attention():
+    fused, map_fused, token_angles, map_angles, heads = _attention_inputs(seed=5)
+    every_key = torch.ones(3, 4, 21, dtype=torch.bool, device=CUDA)
+    unmasked = _gradients(
+        lambda f, m: _attention(attention.attend, heads)(f, m, token_angles, map_angles),
+        [fused, map_fused],
+    )
+    masked = _gradients(
+        lambda f, m: _attention(
+            lambda *arguments: attention.attend(*arguments, key_mask=every_key), heads
+        )(f, m, token_angles, map_angles),
+        [fused, map_fused],
+    )
+    for got, want in zip(masked[0] + masked[1], unmasked[0] + unmasked[1], strict=True):
+        torch.testing.assert_close(got, want, rtol=1e-6, atol=1e-6)
+
+
+def test_a_query_with_every_key_masked_gets_zeros():
+    fused, map_fused, token_angles, map_angles, heads = _attention_inputs(seed=6)
+    key_mask = torch.ones(3, 4, 21, dtype=torch.bool, device=CUDA)
+    key_mask[1, 2] = False
+    outputs, gradients = _gradients(
+        lambda f, m: _attention(
+            lambda *arguments: attention.attend(*arguments, key_mask=key_mask), heads
+        )(f, m, token_angles, map_angles),
+        [fused, map_fused],
+    )
+    assert all(torch.isfinite(x).all() for x in outputs + gradients)
+    assert (outputs[0][1, 2] == 0).all()
+    assert (gradients[0][1, 2] == 0).all() and (gradients[1][1, 2] == 0).all()
+    assert outputs[0][1, 1].abs().sum() > 0
+
+
 def test_attention_is_bitwise_repeatable():
     fused, map_fused, token_angles, map_angles, heads = _attention_inputs(seed=2)
     run = lambda f, m: _attention(attention.attend, heads)(f, m, token_angles, map_angles)  # noqa: E731

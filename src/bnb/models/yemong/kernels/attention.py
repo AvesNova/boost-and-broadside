@@ -13,6 +13,11 @@ q_even k_even + q_odd k_odd. The backward recomputes the softmax and rotates the
 key gradients back. Float32 inputs use IEEE (not TF32) dots; bf16 inputs bf16 dots with
 float32 accumulation, as SDPA. No atomics: every output element has one writer.
 
+An optional key mask (views, Q + M) bool, tokens then maps, takes the masked keys out of the
+softmax (HAS_KEY_MASK, a constexpr: without a mask the compiled kernel is the unmasked one).
+A query whose every key is masked gets weights 0, an output 0 and gradients 0; in Yemong a
+query's keys include the global token, which is never masked, so it does not happen there.
+
 The whole query and key set of a view lives in one tile: fine up to a few dozen keys; at
 hundreds it needs a tiled kernel (or the plain path).
 """
@@ -105,15 +110,30 @@ def _dot(a, b, IEEE: tl.constexpr):
 
 
 @triton.jit
-def _weights(query_even, query_odd, key_even, key_odd, scale, tokens, maps,
-             QUERIES: tl.constexpr, KEYS: tl.constexpr, IEEE: tl.constexpr):
+def _shown_keys(key_mask, view, tokens, maps, KEYS: tl.constexpr, HAS_KEY_MASK: tl.constexpr):
+    """Which of the KEYS key slots take weight: the real ones, and of those the unmasked."""
+    keys_index = tl.arange(0, KEYS)
+    shown = keys_index < tokens + maps
+    if HAS_KEY_MASK:
+        shown = shown & (tl.load(key_mask + view * (tokens + maps) + keys_index, mask=shown,
+                                 other=0) != 0)
+    return shown
+
+
+@triton.jit
+def _weights(query_even, query_odd, key_even, key_odd, scale, tokens, shown,
+             QUERIES: tl.constexpr, IEEE: tl.constexpr, HAS_KEY_MASK: tl.constexpr):
     scores = _dot(query_even, tl.trans(key_even), IEEE) + _dot(query_odd, tl.trans(key_odd), IEEE)
     scores = scores * scale
-    keys_index = tl.arange(0, KEYS)
-    scores = tl.where(keys_index[None, :] < tokens + maps, scores, float("-inf"))
+    scores = tl.where(shown[None, :], scores, float("-inf"))
     peak = tl.max(scores, 1)
+    if HAS_KEY_MASK:  # a query with every key masked: weights 0, not NaN
+        peak = tl.where(peak == float("-inf"), 0.0, peak)
     weights = tl.exp(scores - peak[:, None])
-    weights = weights / tl.sum(weights, 1)[:, None]
+    total = tl.sum(weights, 1)
+    if HAS_KEY_MASK:
+        total = tl.where(total == 0.0, 1.0, total)
+    weights = weights / total[:, None]
     rows = tl.arange(0, QUERIES)
     return tl.where((rows < tokens)[:, None], weights, 0.0)
 
@@ -121,27 +141,28 @@ def _weights(query_even, query_odd, key_even, key_odd, scale, tokens, maps,
 # Warps per program; the tiles are set by the token and key counts, not tuned. The warps
 # can change the last bits (the layout orders the softmax's sums).
 CONFIGS = [triton.Config({}, num_warps=warps) for warps in (2, 4, 8)]
-KEY = ["tokens", "maps", "heads", "WIDTH", "IEEE"]
+KEY = ["tokens", "maps", "heads", "WIDTH", "IEEE", "HAS_KEY_MASK"]
 
 
 @triton.autotune(configs=CONFIGS, key=KEY, cache_results=True)
 @triton.jit
 def _attention_forward(query, key, value, map_key, map_value, token_cos, token_sin, map_cos,
-                       map_sin, out, scale,
+                       map_sin, key_mask, out, scale,
                        q_batch, q_token, q_head, k_batch, k_token, k_head,
                        v_batch, v_token, v_head, mk_batch, mk_token, mk_head,
                        mv_batch, mv_token, mv_head, t_batch, t_token, m_batch, m_token,
                        tokens, maps, heads, pairs,
                        QUERIES: tl.constexpr, KEYS: tl.constexpr, WIDTH: tl.constexpr,
-                       IEEE: tl.constexpr):
+                       IEEE: tl.constexpr, HAS_KEY_MASK: tl.constexpr):
     view = tl.program_id(0)
     head = tl.program_id(1)
     query_even, query_odd, _, _, key_even, key_odd, _, _ = _queries_and_keys(
         query, key, map_key, token_cos, token_sin, map_cos, map_sin, view, head,
         q_batch, q_token, q_head, k_batch, k_token, k_head, mk_batch, mk_token, mk_head,
         t_batch, t_token, m_batch, m_token, tokens, maps, pairs, QUERIES, KEYS, WIDTH // 2)
-    weights = _weights(query_even, query_odd, key_even, key_odd, scale, tokens, maps, QUERIES,
-                       KEYS, IEEE)
+    shown = _shown_keys(key_mask, view, tokens, maps, KEYS, HAS_KEY_MASK)
+    weights = _weights(query_even, query_odd, key_even, key_odd, scale, tokens, shown, QUERIES,
+                       IEEE, HAS_KEY_MASK)
     v = _load_values(value, map_value, view, head, v_batch, v_token, v_head, mv_batch,
                      mv_token, mv_head, tokens, maps, KEYS, WIDTH)
     result = _dot(weights, v.to(tl.float32), IEEE)
@@ -162,14 +183,14 @@ def _store_halves(pointer, base, row_stride, rows, lanes, mask, even, odd):
 @triton.autotune(configs=CONFIGS, key=KEY, cache_results=True)
 @triton.jit
 def _attention_backward(query, key, value, map_key, map_value, token_cos, token_sin, map_cos,
-                        map_sin, out, grad_out, grad_query, grad_key, grad_value, grad_map_key,
+                        map_sin, key_mask, out, grad_out, grad_query, grad_key, grad_value, grad_map_key,
                         grad_map_value, scale,
                         q_batch, q_token, q_head, k_batch, k_token, k_head,
                         v_batch, v_token, v_head, mk_batch, mk_token, mk_head,
                         mv_batch, mv_token, mv_head, t_batch, t_token, m_batch, m_token,
                         tokens, maps, heads, pairs,
                         QUERIES: tl.constexpr, KEYS: tl.constexpr, WIDTH: tl.constexpr,
-                        IEEE: tl.constexpr):
+                        IEEE: tl.constexpr, HAS_KEY_MASK: tl.constexpr):
     view = tl.program_id(0)
     head = tl.program_id(1)
     HALF: tl.constexpr = WIDTH // 2
@@ -178,8 +199,9 @@ def _attention_backward(query, key, value, map_key, map_value, token_cos, token_
         query, key, map_key, token_cos, token_sin, map_cos, map_sin, view, head,
         q_batch, q_token, q_head, k_batch, k_token, k_head, mk_batch, mk_token, mk_head,
         t_batch, t_token, m_batch, m_token, tokens, maps, pairs, QUERIES, KEYS, HALF)
-    weights = _weights(query_even, query_odd, key_even, key_odd, scale, tokens, maps, QUERIES,
-                       KEYS, IEEE)
+    shown = _shown_keys(key_mask, view, tokens, maps, KEYS, HAS_KEY_MASK)
+    weights = _weights(query_even, query_odd, key_even, key_odd, scale, tokens, shown, QUERIES,
+                       IEEE, HAS_KEY_MASK)
     v = _load_values(value, map_value, view, head, v_batch, v_token, v_head, mv_batch,
                      mv_token, mv_head, tokens, maps, KEYS, WIDTH).to(tl.float32)
     rows = tl.arange(0, QUERIES)
@@ -221,11 +243,16 @@ def _attention_backward(query, key, value, map_key, map_value, token_cos, token_
              mask=from_maps[:, None])
 
 
+def _mask_pointer(key_mask, out):
+    """The key mask, or (unread, HAS_KEY_MASK off) the output as a stand-in pointer."""
+    return out if key_mask is None else key_mask
+
+
 def _strides(tensor):
     return tensor.stride(0), tensor.stride(1), tensor.stride(2)
 
 
-def _arguments(query, key, value, map_key, map_value, token_cos, map_cos):
+def _arguments(query, key, value, map_key, map_value, token_cos, map_cos, key_mask):
     views, tokens, heads, width = query.shape
     maps = map_key.shape[1]
     return dict(
@@ -235,7 +262,7 @@ def _arguments(query, key, value, map_key, map_value, token_cos, map_cos):
                  token_cos.shape[-1]),
         meta=dict(QUERIES=max(16, triton.next_power_of_2(tokens)),
                   KEYS=max(16, triton.next_power_of_2(tokens + maps)), WIDTH=width,
-                  IEEE=query.dtype == torch.float32),
+                  IEEE=query.dtype == torch.float32, HAS_KEY_MASK=key_mask is not None),
         grid=(views, heads))
 
 
@@ -243,14 +270,16 @@ def _arguments(query, key, value, map_key, map_value, token_cos, map_cos):
 def attention_heads(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
                     map_key: torch.Tensor, map_value: torch.Tensor, token_cos: torch.Tensor,
                     token_sin: torch.Tensor, map_cos: torch.Tensor,
-                    map_sin: torch.Tensor) -> torch.Tensor:
+                    map_sin: torch.Tensor,
+                    key_mask: torch.Tensor | None = None) -> torch.Tensor:
     token_cos, token_sin, map_cos, map_sin = (t.contiguous() for t in
                                               (token_cos, token_sin, map_cos, map_sin))
-    launch = _arguments(query, key, value, map_key, map_value, token_cos, map_cos)
+    launch = _arguments(query, key, value, map_key, map_value, token_cos, map_cos, key_mask)
     out = torch.empty(query.shape, dtype=query.dtype, device=query.device)
     launch_forward = torch.library.wrap_triton(_attention_forward)
     launch_forward[launch["grid"]](query, key, value, map_key, map_value, token_cos,
-                                       token_sin, map_cos, map_sin, out, *launch["scalars"],
+                                       token_sin, map_cos, map_sin,
+                                       _mask_pointer(key_mask, out), out, *launch["scalars"],
                                        **launch["meta"])
     return out
 
@@ -259,18 +288,20 @@ def attention_heads(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
 def attention_heads_backward(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
                              map_key: torch.Tensor, map_value: torch.Tensor,
                              token_cos: torch.Tensor, token_sin: torch.Tensor,
-                             map_cos: torch.Tensor, map_sin: torch.Tensor, out: torch.Tensor,
+                             map_cos: torch.Tensor, map_sin: torch.Tensor,
+                             key_mask: torch.Tensor | None, out: torch.Tensor,
                              grad_out: torch.Tensor) -> list[torch.Tensor]:
     token_cos, token_sin, map_cos, map_sin = (t.contiguous() for t in
                                               (token_cos, token_sin, map_cos, map_sin))
-    launch = _arguments(query, key, value, map_key, map_value, token_cos, map_cos)
+    launch = _arguments(query, key, value, map_key, map_value, token_cos, map_cos, key_mask)
     gradients = [torch.empty(query.shape, dtype=t.dtype, device=query.device)
                  for t in (query, key, value)] + [
         torch.empty(map_key.shape, dtype=t.dtype, device=query.device)
         for t in (map_key, map_value)]
     launch_backward = torch.library.wrap_triton(_attention_backward)
     launch_backward[launch["grid"]](query, key, value, map_key, map_value, token_cos,
-                                        token_sin, map_cos, map_sin, out, grad_out.contiguous(),
+                                        token_sin, map_cos, map_sin,
+                                        _mask_pointer(key_mask, out), out, grad_out.contiguous(),
                                         *gradients, *launch["scalars"], **launch["meta"])
     return gradients
 
@@ -281,7 +312,7 @@ def _setup_context(ctx, inputs, output):
 
 def _backward(ctx, grad_out):
     gradients = attention_heads_backward(*ctx.saved_tensors, grad_out)
-    return (*gradients, None, None, None, None)
+    return (*gradients, None, None, None, None, None)
 
 
 attention_heads.register_autograd(_backward, setup_context=_setup_context)
@@ -298,12 +329,20 @@ def applies(query: torch.Tensor, tables) -> bool:
 
 
 def attend(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, map_key: torch.Tensor,
-           map_value: torch.Tensor, token_tables, map_tables) -> torch.Tensor:
+           map_value: torch.Tensor, token_tables, map_tables,
+           key_mask: torch.Tensor | None = None) -> torch.Tensor:
     """softmax(rot(q) rot(k)^T / sqrt(W)) v over the token keys then the map keys, per view
     and head. query, key, value (..., Q, H, W) and map_key, map_value (..., M, H, W), any
     strides with a unit last stride, not yet rotated; the tables (cos, sin), each
-    (..., tokens, 1, R). Returns (..., Q, H, W)."""
+    (..., tokens, 1, R). key_mask (..., K) bool, K <= Q + M, broadcastable to the views: which
+    of the first K keys take weight (the rest all do), as `SpatialBlock.forward`'s; no
+    gradient. Returns (..., Q, H, W)."""
     batch = query.shape[:-3]
+    if key_mask is not None:
+        keys = query.shape[-3] + map_key.shape[-3]
+        shown = key_mask.new_ones(key_mask.shape[:-1] + (keys - key_mask.shape[-1],))
+        key_mask = torch.cat([key_mask.bool(), shown], -1).expand(*batch, keys)
+        key_mask = key_mask.reshape(-1, keys).contiguous()
 
     def views(tensor):
         return tensor.reshape(-1, *tensor.shape[-3:])
@@ -313,5 +352,6 @@ def attend(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, map_key:
 
     key_value = [views(t.to(query.dtype)) for t in (key, value, map_key, map_value)]
     out = attention_heads(views(query), *key_value, table(token_tables[0]),
-                          table(token_tables[1]), table(map_tables[0]), table(map_tables[1]))
+                          table(token_tables[1]), table(map_tables[0]), table(map_tables[1]),
+                          key_mask)
     return out.view(*batch, *out.shape[1:])

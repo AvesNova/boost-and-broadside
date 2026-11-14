@@ -444,8 +444,8 @@ without them. `rotary` makes the attention's rotary rotation the identity (every
 token and map tables); `forecast` stores nothing back to the belief, as
 `yemong.forecast_feedback=false` does; `absent_zones` takes the absent zone slots (the
 learned absent token of a mode without zones) out of every attention as keys and values,
-so no head can attend to them (the masked attention runs the plain path, not the fused
-kernel; a tournament without an `absent_zones` player attends as before). All are inference-time ablations of a model
+so no head can attend to them (through the fused kernel's key mask; a tournament without
+an `absent_zones` player attends as before). All are inference-time ablations of a model
 trained with the feature on: they measure how much the trained policy relies on it, not
 what a model trained without it would reach.
 
