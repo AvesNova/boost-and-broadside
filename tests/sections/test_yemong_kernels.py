@@ -195,20 +195,25 @@ def test_attention_in_bf16_is_as_close_as_the_plain_attention():
 def _key_masks(views=(3, 4), tokens=11, maps=10, seed=3):
     """Key masks over the attention's keys, each with a key shown on every view: random over
     every key; the absent-zone pattern (every key, the last map slots hidden on some views);
-    benched ships (the first tokens - 1 keys, the ships, the global token and maps shown)."""
+    the absent-field pattern (the first map slots, the fields, hidden by a drawn count per
+    view, `Yemong.mask_absent_fields`); benched ships (the first tokens - 1 keys, the ships,
+    the global token and maps shown)."""
     generator = _generator(seed)
     random = torch.rand(*views, tokens + maps, generator=generator, device=CUDA) < 0.6
     random[..., tokens - 1] = True
     zones = torch.ones(*views, tokens + maps, dtype=torch.bool, device=CUDA)
     hidden = torch.rand(*views, 4, generator=generator, device=CUDA) < 0.5
     zones[..., -4:] = ~hidden | (torch.arange(views[-1], device=CUDA) % 2 == 0)[:, None]
+    fields = torch.ones(*views, tokens + maps, dtype=torch.bool, device=CUDA)
+    count = torch.randint(0, 7, views, generator=generator, device=CUDA)  # of 6 fields
+    fields[..., tokens : tokens + 6] = torch.arange(6, device=CUDA) < count[..., None]
     benched = torch.ones(*views, tokens - 1, dtype=torch.bool, device=CUDA)
     benched[..., 3:5] = False
     benched[0, 0, :] = False
-    return dict(random=random, absent_zones=zones, benched=benched)
+    return dict(random=random, absent_zones=zones, absent_fields=fields, benched=benched)
 
 
-@pytest.mark.parametrize("pattern", ["random", "absent_zones", "benched"])
+@pytest.mark.parametrize("pattern", ["random", "absent_zones", "absent_fields", "benched"])
 def test_masked_attention_equals_the_plain_masked_attention(pattern):
     fused, map_fused, token_angles, map_angles, heads = _attention_inputs(seed=4)
     key_mask = _key_masks()[pattern]
