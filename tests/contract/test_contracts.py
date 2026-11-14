@@ -67,9 +67,10 @@ def test_pool_shares_must_be_whole():
 
 
 def _controller_classes():
+    from bnb.controllers.imugi import Imugi
     from bnb.controllers.model import ModelController
     from bnb.controllers.relational import RelationalController
-    from bnb.controllers.scripted import Chaser, Random, Scripted
+    from bnb.controllers.scripted import Chaser, Random
     from bnb.controllers.yemong import YemongController
     from bnb.learn.bc import TeacherOpponent
 
@@ -77,7 +78,7 @@ def _controller_classes():
         ModelController,
         Chaser,
         Random,
-        Scripted,
+        Imugi,
         RelationalController,
         YemongController,
         TeacherOpponent,

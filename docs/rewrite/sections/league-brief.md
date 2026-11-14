@@ -24,7 +24,7 @@ after training (`bnb ratings`, `bnb head-to-head`).
 3. `tests/reference/league/README.md` and `league_arm.py`: the fixtures and the adapter
    you fill in (`make_arm()`). Six equivalence tests skip today until it exists.
 4. `docs/rewrite/contracts.md`: the conventions, then the entries for section 11 (runs and
-   checkpoints), the scripted agent and BC, the kernels, and the store.
+   checkpoints), Imugi and BC, the kernels, and the store.
 5. `docs/rewrite/scaffold.md`: section 3 (design rules) and section 4 (layout and the
    dependency rule; `bnb.league` sits above `bnb.runs`).
 6. `docs/contributing/code-style.md` and `docs/contributing/writing-docs.md`.

@@ -167,7 +167,7 @@ uv run --no-sync bnb train --preset mixed --model nearest
 
 ## Chain BC and RL
 
-A model is trained in two stages: behaviour cloning of the scripted agent for a fixed
+A model is trained in two stages: behaviour cloning of Imugi, the scripted agent, for a fixed
 budget, then PPO from the clone. `--objective chain` runs both in one command,
 to a combined budget of environment steps:
 

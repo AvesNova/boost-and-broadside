@@ -2,7 +2,7 @@
 games' statistics: the check of a parameter search's choice (the real-scale variant's
 light retune, docs/explanation/game/real-scale.md).
 
-    uv run --no-sync python -m bench.scripted_compare --preset real_scale_deathmatch \\
+    uv run --no-sync python -m bench.imugi_compare --preset real_scale_deathmatch \\
         --ship-type 0 --first real_scale_deathmatch --second deathmatch --games 512
 
 A set is a mode's in `MODE_DEFAULTS` (its name) or a search log's candidate
@@ -25,12 +25,12 @@ import time
 
 import torch
 
+from bench.imugi_search import mixed_lineups, type_pool
 from bench.lock import bench_lock
-from bench.scripted_search import mixed_lineups, type_pool
 from bnb.contracts import Pool
-from bnb.controllers.scripted import Scripted
-from bnb.controllers.scripted_defaults import MODE_DEFAULTS
-from bnb.controllers.scripted_parameters import from_row
+from bnb.controllers.imugi import Imugi
+from bnb.controllers.imugi_defaults import MODE_DEFAULTS
+from bnb.controllers.imugi_parameters import from_row
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.runtime.analytics import EPISODE_COLUMNS, PERCEIVE_COLUMNS, RESOLVE_COLUMNS
@@ -75,8 +75,8 @@ def match(
         types,
         (Pool("compare", 1.0, ("first", "second")),),
         {
-            "first": Scripted(card, S, first, temperature=temperatures[0]),
-            "second": Scripted(card, S, second, temperature=temperatures[1]),
+            "first": Imugi(card, S, first, temperature=temperatures[0]),
+            "second": Imugi(card, S, second, temperature=temperatures[1]),
         },
         "first",
         games,
@@ -132,7 +132,7 @@ def main() -> None:
     parser.add_argument(
         "--mixed",
         action="store_true",
-        help="mixed lineups (bench.scripted_search.mixed_lineups) of --types less --hold-out",
+        help="mixed lineups (bench.imugi_search.mixed_lineups) of --types less --hold-out",
     )
     parser.add_argument("--types", help="comma-separated type names (default: all)")
     parser.add_argument("--hold-out", help="comma-separated type names left out of the draws")

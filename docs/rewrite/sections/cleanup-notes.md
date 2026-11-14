@@ -312,7 +312,7 @@ a real bug, so there is no `xfail`. All 39 run on the CPU in about 5 s; none is 
   compiled-rollout tests (`test_mixed_yemong`, `test_yemong_runtime`) hit dynamo's
   recompile limit in the full run once nothing reset dynamo mid-session; they now take the
   `fresh_compiler` fixture (dynamo's caches emptied first).
-- **Gaps:** `test_no_controller_takes_privileged` covers every controller (`Scripted`,
+- **Gaps:** `test_no_controller_takes_privileged` covers every controller (`Imugi`,
   `RelationalController`, `YemongController`, `TeacherOpponent` added; the separate
   Yemong test is gone); `test_yemong_model.py` reads `GLOBAL["fogged"]`; the redundant
   `isfinite` assert in `test_perception.py` is gone; the learner equivalence suite runs (it
@@ -328,8 +328,8 @@ a real bug, so there is no `xfail`. All 39 run on the CPU in about 5 s; none is 
    the float atomics' rounding (the damage sum and Yemong's density counts), beside the
    kernels' cross-machine drift.
 3. **Model settings in `TrainConfig`:** not done (see Progress).
-4. **The scripted agent's reflection test:**
-   `test_scripted.py::test_a_view_reflected_about_frontlines_neutral_axis_reflects_the_stick`
+4. **Imugi's reflection test:**
+   `test_imugi.py::test_a_view_reflected_about_frontlines_neutral_axis_reflects_the_stick`
    passes (the stick swapped for its mirror, power and shoot unchanged, to 1e-4). Note: it
    also passes about an axis 0.3 rad off the neutral one: the agent reads only relative
    geometry and the arena is a disc, so it is equivariant under every reflection through
@@ -407,14 +407,14 @@ None. No sweep test found a wrong behaviour, so there is no `xfail`.
   | 70.27s | `tests/sections/test_yemong_model.py::test_unroll_equals_steps_float32[compiled-cpu]` |
   | 50.05s | `tests/runs/test_resume.py::test_a_resumed_run_equals_one_straight_through_on_the_gpu[relational]` |
   | 48.12s | `tests/sections/test_handling.py::test_the_characteristics_move_with_the_card` |
-  | 42.04s | `tests/sections/test_scripted_acceptance.py::test_it_beats_random_play_in_essentially_every_game[deathmatch]` |
-  | 38.02s | `tests/sections/test_scripted_acceptance.py::test_it_beats_the_chaser[deathmatch]` |
-  | 35.06s | `tests/sections/test_scripted_acceptance.py::test_it_beats_random_play_in_essentially_every_game[deathmatch_wide]` |
+  | 42.04s | `tests/sections/test_imugi_acceptance.py::test_it_beats_random_play_in_essentially_every_game[deathmatch]` |
+  | 38.02s | `tests/sections/test_imugi_acceptance.py::test_it_beats_the_chaser[deathmatch]` |
+  | 35.06s | `tests/sections/test_imugi_acceptance.py::test_it_beats_random_play_in_essentially_every_game[deathmatch_wide]` |
   | 34.52s | `tests/sections/test_ship_card.py::test_handles_agree_across_tick_rates` |
-  | 34.34s | `tests/sections/test_scripted_acceptance.py::test_it_beats_random_play_in_essentially_every_game[frontline]` |
-  | 31.70s | `tests/sections/test_scripted_acceptance.py::test_it_beats_the_chaser[frontline]` |
+  | 34.34s | `tests/sections/test_imugi_acceptance.py::test_it_beats_random_play_in_essentially_every_game[frontline]` |
+  | 31.70s | `tests/sections/test_imugi_acceptance.py::test_it_beats_the_chaser[frontline]` |
   | 30.20s | `tests/sections/test_seat_symmetry.py::test_chaser_games_and_their_mirror_agree_every_tick[frontline]` |
-  | 30.16s | `tests/sections/test_scripted_acceptance.py::test_it_beats_the_chaser[deathmatch_wide]` |
+  | 30.16s | `tests/sections/test_imugi_acceptance.py::test_it_beats_the_chaser[deathmatch_wide]` |
   | 26.40s | `tests/sections/test_seat_symmetry.py::test_chaser_games_and_their_mirror_agree_every_tick[deathmatch]` |
   | 25.05s | `tests/sections/test_game_section.py::test_realtime_steps_one_match[True]` |
   | 24.00s | `tests/sections/test_game_section.py::test_compiled_tick_and_perception_match_eager[M64]` |

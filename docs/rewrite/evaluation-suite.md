@@ -31,7 +31,7 @@ These are the games that decide each pairwise arm, and the Elo ladder we build f
 | 13 | `elimination_break_even` | elimination | break-even | density rule at 20 **(provisional)** |
 | 14–19 | — | all | 5v5 at map scales 0.5× and 2× | scaled (**only if variable maps survive their arm**; not in the command) |
 
-- **Games:** conditions 1–10 are A against B. The base games are the real-scale presets (`--presets`), and Imugi is the scripted agent (`--opponent scripted`).
+- **Games:** conditions 1–10 are A against B. The base games are the real-scale presets (`--presets`), and Imugi is Imugi (`--opponent scripted`).
 - **Map rule (provisional):** every size other than 5v5 uses the game's density rule (`api.arena_radius_for`). The radius scales with the fleet, down to each mode's minimum. The final choice between this and the preset's 5v5 map is deferred until the map-size arm shows whether the agent trains on varied maps. Both arms of a pair always use the same rule.
 - **Break-even** reuses `bnb crossover`'s fit and allocation (`bnb.league.crossover`). One engine plays both arms: half of each batch's blocks are A against 20 Imugi, half B, each at the counts its own fit asks for, on the same lineups and maps.
 

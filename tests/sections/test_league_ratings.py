@@ -54,7 +54,7 @@ def test_the_offline_fit_recovers_known_ratings():
 
 
 def _gauge() -> Gauge:
-    """Two snapshots started at 0 and 500, and the scripted agent at its fixed 1000."""
+    """Two snapshots started at 0 and 500, and Imugi at its fixed 1000."""
     gauge = Gauge()
     gauge.add("snapshot_1", "checkpoint", 0.0)
     gauge.add("snapshot_2", "checkpoint", 500.0)

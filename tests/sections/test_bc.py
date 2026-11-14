@@ -10,14 +10,14 @@ import learner_cases as lc
 import pytest
 import torch
 import yemong_cases as cases
-from scripted_cases import CHARACTERISTICS
+from imugi_cases import CHARACTERISTICS
 from torch.utils import _pytree
 
 from bnb.contracts import SUMMED_LEVEL, Obs, Pool, Trajectory
 from bnb.contracts.obs import GLOBAL, SHIP
-from bnb.controllers.scripted import Scripted, distribution, joint
-from bnb.controllers.scripted_defaults import MODE_DEFAULTS
-from bnb.controllers.scripted_memory import ScriptedCarry
+from bnb.controllers.imugi import Imugi, distribution, joint
+from bnb.controllers.imugi_defaults import MODE_DEFAULTS
+from bnb.controllers.imugi_memory import ImugiCarry
 from bnb.game import api
 from bnb.learn import bc
 from bnb.learn.rewards import RewardConfig
@@ -36,7 +36,7 @@ POOLS = (
     Pool("scripted", 0.5, ("learner", "scripted"), 0.5, mode="frontline"),
 )
 PARAMETERS = MODE_DEFAULTS  # what the trainer's teacher and scored opponent play
-TEACHER = Scripted(CHARACTERISTICS, 5, PARAMETERS)  # the teacher of the 5v5 segments
+TEACHER = Imugi(CHARACTERISTICS, 5, PARAMETERS)  # the teacher of the 5v5 segments
 
 
 def memoryless(view: Obs, temperature: float = 1.0) -> torch.Tensor:
@@ -62,10 +62,10 @@ def _cloning(net, runner: Rollout, teacher_config=bc.TeacherConfig(), **config):
 
 
 def _segment(net) -> Rollout:
-    """Two runs of 8 views, 32 ticks, the model as the learner against the scripted agent."""
+    """Two runs of 8 views, 32 ticks, the model as the learner against Imugi."""
     controllers = {
         "learner": cases.controller(net, cases.SHORT_SQUAD),
-        "scripted": Scripted(CHARACTERISTICS, 5, PARAMETERS),
+        "scripted": Imugi(CHARACTERISTICS, 5, PARAMETERS),
     }
     runner = Rollout(
         cases.SHORT_SQUAD,
@@ -77,7 +77,7 @@ def _segment(net) -> Rollout:
         32,
         lc.CPU,
         compiled=False,
-        extra_reads=Scripted.reads,
+        extra_reads=Imugi.reads,
     )
     for _ in range(2):
         runner.run()
@@ -139,10 +139,10 @@ def test_the_bc_loss_matches_an_independent_computation(segment):
                 for name, value in dataclasses.asdict(trajectory.obs).items()
             }
         )
-        carry = ScriptedCarry(
+        carry = ImugiCarry(
             **{
                 field.name: getattr(carries, field.name)[tick]
-                for field in dataclasses.fields(ScriptedCarry)
+                for field in dataclasses.fields(ImugiCarry)
             }
         )
         q = distribution(obs, CHARACTERISTICS, PARAMETERS, carry=carry)
@@ -186,8 +186,8 @@ def test_micro_batches_accumulate_to_the_unsplit_minibatch(segment):
     assert sum(g.abs().sum().item() for g in whole) > 0
 
 
-class Recording(Scripted):
-    """The memoryless scripted agent as the learner, keeping the distribution of every
+class Recording(Imugi):
+    """The memoryless Imugi as the learner, keeping the distribution of every
     decision."""
 
     def __init__(self) -> None:
@@ -270,7 +270,7 @@ def test_a_label_is_the_teachers_decision_given_its_carry():
 
 
 def _living_distributions(segment):
-    """The stored segment's views and own-alive mask, and T -> the scripted agent's
+    """The stored segment's views and own-alive mask, and T -> Imugi's
     distributions at T over the living own ships (tokens, 42)."""
     _, runner, _, _ = segment
     views = bc.flat_views(lc.whole(runner).obs)
@@ -301,7 +301,7 @@ def test_the_teacher_temperature_and_its_calibration(segment):
 
 
 def test_every_label_gives_every_action_a_probability_above_zero(segment):
-    """The scripted agent's own floors (an epsilon per binary decision but the shot): every
+    """Imugi's own floors (an epsilon per binary decision but the shot): every
     living ship's every action has a probability above zero at T = 1, and at a cold and a
     hot T, with no floor on the labels, except a shot at its gates (no target, or a gun that
     cannot fire), where P(shoot) is 0."""
@@ -320,11 +320,11 @@ def _scripted_seat(
     objective: str, teacher: bc.TeacherConfig = bc.TeacherConfig(), segments: int = 0
 ):
     """A small CPU trainer with BC's lineup, its scripted seat's controller and that seat's
-    view after `segments` segments of 8 ticks (from 2 on, the scripted agent is no longer
+    view after `segments` segments of 8 ticks (from 2 on, Imugi is no longer
     certain of every action)."""
     from bnb.contracts import GameConfig
     from bnb.runtime.cloning import LINEUP
-    from bnb.runtime.train import SCRIPTED, TrainConfig, Trainer
+    from bnb.runtime.train import IMUGI_SEAT, TrainConfig, Trainer
 
     learner = bc.config(minibatches=2) if objective == "bc" else lc.LearnerConfig(minibatches=2)
     cfg = TrainConfig(
@@ -346,8 +346,8 @@ def _scripted_seat(
     trainer = Trainer(cfg, lc.CPU)
     for _ in range(segments):
         trainer.rollout.run()
-    view = trainer.rollout._view(trainer.rollout.carry, SCRIPTED, Scripted.reads)
-    return trainer, trainer.controllers[SCRIPTED], view
+    view = trainer.rollout._view(trainer.rollout.carry, IMUGI_SEAT, Imugi.reads)
+    return trainer, trainer.controllers[IMUGI_SEAT], view
 
 
 def _repeated(view: Obs, times: int) -> Obs:
@@ -392,14 +392,14 @@ def test_the_scored_opponent_plays_the_labels_distribution():
     assert float(expected.min()) >= teacher.floor / NUM_JOINT * 0.999  # the floor is played
 
 
-def test_floor_0_and_temperature_1_leave_the_scripted_agents_play_unchanged():
-    """At floor 0 and T = 1 the scored opponent draws exactly the scripted agent's actions
-    from the same random state; outside BC the scripted seat is the scripted agent itself."""
+def test_floor_0_and_temperature_1_leave_imugis_play_unchanged():
+    """At floor 0 and T = 1 the scored opponent draws exactly Imugi's actions
+    from the same random state; outside BC the scripted seat is Imugi itself."""
     plain = bc.TeacherConfig(temperature=1.0, floor=0.0)
     _, opponent, view = _scripted_seat("bc", plain, segments=2)
     assert isinstance(opponent, bc.TeacherOpponent)
     views = _repeated(view, 500)
-    agent = Scripted(CHARACTERISTICS, 2)
+    agent = Imugi(CHARACTERISTICS, 2)
     draws = []
     for player in (opponent, agent):  # two steps each: the second sees the first's draws
         torch.manual_seed(1)
@@ -414,7 +414,7 @@ def test_floor_0_and_temperature_1_leave_the_scripted_agents_play_unchanged():
         assert len(set(map(tuple, drawn.flatten(0, 1).tolist()))) > 1  # not one action
     torch.testing.assert_close(opponent.action_distribution(view), memoryless(view))
     _, reinforcement_opponent, _ = _scripted_seat("ppo")
-    assert type(reinforcement_opponent) is Scripted
+    assert type(reinforcement_opponent) is Imugi
     assert reinforcement_opponent.temperature == 1.0
 
 

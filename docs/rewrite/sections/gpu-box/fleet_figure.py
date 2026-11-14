@@ -1,5 +1,5 @@
 """fleet_figure.py OUT.png: zero-shot fleet-size generalisation (training is 5v5, 2600 m arena) of the
-champion (Yemong) and the nearest MLP, against the scripted agent, in the training arena.
+champion (Yemong) and the nearest MLP, against Imugi, in the training arena.
 Left two panels: Elo (scripted = 1000) by fleet size per mode, from the fleet ratings (5v5 and 10v10
 in fields with the null's calibration rungs; 20v20 and 40v40 with only the three players: a hollow
 marker is a saturated rating, one side winning every game, so a bound, not a value). Right: the

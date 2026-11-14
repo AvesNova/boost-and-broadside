@@ -2,12 +2,15 @@
 of games between pairs of them on fixed slots.
 
 A player is a policy file (or a training checkpoint, whose policy part plays), the newest
-checkpoint of a run, a ladder entry ("scripted", "random" or "rung_T<t>"), or a teacher:
-the scripted agent at its own temperature T with a uniform floor on its actions,
-`scripted@T=<temperature>,floor=<floor>` (either key optional: T defaults to 1, floor to 0;
-BC's teacher is `scripted`, T = 1 and floor 0), or a cheese agent, `scripted:<name>`
-(`bnb.controllers.scripted_cheese`: zone_rusher, turtle, evader, deathball, jouster, kiter).
+checkpoint of a run, a ladder entry ("imugi", "random" or "rung_T<t>"), or a teacher:
+Imugi at its own temperature T with a uniform floor on its actions,
+`imugi@T=<temperature>,floor=<floor>` (either key optional: T defaults to 1, floor to 0;
+BC's teacher is `imugi`, T = 1 and floor 0), or a cheese agent, `cheese:<name>`
+(`bnb.controllers.cheese`: zone_rusher, turtle, evader, deathball, jouster, kiter).
 A ladder entry, a teacher and a cheese agent are scripted players; the others are networks.
+A player's name is its recorded identity, which keeps the text the records were written with:
+Imugi is "scripted", a teacher "scripted@T=..." and a cheese agent "scripted:<name>"
+(`bnb.runtime.opponents.stored_name` maps the command-line names to them).
 Networks of one build form a group (`Arena.groups`): the
 groups' builds may differ (a field may mix architectures); the networks of one group have
 their weights stacked.
@@ -68,11 +71,12 @@ from torch.utils import _pytree
 from bnb.contracts import ASPECTS, Action, GameConfig, Obs, Outputs, Pool
 from bnb.contracts.obs import SHIP
 from bnb.contracts.tree import contract
-from bnb.controllers.scripted import Scripted, floored_actions
-from bnb.controllers.scripted_cheese import NAMES, Cheese, agent_of, player_name
-from bnb.controllers.scripted_defaults import MODE_DEFAULTS
-from bnb.controllers.scripted_memory import ScriptedCarry
-from bnb.controllers.scripted_parameters import ScriptedParameters, table, unpack
+from bnb.controllers.cheese import NAMES, Cheese, agent_of, player_name
+from bnb.controllers.imugi import Imugi
+from bnb.controllers.imugi_defaults import MODE_DEFAULTS
+from bnb.controllers.imugi_memory import ImugiCarry
+from bnb.controllers.imugi_parameters import ImugiParameters, table, unpack
+from bnb.controllers.scripted import floored_actions
 from bnb.game import api
 from bnb.game.handling.characteristics import Characteristics, characteristics
 from bnb.learn.bc import TeacherConfig
@@ -80,7 +84,7 @@ from bnb.models.yemong.model import ABLATIONS, Ablations, Yemong
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
 from bnb.runtime import stacked
-from bnb.runtime.opponents import OUTCOMES, Rung, ladder_rung
+from bnb.runtime.opponents import OUTCOMES, Rung, ladder_rung, shown_name, stored_name
 from bnb.runtime.rollout import Rollout
 from bnb.runtime.train import model_controller
 
@@ -90,16 +94,16 @@ SEAT = "matches"  # the match seat's controller name
 @dataclasses.dataclass(frozen=True)
 class Player:
     """One player: its name, and either a policy directory, a ladder entry's rung
-    (`bnb.runtime.opponents.Rung`; +inf random), or a teacher (the scripted agent at its
+    (`bnb.runtime.opponents.Rung`; +inf random), or a teacher (Imugi at its
     temperature with a floor); ablations: a network's inference-time ablations (names of
     `ABLATIONS`, sorted); temperature: a network's sampling temperature (1: its policy as it
     is); ship_type: every ship of its team flies this type (an index into
     the game's card; None: the game's lineup), so a scripted player with a ship type is a
-    ship type as the scripted agent flies it (`ship_type_players`); a tuple gives each ship
+    ship type as Imugi flies it (`ship_type_players`); a tuple gives each ship
     of the team its own type (a mixed team, one entry per ship); parameters: a scripted
     player's own parameter set (its doctrine; only in an arena built with a `doctrine`), else
-    the arena's; cheese: a cheese agent's name (`bnb.controllers.scripted_cheese`), the player
-    `scripted:<cheese>`."""
+    the arena's; cheese: a cheese agent's name (`bnb.controllers.cheese`), the player
+    `scripted:<cheese>` (command line `cheese:<cheese>`)."""
 
     name: str
     policy: pathlib.Path | None = None
@@ -108,13 +112,13 @@ class Player:
     ablations: tuple[str, ...] = ()
     temperature: float = 1.0
     ship_type: int | tuple[int, ...] | None = None
-    parameters: ScriptedParameters | None = None
+    parameters: ImugiParameters | None = None
     cheese: str | None = None
 
 
 def ship_type_players(ship_set: str, rung: Rung = Rung(1.0)) -> list[Player]:
-    """One player per type of a ship set, named by the type's name: the scripted agent at
-    `rung` (the scripted agent itself by default) flying that type with every ship."""
+    """One player per type of a ship set, named by the type's name: Imugi at
+    `rung` (Imugi itself by default) flying that type with every ship."""
     return [
         Player(name, rung=rung, ship_type=index)
         for index, name in enumerate(api.type_names(ship_set))
@@ -122,7 +126,7 @@ def ship_type_players(ship_set: str, rung: Rung = Rung(1.0)) -> list[Player]:
 
 
 def teacher_of(name: str) -> TeacherConfig | None:
-    """The teacher a `scripted@T=<t>,floor=<f>` name means (keys in any order, each
+    """The teacher a `scripted@T=<t>,floor=<f>` identity means (keys in any order, each
     optional, none repeated; T defaults to 1 and floor to 0), or None for another name.
     Raises ValueError for a malformed or out-of-range one."""
     if not name.startswith("scripted@"):
@@ -132,7 +136,7 @@ def teacher_of(name: str) -> TeacherConfig | None:
     for item in name[len("scripted@") :].split(","):
         key, equals, text = item.partition("=")
         if not equals or key not in values or key in seen:
-            raise ValueError(f"{name!r}: expected scripted@T=<temperature>,floor=<floor>")
+            raise ValueError(f"{name!r}: expected imugi@T=<temperature>,floor=<floor>")
         seen.add(key)
         try:
             values[key] = float(text)
@@ -177,14 +181,17 @@ def player(name: str, runs_directory: pathlib.Path | None = None) -> Player:
     """The player a command-line name means: a ladder entry, a policy directory (one with a
     checkpoint.json; a path, or one inside `runs_directory` such as
     `RUN/policies/step_<steps>/uniform_average`), or a run's newest checkpoint; either of
-    the last two with ablations (`ablations_of`) and at a temperature (`temperature_of`)."""
+    the last two with ablations (`ablations_of`) and at a temperature (`temperature_of`).
+    The player's name is its recorded identity (`stored_name`: `imugi` is "scripted",
+    `cheese:<name>` "scripted:<name>"), which a record's own names also parse as."""
+    name = stored_name(name)
     base, temperature = temperature_of(name)
     if temperature is not None:
         network = player(base, runs_directory)
         if network.policy is None:
             raise ValueError(
-                f"{name!r}: only a network plays at a temperature (the scripted agent's is "
-                "scripted@T=<temperature>)"
+                f"{name!r}: only a network plays at a temperature (Imugi's is "
+                "imugi@T=<temperature>)"
             )
         if network.temperature != 1.0:
             raise ValueError(f"{name!r}: a temperature is named twice")
@@ -212,33 +219,32 @@ def player(name: str, runs_directory: pathlib.Path | None = None) -> Player:
         return Player(name, policy=inside)
     if inside is not None and inside.is_dir():
         return Player(name, policy=Run.open(pathlib.Path(runs_directory), name).checkpoint_at())
+    cheese_names = [shown_name(player_name(one)) for one in NAMES]
     raise ValueError(
-        f"{name!r} is not a policy file, a run or a ladder entry (scripted, random, "
-        f"rung_T<t>, rung_T<t>_p<share>) or a cheese agent ({', '.join(map(player_name, NAMES))})"
+        f"{name!r} is not a policy file, a run or a ladder entry (imugi, random, "
+        f"rung_T<t>, rung_T<t>_p<share>) or a cheese agent ({', '.join(cheese_names)})"
     )
 
 
 @dataclasses.dataclass(frozen=True)
-class ScriptedPlay:
-    """How a scripted player plays: the scripted agent at `temperature` (+inf random), each
+class ImugiPlay:
+    """How a scripted player plays: Imugi at `temperature` (+inf random), each
     ship playing it with probability `share` per game and uniformly otherwise (a mixture
     rung), then a uniform joint action with probability `floor` per decision (a teacher's)."""
 
     temperature: float
     share: float = 1.0
     floor: float = 0.0
-    parameters: ScriptedParameters | None = None
+    parameters: ImugiParameters | None = None
 
 
-def scripted_play(player: Player) -> ScriptedPlay | None:
+def imugi_play(player: Player) -> ImugiPlay | None:
     """A scripted player's play (a rung's or a teacher's), or None for a network or a cheese
     agent (`Player.cheese`, played by `MatchSeat.load_cheese`)."""
     if player.rung is not None:
-        return ScriptedPlay(
-            player.rung.temperature, player.rung.share, parameters=player.parameters
-        )
+        return ImugiPlay(player.rung.temperature, player.rung.share, parameters=player.parameters)
     if player.teacher is not None:
-        return ScriptedPlay(
+        return ImugiPlay(
             player.teacher.temperature, floor=player.teacher.floor, parameters=player.parameters
         )
     return None
@@ -247,13 +253,13 @@ def scripted_play(player: Player) -> ScriptedPlay | None:
 @contract
 class MatchCarry:
     """Per row (R leading): model, the networks' carry by group (the group's controller's; a
-    memoryless network has none); scripted, the scripted agent's; finished (R,) bool, the
+    memoryless network has none); scripted, Imugi's; finished (R,) bool, the
     row's first game has ended; started (1,) bool, a decision has been made (the first
     observation's reset is the batch's start, not a game's end); statistics (R,
     len(STATISTICS)) float, the row's team's first game so far (`MatchSeat.count`)."""
 
     model: object
-    scripted: ScriptedCarry
+    scripted: ImugiCarry
     finished: torch.Tensor
     started: torch.Tensor
     statistics: torch.Tensor
@@ -317,14 +323,14 @@ class MatchSeat:
     most of its slots a batch may hold (one per group by default); blocks and
     block_environments: the layout (rows are block by block, each block's first seat's rows
     then its second's, as the lineup lists them); characteristics and ships_per_team: the
-    scripted agent's; doctrine: the scripted agent's parameter set for every row whose slot's
+    Imugi's; doctrine: Imugi's parameter set for every row whose slot's
     player brings none (None: the mode's set, and no player may bring one); ablations: a
     the ablations a network slot may play (`ABLATIONS` names; each row's ablations held
     in place and passed to every Yemong group's network as `Ablations`, absent_zones carried
     only when named, so a seat without it attends as before; none: the networks are called
     without them). Each row's network sampling temperature is held in place
     (`network_temperature`, 1 but on a tempered player's rows). Every slot starts as the
-    scripted agent, every lane idle."""
+    Imugi, every lane idle."""
 
     def __init__(
         self,
@@ -336,7 +342,7 @@ class MatchSeat:
         device: torch.device,
         ablations: tuple[str, ...] = (),
         lanes: tuple[int, ...] | None = None,
-        doctrine: ScriptedParameters | None = None,
+        doctrine: ImugiParameters | None = None,
         cheese: bool = False,
     ) -> None:
         self.slots, self.slot_rows = 2 * blocks, block_environments
@@ -360,7 +366,7 @@ class MatchSeat:
         if doctrine is not None:
             self.doctrine_table = table([doctrine] * self.rows, device)
             parameters = unpack(self.doctrine_table)
-        self.agent = Scripted(
+        self.agent = Imugi(
             characteristics,
             ships_per_team,
             parameters,
@@ -388,7 +394,7 @@ class MatchSeat:
         ]
         self.lane_of: dict[int, tuple[int, int]] = {}  # this batch's network slots' lanes
         self.parameters: list[dict[str, torch.Tensor]] = []
-        reads = Scripted.reads
+        reads = Imugi.reads
         for decision, count in zip(self.decisions, self.lanes, strict=True):
             decision.requires_grad_(False)
             reads = decision.controller.reads + reads
@@ -631,8 +637,8 @@ class MatchSeat:
                     getattr(self.ablations, name)[rows] = name in ablations
 
     @torch.no_grad()
-    def load_scripted(self, slot: int, play: ScriptedPlay) -> None:
-        """Slot `slot` plays the scripted agent as `play` says, written in place."""
+    def load_imugi(self, slot: int, play: ImugiPlay) -> None:
+        """Slot `slot` plays Imugi as `play` says, written in place."""
         rows = self._slot_rows(slot)
         self.temperature[rows] = play.temperature
         self.share[rows] = play.share
@@ -717,7 +723,7 @@ def network_groups(players: list[Player]) -> list[int | None]:
     builds: list[tuple[str, object]] = []
     groups: list[int | None] = []
     for one in players:
-        if scripted_play(one) is not None or one.cheese is not None:
+        if imugi_play(one) is not None or one.cheese is not None:
             groups.append(None)
             continue
         record = checkpoint.read_policy(one.policy)
@@ -813,7 +819,7 @@ class Arena:
         config: ArenaConfig = ArenaConfig(),
         lanes: tuple[int, ...] | None = None,
         card: api.ShipTypes | None = None,
-        doctrine: ScriptedParameters | None = None,
+        doctrine: ImugiParameters | None = None,
         benching: bool = False,
         game_lineups: bool = False,
         first_batch: int = 0,
@@ -902,7 +908,7 @@ class Arena:
 
     def set_card(self, types: api.ShipTypes) -> None:
         """Play the following batches with this card ((num_types,) fields, as the arena's):
-        written in place into the rollout's card and the scripted agent's characteristics,
+        written in place into the rollout's card and Imugi's characteristics,
         so nothing recompiles (`docs/explanation/game/ship-design.md`). Raises ValueError
         for another number of types, or a fire rate that needs more bullet slots than the
         arena was built with (build it with the fastest fire rate the cards will use)."""
@@ -929,7 +935,7 @@ class Arena:
         self.types = types
 
     def _load(self, slot: int, index: int) -> None:
-        play = scripted_play(self.players[index])
+        play = imugi_play(self.players[index])
         if self.players[index].cheese is not None:
             self.seat.load_cheese(slot, self.players[index].cheese)
         elif play is None:
@@ -938,7 +944,7 @@ class Arena:
                 slot, self.group_of[index], self.states[index], one.ablations, one.temperature
             )
         else:
-            self.seat.load_scripted(slot, play)
+            self.seat.load_imugi(slot, play)
 
     def _ship_types(self, matchups: list[tuple[int, int]]) -> torch.Tensor:
         """(games, N) int32 each ship's type for a batch: each environment's teams fly their

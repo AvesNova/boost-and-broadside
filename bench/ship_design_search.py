@@ -23,7 +23,7 @@ The loss of a candidate (a value for every design's searched knobs) is
 
 the edges played `games_per_edge` games each (`games_late` once the step size has halved)
 (half with each design on each side), every ship of a team one design, both teams the
-scripted agent (its real-scale set for the preset, T = 1). Each generation plays the
+Imugi (its real-scale set for the preset, T = 1). Each generation plays the
 CMA-ES mean and `population - 1` samples; its rows (every candidate's knobs, scores and
 loss) are appended to DIR/search.jsonl and the optimiser's state to DIR/state.json as it
 ends, so a stopped search resumes. The search stops at `generations` or `--hours`; each
@@ -188,7 +188,7 @@ class DesignArena:
     writes the card in place and plays the matchups, ARENA_BLOCKS at a time."""
 
     def __init__(self, preset: str, device: torch.device, block_games: int = BLOCK_GAMES):
-        from bnb.controllers.scripted_defaults import MODE_DEFAULTS
+        from bnb.controllers.imugi_defaults import MODE_DEFAULTS
 
         self.game = api.PRESETS[preset]
         self.players = [Player(f"slot {i}", rung=Rung(1.0), ship_type=i) for i in range(SLOTS)]
@@ -636,11 +636,11 @@ def candidate_row(log_path: pathlib.Path, candidate: str | None) -> dict:
 
 def robust(args) -> None:
     """Does the cycle hold when the agent changes? For each of `--seeds` draws, every design
-    flies its own perturbation of the preset's set (`bench.scripted_search.perturb` at
+    flies its own perturbation of the preset's set (`bench.imugi_search.perturb` at
     `--sigma`, a different draw per design), and every pair plays `--games` games; one row per
     draw and pair to DIR/robust-<preset>.jsonl, with the draw's edges against the band."""
-    from bench.scripted_search import perturb
-    from bnb.controllers.scripted_defaults import MODE_DEFAULTS
+    from bench.imugi_search import perturb
+    from bnb.controllers.imugi_defaults import MODE_DEFAULTS
 
     spec = json.loads(pathlib.Path(args.spec).read_text())
     out = pathlib.Path(args.out)

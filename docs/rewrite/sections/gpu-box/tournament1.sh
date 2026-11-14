@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tournament 1 (round 2 on the 3090): four 30M uniform averages (C-fixed-LB dropped after one batch:
-# 215 +- 78 against C-fixed's 807 +- 26) and the scripted agent
+# 215 +- 78 against C-fixed's 807 +- 26) and Imugi
 # (1000), frontline then deathmatch, no ladder (with it: 14 players, 91 pairs, too slow).
 cd /workspace/boost-and-broadside
 set -a; . /workspace/.env; set +a

@@ -1,4 +1,4 @@
-"""The scripted agent's per-type doctrines (`bnb.controllers.scripted_doctrine`): off, the
+"""Imugi's per-type doctrines (`bnb.controllers.imugi_doctrine`): off, the
 agent as without them; each element moves the aim or the power the way its docstring says;
 each own ship flies its own type's doctrine."""
 
@@ -7,13 +7,13 @@ import math
 
 import pytest
 import torch
-from scripted_cases import CHARACTERISTICS, absent, observation, ship, value
+from imugi_cases import CHARACTERISTICS, absent, observation, ship, value
 
 from bnb.contracts import Obs
 from bnb.contracts.obs import SHIP
-from bnb.controllers.scripted import decide
-from bnb.controllers.scripted_combat import advantage_weight, context
-from bnb.controllers.scripted_doctrine import (
+from bnb.controllers.imugi import decide
+from bnb.controllers.imugi_combat import advantage_weight, context
+from bnb.controllers.imugi_doctrine import (
     WIDTH,
     Doctrine,
     from_named,
@@ -23,10 +23,10 @@ from bnb.controllers.scripted_doctrine import (
     per_ship,
     table,
 )
-from bnb.controllers.scripted_parameters import Logistic, ScriptedParameters
+from bnb.controllers.imugi_parameters import ImugiParameters, Logistic
 
 pytestmark = pytest.mark.usefixtures("global_generator")
-PARAMETERS = ScriptedParameters()
+PARAMETERS = ImugiParameters()
 TURN = CHARACTERISTICS.turn_rate[:, 2]
 AGILE, STIFF = int(TURN.argmax()), int(TURN.argmin())
 TYPES = TURN.shape[0]

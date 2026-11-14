@@ -237,7 +237,7 @@ def test_the_deathmatch_outcome_is_a_reward_setting():
 def test_the_rollout_plays_its_reward_configs_deathmatch_outcome(outcome):
     """The training rollout sets the reward's deathmatch outcome on every pool's rules."""
     from bnb.contracts import Pool
-    from bnb.controllers.scripted import Scripted
+    from bnb.controllers.imugi import Imugi
     from bnb.game.handling.characteristics import characteristics
     from bnb.runtime.rollout import Rollout
 
@@ -247,7 +247,7 @@ def test_the_rollout_plays_its_reward_configs_deathmatch_outcome(outcome):
         game,
         types,
         (Pool("scripted", 1.0, ("scripted", "scripted")),),
-        {"scripted": Scripted(characteristics(types, api.rules_of(game)), 2)},
+        {"scripted": Imugi(characteristics(types, api.rules_of(game)), 2)},
         "scripted",
         4,
         8,
@@ -1151,7 +1151,7 @@ def test_eager_cuda_graph_capture_in_every_mode(mode):
 
 
 def test_frontline_plays_with_no_fields():
-    """A frontline map of no fields (the scripted agent's measurements play them): the
+    """A frontline map of no fields (Imugi's measurements play them): the
     mirror's odd field reads no uniform, so a match resets and steps."""
     config = dataclasses.replace(PRESETS["frontline"], num_fields=0)
     rules = api.rules_of(config)

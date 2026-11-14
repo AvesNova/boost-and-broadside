@@ -1,15 +1,15 @@
-# Scripted memory: notes
+# Imugi memory: notes
 
 Brief: `scripted-memory-brief.md` (with the author's amendment of 2026-11-05: one parameter
 set per game mode). Round one: `scripted-redesign-notes.md`.
 
 ## The memory's form
 
-`bnb.controllers.scripted_memory.ScriptedCarry`, per view: each own ship's committed target
+`bnb.controllers.imugi_memory.ImugiCarry`, per view: each own ship's committed target
 (an enemy row, or none), turn side per layer (combat, Frontline), Frontline goal (defend or
 attack), recovery, a `fresh` flag and an agent flag (a mixture rung's draw); each enemy's
 last seen position and velocity and whether it is known. One code path: memory off
-(`Scripted(memory=False)`) makes every ship fresh and forgets every hidden enemy at every
+(`Imugi(memory=False)`) makes every ship fresh and forgets every hidden enemy at every
 decision, which is the memoryless agent. On the CPU over round one's own games (three
 segments of 64 ticks, 8 games per preset, T = 1 and 2), memory off with round one's
 parameters gives round one's distribution exactly (largest difference 0.0).
@@ -41,7 +41,7 @@ parameters gives round one's distribution exactly (largest difference 0.0).
 
 ## The search
 
-`bench/scripted_search.py --preset <mode>` from a scratch wrapper whose references are round
+`bench/imugi_search.py --preset <mode>` from a scratch wrapper whose references are round
 one's agent (the anchor, 0; frozen from fd0de232) and the earlier raw agent (frozen from
 672364f9, as in round one), one search per preset (amendment): 32 candidates, 128 games per
 candidate, a quarter against the references, candidate seats at T drawn from

@@ -7,7 +7,7 @@ of the engine's fixed matchup blocks. Before each batch the blocks are planned
 standard-error targets, at the current posterior, rounded to whole blocks within the
 batch's players and lanes); after it, the maximum-likelihood Bradley-Terry fit on every
 game so far (`bnb.league.design.fit_posterior`, draws as half a win, no prior), shifted so
-the scripted agent is 1000: only it is pinned. A player the likelihood sets no finite
+Imugi is 1000: only it is pinned. A player the likelihood sets no finite
 rating for (it won or lost every game, or sits in a group joined to the others only by
 sweeps) is reported as a bound (`status` "above" or "below", `calibrated_elo` the bound) or
 as undetermined, without a standard error, and its own target is left out of the met
@@ -18,7 +18,7 @@ tournament stops when every target is met, when the next batch would pass the ga
 or when every unmet target is out of reach within the budget. The result is the
 leaderboard (`calibrated_elo`), keyed by game version, mode, map and fleet size.
 
-The field may restrict who plays whom (`allowed_pairs`): the scripted agent can be kept to
+The field may restrict who plays whom (`allowed_pairs`): Imugi can be kept to
 a few players, which anchor the scale for the others through their games.
 
 A field may instead be balanced (`TournamentConfig.allocation`): each block goes to the
@@ -183,7 +183,7 @@ class TournamentConfig:
 
 def allowed_pairs(names: list[str], anchor_partners: tuple[str, ...] | None = None) -> torch.Tensor:
     """Who may play whom in a field of `names`, (K, K) bool: every pair of different
-    players, except that the scripted agent plays only `anchor_partners` when they are
+    players, except that Imugi plays only `anchor_partners` when they are
     given."""
     count = len(names)
     allowed = ~torch.eye(count, dtype=torch.bool)
@@ -191,8 +191,7 @@ def allowed_pairs(names: list[str], anchor_partners: tuple[str, ...] | None = No
         unknown = [name for name in anchor_partners if name not in names or name == ANCHOR]
         if unknown or not anchor_partners:
             raise ValueError(
-                f"the scripted agent's partners {list(anchor_partners)} must be other players "
-                "of the field"
+                f"Imugi's partners {list(anchor_partners)} must be other players of the field"
             )
         anchor = names.index(ANCHOR)
         partner = torch.tensor([name in anchor_partners for name in names])
@@ -564,7 +563,7 @@ def fit_field(
     the scoring of a recorded batch that names none): a record whose batches hold only
     another scoring's results is not resumed (`recorded_results`)."""
     if not _connected(allowed, anchor):
-        raise ValueError("every player must reach the scripted agent through allowed pairs")
+        raise ValueError("every player must reach Imugi through allowed pairs")
     arena, count = config.arena, len(names)
     targets = config.targets(names)
     decision = tuple(names.index(name) for name in config.decision)
@@ -719,7 +718,7 @@ def rate(
 ) -> list[dict]:
     """The field's ratings in one game preset (`game`: its config, PRESETS[preset] by
     default): a row per player (its name, `calibrated_elo`, its standard error and its
-    games) plus the leaderboard's key. The field must hold the anchor (the scripted agent
+    games) plus the leaderboard's key. The field must hold the anchor (Imugi
     by default), rated 1000; allowed (K, K) bool: who may play whom (`allowed_pairs`; every
     pair by default); record: the batches' record (`fit_field`), which with `statistics`
     also keeps each block's game statistics (`Arena.statistics`, under "statistics").

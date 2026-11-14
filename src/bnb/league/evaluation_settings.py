@@ -64,7 +64,7 @@ class EvaluationConfig:
         "real_scale_elimination",
     )
     lineup_types: tuple[str, ...] = ("Yongma", "Jujak")
-    opponent: str = "scripted"
+    opponent: str = "imugi"
     opponent_count: int = 20
     minimum_count: int = 1
     maximum_count: int = 20

@@ -4,8 +4,8 @@ A Yemong agent's predictions are its model's outputs at its latest decision: eve
 from that decision's own trunk pass (`Yemong.inspect`, while the agent is watched), or
 else the learner's `unroll` over that one step, from the carry the step started at, the
 view and the step's replay record (the beliefs after its sight); decoded by the decoder layer
-(`bnb.models.yemong.decode`) as the figures decode them. The scripted agent's are its
-memory's recall (`bnb.controllers.scripted_memory.remember`) of the same decision. The
+(`bnb.models.yemong.decode`) as the figures decode them. Imugi's are its
+memory's recall (`bnb.controllers.imugi_memory.remember`) of the same decision. The
 true bullet paths are the game's own transport of the live bullets
 (`bnb.game.api.bullet_paths`). Nothing here decodes a head itself.
 
@@ -22,8 +22,8 @@ import torch
 from torch.utils import _pytree
 
 from bnb.contracts.obs import GLOBAL, SHIP
-from bnb.controllers.scripted import resolved
-from bnb.controllers.scripted_memory import remember
+from bnb.controllers.imugi import resolved
+from bnb.controllers.imugi_memory import remember
 from bnb.game import api
 from bnb.models.yemong import decode
 from bnb.models.yemong.density import HexGrid
@@ -38,7 +38,7 @@ from .overlays import (
     Reckoning,
     ShotPaths,
 )
-from .sides import Agent, ScriptedAgent
+from .sides import Agent, ImugiAgent
 from .snapshot import Snapshot
 
 
@@ -248,7 +248,7 @@ def network(agent, team: int, observed: Snapshot, following: Snapshot) -> Predic
 
 @torch.no_grad()
 def memory(agent, team: int, observed: Snapshot) -> Predictions | None:
-    """The scripted agent's dead-reckoned enemies at its latest decision (None before its
+    """Imugi's dead-reckoned enemies at its latest decision (None before its
     first): each remembered enemy it cannot see, at its recalled position, heading along
     its last seen velocity, its weight as the ghost's opacity."""
     inspection = agent.inspection
@@ -294,6 +294,6 @@ def side_predictions(
     for a controller that provides none, or before its first decision)."""
     if isinstance(controller, Agent) and controller.overlays:
         return network(controller, team, observed, following)
-    if isinstance(controller, ScriptedAgent):
+    if isinstance(controller, ImugiAgent):
         return memory(controller, team, observed)
     return None

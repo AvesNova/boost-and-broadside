@@ -32,10 +32,10 @@ from bnb.play.render.predictions import (
     overlay_drawing,
     path_segments,
 )
-from bnb.play.sides import Agent, Scripted, ScriptedAgent, build_sides
+from bnb.play.sides import Agent, Imugi, ImugiAgent, build_sides
 from bnb.play.themes import Library
 
-# The scripted agent's moves draw from torch's default generator inside its own fork.
+# Imugi's moves draw from torch's default generator inside its own fork.
 pytestmark = pytest.mark.usefixtures("global_generator")
 
 S, N = SMALL.ships_per_team, SMALL.num_ships
@@ -61,12 +61,12 @@ def theme():
 # Which overlays, whose -------------------------------------------------------------------
 
 
-def test_scripted_against_scripted_offers_only_the_bullet_paths():
+def test_imugi_against_scripted_offers_only_the_bullet_paths():
     assert (
         offered(
             [
-                Scripted(api.rules_of(SMALL), api.ship_types()),
-                Scripted(api.rules_of(SMALL), api.ship_types()),
+                Imugi(api.rules_of(SMALL), api.ship_types()),
+                Imugi(api.rules_of(SMALL), api.ship_types()),
             ]
         )
         == PHYSICS
@@ -77,17 +77,17 @@ def test_scripted_against_scripted_offers_only_the_bullet_paths():
 
 def test_each_controller_offers_what_it_can_provide():
     rules = api.rules_of(SMALL)
-    memory = ScriptedAgent(rules, api.ship_types())
-    assert offered([memory, Scripted(api.rules_of(SMALL), api.ship_types())]) == (
+    memory = ImugiAgent(rules, api.ship_types())
+    assert offered([memory, Imugi(api.rules_of(SMALL), api.ship_types())]) == (
         "bullet_paths",
         "dead_reckoning",
     )
     assert (
-        offered([_agent(), Scripted(api.rules_of(SMALL), api.ship_types())])
+        offered([_agent(), Imugi(api.rules_of(SMALL), api.ship_types())])
         == ("bullet_paths",) + NETWORK
     )
     assert (
-        offered([_agent(name="relational"), Scripted(api.rules_of(SMALL), api.ship_types())])
+        offered([_agent(name="relational"), Imugi(api.rules_of(SMALL), api.ship_types())])
         == PHYSICS
     )
     everything = offered([_agent(), memory])
@@ -95,17 +95,17 @@ def test_each_controller_offers_what_it_can_provide():
     assert everything == tuple(name for name in NAMES if name in everything)  # card order
 
 
-def test_a_setup_names_the_scripted_agent():
+def test_a_setup_names_imugi():
     sides = build_sides(
-        MatchSetup(SMALL, sides=(SideSetup("scripted_agent"), SideSetup("scripted"))),
+        MatchSetup(SMALL, sides=(SideSetup("imugi"), SideSetup("scripted"))),
         api.rules_of(SMALL),
         api.ship_types(),
     )
-    assert isinstance(sides[0], ScriptedAgent) and isinstance(sides[1], Scripted)
+    assert isinstance(sides[0], ImugiAgent) and isinstance(sides[1], Imugi)
 
 
 def test_an_overlay_draws_the_picked_side_else_the_selected_ships_else_the_other():
-    agent, memory = _agent(), ScriptedAgent(api.rules_of(SMALL), api.ship_types())
+    agent, memory = _agent(), ImugiAgent(api.rules_of(SMALL), api.ship_types())
     sides = [agent, memory]
     # nothing picked: the selected ship's side when it provides the overlay, else the other
     assert provider("belief", sides, None, selected_team=0, view_team=-1) == 0
@@ -149,7 +149,7 @@ def match(module_global_generator):
     seconds in; and its predictions."""
     agent = _agent(3)
     agent.watched = True
-    loop = _loop([Scripted(api.rules_of(SMALL), api.ship_types()), agent], ticks=120)
+    loop = _loop([Imugi(api.rules_of(SMALL), api.ship_types()), agent], ticks=120)
     made = predictions.side_predictions(agent, 1, loop.previous, loop.current)
     return loop, agent, made
 
@@ -244,13 +244,13 @@ def test_the_true_density_splits_each_living_ship_over_its_cells(match):
 
 
 def test_the_dead_reckoning_ghosts_are_the_memorys_recall():
-    """A scripted agent that saw the enemy and then lost it: each ghost is its last
+    """An Imugi that saw the enemy and then lost it: each ghost is its last
     sighting plus the velocity then times the time since, its opacity the weight."""
-    memory = ScriptedAgent(api.rules_of(SMALL), api.ship_types(), seed=2)
+    memory = ImugiAgent(api.rules_of(SMALL), api.ship_types(), seed=2)
     found = None
     loop = MatchLoop(
         MatchSetup(SMALL, seed=7),
-        sides=[memory, Scripted(api.rules_of(SMALL), api.ship_types())],
+        sides=[memory, Imugi(api.rules_of(SMALL), api.ship_types())],
         compiled=False,
     )
     for _ in range(600):
@@ -259,7 +259,7 @@ def test_the_dead_reckoning_ghosts_are_the_memorys_recall():
         if len(made.dead_reckoning.ghosts.ship):
             found = made
             break
-    assert found is not None, "the scripted agent never lost sight of a remembered enemy"
+    assert found is not None, "Imugi never lost sight of a remembered enemy"
     reckoning = found.dead_reckoning
     ghosts = reckoning.ghosts
     view = memory.inspection.view.ships[0]

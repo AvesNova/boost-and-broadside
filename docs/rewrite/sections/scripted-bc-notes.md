@@ -1,7 +1,7 @@
-# Sections 4 and 7 (the scripted agent and BC): notes
+# Sections 4 and 7 (Imugi and BC): notes
 
 Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
-`docs/explanation/scripted-agent.md`, `docs/explanation/behaviour-cloning.md` and
+`docs/explanation/imugi.md`, `docs/explanation/behaviour-cloning.md` and
 `docs/guides/behaviour-cloning.md`.
 
 ## Progress (working state)
@@ -24,15 +24,15 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
 
 ## Design
 
-### Part A: the scripted agent
+### Part A: Imugi
 
 | Module | Job | Lines |
 |---|---|---:|
 | `game/handling/characteristics.py` | `Characteristics` from section 1b's measurements (`measure`'s handles, `shown.top_speed`, `shown.settled`), `time_of_flight`, the cached `characteristics` | 98 |
-| `controllers/scripted_parameters.py` | `Ramp`, `ramp`, `ScriptedParameters` (the searched defaults), `pack`/`unpack`/`table` (per-view parameters) | 112 |
-| `controllers/scripted_combat.py` | `Context` (what both layers read), `lead`, the stick/power/shoot marginals, the boundary steer, `combat`, `blend` | 226 |
-| `controllers/scripted_frontline.py` | strength kernels, the defense/attack assignment by rank, separation, recovery, the blend with combat | 141 |
-| `controllers/scripted.py` | `marginals`, `joint`, `distribution`, `Scripted` (sampling, rungs) beside `Random` and `Chaser` | 161 |
+| `controllers/imugi_parameters.py` | `Ramp`, `ramp`, `ImugiParameters` (the searched defaults), `pack`/`unpack`/`table` (per-view parameters) | 112 |
+| `controllers/imugi_combat.py` | `Context` (what both layers read), `lead`, the stick/power/shoot marginals, the boundary steer, `combat`, `blend` | 226 |
+| `controllers/imugi_frontline.py` | strength kernels, the defense/attack assignment by rank, separation, recovery, the blend with combat | 141 |
+| `controllers/scripted.py` | `marginals`, `joint`, `distribution`, `Imugi` (sampling, rungs) beside `Random` and `Chaser` | 161 |
 | `runtime/evaluate.py` | `first_results` (fresh games to their end, each view's first result), `score`, `shares`; `win_rate` uses it | 44 |
 
 - **Characteristics.** Read from section 1b's measurements once per card and rules
@@ -79,10 +79,10 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
   returns, the critic on the student's returns, the auxiliary heads, micro-batching,
   the return scale. `bc.config()`: policy coefficient 0.025, entropy 0, `target_kl=None`.
 - **Labels at update time.** `teacher_distribution` flattens the micro-batch's stored
-  observations `(L, n)` into views and runs `Scripted`'s `distribution` inside the
+  observations `(L, n)` into views and runs `Imugi`'s `distribution` inside the
   compiled loss. The rollout records the teacher's parts with `extra_reads`.
 - **The loop.** `clone` runs `Trainer.update` and feeds the stop rule with the games
-  against the scripted agent from `pool_metrics` and the update's BC KL.
+  against Imugi from `pool_metrics` and the update's BC KL.
 
 ## Decisions and deviations
 
@@ -146,7 +146,7 @@ shared the GPU during part of them; timings are provisional, scores are not timi
 
 ### The parameter search
 
-`bench/scripted_search.py` (committed in the fix round; first run from a scratch copy
+`bench/imugi_search.py` (committed in the fix round; first run from a scratch copy
 of the same procedure): 32 candidates side by side (one parameter-table
 row per view) in one compiled rollout per (mode, opponent): against the chaser and against
 the starting point, team deathmatch and Frontline presets, fog on, seat drawn per game.
@@ -215,14 +215,14 @@ assignment fix.
 ship budget), compiled rollout with CUDA graphs, best of 5 segments of 128 ticks after a
 warm-up: random vs random 1.052 ms per tick, random vs scripted 1.111 ms. The scripted
 agent costs 0.059 ms per tick for 4096 views, **5.6% of the game's tick** (the 10% bar
-holds). Provisional (shared GPU). A first version of the script made the scripted agent
+holds). Provisional (shared GPU). A first version of the script made Imugi
 the rollout's learner, which also adds its observation records; that measured 18%,
 mostly recording.
 
 ### The teacher's natural entropy
 
 `bnb --preset mixed --num-envs 256 --calibrate-entropy 0.5` (and
-`/tmp/bnb-scratch-scripted/reach.py`): the scripted agent plays itself in the 5v5 training
+`/tmp/bnb-scratch-scripted/reach.py`): Imugi plays itself in the 5v5 training
 mix (staggered clocks, 4 segments of 128 ticks, 1.27M living own ship-steps). **Natural
 entropy 0.396 nats per living ship-step.** The distribution's support averages 2.4 joint
 actions (mean log-support 0.753), so the temperature alone reaches 0.753 at most:
@@ -291,7 +291,7 @@ re-measurement should settle it.
 - **`bnb.runtime.rollout`**: `extra_reads`; the learner's view carries `self.reads`.
 - **`bnb.runtime.train`**: `SCRIPTED`, `OBJECTIVES`, `TrainConfig.objective` and
   `.teacher`; the trainer builds only the controllers its pools seat (plus the learner
-  and its league copy), measures the characteristics when the scripted agent plays or
+  and its league copy), measures the characteristics when Imugi plays or
   teaches, and builds `BehaviourCloning` for `objective="bc"`; `win_rate` uses
   `first_results`.
 - **`bnb.learn.ppo`** (inside `bnb.learn`, listed for the reviewer): the policy terms are
@@ -299,9 +299,9 @@ re-measurement should settle it.
   stop. PPO's numbers are unchanged (section 6's tests pass).
 - **`bnb.cli`**: `--objective`, `--teacher-temperature`, `--teacher-floor`,
   `--bc-budget-steps`, `--calibrate-entropy`.
-- **Tests:** `tests/sections/test_scripted.py`, `scripted_cases.py`, `test_handling.py`,
+- **Tests:** `tests/sections/test_imugi.py`, `imugi_cases.py`, `test_handling.py`,
   `test_bc.py`, `test_bc_toy.py` (gpu, slow).
-- **Docs:** new `docs/explanation/scripted-agent.md`, `docs/explanation/behaviour-cloning.md`,
+- **Docs:** new `docs/explanation/imugi.md`, `docs/explanation/behaviour-cloning.md`,
   `docs/guides/behaviour-cloning.md`; the two in-progress pages removed; `mkdocs.yml` nav;
   `docs/roadmap.yml` (sections 4 and 7: merged); the training loop, learner, training
   guide and glossary (a "Rung" entry) updated; `reviewed:` dates on the pages that cover
@@ -334,7 +334,7 @@ Part A: 738 lines of source (characteristics 98, the four controller modules 640
 The review's fix list, each with the test that now guards it. Every behaviour mutation
 the review named was applied by hand and fails the named test (and passed the old suite).
 
-1. **Behaviour tests that can fail** (`tests/sections/test_scripted.py`):
+1. **Behaviour tests that can fail** (`tests/sections/test_imugi.py`):
    - defense urgency removed (`under_attack` forced False):
      `test_frontline_a_meter_moving_against_it_calls_the_attacker_back` (no enemies; two
      ships; meter still or moving the viewer's way: one defends, one attacks; moving
@@ -356,11 +356,11 @@ the review named was applied by hand and fails the named test (and passed the ol
      between 0.25 and 0.75);
    - the zone-ranking tie-break removed: `test_frontline_equally_placed_ships_split_by_row`
      (two ships at exactly equal order: row 0 defends, whichever ship holds it).
-2. **Win rates as tests:** `tests/sections/test_scripted_acceptance.py` (`gpu`, `slow`):
+2. **Win rates as tests:** `tests/sections/test_imugi_acceptance.py` (`gpu`, `slow`):
    against random, at most 2 non-wins in 2048 games; against the chaser, above 0.5 over
    1024 games (warns below 0.70); at `deathmatch`, `deathmatch_wide` and `frontline`, fog
    on, seat drawn per game, seeds 20261102 + 10 · preset + opponent, all at or above
-   `bench.scripted_search.SEED_LIMIT` (checked by `test_the_seeds_are_not_the_searchs`).
+   `bench.imugi_search.SEED_LIMIT` (checked by `test_the_seeds_are_not_the_searchs`).
    Each match plays in a fresh process: inside the full suite, after the other tests'
    compiled rollouts, the in-process version stalled on its sixth match (the CPU busy,
    the GPU idle, 40 minutes; not diagnosed further), while the file alone passed.
@@ -368,14 +368,14 @@ the review named was applied by hand and fails the named test (and passed the ol
    at every preset; against the chaser 0.999 (deathmatch, one loss), 1.000 (wide, one
    draw), 0.991 (Frontline, 1.9% draws); against the starting parameters (seeds
    20261202 + preset) 0.893, 0.867, 0.934.
-3. **The search is auditable:** `bench/scripted_search.py` holds the procedure, the
+3. **The search is auditable:** `bench/imugi_search.py` holds the procedure, the
    starting values (`STARTING_PARAMETERS`, the table above) and its seeds: the
    perturbations from `--seed` (default 7), round `r`'s games from
    `game_seed(seed, r) = 1000 · seed + r < SEED_LIMIT = 10⁶`. The run that chose the
    defaults was the scratch copy with perturbation seed 7; its games drew from torch's
    default generators unseeded (their fixed start-up seed), not from any acceptance seed.
    Rerunning the tool will not reproduce those exact games, and its "start" opponent now
-   uses the progress urgency. The scripted-agent page points at the tool.
+   uses the progress urgency. Imugi page points at the tool.
 4. **Student entropy, PPO's formula:** `bnb.learn.bc.BehaviourCloning._policy` computes
    `-(exp(log_softmax) · log_softmax)` with no detach.
    `test_the_gradient_stays_finite_for_a_confident_student` now checks the gradient at
@@ -431,9 +431,9 @@ the review named was applied by hand and fails the named test (and passed the ol
    against its teacher, so the 0.45 stop rule may need the floor in mind. Next lever if
    the clone's entropy is still too low: a separate entropy loss during BC (not built).
 
-Changes outside `bnb.controllers` and `bnb.learn` in this round: `bench/scripted_search.py`
+Changes outside `bnb.controllers` and `bnb.learn` in this round: `bench/imugi_search.py`
 (new), `bnb.game.handling.characteristics`, `bnb.runtime.cloning`, `bnb.cli`, the tests
-above, and the docs (`scripted-agent.md`, `behaviour-cloning.md` in explanation and
+above, and the docs (`imugi.md`, `behaviour-cloning.md` in explanation and
 guides, `benchmarking.md`; `reviewed:` dates on `training.md`, `designing-a-ship.md`,
 `ship-card.md`, `benchmark.md` after rereading them).
 
@@ -453,15 +453,15 @@ The author's decision (`bc.md`, the last two bullets), on branch `fix/bc-stop`.
 - **The target is 0.40** (author, later the same day: v1 stopped BC at about 0.40 and RL
   trained from it). The toy test's bar is 0.40 - 2 x 0.5 / sqrt(512) = 0.356.
 - **The scored opponent is the teacher the labels describe.**
-  `bnb.learn.bc.TeacherOpponent` wraps a `Scripted` (at scripted probability 1) and is BC's
+  `bnb.learn.bc.TeacherOpponent` wraps a `Imugi` (at scripted probability 1) and is BC's
   scripted seat (`Trainer` builds it when `objective == "bc"`; the PPO trainer still seats
-  a plain `Scripted`). Its `step` tempers each marginal (`softmax(log q / T)` per part;
+  a plain `Imugi`). Its `step` tempers each marginal (`softmax(log q / T)` per part;
   since the joint is the product of the parts, this is the joint tempered exactly), samples
-  them with the scripted agent's own inverse-CDF sampler, then with probability ε replaces
+  them with Imugi's own inverse-CDF sampler, then with probability ε replaces
   a ship's action by a uniform joint action. Its distribution is `bc.labels` of the
   scripted distribution. At T = 1 and ε = 0 it skips both steps and draws exactly the
-  scripted agent's actions from the same random state. The labels still come from a plain
-  `Scripted`'s `distribution`. `scripted.py`'s `_sample` and `_uniform` became public
+  Imugi's actions from the same random state. The labels still come from a plain
+  `Imugi`'s `distribution`. `scripted.py`'s `_sample` and `_uniform` became public
   (`sample`, `uniform_actions`), unchanged otherwise.
 - **Logging:** `clone` adds `window_lower_bound` to each row; `bnb train --objective bc`
   prints the window score and its bound once the window is full.
@@ -478,12 +478,12 @@ The author's decision (`bc.md`, the last two bullets), on branch `fix/bc-stop`.
   two segments where the temperature changes the labels by more than 0.05; the stated
   distribution equals the labels; the frequencies of 20000 draws per view within five
   standard errors) replaces the natural-distribution test;
-  `test_floor_0_and_temperature_1_leave_the_scripted_agents_play_unchanged` (two
-  consecutive steps over 500 copies of each view equal `Scripted.step`'s from the same
-  seed; the PPO trainer's scripted seat is a plain `Scripted`). Mutations applied by hand,
+  `test_floor_0_and_temperature_1_leave_imugis_play_unchanged` (two
+  consecutive steps over 500 copies of each view equal `Imugi.step`'s from the same
+  seed; the PPO trainer's scripted seat is a plain `Imugi`). Mutations applied by hand,
   each failing its test: the stop reading the score instead of the bound; the squared
   points not trimmed; a worst-case variance (0.25); the floor dropped; the temperature
-  dropped; an extra random draw at ε = 0; BC seating a plain `Scripted`.
+  dropped; an extra random draw at ε = 0; BC seating a plain `Imugi`.
 - **The toy test** runs at the default floor, scores the clone against BC's scripted seat
   (the `TeacherOpponent`) and compares the clone's chaser score with that seat's. Its
   `xfail` mark is removed.
@@ -527,5 +527,5 @@ checks; the fresh score sat 2 standard errors below it.
 passed, 7 skipped (the six league-equivalence tests awaiting section 8, the ship-card
 charts without the tools extra), 0 failed, in 38.5 minutes. The toy test passed without
 its `xfail` mark in 824 s. The staleness check warns about pages whose `reviewed:` date
-is already today: the BC pages, the scripted agent and training-loop pages, the training
+is already today: the BC pages, Imugi and training-loop pages, the training
 guide and others, reread for this change.

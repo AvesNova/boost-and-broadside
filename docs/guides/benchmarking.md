@@ -6,9 +6,9 @@ reviewed: 2026-11-03 09:50
 # Benchmarking
 
 The harness lives in `bench/`, outside the package. It measures at steady state, at
-random sizes, one benchmark at a time on the machine. `bench/` also holds the scripted
-agent's parameter search (`bench/scripted_search.py`, described in
-[The scripted agent](../explanation/scripted-agent.md#parameters)), which takes the same
+random sizes, one benchmark at a time on the machine. `bench/` also holds Imugi's
+parameter search (`bench/imugi_search.py`, described in
+[Imugi](../explanation/imugi.md#parameters)), which takes the same
 lock.
 
 ## The lock

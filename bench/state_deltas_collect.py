@@ -32,7 +32,7 @@ import torch
 
 from bnb.contracts import Obs
 from bnb.contracts.obs import GLOBAL, SHIP_COLUMNS
-from bnb.controllers.scripted import Scripted
+from bnb.controllers.imugi import Imugi
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.runs import checkpoint
@@ -47,7 +47,7 @@ def build(player: str, game, device):
     """(controller, ship card) of a player."""
     if player == "scripted":
         types = api.ship_types(device)
-        return Scripted(characteristics(types, api.rules_of(game)), game.ships_per_team), types
+        return Imugi(characteristics(types, api.rules_of(game)), game.ships_per_team), types
     path = CALM_FERN if player == "calm-fern" else player
     record = checkpoint.read_policy(path).raw
     model = checkpoint.load_policy(path, device).eval()

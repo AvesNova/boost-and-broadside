@@ -5,7 +5,7 @@ Everything else is the learner's: the segments, streaming, `unroll`, the critic 
 student's own returns, the auxiliary heads, micro-batching, mixed batches and the return
 scale. No policy gradient, no entropy bonus and no KL early stop. The teacher labels the
 stored observations at update time, on the device, so nothing beyond the observation is
-stored; the scripted agent's own temperature and a uniform floor set the labels' entropy.
+stored; Imugi's own temperature and a uniform floor set the labels' entropy.
 BC's scored opponent plays the labels' distribution (`TeacherOpponent`), so the live score
 is against the teacher the labels describe.
 """
@@ -22,10 +22,11 @@ from bnb.contracts import Action, Obs, Outputs, Trajectory
 from bnb.contracts.action import NUM_JOINT, NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import GLOBAL
 from bnb.contracts.series import Mean
-from bnb.controllers.scripted import Scripted, floored_actions
-from bnb.controllers.scripted_defaults import MODE_DEFAULTS
-from bnb.controllers.scripted_memory import ScriptedCarry
-from bnb.controllers.scripted_parameters import ModeParameters, ScriptedParameters
+from bnb.controllers.imugi import Imugi
+from bnb.controllers.imugi_defaults import MODE_DEFAULTS
+from bnb.controllers.imugi_memory import ImugiCarry
+from bnb.controllers.imugi_parameters import ImugiParameters, ModeParameters
+from bnb.controllers.scripted import floored_actions
 from bnb.game.handling.characteristics import Characteristics
 from bnb.models.yemong import policy
 
@@ -70,10 +71,10 @@ def config(**overrides) -> LearnerConfig:
 
 @dataclasses.dataclass(frozen=True)
 class TeacherConfig:
-    """The teacher: the scripted agent at its own temperature T (`Scripted`'s), its labels
+    """The teacher: Imugi at its own temperature T (`Imugi`'s), its labels
     then mixed with uniform, (1 - floor) q_T + floor / 42. The default, T = 1 and floor 0,
-    is the scripted agent itself: it gives no living ship's action probability 0 but a
-    shot at its gates (its floors, `bnb.controllers.scripted_parameters.EPSILONS`), so the
+    is Imugi itself: it gives no living ship's action probability 0 but a
+    shot at its gates (its floors, `bnb.controllers.imugi_parameters.EPSILONS`), so the
     KL needs no floor of its own."""
 
     temperature: float = 1.0
@@ -96,39 +97,39 @@ def teacher_agent(
     characteristics: Characteristics,
     ships_per_team: int,
     teacher: TeacherConfig,
-    parameters: ScriptedParameters | ModeParameters = MODE_DEFAULTS,
-) -> Scripted:
-    """The scripted agent at the teacher's temperature."""
-    return Scripted(characteristics, ships_per_team, parameters, teacher.temperature)
+    parameters: ImugiParameters | ModeParameters = MODE_DEFAULTS,
+) -> Imugi:
+    """Imugi at the teacher's temperature."""
+    return Imugi(characteristics, ships_per_team, parameters, teacher.temperature)
 
 
 class TeacherOpponent:
-    """The scripted agent as BC's opponent, playing the labels' distribution: the agent at
+    """Imugi as BC's opponent, playing the labels' distribution: the agent at
     the teacher's temperature, and with probability `floor` a uniform joint action instead.
     At floor 0 it is the agent at that temperature."""
 
-    reads = Scripted.reads
+    reads = Imugi.reads
 
     def __init__(
         self,
         characteristics: Characteristics,
         ships_per_team: int,
         teacher: TeacherConfig,
-        parameters: ScriptedParameters | ModeParameters = MODE_DEFAULTS,
+        parameters: ImugiParameters | ModeParameters = MODE_DEFAULTS,
     ) -> None:
         self.agent = teacher_agent(characteristics, ships_per_team, teacher, parameters)
         self.teacher = teacher
 
-    def init_carry(self, views: int, device: torch.device) -> ScriptedCarry:
+    def init_carry(self, views: int, device: torch.device) -> ImugiCarry:
         """The agent's carry."""
         return self.agent.init_carry(views, device)
 
-    def action_distribution(self, obs: Obs, carry: ScriptedCarry | None = None) -> torch.Tensor:
+    def action_distribution(self, obs: Obs, carry: ImugiCarry | None = None) -> torch.Tensor:
         """(R, S, NUM_JOINT) the distribution `step` samples from given a carry it returned
         (None: memoryless): the labels'."""
         return labels(self.agent.action_distribution(obs, carry), self.teacher.floor)
 
-    def step(self, carry: ScriptedCarry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
+    def step(self, carry: ImugiCarry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
         """One decision for views (R, ...), drawn from the labels' distribution; see
         `Controller.step`."""
         action, carry, _ = self.agent.step(carry, obs, reset, decision_key)
@@ -160,8 +161,8 @@ def flat_views(obs: Obs) -> Obs:
 
 @torch.no_grad()
 def teacher_carries(
-    teacher: Scripted, obs: Obs, carry: ScriptedCarry, decision_key: torch.Tensor
-) -> tuple[ScriptedCarry, ScriptedCarry]:
+    teacher: Imugi, obs: Obs, carry: ImugiCarry, decision_key: torch.Tensor
+) -> tuple[ImugiCarry, ImugiCarry]:
     """The teacher run over stored observations (L, n, ...) in time order from its carry
     (n, ...), each tick's reset read from the observation and its plan choices drawn from
     the stored decision keys (L, n) (`Trajectory.decision_key`): (its carry after every
@@ -175,7 +176,7 @@ def teacher_carries(
     return _pytree.tree_map(lambda *leaves: torch.stack(leaves), *steps), carry
 
 
-def teacher_distribution(teacher: Scripted, obs: Obs, carries: ScriptedCarry) -> torch.Tensor:
+def teacher_distribution(teacher: Imugi, obs: Obs, carries: ImugiCarry) -> torch.Tensor:
     """The teacher on stored observations (L, n, ...) given its carry at each
     (`teacher_carries`): (L, n, S, 42)."""
     length, views = obs.ships.shape[:2]
@@ -184,7 +185,7 @@ def teacher_distribution(teacher: Scripted, obs: Obs, carries: ScriptedCarry) ->
 
 
 class BehaviourCloning(Learner):
-    """teacher: the scripted agent at the teacher's temperature; labels: its distribution
+    """teacher: Imugi at the teacher's temperature; labels: its distribution
     given its carry, transformed. pools: the pool names, view_pool (V,) each stored view's
     pool index (the metrics are per pool). The other arguments are the Learner's."""
 
@@ -198,7 +199,7 @@ class BehaviourCloning(Learner):
         types,
         outcome_weight: float,
         device: torch.device,
-        teacher: Scripted,
+        teacher: Imugi,
         teacher_config: TeacherConfig,
         pools: tuple[str, ...],
         view_pool: torch.Tensor,
@@ -208,7 +209,7 @@ class BehaviourCloning(Learner):
         split: bool = False,
     ) -> None:
         self.teacher, self.teacher_config, self.pools = teacher, teacher_config, pools
-        self.teacher_carry: ScriptedCarry | None = None  # (R, ...) after the last update
+        self.teacher_carry: ImugiCarry | None = None  # (R, ...) after the last update
         # (KL, teacher entropy, student entropy, tokens, agreements) per pool.
         self.STATISTICS = tuple(f"{name}/{pool}" for name in SUMS for pool in pools)
         self.pool_one_hot = torch.nn.functional.one_hot(view_pool.to(device), len(pools)).float()[
@@ -232,7 +233,7 @@ class BehaviourCloning(Learner):
         in time order from the last update's carry (`teacher_carries`), its distribution
         given its carry at each tick, transformed (`labels`). Made once per update, outside
         the compiled loss: the labels do not change between epochs, and the loss graph then
-        holds no copy of the scripted agent."""
+        holds no copy of Imugi."""
         rows = segments.views // segments.shards
         carry = self.teacher_carry
         if carry is None:
@@ -351,7 +352,7 @@ def calibrate(
     high: float = 1e2,
 ) -> TeacherConfig:
     """The temperature (floor fixed) at which the labels' mean entropy is `target` nats over
-    the teacher's distributions, `distributions(T)` (tokens, 42) for the scripted agent at
+    the teacher's distributions, `distributions(T)` (tokens, 42) for Imugi at
     temperature T on fixed observations (living own ship-steps), by bisection on log T.
     Fails when the target lies outside what [low, high] reaches (raise the floor when it is
     above what the temperature alone can give)."""
@@ -387,7 +388,7 @@ class StopConfig:
     since plateau_from_steps over the last plateau_window_steps, at every update for
     plateau_hold_steps; plateau_fraction None turns the rule off; by default it is read
     and logged, `bc/stop/plateau/*`, and stops nothing: decided 2026-11-14); the score
-    against the raw scripted agent in the rating lanes,
+    against the raw Imugi in the rating lanes,
     over the last score_window finished games, of the better of the players `reads` names
     (the averages of the live weights; decisions: BC round three), reaches score_target
     (None, the default, turns it off: the windows are still kept and logged).
@@ -406,7 +407,7 @@ class StopConfig:
     plateau_hold_steps: int = 10_000_000
     # the plateau is logged only: BC runs its fixed budget (decided 2026-11-14)
     plateau_stops: bool = False
-    # parity with the scripted agent was 0.5 (author, 2026-11-04); off since the plateau
+    # parity with Imugi was 0.5 (author, 2026-11-04); off since the plateau
     score_target: float | None = None
     score_window: int = 1000
     # fixed for every arm (decided 2026-11-14)
@@ -587,7 +588,7 @@ class StopRule:
     The plateau rule reads the BC KL (`Plateau`); it stops BC only with
     `StopConfig.plateau_stops`, and `plateaued` says whether it fired at the last update.
     Each lane player's games against the
-    scripted agent fill a score window of its own (`ScoreWindow`, `windows` by player).
+    Imugi fill a score window of its own (`ScoreWindow`, `windows` by player).
     The score stop, when it has a target, reads the window of the best of the players
     `StopConfig.reads` names whose window is full (`read`; an equal score goes to the
     earlier in `reads`); the others' windows, the live clone's among them, are logged.
@@ -644,7 +645,7 @@ class StopRule:
         kl: float,
     ) -> str | None:
         """environment_steps: the total so far; results: each lane player's games finished
-        against the raw scripted agent this update, (wins, draws, losses) from its side (a
+        against the raw Imugi this update, (wins, draws, losses) from its side (a
         player left out played none that count); kl: this update's BC KL. The rule that
         fires: "plateau" (only with `StopConfig.plateau_stops`), "score" or "budget", or
         None."""

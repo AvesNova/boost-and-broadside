@@ -1,14 +1,14 @@
 ---
-covers: [src/bnb/controllers/scripted.py, src/bnb/controllers/scripted_parameters.py, src/bnb/controllers/scripted_defaults.py, src/bnb/controllers/scripted_memory.py, src/bnb/controllers/scripted_combat.py, src/bnb/controllers/scripted_doctrine.py, src/bnb/controllers/scripted_frontline.py, src/bnb/controllers/scripted_cheese.py, src/bnb/game/handling/characteristics.py, src/bnb/runtime/evaluate.py]
+covers: [src/bnb/controllers/imugi.py, src/bnb/controllers/scripted.py, src/bnb/controllers/imugi_parameters.py, src/bnb/controllers/imugi_defaults.py, src/bnb/controllers/imugi_memory.py, src/bnb/controllers/imugi_combat.py, src/bnb/controllers/imugi_doctrine.py, src/bnb/controllers/imugi_frontline.py, src/bnb/controllers/cheese.py, src/bnb/game/handling/characteristics.py, src/bnb/runtime/evaluate.py]
 reviewed: 2026-11-03 09:45
 ---
 
-# The scripted agent
+# Imugi
 
 <!-- generated: section-status -->
 
-The scripted agent is one [controller](glossary.md#controller),
-`bnb.controllers.scripted.Scripted`, with three uses: a league opponent, the rungs of the
+Imugi (이무기), the scripted agent, is one [controller](glossary.md#controller),
+`bnb.controllers.imugi.Imugi`, with three uses: a league opponent, the rungs of the
 stationary ladder (the agent at higher temperatures, and mixed with random play), and the
 teacher for [behaviour cloning](behaviour-cloning.md). Its carry is its
 [memory](#memory-soft-hysteresis-and-dead-reckoning): the plan choices each ship has
@@ -17,15 +17,15 @@ mode ([Parameters](#parameters)).
 
 ## What it reads and gives
 
-It reads only the observation, the parts `Scripted.reads` names: the ship rows, the zone
+It reads only the observation, the parts `Imugi.reads` names: the ship rows, the zone
 rows and the globals. It never reads `bnb.contracts.Privileged` or the game state, so it
 sees exactly what a model sees, fog included, and a student can match it.
 
-`bnb.controllers.scripted.decide` is the function behind it: a team's views and the carry
-in, the marginals and the carry after the decision out. `bnb.controllers.scripted.distribution`
+`bnb.controllers.imugi.decide` is the function behind it: a team's views and the carry
+in, the marginals and the carry after the decision out. `bnb.controllers.imugi.distribution`
 gives the `(R, S, 42)` distribution over the joint action given a carry (`None`: a fresh
 one, the memoryless agent), in `bnb.contracts.action.to_joint` order. The joint is the outer product of three marginals, power (3), stick (7) and shoot
-(2), which `bnb.controllers.scripted.marginals` returns. `Scripted.step` samples each
+(2), which `bnb.controllers.imugi.marginals` returns. `Imugi.step` samples each
 marginal by its inverse CDF from the decision key's uniforms (`bnb.streams.action_uniforms`,
 the same every controller reads), and its plan switches, its sense choice and a mixture
 rung's agent flags from the same key under their own names
@@ -74,7 +74,7 @@ with its last seen velocity.
 
 - **The lead:** the aim point is the target's displacement when a bullet fired now
   arrives, `(p_target + v_target t) − (p_own + v_own t)` with `t` the time of flight to the
-  target's distance (`bnb.controllers.scripted_combat.lead`). The distance is capped at
+  target's distance (`bnb.controllers.imugi_combat.lead`). The distance is capped at
   `lead_cap_in_gun_range` gun ranges, so a far target does not get a lead of seconds.
 - **The stick:** the angle error from the nose to the wanted direction, positive to the
   left, sets P(turn) by one logistic and the level by two more (level two over one, three
@@ -101,13 +101,13 @@ with its last seen velocity.
 
 ## Doctrines
 
-How a ship fights can depend on its type: `bnb.controllers.scripted_doctrine.Doctrine` is
+How a ship fights can depend on its type: `bnb.controllers.imugi_doctrine.Doctrine` is
 one type's doctrine, and the agent reads a table of them (`doctrines`, one row per type, or
 per view and type) and flies each own ship by its own type's row, so a mixed team flies
 each type its own way. Without a table (the default) no ship has a doctrine. The tuned
 doctrines of the real-scale set's Yongma (the energy fighter) and Jujak (the turn fighter)
-are in `src/bnb/controllers/scripted_doctrines.json`
-(`bnb.controllers.scripted_doctrine.set_table` builds a set's table from it); the tuning is
+are in `src/bnb/controllers/imugi_doctrines.json`
+(`bnb.controllers.imugi_doctrine.set_table` builds a set's table from it); the tuning is
 in [the archetypes page](game/ship-design/archetypes.md#5-the-scripted-agent).
 
 A doctrine changes the aim point and the power, never the shot (a shot still needs the
@@ -202,7 +202,7 @@ health `0.2 + 0.8 · shield / max_shield`.
   The blend is already smooth, so it takes no hysteresis. The shot is the combat layer's.
   The boundary term applies to every wanted direction.
 - **Frontline's timers** (game version 8): the context both layers read (`Context` in
-  `bnb.controllers.scripted_combat`) carries the own team's next respawn wave
+  `bnb.controllers.imugi_combat`) carries the own team's next respawn wave
   (`next_wave`) and each zone's capture lock on the own team and on the enemy's
   (`zone_lock_own`, `zone_lock_enemy`), in seconds, from the observation. No rule reads
   them yet, so the agent plays as before. A doctrine that uses them (do not attack a zone
@@ -212,7 +212,7 @@ health `0.2 + 0.8 · shield / max_shield`.
 ## Softness: logistics, the floor and the temperature
 
 Every probability the agent reads from a quantity is a logistic in the quantity's
-logarithm (`bnb.controllers.scripted_parameters.Logistic`):
+logarithm (`bnb.controllers.imugi_parameters.Logistic`):
 `σ(±(ln x − ln centre) / (scale · T))`, the Hill function `x^k / (x^k + centre^k)` with
 `k = 1 / (scale · T)`. The centre is in the quantity's unit, the scale in natural-log units
 (at T = 1 the 10–90% transition spans a factor `exp(4.39 · scale)` in the quantity), and the
@@ -220,10 +220,10 @@ direction (rising or falling) is fixed by the field. The search moves the centre
 scales.
 
 A logistic's argument is held within ±9.2
-(`bnb.controllers.scripted_parameters.LOGIT_LIMIT`), so it never rounds to exactly 0 or 1.
-Every binary decision is then floored (`bnb.controllers.scripted_parameters.floored`):
+(`bnb.controllers.imugi_parameters.LOGIT_LIMIT`), so it never rounds to exactly 0 or 1.
+Every binary decision is then floored (`bnb.controllers.imugi_parameters.floored`):
 `p ↦ ε + (1 − 2ε) p`, with each decision's ε fixed in
-`bnb.controllers.scripted_parameters.EPSILONS`: 0.02 for P(turn), P(level ≥ 2 | turn),
+`bnb.controllers.imugi_parameters.EPSILONS`: 0.02 for P(turn), P(level ≥ 2 | turn),
 P(level 3 | level ≥ 2) and the side; 0.04 for P(reverse) and P(boost | not reverse); 0 for
 P(shoot). A per-tick floor on the shot fires an energy-costly shot at 30 decisions a
 second, and even 0.001 cost measurable strength (the section notes give the ablation); the
@@ -238,25 +238,25 @@ turn side, the zone assignment, recovery) are committed options that switch at a
 rate ([Memory](#memory-soft-hysteresis-and-dead-reckoning)); they take no floor beyond it.
 
 **The temperature** T multiplies every logistic's and switch's scale: T = 1 is the agent, a larger T
-flattens every logistic toward an even choice, and the floors stay. `Scripted(temperature=T)`
+flattens every logistic toward an even choice, and the floors stay. `Imugi(temperature=T)`
 takes a float or a tensor `(R,)` with one temperature per view; `+inf` plays uniformly over
 the 42 joint actions (random play). The league changes a tensor in place, and the captured
 graph reads it. The ladder's rungs are the agent at temperatures, and BC's teacher is the
 agent at its own temperature (`bnb.learn.bc.TeacherConfig`, T = 1 by default).
 
-**The share** (`Scripted(share=p)`, a float or a tensor `(R,)`) makes a mixture rung: at
+**The share** (`Imugi(share=p)`, a float or a tensor `(R,)`) makes a mixture rung: at
 each episode reset each ship draws whether it plays the agent (probability p) or uniformly
 for the whole game. The temperature alone never reaches random play (the agent at T = 32
 still beats it in 383.5 of 384 games), so the ladder's bottom rungs are mixtures.
 
 **Smoothness:** each logistic's scale has a floor
-(`bnb.controllers.scripted_parameters.SCALE_FLOORS`), 0.1 times the standard deviation of
+(`bnb.controllers.imugi_parameters.SCALE_FLOORS`), 0.1 times the standard deviation of
 the logarithm of its input over the earlier agent's games, the smallest over the three
 training presets; the search cannot go below it, so no logistic can act as a step.
 
 ## Memory: soft hysteresis and dead reckoning
 
-The carry (`bnb.controllers.scripted_memory.ScriptedCarry`) holds, per view, each own
+The carry (`bnb.controllers.imugi_memory.ImugiCarry`) holds, per view, each own
 ship's committed target, turn side (one per layer), Frontline goal and recovery, and a
 `fresh` flag; each enemy's last seen position and velocity and whether it is known; and
 each ship's agent flag (the share's draw).
@@ -264,7 +264,7 @@ each ship's agent flag (the share's draw).
 **A switching rate, not thresholds.** Each decision, a plan choice keeps its committed
 option or switches to the best alternative with probability `1 − exp(−rate · dt)`, `rate =
 r_max · σ((advantage − centre) / (scale · T))`
-(`bnb.controllers.scripted_parameters.Switch`, `switch_probability`), the advantage being
+(`bnb.controllers.imugi_parameters.Switch`, `switch_probability`), the advantage being
 how much better the alternative is in the choice's own unit:
 
 | Choice | Advantage | Parameter |
@@ -286,10 +286,10 @@ velocity times the time since seen (the observation's `time_since_seen`), held i
 arena. Its weight as a target fades by `memory_fade_in_seconds`, a falling logistic in that
 time (its centre searched within 0.5–2 s); the target's distance is divided by it. It is
 forgotten when it dies, when its weight falls below
-`bnb.controllers.scripted_memory.FORGET_WEIGHT` (1%), or when its prediction falls inside
+`bnb.controllers.imugi_memory.FORGET_WEIGHT` (1%), or when its prediction falls inside
 an own living ship's vision range (it would be seen there, so the prediction was wrong).
 
-**Memory off.** `Scripted(memory=False)` makes every ship fresh and forgets every hidden
+**Memory off.** `Imugi(memory=False)` makes every ship fresh and forgets every hidden
 enemy at every decision: the memoryless agent, through the same code. Its distribution is
 the round-one agent's exactly.
 
@@ -300,19 +300,19 @@ carry after every tick; a label is the teacher's distribution given its carry th
 
 ## Parameters
 
-`bnb.controllers.scripted_parameters.ScriptedParameters` holds the dimensionless numbers,
+`bnb.controllers.imugi_parameters.ImugiParameters` holds the dimensionless numbers,
 each named for the quantity it scales, with the logistics as `Logistic`, the weights as
 `Ramp` and the switches as `Switch`. Its defaults are the starting point of the searches
 (round one's choice, with the memory's starting values).
 
 **One set per game mode.** The agent's defaults are
-`bnb.controllers.scripted_defaults.MODE_DEFAULTS`, a
-`bnb.controllers.scripted_parameters.ModeParameters` with a set for each of the training
-presets and the real-scale ones (`bnb.controllers.scripted_parameters.MODES`:
+`bnb.controllers.imugi_defaults.MODE_DEFAULTS`, a
+`bnb.controllers.imugi_parameters.ModeParameters` with a set for each of the training
+presets and the real-scale ones (`bnb.controllers.imugi_parameters.MODES`:
 deathmatch, deathmatch_wide, Frontline, real_scale_deathmatch, real_scale_frontline,
 real_scale_elimination), each from a search of its own preset but elimination's, a copy of
 real_scale_deathmatch's set without a search (2026-11-12). Each view plays its mode's set, chosen from its
-observation and the card (`bnb.controllers.scripted.mode_index`): on a real-scale card (its
+observation and the card (`bnb.controllers.imugi.mode_index`): on a real-scale card (its
 gravity below `REAL_SCALE_GRAVITY`, 16.3 m/s^2, the geometric mean of 27 and 9.81) the
 real-scale Frontline or elimination set by the mode's flag, else the real-scale deathmatch
 set; otherwise Frontline by the mode's flag (a standard card plays elimination with its
@@ -324,13 +324,13 @@ gun range), else deathmatch's. The real-scale sets are a light retune
 batch may mix the modes, and every use
 plays the mode's set: BC's teacher, the lanes' scripted anchor, the ladder's rungs and the
 head-to-head's `scripted`. Each search's final population (its last generation's 32 sets,
-best first) is kept in `src/bnb/controllers/scripted_populations.json`
-(`bnb.controllers.scripted_defaults.populations`) for later use; nothing samples from it. A
+best first) is kept in `src/bnb/controllers/imugi_populations.json`
+(`bnb.controllers.imugi_defaults.populations`) for later use; nothing samples from it. A
 value may also be a tensor `(R, 1)` with one value per view
-(`bnb.controllers.scripted_parameters.unpack` of a parameter table), so one compiled
+(`bnb.controllers.imugi_parameters.unpack` of a parameter table), so one compiled
 controller plays many parameter sets side by side; the search uses that.
 
-The search is `bench/scripted_search.py` (`uv run --no-sync python -m bench.scripted_search`),
+The search is `bench/imugi_search.py` (`uv run --no-sync python -m bench.imugi_search`),
 a population round robin. Each generation plays 32 candidates, one parameter-table row per
 view, in one compiled rollout per preset (`--preset` searches one preset alone, as each of
 the defaults' searches did): each candidate's games are mostly against other candidates
@@ -340,8 +340,8 @@ ranking rewards strength across temperatures. A Bradley–Terry fit over the gen
 games (`bnb.league.ratings.fit_ratings`, the defaults anchored) ranks them; the top 8 carry
 over and replay, and children of them (crossover, then a log-normal step that shrinks per
 generation) fill the rest. It stops when the top's rating plateaus, and it resumes from its
-JSON-lines log. It seeds generation `g`'s games with `bench.scripted_search.game_seed`, below
-`bench.scripted_search.SEED_LIMIT`; the section notes
+JSON-lines log. It seeds generation `g`'s games with `bench.imugi_search.game_seed`, below
+`bench.imugi_search.SEED_LIMIT`; the section notes
 (`docs/rewrite/sections/scripted-memory-notes.md`) record the runs that chose the
 defaults.
 
@@ -365,16 +365,16 @@ mixtures (T = 2, shares 0.1, 0.3, 0.5) score 0.648, 0.897 and 0.980 against rand
 0.71 to 0.78 against the one below, and T = 8 scores 0.693 against the share 0.5.
 
 Its joint entropy at T = 1 is 0.85 to 0.88 nats per living ship step (1.11 to 1.12 at
-T = 2, 1.50 to 1.54 at T = 4). `tests/sections/test_scripted_acceptance.py` plays it
+T = 2, 1.50 to 1.54 at T = 4). `tests/sections/test_imugi_acceptance.py` plays it
 against random and the chaser on seeds at or above the search's
-`bench.scripted_search.SEED_LIMIT`: at most 2 non-wins in 2048 games against random, and
+`bench.imugi_search.SEED_LIMIT`: at most 2 non-wins in 2048 games against random, and
 above 0.5 against the chaser, at every preset.
 
 ## Cheese agents
 
 Six crude players, each one plain strategy, give a check that a trained policy cannot be
 beaten by a single trick, and are league entries by default. They are one controller,
-`bnb.controllers.scripted_cheese.Cheese`, a function of the observation with no carry. They
+`bnb.controllers.cheese.Cheese`, a function of the observation with no carry. They
 read the ship rows, the zone rows and the globals, use an enemy row only where it is visible
 and alive, and draw nothing: the decision key goes unused, and the same observation gives the
 same action. The flight is the chaser's bearing-to-stick rule
@@ -386,17 +386,17 @@ Frontline) it flies a circle about the map centre or its zone.
 
 | Player | Behaviour |
 |---|---|
-| `scripted:zone_rusher` | Ignores combat. Full boost to the enemy's defense zone (the one the team has yet to take: the roles rotate at each capture, so it is always the next), then circles inside it, coasting. Never fires. |
-| `scripted:turtle` | Circles the zones its team holds, coasting: even slots its defense zone, odd slots its spawn zone. Engages the nearest visible enemy within 1.5 zone radii of its zone: turns to it, and fires when aligned. |
-| `scripted:evader` | Never engages or fires. Turns directly away from its nearest visible enemy, boosting while it is within two gun ranges, and drifts to the map centre as the boundary shrinks. |
-| `scripted:deathball` | Holds a formation of half a gun range about the team's centre and focuses fire: every ship turns for the visible enemy nearest the centre at full boost and fires when aligned, but a ship outside the formation returns to the centre first. |
-| `scripted:jouster` | Every ship goes at its nearest visible enemy at full boost and fires whenever aligned. No defensive manoeuvre. |
-| `scripted:kiter` | Holds 0.9 gun ranges (a band of 0.1 either side) from its nearest visible enemy: closes at full boost beyond the band, turns away at full boost inside it, and aims, coasts and fires within it. |
+| `cheese:zone_rusher` | Ignores combat. Full boost to the enemy's defense zone (the one the team has yet to take: the roles rotate at each capture, so it is always the next), then circles inside it, coasting. Never fires. |
+| `cheese:turtle` | Circles the zones its team holds, coasting: even slots its defense zone, odd slots its spawn zone. Engages the nearest visible enemy within 1.5 zone radii of its zone: turns to it, and fires when aligned. |
+| `cheese:evader` | Never engages or fires. Turns directly away from its nearest visible enemy, boosting while it is within two gun ranges, and drifts to the map centre as the boundary shrinks. |
+| `cheese:deathball` | Holds a formation of half a gun range about the team's centre and focuses fire: every ship turns for the visible enemy nearest the centre at full boost and fires when aligned, but a ship outside the formation returns to the centre first. |
+| `cheese:jouster` | Every ship goes at its nearest visible enemy at full boost and fires whenever aligned. No defensive manoeuvre. |
+| `cheese:kiter` | Holds 0.9 gun ranges (a band of 0.1 either side) from its nearest visible enemy: closes at full boost beyond the band, turns away at full boost inside it, and aims, coasts and fires within it. |
 
 The zone agents suit Frontline; outside it they circle the map centre in place of a zone
 (the turtle then engages enemies near the centre). In Frontline a spawn zone shields a ship
 from damage, so the turtle's odd slots are the hardest to dislodge; it is a trick, not an
-oversight. The names are player names: they work wherever the scripted agent does in `bnb
+oversight. The names are player names: they work wherever Imugi does in `bnb
 ratings --with` and `bnb head-to-head`.
 
 **The exploit check.** A policy's score against each, per preset (Frontline, elimination
@@ -404,8 +404,8 @@ and deathmatch by default), 128 games each split between the seats:
 
 <!-- not-runnable: needs CUDA and a run -->
 ```bash
-uv run --no-sync bnb head-to-head RUN scripted:zone_rusher RUN scripted:turtle \
-    RUN scripted:evader RUN scripted:deathball RUN scripted:jouster RUN scripted:kiter \
+uv run --no-sync bnb head-to-head RUN cheese:zone_rusher RUN cheese:turtle \
+    RUN cheese:evader RUN cheese:deathball RUN cheese:jouster RUN cheese:kiter \
     --games 128
 ```
 
@@ -416,7 +416,7 @@ so against them a game is decided by the other side's play alone; the results ar
 read, not a rating.
 
 **League entries.** All six are league entries by default: `LeagueConfig.cheese` lists them
-(`()` turns them off, for an ablation). Each is an entry named `scripted:<name>`, sampled
+(`()` turns them off, for an ablation). Each is an entry named `cheese:<name>`, sampled
 with the others as any entry is, by its predicted win probability against the live policy
 (the existing per-entry rule, with its floor); that is provisional for them, as the weights
 across league members are to be decided separately. The slot holding one plays it on its
@@ -429,19 +429,19 @@ results against each.
 
 ## Tests
 
-`tests/sections/test_scripted_cheese.py` covers the cheese agents: valid actions per mode,
+`tests/sections/test_cheese.py` covers the cheese agents: valid actions per mode,
 that a hidden or dead enemy changes nothing, determinism, each agent's behaviour on
 constructed observations, a short game of each in each mode, and their play in the match
 engine; `tests/sections/test_league_cheese.py` covers them as league entries.
-`tests/sections/test_scripted.py` covers the behaviour on constructed observations for
+`tests/sections/test_imugi.py` covers the behaviour on constructed observations for
 both ship types (the stick, the gun, power, the lead with a still and a moving shooter, the
 boundary heading out and heading in, no target; in Frontline the defense assignment with
 its urgency, progress and tie-break, the hand-over to combat by distance, and recovery),
 the invariances (the seat, a mirrored world, permuted rows, the
 values of hidden rows' zeroed columns), the softness (no certain action of a living ship,
 the temperature's flattening, the scale floors), the rungs and per-view parameters.
-`tests/sections/test_scripted_memory.py` covers the memory: the switching rate, the
+`tests/sections/test_imugi_memory.py` covers the memory: the switching rate, the
 target's hysteresis and a forced re-choice, dead reckoning, its fade and its drop inside
 the own view, the resets, the turn side's commitment, memory off as the memoryless agent,
 the mixture's agent flags, and the per-mode parameters.
-`tests/sections/test_scripted_search.py` covers the search's parts on the CPU.
+`tests/sections/test_imugi_search.py` covers the search's parts on the CPU.

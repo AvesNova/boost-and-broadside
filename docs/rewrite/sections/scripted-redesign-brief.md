@@ -1,6 +1,6 @@
-# Brief: a soft scripted agent, tuned by population round robin
+# Brief: a soft Imugi, tuned by population round robin
 
-The scripted agent is the BC teacher, the rating anchor (1000) and the ladder. As built, it
+Imugi is the BC teacher, the rating anchor (1000) and the ladder. As built, it
 is a poor teacher (`docs/rewrite/sections/scripted-softness-notes.md`):
 
 - **It is near-deterministic.** Shoot has probability exactly 1 on 99% of steps; power on
@@ -38,14 +38,14 @@ opponent that is also a good teacher.
 
 ## 2. The search: a population round robin in one batch
 
-Rework `bench/scripted_search.py`; it currently keeps one best and plays it against the
+Rework `bench/imugi_search.py`; it currently keeps one best and plays it against the
 chaser and the old parameters.
 
 - **Population:** P candidates (e.g. 32; one parameter-table row per view, so one compiled
   rollout per generation).
 - **Matches:** candidates play each other, round robin or random pairs, enough games per
   pair for a usable fit. Also, as fixed reference players:
-  - today's scripted agent (`ScriptedParameters()` defaults, raw);
+  - today's Imugi (`ImugiParameters()` defaults, raw);
   - the chaser.
 - **Temperatures:** each seat's T is drawn per game from a set such as {1, 1.5, 2, 3}, so
   the ranking rewards strength across temperatures.
@@ -61,21 +61,21 @@ chaser and the old parameters.
 
 ## 3. Wire it in
 
-- **New defaults:** the winning parameters become `ScriptedParameters()`'s defaults.
+- **New defaults:** the winning parameters become `ImugiParameters()`'s defaults.
 - **The BC teacher is the agent at T = 1.** `TeacherConfig` defaults to T = 1 and floor 0.
   - Keep a floor only if the KL needs one numerically. If so, say so and use the smallest
     that works.
-  - BC's score stop (parity against the scripted agent in the lanes) is then a target the
+  - BC's score stop (parity against Imugi in the lanes) is then a target the
     teacher itself meets.
 - **The ladder becomes temperatures.** The rungs move from "scripted with probability p,
-  else random" to the scripted agent at temperature T. Name them clearly
+  else random" to Imugi at temperature T. Name them clearly
   (e.g. `rung_T2`), from T = 1 up to a T where the agent is close to random, with random
   kept at the bottom.
   - Update the league, lanes, head-to-head and docs.
   - Note in the docs that this resets ladder ratings: the rungs are new players.
 - **Head-to-head's tempered player (`scripted@T=...`)** uses the agent's own temperature
   from now on, not the post-hoc tempering of a distribution.
-- **Acceptance tests** (`tests/sections/test_scripted_acceptance.py`): rebaseline them to
+- **Acceptance tests** (`tests/sections/test_imugi_acceptance.py`): rebaseline them to
   the new agent, keeping their intent.
 
 ## Acceptance, to report

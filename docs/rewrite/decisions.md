@@ -124,7 +124,7 @@ Coupling found in the current code that blocks goal B:
 - **Controllers map to ships, not teams.** "Human flies ship 3, NN flies the rest" or
   "two models on one team" is data. The runtime gathers each ship's action from its
   owning controller.
-- **Every controller is an agent:** NN models, the scripted agent, random, and humans
+- **Every controller is an agent:** NN models, Imugi, random, and humans
   (a human agent is a pure function of an input array the shell fills from the
   keyboard each frame).
 
@@ -187,7 +187,7 @@ Coupling found in the current code that blocks goal B:
 
 ### Opponents and ratings
 
-- **Only the main scripted agent survives** from the current scripted set.
+- **Only the main Imugi survives** from the current scripted set.
 - **League:** live pseudo-Elo from games that happen naturally during training (live
   agent vs league checkpoints and scripted), plus periodic Elo batches for
   checkpoint-vs-checkpoint ratings. Ratings drive league opponent sampling (consider
@@ -1278,20 +1278,20 @@ Details: `docs/training.md`, `docs/internal/frontline-redesign-implementation.md
   warm-up). BC's stop rule and saved policy follow the averages, not the live clone
   (which average: to decide with the implementation).
   *Implemented 2026-11-06 (branch `feat/bc-averages`):* the stop reads, of the two, the
-  one whose 1000-game window against the scripted agent scores higher (an equal score
+  one whose 1000-game window against Imugi scores higher (an equal score
   goes to the EMA; before the warm-up ends only the EMA is read); `policy/` holds that
   average, `policy-live/`, `policy-uniform/` and `policy-exponential/` sit beside it; BC
   takes the league's `uniform_from` and `exponential_decay`; the lanes go 1 : 2 : 2 to
   the live clone and the two averages.
 - **Deathmatch_wide leaves the training mix for now;** to revisit later. Both clones of
-  2026-11-05 lose to the scripted agent there (0.05 to 0.14) and its KL stopped falling
+  2026-11-05 lose to Imugi there (0.05 to 0.14) and its KL stopped falling
   at about 50M steps.
 - **The default layout is 2,048 environments x 4 shards** (more independent games for the
   same trained ticks).
 - **The BC teacher keeps its memory** (soft hysteresis and dead reckoning); memory costs
   about 3% of an update.
 - Evidence: run `2026-11-05-mixed-eager-acorn` (150M steps; live clone 0.272 against the
-  scripted agent, an offline uniform average of its retained checkpoints 0.350).
+  Imugi, an offline uniform average of its retained checkpoints 0.350).
 
 ### Rating from every game (author, 2026-11-06)
 
@@ -1317,7 +1317,7 @@ Details: `docs/training.md`, `docs/internal/frontline-redesign-implementation.md
 - **The product, for now:** the uniform average for BC (a static target), the EMA for RL.
 - **The next RL run keeps every checkpoint** (for now): the live, EMA and uniform policy
   files of every update, so EMA decays can be compared afterwards from the live weights.
-- **No entropy bonus or KL toward the clone in RL:** "the clone is just a scripted agent
+- **No entropy bonus or KL toward the clone in RL:** "the clone is just an Imugi
   and not a diverse pool of human experiences. We do need some way to control the kl
   though" (how: open).
 - **The headline rating is the offline tournament** (scripted at 1000, the ladder of the
@@ -1536,7 +1536,7 @@ part 4 training 4a-4e), `docs/rewrite/diagnostics.md` (diagnostics audit).
       from live league games via periodic joint fit, time-based snapshots, milestones only
       after training, one pool with p(1-p) + uniform floor, self-play fixed share, avg and
       rungs kept, A1 + B1 slots revisited after implementation, periodic diagnostics).
-- [x] Training review 4c: BC (decided: scripted agent in JAX with 42 actions, BC alone then
+- [x] Training review 4c: BC (decided: Imugi in JAX with 42 actions, BC alone then
       natural RL from BC weights, BC rollouts use the pool, entropy through teacher targets,
       no fixed BC cutoff yet).
 - [x] Training review 4d: PPO update mechanics (decided: wide envs with observation chunks

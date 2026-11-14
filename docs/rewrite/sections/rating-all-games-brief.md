@@ -1,12 +1,12 @@
 # Brief: rate from every game, not only the lanes'
 
 The ratings (`bnb.league.lanes.LaneRatings`, one Bradley-Terry fit per mode with the
-scripted agent pinned at 1000) read only the rating lanes' games. In RL the lanes play
-about one game per update for each matchup against the scripted agent, so the live and
+Imugi pinned at 1000) read only the rating lanes' games. In RL the lanes play
+about one game per update for each matchup against Imugi, so the live and
 averaged ratings carry errors of about 150 Elo after 25 updates. Meanwhile half of every
 training batch is the live policy against the league's slots (`bnb.league.league.League`,
 `after_shard` records them per mode and per entry in `self.record`): snapshots, the
-averages, the ladder's rungs, the scripted agent. Each is a real, attributable game. The
+averages, the ladder's rungs, Imugi. Each is a real, attributable game. The
 author (2026-11-06): "why are we only rating based on the lanes? Shouldn't we be getting
 our rating data from all of the games, including the lane games?"
 
@@ -15,7 +15,7 @@ our rating data from all of the games, including the lane games?"
 - **The league's training games join the fit:** per mode, the live policy's results
   against each league entry it played (`self.record`), as games of the live policy (a
   moving player: kept for the fit's window, as the lanes keep theirs) against that entry
-  (a snapshot is stationary; an average moves; a ladder rung and the scripted agent are
+  (a snapshot is stationary; an average moves; a ladder rung and Imugi are
   fixed). Self-play games (live against live) carry no information: leave them out.
 - **Attribution:** check that a training game is credited to the entry that played it,
   including across a slot's drain and swap (`bnb.runtime.opponents`), and to the live

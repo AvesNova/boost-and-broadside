@@ -107,8 +107,8 @@ def _first_view(loop):
     return team_view(observation, 0), observation.globals[:, 0, GLOBAL["reset"]] > 0.5
 
 
-def test_an_arena_match_of_the_scripted_agent_fights():
-    """The arena (no fields, no zones) with the scripted agent on both sides: the ships
+def test_an_arena_match_of_imugi_fights():
+    """The arena (no fields, no zones) with Imugi on both sides: the ships
     close and shoot each other down within seconds, and a ship is never dead two ticks
     running (it respawns on the next)."""
     game = PRESETS["arena"]

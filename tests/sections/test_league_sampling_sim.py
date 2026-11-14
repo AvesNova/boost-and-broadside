@@ -49,7 +49,7 @@ def test_the_runs_ladder_fit_runs_away_on_a_near_sweep_where_the_maximum_is_fini
     maximum = sim.snapshot_maximum(won, lost, opponents, float(opponents.max()))
     assert runaway > 10_000
     assert 1300 < maximum < 2000
-    # today's one fit, the rungs pinned to the scripted agent by many games, is sane
+    # today's one fit, the rungs pinned to Imugi by many games, is sane
     wins = torch.zeros((count, count), dtype=torch.float64)
     scripted = count - 2
     for index in range(count - 2):

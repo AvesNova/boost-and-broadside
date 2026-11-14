@@ -26,7 +26,7 @@ uv run bnb play --agent1 runs/<run>/policy
 The first match comes from the options (a preset, `real_scale_deathmatch` by default, and
 the sizes that override it); every later one from the menu's **New match**. A new kind of
 match starts at once and never stalls the window: the first time a game (or a changed
-version of the code) is played, its tick and the scripted agent's step are built in
+version of the code) is played, its tick and Imugi's step are built in
 separate processes (about 30 s and 15 s) while the match runs them uncompiled, slower
 (about 14 ms a tick instead of 1.5, so a frame that holds a tick can miss the
 display's); both are kept in the user's cache directory, so every later match of that game starts
@@ -191,12 +191,12 @@ Choosing a map takes its fleet size, fields and lineup (and a saved map's mode a
 (0 to 64), the lineup (a dropdown per
 slot of the map's ship types, the same for both teams; **Default** alternates Yongma and
 Jujak, or a set's first two types where it has not both; the map starts at **Real
-scale**), fog, the seed, and each side's controller: **Scripted agent Baekho** (the scripted agent, `bnb.controllers.scripted.Scripted`, flying
-Baekho, the one stored doctrine (`scripted_doctrines.json`): the training's BC teacher, its
+scale**), fog, the seed, and each side's controller: **Imugi Baekho** (Imugi, `bnb.controllers.imugi.Imugi`, flying
+Baekho, the one stored doctrine (`imugi_doctrines.json`): the training's BC teacher, its
 league opponent and the ratings' anchor. It plays the mode's objectives, remembers each
 enemy it saw and dead reckons it while hidden, extends from crowds and from a duel it is
 losing, and on Frontline attacks or defends by the capture locks), **Chaser** (`--scripted0 scripted`: it turns toward the nearest visible enemy and
-fires, and reads no zones) or a trained agent. The scripted agent and the chaser need their
+fires, and reads no zones) or a trained agent. Imugi and the chaser need their
 ship card's characteristics, measured once per card in a separate process (about 15 s for
 the standard set and longer for the real-scale types on a laptop CPU) and kept
 in the user's cache directory; until they are measured the side plays on as it was (in a
@@ -268,7 +268,7 @@ the submenu lists only those the sides being played can provide (`bnb.play.overl
 | Predicted shot path | a Yemong agent | the selected ship's next shot: the shot head's mean at each age from its launch point, a one-sigma circle at each age |
 | Next-state ghosts | a Yemong agent | each ship's predicted pose one tick on, a translucent silhouette with its one-sigma circle |
 | Belief ghosts | a Yemong agent | each hidden enemy's believed pose, with one- and two-sigma circles |
-| Dead-reckoning ghosts | the scripted agent | each remembered enemy it cannot see, at its recalled position, with a line back to its last sighting; its opacity is the agent's weight on it (the memory states no sigma) |
+| Dead-reckoning ghosts | Imugi | each remembered enemy it cannot see, at its recalled position, with a line back to its last sighting; its opacity is the agent's weight on it (the memory states no sigma) |
 | Density | a Yemong agent | the density head's expected ships per hex cell |
 | Enemy action | a Yemong agent | in the selection card, for a selected enemy: the power, stick and shoot marginals, the action it took outlined |
 | Value and outcome | a Yemong agent | in the selection card, for a selected own ship: the critic's value per value level, the outcome head's P(win), P(tie), P(loss) and P(unresolved) (a critic with one), and the next shot's P(enemy hit) |
@@ -297,17 +297,17 @@ Yemong agent decides with `Yemong.inspect`, the same decision with every head's 
 from the same trunk pass, so the overlays do not change its play; an agent on a GPU then
 steps eagerly instead of from its CUDA graph. Off, the overlays cost nothing.
 
-With a Yemong agent and the scripted agent on the CPU (one torch thread, the tick
+With a Yemong agent and Imugi on the CPU (one torch thread, the tick
 uncompiled), every overlay on adds about 5 ms a frame at ×1 (the predictions are made once
 a tick: about 4 ms for the agent's heads and 4 ms for the bullet paths). Without overlays a
 Yemong agent's decision takes about 2.2 ms a tick on a laptop GPU (its CUDA graph) and
-6.6 ms on one CPU thread; the scripted agent's, built, 0.2 ms.
+6.6 ms on one CPU thread; Imugi's, built, 0.2 ms.
 
 `--overlays`, `--overlay-side` and `--truth` turn them on from the start:
 
 <!-- not-runnable: opens a window, and needs a policy file -->
 ```bash
-uv run bnb play --agent0 runs/<run>/policy --scripted1 scripted_agent \
+uv run bnb play --agent0 runs/<run>/policy --scripted1 imugi \
     --overlays bullet_paths belief density --truth --view team0
 ```
 

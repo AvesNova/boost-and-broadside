@@ -5,11 +5,11 @@ reviewed: 2026-11-11 15:15
 
 # Behaviour cloning
 
-Behaviour cloning trains a model to imitate the scripted agent before reinforcement
+Behaviour cloning trains a model to imitate Imugi, the scripted agent, before reinforcement
 learning. How it works is in [Behaviour cloning](../explanation/behaviour-cloning.md);
 this page is about running it.
 
-## Clone the scripted agent
+## Clone Imugi
 
 <!-- not-runnable: needs CUDA and runs for hours -->
 ```bash
@@ -18,11 +18,11 @@ uv run --no-sync bnb train --preset mixed --objective bc --teacher-temperature 1
     --bc-budget-steps 200000000
 ```
 
-`--objective bc` plays the BC lineup (half self-play, half the scripted agent) in the
+`--objective bc` plays the BC lineup (half self-play, half Imugi) in the
 chosen game and runs to its budget, 100M environment steps for every arm
 (`--bc-budget-steps`). The plateau of the BC KL is read and logged but stops nothing
 unless `--set stop.plateau_stops=true`; a score target (`--set stop.score_target=0.5`, off by default) adds parity against
-the scripted agent over 1000 lane games, read on the better of the two averages of the
+Imugi over 1000 lane games, read on the better of the two averages of the
 clone's weights ([When it stops](../explanation/behaviour-cloning.md#when-it-stops)). The
 scripted opponent plays the labels' distribution, at `--teacher-floor` and
 `--teacher-temperature`. `--updates` is not used. Each update prints the BC KL, the
@@ -119,7 +119,7 @@ coefficients are `bnb.learn.ppo.WARM_START_ENTROPY` (0) rather than v1's −0.00
 action factor that `--set learner.entropy_power=...` (or `entropy_stick`, `entropy_shoot`)
 does not set: the clone already samples every action through its
 labels' floor, and at its advantage scale v1's bonus outweighs the policy gradient on rare
-actions such as shooting, which took the first clone's score against the scripted agent
+actions such as shooting, which took the first clone's score against Imugi
 from 0.23 to 0.03 in 24 updates.
 
 ## Choose the labels' entropy
@@ -133,7 +133,7 @@ uv run --no-sync bnb train --preset mixed --calibrate-entropy 0.5
 uv run --no-sync bnb train --preset mixed --calibrate-entropy 1.2 --teacher-floor 0.1
 ```
 
-It plays the scripted agent against itself in the preset's games, prints its natural
+It plays Imugi against itself in the preset's games, prints its natural
 entropy (temperature 1, no floor) and the temperature whose labels reach the target at the given
 floor, and exits without writing a run. A target outside what the temperature reaches at that floor fails with
 the reachable range; raise `--teacher-floor` for a higher one. `--calibration-segments`

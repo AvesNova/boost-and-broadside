@@ -9,7 +9,7 @@ reviewed: 2026-11-11 15:15
 
 Behaviour cloning (BC) gives every head of a model a head start before reinforcement
 learning: the policy, the critic, next state and the rest. The student flies the
-learner's views, and the teacher, the [scripted agent](scripted-agent.md), labels the
+learner's views, and the teacher, [Imugi, the scripted agent](imugi.md), labels the
 states it visits (on-policy imitation). BC runs alone; reinforcement learning then starts
 from its weights and return scale with a fresh optimizer and no cloning term. How to run it
 is in the [behaviour cloning guide](../guides/behaviour-cloning.md).
@@ -33,21 +33,21 @@ negative). `--set learner.discount=...` and `--set learner.trace_decay=...` over
 ## The labels
 
 The teacher labels the stored observations at update time, on the device, in the compiled
-loss. The scripted agent reads only the observation, so the rollout stores nothing for it
+loss. Imugi reads only the observation, so the rollout stores nothing for it
 beyond the observation parts it reads (`Rollout` records them with `extra_reads`). It has a
-memory, its carry ([the scripted agent's
-memory](scripted-agent.md#memory-soft-hysteresis-and-dead-reckoning)): before each update
+memory, its carry ([Imugi's
+memory](imugi.md#memory-soft-hysteresis-and-dead-reckoning)): before each update
 the learner runs the teacher over the stored segments in time order, its carry going on
 from the last update's (`bnb.learn.bc.teacher_carries`), and keeps its carry at every tick;
 a label is the teacher's distribution given its carry there. So the student is asked to
 remember what the teacher remembers. With its memory off the labels are the distribution the
 memoryless agent plays on the same observation (`tests/sections/test_bc.py`).
 
-The teacher is the scripted agent at its own temperature T, its labels optionally mixed
+The teacher is Imugi at its own temperature T, its labels optionally mixed
 with uniform by a floor φ (`bnb.learn.bc.TeacherConfig`): `(1 − φ) q_T + φ / 42`, with q_T
-the agent's distribution at T ([the scripted agent's
-softness](scripted-agent.md#softness-logistics-the-floor-and-the-temperature): every
-logistic's scale times T). The default is T = 1 and φ = 0, the scripted agent itself: it
+the agent's distribution at T ([Imugi's
+softness](imugi.md#softness-logistics-the-floor-and-the-temperature): every
+logistic's scale times T). The default is T = 1 and φ = 0, Imugi itself: it
 gives no living ship's action probability 0 (its own floors on its decisions) except a
 shot it cannot or need not fire (no target, a gun cooling), where P(shoot) is 0; the KL
 needs no floor (a zero label contributes nothing to the cross-entropy).
@@ -55,17 +55,17 @@ Raising T sets a higher entropy for the clone to start reinforcement learning at
 an entropy bonus. In BC's own games the scripted opponent plays the labels' distribution
 (`bnb.learn.bc.TeacherOpponent`: the agent at T, then a uniform joint action with
 probability φ), so the live score is against the teacher the clone copies; at the default
-it is the scripted agent, so BC's score stop (parity against the scripted agent in the
+it is Imugi, so BC's score stop (parity against Imugi in the
 lanes) is a target the teacher itself meets.
 
 `bnb.learn.bc.calibrate` bisects the agent's temperature to a target mean entropy, in nats
-per living ship-step, over the scripted agent's distributions on the observations of its
+per living ship-step, over Imugi's distributions on the observations of its
 own games of the training mix (`bnb.runtime.cloning.teacher_distributions`, relabelled at
 each temperature tried).
 
 ## Rollouts
 
-`bnb.runtime.cloning.LINEUP`: half self-play, half against the scripted agent playing the
+`bnb.runtime.cloning.LINEUP`: half self-play, half against Imugi playing the
 labels' distribution, crossed with the training mix in a mixed batch. Beside them the
 rating lanes (`bnb.runtime.cloning.LANES`) play three players against the raw scripted
 agent in every mode, in the same rollout ([The training
@@ -73,7 +73,7 @@ loop](training-loop.md#the-rating-lanes)): the live clone, the uniform average a
 exponential average of its weights. Each mode's lanes go 1 : 2 : 2 to them (the
 matchups' weights 0.5, 1 and 1; of the default 1,024 lanes in one mode, 205, 410 and
 409), since the score stop reads the averages and the live clone is only logged. The
-score stop and the ratings read those games (at the default teacher, the scripted agent
+score stop and the ratings read those games (at the default teacher, Imugi
 is the teacher). There are no separate evaluation rollouts.
 
 The launch runs BC with no rating lanes (`lanes.environments=0` in
@@ -81,7 +81,7 @@ The launch runs BC with no rating lanes (`lanes.environments=0` in
 score window fills: the score stop cannot fire (it is off by default anyway), BC stops on
 its plateau or its budget, the `bc/stop/window_*`{.plain} series are absent, and the
 policy files carry no lane rating, so the RL run's live policy and averages start at the
-scripted agent's 1000, the agent the clone imitates (`bnb.league.league.League`).
+Imugi's 1000, the agent the clone imitates (`bnb.league.league.League`).
 
 ## The averages
 
@@ -107,7 +107,7 @@ resume. After each update the hooks copy both into the lanes that play them, so 
 update's lane games are those of the averages as the previous update left them.
 
 The last BC run before the averages (run `2026-11-05-mixed-eager-acorn`, 150M steps)
-shows why: its live clone scored 0.272 against the scripted agent, a uniform average of
+shows why: its live clone scored 0.272 against Imugi, a uniform average of
 its retained checkpoints from 66M to 151M steps, built offline, 0.350.
 
 ## When it stops
@@ -245,12 +245,12 @@ checkpoints also give the uniform average over the updates between them, up to r
 ## Measurements
 
 Measured on 2026-11-02 on the development laptop (RTX 4070 Laptop GPU), with the earlier
-scripted agent (linear ramps ending at exactly 0 and 1, no floor of its own) and its
+Imugi (linear ramps ending at exactly 0 and 1, no floor of its own) and its
 teacher at floor 0.01; the current agent's entropy is in
-[the scripted agent's measurements](scripted-agent.md#measurements):
+[Imugi's measurements](imugi.md#measurements):
 
 - **The teacher's natural entropy:** 0.396 nats per living ship-step, over 1.27M ship-steps
-  of the scripted agent's own games of the 5v5 training mix (256 environments, four
+  of Imugi's own games of the 5v5 training mix (256 environments, four
   segments of 128 ticks). Its distribution puts weight on 2.4 joint actions on average,
   so the temperature alone reaches at most 0.75 nats; a floor of 0.1 gives 1.03 to 1.34.
 - **The toy test** (`tests/sections/test_bc_toy.py`, at the default floor 0.01; measured

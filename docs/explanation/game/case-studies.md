@@ -16,7 +16,7 @@ move without large swings, and what a cycle can be built from.
 `bench/case_study.py play --spec SPEC.json --out DIR`, then `report` (the module docstring
 has the spec's fields). Each (airframe, variant) is a type slot of the 36-slot arena whose
 card is written once (`bnb.league.matches.Arena.set_card`; nothing recompiles between
-studies); every ship of a team flies the slot's type and the scripted agent flies both
+studies); every ship of a team flies the slot's type and Imugi, the scripted agent, flies both
 teams (its real-scale deathmatch set, T = 1). The ratings are the league's A-optimal
 tournament (`bnb.league.tournament.fit_field`) to a standard error of 20 Elo or the budget.
 A variant is knobs (`bnb.game.ship_design.KNOBS`: the fire rate keeps the damage per second,
@@ -197,12 +197,12 @@ climb -27.
 
 **What it says.**
 
-- **The scripted agent fights on the turn alone.** A tenth more sustained turn is worth 75
+- **Imugi fights on the turn alone.** A tenth more sustained turn is worth 75
   Elo; a third more store, twice the climb or 5% more cruise are worth nothing (the climb's
   slight cost is the stronger engine's drag, [Pacing](real-scale-pacing.md)). So energy cannot
   pay for turn in this agent's hands, and a flight cycle (energy fighter, turner, climber) will
   not form from the flight values with today's doctrine: the energy leg needs the agent's
-  energy doctrine ([Doctrines](../scripted-agent.md#doctrines), per type, off by default), which extends and
+  energy doctrine ([Doctrines](../imugi.md#doctrines), per type, off by default), which extends and
   boosts against a better turner instead of turning with it.
 - **A lower stall speed costs** (-60 for 10% lower). With the sustained turn held the card
   meets it with more induced drag; which of the changes costs is not measured here.

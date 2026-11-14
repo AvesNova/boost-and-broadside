@@ -5,7 +5,7 @@ Each is a stateless function of the observation, playing by the same rules as ev
 controller: it reads only the ship rows, the zone rows and the globals, uses an enemy row only
 where it is visible and alive, and draws nothing (the decision key is unused: the same
 observation gives the same action). Each is batched tensor code with no host reads, so it
-captures in a CUDA graph and compiles like the scripted agent. The flight reuses the scripted
+captures in a CUDA graph and compiles like Imugi. The flight reuses the scripted
 chaser's bearing-to-stick rule (`bnb.controllers.scripted.stick_toward`).
 
 Every agent keeps inside the shrinking boundary (`keep_inside`), and when it has no enemy to
@@ -23,10 +23,11 @@ from bnb.contracts.obs import GLOBAL, SHIP, ZONE
 from bnb.game.handling.characteristics import Characteristics
 from bnb.game.ship_types import per_ship
 
+from .imugi_combat import TINY, signed_angle
 from .scripted import FIRE_BEARING, SHOOT_IN_GUN_RANGES, stick_toward
-from .scripted_combat import TINY, signed_angle
 
-PREFIX = "scripted:"  # a cheese agent's player name is PREFIX + its name
+PREFIX = "scripted:"  # a cheese agent's recorded identity is PREFIX + its name (the
+# command line says `cheese:<name>`: `bnb.runtime.opponents.stored_name`)
 COAST, BOOST, REVERSE = 0, 1, 2  # the power actions
 ENEMY_DEFENSE, OWN_DEFENSE, OWN_SPAWN = 3, 1, 0  # zone roles for the viewer (ZONE_COLUMNS)
 

@@ -7,7 +7,7 @@ then the case's phases (build, first batch or update, a steady one).
 
 Cases:
   ratings   the match engine: `players` (default: two policies of one build and the
-            scripted agent) on `preset`, the default ArenaConfig, two batches
+            Imugi) on `preset`, the default ArenaConfig, two batches
   train     a run's TrainConfig (`run`: a run directory with config.json, or `config`: a
             config file, `bnb train --print-config`'s), `steps` updates (default two);
             heads=0 turns the learner's heads' sums off; learn=0 collects only; `set`

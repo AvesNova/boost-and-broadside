@@ -1,9 +1,9 @@
-# Brief: sections 4 and 7, the scripted agent and BC
+# Brief: sections 4 and 7, Imugi and BC
 
-You are implementing **the scripted agent** and **behaviour cloning** for Boost and
-Broadside v2, in two stages. First the scripted agent, a memoryless controller that
+You are implementing **Imugi** and **behaviour cloning** for Boost and
+Broadside v2, in two stages. First Imugi, a memoryless controller that
 reads only the observation and gives a 42-way action distribution, with its acceptance
-passing. Then BC over the learner's machinery, with the scripted agent as the teacher.
+passing. Then BC over the learner's machinery, with Imugi as the teacher.
 The goals are **speed and maintainability together**: the fastest straightforward
 design, and code the next person can read and change.
 
@@ -26,7 +26,7 @@ design, and code the next person can read and change.
    BC on.
 4. `docs/rewrite/sections/game-spec.md` (flight, bullets, arena),
    `modes-spec.md`, `mixed-notes.md`, and `ship-card-spec.md` (its measurement module,
-   which the scripted agent's characteristics share).
+   which Imugi's characteristics share).
 5. `docs/rewrite/contracts.md` (the current-schema section) and `src/bnb/contracts/`.
 6. `docs/rewrite/scaffold.md`: section 3 (design rules) and section 4 (layout and
    dependency rule).
@@ -87,7 +87,7 @@ design, and code the next person can read and change.
   List every change outside `bnb.controllers` and `bnb.learn` in your notes.
 - **You may not change:** `bench/`, the fixed tests and goldens, or `docs/rewrite/`
   (apart from your notes file). The user docs in `docs/` you update as point 4 says.
-- **The scripted agent reads only the observation.** Never `Privileged`, never game
+- **Imugi reads only the observation.** Never `Privileged`, never game
   state.
 - **If the spec or a contract looks wrong:** take the most literal reading, keep going,
   and write it up as a request in your notes. Items marked (proposal): implement them as

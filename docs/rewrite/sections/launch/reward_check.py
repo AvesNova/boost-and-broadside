@@ -3,7 +3,7 @@ reward hacking in one run (a chain: both stages, on the chain's steps).
 
 Per window of environment steps (25M by default), the means of each update's records:
 
-- the lanes' scores against the scripted agent (the averaged agent and live, per mode):
+- the lanes' scores against Imugi (the averaged agent and live, per mode):
   the play the reward is meant to buy;
 - each reward level's share of the summed reward (`reward/level_share/*`) and its rate in
   the training pools (`reward/rate/*`): what the agent is paid for;
@@ -12,7 +12,7 @@ Per window of environment steps (25M by default), the means of each update's rec
 - the hits and kills by aspect (`*aspect*` series), the shape of the fighting.
 
 Then the flags, each a pattern hacking leaves (a flag is a question, not a verdict):
-pay rising while play against the scripted agent falls; a shaping level's share growing
+pay rising while play against Imugi falls; a shaping level's share growing
 while the outcome's shrinks; timeouts rising (stalling); boundary deaths rising; and, from
 replays.py's matches.jsonl, matches that end with no kills or with boundary deaths.
 """
@@ -118,7 +118,7 @@ def main() -> None:
         if play and pay and statistics.fmean(play) < -0.02 and statistics.fmean(pay) > 0:
             flags.append(
                 f"pay rose ({statistics.fmean(pay):+.3g}) while the averaged agent's "
-                f"score against the scripted agent fell ({statistics.fmean(play):+.3g})"
+                f"score against Imugi fell ({statistics.fmean(play):+.3g})"
             )
         outcome = rl_trend("reward/level_share/outcome")
         for key in series:

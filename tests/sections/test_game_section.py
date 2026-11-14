@@ -665,12 +665,12 @@ def test_an_eager_rollout_of_the_ladder_on_frontline_captures_into_a_graph():
     """The match engine's rollout runs uncompiled and captures a CUDA graph: the scripted
     agent's frontline strategy and a ladder rung's temperature build no tensor from host
     values (a host copy cannot run inside a capture)."""
-    from bnb.league.matches import Arena, ArenaConfig, Player, ScriptedPlay
+    from bnb.league.matches import Arena, ArenaConfig, ImugiPlay, Player
     from bnb.runtime.opponents import Rung
 
     players = [Player("scripted", rung=Rung(1.0)), Player("rung_T2", rung=Rung(2.0))]
     layout = ArenaConfig(blocks=1, block_environments=8, length=8, compiled=False)
     arena = Arena(players, api.PRESETS["frontline"], torch.device("cuda"), layout)
-    arena.seat.load_scripted(1, ScriptedPlay(2.0))
+    arena.seat.load_imugi(1, ImugiPlay(2.0))
     arena.rollout.run()
     assert arena.rollout.graph is not None

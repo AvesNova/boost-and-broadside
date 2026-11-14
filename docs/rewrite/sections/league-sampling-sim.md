@@ -173,7 +173,7 @@ info" column; σ for a snapshot comes from its credited games.
   concentration on poorly rated entries: Nash has the highest signal and middling
   information.
 - **The training games already outweigh the lanes' games on live.** The lanes' live games
-  are against the scripted agent, the exponential average, and snapshot slots; the run's
+  are against Imugi, the exponential average, and snapshot slots; the run's
   lanes left other slots unrated. They gave 0.65 even games per update and mode. The run's
   training games gave 4.4, and today's sampler with repaired ratings would give 7.0.
 - A sampler that fixes residency (draining together, 8.8) gives the rating about 13 times
@@ -231,7 +231,7 @@ These are proposals; the author decides.
 - **Rating information** counts one update's games, not the fit's 10-update window, and
   uses the logged errors for the rungs and averages.
 - **The brief** says 4 snapshots; the pool held 4 for updates 71–88 and 5 at the end. Its
-  "about 50% rungs" matches the rung kind, 0.49 for updates 64–95; with the scripted agent
+  "about 50% rungs" matches the rung kind, 0.49 for updates 64–95; with Imugi
   the ladder took 0.57.
 
 ## Round 2: turnover, slots, ladder and weighting (2026-11-06)

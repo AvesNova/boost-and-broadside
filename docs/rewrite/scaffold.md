@@ -269,7 +269,7 @@ Everything runs end to end, nothing is good yet.
 | physics | race torch arm as is (it already meets the contracts' shape) | arm + review fixes |
 | perception | race arm's sight + observe | perception section |
 | modes | team deathmatch: reward = kills − deaths (zero-sum) | modes section |
-| controllers | random + race's chaser | scripted agent section |
+| controllers | random + race's chaser | Imugi section |
 | model | 2-layer MLP over the raw obs, factored action heads | Yemong (and others) |
 | learner | plain PPO, no aux heads | PPO + BC sections |
 | league | self-play only, no ratings | league section |
@@ -341,7 +341,7 @@ Not yet in the skeleton:
 | 1b | ship card: handles to physics parameters (offline solver) | round-trip and independence tests against the forward model |
 | 3 | modes: game rules (zones, capture, win, respawn) in `bnb.game` | rule tests per component |
 | 3b | rewards: events to reward levels (v1 math: zero-sum, ally blame, kill shares, charge-back), learning side | zero-sum property tests; equivalence with v1 terms |
-| 4 | scripted agent | behavioural tests; Elo vs today's scripted, as a sanity range |
+| 4 | Imugi | behavioural tests; Elo vs today's scripted, as a sanity range |
 | 5 | model (Yemong) | `unroll == loop(step)`; parity with today's forward where specced |
 | 6 | PPO + labels | toy-learning tests; label equivalence (resim matched bit for bit before) |
 | 7 | BC | toy test; pilot run against the BC calibration record |

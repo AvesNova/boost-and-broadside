@@ -1,4 +1,4 @@
-"""The scripted agent (scripted spec A7): behaviour on constructed observations, invariance,
+"""Imugi (scripted spec A7): behaviour on constructed observations, invariance,
 its softness (the floor and the temperature), and the controller in the rollout.
 
 Every binary decision is floored at its own epsilon (`EPSILONS`), so "certain" below means
@@ -12,21 +12,21 @@ import typing
 
 import pytest
 import torch
-from scripted_cases import ARENA_RADIUS, CHARACTERISTICS, absent, observation, ship, value, zone
+from imugi_cases import ARENA_RADIUS, CHARACTERISTICS, absent, observation, ship, value, zone
 from test_perception import _swap_teams
 
 from bnb.contracts import GameConfig, Obs, Pool, Privileged
 from bnb.contracts.action import NUM_JOINT, to_joint
 from bnb.contracts.obs import SHIP, SHIP_HIDDEN_ZERO, ZONE
-from bnb.controllers import scripted_combat
-from bnb.controllers.scripted import Scripted, distribution, marginals
-from bnb.controllers.scripted_memory import ScriptedCarry
-from bnb.controllers.scripted_parameters import (
+from bnb.controllers import imugi_combat
+from bnb.controllers.imugi import Imugi, distribution, marginals
+from bnb.controllers.imugi_memory import ImugiCarry
+from bnb.controllers.imugi_parameters import (
     EPSILONS,
     NAMES,
     SCALE_FLOORS,
+    ImugiParameters,
     Logistic,
-    ScriptedParameters,
     from_row,
     logistic,
     pack,
@@ -42,7 +42,7 @@ from bnb.runtime.rollout import Rollout
 pytestmark = pytest.mark.usefixtures("global_generator")
 
 
-PARAMETERS = ScriptedParameters()
+PARAMETERS = ImugiParameters()
 TYPES = (0, 1)
 EPSILON = max(EPSILONS.values())
 SURE = 1.0 - EPSILON - 0.02  # one decision near its ceiling 1 - EPSILON
@@ -199,9 +199,9 @@ def test_the_lead_moves_the_aim_point_along_a_crossing_target_by_its_time_of_fli
         ship(x=distance, team_relative=1, velocity=target_velocity),
         own=ship(ship_type=ship_type, velocity=shooter_velocity),
     )
-    fleet = scripted_combat.context(obs, CHARACTERISTICS, PARAMETERS)
+    fleet = imugi_combat.context(obs, CHARACTERISTICS, PARAMETERS)
     one = torch.ones(1, 2)
-    aim_x, aim_y = scripted_combat.lead(
+    aim_x, aim_y = imugi_combat.lead(
         fleet,
         CHARACTERISTICS,
         PARAMETERS,
@@ -299,7 +299,7 @@ def test_frontline_it_defends_a_zone_whose_meter_moves_against_it(ship_type):
     assert sides[0][0] > SURE_TWICE and sides[1][1] > SURE_TWICE  # one defends, one attacks
 
 
-def _defending(obs: Obs, parameters: ScriptedParameters = PARAMETERS) -> list[bool]:
+def _defending(obs: Obs, parameters: ImugiParameters = PARAMETERS) -> list[bool]:
     """Per own ship flying north, whether it turns left, toward the own defense zone on the
     left of `_ring`, rather than right, toward the attack zone."""
     stick = marginals(obs, CHARACTERISTICS, parameters).stick[0]
@@ -398,7 +398,7 @@ def _game_views(mode: str, seed: int = 3):
     state = api.reset(
         rules, types, api.uniforms(rules, B, generator=generator), torch.ones(B, dtype=torch.bool)
     )
-    agent = Scripted(CHARACTERISTICS, config.ships_per_team, PARAMETERS)
+    agent = Imugi(CHARACTERISTICS, config.ships_per_team, PARAMETERS)
     carries = [agent.init_carry(B, torch.device("cpu")) for _ in range(2)]
     torch.manual_seed(seed)
     for tick in range(90):
@@ -490,8 +490,8 @@ def test_the_distribution_follows_row_permutations_and_ignores_hidden_columns(mo
 
 
 def test_the_controller_never_takes_privileged():
-    hints = typing.get_type_hints(Scripted.step)
-    for name in inspect.signature(Scripted.step).parameters:
+    hints = typing.get_type_hints(Imugi.step)
+    for name in inspect.signature(Imugi.step).parameters:
         assert hints.get(name) is not Privileged
 
 
@@ -510,13 +510,13 @@ def test_a_rung_plays_the_agent_at_its_temperature_and_infinity_is_uniform():
     views = 40_000
     many = _copies(obs, views)
     temperature = torch.full((views,), 2.0)
-    rung = Scripted(CHARACTERISTICS, 2, PARAMETERS, temperature=temperature)
+    rung = Imugi(CHARACTERISTICS, 2, PARAMETERS, temperature=temperature)
     expected = rung.action_distribution(many)[0, 0]
     torch.testing.assert_close(expected, distribution(obs, CHARACTERISTICS, PARAMETERS, 2.0)[0, 0])
     # a fresh carry makes every plan choice afresh: the memoryless distribution
     keys = torch.arange(views)
     action, carry, _ = rung.step(rung.init_carry(views, many.ships.device), many, None, keys)
-    assert isinstance(carry, ScriptedCarry) and not bool(carry.fresh.any())
+    assert isinstance(carry, ImugiCarry) and not bool(carry.fresh.any())
     counts = torch.bincount(to_joint(action)[:, 0].long(), minlength=NUM_JOINT).float() / views
     assert (counts - expected).abs().max() < 0.01
     temperature.fill_(math.inf)  # the league changes the temperature in place: random
@@ -524,7 +524,7 @@ def test_a_rung_plays_the_agent_at_its_temperature_and_infinity_is_uniform():
         rung.action_distribution(many)[0, 0], torch.full((NUM_JOINT,), 1.0 / NUM_JOINT)
     )
     with pytest.raises(ValueError):
-        Scripted(CHARACTERISTICS, 2, temperature=0.0)
+        Imugi(CHARACTERISTICS, 2, temperature=0.0)
 
 
 def _entropy(q: torch.Tensor) -> torch.Tensor:
@@ -563,7 +563,7 @@ def test_no_living_ships_action_is_certain_and_heat_flattens_every_decision(mode
 
 
 def test_the_defaults_respect_the_scale_floors_and_pack_round_trips():
-    defaults = ScriptedParameters()
+    defaults = ImugiParameters()
     logistics = [name for name in NAMES if isinstance(getattr(defaults, name), Logistic)]
     assert sorted(logistics) == sorted(SCALE_FLOORS)
     for name in logistics:
@@ -583,7 +583,7 @@ def test_per_view_parameters_match_the_single_set():
 
 
 @pytest.mark.slow
-def test_the_scripted_agent_plays_in_the_rollout_against_the_chaser():
+def test_imugi_plays_in_the_rollout_against_the_chaser():
     from bnb.controllers.scripted import Chaser
 
     game = GameConfig(2, 2, 1200.0, mode="frontline")
@@ -592,7 +592,7 @@ def test_the_scripted_agent_plays_in_the_rollout_against_the_chaser():
         game,
         api.ship_types(),
         pools,
-        {"scripted": Scripted(CHARACTERISTICS, 2), "chaser": Chaser(CHARACTERISTICS, 2)},
+        {"scripted": Imugi(CHARACTERISTICS, 2), "chaser": Chaser(CHARACTERISTICS, 2)},
         "scripted",
         4,
         16,

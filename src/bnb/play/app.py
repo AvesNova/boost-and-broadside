@@ -55,7 +55,7 @@ from .render.overlay import outline_table
 from .render.predictions import OverlayDrawing, overlay_drawing
 from .render.renderer import SPECTATOR, Renderer
 from .selection import Selection, shown_ships
-from .sides import AgentError, Scripted, Waiting, controller_of
+from .sides import AgentError, Imugi, Waiting, controller_of
 from .theme_editor import ThemeEditor
 from .trails import Trails
 from .tuning import Tuner, Tuning, base_rules
@@ -93,8 +93,8 @@ class Options:
     fly: bool = False  # start flying team 0's first ship
     agent0: pathlib.Path | None = None  # a policy file for team 0 (scripted without one)
     agent1: pathlib.Path | None = None  # a policy file for team 1
-    scripted0: Literal["scripted", "scripted_agent"] = "scripted_agent"  # team 0 without an agent
-    scripted1: Literal["scripted", "scripted_agent"] = "scripted_agent"  # the agent or the chaser
+    scripted0: Literal["scripted", "imugi"] = "imugi"  # team 0 without an agent
+    scripted1: Literal["scripted", "imugi"] = "imugi"  # the agent or the chaser
     fps: bool = True  # the frame-rate readout in the top bar (F4 toggles it)
     temperature: float = 1.0  # the agents' sampling temperature
     replay: pathlib.Path | None = None  # open this replay instead of a match
@@ -588,7 +588,7 @@ class Session:
 
     def unmeasured(self, side: SideSetup, loop: MatchLoop) -> bool:
         """Whether this side's controller needs ship characteristics that no earlier run
-        measured for the match's card (a scripted agent's or the chaser's)."""
+        measured for the match's card (Imugi's or the chaser's)."""
         if side.controller == "agent":
             return False
         return cached_characteristics(loop.types, loop.rules) is None
@@ -598,7 +598,7 @@ class Session:
         over when it is done, the team playing on as it was meanwhile."""
         loop = self.loop
         self._make_aside(team, side, None, lambda: measure_aside(loop.types, loop.rules))
-        name = "scripted agent" if side.controller == "scripted_agent" else "chaser"
+        name = "Imugi" if side.controller == "imugi" else "chaser"
         self.say(f"{TEAM_NAMES[team]}: measuring the ships for the {name}; it takes over when done")
 
     def _make_aside(self, team: int, side: SideSetup, controller, work) -> None:
@@ -850,7 +850,7 @@ class Session:
                 continue
             except AgentError as error:
                 self.say(f"{TEAM_NAMES[team]} plays scripted: {error}")
-            sides.append(Scripted(self.loop.rules, self.loop.types))
+            sides.append(Imugi(self.loop.rules, self.loop.types))
             chosen.append(SideSetup())
         return sides, dataclasses.replace(setup, sides=tuple(chosen))
 

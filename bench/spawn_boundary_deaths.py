@@ -1,4 +1,4 @@
-"""What becomes of spawns near the edge: in a preset's matches (the scripted agent on both
+"""What becomes of spawns near the edge: in a preset's matches (Imugi on both
 sides, batched on the CPU, uncompiled), the share of spawns that die to the boundary (a
 death with no shooter) within `window` ticks, the share that leave the arena in that time,
 and the boundary damage per spawn. Only respawns with a whole window ahead count (a match's
@@ -20,7 +20,7 @@ import time
 import torch
 
 from bnb.contracts import Action, Obs
-from bnb.controllers import scripted
+from bnb.controllers import imugi
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.streams import decision_key_from
@@ -40,7 +40,7 @@ def measure(preset: str, environments: int, ticks: int, hold: int, window: int, 
     fogged = torch.ones(B, dtype=torch.bool)
     state = api.reset(rules, types, api.uniforms(rules, B, generator=draws), fogged)
     state, observation, _ = api.perceive(rules, state)
-    agent = scripted.Scripted(characteristics(types, rules), S)
+    agent = imugi.Imugi(characteristics(types, rules), S)
     carry = agent.init_carry(2 * B, torch.device("cpu"))
     age = torch.full((B, N), -1)  # ticks since the followed spawn; -1 none followed
     outside = torch.zeros((B, N), dtype=torch.bool)

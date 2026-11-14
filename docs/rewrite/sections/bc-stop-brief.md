@@ -22,7 +22,7 @@ floor; that run never reached 0.45 in 100M steps.
 2. **The live score is against the teacher as the labels describe it:** the scripted
    opponent in BC's scoring pool plays by sampling the labels' distribution (the
    `TeacherConfig`: its floor, and its temperature, which defaults to 1). With floor 0 and
-   temperature 1 that is the scripted agent unchanged. Say in your notes how you did it
+   temperature 1 that is Imugi unchanged. Say in your notes how you did it
    (for example a controller wrapper in `bnb.runtime.cloning`), and keep the scripted
    agent's own play unchanged everywhere else.
 3. **The toy test** (`tests/sections/test_bc_toy.py`) keeps its bar (0.45 minus two
@@ -57,7 +57,7 @@ floor; that run never reached 0.45 in 100M steps.
   trimmed oldest update), a window at exactly the target does not stop, one clearly above
   does, and the KL plateau and budget rules are unchanged.
 - A test that the scoring opponent's action distribution equals the labels' (floor and
-  temperature applied), and that floor 0, temperature 1 leaves the scripted agent's play
+  temperature applied), and that floor 0, temperature 1 leaves Imugi's play
   unchanged.
 - Break each new behaviour by hand, watch its test fail, revert.
 - Everything passes: `uv run --no-sync pytest` (under the lock). Never change

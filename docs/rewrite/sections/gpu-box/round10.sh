@@ -3,7 +3,7 @@
 # the whole curve of both headline runs in one field so every Elo is directly comparable: each
 # run's uniform average every ~10M from the first BC snapshot to the last RL one (BC 10.5 ...
 # 120.6M; RL 10.5 ... 121.6M; RL step 0 = the BC 120.6M uniform it started from), plus live vs
-# uniform vs exponential at BC 120.6M, RL 60.8M and RL 121.6M, and the scripted agent (1000).
+# uniform vs exponential at BC 120.6M, RL 60.8M and RL 121.6M, and Imugi (1000).
 set -u
 cd /workspace/boost-and-broadside
 set -a; . /workspace/.env; set +a

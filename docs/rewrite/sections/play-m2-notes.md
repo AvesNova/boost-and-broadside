@@ -37,7 +37,7 @@ Done. What is left is the author's review and the open questions at the end.
 |---|---|
 | `runtime/realtime.py` | `Realtime(config, compiled, fogged, generator, lineup, background)`: the match's own generator (draws outside the compiled tick), `events` (the last tick's `Events`), `keyframe()` / `restore()`, the compiled tick shared per `Rules`, the background compile (`compiling`, `wait_compiled`, `uses_compiled`), `step(actions, eager=)` |
 | `play/loop.py` | `SideSetup`, `MatchSetup` (game, lineup, fog, seed, sides), `MatchEvent` (kill, capture, end), `tick_events`, `MatchLoop` (sides, pilot, kills and deaths, `on_tick`) |
-| `play/sides.py` | `Scripted`, `Agent` (Yemong or relational at B = 1, its carry, Gumbel-max at a temperature from its own generator), `load_agent` / `AgentError` / `mismatch`, `policy_choices`, `label_of`, `describe`, `build_sides` |
+| `play/sides.py` | `Imugi`, `Agent` (Yemong or relational at B = 1, its carry, Gumbel-max at a temperature from its own generator), `load_agent` / `AgentError` / `mismatch`, `policy_choices`, `label_of`, `describe`, `build_sides` |
 | `play/replay.py` | `Recorder`, `save` / `replays` / `prune` (newest 50), `Replay.load`, `ReplayLoop` (`seek`, `markers`) |
 | `play/selection.py` | `Selection`, `hit_test`, `shown_ships` |
 | `play/app.py` | `Options`, `Session`: the match or replay, camera, view, selection, follow, feed, recorder, and every command the controls call |

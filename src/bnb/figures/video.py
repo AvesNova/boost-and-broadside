@@ -1,4 +1,4 @@
-"""A video of one game: a policy against the scripted agent, drawn by the play shell
+"""A video of one game: a policy against Imugi, drawn by the play shell
 offscreen (`bnb.play.app.Session` on an EGL context, no window) and encoded to MP4 by
 ffmpeg, which reads the raw frames on a pipe.
 
@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 from bnb.game.api import PRESETS
 from bnb.play.loop import TIME_SCALES, MatchSetup, SideSetup
-from bnb.play.sides import Scripted, load_agent
+from bnb.play.sides import Imugi, load_agent
 
 FFMPEG = "ffmpeg"  # looked up on the PATH (`/usr/bin/ffmpeg` on the dev machine)
 POLICY_TEAM = 0  # the policy plays team 0, the scripted chaser team 1
@@ -135,7 +135,7 @@ def draw_frame(session: Session, target, overlays: tuple[str, ...] | None = None
 def render(
     policy: str | pathlib.Path, preset: str, config: VideoConfig, path: str | pathlib.Path
 ) -> dict:
-    """Write the video of one game of `policy` against the scripted agent in the game
+    """Write the video of one game of `policy` against Imugi in the game
     `preset` (`bnb.game.api.PRESETS`) to `path` (MP4); returns its numbers: the tally
     (`Tally.summary`), the frames, the game seconds shown, the file's bytes and the
     seconds it took to make."""
@@ -173,7 +173,7 @@ def render(
         config.seed + POLICY_TEAM,
         any_mode=True,
     )
-    sides = [Scripted(loop.rules, loop.types), Scripted(loop.rules, loop.types)]
+    sides = [Imugi(loop.rules, loop.types), Imugi(loop.rules, loop.types)]
     sides[POLICY_TEAM] = agent
     session.start(setup, whole=True, sides=sides)
     session.show_interface = config.interface

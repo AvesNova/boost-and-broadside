@@ -730,7 +730,7 @@ lose their main motivation. The four questions stay open for when the audit resu
   marginals: which part of the enemy's command is predictable (shooting may be easy,
   turning hard). Free from the joint.
 - **Optional slice by opponent kind** (self-play, checkpoint, average, scripted,
-  semi-scripted): modelling the scripted agent and modelling itself are different
+  semi-scripted): modelling Imugi and modelling itself are different
   tasks. Uses the per-env opponent id the league already keeps.
 
 **Outcomes (author, group 9, 2026-10-21, after the feedback loop was removed):**

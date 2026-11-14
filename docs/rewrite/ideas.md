@@ -114,7 +114,7 @@ These are candidate experiments and features, numbered so they can be referred t
     - give model initialisation its own forked stream;
     - draw maps from a hash of (seed, environment, episode);
     - always draw the arena-scale slot, so turning map sizes on or off doesn't shift other draws;
-    - give actions, the scripted agent, seats and stagger their own streams;
+    - give actions, Imugi, seats and stagger their own streams;
     - key each module's initial weights by its parameter path.
 73. A round-robin rating of every arm's final policy, from the stored full-outcome records.
 

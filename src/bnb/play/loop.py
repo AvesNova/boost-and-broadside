@@ -37,14 +37,14 @@ CATCH_UP_TICKS = 4  # at most this many ticks of backlog per unit of time scale
 @dataclasses.dataclass(frozen=True)
 class SideSetup:
     """One side's controller (`bnb.play.sides.CONTROLLERS`): "scripted" (the chaser),
-    "scripted_agent" (the scripted agent, with its memory, flying `doctrine`, a name of
+    "imugi" (Imugi, with its memory, flying `doctrine`, a name of
     `bnb.play.sides.DOCTRINES`), or "agent" with the policy file's directory and the
     sampling temperature."""
 
-    controller: str = "scripted_agent"  # "scripted_agent", "scripted" (the chaser) or "agent"
+    controller: str = "imugi"  # "imugi", "scripted" (the chaser) or "agent"
     policy: str | None = None
     temperature: float = 1.0
-    doctrine: str = DEFAULT_DOCTRINE  # the scripted agent's
+    doctrine: str = DEFAULT_DOCTRINE  # Imugi's
 
 
 @dataclasses.dataclass(frozen=True)
@@ -118,8 +118,8 @@ class MatchLoop:
     ship), and `on_tick`, when set, is called after every tick with the actions, the
     realtime match and the tick's events (the replay recorder); `on_retune`, when set, is
     called after every live change (`retune`) with the realtime match. compiled,
-    background: the tick's and the scripted agents' built functions (`Realtime`,
-    `bnb.play.sides.ScriptedAgent`).
+    background: the tick's and Imugi's built functions (`Realtime`,
+    `bnb.play.sides.ImugiAgent`).
     """
 
     replaying = False

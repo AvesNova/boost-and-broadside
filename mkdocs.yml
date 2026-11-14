@@ -137,7 +137,7 @@ nav:
       - The model (Yemong): explanation/yemong.md
       - The training loop: explanation/training-loop.md
       - The learner: explanation/learner.md
-      - The scripted agent: explanation/scripted-agent.md
+      - Imugi: explanation/imugi.md
       - Behaviour cloning: explanation/behaviour-cloning.md
       - Runs and checkpoints: explanation/runs.md
       - The league: explanation/league.md

@@ -63,6 +63,7 @@ import torch
 
 from bnb.contracts import GameConfig
 from bnb.game import VERSION as GAME_VERSION
+from bnb.runtime.opponents import stored_name
 
 from . import crossover, sequential
 from .evaluation_settings import (
@@ -385,7 +386,8 @@ def settings_entry(players: dict[str, Player], config: EvaluationConfig) -> dict
                     )
                     for side, one in players.items()
                 },
-                config=dataclasses.asdict(config),
+                # recorded as the identity, so settings written before the rename still match
+                config=dict(dataclasses.asdict(config), opponent=stored_name(config.opponent)),
             )
         )
     )

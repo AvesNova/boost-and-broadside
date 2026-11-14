@@ -5,11 +5,11 @@ three", 2026-11-05/06): a **uniform average** and an **exponential moving averag
 live weights. RL's league keeps both (`bnb.league.pool.average_into`,
 `LeagueConfig.exponential_decay`, and the uniform one starts after
 `LeagueConfig.uniform_from`, 10M environment steps). BC keeps neither: its lanes rate only
-the live clone against the scripted agent (`bnb.runtime.lanes.BC_MATCHUPS`), its stop rule
+the live clone against Imugi (`bnb.runtime.lanes.BC_MATCHUPS`), its stop rule
 reads the live clone's score (`bnb.learn.bc.StopRule`), and it saves the live clone as the
 run's policy.
 
-Evidence it matters: the last BC run's live clone scored 0.272 against the scripted agent;
+Evidence it matters: the last BC run's live clone scored 0.272 against Imugi;
 a uniform average of its retained checkpoints (66M-151M, built offline) scored 0.350.
 
 ## What to build
@@ -19,11 +19,11 @@ a uniform average of its retained checkpoints (66M-151M, built offline) scored 0
    (10M environment steps; share the setting with the league's, or give BC its own field
    with the same default, and say which), the EMA throughout. Both are saved in BC's
    training checkpoints and restored on resume.
-2. **Both are rated in BC's lanes** against the scripted agent, alongside the live clone
+2. **Both are rated in BC's lanes** against Imugi, alongside the live clone
    (the lanes' matchups and shares; keep the lane count, split it sensibly, and say how).
    Their ratings appear as `rating/average/<mode>` (and a name for the uniform average's
    series) like RL's.
-3. **The stop rule reads an average.** Parity against the scripted agent, over the same
+3. **The stop rule reads an average.** Parity against Imugi, over the same
    window, read on the better-rated of the two averages (the live clone's score stays
    logged). Say what you chose for ties and for the first updates, before the uniform
    average exists.

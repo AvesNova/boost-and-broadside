@@ -18,13 +18,13 @@ from bnb.league.ratings import win_probability
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.models.yemong import policy
 from bnb.runs import checkpoint
-from bnb.runtime.opponents import Rung
+from bnb.runtime.opponents import Rung, shown_name, stored_name
 
 pytestmark = pytest.mark.usefixtures("global_generator")
 
 GAME = GameConfig(2, 2, 1500.0, episode_seconds=2.0, respawn_seconds=1.0)
 CPU = torch.device("cpu")
-SCRIPTED = Player("scripted", rung=Rung(1.0))
+IMUGI = Player("scripted", rung=Rung(1.0))
 RANDOM = Player("random", rung=Rung(math.inf))
 HALF = Player("rung_T2", rung=Rung(2.0))
 SMALL = ArenaConfig(blocks=2, block_environments=4, length=16, compiled=False)
@@ -60,14 +60,14 @@ def _block_state(arena: Arena, block: int) -> list[torch.Tensor]:
 
 
 def test_ladder_names_parse_and_others_do_not():
-    assert player("random") == RANDOM and player("scripted") == SCRIPTED
+    assert player("random") == RANDOM and player("imugi") == IMUGI
     assert player("rung_T2") == HALF
     with pytest.raises(ValueError, match="not a policy file"):
         player("no-such-player")
 
 
 def test_every_block_plays_each_environments_first_game_once_with_the_seats_split():
-    arena = Arena([SCRIPTED, RANDOM, HALF], GAME, CPU, SMALL)
+    arena = Arena([IMUGI, RANDOM, HALF], GAME, CPU, SMALL)
     for matchups in ([(0, 1), (2, 1)], [(1, 2), (0, 2)]):
         results = arena.play(matchups)
         assert results.sum(1).tolist() == [4, 4]
@@ -80,7 +80,7 @@ def test_every_block_plays_each_environments_first_game_once_with_the_seats_spli
 def test_the_layout_needs_even_blocks_and_a_matchup_per_block():
     with pytest.raises(ValueError, match="even"):
         ArenaConfig(block_environments=3)
-    arena = Arena([SCRIPTED, RANDOM], GAME, CPU, SMALL)
+    arena = Arena([IMUGI, RANDOM], GAME, CPU, SMALL)
     with pytest.raises(ValueError, match="blocks"):
         arena.play([(0, 1)])
     with pytest.raises(ValueError, match="itself"):
@@ -89,7 +89,7 @@ def test_the_layout_needs_even_blocks_and_a_matchup_per_block():
 
 def test_slots_take_their_players_in_place(tmp_path):
     first, second = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2)
-    arena = Arena([first, second, SCRIPTED, HALF], GAME, CPU, SMALL)
+    arena = Arena([first, second, IMUGI, HALF], GAME, CPU, SMALL)
     seat = arena.seat
     buffers = {name: value.data_ptr() for name, value in seat.parameters[0].items()}
     arena.play([(0, 2), (3, 1)])
@@ -122,7 +122,7 @@ def test_a_block_plays_the_same_games_whatever_the_other_blocks_play(tmp_path):
     """Each slot's network acts on its own rows only: block 0's games are the same whether
     block 1 plays two networks or two scripted players."""
     first, second = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2)
-    arena = Arena([first, second, SCRIPTED, RANDOM], GAME, CPU, SMALL)
+    arena = Arena([first, second, IMUGI, RANDOM], GAME, CPU, SMALL)
     states = []
     for other in ((1, 0), (2, 3)):
         arena.batch = 0  # one batch number: the same maps and draws
@@ -139,7 +139,7 @@ def test_a_block_plays_the_same_games_whatever_the_other_blocks_play(tmp_path):
 def test_networks_of_different_builds_are_grouped_by_build(tmp_path):
     first, second = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2)
     wider = _network(tmp_path / "c", 3, hidden=32)
-    arena = Arena([first, wider, SCRIPTED, second], GAME, CPU, SMALL, lanes=(2, 2))
+    arena = Arena([first, wider, IMUGI, second], GAME, CPU, SMALL, lanes=(2, 2))
     assert len(arena.groups) == 2 and len(arena.seat.parameters) == 2
     assert arena.group_of == {0: 0, 1: 1, 3: 0}  # the groups in order of first appearance
     arena.play([(0, 1), (3, 1)])  # a block's two seats from different groups
@@ -147,14 +147,14 @@ def test_networks_of_different_builds_are_grouped_by_build(tmp_path):
     name = next(iter(arena.states[1]))
     assert torch.equal(arena.seat.parameters[1][f"model.{name}"][1], arena.states[1][name])
     # by default the lanes split the slots as the groups' players: 2 and 1 of 4 slots
-    assert Arena([first, wider, SCRIPTED, second], GAME, CPU, SMALL).lanes == (3, 1)
+    assert Arena([first, wider, IMUGI, second], GAME, CPU, SMALL).lanes == (3, 1)
     with pytest.raises(ValueError, match="1 lanes"):
-        Arena([first, wider, SCRIPTED, second], GAME, CPU, SMALL).play([(0, 1), (3, 1)])
+        Arena([first, wider, IMUGI, second], GAME, CPU, SMALL).play([(0, 1), (3, 1)])
 
 
 def test_a_two_build_field_plays_and_a_block_does_not_depend_on_the_others(tmp_path):
     first, wider = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2, hidden=32)
-    arena = Arena([first, wider, SCRIPTED, RANDOM], GAME, CPU, SMALL)
+    arena = Arena([first, wider, IMUGI, RANDOM], GAME, CPU, SMALL)
     results = arena.play([(0, 1), (1, 2)])
     assert results.sum(1).tolist() == [4, 4]
     states = []
@@ -180,8 +180,8 @@ def test_a_mixed_field_plays_each_pair_as_the_pair_alone(tmp_path, monkeypatch):
     monkeypatch.setattr(policy, "sample", _greedy)
     first, second = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2, hidden=24)
     third = _network(tmp_path / "c", 3, hidden=32)
-    mixed = Arena([first, second, third, SCRIPTED, RANDOM], GAME, CPU, SMALL)
-    alone = Arena([first, second, SCRIPTED, RANDOM], GAME, CPU, SMALL)
+    mixed = Arena([first, second, third, IMUGI, RANDOM], GAME, CPU, SMALL)
+    alone = Arena([first, second, IMUGI, RANDOM], GAME, CPU, SMALL)
     assert len(mixed.groups) == 3 and mixed.lanes == (2, 1, 1)
     assert len(alone.groups) == 2 and alone.lanes == (2, 2)
     for matchups, versus in (
@@ -213,7 +213,7 @@ def test_the_lanes_split_the_slots_as_the_groups_players():
 
 def test_a_batch_keeps_to_the_engines_lanes(tmp_path):
     first, wider = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2, hidden=32)
-    arena = Arena([first, wider, SCRIPTED], GAME, CPU, SMALL, lanes=(1, 3))
+    arena = Arena([first, wider, IMUGI], GAME, CPU, SMALL, lanes=(1, 3))
     with pytest.raises(ValueError, match="2 slots of network group 0, which has 1 lanes"):
         arena.play([(0, 2), (0, 1)])
     assert arena.play([(0, 1), (1, 2)]).sum(1).tolist() == [4, 4]
@@ -222,7 +222,7 @@ def test_a_batch_keeps_to_the_engines_lanes(tmp_path):
 def test_the_tournament_rates_a_two_build_field(tmp_path):
     first, wider = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2, hidden=32)
     config = tournament.TournamentConfig(SMALL, target_stderr=1.0, hopeless=math.inf, budget=16)
-    rows = tournament.rate([SCRIPTED, first, wider], "small", CPU, config, game=GAME)
+    rows = tournament.rate([IMUGI, first, wider], "small", CPU, config, game=GAME)
     by_name = {row["player"]: row for row in rows}
     assert set(by_name) == {"scripted", str(tmp_path / "a"), str(tmp_path / "b")}
     assert all(math.isfinite(row["calibrated_elo"]) and row["games"] > 0 for row in rows)
@@ -230,15 +230,15 @@ def test_the_tournament_rates_a_two_build_field(tmp_path):
 
 def test_networks_of_one_build_are_one_group(tmp_path):
     first, second = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2)
-    arena = Arena([first, second, SCRIPTED], GAME, CPU, SMALL)
+    arena = Arena([first, second, IMUGI], GAME, CPU, SMALL)
     assert len(arena.groups) == 1 and arena.group_of == {0: 0, 1: 0}
-    assert len(Arena([SCRIPTED, RANDOM], GAME, CPU, SMALL).groups) == 0
+    assert len(Arena([IMUGI, RANDOM], GAME, CPU, SMALL).groups) == 0
 
 
-def test_scripted_at_temperature_one_and_floor_zero_plays_exactly_as_scripted():
-    identity = player("scripted@T=1,floor=0")
+def test_imugi_at_temperature_one_and_floor_zero_plays_exactly_as_scripted():
+    identity = player("imugi@T=1,floor=0")
     states = []
-    for one in (SCRIPTED, identity):
+    for one in (IMUGI, identity):
         arena = Arena([one, HALF], GAME, CPU, SMALL)
         torch.manual_seed(7)
         arena.play([(0, 1), (1, 0)])
@@ -248,8 +248,8 @@ def test_scripted_at_temperature_one_and_floor_zero_plays_exactly_as_scripted():
 
 
 def test_a_teacher_takes_its_temperature_and_floor():
-    softened = player("scripted@T=4,floor=0.5")
-    arena = Arena([softened, SCRIPTED], GAME, CPU, SMALL)
+    softened = player("imugi@T=4,floor=0.5")
+    arena = Arena([softened, IMUGI], GAME, CPU, SMALL)
     assert int(arena.play([(0, 1), (1, 0)]).sum()) == 8
     rows = arena.seat.slot_rows
     assert arena.seat.floor[:rows].tolist() == [0.5] * rows
@@ -284,7 +284,7 @@ def test_an_ablated_name_is_its_policy_with_sorted_ablations(tmp_path):
     with pytest.raises(ValueError, match="twice"):
         player(f"{base.name}:rotary+rotary")
     with pytest.raises(ValueError, match="only a network"):
-        player("scripted:rotary")
+        player("cheese:rotary")
     with pytest.raises(ValueError, match="not a policy file"):
         player(f"{base.name}:sideways")
 
@@ -293,13 +293,13 @@ def test_only_a_yemong_plays_ablated(tmp_path):
     relational = _network(tmp_path / "a", 1)
     ablated = player(f"{relational.name}:rotary")
     with pytest.raises(ValueError, match="Yemong"):
-        Arena([relational, ablated, SCRIPTED], GAME, CPU, SMALL)
+        Arena([relational, ablated, IMUGI], GAME, CPU, SMALL)
 
 
 def test_an_ablated_copy_shares_its_weights_and_ablates_only_its_slots_rows(tmp_path):
     base = _yemong(tmp_path / "a")
     rotary, forecast = player(f"{base.name}:rotary"), player(f"{base.name}:forecast")
-    arena = Arena([base, rotary, forecast, SCRIPTED], GAME, CPU, SMALL)
+    arena = Arena([base, rotary, forecast, IMUGI], GAME, CPU, SMALL)
     assert arena.states[0] is arena.states[1] is arena.states[2]
     arena.play([(1, 3), (0, 2)])
     rows = arena.seat.slot_rows
@@ -318,7 +318,7 @@ def test_a_two_build_field_with_an_ablated_yemong(tmp_path):
     without the ablated copy."""
     relational, yemong = _network(tmp_path / "a", 1), _yemong(tmp_path / "b")
     rotary = player(f"{yemong.name}:rotary")
-    arena = Arena([relational, yemong, rotary, SCRIPTED], GAME, CPU, SMALL)
+    arena = Arena([relational, yemong, rotary, IMUGI], GAME, CPU, SMALL)
     assert len(arena.groups) == 2 and arena.group_of == {0: 0, 1: 1, 2: 1}
     assert arena.states[2] is arena.states[1]
     assert arena.seat.ablatable == [False, True]
@@ -331,8 +331,8 @@ def test_a_two_build_field_with_an_ablated_yemong(tmp_path):
     assert arena.seat.lane_of == {0: (0, 0), 2: (1, 0), 3: (0, 1)}
     states = []
     for players, matchups in (
-        ([relational, yemong, SCRIPTED], [(0, 2), (1, 0)]),
-        ([relational, yemong, rotary, SCRIPTED], [(0, 3), (2, 0)]),
+        ([relational, yemong, IMUGI], [(0, 2), (1, 0)]),
+        ([relational, yemong, rotary, IMUGI], [(0, 3), (2, 0)]),
     ):
         engine = Arena(players, GAME, CPU, SMALL)
         torch.manual_seed(5)
@@ -350,8 +350,8 @@ def test_a_block_without_ablations_plays_as_in_an_engine_without_them(tmp_path):
     rotary = player(f"{base.name}:rotary")
     states = []
     for players, matchups in (
-        ([base, SCRIPTED], [(0, 1), (0, 1)]),
-        ([base, SCRIPTED, rotary], [(0, 1), (2, 1)]),
+        ([base, IMUGI], [(0, 1), (0, 1)]),
+        ([base, IMUGI, rotary], [(0, 1), (2, 1)]),
     ):
         # the same lanes in both (the default caps a one-player group at a slot a block):
         # the lanes' draws are one batched draw, shaped by the lane count
@@ -377,7 +377,7 @@ def test_a_tempered_name_is_its_policy_at_its_temperature(tmp_path):
     ablated = player(f"{base.name}:rotary@T=0.7")
     assert (ablated.ablations, ablated.temperature) == (("rotary",), 0.7)
     assert temperature_of("scripted@T=0.7") == ("scripted@T=0.7", None)  # a teacher's
-    assert player("scripted@T=0.7").teacher.temperature == 0.7
+    assert player("imugi@T=0.7").teacher.temperature == 0.7
     assert temperature_of("a@b") == ("a@b", None)
     for bad, match in (
         ("rung_T2@T=0.5", "only a network"),
@@ -425,13 +425,13 @@ def test_temperature_one_samples_exactly_as_without_one():
 def test_a_low_temperature_concentrates_and_a_high_one_flattens_only_its_rows(tmp_path):
     """Each row samples at its slot's player's temperature: the mean entropy a block's
     statistics record falls below the untempered policy's at T = 0.25 and rises above it at
-    T = 4, the scripted agent's is 0, and a block without a tempered player plays the same
+    T = 4, Imugi's is 0, and a block without a tempered player plays the same
     games as in an engine without one."""
     from bnb.league.matches import STATISTICS
 
     base = _network(tmp_path / "a", 1, scale=0.3)  # a policy far from deterministic
     cold, hot = player(f"{base.name}@T=0.25"), player(f"{base.name}@T=4")
-    arena = Arena([base, cold, hot, SCRIPTED], GAME, CPU, SMALL, lanes=(4,))
+    arena = Arena([base, cold, hot, IMUGI], GAME, CPU, SMALL, lanes=(4,))
     assert arena.states[0] is arena.states[1] is arena.states[2]
     arena.play([(1, 0), (2, 3)])
     rows = arena.seat.slot_rows
@@ -444,11 +444,11 @@ def test_a_low_temperature_concentrates_and_a_high_one_flattens_only_its_rows(tm
         / statistics[..., STATISTICS.index("ship_ticks")]
     )
     assert entropy[0, 0] < entropy[0, 1] < entropy[1, 0]
-    assert entropy[1, 1] == 0.0  # the scripted agent's
+    assert entropy[1, 1] == 0.0  # Imugi's
     states = []
     for players, matchups in (
-        ([base, SCRIPTED], [(0, 1), (0, 1)]),
-        ([base, SCRIPTED, hot], [(0, 1), (2, 1)]),
+        ([base, IMUGI], [(0, 1), (0, 1)]),
+        ([base, IMUGI, hot], [(0, 1), (2, 1)]),
     ):
         engine = Arena(players, GAME, CPU, SMALL, lanes=(4,))
         torch.manual_seed(5)
@@ -467,7 +467,7 @@ def test_the_aspect_statistics_split_each_rows_kills_and_hit_damage():
     from bnb.league.matches import STATISTICS
 
     game = dataclasses.replace(GAME, arena_radius=600.0, episode_seconds=12.0)
-    arena = Arena([SCRIPTED, SCRIPTED], game, CPU, SMALL)
+    arena = Arena([IMUGI, IMUGI], game, CPU, SMALL)
     torch.manual_seed(3)
     arena.play([(0, 1), (1, 0)])
     statistics = arena.statistics()  # (blocks, 2, len(STATISTICS))
@@ -493,7 +493,7 @@ def test_a_deathmatch_block_is_scored_by_its_games_kill_shares():
     assert not tournament.kill_share_scored(eliminated, "kill_share")
     frontline = dataclasses.replace(game, mode=FRONTLINE)
     assert not tournament.kill_share_scored(frontline, "kill_share")
-    arena = Arena([SCRIPTED, RANDOM], game, CPU, SMALL)
+    arena = Arena([IMUGI, RANDOM], game, CPU, SMALL)
     torch.manual_seed(3)
     results = tournament.scored(arena, game, [(0, 1), (1, 0)], "kill_share")
     rows = arena.rollout.carry["controllers"][SEAT].statistics.double()
@@ -523,7 +523,7 @@ def test_a_deathmatch_block_scored_by_win_loss_counts_each_games_kill_lead():
     assert tournament.unnamed_scoring(game) == "kill_share"
     with pytest.raises(ValueError, match="deathmatch score"):
         tournament.kill_share_scored(game, "kill_lead")
-    arena = Arena([SCRIPTED, RANDOM], game, CPU, SMALL)
+    arena = Arena([IMUGI, RANDOM], game, CPU, SMALL)
     torch.manual_seed(3)
     results = tournament.scored(arena, game, [(0, 1), (1, 0)])
     rows = arena.rollout.carry["controllers"][SEAT].statistics.double()
@@ -545,7 +545,7 @@ def test_a_fractional_summary_reports_the_kill_share_score():
 # ---- the allowed pairs (the plan of a batch: test_rating_design.py)
 
 
-def test_the_scripted_agent_plays_only_its_partners():
+def test_imugi_plays_only_its_partners():
     names = ["a", "scripted", "b", "c"]
     allowed = tournament.allowed_pairs(names, ("a", "b"))
     assert allowed[1].tolist() == [True, False, True, False]
@@ -561,7 +561,7 @@ def test_every_player_must_reach_the_anchor():
     allowed = torch.zeros((3, 3), dtype=torch.bool)
     allowed[0, 1] = allowed[1, 0] = True  # player 2 plays no one
     config = tournament.TournamentConfig(SMALL, budget=SMALL.games)
-    with pytest.raises(ValueError, match="reach the scripted agent"):
+    with pytest.raises(ValueError, match="reach Imugi"):
         tournament.fit_field(lambda matchups: None, ["scripted", "a", "b"], 0, allowed, config)
 
 
@@ -598,7 +598,7 @@ def test_the_tournament_recovers_a_known_field():
     )
     ratings, stderr = posterior.ratings, posterior.stderr
     assert float(stderr.max()) < 30.0 and len(logged) < 40_000 // 256
-    assert float(pair_games[0, 3:].sum()) == 0.0  # the scripted agent played only a and b
+    assert float(pair_games[0, 3:].sum()) == 0.0  # Imugi played only a and b
     assert ((ratings - truth).abs() <= 4.0 * stderr + 1e-9).all(), (ratings, stderr)
 
 
@@ -691,7 +691,7 @@ def test_each_batch_is_recorded_and_a_tournament_resumes_from_its_record(tmp_pat
 
 
 def _recorded(record, names, identities=None, batches=3, seed=1):
-    """A record of `batches` batches of 4 blocks of 16 games over `names` (the scripted agent
+    """A record of `batches` batches of 4 blocks of 16 games over `names` (Imugi
     first), its players' identities recorded when given; returns its replayed wins and pair
     games."""
     truth = torch.linspace(0.0, 300.0, len(names), dtype=torch.float64)
@@ -747,7 +747,7 @@ def test_a_policy_is_identified_by_its_weights_and_a_scripted_player_by_its_name
     assert tournament.identity(_network(tmp_path / "a", 2)) != weights  # new weights there
     ablated = dataclasses.replace(moved, name="moved:rotary", ablations=("rotary",))
     assert tournament.identity(ablated) == weights + ":rotary"
-    assert tournament.identity(SCRIPTED) == "scripted" and tournament.identity(HALF) == "rung_T2"
+    assert tournament.identity(IMUGI) == "scripted" and tournament.identity(HALF) == "rung_T2"
 
 
 def test_a_legacy_record_is_reused_by_its_paths_but_not_a_path_written_after_it(tmp_path):
@@ -756,7 +756,7 @@ def test_a_legacy_record_is_reused_by_its_paths_but_not_a_path_written_after_it(
     old = ["scripted", a.name, b.name, "gone"]
     wins, pair_games = _recorded(record, old)  # no identities: a legacy record
     assert "identities" not in json.loads(record.read_text().splitlines()[0])
-    field = [SCRIPTED, b, a]
+    field = [IMUGI, b, a]
     found = tournament.reuse_record(
         record, [p.name for p in field], [tournament.identity(p) for p in field]
     )
@@ -772,7 +772,7 @@ def test_a_legacy_record_is_reused_by_its_paths_but_not_a_path_written_after_it(
     later = datetime.datetime.fromisoformat(written["time"]) + datetime.timedelta(hours=1)
     written["time"] = later.isoformat()
     (tmp_path / "b" / checkpoint.RECORD).write_text(json.dumps(written))
-    for field in ([SCRIPTED, moved, a], [SCRIPTED, rewritten, a]):
+    for field in ([IMUGI, moved, a], [IMUGI, rewritten, a]):
         found = tournament.reuse_record(
             record, [p.name for p in field], [tournament.identity(p) for p in field]
         )
@@ -786,7 +786,7 @@ def test_a_record_of_another_game_version_is_not_reused(tmp_path):
     from bnb.game import VERSION
 
     a = _network(tmp_path / "a", 1)
-    field = [SCRIPTED, a]
+    field = [IMUGI, a]
     names, identities = [p.name for p in field], [tournament.identity(p) for p in field]
     record = tmp_path / "frontline.batches.jsonl"
     _recorded(record, names, identities)
@@ -860,7 +860,7 @@ def test_a_batchs_full_outcome_scores_as_each_scoring_did_when_it_was_played():
     from bnb.league.matches import STATISTICS
 
     game = dataclasses.replace(GAME, arena_radius=600.0, episode_seconds=12.0)
-    arena = Arena([SCRIPTED, RANDOM], game, CPU, SMALL)
+    arena = Arena([IMUGI, RANDOM], game, CPU, SMALL)
     torch.manual_seed(3)
     results, extra = tournament.outcomes(arena, [(0, 1), (1, 0)])
     rows = arena.rollout.carry["controllers"][SEAT].statistics.double()
@@ -896,7 +896,7 @@ def test_a_record_keeps_full_outcomes_and_is_refitted_under_either_scoring(tmp_p
 
     game = dataclasses.replace(GAME, arena_radius=600.0, episode_seconds=12.0)
     record = tmp_path / "deathmatch.batches.jsonl"
-    field = [SCRIPTED, RANDOM, HALF]
+    field = [IMUGI, RANDOM, HALF]
     names = [p.name for p in field]
     torch.manual_seed(3)
     played = tournament.TournamentConfig(SMALL, target_stderr=1.0, hopeless=math.inf, budget=16)
@@ -1059,7 +1059,7 @@ def test_the_tournament_reuses_an_earlier_fields_record(tmp_path):
     earlier = tmp_path / "earlier" / "small.batches.jsonl"
     config = tournament.TournamentConfig(SMALL, target_stderr=1.0, hopeless=math.inf, budget=8)
     tournament.rate(
-        [RANDOM, SCRIPTED, HALF], "small", CPU, config, lambda line: None, GAME, record=earlier
+        [RANDOM, IMUGI, HALF], "small", CPU, config, lambda line: None, GAME, record=earlier
     )
     line = json.loads(earlier.read_text())
     assert line["identities"] == {"random": "random", "scripted": "scripted", "rung_T2": "rung_T2"}
@@ -1069,7 +1069,14 @@ def test_the_tournament_reuses_an_earlier_fields_record(tmp_path):
     met = tournament.TournamentConfig(SMALL, target_stderr=1e6, budget=8)
     logged = []
     rows = tournament.rate(
-        [SCRIPTED, RANDOM], "small", CPU, met, logged.append, GAME, record=own, reuse=(earlier, own)
+        [IMUGI, RANDOM],
+        "small",
+        CPU,
+        met,
+        logged.append,
+        GAME,
+        record=own,
+        reuse=(earlier, own),
     )
     shared = sum(
         sum(result)
@@ -1082,16 +1089,16 @@ def test_the_tournament_reuses_an_earlier_fields_record(tmp_path):
 
 
 def test_a_batch_that_outruns_the_game_clock_raises():
-    arena = Arena([SCRIPTED, RANDOM], GAME, CPU, SMALL)
+    arena = Arena([IMUGI, RANDOM], GAME, CPU, SMALL)
     arena.tick_limit = 0  # as if every game outlived its clock
     with pytest.raises(RuntimeError, match="never ends"):
         arena.play([(0, 1), (1, 0)])
 
 
-def test_the_tournament_pins_the_scripted_agent_at_1000_and_stops_on_its_budget():
+def test_the_tournament_pins_imugi_at_1000_and_stops_on_its_budget():
     logged = []
     config = tournament.TournamentConfig(SMALL, target_stderr=1.0, hopeless=math.inf, budget=20)
-    rows = tournament.rate([RANDOM, SCRIPTED, HALF], "small", CPU, config, logged.append, GAME)
+    rows = tournament.rate([RANDOM, IMUGI, HALF], "small", CPU, config, logged.append, GAME)
     by_name = {row["player"]: row for row in rows}
     assert by_name["scripted"]["calibrated_elo"] == 1000.0 and by_name["scripted"]["stderr"] == 0.0
     assert by_name["random"]["stderr"] > 0.0  # random is fitted too
@@ -1115,7 +1122,12 @@ def test_the_tournament_needs_its_anchor_and_a_batch_of_budget():
 
 def test_head_to_head_reports_each_pair_in_total_and_per_preset():
     rows = tournament.head_to_head(
-        [SCRIPTED, RANDOM, HALF, RANDOM], 6, ("one", "two"), CPU, SMALL, {"one": GAME, "two": GAME}
+        [IMUGI, RANDOM, HALF, RANDOM],
+        6,
+        ("one", "two"),
+        CPU,
+        SMALL,
+        {"one": GAME, "two": GAME},
     )
     assert [(row["first"], row["second"]) for row in rows] == [
         ("scripted", "random"),
@@ -1137,10 +1149,10 @@ def test_head_to_head_blocks_divide_the_games():
 def test_head_to_head_takes_pairs_and_an_even_game_count():
     with pytest.raises(ValueError, match="pairs"):
         tournament.head_to_head(
-            [SCRIPTED, RANDOM, HALF], 4, ("one",), CPU, SMALL, games_of={"one": GAME}
+            [IMUGI, RANDOM, HALF], 4, ("one",), CPU, SMALL, games_of={"one": GAME}
         )
     with pytest.raises(ValueError, match="even"):
-        tournament.head_to_head([SCRIPTED, RANDOM], 3, ("one",), CPU, SMALL, games_of={"one": GAME})
+        tournament.head_to_head([IMUGI, RANDOM], 3, ("one",), CPU, SMALL, games_of={"one": GAME})
 
 
 def test_the_score_error_is_the_binomial_one_without_draws():
@@ -1158,11 +1170,11 @@ def test_the_commands_parse_their_options():
     assert pairs.players == ("a", "b", "scripted", "random") and pairs.games == 8
     rated = tyro.cli(
         Ratings,
-        args=["run", "--with", "x", "y", "--target-stderr", "30", "--scripted-plays", "x"]
+        args=["run", "--with", "x", "y", "--target-stderr", "30", "--imugi-plays", "x"]
         + ["--reuse", "r1", "r2"],
     )
     assert rated.run == "run" and rated.with_ == ("x", "y") and rated.target_stderr == 30.0
-    assert rated.scripted_plays == ("x",) and rated.league and rated.reuse == ("r1", "r2")
+    assert rated.imugi_plays == ("x",) and rated.league and rated.reuse == ("r1", "r2")
 
 
 def test_transformed_scripted_names_parse():
@@ -1195,8 +1207,8 @@ def test_a_mixed_field_captures_into_a_graph_and_plays_each_pair_as_alone(tmp_pa
     first, second = _network(tmp_path / "a", 1), _network(tmp_path / "b", 2, hidden=24)
     third = _network(tmp_path / "c", 3, hidden=32)
     layout = ArenaConfig(blocks=2, block_environments=8, length=8, compiled=False)
-    mixed = Arena([first, second, third, SCRIPTED, RANDOM], GAME, cuda, layout)
-    alone = Arena([first, second, SCRIPTED, RANDOM], GAME, cuda, layout)
+    mixed = Arena([first, second, third, IMUGI, RANDOM], GAME, cuda, layout)
+    alone = Arena([first, second, IMUGI, RANDOM], GAME, cuda, layout)
     states = []
     for arena, pairs in ((mixed, [(0, 1), (2, 4)]), (alone, [(0, 1), (2, 3)])):
         torch.manual_seed(5)
@@ -1218,7 +1230,7 @@ def test_a_ship_type_player_flies_its_type_on_its_own_team():
     fighters, heavies = ship_type_players("standard")
     assert (fighters.ship_type, heavies.ship_type) == (0, 1)
     assert fighters.rung == Rung(1.0)
-    arena = Arena([fighters, heavies, SCRIPTED], GAME, CPU, SMALL)
+    arena = Arena([fighters, heavies, IMUGI], GAME, CPU, SMALL)
     arena.play([(0, 1), (2, 1)])
     types = arena.rollout.carry["state"].ships.ship_type.tolist()
     assert types[:4] == [[0, 0, 1, 1], [1, 1, 0, 0]] * 2  # block 0: fighters, then heavies
@@ -1230,7 +1242,7 @@ def test_the_arena_keeps_each_blocks_first_game_statistics():
     from the first games alone; one side's kills are at most the other's deaths."""
     from bnb.league.matches import STATISTICS
 
-    arena = Arena([SCRIPTED, RANDOM, HALF], GAME, CPU, SMALL)
+    arena = Arena([IMUGI, RANDOM, HALF], GAME, CPU, SMALL)
     arena.play([(0, 1), (2, 1)])
     statistics = arena.statistics()
     assert statistics.shape == (2, 2, len(STATISTICS))
@@ -1286,3 +1298,17 @@ def test_a_reset_takes_each_ships_type_per_environment():
     )
     with pytest.raises(ValueError, match="ship_type"):
         api.reset(rules, types, api.uniforms(rules, 2), ship_type=lineup[:1])
+
+
+def test_command_line_names_map_to_the_recorded_identities():
+    """Imugi is "imugi" on the command line and "scripted" in every record: a record's own
+    names still parse, and the player's name is the identity."""
+    assert stored_name("imugi") == "scripted"
+    assert stored_name("imugi@T=2,floor=0.1") == "scripted@T=2,floor=0.1"
+    assert stored_name("cheese:kiter") == "scripted:kiter"
+    assert stored_name("rung_T2") == "rung_T2" and stored_name("scripted") == "scripted"
+    for identity in ("scripted", "scripted@T=2", "scripted:kiter"):
+        assert stored_name(shown_name(identity)) == identity
+    assert player("imugi").name == player("scripted").name == "scripted"
+    assert player("cheese:kiter") == player("scripted:kiter")
+    assert player("imugi@T=2").name == "scripted@T=2"

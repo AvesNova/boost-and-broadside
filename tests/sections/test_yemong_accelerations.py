@@ -16,7 +16,7 @@ from torch.utils import _pytree
 
 from bnb.contracts import GameConfig, Obs
 from bnb.contracts.obs import SHIP, SHIP_COLUMNS
-from bnb.controllers.scripted import Scripted
+from bnb.controllers.imugi import Imugi
 from bnb.game import api
 from bnb.learn import bc, head_statistics
 from bnb.models.yemong import codes
@@ -513,7 +513,7 @@ def test_a_bc_update_runs_and_logs_the_inputs():
     net = _model()
     controllers = {
         "learner": cases.controller(net, cases.SHORT_SQUAD),
-        "scripted": Scripted(CHARACTERISTICS, OWN, PARAMETERS),
+        "scripted": Imugi(CHARACTERISTICS, OWN, PARAMETERS),
     }
     runner = Rollout(
         cases.SHORT_SQUAD,
@@ -525,7 +525,7 @@ def test_a_bc_update_runs_and_logs_the_inputs():
         32,
         lc.CPU,
         compiled=False,
-        extra_reads=Scripted.reads,
+        extra_reads=Imugi.reads,
     )
     for _ in range(2):
         runner.run()

@@ -20,7 +20,7 @@ Read `docs/rewrite/sections/league-sampling-sim.md` (rounds 1 and 2,
   occupant's Griffin state (only when the incoming entry has the same build; else reset).
   The belief part of the carry (observations, last sightings) is always kept.
 - **The ladder out of the RL training pool:** a config switch (`ladder_in_pool`, default
-  false for PPO; BC is unaffected). The rating lanes still play the scripted agent and
+  false for PPO; BC is unaffected). The rating lanes still play Imugi and
   whatever ladder they use.
 - Keep p(1 - p) and the floor. Keep the gauge reading the one fit; add the guard round 1
   recommends: a test that a near-sweep (28 of 29 against a ladder entry) rates finite and

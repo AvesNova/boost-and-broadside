@@ -11,7 +11,7 @@ import torch
 import yemong_cases as cases
 
 from bnb.contracts.obs import SHIP
-from bnb.controllers.scripted import Scripted
+from bnb.controllers.imugi import Imugi
 from bnb.game import api
 from bnb.learn import bc, head_statistics, labels
 from bnb.learn.ppo import COUNTS, TERMS
@@ -651,7 +651,7 @@ def test_the_bc_term_is_the_delta_codes_cross_entropy(segment):
     net, _ = segment
     controllers = {
         "learner": cases.controller(net, cases.SHORT_SQUAD),
-        "scripted": Scripted(CHARACTERISTICS, OWN, PARAMETERS),
+        "scripted": Imugi(CHARACTERISTICS, OWN, PARAMETERS),
     }
     runner = Rollout(
         cases.SHORT_SQUAD,
@@ -663,7 +663,7 @@ def test_the_bc_term_is_the_delta_codes_cross_entropy(segment):
         32,
         lc.CPU,
         compiled=False,
-        extra_reads=Scripted.reads,
+        extra_reads=Imugi.reads,
     )
     for _ in range(2):
         runner.run()

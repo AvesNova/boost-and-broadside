@@ -1,4 +1,4 @@
-"""The scripted agent's doctrines: per ship type, how it fights (docs/explanation/game/ship-design/
+"""Imugi's doctrines: per ship type, how it fights (docs/explanation/game/ship-design/
 archetypes.md, section 5). One agent; each own ship reads its type's `Doctrine`, so a mixed
 team flies each type by its own.
 
@@ -53,22 +53,22 @@ and `in_advantage`, so they fly in the mirrors too; each reads the committed tar
   another type, weighted by `duel_extend_cross_in_others`, rising in the count of the other
   known enemies at any range (open by default; at a centre of 1/2, never in a lone 1v1).
 - **The capture lock** (the Frontline layer's goal, defend or attack;
-  `scripted_frontline.lock_press`): with `lock_press`, while the enemy is locked out of a
+  `imugi_frontline.lock_press`): with `lock_press`, while the enemy is locked out of a
   zone it lost for longer than the ship's travel back to that zone, the ship attacks; while
   its own team is locked out of a zone it lost for longer than the travel to it, the ship
   defends. Each shifts the goal's margin by the weight times LOCK_STRENGTHS ship strengths,
   so it ends a travel time before the lock does and the balanced rule takes over.
 
 The lead turn, yo-yo, brake, hold fire and wave hold were tried and dropped (2026-11-13; no
-shipped doctrine flew them): docs/explanation/scripted-agent.md, Baekho's history.
+shipped doctrine flew them): docs/explanation/imugi.md, Baekho's history.
 
 Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`, the maneuvers' `sense`,
 `crowd_sense` and `duel_extend`, and `lock_press`) is 0 by default, as is
 `strength`: the default doctrine is off. A `table` packs one doctrine per ship type (T, D),
 or per view and type (R, T, D); `per_ship` reads each own ship's row.
 
-The tuned doctrines live in `scripted_doctrines.json` by ship set and type key (`stored`);
-the scripted agent flies them by default (`for_card`: the set is the one whose type count
+The tuned doctrines live in `imugi_doctrines.json` by ship set and type key (`stored`);
+Imugi flies them by default (`for_card`: the set is the one whose type count
 is the card's; a type without a stored doctrine flies none).
 """
 
@@ -78,9 +78,9 @@ import pathlib
 
 import torch
 
-from .scripted_parameters import Logistic
+from .imugi_parameters import Logistic
 
-DOCTRINES = pathlib.Path(__file__).with_name("scripted_doctrines.json")
+DOCTRINES = pathlib.Path(__file__).with_name("imugi_doctrines.json")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -301,14 +301,14 @@ def from_named(fields: dict) -> Doctrine:
 
 
 # Read once per file and kept: the doctrines are read inside traced code (the play shell's
-# exported scripted step builds `Scripted`, whose default reads them), and a traced function
+# exported scripted step builds `Imugi`, whose default reads them), and a traced function
 # cannot open files. The module reads the default file when it is imported (below).
 _STORED: dict[pathlib.Path, dict[str, dict[str, Doctrine]]] = {}
 _SET_KEYS: dict[str, list[str]] = {}
 
 
 def stored(path: pathlib.Path = DOCTRINES) -> dict[str, dict[str, Doctrine]]:
-    """The tuned doctrines by ship set and type key (`scripted_doctrines.json`), read once."""
+    """The tuned doctrines by ship set and type key (`imugi_doctrines.json`), read once."""
     if path not in _STORED:
         data = json.loads(path.read_text())
         _STORED[path] = {

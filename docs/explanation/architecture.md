@@ -105,7 +105,7 @@ arms within one seed is not buried under unrelated re-rolls.
 | a parameter's initial values (`bnb.models.initialise`) | the seed, the path of the module that draws them, the parameter's name (a generator on the CPU) |
 | an episode's map, arena scale, formations and first spawns; its seat | the seed, the environment, the environment's episode count (the batch number in a rating match) |
 | a running episode's tick uniforms (respawns) and the bullet spread | the seed, the environment, the episode, the tick within it |
-| a decision's draws (the action, Yemong's position offset at a reset, the scripted agent's plan switches and flags, the uniform floor) | the tick's key and the row's role: the decision key each controller's `step` receives |
+| a decision's draws (the action, Yemong's position offset at a reset, Imugi's plan switches and flags, the uniform floor) | the tick's key and the row's role: the decision key each controller's `step` receives |
 | a row's starting clock (staggered starts) | the seed, the environment |
 | the league's swaps | the seed, the swap count |
 | the learner's minibatch order and shot spread | the seed and the stream's name (a seeded generator) |

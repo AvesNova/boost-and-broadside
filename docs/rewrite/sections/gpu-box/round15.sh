@@ -1,9 +1,9 @@
 #!/bin/bash
 # Round 15 (the author, 20:50 KST): the evaluation cut to size. Crossover: deathmatch in the
-# training arena only, the champion and the nearest model only, against the scripted agent, by the
+# training arena only, the champion and the nearest model only, against Imugi, by the
 # adaptive search (`crossover_adaptive.py`: one compile per case, the previous fleet size's ratio
 # as the first guess, a logistic fit). Fleet ratings: the champion, the nearest model and the
-# scripted agent only (no null, no calibration rungs), 20v20 (reusing its games) and 40v40, in
+# Imugi only (no null, no calibration rungs), 20v20 (reusing its games) and 40v40, in
 # the training arena.
 set -u
 cd /workspace/boost-and-broadside

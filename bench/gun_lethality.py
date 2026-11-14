@@ -1,4 +1,4 @@
-"""How lethal the guns are: 1v1 duels of the real-scale set, the scripted agent (its
+"""How lethal the guns are: 1v1 duels of the real-scale set, Imugi (its
 real-scale deathmatch set, T = 1) on both sides, batched on the CPU, uncompiled.
 
     PYTHONPATH=src python -m bench.gun_lethality play --record DIR/duels.jsonl
@@ -41,7 +41,7 @@ import zoneinfo
 import torch
 
 from bnb.contracts import ASPECTS, Action, Obs
-from bnb.controllers import scripted
+from bnb.controllers import imugi
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.game.physics.combat import MEAN_CLOSENESS
@@ -89,7 +89,7 @@ def duels(rules, types, first: int, second: int, environments: int, seconds: flo
     ).int()
     state = api.reset(rules, types, api.uniforms(rules, B, generator=draws), ship_type=ship_type)
     state, observation, _ = api.perceive(rules, state)
-    agent = scripted.Scripted(characteristics(types, rules), 1)
+    agent = imugi.Imugi(characteristics(types, rules), 1)
     carry = agent.init_carry(2 * B, torch.device("cpu"))
     gun_range = characteristics(types, rules).gun_range
     reach = torch.maximum(gun_range[first], gun_range[second])

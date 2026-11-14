@@ -355,7 +355,7 @@ def test_the_bc_views_leave_out_reinforcement_learnings_panels():
         dashboards.MODES
     )
     names = [section.name for section in curated.sections]
-    # BC's live policy is rated in its lanes too, against the raw scripted agent
+    # BC's live policy is rated in its lanes too, against the raw Imugi
     assert names[:4] == ["Alerts", "Strength", "Rating lanes", "bc/"] and "League" not in names
     assert next(s for s in curated.sections if s.name == "bc/").is_open
     for view in (dashboards.HEADLINE, dashboards.CURATED):

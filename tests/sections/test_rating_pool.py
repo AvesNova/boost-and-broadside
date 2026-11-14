@@ -226,7 +226,7 @@ def test_a_player_that_cannot_be_played_here_is_fitted_but_left_out_of_the_sessi
 
 
 def _ratings_record(path, names, identities, seed=1):
-    """A `bnb ratings` record over `names` (the scripted agent first) played by the model."""
+    """A `bnb ratings` record over `names` (Imugi first) played by the model."""
     truth = torch.linspace(0.0, 300.0, len(names), dtype=DTYPE)
 
     def play(matchups):
@@ -326,7 +326,7 @@ def _counts_wins(scores: dict[tuple[int, int], float], count: int, games: float)
 
 def _placed(rated: dict[str, float], new: list[str]) -> dict[str, float]:
     """The placement guesses of the `new` players (pool names, no games) in a pool whose
-    `rated` players (pool names) each played the scripted agent to the score their rating
+    `rated` players (pool names) each played Imugi to the score their rating
     gives, so each is fitted at its rating exactly."""
     names = ["scripted", *rated, *new]
     count = len(names)

@@ -37,10 +37,10 @@
   spec: docs/rewrite/sections/mixed-spec.md
   page: explanation/game/mixed-batches.md
 - section: "4"
-  title: The scripted agent
+  title: Imugi
   status: merged
   spec: docs/rewrite/sections/scripted-bc-spec.md
-  page: explanation/scripted-agent.md
+  page: explanation/imugi.md
 - section: "5"
   title: The model (Yemong)
   status: merged

@@ -368,7 +368,7 @@ coefficients are from `profiles/rl.py`.
   and whose decision was committed (a decision cancelled by death or respawn does not
   count). Entropy counts actor and alive (not the commit flag).
 - **Entropy:** of the full 30-way joint distribution.
-- **BC:** the scripted agent supplies three factor marginals (power, turn, shoot);
+- **BC:** Imugi supplies three factor marginals (power, turn, shoot);
   the teacher is their outer product, so BC assumes the scripted policy's factors are
   independent. Loss is cross-entropy between that product and the policy's joint
   log-probabilities.
@@ -388,8 +388,8 @@ coefficients are from `profiles/rl.py`.
 - **Entropy mask = policy-gradient mask (decided; today's difference is a bug):** exclude
   non-committed decisions from entropy (and BC) too.
 - **BC is plain cross-entropy over the 42 joint categories (decided)** against a 42-way
-  distribution the scripted agent emits. How the scripted agent builds it (e.g. a
-  product of its factor choices) is the scripted agent's business, not the loss's.
+  distribution Imugi emits. How Imugi builds it (e.g. a
+  product of its factor choices) is Imugi's business, not the loss's.
 - **PPO assessment:** standard core (clipped surrogate, per-agent ratios with shared
   weights as in MAPPO, GAE, target-KL early stopping, no value clipping, which matches
   the "What matters in on-policy RL" findings). Non-standard but principled
@@ -428,7 +428,7 @@ and a "persistence" baseline (enemy repeats its previous command).
 
 **Hidden assumptions**
 1. **It models the training opponent mix.** Labels come from whoever controls the enemy:
-   the self-play copy, a league checkpoint or the scripted agent. Against a human it
+   the self-play copy, a league checkpoint or Imugi. Against a human it
    predicts as if the human were drawn from that mix.
 2. **Hidden enemies are trained on** (noisy, high-entropy targets).
 3. **One-decision latency semantics depend on action repeat 1** (shipped). With action
@@ -1277,7 +1277,7 @@ truth**, which opens a third option:
 **Shape of one decision step** (`train/rl/ppo.py` `_collect_rollout`,
 `train/rl/opponents.py` `_collect_primary_step`):
 1. Read pre-step truth (team ids, privileged means, density target).
-2. Scripted agent computes BC targets (and scripted-opponent actions).
+2. Imugi computes BC targets (and scripted-opponent actions).
 3. **Env step and network forward run concurrently** on two CUDA streams. Possible
    because of one-decision latency: the env applies the pending command chosen last
    decision while the network chooses the next one.
@@ -1480,7 +1480,7 @@ be multimodal (per softmax group). The collapse happens in the decode: forecast 
 
 **Players** (`train/rl/roster.py`):
 - *Live policy* (self-play envs: both teams).
-- *League entries:* frozen checkpoints, the averaged policy, the scripted agent and
+- *League entries:* frozen checkpoints, the averaged policy, Imugi and
   semi-random rungs (scripted action with probability p per decision, else uniform;
   default rungs between 0 and 1). The uniform random agent is a rating anchor only,
   never sampled (it shares the live policy's starting rating and would flood the early
@@ -1561,8 +1561,8 @@ An entry 200 points away gets 0.37 of a peer's weight, 600 points away 0.05.
    (`p(1-p)` is close to today's; "hard" `(1-p)^2` focuses on opponents the live
    policy loses to)?
 4. Keep the averaged policy as a league opponent?
-5. Keep the semi-random rungs (derived from the main scripted agent, so compatible
-   with "only the main scripted agent survives")?
+5. Keep the semi-random rungs (derived from the main Imugi, so compatible
+   with "only the main Imugi survives")?
 6. Keep the drain (no mid-episode opponent swaps)?
 
 ### Outcomes (author, 4b) and expansions
@@ -1572,7 +1572,7 @@ An entry 200 points away gets 0.37 of a peer's weight, 600 points away 0.05.
   games in training envs). The dedicated evaluator is removed.
 - **One pool for every opponent kind:** scripted, semi-random rungs, averaged policy,
   checkpoints, and possibly self. Hard PFSP `(1-p)^2` rejected: at the start it would
-  put almost all weight on the scripted agent, which wins every game.
+  put almost all weight on Imugi, which wins every game.
 - **Keep the averaged policy** as a pool entry.
 - **Keep the semi-random rungs** (they track early progress).
 
@@ -1705,7 +1705,7 @@ built as the product of the marginals.
 
 **BC inside RL:** an auxiliary CE to the same teacher, coefficient 2.0, decaying
 linearly with the scripted win rate to zero at 0.45 (500-game window). The averaged
-policy starts accumulating once that cutoff holds. Scripted targets are computed for
+policy starts accumulating once that cutoff holds. Imugi targets are computed for
 every env every step while the term is active.
 
 **Already decided:** BC and RL separate; plain CE over the 42 joint categories against
@@ -1714,7 +1714,7 @@ a 42-way teacher distribution; BC uses the same mask as the policy gradient
 
 **Findings**
 1. **The teacher does not know the new action space.** It chooses among 5 turn options;
-   the port has 3 stick levels per side (1/3, 2/3, 3/3). Unless the scripted agent is
+   the port has 3 stick levels per side (1/3, 2/3, 3/3). Unless Imugi is
    updated, the teacher puts zero mass on the 2/3 level, and BC teaches the policy to
    avoid exactly the level the design rule makes the best sustained turn.
 2. **The RL-side BC term is gated on scripted win rate**, which no longer exists. It
@@ -1736,7 +1736,7 @@ a 42-way teacher distribution; BC uses the same mask as the policy gradient
 | R2 KL to the frozen BC policy, step-based decay | AlphaStar-style: regularize toward the supervised policy | Pulls toward the clone (which may already beat the teacher), not the teacher; the frozen policy is just another opponent-style forward | Extra forward per learner env while active; decay length still a guess |
 
 **Questions**
-1. Update the scripted agent to the 42-way action space, using the 2/3 level (it must be
+1. Update Imugi to the 42-way action space, using the 2/3 level (it must be
    ported to JAX anyway)?
 2. RL after BC: R0, R1 or R2 (proposal R2, decayed to zero on a step schedule, R0 by
    setting the weight to zero)?
@@ -1747,7 +1747,7 @@ a 42-way teacher distribution; BC uses the same mask as the policy gradient
 
 ### Outcomes (author, 4c)
 
-- **Scripted agent rewritten in JAX** for the 42-way action space (uses all three stick
+- **Imugi rewritten in JAX** for the 42-way action space (uses all three stick
   levels). One pure function of state and team visibility serves as league opponent,
   semi-random rungs and BC teacher.
 - **No joint BC + RL paradigm.** BC runs alone; RL starts from BC weights with no

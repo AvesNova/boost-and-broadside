@@ -24,11 +24,11 @@ behave like a random walk, P(reversal) = 0.5?
 
 ## Setup
 
-`real_scale_frontline`, 5v5, front threshold 3, 600 s clock, scripted agent on both seats
+`real_scale_frontline`, 5v5, front threshold 3, 600 s clock, Imugi on both seats
 (T = 1, mirrored seats), fog on. Lineups mirrored per slot (both teams the same type in each
 slot), alternating yongma,jujak,yongma,jujak,yongma and jujak,yongma,jujak,yongma,jujak in
 equal numbers, so each ship type fills each slot half of the time. The bench runs with
-`num_fields=0` (the scripted agent ignores fields). Each environment's first game only.
+`num_fields=0` (Imugi ignores fields). Each environment's first game only.
 Run on the CPU (eager, no `torch.compile`: the CPU inductor path fails with a `KeyError` in
 this torch build), 16 environments per batch, 32 games per lineup, about 6.3 minutes per
 batch, 4 batches. The GPU was busy with a training run.
@@ -64,7 +64,7 @@ of the front.
 On the current game the front is persistent, not a random walk and not anti-persistent:
 P(reversal) is about 0.19, well below 0.5 and well below the v1 value of 0.84. After a
 capture, the team that captured usually captures next, in spite of the capture lock. The
-measurement is of the scripted agent against itself; the design bench that set the lock
+measurement is of Imugi against itself; the design bench that set the lock
 measured the probability that the capturing team captures next as 0.5 under a different
 condition, which this bench does not reproduce.
 
@@ -93,7 +93,7 @@ threshold; the team that captured keeps the initiative at each step.
 The coordinator's revised follow-up (one GPU job of at most 20 minutes, the preset's fields on,
 about 128 games) was prepared but skipped: the GPU still had compute processes other than PIDs
 1180275 and 1180276 (2117566, 2117567, 2577381) at 01:39, the 01:40 deadline. The CPU games above ran with
-`num_fields=0`; fields change the physics even though the scripted agent ignores them. The
+`num_fields=0`; fields change the physics even though Imugi ignores them. The
 bench now takes `--fields` (keeps the preset's fields) for this run:
 
     systemd-run --user --unit=front-reversal -p MemoryMax=12G --working-directory=$PWD \

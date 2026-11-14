@@ -42,7 +42,7 @@ from bnb.models.relational import RelationalConfig  # noqa: E402
 from bnb.runs import checkpoint  # noqa: E402
 from bnb.runs.triggers import Triggers  # noqa: E402
 from bnb.runtime import cloning  # noqa: E402
-from bnb.runtime.lanes import BC_MATCHUPS, LIVE, SCRIPTED_PLAYER, LaneConfig, Matchup  # noqa: E402
+from bnb.runtime.lanes import BC_MATCHUPS, IMUGI_PLAYER, LIVE, LaneConfig, Matchup  # noqa: E402
 from bnb.runtime.opponents import LeagueConfig  # noqa: E402
 from bnb.runtime.snapshots import SnapshotSchedule  # noqa: E402
 from bnb.runtime.train import TrainConfig, Trainer  # noqa: E402
@@ -59,11 +59,11 @@ GEOMETRY = dict(shards=2, lookahead=LENGTH)
 RL_LANES = LaneConfig(
     environments=8,
     matchups=(
-        Matchup(LIVE, SCRIPTED_PLAYER),
-        Matchup("exponential_average", SCRIPTED_PLAYER),
-        Matchup("rung_T1.25", SCRIPTED_PLAYER),
+        Matchup(LIVE, IMUGI_PLAYER),
+        Matchup("exponential_average", IMUGI_PLAYER),
+        Matchup("rung_T1.25", IMUGI_PLAYER),
         Matchup(LIVE, "league_0"),
-        Matchup("league_1", SCRIPTED_PLAYER),
+        Matchup("league_1", IMUGI_PLAYER),
     ),
     window=2,
 )

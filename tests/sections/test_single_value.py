@@ -227,12 +227,12 @@ def test_the_arm_s_prediction_overlay_shows_its_value_and_no_outcome():
     from bnb.game import api
     from bnb.play import predictions
     from bnb.play.loop import MatchLoop, MatchSetup
-    from bnb.play.sides import Agent, Scripted
+    from bnb.play.sides import Agent, Imugi
 
     model = tiny_model("yemong", SMALL, 3, **ARM)
     agent = Agent(model, "yemong", "tiny", SMALL.ships_per_team, SMALL.num_ships, seed=3)
     agent.watched = True
-    sides = [Scripted(api.rules_of(SMALL), api.ship_types()), agent]
+    sides = [Imugi(api.rules_of(SMALL), api.ship_types()), agent]
     loop = MatchLoop(MatchSetup(SMALL, seed=5), sides=sides, compiled=False)
     for _ in range(30):
         loop.step()

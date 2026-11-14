@@ -438,7 +438,7 @@ def default_rules() -> tuple[Rule, ...]:
     ratio), the rating drop and reward hacking (BC has no ratings), the entropy collapse
     (BC's student is meant to grow confident), the league's sampling collapse and its gauge
     runaway (BC has no league), and the two combat collapses (a policy that learns to stop
-    fighting is RL's failure; BC copies the scripted agent's fighting)."""
+    fighting is RL's failure; BC copies Imugi's fighting)."""
     anomaly = dict(warmup=10, hysteresis=3)
     rl_anomaly = dict(anomaly, objectives=RL_ONLY)
     return (

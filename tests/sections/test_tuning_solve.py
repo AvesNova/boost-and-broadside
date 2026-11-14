@@ -85,12 +85,12 @@ def test_a_cancelled_solve_stops_before_flying(anchor):
 
 
 def test_the_tuner_applies_the_estimate_then_the_exact_card():
-    """A live match with the scripted agent: the handles show at once (the ship files'), a
+    """A live match with Imugi: the handles show at once (the ship files'), a
     cruise change applies within seconds (the estimate) and becomes exact (the solve), with
     the agent's characteristics retuned; a longer bullet life lengthens the gun range at
     once."""
     setup = MatchSetup(
-        GameConfig(2, 4, 900.0, mode="frontline"), sides=(SideSetup("scripted_agent"), SideSetup())
+        GameConfig(2, 4, 900.0, mode="frontline"), sides=(SideSetup("imugi"), SideSetup())
     )
     loop = MatchLoop(setup, compiled=False)
     tuner = Tuner(loop, base_rules(setup.config, setup.lineup))

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tournament 3: round 3 redone on C-fixed's base. Every finished 30M uniform average and the
-# scripted agent (1000), frontline then deathmatch, no ladder. A missing arm is skipped and named.
+# Imugi (1000), frontline then deathmatch, no ladder. A missing arm is skipped and named.
 set -u
 cd /workspace/boost-and-broadside
 set -a; . /workspace/.env; set +a

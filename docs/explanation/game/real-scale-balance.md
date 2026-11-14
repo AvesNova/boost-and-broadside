@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/league/cyclic.py, bench/scripted_search.py, bench/scripted_compare.py]
+covers: [src/bnb/league/cyclic.py, bench/imugi_search.py, bench/imugi_compare.py]
 ---
 
 # Balancing the real-scale set
@@ -13,7 +13,7 @@ The [ship-type tournament](real-scale-tournament.md) rated the 27 real-scale typ
 type needs to kill a P-51D. This page balances the set in rounds, each of four steps:
 
 1. tune the ships;
-2. search the scripted agent's real-scale sets again, each mode against its current
+2. search Imugi's real-scale sets again, each mode against its current
    champion, on mixed lineups of the set's types;
 3. rate the types in a tournament;
 4. find which values explain what is left of the spread, and move one if it is loosely
@@ -63,7 +63,7 @@ stage sets the next round's moves without a judgement call:
   and still an outlier is listed for the author: its next lever is a flight value (such as
   the Firecracker's store), which needs a solve and a decision.
 
-**The agent's searches.** `bench/scripted_search.py` searches each mode's set
+**The agent's searches.** `bench/imugi_search.py` searches each mode's set
 (real_scale_deathmatch, real_scale_frontline) to win that mode, against that mode's current
 champion (`--champion`), on mixed lineups (`--mixed`): every game draws each seat's type
 from the set, and both teams fly the same draw seat for seat, so neither side is favoured
@@ -79,7 +79,7 @@ rating has not risen 10 points in 5 generations, or at its generation bound.
 
 A round's new champion is the best-rated survivor of the last generation (one of the
 eight kept from the generation before, so rated on two sets of fresh games), checked
-against the previous champion by `bench/scripted_compare.py`: 1,024 fresh games at T = 1
+against the previous champion by `bench/imugi_compare.py`: 1,024 fresh games at T = 1
 on mixed lineups of every type, and 512 on mixed lineups of the held-out types alone.
 
 **The tournament.** `bench/ship_type_tournament.py play --allocation a_optimal`: the
@@ -355,7 +355,7 @@ mode against its champion (at most 40 generations; the median rating's plateau o
 `adopt` checks each mode's candidate (the best-rated survivor of its last generation)
 against the champion, 1,024 games at T = 1 on mixed lineups and 512 on the held-out types,
 and adopts it when its score is more than two standard errors above one half
-(`src/bnb/controllers/scripted_real_scale.json` holds the champions); `tournament` runs the
+(`src/bnb/controllers/imugi_real_scale.json` holds the champions); `tournament` runs the
 A-optimal tournament to 25 Elo, then the top-up; `analyse` writes the ratings, the
 correlations and the intransitivity checks (`tables.txt` holds them as tables); `propose`
 applies the decision rule. The search logs go to `runs/real-scale-balance/round-N/`; the

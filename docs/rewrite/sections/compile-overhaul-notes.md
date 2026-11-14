@@ -16,7 +16,7 @@ Traced op counts (Dynamo with a recording backend, no Inductor), identical at 5v
 | Graph | Ops |
 |---|---|
 | Game tick (move + resolve + perceive, B = 1) | 2,867 |
-| Scripted agent step | 1,352 |
+| Imugi step | 1,352 |
 | Yemong controller step | 3,663 |
 
 Compile time follows the op count, and the stages stack these units with every Python
@@ -64,7 +64,7 @@ each case in its own process with empty `TORCHINDUCTOR_CACHE_DIR`, `TRITON_CACHE
 author's `bnb play` (27% of a core) was killed before the timed cases; nothing else ran.
 
 Cases: realtime (the play tick, CPU); ratings (two policies of one build, arm2d's
-exponential and live averages, plus the scripted agent, frontline 5v5, default
+exponential and live averages, plus Imugi, frontline 5v5, default
 ArenaConfig: 8 blocks x 128 environments); bc (arm2d's TrainConfig); rl (rl-aux-x0's
 TrainConfig). The runs' stored ship cards are dropped (`drop=ship_card`): the card's fields
 changed since and do not change the graphs' shapes.
@@ -380,7 +380,7 @@ code's per-component symlog decodes: about 740 of a step's 3,226 ops).
 
 `bench/compile_baseline.sh`, empty caches per case, power profile performance, quiet
 machine. BC and RL: the short BC run's TrainConfig (`--preset real_scale_mixed`, default
-Yemong: `next_state=absolute`), RL the same with objective ppo. Ratings: the scripted agent
+Yemong: `next_state=absolute`), RL the same with objective ppo. Ratings: Imugi
 and that run's two policies on `real_scale_frontline`, the default ArenaConfig.
 
 | Case | Build | First collect | First learn | Steady collect | Steady learn | Overhead |
@@ -399,7 +399,7 @@ longer, which makes the batch's tail (`bench/arena_utilisation.py`) worth measur
 
 ### The Arena's tail (`bench/arena_utilisation.py`; `compile-overhaul/arena/`)
 
-`real_scale_frontline`, the scripted agent and the short BC run's two policies (two updates
+`real_scale_frontline`, Imugi and the short BC run's two policies (two updates
 old), the default ArenaConfig (8 blocks x 128 games), three steady batches:
 
 - Every batch ran 18,016 ticks, the game clock (10 min) plus the segment it ended in. Only
@@ -465,7 +465,7 @@ the strict docs build (mkdocs read `[preset=frontline]` as a cross-reference), a
 
 Frontline's `_arena` fleet presets (one map radius at every size, so a benched game is the
 smaller preset's game; the `_density` ones grow the map and cannot be benched to), the
-scripted agent against the short BC run's policy, 8 blocks x 32 games, warm-ish caches, one
+Imugi against the short BC run's policy, 8 blocks x 32 games, warm-ish caches, one
 process. Tick: a captured block's replay over its ticks.
 
 | Ships per team | Own engine: first segment | Own: tick | Benched (40's engine): tick |

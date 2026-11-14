@@ -1,7 +1,7 @@
 # Seat symmetry: notes
 
 A code review (2026-11-02) measured team 1 ahead in self-play with identical controllers:
-the scripted agent against itself in `deathmatch` scored 0.536 and 0.540 for team 1 (seeds
+Imugi against itself in `deathmatch` scored 0.536 and 0.540 for team 1 (seeds
 5 and 6, 8,192 games each), about 5 standard errors; Frontline about 0.52; the chaser
 0.514 and 0.50. This page finds the cause and records the fix.
 

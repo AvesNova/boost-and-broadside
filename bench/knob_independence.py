@@ -7,7 +7,7 @@ At each base type in `--bases`, every knob of `bnb.game.ship_design.KNOBS` is mo
 set-wide knobs, the engine knee (its card scale) and a global charge multiplier (every
 type's coast exchange scale with its engine power, as a climb multiplier would); each
 moved card is the instant estimate, and its outcome-relevant quantities are measured: the
-scripted agent's characteristics (cruise, top and corner speeds, the turn rates at the
+Imugi's characteristics (cruise, top and corner speeds, the turn rates at the
 three sticks, the climb power, the gun range, the bullet speed, the store) and closed
 forms of the fight (the time to recover 40% of the store, the times to kill shields of 80,
 120, 160 and 200 (the breaking hits, smooth in the damage, then one), the interval between

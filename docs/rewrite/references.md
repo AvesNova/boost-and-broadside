@@ -72,7 +72,7 @@ Papers and published methods the project relies on or has used to decide somethi
 - **Citation:** Bradley, Terry, 1952, "Rank Analysis of Incomplete Block Designs: I. The Method of Paired Comparisons", Biometrika 39(3/4), 324-345 (unverified).
 - **What we take from it:** a logistic model of a win probability from a rating difference, fitted by maximum likelihood; its Fisher information is a graph Laplacian, which gives standard errors and A-optimal game allocation.
 - **Where it applies:** `src/bnb/league/ratings.py` (fit with standard errors, `allocate_blocks`), `src/bnb/league/tournament.py`, `src/bnb/league/lanes.py`; `docs/explanation/league.md`.
-- **How it affected a decision:** ratings are a Bradley-Terry fit on every game so far with the scripted agent pinned at 1000 (`docs/explanation/league.md`); draws count as half a win.
+- **How it affected a decision:** ratings are a Bradley-Terry fit on every game so far with Imugi pinned at 1000 (`docs/explanation/league.md`); draws count as half a win.
 
 ### Elo
 - **Citation:** Elo, 1978, "The Rating of Chessplayers, Past and Present", Arco (unverified).

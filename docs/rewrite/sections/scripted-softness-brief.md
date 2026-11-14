@@ -1,7 +1,7 @@
-# Brief: how soft is the scripted agent, and what is BC's ceiling against it
+# Brief: how soft is Imugi, and what is BC's ceiling against it
 
 The new BC clone (`/home/vizia/avesnova/runs-v2/2026-11-05-mixed-sunny-ember/policy`, 50M
-steps) scores 0.190 ± 0.019 against the raw scripted agent (frontline 0.23, deathmatch 0.25,
+steps) scores 0.190 ± 0.019 against the raw Imugi (frontline 0.23, deathmatch 0.25,
 deathmatch_wide 0.09). The old clone (`.../2026-11-04-mixed-wandering-quill/policy`, 100M)
 scores 0.250. BC's stop targets parity (0.5).
 
@@ -13,13 +13,13 @@ for either.
 
 ## 1. Head-to-head players for the teacher and for tempered scripted agents
 
-- `bnb head-to-head` gains a player kind for the scripted agent playing a transformed
+- `bnb head-to-head` gains a player kind for Imugi playing a transformed
   distribution: temperature T and floor f, as `TeacherOpponent` does (e.g.
   `scripted@T=1,floor=0.01`; pick a clean syntax and document it).
 - Its draws are the same code path as the teacher's.
 - Tests: T = 1 and floor 0 play exactly as `scripted`; the parsing is covered.
 
-## 2. Measurements against the raw scripted agent
+## 2. Measurements against the raw Imugi
 
 128 games per preset (the default three presets). Each with its score ± SE and the split
 by preset:
@@ -32,7 +32,7 @@ by preset:
 
 Read each result as "the strength a perfect imitator of that distribution would have".
 
-## 3. A softness audit of the scripted agent
+## 3. A softness audit of Imugi
 
 Over a few thousand ticks of scripted self-play per preset, for each action factor (power,
 stick, shoot) report:
@@ -40,11 +40,11 @@ stick, shoot) report:
 - The distribution of the agent's probability for its chosen value. What share of
   decisions are at exactly 0 or 1, above 0.99, or in between.
 - The mean entropy per factor, in nats per living ship step.
-- For each ramp in `ScriptedParameters`: its width relative to the spread of its input
+- For each ramp in `ImugiParameters`: its width relative to the spread of its input
   quantity, as observed in the same games, and its end values. Flag ramps that act as step
   functions (narrow, ending at exactly 0 and 1).
 
-For comparison, v1's scripted agent (coordinator's numbers; don't look for v1) ended its
+For comparison, v1's Imugi (coordinator's numbers; don't look for v1) ended its
 ramps at about 0.04–0.95, never at 0 or 1:
 - boost 0.68 → 0.04;
 - reverse 0.5 → 0.05;

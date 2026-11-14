@@ -1,6 +1,6 @@
 #!/bin/bash
 # Round 16 (the author, 21:00 KST): win rates at fixed odds for a paper, replacing the crossover
-# search: the champion and the nearest model with n ships against the scripted agent with n x 1,
+# search: the champion and the nearest model with n ships against Imugi with n x 1,
 # 1.2, 1.5, 2, deathmatch in the training arena, at n = 10, 20, 40 (n = 5's 5:5 .. 5:10 grid is
 # already measured); 128 games per ratio; one compile per case.
 set -u

@@ -1,5 +1,5 @@
 """crossover_adaptive.py: the crossover search the author asked for at 20:50 KST (deathmatch only;
-the champion and the nearest model against the scripted agent), adaptive and in one process:
+the champion and the nearest model against Imugi), adaptive and in one process:
 
 - The network keeps n ships; the scripted side has b (any b >= 1). The first guess is the previous
   fleet size's ratio (b = n x ratio), so the engine is built once, at a game size just above the
@@ -78,7 +78,7 @@ def main() -> None:
     n, guess = args.n, args.n * args.ratio
     size = max(n + 2, math.ceil(guess * 1.4))
     game = dataclasses.replace(PRESETS[args.preset], ships_per_team=size)
-    first, second = _players([args.agent, "scripted"], pathlib.Path("runs"))
+    first, second = _players([args.agent, "imugi"], pathlib.Path("runs"))
     players = [first, second]
     groups = network_groups(players)
     layout = ArenaConfig(blocks=BLOCKS, block_environments=args.block_environments)

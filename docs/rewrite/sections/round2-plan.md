@@ -149,7 +149,7 @@ with the control held its residual is near float32 resolution; the nose rate ove
 | C6 | The correction label moves with the physics head (O7) | Stop-gradient, or the fixed label |
 | C7 | Seed noise ~30 Elo; Brier skill varies 0.2 by seed | The bar in section 1; a second seed for a close call |
 | C8 | Arm 1 decides whether arms 2/3 carry acceleration inputs, but arm 3 needs them regardless | If arm 1 loses, arms 2/3 still carry them (both, so 2 vs 3 stays clean) |
-| C9 | The bench's data comes from the scripted agent and calm-fern (an old RL build), not from the BC clones being trained | Both players are reported separately; differences flag it |
+| C9 | The bench's data comes from Imugi and calm-fern (an old RL build), not from the BC clones being trained | Both players are reported separately; differences flag it |
 | C10 | The champion's 30M snapshot is the reference; a challenger's 30M is compared with it, not with the 100M+ champion | Fine for the method (equal budgets); the product is still the longest-trained winner |
 
 ## 8. Infrastructure: old policies and new inputs

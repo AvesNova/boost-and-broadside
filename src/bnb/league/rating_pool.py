@@ -179,7 +179,7 @@ class RatingPool:
         agree): every game in it is played with `lineup` (each slot's ship type by name, both
         teams; empty: the game's own) at `arena_scale` (None: the presets' own maps), and team
         deathmatch is fitted by `deathmatch_score` unless a command asks for the other. The
-        scripted agent, the anchor at 1000, is registered."""
+        Imugi, the anchor at 1000, is registered."""
         root = pathlib.Path(root)
         settings = dict(
             format=FORMAT,
@@ -484,7 +484,7 @@ def rate(
     made = {name: make_player(players[name]) for name in names}
     playable = [number for number, name in enumerate(names) if made[name] is not None]
     if ANCHOR not in [names[number] for number in playable]:
-        raise ValueError("the scripted agent must be playable: it anchors the pool")
+        raise ValueError("Imugi must be playable: it anchors the pool")
     unknown = [
         name
         for name in (*config.decision, *(name for pair in config.contrasts for name in pair))

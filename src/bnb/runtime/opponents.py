@@ -1,18 +1,18 @@
 """The league's opponent seat inside the rollout (league spec 2): network slots with stacked
-parameters, the scripted agent and the clean cut.
+parameters, Imugi and the clean cut.
 
 One controller, `OpponentSlots`, plays every opponent row of the batch:
 - `slots` network slots, with their parameters stacked `(slots, ...)`, run as one forward
   over the stacked sets (`bnb.runtime.stacked`, `torch.vmap`), each set on its own rows:
   slot k plays rows k, k + slots, k + 2 slots, ... (so every slot plays every mode).
-- the full-strength scripted agent (temperature 1): one scripted pass over every row. The
+- the full-strength Imugi (temperature 1): one scripted pass over every row. The
   training pool holds no other scripted player, no weaker rung and no random player (the
   author, 2026-11-12); the rating lanes and the offline tournament still play the ladder.
-- per row, the kind it plays (a network set or the scripted agent) is selected with `where`.
-- when `LeagueConfig.cheese` names any, the cheese agents (`bnb.controllers.scripted_cheese`):
+- per row, the kind it plays (a network set or Imugi) is selected with `where`.
+- when `LeagueConfig.cheese` names any, the cheese agents (`bnb.controllers.cheese`):
   one pass over every row, each slot holding a cheese entry playing its agent on its rows.
 
-A slot holds a network entry, the scripted agent or a cheese agent.
+A slot holds a network entry, Imugi or a cheese agent.
 
 The clean cut (`cut`): the host loads a new entry into a slot's set in place, at an update
 boundary. The games in progress on its rows play on against the new entry; their results
@@ -21,7 +21,7 @@ those rows is reset (its trunk; the belief part is kept) or kept. Every host-sid
 an in-place copy between segments, so a captured graph stays valid.
 
 Each row's column (`OpponentCarry.column`) names what it plays for the record: a slot's
-set or cheese agent, or the scripted agent (the column after the slots'). The rollout tallies each
+set or cheese agent, or Imugi (the column after the slots'). The rollout tallies each
 episode's result from the learner's side by column and mode (`tally`).
 """
 
@@ -33,10 +33,10 @@ from torch.utils import _pytree
 
 from bnb.contracts import Action, Obs, Outputs
 from bnb.contracts.tree import contract
-from bnb.controllers.scripted import Scripted
-from bnb.controllers.scripted_cheese import NAMES as CHEESE_NAMES
-from bnb.controllers.scripted_cheese import Cheese
-from bnb.controllers.scripted_memory import ScriptedCarry
+from bnb.controllers.cheese import NAMES as CHEESE_NAMES
+from bnb.controllers.cheese import Cheese
+from bnb.controllers.imugi import Imugi
+from bnb.controllers.imugi_memory import ImugiCarry
 from bnb.game.handling.characteristics import Characteristics
 
 from . import stacked
@@ -47,7 +47,7 @@ OPPONENTS = "opponents"  # the controller name of the league's seat
 
 @dataclasses.dataclass(frozen=True)
 class Rung:
-    """A ladder entry: the scripted agent at `temperature` (+inf random), each ship playing
+    """A ladder entry: Imugi at `temperature` (+inf random), each ship playing
     it with probability `share` per game and uniformly otherwise (a mixture rung)."""
 
     temperature: float
@@ -57,7 +57,7 @@ class Rung:
 RANDOM = Rung(math.inf)
 # The stationary ladder (league spec 1), weakest first: random (temperature +inf), mixture
 # rungs (each ship the agent at T = 2 with probability share, else random), the scripted
-# agent at falling temperatures, the scripted agent itself (T = 1). The section notes give
+# agent at falling temperatures, Imugi itself (T = 1). The section notes give
 # the temperature curve and the mixtures' scores the rungs were chosen from.
 LADDER = (
     RANDOM,
@@ -74,7 +74,33 @@ LADDER = (
 )
 RUNG_PREFIX = "rung_T"
 SHARE_PREFIX = "_p"
-SCRIPTED_PLAYER = "scripted"
+# Imugi's recorded identity. The tournament, pool and crossover records, the run configs and
+# the checkpoints' ratings name the player "scripted" (and a teacher "scripted@T=..", a cheese
+# agent "scripted:<name>", `bnb.controllers.cheese.PREFIX`), so the identity keeps that text and
+# only the names a person types and reads change (`stored_name`, `shown_name`).
+IMUGI_PLAYER = "scripted"
+IMUGI_NAME = "imugi"  # what Imugi is called on the command line and in what is printed
+CHEESE_NAME_PREFIX = "cheese:"  # a cheese agent's command-line name is this + its name
+
+
+def stored_name(name: str) -> str:
+    """The recorded identity of a player named on the command line: `imugi` is "scripted",
+    `imugi@T=..` a teacher "scripted@T=..", `cheese:<name>` "scripted:<name>"; any other name,
+    one already an identity (a record's) included, as it is."""
+    if name == IMUGI_NAME or name.startswith(IMUGI_NAME + "@"):
+        return IMUGI_PLAYER + name[len(IMUGI_NAME) :]
+    if name.startswith(CHEESE_NAME_PREFIX):
+        return "scripted:" + name[len(CHEESE_NAME_PREFIX) :]
+    return name
+
+
+def shown_name(identity: str) -> str:
+    """What a recorded identity is called in what is printed (`stored_name`'s inverse)."""
+    if identity == IMUGI_PLAYER or identity.startswith(IMUGI_PLAYER + "@"):
+        return IMUGI_NAME + identity[len(IMUGI_PLAYER) :]
+    if identity.startswith("scripted:"):
+        return CHEESE_NAME_PREFIX + identity[len("scripted:") :]
+    return identity
 
 
 def ladder_name(rung: Rung) -> str:
@@ -85,7 +111,7 @@ def ladder_name(rung: Rung) -> str:
     if rung.share != 1.0:
         return f"{RUNG_PREFIX}{rung.temperature:g}{SHARE_PREFIX}{rung.share:g}"
     if rung.temperature == 1.0:
-        return SCRIPTED_PLAYER
+        return IMUGI_PLAYER
     return f"{RUNG_PREFIX}{rung.temperature:g}"
 
 
@@ -94,7 +120,7 @@ def ladder_rung(name: str) -> Rung | None:
     name."""
     if name == "random":
         return RANDOM
-    if name == SCRIPTED_PLAYER:
+    if name == IMUGI_PLAYER:
         return Rung(1.0)
     if name.startswith(RUNG_PREFIX):
         temperature, _, share = name[len(RUNG_PREFIX) :].partition(SHARE_PREFIX)
@@ -108,7 +134,7 @@ def ladder_rung(name: str) -> Rung | None:
     return None
 
 
-NETWORK, SCRIPTED_KIND, CHEESE_KIND = 0, 1, 2  # what a slot holds
+NETWORK, IMUGI_KIND, CHEESE_KIND = 0, 1, 2  # what a slot holds
 OUTCOMES = ("wins", "ties", "losses")  # the tally's last axis, from the learner's side
 
 
@@ -138,7 +164,7 @@ class LeagueConfig:
     `LEAGUE_SNAPSHOTS` by default, decided 2026-11-14: 5, 10, 15, 20, 25, 30, 40, 50, 60,
     75, 90, 110, 130 and 160M steps, then every 30M; None: a period measured once, about 30
     minutes of the run's throughput, and recorded); cheese: the cheese agents that are pool
-    entries, by name (`bnb.controllers.scripted_cheese.NAMES`; all six by default, `()`
+    entries, by name (`bnb.controllers.cheese.NAMES`; all six by default, `()`
     turns them off), each `scripted:<name>`, sampled with the other entries; fixed at a
     run's start."""
 
@@ -189,7 +215,7 @@ def whole_game_begins(reset: torch.Tensor, stepped: torch.Tensor) -> torch.Tenso
     """Whether each row begins a whole game at this tick (`reset` (R,), `stepped` (R,), the
     row has played a tick before): every game but the row's first, which the rollout's
     staggered clocks cut short. Cut-short games lean to ties and read as a rating near the
-    scripted agent's, so neither the lanes nor the league tally a row's first game."""
+    Imugi's, so neither the lanes nor the league tally a row's first game."""
     return reset & stepped
 
 
@@ -199,13 +225,13 @@ class OpponentCarry:
     column (R,) int64, what the row plays, for the tally; stepped (R,) bool, the row has
     played a tick; whole (R,) bool, the row's game began after its first tick
     (`whole_game_begins`) and has not been cut, so the tally counts it; scripted, the
-    scripted agent's carry."""
+    Imugi's carry."""
 
     model: object
     column: torch.Tensor
     stepped: torch.Tensor
     whole: torch.Tensor
-    scripted: ScriptedCarry
+    scripted: ImugiCarry
 
 
 class _Decision(torch.nn.Module):
@@ -246,8 +272,8 @@ class OpponentSlots:
         self.mode_count, self.modes = mode_count, modes
         self.decision = _Decision(controller)
         self.decision.requires_grad_(False)
-        self.reads = tuple(dict.fromkeys(controller.reads + Scripted.reads))
-        self.scripted_agent = Scripted(characteristics, ships_per_team)  # full strength
+        self.reads = tuple(dict.fromkeys(controller.reads + Imugi.reads))
+        self.imugi = Imugi(characteristics, ships_per_team)  # full strength
         # the cheese agents, only when the pool holds any: each slot's agent (an index into
         # `CHEESE_NAMES`, -1 for a slot holding another kind), written in place
         self.cheese = Cheese(characteristics, ships_per_team) if config.cheese else None
@@ -261,7 +287,7 @@ class OpponentSlots:
         self.rows = torch.arange(rows, device=device)
         self.slot_of_row = self.rows % slots
         self.kind = torch.full((slots,), NETWORK, dtype=torch.int64, device=device)
-        self.scripted_column = slots  # the tally's column for the scripted agent
+        self.scripted_column = slots  # the tally's column for Imugi
         self.columns = slots + 1
 
     # ---- the controller
@@ -273,7 +299,7 @@ class OpponentSlots:
             column=self.slot_of_row.clone(),
             stepped=torch.zeros(views, dtype=torch.bool, device=device),
             whole=torch.zeros(views, dtype=torch.bool, device=device),
-            scripted=self.scripted_agent.init_carry(views, device),
+            scripted=self.imugi.init_carry(views, device),
         )
 
     def _network(self, carry, obs: Obs, reset: torch.Tensor, decision_key: torch.Tensor):
@@ -302,8 +328,8 @@ class OpponentSlots:
         """One decision for every opponent row; see `Controller.step`."""
         network_action, model_carry = self._network(carry.model, obs, reset, decision_key)
         kind = self.kind[self.slot_of_row]  # (R,)
-        scripted = kind == SCRIPTED_KIND
-        scripted_action, scripted_carry, _ = self.scripted_agent.step(
+        scripted = kind == IMUGI_KIND
+        scripted_action, scripted_carry, _ = self.imugi.step(
             carry.scripted, obs, reset, decision_key
         )
         action = torch.where(scripted[:, None, None], scripted_action.packed(), network_action)
@@ -348,7 +374,7 @@ class OpponentSlots:
         self.cheese_of_slot.fill_(-1)
 
     def set_kind(self, slot: int, kind: int) -> None:
-        """What slot `slot` holds: NETWORK or SCRIPTED_KIND (`set_cheese` for a cheese agent)."""
+        """What slot `slot` holds: NETWORK or IMUGI_KIND (`set_cheese` for a cheese agent)."""
         self.kind[slot] = kind
         self.cheese_of_slot[slot] = -1
 

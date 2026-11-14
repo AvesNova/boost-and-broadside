@@ -1,6 +1,6 @@
-"""The scripted agent's default parameters per game mode (`MODE_DEFAULTS`), each the choice
+"""Imugi's default parameters per game mode (`MODE_DEFAULTS`), each the choice
 of that mode's own parameter search, and each standard search's final population
-(`scripted_populations.json`, the 32 sets of each standard mode's last generation, best
+(`imugi_populations.json`, the 32 sets of each standard mode's last generation, best
 first: kept for later use, read by nothing here but `populations`). The section notes
 record the standard searches; the real-scale variant's page
 (docs/explanation/game/real-scale.md) its light retune."""
@@ -8,24 +8,24 @@ record the standard searches; the real-scale variant's page
 import json
 import pathlib
 
-from .scripted_parameters import (
+from .imugi_parameters import (
     NAMES,
     STANDARD_MODES,
+    ImugiParameters,
     Logistic,
     ModeParameters,
     Ramp,
-    ScriptedParameters,
     Switch,
     _columns,
     from_row,
 )
 
-POPULATIONS = pathlib.Path(__file__).with_name("scripted_populations.json")
+POPULATIONS = pathlib.Path(__file__).with_name("imugi_populations.json")
 
 # Each standard mode's finalist that scored best at T = 1 against round one's agent in its
 # own preset (384 games; the section notes), to three significant figures.
 STANDARD_DEFAULTS = {
-    "deathmatch": ScriptedParameters(
+    "deathmatch": ImugiParameters(
         turn_in_stall_angle=Logistic(0.0304, 0.267, True),
         level_two_in_stall_angle=Logistic(0.231, 0.185, True),
         level_three_in_stall_angle=Logistic(0.441, 0.172, True),
@@ -55,7 +55,7 @@ STANDARD_DEFAULTS = {
         goal_switch_in_strength=Switch(4.07, 0.268, 0.0667),
         recovery_switch_in_log_ratio=Switch(5.73, 0.161, 0.0521),
     ),
-    "deathmatch_wide": ScriptedParameters(
+    "deathmatch_wide": ImugiParameters(
         turn_in_stall_angle=Logistic(0.0411, 0.168, True),
         level_two_in_stall_angle=Logistic(0.115, 0.167, True),
         level_three_in_stall_angle=Logistic(0.522, 0.181, True),
@@ -85,7 +85,7 @@ STANDARD_DEFAULTS = {
         goal_switch_in_strength=Switch(6.21, 0.349, 0.0516),
         recovery_switch_in_log_ratio=Switch(4.93, 0.385, 0.0852),
     ),
-    "frontline": ScriptedParameters(
+    "frontline": ImugiParameters(
         turn_in_stall_angle=Logistic(0.0446, 0.329, True),
         level_two_in_stall_angle=Logistic(0.17, 0.188, True),
         level_three_in_stall_angle=Logistic(0.184, 0.351, True),
@@ -116,13 +116,13 @@ STANDARD_DEFAULTS = {
         recovery_switch_in_log_ratio=Switch(3.33, 0.171, 0.0837),
     ),
 }
-# Each real-scale preset's set, in `scripted_real_scale.json` (`write_real_scale`), which the
+# Each real-scale preset's set, in `imugi_real_scale.json` (`write_real_scale`), which the
 # balancing rounds rewrite (docs/explanation/game/real-scale-balance.md): each its mode's
 # champion, with the source that chose it.
-REAL_SCALE = pathlib.Path(__file__).with_name("scripted_real_scale.json")
+REAL_SCALE = pathlib.Path(__file__).with_name("imugi_real_scale.json")
 
 
-def named(parameters: ScriptedParameters, figures: int = 3) -> dict:
+def named(parameters: ImugiParameters, figures: int = 3) -> dict:
     """A set as its fields by name (a logistic's centre and scale, a ramp's four ends, a
     switch's rate, centre and scale), each number to `figures` significant figures."""
 
@@ -136,7 +136,7 @@ def named(parameters: ScriptedParameters, figures: int = 3) -> dict:
     return out
 
 
-def from_named(fields: dict) -> ScriptedParameters:
+def from_named(fields: dict) -> ImugiParameters:
     """`named`'s inverse (a logistic's direction is the default's)."""
     row = []
     for name in NAMES:
@@ -150,7 +150,7 @@ def read_real_scale(path: pathlib.Path = REAL_SCALE) -> dict[str, dict]:
     return json.loads(path.read_text())
 
 
-def write_real_scale(mode: str, parameters: ScriptedParameters, source: str, path=REAL_SCALE):
+def write_real_scale(mode: str, parameters: ImugiParameters, source: str, path=REAL_SCALE):
     """Replace one real-scale mode's set in the file, to three significant figures."""
     stored = read_real_scale(path)
     stored[mode] = dict(source=source, parameters=named(parameters))
@@ -163,7 +163,7 @@ REAL_SCALE_DEFAULTS = {
 MODE_DEFAULTS = ModeParameters(STANDARD_DEFAULTS | REAL_SCALE_DEFAULTS)
 
 
-def populations() -> dict[str, list[ScriptedParameters]]:
+def populations() -> dict[str, list[ImugiParameters]]:
     """Each standard mode's final search population, best first."""
     stored = json.loads(POPULATIONS.read_text())
     return {mode: [from_row(row) for row in stored["populations"][mode]] for mode in STANDARD_MODES}

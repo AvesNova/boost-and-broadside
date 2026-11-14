@@ -8,19 +8,18 @@ import math
 
 import pytest
 import torch
-from scripted_cases import CHARACTERISTICS, absent, observation, ship
+from imugi_cases import CHARACTERISTICS, absent, observation, ship
 
 from bnb.contracts.obs import GLOBAL
+from bnb.controllers.imugi import REAL_SCALE_GRAVITY, mode_index
+from bnb.controllers.imugi_parameters import MODES
 from bnb.controllers.scripted import (
-    REAL_SCALE_GRAVITY,
     STANDARD_CORNER_RADIUS,
     STANDARD_GUN_RANGE,
     Chaser,
     corner_radius,
     gun_range,
-    mode_index,
 )
-from bnb.controllers.scripted_parameters import MODES
 
 # The standard fighter at P-51 scale: lengths x5.82 and g = 9.81 m/s^2 (times x4.00), with
 # the real-scale variant's 600 m gun range; its gravity the real-scale set's native one
@@ -65,7 +64,7 @@ def test_a_real_scale_card_plays_the_real_scale_sets():
     """A card at the real-scale gravity plays real_scale_deathmatch on any deathmatch map,
     real_scale_frontline in Frontline and real_scale_elimination in elimination (a standard
     card its deathmatch set there); the real-scale presets' own card is one."""
-    from bnb.controllers.scripted import real_scale_card
+    from bnb.controllers.imugi import real_scale_card
     from bnb.game import api
     from bnb.game.handling.characteristics import characteristics
 

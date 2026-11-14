@@ -12,7 +12,7 @@ entry from the sampling weights), and the metrics.
 A slot's entry is drawn from the modes' sampling weights mixed by the modes' shares of the
 opponent rows (a slot plays every mode), by counter-based uniforms
 (`bnb.streams.keyed_uniform` of the swap count) keyed by the run's seed. The pool's one scripted
-entry is the full-strength scripted agent: no weaker rung and no random player.
+entry is the full-strength Imugi: no weaker rung and no random player.
 """
 
 import copy
@@ -25,18 +25,18 @@ import time
 import torch
 
 from bnb.contracts.series import Table
-from bnb.controllers.scripted_cheese import agent_of, player_name
+from bnb.controllers.cheese import agent_of, player_name
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
 from bnb.runs.serialise import from_json, to_json
 from bnb.runs.session import CADENCE_UPDATES
 from bnb.runtime.lanes import UNIFORM_AVERAGE, league_slot
 from bnb.runtime.opponents import (
+    IMUGI_KIND,
+    IMUGI_PLAYER,
     NETWORK,
     OPPONENTS,
     OUTCOMES,
-    SCRIPTED_KIND,
-    SCRIPTED_PLAYER,
 )
 from bnb.runtime.snapshots import SnapshotSchedule
 from bnb.runtime.train import Trainer
@@ -46,7 +46,7 @@ from .gauge import GAUGE_TOP, Gauge, Record
 from .lanes import RunRatings
 from .pool import (
     AVERAGES,
-    SCRIPTED_ENTRY,
+    IMUGI_ENTRY,
     Averages,
     Entry,
     retained,
@@ -55,7 +55,7 @@ from .pool import (
 )
 
 # The opponent kinds the league's scores and game shares are sliced by (diagnostics audit,
-# group 20): the scripted agent, the averages and the checkpoints (and the cheese agents,
+# group 20): Imugi, the averages and the checkpoints (and the cheese agents,
 # when the pool holds any: `League.entry_kinds`).
 ENTRY_KINDS = ("scripted", "average", "checkpoint")
 SNAPSHOT_SECONDS = 30 * 60  # the measured snapshot cadence's target (league spec 5)
@@ -122,14 +122,14 @@ class League:
 
     def _start(self, trainer: Trainer, ratings: dict[str, float] | None) -> None:
         """ratings: a warm start's parent's, per mode; a mode it has none for (a clone
-        trained without rating lanes) starts at the scripted agent's rating, which the clone
+        trained without rating lanes) starts at Imugi's rating, which the clone
         imitates. A run from scratch (None) starts at 0."""
         weights = trainer.model.state_dict()
-        self.entries: dict[str, Entry] = {SCRIPTED_PLAYER: SCRIPTED_ENTRY}
+        self.entries: dict[str, Entry] = {IMUGI_PLAYER: IMUGI_ENTRY}
         unrated = 0.0 if ratings is None else GAUGE_TOP
         self.gauges = {mode: Gauge((ratings or {}).get(mode, unrated)) for mode in self.modes}
         for gauge in self.gauges.values():
-            gauge.add(SCRIPTED_PLAYER, "scripted", GAUGE_TOP)
+            gauge.add(IMUGI_PLAYER, "scripted", GAUGE_TOP)
         self.averages = Averages(weights, self.config, trainer.config.uniform_start())
         for name in AVERAGES:
             self.entries[name] = Entry(name, "average")
@@ -228,7 +228,7 @@ class League:
     def _load_lanes(self, fresh: bool = True) -> None:
         """The averages' weights into the lanes that play them, and each network slot's
         entry into its lane player (`league_<k>`): a snapshot or an average, which the lanes
-        rate as that entry (an average's weights moving on with it); the scripted agent,
+        rate as that entry (an average's weights moving on with it); Imugi,
         which they leave unrated. fresh: games in progress were played by the previous entry
         (`LaneSeat.load`)."""
         if self.lane_seat is None:
@@ -257,7 +257,7 @@ class League:
         if entry.kind == "cheese":
             self.opponents.set_cheese(slot, agent_of(entry.name))
         else:
-            self.opponents.set_kind(slot, NETWORK if entry.network else SCRIPTED_KIND)
+            self.opponents.set_kind(slot, NETWORK if entry.network else IMUGI_KIND)
 
     def _cut(self, trainer: Trainer) -> None:
         """The clean cut, when due: `cut_slots` slots (round robin) each draw an entry; a
@@ -294,7 +294,7 @@ class League:
         slots = self.config.slots
         tally = trainer.rollout.take_tally(OPPONENTS).reshape(-1, len(self.modes), len(OUTCOMES))
         for column, row in enumerate(tally.tolist()):
-            name = self.held[column] if column < slots else SCRIPTED_PLAYER
+            name = self.held[column] if column < slots else IMUGI_PLAYER
             for mode, (wins, ties, losses) in zip(self.modes, row):
                 if wins + ties + losses == 0 or name not in self.entries:
                     continue  # no games, or against an entry retention has dropped

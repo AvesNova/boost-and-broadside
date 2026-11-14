@@ -1,5 +1,5 @@
 """The real-scale balancing's round script (`bench/balance_round.py`: its search summary)
-and the real-scale sets' file (`bnb.controllers.scripted_defaults`): the parts that run on
+and the real-scale sets' file (`bnb.controllers.imugi_defaults`): the parts that run on
 the CPU. The balance rule's moves were of the researched types, which left the game on
 2026-11-13 (their moves: docs/explanation/game/real-scale-balance/moves.json)."""
 
@@ -11,10 +11,10 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))  # `bench`
 from bench import balance_round  # noqa: E402
-from bnb.controllers import scripted_defaults  # noqa: E402
-from bnb.controllers.scripted_parameters import (  # noqa: E402
+from bnb.controllers import imugi_defaults  # noqa: E402
+from bnb.controllers.imugi_parameters import (  # noqa: E402
     REAL_SCALE_MODES,
-    ScriptedParameters,
+    ImugiParameters,
     pack,
 )
 
@@ -49,15 +49,15 @@ def test_a_search_summary_picks_the_best_survivor_of_the_last_generation(tmp_pat
 
 def test_the_real_scale_sets_round_trip_through_their_file(tmp_path):
     path = tmp_path / "sets.json"
-    path.write_text(scripted_defaults.REAL_SCALE.read_text())
-    stored = scripted_defaults.read_real_scale(path)
+    path.write_text(imugi_defaults.REAL_SCALE.read_text())
+    stored = imugi_defaults.read_real_scale(path)
     assert set(stored) == set(REAL_SCALE_MODES)
     for mode, entry in stored.items():
-        parameters = scripted_defaults.from_named(entry["parameters"])
-        assert pack(parameters) == pack(scripted_defaults.MODE_DEFAULTS.sets[mode])
-    scripted_defaults.write_real_scale("real_scale_frontline", ScriptedParameters(), "a test", path)
-    again = scripted_defaults.read_real_scale(path)
+        parameters = imugi_defaults.from_named(entry["parameters"])
+        assert pack(parameters) == pack(imugi_defaults.MODE_DEFAULTS.sets[mode])
+    imugi_defaults.write_real_scale("real_scale_frontline", ImugiParameters(), "a test", path)
+    again = imugi_defaults.read_real_scale(path)
     assert again["real_scale_frontline"]["source"] == "a test"
     assert again["real_scale_deathmatch"] == stored["real_scale_deathmatch"]
-    written = scripted_defaults.from_named(again["real_scale_frontline"]["parameters"])
-    assert pack(written) == pytest.approx(pack(ScriptedParameters()), rel=5e-3)
+    written = imugi_defaults.from_named(again["real_scale_frontline"]["parameters"])
+    assert pack(written) == pytest.approx(pack(ImugiParameters()), rel=5e-3)

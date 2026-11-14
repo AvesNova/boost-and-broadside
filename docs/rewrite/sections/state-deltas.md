@@ -45,7 +45,7 @@ every continuous quantity (table 3.1). The nose rate goes past today's code rang
 
 ## 0. Samples and today's code
 
-Players: the scripted agent (default ship card) and calm-fern
+Players: Imugi (default ship card) and calm-fern
 `players-calm-fern/step_100663296-exponential_average`, each in self-play. Both play the
 same card; the two cards were compared field by field. calm-fern's build record lacks four
 newer Yemong fields (`forecast_feedback`, `rotary`, `order`, `rotary_readout`). They load
@@ -355,7 +355,7 @@ pi. At 32 ticks the heading needs wrapped ends.
 - **Velocity reach.** The world-speed bound inside a level -2 field (421 m/s) is above
   today's velocity reach (319 m/s). No ship came close (232 m/s).
 - **calm-fern's boundary time.** calm-fern spends 0.4-2.6% of its ticks taking boundary
-  damage, against 0-0.16% for the scripted agent.
+  damage, against 0-0.16% for Imugi.
 - **Heading dead reckoning.** heading + omega_t dt has a worse p99.9 than persistence in
   scripted frontline and wide (0.134 against 0.116 rad). It removes the median, not the
   refraction transients.

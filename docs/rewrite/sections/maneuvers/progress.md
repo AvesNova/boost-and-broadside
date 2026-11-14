@@ -8,8 +8,8 @@ this job's alone; every run a `systemd-run --user` unit with `MemoryMax=8G`, one
 
 ## Code
 
-Three maneuvers as doctrine elements (`scripted_doctrine.Doctrine`, the combat layer's
-`scripted_combat.maneuvers`), every value a doctrine-table column, so the game loop and
+Three maneuvers as doctrine elements (`imugi_doctrine.Doctrine`, the combat layer's
+`imugi_combat.maneuvers`), every value a doctrine-table column, so the game loop and
 the ES sweep them per group without a recompile. Unlike the older elements they are not
 weighted by `strength` x `in_advantage`: r9's advantage gate is shut in every mirror (Jujak
 centre 1.68, Yongma 1.3 at an advantage of 1), so r9 flies the bare combat layer there.
@@ -22,7 +22,7 @@ centre 1.68, Yongma 1.3 at an advantage of 1), so r9 flies the bare combat layer
   `lead_turn_one_circle` > 1/2 away from it (one-circle). The committed turn side follows.
 - **Yo-yo** (`yoyo`, `yoyo_after_seconds`, `yoyo_phase`, `yoyo_climb_seconds`,
   `yoyo_ease`, `yoyo_dive_seconds`): a stalemate clock in the carry
-  (`ScriptedCarry.stalemate_seconds`) runs while the committed target is within 4 gun
+  (`ImugiCarry.stalemate_seconds`) runs while the committed target is within 4 gun
   ranges and no angle is gained (nose within 1 stall angle of the aim point while the
   target's nose is more than 2 of its stall angles off the ship; the joust does not count);
   past `yoyo_after_seconds`, when the target comes within `yoyo_phase` rad of the nose,

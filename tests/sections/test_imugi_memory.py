@@ -1,4 +1,4 @@
-"""The scripted agent's memory (its carry): soft hysteresis on the plan choices, dead reckoning
+"""Imugi's memory (its carry): soft hysteresis on the plan choices, dead reckoning
 of hidden enemies, the resets, the mixture rungs' agent flags and the per-mode parameters."""
 
 import dataclasses
@@ -8,24 +8,24 @@ import sys
 
 import pytest
 import torch
-from scripted_cases import CHARACTERISTICS, absent, observation, ship, value
+from imugi_cases import CHARACTERISTICS, absent, observation, ship, value
 
 from bnb.contracts import Obs
 from bnb.contracts.obs import GLOBAL, SHIP
-from bnb.controllers.scripted import Scripted, distribution, mode_index
-from bnb.controllers.scripted_memory import FORGET_WEIGHT, remember, ways_round
-from bnb.controllers.scripted_parameters import (
+from bnb.controllers.imugi import Imugi, distribution, mode_index
+from bnb.controllers.imugi_memory import FORGET_WEIGHT, remember, ways_round
+from bnb.controllers.imugi_parameters import (
     MODES,
     REAL_SCALE_MODES,
     STANDARD_MODES,
+    ImugiParameters,
     ModeParameters,
-    ScriptedParameters,
     Switch,
     switch_probability,
 )
 
 pytestmark = pytest.mark.usefixtures("global_generator")
-PARAMETERS = ScriptedParameters()
+PARAMETERS = ImugiParameters()
 VIEWS = 2000
 CPU = torch.device("cpu")
 
@@ -49,11 +49,11 @@ def _view(enemies: list[torch.Tensor], views: int = VIEWS, reset: bool = False) 
     return obs
 
 
-def _agent(**changes) -> Scripted:
-    return Scripted(CHARACTERISTICS, 2, dataclasses.replace(PARAMETERS, **changes))
+def _agent(**changes) -> Imugi:
+    return Imugi(CHARACTERISTICS, 2, dataclasses.replace(PARAMETERS, **changes))
 
 
-def _run(agent: Scripted, views: list[Obs], carry=None):
+def _run(agent: Imugi, views: list[Obs], carry=None):
     """The agent's carry after each view in turn (the first a reset)."""
     carry = agent.init_carry(views[0].ships.shape[0], CPU) if carry is None else carry
     out = []
@@ -85,7 +85,7 @@ def test_a_near_tie_keeps_the_committed_target_and_a_clearly_nearer_one_takes_ov
     assert bool((carries[0].target[:, 0] == 1).all())
     assert float((carries[-1].target[:, 0] == 1).float().mean()) > 0.8
     # The memoryless agent takes the nearer at once.
-    off = Scripted(CHARACTERISTICS, 2, PARAMETERS, memory=False)
+    off = Imugi(CHARACTERISTICS, 2, PARAMETERS, memory=False)
     assert bool((_run(off, [first, tie])[-1].target[:, 0] == 0).all())
     # A clearly nearer enemy (a third of the distance) takes over within half a second.
     near = _view([_enemy(gun * 0.67), _enemy(gun * 2.0)])
@@ -181,7 +181,7 @@ def test_the_turn_side_commits_past_its_angle_and_switches_by_the_shorter_way():
 
 def test_memory_off_is_the_memoryless_agent():
     gun = value("gun_range", 0)
-    off = Scripted(CHARACTERISTICS, 2, PARAMETERS, memory=False)
+    off = Imugi(CHARACTERISTICS, 2, PARAMETERS, memory=False)
     seen = _view([_enemy(gun * 1.5), _enemy(gun * 1.0)], views=8)
     hidden = _view([_enemy(0.0, visible=False, since=0.2), _enemy(gun * 1.4)], views=8)
     carries = _run(off, [seen, hidden])
@@ -191,7 +191,7 @@ def test_memory_off_is_the_memoryless_agent():
 
 
 def test_a_mixture_rungs_ships_play_the_agent_by_its_share():
-    agent = Scripted(CHARACTERISTICS, 2, PARAMETERS, temperature=2.0, share=0.3)
+    agent = Imugi(CHARACTERISTICS, 2, PARAMETERS, temperature=2.0, share=0.3)
     obs = _view([_enemy(500.0), absent()])
     carry = agent.init_carry(VIEWS, CPU)
     _, carry = agent.decide(carry, obs, torch.ones(VIEWS, dtype=torch.bool), torch.arange(VIEWS))
@@ -207,7 +207,7 @@ def test_a_mixture_rungs_ships_play_the_agent_by_its_share():
         parts.stick[uniform, 0], torch.full_like(parts.stick[uniform, 0], 1 / 7)
     )
     with pytest.raises(ValueError):
-        Scripted(CHARACTERISTICS, 2, share=1.5)
+        Imugi(CHARACTERISTICS, 2, share=1.5)
 
 
 def test_each_view_plays_its_modes_parameters():
@@ -233,7 +233,7 @@ def test_each_view_plays_its_modes_parameters():
     )
 
 
-def _at_plane_speed(parameters: ScriptedParameters, factor: float) -> ScriptedParameters:
+def _at_plane_speed(parameters: ImugiParameters, factor: float) -> ImugiParameters:
     """A real-scale set at the planes' speed: game v13 plays the set `factor` times faster
     (docs/rewrite/sections/lethality/scripted_x2.py scaled its time parameters: the memory
     fade's centre / factor, every switch's rate x factor), and the search's bounds are the
@@ -248,11 +248,11 @@ def _at_plane_speed(parameters: ScriptedParameters, factor: float) -> ScriptedPa
 
 
 def test_the_mode_defaults_lie_within_the_searchs_bounds_and_the_populations_load():
-    from bnb.controllers.scripted_defaults import MODE_DEFAULTS, populations
+    from bnb.controllers.imugi_defaults import MODE_DEFAULTS, populations
     from bnb.game.real_scale import EQUIVALENT_FACTOR
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))  # `bench`
-    from bench.scripted_search import clamp
+    from bench.imugi_search import clamp
 
     assert set(MODE_DEFAULTS.sets) == set(MODES)
     for mode, parameters in MODE_DEFAULTS.sets.items():

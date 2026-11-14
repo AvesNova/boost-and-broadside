@@ -1,11 +1,11 @@
-"""The scripted agent's win rates (scripted spec A7.2, A7.3): fresh 5v5 games to their end at
+"""Imugi's win rates (scripted spec A7.2, A7.3): fresh 5v5 games to their end at
 every training preset, fog on, the seat drawn per game, with the default parameters.
 
 - Against random: at most 2 non-wins (losses or draws) in 2048 games per preset.
 - Against the chaser: above 0.5 over 1024 games per preset; 0.70 is the target, and a score
   below it warns rather than fails.
 
-The games are seeded at or above `bench.scripted_search.SEED_LIMIT`, so none replays a game
+The games are seeded at or above `bench.imugi_search.SEED_LIMIT`, so none replays a game
 the parameter search tuned on. Each match plays in a fresh process, so its compiled
 rollout does not depend on what the suite compiled before it.
 """
@@ -24,9 +24,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:  # `bench` is a top-level package of the repository
     sys.path.insert(0, str(ROOT))
 
-from bench.scripted_search import SEED_LIMIT  # noqa: E402
+from bench.imugi_search import SEED_LIMIT  # noqa: E402
 from bnb.contracts import Pool  # noqa: E402
-from bnb.controllers.scripted import Chaser, Random, Scripted  # noqa: E402
+from bnb.controllers.imugi import Imugi  # noqa: E402
+from bnb.controllers.scripted import Chaser, Random  # noqa: E402
 from bnb.game import api  # noqa: E402
 from bnb.game.handling.characteristics import characteristics  # noqa: E402
 from bnb.game.modes.rules import PRESETS  # noqa: E402
@@ -46,7 +47,7 @@ SEEDS = {
 
 
 def _results(preset: str, opponent: str, games: int) -> torch.Tensor:
-    """The scripted agent's results over fresh games, in this process."""
+    """Imugi's results over fresh games, in this process."""
     device = torch.device("cuda")
     game = PRESETS[preset]
     card = characteristics(api.ship_types(device), api.rules_of(game))
@@ -58,7 +59,7 @@ def _results(preset: str, opponent: str, games: int) -> torch.Tensor:
         game,
         api.ship_types(device),
         (Pool("acceptance", 1.0, ("scripted", "opponent")),),
-        {"scripted": Scripted(card, game.ships_per_team), "opponent": rival},
+        {"scripted": Imugi(card, game.ships_per_team), "opponent": rival},
         "scripted",
         games,
         device,

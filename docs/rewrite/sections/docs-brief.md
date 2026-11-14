@@ -53,7 +53,7 @@ correct** as the code changes.
     - the training loop;
     - the roadmap: sections and their status.
 - **Only merged, stable parts get prose:** setup, architecture, contracts, game, modes,
-  rewards, Yemong, mixed batches. The learner, ship card, scripted agent, BC, league,
+  rewards, Yemong, mixed batches. The learner, ship card, Imugi, BC, league,
   diagnostics and play shell get a short placeholder each, saying it is in progress and
   what it will cover. The generated reference covers whatever exists.
 - **The README** becomes a short entry point: what the project is, the quickstart, and

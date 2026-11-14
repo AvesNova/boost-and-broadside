@@ -1,4 +1,4 @@
-"""The interface every controller implements: models, scripted agents, random, humans.
+"""The interface every controller implements: models, Imugi, random, humans, the others.
 
 A controller plays one team. It receives that team's view and returns actions for that
 team's S ships. Following PyTorch idiom, a model's parameters live in the controller's own

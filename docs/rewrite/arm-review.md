@@ -230,7 +230,7 @@ The challenger is normally the more complex or slower option. It wins only by be
 
 **A24. BC→RL against RL from scratch** [20]
 - **What / why:** the same rewards with no BC, at 2–3× the steps.
-- **Paper question:** is the scripted-agent BC start necessary, and what does it save?
+- **Paper question:** is Imugi BC start necessary, and what does it save?
 - **Purpose:** a scientific claim.
 - **Why an arm:** only training shows it. It may fail to get going without BC.
 - **When:** late, or in parallel. It doesn't feed the chain.

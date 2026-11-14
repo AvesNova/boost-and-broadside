@@ -91,15 +91,15 @@ research, their conversion to handles and their last cards are kept as reference
 solved under, and the spawn speed is still 1.3 times their fastest stall speed, above every
 kept type's.
 
-## The scripted agent's real-scale sets
+## Imugi's real-scale sets
 
-The scripted agent plays the real-scale presets with sets of its own,
+Imugi, the scripted agent, plays the real-scale presets with sets of its own,
 real_scale_deathmatch and real_scale_frontline in
-`bnb.controllers.scripted_defaults.MODE_DEFAULTS` (and real_scale_elimination, a copy of
+`bnb.controllers.imugi_defaults.MODE_DEFAULTS` (and real_scale_elimination, a copy of
 the deathmatch set without a search), chosen whenever the card's gravity is the
-real-scale one ([The scripted agent](../scripted-agent.md)); the standard sets are
+real-scale one ([Imugi](../imugi.md)); the standard sets are
 unchanged. They are a light retune: each preset's parameter search
-(`bench/scripted_search.py --preset <preset> --ship-type 0 --from-defaults`) started from
+(`bench/imugi_search.py --preset <preset> --ship-type 0 --from-defaults`) started from
 the standard mode's set and played the P-51D lineup (every ship a P-51D, a type of the set
 then), 32 candidates of
 64 games a generation, for 12 generations in deathmatch and 13 in Frontline, about 17
@@ -110,7 +110,7 @@ each beat the standard set in 95-100% of its games. Deathmatch keeps the best ra
 Frontline the one within noise of the best whose self-play drew least and captured second
 most.
 
-The check, `bench/scripted_compare.py`, 512 fresh games per row on the P-51D lineup, fog
+The check, `bench/imugi_compare.py`, 512 fresh games per row on the P-51D lineup, fog
 on, seats drawn per game, seeds above the search's (kills are combat deaths, a front move
 is one capture's step of the front):
 
@@ -140,14 +140,14 @@ The [balancing](real-scale-balance.md) has since replaced both sets with champio
 searched on mixed lineups of every type (its round 1). The pass did not cover the other
 types, the timing parameters' bounds, the decision floors or the chaser; the backlog holds a proper retune (`docs/rewrite/backlog.md`).
 
-With these sets the scripted agent has flown every type against every other: [The ship-type
+With these sets Imugi has flown every type against every other: [The ship-type
 tournament](real-scale-tournament.md).
 
 ## What is not scaled
 
 The model and the learner (Yemong's position and velocity codes, the delta and correction
 bounds, the discounts) are tuned to the standard game; the real-scale variant is for play,
-by people and the scripted agent. The scripted agent states its distances in gun ranges,
+by people and Imugi. Imugi states its distances in gun ranges,
 corner radii and the like, and plays the real-scale presets with its own lightly retuned
 sets (above); the chaser keeps the standard distances in the card's lengths. The solver's
 windows and error floors follow each card's own scales ([The ship

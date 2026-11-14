@@ -5,7 +5,7 @@ Status: spec written 2026-11-01 (`yemong-spec.md`, brief `yemong-brief.md`).
 ## Decided (author, 2026-10-31)
 
 - **Starting point:** v1 Yemong (same ideas and math, new code), because it is known to
-  train: about 1500 Elo with the scripted agent at 1000. The stack has room to do much
+  train: about 1500 Elo with Imugi at 1000. The stack has room to do much
   better, but the rewrite starts from the known good.
 - **Head-to-head comparison later:** the Yemong-review design is added as an option once
   v1 works (Griffin-only memory, the dual next-state head, damped rotary encodings for

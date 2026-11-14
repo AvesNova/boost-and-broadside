@@ -1,6 +1,6 @@
-# Mode timing: game length of the scripted agent (2026-11-15)
+# Mode timing: game length of Imugi (2026-11-15)
 
-Measured to set clocks and tickets. The scripted agent plays both seats, at its default
+Measured to set clocks and tickets. Imugi plays both seats, at its default
 temperature, fog on, the preset's fields on (10), mirrored lineups (each slot the same ship
 type on both teams; environments alternate the slot patterns Yongma,Jujak,... and
 Jujak,Yongma,...; these runs alternated them every environment, `bench.mode_dynamics` now
@@ -135,7 +135,7 @@ test why 2v2 captures are rare.
 
 ## Caveats
 
-- Scripted agent only, mirrored lineups: both teams are equally strong, so deathmatch
+- Imugi only, mirrored lineups: both teams are equally strong, so deathmatch
   per-team rates are symmetric by construction and a trained agent's kill rate will differ.
 - Deathmatch has 80 games (CPU time); the first 32 ran while the machine was loaded and the
   rest alone, with identical settings. The runs are first games per environment; a game

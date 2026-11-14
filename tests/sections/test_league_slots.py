@@ -1,5 +1,5 @@
 """The league's seat in the rollout (league spec 2, 3; acceptance 3 and 4): the draws' shares
-and repeatability, the pool's one scripted entry (the full-strength scripted agent), and
+and repeatability, the pool's one scripted entry (the full-strength Imugi), and
 the clean cut: it swaps the right
 slot at the right update and nothing else, leaves the games it cuts uncredited, and resets
 or keeps the opponent's memory."""
@@ -18,10 +18,10 @@ from bnb.contracts.obs import GLOBAL
 from bnb.league.league import same_build
 from bnb.league.pool import EXPONENTIAL_AVERAGE, UNIFORM_AVERAGE, Entry, sampling_weights
 from bnb.runtime.opponents import (
+    IMUGI_KIND,
+    IMUGI_PLAYER,
     NETWORK,
     OPPONENTS,
-    SCRIPTED_KIND,
-    SCRIPTED_PLAYER,
     LeagueConfig,
 )
 from bnb.runtime.snapshots import SnapshotSchedule
@@ -76,30 +76,30 @@ def _view(trainer) -> Obs:
     return rollout._view(rollout.carry, OPPONENTS, trainer.opponents.reads + ("globals",))
 
 
-def test_a_slot_holding_the_scripted_agent_plays_it_at_full_strength(tmp_path):
-    """The rows of a slot holding the scripted agent play its action and tally to its
+def test_a_slot_holding_imugi_plays_it_at_full_strength(tmp_path):
+    """The rows of a slot holding Imugi play its action and tally to its
     column (the one after the slots'); the other slots' rows play their networks."""
     trainer, _ = cases.league(tmp_path)
     opponents = trainer.opponents
     slots = opponents.slots
     for slot in range(slots):  # the league's draws may have put the agent in any slot
         opponents.set_kind(slot, NETWORK)
-    opponents.set_kind(0, SCRIPTED_KIND)
-    assert opponents.scripted_agent.temperature == 1.0
-    assert opponents.scripted_agent.share == 1.0
+    opponents.set_kind(0, IMUGI_KIND)
+    assert opponents.imugi.temperature == 1.0
+    assert opponents.imugi.share == 1.0
     rows = opponents.modes.shape[0]
     view = _view(trainer)
     carry = trainer.rollout.carry["controllers"][OPPONENTS]
     reset = torch.ones(rows, dtype=torch.bool)
-    scripted_step = opponents.scripted_agent.step
+    imugi_step = opponents.imugi.step
     recorded_outputs = []
 
     def step(*arguments):
-        outputs = scripted_step(*arguments)
+        outputs = imugi_step(*arguments)
         recorded_outputs.append(outputs[0].packed())
         return outputs
 
-    opponents.scripted_agent.step = step
+    opponents.imugi.step = step
     action, after, _ = opponents.step(carry, view, reset, torch.arange(reset.shape[0]))
     scripted = opponents.slot_of_row == 0
     expected = torch.where(scripted, slots, opponents.slot_of_row)
@@ -133,8 +133,8 @@ def test_the_same_seed_draws_the_same_opponents(tmp_path):
 # ---- the pool's one scripted entry
 
 
-def test_the_pool_holds_the_full_strength_scripted_agent_and_no_rung(tmp_path):
-    """The training pool's only scripted entry is the full-strength scripted agent (the
+def test_the_pool_holds_the_full_strength_imugi_and_no_rung(tmp_path):
+    """The training pool's only scripted entry is the full-strength Imugi (the
     author, 2026-11-12): no weaker rung and no random player, beside the averages and,
     as the run takes them, the snapshots. The league's configuration has no ladder."""
     trainer, league = cases.league(
@@ -146,7 +146,7 @@ def test_the_pool_holds_the_full_strength_scripted_agent_and_no_rung(tmp_path):
         trainer.ppo.environment_steps += trainer.steps_per_update
         league.updated(trainer)
     kinds = {name: entry.kind for name, entry in league.entries.items()}
-    assert [name for name, kind in kinds.items() if kind == "scripted"] == [SCRIPTED_PLAYER]
+    assert [name for name, kind in kinds.items() if kind == "scripted"] == [IMUGI_PLAYER]
     assert {name for name, kind in kinds.items() if kind == "average"} == {
         EXPONENTIAL_AVERAGE,
         UNIFORM_AVERAGE,
@@ -167,8 +167,7 @@ def test_the_pool_holds_the_full_strength_scripted_agent_and_no_rung(tmp_path):
 def _names(league, carry) -> list[str]:
     slots = league.config.slots
     return [
-        league.held[column] if column < slots else SCRIPTED_PLAYER
-        for column in carry.column.tolist()
+        league.held[column] if column < slots else IMUGI_PLAYER for column in carry.column.tolist()
     ]
 
 
@@ -230,8 +229,8 @@ def test_a_cut_swaps_the_next_slot_every_cut_every_updates_and_nothing_else(tmp_
             assert torch.equal(
                 opponents.parameters[f"model.{key}"][slot], league._weights_of(entry)[key]
             )
-        else:  # the scripted agent: the slot's set is left as it was
-            assert int(opponents.kind[slot]) == SCRIPTED_KIND
+        else:  # Imugi: the slot's set is left as it was
+            assert int(opponents.kind[slot]) == IMUGI_KIND
         for other in set(range(4)) - {slot}:
             if league.entries[held[other]].kind != "average":  # an average follows its weights
                 assert torch.equal(opponents.parameters[f"model.{key}"][other], stacked[other])
@@ -270,10 +269,10 @@ def test_a_cut_game_is_credited_to_no_one(tmp_path):
                 if column < slots:
                     assert begun[column], (tick, column)
                     name = league.held[column]
-                else:  # the scripted agent's column: the slots that hold it
-                    holders = (opponents.kind == SCRIPTED_KIND).nonzero()[:, 0].tolist()
+                else:  # Imugi's column: the slots that hold it
+                    holders = (opponents.kind == IMUGI_KIND).nonzero()[:, 0].tolist()
                     assert any(begun[slot] for slot in holders), (tick, column)
-                    name = SCRIPTED_PLAYER
+                    name = IMUGI_PLAYER
                 total = expected.setdefault(name, [0.0, 0.0, 0.0])
                 for index, count in enumerate((wins, losses, ties)):
                     total[index] += count
@@ -353,7 +352,7 @@ def test_a_cut_resets_the_opponents_memory_or_keeps_it(tmp_path, monkeypatch, ca
 def test_a_cut_keeps_the_memory_only_between_networks():
     snapshot = Entry("snapshot_1", "checkpoint", steps=1, ordinal=0)
     average = Entry(EXPONENTIAL_AVERAGE, "average")
-    scripted = Entry(SCRIPTED_PLAYER, "scripted")
+    scripted = Entry(IMUGI_PLAYER, "scripted")
     assert same_build(snapshot, average) and same_build(average, snapshot)
     assert not same_build(scripted, snapshot) and not same_build(snapshot, scripted)
     assert not same_build(None, snapshot)
@@ -408,7 +407,7 @@ def test_the_leagues_games_join_the_runs_fit(tmp_path):
         snapshot = f"snapshot_{trainer.ppo.environment_steps}"
         for name, outcomes in played.items():
             assert games[f"{mode}|live|{name}"] == outcomes, (update, name)
-            stationary = name == SCRIPTED_PLAYER or name.startswith("snapshot_")
+            stationary = name == IMUGI_PLAYER or name.startswith("snapshot_")
             credited = league.ratings.whole if stationary else games
             if name != snapshot:
                 assert credited[f"{mode}|{snapshot}|{name}"][0] >= outcomes[0]

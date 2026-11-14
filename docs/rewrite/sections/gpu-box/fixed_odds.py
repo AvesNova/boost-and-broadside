@@ -1,5 +1,5 @@
 """fixed_odds.py: win rates at fixed odds (the author, 21:00 KST, for a paper): the network with n
-ships against the scripted agent with n x 1, 1.2, 1.5 and 2 ships (rounded), deathmatch in the
+ships against Imugi with n x 1, 1.2, 1.5 and 2 ships (rounded), deathmatch in the
 training arena. One engine built at 2n (one compile); each batch's 8 blocks are 2 per ratio;
 `--batches` batches (128 games per ratio at the default layouts). Per ratio: wins, draws, losses,
 the score (a draw half a win) and its 95% Wilson interval, and the win rate alone with its own.
@@ -40,7 +40,7 @@ def main() -> None:
     enemies = [round(n * r) for r in RATIOS]
     size = max(enemies)
     game = dataclasses.replace(PRESETS[args.preset], ships_per_team=size)
-    first, second = _players([args.agent, "scripted"], pathlib.Path("runs"))
+    first, second = _players([args.agent, "imugi"], pathlib.Path("runs"))
     players = [first, second]
     groups = network_groups(players)
     layout = ArenaConfig(blocks=BLOCKS, block_environments=args.block_environments)

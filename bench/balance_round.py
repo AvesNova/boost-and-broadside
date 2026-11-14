@@ -8,14 +8,14 @@ Its stages, in order (`--stages` runs some of them; each resumes from what is on
 1. ships: rebuild the set from `bnb.game.real_scale` and its balance file
    (`python -m bnb.game.real_scale --resume`: a combat-only change re-arms the cards in
    seconds; a flight change solves those types, minutes each).
-2. search: each mode's scripted parameter search (`bench/scripted_search.py`) against its
-   current champion (the set in `scripted_real_scale.json`) on mixed lineups, the four
+2. search: each mode's scripted parameter search (`bench/imugi_search.py`) against its
+   current champion (the set in `imugi_real_scale.json`) on mixed lineups, the four
    HELD_OUT types kept out of the draws, at most GENERATIONS generations (the plateau rule:
    the median rating not 10 points up in 10 generations).
 3. adopt: each mode's candidate (the best-rated survivor of its last generation) against
-   the champion, `bench/scripted_compare.py` at T = 1: 1,024 games on mixed lineups of every
+   the champion, `bench/imugi_compare.py` at T = 1: 1,024 games on mixed lineups of every
    type, and 512 on mixed lineups of the held-out types. The candidate becomes the champion
-   (written to `scripted_real_scale.json`) when its score is more than two standard errors
+   (written to `imugi_real_scale.json`) when its score is more than two standard errors
    above one half on the 1,024; else the champion stays.
 4. tournament: the ship-type tournament in real_scale_deathmatch
    (`bench/ship_type_tournament.py play`), A-optimal until every standard error is under
@@ -124,7 +124,7 @@ def search(round_number: int, mode: str, log_file: pathlib.Path) -> None:
     seed = 10 * round_number + (1 if mode == "deathmatch" else 2)
     run(
         PYTHON
-        + ["-m", "bench.scripted_search", "--preset", f"real_scale_{mode}", "--mixed"]
+        + ["-m", "bench.imugi_search", "--preset", f"real_scale_{mode}", "--mixed"]
         + ["--hold-out", HELD_OUT, "--champion", "defaults", "--from-defaults"]
         + ["--plateau-on", "median", "--patience", "10", "--min-gain", "10"]
         + ["--generations", str(left), "--population", "32", "--games", "64"]
@@ -167,8 +167,8 @@ def summary_of(log: pathlib.Path) -> dict:
 
 def adopt(round_number: int, mode: str, log_file: pathlib.Path) -> dict:
     """Check a mode's candidate against its champion and adopt it by the rule."""
-    from bench.scripted_compare import parameters_of
-    from bnb.controllers.scripted_defaults import write_real_scale
+    from bench.imugi_compare import parameters_of
+    from bnb.controllers.imugi_defaults import write_real_scale
 
     docs, runs = paths(round_number)
     log = search_log(runs, mode)
@@ -184,7 +184,7 @@ def adopt(round_number: int, mode: str, log_file: pathlib.Path) -> dict:
         if not out.exists():
             run(
                 PYTHON
-                + ["-m", "bench.scripted_compare", "--preset", preset, "--mixed"]
+                + ["-m", "bench.imugi_compare", "--preset", preset, "--mixed"]
                 + ["--first", candidate, "--second", preset, "--games", str(games)]
                 + ["--seed", str(seed), "--out", str(out)]
                 + extra,

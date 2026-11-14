@@ -1,12 +1,12 @@
-# Brief: a scripted agent with memory (soft hysteresis and dead reckoning), round two
+# Brief: an Imugi with memory (soft hysteresis and dead reckoning), round two
 
-The soft scripted agent has landed (`docs/rewrite/sections/scripted-redesign-notes.md`).
+The soft Imugi has landed (`docs/rewrite/sections/scripted-redesign-notes.md`).
 It is level with the old raw agent and beats the old BC teacher 0.63. It is still
 memoryless: every choice is a function of the current observation. That leaves two
 problems:
 
 1. **Plan choices flip at hard edges.** The target is the nearest visible living enemy
-   (`scripted_combat.combat`, an argmin). The goal choices (target, zone, recovery) are
+   (`imugi_combat.combat`, an argmin). The goal choices (target, zone, recovery) are
    hard selections. The turn side comes from a sign. Near a tie they flip from tick to
    tick.
 2. **BC puts no pressure on the clone's memory.** The best clone of a memoryless teacher
@@ -17,7 +17,7 @@ enemies that fog hides, for a short time; then one more search, until it plateau
 
 ## 1. Per-ship memory (the controller's carry)
 
-`Scripted` gains a carry: per ship, its committed plan choices, and per enemy, the last
+`Imugi` gains a carry: per ship, its committed plan choices, and per enemy, the last
 seen position, velocity and time.
 - It resets cleanly on the ship's death and respawn, on episode reset, and when an
   enemy dies.
@@ -70,7 +70,7 @@ random. Keep the names clear, and keep the lanes' ladder chain calibrating them.
 
 ## 5. One more search, until it plateaus
 
-- **Same population round robin** (`bench/scripted_search.py`): 32 candidates, all three
+- **Same population round robin** (`bench/imugi_search.py`): 32 candidates, all three
   presets, temperatures {1, 1.5, 2, 3}.
 - **Start from round one's defaults.** Add the new parameters within bounds; the others
   keep their bounds and scale floors.
@@ -106,7 +106,7 @@ random. Keep the names clear, and keep the lanes' ladder chain calibrating them.
   generation summary is worth showing, when something fails, and when you change plan.
   Start with a plan note.
 - **Tests:** CPU tests for what you change, plus the quick tier; ruff clean; docs updated.
-  The GPU acceptance file (`tests/sections/test_scripted_acceptance.py`) is the only GPU
+  The GPU acceptance file (`tests/sections/test_imugi_acceptance.py`) is the only GPU
   test to run. No dummy training run.
 
 ## Done

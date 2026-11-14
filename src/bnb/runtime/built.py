@@ -1,5 +1,5 @@
 """Functions built ahead of time for the play shell: AOTInductor's C++, built in a child
-process, kept on disk and loaded in milliseconds (the realtime tick, the scripted agent's
+process, kept on disk and loaded in milliseconds (the realtime tick, Imugi's
 step).
 
 A function here is a picklable callable on a tree of tensors (a dataclass of them, a

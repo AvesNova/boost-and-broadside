@@ -1,4 +1,4 @@
-"""Mode dynamics of the scripted agent (T = 1, both sides, the game's lineup or `--lineup`): the
+"""Mode dynamics of Imugi (T = 1, both sides, the game's lineup or `--lineup`): the
 deathmatch's and elimination's kills and the Frontline's captures, on a preset with no fields
 (the agent ignores fields; Frontline keeps its zones) unless `--fields` keeps the preset's.
 
@@ -16,7 +16,7 @@ threshold, or by the clock.
 
 Each environment's first game is recorded; every `--batch` games are one JSON line of FILE
 (appended; a line per batch, so a stopped run keeps its batches). On the compiled rollout
-(`bnb.runtime.rollout.Rollout`, the scripted agent on both seats) with a stage that traces
+(`bnb.runtime.rollout.Rollout`, Imugi on both seats) with a stage that traces
 each environment's score, front and clock every tick, on `--device` (cuda if
 available). Overrides: `--ships`, `--radius` (m), `--zone-radius` (m at map scale 1),
 `--capture-seconds`, `--front-threshold`, `--episode-seconds`, `--temperature` (the
@@ -36,9 +36,9 @@ import zoneinfo
 import torch
 
 from bnb.contracts import Pool
-from bnb.controllers import scripted
-from bnb.controllers.scripted_defaults import MODE_DEFAULTS
-from bnb.controllers.scripted_parameters import ModeParameters
+from bnb.controllers import imugi
+from bnb.controllers.imugi_defaults import MODE_DEFAULTS
+from bnb.controllers.imugi_parameters import ModeParameters
 from bnb.game import api, ships
 from bnb.game import state as state_module
 from bnb.game.handling.characteristics import characteristics
@@ -538,7 +538,7 @@ def main() -> None:
     episode = int(rules.pools[0].episode_ticks)
     length = episode + 2
     card = characteristics(types, rules)
-    agent = scripted.Scripted(card, rules.ships_per_team, temperature=arguments.temperature)
+    agent = imugi.Imugi(card, rules.ships_per_team, temperature=arguments.temperature)
     environments = arguments.batch
     probe = Probe(environments, rules.ships_per_team, device)
     experiments = Experiments(
@@ -551,7 +551,7 @@ def main() -> None:
         sets = dict(MODE_DEFAULTS.sets)
         for name in [mode_name] if mode_name else list(sets):
             sets[name] = dataclasses.replace(sets[name], **json.loads(arguments.b_parameters))
-        other = scripted.Scripted(
+        other = imugi.Imugi(
             card, rules.ships_per_team, ModeParameters(sets), temperature=arguments.temperature
         )
     rollout = Rollout(

@@ -28,8 +28,8 @@ sys.path.insert(0, str(HERE.parent / "game-loop"))
 import league  # noqa: E402
 
 from bench.game_loop import Job, Loop, Player, card_passes, clock, job_summary, run  # noqa: E402
-from bnb.controllers.scripted_doctrine import NAMES, Doctrine  # noqa: E402
-from bnb.controllers.scripted_parameters import Logistic  # noqa: E402
+from bnb.controllers.imugi_doctrine import NAMES, Doctrine  # noqa: E402
+from bnb.controllers.imugi_parameters import Logistic  # noqa: E402
 
 ENVIRONMENTS = {1: 8192, 2: 8192, 5: 4096, 10: 2048, 20: 1024, 50: 256}
 

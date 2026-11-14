@@ -108,12 +108,12 @@ For reference, the training's live policy entropy (`policy/entropy/joint`, per u
 - **The scale is this field's.**
   - The absolute Elos run 70–110 below tournament 7's for the same checkpoints (for
     example champion 121.6M frontline 1755 here, 1825 there).
-  - The field has nothing between the scripted agent (1000) and about 1400, so the
-    anchor's link runs through lopsided games. The scripted agent may also have changed
+  - The field has nothing between Imugi (1000) and about 1400, so the
+    anchor's link runs through lopsided games. Imugi may also have changed
     since tournament 7.
   - The comparisons within the field (the difference table) are what this sweep
     measures.
 - **The opponents are this field.** "Too little entropy" against exploiters or a
   different league could read otherwise; here every opponent is one of these policies or
-  the scripted agent.
+  Imugi.
 - **One seed per run, two checkpoints per run.**

@@ -3,7 +3,7 @@
     round PRESET --target SE [--arms A B ...] [--variant exponential_average]
         one `bnb ratings` round on this box (foreground; run it in tmux): every arm's policy
         files of the variant (BC: the exponential average, RL's hand-off player) found so
-        far, plus the scripted agent (1000), adaptive games until every error is under SE.
+        far, plus Imugi (1000), adaptive games until every error is under SE.
         Its records go to <ratings>/round-NN-PRESET/, and every earlier round's records are
         reused, so a later round plays only where errors are still above its target.
     curves [--out elo.json]

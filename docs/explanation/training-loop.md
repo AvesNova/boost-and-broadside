@@ -6,7 +6,7 @@ reviewed: 2026-11-06 12:00
 # The training loop
 
 The loop lives in `bnb.runtime.train`. It trains Yemong, or the toy relational model, with
-the learner (see [The learner](learner.md)), or clones the scripted agent with
+the learner (see [The learner](learner.md)), or clones Imugi, the scripted agent, with
 `TrainConfig.objective` set to `bc` (see [Behaviour cloning](behaviour-cloning.md), whose
 loop with its stop rule is `bnb.runtime.cloning.clone`). How to run and configure it is in
 the [training guide](../guides/training.md).
@@ -57,14 +57,14 @@ default lineup (`bnb.runtime.train.LINEUP`) is self-play and the league's seat, 
 - `learner`: the model being trained, through `bnb.controllers.yemong.YemongController` or
   `bnb.controllers.relational.RelationalController` (the relational and nearest models);
 - `opponents`: the league's seat, `bnb.runtime.opponents.OpponentSlots`: network slots
-  and the full-strength scripted agent in one controller; the training pool holds no
+  and the full-strength Imugi in one controller; the training pool holds no
   weaker rung and no random player (see [The league](league.md));
 - `chaser`: `bnb.controllers.scripted.Chaser`, which turns toward and shoots at the nearest
   visible living enemy, boosting when far and reversing when close; its distances are in
   the card's lengths (the race's 600, 120 and 250 m on the standard card), from the same
-  characteristics as the scripted agent's;
+  characteristics as Imugi's;
 - `random`: `bnb.controllers.scripted.Random`, sticky uniform random actions;
-- `scripted`: `bnb.controllers.scripted.Scripted`, [the scripted agent](scripted-agent.md),
+- `scripted` (Imugi): `bnb.controllers.imugi.Imugi`, [Imugi](imugi.md),
   with its characteristics measured once for the trainer. With BC it is wrapped in
   `bnb.learn.bc.TeacherOpponent`, which plays the labels' distribution.
 
@@ -124,7 +124,7 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
   collection); a weight set loaded by name (`exponential_average` and `uniform_average`, the
   averages of the live weights that the league and BC keep, and `league_<k>`, the entry
   the league's network slot k holds); and the ladder's rungs,
-  `random`, `rung_T<t>_p<p>`, `rung_T<t>` and `scripted` (the scripted agent at T = 1, with
+  `random`, `rung_T<t>_p<p>`, `rung_T<t>` and `scripted` (Imugi at T = 1, with
   its mode's parameters, which is also BC's default teacher).
   A matchup is any pair of them.
 - **Layout:** every mode of the training mix plays every matchup. The lanes are split evenly
@@ -140,7 +140,7 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
   network run with no padding. A game tells the rating fit `p (1 − p)` about its players'
   gap: 0.25 at even odds, 0.004 at the 950 points v1's policy reached above the scripted
   agent. BC's (`bnb.runtime.cloning.LANES`) play the live clone, the uniform average and
-  the exponential average against the scripted agent, a third of each mode's lanes each;
+  the exponential average against Imugi, a third of each mode's lanes each;
   the launch runs BC with no lanes (`lanes.environments=0`), so its score stop never fires
   and it stops on its plateau or budget
   ([Behaviour cloning](behaviour-cloning.md#rollouts)). Whatever the lanes play, BC hands
@@ -150,7 +150,7 @@ sets how many (`environments`, beyond the training ones) and what they play (`ma
   player (`LaneSeat.load` with `fresh`) starts a new generation, so a game in progress then
   is left out rather than credited to the new entry. Each row's first game is left out
   too: the rollout's clocks are staggered, so it is cut short, and in the first updates
-  those short games, mostly ties, read as a rating near the scripted agent's.
+  those short games, mostly ties, read as a rating near Imugi's.
 - **Results:** the rollout tallies each ended lane game once, from the first player's side,
   and the trainer takes the tally after each collection (`Trainer.lane_record`), logged as
   `lanes/games/<mode>/<matchup>` and `lanes/score/<mode>/<matchup>`. They are rated in
