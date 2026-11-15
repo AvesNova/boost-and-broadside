@@ -20,12 +20,20 @@ from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.tree import contract
 from bnb.game.handling.characteristics import Characteristics
 from bnb.game.ship_types import per_ship
+from bnb.models.yemong.density import hex_cells
 
 from .imugi_parameters import ImugiParameters, Switch, logistic, switch_probability
 
 # A remembered enemy is forgotten once its weight as a target falls below this: its
 # prediction is then worth nothing to aim or fire at.
 FORGET_WEIGHT = 0.01
+# The explore grid (`track_seen`, `imugi_combat.explore_target`): the hex grid of
+# EXPLORE_RINGS rings over the arena (cell centres in arena radii, about 1 km apart on the
+# 7.8 km map), and the time a seen cell's value takes to fall by e: an enemy at cruise
+# crosses a vision range (3 km) in about 10 s, so after 20 s a cell seen empty says little.
+EXPLORE_RINGS = 8
+EXPLORE_CELLS = hex_cells(EXPLORE_RINGS)[1]
+EXPLORE_SECONDS = 20.0
 
 
 @contract
@@ -42,9 +50,9 @@ class ImugiCarry:
     enemy_velocity_y (R, E): each enemy's last seen state; known (R, E) bool: remembered.
     boundary_radius, boundary_progress and boundary_speed (R,): the boundary's radius (m)
     and the episode progress when last observed (-1 none), and its closing speed (m/s)
-    from the last two observations (`track_boundary`). search_x, search_y (R,): the team's
-    search point while it knows no enemy, and search_set (R,) bool whether it has one
-    (`imugi_combat.search`)."""
+    from the last two observations (`track_boundary`). seen (R, C): how recently the team
+    has seen each cell of the explore grid (`EXPLORE_CELLS`; 1 in view now, decaying with
+    EXPLORE_SECONDS: `track_seen`)."""
 
     target: torch.Tensor
     combat_left: torch.Tensor
@@ -62,9 +70,7 @@ class ImugiCarry:
     boundary_radius: torch.Tensor
     boundary_progress: torch.Tensor
     boundary_speed: torch.Tensor
-    search_x: torch.Tensor
-    search_y: torch.Tensor
-    search_set: torch.Tensor
+    seen: torch.Tensor
 
 
 def fresh_carry(views: int, ships: int, enemies: int, device) -> ImugiCarry:
@@ -93,9 +99,7 @@ def fresh_carry(views: int, ships: int, enemies: int, device) -> ImugiCarry:
         boundary_radius=torch.zeros(views, device=device),
         boundary_progress=torch.full((views,), -1.0, device=device),
         boundary_speed=torch.zeros(views, device=device),
-        search_x=torch.zeros(views, device=device),
-        search_y=torch.zeros(views, device=device),
-        search_set=torch.zeros(views, dtype=torch.bool, device=device),
+        seen=torch.zeros((views, EXPLORE_CELLS.shape[0]), device=device),
     )
 
 
@@ -118,18 +122,45 @@ def track_boundary(carry: ImugiCarry, obs: Obs, reset: torch.Tensor, seconds: fl
         boundary_radius=torch.where(same, carry.boundary_radius, radius),
         boundary_progress=progress,
         boundary_speed=speed,
-        search_set=carry.search_set & ~reset,
     )
+
+
+def track_seen(
+    carry: ImugiCarry,
+    obs: Obs,
+    reset: torch.Tensor,
+    characteristics: Characteristics,
+    seconds: float,
+) -> ImugiCarry:
+    """The carry with the explore grid's seen values: a cell within vision range of a living
+    own ship is 1, every other cell decays by exp(-seconds / EXPLORE_SECONDS). A new episode
+    starts from nothing seen. Re-reading the observation the carry was made from (the same
+    episode progress as `track_boundary` recorded: call this before it) keeps the values."""
+    progress = obs.globals[:, GLOBAL["episode_progress"]]
+    last = carry.boundary_progress
+    fresh = reset | (last < 0.0) | (progress < last)
+    same = ~fresh & (progress == last)
+    own = obs.ships[:, : obs.ships.shape[-2] // 2]
+    alive = own[..., SHIP["alive"]] > 0.5
+    vision = per_ship(characteristics.vision_range, own[..., SHIP["ship_type"]].to(torch.int32))
+    cells = EXPLORE_CELLS.to(own.device)
+    arena_radius = obs.globals[:, None, GLOBAL["arena_radius"]]
+    # (R, C, S): each cell's offset from each own ship
+    off_x = (cells[:, 0] * arena_radius)[..., None] - own[..., SHIP["x"]][:, None, :]
+    off_y = (cells[:, 1] * arena_radius)[..., None] - own[..., SHIP["y"]][:, None, :]
+    in_view = (off_x * off_x + off_y * off_y < (vision * vision)[:, None, :]) & alive[:, None, :]
+    visible = in_view.any(-1).float()
+    before = torch.where(fresh[:, None], 0.0, carry.seen)
+    decayed = before * math.exp(-seconds / EXPLORE_SECONDS)
+    seen = torch.where(same[:, None], carry.seen, torch.maximum(decayed, visible))
+    return dataclasses.replace(carry, seen=seen)
 
 
 def forgotten(carry: ImugiCarry) -> ImugiCarry:
     """The carry with every plan choice unset and every enemy forgotten (memory off); the
     ships' agent flags kept."""
     return dataclasses.replace(
-        carry,
-        fresh=torch.ones_like(carry.fresh),
-        known=torch.zeros_like(carry.known),
-        search_set=torch.zeros_like(carry.search_set),
+        carry, fresh=torch.ones_like(carry.fresh), known=torch.zeros_like(carry.known)
     )
 
 

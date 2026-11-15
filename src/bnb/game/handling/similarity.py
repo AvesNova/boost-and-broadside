@@ -177,6 +177,8 @@ RULE_UNITS = {
     "mode.wave_seconds": TIME,
     "mode.side_area_fraction": NONE,
     "mode.side_heading_jitter": NONE,
+    "mode.side_centre_half_angle": NONE,
+    "mode.side_centre_radius_min": NONE,
     "mode.shrink_hold_seconds": TIME,
     "mode.shrink_end_lead_seconds": TIME,
     "mode.shrink_law": NONE,

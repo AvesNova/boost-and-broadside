@@ -17,11 +17,18 @@ from bnb.game.modes.rules import PRESETS
 from bnb.game.rules import FlightConstants, Rules, rules_of
 from bnb.streams import action_uniforms, inverse_cdf, purpose_key, row_uniforms
 
-from .imugi_combat import Marginals, combat, context, track_search
+from .imugi_combat import Marginals, combat, context
 from .imugi_defaults import MODE_DEFAULTS
 from .imugi_doctrine import for_card
 from .imugi_frontline import frontline
-from .imugi_memory import ImugiCarry, forgotten, fresh_carry, remember, track_boundary
+from .imugi_memory import (
+    ImugiCarry,
+    forgotten,
+    fresh_carry,
+    remember,
+    track_boundary,
+    track_seen,
+)
 from .imugi_parameters import MODES, ImugiParameters, ModeParameters
 from .scripted import STANDARD_GUN_RANGE
 
@@ -119,8 +126,8 @@ def decide(
     if reset is None:
         reset = torch.zeros(views, dtype=torch.bool, device=ships.device)
     carry, recall = remember(carry, obs, reset, characteristics, parameters, temperature)
+    carry = track_seen(carry, obs, reset, characteristics, seconds)  # before track_boundary
     carry = track_boundary(carry, obs, reset, seconds)
-    carry = track_search(carry, obs, recall, decision_key)
     fleet = context(
         obs, characteristics, parameters, temperature, carry, recall, seconds, decision_key
     )

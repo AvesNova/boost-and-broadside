@@ -245,28 +245,41 @@ def side_placement(
     axis_x: torch.Tensor,
     axis_y: torch.Tensor,
 ) -> Placement:
-    """Elimination's spawns by team side (modes spec 4, game version 7): each team's area is
-    the disc of side_area_fraction arena radii around its centre, `Rules.spawn_offset` arena
-    radii from the map centre along the spawn axis (B,), team 0 on the -axis side and team 1
-    on the + side as the sandbox formation's; each ship a uniform point in its team's area
-    (the mode's candidate 0 radius and angle uniforms), nose toward the enemy area's centre
+    """Elimination's spawns by team side (modes spec 4; game version 7, the centres drawn per
+    team 2026-11-15): each team's area is the disc of side_area_fraction arena radii around
+    its centre, which is drawn for each team on its own (from its first ship's spare
+    candidate uniforms) uniformly by area over the annular sector within
+    side_centre_half_angle of its end of the spawn axis (B,), from side_centre_radius_min to
+    `Rules.spawn_offset` arena radii from the map centre; team 0 on the -axis side and team
+    1 on the + side as the sandbox formation's. Each ship is a uniform point in its team's
+    area (the mode's candidate 0 radius and angle uniforms), nose toward the map's centre
     turned by a uniform angle within side_heading_jitter (its heading uniform), then turned
-    the least that leaves it room to turn away from the edge (`_edge_safe`). Team 1's
-    placement is team 0's turned half a turn in distribution. arena_radius (B,)."""
+    the least that leaves it room to turn away from the edge (`_edge_safe`). Neither team's
+    spawn tells it where the other's is. Team 1's placement is team 0's turned half a turn
+    in distribution. arena_radius (B,)."""
     B, N, S = uniforms.shape[0], rules.num_ships, rules.ships_per_team
     candidates = mode_rules.spawn_candidates
     per_ship = uniforms.reshape(B, N, -1)
     team = ship_team(S, uniforms.device)
-    side = (2 * team - 1).to(torch.float32)  # (N,) -1 for team 0, +1 for team 1
-    offset = (rules.spawn_offset * arena_radius)[:, None]
-    centre_x, centre_y = side * offset * axis_x[:, None], side * offset * axis_y[:, None]
+    # each team's centre from its first ship's spare uniforms (columns 1 and 2: candidates
+    # the side placement never draws)
+    first = per_ship[:, team * S]  # (B, N, columns): the team's first ship's, for every ship
+    inner = mode_rules.side_centre_radius_min
+    outer = rules.spawn_offset
+    radius = arena_radius[:, None] * torch.sqrt(
+        inner * inner + first[..., 2] * (outer * outer - inner * inner)
+    )
+    swing_centre = mode_rules.side_centre_half_angle * (2.0 * first[..., 1] - 1.0)
+    axis_angle = torch.atan2(axis_y, axis_x)[:, None] + torch.where(team == 0, math.pi, 0.0)
+    centre_angle = axis_angle + swing_centre
+    centre_x, centre_y = radius * torch.cos(centre_angle), radius * torch.sin(centre_angle)
     offset_x, offset_y = uniform_disc(
         (mode_rules.side_area_fraction * arena_radius)[:, None],
         per_ship[..., 0],
         per_ship[..., candidates],
     )
     x, y = centre_x + offset_x, centre_y + offset_y
-    toward = torch.atan2(-centre_y - y, -centre_x - x)  # the enemy area's centre
+    toward = torch.atan2(-y, -x)  # the map's centre
     swing = mode_rules.side_heading_jitter * (2.0 * per_ship[..., 2 * candidates] - 1.0)
     heading_cos, heading_sin = _edge_safe(rules, arena_radius, x, y, toward + swing)
     return Placement(x=x, y=y, heading_cos=heading_cos, heading_sin=heading_sin)

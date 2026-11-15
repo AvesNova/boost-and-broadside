@@ -324,28 +324,45 @@ def _side_placement(mode_rules=None, batch=256, seed=11):
     return rules, mode_rules, angle, placed
 
 
-def test_elimination_teams_spawn_in_their_own_areas_on_opposite_sides():
-    rules, mode_rules, angle, placed = _side_placement()
-    offset = rules.spawn_offset * SIDES.arena_radius
+def _team_centres(rules, placed):
+    """(B, 2) x, y of each team's area centre, from its ships' mean (good to the area's
+    radius over sqrt(S))."""
+    return by_team(placed.x).mean(-1), by_team(placed.y).mean(-1)
+
+
+def test_elimination_teams_spawn_on_their_own_side_over_a_wide_sector():
+    rules, mode_rules, angle, placed = _side_placement(batch=2048)
     area = mode_rules.side_area_fraction * SIDES.arena_radius
-    side = torch.tensor([-1.0, 1.0]).repeat_interleave(rules.ships_per_team)
-    centre_x = side * offset * torch.cos(angle)[:, None]
-    centre_y = side * offset * torch.sin(angle)[:, None]
-    from_centre = torch.hypot(placed.x - centre_x, placed.y - centre_y)
-    assert float(from_centre.max()) <= area * (1.0 + 1e-5)
-    assert float(from_centre.max()) > 0.9 * area  # the whole area is used
-    # along the spawn axis team 0 is on the - side and team 1 on the +, apart by the gap
+    centre_x, centre_y = _team_centres(rules, placed)
+    # each team's centre on its end of the axis, within the sector's half angle
+    team_end = torch.stack([angle + math.pi, angle], -1)
+    centre_angle = torch.atan2(centre_y, centre_x)
+    off = torch.remainder(centre_angle - team_end + math.pi, 2.0 * math.pi) - math.pi
+    slack = math.atan2(area, mode_rules.side_centre_radius_min * SIDES.arena_radius)
+    assert float(off.abs().max()) <= mode_rules.side_centre_half_angle + slack
+    assert float(off.abs().max()) > 0.8 * mode_rules.side_centre_half_angle  # all of it
+    distance = torch.hypot(centre_x, centre_y) / SIDES.arena_radius
+    assert float(distance.min()) > mode_rules.side_centre_radius_min - 0.15
+    assert float(distance.max()) < rules.spawn_offset + 0.15
+    # every ship in its team's area, the teams on opposite sides of the axis's normal
     along = by_team(placed.x * torch.cos(angle)[:, None] + placed.y * torch.sin(angle)[:, None])
-    assert float(along[:, 0].max()) < -(offset - area) + 1e-2
-    assert float(along[:, 1].min()) > (offset - area) - 1e-2
+    assert bool((along[:, 0] < 0).all()) and bool((along[:, 1] > 0).all())
 
 
-def test_elimination_spawns_face_the_enemy_area_within_the_jitter():
+def test_elimination_team_centres_are_drawn_independently():
+    """Neither team's spawn tells it where the other's is: the angle of team 1's centre
+    from its axis end is uncorrelated with team 0's."""
+    rules, mode_rules, angle, placed = _side_placement(batch=4096)
+    centre_x, centre_y = _team_centres(rules, placed)
+    team_end = torch.stack([angle + math.pi, angle], -1)
+    off = torch.remainder(torch.atan2(centre_y, centre_x) - team_end + math.pi, 2 * math.pi)
+    correlation = torch.corrcoef(off.T)[0, 1]
+    assert abs(float(correlation)) < 0.08
+
+
+def test_elimination_spawns_face_the_map_centre_within_the_jitter():
     rules, mode_rules, angle, placed = _side_placement()
-    side = torch.tensor([-1.0, 1.0]).repeat_interleave(rules.ships_per_team)
-    enemy_x = -side * rules.spawn_offset * SIDES.arena_radius * torch.cos(angle)[:, None]
-    enemy_y = -side * rules.spawn_offset * SIDES.arena_radius * torch.sin(angle)[:, None]
-    to_x, to_y = enemy_x - placed.x, enemy_y - placed.y
+    to_x, to_y = -placed.x, -placed.y
     off = torch.atan2(
         placed.heading_cos * to_y - placed.heading_sin * to_x,
         placed.heading_cos * to_x + placed.heading_sin * to_y,
@@ -375,8 +392,10 @@ def test_an_elimination_match_spawns_by_side_and_clover_keeps_its_layout():
     state = api.reset(rules, REAL_SCALE, api.uniforms(rules, 8, generator=generator))
     shown = api.display(state)
     x, y = by_team(shown["ships.x"]), by_team(shown["ships.y"])
-    # the teams' mean points are about 2 spawn offsets apart, through the centre
+    # the teams' mean points are at least the sector's closest centres apart (both at the
+    # inner radius, 2 x half angle from the axis: 2 r sin(90 deg - half angle)), less the
+    # areas
+    mode = rules.modes[0]
+    closest = 2.0 * mode.side_centre_radius_min * math.cos(mode.side_centre_half_angle)
     gap = torch.hypot(x[:, 0].mean(-1) - x[:, 1].mean(-1), y[:, 0].mean(-1) - y[:, 1].mean(-1))
-    assert float(gap.min()) > 2.0 * (rules.spawn_offset - rules.modes[0].side_area_fraction) * (
-        SIDES.arena_radius
-    )
+    assert float(gap.min()) > (closest - 2.0 * mode.side_area_fraction) * SIDES.arena_radius

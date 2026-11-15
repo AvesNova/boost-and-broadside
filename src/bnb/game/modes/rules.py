@@ -230,8 +230,10 @@ class ModeRules:
     respawn ring around an anchor (anchor_distance_min to _max), and spawn_margin, how far
     inside the arena edge a grouped candidate is clipped to. Elimination spawns by team
     side (`modes.spawns.side_placement`): each team's area a disc of side_area_fraction
-    arena radii around its centre at `Rules.spawn_offset` arena radii on the spawn axis,
-    the noses toward the enemy area's centre within side_heading_jitter (radians).
+    arena radii around its centre, drawn per team over the sector of its side
+    (side_centre_half_angle of its end of the spawn axis, side_centre_radius_min to
+    `Rules.spawn_offset` arena radii), the noses toward the map's centre within
+    side_heading_jitter (radians).
     Frontline: the zone ring (zone_ring_fraction of the arena radius), zone_radius (m
     before map scaling), the zones' floors (zone_radius_floor on the radius and
     zone_spacing_floor on the adjacent zones' spacing, m at map scale 1 times set_map_scale,
@@ -243,8 +245,9 @@ class ModeRules:
     phase per team at the match's start: a dead ship respawns at its team's first wave
     after its respawn wait; 0 no waves). Elimination's boundary shrinks: it holds at the
     arena radius for shrink_hold_seconds, then falls by shrink_law (0 linear in radius, 1
-    the smootherstep, 2 the power law, 3 the corner; at most shrink_max_speed) past 0 to a ramp width inside the centre, shrink_end_lead_seconds
-    before the clock's end, so every ship dies before the clock. layout: the
+    the smootherstep, 2 the power law, 3 the corner; at most shrink_max_speed) past 0 to
+    a ramp width inside the centre, shrink_end_lead_seconds before the clock's end, so
+    every ship dies before the clock. layout: the
     game's fixed map (`MapLayout`), or None for a random one; part of the mode's rules, so
     games of one mode with different layouts are different slices of the batch
     (`layout.per_mode`). deathmatch_outcome: team deathmatch's outcome weights for the
@@ -282,6 +285,12 @@ class ModeRules:
     wave_seconds: float = 10.0  # s: 20 s at real scale (the set's [mode])
     side_area_fraction: float = 0.15
     side_heading_jitter: float = math.radians(15.0)
+    # Each team's area centre, drawn per team and independently (2026-11-15: neither team can
+    # tell where the other spawned from where it did): uniform by area over the annular
+    # sector of its side, within side_centre_half_angle of its end of the spawn axis, from
+    # side_centre_radius_min to `Rules.spawn_offset` arena radii from the centre.
+    side_centre_half_angle: float = math.radians(60.0)
+    side_centre_radius_min: float = 0.5
     # Elimination's shrinking boundary (`bnb.game.layout.boundary_fraction`): it holds at
     # the arena radius for shrink_hold_seconds, then shrinks, linear in radius (shrink_law
     # 0) or along the smootherstep (1: a smooth start and end), past radius 0 to minus a
