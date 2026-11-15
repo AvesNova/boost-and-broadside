@@ -1,0 +1,14 @@
+[
+ {"name": "h-base"},
+ {"name": "h-j-turn-0.95", "turn_handles": {"sustained_turn_rate": 0.95}},
+ {"name": "h-j-turn-0.91", "turn_handles": {"sustained_turn_rate": 0.91}},
+ {"name": "h-j-turn-0.87", "turn_handles": {"sustained_turn_rate": 0.87}},
+ {"name": "h-y-lsa-1.25", "energy_handles": {"low_speed_acceleration": 1.25}},
+ {"name": "h-y-lsa-1.5", "energy_handles": {"low_speed_acceleration": 1.5}},
+ {"name": "h-y-damage-1.08", "energy_handles": {"hit_damage": 1.08}},
+ {"name": "h-y-damage-1.18", "energy_handles": {"hit_damage": 1.18}},
+ {"name": "h-j-turn-0.91-y-lsa-1.25", "turn_handles": {"sustained_turn_rate": 0.91}, "energy_handles": {"low_speed_acceleration": 1.25}},
+ {"name": "h-j-turn-0.91-y-damage-1.1", "turn_handles": {"sustained_turn_rate": 0.91}, "energy_handles": {"hit_damage": 1.1}},
+ {"name": "h-y-turn-1.08", "energy_handles": {"sustained_turn_rate": 1.08}},
+ {"name": "h-y-turn-1.08-lsa-1.25", "energy_handles": {"sustained_turn_rate": 1.08, "low_speed_acceleration": 1.25}}
+]

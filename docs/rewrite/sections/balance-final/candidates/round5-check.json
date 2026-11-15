@@ -1,0 +1,253 @@
+[
+{
+"name": "before"
+},
+{
+"name": "r3-041-check",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+}
+},
+{
+"name": "r3-032-check",
+"energy": {
+"turn_exponent": -1.86,
+"strength": 0.389,
+"extend": 0.223,
+"slash": 0.263,
+"lag": 0.0,
+"crowd_sense": 0.0,
+"fight_in_gun_range": [
+2.0693,
+0.127
+],
+"bleed_in_corner_speed": [
+1.0987,
+0.111
+],
+"bleed_in_stall_angle": [
+1.1087,
+0.197
+],
+"sense_crowd_in_gun_range": [
+1.9073,
+0.1
+],
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.502
+}
+},
+{
+"name": "r3-007-check",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.836,
+"slash": 0.461,
+"lag": 0.0,
+"deny": 0.496,
+"crowd_sense": 0.694,
+"duel_extend": 0.219,
+"extend_in_stall_angle": [
+1.9804,
+0.225
+],
+"bleed_in_corner_speed": [
+2.5309,
+0.111
+],
+"deny_in_stall_angle": [
+0.7675,
+0.179
+],
+"deny_in_gun_range": [
+4.5582,
+0.232
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 1.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.629
+}
+},
+{
+"name": "r3-038-check",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.616,
+"extend": 0.0,
+"slash": 0.0,
+"bleed": 0.0,
+"crowd_sense": 0.0,
+"duel_extend": 0.508,
+"extend_in_stall_angle": [
+2.8117,
+0.225
+],
+"engage_in_energy_ratio": [
+0.5996,
+0.0305
+],
+"engage_in_store_fraction": [
+0.1134,
+0.205
+],
+"slash_in_gun_range": [
+3.2912,
+0.236
+],
+"bleed_in_corner_speed": [
+2.7772,
+0.111
+],
+"bleed_in_stall_angle": [
+3.83,
+0.197
+],
+"deny_in_stall_angle": [
+0.4504,
+0.179
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.502
+}
+},
+{
+"name": "r3-033-check",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.477,
+"slash": 0.179,
+"bleed": 0.732,
+"lag": 0.528,
+"deny": 0.539,
+"crowd_sense": 0.042,
+"fight_in_gun_range": [
+1.7039,
+0.127
+],
+"engage_in_store_fraction": [
+0.258,
+0.205
+],
+"sense_crowd_in_gun_range": [
+1.5125,
+0.1
+],
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.502
+}
+},
+{
+"name": "r3-037-check",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.948,
+"bleed": 0.0,
+"lag": 0.23,
+"deny": 0.0,
+"fight_in_gun_range": [
+1.5475,
+0.127
+],
+"extend_in_stall_angle": [
+1.756,
+0.225
+],
+"engage_in_energy_ratio": [
+0.6862,
+0.0305
+],
+"engage_in_store_fraction": [
+0.215,
+0.205
+],
+"sense_crowd_in_gun_range": [
+1.627,
+0.1
+],
+"crowd_sense_stick": 0.927,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.502
+}
+},
+{
+"name": "r3-026-check",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.74,
+"slash": 0.0,
+"bleed": 0.0,
+"deny": 0.0,
+"crowd_sense": 0.107,
+"duel_extend": 0.0,
+"fight_in_gun_range": [
+1.8318,
+0.127
+],
+"extend_in_stall_angle": [
+1.7893,
+0.225
+],
+"engage_in_store_fraction": [
+0.0968,
+0.205
+],
+"deny_in_stall_angle": [
+0.6582,
+0.179
+],
+"sense_mirror_only": 0.0,
+"sense_one_circle": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.502
+}
+}
+]

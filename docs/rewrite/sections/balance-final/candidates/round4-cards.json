@@ -1,0 +1,18 @@
+[
+ {"name": "card-base"},
+ {"name": "y-damage-1.15", "card": {"energy": {"hit_damage": 1.15}}},
+ {"name": "y-damage-1.3", "card": {"energy": {"hit_damage": 1.3}}},
+ {"name": "y-damage-1.5", "card": {"energy": {"hit_damage": 1.5}}},
+ {"name": "y-shield-1.2", "card": {"energy": {"max_shield": 1.2}}},
+ {"name": "y-shield-1.4", "card": {"energy": {"max_shield": 1.4}}},
+ {"name": "j-shield-0.85", "card": {"turn": {"max_shield": 0.85}}},
+ {"name": "j-damage-0.85", "card": {"turn": {"hit_damage": 0.85}}},
+ {"name": "j-induced-1.3", "card": {"turn": {"induced_drag_scale": 1.3}}},
+ {"name": "j-induced-1.6", "card": {"turn": {"induced_drag_scale": 1.6}}},
+ {"name": "y-lift-1.1", "card": {"energy": {"max_lift_coefficient": 1.1}}},
+ {"name": "y-power-1.2", "card": {"energy": {"engine_power": 1.2}}},
+ {"name": "y-induced-0.8", "card": {"energy": {"induced_drag_scale": 0.8}}},
+ {"name": "y-explosive-1", "card": {"energy": {"explosive_share": {"set": 1.0}}}},
+ {"name": "j-lift-0.93", "card": {"turn": {"max_lift_coefficient": 0.93}}},
+ {"name": "y-shield-1.2-damage-1.15", "card": {"energy": {"max_shield": 1.2, "hit_damage": 1.15}}}
+]

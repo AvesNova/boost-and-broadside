@@ -121,7 +121,8 @@ def main() -> None:
     for first in range(0, len(entries), chunk):
         part = entries[first : first + chunk]
         players = [player_of(entry, parameters) for entry in part]
-        cards = [entry.get("card", {}) for entry in part]
+        # one card variant per candidate (with --variants 1, the chunk's only card)
+        cards = [entry.get("card", {}) for entry in part][: args.variants]
         cards += [{}] * (args.variants - len(cards))
         loop.set_types([c.get("energy", {}) for c in cards], [c.get("turn", {}) for c in cards])
         jobs = []
