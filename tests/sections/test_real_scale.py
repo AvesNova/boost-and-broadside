@@ -1,5 +1,5 @@
-"""The real-scale variant (`docs/explanation/game/real-scale.md`): its ship set (Yongma,
-Jujak and vizia), its rules and its presets; and the reference data of the real planes the
+"""The real-scale variant (`docs/explanation/game/real-scale.md`): its ship set (Yongma
+and Jujak), its rules and its presets; and the reference data of the real planes the
 set was researched from (`bnb.reference.real_planes`), no ship types since 2026-11-13.
 
 The set plays at x2 native speed (game v13): its files hold the similarity at length 1 and
@@ -19,7 +19,7 @@ from bnb.reference import real_planes
 
 SET = "real-scale"
 SPEED_UP = real_scale.EQUIVALENT_FACTOR
-KEPT = ("yongma", "jujak", "vizia")
+KEPT = ("yongma", "jujak")
 
 
 def plane(handles: dict[str, float]) -> dict[str, float]:
@@ -90,9 +90,9 @@ def test_the_rules_are_todays_in_real_units_at_x2_speed():
     assert all(rules.spawn_speed > 1.3 * stall_of(ship.card) for ship in ships.load(SET))
 
 
-def test_the_set_is_the_two_archetypes_and_their_hull_and_may_hold_player_types():
-    """Yongma and Jujak first (the game's default lineup alternates types 0 and 1), then
-    vizia; any type after them is a player's (made with the tuning panel's Add, or by hand)
+def test_the_set_is_the_two_archetypes_and_may_hold_player_types():
+    """Yongma and Jujak first (the game's default lineup alternates types 0 and 1); any type
+    after them is a player's (made with the tuning panel's Add, or by hand)
     and only has to be a valid ship file: a unique key and name, every handle and every card
     field, a fire rate the tick can hold. No researched type is one of them."""
     found = ships.load(SET)
@@ -110,14 +110,14 @@ def test_the_set_is_the_two_archetypes_and_their_hull_and_may_hold_player_types(
 
 
 def test_a_player_type_appended_passes_the_pool_rule(tmp_path, monkeypatch):
-    """A copy of vizia written after the set's types under another name (as Add writes one)
+    """A copy of Jujak written after the set's types under another name (as Add writes one)
     keeps the set's types first and in order, and is a valid type."""
     shutil.copytree(ships.SHIPS, tmp_path / "ships")
     monkeypatch.setattr(ships, "SHIPS", tmp_path / "ships")
-    vizia = ships.load(SET)[KEPT.index("vizia")]
-    ships.append(ships.Ship("test-copy", "Test copy", vizia.handles, vizia.card, {}), SET)
+    jujak = ships.load(SET)[KEPT.index("jujak")]
+    ships.append(ships.Ship("test-copy", "Test copy", jujak.handles, jujak.card, {}), SET)
     assert ships.load(SET)[-1].key == "test-copy"
-    test_the_set_is_the_two_archetypes_and_their_hull_and_may_hold_player_types()
+    test_the_set_is_the_two_archetypes_and_may_hold_player_types()
 
 
 def test_the_reference_holds_every_researched_plane_with_its_sources():

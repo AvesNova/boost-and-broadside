@@ -79,6 +79,20 @@ The crossed pools, game by game so that each game is one contiguous slice:
 
 <!-- generated: mixed-pools -->
 
+`TrainConfig.mode_mix` sets the mix as a setting rather than a preset: game presets and
+whole weights, each game's share its weight over their sum. `bnb train` builds the pools
+from it (`bnb.runtime.train.arranged`), every game with its own map, clocks, respawn and
+spawn groups. The 8/4/4 arm (A5), on top of `--preset real_scale_all_modes`:
+
+<!-- not-runnable: options added to a bnb train command -->
+```bash
+--set 'mode_mix={"real_scale_frontline": 8, "real_scale_deathmatch": 4, "real_scale_elimination": 4}'
+```
+
+Setting `pools` by hand gives every pool the `GameConfig`'s game unless each pool names its
+own; `mode_mix` does not have that trap. A trainer refuses pools whose games and shares
+are not the mix's (`bnb.runtime.train.check_pools`).
+
 Every map is fixed-size by default: each pool plays its own arena radius every episode
 (`TrainConfig.arena_scale=None`). This holds until an agent has trained successfully on
 variable-size maps (the author's rule, 2026-11-15); map-size sampling is an opt-in setting
@@ -132,7 +146,8 @@ uv run --no-sync bnb train --preset mixed --precision tf32 --shards 2 --micro-ba
 
 The model's settings are `TrainConfig.yemong` (`bnb.models.yemong.model.YemongConfig`) and
 `TrainConfig.relational` (`bnb.models.relational.RelationalConfig`) and `TrainConfig.nearest`
-(`bnb.models.nearest.NearestConfig`: `hidden`, `allies`, `enemies`, `fields`); the run builds
+(`bnb.models.nearest.NearestConfig`: `hidden`, `allies`, `enemies`, `fields`,
+`full_mode_inputs`); the run builds
 the one `--model` names. The ship card the run plays is `TrainConfig.ship_card`, its values by
 field, one per ship type (the default is `bnb.game.api.default_card`). `--set` changes
 either by its dotted path; the run's `config.json`{.plain} and its checkpoints record them:
@@ -183,7 +198,7 @@ uv run --no-sync bnb train --resume 2026-11-12-chain-example --chain-budget-step
 
 The BC stage is `bnb train --objective bc` with its own budget, 100M environment steps for
 every arm, at most the combined one (`bnb.cli.chain_bc_budget`; `--bc-set
-stop.budget_steps=N` sets another); its plateau rule only logs
+stop.budget_steps=N` or the chain's `--bc-budget-steps N` sets another); its plateau rule only logs
 ([When it stops](../explanation/behaviour-cloning.md#when-it-stops)). The RL stage is a warm
 start (`--init-from`) from the BC stage's exponential average, `policy-exponential/`{.plain},
 for every model: a fresh optimizer and step count, so the learning-rate warm-up runs again,
@@ -193,9 +208,23 @@ budget leaves (`bnb.runs.chain.reinforcement_updates`), none when BC used it all
 
 Every other option (`--preset`, `--model`, `--environments`, `--set`, `--wandb`, ...)
 applies to both stages; `--bc-set` and `--rl-set` are `--set` lines for one stage, applied
-after the shared ones. `--updates`, `--bc-budget-steps`, `--from` and `--init-from` are the
-chain's to set and are refused. `--print-config` prints both stages' configurations, as
-`{"bc": ..., "rl": ...}`.
+after the shared ones. `--updates`, `--from` and `--init-from` are the
+chain's to set and are refused. `--set update_policies=rl` writes every update's policy
+files in the RL stage only (`TrainConfig.update_policies`; `all` adds BC's, about 1 GB more).
+`--print-config` prints both stages' configurations, as `{"bc": ..., "rl": ...}`.
+
+`--bc-budget-steps 0` is a chain with no BC stage (arm A24, RL from scratch): the handover
+is recorded at step 0 with no policy (`stopped_by` `no_bc`), no `-bc` run is made, and the
+RL stage is a fresh run over the whole combined budget with the RL stage's settings, the warm
+start's entropy coefficients (`WARM_START_ENTROPY`, 0) included, so it differs from BC→RL only
+by the clone. A plain fresh PPO run (`--objective ppo`) keeps `LearnerConfig`'s −0.0081
+instead. `--print-config` then prints `{"bc": null, "rl": ...}`:
+
+<!-- not-runnable: needs CUDA and runs for hours -->
+```bash
+uv run --no-sync bnb train --objective chain --preset mixed \
+    --chain-budget-steps 300000000 --bc-budget-steps 0
+```
 
 A chain is two ordinary runs and a record (`bnb.runs.chain`):
 

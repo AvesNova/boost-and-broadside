@@ -4,8 +4,8 @@ covers: [src/bnb/game/ship_design.py, bench/ship_design_search.py, bench/knob_in
 
 # Designing ship types
 
-> Since 2026-11-13 the real-scale set holds only Yongma, Jujak and vizia: a design's base
-> is one of them, and the realism envelope is the 16 real propeller fighters as reference
+> Since 2026-11-13 the real-scale set holds only the game's types (Yongma and Jujak since
+> vizia left it on 2026-11-15): a design's base is one of them, and the realism envelope is the 16 real propeller fighters as reference
 > data ([The real planes](real-planes.md)). The searches below started from the
 > researched types, then in the set.
 

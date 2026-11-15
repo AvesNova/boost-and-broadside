@@ -323,7 +323,8 @@ def load_policy(directory: str | os.PathLike, device: torch.device) -> torch.nn.
 # TrainConfig fields a resume may change (runs spec 6): the budget (PPO's updates, BC's
 # environment steps), the learning rate and its warm-up, the loss coefficients and the
 # entropy, the reward weights (coefficients of the return), what changes speed but not
-# shapes (the micro-batch rows, the precision), and the policy snapshots' cadence.
+# shapes (the micro-batch rows, the precision), and the policy files' cadence (every
+# update's, `update_policies`, and the snapshots').
 # Everything else is structural, or not listed and so fixed: a resume takes it from the
 # checkpoint.
 OVERRIDABLE = (
@@ -337,6 +338,8 @@ OVERRIDABLE = (
     "learner.entropy_power",
     "learner.entropy_stick",
     "learner.entropy_shoot",
+    "learner.entropy_floor",
+    "learner.entropy_floor_coefficient",
     "learner.value",
     "learner.next_state",
     "learner.correction",
@@ -347,6 +350,7 @@ OVERRIDABLE = (
     "learner.geometry",
     "learner.micro_batch_rows",
     "graph_ticks",
+    "update_policies",
     "policy_snapshots.steps",
     "policy_snapshots.every",
     "reward.damage",

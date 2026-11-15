@@ -68,19 +68,38 @@ Each element's weight (`extend`, `slash`, `bleed`, `lag`, `deny`, the maneuvers'
 or per view and type (R, T, D); `per_ship` reads each own ship's row.
 
 The tuned doctrines live in `imugi_doctrines.json` by ship set and type key (`stored`);
-Imugi flies them by default (`for_card`: the set is the one whose type count
-is the card's; a type without a stored doctrine flies none).
+Imugi flies them by default (`for_card`: the set is the one with the card's type count
+and scale, real-scale or standard by the gravity (`real_scale_card`); a type without a
+stored doctrine flies none). The type count alone no longer tells the sets apart: the
+real-scale set has two types since vizia left it (2026-11-15), as the standard set does.
 """
 
 import dataclasses
 import json
+import math
 import pathlib
 
 import torch
 
+from bnb.contracts import GameConfig
+from bnb.game.modes.rules import PRESETS
+from bnb.game.rules import FlightConstants, rules_of
+
 from .imugi_parameters import Logistic
 
 DOCTRINES = pathlib.Path(__file__).with_name("imugi_doctrines.json")
+
+# A card plays the real-scale sets when its gravity is nearer (in log) the real-scale set's
+# than the standard game's (27 m/s^2; the real-scale set's 39.24 at its native x2 speed since
+# game v13, 9.81 before).
+STANDARD_GRAVITY = FlightConstants.gravity
+REAL_SCALE_GRAVITY = rules_of(PRESETS["real_scale_deathmatch"]).flight.gravity
+
+
+def real_scale_card(gravity: torch.Tensor) -> torch.Tensor:
+    """Whether a card with this gravity plays the real-scale sets (`REAL_SCALE_GRAVITY`)."""
+    log = torch.log(gravity)
+    return (log - math.log(REAL_SCALE_GRAVITY)).abs() < (log - math.log(STANDARD_GRAVITY)).abs()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -305,6 +324,7 @@ def from_named(fields: dict) -> Doctrine:
 # cannot open files. The module reads the default file when it is imported (below).
 _STORED: dict[pathlib.Path, dict[str, dict[str, Doctrine]]] = {}
 _SET_KEYS: dict[str, list[str]] = {}
+_SET_REAL_SCALE: dict[str, bool] = {}
 
 
 def stored(path: pathlib.Path = DOCTRINES) -> dict[str, dict[str, Doctrine]]:
@@ -327,6 +347,15 @@ def _set_keys(ship_set: str) -> list[str]:
     return _SET_KEYS[ship_set]
 
 
+def _set_real_scale(ship_set: str) -> bool:
+    """Whether a ship set plays at real scale (its rules' gravity, `real_scale_card`), read
+    once."""
+    if ship_set not in _SET_REAL_SCALE:
+        gravity = rules_of(GameConfig(1, 1, 1000.0, ship_set=ship_set)).flight.gravity
+        _SET_REAL_SCALE[ship_set] = bool(real_scale_card(torch.tensor(gravity)))
+    return _SET_REAL_SCALE[ship_set]
+
+
 def set_table(keys: list[str], ship_set: str, device=None, path=DOCTRINES) -> torch.Tensor:
     """(T, WIDTH) the stored doctrines of a set's types by key, in order (a type without
     one: off)."""
@@ -336,32 +365,43 @@ def set_table(keys: list[str], ship_set: str, device=None, path=DOCTRINES) -> to
 
 def for_card(characteristics, path: pathlib.Path = DOCTRINES) -> torch.Tensor | None:
     """(T, WIDTH) the stored doctrines for a card's types, on the card's device: those of the
-    ship set whose type count is the card's T (the sets' counts differ), by type key; None
-    when no set with stored doctrines has T types (every type then flies none)."""
+    ship set with the card's type count T and scale (`real_scale_card` of its gravity), by
+    type key; None when no set with stored doctrines matches (every type then flies none).
+    Reads the card's gravity, so not for traced code (`rows_by_kind` is)."""
     count = characteristics.gun_range.shape[-1]
     device = characteristics.gun_range.device
+    real_scale = bool(real_scale_card(characteristics.gravity.amax()))
     for ship_set in stored(path):
         keys = _set_keys(ship_set)
-        if len(keys) == count:
+        if len(keys) == count and _set_real_scale(ship_set) == real_scale:
             return set_table(keys, ship_set, device, path)
     return None
 
 
-def rows_by_count(path: pathlib.Path = DOCTRINES) -> dict[int, list[list[float]]]:
-    """A file's stored doctrines packed per card type count (`for_card`'s rows as plain
-    floats, by the type count of each set with stored doctrines), for a caller that keeps
-    them as constants outside any traced code."""
+def rows_by_kind(path: pathlib.Path = DOCTRINES) -> dict[tuple[int, bool], list[list[float]]]:
+    """A file's stored doctrines packed per kind of card, (type count, real-scale), the
+    kind of each set with stored doctrines (`for_card`'s rows as plain floats), for a caller
+    that keeps them as constants outside any traced code."""
     out = {}
     for ship_set, doctrines in stored(path).items():
         keys = _set_keys(ship_set)
-        out[len(keys)] = [pack(doctrines.get(key, _DEFAULT)) for key in keys]
+        out[(len(keys), _set_real_scale(ship_set))] = [
+            pack(doctrines.get(key, _DEFAULT)) for key in keys
+        ]
     return out
 
 
+def off_rows(count: int) -> list[list[float]]:
+    """(count, WIDTH) the default doctrine's rows (every element off), as plain floats."""
+    return [pack(_DEFAULT)] * count
+
+
 def _warm(path: pathlib.Path = DOCTRINES) -> None:
-    """Read the default doctrines and their sets' keys now, outside any traced code."""
+    """Read the default doctrines and their sets' keys and scales now, outside any traced
+    code."""
     for ship_set in stored(path):
         _set_keys(ship_set)
+        _set_real_scale(ship_set)
 
 
 _warm()

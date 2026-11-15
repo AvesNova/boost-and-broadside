@@ -186,7 +186,8 @@ def shot_record(model, rules, types, trajectory, unrolled, config: CaptureConfig
 @torch.no_grad()
 def head_record(model, trajectory, unrolled) -> dict:
     """The other heads over the segment, decoded, with the truth they are scored against:
-    the privileged rows, the next state, the beliefs, the enemy actions and the density.
+    the privileged rows, the next state, the beliefs, the enemy actions and the density
+    (each head's part only when the model builds the head, `Yemong.auxiliary_heads`).
     The critic's is `games_record`."""
     own = trajectory.log_probability.shape[-1]
     rows = labels.privileged_rows(trajectory)  # (L, R, N, columns)
@@ -196,22 +197,6 @@ def head_record(model, trajectory, unrolled) -> dict:
     position = rows[..., [SHIP["x"], SHIP["y"]]]
     _, _, believed_means, believed_spreads = believed(trajectory.obs.ships, trajectory.replay)
     replay = trajectory.replay
-    age = torch.cat([torch.zeros_like(replay.age[..., :own]), replay.age], -1)
-    hidden = age > 0
-    forecast = decode.next_state(
-        model,
-        unrolled.next_state_logits,
-        believed_means,
-        believed_spreads,
-        ship_type,
-        offset,
-        position,
-        labels.rates(model, trajectory),
-        getattr(unrolled, "correction_logits", None),
-        hidden,
-        age,
-    )
-    replay = trajectory.replay
     belief = decode.ship_forecast(
         replay.means.float(),
         replay.spreads.float(),
@@ -219,22 +204,9 @@ def head_record(model, trajectory, unrolled) -> dict:
         position[..., own:, :],
         model.config.position_period,
     )
-    action = decode.action_distribution(unrolled.enemy_action_logits[..., own:, :])
-    arena_radius = trajectory.obs.globals[..., GLOBAL["arena_radius"]]
-    field = decode.density(unrolled.density_log_rates, model.config.hex_rings, arena_radius)
-    grid = HexGrid(model.config.hex_rings, rows.device)
-    return dict(
+    record = dict(
         rows=rows,
         next_rows=following,
-        next_state_mask=labels.next_state_mask(trajectory, model),
-        next_state=dict(
-            position=forecast.position,
-            position_sigma=forecast.position_sigma,
-            velocity=forecast.velocity,
-            velocity_covariance=forecast.velocity_covariance,
-            heading=forecast.heading,
-            heading_sigma=forecast.heading_sigma,
-        ),
         belief=dict(
             valid=replay.valid,
             age=replay.age,
@@ -244,24 +216,56 @@ def head_record(model, trajectory, unrolled) -> dict:
             velocity_covariance=belief.velocity_covariance,
             shifted_truth=shifted_truth(trajectory.truth, offset),
         ),
-        enemy_action=dict(
+    )
+    if unrolled.next_state_logits is not None:
+        age = torch.cat([torch.zeros_like(replay.age[..., :own]), replay.age], -1)
+        forecast = decode.next_state(
+            model,
+            unrolled.next_state_logits,
+            believed_means,
+            believed_spreads,
+            ship_type,
+            offset,
+            position,
+            labels.rates(model, trajectory),
+            getattr(unrolled, "correction_logits", None),
+            age > 0,
+            age,
+        )
+        record["next_state_mask"] = labels.next_state_mask(trajectory, model)
+        record["next_state"] = dict(
+            position=forecast.position,
+            position_sigma=forecast.position_sigma,
+            velocity=forecast.velocity,
+            velocity_covariance=forecast.velocity_covariance,
+            heading=forecast.heading,
+            heading_sigma=forecast.heading_sigma,
+        )
+    if unrolled.enemy_action_logits is not None:
+        action = decode.action_distribution(unrolled.enemy_action_logits[..., own:, :])
+        record["enemy_action"] = dict(
             joint=action.joint,
             taken=to_joint(trajectory.action)[..., own:],
             alive=trajectory.alive[..., own:],
-        ),
-        density=dict(
+        )
+    if unrolled.density_log_rates is not None:
+        arena_radius = trajectory.obs.globals[..., GLOBAL["arena_radius"]]
+        field = decode.density(unrolled.density_log_rates, model.config.hex_rings, arena_radius)
+        grid = HexGrid(model.config.hex_rings, rows.device)
+        record["density"] = dict(
             ally=field.ally,
             enemy=field.enemy,
             centres=field.centres,
             cell_radius=field.cell_radius,
             counts=labels.density_targets(grid, trajectory, rows),
-        ),
-    )
+        )
+    return record
 
 
 @torch.no_grad()
 def rollout_record(model, rules, types, trajectory, config: CaptureConfig) -> dict:
-    """Everything the rollout's figure sets read, from one segment."""
+    """Everything the rollout's figure sets read, from one segment (the shots only with the
+    shot heads)."""
     reset = trajectory.obs.globals[..., GLOBAL["reset"]] > 0.5
     unrolled = model.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay, reset)
     record = dict(
@@ -270,8 +274,9 @@ def rollout_record(model, rules, types, trajectory, config: CaptureConfig) -> di
         globals=trajectory.obs.globals,
         alive=trajectory.alive,
         offset=trajectory.replay.offset,
-        shots=shot_record(model, rules, types, trajectory, unrolled, config),
     )
+    if unrolled.shot_latents is not None:
+        record["shots"] = shot_record(model, rules, types, trajectory, unrolled, config)
     record.update(head_record(model, trajectory, unrolled))
     return record
 
@@ -280,7 +285,8 @@ def capture(
     policy: str | pathlib.Path, config: CaptureConfig, device: torch.device, scenarios=None
 ) -> dict:
     """The artifact of a policy file: `meta` and `rollout`, and `scenarios` from
-    scenarios(model, rules, types, trajectory, config) when given (the scenario lab)."""
+    scenarios(model, rules, types, trajectory, config) when given (the scenario lab, of the
+    shot heads: none without them)."""
     policy = pathlib.Path(policy)
     record = checkpoint.read_policy(policy).raw
     model = checkpoint.load_policy(policy, device).requires_grad_(False).eval()
@@ -290,7 +296,7 @@ def capture(
         meta=meta_of(policy, record, config, model),
         rollout=rollout_record(model, rollout.rules, types, trajectory, config),
     )
-    if scenarios is not None:
+    if scenarios is not None and model.shot_trajectory_head is not None:
         artifact["scenarios"] = scenarios(model, rollout.rules, types, trajectory, config)
     artifact["games"] = games_record(model, rollout, trajectory, config.game_segments)
     return _on_host(artifact)

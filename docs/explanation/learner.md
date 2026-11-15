@@ -207,14 +207,21 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 |---|---|---|
 | `policy` | own ships alive at `t` | the surrogate on the scaled advantage under the trust region ([below](#the-trust-region)) |
 | `entropy_power`, `entropy_stick`, `entropy_shoot` | the same | the joint action distribution's entropy by the chain rule in the joint's order: H(power), H(stick given power), H(shoot given both). They sum to the joint entropy, so equal coefficients weigh the joint as one coefficient would; a negative coefficient rewards it |
+| `entropy_floor` | the same; only with `LearnerConfig.entropy_floor` set | the hinge max(0, floor − H) on each token's joint entropy H in nats ([below](#the-entropy-floor)); its coefficient is `entropy_floor_coefficient` |
 | `value` | own ships alive or waiting to respawn; each view-step for the outcome | per value head (each per-ship part, then the outcome head), the cross-entropy against the HL-Gauss target of the return, the outcome against its targets |
-| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode (delta: and whose ship is alive at `t` and `t + 1`; with `YemongConfig.delta_split`, of those only the own rows and the enemies seen at `t`; with `YemongConfig.physics_hidden_decay` tau the hidden enemies too, past the segment's first tick, each weighted `exp(-age / tau)`, against the truth-to-truth target) | absolute: the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
+| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode (delta: and whose ship is alive at `t` and `t + 1`; with `YemongConfig.delta_split`, of those only the own rows and the enemies seen at `t`; with `YemongConfig.physics_hidden_decay` tau the hidden enemies too, past the segment's first tick, each weighted `exp(-age / tau)`, against the truth-to-truth target) | absolute: the state code's cross-entropy against the code of the true state at `t + 1` (spread 0: sharp colour codes, HL-Gauss linear parts), in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
 | `correction` | with `YemongConfig.delta_split` only: the next-state rows whose belief at `t` is a forecast (hidden enemies) | the error code's cross-entropy against the code of the physics forecast's error, `truth(t + 1) - forecast(t + 1)` |
 | `enemy_action` | enemy rows alive at `t` | the cross-entropy of the enemy's actual joint action |
 | `density` | each view-step, over its count of valued own ships | Poisson terms over the hex cells, against the counts of living ships at `t` |
 | `shot_trajectory` | valid shots of own ships and of enemies visible at `t` | the trajectory code's cross-entropy, averaged over the shot's 4 queried ages ([below](#shot-labels)) |
 | `shot_outcome` | the same shots | the outcome code's cross-entropy |
 | `geometry` | with `YemongConfig.geometry_head` only: pairs of an own ship alive at `t` and a partner alive and seen at `t` (`bnb.models.yemong.geometry.pairs`) | the cross-entropy of the pair's five geometry codes, averaged over them (nats per target) |
+
+A head the model does not build (`YemongConfig.next_state_head`, `enemy_action_head`,
+`density_head`, `shot_head`, `geometry_head`, `delta_split`; `Yemong.auxiliary_heads`) has
+no term: its labels are not computed, its term stays zero with no gradient, and its loss
+series and head statistics are not reported. Without the shot heads (`shot_head="none"`)
+the learner re-simulates no shots and the store keeps no shot labels.
 
 With `YemongConfig.delta_split` the `next_state` and `correction` terms both divide by the count
 of every next-state row (seen and hidden), not by their own rows: a row then weighs the
@@ -305,6 +312,25 @@ update. The old log-probabilities are
 the rollout's, or recomputed by `unroll` before the first epoch
 (`LearnerConfig.old_log_probabilities`).
 
+### The entropy floor
+
+`LearnerConfig.entropy_floor` (nats of joint entropy, None by default: off) adds the term
+`entropy_floor`, the mean over own living ships of max(0, floor − H), with H each
+ship-step's joint entropy, times `entropy_floor_coefficient` (0.1 by default). The hinge is
+per token, not on the minibatch's mean entropy, so the micro-batches still add up to the
+minibatch: it pushes up only the tokens below the floor and is zero, with no gradient,
+above it. A warm start keeps the floor (only the bonus coefficients become
+`WARM_START_ENTROPY`); a BC run refuses one (in a chain, set it with `--rl-set`). A resume
+may change both settings. The term's mean before its coefficient is logged as
+`policy/entropy_floor/penalty`{.plain} when the floor is on
+(`tests/sections/test_learner.py::test_the_entropy_floor_term_is_the_mean_hinge_over_living_own_ships`).
+
+<!-- not-runnable: needs CUDA -->
+```bash
+uv run --no-sync bnb train --preset mixed --objective chain \
+  --chain-budget-steps 200000000 --rl-set learner.entropy_floor=0.8
+```
+
 ## The trust region
 
 `LearnerConfig.trust_region` chooses how the policy term limits a step
@@ -370,7 +396,12 @@ with the game's own code (`bnb.learn.shots.resimulate`):
 
 A re-simulated shot is the bullet the game fires from that state, position, velocity and
 hit, tick by tick, including friendly fire and fields (`tests/sections/test_learner_shots.py`).
-The targets are Yemong's shot codes (`bnb.models.yemong.shots`). The trajectory head is
+The targets are Yemong's shot codes (`bnb.models.yemong.shots`): in the trajectory code the
+displacement and the direction are sharp colour codes, the speed (41 real bins) and the log
+refractive index (21) HL-Gauss codes of 0.75 bins with two padding bins a side; the
+outcome's near-miss code is a Gaussian of 0.75 bins over its log distance. The loss
+reduces each snapshot to 44 coordinates and builds the 162-wide code from them inside the
+cross-entropy (`codes.grouped_cross_entropy`). The trajectory head is
 queried at 4 ages per shot (`bnb.learn.shots.query_ages`), chosen with the labels: the last
 move; one uniform over the whole flight (it may repeat another); the closest pass to
 another living ship, of either side; the first move into a field's band, where the
@@ -385,7 +416,7 @@ Built per micro-batch on the device, from the stored rows (`bnb.learn.labels`), 
 with the view (as are the shot labels' codes; expanded, the codes would be many times the
 size of the segment):
 
-- **Next state:** the sharp code of each row's truth at `t + 1`, its position shifted by the
+- **Next state:** the code of each row's truth (spread 0) at `t + 1`, its position shifted by the
   view's offset; the last step's truth is the observation after the segment. With the delta
   head (`YemongConfig.next_state = "delta"`), the code of each row's true change from `t`
   to `t + 1` (persistence; `bnb.models.yemong.delta.DeltaCode.targets`), which changes
@@ -459,7 +490,7 @@ shows how to run it.
 `NearestConfig`) is the relational model's outputs over an input whose width depends on
 neither the fleet nor the field count, so a model trained at 5v5 plays any size. It is
 stateless and has no memory or belief: it sees only what is visible now. Each own ship
-reads (widths at the defaults, 196 in all, `nearest.input_width`):
+reads (widths at the defaults, 210 in all for a new run, `nearest.input_width`):
 
 | Block | Width | Contents |
 |---|---|---|
@@ -468,11 +499,17 @@ reads (widths at the defaults, 196 in all, `nearest.input_width`):
 | enemies | 4 x 11 | the nearest living visible enemies (a hidden one is never a candidate), the same 11 |
 | fields | 3 x 8 | the nearest fields by the distance to their centre: centre offset in the heading frame, centre distance, signed edge distance (centre distance minus radius), radius, band width, level, presence |
 | zones | 5 x 14 | one slot per role (own spawn, own defense, neutral, enemy defense, enemy spawn): centre offset in the heading frame, distance, radius, role one-hot, progress, direction, symlog of the captures to win and to lose, presence |
+| mode inputs | 4 + 5 x 2 | with `full_mode_inputs` (a new run's): elimination's flag, the boundary's radius over the arena radius, the symlog of its seconds to zero and of the seconds to the own team's next respawn wave, then per zone role the symlog of the capture locks, own and enemy |
+
+`NearestConfig.full_mode_inputs` is False in the config itself, the layout of every build
+record from before it (196 inputs: no elimination flag, boundary, wave or lock), so a stored
+policy file loads as it was trained; `TrainConfig.nearest` sets it for a new run
+(`tests/sections/test_nearest.py`).
 
 A missing ally, enemy or field, and a role no present zone has (team deathmatch), are zero
 with presence 0. The own ships are the first half of the view's rows, so the build record
 (`NearestBuild`) holds the config alone. Two hidden GELU layers of `hidden` (256) feed the
 joint policy, the critic and the outcome (the mean of the own ships' hidden states); at the
-defaults it has 180,474 parameters. It plays through
+defaults of a new run (`TrainConfig.nearest`) it has 298,166 parameters. It plays through
 `bnb.controllers.relational.RelationalController`, and like the relational model has no
 auxiliary heads, so neither PPO nor BC computes those terms (`Learner.auxiliary` is False).

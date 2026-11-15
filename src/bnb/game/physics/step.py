@@ -294,7 +294,11 @@ def resolve(
     # The boundary as it stands after this tick's move (elimination's shrinks).
     radius = arena.arena_radius * boundary_fraction(arena, match.episode_tick + 1)
     boundary = boundary_damage(rules, radius, arena.map_scale, ships, alive0)
-    applied = apply_damage(rules, types, ships, alive0, damage.sum(1) + boundary, quiet(action))
+    # a hit restarts the shield's wait whatever its damage (`first_shooter`: -1 unhit)
+    struck = first_shooter >= 0
+    applied = apply_damage(
+        rules, types, ships, alive0, damage.sum(1) + boundary, quiet(action), struck
+    )
     ships, died = applied.ships, applied.died
     killer = torch.where(died, first_shooter, -1).to(torch.int32)
     kill_aspect = torch.where(died, first_aspect, -1).to(torch.int32)

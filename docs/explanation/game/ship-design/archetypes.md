@@ -314,7 +314,8 @@ play) to appear; these statistics are now in every training run (`combat/damage_
 
 ## 4. Proposed starting points: two variants of vizia
 
-Handle deltas from `vizia` (src/bnb/game/ships/real-scale/vizia.toml), scaled from the
+Handle deltas from `vizia` (its ship file, removed from the set on 2026-11-15, is in git
+before that date; the table below and the archetypes' notes keep its values), scaled from the
 real split of section 1 (`docs/rewrite/sections/gun-study/archetypes_solve.py`): a mapped
 handle is vizia's times r^(s/2) for Jujak and r^(-s/2) for Yongma, r the turn-over-energy
 ratio of its real quantity, so vizia sits at the geometric midpoint and the pair's split

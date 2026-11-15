@@ -86,6 +86,7 @@ SHOT_HARMONICS = 4  # the trajectory head's age features
 # a row's held rates: acceleration along, across, the nose's, the change, the turn's share
 HELD = 4 + len(MEANS)
 NEXT_STATES = ("absolute", "delta")  # `YemongConfig.next_state`
+SHOT_HEADS = ("trajectory", "none")  # `YemongConfig.shot_head`
 # A new run's rotary bands (`bnb.runtime.train.TrainConfig.yemong`; the sizing rule beside
 # `state_code.POSITION_PERIOD`): eight at ratio 3.405 from 48 m (r, r^2, r^3, r^4 each at
 # least 0.4 from a whole number, so a one-cycle misread of a coarse band shows in the finer
@@ -243,6 +244,17 @@ class YemongConfig:
     challenger at the same width (`temporal.GRUBlock`: no convolution, so the carry's
     convolution buffer has no inputs).
 
+    The auxiliary heads' build switches (arm A13), every one on by default, so every build
+    record from before them reads as it was built. A head that is off is not built: it has
+    no parameters, no output (its `Unrolled` and `Decision` fields are None), no loss term
+    and no labels. next_state_head: the next-state head (with delta_split, the physics
+    head); off needs forecast_feedback off and no delta_split (the belief then keeps the
+    last sighting). enemy_action_head: the enemy-action head; off, the belief's enemy
+    actions stay uniform (`belief.advance`). density_head: the density head on the global
+    token. shot_head (`SHOT_HEADS`): "trajectory", the shot trajectory and outcome heads;
+    "none", neither, and the learner re-simulates no shots. The geometry head
+    (geometry_head) and the error head (delta_split) have their own switches above.
+
     Retired (`RETIRED`): rotary_readout, the per-block rotary read-out (2026-11-07 to
     2026-11-12, replaced by the geometry head); a build record without it, or with it off,
     still reads.
@@ -294,6 +306,10 @@ class YemongConfig:
     physics_hidden_fade: bool = False  # a hidden row's forecast: exp(-age/tau) of the change
     gate: str = "none"  # the attention output gate: "none", "elementwise", "headwise"
     temporal_block: str = "griffin"  # the temporal sublayer: "griffin" or "gru" (arm A16)
+    next_state_head: bool = True  # the next-state (physics) head
+    enemy_action_head: bool = True  # the enemy-action head
+    density_head: bool = True  # the density head
+    shot_head: str = "trajectory"  # the shot heads: "trajectory" or "none" (`SHOT_HEADS`)
 
     def __post_init__(self) -> None:
         if self.next_state not in NEXT_STATES:
@@ -332,6 +348,13 @@ class YemongConfig:
         if self.temporal_block not in TEMPORAL_BLOCKS:
             raise ValueError(
                 f"temporal_block {self.temporal_block!r} is not one of {tuple(TEMPORAL_BLOCKS)}"
+            )
+        if self.shot_head not in SHOT_HEADS:
+            raise ValueError(f"shot_head {self.shot_head!r} is not one of {SHOT_HEADS}")
+        if not self.next_state_head and (self.forecast_feedback or self.delta_split):
+            raise ValueError(
+                "without next_state_head the belief has no forecast: turn forecast_feedback "
+                "and delta_split off"
             )
         if not set(self.mode_inputs) <= set(MODE_INPUTS) or len(set(self.mode_inputs)) != len(
             self.mode_inputs
@@ -455,15 +478,16 @@ def absent_zone_key_mask(tokens: Tokens, masked: torch.Tensor) -> torch.Tensor:
 @contract
 class Decision:
     """One step's outputs, per view: policy_logits (R, S, NUM_JOINT); enemy_action_logits and
-    next_state_logits (R, N - S, ...) for the enemy rows; values (R, S, levels) in the configured
-    level order; outcome_probabilities (R, 4) (None without an outcome level); the next carry
-    (previous_action not yet replaced by the sample); the replay record; correction_logits
-    (R, N - S, ...), the error head's, for the enemy rows (None without
-    `YemongConfig.delta_split`)."""
+    next_state_logits (R, N - S, ...) for the enemy rows (each None without its head,
+    `YemongConfig.enemy_action_head`, `YemongConfig.next_state_head`); values (R, S, levels)
+    in the configured level order; outcome_probabilities (R, 4) (None without an outcome
+    level); the next carry (previous_action not yet replaced by the sample); the replay
+    record; correction_logits (R, N - S, ...), the error head's, for the enemy rows (None
+    without `YemongConfig.delta_split`)."""
 
     policy_logits: torch.Tensor
-    enemy_action_logits: torch.Tensor
-    next_state_logits: torch.Tensor
+    enemy_action_logits: torch.Tensor | None
+    next_state_logits: torch.Tensor | None
     values: torch.Tensor
     outcome_probabilities: torch.Tensor | None
     carry: Carry
@@ -480,17 +504,18 @@ class Unrolled:
     (N, D) for `Yemong.shot_trajectory`; geometry_latents (N, 2 D) for `Yemong.geometry`
     (None without `YemongConfig.geometry_head`);
     correction_logits (N, ...), the error head's (every row; None without
-    `YemongConfig.delta_split`)."""
+    `YemongConfig.delta_split`). An auxiliary head that is not built gives None
+    (`YemongConfig.next_state_head`, enemy_action_head, density_head, shot_head)."""
 
     policy_logits: torch.Tensor
-    enemy_action_logits: torch.Tensor
-    next_state_logits: torch.Tensor
+    enemy_action_logits: torch.Tensor | None
+    next_state_logits: torch.Tensor | None
     value_logits: torch.Tensor
     values: torch.Tensor
     outcome_logits: torch.Tensor | None
-    density_log_rates: torch.Tensor
-    shot_outcome_logits: torch.Tensor
-    shot_latents: torch.Tensor
+    density_log_rates: torch.Tensor | None
+    shot_outcome_logits: torch.Tensor | None
+    shot_latents: torch.Tensor | None
     geometry_latents: torch.Tensor | None = None
     correction_logits: torch.Tensor | None = None
 
@@ -576,8 +601,9 @@ class Yemong(nn.Module):
     # flag (SHIP_FLAGS, one more input; 2026-11-13); 4: the merge of the calibration's
     # model (the geometry head in place of the rotary read-out, the state code's position
     # period, the arena code) with 2 and 3 (2026-11-13)
-    # 8: exact-x2 velocity code (knee 100, spacing 5)
-    VERSION = 8  # 5: x2 velocity spacing, rotary band; 6: closure, decays; 7: thin-air speeds
+    # 8: exact-x2 velocity code (knee 100, spacing 5); 9: HL-Gauss binned codes (state code
+    # 580 wide, shot code 162, ellipse inputs; 2026-11-15)
+    VERSION = 9  # 5: x2 velocity spacing, rotary band; 6: closure, decays; 7: thin-air speeds
 
     def __init__(self, build: YemongBuild, seed: int = 0) -> None:
         super().__init__()
@@ -648,16 +674,30 @@ class Yemong(nn.Module):
         levels = len(config.local_levels)
         # Heads grouped by the token they read: own ships, every ship, the global token.
         self.own_heads = HeadGroup(width, hidden, (NUM_JOINT, levels * config.value_support))
-        self.ship_heads = HeadGroup(width, hidden, (NUM_JOINT, self.next_state_width))
+        # every ship: the enemy-action and the next-state heads, those that are built
+        ship_outputs = {
+            name: size
+            for name, size, built in (
+                ("enemy_action", NUM_JOINT, config.enemy_action_head),
+                ("next_state", self.next_state_width, config.next_state_head),
+            )
+            if built
+        }
+        self.ship_head_names = tuple(ship_outputs)
+        self.ship_heads = (
+            HeadGroup(width, hidden, tuple(ship_outputs.values())) if ship_outputs else None
+        )
         self.outcome = (
             None if config.outcome_level is None else HeadGroup(width, hidden, (critic.OUTCOMES,))
         )
         cells = density.cell_count(config.hex_rings)
-        self.density = HeadGroup(width, hidden, (2 * cells,))
-        self.shot_outcome = HeadGroup(width, hidden, (self.shot_code.outcome_width,))
-        self.shot_trajectory_head = ShotTrajectoryHead(
-            width, 1 + 2 * SHOT_HARMONICS, self.shot_code.trajectory_width
-        )
+        self.density = HeadGroup(width, hidden, (2 * cells,)) if config.density_head else None
+        self.shot_outcome, self.shot_trajectory_head = None, None
+        if config.shot_head == "trajectory":
+            self.shot_outcome = HeadGroup(width, hidden, (self.shot_code.outcome_width,))
+            self.shot_trajectory_head = ShotTrajectoryHead(
+                width, 1 + 2 * SHOT_HARMONICS, self.shot_code.trajectory_width
+            )
         self.density_bias = math.log(max(build.num_ships, 2) / 2 / cells)
         # The rotary position pairs' periods and axes (`YemongConfig.rotary_axes`): each
         # band's period on both its axes. At ratio 2 the periods are exact powers of two.
@@ -685,6 +725,21 @@ class Yemong(nn.Module):
             self.correction_head = HeadGroup(width, hidden, (self.correction_code.width,))
         self.geometry_head = geometry.GeometryHead(width) if config.geometry_head else None
         initialise(self, seed)
+
+    @property
+    def auxiliary_heads(self) -> tuple[str, ...]:
+        """The auxiliary heads this build has, by the learner's loss terms' names
+        (`bnb.learn.ppo.TERMS`): a head that is not built has no term."""
+        built = {
+            "next_state": self.config.next_state_head,
+            "correction": self.correction_head is not None,
+            "enemy_action": self.config.enemy_action_head,
+            "density": self.density is not None,
+            "shot_trajectory": self.shot_trajectory_head is not None,
+            "shot_outcome": self.shot_outcome is not None,
+            "geometry": self.geometry_head is not None,
+        }
+        return tuple(name for name, present in built.items() if present)
 
     def initialise_parameters(self, generator) -> None:
         """After every layer's own (`bnb.models.initialise`): code columns of each first
@@ -718,13 +773,16 @@ class Yemong(nn.Module):
             self.encoder.global_token.first.weight[:, -ARENA_CODE:].normal_(
                 0.0, 1.0, generator=generator("encoder.global_token.first.weight[arena]")
             )
-        nn.init.zeros_(self.ship_heads.lasts[1].weight)
-        if self.delta_code is not None:
-            self.ship_heads.lasts[1].bias.copy_(self.delta_code.marginal_logits())
+        if self.config.next_state_head:
+            next_state = self.ship_heads.lasts[self.ship_head_names.index("next_state")]
+            nn.init.zeros_(next_state.weight)
+            if self.delta_code is not None:
+                next_state.bias.copy_(self.delta_code.marginal_logits())
         if self.correction_head is not None:
             nn.init.zeros_(self.correction_head.lasts[0].weight)
             self.correction_head.lasts[0].bias.copy_(self.correction_code.marginal_logits())
-        self.density.lasts[0].bias.fill_(self.density_bias)
+        if self.density is not None:
+            self.density.lasts[0].bias.fill_(self.density_bias)
 
     # ------------------------------------------------------------------ next state
 
@@ -740,7 +798,11 @@ class Yemong(nn.Module):
         code = self.state_code if self.delta_code is None else self.delta_code
         return code.width
 
-    def _next_state_logits(self, code: torch.Tensor, change: torch.Tensor) -> torch.Tensor:
+    def _next_state_logits(
+        self, code: torch.Tensor, change: torch.Tensor | None
+    ) -> torch.Tensor | None:
+        if change is None:
+            return None
         if self.delta_code is None:
             return next_state_logits(code, change)
         return change
@@ -1107,6 +1169,33 @@ class Yemong(nn.Module):
         )
         return value_logits, values
 
+    def _ship_outputs(
+        self, ship_hidden: torch.Tensor
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """The enemy-action logits and the next-state head's change on ship rows (..., D),
+        each None without its head."""
+        if self.ship_heads is None:
+            return None, None
+        outputs = dict(zip(self.ship_head_names, self.ship_heads(ship_hidden), strict=True))
+        return outputs.get("enemy_action"), outputs.get("next_state")
+
+    def _global_outputs(self, global_hidden: torch.Tensor) -> torch.Tensor | None:
+        """The density head's log rates on the global token (None without the head)."""
+        if self.density is None:
+            return None
+        (density_log_rates,) = self.density(global_hidden)
+        return density_log_rates
+
+    def _shot_outputs(
+        self, ship_hidden: torch.Tensor
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """The shot outcome logits and the trajectory head's latents on ship rows (None,
+        None without the shot heads)."""
+        if self.shot_outcome is None:
+            return None, None
+        (shot_outcome_logits,) = self.shot_outcome(ship_hidden)
+        return shot_outcome_logits, self.shot_trajectory_head.latent(ship_hidden)
+
     # ------------------------------------------------------------------ step
 
     def step(
@@ -1173,26 +1262,25 @@ class Yemong(nn.Module):
                 key_mask=key_mask,
             )
             policy_logits, value_logits = self.own_heads(hidden[:, :own])
-            enemy_action_logits, change = self.ship_heads(hidden[:, own:ships_count])
+            enemy_action_logits, change = self._ship_outputs(hidden[:, own:ships_count])
             correction_logits = every_correction = None
             if self.correction_head is not None:
                 (correction_logits,) = self.correction_head(hidden[:, own:ships_count])
             outcome_logits = self._outcome_logits(hidden[:, ships_count])
             if inspect:
-                every_action_logits, every_change = self.ship_heads(hidden[:, :ships_count])
+                every_action_logits, every_change = self._ship_outputs(hidden[:, :ships_count])
                 if self.correction_head is not None:
                     (every_correction,) = self.correction_head(hidden[:, :ships_count])
-                (density_log_rates,) = self.density(hidden[:, ships_count])
-                (shot_outcome_logits,) = self.shot_outcome(hidden[:, :ships_count])
-                shot_latents = self.shot_trajectory_head.latent(hidden[:, :ships_count])
+                density_log_rates = self._global_outputs(hidden[:, ships_count])
+                shot_outcome_logits, shot_latents = self._shot_outputs(hidden[:, :ships_count])
                 geometry_latents = self._geometry_latents(hidden[:, :ships_count])
         policy_logits, enemy_action_logits, outcome_logits = (
             policy_logits.to(dtype),
-            enemy_action_logits.to(dtype),
+            _cast(enemy_action_logits, dtype),
             _cast(outcome_logits, dtype),
         )
         value_logits, values = self._values(value_logits.to(dtype), outcome_logits)
-        forecast_logits = self._next_state_logits(tokens.code[:, own:], change.to(dtype))
+        forecast_logits = self._next_state_logits(tokens.code[:, own:], _cast(change, dtype))
         enemy = _rows(seen, slice(own, None))
         correction_logits = _cast(correction_logits, dtype)
         rates = held = held_valid = None
@@ -1266,14 +1354,14 @@ class Yemong(nn.Module):
             return decision, None
         unrolled = Unrolled(
             policy_logits=policy_logits,
-            enemy_action_logits=every_action_logits.to(dtype),
-            next_state_logits=self._next_state_logits(tokens.code, every_change.to(dtype)),
+            enemy_action_logits=_cast(every_action_logits, dtype),
+            next_state_logits=self._next_state_logits(tokens.code, _cast(every_change, dtype)),
             value_logits=value_logits,
             values=values,
             outcome_logits=outcome_logits,
-            density_log_rates=density_log_rates.to(dtype),
-            shot_outcome_logits=shot_outcome_logits.to(dtype),
-            shot_latents=shot_latents.to(dtype),
+            density_log_rates=_cast(density_log_rates, dtype),
+            shot_outcome_logits=_cast(shot_outcome_logits, dtype),
+            shot_latents=_cast(shot_latents, dtype),
             geometry_latents=_cast(geometry_latents, dtype),
             correction_logits=_cast(every_correction, dtype),
         )
@@ -1305,11 +1393,10 @@ class Yemong(nn.Module):
             )
             policy_logits, value_logits = self.own_heads(hidden[..., :own, :])
             ship_hidden = hidden[..., :ships, :]
-            enemy_action_logits, change = self.ship_heads(ship_hidden)
+            enemy_action_logits, change = self._ship_outputs(ship_hidden)
             outcome_logits = self._outcome_logits(hidden[..., ships, :])
-            (density_log_rates,) = self.density(hidden[..., ships, :])
-            (shot_outcome_logits,) = self.shot_outcome(ship_hidden)
-            shot_latents = self.shot_trajectory_head.latent(ship_hidden)
+            density_log_rates = self._global_outputs(hidden[..., ships, :])
+            shot_outcome_logits, shot_latents = self._shot_outputs(ship_hidden)
             geometry_latents = self._geometry_latents(ship_hidden)
             correction_logits = None
             if self.correction_head is not None:
@@ -1318,14 +1405,14 @@ class Yemong(nn.Module):
         value_logits, values = self._values(value_logits.to(dtype), outcome_logits)
         return Unrolled(
             policy_logits=policy_logits.to(dtype),
-            enemy_action_logits=enemy_action_logits.to(dtype),
-            next_state_logits=self._next_state_logits(tokens.code, change.to(dtype)),
+            enemy_action_logits=_cast(enemy_action_logits, dtype),
+            next_state_logits=self._next_state_logits(tokens.code, _cast(change, dtype)),
             value_logits=value_logits,
             values=values,
             outcome_logits=outcome_logits,
-            density_log_rates=density_log_rates.to(dtype),
-            shot_outcome_logits=shot_outcome_logits.to(dtype),
-            shot_latents=shot_latents.to(dtype),
+            density_log_rates=_cast(density_log_rates, dtype),
+            shot_outcome_logits=_cast(shot_outcome_logits, dtype),
+            shot_latents=_cast(shot_latents, dtype),
             geometry_latents=_cast(geometry_latents, dtype),
             correction_logits=_cast(correction_logits, dtype),
         )

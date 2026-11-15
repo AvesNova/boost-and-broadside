@@ -2,7 +2,7 @@
 (docs/explanation/game/ship-design.md): the knobs a design moves, the WW2 envelope that
 bounds them, and the instant card of a design.
 
-A design is a base type of the real-scale set (Yongma, Jujak or vizia) and the values of
+A design is a base type of the real-scale set (Yongma or Jujak) and the values of
 its knobs. The knobs are existing handles, or ratios of them chosen so that the
 knobs are nearly independent (`KNOBS`, each with the reason it is in the search):
 

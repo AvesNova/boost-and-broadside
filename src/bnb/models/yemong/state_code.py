@@ -89,12 +89,14 @@ SCALAR_BINS = 21
 LOG_INDEX_SPAN = math.log(2.0)  # field levels span n from 1/2 to 2
 # The five 21-bin scalars in code order; shield and energy are coded as fractions.
 SCALARS = ("angle_of_attack", "shield_recharge_wait", "shield", "energy", "log_refractive_index")
+# The linear codes' padding: codes.PADDING_BINS each side of their real bins (HL-Gauss).
+PADDED = 2 * codes.PADDING_BINS
 
 
 # The ellipse inputs (`spread_inputs = "ellipse"`): per ellipse (position, velocity) log
 # sigma_major, log sigma_minor, and the doubled angle (cos 2 theta, sin 2 theta) times the
-# anisotropy (sigma_major - sigma_minor) / (sigma_major + sigma_minor), world frame, each a
-# two-hot code of SCALAR_BINS like the state code's scalars. A sigma is coded as
+# anisotropy (sigma_major - sigma_minor) / (sigma_major + sigma_minor), world frame, each an
+# HL-Gauss code of SCALAR_BINS and the padding, like the state code's scalars. A sigma is coded as
 # ln(1 + sigma / knee) from 0 up to its bound's (a log above the knee, 0 for a sharp row).
 ELLIPSE_FEATURES = 4
 # The sigmas' knees; each is coded up to its bound: the position code's period, the
@@ -177,15 +179,19 @@ def state_code_ranges(rules: Rules, types: ShipTypes) -> StateCodeRanges:
 
 class ShipStateCode(nn.Module):
     """Encodes (means (..., 12), spreads (..., spread_count), ship_type (...)) to
-    (..., width) and back. With the default card the spreads are 15 wide and the code 490.
+    (..., width) and back. With the default card the spreads are 15 wide and the code 580.
 
-    Runs in order: position 9x9, velocity 3x81, heading 4x4, nose rate 41, the five SCALARS
-    of 21 bins each, gun cooldown. spread_fit: how `decode` reads the position's and the
-    heading's spreads (`codes.circular_decode`). position_inputs (POSITION_INPUTS): what the
-    ship token reads for the position and the heading (`inputs`): the code's own runs
-    ("colour"), or Fourier features at the same levels ("fourier"); the code is the same
-    either way. position_period (m per axis): the position code's coarsest period
-    (`YemongConfig.position_period`), which the position ellipse's sigma code also spans.
+    Runs in order: position 9x9, velocity 3x103, heading 4x4, nose rate 45, the five SCALARS
+    of 25 bins each, gun cooldown. The linear runs (velocity, nose rate, SCALARS) are
+    HL-Gauss codes (`codes.hl_gauss_scalar_encode`): their real bins (99, 41, 21) and
+    codes.PADDING_BINS each side. The position and heading colour codes and the gun
+    cooldown are not (`codes`, `_cooldown_sharp`). spread_fit: how `decode` reads the
+    position's and the heading's spreads (`codes.circular_decode`). position_inputs
+    (POSITION_INPUTS): what the ship token reads for the position and the heading
+    (`inputs`): the code's own runs ("colour"), or Fourier features at the same levels
+    ("fourier"); the code is the same either way. position_period (m per axis): the
+    position code's coarsest period (`YemongConfig.position_period`), which the position
+    ellipse's sigma code also spans.
     """
 
     def __init__(
@@ -230,12 +236,12 @@ class ShipStateCode(nn.Module):
             ellipse_high += [top, top, 1.0, 1.0]
         for name, values in (("ellipse_low", ellipse_low), ("ellipse_high", ellipse_high)):
             self.register_buffer(name, torch.tensor(values, dtype=torch.float32), persistent=False)
-        scalar = (1, SCALAR_BINS)
+        scalar = (1, SCALAR_BINS + PADDED)
         self.runs: codes.Runs = (
             (POSITION_LEVELS, 9),
-            (3, VELOCITY_BINS),
+            (3, VELOCITY_BINS + PADDED),
             (HEADING_LEVELS, HEADING_COLOURS),
-            (1, NOSE_RATE_BINS),
+            (1, NOSE_RATE_BINS + PADDED),
             scalar,
             scalar,
             scalar,
@@ -293,7 +299,9 @@ class ShipStateCode(nn.Module):
     @property
     def ellipse_width(self) -> int:
         """The ellipse inputs' width (0 with scalar spread inputs)."""
-        return 2 * ELLIPSE_FEATURES * SCALAR_BINS if self.spread_inputs == "ellipse" else 0
+        if self.spread_inputs != "ellipse":
+            return 0
+        return 2 * ELLIPSE_FEATURES * (SCALAR_BINS + PADDED)
 
     def blocks(self, spreads: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """(position, velocity) packed 2 x 2 covariances (..., 3) of spreads: the
@@ -310,7 +318,9 @@ class ShipStateCode(nn.Module):
 
     def ellipse_code(self, spreads: torch.Tensor) -> torch.Tensor:
         """(..., ellipse_width): per ellipse (position, velocity; `blocks`) the four
-        ELLIPSE_FEATURES, each a two-hot code of SCALAR_BINS (`ELLIPSE_KNEE`)."""
+        ELLIPSE_FEATURES, each the HL-Gauss code of an exact value on SCALAR_BINS and the
+        padding (`ELLIPSE_KNEE`): the padding keeps a feature's mean exact at its range's
+        edge (a round ellipse's 0, a sigma at or past its bound)."""
         features = []
         for name, packed in zip(("position", "velocity"), self.blocks(spreads), strict=True):
             knee = ELLIPSE_KNEE[name]
@@ -319,7 +329,10 @@ class ShipStateCode(nn.Module):
         # one code call over the eight features, their bounds per feature (module init)
         low = self.ellipse_low.to(spreads.dtype)
         high = self.ellipse_high.to(spreads.dtype)
-        return codes.scalar_sharp(torch.stack(features, -1), low, high, SCALAR_BINS).flatten(-2)
+        values = torch.stack(features, -1)
+        return codes.hl_gauss_scalar_encode(
+            values, torch.zeros_like(values), low, high, SCALAR_BINS
+        ).flatten(-2)
 
     def _scalar_ranges(self) -> dict[str, tuple[float, float, int]]:
         """(low, high, bins) of each of SCALARS."""
@@ -350,6 +363,9 @@ class ShipStateCode(nn.Module):
         )
 
     def _cooldown_sharp(self, cooldown: torch.Tensor) -> torch.Tensor:
+        # kept two-hot (not HL-Gauss): one bin per tick, a known cooldown is one-hot, and the
+        # residual in the spreads is the code less this base, so smoothing the base would
+        # change what the residual means
         return codes.scalar_sharp(
             cooldown, 0.0, (self.cooldown_bins - 1) * self.tick_length, self.cooldown_bins
         )
@@ -363,6 +379,7 @@ class ShipStateCode(nn.Module):
         mean = dict(zip(MEANS, means.unbind(-1), strict=True))
         spread = dict(zip(SPREADS, spreads[..., : len(SPREADS)].unbind(-1), strict=True))
         residual = spreads[..., self.residual_slice]
+        # the position and heading stay colour codes (not HL-Gauss; `codes`, circular)
         position = codes.position_encode(
             means[..., 0:2],
             self._position_sigma(spreads),
@@ -375,7 +392,7 @@ class ShipStateCode(nn.Module):
         heading = codes.circular_encode(
             mean["heading"], spread["heading"], 2.0 * math.pi, HEADING_COLOURS, HEADING_LEVELS
         )
-        nose_rate = codes.scalar_encode(
+        nose_rate = codes.hl_gauss_scalar_encode(
             mean["nose_rate"],
             spread["nose_rate"],
             -NOSE_RATE_LIMIT,
@@ -385,7 +402,7 @@ class ShipStateCode(nn.Module):
         # every scalar shares SCALAR_BINS: one code call over a scalar axis, the bounds per
         # scalar as tensors
         low, high, divisor = self._scalar_axis(maxima, means)
-        scalars = codes.scalar_encode(
+        scalars = codes.hl_gauss_scalar_encode(
             torch.stack([mean[name] for name in SCALARS], -1) / divisor,
             torch.stack([spread[name] for name in SCALARS], -1) / divisor,
             low,
@@ -467,7 +484,7 @@ class ShipStateCode(nn.Module):
             self.spread_fit,
         )
         velocity, covariance = codes.velocity_decode(
-            parts[1].unflatten(-1, (3, VELOCITY_BINS)),
+            parts[1].unflatten(-1, (3, VELOCITY_BINS + PADDED)),
             VELOCITY_BINS,
             VELOCITY_SPACING,
             VELOCITY_KNEE,
@@ -480,12 +497,12 @@ class ShipStateCode(nn.Module):
             self.spread_fit,
         )
         heading = torch.remainder(heading + math.pi, 2.0 * math.pi) - math.pi
-        nose_rate, nose_spread = codes.scalar_decode(
+        nose_rate, nose_spread = codes.hl_gauss_scalar_decode(
             parts[3], -NOSE_RATE_LIMIT, NOSE_RATE_LIMIT, NOSE_RATE_BINS
         )
         low, high, divisor = self._scalar_axis(maxima, probabilities)
-        values, sigmas = codes.scalar_decode(
-            torch.cat(parts[4:9], -1).unflatten(-1, (len(SCALARS), SCALAR_BINS)),
+        values, sigmas = codes.hl_gauss_scalar_decode(
+            torch.cat(parts[4:9], -1).unflatten(-1, (len(SCALARS), SCALAR_BINS + PADDED)),
             low,
             high,
             SCALAR_BINS,

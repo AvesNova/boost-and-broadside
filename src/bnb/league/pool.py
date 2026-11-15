@@ -3,7 +3,10 @@
 Entries: frozen snapshots of the live policy (checkpoints), the uniform average and the
 exponential moving average of its weights, and the full-strength Imugi (no weaker
 rung and no random player: the author, 2026-11-12). Self-play is not an entry: it is a fixed
-share of each mode's batch.
+share of each mode's batch, or, for a run that trains one seat, "latest" (`LATEST`), which
+holds a fixed share of the slots (`LeagueConfig.latest_share`) and is never drawn. An
+exploiter's pool (`LeagueConfig.fixed_opponent`) is one entry, `FIXED_OPPONENT`, of kind
+"fixed".
 """
 
 import dataclasses
@@ -17,14 +20,17 @@ from bnb.runtime.opponents import IMUGI_PLAYER, SAMPLINGS, LeagueConfig
 from .gauge import KINDS
 
 AVERAGES = (UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE)
+LATEST = "latest"  # the slots' frozen copy of the live weights (`LeagueConfig.latest_share`)
+FIXED_OPPONENT = "fixed_opponent"  # an exploiter's one entry (`LeagueConfig.fixed_opponent`)
 
 
 @dataclasses.dataclass(frozen=True)
 class Entry:
     """One pool entry. kind: "checkpoint", "average", "scripted" (the full-strength
-    Imugi, the pool's one scripted entry) or "cheese" (a cheese agent, named
-    `scripted:<agent>`, in the pool only when `LeagueConfig.cheese` lists it); steps: a
-    checkpoint's environment steps at its snapshot."""
+    Imugi, the pool's one scripted entry), "cheese" (a cheese agent, named
+    `scripted:<agent>`, in the pool only when `LeagueConfig.cheese` lists it) or "fixed"
+    (`FIXED_OPPONENT`, an exploiter's one opponent); steps: a checkpoint's environment
+    steps at its snapshot."""
 
     name: str
     kind: str
@@ -37,10 +43,13 @@ class Entry:
             raise ValueError(f"{self.name}: the scripted entry is {IMUGI_PLAYER!r}")
         if (self.kind == "cheese") != (agent_of(self.name) is not None):
             raise ValueError(f"{self.name}: a cheese entry is named scripted:<agent>")
+        if (self.kind == "fixed") != (self.name == FIXED_OPPONENT):
+            raise ValueError(f"{self.name}: the fixed entry is {FIXED_OPPONENT!r}")
 
     @property
     def network(self) -> bool:
-        """Whether the entry is a network (a checkpoint or an average), loaded into a slot."""
+        """Whether the entry is a network (a checkpoint, an average or the fixed opponent),
+        loaded into a slot."""
         return self.kind not in ("scripted", "cheese")
 
 

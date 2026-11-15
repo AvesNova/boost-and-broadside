@@ -307,19 +307,22 @@ def apply_damage(
     alive_at_start: torch.Tensor,
     total: torch.Tensor,
     quiet_input: torch.Tensor,
+    struck: torch.Tensor,
 ) -> Damage:
     """Phase 5 for ships alive at tick start: shields, recharge, and who dies.
 
     Damage beyond the shield breaks it (the overkill is ignored); any damage to a shield
-    already broken at tick start kills. A hit resets the recharge wait to the delay, and so
-    does any input that is not quiet (quiet_input (B, N), see `quiet`): an unhurt ship on a
-    quiet tick counts its wait down and recharges once the wait is over, so the recharge
-    needs the delay's length of unbroken quiet flight. Ships dead at tick start lose and
-    restore nothing.
+    already broken at tick start kills. A hit resets the recharge wait to the delay, whatever
+    its damage (struck (B, N): a bullet hit the ship this tick, one its armour turned to no
+    damage included), as does any damage (the boundary's) and any input that is not quiet
+    (quiet_input (B, N), see `quiet`): an untouched ship on a quiet tick counts its wait
+    down and recharges once the wait is over, so the recharge needs the delay's length of
+    unbroken quiet flight. Ships dead at tick start lose and restore nothing.
     """
     tick_length = rules.tick_length
     shield0, wait0 = ships.shield, ships.shield_recharge_wait
     hurt = total > 0.0
+    touched = hurt | struck
     died = alive_at_start & hurt & (shield0 <= 0.0)
     shield = (shield0 - total).clamp_min(0.0)
     rate = rules.shield_recharge_rate * per_ship(types.shield_recharge_rate_scale, ships.ship_type)
@@ -330,10 +333,10 @@ def apply_damage(
         per_ship(types.max_shield, ships.ship_type) - shield,
         rate * (tick_length - wait0).clamp(0.0, tick_length),
     )
-    # an unhurt ship cannot have died
-    restored = torch.where(alive_at_start & ~hurt & quiet_input, recharge, 0.0)
+    # an untouched ship cannot have died
+    restored = torch.where(alive_at_start & ~touched & quiet_input, recharge, 0.0)
     counted = (wait0 - tick_length).clamp_min(0.0)
-    wait = torch.where(hurt | ~quiet_input, delay, counted)
+    wait = torch.where(touched | ~quiet_input, delay, counted)
     ships = replace(
         ships,
         shield=torch.where(alive_at_start, shield + restored, shield0),

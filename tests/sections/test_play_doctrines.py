@@ -36,7 +36,7 @@ def test_baekho_flies_the_lock_aware_goal_and_the_maneuver_elements():
 
 
 def test_the_stored_file_packs_to_the_full_table_width_for_the_real_scale_set():
-    rows = imugi_doctrine.rows_by_count(DOCTRINES["baekho"])
+    rows = imugi_doctrine.rows_by_kind(DOCTRINES["baekho"])
     assert rows and all(
         len(row) == imugi_doctrine.WIDTH for table in rows.values() for row in table
     )

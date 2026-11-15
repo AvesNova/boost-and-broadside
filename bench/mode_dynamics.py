@@ -14,8 +14,13 @@ frontline (`--preset real_scale_frontline`): the mode's own rules; per game, eve
 tick and team (the front's step), and how the game ended: by the front reaching its
 threshold, or by the clock.
 
-Each environment's first game is recorded; every `--batch` games are one JSON line of FILE
-(appended; a line per batch, so a stopped run keeps its batches). On the compiled rollout
+Each environment's first game is recorded (its lineup, `ship_type`, among the rest); every
+`--batch` games are one JSON line of FILE (appended; a line per batch, so a stopped run
+keeps its batches; batch k restarts the rollout with `batch=k`, so batches are independent
+draws). Lineups: `--drawn-lineups` draws each slot from the set's drawn types with equal
+chance, the same for both teams (training's lineups); `--lineup` gives fixed ones. Per batch,
+the first games' kills (a death with a shooter) by the killing hit's aspect class
+(`bnb.contracts.ASPECTS`) and by killer and victim type. On the compiled rollout
 (`bnb.runtime.rollout.Rollout`, Imugi on both seats) with a stage that traces
 each environment's score, front and clock every tick, on `--device` (cuda if
 available). Overrides: `--ships`, `--radius` (m), `--zone-radius` (m at map scale 1),
@@ -35,7 +40,7 @@ import zoneinfo
 
 import torch
 
-from bnb.contracts import Pool
+from bnb.contracts import ASPECTS, Pool
 from bnb.controllers import imugi, imugi_combat
 from bnb.controllers.imugi_defaults import MODE_DEFAULTS
 from bnb.controllers.imugi_parameters import ModeParameters
@@ -81,16 +86,19 @@ def game_of(arguments) -> tuple:
 
 def lineup_of(lineup: str | None, game, environments: int) -> torch.Tensor | None:
     """(environments, N) int32 ship types: the keys cycled over each team's slots, the same
-    for both teams; None for the game's lineup. Several lineups separated by ';' alternate
-    by pairs of environments (both seats of a pair play the same lineup)."""
+    for both teams, or team 0's and team 1's separated by '|'; None for the game's lineup.
+    Several lineups separated by ';' alternate by pairs of environments (both seats of a pair
+    play the same lineup)."""
     if lineup is None:
         return None
     keys = [ship.key for ship in ships.load(game.ship_set)]
     rows = []
     for one in lineup.split(";"):
-        chosen = [keys.index(key) for key in one.split(",")]
-        team = [chosen[slot % len(chosen)] for slot in range(game.ships_per_team)]
-        rows.append(team + team)
+        teams = []
+        for side in one.split("|"):
+            chosen = [keys.index(key) for key in side.split(",")]
+            teams.append([chosen[slot % len(chosen)] for slot in range(game.ships_per_team)])
+        rows.append(teams[0] + teams[-1])
     table = torch.tensor(rows, dtype=torch.int32)
     return table[(torch.arange(environments) // 2) % len(rows)]
 
@@ -110,6 +118,8 @@ def mode_overrides(arguments) -> dict:
     return changes
 
 
+KINDS = 2  # the kill table's types (the real-scale set's Yongma and Jujak; any later type
+# counts as the last)
 BINS = 900  # 1 s histogram bins (the last one holds every longer time)
 HISTOGRAMS = ("engage", "life", "objective", "zone_to_zone", "contest")
 # Frontline: ship-ticks of the team under a capture lock while the lock holds (first games
@@ -157,6 +167,9 @@ class Probe:
             death_distance=torch.zeros((environments, N), dtype=torch.float32, device=device),
             ally_gap_sum=torch.zeros(environments, dtype=torch.float32, device=device),
             ally_gap_count=torch.zeros(environments, dtype=torch.float32, device=device),
+            ship_type=torch.zeros((environments, N), dtype=torch.long, device=device),
+            kill_aspect=torch.zeros(len(ASPECTS), dtype=torch.long, device=device),
+            kills_by_type=torch.zeros((KINDS, KINDS), dtype=torch.long, device=device),
             **{name: torch.zeros(BINS, dtype=torch.long, device=device) for name in HISTOGRAMS},
             **{name: torch.zeros(1, dtype=torch.long, device=device) for name in LOCK_TALLIES},
         )
@@ -193,6 +206,16 @@ class Probe:
         self._count("engage", since, first_engage)
         self._count("life", since, events.died & live)
         b["deaths"].add_((events.died & live).sum(-1))
+        # the first game's lineup (each environment's types at its first tick)
+        kind = state.ships.ship_type.long()
+        b["ship_type"].copy_(torch.where(b["tick"] == 0, kind, b["ship_type"]))
+        # kills (a death with a shooter) by aspect class and by killer and victim type
+        killed = events.died & live & (events.killer >= 0)
+        aspect = events.kill_aspect.long().clamp(0, len(ASPECTS) - 1)
+        b["kill_aspect"].index_add_(0, aspect.flatten(), killed.flatten().long())
+        killer_kind = kind.gather(1, events.killer.long().clamp_min(0)).clamp_max(KINDS - 1)
+        pair = killer_kind * KINDS + kind.clamp_max(KINDS - 1)
+        b["kills_by_type"].view(-1).index_add_(0, pair.flatten(), killed.flatten().long())
         b["boundary_deaths"].add_((events.died & (events.killer < 0) & live).sum(-1))
         # each ship's first death in the first game: its tick (the game's last tick
         # included, which the trace's score misses), whether the boundary killed it (no
@@ -501,6 +524,16 @@ def first_games(trace: dict, episode: int, threshold: int, kind: str) -> list[di
     return games
 
 
+def elimination_result(death_tick: list[int]) -> int:
+    """An elimination game's result for team 0 from its ships' first-death ticks (own team's
+    rows first, -1 alive): 1 when only team 0 has a survivor, -1 when only team 1, else 0.
+    The trace's score cannot give it: the death that ends the game lands on the reset tick,
+    after the game's last traced state."""
+    ships = len(death_tick) // 2
+    alive = [any(tick < 0 for tick in death_tick[t * ships : (t + 1) * ships]) for t in (0, 1)]
+    return int(alive[0]) - int(alive[1])
+
+
 def main() -> None:
     """The run the module describes."""
     parser = argparse.ArgumentParser()
@@ -542,6 +575,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--fields", action="store_true", help="keep the preset's fields (default: none)"
+    )
+    parser.add_argument(
+        "--drawn-lineups",
+        action="store_true",
+        help="each slot a coin flip over the set's drawn types, mirrored (training's lineups)",
     )
     parser.add_argument(
         "--density", action="store_true", help="with --ships: the arena by `api.arena_radius_for`"
@@ -616,6 +654,8 @@ def main() -> None:
         staggered=False,
         ship_type=lineup_of(arguments.lineup, game, environments),
         compiled=not arguments.eager,
+        seed=arguments.seed,
+        lineup_types=(api.drawn_lineup_types(game.ship_set) if arguments.drawn_lineups else None),
     )
     if mode_overrides(arguments):
         rollout.rules = api.tuning.tuned(rollout.rules, mode_overrides(arguments))
@@ -630,7 +670,7 @@ def main() -> None:
         began = time.time()
         torch.manual_seed(arguments.seed + 1000 * index)
         trace = rollout.carry.pop("trace")
-        rollout.restart()
+        rollout.restart(batch=index)
         rollout.carry["trace"] = trace
         for name, value in blank_trace(environments, length, device).items():
             trace[name].copy_(value)
@@ -665,6 +705,11 @@ def main() -> None:
             # the mean distance (m) from a living ship to its nearest living ally over the
             # game's ticks (None without two living allies)
             game_record["ally_gap"] = round(total / count, 1) if count else None
+        for game_record, kinds in zip(games, probe.buffers["ship_type"].cpu().tolist()):
+            game_record["ship_type"] = kinds
+        if arguments.kind == "elimination":
+            for game_record in games:
+                game_record["result"] = elimination_result(game_record["death_tick"])
         first_hit = probe.buffers["first_hit"].cpu().tolist()
         for game_record, hit_tick in zip(games, first_hit):
             game_record["first_hit"] = hit_tick
@@ -682,7 +727,9 @@ def main() -> None:
             capture_seconds=rollout.rules.pools[0].mode.capture_seconds,
             front_threshold=threshold,
             temperature=arguments.temperature,
-            lineup=arguments.lineup,
+            lineup="drawn" if arguments.drawn_lineups else arguments.lineup,
+            kill_aspect=probe.buffers["kill_aspect"].cpu().tolist(),
+            kills_by_type=probe.buffers["kills_by_type"].cpu().tolist(),
             fog=arguments.fog,
             fields=game.num_fields,
             respawn_seconds=rollout.rules.pools[0].respawn_ticks * rules.tick_length,
