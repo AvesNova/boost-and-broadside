@@ -1,0 +1,266 @@
+[
+ {
+  "name": "K-roll-g7-dive-d1.2-s110",
+  "flight_from": "K-roll-g7-dive",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 23.02524
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "K-roll-g7-dive-d1.15-s110",
+  "flight_from": "K-roll-g7-dive",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "K-roll-g7-dive-d1.25-s110",
+  "flight_from": "K-roll-g7-dive",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 23.984625
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "K-roll-g7-dive-d1.2-s115",
+  "flight_from": "K-roll-g7-dive",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 23.02524
+   },
+   "max_shield": {
+    "set": 115.0
+   }
+  }
+ },
+ {
+  "name": "K-roll-g7-dive-t66-d1.2-s110",
+  "flight_from": "K-roll-g7-dive-t66",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 23.02524
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "K-roll-g7-dive-t66-d1.1-s110",
+  "flight_from": "K-roll-g7-dive-t66",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 21.10647
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "K-roll-g7-dive-t66-d1.1-s100",
+  "flight_from": "K-roll-g7-dive-t66",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 21.10647
+   },
+   "max_shield": {
+    "set": 100.0
+   }
+  }
+ },
+ {
+  "name": "K-roll-g7-dive-t66-d1.0-s100",
+  "flight_from": "K-roll-g7-dive-t66",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 19.1877
+   },
+   "max_shield": {
+    "set": 100.0
+   }
+  }
+ }
+]
