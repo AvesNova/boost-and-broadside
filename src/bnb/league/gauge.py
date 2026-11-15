@@ -64,10 +64,6 @@ class Gauge:
             raise ValueError(f"entry {name!r} is already in the gauge")
         self.entries[name] = Rated(kind, self.live.rating if rating is None else float(rating))
 
-    def remove(self, name: str) -> None:
-        """Drop an entry (retention removed it from the pool)."""
-        del self.entries[name]
-
     # ---- the update
 
     def update(self, fitted: dict[str, tuple[float, float]]) -> None:

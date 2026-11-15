@@ -24,7 +24,7 @@ from bnb.runtime.opponents import (
     OPPONENTS,
     LeagueConfig,
 )
-from bnb.runtime.snapshots import SnapshotSchedule
+from bnb.runtime.snapshots import LEAGUE_SNAPSHOTS, MILLION, SnapshotSchedule
 from bnb.streams import inverse_cdf, keyed_uniform, stream_key
 
 pytestmark = pytest.mark.usefixtures("global_generator")
@@ -350,7 +350,7 @@ def test_a_cut_resets_the_opponents_memory_or_keeps_it(tmp_path, monkeypatch, ca
 
 
 def test_a_cut_keeps_the_memory_only_between_networks():
-    snapshot = Entry("snapshot_1", "checkpoint", steps=1, ordinal=0)
+    snapshot = Entry("snapshot_1", "checkpoint", steps=1)
     average = Entry(EXPONENTIAL_AVERAGE, "average")
     scripted = Entry(IMUGI_PLAYER, "scripted")
     assert same_build(snapshot, average) and same_build(average, snapshot)
@@ -481,18 +481,22 @@ def test_the_uniform_average_starts_after_its_warm_up(tmp_path):
     assert seen == [0.0, 1.0, 1.5, 2.0]
 
 
-def test_the_measured_snapshot_cadence_reads_the_slowest_of_the_second_to_fourth_updates(
-    tmp_path, monkeypatch
-):
-    """One short update (a PPO update that stops early on its KL) must not set the cadence."""
-    trainer, league = cases.league(tmp_path, league=LeagueConfig(cheese=(), snapshots=None))
-    clock = iter([0.0, 100.0, 1100.0, 1110.0, 1111.0])  # updates of 100, 1000, 10 and 1 seconds
-    monkeypatch.setattr("bnb.league.league.time.perf_counter", lambda: next(clock))
-    league._measure_cadence(trainer)  # the first update compiles: only starts the clock
-    for _ in range(2):
-        league._measure_cadence(trainer)
-        assert league.schedule is None
-    league._measure_cadence(trainer)  # durations 100, 1000, 10: the slowest sets it
-    assert league.schedule == SnapshotSchedule(
-        every=round(30 * 60 / 1000) * trainer.steps_per_update
-    )
+def test_every_snapshot_stays_in_the_pool_and_resumes_with_its_schedule(tmp_path):
+    """No member is ever dropped (decided 2026-11-15): after many snapshots each one is still
+    an entry, in every gauge and on disk, and a resume restores them and the league's
+    schedule (`LEAGUE_SNAPSHOTS` by default) exactly."""
+    trainer, league = cases.league(tmp_path, league=LeagueConfig(cheese=()))
+    assert league.schedule == LEAGUE_SNAPSHOTS
+    points = LEAGUE_SNAPSHOTS.points(1000 * MILLION)
+    weights = trainer.model.state_dict()
+    for steps in points:
+        league._snapshot(trainer, steps, {key: value.clone() for key, value in weights.items()})
+    names = [f"snapshot_{steps}" for steps in points]
+    checkpoints = [name for name, entry in league.entries.items() if entry.kind == "checkpoint"]
+    assert checkpoints == names and len(names) == 31  # 5M ... 960M
+    assert all(set(names) <= set(gauge.names()) for gauge in league.gauges.values())
+    assert all((tmp_path / f"step_{steps}" / "checkpoint").exists() for steps in points)
+    trainer.ppo.environment_steps = points[-1]
+    resumed = cases.League(trainer, tmp_path, state=league.state())
+    assert resumed.schedule == LEAGUE_SNAPSHOTS
+    assert resumed.entries == league.entries and list(resumed.snapshots) == names

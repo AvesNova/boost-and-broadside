@@ -202,10 +202,9 @@ A fork or a warm start whose command sets no model setting takes the file's
 A training checkpoint is written every N environment steps. Without
 `--checkpoint-every`, N is about 30 minutes at the run's throughput, measured on the slowest
 of its second to fourth updates (the first compiles, and a PPO update that stops early on
-its KL is several times shorter) and recorded in `run.json`{.plain}; the league's snapshot
-interval is measured the same way. Training checkpoints are the large, resumable states, so
-the retention (`bnb.runs.records.retained`; the league's snapshots have their own rule,
-`bnb.league.pool.retained`) keeps only the newest `RECENT` = 2 and the final one, which
+its KL is several times shorter) and recorded in `run.json`{.plain}. Training checkpoints
+are the large, resumable states, so the retention (`bnb.runs.records.retained`; the league
+keeps every one of its snapshots) keeps only the newest `RECENT` = 2 and the final one, which
 holds both averages. A stop's off-cadence checkpoint counts as one of them. A deleted
 checkpoint is first renamed `step_<step>.deleting`, which the listing ignores, then removed. A
 rewind (`--resume RUN --at STEP`) moves the newer checkpoints into

@@ -25,12 +25,12 @@ pools: self-play and the league's seat, half each. Self-play is not a pool entry
 its fixed share. The entries (`bnb.league.pool.Entry`) are:
 
 - **snapshots** of the live policy, taken on the schedule `LeagueConfig.snapshots`
-  (`bnb.runtime.snapshots.LEAGUE_SNAPSHOTS`, decided 2026-11-14: at 5, 10, 15, 20, 25, 30,
-  40, 50, 60, 75, 90, 110, 130 and 160M environment steps, then every 30M, about 100 to
-  200 Elo apart on rl-v20's curve; to be re-derived after the game freeze). With
-  `snapshots=None` the league measures a period once, about 30 minutes at the pace of the
-  slowest of the second to fourth updates, and records it in `run.json`{.plain}. A
-  snapshot is the weights that played the update it was taken at;
+  (`bnb.runtime.snapshots.LEAGUE_SNAPSHOTS`, decided 2026-11-15): every 5M environment
+  steps to 50M, then an interval that doubles each time the steps double, every 10M to
+  100M, every 20M to 200M, every 40M to 400M, and so on (`SnapshotSchedule.doubling_from`).
+  The members are 5, 10, …, 50, 60, …, 100, 120, …, 200, 240, …, 400, 480, …M: ten to
+  50M, then five per doubling of the steps. A snapshot is the weights that played the
+  update it was taken at;
 - **the averages:** the uniform average and the exponential moving average of the live
   policy's weights, folded in after every update (`bnb.league.pool.Averages`, through `average_into`, the
   decay `LeagueConfig.exponential_decay` per update; behaviour cloning keeps the same
@@ -45,10 +45,10 @@ its fixed share. The entries (`bnb.league.pool.Entry`) are:
   played by the offline tournament ([Published ratings](#published-ratings)), and the rating lanes can play its
   rungs (`bnb.runtime.lanes.ladder_chain`); it is not part of training.
 
-**Retention** (`bnb.league.pool.retained`) keeps the newest 8 snapshots and, of the older
-ones, the one nearest each age of 2^k snapshots for k from 3. The run's `league/` directory
-holds each retained snapshot as `step_<steps>/checkpoint`, with the two averages at the same
-step beside it (`uniform_average`, `exponential_average`), all policy files.
+Every snapshot stays in the pool for the rest of the run; none is dropped (decided
+2026-11-15). The run's `league/` directory holds each snapshot as
+`step_<steps>/checkpoint`, with the two averages at the same step beside it
+(`uniform_average`, `exponential_average`), all policy files.
 
 ## Sampling
 

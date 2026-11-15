@@ -1137,7 +1137,7 @@ def _train(options: Train, given_options: set[str], stop, chain_entry: dict | No
 
         # a warm start's live rating starts from its parent's (the clone's lane ratings)
         ratings = checkpoint.read_policy(source).ratings if options.init_from else None
-        League(trainer, run.directory / "league", run, state, ratings)
+        League(trainer, run.directory / "league", state, ratings)
     elif trainer.lanes or config.objective == "bc":  # BC's hooks keep its averages
         from bnb.league.lanes import LaneHooks
 

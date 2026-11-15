@@ -3,7 +3,7 @@ cuts, the gauges, the averages and the snapshots, attached to a trainer as its h
 
 Per shard (`after_shard`): read the shard's results by entry and mode. Before learning
 (`collected`): when a snapshot is due, keep the weights that played this update. After
-learning (`updated`): the new snapshot and the retention, the run's ratings from the
+learning (`updated`): the new snapshot, the run's ratings from the
 update's games (the lanes' and these, `bnb.league.lanes.RunRatings`) and each mode's gauge
 from them, the averages (which the slots holding them follow), the next sampling weights,
 every `cut_every` updates the clean cut of `cut_slots` slots (round robin, each drawing its
@@ -20,16 +20,13 @@ import dataclasses
 import math
 import pathlib
 import shutil
-import time
 
 import torch
 
 from bnb.contracts.series import Table
 from bnb.controllers.cheese import agent_of, player_name
 from bnb.runs import checkpoint
-from bnb.runs.records import Run
 from bnb.runs.serialise import from_json, to_json
-from bnb.runs.session import CADENCE_UPDATES
 from bnb.runtime.lanes import UNIFORM_AVERAGE, league_slot
 from bnb.runtime.opponents import (
     IMUGI_KIND,
@@ -49,7 +46,6 @@ from .pool import (
     IMUGI_ENTRY,
     Averages,
     Entry,
-    retained,
     sampling_weights,
     snapshot_name,
 )
@@ -58,7 +54,6 @@ from .pool import (
 # group 20): Imugi, the averages and the checkpoints (and the cheese agents,
 # when the pool holds any: `League.entry_kinds`).
 ENTRY_KINDS = ("scripted", "average", "checkpoint")
-SNAPSHOT_SECONDS = 30 * 60  # the measured snapshot cadence's target (league spec 5)
 SNAPSHOT_DIRECTORY = "step_{steps}"
 # an entry rated further than this from the live policy after it has played is an anomaly
 GAUGE_DISTANCE = 1500.0
@@ -70,8 +65,7 @@ CHECKPOINT_POLICY = "checkpoint"  # a snapshot directory's policy files: the sna
 
 class League:
     """The league of one run (see the module docstring). directory: where the snapshots'
-    policy files go (the run's `league/`); run: the run's record, which notes a measured
-    snapshot cadence; state: a training checkpoint's league state
+    policy files go (the run's `league/`); state: a training checkpoint's league state
     (`bnb.runs.checkpoint.league_state`) to continue from; ratings: the live policy's
     starting rating per mode (a warm start's parent's; 0 where not given). Attaching it sets
     the trainer's hooks; without a state it fills every slot with a draw. Every rating is
@@ -82,7 +76,6 @@ class League:
         self,
         trainer: Trainer,
         directory: str | pathlib.Path,
-        run: Run | None = None,
         state: tuple[dict, dict[str, torch.Tensor]] | None = None,
         ratings: dict[str, float] | None = None,
     ) -> None:
@@ -93,7 +86,6 @@ class League:
         self.opponents = trainer.opponents
         self.directory = pathlib.Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
-        self.run = run
         self.modes = trainer.modes
         rows = torch.tensor(trainer.mode_rows, dtype=torch.float64)
         self.mode_shares = rows / rows.sum()
@@ -101,8 +93,6 @@ class League:
         self.scratch = copy.deepcopy(trainer.model).cpu()  # writes the snapshots' files
         self.device = trainer.rollout.device
         self.pending: dict[str, torch.Tensor] | None = None
-        self.started: float | None = None
-        self.durations: list[float] = []  # the updates after the first, in seconds
         self.record = self._empty_record()
         self.lane_seat = trainer.lane_seat
         self.ratings = RunRatings(
@@ -142,7 +132,6 @@ class League:
                 gauge.add(name, "cheese")
         self.snapshots: dict[str, dict[str, torch.Tensor]] = {}
         self.schedule = self.config.snapshots
-        self.ordinal = 0
         self.swaps = 0
         self.next_slot = 0
         self.updates = 0  # the cuts' clock
@@ -170,10 +159,8 @@ class League:
             for name, entry in self.entries.items()
             if entry.kind == "checkpoint"
         }
-        schedule = record["snapshot_schedule"]
-        self.schedule = None if schedule is None else from_json(SnapshotSchedule, schedule)[0]
-        self.ordinal, self.swaps, self.next_slot, self.updates = (
-            record["ordinal"],
+        self.schedule = from_json(SnapshotSchedule, record["snapshot_schedule"])[0]
+        self.swaps, self.next_slot, self.updates = (
             record["swaps"],
             record["next_slot"],
             record["updates"],
@@ -296,8 +283,8 @@ class League:
         for column, row in enumerate(tally.tolist()):
             name = self.held[column] if column < slots else IMUGI_PLAYER
             for mode, (wins, ties, losses) in zip(self.modes, row):
-                if wins + ties + losses == 0 or name not in self.entries:
-                    continue  # no games, or against an entry retention has dropped
+                if wins + ties + losses == 0:
+                    continue
                 games = self.record[mode].setdefault(name, Record())
                 games.wins += wins
                 games.ties += ties
@@ -310,7 +297,7 @@ class League:
     def collected(self, trainer: Trainer) -> None:
         """When a snapshot is due at this update, keep the weights that played it."""
         before, after = self._steps_after_update(trainer)
-        if self.schedule is not None and self.schedule.due(before, after):
+        if self.schedule.due(before, after):
             self.pending = {
                 key: value.detach().to("cpu", copy=True)
                 for key, value in trainer.model.state_dict().items()
@@ -318,7 +305,7 @@ class League:
 
     @torch.no_grad()
     def updated(self, trainer: Trainer) -> dict:
-        """The snapshot and retention, the ratings and the gauges, the averages and the next
+        """The snapshot, the ratings and the gauges, the averages and the next
         weights, after the update's learning. Returns the league's metrics."""
         steps = trainer.ppo.environment_steps
         snapshot = None
@@ -345,45 +332,17 @@ class League:
         self._load_lanes()
         metrics = self.metrics()
         self.record = self._empty_record()
-        self._measure_cadence(trainer)
         return metrics
 
-    def _measure_cadence(self, trainer: Trainer) -> None:
-        """Without a schedule (`LeagueConfig.snapshots` None): a period of about
-        SNAPSHOT_SECONDS at the pace of the slowest of the second to fourth updates (the
-        first compiles, and a PPO update that stops early on its KL is several times
-        shorter), in whole updates, recorded in the run."""
-        if self.schedule is not None:
-            return
-        now = time.perf_counter()
-        if self.started is not None:
-            self.durations.append(now - self.started)
-            if len(self.durations) == CADENCE_UPDATES:
-                updates = max(1, round(SNAPSHOT_SECONDS / max(self.durations)))
-                self.schedule = SnapshotSchedule(every=updates * trainer.steps_per_update)
-                if self.run is not None:
-                    self.run.update(snapshot_every=self.schedule.every)
-        self.started = now
-
     def _snapshot(self, trainer: Trainer, steps: int, weights: dict[str, torch.Tensor]) -> str:
-        """A snapshot of `weights` (the ones that played this update) into the pool, and the
-        retention after it; returns its name."""
+        """A snapshot of `weights` (the ones that played this update) into the pool, kept for
+        the rest of the run (no snapshot is ever dropped); returns its name."""
         name = snapshot_name(steps)
-        self.entries[name] = Entry(name, "checkpoint", steps=steps, ordinal=self.ordinal)
-        self.ordinal += 1
+        self.entries[name] = Entry(name, "checkpoint", steps=steps)
         self.snapshots[name] = weights
         for gauge in self.gauges.values():
             gauge.add(name, "checkpoint")  # at the live rating, until the fit rates it
         self._write(trainer, steps, weights)
-        ordinals = {e.ordinal: e.name for e in self.entries.values() if e.kind == "checkpoint"}
-        for ordinal in set(ordinals) - retained(set(ordinals)):
-            dropped = self.entries.pop(ordinals[ordinal])
-            del self.snapshots[dropped.name]
-            for gauge in self.gauges.values():
-                gauge.remove(dropped.name)
-            path = self.directory / SNAPSHOT_DIRECTORY.format(steps=dropped.steps)
-            if path.exists():
-                shutil.rmtree(path)
         return name
 
     def _write(self, trainer: Trainer, steps: int, weights: dict[str, torch.Tensor]) -> None:
@@ -498,8 +457,7 @@ class League:
             entries=[dataclasses.asdict(entry) for entry in self.entries.values()],
             gauges={mode: gauge.state() for mode, gauge in self.gauges.items()},
             averaged=self.averages.count,
-            snapshot_schedule=None if self.schedule is None else to_json(self.schedule),
-            ordinal=self.ordinal,
+            snapshot_schedule=to_json(self.schedule),
             swaps=self.swaps,
             next_slot=self.next_slot,
             updates=self.updates,
