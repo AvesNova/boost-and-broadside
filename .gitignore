@@ -10,6 +10,7 @@ __pycache__/
 # Run outputs stay out of git (checkpoints and artifacts go to wandb or the HF Hub)
 /checkpoints/
 /runs/
+/replays/
 logs/
 outputs/
 wandb/
