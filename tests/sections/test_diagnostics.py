@@ -13,7 +13,7 @@ import pytest
 import torch
 import yemong_cases as cases
 
-from bnb.contracts import REWARD_LEVELS, Action
+from bnb.contracts import VALUE_LEVELS, Action
 from bnb.contracts.action import NUM_JOINT
 from bnb.contracts.series import Deferred, Mean, Table
 from bnb.league.league import normalised_entropy
@@ -80,10 +80,10 @@ def test_the_cadence_measures_the_first_and_every_tenth_update():
 
 def _stored(views: int = 2, length: int = 3, ships: int = 2) -> dict:
     """A hand-built shard of two views (pools 0 and 1), two own ships and two enemies."""
-    reward = torch.zeros((length, views, ships, len(REWARD_LEVELS)))
-    reward[0, 0, 0, 0] = 2.0  # the first level: +2 then -1 in pool 0
+    reward = torch.zeros((length, views, ships, len(VALUE_LEVELS)))
+    reward[0, 0, 0, 0] = 2.0  # the first value level (damage_offence): +2 then -1 in pool 0
     reward[1, 0, 1, 0] = -1.0
-    reward[2, 1, 0, 1] = 3.0  # the second level: +3 in pool 1
+    reward[2, 1, 0, 1] = 3.0  # the second (damage_defence): +3 in pool 1
     done = torch.zeros((length, views), dtype=torch.bool)
     done[1, 0] = True  # view 0 wins at step 1
     done[2, 1] = True  # view 1 draws at step 2
@@ -117,11 +117,11 @@ def test_the_rollout_series_match_a_hand_computed_shard():
     assert out["episode/draws/deathmatch/league"] == 1
     assert out["episode/losses/frontline/self_play"] == 0
     # reward per ship and second: level 0 in pool 0 is (2 - 1) / 2 ships / 3 steps / 0.5 s
-    assert out["reward/rate/damage/frontline/self_play"] == pytest.approx(1.0 / 2 / 3 / 0.5)
-    assert out["reward/rate/kill_death/deathmatch/league"] == pytest.approx(3.0 / 2 / 3 / 0.5)
+    assert out["reward/rate/damage_offence/frontline/self_play"] == pytest.approx(1.0 / 2 / 3 / 0.5)
+    assert out["reward/rate/damage_defence/deathmatch/league"] == pytest.approx(3.0 / 2 / 3 / 0.5)
     # level shares of the absolute reward: 3 of 6 and 3 of 6
-    assert out["reward/level_share/damage"] == pytest.approx(0.5)
-    assert out["reward/level_share/kill_death"] == pytest.approx(0.5)
+    assert out["reward/level_share/damage_offence"] == pytest.approx(0.5)
+    assert out["reward/level_share/damage_defence"] == pytest.approx(0.5)
     # 11 of the 12 own ship-steps are alive; view 0 has 6, view 1 has 5
     assert out["episode/alive_share"] == pytest.approx(11 / 12)
     assert out["batch/token_share/mode/frontline"] == pytest.approx(6 / 11)
@@ -242,7 +242,7 @@ def test_the_targets_series_match_a_hand_computed_case(segment, global_generator
     net, runner = segment
     learner = lc.learner(copy.deepcopy(net), runner)
     L, V, S = 2, 1, 2
-    levels = len(REWARD_LEVELS)
+    levels = len(VALUE_LEVELS)
     level_returns = torch.zeros((L, V, S, levels))
     level_returns[..., 0] = torch.tensor([[[1.0, 2.0]], [[3.0, 1e9]]])  # 1e9: past the bins
     values = level_returns.clone()
@@ -255,14 +255,16 @@ def test_the_targets_series_match_a_hand_computed_case(segment, global_generator
     out = metrics.read(
         learner._target_series(level_returns, values, valued, advantage, alive, scale)
     )
-    first = REWARD_LEVELS[0]
+    first = VALUE_LEVELS[0]
     assert out[f"critic/return_mean/{first}"] == pytest.approx((1 + 2 + 3 + 1e9) / 4)
     assert out[f"critic/value_bias/{first}"] == pytest.approx(3 * 0.5 / 4)
     assert out[f"critic/support_clip/{first}"] == pytest.approx(0.25)
     assert out[f"returns/p50/{first}"] == pytest.approx(2.5)
     assert out["returns/advantage_mean"] == pytest.approx(0.5)  # (1 - 1 + 2 + 0) / 4
     assert out["returns/advantage_rms"] == pytest.approx(math.sqrt((1 + 1 + 4) / 4))
-    assert f"critic/support_clip/{REWARD_LEVELS[learner.outcome_level]}" not in out
+    assert all(
+        f"critic/support_clip/{VALUE_LEVELS[index]}" not in out for index in learner.outcome_levels
+    )
 
 
 def test_a_trace_decay_of_one_gives_the_discounted_rewards():
@@ -306,7 +308,7 @@ def test_the_learners_series_are_named_and_finite(segment, global_generator):
     assert out["policy/epochs_completed"] == 2 and out["policy/minibatch_steps"] == 4
     assert out["train/skipped_steps"] == 0
     assert all(out[name] > 0 for name in out if name.startswith("train/parameter_norm/"))
-    for level in REWARD_LEVELS:  # the critic against the rewards (lambda 1), not itself
+    for level in VALUE_LEVELS:  # the critic against the rewards (lambda 1), not itself
         assert out[f"critic/explained_variance_monte_carlo/{level}"] <= 1.0
 
 

@@ -1,5 +1,6 @@
 """The `bnb` command: `bnb train` trains or clones, `bnb runs` lists runs and uploads
-checkpoints, `bnb ship-card` charts a ship card, `bnb ratings` and `bnb head-to-head` rate
+checkpoints, `bnb average` builds averages of a run's weights after training, `bnb ship-card`
+charts a ship card, `bnb ratings` and `bnb head-to-head` rate
 policies, `bnb crossover` finds the ratio of a policy's ships to the scripted agent's
 at which it wins half its games, `bnb evaluate` decides between two policies, `bnb figures`
 draws what a policy's heads have learned and films it playing.
@@ -20,7 +21,7 @@ from typing import Annotated, Literal
 
 import tyro
 
-from bnb.contracts import REWARD_LEVELS
+from bnb.contracts import VALUE_LEVELS
 from bnb.contracts.config import TEAM_DEATHMATCH
 from bnb.figures.video import VideoConfig
 from bnb.league.evaluation_settings import EvaluationConfig
@@ -179,14 +180,8 @@ class Runs:
     checkpoint (`bnb runs upload RUN [--at STEP] [--league]`) as a W&B artifact, or build the
     run's W&B dashboards (`bnb runs dashboard RUN`, the `tools` extra).
 
-    Or build an exponential moving average of any decay from the run's saved per-update live
-    policies (`bnb runs ema RUN --decay 0.9 [--at STEP] [--out DIR]`, `bnb.runs.ema`) and
-    write it as a policy file for the tournament; the decay is per update.
-
-    action: list, show, upload, dashboard or ema; run: the run's name (all but list).
-    at: the checkpoint's step (default: the newest; for ema, the update the average ends at);
-    decay and out: ema's per-update decay and where to write the policy file (default under
-    the run's artifacts/ema/); league: upload the league's snapshots
+    action: list, show, upload or dashboard; run: the run's name (all but list).
+    at: the checkpoint's step (default: the newest); league: upload the league's snapshots
     instead; to: the target (wandb only, for now); runs_directory: as for bnb train.
     """
 
@@ -194,9 +189,30 @@ class Runs:
     run: tyro.conf.Positional[str | None] = None
     at: int | None = None
     league: bool = False
-    decay: float | None = None
-    out: str | None = None
     to: str = "wandb"
+    runs_directory: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class Average:
+    """Build averages of a run's weights from its per-update live policies (a run trained
+    with `--update-policies`) and write each as a policy file a tournament rates
+    (`bnb.runs.averaging`): uniform over a step window, exponential at a half-life,
+    windowed uniform over the last updates, and the run's own two averages rebuilt (checked
+    against the run's files where both exist), each at the spec's evaluation points. The
+    files are read once each, one at a time. An average written before is kept.
+
+    run: the run; spec: the TOML spec of the averages
+    (`docs/rewrite/sections/averaging/suite.toml` is the first suite); runs_directory: as
+    for bnb train. The player names (`RUN/average/<name>/step_<steps>`, or the live
+    file's path) go to stdout one per line, for `bnb ratings RUN --no-league --with
+    $(cat players.txt)` after `bnb average RUN --spec SPEC > players.txt`; the progress and
+    the checks go to stderr. Exits with
+    an error when a rebuilt training average differs from the run's own.
+    """
+
+    run: tyro.conf.Positional[str]
+    spec: str
     runs_directory: str | None = None
 
 
@@ -717,6 +733,7 @@ COMMANDS = (
     "train",
     "play",
     "runs",
+    "average",
     "ship-card",
     "ratings",
     "head-to-head",
@@ -730,7 +747,8 @@ COMMANDS = (
 
 def main() -> None:
     """The `bnb` command: `bnb train ...` trains, `bnb play ...` opens the play shell,
-    `bnb runs ...` lists and shows runs and uploads checkpoints, `bnb ship-card ...` charts a
+    `bnb runs ...` lists and shows runs and uploads checkpoints, `bnb average ...` builds
+    averages of a run's weights from its per-update policies, `bnb ship-card ...` charts a
     card, `bnb ratings ...` and `bnb head-to-head ...` rate policies offline, `bnb crossover
     ...` finds a policy's break-even lineup, `bnb evaluate ...` decides between two
     policies, `bnb pool ...` keeps the shared rating pool, `bnb figures ...` draws what a
@@ -756,6 +774,8 @@ def main() -> None:
         play(arguments)
     elif command == "runs":
         runs(tyro.cli(Runs, args=arguments, prog="bnb runs"))
+    elif command == "average":
+        average(tyro.cli(Average, args=arguments, prog="bnb average"))
     elif command == "queue":
         queue(queue_options(arguments))
     elif command == "ratings":
@@ -1115,7 +1135,7 @@ def _train(options: Train, given_options: set[str], stop, chain_entry: dict | No
 
     def log(row: dict) -> None:
         totals = {
-            pool: sum(row.get(f"reward/rate/{level}/{pool}", 0.0) for level in REWARD_LEVELS)
+            pool: sum(row.get(f"reward/rate/{level}/{pool}", 0.0) for level in VALUE_LEVELS)
             for pool in trainer.pool_names[: len(trainer.config.pools)]
         }
         rewards = " ".join(f"{pool} {total:+.3f}" for pool, total in totals.items())
@@ -1426,15 +1446,6 @@ def runs(options: Runs) -> None:
             print("\n".join(show(run)))
         elif options.action == "dashboard":
             print(dashboard(run))
-        elif options.action == "ema":
-            from bnb.runs import ema
-
-            if options.decay is None:
-                raise SystemExit("bnb runs ema needs --decay")
-            try:
-                print(ema.build(run, options.decay, options.at, options.out))
-            except ValueError as error:
-                raise SystemExit(str(error)) from error
         elif options.action == "upload":
             from bnb.runs import upload
 
@@ -1443,10 +1454,32 @@ def runs(options: Runs) -> None:
             print(upload.upload(run, options.at, options.league))
         else:
             raise SystemExit(
-                f"bnb runs {options.action!r}: the actions are list, show, upload, dashboard, ema"
+                f"bnb runs {options.action!r}: the actions are list, show, upload, dashboard"
             )
     except FileNotFoundError as error:
         raise SystemExit(str(error)) from error
+
+
+def average(options: Average) -> None:
+    """`bnb average RUN --spec SPEC`: build and write the spec's averages; the player names
+    to stdout, the progress and the checks to stderr."""
+    from bnb.runs import averaging
+    from bnb.runs.records import Run
+
+    try:
+        run = Run.open(runs_directory_of(options.runs_directory), options.run)
+        spec = averaging.read_spec(options.spec)
+        names, checks = averaging.build(
+            run, spec, report=lambda line: print(line, file=sys.stderr, flush=True)
+        )
+    except (FileNotFoundError, ValueError) as error:
+        raise SystemExit(str(error)) from error
+    print("\n".join(names))
+    differing = [
+        f"{check.name} at step {check.step}" for check in checks if not check.within_rounding
+    ]
+    if differing:
+        raise SystemExit(f"rebuilt training averages differ from the run's: {', '.join(differing)}")
 
 
 def dashboard(run) -> str:

@@ -108,10 +108,12 @@ def save_update_policies(
     them, `update_policies`, else at each step of `TrainConfig.policy_snapshots` and at
     each segment's end), at `policies/step_<steps>/`: the live
     weights (`live/`), the exponential average (`exponential_average/`) and, once it has
-    started, the uniform average (`uniform_average/`). They are never pruned, so an average
-    of another decay can be built afterwards from the live files (`bnb runs ema`). scratch: a
-    host copy of the model the averages are loaded into. Files of the same step (a rewound or
-    repeated update's) are replaced."""
+    started, the uniform average (`uniform_average/`). A run that keeps every update's
+    files also writes them before its first update (its starting weights, which the
+    exponential average starts from, at `updates` 0). They are never pruned, so other
+    averages can be built afterwards from the live files (`bnb average`,
+    `bnb.runs.averaging`). scratch: a host copy of the model the averages are loaded into.
+    Files of the same step (a rewound or repeated update's) are replaced."""
     started = time.perf_counter()
     steps = trainer.ppo.environment_steps
     averages = getattr(trainer.league, "averages", None)  # a run with neither: the live only
@@ -262,6 +264,9 @@ def train(
     if stop.by is None and stop_file.exists():
         print(f"removing {stop_file}, left by an earlier process", flush=True)
         stop_file.unlink()
+    if every_update and not run.update_policies_path(trainer.ppo.environment_steps).exists():
+        # the starting weights (a resume's are its checkpoint update's, already written)
+        save_update_policies(run, trainer, scratch, recorder)
     device = trainer.rollout.device
     if trainer.config.compiled:
         print(micro_batch_note(trainer), flush=True)

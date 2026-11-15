@@ -484,9 +484,11 @@ def test_the_probe_on_the_cpu_measures_nothing_and_writes_no_run(monkeypatch, tm
     assert not tmp_path.exists() or not any(tmp_path.iterdir())
 
 
-def test_the_single_value_arm_trains_from_the_command_line(monkeypatch, tmp_path, global_generator):
-    """`--set yemong.levels=["summed_reward"] yemong.outcome_level=null` and one discount, trace
-    decay and team spirit: one update, and the policy records the arm's layout."""
+def test_the_offence_premium_is_set_from_the_command_line(monkeypatch, tmp_path, global_generator):
+    """`--set learner.offence_premium={...}` (a keypoint schedule): one update of Yemong's
+    split critic, which the policy file records."""
+    from bnb.contracts import VALUE_LEVELS
+
     options = list(cases.TRAIN_OPTIONS)
     options[options.index("relational")] = "yemong"
     options[options.index("relational.hidden=16")] = "yemong.blocks=1"
@@ -498,19 +500,12 @@ def test_the_single_value_arm_trains_from_the_command_line(monkeypatch, tmp_path
         "--updates",
         "1",
         "--name",
-        "single",
+        "premium",
         "--set",
-        'yemong.levels=["summed_reward"]',
-        "--set",
-        "yemong.outcome_level=null",
-        "--set",
-        "learner.discount=[0.999]",
-        "--set",
-        "learner.trace_decay=[0.97]",
-        "--set",
-        "learner.team_spirit=[0.0]",
+        'learner.offence_premium={"steps": [0, 1000000], "values": [2.0, 1.0]}',
     )
-    run = Run.open(tmp_path, "single")
+    run = Run.open(tmp_path, "premium")
+    config, _ = checkpoint.training_config(run.checkpoint_at())
+    assert config.learner.offence_premium.values == (2.0, 1.0)
     model = checkpoint.load_policy(run.checkpoint_at(), torch.device("cpu"))
-    assert model.config.levels == ("summed_reward",) and model.config.outcome_level is None
-    assert model.outcome is None
+    assert model.config.levels == VALUE_LEVELS and model.config.outcome_level == "outcome"

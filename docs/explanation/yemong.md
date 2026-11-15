@@ -748,13 +748,14 @@ anchor's to each partner's, and maps the sum through a norm, a hidden layer and 
 layer, as the shot trajectory head does with its ages. The learner's `geometry` term
 ([learner page](learner.md)) is its cross-entropy, nats per target, over the pairs.
 
-The critic gives one value per value level (`YemongConfig.levels`; by default one per
-reward level, `bnb.contracts.REWARD_LEVELS`): a per-ship categorical value over
-symlog-spaced bins for each local level, and the outcome level (`YemongConfig.outcome_level`)
-as `P(win) - P(loss)` from the global token (`bnb.models.yemong.critic`). The single value
-arm (`levels` `("summed_reward",)`, `outcome_level` None) has one per-ship categorical value over
-the summed reward levels and no outcome head
-([the learner](learner.md#the-single-value-arm)).
+The critic gives one value per value level (`YemongConfig.levels`; by default each reward
+level's offence and defence, `bnb.contracts.VALUE_LEVELS`): a per-ship categorical value over
+symlog-spaced bins for each of the eight local parts (with `value_padding` bins past
+each end of the range in a new build), and the outcome level's two parts
+(`YemongConfig.outcome_level`) from the global token's outcome head, offence `P(win)` and
+defence `-P(loss)` (`bnb.models.yemong.critic`). A build from before the split (2026-11-15)
+names the reward levels themselves, its outcome `P(win) - P(loss)` whole, and still plays
+([the learner](learner.md#the-offence-premium)).
 
 ## step and unroll
 

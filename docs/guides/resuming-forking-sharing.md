@@ -130,20 +130,20 @@ runs the setup and one update, prints the allocator's peaks against the budget, 
 without writing a run. Every run does the same on its first update and stops there if it
 is over the budget.
 
-## Every update's policies and other EMA decays
+## Every update's policies and averages built from them
 
 A run started with `--update-policies` keeps the live and averaged policy files of every
 update under `policies/` (off by default: a run keeps them on the snapshot schedule,
-`TrainConfig.policy_snapshots`, and at each end instead). To rate an exponential
-average of another decay, build it from such a run's saved live policies and name it in a tournament:
+`TrainConfig.policy_snapshots`, and at each end instead). To rate other averages, build
+them from such a run's saved live policies with a spec and name them in a tournament:
 
 <!-- not-runnable: needs a finished run -->
 ```bash
-uv run --no-sync bnb runs ema 2026-11-02-mixed-purple-pumpkin --decay 0.9 --at 268435456
+uv run --no-sync bnb average 2026-11-02-mixed-purple-pumpkin --spec docs/rewrite/sections/averaging/suite.toml
 ```
 
-The decay is per update, and the average starts from the first saved update; see
-[Runs and checkpoints](../explanation/runs.md#every-updates-policy-files).
+It prints the averages' player names, one per line; see
+[Runs and checkpoints](../explanation/runs.md#averages-built-after-training).
 
 ## Share a checkpoint
 

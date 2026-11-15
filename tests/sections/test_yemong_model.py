@@ -8,7 +8,7 @@ import torch
 import yemong_cases as cases
 from torch.utils import _pytree
 
-from bnb.contracts import REWARD_LEVELS, GameConfig, Obs
+from bnb.contracts import VALUE_LEVELS, GameConfig, Obs
 from bnb.contracts.action import NUM_JOINT
 from bnb.contracts.obs import GLOBAL, SHIP, SHIP_HIDDEN_ZERO
 from bnb.game import api
@@ -537,7 +537,7 @@ def test_one_set_of_weights_plays_every_size(config):
             carry, view, torch.ones(views, dtype=torch.bool), torch.arange(view.ships.shape[0])
         )
     assert decision.policy_logits.shape == (views, own, 42)
-    assert decision.values.shape == (views, own, len(REWARD_LEVELS))
+    assert decision.values.shape == (views, own, len(VALUE_LEVELS))
     assert decision.next_state_logits.shape == (views, ships - own, 544)
     assert all(
         torch.isfinite(x).all() for x in _pytree.tree_leaves(decision) if x.is_floating_point()

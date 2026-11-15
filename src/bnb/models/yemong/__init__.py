@@ -8,7 +8,7 @@ codes       code primitives: circular, position, scalar, velocity, grouped softm
 network     the encoder and the trunk; spatial, temporal and layers its sublayers
 heads       MLP heads, the next-state head, critic values, the shot trajectory head
 policy      the 42-way joint policy: sampling, log-probability, entropy
-critic      value bins, two-hot, outcome classes and targets, the return scale
+critic      value bins, HL-Gauss targets, outcome classes and targets, the return scale
 density     the hex density target and its Poisson terms
 shots       the shot trajectory and outcome codes, age features
 features    small token features: symlog, respawn features, local presence

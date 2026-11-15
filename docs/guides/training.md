@@ -143,16 +143,14 @@ uv run --no-sync bnb train --preset mixed --set yemong.width=256
 uv run --no-sync bnb train --preset mixed --set ship_card.hit_damage=[14,18]
 ```
 
-A tuple is a JSON list and None is `null`. The single value arm (one per-ship value over
-the summed reward levels, no outcome head;
-[the learner](../explanation/learner.md#the-single-value-arm)) sets the critic's levels and
-one discount, trace decay and team spirit for its one level:
+A tuple is a JSON list and None is `null`. The offence premium
+([the learner](../explanation/learner.md#the-offence-premium)) is a keypoint schedule, a
+JSON object; 2:1 annealed to 1:1 between 20M and 60M steps:
 
 <!-- not-runnable: needs CUDA -->
 ```bash
-uv run --no-sync bnb train --preset mixed --set 'yemong.levels=["summed_reward"]' \
-  --set yemong.outcome_level=null --set 'learner.discount=[0.999]' \
-  --set 'learner.trace_decay=[0.97]' --set 'learner.team_spirit=[0.0]'
+uv run --no-sync bnb train --preset mixed \
+  --set 'learner.offence_premium={"steps": [0, 20000000, 60000000], "values": [2.0, 2.0, 1.0]}'
 ```
 
 `bfloat16_matmuls` is not set there: `--precision` sets it.

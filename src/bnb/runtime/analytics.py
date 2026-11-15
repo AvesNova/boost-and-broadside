@@ -8,8 +8,10 @@ alone in a single-game lineup):
   the games that ended in the update, from the rollout's per-environment sums;
 - `episode/wins`, `episode/draws`, `episode/losses`: the learner views' results (a self-play
   game ends in two views, a win in one and a loss in the other);
-- `reward/rate/{level}`: the learner's reward per ship and second.
-Over the batch: `episode/alive_share`, `reward/level_share/{level}`, the learner's tokens
+- `reward/rate/{level}`: the learner's reward per ship and second, per value level (each
+  reward level's offence and defence, `bnb.contracts.VALUE_LEVELS`).
+Over the batch: `episode/alive_share`, `reward/level_share/{level}` (per value level), the
+learner's tokens
 by game and by opponent (`batch/token_share/mode/{mode}`, `.../opponent/{opponent}`), the
 committed actions' use (`policy/usage/{factor}/{option}`) and how often a ship changes a
 factor from one step to the next (`policy/switch_rate/{factor}`).
@@ -27,11 +29,11 @@ import math
 
 import torch
 
-from bnb.contracts import ASPECTS, REWARD_LEVELS
+from bnb.contracts import ASPECTS, REWARD_LEVELS, VALUE_LEVELS
 from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.series import Mean, Table
-from bnb.learn.rewards import REWARD_EVENTS
+from bnb.learn.rewards import REWARD_EVENTS, level_rewards
 
 # What the analytics read of a stored shard.
 NAMES = ("reward", "done", "result", "alive", "action")
@@ -184,7 +186,7 @@ class Analytics:
             for name in ("lives_ended", "life_seconds", "ship_episodes")
         }
         episodes = per_slice(ended)
-        rewards = {level: per_slice(resolve[f"episode_reward/{level}"]) for level in REWARD_LEVELS}
+        rewards = {level: per_slice(resolve[f"episode_reward/{level}"]) for level in VALUE_LEVELS}
         events = {name: per_slice(resolve[f"episode_event/{name}"]) for name in EPISODE_EVENTS}
         low, high = sums["extremes"].unbind(-1)
         inside = member > 0
@@ -196,9 +198,9 @@ class Analytics:
             )
             ship_episodes = columns["ship_episodes"][index]
             out[f"episode/reward_mean/{name}"] = Mean(
-                sum(rewards[level][index] for level in REWARD_LEVELS), ship_episodes
+                sum(rewards[level][index] for level in VALUE_LEVELS), ship_episodes
             )
-            for level in REWARD_LEVELS:
+            for level in VALUE_LEVELS:
                 out[f"episode/reward/{level}/{name}"] = Mean(rewards[level][index], ship_episodes)
             for event in EPISODE_EVENTS:
                 out[f"episode/event/{event}/{name}"] = Mean(events[event][index], episodes[index])
@@ -248,9 +250,9 @@ class Analytics:
                 total(perceive[f"enemy_slots/{name}"]), total(perceive["enemy_slots"])
             )
         level_size = {level: 0.0 for level in REWARD_LEVELS}
-        for level, event in REWARD_EVENTS:
+        for level, _, event in REWARD_EVENTS:
             level_size[level] = level_size[level] + total(resolve[f"event/{event}"])
-        for level, event in REWARD_EVENTS:
+        for level, _, event in REWARD_EVENTS:
             out[f"reward/event_share/{event}"] = Mean(
                 total(resolve[f"event/{event}"]), level_size[level]
             )
@@ -317,12 +319,12 @@ class Analytics:
                 continue
             for name in ("wins", "draws", "losses"):
                 out[f"episode/{name}/{pool}"] = columns[name][index].int()
-            for level, rate in zip(REWARD_LEVELS, rates[index].unbind(), strict=True):
+            for level, rate in zip(VALUE_LEVELS, rates[index].unbind(), strict=True):
                 out[f"reward/rate/{level}/{pool}"] = Mean(rate / self.tick_length, steps[index])
         tokens = own_alive.float().sum((0, 2))  # (R,) the learner's tokens per view
         out["episode/alive_share"] = Mean(tokens.sum(), float(own_alive.numel()))
         size = reward.abs().sum((0, 1, 2))  # (levels,)
-        for level, value in zip(REWARD_LEVELS, size.unbind(), strict=True):
+        for level, value in zip(VALUE_LEVELS, size.unbind(), strict=True):
             out[f"reward/level_share/{level}"] = Mean(value, size.sum())
         by_pool = tokens @ member  # (P,)
         for mode, value in zip(self.modes, (by_pool @ self.mode_of_pool).unbind(), strict=True):
@@ -380,11 +382,11 @@ RESOLVE_COLUMNS = (
     "in_field",
     "shield_restored",
     *(f"residual/{level}" for level in REWARD_LEVELS),
-    *(f"event/{event}" for _, event in REWARD_EVENTS),
+    *(f"event/{event}" for _, _, event in REWARD_EVENTS),
     "lives_ended",
     "life_seconds",
     "ship_episodes",
-    *(f"episode_reward/{level}" for level in REWARD_LEVELS),
+    *(f"episode_reward/{level}" for level in VALUE_LEVELS),
     *(f"episode_event/{name}" for name in EPISODE_EVENTS),
     "team_0_wins",
     "team_1_wins",
@@ -435,10 +437,10 @@ WIN, TIE, LOSS = 0, 1, 2
 
 def blank_game(environments: int, ships: int, device) -> dict:
     """The running per-episode state of the games' sums: each ship's life so far (ticks),
-    its reward in the episode per level, and each environment's episode events."""
+    its reward in the episode per value level, and each environment's episode events."""
     return dict(
         life_ticks=torch.zeros((environments, ships), device=device),
-        episode_reward=torch.zeros((environments, ships, len(REWARD_LEVELS)), device=device),
+        episode_reward=torch.zeros((environments, ships, len(VALUE_LEVELS)), device=device),
         episode_events=torch.zeros((environments, len(EPISODE_EVENTS)), device=device),
     )
 
@@ -478,7 +480,8 @@ def resolve_tick(
     tick_length: float,
 ) -> None:
     """Add one tick to the sums, in place. events: the tick's Events (sim order); reward
-    (B, N, levels) and event_rewards (B, N, len(REWARD_EVENTS)): the tick's, per ship;
+    (B, N, len(VALUE_LEVELS)) and event_rewards (B, N, len(REWARD_EVENTS)): the tick's, per
+    ship;
     rows (B, N, columns): the privileged rows at the tick's start, in sim order (team 0's
     view)."""
     alive = rows[..., SHIP["alive"]] > 0.5
@@ -528,10 +531,12 @@ def resolve_tick(
         team_1_wins=ended * (result < 0).float(),
         team_draws=ended * (result == 0).float(),
     )
+    by_level = level_rewards(reward)  # the zero-sum levels, each its parts' sum
     for index, level in enumerate(REWARD_LEVELS):
-        columns[f"residual/{level}"] = reward[..., index].sum(1).abs()
+        columns[f"residual/{level}"] = by_level[..., index].sum(1).abs()
+    for index, level in enumerate(VALUE_LEVELS):
         columns[f"episode_reward/{level}"] = ended * episode_reward[..., index].sum(1)
-    for index, (_, event) in enumerate(REWARD_EVENTS):
+    for index, (_, _, event) in enumerate(REWARD_EVENTS):
         columns[f"event/{event}"] = event_rewards[..., index].abs().sum(1)
     for index, name in enumerate(EPISODE_EVENTS):
         columns[f"episode_event/{name}"] = ended * episode_events[:, index]

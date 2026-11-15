@@ -191,13 +191,62 @@ def test_a_ship_on_a_grid_triangle_s_diagonal_counts_no_negative_weight():
     assert not torch.special.xlogy(counts, counts).isnan().any()
 
 
-def test_value_bins_and_two_hot():
-    bins = critic.value_bins(51, 2.0, dtype=torch.float64)
-    values = torch.linspace(-6.0, 6.0, 101, dtype=torch.float64)
-    target = critic.two_hot(values, bins)
-    torch.testing.assert_close((target * bins).sum(-1), values)
+def test_the_value_targets_are_hl_gauss_on_the_padded_symlog_bins():
+    """The value support: the real bins evenly spaced over +-limit in symlog, and
+    `codes.PADDING_BINS` more past each end. An HL-Gauss target's mean position is the
+    value's up to the real range's edges (within 1% of a bin, the Gaussian's mass past the
+    padding), its spread 0.75 bin widths (sigma^2 + 1/12 with the bin's own width) away from
+    them, and the read-out (the expectation over every bin) the value within 0.5%. Past the
+    outermost bin's centre a value is clamped to it. Without padding an edge target's mean
+    moves inward by a third of a bin."""
+    count, limit, padding = 77, 3.0, codes.PADDING_BINS
+    bins = critic.value_bins(count, limit, padding, dtype=torch.float64)
+    assert bins.shape == (count + 2 * padding,)
+    torch.testing.assert_close(
+        bins[padding:-padding], critic.value_bins(count, limit, dtype=torch.float64)
+    )
+    width = 2.0 * limit / (count - 1)
+    position = critic.symlog(bins)
+    torch.testing.assert_close(
+        position[-1], torch.tensor(limit + padding * width, dtype=torch.float64)
+    )
+
+    inner = torch.linspace(-limit, limit, 241, dtype=torch.float64)  # the real range, edges in
+    target = critic.value_targets(critic.symexp(inner), bins)
+    torch.testing.assert_close(target.sum(-1), torch.ones_like(inner))
+    mean = (target * position).sum(-1)
+    torch.testing.assert_close(mean, inner, rtol=0.0, atol=0.01 * width)
+    # the read-out is the expectation over the bins in reward units, so a symlog spread of
+    # sigma reads |value| high by about sigma^2 / 2 relative (about 0.2% here)
     logits = torch.log(target.clamp_min(1e-300))
-    torch.testing.assert_close(critic.expectation(logits, bins), values)
+    read, values = critic.expectation(logits, bins), critic.symexp(inner)
+    relative = (read - values).abs() / values.abs().clamp_min(1.0)
+    assert relative.max() < 0.005
+    away = inner.abs() <= limit - 3 * width
+    spread = ((target * (position - inner[:, None]) ** 2).sum(-1)).sqrt() / width
+    expected = torch.full_like(inner, (0.75**2 + 1 / 12) ** 0.5)  # Sheppard: the bin width
+    torch.testing.assert_close(spread[away], expected[away], rtol=1e-3, atol=0.0)
+
+    edge = critic.value_targets(torch.tensor([1e6, -1e6], dtype=torch.float64), bins)
+    torch.testing.assert_close(edge, critic.value_targets(bins[[-1, 0]], bins))
+    assert edge[0, -1] > edge[0, -2] > 0.0
+
+    unpadded = critic.value_bins(count, limit, dtype=torch.float64)
+    at_edge = critic.value_targets(
+        critic.symexp(torch.tensor([limit], dtype=torch.float64)), unpadded
+    )
+    shift = limit - (at_edge * critic.symlog(unpadded)).sum(-1)
+    assert shift.item() > 0.3 * width
+
+
+def test_a_new_build_has_the_padded_value_support():
+    from bnb.contracts import GameConfig
+    from bnb.runtime.train import TrainConfig
+
+    config = TrainConfig(game=GameConfig(5, 10, 2600.0))
+    for model in (config.yemong, config.relational, config.nearest):
+        assert model.value_padding == codes.PADDING_BINS
+        assert model.value_support == model.value_bins + 2 * codes.PADDING_BINS
 
 
 def test_the_outcome_targets_end_on_the_win_loss_weights():
