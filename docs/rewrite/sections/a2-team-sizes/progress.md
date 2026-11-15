@@ -39,3 +39,16 @@ Branch `feat/a2-team-sizes` from `origin/feat/imugi-boundary` (83404bbf). CPU on
   isolation from other draws, all-slots = plain rollout, resume, rewards, settings, a BC
   and an RL update on a tiny Yemong).
 - Next: related suites, docs, merge.
+
+### 05:10 suites and merge
+- Worked: quick tier on the touched and related files: 227 + 172 tests pass (game reference,
+  benched, absent fields, crossover, map sampling, mixed, rewards and their v1 fixtures,
+  rollout records, training checkpoints, resume, BC, split critic, lanes, learner shots,
+  modes, contracts, docstrings, staleness). Fixed on the way: the rollout-records test's
+  reward recorder (new `present` argument); `layout.py` was unformatted on the base.
+- Didn't: a compiled CPU rollout fails in Inductor (KeyError in a buffer) with or without
+  team sizes, so it says nothing about this branch; the GPU compile and graph-capture check
+  is queued behind the balance and GRU jobs on the shared lock.
+- Merged into `feat/imugi-boundary` as 238db2e4.
+- Open (for the author): field counts in A2; the per-game vs per-ship-step distribution;
+  small deathmatch games mostly running the clock (arms-todo item 9).
