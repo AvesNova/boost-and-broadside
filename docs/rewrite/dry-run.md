@@ -18,10 +18,11 @@ Every snapshot the chain keeps (BC and RL, `policies/step_<n>/`, at 1, 2, 3, 4, 
 
 Each batch is appended to the pool's records as it ends, with its seconds, and each line prints the budget's end as a clock time. So the real cost is read off the run, and a stopped rating resumes from its records.
 
-- **Per snapshot, all ten conditions:** about 3–7 minutes on the 5090. This scales the laptop's 5v5 ladder (140–370 games per checkpoint and mode to about ±25–45 Elo, 0.36 s a game) by the design pilot's seconds per game in each condition (the ten conditions together take 3.3× the three 5v5 ones). The 3.8× laptop-to-5090 rollout ratio converts it ([sections/arm-costs/numbers.md](sections/arm-costs/numbers.md)).
-- **The dry run's 52 snapshots (100M BC + 100M RL):** about 2.5–6 hours on the 5090 for the ten conditions at ±45 Elo, plus about 10–20 minutes compiling the ten engines. The three 5v5 conditions alone take about 30% of that. Training takes about 2.7 hours, so this is the largest part of the dry run.
+- **Games:** a simulated session of the dry run's 52 snapshots (26 BC, 26 RL, a Bradley–Terry truth spanning about 1200 Elo) and Imugi, at the pool's 2 × 96 games a batch, met ±45 Elo for every snapshot in 52 batches: about 10,000 games per condition, or 190 per snapshot. At ±60 it took 8,400, so loosening the target saves little: connecting the snapshots costs most of the games.
+- **Seconds:** the design pilot's seconds per game in each condition (laptop) over the 3.8× laptop-to-5090 rollout ratio ([sections/arm-costs/numbers.md](sections/arm-costs/numbers.md)). The ten conditions together take 3.3× the three 5v5 ones.
+- **Total for the dry run (100M BC + 100M RL):** about 3 hours on the 5090 for the ten conditions (0.9 hours for the three 5v5 ones), or about 3.5 minutes per snapshot. Add about 10–20 minutes compiling the ten engines. Training takes about 2.7 hours, so the curves at least double the dry run's GPU time. The estimate holds only if the 5090's engine is as efficient at the pool's 192-game batches as at the pilot's 512-game ones. If the first batches show a 5090 at 2 × 96 well below the pilot's rate, `--blocks 4` doubles each batch.
 - **Break-even:** about 5 minutes per snapshot for the three modes (two 256-game batches a mode at a 0.1 log-ratio target, plus three engine compiles). Eight snapshots (10, 20, 50 and 100M of each stage) take about 40 minutes.
-- **Cheaper if needed:** `--target-stderr 60` takes about 55% of the games. The conditions may also run one at a time (5v5 first), stopped and resumed at will.
+- **Planning:** about 0.3 s per batch for 53 players once the fit and the plan run on one CPU thread (`bnb.league.design.one_thread`). On the loaded laptop, the default threads took 30 s per batch.
 
 ## Commands
 

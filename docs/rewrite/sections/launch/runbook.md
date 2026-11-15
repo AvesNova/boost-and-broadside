@@ -32,6 +32,8 @@ bash $L/cache.sh export /workspace/compile-cache.tar.zst    # for the 8x box (sa
 # laptop: pull.sh (section 3); after the run: section 5 (tournament, replays, reward check)
 ```
 
+The curves on every evaluation condition, after the run: [dry-run.md](../../dry-run.md).
+
 Export the cache again after the run's first updates (the run compiles a few graphs the
 probe does not: the RL warm start, the lanes' snapshots); the archive replaces the old one.
 
