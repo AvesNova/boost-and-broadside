@@ -107,6 +107,12 @@ plays a drawn count of the game's field slots each episode, the rest absent, and
 Yemong learner masks the absent ones. It is off by default (every field). See
 [Mixed batches](../explanation/game/mixed-batches.md#field-count-sampling).
 
+Team sizes can vary too (arm A2): `TrainConfig.team_sizes=TeamSizes(low, high, weights)`
+plays a drawn N-against-N game each episode, within each mode's smallest team (Frontline
+3v3), the rest of each team's slots benched and masked. It is off by default (every slot);
+A2 sets `--set 'team_sizes={"low": 1}'`. See
+[Mixed batches](../explanation/game/mixed-batches.md#team-size-sampling).
+
 Each episode draws its lineup by default (`TrainConfig.lineup_draw`): every slot is one of
 the ship set's drawn types with equal chance (`bnb.game.api.DRAWN_LINEUPS`: Yongma or
 Jujak in the real-scale set), and both teams fly the lineup slot for slot, as the
