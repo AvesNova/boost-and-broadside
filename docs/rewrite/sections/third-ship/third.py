@@ -144,6 +144,11 @@ def main() -> None:
         if first_chunk and args.reference_games:
             jobs.append(Job(0, "energy v turn", reference, reference, args.reference_games))
             keys.append(("release", "Y v J"))
+            if args.mirror_games:
+                jobs.append(Job(0, "energy mirror", reference, reference, args.mirror_games))
+                keys.append(("release", "Y mirror"))
+                jobs.append(Job(0, "turn mirror", reference, reference, args.mirror_games))
+                keys.append(("release", "J mirror"))
         for number, entry in enumerate(part):
             c_doctrine = doctrine_of(entry)
             with_j = Player(entry["name"], c_doctrine, base["jujak"], parameters=parameters)
@@ -185,11 +190,12 @@ def main() -> None:
                 text = "; ".join(
                     f"{label} {r['score'][0]:.3f}±{r['score'][1]:.3f} (k {r['kill_score'][0]:.3f})"
                     for label, r in jobs_of.items()
-                    if label != "C mirror"
+                    if "mirror" not in label
                 )
-                if "C mirror" in jobs_of:
-                    m = jobs_of["C mirror"]
-                    text += f"; mirror kpm {m['kills_per_minute_mean']:.2f} ppk {m['passes_per_kill']:.2f}"
+                for label in ("C mirror", "Y mirror", "J mirror"):
+                    if label in jobs_of:
+                        m = jobs_of[label]
+                        text += f"; {label} kpm {m['kills_per_minute_mean']:.2f} ppk {m['passes_per_kill']:.2f}"
                 print(f"{name}: {text}", flush=True)
         first_chunk = False
         elapsed = time.time() - started
