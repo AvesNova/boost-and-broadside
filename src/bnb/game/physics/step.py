@@ -17,7 +17,10 @@ ship active, the game unchanged). A team's benched ships are its last S - active
 respawn_wait held at the environment's full respawn length (`_bench`), so they never act,
 fly, fire, take or deal damage, are seen by the enemy, score or respawn; team deathmatch's
 winning score counts the enemy's active ships only (`modes.phase.mode_phase`). The counts
-hold through the episode resets: a caller passes the same tensor every tick.
+hold through the episode resets (a caller passes the same tensor every tick), unless
+`resolve` is given the next episode's (`next_active`, team-size sampling): an environment
+whose episode ends this tick benches its next episode's slots from its reset on, and the
+caller passes those counts from the next tick.
 """
 
 import torch
@@ -257,6 +260,7 @@ def resolve(
     active: torch.Tensor | None = None,
     next_episode_uniforms: torch.Tensor | None = None,
     next_ship_type: torch.Tensor | None = None,
+    next_active: torch.Tensor | None = None,
 ) -> tuple[State, Events]:
     """Phases 4-8 on the moved state: hits, damage, the mode phase, clocks, death and
     respawn, episode end. action: the tick's action, as `move` was given (the shield's
@@ -266,7 +270,11 @@ def resolve(
     (its map, arena scale and spawns; None: `uniforms`, as every other environment).
     next_ship_type (B, N) int32: each ship's type in the next episode of an environment
     whose episode ends this tick (a drawn lineup per episode; None: each ship keeps its
-    type)."""
+    type). next_active (B, 2) int32: each team's active ships in the next episode of an
+    environment whose episode ends this tick (team-size sampling; None: active's), which its
+    reset spawns and benches by; needs active."""
+    if next_active is not None and active is None:
+        raise ValueError("next_active needs active: the counts of the episode being played")
     ships, bullets, match = state.ships, state.bullets, state.match
     B = ships.x.shape[0]
     pools = environment(rules, B, ships.x.device)
@@ -371,6 +379,8 @@ def resolve(
     )
     if next_ship_type is not None:  # the next episode's lineup, before its ships spawn
         ships = replace(ships, ship_type=torch.where(keep, ships.ship_type, next_ship_type))
+    if next_active is not None:  # the next episode's benched slots, from its reset on
+        benched = torch.where(keep, benched, benched_of(rules.ships_per_team, next_active))
     place = _placement(rules, arena, tick, mode, ships, alive, done, axis_x, axis_y, benched)
     ships = spawn(rules, types, ships, fields, due | done[:, None], place)
     if benched is not None:  # a benched ship spawns with an episode's reset, and is benched again

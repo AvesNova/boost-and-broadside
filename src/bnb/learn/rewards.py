@@ -163,12 +163,20 @@ def attribute_recharge(
 # ------------------------------------------------------------------ the levels' events
 
 
-def enemy_team_share(value: torch.Tensor, team: torch.Tensor) -> torch.Tensor:
+def enemy_team_share(
+    value: torch.Tensor, team: torch.Tensor, present: torch.Tensor | None = None
+) -> torch.Tensor:
     """Each ship's value (..., N) split over the opposing team's slots (the dead included):
-    every ship receives the other team's total over its own team's size."""
+    every ship receives the other team's total over its own team's size. present (..., N)
+    bool: the slots in the match (a benched slot is not, `bnb.game.api.benched_of`; None:
+    every slot); the share then goes to the own team's present slots only, over their
+    count, and a slot out of the match receives none, so the level stays zero-sum."""
     enemies = _enemies(team)
-    own_size = (~enemies).sum(-1)
-    return torch.where(enemies, value[..., None, :], 0.0).sum(-1) / own_size
+    total = torch.where(enemies, value[..., None, :], 0.0).sum(-1)
+    if present is None:
+        return total / (~enemies).sum(-1)
+    own_size = (~enemies & present[..., None, :]).sum(-1).clamp_min(1)
+    return torch.where(present, total / own_size, 0.0)
 
 
 def outcome_events(team: torch.Tensor, win_loss: torch.Tensor, done: torch.Tensor) -> torch.Tensor:
@@ -191,8 +199,10 @@ def kill_death_events(
     *,
     raw_total: torch.Tensor | None = None,
     ledger_total: torch.Tensor | None = None,
+    present: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """(..., N, 4) death, kill, ally kill, unforced.
+    """(..., N, 4) death, kill, ally kill, unforced (split over the own team's present slots,
+    `enemy_team_share`).
 
     A dead ship's kill is shared half by the final tick's raw hits and half by the ship
     rows' outstanding damage (by the hits alone when nothing is outstanding), so every
@@ -208,7 +218,8 @@ def kill_death_events(
     kill = torch.where(enemies, share, 0.0).sum(-1)
     value = boundary_death + 2.0 * ally_share.sum(-2)
     death = -(combat_death | boundary_death).to(share.dtype)
-    return torch.stack([death, kill, -ally_share.sum(-1), enemy_team_share(value, team)], -1)
+    unforced = enemy_team_share(value, team, present)
+    return torch.stack([death, kill, -ally_share.sum(-1), unforced], -1)
 
 
 def damage_events(
@@ -222,9 +233,11 @@ def damage_events(
     unit: float,
     *,
     raw_total: torch.Tensor | None = None,
+    present: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """(..., N, 7) taken, dealt, friendly fire, recharge, charge-back, refund, unforced, in
-    units of `unit` points.
+    units of `unit` points (the unforced split over the own team's present slots,
+    `enemy_team_share`).
 
     Applied damage (..., N) is split over its attackers by raw impact. Damage to an enemy
     pays the shooter; to an ally it blames the shooter and pays the opposing team twice.
@@ -246,7 +259,7 @@ def damage_events(
             recharge,
             -enemy_attributed,
             ally_attributed,
-            enemy_team_share(value, team),
+            enemy_team_share(value, team, present),
         ],
         -1,
     )
@@ -287,14 +300,19 @@ def level_rewards(rewards: torch.Tensor) -> torch.Tensor:
 
 
 def reward_step(
-    config: RewardConfig, ledger: Ledger, events: Events, team: torch.Tensor
+    config: RewardConfig,
+    ledger: Ledger,
+    events: Events,
+    team: torch.Tensor,
+    present: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, Ledger]:
     """(rewards (B, N, len(REWARD_LEVELS)) in REWARD_LEVELS order, ledger') for one tick (rewards
     spec 3): each level's reward, its parts summed (`level_rewards`).
 
-    Events in sim order; team (N,) or (B, N).
+    Events in sim order; team (N,) or (B, N); present (B, N) bool or None, as for
+    `reward_step_events`.
     """
-    rewards, ledger, _ = reward_step_events(config, ledger, events, team)
+    rewards, ledger, _ = reward_step_events(config, ledger, events, team, present)
     return level_rewards(rewards), ledger
 
 
@@ -304,11 +322,18 @@ def _gain_loss(amount: torch.Tensor) -> torch.Tensor:
 
 
 def reward_step_events(
-    config: RewardConfig, ledger: Ledger, events: Events, team: torch.Tensor
+    config: RewardConfig,
+    ledger: Ledger,
+    events: Events,
+    team: torch.Tensor,
+    present: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, Ledger, torch.Tensor]:
     """(rewards (B, N, len(VALUE_LEVELS)) per level part in VALUE_LEVELS order, ledger', each
     event's weighted reward (B, N, len(REWARD_EVENTS))) for one tick: a part's reward is the
-    sum of its events', a level's of its parts'."""
+    sum of its events', a level's of its parts'. present (B, N) bool: the slots in the match
+    (None: every slot); a benched slot (team-size sampling) takes no share of the enemy's
+    unforced events (`enemy_team_share`) and is rewarded nothing (its outcome included):
+    it never plays."""
     raw, boundary = events.damage, events.boundary_damage
     raw_total = _column_total(raw)
     old_total = _column_total(ledger.ships)
@@ -332,6 +357,7 @@ def reward_step_events(
         ships,
         raw_total=raw_total,
         ledger_total=ships_total,
+        present=present,
     )
 
     restored = events.shield_restored
@@ -352,6 +378,7 @@ def reward_step_events(
         unattributed,
         config.damage_unit,
         raw_total=raw_total,
+        present=present,
     )
     outcome = outcome_events(team, events.win_loss.to(raw.dtype), events.done)
 
@@ -365,6 +392,8 @@ def reward_step_events(
     event_rewards = torch.cat(
         [weight * level for weight, level in zip(config.weights, by_level, strict=True)], -1
     )
+    if present is not None:
+        event_rewards = torch.where(present[..., None], event_rewards, 0.0)
     # each part's events, summed in the events' order (static indices: one graph)
     columns = {name: [] for name in VALUE_LEVELS}
     for index, (level, part, _) in enumerate(REWARD_EVENTS):
