@@ -1,0 +1,391 @@
+[
+{
+"name": "before"
+},
+{
+"name": "jt0.91-ys0.8",
+"card": {
+"energy": {
+"max_shield": {
+"set": 113.55926112109249
+}
+},
+"turn": {
+"engine_power": {
+"set": 11301.330078125
+},
+"engine_power_full_store": {
+"set": 2123.33154296875
+},
+"static_thrust": {
+"set": 120.09844970703125
+},
+"corner_nose_frequency": {
+"set": 11.325186729431152
+},
+"induced_drag_scale": {
+"set": 0.47688016295433044
+},
+"dive_exchange_scale": {
+"set": 4.121851921081543
+},
+"climb_exchange_scale": {
+"set": 3.4328558444976807
+},
+"fine_stick": {
+"set": 0.2049139440059662
+},
+"sustained_stick": {
+"set": 0.6830464601516724
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.91
+},
+"energy_handles": {
+"max_shield": 0.8
+}
+}
+},
+{
+"name": "jt0.91-ys0.8-yc0.88",
+"card": {
+"energy": {
+"engine_power": {
+"set": 10451.6279296875
+},
+"static_thrust": {
+"set": 49.05318832397461
+},
+"coast_exchange_scale": {
+"set": 23.10733413696289
+},
+"max_shield": {
+"set": 113.55926112109249
+}
+},
+"turn": {
+"engine_power": {
+"set": 11301.330078125
+},
+"engine_power_full_store": {
+"set": 2123.33154296875
+},
+"static_thrust": {
+"set": 120.09844970703125
+},
+"corner_nose_frequency": {
+"set": 11.325186729431152
+},
+"induced_drag_scale": {
+"set": 0.47688016295433044
+},
+"dive_exchange_scale": {
+"set": 4.121851921081543
+},
+"climb_exchange_scale": {
+"set": 3.4328558444976807
+},
+"fine_stick": {
+"set": 0.2049139440059662
+},
+"sustained_stick": {
+"set": 0.6830464601516724
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.91
+},
+"energy_handles": {
+"climb_time": 0.88,
+"max_shield": 0.8
+}
+}
+},
+{
+"name": "jt0.91-ys0.8-yc0.93",
+"card": {
+"energy": {
+"engine_power": {
+"set": 9998.107421875
+},
+"static_thrust": {
+"set": 49.05327224731445
+},
+"coast_exchange_scale": {
+"set": 21.86500358581543
+},
+"max_shield": {
+"set": 113.55926112109249
+}
+},
+"turn": {
+"engine_power": {
+"set": 11301.330078125
+},
+"engine_power_full_store": {
+"set": 2123.33154296875
+},
+"static_thrust": {
+"set": 120.09844970703125
+},
+"corner_nose_frequency": {
+"set": 11.325186729431152
+},
+"induced_drag_scale": {
+"set": 0.47688016295433044
+},
+"dive_exchange_scale": {
+"set": 4.121851921081543
+},
+"climb_exchange_scale": {
+"set": 3.4328558444976807
+},
+"fine_stick": {
+"set": 0.2049139440059662
+},
+"sustained_stick": {
+"set": 0.6830464601516724
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.91
+},
+"energy_handles": {
+"climb_time": 0.93,
+"max_shield": 0.8
+}
+}
+},
+{
+"name": "jt0.91-ys0.85-yc0.93",
+"card": {
+"energy": {
+"engine_power": {
+"set": 9998.107421875
+},
+"static_thrust": {
+"set": 49.05327224731445
+},
+"coast_exchange_scale": {
+"set": 21.86500358581543
+},
+"max_shield": {
+"set": 120.65671494116076
+}
+},
+"turn": {
+"engine_power": {
+"set": 11301.330078125
+},
+"engine_power_full_store": {
+"set": 2123.33154296875
+},
+"static_thrust": {
+"set": 120.09844970703125
+},
+"corner_nose_frequency": {
+"set": 11.325186729431152
+},
+"induced_drag_scale": {
+"set": 0.47688016295433044
+},
+"dive_exchange_scale": {
+"set": 4.121851921081543
+},
+"climb_exchange_scale": {
+"set": 3.4328558444976807
+},
+"fine_stick": {
+"set": 0.2049139440059662
+},
+"sustained_stick": {
+"set": 0.6830464601516724
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.91
+},
+"energy_handles": {
+"climb_time": 0.93,
+"max_shield": 0.85
+}
+}
+},
+{
+"name": "jt0.91-ys0.75-yc0.88",
+"card": {
+"energy": {
+"engine_power": {
+"set": 10451.6279296875
+},
+"static_thrust": {
+"set": 49.05318832397461
+},
+"coast_exchange_scale": {
+"set": 23.10733413696289
+},
+"max_shield": {
+"set": 106.46180730102421
+}
+},
+"turn": {
+"engine_power": {
+"set": 11301.330078125
+},
+"engine_power_full_store": {
+"set": 2123.33154296875
+},
+"static_thrust": {
+"set": 120.09844970703125
+},
+"corner_nose_frequency": {
+"set": 11.325186729431152
+},
+"induced_drag_scale": {
+"set": 0.47688016295433044
+},
+"dive_exchange_scale": {
+"set": 4.121851921081543
+},
+"climb_exchange_scale": {
+"set": 3.4328558444976807
+},
+"fine_stick": {
+"set": 0.2049139440059662
+},
+"sustained_stick": {
+"set": 0.6830464601516724
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.91
+},
+"energy_handles": {
+"climb_time": 0.88,
+"max_shield": 0.75
+}
+}
+},
+{
+"name": "jt0.91-ys0.8-yd1.08",
+"card": {
+"energy": {
+"static_thrust": {
+"set": 49.05338668823242
+},
+"hit_damage": {
+"set": 24.82099151611328
+},
+"max_shield": {
+"set": 113.55926112109249
+}
+},
+"turn": {
+"engine_power": {
+"set": 11301.330078125
+},
+"engine_power_full_store": {
+"set": 2123.33154296875
+},
+"static_thrust": {
+"set": 120.09844970703125
+},
+"corner_nose_frequency": {
+"set": 11.325186729431152
+},
+"induced_drag_scale": {
+"set": 0.47688016295433044
+},
+"dive_exchange_scale": {
+"set": 4.121851921081543
+},
+"climb_exchange_scale": {
+"set": 3.4328558444976807
+},
+"fine_stick": {
+"set": 0.2049139440059662
+},
+"sustained_stick": {
+"set": 0.6830464601516724
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.91
+},
+"energy_handles": {
+"hit_damage": 1.08,
+"max_shield": 0.8
+}
+}
+},
+{
+"name": "jt0.91-ys0.85-yc0.88",
+"card": {
+"energy": {
+"engine_power": {
+"set": 10451.6279296875
+},
+"static_thrust": {
+"set": 49.05318832397461
+},
+"coast_exchange_scale": {
+"set": 23.10733413696289
+},
+"max_shield": {
+"set": 120.65671494116076
+}
+},
+"turn": {
+"engine_power": {
+"set": 11301.330078125
+},
+"engine_power_full_store": {
+"set": 2123.33154296875
+},
+"static_thrust": {
+"set": 120.09844970703125
+},
+"corner_nose_frequency": {
+"set": 11.325186729431152
+},
+"induced_drag_scale": {
+"set": 0.47688016295433044
+},
+"dive_exchange_scale": {
+"set": 4.121851921081543
+},
+"climb_exchange_scale": {
+"set": 3.4328558444976807
+},
+"fine_stick": {
+"set": 0.2049139440059662
+},
+"sustained_stick": {
+"set": 0.6830464601516724
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.91
+},
+"energy_handles": {
+"climb_time": 0.88,
+"max_shield": 0.85
+}
+}
+}
+]
