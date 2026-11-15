@@ -57,3 +57,27 @@ turn 0.503-0.785 rad/s, low-speed acceleration 8.87-18.97, damage per bullet rat
 ratio 1.42, shield ratio 1.44. Yongma's shield over Jujak's is already 1.78 (outside the real
 spread), so a Yongma shield rise is out. Round 6 is handle candidates re-solved
 (`handle_cards.py`).
+
+## 05:09 round 5: the top random doctrines re-checked (512 E v T + 256 mixed)
+
+Before 0.242 ± 0.018; r3-007 0.285 ± 0.019, r3-033 0.275 (mixed 0.40: weaker), r3-032 0.271,
+r3-041 0.269 ± 0.019 with mixed 0.580 ± 0.030 (a stronger Imugi), the rest 0.20-0.24. So the
+random search's top was mostly selection: doctrines move E v T by +3-4 points at most.
+**Doctrines alone cannot reach 45%; the card is needed** (the author's go-ahead came in at
+~04:45). r3-041 is the doctrine to carry: E v T +2.7 and stronger on mixed lineups (extend
+0.93 gated on the energy ratio, lag 0, the duel extension in every matchup, wider fight range).
+
+## 05:21 rounds 6-7: handle solves; r3-041 (d041) with card factors
+
+- Handle solves (`handle_cards.py`, 7 processes, 14 min): Jujak sustained turn x0.95 and x0.91
+  solve (the solver moves the induced drag x1.39 / x1.79, the static thrust, the sticks);
+  x0.87 does not. **Yongma's low-speed acceleration does not solve at x1.25 or x1.5** (misses
+  by 8-23%; ill-conditioned with the sustained turn and the cruise), and x1.15 moves the static
+  thrust 49 -> 474: dropped. Yongma climb time x0.88 (333.6 -> 293.6 s, the Tempest's 290 the
+  real floor) is the engine power x1.107. Damage is direct.
+- Round 7 (d041 + card fields, 256 games): base 0.36, Jujak induced x1.3 0.43, x1.45 0.47;
+  Yongma power x1.2 0.44; damage x1.3 0.43; induced x1.3 + power x1.1 0.52; induced x1.3 +
+  damage x1.15 0.49 (mixed 0.59). The d041 base here (0.36 ± 0.03) is above its 512-game
+  check (0.27 ± 0.02): noise between seeds is larger than I like; final numbers at 1024+.
+- Round 8: d041 on the solved handle cards (Jujak turn, Yongma climb, Yongma damage, combos),
+  512 games.

@@ -1,0 +1,514 @@
+[
+{
+"name": "d041-base",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+}
+},
+{
+"name": "d041-j-ind-1.3",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+},
+"card": {
+"turn": {
+"induced_drag_scale": 1.3
+}
+}
+},
+{
+"name": "d041-j-ind-1.45",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+},
+"card": {
+"turn": {
+"induced_drag_scale": 1.45
+}
+}
+},
+{
+"name": "d041-y-pow-1.1",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+},
+"card": {
+"energy": {
+"engine_power": 1.1
+}
+}
+},
+{
+"name": "d041-y-pow-1.2",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+},
+"card": {
+"energy": {
+"engine_power": 1.2
+}
+}
+},
+{
+"name": "d041-y-dmg-1.15",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+},
+"card": {
+"energy": {
+"hit_damage": 1.15
+}
+}
+},
+{
+"name": "d041-y-dmg-1.3",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+},
+"card": {
+"energy": {
+"hit_damage": 1.3
+}
+}
+},
+{
+"name": "d041-j-ind-1.3-y-pow-1.1",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+},
+"card": {
+"turn": {
+"induced_drag_scale": 1.3
+},
+"energy": {
+"engine_power": 1.1
+}
+}
+},
+{
+"name": "d041-j-ind-1.3-y-dmg-1.15",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+},
+"card": {
+"turn": {
+"induced_drag_scale": 1.3
+},
+"energy": {
+"hit_damage": 1.15
+}
+}
+},
+{
+"name": "d041-y-pow-1.1-dmg-1.15",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+},
+"card": {
+"energy": {
+"engine_power": 1.1,
+"hit_damage": 1.15
+}
+}
+}
+]
