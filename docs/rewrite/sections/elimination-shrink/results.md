@@ -139,3 +139,29 @@ The standard error of each mean is about 0.14, so centre and waypoint are the sa
    For "the map decides games more often, not necessarily by killing", linear 120 s (clock 128 s) or linear 90 s (clock 98 s) are the candidates; linear 120 s keeps boundary kills at 7%.
 4. **The speed cap (150 m/s)** never binds on the linear candidates and barely matters for the curved ones. Keep it as a safety rule.
 5. **Caveat:** all of this is Imugi. A trained agent that anticipates the edge and searches better would shift the boundary shares down and the tails in. Re-measure with rl-v20 self-play when a GPU is available (open item 5).
+
+## 9. Other team sizes on the fixed maps
+
+Imugi, waypoint search, old spawns. Elimination with linear 120 s from 0 (7.8 km, 128 games); deathmatch with tickets off and the preset's 600 s clock (4.2 km; 64 games, 32 at 10v10).
+
+```
+label            games ended  mean   med   p80   p90  hit1  bdry kills/min
+size-elim-1v1      128  1.00    78    82   106   110    21  0.48      0.38
+size-elim-2v2      128  1.00    65    66    91    96    16  0.13      1.08
+(5v5: linear-120)  128  1.00    60    52    80    96    15  0.07      3.51
+size-elim-10v10    128  1.00    60    54    78   100    14  0.04      7.74
+```
+
+- **1v1 elimination:** the boundary kills in 48% of games. A lone duel rarely resolves before the map closes.
+- **10v10:** the losing team's deaths come steadily from 16 s to 54 s (median), few by the boundary (4%).
+
+**Deathmatch kill rate grows faster than the team size:**
+
+| teams | deaths per team per minute | per ship per minute | tickets for 70% / 80% / 90% of games ending by tickets within 10 min |
+|---|---|---|---|
+| 1v1 | 0.40 (sd 0.16) | 0.40 | 4 / 4 / 3 |
+| 2v2 | 1.29 (sd 0.38) | 0.65 | 13 / 11 / 8 |
+| 5v5 | 4.69 (sd 1.13) | 0.94 | 41 / 36 / 32 (this run; 40 at 80% in the first mode-timing run) |
+| 10v10 | 10.48 (sd 2.45) | 1.05 | 91 / 87 / 79 |
+
+Tickets per ship (`kills_per_ship` × team size, as today) would leave small games mostly on the clock: 8 tickets at 1v1 would take a median 20 minutes. The 80% column fits **T ≈ 4 · N^(4/3)** (4, 10, 34, 87 for N = 1, 2, 5, 10). Proposal: set deathmatch tickets per team by that rule (or a table) instead of per ship. To re-measure with the explore search and trained agents.
