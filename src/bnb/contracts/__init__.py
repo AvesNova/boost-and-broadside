@@ -9,7 +9,7 @@ from .controller import Controller, Outputs
 from .events import ASPECT_BOUNDS, ASPECTS, Events
 from .obs import Obs, Privileged
 from .pools import ArenaScale, Pool
-from .trajectory import REWARD_LEVELS, SUMMED_LEVEL, Trajectory
+from .trajectory import REWARD_LEVELS, REWARD_PARTS, VALUE_LEVELS, Trajectory, level_part
 
 __all__ = [
     "ASPECTS",
@@ -25,7 +25,9 @@ __all__ = [
     "Pool",
     "Privileged",
     "REWARD_LEVELS",
-    "SUMMED_LEVEL",
+    "REWARD_PARTS",
     "Trajectory",
+    "VALUE_LEVELS",
+    "level_part",
     "ticks_of",
 ]

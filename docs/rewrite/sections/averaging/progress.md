@@ -1,0 +1,21 @@
+# Post-hoc averaging: progress
+
+Branch `feat/averaging-tool` (from `feat/imugi-boundary`). Milestone notes, newest last.
+
+## 2026-11-15: the saving path
+
+- **Checked:** with `update_policies` on, `bnb.runs.session.train` calls `save_update_policies` after every update (`every_update or snapshots.due(...)`), and it writes the live weights (`policies/step_<n>/live/`, `trainer.model`, the same state dict the averages fold) as well as both averages. So every update's live weights are there. BC and RL share the path, and a chain passes `--update-policies` to both stages.
+- **Size:** a real-scale Yemong policy file (`real_scale_all_modes`, default build) is 2.85M float32 parameters, 11.4 MB of weights; 11 MB on disk per file, measured on a saved run. Each update writes up to three (live, exponential, uniform): about 34 MB.
+- **Disk:** the default 2048 environments x 128 ticks x 4 shards is 1,048,576 steps per update, so 100M steps is 96 updates: about 3.3 GB per stage with all three files, 6.6 GB for 100M BC + 100M RL (1.1 GB per stage for the live files alone). Small; nothing to change.
+- **Fixed (a gap, not a bug in what was saved):** the run's exponential average starts from the run's starting weights, which were never saved, so it could not be rebuilt exactly from the per-update files. A run with `update_policies` now also writes `policies/step_<start>/` before its first update (`updates` 0 in its record). A resume's start is its checkpoint's update, already written, so nothing is added there.
+- **Replaced:** `bnb runs ema` (`bnb.runs.ema`) by `bnb average` (`bnb.runs.averaging`), which does what it did and more.
+
+## 2026-11-15: the tool, the suite, the tests
+
+- **`bnb average RUN --spec SPEC`** (`bnb.runs.averaging`): families `uniform` (from a fraction or step), `exponential` (half-life in updates or steps, optional start), `window` (last updates, steps or fraction before each point), `training_exponential` / `training_uniform` (the run's own, rebuilt from `config.json`'s decay and uniform start) and `live`. Evaluation points are fractions of the run's span or steps, snapped to the newest saved update at or before. Output: `RUN/average/<name>/step_<n>/`, same policy-file format as the run's averages, with `steps.average` describing what was folded. Player names on stdout, progress and checks on stderr; exits non-zero if a rebuilt training average differs.
+- **Streaming:** one pass over the live files, oldest first, one file in memory; each average folds in float64 and is freed after its last evaluation point. Memory is one float64 copy of the weights (23 MB at real scale) per average in progress: about 0.3 GB for the 14-average suite.
+- **Correctness check worked:** on a tiny 5-update PPO run (weights moving by >1e-3 per update), the rebuilt exponential and uniform averages match the run's own files at every update, largest difference 4.5e-8. Without the starting-weights file the exponential one could not match; the tool refuses `training_exponential` for such a run.
+- **Choices I made (underspecified):** an evaluation point before an average's start has no output (skipped, not an error); `window` by fraction or steps takes the updates strictly after `end - length`, so "last 20%" of 96 updates is 20 updates (19.2 rounded up); fractions are of the run's span from its starting step to its newest update; an average written before is kept, not rebuilt or re-checked; the tool lists its rebuilt training averages as players (not the run's own files; same weights within rounding, different hash, so `--reuse` will not match them with older records).
+- **Suite:** `suite.toml`, 14 players at the final update: live, the two rebuilt training averages, uniform from 25/50/75%, exponential half-lives 2/4/8/16/32 updates (training's is 13.5), windows of the last 5/10/20%. Each entry's `why` says why it is there.
+- **Rating:** documented in `docs/explanation/runs.md` ("Averages built after training"): `bnb average ... > players.txt`, then `bnb ratings RUN --no-league --presets real_scale_* --with $(cat players.txt)`. Not run.
+- **Docs tests:** the command resolver now knows tyro's `--no-<flag>` for boolean options (it rejected `bnb ratings --no-league`, which the CLI accepts).

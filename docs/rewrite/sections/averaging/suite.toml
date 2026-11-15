@@ -1,0 +1,91 @@
+# The first suite of averages for the averaging sweep (arms-todo, "The averaging sweep"):
+# built after training from the per-update live policies of the run trained with
+# --update-policies, and rated together in one tournament.
+#
+#   uv run --no-sync bnb average RUN --spec docs/rewrite/sections/averaging/suite.toml
+#
+# Sized for a 100M-step RL run at the default 1,048,576 steps per update (96 updates):
+# 14 players, one evaluation point (the final update), so one tournament rates them all.
+# The run's own exponential average decays by 0.95 per update (a half-life of 13.5
+# updates, about 14M steps); its uniform average starts after the learning-rate warm-up
+# (10M steps). Half-lives are in updates, so they keep their meaning in a run with another
+# steps per update only if its updates are about as long; give halflife_steps otherwise.
+# `why` is a comment the tool ignores.
+
+[evaluation]
+fractions = [1.0]  # add 0.5 and 0.75 for curves (three times the players: rate them apart)
+
+# ---- references
+
+[[average]]
+family = "live"
+why = "the final live weights: what every average has to beat to be worth its cost"
+
+[[average]]
+family = "training_exponential"
+why = "the run's own exponential average, rebuilt (and checked against its file): the current product"
+
+[[average]]
+family = "training_uniform"
+why = "the run's own uniform average from the end of warm-up, rebuilt and checked"
+
+# ---- uniform from a start: how much of the early, weaker policy an average can carry
+
+[[average]]
+family = "uniform"
+from_fraction = 0.25
+why = "the training-time uniform minus its first quarter"
+
+[[average]]
+family = "uniform"
+from_fraction = 0.5
+why = "the second half: a long average with the steepest part of the climb left out"
+
+[[average]]
+family = "uniform"
+from_fraction = 0.75
+why = "the last quarter (24 updates): long but late"
+
+# ---- exponential half-lives around the training-time 13.5 updates, a factor 2 apart
+
+[[average]]
+family = "exponential"
+halflife_updates = 2
+why = "nearly live: whether a little smoothing of update noise helps at all"
+
+[[average]]
+family = "exponential"
+halflife_updates = 4
+why = "short"
+
+[[average]]
+family = "exponential"
+halflife_updates = 8
+why = "between short and the training decay"
+
+[[average]]
+family = "exponential"
+halflife_updates = 16
+why = "about the training decay (13.5 updates); with it, a check that the grid is continuous"
+
+[[average]]
+family = "exponential"
+halflife_updates = 32
+why = "long: weights the last third of the run, near the late uniform averages"
+
+# ---- windowed uniform: the tail average (stochastic weight averaging's form)
+
+[[average]]
+family = "window"
+last_fraction = 0.05
+why = "the last 5% (5 updates): a flat counterpart of the 2-4 update half-lives"
+
+[[average]]
+family = "window"
+last_fraction = 0.10
+why = "the last 10% (10 updates)"
+
+[[average]]
+family = "window"
+last_fraction = 0.20
+why = "the last 20% (20 updates): a flat counterpart of the 8-16 update half-lives"

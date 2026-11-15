@@ -188,16 +188,16 @@ class Arm:
         return heads.next_state_logits(code, self.mlp_head(weights, inputs))
 
     def critic_values(self, local_logits, outcome_logits, bins, local_levels, outcome_level):
-        return heads.critic_values(local_logits, outcome_logits, bins, tuple(local_levels),
-                                   outcome_level)
+        # bnb names the levels; the fixture's outcome level (an index) is the one named
+        # "outcome", P(win) - P(loss) whole
+        names = tuple("outcome" if index == outcome_level else f"level_{index}"
+                      for index in range(len(local_levels) + 1))
+        return heads.critic_values(local_logits, outcome_logits, bins, names, "outcome")
 
     # ------------------------------------------------------------------ critic
 
     def value_bins(self, count, limit):
         return critic.value_bins(count, limit, dtype=torch.float64)
-
-    def two_hot(self, values, bins):
-        return critic.two_hot(values, bins)
 
     def expectation(self, logits, bins):
         return critic.expectation(logits, bins)

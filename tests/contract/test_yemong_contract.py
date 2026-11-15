@@ -4,7 +4,7 @@ runtime stores them (spec 10)."""
 import pytest
 import torch
 
-from bnb.contracts import REWARD_LEVELS, GameConfig, Obs
+from bnb.contracts import VALUE_LEVELS, GameConfig, Obs
 from bnb.contracts.action import to_joint
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
@@ -34,7 +34,7 @@ def test_yemong_outputs():
         )
     assert action.power.shape == (4, 2) and action.power.dtype == torch.int32
     assert out.log_probability.shape == out.entropy.shape == out.value.shape == (4, 2)
-    assert out.values.shape == (4, 2, len(REWARD_LEVELS)) and out.outcome.shape == (4, 4)
+    assert out.values.shape == (4, 2, len(VALUE_LEVELS)) and out.outcome.shape == (4, 4)
     torch.testing.assert_close(out.value, out.values.sum(-1))
     torch.testing.assert_close(out.outcome.sum(-1), torch.ones(4))
     leaves = torch.utils._pytree.tree_leaves(out.replay)

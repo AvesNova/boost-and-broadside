@@ -213,12 +213,12 @@ rewind (`--resume RUN --at STEP`) moves the newer checkpoints into
 
 ### Every update's policy files
 
-The history of a run is its policy files, which are small (about 10 MB each). After every update a run with `--update-policies` (off by default; decided 2026-11-15, for the one arm whose live weights feed the averaging sweep) writes
+The history of a run is its policy files, which are small (11 MB each for the real-scale Yemong). After every update a run with `--update-policies` (off by default; decided 2026-11-15, for the one arm whose live weights feed the averaging sweep) writes
 `policies/step_<environment steps>/` with three policy files: `live/` (the learner's
 weights), `exponential_average/` and, once the uniform average has started,
-`uniform_average/`. They are never pruned: about 20 to 30 MB per update (the live weights and
-the exponential average, then the uniform average too), so a run of 100M steps at a million
-steps per update keeps about 2 to 3 GB. Their writing time counts in the
+`uniform_average/`. They are never pruned: 23 to 34 MB per update (the live weights and the
+exponential average, then the uniform average too), so a run of 100M steps at the default
+1,048,576 steps per update (96 updates) keeps about 3.3 GB. Their writing time counts in the
 update record's checkpoint seconds.
 
 A run without `--update-policies` (the default) writes the same three files on the
@@ -232,13 +232,53 @@ files that its newest end replaces. A tournament takes any of them by path, incl
 inside the runs directory: `bnb ratings RUN --with
 RUN/policies/step_50000000/uniform_average`.
 
-`bnb runs ema RUN --decay 0.9 [--at STEP]` builds an exponential moving average of any
-decay from the saved live policies (`bnb.runs.ema`) and writes it as a policy file under the
-run's `artifacts/ema/`, which a tournament can rate like any other. The decay is per update,
-as the run's own average, which is `decay * average + (1 - decay) * live` after each update.
-The offline average starts from the first saved update's live weights (the run's own starts
-from the initial weights), so for a decay near 1 its earliest updates are weighted slightly
-differently; it is not the run's exponential average bit for bit.
+A run with `--update-policies` also writes the three files before its first update, at
+`policies/step_<start>/` (its starting weights, `updates` 0 in the record), because the
+exponential average starts from them.
+
+### Averages built after training
+
+`bnb average RUN --spec SPEC` (`bnb.runs.averaging`) builds averages of the run's weights
+from its per-update live files and writes each as a policy file at
+`RUN/average/<name>/step_<steps>/`, which a tournament rates like any other. The spec is a
+TOML file of `[[average]]` entries, each one of these families:
+
+- `uniform`: the mean of the updates from `from_fraction` of the run (or `from_step`) to
+  the evaluation point;
+- `exponential`: `average = decay * average + (1 - decay) * live` after each update, with
+  `decay = 0.5 ** (1 / halflife_updates)` (or a `halflife_steps`), from the run's starting
+  weights or from `from_fraction`/`from_step`;
+- `window`: the mean of the last `last_updates` updates, or of the updates in the last
+  `last_steps` steps or `last_fraction` of the run, before the evaluation point;
+- `training_exponential` and `training_uniform`: the run's own two averages, rebuilt with
+  its decay and uniform start from `config.json`{.plain};
+- `live`: the live weights at the evaluation point (the saved file itself).
+
+`[evaluation]` sets the points every average is built at (`fractions` of the run, or
+`steps`; the newest update by default), each the newest saved update at or before it; an
+entry may set its own. The name encodes the family and parameters, such as
+`exponential_halflife_8updates`{.plain} or `window_last_10percent`{.plain}.
+
+The files are read once, oldest first and one at a time; every average is folded from that
+one pass, in float64, and held only until its last evaluation point. Where the run saved its
+own average at the same step, the rebuilt one is compared with it. The decay is per update,
+so the rebuild matches within float rounding (about 1e-7 here: the run folds in float32 on
+the device), and the command fails if it does not. A run that turned `--update-policies` on
+at a resume lacks the earlier files, and the rebuild is refused or does not match. An
+average already written is kept, so a spec can grow and be built again.
+
+The player names go to stdout, one per line, so one tournament rates the whole suite:
+
+<!-- not-runnable: needs a finished run with per-update policies -->
+```bash
+uv run --no-sync bnb average RUN --spec docs/rewrite/sections/averaging/suite.toml > players.txt
+uv run --no-sync bnb ratings RUN --no-league \
+  --presets real_scale_frontline real_scale_deathmatch real_scale_elimination \
+  --with $(cat players.txt)
+```
+
+The first suite, with the reason for each average, is
+`docs/rewrite/sections/averaging/suite.toml`.
 
 ## The memory probe
 

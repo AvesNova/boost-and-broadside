@@ -1,27 +1,41 @@
-"""Returns (learner spec 3): each value level's reward, per-level GAE, and team mixing with
-the level sum. v1's math; fixtures `learner_gae` and `learner_team_aggregate`.
+"""Returns (learner spec 3): per-level GAE over the critic's value levels, each reward
+level's offence and defence (`bnb.contracts.VALUE_LEVELS`), and team mixing with the
+weighted level sum. v1's math; fixtures `learner_gae` and `learner_team_aggregate`.
 
 Shapes are time-major, (L, R, S, ...) per ship, with the critic's value levels last.
+
+The advantage weighs each part: A = sum_k w_k A_k over the value levels, w_k 1 but on the
+offence of the premium levels (`PREMIUM_LEVELS`), where it is the offence premium
+(`bnb.learn.ppo.LearnerConfig.offence_premium`). Defence keeps its sign (a cost is
+negative), so with every weight 1 the sum is the zero-sum levels' advantage, and a premium
+p is p A_offence + A_defence, the advantage of p times what the ship earns from the enemy
+less what the enemy takes from it. The weights touch only the advantage: each level's
+returns, the critic's targets, are its part's own.
 """
 
 import torch
 
-from bnb.contracts import REWARD_LEVELS, SUMMED_LEVEL
+from bnb.contracts import REWARD_LEVELS, REWARD_PARTS, VALUE_LEVELS, level_part
 
-# The critic's value levels the returns support: one per reward level, or the single level
-# over their sum.
-VALUE_LAYOUTS = (REWARD_LEVELS, (SUMMED_LEVEL,))
+# The levels whose offence the premium weighs (decided 2026-11-14): damage and kill/death.
+# The objective levels and the outcome stay zero-sum: a premium on captures would pay both
+# teams for trading zones in self-play.
+PREMIUM_LEVELS = ("damage", "kill_death")
 
 
-def value_rewards(rewards: torch.Tensor, levels: tuple[str, ...]) -> torch.Tensor:
-    """The reward of each of the critic's value levels (..., len(levels)), from the
-    weighted rewards per reward level (..., len(REWARD_LEVELS)): the reward levels as
-    they are, or for the single level (`SUMMED_LEVEL`) their sum."""
-    if levels == REWARD_LEVELS:
-        return rewards
-    if levels == (SUMMED_LEVEL,):
-        return rewards.sum(-1, keepdim=True)
-    raise ValueError(f"the critic's levels {levels} are not one of {VALUE_LAYOUTS}")
+def part_weights(offence_premium: float) -> tuple[float, ...]:
+    """Each value level's weight in the advantage, in VALUE_LEVELS order: `offence_premium`
+    on the offence of the premium levels, 1 on every other part."""
+    premium = {level_part(level, "offence") for level in PREMIUM_LEVELS}
+    return tuple(offence_premium if name in premium else 1.0 for name in VALUE_LEVELS)
+
+
+def per_part(per_level: tuple[float, ...]) -> tuple[float, ...]:
+    """A value per reward level (REWARD_LEVELS order) for each of its parts, in VALUE_LEVELS
+    order: a level's discount, trace decay or team spirit is both its parts'."""
+    if len(per_level) != len(REWARD_LEVELS):
+        raise ValueError(f"{per_level} needs one value per reward level, {REWARD_LEVELS}")
+    return tuple(value for value in per_level for _ in REWARD_PARTS)
 
 
 def per_level_gae(
@@ -68,7 +82,7 @@ def team_mixed_levels(
     team: torch.Tensor, alive: torch.Tensor, per_level: torch.Tensor, team_spirit: torch.Tensor
 ) -> torch.Tensor:
     """(..., N, levels): each level's A_ik + s_k mean_{living teammates j != i} A_jk, the
-    parts `team_aggregate` sums. per_level (..., N, levels)."""
+    parts `team_aggregate` weighs and sums. per_level (..., N, levels)."""
     weight = team_weights(team, alive, per_level.dtype)
     return per_level + team_spirit * (weight @ per_level)
 
@@ -79,15 +93,17 @@ def team_aggregate(
     advantages: torch.Tensor,
     returns: torch.Tensor,
     team_spirit: torch.Tensor,
+    weights: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """The level sum with team mixing, (..., N) each:
-    A_i = sum_k (A_ik + s_k mean_{living teammates j != i} A_jk), and the same of the
-    returns. team (..., N) ids, alive (..., N); advantages, returns (..., N, levels); team_spirit
-    (levels,). A ship with no living teammate mixes in nothing."""
+    """The weighted level sum with team mixing, (..., N) each:
+    A_i = sum_k w_k (A_ik + s_k mean_{living teammates j != i} A_jk), and the unweighted
+    sum of the returns the same way (the return scale's). team (..., N) ids, alive (..., N);
+    advantages, returns (..., N, levels); team_spirit and weights (levels,). A ship with no
+    living teammate mixes in nothing."""
     weight = team_weights(team, alive, advantages.dtype)  # (..., N, N)
 
     def mixed(per_level: torch.Tensor) -> torch.Tensor:
         mean = weight @ per_level  # (..., N, levels): the mean over living teammates
-        return (per_level + team_spirit * mean).sum(-1)
+        return per_level + team_spirit * mean
 
-    return mixed(advantages), mixed(returns)
+    return (mixed(advantages) * weights).sum(-1), mixed(returns).sum(-1)

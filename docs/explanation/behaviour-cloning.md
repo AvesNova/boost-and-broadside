@@ -28,7 +28,8 @@ The critic's returns use BC's own discounts and trace decays (`bnb.learn.bc.DISC
 `bnb.learn.bc.TRACE_DECAY`): the outcome undiscounted and every level's trace decay near 1,
 the two combat levels' squared for the x2 game. With PPO's values the outcome head predicts
 the game's result worse than the base rate in the first 10M steps (its Brier skill
-negative). `--set learner.discount=...` and `--set learner.trace_decay=...` override them ([the learner](learner.md#the-single-value-arm)).
+negative). `--set learner.discount=...` and `--set learner.trace_decay=...` override them ([the learner](learner.md#returns)). BC trains every value level's critic,
+each reward level's offence and defence, so one BC serves every offence premium.
 
 ## The labels
 

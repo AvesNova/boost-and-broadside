@@ -9,7 +9,7 @@ import pytest
 import torch
 import yemong_cases as cases
 
-from bnb.contracts import ASPECTS, REWARD_LEVELS, Events
+from bnb.contracts import ASPECTS, VALUE_LEVELS, Events
 from bnb.contracts.obs import GLOBAL, GLOBAL_COLUMNS, SHIP, SHIP_COLUMNS
 from bnb.learn.rewards import REWARD_EVENTS
 from bnb.runtime import analytics, metrics
@@ -60,7 +60,7 @@ def test_the_resolve_sums_match_a_hand_computed_episode():
     ends on tick 3 with team 0's win; ship 0 flies at 4 m/s and fires every tick.
     Environment 1: nothing happens and its episode does not end."""
     game, sums = analytics.blank_game(B, N, "cpu"), analytics.blank_game_sums(B, "cpu")
-    reward = torch.zeros((B, N, len(REWARD_LEVELS)))
+    reward = torch.zeros((B, N, len(VALUE_LEVELS)))
     event_rewards = torch.zeros((B, N, len(REWARD_EVENTS)))
     fired = torch.tensor([[True, False], [False, False]])
     for tick in range(3):
@@ -73,10 +73,10 @@ def test_the_resolve_sums_match_a_hand_computed_episode():
             died[0, 1] = True
         if tick == 2:
             rows[0, 1, SHIP["alive"]] = 0.0  # dead since tick 1
-        reward[0, 0, 0] = 1.0 if tick == 1 else 0.0  # the kill's damage reward, say
-        reward[0, 1, 0] = -1.0 if tick == 1 else 0.0
+        reward[0, 0, 0] = 1.0 if tick == 1 else 0.0  # the hit's damage offence, say
+        reward[0, 1, 1] = -1.0 if tick == 1 else 0.0  # and the target's defence
         event_rewards[0, 0, 1] = reward[0, 0, 0]
-        event_rewards[0, 1, 0] = reward[0, 1, 0]
+        event_rewards[0, 1, 0] = reward[0, 1, 1]
         done = torch.tensor([tick == 2, False])
         result = torch.tensor([1 if tick == 2 else 0, 0], dtype=torch.int32)
         events = _events(damage=damage, died=died, fired=fired, done=done, result=result)
@@ -88,7 +88,8 @@ def test_the_resolve_sums_match_a_hand_computed_episode():
     assert series["episode/event/shots_fired/a"] == 3.0
     assert series["episode/event/hits/a"] == 1.0
     assert series["episode/event/combat_deaths/a"] == 1.0
-    assert series["episode/reward/damage/a"] == 0.0  # +1 and -1 over the two ships
+    assert series["episode/reward/damage_offence/a"] == 0.5  # +1 over the two ships
+    assert series["episode/reward/damage_defence/a"] == -0.5  # and -1
     assert series["episode/reward_max/a"] == 1.0 and series["episode/reward_min/a"] == -1.0
     assert series["episode/result/team_0"] == 1 and series["episode/result/team_1"] == 0
     # 11 living ship-ticks (6 + 5): 5.5 ship-seconds
@@ -117,7 +118,7 @@ def test_the_aspect_shares_count_enemy_damage_and_enemy_kills():
     events = _events(
         died=died, killer=killer, kill_aspect=kill_aspect, enemy_damage_by_aspect=by_aspect
     )
-    zero = torch.zeros((B, N, len(REWARD_LEVELS)))
+    zero = torch.zeros((B, N, len(VALUE_LEVELS)))
     analytics.resolve_tick(
         game, sums, events, zero, torch.zeros((B, N, len(REWARD_EVENTS))), _rows(), TICK
     )
