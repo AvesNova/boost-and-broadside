@@ -133,7 +133,8 @@ class Probe:
     a zone to entering another one; contest, from the last tick every meter was at zero to
     a capture. Per environment: the first game's first enemy hit tick (-1 none), and per ship
     its first death in the first game: the tick, whether the boundary killed it, and its
-    distance from the centre."""
+    distance from the centre; and the spacing, each living ship's distance to its nearest
+    living ally, summed over the first game's ticks."""
 
     def __init__(self, environments: int, ships_per_team: int, device) -> None:
         N = 2 * ships_per_team
@@ -154,6 +155,8 @@ class Probe:
             death_tick=torch.full((environments, N), -1, dtype=torch.long, device=device),
             death_boundary=torch.zeros((environments, N), dtype=torch.bool, device=device),
             death_distance=torch.zeros((environments, N), dtype=torch.float32, device=device),
+            ally_gap_sum=torch.zeros(environments, dtype=torch.float32, device=device),
+            ally_gap_count=torch.zeros(environments, dtype=torch.float32, device=device),
             **{name: torch.zeros(BINS, dtype=torch.long, device=device) for name in HISTOGRAMS},
             **{name: torch.zeros(1, dtype=torch.long, device=device) for name in LOCK_TALLIES},
         )
@@ -199,6 +202,17 @@ class Probe:
         b["death_boundary"].copy_(b["death_boundary"] | (first_death & (events.killer < 0)))
         distance = torch.sqrt(state.ships.x * state.ships.x + state.ships.y * state.ships.y)
         b["death_distance"].copy_(torch.where(first_death, distance, b["death_distance"]))
+        # spacing: each living ship's distance to its nearest living ally, summed per tick
+        alive_now = state.ships.alive
+        dx = state.ships.x[..., :, None] - state.ships.x[..., None, :]
+        dy = state.ships.y[..., :, None] - state.ships.y[..., None, :]
+        pair = torch.sqrt(dx * dx + dy * dy)
+        ally = (team[:, None] == team[None, :]) & ~torch.eye(N, dtype=torch.bool, device=dx.device)
+        ally = ally & alive_now[..., None, :] & alive_now[..., :, None]
+        nearest = torch.where(ally, pair, torch.inf).amin(-1)
+        counted = torch.isfinite(nearest) & live
+        b["ally_gap_sum"].add_(torch.where(counted, nearest, 0.0).sum(-1))
+        b["ally_gap_count"].add_(counted.float().sum(-1))
         game_hit = (hit.any(-1) & (b["first_hit"] < 0)) & b["live"]
         b["first_hit"].copy_(torch.where(game_hit, b["tick"], b["first_hit"]))
         engaged = b["engaged"] | hit
@@ -541,12 +555,21 @@ def main() -> None:
     )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument(
+        "--imugi-spacing",
+        default=None,
+        choices=tuple(imugi_combat.SPACINGS),
+        help="Imugi's cohesion and separation while it explores (`imugi_combat.SPACINGS`)",
+    )
+    parser.add_argument(
         "--imugi-still-edge",
         action="store_true",
         help="Imugi's earlier edge steer (a still edge, no critical radius)",
     )
     arguments = parser.parse_args()
     imugi_combat.MOVING_EDGE = not arguments.imugi_still_edge
+    if arguments.imugi_spacing is not None:
+        spacing = imugi_combat.SPACINGS[arguments.imugi_spacing]
+        imugi_combat.COHESION_IN_GUN_RANGE, imugi_combat.SEPARATION_IN_GUN_RANGE = spacing
     if arguments.imugi_search is not None:
         imugi_combat.SEARCH = arguments.imugi_search
     if arguments.preset is None:
@@ -636,6 +659,12 @@ def main() -> None:
             game_record["death_tick"] = ticks
             game_record["death_boundary"] = by_boundary
             game_record["death_distance"] = [round(d, 1) for d in distances]
+        gap_sum = probe.buffers["ally_gap_sum"].cpu().tolist()
+        gap_count = probe.buffers["ally_gap_count"].cpu().tolist()
+        for game_record, total, count in zip(games, gap_sum, gap_count):
+            # the mean distance (m) from a living ship to its nearest living ally over the
+            # game's ticks (None without two living allies)
+            game_record["ally_gap"] = round(total / count, 1) if count else None
         first_hit = probe.buffers["first_hit"].cpu().tolist()
         for game_record, hit_tick in zip(games, first_hit):
             game_record["first_hit"] = hit_tick

@@ -59,11 +59,14 @@ MOVING_EDGE = True
 # pushed off allies that come too close.
 SEARCH = "centre"
 SEARCH_MODES = ("centre", "straight", "explore")
-# the cohesion pull: none within 1 own gun range of the team's centre of mass, all of the
-# steer beyond 3; the separation push: from allies within half a gun range, growing to all
-# of the steer at none
-COHESION_IN_GUN_RANGE = (1.0, 3.0)
-SEPARATION_IN_GUN_RANGE = 0.5
+# the cohesion pull: none within COHESION_IN_GUN_RANGE[0] own gun ranges of the team's
+# centre of mass, all of the steer beyond [1]; the separation push: from allies within
+# SEPARATION_IN_GUN_RANGE, growing to all of the steer at none. SPACINGS: the variants
+# measured (2026-11-15; a gun range is about 640 m and vision 1 km at real scale): "tight",
+# allies about half a gun range apart; "wide", about a vision range apart, so the team
+# sweeps a wider strip.
+SPACINGS = {"tight": ((1.0, 3.0), 0.5), "wide": ((2.5, 4.5), 1.6)}
+COHESION_IN_GUN_RANGE, SEPARATION_IN_GUN_RANGE = SPACINGS["tight"]
 # The explore target: a cell counts as unseen once its seen value (`imugi_memory.track_seen`)
 # has decayed below EXPLORE_UNSEEN; only cells within EXPLORE_INSIDE of the boundary's
 # radius count. Of those, the team heads for the nearest to its centre of mass, distances

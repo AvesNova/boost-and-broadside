@@ -29,8 +29,9 @@ from .imugi_parameters import ImugiParameters, Switch, logistic, switch_probabil
 FORGET_WEIGHT = 0.01
 # The explore grid (`track_seen`, `imugi_combat.explore_target`): the hex grid of
 # EXPLORE_RINGS rings over the arena (cell centres in arena radii, about 1 km apart on the
-# 7.8 km map), and the time a seen cell's value takes to fall by e: an enemy at cruise
-# crosses a vision range (3 km) in about 10 s, so after 20 s a cell seen empty says little.
+# 7.8 km map), and the time a seen cell's value takes to fall by e: about 20 s, after which
+# an enemy at cruise could have crossed a cell's surroundings several times over (vision is
+# 1 km at real scale), so a cell seen empty that long ago says little.
 EXPLORE_RINGS = 8
 EXPLORE_CELLS = hex_cells(EXPLORE_RINGS)[1]
 EXPLORE_SECONDS = 20.0

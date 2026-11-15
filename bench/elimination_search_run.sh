@@ -63,6 +63,24 @@ sizes)  # other team sizes on the fixed maps: elimination with linear 120 s, dea
     GAMES=64 run "size-dm-${n}v${n}" deathmatch sizes.jsonl --ships $n --imugi-search explore
   done
   GAMES=32 run size-dm-10v10 deathmatch sizes.jsonl --ships 10 --imugi-search explore ;;
+explore)  # the explore search (tight and wide spacing) against the old centre rule, with
+  # the independent spawn centres: no shrink, linear 120 s, and the deathmatch kill rate
+  run x-none-centre elimination explore.jsonl --episode-seconds 300 \
+    --set mode.shrink_hold_seconds=100000 --imugi-search centre
+  for spacing in tight wide; do
+    run "x-none-$spacing" elimination explore.jsonl --episode-seconds 300 \
+      --set mode.shrink_hold_seconds=100000 --imugi-search explore --imugi-spacing $spacing
+  done
+  run x-lin120-centre elimination explore.jsonl --episode-seconds 128 \
+    --set mode.shrink_hold_seconds=0 --imugi-search centre
+  for spacing in tight wide; do
+    run "x-lin120-$spacing" elimination explore.jsonl --episode-seconds 128 \
+      --set mode.shrink_hold_seconds=0 --imugi-search explore --imugi-spacing $spacing
+  done
+  for spacing in tight wide; do
+    GAMES=64 run "x-dm-$spacing" deathmatch explore.jsonl --imugi-search explore \
+      --imugi-spacing $spacing
+  done ;;
 deathmatch)  # the kill rate by search (tickets off, the preset's 600 s)
   for search in centre straight explore; do
     GAMES=64 run "dm-$search" deathmatch deathmatch.jsonl --imugi-search "$search"

@@ -14,7 +14,8 @@ centre):
 - boundary: the share of each ship's first death with no shooter, and of the loser's k-th
   deaths;
 - first hit: the game's first enemy hit, median (s).
-Deathmatch rows add the deaths per team per minute over the game.
+Deathmatch rows add the deaths per team per minute over the game. gap: the median over games
+of the mean distance from a living ship to its nearest living ally (m).
 """
 
 import json
@@ -38,7 +39,7 @@ def summary(entries: list[dict]) -> dict:
     episode = first["episode_ticks"]
     games = [game for entry in entries for game in entry["games"]]
     ships = first["ships"]
-    lengths, wiped, hits = [], 0, []
+    lengths, wiped, hits, gaps = [], 0, [], []
     deaths = boundary = first_deaths = 0
     by_k = [[] for _ in range(ships)]
     boundary_k = [0] * ships
@@ -46,6 +47,8 @@ def summary(entries: list[dict]) -> dict:
     for game in games:
         lengths.append(min(game["end_tick"], episode) * tick)
         wiped += bool(game["by_rule"])
+        if game.get("ally_gap") is not None:
+            gaps.append(game["ally_gap"])
         if game["first_hit"] >= 0:
             hits.append(game["first_hit"] * tick)
         ticks, by_boundary = game["death_tick"], game["death_boundary"]
@@ -79,6 +82,7 @@ def summary(entries: list[dict]) -> dict:
         first_hit=statistics.median(hits) if hits else float("nan"),
         boundary=boundary / max(first_deaths, 1),
         decided=decided,
+        ally_gap=statistics.median(gaps) if gaps else float("nan"),
         deaths_per_team_minute=deaths / 2 / (sum(lengths) / 60.0),
         k=[
             (
@@ -100,7 +104,7 @@ def main() -> None:
             entries.setdefault(entry["label"], []).append(entry)
     print(
         f"{'label':<16} {'games':>5} {'ended':>5} {'mean':>5} {'med':>5} {'p80':>5} {'p90':>5}"
-        f" {'hit1':>5} {'bdry':>5} {'kills/min':>9}"
+        f" {'hit1':>5} {'bdry':>5} {'kills/min':>9} {'gap m':>6}"
     )
     rows = {label: summary(group) for label, group in entries.items()}
     for label, row in rows.items():
@@ -108,7 +112,7 @@ def main() -> None:
             f"{label:<16} {row['games']:>5} {row['wiped']:>5.2f} {row['mean']:>5.0f}"
             f" {row['median']:>5.0f} {row['p80']:>5.0f} {row['p90']:>5.0f}"
             f" {row['first_hit']:>5.0f} {row['boundary']:>5.2f}"
-            f" {row['deaths_per_team_minute']:>9.2f}"
+            f" {row['deaths_per_team_minute']:>9.2f} {row['ally_gap']:>6.0f}"
         )
     print()
     print("loser's k-th death: median/p90 s [boundary share] (n games with it)")
