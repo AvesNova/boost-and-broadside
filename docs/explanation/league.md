@@ -483,12 +483,13 @@ uv run --no-sync bnb head-to-head 2026-11-02-mixed-purple-pumpkin scripted --gam
 ```
 
 **The break-even lineup.** `bnb crossover POLICY` (`bnb.league.crossover`) measures the
-ratio of a policy's ships to Imugi's at which the policy wins half its games, per mode. A
+lineup at which a policy wins half its games against Imugi, per mode, and reports it as
+Imugi's ships per one of the policy's: how many times its number the policy holds. A
 lineup is a pair (the policy's ships, Imugi's ships). The weaker side fields
 `--fixed-count` ships (20) and the stronger side's count varies downward from it: a policy
 stronger than Imugi plays n against 20, a weaker one 20 against n, and no side ever fields
-more than 20. The stronger side goes no lower than `--minimum-count` (1) or the mode's
-smallest team, whichever is larger (Frontline 3). Which side is stronger comes from the
+more than 20. The stronger side may go down to 1 ship in every mode, Frontline included.
+Which side is stronger comes from the
 games, not from a setting. Each mode's game (by default the real-scale frontline,
 deathmatch and elimination presets) is built once at 20 a side on the preset's own arena
 (`--map-rule preset`; every map is fixed-size until an agent has trained successfully on
@@ -512,8 +513,11 @@ log 0.7, 20 against 14 is log(1/0.7), and 20 against 20 is 0 from either side.
   both sides of parity, with a binomial likelihood on the score. The break-even ratio is
   where the fitted curve crosses one half, and its standard error in r comes from the
   fit's covariance by the delta method; the ratio itself carries the same relative error.
-  The break-even lineup is the pair at that ratio with the weaker side at 20 (a ratio of
-  0.7 is 14 against 20, a ratio of 1.25 is 20 against 16). Draws make the binomial standard
+  The break-even lineup is the pair at that ratio with the weaker side at 20, and the
+  reported ratio is Imugi's ships over the policy's there: 14 against 20 holds 1.43 times
+  its number, 20 against 16 holds 0.8. A break-even with the stronger side at 2 ships or
+  fewer against 20 (either side) is flagged in the result (`suspicious`) and printed as a
+  warning: possible, but more likely a bug in the benching, the seats or the scoring. Draws make the binomial standard
   error a slight overestimate. While the outcomes are separated (every lineup below some
   ratio lost outright, every lineup above it won outright), the fit has no maximum, and the
   result is a bound on the ratio instead.
@@ -529,8 +533,7 @@ log 0.7, 20 against 14 is log(1/0.7), and 20 against 20 is 0 from either side.
 - **Stop.** A mode stops when the break-even log ratio's standard error reaches
   `--target-stderr` (0.02, about 0.3 ships at 15 against 20), when its games reach
   `--budget-games` (8192; the batch that reaches it is the last), or when the bound is
-  final: every game won with the policy at its minimum against 20, or lost against Imugi at
-  its minimum.
+  final: every game won at 1 against 20, or lost at 20 against 1.
 
 Every batch is appended to `artifacts/crossover/<preset>.batches.jsonl`{.plain} of `--out`
 (else the policy's run, else the runs directory) as it ends: each block's lineup and its
@@ -538,10 +541,10 @@ wins, draws and losses, and the fit after it. A line per batch prints the lineup
 games, the break-even ratio with its standard error and lineup (or the bound) and an ETA as
 a clock time, with the budget's as the worst case. A rerun reuses the record's batches of
 the same measurement (the game version, the players' identities, the game, the seed, the
-fixed and minimum counts and the lineup types) and continues past them, so an interrupted
+fixed count and the lineup types) and continues past them, so an interrupted
 measurement resumes and a finished one only reports. The result (per mode the break-even
-log ratio, ratio and lineup, the stop reason and the games per lineup, with the command
-and the policy's SHA-256) goes to `artifacts/crossover/<time>/result.json`{.plain}.
+log ratio, ratio and lineup, the suspicious flag, the stop reason and the games per lineup,
+with the command and the policy's SHA-256) goes to `artifacts/crossover/<time>/result.json`{.plain}.
 
 A benched slot costs about what an active one does: the game, Imugi and the
 network run at fixed shapes over every slot, so a benched ship is a dead ship carried
@@ -605,8 +608,8 @@ break-even curve against Imugi, the weaker side at 20 ships (the crossover's fit
 its preset's own arena at every team size (`--map-rule preset`; every map is fixed-size
 until an agent has trained successfully on variable-size maps, the author's rule of
 2026-11-15), and the density rule's arenas are the map-size arm's opt-in
-(`--map-rule density`). Frontline break-even is left out of the score until the map-size
-arm reports (`--unscored`). A group-sequential test
+(`--map-rule density`). Every break-even is scored, frontline's included (`--unscored`
+leaves conditions out). A group-sequential test
 (`bnb.league.sequential`) on the overall score stops at a planned look with A wins, B
 wins or a tie, and a gate holds a winner that is clearly worse in one mode to a tie.
 Batches go to the conditions where they most reduce the overall score's variance per

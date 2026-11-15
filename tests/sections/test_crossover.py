@@ -81,20 +81,20 @@ def _rows(*rows) -> dict:
 # ---- the lineups
 
 
-def test_the_lineups_run_along_the_ratio_with_the_weaker_side_fixed():
-    config = break_even.CrossoverConfig(minimum_count=3)
+def test_the_lineups_run_along_the_ratio_with_the_weaker_side_fixed_down_to_one_ship():
+    config = break_even.CrossoverConfig()
     lineups = config.lineups()
     ratios = [break_even.log_ratio(lineup) for lineup in lineups]
-    assert ratios == sorted(ratios) and len(set(ratios)) == len(lineups) == 2 * 17 + 1
-    assert lineups[0] == (3, 20) and lineups[-1] == (20, 3) and (20, 20) in lineups
-    assert all(20 in lineup and min(lineup) >= 3 and max(lineup) <= 20 for lineup in lineups)
+    assert ratios == sorted(ratios) and len(set(ratios)) == len(lineups) == 2 * 19 + 1
+    assert lineups[0] == (1, 20) and lineups[-1] == (20, 1) and (20, 20) in lineups
+    assert all(20 in lineup and min(lineup) >= 1 and max(lineup) <= 20 for lineup in lineups)
     assert config.ships_per_team == 20 and config.parity == (20, 20)
-    clipped = break_even.CrossoverConfig(minimum_count=3, bracket=(1, 10, 30))
-    assert clipped.bracket_lineups("policy") == [(3, 20), (10, 20), (20, 20)]
-    assert clipped.bracket_lineups("opponent") == [(20, 20), (20, 10), (20, 3)]
+    clipped = break_even.CrossoverConfig(bracket=(0, 10, 30))
+    assert clipped.bracket_lineups("policy") == [(1, 20), (10, 20), (20, 20)]
+    assert clipped.bracket_lineups("opponent") == [(20, 20), (20, 10), (20, 1)]
     assert len(clipped.bracket_lineups("both")) == 5
     with pytest.raises(ValueError, match="fixed count"):
-        break_even.CrossoverConfig(minimum_count=21)
+        break_even.CrossoverConfig(fixed_count=0)
 
 
 # ---- the fit
@@ -134,12 +134,25 @@ def test_the_fit_crosses_where_the_curve_is_one_half_on_either_side_of_parity():
     found = break_even.fit(break_even.tallies(blocks))
     assert found.break_even == pytest.approx(math.log(1.2), rel=1e-6)
     assert found.slope == pytest.approx(4.0, rel=1e-6)
+    # the reported ratio is the opponent's ships per one of the policy's
     ratio, ratio_stderr = found.ratio()
-    assert ratio == pytest.approx(1.2, rel=1e-6)
+    assert ratio == pytest.approx(1 / 1.2, rel=1e-6)
     assert ratio_stderr == pytest.approx(ratio * found.stderr)
     assert found.lineup(20) == pytest.approx((20.0, 20 / 1.2))
     stronger = dataclasses.replace(found, break_even=math.log(0.45))
     assert stronger.lineup(20) == pytest.approx((9.0, 20.0))
+    assert stronger.ratio()[0] == pytest.approx(20 / 9)  # holds 2.22 times its number
+    assert not stronger.suspicious(20) and not found.suspicious(20)
+
+
+@pytest.mark.parametrize(
+    ("policy_per_opponent", "suspicious"),
+    [(1.5 / 20, True), (2 / 20, True), (2.5 / 20, False), (20 / 2, True), (20 / 3, False)],
+)
+def test_a_break_even_at_two_ships_or_fewer_is_suspicious(policy_per_opponent, suspicious):
+    found = break_even.Fit("crossing", math.log(policy_per_opponent), 0.01)
+    assert found.suspicious(20) is suspicious
+    assert not break_even.Fit("separated", upper=(1, 20)).suspicious(20)
 
 
 def test_a_draw_counts_half_a_win():
@@ -200,17 +213,13 @@ def test_the_allocation_concentrates_blocks_at_the_crossing():
     assert all(abs(break_even.log_ratio(one) - found.break_even) < 0.3 for one in lineups)
 
 
-@pytest.mark.parametrize(
-    ("true_ratio", "minimum_count"), [(9.3 / 20, 1), (20 / 13, 3), (20 / 19.5, 3), (0.2, 3)]
-)
-def test_a_simulated_measurement_finds_the_ratio_on_either_side_of_parity(
-    true_ratio, minimum_count
-):
-    """Synthetic games from a known logistic in the log ratio, a stronger policy's, a weaker
-    one's and one near parity, played batch by batch through the allocation from the first
+@pytest.mark.parametrize("true_ratio", [9.3 / 20, 20 / 13, 20 / 19.5, 0.2, 20 / 3])
+def test_a_simulated_measurement_finds_the_ratio_on_either_side_of_parity(true_ratio):
+    """Synthetic games from a known logistic in the log ratio, stronger policies', weaker
+    ones' and one near parity, played batch by batch through the allocation from the first
     (parity) batch: the fit finds the ratio within its standard error, most games go near
-    the crossing, and no lineup has more than 20 a side or fewer than the floor."""
-    config = dataclasses.replace(CONFIG, minimum_count=minimum_count)
+    the crossing, and no lineup has more than 20 a side or fewer than 1."""
+    config = CONFIG
     generator = torch.Generator().manual_seed(3)
     blocks: list[dict] = []
     found, tallies = break_even.Fit("empty"), {}
@@ -224,7 +233,8 @@ def test_a_simulated_measurement_finds_the_ratio_on_either_side_of_parity(
     assert abs(found.break_even - math.log(true_ratio)) < 3 * found.stderr
     assert found.stderr < 0.05
     played = {(one["policy_count"], one["opponent_count"]) for one in blocks}
-    assert all(max(one) <= 20 and min(one) >= minimum_count for one in played)
+    assert all(max(one) <= 20 and min(one) >= 1 for one in played)
+    assert not found.suspicious(20)
     assert all(20 in one for one in played)
     if true_ratio > 1.1:
         assert all(one[0] == 20 for one in played)  # the policy's ships never shrink
@@ -256,9 +266,8 @@ def test_separated_outcomes_steer_into_or_beyond_the_bound():
     assert set(break_even.allocate(across, {}, CONFIG, 3, 8)) == {(19, 20), (20, 20), (20, 19)}
     adjacent = break_even.Fit("separated", lower=(9, 20), upper=(10, 20))
     assert break_even.allocate(adjacent, {}, CONFIG, 4, 8) == [(9, 20), (10, 20)] * 2
-    floored = dataclasses.replace(CONFIG, minimum_count=3)
-    near_floor = break_even.Fit("separated", lower=None, upper=(4, 20))
-    assert break_even.allocate(near_floor, {}, floored, 2, 8) == [(3, 20)] * 2
+    near_floor = break_even.Fit("separated", lower=None, upper=(2, 20))
+    assert break_even.allocate(near_floor, {}, CONFIG, 2, 8) == [(1, 20)] * 2
 
 
 def test_the_stop_rule():
@@ -269,10 +278,7 @@ def test_the_stop_rule():
     ceiling = break_even.Fit("separated", lower=(20, 1), upper=None)
     assert break_even.stop_reason(floor, 64, CONFIG) == "bound"
     assert break_even.stop_reason(ceiling, 64, CONFIG) == "bound"
-    floored = dataclasses.replace(CONFIG, minimum_count=3)
-    assert break_even.stop_reason(break_even.Fit("separated", upper=(3, 20)), 64, floored) == (
-        "bound"
-    )
+    assert break_even.stop_reason(break_even.Fit("separated", upper=(2, 20)), 64, CONFIG) is None
     open_bound = break_even.Fit("separated", lower=None, upper=(6, 20))
     assert break_even.stop_reason(open_bound, 64, CONFIG) is None
 
@@ -361,7 +367,7 @@ def test_an_engine_with_benching_masks_a_yemongs_benched_ships(tmp_path):
 # ---- a measurement
 
 
-SMALL = break_even.CrossoverConfig(fixed_count=3, minimum_count=1, bracket=(1, 3), budget_games=32)
+SMALL = break_even.CrossoverConfig(fixed_count=3, bracket=(1, 3), budget_games=32)
 
 
 @pytest.mark.usefixtures("global_generator")
@@ -436,6 +442,36 @@ def test_the_opponents_ships_shrink_after_a_policy_loses_at_parity(tmp_path):
     }
 
 
+def test_a_suspicious_break_even_is_recorded_and_warned_about(tmp_path):
+    """A recorded measurement crossing at 1.5 ships against 20 (at its budget, so nothing is
+    played): the result carries the flag and the progress prints the warning."""
+    game = dataclasses.replace(SHORT, ships_per_team=20)
+    config = dataclasses.replace(CONFIG, budget_games=64)
+    record = tmp_path / "r.jsonl"
+    key = break_even.record_key(_scripted(), _scripted(), game, LAYOUT.seed, config)
+    blocks = []
+    for lineup in ((1, 20), (2, 20), (3, 20)):
+        p = _curve(1.5 / 20, 3.0, lineup)
+        blocks.append(
+            dict(
+                policy_count=lineup[0],
+                opponent_count=lineup[1],
+                wins=100 * p,
+                draws=0,
+                losses=100 * (1 - p),
+            )
+        )
+    record.write_text(json.dumps(dict(key=key, batch=0, blocks=blocks)) + "\n")
+    printed: list[str] = []
+    found = break_even.measure(
+        _scripted(), _scripted(), game, CPU, LAYOUT, config, record, printed.append
+    )
+    assert found["stop"] == "budget" and found["suspicious"]
+    assert found["ratio"] == pytest.approx(20 / 1.5, rel=1e-4)
+    assert found["lineup"] == pytest.approx([1.5, 20.0], rel=1e-4)
+    assert any(text.startswith("WARNING") and "bug" in text for text in printed)
+
+
 def test_the_break_even_game_keeps_the_presets_arena_unless_the_density_rule_is_asked():
     base = api.PRESETS["real_scale_deathmatch"]
     config = break_even.CrossoverConfig()
@@ -449,21 +485,21 @@ def test_the_break_even_game_keeps_the_presets_arena_unless_the_density_rule_is_
         break_even.sized_game(base, 3, "scaled")
 
 
-def test_a_record_of_another_game_version_or_floor_is_another_measurement(tmp_path):
-    """The key names the game version and the lineups' range: other batches are not
+def test_a_record_of_another_game_version_or_fixed_count_is_another_measurement(tmp_path):
+    """The key names the game version and the fixed count: other batches are not
     reused."""
     from bnb.game import VERSION
 
     record = tmp_path / "small.batches.jsonl"
     key = break_even.record_key(_scripted(), _scripted(), SHORT, 0, SMALL)
     assert key["game_version"] == VERSION
-    assert (key["fixed_count"], key["minimum_count"]) == (3, 1)
+    assert key["fixed_count"] == 3
     older = dict(key, game_version=VERSION - 1)
     record.write_text(json.dumps(dict(key=older, batch=0)) + "\n")
     assert break_even.stored_batches(record, key) == []
     assert len(break_even.stored_batches(record, older)) == 1
-    floored = dataclasses.replace(SMALL, minimum_count=2)
-    assert break_even.record_key(_scripted(), _scripted(), SHORT, 0, floored) != key
+    smaller = dataclasses.replace(SMALL, fixed_count=2)
+    assert break_even.record_key(_scripted(), _scripted(), SHORT, 0, smaller) != key
 
 
 @pytest.mark.usefixtures("global_generator")
@@ -472,9 +508,7 @@ def test_a_network_plays_a_measurement(tmp_path):
     directory = tmp_path / "policy"
     checkpoint.save_policy(directory, tiny_model("yemong", seed=1, game=game))
     layout = dataclasses.replace(LAYOUT, block_environments=4)
-    config = break_even.CrossoverConfig(
-        fixed_count=2, minimum_count=1, bracket=(1, 2), budget_games=8
-    )
+    config = break_even.CrossoverConfig(fixed_count=2, bracket=(1, 2), budget_games=8)
     result = break_even.measure(
         player(str(directory)),
         _scripted(),
@@ -506,7 +540,7 @@ def test_the_command_parses_its_options_with_the_decided_defaults():
 
     options = tyro.cli(Crossover, args=["policy"])
     assert options.policy == "policy" and options.opponent == "imugi"
-    assert (options.fixed_count, options.minimum_count) == (20, 1)
+    assert options.fixed_count == 20 and not hasattr(options, "minimum_count")
     assert options.map_rule == "preset"
     assert options.presets == (
         "real_scale_frontline",
@@ -532,7 +566,6 @@ def test_the_command_measures_each_preset_and_records_the_result(tmp_path, monke
     options = cli.Crossover(
         policy="scripted",
         fixed_count=3,
-        minimum_count=1,
         presets=("tiny",),
         bracket=(1, 3),
         budget_games=16,

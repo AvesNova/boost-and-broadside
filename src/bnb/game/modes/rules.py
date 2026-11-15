@@ -96,8 +96,8 @@ PRESETS["real_scale_elimination"] = dataclasses.replace(
 )
 # The smallest team each mode is played at (the freeze, 2026-11-15): Frontline 3v3 (at
 # 2v2 captures are rare and most games end on the clock); the others 1v1. Training's and
-# evaluation's fleet sizes keep to it (break-even's counts: `EvaluationConfig`); the game
-# itself plays any size.
+# evaluation's equal-size fleets keep to it; break-even's uneven lineups go down to 1 ship
+# in every mode (`bnb.league.crossover`), and the game itself plays any size.
 MINIMUM_SHIPS_PER_TEAM = {TEAM_DEATHMATCH: 1, ELIMINATION: 1, FRONTLINE: 3}
 
 # A game at another fleet size (`arena_radius_for`): the arena radius follows the density

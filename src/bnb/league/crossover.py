@@ -1,13 +1,14 @@
-"""The break-even lineup: `bnb crossover`, the ratio of a policy's ships to a fixed
-opponent's (by default Imugi's) at which the policy wins half its games.
+"""The break-even lineup: `bnb crossover`, the lineup of a policy's ships against a fixed
+opponent's (by default Imugi's) at which the policy wins half its games, reported as the
+ratio of the opponent's ships to the policy's (how many times its number the policy holds).
 
 A lineup is a pair (the policy's ships, the opponent's ships). The weaker side fields
-`fixed_count` ships (20); the stronger side's count varies downward from it, to the mode's
-smallest team at least (`minimum_count`). So a policy stronger than the opponent plays
-(n, 20), a weaker one (20, n), and 20 against 20 belongs to both; no side ever fields more
-than `fixed_count`. Which side is the stronger comes from the games, not from a setting.
-Every lineup sits on one axis, the log ratio r = log(policy's ships / opponent's ships),
-negative where the policy fields fewer, and the measurement works on that axis throughout.
+`fixed_count` ships (20); the stronger side's count varies downward from it, to 1 ship in
+every mode. So a policy stronger than the opponent plays (n, 20), a weaker one (20, n), and
+20 against 20 belongs to both; no side ever fields more than `fixed_count`. Which side is
+the stronger comes from the games, not from a setting. Every lineup sits on one axis, the
+log ratio r = log(policy's ships / opponent's ships), negative where the policy fields
+fewer, and the measurement works on that axis throughout.
 
 One engine per mode is built at `fixed_count` a side (`break_even_game`: on the preset's own
 arena by default, on the density rule's for that fleet as the map-size arm's opt-in;
@@ -25,7 +26,11 @@ seats; every game scored by the game's own rule (win, draw or loss):
   binomial likelihood on the score) on r, over every game so far, whichever side shrank.
   The break-even ratio is where the fitted curve crosses one half, r* = -intercept /
   slope; its standard error in log ratio is the delta method's from the fit's covariance.
-  The break-even lineup is the pair at that ratio with the weaker side at `fixed_count`.
+  The break-even lineup is the pair at that ratio with the weaker side at `fixed_count`;
+  the reported ratio is the opponent's ships per one of the policy's, exp(-r*), with its
+  standard error. A break-even with the stronger side at `SUSPICIOUS_SHIPS` (2) or fewer
+  against `fixed_count` is flagged (`suspicious`) and printed as a warning: possible, but
+  more likely a bug.
   While the outcomes are separated (no lineup both won and lost where the lineups below
   it in r are all lost and those above all won) the fit has no maximum: the result is a
   bound instead (`Fit.lower`, `Fit.upper`, lineups).
@@ -41,8 +46,8 @@ seats; every game scored by the game's own rule (win, draw or loss):
   (every game lost) to extend the range.
 - **Stop** (`stop_reason`): when r*'s standard error reaches `target_stderr`, when the games
   reach `budget_games` (the batch that reaches it is the last), or when the bound is final
-  (every game won with the policy at the minimum against `fixed_count`, or lost with the
-  opponent at the minimum).
+  (every game won with the policy at 1 ship against `fixed_count`, or lost against the
+  opponent at 1 ship).
 
 Every batch is appended to a record (`<preset>.batches.jsonl`, one line per batch: each
 block's lineup and its wins, draws and losses, and the fit after it), and a rerun reuses
@@ -71,6 +76,8 @@ from .tournament import identity
 Lineup = tuple[int, int]
 # Which side's ships shrink below `fixed_count`.
 POLICY_SHRINKS, OPPONENT_SHRINKS, BOTH_SHRINK = "policy", "opponent", "both"
+# A break-even with the stronger side at this many ships or fewer is flagged for a bug check.
+SUSPICIOUS_SHIPS = 2
 
 
 def log_ratio(lineup: Lineup) -> float:
@@ -86,28 +93,23 @@ def lineup_name(lineup) -> str:
 @dataclasses.dataclass(frozen=True)
 class CrossoverConfig:
     """fixed_count: the weaker side's ships, fixed (the most either side fields, and the
-    game's size); minimum_count: the fewest ships the stronger side may field (the mode's
-    smallest team at least: `EvaluationConfig.crossover_config`); bracket: the stronger
-    side's counts the batches after parity spread over before a fit (clipped to
-    minimum_count to fixed_count); target_stderr: the standard error of the break-even log
+    game's size; the stronger side goes down to 1); bracket: the stronger side's counts the
+    batches after parity spread over before a fit (clipped to 1 to fixed_count);
+    target_stderr: the standard error of the break-even log
     ratio that stops the measurement (0.02: 0.3 ships at 15 against 20); budget_games: the
     most games (the batch that reaches it is the last); lineup_types: the ship types
     (indices into the game's card) each slot of a game's lineup is drawn from,
     uniformly."""
 
     fixed_count: int = 20
-    minimum_count: int = 1
     bracket: tuple[int, ...] = (6, 10, 14, 20)
     target_stderr: float = 0.02
     budget_games: int = 8192
     lineup_types: tuple[int, ...] = (0, 1)
 
     def __post_init__(self) -> None:
-        if not 1 <= self.minimum_count <= self.fixed_count:
-            raise ValueError(
-                f"counts {self.minimum_count} to {self.fixed_count}: from at least 1 up to the "
-                "fixed count"
-            )
+        if self.fixed_count < 1:
+            raise ValueError(f"a fixed count of {self.fixed_count}: at least 1")
         if not self.bracket:
             raise ValueError("an empty bracket")
         if not self.target_stderr > 0.0 or self.budget_games < 1:
@@ -128,16 +130,16 @@ class CrossoverConfig:
     def lineups(self) -> list[Lineup]:
         """Every lineup the measurement may play, in order of r: the policy's count rising
         to parity, then the opponent's falling from it."""
-        low, high = self.minimum_count, self.fixed_count
-        return [(count, high) for count in range(low, high + 1)] + [
-            (high, count) for count in range(high - 1, low - 1, -1)
+        high = self.fixed_count
+        return [(count, high) for count in range(1, high + 1)] + [
+            (high, count) for count in range(high - 1, 0, -1)
         ]
 
     def bracket_lineups(self, shrinking: str) -> list[Lineup]:
         """The bracket's lineups with the shrinking side's ships at the bracket's counts
         (clipped to the range), in order of r, each once."""
-        low, high = self.minimum_count, self.fixed_count
-        counts = {min(max(count, low), high) for count in self.bracket}
+        high = self.fixed_count
+        counts = {min(max(count, 1), high) for count in self.bracket}
         found = set()
         if shrinking in (POLICY_SHRINKS, BOTH_SHRINK):
             found |= {(count, high) for count in counts}
@@ -190,23 +192,30 @@ class Fit:
     covariance: tuple[tuple[float, float], tuple[float, float]] | None = None
 
     def ratio(self) -> tuple[float | None, float | None]:
-        """The break-even ratio, the policy's ships over the opponent's (exp r*), and its
-        standard error (delta method), or (None, None) without a crossing."""
+        """The break-even ratio, the opponent's ships per one of the policy's (exp -r*: above
+        1 for a policy stronger than the opponent), and its standard error (delta method),
+        or (None, None) without a crossing."""
         if self.status != "crossing":
             return None, None
-        ratio = math.exp(self.break_even)
+        ratio = math.exp(-self.break_even)
         return ratio, ratio * self.stderr
 
     def lineup(self, fixed_count: int) -> tuple[float, float] | None:
         """The break-even lineup: the pair at the break-even ratio with the weaker side at
         `fixed_count` (the policy's ships first; the other side's count fractional), or
         None without a crossing."""
-        ratio, _ = self.ratio()
-        if ratio is None:
+        if self.status != "crossing":
             return None
-        if ratio <= 1.0:
-            return (fixed_count * ratio, float(fixed_count))
-        return (float(fixed_count), fixed_count / ratio)
+        policy_per_opponent = math.exp(self.break_even)
+        if policy_per_opponent <= 1.0:
+            return (fixed_count * policy_per_opponent, float(fixed_count))
+        return (float(fixed_count), fixed_count / policy_per_opponent)
+
+    def suspicious(self, fixed_count: int) -> bool:
+        """Whether the break-even lineup has the stronger side at `SUSPICIOUS_SHIPS` or fewer
+        (either side; False without a crossing)."""
+        lineup = self.lineup(fixed_count)
+        return lineup is not None and min(lineup) <= SUSPICIOUS_SHIPS + 1e-9  # rounding
 
     def as_dict(self) -> dict:
         """The fit as a plain dict (for the record and the result's JSON)."""
@@ -362,13 +371,17 @@ def allocate(
         lower, upper = current.lower, current.upper
         if lower is None and upper is None:  # one ratio of mixed games, or only draws
             return _spread(config.bracket_lineups(shrinking_side(by_lineup)), blocks)
+        # no bound on one side: halve (double) the ratio from the lowest (highest) lineup
+        # played, which may be a mixed one past the last all-won (all-lost) lineup
         if lower is None:  # every game won down to `upper`: halve the ratio
-            below = [one for one in candidates if log_ratio(one) < log_ratio(upper)]
-            target = log_ratio(upper) - math.log(2.0)
+            lowest = min(map(log_ratio, by_lineup), default=log_ratio(upper))
+            below = [one for one in candidates if log_ratio(one) < lowest]
+            target = lowest - math.log(2.0)
             return _spread([_nearest(below, target) if below else candidates[0]], blocks)
         if upper is None:  # every game lost up to `lower`: double the ratio
-            above = [one for one in candidates if log_ratio(one) > log_ratio(lower)]
-            target = log_ratio(lower) + math.log(2.0)
+            highest = max(map(log_ratio, by_lineup), default=log_ratio(lower))
+            above = [one for one in candidates if log_ratio(one) > highest]
+            target = highest + math.log(2.0)
             return _spread([_nearest(above, target) if above else candidates[-1]], blocks)
         inside = [one for one in candidates if log_ratio(lower) < log_ratio(one) < log_ratio(upper)]
         if not inside:
@@ -453,8 +466,8 @@ def lineup_draw(
 
 def record_key(policy: Player, opponent: Player, game: GameConfig, seed: int, config) -> dict:
     """What makes a record's batches one measurement: the game version (`bnb.game.VERSION`),
-    the players' identities, the game, the seed, the fixed and minimum counts (the lineups
-    the measurement may play) and the lineup's types (as the record holds it: JSON)."""
+    the players' identities, the game, the seed, the fixed count (the lineups the
+    measurement may play) and the lineup's types (as the record holds it: JSON)."""
     key = dict(
         game_version=GAME_VERSION,
         policy=identity(policy),
@@ -462,7 +475,6 @@ def record_key(policy: Player, opponent: Player, game: GameConfig, seed: int, co
         game=dataclasses.asdict(game),
         seed=seed,
         fixed_count=config.fixed_count,
-        minimum_count=config.minimum_count,
         lineup_types=list(config.lineup_types),
     )
     return json.loads(json.dumps(key))
@@ -603,13 +615,15 @@ def measure(
             )
         )
     break_even_lineup = current.lineup(config.fixed_count)
+    suspicious = current.suspicious(config.fixed_count)
+    if suspicious:
+        progress(warning(policy.name, current, config.fixed_count))
     return dict(
         policy=policy.name,
         opponent=opponent.name,
         policy_identity=key["policy"],
         opponent_identity=key["opponent"],
         fixed_count=config.fixed_count,
-        minimum_count=config.minimum_count,
         stop=reason,
         fit=current.as_dict(),
         log_ratio=current.break_even,
@@ -617,6 +631,7 @@ def measure(
         ratio=ratio,
         ratio_stderr=ratio_stderr,
         lineup=None if break_even_lineup is None else list(break_even_lineup),
+        suspicious=suspicious,
         games=games,
         batches=len(stored) + played,
         lineups=rows,
@@ -629,9 +644,22 @@ def describe(current: Fit, fixed_count: int) -> str:
     if current.status == "crossing":
         ratio, ratio_stderr = current.ratio()
         policy_ships, opponent_ships = current.lineup(fixed_count)
-        return f"ratio {ratio:.3f} +- {ratio_stderr:.3f} ({policy_ships:.1f}v{opponent_ships:.1f})"
+        return (
+            f"holds {ratio:.3f} +- {ratio_stderr:.3f} times its number "
+            f"({policy_ships:.1f}v{opponent_ships:.1f})"
+        )
     if current.status == "separated":
         lower = "-" if current.lower is None else lineup_name(current.lower)
         upper = "-" if current.upper is None else lineup_name(current.upper)
         return f"separated: break-even between {lower} and {upper}"
     return f"no crossing ({current.status})"
+
+
+def warning(name: str, current: Fit, fixed_count: int) -> str:
+    """The warning for a suspicious break-even (`Fit.suspicious`)."""
+    policy_ships, opponent_ships = current.lineup(fixed_count)
+    return (
+        f"WARNING: {name}'s break-even is {policy_ships:.1f}v{opponent_ships:.1f}, the stronger "
+        f"side at {SUSPICIOUS_SHIPS} ships or fewer against {fixed_count}: possible, but check "
+        "for a bug (benching, seats, scoring) before trusting it"
+    )

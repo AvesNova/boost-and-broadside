@@ -196,7 +196,7 @@ Version 21 (2026-11-15) is the game freeze for the pairwise arms
   other's away.
 - **Real-scale Frontline** is won at a front of +-2 (was 3), with its 10-minute clock and
   the 6 s per sqrt(km) lock. The smallest Frontline team is 3v3
-  (`modes.rules.MINIMUM_SHIPS_PER_TEAM`; break-even's counts keep to it).
+  (`modes.rules.MINIMUM_SHIPS_PER_TEAM`, for equal-size teams).
 - **Imugi** (not the game's numbers, but the BC teacher and every Imugi yardstick):
   - the edge steer works in a closing boundary's own frame;
   - while it knows no enemy it explores (`imugi_combat.SEARCH`) instead of heading for the

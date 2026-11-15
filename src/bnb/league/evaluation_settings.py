@@ -60,9 +60,8 @@ class EvaluationConfig:
     the map-size arm); lineup_types: the ship types' names a slot is drawn from;
     opponent: break-even's opponent; fixed_count: break-even's weaker side's ships (the
     player's or the opponent's, whichever the games show weaker; the most either side
-    fields); minimum_count: the fewest ships the stronger side fields there (the mode's
-    smallest team at least); bracket: the stronger side's counts break-even spreads over
-    before its fit;
+    fields; the stronger side goes down to 1 ship in every mode); bracket: the stronger
+    side's counts break-even spreads over before its fit;
     head_to_head_blocks and head_to_head_environments, break_even_blocks and
     break_even_environments: the engines' layouts (a batch is blocks x environments games;
     break-even's blocks split between A's and B's curves); seed: the games' keys;
@@ -83,7 +82,6 @@ class EvaluationConfig:
     lineup_types: tuple[str, ...] = ("Yongma", "Jujak")
     opponent: str = "imugi"
     fixed_count: int = 20
-    minimum_count: int = 1
     bracket: tuple[int, ...] = (6, 10, 14, 20)
     head_to_head_blocks: int = 8
     head_to_head_environments: int = 64
@@ -130,21 +128,13 @@ class EvaluationConfig:
             if condition.name in self.conditions and condition.name not in self.unscored
         ]
 
-    def crossover_config(self, mode: str | None = None):
+    def crossover_config(self):
         """Break-even's measurement settings, its fit's and allocation's
-        (`bnb.league.crossover.CrossoverConfig`); for a mode, the stronger side's count
-        goes no lower than the mode's smallest team (`MINIMUM_SHIPS_PER_TEAM`: Frontline
-        3)."""
-        from bnb.game.modes.rules import MINIMUM_SHIPS_PER_TEAM
-
+        (`bnb.league.crossover.CrossoverConfig`): the same in every mode, the stronger side
+        down to 1 ship (no mode's smallest team applies to break-even)."""
         from .crossover import CrossoverConfig
 
-        smallest = MINIMUM_SHIPS_PER_TEAM.get(mode, 1)
-        return CrossoverConfig(
-            fixed_count=self.fixed_count,
-            minimum_count=max(self.minimum_count, smallest),
-            bracket=self.bracket,
-        )
+        return CrossoverConfig(fixed_count=self.fixed_count, bracket=self.bracket)
 
     def layout(self, condition: Condition):
         """A condition's engine layout (`bnb.league.matches.ArenaConfig`)."""

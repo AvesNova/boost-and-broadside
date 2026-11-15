@@ -110,9 +110,7 @@ def game_of(condition: Condition, config: EvaluationConfig) -> GameConfig:
 
     base = PRESETS[config.presets[MODES.index(condition.mode)]]
     if condition.kind == BREAK_EVEN:
-        return crossover.break_even_game(
-            base, config.crossover_config(condition.mode), config.map_rule
-        )
+        return crossover.break_even_game(base, config.crossover_config(), config.map_rule)
     return crossover.sized_game(base, condition.ships_per_team, config.map_rule)
 
 
@@ -608,7 +606,7 @@ class Engine:
                 dict(wins=int(won), draws=int(tied), losses=int(lost))
                 for won, tied, lost in results.tolist()
             ]
-        settings = self.config.crossover_config(self.condition.mode)
+        settings = self.config.crossover_config()
         half = blocks // 2
         lineups_of = {
             side: crossover.allocate(

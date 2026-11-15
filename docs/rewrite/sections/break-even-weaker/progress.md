@@ -38,3 +38,27 @@ the stronger side's count downward.
 Also noted, not changed: docs/explanation/league.md's decision-suite paragraph still says
 frontline break-even is left out of the score until the map-size arm reports, which
 contradicts evaluation-suite.md and the default `unscored=()`.
+
+## 2026-11-15: no floor, ratio as held, suspicious flag (author's follow-up)
+
+- **Done.** Break-even has no floor: the stronger side goes down to 1 ship in every mode,
+  Frontline included. `minimum_count` is gone from `CrossoverConfig`, `EvaluationConfig`
+  and `bnb crossover`; `crossover_config()` takes no mode. `MINIMUM_SHIPS_PER_TEAM` stays,
+  for equal-size teams. The "bound" stop is all won at 1v20 or all lost at 20v1. The
+  record key drops `minimum_count`.
+- The reported ratio is the opponent's ships per one of the policy's, exp(-r*) (above 1
+  for a policy stronger than Imugi: "holds X times its number"); the fit's covariate stays
+  r = log(policy / opponent).
+- A break-even with the stronger side at 2 ships or fewer against 20 (either side) sets
+  `suspicious` in the result, prints a WARNING line suggesting a bug check, and marks the
+  CLI's summary row. The evaluation suite does not flag it (its records hold the fits;
+  the flag is in `Fit.suspicious` if wanted there).
+- league.md's stale sentence on frontline break-even being unscored is fixed.
+- First batch and stop target unchanged, as asked.
+- **Bug found and fixed** (present in the old count-based code too): with separated
+  outcomes and a mixed lineup beyond the last all-lost one (e.g. 20v20 and 20v10 all lost,
+  20v5 mixed), the "double the ratio" step started from the all-lost bound and landed on the
+  mixed lineup again, forever. It now halves/doubles from the lowest/highest lineup played.
+  The simulated test gained a far-weaker policy (20v3) that caught it.
+- **Tests.** test_crossover 35 passed; test_evaluation + test_modes' break-even test 27
+  passed (4 slow deselected); docs references/docstrings 607 passed.

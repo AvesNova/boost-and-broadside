@@ -1184,11 +1184,12 @@ def test_the_default_tickets_are_kills_per_ship_times_the_ships():
     assert tickets(mode, active).tolist() == [[7, 21]]
 
 
-def test_frontline_break_even_counts_start_at_its_smallest_team():
+def test_frontlines_smallest_team_does_not_floor_break_even():
+    """Frontline's smallest equal-size team is 3v3; break-even's uneven lineups still go
+    down to 1 ship (the author, 2026-11-15)."""
     from bnb.game.modes.rules import MINIMUM_SHIPS_PER_TEAM
     from bnb.league.evaluation_settings import EvaluationConfig
 
-    config = EvaluationConfig()
     assert MINIMUM_SHIPS_PER_TEAM["frontline"] == 3
-    assert config.crossover_config("frontline").minimum_count == 3
-    assert config.crossover_config("team_deathmatch").minimum_count == config.minimum_count
+    lineups = EvaluationConfig().crossover_config().lineups()
+    assert lineups[0] == (1, 20) and lineups[-1] == (20, 1)

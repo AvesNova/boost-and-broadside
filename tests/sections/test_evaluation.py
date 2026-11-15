@@ -641,7 +641,7 @@ def test_the_command_parses_its_options_with_the_decided_defaults():
     assert options.settings == EvaluationConfig() and options.play == ("deathmatch_1v1",)
     assert options.settings.alpha == 0.05 and options.settings.delta == 0.02
     assert options.settings.fixed_count == 20 and options.settings.gate_stderrs == 2.0
-    assert options.settings.minimum_count == 1 and options.settings.map_rule == "preset"
+    assert options.settings.map_rule == "preset"
     changed = tyro.cli(Evaluate, args=["A", "B", "--out", "DIR", "--looks", "3"])
     assert changed.settings.looks == 3
     assert tyro.cli(EvaluateDecide, args=["DIR", "--peek"]).peek
