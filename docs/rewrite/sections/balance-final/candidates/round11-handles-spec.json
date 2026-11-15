@@ -1,0 +1,10 @@
+[
+ {"name": "h-j-turn-0.94", "turn_handles": {"sustained_turn_rate": 0.94}},
+ {"name": "h-j-lsa-0.85", "turn_handles": {"low_speed_acceleration": 0.85}},
+ {"name": "h-j-lsa-0.75", "turn_handles": {"low_speed_acceleration": 0.75}},
+ {"name": "h-y-climb-0.93", "energy_handles": {"climb_time": 0.93}},
+ {"name": "h-j-climb-1.05", "turn_handles": {"climb_time": 1.05}},
+ {"name": "h-j-drag-1.1", "turn_handles": {"zero_lift_drag": 1.1}},
+ {"name": "h-j-cruise-0.97", "turn_handles": {"cruise_speed": 0.97}},
+ {"name": "h-j-stall-1.05", "turn_handles": {"stall_speed": 1.05}}
+]

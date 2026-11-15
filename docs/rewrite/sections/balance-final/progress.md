@@ -112,3 +112,28 @@ use `PYTHONPATH=$PWD/src:$PWD`.
   at 0) on the laptop when the lock frees.
 - `test_ship_sets.py::test_training_takes_its_games_set_card` fails on the base tree too (a
   'trial' set has no drawn lineup types): not this branch's.
+
+## 06:40 finalists2 (before doctrine, handle cards, deathmatch 5v5, 1024 games, the 3070)
+
+| card | Yongma team | 
+|---|---|
+| before | 0.205 ± 0.012 |
+| Jujak turn x0.97 + Yongma damage x1.18 | 0.417 ± 0.015 |
+| Jujak turn x0.95 | 0.397 ± 0.015 |
+| Jujak turn x0.95 + Yongma damage x1.08 | 0.440 ± 0.015 |
+| Yongma damage x1.18 + climb x0.88 (Jujak untouched) | 0.457 ± 0.015 |
+| Jujak turn x0.95 + Yongma damage x1.18 | 0.481 ± 0.015 |
+| **Jujak turn x0.93** (one handle) | **0.485 ± 0.015** |
+| **Jujak turn x0.95 + Yongma climb x0.88** | **0.494 ± 0.015** |
+| Jujak turn x0.93 + Yongma damage x1.08 | 0.558 ± 0.015 |
+| Jujak turn x0.91 | 0.597 ± 0.015 |
+
+- Round 10 (64 random Yongma doctrines with extend, the crowd and duel extension held at 0,
+  128 games): the top 0.31 ± 0.04, the rest at the before's level: the allowed doctrine
+  elements do not move the matchup.
+- The two finalists (A: Jujak turn x0.93; B: Jujak turn x0.95 + Yongma climb x0.88) go to the
+  final measurement (`candidates/final.json`: deathmatch 5v5 2048 games, elimination and
+  Frontline 5v5 1024, on the 3070; deathmatch 1v1 and elimination 2v2 on the laptop). More
+  handle variants solving (round 11: Jujak low-speed acceleration, climb, drag, cruise, stall;
+  Yongma climb x0.93).
+- The box's job script now takes `flock /tmp/gpu.lock` (shared with the third-ship agent).
