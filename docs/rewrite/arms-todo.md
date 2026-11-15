@@ -182,7 +182,7 @@ Ordered for working through:
 - [x] Mode mix 6/5/5 (fa7bf3ba).
 - [x] League: (1−p)² over every member, no floor (3df94c64; p(1−p) with a floor stays as an ablation). Merged with the items above in d81c133e.
 - [ ] Saving the live weights every update (for the early arm), and the post-hoc averaging tool.
-- [ ] The Imugi rename.
+- [x] The Imugi rename (575546e0): `imugi`, `imugi@T=..` and `cheese:<name>` on the command line; recorded identities stay `scripted…`, so old records still read. Old play flags `--scripted0/1` keep their names.
 - [x] BC fixed at 100M, plateau stop logging only (85ffcd72). A chain's BC stage takes min(combined budget, 100M).
 - [ ] One committed settings file per arm, with no hand-typed overrides.
 - [ ] The evaluation suite as a command: the conditions above, their pools and the combined score.
