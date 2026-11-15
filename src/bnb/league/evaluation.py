@@ -5,8 +5,9 @@ win probability over a fixed set of conditions, with a group-sequential test
 
 **Conditions** (`CONDITIONS`): head-to-head A against B in each mode at 5v5 (the mode's
 preset map), deathmatch and elimination at 1v1 and 2v2, and every mode at 10v10; and the
-break-even condition per mode, each player against `opponent_count` (20) scripted ships
-with its own count varied (`bnb.league.crossover`). Every condition plays its preset's own
+break-even condition per mode, each player against scripted ships with the weaker side at
+`fixed_count` (20) and the stronger side's count varied downward (`bnb.league.crossover`).
+Every condition plays its preset's own
 arena radius at every size (`map_rule` "preset": every map fixed-size, the author's rule
 of 2026-11-15); the density rule's map (`bnb.game.api.arena_radius_for`) is the map-size
 arm's opt-in (`map_rule` "density"). A condition in `unscored` (none by default; every
@@ -21,13 +22,15 @@ condition's numbers continuing past its recorded batches.
 
 **Score.** A head-to-head condition's is A's mean score (a win 1, a draw 1/2) less one
 half; its variance the games' sample variance over their number. The break-even
-condition's is 1/2 (p_A(N*_B) - 1/2) - 1/2 (p_B(N*_A) - 1/2), from each player's
-logistic fit of score on log(count) (p_X its fitted curve, N*_X where it crosses one
-half); its variance by the delta method from the two fits' covariances (the fits are
-taken as independent). A mode's score is the mean of its conditions' and the overall
-score the mean of the three modes' (`weights`: fixed, whatever the games). The overall
-variance is the weighted sum of the conditions' variances, each estimate unbiased however
-many games it has, so the cost-aware allocation below moves no weight.
+condition's is 1/2 (p_A(r*_B) - 1/2) - 1/2 (p_B(r*_A) - 1/2), from each player's
+logistic fit of score on the log ratio r = log(its ships / the opponent's) (p_X its fitted
+curve, r*_X where it crosses one half): A's score at B's break-even lineup, whichever side
+of parity each lies on, since both regimes share the one axis; its variance by the delta
+method from the two fits' covariances (the fits are taken as independent). A mode's score
+is the mean of its conditions' and the overall score the mean of the three modes'
+(`weights`: fixed, whatever the games). The overall variance is the weighted sum of the
+conditions' variances, each estimate unbiased however many games it has, so the cost-aware
+allocation below moves no weight.
 
 **Gate** (`gate`): a mode where a player's score is at least `gate_stderrs` standard errors
 below zero; a winner the gate catches is held to a tie (arms-todo, 2026-11-15).
@@ -100,7 +103,7 @@ def weights(conditions: list[Condition]) -> dict[str, float]:
 
 
 def game_of(condition: Condition, config: EvaluationConfig) -> GameConfig:
-    """A condition's game: its mode's preset at its size (break-even's, the larger fleet's,
+    """A condition's game: its mode's preset at its size (break-even's, the fixed side's,
     `crossover.break_even_game`), on the arena of `config.map_rule`
     (`crossover.sized_game`: the preset's own radius at every size by default)."""
     from bnb.game.api import PRESETS
@@ -119,12 +122,12 @@ def game_of(condition: Condition, config: EvaluationConfig) -> GameConfig:
 @dataclasses.dataclass
 class Tally:
     """One condition's games: head-to-head outcomes (A's wins, draws, losses); break-even's
-    per side {count: [score summed, games]}; games and engine seconds in all, and the
-    seconds and games that measure the cost (an engine's first batch, which compiles, left
-    out where there are others)."""
+    per side {(its ships, the opponent's): [score summed, games]}; games and engine seconds
+    in all, and the seconds and games that measure the cost (an engine's first batch, which
+    compiles, left out where there are others)."""
 
     outcomes: list[float] = dataclasses.field(default_factory=lambda: [0.0, 0.0, 0.0])
-    sides: dict[str, dict[int, list[float]]] = dataclasses.field(
+    sides: dict[str, dict[tuple[int, int], list[float]]] = dataclasses.field(
         default_factory=lambda: {side: {} for side in SIDES}
     )
     games: int = 0
@@ -139,7 +142,8 @@ class Tally:
         """Add one recorded batch."""
         for block in batch["blocks"]:
             if "side" in block:
-                held = self.sides[block["side"]].setdefault(int(block["count"]), [0.0, 0.0])
+                lineup = (int(block["policy_count"]), int(block["opponent_count"]))
+                held = self.sides[block["side"]].setdefault(lineup, [0.0, 0.0])
                 held[0] += block["wins"] + 0.5 * block["draws"]
                 held[1] += block["wins"] + block["draws"] + block["losses"]
             else:
@@ -189,17 +193,20 @@ def head_to_head_estimate(outcomes: list[float]) -> Estimate | None:
 
 
 def _curve_parameters(found: crossover.Fit) -> tuple[torch.Tensor, torch.Tensor]:
-    """(intercept, slope) and their covariance in log(count), float64."""
+    """(intercept, slope) and their covariance in the log ratio, float64."""
     point = torch.tensor([found.intercept, found.slope], dtype=torch.float64)
     return point, torch.tensor(found.covariance, dtype=torch.float64)
 
 
 def break_even_score(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    """1/2 (p_A(N*_B) - 1/2) - 1/2 (p_B(N*_A) - 1/2) from each curve's (intercept, slope) in
-    log(count): N*_X = exp(-intercept / slope)."""
-    log_a, log_b = -a[0] / a[1], -b[0] / b[1]
-    a_at_b = torch.sigmoid(a[0] + a[1] * log_b)
-    b_at_a = torch.sigmoid(b[0] + b[1] * log_a)
+    """1/2 (p_A(r*_B) - 1/2) - 1/2 (p_B(r*_A) - 1/2) from each curve's (intercept, slope) in
+    the log ratio r: r*_X = -intercept / slope. p_A(r*_B) is A's score in B's break-even
+    lineup (the pair at ratio exp r*_B with the weaker side at fixed_count): a curve depends
+    on a lineup only through r, so it is defined wherever the two lineups lie, on the same
+    side of parity or on opposite sides."""
+    break_even_a, break_even_b = -a[0] / a[1], -b[0] / b[1]
+    a_at_b = torch.sigmoid(a[0] + a[1] * break_even_b)
+    b_at_a = torch.sigmoid(b[0] + b[1] * break_even_a)
     return 0.5 * (a_at_b - 0.5) - 0.5 * (b_at_a - 0.5)
 
 
@@ -552,7 +559,7 @@ def _lanes(field: list[Player], condition: Condition, blocks: int) -> tuple[int,
 
 class Engine:
     """One condition's engine (`Arena`): head-to-head blocks A against B; break-even's first
-    half of blocks A against the opponent, the second B, at counts from each side's fit
+    half of blocks A against the opponent, the second B, at lineups from each side's fit
     (`crossover.allocate`)."""
 
     def __init__(
@@ -603,7 +610,7 @@ class Engine:
             ]
         settings = self.config.crossover_config(self.condition.mode)
         half = blocks // 2
-        counts = {
+        lineups_of = {
             side: crossover.allocate(
                 crossover.fit(tally.sides[side]),
                 tally.sides[side],
@@ -614,13 +621,19 @@ class Engine:
             for side in SIDES
         }
         matchups = [(0, 2)] * half + [(1, 2)] * half
-        active = [(count, settings.opponent_count) for side in SIDES for count in counts[side]]
+        active = [lineup for side in SIDES for lineup in lineups_of[side]]
         results = self.arena.play(matchups, active, drawn.to(self.device))
         sides = [side for side in SIDES for _ in range(half)]
-        flat = [count for side in SIDES for count in counts[side]]
         return number, [
-            dict(side=side, count=count, wins=int(won), draws=int(tied), losses=int(lost))
-            for side, count, (won, tied, lost) in zip(sides, flat, results.tolist(), strict=True)
+            dict(
+                side=side,
+                policy_count=lineup[0],
+                opponent_count=lineup[1],
+                wins=int(won),
+                draws=int(tied),
+                losses=int(lost),
+            )
+            for side, lineup, (won, tied, lost) in zip(sides, active, results.tolist(), strict=True)
         ]
 
 

@@ -17,8 +17,8 @@ MAP_RULES = ("preset", "density")
 @dataclasses.dataclass(frozen=True)
 class Condition:
     """One condition: its name, mode, kind (HEAD_TO_HEAD or BREAK_EVEN) and ships per team
-    (a head-to-head's team size; None for break-even, whose game is the larger of
-    `EvaluationConfig.opponent_count` and `maximum_count` a side)."""
+    (a head-to-head's team size; None for break-even, whose game is
+    `EvaluationConfig.fixed_count` a side)."""
 
     name: str
     mode: str
@@ -58,10 +58,11 @@ class EvaluationConfig:
     (5v5); map_rule: one of `MAP_RULES` ("preset": every condition on its preset's own
     arena radius at every size; "density": the density rule's radius at other sizes, for
     the map-size arm); lineup_types: the ship types' names a slot is drawn from;
-    opponent and opponent_count: break-even's opponent and its ships; minimum_count and
-    maximum_count: the players' counts there (up to 30, above the opponent's 20, so a
-    player weaker than the opponent at parity still crosses inside the range); bracket: its
-    first batch's counts;
+    opponent: break-even's opponent; fixed_count: break-even's weaker side's ships (the
+    player's or the opponent's, whichever the games show weaker; the most either side
+    fields); minimum_count: the fewest ships the stronger side fields there (the mode's
+    smallest team at least); bracket: the stronger side's counts break-even spreads over
+    before its fit;
     head_to_head_blocks and head_to_head_environments, break_even_blocks and
     break_even_environments: the engines' layouts (a batch is blocks x environments games;
     break-even's blocks split between A's and B's curves); seed: the games' keys;
@@ -81,9 +82,8 @@ class EvaluationConfig:
     map_rule: Literal["preset", "density"] = "preset"
     lineup_types: tuple[str, ...] = ("Yongma", "Jujak")
     opponent: str = "imugi"
-    opponent_count: int = 20
+    fixed_count: int = 20
     minimum_count: int = 1
-    maximum_count: int = 30
     bracket: tuple[int, ...] = (6, 10, 14, 20)
     head_to_head_blocks: int = 8
     head_to_head_environments: int = 64
@@ -132,17 +132,17 @@ class EvaluationConfig:
 
     def crossover_config(self, mode: str | None = None):
         """Break-even's measurement settings, its fit's and allocation's
-        (`bnb.league.crossover.CrossoverConfig`); for a mode, its counts start no lower
-        than the mode's smallest team (`MINIMUM_SHIPS_PER_TEAM`: Frontline 3)."""
+        (`bnb.league.crossover.CrossoverConfig`); for a mode, the stronger side's count
+        goes no lower than the mode's smallest team (`MINIMUM_SHIPS_PER_TEAM`: Frontline
+        3)."""
         from bnb.game.modes.rules import MINIMUM_SHIPS_PER_TEAM
 
         from .crossover import CrossoverConfig
 
         smallest = MINIMUM_SHIPS_PER_TEAM.get(mode, 1)
         return CrossoverConfig(
-            opponent_count=self.opponent_count,
+            fixed_count=self.fixed_count,
             minimum_count=max(self.minimum_count, smallest),
-            maximum_count=self.maximum_count,
             bracket=self.bracket,
         )
 

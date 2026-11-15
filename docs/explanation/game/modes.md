@@ -224,7 +224,7 @@ then plays the layout's first pairs, the rest absent.
 
 ## Benched ships
 
-Unequal teams at one static size, for evaluation (the break-even count, `bnb crossover`):
+Unequal teams at one static size, for evaluation (the break-even lineup, `bnb crossover`):
 `bnb.game.api.reset`, `bnb.game.api.step`, `bnb.game.api.resolve` and
 `bnb.game.api.perceive` take `active`, (B, 2) int32, each team's
 active ship count per environment, a runtime input, so one compiled graph plays every

@@ -1,8 +1,8 @@
 """The `bnb` command: `bnb train` trains or clones, `bnb runs` lists runs and uploads
 checkpoints, `bnb ship-card` charts a ship card, `bnb ratings` and `bnb head-to-head` rate
-policies, `bnb crossover` finds how many of a policy's ships hold 20 of the scripted
-agent's, `bnb evaluate` decides between two policies, `bnb figures` draws what a policy's
-heads have learned and films it playing.
+policies, `bnb crossover` finds the ratio of a policy's ships to the scripted agent's
+at which it wins half its games, `bnb evaluate` decides between two policies, `bnb figures`
+draws what a policy's heads have learned and films it playing.
 
 An entry point (code style, Layers): it sets the process-wide options its commands need (the
 seed, the matmul precision, the charts' backend). The play shell (`python -m bnb.play`) and
@@ -359,46 +359,50 @@ class HeadToHead:
 
 @dataclasses.dataclass(frozen=True)
 class Crossover:
-    """The break-even ship count (`bnb crossover POLICY`): how many of POLICY's ships hold
-    `--opponent-count` (20) of the opponent's (`--opponent`, Imugi), per mode
-    (`bnb.league.crossover`). The game is each preset's at the larger fleet's size, on the
-    preset's own arena (`--map-rule preset`, the default: every map fixed-size, the author's
-    rule of 2026-11-15) or the density rule's for the opponent's fleet (`--map-rule
-    density`, the map-size arm's; `bnb.game.api.arena_radius_for`); each team's unused
-    slots are benched (they stay dead and out of play, and team deathmatch's winning score
-    counts the enemy's active ships). Every game draws its lineup, each slot one of
-    `--lineup-types` with equal chance, both teams flying it.
+    """The break-even lineup (`bnb crossover POLICY`): the ratio of POLICY's ships to the
+    opponent's (`--opponent`, Imugi) at which POLICY wins half its games, per mode
+    (`bnb.league.crossover`). The weaker side fields `--fixed-count` ships (20) and the
+    stronger side's count varies downward from it, to `--minimum-count` (1) or the mode's
+    smallest team, whichever is larger (Frontline 3): (n, 20) for a policy stronger than the
+    opponent, (20, n) for a weaker one, which side shrinking decided by the games, starting
+    at 20 against 20. The game is each preset's at `--fixed-count` a side, on the preset's
+    own arena (`--map-rule preset`, the default: every map fixed-size, the author's rule of
+    2026-11-15) or the density rule's for that fleet (`--map-rule density`, the map-size
+    arm's; `bnb.game.api.arena_radius_for`); each team's unused slots are benched (they stay
+    dead and out of play, and team deathmatch's winning score counts the enemy's active
+    ships). Every game draws its lineup of ship types, each slot one of `--lineup-types`
+    with equal chance, both teams flying it.
 
-    Batch by batch, a logistic fit of the policy's score (a draw half a win) on log(count)
-    gives the break-even count N* (the score one half) and its standard error; each batch
-    places its blocks at the counts most informative about N* (the first, over
-    `--bracket`), until N*'s standard error reaches `--target-stderr` ships or the games
-    reach `--budget-games`. Outcomes separated by count (all lost below, all won above)
-    give a bound instead, and the range is extended. Prints a line per batch with an ETA,
-    then N*, the ratio opponent count / N* and the games per count per mode.
+    Batch by batch, a logistic fit of the policy's score (a draw half a win) on the log
+    ratio r = log(policy's ships / opponent's ships), over the games of both sides of
+    parity, gives the break-even ratio (the score one half) and its standard error in r;
+    each batch places its blocks at the lineups most informative about it (before a fit,
+    over `--bracket` on the side the games point to), until r's standard error reaches
+    `--target-stderr` or the games reach `--budget-games`. Outcomes separated by ratio (all
+    lost below, all won above) give a bound instead, and the range is extended. Prints a
+    line per batch with an ETA, then per mode the break-even ratio, the break-even lineup
+    (the weaker side at `--fixed-count`) and the games.
 
     Every batch is appended to `artifacts/crossover/<preset>.batches.jsonl` of `--out`
     (else the policy's run, else the runs directory), and a rerun reuses the batches of the
-    same measurement (the players' identities, the game, the seed, the opponent's count and
-    the lineup types) and continues; the result (with the provenance and the policy's
-    SHA-256) goes to `artifacts/crossover/<time>/result.json`.
+    same measurement (the players' identities, the game, the seed, the fixed and minimum
+    counts and the lineup types) and continues; the result (with the provenance and the
+    policy's SHA-256) goes to `artifacts/crossover/<time>/result.json`.
 
-    policy: the policy (as for bnb head-to-head); opponent: its opponent; opponent_count:
-    the opponent's ships; minimum_count and maximum_count: the policy's counts (up to 30,
-    above the opponent's 20, so a policy weaker than the opponent at parity still crosses
-    inside the range); presets; map_rule: "preset" or "density" (above); bracket: the first
-    batch's counts; target_stderr: N*'s standard error that stops a mode (ships);
-    budget_games: the most games per mode; lineup_types: ship type names of the
-    preset's set; blocks and block_environments: the engine's layout (a batch is blocks x
-    block_environments games, a block one count); seed: the games' draws and lineups;
-    device; out; runs_directory: as for bnb train.
+    policy: the policy (as for bnb head-to-head); opponent: its opponent; fixed_count: the
+    weaker side's ships; minimum_count: the stronger side's fewest; presets; map_rule:
+    "preset" or "density" (above); bracket: the stronger side's counts before a fit;
+    target_stderr: the break-even log ratio's standard error that stops a mode (0.02, about
+    0.3 ships at 15 against 20); budget_games: the most games per mode; lineup_types: ship
+    type names of the preset's set; blocks and block_environments: the engine's layout (a
+    batch is blocks x block_environments games, a block one lineup); seed: the games' draws
+    and lineups; device; out; runs_directory: as for bnb train.
     """
 
     policy: tyro.conf.Positional[str]
     opponent: str = "imugi"
-    opponent_count: int = 20
+    fixed_count: int = 20
     minimum_count: int = 1
-    maximum_count: int = 30
     presets: tuple[str, ...] = (
         "real_scale_frontline",
         "real_scale_deathmatch",
@@ -406,7 +410,7 @@ class Crossover:
     )
     map_rule: Literal["preset", "density"] = "preset"
     bracket: tuple[int, ...] = (6, 10, 14, 20)
-    target_stderr: float = 0.3
+    target_stderr: float = 0.02
     budget_games: int = 8192
     lineup_types: tuple[str, ...] = ("Yongma", "Jujak")
     blocks: int = 8
@@ -727,7 +731,7 @@ def main() -> None:
     """The `bnb` command: `bnb train ...` trains, `bnb play ...` opens the play shell,
     `bnb runs ...` lists and shows runs and uploads checkpoints, `bnb ship-card ...` charts a
     card, `bnb ratings ...` and `bnb head-to-head ...` rate policies offline, `bnb crossover
-    ...` finds a policy's break-even ship count, `bnb evaluate ...` decides between two
+    ...` finds a policy's break-even lineup, `bnb evaluate ...` decides between two
     policies, `bnb pool ...` keeps the shared rating pool, `bnb figures ...` draws what a
     policy's heads have learned (`bnb figures video ...` films a game, `bnb figures watch
     RUN` makes both while a run trains), `bnb queue ...` queues and runs GPU jobs."""
@@ -1735,10 +1739,11 @@ def head_to_head(options: HeadToHead) -> None:
 
 
 def crossover(options: Crossover) -> None:
-    """`bnb crossover`: the break-even count per preset, recorded batch by batch."""
+    """`bnb crossover`: the break-even lineup per preset, recorded batch by batch."""
     import torch
 
     from bnb.game.api import PRESETS, type_names
+    from bnb.game.modes.rules import MINIMUM_SHIPS_PER_TEAM
     from bnb.league import crossover as break_even
     from bnb.league.matches import ArenaConfig
     from bnb.runs import provenance, records
@@ -1748,9 +1753,8 @@ def crossover(options: Crossover) -> None:
     policy, opponent = _players((options.policy, options.opponent), runs_directory)
     try:
         config = break_even.CrossoverConfig(
-            opponent_count=options.opponent_count,
+            fixed_count=options.fixed_count,
             minimum_count=options.minimum_count,
-            maximum_count=options.maximum_count,
             bracket=options.bracket,
             target_stderr=options.target_stderr,
             budget_games=options.budget_games,
@@ -1781,12 +1785,14 @@ def crossover(options: Crossover) -> None:
         game = break_even.break_even_game(base, config, options.map_rule)
         size = game.ships_per_team
         mode_config = dataclasses.replace(
-            config, lineup_types=tuple(names.index(name) for name in options.lineup_types)
+            config,
+            minimum_count=max(config.minimum_count, MINIMUM_SHIPS_PER_TEAM.get(base.mode, 1)),
+            lineup_types=tuple(names.index(name) for name in options.lineup_types),
         )
         print(
-            f"{preset} ({number} of {len(options.presets)}): {policy.name} with "
-            f"{config.minimum_count}-{config.maximum_count} ships against "
-            f"{config.opponent_count} {opponent.name}, {size}v{size} game, "
+            f"{preset} ({number} of {len(options.presets)}): {policy.name} against "
+            f"{opponent.name}, the weaker side at {mode_config.fixed_count} ships and the "
+            f"stronger from {mode_config.minimum_count}, {size}v{size} game, "
             f"arena radius {game.arena_radius:g} m ({options.map_rule})"
         )
         try:
@@ -1801,15 +1807,16 @@ def crossover(options: Crossover) -> None:
             )
         except ValueError as error:
             raise SystemExit(str(error)) from error
-    print(f"{'preset':24s} {'N*':>14s} {'ratio':>14s} {'games':>6s}  stop")
+    print(f"{'preset':24s} {'ratio':>16s} {'lineup':>12s} {'games':>6s}  stop")
     for preset, result in results.items():
         fitted = result["fit"]
         if fitted["status"] == "crossing":
-            point = f"{result['break_even']:6.2f} +- {result['break_even_stderr']:4.2f}"
-            ratio = f"{result['ratio']:6.2f} +- {result['ratio_stderr']:4.2f}"
+            ratio = f"{result['ratio']:6.3f} +- {result['ratio_stderr']:5.3f}"
+            lineup = break_even.lineup_name([round(count, 1) for count in result["lineup"]])
         else:
-            point, ratio = "", break_even.describe(break_even.Fit(**fitted))
-        print(f"{preset:24s} {point:>14s} {ratio:>14s} {result['games']:6d}  {result['stop']}")
+            ratio = break_even.describe(break_even.Fit(**fitted), result["fixed_count"])
+            lineup = ""
+        print(f"{preset:24s} {ratio:>16s} {lineup:>12s} {result['games']:6d}  {result['stop']}")
     inputs = {one.name: one.policy for one in (policy, opponent) if one.policy is not None}
     payload = dict(
         presets=results,

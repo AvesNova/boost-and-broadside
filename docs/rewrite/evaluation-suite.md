@@ -34,13 +34,13 @@ These are the games that decide each pairwise arm, and the Elo ladder we build f
 - **Games:** conditions 1–10 are A against B. The base games are the real-scale presets (`--presets`), and Imugi is Imugi (`--opponent imugi`).
 - **Map rule:** every condition plays its preset's own arena radius at every team size, 1v1 to break-even's (`--map-rule preset`, the default). This is the author's rule of 2026-11-15: every map is fixed-size until an agent has trained successfully on variable-size maps (the map-size arm, A1). The density rule (`--map-rule density`: `api.arena_radius_for`, the radius scaling with the fleet down to each mode's minimum; break-even at the opponent's 20) is an opt-in setting for that arm. Both arms of a pair always use the same rule.
 - **Every break-even is scored, frontline's included,** whether or not maps can change size (the author's decision, 2026-11-15, replacing the earlier wait for the map-size arm). `--unscored` names conditions to leave out (none by default); a left-out condition is neither played nor waited on, and its mode's weight is shared among the rest.
-- **Break-even** reuses `bnb crossover`'s fit and allocation (`bnb.league.crossover`). One engine plays both arms: half of each batch's blocks are A against 20 Imugi, half B, each at the counts its own fit asks for (1 to 30), on the same lineups and maps.
+- **Break-even** reuses `bnb crossover`'s fit and allocation (`bnb.league.crossover`). A lineup is a pair (the arm's ships, Imugi's ships): the weaker side fields 20 and the stronger side's count varies downward, to the mode's smallest team at least (Frontline 3), so no side ever fields more than 20. Which side is the weaker comes from each arm's own games, starting at 20 against 20. One engine plays both arms at 20 a side: half of each batch's blocks are A against Imugi, half B, each at the lineups its own fit asks for, on the same lineups of ship types and maps.
 
 ## Score
 
 1. **Per condition, a win probability minus 0.5:**
    - **Head-to-head conditions (1–10):** A's mean score against B (a win is 1, a draw ½), minus 0.5. It's positive when A is better. Its variance is the games' sample variance over their number.
-   - **Break-even (11–13):** each arm's win probability against 20 Imugi when fielding the other arm's break-even count N*, from each arm's fitted curve. Symmetrised: ½ (A's win rate at N*_B − 0.5) − ½ (B's win rate at N*_A − 0.5). Its variance comes from the two fits' covariances by the delta method, with the fits taken as independent.
+   - **Break-even (11–13):** each arm's fit is a logistic curve of its win probability on the log ratio r = log(its ships / Imugi's ships), one axis across both sides of parity (20 against 20 is r = 0). Its break-even lineup is where the curve crosses one half. A's score is its win probability against Imugi in B's break-even lineup, minus 0.5, and symmetrically for B: ½ (p_A(r*_B) − 0.5) − ½ (p_B(r*_A) − 0.5). The curve depends on a lineup only through r, so the score is defined whether the two arms are on the same side of parity or on opposite sides (A at 15 against 20, B at 20 against 16, say). Its variance comes from the two fits' covariances by the delta method, with the fits taken as independent.
 2. **Per mode:** the mean over that mode's conditions, each weighted equally.
    - frontline: 1 and 8 (and 11 once it is scored again);
    - deathmatch: 2, 4, 5, 9 and 12;
@@ -75,7 +75,7 @@ These are the games that decide each pairwise arm, and the Elo ladder we build f
 One directory per comparison:
 
 - `settings.json`{.plain}: the players (name, path and identity, the SHA-256 of the weights) and the settings. Written by the first process, and checked by every later one (another policy, game version or setting is refused).
-- `batches/<writer>.jsonl`{.plain}: every batch, with its condition, number, seconds, games, whether its engine compiled in it, and each block's full outcome (wins, draws, losses; break-even's also the arm and its count).
+- `batches/<writer>.jsonl`{.plain}: every batch, with its condition, number, seconds, games, whether its engine compiled in it, and each block's full outcome (wins, draws, losses; break-even's also the arm and its lineup, both sides' counts).
 - `looks/<writer>.jsonl`{.plain}: every look, with its fraction, score, SE, Z, boundaries, the test's decision, the gate and the decision after it.
 
 A writer is one process (host, process id and start time), and only it appends to its files, as in the shared rating pool. Readers merge every file, keeping the first of a repeated (condition, batch) or look number. So each condition may run as its own process (`--play CONDITION`): a process plays its own conditions toward the look, waits (`--poll-seconds`) while another's are short, and whichever process finds the look's information reached takes the look.
@@ -139,7 +139,7 @@ rl-v20 against rl-mix-kl (a close pair, 1024 games per head-to-head condition) a
 
 The pilot's break-even played on the 20-a-side density map. For an agent trained on one map size, frontline break-even there measured transfer to a map twice the size, not skill. Break-even now plays the preset map (the map rule above), and frontline break-even is left out of the score until the map-size arm reports.
 
-**Break-even's range.** Our count runs from 1 to 30 (`--maximum-count`, raised from Imugi's 20 on 2026-11-15), so an arm weaker than Imugi at parity still has a crossing inside the range rather than a fit extrapolated past 20 (in the pilot, at 20 at most, rl-dm in deathmatch won 5 of 32 at 20 against 20; in frontline on the preset map rl-v20 is about even with 20 Imugi at 20 ships, 26 wins and 14 draws in 64). The game is then 30 a side, Imugi's 10 spare slots benched. A benched slot costs about what an active one does, so by slot count a break-even game costs about 1.5 times a 20-a-side one (not yet measured). If neither arm crosses, the run stops with an error after `initial_batch_limit` batches.
+**Break-even's lineups.** The weaker side is fixed at 20 and the stronger side's count varies downward (the author's decision, 2026-11-15), so an arm weaker than Imugi at parity crosses at Imugi's count below 20 rather than at ours above it (in the pilot, at 20 at most, rl-dm in deathmatch won 5 of 32 at 20 against 20; in frontline on the preset map rl-v20 is about even with 20 Imugi at 20 ships, 26 wins and 14 draws in 64). Every break-even game is 20 a side, whichever side's spare slots are benched. If an arm's fit has no crossing after `initial_batch_limit` batches, the run stops with an error.
 
 ## The ladder (for the paper, not for decisions)
 

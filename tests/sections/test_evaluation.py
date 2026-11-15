@@ -79,31 +79,58 @@ def test_the_overall_score_is_the_fixed_weight_mean_whatever_the_games():
         assert math.isclose(score, sum(summary.conditions[n].score for n in members) / len(members))
 
 
-def _curve_tallies(break_even: float, slope: float, counts, games: int) -> dict:
-    """Exact expected tallies of a logistic curve in log(count) crossing at break_even."""
+def _curve_tallies(ratio: float, slope: float, lineups, games: int) -> dict:
+    """Exact expected tallies of a logistic curve in the log ratio crossing at `ratio`."""
     return {
-        count: [games / (1 + math.exp(-slope * math.log(count / break_even))), float(games)]
-        for count in counts
+        lineup: [
+            games / (1 + math.exp(-slope * math.log(lineup[0] / lineup[1] / ratio))),
+            float(games),
+        ]
+        for lineup in lineups
     }
 
 
+STRONGER_SIDE = [(4, 20), (6, 20), (8, 20), (10, 20), (12, 20), (14, 20), (16, 20)]
+
+
 def test_the_break_even_score_favours_the_player_needing_fewer_ships():
-    counts = [4, 6, 8, 10, 12, 14, 16]
     tally = Tally()
     tally.sides = dict(
-        A=_curve_tallies(8.0, 4.0, counts, 200), B=_curve_tallies(12.0, 4.0, counts, 200)
+        A=_curve_tallies(0.4, 4.0, STRONGER_SIDE, 200),
+        B=_curve_tallies(0.6, 4.0, STRONGER_SIDE, 200),
     )
-    tally.games = 2 * 200 * len(counts)
+    tally.games = 2 * 200 * len(STRONGER_SIDE)
     found = evaluation.break_even_estimate(tally)
-    # A at B's 12 ships: sigmoid(4 log 1.5); B at A's 8: sigmoid(4 log(2/3))
+    # A in B's 12v20 lineup: sigmoid(4 log 1.5); B in A's 8v20: sigmoid(4 log(2/3))
     p = 1 / (1 + math.exp(-4 * math.log(1.5)))
     assert math.isclose(found.score, 0.5 * (p - 0.5) - 0.5 * ((1 - p) - 0.5), rel_tol=1e-4)
     assert found.score > 0 and found.variance > 0
     assert math.isclose(found.per_game, found.variance * tally.games)
     tally.sides["B"] = tally.sides["A"]
     assert abs(evaluation.break_even_estimate(tally).score) < 1e-6
-    tally.sides["B"] = {4: [0.0, 10.0], 16: [10.0, 10.0]}  # separated: no crossing
+    tally.sides["B"] = {(4, 20): [0.0, 10.0], (16, 20): [10.0, 10.0]}  # separated: no crossing
     assert evaluation.break_even_estimate(tally) is None
+
+
+def test_the_break_even_score_holds_across_parity():
+    """A stronger than the opponent (its break-even 15v20) and B weaker (20v16): each one's
+    score is taken in the other's lineup, on opposite sides of parity, and both fits play
+    lineups of their own side only."""
+    weaker_side = [(20, 20), (20, 18), (20, 16), (20, 14), (20, 12), (20, 10)]
+    tally = Tally()
+    tally.sides = dict(
+        A=_curve_tallies(0.75, 5.0, STRONGER_SIDE, 200),
+        B=_curve_tallies(1.25, 3.0, weaker_side, 200),
+    )
+    tally.games = 200 * (len(STRONGER_SIDE) + len(weaker_side))
+    found = evaluation.break_even_estimate(tally)
+    # A in B's 20v16 lineup: sigmoid(5 log(1.25 / 0.75)); B in A's 15v20: sigmoid(3 log 0.6)
+    a_at_b = 1 / (1 + math.exp(-5 * math.log(1.25 / 0.75)))
+    b_at_a = 1 / (1 + math.exp(-3 * math.log(0.75 / 1.25)))
+    assert math.isclose(found.score, 0.5 * (a_at_b - 0.5) - 0.5 * (b_at_a - 0.5), rel_tol=1e-4)
+    assert found.score > 0.2 and found.variance > 0
+    swapped = Tally(sides=dict(A=tally.sides["B"], B=tally.sides["A"]), games=tally.games)
+    assert math.isclose(evaluation.break_even_estimate(swapped).score, -found.score, rel_tol=1e-6)
 
 
 def test_the_break_even_variance_is_the_delta_methods():
@@ -334,16 +361,15 @@ def test_the_simulated_procedure_decides_a_large_difference_early():
 
 def _config(**changes) -> EvaluationConfig:
     """Tiny games: one head-to-head condition per mode at 1v1 or 2v2 and deathmatch's
-    break-even against 3 scripted ships, each player fielding 1 to 6 (a 6-a-side game)."""
+    break-even with the weaker side at 3 ships (a 3-a-side game)."""
     return EvaluationConfig(
         **{
             **dict(
                 conditions=("deathmatch_1v1", "elimination_1v1", "deathmatch_break_even"),
                 presets=("tiny_frontline", "tiny_deathmatch", "tiny_elimination"),
                 lineup_types=("Fighter", "Heavy"),
-                opponent_count=3,
-                maximum_count=6,
-                bracket=(1, 3, 6),
+                fixed_count=3,
+                bracket=(1, 2, 3),
                 head_to_head_blocks=2,
                 head_to_head_environments=8,
                 break_even_blocks=4,
@@ -487,9 +513,9 @@ def test_every_condition_plays_its_presets_own_arena_unless_the_density_rule_is_
     base = api.PRESETS["real_scale_elimination"]
     assert small.arena_radius == api.arena_radius_for(base, 1) < base.arena_radius
     assert evaluation.game_of(evaluation_settings_condition("elimination_5v5"), density) == base
-    # break-even's density map is the opponent's fleet's, whatever the larger game
+    # break-even's density map is the fixed side's fleet's
     wide = evaluation.game_of(evaluation_settings_condition("elimination_break_even"), density)
-    assert wide.arena_radius == api.arena_radius_for(base, density.opponent_count)
+    assert wide.arena_radius == api.arena_radius_for(base, density.fixed_count)
     with pytest.raises(ValueError, match="map rule"):
         EvaluationConfig(map_rule="scaled")
 
@@ -614,8 +640,8 @@ def test_the_command_parses_its_options_with_the_decided_defaults():
     options = tyro.cli(Evaluate, args=["A", "B", "--out", "DIR", "--play", "deathmatch_1v1"])
     assert options.settings == EvaluationConfig() and options.play == ("deathmatch_1v1",)
     assert options.settings.alpha == 0.05 and options.settings.delta == 0.02
-    assert options.settings.opponent_count == 20 and options.settings.gate_stderrs == 2.0
-    assert options.settings.maximum_count == 30 and options.settings.map_rule == "preset"
+    assert options.settings.fixed_count == 20 and options.settings.gate_stderrs == 2.0
+    assert options.settings.minimum_count == 1 and options.settings.map_rule == "preset"
     changed = tyro.cli(Evaluate, args=["A", "B", "--out", "DIR", "--looks", "3"])
     assert changed.settings.looks == 3
     assert tyro.cli(EvaluateDecide, args=["DIR", "--peek"]).peek

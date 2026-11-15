@@ -482,70 +482,80 @@ them under `artifacts/head_to_head/`.
 uv run --no-sync bnb head-to-head 2026-11-02-mixed-purple-pumpkin scripted --games 64
 ```
 
-**The break-even ship count.** `bnb crossover POLICY` (`bnb.league.crossover`) measures
-how many of a policy's ships hold 20 of Imugi's, per mode. The opponent always
-fields `--opponent-count` ships (20); the policy fields a varying number, from
-`--minimum-count` to `--maximum-count` (1 to 30: above the opponent's count, so a policy
-weaker than Imugi at parity still crosses inside the range rather than by extrapolation).
-Each mode's game (by default the real-scale frontline, deathmatch and elimination presets)
-is built once at the larger fleet's size (30 a side by default) on the preset's own arena
+**The break-even lineup.** `bnb crossover POLICY` (`bnb.league.crossover`) measures the
+ratio of a policy's ships to Imugi's at which the policy wins half its games, per mode. A
+lineup is a pair (the policy's ships, Imugi's ships). The weaker side fields
+`--fixed-count` ships (20) and the stronger side's count varies downward from it: a policy
+stronger than Imugi plays n against 20, a weaker one 20 against n, and no side ever fields
+more than 20. The stronger side goes no lower than `--minimum-count` (1) or the mode's
+smallest team, whichever is larger (Frontline 3). Which side is stronger comes from the
+games, not from a setting. Each mode's game (by default the real-scale frontline,
+deathmatch and elimination presets) is built once at 20 a side on the preset's own arena
 (`--map-rule preset`; every map is fixed-size until an agent has trained successfully on
 variable-size maps, the author's rule of 2026-11-15). `--map-rule density` grows the arena
-by the density rule for the opponent's fleet (`bnb.game.api.arena_radius_for`), the
-map-size arm's opt-in. Each team's unused slots are benched
+by the density rule for that fleet (`bnb.game.api.arena_radius_for`), the map-size arm's
+opt-in. Each team's unused slots are benched
 ([benched ships](game/modes.md#benched-ships)): they stay dead and out of play, and team
 deathmatch's winning score counts the enemy's active ships. Every game draws its own
-lineup, each slot Yongma or Jujak with equal chance (`--lineup-types`), both teams flying
-it slot for slot, keyed by the seed, the batch and the game; a team's benched ships are its
-lineup's last slots. A game is scored by its
-own rule: a win, a draw (half a win) or a loss.
+lineup of ship types, each slot Yongma or Jujak with equal chance (`--lineup-types`), both
+teams flying it slot for slot, keyed by the seed, the batch and the game; a team's benched
+ships are its lineup's last slots. A game is scored by its own rule: a win, a draw (half a
+win) or a loss.
 
 The measurement runs in batches of the engine's layout, `--blocks` blocks of
-`--block-environments` games, each block at one count, its games split evenly between the
-seats; a network's blocks run as one stacked forward, as in head-to-head.
+`--block-environments` games, each block at one lineup, its games split evenly between the
+seats; a network's blocks run as one stacked forward, as in head-to-head. Every lineup sits
+on one axis, the log ratio r = log(policy's ships / Imugi's ships): 14 against 20 is
+log 0.7, 20 against 14 is log(1/0.7), and 20 against 20 is 0 from either side.
 
-- **Fit.** One logistic regression of the policy's score on log(count) over every game so
-  far, with a binomial likelihood on the score. The break-even count N\* is where the
-  fitted curve crosses one half, and its standard error comes from the fit's covariance by
-  the delta method; the ratio 20 / N\* carries the same relative error. Draws make the
-  binomial standard error a slight overestimate. While the outcomes are separated (every
-  count below some point lost outright, every count above it won outright), the fit has no
-  maximum, and the result is a bound on N\* instead.
-- **Allocation.** The first batch spreads its blocks over `--bracket` (6, 10, 14, 20).
-  After that, with a crossing, each block goes in turn to the count that most reduces the
-  predicted variance of log N\*, averaged over N\* at the estimate and one standard error
-  either side, so the games gather at the counts next to the crossing. With separated
-  outcomes the blocks go inside the bound, or halve the lowest count played (every game
-  won) or double the highest (every game lost) to extend the range.
-- **Stop.** A mode stops when N\*'s standard error reaches `--target-stderr` ships (0.3),
-  when its games reach `--budget-games` (8192; the batch that reaches it is the last), or
-  when the bound is final: every game won at the minimum count, or lost at the maximum.
+- **Fit.** One logistic regression of the policy's score on r over every game so far, from
+  both sides of parity, with a binomial likelihood on the score. The break-even ratio is
+  where the fitted curve crosses one half, and its standard error in r comes from the
+  fit's covariance by the delta method; the ratio itself carries the same relative error.
+  The break-even lineup is the pair at that ratio with the weaker side at 20 (a ratio of
+  0.7 is 14 against 20, a ratio of 1.25 is 20 against 16). Draws make the binomial standard
+  error a slight overestimate. While the outcomes are separated (every lineup below some
+  ratio lost outright, every lineup above it won outright), the fit has no maximum, and the
+  result is a bound on the ratio instead.
+- **Allocation.** The first batch plays every block at 20 against 20. While there is no
+  fit, the next batch spreads its blocks over `--bracket` (6, 10, 14, 20) on the side the
+  games point to: the policy's ships shrink if its mean score is above one half, Imugi's if
+  below, both at exactly one half. After that, with a crossing, each block goes in turn to
+  the lineup that most reduces the predicted variance of the break-even log ratio,
+  averaged over the estimate and one standard error either side, over every lineup on both
+  sides of parity, so the games gather next to the crossing. With separated outcomes the
+  blocks go inside the bound, or halve the ratio below the lowest lineup played (every game
+  won) or double it above the highest (every game lost) to extend the range.
+- **Stop.** A mode stops when the break-even log ratio's standard error reaches
+  `--target-stderr` (0.02, about 0.3 ships at 15 against 20), when its games reach
+  `--budget-games` (8192; the batch that reaches it is the last), or when the bound is
+  final: every game won with the policy at its minimum against 20, or lost against Imugi at
+  its minimum.
 
 Every batch is appended to `artifacts/crossover/<preset>.batches.jsonl`{.plain} of `--out`
-(else the policy's run, else the runs directory) as it ends: each block's count and its
-wins, draws and losses, and the fit after it. A line per batch prints the counts, the games,
-N\* with its standard error (or the bound) and an ETA as a clock time, with the budget's as
-the worst case. A rerun reuses the record's batches of the same measurement (the game
-version, the players' identities, the game, the seed, the opponent's count and the lineup
-types) and continues past them, so an interrupted measurement resumes and a finished one only reports. The
-result (per mode N\*, the ratio, the stop reason and the games per count, with the command
+(else the policy's run, else the runs directory) as it ends: each block's lineup and its
+wins, draws and losses, and the fit after it. A line per batch prints the lineups, the
+games, the break-even ratio with its standard error and lineup (or the bound) and an ETA as
+a clock time, with the budget's as the worst case. A rerun reuses the record's batches of
+the same measurement (the game version, the players' identities, the game, the seed, the
+fixed and minimum counts and the lineup types) and continues past them, so an interrupted
+measurement resumes and a finished one only reports. The result (per mode the break-even
+log ratio, ratio and lineup, the stop reason and the games per lineup, with the command
 and the policy's SHA-256) goes to `artifacts/crossover/<time>/result.json`{.plain}.
 
 A benched slot costs about what an active one does: the game, Imugi and the
 network run at fixed shapes over every slot, so a benched ship is a dead ship carried
 through the same kernels. A 20v20 tick on the CPU (128 games, eager) took the same time
 with the policy at 4, 10 or 20 ships, within the measurement's noise of about 10%, and a
-12v12 game about two thirds of it. At a count N the default 30-a-side game therefore spends
-50 - N of its 60 slots on benched ships, about 1.5 times a 20-a-side game's cost per game
-by slot count; `--maximum-count 20` plays the 20-a-side game where a policy is known to
-cross below 20.
+12v12 game about two thirds of it. Every break-even game is the 20-a-side game, whichever
+side is benched.
 
 <!-- not-runnable: needs CUDA and a policy -->
 ```bash
-# N* against 20 scripted ships in the three real-scale modes
+# the break-even lineup against Imugi in the three real-scale modes
 uv run --no-sync bnb crossover RUN/policies/step_<steps>/exponential_average
 # one mode, a tighter target
-uv run --no-sync bnb crossover POLICY --presets real_scale_deathmatch --target-stderr 0.15
+uv run --no-sync bnb crossover POLICY --presets real_scale_deathmatch --target-stderr 0.01
 ```
 
 **Ablated players.** A Yemong policy may play ablated, in `--with` or in head-to-head:
@@ -591,7 +601,7 @@ uv run --no-sync bnb ratings RUN --with POLICY@T=0.7 POLICY POLICY@T=1.4
 `bnb evaluate A B --out DIR` (`bnb.league.evaluation`) decides between two policies,
 normally two arms' final checkpoints, by win probability over a fixed set of conditions:
 head-to-head A against B in each mode and at several team sizes, and each policy's
-break-even curve against 20 scripted ships (the crossover's fit). Every condition plays
+break-even curve against Imugi, the weaker side at 20 ships (the crossover's fit). Every condition plays
 its preset's own arena at every team size (`--map-rule preset`; every map is fixed-size
 until an agent has trained successfully on variable-size maps, the author's rule of
 2026-11-15), and the density rule's arenas are the map-size arm's opt-in
