@@ -334,7 +334,7 @@ def test_the_simulated_procedure_decides_a_large_difference_early():
 
 def _config(**changes) -> EvaluationConfig:
     """Tiny games: one head-to-head condition per mode at 1v1 or 2v2 and deathmatch's
-    break-even against 3 scripted ships."""
+    break-even against 3 scripted ships, each player fielding 1 to 6 (a 6-a-side game)."""
     return EvaluationConfig(
         **{
             **dict(
@@ -342,8 +342,8 @@ def _config(**changes) -> EvaluationConfig:
                 presets=("tiny_frontline", "tiny_deathmatch", "tiny_elimination"),
                 lineup_types=("Fighter", "Heavy"),
                 opponent_count=3,
-                maximum_count=3,
-                bracket=(1, 2, 3),
+                maximum_count=6,
+                bracket=(1, 3, 6),
                 head_to_head_blocks=2,
                 head_to_head_environments=8,
                 break_even_blocks=4,
@@ -591,6 +591,7 @@ def test_the_command_parses_its_options_with_the_decided_defaults():
     assert options.settings == EvaluationConfig() and options.play == ("deathmatch_1v1",)
     assert options.settings.alpha == 0.05 and options.settings.delta == 0.02
     assert options.settings.opponent_count == 20 and options.settings.gate_stderrs == 2.0
+    assert options.settings.maximum_count == 30 and options.settings.map_rule == "preset"
     changed = tyro.cli(Evaluate, args=["A", "B", "--out", "DIR", "--looks", "3"])
     assert changed.settings.looks == 3
     assert tyro.cli(EvaluateDecide, args=["DIR", "--peek"]).peek

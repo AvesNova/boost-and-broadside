@@ -155,7 +155,7 @@ def test_the_stop_rule():
     assert break_even.stop_reason(break_even.Fit("crossing", 8.0, 0.5), 1024, CONFIG) is None
     assert break_even.stop_reason(break_even.Fit("crossing", 8.0, 0.5), 8192, CONFIG) == "budget"
     floor = break_even.Fit("separated", lower=None, upper=1)
-    ceiling = break_even.Fit("separated", lower=20, upper=None)
+    ceiling = break_even.Fit("separated", lower=30, upper=None)
     assert break_even.stop_reason(floor, 64, CONFIG) == "bound"
     assert break_even.stop_reason(ceiling, 64, CONFIG) == "bound"
     open_bound = break_even.Fit("separated", lower=None, upper=6)
@@ -296,6 +296,34 @@ def test_a_measurement_records_every_batch_and_resumes_from_its_record(tmp_path)
     assert fourth["batches"] >= 1 and fourth["games"] == 16 * fourth["batches"]
 
 
+@pytest.mark.usefixtures("global_generator")
+def test_the_policy_may_field_more_ships_than_the_opponent(tmp_path):
+    """Counts above the opponent's: the game is the policy's largest count a side, the
+    opponent's spare slots benched."""
+    config = break_even.CrossoverConfig(
+        opponent_count=2, minimum_count=1, maximum_count=3, bracket=(1, 3), budget_games=16
+    )
+    assert config.ships_per_team == 3 == SHORT.ships_per_team
+    found = break_even.measure(
+        _scripted(), _scripted(), SHORT, CPU, LAYOUT, config, tmp_path / "r.jsonl", print
+    )
+    assert {row["count"] for row in found["counts"]} == {1, 3}
+    assert found["games"] == 16
+
+
+def test_the_break_even_game_keeps_the_presets_arena_unless_the_density_rule_is_asked():
+    base = api.PRESETS["real_scale_deathmatch"]
+    config = break_even.CrossoverConfig()
+    fixed = break_even.break_even_game(base, config)
+    assert (fixed.ships_per_team, fixed.arena_radius) == (30, base.arena_radius)
+    density = break_even.break_even_game(base, config, "density")
+    assert density.ships_per_team == 30
+    assert density.arena_radius == api.arena_radius_for(base, config.opponent_count)
+    assert break_even.sized_game(base, base.ships_per_team, "density") == base
+    with pytest.raises(ValueError, match="map rule"):
+        break_even.sized_game(base, 3, "scaled")
+
+
 def test_a_record_of_another_game_version_is_another_measurement(tmp_path):
     """The key names the game version: batches of an earlier game are not reused."""
     from bnb.game import VERSION
@@ -348,8 +376,9 @@ def test_the_command_parses_its_options_with_the_decided_defaults():
     from bnb.cli import COMMANDS, Crossover
 
     options = tyro.cli(Crossover, args=["policy"])
-    assert options.policy == "policy" and options.opponent == "scripted"
-    assert (options.opponent_count, options.minimum_count, options.maximum_count) == (20, 1, 20)
+    assert options.policy == "policy" and options.opponent == "imugi"
+    assert (options.opponent_count, options.minimum_count, options.maximum_count) == (20, 1, 30)
+    assert options.map_rule == "preset"
     assert options.presets == (
         "real_scale_frontline",
         "real_scale_deathmatch",
@@ -388,6 +417,7 @@ def test_the_command_measures_each_preset_and_records_the_result(tmp_path, monke
     cli.crossover(options)
     printed = capsys.readouterr().out
     assert "tiny (1 of 1): scripted with 1-3 ships against 3 scripted, 3v3 game" in printed
+    assert f"arena radius {SHORT.arena_radius:g} m (preset)" in printed
     record = tmp_path / "artifacts" / "crossover" / "tiny.batches.jsonl"
     assert len(record.read_text().splitlines()) == 1
     (directory,) = [

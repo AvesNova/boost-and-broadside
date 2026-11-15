@@ -58,15 +58,17 @@ from .tournament import identity
 @dataclasses.dataclass(frozen=True)
 class CrossoverConfig:
     """opponent_count: the opponent's ships (fixed); minimum_count and maximum_count: the
-    policy's counts the measurement may play; bracket: the first batch's counts (clipped to
-    that range); target_stderr: the standard error of N* (ships) that stops the measurement;
-    budget_games: the most games (the batch that reaches it is the last); lineup_types: the
-    ship types (indices into the game's card) each slot of a game's lineup is drawn from,
-    uniformly."""
+    policy's counts the measurement may play (up to 30 by default, above the opponent's 20,
+    so a policy weaker than the opponent at parity still crosses inside the range; the game
+    is then the larger count a side, the opponent's spare slots benched); bracket: the first
+    batch's counts (clipped to that range); target_stderr: the standard error of N* (ships)
+    that stops the measurement; budget_games: the most games (the batch that reaches it is
+    the last); lineup_types: the ship types (indices into the game's card) each slot of a
+    game's lineup is drawn from, uniformly."""
 
     opponent_count: int = 20
     minimum_count: int = 1
-    maximum_count: int = 20
+    maximum_count: int = 30
     bracket: tuple[int, ...] = (6, 10, 14, 20)
     target_stderr: float = 0.3
     budget_games: int = 8192

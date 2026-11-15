@@ -485,14 +485,19 @@ uv run --no-sync bnb head-to-head 2026-11-02-mixed-purple-pumpkin scripted --gam
 **The break-even ship count.** `bnb crossover POLICY` (`bnb.league.crossover`) measures
 how many of a policy's ships hold 20 of Imugi's, per mode. The opponent always
 fields `--opponent-count` ships (20); the policy fields a varying number, from
-`--minimum-count` to `--maximum-count` (1 to 20). Each mode's game (by default the
-real-scale frontline, deathmatch and elimination presets) is built once at the larger
-fleet's size, its arena grown by the density rule (`bnb.game.api.arena_radius_for`), with
-the policy's unused slots benched ([benched ships](game/modes.md#benched-ships)): they stay
-dead and out of play, and team deathmatch's winning score counts the enemy's active ships.
-Every game draws its own lineup, each slot Yongma or Jujak with equal chance
-(`--lineup-types`), both teams flying it slot for slot, keyed by the seed, the batch and
-the game; the policy's benched ships are its lineup's last slots. A game is scored by its
+`--minimum-count` to `--maximum-count` (1 to 30: above the opponent's count, so a policy
+weaker than Imugi at parity still crosses inside the range rather than by extrapolation).
+Each mode's game (by default the real-scale frontline, deathmatch and elimination presets)
+is built once at the larger fleet's size (30 a side by default) on the preset's own arena
+(`--map-rule preset`; every map is fixed-size until an agent has trained successfully on
+variable-size maps, the author's rule of 2026-11-15). `--map-rule density` grows the arena
+by the density rule for the opponent's fleet (`bnb.game.api.arena_radius_for`), the
+map-size arm's opt-in. Each team's unused slots are benched
+([benched ships](game/modes.md#benched-ships)): they stay dead and out of play, and team
+deathmatch's winning score counts the enemy's active ships. Every game draws its own
+lineup, each slot Yongma or Jujak with equal chance (`--lineup-types`), both teams flying
+it slot for slot, keyed by the seed, the batch and the game; a team's benched ships are its
+lineup's last slots. A game is scored by its
 own rule: a win, a draw (half a win) or a loss.
 
 The measurement runs in batches of the engine's layout, `--blocks` blocks of
@@ -530,8 +535,10 @@ A benched slot costs about what an active one does: the game, Imugi and the
 network run at fixed shapes over every slot, so a benched ship is a dead ship carried
 through the same kernels. A 20v20 tick on the CPU (128 games, eager) took the same time
 with the policy at 4, 10 or 20 ships, within the measurement's noise of about 10%, and a
-12v12 game about two thirds of it. At a count N the game therefore spends 20 - N of its 40
-slots on benched ships; a smaller game cannot hold the opponent's 20.
+12v12 game about two thirds of it. At a count N the default 30-a-side game therefore spends
+50 - N of its 60 slots on benched ships, about 1.5 times a 20-a-side game's cost per game
+by slot count; `--maximum-count 20` plays the 20-a-side game where a policy is known to
+cross below 20.
 
 <!-- not-runnable: needs CUDA and a policy -->
 ```bash

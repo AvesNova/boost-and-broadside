@@ -57,7 +57,9 @@ class EvaluationConfig:
     arena radius at every size; "density": the density rule's radius at other sizes, for
     the map-size arm); lineup_types: the ship types' names a slot is drawn from;
     opponent and opponent_count: break-even's opponent and its ships; minimum_count and
-    maximum_count: the players' counts there; bracket: its first batch's counts;
+    maximum_count: the players' counts there (up to 30, above the opponent's 20, so a
+    player weaker than the opponent at parity still crosses inside the range); bracket: its
+    first batch's counts;
     head_to_head_blocks and head_to_head_environments, break_even_blocks and
     break_even_environments: the engines' layouts (a batch is blocks x environments games;
     break-even's blocks split between A's and B's curves); seed: the games' keys;
@@ -78,7 +80,7 @@ class EvaluationConfig:
     opponent: str = "imugi"
     opponent_count: int = 20
     minimum_count: int = 1
-    maximum_count: int = 20
+    maximum_count: int = 30
     bracket: tuple[int, ...] = (6, 10, 14, 20)
     head_to_head_blocks: int = 8
     head_to_head_environments: int = 64

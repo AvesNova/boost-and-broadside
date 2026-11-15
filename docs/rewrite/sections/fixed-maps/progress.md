@@ -16,3 +16,15 @@ maps (the map-size arm, A1). Variable maps are an opt-in setting for that arm on
   break-even). Also fixed on the way: `read_settings` returned the opponent as its
   recorded identity ("scripted"), so a read-back config differed from the written one
   after the Imugi rename (a failing test on the integration branch).
+- **Item 3, break-even (done):** `bnb crossover --map-rule` (preset by default) and the
+  maximum count raised to 30 (`Crossover.maximum_count`, `CrossoverConfig.maximum_count`,
+  `EvaluationConfig.maximum_count`). Unequal teams with ours above the opponent's needed no
+  engine change: `CrossoverConfig.ships_per_team` was already the larger count and the
+  benching takes either team's count; a 30-a-side game of each real-scale preset resets
+  and steps on the CPU with (1, 20), (30, 20) and (20, 30) active, on both map rules. The
+  cost: a benched slot costs about an active one, so a 30-a-side break-even game is about
+  1.5 times a 20-a-side one by slot count (not measured; the GPU is busy).
+  The evaluation's slow CPU tests (`test_a_small_evaluation_decides_and_decide_reads_it`,
+  `test_networks_play_both_kinds_of_condition`) pass with the tiny break-even at 1 to 6
+  ships against 3 (a 6-a-side game); at 1 to 3 on the tiny preset's own 400 m map neither
+  scripted player crossed within 20 batches.

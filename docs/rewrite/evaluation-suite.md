@@ -33,7 +33,7 @@ These are the games that decide each pairwise arm, and the Elo ladder we build f
 
 - **Games:** conditions 1–10 are A against B. The base games are the real-scale presets (`--presets`), and Imugi is Imugi (`--opponent scripted`).
 - **Map rule:** every condition plays its preset's own arena radius at every team size, 1v1 to break-even's (`--map-rule preset`, the default). This is the author's rule of 2026-11-15: every map is fixed-size until an agent has trained successfully on variable-size maps (the map-size arm, A1). The density rule (`--map-rule density`: `api.arena_radius_for`, the radius scaling with the fleet down to each mode's minimum; break-even at the opponent's 20) is an opt-in setting for that arm. Both arms of a pair always use the same rule.
-- **Break-even** reuses `bnb crossover`'s fit and allocation (`bnb.league.crossover`). One engine plays both arms: half of each batch's blocks are A against 20 Imugi, half B, each at the counts its own fit asks for, on the same lineups and maps.
+- **Break-even** reuses `bnb crossover`'s fit and allocation (`bnb.league.crossover`). One engine plays both arms: half of each batch's blocks are A against 20 Imugi, half B, each at the counts its own fit asks for (1 to 30), on the same lineups and maps.
 
 ## Score
 
@@ -138,7 +138,7 @@ rl-v20 against rl-mix-kl (a close pair, 1024 games per head-to-head condition) a
 
 The pilot's break-even played on the 20-a-side density map. For an agent trained on one map size, frontline break-even there measured transfer to a map twice the size, not skill. Break-even now plays the preset map (the map rule above).
 
-**Break-even's range.** Our count stops at 20, Imugi's count. An arm weaker than Imugi at parity has no crossing inside the range, so its fit extrapolates past 20; rl-dm in deathmatch won 5 of 32 at 20 against 20. If neither arm crosses, the run stops with an error after `initial_batch_limit` batches.
+**Break-even's range.** Our count runs from 1 to 30 (`--maximum-count`, raised from Imugi's 20 on 2026-11-15), so an arm weaker than Imugi at parity still has a crossing inside the range rather than a fit extrapolated past 20 (in the pilot, at 20 at most, rl-dm in deathmatch won 5 of 32 at 20 against 20; in frontline on the preset map rl-v20 is about even with 20 Imugi at 20 ships, 26 wins and 14 draws in 64). The game is then 30 a side, Imugi's 10 spare slots benched. A benched slot costs about what an active one does, so by slot count a break-even game costs about 1.5 times a 20-a-side one (not yet measured). If neither arm crosses, the run stops with an error after `initial_batch_limit` batches.
 
 ## The ladder (for the paper, not for decisions)
 
