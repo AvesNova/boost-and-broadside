@@ -272,6 +272,81 @@ def test_each_loss_term_matches_an_independent_computation(segment):
     assert math.isclose(got["shot_outcome"], outcome[shooters].mean().item(), rel_tol=1e-5)
 
 
+# ------------------------------------------------------------------ the entropy floor
+
+
+def test_the_entropy_floor_hinge_is_zero_above_the_floor_with_a_gradient_below():
+    """max(0, floor - H) per token: a uniform token (H = ln 42) is above the floor and adds
+    nothing, not even a gradient; a peaked token below it adds its shortfall, and a step
+    down the hinge's gradient raises its entropy; a masked token adds nothing."""
+    logits = torch.zeros(3, 42)
+    logits[1, 0] = 8.0  # peaked
+    logits[2, 0] = 8.0  # peaked, but masked
+    logits.requires_grad_(True)
+    entropy = policy.factor_entropies(logits).sum(-1)
+    floor = 1.0
+    assert entropy[0].item() > floor > entropy[1].item()
+    mask = torch.tensor([True, True, False])
+    penalty = losses.entropy_floor_penalty(entropy, floor, mask)
+    assert penalty.item() == pytest.approx(floor - entropy[1].item())
+    penalty.backward()
+    assert not logits.grad[0].any() and not logits.grad[2].any()
+    assert logits.grad[1].abs().sum() > 0
+    stepped = policy.factor_entropies(logits.detach() - 0.1 * logits.grad).sum(-1)
+    assert stepped[1] > entropy[1]
+    above = losses.entropy_floor_penalty(entropy, 0.5 * entropy[1].item(), mask)
+    assert above.item() == 0.0  # every token above a lower floor
+
+
+def test_the_entropy_floor_term_is_the_mean_hinge_over_living_own_ships(segment):
+    """Off by default (the term 0, its coefficient 0); with a floor the term is the mean of
+    max(0, floor - H) over the own living ships, weighed by entropy_floor_coefficient."""
+    net, runner, learner, prepared = segment
+    assert learner.config.entropy_floor is None
+    assert learner.config.coefficient("entropy_floor") == 0.0
+    views = torch.arange(runner.store.views)
+    trajectory, shot_labels = next(learner.staged(runner.store, [views]))
+    label = learner.labels(trajectory, shot_labels)
+    denominator = dict(zip(COUNTS, prepared["counts"].sum(0).clamp_min(1).unbind()))
+    derived = prepared["derived"]
+
+    def loss_and_terms(config: LearnerConfig):
+        floored = copy.copy(learner)
+        floored.config = config
+        with torch.no_grad():
+            loss, terms, *_ = floored._loss(  # eager, on the copy's config
+                trajectory, label, derived, denominator, prepared["scale"]
+            )
+        return loss.item(), dict(zip(TERMS, terms.tolist()))
+
+    off_loss, off = loss_and_terms(learner.config)
+    assert off["entropy_floor"] == 0.0
+    with torch.no_grad():
+        logits = learner.unroll(trajectory).policy_logits.float()
+    joint_entropy = -(logits.softmax(-1) * logits.log_softmax(-1)).sum(-1)
+    own_alive = trajectory.obs.ships[..., :OWN, SHIP["alive"]] > 0.5
+    floor = joint_entropy[own_alive].median().item()  # about half the tokens below
+    config = dataclasses.replace(learner.config, entropy_floor=floor, entropy_floor_coefficient=0.5)
+    on_loss, on = loss_and_terms(config)
+    expected = (floor - joint_entropy).clamp_min(0.0)[own_alive].mean().item()
+    assert expected > 0.0
+    assert math.isclose(on["entropy_floor"], expected, rel_tol=1e-5)
+    assert math.isclose(on_loss - off_loss, 0.5 * expected, rel_tol=1e-4, abs_tol=1e-6)
+    assert {name: value for name, value in on.items() if name != "entropy_floor"} == pytest.approx(
+        {name: value for name, value in off.items() if name != "entropy_floor"}
+    )
+
+
+def test_the_entropy_floor_settings_are_checked():
+    with pytest.raises(ValueError, match="entropy_floor"):
+        LearnerConfig(entropy_floor=0.0)
+    with pytest.raises(ValueError, match="entropy_floor"):
+        LearnerConfig(entropy_floor=math.log(42) + 0.1)
+    with pytest.raises(ValueError, match="entropy_floor_coefficient"):
+        LearnerConfig(entropy_floor=1.0, entropy_floor_coefficient=-1.0)
+    assert LearnerConfig(entropy_floor=math.log(42)).coefficient("entropy_floor") == 0.1
+
+
 # ------------------------------------------------------------------ micro-batching
 
 

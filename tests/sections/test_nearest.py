@@ -3,6 +3,7 @@ the nearest allies, visible enemies and fields in order with padding, the zones 
 stateless unroll, BC and PPO updates on the CPU without auxiliary terms, and policy files."""
 
 import dataclasses
+import json
 import math
 import pathlib
 import sys
@@ -265,3 +266,56 @@ def test_a_policy_file_round_trips_and_loads_as_ratings_do(tmp_path):
         None, obs, torch.zeros(2, dtype=torch.bool), torch.arange(obs.ships.shape[0])
     )
     assert carry is None and outputs.values.shape == (2, 5, 10)
+
+
+FULL = dataclasses.replace(SMALL, full_mode_inputs=True)
+
+
+def test_a_new_build_reads_every_modes_inputs_and_a_stored_one_keeps_its_layout(tmp_path):
+    """TrainConfig's MLP reads the full mode inputs; the config's own default (False) is
+    what a build record from before them holds, so a stored policy file without the field
+    loads with its recorded (shorter) input."""
+    assert TrainConfig(game=PRESETS["frontline"]).nearest.full_mode_inputs
+    assert not NearestConfig().full_mode_inputs
+    assert nearest.input_width(FULL) == nearest.input_width(SMALL) + nearest.MODE_FEATURES == 210
+    model = Nearest(NearestBuild(SMALL))
+    checkpoint.save_policy(tmp_path / "policy", model)
+    record_path = tmp_path / "policy" / checkpoint.RECORD
+    record = json.loads(record_path.read_text())
+    build = record["model"]["build"]["config"]
+    assert build.pop("full_mode_inputs") is False
+    record_path.write_text(json.dumps(record))
+    with pytest.warns(checkpoint.FilledDefaults):
+        loaded = checkpoint.load_policy(tmp_path / "policy", CPU)
+    assert loaded.body[0].in_features == nearest.input_width(SMALL)
+
+
+def test_the_full_mode_inputs_read_elimination_the_boundary_the_wave_and_the_locks():
+    obs = _constructed()
+    obs.globals[0, GLOBAL["mode_elimination"]] = 1.0
+    obs.globals[0, GLOBAL["boundary_fraction"]] = 0.75
+    obs.globals[0, GLOBAL["boundary_time_to_zero"]] = 60.0
+    obs.globals[0, GLOBAL["next_wave_own"]] = 4.0
+    lock_slot = 1  # the zone of role 0, the own spawn
+    obs.zones[0, lock_slot, ZONE["lock_own"]] = 3.0
+    obs.zones[0, lock_slot, ZONE["lock_enemy"]] = 5.0
+    inputs = nearest.features(obs, FULL)
+    assert inputs.shape[-1] == nearest.input_width(FULL)
+    torch.testing.assert_close(  # the first layout unchanged, the mode block after it
+        inputs[..., : nearest.input_width(SMALL)], nearest.features(obs, SMALL)
+    )
+    mode = inputs[0, 0, nearest.input_width(SMALL) :]
+    expected = [1.0, 0.75, math.log1p(60.0), math.log1p(4.0)]
+    expected += [math.log1p(3.0), math.log1p(5.0)] + [0.0] * 8  # role 0's locks, then none
+    assert mode.tolist() == pytest.approx(expected)
+    assert torch.equal(inputs[0, 1, -nearest.MODE_FEATURES :], mode)  # every own ship reads it
+
+
+def test_a_full_mode_inputs_model_runs_in_every_mode():
+    build = model_build(_config(PRESETS["frontline"], nearest=FULL))
+    assert build.config.full_mode_inputs
+    model = Nearest(build)
+    assert model.body[0].in_features == nearest.input_width(FULL)
+    for preset in ("frontline", "deathmatch", "elimination"):
+        out = model(cases.observation(game=PRESETS[preset]))
+        assert torch.isfinite(out.values).all() and torch.isfinite(out.policy_logits).all()

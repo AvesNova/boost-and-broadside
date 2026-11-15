@@ -44,8 +44,8 @@ def new_run(
         str(updates),
         "--name",
         name,
-        "--update-policies",
-        str(update_policies),
+        "--set",
+        f"update_policies={'rl' if update_policies else 'off'}",
     )
     return Run.open(runs_directory, name)
 

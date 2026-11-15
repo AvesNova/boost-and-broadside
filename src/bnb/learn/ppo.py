@@ -32,7 +32,7 @@ import torch
 from torch.utils import _pytree
 
 from bnb.contracts import REWARD_LEVELS, VALUE_LEVELS, Trajectory
-from bnb.contracts.action import to_joint
+from bnb.contracts.action import NUM_JOINT, to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.series import Mean, Stopwatch
 from bnb.game.rules import Rules
@@ -48,9 +48,13 @@ from .schedules import Keypoints
 
 # The entropy's terms, one per action factor by the chain rule (`policy.factor_entropies`).
 ENTROPY_TERMS = ("entropy_power", "entropy_stick", "entropy_shoot")
+# The entropy floor's hinge (`LearnerConfig.entropy_floor`), its coefficient
+# `entropy_floor_coefficient` (`LearnerConfig.coefficient`).
+ENTROPY_FLOOR = "entropy_floor"
 TERMS = (
     "policy",
     *ENTROPY_TERMS,
+    ENTROPY_FLOOR,
     "value",
     "next_state",
     "correction",
@@ -131,6 +135,14 @@ class LearnerConfig:
     H(stick | power), `entropy_shoot` on H(shoot | power, stick)), so three equal coefficients
     weigh the joint entropy; a negative coefficient rewards it.
 
+    entropy_floor: a floor on the policy's joint entropy in nats (None: off, the default):
+    the term `entropy_floor` is the mean over the own living ships of max(0, entropy_floor -
+    H), each ship-step's joint entropy H against the floor (`losses.entropy_floor_penalty`),
+    times entropy_floor_coefficient. A hinge per token, not on the batch's mean entropy, so
+    the micro-batches' terms add up to the minibatch's; it pushes only the tokens below the
+    floor, and is zero (no gradient) above it. A warm start keeps it (only the bonus is
+    `WARM_START_ENTROPY`); BC has none.
+
     old_log_probabilities: "rollout" (the rollout's) or "recomputed" (by `unroll` before
     the first epoch). minibatches: per epoch, as equal in views as the views allow;
     micro_batch_rows: ship rows per micro-batch, so micro_batch_rows // N views (at least
@@ -167,6 +179,8 @@ class LearnerConfig:
     entropy_power: float = -0.0081
     entropy_stick: float = -0.0081
     entropy_shoot: float = -0.0081
+    entropy_floor: float | None = None  # nats of joint entropy per ship-step; None: off
+    entropy_floor_coefficient: float = 0.1
     value: float = 0.007
     # the delta physics head's (the champion's; the absolute head took 0.0041 for the same
     # trunk share: docs/explanation/learner.md, round2-log.md 03:50-04:13)
@@ -217,6 +231,21 @@ class LearnerConfig:
                 )
         if any(value <= 0.0 for value in self.offence_premium.values):
             raise ValueError(f"offence_premium {self.offence_premium} must stay positive")
+        if self.entropy_floor is not None and not 0.0 < self.entropy_floor <= math.log(NUM_JOINT):
+            raise ValueError(
+                f"entropy_floor {self.entropy_floor} must be in (0, ln {NUM_JOINT}] nats"
+            )
+        if self.entropy_floor_coefficient < 0.0:
+            raise ValueError(
+                f"entropy_floor_coefficient {self.entropy_floor_coefficient} is negative"
+            )
+
+    def coefficient(self, term: str) -> float:
+        """The coefficient of the loss term `term` (TERMS): the field of its name, the entropy
+        floor's `entropy_floor_coefficient` (0 with no floor)."""
+        if term == ENTROPY_FLOOR:
+            return 0.0 if self.entropy_floor is None else self.entropy_floor_coefficient
+        return getattr(self, term)
 
     @property
     def records_distribution(self) -> bool:
@@ -655,7 +684,7 @@ class Learner:
         terms, per_level, statistic, unrolled, shot_parts = self._terms_of(
             unrolled, trajectory, label, derived, denominator, scale
         )
-        loss = sum(getattr(self.config, term) * terms[term] for term in TERMS)
+        loss = sum(self.config.coefficient(term) * terms[term] for term in TERMS)
         heads_read = None
         if self.measures_heads:
             heads_read = _pytree.tree_map_only(
@@ -712,6 +741,14 @@ class Learner:
             unrolled, trajectory, derived, denominator, scale
         )
         terms.update(zip(ENTROPY_TERMS, entropies.unbind(), strict=True))
+        if self.config.entropy_floor is not None:
+            joint_entropy = policy.factor_entropies(unrolled.policy_logits.float()).sum(-1)
+            terms[ENTROPY_FLOOR] = (
+                losses.entropy_floor_penalty(
+                    joint_entropy, self.config.entropy_floor, trajectory.alive[..., :own]
+                )
+                / denominator["policy"]
+            )
         per_level = losses.critic_losses(
             unrolled.value_logits,
             unrolled.outcome_logits,
@@ -1459,6 +1496,10 @@ class Learner:
             out["policy/kl_first"] = first_kl
         for index, term in enumerate(TERMS):
             out[f"train/nonfinite_steps/{term}"] = nonfinite_terms[index]
+        if config.entropy_floor is not None:  # the hinge's mean per token, before its coefficient
+            out["policy/entropy_floor/penalty"] = Mean(
+                terms_total[TERMS.index(ENTROPY_FLOOR)], steps
+            )
         if self.diagnostics:
             out.update(self._diagnostic_series(prepared, diagnostics_total, steps, levels_total))
             out.update(fit_series(last_moments, self.levels))
@@ -1586,8 +1627,10 @@ class Learner:
                     basic[f"next_state_{name}"] = (
                         config.next_state * part / denominator["next_state"]
                     )
-            elif term in ("geometry", "correction") and not terms[term].requires_grad:
-                continue  # a model without the geometry head or the error head
+            elif (
+                term in ("geometry", "correction", ENTROPY_FLOOR) and not terms[term].requires_grad
+            ):
+                continue  # a model without the geometry head or the error head; no floor
             elif term == "geometry":
                 logits = self.model.geometry(
                     unrolled.geometry_latents, label["geometry_partners"]
@@ -1603,7 +1646,7 @@ class Learner:
                         / (len(geometry.TARGETS) * denominator["pairs"])
                     )
             else:
-                basic[term] = getattr(config, term) * terms[term]
+                basic[term] = config.coefficient(term) * terms[term]
         return basic
 
     def _gradient_decomposition(
@@ -1685,7 +1728,7 @@ class Learner:
             top_level,
             groups,
             populations,
-            actor=("policy", *ENTROPY_TERMS),
+            actor=("policy", *ENTROPY_TERMS, ENTROPY_FLOOR),
             critic=("value",),
         )
         if level_gradients is not None:

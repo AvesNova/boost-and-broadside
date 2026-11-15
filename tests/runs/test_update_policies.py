@@ -1,6 +1,7 @@
 """Every update's policy files (`policies/`) and the retention's newest two; the averages
 built from them are in test_averaging."""
 
+import pytest
 import runs_cases as cases
 import safetensors.torch
 import torch
@@ -16,7 +17,7 @@ def test_a_ppo_run_writes_the_live_and_both_averages_after_every_update_and_at_i
 ):
     bnb(
         monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--updates", "4", "--name", "a",
-        "--update-policies", "True",
+        "--set", "update_policies=rl",
         "--checkpoint-every", str(STEPS_PER_UPDATE),
     )  # fmt: skip
     run = Run.open(tmp_path, "a")
@@ -48,7 +49,7 @@ def test_each_averages_policy_file_holds_its_own_average(monkeypatch, tmp_path):
     saved after loading both into one scratch model)."""
     bnb(
         monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--updates", "3", "--name", "a",
-        "--update-policies", "True",
+        "--set", "update_policies=rl",
         "--set", "league.uniform_from=0",
     )  # fmt: skip
     run = Run.open(tmp_path, "a")
@@ -78,12 +79,12 @@ def test_the_last_updates_live_policy_is_the_final_checkpoints_weights(monkeypat
     assert all(torch.equal(saved[name], kept[name]) for name in saved)
 
 
-def test_the_option_turns_the_per_update_policies_off_and_a_resume_may_change_it(
+def test_the_setting_turns_the_per_update_policies_off_and_a_resume_may_change_it(
     monkeypatch, tmp_path
 ):
     bnb(
         monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--updates", "1", "--name", "a",
-        "--update-policies", "False",
+        "--set", "update_policies=off",
     )  # fmt: skip
     run = Run.open(tmp_path, "a")
     # off: only the scheduled snapshots (policy_snapshots) and the segment's end
@@ -91,7 +92,7 @@ def test_the_option_turns_the_per_update_policies_off_and_a_resume_may_change_it
     assert saved_steps(run) == [STEPS_PER_UPDATE]
     bnb(
         monkeypatch, tmp_path, "train", "--resume", "a", "--device", "cpu", "--updates", "2",
-        "--update-policies", "True",
+        "--set", "update_policies=rl",
     )  # fmt: skip
     run = Run.open(tmp_path, "a")
     assert saved_steps(run) == [STEPS_PER_UPDATE, 2 * STEPS_PER_UPDATE]
@@ -100,7 +101,7 @@ def test_the_option_turns_the_per_update_policies_off_and_a_resume_may_change_it
 def test_a_rewind_sets_aside_the_newer_updates_policy_files(monkeypatch, tmp_path):
     bnb(
         monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--updates", "3", "--name", "a",
-        "--update-policies", "True",
+        "--set", "update_policies=rl",
         "--checkpoint-every", str(STEPS_PER_UPDATE),
     )  # fmt: skip
     run = Run.open(tmp_path, "a")
@@ -160,3 +161,29 @@ def test_a_bc_run_keeps_policy_snapshots_on_its_cadence_and_at_each_end(monkeypa
     assert record["steps"] == dict(environment_steps=5 * STEPS_PER_UPDATE, updates=5)
     name = f"clone/policies/step_{2 * STEPS_PER_UPDATE}/uniform_average"
     assert player(name, tmp_path).policy == tmp_path / name
+
+
+def test_the_setting_chooses_the_stages_that_write_every_update():
+    """ "rl" (a chain's default choice when on) writes a PPO run's files and not a BC run's;
+    "bc" the other way; "all" both; "off" neither."""
+    import dataclasses
+
+    from bnb.contracts import GameConfig
+    from bnb.learn import bc
+    from bnb.runtime.train import TrainConfig
+
+    ppo = TrainConfig(game=GameConfig(2, 2, 1200.0))
+    cloned = dataclasses.replace(ppo, objective="bc", learner=bc.config())
+    for setting, writes in (
+        ("off", (False, False)),
+        ("rl", (True, False)),
+        ("bc", (False, True)),
+        ("all", (True, True)),
+    ):
+        got = tuple(
+            dataclasses.replace(config, update_policies=setting).writes_update_policies
+            for config in (ppo, cloned)
+        )
+        assert got == writes, setting
+    with pytest.raises(ValueError, match="update_policies"):
+        dataclasses.replace(ppo, update_policies="every")
