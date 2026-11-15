@@ -26,13 +26,14 @@ These are the games that decide each pairwise arm, and the Elo ladder we build f
 | 8 | `frontline_10v10` | frontline | 10v10 | preset |
 | 9 | `deathmatch_10v10` | deathmatch | 10v10 | preset |
 | 10 | `elimination_10v10` | elimination | 10v10 | preset |
-| 11 | `frontline_break_even` | frontline | each arm against 20 Imugi, its own count varied | preset |
+| 11 | `frontline_break_even` | frontline | each arm against 20 Imugi, its own count varied; **left out of the score** (below) | preset |
 | 12 | `deathmatch_break_even` | deathmatch | break-even | preset |
 | 13 | `elimination_break_even` | elimination | break-even | preset |
 | 14–19 | — | all | 5v5 at map scales 0.5× and 2× | scaled (**only if variable maps survive their arm**; not in the command) |
 
-- **Games:** conditions 1–10 are A against B. The base games are the real-scale presets (`--presets`), and Imugi is Imugi (`--opponent scripted`).
+- **Games:** conditions 1–10 are A against B. The base games are the real-scale presets (`--presets`), and Imugi is Imugi (`--opponent imugi`).
 - **Map rule:** every condition plays its preset's own arena radius at every team size, 1v1 to break-even's (`--map-rule preset`, the default). This is the author's rule of 2026-11-15: every map is fixed-size until an agent has trained successfully on variable-size maps (the map-size arm, A1). The density rule (`--map-rule density`: `api.arena_radius_for`, the radius scaling with the fleet down to each mode's minimum; break-even at the opponent's 20) is an opt-in setting for that arm. Both arms of a pair always use the same rule.
+- **Left out of the score:** `frontline_break_even`, until the map-size arm reports (the author's decision, 2026-11-15). `--unscored` names the conditions left out (default `frontline_break_even`); a left-out condition is neither played nor waited on, and its mode's weight is shared among the rest.
 - **Break-even** reuses `bnb crossover`'s fit and allocation (`bnb.league.crossover`). One engine plays both arms: half of each batch's blocks are A against 20 Imugi, half B, each at the counts its own fit asks for (1 to 30), on the same lineups and maps.
 
 ## Score
@@ -41,7 +42,7 @@ These are the games that decide each pairwise arm, and the Elo ladder we build f
    - **Head-to-head conditions (1–10):** A's mean score against B (a win is 1, a draw ½), minus 0.5. It's positive when A is better. Its variance is the games' sample variance over their number.
    - **Break-even (11–13):** each arm's win probability against 20 Imugi when fielding the other arm's break-even count N*, from each arm's fitted curve. Symmetrised: ½ (A's win rate at N*_B − 0.5) − ½ (B's win rate at N*_A − 0.5). Its variance comes from the two fits' covariances by the delta method, with the fits taken as independent.
 2. **Per mode:** the mean over that mode's conditions, each weighted equally.
-   - frontline: 1, 8 and 11;
+   - frontline: 1 and 8 (and 11 once it is scored again);
    - deathmatch: 2, 4, 5, 9 and 12;
    - elimination: 3, 6, 7, 10 and 13.
 3. **Overall:** the mean of the three modes, each weighted equally (thirds). This is one number with one standard error: the weighted sum of the conditions' variances.
@@ -63,7 +64,7 @@ These are the games that decide each pairwise arm, and the Elo ladder we build f
 
 ## Allocation
 
-- **First,** every condition plays `--initial-batches` (1). Break-even keeps playing until both arms' fits cross, at most `--initial-batch-limit` (8) batches, after which the suite stops with the reason.
+- **First,** every scored condition plays `--initial-batches` (1). A scored break-even condition keeps playing until both arms' fits cross, at most `--initial-batch-limit` (8) batches, after which the suite stops with the reason.
 - **Toward each planned look:** the next look needs the overall variance 1 / (t_next · I_max). Batches are added one at a time where the next batch most reduces the overall variance per engine second, until the variance is reached.
   - **Per-game variance:** from the condition's games. A head-to-head condition's is shrunk toward ¼ by one pseudo-game, for the allocation only.
   - **Cost:** the measured engine seconds per game. An engine's first batch, which compiles, is left out where there are others.
@@ -118,7 +119,7 @@ rl-v20 against rl-mix-kl (a close pair, 1024 games per head-to-head condition) a
 | deathmatch break-even | +0.316 | 0.047 | 1.15 | 0.50 |
 | elimination break-even | +0.300 | 0.042 | 0.90 | 0.17 |
 
-**The design** (the close pair's variances; frontline break-even stood in at the mean of the other two break-even variances): δ = 0.02 (52% against 50%, about 14 Elo), α = 0.05, power 0.8.
+**The design** (the close pair's variances; frontline break-even, scored at the time, stood in at the mean of the other two break-even variances): δ = 0.02 (52% against 50%, about 14 Elo), α = 0.05, power 0.8.
 
 - **Cost:** at most about 0.6 engine-hours on the laptop for any K from 2 to 5. The first batch of every condition costs about 0.7 hours by itself, so the expected cost is 0.7 to 0.85 hours whatever the difference.
 - **Simulated** (400 repeats of the whole procedure, with estimated variances, batch-sized steps and the cost-aware allocation):
@@ -136,7 +137,7 @@ rl-v20 against rl-mix-kl (a close pair, 1024 games per head-to-head condition) a
 - 20v20 on the preset map: 26 of 64, with 14 draws;
 - 20v20 on 15.6 km: none of 64, with about 8 kills against 27 deaths per game, and every game over in about 2 minutes.
 
-The pilot's break-even played on the 20-a-side density map. For an agent trained on one map size, frontline break-even there measured transfer to a map twice the size, not skill. Break-even now plays the preset map (the map rule above).
+The pilot's break-even played on the 20-a-side density map. For an agent trained on one map size, frontline break-even there measured transfer to a map twice the size, not skill. Break-even now plays the preset map (the map rule above), and frontline break-even is left out of the score until the map-size arm reports.
 
 **Break-even's range.** Our count runs from 1 to 30 (`--maximum-count`, raised from Imugi's 20 on 2026-11-15), so an arm weaker than Imugi at parity still has a crossing inside the range rather than a fit extrapolated past 20 (in the pilot, at 20 at most, rl-dm in deathmatch won 5 of 32 at 20 against 20; in frontline on the preset map rl-v20 is about even with 20 Imugi at 20 ships, 26 wins and 14 draws in 64). The game is then 30 a side, Imugi's 10 spare slots benched. A benched slot costs about what an active one does, so by slot count a break-even game costs about 1.5 times a 20-a-side one (not yet measured). If neither arm crosses, the run stops with an error after `initial_batch_limit` batches.
 

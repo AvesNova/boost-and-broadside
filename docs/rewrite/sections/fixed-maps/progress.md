@@ -28,3 +28,7 @@ maps (the map-size arm, A1). Variable maps are an opt-in setting for that arm on
   `test_networks_play_both_kinds_of_condition`) pass with the tiny break-even at 1 to 6
   ships against 3 (a 6-a-side game); at 1 to 3 on the tiny preset's own 400 m map neither
   scripted player crossed within 20 batches.
+- **Item 4, frontline break-even left out (done):** `EvaluationConfig.unscored` (default
+  `frontline_break_even`); `scored()` drops it, so it is neither played nor waited on, and
+  frontline's third is shared by 5v5 and 10v10. `--play` of an unscored condition is
+  refused.

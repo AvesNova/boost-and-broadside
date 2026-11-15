@@ -9,7 +9,9 @@ break-even condition per mode, each player against `opponent_count` (20) scripte
 with its own count varied (`bnb.league.crossover`). Every condition plays its preset's own
 arena radius at every size (`map_rule` "preset": every map fixed-size, the author's rule
 of 2026-11-15); the density rule's map (`bnb.game.api.arena_radius_for`) is the map-size
-arm's opt-in (`map_rule` "density"). Every game is played with fog of war
+arm's opt-in (`map_rule` "density"). A condition in `unscored` (by default frontline
+break-even, until the map-size arm reports) is neither played nor scored, and its mode's
+weight is shared among the rest. Every game is played with fog of war
 (the engine's default), the networks sampling at temperature 1, each game's lineup drawn
 slot by slot from `lineup_types` with equal chance and flown by both teams (`Arena`'s
 game_lineups, keyed by the seed, the condition and the batch), and the seats alternating
@@ -656,9 +658,10 @@ class Evaluation:
         self.config, self.device, self.progress = config, device, progress
         self.conditions = config.scored()
         own = tuple(c.name for c in self.conditions) if own is None else own
-        missing = [name for name in own if name not in config.conditions]
+        scored = [c.name for c in self.conditions]
+        missing = [name for name in own if name not in scored]
         if missing:
-            raise ValueError(f"conditions {missing} are not among the scored {config.conditions}")
+            raise ValueError(f"conditions {missing} are not among the scored {scored}")
         self.own = [c for c in self.conditions if c.name in own]
         self.writer = writer or _writer()
         open_directory(directory, settings_entry(players, config))

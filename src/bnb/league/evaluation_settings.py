@@ -52,7 +52,9 @@ BY_NAME = {condition.name: condition for condition in CONDITIONS}
 class EvaluationConfig:
     """The suite's settings, recorded in settings.json.
 
-    conditions: the scored conditions' names; presets: each mode's base preset
+    conditions: the conditions' names; unscored: those left out of the score, neither
+    played nor waited on (by default frontline break-even, the author's decision of
+    2026-11-15: left out until the map-size arm reports); presets: each mode's base preset
     (5v5); map_rule: one of `MAP_RULES` ("preset": every condition on its preset's own
     arena radius at every size; "density": the density rule's radius at other sizes, for
     the map-size arm); lineup_types: the ship types' names a slot is drawn from;
@@ -70,6 +72,7 @@ class EvaluationConfig:
     the last; gate_stderrs: the gate's standard errors."""
 
     conditions: tuple[str, ...] = tuple(condition.name for condition in CONDITIONS)
+    unscored: tuple[str, ...] = ("frontline_break_even",)
     presets: tuple[str, ...] = (
         "real_scale_frontline",
         "real_scale_deathmatch",
@@ -97,11 +100,13 @@ class EvaluationConfig:
     gate_stderrs: float = 2.0
 
     def __post_init__(self) -> None:
-        unknown = [name for name in self.conditions if name not in BY_NAME]
+        unknown = [name for name in (*self.conditions, *self.unscored) if name not in BY_NAME]
         if unknown:
             raise ValueError(f"unknown conditions {unknown}; choose from {list(BY_NAME)}")
         if len(self.presets) != len(MODES):
             raise ValueError(f"presets {self.presets}: one per mode, {MODES}")
+        if not self.scored():
+            raise ValueError(f"conditions {self.conditions}: every one is unscored")
         if self.map_rule not in MAP_RULES:
             raise ValueError(f"map rule {self.map_rule!r}: one of {MAP_RULES}")
         if self.break_even_blocks < 2 or self.break_even_blocks % 2:
@@ -117,8 +122,13 @@ class EvaluationConfig:
         return SequentialDesign(self.looks, self.alpha, self.beta, self.delta)
 
     def scored(self) -> list[Condition]:
-        """The scored conditions, in `CONDITIONS`' order."""
-        return [condition for condition in CONDITIONS if condition.name in self.conditions]
+        """The scored conditions (in `conditions` and not in `unscored`), in `CONDITIONS`'
+        order."""
+        return [
+            condition
+            for condition in CONDITIONS
+            if condition.name in self.conditions and condition.name not in self.unscored
+        ]
 
     def crossover_config(self):
         """Break-even's measurement settings, its fit's and allocation's

@@ -494,6 +494,27 @@ def test_every_condition_plays_its_presets_own_arena_unless_the_density_rule_is_
         EvaluationConfig(map_rule="scaled")
 
 
+def test_an_unscored_condition_is_neither_scored_nor_played(tmp_path, tiny_presets):
+    default = EvaluationConfig()
+    assert default.unscored == ("frontline_break_even",)
+    names = [condition.name for condition in default.scored()]
+    assert len(names) == 12 and "frontline_break_even" not in names
+    weights = evaluation.weights(default.scored())
+    assert math.isclose(weights["frontline_5v5"], 1 / 6)
+    with pytest.raises(ValueError, match="unknown"):
+        EvaluationConfig(unscored=("frontline_1v1",))
+    with pytest.raises(ValueError, match="every one is unscored"):
+        EvaluationConfig(conditions=("frontline_break_even",))
+    config = _config(unscored=("deathmatch_break_even",))
+    players = dict(A=player("scripted"), B=player("rung_T2"))
+    suite = evaluation.Evaluation(tmp_path, players, player("scripted"), config, CPU)
+    assert "deathmatch_break_even" not in [c.name for c in suite.conditions]
+    with pytest.raises(ValueError, match="not among the scored"):
+        evaluation.Evaluation(
+            tmp_path, players, player("scripted"), config, CPU, own=("deathmatch_break_even",)
+        )
+
+
 def evaluation_settings_condition(name: str) -> Condition:
     from bnb.league.evaluation_settings import BY_NAME
 
