@@ -57,7 +57,7 @@ MOVING_EDGE = True
 # "explore" heads, with the team, for the nearest cell its team has not seen lately
 # (`explore_target`), each ship pulled toward its team's centre of mass when it strays and
 # pushed off allies that come too close.
-SEARCH = "centre"
+SEARCH = "explore"  # decided 2026-11-15 (the author), with the wide spacing
 SEARCH_MODES = ("centre", "straight", "explore")
 # the cohesion pull: none within COHESION_IN_GUN_RANGE[0] own gun ranges of the team's
 # centre of mass, all of the steer beyond [1]; the separation push: from allies within
@@ -66,7 +66,7 @@ SEARCH_MODES = ("centre", "straight", "explore")
 # allies about half a gun range apart; "wide", about a vision range apart, so the team
 # sweeps a wider strip.
 SPACINGS = {"tight": ((1.0, 3.0), 0.5), "wide": ((2.5, 4.5), 1.6)}
-COHESION_IN_GUN_RANGE, SEPARATION_IN_GUN_RANGE = SPACINGS["tight"]
+COHESION_IN_GUN_RANGE, SEPARATION_IN_GUN_RANGE = SPACINGS["wide"]
 # The explore target: a cell counts as unseen once its seen value (`imugi_memory.track_seen`)
 # has decayed below EXPLORE_UNSEEN; only cells within EXPLORE_INSIDE of the boundary's
 # radius count. Of those, the team heads for the nearest to its centre of mass, distances

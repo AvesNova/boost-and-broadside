@@ -95,9 +95,20 @@ with its last seen velocity.
 - **The boundary:** a ship within a margin of g-limited turn radii (`speed² /
   max_acceleration`) of the arena's edge and flying outward blends a steer toward the
   centre into its wanted direction, by a linear ramp (a weight, not a probability) on its
-  depth into the margin.
-- **No known enemy:** it heads for the centre and holds its course once within
-  `centre_hold_in_arena_radius` of it (an angle error of 0), and does not fire.
+  depth into the margin. Where the boundary closes (elimination), the steer works in the
+  edge's own frame (2026-11-15): the edge's speed v_b comes from the last two
+  observations, "outward" is outward relative to the edge, and the margin grows by
+  f(β) = √(1 − β²) + β·arccos(−β), β = v_b / speed, the deepest a ship turning back gets
+  relative to a straight edge closing steadily (1 for a still edge, π when the edge is as
+  fast as the ship). Where the boundary is only 2–4 turn radii across, the steer fades out
+  and the ship fights.
+- **No known enemy (the explore search, 2026-11-15):** the team keeps a hex grid of how
+  recently it has seen each cell (8 rings over the arena, about 1 km cells at real scale;
+  1 in view, fading over 20 s). It heads for the nearest unseen cell inside the boundary,
+  preferring cells ahead of its motion, each ship pulled toward the team's centre of mass
+  beyond 2.5–4.5 gun ranges and pushed off allies within 1.6. It does not fire. The old
+  rule (head for the centre, hold near it) stays as `imugi_combat.SEARCH = "centre"`; it
+  made both teams meet in the middle by agreement.
 
 ## Doctrines
 

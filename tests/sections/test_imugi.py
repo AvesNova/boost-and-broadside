@@ -255,14 +255,32 @@ def test_near_the_boundary_and_heading_inward_it_does_not_turn_back(ship_type):
     assert _marginals(_duel(ship_type, target, own=own))[1][0] > SURE
 
 
+@pytest.fixture
+def centre_search():
+    """The old no-target rule (`imugi_combat.SEARCH` "centre"), opt-in since 2026-11-15."""
+    from bnb.controllers import imugi_combat
+
+    saved = imugi_combat.SEARCH
+    imugi_combat.SEARCH = "centre"
+    yield
+    imugi_combat.SEARCH = saved
+
+
 @pytest.mark.parametrize("ship_type", TYPES)
-def test_with_no_visible_enemy_it_heads_for_the_centre_and_holds_fire(ship_type):
-    away = ship(x=1500.0, heading=math.pi / 2, ship_type=ship_type)  # the centre is on its left
+def test_with_no_visible_enemy_it_holds_fire(ship_type):
+    away = ship(x=1500.0, heading=math.pi / 2, ship_type=ship_type)
     for enemy in (absent(), ship(x=1700.0, y=200.0, team_relative=1, visible=False)):
-        power, stick, shoot = _marginals(_duel(ship_type, enemy, own=away))
-        assert _levels(stick)[1] > SURE_TWICE
+        power, _, shoot = _marginals(_duel(ship_type, enemy, own=away))
         assert shoot[1] == pytest.approx(EPSILONS["shoot"])
         assert power[2] == pytest.approx(EPSILONS["reverse"])
+
+
+@pytest.mark.parametrize("ship_type", TYPES)
+def test_the_centre_search_heads_for_the_centre_and_holds_near_it(ship_type, centre_search):
+    away = ship(x=1500.0, heading=math.pi / 2, ship_type=ship_type)  # the centre is on its left
+    for enemy in (absent(), ship(x=1700.0, y=200.0, team_relative=1, visible=False)):
+        stick = _marginals(_duel(ship_type, enemy, own=away))[1]
+        assert _levels(stick)[1] > SURE_TWICE
     near = ship(x=100.0, heading=math.pi / 2, ship_type=ship_type)
     holding = _marginals(_duel(ship_type, absent(), own=near))[1]
     assert holding[0] == pytest.approx(
