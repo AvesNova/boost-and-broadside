@@ -15,6 +15,7 @@ import yemong_cases as cases
 from imugi_cases import CHARACTERISTICS
 
 from bnb.contracts import GameConfig, Pool
+from bnb.contracts.trajectory import VALUE_LEVELS
 from bnb.controllers.relational import RelationalController
 from bnb.game import api
 from bnb.league.gauge import Record
@@ -112,7 +113,7 @@ def test_the_per_shard_cut_is_gone():
     from bnb.learn.ppo import Learner, LearnerConfig
     from bnb.learn.rewards import RewardConfig
 
-    rows, ships, levels = 2, 2, 5
+    rows, ships, levels = 2, 2, len(VALUE_LEVELS)
     build = RelationalBuild(RelationalConfig(hidden=8, value_bins=11), ships, 2 * ships)
     learner = Learner(
         Relational(build),
