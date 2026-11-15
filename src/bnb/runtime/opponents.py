@@ -166,7 +166,17 @@ class LeagueConfig:
     double; every member is kept for the rest of the run); cheese: the cheese agents that are pool
     entries, by name (`bnb.controllers.cheese.NAMES`; all six by default, `()`
     turns them off), each `scripted:<name>`, sampled with the other entries; fixed at a
-    run's start."""
+    run's start. latest_share: the share of the slots that hold "latest"
+    (`bnb.league.pool.LATEST`), a frozen copy of the live weights loaded after every
+    update, never drawn, cut or rated: the first `latest_share * slots` slots (a whole
+    number), the rest drawn as above; 0, none (the default). It is the self-play share of a
+    run that trains one seat (`TrainConfig.self_play_seats="one"`, arm A6). fixed_opponent:
+    a policy file's directory (absolute, or relative to the working directory) of the live
+    policy's build; when set, the pool holds that network alone
+    (`bnb.league.pool.FIXED_OPPONENT`: no Imugi, no cheese agent, no average and no
+    snapshot as an opponent; the averages are still kept), every slot plays it and the run
+    has no self-play (`bnb.runtime.train.training_lineup`): an exploiter (arm R3). It
+    clears `cheese` and needs `latest_share` 0. None, the default: the pool above."""
 
     slots: int = 4
     # the author's clean cut, 2026-11-06 (decisions: round four)
@@ -180,8 +190,17 @@ class LeagueConfig:
     uniform_from: int | None = None
     snapshots: SnapshotSchedule = LEAGUE_SNAPSHOTS
     cheese: tuple[str, ...] = CHEESE_NAMES
+    latest_share: float = 0.0
+    fixed_opponent: str | None = None
 
     def __post_init__(self) -> None:
+        if self.fixed_opponent is not None:
+            if self.latest_share:
+                raise ValueError(
+                    f"league latest_share {self.latest_share}: a fixed opponent plays no "
+                    f"self-play, so latest_share must be 0"
+                )
+            object.__setattr__(self, "cheese", ())  # the fixed opponent is the one entry
         unknown = [name for name in self.cheese if name not in CHEESE_NAMES]
         if unknown or len(set(self.cheese)) < len(self.cheese):
             raise ValueError(
@@ -189,10 +208,18 @@ class LeagueConfig:
             )
         if self.slots < 1:
             raise ValueError(f"league slots {self.slots} must be at least 1")
-        if self.cut_every < 1 or not 1 <= self.cut_slots <= self.slots:
+        if not 0.0 <= self.latest_share < 1.0:
+            raise ValueError(f"league latest_share {self.latest_share} must be in [0, 1)")
+        if not math.isclose(self.latest_share * self.slots, self.latest_slots):
+            raise ValueError(
+                f"league latest_share {self.latest_share} of {self.slots} slots is not a "
+                f"whole number of slots"
+            )
+        drawn = self.slots - self.latest_slots
+        if self.cut_every < 1 or not 1 <= self.cut_slots <= drawn:
             raise ValueError(
                 f"league cut_every {self.cut_every} must be at least 1 and cut_slots "
-                f"{self.cut_slots} in [1, slots]"
+                f"{self.cut_slots} in [1, {drawn}] (the slots not holding latest)"
             )
         if self.carry_at_cut not in CARRY_AT_CUT:
             raise ValueError(f"league carry_at_cut {self.carry_at_cut!r}; one of {CARRY_AT_CUT}")
@@ -204,6 +231,11 @@ class LeagueConfig:
             raise ValueError(f"league exponential_decay {self.exponential_decay} must be in (0, 1)")
         if self.uniform_from is not None and self.uniform_from < 0:
             raise ValueError(f"league uniform_from {self.uniform_from} must not be negative")
+
+    @property
+    def latest_slots(self) -> int:
+        """The slots holding "latest": slots 0 to `latest_slots - 1`."""
+        return round(self.latest_share * self.slots)
 
     def uniform_start(self, warmup_steps: int) -> int:
         """The environment steps the uniform average starts after: `uniform_from`, or the

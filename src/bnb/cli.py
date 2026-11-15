@@ -870,7 +870,7 @@ def _requested(options: Train):
     from bnb.learn.ppo import LearnerConfig
     from bnb.runtime import cloning
     from bnb.runtime.lanes import LaneConfig
-    from bnb.runtime.train import LINEUP, TRAINING_MIXES, TrainConfig, mixed
+    from bnb.runtime.train import LINEUP, TRAINING_MIXES, TrainConfig, arranged, mixed
 
     cloned = options.objective == "bc"
     pools = cloning.LINEUP if cloned else LINEUP
@@ -886,12 +886,6 @@ def _requested(options: Train):
     else:
         game = GameConfig(
             options.ships_per_team, options.num_fields, options.arena_radius, mode=options.mode
-        )
-    multiple = environment_multiple(pools)
-    if options.environments % multiple:
-        raise SystemExit(
-            f"--environments {options.environments} does not split into the pools' shares: "
-            f"use a multiple of {multiple}"
         )
     settings = dict(
         old_log_probabilities=options.old_log_probabilities,
@@ -918,7 +912,17 @@ def _requested(options: Train):
         )
     except ValueError as error:
         raise SystemExit(str(error)) from error
-    return with_settings(config, map(parse_setting, options.set))
+    try:  # the pools the lineup and mix settings name (`arranged`)
+        config = arranged(with_settings(config, map(parse_setting, options.set)), options.preset)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    multiple = environment_multiple(config.pools)
+    if config.environments % multiple:
+        raise SystemExit(
+            f"--environments {config.environments} does not split into the pools' shares: "
+            f"use a multiple of {multiple}"
+        )
+    return config
 
 
 def parse_setting(setting: str) -> tuple[str, object]:
