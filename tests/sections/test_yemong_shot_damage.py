@@ -30,6 +30,8 @@ pytestmark = pytest.mark.usefixtures("global_generator")
 
 OWN = lc.OWN
 DAMAGE = dict(shot_head="damage")
+# a crowded arena, so a short segment's own shots hit
+CROWDED = GameConfig(5, 10, 600.0, episode_seconds=3.0, respawn_seconds=1.0)
 
 
 def _parameters(module) -> int:
@@ -88,7 +90,7 @@ def trained(module_global_generator):
     """A learner update of a damage build, with its cadence (the gradient decomposition
     and the head statistics), and its labels."""
     net = cases.model(**DAMAGE)
-    runner = lc.rollout(net, environments=4, length=16)
+    runner = lc.rollout(net, environments=8, length=32, config=CROWDED)
     learner = lc.learner(net, runner)
     views = torch.arange(runner.store.views)
     prepared = learner.prepare(runner.store, runner.bootstrap())
