@@ -91,8 +91,10 @@ def _errors(decoded, means):
 
 
 def test_layout(code):
-    assert code.width == 544 and code.groups == 23  # 99 velocity bins since v8
-    assert code.runs[0] == (9, 9) and code.runs[1] == (3, 99) and code.runs[-1] == (1, 4)
+    # 99 velocity bins since v8; the linear runs' 2 padding bins a side since HL-Gauss
+    assert code.width == 580 and code.groups == 23
+    assert code.runs[0] == (9, 9) and code.runs[1] == (3, 103) and code.runs[-1] == (1, 4)
+    assert code.runs[3] == (1, 45) and code.runs[4] == (1, 25)
     assert len(MEANS) == 12 and code.spread_count == 15
     assert velocity_reach() == pytest.approx(100.0 * math.expm1(49 * 5.0 / 100))
 
@@ -139,7 +141,7 @@ def test_v2_shot_constants():
     assert parameters.top_speed == pytest.approx(top)
     assert parameters.displacement_period == pytest.approx(2.5 * top * 12 / 30)
     assert parameters.collision_radius == 8.0
-    assert parameters.trajectory_width == 154 and parameters.outcome_width == 19
+    assert parameters.trajectory_width == 162 and parameters.outcome_width == 19
     snapshots = torch.tensor([[10.0, -5.0, 700.0, 20.0, 1.3]])
     assert shots.trajectory_code(parameters, snapshots).shape == (1, 154)
     outcome = shots.outcome_code(
@@ -474,8 +476,9 @@ def test_grouped_cross_entropy_matches_the_log_softmax_form_and_its_gradient(dty
 
 
 def test_the_trajectory_code_of_its_coordinates_is_the_encoders_code():
-    """`shots.trajectory_code` (made of `trajectory_coordinates`, 46 numbers) equals the
-    general encoders' code at zero spread: position_encode, circular_encode, scalar_sharp, to
+    """`shots.trajectory_code` (made of `trajectory_coordinates`, 44 numbers) equals the
+    general encoders' code at zero spread: position_encode, circular_encode,
+    hl_gauss_scalar_encode, to
     float32 rounding: the code's entries are weights in [0, 1], from sines and cosines of
     phases up to about 3e3 radians, which float32 rounds at about 3e3 * 6e-8 = 2e-4; the
     measured largest difference is 1.8e-4, and a missing term or a wrong bin is of order 1."""
@@ -499,14 +502,16 @@ def test_the_trajectory_code_of_its_coordinates_is_the_encoders_code():
                 4,
                 parameters.direction_levels,
             ).flatten(-2),
-            codes.scalar_sharp(
+            codes.hl_gauss_scalar_encode(
                 torch.hypot(velocity[:, 0], velocity[:, 1]),
+                zero,
                 0.0,
                 parameters.top_speed,
                 parameters.speed_bins,
             ),
-            codes.scalar_sharp(
+            codes.hl_gauss_scalar_encode(
                 torch.log(torch.clamp_min(index, 1e-6)),
+                zero,
                 -parameters.index_span,
                 parameters.index_span,
                 parameters.index_bins,
@@ -515,7 +520,7 @@ def test_the_trajectory_code_of_its_coordinates_is_the_encoders_code():
         -1,
     )
     coordinates = shots.trajectory_coordinates(parameters, snapshots)
-    assert coordinates.shape == (5000, 46)
+    assert coordinates.shape == (5000, 44)
     torch.testing.assert_close(
         shots.trajectory_code(parameters, snapshots), want.float(), rtol=0, atol=5e-4
     )
