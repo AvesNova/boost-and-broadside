@@ -134,12 +134,15 @@ def scale_error(actual: torch.Tensor, expected: torch.Tensor) -> float:
 def assert_matches_golden(actual: dict, expected: dict, tolerance: float = 2e-4) -> None:
     """Every named output of a recorded run: floats to `tolerance` of the output's own scale
     (`scale_error`), flags and counts exactly. The goldens run a float64 network for 40
-    ticks; the replay stores the enemy actions as int16 fixed point (`store_action`), so a
-    rounding flip (one unit in ACTION_SCALE) feeds back into the belief: one thread against
-    all threads, the outputs differ by 1e-6 of their scale and the worst (arm 1's carried
-    state) by 3e-5. A wrong formula or a missing term moves an output by a good fraction (the
-    stale goldens of this tree differed by 1). The stored actions themselves match to one
-    unit."""
+    ticks from weights drawn on one thread (`bnb.models.initialise`); the run's own thread
+    count moves the outputs by about 1e-7 of their scale. Arm 1's carried state, the only
+    output past tick 7, sits behind a high-gain loop (the hidden rows' acceleration inputs
+    difference the forecast velocity over a tick: about 1e6 over 39 ticks in this untrained
+    net), so it is the first to move: the 2e-2 it moved by was the weights' thread-dependent
+    QR (about 1e-6 of a weight), not the int16 storage of the enemy actions (`store_action`;
+    its rounding flips leave the other arms at 1e-6). A wrong formula or a missing term moves
+    an output by a good fraction (the stale goldens of this tree differed by 1). The stored
+    actions themselves match to one unit."""
     assert actual.keys() == expected.keys()
     for name, want in expected.items():
         got = actual[name]

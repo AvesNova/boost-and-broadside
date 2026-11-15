@@ -13,6 +13,10 @@ its children's defaults and may override them. A module initialises:
   several draws on it: "first.weight[2]").
 A module with parameters of its own and none of these is refused, so no parameter is left
 to the global generator's draws. Built on the CPU; move the model to its device after.
+
+The draws run on one CPU thread: the orthogonal initialisation's QR rounds differently with
+the thread count (about 1e-6 of a weight between 1 and 4 threads), so a model built on
+another machine, or under another thread setting, would start from other weights.
 """
 
 import math
@@ -28,7 +32,17 @@ NORMS = (nn.RMSNorm, nn.LayerNorm)
 
 
 def initialise(model: nn.Module, seed: int) -> None:
-    """Initialise every parameter of `model` (on the CPU) from the seed, by parameter path."""
+    """Initialise every parameter of `model` (on the CPU) from the seed, by parameter path, on
+    one thread (the module docstring), whatever the thread count around it."""
+    threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    try:
+        _initialise(model, seed)
+    finally:
+        torch.set_num_threads(threads)
+
+
+def _initialise(model: nn.Module, seed: int) -> None:
     with torch.no_grad():
         for path, module in reversed(list(model.named_modules())):
 

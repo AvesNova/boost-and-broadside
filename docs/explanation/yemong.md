@@ -591,6 +591,15 @@ or respawned at `t`, the first tick of a game, or just spotted (hidden at `t - 1
 observation's flag, which is 1 only when the team saw the ship alive at both ticks. Just
 hidden is valid: the forecast minus the last truth.
 
+A hidden row's acceleration closes a loop: the forecast's velocity, differenced over one
+tick (divided by the tick length), is the next tick's input to the forecast. In an
+untrained net this loop has a high gain. With the rows hidden for up to 39 ticks, a
+perturbation of 1e-14 in the weights moves the carried state by 5e-8, about 1e6 times
+(arm 1's golden, `tests/sections/arm_goldens.py`). Without the hidden rows' accelerations,
+or without the inputs, the same perturbation grows about 10 times. Whether a trained net
+keeps the gain has not been measured. Turning the inputs on, expect a long-hidden row's
+belief to be this sensitive to anything upstream of it.
+
 The knees are the median `|value|` of living ships' one-tick pairs on the recorded
 segments of the state-delta measurements (respawns excluded; both players, three presets,
 pooled at equal weight; `bench/acceleration_inputs_measure.py`). Across is dominated by
