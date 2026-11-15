@@ -54,6 +54,15 @@ nocap)  # the fast-then-slow laws without the speed cap (how much the cap held t
   run corner0.32-120-nocap elimination laws.jsonl --episode-seconds 128 \
     --set mode.shrink_hold_seconds=0 --set mode.shrink_law=3 --set mode.shrink_knee_seconds=30 \
     --set mode.shrink_knee_fraction=0.32 --set mode.shrink_max_speed=0 --imugi-search waypoint ;;
+sizes)  # other team sizes on the fixed maps: elimination with linear 120 s, deathmatch
+  for n in 1 2 10; do
+    run "size-elim-${n}v${n}" elimination sizes.jsonl --ships $n --episode-seconds 128 \
+      --set mode.shrink_hold_seconds=0 --imugi-search waypoint
+  done
+  for n in 1 2; do
+    GAMES=64 run "size-dm-${n}v${n}" deathmatch sizes.jsonl --ships $n --imugi-search waypoint
+  done
+  GAMES=32 run size-dm-10v10 deathmatch sizes.jsonl --ships 10 --imugi-search waypoint ;;
 deathmatch)  # the kill rate by search (tickets off, the preset's 600 s)
   for search in centre straight waypoint; do
     GAMES=64 run "dm-$search" deathmatch deathmatch.jsonl --imugi-search "$search"
