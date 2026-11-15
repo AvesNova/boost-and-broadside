@@ -67,3 +67,15 @@ Branch `feat/gru-temporal` (from `feat/imugi-boundary`).
 
   The GRU's hidden-gate product is a serial loop over 128 steps (no scan), so it is
   latency-bound at small row counts; its compile is ~106 s against ~18 s.
+- Didn't work (05:09-05:18): 128 environments OOM-kill at 8G too (peak 8G + 1.4G swap,
+  in the compile, before the first update), so the store is not the cause: the merged
+  tree's compile of the full preset needs more than 8G here (before the merge it reached
+  the capture at 8G). A 14G MemoryMax was refused by the session's permission check, so
+  the whole-run Griffin/GRU timing is NOT measured. GRU run not attempted (stopped).
+- Estimate from the sublayer: the learner runs 1536 views / 8 = 192 micro-batches x 4
+  epochs x 2 temporal blocks per 131k-step update; at +14.3 ms each, about +22 s on the
+  3080's ~67 s learn, about 1.3x per step (rollout: the GRU step is two small products,
+  assumed ~unchanged). Cost line in arm-list / arm-review: 3.7 h -> about 4.8 h ($2.40),
+  provisional.
+- Next: the whole-run timing needs a larger MemoryMax (the author's call) or the rented
+  GPU box; `time_blocks.sh griffin` then `gru`, steady = updates 2-4.
