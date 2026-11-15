@@ -1,7 +1,7 @@
 """The flown characteristics of the release cards and candidates, side by side
 (`bnb.game.handling.characteristics`, the game's own flights; CPU, ~12 s a batch).
 
-    PYTHONPATH=$PWD/src:$PWD .venv/bin/python docs/rewrite/sections/third-ship/profile.py \
+    PYTHONPATH=$PWD/src:$PWD .venv/bin/python docs/rewrite/sections/third-ship/flown.py \
         candidates/screen4.json [NAME ...] [--jujak-card candidates/jujak-v23-card.json]
 """
 
