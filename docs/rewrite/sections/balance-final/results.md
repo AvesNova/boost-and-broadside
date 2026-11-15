@@ -76,8 +76,11 @@ Yongma team's score (wins + half the draws) and its kill share:
 | deathmatch 2v2, 300 s (512) | 14.7 ± 1.4% (33.3%) | 29.9 ± 1.9% (41.4%) | 26.2 ± 1.8% (39.8%) |
 | **deathmatch 5v5, 300 s (2048)** | **24.8 ± 0.9% (46.2%)** | **47.7 ± 1.1% (49.8%)** | 51.2 ± 1.1% (50.1%) |
 | deathmatch 10v10, 300 s (512) | 44.9 ± 2.1% (49.5%) | 71.9 ± 1.9% (51.8%) | 75.1 ± 1.8% (52.1%) |
+| elimination 2v2 (1024) | 19.0 ± 1.2% (27.6%) | 24.4 ± 1.3% (33.5%) | 28.1 ± 1.4% (34.6%) |
 | elimination 5v5 (1024) | pending | pending | pending |
+| elimination 10v10 (512) | 25.0 ± 1.9% (43.1%) | 50.2 ± 2.2% (50.9%) | 42.0 ± 2.2% (50.2%) |
 | Frontline 5v5 (1024) | pending | pending | pending |
+| Frontline 10v10 (512) | 13.8 ± 1.4% (44.2%) | 46.1 ± 2.1% (50.1%) | 42.4 ± 2.1% (49.1%) |
 
 Aspects stay as they were at every size (mutual head-on 2-3.5% of kills; mixed 5v5 offset
 12-13%, flank 59%, tail 24-25%), and kills a minute within 0.1-0.2 of before. Mixed
@@ -86,14 +89,17 @@ lineups both teams on the same card; Imugi's strength cannot change with a card-
 should.
 
 Notes:
-- **The size spread is the open problem.** One card moves 2v2 from 15% to 30% and 10v10 from
-  45% to 72%. In kill share the 10v10 change is small (49.5% -> 51.8%): in a 10v10 the win
+- Elimination and Frontline at 10v10 land on even with A (50.2%, 46.1%, from 25% and 14%),
+  and A is nearer even there than B.
+- **The size spread in deathmatch is the open problem.** One card moves deathmatch 2v2 from
+  15% to 30% and 10v10 from 45% to 72%. In kill share the 10v10 change is small (49.5% -> 51.8%): in a 10v10 the win
   goes to the side with more kills almost every time, so a 2-point kill edge is a 72% win
   rate. The 5v5 target puts 10v10 Yongma-favoured. Round 12 tests a flatter pair (more
   Jujak turn, less Yongma shield).
 - 1v1 is mostly draws in 300 s (as in the freeze) and the card does not move it.
-- B (two ships changed, smaller each) centres 5v5 better (51.2%) but is further off at 2v2
-  and 10v10; A changes one number, so it is the after. B's files are not written; its card is
+- B (two ships changed, smaller each) centres deathmatch 5v5 better (51.2%) but is further
+  off at deathmatch 2v2 and 10v10 and at elimination/Frontline 10v10; A changes one number,
+  so it is the after. B's files are not written; its card is
   in `candidates/final.json`.
 
 ## The doctrine search (done first; why the cards)
