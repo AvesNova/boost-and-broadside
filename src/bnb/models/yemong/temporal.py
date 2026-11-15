@@ -1,5 +1,8 @@
 """The temporal sublayer (spec 6.4): per query token over time, a causal depthwise
-convolution and an RG-LRU, gated, then a gated MLP.
+convolution and an RG-LRU, gated, then a gated MLP (Griffin's recurrent block,
+`TemporalBlock`); or, as arm A16's challenger, a GRU in its place (`GRUBlock`). Both keep
+one state vector of the width per query token; `history` is how many past inputs a block
+also carries (the convolution buffer's taps: 3 for Griffin, none for the GRU).
 
 Sequences are time-first, (L, ..., D). `starts (L, ...)` marks the steps where an episode
 starts; `starts[0]` is ignored, because the carry a sequence begins from continues the
@@ -146,6 +149,8 @@ class TemporalBlock(nn.Module):
     """The temporal sublayer: per query token a causal convolution and an RG-LRU, gated, then a
     gated MLP, each pre-normed and residual. step is one decision, sequence a stored segment."""
 
+    history = TAPS - 1  # the convolution buffer's past inputs
+
     def __init__(self, width: int) -> None:
         super().__init__()
         self.input_norm = norm(width)
@@ -200,3 +205,65 @@ class TemporalBlock(nn.Module):
         history = TAPS - 1
         buffer = torch.cat([buffer.movedim(-2, 0), projected])[-history:].movedim(0, -2)
         return self._finish(tokens, mixed), state, buffer
+
+
+class GRUBlock(nn.Module):
+    """The classic alternative to `TemporalBlock` (arm A16): per query token a GRU over the
+    normed tokens, its hidden state projected back into the residual stream, then the same
+    gated MLP, each pre-normed and residual. No convolution, so the buffer is empty (history
+    0) and passes through. The gates are torch's `nn.GRUCell`'s, with its parameters as two
+    linear layers (reset, update, new rows in that order, as `nn.GRUCell` stacks them), so
+    they initialise as `nn.GRUCell` does and a segment computes every step's input gates in
+    one matrix product. The hidden state is kept in the state's dtype (the gates' products
+    may be 16-bit under autocast)."""
+
+    history = 0
+
+    def __init__(self, width: int) -> None:
+        super().__init__()
+        self.input_norm = norm(width)
+        self.input_gates = nn.Linear(width, 3 * width)
+        self.hidden_gates = nn.Linear(width, 3 * width)
+        self.output = nn.Linear(width, width, bias=False)
+        self.feedforward_norm = norm(width)
+        self.feedforward = GatedMLP(width, 4 * width)
+
+    def _update(self, input_gates: torch.Tensor, state: torch.Tensor) -> torch.Tensor:
+        """One GRU step from the input's gate terms (..., 3D) and the state (..., D)."""
+        input_reset, input_update, input_new = input_gates.to(state.dtype).chunk(3, -1)
+        hidden_reset, hidden_update, hidden_new = (
+            self.hidden_gates(state).to(state.dtype).chunk(3, -1)
+        )
+        reset = torch.sigmoid(input_reset + hidden_reset)
+        update = torch.sigmoid(input_update + hidden_update)
+        new = torch.tanh(input_new + reset * hidden_new)
+        return new + update * (state - new)
+
+    def _finish(self, tokens: torch.Tensor, hidden: torch.Tensor) -> torch.Tensor:
+        tokens = tokens + self.output(hidden.to(tokens.dtype))
+        return tokens + self.feedforward(self.feedforward_norm(tokens))
+
+    def step(
+        self, tokens: torch.Tensor, state: torch.Tensor, buffer: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """One step: tokens and state (..., D), buffer (..., 0, D). Returns the outputs, the
+        new state and the buffer."""
+        state = self._update(self.input_gates(self.input_norm(tokens)), state)
+        return self._finish(tokens, state), state, buffer
+
+    def sequence(
+        self, tokens: torch.Tensor, state: torch.Tensor, buffer: torch.Tensor, starts: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """A segment: tokens (L, ..., D), state (..., D), buffer (..., 0, D), starts (L, ...).
+        The input gates of every step at once, then the recurrence step by step, the state
+        cleared at every later start. Returns the outputs, the final state and the buffer."""
+        input_gates = self.input_gates(self.input_norm(tokens))
+        cleared = _later(starts)[..., None]
+        hidden = []
+        for time in range(tokens.shape[0]):
+            state = self._update(input_gates[time], torch.where(cleared[time], 0.0, state))
+            hidden.append(state)
+        return self._finish(tokens, torch.stack(hidden)), state, buffer
+
+
+TEMPORAL_BLOCKS = {"griffin": TemporalBlock, "gru": GRUBlock}  # `YemongConfig.temporal_block`

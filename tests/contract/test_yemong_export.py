@@ -100,10 +100,19 @@ A13 = dict(
         dict(next_state="delta"),
         dict(order="temporal_first", acceleration_inputs=True),
         dict(next_state="delta", position_inputs="fourier"),
+        dict(order="temporal_first", temporal_block="gru"),
         dict(A13),
         dict(A13, next_state_head=False, forecast_feedback=False),
     ],
-    ids=["absolute", "delta", "accelerations", "fourier", "a13_but_next_state", "a13_all"],
+    ids=[
+        "absolute",
+        "delta",
+        "accelerations",
+        "fourier",
+        "gru",
+        "a13_but_next_state",
+        "a13_all",
+    ],
 )
 def test_yemong_step_exports_to_onnx(tmp_path, settings):
     config = GameConfig(3, 4, 1500.0)

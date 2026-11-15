@@ -201,7 +201,7 @@ Measured on the rented 5090 (rl-v20, rl-dm, rl-kl, rl-mix-kl, bc-v19, bc-v20 and
 - **Purpose:** the architecture choice.
 - **Why an arm:** not predictable at our scale.
 - **When:** mid, after A15.
-- **Cost:** BC+RL; **3.7 h ($1.85)**, assuming a similar cost per step.
+- **Cost:** BC+RL; **about 4.8 h ($2.40)**, provisional (2026-11-16): the GRU sublayer's forward + backward is 8.6x Griffin's at the learner's 8-view micro-batch (5.1x at 40 views; a serial loop over the segment, no scan kernel), about +22 s on a 131k-step update's ~67 s learn, so about 1.3x per step. The whole-run timing is still to measure.
 - **Importance:** medium.
 
 **A17. Input encoding: the colour/HL-Gauss codes against raw scalars** [35]

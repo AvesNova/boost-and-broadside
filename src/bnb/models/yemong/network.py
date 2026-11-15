@@ -12,7 +12,7 @@ from . import kernels
 from .kernels import heads as head_kernel
 from .layers import norm
 from .spatial import SpatialBlock, Tables
-from .temporal import TemporalBlock
+from .temporal import TEMPORAL_BLOCKS
 
 
 class KindProjection(nn.Module):
@@ -112,7 +112,8 @@ ORDERS = ("spatial_first", "temporal_first", "spatial_only")
 
 class Block(nn.Module):
     """One trunk block: spatial_per_block spatial sublayers and one temporal sublayer (none
-    when not `temporal`), in the trunk's order (`ORDERS`)."""
+    when not `temporal`; of the kind `temporal_block` names, `TEMPORAL_BLOCKS`), in the
+    trunk's order (`ORDERS`)."""
 
     def __init__(
         self,
@@ -122,12 +123,13 @@ class Block(nn.Module):
         spatial_per_block: int,
         temporal: bool,
         gate: str = "none",
+        temporal_block: str = "griffin",
     ) -> None:
         super().__init__()
         self.spatial = nn.ModuleList(
             SpatialBlock(width, heads, map_width, gate) for _ in range(spatial_per_block)
         )
-        self.temporal = TemporalBlock(width) if temporal else None
+        self.temporal = TEMPORAL_BLOCKS[temporal_block](width) if temporal else None
 
     def attend(self, tokens, map_memory, token_tables, map_tables, key_mask=None):
         """The tokens (..., Q, D) after each of the block's spatial sublayers in turn, each
@@ -185,7 +187,9 @@ class Trunk(nn.Module):
     ones ("temporal_first"); or the spatial sublayers alone ("spatial_only", the ablation
     without temporal layers: the carry holds no trunk state, only the model's beliefs).
     The trunk carry is state (..., temporal_blocks, Q, D) and convolution_buffer
-    (..., temporal_blocks, Q, 3, D).
+    (..., temporal_blocks, Q, history, D): `history` is the temporal sublayer's, 3 for
+    Griffin's (`temporal_block` "griffin") and 0 for the GRU's ("gru"), whose buffer is
+    empty and passes through.
     """
 
     def __init__(
@@ -197,15 +201,20 @@ class Trunk(nn.Module):
         spatial_per_block: int,
         order: str = "spatial_first",
         gate: str = "none",
+        temporal_block: str = "griffin",
     ) -> None:
         super().__init__()
         if order not in ORDERS:
             raise ValueError(f"order {order!r} is not one of {ORDERS}")
+        if temporal_block not in TEMPORAL_BLOCKS:
+            raise ValueError(f"temporal_block {temporal_block!r} is not one of {TEMPORAL_BLOCKS}")
         self.order = order
         temporal = order != "spatial_only"
         self.temporal_blocks = blocks if temporal else 0  # the carry's blocks
+        self.history = TEMPORAL_BLOCKS[temporal_block].history  # the carry buffer's inputs
         self.blocks = nn.ModuleList(
-            Block(width, heads, map_width, spatial_per_block, temporal, gate) for _ in range(blocks)
+            Block(width, heads, map_width, spatial_per_block, temporal, gate, temporal_block)
+            for _ in range(blocks)
         )
 
     def _attend(self, tokens, map_memory, token_tables, map_tables, key_mask) -> torch.Tensor:

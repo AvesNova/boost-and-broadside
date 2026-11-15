@@ -97,6 +97,16 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
 
 ### 2026-11-16
 
+- **Game rules (author):** the game-rule questions from the freeze check (2v2 tickets, 1v1 deathmatch, elimination length, merges per kill, Frontline 3v3) wait for the balance result. Game and Yemong version numbers are only consistency checks: bump them whenever anything changes, no cost attached (Yemong v9 confirmed).
+- **Split critic (author):** (7) the return scale follows the offence premium, so A7 tests only the offence/defence balance; (8) the objective levels' sign split must not net within a tick: positive events go to the gain part and negative events to the loss part, even when both happen on the same tick; (9) retiring the two v1 two-hot fixture checks is fine.
+- **Arm-1 golden (author):** 0.016 of scale against 1e-7 everywhere else is too large to call rounding; find the cause before changing the test.
+- **CPU compiled rollout fails in Inductor (author):** check whether it points to a deeper bug that also affects the GPU path.
+- **Decision rule (author):** the late-climbing check (one 50M extension) and δ from the seed pairs are adopted.
+- **Run order (author):** keep every available GPU busy at all times: waves when there are several GPUs, a series on one. A24 goes in the very last wave. The Maybe runs are decided later from results (A10 only if entropy collapses).
+- **A2 (author):** vary ship and field counts together; 5v5 stays the most common (at least half of games), and uneven sizes (4v5, 3v5, ...) are included. The sampling equations are to be discussed (proposal first).
+- **Dry run curves (author):** the first baseline (dry) run rates the live curves on every evaluation condition (all modes, sizes and maps the suite uses), not only 5v5, to see how e.g. 10v10 evolves while training at 5v5; that informs the final branch choices.
+- Figures brainstorm: the author reviews it on 2026-11-17.
+
 - **Balance (author):** the Yongma–Jujak balance may adjust the card or both cards, not only Imugi's doctrines. Keep them relatively similar to now, every value within the range of the real WWII aircraft they are based on. Work on `tune/balance-final`, before and after recorded for the author to test; not merged until the author decides.
 
 ### 2026-11-15
