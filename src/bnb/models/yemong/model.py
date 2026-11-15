@@ -48,6 +48,7 @@ from .heads import HeadGroup, ShotTrajectoryHead, critic_values, next_state_logi
 from .inputs import (
     ACCELERATION_INPUTS,
     ARENA_CODE,
+    BOUNDARY_INPUTS,
     FIELD_INPUTS,
     MODE_INPUTS,
     POSITION_CODE,
@@ -438,6 +439,20 @@ class Carry:
 # the inference-time ablations `Ablations` carries
 ABLATIONS = ("rotary", "forecast", "absent_zones")
 
+# Each code's columns (`Yemong.code_columns`) start ~ N(0, 1 / groups): the token that reads
+# them and the groups the code's mass spreads over (the state code's for its own columns and,
+# as the state code's, the acceleration and ellipse codes; one per position level; the arena
+# radius's code is one group). The draw names keep the names they had.
+CODE_INIT_GROUPS = {
+    "codes": ("ship", "state"),
+    "accelerations": ("ship", "per_group"),
+    "ellipse": ("ship", "per_group"),
+    "field.position": ("field", "position"),
+    "global_token.position": ("global_token", "position"),
+    "zone.position": ("zone", "position"),
+    "arena": ("global_token", "one"),
+}
+
 # A carry's position offset before its first step: none drawn yet (offsets are in [0, P)).
 UNDRAWN_OFFSET = -1.0
 OFFSET_DRAWS = purpose_key("position offset")
@@ -741,37 +756,46 @@ class Yemong(nn.Module):
         }
         return tuple(name for name, present in built.items() if present)
 
+    def code_columns(self) -> dict[str, slice]:
+        """The columns of each code the token inputs read, by name (`CODE_INIT_GROUPS`
+        names the token): the layout `inputs.compose` writes, so that the first projections
+        start each code's columns as its own (`initialise_parameters`)."""
+        ship_width = self.encoder.ship.first.weight.shape[1]
+        global_width = self.encoder.global_token.first.weight.shape[1]
+        end = ship_width - self.state_code.ellipse_width
+        columns = {"codes": slice(0, self.state_code.input_width)}
+        if self.config.acceleration_inputs:  # the codes, not the flag that ends them
+            columns["accelerations"] = slice(end - ACCELERATION_INPUTS, end - 1)
+        if self.state_code.ellipse_width:
+            columns["ellipse"] = slice(end, ship_width)
+        for name in ("field", "global_token", "zone"):
+            columns[f"{name}.position"] = slice(0, POSITION_CODE)
+        if self.config.arena_code:  # before the boundary's inputs, which end the token
+            columns["arena"] = slice(
+                global_width - BOUNDARY_INPUTS - ARENA_CODE, global_width - BOUNDARY_INPUTS
+            )
+        return columns
+
     def initialise_parameters(self, generator) -> None:
         """After every layer's own (`bnb.models.initialise`): code columns of each first
         projection ~ N(0, 1 / groups); the next-state head starts as "nothing changes"
         (absolute) or at the measured marginal (delta); the error head's last layer zero at
         its marginal; the density head at an even spread of the ships."""
-        ship_weight = self.encoder.ship.first.weight
-        ship_name = "encoder.ship.first.weight"
-        ship_weight[:, : self.state_code.input_width].normal_(
-            0.0, self.state_code.input_groups**-0.5, generator=generator(f"{ship_name}[codes]")
-        )
-        ellipse = self.state_code.ellipse_width
-        end = ship_weight.shape[1] - ellipse
-        if self.config.acceleration_inputs:  # the codes as the state code's (not the flag)
-            ship_weight[:, end - ACCELERATION_INPUTS : end - 1].normal_(
+        columns = self.code_columns()
+        for name, (token, groups) in CODE_INIT_GROUPS.items():
+            if name not in columns:
+                continue
+            spread = {
+                "state": self.state_code.input_groups,
+                "per_group": self.state_code.groups,
+                "position": POSITION_LEVELS,
+                "one": 1,
+            }[groups] ** -0.5
+            weight = getattr(self.encoder, token).first.weight
+            weight[:, columns[name]].normal_(
                 0.0,
-                self.state_code.groups**-0.5,
-                generator=generator(f"{ship_name}[accelerations]"),
-            )
-        if ellipse:  # as the state code's columns
-            ship_weight[:, end:].normal_(
-                0.0, self.state_code.groups**-0.5, generator=generator(f"{ship_name}[ellipse]")
-            )
-        for name in ("field", "global_token", "zone"):
-            getattr(self.encoder, name).first.weight[:, :POSITION_CODE].normal_(
-                0.0,
-                POSITION_LEVELS**-0.5,
-                generator=generator(f"encoder.{name}.first.weight[position]"),
-            )
-        if self.config.arena_code:  # the arena radius's code ends the token: one group
-            self.encoder.global_token.first.weight[:, -ARENA_CODE:].normal_(
-                0.0, 1.0, generator=generator("encoder.global_token.first.weight[arena]")
+                spread,
+                generator=generator(f"encoder.{token}.first.weight[{name.split('.')[-1]}]"),
             )
         if self.config.next_state_head:
             next_state = self.ship_heads.lasts[self.ship_head_names.index("next_state")]

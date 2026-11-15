@@ -4,6 +4,7 @@ geometry head's targets and pairs, and the record defaults that keep older build
 were built."""
 
 import math
+import pathlib
 
 import pytest
 import torch
@@ -289,3 +290,53 @@ def test_a_record_with_the_read_out_off_still_reads_and_one_with_it_on_fails():
         from_json(YemongConfig, {**data, "rotary_readout": True})
     learner, _ = from_json(LearnerConfig, {**to_json(LearnerConfig()), "rotary_readout": 0.5})
     assert learner == LearnerConfig()
+
+
+def test_each_initialised_code_slice_holds_its_code():
+    """`Yemong.code_columns`, the columns the first projections start as codes, against the
+    tokens one step composes: each slice as wide as its code, the arena radius's code where
+    the arena slice is (before the boundary's inputs, which end the global token), and the
+    acceleration codes' components each a distribution."""
+    from bnb.contracts import Obs
+    from bnb.contracts.obs import GLOBAL
+    from bnb.models.yemong.inputs import ACCELERATION_CODE, ACCELERATIONS, POSITION_CODE
+
+    golden = torch.load(
+        pathlib.Path(__file__).parent / "golden" / "yemong_v1_spread_steps.pt", weights_only=True
+    )
+    obs = cases.golden_obs(golden)
+    net = cases.model(arena_code=True, acceleration_inputs=True, spread_inputs="ellipse")
+    net = net.double()
+    obs = cases.cast(obs, torch.float64)
+    columns = net.code_columns()
+    widths = {
+        "codes": net.state_code.input_width,
+        "accelerations": ACCELERATION_CODE,
+        "ellipse": net.state_code.ellipse_width,
+        "field.position": POSITION_CODE,
+        "global_token.position": POSITION_CODE,
+        "zone.position": POSITION_CODE,
+        "arena": ARENA_CODE,
+    }
+    assert columns.keys() == widths.keys()
+    for name, width in widths.items():
+        assert columns[name].stop - columns[name].start == width, name
+    seen = {}
+    hooks = [
+        getattr(net.encoder, token).first.register_forward_pre_hook(
+            lambda _, args, token=token: seen.__setitem__(token, args[0])
+        )
+        for token in ("ship", "global_token")
+    ]
+    carry = net.initial_carry(obs.ships.shape[1], 5, 10)
+    view = Obs(ships=obs.ships[0], fields=obs.fields[0], globals=obs.globals[0], zones=obs.zones[0])
+    with torch.no_grad():
+        net.step(carry, view, cases.resets(obs)[0], torch.arange(obs.ships.shape[1]))
+    for hook in hooks:
+        hook.remove()
+    radius = obs.globals[0][..., GLOBAL["arena_radius"]]
+    arena = seen["global_token"][..., columns["arena"]].reshape(radius.shape + (ARENA_CODE,))
+    torch.testing.assert_close(arena, arena_code(radius), rtol=0, atol=0)
+    accelerations = seen["ship"][..., columns["accelerations"]]
+    sums = torch.stack([part.sum(-1) for part in accelerations.split(ACCELERATIONS[0].width, -1)])
+    torch.testing.assert_close(sums, torch.ones_like(sums))
