@@ -138,7 +138,7 @@ def _CLASS_LIKE() -> set[str]:
 def _options(cls) -> set[str]:
     """A command dataclass's flags: each field's, or the name `tyro.conf.arg` gives it; a
     positional field (`tyro.conf.Positional`) has none; a nested config's are `--name.field`,
-    or its own flags under `tyro.conf.OmitArgPrefixes`."""
+    or its own flags under `tyro.conf.OmitArgPrefixes`; a boolean field's also `--no-name`."""
     import typing
 
     import tyro
@@ -159,12 +159,14 @@ def _options(cls) -> set[str]:
             options |= {f"--{name}.{option[2:]}" for option in _options(hints[field.name])}
         else:
             options.add("--" + name.replace("_", "-"))
+            if hints[field.name] is bool:  # tyro's flag pair: --name and --no-name
+                options.add("--no-" + name.replace("_", "-"))
     return options
 
 
 def command(arguments: str) -> str | None:
     """None if `bnb <arguments>` names a command (`bnb.cli.COMMANDS`) and uses only its
-    options (`bnb.cli.Train`, `Runs`, `ShipCard`, `Ratings`, `HeadToHead`, `Crossover`,
+    options (`bnb.cli.Train`, `Runs`, `Average`, `ShipCard`, `Ratings`, `HeadToHead`, `Crossover`,
     `Evaluate`, `Pool` or `Figures`, and `EvaluateDecide` and `EvaluateDesign` for `bnb evaluate
     decide` and `bnb evaluate design`, `FiguresVideo` and `FiguresWatch` for `bnb figures video`
     and `bnb figures watch`;
@@ -175,6 +177,7 @@ def command(arguments: str) -> str | None:
     from bnb.cli import (
         COMMANDS,
         QUEUE_FLAGS,
+        Average,
         Crossover,
         Evaluate,
         EvaluateDecide,
@@ -203,6 +206,7 @@ def command(arguments: str) -> str | None:
         "train": Train,
         "play": Play,
         "runs": Runs,
+        "average": Average,
         "ship-card": ShipCard,
         "ratings": Ratings,
         "head-to-head": HeadToHead,
