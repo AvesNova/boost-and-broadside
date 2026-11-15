@@ -334,7 +334,7 @@ def test_the_simulated_procedure_decides_a_large_difference_early():
 
 def _config(**changes) -> EvaluationConfig:
     """Tiny games: one head-to-head condition per mode at 1v1 or 2v2 and deathmatch's
-    break-even against 3 scripted ships."""
+    break-even against 3 scripted ships, each player fielding 1 to 6 (a 6-a-side game)."""
     return EvaluationConfig(
         **{
             **dict(
@@ -342,8 +342,8 @@ def _config(**changes) -> EvaluationConfig:
                 presets=("tiny_frontline", "tiny_deathmatch", "tiny_elimination"),
                 lineup_types=("Fighter", "Heavy"),
                 opponent_count=3,
-                maximum_count=3,
-                bracket=(1, 2, 3),
+                maximum_count=6,
+                bracket=(1, 3, 6),
                 head_to_head_blocks=2,
                 head_to_head_environments=8,
                 break_even_blocks=4,
@@ -459,7 +459,7 @@ def test_a_pilot_records_every_batch_and_resumes_past_it(tmp_path, tiny_presets)
 
 
 @pytest.mark.usefixtures("global_generator")
-def test_the_lineups_are_mirrored_and_keyed_by_condition_and_batch():
+def test_the_lineups_are_mirrored_and_keyed_by_condition_and_batch(tiny_presets):
     config = _config()
     condition = evaluation_settings_condition("deathmatch_1v1")
     first = evaluation.lineups(config, condition, 3, 16, (0, 1))
@@ -472,6 +472,47 @@ def test_the_lineups_are_mirrored_and_keyed_by_condition_and_batch():
         crossover.lineup_draw(0, 3, 16, 1, (0, 1)),
         crossover.lineup_draw(0, 3, 16, 1, (0, 1), stream="crossover_lineup"),
     )
+
+
+def test_every_condition_plays_its_presets_own_arena_unless_the_density_rule_is_asked():
+    fixed = EvaluationConfig()
+    for condition in CONDITIONS:
+        base = api.PRESETS[fixed.presets[evaluation.MODES.index(condition.mode)]]
+        game = evaluation.game_of(condition, fixed)
+        assert game.arena_radius == base.arena_radius
+        size = condition.ships_per_team or fixed.crossover_config().ships_per_team
+        assert game.ships_per_team == size
+    density = EvaluationConfig(map_rule="density")
+    small = evaluation.game_of(evaluation_settings_condition("elimination_1v1"), density)
+    base = api.PRESETS["real_scale_elimination"]
+    assert small.arena_radius == api.arena_radius_for(base, 1) < base.arena_radius
+    assert evaluation.game_of(evaluation_settings_condition("elimination_5v5"), density) == base
+    # break-even's density map is the opponent's fleet's, whatever the larger game
+    wide = evaluation.game_of(evaluation_settings_condition("elimination_break_even"), density)
+    assert wide.arena_radius == api.arena_radius_for(base, density.opponent_count)
+    with pytest.raises(ValueError, match="map rule"):
+        EvaluationConfig(map_rule="scaled")
+
+
+def test_an_unscored_condition_is_neither_scored_nor_played(tmp_path, tiny_presets):
+    default = EvaluationConfig()
+    assert default.unscored == ("frontline_break_even",)
+    names = [condition.name for condition in default.scored()]
+    assert len(names) == 12 and "frontline_break_even" not in names
+    weights = evaluation.weights(default.scored())
+    assert math.isclose(weights["frontline_5v5"], 1 / 6)
+    with pytest.raises(ValueError, match="unknown"):
+        EvaluationConfig(unscored=("frontline_1v1",))
+    with pytest.raises(ValueError, match="every one is unscored"):
+        EvaluationConfig(conditions=("frontline_break_even",))
+    config = _config(unscored=("deathmatch_break_even",))
+    players = dict(A=player("scripted"), B=player("rung_T2"))
+    suite = evaluation.Evaluation(tmp_path, players, player("scripted"), config, CPU)
+    assert "deathmatch_break_even" not in [c.name for c in suite.conditions]
+    with pytest.raises(ValueError, match="not among the scored"):
+        evaluation.Evaluation(
+            tmp_path, players, player("scripted"), config, CPU, own=("deathmatch_break_even",)
+        )
 
 
 def evaluation_settings_condition(name: str) -> Condition:
@@ -571,6 +612,7 @@ def test_the_command_parses_its_options_with_the_decided_defaults():
     assert options.settings == EvaluationConfig() and options.play == ("deathmatch_1v1",)
     assert options.settings.alpha == 0.05 and options.settings.delta == 0.02
     assert options.settings.opponent_count == 20 and options.settings.gate_stderrs == 2.0
+    assert options.settings.maximum_count == 30 and options.settings.map_rule == "preset"
     changed = tyro.cli(Evaluate, args=["A", "B", "--out", "DIR", "--looks", "3"])
     assert changed.settings.looks == 3
     assert tyro.cli(EvaluateDecide, args=["DIR", "--peek"]).peek

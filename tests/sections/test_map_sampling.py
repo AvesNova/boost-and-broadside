@@ -135,16 +135,17 @@ def test_a_reset_draws_a_new_arena_and_the_shapes_stay():
     assert changed > batch // 2
 
 
-def test_training_samples_and_the_lanes_and_evaluation_do_not():
-    config = TrainConfig(api.PRESETS["deathmatch"])
+def test_training_samples_only_when_asked_and_the_lanes_never():
+    off = TrainConfig(api.PRESETS["deathmatch"])
+    assert off.arena_scale is None  # fixed maps by default (the author's rule, 2026-11-15)
+    assert all(pool.arena_scale is None for pool in training_pools(off))
+    config = TrainConfig(api.PRESETS["deathmatch"], arena_scale=ArenaScale())
     assert config.arena_scale == ArenaScale(0.35, 0.5, 2.0)
     pools = training_pools(config)
     assert all(pool.arena_scale == config.arena_scale for pool in pools)
     modes = lanes.mode_games(pools, config.game, lambda pool, game: pool.mode or game.mode)
     every, _, _ = lanes.lane_pools(pools, modes, 64, lanes.LaneConfig(environments=64))
     assert [pool.arena_scale for pool in every[len(pools) :]] == [None] * (len(every) - len(pools))
-    off = TrainConfig(api.PRESETS["deathmatch"], arena_scale=None)
-    assert all(pool.arena_scale is None for pool in training_pools(off))
     # the setting round-trips through the run's config.json
     read, _ = from_json(TrainConfig, to_json(config))
     assert read.arena_scale == config.arena_scale

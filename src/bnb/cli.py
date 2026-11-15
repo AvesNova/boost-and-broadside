@@ -361,10 +361,12 @@ class HeadToHead:
 class Crossover:
     """The break-even ship count (`bnb crossover POLICY`): how many of POLICY's ships hold
     `--opponent-count` (20) of the opponent's (`--opponent`, Imugi), per mode
-    (`bnb.league.crossover`). The game is each preset's at the larger fleet's size, its
-    arena by the density rule (`bnb.game.api.arena_radius_for`); the policy's unused slots
-    are benched (they stay dead and out of play, and team deathmatch's winning score counts
-    the enemy's active ships). Every game draws its lineup, each slot one of
+    (`bnb.league.crossover`). The game is each preset's at the larger fleet's size, on the
+    preset's own arena (`--map-rule preset`, the default: every map fixed-size, the author's
+    rule of 2026-11-15) or the density rule's for the opponent's fleet (`--map-rule
+    density`, the map-size arm's; `bnb.game.api.arena_radius_for`); each team's unused
+    slots are benched (they stay dead and out of play, and team deathmatch's winning score
+    counts the enemy's active ships). Every game draws its lineup, each slot one of
     `--lineup-types` with equal chance, both teams flying it.
 
     Batch by batch, a logistic fit of the policy's score (a draw half a win) on log(count)
@@ -382,9 +384,11 @@ class Crossover:
     SHA-256) goes to `artifacts/crossover/<time>/result.json`.
 
     policy: the policy (as for bnb head-to-head); opponent: its opponent; opponent_count:
-    the opponent's ships; minimum_count and maximum_count: the policy's counts; presets;
-    bracket: the first batch's counts; target_stderr: N*'s standard error that stops a mode
-    (ships); budget_games: the most games per mode; lineup_types: ship type names of the
+    the opponent's ships; minimum_count and maximum_count: the policy's counts (up to 30,
+    above the opponent's 20, so a policy weaker than the opponent at parity still crosses
+    inside the range); presets; map_rule: "preset" or "density" (above); bracket: the first
+    batch's counts; target_stderr: N*'s standard error that stops a mode (ships);
+    budget_games: the most games per mode; lineup_types: ship type names of the
     preset's set; blocks and block_environments: the engine's layout (a batch is blocks x
     block_environments games, a block one count); seed: the games' draws and lineups;
     device; out; runs_directory: as for bnb train.
@@ -394,12 +398,13 @@ class Crossover:
     opponent: str = "imugi"
     opponent_count: int = 20
     minimum_count: int = 1
-    maximum_count: int = 20
+    maximum_count: int = 30
     presets: tuple[str, ...] = (
         "real_scale_frontline",
         "real_scale_deathmatch",
         "real_scale_elimination",
     )
+    map_rule: Literal["preset", "density"] = "preset"
     bracket: tuple[int, ...] = (6, 10, 14, 20)
     target_stderr: float = 0.3
     budget_games: int = 8192
@@ -429,7 +434,8 @@ class Evaluate:
     batch with the next look's ETA.
 
     a, b: the players; out: the directory; play: the conditions this process plays (None:
-    every scored one, `--conditions`); games: a pilot instead: play this process's conditions to
+    every scored one: `--conditions` less `--unscored`, which by default leaves out
+    frontline_break_even); games: a pilot instead: play this process's conditions to
     this many games each and take no look; settings: the suite's settings, recorded in
     settings.json (`bnb.league.evaluation_settings.EvaluationConfig`); device;
     runs_directory: as for bnb train; poll_seconds: how long a process with nothing to play
@@ -1732,7 +1738,7 @@ def crossover(options: Crossover) -> None:
     """`bnb crossover`: the break-even count per preset, recorded batch by batch."""
     import torch
 
-    from bnb.game.api import PRESETS, arena_radius_for, type_names
+    from bnb.game.api import PRESETS, type_names
     from bnb.league import crossover as break_even
     from bnb.league.matches import ArenaConfig
     from bnb.runs import provenance, records
@@ -1772,17 +1778,16 @@ def crossover(options: Crossover) -> None:
         unknown = [name for name in options.lineup_types if name not in names]
         if unknown:
             raise SystemExit(f"--lineup-types: {unknown} are not types of {base.ship_set}: {names}")
-        size = config.ships_per_team
-        game = dataclasses.replace(
-            base, ships_per_team=size, arena_radius=arena_radius_for(base, size)
-        )
+        game = break_even.break_even_game(base, config, options.map_rule)
+        size = game.ships_per_team
         mode_config = dataclasses.replace(
             config, lineup_types=tuple(names.index(name) for name in options.lineup_types)
         )
         print(
             f"{preset} ({number} of {len(options.presets)}): {policy.name} with "
             f"{config.minimum_count}-{config.maximum_count} ships against "
-            f"{config.opponent_count} {opponent.name}, {size}v{size} game"
+            f"{config.opponent_count} {opponent.name}, {size}v{size} game, "
+            f"arena radius {game.arena_radius:g} m ({options.map_rule})"
         )
         try:
             results[preset] = break_even.measure(
@@ -1809,6 +1814,7 @@ def crossover(options: Crossover) -> None:
     payload = dict(
         presets=results,
         config=dataclasses.asdict(config),
+        map_rule=options.map_rule,
         lineup_types=list(options.lineup_types),
         layout=dataclasses.asdict(layout),
         records=str(records_directory),

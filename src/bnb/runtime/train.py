@@ -178,10 +178,13 @@ class TrainConfig:
     (`bnb.runtime.snapshots.SnapshotSchedule`; `RL_SNAPSHOTS` by default, decided
     2026-11-14: 1, 2, 3, 4, 6, 8, 10, 12, 16 and 20M steps, then every 5M), and always at
     the end of each process's segment (`bnb.runs.session.train`).
-    arena_scale: map-size sampling for the training pools (`bnb.contracts.ArenaScale`; the
-    author, 2026-11-13: ln scale ~ Normal(0, 0.35) truncated to [0.5, 2], each
-    environment's arena drawn at every reset), or None for each pool's own arena every
-    episode. The rating lanes, evaluation and play keep their games' own sizes.
+    arena_scale: None (the default) plays each pool's own arena every episode; map-size
+    sampling for the training pools (`bnb.contracts.ArenaScale`: ln scale ~ Normal(0, 0.35)
+    truncated to [0.5, 2], each environment's arena drawn at every reset) is opt-in, for
+    the map-size arm only (the author's rule, 2026-11-15: every map is fixed-size until an
+    agent has trained successfully on variable-size maps; `--set
+    'arena_scale={"sigma": 0.35, "low": 0.5, "high": 2.0}'`). The rating lanes, evaluation
+    and play keep their games' own sizes.
     active_fields: field-count sampling for the training pools (`bnb.contracts.ActiveFields`:
     each episode plays a drawn number of the game's field slots, the rest absent, and the
     model masks the absent ones, `Yemong.mask_absent_fields`), or None for the games' own
@@ -246,7 +249,7 @@ class TrainConfig:
     teacher: TeacherConfig = TeacherConfig()
     stop: StopConfig = StopConfig()
     policy_snapshots: SnapshotSchedule = RL_SNAPSHOTS
-    arena_scale: ArenaScale | None = ArenaScale()
+    arena_scale: ArenaScale | None = None
     active_fields: ActiveFields | None = None
     lineup: tuple[str, ...] | None = None
     lineup_draw: bool = True

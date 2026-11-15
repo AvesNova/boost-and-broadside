@@ -79,10 +79,13 @@ The crossed pools, game by game so that each game is one contiguous slice:
 
 <!-- generated: mixed-pools -->
 
-Training varies the map size by default: every training environment draws its arena
-scale at each reset (`TrainConfig.arena_scale`, ln scale ~ Normal(0, 0.35) truncated to
-0.5 to 2, then the mode's minimum radius). Set `arena_scale=None` to play each pool's own
-radius. The rating lanes always play their games' own sizes. See
+Every map is fixed-size by default: each pool plays its own arena radius every episode
+(`TrainConfig.arena_scale=None`). This holds until an agent has trained successfully on
+variable-size maps (the author's rule, 2026-11-15); map-size sampling is an opt-in setting
+for the map-size arm, `--set 'arena_scale={"sigma": 0.35, "low": 0.5, "high": 2.0}'`
+(every training environment draws its arena scale at each reset, ln scale ~ Normal(0,
+0.35) truncated to 0.5 to 2, then the mode's minimum radius). The rating lanes always play
+their games' own sizes. See
 [Mixed batches](../explanation/game/mixed-batches.md#map-size-sampling).
 
 The number of fields can vary too: `TrainConfig.active_fields=ActiveFields(low, high)`

@@ -46,8 +46,12 @@ of the ships' time beyond the boundary (at 1300 m: 0-7.5 s, 6-14 s and 10-16%).
 `real_scale_deathmatch` plays a 4200 m arena (the author, 2026-11-13), smaller than the
 real-scale map's 7800 m, which `real_scale_frontline` keeps.
 
-A game at another fleet size takes its arena radius from `bnb.game.api.arena_radius_for`
-(game v16): the density rule (the base game's radius times sqrt(n / n_base), so the ships
+A game at another fleet size keeps its preset's radius by default: every map is
+fixed-size until an agent has trained successfully on variable-size maps (the author's
+rule, 2026-11-15), so evaluation and the break-even count play each preset's own arena at
+every team size. Where the density rule is asked for (the map-size arm's opt-in,
+`--map-rule density`), the radius comes from `bnb.game.api.arena_radius_for` (game v16):
+the density rule (the base game's radius times sqrt(n / n_base), so the ships
 stay as crowded), times an optional arena scale, then at least the mode's minimum
 (`bnb.game.modes.rules.MINIMUM_ARENA_RADIUS`, m at map scale 1 times the ship set's map
 scale, 3 for the real-scale set). Team deathmatch's minimum is 1000 m, 3000 m at real

@@ -422,8 +422,9 @@ cut; where they differ, this section and the code win.
     and truncated to [low, high] by the inverse CDF of one uniform
     (`bnb.game.layout.draw_arena_scale`). The state keeps it as `Match.arena_scale` (B,)
     (1 where the pool does not sample); the episode's arena radius is the pool's radius
-    times it, at least the mode's minimum (`bnb.game.layout.sized`). Training samples by
-    default (`TrainConfig.arena_scale`).
+    times it, at least the mode's minimum (`bnb.game.layout.sized`). Training samples only
+    when `TrainConfig.arena_scale` is set (off by default since 2026-11-15; the map-size
+    arm's setting).
   - **Field-count sampling (2026-11-15):** `GameConfig.active_fields` and
     `Pool.active_fields` (`ActiveFields`: low, high; None, every field) draw each
     episode's active field count from the counts in range that keep the map's pair

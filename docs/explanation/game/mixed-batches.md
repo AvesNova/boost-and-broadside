@@ -61,8 +61,10 @@ graph. The scale takes one more tick uniform, but only when some pool samples, s
 without sampling draws exactly as before. Pools without `arena_scale` play their own radius
 every episode.
 
-Training samples by default (`TrainConfig.arena_scale`: sigma 0.35, bounds 0.5 to 2;
-`None` turns it off). The rating lanes (`bnb.runtime.lanes.lane_pools`), evaluation and
+Training does not sample by default (`TrainConfig.arena_scale=None`): every map is
+fixed-size until an agent has trained successfully on variable-size maps (the author's
+rule, 2026-11-15). Sampling (sigma 0.35, bounds 0.5 to 2) is an opt-in setting for the
+map-size arm. The rating lanes (`bnb.runtime.lanes.lane_pools`), evaluation and
 play keep their games' own sizes. To rate at another size, give the game that radius
 (`api.arena_radius_for(game, ships_per_team, scale)`).
 
