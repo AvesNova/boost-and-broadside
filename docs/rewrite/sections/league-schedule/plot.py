@@ -11,8 +11,9 @@ def rule(first=5.0, add=5.0, growth=0.17, end=500.0):
         nxt=points[-1]+max(add, growth*points[-1])
         if nxt>end: return points
         points.append(nxt)
-pts=[round(p) for p in rule()]
-show("rule max(+5M, x1.17) rounded", pts)
+from doubling import doubling
+pts=doubling(5, 50)
+show("every 5M to 50M, then the interval doubles with the steps", pts)
 print("to 500M:", pts, len(pts))
 
 INK, MUTED, GRID, SURF = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb"
@@ -30,9 +31,9 @@ for p in inside:
     top.plot([0,p],[e,e],color=MUTED,lw=0.6,alpha=0.6,zorder=1)
     top.annotate(f"{p}M", (p,e), xytext=(4,-12), textcoords="offset points", fontsize=8, color=MUTED)
 top.scatter(inside,E(np.array(inside)),s=36,color=INK,edgecolor=SURF,linewidth=1.5,zorder=4,
-    label="proposed members: next = max(+5M, ×1.17)")
+    label="members: every 5M to 50M, then the interval doubles when the steps double")
 top.set(xlim=(0,165),ylim=(800,2450),xlabel="RL steps (millions)",ylabel="Elo (Imugi = 1000)")
-top.set_title("rl-v20 (game v20): mean Elo over the three modes, with the proposed league snapshot rule",
+top.set_title("rl-v20 (game v20): mean Elo over the three modes, with the staged league snapshot rule (5 per doubling)",
     loc="left",color=INK,fontsize=12)
 top.legend(loc="lower right",frameon=False)
 top.spines[["top","right"]].set_visible(False)
