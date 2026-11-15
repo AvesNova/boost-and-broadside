@@ -165,3 +165,32 @@ size-elim-10v10    128  1.00    60    54    78   100    14  0.04      7.74
 | 10v10 | 10.48 (sd 2.45) | 1.05 | 91 / 87 / 79 |
 
 Tickets per ship (`kills_per_ship` × team size, as today) would leave small games mostly on the clock: 8 tickets at 1v1 would take a median 20 minutes. The 80% column fits **T ≈ 4 · N^(4/3)** (4, 10, 34, 87 for N = 1, 2, 5, 10). Proposal: set deathmatch tickets per team by that rule (or a table) instead of per ship. To re-measure with the explore search and trained agents.
+
+## 8. The explore search with independent spawns (2026-11-15)
+
+Every row here uses the new spawns (each team's area centre drawn on its own over a 120° sector of its side, 0.5–0.8 arena radii; noses toward the map's centre). Imugi with the moving-frame edge steer. "tight" and "wide" are the explore search's spacings (`imugi_combat.SPACINGS`): allies pushed apart within 0.5 or 1.6 gun ranges, pulled together beyond 1–3 or 2.5–4.5. Ships see 1 km at real scale. gap: each living ship's mean distance to its nearest living ally (m), median over games.
+
+```
+label            games ended  mean   med   p80   p90  hit1  bdry kills/min  gap m
+x-none-centre      128  0.95    75    51    88   143    13  0.00      2.64    671
+x-none-tight       128  0.79   174   156   300   300    89  0.00      1.09    327
+x-none-wide        128  0.84   148   126   245   300    49  0.00      1.33    635
+x-lin120-centre    128  1.00    59    52    80   100    13  0.09      3.58    650
+x-lin120-tight     128  1.00    80    85    98   104    50  0.20      2.71    347
+x-lin120-wide      128  1.00    74    75    92   100    37  0.18      2.93    634
+
+loser's k-th death: median/p90 s [boundary share]
+x-none-centre      16/35  [0.00]    26/51  [0.00]    35/66  [0.00]    41/87  [0.00]    50/127 [0.01]
+x-none-tight       96/213 [0.00]   102/220 [0.01]   116/225 [0.00]   122/223 [0.00]   126/252 [0.00]
+x-none-wide        60/141 [0.00]    66/147 [0.00]    75/162 [0.00]    88/189 [0.01]   106/211 [0.01]
+x-lin120-centre    18/35  [0.03]    26/51  [0.02]    34/71  [0.08]    43/86  [0.13]    52/100 [0.12]
+x-lin120-tight     52/83  [0.09]    60/89  [0.14]    66/94  [0.16]    74/100 [0.24]    85/104 [0.33]
+x-lin120-wide      45/69  [0.05]    50/77  [0.13]    57/85  [0.16]    65/90  [0.18]    75/100 [0.29]
+```
+
+Deathmatch (64 games each, 600 s, tickets off; deaths per team per minute, ± SE): centre 4.69 ± 0.14 (section 6), explore-tight 3.96 ± 0.11, explore-wide 4.33 ± 0.12. Spacing: tight 919 m, wide 1046 m (respawns spread a deathmatch team out).
+
+- **Without the handshake, finding the enemy takes time.** With a 1 km view on a 7.8 km map, the first hit comes at 89 s (tight) or 49 s (wide) without a shrink, against 13 s for "centre", and 16–21% of games are still on at 300 s.
+- **Wide spacing finds the enemy sooner** (it sweeps a wider strip) and is about as spread as "centre" was (635 m against 671 m). Tight bunches up (327 m).
+- **With the linear 120 s shrink, the shrink does the meeting:** explore-wide's first hit at 37 s, median game 75 s (against 52 s), p90 unchanged at 100 s, and the boundary's share of deaths up from 9% to 18% (29% of last deaths).
+- **Deathmatch:** explore-wide kills 8% less than "centre" (4.33 against 4.69, about 2 SE); tickets for 80% within 10 minutes move from about 36–40 to about 33–37.
