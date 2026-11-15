@@ -20,8 +20,17 @@ Updated 2026-11-15 10:30; the conversation behind it is in [briefing.md](briefin
 
 Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On resume: read each branch's progress.md (it has a resume note), merge the finished ones, relaunch the unfinished ones.
 - `feat/split-critic` (ed7f2c8a): **done**, with HL-Gauss critic targets and 2 padding bins per side. For the author: should the return scale follow the premium; are the sign-split objective levels acceptable; is retiring two v1 fixture checks acceptable. The single-value (`summed_reward`) arm is removed.
-- `check/freeze-final`: measurement unit `freeze-final.service` stopped mid-run (per-batch records; resume command in its progress.md); reports not written yet.
-- `feat/gru-temporal`, `feat/hl-gauss-codes`: in progress, saved as WIP (see their progress.md).
+- `check/freeze-final` (0b675320): game **version 22** (shield bug fixed: a zero-damage frontal hit didn't restart the recharge wait); vizia dropped (no numbers changed; fixed Imugi's doctrine lookup by type count). All mode conditions measured; left: the head-on passes run (about 8 min GPU, resume command in its progress.md), then results.md and review.md. **First results for the author:**
+  - deathmatch 5v5 ends by tickets 80.5%, but 1v1 0.4% and 2v2 43% (Imugi rarely finds the enemy);
+  - elimination 5v5 median 1:35, p80 2:18 (shorter than expected); boundary deaths 9.9%, last deaths 19% (as expected);
+  - Frontline 5v5: P(reversal) 0.47, 78% by capture, first capturer wins 78%;
+  - **Yongma team against Jujak team (deathmatch 5v5): Yongma 21.8 ± 1.8%, far outside 55/45**;
+  - mutual head-on 3% of kills; aspects about 14% offset head-on, 50% flank, 30% tail;
+  - deathmatch respawn stays 10 s (the author's 2026-11-13 choice; 8 s gave +3% kills per minute).
+  
+  To decide before merging: the Yongma–Jujak imbalance and small-team deathmatch.
+- `feat/gru-temporal` (14fdd212): the GRU option, tests (13) and export are done; timing not done: both timing runs failed (Griffin during the venv rebuild; GRU in CUDA-graph capture, a CPU→CUDA copy, undiagnosed). It committed and untracked a `.venv` symlink; merge `feat/imugi-boundary` before merging it.
+- `feat/hl-gauss-codes` (791678db): encoders switched (2 padding bins a side; decode subtracts 0.75² + 1/12), exact round trips; several tests still to update and rerun, docs and the spread-consumer check not done. Found an old `scalar_encode` bug (mean off by up to 7 bins near an edge at large spread).
 - Not started: the audit of which Yes/Maybe arms need code (stopped; rerun read-only), then building the missing ones; then the repo cleanup and settings files per run.
 - Drafts awaiting the author: decision-rule.md, figures-brainstorm.md, run-order.md.
 - The main checkout's `.venv` was rebuilt at 20:45 after a committed symlink broke it (`.gitignore` now ignores `.venv` as file or directory).
