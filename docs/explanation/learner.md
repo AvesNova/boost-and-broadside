@@ -132,14 +132,17 @@ uv run --no-sync bnb train --preset mixed \
 
 A warm start from a policy file counts its steps from 0, a fork from its parent's.
 
-The premium changes only the advantage. Each part's critic learns its part's own return,
-and the return scale reads the unweighted sum of the returns, so one BC run serves every
-premium (`tests/sections/test_split_critic.py::test_the_learner_weighs_the_advantage_and_never_the_targets`).
+The premium changes the advantage and the return scale, never the critic's targets: each
+part's critic learns its part's own return, so one BC run serves every premium
+(`tests/sections/test_split_critic.py::test_the_learner_weighs_the_advantage_and_never_the_targets`).
+The return scale reads the sum of the returns with the advantage's weights (decided
+2026-11-16), so a premium changes the balance of offence and defence in the advantage over
+the scale, not the policy's overall step: a premium that scales both the offence's
+advantage and its return by p leaves the scaled advantage as it was where the offence is all
+there is (`tests/sections/test_split_critic.py::test_the_return_scale_follows_the_premium`).
 At 1:1 the advantage equals the zero-sum levels' advantage from the same values, since GAE
 is linear (`tests/sections/test_split_critic.py::test_one_to_one_is_the_zero_sum_advantage`);
-it differs from an unsplit critic's only through what the two critics predict. The
-return scale does not follow the premium, so a premium also enlarges the policy's step on
-the combat levels, as a larger reward weight would.
+it differs from an unsplit critic's only through what the two critics predict.
 
 A build from before the split (2026-11-15) names the reward levels themselves, or the single
 level summed_reward. Its policy file still loads and plays, its outcome level
@@ -147,7 +150,8 @@ level summed_reward. Its policy file still loads and plays, its outcome level
 it.
 
 The return scale is the gap between exponential moving averages of the 5th and 95th
-percentiles of the summed returns of living own ships, at least 1, updated once per update
+percentiles of the summed returns of living own ships (each part weighed as in the
+advantage), at least 1, updated once per update
 (`bnb.models.yemong.critic.ReturnScale`). Advantages are divided by it, with no mean
 subtracted, so a factor common to every reward weight leaves the policy's gradient as it
 was. The weights set the units the critic works in: each per-ship part's value is

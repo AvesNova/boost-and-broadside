@@ -31,8 +31,11 @@ class Events:
     done: (B,) bool, the environment reset after this tick.
     shield_lost: the shield a ship alive at tick start actually lost to this tick's damage
         (overkill ignored). shield_restored: the recharge applied this tick.
-    objective_progress, objective: the mode's two objective amounts, signed per ship, each
-        summing to zero over the environment (Frontline: meter fractions, captures).
+    objective_progress, objective: (B, N, 2) float, the mode's two objective amounts per
+        ship as their gain (>= 0) and their loss (<= 0), each event in its own column (a
+        ship credited in one zone and charged in another on one tick keeps both); each
+        amount, gain plus loss, sums to zero over the environment (Frontline: meter
+        fractions, captures).
     result: (B,) int32, the match result for team 0 (+1 win, -1 loss, 0 draw), nonzero
         only where done (team deathmatch: by the kill lead, for the tallies).
     win_loss: (B, 2) float, team 0's weights of a win and of a loss where done, zero
@@ -61,4 +64,5 @@ class Events:
     win_loss: torch.Tensor
     enemy_damage_by_aspect: torch.Tensor
     kill_aspect: torch.Tensor
-    SCHEMA_VERSION: ClassVar[int] = 5  # 3: the aspect statistics; 4: four classes; 5: win_loss
+    # 3: the aspect statistics; 4: four classes; 5: win_loss; 6: objective gain and loss
+    SCHEMA_VERSION: ClassVar[int] = 6

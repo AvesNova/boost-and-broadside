@@ -59,8 +59,11 @@ Defence keeps its sign, so a cost is negative and a level is offence plus defenc
 damage and kill/death event pairs with one of the other part on the other team, so a team's
 offence on these levels is the other team's defence negated; the same holds for the outcome
 (`tests/sections/test_split_critic.py::test_a_teams_offence_is_the_other_teams_defence`). The
-objective levels split each ship's signed amount by its sign: a ship credited in one zone
-and charged in another on the same tick keeps only the net.
+objective levels split by sign per event, before the tick's sum: the game gives each ship's
+gains and losses apart (`Events.objective_progress`, `Events.objective`, (B, N, 2)), so a
+ship credited in one zone and charged in another on the same tick has both in its parts,
+not their net (decided 2026-11-16;
+`tests/sections/test_reward_paths.py::test_a_gain_and_a_loss_on_one_tick_do_not_net`).
 
 `Trajectory.reward`'s last axis holds the parts, level by level, in the order of the critic's
 value levels, `bnb.contracts.VALUE_LEVELS` (`damage_offence`, `damage_defence`, ...). The

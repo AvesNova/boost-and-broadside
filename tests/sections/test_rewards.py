@@ -66,7 +66,7 @@ def test_levels_are_zero_sum_and_the_ledger_holds_every_deficit(mode):
         levels, ledger = rewards.reward_step(CONFIG, ledger, events, team)
         _check_tick(levels, ledger, after, cases.LIVELY_TYPES)
         assert (levels[..., LEVEL["outcome"]][~events.done] == 0).all()
-        torch.testing.assert_close(levels[..., LEVEL["objective"]], 2.0 * events.objective)
+        torch.testing.assert_close(levels[..., LEVEL["objective"]], 2.0 * events.objective.sum(-1))
         killer_team = torch.where(events.killer >= 0, events.killer // config.ships_per_team, -1)
         seen["friendly"] += int((events.died & (killer_team == team)).sum())
         seen["kills"] += int((events.died & (killer_team >= 0) & (killer_team != team)).sum())
@@ -114,7 +114,6 @@ class Match:
         dead = torch.zeros(1, N, dtype=torch.bool)
         for ship in died:
             dead[0, ship] = True
-        zero = torch.zeros(1, N)
         events = Events(
             damage=damage,
             boundary_damage=vectors["boundary"],
@@ -125,8 +124,8 @@ class Match:
             done=torch.tensor([done]),
             shield_lost=vectors["lost"],
             shield_restored=vectors["restored"],
-            objective_progress=zero,
-            objective=zero,
+            objective_progress=torch.zeros(1, N, 2),
+            objective=torch.zeros(1, N, 2),
             result=torch.tensor([result], dtype=torch.int32),
             win_loss=result_win_loss(torch.tensor([result])) * done,
             enemy_damage_by_aspect=torch.zeros(1, N, len(ASPECTS)),
@@ -319,8 +318,8 @@ def test_a_bigger_game_runs_too():
         done=torch.zeros(2, dtype=torch.bool),
         shield_lost=zero,
         shield_restored=zero,
-        objective_progress=zero,
-        objective=zero,
+        objective_progress=torch.zeros(2, N, 2),
+        objective=torch.zeros(2, N, 2),
         result=torch.zeros(2).int(),
         win_loss=torch.zeros(2, 2),
         enemy_damage_by_aspect=torch.zeros(2, N, len(ASPECTS)),
