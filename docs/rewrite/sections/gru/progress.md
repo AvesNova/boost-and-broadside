@@ -79,3 +79,9 @@ Branch `feat/gru-temporal` (from `feat/imugi-boundary`).
   provisional.
 - Next: the whole-run timing needs a larger MemoryMax (the author's call) or the rented
   GPU box; `time_blocks.sh griffin` then `gru`, steady = updates 2-4.
+
+## 2026-11-16 05:25 step 3: merged; timing stopped
+- Merged into feat/imugi-boundary as cff1a9e7 (the coordinator committed it under an
+  arms-todo message by accident); 81 passed (gru, export, model, head switches, team
+  sizes; quick tier, CPU); ruff clean. Whole-run timing stopped per the author: the dry
+  run will time the arms; the sublayer estimate (about 1.3x per step) stands as provisional.
