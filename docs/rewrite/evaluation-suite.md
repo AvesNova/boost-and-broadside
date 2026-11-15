@@ -26,14 +26,14 @@ These are the games that decide each pairwise arm, and the Elo ladder we build f
 | 8 | `frontline_10v10` | frontline | 10v10 | preset |
 | 9 | `deathmatch_10v10` | deathmatch | 10v10 | preset |
 | 10 | `elimination_10v10` | elimination | 10v10 | preset |
-| 11 | `frontline_break_even` | frontline | each arm against 20 Imugi, its own count varied; **left out of the score** (below) | preset |
+| 11 | `frontline_break_even` | frontline | break-even | preset |
 | 12 | `deathmatch_break_even` | deathmatch | break-even | preset |
 | 13 | `elimination_break_even` | elimination | break-even | preset |
 | 14–19 | — | all | 5v5 at map scales 0.5× and 2× | scaled (**only if variable maps survive their arm**; not in the command) |
 
 - **Games:** conditions 1–10 are A against B. The base games are the real-scale presets (`--presets`), and Imugi is Imugi (`--opponent imugi`).
 - **Map rule:** every condition plays its preset's own arena radius at every team size, 1v1 to break-even's (`--map-rule preset`, the default). This is the author's rule of 2026-11-15: every map is fixed-size until an agent has trained successfully on variable-size maps (the map-size arm, A1). The density rule (`--map-rule density`: `api.arena_radius_for`, the radius scaling with the fleet down to each mode's minimum; break-even at the opponent's 20) is an opt-in setting for that arm. Both arms of a pair always use the same rule.
-- **Left out of the score:** `frontline_break_even`, until the map-size arm reports (the author's decision, 2026-11-15). `--unscored` names the conditions left out (default `frontline_break_even`); a left-out condition is neither played nor waited on, and its mode's weight is shared among the rest.
+- **Every break-even is scored, frontline's included,** whether or not maps can change size (the author's decision, 2026-11-15, replacing the earlier wait for the map-size arm). `--unscored` names conditions to leave out (none by default); a left-out condition is neither played nor waited on, and its mode's weight is shared among the rest.
 - **Break-even** reuses `bnb crossover`'s fit and allocation (`bnb.league.crossover`). One engine plays both arms: half of each batch's blocks are A against 20 Imugi, half B, each at the counts its own fit asks for (1 to 30), on the same lineups and maps.
 
 ## Score

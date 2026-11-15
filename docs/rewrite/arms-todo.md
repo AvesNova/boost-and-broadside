@@ -11,7 +11,6 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 
 Updated 2026-11-15 10:30; the conversation behind it is in [briefing.md](briefing.md).
 
-1. **Frontline break-even, scored again?** It was left out because it played on the 15.6 km density map. Under the fixed-map rule it plays on the 7.8 km preset map, where rl-v20 is about even with 20 Imugi, so that reason is gone. Claude's recommendation: score it again (default `--unscored` empty). Pending the fixed-map pilot showing that it fits.
 2. **Break-even up to 30 ships** (merged as the default): the author asked why agents worse than Imugi matter. Answer given: they don't for their own sake; a crossing is needed for both arms, and at 20-a-side on the preset map our agents are near parity, so a cap at 20 leaves many arms without one. Alternatives: cap 20 and score by the win rate at 20, or fewer Imugi. Awaiting the author's view and the pilot's measured cost.
 3. **League retention:** the old rule (the newest 8, then one per 2^k) still prunes scheduled members (at 160M it drops 20, 25, 30 and 40M). Explained to the author; Claude's recommendation: no pruning when a schedule is set. Not yet decided.
 4. **Game freeze:** all three modes are locked (decisions, 2026-11-15, session 3). Next, implement them with one game-version bump.
@@ -88,7 +87,7 @@ Updated 2026-11-15 10:30; the conversation behind it is in [briefing.md](briefin
 - **References:** a list of papers with what we take from each, where it applies in the code, and how it affected a decision ([references.md](references.md)).
 - **Early arms:** variable map sizes against fixed (first; it decides whether variable maps stay in the game and the paper, and if they don't, the colour codes and rotary frequencies are re-tuned for fixed sizes); variable ship and field counts against fixed.
 - **Deferred to the later review of all arms:** self-play training both sides against one side; the separate critic (too much work for an arm now).
-- **Frontline break-even (decided 2026-11-15):** wait for the map-size arm (A1). Until then frontline break-even is not scored.
+- **Frontline break-even (decided 2026-11-15):** wait for the map-size arm (A1). Until then frontline break-even is not scored. *Replaced the same day (session 3): scored regardless of whether maps can change size; `--unscored` is empty by default.*
 - **Per-update policy files (decided 2026-11-15):** off by default; on only for the one arm that feeds the averaging sweep. Done in the commit after this one.
 - **Fixed-size maps (author, 2026-11-15, firm):** every map is fixed-size (each preset's own arena at every team size) until an agent trains successfully on variable maps (the map-size arm A1); if that fails, fixed-size full stop. Training's map-size sampling and the evaluation's density rule become opt-in for A1 (in progress, `feat/fixed-maps`).
 - **Freeze suggestions (author, 2026-11-15; suggestions, not locked in):** frontline ±2 with a 10-minute clock; deathmatch 40 tickets with a 10-minute clock; elimination: the collapsing map should decide games more often (not necessarily by killing directly), so study shrink start times and rates and their effect on mean and median game length (sweep running, `elim-shrink` unit).

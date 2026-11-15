@@ -435,7 +435,7 @@ class Evaluate:
 
     a, b: the players; out: the directory; play: the conditions this process plays (None:
     every scored one: `--conditions` less `--unscored`, which by default leaves out
-    frontline_break_even); games: a pilot instead: play this process's conditions to
+    none); games: a pilot instead: play this process's conditions to
     this many games each and take no look; settings: the suite's settings, recorded in
     settings.json (`bnb.league.evaluation_settings.EvaluationConfig`); device;
     runs_directory: as for bnb train; poll_seconds: how long a process with nothing to play

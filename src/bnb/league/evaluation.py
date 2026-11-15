@@ -9,8 +9,9 @@ break-even condition per mode, each player against `opponent_count` (20) scripte
 with its own count varied (`bnb.league.crossover`). Every condition plays its preset's own
 arena radius at every size (`map_rule` "preset": every map fixed-size, the author's rule
 of 2026-11-15); the density rule's map (`bnb.game.api.arena_radius_for`) is the map-size
-arm's opt-in (`map_rule` "density"). A condition in `unscored` (by default frontline
-break-even, until the map-size arm reports) is neither played nor scored, and its mode's
+arm's opt-in (`map_rule` "density"). A condition in `unscored` (none by default; every
+break-even is scored, frontline's included, the author's decision of 2026-11-15) is
+neither played nor scored, and its mode's
 weight is shared among the rest. Every game is played with fog of war
 (the engine's default), the networks sampling at temperature 1, each game's lineup drawn
 slot by slot from `lineup_types` with equal chance and flown by both teams (`Arena`'s

@@ -72,7 +72,7 @@ class EvaluationConfig:
     the last; gate_stderrs: the gate's standard errors."""
 
     conditions: tuple[str, ...] = tuple(condition.name for condition in CONDITIONS)
-    unscored: tuple[str, ...] = ("frontline_break_even",)
+    unscored: tuple[str, ...] = ()
     presets: tuple[str, ...] = (
         "real_scale_frontline",
         "real_scale_deathmatch",

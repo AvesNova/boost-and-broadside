@@ -496,15 +496,18 @@ def test_every_condition_plays_its_presets_own_arena_unless_the_density_rule_is_
 
 def test_an_unscored_condition_is_neither_scored_nor_played(tmp_path, tiny_presets):
     default = EvaluationConfig()
-    assert default.unscored == ("frontline_break_even",)
-    names = [condition.name for condition in default.scored()]
+    assert default.unscored == ()
+    assert len(default.scored()) == 13
+    assert math.isclose(evaluation.weights(default.scored())["frontline_5v5"], 1 / 9)
+    left_out = EvaluationConfig(unscored=("frontline_break_even",))
+    names = [condition.name for condition in left_out.scored()]
     assert len(names) == 12 and "frontline_break_even" not in names
-    weights = evaluation.weights(default.scored())
+    weights = evaluation.weights(left_out.scored())
     assert math.isclose(weights["frontline_5v5"], 1 / 6)
     with pytest.raises(ValueError, match="unknown"):
         EvaluationConfig(unscored=("frontline_1v1",))
     with pytest.raises(ValueError, match="every one is unscored"):
-        EvaluationConfig(conditions=("frontline_break_even",))
+        EvaluationConfig(conditions=("frontline_break_even",), unscored=("frontline_break_even",))
     config = _config(unscored=("deathmatch_break_even",))
     players = dict(A=player("scripted"), B=player("rung_T2"))
     suite = evaluation.Evaluation(tmp_path, players, player("scripted"), config, CPU)
