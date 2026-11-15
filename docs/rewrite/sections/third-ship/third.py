@@ -88,9 +88,15 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--yongma-card", type=json.loads, default={})
     parser.add_argument("--jujak-card", type=json.loads, default={})
+    parser.add_argument("--yongma-card-file", type=pathlib.Path, help="--yongma-card from a file")
+    parser.add_argument("--jujak-card-file", type=pathlib.Path, help="--jujak-card from a file")
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--eager", action="store_true")
     args = parser.parse_args()
+    if args.yongma_card_file:
+        args.yongma_card = json.loads(args.yongma_card_file.read_text())
+    if args.jujak_card_file:
+        args.jujak_card = json.loads(args.jujak_card_file.read_text())
     preset = f"real_scale_{args.mode}"
     seconds = args.seconds or (300.0 if args.mode == "deathmatch" else None)
     seconds = seconds or api.PRESETS[preset].episode_seconds
