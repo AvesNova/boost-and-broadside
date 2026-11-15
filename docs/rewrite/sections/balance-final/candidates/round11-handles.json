@@ -1,0 +1,292 @@
+[
+ {
+  "name": "h-j-turn-0.94",
+  "handles": {
+   "turn_handles": {
+    "sustained_turn_rate": 0.94
+   }
+  },
+  "card": {
+   "energy": {},
+   "turn": {
+    "engine_power": {
+     "set": 11286.2734375
+    },
+    "engine_power_full_store": {
+     "set": 2108.27490234375
+    },
+    "static_thrust": {
+     "set": 55.41083526611328
+    },
+    "corner_nose_frequency": {
+     "set": 11.406879425048828
+    },
+    "induced_drag_scale": {
+     "set": 0.3938332498073578
+    },
+    "dive_exchange_scale": {
+     "set": 4.130507946014404
+    },
+    "climb_exchange_scale": {
+     "set": 3.453299045562744
+    },
+    "fine_stick": {
+     "set": 0.21112126111984253
+    },
+    "sustained_stick": {
+     "set": 0.7037375569343567
+    }
+   }
+  }
+ },
+ {
+  "name": "h-j-lsa-0.85",
+  "handles": {
+   "turn_handles": {
+    "low_speed_acceleration": 0.85
+   }
+  },
+  "card": {
+   "energy": {},
+   "turn": {
+    "engine_power": {
+     "set": 11299.4853515625
+    },
+    "engine_power_full_store": {
+     "set": 2121.486572265625
+    },
+    "static_thrust": {
+     "set": 24.870662689208984
+    },
+    "corner_nose_frequency": {
+     "set": 11.573739051818848
+    },
+    "induced_drag_scale": {
+     "set": 0.2548690438270569
+    },
+    "dive_exchange_scale": {
+     "set": 4.144992828369141
+    },
+    "climb_exchange_scale": {
+     "set": 3.488222599029541
+    },
+    "fine_stick": {
+     "set": 0.22039495408535004
+    },
+    "sustained_stick": {
+     "set": 0.7346498370170593
+    }
+   }
+  }
+ },
+ {
+  "name": "h-j-lsa-0.75",
+  "handles": {
+   "turn_handles": {
+    "low_speed_acceleration": 0.75
+   }
+  },
+  "card": {
+   "energy": {},
+   "turn": {
+    "engine_power": {
+     "set": 11329.2265625
+    },
+    "engine_power_full_store": {
+     "set": 2151.228271484375
+    },
+    "static_thrust": {
+     "set": 20.87394142150879
+    },
+    "corner_nose_frequency": {
+     "set": 11.584661483764648
+    },
+    "induced_drag_scale": {
+     "set": 0.245782271027565
+    },
+    "dive_exchange_scale": {
+     "set": 4.145939826965332
+    },
+    "climb_exchange_scale": {
+     "set": 3.4905383586883545
+    },
+    "fine_stick": {
+     "set": 0.21885474026203156
+    },
+    "sustained_stick": {
+     "set": 0.729515790939331
+    }
+   }
+  }
+ },
+ {
+  "name": "h-y-climb-0.93",
+  "handles": {
+   "energy_handles": {
+    "climb_time": 0.93
+   }
+  },
+  "card": {
+   "energy": {
+    "engine_power": {
+     "set": 9998.107421875
+    },
+    "static_thrust": {
+     "set": 49.05327224731445
+    },
+    "coast_exchange_scale": {
+     "set": 21.86500358581543
+    }
+   },
+   "turn": {}
+  }
+ },
+ {
+  "name": "h-j-climb-1.05",
+  "handles": {
+   "turn_handles": {
+    "climb_time": 1.05
+   }
+  },
+  "card": {
+   "energy": {},
+   "turn": {
+    "engine_power": {
+     "set": 10832.6572265625
+    },
+    "coast_exchange_scale": {
+     "set": 25.364770889282227
+    }
+   }
+  }
+ },
+ {
+  "name": "h-j-drag-1.1",
+  "handles": {
+   "turn_handles": {
+    "zero_lift_drag": 1.1
+   }
+  },
+  "card": {
+   "energy": {},
+   "turn": {
+    "zero_lift_drag": {
+     "set": 6.38768106000498e-05
+    },
+    "engine_power": {
+     "set": 11496.7724609375
+    },
+    "engine_power_full_store": {
+     "set": 2318.77392578125
+    },
+    "static_thrust": {
+     "set": 29.98063850402832
+    },
+    "corner_nose_frequency": {
+     "set": 11.55433464050293
+    },
+    "induced_drag_scale": {
+     "set": 0.27814942598342896
+    },
+    "dive_exchange_scale": {
+     "set": 4.142566204071045
+    },
+    "climb_exchange_scale": {
+     "set": 3.4823086261749268
+    },
+    "fine_stick": {
+     "set": 0.22214961051940918
+    },
+    "sustained_stick": {
+     "set": 0.7404987215995789
+    }
+   }
+  }
+ },
+ {
+  "name": "h-j-cruise-0.97",
+  "handles": {
+   "turn_handles": {
+    "cruise_speed": 0.97
+   }
+  },
+  "card": {
+   "energy": {},
+   "turn": {
+    "engine_power": {
+     "set": 11038.4560546875
+    },
+    "engine_power_full_store": {
+     "set": 1860.4576416015625
+    },
+    "static_thrust": {
+     "set": 42.135337829589844
+    },
+    "reference_bullet_speed": {
+     "set": 1737.486328125
+    },
+    "induced_drag_scale": {
+     "set": 0.25152918696403503
+    },
+    "coast_exchange_scale": {
+     "set": 27.456710815429688
+    },
+    "dive_exchange_scale": {
+     "set": 4.1436944007873535
+    },
+    "climb_exchange_scale": {
+     "set": 3.485053062438965
+    },
+    "fine_stick": {
+     "set": 0.22314603626728058
+    },
+    "sustained_stick": {
+     "set": 0.7438201308250427
+    }
+   }
+  }
+ },
+ {
+  "name": "h-j-stall-1.05",
+  "handles": {
+   "turn_handles": {
+    "stall_speed": 1.05
+   }
+  },
+  "card": {
+   "energy": {},
+   "turn": {
+    "max_lift_coefficient": {
+     "set": 0.0051503716967999935
+    },
+    "engine_power": {
+     "set": 11264.0712890625
+    },
+    "engine_power_full_store": {
+     "set": 2086.072998046875
+    },
+    "static_thrust": {
+     "set": 28.040987014770508
+    },
+    "corner_nose_frequency": {
+     "set": 11.507562637329102
+    },
+    "induced_drag_scale": {
+     "set": 0.2003307342529297
+    },
+    "dive_exchange_scale": {
+     "set": 4.15067720413208
+    },
+    "climb_exchange_scale": {
+     "set": 3.5021812915802
+    },
+    "fine_stick": {
+     "set": 0.23273497819900513
+    },
+    "sustained_stick": {
+     "set": 0.7757832407951355
+    }
+   }
+  }
+ }
+]
