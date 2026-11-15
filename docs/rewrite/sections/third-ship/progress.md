@@ -78,3 +78,26 @@ feat/imugi-boundary). Power profile `performance`.
 - Running: a Z card-factor screen (which deficit sinks Z: cruise, charge, shield, drag, g,
   power, damage), K doctrines, K with a 30 Hz cannon (tight spread, explosive), K with the
   Fw 190's roll (nose reversal 0.25) solving.
+
+## 08:15 harness validated; doctrines; guns; the roll
+
+- **Sanity (box, 512 games):** C = a copy of Jujak: C v J 0.500 ± 0.021, C v Y 0.801 (the
+  release Y v J v22 0.242); C = a copy of Yongma: C v J 0.242 (= the release exactly), C v Y
+  0.498. The slot trick is sound.
+- Z card factors (from Z-zgun-d1.2-s80, base ~0.11 / 0.18): shield 80->110 0.28 / 0.46; g
+  7->9 0.24 / 0.33; engine power x1.3 0.24 / 0.31; damage x1.3 0.21 / 0.28; cruise, charge,
+  drag 0.13-0.24. A fragile ship dies; the radius fighter is dropped.
+- K doctrines (K-jgun-d1.15-s110, 256 games; base 0.48 / 0.46): slash 0.46 / 0.42, bleed
+  0.41 / 0.51, deny 0.36 / 0.49, two-circle against all 0.34 / 0.43, one-circle 0.24 / 0.32,
+  lag 0.10 / 0.09 (lag_in_gun_range 0.5 aims far behind). No element beats the base pursuit
+  at full weight; a doctrine search with small weights comes later.
+- K with a tight-spread explosive 30 Hz cannon (spread 1.5, 1600 m/s, drag 7e-4, 560 m):
+  d1.15/s110 0.26 / 0.24, d1.25/s110 0.32 / 0.36: worse than the .50-style gun. The gun
+  factors one at a time are on the box (`kgun2`).
+- **The roll helps: K with the Fw 190A-8's nose reversal (0.25 s, the real fastest):
+  0.58 / 0.61 (g 8); with g 7 0.43 / 0.54**; + sustained turn 0.66 0.75 / 0.76; + drag
+  7.6e-5 and cruise 322 0.57 / 0.66. The identity: **the power-and-roll fighter** (Fw 190A
+  roll, Bf 109K-4 low-speed acceleration, the draggiest airframe and the lowest top speed,
+  g 7). Screen 9: K-roll and K-roll-g7 at damage x1.1-1.2, shield 100-110, 384 games.
+- The coordinator flagged the box idle: its lock was held by another agent's compile-memory
+  measurement (CPU-bound, GPU at 0%); my kgun2 job is queued there under its lock.
