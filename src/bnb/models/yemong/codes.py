@@ -14,6 +14,10 @@ BASELINE_FLOOR = 1e-3  # the next-state baseline log(code + floor) and its remov
 INFORMATIVE = 1e-4  # attenuation below which a circular level carries no information
 BROAD = 0.9  # attenuation below which a circular level has broadened (the spread is read there)
 SPREAD_FITS = ("v1", "coarsest")  # how a circular code's spread is decoded (`circular_decode`)
+# HL-Gauss (Farebrother et al. 2024, "Stop Regressing"): every binned code but the circular
+# ones and the gun cooldown is a Gaussian of HL_GAUSS_SIGMA bins integrated over each bin.
+HL_GAUSS_SIGMA = 0.75  # bins
+PADDING_BINS = 2  # bins past a linear code's real range on each side, for the Gaussian's spill
 
 
 def _tolerance(dtype: torch.dtype) -> float:
@@ -26,6 +30,10 @@ def _one_hot(index: torch.Tensor, size: int, dtype: torch.dtype) -> torch.Tensor
 
 
 # --------------------------------------------------------------------------- circular
+
+# Kept as colour codes (not HL-Gauss): 3-4 bins per level, where a Gaussian of 0.75 bins
+# would spread an exact value round most of the circle and erase each level's contrast;
+# under uncertainty they already spread by the belief's sigma (attenuation toward uniform).
 
 
 def circular_coordinates(
@@ -229,18 +237,13 @@ def two_hot_at(lower: torch.Tensor, fraction: torch.Tensor, bins: int) -> torch.
     ] * _one_hot(lower + 1, bins, fraction.dtype)
 
 
-def scalar_sharp_coordinates(
-    values: torch.Tensor, low: Bound, high: Bound, bins: int
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """(...) to the sharp code's (lower bin, fraction) (...), its `two_hot_at` arguments."""
-    _, lower, fraction, _ = _scalar_coordinate(values, low, high, bins)
-    return lower, fraction
-
-
+# Kept two-hot (not HL-Gauss): the gun cooldown's base code, one bin per tick, so a known
+# cooldown is one-hot and its residual (`ShipStateCode`) keeps its meaning.
 def scalar_sharp(values: torch.Tensor, low: Bound, high: Bound, bins: int) -> torch.Tensor:
     """(...) to (..., bins): two-hot on the bins either side (low and high: numbers, or
     tensors that broadcast against the values, one code call for several scalars)."""
-    return two_hot_at(*scalar_sharp_coordinates(values, low, high, bins), bins)
+    _, lower, fraction, _ = _scalar_coordinate(values, low, high, bins)
+    return two_hot_at(lower, fraction, bins)
 
 
 def match_moments(
@@ -248,9 +251,13 @@ def match_moments(
     offsets: torch.Tensor,
     target_mean: torch.Tensor,
     target_variance: torch.Tensor,
+    narrow: bool = False,
 ) -> torch.Tensor:
     """Move interior mass by one bin so the code has the target mean and variance about
-    its lower bin (spec 3.3, "match moments")."""
+    its lower bin (spec 3.3, "match moments"). narrow: a code wider than the target is
+    narrowed too (by moving mass inward; for the small corrections of
+    `hl_gauss_scalar_at`, where a bin it would take below zero holds under 1e-12 and is
+    clipped), else only widened."""
     dtype = probabilities.dtype
     tolerance, tiny = _tolerance(dtype), torch.finfo(dtype).tiny
     bins = probabilities.shape[-1]
@@ -265,22 +272,23 @@ def match_moments(
     shifted_second = shift.abs() * (
         source * (2.0 * torch.sign(shift)[..., None] * offsets + 1.0)
     ).sum(-1)
-    widen = torch.clamp_min(
-        (target_variance + target_mean**2 - second - shifted_second) / (2.0 * mass), 0.0
-    )
-    widen = torch.where(widen <= tolerance, 0.0, widen)
-    excess = torch.clamp_min(2.0 * widen + shift.abs(), 1.0)
+    widen = (target_variance + target_mean**2 - second - shifted_second) / (2.0 * mass)
+    if not narrow:
+        widen = torch.clamp_min(widen, 0.0)
+    widen = torch.where(widen.abs() <= tolerance, 0.0, widen)
+    excess = torch.clamp_min(2.0 * widen.abs() + shift.abs(), 1.0)
     widen, shift = widen / excess, shift / excess
     up = torch.clamp_min(shift, 0.0)[..., None] * source
     down = torch.clamp_min(-shift, 0.0)[..., None] * source
     spread = widen[..., None] * source
     rising, falling = up + spread, down + spread
-    return (
+    matched = (
         probabilities
         - (up + down + 2.0 * spread)
         + F.pad(rising[..., :-1], (1, 0))
         + F.pad(falling[..., 1:], (0, 1))
     )
+    return torch.clamp_min(matched, 0.0) if narrow else matched
 
 
 def scalar_encode(
@@ -288,8 +296,9 @@ def scalar_encode(
 ) -> torch.Tensor:
     """(...) mean and sigma to (..., bins) (low and high: numbers, or tensors that broadcast
     against the values, one code call for several scalars): a sampled Gaussian with folded
-    tails, mixed with
-    the sharp code and moment-matched."""
+    tails, mixed with the sharp code and moment-matched. Kept for the shot head's near-miss
+    code (`shots.outcome_code`), whose sigma of 0.75 bins already smooths it; the state
+    code's linear parts use `hl_gauss_scalar_encode`."""
     coordinate, lower, fraction, spacing = _scalar_coordinate(mean, low, high, bins)
     last = bins - 1
     variance = torch.minimum(
@@ -324,18 +333,132 @@ def scalar_encode(
     return match_moments(code, offsets, fraction, variance + fraction * (1.0 - fraction))
 
 
-def scalar_decode(
-    probabilities: torch.Tensor, low: Bound, high: Bound, bins: int
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """(..., bins) to (mean, spread)."""
+# --------------------------------------------------------------------------- linear HL-Gauss
+
+
+def hl_gauss_smoothing(sigma: float = HL_GAUSS_SIGMA) -> float:
+    """The variance (bins^2) an HL-Gauss code of `sigma` bins adds to its value's spread:
+    sigma^2, and 1/12 from the integration over unit bins (Sheppard). A code of sigma =
+    0.75 bins has it to within 4e-5 bins^2 at any offset; `hl_gauss_scalar_at` makes it
+    exact."""
+    return sigma * sigma + 1.0 / 12.0
+
+
+def folded_hl_gauss(coordinate: torch.Tensor, sigma: torch.Tensor, width: int) -> torch.Tensor:
+    """(...) coordinate and sigma (bins) to (..., width): the Gaussian integrated over each
+    of the bins centred at 0..width - 1, the tails past the outer edges folded into the
+    outer bins (so it sums to 1)."""
+    edges = torch.arange(1, width, dtype=coordinate.dtype, device=coordinate.device) - 0.5
+    above = 0.5 * torch.erfc(
+        (edges - coordinate[..., None]) / (sigma[..., None] * math.sqrt(2.0))
+    )  # the mass above each inner edge
+    above = F.pad(F.pad(above, (1, 0), value=1.0), (0, 1), value=0.0)
+    return above[..., :-1] - above[..., 1:]
+
+
+VARIANCE_REACH = 0.8  # share of the largest variance on the bins a code is matched to
+
+
+def hl_gauss_scalar_at(
+    coordinate: torch.Tensor,
+    variance: torch.Tensor,
+    width: int,
+    sigma: float = HL_GAUSS_SIGMA,
+) -> torch.Tensor:
+    """(...) coordinate (bins, in [1, width - 2]) and the value's own variance (bins^2) to
+    (..., width), a code of mean the coordinate and variance the value's plus
+    `hl_gauss_smoothing` (at most VARIANCE_REACH of the largest any code of that mean has
+    on the bins, c (width - 1 - c)): the HL-Gauss of total variance sigma^2 + variance
+    (the floor added in quadrature to the spread), tails folded (`folded_hl_gauss`), mixed
+    with the HL-Gauss of sigma at each outer bin in the shares that give both moments (a
+    2 x 2 linear solve), then one `match_moments` pass for the rounding. Inside the code
+    the HL-Gauss has both moments to about 4e-5 bins^2 and the shares are about as small;
+    near an edge, where the fold pulls the mean in and the variance down, the outer bin
+    takes the mass that restores them, as a value clipped at the edge would. The mean is
+    exact at every coordinate, the edges included, and so is the variance, so
+    `hl_gauss_scalar_decode` reads the spread back (an exactly known value as 0)."""
+    dtype, device = coordinate.dtype, coordinate.device
+    last = width - 1
+    smoothing = hl_gauss_smoothing(sigma)
+    target = torch.minimum(variance + smoothing, VARIANCE_REACH * coordinate * (last - coordinate))
+    # the Gaussian of the variance kept, less the bins' own 1/12
+    total = torch.sqrt(torch.clamp_min(target - (smoothing - sigma * sigma), sigma * sigma))
+    code = folded_hl_gauss(coordinate, total, width)
+    ends = folded_hl_gauss(
+        torch.tensor([0.0, float(last)], dtype=dtype, device=device),
+        torch.full((2,), sigma, dtype=dtype, device=device),
+        width,
+    )  # (2, width): the HL-Gauss at the lowest and at the highest bin
+    index = torch.arange(width, dtype=dtype, device=device)
+    offset = index - coordinate[..., None]
+    parts = torch.stack([code, ends[0].expand_as(code), ends[1].expand_as(code)], -2)
+    first = (parts * offset[..., None, :]).sum(-1)  # (..., 3) means about the coordinate
+    second = (parts * (offset * offset)[..., None, :]).sum(-1)
+    # shares low, high of the end codes: the mixture's mean 0 and second moment the target
+    a, b = first[..., 1] - first[..., 0], first[..., 2] - first[..., 0]
+    c, d = second[..., 1] - second[..., 0], second[..., 2] - second[..., 0]
+    right_first, right_second = -first[..., 0], target - second[..., 0]
+    determinant = a * d - b * c
+    tiny = torch.finfo(dtype).tiny
+    determinant = torch.where(determinant.abs() < tiny, tiny, determinant)
+    low = torch.clamp((right_first * d - b * right_second) / determinant, 0.0, 1.0)
+    high = torch.clamp((a * right_second - c * right_first) / determinant, 0.0, 1.0)
+    code = (
+        (1.0 - low - high)[..., None] * code + low[..., None] * ends[0] + high[..., None] * ends[1]
+    )
+    lower = torch.clamp_max(torch.floor(coordinate), float(last - 1))
+    return match_moments(code, index - lower[..., None], coordinate - lower, target, narrow=True)
+
+
+def hl_gauss_scalar_coordinate(
+    values: torch.Tensor, low: Bound, high: Bound, bins: int, padding: int = PADDING_BINS
+) -> torch.Tensor:
+    """(...) values to their coordinate (...) in a linear code of `bins` real bins from low
+    to high and `padding` more each side: in bins from the lowest padding bin, clipped to
+    the real range."""
     spacing = (high - low) / (bins - 1)
-    index = torch.arange(bins, dtype=probabilities.dtype, device=probabilities.device)
-    coordinate = torch.clamp((probabilities * index).sum(-1), 0.0, float(bins - 1))
+    return padding + torch.clamp((values - low) / spacing, 0.0, float(bins - 1))
+
+
+def hl_gauss_scalar_encode(
+    mean: torch.Tensor,
+    sigma: torch.Tensor,
+    low: Bound,
+    high: Bound,
+    bins: int,
+    padding: int = PADDING_BINS,
+) -> torch.Tensor:
+    """(...) mean and sigma to (..., bins + 2 padding): `hl_gauss_scalar_at` of the mean's
+    coordinate (`hl_gauss_scalar_coordinate`) and sigma in bins. low and high: numbers, or
+    tensors that broadcast against the values (one code call for several scalars)."""
+    spacing = (high - low) / (bins - 1)
+    coordinate = hl_gauss_scalar_coordinate(mean, low, high, bins, padding)
+    return hl_gauss_scalar_at(coordinate, (sigma / spacing) ** 2, bins + 2 * padding)
+
+
+def hl_gauss_scalar_decode(
+    probabilities: torch.Tensor,
+    low: Bound,
+    high: Bound,
+    bins: int,
+    padding: int = PADDING_BINS,
+    sigma: float = HL_GAUSS_SIGMA,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(..., bins + 2 padding) to (mean, spread): the mean bin, clipped to the real range,
+    and the square root of the variance about it less `hl_gauss_smoothing`, the code's own
+    (0 below rounding)."""
+    spacing = (high - low) / (bins - 1)
+    width = probabilities.shape[-1]
+    index = torch.arange(width, dtype=probabilities.dtype, device=probabilities.device)
+    coordinate = torch.clamp(
+        (probabilities * index).sum(-1), float(padding), float(padding + bins - 1)
+    )
     variance = (probabilities * (index - coordinate[..., None]) ** 2).sum(-1)
-    fraction = coordinate - torch.floor(coordinate)
-    physical = variance - fraction * (1.0 - fraction)
-    physical = torch.where(physical <= _tolerance(probabilities.dtype), 0.0, physical)
-    return low + coordinate * spacing, torch.sqrt(physical) * spacing
+    physical = variance - hl_gauss_smoothing(sigma)
+    # 64 eps: the rounding of the variance and its matching (a known value's code reads
+    # back 3e-15 bins^2 in float64)
+    physical = torch.where(physical <= 8.0 * _tolerance(probabilities.dtype), 0.0, physical)
+    return low + (coordinate - padding) * spacing, torch.sqrt(physical) * spacing
 
 
 # --------------------------------------------------------------------------- velocity
@@ -425,28 +548,24 @@ def _axis_range(bins: int, spacing: float) -> tuple[float, float]:
     return -half, half
 
 
-def velocity_encode(
-    mean: torch.Tensor, covariance: torch.Tensor, bins: int, spacing: float, knee: float
-) -> torch.Tensor:
-    """(..., 2) mean and packed (..., 3) covariance to (..., 3, bins)."""
+def velocity_projections(
+    mean: torch.Tensor, covariance: torch.Tensor, knee: float
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(..., 2) mean and packed (..., 3) covariance to the compressed velocity's projections
+    on the three axes and their sigmas, each (..., 3)."""
     jacobian, _ = velocity_jacobian(mean, knee)
     xx, xy, yy = sandwich(jacobian, covariance).unbind(-1)
     variances = torch.stack(
         [xx, 0.25 * xx - 0.5 * SQRT3 * xy + 0.75 * yy, 0.25 * xx + 0.5 * SQRT3 * xy + 0.75 * yy], -1
     )
-    return scalar_encode(
-        _project(compress_velocity(mean, knee)),
-        torch.sqrt(torch.clamp_min(variances, 0.0)),
-        *_axis_range(bins, spacing),
-        bins,
-    )
+    return _project(compress_velocity(mean, knee)), torch.sqrt(torch.clamp_min(variances, 0.0))
 
 
-def velocity_decode(
-    probabilities: torch.Tensor, bins: int, spacing: float, knee: float
+def velocity_from_projections(
+    projections: torch.Tensor, spreads: torch.Tensor, knee: float
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """(..., 3, bins) to (mean (..., 2), packed covariance (..., 3))."""
-    projections, spreads = scalar_decode(probabilities, *_axis_range(bins, spacing), bins)
+    """The inverse of `velocity_projections`: (..., 3) projections and sigmas to (mean
+    (..., 2), packed covariance (..., 3))."""
     p0, p1, p2 = projections.unbind(-1)
     compressed = torch.stack(
         [(2.0 / 3.0) * (p0 - 0.5 * (p1 + p2)), (2.0 / 3.0) * (0.5 * SQRT3 * (p1 - p2))], -1
@@ -459,6 +578,34 @@ def velocity_decode(
     mean = expand_velocity(compressed, knee)
     _, inverse = velocity_jacobian(mean, knee)
     return mean, sandwich(inverse, torch.stack([xx, xy, yy], -1))
+
+
+def velocity_encode(
+    mean: torch.Tensor,
+    covariance: torch.Tensor,
+    bins: int,
+    spacing: float,
+    knee: float,
+    padding: int = PADDING_BINS,
+) -> torch.Tensor:
+    """(..., 2) mean and packed (..., 3) covariance to (..., 3, bins + 2 padding): per
+    projection axis the HL-Gauss code (`hl_gauss_scalar_encode`)."""
+    projections, sigmas = velocity_projections(mean, covariance, knee)
+    return hl_gauss_scalar_encode(projections, sigmas, *_axis_range(bins, spacing), bins, padding)
+
+
+def velocity_decode(
+    probabilities: torch.Tensor,
+    bins: int,
+    spacing: float,
+    knee: float,
+    padding: int = PADDING_BINS,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(..., 3, bins + 2 padding) to (mean (..., 2), packed covariance (..., 3))."""
+    projections, spreads = hl_gauss_scalar_decode(
+        probabilities, *_axis_range(bins, spacing), bins, padding
+    )
+    return velocity_from_projections(projections, spreads, knee)
 
 
 # --------------------------------------------------------------------------- grouped
@@ -546,9 +693,6 @@ def baseline(code: torch.Tensor, floor: float = BASELINE_FLOOR) -> torch.Tensor:
 
 
 # --------------------------------------------------------------------------- symlog HL-Gauss
-
-HL_GAUSS_SIGMA = 0.75  # the symlog code's Gaussian, in bins
-PADDING_BINS = 2  # bins past the real range on each side, for the Gaussian's spill
 
 
 def symlog_sides(bins: int, below: int | None = None) -> tuple[int, int]:

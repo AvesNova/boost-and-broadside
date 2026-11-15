@@ -365,7 +365,7 @@ def compiler(enabled: bool) -> Callable:
     """The runtime's stage cut for the learner: the micro-batch loss, compiled whole.
 
     Without Inductor's comprehensive padding: it pads the row stride of a wide intermediate
-    (a code's logits' gradient, (L, R, N, ages, 154)) to 128 bytes, so the head kernel's
+    (a code's logits' gradient, (L, R, N, ages, 162)) to 128 bytes, so the head kernel's
     and the weight gradient's (rows, outputs) views of it each need a copy; without it a
     real-scale micro-batch's step is 5% faster (`bench/learn_micro.py`)."""
     if not enabled:

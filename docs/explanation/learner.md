@@ -208,7 +208,7 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 | `policy` | own ships alive at `t` | the surrogate on the scaled advantage under the trust region ([below](#the-trust-region)) |
 | `entropy_power`, `entropy_stick`, `entropy_shoot` | the same | the joint action distribution's entropy by the chain rule in the joint's order: H(power), H(stick given power), H(shoot given both). They sum to the joint entropy, so equal coefficients weigh the joint as one coefficient would; a negative coefficient rewards it |
 | `value` | own ships alive or waiting to respawn; each view-step for the outcome | per value head (each per-ship part, then the outcome head), the cross-entropy against the HL-Gauss target of the return, the outcome against its targets |
-| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode (delta: and whose ship is alive at `t` and `t + 1`; with `YemongConfig.delta_split`, of those only the own rows and the enemies seen at `t`; with `YemongConfig.physics_hidden_decay` tau the hidden enemies too, past the segment's first tick, each weighted `exp(-age / tau)`, against the truth-to-truth target) | absolute: the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
+| `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode (delta: and whose ship is alive at `t` and `t + 1`; with `YemongConfig.delta_split`, of those only the own rows and the enemies seen at `t`; with `YemongConfig.physics_hidden_decay` tau the hidden enemies too, past the segment's first tick, each weighted `exp(-age / tau)`, against the truth-to-truth target) | absolute: the state code's cross-entropy against the code of the true state at `t + 1` (spread 0: sharp colour codes, HL-Gauss linear parts), in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
 | `correction` | with `YemongConfig.delta_split` only: the next-state rows whose belief at `t` is a forecast (hidden enemies) | the error code's cross-entropy against the code of the physics forecast's error, `truth(t + 1) - forecast(t + 1)` |
 | `enemy_action` | enemy rows alive at `t` | the cross-entropy of the enemy's actual joint action |
 | `density` | each view-step, over its count of valued own ships | Poisson terms over the hex cells, against the counts of living ships at `t` |
@@ -376,7 +376,12 @@ with the game's own code (`bnb.learn.shots.resimulate`):
 
 A re-simulated shot is the bullet the game fires from that state, position, velocity and
 hit, tick by tick, including friendly fire and fields (`tests/sections/test_learner_shots.py`).
-The targets are Yemong's shot codes (`bnb.models.yemong.shots`). The trajectory head is
+The targets are Yemong's shot codes (`bnb.models.yemong.shots`): in the trajectory code the
+displacement and the direction are sharp colour codes, the speed (41 real bins) and the log
+refractive index (21) HL-Gauss codes of 0.75 bins with two padding bins a side; the
+outcome's near-miss code is a Gaussian of 0.75 bins over its log distance. The loss
+reduces each snapshot to 44 coordinates and builds the 162-wide code from them inside the
+cross-entropy (`codes.grouped_cross_entropy`). The trajectory head is
 queried at 4 ages per shot (`bnb.learn.shots.query_ages`), chosen with the labels: the last
 move; one uniform over the whole flight (it may repeat another); the closest pass to
 another living ship, of either side; the first move into a field's band, where the
@@ -391,7 +396,7 @@ Built per micro-batch on the device, from the stored rows (`bnb.learn.labels`), 
 with the view (as are the shot labels' codes; expanded, the codes would be many times the
 size of the segment):
 
-- **Next state:** the sharp code of each row's truth at `t + 1`, its position shifted by the
+- **Next state:** the code of each row's truth (spread 0) at `t + 1`, its position shifted by the
   view's offset; the last step's truth is the observation after the segment. With the delta
   head (`YemongConfig.next_state = "delta"`), the code of each row's true change from `t`
   to `t + 1` (persistence; `bnb.models.yemong.delta.DeltaCode.targets`), which changes

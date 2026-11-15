@@ -397,9 +397,9 @@ def test_a_round_covariance_has_no_angle_and_a_rotated_one_its_angle():
 def test_the_ellipse_inputs_and_the_per_axis_blur():
     net = _model()
     state_code = net.state_code
-    assert state_code.ellipse_width == 8 * 21
+    assert state_code.ellipse_width == 8 * 25
     assert net.encoder.ship.first.in_features == ship_inputs(
-        state_code.width, net.ship_types, True, 8 * 21
+        state_code.width, net.ship_types, True, 8 * 25
     )
     means = torch.zeros(1, len(MEANS))
     spreads = torch.zeros(1, state_code.spread_count)
@@ -415,8 +415,8 @@ def test_the_ellipse_inputs_and_the_per_axis_blur():
     level = 6  # period 26244 / 3^6 = 36 m
     assert attenuated_x[0, level].max() < attenuated_y[0, level].max()
     ellipse_code = state_code.ellipse_code(spreads)
-    assert ellipse_code.shape[-1] == 168
-    torch.testing.assert_close(ellipse_code.unflatten(-1, (8, 21)).sum(-1), torch.ones(1, 8))
+    assert ellipse_code.shape[-1] == 200
+    torch.testing.assert_close(ellipse_code.unflatten(-1, (8, 25)).sum(-1), torch.ones(1, 8))
     scalar = cases.model(**{**SETTINGS, "spread_inputs": "scalar"})
     assert scalar.state_code.ellipse_width == 0
 
