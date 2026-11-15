@@ -347,6 +347,7 @@ OVERRIDABLE = (
     "learner.density",
     "learner.shot_trajectory",
     "learner.shot_outcome",
+    "learner.shot_damage",
     "learner.geometry",
     "learner.micro_batch_rows",
     "graph_ticks",

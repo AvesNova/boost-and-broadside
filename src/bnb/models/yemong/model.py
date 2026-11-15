@@ -44,11 +44,16 @@ from .delta import (
 )
 from .delta import fade as delta_fade
 from .delta import velocity_frame as delta_frame
-from .heads import HeadGroup, ShotTrajectoryHead, critic_values, next_state_logits
+from .heads import (
+    HeadGroup,
+    ShotDamageHead,
+    ShotTrajectoryHead,
+    critic_values,
+    next_state_logits,
+)
 from .inputs import (
     ACCELERATION_INPUTS,
     ARENA_CODE,
-    FIELD_INPUTS,
     MODE_INPUTS,
     POSITION_CODE,
     Accelerations,
@@ -58,6 +63,7 @@ from .inputs import (
     accelerations,
     believed,
     compose,
+    field_inputs,
     global_inputs,
     motion,
     preceding,
@@ -70,6 +76,7 @@ from .layers import rotary_tables
 from .network import ORDERS, Encoder, Trunk
 from .spatial import GATES
 from .state_code import (
+    INPUT_ENCODINGS,
     MEANS,
     POSITION_INPUTS,
     POSITION_LEVELS,
@@ -85,7 +92,7 @@ SHOT_HARMONICS = 4  # the trajectory head's age features
 # a row's held rates: acceleration along, across, the nose's, the change, the turn's share
 HELD = 4 + len(MEANS)
 NEXT_STATES = ("absolute", "delta")  # `YemongConfig.next_state`
-SHOT_HEADS = ("trajectory", "none")  # `YemongConfig.shot_head`
+SHOT_HEADS = ("trajectory", "damage", "none")  # `YemongConfig.shot_head`
 # A new run's rotary bands (`bnb.runtime.train.TrainConfig.yemong`; the sizing rule beside
 # `state_code.POSITION_PERIOD`): eight at ratio 3.405 from 48 m (r, r^2, r^3, r^4 each at
 # least 0.4 from a whole number, so a one-cycle misread of a coarse band shows in the finer
@@ -192,6 +199,16 @@ class YemongConfig:
     in place of 81 and 16 (`ShipStateCode.inputs`). Only the encoder's input changes; the
     tokens' code, the global, field and zone tokens and every head stay the colour codes.
     The absolute head predicts the colour code from the colour inputs, so it is excluded.
+    input_encoding (`state_code.INPUT_ENCODINGS`, "raw" needs next_state "delta" and
+    position_inputs "colour"; arm A17): how every token reads what the codes carry. "codes",
+    the colour and HL-Gauss codes. "raw", plain scalars in their place
+    (`state_code.ShipStateCode.raw_inputs`): a ship row's state (25 columns for the code's
+    580: means over their scales, positions from the map centre, angles as attenuated
+    (cos, sin), spreads as ln(1 + sigma / bin)), the acceleration and ellipse inputs, the
+    fields' and zones' centres; the global token reads no centre code and the arena
+    radius's log as one column. Every other column, the trunk, the heads and their targets
+    are unchanged; the tokens' code (the next-state baseline) stays the state code. Mirrors
+    position_inputs: the absolute head is excluded.
     delta_split (with next_state "delta"): split the next-state work (arms 3-4). The
     next-state head becomes the physics head, trained on allies and visible enemies only
     (still run on hidden rows: their forecast reads it). A second head on the same tokens,
@@ -246,8 +263,11 @@ class YemongConfig:
     last sighting). enemy_action_head: the enemy-action head; off, the belief's enemy
     actions stay uniform (`belief.advance`). density_head: the density head on the global
     token. shot_head (`SHOT_HEADS`): "trajectory", the shot trajectory and outcome heads;
-    "none", neither, and the learner re-simulates no shots. The geometry head
-    (geometry_head) and the error head (delta_split) have their own switches above.
+    "damage" (arm A22), in their place the shot damage head (`heads.ShotDamageHead`): for
+    each own ship and every other ship, the damage a shot fired now would deal it
+    (`shots.damage_code`); "none", no shot head, and the learner re-simulates no shots.
+    The geometry head (geometry_head) and the error head (delta_split) have their own
+    switches above.
 
     Retired (`RETIRED`): rotary_readout, the per-block rotary read-out (2026-11-07 to
     2026-11-12, replaced by the geometry head); a build record without it, or with it off,
@@ -289,6 +309,7 @@ class YemongConfig:
     delta_baseline: str = "persistence"  # the delta head's baseline
     spread_inputs: str = "scalar"  # how a row reads its spread: "scalar" or "ellipse"
     position_inputs: str = "colour"  # a row's position and heading: "colour" or "fourier"
+    input_encoding: str = "codes"  # every token's codes: "codes" or "raw" (arm A17)
     acceleration_inputs: bool = False  # each ship row reads its acceleration over the last tick
     # the modes whose flags the global token reads (`inputs.MODE_INPUTS`); new runs read all
     mode_inputs: tuple[str, ...] = MODE_INPUTS[:2]
@@ -302,7 +323,7 @@ class YemongConfig:
     next_state_head: bool = True  # the next-state (physics) head
     enemy_action_head: bool = True  # the enemy-action head
     density_head: bool = True  # the density head
-    shot_head: str = "trajectory"  # the shot heads: "trajectory" or "none" (`SHOT_HEADS`)
+    shot_head: str = "trajectory"  # the shot heads: "trajectory", "damage", "none" (`SHOT_HEADS`)
 
     def __post_init__(self) -> None:
         if self.next_state not in NEXT_STATES:
@@ -332,6 +353,16 @@ class YemongConfig:
             )
         if self.position_inputs == "fourier" and self.next_state != "delta":
             raise ValueError("position_inputs 'fourier' needs next_state 'delta'")
+        if self.input_encoding not in INPUT_ENCODINGS:
+            raise ValueError(
+                f"input_encoding {self.input_encoding!r} is not one of {INPUT_ENCODINGS}"
+            )
+        if self.input_encoding == "raw" and (
+            self.next_state != "delta" or self.position_inputs != "colour"
+        ):
+            raise ValueError(
+                "input_encoding 'raw' needs next_state 'delta' and position_inputs 'colour'"
+            )
         if self.spread_fit not in SPREAD_FITS:
             raise ValueError(f"spread_fit {self.spread_fit!r} is not one of {SPREAD_FITS}")
         if self.order not in ORDERS:
@@ -489,7 +520,9 @@ class Unrolled:
     and next_state_logits (every row), value_logits (S, per-ship levels, bins), values
     (S, levels), outcome_logits (4; None without an outcome level), density_log_rates
     (2 cells: ally cells, then enemy cells), shot_outcome_logits (N, 19) and shot_latents
-    (N, D) for `Yemong.shot_trajectory`; geometry_latents (N, 2 D) for `Yemong.geometry`
+    (N, D) for `Yemong.shot_trajectory`; shot_damage_latents (N, 2 D) for
+    `Yemong.shot_damage` (None without `YemongConfig.shot_head` "damage");
+    geometry_latents (N, 2 D) for `Yemong.geometry`
     (None without `YemongConfig.geometry_head`);
     correction_logits (N, ...), the error head's (every row; None without
     `YemongConfig.delta_split`). An auxiliary head that is not built gives None
@@ -506,6 +539,7 @@ class Unrolled:
     shot_latents: torch.Tensor | None
     geometry_latents: torch.Tensor | None = None
     correction_logits: torch.Tensor | None = None
+    shot_damage_latents: torch.Tensor | None = None
 
 
 BELIEF_FIELDS = tuple(field.name for field in dataclasses.fields(Belief))  # (traced as constants)
@@ -623,7 +657,9 @@ class Yemong(nn.Module):
             spread_inputs=config.spread_inputs,
             position_inputs=config.position_inputs,
             position_period=config.position_period,
+            input_encoding=config.input_encoding,
         )
+        raw = config.input_encoding == "raw"
         self.delta_code = None
         if delta:
             if config.delta_baseline == "persistence" and build.dynamics is not None:
@@ -642,12 +678,15 @@ class Yemong(nn.Module):
                 self.ship_types,
                 config.acceleration_inputs,
                 self.state_code.ellipse_width,
+                raw,
             ),
-            global_inputs(config.mode_inputs, config.frontline_timer_inputs, config.arena_code),
-            FIELD_INPUTS,
+            global_inputs(
+                config.mode_inputs, config.frontline_timer_inputs, config.arena_code, raw
+            ),
+            field_inputs(raw),
             width,
             config.map_width,
-            zone_inputs(config.frontline_timer_inputs),
+            zone_inputs(config.frontline_timer_inputs, raw),
         )
         self.trunk = Trunk(
             width,
@@ -679,7 +718,9 @@ class Yemong(nn.Module):
         )
         cells = density.cell_count(config.hex_rings)
         self.density = HeadGroup(width, hidden, (2 * cells,)) if config.density_head else None
-        self.shot_outcome, self.shot_trajectory_head = None, None
+        self.shot_outcome, self.shot_trajectory_head, self.shot_damage_head = None, None, None
+        if config.shot_head == "damage":
+            self.shot_damage_head = ShotDamageHead(width, shots.DAMAGE_WIDTH)
         if config.shot_head == "trajectory":
             self.shot_outcome = HeadGroup(width, hidden, (self.shot_code.outcome_width,))
             self.shot_trajectory_head = ShotTrajectoryHead(
@@ -724,15 +765,23 @@ class Yemong(nn.Module):
             "density": self.density is not None,
             "shot_trajectory": self.shot_trajectory_head is not None,
             "shot_outcome": self.shot_outcome is not None,
+            "shot_damage": self.shot_damage_head is not None,
             "geometry": self.geometry_head is not None,
         }
         return tuple(name for name, present in built.items() if present)
 
     def initialise_parameters(self, generator) -> None:
         """After every layer's own (`bnb.models.initialise`): code columns of each first
-        projection ~ N(0, 1 / groups); the next-state head starts as "nothing changes"
+        projection ~ N(0, 1 / groups) (with raw inputs there are none: every column keeps
+        the layer's own); the next-state head starts as "nothing changes"
         (absolute) or at the measured marginal (delta); the error head's last layer zero at
         its marginal; the density head at an even spread of the ships."""
+        if self.config.input_encoding == "codes":
+            self._initialise_code_columns(generator)
+        self._initialise_heads()
+
+    def _initialise_code_columns(self, generator) -> None:
+        """The code columns of each first projection ~ N(0, 1 / groups)."""
         ship_weight = self.encoder.ship.first.weight
         ship_name = "encoder.ship.first.weight"
         ship_weight[:, : self.state_code.input_width].normal_(
@@ -760,6 +809,11 @@ class Yemong(nn.Module):
             self.encoder.global_token.first.weight[:, -ARENA_CODE:].normal_(
                 0.0, 1.0, generator=generator("encoder.global_token.first.weight[arena]")
             )
+
+    def _initialise_heads(self) -> None:
+        """The next-state head as "nothing changes" (absolute) or at the measured marginal
+        (delta); the error head's last layer zero at its marginal; the density head at an
+        even spread of the ships."""
         if self.config.next_state_head:
             next_state = self.ship_heads.lasts[self.ship_head_names.index("next_state")]
             nn.init.zeros_(next_state.weight)
@@ -1258,6 +1312,7 @@ class Yemong(nn.Module):
                     (every_correction,) = self.correction_head(hidden[:, :ships_count])
                 density_log_rates = self._global_outputs(hidden[:, ships_count])
                 shot_outcome_logits, shot_latents = self._shot_outputs(hidden[:, :ships_count])
+                shot_damage_latents = self._shot_damage_latents(hidden[:, :ships_count])
                 geometry_latents = self._geometry_latents(hidden[:, :ships_count])
         policy_logits, enemy_action_logits, outcome_logits = (
             policy_logits.to(dtype),
@@ -1349,6 +1404,7 @@ class Yemong(nn.Module):
             shot_latents=_cast(shot_latents, dtype),
             geometry_latents=_cast(geometry_latents, dtype),
             correction_logits=_cast(every_correction, dtype),
+            shot_damage_latents=_cast(shot_damage_latents, dtype),
         )
         return decision, torch.utils._pytree.tree_map(lambda tensor: tensor[None], unrolled)
 
@@ -1382,6 +1438,7 @@ class Yemong(nn.Module):
             outcome_logits = self._outcome_logits(hidden[..., ships, :])
             density_log_rates = self._global_outputs(hidden[..., ships, :])
             shot_outcome_logits, shot_latents = self._shot_outputs(ship_hidden)
+            shot_damage_latents = self._shot_damage_latents(ship_hidden)
             geometry_latents = self._geometry_latents(ship_hidden)
             correction_logits = None
             if self.correction_head is not None:
@@ -1400,7 +1457,22 @@ class Yemong(nn.Module):
             shot_latents=_cast(shot_latents, dtype),
             geometry_latents=_cast(geometry_latents, dtype),
             correction_logits=_cast(correction_logits, dtype),
+            shot_damage_latents=_cast(shot_damage_latents, dtype),
         )
+
+    def _shot_damage_latents(self, ship_hidden: torch.Tensor) -> torch.Tensor | None:
+        """The shot damage head's per-row latents (..., N, 2 D) (None without the head)."""
+        if self.shot_damage_head is None:
+            return None
+        return self.shot_damage_head.latent(ship_hidden)
+
+    def shot_damage(self, latents: torch.Tensor, shooters: int) -> torch.Tensor:
+        """The shot damage head's pair logits (..., S, N, `shots.DAMAGE_WIDTH`) of latents
+        (..., N, 2 D) (`Unrolled.shot_damage_latents`), the first `shooters` rows shooting,
+        under the model's matmul autocast, in the model's dtype."""
+        with self._matmuls(latents.device):
+            logits = self.shot_damage_head.query(latents, shooters)
+        return logits.to(self.bins.dtype)
 
     def _geometry_latents(self, ship_hidden: torch.Tensor) -> torch.Tensor | None:
         """The geometry head's per-row latents (..., N, 2 D) (None without the head)."""

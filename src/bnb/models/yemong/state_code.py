@@ -55,6 +55,7 @@ COVARIANCE_STATE = ("x", "y", "velocity_x", "velocity_y", "heading", "nose_rate"
 COVARIANCE_ENTRIES = len(COVARIANCE_STATE) * (len(COVARIANCE_STATE) + 1) // 2
 SPREAD_INPUTS = ("scalar", "ellipse")  # `YemongConfig.spread_inputs`
 POSITION_INPUTS = ("colour", "fourier")  # `YemongConfig.position_inputs`
+INPUT_ENCODINGS = ("codes", "raw")  # `YemongConfig.input_encoding`
 
 # Sizing rule for the position codes (this colour code, `YemongConfig.position_period`, and
 # the rotary bands, `YemongConfig.rotary_*`); revisit both whenever ship speeds, the tick or
@@ -91,6 +92,38 @@ LOG_INDEX_SPAN = math.log(2.0)  # field levels span n from 1/2 to 2
 SCALARS = ("angle_of_attack", "shield_recharge_wait", "shield", "energy", "log_refractive_index")
 # The linear codes' padding: codes.PADDING_BINS each side of their real bins (HL-Gauss).
 PADDED = 2 * codes.PADDING_BINS
+
+
+# The raw inputs (`YemongConfig.input_encoding = "raw"`, arm A17): a ship row reads its
+# state as plain scalars in place of the codes (`ShipStateCode.raw_inputs`), RAW_STATE
+# columns. A mean is a linear scalar over its scale; a position is read from the map centre
+# (the view's random offset cancels), over the real-scale arena radius; an angle is its
+# (cos, sin) times exp(-sigma^2 / 2), the mean resultant length of a wrapped Gaussian, so a
+# hidden ship's heading fades toward 0 as its belief spreads; any other spread is
+# ln(1 + sigma / b), b the bin width of the code it replaces (so 0 for a sharp row, about
+# ln(bins) for one spread over the whole range). Constants of the model, like the scales in
+# `inputs`.
+RAW_POSITION_SCALE = 7800.0  # m: the real-scale arena radius (`inputs.ARENA_CODE_RADIUS`)
+RAW_SPEED_SCALE = 450.0  # m/s: about the x2 game's boost speed
+RAW_STATE = (
+    "x",
+    "y",
+    "position_spread_x",
+    "position_spread_y",
+    "velocity_x",
+    "velocity_y",
+    "velocity_spread_x",
+    "velocity_spread_y",
+    "velocity_correlation",
+    "heading_cos",
+    "heading_sin",
+    "nose_rate",
+    "nose_rate_spread",
+    *SCALARS,
+    *(f"{name}_spread" for name in SCALARS),
+    "gun_cooldown",
+    "gun_cooldown_spread",
+)
 
 
 # The ellipse inputs (`spread_inputs = "ellipse"`): per ellipse (position, velocity) log
@@ -191,7 +224,9 @@ class ShipStateCode(nn.Module):
     (`inputs`): the code's own runs ("colour"), or Fourier features at the same levels
     ("fourier"); the code is the same either way. position_period (m per axis): the
     position code's coarsest period (`YemongConfig.position_period`), which the position
-    ellipse's sigma code also spans.
+    ellipse's sigma code also spans. input_encoding (INPUT_ENCODINGS): "codes", the ship
+    token reads the code (or its Fourier variant); "raw", plain scalars in place of every
+    code (`raw_inputs`, RAW_STATE; the ellipse inputs likewise), the code itself unchanged.
     """
 
     def __init__(
@@ -202,9 +237,15 @@ class ShipStateCode(nn.Module):
         spread_inputs: str = "scalar",
         position_inputs: str = "colour",
         position_period: float = POSITION_PERIOD,
+        input_encoding: str = "codes",
     ) -> None:
         super().__init__()
         self.position_period = position_period
+        if input_encoding not in INPUT_ENCODINGS:
+            raise ValueError(f"input_encoding {input_encoding!r} is not one of {INPUT_ENCODINGS}")
+        if input_encoding == "raw" and position_inputs != "colour":
+            raise ValueError("input_encoding 'raw' replaces the position inputs: keep 'colour'")
+        self.input_encoding = input_encoding
         if spread_fit not in codes.SPREAD_FITS:
             raise ValueError(f"spread_fit {spread_fit!r} is not one of {codes.SPREAD_FITS}")
         if spread_inputs not in SPREAD_INPUTS:
@@ -264,7 +305,9 @@ class ShipStateCode(nn.Module):
     def input_width(self) -> int:
         """The width the ship token reads (`inputs`): the code's, or with Fourier inputs
         (cos, sin) per level of each position axis and of the heading in place of their
-        runs (36 for 81, 8 for 16)."""
+        runs (36 for 81, 8 for 16), or with raw inputs RAW_STATE's (25)."""
+        if self.input_encoding == "raw":
+            return len(RAW_STATE)
         if self.position_inputs == "colour":
             return self.width
         position, heading = self.runs[0], self.runs[2]
@@ -298,9 +341,12 @@ class ShipStateCode(nn.Module):
 
     @property
     def ellipse_width(self) -> int:
-        """The ellipse inputs' width (0 with scalar spread inputs)."""
+        """The ellipse inputs' width (0 with scalar spread inputs; one column a feature with
+        raw inputs)."""
         if self.spread_inputs != "ellipse":
             return 0
+        if self.input_encoding == "raw":
+            return 2 * ELLIPSE_FEATURES
         return 2 * ELLIPSE_FEATURES * (SCALAR_BINS + PADDED)
 
     def blocks(self, spreads: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -320,7 +366,9 @@ class ShipStateCode(nn.Module):
         """(..., ellipse_width): per ellipse (position, velocity; `blocks`) the four
         ELLIPSE_FEATURES, each the HL-Gauss code of an exact value on SCALAR_BINS and the
         padding (`ELLIPSE_KNEE`): the padding keeps a feature's mean exact at its range's
-        edge (a round ellipse's 0, a sigma at or past its bound)."""
+        edge (a round ellipse's 0, a sigma at or past its bound). With raw inputs each
+        feature itself over its range's far end (a log sigma in [0, 1] up to its bound, an
+        angle feature in [-1, 1])."""
         features = []
         for name, packed in zip(("position", "velocity"), self.blocks(spreads), strict=True):
             knee = ELLIPSE_KNEE[name]
@@ -330,6 +378,8 @@ class ShipStateCode(nn.Module):
         low = self.ellipse_low.to(spreads.dtype)
         high = self.ellipse_high.to(spreads.dtype)
         values = torch.stack(features, -1)
+        if self.input_encoding == "raw":  # each feature over its range's far end: [0, 1], [-1, 1]
+            return values / high
         return codes.hl_gauss_scalar_encode(
             values, torch.zeros_like(values), low, high, SCALAR_BINS
         ).flatten(-2)
@@ -431,14 +481,22 @@ class ShipStateCode(nn.Module):
         return spreads[..., 0]
 
     def inputs(
-        self, code: torch.Tensor, means: torch.Tensor, spreads: torch.Tensor
+        self,
+        code: torch.Tensor,
+        means: torch.Tensor,
+        spreads: torch.Tensor,
+        ship_type: torch.Tensor,
+        centre: torch.Tensor,
     ) -> torch.Tensor:
         """What the ship token reads of the state (..., input_width): with colour inputs the
         code (..., width) itself; with Fourier inputs the code with its position and heading
         runs replaced by `codes.fourier_encode` of the same means and spreads at the same
         periods (position per world axis, x first, POSITION_LEVELS levels from
         position_period; heading HEADING_LEVELS from 2 pi), each level attenuated by its
-        sigma as the code's is."""
+        sigma as the code's is; with raw inputs `raw_inputs` (ship_type (...), centre the
+        map centre (..., 2) in the means' frame, broadcasting)."""
+        if self.input_encoding == "raw":
+            return self.raw_inputs(code, means, spreads, ship_type, centre)
         if self.position_inputs == "colour":
             return code
         sigma = self._position_sigma(spreads)
@@ -462,6 +520,75 @@ class ShipStateCode(nn.Module):
         )
         parts = code.split([groups * size for groups, size in self.runs], -1)
         return torch.cat([position.flatten(-3), parts[1], heading.flatten(-2), *parts[3:]], -1)
+
+    def raw_inputs(
+        self,
+        code: torch.Tensor,
+        means: torch.Tensor,
+        spreads: torch.Tensor,
+        ship_type: torch.Tensor,
+        centre: torch.Tensor,
+    ) -> torch.Tensor:
+        """(..., RAW_STATE) the state as plain scalars (`input_encoding` "raw"; the rule
+        beside RAW_STATE): the position from the map centre (..., 2) over
+        RAW_POSITION_SCALE and the velocity over RAW_SPEED_SCALE; the heading (cos, sin)
+        times exp(-sigma^2 / 2); the nose rate over NOSE_RATE_LIMIT; each of SCALARS over
+        its range's far end (shield and energy as fractions: [0, 1]; the angle of attack and
+        the log index [-1, 1]); the gun cooldown over its longest; every other spread
+        ln(1 + sigma / b), b its code's bin width (the position's the finest colour's,
+        position_period / 3^POSITION_LEVELS; the velocity's the spacing at rest, with the
+        correlation of its covariance). The cooldown's spread is the standard deviation of
+        the code's cooldown run (`encode`: its sharp base plus the belief's residuals)."""
+        mean = dict(zip(MEANS, means.unbind(-1), strict=True))
+        spread = dict(zip(SPREADS, spreads[..., : len(SPREADS)].unbind(-1), strict=True))
+        position_block, velocity_block = self.blocks(spreads)
+
+        def sigmas(block: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+            return (
+                torch.sqrt(torch.clamp_min(block[..., 0], 0.0)),
+                torch.sqrt(torch.clamp_min(block[..., 2], 0.0)),
+            )
+
+        position_x, position_y = sigmas(position_block)
+        velocity_x, velocity_y = sigmas(velocity_block)
+        product = velocity_x * velocity_y
+        correlation = torch.where(
+            product > 0, velocity_block[..., 1] / torch.where(product > 0, product, 1.0), 0.0
+        )
+        position_bin = self.position_period / 3.0**POSITION_LEVELS
+        attenuation = torch.exp(-0.5 * spread["heading"] ** 2)
+        low, high, divisor = self._scalar_axis(self._maxima(ship_type), means)
+        scalars = torch.stack([mean[name] for name in SCALARS], -1) / divisor
+        scalar_spreads = torch.stack([spread[name] for name in SCALARS], -1) / divisor
+        scalar_bin = (high - low) / (SCALAR_BINS - 1)
+        cooldown_run = code[..., self.width - self.cooldown_bins :]
+        centres = self.tick_length * torch.arange(
+            self.cooldown_bins, dtype=code.dtype, device=code.device
+        )
+        cooldown_mean = (cooldown_run * centres).sum(-1)
+        cooldown_variance = (cooldown_run * (centres - cooldown_mean[..., None]) ** 2).sum(-1)
+        cooldown_spread = torch.sqrt(torch.clamp_min(cooldown_variance, 0.0))
+        position = (means[..., 0:2] - centre) / RAW_POSITION_SCALE
+        columns = [
+            position[..., 0],
+            position[..., 1],
+            torch.log1p(position_x / position_bin),
+            torch.log1p(position_y / position_bin),
+            mean["velocity_x"] / RAW_SPEED_SCALE,
+            mean["velocity_y"] / RAW_SPEED_SCALE,
+            torch.log1p(velocity_x / VELOCITY_SPACING),
+            torch.log1p(velocity_y / VELOCITY_SPACING),
+            correlation,
+            attenuation * torch.cos(mean["heading"]),
+            attenuation * torch.sin(mean["heading"]),
+            mean["nose_rate"] / NOSE_RATE_LIMIT,
+            torch.log1p(spread["nose_rate"] / (2.0 * NOSE_RATE_LIMIT / (NOSE_RATE_BINS - 1))),
+            *(scalars / high).unbind(-1),
+            *torch.log1p(scalar_spreads / scalar_bin).unbind(-1),
+            mean["gun_cooldown"] / ((self.cooldown_bins - 1) * self.tick_length),
+            torch.log1p(cooldown_spread / self.tick_length),
+        ]
+        return torch.stack(columns, -1)
 
     def sharp(self, means: torch.Tensor, ship_type: torch.Tensor) -> torch.Tensor:
         """The code of a state known exactly."""

@@ -1,5 +1,6 @@
 """Output heads (spec 7): groups of MLP heads over one token, the next-state logits over
-their baseline, the critic's values, and the shot trajectory head queried at bullet ages."""
+their baseline, the critic's values, the shot trajectory head queried at bullet ages, and
+the shot damage head over pairs of ship rows."""
 
 import math
 
@@ -144,3 +145,35 @@ class ShotTrajectoryHead(nn.Module):
         if kernels.switches.heads and head_kernel.applies(hidden, self.middle.out_features):
             return head_kernel.head(hidden, self.middle, self.middle_norm, self.last)
         return self.last(F.gelu(self.middle_norm(self.middle(hidden))))
+
+
+class ShotDamageHead(nn.Module):
+    """Pair logits (..., S, N, outputs) (arm A22, `YemongConfig.shot_head` "damage"): for
+    each of the first S rows (the shooters, the own ships) and every row (the targets), the
+    code of the damage a shot fired now would deal. latent(x) is computed once per row,
+    its first half the shooter's part and its second the target's; a pair's logits are
+    last(gelu(norm(shooter part + target part))), one hidden layer as a `HeadGroup` head's.
+    Initialised as the geometry head: each width-row block of the latent orthogonal (gain
+    sqrt 2), the last orthogonal (gain 0.01), every bias zero."""
+
+    def __init__(self, width: int, outputs: int) -> None:
+        super().__init__()
+        self.width = width
+        self.latent = nn.Linear(width, 2 * width)
+        self.first_norm = norm(width)
+        self.last = nn.Linear(width, outputs)
+
+    def initialise_parameters(self, generator) -> None:
+        """The class docstring's initialisation, each block its own draw."""
+        for index, block in enumerate(self.latent.weight.split(self.width)):
+            orthogonal(block, FIRST_GAIN, generator(f"latent.weight[{index}]"))
+        nn.init.zeros_(self.latent.bias)
+        orthogonal(self.last.weight, LAST_GAIN, generator("last.weight"))
+        nn.init.zeros_(self.last.bias)
+
+    def query(self, latents: torch.Tensor, shooters: int) -> torch.Tensor:
+        """latents (..., N, 2 D) from `self.latent`; the first `shooters` rows shoot. Returns
+        (..., S, N, outputs), a shooter's own row included (no loss reads it)."""
+        shooter = latents[..., :shooters, None, : self.width]
+        target = latents[..., None, :, self.width :]
+        return self.last(F.gelu(self.first_norm(shooter + target)))
