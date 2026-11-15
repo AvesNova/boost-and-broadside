@@ -90,6 +90,9 @@ LEAGUE_ONLY = (Pool("league", 1.0, (LEARNER, OPPONENTS)),)
 SELF_PLAY_SEATS = ("both", "one")
 MODELS = ("yemong", "relational", "nearest")
 OBJECTIVES = ("ppo", "bc")
+# `TrainConfig.update_policies`: which runs write every update's policy files, by stage (a
+# PPO run is "rl", a BC run "bc"; "all" both, "off" neither).
+UPDATE_POLICIES = ("off", "rl", "bc", "all")
 PRECISIONS = ("float32", "tf32", "bfloat16")
 
 
@@ -214,9 +217,10 @@ class TrainConfig:
     turned 35 degrees, heading harmonics 1, 2, 4), the colour code to 236 196 m
     (`position_period`), the arena radius's code (`arena_code`) and the geometry head
     (`geometry_head`), and every model's value support has `codes.PADDING_BINS` bins past
-    each end (`value_padding`, since 2026-11-15); the config's own defaults, "v1",
-    "spatial_first", the two older modes, no timers, the older codes and no value padding,
-    are what older build records hold (every build
+    each end (`value_padding`, since 2026-11-15), and a new nearest-neighbour MLP reads
+    every mode's inputs (`NearestConfig.full_mode_inputs`, since 2026-11-15); the config's
+    own defaults, "v1", "spatial_first", the two older modes, no timers, the older codes,
+    no value padding and the MLP's first inputs, are what older build records hold (every build
     reads the boundary's radius and time to zero). ship_card:
     the ship card's values by field, one per ship type, every field given
     (`bnb.game.api.default_card`). environments: the training environments; length: ticks
@@ -237,8 +241,15 @@ class TrainConfig:
     objective: "ppo", or "bc" (clone Imugi; `learner` should then be
     `bnb.learn.bc.config()`, `teacher` sets its labels and how the scripted opponent
     plays, `bnb.learn.bc.TeacherOpponent`, and `stop` when it stops, its budget included).
-    policy_snapshots: for a run that does not write every update's policy files (BC by
-    default: the run's `update_policies`), the environment steps at which it keeps them
+    update_policies: which runs write the live, exponential-average and uniform-average
+    policy files after every update (and their starting weights before the first) to
+    `policies/` (about 11 MB each, never pruned; `bnb.runs.session`), by the run's stage:
+    "off" (the default), "rl" (a PPO run, a chain's RL stage among them), "bc" (a BC run)
+    or "all". One setting for both stages of a chain: "rl" keeps a chain's BC stage on its
+    snapshots (BC's files would add about 1 GB). On for the run that feeds the averaging
+    sweep (`bnb average`, R0 and R5); a resume may change it.
+    policy_snapshots: for a run that does not write every update's policy files
+    (`update_policies`), the environment steps at which it keeps them
     under `policies/step_<steps>/`, the live weights and both averages
     (`bnb.runtime.snapshots.SnapshotSchedule`; `RL_SNAPSHOTS` by default, decided
     2026-11-14: 1, 2, 3, 4, 6, 8, 10, 12, 16 and 20M steps, then every 5M), and always at
@@ -310,7 +321,7 @@ class TrainConfig:
         value_padding=PADDING_BINS,  # the HL-Gauss value targets' padding (2026-11-15)
     )
     relational: RelationalConfig = RelationalConfig(value_padding=PADDING_BINS)
-    nearest: NearestConfig = NearestConfig(value_padding=PADDING_BINS)
+    nearest: NearestConfig = NearestConfig(value_padding=PADDING_BINS, full_mode_inputs=True)
     ship_card: dict[str, tuple[float, ...]] | None = None  # None: the game's ship set's card
     league: LeagueConfig = LeagueConfig()
     pools: tuple[Pool, ...] = LINEUP
@@ -324,6 +335,7 @@ class TrainConfig:
     objective: str = "ppo"
     teacher: TeacherConfig = TeacherConfig()
     stop: StopConfig = StopConfig()
+    update_policies: str = "off"
     policy_snapshots: SnapshotSchedule = RL_SNAPSHOTS
     arena_scale: ArenaScale | None = None
     active_fields: ActiveFields | None = None
@@ -358,6 +370,15 @@ class TrainConfig:
             unknown = sorted(set(self.mode_mix) - set(PRESETS))
             if unknown:
                 raise ValueError(f"mode_mix names {unknown}, not game presets")
+        if self.update_policies not in UPDATE_POLICIES:
+            raise ValueError(
+                f"update_policies {self.update_policies!r} is not one of {UPDATE_POLICIES}"
+            )
+        if self.objective == "bc" and self.learner.entropy_floor is not None:
+            raise ValueError(
+                "learner.entropy_floor is RL's: BC has no entropy term (a chain sets it with "
+                "--rl-set)"
+            )
         if self.combat_collapse_stop < 0:
             raise ValueError(f"combat_collapse_stop {self.combat_collapse_stop} is negative")
         if self.model not in MODELS:
@@ -398,6 +419,13 @@ class TrainConfig:
             return None
         total = sum(self.mode_mix.values())
         return tuple((name, weight / total) for name, weight in self.mode_mix.items())
+
+    @property
+    def writes_update_policies(self) -> bool:
+        """Whether this run writes every update's policy files (`update_policies` for its
+        stage: "rl" for PPO, "bc" for BC)."""
+        stage = "bc" if self.objective == "bc" else "rl"
+        return self.update_policies in ("all", stage)
 
     def uniform_start(self) -> int:
         """The environment steps the uniform average starts after: `league.uniform_from`,

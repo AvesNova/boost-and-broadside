@@ -15,7 +15,11 @@ last step, the rule that stopped it and the policy file the RL stage started fro
 
 BC's budget is its own, 100M environment steps for every arm, at most the combined budget
 (`bnb.cli.chain_bc_budget`; its plateau rule only logs by default, decided 2026-11-14);
-the RL stage trains the whole updates that fit in what is left.
+the RL stage trains the whole updates that fit in what is left. A chain given
+`--bc-budget-steps` takes that as its BC budget instead; 0 is no BC stage at all: the
+handover is recorded at step 0 (`NO_CLONING`, no policy) and the RL stage is a fresh run
+over the whole budget, with the RL stage's settings, the warm start's entropy coefficients
+included, so RL from scratch (arm A24) differs from BC -> RL only by the clone.
 A stage starts with a checkpoint at its step 0, so the chain resumes at any point: in BC,
 at the handover (the BC stage finished, the RL stage not begun or not yet past its first
 checkpoint) and in RL.
@@ -28,6 +32,9 @@ from .records import Run, write_json
 
 RECORD = "chain.json"
 STAGES = ("bc", "rl")
+# The handover's `stopped_by` of a chain with no BC stage (a BC budget of 0): the RL stage
+# starts from scratch at step 0, with no policy.
+NO_CLONING = "no_bc"
 
 
 class Chain:
@@ -104,10 +111,11 @@ class Chain:
         """The `chain` entry of a stage's run.json."""
         return dict(name=self.record["name"], stage=stage, start_step=start_step)
 
-    def hand_over(self, step: int, stopped_by: str, policy: pathlib.Path) -> None:
+    def hand_over(self, step: int, stopped_by: str, policy: pathlib.Path | None) -> None:
         """Record the handover: the BC stage's last environment step, the rule that stopped
-        it and the policy file the RL stage starts from."""
-        self.update(handover=dict(step=step, stopped_by=stopped_by, policy=str(policy)))
+        it and the policy file the RL stage starts from (None: no BC stage, `NO_CLONING`)."""
+        policy = None if policy is None else str(policy)
+        self.update(handover=dict(step=step, stopped_by=stopped_by, policy=policy))
 
 
 def reinforcement_updates(budget_steps: int, handover_step: int, steps_per_update: int) -> int:

@@ -57,9 +57,9 @@ uv run --no-sync bnb train --resume 2026-11-02-mixed-purple-pumpkin --at 2684354
   exactly where the run stopped. A BC run resumes the same way, its stop rule's window
   included ([Behaviour cloning](behaviour-cloning.md#resume-a-bc-run)).
 - `--updates` is the run's total budget (`--bc-budget-steps` a BC run's). `--precision`, `--micro-batch-rows` and
-  `--checkpoint-every` and `--update-policies` may change, and `--set` the fields
+  `--checkpoint-every` may change, and `--set` the fields
   `bnb.runs.checkpoint.OVERRIDABLE` lists (the learning rate, the warm-up, the loss
-  coefficients, the reward weights). Each change is recorded with the step it took effect
+  coefficients, the entropy floor, the reward weights, `update_policies`). Each change is recorded with the step it took effect
   at.
 - A run whose process is still alive on this machine does not resume: stop it first.
 - Any other option fails with a message pointing to `--from`.
@@ -132,7 +132,8 @@ is over the budget.
 
 ## Every update's policies and averages built from them
 
-A run started with `--update-policies` keeps the live and averaged policy files of every
+A run started with `--set update_policies=rl` (`TrainConfig.update_policies`; `bc` for a BC
+run, `all` for both stages of a chain) keeps the live and averaged policy files of every
 update under `policies/` (off by default: a run keeps them on the snapshot schedule,
 `TrainConfig.policy_snapshots`, and at each end instead). To rate other averages, build
 them from such a run's saved live policies with a spec and name them in a tournament:

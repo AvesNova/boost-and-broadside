@@ -15,6 +15,14 @@ def masked_sum(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     return torch.where(mask, values, 0.0).sum()
 
 
+def entropy_floor_penalty(
+    joint_entropy: torch.Tensor, floor: float, mask: torch.Tensor
+) -> torch.Tensor:
+    """The entropy floor's hinge summed over the tokens of `mask`: max(0, floor - H) per
+    token, H its joint entropy in nats (...); zero, and no gradient, at or above the floor."""
+    return masked_sum(torch.relu(floor - joint_entropy), mask)
+
+
 def geometry_cross_entropy(logits: torch.Tensor, values: torch.Tensor) -> torch.Tensor:
     """(..., S, K): the geometry head's cross-entropy per pair, in nats per target (the mean
     over its `geometry.TARGETS`): logits (..., S, K, `geometry.WIDTH`), values (..., S, K,

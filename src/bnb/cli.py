@@ -71,10 +71,6 @@ class Train:
     current directory outside a repository).
     checkpoint_every: environment steps between training checkpoints (default: about 30
     minutes at the run's measured throughput).
-    update_policies: write the live, exponential-average and uniform-average policy files
-    after every update to the run's `policies/` (about 10 MB each, never pruned; default:
-    off, for the one arm that feeds the averaging sweep; a resume may change it). Without
-    it a run keeps them on the snapshot schedule (`TrainConfig.policy_snapshots`).
     objective: ppo, or bc (behaviour cloning against self-play and Imugi until
     a stop rule fires, then the clone is saved as the run's policy file; updates is unused;
     a BC run keeps training checkpoints and resumes, but is not forked or warm-started);
@@ -86,7 +82,9 @@ class Train:
     Or chain (`bnb.runs.chain`): BC until its stop rule fires, then PPO from the clone's
     exponential average (a warm start: a fresh optimizer, its warm-up and
     WARM_START_ENTROPY), to chain_budget_steps environment steps in all (BC's budget is
-    its own, 100M, at most the combined one: `chain_bc_budget`), as two runs,
+    its own, 100M, or the chain's bc_budget_steps, at most the combined one:
+    `chain_bc_budget`; `--bc-budget-steps 0` is no BC stage, RL from scratch over the whole
+    budget with the RL stage's settings, WARM_START_ENTROPY included), as two runs,
     `<name>-bc` and `<name>-rl`, with the chain's record in `<name>/`. Every other option
     applies to both stages; bc_set and rl_set are --set lines for one stage (after
     --set). `--resume NAME` continues the chain at the
@@ -124,7 +122,6 @@ class Train:
     name: str | None = None
     runs_directory: str | None = None
     checkpoint_every: int | None = None
-    update_policies: bool | None = None
     objective: str = "ppo"
     teacher_temperature: float = 1.0
     teacher_floor: float = 0.0
@@ -146,7 +143,6 @@ RESUME_OPTIONS = (
     "micro_batch_rows",
     "set",
     "checkpoint_every",
-    "update_policies",
     "device",
     "runs_directory",
     "print_config",
@@ -164,7 +160,7 @@ CHAIN_RESUME_OPTIONS = (
     "wandb",
 )
 # The options a chain sets for its stages, which its own command cannot.
-CHAIN_SETS = ("updates", "bc_budget_steps", "fork", "init_from", "at", "probe", "calibrate_entropy")
+CHAIN_SETS = ("updates", "fork", "init_from", "at", "probe", "calibrate_entropy")
 # The resume options that set a TrainConfig field: their paths.
 RESUME_FIELDS = {
     "updates": "updates",
@@ -196,8 +192,8 @@ class Runs:
 @dataclasses.dataclass(frozen=True)
 class Average:
     """Build averages of a run's weights from its per-update live policies (a run trained
-    with `--update-policies`) and write each as a policy file a tournament rates
-    (`bnb.runs.averaging`): uniform over a step window, exponential at a half-life,
+    with `TrainConfig.update_policies` on) and write each as a policy file a tournament
+    rates (`bnb.runs.averaging`): uniform over a step window, exponential at a half-life,
     windowed uniform over the last updates, and the run's own two averages rebuilt (checked
     against the run's files where both exist), each at the spec's evaluation points. The
     files are read once each, one at a time. An average written before is kept.
@@ -1065,6 +1061,9 @@ def _train(options: Train, given_options: set[str], stop, chain_entry: dict | No
             elif options.init_from:
                 source = pathlib.Path(options.init_from)
                 config = warm_start_entropy(config, options.set)
+            elif chain_entry is not None and chain_entry["stage"] == "rl":
+                # a chain's RL stage with no BC stage: the RL stage's settings, as from a clone
+                config = warm_start_entropy(config, options.set)
             model_set = any(
                 path.split(".")[0] == config.model for path, _ in map(parse_setting, options.set)
             )
@@ -1097,8 +1096,7 @@ def _train(options: Train, given_options: set[str], stop, chain_entry: dict | No
             if options.checkpoint_every is not None:
                 overrides["checkpoint_every"] = options.checkpoint_every
                 run.update(checkpoint_every=options.checkpoint_every)
-            if options.update_policies is not None:
-                run.update(update_policies=options.update_policies)
+            run.update(update_policies=config.writes_update_policies)
             warning = run.start_segment(step, overrides, rewound_from=max(rewound, default=None))
             if warning:
                 print(f"warning: {warning}", flush=True)
@@ -1114,7 +1112,6 @@ def _train(options: Train, given_options: set[str], stop, chain_entry: dict | No
                 parent = dict(policy=str(pathlib.Path(options.init_from).resolve()))
             else:
                 trainer = Trainer(config, device)
-            keep_policies = bool(options.update_policies)  # off unless asked (the averaging arm)
             run = Run.create(
                 runs_directory,
                 name,
@@ -1122,7 +1119,7 @@ def _train(options: Train, given_options: set[str], stop, chain_entry: dict | No
                 sys.argv,
                 options.checkpoint_every,
                 parent,
-                keep_policies,
+                config.writes_update_policies,
             )
             if chain_entry is not None:
                 run.update(chain=chain_entry)
@@ -1209,7 +1206,7 @@ def chain(options: Train, given_options: set[str], stop) -> None:
 
     import torch
 
-    from bnb.runs.chain import Chain, reinforcement_updates
+    from bnb.runs.chain import NO_CLONING, Chain, reinforcement_updates
     from bnb.runs.records import Run, run_name
     from bnb.runs.session import HANDOFF_PLAYER, POLICY_VARIANTS
 
@@ -1252,19 +1249,22 @@ def chain(options: Train, given_options: set[str], stop) -> None:
     }
     passed["runs_directory"] = str(runs_directory)
     base = dataclasses.replace(original, **passed)
+    if chained.record["handover"] is None and chain_bc_budget(budget, original) == 0:
+        chained.hand_over(0, NO_CLONING, None)  # RL from scratch (A24)
+        print("no BC stage: RL from scratch", flush=True)
     if chained.record["handover"] is None:
         stage = chained.stage_run("bc")
         bc_run = Run.open(runs_directory, stage) if (runs_directory / stage).exists() else None
         if bc_run is None or bc_run.record["status"] != "finished":
             if bc_run is None:
                 bc_options = stage_options(
-                    base, "bc", name=stage, bc_budget_steps=chain_bc_budget(budget)
+                    base, "bc", name=stage, bc_budget_steps=chain_bc_budget(budget, original)
                 )
                 given_stage, entry = set(), chained.stage_record("bc", 0)
             else:
                 # the stage's own budget (`chain_bc_budget`), or a --bc-set stop.budget_steps
                 own = _requested(
-                    stage_options(original, "bc", bc_budget_steps=chain_bc_budget(budget))
+                    stage_options(original, "bc", bc_budget_steps=chain_bc_budget(budget, original))
                 )
                 bc_options = Train(resume=stage, bc_budget_steps=own.stop.budget_steps, **passed)
                 given_stage, entry = {"resume", "bc_budget_steps"}, None
@@ -1292,19 +1292,21 @@ def chain(options: Train, given_options: set[str], stop) -> None:
     if rl_run is None:
         rl_options = stage_options(
             base, "rl", name=stage, updates=updates, init_from=handover["policy"]
-        )
+        )  # no policy (no BC stage): a fresh RL run
         _train(rl_options, set(), stop, chained.stage_record("rl", handover["step"]))
     else:
         rl_options = Train(resume=stage, updates=updates, **passed)
         _train(rl_options, {"resume", "updates"}, stop)
 
 
-def chain_bc_budget(combined: int) -> int:
-    """A chain's BC stage budget: BC's own (`bnb.learn.bc.StopConfig.budget_steps`, 100M,
-    fixed for every arm: decided 2026-11-14), at most the chain's combined budget."""
+def chain_bc_budget(combined: int, options: Train) -> int:
+    """A chain's BC stage budget: the chain's --bc-budget-steps, else BC's own
+    (`bnb.learn.bc.StopConfig.budget_steps`, 100M, fixed for every arm: decided 2026-11-14),
+    at most the chain's combined budget. 0: no BC stage, the RL stage from scratch."""
     from bnb.learn.bc import StopConfig
 
-    return min(combined, StopConfig().budget_steps)
+    own = StopConfig().budget_steps if options.bc_budget_steps is None else options.bc_budget_steps
+    return min(combined, own)
 
 
 def chained_options(chained) -> Train:
@@ -1331,15 +1333,21 @@ def stage_options(options: Train, stage: str, **changes) -> Train:
 
 def chain_configs(options: Train) -> dict:
     """Both stages' resolved TrainConfigs as JSON (`--print-config`): BC's with its own
-    budget (`chain_bc_budget`), RL's with the warm start's entropy coefficients (the model's
-    settings, which a warm start takes from the clone, are the same run's)."""
+    budget (`chain_bc_budget`; None without a BC stage), RL's with the warm start's entropy
+    coefficients, from the clone or from scratch (the model's settings, which a warm start
+    takes from the clone, are the same run's)."""
     from bnb.runs.serialise import to_json
 
     budget = options.chain_budget_steps
-    bc_config = _requested(stage_options(options, "bc", bc_budget_steps=chain_bc_budget(budget)))
+    bc_budget = chain_bc_budget(budget, options)
+    bc_config = (
+        to_json(_requested(stage_options(options, "bc", bc_budget_steps=bc_budget)))
+        if bc_budget
+        else None
+    )
     rl_options = stage_options(options, "rl")
     rl_config = warm_start_entropy(_requested(rl_options), rl_options.set)
-    return dict(bc=to_json(bc_config), rl=to_json(rl_config))
+    return dict(bc=bc_config, rl=to_json(rl_config))
 
 
 def alert_text(row: dict) -> str:
