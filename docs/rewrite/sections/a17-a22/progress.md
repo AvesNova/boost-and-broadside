@@ -21,3 +21,8 @@ from settings alone; defaults unchanged; CPU tests only.
   Smoke update: loss 29.9 nats/shot at init (9 targets x ln 25), gradient share 0.2%.
 - Machine heavily loaded (load ~30): the full touched test files time out at 50 min; ran
   targeted subsets.
+- Merged `origin/feat/imugi-boundary` (GRU, A2 team sizes, critic fixes) twice into the
+  branch, in this worktree. On the merged tree (PYTHONPATH=src, OMP 4): 1028 passed on the
+  touched files and tests/docs; 2 failures not ours (the pre-existing arm-1 golden, and a
+  docs reference `api.MINIMUM_SHIPS_PER_TEAM` from A2's merge). After the second merge 88
+  passed on the touched files most at risk; ONNX export cases a17_raw, a22_damage, gru pass.
