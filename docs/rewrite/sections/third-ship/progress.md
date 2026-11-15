@@ -121,3 +121,27 @@ feat/imugi-boundary). Power profile `performance`.
 - The box: its lock has been held 30+ min by another agent's compile-memory measurement
   (CPU-bound, GPU at 0%); my kgun2 and the mode checks (front1: elimination, Frontline 5v5,
   deathmatch 2v2) are queued behind it and the balance agent's jobs.
+
+## 09:35 doctrine chosen, card trimmed, the ship is in the set
+
+- Doctrine round 3/4 (structured, then 512 + 1024 mixed on the in-range card d1.2/s115):
+  base mixed 0.503; **no sense 0.542 ± 0.015**; the two-circle mirror 0.530; r1-020 without
+  lag 0.535; p020-12 0.533. Chosen: Jujak's stored doctrine with `sense` 0 (Bonghwang never
+  commits to a one-circle after a merge). The release mirrors are one-circle.
+- **Fight shape:** the roll makes scissors. Post-merge fight shares (one-circle, two-circle,
+  scissors): Bonghwang mirror 0.22 / 0.29 / 0.49 with the base doctrine, 0.20 / 0.42 / 0.38
+  with its own; Yongma mirror 0.37 / 0.48 / 0.15, Jujak mirror 0.37 / 0.43 / 0.20; Bonghwang
+  against either 0.18-0.23 scissors against 0.12 in Yongma v Jujak. Without the roll (screen
+  4) the mirror is 0.21 scissors.
+- Trim grid (640 games a pairing, no-sense doctrine, dive 43.6): d1.2/s115 0.473 / 0.601,
+  **d1.17/s115 0.504 / 0.531**, d1.15/s117 0.416 / 0.548, d1.15/s120 0.488 / 0.577,
+  d1.12/s120 0.447 / 0.558, d1.18/s112 0.457 / 0.530. Neighbours differ by more than their
+  SEs: the seed-to-seed noise is about ±0.03 here (as the balance agent saw).
+- **Applied** (456a1003, game v23 on this branch): `bonghwang.toml` (d1.17/s115), its
+  doctrine, Jujak's v23 card, maps bonghwang-mirror / -jujak / -yongma / three-ships. Quick
+  tests on the touched files pass (the game reference re-recorded) except
+  `test_ship_sets::test_training_takes_its_games_set_card`, which fails on the base tree too.
+  `bnb play --preset three-ships` renders offscreen.
+- Running: the tight 5v5 run (laptop: d1.17/s115 and d1.2/s115, 1536 games a pairing, the
+  release pair and all three mirrors); the box: elimination 5v5, deathmatch 2v2, Frontline
+  5v5, deathmatch 10v10 on d1.2/s115 (queued behind the balance agent's jobs).
