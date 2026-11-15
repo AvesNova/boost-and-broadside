@@ -407,9 +407,14 @@ class Learner:
         self.spread_generator = stream_generator(seed, "shot_spread", device)  # spread, ages
         self.order_generator = stream_generator(seed, "minibatch_order")  # host indices
         self.auxiliary = hasattr(model, "state_code")
+        # the auxiliary heads the model has (`Yemong.auxiliary_heads`): a head it does not
+        # build has no term, no labels and no series; without the shot heads no shot is
+        # re-simulated and the store keeps no shot labels
+        self.heads = model.auxiliary_heads if self.auxiliary else ()
+        self.shot_labels = "shot_trajectory" in self.heads
+        self.shot_runs = model.shot_code.trajectory_runs if self.shot_labels else None
         if self.auxiliary:
             self.grid = HexGrid(model.config.hex_rings, device)
-            self.shot_runs = model.shot_code.trajectory_runs
         self.discount = torch.tensor(returns.per_part(config.discount), device=device)
         self.trace_decay = torch.tensor(returns.per_part(config.trace_decay), device=device)
         self.every_trace = torch.ones_like(self.trace_decay)  # λ = 1: the rewards themselves
@@ -571,14 +576,16 @@ class Learner:
         stored shot labels (none without auxiliary heads)."""
         if not self.auxiliary:
             return {}
+        if shot_labels is None:
+            return self.codes(trajectory, None, None)
         return self.codes(trajectory, shot_labels["shots"], shot_labels["mask"])
 
     def staged(
         self, segments: Segments, view_batches: list[torch.Tensor]
     ) -> Iterator[tuple[Trajectory, dict | None]]:
-        """Each batch of views (host indices) on the device: its Trajectory and, with
-        auxiliary heads, its shot labels from the store ({"shots", "mask"}, (L, n, ...))."""
-        names = segments.names + ((SHOT_LABELS,) if self.auxiliary else ())
+        """Each batch of views (host indices) on the device: its Trajectory and, with the
+        shot heads, its shot labels from the store ({"shots", "mask"}, (L, n, ...))."""
+        names = segments.names + ((SHOT_LABELS,) if self.shot_labels else ())
         for batch in segments.batches(names, view_batches):
             stored = batch.pop(SHOT_LABELS, None)
             if stored is not None:
@@ -586,35 +593,39 @@ class Learner:
             yield Trajectory(**batch), stored
 
     def _codes(
-        self, trajectory: Trajectory, shot: shots.ShotLabels, shot_mask: torch.Tensor
+        self,
+        trajectory: Trajectory,
+        shot: shots.ShotLabels | None,
+        shot_mask: torch.Tensor | None,
     ) -> dict:
-        """The targets as the heads' codes, from the stored rows and the re-simulated shots'
-        labels (a stage the runtime may compile)."""
-        model = self.model
+        """The targets as the codes of the heads the model has (`heads`), from the stored
+        rows and the re-simulated shots' labels (None without the shot heads; a stage the
+        runtime may compile)."""
+        model, heads = self.model, self.heads
         rows = labels.privileged_rows(trajectory)
-        enemy, enemy_mask = labels.enemy_actions(trajectory)
-        code = model.shot_code
-        pairs = {}
-        if getattr(model, "geometry_head", None) is not None:
+        out = {}
+        if "geometry" in heads:
             partners, mask, values = labels.geometry_pairs(trajectory)
-            pairs = dict(geometry_partners=partners, geometry_mask=mask, geometry=values)
-        mask = labels.next_state_mask(trajectory, self.model)
-        split = {}
-        if getattr(model, "correction_code", None) is not None:
-            split = labels.split_masks(trajectory, mask, model)
-        return dict(
-            **pairs,
-            **split,
-            **labels.next_state_targets(model, trajectory, rows),
-            next_state_mask=mask,
-            enemy_action=enemy,
-            enemy_mask=enemy_mask,
-            density=labels.density_targets(self.grid, trajectory, rows),
-            shot_snapshots=shot.snapshots,
-            shot_ages=shot.ages.long() + 1,  # in moves
-            shot_mask=shot_mask,
-            shot_outcome=shot_codes.outcome_code(code, shot.hit, shot.distance, shot.side),
-        )
+            out.update(geometry_partners=partners, geometry_mask=mask, geometry=values)
+        if "next_state" in heads:
+            mask = labels.next_state_mask(trajectory, model)
+            if "correction" in heads:
+                out.update(labels.split_masks(trajectory, mask, model))
+            out.update(labels.next_state_targets(model, trajectory, rows), next_state_mask=mask)
+        if "enemy_action" in heads:
+            enemy, enemy_mask = labels.enemy_actions(trajectory)
+            out.update(enemy_action=enemy, enemy_mask=enemy_mask)
+        if "density" in heads:
+            out.update(density=labels.density_targets(self.grid, trajectory, rows))
+        if shot is not None:
+            code = model.shot_code
+            out.update(
+                shot_snapshots=shot.snapshots,
+                shot_ages=shot.ages.long() + 1,  # in moves
+                shot_mask=shot_mask,
+                shot_outcome=shot_codes.outcome_code(code, shot.hit, shot.distance, shot.side),
+            )
+        return out
 
     # ------------------------------------------------------------------ the loss
 
@@ -1071,20 +1082,21 @@ class Learner:
         recompute = config.old_log_probabilities == "recomputed"
         belief_total: dict = {}
         if self.auxiliary or recompute:
-            # One spread and one draw of uniform ages per update: each epoch reads the same
-            # stored labels.
-            spread = torch.randn(
-                (segments.length, segments.views, self.rules.num_ships, 2),
-                device=device,
-                generator=self.spread_generator,
-            )
-            drawn = torch.randint(
-                self.rules.longest_bullet_moves,
-                (segments.length, segments.views, self.rules.num_ships, 3),
-                dtype=torch.uint8,
-                device=device,
-                generator=self.spread_generator,
-            )
+            if self.shot_labels:
+                # One spread and one draw of uniform ages per update: each epoch reads the
+                # same stored labels.
+                spread = torch.randn(
+                    (segments.length, segments.views, self.rules.num_ships, 2),
+                    device=device,
+                    generator=self.spread_generator,
+                )
+                drawn = torch.randint(
+                    self.rules.longest_bullet_moves,
+                    (segments.length, segments.views, self.rules.num_ships, 3),
+                    dtype=torch.uint8,
+                    device=device,
+                    generator=self.spread_generator,
+                )
             order = self._micro_batches(torch.arange(segments.views))  # host indices
             for host_views, batch in zip(
                 order, segments.batches(segments.names, order), strict=True
@@ -1092,20 +1104,14 @@ class Learner:
                 views = self._on_device(host_views)
                 trajectory = Trajectory(**batch)
                 with torch.no_grad():
-                    if self.auxiliary:
+                    if self.shot_labels:
                         following, followed = segments.following(
                             FOLLOWING, host_views, self.rules.longest_bullet_moves
                         )
                         shot, shot_mask = self.shots(
                             trajectory, spread[:, views], drawn[:, views], following, followed
                         )
-                        counts[views, COUNTS.index("next_state")] = (
-                            labels.next_state_mask(trajectory, self.model).sum((0, 2)).float()
-                        )
                         counts[views, COUNTS.index("shots")] = shot_mask.sum((0, 2)).float()
-                        if getattr(self.model, "geometry_head", None) is not None:
-                            _, pair_mask, _ = labels.geometry_pairs(trajectory)
-                            counts[views, COUNTS.index("pairs")] = pair_mask.sum((0, 2, 3)).float()
                         stored = _pytree.tree_map_only(
                             torch.Tensor,
                             lambda x: x.transpose(0, 1).contiguous(),
@@ -1115,19 +1121,26 @@ class Learner:
                         segments.write_views(
                             {SHOT_LABELS: stored}, slice(first, first + host_views.numel())
                         )
-                        if self.diagnostics:
-                            belief_total = head_statistics.add(
-                                belief_total,
-                                {
-                                    **head_statistics.belief_sums(
-                                        trajectory,
-                                        self.rules.tick_length,
-                                        getattr(self.model, "state_code", None),
-                                    ),
-                                    **head_statistics.input_sums(self.model.state_code, trajectory),
-                                    **head_statistics.acceleration_sums(self.model, trajectory),
-                                },
-                            )
+                    if "next_state" in self.heads:
+                        counts[views, COUNTS.index("next_state")] = (
+                            labels.next_state_mask(trajectory, self.model).sum((0, 2)).float()
+                        )
+                    if "geometry" in self.heads:
+                        _, pair_mask, _ = labels.geometry_pairs(trajectory)
+                        counts[views, COUNTS.index("pairs")] = pair_mask.sum((0, 2, 3)).float()
+                    if self.auxiliary and self.diagnostics:
+                        belief_total = head_statistics.add(
+                            belief_total,
+                            {
+                                **head_statistics.belief_sums(
+                                    trajectory,
+                                    self.rules.tick_length,
+                                    getattr(self.model, "state_code", None),
+                                ),
+                                **head_statistics.input_sums(self.model.state_code, trajectory),
+                                **head_statistics.acceleration_sums(self.model, trajectory),
+                            },
+                        )
                     if recompute:
                         log_probability, _ = policy.evaluate(
                             self.unroll(trajectory).policy_logits, _own_joint(trajectory)
@@ -1433,7 +1446,7 @@ class Learner:
         out = {
             HEAD_SERIES[term]: Mean(terms_total[index], steps)
             for index, term in enumerate(TERMS)
-            if term in HEAD_SERIES
+            if term in self.heads
         }
         for index, head in enumerate(self.value_heads):
             out[f"critic/value_loss/{head}"] = Mean(levels_total[index], steps)
@@ -1586,8 +1599,8 @@ class Learner:
                     basic[f"next_state_{name}"] = (
                         config.next_state * part / denominator["next_state"]
                     )
-            elif term in ("geometry", "correction") and not terms[term].requires_grad:
-                continue  # a model without the geometry head or the error head
+            elif term in HEAD_SERIES and not terms[term].requires_grad:
+                continue  # a head the model does not build (`Yemong.auxiliary_heads`)
             elif term == "geometry":
                 logits = self.model.geometry(
                     unrolled.geometry_latents, label["geometry_partners"]

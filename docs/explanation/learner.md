@@ -216,6 +216,12 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 | `shot_outcome` | the same shots | the outcome code's cross-entropy |
 | `geometry` | with `YemongConfig.geometry_head` only: pairs of an own ship alive at `t` and a partner alive and seen at `t` (`bnb.models.yemong.geometry.pairs`) | the cross-entropy of the pair's five geometry codes, averaged over them (nats per target) |
 
+A head the model does not build (`YemongConfig.next_state_head`, `enemy_action_head`,
+`density_head`, `shot_head`, `geometry_head`, `delta_split`; `Yemong.auxiliary_heads`) has
+no term: its labels are not computed, its term stays zero with no gradient, and its loss
+series and head statistics are not reported. Without the shot heads (`shot_head="none"`)
+the learner re-simulates no shots and the store keeps no shot labels.
+
 With `YemongConfig.delta_split` the `next_state` and `correction` terms both divide by the count
 of every next-state row (seen and hidden), not by their own rows: a row then weighs the
 same in either term at equal coefficients, as it did in the one term before the split. So
