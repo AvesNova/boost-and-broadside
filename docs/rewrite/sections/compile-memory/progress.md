@@ -11,3 +11,14 @@
   (23 GB, 16 GB used, 15 GB of it /tmp/torchinductor_vizia), so the default Inductor
   cache is RAM charged to the run's cgroup, and the swap (8 GB) was full.
 - Next: the box measurements (current tree first).
+
+## 2026-11-16 08:40 step 1: head measured to 27 min, then blocked
+- Didn't work: the first sampled run used psutil (not in the env); the sampler now reads
+  /proc and runs on the system python. That run (no samples) finished: 49 min cold,
+  rollout compile 1055 s, learner compile 1758 s, 10 008 cubins, 4.3 GB cache.
+- Worked (partial): the sampled head run, stopped at 27.7 min by the coordinator (it held
+  the GPU lock while the GPU idled). Tree PSS peak 10.4 GB at 13 min; the main process
+  grows 3.6 -> 8.6 GB through the compile; 24 workers ~3.4 GB; ptxas up to 1.1 GB.
+- Blocked: running compile measurements without the GPU lock (the coordinator's request)
+  was refused by the session's permission check; the bisect, the worker sweep and the
+  A16 timing are not run. Interim write-up in results.md.

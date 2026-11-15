@@ -20,15 +20,15 @@ export PYTHONPATH=$tree/src TORCHINDUCTOR_CACHE_DIR=$cache/inductor TRITON_CACHE
   --runs-directory "$out/runs" --set lanes.environments=32 --set host_store=true \
   --set arena_scale=null "$@" > "$out/train.log" 2>&1 &
 pid=$!
-/workspace/compile-mem/.venv/bin/python /workspace/cm-tools/tree_memory.py \
+/usr/bin/python3 /workspace/cm-tools/tree_memory.py \
   $pid "$out/memory.csv" "$cache" 2 > "$out/peaks.txt" 2>&1 &
 wait $pid
 status=$?
 wait
 {
   echo "exit $status $(date +%T)"
-  echo "graphs $(find "$cache" -name 'output_code*' -o -path '*inductor*' -name '*.py' -newer "$out/meta.txt" | wc -l)"
+  echo "graphs $(find "$cache/inductor" -name "*.py" -size +1k | wc -l) (inductor .py files)"
   echo "cubins $(find "$cache" -name '*.cubin' | wc -l)"
   echo "cache $(du -sh "$cache" | cut -f1)"
 } >> "$out/meta.txt"
-rm -rf "$cache"
+[ "${KEEP:-0}" = 1 ] || rm -rf "$cache"
