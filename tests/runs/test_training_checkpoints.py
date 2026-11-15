@@ -28,6 +28,9 @@ def trained(tmp_path_factory):
         trainer = Trainer(cases.tiny_train_config(), cases.CPU)
         for _ in range(2):
             trainer.update()
+    # the tiny model has no shot labels: the counter of their keyed draws stands in for a
+    # run that drew them, so the round trip is not of the initial 0
+    trainer.ppo.shot_label_draws = 3
     directory = tmp_path_factory.mktemp("trained") / "step"
     checkpoint.save_training(directory, trainer)
     return trainer, directory
@@ -54,9 +57,7 @@ def test_every_part_of_a_training_checkpoint_round_trips(trained):
     _assert_same_optimizer(loaded, trainer)
     assert torch.equal(loaded.ppo.return_scale.low, trainer.ppo.return_scale.low)
     assert torch.equal(loaded.ppo.return_scale.high, trainer.ppo.return_scale.high)
-    assert torch.equal(
-        loaded.ppo.spread_generator.get_state(), trainer.ppo.spread_generator.get_state()
-    )
+    assert loaded.ppo.shot_label_draws == trainer.ppo.shot_label_draws == 3
     assert torch.equal(
         loaded.ppo.order_generator.get_state(), trainer.ppo.order_generator.get_state()
     )

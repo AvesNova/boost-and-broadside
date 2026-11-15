@@ -54,7 +54,7 @@ are in `runs.md`.
   (the league slot's weights), `carry.<path>` (`Rollout.saved_carry()`: state, types,
   observation, truth, seats, actions, spread, uniforms, sweep, ledger, every controller's
   carry, `t_idx`, counters; not the staging ring or segment buffers, which each segment
-  writes before reading), `generator.shot_spread`, `generator.minibatch_order`,
+  writes before reading), `generator.minibatch_order` (the shot labels are keyed draws: the record holds their counter, `shot_label_draws`),
   `default_generator.cpu` and `default_generator.cuda`.
 - **Exact resume.** Three things beyond saving every state:
   1. `Rollout._capture` restores the device's default generator after its warm-up, as

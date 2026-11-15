@@ -366,7 +366,6 @@ def _generators(trainer: Trainer) -> dict[str, torch.Generator]:
     """The seeded generators a trainer draws from (every other draw is keyed by the carry,
     `bnb.streams`)."""
     return {
-        "shot_spread": trainer.ppo.spread_generator,
         "minibatch_order": trainer.ppo.order_generator,
     }
 
@@ -403,6 +402,7 @@ def training_state(trainer: Trainer) -> tuple[dict, dict[str, torch.Tensor]]:
     record = dict(
         environment_steps=ppo.environment_steps,
         updates=trainer.updates_done,
+        shot_label_draws=ppo.shot_label_draws,
         optimizer=to_json(optimizer["param_groups"]),
         league=None if trainer.league is None else trainer.league.state()[0],
         triggers=None if trainer.triggers is None else trainer.triggers.state,
@@ -434,6 +434,7 @@ def save_training(
     optimizer = ppo.optimizer.state_dict()
     record.update(
         kind="training",
+        shot_label_draws=ppo.shot_label_draws,
         train_config=to_json(config),
         optimizer=dict(param_groups=to_json(optimizer["param_groups"])),
         extra=dict(extra or {}),
@@ -557,6 +558,7 @@ def _restore(
         trainer.rollout.load_carry(tree_from_named(trainer.rollout.saved_carry(), stored, "carry."))
         for name, generator in _generators(trainer).items():
             generator.set_state(stored[f"generator.{name}"])
+        trainer.ppo.shot_label_draws = record["shot_label_draws"]
         if trainer.stop_rule is not None:
             trainer.stop_rule = StopRule(trainer.config.stop, record["stop_rule"])
         _restore_teacher_carry(trainer, stored)

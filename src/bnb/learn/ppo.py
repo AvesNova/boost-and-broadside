@@ -40,7 +40,7 @@ from bnb.game.ship_types import ShipTypes, per_ship
 from bnb.models.yemong import codes, critic, geometry, policy
 from bnb.models.yemong import shots as shot_codes
 from bnb.models.yemong.density import HexGrid, poisson_terms
-from bnb.streams import stream_generator
+from bnb.streams import element_index, keyed_hash, keyed_normal, stream_generator, stream_key
 
 from . import advantages as level_advantages
 from . import gradients, head_statistics, labels, losses, returns, shots, statistics
@@ -440,7 +440,11 @@ class Learner:
         self.return_scale = critic.ReturnScale(
             config.return_scale_decay, config.return_scale_floor, device
         )
-        self.spread_generator = stream_generator(seed, "shot_spread", device)  # spread, ages
+        # the shot labels' spread and ages: keyed draws (`bnb.streams`), the same on every
+        # device, keyed by the update's draw (`shot_label_draws`, checkpointed) and the element
+        self.spread_key = stream_key(seed, "shot_spread")
+        self.ages_key = stream_key(seed, "shot_ages")
+        self.shot_label_draws = 0
         self.order_generator = stream_generator(seed, "minibatch_order")  # host indices
         self.auxiliary = hasattr(model, "state_code")
         # the auxiliary heads the model has (`Yemong.auxiliary_heads`): a head it does not
@@ -1114,13 +1118,28 @@ class Learner:
             return views
         return views.pin_memory().to(self.device, non_blocking=True)
 
+    def shot_label_uniforms(self, length: int, views: int) -> tuple[torch.Tensor, torch.Tensor]:
+        """One update's draws for the shot labels, (L, V, S, 2) standard normals (the spread)
+        and (L, V, S, 3) uint8 ages below the longest bullet flight, keyed by the run's seed,
+        the update's draw and the element (`bnb.streams`): the same on every device. Advances
+        the draw."""
+        ships, device = self.rules.num_ships, self.device
+        draw = torch.tensor(self.shot_label_draws, device=device)
+        spread = keyed_normal(
+            self.spread_key, draw, element_index((length, views, ships, 2), device)
+        )
+        hashed = keyed_hash(self.ages_key, draw, element_index((length, views, ships, 3), device))
+        drawn = (hashed % self.rules.longest_bullet_moves).to(torch.uint8)
+        self.shot_label_draws += 1
+        return spread, drawn
+
     def prepare(self, segments: Segments, bootstrap) -> dict:
         """Steps 1 and 2: per view, the advantage, the returns, the outcome targets and the
         old log-probabilities (L, V, ...), each view's token counts (V, COUNTS), the return
         scale and the explained variance per level (levels,); the shot labels go into the
         store. bootstrap: the learner's Outputs after the last tick the store holds (the
         lookahead's, or the last shard's without one)."""
-        config, device = self.config, self.device
+        config = self.config
         shards, length = segments.shards, segments.length
         lookahead = LOOKAHEAD
         small = [segments.shard(SMALL, shard) for shard in range(shards)]
@@ -1158,18 +1177,7 @@ class Learner:
             if self.shot_labels:
                 # One spread and one draw of uniform ages per update: each epoch reads the
                 # same stored labels.
-                spread = torch.randn(
-                    (segments.length, segments.views, self.rules.num_ships, 2),
-                    device=device,
-                    generator=self.spread_generator,
-                )
-                drawn = torch.randint(
-                    self.rules.longest_bullet_moves,
-                    (segments.length, segments.views, self.rules.num_ships, 3),
-                    dtype=torch.uint8,
-                    device=device,
-                    generator=self.spread_generator,
-                )
+                spread, drawn = self.shot_label_uniforms(segments.length, segments.views)
             order = self._micro_batches(torch.arange(segments.views))  # host indices
             for host_views, batch in zip(
                 order, segments.batches(segments.names, order), strict=True

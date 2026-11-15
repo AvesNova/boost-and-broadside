@@ -35,7 +35,7 @@ from bnb.models.yemong import critic, policy
 from bnb.models.yemong.density import HexGrid, poisson_terms
 from bnb.models.yemong.inputs import believed, truth
 from bnb.runtime import metrics
-from bnb.streams import stream_generator
+from bnb.streams import stream_key
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
@@ -551,6 +551,38 @@ def test_an_update_consumes_several_shards():
 # ------------------------------------------------------------------ the update's other paths
 
 
+def _first_label_draws(learner, store):
+    """The shot labels' draws of a learner's first update (its draw 0), from a copy."""
+    fresh = copy.copy(learner)
+    fresh.shot_label_draws = 0
+    return fresh.shot_label_uniforms(store.length, store.views)
+
+
+def test_the_shot_label_draws_are_keyed_by_the_seed_and_the_update(segment):
+    """The spread is standard normal and the ages below the longest flight, the same for the
+    same draw and seed (on any device: counter-based, `bnb.streams`), different for the
+    next update's draw and for another seed's keys."""
+    _, runner, learner, _ = segment
+    store = runner.store
+    first = _first_label_draws(learner, store)
+    again = _first_label_draws(learner, store)
+    assert all(torch.equal(a, b) for a, b in zip(first, again, strict=True))
+    fresh = copy.copy(learner)
+    fresh.shot_label_draws = 0
+    fresh.shot_label_uniforms(store.length, store.views)
+    assert fresh.shot_label_draws == 1
+    following = fresh.shot_label_uniforms(store.length, store.views)
+    assert not torch.equal(following[0], first[0]) and not torch.equal(following[1], first[1])
+    other = copy.copy(fresh)
+    other.shot_label_draws = 0
+    other.spread_key, other.ages_key = stream_key(1, "shot_spread"), stream_key(1, "shot_ages")
+    assert not torch.equal(other.shot_label_uniforms(store.length, store.views)[0], first[0])
+    spread, ages = first
+    assert spread.dtype == torch.float32 and abs(spread.mean().item()) < 0.1
+    assert 0.9 < spread.std().item() < 1.1
+    assert ages.dtype == torch.uint8 and int(ages.max()) < runner.rules.longest_bullet_moves
+
+
 def test_the_stored_shot_labels_are_the_updates_resimulation(segment):
     """prepare re-simulates every view once, from the learner's own spread stream (the
     spread, then the queried ages' draws) and with the bullet flight after its segment
@@ -558,12 +590,8 @@ def test_the_stored_shot_labels_are_the_updates_resimulation(segment):
     unchanged."""
     _, runner, learner, _ = segment
     store = runner.store
-    stream = stream_generator(0, "shot_spread")
-    spread = torch.randn((store.length, store.views, 10, 2), generator=stream)
     moves = runner.rules.longest_bullet_moves
-    drawn = torch.randint(
-        moves, (store.length, store.views, 10, 3), dtype=torch.uint8, generator=stream
-    )
+    spread, drawn = _first_label_draws(learner, store)
     views = torch.arange(3, 7)  # not one of prepare's micro-batches
     trajectory, stored = next(learner.staged(store, [views]))
     following, followed = store.following(FOLLOWING, views, moves)

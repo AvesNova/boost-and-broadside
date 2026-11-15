@@ -479,7 +479,7 @@ def test_no_logged_series_is_smoothed(segment, global_generator):
     seasoned.environment_steps = fresh.environment_steps
     for learner in (fresh, seasoned):  # the same minibatch order
         learner.order_generator.manual_seed(7)
-        learner.spread_generator.manual_seed(7)
+        learner.shot_label_draws = 7
     first = metrics.read(fresh.update(runner.store, runner.bootstrap()))
     second = metrics.read(seasoned.update(runner.store, runner.bootstrap()))
     assert first.keys() == second.keys()

@@ -490,8 +490,10 @@ cut; where they differ, this section and the code win.
       - `final_truth (R, N, …)`, after the last step;
       - `capture`, the shot capture (`bnb.learn.shots.ShotCapture`), each row's launch
         state and move at t.
-  - **Randomness in the update:** the learner's own streams (`bnb.learn.ppo.random_stream`,
-    named `shot_spread` and `minibatch_order`), never the global generator.
+  - **Randomness in the update:** the shot labels' spread and ages are keyed draws
+    (`bnb.streams`; keys `shot_spread` and `shot_ages`, coordinates the update's draw
+    `shot_label_draws` and the element), the same on every device; the minibatch order is
+    the host generator `minibatch_order`. Never the global generator.
   - **Shot labels:** a shot launched within the longest bullet flight of the segment's
     end is invalid, whatever it hit. Episode ends keep the flight-end rule: the bullets
     really vanish there.
