@@ -917,7 +917,7 @@ def test_the_fleets_combo_sets_the_chaser_and_back_to_baekho(context, tmp_path, 
     player.click("fleet/team1/controller/chaser")
     assert session.loop.setup.sides[1] == SideSetup("scripted")
     player.click("fleet/team1/controller")
-    player.click("fleet/team1/controller/Imugi baekho")
+    player.click("fleet/team1/controller/imugi baekho")
     assert session.loop.setup.sides[1] == SideSetup("imugi", doctrine="baekho")
     assert session.loop.sides[1].label == "Imugi Baekho"
     session.close()

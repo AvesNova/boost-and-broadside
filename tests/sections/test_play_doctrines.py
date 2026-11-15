@@ -54,7 +54,7 @@ def test_the_fleets_combo_offers_the_chaser_and_baekho():
     assert scripted_label(SideSetup("imugi")) == "Imugi Baekho"
     assert scripted_label(SideSetup("scripted")) == "Chaser"
     assert scripted_label(SideSetup("agent", "runs/x")) is None
-    assert controller_label_of_setup(SideSetup()) == "Imugi baekho"
+    assert controller_label_of_setup(SideSetup()) == "imugi baekho"
 
 
 def test_the_frame_rate_is_smoothed_and_keeps_the_last_seconds_longest_frame():
