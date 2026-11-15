@@ -557,8 +557,9 @@ def _lanes(field: list[Player], condition: Condition, blocks: int) -> tuple[int,
 
 class Engine:
     """One condition's engine (`Arena`): head-to-head blocks A against B; break-even's first
-    half of blocks A against the opponent, the second B, at lineups from each side's fit
-    (`crossover.allocate`)."""
+    half of blocks A against the opponent, the second B, each game at a lineup from its
+    side's fit (`crossover.allocate`), recorded per block and lineup
+    (`crossover.block_tallies`)."""
 
     def __init__(
         self,
@@ -596,7 +597,8 @@ class Engine:
         self.device = device
 
     def play(self, tally: Tally) -> tuple[int, list[dict]]:
-        """One batch: (its number, its blocks' outcomes)."""
+        """One batch: (its number, its outcomes: per block for head-to-head, per block, side
+        and lineup for break-even)."""
         number = self.arena.batch
         drawn = lineups(self.config, self.condition, number, self.layout.games, self.types)
         blocks = self.layout.blocks
@@ -608,31 +610,20 @@ class Engine:
             ]
         settings = self.config.crossover_config()
         half = blocks // 2
+        side_games = half * self.layout.block_environments
         lineups_of = {
             side: crossover.allocate(
-                crossover.fit(tally.sides[side]),
-                tally.sides[side],
-                settings,
-                half,
-                self.layout.block_environments,
+                crossover.fit(tally.sides[side]), tally.sides[side], settings, side_games
             )
             for side in SIDES
         }
         matchups = [(0, 2)] * half + [(1, 2)] * half
         active = [lineup for side in SIDES for lineup in lineups_of[side]]
-        results = self.arena.play(matchups, active, drawn.to(self.device))
-        sides = [side for side in SIDES for _ in range(half)]
-        return number, [
-            dict(
-                side=side,
-                policy_count=lineup[0],
-                opponent_count=lineup[1],
-                wins=int(won),
-                draws=int(tied),
-                losses=int(lost),
-            )
-            for side, lineup, (won, tied, lost) in zip(sides, active, results.tolist(), strict=True)
-        ]
+        self.arena.play(matchups, active, drawn.to(self.device))
+        found = crossover.block_tallies(
+            active, self.arena.game_outcomes(), self.layout.block_environments
+        )
+        return number, [dict(side=SIDES[entry["block"] // half], **entry) for entry in found]
 
 
 def clock(seconds_from_now: float) -> str:

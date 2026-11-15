@@ -5,6 +5,7 @@ and concentrates the games near the crossing, the stop rule, the per-game lineup
 engine's benching, and a small measurement on the CPU that records every batch and resumes
 from its record."""
 
+import collections
 import dataclasses
 import json
 import math
@@ -88,7 +89,7 @@ def test_the_lineups_run_along_the_ratio_with_the_weaker_side_fixed_down_to_one_
     assert ratios == sorted(ratios) and len(set(ratios)) == len(lineups) == 2 * 19 + 1
     assert lineups[0] == (1, 20) and lineups[-1] == (20, 1) and (20, 20) in lineups
     assert all(20 in lineup and min(lineup) >= 1 and max(lineup) <= 20 for lineup in lineups)
-    assert config.ships_per_team == 20 and config.parity == (20, 20)
+    assert config.ships_per_team == 20
     clipped = break_even.CrossoverConfig(bracket=(0, 10, 30))
     assert clipped.bracket_lineups("policy") == [(1, 20), (10, 20), (20, 20)]
     assert clipped.bracket_lineups("opponent") == [(20, 20), (20, 10), (20, 1)]
@@ -183,33 +184,58 @@ def test_separated_outcomes_give_a_bound():
 CONFIG = break_even.CrossoverConfig()
 
 
-def test_the_first_batch_plays_parity_and_the_games_pick_the_shrinking_side():
-    assert break_even.allocate(break_even.Fit("empty"), {}, CONFIG, 4, 8) == [(20, 20)] * 4
+def _paired(lineups) -> list:
+    """Each lineup for a pair of games, one in each seat."""
+    return [lineup for lineup in lineups for _ in range(2)]
+
+
+def _games(true_ratio: float, slope: float, lineups, generator) -> list[dict]:
+    """`_blocks` for a batch's per-game lineups: one block per lineup with its games."""
+    counts = collections.Counter(lineups)
+    played = sorted(counts, key=break_even.log_ratio)
+    return [
+        block
+        for lineup in played
+        for block in _blocks(true_ratio, slope, [lineup], counts[lineup], generator)
+    ]
+
+
+def test_the_first_batch_spreads_over_the_whole_axis():
+    first = break_even.first_lineups(CONFIG)
+    assert len(first) == 13 and first[0] == (1, 20) and first[-1] == (20, 1)
+    assert (20, 20) in first
+    assert sum(one[0] < one[1] for one in first) == sum(one[0] > one[1] for one in first) == 6
+    ratios = [break_even.log_ratio(one) for one in first]
+    steps = [later - earlier for earlier, later in zip(ratios, ratios[1:], strict=False)]
+    assert max(steps) < 2.5 * min(steps)  # about even in r, as the integer lineups allow
+    lineups = break_even.allocate(break_even.Fit("empty"), {}, CONFIG, 52)
+    assert lineups == _paired(first * 2)
+    small = break_even.CrossoverConfig(fixed_count=3)
+    assert break_even.first_lineups(small) == [(1, 3), (2, 3), (3, 3), (3, 2), (3, 1)]
+    with pytest.raises(ValueError, match="even"):
+        break_even.allocate(break_even.Fit("empty"), {}, CONFIG, 3)
+
+
+def test_without_a_fit_the_games_pick_the_shrinking_side():
     winning = _rows((20, 20, 6, 0, 4))
     found = break_even.fit(winning)
-    assert break_even.allocate(found, winning, CONFIG, 4, 8) == [
-        (6, 20),
-        (10, 20),
-        (14, 20),
-        (20, 20),
-    ]
+    assert break_even.allocate(found, winning, CONFIG, 8) == _paired(
+        [(6, 20), (10, 20), (14, 20), (20, 20)]
+    )
     losing = _rows((20, 20, 3, 2, 5))
-    assert break_even.allocate(break_even.fit(losing), losing, CONFIG, 4, 8) == [
-        (20, 20),
-        (20, 14),
-        (20, 10),
-        (20, 6),
-    ]
+    assert break_even.allocate(break_even.fit(losing), losing, CONFIG, 8) == _paired(
+        [(20, 20), (20, 14), (20, 10), (20, 6)]
+    )
     even = _rows((20, 20, 4, 2, 4))
-    lineups = break_even.allocate(break_even.fit(even), even, CONFIG, 7, 8)
-    assert sorted(lineups, key=break_even.log_ratio) == CONFIG.bracket_lineups("both")
+    lineups = break_even.allocate(break_even.fit(even), even, CONFIG, 14)
+    assert sorted(set(lineups), key=break_even.log_ratio) == CONFIG.bracket_lineups("both")
 
 
-def test_the_allocation_concentrates_blocks_at_the_crossing():
+def test_the_allocation_concentrates_games_at_the_crossing_in_seat_pairs():
     tallies = _synthetic(0.4, 5.0, [(6, 20), (10, 20), (14, 20), (20, 20)], 256, seed=1)
     found = break_even.fit(tallies)
-    lineups = break_even.allocate(found, tallies, CONFIG, 8, 128)
-    assert len(lineups) == 8
+    lineups = break_even.allocate(found, tallies, CONFIG, 64)
+    assert len(lineups) == 64 and lineups[0::2] == lineups[1::2]
     assert all(abs(break_even.log_ratio(one) - found.break_even) < 0.3 for one in lineups)
 
 
@@ -217,57 +243,56 @@ def test_the_allocation_concentrates_blocks_at_the_crossing():
 def test_a_simulated_measurement_finds_the_ratio_on_either_side_of_parity(true_ratio):
     """Synthetic games from a known logistic in the log ratio, stronger policies', weaker
     ones' and one near parity, played batch by batch through the allocation from the first
-    (parity) batch: the fit finds the ratio within its standard error, most games go near
-    the crossing, and no lineup has more than 20 a side or fewer than 1."""
-    config = CONFIG
+    (whole-axis) batch: the fit finds the ratio within its standard error, most games go
+    near the crossing, and no lineup has more than 20 a side or fewer than 1."""
     generator = torch.Generator().manual_seed(3)
     blocks: list[dict] = []
     found, tallies = break_even.Fit("empty"), {}
     for _ in range(12):
-        lineups = break_even.allocate(found, tallies, config, 8, 64)
-        blocks += _blocks(true_ratio, 5.0, lineups, 64, generator)
+        lineups = break_even.allocate(found, tallies, CONFIG, 512)
+        blocks += _games(true_ratio, 5.0, lineups, generator)
         tallies = break_even.tallies(blocks)
         found = break_even.fit(tallies)
-    assert blocks[0]["policy_count"] == blocks[0]["opponent_count"] == 20
     assert found.status == "crossing"
     assert abs(found.break_even - math.log(true_ratio)) < 3 * found.stderr
     assert found.stderr < 0.05
     played = {(one["policy_count"], one["opponent_count"]) for one in blocks}
-    assert all(max(one) <= 20 and min(one) >= 1 for one in played)
+    assert all(max(one) <= 20 and min(one) >= 1 and 20 in one for one in played)
     assert not found.suspicious(20)
-    assert all(20 in one for one in played)
-    if true_ratio > 1.1:
-        assert all(one[0] == 20 for one in played)  # the policy's ships never shrink
-    if true_ratio < 0.9:
-        assert all(one[1] == 20 for one in played)  # nor the opponent's
+    games = sum(one["wins"] + one["draws"] + one["losses"] for one in blocks)
     near = sum(
-        64
+        one["wins"] + one["draws"] + one["losses"]
         for one in blocks
         if abs(
             break_even.log_ratio((one["policy_count"], one["opponent_count"])) - found.break_even
         )
         < 0.3
     )
-    assert near / (64 * len(blocks)) > 0.6
+    assert games == 12 * 512 and near / games > 0.6
 
 
 def test_separated_outcomes_steer_into_or_beyond_the_bound():
     wins = break_even.Fit("separated", lower=None, upper=(6, 20))
-    assert break_even.allocate(wins, {}, CONFIG, 4, 8) == [(3, 20)] * 4
+    assert break_even.allocate(wins, {}, CONFIG, 4) == [(3, 20)] * 4
     losses = break_even.Fit("separated", lower=(6, 20), upper=None)
-    assert break_even.allocate(losses, {}, CONFIG, 2, 8) == [(12, 20)] * 2
+    assert break_even.allocate(losses, {}, CONFIG, 2) == [(12, 20)] * 2
     lost_at_parity = break_even.Fit("separated", lower=(20, 20), upper=None)
-    assert break_even.allocate(lost_at_parity, {}, CONFIG, 2, 8) == [(20, 10)] * 2
+    assert break_even.allocate(lost_at_parity, {}, CONFIG, 2) == [(20, 10)] * 2
     won_at_parity = break_even.Fit("separated", lower=None, upper=(20, 20))
-    assert break_even.allocate(won_at_parity, {}, CONFIG, 2, 8) == [(10, 20)] * 2
+    assert break_even.allocate(won_at_parity, {}, CONFIG, 2) == [(10, 20)] * 2
     inside = break_even.Fit("separated", lower=(6, 20), upper=(14, 20))
-    assert set(break_even.allocate(inside, {}, CONFIG, 6, 8)) == {(8, 20), (9, 20), (10, 20)}
+    assert set(break_even.allocate(inside, {}, CONFIG, 6)) == {(8, 20), (9, 20), (10, 20)}
     across = break_even.Fit("separated", lower=(18, 20), upper=(20, 18))
-    assert set(break_even.allocate(across, {}, CONFIG, 3, 8)) == {(19, 20), (20, 20), (20, 19)}
+    assert set(break_even.allocate(across, {}, CONFIG, 6)) == {(19, 20), (20, 20), (20, 19)}
     adjacent = break_even.Fit("separated", lower=(9, 20), upper=(10, 20))
-    assert break_even.allocate(adjacent, {}, CONFIG, 4, 8) == [(9, 20), (10, 20)] * 2
+    assert break_even.allocate(adjacent, {}, CONFIG, 8) == _paired([(9, 20), (10, 20)] * 2)
     near_floor = break_even.Fit("separated", lower=None, upper=(2, 20))
-    assert break_even.allocate(near_floor, {}, CONFIG, 2, 8) == [(1, 20)] * 2
+    assert break_even.allocate(near_floor, {}, CONFIG, 2) == [(1, 20)] * 2
+    # a mixed lineup past the last all-lost one: the next doubles from the mixed one
+    mixed = _rows((20, 20, 0, 0, 8), (20, 10, 0, 0, 8), (20, 5, 1, 0, 7))
+    stuck = break_even.fit(mixed)
+    assert (stuck.status, stuck.lower, stuck.upper) == ("separated", (20, 10), None)
+    assert break_even.allocate(stuck, mixed, CONFIG, 2) == [(20, 3)] * 2  # r nearest log 8
 
 
 def test_the_stop_rule():
@@ -300,10 +325,10 @@ def test_each_game_draws_its_lineup_from_the_types_keyed_by_seed_and_batch():
 def test_an_engine_with_game_lineups_flies_each_games_lineup_on_both_teams():
     arena = Arena([_scripted(), _scripted()], SHORT, CPU, LAYOUT, benching=True, game_lineups=True)
     lineups = break_even.lineup_draw(0, 0, LAYOUT.games, SHORT.ships_per_team, (0, 1))
-    arena.play([(0, 1)] * LAYOUT.blocks, [(3, 3), (2, 3)], lineups)
+    arena.play([(0, 1)] * LAYOUT.blocks, _by_block([(3, 3), (2, 3)]), lineups)
     assert torch.equal(arena.rollout.ship_type.cpu(), lineups.repeat(1, 2))
     with pytest.raises(ValueError, match="per-game lineups"):
-        arena.play([(0, 1)] * LAYOUT.blocks, [(3, 3), (2, 3)])
+        arena.play([(0, 1)] * LAYOUT.blocks, _by_block([(3, 3), (2, 3)]))
     with pytest.raises(ValueError, match="per-game lineups"):
         Arena(
             [_scripted(), Player("typed", rung=Rung(1.0), ship_type=0)],
@@ -314,19 +339,46 @@ def test_an_engine_with_game_lineups_flies_each_games_lineup_on_both_teams():
         )
 
 
+def _by_block(pairs) -> list:
+    """Per-game active counts with every game of block b at pairs[b]."""
+    return [pair for pair in pairs for _ in range(LAYOUT.block_environments)]
+
+
+# several lineups in one batch, one pair of games (both seats) each, in both blocks
+MIXED = [(3, 3), (3, 3), (1, 3), (1, 3), (3, 1), (3, 1), (2, 3), (2, 3)] * 2
+
+
 @pytest.mark.usefixtures("global_generator")
 def test_each_environment_gives_the_first_player_its_count_whatever_its_seat():
     arena = Arena([_scripted(), _scripted()], GAME, CPU, LAYOUT, benching=True)
-    active = arena._active([(3, 1), (2, 3)])  # (B, 2) by team
+    active = arena._active(MIXED)  # (B, 2) by team
     first_team = arena.seats.long()
     first = active.gather(1, first_team[:, None])[:, 0]
     second = active.gather(1, 1 - first_team[:, None])[:, 0]
-    rows = LAYOUT.block_environments
-    assert first.tolist() == [3] * rows + [2] * rows
-    assert second.tolist() == [1] * rows + [3] * rows
+    assert first.tolist() == [pair[0] for pair in MIXED]
+    assert second.tolist() == [pair[1] for pair in MIXED]
     assert set(first_team.tolist()) == {0, 1}  # both seats in every block
     with pytest.raises(ValueError, match="from 1 to"):
-        arena.play([(0, 1), (0, 1)], [(4, 3), (3, 3)])
+        arena.play([(0, 1), (0, 1)], [(4, 3)] + MIXED[1:])
+    with pytest.raises(ValueError, match="one pair per game"):
+        arena.play([(0, 1), (0, 1)], [(3, 3), (3, 3)])
+
+
+@pytest.mark.usefixtures("global_generator")
+def test_one_batch_plays_several_lineups_and_tallies_each_game():
+    """Per-game lineups in one batch: each game's outcome is kept, the blocks' sums are
+    `play`'s, and `block_tallies` groups them per block and lineup."""
+    arena = Arena([_scripted(), _scripted()], SHORT, CPU, LAYOUT, benching=True, game_lineups=True)
+    types = break_even.lineup_draw(0, 0, LAYOUT.games, SHORT.ships_per_team, (0, 1))
+    by_block = arena.play([(0, 1)] * LAYOUT.blocks, MIXED, types)
+    outcomes = arena.game_outcomes()
+    assert outcomes.shape == (LAYOUT.games, 3) and outcomes.sum(-1).tolist() == [1] * 16
+    assert torch.equal(outcomes.reshape(LAYOUT.blocks, -1, 3).sum(1), by_block)
+    entries = break_even.block_tallies(MIXED, outcomes, LAYOUT.block_environments)
+    assert [(one["block"], one["policy_count"], one["opponent_count"]) for one in entries] == [
+        (block, *lineup) for block in (0, 1) for lineup in ((1, 3), (2, 3), (3, 3), (3, 1))
+    ]
+    assert all(one["wins"] + one["draws"] + one["losses"] == 2 for one in entries)
 
 
 @pytest.mark.usefixtures("global_generator")
@@ -335,7 +387,7 @@ def test_the_rollout_shows_the_benched_flag_from_its_first_observation_on():
     benched rows of both views, as the rollout's active counts give them."""
     arena = Arena([_scripted(), _scripted()], GAME, CPU, LAYOUT, benching=True)
     rollout = arena.rollout
-    rollout.restart(arena._active([(3, 1), (2, 3)]))
+    rollout.restart(arena._active(MIXED))
     order = api.view_order(GAME.ships_per_team, CPU)
     rows = benched_of(GAME.ships_per_team, rollout.carry["active"])[:, order].float()
     assert rows.any()
@@ -348,7 +400,7 @@ def test_the_rollout_shows_the_benched_flag_from_its_first_observation_on():
 def test_an_engine_without_benching_refuses_counts():
     arena = Arena([_scripted(), _scripted()], GAME, CPU, LAYOUT)
     with pytest.raises(ValueError, match="benching"):
-        arena.play([(0, 1), (0, 1)], [(3, 3), (3, 3)])
+        arena.play([(0, 1), (0, 1)], _by_block([(3, 3), (3, 3)]))
 
 
 @pytest.mark.usefixtures("global_generator")
@@ -381,15 +433,16 @@ def test_a_measurement_records_every_batch_and_resumes_from_its_record(tmp_path)
     assert first["stop"] in ("budget", "target", "bound")
     assert len(lines) == first["batches"] and first["games"] == 16 * len(lines)
     assert [line["batch"] for line in lines] == list(range(len(lines)))
-    assert all(
-        (block["policy_count"], block["opponent_count"]) == (3, 3) for block in lines[0]["blocks"]
-    )
-    assert all(
-        block["wins"] + block["draws"] + block["losses"] == LAYOUT.block_environments
-        and max(block["policy_count"], block["opponent_count"]) == 3
-        for line in lines
-        for block in line["blocks"]
-    )
+    # the first batch spreads over the whole axis, both sides of parity in one batch
+    first_lineups = {(one["policy_count"], one["opponent_count"]) for one in lines[0]["blocks"]}
+    assert first_lineups == set(break_even.first_lineups(SMALL))
+    assert {(1, 3), (3, 1)} <= first_lineups
+    for line in lines:
+        assert all(max(one["policy_count"], one["opponent_count"]) == 3 for one in line["blocks"])
+        for block in range(LAYOUT.blocks):
+            mine = [one for one in line["blocks"] if one["block"] == block]
+            games = sum(one["wins"] + one["draws"] + one["losses"] for one in mine)
+            assert games == LAYOUT.block_environments
     assert sum(row["games"] for row in first["lineups"]) == first["games"]
     if first["stop"] == "budget":
         assert any("ETA" in text for text in printed[:-1]) or len(printed) == 1

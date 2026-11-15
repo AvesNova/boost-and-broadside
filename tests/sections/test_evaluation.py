@@ -467,9 +467,18 @@ def test_a_pilot_records_every_batch_and_resumes_past_it(tmp_path, tiny_presets)
         ("deathmatch_break_even", 0),
     ]
     assert found[0]["first"] and found[1]["first"]
-    sides = [block["side"] for block in found[1]["blocks"]]
-    assert sides == ["A", "A", "B", "B"]
-    assert all(b["wins"] + b["draws"] + b["losses"] == 8 for line in found for b in line["blocks"])
+    # break-even's entries are per block and lineup: blocks 0 and 1 A's, 2 and 3 B's
+    entries = found[1]["blocks"]
+    assert {(entry["block"], entry["side"]) for entry in entries} == {
+        (0, "A"),
+        (1, "A"),
+        (2, "B"),
+        (3, "B"),
+    }
+    assert all(b["wins"] + b["draws"] + b["losses"] == 8 for b in found[0]["blocks"])
+    for block in range(4):
+        mine = [entry for entry in entries if entry["block"] == block]
+        assert sum(entry["wins"] + entry["draws"] + entry["losses"] for entry in mine) == 8
     # another process continues each condition past its recorded batches
     again = evaluation.Evaluation(
         tmp_path, players, player("scripted"), config, CPU, progress=printed.append, compiled=False

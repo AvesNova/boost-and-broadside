@@ -62,3 +62,16 @@ contradicts evaluation-suite.md and the default `unscored=()`.
   The simulated test gained a far-weaker policy (20v3) that caught it.
 - **Tests.** test_crossover 35 passed; test_evaluation + test_modes' break-even test 27
   passed (4 slow deselected); docs references/docstrings 607 passed.
+
+## 2026-11-15: lineup per game; whole-axis first batch (author's second task)
+
+- **Done.** `Arena` tallies per game (`MatchSeat.tally` by game; `play` still returns per
+  block, `game_outcomes()` the last batch's (games, 3)); `play(active=...)` takes (games, 2)
+  per-game counts. Break-even allocates per game, in pairs of games (one per seat, so each
+  lineup stays seat-balanced): first batch `first_lineups` (13 ratios evenly in r, 1v20 to
+  20v1), then bracket / separated / c-optimal as before at pair granularity. Records hold
+  one entry per (block, lineup) with a `block` index (`block_tallies`); the fit only needs
+  the per-lineup tallies, so a resume is exact. Evaluation's Engine does the same per side.
+- **Choice.** The allocation unit is a pair of environments rather than a single one, to
+  keep every lineup's games split evenly between the seats (block environments are even).
+- `CrossoverConfig.parity` went (no longer used); `first_ratios` (13) added.

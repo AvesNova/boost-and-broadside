@@ -504,8 +504,10 @@ ships are its lineup's last slots. A game is scored by its own rule: a win, a dr
 win) or a loss.
 
 The measurement runs in batches of the engine's layout, `--blocks` blocks of
-`--block-environments` games, each block at one lineup, its games split evenly between the
-seats; a network's blocks run as one stacked forward, as in head-to-head. Every lineup sits
+`--block-environments` games; a network's blocks run as one stacked forward, as in
+head-to-head. A lineup is a per-game choice, the game's benched slots, so one batch holds
+any mix of lineups and nothing recompiles. Games are allocated in pairs, one in each seat,
+so every lineup's games split evenly between the seats. Every lineup sits
 on one axis, the log ratio r = log(policy's ships / Imugi's ships): 14 against 20 is
 log 0.7, 20 against 14 is log(1/0.7), and 20 against 20 is 0 from either side.
 
@@ -521,14 +523,15 @@ log 0.7, 20 against 14 is log(1/0.7), and 20 against 20 is 0 from either side.
   error a slight overestimate. While the outcomes are separated (every lineup below some
   ratio lost outright, every lineup above it won outright), the fit has no maximum, and the
   result is a bound on the ratio instead.
-- **Allocation.** The first batch plays every block at 20 against 20. While there is no
-  fit, the next batch spreads its blocks over `--bracket` (6, 10, 14, 20) on the side the
-  games point to: the policy's ships shrink if its mean score is above one half, Imugi's if
-  below, both at exactly one half. After that, with a crossing, each block goes in turn to
-  the lineup that most reduces the predicted variance of the break-even log ratio,
-  averaged over the estimate and one standard error either side, over every lineup on both
-  sides of parity, so the games gather next to the crossing. With separated outcomes the
-  blocks go inside the bound, or halve the ratio below the lowest lineup played (every game
+- **Allocation.** The first batch spreads its games evenly in r over the whole axis, from
+  1 against 20 through 20 against 20 to 20 against 1 (13 lineups), with no knowledge of
+  which side is stronger. While there is no fit, the next batch spreads its games over
+  `--bracket` (6, 10, 14, 20) on the side the games point to: the policy's ships shrink if
+  its mean score is above one half, Imugi's if below, both at exactly one half. With a
+  crossing, each pair of games goes in turn to the lineup that most reduces the predicted
+  variance of the break-even log ratio, averaged over the estimate and one standard error
+  either side, over every lineup on both sides of parity, so the games gather next to the
+  crossing. With separated outcomes the games go inside the bound, or halve the ratio below the lowest lineup played (every game
   won) or double it above the highest (every game lost) to extend the range.
 - **Stop.** A mode stops when the break-even log ratio's standard error reaches
   `--target-stderr` (0.02, about 0.3 ships at 15 against 20), when its games reach
@@ -536,8 +539,8 @@ log 0.7, 20 against 14 is log(1/0.7), and 20 against 20 is 0 from either side.
   final: every game won at 1 against 20, or lost at 20 against 1.
 
 Every batch is appended to `artifacts/crossover/<preset>.batches.jsonl`{.plain} of `--out`
-(else the policy's run, else the runs directory) as it ends: each block's lineup and its
-wins, draws and losses, and the fit after it. A line per batch prints the lineups, the
+(else the policy's run, else the runs directory) as it ends: per block and lineup played
+in it, the wins, draws and losses, and the fit after it. A line per batch prints the lineups, the
 games, the break-even ratio with its standard error and lineup (or the bound) and an ETA as
 a clock time, with the budget's as the worst case. A rerun reuses the record's batches of
 the same measurement (the game version, the players' identities, the game, the seed, the

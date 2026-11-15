@@ -19,8 +19,10 @@ both teams flying it slot for slot (a team's benched ships are its lineup's last
 the draw is keyed by the seed, the batch and the environment (`lineup_draw`).
 
 The measurement (`measure`), batch by batch, each batch `blocks` blocks of
-`block_environments` games, each block at one lineup, its games split evenly between the
-seats; every game scored by the game's own rule (win, draw or loss):
+`block_environments` games. A lineup is a per-game choice (each game's benched slots),
+so one batch holds any mix of lineups with nothing recompiled; the allocation's unit is a
+pair of games, one in each seat, so every lineup's games split evenly between the seats.
+Every game is scored by the game's own rule (win, draw or loss):
 
 - **Fit** (`fit`): one logistic regression of the policy's score (a draw half a win, as a
   binomial likelihood on the score) on r, over every game so far, whichever side shrank.
@@ -34,23 +36,26 @@ seats; every game scored by the game's own rule (win, draw or loss):
   While the outcomes are separated (no lineup both won and lost where the lineups below
   it in r are all lost and those above all won) the fit has no maximum: the result is a
   bound instead (`Fit.lower`, `Fit.upper`, lineups).
-- **Allocation** (`allocate`): the first batch plays every block at parity (`fixed_count`
-  a side). While the games give no fit, the next batch spreads its blocks over `bracket`
-  on the side the games point to: the policy's ships shrink where its mean score is above
-  one half, the opponent's where it is below, both at exactly one half. With a crossing,
-  each block goes in turn to the lineup that most reduces the predicted variance of r*
-  (the fit's covariance with that block's expected information added), averaged over r*
-  at the estimate and one standard error either side, over every lineup on the axis (both
-  sides of parity); with separated outcomes, the blocks go inside the bound, or halve the
-  ratio below the lowest lineup played (every game won) or double it above the highest
-  (every game lost) to extend the range.
+- **Allocation** (`allocate`): the first batch spreads its games evenly in r over the
+  whole axis, from 1 against `fixed_count` through parity to `fixed_count` against 1
+  (`first_ratios` ratios, 13, each the nearest lineup; `first_lineups`), with no knowledge
+  of which side is stronger. While the games give no fit, the next batch spreads its games
+  over `bracket` on the side the games point to: the policy's ships shrink where its mean
+  score is above one half, the opponent's where it is below, both at exactly one half.
+  With a crossing, each pair of games goes in turn to the lineup that most reduces the
+  predicted variance of r* (the fit's covariance with that pair's expected information
+  added), averaged over r* at the estimate and one standard error either side, over every
+  lineup on the axis (both sides of parity); with separated outcomes, the games go inside
+  the bound, or halve the ratio below the lowest lineup played (every game won) or double
+  it above the highest (every game lost) to extend the range.
 - **Stop** (`stop_reason`): when r*'s standard error reaches `target_stderr`, when the games
   reach `budget_games` (the batch that reaches it is the last), or when the bound is final
   (every game won with the policy at 1 ship against `fixed_count`, or lost against the
   opponent at 1 ship).
 
-Every batch is appended to a record (`<preset>.batches.jsonl`, one line per batch: each
-block's lineup and its wins, draws and losses, and the fit after it), and a rerun reuses
+Every batch is appended to a record (`<preset>.batches.jsonl`, one line per batch: per
+block and lineup played in it, the wins, draws and losses (`block_tallies`), and the fit
+after it), and a rerun reuses
 the record's batches of the same measurement (`record_key`), continuing past them.
 """
 
@@ -94,15 +99,16 @@ def lineup_name(lineup) -> str:
 class CrossoverConfig:
     """fixed_count: the weaker side's ships, fixed (the most either side fields, and the
     game's size; the stronger side goes down to 1); bracket: the stronger side's counts the
-    batches after parity spread over before a fit (clipped to 1 to fixed_count);
-    target_stderr: the standard error of the break-even log
-    ratio that stops the measurement (0.02: 0.3 ships at 15 against 20); budget_games: the
-    most games (the batch that reaches it is the last); lineup_types: the ship types
-    (indices into the game's card) each slot of a game's lineup is drawn from,
-    uniformly."""
+    batches spread over before a fit, after the first (clipped to 1 to fixed_count);
+    first_ratios: the first batch's ratios, evenly spaced in r over the whole axis;
+    target_stderr: the standard error of the break-even log ratio that stops the
+    measurement (0.02: 0.3 ships at 15 against 20); budget_games: the most games (the batch
+    that reaches it is the last); lineup_types: the ship types (indices into the game's
+    card) each slot of a game's lineup is drawn from, uniformly."""
 
     fixed_count: int = 20
     bracket: tuple[int, ...] = (6, 10, 14, 20)
+    first_ratios: int = 13
     target_stderr: float = 0.02
     budget_games: int = 8192
     lineup_types: tuple[int, ...] = (0, 1)
@@ -110,8 +116,8 @@ class CrossoverConfig:
     def __post_init__(self) -> None:
         if self.fixed_count < 1:
             raise ValueError(f"a fixed count of {self.fixed_count}: at least 1")
-        if not self.bracket:
-            raise ValueError("an empty bracket")
+        if not self.bracket or self.first_ratios < 1:
+            raise ValueError("an empty bracket or first batch")
         if not self.target_stderr > 0.0 or self.budget_games < 1:
             raise ValueError("the target standard error and the budget must be positive")
         if not self.lineup_types:
@@ -121,11 +127,6 @@ class CrossoverConfig:
     def ships_per_team(self) -> int:
         """The game's size: the fixed side's fleet."""
         return self.fixed_count
-
-    @property
-    def parity(self) -> Lineup:
-        """`fixed_count` a side."""
-        return (self.fixed_count, self.fixed_count)
 
     def lineups(self) -> list[Lineup]:
         """Every lineup the measurement may play, in order of r: the policy's count rising
@@ -331,9 +332,19 @@ def fit(by_lineup: dict[Lineup, list[float]]) -> Fit:
     )
 
 
-def _spread(lineups: list[Lineup], blocks: int) -> list[Lineup]:
-    """`blocks` blocks dealt over the lineups in turn."""
-    return [lineups[block % len(lineups)] for block in range(blocks)]
+def _spread(lineups: list[Lineup], pairs: int) -> list[Lineup]:
+    """`pairs` pairs of games dealt over the lineups in turn."""
+    return [lineups[pair % len(lineups)] for pair in range(pairs)]
+
+
+def first_lineups(config: CrossoverConfig) -> list[Lineup]:
+    """The first batch's lineups, in order of r: `first_ratios` ratios evenly spaced in r
+    from 1 against `fixed_count` to `fixed_count` against 1, each the nearest lineup, each
+    once."""
+    candidates, span = config.lineups(), math.log(config.fixed_count)
+    count = config.first_ratios
+    targets = [span * (2 * step / (count - 1) - 1) for step in range(count)] if count > 1 else [0]
+    return sorted({_nearest(candidates, target) for target in targets}, key=log_ratio)
 
 
 def shrinking_side(by_lineup: dict[Lineup, list[float]]) -> str:
@@ -354,41 +365,50 @@ def allocate(
     current: Fit,
     by_lineup: dict[Lineup, list[float]],
     config: CrossoverConfig,
-    blocks: int,
-    block_games: int,
+    games: int,
 ) -> list[Lineup]:
-    """The next batch's lineup per block (see the module docstring): parity without games;
-    the bracket on the shrinking side without a fit; inside or beyond the bound with
-    separated outcomes; with a crossing, each block in turn at the lineup that most reduces
-    r*'s predicted variance, averaged over r* at the estimate and one standard error either
-    side."""
+    """The next batch's lineup per game, `games` (even) of them in pairs, each pair's two
+    games (one in each seat) at one lineup (see the module docstring): the whole axis
+    without games; the bracket on the shrinking side without a fit; inside or beyond the
+    bound with separated outcomes; with a crossing, each pair in turn at the lineup that
+    most reduces r*'s predicted variance, averaged over r* at the estimate and one standard
+    error either side."""
+    if games % 2:
+        raise ValueError(f"{games} games: an even number, in pairs")
+    return [lineup for lineup in _pairs(current, by_lineup, config, games // 2) for _ in "ab"]
+
+
+def _pairs(
+    current: Fit, by_lineup: dict[Lineup, list[float]], config: CrossoverConfig, pairs: int
+) -> list[Lineup]:
+    """`allocate`'s lineup per pair of games, `pairs` pairs."""
     candidates = config.lineups()
     if current.status == "empty":
-        return _spread([config.parity], blocks)
+        return _spread(first_lineups(config), pairs)
     if current.status == "falling":
-        return _spread(config.bracket_lineups(shrinking_side(by_lineup)), blocks)
+        return _spread(config.bracket_lineups(shrinking_side(by_lineup)), pairs)
     if current.status == "separated":
         lower, upper = current.lower, current.upper
         if lower is None and upper is None:  # one ratio of mixed games, or only draws
-            return _spread(config.bracket_lineups(shrinking_side(by_lineup)), blocks)
+            return _spread(config.bracket_lineups(shrinking_side(by_lineup)), pairs)
         # no bound on one side: halve (double) the ratio from the lowest (highest) lineup
         # played, which may be a mixed one past the last all-won (all-lost) lineup
         if lower is None:  # every game won down to `upper`: halve the ratio
             lowest = min(map(log_ratio, by_lineup), default=log_ratio(upper))
             below = [one for one in candidates if log_ratio(one) < lowest]
             target = lowest - math.log(2.0)
-            return _spread([_nearest(below, target) if below else candidates[0]], blocks)
+            return _spread([_nearest(below, target) if below else candidates[0]], pairs)
         if upper is None:  # every game lost up to `lower`: double the ratio
             highest = max(map(log_ratio, by_lineup), default=log_ratio(lower))
             above = [one for one in candidates if log_ratio(one) > highest]
             target = highest + math.log(2.0)
-            return _spread([_nearest(above, target) if above else candidates[-1]], blocks)
+            return _spread([_nearest(above, target) if above else candidates[-1]], pairs)
         inside = [one for one in candidates if log_ratio(lower) < log_ratio(one) < log_ratio(upper)]
         if not inside:
-            return _spread([lower, upper], blocks)
+            return _spread([lower, upper], pairs)
         middle = (log_ratio(lower) + log_ratio(upper)) / 2
         nearest = sorted(inside, key=lambda one: abs(log_ratio(one) - middle))[:3]
-        return _spread(sorted(nearest, key=log_ratio), blocks)
+        return _spread(sorted(nearest, key=log_ratio), pairs)
     # a crossing: greedy c-optimal design for r*
     a, s = current.intercept, current.slope
     played = sorted(by_lineup, key=log_ratio)
@@ -402,13 +422,13 @@ def allocate(
     design = torch.stack([torch.ones_like(x), x], -1)  # (C, 2)
     shifts = (-current.stderr, 0.0, current.stderr)
     chosen = []
-    for _ in range(blocks):
+    for _ in range(pairs):
         criterion = torch.zeros(len(candidates), dtype=torch.float64)
         for shift in shifts:
             centre = current.break_even + shift
             shifted_intercept = -s * centre  # the curve moved to cross one half there
             p = torch.sigmoid(shifted_intercept + s * x)
-            added = block_games * p * (1 - p)  # (C,)
+            added = 2 * p * (1 - p)  # (C,): a pair of games
             # the gradient of -intercept / slope, at the shifted curve
             gradient = torch.tensor([-1.0 / s, shifted_intercept / (s * s)], dtype=torch.float64)
             after = information[None] + added[:, None, None] * (
@@ -418,10 +438,44 @@ def allocate(
         best = int(torch.argmin(criterion))
         chosen.append(candidates[best])
         p = torch.sigmoid(torch.tensor(a + s * float(x[best]), dtype=torch.float64))
-        information = information + block_games * p * (1 - p) * torch.outer(
-            design[best], design[best]
-        )
+        information = information + 2 * p * (1 - p) * torch.outer(design[best], design[best])
     return sorted(chosen, key=log_ratio)
+
+
+def block_tallies(lineups: list[Lineup], outcomes: torch.Tensor, block_games: int) -> list[dict]:
+    """A batch's games tallied per block and lineup: {block, policy_count, opponent_count,
+    wins, draws, losses}, by block then r, from each game's lineup and its (games, 3)
+    outcomes (`bnb.league.matches.Arena.game_outcomes`; game g is in block g //
+    block_games)."""
+    held: dict[tuple[int, Lineup], list[int]] = {}
+    for game, (lineup, outcome) in enumerate(zip(lineups, outcomes.tolist(), strict=True)):
+        counts = held.setdefault((game // block_games, tuple(lineup)), [0, 0, 0])
+        for index, value in enumerate(outcome):
+            counts[index] += int(value)
+    return [
+        dict(
+            block=block,
+            policy_count=lineup[0],
+            opponent_count=lineup[1],
+            wins=won,
+            draws=tied,
+            losses=lost,
+        )
+        for (block, lineup), (won, tied, lost) in sorted(
+            held.items(), key=lambda item: (item[0][0], log_ratio(item[0][1]))
+        )
+    ]
+
+
+def games_per_lineup(lineups: list[Lineup]) -> str:
+    """A batch's lineups in words: each with its games, in order of r ("14v20 x32 ...")."""
+    counts: dict[Lineup, int] = {}
+    for lineup in lineups:
+        counts[tuple(lineup)] = counts.get(tuple(lineup), 0) + 1
+    return " ".join(
+        f"{lineup_name(lineup)} x{count}"
+        for lineup, count in sorted(counts.items(), key=lambda item: log_ratio(item[0]))
+    )
 
 
 def stop_reason(current: Fit, games: int, config: CrossoverConfig) -> str | None:
@@ -553,22 +607,13 @@ def measure(
                 game_lineups=True,
                 first_batch=1 + max((line["batch"] for line in stored), default=-1),
             )
-        lineups = allocate(current, by_lineup, config, layout.blocks, layout.block_environments)
+        lineups = allocate(current, by_lineup, config, layout.games)
         number = arena.batch
         types = lineup_draw(
             layout.seed, number, layout.games, game.ships_per_team, config.lineup_types
         )
-        results = arena.play([(0, 1)] * layout.blocks, lineups, types.to(device))
-        new = [
-            dict(
-                policy_count=lineup[0],
-                opponent_count=lineup[1],
-                wins=int(won),
-                draws=int(tied),
-                losses=int(lost),
-            )
-            for lineup, (won, tied, lost) in zip(lineups, results.tolist(), strict=True)
-        ]
+        arena.play([(0, 1)] * layout.blocks, lineups, types.to(device))
+        new = block_tallies(lineups, arena.game_outcomes(), layout.block_environments)
         blocks += new
         by_lineup = tallies(blocks)
         current = fit(by_lineup)
@@ -589,7 +634,7 @@ def measure(
         per_batch = (time.perf_counter() - started) / played
         expected, worst = _remaining_batches(current, games, batch_games, config)
         progress(
-            f"batch {number}: lineups {' '.join(lineup_name(one) for one in lineups)}, "
+            f"batch {number}: lineups {games_per_lineup(lineups)}, "
             f"{games} games, {describe(current, config.fixed_count)}"
             + (
                 ""

@@ -52,12 +52,14 @@ chosen players into the lanes and the slots, in place.
 A batch: every environment starts a fresh game (`Rollout.restart`), environment i of a
 block seating the block's first player on team i mod 2, so a block's games split evenly
 between the seats. Each environment's first game is played to its end and tallied once,
-from the block's first player's side (`MatchSeat.tally`).
+from the block's first player's side (`MatchSeat.tally`, per game; `Arena.play` sums each
+block's, and `Arena.game_outcomes` keeps each game's).
 
-An engine built with benching plays unequal teams (the crossover, `bnb.league.crossover`):
-each block's batch may give its two players their active ship counts (at most the game's
-ships per team; the rest of a team's slots benched, `bnb.game.api`), set per environment
-with the seats, so one graph plays every handicap at once. An engine built with per-game
+An engine built with benching plays unequal teams (the break-even lineup,
+`bnb.league.crossover`): each game of a batch may give its block's two players their active
+ship counts (at most the game's ships per team; the rest of a team's slots benched,
+`bnb.game.api`), set per environment with the seats, so one graph plays every handicap at
+once and one batch any mix of them. An engine built with per-game
 lineups takes each game's lineup with the batch, both teams flying it.
 """
 
@@ -350,8 +352,9 @@ class MatchSeat:
         row = torch.arange(self.rows, device=device)
         slot = row // block_environments
         self.first_seat = slot % 2 == 0  # the rows that tally their block's games
-        self.block_of_row = slot // 2
-        self.columns, self.mode_count = blocks, 1
+        # each row's game: environment e of block b is game b * block_environments + e
+        self.game_of_row = (slot // 2) * block_environments + row % block_environments
+        self.columns, self.mode_count = blocks * block_environments, 1
         # the scripted pass over every row, each row at its slot's play (written in place)
         self.temperature = torch.ones(self.rows, device=device)
         self.share = torch.ones(self.rows, device=device)
@@ -541,13 +544,13 @@ class MatchSeat:
         return Action.unpack(action), carry, Outputs()
 
     def tally(self, carry: MatchCarry, done: torch.Tensor, result: torch.Tensor) -> torch.Tensor:
-        """The first games that ended this tick, by (block, outcome) from the block's first
+        """The first games that ended this tick, by (game, outcome) from the block's first
         player's side (`result` (R,): the row's own, +1 a win, 0 a tie, -1 a loss): flat
-        (blocks * 3,) int64, as `bnb.runtime.opponents.OUTCOMES`."""
+        (games * 3,) int64, as `bnb.runtime.opponents.OUTCOMES`."""
         outcome = (1 - result).to(torch.int64)  # win 0, tie 1, loss 2
         counted = (done & ~carry.finished & self.first_seat).to(torch.int64)
         counts = torch.zeros(self.columns * len(OUTCOMES), dtype=torch.int64, device=done.device)
-        return counts.index_add(0, self.block_of_row * len(OUTCOMES) + outcome, counted)
+        return counts.index_add(0, self.game_of_row * len(OUTCOMES) + outcome, counted)
 
     def count_events(
         self,
@@ -805,8 +808,8 @@ class Arena:
     each group's lanes, the most of its slots a batch may hold (`default_lanes` by default);
     card: the card to play (the players' by default, `card_of`); doctrine: the scripted
     agent's set for scripted players without their own (`Player.parameters`; None: the
-    mode's set, and no player may bring one); benching: the batches may give the players
-    active ship counts (`play`); game_lineups: the batches may give each game its own
+    mode's set, and no player may bring one); benching: the batches may give each game's
+    players active ship counts (`play`); game_lineups: the batches may give each game its own
     lineup, both teams flying it (`play`; no player may fly its own); first_batch: the
     first batch's number (each batch's keys its games, `Rollout.restart`; a resumed
     tournament starts past its recorded batches). `set_card` writes a new card in place."""
@@ -905,6 +908,8 @@ class Arena:
         self.seats = torch.arange(config.games, device=device) % 2
         # every first game ends by its clock; the margin covers the segment it ends in
         self.tick_limit = int(self.rollout.episode_ticks.max()) + 2 * config.length
+        # the last batch's games' outcomes (`game_outcomes`)
+        self.outcomes = torch.zeros((config.games, len(OUTCOMES)), dtype=torch.int64)
 
     def set_card(self, types: api.ShipTypes) -> None:
         """Play the following batches with this card ((num_types,) fields, as the arena's):
@@ -981,39 +986,43 @@ class Arena:
         games = torch.full_like(score, float(self.config.block_environments))
         return torch.stack([score, torch.zeros_like(score), games - score], -1)
 
-    def _active(self, counts: list[tuple[int, int]]) -> torch.Tensor:
-        """(B, 2) int32 each environment's active ships by team, from each block's (first
-        player's, second player's) counts and the environment's seat."""
-        for block, pair in enumerate(counts):
-            if len(pair) != 2 or not all(1 <= count <= self.ships_per_team for count in pair):
-                raise ValueError(
-                    f"block {block}: active ships {tuple(pair)}, each from 1 to the game's "
-                    f"{self.ships_per_team} ships per team"
-                )
-        by_block = torch.tensor(counts, dtype=torch.int32)  # (blocks, 2) first, second
-        rows = by_block.repeat_interleave(self.config.block_environments, 0)  # (B, 2)
+    def _active(self, counts) -> torch.Tensor:
+        """(B, 2) int32 each environment's active ships by team, from each game's (first
+        player's, second player's) counts, (games, 2), and the environment's seat."""
+        rows = torch.as_tensor(counts, dtype=torch.int32).cpu()  # (games, 2) first, second
+        if tuple(rows.shape) != (self.config.games, 2):
+            raise ValueError(
+                f"active counts {tuple(rows.shape)}: one pair per game, {(self.config.games, 2)}"
+            )
+        outside = (rows < 1) | (rows > self.ships_per_team)
+        if bool(outside.any()):
+            game = int(outside.any(-1).nonzero()[0])
+            raise ValueError(
+                f"game {game}: active ships {tuple(rows[game].tolist())}, each from 1 to the "
+                f"game's {self.ships_per_team} ships per team"
+            )
         first_on_team0 = (self.seats.cpu() == 0)[:, None]
         return torch.where(first_on_team0, rows, rows.flip(-1)).to(self.device)
 
     def play(
         self,
         matchups: list[tuple[int, int]],
-        active: list[tuple[int, int]] | None = None,
+        active=None,
         lineups: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """One batch: block b plays `matchups[b]` (its first player, its second; indices into
-        the players), every block's games to their end; active: block b's players' active
-        ship counts (first, second), for an engine built with benching (None: every ship);
-        lineups: (games, ships per team) int each game's lineup as ship type indices, both
-        teams flying it slot for slot, for an engine built with game_lineups (where it is
-        required). A team's benched ships are its lineup's last slots.
-        (blocks, 3) int64: each block's first player's wins, ties and losses (`statistics`
-        then has the games' statistics). Raises RuntimeError if a game runs past the game
-        clock (plus a margin) without ending."""
+        """One batch: block b plays `matchups[b]` (its first player, its second; indices into the
+        players), every block's games to their end; active: (games, 2) int each game's
+        players' active ship counts (its block's first player's, its second's; game b *
+        block_environments + e is block b's environment e), for an engine built with
+        benching (None: every ship); lineups: (games, ships per team) int each game's lineup
+        as ship type indices, both teams flying it slot for slot, for an engine built with
+        game_lineups (where it is required). A team's benched ships are its lineup's last
+        slots. (blocks, 3) int64: each block's first player's wins, ties and losses
+        (`game_outcomes` then has each game's, and `statistics` the games' statistics).
+        Raises RuntimeError if a game runs past the game clock (plus a margin) without
+        ending."""
         if len(matchups) != self.config.blocks:
             raise ValueError(f"{len(matchups)} matchups for {self.config.blocks} blocks")
-        if active is not None and len(active) != self.config.blocks:
-            raise ValueError(f"{len(active)} active counts for {self.config.blocks} blocks")
         for block, (first, second) in enumerate(matchups):
             if first == second:
                 raise ValueError(f"block {block}: {self.players[first].name} against itself")
@@ -1042,7 +1051,7 @@ class Arena:
         self.rollout.restart(None if active is None else self._active(active), self.batch)
         self.batch += 1
         self.rollout.carry["seat"].copy_(self.seats)
-        counts = torch.zeros(self.config.blocks * len(OUTCOMES), dtype=torch.int64)
+        counts = torch.zeros(self.config.games * len(OUTCOMES), dtype=torch.int64)
         ticks = 0
         while not self.seat.finished(self.rollout.carry["controllers"][SEAT]):
             if ticks > self.tick_limit:
@@ -1053,4 +1062,10 @@ class Arena:
             self.rollout.run()
             ticks += self.config.length
             counts += self.rollout.take_tally(SEAT)
-        return counts.reshape(self.config.blocks, len(OUTCOMES))
+        self.outcomes = counts.reshape(self.config.games, len(OUTCOMES))
+        return self.outcomes.reshape(self.config.blocks, -1, len(OUTCOMES)).sum(1)
+
+    def game_outcomes(self) -> torch.Tensor:
+        """(games, 3) int64 the last batch's games' outcomes, each one-hot over (win, tie,
+        loss) from its block's first player's side."""
+        return self.outcomes
