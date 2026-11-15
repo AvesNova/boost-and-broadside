@@ -46,3 +46,16 @@ feat/imugi-boundary). Power profile `performance`.
     only be shorter-ranged, and must pay for it elsewhere.
 - The balance agent adopted Jujak sustained turn x0.93 (game v23, 47.7 ± 1.1% Y v J); from
   screen 4 on the Jujak card is its v23 card (`candidates/jujak-v23-card.json`).
+
+## 07:40 MILESTONE: a candidate within 40-60% of both (screen 4, Jujak v23)
+
+- Release Y v J with the v23 Jujak: 0.511 ± 0.021 (512 games).
+- **K-jgun-d1.15-s110 (the power-fighter flight with a Jujak-type gun, damage x1.15 of
+  Jujak's, shield 110): C v J 0.469 ± 0.030, C v Y 0.488 ± 0.029** (256 games each). K with a
+  long 15 Hz cannon (Spitfire's, explosive 0.5) at d1.3/s120: 0.516 / 0.559.
+- But the profile (`profile.py`) shows K is a middle ship: its turn, corner speed, cruise and
+  climb power all lie between Yongma's and Jujak's; only its top speed (lowest), drag
+  (highest) and low-speed acceleration (highest) stand out. Balanced, not yet different.
+  Next: the radius fighter Z (solved at low-speed acceleration 12: the smallest circle, the
+  slowest cruise, 45 deg/s max turn) and the heavy P (solved at 6.0, below the real 8.87:
+  out of range), screen 5; radius-not-rate Z variants (sustained turn 0.62-0.71) solving.
