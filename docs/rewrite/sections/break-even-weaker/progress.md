@@ -75,3 +75,8 @@ contradicts evaluation-suite.md and the default `unscored=()`.
 - **Choice.** The allocation unit is a pair of environments rather than a single one, to
   keep every lineup's games split evenly between the seats (block environments are even).
 - `CrossoverConfig.parity` went (no longer used); `first_ratios` (13) added.
+- **Tests.** test_crossover + test_evaluation 63 passed (4 slow deselected; the two
+  failures of the first run were test expectations, fixed and rerun); test_league_tournament
+  56 passed (per-game tally); docs references/docstrings 607 passed.
+- **Next.** No GPU run yet: the per-game tally adds (games x 3) to the captured graph's
+  tally instead of (blocks x 3); cost expected nil, unmeasured.
