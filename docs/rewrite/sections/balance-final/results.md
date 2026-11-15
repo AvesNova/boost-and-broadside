@@ -79,7 +79,7 @@ Yongma team's score (wins + half the draws) and its kill share:
 | elimination 2v2 (1024) | 19.0 ± 1.2% (27.6%) | 24.4 ± 1.3% (33.5%) | 28.1 ± 1.4% (34.6%) |
 | elimination 5v5 (1024) | 20.4 ± 1.3% (37.7%) | 38.1 ± 1.5% (45.6%) | 38.4 ± 1.5% (46.6%) |
 | elimination 10v10 (512) | 25.0 ± 1.9% (43.1%) | 50.2 ± 2.2% (50.9%) | 42.0 ± 2.2% (50.2%) |
-| Frontline 5v5 (512, round 12's seed; the 1024-game run is queued) | 8.4 ± 1.2% (39.1%) | 33.3 ± 2.0% (46.6%) | not run |
+| Frontline 5v5 (1024) | 12.3 ± 1.0% (39.2%) | 30.5 ± 1.4% (46.6%) | 26.3 ± 1.3% (44.7%) |
 | Frontline 10v10 (512) | 13.8 ± 1.4% (44.2%) | 46.1 ± 2.1% (50.1%) | 42.4 ± 2.1% (49.1%) |
 
 Aspects stay as they were at every size (mutual head-on 2-3.5% of kills; mixed 5v5 offset
@@ -125,7 +125,8 @@ team's score, deathmatch:
 - Yongma's sustained turn is the stronger lever (x1.08 alone: 58% at 5v5), and with it
   2v2 reaches even. Round 15 tries it with deeper shield cuts (x0.6-0.8) and smaller turn
   steps; progress.md has the latest.
-- Frontline 5v5 is the hardest mode: 8% before, 33% with v23, 38% with x0.91 + shield x0.85.
+- Frontline 5v5 is the hardest mode: 12% before, 31% with v23 (1024 games); 38% with x0.91 +
+  shield x0.85 (512).
 
 ## The doctrine search (done first; why the cards)
 
