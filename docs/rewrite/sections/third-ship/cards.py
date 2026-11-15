@@ -56,19 +56,82 @@ def solve_one(entry: dict) -> dict | str:
     return {"card": card, "solved_handles": handles}
 
 
+def solve_batch(entries: list[dict], device: str = "cpu") -> list[dict | str]:
+    """Every entry's card in one batched solve ((B, 1) handles; a failure's text instead)."""
+    import torch
+
+    from bnb.game import api
+    from bnb.game.handling import Handles
+
+    rows = [handles_of(e) for e in entries]
+    rules = api.rules_of(api.PRESETS["real_scale_deathmatch"], types=api.ship_types(ship_set=SET))
+    handles = Handles(
+        **{
+            n: torch.tensor([[r[n]] for r in rows], dtype=torch.float64, device=device)
+            for n in rows[0]
+        }
+    )
+    solution = api.solve_handles(handles, rules, strict=False)
+    fields = api.ship_types(ship_set=SET).__dataclass_fields__
+    out = []
+    for number, row in enumerate(rows):
+        if not bool(solution.converged[number].all()):
+            reasons = [str(f) for f in solution.failures if f"card {number} " in str(f)]
+            out.append(f"infeasible: {reasons or solution.failures}")
+            continue
+        card = {f: float(getattr(solution.types, f)[number, 0]) for f in fields}
+        out.append({"card": card, "solved_handles": row})
+    return out
+
+
+def combat_only(entry: dict, solved: dict) -> dict:
+    """A combat-only variant: a solved entry's card ("flight_from", its name in `solved`) with
+    the combat fields recomputed from its handles with the entry's changes (no flight solve:
+    the combat handles do not move the flight fields)."""
+    import torch
+
+    from bnb.game import api
+    from bnb.game.handling import Handles
+    from bnb.game.handling.weapons import combat_card
+
+    source = solved[entry["flight_from"]]
+    handles = dict(source["solved_handles"])
+    for name, change in entry.get("handles", {}).items():
+        handles[name] = float(change["set"]) if isinstance(change, dict) else handles[name] * change
+    rules = api.rules_of(api.PRESETS["real_scale_deathmatch"], types=api.ship_types(ship_set=SET))
+    tensors = Handles(**{n: torch.tensor([v], dtype=torch.float64) for n, v in handles.items()})
+    fields = combat_card(rules, tensors, tensors.cruise_speed)
+    card = dict(source["card"]) | {k: float(v[0]) for k, v in fields.items()}
+    return entry | {"card": card, "solved_handles": handles, "spec": entry}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("spec", type=pathlib.Path)
     parser.add_argument("out", type=pathlib.Path)
     parser.add_argument("--processes", type=int, default=8)
+    parser.add_argument("--batched", action="store_true", help="one batched solve")
+    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--combat-from", type=pathlib.Path, nargs="*", help="solved files")
     args = parser.parse_args()
     spec = json.loads(args.spec.read_text())
+    if args.combat_from:
+        solved = {}
+        for path in args.combat_from:
+            solved |= {e["name"]: e for e in json.loads(path.read_text())}
+        out = [combat_only(e, solved) for e in spec]
+        args.out.write_text(json.dumps(out, indent=1))
+        print(f"{len(out)} combat variants", flush=True)
+        return
     done = {}
     if args.out.exists():
         done = {e["name"]: e for e in json.loads(args.out.read_text())}
     todo = [e for e in spec if e["name"] not in done or done[e["name"]].get("spec") != e]
-    with concurrent.futures.ProcessPoolExecutor(args.processes) as pool:
-        results = dict(zip([e["name"] for e in todo], pool.map(solve_one, todo), strict=True))
+    if args.batched:
+        results = dict(zip([e["name"] for e in todo], solve_batch(todo, args.device), strict=True))
+    else:
+        with concurrent.futures.ProcessPoolExecutor(args.processes) as pool:
+            results = dict(zip([e["name"] for e in todo], pool.map(solve_one, todo), strict=True))
     out = []
     for entry in spec:
         if entry["name"] in results:
