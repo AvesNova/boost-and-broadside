@@ -80,6 +80,7 @@ from .state_code import (
     state_code_ranges,
     velocity_reach,
 )
+from .temporal import TEMPORAL_BLOCKS
 
 SHOT_HARMONICS = 4  # the trajectory head's age features
 # a row's held rates: acceleration along, across, the nose's, the change, the turn's share
@@ -234,6 +235,11 @@ class YemongConfig:
     gate (`spatial.GATES`): the spatial attention's output gate (`spatial.SpatialBlock`),
     "elementwise" or "headwise" sigmoid(W x + b) on each head's output before the output
     projection. "none" by default: no gate parameters, every build from before it unchanged.
+    temporal_block (`temporal.TEMPORAL_BLOCKS`): the trunk's temporal sublayer. "griffin",
+    the default and every build's from before the option, is Griffin's recurrent block (a
+    causal convolution and an RG-LRU, gated); "gru" is a GRU in its place, arm A16's
+    challenger at the same width (`temporal.GRUBlock`: no convolution, so the carry's
+    convolution buffer has no inputs).
 
     Retired (`RETIRED`): rotary_readout, the per-block rotary read-out (2026-11-07 to
     2026-11-12, replaced by the geometry head); a build record without it, or with it off,
@@ -282,6 +288,7 @@ class YemongConfig:
     physics_hidden_decay: float | None = None  # s: the physics head's hidden rows, exp(-age/tau)
     physics_hidden_fade: bool = False  # a hidden row's forecast: exp(-age/tau) of the change
     gate: str = "none"  # the attention output gate: "none", "elementwise", "headwise"
+    temporal_block: str = "griffin"  # the temporal sublayer: "griffin" or "gru" (arm A16)
 
     def __post_init__(self) -> None:
         if self.next_state not in NEXT_STATES:
@@ -317,6 +324,10 @@ class YemongConfig:
             raise ValueError(f"order {self.order!r} is not one of {ORDERS}")
         if self.gate not in GATES:
             raise ValueError(f"gate {self.gate!r} is not one of {GATES}")
+        if self.temporal_block not in TEMPORAL_BLOCKS:
+            raise ValueError(
+                f"temporal_block {self.temporal_block!r} is not one of {tuple(TEMPORAL_BLOCKS)}"
+            )
         if not set(self.mode_inputs) <= set(MODE_INPUTS) or len(set(self.mode_inputs)) != len(
             self.mode_inputs
         ):
@@ -372,7 +383,8 @@ class YemongConfig:
 @contract
 class Carry:
     """Per view (R leading). state (R, blocks, Q, D) and convolution_buffer
-    (R, blocks, Q, 3, D): the trunk's; belief: per ship row, positions in the shifted frame;
+    (R, blocks, Q, history, D): the trunk's (history 3 for the Griffin temporal block, 0 for
+    the GRU's: `network.Trunk`); belief: per ship row, positions in the shifted frame;
     previous_action (R, S) int32, the own ships' last joint actions; offset (R, 2) m, the
     view's position offset, drawn uniformly in [0, P) at every reset; nonfinite (R,) int64,
     a running count of non-finite forecast entries (replaced by zeros); motion: the enemy
@@ -627,6 +639,7 @@ class Yemong(nn.Module):
             config.spatial_per_block,
             config.order,
             config.gate,
+            config.temporal_block,
         )
         levels = len(config.local_levels)
         # Heads grouped by the token they read: own ships, every ship, the global token.
@@ -822,7 +835,9 @@ class Yemong(nn.Module):
             )
         return Carry(
             state=state,
-            convolution_buffer=state.new_zeros(state.shape[:-1] + (3, config.width)),
+            convolution_buffer=state.new_zeros(
+                state.shape[:-1] + (self.trunk.history, config.width)
+            ),
             belief=belief,
             previous_action=torch.zeros((views, ships_per_team), dtype=torch.int32, device=device),
             offset=torch.full((views, 2), UNDRAWN_OFFSET, dtype=dtype, device=device),
