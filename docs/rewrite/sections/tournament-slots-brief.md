@@ -2,7 +2,7 @@
 
 `bnb ratings` (`src/bnb/league/tournament.py`, `matches.play`) rates a field offline: batches
 of games split over pairs by A-optimal value, a Bradley-Terry fit after each batch with the
-scripted agent pinned at 1000. It cannot rate a real field: every batch builds a new rollout
+Imugi pinned at 1000. It cannot rate a real field: every batch builds a new rollout
 with one controller per player in the batch, and **every controller evaluates every
 environment**, so memory and time grow with players x environments. A 46-player field ran
 out of memory on an 8 GB GPU; a 4-network batch of 192 environments takes ~190 s (games are
@@ -10,7 +10,7 @@ played to their end, ~9,000 ticks).
 
 ## The author's design (2026-11-06)
 
-- **Fixed slots, compiled once.** K network slots plus the scripted agent, and a fixed layout
+- **Fixed slots, compiled once.** K network slots plus Imugi, and a fixed layout
   of matchup blocks: each block is a pair of seats with a fixed number of environments. The
   shapes never change, so the rollout is built and compiled once.
 - **Each batch:** choose which matchups the blocks play (by information, as `allocate` does
@@ -39,7 +39,7 @@ The RL run `2026-11-06-mixed-calm-fern` (read only). Players (policy files):
   `step_88080384-live`, `step_100663296-live`;
 - the final averages: `players-calm-fern/step_100663296-exponential_average` and
   `step_100663296-uniform_average`;
-- the scripted agent, allowed to play only the BC clone and the 7.3M model.
+- Imugi, allowed to play only the BC clone and the 7.3M model.
 
 Frontline and deathmatch; target standard error 25; report the leaderboard.
 

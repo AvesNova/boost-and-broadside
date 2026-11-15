@@ -1,5 +1,5 @@
 """The game loop's GPU harness: 5v5 team deathmatch with respawns of the real-scale set's
-Yongma (energy) and Jujak (turn), the scripted agent on both sides, many games at once in
+Yongma (energy) and Jujak (turn), Imugi on both sides, many games at once in
 one compiled tick, with the ship cards and the doctrines as tensors that vary by group of
 environments, so a whole sweep (card variants x doctrine pairs x lineups) runs in one graph
 and a new sweep of the same sizes never recompiles.
@@ -43,8 +43,8 @@ import zoneinfo
 import torch
 
 from bnb.contracts import ASPECTS, Action, Obs
-from bnb.controllers import scripted
-from bnb.controllers.scripted_doctrine import WIDTH, Doctrine, from_named, pack
+from bnb.controllers import imugi
+from bnb.controllers.imugi_doctrine import WIDTH, Doctrine, from_named, pack
 from bnb.game import api, ships
 from bnb.game.handling.characteristics import characteristics
 from bnb.game.ship_types import ShipTypes
@@ -124,8 +124,8 @@ class Player:
     name: str
     energy: Doctrine = Doctrine()
     turn: Doctrine = Doctrine()
-    temperature: float = 1.0  # the scripted agent's (inf: uniform random play)
-    # the scripted agent's parameters (`scripted_parameters.pack`), None: the mode's default
+    temperature: float = 1.0  # Imugi's (inf: uniform random play)
+    # Imugi's parameters (`imugi_parameters.pack`), None: the mode's default
     parameters: tuple[float, ...] | None = None
 
     def rows(self) -> tuple[list[float], list[float]]:
@@ -134,7 +134,7 @@ class Player:
 
     def named(self) -> dict:
         """The player as a name-keyed dict (`player_from` reads it back)."""
-        from bnb.controllers.scripted_doctrine import named
+        from bnb.controllers.imugi_doctrine import named
 
         out = {
             "name": self.name,
@@ -159,9 +159,9 @@ def player_from(entry: dict) -> Player:
 
 
 def default_parameters() -> tuple[float, ...]:
-    """The scripted agent's real-scale deathmatch set, packed."""
-    from bnb.controllers.scripted_defaults import MODE_DEFAULTS
-    from bnb.controllers.scripted_parameters import pack as pack_parameters
+    """Imugi's real-scale deathmatch set, packed."""
+    from bnb.controllers.imugi_defaults import MODE_DEFAULTS
+    from bnb.controllers.imugi_parameters import pack as pack_parameters
 
     return tuple(pack_parameters(MODE_DEFAULTS.sets[PRESET]))
 
@@ -425,12 +425,12 @@ class Loop:
         self.card = characteristics(self.types, self.rules)
         self.doctrines = torch.zeros((2 * self.B, 2 * variants, WIDTH), device=self.device)
         self.temperature = torch.ones((2 * self.B,), device=self.device)
-        from bnb.controllers.scripted_parameters import unpack
+        from bnb.controllers.imugi_parameters import unpack
 
         self.parameters = torch.tensor(
             [default_parameters()] * (2 * self.B), dtype=torch.float32, device=self.device
         )
-        self.agent = scripted.Scripted(
+        self.agent = imugi.Imugi(
             self.card,
             self.S,
             parameters=unpack(self.parameters),
@@ -1205,7 +1205,7 @@ def distinctness(
         )
         with torch.no_grad():
             parts = {
-                name: scripted.marginals(
+                name: imugi.marginals(
                     view, loop.card, loop.agent.parameters, 1.0, None, doctrines=table
                 )
                 for name, table in tables.items()
@@ -1618,8 +1618,8 @@ def encode(doctrine: Doctrine) -> list[float]:
     an exponent over 4, a logistic's centre and scale and the other positive numbers as
     logs (the fields `bench.doctrine_arena.FROZEN` left out)."""
     from bench.doctrine_arena import FROZEN
-    from bnb.controllers.scripted_doctrine import EXPONENTS, FRACTIONS, NAMES, WEIGHTS
-    from bnb.controllers.scripted_parameters import Logistic
+    from bnb.controllers.imugi_doctrine import EXPONENTS, FRACTIONS, NAMES, WEIGHTS
+    from bnb.controllers.imugi_parameters import Logistic
 
     out = []
     for name in NAMES:
@@ -1640,8 +1640,8 @@ def encode(doctrine: Doctrine) -> list[float]:
 def decode(vector: list[float], like: Doctrine) -> Doctrine:
     """`encode`'s inverse (the frozen fields from `like`), clamped to the search's bounds."""
     from bench.doctrine_arena import FROZEN, clamp
-    from bnb.controllers.scripted_doctrine import EXPONENTS, FRACTIONS, NAMES, WEIGHTS
-    from bnb.controllers.scripted_parameters import Logistic
+    from bnb.controllers.imugi_doctrine import EXPONENTS, FRACTIONS, NAMES, WEIGHTS
+    from bnb.controllers.imugi_parameters import Logistic
 
     values, column = {}, 0
     for name in NAMES:
@@ -1688,7 +1688,7 @@ SEARCHED_PARAMETERS = (
 def encode_parameters(row: tuple[float, ...]) -> list[float]:
     """The searched scripted parameters of a packed row, as logs (a logistic's centre and
     scale, a switch's rate, centre and scale, a float)."""
-    from bnb.controllers.scripted_parameters import from_row
+    from bnb.controllers.imugi_parameters import from_row
 
     parameters = from_row(list(row))
     out = []
@@ -1708,16 +1708,16 @@ def encode_parameters(row: tuple[float, ...]) -> list[float]:
 def decode_parameters(vector: list[float], like: tuple[float, ...]) -> tuple[float, ...]:
     """`encode_parameters`' inverse into the packed row `like`, each logistic's and
     switch's scale held at its floor or above."""
-    from bnb.controllers.scripted_parameters import (
+    from bnb.controllers.imugi_parameters import (
         SCALE_FLOORS as PARAMETER_FLOORS,
     )
-    from bnb.controllers.scripted_parameters import (
+    from bnb.controllers.imugi_parameters import (
         SWITCH_SCALE_FLOORS,
         Logistic,
         Switch,
         from_row,
     )
-    from bnb.controllers.scripted_parameters import pack as pack_parameters
+    from bnb.controllers.imugi_parameters import pack as pack_parameters
 
     parameters = from_row(list(like))
     values, column = {}, 0
@@ -1765,7 +1765,7 @@ def doctrine_kl(loop: Loop, views: Obs, player: Player) -> float:
     turn doctrines flown by every living own ship of `views` (the memoryless agent, the
     player's parameters)."""
     from bnb.contracts.obs import SHIP
-    from bnb.controllers.scripted_parameters import unpack
+    from bnb.controllers.imugi_parameters import unpack
 
     rows = views.ships.shape[0]
     parameters = unpack(
@@ -1777,7 +1777,7 @@ def doctrine_kl(loop: Loop, views: Obs, player: Player) -> float:
     )
     with torch.no_grad():
         parts = [
-            scripted.marginals(
+            imugi.marginals(
                 views,
                 loop.card,
                 parameters,

@@ -41,7 +41,7 @@ game's config and one recorded without a field is another game. The arena is abo
 full-stick turn circles of its two ships across (each turns at about 500-600 m at its
 162 m/s cruise): first set at 1300 m, two circles across, and widened by half for more
 room. Its ships come within gun range (about 600 m) within seconds of spawning: in the
-scripted agent's 2v2s on it, 0-12 s after the start, the first kill 9-23 s in, with 3-10%
+Imugi's 2v2s on it, 0-12 s after the start, the first kill 9-23 s in, with 3-10%
 of the ships' time beyond the boundary (at 1300 m: 0-7.5 s, 6-14 s and 10-16%).
 `real_scale_deathmatch` plays a 4200 m arena (the author, 2026-11-13), smaller than the
 real-scale map's 7800 m, which `real_scale_frontline` keeps.
@@ -253,7 +253,7 @@ None, as in training) the game is bit-identical to the game without the input
   defending majority still does), so the zone cannot be taken straight back. L is set by
   the ring's size, `lock_seconds_per_root_km` x sqrt(d / 1 km), d the distance between
   adjacent zone centres. The default, 6 s per sqrt(km) (game version 20), is about 14 s at 5v5 on the
-  real-scale map (d = 5.64 km). It was tuned with the scripted agent on both sides, fields
+  real-scale map (d = 5.64 km). It was tuned with Imugi on both sides, fields
   on, so that the front moves as a random walk: P(reversal) = 0.490 (95% interval 0.468 to
   0.512) over 512 games, against 0.29 at the earlier 19 s per sqrt(km), where the team
   that had just captured usually took the next zone inside the lock. The state

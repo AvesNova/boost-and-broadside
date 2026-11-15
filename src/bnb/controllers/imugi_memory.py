@@ -1,4 +1,4 @@
-"""The scripted agent's memory (its carry): per own ship the plan choices it has committed
+"""Imugi's memory (its carry): per own ship the plan choices it has committed
 to, and per enemy the last seen position and velocity, from which a hidden enemy is dead
 reckoned for a short time.
 
@@ -21,7 +21,7 @@ from bnb.contracts.tree import contract
 from bnb.game.handling.characteristics import Characteristics
 from bnb.game.ship_types import per_ship
 
-from .scripted_parameters import ScriptedParameters, Switch, logistic, switch_probability
+from .imugi_parameters import ImugiParameters, Switch, logistic, switch_probability
 
 # A remembered enemy is forgotten once its weight as a target falls below this: its
 # prediction is then worth nothing to aim or fire at.
@@ -29,7 +29,7 @@ FORGET_WEIGHT = 0.01
 
 
 @contract
-class ScriptedCarry:
+class ImugiCarry:
     """Per view (R leading); own ships (R, S), enemies (R, E).
 
     target (R, S) int64: the committed target's enemy row, -1 for none. combat_left and
@@ -56,7 +56,7 @@ class ScriptedCarry:
     known: torch.Tensor
 
 
-def fresh_carry(views: int, ships: int, enemies: int, device) -> ScriptedCarry:
+def fresh_carry(views: int, ships: int, enemies: int, device) -> ImugiCarry:
     """A carry with nothing committed or remembered, every ship playing the agent."""
 
     def flag(count: int, value: bool) -> torch.Tensor:
@@ -65,7 +65,7 @@ def fresh_carry(views: int, ships: int, enemies: int, device) -> ScriptedCarry:
     def zero() -> torch.Tensor:
         return torch.zeros((views, enemies), device=device)
 
-    return ScriptedCarry(
+    return ImugiCarry(
         target=torch.full((views, ships), -1, dtype=torch.int64, device=device),
         combat_left=flag(ships, False),
         frontline_left=flag(ships, False),
@@ -82,7 +82,7 @@ def fresh_carry(views: int, ships: int, enemies: int, device) -> ScriptedCarry:
     )
 
 
-def forgotten(carry: ScriptedCarry) -> ScriptedCarry:
+def forgotten(carry: ImugiCarry) -> ImugiCarry:
     """The carry with every plan choice unset and every enemy forgotten (memory off); the
     ships' agent flags kept."""
     return dataclasses.replace(
@@ -91,7 +91,7 @@ def forgotten(carry: ScriptedCarry) -> ScriptedCarry:
 
 
 def time_unit(
-    characteristics: Characteristics, own_type: torch.Tensor, parameters: ScriptedParameters
+    characteristics: Characteristics, own_type: torch.Tensor, parameters: ImugiParameters
 ) -> torch.Tensor:
     """Each own ship's time unit (R, S), in seconds: its corner turn time (the corner speed
     over the g limit's acceleration: the time a full-stick turn at corner speed takes to
@@ -116,13 +116,13 @@ class Recall(NamedTuple):
 
 
 def remember(
-    carry: ScriptedCarry,
+    carry: ImugiCarry,
     obs: Obs,
     reset: torch.Tensor,
     characteristics: Characteristics,
-    parameters: ScriptedParameters,
+    parameters: ImugiParameters,
     temperature,
-) -> tuple[ScriptedCarry, Recall]:
+) -> tuple[ImugiCarry, Recall]:
     """The carry after this observation (the plan choices still to make): fresh ships
     (reset, dead or just spawned) and the enemy memory, and what it recalls.
 
@@ -195,7 +195,7 @@ def commit(
 ) -> torch.Tensor:
     """A plan choice after one decision: `best` where `forced`, else `best` with the switch's
     probability at `advantage` (best's over the committed option's), drawn by `uniform`
-    (shaped like the advantage; `scripted_combat.choice_uniforms`), else `committed`.
+    (shaped like the advantage; `imugi_combat.choice_uniforms`), else `committed`.
     Without a uniform (re-reading a carry that has made its choices) only `forced`
     changes it."""
     if uniform is None:

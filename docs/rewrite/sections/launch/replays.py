@@ -2,10 +2,10 @@
 window (`bnb.play.replay`): open one with `bnb play --replay DIR`.
 
     replays.py --policy RUN/policies/step_N/uniform_average [--policy ...] --out DIR
-               [--presets ...] [--matches 2] [--opponent scripted_agent|self]
+               [--presets ...] [--matches 2] [--opponent imugi|self]
                [--lineup NAME ...] [--seed 0]
 
-Each match is the policy (team 0) against the opponent (team 1: the scripted agent, or the
+Each match is the policy (team 0) against the opponent (team 1: Imugi, or the
 policy itself), in every preset, from its first tick to its end. Besides the replays, the
 directory gets matches.jsonl: per match its policy, preset, seed, winner, ticks and each
 team's kills and boundary deaths (the deaths with no killer), for the reward check.
@@ -28,7 +28,7 @@ def match_loop(setup):
     import torch
 
     from bnb.play.loop import MatchLoop
-    from bnb.play.sides import ScriptedAgent, load_agent
+    from bnb.play.sides import ImugiAgent, load_agent
     from bnb.play.tuning import base_rules
     from bnb.runtime.realtime import Realtime
 
@@ -55,7 +55,7 @@ def match_loop(setup):
             any_mode=True,
         )
         if side.controller == "agent"
-        else ScriptedAgent(realtime.rules, realtime.types, setup.seed + team)
+        else ImugiAgent(realtime.rules, realtime.types, setup.seed + team)
         for team, side in enumerate(setup.sides)
     ]
     return MatchLoop(setup, sides=sides, realtime=realtime)
@@ -71,7 +71,7 @@ def main() -> None:
         default=["real_scale_frontline", "real_scale_deathmatch", "real_scale_elimination"],
     )
     parser.add_argument("--matches", type=int, default=2)
-    parser.add_argument("--opponent", default="scripted_agent", choices=["scripted_agent", "self"])
+    parser.add_argument("--opponent", default="imugi", choices=["imugi", "self"])
     parser.add_argument("--lineup", nargs="*", default=None)
     parser.add_argument("--seed", type=int, default=0)
     arguments = parser.parse_args()
@@ -94,7 +94,7 @@ def main() -> None:
             for match in range(arguments.matches):
                 seed = arguments.seed + match
                 agent = SideSetup("agent", policy)
-                other = agent if arguments.opponent == "self" else SideSetup("scripted_agent")
+                other = agent if arguments.opponent == "self" else SideSetup("imugi")
                 setup = MatchSetup(config, lineup=lineup, seed=seed, sides=(agent, other))
                 loop = match_loop(setup)
                 name = f"{pathlib.Path(policy).parent.parent.parent.name}-{arguments.opponent}"

@@ -1,4 +1,4 @@
-"""The scripted agent's parameters (scripted spec A3): dimensionless numbers, each named for
+"""Imugi's parameters (scripted spec A3): dimensionless numbers, each named for
 the characteristic quantity it scales (`bnb.game.handling.characteristics.Characteristics`).
 
 A value is a float, or a tensor (R, 1) with one value per view (`unpack` of a parameter
@@ -115,7 +115,7 @@ def floored(probability: torch.Tensor, decision: str) -> torch.Tensor:
 
 
 @dataclasses.dataclass(frozen=True)
-class ScriptedParameters:
+class ImugiParameters:
     """Logistics map a quantity (in the unit the name gives) to a probability; ramps to a
     weight.
 
@@ -158,7 +158,7 @@ class ScriptedParameters:
     raised to this; 0 (the default) is seconds, as every set was tuned.
 
     How a ship fights by its type (the energy and turn fighters' doctrines) is not here:
-    it is a per-type table of `bnb.controllers.scripted_doctrine.Doctrine`s.
+    it is a per-type table of `bnb.controllers.imugi_doctrine.Doctrine`s.
     """
 
     turn_in_stall_angle: Logistic = Logistic(0.0398, 0.306, True)
@@ -222,10 +222,10 @@ SWITCH_SCALE_FLOORS = {
     "recovery_switch_in_log_ratio": 0.05,
 }
 
-NAMES = tuple(field.name for field in dataclasses.fields(ScriptedParameters))
+NAMES = tuple(field.name for field in dataclasses.fields(ImugiParameters))
 # The own time's field: off by default, searched only on request.
 OWN_TIME = ("time_unit_exponent",)
-_DEFAULT = ScriptedParameters()  # the logistics' directions (`unpack`)
+_DEFAULT = ImugiParameters()  # the logistics' directions (`unpack`)
 
 
 def _columns(value) -> tuple:
@@ -238,13 +238,13 @@ def _columns(value) -> tuple:
     return (value,)
 
 
-def pack(parameters: ScriptedParameters) -> list[float]:
+def pack(parameters: ImugiParameters) -> list[float]:
     """The parameters as a flat list (a ramp is low, high, at_low, at_high; a switch is rate,
     centre, scale; a logistic is centre, scale)."""
     return [float(number) for name in NAMES for number in _columns(getattr(parameters, name))]
 
 
-def unpack(table: torch.Tensor) -> ScriptedParameters:
+def unpack(table: torch.Tensor) -> ImugiParameters:
     """Per-view parameters from a table (R, len(pack(...))): each value a view (R, 1) of
     its column, so an in-place change to the table changes them. A logistic's direction is
     the default's."""
@@ -265,17 +265,17 @@ def unpack(table: torch.Tensor) -> ScriptedParameters:
     return _assembled(values)
 
 
-def _assembled(values: dict) -> ScriptedParameters:
-    """ScriptedParameters from every field's value, without its generated __init__: a
+def _assembled(values: dict) -> ImugiParameters:
+    """ImugiParameters from every field's value, without its generated __init__: a
     compiled graph cannot bind that signature's defaults (the logistic constants), so a
     per-view set can be made inside one."""
-    parameters = object.__new__(ScriptedParameters)
+    parameters = object.__new__(ImugiParameters)
     for name, value in values.items():
         object.__setattr__(parameters, name, value)
     return parameters
 
 
-def from_row(row: list[float]) -> ScriptedParameters:
+def from_row(row: list[float]) -> ImugiParameters:
     """One parameter set of floats from a packed row: `pack`'s inverse. A row of another
     length (a set packed before a field was added) is refused."""
     if len(row) != len(pack(_DEFAULT)):
@@ -290,10 +290,10 @@ def from_row(row: list[float]) -> ScriptedParameters:
             out[name] = Logistic(float(value.centre), float(value.scale), value.rising)
         else:
             out[name] = float(value)
-    return ScriptedParameters(**out)
+    return ImugiParameters(**out)
 
 
-def table(parameters: list[ScriptedParameters], device=None) -> torch.Tensor:
+def table(parameters: list[ImugiParameters], device=None) -> torch.Tensor:
     """A parameter table (R, P) with one row per view."""
     return torch.tensor([pack(p) for p in parameters], dtype=torch.float32, device=device)
 
@@ -312,7 +312,7 @@ class ModeParameters:
     """One parameter set per game mode (`MODES`): each view plays with its mode's set,
     chosen from its observation (`mode_index`), so one batch may mix the modes."""
 
-    def __init__(self, sets: dict[str, ScriptedParameters]) -> None:
+    def __init__(self, sets: dict[str, ImugiParameters]) -> None:
         if set(sets) != set(MODES):
             raise ValueError(f"need one parameter set per mode {MODES}, got {tuple(sets)}")
         self.sets = {mode: sets[mode] for mode in MODES}
@@ -332,6 +332,6 @@ class ModeParameters:
             self._tables[device] = table(list(self.sets.values()), device)
         return self._tables[device]
 
-    def per_view(self, mode: torch.Tensor) -> ScriptedParameters:
+    def per_view(self, mode: torch.Tensor) -> ImugiParameters:
         """Per-view parameters for views of modes `mode` (R,) int64 (`mode_index`)."""
         return unpack(self.table(mode.device)[mode])

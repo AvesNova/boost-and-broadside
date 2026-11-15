@@ -1,7 +1,7 @@
 #!/bin/bash
 # Fleet-size ratings (the author, 17:20 KST): zero-shot Elo at 5v5, 10v10, 20v20, 40v40, each
 # larger size both in the training arena (2600 m, `_arena`) and at the training density
-# (`_density`). One field per size and variant: the scripted agent (1000; no temperature ladder,
+# (`_density`). One field per size and variant: Imugi (1000; no temperature ladder,
 # dropped by the author at 17:55 KST), the null's RL 20/40/80/180M uniform averages above
 # it (calibration rungs), and each agent's best checkpoint (champion and null RL 180.4M uniform,
 # nearest RL 40.9M uniform). 5v5 reuses tournament 10's games. Target +-35, at most 20480 games

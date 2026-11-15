@@ -7,7 +7,7 @@ recovering the store, and how the fights themselves go, for cards that differ in
 VARIANTS.json is a list of {"name", "type": the type's name in the set, "card": {field:
 value} overrides for that type (a solved card's fields), "engine_knee_scale": optional, set
 on every type}. Every variant plays `--games` games of `--preset` (real_scale_deathmatch by
-default), every ship the variant's type, flown by the scripted agent (its real-scale set,
+default), every ship the variant's type, flown by Imugi (its real-scale set,
 T = 1) on both teams, for one episode's ticks (600 s). The card is written in place between
 variants (`set_card`), so the rollout compiles once.
 
@@ -37,8 +37,8 @@ import torch
 
 from bench.lock import bench_lock
 from bnb.contracts import Pool
-from bnb.controllers.scripted import Scripted
-from bnb.controllers.scripted_defaults import MODE_DEFAULTS
+from bnb.controllers.imugi import Imugi
+from bnb.controllers.imugi_defaults import MODE_DEFAULTS
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.runtime.analytics import RESOLVE_COLUMNS, reset_game_sums
@@ -173,7 +173,7 @@ def main() -> None:
     except FileNotFoundError:
         pass
     S = game.ships_per_team
-    agent = Scripted(measured, S, MODE_DEFAULTS)
+    agent = Imugi(measured, S, MODE_DEFAULTS)
     rollout = None
     started = time.time()
     with bench_lock(), open(args.out, "a") as out:

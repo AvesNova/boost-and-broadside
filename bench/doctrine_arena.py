@@ -1,5 +1,5 @@
-"""The doctrine arena: 5v5 games of the real-scale set's Yongma and Jujak, the scripted agent
-on both sides with each side's per-type doctrines (`bnb.controllers.scripted_doctrine`),
+"""The doctrine arena: 5v5 games of the real-scale set's Yongma and Jujak, Imugi
+on both sides with each side's per-type doctrines (`bnb.controllers.imugi_doctrine`),
 batched on the CPU, uncompiled; and a search of one type's doctrine for strength.
 
     PYTHONPATH=src python -m bench.doctrine_arena play --record DIR/arena.jsonl \
@@ -9,7 +9,7 @@ batched on the CPU, uncompiled; and a search of one type's doctrine for strength
 
 The game: elimination (`real_scale_elimination`: no respawn, a team with no ship left loses,
 at the 180 s clock more ships alive wins, then more total shield) at 5v5 with no fields
-(the scripted agent ignores fields), on the real-scale map (7800 m, the 5v5 size of the
+(Imugi ignores fields), on the real-scale map (7800 m, the 5v5 size of the
 fleet presets' density rule, as in real_scale_deathmatch). Elimination rather than the
 respawn deathmatch: every game is one fight from full shields to a resolution, so a
 timeout is a fight that did not resolve, and a game costs a third of a deathmatch's.
@@ -51,8 +51,8 @@ import zoneinfo
 import torch
 
 from bnb.contracts import ASPECTS, Action, Obs
-from bnb.controllers import scripted
-from bnb.controllers.scripted_doctrine import (
+from bnb.controllers import imugi
+from bnb.controllers.imugi_doctrine import (
     DOCTRINES,
     EXPONENTS,
     FRACTIONS,
@@ -66,7 +66,7 @@ from bnb.controllers.scripted_doctrine import (
     pack,
     table,
 )
-from bnb.controllers.scripted_parameters import Logistic
+from bnb.controllers.imugi_parameters import Logistic
 from bnb.game import api, ships
 from bnb.game.handling.characteristics import characteristics
 from bnb.game.physics.combat import MEAN_CLOSENESS
@@ -104,7 +104,7 @@ def setup(preset: str = PRESET):
 
 
 def read_doctrines(path: pathlib.Path, keys: list[str]) -> torch.Tensor:
-    """(T, WIDTH) a doctrines file's set (`scripted_doctrines.json`'s shape) as a table."""
+    """(T, WIDTH) a doctrines file's set (`imugi_doctrines.json`'s shape) as a table."""
     stored = json.loads(path.read_text()).get(SHIP_SET, {})
     by_key = {key: from_named(entry["doctrine"]) for key, entry in stored.items()}
     return table([by_key.get(key, Doctrine()) for key in keys])
@@ -178,7 +178,7 @@ def games(
     view_doctrines = torch.where(
         team_is_a[..., None, None], a_rows[:, None], b_rows[:, None]
     ).flatten(0, 1)  # (2B, T, W)
-    agent = scripted.Scripted(card, S, doctrines=view_doctrines)
+    agent = imugi.Imugi(card, S, doctrines=view_doctrines)
     carry = agent.init_carry(2 * B, torch.device("cpu"))
     ship_side_a = torch.cat(
         [a_on_zero[:, None].expand(B, S), (~a_on_zero)[:, None].expand(B, S)], 1

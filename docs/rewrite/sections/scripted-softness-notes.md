@@ -1,11 +1,11 @@
-# Scripted softness: notes
+# Imugi softness: notes
 
 Brief: `scripted-softness-brief.md`. Part 1 landed as `bnb head-to-head` players
 `scripted@T=<t>,floor=<f>` (`bnb.league.matches.teacher_of`; drawn by
 `bnb.learn.bc.TeacherOpponent`; keys optional, T=1 and floor=0 by default;
 `scripted@floor=0.01` is BC's teacher, `TeacherConfig()`).
 
-## Part 2: scores against the raw scripted agent
+## Part 2: scores against the raw Imugi
 
 128 games per preset (384 per row), the three default presets, split evenly between seats.
 Score = wins + half draws, over games; standard error from the per-game variance. Each row
@@ -39,9 +39,9 @@ about 1 standard error.)
 
 ## Part 3: softness audit
 
-Scripted self-play on the CPU (the audit reads tensors on the host), 16 games per preset,
+Imugi self-play on the CPU (the audit reads tensors on the host), 16 games per preset,
 3,000 decisions per seat: about 430,000 to 440,000 living ship steps per preset.
-`/tmp/bnb-scratch-scripted-softness/audit.py` (a `Scripted` subclass that records the
+`/tmp/bnb-scratch-scripted-softness/audit.py` (a `Imugi` subclass that records the
 marginals and, by wrapping `ramp`, every ramp's input).
 
 ### Probability of the chosen value, and entropy

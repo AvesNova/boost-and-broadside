@@ -73,7 +73,7 @@ def case(agent: str, preset: str, n: int) -> dict:
     """A (the network) keeps its n ships; the scripted side gets n .. 2n (3n while A still wins at
     2n), each at a game size of the larger side; then every integer inside the crossing's
     bracket. If A loses at n:n, the scripted side gets fewer: n .. 1 (A then needs more ships than
-    the scripted agent to break even)."""
+    Imugi to break even)."""
     rows = []
     payload = run(agent, preset, n, [f"{n}:{b}" for b in grid(n, 2 * n)], 256 if n <= 10 else 128,
                   2 * n)

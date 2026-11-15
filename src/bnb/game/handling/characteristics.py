@@ -1,4 +1,4 @@
-"""A ship type's characteristic quantities for the scripted agent (scripted spec A2), from the
+"""A ship type's characteristic quantities for Imugi (scripted spec A2), from the
 ship card's own measurements: the handles it reads (the cruise and the closed forms, as
 `bnb.game.handling.measure` has them), the shown top speed and the coast
 datum's turn rates, all flown in the game's code. The agent states every threshold as a
@@ -43,7 +43,7 @@ class Characteristics:
         rate), in closed form: the mass times the cruise times the coast exchange; the
         card's max_energy, bullet_energy_cost (J), max_shield,
         hit_radius (m) and max_acceleration (m/s^2); vision_range (m); gravity (m/s^2), the
-        rules' (the same for every type: the scripted agent tells a real-scale card by it).
+        rules' (the same for every type: Imugi tells a real-scale card by it).
     """
 
     cruise_speed: torch.Tensor

@@ -208,7 +208,7 @@ class LearnerConfig:
 # place of LearnerConfig's `entropy_*`. The BC clone already samples every action (its labels'
 # uniform floor), and at its advantage scale the bonus outweighs the policy gradient on rare
 # actions: from the first clone, v1's -0.0081 drove the shoot share from 1.7% to 6.8% and the
-# score against the scripted agent from 0.23 to 0.03 in 24 updates, while 0 held it (0.25).
+# score against Imugi from 0.23 to 0.03 in 24 updates, while 0 held it (0.25).
 WARM_START_ENTROPY = 0.0
 
 

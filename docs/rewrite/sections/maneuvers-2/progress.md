@@ -14,7 +14,7 @@ the small mirror, "YY" the big one).
 
 ## Code
 
-New doctrine fields (`scripted_doctrine.Doctrine`; all open or off by default, so r9m is
+New doctrine fields (`imugi_doctrine.Doctrine`; all open or off by default, so r9m is
 unchanged within rounding):
 
 - **Press gates on the crowd extension**: `crowd_sense_in_energy_ratio` and

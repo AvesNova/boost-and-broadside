@@ -19,10 +19,10 @@ healthy (few timeouts, fights resolve).
   45-135, tail > 135); Events schema 4; the game's numbers unchanged.
 - Game version 5 (the author's addition): any input other than a quiet one restarts the
   shield's recharge wait at the delay, as a hit does.
-- Doctrines: `bnb.controllers.scripted_doctrine` (a per-type table the agent reads per own
-  ship; the old `energy_fight` fields moved out of `ScriptedParameters`), elements extend
+- Doctrines: `bnb.controllers.imugi_doctrine` (a per-type table the agent reads per own
+  ship; the old `energy_fight` fields moved out of `ImugiParameters`), elements extend
   (with an energy/store re-engage rule), slash, bleed, lag, deny. Hand-set starting
-  doctrines in `scripted_doctrines.json`.
+  doctrines in `imugi_doctrines.json`.
 - Bench: `bench/doctrine_arena.py` (`play`, `report`, `search`): 5v5 elimination, no
   fields, 7800 m; win rates with standard errors, aspect shares, passes per kill,
   first-merge kills, P(killer landed the pair's first hit), the game's first hit, shield
@@ -35,10 +35,10 @@ them). Every unit stopped cleanly; nothing is running.
 
 **Built** (all committed):
 
-- `src/bnb/controllers/scripted_doctrine.py`: `Doctrine` (one type's doctrine), `table`,
+- `src/bnb/controllers/imugi_doctrine.py`: `Doctrine` (one type's doctrine), `table`,
   `per_ship`, `pack`/`unpack`/`from_row`, `named`/`from_named`, `stored`/`set_table`
-  (`scripted_doctrines.json`, by ship set and type key). The combat layer
-  (`scripted_combat.doctrinal`, `advantage_weight`) applies it; `Scripted(...,
+  (`imugi_doctrines.json`, by ship set and type key). The combat layer
+  (`imugi_combat.doctrinal`, `advantage_weight`) applies it; `Imugi(...,
   doctrines=table)` and `decide(..., doctrines=)` take it; None (the default everywhere)
   flies no doctrine, the agent exactly as before.
 - Elements and parameters (weights in [0, 1], 0 = off; logistics are centre, scale):
@@ -52,11 +52,11 @@ them). Every unit stopped cleanly; nothing is running.
   behind the target's track, weight (1 + cos) / 2 of the off-tail angle); **deny** `deny`,
   `deny_in_stall_angle` (target's nose on me), `deny_in_gun_range`, `deny_angle` (turn off
   the line, to the side already off its nose).
-- Hand-set starting doctrines in `scripted_doctrines.json`: Yongma extend 1.0 within 3 gun
+- Hand-set starting doctrines in `imugi_doctrines.json`: Yongma extend 1.0 within 3 gun
   ranges, nose > 3 stall angles, re-engage at energy ratio 0.9, store floor 0.15, slash 0.8;
   Jujak bleed 0.7, lag 0.5 (0.3 gun ranges), deny 0.8 (target nose within 1 stall angle,
   within 3 gun ranges, 0.5 rad).
-- The old `energy_fight` fields left `ScriptedParameters` (stored sets and populations
+- The old `energy_fight` fields left `ImugiParameters` (stored sets and populations
   trimmed; `--relative-tactics` became `--own-time`).
 - Ships `yongma.toml`, `jujak.toml` (`ships.py` here regenerates them; `ARMOUR` there is the
   round's armour knob, vizia's values now). Aspect classes four (Events schema 4). Game v5:
@@ -122,7 +122,7 @@ there; for the compiled training tick and scripted step):
   place need no rebuild; a new WIDTH (a field added) or type count does. `doctrines=None`
   against a table is a Python branch: switching between them is a different graph. Each
   logistic's `rising` is a Python bool (structural).
-- `ScriptedParameters` as a per-view table (`unpack`) is tensors; as one set of Python
+- `ImugiParameters` as a per-view table (`unpack`) is tensors; as one set of Python
   floats, its values are constants of a compiled graph (a change recompiles).
 - Card fields (`ShipTypes`: head-on fraction and angle scales, recharge rate and delay
   scales, damage, shield, hit radius, muzzle speed, bullet life) are tensors: no rebuild.

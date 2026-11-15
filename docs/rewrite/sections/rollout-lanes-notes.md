@@ -9,7 +9,7 @@ Laptop GPU, 8 GB, 46 GB host memory), the mixed preset, PPO warm-started from th
 ## The layout (part 1)
 
 1,048,576 trained ticks per update (128-tick segments), a 128-tick lookahead on every lane,
-1,024 rating lanes of the first mix (live and averaged agent against the scripted agent and
+1,024 rating lanes of the first mix (live and averaged agent against Imugi and
 the ladder chain). Rollout: per update, the shards, the lookahead and the lanes; the learner
 time is the update's (1 to 4 epochs, as the KL stop allows; it is the same work at every
 layout).
@@ -60,7 +60,7 @@ The rating error, from a simulated climb (a live policy rising from 1000 to 2000
 updates, every game at its expected score and at the 300 s limit, the worst case and the
 measured one): with a rating-spaced snapshot chain, the live policy's anchored standard
 error at the end was 70 / 49 / 35 points at 1,024 / 2,048 / 4,096 lanes; the chain's links,
-not the live window, dominate it. Against the scripted agent alone a 2000-rated policy
+not the live window, dominate it. Against Imugi alone a 2000-rated policy
 with 300 window games has an error of about 180.
 
 **The default (author, 2026-11-05):** 1,024 lanes; the lanes' network opponents are the
@@ -77,7 +77,7 @@ more machinery than the goal (train to 1500) needs.
   1,024 / 2,048 / 4,096 lanes with a rating-spaced snapshot chain (six slots, a new
   snapshot 200 points above the newest; the simulation fed `LaneRatings` the expected
   results of every lane game, 0.128 games per lane per update); a direct
-  rating against the scripted agent at 2000 is nearly blind (error about 180 from 300
+  rating against Imugi at 2000 is nearly blind (error about 180 from 300
   games).
 
 ## Open

@@ -21,7 +21,7 @@ SPEC.json:
 `play` rates every (airframe, variant) slot with the league's A-optimal tournament
 (`bnb.league.tournament.fit_field`; at most 36 slots, the first airframe's baseline the
 anchor at 0), each batch appended to DIR/batches.jsonl as it ends (resumed if rerun), every
-ship of a team the slot's type, the scripted agent on both sides (the preset's real-scale set,
+ship of a team the slot's type, Imugi on both sides (the preset's real-scale set,
 T = 1). Bounds: the target, the budget and `--hours`.
 
 `report` writes DIR/report.json and DIR/report.md: each slot's Elo against its airframe's

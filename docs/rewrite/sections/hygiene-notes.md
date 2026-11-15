@@ -61,7 +61,7 @@ Branch `fix/hygiene`, from v2 at `c29daffb`. Brief: `hygiene-brief.md`.
 - `tests/runs/test_resume.py`: the CPU cases stay bitwise; the GPU cases compare every
   float to `GPU_TOLERANCE` = 1e-4 (relative, the same absolute floor), and ints, strings,
   flags and the float counts (`results`, `games/`) exactly. No other GPU test compares
-  bits between processes (`test_scripted_acceptance` is statistical).
+  bits between processes (`test_imugi_acceptance` is statistical).
 - Measured (RTX 4060 Laptop, lock held, `/tmp/bnb-scratch-hygiene/resume_diff.py`): the
   undamaged GPU resume was bitwise on both models in this session.
 - By hand, both models on the GPU, the test's comparison applied to each run:

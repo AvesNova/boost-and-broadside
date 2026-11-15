@@ -34,7 +34,7 @@ RATED_PRESETS = ("frontline", "elimination", "deathmatch")
 
 @dataclasses.dataclass(frozen=True)
 class Train:
-    """Train a model with PPO (learner spec), clone the scripted agent (BC), or chain the
+    """Train a model with PPO (learner spec), clone Imugi (BC), or chain the
     two, in a run directory (runs spec): Yemong (--model yemong), the toy relational model
     (relational), or the nearest-neighbour MLP (nearest; its settings
     `--set nearest.hidden=...`, `allies`, `enemies`, `fields`).
@@ -73,10 +73,10 @@ class Train:
     update_policies: write the live, exponential-average and uniform-average policy files
     after every update to the run's `policies/` (about 10 MB each, never pruned; default: on
     for ppo, off for bc; `--update-policies False` turns it off; a resume may change it).
-    objective: ppo, or bc (behaviour cloning against self-play and the scripted agent until
+    objective: ppo, or bc (behaviour cloning against self-play and Imugi until
     a stop rule fires, then the clone is saved as the run's policy file; updates is unused;
     a BC run keeps training checkpoints and resumes, but is not forked or warm-started);
-    teacher_temperature and teacher_floor set the teacher (the scripted agent at its own
+    teacher_temperature and teacher_floor set the teacher (Imugi at its own
     temperature, its labels mixed with uniform by the floor; T = 1 and floor 0 by
     default); bc_budget_steps: BC's budget in environment steps
     (TrainConfig.stop.budget_steps; None: `bnb.learn.bc.StopConfig`'s, 100M, the same for
@@ -92,7 +92,7 @@ class Train:
     handover), --device, --runs-directory, --checkpoint-every and --wandb.
     wandb: stream each update's record to W&B (project `boost-and-broadside-v2`, the run's
     name) as well as to the run's metrics.jsonl; without it nothing leaves the machine.
-    calibrate_entropy: print the scripted agent's natural entropy over its own games of the
+    calibrate_entropy: print Imugi's natural entropy over its own games of the
     preset and the temperature whose labels reach this mean entropy (nats per living ship
     step) at teacher_floor, then exit, writing no run; calibration_segments: how many
     rollout segments of 128 ticks it records.
@@ -234,11 +234,11 @@ class Ratings:
     run: the run; with_: more players; presets: the game presets; target_stderr: rating
     points; budget: games per preset at most; blocks and block_environments: the engine's
     layout; device; runs_directory: as for bnb train. ladder: the stationary ladder's rungs
-    below the scripted agent (the scripted agent always plays: it anchors the scale at
+    below Imugi (Imugi always plays: it anchors the scale at
     1000). league: the run's `league/` policies (else only `--with`'s players and the
-    ladder). cheese: the six cheese agents (`scripted:<name>`, `bnb.controllers.scripted_cheese`)
+    ladder). cheese: the six cheese agents (`cheese:<name>`, `bnb.controllers.cheese`)
     play, to check the policies against crude strategies (`--no-cheese` leaves them out).
-    scripted_plays: the only players the scripted agent plays (by the names given;
+    imugi_plays: the only players Imugi plays (by the names given;
     all by default). out: the directory whose `artifacts/ratings/` the result goes to.
     Each preset's batches are recorded as they end in `<preset>.batches.jsonl`, in `--out`
     (else the run's `artifacts/ratings/`), and a tournament that finds its record goes on
@@ -254,7 +254,7 @@ class Ratings:
     reported) when it no longer resolves or its policy's checkpoint.json was written after
     the record's first batch ended (a rewind writes a new policy at the old path).
 
-    lineup: each slot's ship type by name, both teams, for every player (the scripted agent
+    lineup: each slot's ship type by name, both teams, for every player (Imugi
     and its ladder too) in every preset (`TrainConfig.lineup`; empty: the game's own). A
     record keeps no lineup: reuse only records played with the same one.
     seed: the games' draws (`bnb.league.matches.ArenaConfig.seed`; None: a fresh one,
@@ -304,7 +304,7 @@ class Ratings:
     ladder: bool = True
     league: bool = True
     cheese: bool = True
-    scripted_plays: tuple[str, ...] | None = None
+    imugi_plays: tuple[str, ...] | None = None
     out: str | None = None
     reuse: tuple[str, ...] = ()
     lineup: tuple[str, ...] = ()
@@ -324,12 +324,12 @@ class Ratings:
 class HeadToHead:
     """Head-to-head (`bnb head-to-head A B [C D ...] --games N`): only the named pairs (A
     against B, C against D, ...), each over `--games` games per preset split evenly between
-    the seats. A player is a policy file, a run (its newest checkpoint), "scripted",
-    "random", "rung_T<t>" (the scripted agent at temperature t), or a teacher,
-    "scripted@T=<temperature>,floor=<floor>" (either key optional; T defaults to 1 and
-    floor to 0: the scripted agent at its own temperature T, then a uniform joint action
-    with probability floor, drawn as BC's teacher opponent does, so "scripted" is BC's
-    default teacher and "scripted@T=2" plays as "rung_T2"), or a Yemong policy ablated,
+    the seats. A player is a policy file, a run (its newest checkpoint), "imugi",
+    "random", "rung_T<t>" (Imugi at temperature t), or a teacher,
+    "imugi@T=<temperature>,floor=<floor>" (either key optional; T defaults to 1 and
+    floor to 0: Imugi at its own temperature T, then a uniform joint action
+    with probability floor, drawn as BC's teacher opponent does, so "imugi" is BC's
+    default teacher and "imugi@T=2" plays as "rung_T2"), or a Yemong policy ablated,
     "PATH:rotary", "PATH:forecast" or "PATH:rotary+forecast", or a network at a sampling
     temperature, "PATH@T=0.7" (after any ablations). Prints and records, per pair,
     the wins, losses and draws, the score with its standard error and the split by preset;
@@ -359,7 +359,7 @@ class HeadToHead:
 @dataclasses.dataclass(frozen=True)
 class Crossover:
     """The break-even ship count (`bnb crossover POLICY`): how many of POLICY's ships hold
-    `--opponent-count` (20) of the opponent's (`--opponent`, the scripted agent), per mode
+    `--opponent-count` (20) of the opponent's (`--opponent`, Imugi), per mode
     (`bnb.league.crossover`). The game is each preset's at the larger fleet's size, its
     arena by the density rule (`bnb.game.api.arena_radius_for`); the policy's unused slots
     are benched (they stay dead and out of play, and team deathmatch's winning score counts
@@ -390,7 +390,7 @@ class Crossover:
     """
 
     policy: tyro.conf.Positional[str]
-    opponent: str = "scripted"
+    opponent: str = "imugi"
     opponent_count: int = 20
     minimum_count: int = 1
     maximum_count: int = 20
@@ -519,7 +519,7 @@ class Figures:
 @dataclasses.dataclass(frozen=True)
 class FiguresVideo:
     """A video of one game (`bnb figures video --policy P`): the policy (team 0) against
-    the scripted agent in the preset's mode, drawn by the play shell offscreen (EGL) and
+    Imugi in the preset's mode, drawn by the play shell offscreen (EGL) and
     encoded to MP4 by ffmpeg (`bnb.figures.video`). docs/guides/figures.md.
 
     policy: a policy directory or a run's name (its newest checkpoint); preset: the game
@@ -545,7 +545,7 @@ class FiguresWatch:
     """Media of a training run while it trains (`bnb figures watch RUN`): a second process
     that only reads the run, polls its checkpoints and, for each new one, captures each
     mode on the CPU, draws the quick figure sets and films one game per mode against the
-    scripted agent, into the run's artifacts/figures/<checkpoint>/ (`bnb.figures.watch`).
+    Imugi, into the run's artifacts/figures/<checkpoint>/ (`bnb.figures.watch`).
     With --wandb it logs them at the checkpoint's environment steps to the companion W&B
     run `<run>-media`, never to the training run's own. It stops once the run has stopped
     and every checkpoint has its media. docs/guides/figures.md.
@@ -579,7 +579,7 @@ class FiguresWatch:
 class Pool:
     """The shared rating pool (`bnb pool ACTION POOL ...`, `bnb.league.rating_pool`): every
     rated checkpoint of many runs in one directory per pool, which several machines may
-    write at once, rated per game preset against the scripted agent (1000).
+    write at once, rated per game preset against Imugi (1000).
 
     Actions: `create` makes the pool (its games' conditions: `--lineup`, `--arena-scale`,
     `--deathmatch-score`; creating an existing pool with the same conditions opens it);
@@ -1332,7 +1332,7 @@ def log_cloning(row: dict) -> None:
         for name, value in row.items()
         if name.startswith("bc/score/")
     )
-    # the score stop's window of lane games against the scripted agent, once one is full
+    # the score stop's window of lane games against Imugi, once one is full
     read = [name for name, value in row.items() if name.startswith("bc/stop/reads/") and value]
     window = (
         f"  window {read[0].split('/')[-1]} {row['bc/stop/window_score']:.3f} "
@@ -1552,14 +1552,14 @@ def ratings(options: Ratings) -> None:
     """`bnb ratings`: the offline tournament and its leaderboard."""
     import torch
 
-    from bnb.controllers.scripted_cheese import NAMES as CHEESE_NAMES
-    from bnb.controllers.scripted_cheese import player_name
+    from bnb.controllers.cheese import NAMES as CHEESE_NAMES
+    from bnb.controllers.cheese import player_name
     from bnb.league import tournament
     from bnb.league.matches import ArenaConfig, Player, player
     from bnb.runs import provenance
     from bnb.runs.records import Run
-    from bnb.runtime.lanes import SCRIPTED_PLAYER
-    from bnb.runtime.opponents import LADDER, ladder_name
+    from bnb.runtime.lanes import IMUGI_PLAYER
+    from bnb.runtime.opponents import LADDER, ladder_name, shown_name, stored_name
 
     _check_presets(options.presets)
     seed = secrets.randbits(31) if options.seed is None else options.seed
@@ -1577,7 +1577,7 @@ def ratings(options: Ratings) -> None:
     field += [
         Player(ladder_name(rung), rung=rung)
         for rung in LADDER
-        if options.ladder or ladder_name(rung) == SCRIPTED_PLAYER
+        if options.ladder or ladder_name(rung) == IMUGI_PLAYER
     ]
     if options.cheese:
         field += _players([player_name(name) for name in CHEESE_NAMES], runs_directory)
@@ -1587,7 +1587,10 @@ def ratings(options: Ratings) -> None:
     if options.lineup:
         field = with_lineup(field, options.lineup, options.presets)
     try:
-        allowed = tournament.allowed_pairs([p.name for p in field], options.scripted_plays)
+        allowed = tournament.allowed_pairs(
+            [p.name for p in field],
+            None if options.imugi_plays is None else tuple(map(stored_name, options.imugi_plays)),
+        )
         config = tournament.TournamentConfig(
             arena=ArenaConfig(
                 blocks=options.blocks, block_environments=options.block_environments, seed=seed
@@ -1651,14 +1654,14 @@ def ratings(options: Ratings) -> None:
         raise SystemExit(str(error)) from error
     for row in sorted(rows, key=lambda row: (row["map"], tournament.rating_order(row))):
         print(
-            f"{row['map']:16s} {row['player']:60s} {tournament.describe_rating(row)}  "
+            f"{row['map']:16s} {shown_name(row['player']):60s} {tournament.describe_rating(row)}  "
             f"{row['games']:6d} games"
         )
     inputs = {player.name: player.policy for player in field if player.policy is not None}
     payload = dict(
         leaderboard=rows,
         config=dataclasses.asdict(config),
-        scripted_plays=options.scripted_plays,
+        imugi_plays=options.imugi_plays,
         deathmatch_score=options.deathmatch_score,
         arena_scale=options.arena_scale,
         active_fields=options.active_fields,
@@ -2173,8 +2176,8 @@ def _pool_scoring(opened, preset: str, deathmatch_score: str | None) -> tuple[st
 
 
 def _pool_add(opened, options: Pool) -> None:
+    from bnb.league.matches import imugi_play
     from bnb.league.matches import player as resolve
-    from bnb.league.matches import scripted_play
     from bnb.league.rating_pool import PoolPlayer
 
     if options.name is not None and len(options.paths) != 1:
@@ -2185,7 +2188,7 @@ def _pool_add(opened, options: Pool) -> None:
                 added = opened.add_policy(path, options.name)
             else:
                 one = resolve(path)
-                if scripted_play(one) is None:
+                if imugi_play(one) is None:
                     raise ValueError(f"{path} is neither a policy directory nor a scripted player")
                 added = opened.register([PoolPlayer(one.name, one.name)])[0]
         except (ValueError, OSError) as error:

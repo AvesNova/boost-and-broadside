@@ -518,25 +518,25 @@ cut; where they differ, this section and the code win.
   the same order, then the bullet index. The index-first rule favoured team 1 (team-major
   storage with friendly fire). A mirror test in both modes guards it
   (`tests/sections/test_seat_symmetry.py`).
-- **The scripted agent and BC (sections 4 and 7, merged 2026-11-02):**
+- **Imugi and BC (sections 4 and 7, merged 2026-11-02):**
   - **`TrainConfig`** gains `objective` (`bnb.runtime.train.OBJECTIVES`: PPO or BC) and
     `teacher` (`bnb.learn.bc.TeacherConfig`: the labels' temperature and floor, default
     floor `bnb.learn.bc.FLOOR`, 0.01 over the 42 joint actions). `SCRIPTED` names the
-    scripted agent's controller slot.
+    Imugi's controller slot.
   - **`BehaviourCloning`** is a `Learner`: it overrides only the policy terms and the
     report. The labels are computed inside the compiled loss from the stored
-    observations (`bnb.controllers.scripted.distribution`); the rollout records what the
+    observations (`bnb.controllers.imugi.distribution`); the rollout records what the
     teacher reads through `extra_reads`.
   - **The hand-off is a policy file:** `bnb train --objective bc` saves the clone at
     `runs/<run>/policy/`, and RL starts from it with `--init-from`. A BC run refuses
     `--resume`, `--from` and `--init-from`.
   - **Evaluation:** `bnb.runtime.evaluate` (`first_results`, `score`, `shares`); seats are
     drawn at random per game.
-  - **The scripted agent** reads per-type characteristics measured from the ship card
+  - **Imugi** reads per-type characteristics measured from the ship card
     (`bnb.game.handling.characteristics`).
   - **The score stop (fix/bc-stop, merged 2026-11-02):** BC stops when the live score's
     lower bound (the window's score less two of its standard errors) reaches 0.40, scored
-    against `bnb.learn.bc.TeacherOpponent`: the scripted agent playing the labels'
+    against `bnb.learn.bc.TeacherOpponent`: Imugi playing the labels'
     distribution (their temperature and floor). PPO's scripted seat stays the plain agent.
 - **Yemong's kernels and bf16 (perf/fast-yemong, merged 2026-11-03):**
   - **Five Triton kernels:** the scan, attention with rotary, the gated MLP, the temporal

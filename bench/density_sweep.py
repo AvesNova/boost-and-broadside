@@ -1,4 +1,4 @@
-"""The density sweep: does the scripted agent's edge over a weaker rung (the same agent at a
+"""The density sweep: does Imugi's edge over a weaker rung (the same agent at a
 higher temperature) hold as the fleets grow, or collapse toward 50% past a critical
 density? (The author's hypothesis from v1: past it fights become a spawn lottery.)
 
@@ -8,9 +8,9 @@ density? (The author's hypothesis from v1: past it fights become a spawn lottery
 
 Each cell is one game: `--base` (real_scale_deathmatch) with no fields, `--mode`, n ships a
 side, and an arena radius: "fixed" keeps the base's (7800 m), "density" grows it as
-sqrt(n / 5) (the fleet presets' `_density` rule), or a number in metres. The scripted agent
+sqrt(n / 5) (the fleet presets' `_density` rule), or a number in metres. Imugi
 (T = 1) plays `rung_T<temperature>` on the league's match engine (`bnb.league.matches.Arena`,
-compiled, both seats evenly); every batch's wins, ties and losses for the scripted agent
+compiled, both seats evenly); every batch's wins, ties and losses for Imugi
 are appended to DIR/density.jsonl (with the batch's kills, deaths and ship-seconds), and a
 cell stops when its score's standard error is under `--stderr` (score: wins plus half the
 ties over games) or after `--max-games`. A cell already in the record resumes. `--hours`

@@ -4,7 +4,7 @@ learning rate and the warm-up's start at 0, one variant's weights copied into th
 (in place, so the compiled graphs keep reading them), one update to settle, then MEASURED updates
 whose rows are averaged. The learner seat plays the variant, so every training-side metric (BC KL
 and agreement to the teacher, critic explained variance, outcome Brier, next-state and error-head
-errors, the live lane's score against the scripted agent) describes that variant."""
+errors, the live lane's score against Imugi) describes that variant."""
 
 import dataclasses
 import json

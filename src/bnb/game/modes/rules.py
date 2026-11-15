@@ -115,7 +115,7 @@ def arena_radius_for(game: GameConfig, ships_per_team: int, arena_scale: float =
 # ships' numbers: a cruise near 162 m/s, a gun range near 600 m and a full-stick turn radius
 # of 500-600 m (cruise over turn rate), so the map was about two turn circles across and a
 # turning fight met the boundary. The author widened it by half to 1950 m (2026-11-11),
-# about three turn circles across. The scripted agent's 2v2s on it (3 seeds, 40 s each, the
+# about three turn circles across. Imugi's 2v2s on it (3 seeds, 40 s each, the
 # shield's recharge pause in play) come within gun range 0-12 s after the start and first
 # kill 9-23 s in, with 3-10% of the ships' time beyond the boundary; at 1300 m the same
 # matches take 0-7.5 s and 6-14 s with 10-16% outside.
@@ -274,7 +274,7 @@ class ModeRules:
     capture_seconds: float = 10.0
     front_threshold: int = 3
     spawn_zone_fraction: float = 0.35
-    # Re-tuned 2026-11-15 on the final ship card, fields on, the scripted agent on both
+    # Re-tuned 2026-11-15 on the final ship card, fields on, Imugi on both
     # sides (bench/front_reversal.py, docs/rewrite/sections/frontline-lock/results.md):
     # 6 gives P(reversal) 0.490 [0.468, 0.512] over 512 games (19 gave 0.29). About 14 s at
     # 5v5 on the real-scale map (d = 5.64 km).

@@ -1,5 +1,5 @@
 """The break-even ship count: `bnb crossover`, how many of a policy's ships hold a fixed
-opponent fleet (by default 20 of the scripted agent's).
+opponent fleet (by default 20 of Imugi's).
 
 The opponent always fields `opponent_count` ships; the policy fields a varying number,
 `count`, from `minimum_count` to `maximum_count`. One engine per mode is built at the larger

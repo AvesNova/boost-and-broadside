@@ -1,9 +1,9 @@
-"""The scripted agent's combat layer (scripted spec A4) and the geometry both layers share.
+"""Imugi's combat layer (scripted spec A4) and the geometry both layers share.
 
 Everything is per own ship, (R, S), from one team's observation: the own rows are the first
 S, the enemy rows the rest. An enemy row is read only where it is visible and alive, so a
 hidden row's zeroed columns never matter; the target is chosen from the enemies the agent
-recalls (`scripted_memory`), seen or dead reckoned.
+recalls (`imugi_memory`), seen or dead reckoned.
 """
 
 import math
@@ -18,20 +18,20 @@ from bnb.game.rules import Rules
 from bnb.game.ship_types import per_ship
 from bnb.streams import purpose_key, row_uniforms
 
-from .scripted_doctrine import Doctrine
-from .scripted_doctrine import per_ship as doctrine_of
-from .scripted_memory import (
+from .imugi_doctrine import Doctrine
+from .imugi_doctrine import per_ship as doctrine_of
+from .imugi_memory import (
+    ImugiCarry,
     Recall,
-    ScriptedCarry,
     commit,
     fresh_carry,
     remember,
     time_unit,
     ways_round,
 )
-from .scripted_parameters import (
+from .imugi_parameters import (
+    ImugiParameters,
     Logistic,
-    ScriptedParameters,
     floored,
     in_own_time,
     logistic,
@@ -79,7 +79,7 @@ class Context(NamedTuple):
     distance_from_centre: torch.Tensor
     boundary_weight: torch.Tensor  # the steer toward the centre, in [0, 1]
     temperature: torch.Tensor | float  # the agent's: a float, or (R, 1) per view
-    carry: ScriptedCarry  # the memory, before this decision's plan choices
+    carry: ImugiCarry  # the memory, before this decision's plan choices
     recall: Recall  # the enemies as the agent believes them
     seconds: float  # a decision's length
     time_unit: torch.Tensor  # the ship's own time unit in seconds (`time_unit`)
@@ -89,7 +89,7 @@ class Context(NamedTuple):
     # Frontline's timers, s (0 in the other modes): the own team's next respawn wave (R,)
     # (the enemy's is hidden), and each zone's capture lock on the own team and on the
     # enemy's (R, Z), by the observation's zone rows. Read by the Frontline layer's
-    # capture-lock term (`scripted_frontline.lock_press`).
+    # capture-lock term (`imugi_frontline.lock_press`).
     next_wave: torch.Tensor
     zone_lock_own: torch.Tensor
     zone_lock_enemy: torch.Tensor
@@ -101,6 +101,7 @@ def choice_uniforms(fleet: Context, name: str, like: torch.Tensor) -> torch.Tens
     switch (`Context.decision_key`)."""
     if fleet.decision_key is None:
         return None
+    # the salt keeps its recorded text, so the draws are those of every earlier run
     return row_uniforms(purpose_key(f"scripted {name}"), fleet.decision_key, like.shape[1:])
 
 
@@ -112,9 +113,9 @@ def column(rows: torch.Tensor, name: str) -> torch.Tensor:
 def context(
     obs: Obs,
     characteristics: Characteristics,
-    parameters: ScriptedParameters,
+    parameters: ImugiParameters,
     temperature: torch.Tensor | float = 1.0,
-    carry: ScriptedCarry | None = None,
+    carry: ImugiCarry | None = None,
     recall: Recall | None = None,
     seconds: float = Rules.tick_length,
     decision_key: torch.Tensor | None = None,
@@ -212,7 +213,7 @@ def steer(
 def stick_marginal(
     fleet: Context,
     error: torch.Tensor,
-    parameters: ScriptedParameters,
+    parameters: ImugiParameters,
     committed_left: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """((R, S, 7) the stick, the committed side (R, S) bool) for an angle error (positive
@@ -270,14 +271,14 @@ def power_marginal(boost: torch.Tensor, reverse: torch.Tensor) -> torch.Tensor:
     return torch.stack([1.0 - boost - reverse, boost, reverse], -1)
 
 
-def slow(fleet: Context, parameters: ScriptedParameters) -> torch.Tensor:
+def slow(fleet: Context, parameters: ImugiParameters) -> torch.Tensor:
     """P(boost) for speed, unfloored: high when slow, in corner speeds."""
     return logistic(
         fleet.speed / fleet.corner_speed, parameters.boost_slow_in_corner_speed, fleet.temperature
     )
 
 
-def far(fleet: Context, distance: torch.Tensor, parameters: ScriptedParameters) -> torch.Tensor:
+def far(fleet: Context, distance: torch.Tensor, parameters: ImugiParameters) -> torch.Tensor:
     """P(boost) for distance, unfloored: the store fraction times the distance in gun
     ranges."""
     return logistic(
@@ -295,7 +296,7 @@ def either(first: torch.Tensor, second: torch.Tensor) -> torch.Tensor:
 def lead(
     fleet: Context,
     characteristics: Characteristics,
-    parameters: ScriptedParameters,
+    parameters: ImugiParameters,
     target_x: torch.Tensor,
     target_y: torch.Tensor,
     target_velocity_x: torch.Tensor,
@@ -318,7 +319,7 @@ class Combat(NamedTuple):
     """The combat layer's result: its marginals; per own ship (R, S): has_target, the
     target's distance (0 without one) and its weight (1 seen, fading when dead reckoned, 0
     without one); the plan choices it made, the target (-1 none) and the turn side; and the
-    sense's draw after the decision (`ScriptedCarry.sense_draw`)."""
+    sense's draw after the decision (`ImugiCarry.sense_draw`)."""
 
     marginals: Marginals
     has_target: torch.Tensor
@@ -416,7 +417,7 @@ def doctrinal(
     boost: torch.Tensor,
     reverse: torch.Tensor,
 ) -> Doctrinal:
-    """The doctrine's elements (`bnb.controllers.scripted_doctrine`) on the attack: geometry
+    """The doctrine's elements (`bnb.controllers.imugi_doctrine`) on the attack: geometry
     is (target_x, target_y, distance, aim_x, aim_y, aim_error, target velocity x, y)."""
     target_x, target_y, distance, aim_x, aim_y, aim_error, target_vx, target_vy = geometry
     temperature = fleet.temperature
@@ -536,7 +537,7 @@ def maneuvers(
     power: torch.Tensor,
     others: tuple,
 ):
-    """The doctrine's maneuver (`bnb.controllers.scripted_doctrine`: the sense, the duel
+    """The doctrine's maneuver (`bnb.controllers.imugi_doctrine`: the sense, the duel
     extension and the crowd extension) on the combat layer's stick, committed side and
     power. others: the other known enemies' distances in own gun ranges (R, S, E; inf
     elsewhere), the angles between their tracks and the lines from them to the ship (R, S,
@@ -648,13 +649,13 @@ def maneuvers(
 def combat(
     fleet: Context,
     characteristics: Characteristics,
-    parameters: ScriptedParameters,
+    parameters: ImugiParameters,
     doctrines: torch.Tensor | None = None,
 ) -> Combat:
     """The combat layer. The target is the committed one (`choose_target`), aimed at where
     the agent believes it is; P(shoot) is scaled by its weight, so a dead-reckoned target
     draws fewer shots the staler it is. doctrines: a doctrine table per type (T, D) or per
-    view and type (R, T, D) (`bnb.controllers.scripted_doctrine`), each own ship flying its
+    view and type (R, T, D) (`bnb.controllers.imugi_doctrine`), each own ship flying its
     type's; None flies none (the agent without doctrines)."""
     recall = fleet.recall
     offset_x = recall.x[:, None, :] - fleet.x[..., None]  # (R, S, E)

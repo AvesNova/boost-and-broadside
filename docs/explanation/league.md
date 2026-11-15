@@ -16,8 +16,8 @@ behind `bnb pool`, `bnb.league.crossover`, behind `bnb crossover`, and
 
 ## The pool
 
-Beside the entries below, the six cheese agents (`scripted:zone_rusher` and the others,
-[the scripted agent](scripted-agent.md#cheese-agents)) are entries by default,
+Beside the entries below, the six cheese agents (`cheese:zone_rusher` and the others,
+[the Imugi page](imugi.md#cheese-agents)) are entries by default,
 `LeagueConfig.cheese` (`()` turns them off); they are sampled by the same rule.
 
 The default lineup (`bnb.runtime.train.LINEUP`) gives each game of the training mix two
@@ -38,10 +38,10 @@ its fixed share. The entries (`bnb.league.pool.Entry`) are:
   the run's learning-rate warm-up (`LearnerConfig.warmup_steps`, 10M environment steps by
   default, or `LeagueConfig.uniform_from` when set: `TrainConfig.uniform_start`), so a
   warm start's optimizer, critic and advantages settle first; until then it is the live weights;
-- **the scripted agent** at full strength (temperature 1, `scripted`;
-  `bnb.league.pool.SCRIPTED_ENTRY`), the pool's only scripted entry. The pool holds no
+- **Imugi** at full strength (temperature 1, `scripted`;
+  `bnb.league.pool.IMUGI_ENTRY`), the pool's only scripted entry. The pool holds no
   weaker rung and no random player (the author, 2026-11-12). The stationary ladder
-  (`bnb.runtime.opponents.LADDER`: random, the rungs and the scripted agent) is still
+  (`bnb.runtime.opponents.LADDER`: random, the rungs and Imugi) is still
   played by the offline tournament ([Published ratings](#published-ratings)), and the rating lanes can play its
   rungs (`bnb.runtime.lanes.ladder_chain`); it is not part of training.
 
@@ -58,21 +58,21 @@ league's games are the other half. An entry's sampling weight is `(1 − p)²`
 predicted probability that the live policy beats it under that mode's live gauge: the
 entries the live policy loses to most weigh most, as in AlphaStar's prioritised fictitious
 self-play (decided 2026-11-14). Every entry is weighed alike: the snapshots, the two
-averages, the scripted agent and the cheese agents, with no uniform floor
+averages, Imugi and the cheese agents, with no uniform floor
 (`LeagueConfig.floor`, 0), so an entry the live policy always beats is not drawn. When every
 weight is zero the draw is even. Each mode samples by its own gauge. For an ablation,
 `sampling = "variance"` weighs `p (1 − p)`, the entries whose result is least certain,
 and `floor` spreads a share of the weight evenly.
 
-## Slots, the scripted agent and the cut
+## Slots, Imugi and the cut
 
 The league's seat plays every opponent row of the batch in the captured rollout graph:
 
 - **Network slots** (`LeagueConfig.slots`, 4): their parameters are stacked, one set per
   slot. Slot k plays rows k, k + slots, …, so every slot plays every mode. Each set runs on
   its own rows inside the one compiled graph, and each row keeps its network's carry.
-- **The scripted agent:** one full-strength scripted pass over every row, with its carry
-  for every row in the seat's carry. A slot can hold the scripted agent; its rows then
+- **Imugi:** one full-strength scripted pass over every row, with its carry
+  for every row in the seat's carry. A slot can hold Imugi; its rows then
   take the scripted action (selected per row with `where`) and tally to the column after
   the slots'. The pass runs every tick whether or not a slot holds the agent: the captured
   graph has fixed shapes.
@@ -90,7 +90,7 @@ The league's seat plays every opponent row of the batch in the captured rollout 
   policy's build, in its one stacked template), else resets; `"reset"` zeroes the
   network's trunk carry on the cut rows (Yemong's state and convolution buffer,
   `YemongController.forget`) and keeps the belief part (observations, last sightings,
-  forecasts), the previous actions and the position offset. The scripted agent's carry
+  forecasts), the previous actions and the position offset. Imugi's carry
   runs on every row throughout.
 - **The hand-over test** (`bench/memory_handover.py`, CPU, 2026-11-06): 16 fresh games of
   calm-fern's 73M live policy A against itself, the opponent switched at 60 s to B: B
@@ -145,7 +145,7 @@ uv run --no-sync python -m bench.memory_handover $P/step_73400320-live \
 ## The ratings
 
 Every rating during training comes from one fit per mode, `bnb.league.lanes.RunRatings`:
-one Bradley–Terry model of every rated player with the scripted agent pinned at 1000
+one Bradley–Terry model of every rated player with Imugi pinned at 1000
 (`bnb.league.ratings.fit_ratings`, draws as half a win, one prior game against the scripted
 agent, half won, which keeps a sweep finite), refitted once per update. Its games are every
 game a rated player played:
@@ -169,7 +169,7 @@ Without lanes the fit reads the league's games alone.
   players (the rungs, the league's snapshots) is kept for the whole run; one with a moving
   player (the live policy, an average) for its last `LaneConfig.window` updates (10).
 - **Attribution:** the rollout tallies each ended training game under the column its row
-  played as it ended (a slot's set or the scripted agent), and the league reads the tally once per
+  played as it ended (a slot's set or Imugi), and the league reads the tally once per
   segment; a cut comes after the update's last read and clears its rows' `whole` flags, so
   each tallied game was played whole by the entry it is credited to and a cut game by
   no one (`tests/sections/test_league_slots.py::test_a_cut_game_is_credited_to_no_one`).
@@ -184,11 +184,11 @@ Without lanes the fit reads the league's games alone.
   slots hold, copied in when a slot takes another (`League._load_lanes`). A snapshot's
   games are credited to it by name, so it keeps its games and its rating after it cycles
   out, and a new one joins the fit as soon as its games connect it; a slot holding the
-  scripted agent plays unrated. A lane game in progress when a slot's lane player changes is
+  Imugi plays unrated. A lane game in progress when a slot's lane player changes is
   left out, as is each lane row's first game (cut short by the staggered clocks).
-- **Who is rated:** a player whose games connect it to the scripted agent; none is reported
+- **Who is rated:** a player whose games connect it to Imugi; none is reported
   before its matchups have played.
-- **The ladder:** rungs the lanes play (chained from the scripted agent down,
+- **The ladder:** rungs the lanes play (chained from Imugi down,
   `ladder_chain`) are rated from their games; training plays none. A fixed scale would be
   far off: the earlier probability rungs' `1000 p` put rung_0.95 50 points below the scripted
   agent, where it scored 0.065 against it, about 530 points below.
@@ -199,7 +199,7 @@ Without lanes the fit reads the league's games alone.
   `rating/uniform_average/<mode>`{.plain}, and each of its policy files keeps its
   player's per mode (`PolicyRecord.ratings`): a warm start's live rating starts from its
   parent's, not 0; a mode the parent has no rating for (a clone trained without lanes)
-  starts at the scripted agent's 1000.
+  starts at Imugi's 1000.
 
 The league's games are about half of the information. Refitted offline on run
 2026-11-06-mixed-calm-fern's first 29 updates (its per-update lane games and `pool/entries`
@@ -208,14 +208,14 @@ exponential average's at 82–106; with the training games they are 59–66 and 
 live policy is rated from the first update instead of the twelfth. The synthetic case is
 `tests/sections/test_lanes.py::test_the_leagues_games_shrink_the_ratings_errors`.
 
-Against the scripted agent alone a policy 1000 points above it would be rated blind: its
+Against Imugi alone a policy 1000 points above it would be rated blind: its
 games there carry 1/60 of an even game's information. Through a chain of snapshots, whose
 stationary links gather games over the run, the same window of live games rates it several
 times more precisely
 (`tests/sections/test_lanes.py::test_a_strong_player_is_rated_far_better_through_a_snapshot_chain`).
 The measured game counts and errors are in `docs/rewrite/sections/rollout-lanes-notes.md`.
 
-**Without lanes** the league's own games against the scripted agent connect the live
+**Without lanes** the league's own games against Imugi connect the live
 policy to it, and through the live policy the entries it plays. A run that wants every
 entry rated from its first updates keeps its rating lanes.
 
@@ -225,7 +225,7 @@ During training each mode has a gauge (`bnb.league.gauge.Gauge`) that steers sam
 reads every rating from the fit once per update; an entry the fit does not rate this update
 holds its last rating:
 
-- the scripted agent its fixed 1000 until the fit first rates it;
+- Imugi its fixed 1000 until the fit first rates it;
 - a new snapshot the live rating of its update, until its games rate it;
 - an average the live rating until the fit first rates it;
 - the live policy its last fitted rating, from a warm start's parent's at the start.
@@ -262,10 +262,10 @@ the gauge's anomalies; and the games of the update by opponent kind
 
 `bnb ratings RUN` plays an offline tournament over the run's snapshots and averages, the
 ladder and the players `--with` names, game preset by preset
-(`bnb.league.tournament.rate`). `--no-ladder` leaves out the rungs below the scripted agent,
+(`bnb.league.tournament.rate`). `--no-ladder` leaves out the rungs below Imugi,
 which always plays: it anchors the scale. `--no-league` leaves out the run's `league/`
-policies, so the field is `--with`'s players and the ladder. `--scripted-plays A B ...`
-keeps the scripted agent to the named players; the others reach the anchor through their
+policies, so the field is `--with`'s players and the ladder. `--imugi-plays A B ...`
+keeps Imugi to the named players; the others reach the anchor through their
 games with them. `--out DIR` writes the result under `DIR/artifacts/ratings/` instead of
 the run's.
 
@@ -312,7 +312,7 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   checkpoints, say), under `--contrast-stderr`. The errors are relative to the scripted
   agent, so a contrast is the target to name when what matters is how two strong players
   compare: their difference can be resolved by their games with each other even when
-  both beat the scripted agent every game.
+  both beat Imugi every game.
 - **The plan of a batch** (`bnb.league.design.plan_batch`). The batch's blocks minimise the
   weighted A-optimal criterion, the sum over the unmet targets of each one's variance
   after the batch over its target squared. The variance after the batch counts every game
@@ -327,7 +327,7 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   batch holds; default as many as its slots) and each network group's lanes.
 - **The fit** (`bnb.league.design.fit_posterior`). After each batch the ratings are the
   Bradley–Terry maximum-likelihood fit on every game so far, draws as half a win, with no
-  prior, shifted so the scripted agent is at 1000. Only the scripted agent is pinned;
+  prior, shifted so Imugi is at 1000. Only Imugi is pinned;
   random is fitted. The standard errors are the inverse of the Fisher information.
 - **Bounds.** The likelihood has no finite maximum for a player who won every game it
   played, or lost every one, or for a group of players joined to the rest only by such
@@ -338,8 +338,8 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   had a 5% probability, those players held at their values (one who beat the scripted
   agent in all of 96 games: > 1600). Within a group the differences keep their maximum
   likelihood and standard errors, so a contrast between two arms that both sweep the
-  scripted agent is still resolved by their games with each other. A target on a bound is
-  left out of the stopping check; a player with games but no route to the scripted agent
+  Imugi is still resolved by their games with each other. A target on a bound is
+  left out of the stopping check; a player with games but no route to Imugi
   is shown as undetermined, and its target stays unmet.
 - **Planning around bounds and new players.** For choosing games only, a bounded player is
   placed 200 Elo beyond its bound on the open side, so its next games go to stronger (or
@@ -347,16 +347,16 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   games, is placed at the mean of the other runs' checkpoints of its weights kind at the
   same steps (interpolated between the nearest steps, or the nearest steps' mean outside
   them); with no other run in the pool, at its run's previous checkpoint; else at the
-  scripted agent. After its first batch the plan uses the fit only. None of this placement
+  Imugi. After its first batch the plan uses the fit only. None of this placement
   enters a reported rating.
 - **Why no prior.** A prior moves the reported ratings. The first fit's prior was one
-  virtual game against the scripted agent, half won. A virtual game's information is
+  virtual game against Imugi, half won. A virtual game's information is
   p (1 − p) at the estimate, which vanishes as a clean sweep drives the estimate out: after
   a sweep the estimate grows as the log of the games and the information stays about one
   game's, so the player's standard error never falls (about 175 Elo after 96 games or after
   960). The earlier greedy allocation valued the next block at the current estimate, saw
   the largest variance there and kept choosing that pair: in one evaluation it spent 672
-  of 1152 games on a policy against the scripted agent (576 wins, no losses) and 96 on the
+  of 1152 games on a policy against Imugi (576 wins, no losses) and 96 on the
   pair that mattered. `tests/sections/test_rating_design.py` reproduces both allocations. A
   Gaussian prior of 1000 Elo replaced it for a day (2026-11-14); it pulled a sparse field
   of strong players toward 1000 (the win/loss deathmatch re-ratings sit 60 to 120 Elo
@@ -458,7 +458,7 @@ average of A's build) plays a batch in about the time one build takes: 20.9 s ag
   in the record (`bnb.league.matches.STATISTICS`: kills, deaths, shots, hits, living
   ship-ticks, their summed speed and a network's summed entropy, per side). A player may
   fly one ship type with every ship of its team (`Player.ship_type`;
-  `bnb.league.matches.ship_type_players` gives the scripted agent flying each type of a
+  `bnb.league.matches.ship_type_players` gives Imugi flying each type of a
   set); the engine then sets each environment's ship types per team (`bnb.game.api.reset`'s `ship_type`). The [ship-type
   tournament](game/real-scale-tournament.md) is such a field.
 
@@ -483,7 +483,7 @@ uv run --no-sync bnb head-to-head 2026-11-02-mixed-purple-pumpkin scripted --gam
 ```
 
 **The break-even ship count.** `bnb crossover POLICY` (`bnb.league.crossover`) measures
-how many of a policy's ships hold 20 of the scripted agent's, per mode. The opponent always
+how many of a policy's ships hold 20 of Imugi's, per mode. The opponent always
 fields `--opponent-count` ships (20); the policy fields a varying number, from
 `--minimum-count` to `--maximum-count` (1 to 20). Each mode's game (by default the
 real-scale frontline, deathmatch and elimination presets) is built once at the larger
@@ -526,7 +526,7 @@ types) and continues past them, so an interrupted measurement resumes and a fini
 result (per mode N\*, the ratio, the stop reason and the games per count, with the command
 and the policy's SHA-256) goes to `artifacts/crossover/<time>/result.json`{.plain}.
 
-A benched slot costs about what an active one does: the game, the scripted agent and the
+A benched slot costs about what an active one does: the game, Imugi and the
 network run at fixed shapes over every slot, so a benched ship is a dead ship carried
 through the same kernels. A 20v20 tick on the CPU (128 games, eager) took the same time
 with the policy at 4, 10 or 20 ships, within the measurement's noise of about 10%, and a
@@ -572,7 +572,7 @@ one graph. A tempered player's identity is its weights' and its temperature
 (`sha256:<hash>@T=0.7`), so reused games keep the temperatures apart. Each block's
 statistics also sum the network's entropy (nats, of the distribution it sampled from)
 over its living ship-ticks, so `entropy / ship_ticks` is the mean entropy it played at.
-The scripted agent's own temperature is the teacher's syntax, `scripted@T=<temperature>`.
+Imugi's own temperature is the teacher's syntax, `scripted@T=<temperature>`.
 
 <!-- not-runnable: needs CUDA and a run -->
 ```bash
@@ -604,7 +604,7 @@ uv run --no-sync bnb evaluate decide evaluations/a-against-b --peek
 ## The shared rating pool
 
 `bnb pool` keeps one pool per directory: every rated checkpoint of many runs and arms, and
-every game played among them, rated per game preset against the scripted agent at 1000
+every game played among them, rated per game preset against Imugi at 1000
 (`bnb.league.rating_pool`). It is meant for a shared volume that more than one machine
 writes at once.
 
@@ -628,7 +628,7 @@ writes at once.
   pool is fitted.
 - **Rating** (`bnb pool rate`): every stored game of the preset is fitted; a session then
   plays among at most `--session-players` players that can be played on this machine
-  (those the continuous design over every playable pair weighs most, the scripted agent
+  (those the continuous design over every playable pair weighs most, Imugi
   always among them), each batch planned on the posterior's marginal over them, so games
   elsewhere in the pool count. Before each batch the pool is read again, so another
   machine's games count as they arrive. The targets and limits are `bnb ratings`'

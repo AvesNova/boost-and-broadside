@@ -146,7 +146,7 @@ choice made here that the author has not overruled.
 ### 7. Order
 
 - **After section 6 merges.** It is small: about the size of a section's tests.
-- **Alongside the scripted agent and BC:** the BC hand-off calls this section's
+- **Alongside Imugi and BC:** the BC hand-off calls this section's
   `save_policy` and `load_policy`, which the spec defines first. That agent writes its
   hand-off against the interface and finishes it once section 11 merges.
 - **Before the league (section 8),** whose resume test needs it.

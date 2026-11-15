@@ -1,6 +1,6 @@
 """Write r9 with the confirmed maneuvers as a player (`Player.named` form) to
 `champion.json`: the duel one-circle sense (mirror only, alone) and the crowd extension,
-on both types. Not stored as the agent's default (`scripted_doctrines.json`): that is
+on both types. Not stored as the agent's default (`imugi_doctrines.json`): that is
 the author's call.
 
     python docs/rewrite/sections/maneuvers/champion.py

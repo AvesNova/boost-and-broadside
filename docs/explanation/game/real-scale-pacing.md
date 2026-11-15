@@ -35,7 +35,7 @@ climb pays for it elsewhere: more induced drag (to hold the sustained turn), a w
 exchange (to hold the dive acceleration) and a stronger reverse exchange (to hold the zoom).
 
 The P-51D solved at the same handles with the climb multiplied (`bench/pacing.py`'s cards;
-the turn rates are the scripted agent's settled turns at the three sticks):
+the turn rates are Imugi's settled turns at the three sticks):
 
 | Climb | Engine power below the knee (W/kg) | Induced drag scale | Boost exchange scale | Reverse exchange scale | Turn rates, sticks 1-3 (deg/s) | Corner speed (m/s) | Bleed rate, middle stick (W/kg) | Climb time (s) |
 |---|---|---|---|---|---|---|---|---|
@@ -53,7 +53,7 @@ speeds the climb above it (a later knee keeps the engine's full power higher up)
 
 ## The measures
 
-`bench/pacing.py` plays every ship one type, both teams the scripted agent (its real-scale
+`bench/pacing.py` plays every ship one type, both teams Imugi (its real-scale
 deathmatch set, T = 1), 512 games of 600 s, and classifies each living ship-tick:
 
 - **engaged**: an enemy is alive within two of the ship's gun ranges;
@@ -95,7 +95,7 @@ What the sweep says:
 
 - **At today's climb the store is spent and stays spent.** 82% of the living time is
   spent below the spawn energy and out of a fight, and 99% of the fights begin there: the
-  scripted agent spends the store (boosting) as soon as it has it and fights on what is left.
+  Imugi spends the store (boosting) as soon as it has it and fights on what is left.
   The store is not a resource the fight uses; it is a head start each life gets once.
 - **The climb is the lever.** The share recovering falls from 0.82 to 0.61, 0.33 and 0.17 at
   two, four and eight times the climb, the fights begun below the spawn energy from 99% to

@@ -15,7 +15,7 @@ state (persistence) to its logits.
 
 ## 1. Measure (CPU rollouts, memory-capped)
 
-Players: the scripted agent, and calm-fern's RL agent
+Players: Imugi, and calm-fern's RL agent
 `/home/vizia/avesnova/runs-v2/players-calm-fern/step_100663296-exponential_average`
 (read-only). Each in self-play, on every preset (`bnb.game.api.PRESETS`: frontline,
 deathmatch, deathmatch_wide at least), on enough games for stable 99.9% quantiles; say the

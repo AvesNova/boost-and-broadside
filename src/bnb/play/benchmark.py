@@ -149,7 +149,7 @@ def main() -> None:
                 started = time.perf_counter()
                 session = Session(options, context, *size)
                 session.loop.realtime.wait_compiled()
-                # a scripted agent's step is built from its first one
+                # Imugi's step is built from its first one
                 session.update(session.loop.tick_length)
                 for side in session.loop.sides:
                     if hasattr(side, "wait_compiled"):

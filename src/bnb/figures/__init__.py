@@ -6,6 +6,6 @@ shots     the shot figure set and its measures
 sets      FIGURE_SETS, the set names `bnb figures` draws
 output    PNGs with their provenance in their text chunks; the shared drawing helpers
 command   what `bnb figures` does
-video     a game filmed: a policy against the scripted agent, offscreen, to MP4
+video     a game filmed: a policy against Imugi, offscreen, to MP4
 watch     media of a training run while it trains, and their companion W&B run
 """

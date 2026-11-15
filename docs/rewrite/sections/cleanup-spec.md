@@ -15,7 +15,7 @@ as written and listed for the author.
 - **The rule of the pass:** the game, the models and the learner compute the same numbers
   afterwards. Every reference fixture passes unchanged, the goldens are never touched,
   and the bench cells stay within noise (section 6).
-- **Running alongside:** sections 4 and 7 (scripted agent and BC) and 10 (the play
+- **Running alongside:** sections 4 and 7 (Imugi and BC) and 10 (the play
   shell) may run at the same time. So:
   - leave `bnb/controllers/scripted.py` (section 4 replaces it) and `bnb/play/`
     alone;
@@ -379,7 +379,7 @@ sections 1–7.
    config file. Resume and fork keep reading the build record, as now. This is the
    tooling for a later 128-versus-256 comparison; the comparison itself is not part of
    this pass.
-4. **The scripted agent's reflection test:** a reflected observation (Frontline's
+4. **Imugi's reflection test:** a reflected observation (Frontline's
    reflection about the neutral axis) gives the reflected action, in distribution. After
    the seat fix, Frontline scripted-versus-scripted still gives team 1 0.507 ± 0.003 over
    16,384 games (deathmatch is even). If the test fails, list the rule that breaks it in

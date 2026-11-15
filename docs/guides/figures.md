@@ -249,7 +249,7 @@ complete checkpoint without media (`bnb.figures.watch`):
    (`--sets`: `shots`, `belief`, `next_state`, `density`, `enemy_action`) into
    `artifacts/figures/<checkpoint>/<mode>/`; the capture is deleted unless
    `--keep-captures` (about 60 MB a mode);
-2. per mode, films one game against the scripted agent into `<checkpoint>/videos/`;
+2. per mode, films one game against Imugi, the scripted agent, into `<checkpoint>/videos/`;
 3. writes `<checkpoint>/media.json` last: what was made, the sets' numbers, the videos'
    tallies, the seconds each part took and any error.
 

@@ -1,4 +1,4 @@
-"""The scripted agent's parameter search (`bench/scripted_search.py`), its parts on the CPU:
+"""Imugi's parameter search (`bench/imugi_search.py`), its parts on the CPU:
 the bounds, the children, the stop rule, the resume and the mixed opponent seat. The search
 itself runs on the GPU (the section notes record its run)."""
 
@@ -9,29 +9,30 @@ import sys
 
 import pytest
 import torch
-from scripted_cases import CHARACTERISTICS, absent, observation, ship, value
+from imugi_cases import CHARACTERISTICS, absent, observation, ship, value
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:  # `bench` is a top-level package of the repository
     sys.path.insert(0, str(ROOT))
 
-from bench import scripted_search as search  # noqa: E402
+from bench import imugi_search as search  # noqa: E402
 from bnb.contracts import Obs  # noqa: E402
-from bnb.controllers.scripted import Chaser, Scripted  # noqa: E402
-from bnb.controllers.scripted_parameters import (  # noqa: E402
+from bnb.controllers.imugi import Imugi  # noqa: E402
+from bnb.controllers.imugi_parameters import (  # noqa: E402
     NAMES,
     SCALE_FLOORS,
+    ImugiParameters,
     Logistic,
-    ScriptedParameters,
     pack,
 )
+from bnb.controllers.scripted import Chaser  # noqa: E402
 
 # The mixed seat's test draws from torch's default generator: seeded and restored.
 pytestmark = pytest.mark.usefixtures("global_generator")
-DEFAULTS = ScriptedParameters()
+DEFAULTS = ImugiParameters()
 
 
-def _logistics(parameters: ScriptedParameters) -> dict[str, Logistic]:
+def _logistics(parameters: ImugiParameters) -> dict[str, Logistic]:
     return {name: getattr(parameters, name) for name in SCALE_FLOORS}
 
 
@@ -47,7 +48,7 @@ def test_children_stay_in_bounds_and_keep_every_direction():
         assert child.combat_radius_in_gun_range >= child.shoot_in_gun_range.centre
         ramp = child.boundary_steer_ramp_in_margin
         assert ramp.low < ramp.high and (ramp.at_low, ramp.at_high) == (0.0, 1.0)
-    narrow = ScriptedParameters(turn_in_stall_angle=Logistic(0.1, 1e-3, True))
+    narrow = ImugiParameters(turn_in_stall_angle=Logistic(0.1, 1e-3, True))
     assert search.clamp(narrow).turn_in_stall_angle.scale == SCALE_FLOORS["turn_in_stall_angle"]
 
 
@@ -103,7 +104,7 @@ def test_the_mixed_seat_plays_each_rows_controller():
         zones=one.zones.expand(views, -1, -1),
     )
     choice = torch.tensor([0, 1, 0, 1, 1, 0])
-    uniform = Scripted(CHARACTERISTICS, 2, temperature=math.inf)
+    uniform = Imugi(CHARACTERISTICS, 2, temperature=math.inf)
     mixed = search.Mixed([uniform, Chaser(CHARACTERISTICS, 2)], choice)
     assert set(mixed.reads) == {"ships", "zones", "globals"}
     torch.manual_seed(0)

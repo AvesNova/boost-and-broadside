@@ -1,8 +1,8 @@
 """The freeze: the final card factors (on the ship files, with the base's hit damage x 0.65)
 written as the real-scale ship files of Yongma and Jujak (their handles changed and the
 card re-solved, as `docs/rewrite/sections/doctrines/ships.py` does), vizia's hit damage x
-0.65, and the champion's doctrines as the stored ones (`scripted_doctrines.json`, which the
-scripted agent flies by default) and, if it carries them, its scripted parameters as the
+0.65, and the champion's doctrines as the stored ones (`imugi_doctrines.json`, which the
+Imugi flies by default) and, if it carries them, its scripted parameters as the
 real-scale deathmatch set.
 
     PYTHONPATH=src:. python docs/rewrite/sections/game-loop/freeze.py --card CARD.json \
@@ -23,9 +23,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import league  # noqa: E402
 
 from bench.game_loop import BASE_FACTORS  # noqa: E402
-from bnb.controllers import scripted_defaults  # noqa: E402
-from bnb.controllers.scripted_doctrine import DOCTRINES, named  # noqa: E402
-from bnb.controllers.scripted_parameters import from_row  # noqa: E402
+from bnb.controllers import imugi_defaults  # noqa: E402
+from bnb.controllers.imugi_doctrine import DOCTRINES, named  # noqa: E402
+from bnb.controllers.imugi_parameters import from_row  # noqa: E402
 from bnb.game import api, ships  # noqa: E402
 from bnb.game.handling import Handles  # noqa: E402
 
@@ -102,7 +102,7 @@ def main() -> None:
     }
     DOCTRINES.write_text(json.dumps(stored, indent=1) + "\n")
     if champion.parameters is not None:
-        scripted_defaults.write_real_scale(
+        imugi_defaults.write_real_scale(
             "real_scale_deathmatch", from_row(list(champion.parameters)), args.source
         )
     print("doctrines", json.dumps(named(champion.energy)), json.dumps(named(champion.turn)))

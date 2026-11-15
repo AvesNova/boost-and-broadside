@@ -149,7 +149,7 @@ observation order. Rewards and diagnostics read it; controllers never do.
 ## Controllers
 
 `bnb.contracts.Controller` is the interface every controller implements: models,
-scripted agents, random, and later humans.
+Imugi, the other scripted controllers, random, and later humans.
 
 - A controller plays **one team**: it receives that team's views and returns actions for
   that team's `S` ships.

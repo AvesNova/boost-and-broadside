@@ -908,7 +908,7 @@ def lane_information(
     updates: list[Update], inputs: Inputs, timeline: Timeline, late: int = LATE
 ) -> float:
     """The rating lanes' information on live's rating per update and mode over the late
-    updates, in `score`'s units: their live games against the scripted agent, the
+    updates, in `score`'s units: their live games against Imugi, the
     exponential average and a league slot holding a snapshot (the run's lanes left a slot
     holding anything else unrated)."""
     values = []

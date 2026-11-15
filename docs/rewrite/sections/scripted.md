@@ -1,4 +1,4 @@
-# Section 4: the scripted agent
+# Section 4: Imugi
 
 Status: decisions settled, 2026-11-01. Spec: `scripted-bc-spec.md`.
 
@@ -15,7 +15,7 @@ Status: decisions settled, 2026-11-01. Spec: `scripted-bc-spec.md`.
 ## Decided (author, 2026-11-01)
 
 - **It reads only the observation,** exactly what the learner sees: fog respected, no
-  game state. The two then certainly share their information, so the scripted agent
+  game state. The two then certainly share their information, so Imugi
   cannot cheat, and the student can match the teacher's entropy.
 - **Port v1's structure, retune its numbers.**
   - The structure: the probability ramps, interception (target leading), the team

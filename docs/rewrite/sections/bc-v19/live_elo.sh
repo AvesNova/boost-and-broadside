@@ -1,7 +1,7 @@
 #!/bin/bash
 # Live Elo on a second GPU (the laptop) while a run trains elsewhere: every few minutes copy
 # the run's newest policy snapshots (`policies/step_*/exponential_average`) from the training
-# box, and rate each new one against the scripted agent (Baekho, 1000) on the three modes,
+# box, and rate each new one against Imugi (Baekho, 1000) on the three modes,
 # reusing every earlier round's games (`bnb ratings --reuse`), so the curve accumulates and
 # only the new snapshot plays. Pauses while `bnb play` runs (the play shell needs the GPU)
 # or while $PAUSE exists.

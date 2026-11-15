@@ -17,7 +17,7 @@ checks under `tests/docs` that make stale docs fail the suite. Nothing under `sr
 | Home | `docs/index.md` |
 | Getting started | installation, running the tests, a first training run, a benchmark |
 | Guides | training (presets, pools, the mixed batch), benchmarking (the lock, cells, sizes), reference fixtures (goldens, adapters, `REFERENCE_ARM`), adding a mode |
-| Explanation | architecture; contracts; the game (physics, perception and fog, modes, rewards, mixed batches); Yemong; the training loop; the roadmap; one in-progress page each for the learner, ship card, scripted agent, BC, league, diagnostics, play shell |
+| Explanation | architecture; contracts; the game (physics, perception and fog, modes, rewards, mixed batches); Yemong; the training loop; the roadmap; one in-progress page each for the learner, ship card, Imugi, BC, league, diagnostics, play shell |
 | Reference | one page per package: `bnb.contracts`, `bnb.game`, `bnb.controllers`, `bnb.models`, `bnb.learn`, `bnb.runtime`, `bnb.cli`, `bench` |
 | Contributing | `docs/contributing/writing-docs.md` |
 

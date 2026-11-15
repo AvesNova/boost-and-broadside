@@ -6,7 +6,7 @@ training conditions (the `real_scale_frontline` preset with its fields on). Targ
 in 0.45-0.55 with a 95% interval half-width of at most 0.05 at the chosen value, without many
 more games ending on the clock.
 
-Bench: `bench.mode_dynamics frontline` (scripted agent on both seats, T = 1, fog on, 5v5,
+Bench: `bench.mode_dynamics frontline` (Imugi on both seats, T = 1, fog on, 5v5,
 mirrored lineups yongma,jujak and jujak,yongma) and `bench.front_reversal` (definitions in its
 docstring and in docs/rewrite/sections/front-reversal/results.md).
 
@@ -21,7 +21,7 @@ x sqrt(d / 1 km); at 19 s/sqrt(km) and d = 5.64 km (real-scale 5v5: ring radius 
 
 **What it was tuned against:** the frontline design bench (bench/frontline_design.py on the
 tune/respawn-waves branch, 2026-11-13), as the hard lock that gave P(same team captures
-next) = 0.5, before the final ship card and before the scripted agent's lock-aware doctrine
+next) = 0.5, before the final ship card and before Imugi's lock-aware doctrine
 (`lock_press` 1, Baekho, 2026-11-13). Without a lock v1's front was anti-persistent
 (P(reversal) 0.84): the losers stand on the zone they just lost and retake it as the
 capturers leave for the next one.
@@ -37,7 +37,7 @@ bench, no fields, lock 45 s):
   28 / 36 / 59 s, n 169), mostly inside the 45 s lock; a reversal comes a median 91 s after
   (68 / 91 / 131 s, n 39), after the lock has run out. So the lock is longer than the
   capturing team needs to travel one zone and take it.
-- The scripted agent plays the lock (`lock_press` 1 in its stored doctrines): while the
+- Imugi plays the lock (`lock_press` 1 in its stored doctrines): while the
   enemy is locked out for longer than its travel back, it attacks; while its own team is
   locked out, it defends. The capture lock thus gives the side that just won a fight a free
   attack window against a team that just lost one (it usually has fewer living ships).
@@ -59,7 +59,7 @@ the next capture by outcome and the mean game length.
   02:00. Next: baseline with fields on (lock 19), 128 games, then a sweep of
   `lock_seconds_per_root_km`.
 
-## Sweep and choice (2026-11-15, GPU, fields on, the scripted agent on both sides)
+## Sweep and choice (2026-11-15, GPU, fields on, Imugi on both sides)
 
 Real-scale frontline 5v5 with fog on and both mirrored lineups mixed. Each value was measured with `bench/mode_dynamics.py` and `bench/front_reversal.py`; Wilson 95% intervals.
 

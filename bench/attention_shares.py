@@ -31,7 +31,7 @@ viewer's observation: visible, hidden (alive but not seen; the row carries the b
 dead. The ally keys split alive and dead.
 
 The games: the rollout of training (`bnb.runtime.rollout.Rollout`, uncompiled, fog on,
-staggered clocks), the policy against the scripted agent (or itself), each environment
+staggered clocks), the policy against Imugi (or itself), each environment
 seating the policy on a random side. `--warmup` segments are played before recording, so
 the carry (beliefs, trunk memory) is warm. Each (policy, preset) result is appended to the
 output as soon as it is done.
@@ -49,7 +49,7 @@ import torch
 
 from bnb.contracts import Pool
 from bnb.contracts.obs import SHIP, ZONE
-from bnb.controllers.scripted import Scripted
+from bnb.controllers.imugi import Imugi
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.models.yemong import spatial
@@ -304,7 +304,7 @@ def measure(name, directory, preset, lineup, opponent, arguments, device) -> dic
     }
     seats = (POLICY, POLICY)
     if opponent == "scripted":
-        controllers[OPPONENT] = Scripted(characteristics(types, api.rules_of(game)), S)
+        controllers[OPPONENT] = Imugi(characteristics(types, api.rules_of(game)), S)
         seats = (POLICY, OPPONENT)
     ship_type = None
     if lineup:

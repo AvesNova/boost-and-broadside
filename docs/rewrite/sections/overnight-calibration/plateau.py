@@ -1,5 +1,5 @@
 """plateau.py: BC's plateau stop (`bnb.learn.bc.Plateau`) replayed offline on a run's logged
-BC KL, and its parameters fitted to where the run's Elo against the scripted agent
+BC KL, and its parameters fitted to where the run's Elo against Imugi
 plateaus.
 
     replay METRICS [--fraction F --window W --from S --smoothing M --hold H]

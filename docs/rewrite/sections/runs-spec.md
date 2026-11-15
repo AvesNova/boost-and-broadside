@@ -4,7 +4,7 @@ Status: spec, 2026-11-02. Decisions: `runs.md` (settled with the author 2026-11-
 **(proposal)** marks a choice the spec makes, implemented as written and listed for the
 author.
 
-Order: after section 6 merges. The scripted agent and BC (sections 4 and 7) may run at
+Order: after section 6 merges. Imugi and BC (sections 4 and 7) may run at
 the same time: BC's hand-off calls `save_policy` and `load_policy` (section 3 below), so
 define and push those first. The league (section 8) comes after this section.
 

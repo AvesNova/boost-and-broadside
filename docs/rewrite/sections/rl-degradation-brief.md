@@ -6,7 +6,7 @@ with evidence, and fix it.
 ## What we know
 
 - **The clone:** `/home/vizia/avesnova/runs-v2/2026-11-04-mixed-wandering-quill/policy`.
-  Its closed-loop score against the scripted agent was about 0.40 over 1,000-game windows
+  Its closed-loop score against Imugi was about 0.40 over 1,000-game windows
   (BC, 100M steps, mixed preset, fog on).
 - **The RL run:** `/home/vizia/avesnova/runs-v2/2026-11-04-mixed-tidy-harbour` (PPO,
   `--init-from` the clone, mixed preset, stopped by Ctrl-C at about update 237 of 381;
@@ -44,14 +44,14 @@ with evidence, and fix it.
 ## How
 
 - **Measure where strength falls:** rate the clone and the RL run's checkpoints offline
-  against the scripted agent with enough games for a standard error under 0.03
+  against Imugi with enough games for a standard error under 0.03
   (`bnb ratings` / `bnb head-to-head`; read their docs).
 - **Read the code paths** above, and write a CPU test for each suspect you can pin down: a
   hand-built case whose correct advantage, reward or log-probability is known.
 - **Short RL ablations** from the clone, each long enough to see the collapse (it shows by
   update ~25 in the fire share, the entropy and the score against scripted). Run the
   control first. Make the score against scripted measurable each update with many games if
-  you can (for example a pool against the scripted agent), and say how. Candidates: no
+  you can (for example a pool against Imugi), and say how. Candidates: no
   self-play, the entropy coefficient at 0, a lower learning rate, the critic re-fitted
   before the policy moves. Choose by what the code reading suggests.
 - **Fix** what you find on your branch, with a test, and show with a short run that the

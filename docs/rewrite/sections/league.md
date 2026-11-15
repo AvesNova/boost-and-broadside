@@ -28,11 +28,11 @@ Status: decisions settled, 2026-11-01. Spec: `league-spec.md`. Fixtures: `tests/
     0.7 and 0.8 rungs), not a true Elo. Above 1000 it is largely a real Elo against the
     scripted anchor and the checkpoints. Its job is a consistent live dashboard (W&B).
   - **Published ratings (after training):** a Bradley–Terry fit over a full field, with
-    only the scripted agent pinned at 1000. Random is fitted too.
+    only Imugi pinned at 1000. Random is fitted too.
 - **The ladder:** random and the rungs are sampled like any other entry. The rungs are
   v1's spacing in tenths, p = 0.1 … 0.9, plus v1's 0.95.
 - **One pass for the whole stationary ladder (speed):** random, the rungs and the
-  scripted agent are one controller with a per-view `p`. One scripted pass and one
+  Imugi are one controller with a per-view `p`. One scripted pass and one
   uniform draw over all its views, then per decision the choice. (Section 4's spec, A6.)
 - **Ratings per mode:** separate ratings per mode and map: Frontline, team deathmatch on
   the squad map, and team deathmatch on the battle map.

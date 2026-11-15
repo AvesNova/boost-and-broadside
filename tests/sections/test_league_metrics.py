@@ -33,7 +33,7 @@ def test_each_mode_reports_the_live_rating_and_every_entry(rows):
         table = row["pool/entries"]
         entries = [dict(zip(table["columns"], values, strict=True)) for values in table["rows"]]
         for mode in league.modes:
-            # the fit's, once the live policy's games reach the scripted agent
+            # the fit's, once the live policy's games reach Imugi
             if f"rating/live/{mode}" in row:
                 assert math.isfinite(row[f"rating/live/{mode}"])
                 assert math.isfinite(row[f"rating/live_stderr/{mode}"])

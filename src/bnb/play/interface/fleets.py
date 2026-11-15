@@ -1,10 +1,10 @@
 """The fleets card (left): one section per team, a row per ship with its type, shield and
 energy bars, alive or respawning (with the time to its respawn, its team's respawn wave
-included), and its controller (you, scripted, the scripted agent and its doctrine, or the
+included), and its controller (you, scripted, Imugi and its doctrine, or the
 agent's name). In Frontline a team's section opens with its next respawn wave's countdown:
 the player's own team's only while they fly a ship (the enemy's clock is hidden from them,
 as from the agents), both teams' while they watch. Clicking a row selects its ship. A
-team's controller is changed here: the scripted chaser, the scripted agent flying Baekho
+team's controller is changed here: the scripted chaser, Imugi flying Baekho
 (`bnb.play.sides.DOCTRINES`), or one of the local runs' policies, and an
 agent's sampling temperature. The card is wide enough for the longest
 ship name (`width`), whose column both teams share, so their bars line up."""
@@ -30,10 +30,10 @@ BAR_HEIGHT = 6.0
 LONGEST_WAIT = "99.9 s"  # the widest a row's respawn wait reads
 
 
-SCRIPTED_LABELS = {"scripted": "Chaser", "scripted_agent": "Scripted agent"}
-# The combo's scripted choices: the chaser, then the scripted agent with each doctrine.
+SCRIPTED_LABELS = {"scripted": "Chaser", "imugi": "Imugi"}
+# The combo's scripted choices: the chaser, then Imugi with each doctrine.
 SCRIPTED_CHOICES = ((SideSetup("scripted"), "Chaser"),) + tuple(
-    (SideSetup("scripted_agent", doctrine=doctrine), f"Scripted agent {DOCTRINE_NAMES[doctrine]}")
+    (SideSetup("imugi", doctrine=doctrine), f"Imugi {DOCTRINE_NAMES[doctrine]}")
     for doctrine in DOCTRINES
 )
 
@@ -42,7 +42,7 @@ def scripted_label(side: SideSetup) -> str | None:
     """A scripted side's label in the combo (None for an agent)."""
     for choice, label in SCRIPTED_CHOICES:
         if side.controller == choice.controller and (
-            side.controller != "scripted_agent" or side.doctrine == choice.doctrine
+            side.controller != "imugi" or side.doctrine == choice.doctrine
         ):
             return label
     return SCRIPTED_LABELS.get(side.controller)
@@ -66,7 +66,7 @@ def controller_combo(
     opened = imgui.begin_combo(f"##{name}", preview)
     controls.record(name)
     tooltip(
-        f"Who controls {TEAM_NAMES[team]}: the scripted chaser, the scripted agent (it "
+        f"Who controls {TEAM_NAMES[team]}: the scripted chaser, Imugi (it "
         "remembers the enemies it saw, flying the Baekho doctrine) or a trained agent"
     )
     if opened:

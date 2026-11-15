@@ -27,7 +27,7 @@ def main() -> None:
     candidate = json.loads((HERE / "round5" / "candidates.json").read_text())[0]
     league = json.loads((HERE.parent / "game-loop" / "league.json").read_text())
     r9 = player_from([e for e in league if e["name"] == "r9"][0])
-    from bnb.controllers.scripted_doctrine import from_named, named
+    from bnb.controllers.imugi_doctrine import from_named, named
 
     def with_fields(doctrine, fields):
         return from_named(dict(named(doctrine), **fields))

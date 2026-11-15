@@ -6,8 +6,8 @@ import pytest
 import torch
 
 from bnb.league.pool import (
+    IMUGI_ENTRY,
     RECENT_SNAPSHOTS,
-    SCRIPTED_ENTRY,
     Entry,
     average_into,
     retained,
@@ -108,9 +108,9 @@ def test_the_ladder_names_random_rungs_and_scripted():
         assert ladder_rung(other) is None
 
 
-def test_the_pools_scripted_entry_is_the_full_strength_scripted_agent():
-    assert SCRIPTED_ENTRY.name == ladder_name(Rung(1.0)) == "scripted"
-    assert not SCRIPTED_ENTRY.network
+def test_the_pools_scripted_entry_is_the_full_strength_imugi():
+    assert IMUGI_ENTRY.name == ladder_name(Rung(1.0)) == "scripted"
+    assert not IMUGI_ENTRY.network
     for name, kind in (("random", "scripted"), ("rung_T2", "scripted"), ("scripted", "average")):
         with pytest.raises(ValueError):
             Entry(name, kind)

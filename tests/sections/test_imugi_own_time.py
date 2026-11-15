@@ -1,4 +1,4 @@
-"""The scripted agent's own time: off by default and then the agent exactly; when on, the
+"""Imugi's own time: off by default and then the agent exactly; when on, the
 switches' rates and the memory's fade run in the ship's own time."""
 
 import dataclasses
@@ -7,15 +7,15 @@ import sys
 
 import pytest
 import torch
-from scripted_cases import CHARACTERISTICS, absent, observation, ship
+from imugi_cases import CHARACTERISTICS, absent, observation, ship
 
 from bnb.contracts.obs import GLOBAL, SHIP
-from bnb.controllers.scripted_defaults import MODE_DEFAULTS
-from bnb.controllers.scripted_memory import fresh_carry, remember, time_unit
-from bnb.controllers.scripted_parameters import (
+from bnb.controllers.imugi_defaults import MODE_DEFAULTS
+from bnb.controllers.imugi_memory import fresh_carry, remember, time_unit
+from bnb.controllers.imugi_parameters import (
     ADDITIVE_BOUNDS,
     OWN_TIME,
-    ScriptedParameters,
+    ImugiParameters,
     Switch,
     in_own_time,
     logistic,
@@ -25,10 +25,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:  # `bench` is a top-level package of the repository
     sys.path.insert(0, str(ROOT))
 
-from bench import scripted_search as search  # noqa: E402
+from bench import imugi_search as search  # noqa: E402
 
 pytestmark = pytest.mark.usefixtures("global_generator")
-PARAMETERS = ScriptedParameters()
+PARAMETERS = ImugiParameters()
 TURN = CHARACTERISTICS.turn_rate[:, 2]
 AGILE, STIFF = int(TURN.argmax()), int(TURN.argmin())
 

@@ -6,7 +6,7 @@ combo and on both teams by default. And the frame-rate readout's numbers
 import pytest
 import tyro
 
-from bnb.controllers import scripted_doctrine
+from bnb.controllers import imugi_doctrine
 from bnb.play.app import Options
 from bnb.play.frame_rate import FrameRate
 from bnb.play.interface.fleets import SCRIPTED_CHOICES, controller_label_of_setup, scripted_label
@@ -16,7 +16,7 @@ from bnb.play.sides import DEFAULT_DOCTRINE, DOCTRINES
 
 
 def test_baekho_is_the_one_doctrine_and_the_stored_one():
-    assert DOCTRINES == {"baekho": scripted_doctrine.DOCTRINES}
+    assert DOCTRINES == {"baekho": imugi_doctrine.DOCTRINES}
     assert DEFAULT_DOCTRINE == "baekho" and SideSetup().doctrine == "baekho"
 
 
@@ -25,7 +25,7 @@ def test_baekho_flies_the_lock_aware_goal_and_the_maneuver_elements():
     for both types; its running-away elements (r9's extend, the crowd extension, the
     team-gated duel extension) are off (the author, 2026-11-14: they ran ships out of
     bounds and taught the BC student to flee)."""
-    stored = scripted_doctrine.stored()["real-scale"]
+    stored = imugi_doctrine.stored()["real-scale"]
     for key in ("yongma", "jujak"):
         doctrine = stored[key]
         assert doctrine.lock_press == 1.0
@@ -36,25 +36,25 @@ def test_baekho_flies_the_lock_aware_goal_and_the_maneuver_elements():
 
 
 def test_the_stored_file_packs_to_the_full_table_width_for_the_real_scale_set():
-    rows = scripted_doctrine.rows_by_count(DOCTRINES["baekho"])
+    rows = imugi_doctrine.rows_by_count(DOCTRINES["baekho"])
     assert rows and all(
-        len(row) == scripted_doctrine.WIDTH for table in rows.values() for row in table
+        len(row) == imugi_doctrine.WIDTH for table in rows.values() for row in table
     )
 
 
 def test_both_teams_fly_baekho_from_the_command_line():
     sides = tyro.cli(Options, args=[]).setup().sides
     assert [side.doctrine for side in sides] == ["baekho", "baekho"]
-    assert all(side.controller == "scripted_agent" for side in sides)
+    assert all(side.controller == "imugi" for side in sides)
 
 
 def test_the_fleets_combo_offers_the_chaser_and_baekho():
     labels = [label for _, label in SCRIPTED_CHOICES]
-    assert labels == ["Chaser", "Scripted agent Baekho"]
-    assert scripted_label(SideSetup("scripted_agent")) == "Scripted agent Baekho"
+    assert labels == ["Chaser", "Imugi Baekho"]
+    assert scripted_label(SideSetup("imugi")) == "Imugi Baekho"
     assert scripted_label(SideSetup("scripted")) == "Chaser"
     assert scripted_label(SideSetup("agent", "runs/x")) is None
-    assert controller_label_of_setup(SideSetup()) == "scripted agent baekho"
+    assert controller_label_of_setup(SideSetup()) == "imugi baekho"
 
 
 def test_the_frame_rate_is_smoothed_and_keeps_the_last_seconds_longest_frame():

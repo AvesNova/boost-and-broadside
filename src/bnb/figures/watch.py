@@ -7,7 +7,7 @@ record, writes into the run's `artifacts/figures/step_<steps>/`:
 - per mode (`WatchConfig.modes`): a capture on the CPU (`bnb.figures.capture`, a few
   environments, the same seed at every checkpoint, so the games start alike) and the quick
   figure sets drawn from it into `<mode>/`; the capture itself is deleted unless kept;
-- per mode: a video of one game, the checkpoint against the scripted agent
+- per mode: a video of one game, the checkpoint against Imugi
   (`bnb.figures.video`), into `videos/`;
 - the media record `media.json`, last: what was made, the sets' numbers, the videos'
   tallies, the seconds each part took, any error, and whether it reached W&B.
@@ -249,10 +249,7 @@ class MediaLog:
         for mode, made in record["videos"].items():
             if "error" in made:
                 continue
-            caption = (
-                f"step {steps:,} against the scripted agent, {mode}: "
-                f"{made['game_seconds']:.0f} s of play"
-            )
+            caption = f"step {steps:,} against Imugi, {mode}: {made['game_seconds']:.0f} s of play"
             logged[f"video/{mode}"] = wandb.Video(str(directory / made["path"]), caption=caption)
             numbers = {name: value for name, value in made.items() if name != "path"}
             logged.update(scalars(numbers, f"game/{mode}"))

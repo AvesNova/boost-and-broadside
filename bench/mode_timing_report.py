@@ -1,5 +1,5 @@
 """Report of the mode-timing measurements (`bench/mode_timing_run.sh`, files of
-`bench.mode_dynamics`: the scripted agent on both seats, real-scale presets, fog on, the
+`bench.mode_dynamics`: Imugi on both seats, real-scale presets, fog on, the
 preset's fields on, mirrored lineups alternating Yongma,Jujak / Jujak,Yongma over environments,
 each environment's first game).
 

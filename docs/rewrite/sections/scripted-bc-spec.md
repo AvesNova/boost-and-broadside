@@ -1,4 +1,4 @@
-# Scripted agent and BC spec (sections 4 and 7)
+# Imugi and BC spec (sections 4 and 7)
 
 Status: spec, 2026-11-01. Decisions: `scripted.md` (section 4) and `bc.md` (section 7).
 **(v2)** marks a decided change from v1. **(proposal)** marks a value or choice the spec
@@ -8,11 +8,11 @@ Two sections, one spec: BC's labels, temperature and stop rule depend on the scr
 agent's interface. They can be built by one agent in two stages (section 4 first, its
 acceptance passing, then section 7), after section 6 merges.
 
-# Part A: the scripted agent (section 4)
+# Part A: Imugi (section 4)
 
 ## A1. Interface
 
-- **`bnb/controllers/scripted.py`** gains `Scripted` beside `Random` and `Chaser`. It is a
+- **`bnb/controllers/scripted.py`** gains `Imugi` beside `Random` and `Chaser`. It is a
   `Controller`, and memoryless (carry `None`).
 - **The pure function:** `distribution(obs, characteristics, parameters) → (R, S, 42)`,
   the joint action probabilities in `to_joint` order, from the observation alone.
@@ -52,14 +52,14 @@ the card is public game knowledge.
 
 ## A3. Parameters
 
-- **`ScriptedParameters`:** a frozen dataclass of dimensionless numbers, the ramps
+- **`ImugiParameters`:** a frozen dataclass of dimensionless numbers, the ramps
   `(low, high)` and their `(probability at low, probability at high)`, with names that
   say what each scales by (for example `shoot_distance_ramp_in_gun_range`).
 - **The starting values** are v1's, converted through v1's own characteristics where a
   conversion exists (for example v1's shoot ramp 100–200 px over its 200 px range is
   0.5–1.0 gun ranges). Where none exists, a value the agent chooses and lists.
 - **Retuning (author: keep it short):**
-  - the scripted agent's primary job is a sensible action distribution, for BC and as an
+  - Imugi's primary job is a sensible action distribution, for BC and as an
     opponent, not peak strength;
   - one small search over the parameters, in batched games, scored against the chaser and
     against the v1-converted starting point, in both modes, fog as in training, capped at
@@ -135,8 +135,8 @@ The same terms and their combination, read from the observation:
 ## A6. Rungs
 
 - **One controller for the whole stationary ladder (author):** random, every rung and the
-  scripted agent are one controller with a per-view probability `p` (a tensor: 0 is
-  random, 1 is the scripted agent).
+  Imugi are one controller with a per-view probability `p` (a tensor: 0 is
+  random, 1 is Imugi).
 - **One pass each:** a single scripted pass and a single uniform draw over all its views,
   then per ship and decision the scripted action where `u < p`, else the uniform one. Its
   distribution is `p · scripted + (1 − p)/42`.
@@ -192,7 +192,7 @@ The same terms and their combination, read from the observation:
 
 - **The student plays the learner views,** sampling from its own policy.
 - **Opponents (proposal):**
-  - self-play 0.5 and the scripted agent 0.5 at its natural distribution;
+  - self-play 0.5 and Imugi 0.5 at its natural distribution;
   - no rungs in BC;
   - section 8's pool replaces this when it exists.
 - **The mix:** Frontline 0.5, team deathmatch squad 0.375, team deathmatch battle map
@@ -200,7 +200,7 @@ The same terms and their combination, read from the observation:
 
 ## B3. Teacher labels
 
-- **At update time, per shard, on the GPU:** `Scripted.distribution` on the stored
+- **At update time, per shard, on the GPU:** `Imugi.distribution` on the stored
   observations of the learner views. The teacher is memoryless and reads only the
   observation, so nothing more is stored.
 - **The temperature** applies to the labels only:
@@ -216,7 +216,7 @@ The same terms and their combination, read from the observation:
 ## B4. Stopping and hand-off
 
 - **The stop rule:** whichever fires first; the report names it.
-  - **Score against the scripted agent:** at least 0.45 over the last 1000 finished games
+  - **Score against Imugi:** at least 0.45 over the last 1000 finished games
     against it **(proposal: window)**, from the training games themselves;
   - **KL plateau:** the BC KL `KL(teacher ‖ student) = CE − H(teacher)` per token, as an
     EMA. It plateaus when the EMA has improved by less than 1% over the last 20M
@@ -238,13 +238,13 @@ The same terms and their combination, read from the observation:
 
 1. **The BC loss** matches an independent computation on a stored segment, masks
    included, and accumulates exactly over micro-batches (section 6's rule).
-2. **Labels:** the update-time teacher distribution equals the one the scripted agent
+2. **Labels:** the update-time teacher distribution equals the one Imugi
    computed at rollout time on the same observation, exactly.
 3. **Temperature:** calibration hits a target entropy within 0.01 nats; `T = 1, ε = 0`
    leaves the labels unchanged; the opponent's play is unchanged by `T` and `ε`.
 4. **The stop rule** fires correctly on synthetic score and KL series, each rule alone.
 5. **The toy test:** the toy model (section 6's relational MLP) trained by BC on the
-   scripted agent at 2v2 team deathmatch:
+   Imugi at 2v2 team deathmatch:
    - scores at least 0.45 against its teacher over 512 games;
    - its score against the chaser is within 0.10 of the teacher's **(proposal)**;
    - within a budget the section measures and records.

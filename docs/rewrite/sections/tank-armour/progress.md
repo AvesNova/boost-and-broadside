@@ -123,7 +123,7 @@ joust and the mirror pace is set by `f0` alone (0.01: 0.03, 1557 s; 0.05: 0.18, 
 ## Sketch (not built): a scripted yo-yo stalemate breaker
 
 The stalemate above is the case it is for. As a doctrine element beside extend / slash /
-bleed / lag / deny (`scripted_doctrine.Doctrine`, the weight multiplied into the combat
+bleed / lag / deny (`imugi_doctrine.Doctrine`, the weight multiplied into the combat
 layer's aim point and power like the others):
 
 - **Trigger** (a logistic gate, per pair, like `deny_in_crowd`): the pair is in a

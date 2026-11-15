@@ -7,7 +7,7 @@ looks odd, give the numbers. Another reviewer judges the flags.
 ## The runs (read only)
 
 - **BC:** `/home/vizia/avesnova/runs-v2/2026-11-04-mixed-wandering-quill/` — behaviour
-  cloning of the scripted agent, 100M environment steps, finished. Built before
+  cloning of Imugi, 100M environment steps, finished. Built before
   "diagnostics round 2", so it lacks many series.
 - **RL:** `/home/vizia/avesnova/runs-v2/2026-11-04-mixed-tidy-harbour/` — PPO warm-started
   from the BC clone, 381 updates (~50M steps), **still running**: read whatever rows exist;

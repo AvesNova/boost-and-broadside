@@ -12,7 +12,7 @@ import learner_cases as lc
 import pytest
 import torch
 import yemong_cases as cases
-from scripted_cases import CHARACTERISTICS
+from imugi_cases import CHARACTERISTICS
 
 from bnb.contracts import GameConfig, Pool
 from bnb.controllers.relational import RelationalController
@@ -23,9 +23,9 @@ from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.runtime import cloning
 from bnb.runtime.lanes import (
     EXPONENTIAL_AVERAGE,
+    IMUGI_PLAYER,
     LANES,
     LIVE,
-    SCRIPTED_PLAYER,
     UNIFORM_AVERAGE,
     Lane,
     LaneCarry,
@@ -223,7 +223,7 @@ def test_lanes_split_evenly_over_the_modes_then_by_weight():
     )
     config = LaneConfig(
         environments=8,
-        matchups=(Matchup(LIVE, SCRIPTED_PLAYER, 3.0), Matchup("rung_T2", SCRIPTED_PLAYER, 1.0)),
+        matchups=(Matchup(LIVE, IMUGI_PLAYER, 3.0), Matchup("rung_T2", IMUGI_PLAYER, 1.0)),
     )
     modes = {"a": training[0], "b": training[1]}
     pools, lanes, total = lane_pools(training, modes, 16, config)
@@ -256,7 +256,7 @@ def _seat(lanes: tuple[Lane, ...], rows_per_lane: int = 2) -> LaneSeat:
 
 def test_a_lane_seat_plays_each_rows_player_and_tallies_each_game_once():
     lanes = (
-        Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER)),
+        Lane(MODE, Matchup(LIVE, IMUGI_PLAYER)),
         Lane(MODE, Matchup("rung_T2", "random")),
     )
     seat = _seat(lanes)
@@ -285,7 +285,7 @@ def _past_first_games(seat: LaneSeat, views: int) -> LaneCarry:
 def test_a_rows_first_game_is_never_tallied():
     """The rollout's clocks are staggered, so each row's first game is cut short: it is
     left out, whether or not its first tick is a reset, and the next game counts."""
-    lanes = (Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER)),)
+    lanes = (Lane(MODE, Matchup(LIVE, IMUGI_PLAYER)),)
     seat = _seat(lanes)
     obs = observation(views=4)
     done = torch.tensor([True, False, True, False])
@@ -324,7 +324,7 @@ def test_the_live_lane_plays_the_learners_weights(tmp_path):
     from bnb.runtime.train import Trainer
 
     config = tiny_train_config(
-        lanes=LaneConfig(environments=4, matchups=(Matchup(LIVE, SCRIPTED_PLAYER),))
+        lanes=LaneConfig(environments=4, matchups=(Matchup(LIVE, IMUGI_PLAYER),))
     )
     trainer = Trainer(config, lc.CPU)
     with torch.no_grad():
@@ -349,12 +349,12 @@ def _trainer(lanes: tuple[Lane, ...], seat=None, **config) -> types.SimpleNamesp
     )
 
 
-def test_lane_ratings_chain_the_ladder_to_the_scripted_agent():
-    """rung_T1.25 scores 0.25 against the scripted agent and rung_T1.5 0.5 against rung_T1.25:
+def test_lane_ratings_chain_the_ladder_to_imugi():
+    """rung_T1.25 scores 0.25 against Imugi and rung_T1.5 0.5 against rung_T1.25:
     both near 1000 - 400 log10(3); live, without games, is not rated."""
-    top = Lane(MODE, Matchup("rung_T1.25", SCRIPTED_PLAYER))
+    top = Lane(MODE, Matchup("rung_T1.25", IMUGI_PLAYER))
     below = Lane(MODE, Matchup("rung_T1.5", "rung_T1.25"))
-    live = Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER))
+    live = Lane(MODE, Matchup(LIVE, IMUGI_PLAYER))
     ratings = RunRatings(_trainer((top, below, live), window=2))
     ratings.update({top: (250, 0, 750), below: (500, 0, 500), live: (0, 0, 0)})
     expected = 1000.0 - 400.0 * math.log10(3.0)
@@ -362,7 +362,7 @@ def test_lane_ratings_chain_the_ladder_to_the_scripted_agent():
     assert rung == pytest.approx(expected, abs=2.0) and 0 < error < 30
     assert ratings.rating(MODE, "rung_T1.5")[0] == pytest.approx(rung, abs=3.0)
     assert ratings.rating(MODE, LIVE) is None
-    # a lane whose games do not reach the scripted agent rates nobody
+    # a lane whose games do not reach Imugi rates nobody
     apart = Lane(MODE, Matchup("random", "rung_T8"))
     ratings = RunRatings(_trainer((top, below, live, apart), window=2))
     ratings.update({top: (250, 0, 750), below: (500, 0, 500), live: (0, 0, 0), apart: (1, 2, 3)})
@@ -372,8 +372,8 @@ def test_lane_ratings_chain_the_ladder_to_the_scripted_agent():
 
 
 def test_a_moving_players_games_leave_after_the_window_and_the_ladders_stay():
-    rung = Lane(MODE, Matchup("rung_T1.25", SCRIPTED_PLAYER))
-    live = Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER))
+    rung = Lane(MODE, Matchup("rung_T1.25", IMUGI_PLAYER))
+    live = Lane(MODE, Matchup(LIVE, IMUGI_PLAYER))
     trainer = _trainer((rung, live), window=2)
     ratings = RunRatings(trainer)
     ratings.update({rung: (10, 0, 30), live: (40, 0, 0)})
@@ -381,7 +381,7 @@ def test_a_moving_players_games_leave_after_the_window_and_the_ladders_stay():
     ratings.update({rung: (10, 0, 30), live: (20, 0, 20)})
     ratings.update({rung: (10, 0, 30), live: (0, 0, 40)})  # the sweep has left the window
     assert ratings.rating(MODE, LIVE)[0] < 1000.0
-    assert ratings._games(MODE)[("rung_T1.25", SCRIPTED_PLAYER)] == [30.0, 0.0, 90.0]
+    assert ratings._games(MODE)[("rung_T1.25", IMUGI_PLAYER)] == [30.0, 0.0, 90.0]
     restored = RunRatings(trainer, ratings.state())
     assert restored.state() == ratings.state() and restored.series() == ratings.series()
 
@@ -393,14 +393,14 @@ def _expected(n: int, gap: float) -> tuple[float, float, float]:
 
 
 def test_a_strong_player_is_rated_far_better_through_a_snapshot_chain():
-    """A live policy 1000 points above the scripted agent (2000) plays the same 300 games
-    in its window: against the scripted agent (p = 0.997), or against the newest of a chain
+    """A live policy 1000 points above Imugi (2000) plays the same 300 games
+    in its window: against Imugi (p = 0.997), or against the newest of a chain
     of league snapshots 250 points apart (p = 0.81), whose links, stationary, have gathered
     3000 games each over the run (older entries played lower ones before they cycled
     out). Through the chain its standard error is several times
     smaller; both fits find the rating."""
     slots = ("league_0", "league_1", "league_2")
-    alone = Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER))
+    alone = Lane(MODE, Matchup(LIVE, IMUGI_PLAYER))
     direct = RunRatings(
         _trainer(
             (alone,),
@@ -408,7 +408,7 @@ def test_a_strong_player_is_rated_far_better_through_a_snapshot_chain():
         )
     )
     direct.update({alone: _expected(300, 1000.0)})
-    links = [Lane(MODE, Matchup(slots[0], SCRIPTED_PLAYER))]
+    links = [Lane(MODE, Matchup(slots[0], IMUGI_PLAYER))]
     links += [Lane(MODE, Matchup(high, low)) for low, high in zip(slots, slots[1:], strict=False)]
     top = Lane(MODE, Matchup(LIVE, slots[-1]))
     ratings = RunRatings(
@@ -424,7 +424,7 @@ def test_a_strong_player_is_rated_far_better_through_a_snapshot_chain():
     ratings.update({top: _expected(300, 250.0)})
     through_chain, chain_error = ratings.rating(MODE, LIVE)
     straight, direct_error = direct.rating(MODE, LIVE)
-    # each player's prior game against the scripted agent pulls the far end in a little
+    # each player's prior game against Imugi pulls the far end in a little
     assert through_chain == pytest.approx(2000.0, abs=25.0)
     assert abs(straight - 2000.0) < direct_error  # within its own (large) error
     assert chain_error * 4 < direct_error, (chain_error, direct_error)
@@ -437,7 +437,7 @@ def test_a_league_slot_swap_copies_weights_in_place_and_credits_the_entry():
     and the entry it replaced keeps its own."""
     lanes = (
         Lane(MODE, Matchup(LIVE, "league_0")),
-        Lane(MODE, Matchup("league_0", SCRIPTED_PLAYER)),
+        Lane(MODE, Matchup("league_0", IMUGI_PLAYER)),
     )
     seat = _seat(lanes)
     ratings = RunRatings(_trainer(lanes, seat=seat, window=1))
@@ -455,11 +455,11 @@ def test_a_league_slot_swap_copies_weights_in_place_and_credits_the_entry():
         assert torch.equal(seat.parameters[f"model.{name}"][index], value), name
     assert int(seat.generation[index]) == 2  # each new entry a new generation
     games = ratings._games(MODE)
-    assert games[("snapshot_100", SCRIPTED_PLAYER)] == [3.0, 0.0, 1.0]
-    assert games[("snapshot_200", SCRIPTED_PLAYER)] == [1.0, 0.0, 3.0]
+    assert games[("snapshot_100", IMUGI_PLAYER)] == [3.0, 0.0, 1.0]
+    assert games[("snapshot_200", IMUGI_PLAYER)] == [1.0, 0.0, 3.0]
     ratings.assign("league_0", None, None)  # a ladder entry or an average: unrated
     ratings.update({lanes[1]: (9, 0, 9)})
-    assert ratings._games(MODE)[("snapshot_200", SCRIPTED_PLAYER)] == [1.0, 0.0, 3.0]
+    assert ratings._games(MODE)[("snapshot_200", IMUGI_PLAYER)] == [1.0, 0.0, 3.0]
 
 
 def test_the_leagues_training_games_rate_the_live_policy_without_lanes():
@@ -468,13 +468,13 @@ def test_the_leagues_training_games_rate_the_live_policy_without_lanes():
     games against a stationary entry stay for the run."""
     ratings = RunRatings(_trainer((), window=1), modes=(MODE,))
     assert ratings.modes == (MODE,)
-    ratings.update({}, {MODE: {SCRIPTED_PLAYER: Record(wins=30, losses=10)}}, "snapshot_100")
-    # with the prior: half a game won and half lost against the scripted agent
+    ratings.update({}, {MODE: {IMUGI_PLAYER: Record(wins=30, losses=10)}}, "snapshot_100")
+    # with the prior: half a game won and half lost against Imugi
     live, error = ratings.rating(MODE, LIVE)
     assert live == pytest.approx(1000.0 + 400.0 * math.log10(30.5 / 10.5), abs=0.1) and error < 120
     assert ratings.rating(MODE, "snapshot_100") == (live, error)
     ratings.update({}, {MODE: {EXPONENTIAL_AVERAGE: Record(wins=5, losses=5)}})
-    assert ratings.rating(MODE, LIVE) is None  # its games against the scripted agent have left
+    assert ratings.rating(MODE, LIVE) is None  # its games against Imugi have left
     assert ratings.rating(MODE, "snapshot_100")[0] == pytest.approx(live)
     assert ratings._games(MODE)[(LIVE, EXPONENTIAL_AVERAGE)] == [5.0, 0.0, 5.0]
 
@@ -514,15 +514,15 @@ def test_a_slot_holding_an_average_follows_its_weights():
 
 def test_the_leagues_games_shrink_the_ratings_errors():
     """A synthetic league in the shape of an RL run's update (the run of 2026-11-06 per mode):
-    the lanes play the live policy (1400) against the scripted agent 2 games, against the
-    exponential average (1250) 4, and the average against the scripted agent 1; the league's
-    training games add the live policy against the scripted agent 8 and against the average
+    the lanes play the live policy (1400) against Imugi 2 games, against the
+    exponential average (1250) 4, and the average against Imugi 1; the league's
+    training games add the live policy against Imugi 8 and against the average
     20. Over a ten-update window, the live policy's and the average's errors shrink by more
     than a third and both fits find the ratings."""
     lanes = (
-        Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER)),
+        Lane(MODE, Matchup(LIVE, IMUGI_PLAYER)),
         Lane(MODE, Matchup(LIVE, EXPONENTIAL_AVERAGE)),
-        Lane(MODE, Matchup(EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER)),
+        Lane(MODE, Matchup(EXPONENTIAL_AVERAGE, IMUGI_PLAYER)),
     )
     record = {
         lanes[0]: _expected(2, 400.0),
@@ -533,7 +533,7 @@ def test_the_leagues_games_shrink_the_ratings_errors():
     average_wins, _, average_losses = _expected(20, 150.0)
     league = {
         MODE: {
-            SCRIPTED_PLAYER: Record(wins=wins, losses=losses),
+            IMUGI_PLAYER: Record(wins=wins, losses=losses),
             EXPONENTIAL_AVERAGE: Record(wins=average_wins, losses=average_losses),
         }
     }
@@ -562,8 +562,8 @@ def test_a_warm_starts_league_starts_from_its_parents_rating(tmp_path):
     assert other.gauges[MODE].live.rating == 640.0
 
 
-def test_a_warm_start_from_an_unrated_clone_starts_at_the_scripted_agents_rating(tmp_path):
-    """A parent with no lane ratings (BC without lanes) imitated the scripted agent: the
+def test_a_warm_start_from_an_unrated_clone_starts_at_imugis_rating(tmp_path):
+    """A parent with no lane ratings (BC without lanes) imitated Imugi: the
     live policy and the averages start at its 1000, not at 0."""
     import league_cases
 
@@ -591,14 +591,14 @@ def _bc_trainer(**changes):
     return Trainer(config, lc.CPU)
 
 
-def test_bcs_lanes_rate_the_live_clone_and_both_averages_against_the_scripted_agent():
+def test_bcs_lanes_rate_the_live_clone_and_both_averages_against_imugi():
     from bnb.learn import bc
 
     players = [(matchup.first, matchup.second) for matchup in cloning.LANES.matchups]
     assert players == [
-        (LIVE, SCRIPTED_PLAYER),
-        (UNIFORM_AVERAGE, SCRIPTED_PLAYER),
-        (EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER),
+        (LIVE, IMUGI_PLAYER),
+        (UNIFORM_AVERAGE, IMUGI_PLAYER),
+        (EXPONENTIAL_AVERAGE, IMUGI_PLAYER),
     ]
     # the default 1024 lanes of one mode: a third each (equal weights, one stacked run)
     sizes = split(1024, [matchup.weight for matchup in cloning.LANES.matchups])
@@ -727,12 +727,12 @@ def test_a_clone_hands_off_the_exponential_average_whatever_the_stop_reads(tmp_p
     assert checkpoint.read_policy(tmp_path / "policy").ratings[MODE] < 1000.0
 
 
-def test_bcs_stop_reads_each_players_lane_games_against_the_scripted_agent():
+def test_bcs_stop_reads_each_players_lane_games_against_imugi():
     record = {
-        Lane("a", Matchup(LIVE, SCRIPTED_PLAYER)): (3, 1, 2),
-        Lane("b", Matchup(SCRIPTED_PLAYER, LIVE)): (5, 0, 1),  # from the scripted side
-        Lane("a", Matchup(UNIFORM_AVERAGE, SCRIPTED_PLAYER)): (2, 0, 0),
-        Lane("b", Matchup("rung_T2", SCRIPTED_PLAYER)): (9, 9, 9),
+        Lane("a", Matchup(LIVE, IMUGI_PLAYER)): (3, 1, 2),
+        Lane("b", Matchup(IMUGI_PLAYER, LIVE)): (5, 0, 1),  # from the scripted side
+        Lane("a", Matchup(UNIFORM_AVERAGE, IMUGI_PLAYER)): (2, 0, 0),
+        Lane("b", Matchup("rung_T2", IMUGI_PLAYER)): (9, 9, 9),
         Lane("b", Matchup(LIVE, EXPONENTIAL_AVERAGE)): (7, 7, 7),
     }
     trainer = types.SimpleNamespace(lane_record=record)
@@ -749,7 +749,7 @@ def _fake_bc_trainer(uniform_started: bool, league: bool = True):
     from bnb.runtime.lanes import LaneConfig as Lanes
 
     record = {
-        Lane("a", Matchup(player, SCRIPTED_PLAYER)): (10, 0, 0)
+        Lane("a", Matchup(player, IMUGI_PLAYER)): (10, 0, 0)
         for player in (LIVE, UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE)
     }
     trainer = types.SimpleNamespace(
@@ -789,7 +789,7 @@ def test_a_lane_seat_with_unequal_players_compiles_whole_and_plays_as_uncompiled
     from bnb.runtime.realtime import Realtime
 
     lanes = (
-        Lane(MODE, Matchup(LIVE, SCRIPTED_PLAYER)),
+        Lane(MODE, Matchup(LIVE, IMUGI_PLAYER)),
         Lane(MODE, Matchup(LIVE, EXPONENTIAL_AVERAGE)),
     )
     seat = _seat(lanes)
@@ -815,9 +815,9 @@ def test_a_lane_seat_with_unequal_players_compiles_whole_and_plays_as_uncompiled
     assert torch.equal(eager_action.packed(), compiled_action.packed())
 
 
-def test_rls_lanes_rate_every_network_player_against_the_scripted_agent_in_one_run():
+def test_rls_lanes_rate_every_network_player_against_imugi_in_one_run():
     """RL's default lanes: the live policy, both averages and each league slot against the
-    full-strength scripted agent at equal weight, so every network player has the same
+    full-strength Imugi at equal weight, so every network player has the same
     rows (to the split's rounding) and they stack as one run."""
     from bnb.runtime.lanes import RL_MATCHUPS, UNIFORM_AVERAGE, league_slot
 
@@ -828,7 +828,7 @@ def test_rls_lanes_rate_every_network_player_against_the_scripted_agent_in_one_r
         UNIFORM_AVERAGE,
         *(league_slot(index) for index in range(4)),
     ]
-    assert {matchup.second for matchup in RL_MATCHUPS} == {SCRIPTED_PLAYER}
+    assert {matchup.second for matchup in RL_MATCHUPS} == {IMUGI_PLAYER}
     assert {matchup.weight for matchup in RL_MATCHUPS} == {1.0}
     sizes = split(1024 // 3, [matchup.weight for matchup in RL_MATCHUPS])
     assert max(sizes) - min(sizes) <= 1

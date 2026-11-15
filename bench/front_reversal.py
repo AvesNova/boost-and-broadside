@@ -1,6 +1,6 @@
-"""Is the frontline's front a random walk? P(reversal) of the scripted agent's captures.
+"""Is the frontline's front a random walk? P(reversal) of Imugi's captures.
 
-Games come from `bench.mode_dynamics frontline` (the scripted agent on both seats, real-scale
+Games come from `bench.mode_dynamics frontline` (Imugi on both seats, real-scale
 frontline preset, 5v5, fog on, each environment's first game, one JSON line per batch):
 
     PYTHONPATH=src python -m bench.mode_dynamics frontline --out FILE --games N --label L \

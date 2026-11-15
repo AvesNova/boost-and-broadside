@@ -4,7 +4,7 @@ hooks, progress metrics.
 Lineup: self-play and the league's seat (`bnb.runtime.opponents`), half each. A mixed batch
 (mixed spec 5) crosses the lineup with the games of a training mix. The learner is Yemong,
 the toy relational model (learner spec 9) or the nearest-neighbour MLP
-(`bnb.models.nearest`). The objective is PPO, or behaviour cloning of the scripted agent
+(`bnb.models.nearest`). The objective is PPO, or behaviour cloning of Imugi
 (`bnb.learn.bc`, with its own lineup and stop rule in `bnb.runtime.cloning`).
 """
 
@@ -18,8 +18,9 @@ import torch
 
 from bnb.contracts import ActiveFields, ArenaScale, GameConfig, Pool
 from bnb.contracts.pools import pool_game
+from bnb.controllers.imugi import Imugi
 from bnb.controllers.relational import RelationalController
-from bnb.controllers.scripted import Chaser, Random, Scripted
+from bnb.controllers.scripted import Chaser, Random
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
 from bnb.game.api import PRESETS, ShipTypes
@@ -59,7 +60,7 @@ from .rollout import Rollout
 from .snapshots import RL_SNAPSHOTS, SnapshotSchedule
 
 LEARNER = "learner"
-SCRIPTED = "scripted"
+IMUGI_SEAT = "scripted"  # the seat kind Imugi plays; run configs record it as "scripted"
 # The default training mix (mixed spec 1): each game preset's share of the batch. The battle
 # map (deathmatch_wide) is out for now (author, 2026-11-06: decisions, BC round three).
 TRAINING_MIX = (("frontline", 0.5), ("deathmatch", 0.5))
@@ -168,7 +169,7 @@ class TrainConfig:
     rather than keep them on the device.
     seed: keys every random draw (`bnb.streams`): the model's initial weights, the
     rollout's maps, seats and decisions, the league's swaps, the learner's streams.
-    objective: "ppo", or "bc" (clone the scripted agent; `learner` should then be
+    objective: "ppo", or "bc" (clone Imugi; `learner` should then be
     `bnb.learn.bc.config()`, `teacher` sets its labels and how the scripted opponent
     plays, `bnb.learn.bc.TeacherOpponent`, and `stop` when it stops, its budget included).
     policy_snapshots: for a run that does not write every update's policy files (BC by
@@ -410,11 +411,11 @@ class Trainer:
         cloning = config.objective == "bc"
         seated = {name for pool in config.pools for name in pool.seats}
         self.types = types = config.ship_types(device)
-        # The card's characteristics, when the scripted agent plays, teaches or is the ladder,
+        # The card's characteristics, when Imugi plays, teaches or is the ladder,
         # or the chaser plays (its distances are in the card's lengths).
         self.characteristics = (
             characteristics(types, api.rules_of(game))
-            if cloning or {SCRIPTED, OPPONENTS, "chaser"} & seated or config.lanes.environments
+            if cloning or {IMUGI_SEAT, OPPONENTS, "chaser"} & seated or config.lanes.environments
             else None
         )
         # the training pools and the rating lanes' (`bnb.runtime.lanes`), in one batch
@@ -449,10 +450,10 @@ class Trainer:
             "chaser": lambda: Chaser(self.characteristics, game.ships_per_team),
             "random": lambda: Random(game.ships_per_team),
             # BC scores the learner against the teacher its labels describe
-            SCRIPTED: lambda: (
+            IMUGI_SEAT: lambda: (
                 TeacherOpponent(self.characteristics, game.ships_per_team, config.teacher)
                 if cloning
-                else Scripted(self.characteristics, game.ships_per_team)
+                else Imugi(self.characteristics, game.ships_per_team)
             ),
         }
         if self.lanes:
@@ -486,7 +487,7 @@ class Trainer:
             reward_config=config.reward,
             shards=config.shards,
             host_store=config.host_store,
-            extra_reads=Scripted.reads if cloning else (),
+            extra_reads=Imugi.reads if cloning else (),
             lookahead=config.lookahead,
             graph_ticks=config.graph_ticks,
             ship_type=None
@@ -510,7 +511,7 @@ class Trainer:
         view_mode = torch.tensor(  # on the host: the learner reads it once
             [view_modes.index(pool_modes[int(p)]) for p in self.learner_pool.tolist()]
         ).repeat(config.shards)
-        if cloning:  # the labels are the scripted agent's distribution, transformed
+        if cloning:  # the labels are Imugi's distribution, transformed
             teacher = teacher_agent(self.characteristics, game.ships_per_team, config.teacher)
             self.ppo = BehaviourCloning(
                 self.model,

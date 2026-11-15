@@ -1,5 +1,5 @@
 """The on-disk cache of things that are slow to make and fixed by the code that made them
-(the play shell's built tick, the scripted agent's ship characteristics).
+(the play shell's built tick, Imugi's ship characteristics).
 
 `ROOT` is under the user's cache directory (`BNB_CACHE` overrides it). `fingerprint` hashes
 the source of some of bnb's packages and torch's version, so an entry made by other code is

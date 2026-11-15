@@ -1,4 +1,4 @@
-"""Constructed observations for the scripted agent's behavioural tests (scripted spec A7)."""
+"""Constructed observations for Imugi's behavioural tests (scripted spec A7)."""
 
 import math
 

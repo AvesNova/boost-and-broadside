@@ -42,7 +42,7 @@ Evidence: `docs/rewrite/sections/rl-degradation-brief.md` and its branch's notes
   shapes are fixed at capture: the lanes' assignment of slots is static, the weights in a
   slot may change (as the league's do).
 - **Matchups:** any pair of loaded policies. At least, per mode: the live policy against
-  the raw scripted agent; the league's averaged agent against it (the RL target is the
+  the raw Imugi; the league's averaged agent against it (the RL target is the
   averaged agent's rating); and the ladder's rungs against it, which calibrate the ladder.
 - **Size:** measure first. Rollout time against the total number of environments (1,024 to
   ~8,192), and each mode's episode length in ticks. The worst case (every game to the
@@ -51,13 +51,13 @@ Evidence: `docs/rewrite/sections/rl-degradation-brief.md` and its branch's notes
   measured curve where the error stops paying for the time, report the curve and the
   choice.
 - **Ratings from the lanes:** the live and averaged ratings, per mode, come from lane games
-  against the scripted agent (1000) and the calibrated ladder.
+  against Imugi (1000) and the calibrated ladder.
   - The ladder bug: `bnb.league.gauge` rates rung p at 1000·p, but rung_0.95 scores 0.065
     against scripted. Rate the rungs from their lane games instead.
   - A warm start's live rating starts from its parent's, not 0, and no rating is logged
     before a matchup has games.
 - **BC uses the lanes too:** its score stop reads the live policy's lane score against the
-  raw scripted agent (not the softened teacher), plain score, target parity (0.5). The BC
+  raw Imugi (not the softened teacher), plain score, target parity (0.5). The BC
   budget defaults to 50M steps, v1's time to parity: a run that reaches the budget stops
   with a checkpoint, and `--resume` with a raised budget continues it.
 

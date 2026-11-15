@@ -5,7 +5,7 @@ A matchup is a pair of players. A player is a network (`LIVE`, the weights the l
 training; or a weight set loaded by name: the averages of the live weights, which the
 league and behaviour cloning keep, or `league_<k>`, the entry the league's network slot k
 holds) or a rung of the
-stationary ladder (`random`, `rung_T<t>`, `scripted`: the scripted agent at temperature t,
+stationary ladder (`random`, `rung_T<t>`, `scripted`: Imugi at temperature t,
 uniform random actions for `random`). Every mode of the training mix plays every matchup: the
 lanes are split evenly over the modes, and within a mode by the matchups' weights. Each
 matchup is a pool of its own (`<mode>/lane/<first>_vs_<second>`) whose two seats are both
@@ -25,13 +25,13 @@ from torch.utils import _pytree
 
 from bnb.contracts import Action, GameConfig, Obs, Outputs, Pool
 from bnb.contracts.tree import contract
-from bnb.controllers.scripted import Scripted
+from bnb.controllers.imugi import Imugi
 from bnb.game.handling.characteristics import Characteristics
 
 from . import stacked
 from .opponents import (
+    IMUGI_PLAYER,
     OUTCOMES,
-    SCRIPTED_PLAYER,
     Rung,
     ladder_name,
     ladder_rung,
@@ -68,10 +68,10 @@ class Matchup:
 
 
 def ladder_chain(rungs: tuple[Rung, ...], weight: float) -> tuple[Matchup, ...]:
-    """Matchups that calibrate a ladder from the scripted agent down: each rung against the
-    next one up (`rungs` those below the scripted agent, weakest first), the top one against
-    the scripted agent."""
-    names = [ladder_name(t) for t in rungs] + [SCRIPTED_PLAYER]
+    """Matchups that calibrate a ladder from Imugi down: each rung against the
+    next one up (`rungs` those below Imugi, weakest first), the top one against
+    Imugi."""
+    names = [ladder_name(t) for t in rungs] + [IMUGI_PLAYER]
     return tuple(
         Matchup(low, high, weight) for low, high in zip(names[:-1], names[1:], strict=True)
     )
@@ -85,14 +85,14 @@ def league_slot(index: int) -> str:
 LEAGUE_SLOTS = 4  # `bnb.runtime.opponents.LeagueConfig.slots`' default
 # The default matchups of a reinforcement-learning run (the author, 2026-11-12): every
 # network player (the live policy, both averages, each league slot's entry) against the
-# full-strength scripted agent, at equal weight, so each has the same lane rows and the
+# full-strength Imugi, at equal weight, so each has the same lane rows and the
 # seven stack as one network run with no padding (`LaneSeat.network_runs`). A game tells
 # the rating fit p (1 - p) about its players' gap, 0.25 at even odds and 0.004 at the 950
-# points v1's policy reached above the scripted agent. (The ladder's rung pairs and the
+# points v1's policy reached above Imugi. (The ladder's rung pairs and the
 # network-against-network matchups of 2026-11-05 are gone; the training pool's ladder is
 # unchanged.)
 RL_MATCHUPS = tuple(
-    Matchup(player, SCRIPTED_PLAYER, 1.0)
+    Matchup(player, IMUGI_PLAYER, 1.0)
     for player in (
         LIVE,
         EXPONENTIAL_AVERAGE,
@@ -101,13 +101,13 @@ RL_MATCHUPS = tuple(
     )
 )
 # Behaviour cloning's: the live clone and both averages of its weights against the raw
-# scripted agent (decisions: BC round three), a third of each mode's lanes each (the
+# Imugi (decisions: BC round three), a third of each mode's lanes each (the
 # author, 2026-11-12: no reason for the live clone's half weight; equal rows also make the
 # three one stacked network run with no padding, `LaneSeat.network_runs`).
 BC_MATCHUPS = (
-    Matchup(LIVE, SCRIPTED_PLAYER, 1.0),
-    Matchup(UNIFORM_AVERAGE, SCRIPTED_PLAYER, 1.0),
-    Matchup(EXPONENTIAL_AVERAGE, SCRIPTED_PLAYER, 1.0),
+    Matchup(LIVE, IMUGI_PLAYER, 1.0),
+    Matchup(UNIFORM_AVERAGE, IMUGI_PLAYER, 1.0),
+    Matchup(EXPONENTIAL_AVERAGE, IMUGI_PLAYER, 1.0),
 )
 
 
@@ -250,7 +250,7 @@ class LaneSeat:
     live policy's architecture over a model of its own (the forward swaps each player's
     weights in); lanes: the lane pools in order; pool (R,) and role (R,): each lane row's
     lane (an index into `lanes`) and seat in it, from the lineup; characteristics and
-    ships_per_team: the scripted agent's, for the ladder players. Every network player
+    ships_per_team: Imugi's, for the ladder players. Every network player
     starts with the controller's model's weights.
 
     A game is tallied only if both its players still have the weights it began with: a
@@ -275,7 +275,7 @@ class LaneSeat:
         self.networks = tuple(p for p in players if ladder_rung(p) is None)
         self.decision = _Decision(controller)
         self.decision.requires_grad_(False)
-        self.reads = tuple(dict.fromkeys(controller.reads + Scripted.reads))
+        self.reads = tuple(dict.fromkeys(controller.reads + Imugi.reads))
         self.lanes, self.role = lanes, role
         first = torch.tensor([players.index(lane.matchup.first) for lane in lanes], device=device)
         second = torch.tensor([players.index(lane.matchup.second) for lane in lanes], device=device)
@@ -328,7 +328,7 @@ class LaneSeat:
         ladder_rows = ladder[player].nonzero().flatten()
         self.ladder_rows = ladder_rows.to(device)
         rungs = [ladder_rung(players[int(index)]) for index in player[ladder_rows]]
-        self.ladder_agent = Scripted(
+        self.ladder_agent = Imugi(
             characteristics,
             ships_per_team,
             temperature=torch.tensor(

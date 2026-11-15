@@ -67,7 +67,7 @@ The operational test is the skill gap that overturns the worst matchup: the wors
 matchup should be overturned by a skill gap smaller than one "class" of player (200 Elo,
 the chess class interval; 76%). A 0.70 edge (147 Elo) passes; 0.80 (241) does not.
 
-On the scripted agent's own scale, its variants give the skill steps (real_scale_deathmatch,
+On Imugi's own scale, its variants give the skill steps (real_scale_deathmatch,
 mixed lineups of every type, the round-1 champion at T = 1 against the variant, 1,024 games;
 `ship-design/skill/`):
 
@@ -87,7 +87,7 @@ narrow ridge, and its steps are of the size of the designed edges.
 
 So a 0.70 edge equals the gap between the agent and itself at twice the temperature, about
 two of the balancing's search rounds; a 0.60 edge (70 Elo) is one round's gain. For the
-scripted agent the designed matchups are as large as its skill steps by construction, which
+Imugi the designed matchups are as large as its skill steps by construction, which
 is the "matters" half of the target; the "skill matters more" half is a statement about
 players, whose skill spreads far wider than one agent's tuning steps.
 
@@ -240,7 +240,7 @@ The search runs in these coordinates: each knob's log in envelope deviations fro
 A compiled game takes 20 minutes or more to build, so nothing the search changes may be a
 compiled constant. The card is a tensor in the rollout's carry, and every per-type value
 lives there; the arena writes a new card in place (`bnb.league.matches.Arena.set_card`),
-together with the scripted agent's characteristics, which the agent reads as tensors (its
+together with Imugi's characteristics, which the agent reads as tensors (its
 set-wide lengths are the card's maxima as tensors, not host numbers). The shared flight
 constants are Python numbers compiled into the graph; of them only the engine knee and the
 coast exchange are tuned, and both are card fields (`engine_knee_scale`, new, and
@@ -256,7 +256,7 @@ no new graph is compiled and that the new card is the one played.
 (μ/μ_w, λ)) over the designs' searched knobs, each a log in envelope deviations from its
 start. Every generation plays the optimiser's mean and its samples, each candidate's edges
 64 games or more (half with each design on each side, every ship of a team one design, the
-scripted agent on both sides), on one arena: a candidate's designs fill three of the 36
+Imugi on both sides), on one arena: a candidate's designs fill three of the 36
 slots, so twelve candidates of a three-type cycle play in one batch. A flight knob's card is
 the instant estimate (`bnb.game.handling.estimate.Estimate`, anchored on the base's solved
 card); the winner is solved exactly before it is checked. The loss is the edges' squared
@@ -275,7 +275,7 @@ knobs in each group the mixture of that cycle's three corners at its angle; a se
 search starts there. Building the three first measures each mechanism's strength alone and
 tests that each is a cycle at all, which the seven-type search could not tell apart.
 
-**What the case studies changed** ([Case studies](case-studies.md)). The scripted agent
+**What the case studies changed** ([Case studies](case-studies.md)). Imugi
 fights on the turn alone (store, climb and cruise are worth nothing to it), so the flight
 cycle cannot form from flight values with today's doctrine: its energy leg needs the energy
 fight, flown by that type only, which needs per-type doctrine in the arena (each player its

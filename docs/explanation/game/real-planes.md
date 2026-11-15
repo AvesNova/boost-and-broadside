@@ -166,7 +166,7 @@ standard game was unchanged:
 - **Damage.** Damage per second follows the weight of fire: a type with weight of fire w
   deals D x w / 3.68 kg/s per second (3.68 is the P-51's), its damage a shot that over its
   fire rate. D, the P-51's damage per second, is provisional: 360, twice the standard
-  fighter's 180 (12 x 15). At 180 the scripted agent's real-scale deathmatch had 16 kills
+  fighter's 180 (12 x 15). At 180 Imugi's real-scale deathmatch had 16 kills
   (below); at 360, 28; at 540, 32. A P-51 then needs five hits on a P-51 (24 a shot against
   a shield of 100), the standard game's nine. The Me 262's 13.6 kg/s gives 1,334 per second,
   133 a shot at 10 Hz: one hit takes any shield below 140, as two or three MK 108 hits took
@@ -183,7 +183,7 @@ An alternative kept for comparison: the store pays for the type's real firing ti
 (ammunition over rate of fire). The P-51's 23.5 s at 15 Hz would be 353 shots, 2.2 s of
 charge a shot; the Me 262's MK 108s, 9.7 s.
 
-Headless matches of the scripted agent and the scripted chaser against themselves (seed
+Headless matches of Imugi and the scripted chaser against themselves (seed
 1, a whole episode each, `bnb.play.loop.MatchLoop`):
 
 Kills / shots in one episode (600 s real-scale, 300 s standard); the default lineup
@@ -192,9 +192,9 @@ Hammerhead and P-47D on both teams:
 
 | Match | Game's combat values (first build) | Economy, D = 180 | Economy, D = 360 (chosen) | Standard game |
 |---|---|---|---|---|
-| deathmatch, scripted agent, default lineup | 3 / 195 | 16 / 1,052 | 28 / 1,440 | 45 / 1,280 |
-| deathmatch, scripted agent, mixed lineup | | 17 / 835 | 35 / 533 | |
-| Frontline, scripted agent, default lineup | 1 / 170 | 9 / 678 | 19 / 858 | 46 / 1,408 |
+| deathmatch, Imugi, default lineup | 3 / 195 | 16 / 1,052 | 28 / 1,440 | 45 / 1,280 |
+| deathmatch, Imugi, mixed lineup | | 17 / 835 | 35 / 533 | |
+| Frontline, Imugi, default lineup | 1 / 170 | 9 / 678 | 19 / 858 | 46 / 1,408 |
 | deathmatch, scripted chaser, default lineup | 0 / 148 | 0 / 686 | 13 / 4,010 | 35 / 1,257 |
 | deathmatch, scripted chaser, mixed lineup | | 2 / 2,506 | 12 / 2,538 | |
 

@@ -182,14 +182,14 @@ def test_the_nash_of_a_cycle_is_uniform_and_a_dominated_type_gets_none():
 
 
 def test_a_player_brings_its_own_doctrine_only_to_an_arena_with_one():
-    from bnb.controllers.scripted_parameters import ScriptedParameters
-    from bnb.league.matches import scripted_play
+    from bnb.controllers.imugi_parameters import ImugiParameters
+    from bnb.league.matches import imugi_play
     from bnb.runtime.opponents import Rung
 
-    own = ScriptedParameters(aggression=0.5)
-    play = scripted_play(Player("a", rung=Rung(1.0), ship_type=0, parameters=own))
+    own = ImugiParameters(aggression=0.5)
+    play = imugi_play(Player("a", rung=Rung(1.0), ship_type=0, parameters=own))
     assert play.parameters is own
-    assert scripted_play(Player("b", rung=Rung(1.0))).parameters is None
+    assert imugi_play(Player("b", rung=Rung(1.0))).parameters is None
 
 
 @pytest.mark.gpu
@@ -199,8 +199,8 @@ def test_a_slots_doctrine_is_live_and_compiles_nothing():
     rows of the table: the next batch plays it with no new compiled graph."""
     from torch._dynamo.utils import counters
 
-    from bnb.controllers.scripted_defaults import MODE_DEFAULTS
-    from bnb.controllers.scripted_parameters import pack
+    from bnb.controllers.imugi_defaults import MODE_DEFAULTS
+    from bnb.controllers.imugi_parameters import pack
     from bnb.league.matches import Arena, ArenaConfig
     from bnb.runtime.opponents import Rung
 

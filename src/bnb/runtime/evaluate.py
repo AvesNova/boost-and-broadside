@@ -2,7 +2,7 @@
 of a player's views reports that game's result.
 
 The rollout is the training rollout (`Rollout` with `staggered=False`), so a player is any
-controller, a model or the scripted agent, and its opponents are the pools' other seats.
+controller, a model or Imugi, and its opponents are the pools' other seats.
 """
 
 import torch

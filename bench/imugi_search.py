@@ -1,19 +1,19 @@
-"""The scripted agent's parameter search (scripted spec A3): a population round robin, kept so
+"""Imugi's parameter search (scripted spec A3): a population round robin, kept so
 it can be rerun.
 
-    uv run --no-sync python -m bench.scripted_search --preset frontline --log frontline.jsonl
-    uv run --no-sync python -m bench.scripted_search --preset frontline --log frontline.jsonl \
+    uv run --no-sync python -m bench.imugi_search --preset frontline --log frontline.jsonl
+    uv run --no-sync python -m bench.imugi_search --preset frontline --log frontline.jsonl \
         --generations 6  # resume
 
 The agent's defaults are one parameter set per game mode (`MODE_DEFAULTS`), each from a
 search of its own preset (`--preset`: the candidates play only that preset); without
 `--preset` one set is searched over every standard preset. A preset plays its ship set's
 card with the game's lineup, or every ship of the type `--ship-type` (an index into the
-set's card); the first generation is the default `ScriptedParameters()` and perturbations
+set's card); the first generation is the default `ImugiParameters()` and perturbations
 of it, or with `--from-defaults` the preset's own set in `MODE_DEFAULTS` and perturbations
 of that (the real-scale variant's light retune:
 
-    uv run --no-sync python -m bench.scripted_search --preset real_scale_deathmatch \
+    uv run --no-sync python -m bench.imugi_search --preset real_scale_deathmatch \
         --ship-type 0 --from-defaults --log real_scale_deathmatch.jsonl
 ).
 
@@ -31,7 +31,7 @@ the next generation on) and the plateau history starts again. Each row logs its 
 (`champion`: "defaults", the spec given, or "GENERATION:INDEX" of this log), so a resumed
 search keeps it. The real-scale balancing's searches (docs/explanation/game/real-scale-balance.md):
 
-    uv run --no-sync python -m bench.scripted_search --preset real_scale_deathmatch \
+    uv run --no-sync python -m bench.imugi_search --preset real_scale_deathmatch \
         --mixed --hold-out "Spitfire XIV,Ki-84,Zerstörer,Lantern" --champion defaults \
         --from-defaults --plateau-on median --generations 40 --log dm.jsonl
 
@@ -39,7 +39,7 @@ Each generation plays a population of `--population` candidates side by side, on
 parameter-table row per view, so one compiled rollout per preset: every candidate plays
 `--games` fresh 5v5 games per preset, fog on, the seat drawn per game, at each preset searched.
 A share `--reference-share` of those games is split evenly over the reference
-players (`REFERENCES`: the scripted agent at its defaults for the mode, and the chaser); the
+players (`REFERENCES`: Imugi at its defaults for the mode, and the chaser); the
 rest are
 against other candidates drawn at random. Each candidate seat plays at a temperature drawn per
 game from `TEMPERATURES`, so the ranking rewards strength across temperatures; the references
@@ -63,10 +63,10 @@ preset are appended to --log as a JSON line; a run resumes from its log's last g
 Seeds: the children draw from a generator seeded with (--seed, generation); generation g's
 games seed the default generators with `game_seed(seed, g)`, below `SEED_LIMIT` for every
 seed and generation this tool accepts. The acceptance tests
-(`tests/sections/test_scripted_acceptance.py`) seed their games at or above it.
+(`tests/sections/test_imugi_acceptance.py`) seed their games at or above it.
 
 Holds the benchmark lock. The section notes record the runs that chose the defaults; the last
-generation of each is kept as `scripted_populations.json` (`scripted_defaults`).
+generation of each is kept as `imugi_populations.json` (`imugi_defaults`).
 """
 
 import argparse
@@ -84,9 +84,9 @@ import torch  # noqa: E402
 
 from bench.lock import bench_lock  # noqa: E402
 from bnb.contracts import Action, Obs, Outputs, Pool  # noqa: E402
-from bnb.controllers.scripted import Chaser, Scripted  # noqa: E402
-from bnb.controllers.scripted_defaults import MODE_DEFAULTS  # noqa: E402
-from bnb.controllers.scripted_parameters import (  # noqa: E402
+from bnb.controllers.imugi import Imugi  # noqa: E402
+from bnb.controllers.imugi_defaults import MODE_DEFAULTS  # noqa: E402
+from bnb.controllers.imugi_parameters import (  # noqa: E402
     ADDITIVE_BOUNDS,
     MODES,
     NAMES,
@@ -94,15 +94,16 @@ from bnb.controllers.scripted_parameters import (  # noqa: E402
     SCALE_FLOORS,
     STANDARD_MODES,
     SWITCH_SCALE_FLOORS,
+    ImugiParameters,
     Logistic,
     Ramp,
-    ScriptedParameters,
     Switch,
     from_row,
     pack,
     table,
     unpack,
 )
+from bnb.controllers.scripted import Chaser  # noqa: E402
 from bnb.game import api  # noqa: E402
 from bnb.game.handling.characteristics import Characteristics, characteristics  # noqa: E402
 from bnb.game.modes.rules import PRESETS  # noqa: E402
@@ -122,15 +123,15 @@ SEED_LIMIT = MAXIMUM_GENERATIONS * (MAXIMUM_SEED + 1)  # every search game seed 
 # per team. The first is the anchor of every generation's fit.
 Reference = Callable[[Characteristics, int], object]
 REFERENCES: dict[str, Reference] = {
-    "scripted": lambda card, ships: Scripted(card, ships),
+    "scripted": lambda card, ships: Imugi(card, ships),
     "chaser": lambda card, ships: Chaser(card, ships),
 }
 CHAMPION = "champion"  # the reference's name with `--champion`
 
 
-def champion_references(parameters: ScriptedParameters) -> dict[str, Reference]:
+def champion_references(parameters: ImugiParameters) -> dict[str, Reference]:
     """The references of a search against a champion: the champion alone."""
-    return {CHAMPION: lambda card, ships: Scripted(card, ships, parameters)}
+    return {CHAMPION: lambda card, ships: Imugi(card, ships, parameters)}
 
 
 def mixed_lineups(
@@ -186,7 +187,7 @@ class Mixed:
         return Action.unpack(action), tuple(carries), Outputs()
 
 
-def clamp(parameters: ScriptedParameters) -> ScriptedParameters:
+def clamp(parameters: ImugiParameters) -> ImugiParameters:
     """The parameters inside the search's bounds: each logistic's and switch's scale between
     its floor and SCALE_CEILING floors, a switch's rate within SWITCH_RATES, the fade's
     centre within FADE_CENTRE, the recovery shield fraction at most 0.9, the combat radius
@@ -222,15 +223,15 @@ def clamp(parameters: ScriptedParameters) -> ScriptedParameters:
     values["combat_radius_in_gun_range"] = max(
         values["combat_radius_in_gun_range"], 1.1 * values["shoot_in_gun_range"].centre
     )
-    return ScriptedParameters(**values)
+    return ImugiParameters(**values)
 
 
 def perturb(
-    parameters: ScriptedParameters,
+    parameters: ImugiParameters,
     sigma: float,
     generator: torch.Generator,
     frozen: tuple[str, ...] = OWN_TIME,
-) -> ScriptedParameters:
+) -> ImugiParameters:
     """Every searched number times exp(sigma N(0, 1)) (a ramp's ends sorted; its values and a
     logistic's direction kept; a switch's rate, centre and scale each), aggression plus
     2 sigma N(0, 1), an additive number (`ADDITIVE_BOUNDS`) plus sigma N(0, 1) times its
@@ -260,29 +261,29 @@ def perturb(
             values[name] = value + 2.0 * sigma * float(torch.randn(1, generator=generator))
         else:
             values[name] = value * factor()
-    return clamp(ScriptedParameters(**values))
+    return clamp(ImugiParameters(**values))
 
 
 def crossover(
-    first: ScriptedParameters, second: ScriptedParameters, generator: torch.Generator
-) -> ScriptedParameters:
+    first: ImugiParameters, second: ImugiParameters, generator: torch.Generator
+) -> ImugiParameters:
     """Each field (a whole logistic or ramp) from one parent or the other, evenly."""
     pick = torch.rand(len(NAMES), generator=generator) < 0.5
     chosen = {
         name: getattr(first if bool(take) else second, name)
         for name, take in zip(NAMES, pick, strict=True)
     }
-    return clamp(ScriptedParameters(**chosen))
+    return clamp(ImugiParameters(**chosen))
 
 
 def next_generation(
-    ranked: list[ScriptedParameters],
+    ranked: list[ImugiParameters],
     size: int,
     keep: int,
     sigma: float,
     generator,
     frozen: tuple[str, ...] = OWN_TIME,
-) -> list[ScriptedParameters]:
+) -> list[ImugiParameters]:
     """The top `keep` of `ranked` (best first), and children of them to `size` (`perturb`,
     with its `frozen` fields kept)."""
     parents, children = ranked[:keep], []
@@ -296,7 +297,7 @@ def next_generation(
 
 
 def play(
-    candidates: list[ScriptedParameters],
+    candidates: list[ImugiParameters],
     games: int,
     reference_share: float,
     device: torch.device,
@@ -333,7 +334,7 @@ def play(
         temperature = torch.tensor(TEMPERATURES)[torch.randint(len(TEMPERATURES), (2, views))]
         temperature = temperature.to(device)
         choice = torch.where(opponent < count, 0, opponent - count + 1).to(device)
-        population = Scripted(
+        population = Imugi(
             card,
             game.ships_per_team,
             unpack(rows[opponent.clamp_max(count - 1).to(device)]),
@@ -344,7 +345,7 @@ def play(
             + [reference_players[name](card, game.ships_per_team) for name in references],
             choice,
         )
-        candidate = Scripted(
+        candidate = Imugi(
             card, game.ships_per_team, unpack(rows[player.to(device)]), temperature[0]
         )
         torch._dynamo.reset()  # a fresh rollout per preset; the compile cache is not reused
@@ -403,7 +404,7 @@ def promoted(rows: list[dict], promote_at: float | None) -> str | None:
 
 def resume(
     path: pathlib.Path, kind: str = "top", promote_at: float | None = None
-) -> tuple[int, list[ScriptedParameters], list[float], str | None]:
+) -> tuple[int, list[ImugiParameters], list[float], str | None]:
     """From a search log: the next generation's index, the last generation's candidates (best
     first), the rating for the plateau rule (`statistic`) of every generation against the
     next generation's champion, and that champion's label (None without one)."""
@@ -422,7 +423,7 @@ def resume(
     return last + 1, [from_row(row["parameters"]) for row in ranked], tops, champion
 
 
-def champion_of(label: str, preset: str, log_path: pathlib.Path) -> ScriptedParameters:
+def champion_of(label: str, preset: str, log_path: pathlib.Path) -> ImugiParameters:
     """A champion's parameters: "defaults" (the preset's set in MODE_DEFAULTS),
     "GENERATION:INDEX" (a candidate of this search's log) or "LOG:GENERATION:INDEX"."""
     if label == "defaults":
@@ -454,7 +455,7 @@ def main() -> None:
         "--plateau-on", choices=("top", "median"), default="top", help="the plateau rule's rating"
     )
     parser.add_argument("--seed", type=int, default=7)
-    parser.add_argument("--log", default="scripted_search.jsonl")
+    parser.add_argument("--log", default="imugi_search.jsonl")
     parser.add_argument(
         "--preset",
         choices=PRESET_NAMES,
@@ -520,9 +521,7 @@ def main() -> None:
         )
     else:
         start, tops, generator = 0, [], generator_at(0)
-        first = clamp(
-            MODE_DEFAULTS.sets[args.preset] if args.from_defaults else ScriptedParameters()
-        )
+        first = clamp(MODE_DEFAULTS.sets[args.preset] if args.from_defaults else ImugiParameters())
         population = [first] + [
             perturb(first, args.sigma, generator, frozen) for _ in range(args.population - 1)
         ]

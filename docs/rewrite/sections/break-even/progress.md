@@ -41,7 +41,7 @@ break-even ship count".
 
 ## Benched-slot cost (CPU, eager, performance profile, a training run on the GPU)
 
-Scripted against scripted, real-scale deathmatch at 20 per side (2 blocks x 64 games),
+Imugi against scripted, real-scale deathmatch at 20 per side (2 blocks x 64 games),
 ms per tick: all 20 active 132 and 151 (two runs), the first team at 4 active 122 and 149,
 at 10 active 132; a 12v12 game 92. A benched slot costs what an active one does (the game,
 the scripted agent and the network run at fixed shapes over every slot); noise about 10%.

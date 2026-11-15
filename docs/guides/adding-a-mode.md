@@ -76,8 +76,8 @@ ones it was trained with, so a new column locks out no policy and does not raise
   build's `mode_inputs` (`bnb.runtime.train.TrainConfig`); a build record without the
   new mode keeps reading its own flags, and reads the new mode's matches as no mode
   (as elimination did for older builds);
-- give the scripted agent a parameter set for it (`bnb.controllers.scripted_parameters.MODES`
-  and `bnb.controllers.scripted.mode_index`);
+- give Imugi, the scripted agent, a parameter set for it (`bnb.controllers.imugi_parameters.MODES`
+  and `bnb.controllers.imugi.mode_index`);
 - add a scale for the column to the skeleton MLP if it needs one (`bnb.models.mlp.GLOBAL_SCALE`).
 
 Zone columns are the same for every mode. A mode without zones leaves its slots absent:

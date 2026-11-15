@@ -16,11 +16,11 @@ Brief: `rl-round-five-brief.md`. Branch `feat/rl-round-five`, CPU only.
 - `"keep"` keeps the old occupant's carry only between two networks (`same_build`). In the
   training league every network is a snapshot or an average of the live policy in the one
   stacked template, so the build check reduces to "both are networks"; a ladder row's
-  carry is the scripted agent's, which runs on every row throughout.
+  carry is Imugi's, which runs on every row throughout.
 - The ladder out of the pool also removes the seat's scripted pass over every opponent row,
   and one network pass per tick (no incoming set): slots passes instead of slots + 1.
 - **Open:** without rating lanes and without the ladder in the pool, nothing connects the
-  league's entries to the scripted agent, so the fit rates nothing and the gauge keeps its
+  league's entries to Imugi, so the fit rates nothing and the gauge keeps its
   starting ratings (every p = 0.5, so sampling is uniform by the floor and p(1 - p)). Real
   runs have lanes; the toy tests do not.
 - The gauge's guard: `tests/sections/test_league_ratings.py` (the run's 28-of-29 case under

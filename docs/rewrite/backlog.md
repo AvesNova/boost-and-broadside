@@ -57,10 +57,10 @@ worth pursuing. These items wait until then. Each says where it came from.
   and host storage chosen automatically from the memory probe. Needed before the rented-GPU
   publication run, not for the MVP on the laptop.
 
-## The scripted agent
+## Imugi
 
 - **A proper scripted retune for the real-scale deathmatch and Frontline** (2026-11-10). The
-  light pass (`docs/explanation/game/real-scale.md`, "The scripted agent's real-scale
+  light pass (`docs/explanation/game/real-scale.md`, "Imugi's real-scale
   sets") searched each preset for 12-13 generations from the standard set, on the P-51D
   lineup alone, 2,048 games a generation, and chose among eight finalists at T = 1. The new
   sets beat the standard ones 0.99 and 0.97 and kill faster, but the Frontline set captures

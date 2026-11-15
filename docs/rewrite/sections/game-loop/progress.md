@@ -524,10 +524,10 @@ Round 12 (300 s games, r9, on the round-11 card; `round12/cards.*`):
 - Jujak: hit damage 13.71 -> **2.673** (x0.65 x 0.30), shield 91.6 -> **79.7**, head-on
   fraction 0.2 -> **0.3**, angle 42.3 -> **21.1 degrees**, explosive 0.
 - vizia: hit damage 15 -> 9.75 (x0.65 only, as decided; not tuned further).
-- `scripted_doctrines.json`: r9's Yongma and Jujak doctrines; `scripted_real_scale.json`:
+- `imugi_doctrines.json`: r9's Yongma and Jujak doctrines; `imugi_real_scale.json`:
   r9's real-scale deathmatch parameters (to 3 figures; elimination and frontline sets
-  untouched). **Doctrines on by default**: `Scripted(doctrines=STORED)` flies the stored
-  doctrines of the card's set (`scripted_doctrine.for_card`, by type count); None flies
+  untouched). **Doctrines on by default**: `Imugi(doctrines=STORED)` flies the stored
+  doctrines of the card's set (`imugi_doctrine.for_card`, by type count); None flies
   none.
 - `bench/game_loop.BASE_FACTORS` is now empty (the files carry the x0.65).
 
@@ -543,7 +543,7 @@ doctrines are distinct (Jujak KL 2.6) but Elo-neutral.
 
 | Target | Result |
 |---|---|
-| Scripted agent Elo (max) | r9 1230 ± 4 vs off 1000 on the round-11 card (final league, 1024 games a pair and order); +300 Elo at full damage (round 4). Rounds 7-11 added +11, +19, 0 |
+| Imugi agent Elo (max) | r9 1230 ± 4 vs off 1000 on the round-11 card (final league, 1024 games a pair and order); +300 Elo at full damage (round 4). Rounds 7-11 added +11, +19, 0 |
 | Doctrines distinct | Jujak KL 2.6 / agreement 0.65; Yongma 0.08 / 0.97 (the energy doctrine barely differs from the turn one on Yongma ships) |
 | League | off, hand, random, hot, r1, r1-hand, r2, r4, r7, r9 (`league.json`) |
 | Energy v turn 45-55 | 5v5 0.538 ± 0.010 (300 s) / 0.508 (120 s, round 10); **2v2 0.28, 1v1 0.00 (missed: the turn fighter wins small fights)** |

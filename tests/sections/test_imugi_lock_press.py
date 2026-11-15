@@ -1,4 +1,4 @@
-"""The scripted Frontline layer's capture-lock term (`scripted_frontline.lock_press`, the
+"""The scripted Frontline layer's capture-lock term (`imugi_frontline.lock_press`, the
 doctrine's `lock_press`): off by default; the capture lock presses the attack or holds the
 defense until a travel time before it ends."""
 
@@ -7,9 +7,9 @@ import types
 import torch
 
 from bnb.contracts.obs import ZONE, ZONE_COLUMNS
-from bnb.controllers import scripted_doctrine
-from bnb.controllers.scripted_doctrine import Doctrine, table
-from bnb.controllers.scripted_frontline import LOCK_STRENGTHS, lock_press
+from bnb.controllers import imugi_doctrine
+from bnb.controllers.imugi_doctrine import Doctrine, table
+from bnb.controllers.imugi_frontline import LOCK_STRENGTHS, lock_press
 
 
 def _fleet(x: float):
@@ -39,7 +39,7 @@ def _doctrines(**fields) -> torch.Tensor:
 def test_the_default_doctrine_leaves_the_goal_alone():
     shift = lock_press(_fleet(1000.0), _zones(30.0, 30.0), _doctrines())
     assert torch.equal(shift, torch.zeros((1, 2)))
-    assert "lock_press" in scripted_doctrine.WEIGHTS
+    assert "lock_press" in imugi_doctrine.WEIGHTS
 
 
 def test_the_enemys_lock_presses_the_attack_until_a_travel_time_before_it_ends():

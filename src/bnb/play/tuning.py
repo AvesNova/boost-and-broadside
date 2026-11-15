@@ -18,7 +18,7 @@ Two kinds of number, both applied through `MatchLoop.retune`:
   2. **once the handles settle** (SETTLE seconds), the exact solve of the changed types on
      the slow worker, started from the estimate. Each of its iterations swaps a better card
      in and reports the handles that card actually flies (`flying`); the last one
-     re-anchors the estimate. The scripted agent's characteristics follow each exact card
+     re-anchors the estimate. Imugi's characteristics follow each exact card
      (a worker of their own).
   A combat handle (damage, fire rate, shield, ...) of an exact card whose flight is
   measured skips both: the flight does not depend on it, so the exact card is that card
@@ -511,7 +511,7 @@ class Tuner:
         self._fast = _Worker(context, "tuning-estimate", self._versions)
         self._slow = _Worker(context, "tuning-solve", self._versions)
         self._measurer = _Worker(context, "tuning-measure", self._versions)
-        self._traits: _Worker | None = None  # the scripted agent's, started when one plays
+        self._traits: _Worker | None = None  # Imugi's, started when one plays
         self._card = 0  # counts the cards the match has played, for the characteristics
         self._handles_changed: float | None = None
         self._solving: int | None = None  # the handles version a solve is running for
@@ -1026,7 +1026,7 @@ class Tuner:
             self._characterise()
 
     def _characterise(self) -> None:
-        """Re-measure the scripted agent's characteristics for the card the match plays
+        """Re-measure Imugi's characteristics for the card the match plays
         (time scaled), when a side uses them (on a worker of their own, so the next solve
         does not wait for them)."""
         if not any(hasattr(side, "retune") for side in self.loop.sides):

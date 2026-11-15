@@ -101,7 +101,7 @@ read in one sitting.
   List every change outside `bnb.runs` in your notes.
 - **You may not change:** `bench/`, the fixed tests and goldens, `bnb/play/`,
   `bnb/controllers/scripted.py`, or `docs/rewrite/` (apart from your notes file).
-- **Other open branches:** the scripted agent and BC may run beside you. Keep out of
+- **Other open branches:** Imugi and BC may run beside you. Keep out of
   their files, and merge `origin/v2` whenever it moves.
 - **If the spec or a contract looks wrong:** take the most literal reading, keep going,
   and write it up as a request in your notes. Items marked (proposal): implement them as

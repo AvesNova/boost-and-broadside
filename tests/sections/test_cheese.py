@@ -5,13 +5,14 @@ import math
 
 import pytest
 import torch
-from scripted_cases import CHARACTERISTICS, absent, observation, ship, zone
+from imugi_cases import CHARACTERISTICS, absent, observation, ship, zone
 
 from bnb.contracts import Action, GameConfig, Obs, Pool
 from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import GLOBAL, SHIP
-from bnb.controllers.scripted import Scripted, gun_range
-from bnb.controllers.scripted_cheese import NAMES, Cheese, agent_of, player_name
+from bnb.controllers.cheese import NAMES, Cheese, agent_of, player_name
+from bnb.controllers.imugi import Imugi
+from bnb.controllers.scripted import gun_range
 from bnb.game import api
 from bnb.runtime.rollout import Rollout
 
@@ -234,11 +235,11 @@ MODES = ("frontline", "team_deathmatch", "elimination")
 @pytest.mark.parametrize("mode", MODES)
 @pytest.mark.parametrize("name", NAMES)
 def test_a_short_game_of_each_agent_in_each_mode(name, mode):
-    """The agent against the scripted agent and against itself, a short segment on the CPU."""
+    """The agent against Imugi and against itself, a short segment on the CPU."""
     game = GameConfig(2, 2, 1200.0, mode=mode)
     controllers = {
         "cheese": Cheese(CHARACTERISTICS, 2, name),
-        "scripted": Scripted(CHARACTERISTICS, 2),
+        "scripted": Imugi(CHARACTERISTICS, 2),
     }
     pools = (
         Pool("versus", 0.5, ("cheese", "scripted")),
@@ -268,9 +269,9 @@ def test_cheese_players_are_named_scripted_colon_name_and_play_in_the_match_engi
 
     assert [player(player_name(name)).cheese for name in NAMES] == list(NAMES)
     with pytest.raises(ValueError, match="cheese agent"):
-        player("scripted:nobody")
+        player("cheese:nobody")
     game = GameConfig(2, 2, 1500.0, episode_seconds=12.0, respawn_seconds=1.0)
-    field = [player("scripted"), player("scripted:evader"), player("scripted:jouster")]
+    field = [player("imugi"), player("cheese:evader"), player("cheese:jouster")]
     arena = Arena(
         field,
         game,
@@ -281,4 +282,4 @@ def test_cheese_players_are_named_scripted_colon_name_and_play_in_the_match_engi
     assert results.sum(1).tolist() == [4, 4]
     shots = arena.statistics()[..., STATISTICS.index("shots")]  # (blocks, 2)
     assert shots[0, 1] == 0  # the evader never fires
-    assert shots[0, 0] > 0  # the scripted agent fires at it, so the game was played
+    assert shots[0, 0] > 0  # Imugi fires at it, so the game was played

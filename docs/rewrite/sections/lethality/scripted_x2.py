@@ -1,13 +1,13 @@
-"""Game v13: the real-scale scripted agent's time-unit parameters at the set's x2 native
+"""Game v13: the real-scale Imugi's time-unit parameters at the set's x2 native
 speed (times / 2, rates x 2), so it plays the x2 game as it played the x1 one. The
 logistics are in log x, so only their centres move. Run once, after native_x2.py:
 
     uv run --no-sync python docs/rewrite/sections/lethality/scripted_x2.py
 
-Parameters (`ScriptedParameters`): memory_fade_in_seconds' centre / 2; every switch's rate
+Parameters (`ImugiParameters`): memory_fade_in_seconds' centre / 2; every switch's rate
 x 2. Doctrines (`Doctrine`): lead_turn_in_seconds' centre / 2, the yo-yo's seconds / 2
 (their weights are 0 in every stored doctrine today). Files: the real-scale parameter sets
-(scripted_real_scale.json), the real-scale doctrines (scripted_doctrines.json, the play
+(imugi_real_scale.json), the real-scale doctrines (imugi_doctrines.json, the play
 shell's doctrines), the game-loop league and the maneuvers champions.
 """
 
@@ -15,7 +15,7 @@ import dataclasses
 import json
 import pathlib
 
-from bnb.controllers.scripted_parameters import Switch, from_row, pack
+from bnb.controllers.imugi_parameters import Switch, from_row, pack
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 FACTOR = 2.0
@@ -68,7 +68,7 @@ def rewrite(path: pathlib.Path, change) -> None:
 def main() -> None:
     controllers = ROOT / "src/bnb/controllers"
     rewrite(
-        controllers / "scripted_real_scale.json",
+        controllers / "imugi_real_scale.json",
         lambda d: {m: dict(v, parameters=parameters_named(v["parameters"])) for m, v in d.items()},
     )
 
@@ -77,7 +77,7 @@ def main() -> None:
             entry["doctrine"] = doctrine_named(entry["doctrine"])
         return d
 
-    rewrite(controllers / "scripted_doctrines.json", real_scale_doctrines)
+    rewrite(controllers / "imugi_doctrines.json", real_scale_doctrines)
     for path in sorted((ROOT / "src/bnb/play/doctrines").glob("*.json")):
         rewrite(path, real_scale_doctrines)
 

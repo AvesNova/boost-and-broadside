@@ -1,10 +1,10 @@
-"""The scripted agent's step as the play shell runs it: one decision for one team's view,
+"""Imugi's step as the play shell runs it: one decision for one team's view,
 uncompiled or built ahead of time (`bnb.runtime.built`).
 
 Uncompiled, the step is a few hundred small torch operations, about 4 ms a side on one CPU
 thread whatever the fight; built, about 0.1 ms. The ship characteristics are an input, so a
 tuned card plays on the same library; it is keyed (`library_path`) by the code it holds,
-the parameters, the doctrines it flies (a stored-doctrine file, `scripted_doctrine.stored`:
+the parameters, the doctrines it flies (a stored-doctrine file, `imugi_doctrine.stored`:
 its contents and the doctrine table's width, which the library holds as constants) and the
 shapes of its inputs (the fleet, the fields, the zones). Its draws are keyed by the
 decision key it is given (`Controller.step`), so built or not it draws the same.
@@ -18,31 +18,31 @@ from torch.utils import _pytree
 
 from bnb import cache
 from bnb.contracts import Obs
-from bnb.controllers import scripted, scripted_doctrine
-from bnb.controllers.scripted_defaults import MODE_DEFAULTS
-from bnb.controllers.scripted_memory import ScriptedCarry
-from bnb.controllers.scripted_parameters import ModeParameters, ScriptedParameters
+from bnb.controllers import imugi, imugi_doctrine
+from bnb.controllers.imugi_defaults import MODE_DEFAULTS
+from bnb.controllers.imugi_memory import ImugiCarry
+from bnb.controllers.imugi_parameters import ImugiParameters, ModeParameters
 from bnb.game.handling.characteristics import Characteristics
 
-_STEP_CODE = ("controllers", "contracts", "game", "runtime/scripted_step.py", "runtime/built.py")
+_STEP_CODE = ("controllers", "contracts", "game", "runtime/imugi_step.py", "runtime/built.py")
 
 
-class ScriptedStep:
-    """One decision of the scripted agent (`bnb.controllers.scripted.Scripted`, temperature
+class ImugiStep:
+    """One decision of Imugi (`bnb.controllers.imugi.Imugi`, temperature
     1, memory on) for a team of `ships_per_team` ships: the team's (S, 3) int32 actions and
-    the carry after it. doctrines: the stored-doctrine file it flies (`scripted_doctrine.
+    the carry after it. doctrines: the stored-doctrine file it flies (`imugi_doctrine.
     for_card` of the card; the default, the training's stored ones), read when it is made."""
 
     def __init__(
         self,
         ships_per_team: int,
-        parameters: ScriptedParameters | ModeParameters = MODE_DEFAULTS,
-        doctrines: pathlib.Path = scripted_doctrine.DOCTRINES,
+        parameters: ImugiParameters | ModeParameters = MODE_DEFAULTS,
+        doctrines: pathlib.Path = imugi_doctrine.DOCTRINES,
     ) -> None:
         self.ships_per_team, self.parameters = ships_per_team, parameters
         self.doctrines = doctrines
         # read here, kept as plain floats: the traced step reads no files
-        self._rows = scripted_doctrine.rows_by_count(doctrines)
+        self._rows = imugi_doctrine.rows_by_count(doctrines)
 
     def table(self, characteristics: Characteristics) -> torch.Tensor | None:
         """(T, WIDTH) the doctrines for the card's types, on its device (None: the file has
@@ -54,13 +54,13 @@ class ScriptedStep:
 
     def __call__(
         self,
-        carry: ScriptedCarry,
+        carry: ImugiCarry,
         view: Obs,
         reset: torch.Tensor,
         decision_key: torch.Tensor,
         characteristics: Characteristics,
-    ) -> tuple[torch.Tensor, ScriptedCarry]:
-        controller = scripted.Scripted(
+    ) -> tuple[torch.Tensor, ImugiCarry]:
+        controller = imugi.Imugi(
             characteristics,
             self.ships_per_team,
             self.parameters,
@@ -70,7 +70,7 @@ class ScriptedStep:
         return action.packed()[0], after
 
 
-def library_path(step: ScriptedStep, arguments: tuple) -> pathlib.Path:
+def library_path(step: ImugiStep, arguments: tuple) -> pathlib.Path:
     """Where the built step for these arguments' shapes is kept (`bnb.cache`)."""
     shapes = tuple(
         (tuple(leaf.shape), leaf.dtype)
@@ -78,5 +78,5 @@ def library_path(step: ScriptedStep, arguments: tuple) -> pathlib.Path:
         if isinstance(leaf, torch.Tensor)
     )
     doctrines = hashlib.sha256(step.doctrines.read_bytes()).hexdigest()
-    parts = (step.ships_per_team, step.parameters, scripted_doctrine.WIDTH, doctrines, shapes)
-    return cache.path("scripted_steps", *parts, packages=_STEP_CODE, suffix=".pt2")
+    parts = (step.ships_per_team, step.parameters, imugi_doctrine.WIDTH, doctrines, shapes)
+    return cache.path("imugi_steps", *parts, packages=_STEP_CODE, suffix=".pt2")

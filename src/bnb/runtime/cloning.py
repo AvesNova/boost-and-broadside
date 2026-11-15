@@ -3,9 +3,9 @@ against itself and the teacher, and BC stops on the first of its rules.
 
 The score stop reads the rating lanes (`bnb.runtime.lanes`): the live clone and the two
 averages of its weights (`bnb.league.pool.Averages`, kept by `bnb.league.lanes.LaneHooks`)
-against the raw scripted agent, in the same rollout as the training games; it reads the
+against the raw Imugi, in the same rollout as the training games; it reads the
 better average. The training games' scores, by opponent, are series too. The teacher's
-temperature is calibrated offline on the scripted agent's own games
+temperature is calibrated offline on Imugi's own games
 (`teacher_distributions`, then `bnb.learn.bc.calibrate`).
 """
 
@@ -16,21 +16,21 @@ from torch.utils import _pytree
 
 from bnb.contracts import GameConfig, Pool
 from bnb.contracts.obs import SHIP
-from bnb.controllers.scripted import Scripted
+from bnb.controllers.imugi import Imugi
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.learn.bc import flat_views, teacher_carries, teacher_distribution
 
-from .lanes import BC_MATCHUPS, SCRIPTED_PLAYER, UNIFORM_AVERAGE, LaneConfig
+from .lanes import BC_MATCHUPS, IMUGI_PLAYER, UNIFORM_AVERAGE, LaneConfig
 from .rollout import Rollout
-from .train import LEARNER, SCRIPTED, Trainer
+from .train import IMUGI_SEAT, LEARNER, Trainer
 
-# BC's opponents (proposal): self-play and the scripted agent, half each, no rungs. The
+# BC's opponents (proposal): self-play and Imugi, half each, no rungs. The
 # scripted seat plays the labels' distribution (`bnb.learn.bc.TeacherOpponent`), so the
 # live score is against the teacher the clone copies. Section 8's pool replaces this when
 # it exists.
-LINEUP = (Pool("self_play", 0.5, (LEARNER, LEARNER)), Pool("scripted", 0.5, (LEARNER, SCRIPTED)))
-# BC's rating lanes: the live clone and both averages against the raw scripted agent; the
+LINEUP = (Pool("self_play", 0.5, (LEARNER, LEARNER)), Pool("scripted", 0.5, (LEARNER, IMUGI_SEAT)))
+# BC's rating lanes: the live clone and both averages against the raw Imugi; the
 # score stop reads the averages'.
 LANES = LaneConfig(matchups=BC_MATCHUPS)
 
@@ -63,14 +63,14 @@ def scores(pools: tuple[Pool, ...], metrics: dict) -> dict:
 
 
 def lane_results(trainer: Trainer) -> dict[str, tuple[int, int, int]]:
-    """The last update's lane games of each player against the raw scripted agent, over
+    """The last update's lane games of each player against the raw Imugi, over
     every mode: {player: (wins, draws, losses) from its side}."""
     totals: dict[str, list[int]] = {}
     for lane, games in trainer.lane_record.items():
         first, second = lane.matchup.first, lane.matchup.second
-        if second == SCRIPTED_PLAYER:
+        if second == IMUGI_PLAYER:
             player, ordered = first, games
-        elif first == SCRIPTED_PLAYER:
+        elif first == IMUGI_PLAYER:
             player, ordered = second, games[::-1]
         else:
             continue
@@ -83,7 +83,7 @@ def lane_results(trainer: Trainer) -> dict[str, tuple[int, int, int]]:
 def update(trainer: Trainer) -> tuple[dict, str | None]:
     """One BC update of `trainer` (objective "bc"), fed to its stop rule
     (`trainer.stop_rule`): (the update's row with the training games' scores, the rule's
-    windows over the lanes' games against the scripted agent and the plateau's reading
+    windows over the lanes' games against Imugi and the plateau's reading
     (`bc/stop/plateau/{kl_mean, fraction, held_steps, reached}`: reached 1 when the rule
     fired at this update, which stops BC only with `StopConfig.plateau_stops`), the rule
     that fired: "plateau",
@@ -175,18 +175,18 @@ def teacher_distributions(
     compiled: bool = True,
     seed: int = 0,
 ) -> Callable[[float], torch.Tensor]:
-    """The scripted agent's distributions over the living own ships of its own games with
+    """Imugi's distributions over the living own ships of its own games with
     the ship card `types` (on `device`), as a function of its temperature: T -> (tokens,
     42). It plays every seat of these pools (each pool's seats renamed to it) at T = 1,
     from staggered clocks, for `segments` segments of `length` ticks; the observations are
     kept and relabelled at each T asked, by the agent at T with its own carry run over
     them. seed: the games' draws (`Rollout`)."""
-    agent = Scripted(characteristics(types, api.rules_of(game)), game.ships_per_team)
+    agent = Imugi(characteristics(types, api.rules_of(game)), game.ships_per_team)
     own_pools = tuple(
         Pool(
             pool.name,
             pool.share,
-            (SCRIPTED,) * len(pool.seats),
+            (IMUGI_SEAT,) * len(pool.seats),
             pool.fog_share,
             pool.mode,
             pool.arena_radius,
@@ -200,8 +200,8 @@ def teacher_distributions(
         game,
         types,
         own_pools,
-        {SCRIPTED: agent},
-        SCRIPTED,
+        {IMUGI_SEAT: agent},
+        IMUGI_SEAT,
         environments,
         length,
         device,
@@ -218,9 +218,7 @@ def teacher_distributions(
         )
 
     def at(temperature: float) -> torch.Tensor:
-        teacher = Scripted(
-            agent.characteristics, game.ships_per_team, agent.parameters, temperature
-        )
+        teacher = Imugi(agent.characteristics, game.ships_per_team, agent.parameters, temperature)
         carry = teacher.init_carry(observed[0][0].ships.shape[1], device)
         rows = []
         for obs, decision_key in observed:  # the teacher's carry runs on through the segments

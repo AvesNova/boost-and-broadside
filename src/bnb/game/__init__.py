@@ -92,7 +92,7 @@ the set and its rules.toml went through the exact similarity at length 1, time 1
 rates x2, times /2, energies x4, powers x8, lengths and map sizes kept), with Yongma, Jujak
 and Vizia re-solved from their scaled handles (docs/rewrite/sections/lethality/native_x2.py
 and resolve_native.py). The mode clocks (match, respawn, capture, waves, the lock) keep
-their numbers as native seconds. The real-scale scripted agent's time parameters scaled
+their numbers as native seconds. The real-scale Imugi's time parameters scaled
 the same way (scripted_x2.py). The plane-equivalent values are native over
 `real_scale.EQUIVALENT_FACTOR` (2), for display only.
 Version 14 (2026-11-13): sight through the band. Each field has a core (inside radius - b/2),
@@ -175,7 +175,7 @@ count (the first point-symmetric pairs, and the centre field for an odd count) f
 more tick uniform, the last (only when some pool samples); an absent field adds nothing to
 the medium, blocks no sight line and shows a zero row with `present` 0, and every preset
 still plays every field. Frontline's capture lock re-tuned to 6 s per sqrt(km) (was 19),
-so the front moves as a random walk with the scripted agent on both sides and fields on
+so the front moves as a random walk with Imugi on both sides and fields on
 (P(reversal) 0.490 over 512 games, against 0.29). Ratings and records of version 19 or
 earlier are not reused for version-20 games.
 """

@@ -1,4 +1,4 @@
-# Scripted redesign: notes
+# Imugi redesign: notes
 
 Brief: `scripted-redesign-brief.md`. Evidence: `scripted-softness-notes.md`.
 
@@ -66,7 +66,7 @@ of energy (where a shot does nothing).
 
 ## The search
 
-`bench/scripted_search.py` from a scratch wrapper that replaced the defaults reference by
+`bench/imugi_search.py` from a scratch wrapper that replaced the defaults reference by
 the earlier raw agent (frozen from 672364f9): 32 candidates, 128 games per candidate and
 preset (a quarter against the references, 16 each), the three presets, candidate seats at
 T drawn from {1, 1.5, 2, 3}, the top 8 kept, sigma 0.25 x 0.85 per generation. 17

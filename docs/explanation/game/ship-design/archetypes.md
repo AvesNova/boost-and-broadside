@@ -1,5 +1,5 @@
 ---
-covers: [bench/gun_lethality.py, src/bnb/controllers/scripted_combat.py]
+covers: [bench/gun_lethality.py, src/bnb/controllers/imugi_combat.py]
 ---
 
 # Two archetypes: the turn fighter and the energy fighter (draft)
@@ -153,7 +153,7 @@ wall and becomes a turning fight the energy fighter loses.
 ## 3. Gun lethality today
 
 `bench/gun_lethality.py` (records and tables in `docs/rewrite/sections/gun-study/`): 1v1
-duels of the scripted agent (its real-scale deathmatch set) on both sides, real-scale
+duels of Imugi (its real-scale deathmatch set) on both sides, real-scale
 deathmatch at one ship a side, no fields, a 3,488 m arena (the 1v1 size by the fleet
 presets' density rule), 512 duels a matchup. Each duel counts its first kill only, from a
 neutral spawn at full shields (a later kill starts from unequal shields).
@@ -279,7 +279,7 @@ shield that is left alone for 6 s), and at 4.5 passes most duels time out.
   fraction 0.3 sits at the target's short end (2.7 s, 1.5 passes) with fights about a
   third shorter than vizia's (first kill 35 s against 54 s).
 
-These are the scripted agent's duels on one type's card; the threshold should be checked
+These are Imugi's duels on one type's card; the threshold should be checked
 on the other speeds and gun ranges (the pass time scales with them) and with learned
 agents before it becomes a rule.
 
@@ -302,7 +302,7 @@ cards of section 4, s = 1, as temporary cards in the bench):
 **No duel has a tail shot.** Not one hit of these 4,608 duels comes from behind; an
 independent check of 6,793 hits in 64 vizia duels finds none more than about 72 degrees
 off the nose. The long fights of the lethal-target cards (vizia's median 21 s from first
-hit to kill) are repeated head-on passes, not tail chases: the scripted agent turns to
+hit to kill) are repeated head-on passes, not tail chases: Imugi turns to
 face its target, and a target that turns to face back meets it nose to nose. The flank
 appears only where the turn rates differ: Jujak, turning inside Yongma, takes a quarter of
 its damage and two fifths of the kills from the flank, and wins 92% of the duels. With
@@ -414,16 +414,16 @@ acceleration), standing in for the vertical that 2D lacks: cruise 172.3 against 
 cruise gap, a 37% turn gap, a 20% larger store) were about s = 3 on the cruise and 1.2 on
 the turn, with a store the real types do not support.
 
-## 5. The scripted agent
+## 5. Imugi
 
 **What exists.** One agent with a doctrine per ship type
-(`bnb.controllers.scripted_doctrine.Doctrine`, [Doctrines](../../scripted-agent.md#doctrines)):
+(`bnb.controllers.imugi_doctrine.Doctrine`, [Doctrines](../../imugi.md#doctrines)):
 a table the agent reads per own ship, so a mixed team flies each type by its own. A
 doctrine's weight against its target is a strength times a logistic of an advantage (the
 own-over-target ratios of the turn, the climb, the cruise and the gun range, each to an
 exponent), and its elements are extend (with an energy and store rule for re-engaging),
 slash, bleed, lag and deny. The tuned doctrines are in
-`src/bnb/controllers/scripted_doctrines.json`; the tuning loop is below and in
+`src/bnb/controllers/imugi_doctrines.json`; the tuning loop is below and in
 `docs/rewrite/sections/doctrines/`.
 
 **What each doctrine needs, beyond it.** One agent, with per-type doctrine parameters:
@@ -451,7 +451,7 @@ targets below are met:
 1. *Flight models*: solve the two cards; check the speed gap (cruise and the store), the
    turn gap (sustained and instantaneous) and the extension (condition (c)) against the
    arena.
-2. *Doctrine*: a per-type parameter search (`bench/scripted_search.py` with a player per
+2. *Doctrine*: a per-type parameter search (`bench/imugi_search.py` with a player per
    type) of each type's doctrine against the other type flown by its current doctrine,
    a fixed budget a round.
 3. *Balance check*: duels and 2v2s, adaptive (a target standard error), in four
@@ -475,7 +475,7 @@ fighter.
 
 The frozen card is even at 5v5 and 10v10 (energy v turn 0.49-0.54) but not in small or
 very large fights: the Jujak wins every duel (1v1 0.01), most 2v2s (0.37), and 20v20
-(0.19). With the scripted agent, a duel goes to the better *sustained* turner. The Yongma
+(0.19). With Imugi, a duel goes to the better *sustained* turner. The Yongma
 never turns its speed into separation: extension loses in teams, and top-end speed only
 widens its circles. So a card even from 1v1 to 10v10 needs the sustained turns at parity
 and the toughness gap closed (`docs/rewrite/sections/balance-sizes/progress.md`).

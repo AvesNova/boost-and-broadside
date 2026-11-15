@@ -1,7 +1,7 @@
 """Elimination and fixed map layouts: the win and draw rules (a wipe; at the clock the
 health left, the living ships' shield fractions, then a draw), no respawn, Clover's fixed
 fields (four level combinations, diagonal partners equal) and its point-symmetric spawns, the mode's
-observation, a saved map's layout, and the scripted agent's set for the mode."""
+observation, a saved map's layout, and Imugi's set for the mode."""
 
 import dataclasses
 import math
@@ -13,9 +13,9 @@ import torch
 from bnb.contracts import GameConfig
 from bnb.contracts.config import FixedField, FixedSpawn, MapLayout
 from bnb.contracts.obs import GLOBAL
-from bnb.controllers.scripted_defaults import MODE_DEFAULTS, read_real_scale
-from bnb.controllers.scripted_parameters import MODES as SCRIPTED_MODES
-from bnb.controllers.scripted_parameters import pack
+from bnb.controllers.imugi_defaults import MODE_DEFAULTS, read_real_scale
+from bnb.controllers.imugi_parameters import MODES as SCRIPTED_MODES
+from bnb.controllers.imugi_parameters import pack
 from bnb.game import api
 from bnb.game.modes import phase, spawns
 from bnb.game.modes.rules import CLOVER_FIELD_DISTANCE, CLOVER_SPAWN_DISTANCE, PRESETS
@@ -236,12 +236,12 @@ def test_a_saved_map_keeps_its_layout(tmp_path):
     assert library.find("my-clover").config == CLOVER
 
 
-# ------------------------------------------------------------------ the scripted agent
+# ------------------------------------------------------------------ Imugi
 
 
-def test_the_scripted_agent_starts_elimination_from_the_deathmatch_set():
+def test_imugi_starts_elimination_from_the_deathmatch_set():
     """Its own set, copied from real_scale_deathmatch without a search (mode_index's choice
-    of it: `test_scripted_scale`)."""
+    of it: `test_imugi_scale`)."""
     assert "real_scale_elimination" in SCRIPTED_MODES
     stored = read_real_scale()
     assert (

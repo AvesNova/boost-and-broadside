@@ -4,7 +4,7 @@
     uv run --no-sync python -m bench.temperature_sweep report --out DIR
 
 `play`: one field of every POLICY at each `--temperatures` (`POLICY@T=<temperature>`,
-`bnb.league.matches.temperature_of`; T = 1 is the policy as it is) and the scripted agent
+`bnb.league.matches.temperature_of`; T = 1 is the policy as it is) and Imugi
 (the 1000 anchor), rated in each of `--presets` on the league's match engine with the
 A-optimal allocation (`bnb.league.tournament.rate`) to `--target-stderr`: every batch is
 appended to `DIR/<preset>.batches.jsonl` with each block's first-game statistics (the
@@ -92,7 +92,7 @@ def play(args) -> None:
 def summary(record: pathlib.Path) -> list[dict]:
     """From a preset's record: each player's name, policy, temperature, Elo and standard
     error (the last batch's fit, the anchor at 1000), games, mean entropy (nats per living
-    ship-decision; 0 for the scripted agent), and for a network its rating less the same
+    ship-decision; 0 for Imugi), and for a network its rating less the same
     policy's at T = 1 with that difference's standard error (the fit anchored on the T = 1
     player, whose pinned rating makes every error one relative to it)."""
     lines = [json.loads(line) for line in record.read_text().splitlines() if line.strip()]

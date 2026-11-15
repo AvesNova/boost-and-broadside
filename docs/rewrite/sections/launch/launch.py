@@ -10,7 +10,7 @@
     enqueue [--group A]   queue every run of the group (a run already queued is skipped),
                           priority = the arm's cost (longest first), warm key = its model
     status                per job: stage, chain steps, SPS, ETA (KST clock), last KL and
-                          the lane scores against the scripted agent; the newest leaderboard
+                          the lane scores against Imugi; the newest leaderboard
     tournament --target SE [--shards N]   a tournament round over every run's policies at
                           launch.toml's matched steps reached so far (averaged and live),
                           queued as ratings jobs, N per preset (each its own seed and record,

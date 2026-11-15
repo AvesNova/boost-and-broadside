@@ -12,7 +12,7 @@ second (the Jujak row, "turn"). Per candidate:
 - A v B 1v1: kills m / o / f / t, merges a kill and the choice entropy.
 - Pace over every lineup played: life (s) and kills a minute a ship, min-max; the largest
   trade fraction.
-- The score against the versus player (mixed / reversed, 5v5): the scripted agent's
+- The score against the versus player (mixed / reversed, 5v5): Imugi's
   strength on the pair.
 - `badness`: the sum of the misses against the goals, 0 when every goal is met (the sort key).
 """

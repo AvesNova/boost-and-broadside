@@ -1,4 +1,4 @@
-"""Each side's controller: the scripted chaser, the scripted agent (with its memory), or a
+"""Each side's controller: the scripted chaser, Imugi (with its memory), or a
 trained agent from a policy file.
 
 A side turns its team's view (1, ...) into its ships' actions, (S, 3) int32. An agent
@@ -8,7 +8,7 @@ the actions back. Its carry is kept per side and handed the view's reset flag, s
 model clears it at each episode boundary as in training. It samples the policy's
 distribution at a temperature (1 is the policy's own), on the CPU from its own generator,
 so it never touches torch's global one; a model's own draws (Yemong's position offsets) and
-the scripted agent's are keyed by a decision key (`Controller.step`) drawn from a second
+Imugi's are keyed by a decision key (`Controller.step`) drawn from a second
 generator of its own.
 
 A policy file loads only when the game it was trained on and its ship card equal the
@@ -38,18 +38,18 @@ from torch.utils import _pytree
 from bnb.contracts import GameConfig, Obs
 from bnb.contracts.action import from_joint
 from bnb.contracts.pools import GAME_FIELDS
-from bnb.controllers import scripted, scripted_doctrine
+from bnb.controllers import imugi, imugi_doctrine
+from bnb.controllers.imugi_defaults import MODE_DEFAULTS
+from bnb.controllers.imugi_memory import ImugiCarry
+from bnb.controllers.imugi_parameters import ModeParameters
 from bnb.controllers.scripted import Chaser
-from bnb.controllers.scripted_defaults import MODE_DEFAULTS
-from bnb.controllers.scripted_memory import ScriptedCarry
-from bnb.controllers.scripted_parameters import ModeParameters
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.runs import checkpoint
 from bnb.runs.serialise import to_json
 from bnb.runtime import built
 from bnb.runtime.built import clone
-from bnb.runtime.scripted_step import ScriptedStep, library_path
+from bnb.runtime.imugi_step import ImugiStep, library_path
 from bnb.streams import decision_key_from
 
 from .overlays import MEMORY, NETWORK
@@ -74,17 +74,17 @@ class AgentError(ValueError):
     """A policy file that cannot play this match, with the reason."""
 
 
-CONTROLLERS = ("scripted", "scripted_agent", "agent")  # a SideSetup's controller kinds
+CONTROLLERS = ("scripted", "imugi", "agent")  # a SideSetup's controller kinds
 
-# The scripted agent's doctrines in the play shell, by name (a SideSetup's `doctrine`), each a
-# stored-doctrine file (`scripted_doctrine.stored`'s form): Baekho, the one scripted doctrine
+# Imugi's doctrines in the play shell, by name (a SideSetup's `doctrine`), each a
+# stored-doctrine file (`imugi_doctrine.stored`'s form): Baekho, the one scripted doctrine
 # (2026-11-13: training's, the BC teacher's, the league's and the ratings' anchor too;
-# docs/explanation/scripted-agent.md).
-DOCTRINES = {"baekho": scripted_doctrine.DOCTRINES}
+# docs/explanation/imugi.md).
+DOCTRINES = {"baekho": imugi_doctrine.DOCTRINES}
 DEFAULT_DOCTRINE = "baekho"
 DOCTRINE_NAMES = {"baekho": "Baekho"}  # as the interface shows them
 
-# The play shell's scripted agent fires at aim errors this many times wider than the trained
+# The play shell's Imugi fires at aim errors this many times wider than the trained
 # defaults' (playtesting: more, riskier shots than the tuned agent takes). The window is in
 # units of the target's angular size, so it still widens with the hit radius. Training, the
 # Elo anchor and the BC data keep the defaults.
@@ -111,7 +111,7 @@ class Inspection:
     """The inputs of a controller's latest decision: the carry it started from, the view
     (1, ...) and the reset (1,) it read; for a Yemong agent the step's replay record
     (`bnb.models.yemong.model.Decision.replay`) and, when it was watched, every head's
-    output (`Yemong.inspect`'s `Unrolled`; None otherwise, and for the scripted agent)."""
+    output (`Yemong.inspect`'s `Unrolled`; None otherwise, and for Imugi)."""
 
     carry: object
     view: Obs
@@ -136,7 +136,7 @@ class Waiting:
         return self.actions
 
 
-class Scripted:
+class Imugi:
     """The scripted chaser: each ship turns toward and shoots at its nearest visible enemy,
     at distances in the card's lengths."""
 
@@ -157,14 +157,14 @@ class Scripted:
         return self.chaser.step(None, view, reset, key)[0].packed()[0]
 
 
-class ScriptedAgent:
-    """The scripted agent (`bnb.controllers.scripted.Scripted`, memory on, temperature 1)
+class ImugiAgent:
+    """Imugi (`bnb.controllers.imugi.Imugi`, memory on, temperature 1)
     flying a doctrine of `DOCTRINES` by name: it remembers each enemy it saw and dead
     reckons it while hidden. Its draws are keyed by a decision key per step from its own
     generator, so it is reproducible from its seed and leaves the process's generator
     alone.
 
-    compiled: step with the built step (`bnb.runtime.scripted_step`) for the shapes of its
+    compiled: step with the built step (`bnb.runtime.imugi_step`) for the shapes of its
     first step, which runs uncompiled; without `background` it is built or loaded right
     after that step. background: get it on a thread (which waits on the child process that
     builds it) while the agent steps uncompiled, then swap it in (`uses_compiled` says which
@@ -186,17 +186,17 @@ class ScriptedAgent:
         if doctrine not in DOCTRINES:
             raise ValueError(f"no scripted doctrine {doctrine!r}: {sorted(DOCTRINES)}")
         self.doctrine = doctrine
-        self.label = f"scripted agent {DOCTRINE_NAMES.get(doctrine, doctrine)}"
+        self.label = f"Imugi {DOCTRINE_NAMES.get(doctrine, doctrine)}"
         self.characteristics = characteristics(types, rules) if traits is None else traits
         parameters = wider_fire(MODE_DEFAULTS, PLAY_FIRE_ANGLE_SCALE)
-        self.step = ScriptedStep(rules.ships_per_team, parameters, DOCTRINES[doctrine])
-        self.controller = scripted.Scripted(
+        self.step = ImugiStep(rules.ships_per_team, parameters, DOCTRINES[doctrine])
+        self.controller = imugi.Imugi(
             self.characteristics,
             rules.ships_per_team,
             parameters,
             doctrines=self.step.table(self.characteristics),
         )
-        self.carry: ScriptedCarry = self.controller.init_carry(1, torch.device("cpu"))
+        self.carry: ImugiCarry = self.controller.init_carry(1, torch.device("cpu"))
         self.draws = torch.Generator().manual_seed(seed + MODEL_DRAWS_OFFSET)
         self.inspection: Inspection | None = None
         self.compiled, self.background = compiled, background
@@ -214,7 +214,7 @@ class ScriptedAgent:
         """Load the built step (`bnb.runtime.built.library`: built in a child process first
         when no earlier run built it)."""
         try:
-            built.library(self._path, self.step, arguments, outputs, name="scripted-step-build")
+            built.library(self._path, self.step, arguments, outputs, name="imugi-step-build")
         except BaseException as error:  # reported by `compiling`; the agent stays uncompiled
             self._compile_error = error
 
@@ -222,7 +222,7 @@ class ScriptedAgent:
     def compiling(self) -> bool:
         """The built step is still being built or loaded in the background."""
         if self._compile_error is not None:
-            raise RuntimeError("building the scripted step failed") from self._compile_error
+            raise RuntimeError("building the Imugi step failed") from self._compile_error
         return self._thread is not None and self._thread.is_alive()
 
     def wait_compiled(self) -> None:
@@ -548,14 +548,14 @@ def controller_of(
     traits=None,
 ):
     """The controller of one `SideSetup` for team `team` of the setup's match (raises
-    AgentError for an agent that cannot play it). compiled, background: a scripted agent's
-    built step (`ScriptedAgent`). traits: stand-in characteristics for a scripted side
+    AgentError for an agent that cannot play it). compiled, background: Imugi's
+    built step (`ImugiAgent`). traits: stand-in characteristics for a scripted side
     (None: the card's own, measured if no run has)."""
     seed = setup.seed + team
     if side.controller == "agent":
         return load_agent(side.policy, setup.config, rules, types, side.temperature, seed)
-    if side.controller == "scripted_agent":
-        return ScriptedAgent(
+    if side.controller == "imugi":
+        return ImugiAgent(
             rules,
             types,
             seed,
@@ -564,7 +564,7 @@ def controller_of(
             doctrine=side.doctrine,
             traits=traits,
         )
-    return Scripted(rules, types, traits)
+    return Imugi(rules, types, traits)
 
 
 def build_sides(

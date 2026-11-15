@@ -1,11 +1,11 @@
-"""The real-scale ship-type tournament: which type wins most as the scripted agent flies it.
+"""The real-scale ship-type tournament: which type wins most as Imugi flies it.
 
     uv run --no-sync python -m bench.ship_type_tournament play --record DIR/batches.jsonl
     uv run --no-sync python -m bench.ship_type_tournament report --record DIR/batches.jsonl \
         --out DIR
 
 `play`: a full round robin over the real-scale set's types in real_scale_deathmatch, each
-player one type flown by the scripted agent (T = 1, its real-scale deathmatch set) with
+player one type flown by Imugi (T = 1, its real-scale deathmatch set) with
 every ship of its team (`bnb.league.matches.ship_type_players`): each pair plays
 `--games` games, half with each type on each side, in blocks of `--block-games` games,
 `--blocks` blocks a batch, on the league's match engine with the balanced allocation
@@ -29,7 +29,7 @@ mean's, and the same searches on the Elo shuffled across the types (what they fi
 noise); `analysis.json` in `--out` (with `--exclude`, a suffix naming the types left out),
 and the tables as Markdown (printed).
 
-It rates a type as the scripted agent, tuned on the P-51D, flies it: not the type's
+It rates a type as Imugi, tuned on the P-51D, flies it: not the type's
 ceiling.
 """
 

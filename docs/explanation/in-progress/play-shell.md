@@ -21,7 +21,7 @@ interface, views, agents, replays, themes and offscreen renders.
 `bnb.play.loop.MatchLoop` holds a `bnb.runtime.realtime.Realtime` match, compiled, at its
 fixed tick, set up by a `MatchSetup` (the game, the lineup, fog, the seed, and each
 side's controller). Each side is played by its controller (`bnb.play.sides`): the
-scripted agent (`bnb.controllers.scripted.Scripted`, the default), the chaser
+Imugi, the scripted agent (`bnb.controllers.imugi.Imugi`, the default), the chaser
 (`bnb.controllers.scripted.Chaser`), or a trained agent. At most one ship, the
 pilot, is flown from the keyboard instead; its action replaces that ship's only.
 
@@ -205,18 +205,18 @@ have their own lock, and the window only waits for their results:
   tick in (about 0.4 ms). The built tick agrees with the uncompiled one to float32 fusion
   rounding, and replays repeat each tick as it ran. A built tick is shared by every match of
   the same static rules, in this process and every later one.
-- **The scripted agent's step.** Uncompiled, a scripted agent's decision is a few hundred
+- **Imugi's step.** Uncompiled, an Imugi's decision is a few hundred
   small torch operations: about 4.3 ms a side on one CPU thread, flat over the match, so two
   scripted sides held a frame with a tick to 12-15 ms. It is built the same way
-  (`bnb.runtime.scripted_step`, about 15 s): from the shapes of the agent's first step,
+  (`bnb.runtime.imugi_step`, about 15 s): from the shapes of the agent's first step,
   with the ship characteristics an input (a tuned card plays on the same library), keyed by
   the code, the parameters and the shapes. Built, it takes about 0.1 ms a side. Its random
   draws are keyed by the decision key it is given, drawn from the agent's own generator,
   so built and uncompiled give the same actions. Until it is in, the agent steps
   uncompiled.
-- **The scripted agent's characteristics** are measured once per card, in a child process
+- **Imugi's characteristics** are measured once per card, in a child process
   (`bnb.game.handling.characteristics.measure_aside`), and kept in the same cache. A side
-  set to a scripted agent whose card is not measured yet (`Session.set_side`, or a match
+  set to an Imugi whose card is not measured yet (`Session.set_side`, or a match
   started with one) plays on as it was, the chaser at a match's start, and the agent
   takes over when the measurement is in.
 - **A GPU agent's CUDA graph** is captured on a thread before the agent plays
@@ -272,7 +272,7 @@ plays, through `bnb.play.tuning.Tuner` and `MatchLoop.retune`:
   of them; the compiled 5v5 tick cost the same 0.7-1.0 ms at 6, 15 or 45 slots.
   Elsewhere the rules hold what the card needs (`bnb.game.rules.bullet_slots_for`). Fire rates are
   whole shots per second a whole number of ticks apart.
-- The scripted agent's characteristics are re-measured for each exact card. A trained
+- Imugi's characteristics are re-measured for each exact card. A trained
   agent plays a card or lineup it was not trained with, with a warning.
 - A new match or a restart keeps the tuning (`MatchSetup.tuning`) when it plays the same
   ship set; a match of another set starts untuned. A tuned match is not recorded: a replay

@@ -9,11 +9,11 @@ import learner_cases as lc
 import pytest
 import torch
 import yemong_cases as cases
-from scripted_cases import CHARACTERISTICS
+from imugi_cases import CHARACTERISTICS
 
 from bnb.contracts import Pool
-from bnb.controllers.scripted import Scripted
-from bnb.controllers.scripted_defaults import MODE_DEFAULTS
+from bnb.controllers.imugi import Imugi
+from bnb.controllers.imugi_defaults import MODE_DEFAULTS
 from bnb.game import api
 from bnb.learn import bc, labels
 from bnb.learn.ppo import COUNTS, TERMS, LearnerConfig
@@ -112,7 +112,7 @@ def test_the_term_is_in_bcs_terms(module_global_generator):
     pools = (Pool("scripted", 1.0, ("learner", "scripted"), 0.5),)
     controllers = {
         "learner": cases.controller(net, cases.SHORT_SQUAD),
-        "scripted": Scripted(CHARACTERISTICS, OWN, MODE_DEFAULTS),
+        "scripted": Imugi(CHARACTERISTICS, OWN, MODE_DEFAULTS),
     }
     runner = Rollout(
         cases.SHORT_SQUAD,
@@ -124,7 +124,7 @@ def test_the_term_is_in_bcs_terms(module_global_generator):
         16,
         lc.CPU,
         compiled=False,
-        extra_reads=Scripted.reads,
+        extra_reads=Imugi.reads,
     )
     runner.run()
     cloning = bc.BehaviourCloning(
@@ -134,7 +134,7 @@ def test_the_term_is_in_bcs_terms(module_global_generator):
         runner.carry["types"],
         RewardConfig().outcome,
         lc.CPU,
-        Scripted(CHARACTERISTICS, OWN, MODE_DEFAULTS),
+        Imugi(CHARACTERISTICS, OWN, MODE_DEFAULTS),
         bc.TeacherConfig(),
         tuple(pool.name for pool in pools),
         runner.lineup.pool_of["learner"],

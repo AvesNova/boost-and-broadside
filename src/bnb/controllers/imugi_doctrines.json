@@ -1,7 +1,7 @@
 {
  "real-scale": {
   "yongma": {
-   "source": "Baekho (2026-11-13), the scripted doctrine: the game loop's r9 with the maneuver elements of maneuvers-2 (the duel one-circle, the crowd extension, the team-gated duel extension when outgunned on shield) and the Frontline lock-aware goal (lock_press 1); docs/explanation/scripted-agent.md, its history",
+   "source": "Baekho (2026-11-13), the scripted doctrine: the game loop's r9 with the maneuver elements of maneuvers-2 (the duel one-circle, the crowd extension, the team-gated duel extension when outgunned on shield) and the Frontline lock-aware goal (lock_press 1); docs/explanation/imugi.md, its history",
    "doctrine": {
     "strength": 0.89,
     "turn_exponent": 1.86,
@@ -90,7 +90,7 @@
    }
   },
   "jujak": {
-   "source": "Baekho (2026-11-13), the scripted doctrine: the game loop's r9 with the maneuver elements of maneuvers-2 (the duel one-circle, the crowd extension, the team-gated duel extension when outgunned on shield) and the Frontline lock-aware goal (lock_press 1); docs/explanation/scripted-agent.md, its history",
+   "source": "Baekho (2026-11-13), the scripted doctrine: the game loop's r9 with the maneuver elements of maneuvers-2 (the duel one-circle, the crowd extension, the team-gated duel extension when outgunned on shield) and the Frontline lock-aware goal (lock_press 1); docs/explanation/imugi.md, its history",
    "doctrine": {
     "strength": 1.0,
     "turn_exponent": -0.385,

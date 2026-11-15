@@ -42,7 +42,7 @@ Branch `section/league`. Spec: `league-spec.md`. Brief: `league-brief.md`.
   (one 640-row forward 2.49 ms); load ~3, provisional. **Request:** a cast in
   `SpatialBlock._attend` (models, outside this section's boundary) would let vmap run on
   both paths, if wanted.
-- The ladder: one `Scripted` pass over every opponent row with a per-row probability tensor
+- The ladder: one `Imugi` pass over every opponent row with a per-row probability tensor
   written in place (`ladder_probability`), as scripted spec A6 intends.
 - Every network forward and the scripted pass run on all opponent rows every tick (static
   shapes): a slot holding the ladder still pays its network forward, and the extra set's
@@ -122,7 +122,7 @@ Branch `section/league`. Spec: `league-spec.md`. Brief: `league-brief.md`.
   (a single-build field ~145 s).
 - `bnb.league.tournament.rate`: `allocate_blocks` gives each block a pair greedily by exact
   trace reduction (Sherman-Morrison, prior games included, so no even first batch) among
-  the allowed pairs (`allowed_pairs`, `--scripted-plays`); `fit_ratings` with prior 1,
+  the allowed pairs (`allowed_pairs`, `--imugi-plays`); `fit_ratings` with prior 1,
   anchor scripted, +1000; stop on max stderr < target (25) or when the next batch would
   pass the budget. Rows keyed by game version (`bnb.game.VERSION`), mode, map (preset
   name), fleet size; written via `provenance.write_result`.

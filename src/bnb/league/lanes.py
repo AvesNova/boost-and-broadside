@@ -1,5 +1,5 @@
 """The run's ratings: per mode, one Bradley-Terry fit of every game a rated player played,
-with the scripted agent pinned at 1000. The games are the rating lanes' (`bnb.runtime.lanes`)
+with Imugi pinned at 1000. The games are the rating lanes' (`bnb.runtime.lanes`)
 and, in a league, the training games of the live policy against the league's entries
 (`bnb.league.league.League`); a league without lanes is rated from its own games alone.
 
@@ -7,7 +7,7 @@ Games are recorded by mode and by who played them, under the league's entry name
 names its players; a league slot (`league_<k>`) is resolved to the entry the lanes hold for
 it (`assign`: the league copies a slot's network entry into the lanes when the slot takes
 it), so an entry keeps its games after it cycles out, and older entries, which played lower
-ones, chain the newer to the scripted agent. The league's games are the live policy's
+ones, chain the newer to Imugi. The league's games are the live policy's
 against each entry it played (`League.record`; self-play is not an entry), and a snapshot
 taken at an update is credited with that update's games too, since its weights played them.
 A game between two stationary players (the ladder's rungs, the league's snapshots) is kept
@@ -29,12 +29,12 @@ import math
 
 import torch
 
-from bnb.controllers.scripted_cheese import agent_of
+from bnb.controllers.cheese import agent_of
 from bnb.runtime.lanes import (
     EXPONENTIAL_AVERAGE,
+    IMUGI_PLAYER,
     LEAGUE_PREFIX,
     LIVE,
-    SCRIPTED_PLAYER,
     UNIFORM_AVERAGE,
     Lane,
 )
@@ -45,8 +45,8 @@ from .gauge import Record
 from .pool import Averages
 from .ratings import fit_ratings
 
-ANCHOR_RATING = 1000.0  # the scripted agent's
-PRIOR_GAMES = 1.0  # each player's virtual games against the scripted agent, half won
+ANCHOR_RATING = 1000.0  # Imugi's
+PRIOR_GAMES = 1.0  # each player's virtual games against Imugi, half won
 AVERAGE = EXPONENTIAL_AVERAGE  # the averaged agent whose rating is `rating/average`
 # each rated player's headline series, `rating/<name>/<mode>`
 HEADLINES = ((LIVE, "live"), (AVERAGE, "average"), (UNIFORM_AVERAGE, UNIFORM_AVERAGE))
@@ -170,16 +170,16 @@ class RunRatings:
         return out
 
     def _fit(self, mode: str) -> dict[str, tuple[float, float]]:
-        """{player: (rating, standard error)} of the players connected to the scripted agent
+        """{player: (rating, standard error)} of the players connected to Imugi
         by games in `mode`'s record."""
         games = {pair: value for pair, value in self._games(mode).items() if sum(value) > 0}
         edges: dict[str, set[str]] = collections.defaultdict(set)
         for first, second in games:
             edges[first].add(second)
             edges[second].add(first)
-        if SCRIPTED_PLAYER not in edges:
+        if IMUGI_PLAYER not in edges:
             return {}
-        players, frontier = [SCRIPTED_PLAYER], [SCRIPTED_PLAYER]
+        players, frontier = [IMUGI_PLAYER], [IMUGI_PLAYER]
         while frontier:
             for neighbour in sorted(edges[frontier.pop()]):
                 if neighbour not in players:
@@ -188,11 +188,11 @@ class RunRatings:
         index = {player: position for position, player in enumerate(players)}
         wins = torch.zeros((len(players), len(players)), dtype=torch.float64)
         for (first, second), (won, tied, lost) in games.items():
-            if first not in index:  # games that do not reach the scripted agent
+            if first not in index:  # games that do not reach Imugi
                 continue
             wins[index[first], index[second]] += won + tied / 2
             wins[index[second], index[first]] += lost + tied / 2
-        ratings, errors = fit_ratings(wins, index[SCRIPTED_PLAYER], PRIOR_GAMES)
+        ratings, errors = fit_ratings(wins, index[IMUGI_PLAYER], PRIOR_GAMES)
         return {
             player: (float(ratings[position]) + ANCHOR_RATING, float(errors[position]))
             for player, position in index.items()
@@ -210,7 +210,7 @@ class RunRatings:
         out = {}
         for mode, rated in self.ratings.items():
             for player, (rating, error) in rated.items():
-                if player == SCRIPTED_PLAYER:
+                if player == IMUGI_PLAYER:
                     continue
                 out[f"lanes/rating/{mode}/{player}"] = rating
                 out[f"lanes/rating_stderr/{mode}/{player}"] = error

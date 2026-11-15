@@ -4,7 +4,7 @@ Branch `feat/cheese-agents` (from `origin/feat/seed-isolation`). CPU only.
 
 ## Tried / worked
 
-- 20:15 `bnb.controllers.scripted_cheese`: six stateless agents (zone_rusher, turtle,
+- 20:15 `bnb.controllers.cheese`: six stateless agents (zone_rusher, turtle,
   evader, deathball, jouster, kiter) as one controller `Cheese`, reusing the chaser's
   bearing-to-stick rule (`stick_toward`, factored out of `Chaser`). No random draws.
 - 20:30 tests: shapes per mode, hidden/dead enemies ignored, determinism, behaviours, a short

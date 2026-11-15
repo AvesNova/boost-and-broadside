@@ -8,14 +8,14 @@ covers: [bench/ship_type_tournament.py]
 > holds Yongma, Jujak and vizia. The page and its data are kept as a record; the types'
 > research and last cards are reference data ([The real planes](real-planes.md)).
 
-Which real-scale type wins most in a deathmatch, as the scripted agent flies it. Every
+Which real-scale type wins most in a deathmatch, as Imugi, the scripted agent, flies it. Every
 type of the [real-scale set](real-scale.md) played every other in real_scale_deathmatch:
-five ships of type A against five of type B, both teams flown by the scripted agent at
+five ships of type A against five of type B, both teams flown by Imugi at
 T = 1 with its real-scale deathmatch set, fog on, 128 games a pair with each type on each
 side in half of them. That is 351 pairs and 44,928 games, about ten minutes on the laptop
 GPU (performance profile; 13 s a batch of 1,152 games once compiled).
 
-It rates a type as a scripted agent tuned on the P-51D flies it, not the type's ceiling:
+It rates a type as an Imugi tuned on the P-51D flies it, not the type's ceiling:
 a type whose strength needs another way of fighting (a slashing energy fighter, a
 one-pass gunship) is rated by how well this agent's way suits it.
 

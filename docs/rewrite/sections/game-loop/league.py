@@ -7,14 +7,14 @@ import math
 import pathlib
 
 from bench.game_loop import ENERGY, SHIP_SET, TURN, Player, player_from
-from bnb.controllers.scripted_doctrine import DOCTRINES, from_named
+from bnb.controllers.imugi_doctrine import DOCTRINES, from_named
 
 HERE = pathlib.Path(__file__).parent
 LEAGUE = HERE / "league.json"
 
 
 def hand() -> Player:
-    """Round 1's hand doctrines (`scripted_doctrines.json`)."""
+    """Round 1's hand doctrines (`imugi_doctrines.json`)."""
     stored = json.loads(DOCTRINES.read_text())[SHIP_SET]
     return Player(
         "hand", from_named(stored[ENERGY]["doctrine"]), from_named(stored[TURN]["doctrine"])

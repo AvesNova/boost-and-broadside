@@ -1,6 +1,6 @@
 """The boundary (game v14): the smooth damage ramp in every mode, elimination's shrinking
 boundary (its hold, its laws, its close a ramp width past the centre before the clock: game
-v16), what the observation shows of it, the live settings, the scripted agent's steer and
+v16), what the observation shows of it, the live settings, Imugi's steer and
 the model's inputs."""
 
 import dataclasses
@@ -283,9 +283,9 @@ def test_the_shrink_and_the_ramp_are_live_settings_of_the_map_panel():
 # ------------------------------------------------------------------ the agents
 
 
-def test_the_scripted_agent_steers_by_the_boundary_as_it_stands():
-    from bnb.controllers.scripted_combat import context
-    from bnb.controllers.scripted_defaults import MODE_DEFAULTS
+def test_imugi_steers_by_the_boundary_as_it_stands():
+    from bnb.controllers.imugi_combat import context
+    from bnb.controllers.imugi_defaults import MODE_DEFAULTS
     from bnb.game.handling.characteristics import characteristics
 
     rules = api.rules_of(ELIMINATION)

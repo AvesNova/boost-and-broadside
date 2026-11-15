@@ -14,7 +14,7 @@ Order: after sections 4 and 7. The stationary ladder is section 4's controller (
   - **the uniform average and the EMA** of the live policy's weights, updated every
     update, the EMA with decay 0.95 per update;
   - **the stationary ladder:** random (`p = 0`), the rungs `p = 0.1 … 0.9` and 0.95, and
-    the scripted agent (`p = 1`).
+    Imugi (`p = 1`).
 - **Self-play is not an entry:** it is a fixed share, 0.5 of each mode's pool.
 - **Every mode:** each mode's pool (section 3c) is split into its self-play block and its
   opponent block, so every entry plays every mode.
@@ -114,8 +114,8 @@ rating from the run's one fit of the lanes' and the league's games
     between the seats.
   - Draws are scored as half a win.
 - **The fit:** the Bradley–Terry maximum likelihood with standard errors
-  (`bnb.league.design.fit_posterior`), no prior, then shifted so the scripted agent is
-  1000. **Only the scripted agent is pinned**; random is fitted too. A player the
+  (`bnb.league.design.fit_posterior`), no prior, then shifted so Imugi is
+  1000. **Only Imugi is pinned**; random is fitted too. A player the
   likelihood gives no finite rating (a sweep, or a group joined only by sweeps) is reported
   as a one-sided 5% bound, flagged in the table and the curves, and left out of the
   targets' met check (author, 2026-11-14: priors must not affect the reported Elo). Priors
@@ -136,7 +136,7 @@ rating from the run's one fit of the lanes' and the league's games
 ### Head-to-head (author, 2026-11-02)
 
 - **`bnb head-to-head A B [C D ...] --games N`:** plays only the named pairs (policy
-  files, runs, the scripted agent, a ladder rung or random), on the same match engine as
+  files, runs, Imugi, a ladder rung or random), on the same match engine as
   `bnb ratings`. Each pair's games are split evenly between the seats.
 - **It reports, per pair:** wins, losses and draws; the score with its standard error;
   and the split by mode and map.

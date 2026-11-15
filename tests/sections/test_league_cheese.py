@@ -5,9 +5,9 @@ import league_cases as cases
 import pytest
 import torch
 
-from bnb.controllers.scripted_cheese import NAMES, player_name
+from bnb.controllers.cheese import NAMES, player_name
 from bnb.league.pool import Entry
-from bnb.runtime.opponents import OPPONENTS, SCRIPTED_KIND, LeagueConfig
+from bnb.runtime.opponents import IMUGI_KIND, OPPONENTS, LeagueConfig
 from bnb.runtime.snapshots import SnapshotSchedule
 
 pytestmark = pytest.mark.usefixtures("global_generator")
@@ -63,13 +63,13 @@ def test_a_slot_holding_a_cheese_agent_plays_it_and_keeps_its_own_column(tmp_pat
     carry = trainer.rollout.carry["controllers"][OPPONENTS]
     reset = torch.ones(rows, dtype=torch.bool)
     action, after, _ = opponents.step(carry, view, reset, torch.arange(rows))
-    assert torch.equal(after.column, opponents.slot_of_row)  # no row tallies as the scripted agent
+    assert torch.equal(after.column, opponents.slot_of_row)  # no row tallies as Imugi
     for slot, name in enumerate(NAMES[: opponents.slots]):
         mine = opponents.slot_of_row == slot
         played = opponents.cheese.play(view, name).packed()
         assert torch.equal(action.packed()[mine], played[mine])
-    # a slot taken back by the scripted agent plays no cheese
-    opponents.set_kind(0, SCRIPTED_KIND)
+    # a slot taken back by Imugi plays no cheese
+    opponents.set_kind(0, IMUGI_KIND)
     assert opponents.cheese_of_slot[0] == -1
     state = opponents.state_dict()
     opponents.load_state_dict({name: value.clone() for name, value in state.items()})

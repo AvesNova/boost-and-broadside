@@ -103,7 +103,7 @@ L=docs/rewrite/sections/launch; source $L/env.sh
   starts from BC's exponential average (`policy-exponential/`{.plain}, the same weights as
   `policy/`{.plain}), always, and its live rating starts at 0, since a BC run without
   lanes rates nothing. RL's training pool is its snapshots, both averages and the
-  full-strength scripted agent: no weaker rung and no random player.
+  full-strength Imugi: no weaker rung and no random player.
 
 ## 3. Watch
 
@@ -142,7 +142,7 @@ slot K's job gracefully (after its update; up to 15 minutes) and queues it again
 
 - A round's field is every run's policy files at `[tournament].steps` (chain steps, BC
   included) reached so far, the averaged agent (`uniform_average`) and live, labelled
-  `<run> <steps>M averaged|live (<stage> <exact steps>M)`, plus the scripted agent (1000).
+  `<run> <steps>M averaged|live (<stage> <exact steps>M)`, plus Imugi (1000).
   Each preset is rated on its own. The round's jobs go before waiting training jobs
   (priority 100), each reusing every earlier round's records, so a later round plays only
   where the errors are still above its target. With `--shards N` each preset runs as N

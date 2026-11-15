@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from bnb.contracts.action import NUM_JOINT
-from bnb.controllers.scripted import Marginals, sample
+from bnb.controllers.imugi import Marginals, sample
 from bnb.models import heads
 from bnb.models.yemong import policy
 from bnb.streams import (

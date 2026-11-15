@@ -35,7 +35,7 @@ Ordered for working through:
 - **Snapshot schedule:** RL snapshots at 1, 2, 3, 4, 6, 8, 10, 12, 16 and 20M, then every 5M.
 - **BC is fixed at 100M** for every arm. The plateau stop only logs.
 - **Deathmatch outcome:** win/loss/tie by the kill difference (`kill_lead`), like a sports result regardless of margin. Training showed no difference from kill share.
-- **Fog:** 100% fog in training, BC and the game. Full information is for debugging only. The scripted agent already reads only visible enemies.
+- **Fog:** 100% fog in training, BC and the game. Full information is for debugging only. Imugi already reads only visible enemies.
 - **Lineups:** each slot is a 50/50 coin flip between Yongma and Jujak, the same for both teams.
 - **Mode mix:** frontline 6/16, deathmatch 5/16, elimination 5/16 (768 / 640 / 640 of 2048 environments; it was 8, 5, 3).
 - **League structure: three sections, each with one job,** within a maximum number of networks loaded at once:
@@ -46,7 +46,7 @@ Ordered for working through:
 - **League snapshot schedule:** about 100–200 Elo between league members, read off the RL curve. From rl-v20 that's members at 5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 90, 110, 130 and 160M; re-derive it after the game freeze.
 - **Cheese agents:** zone rusher, turtle, evader, deathball, jouster and kiter. They're on by default, in the league and in the exploit check.
 - **Features are on by default.** A setting may turn one off for an ablation.
-- **The scripted agent is renamed Imugi** (이무기), after the open branches merge.
+- **The scripted agent is renamed Imugi** (이무기). Done on `feat/imugi-rename` (2026-11-15): code, docs and the CLI player name (`imugi`, `imugi@T=..`, `cheese:<name>`); the recorded identity strings stay `scripted`, `scripted@T=..`, `scripted:<name>` so every stored record still reads (`bnb.runtime.opponents.stored_name`). Notes in `docs/rewrite/sections/imugi-rename/progress.md`.
 - **Break-even ratio:** "N of ours hold 20 Imugi". Imugi is fixed at 20 ships and our count varies. A logistic fit in log ship count gives the crossing with an SE, using adaptive counts.
 - **Evaluation decides by generalisation.** The conditions:
   - 5v5, all modes;
@@ -147,12 +147,12 @@ Ordered for working through:
 
 ## Decided, to implement
 
-- [x] **Mode timing (`bench/mode-timing` eecbacce; CPU, the scripted agent on both sides, fields on):**
+- [x] **Mode timing (`bench/mode-timing` eecbacce; CPU, Imugi on both sides, fields on):**
   - **Deathmatch:** 4.57 deaths per team per minute (sd 1.08), steady after the first minute. Tickets per team for 80% of games ending by tickets: 40 at 10 min, 47 at 12 min, 55 at 15 min (±5). Today's 25 end 99% of games within 10 min.
   - **Elimination, time to wipe** (no shrink): p50 52 s, p80 90 s, p90 120 s. Today's shrink (hold 36 s, clock 180 s) causes only 2.4% of deaths.
   - **Frontline 2v2:** captures are rare (1.9 per game) and 85% of games end on the clock. 3v3 ends by capture 52% of the time. Both measured at the old lock value of 19.
 - [x] **Frontline lock re-tuned:** 6 s per √km, game v20.
-- [ ] **Freeze values (proposal, 2026-11-15; measured with the scripted agent, fields on, lock 6, 256 games each with a 30-minute clock):**
+- [ ] **Freeze values (proposal, 2026-11-15; measured with Imugi, fields on, lock 6, 256 games each with a 30-minute clock):**
   - **Frontline:** win at ±2 (was ±3) with a 12-minute clock.
     - At 5v5, ±2 ends 79% by capture within 10 min and 84% within 12 (median 5.0 min). ±3 ends only 53% within 12 min (median 10.7).
     - Smaller teams are slower: at ±2, 3v3 ends 68% within 12 min, 2v2 36%.
@@ -164,7 +164,7 @@ Ordered for working through:
   - **Seed noise, not games, limits a decision.** δ will be set from arm A3.
   - **Frontline break-even has no fit:** both arms lose every game at every count, including 20 against 20. That's the 15.6 km map, not the code: rl-v20 wins every 5v5 and 10v10 frontline game against Imugi on the preset map, 26 of 64 at 20v20 on the preset map, and 0 of 64 at 20v20 on 15.6 km. Open for the author.
 - [ ] The split offence/defence critic, before the shared BC, with advantage weights per part and the premium schedule as a setting (default 1:1).
-- [ ] **Front reversal (decided 2026-11-14).** Measure P(reversal) now, on the current game with the scripted agent on both sides (in progress, `bench/front-reversal`). Measure it again at the end of the first arm, to check the front stays roughly a random walk in self-play. The 0.84 figure is from September (v1); the later lock was meant to make it a random walk.
+- [ ] **Front reversal (decided 2026-11-14).** Measure P(reversal) now, on the current game with Imugi on both sides (in progress, `bench/front-reversal`). Measure it again at the end of the first arm, to check the front stays roughly a random walk in self-play. The 0.84 figure is from September (v1); the later lock was meant to make it a random walk.
   - **First result (2026-11-15, CPU, scripted against scripted, fields off; `bench/front-reversal` b18f8cce):** the front is **persistent, not a random walk.**
     - P(reversal) = 0.19 [0.14, 0.25], from 208 pairs of consecutive moves in 64 games.
     - 66% of games are 3-0 sweeps (25% expected for a fair coin).
@@ -172,7 +172,7 @@ Ordered for working through:
     - This contradicts the docs' claim that the lock was tuned so the capturing team is no more likely to capture next.
     - **Cause (diagnosed):** the 45 s lock outlasts the capturing team's run to the next zone. The same team's next capture comes a median 36 s later, a reversal 91 s later.
   - **Re-tuned (2026-11-15, game v20, `game/frontline-lock` e5bed5a1):** `lock_seconds_per_root_km` 19 → 6 (about 14 s at 5v5).
-    - With fields on and the scripted agent on both sides: P(reversal) = 0.490 [0.468, 0.512] over 512 games (19 gives 0.29).
+    - With fields on and Imugi on both sides: P(reversal) = 0.490 [0.468, 0.512] over 512 games (19 gives 0.29).
     - Still 0.435 at front ±2, so a little momentum near the win.
     - **56% of games end on the 600 s clock** (mean 484 s); for the clock tuning.
   - Re-tuning the lock is a game-freeze item.

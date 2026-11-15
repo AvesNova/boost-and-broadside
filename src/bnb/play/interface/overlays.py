@@ -78,7 +78,7 @@ def _submenu(interface: Interface) -> None:
             _team_text(interface, team)
     if offered == PHYSICS:
         imgui.text_disabled("No side's controller makes predictions")
-        tooltip("A trained Yemong agent predicts; the scripted agent dead reckons")
+        tooltip("A trained Yemong agent predicts; Imugi dead reckons")
     providing = [team for team, side in enumerate(sides) if offered_by(side)]
     if providing:
         imgui.separator()

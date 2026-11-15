@@ -39,7 +39,7 @@ OVERLAYS = (
     (
         "dead_reckoning",
         "Dead-reckoning ghosts",
-        "Each remembered enemy the scripted agent cannot see, dead reckoned from its last "
+        "Each remembered enemy Imugi cannot see, dead reckoned from its last "
         "sighting; its opacity is the agent's weight on it",
     ),
     (
@@ -157,7 +157,7 @@ class Ghosts:
 
 @dataclasses.dataclass(frozen=True)
 class Reckoning:
-    """The scripted agent's remembered enemies it cannot see (G): its ghosts (`Ghosts`,
+    """Imugi's remembered enemies it cannot see (G): its ghosts (`Ghosts`,
     the opacity its weight, no sigma) and each one's last sighting last_x, last_y (m)."""
 
     ghosts: Ghosts

@@ -20,7 +20,7 @@ overlays must use the same functions: no decoding of their own.
     with its sigma.
   - **Belief ghosts** (network agents): each hidden enemy's believed position with a sigma
     ellipse; with the truth view on, its true position beside it.
-  - **Dead-reckoning ghosts** (the memory scripted agent, `bnb.controllers.scripted_memory`):
+  - **Dead-reckoning ghosts** (the memory Imugi, `bnb.controllers.imugi_memory`):
     each remembered enemy's predicted position; it has no sigma, only a fade weight, so
     draw the weight as the ghost's opacity. Don't invent an ellipse.
   - **Density** (network agents): the hex field as predicted, and with the truth view, true
@@ -29,7 +29,7 @@ overlays must use the same functions: no decoding of their own.
     enemy, as a small readout.
   - **Value and outcome** (network agents): a small gauge or readout per level.
 - **Only what exists:** each controller says which overlays it can provide; the card lists
-  only those for the sides being played. Scripted against scripted offers true bullet paths
+  only those for the sides being played. Imugi against scripted offers true bullet paths
   and the dead-reckoning ghosts, and nothing a network head would provide.
 - **Per side:** a network on each side has its own predictions; let the viewer pick whose
   (the selected ship's side by default).

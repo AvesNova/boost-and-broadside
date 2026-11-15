@@ -1,4 +1,4 @@
-"""The scripted agent's Frontline layer (scripted spec A5): which zone each ship goes to,
+"""Imugi's Frontline layer (scripted spec A5): which zone each ship goes to,
 separation from allies, recovery toward its spawn when hurt and threatened, and the blend
 with the combat layer by the nearest enemy's distance.
 
@@ -6,7 +6,7 @@ Strength is a sum of Gaussian kernels over visible, living ships, each weighted 
 health 0.2 + 0.8 shield / max_shield (a ship at full shield counts 1).
 
 The goal (defend or attack) and recovery are plan choices the agent commits to
-(`scripted_memory.commit`): each rule gives a margin, positive for the first option, and the
+(`imugi_memory.commit`): each rule gives a margin, positive for the first option, and the
 committed option switches at its rate on the other's margin.
 """
 
@@ -19,7 +19,7 @@ from bnb.contracts.obs import ZONE
 from bnb.game.handling.characteristics import Characteristics
 from bnb.game.ship_types import per_ship
 
-from .scripted_combat import (
+from .imugi_combat import (
     TINY,
     Combat,
     Context,
@@ -35,9 +35,9 @@ from .scripted_combat import (
     steer,
     stick_marginal,
 )
-from .scripted_doctrine import per_ship as per_ship_doctrine
-from .scripted_memory import commit
-from .scripted_parameters import Ramp, ScriptedParameters, in_own_time, ramp
+from .imugi_doctrine import per_ship as per_ship_doctrine
+from .imugi_memory import commit
+from .imugi_parameters import ImugiParameters, Ramp, in_own_time, ramp
 
 OWN_SPAWN, OWN_DEFENSE, ENEMY_DEFENSE = 0, 1, 3  # zone roles for the viewer (ZONE_COLUMNS)
 # The doctrine's capture-lock term shifts the goal's margin by its weight times this many
@@ -90,7 +90,7 @@ def frontline(
     fleet: Context,
     zones: torch.Tensor,
     characteristics: Characteristics,
-    parameters: ScriptedParameters,
+    parameters: ImugiParameters,
     fighting: Combat,
     doctrines: torch.Tensor | None = None,
 ) -> Frontline:
@@ -98,7 +98,7 @@ def frontline(
     zones (R, Z, columns), or toward the spawn when recovering, blended with the combat
     layer's marginals by its target's distance, times the target's weight, where it has a
     target; the shoot marginal is the combat layer's. doctrines: each ship type's doctrine
-    table (`bnb.controllers.scripted_doctrine`), whose capture-lock term shifts the goal
+    table (`bnb.controllers.imugi_doctrine`), whose capture-lock term shifts the goal
     (`lock_press`); None, or the weight at 0, leave it as it was."""
     combat_marginals, has_target = fighting.marginals, fighting.has_target
     target_distance = fighting.distance
