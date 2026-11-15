@@ -29,14 +29,14 @@ Costs are 5090-hours at $0.50 an hour, including the run's ladder and its decisi
 | 8 | A14 belief input | the temporal layers alone, without the next-step heads' outputs for hidden ships | BC+RL | — | 0 | 3.7 h ($1.85) |
 | 9 | A13 fewer auxiliary heads | after A14: if the belief helps, every auxiliary head except next-state is removed; otherwise every one | BC+RL | — | 0 | 3.1 h ($1.55) |
 | 10 | A15 layout | 6 spatial blocks instead of 2 Yemong blocks | BC+RL | — | 0 | 3.4 h ($1.70) |
-| 11 | A16 temporal block | GRU instead of Griffin (built on `feat/gru-temporal`) | BC+RL | — | 0 | 3.7 h ($1.85) |
+| 11 | A16 temporal block | GRU instead of Griffin (built on `feat/gru-temporal`) | BC+RL | — | 0 | about 4.8 h ($2.40), provisional: the GRU sublayer is 8.6x Griffin's at the learner's 8-view micro-batch |
 | 12 | A17 input encoding | raw scalars instead of the colour/HL-Gauss codes (`yemong.input_encoding=raw`) | BC+RL | — | 0 | 3.7 h ($1.85) |
 | 13 | A24 RL from scratch | no BC; RL for 300M | RL only | — | 0 | 5.1 h ($2.55) |
 | 14 | R1 MLP baseline | an MLP instead of Yemong | BC+RL | — | 0 | 1.8 h ($0.90) |
 
 **R5, the averaging suite,** needs no training: it builds averages from run 1's per-update files and rates them (0.5–2 h, $0.25–1.00).
 
-**Total for Yes:** about 51 h ($25.50) with R5, plus about 4 h ($2) for ties and checks.
+**Total for Yes:** about 52 h ($26) with R5, plus about 4 h ($2) for ties and checks.
 
 ## Maybe
 

@@ -15,6 +15,7 @@ Updated 2026-11-15 10:30; the conversation behind it is in [briefing.md](briefin
 6. **The final arm list** ([arm-list.md](arm-list.md)): Yes/Maybe/No chosen (2026-11-15, session 3). Open: which Maybe runs go in, the A10 variant, and the order.
 7. **For review (drafts, 2026-11-15):** [decision-rule.md](decision-rule.md) (how every decision is measured; the late-climbing check and δ from the seed pairs are proposals), [figures-brainstorm.md](figures-brainstorm.md) (a wide list to narrow; items needing logging before the runs are marked), [run-order.md](run-order.md) (waves against one chain).
 8. **Older unmerged branches** (tuning and evaluation records from 2026-11-10 to 11-13: tune/ships-r9m2, tune/respawn-waves, eval/yongma-lead, eval/r9m2-maps, eval/morning, tune/frontline-design, tune/duel-deny, run/onehead-champion, probe/position-aliasing, perf/gpu-box, feat/nearest-mlp, feat/crossover, work/design-v3 (WIP, failing tests), wip/playground): not merged into v2. Merge, keep as records, or delete?
+9. **A2 team sizes built (2026-11-16, `feat/a2-team-sizes`, merged 238db2e4; notes in [sections/a2-team-sizes/progress.md](sections/a2-team-sizes/progress.md)):** launches with `--set 'team_sizes={"low": 1}'` (default None: unchanged). Each episode draws one N for both teams, uniform over 1v1–5v5 in deathmatch and elimination and 3v3–5v5 in Frontline (Claude's default; `weights` changes it); the slots past N are benched and masked (rewards, values, Yemong `mask_benched`); tickets follow N (5, 10, 15, 25, 35), clocks and the shrink as frozen; BC and RL both; lanes stay 5v5. Open: (a) should A2 also vary field counts (`--set 'active_fields={"low": 0, "high": 10}'` is ready; the arm review names "ship and field counts")? (b) uniform per game gives 5v5 a third of deathmatch's ship-steps, not a fifth; weight by ship-steps instead? (c) the freeze measured 1v1 deathmatch ending by tickets 0.4% (2v2 43%), so small games will mostly run the 10-minute clock.
 
 ## Paused again 2026-11-15 22:05 (the author needs the laptop): resume here first
 
@@ -93,6 +94,21 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
 - **The decision is a sequential test with a fixed number of planned looks** (group sequential). The number of looks and the acceptance thresholds are fixed in advance.
 - **Decisions don't need the ladder.** Per condition, the two finals play each other directly (win rate minus 0.5), and break-even plays against Imugi. The full Elo ladder (curves) is for the paper.
 - **Ladder timing (decided 2026-11-15):** mostly in one batch at the end. Earlier only on an idle GPU, and only when it doesn't compete with compilation on the CPU. On a tie, each arm's last 5 snapshots (Claude's choice, about 20–25M steps) are rated on demand for the slope check.
+
+### 2026-11-16
+
+- **Game rules (author):** the game-rule questions from the freeze check (2v2 tickets, 1v1 deathmatch, elimination length, merges per kill, Frontline 3v3) wait for the balance result. Game and Yemong version numbers are only consistency checks: bump them whenever anything changes, no cost attached (Yemong v9 confirmed).
+- **Split critic (author):** (7) the return scale follows the offence premium, so A7 tests only the offence/defence balance; (8) the objective levels' sign split must not net within a tick: positive events go to the gain part and negative events to the loss part, even when both happen on the same tick; (9) retiring the two v1 two-hot fixture checks is fine.
+- **Arm-1 golden (author):** 0.016 of scale against 1e-7 everywhere else is too large to call rounding; find the cause before changing the test.
+- **CPU compiled rollout fails in Inductor (author):** check whether it points to a deeper bug that also affects the GPU path.
+- **Decision rule (author):** the late-climbing check (one 50M extension) and δ from the seed pairs are adopted.
+- **Run order (author):** keep every available GPU busy at all times: waves when there are several GPUs, a series on one. A24 goes in the very last wave. The Maybe runs are decided later from results (A10 only if entropy collapses).
+- **A2 (author):** vary ship and field counts together; 5v5 stays the most common (at least half of games), and uneven sizes (4v5, 3v5, ...) are included. The sampling equations are to be discussed (proposal first).
+- **Dry run curves (author):** the first baseline (dry) run rates the live curves on every evaluation condition (all modes, sizes and maps the suite uses), not only 5v5, to see how e.g. 10v10 evolves while training at 5v5; that informs the final branch choices.
+- Figures brainstorm: the author reviews it on 2026-11-17.
+
+- **Balance (author):** the Yongma–Jujak balance may adjust the card or both cards, not only Imugi's doctrines. Keep them relatively similar to now, every value within the range of the real WWII aircraft they are based on. Work on `tune/balance-final`, before and after recorded for the author to test; not merged until the author decides.
+
 ### 2026-11-15
 
 - **Allocation within a round is cost-aware** (the most interval reduction per GPU-hour). It adds no bias: the score is a fixed-weight sum of per-condition means, each unbiased however many games it gets. A bias would appear only if games were pooled with weights proportional to their counts, which we don't do. The design simulation checks it.

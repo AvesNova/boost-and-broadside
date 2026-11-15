@@ -26,6 +26,55 @@ class ArenaScale:
 
 
 @dataclasses.dataclass(frozen=True)
+class TeamSizes:
+    """Team-size sampling (arm A2): each episode's team size N, the same for both teams
+    (an N-against-N game), drawn at every reset from the sizes low to high (None: the
+    game's ships per team), each with its weight (None: every size alike), without the
+    sizes below the mode's smallest team (`bnb.game.api.MINIMUM_SHIPS_PER_TEAM`: Frontline
+    3, the others 1), the weights renormalised over the sizes left. A team's slots past N
+    are benched (`bnb.game.api`: held as dead ships, out of play, shown with the benched
+    flag), so the batch keeps its one static size. The draw is the runtime's
+    (`bnb.runtime.rollout`), keyed by (seed, environment, episode)."""
+
+    low: int = 1
+    high: int | None = None
+    weights: tuple[float, ...] | None = None
+
+    def __post_init__(self) -> None:
+        if self.low < 1 or (self.high is not None and self.high < self.low):
+            raise ValueError(f"{self}: need 1 <= low <= high")
+        if self.weights is not None:
+            if self.high is None:
+                raise ValueError(f"{self}: weights need high, one weight per size low to high")
+            if len(self.weights) != self.high - self.low + 1:
+                raise ValueError(
+                    f"{self}: {len(self.weights)} weights for the sizes {self.low} to {self.high}"
+                )
+            if any(weight < 0.0 for weight in self.weights) or not sum(self.weights) > 0.0:
+                raise ValueError(f"{self}: weights must be non-negative, and not all 0")
+
+    def probabilities(self, ships_per_team: int, minimum: int = 1) -> tuple[float, ...]:
+        """Each size's probability, sizes 1 to ships_per_team in order, for a game of
+        ships_per_team slots a side whose mode's smallest team is `minimum`. Raises
+        ValueError for a range past the game's slots or with no size left."""
+        high = ships_per_team if self.high is None else self.high
+        if high > ships_per_team:
+            raise ValueError(f"{self}: at most the game's {ships_per_team} ships per team")
+        weights = (1.0,) * (high - self.low + 1) if self.weights is None else self.weights
+        by_size = [0.0] * ships_per_team
+        for size, weight in zip(range(self.low, high + 1), weights, strict=True):
+            if size >= minimum:
+                by_size[size - 1] = float(weight)
+        total = sum(by_size)
+        if not total > 0.0:
+            raise ValueError(
+                f"{self}: no size of {self.low} to {high} with weight is at least the mode's "
+                f"smallest team, {minimum}"
+            )
+        return tuple(weight / total for weight in by_size)
+
+
+@dataclasses.dataclass(frozen=True)
 class Pool:
     """A contiguous slice of the batch with a fixed lineup and one game.
 
@@ -41,6 +90,9 @@ class Pool:
         the pool's; None plays the pool's radius every episode (evaluation, ratings, play).
     active_fields: field-count sampling (`bnb.contracts.ActiveFields`): each episode plays a
         drawn number of the fields, the rest absent; None takes the GameConfig's.
+    team_sizes: team-size sampling (`TeamSizes`): each episode plays a drawn N-against-N
+        game, the rest of each team's slots benched; None plays every slot (the
+        GameConfig's size). The runtime's draw, not the game's (`bnb.runtime.rollout`).
     """
 
     name: str
@@ -54,6 +106,7 @@ class Pool:
     respawn_seconds: float | None = None
     arena_scale: ArenaScale | None = None
     active_fields: ActiveFields | None = None
+    team_sizes: TeamSizes | None = None
 
 
 GAME_FIELDS = (

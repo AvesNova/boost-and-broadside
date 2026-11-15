@@ -332,9 +332,7 @@ def boundary_fraction(arena: Environment, elapsed: torch.Tensor) -> torch.Tensor
 def capped_zero_ticks(arena: Environment) -> torch.Tensor:
     """(B,) the tick the boundary passes radius 0: the law's, or later where the speed cap
     holds it back (the cap's line reaches 0 an arena radius over the cap after the hold)."""
-    cap_zero = arena.shrink_hold_ticks + arena.arena_radius / arena.shrink_speed_cap.clamp_min(
-        1e-9
-    )
+    cap_zero = arena.shrink_hold_ticks + arena.arena_radius / arena.shrink_speed_cap.clamp_min(1e-9)
     return torch.where(
         arena.shrink_speed_cap > 0.0,
         torch.maximum(arena.shrink_zero_ticks, cap_zero),
