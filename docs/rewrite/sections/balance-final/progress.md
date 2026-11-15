@@ -137,3 +137,22 @@ use `PYTHONPATH=$PWD/src:$PWD`.
   handle variants solving (round 11: Jujak low-speed acceleration, climb, drag, cruise, stall;
   Yongma climb x0.93).
 - The box's job script now takes `flock /tmp/gpu.lock` (shared with the third-ship agent).
+
+## 07:20 the after is in (v23), results.md written; round 11; more checks running
+
+- **Final, deathmatch 5v5, 2048 games (3070, seed 100): before 24.8 ± 0.9%, A (Jujak turn
+  x0.93) 47.7 ± 1.1%, B (Jujak turn x0.95 + Yongma climb x0.88) 51.2 ± 1.1%.** 1v1 30-31%
+  for all three (mostly draws); elimination 2v2 19.0 / 24.4 / 28.1%. A is applied to src/
+  (game v23, the reference re-recorded, quick tests on the touched files pass) and committed:
+  c875bb84. results.md has the tables, the range check and how to test.
+- sweep.py now plays before/'s card by default (`--base before`), so a sweep means the same
+  thing whatever src/ holds; laptop jobs started before that ran from a detached worktree at
+  the base (/home/vizia/avesnova/bnb-balance-sweep).
+- Round 11 (512 games, other Jujak/Yongma handles alone): Jujak low-speed acceleration x0.85
+  24.6%, x0.75 18.2% (the solver lowers its induced drag with it); Jujak climb x1.05 20.2%;
+  drag x1.1 24.3%; cruise x0.97 22.7%; stall x1.05 20.7%; Yongma climb x0.93 30.0%; Jujak
+  turn x0.94 45.9%; turn x0.95 + Yongma climb x0.93 50.5%; turn x0.94 + climb x0.93 48.0%.
+  **Only the sustained-turn ratio (and a little Yongma power) moves the matchup.**
+- Running: Frontline and elimination 10v10 (laptop), elimination and Frontline 5v5 (3070,
+  waiting on the shared lock), round 12 (the size spread: Jujak turn x0.91-0.93 with Yongma
+  shield x0.8-0.9) at 5v5, 2v2, 10v10 on the laptop.
