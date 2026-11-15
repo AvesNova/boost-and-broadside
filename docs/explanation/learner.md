@@ -219,13 +219,15 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 | `density` | each view-step, over its count of valued own ships | Poisson terms over the hex cells, against the counts of living ships at `t` |
 | `shot_trajectory` | valid shots of own ships and of enemies visible at `t` | the trajectory code's cross-entropy, averaged over the shot's 4 queried ages ([below](#shot-labels)) |
 | `shot_outcome` | the same shots | the outcome code's cross-entropy |
+| `shot_damage` | with `YemongConfig.shot_head="damage"` only (in place of the two above): valid shots of own ships | per shot, the damage code's cross-entropy at every other row, summed over them ([below](#shot-labels)) |
 | `geometry` | with `YemongConfig.geometry_head` only: pairs of an own ship alive at `t` and a partner alive and seen at `t` (`bnb.models.yemong.geometry.pairs`) | the cross-entropy of the pair's five geometry codes, averaged over them (nats per target) |
 
 A head the model does not build (`YemongConfig.next_state_head`, `enemy_action_head`,
 `density_head`, `shot_head`, `geometry_head`, `delta_split`; `Yemong.auxiliary_heads`) has
 no term: its labels are not computed, its term stays zero with no gradient, and its loss
 series and head statistics are not reported. Without the shot heads (`shot_head="none"`)
-the learner re-simulates no shots and the store keeps no shot labels.
+the learner re-simulates no shots and the store keeps no shot labels. With the shot damage
+head (`shot_head="damage"`) the `shots` count is of own ships' valid shots only.
 
 With `YemongConfig.delta_split` the `next_state` and `correction` terms both divide by the count
 of every next-state row (seen and hidden), not by their own rows: a row then weighs the
@@ -385,8 +387,10 @@ with the game's own code (`bnb.learn.shots.resimulate`):
   per update, and so are the queried ages' uniform draws (below). The re-simulation runs once per update, before the epochs, and its labels go
   into the store beside the segments; every epoch reads them back.
 - **Each shot records** at every age its displacement and velocity in the launch heading's
-  frame and the refractive index, and its first hit (an enemy or an ally of the shooter), or
-  else its closest pass and that ship's side. Every age is labelled, past a hit too: the
+  frame and the refractive index, and its first hit (an enemy or an ally of the shooter: the
+  row, and the damage the game's `bnb.game.physics.combat.hit_damage` gives it, the target's
+  heading after the move being the next tick's captured launch heading, the window's last
+  tick its own), or else its closest pass and that ship's side. Every age is labelled, past a hit too: the
   bullet flies all its moves in the re-simulation, and past its hit the snapshots are its
   straight-on flight (the trajectory code has no hit component; the outcome code keeps the
   first hit), so a barely-hit and a barely-missed shot train the same path. A shot whose
@@ -413,6 +417,18 @@ refractive index first changes and the path bends. Each of the last two is a uni
 its own when the shot passes no ship or meets no band. The loss is the mean over the 4,
 and the head runs the 4 queries in one kernel (`bnb.models.yemong.kernels.heads`, each
 row's own ages from a table of every age).
+
+The shot damage head (arm A22, `YemongConfig.shot_head="damage"`) reads the hit instead:
+for each own ship's valid shot, and each other row, the damage the shot dealt that row
+(`bnb.models.yemong.shots.damage_targets`: the hit's damage at the row it hit, 0 at every
+other), as a share of the shooter's centre hit at its reference speed
+(`ShipTypes.hit_damage`), coded as `bnb.models.yemong.shots.damage_code` (HL-Gauss, 21 real
+bins from 0 to 2 with two padding bins a side). The term sums the pairs' cross-entropies
+over the targets, so it counts nats per shot as the outcome's does, and divides by the own
+shots. Its coefficient `LearnerConfig.shot_damage` is the outcome head's, 0.019. A hit
+on a Frontline ship under spawn protection is labelled with the damage it would have dealt
+(the re-simulation does not know the protection), as the outcome code labels it a hit. The
+re-simulated damage is the game's, to float32 rounding (`tests/sections/test_learner_shots.py`).
 
 ## The other labels
 

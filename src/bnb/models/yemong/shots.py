@@ -1,6 +1,7 @@
 """The counterfactual shot codes (spec 9): where a bullet is at each age of its flight
-(the trajectory code), how its flight ends (the outcome code), and the age features the
-trajectory head is queried with."""
+(the trajectory code), how its flight ends (the outcome code), the age features the
+trajectory head is queried with, and the shot damage head's code (`YemongConfig.shot_head`
+"damage", arm A22: what a shot fired now would deal to each other ship)."""
 
 import dataclasses
 import math
@@ -200,3 +201,31 @@ def time_features(ages: torch.Tensor, horizon: float, harmonics: int) -> torch.T
         * torch.arange(1, harmonics + 1, dtype=ages.dtype, device=ages.device)
     )
     return torch.cat([phase[..., None], torch.sin(angles), torch.cos(angles)], -1)
+
+
+# The shot damage head's code (arm A22): the damage a shot fired now would deal to one ship,
+# over the shooter's centre hit at its reference speed (`ShipTypes.hit_damage`), as an
+# HL-Gauss code of DAMAGE_BINS real bins from 0 to DAMAGE_HIGH (a tenth of a full hit
+# apart, an exact 0 at the first centre: a miss, and every ship but the one hit) and
+# codes.PADDING_BINS more either side. A hit can pass a full one where the bullet flies
+# faster than its reference speed (`combat.kinetic`); a share past DAMAGE_HIGH is clamped
+# to the padding.
+DAMAGE_BINS = 21
+DAMAGE_HIGH = 2.0
+DAMAGE_WIDTH = DAMAGE_BINS + 2 * codes.PADDING_BINS
+
+
+def damage_targets(target: torch.Tensor, damage: torch.Tensor, shooters: int) -> torch.Tensor:
+    """(..., S, N): what the shot each of the first S rows fires would deal to each row,
+    from its hit's target (..., N) (a row, -1 for none) and damage (..., N), the share of a
+    full hit; 0 for every row it does not hit."""
+    rows = target.shape[-1]
+    hit = target[..., :shooters, None] == torch.arange(rows, device=target.device)
+    return torch.where(hit, damage[..., :shooters, None], 0.0)
+
+
+def damage_code(share: torch.Tensor) -> torch.Tensor:
+    """(...) damage shares to their codes (..., DAMAGE_WIDTH): HL-Gauss of an exact value."""
+    return codes.hl_gauss_scalar_encode(
+        share, torch.zeros_like(share), 0.0, DAMAGE_HIGH, DAMAGE_BINS
+    )

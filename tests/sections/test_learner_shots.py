@@ -165,6 +165,27 @@ def test_a_resimulated_hit_is_the_games_hit_with_its_side(played):
     assert sides[HIT_ENEMY] > 0 and sides[HIT_ALLY] > 0  # friendly fire happens
 
 
+def test_a_resimulated_hits_target_and_damage_are_the_games(played):
+    """A shot's first hit names the row the game's bullet hit, with the game's damage to it
+    on that tick (`combat.hit_damage`, the target's heading after the move being the next
+    tick's launch state), to float32 rounding; a miss names no row and deals nothing."""
+    _, _, shots, game, _ = played
+    compared = 0
+    for tick, environment, ship, _slot in _fired(game):
+        if not shots.valid[tick, environment, ship]:
+            continue
+        target = int(shots.target[tick, environment, ship])
+        damage = shots.damage[tick, environment, ship]
+        if shots.hit[tick, environment, ship] == HIT_NONE:
+            assert target == -1 and damage == 0.0
+            continue
+        last = int(shots.hit_age[tick, environment, ship])
+        game_damage = game[tick + last]["damage"][environment, ship]
+        torch.testing.assert_close(damage, game_damage[target], rtol=1e-6, atol=0.0)
+        compared += 1
+    assert compared > 50
+
+
 def test_flights_cross_fields(played):
     _, _, shots, _, _ = played
     index = shots.snapshots[..., 4][shots.valid]
@@ -402,7 +423,8 @@ def test_the_labels_hold_the_snapshots_at_the_queried_ages(played):
     _, _, shots, _, _ = played
     generator = torch.Generator().manual_seed(3)
     drawn = torch.randint(MOVES, shots.valid.shape + (3,), dtype=torch.uint8, generator=generator)
-    queried = shot_labels(shots, drawn)
+    full = torch.full(shots.valid.shape, 20.0)
+    queried = shot_labels(shots, drawn, full)
     ages = query_ages(shots, drawn)
     assert torch.equal(queried.ages, ages.to(torch.uint8))
     tick, environment, ship = 5, 3, 1
@@ -412,5 +434,6 @@ def test_the_labels_hold_the_snapshots_at_the_queried_ages(played):
             queried.snapshots[tick, environment, ship, query],
             shots.snapshots[tick, environment, ship, age],
         )
-    for name in ("hit", "distance", "side"):
+    for name in ("hit", "distance", "side", "target"):
         assert torch.equal(getattr(queried, name), getattr(shots, name))
+    assert torch.equal(queried.damage, shots.damage / full)

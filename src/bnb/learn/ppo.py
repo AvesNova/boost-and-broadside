@@ -36,7 +36,7 @@ from bnb.contracts.action import NUM_JOINT, to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.series import Mean, Stopwatch
 from bnb.game.rules import Rules
-from bnb.game.ship_types import ShipTypes
+from bnb.game.ship_types import ShipTypes, per_ship
 from bnb.models.yemong import codes, critic, geometry, policy
 from bnb.models.yemong import shots as shot_codes
 from bnb.models.yemong.density import HexGrid, poisson_terms
@@ -62,11 +62,13 @@ TERMS = (
     "density",
     "shot_trajectory",
     "shot_outcome",
+    "shot_damage",
     "geometry",
 )
 # Token counts per view, the denominators' parts: own ships alive; own ships valued (alive or
-# waiting to respawn); view-steps; valid beliefs at non-final steps; enemies alive; shots;
-# the geometry head's pairs (`geometry.pairs`).
+# waiting to respawn); view-steps; valid beliefs at non-final steps; enemies alive; shots
+# (with the shot damage head alone, the own ships' only); the geometry head's pairs
+# (`geometry.pairs`).
 COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots", "pairs")
 # The per-tick records the returns read, staged whole per shard.
 SMALL = ("reward", "values", "outcome", "done", "win_loss", "log_probability", "alive", "valued")
@@ -85,6 +87,7 @@ HEAD_SERIES = {
     "density": "density/loss",
     "shot_trajectory": "shot/loss/trajectory",
     "shot_outcome": "shot/loss/outcome",
+    "shot_damage": "shot/loss/damage",
     "geometry": "geometry/loss",
 }
 # The policy term's trust regions (`LearnerConfig.trust_region`).
@@ -193,6 +196,9 @@ class LearnerConfig:
     density: float = 0.021
     shot_trajectory: float = 0.007
     shot_outcome: float = 0.019
+    # the shot damage head's (`yemong.shot_head` "damage", arm A22), nats per own shot (its
+    # pairs' cross-entropies summed over the targets): the outcome head's, its nearest kin
+    shot_damage: float = 0.019
     # the geometry head's (`yemong.geometry_head`), nats per target per pair
     geometry: float = 0.007
     learning_rate: float = 3e-4
@@ -441,8 +447,10 @@ class Learner:
         # build has no term, no labels and no series; without the shot heads no shot is
         # re-simulated and the store keeps no shot labels
         self.heads = model.auxiliary_heads if self.auxiliary else ()
-        self.shot_labels = "shot_trajectory" in self.heads
-        self.shot_runs = model.shot_code.trajectory_runs if self.shot_labels else None
+        self.shot_labels = bool({"shot_trajectory", "shot_damage"} & set(self.heads))
+        self.shot_runs = (
+            model.shot_code.trajectory_runs if "shot_trajectory" in self.heads else None
+        )
         if self.auxiliary:
             self.grid = HexGrid(model.config.hex_rings, device)
         self.discount = torch.tensor(returns.per_part(config.discount), device=device)
@@ -566,9 +574,11 @@ class Learner:
         followed: torch.Tensor | None = None,
     ):
         """The re-simulated shots' labels (`shots.ShotLabels`, at `shots.query_ages`, the
-        random ages from drawn (L, n, N, 3)) and the loss mask: valid shots of own ships and of
-        enemies visible at t. following: the FOLLOWING records of the ticks after the
-        segment ({name: (A, n, ...)}), where a shot fired near its end flies on; followed
+        random ages from drawn (L, n, N, 3); the damage as a share of the shooter's full
+        hit) and the loss mask: valid shots of own ships and of enemies visible at t (with
+        the shot damage head alone, of own ships only: it reads only theirs). following:
+        the FOLLOWING records of the ticks after the segment ({name: (A, n, ...)}), where a
+        shot fired near its end flies on; followed
         (n,) which views have them (None: none do)."""
         own, length = trajectory.log_probability.shape[-1], trajectory.done.shape[0]
         capture, fields, done = trajectory.capture, trajectory.obs.fields, trajectory.done
@@ -598,7 +608,9 @@ class Learner:
         shot = _pytree.tree_map_only(torch.Tensor, lambda x: x[:length], shot)
         visible = trajectory.obs.ships[..., SHIP["visible"]] > 0.5
         rows = torch.arange(visible.shape[-1], device=visible.device) < own
-        return shots.labels(shot, drawn), shot.valid & (rows | visible)
+        shooters = rows if self.shot_runs is None else rows | visible
+        full = per_ship(self.types.hit_damage, trajectory.capture.launch.ship_type)
+        return shots.labels(shot, drawn, full), shot.valid & shooters
 
     @torch.no_grad()
     def labels(self, trajectory: Trajectory, shot_labels: dict | None) -> dict:
@@ -648,13 +660,17 @@ class Learner:
         if "density" in heads:
             out.update(density=labels.density_targets(self.grid, trajectory, rows))
         if shot is not None:
+            out.update(shot_mask=shot_mask)
+        if "shot_trajectory" in heads:
             code = model.shot_code
             out.update(
                 shot_snapshots=shot.snapshots,
                 shot_ages=shot.ages.long() + 1,  # in moves
-                shot_mask=shot_mask,
                 shot_outcome=shot_codes.outcome_code(code, shot.hit, shot.distance, shot.side),
             )
+        if "shot_damage" in heads:
+            own = trajectory.log_probability.shape[-1]
+            out.update(shot_damage=shot_codes.damage_targets(shot.target, shot.damage, own))
         return out
 
     # ------------------------------------------------------------------ the loss
@@ -816,6 +832,13 @@ class Learner:
             terms["shot_outcome"] = (
                 losses.masked_sum(outcome, label["shot_mask"]) / denominator["shots"]
             )
+        if _head(unrolled, "shot_damage_latents") is not None:
+            terms["shot_damage"] = (
+                losses.masked_sum(
+                    self._shot_damage_cross_entropy(unrolled, label), label["shot_mask"][..., :own]
+                )
+                / denominator["shots"]
+            )
         if _head(unrolled, "geometry_latents") is not None:
             per_pair = losses.geometry_cross_entropy(
                 model.geometry(unrolled.geometry_latents, label["geometry_partners"]),
@@ -825,6 +848,18 @@ class Learner:
                 losses.masked_sum(per_pair, label["geometry_mask"]) / denominator["pairs"]
             )
         return terms, per_level, statistic, unrolled, parts
+
+    def _shot_damage_cross_entropy(self, unrolled, label: dict) -> torch.Tensor:
+        """(L, R, S) each own ship's shot damage cross-entropy, summed over its targets (every
+        other row; a shooter is not its own target)."""
+        targets = label["shot_damage"]  # (L, R, S, N)
+        logits = self.model.shot_damage(unrolled.shot_damage_latents, targets.shape[-2])
+        per_pair = losses.cross_entropy(logits, shot_codes.damage_code(targets))
+        shooters, rows = targets.shape[-2:]
+        others = torch.arange(shooters, device=targets.device)[:, None] != torch.arange(
+            rows, device=targets.device
+        )
+        return torch.where(others, per_pair, 0.0).sum(-1)
 
     def _next_state_cross_entropy(self, unrolled, label: dict) -> torch.Tensor:
         """(L, R, N) the next-state code's cross-entropy per row, summed over its groups."""
