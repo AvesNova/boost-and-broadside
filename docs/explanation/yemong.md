@@ -761,7 +761,7 @@ switches reads as it was built:
 | `geometry_head` | geometry | |
 
 A head that is off is not built. It has no parameters and no output (its field of
-`Unrolled` and of the step's `Decision` is None), and the learner computes no labels and
+`bnb.models.yemong.model.Unrolled` and of the step's `Decision` is None), and the learner computes no labels and
 no loss term for it ([learner page](learner.md#losses)). `Yemong.auxiliary_heads` names the
 heads a build has. Checkpoints and the ONNX export work either way, and the play overlays
 and the figure sets of an absent head are left out.
@@ -777,13 +777,15 @@ by arm A14's result (whether the belief helps):
 - **A13 "all but next-state"** (the belief helps; the next-state head and its error head
   stay, so the belief keeps its source):
 
-  ```
+  <!-- not-runnable: settings for a train command -->
+  ```text
   --set yemong.enemy_action_head=false --set yemong.density_head=false --set yemong.shot_head=none --set yemong.geometry_head=false
   ```
 
 - **A13 "all"** (every auxiliary head removed; nothing is fed back):
 
-  ```
+  <!-- not-runnable: settings for a train command -->
+  ```text
   --set yemong.next_state_head=false --set yemong.delta_split=false --set yemong.physics_hidden_decay=null --set yemong.forecast_feedback=false --set yemong.enemy_action_head=false --set yemong.density_head=false --set yemong.shot_head=none --set yemong.geometry_head=false
   ```
 
