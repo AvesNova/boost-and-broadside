@@ -156,3 +156,24 @@ use `PYTHONPATH=$PWD/src:$PWD`.
 - Running: Frontline and elimination 10v10 (laptop), elimination and Frontline 5v5 (3070,
   waiting on the shared lock), round 12 (the size spread: Jujak turn x0.91-0.93 with Yongma
   shield x0.8-0.9) at 5v5, 2v2, 10v10 on the laptop.
+
+## 07:50 round 12: the size spread (deathmatch 2v2 / 5v5 / 10v10, 512 games, laptop)
+
+| card | 2v2 | 5v5 | 10v10 |
+|---|---|---|---|
+| before | 13.9 | 22.8 | 40.8 |
+| Jujak turn x0.93 (the v23 after) | 28.6 | 51.8 | 71.3 |
+| Jujak turn x0.91 | 34.1 | 54.6 | 81.0 |
+| Jujak turn x0.91 + Yongma shield x0.8 | 27.7 | 42.4 | 58.3 |
+| Jujak turn x0.91 + Yongma shield x0.85 | 29.5 | 48.3 | 69.9 |
+| Jujak turn x0.91 + Yongma shield x0.9 | 30.7 | 48.9 | 73.9 |
+| Jujak turn x0.93 + Yongma shield x0.9 | 26.9 | 38.6 | 62.0 |
+| Jujak turn x0.93 + Yongma shield x0.85 | 19.7 | 36.8 | 55.2 |
+
+(SE 1.4-2.1 points.) A Yongma shield cut takes more off the 10v10 than the 2v2, so more
+Jujak turn with less Yongma shield flattens the spread: x0.91 + shield x0.8 spans 28-58
+(30 points) against x0.93's 29-71 (43). Shield x0.8 is 113.6, 1.43 times Jujak's: inside the
+real 1.44, which the before's 1.78 is not. Next: Jujak turn x0.88-0.90 (solving) with Yongma
+shield x0.75-0.8, and these in elimination and Frontline 5v5.
+- handle_cards.py now reads before/'s ship files (src/ holds v23 since c875bb84; a solve
+  started at 07:50 from src/ was stopped before it finished, none of its numbers used).

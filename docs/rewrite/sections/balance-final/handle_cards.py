@@ -1,6 +1,7 @@
-"""Card candidates in handle space: a ship file's handles times factors, re-solved into the
-card (`api.solve_handles`, as the tuning panel does), written as sweep.py candidates: the
-card fields that change from the file's own card, as {"set": value}.
+"""Card candidates in handle space: a ship file's handles (before/'s, version 22, whatever
+src/ holds) times factors, re-solved into the card (`api.solve_handles`, as the tuning panel
+does), written as sweep.py candidates: the card fields that change from that file's own
+card, as {"set": value}.
 
     PYTHONPATH=src:. uv run --no-sync python docs/rewrite/sections/balance-final/handle_cards.py \
         SPEC.json OUT.json [--processes 8]
@@ -16,6 +17,7 @@ import json
 import pathlib
 import tomllib
 
+HERE = pathlib.Path(__file__).parent
 KEYS = {"energy_handles": "yongma", "turn_handles": "jujak"}
 SET = "real-scale"
 
@@ -25,11 +27,11 @@ def solve_one(key: str, factors: dict) -> dict | str:
     import torch
 
     torch.set_num_threads(2)
-    from bnb.game import api, ships
+    from bnb.game import api
     from bnb.game.handling import Handles
     from bnb.game.handling.errors import Infeasible
 
-    text = (ships.directory_of(SET) / f"{key}.toml").read_text()
+    text = (HERE / "before" / f"{key}.toml").read_text()  # version 22's, whatever src/ holds
     data = tomllib.loads(text)
     handles = dict(data["handles"])
     for name, factor in factors.items():

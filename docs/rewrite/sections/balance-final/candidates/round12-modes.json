@@ -1,0 +1,139 @@
+[
+{
+"name": "before"
+},
+{
+"name": "jt0.93",
+"card": {
+"energy": {},
+"turn": {
+"engine_power": {
+"set": 11290.685546875
+},
+"engine_power_full_store": {
+"set": 2112.68701171875
+},
+"static_thrust": {
+"set": 64.81767272949219
+},
+"corner_nose_frequency": {
+"set": 11.380003929138184
+},
+"induced_drag_scale": {
+"set": 0.4197433292865753
+},
+"dive_exchange_scale": {
+"set": 4.1278076171875
+},
+"climb_exchange_scale": {
+"set": 3.4468870162963867
+},
+"fine_stick": {
+"set": 0.20908643305301666
+},
+"sustained_stick": {
+"set": 0.6969547867774963
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.93
+}
+}
+},
+{
+"name": "jt0.91-ys0.8",
+"card": {
+"energy": {
+"max_shield": {
+"set": 113.55926112109249
+}
+},
+"turn": {
+"engine_power": {
+"set": 11301.330078125
+},
+"engine_power_full_store": {
+"set": 2123.33154296875
+},
+"static_thrust": {
+"set": 120.09844970703125
+},
+"corner_nose_frequency": {
+"set": 11.325186729431152
+},
+"induced_drag_scale": {
+"set": 0.47688016295433044
+},
+"dive_exchange_scale": {
+"set": 4.121851921081543
+},
+"climb_exchange_scale": {
+"set": 3.4328558444976807
+},
+"fine_stick": {
+"set": 0.2049139440059662
+},
+"sustained_stick": {
+"set": 0.6830464601516724
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.91
+},
+"energy_handles": {
+"max_shield": 0.8
+}
+}
+},
+{
+"name": "jt0.91-ys0.85",
+"card": {
+"energy": {
+"max_shield": {
+"set": 120.65671494116076
+}
+},
+"turn": {
+"engine_power": {
+"set": 11301.330078125
+},
+"engine_power_full_store": {
+"set": 2123.33154296875
+},
+"static_thrust": {
+"set": 120.09844970703125
+},
+"corner_nose_frequency": {
+"set": 11.325186729431152
+},
+"induced_drag_scale": {
+"set": 0.47688016295433044
+},
+"dive_exchange_scale": {
+"set": 4.121851921081543
+},
+"climb_exchange_scale": {
+"set": 3.4328558444976807
+},
+"fine_stick": {
+"set": 0.2049139440059662
+},
+"sustained_stick": {
+"set": 0.6830464601516724
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.91
+},
+"energy_handles": {
+"max_shield": 0.85
+}
+}
+}
+]
