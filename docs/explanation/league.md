@@ -64,6 +64,37 @@ weight is zero the draw is even. Each mode samples by its own gauge. For an abla
 `sampling = "variance"` weighs `p (1 − p)`, the entries whose result is least certain,
 and `floor` spreads a share of the weight evenly.
 
+## One-sided self-play and the exploiter
+
+Two settings change the lineup; both are off by default, and `bnb train` builds their
+pools (`bnb.runtime.train.arranged`, `training_lineup`):
+
+- **One seat** (arm A6, `TrainConfig.self_play_seats="one"`): there is no self-play pool.
+  Every game is against the league's seat (`bnb.runtime.train.LEAGUE_ONLY`), so every
+  game trains the learner's seat only. Self-play becomes "latest"
+  (`bnb.league.pool.LATEST`), which holds the first `LeagueConfig.latest_share × slots`
+  slots: a frozen copy of the live weights, loaded again after every update's learning.
+  Its share of the games is fixed. It is never drawn, cut or rated, as self-play is not;
+  its games show as `pool/score/latest`, and `pool/slot_share/latest` gives its share. The
+  cuts draw the other slots, round robin, from the sampling weights above. The arm's
+  settings, with 3,072 environments as an example: they keep today's learner rows per
+  update (2,048 environments, half of them self-play with two learner seats, are 3,072
+  rows); the arm's own count is the author's choice:
+
+  <!-- not-runnable: options added to a bnb train command -->
+  ```bash
+  --set self_play_seats=one --set league.latest_share=0.5 --set league.slots=8 --environments 3072
+  ```
+
+- **A fixed opponent** (arm R3, `LeagueConfig.fixed_opponent`, a policy file's
+  directory): the pool is that network alone (`bnb.league.pool.FIXED_OPPONENT`, kind
+  "fixed"), in every slot, and the run has no self-play. Imugi, the cheese agents
+  (`cheese` is cleared), the averages and the snapshots are not opponents; the averages
+  are still kept as the run's product, and no league snapshot is taken (the run's
+  `policies/` schedule still writes its checkpoints). The file must hold the live
+  policy's build (`bnb.runs.checkpoint.check_build`). The rating lanes still rate the
+  live policy and the fixed opponent.
+
 ## Slots, Imugi and the cut
 
 The league's seat plays every opponent row of the batch in the captured rollout graph:

@@ -23,6 +23,7 @@ from .imugi_doctrine import for_card, real_scale_card
 from .imugi_frontline import frontline
 from .imugi_memory import (
     ImugiCarry,
+    explore_cells,
     forgotten,
     fresh_carry,
     remember,
@@ -241,6 +242,9 @@ class Imugi:
         self.characteristics, self.parameters = characteristics, parameters
         if isinstance(parameters, ModeParameters):  # on the device before any graph capture
             parameters.table(characteristics.gun_range.device)
+        # the explore grid on the device before any compile or graph capture: copied inside a
+        # traced step it would be a host-to-device copy that a capture refuses
+        explore_cells(characteristics.gun_range.device)
         self.ships_per_team = ships_per_team
         self.temperature, self.share = temperature, share
         self.memory, self.seconds = memory, seconds

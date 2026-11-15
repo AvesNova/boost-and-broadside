@@ -195,7 +195,11 @@ def test_a_fork_whose_build_differs_is_refused(trained):
         ),
     ):
         checkpoint.fork_training(
-            directory, cases.tiny_train_config(relational=RelationalConfig(hidden=32)), cases.CPU
+            directory,
+            cases.tiny_train_config(
+                relational=dataclasses.replace(cases.tiny_train_config().relational, hidden=32)
+            ),
+            cases.CPU,
         )
 
 

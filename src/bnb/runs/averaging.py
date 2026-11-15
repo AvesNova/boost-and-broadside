@@ -123,7 +123,8 @@ def run_facts(run: Run) -> RunFacts:
     steps = saved_steps(run)
     if not steps:
         raise FileNotFoundError(
-            f"run {run.record['name']} has no saved live policies (run with --update-policies)"
+            f"run {run.record['name']} has no saved live policies (train it with "
+            f"`--set update_policies=rl`)"
         )
     starts = [
         step

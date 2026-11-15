@@ -27,7 +27,7 @@ def runs_directory(tmp_path_factory) -> pathlib.Path:
     with pytest.MonkeyPatch.context() as monkeypatch:
         bnb(
             monkeypatch, directory, "train", *cases.TRAIN_OPTIONS, "--updates", str(UPDATES),
-            "--name", "a", "--update-policies", "True",
+            "--name", "a", "--set", "update_policies=rl",
             "--set", f"league.uniform_from={2 * STEPS_PER_UPDATE}",
             # no warm-up and a large step, so the weights move between updates
             "--set", "learner.warmup_steps=0", "--set", "learner.learning_rate=0.01",

@@ -5,8 +5,9 @@ from that decision's own trunk pass (`Yemong.inspect`, while the agent is watche
 else the learner's `unroll` over that one step, from the carry the step started at, the
 view and the step's replay record (the beliefs after its sight); decoded by the decoder layer
 (`bnb.models.yemong.decode`) as the figures decode them. Imugi's are its
-memory's recall (`bnb.controllers.imugi_memory.remember`) of the same decision. The
-true bullet paths are the game's own transport of the live bullets
+memory's recall (`bnb.controllers.imugi_memory.remember`) of the same decision. A head
+the model does not build (`bnb.models.yemong.model.Yemong.auxiliary_heads`) has no
+overlay. The true bullet paths are the game's own transport of the live bullets
 (`bnb.game.api.bullet_paths`). Nothing here decodes a head itself.
 
 The truth beside a prediction is the snapshot of the state the decision observed
@@ -133,29 +134,31 @@ def network(agent, team: int, observed: Snapshot, following: Snapshot) -> Predic
     own_rows = replay.previous_action.shape[-1]
     age = torch.cat([torch.zeros(own_rows, dtype=replay.age.dtype), replay.age[0].cpu()])
     hidden = age > 0
-    forecast = decode.next_state(
-        model,
-        unrolled.next_state_logits,
-        believed_means[0].float().cpu(),
-        believed_spreads[0].float().cpu(),
-        rows[:, SHIP["ship_type"]].long(),
-        offset,
-        origin,
-        rates,
-        getattr(unrolled, "correction_logits", None),
-        hidden,
-        age,
-    )
-    shown = alive.numpy()
-    next_state = _ghosts(
-        order[shown],
-        forecast.position[alive, 0],
-        forecast.position[alive, 1],
-        forecast.heading[alive],
-        forecast.position_sigma[alive],
-        torch.ones(int(alive.sum())),
-        following,
-    )
+    next_state = None
+    if unrolled.next_state_logits is not None:
+        forecast = decode.next_state(
+            model,
+            unrolled.next_state_logits,
+            believed_means[0].float().cpu(),
+            believed_spreads[0].float().cpu(),
+            rows[:, SHIP["ship_type"]].long(),
+            offset,
+            origin,
+            rates,
+            getattr(unrolled, "correction_logits", None),
+            hidden,
+            age,
+        )
+        shown = alive.numpy()
+        next_state = _ghosts(
+            order[shown],
+            forecast.position[alive, 0],
+            forecast.position[alive, 1],
+            forecast.heading[alive],
+            forecast.position_sigma[alive],
+            torch.ones(int(alive.sum())),
+            following,
+        )
 
     belief = decode.ship_forecast(
         replay.means[0].float().cpu(),
@@ -175,52 +178,59 @@ def network(agent, team: int, observed: Snapshot, following: Snapshot) -> Predic
         observed,
     )
 
-    ages = torch.arange(1, model.bullet_moves + 1)
-    path = decode.shot_path(model.shot_code, model.shot_trajectory(unrolled.shot_latents, ages))
     ships = observed.ships
-    launch_x = torch.from_numpy(ships.x[order]).float()
-    launch_y = torch.from_numpy(ships.y[order]).float()
-    heading = torch.from_numpy(ships.heading[order]).float()
-    world = decode.launch_frame_to_world(
-        path.displacement, launch_x, launch_y, torch.cos(heading), torch.sin(heading)
-    )
-    hit = decode.shot_outcome(model.shot_code, unrolled.shot_outcome_logits)["enemy_hit"]
-    by_ship = np.argsort(order)  # row of each sim index
-    shot = ShotPaths(
-        launch_x=launch_x.numpy()[by_ship],
-        launch_y=launch_y.numpy()[by_ship],
-        x=_numpy(world[..., 0])[by_ship],
-        y=_numpy(world[..., 1])[by_ship],
-        sigma=_numpy(path.displacement_sigma)[by_ship],
-        enemy_hit=_numpy(hit)[by_ship],
-    )
+    shot = None
+    if unrolled.shot_latents is not None:
+        ages = torch.arange(1, model.bullet_moves + 1)
+        logits = model.shot_trajectory(unrolled.shot_latents, ages)
+        path = decode.shot_path(model.shot_code, logits)
+        launch_x = torch.from_numpy(ships.x[order]).float()
+        launch_y = torch.from_numpy(ships.y[order]).float()
+        heading = torch.from_numpy(ships.heading[order]).float()
+        world = decode.launch_frame_to_world(
+            path.displacement, launch_x, launch_y, torch.cos(heading), torch.sin(heading)
+        )
+        hit = decode.shot_outcome(model.shot_code, unrolled.shot_outcome_logits)["enemy_hit"]
+        by_ship = np.argsort(order)  # row of each sim index
+        shot = ShotPaths(
+            launch_x=launch_x.numpy()[by_ship],
+            launch_y=launch_y.numpy()[by_ship],
+            x=_numpy(world[..., 0])[by_ship],
+            y=_numpy(world[..., 1])[by_ship],
+            sigma=_numpy(path.displacement_sigma)[by_ship],
+            enemy_hit=_numpy(hit)[by_ship],
+        )
 
-    arena_radius = view.globals[0, GLOBAL["arena_radius"]].float().cpu()
-    rings = model.config.hex_rings
-    field = decode.density(unrolled.density_log_rates, rings, arena_radius)
-    is_ally = torch.from_numpy(ships.team == team)[None]
-    counts = HexGrid(rings).counts(
-        torch.from_numpy(ships.x)[None].float(),
-        torch.from_numpy(ships.y)[None].float(),
-        is_ally,
-        torch.from_numpy(ships.alive)[None],
-        arena_radius,
-    )[0]
-    cells = field.ally.shape[-1]
-    density = Density(
-        centres=_numpy(field.centres),
-        cell_radius=float(field.cell_radius),
-        predicted={"ally": _numpy(field.ally), "enemy": _numpy(field.enemy)},
-        true={"ally": _numpy(counts[:cells]), "enemy": _numpy(counts[cells:])},
-    )
+    density = None
+    if unrolled.density_log_rates is not None:
+        arena_radius = view.globals[0, GLOBAL["arena_radius"]].float().cpu()
+        rings = model.config.hex_rings
+        field = decode.density(unrolled.density_log_rates, rings, arena_radius)
+        is_ally = torch.from_numpy(ships.team == team)[None]
+        counts = HexGrid(rings).counts(
+            torch.from_numpy(ships.x)[None].float(),
+            torch.from_numpy(ships.y)[None].float(),
+            is_ally,
+            torch.from_numpy(ships.alive)[None],
+            arena_radius,
+        )[0]
+        cells = field.ally.shape[-1]
+        density = Density(
+            centres=_numpy(field.centres),
+            cell_radius=float(field.cell_radius),
+            predicted={"ally": _numpy(field.ally), "enemy": _numpy(field.enemy)},
+            true={"ally": _numpy(counts[:cells]), "enemy": _numpy(counts[cells:])},
+        )
 
-    action = decode.action_distribution(unrolled.enemy_action_logits[own:])
-    enemy_action = EnemyActions(
-        ship=order[own:],
-        power=_numpy(action.power),
-        stick=_numpy(action.stick),
-        shoot=_numpy(action.shoot),
-    )
+    enemy_action = None
+    if unrolled.enemy_action_logits is not None:
+        action = decode.action_distribution(unrolled.enemy_action_logits[own:])
+        enemy_action = EnemyActions(
+            ship=order[own:],
+            power=_numpy(action.power),
+            stick=_numpy(action.stick),
+            shoot=_numpy(action.shoot),
+        )
     outcome = {}
     if unrolled.outcome_logits is not None:
         decoded = decode.outcome(unrolled.outcome_logits)

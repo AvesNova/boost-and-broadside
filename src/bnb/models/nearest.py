@@ -21,7 +21,12 @@ Each own ship reads, in this order (`input_width`):
   `ZONE_ROLES`), so a slot always means the same zone: the offset of its centre in the own
   heading frame, the distance, its radius, the role one-hot, its progress and direction,
   the symlog of the captures to win and to lose, and a presence flag (14); a role no
-  present zone has (a mode without zones) is zero.
+  present zone has (a mode without zones) is zero;
+- with `full_mode_inputs` (every new build's, `bnb.runtime.train.TrainConfig`), the mode
+  inputs the first builds lacked (`MODE_GLOBALS`): elimination's flag, the boundary's
+  radius over the arena radius and the symlog of its seconds to zero, the symlog of the
+  seconds to the own team's next respawn wave (Frontline), then the symlog of each zone
+  role's capture locks, own and enemy (`ZONE_LOCKS`; zero for an absent role), 14 in all.
 
 Two hidden GELU layers per own ship feed the joint policy and the critic; the outcome reads
 the mean of the own ships' hidden states, as the relational model's. The own ships are the
@@ -59,6 +64,15 @@ GLOBALS = (
     ("front", GLOBAL_SCALE["front"]),
     ("front_threshold", GLOBAL_SCALE["front_threshold"]),
 )
+# The mode inputs of `NearestConfig.full_mode_inputs`: the globals (a time in seconds as its
+# symlog, as the zone distances), then each zone role's capture locks (s, as their symlog).
+MODE_GLOBALS = (
+    ("mode_elimination", False),
+    ("boundary_fraction", False),
+    ("boundary_time_to_zero", True),
+    ("next_wave_own", True),
+)
+ZONE_LOCKS = ("lock_own", "lock_enemy")
 # Yemong's field and zone scales (`yemong.inputs`), constants of this model too.
 FIELD_RADIUS_SCALE = 1000.0  # m
 FIELD_BAND_SCALE = 40.0  # m
@@ -68,6 +82,7 @@ SELF_FEATURES = OWN_FEATURES + len(GLOBALS)
 SHIP_FEATURES = OTHER_FEATURES + 1  # the relational features and presence
 FIELD_FEATURES = 8
 ZONE_FEATURES = 3 + 1 + ZONE_ROLES + 4 + 1
+MODE_FEATURES = len(MODE_GLOBALS) + ZONE_ROLES * len(ZONE_LOCKS)
 # The columns of the relational model's pair features (`relational.features`).
 PAIR_DISTANCE, PAIR_TEAM, PAIR_ALIVE, PAIR_VISIBLE = 4, 7, 8, 9
 
@@ -75,12 +90,16 @@ PAIR_DISTANCE, PAIR_TEAM, PAIR_ALIVE, PAIR_VISIBLE = 4, 7, 8, 9
 @dataclasses.dataclass(frozen=True)
 class NearestConfig:
     """hidden: the width of both hidden layers; allies, enemies, fields: how many of the
-    nearest of each every own ship reads; levels and outcome_level as Yemong's."""
+    nearest of each every own ship reads; full_mode_inputs: each own ship also reads
+    elimination's flag and boundary, Frontline's next wave and the zones' capture locks
+    (`MODE_FEATURES`; False is every build's from before them, 2026-11-15, a new run's is
+    True); levels and outcome_level as Yemong's."""
 
     hidden: int = 256
     allies: int = 3
     enemies: int = 4
     fields: int = 3
+    full_mode_inputs: bool = False
     value_bins: int = 77  # symlog bins 0.079 apart, one at 0 (as 51 over +-2 were)
     value_limit: float = 3.0  # symlog: +-19 in reward units
     # value bins past +-value_limit on each side; 0 is every build's from before them
@@ -117,6 +136,7 @@ def input_width(config: NearestConfig) -> int:
         + (config.allies + config.enemies) * SHIP_FEATURES
         + config.fields * FIELD_FEATURES
         + ZONE_SLOTS * ZONE_FEATURES
+        + (MODE_FEATURES if config.full_mode_inputs else 0)
     )
 
 
@@ -227,17 +247,26 @@ def features(obs: Obs, config: NearestConfig) -> torch.Tensor:
     present = present[..., None, :].expand(shape)
     zone_rows = torch.where(present[..., None], zone_rows, 0.0)
     zone_rows = torch.cat([zone_rows, present[..., None].to(zone_rows.dtype)], -1)
-    return torch.cat(
-        [
-            own_state,
-            scalars,
-            allies.flatten(-2),
-            enemies.flatten(-2),
-            near_fields.flatten(-2),
-            zone_rows.flatten(-2),
-        ],
-        -1,
-    )
+    parts = [
+        own_state,
+        scalars,
+        allies.flatten(-2),
+        enemies.flatten(-2),
+        near_fields.flatten(-2),
+        zone_rows.flatten(-2),
+    ]
+    if config.full_mode_inputs:
+        mode = torch.stack(
+            [
+                critic.symlog(globals_[..., GLOBAL[name]]) if time else globals_[..., GLOBAL[name]]
+                for name, time in MODE_GLOBALS
+            ],
+            -1,
+        )
+        locks = critic.symlog(zones[..., [ZONE[name] for name in ZONE_LOCKS]]).flatten(-2)
+        mode = torch.cat([mode, locks], -1)  # (..., MODE_FEATURES)
+        parts.append(mode[..., None, :].expand(own_state.shape[:-1] + mode.shape[-1:]))
+    return torch.cat(parts, -1)
 
 
 def by_role(zones: torch.Tensor) -> torch.Tensor:

@@ -27,7 +27,7 @@ runs/2026-11-02-mixed-purple-pumpkin/
   checkpoints/step_<environment steps>/   training checkpoints (the newest two and the final)
   policies/step_<environment steps>/{live,exponential_average,uniform_average}/
                         on the snapshot schedule and at each segment's end, or
-                        every update's with --update-policies; never pruned
+                        every update's with update_policies; never pruned
   STOP                  a stop request, while the run is asked to stop
   league/               the league's policy snapshots
   policy/               a BC run's policy: the average its stop rule read (bnb train --objective bc)
@@ -213,7 +213,7 @@ rewind (`--resume RUN --at STEP`) moves the newer checkpoints into
 
 ### Every update's policy files
 
-The history of a run is its policy files, which are small (11 MB each for the real-scale Yemong). After every update a run with `--update-policies` (off by default; decided 2026-11-15, for the one arm whose live weights feed the averaging sweep) writes
+The history of a run is its policy files, which are small (11 MB each for the real-scale Yemong). After every update a run with `TrainConfig.update_policies` on for its stage writes (off by default; decided 2026-11-15, for the one arm whose live weights feed the averaging sweep; `--set update_policies=rl` for a PPO run or a chain's RL stage, `bc` for a BC run, `all` for both) 
 `policies/step_<environment steps>/` with three policy files: `live/` (the learner's
 weights), `exponential_average/` and, once the uniform average has started,
 `uniform_average/`. They are never pruned: 23 to 34 MB per update (the live weights and the
@@ -221,7 +221,7 @@ exponential average, then the uniform average too), so a run of 100M steps at th
 1,048,576 steps per update (96 updates) keeps about 3.3 GB. Their writing time counts in the
 update record's checkpoint seconds.
 
-A run without `--update-policies` (the default) writes the same three files on the
+A run without it (the default) writes the same three files on the
 snapshot schedule `TrainConfig.policy_snapshots` (`bnb.runtime.snapshots.RL_SNAPSHOTS`,
 decided 2026-11-14: at 1, 2, 3, 4, 6, 8, 10, 12, 16 and 20M environment steps, then every
 5M; `--set policy_snapshots.steps=[...]` and `policy_snapshots.every=...`, which a resume
@@ -232,7 +232,7 @@ files that its newest end replaces. A tournament takes any of them by path, incl
 inside the runs directory: `bnb ratings RUN --with
 RUN/policies/step_50000000/uniform_average`.
 
-A run with `--update-policies` also writes the three files before its first update, at
+A run with it also writes the three files before its first update, at
 `policies/step_<start>/` (its starting weights, `updates` 0 in the record), because the
 exponential average starts from them.
 
@@ -263,7 +263,7 @@ The files are read once, oldest first and one at a time; every average is folded
 one pass, in float64, and held only until its last evaluation point. Where the run saved its
 own average at the same step, the rebuilt one is compared with it. The decay is per update,
 so the rebuild matches within float rounding (about 1e-7 here: the run folds in float32 on
-the device), and the command fails if it does not. A run that turned `--update-policies` on
+the device), and the command fails if it does not. A run that turned `update_policies` on
 at a resume lacks the earlier files, and the rebuild is refused or does not match. An
 average already written is kept, so a spec can grow and be built again.
 

@@ -35,7 +35,9 @@ def model(config: GameConfig = SQUAD, seed: int = 0, dtype=torch.float32, **sett
         for name, parameter in net.named_parameters():
             if name.endswith("last.weight") or ".lasts." in name and name.endswith(".weight"):
                 parameter.normal_(0.0, 0.05)
-    assert net.ship_heads.lasts[1].weight.abs().max() > 0, "the next-state head must be live"
+    if net.config.next_state_head:
+        next_state = net.ship_heads.lasts[net.ship_head_names.index("next_state")]
+        assert next_state.weight.abs().max() > 0, "the next-state head must be live"
     return net.to(dtype).eval()
 
 

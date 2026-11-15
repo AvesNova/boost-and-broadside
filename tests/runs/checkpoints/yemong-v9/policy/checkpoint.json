@@ -3,7 +3,7 @@
  "kind": "policy",
  "model": {
   "name": "yemong",
-  "version": 8,
+  "version": 9,
   "build": {
    "config": {
     "width": 8,
@@ -13,12 +13,18 @@
     "map_width": 4,
     "value_bins": 11,
     "value_limit": 3.0,
+    "value_padding": 0,
     "levels": [
-     "damage",
-     "kill_death",
-     "objective_progress",
-     "objective",
-     "outcome"
+     "damage_offence",
+     "damage_defence",
+     "kill_death_offence",
+     "kill_death_defence",
+     "objective_progress_offence",
+     "objective_progress_defence",
+     "objective_offence",
+     "objective_defence",
+     "outcome_offence",
+     "outcome_defence"
     ],
     "outcome_level": "outcome",
     "hex_rings": 1,
@@ -52,7 +58,12 @@
     "extrapolation_decay": 0.25,
     "correction_rate": 0.1,
     "physics_hidden_decay": null,
-    "physics_hidden_fade": false
+    "physics_hidden_fade": false,
+    "gate": "none",
+    "next_state_head": true,
+    "enemy_action_head": true,
+    "density_head": true,
+    "shot_head": "trajectory"
    },
    "tick_length": 0.03333333333333333,
    "num_ships": 4,
@@ -118,7 +129,8 @@
    "y",
    "radius",
    "band_width",
-   "level"
+   "level",
+   "present"
   ],
   "globals": [
    "episode_progress",
@@ -151,16 +163,16 @@
    "lock_enemy"
   ]
  },
- "game_version": 19,
+ "game_version": 22,
  "game": null,
  "ship_card": null,
  "return_scale": false,
  "steps": {},
  "ratings": {},
- "commit": "e236b1d402fb11ce6c149580193ab28ba43c6f3b",
+ "commit": "c9d97f1c1027b3c39706a7322c0919cf4841b52b",
  "dirty": true,
- "time": "2026-11-13T16:59:47+00:00",
+ "time": "2026-11-15T15:22:30+00:00",
  "files": {
-  "weights.safetensors": "3d3dbc8123799c28ed4316c5eccb933e0d20f167ca6d868f77c32bfc100d4ac1"
+  "weights.safetensors": "6f442cd2c1856987dbddeced55818338e7233fcda8d1bf8a351f11f7642ab4c0"
  }
 }

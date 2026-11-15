@@ -32,7 +32,7 @@ import torch
 from torch.utils import _pytree
 
 from bnb.contracts import REWARD_LEVELS, VALUE_LEVELS, Trajectory
-from bnb.contracts.action import to_joint
+from bnb.contracts.action import NUM_JOINT, to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.series import Mean, Stopwatch
 from bnb.game.rules import Rules
@@ -48,9 +48,13 @@ from .schedules import Keypoints
 
 # The entropy's terms, one per action factor by the chain rule (`policy.factor_entropies`).
 ENTROPY_TERMS = ("entropy_power", "entropy_stick", "entropy_shoot")
+# The entropy floor's hinge (`LearnerConfig.entropy_floor`), its coefficient
+# `entropy_floor_coefficient` (`LearnerConfig.coefficient`).
+ENTROPY_FLOOR = "entropy_floor"
 TERMS = (
     "policy",
     *ENTROPY_TERMS,
+    ENTROPY_FLOOR,
     "value",
     "next_state",
     "correction",
@@ -131,6 +135,14 @@ class LearnerConfig:
     H(stick | power), `entropy_shoot` on H(shoot | power, stick)), so three equal coefficients
     weigh the joint entropy; a negative coefficient rewards it.
 
+    entropy_floor: a floor on the policy's joint entropy in nats (None: off, the default):
+    the term `entropy_floor` is the mean over the own living ships of max(0, entropy_floor -
+    H), each ship-step's joint entropy H against the floor (`losses.entropy_floor_penalty`),
+    times entropy_floor_coefficient. A hinge per token, not on the batch's mean entropy, so
+    the micro-batches' terms add up to the minibatch's; it pushes only the tokens below the
+    floor, and is zero (no gradient) above it. A warm start keeps it (only the bonus is
+    `WARM_START_ENTROPY`); BC has none.
+
     old_log_probabilities: "rollout" (the rollout's) or "recomputed" (by `unroll` before
     the first epoch). minibatches: per epoch, as equal in views as the views allow;
     micro_batch_rows: ship rows per micro-batch, so micro_batch_rows // N views (at least
@@ -167,6 +179,8 @@ class LearnerConfig:
     entropy_power: float = -0.0081
     entropy_stick: float = -0.0081
     entropy_shoot: float = -0.0081
+    entropy_floor: float | None = None  # nats of joint entropy per ship-step; None: off
+    entropy_floor_coefficient: float = 0.1
     value: float = 0.007
     # the delta physics head's (the champion's; the absolute head took 0.0041 for the same
     # trunk share: docs/explanation/learner.md, round2-log.md 03:50-04:13)
@@ -217,6 +231,21 @@ class LearnerConfig:
                 )
         if any(value <= 0.0 for value in self.offence_premium.values):
             raise ValueError(f"offence_premium {self.offence_premium} must stay positive")
+        if self.entropy_floor is not None and not 0.0 < self.entropy_floor <= math.log(NUM_JOINT):
+            raise ValueError(
+                f"entropy_floor {self.entropy_floor} must be in (0, ln {NUM_JOINT}] nats"
+            )
+        if self.entropy_floor_coefficient < 0.0:
+            raise ValueError(
+                f"entropy_floor_coefficient {self.entropy_floor_coefficient} is negative"
+            )
+
+    def coefficient(self, term: str) -> float:
+        """The coefficient of the loss term `term` (TERMS): the field of its name, the entropy
+        floor's `entropy_floor_coefficient` (0 with no floor)."""
+        if term == ENTROPY_FLOOR:
+            return 0.0 if self.entropy_floor is None else self.entropy_floor_coefficient
+        return getattr(self, term)
 
     @property
     def records_distribution(self) -> bool:
@@ -407,9 +436,14 @@ class Learner:
         self.spread_generator = stream_generator(seed, "shot_spread", device)  # spread, ages
         self.order_generator = stream_generator(seed, "minibatch_order")  # host indices
         self.auxiliary = hasattr(model, "state_code")
+        # the auxiliary heads the model has (`Yemong.auxiliary_heads`): a head it does not
+        # build has no term, no labels and no series; without the shot heads no shot is
+        # re-simulated and the store keeps no shot labels
+        self.heads = model.auxiliary_heads if self.auxiliary else ()
+        self.shot_labels = "shot_trajectory" in self.heads
+        self.shot_runs = model.shot_code.trajectory_runs if self.shot_labels else None
         if self.auxiliary:
             self.grid = HexGrid(model.config.hex_rings, device)
-            self.shot_runs = model.shot_code.trajectory_runs
         self.discount = torch.tensor(returns.per_part(config.discount), device=device)
         self.trace_decay = torch.tensor(returns.per_part(config.trace_decay), device=device)
         self.every_trace = torch.ones_like(self.trace_decay)  # λ = 1: the rewards themselves
@@ -571,14 +605,16 @@ class Learner:
         stored shot labels (none without auxiliary heads)."""
         if not self.auxiliary:
             return {}
+        if shot_labels is None:
+            return self.codes(trajectory, None, None)
         return self.codes(trajectory, shot_labels["shots"], shot_labels["mask"])
 
     def staged(
         self, segments: Segments, view_batches: list[torch.Tensor]
     ) -> Iterator[tuple[Trajectory, dict | None]]:
-        """Each batch of views (host indices) on the device: its Trajectory and, with
-        auxiliary heads, its shot labels from the store ({"shots", "mask"}, (L, n, ...))."""
-        names = segments.names + ((SHOT_LABELS,) if self.auxiliary else ())
+        """Each batch of views (host indices) on the device: its Trajectory and, with the
+        shot heads, its shot labels from the store ({"shots", "mask"}, (L, n, ...))."""
+        names = segments.names + ((SHOT_LABELS,) if self.shot_labels else ())
         for batch in segments.batches(names, view_batches):
             stored = batch.pop(SHOT_LABELS, None)
             if stored is not None:
@@ -586,35 +622,39 @@ class Learner:
             yield Trajectory(**batch), stored
 
     def _codes(
-        self, trajectory: Trajectory, shot: shots.ShotLabels, shot_mask: torch.Tensor
+        self,
+        trajectory: Trajectory,
+        shot: shots.ShotLabels | None,
+        shot_mask: torch.Tensor | None,
     ) -> dict:
-        """The targets as the heads' codes, from the stored rows and the re-simulated shots'
-        labels (a stage the runtime may compile)."""
-        model = self.model
+        """The targets as the codes of the heads the model has (`heads`), from the stored
+        rows and the re-simulated shots' labels (None without the shot heads; a stage the
+        runtime may compile)."""
+        model, heads = self.model, self.heads
         rows = labels.privileged_rows(trajectory)
-        enemy, enemy_mask = labels.enemy_actions(trajectory)
-        code = model.shot_code
-        pairs = {}
-        if getattr(model, "geometry_head", None) is not None:
+        out = {}
+        if "geometry" in heads:
             partners, mask, values = labels.geometry_pairs(trajectory)
-            pairs = dict(geometry_partners=partners, geometry_mask=mask, geometry=values)
-        mask = labels.next_state_mask(trajectory, self.model)
-        split = {}
-        if getattr(model, "correction_code", None) is not None:
-            split = labels.split_masks(trajectory, mask, model)
-        return dict(
-            **pairs,
-            **split,
-            **labels.next_state_targets(model, trajectory, rows),
-            next_state_mask=mask,
-            enemy_action=enemy,
-            enemy_mask=enemy_mask,
-            density=labels.density_targets(self.grid, trajectory, rows),
-            shot_snapshots=shot.snapshots,
-            shot_ages=shot.ages.long() + 1,  # in moves
-            shot_mask=shot_mask,
-            shot_outcome=shot_codes.outcome_code(code, shot.hit, shot.distance, shot.side),
-        )
+            out.update(geometry_partners=partners, geometry_mask=mask, geometry=values)
+        if "next_state" in heads:
+            mask = labels.next_state_mask(trajectory, model)
+            if "correction" in heads:
+                out.update(labels.split_masks(trajectory, mask, model))
+            out.update(labels.next_state_targets(model, trajectory, rows), next_state_mask=mask)
+        if "enemy_action" in heads:
+            enemy, enemy_mask = labels.enemy_actions(trajectory)
+            out.update(enemy_action=enemy, enemy_mask=enemy_mask)
+        if "density" in heads:
+            out.update(density=labels.density_targets(self.grid, trajectory, rows))
+        if shot is not None:
+            code = model.shot_code
+            out.update(
+                shot_snapshots=shot.snapshots,
+                shot_ages=shot.ages.long() + 1,  # in moves
+                shot_mask=shot_mask,
+                shot_outcome=shot_codes.outcome_code(code, shot.hit, shot.distance, shot.side),
+            )
+        return out
 
     # ------------------------------------------------------------------ the loss
 
@@ -655,7 +695,7 @@ class Learner:
         terms, per_level, statistic, unrolled, shot_parts = self._terms_of(
             unrolled, trajectory, label, derived, denominator, scale
         )
-        loss = sum(getattr(self.config, term) * terms[term] for term in TERMS)
+        loss = sum(self.config.coefficient(term) * terms[term] for term in TERMS)
         heads_read = None
         if self.measures_heads:
             heads_read = _pytree.tree_map_only(
@@ -712,6 +752,14 @@ class Learner:
             unrolled, trajectory, derived, denominator, scale
         )
         terms.update(zip(ENTROPY_TERMS, entropies.unbind(), strict=True))
+        if self.config.entropy_floor is not None:
+            joint_entropy = policy.factor_entropies(unrolled.policy_logits.float()).sum(-1)
+            terms[ENTROPY_FLOOR] = (
+                losses.entropy_floor_penalty(
+                    joint_entropy, self.config.entropy_floor, trajectory.alive[..., :own]
+                )
+                / denominator["policy"]
+            )
         per_level = losses.critic_losses(
             unrolled.value_logits,
             unrolled.outcome_logits,
@@ -1071,20 +1119,21 @@ class Learner:
         recompute = config.old_log_probabilities == "recomputed"
         belief_total: dict = {}
         if self.auxiliary or recompute:
-            # One spread and one draw of uniform ages per update: each epoch reads the same
-            # stored labels.
-            spread = torch.randn(
-                (segments.length, segments.views, self.rules.num_ships, 2),
-                device=device,
-                generator=self.spread_generator,
-            )
-            drawn = torch.randint(
-                self.rules.longest_bullet_moves,
-                (segments.length, segments.views, self.rules.num_ships, 3),
-                dtype=torch.uint8,
-                device=device,
-                generator=self.spread_generator,
-            )
+            if self.shot_labels:
+                # One spread and one draw of uniform ages per update: each epoch reads the
+                # same stored labels.
+                spread = torch.randn(
+                    (segments.length, segments.views, self.rules.num_ships, 2),
+                    device=device,
+                    generator=self.spread_generator,
+                )
+                drawn = torch.randint(
+                    self.rules.longest_bullet_moves,
+                    (segments.length, segments.views, self.rules.num_ships, 3),
+                    dtype=torch.uint8,
+                    device=device,
+                    generator=self.spread_generator,
+                )
             order = self._micro_batches(torch.arange(segments.views))  # host indices
             for host_views, batch in zip(
                 order, segments.batches(segments.names, order), strict=True
@@ -1092,20 +1141,14 @@ class Learner:
                 views = self._on_device(host_views)
                 trajectory = Trajectory(**batch)
                 with torch.no_grad():
-                    if self.auxiliary:
+                    if self.shot_labels:
                         following, followed = segments.following(
                             FOLLOWING, host_views, self.rules.longest_bullet_moves
                         )
                         shot, shot_mask = self.shots(
                             trajectory, spread[:, views], drawn[:, views], following, followed
                         )
-                        counts[views, COUNTS.index("next_state")] = (
-                            labels.next_state_mask(trajectory, self.model).sum((0, 2)).float()
-                        )
                         counts[views, COUNTS.index("shots")] = shot_mask.sum((0, 2)).float()
-                        if getattr(self.model, "geometry_head", None) is not None:
-                            _, pair_mask, _ = labels.geometry_pairs(trajectory)
-                            counts[views, COUNTS.index("pairs")] = pair_mask.sum((0, 2, 3)).float()
                         stored = _pytree.tree_map_only(
                             torch.Tensor,
                             lambda x: x.transpose(0, 1).contiguous(),
@@ -1115,19 +1158,26 @@ class Learner:
                         segments.write_views(
                             {SHOT_LABELS: stored}, slice(first, first + host_views.numel())
                         )
-                        if self.diagnostics:
-                            belief_total = head_statistics.add(
-                                belief_total,
-                                {
-                                    **head_statistics.belief_sums(
-                                        trajectory,
-                                        self.rules.tick_length,
-                                        getattr(self.model, "state_code", None),
-                                    ),
-                                    **head_statistics.input_sums(self.model.state_code, trajectory),
-                                    **head_statistics.acceleration_sums(self.model, trajectory),
-                                },
-                            )
+                    if "next_state" in self.heads:
+                        counts[views, COUNTS.index("next_state")] = (
+                            labels.next_state_mask(trajectory, self.model).sum((0, 2)).float()
+                        )
+                    if "geometry" in self.heads:
+                        _, pair_mask, _ = labels.geometry_pairs(trajectory)
+                        counts[views, COUNTS.index("pairs")] = pair_mask.sum((0, 2, 3)).float()
+                    if self.auxiliary and self.diagnostics:
+                        belief_total = head_statistics.add(
+                            belief_total,
+                            {
+                                **head_statistics.belief_sums(
+                                    trajectory,
+                                    self.rules.tick_length,
+                                    getattr(self.model, "state_code", None),
+                                ),
+                                **head_statistics.input_sums(self.model.state_code, trajectory),
+                                **head_statistics.acceleration_sums(self.model, trajectory),
+                            },
+                        )
                     if recompute:
                         log_probability, _ = policy.evaluate(
                             self.unroll(trajectory).policy_logits, _own_joint(trajectory)
@@ -1433,7 +1483,7 @@ class Learner:
         out = {
             HEAD_SERIES[term]: Mean(terms_total[index], steps)
             for index, term in enumerate(TERMS)
-            if term in HEAD_SERIES
+            if term in self.heads
         }
         for index, head in enumerate(self.value_heads):
             out[f"critic/value_loss/{head}"] = Mean(levels_total[index], steps)
@@ -1459,6 +1509,10 @@ class Learner:
             out["policy/kl_first"] = first_kl
         for index, term in enumerate(TERMS):
             out[f"train/nonfinite_steps/{term}"] = nonfinite_terms[index]
+        if config.entropy_floor is not None:  # the hinge's mean per token, before its coefficient
+            out["policy/entropy_floor/penalty"] = Mean(
+                terms_total[TERMS.index(ENTROPY_FLOOR)], steps
+            )
         if self.diagnostics:
             out.update(self._diagnostic_series(prepared, diagnostics_total, steps, levels_total))
             out.update(fit_series(last_moments, self.levels))
@@ -1586,8 +1640,8 @@ class Learner:
                     basic[f"next_state_{name}"] = (
                         config.next_state * part / denominator["next_state"]
                     )
-            elif term in ("geometry", "correction") and not terms[term].requires_grad:
-                continue  # a model without the geometry head or the error head
+            elif (term in HEAD_SERIES or term == ENTROPY_FLOOR) and not terms[term].requires_grad:
+                continue  # a head the model does not build (`Yemong.auxiliary_heads`); no floor
             elif term == "geometry":
                 logits = self.model.geometry(
                     unrolled.geometry_latents, label["geometry_partners"]
@@ -1603,7 +1657,7 @@ class Learner:
                         / (len(geometry.TARGETS) * denominator["pairs"])
                     )
             else:
-                basic[term] = getattr(config, term) * terms[term]
+                basic[term] = config.coefficient(term) * terms[term]
         return basic
 
     def _gradient_decomposition(
@@ -1685,7 +1739,10 @@ class Learner:
             top_level,
             groups,
             populations,
-            actor=("policy", *ENTROPY_TERMS),
+            # the floor's term only when it is on (an absent term has no gradient)
+            actor=tuple(
+                term for term in ("policy", *ENTROPY_TERMS, ENTROPY_FLOOR) if term in everything
+            ),
             critic=("value",),
         )
         if level_gradients is not None:

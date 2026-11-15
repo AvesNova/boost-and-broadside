@@ -1,15 +1,17 @@
 """The training loop: rollout segments into the store, the learner's update, the league's
 hooks, progress metrics.
 
-Lineup: self-play and the league's seat (`bnb.runtime.opponents`), half each. A mixed batch
-(mixed spec 5) crosses the lineup with the games of a training mix. The learner is Yemong,
-the toy relational model (learner spec 9) or the nearest-neighbour MLP
-(`bnb.models.nearest`). The objective is PPO, or behaviour cloning of Imugi
+Lineup: self-play and the league's seat (`bnb.runtime.opponents`), half each, or the league's
+seat alone for a run that trains one seat or an exploiter (`training_lineup`). A mixed batch
+(mixed spec 5) crosses the lineup with the games of a training mix (`TrainConfig.mode_mix`).
+The learner is Yemong, the toy relational model (learner spec 9) or the nearest-neighbour
+MLP (`bnb.models.nearest`). The objective is PPO, or behaviour cloning of Imugi
 (`bnb.learn.bc`, with its own lineup and stop rule in `bnb.runtime.cloning`).
 """
 
 import copy
 import dataclasses
+import math
 import time
 from collections.abc import Callable
 from typing import Protocol
@@ -82,26 +84,38 @@ TRAINING_MIXES = {
 }
 # Self-play is a fixed share of each mode's batch, the league's seat the rest (league spec 1).
 LINEUP = (Pool("self_play", 0.5, (LEARNER, LEARNER)), Pool("league", 0.5, (LEARNER, OPPONENTS)))
+# The lineup of a run that trains one seat or an exploiter: every game against the league's
+# seat (self-play, if any, is its "latest" slots: `LeagueConfig.latest_share`).
+LEAGUE_ONLY = (Pool("league", 1.0, (LEARNER, OPPONENTS)),)
+SELF_PLAY_SEATS = ("both", "one")
 MODELS = ("yemong", "relational", "nearest")
 OBJECTIVES = ("ppo", "bc")
+# `TrainConfig.update_policies`: which runs write every update's policy files, by stage (a
+# PPO run is "rl", a BC run "bc"; "all" both, "off" neither).
+UPDATE_POLICIES = ("off", "rl", "bc", "all")
 PRECISIONS = ("float32", "tf32", "bfloat16")
 
 
 def mixed(
-    lineup: tuple[Pool, ...] = LINEUP, mix: tuple[tuple[str, float], ...] = TRAINING_MIX
+    lineup: tuple[Pool, ...] = LINEUP,
+    mix: tuple[tuple[str, float], ...] = TRAINING_MIX,
+    base: GameConfig | None = None,
 ) -> tuple[GameConfig, tuple[Pool, ...]]:
-    """A mixed batch: the shared config (the first game's) and every game of the mix (a
-    preset name and its share) crossed with every pool of the lineup, game by game, so each
-    game's environments are one contiguous slice. Pool "frontline/chaser" takes the
-    frontline share of the chaser share."""
-    base = PRESETS[mix[0][0]]
+    """A mixed batch: the shared config (`base`, by default the first game's) and every game
+    of the mix (a preset name and its share) crossed with every pool of the lineup, game by
+    game, so each game's environments are one contiguous slice. Pool "frontline/chaser"
+    takes the frontline share of the chaser share."""
+    base_name = "the run's game" if base is not None else mix[0][0]
+    base = base if base is not None else PRESETS[mix[0][0]]
     pools = []
     for name, share in mix:
+        if name not in PRESETS:
+            raise ValueError(f"{name!r} is not a game preset; one of {sorted(PRESETS)}")
         game = PRESETS[name]
         if (game.ships_per_team, game.num_fields) != (base.ships_per_team, base.num_fields):
-            raise ValueError(f"{name} has other sizes than {mix[0][0]}: one batch, one size")
+            raise ValueError(f"{name} has other sizes than {base_name}: one batch, one size")
         if game.ship_set != base.ship_set:
-            raise ValueError(f"{name} plays another ship set than {mix[0][0]}: one batch, one card")
+            raise ValueError(f"{name} plays another ship set than {base_name}: one batch, one card")
         pools.extend(
             Pool(
                 f"{name}/{pool.name}",
@@ -117,6 +131,57 @@ def mixed(
             for pool in lineup
         )
     return base, tuple(pools)
+
+
+def training_lineup(config: TrainConfig) -> tuple[Pool, ...]:
+    """The PPO lineup the settings name: `LINEUP` (self-play training both seats, and the
+    league's seat), or `LEAGUE_ONLY` for a run that trains one seat
+    (`TrainConfig.self_play_seats="one"`) or an exploiter (`LeagueConfig.fixed_opponent`)."""
+    if config.self_play_seats == "one" or config.league.fixed_opponent is not None:
+        return LEAGUE_ONLY
+    return LINEUP
+
+
+def arranged(config: TrainConfig, preset: str | None = None) -> TrainConfig:
+    """`config` with the pools its lineup settings (`training_lineup`) and its mode mix name:
+    `TrainConfig.mode_mix`, else the training mix `preset` names (`TRAINING_MIXES`), else
+    the lineup alone, each game's pools with that game's own map, clocks, respawn and spawn
+    groups (`mixed`). A config that sets neither (`mode_mix` None, the default lineup) or
+    clones is returned as it is, its pools untouched."""
+    lineup = training_lineup(config)
+    if config.objective != "ppo" or (config.mode_mix is None and lineup == LINEUP):
+        return config
+    mix = config.mix() or TRAINING_MIXES.get(preset)
+    pools = lineup if mix is None else mixed(lineup, mix, config.game)[1]
+    return dataclasses.replace(config, pools=pools)
+
+
+def check_pools(config: TrainConfig) -> None:
+    """Refuse pools that contradict the settings (`arranged` builds them): a self-play pool
+    in a run that trains one seat or an exploiter, or games and shares other than the mode
+    mix's."""
+    if training_lineup(config) == LEAGUE_ONLY:
+        both = [pool.name for pool in config.pools if pool.seats == (LEARNER, LEARNER)]
+        if both:
+            raise ValueError(
+                f"pools {both} train both seats, but the run trains one seat "
+                f"(self_play_seats={config.self_play_seats!r}, fixed_opponent="
+                f"{config.league.fixed_opponent!r}): build the pools with `arranged`"
+            )
+    mix = config.mix()
+    if mix is not None:
+        shares: dict[str, float] = {}
+        for pool in config.pools:
+            name = pool.name.split("/")[0]
+            shares[name] = shares.get(name, 0.0) + pool.share
+        want = dict(mix)
+        if shares.keys() != want.keys() or any(
+            not math.isclose(shares[name], want[name]) for name in want
+        ):
+            raise ValueError(
+                f"the pools' games and shares {shares} are not mode_mix's {want}: build the "
+                f"pools with `arranged`"
+            )
 
 
 def training_pools(config: TrainConfig) -> tuple[Pool, ...]:
@@ -152,9 +217,10 @@ class TrainConfig:
     turned 35 degrees, heading harmonics 1, 2, 4), the colour code to 236 196 m
     (`position_period`), the arena radius's code (`arena_code`) and the geometry head
     (`geometry_head`), and every model's value support has `codes.PADDING_BINS` bins past
-    each end (`value_padding`, since 2026-11-15); the config's own defaults, "v1",
-    "spatial_first", the two older modes, no timers, the older codes and no value padding,
-    are what older build records hold (every build
+    each end (`value_padding`, since 2026-11-15), and a new nearest-neighbour MLP reads
+    every mode's inputs (`NearestConfig.full_mode_inputs`, since 2026-11-15); the config's
+    own defaults, "v1", "spatial_first", the two older modes, no timers, the older codes,
+    no value padding and the MLP's first inputs, are what older build records hold (every build
     reads the boundary's radius and time to zero). ship_card:
     the ship card's values by field, one per ship type, every field given
     (`bnb.game.api.default_card`). environments: the training environments; length: ticks
@@ -175,8 +241,15 @@ class TrainConfig:
     objective: "ppo", or "bc" (clone Imugi; `learner` should then be
     `bnb.learn.bc.config()`, `teacher` sets its labels and how the scripted opponent
     plays, `bnb.learn.bc.TeacherOpponent`, and `stop` when it stops, its budget included).
-    policy_snapshots: for a run that does not write every update's policy files (BC by
-    default: the run's `update_policies`), the environment steps at which it keeps them
+    update_policies: which runs write the live, exponential-average and uniform-average
+    policy files after every update (and their starting weights before the first) to
+    `policies/` (about 11 MB each, never pruned; `bnb.runs.session`), by the run's stage:
+    "off" (the default), "rl" (a PPO run, a chain's RL stage among them), "bc" (a BC run)
+    or "all". One setting for both stages of a chain: "rl" keeps a chain's BC stage on its
+    snapshots (BC's files would add about 1 GB). On for the run that feeds the averaging
+    sweep (`bnb average`, R0 and R5); a resume may change it.
+    policy_snapshots: for a run that does not write every update's policy files
+    (`update_policies`), the environment steps at which it keeps them
     under `policies/step_<steps>/`, the live weights and both averages
     (`bnb.runtime.snapshots.SnapshotSchedule`; `RL_SNAPSHOTS` by default, decided
     2026-11-14: 1, 2, 3, 4, 6, 8, 10, 12, 16 and 20M steps, then every 5M), and always at
@@ -203,7 +276,17 @@ class TrainConfig:
     False plays the game's own lineup; a fixed `lineup` replaces the draw.
     compile_split: the learner's micro-batch loss compiles as two units, the unroll and the
     loss over its outputs (`Learner`'s split; compile time only, the same arithmetic within
-    float rounding, `docs/rewrite/sections/compile-split`)."""
+    float rounding, `docs/rewrite/sections/compile-split`).
+    mode_mix: the training mix as game presets and their weights, such as
+    `{"real_scale_frontline": 8, "real_scale_deathmatch": 4, "real_scale_elimination": 4}`
+    (arm A5), each game's share its weight over their sum; `arranged` builds the pools
+    from it, every game with its own map, clocks, respawn and spawn groups. None (the
+    default): the pools the preset gives (`TRAINING_MIXES`).
+    self_play_seats: "both" (the default): a self-play game trains both seats; "one" (arm
+    A6): no self-play pool, every game is against the league's seat, whose "latest" slots
+    (`LeagueConfig.latest_share`, then required) are the self-play: a frozen copy of the
+    live weights loaded after every update, so each game trains one seat
+    (`training_lineup`)."""
 
     game: GameConfig
     environments: int = 2048
@@ -238,7 +321,7 @@ class TrainConfig:
         value_padding=PADDING_BINS,  # the HL-Gauss value targets' padding (2026-11-15)
     )
     relational: RelationalConfig = RelationalConfig(value_padding=PADDING_BINS)
-    nearest: NearestConfig = NearestConfig(value_padding=PADDING_BINS)
+    nearest: NearestConfig = NearestConfig(value_padding=PADDING_BINS, full_mode_inputs=True)
     ship_card: dict[str, tuple[float, ...]] | None = None  # None: the game's ship set's card
     league: LeagueConfig = LeagueConfig()
     pools: tuple[Pool, ...] = LINEUP
@@ -252,6 +335,7 @@ class TrainConfig:
     objective: str = "ppo"
     teacher: TeacherConfig = TeacherConfig()
     stop: StopConfig = StopConfig()
+    update_policies: str = "off"
     policy_snapshots: SnapshotSchedule = RL_SNAPSHOTS
     arena_scale: ArenaScale | None = None
     active_fields: ActiveFields | None = None
@@ -260,10 +344,41 @@ class TrainConfig:
     # end a PPO run after this many consecutive updates with a combat-collapse alert
     # (`bnb.runs.triggers.CombatCollapse`), recording why; 0: never (the default)
     combat_collapse_stop: int = 0
+    mode_mix: dict[str, int] | None = None
+    self_play_seats: str = "both"
 
     def __post_init__(self) -> None:
         if self.objective not in OBJECTIVES:
             raise ValueError(f"objective {self.objective!r} is not one of {OBJECTIVES}")
+        if self.self_play_seats not in SELF_PLAY_SEATS:
+            raise ValueError(
+                f"self_play_seats {self.self_play_seats!r} is not one of {SELF_PLAY_SEATS}"
+            )
+        if self.objective == "bc" and (
+            self.self_play_seats != "both"
+            or self.mode_mix is not None
+            or self.league.fixed_opponent is not None
+        ):
+            raise ValueError("self_play_seats, mode_mix and league.fixed_opponent are PPO's")
+        if self.self_play_seats == "one" and not self.league.latest_share:
+            raise ValueError(
+                "self_play_seats 'one' needs league.latest_share > 0, its self-play share"
+            )
+        if self.mode_mix is not None:
+            if not self.mode_mix or any(weight < 1 for weight in self.mode_mix.values()):
+                raise ValueError(f"mode_mix {self.mode_mix} needs positive whole weights")
+            unknown = sorted(set(self.mode_mix) - set(PRESETS))
+            if unknown:
+                raise ValueError(f"mode_mix names {unknown}, not game presets")
+        if self.update_policies not in UPDATE_POLICIES:
+            raise ValueError(
+                f"update_policies {self.update_policies!r} is not one of {UPDATE_POLICIES}"
+            )
+        if self.objective == "bc" and self.learner.entropy_floor is not None:
+            raise ValueError(
+                "learner.entropy_floor is RL's: BC has no entropy term (a chain sets it with "
+                "--rl-set)"
+            )
         if self.combat_collapse_stop < 0:
             raise ValueError(f"combat_collapse_stop {self.combat_collapse_stop} is negative")
         if self.model not in MODELS:
@@ -297,6 +412,20 @@ class TrainConfig:
                     f"ship_card.{name} has {len(values)} values; the card has "
                     f"{len(card[name])} ship types"
                 )
+
+    def mix(self) -> tuple[tuple[str, float], ...] | None:
+        """`mode_mix` as (preset, share) pairs, the shares summing to 1; None without one."""
+        if self.mode_mix is None:
+            return None
+        total = sum(self.mode_mix.values())
+        return tuple((name, weight / total) for name, weight in self.mode_mix.items())
+
+    @property
+    def writes_update_policies(self) -> bool:
+        """Whether this run writes every update's policy files (`update_policies` for its
+        stage: "rl" for PPO, "bc" for BC)."""
+        stage = "bc" if self.objective == "bc" else "rl"
+        return self.update_policies in ("all", stage)
 
     def uniform_start(self) -> int:
         """The environment steps the uniform average starts after: `league.uniform_from`,
@@ -365,7 +494,7 @@ def compiler(enabled: bool) -> Callable:
     """The runtime's stage cut for the learner: the micro-batch loss, compiled whole.
 
     Without Inductor's comprehensive padding: it pads the row stride of a wide intermediate
-    (a code's logits' gradient, (L, R, N, ages, 154)) to 128 bytes, so the head kernel's
+    (a code's logits' gradient, (L, R, N, ages, 162)) to 128 bytes, so the head kernel's
     and the weight gradient's (rows, outputs) views of it each need a copy; without it a
     real-scale micro-batch's step is 5% faster (`bench/learn_micro.py`)."""
     if not enabled:
@@ -407,6 +536,7 @@ class Trainer:
 
     def __init__(self, config: TrainConfig, device: torch.device, diagnostics: bool = True) -> None:
         game = config.game
+        check_pools(config)
         self.config = config
         self.model = build_model(model_build(config), device, config.seed)
         if isinstance(self.model, Yemong) and samples_field_counts(game, training_pools(config)):

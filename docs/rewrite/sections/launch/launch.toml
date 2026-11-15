@@ -33,7 +33,7 @@ set = [
   # the segments on the device, not pinned host memory (the champion's; 32 GB is room)
   "host_store=false",
   # policy files (live and both averages) every 5M environment steps, for the tournament's
-  # matched steps (per-update policy files are off: --update-policies False below)
+  # matched steps (per-update policy files are off: update_policies=off below)
   "policy_snapshot_every=5000000",
 ]
 # BC only (bnb train --bc-set). BC is capped at 100M (author, 2026-11-12; v1's target was
@@ -45,7 +45,7 @@ bc_set = ["stop.budget_steps=100000000", "lanes.environments=0"]
 # RL only (bnb train --rl-set)
 rl_set = []
 # other bnb train options for every arm
-train = ["--update-policies", "False"]
+train = ["--set", "update_policies=off"]
 
 [box]
 # where everything lives on the box (a vast /workspace volume)

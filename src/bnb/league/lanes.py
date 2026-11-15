@@ -42,7 +42,7 @@ from bnb.runtime.opponents import ladder_rung
 from bnb.runtime.train import Trainer
 
 from .gauge import Record
-from .pool import Averages
+from .pool import FIXED_OPPONENT, Averages
 from .ratings import fit_ratings
 
 ANCHOR_RATING = 1000.0  # Imugi's
@@ -54,11 +54,13 @@ SNAPSHOT_PREFIX = "snapshot_"  # a league snapshot's name (`bnb.league.pool.snap
 
 
 def stationary(player: str) -> bool:
-    """A ladder player, a cheese agent or a league snapshot: its play never changes."""
+    """A ladder player, a cheese agent, a league snapshot or an exploiter's fixed opponent:
+    its play never changes."""
     return (
         ladder_rung(player) is not None
         or agent_of(player) is not None
         or player.startswith(SNAPSHOT_PREFIX)
+        or player == FIXED_OPPONENT
     )
 
 

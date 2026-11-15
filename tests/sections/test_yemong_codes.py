@@ -91,8 +91,10 @@ def _errors(decoded, means):
 
 
 def test_layout(code):
-    assert code.width == 544 and code.groups == 23  # 99 velocity bins since v8
-    assert code.runs[0] == (9, 9) and code.runs[1] == (3, 99) and code.runs[-1] == (1, 4)
+    # 99 velocity bins since v8; the linear runs' 2 padding bins a side since HL-Gauss
+    assert code.width == 580 and code.groups == 23
+    assert code.runs[0] == (9, 9) and code.runs[1] == (3, 103) and code.runs[-1] == (1, 4)
+    assert code.runs[3] == (1, 45) and code.runs[4] == (1, 25)
     assert len(MEANS) == 12 and code.spread_count == 15
     assert velocity_reach() == pytest.approx(100.0 * math.expm1(49 * 5.0 / 100))
 
@@ -139,9 +141,9 @@ def test_v2_shot_constants():
     assert parameters.top_speed == pytest.approx(top)
     assert parameters.displacement_period == pytest.approx(2.5 * top * 12 / 30)
     assert parameters.collision_radius == 8.0
-    assert parameters.trajectory_width == 154 and parameters.outcome_width == 19
+    assert parameters.trajectory_width == 162 and parameters.outcome_width == 19
     snapshots = torch.tensor([[10.0, -5.0, 700.0, 20.0, 1.3]])
-    assert shots.trajectory_code(parameters, snapshots).shape == (1, 154)
+    assert shots.trajectory_code(parameters, snapshots).shape == (1, 162)
     outcome = shots.outcome_code(
         parameters, torch.tensor([0, 1, 0]), torch.tensor([20.0, 0.0, 1e4]), torch.tensor([2, 1, 1])
     )
@@ -429,7 +431,7 @@ def test_fourier_inputs_replace_the_position_and_heading_runs_only(code):
     16, the rest the code's own; colour inputs are the code itself."""
     fourier = ShipStateCode(state_code_ranges(RULES, TYPES), position_inputs="fourier").double()
     assert code.input_width == code.width and code.input_groups == code.groups
-    assert fourier.input_width == code.width - 81 - 16 + 36 + 8 == 491
+    assert fourier.input_width == code.width - 81 - 16 + 36 + 8 == 527
     assert fourier.width == code.width  # the code itself is unchanged
     generator = torch.Generator().manual_seed(3)
     means, ship_type = _states(generator, margin=0.25)
@@ -451,7 +453,7 @@ def test_fourier_inputs_replace_the_position_and_heading_runs_only(code):
     )
     heading = codes.fourier_encode(means[:, 4], spreads[:, 4], 2.0 * math.pi, 4, 4)
     torch.testing.assert_close(inputs[:, :36], position.flatten(-3), rtol=1e-12, atol=1e-12)
-    velocity = 3 * VELOCITY_BINS  # 297 since v8 (243 at x1)
+    velocity = 3 * (VELOCITY_BINS + 2 * codes.PADDING_BINS)  # 309: 99 bins since v8, padded
     torch.testing.assert_close(
         inputs[:, 36 : 36 + velocity], encoded[:, 81 : 81 + velocity], rtol=1e-12, atol=1e-12
     )
@@ -473,7 +475,7 @@ def test_grouped_cross_entropy_matches_the_log_softmax_form_and_its_gradient(dty
     gradient within the rounding of its factor kept in bf16 (`codes.KEPT_FACTOR`, 2^-8
     relative, so each element within 2^-8 of |g| (softmax sum(t) + t)), with sharp, soft
     and unnormalised targets and logits far from zero."""
-    runs = ((8, 9), (5, 4), (1, 41), (1, 21))
+    runs = ((8, 9), (5, 4), (1, 45), (1, 25))
     width = sum(groups * size for groups, size in runs)
     logits = (20.0 * torch.randn(3, 7, width, dtype=torch.float64)).to(dtype).requires_grad_()
     target = torch.rand(3, 7, width, dtype=torch.float64)
@@ -523,8 +525,9 @@ def test_grouped_cross_entropy_matches_the_log_softmax_form_and_its_gradient(dty
 
 
 def test_the_trajectory_code_of_its_coordinates_is_the_encoders_code():
-    """`shots.trajectory_code` (made of `trajectory_coordinates`, 46 numbers) equals the
-    general encoders' code at zero spread: position_encode, circular_encode, scalar_sharp, to
+    """`shots.trajectory_code` (made of `trajectory_coordinates`, 44 numbers) equals the
+    general encoders' code at zero spread: position_encode, circular_encode,
+    hl_gauss_scalar_encode, to
     float32 rounding: the code's entries are weights in [0, 1], from sines and cosines of
     phases up to about 3e3 radians, which float32 rounds at about 3e3 * 6e-8 = 2e-4; the
     measured largest difference is 1.8e-4, and a missing term or a wrong bin is of order 1."""
@@ -548,14 +551,16 @@ def test_the_trajectory_code_of_its_coordinates_is_the_encoders_code():
                 4,
                 parameters.direction_levels,
             ).flatten(-2),
-            codes.scalar_sharp(
+            codes.hl_gauss_scalar_encode(
                 torch.hypot(velocity[:, 0], velocity[:, 1]),
+                zero,
                 0.0,
                 parameters.top_speed,
                 parameters.speed_bins,
             ),
-            codes.scalar_sharp(
+            codes.hl_gauss_scalar_encode(
                 torch.log(torch.clamp_min(index, 1e-6)),
+                zero,
                 -parameters.index_span,
                 parameters.index_span,
                 parameters.index_bins,
@@ -564,7 +569,7 @@ def test_the_trajectory_code_of_its_coordinates_is_the_encoders_code():
         -1,
     )
     coordinates = shots.trajectory_coordinates(parameters, snapshots)
-    assert coordinates.shape == (5000, 46)
+    assert coordinates.shape == (5000, 44)
     torch.testing.assert_close(
         shots.trajectory_code(parameters, snapshots), want.float(), rtol=0, atol=5e-4
     )
@@ -595,3 +600,138 @@ def test_grouped_cross_entropy_of_an_encoded_target_matches_the_plain_target():
         rtol=1e-5,
         atol=1e-5 * float(plain_gradient.abs().max()),
     )
+
+
+# ------------------------------------------------------------------ linear HL-Gauss codes
+
+# (low, high, real bins) of each switched code: the velocity's projection axis, the nose
+# rate, a scalar (the ellipse features and the shot's log index share it), the shot speed
+LINEAR_CODES = {
+    "velocity_axis": (*codes._axis_range(VELOCITY_BINS, 5.0), VELOCITY_BINS),
+    "nose_rate": (-8.0, 8.0, 41),
+    "scalar": (0.0, 1.0, 21),
+    "shot_speed": (0.0, 3000.0, 41),
+}
+
+
+def _across_the_range(low: float, high: float, bins: int) -> torch.Tensor:
+    """Values over a code's whole range: the two ends, every bin centre, the edges between
+    bins and random points."""
+    spacing = (high - low) / (bins - 1)
+    centres = low + spacing * torch.arange(bins, dtype=torch.float64)
+    generator = torch.Generator().manual_seed(bins)
+    random = low + (high - low) * torch.rand(500, dtype=torch.float64, generator=generator)
+    return torch.cat(
+        [
+            torch.tensor([low, high], dtype=torch.float64),
+            centres,
+            centres[:-1] + 0.5 * spacing,
+            random,
+        ]
+    )
+
+
+@pytest.mark.parametrize("name", list(LINEAR_CODES))
+@pytest.mark.parametrize("spread_bins", [0.0, 0.3, 1.0, 2.5])
+def test_an_hl_gauss_code_decodes_to_its_value_and_spread_across_the_range(name, spread_bins):
+    """Every switched code's expectation is the value and its decoded spread the encoded one,
+    at every coordinate of the range, the two ends included, and spread 0 decodes as 0:
+    float64 rounding (1e-10 bins; the measured error is about 1e-14). The widest spread
+    here, 2.5 bins, is inside the variance any coordinate can hold (VARIANCE_REACH)."""
+    low, high, bins = LINEAR_CODES[name]
+    spacing = (high - low) / (bins - 1)
+    values = _across_the_range(low, high, bins)
+    sigma = torch.full_like(values, spread_bins * spacing)
+    code = codes.hl_gauss_scalar_encode(values, sigma, low, high, bins)
+    assert code.shape == (values.shape[0], bins + 2 * codes.PADDING_BINS)
+    assert (code >= 0).all()
+    torch.testing.assert_close(code.sum(-1), torch.ones_like(values), rtol=0, atol=1e-12)
+    mean, spread = codes.hl_gauss_scalar_decode(code, low, high, bins)
+    assert ((mean - values).abs() / spacing).max() < 1e-10
+    if spread_bins == 0.0:
+        assert (spread == 0).all()
+    else:
+        assert ((spread - sigma).abs() / spacing).max() < 1e-10
+
+
+@pytest.mark.parametrize("name", list(LINEAR_CODES))
+def test_an_hl_gauss_code_rounds_in_float32_to_a_small_share_of_a_bin(name):
+    """The same codes in float32: the mean within 1e-4 bins of the value (the measured error
+    is about 1e-5), the spread of an exact value within 0.02 bins of 0 (the variance's
+    rounding, about 1e-5 bins^2 less the code's own 0.65, is under its square root)."""
+    low, high, bins = LINEAR_CODES[name]
+    spacing = (high - low) / (bins - 1)
+    values = _across_the_range(low, high, bins).float()
+    code = codes.hl_gauss_scalar_encode(values, torch.zeros_like(values), low, high, bins)
+    mean, spread = codes.hl_gauss_scalar_decode(code, low, high, bins)
+    assert ((mean - values).abs() / spacing).max() < 1e-4
+    assert (spread / spacing).max() < 0.02
+
+
+def test_an_exact_value_inside_the_range_is_the_plain_hl_gauss():
+    """Away from the ends the code of an exact value is the Gaussian of 0.75 bins integrated
+    over each bin (`codes.hl_gauss`), to the small correction `hl_gauss_scalar_at` makes
+    for the exact moments (the Gaussian has them to 4e-5 bins^2)."""
+    low, high, bins = LINEAR_CODES["nose_rate"]
+    spacing = (high - low) / (bins - 1)
+    values = low + spacing * torch.linspace(4.0, bins - 5.0, 301, dtype=torch.float64)
+    code = codes.hl_gauss_scalar_encode(values, torch.zeros_like(values), low, high, bins)
+    coordinate = codes.PADDING_BINS + (values - low) / spacing
+    width = bins + 2 * codes.PADDING_BINS
+    plain = codes.hl_gauss(coordinate, 0, width - 1, codes.HL_GAUSS_SIGMA)
+    torch.testing.assert_close(code, plain, rtol=0, atol=1e-4)
+
+
+def test_a_value_past_the_range_codes_as_its_end():
+    low, high, bins = LINEAR_CODES["scalar"]
+    values = torch.tensor([-0.5, -1e-9, 1.0 + 1e-9, 7.0], dtype=torch.float64)
+    ends = torch.tensor([low, low, high, high], dtype=torch.float64)
+    zero = torch.zeros_like(values)
+    torch.testing.assert_close(
+        codes.hl_gauss_scalar_encode(values, zero, low, high, bins),
+        codes.hl_gauss_scalar_encode(ends, zero, low, high, bins),
+    )
+
+
+def test_a_velocity_decodes_to_its_mean_and_covariance_at_the_reach():
+    """The velocity's three HL-Gauss codes: a velocity up to the code's reach decodes to
+    itself, and a covariance to itself, to float64 rounding."""
+    generator = torch.Generator().manual_seed(5)
+    angle = 2.0 * math.pi * torch.rand(400, dtype=torch.float64, generator=generator)
+    # no projection is longer than the compressed speed: up to the reach, all three are in
+    # range, the reach itself the end of one
+    speed = velocity_reach() * torch.cat(
+        [
+            torch.tensor([0.0, 1.0], dtype=torch.float64),
+            torch.rand(398, dtype=torch.float64, generator=generator),
+        ]
+    )
+    angle[1] = 0.0  # the reach along the first axis
+    velocity = torch.stack([speed * torch.cos(angle), speed * torch.sin(angle)], -1)
+    covariance = torch.tensor([16.0, 3.0, 9.0], dtype=torch.float64).expand(400, -1)
+    for packed in (torch.zeros_like(covariance), covariance):
+        code = codes.velocity_encode(velocity, packed, VELOCITY_BINS, 5.0, 100.0)
+        mean, decoded = codes.velocity_decode(code, VELOCITY_BINS, 5.0, 100.0)
+        torch.testing.assert_close(mean, velocity, rtol=0, atol=1e-8)
+        torch.testing.assert_close(decoded, packed, rtol=1e-8, atol=1e-8)
+
+
+def test_the_kept_codes_are_the_colour_codes_and_the_two_hot_cooldown(code):
+    """The state code's position and heading runs are the circular colour codes
+    (`codes.position_encode`, `codes.circular_encode`) and the gun cooldown's run two-hot,
+    one-hot at a whole tick: not HL-Gauss."""
+    generator = torch.Generator().manual_seed(6)
+    means, ship_type = _states(generator, margin=0.0)
+    spreads = torch.zeros(COUNT, code.spread_count, dtype=torch.float64)
+    spreads[:, 0], spreads[:, 4] = 40.0, 0.2  # the position's and the heading's sigma
+    encoded = code.encode(means, spreads, ship_type)
+    position, _, heading, *_, cooldown = codes.split_runs(encoded, code.runs)
+    torch.testing.assert_close(
+        position,
+        codes.position_encode(means[:, 0:2], spreads[:, 0], (code.position_period,) * 2, 9),
+    )
+    torch.testing.assert_close(
+        heading, codes.circular_encode(means[:, 4], spreads[:, 4], 2.0 * math.pi, 4, 4)
+    )
+    ticks = torch.round(means[:, MEANS.index("gun_cooldown")] / RULES.tick_length).long()
+    torch.testing.assert_close(cooldown[:, 0], torch.nn.functional.one_hot(ticks, 4).double())

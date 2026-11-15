@@ -4,7 +4,8 @@ sight before a decision and storing the forecast after it.
 Visible ships are truth; a hidden ship the team has seen since it last spawned keeps the
 model's forecast; a ship never seen since its spawn is not valid (zeros, uniform action).
 With `YemongConfig.forecast_feedback` off the model never calls `advance`: a hidden ship
-keeps its last sighting (no spread) and every action stays uniform.
+keeps its last sighting (no spread) and every action stays uniform. Without an enemy-action
+head (`YemongConfig.enemy_action_head` off) `advance` stores uniform actions.
 """
 
 import torch
@@ -63,11 +64,12 @@ def observe(
 
 
 def advance(
-    belief: Belief, prediction: torch.Tensor, action_logits: torch.Tensor
+    belief: Belief, prediction: torch.Tensor, action_logits: torch.Tensor | None
 ) -> tuple[Belief, torch.Tensor]:
     """Store the forecast: prediction (..., N, 12 + 15) means then spreads, decoded from the
-    next-state head, and the enemy-action head's logits for every row. Non-finite prediction
-    entries become 0 and are counted, per leading index (...)."""
+    next-state head, and the enemy-action head's logits for every row (None without the
+    head: every action uniform). Non-finite prediction entries become 0 and are counted, per
+    leading index (...)."""
     finite = torch.isfinite(prediction)
     nonfinite = (~finite).flatten(-2).sum(-1)
     prediction = torch.where(finite, prediction, 0.0)
@@ -75,7 +77,10 @@ def advance(
     held = belief.valid[..., None]
     means = torch.where(held, prediction[..., :count], belief.means)
     spreads = torch.where(held, prediction[..., count:], belief.spreads)
-    action = torch.softmax(action_logits, -1)
+    if action_logits is None:
+        action = torch.full_like(belief.action, 1.0 / belief.action.shape[-1])
+    else:
+        action = torch.softmax(action_logits, -1)
     return Belief(
         valid=belief.valid, age=belief.age, means=means, spreads=spreads, action=action
     ), nonfinite

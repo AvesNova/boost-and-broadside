@@ -69,10 +69,10 @@ def shot_path(parameters: ShotCodeParameters, logits: torch.Tensor) -> ShotPath:
         4,
         parameters.direction_levels,
     )
-    speed_mean, speed_sigma = codes.scalar_decode(
+    speed_mean, speed_sigma = codes.hl_gauss_scalar_decode(
         speed, 0.0, parameters.top_speed, parameters.speed_bins
     )
-    index_mean, index_sigma = codes.scalar_decode(
+    index_mean, index_sigma = codes.hl_gauss_scalar_decode(
         log_index, -parameters.index_span, parameters.index_span, parameters.index_bins
     )
     return ShotPath(

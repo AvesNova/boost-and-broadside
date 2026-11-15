@@ -9,6 +9,12 @@ from them, the averages (which the slots holding them follow), the next sampling
 every `cut_every` updates the clean cut of `cut_slots` slots (round robin, each drawing its
 entry from the sampling weights), and the metrics.
 
+A run that trains one seat (`LeagueConfig.latest_share`) keeps its first slots on "latest"
+(`LATEST`): the live weights, loaded again after every update's learning, never drawn,
+cut or rated (self-play's games). An exploiter's pool (`LeagueConfig.fixed_opponent`) is
+that policy file's network alone (`FIXED_OPPONENT`), in every slot, and takes no
+snapshots.
+
 A slot's entry is drawn from the modes' sampling weights mixed by the modes' shares of the
 opponent rows (a slot plays every mode), by counter-based uniforms
 (`bnb.streams.keyed_uniform` of the swap count) keyed by the run's seed. The pool's one scripted
@@ -43,7 +49,9 @@ from .gauge import GAUGE_TOP, Gauge, Record
 from .lanes import RunRatings
 from .pool import (
     AVERAGES,
+    FIXED_OPPONENT,
     IMUGI_ENTRY,
+    LATEST,
     Averages,
     Entry,
     sampling_weights,
@@ -83,6 +91,14 @@ class League:
             raise ValueError("the trainer's lineup has no league seat (`bnb.runtime.opponents`)")
         self.config = trainer.config.league
         self.entry_kinds = ENTRY_KINDS + (("cheese",) if self.config.cheese else ())
+        self.fixed_weights: dict[str, torch.Tensor] | None = None
+        if self.config.fixed_opponent is not None:
+            self.entry_kinds = ("fixed",)
+            self.fixed_weights = fixed_opponent_weights(trainer, self.config.fixed_opponent)
+        # the slots holding "latest" (0 to latest_slots - 1) and the slots the cuts draw
+        self.latest_slots = self.config.latest_slots
+        if self.latest_slots:
+            self.entry_kinds += ("latest",)
         self.opponents = trainer.opponents
         self.directory = pathlib.Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -115,12 +131,39 @@ class League:
         trained without rating lanes) starts at Imugi's rating, which the clone
         imitates. A run from scratch (None) starts at 0."""
         weights = trainer.model.state_dict()
-        self.entries: dict[str, Entry] = {IMUGI_PLAYER: IMUGI_ENTRY}
         unrated = 0.0 if ratings is None else GAUGE_TOP
         self.gauges = {mode: Gauge((ratings or {}).get(mode, unrated)) for mode in self.modes}
+        self.averages = Averages(weights, self.config, trainer.config.uniform_start())
+        if self.fixed_weights is not None:  # an exploiter's pool: the one entry
+            self.entries: dict[str, Entry] = {FIXED_OPPONENT: Entry(FIXED_OPPONENT, "fixed")}
+            for gauge in self.gauges.values():
+                gauge.add(FIXED_OPPONENT, "fixed")
+        else:
+            self._start_entries()
+        self.snapshots: dict[str, dict[str, torch.Tensor]] = {}
+        self.schedule = self.config.snapshots
+        self.swaps = 0
+        self.next_slot = self.latest_slots
+        self.updates = 0  # the cuts' clock
+        self.played: set[str] = set()  # the entries with credited training games
+        self.last_cut = dict.fromkeys(CUT_SERIES, 0)
+        self._weigh()
+        self.held: list[str | None] = [None] * self.config.slots
+        for slot in range(self.config.slots):
+            if slot < self.latest_slots:
+                self.opponents.load(slot, weights)
+                self.opponents.set_kind(slot, NETWORK)
+                self.held[slot] = LATEST
+                continue
+            entry = self._draw()
+            self._load(slot, entry)
+            self.held[slot] = entry.name
+
+    def _start_entries(self) -> None:
+        """The pool's entries at a run's start: Imugi, the averages and the cheese agents."""
+        self.entries = {IMUGI_PLAYER: IMUGI_ENTRY}
         for gauge in self.gauges.values():
             gauge.add(IMUGI_PLAYER, "scripted", GAUGE_TOP)
-        self.averages = Averages(weights, self.config, trainer.config.uniform_start())
         for name in AVERAGES:
             self.entries[name] = Entry(name, "average")
             for gauge in self.gauges.values():
@@ -130,19 +173,6 @@ class League:
             self.entries[name] = Entry(name, "cheese")
             for gauge in self.gauges.values():
                 gauge.add(name, "cheese")
-        self.snapshots: dict[str, dict[str, torch.Tensor]] = {}
-        self.schedule = self.config.snapshots
-        self.swaps = 0
-        self.next_slot = 0
-        self.updates = 0  # the cuts' clock
-        self.played: set[str] = set()  # the entries with credited training games
-        self.last_cut = dict.fromkeys(CUT_SERIES, 0)
-        self._weigh()
-        self.held: list[str | None] = [None] * self.config.slots
-        for slot in range(self.config.slots):
-            entry = self._draw()
-            self._load(slot, entry)
-            self.held[slot] = entry.name
 
     def _restore(self, trainer: Trainer, record: dict, tensors: dict[str, torch.Tensor]) -> None:
         self.entries = {item["name"]: Entry(**item) for item in record["entries"]}
@@ -205,6 +235,8 @@ class League:
     def _weights_of(self, entry: Entry) -> dict[str, torch.Tensor]:
         if entry.kind == "average":
             return self.averages.weights[entry.name]
+        if entry.kind == "fixed":
+            return self.fixed_weights
         return self.snapshots[entry.name]
 
     def _distinct(self, entry: Entry) -> bool:
@@ -238,6 +270,13 @@ class League:
             if entry is not None and entry.kind == "average":
                 self.opponents.load(set_index, self.averages.weights[name])
 
+    def _refresh_latest(self, trainer: Trainer) -> None:
+        """The slots holding "latest" take the live weights after this update's learning
+        (the games in progress play on against them, as against a moving average)."""
+        weights = trainer.model.state_dict()
+        for slot in range(self.latest_slots):
+            self.opponents.load(slot, weights)
+
     def _load(self, slot: int, entry: Entry) -> None:
         if entry.network:
             self.opponents.load(slot, self._weights_of(entry))
@@ -247,7 +286,8 @@ class League:
             self.opponents.set_kind(slot, NETWORK if entry.network else IMUGI_KIND)
 
     def _cut(self, trainer: Trainer) -> None:
-        """The clean cut, when due: `cut_slots` slots (round robin) each draw an entry; a
+        """The clean cut, when due: `cut_slots` slots (round robin over the slots not
+        holding "latest") each draw an entry; a
         slot whose draw differs from what it holds takes it in place (`OpponentSlots.cut`):
         its games in progress play on uncredited, and the opponent's model carry on its rows
         is reset, or kept (`carry_at_cut="keep"`) when the old and the new entry are both
@@ -260,7 +300,8 @@ class League:
         rows_per_slot = int(self.opponents.rows.numel()) // self.config.slots
         for _ in range(self.config.cut_slots):
             slot = self.next_slot
-            self.next_slot = (slot + 1) % self.config.slots
+            drawn = self.config.slots - self.latest_slots
+            self.next_slot = self.latest_slots + (slot - self.latest_slots + 1) % drawn
             entry = self._draw()
             self.last_cut["draws"] += 1
             if entry.name == self.held[slot]:
@@ -295,9 +336,10 @@ class League:
         return before, before + trainer.steps_per_update
 
     def collected(self, trainer: Trainer) -> None:
-        """When a snapshot is due at this update, keep the weights that played it."""
+        """When a snapshot is due at this update, keep the weights that played it (never in
+        an exploiter's pool)."""
         before, after = self._steps_after_update(trainer)
-        if self.schedule.due(before, after):
+        if self.fixed_weights is None and self.schedule.due(before, after):
             self.pending = {
                 key: value.detach().to("cpu", copy=True)
                 for key, value in trainer.model.state_dict().items()
@@ -316,7 +358,8 @@ class League:
             mode: {
                 name: record
                 for name, record in records.items()
-                if name not in self.entries or self._distinct(self.entries[name])
+                if name != LATEST
+                and (name not in self.entries or self._distinct(self.entries[name]))
             }
             for mode, records in self.record.items()
         }
@@ -327,6 +370,7 @@ class League:
             gauge.update(self.ratings.ratings.get(mode, {}))
         self.averages.fold(trainer.model.state_dict(), steps)
         self._follow_averages()
+        self._refresh_latest(trainer)
         self._weigh()
         self._cut(trainer)
         self._load_lanes()
@@ -399,6 +443,10 @@ class League:
                 rows.append(
                     (mode, name, kind, rated.rating, rated.stderr, share, played, score, slot)
                 )
+            latest = self.record[mode].get(LATEST)
+            if latest is not None and latest.games:
+                games_by_kind["latest"] += latest.games
+                points_by_kind["latest"] += latest.wins + latest.ties / 2
             out[f"rating/window_games/{mode}"] = window
             out[f"pool/gauge_anomalies/{mode}"] = len(self.gauge_anomalies(mode))
         total = sum(games_by_kind.values())
@@ -416,6 +464,8 @@ class League:
             out[f"pool/slot_share/{kind}"] = sum(entry.kind == kind for entry in held) / len(
                 self.held
             )
+        if self.latest_slots:
+            out["pool/slot_share/latest"] = self.latest_slots / len(self.held)
         out["pool/distinct_held"] = len({entry.name for entry in held})
         out["pool/entries"] = Table(
             (
@@ -473,6 +523,15 @@ class League:
             for key, value in weights.items():
                 tensors[f"{name}.{key}"] = value
         return record, tensors
+
+
+def fixed_opponent_weights(trainer: Trainer, directory: str) -> dict[str, torch.Tensor]:
+    """The weights of an exploiter's fixed opponent (`LeagueConfig.fixed_opponent`), a
+    policy file of the live policy's build (`checkpoint.check_build`: the slots stack
+    every network in the live model's template), on the trainer's device."""
+    policy = checkpoint.read_policy(directory)
+    checkpoint.check_build(policy, trainer.config, directory, "the fixed opponent")
+    return checkpoint.load_policy(directory, trainer.rollout.device).state_dict()
 
 
 def same_build(old: Entry | None, new: Entry) -> bool:

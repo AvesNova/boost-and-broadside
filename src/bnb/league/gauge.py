@@ -20,7 +20,7 @@ from bnb.runtime.lanes import LIVE
 from .ratings import win_probability
 
 GAUGE_TOP = 1000.0  # Imugi's fixed rating, its start in the gauge
-KINDS = ("checkpoint", "average", "scripted", "cheese")
+KINDS = ("checkpoint", "average", "scripted", "cheese", "fixed")
 
 
 @dataclasses.dataclass

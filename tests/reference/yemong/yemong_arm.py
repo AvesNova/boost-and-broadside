@@ -19,6 +19,21 @@ from bnb.models.yemong.network import Encoder, Trunk
 from bnb.models.yemong.spatial import SpatialBlock
 from bnb.models.yemong.temporal import RGLRU, TemporalBlock, parallel_scan
 
+def _v1_scalar_decode(probabilities, low, high, bins):
+    """v1's linear-code decode, which bnb no longer has: the state code's linear parts are
+    HL-Gauss codes with padding since 2026-11-15 (`codes.hl_gauss_scalar_decode`). The
+    fixture keeps v1's here so the goldens still pin the pieces bnb shares with it (the
+    velocity compression and projections, the sharp code, v1's mixed `scalar_encode`)."""
+    spacing = (high - low) / (bins - 1)
+    index = torch.arange(bins, dtype=probabilities.dtype, device=probabilities.device)
+    coordinate = torch.clamp((probabilities * index).sum(-1), 0.0, float(bins - 1))
+    variance = (probabilities * (index - coordinate[..., None]) ** 2).sum(-1)
+    fraction = coordinate - torch.floor(coordinate)
+    physical = variance - fraction * (1.0 - fraction)
+    physical = torch.where(physical <= 8.0 * torch.finfo(probabilities.dtype).eps, 0.0, physical)
+    return low + coordinate * spacing, torch.sqrt(physical) * spacing
+
+
 def _loaded(module: torch.nn.Module, weights: dict) -> torch.nn.Module:
     dtype = next(iter(weights.values())).dtype
     module = module.to(dtype)
@@ -223,7 +238,7 @@ class Arm:
         return codes.scalar_encode(mean, sigma, low, high, bins)
 
     def scalar_decode(self, low, high, bins, probabilities):
-        return codes.scalar_decode(probabilities, low, high, bins)
+        return _v1_scalar_decode(probabilities, low, high, bins)
 
     def compress_velocity(self, velocity, knee):
         return codes.compress_velocity(velocity, knee)
@@ -239,11 +254,16 @@ class Arm:
         return codes.scalar_sharp(codes._project(codes.compress_velocity(velocity, knee)),
                                   *codes._axis_range(bins, spacing), bins)
 
+    # v1's velocity code (v1's linear code on bnb's projections); bnb's own is HL-Gauss
     def velocity_encode(self, bins, spacing, knee, mean, covariance):
-        return codes.velocity_encode(mean, covariance, bins, spacing, knee)
+        projections, sigmas = codes.velocity_projections(mean, covariance, knee)
+        return codes.scalar_encode(projections, sigmas, *codes._axis_range(bins, spacing), bins)
 
     def velocity_decode(self, bins, spacing, knee, probabilities):
-        return codes.velocity_decode(probabilities, bins, spacing, knee)
+        projections, spreads = _v1_scalar_decode(
+            probabilities, *codes._axis_range(bins, spacing), bins
+        )
+        return codes.velocity_from_projections(projections, spreads, knee)
 
     def grouped_log_softmax(self, logits, runs):
         return codes.grouped_log_softmax(logits, tuple(map(tuple, runs)))
@@ -268,7 +288,23 @@ class Arm:
     # ------------------------------------------------------------------ shots
 
     def shot_trajectory_code(self, parameters, snapshots):
-        return shots.trajectory_code(shots.ShotCodeParameters(**parameters), snapshots)
+        # bnb's displacement and direction codes with v1's two-hot speed and log index: bnb's
+        # are HL-Gauss with padding since 2026-11-15, so the goldens pin the colour parts
+        parameters = shots.ShotCodeParameters(**parameters)
+        code = shots.trajectory_code(parameters, snapshots)
+        colours = 9 * parameters.displacement_levels + 4 * parameters.direction_levels
+        velocity, index = snapshots[..., 2:4], snapshots[..., 4]
+        return torch.cat(
+            [
+                code[..., :colours],
+                codes.scalar_sharp(torch.hypot(velocity[..., 0], velocity[..., 1]), 0.0,
+                                   parameters.top_speed, parameters.speed_bins),
+                codes.scalar_sharp(torch.log(torch.clamp_min(index, 1e-6)),
+                                   -parameters.index_span, parameters.index_span,
+                                   parameters.index_bins),
+            ],
+            -1,
+        )
 
     def shot_outcome_code(self, parameters, hit, distance, side):
         return shots.outcome_code(shots.ShotCodeParameters(**parameters), hit, distance, side)

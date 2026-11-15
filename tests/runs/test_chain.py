@@ -20,6 +20,7 @@ from bnb import cli
 from bnb.learn import bc
 from bnb.learn.ppo import WARM_START_ENTROPY, LearnerConfig
 from bnb.runs import checkpoint
+from bnb.runs.averaging import saved_steps
 from bnb.runs.chain import Chain, reinforcement_updates
 from bnb.runs.records import Run
 from bnb.runtime.train import Trainer
@@ -91,9 +92,11 @@ def test_the_reinforcement_budget_is_the_whole_updates_left():
 def test_a_chain_clones_hands_over_and_reinforces(monkeypatch, tmp_path):
     """BC stops on its plateau after two updates; RL starts from the clone's exponential
     average with a fresh optimizer and step count (so its warm-up starts again) and the
-    warm start's entropy, and trains the three updates the budget of five leaves."""
+    warm start's entropy, and trains the three updates the budget of five leaves. With
+    `update_policies` "rl" only the RL stage writes every update's policy files (its
+    starting weights first, which `bnb average` reads)."""
     plateau_at(monkeypatch, 2 * STEPS)
-    chained = chain(monkeypatch, tmp_path, 5 * STEPS)
+    chained = chain(monkeypatch, tmp_path, 5 * STEPS, "--set", "update_policies=rl")
     handover = chained.record["handover"]
     bc_run, rl_run = Run.open(tmp_path, "c-bc"), Run.open(tmp_path, "c-rl")
     policy = bc_run.variant_policy_path("exponential")
@@ -102,6 +105,8 @@ def test_a_chain_clones_hands_over_and_reinforces(monkeypatch, tmp_path):
     assert rl_run.record["chain"] == dict(name="c", stage="rl", start_step=2 * STEPS)
     assert bc_run.record["status"] == rl_run.record["status"] == "finished"
     assert bc_run.record["stopped_by"] == "plateau"
+    assert bc_run.record["update_policies"] is False and rl_run.record["update_policies"]
+    assert saved_steps(rl_run) == [step * STEPS for step in range(4)]
     assert rl_run.record["parent"] == dict(policy=str(policy.resolve()))
     # each stage starts with a checkpoint at its step 0
     assert bc_run.checkpoint_steps() == [0, 2 * STEPS]
@@ -274,6 +279,36 @@ def test_print_config_shows_both_stages(monkeypatch, tmp_path, capsys):
     assert rl_config["learner"]["entropy_shoot"] == WARM_START_ENTROPY
     assert bc_config["relational"] == rl_config["relational"]  # the shared --set
     assert not list(tmp_path.iterdir())
+
+
+def test_a_chain_without_bc_prints_the_rl_stage_alone(monkeypatch, tmp_path, capsys):
+    """--bc-budget-steps 0: no BC stage; the RL stage takes the same settings as from a
+    clone, the warm start's entropy included."""
+    capsys.readouterr()
+    bnb(
+        monkeypatch, tmp_path, "train", *CHAIN_OPTIONS, "--chain-budget-steps", "1000",
+        "--bc-budget-steps", "0", "--print-config",
+    )  # fmt: skip
+    configs = json.loads(capsys.readouterr().out)
+    assert configs["bc"] is None and configs["rl"]["objective"] == "ppo"
+    learner = configs["rl"]["learner"]
+    assert learner["entropy_power"] == learner["entropy_shoot"] == WARM_START_ENTROPY
+    assert not list(tmp_path.iterdir())
+
+
+def test_a_chain_without_bc_is_rl_from_scratch_over_the_whole_budget(monkeypatch, tmp_path):
+    """Arm A24 through the chain launcher: the handover at step 0 with no policy, no BC
+    run, and a fresh RL run (no parent) with the chain's RL stage's entropy."""
+    chained = chain(monkeypatch, tmp_path, 3 * STEPS, "--bc-budget-steps", "0")
+    assert chained.record["handover"] == dict(step=0, stopped_by="no_bc", policy=None)
+    assert not (tmp_path / "c-bc").exists()
+    rl_run = Run.open(tmp_path, "c-rl")
+    assert rl_run.record["status"] == "finished" and rl_run.record["parent"] is None
+    assert rl_run.record["chain"] == dict(name="c", stage="rl", start_step=0)
+    rl_config, _ = checkpoint.training_config(rl_run.checkpoint_at())
+    assert rl_config.updates == 3
+    assert rl_config.learner.entropy_stick == WARM_START_ENTROPY
+    assert chained.current_run().record["name"] == "c-rl"
 
 
 @pytest.mark.parametrize(

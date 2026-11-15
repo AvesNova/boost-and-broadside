@@ -80,6 +80,19 @@ def _mid_game(config: GameConfig, ticks: int):
     return rules, types, views
 
 
+# arm A13's builds (`docs/explanation/yemong.md`): the delta head without the enemy-action,
+# density and shot heads, then without the next-state head too. Without the error head
+# (`delta_split`): its probit (`codes._probit`, erfinv) has no ONNX conversion, with or
+# without the switches.
+A13 = dict(
+    next_state="delta",
+    delta_baseline="extrapolation",
+    enemy_action_head=False,
+    density_head=False,
+    shot_head="none",
+)
+
+
 @pytest.mark.parametrize(
     "settings",
     [
@@ -87,8 +100,10 @@ def _mid_game(config: GameConfig, ticks: int):
         dict(next_state="delta"),
         dict(order="temporal_first", acceleration_inputs=True),
         dict(next_state="delta", position_inputs="fourier"),
+        dict(A13),
+        dict(A13, next_state_head=False, forecast_feedback=False),
     ],
-    ids=["absolute", "delta", "accelerations", "fourier"],
+    ids=["absolute", "delta", "accelerations", "fourier", "a13_but_next_state", "a13_all"],
 )
 def test_yemong_step_exports_to_onnx(tmp_path, settings):
     config = GameConfig(3, 4, 1500.0)
