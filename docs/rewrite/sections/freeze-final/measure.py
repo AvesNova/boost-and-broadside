@@ -115,7 +115,10 @@ def passes() -> None:
         rows = [job_summary(j, o, seconds) for j, o in zip(jobs, run(loop, jobs, log), strict=True)]
         out[mode] = rows
         out_path.write_text(json.dumps(out, indent=1))
-        log(f"passes {mode}: " + json.dumps([[r["lineup"], r["passes_per_kill"], r["kill_share"]] for r in rows]))
+        log(
+            f"passes {mode}: "
+            + json.dumps([[r["lineup"], r["passes_per_kill"], r["kill_share"]] for r in rows])
+        )
 
 
 def main() -> None:

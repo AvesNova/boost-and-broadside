@@ -123,9 +123,13 @@ def deathmatch_game(game: dict, ships: int, episode_ticks: int) -> dict:
     for tick, team in game["events"]:
         points[team] += 1
         if points[team] >= limit:
-            return dict(end=tick + 1, by_tickets=True, result=1 if team == 0 else -1, points=sum(points))
+            return dict(
+                end=tick + 1, by_tickets=True, result=1 if team == 0 else -1, points=sum(points)
+            )
     lead = points[0] - points[1]
-    return dict(end=episode_ticks, by_tickets=False, result=(lead > 0) - (lead < 0), points=sum(points))
+    return dict(
+        end=episode_ticks, by_tickets=False, result=(lead > 0) - (lead < 0), points=sum(points)
+    )
 
 
 def last_death_by_boundary(game: dict) -> bool | None:
@@ -179,9 +183,7 @@ def measures(kind: str, games: list[dict], entries: list[dict]) -> dict:
         out["by_tickets"] = share(sum(r["by_tickets"] for r in replayed), len(games))
         out["median_s"] = quantile_se(lengths, 0.5)
         out["p80_s"] = quantile_se(lengths, 0.8)
-        out["kills_per_minute"] = mean(
-            [r["points"] / (r["end"] * tick / 60.0) for r in replayed]
-        )
+        out["kills_per_minute"] = mean([r["points"] / (r["end"] * tick / 60.0) for r in replayed])
         scores = [yongma_score(g, r["result"]) for g, r in zip(games, replayed, strict=True)]
     elif kind == "elimination":
         lengths = [game["end_tick"] * tick for game in games]
