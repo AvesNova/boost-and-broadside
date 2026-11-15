@@ -640,6 +640,9 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 | shot trajectory | ship rows, at bullet ages (in training, 4 per shot) | where a shot fired now would be at each age |
 | geometry (training only, optional) | pairs of ship rows: an own ship and another ship the view sees | the pair's range, antenna train angle, aspect, heading crossing angle and closure rate |
 
+Every head but the action, value and outcome heads is auxiliary, and each has a build
+switch ([below](#auxiliary-head-switches)).
+
 ### The attention output gate
 
 `YemongConfig.gate` adds the output gate of Qiu et al., "Gated Attention for Large Language
@@ -742,13 +745,56 @@ defence `-P(loss)` (`bnb.models.yemong.critic`). A build from before the split (
 names the reward levels themselves, its outcome `P(win) - P(loss)` whole, and still plays
 ([the learner](learner.md#the-offence-premium)).
 
+### Auxiliary-head switches
+
+Each auxiliary head has a build switch in `YemongConfig`, every one on by default except
+the geometry head's (a new run's build turns it on), so a build record from before the
+switches reads as it was built:
+
+| Switch | Head | Off |
+|---|---|---|
+| `next_state_head` | next state (with `delta_split`, the physics head) | needs `forecast_feedback` and `delta_split` off: a hidden ship's belief keeps its last sighting |
+| `delta_split` | error | the next-state head trains on every row ([above](#the-error-head-the-next-state-work-split)) |
+| `enemy_action_head` | enemy action | the belief's enemy actions stay uniform, as a blank belief's |
+| `density_head` | density | |
+| `shot_head` | shot outcome and shot trajectory, `"trajectory"` or `"none"` | the learner re-simulates no shots |
+| `geometry_head` | geometry | |
+
+A head that is off is not built. It has no parameters and no output (its field of
+`Unrolled` and of the step's `Decision` is None), and the learner computes no labels and
+no loss term for it ([learner page](learner.md#losses)). `Yemong.auxiliary_heads` names the
+heads a build has. Checkpoints and the ONNX export work either way, and the play overlays
+and the figure sets of an absent head are left out.
+
+Turning off the enemy-action head while forecasts are still fed back is consistent: the
+belief advances the next-state forecast with uniform enemy actions. Zeroing a loss
+coefficient instead (`--set learner.enemy_action=0`) would feed an untrained head's
+probabilities into the belief, and the head and its labels would still cost compute.
+
+Arm A13 (fewer auxiliary heads) is one of two settings sets on a new run's build, chosen
+by arm A14's result (whether the belief helps):
+
+- **A13 "all but next-state"** (the belief helps; the next-state head and its error head
+  stay, so the belief keeps its source):
+
+  ```
+  --set yemong.enemy_action_head=false --set yemong.density_head=false --set yemong.shot_head=none --set yemong.geometry_head=false
+  ```
+
+- **A13 "all"** (every auxiliary head removed; nothing is fed back):
+
+  ```
+  --set yemong.next_state_head=false --set yemong.delta_split=false --set yemong.physics_hidden_decay=null --set yemong.forecast_feedback=false --set yemong.enemy_action_head=false --set yemong.density_head=false --set yemong.shot_head=none --set yemong.geometry_head=false
+  ```
+
 ## step and unroll
 
 - **`step(carry, obs, reset)`** is one decision for a batch of views. It clears the carry
   where the environment reset, assimilates sight into the belief, composes the tokens, runs
   the trunk one step and the heads, and advances the belief with the forecast (unless
   `forecast_feedback` is off). It skips
-  rows nothing reads: the enemy-action and next-state heads run on enemy rows only.
+  rows nothing reads: the enemy-action and next-state heads run on enemy rows only, and
+  the density and shot heads not at all.
 - **`unroll(carry, obs, replay, reset)`** recomputes a stored segment: the encoder and the
   spatial sublayers run over every step at once, and the temporal sublayers scan over
   time. It computes every head on every row, for the learner. With the acceleration

@@ -9,7 +9,7 @@ from bnb.runs.records import RECORD, Run
 
 from . import capture as capturing
 from . import scenarios
-from .sets import FIGURE_SETS
+from .sets import FIGURE_SETS, drawable
 
 CAPTURES = "captures"  # the output directory's subdirectory for capture artifacts
 
@@ -80,6 +80,9 @@ def figures(options, runs_directory: pathlib.Path) -> None:
     if capture_only:
         return
     for name in names:
+        if not drawable(name, artifact):
+            print(f"{name}: skipped (the policy has no such head)")
+            continue
         written, numbers = FIGURE_SETS[name](artifact, directory)
         for path in written:
             print(f"wrote {path}")

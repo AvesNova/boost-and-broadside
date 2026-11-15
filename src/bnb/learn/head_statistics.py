@@ -54,6 +54,7 @@ Slices, quantity first:
   physics head on those rows, against the truth's change, by hidden age:
   `next_state/hidden/cross_entropy/{age}` and the decoded change's error
   `next_state/hidden/error/{position_metres, velocity_metres_per_second}/{age}`.
+- a head the model does not build (`Yemong.auxiliary_heads`) has no totals and no series.
 - acceleration inputs (with `YemongConfig.acceleration_inputs`; `acceleration_sums`): per
   component the mean |input| over the valid rows visible and hidden at t and the share past
   the code's bound; the share of living rows without a valid input, and of valid rows whose
@@ -215,10 +216,29 @@ def sums(
     ships = trajectory.obs.ships
     visible = ships[..., SHIP["visible"]] > 0.5  # (L, R, N)
     alive = trajectory.alive
+    out = {}
+    if unrolled.next_state_logits is not None:
+        out.update(_next_state(model, unrolled, trajectory, label, visible))
+    if unrolled.enemy_action_logits is not None:
+        out.update(_enemy_action(unrolled, trajectory, label, own, visible))
+    if unrolled.density_log_rates is not None:
+        out.update(_density(unrolled, label))
+    if shot_parts is not None:
+        target = trajectory_code(model.shot_code, label["shot_snapshots"])
+        out.update(_shots(unrolled, label, target, shot_parts, shot_runs, own, alive))
+    if getattr(unrolled, "geometry_latents", None) is not None:
+        out.update(_geometry(model, unrolled, label))
+    return out
+
+
+def _next_state(model, unrolled, trajectory: Trajectory, label: dict, visible) -> dict:
+    """Group 7's totals (the module's docstring), and the error head's with it
+    (`_correction`)."""
+    own = trajectory.log_probability.shape[-1]
+    alive = trajectory.alive
     rows = torch.arange(visible.shape[-1], device=visible.device)
     is_own = (rows < own).expand(visible.shape)
     out = {}
-    # Group 7: next state.
     runs = model.next_state_runs
     logits = unrolled.next_state_logits.float()
     target = label["next_state"]
@@ -248,13 +268,6 @@ def sums(
     out["next_state/alive"] = alive.float().sum()
     out["next_state/supervised"] = (mask & alive).float().sum()
     out.update(_next_state_situations(model, unrolled, trajectory, label, cross_entropy, visible))
-    out.update(_enemy_action(unrolled, trajectory, label, own, visible))
-    out.update(_density(unrolled, label))
-    if shot_parts is not None:
-        target = trajectory_code(model.shot_code, label["shot_snapshots"])
-        out.update(_shots(unrolled, label, target, shot_parts, shot_runs, own, alive))
-    if getattr(unrolled, "geometry_latents", None) is not None:
-        out.update(_geometry(model, unrolled, label))
     if getattr(unrolled, "correction_logits", None) is not None:
         out.update(_correction(model, unrolled, trajectory, label, cross_entropy.sum(-1)))
     return out
@@ -614,7 +627,26 @@ def series(total: dict, model) -> dict:
     if not total:
         return {}
     out = {}
-    # next state
+    if "next_state/alive" in total:
+        out.update(_next_state_series(total))
+    if "enemy_action/rows" in total:
+        out.update(_enemy_action_series(total))
+    if "density/steps" in total:
+        out.update(_density_series(total))
+    if "shot/age_count" in total:
+        out.update(_shot_series(total))
+    if "geometry/count" in total:
+        for name, value in zip(
+            geometry.TARGETS, total["geometry/cross_entropy"].unbind(), strict=True
+        ):
+            out[f"geometry/cross_entropy/{name}"] = Mean(value, total["geometry/count"])
+    if "correction/count" in total:
+        out.update(_correction_series(total))
+    return out
+
+
+def _next_state_series(total: dict) -> dict:
+    out = {}
     counts = {name: total[f"next_state/{name}/count"] for name in POPULATIONS}
     population_total = sum(counts.values())
     for name in POPULATIONS:
@@ -658,7 +690,11 @@ def series(total: dict, model) -> dict:
             name = "support_clip" if kind == "clipped" else "support_padding"
             for component, value in zip(CONTINUOUS, values.unbind(), strict=True):
                 out[f"next_state/{name}/{component}"] = Mean(value, count)
-    # enemy action
+    return out
+
+
+def _enemy_action_series(total: dict) -> dict:
+    out = {}
     labelled = 0.0
     for name in SIGHT:
         prefix = f"enemy_action/{name}"
@@ -685,7 +721,11 @@ def series(total: dict, model) -> dict:
         )
         out[f"enemy_action/repeat_rate/{name}"] = Mean(total[f"{prefix}/repeats"], pairs)
     out["enemy_action/supervised_share"] = Mean(labelled, total["enemy_action/rows"])
-    # density
+    return out
+
+
+def _density_series(total: dict) -> dict:
+    out = {}
     steps = total["density/steps"]
     for team in TEAMS:
         excess = total[f"density/{team}/excess"]
@@ -698,7 +738,11 @@ def series(total: dict, model) -> dict:
         out[f"density/explained_deviance/{team}"] = 1.0 - excess / torch.where(
             null > 0, null, torch.nan
         )
-    # shots
+    return out
+
+
+def _shot_series(total: dict) -> dict:
+    out = {}
     for part, value in zip(SHOT_PARTS, total["shot/trajectory_kl"].unbind(), strict=True):
         out[f"shot/trajectory_kl/{part}"] = Mean(value, total["shot/age_count"])
     shots = total["shot/own_count"]
@@ -708,13 +752,6 @@ def series(total: dict, model) -> dict:
         out[f"shot/{name}_rate/realised"] = Mean(realised, shots)
         out[f"shot/{name}_rate/predicted"] = Mean(predicted, shots)
     out["shot/supervised_share"] = Mean(shots, total["shot/own_alive"])
-    if "geometry/count" in total:
-        for name, value in zip(
-            geometry.TARGETS, total["geometry/cross_entropy"].unbind(), strict=True
-        ):
-            out[f"geometry/cross_entropy/{name}"] = Mean(value, total["geometry/count"])
-    if "correction/count" in total:
-        out.update(_correction_series(total))
     return out
 
 

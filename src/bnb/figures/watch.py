@@ -36,7 +36,7 @@ from bnb.runs.upload import PROJECT
 from . import capture as capturing
 from . import video
 from .command import CAPTURES
-from .sets import FIGURE_SETS
+from .sets import FIGURE_SETS, drawable
 
 QUICK_SETS = ("shots", "belief", "next_state", "density", "enemy_action")
 MODES = ("frontline", "deathmatch")  # the training mix's modes (`bnb.runtime.train.TRAINING_MIX`)
@@ -122,6 +122,8 @@ def draw_figures(
         capturing.save(artifact, directory / CAPTURES / f"{mode}_seed{config.seed}.pt")
     sets = {}
     for name in config.sets:
+        if not drawable(name, artifact):  # a head the policy does not build
+            continue
         try:
             written, numbers = FIGURE_SETS[name](artifact, directory)
             sets[name] = dict(
