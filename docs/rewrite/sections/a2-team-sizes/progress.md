@@ -93,3 +93,14 @@ included; the equations are discussed first. Proposal for the author:
   sizes, rewards, split critic, rollout records, references and staleness: 678 pass.
 - The first round's pre-merge runs may have imported the main tree's code; the same test
   files pass now on this tree, which covers them.
+- Merged tree, game side: game version and reference, benched, absent fields, crossover,
+  mixed, keyed draws, contracts, docstrings: 135 pass.
+
+### 07:50 GPU check (laptop 4070, performance profile, shared lock; unit a2-joint-check, 2 min)
+- Worked (imports this worktree's `bnb`, tree before the imugi-boundary merge): a compiled,
+  CUDA-graph-captured rollout of the three real-scale modes (96 environments, 20 s
+  episodes, `TeamSizes()`) compiles and captures once (97 s cold) and runs 20 more segments
+  with `error_on_recompile` on: no recompile over 211 episode resets. Seen: deathmatch 24
+  of the 25 (team 0, team 1, fields) rows, Frontline all 9 (3 to 5 a side), elimination 19;
+  fields as the table gives (2 at 1v1 to 10 at 5v5); the size sums counted 211 of 211
+  ended episodes. Script: the session scratchpad's `a2_joint_gpu_check.py` (not kept).
