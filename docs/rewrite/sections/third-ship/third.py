@@ -96,6 +96,7 @@ def main() -> None:
     seconds = seconds or api.PRESETS[preset].episode_seconds
     parameters = tuple(pack(MODE_DEFAULTS.sets[preset]))
     entries = json.loads(args.candidates.read_text())
+    args.out.parent.mkdir(parents=True, exist_ok=True)
     if args.only:
         entries = [e for e in entries if e["name"] in args.only]
     done = set()
