@@ -108,6 +108,7 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
 - **A2 (author):** vary ship and field counts together; 5v5 stays the most common (at least half of games), and uneven sizes (4v5, 3v5, ...) are included. The sampling equations are to be discussed (proposal first).
 - **Dry run curves (author):** the first baseline (dry) run rates the live curves on every evaluation condition (all modes, sizes and maps the suite uses), not only 5v5, to see how e.g. 10v10 evolves while training at 5v5; that informs the final branch choices.
 - Figures brainstorm: the author reviews it on 2026-11-17.
+- **Versions (2026-11-16):** torch 2.15.0 + CUDA 13.2 (Triton 3.9) is the newest stable; no upgrade before the arms (nightlies would cost reproducibility). Dry-run checklist addition: save the compile caches (inductor cache or `torch.compiler.save_cache_artifacts`) on the 5090 and load them on the 8-GPU box, so every arm of the same configuration skips the 25–50 min first compile.
 
 - **Balance (author):** the Yongma–Jujak balance may adjust the card or both cards, not only Imugi's doctrines. Keep them relatively similar to now, every value within the range of the real WWII aircraft they are based on. Work on `tune/balance-final`, before and after recorded for the author to test; not merged until the author decides.
 
