@@ -1,0 +1,10 @@
+[
+ {"name": "before"},
+ {"name": "y-on", "energy": {"turn_exponent": -1.86}},
+ {"name": "y-on-extend", "energy": {"turn_exponent": -1.86, "extend": 1.0}},
+ {"name": "y-on-extend-deny", "energy": {"turn_exponent": -1.86, "extend": 1.0, "deny": 0.8}},
+ {"name": "y-on-deny", "energy": {"turn_exponent": -1.86, "deny": 0.8}},
+ {"name": "y-duel-extend", "energy": {"duel_extend": 1.0, "duel_extend_in_lift_ratio": [0.9, 0.03]}},
+ {"name": "y-on-duel-extend", "energy": {"turn_exponent": -1.86, "duel_extend": 1.0, "duel_extend_in_lift_ratio": [0.9, 0.03]}},
+ {"name": "y-sense-all", "energy": {"sense_mirror_only": 0.0}}
+]

@@ -1,0 +1,18 @@
+[
+ {"name": "j-on", "turn": {"turn_exponent": 3.0}},
+ {"name": "j-on-nobleed", "turn": {"turn_exponent": 3.0, "bleed": 0.0}},
+ {"name": "j-on-nodeny", "turn": {"turn_exponent": 3.0, "deny": 0.0}},
+ {"name": "j-sense-all", "turn": {"sense_mirror_only": 0.0}},
+ {"name": "j-sense-all-two", "turn": {"sense_mirror_only": 0.0, "sense_one_circle": 0.0}},
+ {"name": "y-crowd", "energy": {"crowd_sense": 1.0, "crowd_sense_stick": 1.0}},
+ {"name": "y-crowd-half", "energy": {"crowd_sense": 1.0, "crowd_sense_stick": 0.5}},
+ {"name": "y-two-circle-all", "energy": {"sense_mirror_only": 0.0, "sense_one_circle": 0.0}},
+ {"name": "y-on-lag-only", "energy": {"turn_exponent": -1.86, "slash": 0.0, "deny": 0.0}},
+ {"name": "y-on-slash-only", "energy": {"turn_exponent": -1.86, "lag": 0.0, "deny": 0.0}},
+ {"name": "y-on-slash-short", "energy": {"turn_exponent": -1.86, "slash_in_gun_range": [1.2, 0.2]}},
+ {"name": "y-duel-extend-mirror", "energy": {"duel_extend": 1.0, "duel_extend_in_lift_ratio": [0.9, 0.03], "duel_extend_mirror_only": 0.0, "duel_extend_cross_in_others": [0.001, 0.1]}},
+ {"name": "j-crowd", "turn": {"crowd_sense": 1.0, "crowd_sense_stick": 1.0}},
+ {"name": "before-repeat"},
+ {"name": "j-strength-half-on", "turn": {"turn_exponent": 3.0, "strength": 0.5}},
+ {"name": "y-lockless", "energy": {"lock_press": 0.0}}
+]

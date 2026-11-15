@@ -6,7 +6,9 @@ game-loop harness (`bench.game_loop.Loop`: every candidate's games in one compil
 
 A candidate is the stored doctrines (`imugi_doctrines.json` as it was before this work:
 before/imugi_doctrines.json) with some fields replaced, {"name", "energy": {...},
-"turn": {...}} (`imugi_doctrine.named`'s form; a logistic is [centre, scale]). Per
+"turn": {...}} (`imugi_doctrine.named`'s form; a logistic is [centre, scale]); an optional "card":
+{"energy": {...}, "turn": {...}} multiplies the card's fields (`bench.game_loop.variant_types`:
+a field name -> factor, or {"set": value}) for all three of its jobs. Per
 candidate, as side A, the jobs:
 
 - "energy v turn" against itself: a Yongma team against a Jujak team, both flying the
@@ -81,6 +83,7 @@ def main() -> None:
     parser.add_argument("--seconds", type=float, default=None)
     parser.add_argument("--environments", type=int, default=4096)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--variants", type=int, default=1, help="card variants a batch holds")
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--eager", action="store_true", help="no torch.compile (a CPU check)")
     args = parser.parse_args()
@@ -100,7 +103,7 @@ def main() -> None:
     mixed = (args.mixed_games or args.games) // 2
     loop = Loop(
         args.environments,
-        1,
+        args.variants,
         seconds,
         ships_per_team=args.ships,
         mode=args.mode,
@@ -113,14 +116,20 @@ def main() -> None:
     # a chunk of candidates fills about one batch, so each line is written as it finishes
     per_candidate = args.games + 2 * mixed
     chunk = max(1, args.environments // per_candidate)
+    if any("card" in entry for entry in entries):
+        chunk = min(chunk, args.variants)
     for first in range(0, len(entries), chunk):
         part = entries[first : first + chunk]
         players = [player_of(entry, parameters) for entry in part]
+        cards = [entry.get("card", {}) for entry in part]
+        cards += [{}] * (args.variants - len(cards))
+        loop.set_types([c.get("energy", {}) for c in cards], [c.get("turn", {}) for c in cards])
         jobs = []
-        for candidate in players:
-            jobs.append(Job(0, "energy v turn", candidate, candidate, args.games))
-            jobs.append(Job(0, "mixed", candidate, before, mixed))
-            jobs.append(Job(0, "mixed reversed", candidate, before, mixed))
+        for variant, candidate in enumerate(players):
+            variant = variant if args.variants > 1 else 0
+            jobs.append(Job(variant, "energy v turn", candidate, candidate, args.games))
+            jobs.append(Job(variant, "mixed", candidate, before, mixed))
+            jobs.append(Job(variant, "mixed reversed", candidate, before, mixed))
         torch.manual_seed(args.seed + first)
         outs = run(loop, jobs, log=lambda line: None)
         rows = [job_summary(j, o, seconds) for j, o in zip(jobs, outs, strict=True)]
