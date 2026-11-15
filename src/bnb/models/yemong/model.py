@@ -589,8 +589,9 @@ class Yemong(nn.Module):
     # flag (SHIP_FLAGS, one more input; 2026-11-13); 4: the merge of the calibration's
     # model (the geometry head in place of the rotary read-out, the state code's position
     # period, the arena code) with 2 and 3 (2026-11-13)
-    # 8: exact-x2 velocity code (knee 100, spacing 5)
-    VERSION = 8  # 5: x2 velocity spacing, rotary band; 6: closure, decays; 7: thin-air speeds
+    # 8: exact-x2 velocity code (knee 100, spacing 5); 9: HL-Gauss binned codes (state code
+    # 580 wide, shot code 162, ellipse inputs; 2026-11-15)
+    VERSION = 9  # 5: x2 velocity spacing, rotary band; 6: closure, decays; 7: thin-air speeds
 
     def __init__(self, build: YemongBuild, seed: int = 0) -> None:
         super().__init__()

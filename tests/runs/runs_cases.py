@@ -1,6 +1,8 @@
 """Shared cases for the runs tests: the smallest model of each registered kind, a fixed
 observation and carry, and a model's single step as named tensors."""
 
+import dataclasses
+
 import torch
 from torch.utils import _pytree
 
@@ -140,7 +142,9 @@ def tiny_train_config(model: str = "relational", updates: int = 2, **changes):
         lookahead=0,
         lanes=LaneConfig(environments=0),
         model=model,
-        relational=RelationalConfig(hidden=16),
+        # the run's relational config at hidden 16, as `TRAIN_OPTIONS` sets it on the command
+        # line (its value padding included)
+        relational=dataclasses.replace(TrainConfig.relational, hidden=16),
         learner=learner,
         compiled=False,
     )
