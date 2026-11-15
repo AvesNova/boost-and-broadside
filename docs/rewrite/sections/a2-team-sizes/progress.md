@@ -81,3 +81,15 @@ included; the equations are discussed first. Proposal for the author:
   counts, refusals, uneven tickets, the draw against the table, field counts at reset,
   the series, isolation, all-slots = plain, resume, settings, BC and RL updates).
 - Provisional launch setting: `--set 'team_sizes={}'`.
+
+### 07:30 suites and integration
+- Worked (all runs with `PYTHONPATH=$PWD/src`, checked to import this worktree's `bnb`; the
+  worktree's `.venv` links the main venv, whose editable install points at the main tree):
+  the related quick tier, 846 tests (game version and reference, benched, absent fields,
+  crossover, map sampling, mixed, diagnostics games, rewards, lanes, training lineup,
+  rollout records, keyed draws, contracts, docstrings, staleness, references, team sizes):
+  one failure, a docs reference (`api.MINIMUM_SHIPS_PER_TEAM` needs its full name), fixed.
+  Merged `origin/feat/imugi-boundary` (split-critic fixes 7 and 8); on the merged tree team
+  sizes, rewards, split critic, rollout records, references and staleness: 678 pass.
+- The first round's pre-merge runs may have imported the main tree's code; the same test
+  files pass now on this tree, which covers them.
