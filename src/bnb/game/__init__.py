@@ -178,7 +178,37 @@ still plays every field. Frontline's capture lock re-tuned to 6 s per sqrt(km) (
 so the front moves as a random walk with Imugi on both sides and fields on
 (P(reversal) 0.490 over 512 games, against 0.29). Ratings and records of version 19 or
 earlier are not reused for version-20 games.
+
+Version 21 (2026-11-15) is the game freeze for the pairwise arms
+(docs/rewrite/sections/freeze-proposals.md), with the elimination and Imugi work it rests on
+(docs/rewrite/sections/elimination-shrink/results.md):
+- **Deathmatch tickets** follow the enemy's fleet size: kills_per_ship x N^ticket_exponent
+  rounded to the nearest multiple of ticket_rounding (`phase.tickets`; `ModeRules` and
+  `GameConfig`). Real-scale deathmatch plays 4 N^(4/3) to the nearest 5 (5, 10, 15, 25, 35,
+  85 and 215 for N = 1, 2, 3, 4, 5, 10 and 20) with its 10-minute clock; the defaults (5 N)
+  keep every other game as it was.
+- **Real-scale elimination** shrinks linearly from the match's start (no hold) to past 0
+  over 4 minutes, a 248 s clock. Its boundary never closes faster than
+  `ModeRules.shrink_max_speed` (150 m/s at real scale). Two more shrink laws are available
+  (2, the power law; 3, the corner). Each team's spawn-area centre is drawn on its own over
+  a 120-degree sector of its side, 0.5 to 0.8 arena radii out (`side_centre_half_angle`,
+  `side_centre_radius_min`), noses toward the map's centre, so neither spawn gives the
+  other's away.
+- **Real-scale Frontline** is won at a front of +-2 (was 3), with its 10-minute clock and
+  the 6 s per sqrt(km) lock. The smallest Frontline team is 3v3
+  (`modes.rules.MINIMUM_SHIPS_PER_TEAM`; break-even's counts keep to it).
+- **Imugi** (not the game's numbers, but the BC teacher and every Imugi yardstick):
+  - the edge steer works in a closing boundary's own frame;
+  - while it knows no enemy it explores (`imugi_combat.SEARCH`) instead of heading for the
+    centre.
+
+Ratings and records of version 20 or earlier, Imugi's included, are not reused for
+version-21 games.
 """
 
-VERSION = 20
-FINGERPRINT = "477cbfae2f748b1e"
+VERSION = 21
+# Computed on the cloud container (x86 CPU, 2026-11-15). The fingerprint depends on the
+# machine: at the commit that recorded version 20's (362f3bf5) this container computed
+# 95d1e9f94c5eb0a7 against the laptop's 477cbfae2f748b1e, so re-record it on the machine the
+# arms run on before relying on the test there.
+FINGERPRINT = "9cd6140655c90c05"

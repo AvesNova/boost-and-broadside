@@ -850,6 +850,7 @@ def team_centre(fleet: Context) -> tuple[torch.Tensor, torch.Tensor, torch.Tenso
 
 
 def unit(x: torch.Tensor, y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """The direction (x, y) scaled to unit length (a zero vector stays near zero)."""
     length = torch.sqrt(x * x + y * y).clamp_min(TINY)
     return x / length, y / length
 

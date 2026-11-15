@@ -97,6 +97,7 @@ def summary(entries: list[dict]) -> dict:
 
 
 def main() -> None:
+    """Print the tables for the files on the command line."""
     entries: dict[str, list[dict]] = {}
     for name in sys.argv[1:]:
         for line in pathlib.Path(name).read_text().splitlines():

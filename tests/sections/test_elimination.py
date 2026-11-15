@@ -301,7 +301,8 @@ def test_real_scale_elimination_fits_the_real_scale_training_batch():
     game, pools = mixed(mix=with_elimination)
     rules = api.rules_of(game, pools, 40)
     games = [pool for pool in rules.pools if pool.mode.name == "elimination"]
-    assert games and all(pool.respawn_ticks == pool.episode_ticks == 5400 for pool in games)
+    # the 248 s clock (the freeze, 2026-11-15)
+    assert games and all(pool.respawn_ticks == pool.episode_ticks == 7440 for pool in games)
 
 
 SIDES = PRESETS["real_scale_elimination"]

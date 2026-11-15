@@ -62,7 +62,7 @@ Elimination has none for now. The minimum applies after the arena scale,
 so a map drawn at half size is still floored. The `_density` fleet presets and Clover
 take their radius from it; the `arena` preset's 1950 m is its own choice, not derived.
 `real_scale_elimination` is elimination at the training size (5v5, 10 random fields, the
-7800 m real-scale map, 180 s); `clover` is the author's 2v2 elimination map with a fixed
+7800 m real-scale map, 248 s); `clover` is the author's 2v2 elimination map with a fixed
 layout (see [Fixed layouts and Clover](#fixed-layouts-and-clover)). A config's fields may be
 0 to 64; with none the medium is uniform (an index of 1 everywhere) and nothing blocks
 sight.
@@ -96,11 +96,15 @@ When a match ends, the environment gets a new map and a fresh mode state
   Map / mode panel's Team deathmatch group.
 - **Score:** every death scores one point for the other team, whatever its cause: an
   enemy's hit, friendly fire or the boundary.
-- **Win:** the first team to `kills_per_ship * ships_per_team` points. Both reaching it on
-  the same tick is a draw. At the clock the higher score wins, and equal scores draw. With
-  benched ships (below) a team's target is `kills_per_ship` times the enemy's *active*
-  ships (`bnb.game.modes.phase.deathmatch_targets`), and the observation's `score_target`
-  is the viewer's own.
+- **Win:** the first team to its tickets, `kills_per_ship x N^ticket_exponent` rounded to
+  the nearest multiple of `ticket_rounding` for N enemy ships (`bnb.game.modes.phase.tickets`;
+  5N by default). Real-scale deathmatch (the freeze, game v21) plays 4 N^(4/3) to the
+  nearest 5: 5, 10, 15, 25, 35, 85 and 215 tickets for N = 1, 2, 3, 4, 5, 10 and 20, so
+  about 80% of Imugi's games end by tickets within its 10-minute clock at every size (the
+  kill rate per ship grows with the fleet). Both reaching it on the same tick is a draw. At
+  the clock the higher score wins, and equal scores draw. With benched ships (below) N is
+  the enemy's *active* ships (`deathmatch_targets`), and the observation's `score_target` is
+  the viewer's own.
 - **Outcome for the learner:** by default a game is scored by the kill lead
   (`RewardConfig.deathmatch_outcome = "kill_lead"`, which the rollout sets as
   `ModeRules.deathmatch_outcome`; decided 2026-11-14): `win_loss` is the result one-hot,
@@ -145,19 +149,28 @@ deathmatch, every death a point for the other team, with one kill per enemy ship
   any damage). Equal, a draw. The rule is zero-sum, so the side behind has to attack: a
   side that runs from a losing fight cannot run out the clock into a draw. The RL outcome
   reward reads the same result (`bnb.learn.rewards.outcome_events`).
-- **Spawns, by team side** (game version 7; `bnb.game.modes.spawns.side_placement`): the
-  teams start on opposite sides, not as a lottery. Each team's area is a disc of
-  `ModeRules.side_area_fraction` (0.15) arena radii around its centre, `Rules.spawn_offset`
-  (0.8) arena radii out along the match's spawn axis; each ship a uniform point in it,
-  nose toward the enemy area's centre within `side_heading_jitter` (15 degrees), turned
-  the least that keeps team deathmatch's edge rule. A fixed layout's spawns (Clover)
-  replace it.
+- **Spawns, by team side** (game version 7; the centres drawn per team since v21;
+  `bnb.game.modes.spawns.side_placement`): the teams start on opposite sides of the match's
+  spawn axis, not as a lottery. Each team's area is a disc of
+  `ModeRules.side_area_fraction` (0.15) arena radii around its centre, which is drawn for
+  each team on its own over the sector within `side_centre_half_angle` (60 degrees) of its
+  end of the axis, `side_centre_radius_min` (0.5) to `Rules.spawn_offset` (0.8) arena radii
+  out, so neither team's spawn gives the other's away. Each ship is a uniform point in its
+  area, nose toward the map's centre within `side_heading_jitter` (15 degrees), turned the
+  least that keeps team deathmatch's edge rule. A fixed layout's spawns (Clover) replace
+  it.
 - **The boundary shrinks** (game v14, closing before the clock since v16;
   `bnb.game.layout.boundary_fraction`): it stays at the arena radius for
-  `ModeRules.shrink_hold_seconds` (18 s, 36 s at real scale: a fifth of the clock), then
-  shrinks, linear in radius (`shrink_law` 0, the default) or along the smootherstep (1: a
-  smooth start and end), past radius 0 to minus one ramp width, which it reaches
-  `shrink_end_lead_seconds` (8 s) before the clock. Boundary damage (see
+  `ModeRules.shrink_hold_seconds` (18 s in the standard game; 0 at real scale since the
+  freeze, game v21), then shrinks past radius 0 to minus one ramp width, which it reaches
+  `shrink_end_lead_seconds` (8 s) before the clock: linear in radius (`shrink_law` 0, the
+  default), along the smootherstep (1), the power law (1 − s)^p (2, `shrink_power`), or
+  the corner (3: linear to `shrink_knee_fraction` of the radius `shrink_knee_seconds` after
+  the hold, then linear on). Whatever the law it never closes faster than
+  `shrink_max_speed` (150 m/s at real scale, about half of cruise; 0 none). The real-scale
+  game (the freeze) shrinks linearly from the start over 4 minutes: with Imugi it hardly
+  moves the median game and shortens the long ones
+  (docs/rewrite/sections/elimination-shrink/results.md). Boundary damage (see
   [physics](physics.md)) is measured from the boundary as it stands, so a side that keeps
   away from the fight is pushed back into it, and the end time does not depend on how the
   sides fly. A negative radius puts every point beyond the boundary: from the zero
@@ -173,7 +186,8 @@ deathmatch, every death a point for the other team, with one kill per enemy ship
   score is the enemy's (active) ships. The globals `boundary_fraction` (the boundary's
   radius over the arena radius, 0 once it has passed the centre) and
   `boundary_time_to_zero` (seconds to the zero crossing, then 0) show the shrink.
-- **Clock:** 90 s by default, 180 s at real scale (both presets): a short episode.
+- **Clock:** 90 s in the standard game; 248 s at real scale (the freeze, game v21: the
+  4-minute shrink and its 8 s lead).
 
 ## Fixed layouts and Clover
 
@@ -250,8 +264,11 @@ None, as in training) the game is bit-identical to the game without the input
   over `capture_seconds`, so a lead of one fills an empty meter in `capture_seconds`.
 - **Captures:** a full meter captures. The front moves one step in the capturing team's
   favour, every meter empties, and the roles rotate around the ring.
-- **Win:** a front of `front_threshold` captures ahead. At the clock the sign of the front
-  decides, and 0 draws.
+- **Win:** a front of `front_threshold` captures ahead: 3 in the standard game, 2 at real
+  scale (the freeze, game v21: about 80% of Imugi's 5v5 games end by capture within the
+  10-minute clock, against about half at 3). At the clock the sign of the front decides, and
+  0 draws. Frontline is played at 3v3 or larger (`modes.rules.MINIMUM_SHIPS_PER_TEAM`): at
+  2v2 most games end on the clock.
 - **Capture lock** (game version 8): after a capture, the team that lost the zone gains no
   capture progress on it for L seconds: its majority there does not move the meter (a
   defending majority still does), so the zone cannot be taken straight back. L is set by

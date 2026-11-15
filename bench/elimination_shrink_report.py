@@ -16,11 +16,13 @@ TICKS_PER_SECOND = 30
 
 
 def percentile(values: list[float], share: float) -> float:
+    """The nearest-rank percentile of the values (share in [0, 1])."""
     ordered = sorted(values)
     return ordered[min(int(share * len(ordered)), len(ordered) - 1)]
 
 
 def main(path: str) -> None:
+    """Print the tables for the files on the command line."""
     games = collections.defaultdict(list)
     with open(path) as lines:
         for line in lines:

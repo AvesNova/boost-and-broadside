@@ -130,14 +130,18 @@ class EvaluationConfig:
             if condition.name in self.conditions and condition.name not in self.unscored
         ]
 
-    def crossover_config(self):
+    def crossover_config(self, mode: str | None = None):
         """Break-even's measurement settings, its fit's and allocation's
-        (`bnb.league.crossover.CrossoverConfig`)."""
+        (`bnb.league.crossover.CrossoverConfig`); for a mode, its counts start no lower
+        than the mode's smallest team (`MINIMUM_SHIPS_PER_TEAM`: Frontline 3)."""
+        from bnb.game.modes.rules import MINIMUM_SHIPS_PER_TEAM
+
         from .crossover import CrossoverConfig
 
+        smallest = MINIMUM_SHIPS_PER_TEAM.get(mode, 1)
         return CrossoverConfig(
             opponent_count=self.opponent_count,
-            minimum_count=self.minimum_count,
+            minimum_count=max(self.minimum_count, smallest),
             maximum_count=self.maximum_count,
             bracket=self.bracket,
         )

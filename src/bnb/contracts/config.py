@@ -131,7 +131,10 @@ class GameConfig:
         respawn_seconds.
     spawn_groups: team deathmatch only, ships per team in each spawn group (summing to
         ships_per_team); empty means uniform spawns.
-    kills_per_ship: team deathmatch's winning score is kills_per_ship * ships_per_team.
+    kills_per_ship, ticket_exponent, ticket_rounding: team deathmatch's winning score (each
+        team's tickets) for N enemy ships is kills_per_ship * N^ticket_exponent rounded to
+        the nearest multiple of ticket_rounding (at least one multiple): 5N with the
+        defaults; 4 N^(4/3) to the nearest 5 at real scale (the freeze, 2026-11-15).
     ship_set: the ship types and the rules their cards were solved under
         (`bnb.game.ships`): "standard", or another set's directory name ("real-scale").
         The whole batch shares it (a pool cannot change it).
@@ -149,6 +152,8 @@ class GameConfig:
     mode: str = TEAM_DEATHMATCH
     spawn_groups: tuple[int, ...] = ()
     kills_per_ship: int = 5
+    ticket_exponent: float = 1.0
+    ticket_rounding: int = 1
     ship_set: str = STANDARD_SHIP_SET
     layout: MapLayout | None = None
     active_fields: ActiveFields | None = None
@@ -173,6 +178,8 @@ class GameConfig:
             )
         if self.kills_per_ship < 1:
             raise ValueError("kills_per_ship must be at least 1")
+        if not self.ticket_exponent > 0.0 or self.ticket_rounding < 1:
+            raise ValueError("ticket_exponent must be positive and ticket_rounding at least 1")
         if self.mode == ELIMINATION and self.respawn_seconds is not None:
             raise ValueError("elimination has no respawn: leave respawn_seconds out")
         if self.layout is not None:

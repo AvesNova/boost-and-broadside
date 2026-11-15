@@ -160,6 +160,8 @@ RULE_UNITS = {
     "pool.episode_seconds": TIME,
     "pool.respawn_seconds": TIME,
     "mode.kills_per_ship": NONE,
+    "mode.ticket_exponent": NONE,
+    "mode.ticket_rounding": NONE,
     "mode.group_centre_fraction": NONE,
     "mode.group_radius": LENGTH,
     "mode.anchor_distance_min": LENGTH,

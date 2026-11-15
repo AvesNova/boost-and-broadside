@@ -130,16 +130,36 @@ def mode_phase(
     return Phase(mode, zero, zero, no, torch.zeros_like(mode.front), every_tick)
 
 
+def tickets(mode_rules: ModeRules, enemies):
+    """The winning score against `enemies` ships (an int, or an int tensor): kills_per_ship
+    x enemies^ticket_exponent, rounded to the nearest multiple of ticket_rounding and at
+    least one multiple. With the exponent and the rounding at 1 it is exactly
+    kills_per_ship x enemies (elimination's wipe: kills_per_ship 1)."""
+    scale, exponent = mode_rules.kills_per_ship, mode_rules.ticket_exponent
+    rounding = mode_rules.ticket_rounding
+    plain = not any(isinstance(v, torch.Tensor) for v in (enemies, scale, exponent, rounding))
+    if plain:
+        if exponent == 1.0 and rounding == 1:
+            return scale * enemies
+        raw = scale * float(enemies) ** exponent
+        return max(rounding, rounding * math.floor(raw / rounding + 0.5))
+    count = torch.as_tensor(enemies).to(torch.float32)
+    raw = scale * torch.pow(count, torch.as_tensor(exponent, dtype=torch.float32))
+    step = torch.as_tensor(rounding, dtype=torch.float32)
+    rounded = torch.maximum(step * torch.floor(raw / step + 0.5), step)
+    return torch.where(count > 0, rounded, 0.0).to(torch.int32)
+
+
 def deathmatch_targets(
     rules: Rules, mode_rules: ModeRules, active: torch.Tensor | None
 ) -> torch.Tensor | int:
-    """Team deathmatch's (and elimination's) winning score per team: kills_per_ship (1 in
-    elimination) times the enemy team's
-    active ships, (B, 2) int32 by the scoring team from active (B, 2), or the one int
-    kills_per_ship * ships_per_team when every ship is active (active None)."""
+    """Team deathmatch's (and elimination's) winning score per team: the tickets
+    (`tickets`) for the enemy team's active ships, (B, 2) int32 by the scoring team from
+    active (B, 2), or the one number for ships_per_team when every ship is active (active
+    None)."""
     if active is None:
-        return mode_rules.kills_per_ship * rules.ships_per_team
-    return mode_rules.kills_per_ship * active.flip(-1).to(torch.int32)
+        return tickets(mode_rules, rules.ships_per_team)
+    return tickets(mode_rules, active.flip(-1).to(torch.int32))
 
 
 def clock_result(

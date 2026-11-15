@@ -32,7 +32,8 @@ def plane(handles: dict[str, float]) -> dict[str, float]:
 
 def test_the_presets_play_the_real_scale_set_on_a_map_three_times_wider():
     """Frontline and elimination on the 7800 m map; team deathmatch on 4200 m with a 10 s
-    respawn wait (the author, 2026-11-13). The random maps are the author's (game v14)."""
+    respawn wait (the author, 2026-11-13). The random maps are the author's (game v14); the
+    clocks, the shrink and the Frontline win are the freeze's (game v21)."""
     for mode in ("deathmatch", "frontline", "elimination"):
         standard, real = api.PRESETS[mode], api.PRESETS[f"real_scale_{mode}"]
         wide = 4200.0 if mode == "deathmatch" else 3.0 * standard.arena_radius
@@ -40,14 +41,19 @@ def test_the_presets_play_the_real_scale_set_on_a_map_three_times_wider():
         rules = api.rules_of(real)
         assert rules.pools[0].arena_radius == wide
         standard_rules = api.rules_of(standard)
-        assert rules.pools[0].episode_ticks == 2 * standard_rules.pools[0].episode_ticks
+        if mode == "elimination":  # the freeze (2026-11-15): a 4-minute shrink, a 248 s clock
+            assert rules.pools[0].episode_ticks == round(248.0 / rules.tick_length)
+        else:
+            assert rules.pools[0].episode_ticks == 2 * standard_rules.pools[0].episode_ticks
         if mode == "frontline":
             assert rules.pools[0].respawn_ticks == 2 * standard_rules.pools[0].respawn_ticks
         if mode == "deathmatch":
             assert rules.pools[0].respawn_ticks == round(10.0 / rules.tick_length)
         assert rules.pools[0].mode.capture_seconds == 20.0
         assert rules.pools[0].mode.group_radius == 900.0
-        assert rules.pools[0].mode.shrink_hold_seconds == 36.0  # a fifth of 180 s
+        assert rules.pools[0].mode.shrink_hold_seconds == 0.0  # the shrink starts at once
+        assert rules.pools[0].mode.shrink_max_speed == 150.0
+        assert rules.pools[0].mode.front_threshold == 2
         assert rules.field_band_width == 160.0
         assert (rules.field_radius_min, rules.field_radius_max) == (120.0, 1200.0)
         assert rules.field_radius_distribution == 2

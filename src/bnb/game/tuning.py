@@ -153,10 +153,29 @@ SETTINGS = (
     _s(
         "mode.kills_per_ship",
         TEAM_DEATHMATCH_GROUP,
-        "kills per ship to win",
+        "tickets' scale (kills per ship at exponent 1)",
         "",
         1,
         20,
+        integer=True,
+        modes=("team_deathmatch",),
+    ),
+    _s(
+        "mode.ticket_exponent",
+        TEAM_DEATHMATCH_GROUP,
+        "tickets' exponent in the enemy's ships",
+        "",
+        0.5,
+        2.0,
+        modes=("team_deathmatch",),
+    ),
+    _s(
+        "mode.ticket_rounding",
+        TEAM_DEATHMATCH_GROUP,
+        "tickets rounded to a multiple of",
+        "",
+        1,
+        10,
         integer=True,
         modes=("team_deathmatch",),
     ),
@@ -522,6 +541,8 @@ LIVE_FLIGHT = (
 )
 LIVE_MODE = (
     "kills_per_ship",
+    "ticket_exponent",
+    "ticket_rounding",
     "group_centre_fraction",
     "group_radius",
     "anchor_distance_min",
@@ -548,6 +569,7 @@ LIVE_POOL = ("arena_radius", "episode_ticks", "respawn_ticks")
 _INTEGERS = {
     "field_radius_distribution",
     "kills_per_ship",
+    "ticket_rounding",
     "front_threshold",
     "shrink_law",
     "episode_ticks",

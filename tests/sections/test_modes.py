@@ -1159,3 +1159,36 @@ def test_frontline_plays_with_no_fields():
     state = api.reset(rules, api.ship_types(), api.uniforms(rules, 2, generator=generator))
     assert state.fields.x.shape == (2, 0)
     assert bool(torch.isfinite(state.mode.zone_x).all())
+
+
+# ------------------------------------------------------------------ the freeze's tickets
+
+
+def test_real_scale_deathmatch_tickets_follow_four_n_to_the_four_thirds_to_the_nearest_five():
+    from bnb.game.modes.phase import tickets
+
+    mode = api.rules_of(api.PRESETS["real_scale_deathmatch"]).pools[0].mode
+    counts = (1, 2, 3, 4, 5, 10, 20)
+    assert [tickets(mode, n) for n in counts] == [5, 10, 15, 25, 35, 85, 215]
+    # the batch path (benched ships: each team's target by the enemy's active ships)
+    active = torch.tensor([[1, 2], [5, 10], [0, 20]], dtype=torch.int32)
+    assert tickets(mode, active).tolist() == [[5, 10], [35, 85], [0, 215]]
+
+
+def test_the_default_tickets_are_kills_per_ship_times_the_ships():
+    from bnb.game.modes.phase import tickets
+
+    mode = api.rules_of(GameConfig(3, 2, 1200.0, kills_per_ship=7)).pools[0].mode
+    assert [tickets(mode, n) for n in (1, 2, 3)] == [7, 14, 21]
+    active = torch.tensor([[1, 3]], dtype=torch.int32)
+    assert tickets(mode, active).tolist() == [[7, 21]]
+
+
+def test_frontline_break_even_counts_start_at_its_smallest_team():
+    from bnb.game.modes.rules import MINIMUM_SHIPS_PER_TEAM
+    from bnb.league.evaluation_settings import EvaluationConfig
+
+    config = EvaluationConfig()
+    assert MINIMUM_SHIPS_PER_TEAM["frontline"] == 3
+    assert config.crossover_config("frontline").minimum_count == 3
+    assert config.crossover_config("team_deathmatch").minimum_count == config.minimum_count

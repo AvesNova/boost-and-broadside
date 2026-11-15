@@ -79,7 +79,26 @@ PRESETS["real_scale_deathmatch"] = dataclasses.replace(
     PRESETS["real_scale_deathmatch"],
     arena_radius=REAL_SCALE_DEATHMATCH_ARENA,
     respawn_seconds=10.0,
+    # The freeze (the author, 2026-11-15): 4 N^(4/3) tickets to the nearest 5 for N enemy
+    # ships (5, 10, 15, 25, 35, 85, 215 for N = 1, 2, 3, 4, 5, 10, 20), with the 10-minute
+    # clock: about 80% of Imugi's games end by tickets
+    # (docs/rewrite/sections/freeze-proposals.md).
+    kills_per_ship=4,
+    ticket_exponent=4.0 / 3.0,
+    ticket_rounding=5,
 )
+# Real-scale elimination (the freeze, 2026-11-15): the boundary shrinks linearly from the
+# match's start to past 0 over 4 minutes (`ModeRules.shrink_hold_seconds` 0 in the set's
+# [mode]), the clock 8 s after it (`shrink_end_lead_seconds`).
+REAL_SCALE_ELIMINATION_SECONDS = 248.0
+PRESETS["real_scale_elimination"] = dataclasses.replace(
+    PRESETS["real_scale_elimination"], episode_seconds=REAL_SCALE_ELIMINATION_SECONDS
+)
+# The smallest team each mode is played at (the freeze, 2026-11-15): Frontline 3v3 (at
+# 2v2 captures are rare and most games end on the clock); the others 1v1. Training's and
+# evaluation's fleet sizes keep to it (break-even's counts: `EvaluationConfig`); the game
+# itself plays any size.
+MINIMUM_SHIPS_PER_TEAM = {TEAM_DEATHMATCH: 1, ELIMINATION: 1, FRONTLINE: 3}
 
 # A game at another fleet size (`arena_radius_for`): the arena radius follows the density
 # rule, growing as sqrt(n / n_base) from the base game's, down to the mode's minimum
@@ -224,7 +243,8 @@ del _base, _game, _n
 @dataclasses.dataclass(frozen=True)
 class ModeRules:
     """name: the mode. Team deathmatch (and elimination, its variant: spawns by team side,
-    and one kill per enemy ship wins): kills_per_ship, spawn_groups (ships per team per
+    and one kill per enemy ship wins): kills_per_ship, ticket_exponent and ticket_rounding
+    (the winning score for N enemy ships, `phase.tickets`), spawn_groups (ships per team per
     group; empty for uniform spawns), spawn_candidates (C, the best of C), the group centres'
     disc (group_centre_fraction of the arena radius), the members' disc (group_radius), the
     respawn ring around an anchor (anchor_distance_min to _max), and spawn_margin, how far
@@ -257,6 +277,8 @@ class ModeRules:
 
     name: str
     kills_per_ship: int = 5
+    ticket_exponent: float = 1.0
+    ticket_rounding: int = 1
     spawn_groups: tuple[int, ...] = ()
     spawn_candidates: int = 8
     group_centre_fraction: float = 0.85
@@ -343,9 +365,10 @@ class ModeRules:
 
 
 def mode_rules_of(config: GameConfig) -> ModeRules:
-    """The ModeRules of the config's mode: its name, kills_per_ship (1 in elimination: each
-    enemy ship once, a wipe), spawn_groups and layout from the config, the fields its ship
-    set's rules give ([mode] in `ships.rules`), the others their defaults."""
+    """The ModeRules of the config's mode: its name, kills_per_ship and the ticket rule (1,
+    1 and 1 in elimination: each enemy ship once, a wipe), spawn_groups and layout from the
+    config, the fields its ship set's rules give ([mode] in `ships.rules`), the others
+    their defaults."""
     given = {
         key.split(".", 1)[1]: value
         for key, value in ships.rules(config.ship_set).items()
@@ -354,6 +377,8 @@ def mode_rules_of(config: GameConfig) -> ModeRules:
     return ModeRules(
         name=config.mode,
         kills_per_ship=1 if config.mode == ELIMINATION else config.kills_per_ship,
+        ticket_exponent=1.0 if config.mode == ELIMINATION else config.ticket_exponent,
+        ticket_rounding=1 if config.mode == ELIMINATION else config.ticket_rounding,
         spawn_groups=config.spawn_groups,
         layout=config.layout,
         set_map_scale=SET_MAP_SCALE.get(config.ship_set, 1.0),
