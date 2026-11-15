@@ -59,3 +59,25 @@ Branch `feat/a2-team-sizes` from `origin/feat/imugi-boundary` (83404bbf). CPU on
   runs 20 more segments with `error_on_recompile` on: no recompile over 211 episode resets.
   Sizes seen: deathmatch and elimination 1-5, Frontline 3-5. Script:
   the session scratchpad's `gpu_check.py` (not kept).
+
+## Joint sizes and fields (2026-11-16, the author's answers)
+
+The author: ship and field counts vary together; 5v5 at least half the games; uneven sizes
+included; the equations are discussed first. Proposal for the author:
+[../../a2-sampling-proposal.md](../../a2-sampling-proposal.md).
+
+### 06:00 mechanism, tests, proposal
+- Worked: `TeamSizes` is now a table of (team 0's ships, team 1's ships, fields,
+  probability) from a ship rule (`uniform_pairs` default, `independent_teams`, `near_full`,
+  `table`; `full_share` 0.5, `uneven`) and a field rule (`per_ship` default: one field per
+  ship to the nearest even count, ties up, optional `field_spread`; `game`: the game's own).
+  The rollout draws one row per episode by the same keyed uniform (purpose "team size"),
+  so nothing else moves; the game takes `field_count` (reset) and `next_field_count`
+  (resolve), -1 for the game's own draw; `api.active_field_count` reads a state's. Tickets
+  unchanged (each team's winning score from the enemy's ships, as break-even plays it).
+  Series per training mode, on by default (`series`): `team_size/larger`, `/smaller`,
+  `/fields`, `/share/{a}v{b}`. `samples_field_counts` counts the coupled fields, so the
+  Yemong masks absent fields too. Tests: 32 in `test_team_sizes.py` (rules, table, field
+  counts, refusals, uneven tickets, the draw against the table, field counts at reset,
+  the series, isolation, all-slots = plain, resume, settings, BC and RL updates).
+- Provisional launch setting: `--set 'team_sizes={}'`.

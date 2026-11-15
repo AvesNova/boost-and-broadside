@@ -97,7 +97,7 @@ A pool with `team_sizes` (`bnb.contracts.TeamSizes`) draws each episode's two te
 equal or not, and its active field count together, as one row of a table (team 0's ships,
 team 1's ships, fields, probability; `TeamSizes.table`). The ship distribution is a rule
 over the pairs of sizes, larger a against smaller b, at least the mode's smallest team
-(`api.MINIMUM_SHIPS_PER_TEAM`: Frontline 3, deathmatch and elimination 1), each uneven pair
+(`bnb.game.api.MINIMUM_SHIPS_PER_TEAM`: Frontline 3, deathmatch and elimination 1), each uneven pair
 split evenly between its two orientations:
 
 | `rule` | the pairs' probabilities (S slots a side) |
