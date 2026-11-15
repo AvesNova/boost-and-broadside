@@ -25,9 +25,11 @@ so a stopped sweep resumes).
 """
 
 import argparse
+import dataclasses
 import json
 import pathlib
 import time
+import tomllib
 
 import torch
 
@@ -39,6 +41,7 @@ from bnb.game import api
 
 HERE = pathlib.Path(__file__).parent
 BEFORE = HERE / "before" / "imugi_doctrines.json"
+KEYS = ("yongma", "jujak")  # the base card's rows (`bench.game_loop.base_card`)
 KEPT = (  # what a job's line keeps of `bench.game_loop.summary`
     "games",
     "score",
@@ -53,6 +56,19 @@ KEPT = (  # what a job's line keeps of `bench.game_loop.summary`
     "wins",
     "draws",
 )
+
+
+def before_card(base):
+    """The base card rows (Yongma, Jujak) with every field from before/'s ship files, so a
+    sweep plays the version-22 card whatever src/ holds (a candidate's card is relative to it)."""
+    values = {}
+    cards = [tomllib.loads((HERE / "before" / f"{key}.toml").read_text())["card"] for key in KEYS]
+    for field in dataclasses.fields(base):
+        column = getattr(base, field.name)
+        if field.name in cards[0]:
+            column = torch.tensor([c[field.name] for c in cards], dtype=column.dtype)
+        values[field.name] = column.to(getattr(base, field.name).device)
+    return dataclasses.replace(base, **values)
 
 
 def before_doctrines() -> dict:
@@ -84,6 +100,10 @@ def main() -> None:
     parser.add_argument("--environments", type=int, default=4096)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--variants", type=int, default=1, help="card variants a batch holds")
+    parser.add_argument(
+        "--base", choices=("before", "src"), default="before",
+        help="the base card: before/'s ship files (version 22) or src/'s",
+    )  # fmt: skip
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--eager", action="store_true", help="no torch.compile (a CPU check)")
     args = parser.parse_args()
@@ -112,6 +132,8 @@ def main() -> None:
         device=args.device,
         compiled=not args.eager,
     )
+    if args.base == "before":
+        loop.base = before_card(loop.base)
     started = time.time()
     # a chunk of candidates fills about one batch, so each line is written as it finishes
     per_candidate = args.games + 2 * mixed
