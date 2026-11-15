@@ -1,16 +1,5 @@
 # Final freeze check: progress
 
-> **WIP (2026-11-15 20:52, laptop shutdown at 21:00).** Done: steps 1-3 (vizia out; the
-> shield bug fixed, game v22; respawn reported). Step 4: all 22 mode_dynamics conditions are
-> measured (`data/modes.jsonl`; tables in `data/partial-tables.md`). Remaining: the head-on
-> passes per kill (`bench.game_loop`, `measure.py`'s `passes()`, about 8 min on the GPU),
-> then `results.md` and `review.md`. Resume (skips finished conditions, then runs passes):
-> `systemd-run --user --unit=freeze-final -p MemoryMax=8G --working-directory=$PWD
-> --setenv=PYTHONPATH=$PWD/src:$PWD .venv/bin/python docs/rewrite/sections/freeze-final/measure.py`.
-> First reads: Jujak dominates (pure Yongma team scores about 22% in deathmatch 5v5);
-> deathmatch 1v1/2v2 rarely end by tickets (0.4%, 43%); elimination 5v5 shorter than
-> expected (median 1:35, p80 2:18), boundary shares as expected.
-
 Branch `check/freeze-final` (from `feat/imugi-boundary` a8919b27). Notes in order.
 
 ## 1. vizia out of the real-scale set (2026-11-15)
@@ -74,3 +63,30 @@ So Frontline follows the recommendation; deathmatch does not: it stays at 10 s, 
 `modes/rules.py` records as the author's choice of 2026-11-13 ("4200 m, with a 10 s respawn
 wait (the clock's would be 8 s)"). The branch measured 8 s at +3% kills a minute against
 10 s, and life and trades unchanged.
+
+## 4. Mode measurements (2026-11-15, game v22)
+
+All 22 `bench.mode_dynamics` conditions (`measure.py`), then the head-on passes
+(`bench.game_loop`, 21:28-21:40, power profile `performance`, no other GPU job). After merging
+`origin/feat/imugi-boundary` (split critic; the game version test passes at 22, no
+regeneration needed).
+
+- **Found and fixed a bench bug** (eeb73d99): `mode_dynamics` took elimination's result
+  from the traced score, which misses the death that ends the game (it lands on the reset
+  tick). Every 1v1 wipe read as a draw (elim-et-1v1 showed 50.0 ± 0.0%). The result now
+  comes from the survivors; `freeze_report.py` recomputes it for the records already made
+  (test: `tests/sections/test_mode_dynamics_result.py`). Corrected Yongma-team scores:
+  elimination 1v1 10.0, 2v2 18.6, 5v5 21.9, 10v10 29.9% (were 50.0, 27.7, 27.0, 33.0); all
+  still meet the SE target, so nothing was re-run. `data/partial-tables.md` is removed
+  (superseded by results.md).
+- **Passes:** 0.38-0.55 passes before a kill at 5v5 in every mode; 59-68% of kills have no
+  merge at all.
+- **Seen on the way:** friendly fire is 16% of the Jujak team's kills in deathmatch 10v10
+  energy against turn (6% for Yongma), which is what brings that condition to 48%.
+- `tests/sections/test_lanes.py::test_the_per_shard_cut_is_gone` fails after the merge
+  (IndexError, index 8 out of bounds for size 5); not touched here.
+
+## 5. Reports
+
+[results.md](results.md) (the data) and [review.md](review.md) (checks against targets, and
+recommendations for the Yongma-Jujak imbalance and small-team deathmatch). Done.

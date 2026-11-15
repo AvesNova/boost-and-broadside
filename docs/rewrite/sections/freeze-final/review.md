@@ -4,7 +4,7 @@ Game version 22, Imugi on both sides, fog and fields on, each preset's own map. 
 numbers, their SEs and game counts are in [results.md](results.md). Done on this branch: the
 shield fix (v22), vizia dropped, Imugi's doctrine lookup fixed, and a bench fix for
 elimination results (the energy-against-turn elimination scores in the earlier partial
-tables were too high by 4–40 points).
+tables were too high by 3–40 points).
 
 ## The checks
 
@@ -22,20 +22,20 @@ tables were too high by 4–40 points).
 | aspect mix | a good mix | 5v5: offset 11–16%, flank 48–53%, tail 28–36% | pass at 5v5 and up; tail above the earlier 10–14% hope |
 | | | 1v1 and 2v2: tail 41–50% | borderline: small fights end from behind |
 | mutual head-on | near zero | 3.0–4.3% of kills (1.5–3.1% at 1v1–2v2) | pass |
-| head-on passes before a kill | 3–4 | PASSES_SUMMARY | **fail** |
+| head-on passes before a kill | 3–4 | 0.38–0.55 at 5v5 in every mode; 59–68% of kills with no merge | **fail** |
 
 Notes on the checks:
 
 - **Elimination is short** at every size (1v1 median 2:33, 10v10 1:26), and no game reaches
-  the clock. The boundary shares are where they should be, so the shrink is not the cause;
-  the fights resolve sooner than the target assumed. If the 2:05 target matters, the knob
+  the clock. The boundary shares are on target, which suggests the shrink is not what
+  shortens them: the fights resolve sooner than the target assumed. If the 2:05 target matters, the knob
   is the shrink's start or speed, not the clock. I would accept it as is: a shorter
   elimination game gives more games per GPU-hour.
 - **Head-on passes.** With the head-on fraction at 0 (physics v12), a hit straight on the
   nose does no damage, so the card's head-on time to kill is infinite and the 3–4 target no
-  longer has a meaning on the card. In play, Imugi's kills come in or right after the first
-  merge, as in every round since 2026-11-12 (0.4–0.6 then). I would retire the target, or
-  restate it as merges per kill if repeated passes are still wanted.
+  longer has a meaning on the card. In play, 59–68% of Imugi's kills come with no head-on
+  merge between the pair at all, as in every round since 2026-11-12 (0.3–0.6 passes then). I would
+  retire the target, or restate it as merges per kill if repeated passes are still wanted.
 - **Friendly fire** is a larger share than I expected: in deathmatch 10v10 energy against
   turn, 16% of the Jujak team's kills are its own ships (6% for Yongma). Not a target, but
   it is what holds that condition near even.
@@ -99,15 +99,15 @@ What the data say. The premise that Imugi rarely finds the enemy holds only in p
 Replaying the recorded games with other ticket counts (free, from the data already on
 disk; mixed lineups, share ended by tickets within 10 min):
 
-| tickets | 1 | 2 | 3 | 4 | 5 | 6 | 8 | 10 |
-|---|---|---|---|---|---|---|---|---|
-| 1v1 | 71% | 35% | 13% | 4% | 0% | 0% | 0% | 0% |
-| 2v2 | 99% | 98% | 97% | 96% | 94% | 89% | 72% | 43% |
+| tickets | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 10 |
+|---|---|---|---|---|---|---|---|---|---|
+| 1v1 | 71% | 35% | 13% | 4% | 0% | 0% | 0% | 0% | 0% |
+| 2v2 | 99% | 98% | 97% | 96% | 94% | 89% | 84% | 72% | 43% |
 
 Options:
 
-1. **Tickets at small sizes.** 2v2 at 7 tickets would end about 80% of games (6 gives 89%,
-   8 gives 72%); a per-size table or a steeper exponent below 5v5. 1v1 reaches 80% at no
+1. **Tickets at small sizes.** 2v2 at 7 tickets would end 84% of the recorded games (6 gives
+   89%, 8 gives 72%); a per-size table or a steeper exponent below 5v5. 1v1 reaches 80% at no
    ticket count; at 1 ticket it is a sudden-death duel (71%), which is elimination without
    the shrink. Cost: none to estimate (replay above); a rules change and a game version
    bump to adopt, confirmed by one 512-game run each at 1v1 and 2v2 (about 4 minutes).

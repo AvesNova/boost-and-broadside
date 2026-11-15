@@ -26,7 +26,7 @@ training only; the game version test passes at 22). Laptop GPU, power profile
   recorded as a draw and some larger games too. Elimination's result now comes from the
   survivors. The records here were made before the fix; `freeze_report.py` recomputes the
   result the same way. Only the energy-against-turn elimination scores were affected (the
-  partial tables had 1v1 50.0%, 2v2 27.7%, 5v5 27.0%, 10v10 33.0%); every recomputed
+  partial tables in 0b675320 had 1v1 50.0%, 2v2 27.7%, 5v5 27.0%, 10v10 33.0%); every recomputed
   score still meets its SE target of 2 points.
 
 ## Setup
@@ -146,7 +146,28 @@ tail beyond. Kills with a shooter only.
 
 ## Head-on passes before a kill
 
-PASSES_PLACEHOLDER
+`bench.game_loop` (its merge definition: a pair inside the longer gun range with both noses
+within the merge cone; a pair's merges count from when both last spawned; the histogram's
+last bin holds 7 or more), 5v5, the stored doctrines and each mode's Imugi parameters,
+mixed lineups in both seat orders, fields on, the preset's map; 512 games a row, deathmatch
+300 s, elimination 248 s, Frontline 600 s. The bench gives no SE for the mean; the shares'
+SEs are binomial over kills.
+
+| mode | lineup | kills a game | passes before a kill (mean) | kills with no merge (%) | first-merge kills (%) | mutual / offset / flank / tail (%) |
+|---|---|---|---|---|---|---|
+| deathmatch | mixed | 39.6 | 0.38 | 68.0 ± 0.3 | 12.5 ± 0.2 | 3.4 / 12.1 / 58.9 / 25.6 |
+| deathmatch | mixed reversed | 39.2 | 0.41 | 66.7 ± 0.3 | 13.2 ± 0.2 | 3.3 / 12.7 / 59.2 / 24.7 |
+| elimination | mixed | 14.5 | 0.55 | 58.8 ± 0.6 | 11.5 ± 0.4 | 3.4 / 10.7 / 59.0 / 26.9 |
+| elimination | mixed reversed | 15.1 | 0.53 | 60.3 ± 0.6 | 12.3 ± 0.4 | 3.5 / 11.1 / 59.1 / 26.4 |
+| Frontline | mixed | 67.9 | 0.41 | 68.3 ± 0.2 | 12.2 ± 0.2 | 3.6 / 15.2 / 60.0 / 21.3 |
+| Frontline | mixed reversed | 69.7 | 0.43 | 67.2 ± 0.2 | 12.9 ± 0.2 | 4.0 / 16.2 / 58.7 / 21.2 |
+
+Most kills (59–68%) come with no head-on merge between the pair at all; the mean is 0.4–0.55
+passes, against a target of 3–4. With the head-on fraction at 0 (physics v12), a hit on the
+nose does no damage, so the card's closed-form head-on time to kill is infinite; the game
+loop's rounds measured 0.3–0.6 on every card since 2026-11-12. The bench's aspect shares
+differ from mode_dynamics' above (flank 59% against 51–53%); the two benches run different
+clocks and game loops, and I have not traced the difference further.
 
 ## Respawn (report only, nothing changed)
 
