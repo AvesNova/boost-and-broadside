@@ -1,0 +1,277 @@
+[
+{
+"name": "before"
+},
+{
+"name": "d041-jt0.95",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+},
+"card": {
+"energy": {},
+"turn": {
+"engine_power": {
+"set": 11282.396484375
+},
+"engine_power_full_store": {
+"set": 2104.3984375
+},
+"static_thrust": {
+"set": 49.058109283447266
+},
+"corner_nose_frequency": {
+"set": 11.43338394165039
+},
+"induced_drag_scale": {
+"set": 0.36945950984954834
+},
+"dive_exchange_scale": {
+"set": 4.1330485343933105
+},
+"climb_exchange_scale": {
+"set": 3.4593589305877686
+},
+"fine_stick": {
+"set": 0.2132035493850708
+},
+"sustained_stick": {
+"set": 0.7106785178184509
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.95
+}
+}
+},
+{
+"name": "d041-jt0.95-yd1.08",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+},
+"card": {
+"energy": {
+"static_thrust": {
+"set": 49.05338668823242
+},
+"hit_damage": {
+"set": 24.82099151611328
+}
+},
+"turn": {
+"engine_power": {
+"set": 11282.396484375
+},
+"engine_power_full_store": {
+"set": 2104.3984375
+},
+"static_thrust": {
+"set": 49.058109283447266
+},
+"corner_nose_frequency": {
+"set": 11.43338394165039
+},
+"induced_drag_scale": {
+"set": 0.36945950984954834
+},
+"dive_exchange_scale": {
+"set": 4.1330485343933105
+},
+"climb_exchange_scale": {
+"set": 3.4593589305877686
+},
+"fine_stick": {
+"set": 0.2132035493850708
+},
+"sustained_stick": {
+"set": 0.7106785178184509
+}
+}
+},
+"handles": {
+"energy_handles": {
+"hit_damage": 1.08
+},
+"turn_handles": {
+"sustained_turn_rate": 0.95
+}
+}
+},
+{
+"name": "d041-jt0.95-yc0.88",
+"energy": {
+"turn_exponent": 1.86,
+"strength": 0.453,
+"extend": 0.928,
+"lag": 0.0,
+"crowd_sense": 0.086,
+"duel_extend": 0.222,
+"fight_in_gun_range": [
+5.2779,
+0.127
+],
+"extend_in_stall_angle": [
+1.6703,
+0.225
+],
+"engage_in_energy_ratio": [
+0.661,
+0.0305
+],
+"slash_in_gun_range": [
+2.7889,
+0.236
+],
+"bleed_in_corner_speed": [
+2.3263,
+0.111
+],
+"sense_crowd_in_gun_range": [
+2.1151,
+0.1
+],
+"sense_in_crowd": [
+0.3084,
+0.1
+],
+"duel_extend_in_lift_ratio": [
+0.9,
+0.03
+],
+"duel_extend_mirror_only": 0.0,
+"deny_angle": 0.58,
+"lag_in_gun_range": 0.58
+},
+"card": {
+"energy": {
+"engine_power": {
+"set": 10451.6279296875
+},
+"static_thrust": {
+"set": 49.05318832397461
+},
+"coast_exchange_scale": {
+"set": 23.10733413696289
+}
+},
+"turn": {
+"engine_power": {
+"set": 11282.396484375
+},
+"engine_power_full_store": {
+"set": 2104.3984375
+},
+"static_thrust": {
+"set": 49.058109283447266
+},
+"corner_nose_frequency": {
+"set": 11.43338394165039
+},
+"induced_drag_scale": {
+"set": 0.36945950984954834
+},
+"dive_exchange_scale": {
+"set": 4.1330485343933105
+},
+"climb_exchange_scale": {
+"set": 3.4593589305877686
+},
+"fine_stick": {
+"set": 0.2132035493850708
+},
+"sustained_stick": {
+"set": 0.7106785178184509
+}
+}
+},
+"handles": {
+"energy_handles": {
+"climb_time": 0.88
+},
+"turn_handles": {
+"sustained_turn_rate": 0.95
+}
+}
+}
+]

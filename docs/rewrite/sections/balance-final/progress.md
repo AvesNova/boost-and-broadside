@@ -81,3 +81,14 @@ random search's top was mostly selection: doctrines move E v T by +3-4 points at
   check (0.27 ± 0.02): noise between seeds is larger than I like; final numbers at 1024+.
 - Round 8: d041 on the solved handle cards (Jujak turn, Yongma climb, Yongma damage, combos),
   512 games.
+
+## 05:40 import check (coordinator's question)
+
+Every sweep unit (rounds 1-8 and the finalists) runs `sweep.sh`: `systemd-run ...
+-E PYTHONPATH=src:. --working-directory=/home/vizia/avesnova/bnb-balance-final`. Each unit's
+journal shows its tracebacks/warnings from `/home/vizia/avesnova/bnb-balance-final/src/bnb`
+(rounds 1, 3, 4, 5, 7, 8 checked), and `PYTHONPATH=src:. python -c "import bnb"` gives this
+worktree's file. The card candidates are passed to the bench as explicit field values
+(`{"set": ...}` or factors on the loaded card), and the handle solves ran with
+`PYTHONPATH=src:.`. No round ran against the main worktree's code. From here on the scripts
+use `PYTHONPATH=$PWD/src:$PWD`.
