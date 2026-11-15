@@ -1,4 +1,6 @@
-# Game freeze: proposals and expected numbers (2026-11-15, not locked in)
+# Game freeze: proposals and expected numbers (2026-11-15)
+
+**Locked in (author, 2026-11-15, later the same day):** deathmatch has a **10-minute** clock with 4·N^(4/3) tickets rounded to 5 at every team size (5, 10, 15, 25, 35, 85, 215 for N = 1, 2, 3, 4, 5, 10, 20). Elimination shrinks linearly over 4 minutes as below. Frontline is **±2**, with no centre zone and no healing for now. The proposals below are kept as they were made.
 
 The author's current proposals for the three modes, with what we expect them to give. Nothing here is in the game yet; the values go in together, in one game-version bump, once the author locks them. Every number is Imugi against Imugi (explore search with the wide spacing unless noted), 5v5 unless noted. Measurements: [elimination-shrink/results.md](elimination-shrink/results.md), [mode-timing/results.md](mode-timing/results.md), [frontline-lock/results.md](frontline-lock/results.md).
 
