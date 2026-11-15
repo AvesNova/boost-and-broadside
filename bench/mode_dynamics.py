@@ -524,6 +524,16 @@ def first_games(trace: dict, episode: int, threshold: int, kind: str) -> list[di
     return games
 
 
+def elimination_result(death_tick: list[int]) -> int:
+    """An elimination game's result for team 0 from its ships' first-death ticks (own team's
+    rows first, -1 alive): 1 when only team 0 has a survivor, -1 when only team 1, else 0.
+    The trace's score cannot give it: the death that ends the game lands on the reset tick,
+    after the game's last traced state."""
+    ships = len(death_tick) // 2
+    alive = [any(tick < 0 for tick in death_tick[t * ships : (t + 1) * ships]) for t in (0, 1)]
+    return int(alive[0]) - int(alive[1])
+
+
 def main() -> None:
     """The run the module describes."""
     parser = argparse.ArgumentParser()
@@ -697,6 +707,9 @@ def main() -> None:
             game_record["ally_gap"] = round(total / count, 1) if count else None
         for game_record, kinds in zip(games, probe.buffers["ship_type"].cpu().tolist()):
             game_record["ship_type"] = kinds
+        if arguments.kind == "elimination":
+            for game_record in games:
+                game_record["result"] = elimination_result(game_record["death_tick"])
         first_hit = probe.buffers["first_hit"].cpu().tolist()
         for game_record, hit_tick in zip(games, first_hit):
             game_record["first_hit"] = hit_tick

@@ -13,7 +13,9 @@ Definitions (a "game" is one environment's first game; ticks are 1/30 s):
 - **elimination**: the game's end tick and whether it ended before the clock (a wipe);
   boundary deaths, the pooled share of deaths with no shooter (a ratio of sums, its SE
   clustered by game); the last death, the death(s) on the game's last death tick, counted
-  as the boundary's when any of them had no shooter (games ended by a wipe only).
+  as the boundary's when any of them had no shooter (games ended by a wipe only); the
+  result from the survivors (`bench.mode_dynamics.elimination_result`), as records made
+  before that fix carry a trace score that misses the game's last death.
 - **frontline**: ended by capture, the front reached its threshold before the clock;
   P(reversal) as `bench.front_reversal` (pooled over move pairs, SE clustered by game); the
   first capturer's share, among games with a capture and a winner (by the threshold or by
@@ -43,6 +45,7 @@ from bnb.game.modes import phase
 HERE = pathlib.Path(__file__).parent
 sys.path.insert(0, str(HERE.parents[3]))
 from bench.front_reversal import counts  # noqa: E402
+from bench.mode_dynamics import elimination_result  # noqa: E402
 
 YONGMA = 0  # the real-scale set's type index of Yongma (Jujak is 1)
 
@@ -197,7 +200,7 @@ def measures(kind: str, games: list[dict], entries: list[dict]) -> dict:
         wiped = [last_death_by_boundary(g) for g in games if g["by_rule"]]
         wiped = [w for w in wiped if w is not None]
         out["last_death_boundary"] = share(sum(wiped), len(wiped))
-        scores = [yongma_score(g, g["result"]) for g in games]
+        scores = [yongma_score(g, elimination_result(g["death_tick"])) for g in games]
     elif kind == "frontline":
         lengths = [game["end_tick"] * tick for game in games]
         out["by_capture"] = share(sum(g["by_rule"] for g in games), len(games))
