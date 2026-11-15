@@ -31,7 +31,12 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
   To decide before merging: the Yongma–Jujak imbalance and small-team deathmatch.
 - `feat/gru-temporal` (14fdd212): the GRU option, tests (13) and export are done; timing not done: both timing runs failed (Griffin during the venv rebuild; GRU in CUDA-graph capture, a CPU→CUDA copy, undiagnosed). It committed and untracked a `.venv` symlink; merge `feat/imugi-boundary` before merging it.
 - `feat/hl-gauss-codes` (791678db): encoders switched (2 padding bins a side; decode subtracts 0.75² + 1/12), exact round trips; several tests still to update and rerun, docs and the spread-consumer check not done. Found an old `scalar_encode` bug (mean off by up to 7 bins near an edge at large spread).
-- Not started: the audit of which Yes/Maybe arms need code (stopped; rerun read-only), then building the missing ones; then the repo cleanup and settings files per run.
+- **Arm readiness audit (2026-11-15 21:40):** 17 of 30 runs launch from settings alone; partial or missing ones are being built behind settings (defaults unchanged):
+  - now: `feat/league-arm-options` (A5 mix setting, A6 one-sided self-play with "latest", R3 fixed opponent); `feat/learner-arm-options` (A10 entropy floor, R1 mode inputs, A24 chain with no BC, R0 per-update files as a setting); `feat/head-switches` (A13 per-head build switches, uniform enemy actions without that head);
+  - after `feat/hl-gauss-codes` merges: A22 "shot now" head, A17 raw inputs;
+  - after `check/freeze-final` merges: A2 per-game team sizes (large);
+  - optional: width-192 kernels (A23 falls back to plain paths at head width 96);
+  - last: the repo cleanup and one settings file per run (launch.toml, arms.toml and launch.py are stale; launch.toml sets a removed field).
 - Drafts awaiting the author: decision-rule.md, figures-brainstorm.md, run-order.md.
 - The main checkout's `.venv` was rebuilt at 20:45 after a committed symlink broke it (`.gitignore` now ignores `.venv` as file or directory).
 
