@@ -49,3 +49,21 @@ Branch `feat/gru-temporal` (from `feat/imugi-boundary`).
   checks; the ONNX cases gain "gru" next to the A13 ones). `.venv` untracked. 130 passed
   (quick tier: gru, export, model, head switches, codes, training checkpoints); ruff clean.
 - Next: the timing runs (griffin then gru) are queued on the shared GPU lock.
+
+## 2026-11-16 05:10 step 2: timing (in progress)
+- Didn't work: the full preset at 256 environments OOM-kills at the 8G MemoryMax twice
+  (04:23, at the default compile workers; 04:51, with 2 workers): the main process alone
+  holds ~6.6 GB, mostly the pinned host store, which cannot swap (system swap was full
+  too). `time_blocks.sh` now takes the environments as a second argument; both blocks run
+  at 128 (same settings for both), so the per-update times are half the reference's
+  131k-step updates. Also dropped the removed `--update-policies` flag.
+- Worked: `sublayer_bench.py` (power "performance", 05:05), segment forward + backward
+  at L = 128, D = 128, bf16, median ms:
+
+  | views | Griffin kernels | Griffin plain | GRU | GRU / Griffin kernels |
+  |---|---|---|---|---|
+  | 8 (the learner's micro-batch) | 1.88 | 2.97 | 16.17 | 8.6x |
+  | 40 | 11.55 | 16.13 | 58.72 | 5.1x |
+
+  The GRU's hidden-gate product is a serial loop over 128 steps (no scan), so it is
+  latency-bound at small row counts; its compile is ~106 s against ~18 s.
