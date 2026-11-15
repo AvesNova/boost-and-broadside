@@ -11,7 +11,8 @@ centre):
 - loser: the team with more deaths (none in a tie: those games are left out of the death
   columns); its k-th death's time, median and 90th percentile over the games where it had a
   k-th death, and n, how many did;
-- boundary: the share of all deaths with no shooter, and of the loser's k-th deaths;
+- boundary: the share of each ship's first death with no shooter, and of the loser's k-th
+  deaths;
 - first hit: the game's first enemy hit, median (s).
 Deathmatch rows add the deaths per team per minute over the game.
 """
@@ -38,7 +39,7 @@ def summary(entries: list[dict]) -> dict:
     games = [game for entry in entries for game in entry["games"]]
     ships = first["ships"]
     lengths, wiped, hits = [], 0, []
-    deaths = boundary = 0
+    deaths = boundary = first_deaths = 0
     by_k = [[] for _ in range(ships)]
     boundary_k = [0] * ships
     decided = 0
@@ -48,7 +49,8 @@ def summary(entries: list[dict]) -> dict:
         if game["first_hit"] >= 0:
             hits.append(game["first_hit"] * tick)
         ticks, by_boundary = game["death_tick"], game["death_boundary"]
-        deaths += sum(t >= 0 for t in ticks)
+        deaths += game["deaths"]  # every death (deathmatch's ships respawn)
+        first_deaths += sum(t >= 0 for t in ticks)
         boundary += sum(b for t, b in zip(ticks, by_boundary) if t >= 0)
         per_team = [
             sorted(
@@ -75,7 +77,7 @@ def summary(entries: list[dict]) -> dict:
         p80=percentile(lengths, 0.8),
         p90=percentile(lengths, 0.9),
         first_hit=statistics.median(hits) if hits else float("nan"),
-        boundary=boundary / max(deaths, 1),
+        boundary=boundary / max(first_deaths, 1),
         decided=decided,
         deaths_per_team_minute=deaths / 2 / (sum(lengths) / 60.0),
         k=[

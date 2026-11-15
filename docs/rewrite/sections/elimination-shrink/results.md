@@ -79,8 +79,63 @@ corner0.256-180    28/41  [0.10]    36/50  [0.16]    40/60  [0.20]    47/74  [0.
 - **Why fast-then-slow doesn't help with Imugi:** the fast first phase reaches the ships at their spawns (0.875 of the radius). They spend the opening steering away from the edge, so the first hit comes later (19–21 s against 15 s) and the first death later (25–28 s against 19 s), with 5–12% of first deaths by the boundary. The game is then where it would have been anyway, with more boundary deaths on top.
 - **Caveat:** this is Imugi. A trained agent that anticipates the edge will lose fewer ships to it, which would move every curved law's boundary share down. Whether it moves them below linear's can only be seen with trained agents.
 
-## 4. Pending
+## 4. The search under a mid shrink (linear 120 s)
 
-- The search under a mid shrink (linear 120 with centre and straight; waypoint is in section 3).
-- The curved laws without the speed cap.
-- Deathmatch kill rate by search (sets the tickets).
+```
+label                games ended  mean   med   p80   p90  hit1  bdry kills/min
+linear-120-centre      128  1.00    60    56    82    97    15  0.06      3.52
+linear-120 (waypoint)  128  1.00    60    52    80    96    15  0.07      3.51
+linear-120-straight    128  1.00    70    67    93   105    16  0.15      3.11
+
+loser's k-th death: median/p90 s [boundary share]
+linear-120-centre     20/39  [0.01]    30/58  [0.02]    39/68  [0.04]    46/84  [0.10]    56/97  [0.13]
+linear-120 (waypoint) 19/38  [0.01]    25/53  [0.02]    35/72  [0.07]    45/84  [0.06]    52/96  [0.12]
+linear-120-straight   23/53  [0.07]    36/74  [0.07]    44/82  [0.12]    53/93  [0.16]    68/105 [0.23]
+```
+
+With a shrink, the waypoint search and the old centre rule play the same game: the shrinking boundary does the meeting. "Straight" stays worse: later, more spread-out deaths and twice the boundary's share.
+
+## 5. The curved laws without the speed cap
+
+```
+label                 games ended  mean   med   p80   p90  hit1  bdry kills/min
+power3-120 (cap 150)    128  1.00    53    53    63    69    21  0.26      4.08
+power3-120-nocap        128  1.00    53    52    63    69    20  0.27      4.16
+corner0.32-120 (cap)    128  1.00    58    55    70    83    21  0.18      3.74
+corner0.32-120-nocap    128  1.00    55    51    69    87    21  0.21      3.82
+```
+
+The cap changes almost nothing (the uncapped power-3 law starts at 195 m/s, the corner at 177 m/s). It is a safety rule, not a design lever, at these speeds.
+
+## 6. Deathmatch kill rate by search (64 games each, 600 s, tickets off, 4.2 km)
+
+| search | deaths per team per minute | sd over games | first hit (median) |
+|---|---|---|---|
+| centre | 4.69 | 1.13 | 4.6 s |
+| straight | 4.34 | 0.98 | 3.9 s |
+| waypoint | 4.62 | 1.13 | 5.1 s |
+
+The standard error of each mean is about 0.14, so centre and waypoint are the same, and straight is about 0.35 lower (2.5 SE). The deathmatch map is small enough (4.2 km, vision 3 km) that the search barely matters. The ticket calculation (4.57 per team per minute, 40 tickets for 80% of games ending by tickets within 10 minutes) stands with the waypoint search.
+
+## 7. Summary and recommendation
+
+1. **Search without a known enemy: "waypoint".** It removes the agreed meeting point and changes little else:
+   - elimination without a shrink: the first four deaths as before; the last one later (67 s against 52 s median), because the last ship has to be found;
+   - elimination with a shrink: the same game as the centre rule;
+   - deathmatch: the same kill rate.
+
+   "Straight" is clearly worse: scattered fights, long tails, ships hitting the edge.
+2. **Edge steer: keep the moving-frame steer.** It cuts the boundary's share of deaths by about a fifth at the fastest linear shrink and is identical to the old rule for a still edge.
+3. **Shrink law: linear, starting at 0.** With Imugi, no fast-then-slow curve beats a linear shrink of matching tail: the fast phase reaches the ships at their spawns, delays the first fight, and adds boundary deaths without shortening the median. The duration sets the trade-off between the tail and boundary kills:
+
+   | shrink | p90 game | boundary share of deaths | last death by the boundary |
+   |---|---|---|---|
+   | none (300 s clock) | 172 s | 0% | 1% |
+   | linear 180 s | 119 s | 3% | 5% |
+   | linear 120 s | 96 s | 7% | 12% |
+   | linear 90 s | 81 s | 13% | 23% |
+   | linear 60 s | 58 s | 33% | 48% |
+
+   For "the map decides games more often, not necessarily by killing", linear 120 s (clock 128 s) or linear 90 s (clock 98 s) are the candidates; linear 120 s keeps boundary kills at 7%.
+4. **The speed cap (150 m/s)** never binds on the linear candidates and barely matters for the curved ones. Keep it as a safety rule.
+5. **Caveat:** all of this is Imugi. A trained agent that anticipates the edge and searches better would shift the boundary shares down and the tails in. Re-measure with rl-v20 self-play when a GPU is available (open item 5).
