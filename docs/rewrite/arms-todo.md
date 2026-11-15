@@ -14,10 +14,7 @@ Updated 2026-11-15 10:30; the conversation behind it is in [briefing.md](briefin
 1. **Frontline break-even, scored again?** It was left out because it played on the 15.6 km density map. Under the fixed-map rule it plays on the 7.8 km preset map, where rl-v20 is about even with 20 Imugi, so that reason is gone. Claude's recommendation: score it again (default `--unscored` empty). Pending the fixed-map pilot showing that it fits.
 2. **Break-even up to 30 ships** (merged as the default): the author asked why agents worse than Imugi matter. Answer given: they don't for their own sake; a crossing is needed for both arms, and at 20-a-side on the preset map our agents are near parity, so a cap at 20 leaves many arms without one. Alternatives: cap 20 and score by the win rate at 20, or fewer Imugi. Awaiting the author's view and the pilot's measured cost.
 3. **League retention:** the old rule (the newest 8, then one per 2^k) still prunes scheduled members (at 160M it drops 20, 25, 30 and 40M). Explained to the author; Claude's recommendation: no pruning when a schedule is set. Not yet decided.
-4. **Game freeze, what's left:** deathmatch and elimination are locked, and Frontline is ±2 (decisions, 2026-11-15, session 3). Still open:
-   - Frontline's clock (10 minutes was suggested; the model gives about 74% of ±2 games ending by capture within 10 minutes, 80% within 12);
-   - Frontline's minimum team size (3v3 suggested; 2v2 pending the small-team check);
-   - the lock and capture times at ±2.
+4. **Game freeze:** all three modes are locked (decisions, 2026-11-15, session 3). Next, implement them with one game-version bump.
 5. **More freeze data, offered, not yet chosen:** the three modes with trained agents (rl-v20 self-play) as well as Imugi; deathmatch kill rate and elimination wipe time at 1v1, 2v2 and 10v10 on the fixed maps (tickets scale per ship today); frontline at ±3 with faster captures.
 6. **The run budget, the final arm list, and the review of every arm** ([arm-review.md](arm-review.md)).
 7. **The averaging sweep variants** (the arm that saves every update is decided; which averages to build is not).
@@ -107,7 +104,7 @@ Updated 2026-11-15 10:30; the conversation behind it is in [briefing.md](briefin
 - **Game freeze, locked in (author, 2026-11-15, session 3; expected numbers in [sections/freeze-proposals.md](sections/freeze-proposals.md)):**
   - **Deathmatch:** a 10-minute clock. Tickets per team are 4·N^(4/3) rounded to the nearest 5 at every team size, 1v1 included: 5, 10, 15, 25, 35, 85 and 215 for N = 1, 2, 3, 4, 5, 10 and 20. They replace tickets per ship.
   - **Elimination:** the boundary shrinks linearly from 0 s (no hold) to zero over 4 minutes, with a 248 s clock.
-  - **Frontline:** ±2. No centre zone and no healing on capture for now (both stay as ideas).
+  - **Frontline:** ±2 with a 10-minute clock, 3v3 at the smallest, and the lock kept at 6 s/√km (about 14 s at 5v5 on the real-scale map). Capture stays at 20 s for a one-ship lead (not discussed). No centre zone and no healing on capture for now (both stay as ideas).
 - **Dropped:** ego-centric frame (×N compute); rotation and reflection augmentation (more environments do the same); KL-to-BC penalty (a single scripted teacher has no diversity to keep); greedy evaluation (evaluation samples like training); belief decay constants (41) and the delta/absolute head (40), using the earlier v2 results.
 
 ## In progress
