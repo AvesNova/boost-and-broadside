@@ -8,7 +8,7 @@ S=/home/vizia/avesnova/bnb-gru/runs/gru-timing
 mkdir -p $S
 echo "=== $block $(date +%T) $(powerprofilesctl get)" >> $S/time_blocks.log
 .venv/bin/python -c "import bnb.cli; bnb.cli.main()" train --preset real_scale_all_modes --environments 256 --updates 4 \
-  --micro-batch-rows 96 --name time-$block --runs-directory $S/runs --update-policies False \
+  --micro-batch-rows 96 --name time-$block --runs-directory $S/runs \
   --set lanes.environments=32 --set host_store=true --set arena_scale=null \
   --set yemong.temporal_block=$block > $S/time-$block.log 2>&1
 status=$?
