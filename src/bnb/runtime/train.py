@@ -200,17 +200,20 @@ def training_pools(config: TrainConfig) -> tuple[Pool, ...]:
 
 
 def samples_team_sizes(pools: tuple[Pool, ...]) -> bool:
-    """Some pool draws its team size per episode (`Pool.team_sizes`). A Yemong playing it
+    """Some pool draws its team sizes per episode (`Pool.team_sizes`). A Yemong playing it
     masks the benched ships (`Yemong.mask_benched`)."""
     return any(pool.team_sizes is not None for pool in pools)
 
 
 def samples_field_counts(game: GameConfig, pools: tuple[Pool, ...] = ()) -> bool:
     """Some game of the batch draws its active field count per episode: the game's
-    (`GameConfig.active_fields`) or a pool's. A Yemong playing it masks the absent fields
-    (`Yemong.mask_absent_fields`)."""
+    (`GameConfig.active_fields`), a pool's, or a pool's team sizes (`TeamSizes.fields`
+    "per_ship"). A Yemong playing it masks the absent fields (`Yemong.mask_absent_fields`)."""
     games = [pool_game(game, pool) for pool in pools] or [game]
-    return any(one.active_fields is not None for one in games)
+    coupled = any(
+        pool.team_sizes is not None and pool.team_sizes.fields == "per_ship" for pool in pools
+    )
+    return coupled or any(one.active_fields is not None for one in games)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -276,12 +279,16 @@ class TrainConfig:
     model masks the absent ones, `Yemong.mask_absent_fields`), or None for the games' own
     (every field in every preset). The rating lanes play their games' own fields.
     team_sizes: team-size sampling for the training pools (arm A2; `bnb.contracts.TeamSizes`:
-    each episode plays an N-against-N game, N drawn from low to high, the game's ships per
-    team by default, within each mode's smallest team, Frontline 3; each team's slots past
-    N benched, and the Yemong masks them, `Yemong.mask_benched`), or None (the default)
-    for every slot in every game. Both BC's data and RL's games follow it. A2's setting is
-    `--set 'team_sizes={"low": 1}'`: uniform over 1v1 to 5v5 in deathmatch and
-    elimination, 3v3 to 5v5 in Frontline. The rating lanes play their games' own sizes.
+    each episode draws its two team sizes, equal or not, and its active field count
+    together, within each mode's smallest team, Frontline 3; each team's slots past its
+    size benched and the fields past the count absent, both masked by the Yemong,
+    `Yemong.mask_benched` and `mask_absent_fields`), or None (the default) for every slot
+    in every game. Both BC's data and RL's games follow it, and the training log gets the
+    drawn sizes per mode (`team_size/...`). A2's provisional setting is `--set
+    'team_sizes={}'`: 5v5 in half the games, the other half spread evenly over the other
+    pairs of sizes (1 to 5 a side, Frontline 3 to 5), one field per ship; the equations
+    are a proposal (docs/rewrite/a2-sampling-proposal.md). The rating lanes play their
+    games' own sizes.
     lineup: each slot's ship type by name in the game's ship set (`api.type_names`), the
     same for both teams, in every game of the batch (the rating lanes' too); None plays the
     game's own lineup (`Rules.team_types`). A tournament of such policies plays the same
@@ -413,7 +420,7 @@ class TrainConfig:
                 )
             for pool in self.pools:  # each mode's sizes within the game's
                 mode = pool_game(self.game, pool).mode
-                self.team_sizes.probabilities(
+                self.team_sizes.pair_probabilities(
                     self.game.ships_per_team, api.MINIMUM_SHIPS_PER_TEAM.get(mode, 1)
                 )
         if self.shards < 1 or self.lookahead < 0:
@@ -776,6 +783,11 @@ class Trainer:
         collector.add(self.analytics.episodes(self.rollout.take_episodes()))
         game_sums, outcome_tables = self.rollout.take_games()
         collector.set(self.analytics.games(game_sums, outcome_tables))
+        team_size_sums = self.rollout.take_team_sizes()
+        if team_size_sums is not None:
+            collector.set(
+                self.analytics.team_size_series(team_size_sums, self.config.game.ships_per_team)
+            )
         for shard in range(store.shards):
             collector.add(self.analytics.shard(store.shard(analytics.NAMES, shard)))
         if self.league is not None:

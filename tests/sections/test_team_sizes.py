@@ -1,11 +1,12 @@
-"""Team-size sampling (arm A2, `bnb.contracts.TeamSizes`): each episode plays an N-against-N
-game drawn from the pool's sizes (within each mode's smallest team), the rest of each
-team's slots benched, at the batch's one static size. The draw is keyed by (seed,
-environment, episode) and moves no other draw; a reset spawns and benches by the next
-episode's size; a benched slot is neither valued nor rewarded; deathmatch's tickets follow
-the drawn size (the freeze's 4 N^(4/3) to the nearest 5); a rollout without it, or with
-every slot drawn, is the game as before; BC and RL both train with it, the Yemong masking
-the benched ships."""
+"""Team-size sampling (arm A2, `bnb.contracts.TeamSizes`): each episode plays two team sizes,
+equal or not, and a field count drawn together from the pool's table (within each mode's
+smallest team), the rest of each team's slots benched and the other fields absent, at the
+batch's one static size. The draw is keyed by (seed, environment, episode) and moves no
+other draw; a reset spawns and benches by the next episode's sizes; a benched slot is
+neither valued nor rewarded; deathmatch's tickets follow each enemy team's drawn size (the
+freeze's 4 N^(4/3) to the nearest 5); a rollout without it, or with every slot drawn, is
+the game as before; the training log gets the drawn sizes per mode; BC and RL both train
+with it, the Yemong masking the benched ships and absent fields."""
 
 import dataclasses
 
@@ -22,7 +23,12 @@ from bnb.learn import rewards
 from bnb.runs.serialise import from_json, to_json
 from bnb.runtime import lanes
 from bnb.runtime.rollout import Rollout
-from bnb.runtime.train import TrainConfig, samples_team_sizes, training_pools
+from bnb.runtime.train import (
+    TrainConfig,
+    samples_field_counts,
+    samples_team_sizes,
+    training_pools,
+)
 
 CPU = torch.device("cpu")
 TYPES = api.ship_types()
@@ -37,26 +43,74 @@ def _default_generator_untouched():
 # ------------------------------------------------------------------ the setting
 
 
-def test_the_sizes_are_uniform_within_the_modes_smallest_team():
-    assert TeamSizes().probabilities(5) == pytest.approx((0.2,) * 5)
-    assert TeamSizes().probabilities(5, minimum=3) == pytest.approx((0, 0, 1 / 3, 1 / 3, 1 / 3))
-    assert TeamSizes(2, 4).probabilities(5) == pytest.approx((0, 1 / 3, 1 / 3, 1 / 3, 0))
-    weighted = TeamSizes(1, 5, (1.0, 1.0, 1.0, 1.0, 4.0))
-    assert weighted.probabilities(5) == pytest.approx((0.125,) * 4 + (0.5,))
-    assert weighted.probabilities(5, minimum=3) == pytest.approx((0, 0, 1 / 6, 1 / 6, 4 / 6))
+def _pairs(sizes: TeamSizes, minimum: int = 1) -> dict:
+    return sizes.pair_probabilities(5, minimum)
+
+
+def test_the_default_plays_5v5_in_half_the_games_and_spreads_the_rest_over_the_pairs():
+    pairs = _pairs(TeamSizes())
+    assert len(pairs) == 15 and pairs[(5, 5)] == pytest.approx(0.5)
+    assert all(
+        chance == pytest.approx(0.5 / 14) for pair, chance in pairs.items() if pair != (5, 5)
+    )
+    frontline = _pairs(TeamSizes(), minimum=3)
+    assert set(frontline) == {(5, 5), (5, 4), (5, 3), (4, 4), (4, 3), (3, 3)}
+    assert frontline[(5, 5)] == pytest.approx(0.5) and frontline[(4, 3)] == pytest.approx(0.1)
+    even = _pairs(TeamSizes(uneven=False))
+    assert set(even) == {(n, n) for n in range(1, 6)} and even[(1, 1)] == pytest.approx(0.125)
+
+
+def test_the_other_rules():
+    independent = _pairs(TeamSizes(rule="independent_teams"))
+    assert independent[(5, 5)] == pytest.approx(0.5)
+    team = (1 - 0.5**0.5) / 4  # each smaller size's chance for one team
+    assert independent[(5, 1)] == pytest.approx(2 * 0.5**0.5 * team)
+    assert independent[(2, 2)] == pytest.approx(team**2)
+    near = _pairs(TeamSizes(rule="near_full", decay=0.5))
+    assert near[(5, 5)] == pytest.approx(0.5)
+    assert near[(5, 4)] == pytest.approx(2 * near[(5, 3)]) == pytest.approx(2 * near[(4, 4)])
+    table = _pairs(TeamSizes(rule="table", pairs=((5, 5, 3.0), (5, 3, 1.0), (2, 2, 1.0))), 3)
+    assert table == pytest.approx({(5, 5): 0.75, (5, 3): 0.25})  # 2v2 is below Frontline's 3
+    for sizes in (TeamSizes(), TeamSizes(rule="independent_teams"), TeamSizes(rule="near_full")):
+        for minimum in (1, 3):
+            assert sum(_pairs(sizes, minimum).values()) == pytest.approx(1.0)
+
+
+def test_the_table_splits_uneven_pairs_over_both_sides_and_sets_one_field_per_ship():
+    table = TeamSizes().table(5, 10, 3)
+    assert sum(row[3] for row in table) == pytest.approx(1.0)
+    rows = {row[:2]: row for row in table}
+    assert rows[(5, 3)][3] == pytest.approx(rows[(3, 5)][3]) == pytest.approx(0.05)
+    assert {pair: row[2] for pair, row in rows.items()} == {
+        (5, 5): 10, (5, 4): 10, (4, 5): 10, (5, 3): 8, (3, 5): 8, (4, 4): 8,
+        (4, 3): 8, (3, 4): 8, (3, 3): 6,
+    }  # fmt: skip
+    assert TeamSizes().field_counts(2, 5, 10) == {2: 1.0}  # 1v1
+    assert TeamSizes().field_counts(3, 5, 9) == {3: 1.0}  # an odd slot count plays any count
+    assert TeamSizes(field_spread=1).field_counts(10, 5, 10) == {8: 0.5, 10: 0.5}
+    assert TeamSizes(field_spread=1).field_counts(4, 5, 10) == pytest.approx(
+        {2: 1 / 3, 4: 1 / 3, 6: 1 / 3}
+    )
+    assert {row[2] for row in TeamSizes(fields="game").table(5, 10)} == {-1}
 
 
 @pytest.mark.parametrize(
     "build",
     [
-        lambda: TeamSizes(0),
-        lambda: TeamSizes(3, 2),
-        lambda: TeamSizes(1, None, (1.0,)),
-        lambda: TeamSizes(1, 2, (1.0,)),
-        lambda: TeamSizes(1, 2, (0.0, 0.0)),
-        lambda: TeamSizes(1, 2, (-1.0, 2.0)),
-        lambda: TeamSizes(1, 6).probabilities(5),
-        lambda: TeamSizes(1, 2).probabilities(5, minimum=3),
+        lambda: TeamSizes(rule="other"),
+        lambda: TeamSizes(fields="other"),
+        lambda: TeamSizes(full_share=0.0),
+        lambda: TeamSizes(full_share=1.5),
+        lambda: TeamSizes(low=0),
+        lambda: TeamSizes(field_spread=-1),
+        lambda: TeamSizes(pairs=((5, 5, 1.0),)),
+        lambda: TeamSizes(rule="table"),
+        lambda: TeamSizes(rule="table", pairs=((3, 4, 1.0),)),
+        lambda: TeamSizes(rule="table", pairs=((5, 5, 0.0),)),
+        lambda: TeamSizes(rule="independent_teams", uneven=False),
+        lambda: TeamSizes(rule="table", pairs=((6, 5, 1.0),)).pair_probabilities(5),
+        lambda: TeamSizes(low=6).pair_probabilities(5),
+        lambda: TeamSizes(rule="table", pairs=((2, 2, 1.0),)).pair_probabilities(5, 3),
     ],
 )
 def test_a_wrong_setting_is_refused(build):
@@ -74,6 +128,10 @@ def test_the_frozen_tickets_follow_the_drawn_size():
     active = torch.tensor([[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]], dtype=torch.int32)
     targets = phase.deathmatch_targets(rules, mode, active)
     assert targets.tolist() == [[5, 5], [10, 10], [15, 15], [25, 25], [35, 35]]
+    # uneven: each team's winning score is the tickets of the enemy's ships (team 0 with 3
+    # ships needs 35 kills of team 1's 5, team 1 needs 15)
+    uneven = torch.tensor([[3, 5], [5, 1]], dtype=torch.int32)
+    assert phase.deathmatch_targets(rules, mode, uneven).tolist() == [[35, 15], [5, 35]]
 
 
 # ------------------------------------------------------------------ the rollout
@@ -81,7 +139,7 @@ def test_the_frozen_tickets_follow_the_drawn_size():
 S = 5
 GAME = GameConfig(S, 4, 1500.0, episode_seconds=0.5, respawn_seconds=0.2)
 ENVIRONMENTS, LENGTH, SEGMENTS = 12, 30, 3
-SIZES = TeamSizes(1)
+SIZES = TeamSizes()
 MINIMUM = {"team_deathmatch": 1, "frontline": 3}
 
 
@@ -144,7 +202,7 @@ def _watched(rollout: Rollout, segments: int = SEGMENTS):
     return by_episode, starts, ticks
 
 
-def test_each_episode_draws_one_size_for_both_teams_within_its_mode():
+def test_each_episode_draws_its_team_sizes_within_its_mode():
     rollout = _rollout()
     by_episode, starts, _ = _watched(rollout)
     pool_mode = ["team_deathmatch"] * (ENVIRONMENTS // 2) + ["frontline"] * (ENVIRONMENTS // 2)
@@ -152,29 +210,32 @@ def test_each_episode_draws_one_size_for_both_teams_within_its_mode():
     for (index, _), counts in by_episode.items():
         first = counts[0]
         assert all(torch.equal(count, first) for count in counts)  # fixed through the episode
-        assert int(first[0]) == int(first[1])  # N against N
-        size = int(first[0])
-        assert MINIMUM[pool_mode[index]] <= size <= S
-        drawn[pool_mode[index]].add(size)
-    assert drawn["team_deathmatch"] >= {1, 2, 5} and drawn["frontline"] == {3, 4, 5}
+        assert MINIMUM[pool_mode[index]] <= int(first.min()) <= int(first.max()) <= S
+        drawn[pool_mode[index]].add(tuple(first.tolist()))
+    assert (5, 5) in drawn["team_deathmatch"] and (5, 5) in drawn["frontline"]
+    assert any(a != b for a, b in drawn["team_deathmatch"] | drawn["frontline"])  # uneven
     # a new episode spawns exactly its active ships
     assert len(starts) >= ENVIRONMENTS
     for active, alive in starts:
         assert alive.sum(-1).tolist() == active.tolist()
 
 
-def test_the_draw_is_uniform():
+def test_the_draw_follows_the_table():
+    """Drawn over many episodes, each mode's sizes and fields match its table (GAME has 4
+    field slots: one field per ship to the nearest even count)."""
     rollout = _rollout()
-    episode = torch.arange(4000, dtype=torch.int64)
-    sizes = torch.cat(
-        [rollout._team_sizes(torch.full((ENVIRONMENTS,), e))[:, 0] for e in episode[:400]]
-    )
-    deathmatch = sizes.reshape(400, ENVIRONMENTS)[:, : ENVIRONMENTS // 2].flatten()
-    frontline = sizes.reshape(400, ENVIRONMENTS)[:, ENVIRONMENTS // 2 :].flatten()
-    counts = torch.bincount(deathmatch, minlength=S + 1)[1:].float() / deathmatch.numel()
-    assert counts.tolist() == pytest.approx([0.2] * 5, abs=0.03)
-    counts = torch.bincount(frontline, minlength=S + 1)[1:].float() / frontline.numel()
-    assert counts.tolist() == pytest.approx([0, 0, 1 / 3, 1 / 3, 1 / 3], abs=0.03)
+    draws = [rollout._team_sizes(torch.full((ENVIRONMENTS,), e)) for e in range(600)]
+    active = torch.stack([one[0] for one in draws])  # (E, B, 2)
+    fields = torch.stack([one[1] for one in draws])  # (E, B)
+    half = ENVIRONMENTS // 2
+    for mode, columns in (("team_deathmatch", slice(0, half)), ("frontline", slice(half, None))):
+        table = SIZES.table(S, GAME.num_fields, MINIMUM[mode])
+        pairs = active[:, columns].reshape(-1, 2)
+        counts = fields[:, columns].reshape(-1)
+        for first, second, count, chance in table:
+            hit = (pairs[:, 0] == first) & (pairs[:, 1] == second)
+            assert float(hit.float().mean()) == pytest.approx(chance, abs=0.025)
+            assert bool((counts[hit] == count).all())
 
 
 def test_a_benched_slot_never_plays_and_is_neither_valued_nor_rewarded():
@@ -220,14 +281,18 @@ def test_turning_team_size_sampling_on_moves_no_other_draw():
     episode = torch.arange(ENVIRONMENTS, dtype=torch.int64) % 3
     assert torch.equal(sampled._episode_uniforms(episode), plain._episode_uniforms(episode))
     assert torch.equal(sampled._seats(episode), plain._seats(episode))
-    assert plain._team_sizes(episode) is None and "active" not in plain.carry
+    assert plain._team_sizes(episode) == (None, None) and "active" not in plain.carry
+    assert "team_size_sums" not in plain.carry
     first, second = sampled.carry["state"].fields, plain.carry["state"].fields
     assert torch.equal(first.x, second.x) and torch.equal(first.radius, second.radius)
 
 
 def test_every_slot_drawn_plays_the_game_without_sampling():
     """Sizes drawn from {S} alone bench nothing: the records are the plain rollout's."""
-    full, plain = _rollout(TeamSizes(S)), _rollout(None)
+    full, plain = (
+        _rollout(TeamSizes(rule="table", pairs=((S, S, 1.0),), fields="game")),
+        _rollout(None),
+    )
     for _ in range(2):
         first, second = full.run(), plain.run()
         for name in ("reward", "done", "result", "alive", "valued", "action"):
@@ -247,6 +312,65 @@ def test_a_resume_keeps_the_drawn_sizes():
     assert "active" not in _rollout(None).saved_carry()
     with pytest.raises(ValueError):
         rollout.restart(torch.ones((ENVIRONMENTS, 2), dtype=torch.int32))
+
+
+def test_a_new_episode_plays_its_drawn_field_count():
+    """At every episode start the present fields are the drawn count's (GAME's 4 slots)."""
+    rollout = _rollout()
+    act, advance, resolve, perceive = rollout.stages
+    seen = []
+
+    def watched(carry):
+        perceive(carry)
+        starting = carry["clock"] == 0
+        if bool(starting.any()):
+            count = api.active_field_count(carry["state"])
+            fields = rollout._team_sizes(carry["episode"])[1]
+            seen.append(bool((count[starting] == fields[starting]).all()))
+
+    rollout.stages = (act, advance, resolve, watched)
+    for _ in range(SEGMENTS):
+        rollout.run()
+    assert seen and all(seen)
+
+
+def test_the_series_count_the_ended_episodes_sizes():
+    """The rollout's team-size sums hold every ended episode's pair and fields; the series
+    per mode are their means and shares; the setting's `series` False keeps none."""
+    from bnb.contracts.series import Mean
+    from bnb.runtime.analytics import Analytics
+
+    rollout = _rollout()
+    by_episode, _, _ = _watched(rollout)
+    sums = rollout.take_team_sizes()
+    ended = int(sums[:, 0].sum())
+    assert ended > 0 and int(sums[:, 2:].sum()) == ended
+    assert float(rollout.carry["team_size_sums"].abs().sum()) == 0.0  # taken
+    environment_pool = torch.tensor([0] * (ENVIRONMENTS // 2) + [1] * (ENVIRONMENTS // 2))
+    analytics = Analytics(
+        ("deathmatch", "frontline"),
+        environment_pool,
+        environment_pool,
+        0.1,
+        "team_deathmatch",
+        pool_modes=("team_deathmatch", "frontline"),
+    )
+    series = {
+        name: float(value.total) / float(value.count) if isinstance(value, Mean) else value
+        for name, value in analytics.team_size_series(sums, S).items()
+    }
+    for mode in ("team_deathmatch", "frontline"):
+        shares = [
+            value
+            for name, value in series.items()
+            if name.startswith("team_size/share/") and name.endswith(mode)
+        ]
+        assert sum(shares) == pytest.approx(1.0)
+        assert 1 <= series[f"team_size/smaller/{mode}"] <= series[f"team_size/larger/{mode}"] <= S
+        assert 0 <= series[f"team_size/fields/{mode}"] <= GAME.num_fields
+    assert series["team_size/share/2v1/frontline"] == 0.0  # below Frontline's 3
+    quiet = _rollout(TeamSizes(series=False))
+    assert quiet.take_team_sizes() is None and "team_size_sums" not in quiet.carry
 
 
 # ------------------------------------------------------------------ the rewards
@@ -270,28 +394,34 @@ def test_the_unforced_share_goes_to_the_present_slots_only():
 def test_the_training_setting_and_its_plumbing():
     config = TrainConfig(api.PRESETS["deathmatch"])
     assert config.team_sizes is None and not samples_team_sizes(training_pools(config))
-    varied = TrainConfig(api.PRESETS["deathmatch"], team_sizes=TeamSizes(1))
+    varied = TrainConfig(api.PRESETS["deathmatch"], team_sizes=TeamSizes())
     pools = training_pools(varied)
-    assert all(pool.team_sizes == TeamSizes(1) for pool in pools)
-    assert samples_team_sizes(pools)
+    assert all(pool.team_sizes == TeamSizes() for pool in pools)
+    assert samples_team_sizes(pools) and samples_field_counts(varied.game, pools)
+    ships_only = training_pools(dataclasses.replace(varied, team_sizes=TeamSizes(fields="game")))
+    assert not samples_field_counts(varied.game, ships_only)
     # the rating lanes play their games' own sizes
     modes = lanes.mode_games(varied.pools, varied.game, lambda pool, game: pool.mode or game.mode)
     every, _, _ = lanes.lane_pools(pools, modes, 64, lanes.LaneConfig(environments=64))
     assert [pool.team_sizes for pool in every[len(pools) :]] == [None] * (len(every) - len(pools))
     # the setting round-trips through the run's config.json
-    weighted = dataclasses.replace(varied, team_sizes=TeamSizes(2, 5, (1.0, 1.0, 1.0, 2.0)))
+    weighted = dataclasses.replace(
+        varied, team_sizes=TeamSizes(rule="table", pairs=((5, 5, 2.0), (5, 3, 1.0)))
+    )
     assert from_json(TrainConfig, to_json(weighted))[0].team_sizes == weighted.team_sizes
     with pytest.raises(ValueError):  # past the game's slots
-        TrainConfig(api.PRESETS["deathmatch"], team_sizes=TeamSizes(1, 6))
+        TrainConfig(api.PRESETS["deathmatch"], team_sizes=TeamSizes(low=6))
     with pytest.raises(ValueError):  # a model that does not mask benched ships
-        TrainConfig(api.PRESETS["deathmatch"], team_sizes=TeamSizes(1), model="relational")
+        TrainConfig(api.PRESETS["deathmatch"], team_sizes=TeamSizes(), model="relational")
 
 
 def test_the_command_line_setting():
     from bnb import cli
 
-    config = cli.with_settings(TrainConfig(api.PRESETS["deathmatch"]), [("team_sizes", {"low": 1})])
-    assert config.team_sizes == TeamSizes(1)
+    base = TrainConfig(api.PRESETS["deathmatch"])
+    assert cli.with_settings(base, [("team_sizes", {})]).team_sizes == TeamSizes()
+    config = cli.with_settings(base, [("team_sizes", {"rule": "near_full", "field_spread": 1})])
+    assert config.team_sizes == TeamSizes(rule="near_full", field_spread=1)
 
 
 @pytest.mark.parametrize("objective", ["bc", "ppo"])
@@ -319,16 +449,17 @@ def test_bc_and_rl_train_on_drawn_sizes(objective):
         host_store=False,
         learner=learner,
         objective=objective,
-        team_sizes=TeamSizes(1),
+        team_sizes=TeamSizes(),
         lineup_draw=False,
     )
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(0)
         trainer = Trainer(config, CPU)
-        assert trainer.model.mask_benched
+        assert trainer.model.mask_benched and trainer.model.mask_absent_fields
         assert "active" in trainer.rollout.carry
         metrics = trainer.update()
-    assert int(trainer.rollout.carry["active"][:, 0].min()) >= 1
+    assert int(trainer.rollout.carry["active"].min()) >= 1
+    assert "team_size/larger/team_deathmatch" in metrics
     losses = [
         value for name, value in metrics.items() if "loss" in name and isinstance(value, float)
     ]

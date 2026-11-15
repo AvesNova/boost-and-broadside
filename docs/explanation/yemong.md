@@ -677,9 +677,9 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
   ships' outputs do not depend on anything in the benched rows. The benched rows' own
   outputs are computed and mean nothing; the game ignores a benched ship's action. Off,
   the model computes exactly what it did without the switch. The same weights serve both.
-- **Absent fields:** where field counts vary per episode (`TrainConfig.active_fields`, or
-  an `Arena` whose game sets `active_fields`), the runtime switch
-  `Yemong.mask_absent_fields` is on: a field whose observation row has `present` 0 is no
+- **Absent fields:** where field counts vary per episode (`TrainConfig.active_fields`,
+  team-size sampling's field counts, or an `Arena` whose game sets `active_fields`), the
+  runtime switch `Yemong.mask_absent_fields` is on: a field whose observation row has `present` 0 is no
   key or value of any spatial sublayer, by the same key mask (it then spans the ships, the
   global token and the fields). Field tokens reach the trunk only as attention keys and
   values, so no output depends on an absent field's row. Off, the model computes exactly
