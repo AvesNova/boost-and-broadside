@@ -610,6 +610,7 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
     (real-gated linear recurrent unit) keeps one state vector per token and updates it as
     `h = a * h + sqrt(1 - a**2) * (i * x)`, where the decay `a` and the input gate `i` are
     computed from the input `x`, so the layer learns how long to remember.
+    `YemongConfig.temporal_block` selects a GRU in its place (below).
 - **Uneven teams:** training plays full teams only. Where a match benches slots (the
   break-even lineup's engine, `bnb.league.matches.Arena` with benching), the runtime switch
   `Yemong.mask_benched` is on: a ship whose observation row has the `benched` flag is no
@@ -653,6 +654,20 @@ paper compared, the elementwise gate on the attention output did best. W starts 
 the sublayer begins close to the ungated one. The default `"none"` has no gate parameters,
 and every build from before the option reads as `"none"`. The gate is plain PyTorch outside
 the attention kernel. Set it on a run with `--set yemong.gate=elementwise`.
+
+### The GRU temporal block
+
+`YemongConfig.temporal_block` chooses the temporal sublayer: `"griffin"` (the default, and
+every build's from before the option) is the block above; `"gru"` is arm A16's challenger,
+a classic GRU at the same width. Per query token it norms the token, runs a GRU cell
+(the gates of torch's GRU cell, initialised as it is; `temporal.GRUBlock`) whose hidden state is the carry, and
+adds a linear projection of that state to the token; the gated MLP follows as in Griffin's
+block. There is no convolution, so the carry's convolution buffer holds no inputs (shape
+`(R, blocks, Q, 0, D)`), and an episode start clears the hidden state. A segment computes
+every step's input gates at once and then steps the recurrence in a loop, in plain
+PyTorch (no kernel). At width 128 the GRU sublayer has 312 320 parameters to Griffin's
+279 808 (19 D^2 + 8 D against 17 D^2 + 10 D). Set it on a run with
+`--set yemong.temporal_block=gru`.
 
 ### Attention shares
 
