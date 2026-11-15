@@ -50,3 +50,4 @@ spawn_margin = 150.0
 capture_seconds = 20.0
 wave_seconds = 20.0
 shrink_hold_seconds = 36.0
+shrink_max_speed = 150.0

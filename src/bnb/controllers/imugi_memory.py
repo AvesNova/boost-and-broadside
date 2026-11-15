@@ -39,7 +39,12 @@ class ImugiCarry:
     uniformly: a mixture rung's share). sense_draw (R, S): the uniform drawn for the
     sense's choice when its gate opened, negative while it is shut.
     enemy_x, enemy_y, enemy_velocity_x,
-    enemy_velocity_y (R, E): each enemy's last seen state; known (R, E) bool: remembered."""
+    enemy_velocity_y (R, E): each enemy's last seen state; known (R, E) bool: remembered.
+    boundary_radius, boundary_progress and boundary_speed (R,): the boundary's radius (m)
+    and the episode progress when last observed (-1 none), and its closing speed (m/s)
+    from the last two observations (`track_boundary`). search_x, search_y (R,): the team's
+    search point while it knows no enemy, and search_set (R,) bool whether it has one
+    (`imugi_combat.search`)."""
 
     target: torch.Tensor
     combat_left: torch.Tensor
@@ -54,6 +59,12 @@ class ImugiCarry:
     enemy_velocity_x: torch.Tensor
     enemy_velocity_y: torch.Tensor
     known: torch.Tensor
+    boundary_radius: torch.Tensor
+    boundary_progress: torch.Tensor
+    boundary_speed: torch.Tensor
+    search_x: torch.Tensor
+    search_y: torch.Tensor
+    search_set: torch.Tensor
 
 
 def fresh_carry(views: int, ships: int, enemies: int, device) -> ImugiCarry:
@@ -79,6 +90,35 @@ def fresh_carry(views: int, ships: int, enemies: int, device) -> ImugiCarry:
         enemy_velocity_x=zero(),
         enemy_velocity_y=zero(),
         known=flag(enemies, False),
+        boundary_radius=torch.zeros(views, device=device),
+        boundary_progress=torch.full((views,), -1.0, device=device),
+        boundary_speed=torch.zeros(views, device=device),
+        search_x=torch.zeros(views, device=device),
+        search_y=torch.zeros(views, device=device),
+        search_set=torch.zeros(views, dtype=torch.bool, device=device),
+    )
+
+
+def track_boundary(carry: ImugiCarry, obs: Obs, reset: torch.Tensor, seconds: float) -> ImugiCarry:
+    """The carry with the boundary's closing speed (m/s, never negative) from its radius now
+    and at the last observation a decision's length earlier, as if it keeps closing at that
+    speed (the edge steer's assumption: `imugi_combat.context`). A new episode (a reset, a
+    first observation, or the episode progress going back) starts at 0. Re-reading the
+    observation the carry was made from (the same episode progress) keeps the speed, so a
+    carry `decide` returned gives the same marginals again."""
+    radius = obs.globals[:, GLOBAL["arena_radius"]] * obs.globals[:, GLOBAL["boundary_fraction"]]
+    progress = obs.globals[:, GLOBAL["episode_progress"]]
+    last = carry.boundary_progress
+    fresh = reset | (last < 0.0) | (progress < last)
+    same = ~fresh & (progress == last)
+    closing = ((carry.boundary_radius - radius) / seconds).clamp_min(0.0)
+    speed = torch.where(fresh, 0.0, torch.where(same, carry.boundary_speed, closing))
+    return dataclasses.replace(
+        carry,
+        boundary_radius=torch.where(same, carry.boundary_radius, radius),
+        boundary_progress=progress,
+        boundary_speed=speed,
+        search_set=carry.search_set & ~reset,
     )
 
 
@@ -86,7 +126,10 @@ def forgotten(carry: ImugiCarry) -> ImugiCarry:
     """The carry with every plan choice unset and every enemy forgotten (memory off); the
     ships' agent flags kept."""
     return dataclasses.replace(
-        carry, fresh=torch.ones_like(carry.fresh), known=torch.zeros_like(carry.known)
+        carry,
+        fresh=torch.ones_like(carry.fresh),
+        known=torch.zeros_like(carry.known),
+        search_set=torch.zeros_like(carry.search_set),
     )
 
 

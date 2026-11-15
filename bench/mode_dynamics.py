@@ -36,7 +36,7 @@ import zoneinfo
 import torch
 
 from bnb.contracts import Pool
-from bnb.controllers import imugi
+from bnb.controllers import imugi, imugi_combat
 from bnb.controllers.imugi_defaults import MODE_DEFAULTS
 from bnb.controllers.imugi_parameters import ModeParameters
 from bnb.game import api, ships
@@ -131,7 +131,9 @@ class Probe:
     hits only); life, from a spawn to the ship's death. Frontline: objective, from a spawn to
     the ship's first entry into a zone other than its spawn zone; zone_to_zone, from leaving
     a zone to entering another one; contest, from the last tick every meter was at zero to
-    a capture. Per environment: the first game's first enemy hit tick (-1 none)."""
+    a capture. Per environment: the first game's first enemy hit tick (-1 none), and per ship
+    its first death in the first game: the tick, whether the boundary killed it, and its
+    distance from the centre."""
 
     def __init__(self, environments: int, ships_per_team: int, device) -> None:
         N = 2 * ships_per_team
@@ -149,6 +151,9 @@ class Probe:
             first_hit=torch.full((environments,), -1, dtype=torch.long, device=device),
             deaths=torch.zeros(environments, dtype=torch.long, device=device),
             boundary_deaths=torch.zeros(environments, dtype=torch.long, device=device),
+            death_tick=torch.full((environments, N), -1, dtype=torch.long, device=device),
+            death_boundary=torch.zeros((environments, N), dtype=torch.bool, device=device),
+            death_distance=torch.zeros((environments, N), dtype=torch.float32, device=device),
             **{name: torch.zeros(BINS, dtype=torch.long, device=device) for name in HISTOGRAMS},
             **{name: torch.zeros(1, dtype=torch.long, device=device) for name in LOCK_TALLIES},
         )
@@ -157,7 +162,7 @@ class Probe:
     def clear(self) -> None:
         """Zero the buffers for a new batch (in place: the graph reads them)."""
         for name, value in self.buffers.items():
-            if name in ("first_hit", "last_zone"):
+            if name in ("first_hit", "last_zone", "death_tick"):
                 value.fill_(-1)
             elif name == "live":
                 value.fill_(True)
@@ -186,6 +191,14 @@ class Probe:
         self._count("life", since, events.died & live)
         b["deaths"].add_((events.died & live).sum(-1))
         b["boundary_deaths"].add_((events.died & (events.killer < 0) & live).sum(-1))
+        # each ship's first death in the first game: its tick (the game's last tick
+        # included, which the trace's score misses), whether the boundary killed it (no
+        # shooter), and its distance from the centre
+        first_death = events.died & live & (b["death_tick"] < 0)
+        b["death_tick"].copy_(torch.where(first_death, b["tick"], b["death_tick"]))
+        b["death_boundary"].copy_(b["death_boundary"] | (first_death & (events.killer < 0)))
+        distance = torch.sqrt(state.ships.x * state.ships.x + state.ships.y * state.ships.y)
+        b["death_distance"].copy_(torch.where(first_death, distance, b["death_distance"]))
         game_hit = (hit.any(-1) & (b["first_hit"] < 0)) & b["live"]
         b["first_hit"].copy_(torch.where(game_hit, b["tick"], b["first_hit"]))
         engaged = b["engaged"] | hit
@@ -520,8 +533,22 @@ def main() -> None:
         "--density", action="store_true", help="with --ships: the arena by `api.arena_radius_for`"
     )
     parser.add_argument("--eager", action="store_true", help="no torch.compile (CPU runs)")
+    parser.add_argument(
+        "--imugi-search",
+        default=None,
+        choices=imugi_combat.SEARCH_MODES,
+        help="Imugi's search while its team knows no enemy (`imugi_combat.SEARCH`)",
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument(
+        "--imugi-still-edge",
+        action="store_true",
+        help="Imugi's earlier edge steer (a still edge, no critical radius)",
+    )
     arguments = parser.parse_args()
+    imugi_combat.MOVING_EDGE = not arguments.imugi_still_edge
+    if arguments.imugi_search is not None:
+        imugi_combat.SEARCH = arguments.imugi_search
     if arguments.preset is None:
         arguments.preset = f"real_scale_{arguments.kind}"
     device = torch.device(arguments.device)
@@ -598,6 +625,17 @@ def main() -> None:
         boundary = probe.buffers["boundary_deaths"].cpu().tolist()
         for game_record, d, bd in zip(games, deaths, boundary):
             game_record["deaths"], game_record["boundary_deaths"] = d, bd
+        death_tick = probe.buffers["death_tick"].cpu().tolist()
+        death_boundary = probe.buffers["death_boundary"].cpu().tolist()
+        death_distance = probe.buffers["death_distance"].cpu().tolist()
+        for game_record, ticks, by_boundary, distances in zip(
+            games, death_tick, death_boundary, death_distance
+        ):
+            # per ship, own team's rows first (team = row // ships): the first death's tick
+            # (-1 none), whether the boundary killed it and its distance from the centre (m)
+            game_record["death_tick"] = ticks
+            game_record["death_boundary"] = by_boundary
+            game_record["death_distance"] = [round(d, 1) for d in distances]
         first_hit = probe.buffers["first_hit"].cpu().tolist()
         for game_record, hit_tick in zip(games, first_hit):
             game_record["first_hit"] = hit_tick

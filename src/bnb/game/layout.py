@@ -31,8 +31,12 @@ class Environment:
     ticks; 0 where it does not shrink), shrink_end_ticks float32 (the tick it reaches its
     end, `ModeRules.shrink_end_lead_seconds` before the clock's), shrink_end_fraction
     float32 (its end: minus the ramp width over the arena radius, so even the centre lies a
-    ramp width beyond it), shrink_zero_ticks float32 (the tick it passes radius 0) and
-    shrink_law int32 (`ModeRules.shrink_law`). Map-size sampling (`PoolRules.arena_scale`,
+    ramp width beyond it), shrink_zero_ticks float32 (the tick the law passes radius 0, before
+    the speed cap: `capped_zero_ticks`), shrink_law int32 (`ModeRules.shrink_law`),
+    shrink_power float32 (law 2's exponent), shrink_knee_share and shrink_knee_progress
+    float32 (law 3's corner: its share of the shrink and its share of the law's fall there)
+    and shrink_speed_cap float32 (the boundary's greatest closing speed in m per tick, 0 for
+    none). Map-size sampling (`PoolRules.arena_scale`,
     `draw_arena_scale`): scale_sigma float32, the log-normal's sigma (0 where the pool plays
     its radius every episode), scale_cdf_low and scale_cdf_high float32, the standard
     normal CDF at its bounds' ln over sigma (0 and 1 where it does not sample), and
@@ -53,6 +57,10 @@ class Environment:
     shrink_end_fraction: torch.Tensor
     shrink_zero_ticks: torch.Tensor
     shrink_law: torch.Tensor
+    shrink_power: torch.Tensor
+    shrink_knee_share: torch.Tensor
+    shrink_knee_progress: torch.Tensor
+    shrink_speed_cap: torch.Tensor
     scale_sigma: torch.Tensor
     scale_cdf_low: torch.Tensor
     scale_cdf_high: torch.Tensor
@@ -174,8 +182,29 @@ def environment(rules: Rules, batch: int, device=None) -> Environment:
     # its end: a ramp width (m at map scale 1, times the map scale) inside the centre, as a
     # fraction of the arena radius (the map scale cancels: the ramp over MAP_SCALE_RADIUS)
     end_fraction = shrinking * (-rules.boundary_ramp_width / MAP_SCALE_RADIUS)
-    # the zero crossing's share of the shrink (`zero_share`)
+    # law 3's corner: its share of the shrink, and its share of the law's fall (the radius
+    # fraction falls from 1 to the end fraction e, so a corner at radius fraction k has
+    # fallen (1 - k) / (1 - e) of it)
+    span = (end - hold).clamp_min(1.0)
+    knee_share = (
+        per_pool(lambda pool: pool.mode.shrink_knee_seconds / rules.tick_length) / span
+    ).clamp(1e-6, 1.0 - 1e-6)
+    knee_progress = (
+        (1.0 - per_pool(lambda pool: pool.mode.shrink_knee_fraction))
+        / (1.0 + rules.boundary_ramp_width / MAP_SCALE_RADIUS)
+    ).clamp(1e-6, 1.0 - 1e-6)
+    power = per_pool(lambda pool: pool.mode.shrink_power).clamp_min(1e-3)
+    # the zero crossing's share of the shrink (`zero_share`; laws 2 and 3 in closed form)
     s_zero = per_pool(lambda pool: zero_share(pool.mode.shrink_law, rules.boundary_ramp_width))
+    s_zero = torch.where(
+        shrink_law == 2,
+        power_zero_share(power, rules.boundary_ramp_width),
+        torch.where(
+            shrink_law == 3,
+            corner_zero_share(knee_share, knee_progress, rules.boundary_ramp_width),
+            s_zero,
+        ),
+    )
     return Environment(
         arena_radius=per_pool(lambda pool: pool.arena_radius),
         map_scale=per_pool(lambda pool: pool.arena_radius / MAP_SCALE_RADIUS),
@@ -187,6 +216,11 @@ def environment(rules: Rules, batch: int, device=None) -> Environment:
         shrink_end_fraction=end_fraction,
         shrink_zero_ticks=torch.where(shrinking > 0, hold + s_zero * (end - hold), total),
         shrink_law=shrink_law,
+        shrink_power=power,
+        shrink_knee_share=knee_share,
+        shrink_knee_progress=knee_progress,
+        shrink_speed_cap=shrinking
+        * per_pool(lambda pool: pool.mode.shrink_max_speed * rules.tick_length),
         scale_sigma=per_pool(lambda pool: _scale_numbers(pool)[0]),
         scale_cdf_low=per_pool(lambda pool: _scale_numbers(pool)[1]),
         scale_cdf_high=per_pool(lambda pool: _scale_numbers(pool)[2]),
@@ -234,6 +268,43 @@ def _zero_share(law: int, ramp_width: float) -> float:
     return 0.5 * (low + high)
 
 
+def _reach(ramp_width) -> torch.Tensor:
+    """The share of the law's fall at which the boundary passes radius 0."""
+    return 1.0 / (1.0 + torch.as_tensor(ramp_width, dtype=torch.float32) / MAP_SCALE_RADIUS)
+
+
+def power_zero_share(power: torch.Tensor, ramp_width) -> torch.Tensor:
+    """Law 2's zero crossing: 1 - (1 - s)^p reaches the reach at s = 1 - (1 - reach)^(1/p)."""
+    return 1.0 - torch.pow(1.0 - _reach(ramp_width), 1.0 / power)
+
+
+def corner_zero_share(knee_share, knee_progress, ramp_width) -> torch.Tensor:
+    """Law 3's zero crossing, on whichever of its two lines reaches the reach."""
+    reach = _reach(ramp_width)
+    first = knee_share * reach / knee_progress
+    second = knee_share + (reach - knee_progress) * (1.0 - knee_share) / (1.0 - knee_progress)
+    return torch.where(reach <= knee_progress, first, second)
+
+
+def law_progress(arena: Environment, s: torch.Tensor) -> torch.Tensor:
+    """(B,) the share of the fall each environment's law has made at the shrink's share s
+    (B,) in [0, 1]: s (law 0), the smootherstep (1), 1 - (1 - s)^p (2), or the corner's two
+    lines (3)."""
+    power = 1.0 - torch.pow((1.0 - s).clamp_min(0.0), arena.shrink_power)
+    knee, at_knee = arena.shrink_knee_share, arena.shrink_knee_progress
+    corner = torch.where(
+        s < knee,
+        at_knee * s / knee,
+        at_knee + (1.0 - at_knee) * (s - knee) / (1.0 - knee),
+    )
+    law = arena.shrink_law
+    return torch.where(
+        law == 1,
+        smootherstep(s),
+        torch.where(law == 2, power, torch.where(law == 3, corner, s)),
+    )
+
+
 def shrinks(mode: ModeRules) -> bool:
     """Whether the mode's boundary shrinks over the clock (elimination's)."""
     return mode.name == ELIMINATION
@@ -244,20 +315,37 @@ def boundary_fraction(arena: Environment, elapsed: torch.Tensor) -> torch.Tensor
     episode. Where it shrinks (elimination) it holds at 1 for the hold, then falls past 0 to
     its end fraction e (minus a ramp width over the arena radius) at its end, the clock's
     end less the lead: s = (elapsed - hold) / (end - hold) in [0, 1], the fraction
-    1 - (1 - e) s (shrink law 0) or 1 - (1 - e) smootherstep(s) (law 1), so from its end
+    1 - (1 - e) g(s), g the law's progress (`law_progress`), so from its end
     every ship, the centre's too, is a full ramp width beyond it. Negative once it passes 0
-    (the damage reads it so; the observation shows it clamped at 0). Elsewhere 1. Every law
-    is computed and the live law selects one, so it is data in the compiled tick."""
+    (the damage reads it so; the observation shows it clamped at 0). Where a speed cap is
+    set, the fraction is at least 1 - cap x (elapsed - hold) / the arena radius: the boundary
+    never closes faster than the cap. Elsewhere 1. Every law is computed and the live law
+    selects one, so it is data in the compiled tick."""
     hold, end = arena.shrink_hold_ticks, arena.shrink_end_ticks
-    s = ((elapsed.to(torch.float32) - hold) / (end - hold).clamp_min(1.0)).clamp(0.0, 1.0)
-    law = torch.where(arena.shrink_law == 1, smootherstep(s), s)
-    return 1.0 - arena.shrinking * (1.0 - arena.shrink_end_fraction) * law
+    since = (elapsed.to(torch.float32) - hold).clamp_min(0.0)
+    s = (since / (end - hold).clamp_min(1.0)).clamp(0.0, 1.0)
+    fraction = 1.0 - arena.shrinking * (1.0 - arena.shrink_end_fraction) * law_progress(arena, s)
+    capped = 1.0 - arena.shrink_speed_cap * since / arena.arena_radius
+    return torch.where(arena.shrink_speed_cap > 0.0, torch.maximum(fraction, capped), fraction)
+
+
+def capped_zero_ticks(arena: Environment) -> torch.Tensor:
+    """(B,) the tick the boundary passes radius 0: the law's, or later where the speed cap
+    holds it back (the cap's line reaches 0 an arena radius over the cap after the hold)."""
+    cap_zero = arena.shrink_hold_ticks + arena.arena_radius / arena.shrink_speed_cap.clamp_min(
+        1e-9
+    )
+    return torch.where(
+        arena.shrink_speed_cap > 0.0,
+        torch.maximum(arena.shrink_zero_ticks, cap_zero),
+        arena.shrink_zero_ticks,
+    )
 
 
 def boundary_time_to_zero(arena: Environment, elapsed: torch.Tensor, tick_length: float):
     """(B,) seconds until the boundary reaches radius 0 where it shrinks, after `elapsed`
     (B,) ticks (0 once it has); 0 where it does not shrink."""
-    left = (arena.shrink_zero_ticks - elapsed.to(torch.float32)).clamp_min(0.0) * tick_length
+    left = (capped_zero_ticks(arena) - elapsed.to(torch.float32)).clamp_min(0.0) * tick_length
     return arena.shrinking * left
 
 

@@ -97,6 +97,59 @@ def test_the_smooth_law_crosses_zero_where_its_smootherstep_reaches_the_close():
     assert float(at_zero[0]) > 0.0 > float(at_zero[1])
 
 
+@pytest.mark.parametrize("power", [2.0, 3.0])
+def test_the_power_law_falls_fast_then_slow_and_crosses_zero_in_closed_form(power):
+    rules = tuned(api.rules_of(ELIMINATION), {"mode.shrink_law": 2, "mode.shrink_power": power})
+    hold, close, ticks = _schedule(rules)
+    elapsed = torch.tensor([hold, (3 * hold + close) // 4, (hold + close) // 2, close])
+    s = ((elapsed.float() - hold) / (close - hold)).clamp(0.0, 1.0)
+    fraction = boundary_fraction(environment(rules, 4), elapsed)
+    torch.testing.assert_close(fraction, CLOSE + (1.0 - CLOSE) * (1.0 - s) ** power)
+    assert float(fraction[0] - fraction[1]) > float(fraction[2] - fraction[3])  # fast first
+    zero = float(environment(rules, 1).shrink_zero_ticks[0])
+    pair = torch.tensor([math.ceil(zero) - 1, math.floor(zero) + 1])
+    at_zero = boundary_fraction(environment(rules, 2), pair)
+    assert float(at_zero[0]) > 0.0 > float(at_zero[1])
+
+
+def test_the_corner_law_reaches_its_corner_on_time_then_closes_past_zero():
+    rules = api.rules_of(ELIMINATION)
+    hold, close, ticks = _schedule(rules)
+    knee_ticks = (close - hold) // 4
+    rules = tuned(
+        rules,
+        {
+            "mode.shrink_law": 3,
+            "mode.shrink_knee_seconds": knee_ticks * rules.tick_length,
+            "mode.shrink_knee_fraction": 0.3,
+        },
+    )
+    elapsed = torch.tensor([hold, hold + knee_ticks, close])
+    fraction = boundary_fraction(environment(rules, 3), elapsed)
+    torch.testing.assert_close(fraction, torch.tensor([1.0, 0.3, CLOSE]))
+    zero = float(environment(rules, 1).shrink_zero_ticks[0])
+    pair = torch.tensor([math.ceil(zero) - 1, math.floor(zero) + 1])
+    at_zero = boundary_fraction(environment(rules, 2), pair)
+    assert float(at_zero[0]) > 0.0 > float(at_zero[1])
+
+
+def test_the_speed_cap_holds_the_boundary_back_and_moves_its_zero_crossing():
+    rules = tuned(api.rules_of(ELIMINATION), {"mode.shrink_law": 2, "mode.shrink_power": 3.0})
+    hold, close, ticks = _schedule(rules)
+    free = environment(rules, 1)
+    cap = 200.0  # m/s on a 1 km arena: the uncapped law falls faster than this at its start
+    capped_rules = tuned(rules, {"mode.shrink_max_speed": cap})
+    arena = environment(capped_rules, 1)
+    elapsed = torch.arange(hold, ticks + 1)
+    radius = 1000.0 * boundary_fraction(environment(capped_rules, len(elapsed)), elapsed)
+    speed = -(radius[1:] - radius[:-1]) / rules.tick_length
+    assert float(speed.max()) <= cap * (1.0 + 1e-4)
+    zero = hold + 1000.0 / (cap * rules.tick_length)
+    assert float(free.shrink_zero_ticks[0]) < zero
+    left = boundary_time_to_zero(arena, torch.tensor([hold]), rules.tick_length)
+    assert float(left[0]) == pytest.approx((zero - hold) * rules.tick_length, rel=1e-5)
+
+
 def test_other_modes_keep_the_arena_radius_and_show_no_time_to_zero():
     rules = api.rules_of(DEATHMATCH)
     elapsed = torch.tensor([0, 300, 899])
@@ -299,6 +352,64 @@ def test_imugi_steers_by_the_boundary_as_it_stands():
     fraction = 1.0 - (1.0 - CLOSE) * (middle - hold) / (close - hold)
     assert float(fleet.boundary_radius[0, 0]) == pytest.approx(1000.0 * fraction)
     assert float(fleet.arena_radius[0, 0]) == 1000.0
+
+
+def _view(rules, state, tick):
+    _, obs, _ = api.perceive(rules, _at(rules, state, tick))
+    return type(obs)(**{name: part[:, 0] for name, part in vars(obs).items()})
+
+
+def test_imugi_tracks_the_boundary_closing_speed_and_keeps_it_on_a_re_read():
+    from bnb.controllers.imugi_memory import fresh_carry, track_boundary
+
+    rules = api.rules_of(ELIMINATION)
+    _, state = cases.rules_and_state(ELIMINATION, batch=1)
+    hold, close, _ = _schedule(rules)
+    middle = (hold + close) // 2
+    earlier, now = _view(rules, state, middle - 1), _view(rules, state, middle)
+    reset = torch.zeros(1, dtype=torch.bool)
+    carry = track_boundary(fresh_carry(1, 3, 3, "cpu"), earlier, reset, rules.tick_length)
+    assert float(carry.boundary_speed[0]) == 0.0  # the episode's first look
+    carry = track_boundary(carry, now, reset, rules.tick_length)
+    want = 1000.0 * (1.0 - CLOSE) / ((close - hold) * rules.tick_length)
+    assert float(carry.boundary_speed[0]) == pytest.approx(want, rel=1e-3)
+    again = track_boundary(carry, now, reset, rules.tick_length)
+    assert float(again.boundary_speed[0]) == float(carry.boundary_speed[0])
+    fresh = track_boundary(carry, now, torch.ones(1, dtype=torch.bool), rules.tick_length)
+    assert float(fresh.boundary_speed[0]) == 0.0
+
+
+def test_imugi_widens_its_margin_for_a_closing_edge_and_drops_it_below_the_critical_radius():
+    from bnb.controllers import imugi_combat
+    from bnb.controllers.imugi_defaults import MODE_DEFAULTS
+    from bnb.controllers.imugi_memory import fresh_carry
+    from bnb.game.handling.characteristics import characteristics
+
+    rules = api.rules_of(ELIMINATION)
+    _, state = cases.rules_and_state(ELIMINATION, batch=1)
+    view = _view(rules, state, 0)
+    measured = characteristics(cases.TYPES, rules)
+    parameters = MODE_DEFAULTS.sets["deathmatch"]
+
+    def weights(speed: float):
+        carry = fresh_carry(1, 3, 3, "cpu")
+        carry = dataclasses.replace(carry, boundary_speed=torch.tensor([speed]))
+        return imugi_combat.context(view, measured, parameters, carry=carry).boundary_weight
+
+    still = weights(0.0)
+    closing = weights(30.0)
+    assert bool((closing >= still).all())  # a closing edge never steers less
+    # the still edge's steer is the earlier rule exactly
+    imugi_combat.MOVING_EDGE = False
+    try:
+        torch.testing.assert_close(weights(30.0), still)
+    finally:
+        imugi_combat.MOVING_EDGE = True
+    # f(b) = sqrt(1 - b^2) + b arccos(-b): 1 at rest, pi when the edge is as fast
+    assert (
+        imugi_combat.CRITICAL_RADIUS_IN_TURN_RADII[0]
+        < imugi_combat.CRITICAL_RADIUS_IN_TURN_RADII[1]
+    )
 
 
 def test_every_build_reads_the_boundary():

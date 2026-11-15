@@ -243,7 +243,7 @@ class ModeRules:
     phase per team at the match's start: a dead ship respawns at its team's first wave
     after its respawn wait; 0 no waves). Elimination's boundary shrinks: it holds at the
     arena radius for shrink_hold_seconds, then falls by shrink_law (0 linear in radius, 1
-    the smootherstep) past 0 to a ramp width inside the centre, shrink_end_lead_seconds
+    the smootherstep, 2 the power law, 3 the corner; at most shrink_max_speed) past 0 to a ramp width inside the centre, shrink_end_lead_seconds
     before the clock's end, so every ship dies before the clock. layout: the
     game's fixed map (`MapLayout`), or None for a random one; part of the mode's rules, so
     games of one mode with different layouts are different slices of the batch
@@ -297,6 +297,17 @@ class ModeRules:
     shrink_hold_seconds: float = 18.0
     shrink_end_lead_seconds: float = 8.0
     shrink_law: int = 0
+    # Fast-then-slow shrink laws (2026-11-15, `bnb.game.layout.boundary_fraction`): law 2
+    # the power law, the radius fraction e + (1 - e)(1 - s)^shrink_power over the shrink's
+    # share s; law 3 the corner, linear in radius to shrink_knee_fraction of the arena
+    # radius shrink_knee_seconds after the hold, then linear past 0 to the end. Whatever the
+    # law, the boundary never closes faster than shrink_max_speed (m/s; 0 no cap): it is
+    # the law's radius or the arena radius less shrink_max_speed times the time since the
+    # hold, whichever is larger (exact for the laws here, none of which speeds up).
+    shrink_power: float = 2.0
+    shrink_knee_seconds: float = 30.0
+    shrink_knee_fraction: float = 0.32
+    shrink_max_speed: float = 0.0  # m/s; 150 at real scale (the set's [mode])
     layout: MapLayout | None = None
     deathmatch_outcome: str = "kill_lead"
 

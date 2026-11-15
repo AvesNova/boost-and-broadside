@@ -6,6 +6,7 @@ hidden row's zeroed columns never matter; the target is chosen from the enemies 
 recalls (`imugi_memory`), seen or dead reckoned.
 """
 
+import dataclasses
 import math
 from typing import NamedTuple
 
@@ -43,6 +44,29 @@ COAST, BOOST, REVERSE = 0, 1, 2  # power indices (bnb.game.rules.POWER_MODES)
 TINY = 1e-6  # m: keeps a direction's length away from zero
 STICK_MAGNITUDES = (0.0, 0.4, 0.75, 1.0)  # bnb.game.rules.STICK_LEVELS by level
 TURNING_RATE = 0.05  # rad/s: a nose rate below this is not a turn (the sense maneuver)
+# The edge steer fades out where the boundary's radius is a few turn radii (the ship's own,
+# at its speed): from all of it at 4 to none at 2, where a turn barely fits inside and
+# running from one side of the edge only meets the other; the ship fights instead.
+CRITICAL_RADIUS_IN_TURN_RADII = (2.0, 4.0)
+# Whether the edge steer reads the boundary's closing speed (its moving frame) and fades out
+# at the critical radius; off, it is the earlier steer for a still edge (for comparison).
+MOVING_EDGE = True
+# What a ship does while its team knows no enemy (none seen, none remembered):
+# "centre" heads for the arena's centre and holds near it; "straight" flies on (the edge
+# steer turns it back from the boundary); "waypoint" heads, with the team, for the team's
+# search point (`track_search`: the enemy's spawn, the image of its own, then random points
+# inside the boundary), each ship pulled toward its team's centre of mass when it strays.
+SEARCH = "centre"
+SEARCH_MODES = ("centre", "straight", "waypoint")
+# a search point counts as reached within this share of the boundary's radius of the team's
+# centre of mass (at least SEARCH_ARRIVAL_MINIMUM m); new points are drawn uniformly in the
+# disc of SEARCH_DISC_FRACTION of the boundary's radius
+SEARCH_ARRIVAL_FRACTION = 0.25
+SEARCH_ARRIVAL_MINIMUM = 500.0
+SEARCH_DISC_FRACTION = 0.6
+# the cohesion pull: none within 1 own gun range of the team's centre of mass, all of the
+# steer beyond 3
+COHESION_IN_GUN_RANGE = (1.0, 3.0)
 
 
 class Marginals(NamedTuple):
@@ -78,6 +102,7 @@ class Context(NamedTuple):
     boundary_radius: torch.Tensor
     distance_from_centre: torch.Tensor
     boundary_weight: torch.Tensor  # the steer toward the centre, in [0, 1]
+    boundary_speed: torch.Tensor  # (R, 1) m/s: the boundary's closing speed (`track_boundary`)
     temperature: torch.Tensor | float  # the agent's: a float, or (R, 1) per view
     carry: ImugiCarry  # the memory, before this decision's plan choices
     recall: Recall  # the enemies as the agent believes them
@@ -146,16 +171,31 @@ def context(
     speed = column(own, "proper_speed")
     arena_radius = obs.globals[:, None, GLOBAL["arena_radius"]]
     boundary_radius = arena_radius * obs.globals[:, None, GLOBAL["boundary_fraction"]]
-    # The boundary (as it stands now): within a margin of turn radii of the edge and flying
-    # outward.
+    # The boundary, in its own frame (it closes at v_b, as if steadily): within a margin of
+    # turn radii of the edge and flying outward relative to it. A ship flying straight out
+    # at speed v that turns back with radius r gets deepest relative to the edge when its
+    # outward speed equals the edge's inward speed, r f(b) beyond where it began, b = v_b / v
+    # and f(b) = sqrt(1 - b^2) + b arccos(-b) (1 for a still edge, pi when the edge is as
+    # fast as the ship, which then cannot get away). The margin is the parameter's number of
+    # those depths; with a still edge it is exactly the turn radii it was. Where the
+    # boundary is only a few turn radii across (`CRITICAL_RADIUS_IN_TURN_RADII`) the steer
+    # fades out, and the ship fights.
     distance_from_centre = torch.sqrt(x * x + y * y).clamp_min(TINY)
     turn_radius = speed * speed / per_ship(characteristics.max_acceleration, own_type)
-    margin = (parameters.boundary_margin_in_turn_radius * turn_radius).clamp_min(1.0)
+    boundary_speed = carry.boundary_speed[:, None] * float(MOVING_EDGE)
+    ratio = (boundary_speed / speed.clamp_min(TINY)).clamp(0.0, 1.0)
+    depth_factor = torch.sqrt(1.0 - ratio * ratio) + ratio * torch.acos(-ratio)
+    margin = (parameters.boundary_margin_in_turn_radius * turn_radius * depth_factor).clamp_min(
+        1.0
+    )
     depth = (distance_from_centre - (boundary_radius - margin)) / margin
-    outward = x * velocity_x + y * velocity_y > 0.0
+    outward = (x * velocity_x + y * velocity_y) / distance_from_centre + boundary_speed > 0.0
+    low, high = CRITICAL_RADIUS_IN_TURN_RADII
+    room = ((boundary_radius / turn_radius.clamp_min(TINY) - low) / (high - low)).clamp(0.0, 1.0)
+    room = room if MOVING_EDGE else torch.ones_like(room)
     boundary_weight = torch.where(
         outward, ramp(depth, parameters.boundary_steer_ramp_in_margin), 0.0
-    )
+    ) * room
     return Context(
         own=own,
         enemy=enemy,
@@ -177,6 +217,7 @@ def context(
         boundary_radius=boundary_radius,
         distance_from_centre=distance_from_centre,
         boundary_weight=boundary_weight,
+        boundary_speed=boundary_speed,
         temperature=temperature,
         carry=carry,
         recall=recall,
@@ -715,12 +756,15 @@ def combat(
         )
         power = attack + shaped.extending[..., None] * (extend - attack)
 
-    # Without a target: head for the centre unless already near it.
+    # Without a target: the search (`SEARCH`).
+    idle_x, idle_y, may_hold = idle_direction(fleet)
     toward_centre = fleet.distance_from_centre > (
         parameters.centre_hold_in_arena_radius * fleet.boundary_radius
     )
+    if not may_hold:
+        toward_centre = torch.ones_like(toward_centre)
     wanted_x, wanted_y = steer(
-        fleet, torch.where(has_target, aim_x, -fleet.x), torch.where(has_target, aim_y, -fleet.y)
+        fleet, torch.where(has_target, aim_x, idle_x), torch.where(has_target, aim_y, idle_y)
     )
     steered, left = stick_marginal(
         fleet,
@@ -787,6 +831,91 @@ def combat(
         chosen,
         left,
         draw,
+    )
+
+
+def team_centre(fleet: Context) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """(R, 1) x, y of the own living ships' centre of mass, and (R, 1) whether any lives."""
+    alive = (column(fleet.own, "alive") > 0.5).float()
+    count = alive.sum(-1, keepdim=True)
+    centre_x = (fleet.x * alive).sum(-1, keepdim=True) / count.clamp_min(1.0)
+    centre_y = (fleet.y * alive).sum(-1, keepdim=True) / count.clamp_min(1.0)
+    return centre_x, centre_y, count > 0.0
+
+
+def unit(x: torch.Tensor, y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    length = torch.sqrt(x * x + y * y).clamp_min(TINY)
+    return x / length, y / length
+
+
+def idle_direction(fleet: Context) -> tuple[torch.Tensor, torch.Tensor, bool]:
+    """(R, S) the direction a ship without a target wants, by `SEARCH`, and whether it may
+    hold its course near the centre (only "centre" does)."""
+    if SEARCH == "centre":
+        return -fleet.x, -fleet.y, True
+    if SEARCH == "straight":
+        moving = fleet.speed > 1.0
+        return (
+            torch.where(moving, fleet.velocity_x, fleet.cos),
+            torch.where(moving, fleet.velocity_y, fleet.sin),
+            False,
+        )
+    if SEARCH == "waypoint":
+        carry = fleet.carry
+        goal_x, goal_y = unit(carry.search_x[:, None] - fleet.x, carry.search_y[:, None] - fleet.y)
+        centre_x, centre_y, _ = team_centre(fleet)
+        apart_x, apart_y = centre_x - fleet.x, centre_y - fleet.y
+        apart = torch.sqrt(apart_x * apart_x + apart_y * apart_y) / fleet.gun_range
+        low, high = COHESION_IN_GUN_RANGE
+        pull = ((apart - low) / (high - low)).clamp(0.0, 1.0)
+        toward_x, toward_y = unit(apart_x, apart_y)
+        return (
+            (1.0 - pull) * goal_x + pull * toward_x,
+            (1.0 - pull) * goal_y + pull * toward_y,
+            False,
+        )
+    raise ValueError(f"unknown search {SEARCH!r}; one of {SEARCH_MODES}")
+
+
+SEARCH_DRAW = purpose_key("imugi search")
+
+
+def track_search(
+    carry: ImugiCarry, obs: Obs, recall: Recall, decision_key: torch.Tensor | None
+) -> ImugiCarry:
+    """The carry with the team's search point (`SEARCH` "waypoint"): at the episode's first
+    observation the image of the team's centre of mass through the centre (the enemy's
+    spawn on the point-symmetric maps); once the team's centre of mass reaches it while no
+    enemy is known, or the boundary has closed past it, a point drawn uniformly in the disc
+    of SEARCH_DISC_FRACTION of the boundary's radius (from the decision's key; without one
+    the point is kept)."""
+    if SEARCH != "waypoint":
+        return carry
+    own = obs.ships[:, : obs.ships.shape[-2] // 2]
+    alive = (own[..., SHIP["alive"]] > 0.5).float()
+    count = alive.sum(-1).clamp_min(1.0)
+    centre_x = (own[..., SHIP["x"]] * alive).sum(-1) / count
+    centre_y = (own[..., SHIP["y"]] * alive).sum(-1) / count
+    boundary = obs.globals[:, GLOBAL["arena_radius"]] * obs.globals[:, GLOBAL["boundary_fraction"]]
+    first = ~carry.search_set
+    search_x = torch.where(first, -centre_x, carry.search_x)
+    search_y = torch.where(first, -centre_y, carry.search_y)
+    off_x, off_y = centre_x - search_x, centre_y - search_y
+    reach = (SEARCH_ARRIVAL_FRACTION * boundary).clamp_min(SEARCH_ARRIVAL_MINIMUM)
+    arrived = (off_x * off_x + off_y * off_y < reach * reach) & ~recall.known.any(-1)
+    outside = search_x * search_x + search_y * search_y > boundary * boundary
+    if decision_key is not None:
+        draw = row_uniforms(SEARCH_DRAW, decision_key, (2,))  # (R, 2)
+        radius = SEARCH_DISC_FRACTION * boundary * torch.sqrt(draw[:, 0])
+        angle = 2.0 * math.pi * draw[:, 1]
+        again = (arrived | outside) & ~first
+        search_x = torch.where(again, radius * torch.cos(angle), search_x)
+        search_y = torch.where(again, radius * torch.sin(angle), search_y)
+    return dataclasses.replace(
+        carry,
+        search_x=search_x,
+        search_y=search_y,
+        search_set=torch.ones_like(carry.search_set),
     )
 
 

@@ -180,6 +180,10 @@ RULE_UNITS = {
     "mode.shrink_hold_seconds": TIME,
     "mode.shrink_end_lead_seconds": TIME,
     "mode.shrink_law": NONE,
+    "mode.shrink_power": NONE,
+    "mode.shrink_knee_seconds": TIME,
+    "mode.shrink_knee_fraction": NONE,
+    "mode.shrink_max_speed": SPEED,
     **{f"flight.{name}": units for name, units in FLIGHT_UNITS.items()},
 }
 
