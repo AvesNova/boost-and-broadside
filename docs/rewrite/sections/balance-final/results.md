@@ -79,7 +79,7 @@ Yongma team's score (wins + half the draws) and its kill share:
 | elimination 2v2 (1024) | 19.0 ± 1.2% (27.6%) | 24.4 ± 1.3% (33.5%) | 28.1 ± 1.4% (34.6%) |
 | elimination 5v5 (1024) | 20.4 ± 1.3% (37.7%) | 38.1 ± 1.5% (45.6%) | 38.4 ± 1.5% (46.6%) |
 | elimination 10v10 (512) | 25.0 ± 1.9% (43.1%) | 50.2 ± 2.2% (50.9%) | 42.0 ± 2.2% (50.2%) |
-| Frontline 5v5 (1024) | pending | pending | pending |
+| Frontline 5v5 (512, round 12's seed; the 1024-game run is queued) | 8.4 ± 1.2% (39.1%) | 33.3 ± 2.0% (46.6%) | not run |
 | Frontline 10v10 (512) | 13.8 ± 1.4% (44.2%) | 46.1 ± 2.1% (50.1%) | 42.4 ± 2.1% (49.1%) |
 
 Aspects stay as they were at every size (mutual head-on 2-3.5% of kills; mixed 5v5 offset
@@ -101,6 +101,31 @@ Notes:
   off at deathmatch 2v2 and 10v10 and at elimination/Frontline 10v10; A changes one number,
   so it is the after. B's files are not written; its card is
   in `candidates/final.json`.
+
+## After the deliverable: flatter cards (rounds 12-14, 512 games, still running)
+
+The v23 card centres deathmatch 5v5 but leaves the sizes apart (2v2 29%, 10v10 71%). Yongma
+team's score, deathmatch:
+
+| card | 2v2 | 5v5 | 10v10 |
+|---|---|---|---|
+| before | 14-15 | 22-25 | 41-45 |
+| **v23: Jujak turn x0.93** | 28.6 | 51.8 | 71.3 |
+| Jujak turn x0.91 + Yongma shield x0.8 | 27.7 | 42.4 | 58.3 |
+| Jujak turn x0.91 + Yongma shield x0.85 | 29.5 | 48.3 | 69.9 |
+| Yongma turn x1.08 | 36.3 | 58.0 | 84.7 |
+| Jujak turn x0.95 + Yongma turn x1.08 | 52.1 | 80.3 | 94.4 |
+| Jujak turn x0.91 + Yongma turn x1.08 + shield x0.8 | 62.3 | 82.0 | 92.6 |
+
+- A Yongma shield cut takes more off the 10v10 than the 2v2, so turn closer together with
+  less Yongma shield flattens the spread; shield x0.8 (113.6, 1.43 times Jujak's) also brings
+  the shield ratio inside the real spread.
+- Jujak turn x0.91 is the solver's limit with the other handles held (x0.88-0.90 miss the
+  low-speed acceleration or the nose reversal by 1-9%).
+- Yongma's sustained turn is the stronger lever (x1.08 alone: 58% at 5v5), and with it
+  2v2 reaches even. Round 15 tries it with deeper shield cuts (x0.6-0.8) and smaller turn
+  steps; progress.md has the latest.
+- Frontline 5v5 is the hardest mode: 8% before, 33% with v23, 38% with x0.91 + shield x0.85.
 
 ## The doctrine search (done first; why the cards)
 
