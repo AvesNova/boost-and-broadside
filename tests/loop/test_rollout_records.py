@@ -62,8 +62,8 @@ def _recording(rollout, monkeypatch):
     rollout.stages = (act, advance, recorded_resolve, perceive)
     original = rewards.reward_step_events
 
-    def recorded_step(config, ledger, events, team):
-        reward, ledger, event_rewards = original(config, ledger, events, team)
+    def recorded_step(config, ledger, events, team, present=None):
+        reward, ledger, event_rewards = original(config, ledger, events, team, present)
         record["reward"].append(reward.clone())
         record["done"].append(events.done.clone())
         return reward, ledger, event_rewards

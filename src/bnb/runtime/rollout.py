@@ -15,7 +15,8 @@ draw alike wherever they are alike. The carry counts each environment's episodes
   episode draws   keyed by (seed, environment, episode): the map, the arena scale, the
                   formations and the first spawns of an environment's k-th episode
                   (`api.resolve`'s next_episode_uniforms), the seat it is played from,
-                  and its lineup when the rollout draws them (`lineup_types`)
+                  its lineup when the rollout draws them (`lineup_types`), and its team
+                  size where its pool samples them (`Pool.team_sizes`)
   tick draws      keyed by (seed, environment, episode, clock): the tick uniforms a running
                   episode reads (respawns) and the bullet spread
   decision keys   per controller row, the tick's key and the row's role: each controller
@@ -40,6 +41,7 @@ from torch.utils import _pytree
 
 from bnb.contracts import VALUE_LEVELS, Action, Controller, GameConfig, Obs, Pool, Trajectory
 from bnb.contracts.obs import GLOBAL, SHIP
+from bnb.contracts.pools import pool_game
 from bnb.game import api
 from bnb.learn import rewards
 from bnb.learn.shots import ShotCapture
@@ -64,6 +66,7 @@ GAME_DRAWS = purpose_key("game uniforms")
 SPREAD_DRAWS = purpose_key("bullet spread")
 SEAT_DRAWS = purpose_key("seat")
 LINEUP_DRAWS = purpose_key("lineup")
+TEAM_SIZE_DRAWS = purpose_key("team size")
 DECISION_DRAWS = purpose_key("decision")
 
 PARTS = ("ships", "fields", "globals", "zones")
@@ -103,6 +106,10 @@ class Rollout:
     batches); benching: the games take each team's active ship count as an input
     (`bnb.game.api`; the carry's `active`, (B, 2) int32, every ship until `restart` is
     given counts), for the crossover's unequal teams; off, the game is called without it.
+    A pool with team-size sampling (`Pool.team_sizes`, `bnb.contracts.TeamSizes`) turns
+    benching on: each of its episodes draws its N-against-N size (`_team_sizes`), the
+    carry's `active` follows it from each reset, and a benched slot is neither valued nor
+    rewarded; a `restart` then takes no counts.
     lineup_types: ship type indices each episode draws its lineup from (`_lineups`): every
     slot one of them with equal chance, both teams flying it slot for slot (None: the
     lineup is `ship_type`'s, or the game's, in every episode; not with `ship_type`).
@@ -144,7 +151,6 @@ class Rollout:
             if lineup_types is None
             else torch.tensor(lineup_types, dtype=torch.int32, device=device)
         )
-        self.benching = benching
         self.teams, self.ships_per_team, self.ship_count = (
             api.TEAMS,
             config.ships_per_team,
@@ -152,6 +158,10 @@ class Rollout:
         )
         self.environments, self.length, self.device = environments, length, device
         self.lineup = Lineup(pools, environments, device)
+        self.team_size_bounds = _team_size_bounds(config, self.lineup, device)
+        if self.team_size_bounds is not None:
+            benching = True
+        self.benching = benching
         missing = set(self.lineup.names) - set(controllers)
         if missing:
             raise ValueError(f"pools name controllers {missing} that were not given")
@@ -235,6 +245,17 @@ class Rollout:
         team = self.lineup_types[(hashed >> 8) % self.lineup_types.shape[0]]
         return team.repeat(1, self.teams)
 
+    def _team_sizes(self, episode: torch.Tensor) -> torch.Tensor | None:
+        """(B, 2) int32 each environment's active ships per team for its episode `episode`:
+        one size N for both teams, drawn from its pool's `TeamSizes` by the inverse CDF of
+        one keyed uniform (every slot where the pool does not sample); None without
+        team-size sampling."""
+        if self.team_size_bounds is None:
+            return None
+        uniform = keyed_uniform(TEAM_SIZE_DRAWS, self._episode_keys(episode))
+        size = 1 + (uniform[:, None] >= self.team_size_bounds).sum(-1)
+        return size.clamp_max(self.ships_per_team).to(torch.int32)[:, None].expand(-1, 2)
+
     def _decision_keys(self, ticks: torch.Tensor, name: str) -> torch.Tensor:
         """(R,) the decision keys of controller `name`'s rows: their environment's tick key
         (`_tick_keys`) and their role."""
@@ -260,11 +281,13 @@ class Rollout:
     ) -> dict:
         rules, B, device = self.rules, self.environments, self.device
         types = _pytree.tree_map_only(torch.Tensor, lambda x: x.to(device, copy=True), types)
+        episode = torch.full((B,), batch << 32, dtype=torch.int64, device=device)
+        if self.team_size_bounds is not None:
+            active = self._team_sizes(episode)
         if self.benching and active is None:
             active = torch.full((B, self.teams), self.ships_per_team, dtype=torch.int32)
         if active is not None:
             active = active.to(device=device, dtype=torch.int32)
-        episode = torch.full((B,), batch << 32, dtype=torch.int64, device=device)
         state = api.reset(
             rules,
             types,
@@ -457,7 +480,9 @@ class Rollout:
                 alive = ships[..., SHIP["alive"]] > 0.5
                 records["alive"].index_copy_(0, slot, alive[None])
                 waiting = ships[:, :S, SHIP["respawn_wait"]] > 0.0
-                records["valued"].index_copy_(0, slot, (alive[:, :S] | waiting)[None])
+                benched = ships[:, :S, SHIP["benched"]] > 0.5  # a slot out of the match
+                valued = (alive[:, :S] | waiting) & ~benched
+                records["valued"].index_copy_(0, slot, valued[None])
                 if (
                     outputs.log_probability is not None
                 ):  # a scripted "learner" (baselines) records no policy
@@ -514,6 +539,8 @@ class Rollout:
         _assign(carry["sweep"], sweep)
 
     def _resolve(self, carry: dict) -> None:
+        active = carry.get("active")
+        next_active = self._team_sizes(carry["episode"] + 1)
         state, events = api.resolve(
             self.rules,
             carry["types"],
@@ -521,15 +548,19 @@ class Rollout:
             carry["sweep"],
             Action.unpack(carry["actions"]),
             carry["uniforms"],
-            carry.get("active"),
+            active,
             next_episode_uniforms=self._episode_uniforms(carry["episode"] + 1),
             next_ship_type=self._lineups(carry["episode"] + 1),
+            next_active=next_active,
         )
         _assign(carry["state"], state)
         team = api.ship_team(self.ships_per_team, self.device)
+        present = None if active is None else ~api.benched_of(self.ships_per_team, active)
         reward, ledger, event_rewards = rewards.reward_step_events(
-            self.reward_config, carry["ledger"], events, team
+            self.reward_config, carry["ledger"], events, team, present
         )
+        if next_active is not None:  # a finished episode's next size, from its reset on
+            carry["active"].copy_(torch.where(events.done[:, None], next_active, active))
         _assign(carry["ledger"], ledger)
         analytics.resolve_tick(
             carry["game"],
@@ -650,6 +681,8 @@ class Rollout:
         number, which keys its episodes (the same number plays the same maps and draws)."""
         if active is not None and not self.benching:
             raise ValueError("active ship counts need a rollout built with benching")
+        if active is not None and self.team_size_bounds is not None:
+            raise ValueError("a rollout with team-size sampling draws its own active counts")
         if not 0 <= batch < 1 << 31:
             raise ValueError(f"batch {batch} must be in [0, 2^31)")
         _assign(self.carry, self._initial_carry(self.carry["types"], False, active, batch))
@@ -663,8 +696,11 @@ class Rollout:
         ledger). Not the staging ring or the segment buffers, which every segment writes
         before it reads them, nor the update's sums (the episodes', the
         games', the outcome tables), which every update takes, nor the active ship counts
-        (`benching`: the offline match engine's, which no training run resumes)."""
-        excluded = ("records", "segment", "episodes", "game_sums", "outcome_tables", "active")
+        of plain benching (the offline match engine's, which no training run resumes); with
+        team-size sampling the counts are the episodes' draws, and kept."""
+        excluded = ("records", "segment", "episodes", "game_sums", "outcome_tables")
+        if self.team_size_bounds is None:
+            excluded += ("active",)
         return {name: tree for name, tree in self.carry.items() if name not in excluded}
 
     def load_carry(self, carry: dict) -> None:
@@ -790,3 +826,25 @@ class Rollout:
         """The carry's running totals by COUNTERS name: shots fired, damage events, deaths and
         environment resets."""
         return dict(zip(COUNTERS, self.carry["counters"].tolist()))
+
+
+def _team_size_bounds(
+    config: GameConfig, lineup: Lineup, device: torch.device
+) -> torch.Tensor | None:
+    """(B, S - 1) each environment's cumulative probabilities of the team sizes 1 to S - 1
+    (`Pool.team_sizes`, within its mode's smallest team, `api.MINIMUM_SHIPS_PER_TEAM`), the
+    inverse CDF's bounds: a draw u in [0, 1) plays 1 + the bounds at most u. A pool that
+    does not sample has every bound 0 (every slot active). None when no pool samples."""
+    if all(pool.team_sizes is None for pool in lineup.pools):
+        return None
+    S = config.ships_per_team
+    rows = []
+    for pool, size in zip(lineup.pools, lineup.sizes, strict=True):
+        if pool.team_sizes is None:
+            probabilities = (0.0,) * (S - 1) + (1.0,)
+        else:
+            minimum = api.MINIMUM_SHIPS_PER_TEAM.get(pool_game(config, pool).mode, 1)
+            probabilities = pool.team_sizes.probabilities(S, minimum)
+        cumulative = torch.tensor(probabilities, dtype=torch.float64).cumsum(0)[:-1]
+        rows.append(cumulative.to(torch.float32).expand(size, -1))
+    return torch.cat(rows).to(device)

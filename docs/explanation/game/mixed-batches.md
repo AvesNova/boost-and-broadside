@@ -91,6 +91,36 @@ every preset); the rating lanes keep their games' own fields. `bnb ratings --act
 LOW HIGH` rates on games that sample. A Yemong playing such games masks the absent fields
 (`Yemong.mask_absent_fields`, [Yemong](../yemong.md)).
 
+## Team-size sampling
+
+A pool with `team_sizes` (`bnb.contracts.TeamSizes`: low, high, weights) plays a drawn
+N-against-N game each episode, N from low to high (high defaults to the game's ships per
+team), each size with its weight (equal by default). Sizes below the mode's smallest team
+(`api.MINIMUM_SHIPS_PER_TEAM`: Frontline 3, deathmatch and elimination 1) are dropped and
+the weights renormalised. Both teams play N; each team's slots past N are benched, the
+game's existing mechanism for uneven teams (`bnb.game.physics.step`): kept as dead ships
+waiting to respawn, out of play, shown with the `benched` flag. The batch keeps its one
+static size, so nothing recompiles per size.
+
+The draw is the runtime's, not the game's: the rollout draws each environment's size for
+its k-th episode from one uniform keyed by (seed, environment, episode) under its own
+purpose (`bnb.runtime.rollout`), so turning it on moves no other draw and the game's state
+gains no leaf. The game takes the next episode's counts in `resolve` (`next_active`): an
+environment whose episode ends spawns and benches by them at its reset, and the rollout
+passes them from the next tick. The rules that depend on the size read the active counts:
+team deathmatch's tickets for the enemy's N ships (4 N^(4/3) to the nearest 5 at real
+scale: 5, 10, 15, 25 and 35 for 1v1 to 5v5), elimination's wipe of the enemy's active
+ships. The clocks and elimination's shrink are the same at every size (the freeze). A
+benched slot is neither valued nor rewarded, and the enemy's unforced events are split
+over the present slots only (`bnb.learn.rewards.enemy_team_share`).
+
+Training samples when `TrainConfig.team_sizes` is set (default None: every slot). The arm
+A2 setting is `--set 'team_sizes={"low": 1}'`: uniform over 1v1 to 5v5 in deathmatch and
+elimination and 3v3 to 5v5 in Frontline. It covers BC's data and RL's games alike; the
+rating lanes, evaluation and play keep their games' own sizes. A Yemong playing such
+games masks the benched ships (`Yemong.mask_benched`, [Yemong](../yemong.md)); the other
+models are refused.
+
 ## Lineup draw
 
 Training draws each episode's lineup (`TrainConfig.lineup_draw`, on by default; decided
