@@ -52,3 +52,10 @@ Branch `feat/a2-team-sizes` from `origin/feat/imugi-boundary` (83404bbf). CPU on
 - Merged into `feat/imugi-boundary` as 238db2e4.
 - Open (for the author): field counts in A2; the per-game vs per-ship-step distribution;
   small deathmatch games mostly running the clock (arms-todo item 9).
+
+### 05:02 GPU check (laptop 4070, performance profile, shared lock; unit a2-check, 3 min)
+- Worked: a compiled, CUDA-graph-captured rollout of the three real-scale modes (96
+  environments, 20 s episodes, `TeamSizes(1)`) compiles and captures once (133 s cold) and
+  runs 20 more segments with `error_on_recompile` on: no recompile over 211 episode resets.
+  Sizes seen: deathmatch and elimination 1-5, Frontline 3-5. Script:
+  the session scratchpad's `gpu_check.py` (not kept).
