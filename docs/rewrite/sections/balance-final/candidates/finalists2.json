@@ -1,0 +1,404 @@
+[
+{
+"name": "before"
+},
+{
+"name": "jt0.95",
+"card": {
+"energy": {},
+"turn": {
+"engine_power": {
+"set": 11282.396484375
+},
+"engine_power_full_store": {
+"set": 2104.3984375
+},
+"static_thrust": {
+"set": 49.058109283447266
+},
+"corner_nose_frequency": {
+"set": 11.43338394165039
+},
+"induced_drag_scale": {
+"set": 0.36945950984954834
+},
+"dive_exchange_scale": {
+"set": 4.1330485343933105
+},
+"climb_exchange_scale": {
+"set": 3.4593589305877686
+},
+"fine_stick": {
+"set": 0.2132035493850708
+},
+"sustained_stick": {
+"set": 0.7106785178184509
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.95
+}
+}
+},
+{
+"name": "jt0.93",
+"card": {
+"energy": {},
+"turn": {
+"engine_power": {
+"set": 11290.685546875
+},
+"engine_power_full_store": {
+"set": 2112.68701171875
+},
+"static_thrust": {
+"set": 64.81767272949219
+},
+"corner_nose_frequency": {
+"set": 11.380003929138184
+},
+"induced_drag_scale": {
+"set": 0.4197433292865753
+},
+"dive_exchange_scale": {
+"set": 4.1278076171875
+},
+"climb_exchange_scale": {
+"set": 3.4468870162963867
+},
+"fine_stick": {
+"set": 0.20908643305301666
+},
+"sustained_stick": {
+"set": 0.6969547867774963
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.93
+}
+}
+},
+{
+"name": "jt0.91",
+"card": {
+"energy": {},
+"turn": {
+"engine_power": {
+"set": 11301.330078125
+},
+"engine_power_full_store": {
+"set": 2123.33154296875
+},
+"static_thrust": {
+"set": 120.09844970703125
+},
+"corner_nose_frequency": {
+"set": 11.325186729431152
+},
+"induced_drag_scale": {
+"set": 0.47688016295433044
+},
+"dive_exchange_scale": {
+"set": 4.121851921081543
+},
+"climb_exchange_scale": {
+"set": 3.4328558444976807
+},
+"fine_stick": {
+"set": 0.2049139440059662
+},
+"sustained_stick": {
+"set": 0.6830464601516724
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.91
+}
+}
+},
+{
+"name": "jt0.95-yd1.08",
+"card": {
+"energy": {
+"static_thrust": {
+"set": 49.05338668823242
+},
+"hit_damage": {
+"set": 24.82099151611328
+}
+},
+"turn": {
+"engine_power": {
+"set": 11282.396484375
+},
+"engine_power_full_store": {
+"set": 2104.3984375
+},
+"static_thrust": {
+"set": 49.058109283447266
+},
+"corner_nose_frequency": {
+"set": 11.43338394165039
+},
+"induced_drag_scale": {
+"set": 0.36945950984954834
+},
+"dive_exchange_scale": {
+"set": 4.1330485343933105
+},
+"climb_exchange_scale": {
+"set": 3.4593589305877686
+},
+"fine_stick": {
+"set": 0.2132035493850708
+},
+"sustained_stick": {
+"set": 0.7106785178184509
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.95
+},
+"energy_handles": {
+"hit_damage": 1.08
+}
+}
+},
+{
+"name": "jt0.93-yd1.08",
+"card": {
+"energy": {
+"static_thrust": {
+"set": 49.05338668823242
+},
+"hit_damage": {
+"set": 24.82099151611328
+}
+},
+"turn": {
+"engine_power": {
+"set": 11290.685546875
+},
+"engine_power_full_store": {
+"set": 2112.68701171875
+},
+"static_thrust": {
+"set": 64.81767272949219
+},
+"corner_nose_frequency": {
+"set": 11.380003929138184
+},
+"induced_drag_scale": {
+"set": 0.4197433292865753
+},
+"dive_exchange_scale": {
+"set": 4.1278076171875
+},
+"climb_exchange_scale": {
+"set": 3.4468870162963867
+},
+"fine_stick": {
+"set": 0.20908643305301666
+},
+"sustained_stick": {
+"set": 0.6969547867774963
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.93
+},
+"energy_handles": {
+"hit_damage": 1.08
+}
+}
+},
+{
+"name": "jt0.95-yd1.18",
+"card": {
+"energy": {
+"static_thrust": {
+"set": 49.05338668823242
+},
+"hit_damage": {
+"set": 27.119232177734375
+}
+},
+"turn": {
+"engine_power": {
+"set": 11282.396484375
+},
+"engine_power_full_store": {
+"set": 2104.3984375
+},
+"static_thrust": {
+"set": 49.058109283447266
+},
+"corner_nose_frequency": {
+"set": 11.43338394165039
+},
+"induced_drag_scale": {
+"set": 0.36945950984954834
+},
+"dive_exchange_scale": {
+"set": 4.1330485343933105
+},
+"climb_exchange_scale": {
+"set": 3.4593589305877686
+},
+"fine_stick": {
+"set": 0.2132035493850708
+},
+"sustained_stick": {
+"set": 0.7106785178184509
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.95
+},
+"energy_handles": {
+"hit_damage": 1.18
+}
+}
+},
+{
+"name": "jt0.95-yc0.88",
+"card": {
+"energy": {
+"engine_power": {
+"set": 10451.6279296875
+},
+"static_thrust": {
+"set": 49.05318832397461
+},
+"coast_exchange_scale": {
+"set": 23.10733413696289
+}
+},
+"turn": {
+"engine_power": {
+"set": 11282.396484375
+},
+"engine_power_full_store": {
+"set": 2104.3984375
+},
+"static_thrust": {
+"set": 49.058109283447266
+},
+"corner_nose_frequency": {
+"set": 11.43338394165039
+},
+"induced_drag_scale": {
+"set": 0.36945950984954834
+},
+"dive_exchange_scale": {
+"set": 4.1330485343933105
+},
+"climb_exchange_scale": {
+"set": 3.4593589305877686
+},
+"fine_stick": {
+"set": 0.2132035493850708
+},
+"sustained_stick": {
+"set": 0.7106785178184509
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.95
+},
+"energy_handles": {
+"climb_time": 0.88
+}
+}
+},
+{
+"name": "jt0.97-yd1.18",
+"card": {
+"energy": {
+"static_thrust": {
+"set": 49.05338668823242
+},
+"hit_damage": {
+"set": 27.119232177734375
+}
+},
+"turn": {
+"engine_power": {
+"set": 11276.0810546875
+},
+"engine_power_full_store": {
+"set": 2098.082763671875
+},
+"static_thrust": {
+"set": 40.78226852416992
+},
+"corner_nose_frequency": {
+"set": 11.485233306884766
+},
+"induced_drag_scale": {
+"set": 0.32477331161499023
+},
+"dive_exchange_scale": {
+"set": 4.137706279754639
+},
+"climb_exchange_scale": {
+"set": 3.470541000366211
+},
+"fine_stick": {
+"set": 0.21685101091861725
+},
+"sustained_stick": {
+"set": 0.7228366732597351
+}
+}
+},
+"handles": {
+"turn_handles": {
+"sustained_turn_rate": 0.97
+},
+"energy_handles": {
+"hit_damage": 1.18
+}
+}
+},
+{
+"name": "yd1.18-yc0.88",
+"card": {
+"energy": {
+"static_thrust": {
+"set": 49.05318832397461
+},
+"hit_damage": {
+"set": 27.119232177734375
+},
+"engine_power": {
+"set": 10451.6279296875
+},
+"coast_exchange_scale": {
+"set": 23.10733413696289
+}
+},
+"turn": {}
+},
+"handles": {
+"energy_handles": {
+"hit_damage": 1.18,
+"climb_time": 0.88
+}
+}
+}
+]
