@@ -19,7 +19,7 @@ Updated 2026-11-15 10:30; the conversation behind it is in [briefing.md](briefin
 ## Paused 2026-11-15 21:00 (laptop shutdown): resume here
 
 Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On resume: read each branch's progress.md (it has a resume note), merge the finished ones, relaunch the unfinished ones.
-- `feat/split-critic` (ed7f2c8a): **done**, with HL-Gauss critic targets and 2 padding bins per side. For the author: should the return scale follow the premium; are the sign-split objective levels acceptable; is retiring two v1 fixture checks acceptable. The single-value (`summed_reward`) arm is removed.
+- `feat/split-critic`: **done and merged** (2026-11-15 21:30), with HL-Gauss critic targets and 2 padding bins per side. For the author: should the return scale follow the premium; are the sign-split objective levels acceptable; is retiring two v1 fixture checks acceptable. The single-value (`summed_reward`) arm is removed.
 - `check/freeze-final` (0b675320): game **version 22** (shield bug fixed: a zero-damage frontal hit didn't restart the recharge wait); vizia dropped (no numbers changed; fixed Imugi's doctrine lookup by type count). All mode conditions measured; left: the head-on passes run (about 8 min GPU, resume command in its progress.md), then results.md and review.md. **First results for the author:**
   - deathmatch 5v5 ends by tickets 80.5%, but 1v1 0.4% and 2v2 43% (Imugi rarely finds the enemy);
   - elimination 5v5 median 1:35, p80 2:18 (shorter than expected); boundary deaths 9.9%, last deaths 19% (as expected);
