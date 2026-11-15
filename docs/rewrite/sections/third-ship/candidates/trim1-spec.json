@@ -1,0 +1,218 @@
+[
+ {
+  "name": "B-d1.2-s115",
+  "flight_from": "K-roll-g7-dive",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 23.0252
+   },
+   "max_shield": {
+    "set": 115.0
+   }
+  },
+  "doctrine": {
+   "sense": 0.0
+  }
+ },
+ {
+  "name": "B-d1.17-s115",
+  "flight_from": "K-roll-g7-dive",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.4496
+   },
+   "max_shield": {
+    "set": 115.0
+   }
+  },
+  "doctrine": {
+   "sense": 0.0
+  }
+ },
+ {
+  "name": "B-d1.15-s117",
+  "flight_from": "K-roll-g7-dive",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.0659
+   },
+   "max_shield": {
+    "set": 117.0
+   }
+  },
+  "doctrine": {
+   "sense": 0.0
+  }
+ },
+ {
+  "name": "B-d1.15-s120",
+  "flight_from": "K-roll-g7-dive",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.0659
+   },
+   "max_shield": {
+    "set": 120.0
+   }
+  },
+  "doctrine": {
+   "sense": 0.0
+  }
+ },
+ {
+  "name": "B-d1.12-s120",
+  "flight_from": "K-roll-g7-dive",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 21.4902
+   },
+   "max_shield": {
+    "set": 120.0
+   }
+  },
+  "doctrine": {
+   "sense": 0.0
+  }
+ },
+ {
+  "name": "B-d1.18-s112",
+  "flight_from": "K-roll-g7-dive",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.6415
+   },
+   "max_shield": {
+    "set": 112.0
+   }
+  },
+  "doctrine": {
+   "sense": 0.0
+  }
+ }
+]
