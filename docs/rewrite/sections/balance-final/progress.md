@@ -177,3 +177,17 @@ real 1.44, which the before's 1.78 is not. Next: Jujak turn x0.88-0.90 (solving)
 shield x0.75-0.8, and these in elimination and Frontline 5v5.
 - handle_cards.py now reads before/'s ship files (src/ holds v23 since c875bb84; a solve
   started at 07:50 from src/ was stopped before it finished, none of its numbers used).
+
+## 08:12 elimination 5v5 final; round 12 in elimination and Frontline; Jujak turn's solver limit
+
+- Final elimination 5v5 (1024, 3070): before 20.4 ± 1.3%, A 38.1 ± 1.5%, B 38.4 ± 1.5%.
+- Round 12 in the other modes (512 games, laptop): elimination 5v5 before 26.0, x0.93 37.9,
+  x0.91 + shield x0.8 36.1, x0.91 + shield x0.85 39.3; Frontline 5v5 before 8.4 (!), x0.93
+  33.3, x0.91 + shield x0.8 33.2, x0.91 + shield x0.85 38.1. Frontline is the most lopsided
+  mode and stays Jujak-favoured with every card so far.
+- Jujak turn x0.88, 0.89, 0.90 do not solve (the low-speed acceleration or the nose reversal
+  missed by 1-9%): x0.91 is the limit with the other handles held. Round 13 (3070): x0.91 with
+  Yongma shield x0.75-0.85 and Yongma climb x0.88/0.93 or damage x1.08. Round 14 (laptop):
+  Yongma sustained turn x1.08 with them.
+- An elimination run on the laptop failed once on "Disk quota exceeded" in /tmp (the tmpfs
+  was full for a moment; 8.9 of 23 GB used after); re-run, fine.
