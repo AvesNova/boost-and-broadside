@@ -79,6 +79,20 @@ The crossed pools, game by game so that each game is one contiguous slice:
 
 <!-- generated: mixed-pools -->
 
+`TrainConfig.mode_mix` sets the mix as a setting rather than a preset: game presets and
+whole weights, each game's share its weight over their sum. `bnb train` builds the pools
+from it (`bnb.runtime.train.arranged`), every game with its own map, clocks, respawn and
+spawn groups. The 8/4/4 arm (A5), on top of `--preset real_scale_all_modes`:
+
+<!-- not-runnable: options added to a bnb train command -->
+```bash
+--set 'mode_mix={"real_scale_frontline": 8, "real_scale_deathmatch": 4, "real_scale_elimination": 4}'
+```
+
+Setting `pools` by hand gives every pool the `GameConfig`'s game unless each pool names its
+own; `mode_mix` does not have that trap. A trainer refuses pools whose games and shares
+are not the mix's (`bnb.runtime.train.check_pools`).
+
 Every map is fixed-size by default: each pool plays its own arena radius every episode
 (`TrainConfig.arena_scale=None`). This holds until an agent has trained successfully on
 variable-size maps (the author's rule, 2026-11-15); map-size sampling is an opt-in setting
