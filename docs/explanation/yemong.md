@@ -659,14 +659,14 @@ the attention kernel. Set it on a run with `--set yemong.gate=elementwise`.
 
 `YemongConfig.temporal_block` chooses the temporal sublayer: `"griffin"` (the default, and
 every build's from before the option) is the block above; `"gru"` is arm A16's challenger,
-a classic GRU at the same width. Per query token it norms the token, runs a GRU cell
-(the gates of torch's GRU cell, initialised as it is; `temporal.GRUBlock`) whose hidden state is the carry, and
-adds a linear projection of that state to the token; the gated MLP follows as in Griffin's
-block. There is no convolution, so the carry's convolution buffer holds no inputs (shape
-`(R, blocks, Q, 0, D)`), and an episode start clears the hidden state. A segment computes
-every step's input gates at once and then steps the recurrence in a loop, in plain
-PyTorch (no kernel). At width 128 the GRU sublayer has 312 320 parameters to Griffin's
-279 808 (19 D^2 + 8 D against 17 D^2 + 10 D). Set it on a run with
+a classic GRU at the same width (`temporal.GRUBlock`). Per query token it norms the token,
+runs a GRU cell (the gates of torch's GRU cell, initialised as it is) whose hidden state is
+the carry, and adds a linear projection of that state to the token; the gated MLP follows
+as in Griffin's block. There is no convolution, so the carry's convolution buffer holds no
+inputs (shape `(R, blocks, Q, 0, D)`), and an episode start clears the hidden state. A
+segment computes every step's input gates at once and then steps the recurrence in a loop,
+in plain PyTorch (no kernel). At width 128 the GRU sublayer has 312 320 parameters to
+Griffin's 279 808 (19 D^2 + 8 D against 17 D^2 + 10 D). Set it on a run with
 `--set yemong.temporal_block=gru`.
 
 ### Attention shares
