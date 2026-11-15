@@ -72,7 +72,9 @@ def test_a_quiet_tick_counts_down_and_recharges_and_every_other_input_restarts_t
     rules, ships = _ships(wait)
     action, calm = _mixed()
     alive = torch.ones_like(calm)
-    damage = apply_damage(rules, api.ship_types(), ships, alive, torch.zeros(1, 8), quiet(action))
+    damage = apply_damage(
+        rules, api.ship_types(), ships, alive, torch.zeros(1, 8), quiet(action), ~alive
+    )
     assert torch.equal(quiet(action), calm)
     gained = RATE * min(max(TICK - wait, 0.0), TICK)  # 0, 12 (1/30 - 0.01), 0.4
     expected_wait = torch.where(calm, max(wait - TICK, 0.0), DELAY)
@@ -89,7 +91,7 @@ def test_a_hit_resets_the_wait_whatever_the_input():
     action, _ = _mixed()
     alive = torch.ones(1, 8, dtype=torch.bool)
     damage = apply_damage(
-        rules, api.ship_types(), ships, alive, torch.full((1, 8), 5.0), quiet(action)
+        rules, api.ship_types(), ships, alive, torch.full((1, 8), 5.0), quiet(action), ~alive
     )
     torch.testing.assert_close(damage.ships.shield_recharge_wait, torch.full((1, 8), DELAY))
     torch.testing.assert_close(damage.ships.shield, torch.full((1, 8), 45.0))
@@ -106,7 +108,7 @@ def test_the_wait_starts_again_after_any_other_input():
     delay_ticks = round(DELAY / TICK)
     steps = [calm] + [boost] * 5 + [calm] * (delay_ticks + 1)
     for step in steps:
-        damage = apply_damage(rules, types, ships, alive, torch.zeros(1, 2), step)
+        damage = apply_damage(rules, types, ships, alive, torch.zeros(1, 2), step, ~alive)
         ships = damage.ships
         waits.append(float(ships.shield_recharge_wait[0, 0]))
         restored.append(float(damage.shield_restored[0, 0]))
@@ -139,3 +141,72 @@ def test_a_whole_tick_restarts_the_wait_on_the_inputs_and_the_observation_shows_
     _, obs, _ = api.perceive(rules, state)
     own = obs.ships[0, 0, :4, SHIP["shield_recharge_wait"]]  # team 0's own rows, in slot order
     torch.testing.assert_close(own, wait[0, :4])
+
+
+def test_a_frontal_hit_its_armour_turns_to_no_damage_still_restarts_the_wait():
+    """Real scale, a bullet through the target's nose exactly head-on: the armour's head-on
+    fraction is 0 (Yongma's and Jujak's cards), so the hit deals no damage, but it is a hit,
+    and the target's wait restarts at the delay and nothing recharges; the shooter, quiet and
+    untouched, recharges."""
+    config = GameConfig(1, 1, 7800.0, ship_set="real-scale")
+    rules, types = api.rules_of(config), api.ship_types(ship_set="real-scale")
+    assert float((rules.head_on_fraction * types.head_on_fraction_scale).abs().max()) == 0.0
+    state = api.reset(rules, types, api.uniforms(rules, 1, generator=torch.Generator()))
+    state = cases.fields_away(state)
+    state = cases.edit_ships(
+        state,
+        x=torch.tensor([[0.0, 300.0]]),
+        y=torch.zeros(1, 2),
+        heading_cos=torch.tensor([[1.0, -1.0]]),
+        heading_sin=torch.zeros(1, 2),
+        shield=torch.full((1, 2), 50.0),
+        shield_recharge_wait=torch.zeros(1, 2),
+    )
+    K = rules.bullet_slots
+    moves_left = torch.zeros(1, 2, K, dtype=torch.int32)
+    moves_left[0, 0, 0] = 2
+    bullet_x = torch.zeros(1, 2, K)
+    bullet_x[0, 0, 0] = 280.0  # 20 m off the target's nose, flying along +x into it
+    direction_x = torch.zeros(1, 2, K)
+    direction_x[0, 0, 0] = 1.0
+    state = replace(
+        state,
+        bullets=replace(
+            state.bullets,
+            x=bullet_x,
+            y=torch.zeros(1, 2, K),
+            direction_x=direction_x,
+            direction_y=torch.zeros(1, 2, K),
+            proper_speed=torch.full((1, 2, K), 900.0),
+            moves_left=moves_left,
+        ),
+    )
+    coast = torch.full((1, 2), COAST, dtype=torch.int32)
+    straight = torch.zeros(1, 2, dtype=torch.int32)
+    action = Action(coast, straight, straight)
+    assert bool(quiet(action).all())
+    state, events = cases.tick(rules, state, action, types=types)
+    assert float(events.damage.abs().sum()) == 0.0  # the armour took all of it
+    assert int(state.bullets.moves_left[0, 0, 0]) == 0  # the bullet hit and is spent
+    delay = rules.shield_recharge_delay * float(
+        types.shield_recharge_delay_scale[int(state.ships.ship_type[0, 1])]
+    )
+    assert float(state.ships.shield_recharge_wait[0, 1]) == pytest.approx(delay)
+    assert float(events.shield_restored[0, 1]) == 0.0
+    assert float(state.ships.shield[0, 1]) == 50.0
+    assert float(events.shield_restored[0, 0]) > 0.0  # the shooter: quiet and untouched
+
+
+def test_a_hit_without_damage_resets_the_wait_and_recharges_nothing():
+    """struck with no damage: the wait is the delay on every input, quiet or not, the shield
+    keeps its 50 and nothing recharges or dies."""
+    rules, ships = _ships(0.0, shield=0.0)
+    ships = replace(ships, shield=torch.full((1, 8), 50.0))
+    action, _ = _mixed()
+    alive = torch.ones(1, 8, dtype=torch.bool)
+    damage = apply_damage(
+        rules, api.ship_types(), ships, alive, torch.zeros(1, 8), quiet(action), alive
+    )
+    torch.testing.assert_close(damage.ships.shield_recharge_wait, torch.full((1, 8), DELAY))
+    torch.testing.assert_close(damage.ships.shield, torch.full((1, 8), 50.0))
+    assert not damage.shield_restored.any() and not damage.died.any()

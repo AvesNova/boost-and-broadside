@@ -206,7 +206,7 @@ complement 1 at every point, so `n` is the same as on a map without it.
   version 6).
 - **Shields.** Damage beyond the current shield breaks it, and the overkill is ignored.
   Any damage to a ship whose shield was already broken at tick start kills it. After a
-  delay without damage, the shield recharges at a fixed rate; both are per type. The delay
+  delay without a hit or damage, the shield recharges at a fixed rate; both are per type. The delay
   counts down and the shield recharges only on a **quiet** tick: the ship coasts, its stick
   straight or at a slight turn (the lightest level, either side), and holds its fire
   (`bnb.game.rules.QUIET_STICKS`, `bnb.game.physics.combat.quiet`). Any other input (boost,
@@ -214,6 +214,9 @@ complement 1 at every point, so `n` is the same as on a map without it.
   gains nothing that tick: the recharge needs the whole delay of unbroken quiet flight, a
   real disengagement (game version 5; in version 3 and 4 such an input only paused the
   delay, so quiet stretches between passes added up and the shield refilled between them).
+  A hit restarts the delay whatever its damage: a frontal hit the armour turns to nothing
+  (a head-on fraction of 0, as on Yongma and Jujak) counts as a hit (game version 22; before
+  it, only damage did).
 - **The arena** is a disc with no wall. A ship beyond the boundary takes
   `boundary_max_damage` per second times the smootherstep (the fields' quintic step) of
   its depth over `boundary_ramp_width`: little just past the edge, all of it from one ramp
