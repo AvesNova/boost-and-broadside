@@ -189,7 +189,8 @@ def zone_progress_events(
     team0_captured: torch.Tensor,
     team1_captured: torch.Tensor,
 ) -> torch.Tensor:
-    """(..., N, 2) held and absent: v1's meter-movement attribution (objective progress).
+    """(..., N, 2) held (>= 0) and absent (<= 0): v1's meter-movement attribution
+    (objective progress), each summed over the zones on its own (the gain and the loss).
 
     The side a movement favours splits |delta| among its ships inside the zone; the other
     side's ships outside it are charged |delta| (all of them, if none is outside). A

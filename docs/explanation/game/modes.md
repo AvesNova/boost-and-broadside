@@ -83,8 +83,10 @@ objective events and decides whether the match is won.
   (`bnb.game.modes.phase.win_loss`), a draw the rest: the result one-hot, except in team
   deathmatch (below). The RL outcome reward and the outcome head's targets read it; the
   win/draw/loss tallies read `result`.
-- `objective_progress` and `objective` are signed amounts per ship, each summing to zero
-  over the environment. Team deathmatch and sandbox emit zero.
+- `objective_progress` and `objective` are two amounts per ship, each as its gain and its
+  loss (B, N, 2): a ship credited in one zone and charged in another on one tick keeps
+  both. Each, gain plus loss, sums to zero over the environment. Team deathmatch and
+  sandbox emit zero.
 
 When a match ends, the environment gets a new map and a fresh mode state
 (`bnb.game.modes.phase.new_match`), and every ship spawns by the mode's placement.

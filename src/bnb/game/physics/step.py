@@ -20,7 +20,10 @@ winning score counts the enemy's active ships only (`modes.phase.mode_phase`). T
 hold through the episode resets (a caller passes the same tensor every tick), unless
 `resolve` is given the next episode's (`next_active`, team-size sampling): an environment
 whose episode ends this tick benches its next episode's slots from its reset on, and the
-caller passes those counts from the next tick.
+caller passes those counts from the next tick. Likewise a runtime may give an episode's
+active field count (`reset`'s `field_count`, `resolve`'s `next_field_count`; -1 for an
+environment that draws its own), the first fields of the map present
+(`spawning.present_fields`), drawn with the team sizes (`bnb.contracts.TeamSizes`).
 """
 
 import torch
@@ -44,12 +47,20 @@ from ..state import Ships, State, Sweep, apply, benched_of, blank, replace, wher
 from .bullets import fire, move_bullets
 from .combat import apply_damage, boundary_damage, hits, quiet
 from .flight import airframe_of, controls, flight_tick
-from .spawning import TickUniforms, draw_active_fields, new_map, spawn
+from .spawning import TickUniforms, draw_active_fields, new_map, present_fields, spawn
 
 
-def _new_matches(rules: Rules, arena: Environment, tick: TickUniforms, previous_mode) -> tuple:
+def _new_matches(
+    rules: Rules,
+    arena: Environment,
+    tick: TickUniforms,
+    previous_mode,
+    field_count: torch.Tensor | None = None,
+) -> tuple:
     """Each environment's new map and mode state (the mode's map on its own slices), with
-    its active fields drawn where its pool samples field counts (the rest absent)."""
+    its active fields drawn where its pool samples field counts (the rest absent), or
+    given: field_count (B,) int32, each environment's active fields, the first of the map
+    (-1: its own, as without it)."""
     fields, axis_x, axis_y = new_map(rules, arena.arena_radius, arena.map_scale, tick.map)
 
     def match(mode_rules: ModeRules, arena, uniforms, map_uniforms, fields, previous_mode):
@@ -75,6 +86,10 @@ def _new_matches(rules: Rules, arena: Environment, tick: TickUniforms, previous_
             arena.field_count_options,
             tick.active_fields,
         )
+        fields = replace(fields, present=present)
+    if field_count is not None:
+        given = present_fields(rules.num_fields, field_count.clamp_min(0))
+        present = torch.where(field_count[:, None] >= 0, given, fields.present)
         fields = replace(fields, present=present)
     return mode, fields, axis_x, axis_y
 
@@ -175,6 +190,7 @@ def reset(
     *,
     ship_type: torch.Tensor | None = None,
     active: torch.Tensor | None = None,
+    field_count: torch.Tensor | None = None,
 ) -> State:
     """A fresh state from (B, U) tick uniforms: new maps and modes, every ship spawned,
     tick 0. fogged (B,) bool: which environments hide what their teams cannot see (default
@@ -182,8 +198,9 @@ def reset(
     each ship's type, per environment (default the rules' lineup, `Rules.slot_types`); a
     ship keeps its type through the episode resets that follow. active (B, 2) int32: each
     team's active ships, the rest benched (see the module docstring; default every ship).
-    Raises ValueError for a card whose fire rate is not a whole number of ticks at the
-    rules' tick."""
+    field_count (B,) int32: each environment's active fields, the first of its map (-1 or
+    None: its own draw). Raises ValueError for a card whose fire rate is not a whole number
+    of ticks at the rules' tick."""
     ticks_between_shots(
         types.fire_rate, rules.tick_length
     )  # refuses a fire rate the tick cannot keep
@@ -203,7 +220,7 @@ def reset(
             raise ValueError(f"ship_type {tuple(ship_type.shape)}: need ({B}, {rules.num_ships})")
         ship_type = ship_type.to(device=device, dtype=torch.int32, copy=True)
     ships = replace(state.ships, ship_type=ship_type)
-    mode, fields, axis_x, axis_y = _new_matches(rules, arena, tick, state.mode)
+    mode, fields, axis_x, axis_y = _new_matches(rules, arena, tick, state.mode, field_count)
     everyone = torch.ones_like(state.mode.front, dtype=torch.bool)
     benched = None if active is None else benched_of(rules.ships_per_team, active)
     place = _placement(
@@ -261,6 +278,7 @@ def resolve(
     next_episode_uniforms: torch.Tensor | None = None,
     next_ship_type: torch.Tensor | None = None,
     next_active: torch.Tensor | None = None,
+    next_field_count: torch.Tensor | None = None,
 ) -> tuple[State, Events]:
     """Phases 4-8 on the moved state: hits, damage, the mode phase, clocks, death and
     respawn, episode end. action: the tick's action, as `move` was given (the shield's
@@ -272,7 +290,9 @@ def resolve(
     whose episode ends this tick (a drawn lineup per episode; None: each ship keeps its
     type). next_active (B, 2) int32: each team's active ships in the next episode of an
     environment whose episode ends this tick (team-size sampling; None: active's), which its
-    reset spawns and benches by; needs active."""
+    reset spawns and benches by; needs active. next_field_count (B,) int32: the active
+    fields of the next episode of an environment whose episode ends this tick (-1 or None:
+    its own draw, `reset`'s field_count)."""
     if next_active is not None and active is None:
         raise ValueError("next_active needs active: the counts of the episode being played")
     ships, bullets, match = state.ships, state.bullets, state.match
@@ -367,7 +387,7 @@ def resolve(
     if tick.arena_scale is not None:
         arena_scale = torch.where(done, draw_arena_scale(pools, tick.arena_scale), arena_scale)
         arena = sized(pools, arena_scale)
-    mode, fields, axis_x, axis_y = _new_matches(rules, arena, tick, phase.mode)
+    mode, fields, axis_x, axis_y = _new_matches(rules, arena, tick, phase.mode, next_field_count)
     fields = where(done, fields, state.fields)
     mode = where(done, mode, phase.mode)
     axis_x = torch.where(done, axis_x, match.spawn_axis_x)

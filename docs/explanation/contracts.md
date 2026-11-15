@@ -135,8 +135,9 @@ observation order. Rewards and diagnostics read it; controllers never do.
   reward step consumes it and trajectories never store it.
 - `boundary_damage`, `died`, `fired`, `spawned`, `killer` per ship; `done (B,)`.
 - `shield_lost` and `shield_restored`: what each shield actually lost and regained.
-- `objective_progress` and `objective`: the mode's two objective amounts, each summing to
-  zero over the environment.
+- `objective_progress` and `objective` (B, N, 2): the mode's two objective amounts, each
+  ship's gain and loss apart (a credit and a charge on one tick both kept); each amount,
+  gain plus loss, sums to zero over the environment.
 - `result (B,)`: the match result for team 0, nonzero only where `done`.
 - `enemy_damage_by_aspect (B, N, 4)` and `kill_aspect`: for the statistics, the hit damage
   each ship took from the enemy team by the hit's aspect class, and the class of the hit

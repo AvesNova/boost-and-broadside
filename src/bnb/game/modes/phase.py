@@ -23,8 +23,11 @@ KILL_MODES = (TEAM_DEATHMATCH, ELIMINATION)  # every death scores for the other 
 
 
 class Phase(NamedTuple):
-    """mode: the state after this tick; objective_progress, objective (B, N): the mode's
-    signed per-ship amounts, each summing to zero per environment; won (B,): the win rule
+    """mode: the state after this tick; objective_progress, objective (B, N, 2): the mode's
+    per-ship amounts as their gain (>= 0) and their loss (<= 0), each event in its own
+    column before the sum over zones, so a ship credited in one zone and charged in another
+    on the same tick keeps both; each amount (gain plus loss) sums to zero per environment;
+    won (B,): the win rule
     ended the match; result (B,) int32: the result for team 0 if it ended now (+1, -1, 0);
     respawn_open (B, 2) bool, by team: a dead ship of the team whose respawn wait is over
     respawns on this tick (Frontline: the team's respawn wave lands; every tick in the
@@ -60,7 +63,7 @@ def mode_phase(
     active (B, 2) int32 or None: each team's active ships (None: every ship), which sets
     team deathmatch's winning scores (`deathmatch_targets`). Elimination scores as team
     deathmatch with one kill per enemy ship to win: a team with no ship left loses."""
-    zero = torch.zeros_like(ships.x)
+    zero = torch.zeros((*ships.x.shape, 2), dtype=ships.x.dtype, device=ships.x.device)
     no = torch.zeros_like(mode.front, dtype=torch.bool)
     every_tick = torch.ones_like(mode.score, dtype=torch.bool)
     if mode_rules.name in KILL_MODES:
@@ -121,8 +124,8 @@ def mode_phase(
         won = capture.front.abs() >= mode_rules.front_threshold
         return Phase(
             state,
-            held.sum(-1),
-            capture.gain - capture.loss,
+            held,
+            torch.stack([capture.gain, -capture.loss], -1),
             won,
             torch.sign(capture.front).to(torch.int32),
             landed,

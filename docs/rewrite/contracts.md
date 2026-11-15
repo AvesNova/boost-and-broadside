@@ -405,6 +405,10 @@ cut; where they differ, this section and the code win.
     (`bnb.game.modes.phase.win_loss`). The outcome reward and the outcome head's
     targets (`critic.final_outcome`) read it through `Trajectory.win_loss`; `result`
     stays the win rates' and the tallies'.
+  - **`Events` (schema 6, 2026-11-16)**: `objective_progress` and `objective` are
+    (B, N, 2), each ship's gain (>= 0) and loss (<= 0), each summed over the zones on its
+    own, so a ship credited in one zone and charged in another on one tick keeps both; the
+    split critic's objective parts read them as they are. The game's numbers are unchanged.
   - **`REWARD_LEVELS`** (`bnb.contracts.trajectory`): damage, kill_death,
     objective_progress, objective, outcome. `Trajectory.reward` is
     `(L, R, S, len(REWARD_LEVELS))`, per level and weighted.
@@ -431,12 +435,16 @@ cut; where they differ, this section and the code win.
     symmetry, from one extra tick uniform (the last; only where a pool samples). The state
     keeps `Fields.present` (B, M); the observation's field rows gain `present`, an absent
     row zero but for it. `TrainConfig.active_fields` sets it on the training pools.
-  - **Team-size sampling (2026-11-16, arm A2):** `Pool.team_sizes` (`TeamSizes`: low, high,
-    weights; None, every slot) draws each episode's N-against-N size in the runtime
-    (keyed by seed, environment, episode), within `api.MINIMUM_SHIPS_PER_TEAM`; the slots
-    past N are benched. `api.resolve` takes `next_active` (B, 2) int32 for the
-    environments whose episode ends. No state leaf or observation column changes.
-    `TrainConfig.team_sizes` sets it on the training pools.
+  - **Team-size sampling (2026-11-16, arm A2):** `Pool.team_sizes` (`TeamSizes`; None,
+    every slot) draws each episode's two team sizes and its field count together in the
+    runtime from a table (`TeamSizes.table`: team 0's ships, team 1's ships, fields,
+    probability; keyed by seed, environment, episode), within
+    `api.MINIMUM_SHIPS_PER_TEAM`; the slots past each size are benched and the fields past
+    the count absent. `api.resolve` takes `next_active` (B, 2) int32 and
+    `next_field_count` (B,) int32 for the environments whose episode ends, `api.reset`
+    `field_count` (-1: the game's own draw); `api.active_field_count` reads a state's. No
+    state leaf or observation column changes. `TrainConfig.team_sizes` sets it on the
+    training pools. The distribution is a proposal ([a2-sampling-proposal.md](a2-sampling-proposal.md)).
   - **`Rules.pools`** (a tuple of `PoolRules`: environments, mode, arena radius, episode
     and respawn ticks) replaces `Rules.mode`, `arena_radius`, `episode_ticks` and
     `respawn_ticks`. Adjacent pools of one game merge; without pools, one game covers the

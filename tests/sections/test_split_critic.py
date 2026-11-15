@@ -15,6 +15,7 @@ from bnb.learn import returns, rewards
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import REWARD_EVENTS, RewardConfig
 from bnb.learn.schedules import Keypoints
+from bnb.models.yemong.critic import ReturnScale
 
 CONFIG = RewardConfig()
 PART = {name: index for index, name in enumerate(VALUE_LEVELS)}
@@ -62,13 +63,17 @@ def test_each_levels_parts_sum_to_its_zero_sum_reward(mode):
         for index, level in enumerate(REWARD_LEVELS):
             columns = [i for i, (name, _, _) in enumerate(REWARD_EVENTS) if name == level]
             torch.testing.assert_close(levels[..., index], events_rewarded[..., columns].sum(-1))
-        torch.testing.assert_close(
-            levels[..., REWARD_LEVELS.index("objective_progress")],
-            weights["objective_progress"] * events.objective_progress,
-        )
-        torch.testing.assert_close(
-            levels[..., REWARD_LEVELS.index("objective")], weights["objective"] * events.objective
-        )
+        for level in ("objective_progress", "objective"):
+            amount = getattr(events, level)  # (B, N, 2): the gains and the losses
+            torch.testing.assert_close(
+                levels[..., REWARD_LEVELS.index(level)], weights[level] * amount.sum(-1)
+            )
+            torch.testing.assert_close(
+                parts[..., PART[f"{level}_offence"]], weights[level] * amount[..., 0]
+            )
+            torch.testing.assert_close(
+                parts[..., PART[f"{level}_defence"]], weights[level] * amount[..., 1]
+            )
         score = events.win_loss[:, 0] - events.win_loss[:, 1]  # team 0's
         sign = torch.where(team == 0, 1.0, -1.0)
         torch.testing.assert_close(
@@ -106,6 +111,23 @@ def test_a_teams_offence_is_the_other_teams_defence(mode):
             for side in (0, 1):
                 gap = per_team[:, side, offence] + per_team[:, 1 - side, defence]
                 assert (gap.abs() <= 1e-5 * largest).all(), (level, gap.abs().max())
+
+
+def test_the_objective_parts_keep_a_ticks_gain_and_loss_apart():
+    """Frontline random play: a ship's objective progress gain part is never negative, its
+    loss part never positive, and a ship credited and charged on the same tick (holding one
+    zone while charged as absent from another) keeps both, not their net."""
+    both = 0
+    for _, _, events, parts, _ in _played("frontline"):
+        offence, defence = (
+            parts[..., PART["objective_progress_offence"]],
+            parts[..., PART["objective_progress_defence"]],
+        )
+        assert (offence >= 0).all() and (defence <= 0).all()
+        both += int(((offence > 0) & (defence < 0)).sum())
+        gain, loss = events.objective_progress.unbind(-1)
+        assert int(((gain > 0) & (loss < 0)).sum()) == int(((offence > 0) & (defence < 0)).sum())
+    assert both > 0, "random Frontline play should credit and charge a ship on one tick"
 
 
 def test_the_outcome_parts_are_the_win_and_the_loss_weights():
@@ -187,9 +209,37 @@ def test_a_premium_weighs_only_the_damage_and_kill_death_offence():
         torch.zeros(len(VALUE_LEVELS)).index_fill(0, torch.tensor(offence), 1.0),
     )  # fmt: skip
     torch.testing.assert_close(premium - even, only)
-    # the targets and the return scale's sum are each part's own, at any premium
+    # the targets are each part's own at any premium; the return scale's sum moves as the
+    # advantage does, by the premium levels' offence returns once more
     torch.testing.assert_close(premium_returns, even_returns)
-    torch.testing.assert_close(premium_total, even_total)
+    _, only_total, _ = _advantage(
+        rewards_, values, following, done, next_done, alive, config,
+        torch.zeros(len(VALUE_LEVELS)).index_fill(0, torch.tensor(offence), 1.0),
+    )  # fmt: skip
+    torch.testing.assert_close(premium_total - even_total, only_total)
+
+
+def test_the_return_scale_follows_the_premium():
+    """Where the premium levels' offence is the only reward, a premium p multiplies the
+    advantage and the return scale's sum by p alike, so the advantage over the return scale
+    is unchanged: the premium sets the balance of offence and defence, not the step."""
+    rewards_, values, following, done, next_done, alive = _gae_case(2)
+    offence = torch.tensor([PART["damage_offence"], PART["kill_death_offence"]])
+    only = torch.zeros(len(VALUE_LEVELS)).index_fill(0, offence, 1.0).to(torch.float64)
+    rewards_, values, following = (x * only for x in (rewards_, values, following))
+    config = LearnerConfig()
+    scaled = {}
+    for premium in (1.0, 2.0, 3.5):
+        advantage, total, _ = _advantage(
+            rewards_, values, following, done, next_done, alive, config,
+            torch.tensor(returns.part_weights(premium)),
+        )  # fmt: skip
+        scale = ReturnScale(decay=0.0, floor=0.0, device=torch.device("cpu")).update(
+            total.float(), alive
+        )
+        scaled[premium] = advantage.float() / scale
+    torch.testing.assert_close(scaled[2.0], scaled[1.0])
+    torch.testing.assert_close(scaled[3.5], scaled[1.0])
 
 
 # ------------------------------------------------------------------ the schedule
@@ -226,9 +276,9 @@ def segment(module_global_generator):
 
 def test_the_learner_weighs_the_advantage_and_never_the_targets(segment, global_generator):
     """Through the learner's returns over a real segment: a 2:1 premium (at the update's
-    steps, by its schedule) moves the advantage of the damage and kill/death offence only;
-    the critic's targets (each part's returns), the outcome's and the return scale's sum
-    stay as they are."""
+    steps, by its schedule) moves the advantage of the damage and kill/death offence only,
+    and the return scale's sum by the same weights; the critic's targets (each part's
+    returns) and the outcome's stay as they are."""
     net, runner = segment
     anneal = Keypoints((0, 1000), (2.0, 1.0))
     prepared = {}
@@ -244,8 +294,14 @@ def test_the_learner_weighs_the_advantage_and_never_the_targets(segment, global_
         learner.part_weights()
         assert learner.offence_premium == (1.5 if name == "premium" else 1.0)
     even, premium = prepared["even"], prepared["premium"]
-    for name in ("level_returns", "total", "outcome_targets", "monte_carlo_returns"):
+    for name in ("level_returns", "outcome_targets", "monte_carlo_returns"):
         torch.testing.assert_close(premium[name], even[name])
+    team = torch.zeros_like(alive[..., : even["level_returns"].shape[-2]], dtype=torch.int64)
+    own = alive[..., : even["level_returns"].shape[-2]]
+    mixed = returns.team_mixed_levels(team, own, even["level_returns"], learner.team_spirit)
+    for name, premium_value in (("even", 1.0), ("premium", 2.0)):
+        weights = torch.tensor(returns.part_weights(premium_value))
+        torch.testing.assert_close(prepared[name]["total"], (mixed * weights).sum(-1))
     moved = premium["level_advantage"] - even["level_advantage"]
     offence = [PART["damage_offence"], PART["kill_death_offence"]]
     torch.testing.assert_close(moved[..., offence], even["level_advantage"][..., offence])
