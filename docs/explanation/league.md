@@ -584,7 +584,11 @@ uv run --no-sync bnb ratings RUN --with POLICY@T=0.7 POLICY POLICY@T=1.4
 `bnb evaluate A B --out DIR` (`bnb.league.evaluation`) decides between two policies,
 normally two arms' final checkpoints, by win probability over a fixed set of conditions:
 head-to-head A against B in each mode and at several team sizes, and each policy's
-break-even curve against 20 scripted ships (the crossover's fit). A group-sequential test
+break-even curve against 20 scripted ships (the crossover's fit). Every condition plays
+its preset's own arena at every team size (`--map-rule preset`; every map is fixed-size
+until an agent has trained successfully on variable-size maps, the author's rule of
+2026-11-15), and the density rule's arenas are the map-size arm's opt-in
+(`--map-rule density`). A group-sequential test
 (`bnb.league.sequential`) on the overall score stops at a planned look with A wins, B
 wins or a tie, and a gate holds a winner that is clearly worse in one mode to a tie.
 Batches go to the conditions where they most reduce the overall score's variance per

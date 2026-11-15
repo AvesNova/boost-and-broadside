@@ -459,7 +459,7 @@ def test_a_pilot_records_every_batch_and_resumes_past_it(tmp_path, tiny_presets)
 
 
 @pytest.mark.usefixtures("global_generator")
-def test_the_lineups_are_mirrored_and_keyed_by_condition_and_batch():
+def test_the_lineups_are_mirrored_and_keyed_by_condition_and_batch(tiny_presets):
     config = _config()
     condition = evaluation_settings_condition("deathmatch_1v1")
     first = evaluation.lineups(config, condition, 3, 16, (0, 1))
@@ -472,6 +472,26 @@ def test_the_lineups_are_mirrored_and_keyed_by_condition_and_batch():
         crossover.lineup_draw(0, 3, 16, 1, (0, 1)),
         crossover.lineup_draw(0, 3, 16, 1, (0, 1), stream="crossover_lineup"),
     )
+
+
+def test_every_condition_plays_its_presets_own_arena_unless_the_density_rule_is_asked():
+    fixed = EvaluationConfig()
+    for condition in CONDITIONS:
+        base = api.PRESETS[fixed.presets[evaluation.MODES.index(condition.mode)]]
+        game = evaluation.game_of(condition, fixed)
+        assert game.arena_radius == base.arena_radius
+        size = condition.ships_per_team or fixed.crossover_config().ships_per_team
+        assert game.ships_per_team == size
+    density = EvaluationConfig(map_rule="density")
+    small = evaluation.game_of(evaluation_settings_condition("elimination_1v1"), density)
+    base = api.PRESETS["real_scale_elimination"]
+    assert small.arena_radius == api.arena_radius_for(base, 1) < base.arena_radius
+    assert evaluation.game_of(evaluation_settings_condition("elimination_5v5"), density) == base
+    # break-even's density map is the opponent's fleet's, whatever the larger game
+    wide = evaluation.game_of(evaluation_settings_condition("elimination_break_even"), density)
+    assert wide.arena_radius == api.arena_radius_for(base, density.opponent_count)
+    with pytest.raises(ValueError, match="map rule"):
+        EvaluationConfig(map_rule="scaled")
 
 
 def evaluation_settings_condition(name: str) -> Condition:

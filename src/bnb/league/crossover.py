@@ -3,11 +3,13 @@ opponent fleet (by default 20 of Imugi's).
 
 The opponent always fields `opponent_count` ships; the policy fields a varying number,
 `count`, from `minimum_count` to `maximum_count`. One engine per mode is built at the larger
-of the two sizes (`bnb.league.matches.Arena` with benching: the policy's unused slots are
-benched, stay dead and out of play, and team deathmatch's winning score counts the enemy's
-active ships). Every game draws its own lineup, each slot one of `lineup_types` uniformly,
-both teams flying it slot for slot (the policy's benched ships are its lineup's last
-slots); the draw is keyed by the seed, the batch and the environment (`lineup_draw`).
+of the two sizes (`break_even_game`: on the preset's own arena by default, on the density
+rule's for the opponent's fleet as the map-size arm's opt-in; `bnb.league.matches.Arena`
+with benching: each team's unused slots are benched, stay dead and out of play, and team
+deathmatch's winning score counts the enemy's active ships). Every game draws its own
+lineup, each slot one of `lineup_types` uniformly, both teams flying it slot for slot (a
+team's benched ships are its lineup's last slots); the draw is keyed by the seed, the
+batch and the environment (`lineup_draw`).
 
 The measurement (`measure`), batch by batch, each batch `blocks` blocks of
 `block_environments` games, each block at one count, its games split evenly between the
@@ -48,6 +50,7 @@ from bnb.contracts import GameConfig
 from bnb.game import VERSION as GAME_VERSION
 from bnb.streams import keyed_hash, stream_key
 
+from .evaluation_settings import MAP_RULES
 from .matches import Arena, ArenaConfig, Player
 from .tournament import identity
 
@@ -92,6 +95,32 @@ class CrossoverConfig:
         """The bracket's counts inside the policy's range, in order, each once."""
         low, high = self.minimum_count, self.maximum_count
         return sorted({min(max(count, low), high) for count in self.bracket})
+
+
+def sized_game(
+    base: GameConfig, ships_per_team: int, map_rule: str = "preset", map_ships: int | None = None
+) -> GameConfig:
+    """`base` at `ships_per_team` a side on the map rule's arena (`MAP_RULES`): "preset",
+    the base's own radius at every size (the default: every map fixed-size, the author's
+    rule of 2026-11-15); "density", the density rule's radius for `map_ships` a side
+    (default ships_per_team; `bnb.game.api.arena_radius_for`), for the map-size arm."""
+    from bnb.game.modes.rules import arena_radius_for
+
+    if map_rule not in MAP_RULES:
+        raise ValueError(f"map rule {map_rule!r}: one of {MAP_RULES}")
+    radius = base.arena_radius
+    if map_rule == "density":
+        radius = arena_radius_for(base, ships_per_team if map_ships is None else map_ships)
+    if ships_per_team == base.ships_per_team and radius == base.arena_radius:
+        return base
+    return dataclasses.replace(base, ships_per_team=ships_per_team, arena_radius=radius)
+
+
+def break_even_game(base: GameConfig, config: CrossoverConfig, map_rule: str = "preset"):
+    """Break-even's game: `base` at the larger fleet's size (`CrossoverConfig.ships_per_team`),
+    on the base's own arena ("preset") or the density rule's for the opponent's fleet
+    ("density"; `sized_game`)."""
+    return sized_game(base, config.ships_per_team, map_rule, map_ships=config.opponent_count)
 
 
 @dataclasses.dataclass(frozen=True)

@@ -2,20 +2,28 @@
 conditions and its settings, kept free of torch so the command line starts without it."""
 
 import dataclasses
+from typing import Literal
 
 MODES = ("frontline", "deathmatch", "elimination")
 HEAD_TO_HEAD, BREAK_EVEN = "head_to_head", "break_even"
+# The map rules (`bnb.league.crossover.sized_game`): "preset", every game on its preset's
+# own arena radius at every team size (the default: the author's rule, 2026-11-15, every map
+# fixed-size until an agent has trained successfully on variable-size maps); "density", a
+# size other than the preset's on the density rule's radius (`bnb.game.api.arena_radius_for`),
+# for the map-size arm.
+MAP_RULES = ("preset", "density")
 
 
 @dataclasses.dataclass(frozen=True)
 class Condition:
     """One condition: its name, mode, kind (HEAD_TO_HEAD or BREAK_EVEN) and ships per team
-    (a head-to-head's team size; break-even's game size, the opponent's count)."""
+    (a head-to-head's team size; None for break-even, whose game is the larger of
+    `EvaluationConfig.opponent_count` and `maximum_count` a side)."""
 
     name: str
     mode: str
     kind: str
-    ships_per_team: int
+    ships_per_team: int | None = None
 
 
 def _head_to_head(mode: str, size: int) -> Condition:
@@ -33,9 +41,9 @@ CONDITIONS = (
     _head_to_head("frontline", 10),
     _head_to_head("deathmatch", 10),
     _head_to_head("elimination", 10),
-    Condition("frontline_break_even", "frontline", BREAK_EVEN, 20),
-    Condition("deathmatch_break_even", "deathmatch", BREAK_EVEN, 20),
-    Condition("elimination_break_even", "elimination", BREAK_EVEN, 20),
+    Condition("frontline_break_even", "frontline", BREAK_EVEN),
+    Condition("deathmatch_break_even", "deathmatch", BREAK_EVEN),
+    Condition("elimination_break_even", "elimination", BREAK_EVEN),
 )
 BY_NAME = {condition.name: condition for condition in CONDITIONS}
 
@@ -44,8 +52,10 @@ BY_NAME = {condition.name: condition for condition in CONDITIONS}
 class EvaluationConfig:
     """The suite's settings, recorded in settings.json.
 
-    conditions: the scored conditions' names; presets: each mode's base preset (5v5, its
-    map the 5v5 conditions'); lineup_types: the ship types' names a slot is drawn from;
+    conditions: the scored conditions' names; presets: each mode's base preset
+    (5v5); map_rule: one of `MAP_RULES` ("preset": every condition on its preset's own
+    arena radius at every size; "density": the density rule's radius at other sizes, for
+    the map-size arm); lineup_types: the ship types' names a slot is drawn from;
     opponent and opponent_count: break-even's opponent and its ships; minimum_count and
     maximum_count: the players' counts there; bracket: its first batch's counts;
     head_to_head_blocks and head_to_head_environments, break_even_blocks and
@@ -63,6 +73,7 @@ class EvaluationConfig:
         "real_scale_deathmatch",
         "real_scale_elimination",
     )
+    map_rule: Literal["preset", "density"] = "preset"
     lineup_types: tuple[str, ...] = ("Yongma", "Jujak")
     opponent: str = "imugi"
     opponent_count: int = 20
@@ -89,6 +100,8 @@ class EvaluationConfig:
             raise ValueError(f"unknown conditions {unknown}; choose from {list(BY_NAME)}")
         if len(self.presets) != len(MODES):
             raise ValueError(f"presets {self.presets}: one per mode, {MODES}")
+        if self.map_rule not in MAP_RULES:
+            raise ValueError(f"map rule {self.map_rule!r}: one of {MAP_RULES}")
         if self.break_even_blocks < 2 or self.break_even_blocks % 2:
             raise ValueError(f"{self.break_even_blocks} break-even blocks: even, A's and B's")
         if self.initial_batches < 1 or self.budget_hours <= 0.0:

@@ -6,8 +6,10 @@ win probability over a fixed set of conditions, with a group-sequential test
 **Conditions** (`CONDITIONS`): head-to-head A against B in each mode at 5v5 (the mode's
 preset map), deathmatch and elimination at 1v1 and 2v2, and every mode at 10v10; and the
 break-even condition per mode, each player against `opponent_count` (20) scripted ships
-with its own count varied (`bnb.league.crossover`). Every size but the preset's plays the
-density rule's map (`bnb.game.api.arena_radius_for`). Every game is played with fog of war
+with its own count varied (`bnb.league.crossover`). Every condition plays its preset's own
+arena radius at every size (`map_rule` "preset": every map fixed-size, the author's rule
+of 2026-11-15); the density rule's map (`bnb.game.api.arena_radius_for`) is the map-size
+arm's opt-in (`map_rule` "density"). Every game is played with fog of war
 (the engine's default), the networks sampling at temperature 1, each game's lineup drawn
 slot by slot from `lineup_types` with equal chance and flown by both teams (`Arena`'s
 game_lineups, keyed by the seed, the condition and the batch), and the seats alternating
@@ -63,7 +65,7 @@ import torch
 
 from bnb.contracts import GameConfig
 from bnb.game import VERSION as GAME_VERSION
-from bnb.runtime.opponents import stored_name
+from bnb.runtime.opponents import shown_name, stored_name
 
 from . import crossover, sequential
 from .evaluation_settings import (
@@ -95,19 +97,15 @@ def weights(conditions: list[Condition]) -> dict[str, float]:
 
 
 def game_of(condition: Condition, config: EvaluationConfig) -> GameConfig:
-    """A condition's game: its mode's preset at its size, on the preset's map at the preset's
-    size and the density rule's otherwise (`arena_radius_for`)."""
+    """A condition's game: its mode's preset at its size (break-even's, the larger fleet's,
+    `crossover.break_even_game`), on the arena of `config.map_rule`
+    (`crossover.sized_game`: the preset's own radius at every size by default)."""
     from bnb.game.api import PRESETS
-    from bnb.game.modes.rules import arena_radius_for
 
     base = PRESETS[config.presets[MODES.index(condition.mode)]]
-    if condition.ships_per_team == base.ships_per_team:
-        return base
-    return dataclasses.replace(
-        base,
-        ships_per_team=condition.ships_per_team,
-        arena_radius=arena_radius_for(base, condition.ships_per_team),
-    )
+    if condition.kind == BREAK_EVEN:
+        return crossover.break_even_game(base, config.crossover_config(), config.map_rule)
+    return crossover.sized_game(base, condition.ships_per_team, config.map_rule)
 
 
 # ---- tallies and estimates
@@ -424,7 +422,9 @@ def read_settings(directory: pathlib.Path) -> tuple[dict, EvaluationConfig]:
         for field in dataclasses.fields(EvaluationConfig)
         if isinstance(config.get(field.name), list)
     }
-    return held, EvaluationConfig(**{**config, **tuples})
+    # the opponent is recorded as its identity (`settings_entry`); the settings name it
+    opponent = shown_name(config["opponent"])
+    return held, EvaluationConfig(**{**config, **tuples, "opponent": opponent})
 
 
 # ---- the test
@@ -517,14 +517,16 @@ def next_variance(config: EvaluationConfig, looks_taken: int, maximum: float) ->
 # ---- playing
 
 
-def lineups(config: EvaluationConfig, condition: Condition, batch: int, games: int, types):
-    """(games, ships per team) the batch's lineups, keyed by the seed, the condition and the
-    batch (`crossover.lineup_draw`)."""
+def lineups(
+    config: EvaluationConfig, condition: Condition, batch: int, games: int, types
+) -> torch.Tensor:
+    """(games, ships per team of the condition's game) the batch's lineups, keyed by the
+    seed, the condition and the batch (`crossover.lineup_draw`)."""
     return crossover.lineup_draw(
         config.seed,
         batch,
         games,
-        condition.ships_per_team,
+        game_of(condition, config).ships_per_team,
         types,
         stream=f"evaluation_lineup/{condition.name}",
     )

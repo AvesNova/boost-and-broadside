@@ -19,20 +19,20 @@ These are the games that decide each pairwise arm, and the Elo ladder we build f
 | 1 | `frontline_5v5` | frontline | 5v5 | preset |
 | 2 | `deathmatch_5v5` | deathmatch | 5v5 | preset |
 | 3 | `elimination_5v5` | elimination | 5v5 | preset |
-| 4 | `deathmatch_1v1` | deathmatch | 1v1 | density rule **(provisional)** |
-| 5 | `deathmatch_2v2` | deathmatch | 2v2 | density rule **(provisional)** |
-| 6 | `elimination_1v1` | elimination | 1v1 | density rule **(provisional)** |
-| 7 | `elimination_2v2` | elimination | 2v2 | density rule **(provisional)** |
-| 8 | `frontline_10v10` | frontline | 10v10 | density rule **(provisional)** |
-| 9 | `deathmatch_10v10` | deathmatch | 10v10 | density rule **(provisional)** |
-| 10 | `elimination_10v10` | elimination | 10v10 | density rule **(provisional)** |
-| 11 | `frontline_break_even` | frontline | each arm against 20 Imugi, its own count varied | density rule at 20 **(provisional)** |
-| 12 | `deathmatch_break_even` | deathmatch | break-even | density rule at 20 **(provisional)** |
-| 13 | `elimination_break_even` | elimination | break-even | density rule at 20 **(provisional)** |
+| 4 | `deathmatch_1v1` | deathmatch | 1v1 | preset |
+| 5 | `deathmatch_2v2` | deathmatch | 2v2 | preset |
+| 6 | `elimination_1v1` | elimination | 1v1 | preset |
+| 7 | `elimination_2v2` | elimination | 2v2 | preset |
+| 8 | `frontline_10v10` | frontline | 10v10 | preset |
+| 9 | `deathmatch_10v10` | deathmatch | 10v10 | preset |
+| 10 | `elimination_10v10` | elimination | 10v10 | preset |
+| 11 | `frontline_break_even` | frontline | each arm against 20 Imugi, its own count varied | preset |
+| 12 | `deathmatch_break_even` | deathmatch | break-even | preset |
+| 13 | `elimination_break_even` | elimination | break-even | preset |
 | 14–19 | — | all | 5v5 at map scales 0.5× and 2× | scaled (**only if variable maps survive their arm**; not in the command) |
 
 - **Games:** conditions 1–10 are A against B. The base games are the real-scale presets (`--presets`), and Imugi is Imugi (`--opponent scripted`).
-- **Map rule (provisional):** every size other than 5v5 uses the game's density rule (`api.arena_radius_for`). The radius scales with the fleet, down to each mode's minimum. The final choice between this and the preset's 5v5 map is deferred until the map-size arm shows whether the agent trains on varied maps. Both arms of a pair always use the same rule.
+- **Map rule:** every condition plays its preset's own arena radius at every team size, 1v1 to break-even's (`--map-rule preset`, the default). This is the author's rule of 2026-11-15: every map is fixed-size until an agent has trained successfully on variable-size maps (the map-size arm, A1). The density rule (`--map-rule density`: `api.arena_radius_for`, the radius scaling with the fleet down to each mode's minimum; break-even at the opponent's 20) is an opt-in setting for that arm. Both arms of a pair always use the same rule.
 - **Break-even** reuses `bnb crossover`'s fit and allocation (`bnb.league.crossover`). One engine plays both arms: half of each batch's blocks are A against 20 Imugi, half B, each at the counts its own fit asks for, on the same lineups and maps.
 
 ## Score
@@ -98,7 +98,7 @@ Each batch prints a line with the overall score so far and the next look's ETA a
 
 ## Design pilot
 
-rl-v20 against rl-mix-kl (a close pair, 1024 games per head-to-head condition) and against rl-dm (a far pair, 512), every arm's 75M exponential average, on the laptop's RTX 4070 in the performance profile, 2026-11-15.
+rl-v20 against rl-mix-kl (a close pair, 1024 games per head-to-head condition) and against rl-dm (a far pair, 512), every arm's 75M exponential average, on the laptop's RTX 4070 in the performance profile, 2026-11-15. The pilot played the density rule's maps at every size but 5v5, before the fixed-map rule; its variances and costs at those sizes stand until a pilot on the preset maps replaces them.
 
 **Per condition (close pair):**
 
@@ -136,7 +136,7 @@ rl-v20 against rl-mix-kl (a close pair, 1024 games per head-to-head condition) a
 - 20v20 on the preset map: 26 of 64, with 14 draws;
 - 20v20 on 15.6 km: none of 64, with about 8 kills against 27 deaths per game, and every game over in about 2 minutes.
 
-Break-even always plays on the 20-a-side map. For an agent trained on one map size, frontline break-even therefore measures transfer to a map twice the size, not skill. Deathmatch's 20-a-side map (8.4 km) and elimination's (15.6 km, no zones) work. **(open: the author's decision)**
+The pilot's break-even played on the 20-a-side density map. For an agent trained on one map size, frontline break-even there measured transfer to a map twice the size, not skill. Break-even now plays the preset map (the map rule above).
 
 **Break-even's range.** Our count stops at 20, Imugi's count. An arm weaker than Imugi at parity has no crossing inside the range, so its fit extrapolates past 20; rl-dm in deathmatch won 5 of 32 at 20 against 20. If neither arm crosses, the run stops with an error after `initial_batch_limit` batches.
 
