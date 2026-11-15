@@ -16,6 +16,16 @@ Updated 2026-11-15 10:30; the conversation behind it is in [briefing.md](briefin
 7. **For review (drafts, 2026-11-15):** [decision-rule.md](decision-rule.md) (how every decision is measured; the late-climbing check and δ from the seed pairs are proposals), [figures-brainstorm.md](figures-brainstorm.md) (a wide list to narrow; items needing logging before the runs are marked), [run-order.md](run-order.md) (waves against one chain).
 8. **Older unmerged branches** (tuning and evaluation records from 2026-11-10 to 11-13: tune/ships-r9m2, tune/respawn-waves, eval/yongma-lead, eval/r9m2-maps, eval/morning, tune/frontline-design, tune/duel-deny, run/onehead-champion, probe/position-aliasing, perf/gpu-box, feat/nearest-mlp, feat/crossover, work/design-v3 (WIP, failing tests), wip/playground): not merged into v2. Merge, keep as records, or delete?
 
+## Paused 2026-11-15 21:00 (laptop shutdown): resume here
+
+Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On resume: read each branch's progress.md (it has a resume note), merge the finished ones, relaunch the unfinished ones.
+- `feat/split-critic` (ed7f2c8a): **done**, with HL-Gauss critic targets and 2 padding bins per side. For the author: should the return scale follow the premium; are the sign-split objective levels acceptable; is retiring two v1 fixture checks acceptable. The single-value (`summed_reward`) arm is removed.
+- `check/freeze-final`: measurement unit `freeze-final.service` stopped mid-run (per-batch records; resume command in its progress.md); reports not written yet.
+- `feat/gru-temporal`, `feat/hl-gauss-codes`: in progress, saved as WIP (see their progress.md).
+- Not started: the audit of which Yes/Maybe arms need code (stopped; rerun read-only), then building the missing ones; then the repo cleanup and settings files per run.
+- Drafts awaiting the author: decision-rule.md, figures-brainstorm.md, run-order.md.
+- The main checkout's `.venv` was rebuilt at 20:45 after a committed symlink broke it (`.gitignore` now ignores `.venv` as file or directory).
+
 ## Decisions
 
 ### 2026-11-14
