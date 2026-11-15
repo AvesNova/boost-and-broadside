@@ -35,6 +35,15 @@ FORGET_WEIGHT = 0.01
 EXPLORE_RINGS = 8
 EXPLORE_CELLS = hex_cells(EXPLORE_RINGS)[1]
 EXPLORE_SECONDS = 20.0
+_EXPLORE_CELLS_ON: dict[torch.device, torch.Tensor] = {}
+
+
+def explore_cells(device: torch.device) -> torch.Tensor:
+    """(C, 2) EXPLORE_CELLS on `device`, copied once per device: a copy inside a step would
+    be a host-to-device copy in every tick, which a CUDA graph's capture refuses."""
+    if device not in _EXPLORE_CELLS_ON:
+        _EXPLORE_CELLS_ON[device] = EXPLORE_CELLS.to(device)
+    return _EXPLORE_CELLS_ON[device]
 
 
 @contract
@@ -144,7 +153,7 @@ def track_seen(
     own = obs.ships[:, : obs.ships.shape[-2] // 2]
     alive = own[..., SHIP["alive"]] > 0.5
     vision = per_ship(characteristics.vision_range, own[..., SHIP["ship_type"]].to(torch.int32))
-    cells = EXPLORE_CELLS.to(own.device)
+    cells = explore_cells(own.device)
     arena_radius = obs.globals[:, None, GLOBAL["arena_radius"]]
     # (R, C, S): each cell's offset from each own ship
     off_x = (cells[:, 0] * arena_radius)[..., None] - own[..., SHIP["x"]][:, None, :]

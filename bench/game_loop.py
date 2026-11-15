@@ -12,10 +12,11 @@ Yongma's, the last K Jujak's), a lineup (`LINEUPS`) and two players (each a doct
 type: `Player`). A side's doctrine table per view is (2B, 2K, WIDTH): every Yongma row
 carries the side's Yongma doctrine, every Jujak row its Jujak doctrine. Side A sits on team
 0 in the even environments of a group. The game: `real_scale_deathmatch` with no fields and
-no zones, the episode `--seconds` long (every environment ends on the same tick; the game
-resets itself), a dead ship respawning after the mode's 10 s. A game's result for A is the
-sign of its points minus B's,
-a side's points the other side's deaths of any cause (team deathmatch's score).
+no zones on the density rule's map (`Loop`'s `fields` and `fixed_map` keep the preset's
+fields and its own map), the episode `--seconds` long (every environment ends on the same
+tick; the game resets itself), a dead ship respawning after the mode's 10 s. A game's result
+for A is the sign of its points minus B's, a side's points the other side's deaths of any
+cause (team deathmatch's score).
 
 Statistics per environment (`Tally`), accumulated in the tick: kills by killer side, by
 killer and victim type and by the killing hit's aspect class (`bnb.contracts.ASPECTS`);
@@ -48,7 +49,6 @@ from bnb.controllers.imugi_doctrine import WIDTH, Doctrine, from_named, pack
 from bnb.game import api, ships
 from bnb.game.handling.characteristics import characteristics
 from bnb.game.ship_types import ShipTypes
-from bnb.streams import decision_key_from
 
 PRESET = "real_scale_deathmatch"
 # The harness's games (game v13: the rating games are elimination and frontline): each the
@@ -395,18 +395,25 @@ class Loop:
         arena_scale: float = 1.0,
         mode: str = "deathmatch",
         settings: dict[str, float] | None = None,
+        fields: bool = False,
+        fixed_map: bool = False,
     ) -> None:
         self.device = torch.device(device)
         self.mode = mode
         base_game = api.PRESETS[MODES[mode]]
         # the game's per-size radius (the density rule, the scale, then the mode's floor:
-        # deathmatch at least 3000 m at real scale, game v16)
-        radius = api.arena_radius_for(base_game, ships_per_team, arena_scale)
+        # deathmatch at least 3000 m at real scale, game v16); fixed_map: the preset's own
+        # map at every size (the game since 2026-11-15); fields: the preset's fields
+        radius = (
+            base_game.arena_radius * arena_scale
+            if fixed_map
+            else api.arena_radius_for(base_game, ships_per_team, arena_scale)
+        )
         game = dataclasses.replace(
             base_game,
             ships_per_team=ships_per_team,
             arena_radius=radius,
-            num_fields=0,
+            num_fields=base_game.num_fields if fields else 0,
             episode_seconds=seconds,
             # deathmatch: no early win, every game runs the whole clock
             **(dict(kills_per_ship=1000) if mode == "deathmatch" else {}),
@@ -495,7 +502,8 @@ class Loop:
         )
         reset = first_tick.expand(2 * B)
         alive_start = api.display(state)["ships.alive"].bool()
-        keys = decision_key_from(torch.default_generator, reset.shape[0])
+        # the decision keys on the loop's device, from its default generator (traceable)
+        keys = torch.randint(0, 1 << 32, (reset.shape[0],), device=self.device, dtype=torch.int64)
         action, carry, _ = self.agent.step(carry, view, reset, keys)
         action = Action.unpack(action.packed().reshape(B, N, 3).to(torch.int32))
         moved, sweep = api.move(rules, types, state, action, api.spread(rules, B, self.device))

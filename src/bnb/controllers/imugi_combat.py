@@ -21,10 +21,10 @@ from bnb.streams import purpose_key, row_uniforms
 from .imugi_doctrine import Doctrine
 from .imugi_doctrine import per_ship as doctrine_of
 from .imugi_memory import (
-    EXPLORE_CELLS,
     ImugiCarry,
     Recall,
     commit,
+    explore_cells,
     fresh_carry,
     remember,
     time_unit,
@@ -897,7 +897,7 @@ def explore_target(fleet: Context) -> tuple[torch.Tensor, torch.Tensor]:
     boundary to its centre of mass (distances shortened for cells ahead of the team's mean
     velocity), or the least recently seen one inside if none is unseen, or the centre if
     no cell is inside."""
-    cells = EXPLORE_CELLS.to(fleet.x.device)  # (C, 2) in arena radii
+    cells = explore_cells(fleet.x.device)  # (C, 2) in arena radii
     cell_x = cells[:, 0] * fleet.arena_radius  # (R, C)
     cell_y = cells[:, 1] * fleet.arena_radius
     seen = fleet.carry.seen

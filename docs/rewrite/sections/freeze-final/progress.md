@@ -41,3 +41,25 @@ Branch `check/freeze-final` (from `feat/imugi-boundary` a8919b27). Notes in orde
 - **Game version 22** (one bump for the check; the docstring notes the shield and vizia).
   The committed reference was regenerated; its 48 random ticks had no such hit, so its numbers
   did not change.
+
+## 3. Respawn check (report only, nothing changed)
+
+`tune/respawn-waves` was deleted in a cleanup; its last commit 972fd4dc is still readable
+(`git show 972fd4dc:docs/rewrite/sections/respawn-waves/progress.md`). Its recommendation
+(2026-11-13): Frontline a minimum 8 s then waves every 20 s, no capture effect; deathmatch a
+fixed 8 s, no waves. What it found about waves: at 5v5 they leave P(same team next) at
+0.47-0.53 (no momentum), but they do shorten Frontline games (median 506 against 570 s,
+first capture earlier); in deathmatch they cost 7-14% of the kill rate.
+
+The game now (v22, `api.rules_of` of each preset):
+
+| preset | respawn wait | waves |
+|---|---|---|
+| real_scale_deathmatch | 10 s fixed (preset override) | none (waves are Frontline only) |
+| real_scale_frontline | 8 s minimum | every 20 s per team (`[mode] wave_seconds`) |
+| real_scale_elimination | none (no respawn) | none |
+
+So Frontline follows the recommendation; deathmatch does not: it stays at 10 s, which
+`modes/rules.py` records as the author's choice of 2026-11-13 ("4200 m, with a 10 s respawn
+wait (the clock's would be 8 s)"). The branch measured 8 s at +3% kills a minute against
+10 s, and life and trades unchanged.
