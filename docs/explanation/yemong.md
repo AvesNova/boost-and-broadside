@@ -125,10 +125,25 @@ quantity's mean and its spread, as one vector made of **softmax groups**: short 
 probabilities, each run summing to one, like a probability distribution over a few bins.
 The next-state head predicts the same vector, so a forecast carries its own uncertainty.
 
-- **Binned codes** (`bnb.models.yemong.codes.scalar_encode`): a scalar such as the shield
-  or the energy is spread over a fixed set of bins between a low and a high value. The two
-  bins around the mean share its weight, and a wider spread moves weight to further bins.
-  Velocity uses a two-dimensional binned code on a scale compressed above a knee speed.
+- **Binned codes** (`bnb.models.yemong.codes.hl_gauss_scalar_encode`): a scalar such as
+  the shield or the energy is an HL-Gauss code (Farebrother et al. 2024, "Stop
+  Regressing") over a fixed set of bins between a low and a high value, with two padding
+  bins past each end: a Gaussian integrated over each bin, of sigma 0.75 bins for an
+  exactly known value and `sqrt(0.75^2 + spread^2)` (the spread in bins) for an uncertain
+  one. Near an end, where the Gaussian would spill past the padding, the outer bins take
+  the mass that keeps the code's mean and variance exact, so the decoded mean is the value
+  itself everywhere in the range, the ends included. Decoding
+  (`codes.hl_gauss_scalar_decode`) reads the mean and the variance less the code's own
+  `0.75^2 + 1/12` bins^2 (the Gaussian and the bins' width), so an exact value decodes
+  with spread 0. A code's variance is capped at 0.8 of the most any code of that mean can
+  have on the bins, so a larger spread decodes smaller. HL-Gauss: the velocity (three
+  codes of 99 real bins, its projections on three axes 120 degrees apart, on a scale
+  compressed above a knee speed), the nose rate (41) and the five scalars (21 each). Kept,
+  each for the reason given at its code: the circular codes below (3-4 colours a level,
+  where a 0.75-bin Gaussian would blur a level round most of its circle), the gun
+  cooldown (two-hot, one bin per tick, so a known cooldown is one-hot and the spreads'
+  residual keeps its meaning) and the shot head's near-miss code (already a Gaussian of
+  0.75 bins). The code is 580 wide.
 - **Multi-level circular codes** (`bnb.models.yemong.codes.circular_encode`): a periodic
   quantity, the heading or a position coordinate, is coded at several levels, each with a
   period a fixed factor shorter than the one before. Each level is a softmax group over a
@@ -203,7 +218,7 @@ without the hidden rows' physics `--set yemong.physics_hidden_decay=null`.
   about `|v| dt` (median 2.6 m, never near 0), so it has its own asymmetric code: 155 real
   bins above the zero and 19 below (to -0.51 m, a slow ship reversing), a bin 4.9 cm wide at
   the median move (2.5 cm at 0, 10 cm at 8.7 m). The code is 624 outputs (179 + 3 x 55 + 8
-  x 35), against the absolute code's 544. The head's last weight starts at zero and its
+  x 35), against the absolute code's 580. The head's last weight starts at zero and its
   bias at the marginal measured on scripted play (`bench/persistence_marginal.py`): per
   component the share of exact zeros and 16 quantiles of the rest, each an atom whose
   Gaussian is as wide as its gaps to its neighbours
@@ -524,10 +539,11 @@ level, so the first layer sees which levels to trust.
   (`ShipStateCode.ellipse_code`): log sigma_major, log sigma_minor, and the doubled angle
   `(cos 2 theta, sin 2 theta)` times the anisotropy `(sigma_major - sigma_minor) /
   (sigma_major + sigma_minor)`, world frame, so the angle fades out where the ellipse is
-  round. Each feature is a two-hot code of 21 bins, as the state code's scalars: a sigma as
-  `ln(1 + sigma / knee)` from 0 to its bound's (position: knee 1 m, bound the position
-  code's period; velocity: knee 0.1 m/s, bound the velocity code's reach), the angle
-  features over [-1, 1]. 168 inputs, their first-projection columns initialised as the
+  round. Each feature is the HL-Gauss code of an exact value on 21 bins and the padding,
+  as the state code's scalars (the padding keeps a round ellipse's 0 and a sigma at its
+  bound exact): a sigma as `ln(1 + sigma / knee)` from 0 to its bound's (position: knee
+  1 m, bound the position code's period; velocity: knee 0.1 m/s, bound the velocity
+  code's reach), the angle features over [-1, 1]. 200 inputs, their first-projection columns initialised as the
   state code's. Without a covariance (an absolute build) the position ellipse is round.
 
 ### Position inputs: colour or Fourier

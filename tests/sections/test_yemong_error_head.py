@@ -493,15 +493,15 @@ def test_the_fourier_arms_set_line_builds_it_and_old_records_read_as_colour():
 
 
 def test_the_fourier_ship_token_reads_fourier_and_the_code_stays_colour():
-    """Only the encoder's ship input changes (491 state columns for 544, the token 555 for
-    608, the benched flag included): the tokens' code, the next-state baseline, is the
+    """Only the encoder's ship input changes (527 state columns for 580, the token 591 for
+    644, the benched flag included): the tokens' code, the next-state baseline, is the
     colour code."""
     colour = _model(**ARMS["arm4d"])
     fourier = _model(**ARMS["arm4d_fourier"])
-    assert colour.state_code.input_width == colour.state_code.width == 544
-    assert fourier.state_code.input_width == 491
+    assert colour.state_code.input_width == colour.state_code.width == 580
+    assert fourier.state_code.input_width == 527
     width = colour.encoder.ship.first.in_features
-    assert fourier.encoder.ship.first.in_features == width - 544 + 491 == 555
+    assert fourier.encoder.ship.first.in_features == width - 580 + 527 == 591
     _, trajectory = cases.rollout(fourier, length=4)
     obs, replay = trajectory.obs, trajectory.replay
     reset = cases.resets(obs)
@@ -513,13 +513,13 @@ def test_the_fourier_ship_token_reads_fourier_and_the_code_stays_colour():
     # ten ulps, and a wrong or missing column is of order one
     close = dict(rtol=1e-6, atol=1e-6)
     torch.testing.assert_close(tokens.code, plain.code, **close)
-    assert tokens.ship.shape[-1] == 555 and plain.ship.shape[-1] == 608
-    torch.testing.assert_close(tokens.ship[..., 491:], plain.ship[..., 544:], **close)
+    assert tokens.ship.shape[-1] == 591 and plain.ship.shape[-1] == 644
+    torch.testing.assert_close(tokens.ship[..., 527:], plain.ship[..., 580:], **close)
     valid, _, means, spreads = believed(obs.ships, replay)
     position = torch.where(valid[..., None], means[..., 0:2], replay.offset[..., None, :])
     means = torch.cat([position, means[..., 2:]], -1)
     expected = fourier.state_code.inputs(tokens.code, means, spreads)
-    torch.testing.assert_close(tokens.ship[..., :491], expected, **close)
+    torch.testing.assert_close(tokens.ship[..., :527], expected, **close)
 
 
 def test_the_error_head_starts_at_its_marginal_with_a_zero_last_layer():
