@@ -16,6 +16,7 @@ from bnb.runs.records import Run
 def test_a_ppo_run_writes_the_live_and_both_averages_after_every_update(monkeypatch, tmp_path):
     bnb(
         monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--updates", "4", "--name", "a",
+        "--update-policies", "True",
         "--checkpoint-every", str(STEPS_PER_UPDATE),
     )  # fmt: skip
     run = Run.open(tmp_path, "a")
@@ -45,6 +46,7 @@ def test_each_averages_policy_file_holds_its_own_average(monkeypatch, tmp_path):
     saved after loading both into one scratch model)."""
     bnb(
         monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--updates", "3", "--name", "a",
+        "--update-policies", "True",
         "--set", "league.uniform_from=0",
     )  # fmt: skip
     run = Run.open(tmp_path, "a")
@@ -66,7 +68,7 @@ def test_each_averages_policy_file_holds_its_own_average(monkeypatch, tmp_path):
 
 
 def test_the_last_updates_live_policy_is_the_final_checkpoints_weights(monkeypatch, tmp_path):
-    run = new_run(monkeypatch, tmp_path, updates=2)
+    run = new_run(monkeypatch, tmp_path, updates=2, update_policies=True)
     live = run.update_policies_path(2 * STEPS_PER_UPDATE) / "live" / checkpoint.WEIGHTS
     final = run.checkpoint_at() / checkpoint.WEIGHTS
     saved, kept = safetensors.torch.load_file(live), safetensors.torch.load_file(final)
@@ -96,7 +98,7 @@ def test_the_option_turns_the_per_update_policies_off_and_a_resume_may_change_it
 def test_an_ema_of_decay_zero_is_the_newest_live_and_the_run_s_own_matches_at_its_start(
     monkeypatch, tmp_path
 ):
-    run = new_run(monkeypatch, tmp_path, updates=3)
+    run = new_run(monkeypatch, tmp_path, updates=3, update_policies=True)
     newest = 3 * STEPS_PER_UPDATE
     weights, end, count = ema.average(run, 0.0)
     assert (end, count) == (newest, 3)
@@ -119,7 +121,7 @@ def test_an_ema_of_decay_zero_is_the_newest_live_and_the_run_s_own_matches_at_it
 
 
 def test_bnb_runs_ema_writes_a_policy_file_that_loads(monkeypatch, tmp_path, capsys):
-    run = new_run(monkeypatch, tmp_path, updates=3)
+    run = new_run(monkeypatch, tmp_path, updates=3, update_policies=True)
     bnb(
         monkeypatch,
         tmp_path,
@@ -141,7 +143,7 @@ def test_bnb_runs_ema_writes_a_policy_file_that_loads(monkeypatch, tmp_path, cap
 
 
 def test_an_ema_needs_saved_live_policies_and_a_decay_below_one(monkeypatch, tmp_path):
-    run = new_run(monkeypatch, tmp_path, updates=1)
+    run = new_run(monkeypatch, tmp_path, updates=1, update_policies=True)
     with pytest.raises(ValueError, match="need 0 <= decay < 1"):
         ema.average(run, 1.0)
     with pytest.raises(FileNotFoundError, match="no saved live policies up to step 1"):
@@ -151,6 +153,7 @@ def test_an_ema_needs_saved_live_policies_and_a_decay_below_one(monkeypatch, tmp
 def test_a_rewind_sets_aside_the_newer_updates_policy_files(monkeypatch, tmp_path):
     bnb(
         monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--updates", "3", "--name", "a",
+        "--update-policies", "True",
         "--checkpoint-every", str(STEPS_PER_UPDATE),
     )  # fmt: skip
     run = Run.open(tmp_path, "a")

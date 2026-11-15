@@ -26,8 +26,8 @@ runs/2026-11-02-mixed-purple-pumpkin/
   config.json           the resolved TrainConfig at the start
   checkpoints/step_<environment steps>/   training checkpoints (the newest two and the final)
   policies/step_<environment steps>/{live,exponential_average,uniform_average}/
-                        every update's policy files (PPO), or on the snapshot
-                        schedule and at each segment's end (BC); never pruned
+                        on the snapshot schedule and at each segment's end, or
+                        every update's with --update-policies; never pruned
   STOP                  a stop request, while the run is asked to stop
   league/               the league's policy snapshots
   policy/               a BC run's policy: the average its stop rule read (bnb train --objective bc)
@@ -214,8 +214,7 @@ rewind (`--resume RUN --at STEP`) moves the newer checkpoints into
 
 ### Every update's policy files
 
-The history of a run is its policy files, which are small (about 10 MB each). After every update a run with `--update-policies` (the default for PPO,
-off for BC) writes
+The history of a run is its policy files, which are small (about 10 MB each). After every update a run with `--update-policies` (off by default; decided 2026-11-15, for the one arm whose live weights feed the averaging sweep) writes
 `policies/step_<environment steps>/` with three policy files: `live/` (the learner's
 weights), `exponential_average/` and, once the uniform average has started,
 `uniform_average/`. They are never pruned: about 20 to 30 MB per update (the live weights and
@@ -223,7 +222,7 @@ the exponential average, then the uniform average too), so a run of 100M steps a
 steps per update keeps about 2 to 3 GB. Their writing time counts in the
 update record's checkpoint seconds.
 
-A run without `--update-policies` (BC by default) writes the same three files on the
+A run without `--update-policies` (the default) writes the same three files on the
 snapshot schedule `TrainConfig.policy_snapshots` (`bnb.runtime.snapshots.RL_SNAPSHOTS`,
 decided 2026-11-14: at 1, 2, 3, 4, 6, 8, 10, 12, 16 and 20M environment steps, then every
 5M; `--set policy_snapshots.steps=[...]` and `policy_snapshots.every=...`, which a resume

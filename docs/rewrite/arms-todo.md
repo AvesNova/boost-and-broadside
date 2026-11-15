@@ -92,6 +92,8 @@ Ordered for working through:
 - **References:** a list of papers with what we take from each, where it applies in the code, and how it affected a decision ([references.md](references.md)).
 - **Early arms:** variable map sizes against fixed (first; it decides whether variable maps stay in the game and the paper, and if they don't, the colour codes and rotary frequencies are re-tuned for fixed sizes); variable ship and field counts against fixed.
 - **Deferred to the later review of all arms:** self-play training both sides against one side; the separate critic (too much work for an arm now).
+- **Frontline break-even (decided 2026-11-15):** wait for the map-size arm (A1). Until then frontline break-even is not scored.
+- **Per-update policy files (decided 2026-11-15):** off by default; on only for the one arm that feeds the averaging sweep. Done in the commit after this one.
 - **Dropped:** ego-centric frame (×N compute); rotation and reflection augmentation (more environments do the same); KL-to-BC penalty (a single scripted teacher has no diversity to keep); greedy evaluation (evaluation samples like training); belief decay constants (41) and the delta/absolute head (40), using the earlier v2 results.
 
 ## In progress

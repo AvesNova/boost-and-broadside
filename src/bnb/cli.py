@@ -71,8 +71,9 @@ class Train:
     checkpoint_every: environment steps between training checkpoints (default: about 30
     minutes at the run's measured throughput).
     update_policies: write the live, exponential-average and uniform-average policy files
-    after every update to the run's `policies/` (about 10 MB each, never pruned; default: on
-    for ppo, off for bc; `--update-policies False` turns it off; a resume may change it).
+    after every update to the run's `policies/` (about 10 MB each, never pruned; default:
+    off, for the one arm that feeds the averaging sweep; a resume may change it). Without
+    it a run keeps them on the snapshot schedule (`TrainConfig.policy_snapshots`).
     objective: ppo, or bc (behaviour cloning against self-play and Imugi until
     a stop rule fires, then the clone is saved as the run's policy file; updates is unused;
     a BC run keeps training checkpoints and resumes, but is not forked or warm-started);
@@ -1078,9 +1079,7 @@ def _train(options: Train, given_options: set[str], stop, chain_entry: dict | No
                 parent = dict(policy=str(pathlib.Path(options.init_from).resolve()))
             else:
                 trainer = Trainer(config, device)
-            keep_policies = options.update_policies
-            if keep_policies is None:
-                keep_policies = config.objective != "bc"
+            keep_policies = bool(options.update_policies)  # off unless asked (the averaging arm)
             run = Run.create(
                 runs_directory,
                 name,

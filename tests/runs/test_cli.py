@@ -32,7 +32,9 @@ def bnb(monkeypatch, runs_directory: pathlib.Path, *arguments: str) -> None:
         cli.main()
 
 
-def new_run(monkeypatch, runs_directory, name: str = "a", updates: int = 2) -> Run:
+def new_run(
+    monkeypatch, runs_directory, name: str = "a", updates: int = 2, update_policies: bool = False
+) -> Run:
     bnb(
         monkeypatch,
         runs_directory,
@@ -42,6 +44,8 @@ def new_run(monkeypatch, runs_directory, name: str = "a", updates: int = 2) -> R
         str(updates),
         "--name",
         name,
+        "--update-policies",
+        str(update_policies),
     )
     return Run.open(runs_directory, name)
 
