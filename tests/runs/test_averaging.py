@@ -278,3 +278,22 @@ def test_half_lives_names_and_spec_errors():
     without_start = RunFacts(FACTS.steps[1:], None, 10, 0.9, 20)
     with pytest.raises(ValueError, match="starting weights were not saved"):
         averaging.plan(Spec((AverageSpec("training_exponential"),)), without_start)
+
+
+def test_the_committed_suite_reads_and_plans_one_tournament_on_a_100m_run():
+    root = pathlib.Path(__file__).resolve().parents[2]
+    spec = averaging.read_spec(root / "docs/rewrite/sections/averaging/suite.toml")
+    per_update = 1_048_576
+    facts = RunFacts(
+        steps=tuple(range(0, 96 * per_update + 1, per_update)),
+        start=0,
+        steps_per_update=per_update,
+        training_decay=0.95,
+        training_uniform_from=10_000_000,
+    )
+    accumulators, lives = averaging.plan(spec, facts)
+    names = {average.name(facts) for average in spec.averages}
+    assert 12 <= len(names) == len(spec.averages) <= 16
+    assert len(lives) == 1 and len(accumulators) == len(names) - 1
+    window = next(item for item in accumulators if item.family.last_fraction == 0.2)
+    assert len(window.folded) == 20  # 19.2 updates: those after the cut

@@ -206,7 +206,8 @@ class Average:
     (`docs/rewrite/sections/averaging/suite.toml` is the first suite); runs_directory: as
     for bnb train. The player names (`RUN/average/<name>/step_<steps>`, or the live
     file's path) go to stdout one per line, for `bnb ratings RUN --no-league --with
-    $(bnb average RUN --spec SPEC)`; the progress and the checks go to stderr. Exits with
+    $(cat players.txt)` after `bnb average RUN --spec SPEC > players.txt`; the progress and
+    the checks go to stderr. Exits with
     an error when a rebuilt training average differs from the run's own.
     """
 

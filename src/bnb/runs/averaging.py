@@ -313,6 +313,7 @@ class Accumulator:
     count: int = 0
 
     def fold(self, live: dict[str, torch.Tensor]) -> None:
+        """Fold one file's weights in (the first is the average's start)."""
         if self.weights is None:
             self.weights = {
                 name: value.to(torch.float64) if value.is_floating_point() else value.clone()
