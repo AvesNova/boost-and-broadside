@@ -130,9 +130,10 @@ class LearnerConfig:
     offence_premium: the weight of the offence's advantage on the damage and kill/death
     levels (`returns.PREMIUM_LEVELS`) over the run's environment steps, every other part's
     weight 1 (`returns.part_weights`): 2 is a 2:1 premium. 1 throughout by default, the
-    zero-sum levels' advantage. Only the advantage reads it: the critic's targets are each
-    part's own return at any premium. A warm start from a policy file counts its steps
-    from 0, a fork from the parent's. A coefficient
+    zero-sum levels' advantage. The advantage and the return scale's sum read it, with the
+    same weights, so a premium changes the balance of offence and defence and not the step's
+    size; the critic's targets are each part's own return at any premium. A warm start from
+    a policy file counts its steps from 0, a fork from the parent's. A coefficient
     multiplies its term's mean in nats per token. The entropy has one coefficient per action
     factor, on its chain-rule part (`entropy_power` on H(power), `entropy_stick` on
     H(stick | power), `entropy_shoot` on H(shoot | power, stick)), so three equal coefficients

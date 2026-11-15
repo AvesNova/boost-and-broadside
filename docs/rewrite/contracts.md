@@ -405,6 +405,10 @@ cut; where they differ, this section and the code win.
     (`bnb.game.modes.phase.win_loss`). The outcome reward and the outcome head's
     targets (`critic.final_outcome`) read it through `Trajectory.win_loss`; `result`
     stays the win rates' and the tallies'.
+  - **`Events` (schema 6, 2026-11-16)**: `objective_progress` and `objective` are
+    (B, N, 2), each ship's gain (>= 0) and loss (<= 0), each summed over the zones on its
+    own, so a ship credited in one zone and charged in another on one tick keeps both; the
+    split critic's objective parts read them as they are. The game's numbers are unchanged.
   - **`REWARD_LEVELS`** (`bnb.contracts.trajectory`): damage, kill_death,
     objective_progress, objective, outcome. `Trajectory.reward` is
     `(L, R, S, len(REWARD_LEVELS))`, per level and weighted.

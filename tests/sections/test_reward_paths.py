@@ -1,6 +1,7 @@
 """Hand-computed reward cases on paths the reference fixtures do not reach (rewards spec 2-3):
 the objective levels' order, boundary damage healed by a shield restore, and a hit and a
-restore counted in the same tick. Mutation-sweep items 13 to 15.
+restore counted in the same tick, an objective gain and loss on one tick. Mutation-sweep
+items 13 to 15.
 
 Two teams of two: ships 0 and 1 are team 0, ships 2 and 3 team 1. Damage-level rewards are
 in points over `damage_unit`, times the level's weight.
@@ -9,7 +10,7 @@ in points over `damage_unit`, times the level's weight.
 import pytest
 import torch
 
-from bnb.contracts import REWARD_LEVELS, Events
+from bnb.contracts import REWARD_LEVELS, VALUE_LEVELS, Events
 from bnb.learn import rewards
 
 N = 4
@@ -44,8 +45,8 @@ def _events(
         done=torch.zeros(1, dtype=torch.bool),
         shield_lost=vector(lost),
         shield_restored=vector(restored),
-        objective_progress=torch.zeros(1, N) if progress is None else progress,
-        objective=torch.zeros(1, N) if objective is None else objective,
+        objective_progress=torch.zeros(1, N, 2) if progress is None else progress,
+        objective=torch.zeros(1, N, 2) if objective is None else objective,
         result=torch.zeros(1, dtype=torch.int32),
         win_loss=torch.zeros(1, 2),
         enemy_damage_by_aspect=torch.zeros(1, N, 3),
@@ -62,15 +63,44 @@ def _points(values) -> torch.Tensor:
     return torch.tensor([values]) * CONFIG.damage / CONFIG.damage_unit
 
 
+def _gain_loss(gain, loss) -> torch.Tensor:
+    """(1, N, 2): one tick's objective amounts per ship, its gains and its losses."""
+    return torch.stack([torch.tensor([gain]), torch.tensor([loss])], -1)
+
+
 def test_the_objective_progress_level_carries_objective_progress():
-    progress = torch.tensor([[0.1, 0.1, -0.1, -0.1]])
-    objective = torch.tensor([[0.5, 0.5, -0.5, -0.5]])
+    progress = _gain_loss([0.1, 0.1, 0.0, 0.0], [0.0, 0.0, -0.1, -0.1])
+    objective = _gain_loss([0.5, 0.5, 0.0, 0.0], [0.0, 0.0, -0.5, -0.5])
     events = _events(progress=progress, objective=objective)
     reward, _ = _step(rewards.blank_ledger(1, N), events)
     torch.testing.assert_close(
-        reward[..., LEVEL["objective_progress"]], CONFIG.objective_progress * progress
+        reward[..., LEVEL["objective_progress"]], CONFIG.objective_progress * progress.sum(-1)
     )
-    torch.testing.assert_close(reward[..., LEVEL["objective"]], CONFIG.objective * objective)
+    torch.testing.assert_close(
+        reward[..., LEVEL["objective"]], CONFIG.objective * objective.sum(-1)
+    )
+
+
+def test_a_gain_and_a_loss_on_one_tick_do_not_net():
+    """Ship 0 is credited 0.3 in one zone and charged 0.2 in another on the same tick: its
+    objective level's offence (the gain part) is 0.3 and its defence (the loss part) -0.2,
+    not a net 0.1 gain; the level, their sum, is the net (decided 2026-11-16)."""
+    progress = _gain_loss([0.3, 0.0, 0.1, 0.0], [-0.2, 0.0, 0.0, -0.2])
+    objective = _gain_loss([0.0, 0.5, 0.0, 0.0], [-0.25, 0.0, -0.25, 0.0])
+    parts, _, _ = rewards.reward_step_events(
+        CONFIG, rewards.blank_ledger(1, N), _events(progress=progress, objective=objective), TEAM
+    )
+    part = {name: index for index, name in enumerate(VALUE_LEVELS)}
+    for level, amount in (("objective_progress", progress), ("objective", objective)):
+        weight = getattr(CONFIG, level)
+        torch.testing.assert_close(parts[..., part[f"{level}_offence"]], weight * amount[..., 0])
+        torch.testing.assert_close(parts[..., part[f"{level}_defence"]], weight * amount[..., 1])
+    assert parts[0, 0, part["objective_progress_offence"]] == pytest.approx(
+        0.3 * CONFIG.objective_progress
+    )
+    assert parts[0, 0, part["objective_progress_defence"]] == pytest.approx(
+        -0.2 * CONFIG.objective_progress
+    )
 
 
 def test_a_restore_after_boundary_damage_heals_the_boundary_row_by_its_share():

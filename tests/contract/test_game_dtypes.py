@@ -53,8 +53,8 @@ def _expected(batch: int) -> dict:
             done=(flags, (B,)),
             shield_lost=(floats, (B, N)),
             shield_restored=(floats, (B, N)),
-            objective_progress=(floats, (B, N)),
-            objective=(floats, (B, N)),
+            objective_progress=(floats, (B, N, 2)),  # gain and loss
+            objective=(floats, (B, N, 2)),
             result=(ints, (B,)),
             win_loss=(floats, (B, 2)),  # a win's and a loss's weight
             enemy_damage_by_aspect=(floats, (B, N, len(ASPECTS))),

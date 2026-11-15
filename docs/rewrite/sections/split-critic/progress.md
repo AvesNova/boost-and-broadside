@@ -61,3 +61,25 @@ Branch `feat/split-critic`, from `feat/imugi-boundary` (2026-11-15). Decision: a
 
 **Next**
 - The shared BC, then the premium forks (1:1, 2:1, 2:1 annealed).
+
+## 2026-11-16: the author's two fixes (branch `fix/critic-premium-scale`)
+
+**Return scale follows the premium (done):** `returns.team_aggregate` weighs the returns'
+sum (the return scale's input) with the advantage's part weights. A premium now changes
+only the balance of offence and defence, not the step: where the premium levels' offence is
+the only reward, the scaled advantage is the same at 1, 2 and 3.5
+(`test_the_return_scale_follows_the_premium`). At 1:1 the weights are all 1, so nothing
+changes. Critic targets stay each part's own.
+
+**No netting in the objective sign split (done):** the game already computed each ship's
+gains and losses apart (Frontline's `held` / `absent`, a capture's `gain` / `loss`) and
+netted them in `mode_phase`. `Events.objective_progress` and `Events.objective` are now
+(B, N, 2), gain (>= 0) and loss (<= 0), each summed over the zones on its own (Events
+schema 6); the rewards read them as the objective levels' offence and defence (no clamp).
+Totals unchanged (gain + loss is the old amount). In 300 ticks of 16-environment random
+Frontline play, 90 of 1309 nonzero objective-progress ship-ticks had both, and the netting
+had removed about 8% of the gross amount. Game rules and numbers unchanged (game version
+stays 22).
+
+**Didn't / open:** the docs' reference check fails on `api.MINIMUM_SHIPS_PER_TEAM` in
+docs/explanation/game/mixed-batches.md (pre-existing, not from this branch).
