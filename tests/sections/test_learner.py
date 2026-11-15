@@ -13,7 +13,7 @@ import torch
 import yemong_cases as cases
 from torch.utils import _pytree
 
-from bnb.contracts import Obs, Outputs, Pool
+from bnb.contracts import VALUE_LEVELS, Obs, Outputs, Pool
 from bnb.contracts.action import to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.scripted import Chaser
@@ -556,21 +556,21 @@ def test_the_explained_variance_matches_an_independent_computation(segment):
     net, runner, _, prepared = segment
     trajectory = lc.whole(runner)
     returns = prepared["derived"]["level_returns"]
-    values = trajectory.values.clone()  # in reward units: the outcome's P(win) - P(loss)
-    values[..., -1] *= RewardConfig().outcome  # times its weight
+    values = trajectory.values.clone()  # in reward units: the outcome's P(win) and -P(loss)
+    values[..., -2:] *= RewardConfig().outcome  # times its weight (both outcome parts)
     valued = trajectory.valued
     expected = torch.stack(
         [
             1.0
             - (returns[..., k][valued] - values[..., k][valued]).var()
             / returns[..., k][valued].var()
-            for k in range(5)
+            for k in range(len(VALUE_LEVELS))
         ]
     )
     torch.testing.assert_close(prepared["explained_variance"], expected, rtol=1e-4, atol=1e-5)
-    assert torch.equal(explained_variance(returns, returns, valued), torch.ones(5))
+    assert torch.equal(explained_variance(returns, returns, valued), torch.ones(len(VALUE_LEVELS)))
     flat = torch.ones_like(returns)
-    assert torch.equal(explained_variance(flat, values, valued), torch.zeros(5))
+    assert torch.equal(explained_variance(flat, values, valued), torch.zeros(len(VALUE_LEVELS)))
 
 
 def test_the_update_is_the_same_whatever_the_global_seed(segment):

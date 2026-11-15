@@ -37,7 +37,10 @@ tests against independent computations.
 - `critic_losses(local_logits, outcome_logits, local_returns, outcome_targets, valued,
   bins, local_levels, outcome_level)`: `(K,)`, one loss per level.
   - Per-ship levels: the two-hot cross-entropy of the realised return, averaged over
-    valued ships (alive, or waiting to respawn).
+    valued ships (alive, or waiting to respawn). v2's critic trains on HL-Gauss targets
+    (2026-11-15), so bnb no longer runs this case; the section's own test checks its loss
+    against an independent computation
+    (`tests/sections/test_learner.py::test_each_loss_term_matches_an_independent_computation`).
   - The outcome: the cross-entropy against its categorical targets, averaged over
     environment-steps.
 - `shot_cross_entropy(trajectory_logits, trajectory_target, outcome_logits,

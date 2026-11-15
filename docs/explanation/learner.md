@@ -124,8 +124,10 @@ constant outside them, read at the start of each update and logged as
 `schedule/offence_premium`. The default is 1 throughout. A 2:1 premium annealed to 1:1
 between 20M and 60M steps:
 
-```
---set learner.offence_premium='{"steps": [0, 20000000, 60000000], "values": [2.0, 2.0, 1.0]}'
+<!-- not-runnable: needs CUDA -->
+```bash
+uv run --no-sync bnb train --preset mixed \
+  --set 'learner.offence_premium={"steps": [0, 20000000, 60000000], "values": [2.0, 2.0, 1.0]}'
 ```
 
 A warm start from a policy file counts its steps from 0, a fork from its parent's.
@@ -140,7 +142,7 @@ return scale does not follow the premium, so a premium also enlarges the policy'
 the combat levels, as a larger reward weight would.
 
 A build from before the split (2026-11-15) names the reward levels themselves, or the single
-level `summed_reward`. Its policy file still loads and plays, its outcome level
+level summed_reward. Its policy file still loads and plays, its outcome level
 `P(win) - P(loss)` whole (`tests/runs/test_critic_layout.py`); the learner refuses to train
 it.
 

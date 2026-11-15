@@ -26,14 +26,25 @@ Branch `feat/split-critic`, from `feat/imugi-boundary` (2026-11-15). Decision: a
 - HL-Gauss critic targets (author, 2026-11-15): `critic.value_targets`, a Gaussian of 0.75 bin
   widths on the symlog bin coordinate, renormalised, clamped to the outer bins
   (`codes.hl_gauss`); `critic.two_hot` removed. The value read-out is still the expectation.
+- Padded value support (author, 2026-11-15): `value_padding` bins past each end
+  (`codes.PADDING_BINS` = 2 in a new build via `TrainConfig.yemong/relational/nearest`; the
+  config default 0 is what older build records read). 77 + 4 = 81 bins; returns clamp to
+  the outermost padding centre (`critic/support_clip`); the read-out covers every bin. The
+  target's mean position is the return's within 1% of a bin up to +-limit; the read-out (in
+  reward units over symlog bins) is about 0.2% larger in magnitude than the return (half the
+  target's symlog variance), the price of HL-Gauss on symlog bins.
+- v1's critic-loss fixture case (`learner_critic`, two-hot) and the two-hot check of
+  `critic_two_hot` are no longer run; the section's independent-computation loss test
+  covers the HL-Gauss loss.
 - Diagnostics per part: `critic/explained_variance/*`, `critic/return_mean/*`, the advantage
   series, `reward/rate/*`, `reward/level_share/*`, `episode/reward/*`; value losses and value
   KL per value head (8 parts + `outcome`); `schedule/offence_premium`;
   `reward/zero_sum_residual/*` stays per level.
 - The single value arm (`summed_reward`) is gone from the learner (no unsplit path). Old
   policy files (unsplit or summed) still load and play; the learner refuses to train them.
-- Overhead: +79,156 parameters (2,854,930 to 2,934,086, +2.8%, the own-ship head's value
-  outputs 4x77 to 8x77). Update time not measured.
+- Overhead: the own-ship head's value outputs go from 4x77 to 8x81 (split and padding);
+  2,854,930 to 2,942,310 parameters (+87,380, +3.1%; the split alone +79,156). Update time
+  not measured.
 
 **Didn't / open**
 - Objective-level sign split: a ship credited in one zone and charged in another on the same

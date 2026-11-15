@@ -81,9 +81,9 @@ def test_the_cadence_measures_the_first_and_every_tenth_update():
 def _stored(views: int = 2, length: int = 3, ships: int = 2) -> dict:
     """A hand-built shard of two views (pools 0 and 1), two own ships and two enemies."""
     reward = torch.zeros((length, views, ships, len(VALUE_LEVELS)))
-    reward[0, 0, 0, 0] = 2.0  # the first level: +2 then -1 in pool 0
+    reward[0, 0, 0, 0] = 2.0  # the first value level (damage_offence): +2 then -1 in pool 0
     reward[1, 0, 1, 0] = -1.0
-    reward[2, 1, 0, 1] = 3.0  # the second level: +3 in pool 1
+    reward[2, 1, 0, 1] = 3.0  # the second (damage_defence): +3 in pool 1
     done = torch.zeros((length, views), dtype=torch.bool)
     done[1, 0] = True  # view 0 wins at step 1
     done[2, 1] = True  # view 1 draws at step 2
@@ -117,11 +117,11 @@ def test_the_rollout_series_match_a_hand_computed_shard():
     assert out["episode/draws/deathmatch/league"] == 1
     assert out["episode/losses/frontline/self_play"] == 0
     # reward per ship and second: level 0 in pool 0 is (2 - 1) / 2 ships / 3 steps / 0.5 s
-    assert out["reward/rate/damage/frontline/self_play"] == pytest.approx(1.0 / 2 / 3 / 0.5)
-    assert out["reward/rate/kill_death/deathmatch/league"] == pytest.approx(3.0 / 2 / 3 / 0.5)
+    assert out["reward/rate/damage_offence/frontline/self_play"] == pytest.approx(1.0 / 2 / 3 / 0.5)
+    assert out["reward/rate/damage_defence/deathmatch/league"] == pytest.approx(3.0 / 2 / 3 / 0.5)
     # level shares of the absolute reward: 3 of 6 and 3 of 6
-    assert out["reward/level_share/damage"] == pytest.approx(0.5)
-    assert out["reward/level_share/kill_death"] == pytest.approx(0.5)
+    assert out["reward/level_share/damage_offence"] == pytest.approx(0.5)
+    assert out["reward/level_share/damage_defence"] == pytest.approx(0.5)
     # 11 of the 12 own ship-steps are alive; view 0 has 6, view 1 has 5
     assert out["episode/alive_share"] == pytest.approx(11 / 12)
     assert out["batch/token_share/mode/frontline"] == pytest.approx(6 / 11)
