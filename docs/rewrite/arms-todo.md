@@ -12,7 +12,7 @@ It is updated and committed whenever a decision is made or a task changes. Candi
 Updated 2026-11-15 10:30; the conversation behind it is in [briefing.md](briefing.md).
 
 4. **Game freeze:** locked (2026-11-15, session 3) and implemented as **game version 21** on `feat/imugi-boundary`: deathmatch tickets 4·N^(4/3) to the nearest 5 with 10 minutes; elimination a linear 4-minute shrink from 0 (248 s clock), independent spawn centres; Frontline ±2 with 10 minutes, 3v3 minimum; Imugi's moving-edge steer and explore search. **The hashed fingerprint is gone** (it depended on the machine); `tests/sections/game_reference.pt` is a committed reference compared with a tolerance. Next: re-measure the three modes with the frozen settings, then merge into `prep/arms` and `v2`.
-6. **The run budget, the final arm list, and the review of every arm** ([arm-review.md](arm-review.md)).
+6. **The final arm list** ([arm-list.md](arm-list.md), one run per line; runs 1–4 required: R0 and A1 at two seeds each). Choose the candidates and their order. Costs per run in [arm-review.md](arm-review.md).
 8. **Older unmerged branches** (tuning and evaluation records from 2026-11-10 to 11-13: tune/ships-r9m2, tune/respawn-waves, eval/yongma-lead, eval/r9m2-maps, eval/morning, tune/frontline-design, tune/duel-deny, run/onehead-champion, probe/position-aliasing, perf/gpu-box, feat/nearest-mlp, feat/crossover, work/design-v3 (WIP, failing tests), wip/playground): not merged into v2. Merge, keep as records, or delete?
 
 ## Decisions
