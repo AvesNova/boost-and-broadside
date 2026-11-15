@@ -32,3 +32,9 @@ maps (the map-size arm, A1). Variable maps are an opt-in setting for that arm on
   `frontline_break_even`); `scored()` drops it, so it is neither played nor waited on, and
   frontline's third is shared by 5v5 and 10v10. `--play` of an unscored condition is
   refused.
+- **Item 5, docs (done with each item):** evaluation-suite.md (map rule, conditions table,
+  break-even range, the left-out condition), league.md (crossover and the decision suite),
+  modes.md (another fleet size), training.md, mixed-batches.md, contracts.md.
+- **Open:** the 30-a-side break-even cost is estimated by slot count, not measured; the
+  design pilot ran on the density maps, so its variances and costs at 1v1, 2v2, 10v10 and
+  break-even want a pilot on the preset maps.
