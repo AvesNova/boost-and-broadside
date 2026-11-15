@@ -1,19 +1,20 @@
-"""Every update's policy files (`policies/`), the offline EMA built from them, and the
-retention's newest two."""
+"""Every update's policy files (`policies/`) and the retention's newest two; the averages
+built from them are in test_averaging."""
 
-import json
 
-import pytest
 import runs_cases as cases
 import safetensors.torch
 import torch
 from test_cli import STEPS_PER_UPDATE, bnb, new_run
 
-from bnb.runs import checkpoint, ema
+from bnb.runs import checkpoint
+from bnb.runs.averaging import saved_steps
 from bnb.runs.records import Run
 
 
-def test_a_ppo_run_writes_the_live_and_both_averages_after_every_update(monkeypatch, tmp_path):
+def test_a_ppo_run_writes_the_live_and_both_averages_after_every_update_and_at_its_start(
+    monkeypatch, tmp_path
+):
     bnb(
         monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--updates", "4", "--name", "a",
         "--update-policies", "True",
@@ -21,8 +22,10 @@ def test_a_ppo_run_writes_the_live_and_both_averages_after_every_update(monkeypa
     )  # fmt: skip
     run = Run.open(tmp_path, "a")
     assert run.record["update_policies"] is True
-    steps = [STEPS_PER_UPDATE * n for n in (1, 2, 3, 4)]
-    assert ema.live_steps(run) == steps
+    steps = [STEPS_PER_UPDATE * n for n in (0, 1, 2, 3, 4)]
+    assert saved_steps(run) == steps
+    start = checkpoint.read_record(run.update_policies_path(0) / "live")
+    assert start["steps"] == dict(environment_steps=0, updates=0)  # the starting weights
     for step in steps:
         names = {p.name for p in run.update_policies_path(step).iterdir()}
         assert (
@@ -86,68 +89,13 @@ def test_the_option_turns_the_per_update_policies_off_and_a_resume_may_change_it
     run = Run.open(tmp_path, "a")
     # off: only the scheduled snapshots (policy_snapshots) and the segment's end
     assert run.record["update_policies"] is False
-    assert ema.live_steps(run) == [STEPS_PER_UPDATE]
+    assert saved_steps(run) == [STEPS_PER_UPDATE]
     bnb(
         monkeypatch, tmp_path, "train", "--resume", "a", "--device", "cpu", "--updates", "2",
         "--update-policies", "True",
     )  # fmt: skip
     run = Run.open(tmp_path, "a")
-    assert ema.live_steps(run) == [STEPS_PER_UPDATE, 2 * STEPS_PER_UPDATE]
-
-
-def test_an_ema_of_decay_zero_is_the_newest_live_and_the_run_s_own_matches_at_its_start(
-    monkeypatch, tmp_path
-):
-    run = new_run(monkeypatch, tmp_path, updates=3, update_policies=True)
-    newest = 3 * STEPS_PER_UPDATE
-    weights, end, count = ema.average(run, 0.0)
-    assert (end, count) == (newest, 3)
-    live = safetensors.torch.load_file(
-        run.update_policies_path(newest) / "live" / "weights.safetensors"
-    )
-    assert all(torch.equal(weights[name], live[name]) for name in live)
-    # an EMA by hand over the three saved updates, and `--at` truncating it
-    files = [
-        safetensors.torch.load_file(
-            run.update_policies_path(STEPS_PER_UPDATE * n) / "live" / "weights.safetensors"
-        )
-        for n in (1, 2, 3)
-    ]
-    by_hand, _, _ = ema.average(run, 0.5, at=2 * STEPS_PER_UPDATE)
-    for name, value in files[0].items():
-        if value.is_floating_point():
-            expected = 0.5 * files[0][name] + 0.5 * files[1][name]
-            assert torch.allclose(by_hand[name], expected)
-
-
-def test_bnb_runs_ema_writes_a_policy_file_that_loads(monkeypatch, tmp_path, capsys):
-    run = new_run(monkeypatch, tmp_path, updates=3, update_policies=True)
-    bnb(
-        monkeypatch,
-        tmp_path,
-        "runs",
-        "ema",
-        "a",
-        "--decay",
-        "0.9",
-        "--at",
-        str(2 * STEPS_PER_UPDATE),
-    )
-    path = capsys.readouterr().out.strip().splitlines()[-1]
-    assert path.endswith(f"decay_0.9_step_{2 * STEPS_PER_UPDATE}")
-    with torch.random.fork_rng(devices=[]):  # the model's constructor draws its weights
-        model = checkpoint.load_policy(path, torch.device("cpu"))
-    record = json.loads((run.directory / path / checkpoint.RECORD).read_text())
-    assert record["steps"]["ema_decay"] == 0.9 and record["steps"]["ema_updates"] == 2
-    del model
-
-
-def test_an_ema_needs_saved_live_policies_and_a_decay_below_one(monkeypatch, tmp_path):
-    run = new_run(monkeypatch, tmp_path, updates=1, update_policies=True)
-    with pytest.raises(ValueError, match="need 0 <= decay < 1"):
-        ema.average(run, 1.0)
-    with pytest.raises(FileNotFoundError, match="no saved live policies up to step 1"):
-        ema.average(run, 0.5, at=1)
+    assert saved_steps(run) == [STEPS_PER_UPDATE, 2 * STEPS_PER_UPDATE]
 
 
 def test_a_rewind_sets_aside_the_newer_updates_policy_files(monkeypatch, tmp_path):
@@ -164,7 +112,7 @@ def test_a_rewind_sets_aside_the_newer_updates_policy_files(monkeypatch, tmp_pat
         "--updates", "3",
     )  # fmt: skip
     run = Run.open(tmp_path, "a")
-    assert ema.live_steps(run) == [STEPS_PER_UPDATE, middle, 3 * STEPS_PER_UPDATE]
+    assert saved_steps(run) == [0, STEPS_PER_UPDATE, middle, 3 * STEPS_PER_UPDATE]
     aside = list((run.directory / "policies").glob("rewound_*/step_*"))
     assert [p.name for p in aside] == [f"step_{3 * STEPS_PER_UPDATE}"]
 
@@ -195,7 +143,7 @@ def test_a_bc_run_keeps_policy_snapshots_on_its_cadence_and_at_each_end(monkeypa
     bnb(monkeypatch, tmp_path, "train", *BC_OPTIONS, *budget, "--name", "clone")
     run = Run.open(tmp_path, "clone")
     assert run.record["update_policies"] is False
-    assert ema.live_steps(run) == [2 * STEPS_PER_UPDATE, 3 * STEPS_PER_UPDATE]
+    assert saved_steps(run) == [2 * STEPS_PER_UPDATE, 3 * STEPS_PER_UPDATE]
     earlier = run.update_policies_path(2 * STEPS_PER_UPDATE)
     files = {
         name: (earlier / name / checkpoint.WEIGHTS).read_bytes()
@@ -206,7 +154,7 @@ def test_a_bc_run_keeps_policy_snapshots_on_its_cadence_and_at_each_end(monkeypa
         "--bc-budget-steps", str(5 * STEPS_PER_UPDATE),
     )  # fmt: skip
     run = Run.open(tmp_path, "clone")
-    assert ema.live_steps(run) == [step * STEPS_PER_UPDATE for step in (2, 3, 4, 5)]
+    assert saved_steps(run) == [step * STEPS_PER_UPDATE for step in (2, 3, 4, 5)]
     for name, content in files.items():  # the earlier averages are kept as they were
         assert (earlier / name / checkpoint.WEIGHTS).read_bytes() == content, name
     record = checkpoint.read_record(run.update_policies_path(5 * STEPS_PER_UPDATE) / "live")
