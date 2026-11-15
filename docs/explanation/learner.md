@@ -152,9 +152,14 @@ was. The weights set the units the critic works in: each per-ship part's value i
 categorical over 77 symlog bins to +-3 (+-19 in reward units, `YemongConfig.value_bins` and
 `value_limit`), the bins 0.079 apart in symlog, so returns of order 1 span many of them. Its
 target is HL-Gauss (Farebrother et al. 2024): a Gaussian of 0.75 bin widths at the return's
-symlog position, integrated over each bin and renormalised, the position clamped to the outer
-bins (`bnb.models.yemong.critic.value_targets`; it replaced two-hot on 2026-11-15). The value
-is still the expectation over the bins. A
+symlog position, integrated over each bin and renormalised (`bnb.models.yemong.critic.value_targets`;
+it replaced two-hot on 2026-11-15). A new build's support has two padding bins past each end
+(`value_padding`, `bnb.models.yemong.codes.PADDING_BINS`; 81 bins in all), so a return near
++-3 in symlog keeps its mean through the renormalisation; a return past the outermost bin's
+centre is clamped to it and counted by `critic/support_clip/{level}`. The value is the
+expectation over every bin, padding included. Because the bins are in symlog and the read-out
+in reward units, a target's read-out is about 0.2% larger in magnitude than its return (half
+the target's symlog variance). A
 different factor per level would change the levels' mix, which is the reward's design, not
 its units.
 

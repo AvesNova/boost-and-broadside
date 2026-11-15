@@ -251,6 +251,9 @@ class YemongConfig:
     map_width: int = 64
     value_bins: int = 77  # symlog bins 0.079 apart, one at 0 (as 51 over +-2 were)
     value_limit: float = 3.0  # symlog: +-19 in reward units
+    # value bins past +-value_limit on each side; 0 is every build's from before them
+    # (2026-11-15), a new run's is `codes.PADDING_BINS` (`bnb.runtime.train.TrainConfig`)
+    value_padding: int = 0
     levels: tuple[str, ...] = VALUE_LEVELS
     outcome_level: str | None = "outcome"
     hex_rings: int = 10
@@ -357,6 +360,11 @@ class YemongConfig:
             first.append((cos, sin))
             second.append((-sin, cos))
         return tuple(first + second)
+
+    @property
+    def value_support(self) -> int:
+        """The value bins, padding included."""
+        return self.value_bins + 2 * self.value_padding
 
     @property
     def local_levels(self) -> tuple[int, ...]:
@@ -626,7 +634,7 @@ class Yemong(nn.Module):
         )
         levels = len(config.local_levels)
         # Heads grouped by the token they read: own ships, every ship, the global token.
-        self.own_heads = HeadGroup(width, hidden, (NUM_JOINT, levels * config.value_bins))
+        self.own_heads = HeadGroup(width, hidden, (NUM_JOINT, levels * config.value_support))
         self.ship_heads = HeadGroup(width, hidden, (NUM_JOINT, self.next_state_width))
         self.outcome = (
             None if config.outcome_level is None else HeadGroup(width, hidden, (critic.OUTCOMES,))
@@ -653,7 +661,9 @@ class Yemong(nn.Module):
             persistent=False,
         )
         self.register_buffer(
-            "bins", critic.value_bins(config.value_bins, config.value_limit), persistent=False
+            "bins",
+            critic.value_bins(config.value_bins, config.value_limit, config.value_padding),
+            persistent=False,
         )
         # The error head (`delta_split`): its last layer zero, its bias the measured marginal.
         self.correction_code, self.correction_head = None, None
@@ -1071,7 +1081,7 @@ class Yemong(nn.Module):
         return outcome_logits
 
     def _values(self, value_logits: torch.Tensor, outcome_logits: torch.Tensor | None):
-        value_logits = value_logits.unflatten(-1, (-1, self.config.value_bins))
+        value_logits = value_logits.unflatten(-1, (-1, self.config.value_support))
         config = self.config
         values = critic_values(
             value_logits,

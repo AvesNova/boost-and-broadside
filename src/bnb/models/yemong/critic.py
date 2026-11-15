@@ -27,17 +27,25 @@ def symexp(values: torch.Tensor) -> torch.Tensor:
     return torch.sign(values) * torch.expm1(values.abs())
 
 
-def value_bins(count: int, limit: float, dtype=torch.float32, device=None) -> torch.Tensor:
-    """symexp(linspace(-limit, limit, count))."""
-    return symexp(torch.linspace(-limit, limit, count, dtype=dtype, device=device))
+def value_bins(
+    count: int, limit: float, padding: int = 0, dtype=torch.float32, device=None
+) -> torch.Tensor:
+    """(count + 2 padding,): symexp of count positions evenly spaced over [-limit, limit] in
+    symlog, with `padding` more at the same spacing past each end (the value support's
+    padding, `codes.PADDING_BINS` in a new build: an HL-Gauss target near +-limit keeps its
+    mean when renormalised)."""
+    step = 2.0 * limit / (count - 1)
+    reach = limit + padding * step
+    return symexp(torch.linspace(-reach, reach, count + 2 * padding, dtype=dtype, device=device))
 
 
 def value_targets(values: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
     """(...) to (..., bins): the critic's HL-Gauss target (Farebrother et al. 2024, "Stop
     Regressing"), the Gaussian of `codes.HL_GAUSS_SIGMA` bin widths at the value's position
     on the symlog bins, integrated over each bin and renormalised over them
-    (`codes.hl_gauss`). The bins are evenly spaced in symlog (`value_bins`); a value past
-    the outer bins is clamped to them."""
+    (`codes.hl_gauss`). The bins are evenly spaced in symlog (`value_bins`, padding
+    included); a value past the outermost bin's centre is clamped to it (the critic's
+    `support_clip` series counts those)."""
     count = bins.shape[0]
     low, high = symlog(bins[0]), symlog(bins[-1])
     position = (symlog(values).clamp(low, high) - low) * ((count - 1) / (high - low))
