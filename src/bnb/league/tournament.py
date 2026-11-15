@@ -270,14 +270,17 @@ def unnamed_scoring(game: GameConfig) -> str:
     return scoring_of(game, UNNAMED_SCORE)
 
 
-def outcomes(arena: Arena, matchups: list[tuple[int, int]]) -> tuple[torch.Tensor, dict]:
+def outcomes(
+    arena: Arena, matchups: list[tuple[int, int]], lineups: torch.Tensor | None = None
+) -> tuple[torch.Tensor, dict]:
     """One batch's full outcome by block, whatever the scoring: (blocks, 3) int64 the first
     player's (wins, draws, losses) by the game's win rule (`Arena.play`; in team deathmatch
     the sign of the final kill difference), and the record's further columns, "kill_share"
     each block's summed kill shares (`kill_share_sums`) and "kills" each block's (first
     player's, second player's) kills summed over its games. The kills are read once after
-    the batch (`Arena.deaths`), as the kill-share scoring always read them."""
-    results = arena.play(matchups)
+    the batch (`Arena.deaths`), as the kill-share scoring always read them. lineups: each
+    game's lineup, for an engine built with per-game lineups (`Arena.play`)."""
+    results = arena.play(matchups, lineups=lineups)
     deaths = arena.deaths()
     kills = torch.stack([deaths[:, 1].sum(-1), deaths[:, 0].sum(-1)], -1)
     return results, dict(

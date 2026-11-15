@@ -63,6 +63,7 @@ import torch
 
 from bnb.game import VERSION as GAME_VERSION
 from bnb.runs import checkpoint
+from bnb.runtime.snapshots import RL_SNAPSHOTS, SnapshotSchedule
 
 from . import goodness_of_fit
 from .design import BOUNDED, RATED, Posterior, fit_posterior, pair_weights, plan_batch
@@ -84,6 +85,8 @@ POOL_RECORD = "pool.json"
 PLAYERS = "players"
 GAMES = "games"
 SESSION_PLAYERS = 16
+# the settings a pool written before them holds by default
+SETTING_DEFAULTS = dict(lineup_types=[])
 # a policy directory: <run>/{policies,league,checkpoints}/step_<steps>/<weights kind>
 POLICY_PATH = re.compile(r"(?:^|/)([^/]+)/(?:policies|league|checkpoints)/step_(\d+)/([^/]+)/?$")
 
@@ -109,6 +112,34 @@ def policy_name(path: str | os.PathLike) -> tuple[str, str, int, str] | None:
         return None
     run, step, kind = found.group(1), int(found.group(2)), found.group(3)
     return f"{run}/step_{step}/{kind}", run, step, kind
+
+
+def scheduled_policies(
+    run: str | os.PathLike, kinds: tuple[str, ...], schedule: SnapshotSchedule = RL_SNAPSHOTS
+) -> list[pathlib.Path]:
+    """A run's policy directories (`<run>/policies/step_<steps>/<kind>`, each of `kinds`) at
+    the snapshot schedule's steps: for each scheduled step the run's first policy files at
+    or after it, and its last ones, so a run that keeps every update's files
+    (`update_policies`) gives the same snapshots as one that keeps the schedule's. Its
+    starting weights (step 0) are left out. In order of steps, then `kinds`; a kind a step
+    lacks (the uniform average before it starts) is skipped."""
+    root = pathlib.Path(run) / "policies"
+    steps = sorted(
+        int(path.name.removeprefix("step_"))
+        for path in root.glob("step_*")
+        if path.is_dir() and path.name.removeprefix("step_").isdigit()
+    )
+    steps = [step for step in steps if step > 0]
+    if not steps:
+        raise ValueError(f"{run} has no policy files under {root}")
+    chosen = {next(step for step in steps if step >= point) for point in schedule.points(steps[-1])}
+    chosen.add(steps[-1])
+    return [
+        root / f"step_{step}" / kind
+        for step in sorted(chosen)
+        for kind in kinds
+        if (root / f"step_{step}" / kind).is_dir()
+    ]
 
 
 def policy_identity(path: str | os.PathLike) -> str:
@@ -162,7 +193,7 @@ class RatingPool:
         record = self.root / POOL_RECORD
         if not record.is_file():
             raise FileNotFoundError(f"{self.root} is not a rating pool: it has no {POOL_RECORD}")
-        self.settings = json.loads(record.read_text())
+        self.settings = {**SETTING_DEFAULTS, **json.loads(record.read_text())}
         if self.settings.get("format") != FORMAT:
             raise ValueError(f"{record} is pool format {self.settings.get('format')}, not {FORMAT}")
         self.writer = writer or _writer()
@@ -174,12 +205,17 @@ class RatingPool:
         lineup: tuple[str, ...] = (),
         arena_scale: float | None = None,
         deathmatch_score: str = DEATHMATCH_SCORE,
+        lineup_types: tuple[str, ...] = (),
     ) -> RatingPool:
         """A new pool at `root` (an existing one is opened, its conditions unchanged when they
         agree): every game in it is played with `lineup` (each slot's ship type by name, both
-        teams; empty: the game's own) at `arena_scale` (None: the presets' own maps), and team
+        teams; empty: the game's own), or with `lineup_types` (each game its own lineup, each
+        slot one of these types with equal chance, both teams flying it, as `bnb evaluate`
+        draws them; any team size), at `arena_scale` (None: the presets' own maps), and team
         deathmatch is fitted by `deathmatch_score` unless a command asks for the other. The
         Imugi, the anchor at 1000, is registered."""
+        if lineup and lineup_types:
+            raise ValueError("a pool plays one fixed lineup or drawn lineups, not both")
         root = pathlib.Path(root)
         settings = dict(
             format=FORMAT,
@@ -187,6 +223,7 @@ class RatingPool:
             lineup=list(lineup),
             arena_scale=arena_scale,
             deathmatch_score=deathmatch_score,
+            lineup_types=list(lineup_types),
         )
         record = root / POOL_RECORD
         root.mkdir(parents=True, exist_ok=True)
@@ -195,7 +232,8 @@ class RatingPool:
                 file.write(json.dumps(settings, indent=1) + "\n")
         except FileExistsError:
             held = json.loads(record.read_text())
-            if {key: held.get(key) for key in settings} != settings:
+            # a pool written before drawn lineups existed plays none
+            if {key: held.get(key, SETTING_DEFAULTS.get(key)) for key in settings} != settings:
                 raise ValueError(f"{root} is a pool with other conditions: {held}") from None
         pool = cls(root)
         if ANCHOR not in pool.players()[0]:
