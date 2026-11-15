@@ -94,6 +94,8 @@ Ordered for working through:
 - **Deferred to the later review of all arms:** self-play training both sides against one side; the separate critic (too much work for an arm now).
 - **Frontline break-even (decided 2026-11-15):** wait for the map-size arm (A1). Until then frontline break-even is not scored.
 - **Per-update policy files (decided 2026-11-15):** off by default; on only for the one arm that feeds the averaging sweep. Done in the commit after this one.
+- **Fixed-size maps (author, 2026-11-15, firm):** every map is fixed-size (each preset's own arena at every team size) until an agent trains successfully on variable maps (the map-size arm A1); if that fails, fixed-size full stop. Training's map-size sampling and the evaluation's density rule become opt-in for A1 (in progress, `feat/fixed-maps`).
+- **Freeze suggestions (author, 2026-11-15; suggestions, not locked in):** frontline ±2 with a 10-minute clock; deathmatch 40 tickets with a 10-minute clock; elimination: the collapsing map should decide games more often (not necessarily by killing directly), so study shrink start times and rates and their effect on mean and median game length (sweep running, `elim-shrink` unit).
 - **Dropped:** ego-centric frame (×N compute); rotation and reflection augmentation (more environments do the same); KL-to-BC penalty (a single scripted teacher has no diversity to keep); greedy evaluation (evaluation samples like training); belief decay constants (41) and the delta/absolute head (40), using the earlier v2 results.
 
 ## In progress
