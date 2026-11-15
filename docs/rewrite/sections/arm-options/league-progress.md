@@ -1,5 +1,14 @@
 # League arm options: progress
 
+## Resume note (2026-11-15, paused)
+
+- Done: all three options built, committed (c2ecf594) and pushed; the new tests (11) pass;
+  the docs tests pass; `--print-config --device cpu` resolves A5, A6 and R3.
+- Half-done: the quick tier over the existing league, mix and runs tests (test_league_pool,
+  test_league_slots, test_league_cheese, test_mixed, test_snapshot_schedules, test_lanes,
+  test_league_graph, tests/runs) was stopped before it finished; rerun it.
+- Next: rerun those tests, merge origin/feat/imugi-boundary (2 new commits), push, report.
+
 Branch `feat/league-arm-options` (from `feat/imugi-boundary`). Three arms launch from
 settings alone; every default is today's behaviour.
 

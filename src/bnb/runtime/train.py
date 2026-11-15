@@ -3,9 +3,9 @@ hooks, progress metrics.
 
 Lineup: self-play and the league's seat (`bnb.runtime.opponents`), half each, or the league's
 seat alone for a run that trains one seat or an exploiter (`training_lineup`). A mixed batch
-(mixed spec 5) crosses the lineup with the games of a training mix (`TrainConfig.mode_mix`). The learner is Yemong,
-the toy relational model (learner spec 9) or the nearest-neighbour MLP
-(`bnb.models.nearest`). The objective is PPO, or behaviour cloning of Imugi
+(mixed spec 5) crosses the lineup with the games of a training mix (`TrainConfig.mode_mix`).
+The learner is Yemong, the toy relational model (learner spec 9) or the nearest-neighbour
+MLP (`bnb.models.nearest`). The objective is PPO, or behaviour cloning of Imugi
 (`bnb.learn.bc`, with its own lineup and stop rule in `bnb.runtime.cloning`).
 """
 
