@@ -107,10 +107,13 @@ plays a drawn count of the game's field slots each episode, the rest absent, and
 Yemong learner masks the absent ones. It is off by default (every field). See
 [Mixed batches](../explanation/game/mixed-batches.md#field-count-sampling).
 
-Team sizes can vary too (arm A2): `TrainConfig.team_sizes=TeamSizes(low, high, weights)`
-plays a drawn N-against-N game each episode, within each mode's smallest team (Frontline
-3v3), the rest of each team's slots benched and masked. It is off by default (every slot);
-A2 sets `--set 'team_sizes={"low": 1}'`. See
+Team sizes can vary too (arm A2): `TrainConfig.team_sizes=TeamSizes(...)` draws each
+episode's two team sizes, equal or not, and its field count with them, within each mode's
+smallest team (Frontline 3 a side), the rest of each team's slots benched and the other
+fields absent, both masked. It is off by default (every slot). `--set 'team_sizes={}'`
+plays 5v5 in half the games and spreads the other half evenly over the other pairs of
+sizes, one field per ship; the training log records the drawn sizes per mode
+(`team_size/...`). See
 [Mixed batches](../explanation/game/mixed-batches.md#team-size-sampling).
 
 Each episode draws its lineup by default (`TrainConfig.lineup_draw`): every slot is one of

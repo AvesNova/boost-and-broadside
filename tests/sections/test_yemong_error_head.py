@@ -518,7 +518,8 @@ def test_the_fourier_ship_token_reads_fourier_and_the_code_stays_colour():
     valid, _, means, spreads = believed(obs.ships, replay)
     position = torch.where(valid[..., None], means[..., 0:2], replay.offset[..., None, :])
     means = torch.cat([position, means[..., 2:]], -1)
-    expected = fourier.state_code.inputs(tokens.code, means, spreads)
+    centre = replay.offset[..., None, :]
+    expected = fourier.state_code.inputs(tokens.code, means, spreads, tokens.ship_type, centre)
     torch.testing.assert_close(tokens.ship[..., :527], expected, **close)
 
 

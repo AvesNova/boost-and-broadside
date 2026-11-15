@@ -93,33 +93,55 @@ LOW HIGH` rates on games that sample. A Yemong playing such games masks the abse
 
 ## Team-size sampling
 
-A pool with `team_sizes` (`bnb.contracts.TeamSizes`: low, high, weights) plays a drawn
-N-against-N game each episode, N from low to high (high defaults to the game's ships per
-team), each size with its weight (equal by default). Sizes below the mode's smallest team
-(`api.MINIMUM_SHIPS_PER_TEAM`: Frontline 3, deathmatch and elimination 1) are dropped and
-the weights renormalised. Both teams play N; each team's slots past N are benched, the
-game's existing mechanism for uneven teams (`bnb.game.physics.step`): kept as dead ships
-waiting to respawn, out of play, shown with the `benched` flag. The batch keeps its one
-static size, so nothing recompiles per size.
+A pool with `team_sizes` (`bnb.contracts.TeamSizes`) draws each episode's two team sizes,
+equal or not, and its active field count together, as one row of a table (team 0's ships,
+team 1's ships, fields, probability; `TeamSizes.table`). The ship distribution is a rule
+over the pairs of sizes, larger a against smaller b, at least the mode's smallest team
+(`bnb.game.api.MINIMUM_SHIPS_PER_TEAM`: Frontline 3, deathmatch and elimination 1), each uneven pair
+split evenly between its two orientations:
 
-The draw is the runtime's, not the game's: the rollout draws each environment's size for
+| `rule` | the pairs' probabilities (S slots a side) |
+|---|---|
+| `uniform_pairs` (default) | S against S `full_share` (0.5), the rest evenly over the other pairs |
+| `independent_teams` | each team on its own: S with chance sqrt(`full_share`), the other sizes alike |
+| `near_full` | S against S `full_share`, the rest in proportion to `decay`^(2S - a - b) |
+| `table` | `pairs`, (a, b, weight) rows, renormalised |
+
+The field count follows the ships by default (`fields: per_ship`): the game's M field slots
+times (a + b) / 2S, to the nearest count the map's pair symmetry plays, ties up (10 fields
+at 5v5, 8 at 5v3, 2 at 1v1 on a 10-slot map), or drawn evenly from the `field_spread`
+playable counts either side; `fields: game` leaves the count to the game (every field, or
+the pool's `active_fields`). Each team's slots past its size are benched, the game's
+mechanism for uneven teams (`bnb.game.physics.step`), the one the break-even lineups use:
+kept as dead ships waiting to respawn, out of play, shown with the `benched` flag. The
+fields past the count are absent. The batch keeps its one static size, so nothing
+recompiles per size.
+
+The draw is the runtime's, not the game's: the rollout draws each environment's row for
 its k-th episode from one uniform keyed by (seed, environment, episode) under its own
 purpose (`bnb.runtime.rollout`), so turning it on moves no other draw and the game's state
-gains no leaf. The game takes the next episode's counts in `resolve` (`next_active`): an
-environment whose episode ends spawns and benches by them at its reset, and the rollout
-passes them from the next tick. The rules that depend on the size read the active counts:
-team deathmatch's tickets for the enemy's N ships (4 N^(4/3) to the nearest 5 at real
-scale: 5, 10, 15, 25 and 35 for 1v1 to 5v5), elimination's wipe of the enemy's active
-ships. The clocks and elimination's shrink are the same at every size (the freeze). A
-benched slot is neither valued nor rewarded, and the enemy's unforced events are split
-over the present slots only (`bnb.learn.rewards.enemy_team_share`).
+gains no leaf. The game takes the next episode's counts in `resolve` (`next_active`,
+`next_field_count`): an environment whose episode ends spawns, benches and lays its fields
+by them at its reset, and the rollout passes the ship counts from the next tick. The rules
+that depend on the size read the active counts: team deathmatch's winning score is the
+tickets for the enemy's ships (4 N^(4/3) to the nearest 5 at real scale: 5, 10, 15, 25
+and 35 for 1 to 5 enemy ships; in 3v5 the 3-ship team needs 35 kills, the 5-ship team
+15), elimination's wipe of the enemy's active ships. The clocks and elimination's shrink
+are the same at every size (the freeze), and so is the arena. A benched slot is neither
+valued nor rewarded, and the enemy's unforced events are split over the present slots
+only (`bnb.learn.rewards.enemy_team_share`).
 
 Training samples when `TrainConfig.team_sizes` is set (default None: every slot). The arm
-A2 setting is `--set 'team_sizes={"low": 1}'`: uniform over 1v1 to 5v5 in deathmatch and
-elimination and 3v3 to 5v5 in Frontline. It covers BC's data and RL's games alike; the
-rating lanes, evaluation and play keep their games' own sizes. A Yemong playing such
-games masks the benched ships (`Yemong.mask_benched`, [Yemong](../yemong.md)); the other
-models are refused.
+A2 setting is provisional, `--set 'team_sizes={}'`: 5v5 in half the games, the other half
+spread evenly over the other pairs (1 to 5 a side in deathmatch and elimination, 3 to 5 in
+Frontline), one field per ship; the equations are a proposal to the author
+(`docs/rewrite/a2-sampling-proposal.md`). It covers BC's data and
+RL's games alike; the rating lanes, evaluation and play keep their games' own sizes. A
+Yemong playing such games masks the benched ships and the absent fields
+(`Yemong.mask_benched`, `mask_absent_fields`, [Yemong](../yemong.md)); the other models are
+refused. The training log gets the drawn sizes per training mode, over the episodes ended
+in each update (`TeamSizes.series`, on by default): `team_size/larger/{mode}`,
+`team_size/smaller/{mode}`, `team_size/fields/{mode}` and `team_size/share/{a}v{b}/{mode}`.
 
 ## Lineup draw
 

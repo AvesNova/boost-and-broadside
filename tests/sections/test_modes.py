@@ -794,7 +794,7 @@ def test_frontline_capture_end_to_end_through_the_game():
         ticks += 1
         for amount in (events.objective_progress, events.objective):
             assert abs(float(amount.sum())) < 1e-5
-        objective += events.objective[0]
+        objective += events.objective[0].sum(-1)
         if events.done.item():
             break
         if state.mode.front.item() != (fronts[-1] if fronts else 0):
@@ -990,7 +990,10 @@ def test_objective_events_are_zero_sum_and_results_only_at_the_end(mode):
     moved = 0
     for _, events, _ in cases.play(cases.MODES[mode], ticks=250, seed=3):
         for amount in (events.objective_progress, events.objective):
-            assert (amount.sum(-1).abs() <= 1e-6 * (1.0 + amount.abs().sum(-1))).all()
+            gain, loss = amount.unbind(-1)  # each event in its own column, by sign
+            assert (gain >= 0).all() and (loss <= 0).all()
+            total = amount.sum((-2, -1))
+            assert (total.abs() <= 1e-6 * (1.0 + amount.abs().sum((-2, -1)))).all()
         assert (events.result[~events.done] == 0).all()
         moved += int((events.objective_progress != 0).any())
     if mode == "frontline":

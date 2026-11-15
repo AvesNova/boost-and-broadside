@@ -605,10 +605,16 @@ class Pool:
     rated checkpoint of many runs in one directory per pool, which several machines may
     write at once, rated per game preset against Imugi (1000).
 
-    Actions: `create` makes the pool (its games' conditions: `--lineup`, `--arena-scale`,
-    `--deathmatch-score`; creating an existing pool with the same conditions opens it);
+    Actions: `create` makes the pool (its games' conditions: `--lineup`, or
+    `--lineup-types`, each game's lineup drawn slot by slot from these types as `bnb
+    evaluate` draws it, at any team size; `--arena-scale`, `--deathmatch-score`; creating an
+    existing pool with the same conditions opens it);
     `add PATH ...` registers policies (`<run>/policies/step_<n>/<kind>` directories, named
-    `<run>/step_<n>/<kind>`; `--name` for one elsewhere) or scripted players by name;
+    `<run>/step_<n>/<kind>`; `--name` for one elsewhere) or scripted players by name, and
+    `--runs RUN ...` each run's snapshots (run directories, or names in the runs
+    directory): its policy files of `--kinds` at the snapshot schedule's steps
+    (`bnb.league.rating_pool.scheduled_policies`; a run that keeps every update's files
+    gives the scheduled ones);
     `import DIR ...` brings in every `<preset>.batches.jsonl` of `bnb ratings` records
     below the directories (once: an imported batch is not imported again); `rate` plays a
     session per preset (`--presets`) among the players that most need games and can be
@@ -616,7 +622,15 @@ class Pool:
     of reach; `table` prints each preset's leaderboard and goodness of fit (observed
     against predicted win rates, and a likelihood-ratio test for loops: Bradley-Terry
     against mElo-2); `curves` writes Elo against steps per run (with standard errors) as CSV
-    to `--out`.
+    to `--out`, and with `--figure PNG` draws them as small multiples, one panel per preset
+    (`bnb.figures.ladder`; a chain's BC and RL runs on one axis of its steps), with a row of
+    break-even panels when `--break-even DIR` names the per-snapshot `bnb crossover`
+    results (`DIR/<run>/step_<n>/artifacts/crossover/...`).
+
+    Presets (`--presets`): game presets, or the evaluation suite's head-to-head conditions
+    by name (`deathmatch_10v10`, `elimination_1v1`, ...;
+    `bnb.league.evaluation_settings.CONDITIONS`): the mode's preset at the condition's team
+    size on the preset's own map, as `bnb evaluate` plays it, each its own fit.
 
     Targets (`rate`): `--target-stderr` for every player (the ladder's floor), a tighter
     `--decision-stderr` for `--decision` players, and `--contrast A:B` (a difference of two
@@ -638,9 +652,14 @@ class Pool:
     paths: tyro.conf.Positional[tuple[str, ...]] = ()
     name: str | None = None
     lineup: tuple[str, ...] = ()
+    lineup_types: tuple[str, ...] = ()
     arena_scale: float | None = None
     deathmatch_score: Literal["win_loss", "kill_share"] | None = None
     presets: tuple[str, ...] = RATED_PRESETS
+    runs: tuple[str, ...] = ()
+    kinds: tuple[str, ...] = ("exponential_average",)
+    figure: str | None = None
+    break_even: str | None = None
     target_stderr: float = 45.0
     decision: tuple[str, ...] = ()
     decision_stderr: float = 20.0
@@ -1562,20 +1581,41 @@ def _check_presets(presets: tuple[str, ...]) -> None:
 def with_lineup(field: list, lineup: tuple[str, ...], presets: tuple[str, ...]) -> list:
     """The field with every player that flies the game's lineup flying `lineup` (names of the
     presets' ship set, which must be one set at one team size)."""
-    from bnb.game.api import PRESETS
     from bnb.runtime.train import lineup_indices
 
-    games = {(PRESETS[preset].ship_set, PRESETS[preset].ships_per_team) for preset in presets}
+    found = [named_game(preset) for preset in presets]
+    games = {(game.ship_set, game.ships_per_team) for game in found}
     if len(games) != 1:
         raise SystemExit(f"--lineup: the presets {list(presets)} play other ship sets or sizes")
     try:
-        indices = lineup_indices(tuple(lineup), PRESETS[presets[0]])
+        indices = lineup_indices(tuple(lineup), found[0])
     except ValueError as error:
         raise SystemExit(f"--lineup: {error}") from error
     return [
         dataclasses.replace(one, ship_type=indices) if one.ship_type is None else one
         for one in field
     ]
+
+
+def named_game(name: str):
+    """A rated game by name: a game preset (`PRESETS`), or a head-to-head condition of the
+    evaluation suite (`bnb.league.evaluation_settings.CONDITIONS`), its mode's preset at its
+    team size on the suite's map rule (`bnb.league.evaluation.game_of`)."""
+    from bnb.game.api import PRESETS
+    from bnb.league.evaluation_settings import BY_NAME, HEAD_TO_HEAD, EvaluationConfig
+
+    if name in PRESETS:
+        return PRESETS[name]
+    condition = BY_NAME.get(name)
+    if condition is None or condition.kind != HEAD_TO_HEAD:
+        heads = [one for one, kept in BY_NAME.items() if kept.kind == HEAD_TO_HEAD]
+        raise SystemExit(
+            f"{name!r} is neither a game preset ({sorted(PRESETS)}) nor a head-to-head "
+            f"condition ({heads}); break-even is measured by bnb crossover"
+        )
+    from bnb.league.evaluation import game_of
+
+    return game_of(condition, EvaluationConfig())
 
 
 def rated_game(
@@ -1586,10 +1626,9 @@ def rated_game(
     evaluation-only field-count range (`Ratings.active_fields`, low and high); None for
     either: the preset's own."""
     from bnb.contracts import ActiveFields
-    from bnb.game.api import PRESETS
     from bnb.game.modes.rules import arena_radius_for
 
-    game = PRESETS[preset]
+    game = named_game(preset)
     if arena_scale is not None:
         if not arena_scale > 0.0:
             raise SystemExit(f"--arena-scale {arena_scale}: a scale above 0")
@@ -2203,6 +2242,7 @@ def pool(options: Pool) -> None:
                 options.lineup,
                 options.arena_scale,
                 options.deathmatch_score or "win_loss",
+                options.lineup_types,
             )
         except ValueError as error:
             raise SystemExit(str(error)) from error
@@ -2225,21 +2265,31 @@ def pool(options: Pool) -> None:
 def _pool_scoring(opened, preset: str, deathmatch_score: str | None) -> tuple[str, str]:
     """(how the fit scores a preset's games, the scoring a batch that names none was
     fitted under; `bnb.league.tournament.recorded_results`)."""
-    from bnb.game.api import PRESETS
     from bnb.league.tournament import scoring_of, unnamed_scoring
 
+    game = named_game(preset)
     chosen = deathmatch_score or opened.settings["deathmatch_score"]
-    return scoring_of(PRESETS[preset], chosen), unnamed_scoring(PRESETS[preset])
+    return scoring_of(game, chosen), unnamed_scoring(game)
 
 
 def _pool_add(opened, options: Pool) -> None:
     from bnb.league.matches import imugi_play
     from bnb.league.matches import player as resolve
-    from bnb.league.rating_pool import PoolPlayer
+    from bnb.league.rating_pool import PoolPlayer, scheduled_policies
 
     if options.name is not None and len(options.paths) != 1:
         raise SystemExit("--name names one player: give one path")
-    for path in options.paths:
+    runs_directory = runs_directory_of(options.runs_directory)
+    paths = list(options.paths)
+    for run in options.runs:
+        directory = pathlib.Path(run)
+        if not directory.is_dir():
+            directory = runs_directory / run
+        try:
+            paths += [str(path) for path in scheduled_policies(directory, options.kinds)]
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
+    for path in paths:
         try:
             if pathlib.Path(path).is_dir():
                 added = opened.add_policy(path, options.name)
@@ -2284,7 +2334,8 @@ def _pool_table(opened, options: Pool) -> None:
 
     from bnb.league import goodness_of_fit, rating_pool, tournament
 
-    _check_presets(options.presets)
+    for preset in options.presets:
+        named_game(preset)
     every = []
     for preset in options.presets:
         scoring = _pool_scoring(opened, preset, options.deathmatch_score)
@@ -2318,6 +2369,14 @@ def _pool_table(opened, options: Pool) -> None:
             writer.writeheader()
             writer.writerows(rating_pool.curves(every))
         print(f"{options.out}: {len(rating_pool.curves(every))} rows")
+        if options.figure is not None:
+            from bnb.figures import ladder
+
+            points = None
+            if options.break_even is not None:
+                points = ladder.break_even_points(options.break_even)
+            drawn = ladder.draw(rating_pool.curves(every), options.presets, options.figure, points)
+            print(f"{drawn}: {len(options.presets)} conditions")
 
 
 def _pool_player(one, runs_directory: pathlib.Path, lineup: tuple[str, ...], preset: str):
@@ -2356,10 +2415,12 @@ def _pool_rate(opened, options: Pool) -> None:
 
     import torch
 
-    from bnb.league import rating_pool, tournament
+    from bnb.game.api import type_names
+    from bnb.league import crossover, rating_pool, tournament
     from bnb.league.matches import Arena, ArenaConfig, default_lanes, network_groups
 
-    _check_presets(options.presets)
+    for preset in options.presets:
+        named_game(preset)
     contrasts = tuple(tuple(pair.split(":")) for pair in options.contrast)
     if any(len(pair) != 2 for pair in contrasts):
         raise SystemExit(f"--contrast A:B, not {list(options.contrast)}")
@@ -2367,6 +2428,7 @@ def _pool_rate(opened, options: Pool) -> None:
     torch.manual_seed(seed)  # the games' draws
     runs_directory = runs_directory_of(options.runs_directory)
     lineup = tuple(opened.settings.get("lineup", ()))
+    lineup_types = tuple(opened.settings.get("lineup_types", ()))
     try:
         config = tournament.TournamentConfig(
             arena=ArenaConfig(blocks=options.blocks, block_environments=options.block_environments),
@@ -2386,12 +2448,30 @@ def _pool_rate(opened, options: Pool) -> None:
     for preset in options.presets:
         game = rated_game(preset, opened.settings.get("arena_scale"))
         arenas = []
+        names = type_names(game.ship_set)
+        unknown = [name for name in lineup_types if name not in names]
+        if unknown:
+            raise SystemExit(f"the pool's lineup types {unknown} are not types of {names}")
+        types = tuple(names.index(name) for name in lineup_types)
 
-        def play_batch(field, matchups, game=game, arenas=arenas):
+        def play_batch(field, matchups, game=game, arenas=arenas, preset=preset, types=types):
             if not arenas:
                 lanes = default_lanes(network_groups(field), 2 * config.arena.blocks)
-                arenas.append(Arena(field, game, device, config.arena, lanes))
-            return tournament.outcomes(arenas[0], matchups)
+                arenas.append(
+                    Arena(field, game, device, config.arena, lanes, game_lineups=bool(types))
+                )
+            arena = arenas[0]
+            drawn = None
+            if types:  # each game's lineup, keyed by the session's seed, the preset, the batch
+                drawn = crossover.lineup_draw(
+                    seed,
+                    arena.batch,
+                    config.arena.games,
+                    game.ships_per_team,
+                    types,
+                    stream=f"pool_lineup/{preset}",
+                ).to(device)
+            return tournament.outcomes(arena, matchups, drawn)
 
         try:
             rating_pool.rate(

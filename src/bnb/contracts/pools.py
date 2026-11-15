@@ -25,53 +25,148 @@ class ArenaScale:
             raise ValueError(f"{self}: sigma > 0 and 0 < low <= 1 <= high")
 
 
+# Team-size sampling's ship rules (`TeamSizes.rule`) and field rules (`TeamSizes.fields`).
+SIZE_RULES = ("uniform_pairs", "independent_teams", "near_full", "table")
+FIELD_RULES = ("per_ship", "game")
+
+
 @dataclasses.dataclass(frozen=True)
 class TeamSizes:
-    """Team-size sampling (arm A2): each episode's team size N, the same for both teams
-    (an N-against-N game), drawn at every reset from the sizes low to high (None: the
-    game's ships per team), each with its weight (None: every size alike), without the
-    sizes below the mode's smallest team (`bnb.game.api.MINIMUM_SHIPS_PER_TEAM`: Frontline
-    3, the others 1), the weights renormalised over the sizes left. A team's slots past N
-    are benched (`bnb.game.api`: held as dead ships, out of play, shown with the benched
-    flag), so the batch keeps its one static size. The draw is the runtime's
-    (`bnb.runtime.rollout`), keyed by (seed, environment, episode)."""
+    """Team-size sampling (arm A2): each episode's two team sizes and its active field count,
+    drawn together at every reset from a table of (team 0's ships, team 1's ships, fields)
+    with their probabilities (`table`). A team's slots past its size are benched
+    (`bnb.game.api`: held as dead ships, out of play, shown with the benched flag), and the
+    fields past the count are absent, so the batch keeps its one static size. The draw is
+    the runtime's (`bnb.runtime.rollout`), keyed by (seed, environment, episode). The
+    equations are a proposal to the author (docs/rewrite/a2-sampling-proposal.md).
 
+    The ships, over the games of S slots a side whose teams are at least `low` and the
+    mode's smallest team (`bnb.game.api.MINIMUM_SHIPS_PER_TEAM`: Frontline 3, the others
+    1), as unordered pairs (larger a, smaller b), each uneven pair then split evenly between
+    the two orientations:
+    - "uniform_pairs": S against S with `full_share`, the rest spread evenly over the other
+      pairs (with `uneven` False, over the N against N games only);
+    - "independent_teams": each team's size drawn on its own, S with chance
+      sqrt(full_share) (so S against S has full_share), the other sizes alike;
+    - "near_full": S against S with `full_share`, the rest in proportion to
+      decay^(2S - a - b), the missing ships' count (with `uneven` False, N against N only);
+    - "table": `pairs`, (a, b, weight) each, renormalised (full_share unused).
+    The fields, of the game's M slots (point-symmetric pairs, `ActiveFields`: an even M plays
+    even counts only):
+    - "per_ship": the count M (a + b) / (2S) to the nearest playable count, ties up (all M at
+      S against S), or with `field_spread` k > 0 drawn evenly from the k playable counts
+      either side of it, within 0 to M;
+    - "game": the game's own (every field, or the pool's `active_fields` draw), drawn
+      apart from the ships.
+    series: the training log's series of the drawn sizes per mode
+    (`bnb.runtime.analytics.team_size_series`)."""
+
+    rule: str = "uniform_pairs"
+    full_share: float = 0.5
     low: int = 1
-    high: int | None = None
-    weights: tuple[float, ...] | None = None
+    uneven: bool = True
+    decay: float = 0.5
+    pairs: tuple[tuple[int, int, float], ...] | None = None
+    fields: str = "per_ship"
+    field_spread: int = 0
+    series: bool = True
 
     def __post_init__(self) -> None:
-        if self.low < 1 or (self.high is not None and self.high < self.low):
-            raise ValueError(f"{self}: need 1 <= low <= high")
-        if self.weights is not None:
-            if self.high is None:
-                raise ValueError(f"{self}: weights need high, one weight per size low to high")
-            if len(self.weights) != self.high - self.low + 1:
-                raise ValueError(
-                    f"{self}: {len(self.weights)} weights for the sizes {self.low} to {self.high}"
-                )
-            if any(weight < 0.0 for weight in self.weights) or not sum(self.weights) > 0.0:
-                raise ValueError(f"{self}: weights must be non-negative, and not all 0")
+        if self.rule not in SIZE_RULES:
+            raise ValueError(f"{self}: rule {self.rule!r} is not one of {SIZE_RULES}")
+        if self.fields not in FIELD_RULES:
+            raise ValueError(f"{self}: fields {self.fields!r} is not one of {FIELD_RULES}")
+        if not 0.0 < self.full_share <= 1.0:
+            raise ValueError(f"{self}: need 0 < full_share <= 1")
+        if self.low < 1 or self.field_spread < 0 or not 0.0 < self.decay:
+            raise ValueError(f"{self}: need low >= 1, field_spread >= 0 and decay > 0")
+        if (self.rule == "table") != (self.pairs is not None):
+            raise ValueError(f"{self}: pairs go with the rule 'table', and only with it")
+        if self.rule == "independent_teams" and not self.uneven:
+            raise ValueError(f"{self}: independent teams are uneven by nature")
+        if self.pairs is not None:
+            for larger, smaller, weight in self.pairs:
+                if not 1 <= smaller <= larger or weight < 0.0:
+                    raise ValueError(f"{self}: a pair needs 1 <= smaller <= larger, weight >= 0")
+            if not sum(weight for _, _, weight in self.pairs) > 0.0:
+                raise ValueError(f"{self}: the pairs' weights are all 0")
 
-    def probabilities(self, ships_per_team: int, minimum: int = 1) -> tuple[float, ...]:
-        """Each size's probability, sizes 1 to ships_per_team in order, for a game of
-        ships_per_team slots a side whose mode's smallest team is `minimum`. Raises
-        ValueError for a range past the game's slots or with no size left."""
-        high = ships_per_team if self.high is None else self.high
-        if high > ships_per_team:
-            raise ValueError(f"{self}: at most the game's {ships_per_team} ships per team")
-        weights = (1.0,) * (high - self.low + 1) if self.weights is None else self.weights
-        by_size = [0.0] * ships_per_team
-        for size, weight in zip(range(self.low, high + 1), weights, strict=True):
-            if size >= minimum:
-                by_size[size - 1] = float(weight)
-        total = sum(by_size)
+    def pair_probabilities(
+        self, ships_per_team: int, minimum: int = 1
+    ) -> dict[tuple[int, int], float]:
+        """{(larger, smaller): probability} for a game of ships_per_team slots a side whose
+        mode's smallest team is `minimum`. Raises ValueError where no pair is left."""
+        S, smallest = ships_per_team, max(self.low, minimum)
+        if smallest > S:
+            raise ValueError(f"{self}: the smallest team {smallest} is past the game's {S} ships")
+        allowed = [
+            (a, b)
+            for a in range(smallest, S + 1)
+            for b in range(smallest, a + 1)
+            if self.uneven or a == b
+        ]
+        if self.rule == "table":
+            weights = {}
+            for a, b, weight in self.pairs:
+                if a > S:
+                    raise ValueError(f"{self}: {a} ships is past the game's {S} ships per team")
+                if b >= smallest and weight > 0.0:
+                    weights[(a, b)] = weights.get((a, b), 0.0) + weight
+        elif self.rule == "independent_teams":
+            sizes = range(smallest, S + 1)
+            full = math.sqrt(self.full_share)
+            rest = (1.0 - full) / (S - smallest) if S > smallest else 0.0
+            team = {n: full if n == S or S == smallest else rest for n in sizes}
+            weights = {}
+            for first in sizes:
+                for second in sizes:
+                    pair = (max(first, second), min(first, second))
+                    weights[pair] = weights.get(pair, 0.0) + team[first] * team[second]
+        else:
+            others = [pair for pair in allowed if pair != (S, S)]
+            if self.rule == "uniform_pairs":
+                spread = {pair: 1.0 for pair in others}
+            else:  # near_full
+                spread = {(a, b): self.decay ** (2 * S - a - b) for a, b in others}
+            total = sum(spread.values())
+            full = self.full_share if others else 1.0
+            weights = {(S, S): full}
+            weights.update({pair: (1.0 - full) * w / total for pair, w in spread.items()})
+        weights = {pair: w for pair, w in weights.items() if w > 0.0}
+        total = sum(weights.values())
         if not total > 0.0:
-            raise ValueError(
-                f"{self}: no size of {self.low} to {high} with weight is at least the mode's "
-                f"smallest team, {minimum}"
-            )
-        return tuple(weight / total for weight in by_size)
+            raise ValueError(f"{self}: no team size of at least {smallest} has weight")
+        return {pair: w / total for pair, w in sorted(weights.items(), reverse=True)}
+
+    def field_counts(self, ships: int, ships_per_team: int, num_fields: int) -> dict[int, float]:
+        """{field count: probability} of a game of `ships` ships in all (both teams), of
+        ships_per_team slots a side and num_fields field slots, by the "per_ship" rule."""
+        step = 1 if num_fields % 2 else 2
+        target = num_fields * ships / (2 * ships_per_team)
+        nearest = min(num_fields, step * math.floor(target / step + 0.5))
+        counts = [
+            nearest + step * offset
+            for offset in range(-self.field_spread, self.field_spread + 1)
+            if 0 <= nearest + step * offset <= num_fields
+        ]
+        return {count: 1.0 / len(counts) for count in counts}
+
+    def table(
+        self, ships_per_team: int, num_fields: int, minimum: int = 1
+    ) -> tuple[tuple[int, int, int, float], ...]:
+        """The draw's table: (team 0's ships, team 1's ships, fields, probability), the
+        probabilities summing to 1; fields -1 where the game draws its own ("game")."""
+        rows = []
+        for (a, b), chance in self.pair_probabilities(ships_per_team, minimum).items():
+            sides = ((a, b),) if a == b else ((a, b), (b, a))
+            if self.fields == "game":
+                fields = {-1: 1.0}
+            else:
+                fields = self.field_counts(a + b, ships_per_team, num_fields)
+            for first, second in sides:
+                for count, share in fields.items():
+                    rows.append((first, second, count, chance * share / len(sides)))
+        return tuple(rows)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -90,9 +185,10 @@ class Pool:
         the pool's; None plays the pool's radius every episode (evaluation, ratings, play).
     active_fields: field-count sampling (`bnb.contracts.ActiveFields`): each episode plays a
         drawn number of the fields, the rest absent; None takes the GameConfig's.
-    team_sizes: team-size sampling (`TeamSizes`): each episode plays a drawn N-against-N
-        game, the rest of each team's slots benched; None plays every slot (the
-        GameConfig's size). The runtime's draw, not the game's (`bnb.runtime.rollout`).
+    team_sizes: team-size sampling (`TeamSizes`): each episode plays drawn team sizes (equal
+        or not) and, by default, a field count that follows them, the rest of each team's
+        slots benched and the other fields absent; None plays every slot (the GameConfig's
+        size). The runtime's draw, not the game's (`bnb.runtime.rollout`).
     """
 
     name: str

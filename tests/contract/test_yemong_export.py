@@ -92,6 +92,15 @@ A13 = dict(
     shot_head="none",
 )
 
+# arm A17's build: raw inputs in place of every code, with every optional input they replace
+A17 = dict(
+    next_state="delta",
+    input_encoding="raw",
+    acceleration_inputs=True,
+    spread_inputs="ellipse",
+    arena_code=True,
+)
+
 
 @pytest.mark.parametrize(
     "settings",
@@ -103,6 +112,8 @@ A13 = dict(
         dict(order="temporal_first", temporal_block="gru"),
         dict(A13),
         dict(A13, next_state_head=False, forecast_feedback=False),
+        dict(A17),
+        dict(next_state="delta", shot_head="damage"),
     ],
     ids=[
         "absolute",
@@ -112,6 +123,8 @@ A13 = dict(
         "gru",
         "a13_but_next_state",
         "a13_all",
+        "a17_raw",
+        "a22_damage",
     ],
 )
 def test_yemong_step_exports_to_onnx(tmp_path, settings):

@@ -26,7 +26,7 @@ from bnb.game.rules import TEAMS
 from . import codes
 from .delta import DeltaComponent
 from .features import RESPAWN_HARMONICS, local_presence, respawn_features, symlog
-from .state_code import POSITION_LEVELS, ShipStateCode
+from .state_code import POSITION_LEVELS, RAW_POSITION_SCALE, ShipStateCode
 
 NULL_ACTION = 0  # the joint index of coast, straight, hold fire
 # The model's input scales: constants of the model (its VERSION), not the game's rules. They
@@ -69,11 +69,23 @@ ACCELERATIONS = (
 )
 ACCELERATION_CODE = sum(component.width for component in ACCELERATIONS)
 ACCELERATION_INPUTS = ACCELERATION_CODE + 1  # the codes, then the validity flag
+# with raw inputs (`YemongConfig.input_encoding`): symlog(value / knee) per component, the flag
+RAW_ACCELERATION_INPUTS = len(ACCELERATIONS) + 1
 SLOW_SPEED = 1.0  # m/s: below it the frame is the heading, not the velocity
 
 # benched (a slot out of an uneven match, shown to both teams): read since Yemong v3
 SHIP_FLAGS = ("alive", "visible", "fired", "benched")
 POSITION_CODE = 9 * POSITION_LEVELS  # the width of a position code
+# A memory token's position with raw inputs: (x, y) from the map centre over RAW_POSITION_SCALE
+RAW_POSITION = 2
+
+
+def position_inputs(raw: bool = False) -> int:
+    """The width of a field's or a zone's position: its code, or with raw inputs
+    RAW_POSITION."""
+    return RAW_POSITION if raw else POSITION_CODE
+
+
 # The modes whose flags the global token reads (`YemongConfig.mode_inputs`): the modes a
 # build knows, each a one-hot column of the observation ("mode_<name>"). Builds from before
 # elimination read the first two.
@@ -112,18 +124,22 @@ def arena_code(radius: torch.Tensor) -> torch.Tensor:
     return codes.hl_gauss(coordinate, low, high, codes.HL_GAUSS_SIGMA)
 
 
-def global_inputs(mode_inputs: tuple[str, ...], timers: bool = False, arena: bool = False) -> int:
-    """The global token's width: the centre's code, then episode progress, arena radius,
-    fog, the flags of the modes read (mode_inputs), both scores over the target, the
-    target, the front and its threshold, then with timers the own team's next respawn
-    wave (TIMER_INPUTS), then with arena the arena radius's code (`arena_code`), then the
-    boundary's inputs (BOUNDARY_INPUTS)."""
+def global_inputs(
+    mode_inputs: tuple[str, ...], timers: bool = False, arena: bool = False, raw: bool = False
+) -> int:
+    """The global token's width: the centre's code (none with raw inputs: the map centre
+    from itself is 0), then episode progress, arena radius, fog, the flags of the modes
+    read (mode_inputs), both scores over the target, the target, the front and its
+    threshold, then with timers the own team's next respawn wave (TIMER_INPUTS), then with
+    arena the arena radius's code (`arena_code`; with raw inputs its coordinate
+    ln(R / ARENA_CODE_RADIUS), one column), then the boundary's inputs (BOUNDARY_INPUTS)."""
+    arena_width = (1 if raw else ARENA_CODE) if arena else 0
     return (
-        POSITION_CODE
+        (0 if raw else POSITION_CODE)
         + 8
         + len(mode_inputs)
         + (TIMER_INPUTS if timers else 0)
-        + (ARENA_CODE if arena else 0)
+        + arena_width
         + BOUNDARY_INPUTS
     )
 
@@ -133,23 +149,37 @@ FIELD_INPUTS = POSITION_CODE + 3
 ZONE_INPUTS = POSITION_CODE + 1 + ZONE_ROLES + 4
 
 
-def zone_inputs(timers: bool = False) -> int:
-    """The zone token's width: ZONE_INPUTS, then with timers the capture locks on the
-    viewer's team and on the enemy's (TIMER_INPUTS each)."""
-    return ZONE_INPUTS + (2 * TIMER_INPUTS if timers else 0)
+def field_inputs(raw: bool = False) -> int:
+    """The field token's width: FIELD_INPUTS, its centre's position as `position_inputs`
+    reads it (radius, band width and level after it)."""
+    return FIELD_INPUTS - POSITION_CODE + position_inputs(raw)
+
+
+def zone_inputs(timers: bool = False, raw: bool = False) -> int:
+    """The zone token's width: ZONE_INPUTS, its centre's position as `position_inputs`
+    reads it, then with timers the capture locks on the viewer's team and on the enemy's
+    (TIMER_INPUTS each)."""
+    width = ZONE_INPUTS - POSITION_CODE + position_inputs(raw)
+    return width + (2 * TIMER_INPUTS if timers else 0)
 
 
 def ship_inputs(
-    code_width: int, ship_types: int, accelerations: bool = False, ellipse_width: int = 0
+    code_width: int,
+    ship_types: int,
+    accelerations: bool = False,
+    ellipse_width: int = 0,
+    raw: bool = False,
 ) -> int:
     """The ship token's width: the state columns (code_width, `ShipStateCode.input_width`),
     team and type one-hots, the flags, time since seen, respawn features
     (1 + 2 RESPAWN_HARMONICS), the pending action, the gradient and presence (2 each), then
-    with accelerations the acceleration inputs (ACCELERATION_INPUTS), then the ellipse inputs
-    (`ShipStateCode.ellipse_code`, ellipse_width)."""
+    with accelerations the acceleration inputs (ACCELERATION_INPUTS; with raw inputs
+    RAW_ACCELERATION_INPUTS), then the ellipse inputs (`ShipStateCode.ellipse_code`,
+    ellipse_width)."""
     respawn = 1 + 2 * RESPAWN_HARMONICS
     width = code_width + TEAMS + ship_types + len(SHIP_FLAGS) + 1 + respawn + NUM_JOINT + 2 + 2
-    return width + (ACCELERATION_INPUTS if accelerations else 0) + ellipse_width
+    acceleration = RAW_ACCELERATION_INPUTS if raw else ACCELERATION_INPUTS
+    return width + (acceleration if accelerations else 0) + ellipse_width
 
 
 @contract
@@ -293,14 +323,20 @@ def accelerations(
     return Accelerations(values=values, valid=valid, slow=slow & valid, world=world)
 
 
-def acceleration_code(inputs: Accelerations) -> torch.Tensor:
+def acceleration_code(inputs: Accelerations, raw: bool = False) -> torch.Tensor:
     """(..., N, ACCELERATION_INPUTS): each component's symlog HL-Gauss code (an invalid row
-    codes its zero), then the validity flag."""
+    codes its zero), then the validity flag; with raw, (..., N, RAW_ACCELERATION_INPUTS):
+    each component's symlog(value / knee), then the flag."""
+    flag = inputs.valid.to(inputs.values.dtype)[..., None]
+    if raw:
+        knees = [component.knee for component in ACCELERATIONS]
+        parts = [symlog(inputs.values[..., i] / knee) for i, knee in enumerate(knees)]
+        return torch.cat([torch.stack(parts, -1), flag], -1)
     parts = [
         codes.symlog_encode(inputs.values[..., i], c.knee, c.bound, c.bins)[0]
         for i, c in enumerate(ACCELERATIONS)
     ]
-    return torch.cat([*parts, inputs.valid.to(inputs.values.dtype)[..., None]], -1)
+    return torch.cat([*parts, flag], -1)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -341,6 +377,16 @@ class Tokens:
 def _position_code(position: torch.Tensor, period: float) -> torch.Tensor:
     zero = torch.zeros_like(position[..., 0])
     return codes.position_encode(position, zero, (period,) * 2, POSITION_LEVELS).flatten(-2)
+
+
+def _memory_position(
+    position: torch.Tensor, period: float, centre: torch.Tensor, raw: bool
+) -> torch.Tensor:
+    """Memory tokens' positions (..., M, 2), shifted: their colour codes, or with raw inputs
+    their offsets from the map centre (..., 2) over RAW_POSITION_SCALE."""
+    if raw:
+        return (position - centre[..., None, :]) / RAW_POSITION_SCALE
+    return _position_code(position, period)
 
 
 def believed(ships: torch.Tensor, replay: Replay) -> tuple[torch.Tensor, ...]:
@@ -393,9 +439,14 @@ def compose(
     present flag 0) is no key of attention (`Yemong.mask_absent_fields`).
     With read_arena the global token reads the arena radius's code before the boundary's
     inputs (`global_inputs`). The position codes' period is the state code's
-    (`ShipStateCode.position_period`)."""
+    (`ShipStateCode.position_period`). With the state code's raw inputs
+    (`ShipStateCode.input_encoding` "raw", arm A17) every code a token reads is a plain
+    scalar instead: the ship's state (`ShipStateCode.raw_inputs`), the accelerations and
+    the ellipses, the fields' and zones' centres from the map centre, the arena radius's
+    log; the global token reads no centre. The tokens' code stays the state code."""
     ships, dtype = obs.ships, obs.ships.dtype
     period = state_code.position_period
+    raw = state_code.input_encoding == "raw"
     own = replay.previous_action.shape[-1]
     column = {name: ships[..., SHIP[name]] for name in SHIP}
     visible = column["visible"] > 0.5
@@ -435,7 +486,7 @@ def compose(
         change = accelerations(ships, believed_means, now, previous, tick_length)
     ship = torch.cat(
         [
-            state_code.inputs(code, means, spreads),
+            state_code.inputs(code, means, spreads, ship_type, centre[..., None, :]),
             (team[..., None] == torch.arange(TEAMS, device=ships.device)).to(dtype),
             (ship_type[..., None] == torch.arange(ship_types, device=ships.device)).to(dtype),
             torch.stack([column[name] for name in SHIP_FLAGS], -1),
@@ -444,7 +495,11 @@ def compose(
             pending,
             gradient,
             presence,
-            *((acceleration_code(change),) if change is not None and read_accelerations else ()),
+            *(
+                (acceleration_code(change, raw),)
+                if change is not None and read_accelerations
+                else ()
+            ),
             *((state_code.ellipse_code(spreads),) if state_code.ellipse_width else ()),
         ],
         -1,
@@ -453,9 +508,15 @@ def compose(
     globals_ = obs.globals
     target = globals_[..., GLOBAL["score_target"]]
     per_target = torch.where(target > 0.0, 1.0 / torch.where(target > 0.0, target, 1.0), 0.0)
+    radius = globals_[..., GLOBAL["arena_radius"]]
+    arena = (
+        (torch.log(radius / ARENA_CODE_RADIUS)[..., None] if raw else arena_code(radius),)
+        if read_arena
+        else ()
+    )
     global_token = torch.cat(
         [
-            _position_code(centre, period),
+            *(() if raw else (_position_code(centre, period),)),
             torch.stack(
                 [
                     globals_[..., GLOBAL["episode_progress"]],
@@ -471,7 +532,7 @@ def compose(
                 -1,
             ),
             *((respawn_features(globals_[..., GLOBAL["next_wave_own"]]),) if timers else ()),
-            *((arena_code(globals_[..., GLOBAL["arena_radius"]]),) if read_arena else ()),
+            *arena,
             globals_[..., GLOBAL["boundary_fraction"], None],
             respawn_features(globals_[..., GLOBAL["boundary_time_to_zero"]]),
         ],
@@ -484,7 +545,7 @@ def compose(
     )
     field = torch.cat(
         [
-            _position_code(field_position, period),
+            _memory_position(field_position, period, centre, raw),
             torch.stack(
                 [
                     fields[..., FIELD["radius"]] / FIELD_RADIUS_SCALE,
@@ -508,7 +569,7 @@ def compose(
     role = zones[..., ZONE["role"]].long()
     zone = torch.cat(
         [
-            _position_code(zone_position, period),
+            _memory_position(zone_position, period, centre, raw),
             torch.cat(
                 [
                     (zones[..., ZONE["radius"]] / FIELD_RADIUS_SCALE)[..., None],

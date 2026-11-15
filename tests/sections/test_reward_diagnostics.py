@@ -76,7 +76,7 @@ def test_the_team_mixed_levels_sum_to_the_aggregate():
     mixed = returns.team_mixed_levels(team, alive, per_level, spirit)
     total, returned = returns.team_aggregate(team, alive, per_level, per_level, spirit, weights)
     torch.testing.assert_close((mixed * weights).sum(-1), total)
-    torch.testing.assert_close(mixed.sum(-1), returned)  # the returns' sum is unweighted
+    torch.testing.assert_close((mixed * weights).sum(-1), returned)  # weighted the same
     torch.testing.assert_close(mixed[0, 0, 1], per_level[0, 0, 1] + 0.5 * per_level[0, 1, 1])
 
 

@@ -92,7 +92,9 @@ mode's zones are key and value memory only.
   its pending action, the refractive-index gradient, and the local presence of allies and
   enemies around it; with `YemongConfig.acceleration_inputs`, its acceleration inputs last.
   With `YemongConfig.position_inputs` "fourier" the position and heading enter as Fourier
-  features in place of their code runs (see below).
+  features in place of their code runs (see below). With `YemongConfig.input_encoding`
+  "raw" every token reads plain scalars in place of its codes
+  ([below](#input-encoding-codes-or-raw)).
 - **The global token** reads the map centre's code, episode progress, the arena radius,
   the fog flag and the mode's block. Which mode flags it reads is a build option,
   `YemongConfig.mode_inputs`: a new run reads team deathmatch, Frontline and elimination;
@@ -562,6 +564,45 @@ colour codes. The absolute head predicts the colour code from the colour inputs,
 "fourier" needs `next_state="delta"`. Select it with `--set yemong.position_inputs=fourier`
 on arm 4d's line.
 
+### Input encoding: codes or raw
+
+`YemongConfig.input_encoding` (arm A17) chooses how every token reads what the codes carry.
+**`"codes"`** (the default) reads the colour and HL-Gauss codes above. **`"raw"`** reads plain
+scalars in their place (`ShipStateCode.raw_inputs`, `bnb.models.yemong.inputs.compose`):
+
+| Input | Codes | Raw |
+|---|---|---|
+| ship state | the state code, 580 | 25 (`state_code.RAW_STATE`) |
+| acceleration inputs | three symlog HL-Gauss codes and the flag, 106 | `symlog(value / knee)` each, and the flag, 4 |
+| ellipse inputs | eight HL-Gauss codes, 200 | the eight features over their ranges' far ends, 8 |
+| a field's or zone's centre | its colour code, 81 | its offset from the map centre over 7800 m, 2 |
+| the global token's centre | its colour code, 81 | none (the map centre from itself is 0) |
+| the arena radius's code | an HL-Gauss code, 25 | `ln(R / 7800 m)`, 1 |
+
+The ship state's 25 columns follow one rule. A mean is a linear scalar over its scale: the
+position from the map centre over 7800 m (the real-scale arena radius), the velocity over
+450 m/s (about the boost speed), the nose rate over 8 rad/s, each of the five scalars over
+its range's far end (shield and energy as fractions of the type's maximum; the angle of
+attack and the log index in [-1, 1]), the gun cooldown over its longest. The heading is
+`exp(-sigma^2 / 2) (cos, sin)`, the mean resultant length of a wrapped Gaussian, so a hidden
+ship's heading fades toward 0 as its belief spreads. Every other spread is
+`ln(1 + sigma / b)`, with `b` the bin width of the code it replaces: 0 for a sharp row, about
+`ln(bins)` for a row spread over the whole range. That covers the position's per world axis
+(b the finest colour, `P / 3^9`, 12 m in a new run), the velocity's per axis (b 5 m/s) with
+the correlation of its covariance, the nose rate's (0.4 rad/s), each scalar's (a twentieth
+of its range) and the cooldown's (the standard deviation of the code's cooldown run, its
+sharp base plus the belief's residuals; b one tick).
+
+Positions are read from the map centre, so the view's random offset cancels: no raw token
+depends on it, while rotary attention and presence read differences as before. Every other
+column of the tokens, the trunk, the heads and their targets are unchanged, and the tokens'
+`code`, the next-state baseline, is still the state code. A first projection's columns keep
+the layer's own initialisation (none is a code). Like the Fourier inputs, "raw" needs
+`next_state="delta"` and `position_inputs="colour"`. On a new run's build the ship token is
+89 wide for 644, the global token 31 for 136, a field token 5 for 84 and a zone token 30 for
+109; the model has 2,743,150 parameters for 2,952,558. Select it with
+`--set yemong.input_encoding=raw`.
+
 ### The acceleration inputs
 
 The physics is deterministic, so a ship's change over the last tick reveals the control it
@@ -645,9 +686,9 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
   ships' outputs do not depend on anything in the benched rows. The benched rows' own
   outputs are computed and mean nothing; the game ignores a benched ship's action. Off,
   the model computes exactly what it did without the switch. The same weights serve both.
-- **Absent fields:** where field counts vary per episode (`TrainConfig.active_fields`, or
-  an `Arena` whose game sets `active_fields`), the runtime switch
-  `Yemong.mask_absent_fields` is on: a field whose observation row has `present` 0 is no
+- **Absent fields:** where field counts vary per episode (`TrainConfig.active_fields`,
+  team-size sampling's field counts, or an `Arena` whose game sets `active_fields`), the
+  runtime switch `Yemong.mask_absent_fields` is on: a field whose observation row has `present` 0 is no
   key or value of any spatial sublayer, by the same key mask (it then spans the ships, the
   global token and the fields). Field tokens reach the trunk only as attention keys and
   values, so no output depends on an absent field's row. Off, the model computes exactly
@@ -665,6 +706,7 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 | density | global token | ally and enemy rates on a hex grid that scales with the arena |
 | shot outcome | ship rows | how a shot fired now would end |
 | shot trajectory | ship rows, at bullet ages (in training, 4 per shot) | where a shot fired now would be at each age |
+| shot damage (with `shot_head="damage"`, in place of the two above) | pairs of ship rows: an own ship and every other row | the damage a shot the own ship fired now would deal that ship |
 | geometry (training only, optional) | pairs of ship rows: an own ship and another ship the view sees | the pair's range, antenna train angle, aspect, heading crossing angle and closure rate |
 
 Every head but the action, value and outcome heads is auxiliary, and each has a build
@@ -798,7 +840,7 @@ switches reads as it was built:
 | `delta_split` | error | the next-state head trains on every row ([above](#the-error-head-the-next-state-work-split)) |
 | `enemy_action_head` | enemy action | the belief's enemy actions stay uniform, as a blank belief's |
 | `density_head` | density | |
-| `shot_head` | shot outcome and shot trajectory, `"trajectory"` or `"none"` | the learner re-simulates no shots |
+| `shot_head` | shot outcome and shot trajectory (`"trajectory"`), or shot damage (`"damage"`, [below](#the-shot-damage-head)); `"none"` neither | the learner re-simulates no shots |
 | `geometry_head` | geometry | |
 
 A head that is off is not built. It has no parameters and no output (its field of
@@ -829,6 +871,28 @@ by arm A14's result (whether the belief helps):
   ```text
   --set yemong.next_state_head=false --set yemong.delta_split=false --set yemong.physics_hidden_decay=null --set yemong.forecast_feedback=false --set yemong.enemy_action_head=false --set yemong.density_head=false --set yemong.shot_head=none --set yemong.geometry_head=false
   ```
+
+### The shot damage head
+
+`YemongConfig.shot_head="damage"` (arm A22) builds, in place of the shot outcome and
+trajectory heads, one training-only head that answers "if I shot now": for each own ship
+and each other ship, the damage a bullet the own ship fired now would deal that ship
+(`bnb.models.yemong.heads.ShotDamageHead`). A bullet hits one ship at most, so for a given
+shot every row but the one it hits reads 0, and an enemy or an ally hit reads the damage
+the game would deal it (the closeness of the pass, the bullet's speed, the arming ramp and
+the target's head-on armour).
+
+The head computes one latent per row, a shooter half and a target half (a 128 x 256
+product per ship row), and for each pair `last(gelu(norm(shooter + target)))`, one hidden
+layer as the other heads' (`HeadGroup`). Its output is the damage as a share of the
+shooter's centre hit at its reference speed, an HL-Gauss code of 21 real bins from 0 to 2
+(a tenth of a full hit apart, with an exact 0) and 2 padding bins a side
+(`bnb.models.yemong.shots.damage_code`). The labels and the loss are the learner's
+([shot labels](learner.md#shot-labels)). In 5v5 it reads 50 pairs a ship-tick (5 own
+shooters by 10 rows) through one 128 x 25 product each, where the trajectory head reads 4
+ages per row through a 128 x 128 and a 128 x 162 product and the outcome head a 256-wide
+group; it has 36,377 parameters for their 93,493. `step` does not run it. Select it with
+`--set yemong.shot_head=damage`.
 
 ## step and unroll
 

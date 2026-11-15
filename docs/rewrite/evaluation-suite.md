@@ -145,7 +145,7 @@ The pilot's break-even played on the 20-a-side density map. For an agent trained
 
 - **What:** Elo curves for every arm, in the shared pool, at standard 5v5 per mode. Every saved snapshot is rated, to about ±40–50 Elo.
 - **When:** mostly in one batch at the end, when the allocator can plan over every checkpoint at once. Earlier only on an idle GPU, and only when it doesn't compete with compilation on the CPU.
-- **Curves at the other conditions:** for the arms, curves at 5v5 only. For the first proper run (the baseline) and the final winner, the full ladder in every condition (decided 2026-11-15).
+- **Curves at the other conditions:** for the arms, curves at 5v5 only. For the first proper run (the baseline) and the final winner, the full ladder in every condition (decided 2026-11-15). The commands are in [dry-run.md](dry-run.md).
 
 ## Reported but not scored
 

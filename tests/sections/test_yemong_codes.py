@@ -426,6 +426,9 @@ def test_fourier_amplitude_is_the_circular_codes_attenuation():
     torch.testing.assert_close(blurred[:, :3], sharp[:, :3] * expected[:, :3, None])
 
 
+CENTRE = torch.zeros(2, dtype=torch.float64)  # the map centre `inputs` reads raw positions from
+
+
 def test_fourier_inputs_replace_the_position_and_heading_runs_only(code):
     """The ship token's state columns: 36 position and 8 heading columns in place of 81 and
     16, the rest the code's own; colour inputs are the code itself."""
@@ -437,12 +440,12 @@ def test_fourier_inputs_replace_the_position_and_heading_runs_only(code):
     means, ship_type = _states(generator, margin=0.25)
     spreads = torch.rand(COUNT, code.spread_count, dtype=torch.float64, generator=generator)
     encoded = code.encode(means, spreads, ship_type)
-    assert code.inputs(encoded, means, spreads) is encoded
+    assert code.inputs(encoded, means, spreads, ship_type, CENTRE) is encoded
     # float64 throughout: a few operations' rounding is 1e-15, so 1e-12 still fails a wrong term
     torch.testing.assert_close(
         fourier.encode(means, spreads, ship_type), encoded, rtol=1e-12, atol=1e-12
     )
-    inputs = fourier.inputs(encoded, means, spreads)
+    inputs = fourier.inputs(encoded, means, spreads, ship_type, CENTRE)
     assert inputs.shape == (COUNT, fourier.input_width)
     position = torch.stack(
         [

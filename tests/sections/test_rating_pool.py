@@ -464,3 +464,131 @@ def test_the_pool_command_adds_rates_and_tables_scripted_players_on_the_cpu(
     assert "scripted" in printed and "observed against predicted" in printed
     with pytest.raises(SystemExit, match="--out"):
         cli.pool(dataclasses.replace(options, action="curves"))
+
+
+def test_a_pool_may_draw_each_games_lineup_and_an_older_pool_draws_none(tmp_path):
+    drawn = RatingPool.create(tmp_path / "drawn", lineup_types=("Yongma", "Jujak"))
+    assert drawn.settings["lineup_types"] == ["Yongma", "Jujak"]
+    with pytest.raises(ValueError, match="not both"):
+        RatingPool.create(tmp_path / "both", ("Yongma",), lineup_types=("Yongma", "Jujak"))
+    older = tmp_path / "older"
+    RatingPool.create(older)
+    record = older / rating_pool.POOL_RECORD
+    settings = json.loads(record.read_text())
+    del settings["lineup_types"]  # written before drawn lineups existed
+    record.write_text(json.dumps(settings))
+    assert RatingPool(older).settings["lineup_types"] == []
+    RatingPool.create(older)  # the same conditions: opened
+    with pytest.raises(ValueError, match="other conditions"):
+        RatingPool.create(older, lineup_types=("Yongma",))
+
+
+def test_a_runs_snapshots_are_its_files_at_the_schedule(tmp_path):
+    from bnb.runtime.snapshots import SnapshotSchedule
+
+    run = tmp_path / "chain-rl"
+    update = 300
+    for step in range(0, 3001, update):  # every update's files, from the starting weights
+        for kind in ("live", "exponential_average"):
+            (run / "policies" / f"step_{step}" / kind).mkdir(parents=True)
+    schedule = SnapshotSchedule((500, 1000), 1000)
+    chosen = rating_pool.scheduled_policies(run, ("exponential_average",), schedule)
+    # 500 -> 600, 1000 -> 1200, 2000 -> 2100, 3000; and the last
+    assert [path.parent.name for path in chosen] == [
+        "step_600",
+        "step_1200",
+        "step_2100",
+        "step_3000",
+    ]
+    both = rating_pool.scheduled_policies(run, ("exponential_average", "live"), schedule)
+    assert [path.name for path in both[:2]] == ["exponential_average", "live"]
+    with pytest.raises(ValueError, match="no policy files"):
+        rating_pool.scheduled_policies(tmp_path / "empty", ("live",), schedule)
+
+
+def test_a_head_to_head_condition_is_a_rated_game_and_break_even_is_not():
+    from bnb import cli
+    from bnb.game.api import PRESETS
+
+    base = PRESETS["real_scale_deathmatch"]
+    game = cli.named_game("deathmatch_10v10")
+    assert game.ships_per_team == 10 and game.arena_radius == base.arena_radius
+    assert game.mode == base.mode
+    assert cli.named_game("frontline_5v5") == PRESETS["real_scale_frontline"]
+    assert cli.named_game("real_scale_elimination") is PRESETS["real_scale_elimination"]
+    with pytest.raises(SystemExit, match="bnb crossover"):
+        cli.named_game("deathmatch_break_even")
+
+
+@pytest.mark.usefixtures("global_generator")
+def test_the_pool_rates_drawn_lineups_and_draws_its_curves_on_the_cpu(tmp_path, monkeypatch):
+    """`bnb pool` with each game's lineup drawn (a small 2v2 game, the engine eager), a run's
+    scheduled snapshots added by `--runs`, and the curves drawn as small multiples."""
+    import csv
+    import dataclasses
+    import functools
+
+    from bnb import cli
+    from bnb.contracts import GameConfig
+    from bnb.figures import ladder
+    from bnb.league import matches
+
+    game = GameConfig(2, 2, 1500.0, episode_seconds=2.0, respawn_seconds=1.0)
+    monkeypatch.setattr(cli, "rated_game", lambda preset, scale: game)
+    monkeypatch.setattr(
+        matches, "ArenaConfig", functools.partial(matches.ArenaConfig, length=16, compiled=False)
+    )
+    played = []
+    original = matches.Arena.play
+
+    def play(self, matchups, active=None, lineups=None):
+        played.append(lineups)
+        return original(self, matchups, active, lineups)
+
+    monkeypatch.setattr(matches.Arena, "play", play)
+    root = str(tmp_path / "pool")
+    cli.pool(cli.Pool("create", root, lineup_types=("Fighter", "Heavy")))
+    cli.pool(cli.Pool("add", root, ("random", "rung_T2")))
+    with pytest.raises(SystemExit, match="no policy files"):
+        cli.pool(cli.Pool("add", root, runs=(str(tmp_path / "missing-run"),)))
+    options = cli.Pool(
+        "rate",
+        root,
+        presets=("deathmatch_2v2",),
+        budget=16,
+        blocks=2,
+        block_environments=4,
+        seed=3,
+        device="cpu",
+    )
+    cli.pool(options)
+    assert len(played) == 2 and all(lineups is not None for lineups in played)
+    assert tuple(played[0].shape) == (8, 2) and not torch.equal(played[0], played[1])
+    assert len(RatingPool(root).batches("deathmatch_2v2")[0]) == 2
+    out = tmp_path / "curves.csv"
+    figure = tmp_path / "curves.png"
+    cli.pool(dataclasses.replace(options, action="curves", out=str(out), figure=str(figure)))
+    assert figure.is_file() and list(csv.DictReader(out.open())) == []  # no policies
+
+    rows = [
+        dict(
+            preset="deathmatch_2v2",
+            run=run,
+            kind="exponential_average",
+            step=step,
+            calibrated_elo=elo,
+            stderr=30.0,
+            status="rated",
+        )
+        for run, step, elo in (("r-bc", 10, 900.0), ("r-bc", 20, 950.0), ("r-rl", 5, 1100.0))
+    ]
+    assert ladder.chain_offsets(rows) == {"r-bc": 0, "r-rl": 20}
+    result = tmp_path / "break-even" / "r-rl" / "step_5" / "artifacts" / "crossover" / "t1"
+    result.mkdir(parents=True)
+    (result / "result.json").write_text(
+        json.dumps(dict(presets=dict(real_scale_deathmatch=dict(ratio=1.3, ratio_stderr=0.1))))
+    )
+    points = ladder.break_even_points(tmp_path / "break-even")
+    assert points == [dict(run="r-rl", step=5, mode="deathmatch", ratio=1.3, stderr=0.1)]
+    drawn = ladder.draw(rows, ("deathmatch_2v2", "deathmatch_10v10"), tmp_path / "f.png", points)
+    assert drawn.is_file()

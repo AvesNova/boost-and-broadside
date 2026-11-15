@@ -30,7 +30,7 @@ Costs are 5090-hours at $0.50 an hour, including the run's ladder and its decisi
 | 9 | A13 fewer auxiliary heads | after A14: if the belief helps, every auxiliary head except next-state is removed; otherwise every one | BC+RL | — | 0 | 3.1 h ($1.55) |
 | 10 | A15 layout | 6 spatial blocks instead of 2 Yemong blocks | BC+RL | — | 0 | 3.4 h ($1.70) |
 | 11 | A16 temporal block | GRU instead of Griffin (built on `feat/gru-temporal`) | BC+RL | — | 0 | about 4.8 h ($2.40), provisional: the GRU sublayer is 8.6x Griffin's at the learner's 8-view micro-batch |
-| 12 | A17 input encoding | raw scalars instead of the colour/HL-Gauss codes | BC+RL | — | 0 | 3.7 h ($1.85) |
+| 12 | A17 input encoding | raw scalars instead of the colour/HL-Gauss codes (`yemong.input_encoding=raw`) | BC+RL | — | 0 | 3.7 h ($1.85) |
 | 13 | A24 RL from scratch | no BC; RL for 300M | RL only | — | 0 | 5.1 h ($2.55) |
 | 14 | R1 MLP baseline | an MLP instead of Yemong | BC+RL | — | 0 | 1.8 h ($0.90) |
 
@@ -49,7 +49,7 @@ Costs are 5090-hours at $0.50 an hour, including the run's ladder and its decisi
 | 19 | A9 learning rate ×2 | twice the learning rate | RL fork | incumbent's BC | 2.0 h ($1.00) |
 | 20 | A10 entropy | a stronger bonus or an entropy floor (one variant, to choose) | RL fork | incumbent's BC | 2.0 h ($1.00) |
 | 21 | A19 gated attention | Qwen elementwise output gate | BC+RL | — | 3.7 h ($1.85) |
-| 22 | A22 shot head | "if I shot now" damage head instead of the full trajectory | BC+RL | — | 3.7 h ($1.85) |
+| 22 | A22 shot head | "if I shot now" damage head instead of the full trajectory (`yemong.shot_head=damage`) | BC+RL | — | 3.7 h ($1.85) |
 | 23 | A23 width 192 | width 192 instead of 128, at equal steps | BC+RL | — | about 6.7 h ($3.35) |
 | 24 | A23 width 128 extended | the incumbent continued to equal compute (about 270M RL) | RL continuation | incumbent | about 2.5 h ($1.25) |
 | 25 | A23 learning-rate re-check | width 192 at the re-checked learning rate | RL fork | row 23's BC | about 2.5 h ($1.25) |
@@ -65,3 +65,10 @@ Rows 23–25 split A23's 11.7 h total in the arm review, approximately. **Total 
 A11 steps per update, A12 dense rewards decayed, A18 position encoding, A20 attention heads, A21 value output, R2 final-model seeds, R6 single-mode forks for mode transfer.
 
 **Not counted:** the 500M publication run, 10–17 h.
+
+## Readiness: settings lines
+
+Built behind a setting, each arm's change from a new run's build (defaults unchanged):
+
+- **A17 input encoding** (built 2026-11-16, `feat/a17-a22-options`): `--set yemong.input_encoding=raw`. Raw scalars in place of every colour and HL-Gauss input code; targets unchanged ([yemong.md](../explanation/yemong.md#input-encoding-codes-or-raw)).
+- **A22 shot head** (built 2026-11-16, `feat/a17-a22-options`): `--set yemong.shot_head=damage`. The "if I shot now" damage head (each own ship against every other ship) in place of the trajectory and outcome heads ([yemong.md](../explanation/yemong.md#the-shot-damage-head)).

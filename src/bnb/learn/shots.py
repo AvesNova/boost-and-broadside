@@ -8,8 +8,11 @@ the swept test runs against the tick's captured ship motion. Every bullet flies 
 longest life (`Rules.longest_bullet_moves`); a shot's first contact within its own type's
 life is its hit (the game spends the bullet there) and its outcome,
 while its path is labelled at every age: past a hit, the straight-on flight it would have
-had. The trajectory head learns a shot at QUERIES of its ages (`query_ages`). Rows are in
-the view's order, so a shooter's side is its block.
+had. The trajectory head learns a shot at QUERIES of its ages (`query_ages`). A hit's
+damage is the game's (`bnb.game.physics.combat.hit_damage`), its target's heading the one
+after the hit tick's move, which is the next tick's captured launch heading (the window's
+last tick reads its own: a tick's turn early). Rows are in the view's order, so a shooter's
+side is its block.
 """
 
 import dataclasses
@@ -20,7 +23,7 @@ import torch
 from bnb.contracts.tree import contract
 from bnb.game.api import observed_fields
 from bnb.game.physics.bullets import Launch, launch, move_bullets
-from bnb.game.physics.combat import contacts, first_contact
+from bnb.game.physics.combat import contacts, first_contact, hit_damage
 from bnb.game.rules import Rules
 from bnb.game.ship_types import ShipTypes, bullet_moves, per_ship
 from bnb.game.state import Bullets, Sweep, apply, replace
@@ -51,16 +54,19 @@ class Shots:
     age of a valid shot is labelled; snapshots (L, R, N, A, 5), after each move: the
     displacement and velocity (m, m/s) in the launch heading's frame (forward, left) and
     the refractive index; hit (HIT_*), the first hit's side relative to the shooter, and
-    hit_age its age index (0: after the first move; A for none); distance (m), the closest
-    pass to another living ship (any side; inf with none), side (SIDE_*) that ship's and
-    closest_age its age index; bend_age, the age index of the first move whose refractive
-    index differs from the one before it (the launch's, for the first move): the first
-    move into or through a field's band, -1 for none."""
+    hit_age its age index (0: after the first move; A for none); target, the row it hit
+    (-1 for none); damage, the hit's damage (the game's units; 0 for none); distance (m),
+    the closest pass to another living ship (any side; inf with none), side (SIDE_*) that
+    ship's and closest_age its age index; bend_age, the age index of the first move whose
+    refractive index differs from the one before it (the launch's, for the first move): the
+    first move into or through a field's band, -1 for none."""
 
     valid: torch.Tensor
     snapshots: torch.Tensor
     hit: torch.Tensor
     hit_age: torch.Tensor
+    target: torch.Tensor
+    damage: torch.Tensor
     distance: torch.Tensor
     side: torch.Tensor
     closest_age: torch.Tensor
@@ -70,20 +76,24 @@ class Shots:
 @contract
 class ShotLabels:
     """What the loss reads of the shots, (L, R, N) leading: ages (..., QUERIES) uint8, the
-    queried age indices (`query_ages`); snapshots (..., QUERIES, 5) at them; hit, distance
-    and side as `Shots`'."""
+    queried age indices (`query_ages`); snapshots (..., QUERIES, 5) at them; hit, distance,
+    side and target as `Shots`'; damage, the hit's damage over the shooter's centre hit at
+    its reference speed (`ShipTypes.hit_damage`; 0 for none)."""
 
     ages: torch.Tensor
     snapshots: torch.Tensor
     hit: torch.Tensor
     distance: torch.Tensor
     side: torch.Tensor
+    target: torch.Tensor
+    damage: torch.Tensor
 
 
 @contract
 class _Tick:
     """One tick of the scan, per bullet (R, N, A) by age: where it is after its move,
-    whether it touched a ship and which first, and its closest pass."""
+    whether it touched a ship, which first and the damage it would deal there, and its
+    closest pass."""
 
     x: torch.Tensor
     y: torch.Tensor
@@ -92,6 +102,7 @@ class _Tick:
     index: torch.Tensor
     hit: torch.Tensor
     target: torch.Tensor
+    damage: torch.Tensor
     miss_squared: torch.Tensor
     nearest: torch.Tensor
 
@@ -110,11 +121,14 @@ def tick(
     capture: ShotCapture,
     spread: torch.Tensor,
     field_rows: torch.Tensor,
+    heading_cos: torch.Tensor,
+    heading_sin: torch.Tensor,
 ) -> tuple[Bullets, _Tick]:
     """One tick of the scan, every view (R, ...): each row fires a fresh bullet from its
     captured launch state (the newest age), every bullet (R, N, A) moves once, and each is
-    tested against this tick's ships. The runtime may compile it (the scan calls it once
-    per tick)."""
+    tested against this tick's ships, its first contact's damage read with the ships'
+    headings after the move (heading_cos, heading_sin (R, N)). The runtime may compile it
+    (the scan calls it once per tick)."""
     fresh = launch(rules, types, capture.launch, spread)
     fresh = replace(fresh, moves_left=torch.ones_like(fresh.moves_left))
     bullets = Bullets(
@@ -140,6 +154,11 @@ def tick(
     pairs = contacts(types, sweep, start.ship_type, bullets.moves_left > 0, capture.alive)
     _, target, hit = first_contact(pairs)
     rows, ages = bullets.moves_left.shape[-2:]
+    # the bullet of age index a has made a + 1 moves, this one included
+    moves = (torch.arange(ages, device=hit.device) + 1.0).repeat(rows).expand(hit.shape)
+    damage, _ = hit_damage(
+        rules, types, sweep, start.ship_type, heading_cos, heading_sin, moved, target, moves
+    )
     shooter = torch.arange(rows, device=hit.device).repeat_interleave(ages)[:, None]
     passable = capture.alive[..., None, :] & (shooter != torch.arange(rows, device=hit.device))
     miss_squared, nearest = torch.where(passable, pairs.miss_squared, torch.inf).min(-1)
@@ -154,6 +173,7 @@ def tick(
         index=index,
         hit=hit.reshape(shape),
         target=target.reshape(shape),
+        damage=torch.where(hit, damage, 0.0).reshape(shape),
         miss_squared=miss_squared.reshape(shape),
         nearest=nearest.reshape(shape),
     )
@@ -185,10 +205,23 @@ def resimulate(
         launch(rules, types, _at(capture.launch, 0), spread[0]),
     )
     bullets = replace(empty, moves_left=torch.ones_like(empty.moves_left))
+    # the ships' headings after each tick's move: the next tick's launch state (the last
+    # tick's own, a tick early)
+    after = [
+        torch.cat([heading[1:], heading[-1:]], 0)
+        for heading in (capture.launch.heading_cos, capture.launch.heading_sin)
+    ]
     records = []
     for time in range(length):
         bullets, record = step(
-            rules, types, bullets, _at(capture, time), spread[time], fields[time]
+            rules,
+            types,
+            bullets,
+            _at(capture, time),
+            spread[time],
+            fields[time],
+            after[0][time],
+            after[1][time],
         )
         records.append(record)
     by_tick = torch.utils._pytree.tree_map(lambda *x: torch.stack(x), *records)  # (L, R, N, A)
@@ -247,7 +280,9 @@ def resimulate(
     def same_side(row: torch.Tensor) -> torch.Tensor:
         return side_of[row] == shooter_side
 
-    first_target = shot.target.gather(-1, hit_age.clamp_max(ages - 1)[..., None])[..., 0]
+    first = hit_age.clamp_max(ages - 1)[..., None]
+    first_target = shot.target.gather(-1, first)[..., 0]
+    hit_damage_dealt = torch.where(hit_any, shot.damage.gather(-1, first)[..., 0], 0.0)
     hit = torch.where(hit_any, torch.where(same_side(first_target), HIT_ALLY, HIT_ENEMY), HIT_NONE)
     miss = torch.where(inside, shot.miss_squared, torch.inf)
     closest, closest_age = miss.min(-1)
@@ -261,6 +296,8 @@ def resimulate(
         snapshots=snapshots,
         hit=hit,
         hit_age=hit_age,
+        target=torch.where(hit_any, first_target, -1),
+        damage=hit_damage_dealt,
         distance=torch.sqrt(closest),
         side=side,
         closest_age=closest_age,
@@ -287,8 +324,9 @@ def query_ages(shots: Shots, drawn: torch.Tensor) -> torch.Tensor:
     )
 
 
-def labels(shots: Shots, drawn: torch.Tensor) -> ShotLabels:
-    """The loss's labels of `shots`: the snapshots at `query_ages(shots, drawn)`."""
+def labels(shots: Shots, drawn: torch.Tensor, full_damage: torch.Tensor) -> ShotLabels:
+    """The loss's labels of `shots`: the snapshots at `query_ages(shots, drawn)`, and the
+    damage over full_damage (L, R, N), each shooter's centre hit at its reference speed."""
     ages = query_ages(shots, drawn)
     snapshots = shots.snapshots.gather(
         -2, ages[..., None].expand(*ages.shape, shots.snapshots.shape[-1])
@@ -299,4 +337,6 @@ def labels(shots: Shots, drawn: torch.Tensor) -> ShotLabels:
         hit=shots.hit,
         distance=shots.distance,
         side=shots.side,
+        target=shots.target,
+        damage=shots.damage / full_damage,
     )

@@ -159,6 +159,67 @@ def first_contact(pairs: Contacts) -> tuple[torch.Tensor, torch.Tensor, torch.Te
     return order, target, order < NO_HIT
 
 
+def hit_damage(
+    rules: Rules,
+    types: ShipTypes,
+    sweep: Sweep,
+    ship_type: torch.Tensor,
+    heading_cos: torch.Tensor,
+    heading_sin: torch.Tensor,
+    bullets: Bullets,
+    target: torch.Tensor,
+    moves: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Each bullet's damage to `target` (B, N K) were it to hit it this tick, and the
+    aspect angle theta between the bullet's reversed direction and the target's nose (both
+    (B, N K)): a centre hit's damage at its bullet's reference speed (`kinetic`), times the
+    closeness of the pass (`closeness`), the arming ramp and the target's head-on armour.
+    sweep: this tick's motions; ship_type, heading_cos, heading_sin (B, N): every ship's,
+    after the move (bullet o K + k is ship o's); bullets (B, N, K), after the move; moves
+    (B, N K): each bullet's moves so far, this one included. `hits` and the learner's shot
+    re-simulation (`bnb.learn.shots`) share it."""
+    B, N, K = bullets.proper_speed.shape
+    direction_x = bullets.direction_x.reshape(B, N * K)
+    direction_y = bullets.direction_y.reshape(B, N * K)
+    nose_cos, nose_sin = heading_cos.gather(1, target), heading_sin.gather(1, target)
+    theta = torch.atan2(
+        (direction_x * nose_sin - direction_y * nose_cos).abs(),
+        -(direction_x * nose_cos + direction_y * nose_sin),
+    )
+
+    # The shooter's damage: a centre hit's at its bullet's reference speed (`kinetic`), times
+    # the closeness of the pass to the target's centre (`closeness`).
+    def shooters(table):
+        return per_ship(table, ship_type).repeat_interleave(K, 1)
+
+    full = shooters(types.hit_damage) * kinetic(
+        bullets.proper_speed.reshape(B, N * K),
+        shooters(types.reference_bullet_speed),
+        shooters(types.explosive_share),
+    )
+    radius = per_ship(types.hit_radius, ship_type).gather(1, target)  # the target's
+    core = per_ship(types.core_radius, ship_type).gather(1, target)
+    full = full * closeness(impact_squared(sweep, target, K), radius, core)
+    # The shooter's arming distance X: the damage ramps as a smoothstep of the distance the
+    # bullet has travelled over [0, X] (a minimum effective range; X = 0 is full damage at
+    # once). The distance is its moves so far, this one included, at its present speed:
+    # exact without drag, and the drag is small this early in a bullet's life.
+    arming = shooters(types.arming_distance)
+    travelled = moves * rules.tick_length * bullets.proper_speed.reshape(B, N * K)
+    armed = (travelled / arming.clamp_min(1e-6)).clamp(0.0, 1.0)
+    full = full * torch.where(arming > 0.0, armed * armed * (3.0 - 2.0 * armed), 1.0)
+    head_on = rules.head_on_fraction * per_ship(types.head_on_fraction_scale, ship_type)
+    head_on = head_on.gather(1, target)  # the target's armour
+    # Its half-strength angle: the aspect is halfway from the head-on fraction to 1 there.
+    half = rules.head_on_angle * per_ship(types.head_on_angle_scale, ship_type)
+    ratio = theta / half.gather(1, target)
+    # The cone's sharpness p: exp(-ln2 ratio^p), 2 a Gaussian cone; higher, a flat-topped
+    # armoured nose that falls away quickly past its half-strength angle.
+    sharpness = per_ship(types.head_on_sharpness, ship_type).gather(1, target)
+    aspect = 1.0 - (1.0 - head_on) * torch.exp(-LN_2 * ratio.pow(sharpness))
+    return full * aspect, theta
+
+
 def hits(
     rules: Rules,
     types: ShipTypes,
@@ -177,49 +238,23 @@ def hits(
         contacts(types, sweep, ships.ship_type, bullets.moves_left > 0, alive_at_start)
     )
     ship = torch.arange(N, device=alive_at_start.device)
-
-    # Damage by aspect: theta between the bullet's reversed direction and its target's nose.
-    direction_x = bullets.direction_x.reshape(B, N * K)
-    direction_y = bullets.direction_y.reshape(B, N * K)
-    nose_cos, nose_sin = ships.heading_cos.gather(1, target), ships.heading_sin.gather(1, target)
-    theta = torch.atan2(
-        (direction_x * nose_sin - direction_y * nose_cos).abs(),
-        -(direction_x * nose_cos + direction_y * nose_sin),
+    # The bullet's moves so far, this one included (moves_left is decremented after the hits).
+    life = torch.round(
+        per_ship(types.bullet_life, ships.ship_type).repeat_interleave(K, 1) / rules.tick_length
     )
-
-    # The shooter's damage: a centre hit's at its bullet's reference speed (`kinetic`), times
-    # the closeness of the pass to the target's centre (`closeness`).
-    def shooters(table):
-        return per_ship(table, ships.ship_type).repeat_interleave(K, 1)
-
-    full = shooters(types.hit_damage) * kinetic(
-        bullets.proper_speed.reshape(B, N * K),
-        shooters(types.reference_bullet_speed),
-        shooters(types.explosive_share),
-    )
-    radius = per_ship(types.hit_radius, ships.ship_type).gather(1, target)  # the target's
-    core = per_ship(types.core_radius, ships.ship_type).gather(1, target)
-    full = full * closeness(impact_squared(sweep, target, K), radius, core)
-    # The shooter's arming distance X: the damage ramps as a smoothstep of the distance the
-    # bullet has travelled over [0, X] (a minimum effective range; X = 0 is full damage at
-    # once). The distance is its moves so far, this one included, at its present speed:
-    # exact without drag, and the drag is small this early in a bullet's life.
-    arming = shooters(types.arming_distance)
-    life = torch.round(shooters(types.bullet_life) / rules.tick_length)
     moves = life - bullets.moves_left.reshape(B, N * K).to(life.dtype) + 1.0
-    travelled = moves * rules.tick_length * bullets.proper_speed.reshape(B, N * K)
-    armed = (travelled / arming.clamp_min(1e-6)).clamp(0.0, 1.0)
-    full = full * torch.where(arming > 0.0, armed * armed * (3.0 - 2.0 * armed), 1.0)
-    head_on = rules.head_on_fraction * per_ship(types.head_on_fraction_scale, ships.ship_type)
-    head_on = head_on.gather(1, target)  # the target's armour
-    # Its half-strength angle: the aspect is halfway from the head-on fraction to 1 there.
-    half = rules.head_on_angle * per_ship(types.head_on_angle_scale, ships.ship_type)
-    ratio = theta / half.gather(1, target)
-    # The cone's sharpness p: exp(-ln2 ratio^p), 2 a Gaussian cone; higher, a flat-topped
-    # armoured nose that falls away quickly past its half-strength angle.
-    sharpness = per_ship(types.head_on_sharpness, ships.ship_type).gather(1, target)
-    aspect = 1.0 - (1.0 - head_on) * torch.exp(-LN_2 * ratio.pow(sharpness))
-    bullet_damage = torch.where(hit, full * aspect, 0.0)
+    damage, theta = hit_damage(
+        rules,
+        types,
+        sweep,
+        ships.ship_type,
+        ships.heading_cos,
+        ships.heading_sin,
+        bullets,
+        target,
+        moves,
+    )
+    bullet_damage = torch.where(hit, damage, 0.0)
 
     # Scatter each bullet's hit to its (shooter, target): O(bullets), not O(bullets x ships).
     # A bullet that hit nothing adds 0. The sum's order can matter only when three or more

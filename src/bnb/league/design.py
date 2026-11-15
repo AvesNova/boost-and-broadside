@@ -87,6 +87,7 @@ Offline statistics in float64 on the CPU (code style, Dtypes).
 """
 
 import dataclasses
+import functools
 import math
 
 import torch
@@ -176,6 +177,25 @@ class Posterior:
         return touched.any(1) & (touched <= bounded[None, :]).all(1)
 
 
+def one_thread(function):
+    """Run `function` on one CPU thread. The fit and the plan are many small matrix operations
+    (a few dozen players): spread over the process's threads they wait on each other, and on
+    a busy machine an inverse of 52 players took 38 ms on 10 threads against 0.16 ms on one
+    (2026-11-16), so a pool session of every dry-run snapshot spent 30 s planning each
+    batch."""
+
+    @functools.wraps(function)
+    def wrapped(*args, **kwargs):
+        threads = torch.get_num_threads()
+        torch.set_num_threads(1)
+        try:
+            return function(*args, **kwargs)
+        finally:
+            torch.set_num_threads(threads)
+
+    return wrapped
+
+
 def _as_float(values) -> torch.Tensor:
     return torch.as_tensor(values, dtype=DTYPE).cpu()
 
@@ -246,6 +266,7 @@ def _bound_shift(log_probability, low: float, high: float, rising: bool) -> floa
     return 0.5 * (low + high)
 
 
+@one_thread
 def fit_posterior(wins, anchor: int) -> Posterior:
     """The maximum-likelihood fit of a field (module docstring): wins (K, K) the row's wins
     over the column, a draw half a win each (fractional outcomes allowed)."""
@@ -626,6 +647,7 @@ def _planned(posterior: Posterior, targets: Targets, guesses):
     return theta, covariance, _inverse(covariance, free), free, rows, goals, errors
 
 
+@one_thread
 def pair_weights(
     posterior: Posterior,
     targets: Targets,
@@ -661,6 +683,7 @@ def pair_weights(
     }
 
 
+@one_thread
 def plan_batch(
     posterior: Posterior,
     targets: Targets,

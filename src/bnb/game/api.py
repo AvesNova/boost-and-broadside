@@ -15,8 +15,10 @@ Unequal teams at one static size: `reset`, `resolve`, `step` and `perceive` take
 (B, 2) int32, each team's active ships per environment (None: every ship); a team's last
 S - active slots are benched, kept as dead ships waiting to respawn (`bnb.game.physics.step`;
 `benched_of` gives the slots). `resolve` may take the next episode's counts (`next_active`)
-for the environments whose episode ends, so a runtime can draw each episode's team size
-(`bnb.contracts.TeamSizes`), within each mode's smallest team (`MINIMUM_SHIPS_PER_TEAM`).
+for the environments whose episode ends, so a runtime can draw each episode's team sizes
+(`bnb.contracts.TeamSizes`), within each mode's smallest team (`MINIMUM_SHIPS_PER_TEAM`),
+and its active field count with them (`reset`'s `field_count`, `resolve`'s
+`next_field_count`; `active_field_count` reads a state's).
 The tick's randomness is an explicit input; `spread` and `uniforms` draw it. The ship card
 `types` is an argument of every function that reads it (`reset`, `move`, `resolve`, `step`):
 it is data, which a sweep may change between calls; `default_card` gives the default
@@ -157,6 +159,7 @@ __all__ = [
     "default_card",
     "display",
     "episode_ticks",
+    "active_field_count",
     "equivalent_factor",
     "field_radius_summary",
     "flight_tick",
@@ -287,6 +290,11 @@ def perceived(state: State) -> tuple[torch.Tensor, ...]:
         match.previous_alive,
         match.previously_seen,
     )
+
+
+def active_field_count(state: State) -> torch.Tensor:
+    """(B,) int32 each environment's present fields in its running episode."""
+    return state.fields.present.sum(-1, dtype=torch.int32)
 
 
 def episode_ticks(rules: Rules, batch: int, device=None) -> torch.Tensor:

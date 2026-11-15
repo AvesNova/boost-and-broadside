@@ -23,6 +23,11 @@ league's seat, not the rating lanes): `combat/deaths_per_ship_minute/{mode}` and
 `combat/hits_per_ship_minute/{mode}`, the combat deaths and the hits (one ship damaging
 another on a tick) per living ship-minute, which the combat-collapse rule reads
 (`bnb.runs.triggers.CombatCollapse`).
+Per game mode of the training games, with team-size sampling (arm A2, `TeamSizes.series`),
+over the episodes ended in the update: `team_size/larger/{mode}` and
+`team_size/smaller/{mode}`, the mean ships of the larger and the smaller team,
+`team_size/fields/{mode}`, the mean active fields, and `team_size/share/{a}v{b}/{mode}`,
+each pair's share of the games (`team_size_series`).
 """
 
 import math
@@ -159,6 +164,27 @@ class Analytics:
             out[f"episode/length_seconds/{pool}"] = Mean(ticks[index] * self.tick_length, count)
             out[f"episode/end/timeout/{pool}"] = Mean(timeouts[index], count)
             out[f"episode/end/decided/{pool}"] = Mean(count - timeouts[index], count)
+        return out
+
+    def team_size_series(self, sums: torch.Tensor, ships_per_team: int) -> dict:
+        """Per training mode, from the rollout's team-size sums (B, columns of
+        `blank_team_size_sums`) over the update: the mean sizes of the larger and the smaller
+        team, the mean active fields, and each pair's share of the games ended."""
+        S = ships_per_team
+        by_mode = self.environment_training_mode.transpose(0, 1) @ sums  # (modes, columns)
+        sizes = torch.arange(1, S + 1, dtype=sums.dtype, device=sums.device)
+        out = {}
+        for index, kind in enumerate(self.training_modes):
+            count, fields = by_mode[index, 0], by_mode[index, 1]
+            pairs = by_mode[index, 2:].reshape(S, S)  # (larger - 1, smaller - 1)
+            out[f"team_size/larger/{kind}"] = Mean((pairs.sum(1) * sizes).sum(), count)
+            out[f"team_size/smaller/{kind}"] = Mean((pairs.sum(0) * sizes).sum(), count)
+            out[f"team_size/fields/{kind}"] = Mean(fields, count)
+            for larger in range(1, S + 1):
+                for smaller in range(1, larger + 1):
+                    out[f"team_size/share/{larger}v{smaller}/{kind}"] = Mean(
+                        pairs[larger - 1, smaller - 1], count
+                    )
         return out
 
     def games(self, sums: dict, tables: dict | None) -> dict:
@@ -454,6 +480,27 @@ def blank_game_sums(environments: int, device) -> dict:
         perceive=torch.zeros((environments, len(PERCEIVE_COLUMNS)), device=device),
         extremes=torch.tensor([math.inf, -math.inf], device=device).repeat(environments, 1),
     )
+
+
+def blank_team_size_sums(environments: int, ships_per_team: int, device) -> torch.Tensor:
+    """(B, 2 + S^2) an update's team-size sums per environment, over its ended episodes:
+    their count, their active fields summed, and their count by pair, (larger - 1) S +
+    (smaller - 1) (`team_size_tick`)."""
+    return torch.zeros((environments, 2 + ships_per_team**2), device=device)
+
+
+@torch.no_grad()
+def team_size_tick(
+    sums: torch.Tensor, done: torch.Tensor, active: torch.Tensor, fields: torch.Tensor
+) -> None:
+    """Add the episodes ending this tick to the team-size sums, in place. done (B,) bool;
+    active (B, 2) int32 each team's ships and fields (B,) int32 the active fields of the
+    episode being played."""
+    S = math.isqrt(sums.shape[1] - 2)
+    larger, smaller = active.amax(-1).long(), active.amin(-1).long()
+    ended = done.to(sums.dtype)
+    pair = torch.nn.functional.one_hot((larger - 1) * S + smaller - 1, S * S).to(sums.dtype)
+    sums.add_(torch.cat([ended[:, None], (ended * fields)[:, None], ended[:, None] * pair], -1))
 
 
 def reset_game_sums(sums: dict) -> None:
