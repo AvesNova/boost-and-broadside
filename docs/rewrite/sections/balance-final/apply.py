@@ -1,10 +1,10 @@
-"""Write a balance candidate (`candidates/finalists.json`) into the game: its handle changes
+"""Write a balance candidate (`candidates/final.json`) into the game: its handle changes
 into the real-scale ship files (the card fields from its handle solve, `handle_cards.py`),
 its Yongma and Jujak doctrine fields into `imugi_doctrines.json`, and copies of the four
 files into after/ (before/ holds the files as they were).
 
     PYTHONPATH=$PWD/src:$PWD uv run --no-sync python \
-        docs/rewrite/sections/balance-final/apply.py d041-jt0.95-yd1.08
+        docs/rewrite/sections/balance-final/apply.py jt0.93
 
 `--restore` copies before/'s files back into src/ instead (the author's before check).
 """
@@ -48,7 +48,7 @@ def main() -> None:
             shutil.copyfile(HERE / "before" / name, path)
             print(f"restored {path}")
         return
-    entries = json.loads((HERE / "candidates" / "finalists.json").read_text())
+    entries = json.loads((HERE / "candidates" / "final.json").read_text())
     entry = next(e for e in entries if e["name"] == args.candidate)
     card = entry.get("card", {})
     for side, key in KEYS.items():

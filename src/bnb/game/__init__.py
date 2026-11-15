@@ -217,6 +217,16 @@ Version 22 (2026-11-15, the final freeze check, docs/rewrite/sections/freeze-fin
   the real-scale card has 2 types instead of 3.
 
 Ratings and records of version 21 or earlier are not reused for version-22 games.
+
+Version 23 (2026-11-16, the energy-turn balance, docs/rewrite/sections/balance-final/):
+- **Jujak's sustained turn rate** 0.7647 -> 0.7111 rad/s (x 0.93; the card re-solved from
+  the handles: the induced drag 0.266 -> 0.420, the static thrust 33 -> 65, the engine power
+  and the stick levels follow), so Jujak's sustained turn is 1.20 times Yongma's instead of
+  1.29. Every other handle, Yongma's whole card and Imugi's doctrines are unchanged. Under
+  Imugi a Yongma team scores about 48% against a Jujak team in deathmatch 5v5 (about 22-25%
+  on version 22).
+
+Ratings and records of version 22 or earlier are not reused for version-23 games.
 """
 
-VERSION = 22
+VERSION = 23
