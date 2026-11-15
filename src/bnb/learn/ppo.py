@@ -1739,7 +1739,10 @@ class Learner:
             top_level,
             groups,
             populations,
-            actor=("policy", *ENTROPY_TERMS, ENTROPY_FLOOR),
+            # the floor's term only when it is on (an absent term has no gradient)
+            actor=tuple(
+                term for term in ("policy", *ENTROPY_TERMS, ENTROPY_FLOOR) if term in everything
+            ),
             critic=("value",),
         )
         if level_gradients is not None:

@@ -102,7 +102,7 @@ def test_without_the_head_the_term_is_absent():
     runner = lc.rollout(net, environments=4, length=8, runs=1)
     learner = lc.learner(net, runner)
     out = metrics.read(learner.update(runner.store, runner.bootstrap(), cadence=True))
-    assert out["geometry/loss"] == 0.0
+    assert "geometry/loss" not in out  # an absent head reports no series (`HEAD_SERIES`)
     assert not any(key.startswith("geometry/cross_entropy") for key in out)
     assert not any("geometry" in key for key in out if key.startswith("gradient/"))
 
