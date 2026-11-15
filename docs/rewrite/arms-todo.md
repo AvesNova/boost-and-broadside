@@ -16,6 +16,16 @@ Updated 2026-11-15 10:30; the conversation behind it is in [briefing.md](briefin
 7. **For review (drafts, 2026-11-15):** [decision-rule.md](decision-rule.md) (how every decision is measured; the late-climbing check and δ from the seed pairs are proposals), [figures-brainstorm.md](figures-brainstorm.md) (a wide list to narrow; items needing logging before the runs are marked), [run-order.md](run-order.md) (waves against one chain).
 8. **Older unmerged branches** (tuning and evaluation records from 2026-11-10 to 11-13: tune/ships-r9m2, tune/respawn-waves, eval/yongma-lead, eval/r9m2-maps, eval/morning, tune/frontline-design, tune/duel-deny, run/onehead-champion, probe/position-aliasing, perf/gpu-box, feat/nearest-mlp, feat/crossover, work/design-v3 (WIP, failing tests), wip/playground): not merged into v2. Merge, keep as records, or delete?
 
+## Paused again 2026-11-15 22:05 (the author needs the laptop): resume here first
+
+All subagents stopped; no jobs or GPU use. Every branch is pushed; uncommitted edits stay in the worktrees named below (resume from there, not from the remote alone).
+- `tune/balance-final` (worktree bnb-balance-final, 1 uncommitted file): the overnight balance work had only just started; restart it (brief in this session's history: doctrine search first, cards only if needed, before/after recorded, deadline before the code freeze).
+- `feat/gru-temporal`: **finding:** the CUDA-graph capture error ("Cannot copy between CPU and CUDA tensors…") happens with Griffin too, so it is not the GRU's: a bug in the default rollout path on this tree, to diagnose first (it may block every compiled GPU rollout).
+- `feat/hl-gauss-codes`: progress note says final; review and merge.
+- `feat/league-arm-options`, `feat/learner-arm-options`: built, tests were running; check their notes, rerun quick tests, merge.
+- `feat/head-switches` (worktree bnb-head-switches, 2 uncommitted files): tests were being rerun.
+- Queued: A22 and A17 after hl-gauss merges; A2 now (freeze merged); then the repo cleanup and per-run settings files.
+
 ## Paused 2026-11-15 21:00 (laptop shutdown): resume here
 
 Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On resume: read each branch's progress.md (it has a resume note), merge the finished ones, relaunch the unfinished ones.
