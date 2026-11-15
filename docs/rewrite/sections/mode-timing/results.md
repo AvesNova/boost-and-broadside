@@ -143,3 +143,53 @@ test why 2v2 captures are rare.
 - Games ended by tickets would change nothing before the end (no feedback from a ticket
   lead to the agents), so reading the end from the tickets-off games is exact for the scripted
   agent.
+
+## 4. Elimination: game length by map size and by shrink (2026-11-15, GPU)
+
+Imugi on both seats, 5v5, fields on, mirrored lineups, 256 games per row, seed 61. Runs: `bench/elimination_static_run.sh`, `bench/elimination_shrink_run.sh`; tables: `bench/elimination_static_report.py`, `bench/elimination_shrink_report.py` over `data/elimination_static_radius.jsonl` and `data/elimination_shrink_sweep.jsonl` (the run scripts write a combined data.jsonl; renamed here). Spawns, fields and the boundary ramp scale with the radius.
+
+**Fixed map, no shrink (900 s clock):**
+
+```
+radius |  mean median  p80  p90 | never ended | deaths/min (both) | boundary share
+  7800 |    91     58  106  156 |        0.00 |               4.5 |          0.007
+  6000 |    74     54   87  122 |        0.00 |               5.6 |          0.005
+  4500 |    71     51   82  115 |        0.00 |               5.9 |          0.019
+  3500 |    56     47   70   98 |        0.00 |               7.7 |          0.047
+  2500 |    61     42   73  101 |        0.00 |               7.4 |          0.088
+  1800 |    45     37   56   77 |        0.00 |              10.5 |          0.171
+  1200 |    31     26   44   67 |        0.00 |              15.9 |          0.198
+   800 |    18     17   25   29 |        0.00 |              26.7 |          0.229
+   500 |    12     11   16   19 |        0.00 |              42.0 |          0.359
+   300 |     7      6    8   10 |        0.00 |              78.8 |          0.400
+   100 |     3      3    4    4 |        0.00 |             188.2 |          0.325
+```
+
+**Shrink sweep** (start = shrink_hold_seconds, dur = its duration; clock = start + dur + 8 s; 7800 m):
+
+```
+start dur clock |  mean median  p80  p90 | ended before start | radius<75% at end | <50% | boundary deaths | games w/ one | clock ends
+    0  60    68 |    46     47   54   56 |               0.00 |              1.00 | 0.95 |           0.332 |         0.70 |       0.00
+    0  90    98 |    54     54   70   78 |               0.00 |              1.00 | 0.65 |           0.150 |         0.37 |       0.00
+    0 135   143 |    59     51   83   99 |               0.00 |              0.91 | 0.28 |           0.045 |         0.12 |       0.00
+    0 180   188 |    66     54   90  129 |               0.00 |              0.69 | 0.20 |           0.033 |         0.14 |       0.00
+   18  60    86 |    53     55   67   71 |               0.01 |              0.97 | 0.59 |           0.181 |         0.38 |       0.00
+   18  90   116 |    60     56   81   92 |               0.01 |              0.78 | 0.38 |           0.093 |         0.24 |       0.00
+   18 135   161 |    64     55   88  115 |               0.01 |              0.57 | 0.21 |           0.052 |         0.14 |       0.00
+   18 180   206 |    70     58  100  132 |               0.01 |              0.41 | 0.16 |           0.033 |         0.12 |       0.00
+   36  60   104 |    60     56   82   87 |               0.09 |              0.59 | 0.38 |           0.125 |         0.29 |       0.00
+   36  90   134 |    63     57   91  106 |               0.09 |              0.48 | 0.26 |           0.053 |         0.15 |       0.00
+   36 135   179 |    68     57   95  125 |               0.09 |              0.37 | 0.18 |           0.050 |         0.13 |       0.00
+   36 180   224 |    71     58   96  148 |               0.09 |              0.28 | 0.12 |           0.023 |         0.08 |       0.00
+   60  60   128 |    66     58   96  107 |               0.52 |              0.37 | 0.23 |           0.060 |         0.17 |       0.00
+   60  90   158 |    69     58  105  124 |               0.52 |              0.29 | 0.20 |           0.050 |         0.14 |       0.00
+   60 135   203 |    72     58  106  134 |               0.52 |              0.23 | 0.14 |           0.026 |         0.11 |       0.00
+   60 180   248 |    74     58  105  146 |               0.52 |              0.19 | 0.09 |           0.019 |         0.09 |       0.00
+   90  60   158 |    71     58  109  127 |               0.74 |              0.22 | 0.16 |           0.054 |         0.14 |       0.00
+   90  90   188 |    74     58  114  147 |               0.74 |              0.20 | 0.12 |           0.030 |         0.11 |       0.00
+   90 135   233 |    77     58  111  157 |               0.74 |              0.16 | 0.09 |           0.023 |         0.09 |       0.00
+   90 180   278 |    78     58  114  156 |               0.74 |              0.12 | 0.06 |           0.009 |         0.05 |       0.00
+```
+
+- Down to about 2.5 km the radius hardly matters: deaths per minute 4.5 to 7.4, median 58 to 42 s. Below about 2 km the kill rate rises roughly as one over the radius, and the boundary's share of deaths goes from under 5% to 17-40%.
+- So a linear shrink from 7.8 km acts only in its last quarter or so: the median stays at 51-58 s in every swept setting except start 0 with a 60 s shrink (47 s, a third of deaths by the boundary). The shrink moves the tail (p80, p90) and the mean.
