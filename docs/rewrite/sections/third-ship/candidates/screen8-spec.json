@@ -1,0 +1,134 @@
+[
+ {
+  "name": "K-roll-jgun-d1.15-s110",
+  "flight_from": "K-roll",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "K-roll-drag-jgun-d1.15-s110",
+  "flight_from": "K-roll-drag",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "K-roll-g7-jgun-d1.15-s110",
+  "flight_from": "K-roll-g7",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "K-roll-turn-jgun-d1.15-s110",
+  "flight_from": "K-roll-turn",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ }
+]

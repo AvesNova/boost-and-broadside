@@ -1,0 +1,536 @@
+[
+ {
+  "name": "Kg-base",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "Kg-spread1.5",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 1.5
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "Kg-spread2.2",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 2.2
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "Kg-expl1",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 1.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "Kg-expl0.5",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.5
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "Kg-drag7",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0007
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "Kg-muzzle1600",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1600.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "Kg-range560",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 560.0
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "Kg-shots600",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 600.0
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "Kg-radius10.5",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   },
+   "hit_radius": {
+    "set": 10.5
+   }
+  }
+ },
+ {
+  "name": "Kg-radius13.5",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   },
+   "hit_radius": {
+    "set": 13.5
+   }
+  }
+ },
+ {
+  "name": "Kg-fire15-d2",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 15.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 44.13171
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ },
+ {
+  "name": "Kg-fire15-d1.5",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 15.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 33.0987825
+   },
+   "max_shield": {
+    "set": 125.0
+   }
+  }
+ },
+ {
+  "name": "Kg-s125-d1.05",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 20.147085
+   },
+   "max_shield": {
+    "set": 125.0
+   }
+  }
+ },
+ {
+  "name": "Kg-s95-d1.25",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 23.984625
+   },
+   "max_shield": {
+    "set": 95.0
+   }
+  }
+ },
+ {
+  "name": "Kg-spread1.5-expl1",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 1.5
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 1.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  }
+ }
+]
