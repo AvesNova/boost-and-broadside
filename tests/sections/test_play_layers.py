@@ -20,6 +20,7 @@ ALLOWED = (
     "bnb.game.handling.characteristics",  # Imugi's, as the runtime reads them
     "bnb.models.yemong.decode",  # the decoder layer, for the prediction overlays
     "bnb.models.yemong.density.HexGrid",  # the density's true counts, as the learner's
+    "bnb.streams.decision_key_from",  # an agent's keyed decision draws, as the runtime's
 )
 
 
