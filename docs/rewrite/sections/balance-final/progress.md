@@ -191,3 +191,25 @@ shield x0.75-0.8, and these in elimination and Frontline 5v5.
   Yongma sustained turn x1.08 with them.
 - An elimination run on the laptop failed once on "Disk quota exceeded" in /tmp (the tmpfs
   was full for a moment; 8.9 of 23 GB used after); re-run, fine.
+
+## 08:40 rounds 14-15: Yongma's turn and a deep shield cut (deathmatch 2v2 / 5v5 / 10v10, 512)
+
+| card | 2v2 | 5v5 | 10v10 |
+|---|---|---|---|
+| Yongma turn x1.08 | 36.3 | 58.0 | 84.7 |
+| Jujak turn x0.95 + Yongma turn x1.08 | 52.1 | 80.3 | 94.4 |
+| Jujak x0.91 + Yongma turn x1.08 + shield x0.8 | 62.3 | 82.0 | 92.6 |
+| Yongma turn x1.08 + shield x0.8 | 28.1 | 39.4 | 60.1 |
+| Yongma turn x1.08 + shield x0.7 | 25.9 | 28.2 | 43.5 |
+| Yongma turn x1.08 + shield x0.6 | 21.5 | 18.2 | 20.7 |
+| Jujak x0.95 + Yongma turn x1.08 + shield x0.6 | 31.0 | 41.4 | 45.4 |
+| **Jujak x0.91 + Yongma turn x1.08 + shield x0.6** | **50.4** | **54.4** | **62.6** |
+
+The shield sets the slope over sizes (a shield cut takes most off the 10v10; at x0.6 the
+spread even inverts) and the turn ratio sets the level. Jujak x0.91 + Yongma turn x1.08 +
+shield x0.6 is the first card within about 13 points from 2v2 to 10v10 and centred. It is a
+larger change: the turn ratio 1.29 -> 1.09, the shields nearly equal (85.2 against 79.7);
+every value inside the real spread. Round 16: smaller steps around it (Yongma turn x1.04-1.08
+solved, shield x0.6-0.7).
+- The 3070 has been held since ~08:00 by another agent's compile-memory measure (the lock
+  held, the GPU at 0%); my Frontline 5v5 final and round 13 wait behind it.
