@@ -42,6 +42,18 @@ laws)  # start 0, cap 150 m/s, moving edge steer, waypoint search; clock = shrin
       --set mode.shrink_hold_seconds=0 --set mode.shrink_law=3 --set mode.shrink_knee_seconds=30 \
       --set mode.shrink_knee_fraction=$k --imugi-search waypoint
   done ;;
+interaction)  # the search under a mid shrink (linear 120 s; waypoint's is in laws)
+  for search in centre straight; do
+    run "linear-120-$search" elimination laws.jsonl --episode-seconds 128 \
+      --set mode.shrink_hold_seconds=0 --imugi-search "$search"
+  done ;;
+nocap)  # the fast-then-slow laws without the speed cap (how much the cap held them back)
+  run power3-120-nocap elimination laws.jsonl --episode-seconds 128 --set mode.shrink_hold_seconds=0 \
+    --set mode.shrink_law=2 --set mode.shrink_power=3 --set mode.shrink_max_speed=0 \
+    --imugi-search waypoint
+  run corner0.32-120-nocap elimination laws.jsonl --episode-seconds 128 \
+    --set mode.shrink_hold_seconds=0 --set mode.shrink_law=3 --set mode.shrink_knee_seconds=30 \
+    --set mode.shrink_knee_fraction=0.32 --set mode.shrink_max_speed=0 --imugi-search waypoint ;;
 deathmatch)  # the kill rate by search (tickets off, the preset's 600 s)
   for search in centre straight waypoint; do
     GAMES=64 run "dm-$search" deathmatch deathmatch.jsonl --imugi-search "$search"
