@@ -53,9 +53,9 @@ def main() -> None:
     for field, change in json.loads(JUJAK_V23.read_text()).items():
         data["card"][field] = change["set"]
     data["handles"]["sustained_turn_rate"] = 0.7646540176662846 * 0.93
-    data["notes"]["sustained_turn_rate"] += (
-        "; the energy-turn balance (tune/balance-final, game v23): x0.93"
-    )
+    tag = "; the energy-turn balance (tune/balance-final, game v23): x0.93"
+    note = data["notes"]["sustained_turn_rate"].split(tag)[0]
+    data["notes"]["sustained_turn_rate"] = note + tag
     ships.write_ship(
         ships.Ship("jujak", data["name"], data["handles"], data["card"], data["notes"]), SET
     )

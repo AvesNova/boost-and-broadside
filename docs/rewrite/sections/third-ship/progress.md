@@ -102,7 +102,7 @@ feat/imugi-boundary). Power profile `performance`.
 - The coordinator flagged the box idle: its lock was held by another agent's compile-memory
   measurement (CPU-bound, GPU at 0%); my kgun2 job is queued there under its lock.
 
-## 08:45 the power-and-roll fighter; its doctrine
+## 08:20 the power-and-roll fighter; its doctrine
 
 - Screen 9 (384 games a pairing, Jujak v23): K-roll-g7 (nose reversal 0.25, g 7) at damage
   x1.2 of Jujak's (23.0 a bullet, Yongma's), shield 110: **C v J 0.496 ± 0.024, C v Y 0.542 ±
@@ -122,7 +122,7 @@ feat/imugi-boundary). Power profile `performance`.
   (CPU-bound, GPU at 0%); my kgun2 and the mode checks (front1: elimination, Frontline 5v5,
   deathmatch 2v2) are queued behind it and the balance agent's jobs.
 
-## 09:35 doctrine chosen, card trimmed, the ship is in the set
+## 08:40 doctrine chosen, card trimmed, the ship is in the set
 
 - Doctrine round 3/4 (structured, then 512 + 1024 mixed on the in-range card d1.2/s115):
   base mixed 0.503; **no sense 0.542 ± 0.015**; the two-circle mirror 0.530; r1-020 without
