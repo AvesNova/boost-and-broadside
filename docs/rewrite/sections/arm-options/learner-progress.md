@@ -1,5 +1,15 @@
 # Learner arm options (branch feat/learner-arm-options)
 
+## Resume note (paused 2026-11-15 for the author)
+
+- Done (committed fbddc0e1): all four options, tests, docs, ruff, `--print-config` checks;
+  passed: test_learner, test_nearest, tests/docs.
+- Half-done: the quick tier on tests/runs (test_chain, test_update_policies,
+  test_averaging, test_cli, test_training_checkpoints) and on test_diagnostics_cadence,
+  test_learner_geometry, test_bc was stopped before finishing: not yet confirmed.
+- Next: rerun those, fix any failure, merge origin/feat/imugi-boundary (b73b58c7, v22),
+  rerun, push, report.
+
 Four arm options as settings, defaults unchanged (2026-11-15).
 
 ## A10: entropy floor
