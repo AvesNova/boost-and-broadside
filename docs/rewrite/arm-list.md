@@ -62,6 +62,6 @@ Rows 23–25 split A23's 11.7 h total in the arm review, approximately. **Total 
 
 ## No (author, 2026-11-15)
 
-A11 steps per update, A12 dense rewards decayed, A20 attention heads, A21 value output, R2 final-model seeds, R6 single-mode forks for mode transfer.
+A11 steps per update, A12 dense rewards decayed, A18 position encoding, A20 attention heads, A21 value output, R2 final-model seeds, R6 single-mode forks for mode transfer.
 
 **Not counted:** the 500M publication run, 10–17 h.
