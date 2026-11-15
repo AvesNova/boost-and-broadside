@@ -8,19 +8,31 @@ from .action import Action
 from .obs import Obs
 from .tree import contract
 
-# The reward levels, from the least to the most directly tied to winning (rewards spec 1):
-# the order of Trajectory.reward's last axis and of the critic's levels.
+# The reward levels, from the least to the most directly tied to winning (rewards spec 1).
 REWARD_LEVELS = ("damage", "kill_death", "objective_progress", "objective", "outcome")
-# The single value level of a critic over one reward stream, the sum of every level's
-# weighted reward (`bnb.learn.returns.value_rewards`).
-SUMMED_LEVEL = "summed_reward"
+# Each level's two parts (rewards spec 1), a level's reward their sum: offence, the terms
+# the ship earns from what happens to the enemy's ships (damage dealt, kills, the enemy's
+# own mistakes, captures, a win); defence, the terms from what happens to its own team's
+# (damage taken and healed, deaths, its own team's mistakes, zones lost, a loss). Defence
+# keeps its sign, so a cost is negative.
+REWARD_PARTS = ("offence", "defence")
+
+
+def level_part(level: str, part: str) -> str:
+    """The value level of a reward level's part: "damage", "offence" is "damage_offence"."""
+    return f"{level}_{part}"
+
+
+# The critic's value levels: each reward level's parts, level by level. The order of
+# Trajectory.reward's last axis.
+VALUE_LEVELS = tuple(level_part(level, part) for level in REWARD_LEVELS for part in REWARD_PARTS)
 
 
 @contract
 class Trajectory:
     """obs: the parts the model reads, (L, R, ...). action: every row's action (L, R, N), in
     the view's row order (own ships first; the learner's are [..., :S]). log_probability, value:
-    (L, R, S). reward: (L, R, S, len(REWARD_LEVELS)), per reward level, weighted.
+    (L, R, S). reward: (L, R, S, len(VALUE_LEVELS)), per reward level and part, weighted.
     done: (L, R) bool, the view's environment reset after this step. result: (L, R) int32,
     the match result for the view's team (+1 win, -1 loss, 0 draw), nonzero only where done.
     win_loss: (L, R, 2) float, the view's team's weights of a win and of a loss where done

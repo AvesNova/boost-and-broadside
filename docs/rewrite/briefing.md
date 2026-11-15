@@ -1,5 +1,7 @@
 # Briefing: preparing the 5090 pairwise arms (handover, 2026-11-15)
 
+**Superseded in part (2026-11-15, session 3):** break-even now fixes the weaker side at 20 (no 30-ship cap, no floor) and frontline break-even is scored; the open items below were answered there. [arms-todo.md](arms-todo.md) is current.
+
 This hands the work over to a new session (a remote server; the laptop is shutting down). Branch `prep/arms`, from `v2` at 87532adf, which now holds everything merged so far (integrate/next-runs fast-forwarded into v2).
 
 Read these first:

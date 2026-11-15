@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from bnb.contracts import REWARD_LEVELS, Obs
+from bnb.contracts import VALUE_LEVELS, Obs
 from bnb.contracts.action import NUM_JOINT
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.tree import contract
@@ -43,21 +43,30 @@ class RelationalConfig:
     hidden: int = 256
     value_bins: int = 77  # symlog bins 0.079 apart, one at 0 (as 51 over +-2 were)
     value_limit: float = 3.0  # symlog: +-19 in reward units
-    levels: tuple[str, ...] = REWARD_LEVELS
+    # value bins past +-value_limit on each side; 0 is every build's from before them
+    # (2026-11-15), a new run's is `codes.PADDING_BINS` (`bnb.runtime.train.TrainConfig`)
+    value_padding: int = 0
+    levels: tuple[str, ...] = VALUE_LEVELS
     outcome_level: str = "outcome"
     bfloat16_matmuls: bool = False
 
     @property
+    def value_support(self) -> int:
+        """The value bins, padding included."""
+        return self.value_bins + 2 * self.value_padding
+
+    @property
     def local_levels(self) -> tuple[int, ...]:
-        """The indices into levels of every level but outcome_level: the levels with a value
-        distribution."""
-        return tuple(i for i, name in enumerate(self.levels) if name != self.outcome_level)
+        """The indices into levels of the per-ship levels (`critic.local_levels`): the levels
+        with a value distribution."""
+        return critic.local_levels(self.levels, self.outcome_level)
 
 
 @contract
 class Unrolled:
     """A segment's outputs, (L, R, ...) leading: policy_logits (S, 42), value_logits
-    (S, levels - 1, bins), values (S, levels), outcome_logits (4). The model has no other heads."""
+    (S, per-ship levels, bins), values (S, levels), outcome_logits (4). The model has no other
+    heads."""
 
     policy_logits: torch.Tensor
     value_logits: torch.Tensor
@@ -173,12 +182,14 @@ class Relational(nn.Module):
         self.body = nn.Sequential(
             nn.Linear(inputs, hidden), nn.GELU(), nn.Linear(hidden, hidden), nn.GELU()
         )
-        levels = len(config.levels) - 1
+        levels = len(config.local_levels)
         self.policy = nn.Linear(hidden, NUM_JOINT)
-        self.value = nn.Linear(hidden, levels * config.value_bins)
+        self.value = nn.Linear(hidden, levels * config.value_support)
         self.outcome = nn.Linear(hidden, critic.OUTCOMES)
         self.register_buffer(
-            "bins", critic.value_bins(config.value_bins, config.value_limit), persistent=False
+            "bins",
+            critic.value_bins(config.value_bins, config.value_limit, config.value_padding),
+            persistent=False,
         )
         initialise(self, seed)
 
@@ -200,14 +211,14 @@ class Relational(nn.Module):
             policy_logits = self.policy(hidden)
             value_logits = self.value(hidden)
             outcome_logits = self.outcome(hidden.mean(-2))
-        value_logits = value_logits.float().unflatten(-1, (-1, config.value_bins))
+        value_logits = value_logits.float().unflatten(-1, (-1, config.value_support))
         outcome_logits = outcome_logits.float()
         values = critic_values(
             value_logits,
             outcome_logits,
             self.bins,
-            config.local_levels,
-            config.levels.index(config.outcome_level),
+            config.levels,
+            config.outcome_level,
         )
         return Unrolled(
             policy_logits=policy_logits.float(),

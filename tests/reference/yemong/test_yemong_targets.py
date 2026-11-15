@@ -6,11 +6,12 @@ from yemong_helpers import TIGHT, case, check
 # --------------------------------------------------------------------------- critic
 
 
-def test_value_bins_two_hot_and_expectation(arm):
+def test_value_bins_and_expectation(arm):
+    # v1's two-hot targets are in the golden too; v2's critic trains on HL-Gauss targets
+    # (2026-11-15), so only the bins and the read-out are compared
     golden = case("critic_two_hot")
     bins = arm.value_bins(golden.config["count"], golden.config["limit"])
     check(bins, golden.outputs["bins"], "bins", **TIGHT)
-    check(arm.two_hot(golden.inputs["values"], bins), golden.outputs["two_hot"], "two_hot", **TIGHT)
     check(arm.expectation(golden.inputs["logits"], bins), golden.outputs["expectation"],
           "expectation", **TIGHT)
 
