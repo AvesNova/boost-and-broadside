@@ -59,3 +59,22 @@ feat/imugi-boundary). Power profile `performance`.
   Next: the radius fighter Z (solved at low-speed acceleration 12: the smallest circle, the
   slowest cruise, 45 deg/s max turn) and the heavy P (solved at 6.0, below the real 8.87:
   out of range), screen 5; radius-not-rate Z variants (sustained turn 0.62-0.71) solving.
+
+## 07:55 screen 5 and the Z doctrines: the radius fighter does not work; P is a stronger Yongma
+
+- Z (radius fighter: 45 deg/s max and 36.6 sustained, out-turning Jujak at every stick
+  level, but cruise 275, corner 198, climb power 6516 against Jujak's 9178): C v J 0.06-0.09,
+  C v Y 0.09-0.20 at damage x1.0-1.2, shield 70-85, Zero or Jujak gun. Out-turning Jujak does
+  not pay in a 5v5 melee when the ship is slow and charges slowly.
+- Z doctrines (256 games, Z-zgun-d1.2-s80): the base 0.13 / 0.18; one-circle against every
+  type 0.05 / 0.05, two-circle 0.08 / 0.13, + bleed 0.11 / 0.08, + deny 0.03 / 0.06, slash
+  0.09 / 0.15. No element helps.
+- Radius-not-rate Z (stall 75, sustained 0.62-0.71) does not solve: the low-speed
+  acceleration misses by 19-139% (it and the sustained turn are both near-stall excess
+  thrust).
+- P (heavy boom-and-zoom, sustained 0.52, top 448, solved only at low-speed acceleration
+  6.0, below the real 8.87): C v J 0.07-0.17, C v Y 0.30-0.68 (d1.0/s130 to d1.3/s150). A
+  stronger Yongma that still loses to Jujak: no cycle, and out of range.
+- Running: a Z card-factor screen (which deficit sinks Z: cruise, charge, shield, drag, g,
+  power, damage), K doctrines, K with a 30 Hz cannon (tight spread, explosive), K with the
+  Fw 190's roll (nose reversal 0.25) solving.

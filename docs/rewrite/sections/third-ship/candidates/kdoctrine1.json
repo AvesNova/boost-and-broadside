@@ -1,0 +1,1200 @@
+[
+ {
+  "name": "K+d0",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  },
+  "card": {
+   "max_lift_coefficient": 0.004403368104249239,
+   "max_acceleration": 313.9200134277344,
+   "zero_lift_drag": 7.000000186963007e-05,
+   "engine_power": 11558.27734375,
+   "engine_power_full_store": 3019.5478515625,
+   "static_thrust": 122.43196105957031,
+   "max_energy": 497563.1875,
+   "corner_nose_frequency": 12.108443260192871,
+   "max_shield": 110.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "hit_damage": 22.065855,
+   "muzzle_speed": 1712.0,
+   "bullet_energy_cost": 575.058018584439,
+   "fire_rate": 30.0,
+   "bullet_life": 0.3333333333333333,
+   "spawn_energy": 199025.28000000003,
+   "explosive_share": 0.0,
+   "reference_bullet_speed": 1757.565687859968,
+   "bleed_exponent": 2.0,
+   "induced_drag_scale": 0.6319889426231384,
+   "stall_angle_scale": 1.0333333015441895,
+   "coast_exchange_scale": 23.738475799560547,
+   "dive_exchange_scale": 4.111094951629639,
+   "climb_exchange_scale": 3.407888889312744,
+   "vision_range_scale": 0.3255208432674408,
+   "bullet_spread_scale": 0.25704019548030027,
+   "bullet_drag_scale": 1.0,
+   "shield_recharge_rate_scale": 2.0,
+   "shield_recharge_delay_scale": 0.5,
+   "head_on_fraction_scale": 0.0,
+   "head_on_angle_scale": 1.064467019431226,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "engine_knee_scale": 1.0,
+   "fine_stick": 0.21501494944095612,
+   "sustained_stick": 0.7167165279388428
+  },
+  "solved_handles": {
+   "stall_speed": 94.4,
+   "g_limit": 8.0,
+   "cruise_speed": 330.0,
+   "climb_time": 290.0,
+   "ceiling": 497563.2,
+   "low_speed_acceleration": 18.97,
+   "sustained_turn_rate": 0.63,
+   "half_lift_drag": 0.25,
+   "nose_reversal_time": 0.34,
+   "dive_acceleration": 40.92301568920662,
+   "zoom_acceleration": -34.87186437287164,
+   "stall_angle": 0.27052603405912107,
+   "vision_range": 1000.0,
+   "zero_lift_drag": 7e-05,
+   "hit_damage": 22.065855,
+   "explosive_share": 0.0,
+   "fire_rate": 30.0,
+   "muzzle_speed": 1712.0,
+   "bullet_spread": 3.0844823457636035,
+   "gun_range": 584.34,
+   "bullet_drag": 0.0005,
+   "shots_per_store": 865.24,
+   "max_shield": 110.0,
+   "shield_recharge_rate": 24.0,
+   "shield_recharge_delay": 3.0,
+   "head_on_fraction": 0.0,
+   "head_on_angle": 0.7853981633974483,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "spawn_energy": 199025.28000000003
+  },
+  "spec": {
+   "name": "K-jgun-d1.15-s110",
+   "flight_from": "K-d1.0-s90",
+   "handles": {
+    "fire_rate": {
+     "set": 30.0
+    },
+    "muzzle_speed": {
+     "set": 1712.0
+    },
+    "bullet_spread": {
+     "set": 3.0844823457636035
+    },
+    "bullet_drag": {
+     "set": 0.0005
+    },
+    "gun_range": {
+     "set": 584.34
+    },
+    "shots_per_store": {
+     "set": 865.24
+    },
+    "explosive_share": {
+     "set": 0.0
+    },
+    "hit_damage": {
+     "set": 22.065855
+    },
+    "max_shield": {
+     "set": 110.0
+    }
+   }
+  },
+  "doctrine": {}
+ },
+ {
+  "name": "K+slash",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  },
+  "card": {
+   "max_lift_coefficient": 0.004403368104249239,
+   "max_acceleration": 313.9200134277344,
+   "zero_lift_drag": 7.000000186963007e-05,
+   "engine_power": 11558.27734375,
+   "engine_power_full_store": 3019.5478515625,
+   "static_thrust": 122.43196105957031,
+   "max_energy": 497563.1875,
+   "corner_nose_frequency": 12.108443260192871,
+   "max_shield": 110.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "hit_damage": 22.065855,
+   "muzzle_speed": 1712.0,
+   "bullet_energy_cost": 575.058018584439,
+   "fire_rate": 30.0,
+   "bullet_life": 0.3333333333333333,
+   "spawn_energy": 199025.28000000003,
+   "explosive_share": 0.0,
+   "reference_bullet_speed": 1757.565687859968,
+   "bleed_exponent": 2.0,
+   "induced_drag_scale": 0.6319889426231384,
+   "stall_angle_scale": 1.0333333015441895,
+   "coast_exchange_scale": 23.738475799560547,
+   "dive_exchange_scale": 4.111094951629639,
+   "climb_exchange_scale": 3.407888889312744,
+   "vision_range_scale": 0.3255208432674408,
+   "bullet_spread_scale": 0.25704019548030027,
+   "bullet_drag_scale": 1.0,
+   "shield_recharge_rate_scale": 2.0,
+   "shield_recharge_delay_scale": 0.5,
+   "head_on_fraction_scale": 0.0,
+   "head_on_angle_scale": 1.064467019431226,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "engine_knee_scale": 1.0,
+   "fine_stick": 0.21501494944095612,
+   "sustained_stick": 0.7167165279388428
+  },
+  "solved_handles": {
+   "stall_speed": 94.4,
+   "g_limit": 8.0,
+   "cruise_speed": 330.0,
+   "climb_time": 290.0,
+   "ceiling": 497563.2,
+   "low_speed_acceleration": 18.97,
+   "sustained_turn_rate": 0.63,
+   "half_lift_drag": 0.25,
+   "nose_reversal_time": 0.34,
+   "dive_acceleration": 40.92301568920662,
+   "zoom_acceleration": -34.87186437287164,
+   "stall_angle": 0.27052603405912107,
+   "vision_range": 1000.0,
+   "zero_lift_drag": 7e-05,
+   "hit_damage": 22.065855,
+   "explosive_share": 0.0,
+   "fire_rate": 30.0,
+   "muzzle_speed": 1712.0,
+   "bullet_spread": 3.0844823457636035,
+   "gun_range": 584.34,
+   "bullet_drag": 0.0005,
+   "shots_per_store": 865.24,
+   "max_shield": 110.0,
+   "shield_recharge_rate": 24.0,
+   "shield_recharge_delay": 3.0,
+   "head_on_fraction": 0.0,
+   "head_on_angle": 0.7853981633974483,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "spawn_energy": 199025.28000000003
+  },
+  "spec": {
+   "name": "K-jgun-d1.15-s110",
+   "flight_from": "K-d1.0-s90",
+   "handles": {
+    "fire_rate": {
+     "set": 30.0
+    },
+    "muzzle_speed": {
+     "set": 1712.0
+    },
+    "bullet_spread": {
+     "set": 3.0844823457636035
+    },
+    "bullet_drag": {
+     "set": 0.0005
+    },
+    "gun_range": {
+     "set": 584.34
+    },
+    "shots_per_store": {
+     "set": 865.24
+    },
+    "explosive_share": {
+     "set": 0.0
+    },
+    "hit_damage": {
+     "set": 22.065855
+    },
+    "max_shield": {
+     "set": 110.0
+    }
+   }
+  },
+  "doctrine": {
+   "strength": 1.0,
+   "turn_exponent": 0.0,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    0.5,
+    0.1
+   ],
+   "bleed": 0.0,
+   "slash": 0.9,
+   "deny": 0.0,
+   "lag": 0.0
+  }
+ },
+ {
+  "name": "K+bleed",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  },
+  "card": {
+   "max_lift_coefficient": 0.004403368104249239,
+   "max_acceleration": 313.9200134277344,
+   "zero_lift_drag": 7.000000186963007e-05,
+   "engine_power": 11558.27734375,
+   "engine_power_full_store": 3019.5478515625,
+   "static_thrust": 122.43196105957031,
+   "max_energy": 497563.1875,
+   "corner_nose_frequency": 12.108443260192871,
+   "max_shield": 110.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "hit_damage": 22.065855,
+   "muzzle_speed": 1712.0,
+   "bullet_energy_cost": 575.058018584439,
+   "fire_rate": 30.0,
+   "bullet_life": 0.3333333333333333,
+   "spawn_energy": 199025.28000000003,
+   "explosive_share": 0.0,
+   "reference_bullet_speed": 1757.565687859968,
+   "bleed_exponent": 2.0,
+   "induced_drag_scale": 0.6319889426231384,
+   "stall_angle_scale": 1.0333333015441895,
+   "coast_exchange_scale": 23.738475799560547,
+   "dive_exchange_scale": 4.111094951629639,
+   "climb_exchange_scale": 3.407888889312744,
+   "vision_range_scale": 0.3255208432674408,
+   "bullet_spread_scale": 0.25704019548030027,
+   "bullet_drag_scale": 1.0,
+   "shield_recharge_rate_scale": 2.0,
+   "shield_recharge_delay_scale": 0.5,
+   "head_on_fraction_scale": 0.0,
+   "head_on_angle_scale": 1.064467019431226,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "engine_knee_scale": 1.0,
+   "fine_stick": 0.21501494944095612,
+   "sustained_stick": 0.7167165279388428
+  },
+  "solved_handles": {
+   "stall_speed": 94.4,
+   "g_limit": 8.0,
+   "cruise_speed": 330.0,
+   "climb_time": 290.0,
+   "ceiling": 497563.2,
+   "low_speed_acceleration": 18.97,
+   "sustained_turn_rate": 0.63,
+   "half_lift_drag": 0.25,
+   "nose_reversal_time": 0.34,
+   "dive_acceleration": 40.92301568920662,
+   "zoom_acceleration": -34.87186437287164,
+   "stall_angle": 0.27052603405912107,
+   "vision_range": 1000.0,
+   "zero_lift_drag": 7e-05,
+   "hit_damage": 22.065855,
+   "explosive_share": 0.0,
+   "fire_rate": 30.0,
+   "muzzle_speed": 1712.0,
+   "bullet_spread": 3.0844823457636035,
+   "gun_range": 584.34,
+   "bullet_drag": 0.0005,
+   "shots_per_store": 865.24,
+   "max_shield": 110.0,
+   "shield_recharge_rate": 24.0,
+   "shield_recharge_delay": 3.0,
+   "head_on_fraction": 0.0,
+   "head_on_angle": 0.7853981633974483,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "spawn_energy": 199025.28000000003
+  },
+  "spec": {
+   "name": "K-jgun-d1.15-s110",
+   "flight_from": "K-d1.0-s90",
+   "handles": {
+    "fire_rate": {
+     "set": 30.0
+    },
+    "muzzle_speed": {
+     "set": 1712.0
+    },
+    "bullet_spread": {
+     "set": 3.0844823457636035
+    },
+    "bullet_drag": {
+     "set": 0.0005
+    },
+    "gun_range": {
+     "set": 584.34
+    },
+    "shots_per_store": {
+     "set": 865.24
+    },
+    "explosive_share": {
+     "set": 0.0
+    },
+    "hit_damage": {
+     "set": 22.065855
+    },
+    "max_shield": {
+     "set": 110.0
+    }
+   }
+  },
+  "doctrine": {
+   "strength": 1.0,
+   "turn_exponent": 0.0,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    0.5,
+    0.1
+   ],
+   "bleed": 0.8,
+   "slash": 0.0,
+   "deny": 0.0,
+   "lag": 0.0
+  }
+ },
+ {
+  "name": "K+lag",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  },
+  "card": {
+   "max_lift_coefficient": 0.004403368104249239,
+   "max_acceleration": 313.9200134277344,
+   "zero_lift_drag": 7.000000186963007e-05,
+   "engine_power": 11558.27734375,
+   "engine_power_full_store": 3019.5478515625,
+   "static_thrust": 122.43196105957031,
+   "max_energy": 497563.1875,
+   "corner_nose_frequency": 12.108443260192871,
+   "max_shield": 110.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "hit_damage": 22.065855,
+   "muzzle_speed": 1712.0,
+   "bullet_energy_cost": 575.058018584439,
+   "fire_rate": 30.0,
+   "bullet_life": 0.3333333333333333,
+   "spawn_energy": 199025.28000000003,
+   "explosive_share": 0.0,
+   "reference_bullet_speed": 1757.565687859968,
+   "bleed_exponent": 2.0,
+   "induced_drag_scale": 0.6319889426231384,
+   "stall_angle_scale": 1.0333333015441895,
+   "coast_exchange_scale": 23.738475799560547,
+   "dive_exchange_scale": 4.111094951629639,
+   "climb_exchange_scale": 3.407888889312744,
+   "vision_range_scale": 0.3255208432674408,
+   "bullet_spread_scale": 0.25704019548030027,
+   "bullet_drag_scale": 1.0,
+   "shield_recharge_rate_scale": 2.0,
+   "shield_recharge_delay_scale": 0.5,
+   "head_on_fraction_scale": 0.0,
+   "head_on_angle_scale": 1.064467019431226,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "engine_knee_scale": 1.0,
+   "fine_stick": 0.21501494944095612,
+   "sustained_stick": 0.7167165279388428
+  },
+  "solved_handles": {
+   "stall_speed": 94.4,
+   "g_limit": 8.0,
+   "cruise_speed": 330.0,
+   "climb_time": 290.0,
+   "ceiling": 497563.2,
+   "low_speed_acceleration": 18.97,
+   "sustained_turn_rate": 0.63,
+   "half_lift_drag": 0.25,
+   "nose_reversal_time": 0.34,
+   "dive_acceleration": 40.92301568920662,
+   "zoom_acceleration": -34.87186437287164,
+   "stall_angle": 0.27052603405912107,
+   "vision_range": 1000.0,
+   "zero_lift_drag": 7e-05,
+   "hit_damage": 22.065855,
+   "explosive_share": 0.0,
+   "fire_rate": 30.0,
+   "muzzle_speed": 1712.0,
+   "bullet_spread": 3.0844823457636035,
+   "gun_range": 584.34,
+   "bullet_drag": 0.0005,
+   "shots_per_store": 865.24,
+   "max_shield": 110.0,
+   "shield_recharge_rate": 24.0,
+   "shield_recharge_delay": 3.0,
+   "head_on_fraction": 0.0,
+   "head_on_angle": 0.7853981633974483,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "spawn_energy": 199025.28000000003
+  },
+  "spec": {
+   "name": "K-jgun-d1.15-s110",
+   "flight_from": "K-d1.0-s90",
+   "handles": {
+    "fire_rate": {
+     "set": 30.0
+    },
+    "muzzle_speed": {
+     "set": 1712.0
+    },
+    "bullet_spread": {
+     "set": 3.0844823457636035
+    },
+    "bullet_drag": {
+     "set": 0.0005
+    },
+    "gun_range": {
+     "set": 584.34
+    },
+    "shots_per_store": {
+     "set": 865.24
+    },
+    "explosive_share": {
+     "set": 0.0
+    },
+    "hit_damage": {
+     "set": 22.065855
+    },
+    "max_shield": {
+     "set": 110.0
+    }
+   }
+  },
+  "doctrine": {
+   "strength": 1.0,
+   "turn_exponent": 0.0,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    0.5,
+    0.1
+   ],
+   "bleed": 0.0,
+   "slash": 0.0,
+   "deny": 0.0,
+   "lag": 0.5
+  }
+ },
+ {
+  "name": "K+deny",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  },
+  "card": {
+   "max_lift_coefficient": 0.004403368104249239,
+   "max_acceleration": 313.9200134277344,
+   "zero_lift_drag": 7.000000186963007e-05,
+   "engine_power": 11558.27734375,
+   "engine_power_full_store": 3019.5478515625,
+   "static_thrust": 122.43196105957031,
+   "max_energy": 497563.1875,
+   "corner_nose_frequency": 12.108443260192871,
+   "max_shield": 110.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "hit_damage": 22.065855,
+   "muzzle_speed": 1712.0,
+   "bullet_energy_cost": 575.058018584439,
+   "fire_rate": 30.0,
+   "bullet_life": 0.3333333333333333,
+   "spawn_energy": 199025.28000000003,
+   "explosive_share": 0.0,
+   "reference_bullet_speed": 1757.565687859968,
+   "bleed_exponent": 2.0,
+   "induced_drag_scale": 0.6319889426231384,
+   "stall_angle_scale": 1.0333333015441895,
+   "coast_exchange_scale": 23.738475799560547,
+   "dive_exchange_scale": 4.111094951629639,
+   "climb_exchange_scale": 3.407888889312744,
+   "vision_range_scale": 0.3255208432674408,
+   "bullet_spread_scale": 0.25704019548030027,
+   "bullet_drag_scale": 1.0,
+   "shield_recharge_rate_scale": 2.0,
+   "shield_recharge_delay_scale": 0.5,
+   "head_on_fraction_scale": 0.0,
+   "head_on_angle_scale": 1.064467019431226,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "engine_knee_scale": 1.0,
+   "fine_stick": 0.21501494944095612,
+   "sustained_stick": 0.7167165279388428
+  },
+  "solved_handles": {
+   "stall_speed": 94.4,
+   "g_limit": 8.0,
+   "cruise_speed": 330.0,
+   "climb_time": 290.0,
+   "ceiling": 497563.2,
+   "low_speed_acceleration": 18.97,
+   "sustained_turn_rate": 0.63,
+   "half_lift_drag": 0.25,
+   "nose_reversal_time": 0.34,
+   "dive_acceleration": 40.92301568920662,
+   "zoom_acceleration": -34.87186437287164,
+   "stall_angle": 0.27052603405912107,
+   "vision_range": 1000.0,
+   "zero_lift_drag": 7e-05,
+   "hit_damage": 22.065855,
+   "explosive_share": 0.0,
+   "fire_rate": 30.0,
+   "muzzle_speed": 1712.0,
+   "bullet_spread": 3.0844823457636035,
+   "gun_range": 584.34,
+   "bullet_drag": 0.0005,
+   "shots_per_store": 865.24,
+   "max_shield": 110.0,
+   "shield_recharge_rate": 24.0,
+   "shield_recharge_delay": 3.0,
+   "head_on_fraction": 0.0,
+   "head_on_angle": 0.7853981633974483,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "spawn_energy": 199025.28000000003
+  },
+  "spec": {
+   "name": "K-jgun-d1.15-s110",
+   "flight_from": "K-d1.0-s90",
+   "handles": {
+    "fire_rate": {
+     "set": 30.0
+    },
+    "muzzle_speed": {
+     "set": 1712.0
+    },
+    "bullet_spread": {
+     "set": 3.0844823457636035
+    },
+    "bullet_drag": {
+     "set": 0.0005
+    },
+    "gun_range": {
+     "set": 584.34
+    },
+    "shots_per_store": {
+     "set": 865.24
+    },
+    "explosive_share": {
+     "set": 0.0
+    },
+    "hit_damage": {
+     "set": 22.065855
+    },
+    "max_shield": {
+     "set": 110.0
+    }
+   }
+  },
+  "doctrine": {
+   "strength": 1.0,
+   "turn_exponent": 0.0,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    0.5,
+    0.1
+   ],
+   "bleed": 0.0,
+   "slash": 0.0,
+   "deny": 0.8,
+   "lag": 0.0
+  }
+ },
+ {
+  "name": "K+slash-lag",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  },
+  "card": {
+   "max_lift_coefficient": 0.004403368104249239,
+   "max_acceleration": 313.9200134277344,
+   "zero_lift_drag": 7.000000186963007e-05,
+   "engine_power": 11558.27734375,
+   "engine_power_full_store": 3019.5478515625,
+   "static_thrust": 122.43196105957031,
+   "max_energy": 497563.1875,
+   "corner_nose_frequency": 12.108443260192871,
+   "max_shield": 110.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "hit_damage": 22.065855,
+   "muzzle_speed": 1712.0,
+   "bullet_energy_cost": 575.058018584439,
+   "fire_rate": 30.0,
+   "bullet_life": 0.3333333333333333,
+   "spawn_energy": 199025.28000000003,
+   "explosive_share": 0.0,
+   "reference_bullet_speed": 1757.565687859968,
+   "bleed_exponent": 2.0,
+   "induced_drag_scale": 0.6319889426231384,
+   "stall_angle_scale": 1.0333333015441895,
+   "coast_exchange_scale": 23.738475799560547,
+   "dive_exchange_scale": 4.111094951629639,
+   "climb_exchange_scale": 3.407888889312744,
+   "vision_range_scale": 0.3255208432674408,
+   "bullet_spread_scale": 0.25704019548030027,
+   "bullet_drag_scale": 1.0,
+   "shield_recharge_rate_scale": 2.0,
+   "shield_recharge_delay_scale": 0.5,
+   "head_on_fraction_scale": 0.0,
+   "head_on_angle_scale": 1.064467019431226,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "engine_knee_scale": 1.0,
+   "fine_stick": 0.21501494944095612,
+   "sustained_stick": 0.7167165279388428
+  },
+  "solved_handles": {
+   "stall_speed": 94.4,
+   "g_limit": 8.0,
+   "cruise_speed": 330.0,
+   "climb_time": 290.0,
+   "ceiling": 497563.2,
+   "low_speed_acceleration": 18.97,
+   "sustained_turn_rate": 0.63,
+   "half_lift_drag": 0.25,
+   "nose_reversal_time": 0.34,
+   "dive_acceleration": 40.92301568920662,
+   "zoom_acceleration": -34.87186437287164,
+   "stall_angle": 0.27052603405912107,
+   "vision_range": 1000.0,
+   "zero_lift_drag": 7e-05,
+   "hit_damage": 22.065855,
+   "explosive_share": 0.0,
+   "fire_rate": 30.0,
+   "muzzle_speed": 1712.0,
+   "bullet_spread": 3.0844823457636035,
+   "gun_range": 584.34,
+   "bullet_drag": 0.0005,
+   "shots_per_store": 865.24,
+   "max_shield": 110.0,
+   "shield_recharge_rate": 24.0,
+   "shield_recharge_delay": 3.0,
+   "head_on_fraction": 0.0,
+   "head_on_angle": 0.7853981633974483,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "spawn_energy": 199025.28000000003
+  },
+  "spec": {
+   "name": "K-jgun-d1.15-s110",
+   "flight_from": "K-d1.0-s90",
+   "handles": {
+    "fire_rate": {
+     "set": 30.0
+    },
+    "muzzle_speed": {
+     "set": 1712.0
+    },
+    "bullet_spread": {
+     "set": 3.0844823457636035
+    },
+    "bullet_drag": {
+     "set": 0.0005
+    },
+    "gun_range": {
+     "set": 584.34
+    },
+    "shots_per_store": {
+     "set": 865.24
+    },
+    "explosive_share": {
+     "set": 0.0
+    },
+    "hit_damage": {
+     "set": 22.065855
+    },
+    "max_shield": {
+     "set": 110.0
+    }
+   }
+  },
+  "doctrine": {
+   "strength": 1.0,
+   "turn_exponent": 0.0,
+   "climb_exponent": 0.0,
+   "speed_exponent": 0.0,
+   "range_exponent": 0.0,
+   "in_advantage": [
+    0.5,
+    0.1
+   ],
+   "bleed": 0.0,
+   "slash": 0.9,
+   "deny": 0.0,
+   "lag": 0.3
+  }
+ },
+ {
+  "name": "K+two-all",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  },
+  "card": {
+   "max_lift_coefficient": 0.004403368104249239,
+   "max_acceleration": 313.9200134277344,
+   "zero_lift_drag": 7.000000186963007e-05,
+   "engine_power": 11558.27734375,
+   "engine_power_full_store": 3019.5478515625,
+   "static_thrust": 122.43196105957031,
+   "max_energy": 497563.1875,
+   "corner_nose_frequency": 12.108443260192871,
+   "max_shield": 110.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "hit_damage": 22.065855,
+   "muzzle_speed": 1712.0,
+   "bullet_energy_cost": 575.058018584439,
+   "fire_rate": 30.0,
+   "bullet_life": 0.3333333333333333,
+   "spawn_energy": 199025.28000000003,
+   "explosive_share": 0.0,
+   "reference_bullet_speed": 1757.565687859968,
+   "bleed_exponent": 2.0,
+   "induced_drag_scale": 0.6319889426231384,
+   "stall_angle_scale": 1.0333333015441895,
+   "coast_exchange_scale": 23.738475799560547,
+   "dive_exchange_scale": 4.111094951629639,
+   "climb_exchange_scale": 3.407888889312744,
+   "vision_range_scale": 0.3255208432674408,
+   "bullet_spread_scale": 0.25704019548030027,
+   "bullet_drag_scale": 1.0,
+   "shield_recharge_rate_scale": 2.0,
+   "shield_recharge_delay_scale": 0.5,
+   "head_on_fraction_scale": 0.0,
+   "head_on_angle_scale": 1.064467019431226,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "engine_knee_scale": 1.0,
+   "fine_stick": 0.21501494944095612,
+   "sustained_stick": 0.7167165279388428
+  },
+  "solved_handles": {
+   "stall_speed": 94.4,
+   "g_limit": 8.0,
+   "cruise_speed": 330.0,
+   "climb_time": 290.0,
+   "ceiling": 497563.2,
+   "low_speed_acceleration": 18.97,
+   "sustained_turn_rate": 0.63,
+   "half_lift_drag": 0.25,
+   "nose_reversal_time": 0.34,
+   "dive_acceleration": 40.92301568920662,
+   "zoom_acceleration": -34.87186437287164,
+   "stall_angle": 0.27052603405912107,
+   "vision_range": 1000.0,
+   "zero_lift_drag": 7e-05,
+   "hit_damage": 22.065855,
+   "explosive_share": 0.0,
+   "fire_rate": 30.0,
+   "muzzle_speed": 1712.0,
+   "bullet_spread": 3.0844823457636035,
+   "gun_range": 584.34,
+   "bullet_drag": 0.0005,
+   "shots_per_store": 865.24,
+   "max_shield": 110.0,
+   "shield_recharge_rate": 24.0,
+   "shield_recharge_delay": 3.0,
+   "head_on_fraction": 0.0,
+   "head_on_angle": 0.7853981633974483,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "spawn_energy": 199025.28000000003
+  },
+  "spec": {
+   "name": "K-jgun-d1.15-s110",
+   "flight_from": "K-d1.0-s90",
+   "handles": {
+    "fire_rate": {
+     "set": 30.0
+    },
+    "muzzle_speed": {
+     "set": 1712.0
+    },
+    "bullet_spread": {
+     "set": 3.0844823457636035
+    },
+    "bullet_drag": {
+     "set": 0.0005
+    },
+    "gun_range": {
+     "set": 584.34
+    },
+    "shots_per_store": {
+     "set": 865.24
+    },
+    "explosive_share": {
+     "set": 0.0
+    },
+    "hit_damage": {
+     "set": 22.065855
+    },
+    "max_shield": {
+     "set": 110.0
+    }
+   }
+  },
+  "doctrine": {
+   "sense": 1.0,
+   "sense_one_circle": 0.0,
+   "sense_mirror_only": 0.0
+  }
+ },
+ {
+  "name": "K+one-all",
+  "flight_from": "K-d1.0-s90",
+  "handles": {
+   "fire_rate": {
+    "set": 30.0
+   },
+   "muzzle_speed": {
+    "set": 1712.0
+   },
+   "bullet_spread": {
+    "set": 3.0844823457636035
+   },
+   "bullet_drag": {
+    "set": 0.0005
+   },
+   "gun_range": {
+    "set": 584.34
+   },
+   "shots_per_store": {
+    "set": 865.24
+   },
+   "explosive_share": {
+    "set": 0.0
+   },
+   "hit_damage": {
+    "set": 22.065855
+   },
+   "max_shield": {
+    "set": 110.0
+   }
+  },
+  "card": {
+   "max_lift_coefficient": 0.004403368104249239,
+   "max_acceleration": 313.9200134277344,
+   "zero_lift_drag": 7.000000186963007e-05,
+   "engine_power": 11558.27734375,
+   "engine_power_full_store": 3019.5478515625,
+   "static_thrust": 122.43196105957031,
+   "max_energy": 497563.1875,
+   "corner_nose_frequency": 12.108443260192871,
+   "max_shield": 110.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "hit_damage": 22.065855,
+   "muzzle_speed": 1712.0,
+   "bullet_energy_cost": 575.058018584439,
+   "fire_rate": 30.0,
+   "bullet_life": 0.3333333333333333,
+   "spawn_energy": 199025.28000000003,
+   "explosive_share": 0.0,
+   "reference_bullet_speed": 1757.565687859968,
+   "bleed_exponent": 2.0,
+   "induced_drag_scale": 0.6319889426231384,
+   "stall_angle_scale": 1.0333333015441895,
+   "coast_exchange_scale": 23.738475799560547,
+   "dive_exchange_scale": 4.111094951629639,
+   "climb_exchange_scale": 3.407888889312744,
+   "vision_range_scale": 0.3255208432674408,
+   "bullet_spread_scale": 0.25704019548030027,
+   "bullet_drag_scale": 1.0,
+   "shield_recharge_rate_scale": 2.0,
+   "shield_recharge_delay_scale": 0.5,
+   "head_on_fraction_scale": 0.0,
+   "head_on_angle_scale": 1.064467019431226,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "engine_knee_scale": 1.0,
+   "fine_stick": 0.21501494944095612,
+   "sustained_stick": 0.7167165279388428
+  },
+  "solved_handles": {
+   "stall_speed": 94.4,
+   "g_limit": 8.0,
+   "cruise_speed": 330.0,
+   "climb_time": 290.0,
+   "ceiling": 497563.2,
+   "low_speed_acceleration": 18.97,
+   "sustained_turn_rate": 0.63,
+   "half_lift_drag": 0.25,
+   "nose_reversal_time": 0.34,
+   "dive_acceleration": 40.92301568920662,
+   "zoom_acceleration": -34.87186437287164,
+   "stall_angle": 0.27052603405912107,
+   "vision_range": 1000.0,
+   "zero_lift_drag": 7e-05,
+   "hit_damage": 22.065855,
+   "explosive_share": 0.0,
+   "fire_rate": 30.0,
+   "muzzle_speed": 1712.0,
+   "bullet_spread": 3.0844823457636035,
+   "gun_range": 584.34,
+   "bullet_drag": 0.0005,
+   "shots_per_store": 865.24,
+   "max_shield": 110.0,
+   "shield_recharge_rate": 24.0,
+   "shield_recharge_delay": 3.0,
+   "head_on_fraction": 0.0,
+   "head_on_angle": 0.7853981633974483,
+   "head_on_sharpness": 3.0,
+   "arming_distance": 0.0,
+   "hit_radius": 12.0,
+   "core_radius": 5.0,
+   "spawn_energy": 199025.28000000003
+  },
+  "spec": {
+   "name": "K-jgun-d1.15-s110",
+   "flight_from": "K-d1.0-s90",
+   "handles": {
+    "fire_rate": {
+     "set": 30.0
+    },
+    "muzzle_speed": {
+     "set": 1712.0
+    },
+    "bullet_spread": {
+     "set": 3.0844823457636035
+    },
+    "bullet_drag": {
+     "set": 0.0005
+    },
+    "gun_range": {
+     "set": 584.34
+    },
+    "shots_per_store": {
+     "set": 865.24
+    },
+    "explosive_share": {
+     "set": 0.0
+    },
+    "hit_damage": {
+     "set": 22.065855
+    },
+    "max_shield": {
+     "set": 110.0
+    }
+   }
+  },
+  "doctrine": {
+   "sense": 1.0,
+   "sense_one_circle": 1.0,
+   "sense_mirror_only": 0.0
+  }
+ }
+]
