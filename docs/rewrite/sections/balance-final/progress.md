@@ -92,3 +92,23 @@ worktree's file. The card candidates are passed to the bench as explicit field v
 (`{"set": ...}` or factors on the loaded card), and the handle solves ran with
 `PYTHONPATH=src:.`. No round ran against the main worktree's code. From here on the scripts
 use `PYTHONPATH=$PWD/src:$PWD`.
+
+## 06:15 the d041 doctrine is out; finalists again on the before doctrine
+
+- Finalists (d041 + handle cards, 1024 games, deathmatch 5v5): before 0.219 ± 0.012 (the
+  freeze's 21.8 reproduced); d041 + Jujak turn x0.95 0.452 ± 0.015; + Yongma damage x1.08
+  0.519 ± 0.015; + Yongma climb x0.88 0.557 ± 0.015. At 10v10 (300 s, no tickets) before
+  0.41, d041 + Jujak turn x0.95 0.73: the card change overshoots at 10v10.
+- **The quick tests caught it**: `test_play_doctrines` holds the author's decision of
+  2026-11-14: Baekho's running-away elements (extend, the crowd extension, the duel
+  extension) stay off (they ran ships out of bounds and taught the BC student to flee).
+  d041's gain comes from exactly those (extend 0.93, crowd_sense 0.09, duel_extend 0.22; its
+  turn_exponent 1.86 leaves its doctrine weight off against Jujak). So d041 is not allowed;
+  the d041 finalist runs on the box (elimination, Frontline, 2v2) were stopped. Of the
+  allowed elements (slash, bleed, lag, deny, the sense), rounds 1-2 found nothing that helps.
+- Now: finalists2 = the before doctrine on handle cards (Jujak turn x0.97-0.91, Yongma damage
+  x1.08/1.18, Yongma climb x0.88), on the rented 3070 (dm 5v5 1024 games, then 10v10 and
+  2v2); a constrained random doctrine search (round 10: extend, crowd and duel extension held
+  at 0) on the laptop when the lock frees.
+- `test_ship_sets.py::test_training_takes_its_games_set_card` fails on the base tree too (a
+  'trial' set has no drawn lineup types): not this branch's.
