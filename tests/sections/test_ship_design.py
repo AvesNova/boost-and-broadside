@@ -42,7 +42,7 @@ def handles():
 
 def test_a_design_with_no_knob_moved_has_its_base_handles(handles):
     rules = api.rules_of(GAME)
-    for key in ("yongma", "jujak", "vizia"):
+    for key in ("yongma", "jujak"):
         base = handles[key]
         same = handles_of(base, {}, rules)
         for name, value in base.items():
@@ -52,7 +52,7 @@ def test_a_design_with_no_knob_moved_has_its_base_handles(handles):
 
 def test_a_knob_moves_only_its_own_handles_and_those_that_follow(handles):
     rules = api.rules_of(GAME)
-    base = handles["vizia"]
+    base = handles["jujak"]
     knobs = knobs_of(base)
     faster = handles_of(base, {"fire_rate": 10.0}, rules)
     # the damage per second and the store cost per second of fire stay
@@ -85,12 +85,12 @@ def test_the_envelope_is_the_propeller_fighters_and_holds_its_bounds(handles):
     jet = knobs_of(solved_types()["me262"].handles)
     assert envelope.clamp(jet)["cruise_speed"] < jet["cruise_speed"]
     assert envelope.distance(jet) > max(envelope.distance(knobs_of(reference[k])) for k in ENVELOPE)
-    assert set(CONTINUOUS) | {"fire_rate"} == set(knobs_of(handles["vizia"]))
+    assert set(CONTINUOUS) | {"fire_rate"} == set(knobs_of(handles["jujak"]))
 
 
 def test_the_instant_card_of_unmoved_designs_is_their_solved_card(handles):
     rules = api.rules_of(GAME)
-    keys = ["yongma", "jujak", "vizia"]
+    keys = ["yongma", "jujak"]
     card = design_cards(rules, keys, [handles[k] for k in keys])
     found = {ship.key: ship for ship in ships.load("real-scale")}
     for index, key in enumerate(keys):

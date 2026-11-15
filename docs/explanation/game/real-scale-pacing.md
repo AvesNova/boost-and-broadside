@@ -5,7 +5,7 @@ covers: [bench/pacing.py]
 # Pacing the real-scale fight
 
 > The researched types this page paces left the game on 2026-11-13; the real-scale set
-> holds Yongma, Jujak and vizia. The page and its data are kept as a record; the types'
+> holds Yongma and Jujak. The page and its data are kept as a record; the types'
 > research and last cards are reference data ([The real planes](real-planes.md)).
 
 The game has no altitude, only the energy store, and the store is where the real-scale set

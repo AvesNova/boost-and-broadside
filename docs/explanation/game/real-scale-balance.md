@@ -5,7 +5,7 @@ covers: [src/bnb/league/cyclic.py, bench/imugi_search.py, bench/imugi_compare.py
 # Balancing the real-scale set
 
 > The researched types this page balances left the game on 2026-11-13; the real-scale set
-> holds Yongma, Jujak and vizia. The page and its data are kept as a record; the types'
+> holds Yongma and Jujak. The page and its data are kept as a record; the types'
 > research and last cards are reference data ([The real planes](real-planes.md)).
 
 The [ship-type tournament](real-scale-tournament.md) rated the 27 real-scale types over a

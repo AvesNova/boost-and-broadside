@@ -285,14 +285,14 @@ def test_the_panel_takes_each_types_handles_from_its_ship_file():
 
 def test_a_cards_columns_are_taken_and_put_back_by_type():
     types = api.ship_types(ship_set="real-scale")
-    part = columns(types, [2, 1])
-    assert part.max_energy.tolist() == [types.max_energy[2].item(), types.max_energy[1].item()]
-    doubled = api.ShipTypes(**{n: 2.0 * v for n, v in vars(part).items()})
-    changed = with_columns(types, [2, 1], doubled)
-    assert changed.max_energy[2] == 2.0 * types.max_energy[2]
+    part = columns(types, [1, 0])
+    assert part.max_energy.tolist() == [types.max_energy[1].item(), types.max_energy[0].item()]
+    doubled = api.ShipTypes(**{n: 2.0 * v for n, v in vars(columns(types, [1])).items()})
+    changed = with_columns(types, [1], doubled)
+    assert changed.max_energy[1] == 2.0 * types.max_energy[1]
     assert changed.max_energy[0] == types.max_energy[0]
     assert changed.max_energy.dtype == types.max_energy.dtype
-    assert types.max_energy[2] != changed.max_energy[2]  # the original is untouched
+    assert types.max_energy[1] != changed.max_energy[1]  # the original is untouched
 
 
 @pytest.mark.parametrize("scale", [1.0, 1.5])

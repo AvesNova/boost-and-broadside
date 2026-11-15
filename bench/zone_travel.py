@@ -9,7 +9,7 @@ scale): the adjacent zones' centres (a chord of 72 degrees), the spawn zone's ce
 the zone it attacks (two places on, a chord of 144 degrees: the enemy's defense zone at
 front 0), and that distance less the target's radius (entering the zone).
 
-    PYTHONPATH=src python -m bench.zone_travel [--types yongma,jujak,vizia] [--out FILE]
+    PYTHONPATH=src python -m bench.zone_travel [--types yongma,jujak] [--out FILE]
 
 The slowest and fastest cruising types of the set are added as references. Prints a
 Markdown table and writes one JSON document.
@@ -90,7 +90,7 @@ def flights(type_indices: list[int]) -> torch.Tensor:
 def main() -> None:
     """The table and JSON the module describes."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--types", default="yongma,jujak,vizia")
+    parser.add_argument("--types", default="yongma,jujak")
     parser.add_argument("--out", default=None)
     arguments = parser.parse_args()
     keys = [ship.key for ship in ships.load(SHIP_SET)]

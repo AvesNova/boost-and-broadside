@@ -1,7 +1,8 @@
 # ruff: noqa: E501 (generated data: long source notes)
 """The real planes the real-scale set was researched from (reference data, not ship
-types: the game dropped them on 2026-11-13 and kept only Yongma, Jujak and vizia, the
-P-51D-derived hull they share; docs/explanation/game/real-planes.md is the table).
+types: the game dropped them on 2026-11-13 and kept only Yongma and Jujak, derived from
+vizia, a P-51D-derived hull that left on 2026-11-15; docs/explanation/game/real-planes.md is
+the table).
 
 `AIRCRAFT`: for each plane, the researched quantities in SI (degrees where marked), each
 with its confidence and source. Generated from the research of 2026-11-10 (18 late-war

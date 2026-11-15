@@ -42,15 +42,25 @@ class ImugiStep:
         self.ships_per_team, self.parameters = ships_per_team, parameters
         self.doctrines = doctrines
         # read here, kept as plain floats: the traced step reads no files
-        self._rows = imugi_doctrine.rows_by_count(doctrines)
+        self._rows = imugi_doctrine.rows_by_kind(doctrines)
 
     def table(self, characteristics: Characteristics) -> torch.Tensor | None:
-        """(T, WIDTH) the doctrines for the card's types, on its device (None: the file has
-        none for its type count)."""
-        rows = self._rows.get(characteristics.gun_range.shape[-1])
-        if rows is None:
+        """(T, WIDTH) the doctrines for the card's types, on its device: the file's set with
+        the card's type count and scale, chosen by the card's gravity in the traced step (a
+        scale without a set flies the default doctrine, off); None when the file has no set
+        with the card's type count."""
+        count = characteristics.gun_range.shape[-1]
+        real, standard = self._rows.get((count, True)), self._rows.get((count, False))
+        if real is None and standard is None:
             return None
-        return torch.tensor(rows, dtype=torch.float32, device=characteristics.gun_range.device)
+        device = characteristics.gun_range.device
+        off = imugi_doctrine.off_rows(count)
+        real_table, standard_table = (
+            torch.tensor(rows or off, dtype=torch.float32, device=device)
+            for rows in (real, standard)
+        )
+        chosen = imugi_doctrine.real_scale_card(characteristics.gravity.amax())
+        return torch.where(chosen, real_table, standard_table)
 
     def __call__(
         self,

@@ -133,9 +133,9 @@ def test_mixed_lineups_draw_from_the_pool_and_mirror_the_teams():
 def test_the_type_pool_names_types_and_holds_some_out():
     names = list(search.api.type_names("real-scale"))
     assert search.type_pool("real-scale", None, None) == tuple(range(len(names)))
-    pool = search.type_pool("real-scale", None, "Yongma,vizia")
-    assert len(pool) == len(names) - 2 and names.index("vizia") not in pool and 0 not in pool
-    assert search.type_pool("real-scale", "vizia,Yongma", None) == (names.index("vizia"), 0)
+    pool = search.type_pool("real-scale", None, "Yongma")
+    assert len(pool) == len(names) - 1 and 0 not in pool
+    assert search.type_pool("real-scale", "Jujak,Yongma", None) == (names.index("Jujak"), 0)
     with pytest.raises(SystemExit):
         search.type_pool("real-scale", "Sopwith Camel", None)
 
