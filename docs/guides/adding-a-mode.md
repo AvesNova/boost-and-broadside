@@ -59,8 +59,9 @@ Rules every hook keeps:
 - **Seat-blind:** nothing may depend on the team index or the sim index in a way the
   observation reveals. A side-specific role is drawn per episode, as Frontline draws its
   handedness.
-- **Zero-sum objectives:** `objective_progress` and `objective` each sum to zero over every
-  environment on every tick. The rewards depend on it.
+- **Zero-sum objectives:** `objective_progress` and `objective` are (B, N, 2), each ship's
+  gains (>= 0) and losses (<= 0) summed apart, never netted against each other; each sums
+  to zero over every environment on every tick. The rewards depend on both.
 
 `bnb.game.physics.step.resolve` calls `protected` only when some pool plays Frontline.
 A new mode with spawn protection extends that condition in `src/bnb/game/physics/step.py`.

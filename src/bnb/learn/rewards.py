@@ -17,8 +17,10 @@ defence: the own team's ships, damage taken, healing, deaths, and the blame for 
 team's friendly fire with its refund. Each pairs with an event of the other part on the
 other team, so a team's offence is the opposing team's defence negated, and the level stays
 zero-sum. The objective levels and the outcome split by sign, the gain offence and the loss
-defence: a ship's objective amounts are the mode's credit for its team's progress and its
-charge for the enemy's, and its outcome is its team's win weight less its loss weight.
+defence: a ship's objective amounts are the mode's credits for its team's progress and its
+charges for the enemy's, each event in its part before the tick's sum (the game gives them
+apart, `Events.objective`, so a credit and a charge on one tick do not net), and its outcome
+is its team's win weight less its loss weight.
 
 The step is memory-bound on its (B, N, N) matrices, so it reads each as few times as it
 can: the components optionally take the column totals (..., 1, N) the step already has,
@@ -316,11 +318,6 @@ def reward_step(
     return level_rewards(rewards), ledger
 
 
-def _gain_loss(amount: torch.Tensor) -> torch.Tensor:
-    """(..., 2): a signed amount (...) as its gain and its loss (negative), which sum to it."""
-    return torch.stack([amount.clamp_min(0.0), amount.clamp_max(0.0)], -1)
-
-
 def reward_step_events(
     config: RewardConfig,
     ledger: Ledger,
@@ -385,8 +382,8 @@ def reward_step_events(
     by_level = (
         damage,
         kill_death,
-        _gain_loss(events.objective_progress),
-        _gain_loss(events.objective),
+        events.objective_progress,
+        events.objective,
         outcome,
     )
     event_rewards = torch.cat(

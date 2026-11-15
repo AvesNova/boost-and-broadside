@@ -63,13 +63,17 @@ def test_each_levels_parts_sum_to_its_zero_sum_reward(mode):
         for index, level in enumerate(REWARD_LEVELS):
             columns = [i for i, (name, _, _) in enumerate(REWARD_EVENTS) if name == level]
             torch.testing.assert_close(levels[..., index], events_rewarded[..., columns].sum(-1))
-        torch.testing.assert_close(
-            levels[..., REWARD_LEVELS.index("objective_progress")],
-            weights["objective_progress"] * events.objective_progress,
-        )
-        torch.testing.assert_close(
-            levels[..., REWARD_LEVELS.index("objective")], weights["objective"] * events.objective
-        )
+        for level in ("objective_progress", "objective"):
+            amount = getattr(events, level)  # (B, N, 2): the gains and the losses
+            torch.testing.assert_close(
+                levels[..., REWARD_LEVELS.index(level)], weights[level] * amount.sum(-1)
+            )
+            torch.testing.assert_close(
+                parts[..., PART[f"{level}_offence"]], weights[level] * amount[..., 0]
+            )
+            torch.testing.assert_close(
+                parts[..., PART[f"{level}_defence"]], weights[level] * amount[..., 1]
+            )
         score = events.win_loss[:, 0] - events.win_loss[:, 1]  # team 0's
         sign = torch.where(team == 0, 1.0, -1.0)
         torch.testing.assert_close(
@@ -107,6 +111,23 @@ def test_a_teams_offence_is_the_other_teams_defence(mode):
             for side in (0, 1):
                 gap = per_team[:, side, offence] + per_team[:, 1 - side, defence]
                 assert (gap.abs() <= 1e-5 * largest).all(), (level, gap.abs().max())
+
+
+def test_the_objective_parts_keep_a_ticks_gain_and_loss_apart():
+    """Frontline random play: a ship's objective progress gain part is never negative, its
+    loss part never positive, and a ship credited and charged on the same tick (holding one
+    zone while charged as absent from another) keeps both, not their net."""
+    both = 0
+    for _, _, events, parts, _ in _played("frontline"):
+        offence, defence = (
+            parts[..., PART["objective_progress_offence"]],
+            parts[..., PART["objective_progress_defence"]],
+        )
+        assert (offence >= 0).all() and (defence <= 0).all()
+        both += int(((offence > 0) & (defence < 0)).sum())
+        gain, loss = events.objective_progress.unbind(-1)
+        assert int(((gain > 0) & (loss < 0)).sum()) == int(((offence > 0) & (defence < 0)).sum())
+    assert both > 0, "random Frontline play should credit and charge a ship on one tick"
 
 
 def test_the_outcome_parts_are_the_win_and_the_loss_weights():
