@@ -9,8 +9,10 @@ offence of the premium levels (`PREMIUM_LEVELS`), where it is the offence premiu
 (`bnb.learn.ppo.LearnerConfig.offence_premium`). Defence keeps its sign (a cost is
 negative), so with every weight 1 the sum is the zero-sum levels' advantage, and a premium
 p is p A_offence + A_defence, the advantage of p times what the ship earns from the enemy
-less what the enemy takes from it. The weights touch only the advantage: each level's
-returns, the critic's targets, are its part's own.
+less what the enemy takes from it. The return scale's sum takes the same weights (decided
+2026-11-16), so the advantage over the scale changes with the premium only in its balance of
+offence and defence, not in its size. The critic's targets, each level's returns, are its
+part's own at any premium.
 """
 
 import torch
@@ -96,8 +98,9 @@ def team_aggregate(
     weights: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """The weighted level sum with team mixing, (..., N) each:
-    A_i = sum_k w_k (A_ik + s_k mean_{living teammates j != i} A_jk), and the unweighted
-    sum of the returns the same way (the return scale's). team (..., N) ids, alive (..., N);
+    A_i = sum_k w_k (A_ik + s_k mean_{living teammates j != i} A_jk), and the returns'
+    sum the same way, with the same weights (the return scale's, so the scale follows the
+    premium). team (..., N) ids, alive (..., N);
     advantages, returns (..., N, levels); team_spirit and weights (levels,). A ship with no
     living teammate mixes in nothing."""
     weight = team_weights(team, alive, advantages.dtype)  # (..., N, N)
@@ -106,4 +109,4 @@ def team_aggregate(
         mean = weight @ per_level  # (..., N, levels): the mean over living teammates
         return per_level + team_spirit * mean
 
-    return (mixed(advantages) * weights).sum(-1), mixed(returns).sum(-1)
+    return (mixed(advantages) * weights).sum(-1), (mixed(returns) * weights).sum(-1)

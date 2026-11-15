@@ -61,3 +61,12 @@ Branch `feat/split-critic`, from `feat/imugi-boundary` (2026-11-15). Decision: a
 
 **Next**
 - The shared BC, then the premium forks (1:1, 2:1, 2:1 annealed).
+
+## 2026-11-16: the author's two fixes (branch `fix/critic-premium-scale`)
+
+**Return scale follows the premium (done):** `returns.team_aggregate` weighs the returns'
+sum (the return scale's input) with the advantage's part weights. A premium now changes
+only the balance of offence and defence, not the step: where the premium levels' offence is
+the only reward, the scaled advantage is the same at 1, 2 and 3.5
+(`test_the_return_scale_follows_the_premium`). At 1:1 the weights are all 1, so nothing
+changes. Critic targets stay each part's own.
