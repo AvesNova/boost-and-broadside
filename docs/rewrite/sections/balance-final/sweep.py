@@ -1,0 +1,155 @@
+"""Doctrine candidates for the energy-against-turn balance (game v22, real scale), on the
+game-loop harness (`bench.game_loop.Loop`: every candidate's games in one compiled graph).
+
+    PYTHONPATH=src:. uv run --no-sync python docs/rewrite/sections/balance-final/sweep.py \
+        --mode deathmatch --candidates candidates/round1.json --out data/round1-dm.jsonl
+
+A candidate is the stored doctrines (`imugi_doctrines.json` as it was before this work:
+before/imugi_doctrines.json) with some fields replaced, {"name", "energy": {...},
+"turn": {...}} (`imugi_doctrine.named`'s form; a logistic is [centre, scale]). Per
+candidate, as side A, the jobs:
+
+- "energy v turn" against itself: a Yongma team against a Jujak team, both flying the
+  candidate's doctrines (A's score is the Yongma team's), `--games` games;
+- "mixed" and "mixed reversed" against the before doctrines (`--games` / 2 each): the
+  candidate's strength against the current Imugi on mixed lineups.
+
+The game: the mode's preset with its fields, its own map, 5v5 (`--ships`), Imugi's mode
+parameter set on both sides (`imugi_defaults.MODE_DEFAULTS`), fog on; deathmatch for
+`--seconds` (300 s by default) with no early win (the result is the sign of the points),
+elimination and Frontline for the preset's clock with their own results. Seats alternate.
+Each candidate's jobs are one JSON line of `--out` (a candidate already there is skipped,
+so a stopped sweep resumes).
+"""
+
+import argparse
+import json
+import pathlib
+import time
+
+import torch
+
+from bench.game_loop import Job, Loop, Player, clock, job_summary, run
+from bnb.controllers.imugi_defaults import MODE_DEFAULTS
+from bnb.controllers.imugi_doctrine import from_named, named, stored
+from bnb.controllers.imugi_parameters import pack
+from bnb.game import api
+
+HERE = pathlib.Path(__file__).parent
+BEFORE = HERE / "before" / "imugi_doctrines.json"
+KEPT = (  # what a job's line keeps of `bench.game_loop.summary`
+    "games",
+    "score",
+    "kill_score",
+    "kills_per_minute_mean",
+    "kills_per_game",
+    "kill_share",
+    "kill_share_by_pair",
+    "passes_per_kill",
+    "no_merge_kills",
+    "trade_fraction",
+    "wins",
+    "draws",
+)
+
+
+def before_doctrines() -> dict:
+    """The before doctrines by type key, in `named` form."""
+    doctrines = stored(BEFORE)["real-scale"]
+    return {key: named(doctrine, figures=6) for key, doctrine in doctrines.items()}
+
+
+def player_of(entry: dict, parameters: tuple[float, ...]) -> Player:
+    """A candidate's player: the before doctrines with the entry's fields replaced."""
+    base = before_doctrines()
+    return Player(
+        entry["name"],
+        from_named(base["yongma"] | entry.get("energy", {})),
+        from_named(base["jujak"] | entry.get("turn", {})),
+        parameters=parameters,
+    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=("deathmatch", "elimination", "frontline"))
+    parser.add_argument("--candidates", type=pathlib.Path, required=True)
+    parser.add_argument("--out", type=pathlib.Path, required=True)
+    parser.add_argument("--ships", type=int, default=5)
+    parser.add_argument("--games", type=int, default=512)
+    parser.add_argument("--mixed-games", type=int, default=None, help="default: --games")
+    parser.add_argument("--seconds", type=float, default=None)
+    parser.add_argument("--environments", type=int, default=4096)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--device", default="cuda")
+    parser.add_argument("--eager", action="store_true", help="no torch.compile (a CPU check)")
+    args = parser.parse_args()
+    preset = f"real_scale_{args.mode}"
+    seconds = args.seconds or (300.0 if args.mode == "deathmatch" else None)
+    seconds = seconds or api.PRESETS[preset].episode_seconds
+    parameters = tuple(pack(MODE_DEFAULTS.sets[preset]))
+    entries = json.loads(args.candidates.read_text())
+    done = set()
+    if args.out.exists():
+        done = {json.loads(line)["name"] for line in args.out.read_text().splitlines()}
+    entries = [e for e in entries if e["name"] not in done]
+    if not entries:
+        print("every candidate is done", flush=True)
+        return
+    before = player_of({"name": "before"}, parameters)
+    mixed = (args.mixed_games or args.games) // 2
+    loop = Loop(
+        args.environments,
+        1,
+        seconds,
+        ships_per_team=args.ships,
+        mode=args.mode,
+        fields=True,
+        fixed_map=True,
+        device=args.device,
+        compiled=not args.eager,
+    )
+    started = time.time()
+    # a chunk of candidates fills about one batch, so each line is written as it finishes
+    per_candidate = args.games + 2 * mixed
+    chunk = max(1, args.environments // per_candidate)
+    for first in range(0, len(entries), chunk):
+        part = entries[first : first + chunk]
+        players = [player_of(entry, parameters) for entry in part]
+        jobs = []
+        for candidate in players:
+            jobs.append(Job(0, "energy v turn", candidate, candidate, args.games))
+            jobs.append(Job(0, "mixed", candidate, before, mixed))
+            jobs.append(Job(0, "mixed reversed", candidate, before, mixed))
+        torch.manual_seed(args.seed + first)
+        outs = run(loop, jobs, log=lambda line: None)
+        rows = [job_summary(j, o, seconds) for j, o in zip(jobs, outs, strict=True)]
+        with args.out.open("a") as handle:
+            for number, entry in enumerate(part):
+                three = rows[3 * number : 3 * number + 3]
+                line = dict(
+                    name=entry["name"],
+                    mode=args.mode,
+                    ships=args.ships,
+                    seconds=seconds,
+                    candidate=entry,
+                    jobs={r["lineup"]: {k: r[k] for k in KEPT} for r in three},
+                )
+                handle.write(json.dumps(line) + "\n")
+                energy = three[0]
+                mixed_score = (three[1]["score"][0] + three[2]["score"][0]) / 2
+                mixed_kill = (three[1]["kill_score"][0] + three[2]["kill_score"][0]) / 2
+                print(
+                    f"{entry['name']}: Yongma team {energy['score'][0]:.3f} ± "
+                    f"{energy['score'][1]:.3f} (kills {energy['kill_score'][0]:.3f}); "
+                    f"mixed v before {mixed_score:.3f} (kills {mixed_kill:.3f})",
+                    flush=True,
+                )
+        elapsed = time.time() - started
+        finished = first + len(part)
+        left = elapsed / finished * (len(entries) - finished)
+        print(f"{finished}/{len(entries)} candidates; done about {clock(left)} KST", flush=True)
+
+
+if __name__ == "__main__":
+    main()
