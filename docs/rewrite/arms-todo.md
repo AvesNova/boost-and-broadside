@@ -93,6 +93,7 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
 - **The decision is a sequential test with a fixed number of planned looks** (group sequential). The number of looks and the acceptance thresholds are fixed in advance.
 - **Decisions don't need the ladder.** Per condition, the two finals play each other directly (win rate minus 0.5), and break-even plays against Imugi. The full Elo ladder (curves) is for the paper.
 - **Ladder timing (decided 2026-11-15):** mostly in one batch at the end. Earlier only on an idle GPU, and only when it doesn't compete with compilation on the CPU. On a tie, each arm's last 5 snapshots (Claude's choice, about 20–25M steps) are rated on demand for the slope check.
+
 ### 2026-11-16
 
 - **Balance (author):** the Yongma–Jujak balance may adjust the card or both cards, not only Imugi's doctrines. Keep them relatively similar to now, every value within the range of the real WWII aircraft they are based on. Work on `tune/balance-final`, before and after recorded for the author to test; not merged until the author decides.
