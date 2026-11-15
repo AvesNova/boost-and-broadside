@@ -101,3 +101,23 @@ feat/imugi-boundary). Power profile `performance`.
   g 7). Screen 9: K-roll and K-roll-g7 at damage x1.1-1.2, shield 100-110, 384 games.
 - The coordinator flagged the box idle: its lock was held by another agent's compile-memory
   measurement (CPU-bound, GPU at 0%); my kgun2 job is queued there under its lock.
+
+## 08:45 the power-and-roll fighter; its doctrine
+
+- Screen 9 (384 games a pairing, Jujak v23): K-roll-g7 (nose reversal 0.25, g 7) at damage
+  x1.2 of Jujak's (23.0 a bullet, Yongma's), shield 110: **C v J 0.496 ± 0.024, C v Y 0.542 ±
+  0.024**; d1.15/s110 0.447 / 0.518; with g 8, d1.15/s100 0.479 / 0.531. Shield 100-105 costs
+  ~10-15 points against Jujak.
+- Doctrine search round 1 (48 random allowed-element doctrines over Jujak's stored one, 128
+  games a pairing + 128 mixed against the base doctrine), the top 7 re-checked at 384 + 512
+  mixed: the base 0.499 / 0.547, mixed 0.503; **r1-040 mixed 0.575 ± 0.021, r1-034 0.564**
+  (both with their elements gated shut: the gain is the sense, two-circle instead of
+  one-circle in the mirror); r1-020 (bleed 0.62, deny 0.63, lag 0.18, gated on the speed and
+  turn ratios) 0.555 with C v Y 0.586. Round 3 (structured around the two-circle mirror and
+  r1-020) running.
+- Range: the solved K flights keep Jujak's dive acceleration (40.9, below the real 43.6-44.3;
+  Jujak's own value is out of range too). Re-solved at 43.6 (K-roll-g7-dive; with sustained
+  0.66 too); sustained 0.593 and cruise 320 do not solve. Screen 11 on the laptop.
+- The box: its lock has been held 30+ min by another agent's compile-memory measurement
+  (CPU-bound, GPU at 0%); my kgun2 and the mode checks (front1: elimination, Frontline 5v5,
+  deathmatch 2v2) are queued behind it and the balance agent's jobs.
