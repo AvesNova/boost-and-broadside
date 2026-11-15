@@ -1,5 +1,12 @@
 # Split offence/defence critic: progress
 
+**Resume note (2026-11-15 20:53, before shutdown):** done, nothing half-done. Split critic,
+offence premium schedule, HL-Gauss value targets and the padded value support (2 bins per
+side in new builds) are all committed and pushed on `feat/split-critic`, with
+`origin/feat/imugi-boundary` merged in. Quick tier passes on every touched test file (859
+passed in the last rerun). Next: the author's review (return scale vs premium, sign-split
+objective levels, retired v1 two-hot fixture checks), then merge and the shared BC.
+
 Branch `feat/split-critic`, from `feat/imugi-boundary` (2026-11-15). Decision: arms-todo.md,
 "Split critic for every arm" and "Offensive premium levels" (2026-11-14).
 
