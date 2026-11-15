@@ -37,6 +37,7 @@ from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.models.nearest import Nearest, NearestBuild, NearestConfig
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
+from bnb.models.yemong.codes import PADDING_BINS
 from bnb.models.yemong.inputs import MODE_INPUTS
 from bnb.models.yemong.model import (
     COLOUR_PERIOD,
@@ -150,8 +151,10 @@ class TrainConfig:
     codes of 2026-11-12: the rotary bands (ROTARY_*: eight at ratio 3.405 from 48 m, each
     turned 35 degrees, heading harmonics 1, 2, 4), the colour code to 236 196 m
     (`position_period`), the arena radius's code (`arena_code`) and the geometry head
-    (`geometry_head`); the config's own defaults, "v1", "spatial_first", the two older
-    modes, no timers and the older codes, are what older build records hold (every build
+    (`geometry_head`), and every model's value support has `codes.PADDING_BINS` bins past
+    each end (`value_padding`, since 2026-11-15); the config's own defaults, "v1",
+    "spatial_first", the two older modes, no timers, the older codes and no value padding,
+    are what older build records hold (every build
     reads the boundary's radius and time to zero). ship_card:
     the ship card's values by field, one per ship type, every field given
     (`bnb.game.api.default_card`). environments: the training environments; length: ticks
@@ -232,9 +235,10 @@ class TrainConfig:
         delta_baseline="extrapolation",
         delta_split=True,
         physics_hidden_decay=0.25,  # s (0.5 before the x2 game: motion changes twice as fast)
+        value_padding=PADDING_BINS,  # the HL-Gauss value targets' padding (2026-11-15)
     )
-    relational: RelationalConfig = RelationalConfig()
-    nearest: NearestConfig = NearestConfig()
+    relational: RelationalConfig = RelationalConfig(value_padding=PADDING_BINS)
+    nearest: NearestConfig = NearestConfig(value_padding=PADDING_BINS)
     ship_card: dict[str, tuple[float, ...]] | None = None  # None: the game's ship set's card
     league: LeagueConfig = LeagueConfig()
     pools: tuple[Pool, ...] = LINEUP

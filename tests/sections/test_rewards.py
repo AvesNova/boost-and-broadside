@@ -5,7 +5,7 @@ import modes_cases as cases
 import pytest
 import torch
 
-from bnb.contracts import ASPECTS, REWARD_LEVELS, Events, GameConfig, Pool
+from bnb.contracts import ASPECTS, REWARD_LEVELS, VALUE_LEVELS, Events, GameConfig, Pool
 from bnb.game import api
 from bnb.game.modes.phase import result_win_loss
 from bnb.game.ship_types import per_ship
@@ -243,14 +243,15 @@ def test_rollout_stores_every_level_zero_sum_per_environment(mode):
         compiled=False,
     )
     trajectory = rollout.run()
-    L, R, S, K = trajectory.reward.shape
-    assert (R, S, K) == (16, config.ships_per_team, len(REWARD_LEVELS))
+    assert trajectory.reward.shape[1:] == (16, config.ships_per_team, len(VALUE_LEVELS))
+    reward = rewards.level_rewards(trajectory.reward)  # each level, its parts summed
+    L, R, S, K = reward.shape
     environment = rollout.lineup.environments["r"]
-    total = torch.zeros(L, 8, K).index_add_(1, environment, trajectory.reward.sum(2))
-    largest = trajectory.reward.abs().amax((1, 2, 3)).clamp_min(1e-6)[:, None, None]
+    total = torch.zeros(L, 8, K).index_add_(1, environment, reward.sum(2))
+    largest = reward.abs().amax((1, 2, 3)).clamp_min(1e-6)[:, None, None]
     assert (total.abs() <= 1e-5 * largest).all()
-    assert trajectory.reward.abs().sum() > 0
-    outcome = trajectory.reward[..., LEVEL["outcome"]]
+    assert reward.abs().sum() > 0
+    outcome = reward[..., LEVEL["outcome"]]
     assert (outcome[~trajectory.done] == 0).all()
 
 

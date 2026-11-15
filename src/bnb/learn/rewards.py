@@ -1,13 +1,24 @@
-"""Rewards (rewards spec): the game's per-tick Events to five zero-sum reward levels.
+"""Rewards (rewards spec): the game's per-tick Events to five zero-sum reward levels, each
+in two parts, offence and defence (`bnb.contracts.REWARD_PARTS`).
 
-A pure function of (ledger, events) to (rewards per ship per level, ledger'), called by the
-rollout every tick. The ledger holds each pair's damage that has not healed, [attacker,
+A pure function of (ledger, events) to (rewards per ship per level part, ledger'), called by
+the rollout every tick. The ledger holds each pair's damage that has not healed, [attacker,
 target], with the boundary as a pseudo-attacker: each living ship's column of ship rows
 plus its boundary entry sums to its shield deficit. It is the spec's (B, N + 1, N) ledger
 kept as its ship rows and its boundary row, so the step writes each without a copy.
 
 The component functions are v1's math (fixtures in tests/reference/rewards) and take any
 leading axes; `team` is each ship's team, 0 or 1, broadcasting against them.
+
+Every event has one part, by whose ships it is about (`REWARD_EVENTS`). Offence: the
+enemy's ships, damage dealt and its charge-back when the target heals, kills, and what the
+enemy team's own mistakes pay (its friendly fire and boundary losses, the unforced events);
+defence: the own team's ships, damage taken, healing, deaths, and the blame for the own
+team's friendly fire with its refund. Each pairs with an event of the other part on the
+other team, so a team's offence is the opposing team's defence negated, and the level stays
+zero-sum. The objective levels and the outcome split by sign, the gain offence and the loss
+defence: a ship's objective amounts are the mode's credit for its team's progress and its
+charge for the enemy's, and its outcome is its team's win weight less its loss weight.
 
 The step is memory-bound on its (B, N, N) matrices, so it reads each as few times as it
 can: the components optionally take the column totals (..., 1, N) the step already has,
@@ -18,12 +29,14 @@ import dataclasses
 
 import torch
 
-from bnb.contracts import REWARD_LEVELS, Events
+from bnb.contracts import REWARD_LEVELS, REWARD_PARTS, VALUE_LEVELS, Events, level_part
 from bnb.contracts.tree import contract
 from bnb.game.modes.rules import DEATHMATCH_OUTCOMES
 
 __all__ = [
     "REWARD_LEVELS",
+    "REWARD_PARTS",
+    "VALUE_LEVELS",
     "Ledger",
     "RewardConfig",
     "accumulate_ledger",
@@ -32,6 +45,7 @@ __all__ = [
     "damage_events",
     "enemy_team_share",
     "kill_death_events",
+    "level_rewards",
     "outcome_events",
     "REWARD_EVENTS",
     "reward_step",
@@ -157,13 +171,15 @@ def enemy_team_share(value: torch.Tensor, team: torch.Tensor) -> torch.Tensor:
     return torch.where(enemies, value[..., None, :], 0.0).sum(-1) / own_size
 
 
-def outcome_events(team: torch.Tensor, result: torch.Tensor, done: torch.Tensor) -> torch.Tensor:
-    """(..., N, 1): +result for team 0 and -result for team 1 on done environments, the
-    living and the dead alike. result (...,) is team 0's score in [-1, 1], its win weight
-    less its loss weight (`Events.win_loss`): +1 a team-0 win, -1 a team-1 win, 0 a draw;
-    team deathmatch's 2 share - 1 of team 0's kill share."""
-    sign = torch.where(team == 0, 1.0, -1.0)
-    return (sign * torch.where(done, result, 0.0)[..., None])[..., None]
+def outcome_events(team: torch.Tensor, win_loss: torch.Tensor, done: torch.Tensor) -> torch.Tensor:
+    """(..., N, 2) win and loss: each ship's team's win weight and its loss weight negated, on
+    done environments, the living and the dead alike. win_loss (..., 2) is team 0's
+    (`Events.win_loss`; team 1's is it flipped): a result one-hot, a draw neither, or team
+    deathmatch's kill share (share, 1 - share). Their sum is the ship's team's score in
+    [-1, 1]: +1 a win, -1 a loss, 0 a draw, team deathmatch's 2 share - 1."""
+    win, loss = torch.where(done[..., None], win_loss, 0.0)[..., None, :].unbind(-1)
+    on_team0 = team == 0
+    return torch.stack([torch.where(on_team0, win, loss), -torch.where(on_team0, loss, win)], -1)
 
 
 def kill_death_events(
@@ -207,14 +223,14 @@ def damage_events(
     *,
     raw_total: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """(..., N, 6) taken, dealt, friendly fire, recharge, charge-back, unforced, in units of
-    `unit` points.
+    """(..., N, 7) taken, dealt, friendly fire, recharge, charge-back, refund, unforced, in
+    units of `unit` points.
 
     Applied damage (..., N) is split over its attackers by raw impact. Damage to an enemy
     pays the shooter; to an ally it blames the shooter and pays the opposing team twice.
-    Recharge refunds the target and charges back each attacker pro rata (an ally's blame
-    is refunded). Boundary damage pays, and its unattributed healing charges, the opposing
-    team.
+    Recharge refunds the target and charges back each enemy attacker pro rata (the
+    charge-back) and refunds each ally attacker's blame (the refund). Boundary damage pays,
+    and its unattributed healing charges, the opposing team.
     """
     applied = _shares(raw, raw_total) * combat_applied[..., None, :]  # (..., N, N)
     enemies = _enemies(team)
@@ -228,7 +244,8 @@ def damage_events(
             torch.where(enemies, applied, 0.0).sum(-1),
             -ally_applied,
             recharge,
-            ally_attributed - enemy_attributed,
+            -enemy_attributed,
+            ally_attributed,
             enemy_team_share(value, team),
         ],
         -1,
@@ -239,43 +256,59 @@ def damage_events(
 # ------------------------------------------------------------------ one tick (v2)
 
 
+# Each event's level and part (diagnostics audit, group 15), in the order
+# `reward_step_events` gives them: the damage level's seven, the kill/death level's four,
+# then each other level's gain and loss.
+REWARD_EVENTS = (
+    ("damage", "defence", "damage_taken"),
+    ("damage", "offence", "damage_dealt"),
+    ("damage", "defence", "friendly_fire"),
+    ("damage", "defence", "recharge"),
+    ("damage", "offence", "charge_back"),
+    ("damage", "defence", "friendly_fire_refund"),
+    ("damage", "offence", "damage_unforced"),
+    ("kill_death", "defence", "death"),
+    ("kill_death", "offence", "kill"),
+    ("kill_death", "defence", "ally_kill"),
+    ("kill_death", "offence", "kill_death_unforced"),
+    ("objective_progress", "offence", "objective_progress_gain"),
+    ("objective_progress", "defence", "objective_progress_loss"),
+    ("objective", "offence", "objective_gain"),
+    ("objective", "defence", "objective_loss"),
+    ("outcome", "offence", "win"),
+    ("outcome", "defence", "loss"),
+)
+
+
+def level_rewards(rewards: torch.Tensor) -> torch.Tensor:
+    """(..., len(REWARD_LEVELS)): each reward level's reward, the sum of its parts, from the
+    rewards per level part (..., len(VALUE_LEVELS))."""
+    return rewards.unflatten(-1, (len(REWARD_LEVELS), len(REWARD_PARTS))).sum(-1)
+
+
 def reward_step(
     config: RewardConfig, ledger: Ledger, events: Events, team: torch.Tensor
 ) -> tuple[torch.Tensor, Ledger]:
     """(rewards (B, N, len(REWARD_LEVELS)) in REWARD_LEVELS order, ledger') for one tick (rewards
-    spec 3).
+    spec 3): each level's reward, its parts summed (`level_rewards`).
 
     Events in sim order; team (N,) or (B, N).
     """
     rewards, ledger, _ = reward_step_events(config, ledger, events, team)
-    return rewards, ledger
+    return level_rewards(rewards), ledger
 
 
-# Each level's events (diagnostics audit, group 15), in the order `reward_step_events`
-# gives them: the damage level's six, the kill/death level's four, then one event for each
-# of the other levels.
-REWARD_EVENTS = (
-    ("damage", "damage_taken"),
-    ("damage", "damage_dealt"),
-    ("damage", "friendly_fire"),
-    ("damage", "recharge"),
-    ("damage", "charge_back"),
-    ("damage", "damage_unforced"),
-    ("kill_death", "death"),
-    ("kill_death", "kill"),
-    ("kill_death", "ally_kill"),
-    ("kill_death", "kill_death_unforced"),
-    ("objective_progress", "objective_progress"),
-    ("objective", "objective"),
-    ("outcome", "outcome"),
-)
+def _gain_loss(amount: torch.Tensor) -> torch.Tensor:
+    """(..., 2): a signed amount (...) as its gain and its loss (negative), which sum to it."""
+    return torch.stack([amount.clamp_min(0.0), amount.clamp_max(0.0)], -1)
 
 
 def reward_step_events(
     config: RewardConfig, ledger: Ledger, events: Events, team: torch.Tensor
 ) -> tuple[torch.Tensor, Ledger, torch.Tensor]:
-    """`reward_step`, with each event's weighted reward (B, N, len(REWARD_EVENTS)) as well:
-    a level's reward is the sum of its events'."""
+    """(rewards (B, N, len(VALUE_LEVELS)) per level part in VALUE_LEVELS order, ledger', each
+    event's weighted reward (B, N, len(REWARD_EVENTS))) for one tick: a part's reward is the
+    sum of its events', a level's of its parts'."""
     raw, boundary = events.damage, events.boundary_damage
     raw_total = _column_total(raw)
     old_total = _column_total(ledger.ships)
@@ -320,33 +353,23 @@ def reward_step_events(
         config.damage_unit,
         raw_total=raw_total,
     )
-    score = events.win_loss[..., 0] - events.win_loss[..., 1]  # team 0's, in [-1, 1]
-    outcome = outcome_events(team, score.to(raw.dtype), events.done)[..., 0]
+    outcome = outcome_events(team, events.win_loss.to(raw.dtype), events.done)
 
-    levels = (
-        damage.sum(-1),
-        kill_death.sum(-1),
-        events.objective_progress,
-        events.objective,
+    by_level = (
+        damage,
+        kill_death,
+        _gain_loss(events.objective_progress),
+        _gain_loss(events.objective),
         outcome,
     )
-    rewards = torch.stack([weight * level for weight, level in zip(config.weights, levels)], -1)
-    weights = dict(zip(REWARD_LEVELS, config.weights, strict=True))
     event_rewards = torch.cat(
-        [
-            weights["damage"] * damage,
-            weights["kill_death"] * kill_death,
-            torch.stack(
-                [
-                    weights["objective_progress"] * events.objective_progress,
-                    weights["objective"] * events.objective,
-                    weights["outcome"] * outcome,
-                ],
-                -1,
-            ),
-        ],
-        -1,
+        [weight * level for weight, level in zip(config.weights, by_level, strict=True)], -1
     )
+    # each part's events, summed in the events' order (static indices: one graph)
+    columns = {name: [] for name in VALUE_LEVELS}
+    for index, (level, part, _) in enumerate(REWARD_EVENTS):
+        columns[level_part(level, part)].append(event_rewards[..., index])
+    rewards = torch.stack([sum(columns[name][1:], columns[name][0]) for name in VALUE_LEVELS], -1)
     # A death makes the damage done to the ship stick; a finished match starts afresh.
     # A ship's row (its claims on others) survives its own death.
     clear = died[..., None, :] | events.done[..., None, None]

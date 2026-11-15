@@ -21,7 +21,7 @@ from typing import Annotated, Literal
 
 import tyro
 
-from bnb.contracts import REWARD_LEVELS
+from bnb.contracts import VALUE_LEVELS
 from bnb.contracts.config import TEAM_DEATHMATCH
 from bnb.figures.video import VideoConfig
 from bnb.league.evaluation_settings import EvaluationConfig
@@ -1135,7 +1135,7 @@ def _train(options: Train, given_options: set[str], stop, chain_entry: dict | No
 
     def log(row: dict) -> None:
         totals = {
-            pool: sum(row.get(f"reward/rate/{level}/{pool}", 0.0) for level in REWARD_LEVELS)
+            pool: sum(row.get(f"reward/rate/{level}/{pool}", 0.0) for level in VALUE_LEVELS)
             for pool in trainer.pool_names[: len(trainer.config.pools)]
         }
         rewards = " ".join(f"{pool} {total:+.3f}" for pool, total in totals.items())

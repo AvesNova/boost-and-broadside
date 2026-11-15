@@ -212,7 +212,7 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
   - **Design:** K = 4, δ = 0.02 (about 14 Elo), α 0.05, power 0.8. Simulated false-winner rate 3.8%, power 0.81. At most about 0.6–0.85 laptop engine-hours per decision.
   - **Seed noise, not games, limits a decision.** δ will be set from arm A3.
   - **Frontline break-even has no fit:** both arms lose every game at every count, including 20 against 20. That's the 15.6 km map, not the code: rl-v20 wins every 5v5 and 10v10 frontline game against Imugi on the preset map, 26 of 64 at 20v20 on the preset map, and 0 of 64 at 20v20 on 15.6 km. Open for the author.
-- [ ] The split offence/defence critic, before the shared BC, with advantage weights per part and the premium schedule as a setting (default 1:1).
+- [x] The split offence/defence critic, before the shared BC, with advantage weights per part and the premium schedule as a setting (default 1:1). Built on `feat/split-critic` (2026-11-15, not merged), with HL-Gauss value targets; notes in [sections/split-critic/progress.md](sections/split-critic/progress.md).
 - [ ] **Front reversal (decided 2026-11-14).** Measure P(reversal) now, on the current game with Imugi on both sides (in progress, `bench/front-reversal`). Measure it again at the end of the first arm, to check the front stays roughly a random walk in self-play. The 0.84 figure is from September (v1); the later lock was meant to make it a random walk.
   - **First result (2026-11-15, CPU, scripted against scripted, fields off; `bench/front-reversal` b18f8cce):** the front is **persistent, not a random walk.**
     - P(reversal) = 0.19 [0.14, 0.25], from 208 pairs of consecutive moves in 64 games.

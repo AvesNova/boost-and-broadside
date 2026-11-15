@@ -84,7 +84,7 @@ def test_a_model_built_at_5v5_runs_at_8v8():
     model = cases.tiny_model("nearest", width=16, game=PRESETS["frontline"])
     big = dataclasses.replace(PRESETS["frontline"], ships_per_team=8, num_fields=13)
     out = model(cases.observation(game=big))
-    assert out.policy_logits.shape == (2, 8, 42) and out.values.shape == (2, 8, 5)
+    assert out.policy_logits.shape == (2, 8, 42) and out.values.shape == (2, 8, 10)
     assert out.outcome_logits.shape == (2, 4)
     assert torch.isfinite(out.values).all()
     # under bf16 autocast, as a bfloat16 run builds it
@@ -264,4 +264,4 @@ def test_a_policy_file_round_trips_and_loads_as_ratings_do(tmp_path):
     action, carry, outputs = controller.step(
         None, obs, torch.zeros(2, dtype=torch.bool), torch.arange(obs.ships.shape[0])
     )
-    assert carry is None and outputs.values.shape == (2, 5, 5)
+    assert carry is None and outputs.values.shape == (2, 5, 10)

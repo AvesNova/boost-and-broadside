@@ -81,60 +81,91 @@ bootstraps, so every trained tick has the lookahead's ticks, at least, after it.
 L ticks give the returns of one segment of N L ticks
 (`tests/sections/test_lanes.py::test_chained_returns_over_shards_equal_one_segments`).
 
-- **The value levels' rewards** (`bnb.learn.returns.value_rewards`). The returns run per
-  value level of the critic being trained (`YemongConfig.levels`): by default one per
-  reward level, each its own weighted reward. The single value arm has one level,
-  `summed_reward`, whose reward is the sum of every level's weighted reward
-  ([below](#the-single-value-arm)).
-- **Values in reward units.** A per-ship level's value is its bin expectation; the outcome
-  level's is `P(win) - P(loss)` times the outcome's reward weight.
-- **Per-level GAE** (`bnb.learn.returns.per_level_gae`), each level with its own discount and
-  trace decay (`LearnerConfig.discount`, `LearnerConfig.trace_decay`). `done[t]` cuts the
-  trace after `t`; a timeout is a real end.
-- **Team mixing and the level sum** (`bnb.learn.returns.team_aggregate`): a ship's advantage
-  is the sum over levels of its own advantage plus each level's team spirit times the mean
-  over its living teammates. Team spirit is 0 on every level by default.
-- **The outcome's targets** (with an outcome level): lambda targets of the outcome
+- **The value levels' rewards.** The critic has a value level for each reward level's
+  offence and defence (`bnb.contracts.VALUE_LEVELS`, [Rewards](game/rewards.md#offence-and-defence)),
+  and each part's reward is its own stream of `Trajectory.reward`. Defence keeps its sign,
+  so a level's reward is its offence plus its defence.
+- **Values in reward units.** A per-ship part's value is its bin expectation. The outcome
+  level's parts come from the outcome head: offence `P(win)` and defence `-P(loss)`, each
+  times the outcome's reward weight, so the level's value is `P(win) - P(loss)` as before.
+- **Per-level GAE** (`bnb.learn.returns.per_level_gae`), each part with its level's discount
+  and trace decay (`LearnerConfig.discount`, `LearnerConfig.trace_decay`). `done[t]` cuts the
+  trace after `t`; a timeout is a real end. Each part's returns are its critic's targets.
+- **Team mixing and the weighted level sum** (`bnb.learn.returns.team_aggregate`): a ship's
+  advantage is the sum over the parts of each part's weight times its own advantage plus
+  its level's team spirit times the mean over its living teammates. Team spirit is 0 on
+  every level by default. The weights are 1 except on the offence of damage and kill/death,
+  where it is the offence premium (below).
+- **The outcome's targets:** lambda targets of the outcome
   distribution (`bnb.models.yemong.critic.outcome_targets`), with the view's final outcome
   at an episode end (`critic.final_outcome` of the view's `Trajectory.win_loss`). In
   Elimination and Frontline that is the result one-hot (win, draw or loss). Team deathmatch's
   is soft: `P(win) = share`, `P(loss) = 1 - share`, `P(draw) = 0`, share the view's kill
   share. The head is read as `P(win) - P(loss)`, so its value at the end is `2 share - 1`,
-  the outcome reward's.
+  the outcome reward's. One head gives both outcome parts, so it has one loss.
 
-`LearnerConfig.discount`, `trace_decay` and `team_spirit` hold one value per value level,
-in the critic's order; the learner refuses a model whose levels they do not match. The
+`LearnerConfig.discount`, `trace_decay` and `team_spirit` hold one value per reward level,
+in `REWARD_LEVELS` order, each for both the level's parts. The
 defaults are per level (discount / trace decay): damage 0.982 / 0.81, kill_death 0.990 /
 0.90, objective_progress 0.995 / 0.95, objective 0.999 / 0.97, outcome 0.9997 / 0.97. They
 are the 2026-11-09 champion's with the two combat levels' squared, because the x2 game
 fights in half the ticks. One value for every level (tried 2026-11-13) let a run learn to
 stop fighting.
 
-### The single value arm
+### The offence premium
 
-`--set yemong.levels='["summed_reward"]' --set yemong.outcome_level=null` builds Yemong with
-one value output: one per-ship categorical value head (the same bins, limit and two-hot
-cross-entropy as a per-ship level's) and no outcome head. Its reward is one stream, the sum
-of the five weighted reward levels, and it has one discount, trace decay and team spirit,
-which the run sets (`--set learner.discount='[0.999]' --set learner.trace_decay='[0.97]'
---set learner.team_spirit='[0.0]'`, for example). The rewards themselves, their weights and
-the per-level reward series stay per reward level; only the value side is one level. The
-critic's series name the level `summed_reward` (`critic/value_loss/summed_reward`,
-`critic/explained_variance/summed_reward`, ...), and the outcome ledger's series and the
-outcome figure are absent. The build record holds `levels` and `outcome_level`, so a policy
-file says which layout it has (`tests/sections/test_single_value.py`).
+`LearnerConfig.offence_premium` weighs the offence's advantage on the damage and kill/death
+levels (`bnb.learn.returns.PREMIUM_LEVELS`) against their defence's: 2 is a 2:1 premium,
+`2 A_offence + A_defence`, where the zero-sum objective is `A_offence + A_defence`. The
+objective levels and the outcome stay 1:1: a premium on captures would pay both teams for
+trading zones in self-play (decided 2026-11-14). The premium is a keypoint schedule over the
+run's environment steps (`bnb.learn.schedules.Keypoints`), linear between keypoints and
+constant outside them, read at the start of each update and logged as
+`schedule/offence_premium`. The default is 1 throughout. A 2:1 premium annealed to 1:1
+between 20M and 60M steps:
+
+<!-- not-runnable: needs CUDA -->
+```bash
+uv run --no-sync bnb train --preset mixed \
+  --set 'learner.offence_premium={"steps": [0, 20000000, 60000000], "values": [2.0, 2.0, 1.0]}'
+```
+
+A warm start from a policy file counts its steps from 0, a fork from its parent's.
+
+The premium changes only the advantage. Each part's critic learns its part's own return,
+and the return scale reads the unweighted sum of the returns, so one BC run serves every
+premium (`tests/sections/test_split_critic.py::test_the_learner_weighs_the_advantage_and_never_the_targets`).
+At 1:1 the advantage equals the zero-sum levels' advantage from the same values, since GAE
+is linear (`tests/sections/test_split_critic.py::test_one_to_one_is_the_zero_sum_advantage`);
+it differs from an unsplit critic's only through what the two critics predict. The
+return scale does not follow the premium, so a premium also enlarges the policy's step on
+the combat levels, as a larger reward weight would.
+
+A build from before the split (2026-11-15) names the reward levels themselves, or the single
+level summed_reward. Its policy file still loads and plays, its outcome level
+`P(win) - P(loss)` whole (`tests/runs/test_critic_layout.py`); the learner refuses to train
+it.
 
 The return scale is the gap between exponential moving averages of the 5th and 95th
 percentiles of the summed returns of living own ships, at least 1, updated once per update
 (`bnb.models.yemong.critic.ReturnScale`). Advantages are divided by it, with no mean
 subtracted, so a factor common to every reward weight leaves the policy's gradient as it
-was. The weights set the units the critic works in: each per-ship level's value is
+was. The weights set the units the critic works in: each per-ship part's value is
 categorical over 77 symlog bins to +-3 (+-19 in reward units, `YemongConfig.value_bins` and
-`value_limit`), the bins 0.079 apart in symlog, so returns of order 1 span many of them. A
+`value_limit`), the bins 0.079 apart in symlog, so returns of order 1 span many of them. Its
+target is HL-Gauss (Farebrother et al. 2024): a Gaussian of 0.75 bin widths at the return's
+symlog position, integrated over each bin and renormalised (`bnb.models.yemong.critic.value_targets`;
+it replaced two-hot on 2026-11-15). A new build's support has two padding bins past each end
+(`value_padding`, `bnb.models.yemong.codes.PADDING_BINS`; 81 bins in all), so a return near
++-3 in symlog keeps its mean through the renormalisation; a return past the outermost bin's
+centre is clamped to it and counted by `critic/support_clip/{level}`. The value is the
+expectation over every bin, padding included. Because the bins are in symlog and the read-out
+in reward units, a target's read-out is about 0.2% larger in magnitude than its return (half
+the target's symlog variance). A
 different factor per level would change the levels' mix, which is the reward's design, not
 its units.
 
-The explained variance per level (`critic/explained_variance/{level}`) is against the
+The explained variance per value level (`critic/explained_variance/{level}`, each part) is against the
 lambda-returns the critic trains on, which are its own values plus the advantage, so a
 smooth critic scores high whatever it predicts. `critic/explained_variance_monte_carlo/{level}`
 is against the lambda 1 returns, the discounted rewards bootstrapped only after the update's
@@ -176,7 +207,7 @@ The coefficients are the fields of `bnb.learn.ppo.LearnerConfig` named after the
 |---|---|---|
 | `policy` | own ships alive at `t` | the surrogate on the scaled advantage under the trust region ([below](#the-trust-region)) |
 | `entropy_power`, `entropy_stick`, `entropy_shoot` | the same | the joint action distribution's entropy by the chain rule in the joint's order: H(power), H(stick given power), H(shoot given both). They sum to the joint entropy, so equal coefficients weigh the joint as one coefficient would; a negative coefficient rewards it |
-| `value` | own ships alive or waiting to respawn; each view-step for the outcome | per value level, the cross-entropy against the two-hot of the return, the outcome against its targets |
+| `value` | own ships alive or waiting to respawn; each view-step for the outcome | per value head (each per-ship part, then the outcome head), the cross-entropy against the HL-Gauss target of the return, the outcome against its targets |
 | `next_state` | rows whose belief is valid at `t`, where `t` did not end an episode (delta: and whose ship is alive at `t` and `t + 1`; with `YemongConfig.delta_split`, of those only the own rows and the enemies seen at `t`; with `YemongConfig.physics_hidden_decay` tau the hidden enemies too, past the segment's first tick, each weighted `exp(-age / tau)`, against the truth-to-truth target) | absolute: the state code's cross-entropy against the sharp code of the true state at `t + 1`, in the model's shifted frame; delta: the delta code's against the code of the true change from `t` to `t + 1` |
 | `correction` | with `YemongConfig.delta_split` only: the next-state rows whose belief at `t` is a forecast (hidden enemies) | the error code's cross-entropy against the code of the physics forecast's error, `truth(t + 1) - forecast(t + 1)` |
 | `enemy_action` | enemy rows alive at `t` | the cross-entropy of the enemy's actual joint action |

@@ -38,7 +38,7 @@ for a bullet's flight). The next update continues from its end.
 import torch
 from torch.utils import _pytree
 
-from bnb.contracts import REWARD_LEVELS, Action, Controller, GameConfig, Obs, Pool, Trajectory
+from bnb.contracts import VALUE_LEVELS, Action, Controller, GameConfig, Obs, Pool, Trajectory
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.game import api
 from bnb.learn import rewards
@@ -304,7 +304,7 @@ class Rollout:
             decision_key=torch.zeros((ring, views), dtype=torch.int64, device=device),
             log_probability=torch.zeros((ring, views, S), device=device),
             value=torch.zeros((ring, views, S), device=device),
-            reward=torch.zeros((ring, views, S, len(REWARD_LEVELS)), device=device),
+            reward=torch.zeros((ring, views, S, len(VALUE_LEVELS)), device=device),
             done=torch.zeros((ring, views), **flags),
             result=torch.zeros((ring, views), dtype=torch.int32, device=device),
             win_loss=torch.zeros((ring, views, 2), device=device),
@@ -541,7 +541,7 @@ class Rollout:
             self.rules.tick_length,
         )
         reward = reward.reshape(
-            self.environments, self.teams, self.ships_per_team, len(REWARD_LEVELS)
+            self.environments, self.teams, self.ships_per_team, len(VALUE_LEVELS)
         )
         name, records, slot = self.learner, carry["records"], self._slot(carry)
         environments, team = self.lineup.environments[name], self._team(name, carry["seat"])

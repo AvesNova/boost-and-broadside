@@ -11,7 +11,7 @@ import pytest
 import torch
 import yemong_cases as cases
 
-from bnb.contracts import REWARD_LEVELS
+from bnb.contracts import VALUE_LEVELS
 from bnb.learn import advantages, returns
 from bnb.learn.rewards import RewardConfig
 from bnb.runtime import analytics, metrics
@@ -72,9 +72,11 @@ def test_the_team_mixed_levels_sum_to_the_aggregate():
     alive = torch.tensor([[True, True, True]])
     per_level = torch.randn((1, 3, 5), generator=generator)
     spirit = torch.tensor([0.0, 0.5, 1.0, 0.0, 0.2])
+    weights = torch.tensor([2.0, 1.0, 1.0, 0.5, 1.0])
     mixed = returns.team_mixed_levels(team, alive, per_level, spirit)
-    total, _ = returns.team_aggregate(team, alive, per_level, per_level, spirit)
-    torch.testing.assert_close(mixed.sum(-1), total)
+    total, returned = returns.team_aggregate(team, alive, per_level, per_level, spirit, weights)
+    torch.testing.assert_close((mixed * weights).sum(-1), total)
+    torch.testing.assert_close(mixed.sum(-1), returned)  # the returns' sum is unweighted
     torch.testing.assert_close(mixed[0, 0, 1], per_level[0, 0, 1] + 0.5 * per_level[0, 1, 1])
 
 
@@ -146,13 +148,13 @@ def test_the_learners_levels_add_up_to_its_advantage(segment, global_generator):
     learner = _learner(copy.deepcopy(net), runner)
     prepared = learner.prepare(runner.store, runner.bootstrap())
     out = metrics.read(prepared["series"])
-    shares = [out[f"advantage/share/{level}"] for level in REWARD_LEVELS]
+    shares = [out[f"advantage/share/{level}"] for level in VALUE_LEVELS]
     assert sum(shares) == pytest.approx(1.0)
     for mode in ("frontline", "team_deathmatch"):
-        assert sum(out[f"advantage/share/{level}/{mode}"] for level in REWARD_LEVELS) == (
+        assert sum(out[f"advantage/share/{level}/{mode}"] for level in VALUE_LEVELS) == (
             pytest.approx(1.0)
         )
-    for level in REWARD_LEVELS:
+    for level in VALUE_LEVELS:
         assert -1.0 - 1e-5 <= out[f"advantage/correlation/{level}"] <= 1.0 + 1e-5
         assert out[f"advantage/raw_standard_deviation/{level}"] >= 0.0
     # the cadence's views' levels, over the return scale, sum to the policy's advantage
@@ -172,17 +174,17 @@ def test_the_cadence_measures_each_levels_policy_gradient(segment, global_genera
     out = metrics.read(learner._gradient_decomposition(runner.store, prepared, views))
     # before any step the ratio is 1, inside the clip, where the surrogate is linear in A:
     # the levels' gradients sum to the policy's
-    total = sum(out[f"gradient/policy_level_share/{level}"] for level in REWARD_LEVELS)
+    total = sum(out[f"gradient/policy_level_share/{level}"] for level in VALUE_LEVELS)
     assert total == pytest.approx(1.0, abs=1e-3)
-    for level in REWARD_LEVELS:
+    for level in VALUE_LEVELS:
         assert out[f"gradient/policy_level_norm/{level}"] > 0.0
         assert -1.0 - 1e-5 <= out[f"gradient/policy_level_cosine/{level}/policy"] <= 1.0 + 1e-5
-    prepared["level_advantage"][..., REWARD_LEVELS.index("objective")] = 0.0
+    prepared["level_advantage"][..., VALUE_LEVELS.index("objective_offence")] = 0.0
     silenced = metrics.read(learner._gradient_decomposition(runner.store, prepared, views))
-    assert silenced["gradient/policy_level_norm/objective"] == 0.0
-    assert silenced["gradient/policy_level_share/objective"] == 0.0
-    assert silenced["gradient/policy_level_norm/damage"] == pytest.approx(
-        out["gradient/policy_level_norm/damage"]
+    assert silenced["gradient/policy_level_norm/objective_offence"] == 0.0
+    assert silenced["gradient/policy_level_share/objective_offence"] == 0.0
+    assert silenced["gradient/policy_level_norm/damage_offence"] == pytest.approx(
+        out["gradient/policy_level_norm/damage_offence"]
     )
 
 
@@ -219,4 +221,4 @@ def test_a_compiled_update_with_the_diagnostics_compiles_nothing_after_its_first
     assert counters["stats"]["unique_graphs"] == graphs
     for out in (first, second):
         assert "advantage/share/damage/team_deathmatch" in out
-        assert "gradient/policy_level_norm/damage" in out
+        assert "gradient/policy_level_norm/damage_offence" in out

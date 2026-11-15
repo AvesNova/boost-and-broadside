@@ -206,6 +206,14 @@ def reward_levels() -> str:
                    for index, (level, weight) in enumerate(zip(REWARD_LEVELS, weights))])
 
 
+def reward_events() -> str:
+    """Each reward event with its level and part, in the reward step's order."""
+    from bnb.learn.rewards import REWARD_EVENTS
+
+    return _table(("Event", "Level", "Part"),
+                  [(_code(event), _code(level), part) for level, part, event in REWARD_EVENTS])
+
+
 def reward_config() -> str:
     """The fields of RewardConfig."""
     from bnb.learn.rewards import RewardConfig
@@ -564,6 +572,7 @@ BLOCKS: dict[str, Callable[..., str]] = {
     "stick-levels": stick_levels,
     "power-modes": power_modes,
     "reward-levels": reward_levels,
+    "reward-events": reward_events,
     "reward-config": reward_config,
     "ship-card": ship_card,
     "game-constants": game_constants,

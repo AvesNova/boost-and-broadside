@@ -23,7 +23,9 @@ from learner_arm import make_arm  # noqa: E402
 def arm():
     path = os.environ.get("REFERENCE_ARM")
     if path:
-        spec = importlib.util.spec_from_file_location("learner_reference_arm", os.path.join(path, "arm.py"))
+        spec = importlib.util.spec_from_file_location(
+            "learner_reference_arm", os.path.join(path, "arm.py")
+        )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module.make_arm()

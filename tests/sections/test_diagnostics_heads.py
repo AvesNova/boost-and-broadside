@@ -255,17 +255,17 @@ def test_the_input_series_count_envelope_breaks_and_non_finite_entries():
 def test_the_fit_explained_variance_comes_from_the_moments():
     """Returns 1, 2, 3 against values 1, 1, 1 (residuals 0, 1, 2: the same variance) on the
     first level, against themselves on the others."""
-    from bnb.contracts import REWARD_LEVELS
+    from bnb.contracts import VALUE_LEVELS
     from bnb.learn.ppo import fit_series
 
     target = torch.tensor([1.0, 2.0, 3.0])
     residual = torch.tensor([0.0, 1.0, 2.0])
-    levels = len(REWARD_LEVELS)
+    levels = len(VALUE_LEVELS)
     moments = torch.zeros((5, levels))
     moments[0] = 3.0
     moments[1] = target.sum()
     moments[2] = (target**2).sum()
     moments[3, 0], moments[4, 0] = residual.sum(), (residual**2).sum()
-    out = metrics.read(fit_series(moments.flatten(), REWARD_LEVELS))
-    assert out[f"critic/explained_variance_fit/{REWARD_LEVELS[0]}"] == pytest.approx(0.0)
-    assert out[f"critic/explained_variance_fit/{REWARD_LEVELS[1]}"] == pytest.approx(1.0)
+    out = metrics.read(fit_series(moments.flatten(), VALUE_LEVELS))
+    assert out[f"critic/explained_variance_fit/{VALUE_LEVELS[0]}"] == pytest.approx(0.0)
+    assert out[f"critic/explained_variance_fit/{VALUE_LEVELS[1]}"] == pytest.approx(1.0)

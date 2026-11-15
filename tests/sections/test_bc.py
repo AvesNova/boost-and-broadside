@@ -13,7 +13,7 @@ import yemong_cases as cases
 from imugi_cases import CHARACTERISTICS
 from torch.utils import _pytree
 
-from bnb.contracts import SUMMED_LEVEL, Obs, Pool, Trajectory
+from bnb.contracts import VALUE_LEVELS, Obs, Pool, Trajectory
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.imugi import Imugi, distribution, joint
 from bnb.controllers.imugi_defaults import MODE_DEFAULTS
@@ -93,15 +93,18 @@ def segment(module_global_generator):
     return net, runner, learner, prepared
 
 
-def test_bc_trains_the_single_value_arm():
-    """The single value arm (one value level over the summed rewards, no outcome head)
-    clones with one discount and trace decay, and reports its one level's critic."""
-    net = cases.model(levels=(SUMMED_LEVEL,), outcome_level=None)
+def test_bc_trains_every_value_level():
+    """BC's value loss covers each reward level's offence and defence: a loss per value head,
+    every per-ship part's and the outcome head's (which gives both outcome parts)."""
+    net = cases.model()
     runner = _segment(net)
-    learner = _cloning(net, runner, discount=(1.0,), trace_decay=(0.99,), team_spirit=(0.0,))
+    learner = _cloning(net, runner)
+    assert learner.value_heads == (*VALUE_LEVELS[:-2], "outcome")
     out = metrics.read(learner.update(runner.store, runner.bootstrap()))
-    assert math.isfinite(out[f"critic/value_loss/{SUMMED_LEVEL}"])
-    assert not any(key.startswith("critic/") and key.endswith("/outcome") for key in out)
+    for head in learner.value_heads:
+        assert out[f"critic/value_loss/{head}"] > 0.0
+    for level in VALUE_LEVELS:
+        assert math.isfinite(out[f"critic/explained_variance/{level}"])
 
 
 def test_the_bc_loss_matches_an_independent_computation(segment):
