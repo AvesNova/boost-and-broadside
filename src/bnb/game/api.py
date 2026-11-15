@@ -13,7 +13,10 @@ opaque outside `bnb.game`: other packages hold it and pass it back, and read it 
 these functions.
 Unequal teams at one static size: `reset`, `resolve`, `step` and `perceive` take `active`
 (B, 2) int32, each team's active ships per environment (None: every ship); a team's last
-S - active slots are benched, kept as dead ships waiting to respawn (`bnb.game.physics.step`).
+S - active slots are benched, kept as dead ships waiting to respawn (`bnb.game.physics.step`;
+`benched_of` gives the slots). `resolve` may take the next episode's counts (`next_active`)
+for the environments whose episode ends, so a runtime can draw each episode's team size
+(`bnb.contracts.TeamSizes`), within each mode's smallest team (`MINIMUM_SHIPS_PER_TEAM`).
 The tick's randomness is an explicit input; `spread` and `uniforms` draw it. The ship card
 `types` is an argument of every function that reads it (`reset`, `move`, `resolve`, `step`):
 it is data, which a sweep may change between calls; `default_card` gives the default
@@ -82,6 +85,7 @@ from .modes.rules import (
     DRAWN_LINEUPS,
     FLEET_PRESETS,
     LINEUPS,
+    MINIMUM_SHIPS_PER_TEAM,
     PRESETS,
     arena_radius_for,
     minimum_arena_radius,
@@ -113,7 +117,7 @@ from .ship_types import (
     type_names,
 )
 from .ship_types import reload as reload_ships
-from .state import Fields, State, Sweep, replace, ship_team, sweep_like
+from .state import Fields, State, Sweep, benched_of, replace, ship_team, sweep_like
 
 __all__ = [
     "DISPLAYED",
@@ -130,6 +134,7 @@ __all__ = [
     "LN_SQRT2",
     "Launch",
     "MAP_SCALE_RADIUS",
+    "MINIMUM_SHIPS_PER_TEAM",
     "PRESETS",
     "FLEET_PRESETS",
     "arena_radius_for",
@@ -141,6 +146,7 @@ __all__ = [
     "State",
     "Sweep",
     "TEAMS",
+    "benched_of",
     "bleed_rate",
     "bullet_moves",
     "bullet_paths",

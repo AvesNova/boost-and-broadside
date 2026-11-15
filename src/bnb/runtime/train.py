@@ -18,7 +18,7 @@ from typing import Protocol
 
 import torch
 
-from bnb.contracts import ActiveFields, ArenaScale, GameConfig, Pool
+from bnb.contracts import ActiveFields, ArenaScale, GameConfig, Pool, TeamSizes
 from bnb.contracts.pools import pool_game
 from bnb.controllers.imugi import Imugi
 from bnb.controllers.relational import RelationalController
@@ -185,14 +185,24 @@ def check_pools(config: TrainConfig) -> None:
 
 
 def training_pools(config: TrainConfig) -> tuple[Pool, ...]:
-    """The config's training pools with its map-size sampling (`TrainConfig.arena_scale`) and
-    its field-count sampling (`TrainConfig.active_fields`)."""
+    """The config's training pools with its map-size sampling (`TrainConfig.arena_scale`),
+    its field-count sampling (`TrainConfig.active_fields`) and its team-size sampling
+    (`TrainConfig.team_sizes`)."""
     return tuple(
         dataclasses.replace(
-            pool, arena_scale=config.arena_scale, active_fields=config.active_fields
+            pool,
+            arena_scale=config.arena_scale,
+            active_fields=config.active_fields,
+            team_sizes=config.team_sizes,
         )
         for pool in config.pools
     )
+
+
+def samples_team_sizes(pools: tuple[Pool, ...]) -> bool:
+    """Some pool draws its team size per episode (`Pool.team_sizes`). A Yemong playing it
+    masks the benched ships (`Yemong.mask_benched`)."""
+    return any(pool.team_sizes is not None for pool in pools)
 
 
 def samples_field_counts(game: GameConfig, pools: tuple[Pool, ...] = ()) -> bool:
@@ -265,6 +275,13 @@ class TrainConfig:
     each episode plays a drawn number of the game's field slots, the rest absent, and the
     model masks the absent ones, `Yemong.mask_absent_fields`), or None for the games' own
     (every field in every preset). The rating lanes play their games' own fields.
+    team_sizes: team-size sampling for the training pools (arm A2; `bnb.contracts.TeamSizes`:
+    each episode plays an N-against-N game, N drawn from low to high, the game's ships per
+    team by default, within each mode's smallest team, Frontline 3; each team's slots past
+    N benched, and the Yemong masks them, `Yemong.mask_benched`), or None (the default)
+    for every slot in every game. Both BC's data and RL's games follow it. A2's setting is
+    `--set 'team_sizes={"low": 1}'`: uniform over 1v1 to 5v5 in deathmatch and
+    elimination, 3v3 to 5v5 in Frontline. The rating lanes play their games' own sizes.
     lineup: each slot's ship type by name in the game's ship set (`api.type_names`), the
     same for both teams, in every game of the batch (the rating lanes' too); None plays the
     game's own lineup (`Rules.team_types`). A tournament of such policies plays the same
@@ -339,6 +356,7 @@ class TrainConfig:
     policy_snapshots: SnapshotSchedule = RL_SNAPSHOTS
     arena_scale: ArenaScale | None = None
     active_fields: ActiveFields | None = None
+    team_sizes: TeamSizes | None = None
     lineup: tuple[str, ...] | None = None
     lineup_draw: bool = True
     # end a PPO run after this many consecutive updates with a combat-collapse alert
@@ -387,6 +405,17 @@ class TrainConfig:
             raise ValueError(f"precision {self.precision!r} is not one of {PRECISIONS}")
         if self.active_fields is not None:  # the game checks the range against its fields
             dataclasses.replace(self.game, active_fields=self.active_fields)
+        if self.team_sizes is not None:
+            if self.model != "yemong":
+                raise ValueError(
+                    f"team_sizes needs the Yemong model, which masks benched ships; "
+                    f"{self.model!r} does not"
+                )
+            for pool in self.pools:  # each mode's sizes within the game's
+                mode = pool_game(self.game, pool).mode
+                self.team_sizes.probabilities(
+                    self.game.ships_per_team, api.MINIMUM_SHIPS_PER_TEAM.get(mode, 1)
+                )
         if self.shards < 1 or self.lookahead < 0:
             raise ValueError(f"{self.shards} shards and a lookahead of {self.lookahead} ticks")
         for name in MODELS:
@@ -541,6 +570,8 @@ class Trainer:
         self.model = build_model(model_build(config), device, config.seed)
         if isinstance(self.model, Yemong) and samples_field_counts(game, training_pools(config)):
             self.model.mask_absent_fields = True  # its copies (the seats', lanes') keep it
+        if isinstance(self.model, Yemong) and samples_team_sizes(training_pools(config)):
+            self.model.mask_benched = True  # its copies (the seats', lanes') keep it
         self.league: LeagueHooks | None = None
         # the trigger rules (`bnb.runs.triggers`), attached by the run's recorder: their
         # state is part of the training checkpoint
