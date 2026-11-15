@@ -161,9 +161,9 @@ class LeagueConfig:
     learning-rate warm-up (`LearnerConfig.warmup_steps`, `uniform_start`), so a fine-tune's
     shorter warm-up starts its average sooner; snapshots: the environment steps at which
     the live weights join the pool (`bnb.runtime.snapshots.SnapshotSchedule`;
-    `LEAGUE_SNAPSHOTS` by default, decided 2026-11-14: 5, 10, 15, 20, 25, 30, 40, 50, 60,
-    75, 90, 110, 130 and 160M steps, then every 30M; None: a period measured once, about 30
-    minutes of the run's throughput, and recorded); cheese: the cheese agents that are pool
+    `LEAGUE_SNAPSHOTS` by default, decided 2026-11-15: every 5M steps to 50M, then every
+    10M to 100M, every 20M to 200M, and so on, the interval doubling each time the steps
+    double; every member is kept for the rest of the run); cheese: the cheese agents that are pool
     entries, by name (`bnb.controllers.cheese.NAMES`; all six by default, `()`
     turns them off), each `scripted:<name>`, sampled with the other entries; fixed at a
     run's start."""
@@ -178,7 +178,7 @@ class LeagueConfig:
     exponential_decay: float = 0.95
     # the run's warm-up (author, 2026-11-07: decisions, run control)
     uniform_from: int | None = None
-    snapshots: SnapshotSchedule | None = LEAGUE_SNAPSHOTS
+    snapshots: SnapshotSchedule = LEAGUE_SNAPSHOTS
     cheese: tuple[str, ...] = CHEESE_NAMES
 
     def __post_init__(self) -> None:

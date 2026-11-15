@@ -1,5 +1,4 @@
-"""The pool's entries, their sampling weights and the snapshots' retention (league spec 1, 3
-and 5).
+"""The pool's entries, their sampling weights and the averages (league spec 1, 3 and 5).
 
 Entries: frozen snapshots of the live policy (checkpoints), the uniform average and the
 exponential moving average of its weights, and the full-strength Imugi (no weaker
@@ -18,8 +17,6 @@ from bnb.runtime.opponents import IMUGI_PLAYER, SAMPLINGS, LeagueConfig
 from .gauge import KINDS
 
 AVERAGES = (UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE)
-RECENT_SNAPSHOTS = 8  # the newest snapshots retention keeps
-HISTORY_FROM = 3  # then the snapshot nearest each age 2^k snapshots back, k >= HISTORY_FROM
 
 
 @dataclasses.dataclass(frozen=True)
@@ -27,13 +24,11 @@ class Entry:
     """One pool entry. kind: "checkpoint", "average", "scripted" (the full-strength
     Imugi, the pool's one scripted entry) or "cheese" (a cheese agent, named
     `scripted:<agent>`, in the pool only when `LeagueConfig.cheese` lists it); steps: a
-    checkpoint's environment steps at its snapshot; ordinal: a checkpoint's place in the
-    order of snapshots (0, 1, 2, ...)."""
+    checkpoint's environment steps at its snapshot."""
 
     name: str
     kind: str
     steps: int | None = None
-    ordinal: int | None = None
 
     def __post_init__(self) -> None:
         if self.kind not in KINDS:
@@ -78,28 +73,6 @@ def sampling_weights(
     if total == 0.0:
         return torch.full((count,), 1.0 / count, dtype=torch.float64)
     return (1.0 - floor) * weight / total + floor / count
-
-
-def retained(ordinals: list[int] | set[int]) -> set[int]:
-    """The snapshots retention keeps, by ordinal: the newest RECENT_SNAPSHOTS, plus of the
-    older ones the snapshot nearest each age 2^k snapshots back for k >= HISTORY_FROM (an
-    equal distance keeps the older). Ages are counted from the newest snapshot."""
-    ordinals = set(ordinals)
-    if not ordinals:
-        return set()
-    newest = max(ordinals)
-    keep = {ordinal for ordinal in ordinals if newest - ordinal < RECENT_SNAPSHOTS}
-    older = sorted(newest - ordinal for ordinal in ordinals if newest - ordinal >= RECENT_SNAPSHOTS)
-    if older:
-        power = HISTORY_FROM
-        while True:
-            target = 1 << power
-            nearest = min(older, key=lambda age: (abs(age - target), -age))
-            keep.add(newest - nearest)
-            if target >= older[-1]:  # every larger age is nearest the oldest, kept now
-                break
-            power += 1
-    return keep
 
 
 @torch.no_grad()

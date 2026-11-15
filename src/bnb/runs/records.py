@@ -146,8 +146,8 @@ def retained(ordinals: Iterable[int], final: int | None = None) -> set[int]:
     """The training checkpoints the retention keeps, by ordinal (0, 1, 2, ... in the order
     written, a stop's off-cadence checkpoint included): the newest RECENT, and the final one.
     The small policy files of every update (`policies/`) are the run's history; the large
-    resumable states are kept only to resume from. The league's snapshots have their own rule
-    (`bnb.league.pool.retained`)."""
+    resumable states are kept only to resume from. The league keeps every one of its
+    snapshots."""
     ordinals = set(ordinals)
     if not ordinals:
         return set()

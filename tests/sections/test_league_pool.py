@@ -1,4 +1,4 @@
-"""The pool (league spec 1, 3 and 5): retention, the sampling weights and the averages."""
+"""The pool (league spec 1, 3 and 5): the entries, the sampling weights and the averages."""
 
 import math
 
@@ -7,51 +7,11 @@ import torch
 
 from bnb.league.pool import (
     IMUGI_ENTRY,
-    RECENT_SNAPSHOTS,
     Entry,
     average_into,
-    retained,
     sampling_weights,
 )
 from bnb.runtime.opponents import LeagueConfig, Rung, ladder_name, ladder_rung
-
-
-def _apply_after_every_snapshot(count: int) -> set[int]:
-    kept: set[int] = set()
-    for ordinal in range(count):
-        kept = retained(kept | {ordinal})
-    return kept
-
-
-def test_retention_keeps_the_newest_eight():
-    kept = retained(set(range(8)))
-    assert kept == set(range(8))
-    assert set(range(92, 100)) <= _apply_after_every_snapshot(100)
-
-
-def test_retention_keeps_the_snapshot_nearest_each_power_of_two_back():
-    for count in (9, 20, 37, 100, 513):
-        kept = _apply_after_every_snapshot(count)
-        newest = count - 1
-        older = sorted(newest - ordinal for ordinal in kept if newest - ordinal >= RECENT_SNAPSHOTS)
-        # each older one is the nearest of the kept to some age 2^k, k >= 3
-        for age in older:
-            assert any(
-                min(older, key=lambda a: (abs(a - (1 << k)), -a)) == age for k in range(3, 20)
-            ), (count, age, older)
-        assert len(kept) <= RECENT_SNAPSHOTS + math.ceil(math.log2(count)) + 1
-
-
-def test_retention_keeps_the_first_snapshot_as_the_deepest_history():
-    assert 0 in _apply_after_every_snapshot(300)
-
-
-def test_retention_spans_the_history_geometrically():
-    kept = _apply_after_every_snapshot(1000)
-    ages = sorted(999 - ordinal for ordinal in kept)
-    for power in range(3, 10):
-        target = 1 << power
-        assert min(abs(age - target) for age in ages) <= target / 2, (target, ages)
 
 
 def test_the_sampling_weight_is_one_minus_p_squared_with_no_floor():
