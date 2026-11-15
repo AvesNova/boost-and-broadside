@@ -233,3 +233,87 @@ def done(kind: str, result: dict, energy_turn: bool) -> bool:
         if value is None or not math.isfinite(value[1]) or value[1] > target:
             return False
     return True
+
+
+def _f(value: tuple[float, float], scale: float = 1.0, digits: int = 0) -> str:
+    """'value ± SE' at a scale (100 for percentages)."""
+    v, s = value
+    return f"{v * scale:.{digits}f} ± {s * scale:.{digits}f}"
+
+
+def _clock(value: tuple[float, float]) -> str:
+    """A time in s as m:ss ± s."""
+    v, s = value
+    return f"{int(v // 60)}:{int(round(v % 60)):02d} ± {s:.0f} s"
+
+
+def main() -> None:
+    """Print the results' tables (Markdown) from data/modes.jsonl."""
+    path = HERE / "data" / "modes.jsonl"
+    labels = []
+    for line in path.read_text().splitlines():
+        label = json.loads(line)["label"]
+        if label not in labels:
+            labels.append(label)
+    kind_of = {"dm": "deathmatch", "elim": "elimination", "front": "frontline"}
+    rows = {label: measures(kind_of[label.split("-")[0]], *load(path, label)) for label in labels}
+    print("| deathmatch | games | tickets | ended by tickets (%) | median | p80 | kills/min |")
+    print("|---|---|---|---|---|---|---|")
+    for label, r in rows.items():
+        if label.startswith("dm-") and "-et-" not in label:
+            print(
+                f"| {label[3:]} | {r['games']} | {r['tickets']} | {_f(r['by_tickets'], 100, 1)} "
+                f"| {_clock(r['median_s'])} | {_clock(r['p80_s'])} "
+                f"| {_f(r['kills_per_minute'], 1, 2)} |"
+            )
+    print()
+    print(
+        "| elimination | games | median | p80 | p90 | on at the clock (%) "
+        "| deaths by the boundary (%) | last death by the boundary (%) |"
+    )
+    print("|---|---|---|---|---|---|---|---|")
+    for label, r in rows.items():
+        if label.startswith("elim-") and "-et-" not in label:
+            print(
+                f"| {label[5:]} | {r['games']} | {_clock(r['median_s'])} | {_clock(r['p80_s'])} "
+                f"| {_clock(r['p90_s'])} | {_f(r['on_at_clock'], 100, 1)} "
+                f"| {_f(r['boundary_deaths'], 100, 1)} | {_f(r['last_death_boundary'], 100, 1)} |"
+            )
+    print()
+    print(
+        "| frontline | games | ended by capture (%) | median | P(reversal) "
+        "| first capturer wins (%) | moves a game |"
+    )
+    print("|---|---|---|---|---|---|---|")
+    for label, r in rows.items():
+        if label.startswith("front-") and "-et-" not in label:
+            print(
+                f"| {label[6:]} | {r['games']} | {_f(r['by_capture'], 100, 1)} "
+                f"| {_clock(r['median_s'])} | {_f(r['p_reversal'], 1, 3)} "
+                f"| {_f(r['first_capturer_wins'], 100, 1)} | {_f(r['moves_per_game'], 1, 2)} |"
+            )
+    print()
+    print("| energy (Yongma) team against turn (Jujak) team | games | Yongma team's score (%) |")
+    print("|---|---|---|")
+    for label, r in rows.items():
+        if "-et-" in label:
+            print(f"| {label} | {r['games']} | {_f(r['yongma_score'], 100, 1)} |")
+    print()
+    print(
+        "| kills by aspect (mixed lineups) | kills | mutual head-on | offset head-on | flank "
+        "| tail | Y on Y / Y on J / J on Y / J on J |"
+    )
+    print("|---|---|---|---|---|---|---|")
+    for label, r in rows.items():
+        if "-et-" not in label:
+            a = r["aspects"]
+            by = a["kills_by_type"]
+            print(
+                f"| {label} | {a['kills']} | "
+                + " | ".join(_f(a[name], 100, 1) for name in ASPECTS)
+                + f" | {by[0][0]} / {by[0][1]} / {by[1][0]} / {by[1][1]} |"
+            )
+
+
+if __name__ == "__main__":
+    main()

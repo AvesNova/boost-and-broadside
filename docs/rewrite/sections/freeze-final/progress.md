@@ -1,5 +1,16 @@
 # Final freeze check: progress
 
+> **WIP (2026-11-15 20:52, laptop shutdown at 21:00).** Done: steps 1-3 (vizia out; the
+> shield bug fixed, game v22; respawn reported). Step 4: all 22 mode_dynamics conditions are
+> measured (`data/modes.jsonl`; tables in `data/partial-tables.md`). Remaining: the head-on
+> passes per kill (`bench.game_loop`, `measure.py`'s `passes()`, about 8 min on the GPU),
+> then `results.md` and `review.md`. Resume (skips finished conditions, then runs passes):
+> `systemd-run --user --unit=freeze-final -p MemoryMax=8G --working-directory=$PWD
+> --setenv=PYTHONPATH=$PWD/src:$PWD .venv/bin/python docs/rewrite/sections/freeze-final/measure.py`.
+> First reads: Jujak dominates (pure Yongma team scores about 22% in deathmatch 5v5);
+> deathmatch 1v1/2v2 rarely end by tickets (0.4%, 43%); elimination 5v5 shorter than
+> expected (median 1:35, p80 2:18), boundary shares as expected.
+
 Branch `check/freeze-final` (from `feat/imugi-boundary` a8919b27). Notes in order.
 
 ## 1. vizia out of the real-scale set (2026-11-15)
