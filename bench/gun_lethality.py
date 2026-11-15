@@ -646,7 +646,7 @@ def main() -> None:
     four.add_argument("--record", required=True)
     four.add_argument("--cards", required=True)
     four.add_argument("--scaling", required=True)
-    four.add_argument("--base", default="vizia")
+    four.add_argument("--base", default="yongma")
     four.add_argument("--environments", type=int, default=512)
     four.add_argument("--seconds", type=float, default=120.0)
     four.add_argument("--seed", type=int, default=11)

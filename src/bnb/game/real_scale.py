@@ -1,6 +1,7 @@
 """The real-scale ship set (`src/bnb/game/ships/real-scale/`): 1 m is a metre and 1 s a
-second. Its types are Yongma and Jujak, the release's two archetypes, and vizia, the hull
-both derive from (a P-51D-derived card); `docs/explanation/game/real-scale.md` gives the
+second. Its types are Yongma and Jujak, the release's two archetypes,
+derived from vizia (a P-51D-derived card that left the set on 2026-11-15; each archetype's
+notes keep the values taken from it); `docs/explanation/game/real-scale.md` gives the
 reasons. This module holds the set's constants that other code reads.
 
 The set was first built from late-war fighters and a few invented designs, each solved

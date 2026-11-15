@@ -11,7 +11,8 @@ import torch
 from imugi_cases import CHARACTERISTICS, absent, observation, ship
 
 from bnb.contracts.obs import GLOBAL
-from bnb.controllers.imugi import REAL_SCALE_GRAVITY, mode_index
+from bnb.controllers.imugi import mode_index
+from bnb.controllers.imugi_doctrine import REAL_SCALE_GRAVITY
 from bnb.controllers.imugi_parameters import MODES
 from bnb.controllers.scripted import (
     STANDARD_CORNER_RADIUS,
@@ -64,7 +65,7 @@ def test_a_real_scale_card_plays_the_real_scale_sets():
     """A card at the real-scale gravity plays real_scale_deathmatch on any deathmatch map,
     real_scale_frontline in Frontline and real_scale_elimination in elimination (a standard
     card its deathmatch set there); the real-scale presets' own card is one."""
-    from bnb.controllers.imugi import real_scale_card
+    from bnb.controllers.imugi_doctrine import real_scale_card
     from bnb.game import api
     from bnb.game.handling.characteristics import characteristics
 

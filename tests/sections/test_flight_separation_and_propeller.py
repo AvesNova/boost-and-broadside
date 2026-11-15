@@ -18,7 +18,7 @@ from bnb.game.ship_types import type_names
 
 RULES = api.rules_of(GameConfig(1, 1, 7800.0, ship_set="real-scale"))
 TYPES = api.ship_types(ship_set="real-scale", dtype=torch.float64)
-NAMES = ("Yongma", "Jujak", "vizia")
+NAMES = ("Yongma", "Jujak")
 KINDS = torch.tensor([type_names("real-scale").index(name) for name in NAMES])
 
 
@@ -32,7 +32,9 @@ def test_separation_is_one_plus_s_at_the_maximum_lift_and_off_by_default():
     ratio = torch.tensor([0.0, 0.5, 1.0, 1.2], dtype=torch.float64)[:, None]
     lift_squared = (ratio * airframe.max_lift_coefficient) ** 2
     expected = 1.0 + 1.5 * ratio**8
-    torch.testing.assert_close(separation(constants, airframe, lift_squared), expected.expand(4, 3))
+    torch.testing.assert_close(
+        separation(constants, airframe, lift_squared), expected.expand(4, len(NAMES))
+    )
     assert separation(api.rules_of(GameConfig(1, 1, 7800.0)).flight, airframe, lift_squared) == 1.0
 
 
@@ -48,7 +50,8 @@ def test_the_exchange_is_vertical_lift_demand():
     """A boost spends at its full rate in a turn and asks for about no lift; a reverse
     climbs at its full rate in a moderate turn, with gravity plus the climb's lift."""
     airframe = airframe_of(TYPES, KINDS)
-    speed = torch.full((3,), 300.0, dtype=torch.float64)  # x1's 150 at the set's x2 (game v13)
+    # x1's 150 at the set's x2 (game v13)
+    speed = torch.full((len(NAMES),), 300.0, dtype=torch.float64)
     energy = 0.25 * airframe.max_energy
     stick = torch.full_like(speed, 0.3)
     for power in (-1.0, 1.0):
@@ -70,7 +73,7 @@ def test_the_best_sustained_turn_is_below_full_stick():
     types = batched(dataclasses.replace(TYPES))
     sticks = (0.45, 0.6, 0.7, 0.8, 0.9, 1.0)
     turns = settled(RULES, types, sticks, LEVEL_STORE)
-    rate = turns.turn_rate[0, KINDS]  # (3, sticks)
+    rate = turns.turn_rate[0, KINDS]  # (2, sticks)
     speed = turns.speed[0, KINDS]
     best = rate.argmax(-1)
     assert bool(((best > 0) & (best < len(sticks) - 1)).all()), rate

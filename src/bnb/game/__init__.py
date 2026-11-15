@@ -205,6 +205,18 @@ Version 21 (2026-11-15) is the game freeze for the pairwise arms
 
 Ratings and records of version 20 or earlier, Imugi's included, are not reused for
 version-21 games.
+
+Version 22 (2026-11-15, the final freeze check, docs/rewrite/sections/freeze-final/):
+- **A hit restarts the shield's recharge wait whatever its damage**
+  (`physics.combat.apply_damage`'s `struck`, the tick's `first_shooter`). Before, only
+  damage did, so a frontal hit that Yongma's and Jujak's armour turns to exactly nothing
+  (head-on fraction 0: within about 0.2 degrees of the nose in float32) left the wait
+  running.
+- **vizia left the real-scale set** (Yongma and Jujak remain, in that order). The game's
+  numbers for the presets are unchanged (vizia was type 2; the lineups fly types 0 and 1);
+  the real-scale card has 2 types instead of 3.
+
+Ratings and records of version 21 or earlier are not reused for version-22 games.
 """
 
-VERSION = 21
+VERSION = 22

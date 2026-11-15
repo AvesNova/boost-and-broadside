@@ -181,8 +181,7 @@ The menu (the top bar's menu button, or Escape) pauses a live match and offers *
 
 **New match** chooses the mode, the map (**Standard**, **Wide**, **Real scale**: the
 [real-scale variant](../explanation/game/real-scale.md), where a metre is a metre and the
-types are Yongma, Jujak and vizia, their P-51D-derived hull (with any type a player added
-after them), on a
+types are Yongma and Jujak (with any type a player added after them), on a
 map three times the standard one; or **Arena**: a 2v2 dogfight of a Yongma and a Jujak a
 team on a 1950 m map with no fields, a ship shot down back in the fight on the next
 tick, the `arena` preset in [Modes](../explanation/game/modes.md#clocks-and-presets); then

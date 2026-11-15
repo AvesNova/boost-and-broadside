@@ -7,8 +7,9 @@ covers: [src/bnb/reference/real_planes.py, src/bnb/reference/real-plane-types/]
 The real-scale set was first built from research: 18 late-war fighters (the P-51D first)
 and 8 invented designs given as multipliers of the P-51D, each quantity with its confidence
 and source, converted to handles and solved into cards. On 2026-11-13 the author dropped
-those types from the game: the set now holds only the ships the game uses, Yongma and Jujak
-and vizia, the P-51D-derived hull both come from ([The real-scale variant](real-scale.md)).
+those types from the game: the set now holds only the ships the game uses, Yongma and Jujak ([The real-scale
+variant](real-scale.md)); vizia, the P-51D-derived hull both were derived from, left the set
+on 2026-11-15.
 The research stays, as reference data that no game preset loads:
 
 - `bnb.reference.real_planes.AIRCRAFT`: every plane's researched quantities (SI;

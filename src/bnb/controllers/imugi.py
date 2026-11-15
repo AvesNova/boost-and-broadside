@@ -14,12 +14,12 @@ from bnb.contracts import Action, Obs, Outputs
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.game.handling.characteristics import Characteristics
 from bnb.game.modes.rules import PRESETS
-from bnb.game.rules import FlightConstants, Rules, rules_of
+from bnb.game.rules import Rules
 from bnb.streams import action_uniforms, inverse_cdf, purpose_key, row_uniforms
 
 from .imugi_combat import Marginals, combat, context
 from .imugi_defaults import MODE_DEFAULTS
-from .imugi_doctrine import for_card
+from .imugi_doctrine import for_card, real_scale_card
 from .imugi_frontline import frontline
 from .imugi_memory import (
     ImugiCarry,
@@ -44,19 +44,6 @@ WIDE_ARENA_IN_GUN_RANGES = (
     math.sqrt(PRESETS["deathmatch"].arena_radius * PRESETS["deathmatch_wide"].arena_radius)
     / STANDARD_GUN_RANGE
 )
-
-
-# A card plays the real-scale sets when its gravity is nearer (in log) the real-scale set's
-# than the standard game's (27 m/s^2; the real-scale set's 39.24 at its native x2 speed since
-# game v13, 9.81 before).
-STANDARD_GRAVITY = FlightConstants.gravity
-REAL_SCALE_GRAVITY = rules_of(PRESETS["real_scale_deathmatch"]).flight.gravity
-
-
-def real_scale_card(gravity: torch.Tensor) -> torch.Tensor:
-    """Whether a card with this gravity plays the real-scale sets (`REAL_SCALE_GRAVITY`)."""
-    log = torch.log(gravity)
-    return (log - math.log(REAL_SCALE_GRAVITY)).abs() < (log - math.log(STANDARD_GRAVITY)).abs()
 
 
 def mode_index(obs: Obs, characteristics: Characteristics) -> torch.Tensor:

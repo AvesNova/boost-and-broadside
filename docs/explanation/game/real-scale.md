@@ -75,8 +75,10 @@ rules keep it (a player's type that stalls faster starts in a stall).
 
 The set holds the ships the game uses: Yongma (the energy fighter) and Jujak (the turn
 fighter), the release's two archetypes, first (the game's default lineup alternates the
-first two types, so every real-scale preset without a lineup of its own flies them), then
-vizia, the P-51D-derived hull both derive from ([Two archetypes](ship-design/archetypes.md)).
+first two types, so every real-scale preset without a lineup of its own flies them). Both
+were derived from vizia, a P-51D-derived hull ([Two archetypes](ship-design/archetypes.md));
+vizia left the set on 2026-11-15, and each archetype's file records the values it took from
+it in its notes.
 The arena's lineup and the play shell's default are Yongma and Jujak too. Player-made types
 share the pool: a type made with the tuning panel's **Add a copy as this name** (or written
 by hand) goes after them, in the set's `order.toml`, and has only to be a valid ship file
