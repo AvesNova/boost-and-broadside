@@ -14,6 +14,8 @@ import json
 import pathlib
 import tomllib
 
+import numpy
+
 from bnb.controllers import imugi_doctrine
 from bnb.game import ships
 
@@ -32,7 +34,6 @@ REASONS = {
     "nose_reversal_time": "the Fw 190A-8's 0.249 s, the real fastest roll (real 0.249-0.623)",
     "dive_acceleration": "the A6M5's 43.6, the real floor (real 43.6-44.3): no dive escape",
     "zero_lift_drag": "7.0e-5 (real 4.97e-5 to 1.06e-4; the Bf 109K-4's 7.03e-5): the draggiest of the three",
-    "hit_damage": "x1.2 Jujak's 19.19 (Yongma's 22.98): the set's own damage scale",
     "max_shield": "between Jujak's 80 and Yongma's 142",
 }
 
@@ -69,7 +70,13 @@ def main() -> None:
             notes[name] = "Jujak's"
         else:
             notes[name] = SOURCE
-    ship = ships.Ship(KEY, NAME, handles, dict(entry["card"]), notes)
+    notes["hit_damage"] = (
+        f"x{handles['hit_damage'] / 19.1877:.3f} Jujak's 19.19 (Yongma's 22.98): the set's own "
+        "damage scale, tuned for the balance"
+    )
+    # the card as the game stores it: float32 values (a combat-only variant's are float64)
+    card = {k: float(numpy.float32(v)) for k, v in entry["card"].items()}
+    ship = ships.Ship(KEY, NAME, handles, card, notes)
     order = tomllib.loads((directory / "order.toml").read_text())["order"]
     if KEY in order:
         ships.write_ship(ship, SET)

@@ -217,6 +217,15 @@ Version 22 (2026-11-15, the final freeze check, docs/rewrite/sections/freeze-fin
   the real-scale card has 2 types instead of 3.
 
 Ratings and records of version 21 or earlier are not reused for version-22 games.
+
+Version 23 (2026-11-16, branch tune/third-ship only, never merged): **Bonghwang**, the
+power-and-roll fighter, joins the real-scale set as type 2 (Yongma 0, Jujak 1, Bonghwang 2;
+docs/rewrite/sections/third-ship/results.md), with its Imugi doctrine; Jujak's card is the
+energy-turn balance's (tune/balance-final's version 23: sustained turn x0.93). The presets'
+lineups still fly types 0 and 1; the maps bonghwang-mirror, bonghwang-jujak, bonghwang-yongma
+and three-ships fly Bonghwang. (tune/balance-final's own version 23 is Jujak's change alone.)
+
+Ratings and records of version 22 or earlier are not reused for version-23 games.
 """
 
-VERSION = 22
+VERSION = 23

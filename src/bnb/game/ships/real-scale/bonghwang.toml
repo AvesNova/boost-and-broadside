@@ -1,0 +1,113 @@
+# Bonghwang: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Bonghwang'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 94.4
+g_limit = 7.0
+cruise_speed = 330.0
+climb_time = 290.0
+ceiling = 497563.2
+low_speed_acceleration = 18.97
+sustained_turn_rate = 0.63
+half_lift_drag = 0.25
+nose_reversal_time = 0.2493
+dive_acceleration = 43.608
+zoom_acceleration = -34.87186437287164
+stall_angle = 0.27052603405912107
+vision_range = 1000.0
+zero_lift_drag = 7e-05
+hit_damage = 22.4496
+explosive_share = 0.0
+fire_rate = 30.0
+muzzle_speed = 1712.0
+bullet_spread = 3.0844823457636035
+gun_range = 584.34
+bullet_drag = 0.0005
+shots_per_store = 865.24
+max_shield = 115.0
+shield_recharge_rate = 24.0
+shield_recharge_delay = 3.0
+head_on_fraction = 0.0
+head_on_angle = 0.7853981633974483
+head_on_sharpness = 3.0
+arming_distance = 0.0
+hit_radius = 12.0
+core_radius = 5.0
+spawn_energy = 199025.28000000003
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.004403368104249239
+max_acceleration = 274.67999267578125
+zero_lift_drag = 7.000000186963007e-05
+engine_power = 11558.27734375
+engine_power_full_store = 3019.5478515625
+static_thrust = 122.43524169921875
+max_energy = 497563.1875
+corner_nose_frequency = 15.24174690246582
+max_shield = 115.0
+hit_radius = 12.0
+core_radius = 5.0
+hit_damage = 22.449600219726562
+muzzle_speed = 1712.0
+bullet_energy_cost = 575.0580444335938
+fire_rate = 30.0
+bullet_life = 0.3333333432674408
+spawn_energy = 199025.28125
+explosive_share = 0.0
+reference_bullet_speed = 1757.565673828125
+bleed_exponent = 2.0
+induced_drag_scale = 0.6319888830184937
+stall_angle_scale = 1.0333333015441895
+coast_exchange_scale = 23.738475799560547
+dive_exchange_scale = 4.384789943695068
+climb_exchange_scale = 3.4078874588012695
+vision_range_scale = 0.3255208432674408
+bullet_spread_scale = 0.25704020261764526
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 2.0
+shield_recharge_delay_scale = 0.5
+head_on_fraction_scale = 0.0
+head_on_angle_scale = 1.0644670724868774
+head_on_sharpness = 3.0
+arming_distance = 0.0
+engine_knee_scale = 1.0
+fine_stick = 0.21501407027244568
+sustained_stick = 0.716713547706604
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "the Bf 109K-4's 94.4 (real 75-105.6): a heavy wing; the power-and-roll fighter"
+g_limit = "the Fw 190A-8's and Bf 109K-4's 7 (real 6-8)"
+cruise_speed = "330 (real 261-336; the Bf 109K-4's 330.6)"
+climb_time = "the Tempest V's 290 s, the real best (real 290-555)"
+ceiling = "Jujak's"
+low_speed_acceleration = "the Bf 109K-4's 18.97, the real best (real 8.87-18.97)"
+sustained_turn_rate = "0.63 rad/s, between Yongma's and Jujak's (real 0.503-0.785)"
+half_lift_drag = "Jujak's"
+nose_reversal_time = "the Fw 190A-8's 0.249 s, the real fastest roll (real 0.249-0.623)"
+dive_acceleration = "the A6M5's 43.6, the real floor (real 43.6-44.3): no dive escape"
+zoom_acceleration = "Jujak's"
+stall_angle = "Jujak's"
+vision_range = "Jujak's"
+zero_lift_drag = "7.0e-5 (real 4.97e-5 to 1.06e-4; the Bf 109K-4's 7.03e-5): the draggiest of the three"
+hit_damage = "x1.170 Jujak's 19.19 (Yongma's 22.98): the set's own damage scale, tuned for the balance"
+explosive_share = "Jujak's"
+fire_rate = "Jujak's"
+muzzle_speed = "Jujak's"
+bullet_spread = "Jujak's"
+gun_range = "the third-ship search (docs/rewrite/sections/third-ship/results.md, 2026-11-16)"
+bullet_drag = "Jujak's"
+shots_per_store = "the third-ship search (docs/rewrite/sections/third-ship/results.md, 2026-11-16)"
+max_shield = "between Jujak's 80 and Yongma's 142"
+shield_recharge_rate = "Jujak's"
+shield_recharge_delay = "Jujak's"
+head_on_fraction = "Jujak's"
+head_on_angle = "Jujak's"
+head_on_sharpness = "Jujak's"
+arming_distance = "Jujak's"
+hit_radius = "Jujak's"
+core_radius = "Jujak's"
+spawn_energy = "Jujak's"
