@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from bnb.contracts import REWARD_LEVELS, Obs
+from bnb.contracts import VALUE_LEVELS, Obs
 from bnb.contracts.action import NUM_JOINT
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.contracts.tree import contract
@@ -43,21 +43,22 @@ class RelationalConfig:
     hidden: int = 256
     value_bins: int = 77  # symlog bins 0.079 apart, one at 0 (as 51 over +-2 were)
     value_limit: float = 3.0  # symlog: +-19 in reward units
-    levels: tuple[str, ...] = REWARD_LEVELS
+    levels: tuple[str, ...] = VALUE_LEVELS
     outcome_level: str = "outcome"
     bfloat16_matmuls: bool = False
 
     @property
     def local_levels(self) -> tuple[int, ...]:
-        """The indices into levels of every level but outcome_level: the levels with a value
-        distribution."""
-        return tuple(i for i, name in enumerate(self.levels) if name != self.outcome_level)
+        """The indices into levels of the per-ship levels (`critic.local_levels`): the levels
+        with a value distribution."""
+        return critic.local_levels(self.levels, self.outcome_level)
 
 
 @contract
 class Unrolled:
     """A segment's outputs, (L, R, ...) leading: policy_logits (S, 42), value_logits
-    (S, levels - 1, bins), values (S, levels), outcome_logits (4). The model has no other heads."""
+    (S, per-ship levels, bins), values (S, levels), outcome_logits (4). The model has no other
+    heads."""
 
     policy_logits: torch.Tensor
     value_logits: torch.Tensor
@@ -173,7 +174,7 @@ class Relational(nn.Module):
         self.body = nn.Sequential(
             nn.Linear(inputs, hidden), nn.GELU(), nn.Linear(hidden, hidden), nn.GELU()
         )
-        levels = len(config.levels) - 1
+        levels = len(config.local_levels)
         self.policy = nn.Linear(hidden, NUM_JOINT)
         self.value = nn.Linear(hidden, levels * config.value_bins)
         self.outcome = nn.Linear(hidden, critic.OUTCOMES)
@@ -206,8 +207,8 @@ class Relational(nn.Module):
             value_logits,
             outcome_logits,
             self.bins,
-            config.local_levels,
-            config.levels.index(config.outcome_level),
+            config.levels,
+            config.outcome_level,
         )
         return Unrolled(
             policy_logits=policy_logits.float(),

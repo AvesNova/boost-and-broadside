@@ -17,7 +17,7 @@ from typing import ClassVar
 import torch
 import torch.nn as nn
 
-from bnb.contracts import REWARD_LEVELS, Obs
+from bnb.contracts import VALUE_LEVELS, Obs
 from bnb.contracts.action import NUM_JOINT
 from bnb.contracts.obs import SHIP
 from bnb.contracts.tree import contract
@@ -106,12 +106,14 @@ class YemongConfig:
     """Production defaults (v1's known-good run). Nothing in the weights depends on the
     numbers of ships or fields or on the arena.
 
-    levels: the critic's value levels in their configured order; outcome_level names the one
-    read off the global token (the others are per-ship categorical values). None: no
-    outcome head, every level per-ship. The learner reads each level's reward by its name
-    (`bnb.learn.returns.value_rewards`): the reward levels' own (the default), or the single
-    level `bnb.contracts.SUMMED_LEVEL` over their sum, with outcome_level None (the single
-    value arm: one per-ship value over one reward stream, and no outcome head).
+    levels: the critic's value levels in their configured order, by default each reward
+    level's offence and defence (`bnb.contracts.VALUE_LEVELS`, the layout the learner
+    trains); outcome_level names the reward level read off the global token, whose parts
+    are P(win) and -P(loss) (`critic.outcome_part`; the others are per-ship categorical
+    values). None: no outcome head, every level per-ship. Every build record since the
+    field (2026-11-01) holds it, so the default reads no stored build differently; a build
+    from before the split (2026-11-15) names the reward levels themselves, or the single
+    level `summed_reward`, and still plays.
     rotary_period, rotary_octaves, rotary_ratio, rotary_turn: the rotary position bands.
     Band k < rotary_octaves (the bands, octaves at ratio 2) has the period rotary_period /
     rotary_ratio^k (m; the first is the coarsest) and reads the relative position along two
@@ -249,7 +251,7 @@ class YemongConfig:
     map_width: int = 64
     value_bins: int = 77  # symlog bins 0.079 apart, one at 0 (as 51 over +-2 were)
     value_limit: float = 3.0  # symlog: +-19 in reward units
-    levels: tuple[str, ...] = REWARD_LEVELS
+    levels: tuple[str, ...] = VALUE_LEVELS
     outcome_level: str | None = "outcome"
     hex_rings: int = 10
     presence_radius: float = 150.0  # m
@@ -328,13 +330,7 @@ class YemongConfig:
             )
         if self.position_period <= 0.0:
             raise ValueError(f"position_period {self.position_period} must be positive")
-        if not self.levels or len(set(self.levels)) != len(self.levels):
-            raise ValueError(f"the critic's levels {self.levels} must be distinct, and some")
-        if self.outcome_level is not None:
-            if self.outcome_level not in self.levels:
-                raise ValueError(f"outcome level {self.outcome_level!r} is not in {self.levels}")
-            if len(self.levels) < 2:
-                raise ValueError("the critic needs at least one per-ship level besides the outcome")
+        critic.check_levels(self.levels, self.outcome_level)
         pairs = 2 * self.rotary_octaves + len(self.heading_harmonics)
         if 2 * pairs > self.width // self.heads:
             raise ValueError(
@@ -364,9 +360,9 @@ class YemongConfig:
 
     @property
     def local_levels(self) -> tuple[int, ...]:
-        """The indices into levels of every level but outcome_level (every level without
-        one): the levels with a value distribution."""
-        return tuple(i for i, name in enumerate(self.levels) if name != self.outcome_level)
+        """The indices into levels of the per-ship levels (`critic.local_levels`): the levels
+        with a value distribution."""
+        return critic.local_levels(self.levels, self.outcome_level)
 
 
 @contract
@@ -1081,8 +1077,8 @@ class Yemong(nn.Module):
             value_logits,
             outcome_logits,
             self.bins,
-            config.local_levels,
-            None if config.outcome_level is None else config.levels.index(config.outcome_level),
+            config.levels,
+            config.outcome_level,
         )
         return value_logits, values
 

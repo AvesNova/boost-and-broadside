@@ -72,25 +72,30 @@ def critic_values(
     local_logits: torch.Tensor,
     outcome_logits: torch.Tensor | None,
     bins: torch.Tensor,
-    local_levels: tuple[int, ...],
-    outcome_level: int | None,
+    levels: tuple[str, ...],
+    outcome_level: str | None,
 ) -> torch.Tensor:
     """(..., S, levels) values in the configured level order.
 
-    local_logits (..., S, per-ship levels, bins): per-ship levels, each the expectation over
-    the bins; outcome_logits (..., 4): the outcome level P(win) - P(loss), the same for every
-    ship. Without an outcome level (outcome_logits and outcome_level None) every level is
-    per-ship, in order.
+    local_logits (..., S, per-ship levels, bins): the per-ship levels in order
+    (`critic.local_levels`), each the expectation over the bins; outcome_logits (..., 4):
+    the outcome level's parts (`critic.outcome_part`), the same for every ship. Without an
+    outcome level (outcome_logits and outcome_level None) every level is per-ship.
     """
     if outcome_level is None:
         return critic.expectation(local_logits, bins)
-    local = critic.expectation(local_logits, bins).unbind(-1)
-    outcome = critic.outcome_values(torch.softmax(outcome_logits, -1))[..., None]
-    outcome = outcome.expand(local[0].shape)  # levels >= 2: at least one per-ship level
-    columns = {level: column for level, column in zip(local_levels, local)}
-    columns[outcome_level] = outcome
+    local = iter(critic.expectation(local_logits, bins).unbind(-1))
+    probabilities = torch.softmax(outcome_logits, -1)
+    shape = local_logits.shape[:-2]  # (..., S)
+    columns = []
+    for name in levels:
+        part = critic.outcome_part(name, outcome_level)
+        if part is None:
+            columns.append(next(local))
+        else:
+            columns.append(critic.outcome_part_values(probabilities, part)[..., None].expand(shape))
     # Stacked from slices (no index tensor), so eager CUDA-graph capture needs no host copy.
-    return torch.stack([columns[level] for level in range(len(columns))], -1)
+    return torch.stack(columns, -1)
 
 
 class ShotTrajectoryHead(nn.Module):

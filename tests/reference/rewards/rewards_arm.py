@@ -20,9 +20,18 @@ class RewardsArm:
     accumulate_ledger = staticmethod(rewards.accumulate_ledger)
     attribute_recharge = staticmethod(rewards.attribute_recharge)
     enemy_team_share = staticmethod(rewards.enemy_team_share)
-    outcome_events = staticmethod(rewards.outcome_events)
     kill_death_events = staticmethod(rewards.kill_death_events)
-    damage_events = staticmethod(rewards.damage_events)
+
+    @staticmethod
+    def outcome_events(team, result, done):
+        win_loss = torch.stack([result.clamp_min(0.0), (-result).clamp_min(0.0)], -1)
+        return rewards.outcome_events(team, win_loss, done).sum(-1, keepdim=True)
+
+    @staticmethod
+    def damage_events(*arguments):
+        events = rewards.damage_events(*arguments)
+        charge_back = events[..., 4] + events[..., 5]
+        return torch.cat([events[..., :4], charge_back[..., None], events[..., 6:]], -1)
 
     roles_from_front = staticmethod(frontline.roles_from_front)
     terminal_distances = staticmethod(frontline.terminal_distances)

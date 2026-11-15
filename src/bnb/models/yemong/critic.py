@@ -1,10 +1,17 @@
 """Critic distributions and the return scale (spec 8): categorical values over symlog bins,
 the outcome classes and their lambda targets, and the percentile scale of returns.
+
+The critic's value levels are named (`bnb.contracts.VALUE_LEVELS`: each reward level's
+offence and defence); the outcome level's are read off the outcome head (`outcome_part`),
+every other level has a categorical value per ship. A build from before the split names the
+reward levels themselves, and its outcome level is P(win) - P(loss) whole.
 """
 
 import torch
 
-from .codes import two_hot_at
+from bnb.contracts import level_part
+
+from .codes import HL_GAUSS_SIGMA, hl_gauss
 
 WIN, TIE, LOSS, UNRESOLVED = range(4)
 OUTCOMES = 4
@@ -25,14 +32,16 @@ def value_bins(count: int, limit: float, dtype=torch.float32, device=None) -> to
     return symexp(torch.linspace(-limit, limit, count, dtype=dtype, device=device))
 
 
-def two_hot(values: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
-    """(...) to (..., bins): the two neighbouring bins, linearly weighted."""
+def value_targets(values: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
+    """(...) to (..., bins): the critic's HL-Gauss target (Farebrother et al. 2024, "Stop
+    Regressing"), the Gaussian of `codes.HL_GAUSS_SIGMA` bin widths at the value's position
+    on the symlog bins, integrated over each bin and renormalised over them
+    (`codes.hl_gauss`). The bins are evenly spaced in symlog (`value_bins`); a value past
+    the outer bins is clamped to them."""
     count = bins.shape[0]
-    values = torch.clamp(values, bins[0], bins[-1])
-    upper = torch.clamp(torch.searchsorted(bins, values.contiguous(), right=True), 1, count - 1)
-    lower = upper - 1
-    weight = torch.clamp((values - bins[lower]) / (bins[upper] - bins[lower]), 0.0, 1.0)
-    return two_hot_at(lower, weight, count)
+    low, high = symlog(bins[0]), symlog(bins[-1])
+    position = (symlog(values).clamp(low, high) - low) * ((count - 1) / (high - low))
+    return hl_gauss(position, 0, count - 1, HL_GAUSS_SIGMA)
 
 
 def expectation(logits: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
@@ -44,6 +53,49 @@ def expectation(logits: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
 def outcome_values(probabilities: torch.Tensor) -> torch.Tensor:
     """P(win) - P(loss)."""
     return probabilities[..., WIN] - probabilities[..., LOSS]
+
+
+def outcome_part(level: str, outcome_level: str | None) -> str | None:
+    """What the outcome head gives the value level `level`: "offence" (P(win), the outcome's
+    offence), "defence" (-P(loss)), "whole" (P(win) - P(loss), a build's level named
+    `outcome_level` itself), or None, a per-ship level (every level without an outcome
+    level)."""
+    if outcome_level is None:
+        return None
+    if level == outcome_level:
+        return "whole"
+    for part in ("offence", "defence"):
+        if level == level_part(outcome_level, part):
+            return part
+    return None
+
+
+def outcome_part_values(probabilities: torch.Tensor, part: str) -> torch.Tensor:
+    """(...) the value of an outcome part (`outcome_part`) from the outcome probabilities
+    (..., 4): P(win), -P(loss) or P(win) - P(loss). The parts sum to the whole."""
+    if part == "offence":
+        return probabilities[..., WIN]
+    if part == "defence":
+        return -probabilities[..., LOSS]
+    return outcome_values(probabilities)
+
+
+def local_levels(levels: tuple[str, ...], outcome_level: str | None) -> tuple[int, ...]:
+    """The indices into levels of the per-ship levels, every level the outcome head does not
+    give (`outcome_part`): the levels with a value distribution."""
+    return tuple(i for i, name in enumerate(levels) if outcome_part(name, outcome_level) is None)
+
+
+def check_levels(levels: tuple[str, ...], outcome_level: str | None) -> None:
+    """Refuse a critic layout: levels not distinct or none; an outcome level the head gives
+    no level of; no per-ship level."""
+    if not levels or len(set(levels)) != len(levels):
+        raise ValueError(f"the critic's levels {levels} must be distinct, and some")
+    given = [name for name in levels if outcome_part(name, outcome_level) is not None]
+    if outcome_level is not None and not given:
+        raise ValueError(f"outcome level {outcome_level!r} gives none of {levels}")
+    if len(given) == len(levels):
+        raise ValueError("the critic needs at least one per-ship level besides the outcome")
 
 
 def final_outcome(win_loss: torch.Tensor) -> torch.Tensor:

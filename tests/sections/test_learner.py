@@ -10,7 +10,6 @@ import math
 import learner_cases as lc
 import pytest
 import torch
-import torch.nn.functional as F
 import yemong_cases as cases
 from torch.utils import _pytree
 
@@ -133,15 +132,18 @@ def test_an_own_privileged_row_is_its_observed_row():
 # ------------------------------------------------------------------ the loss terms
 
 
-def _independent_two_hot(values: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
-    values = values.clamp(bins[0], bins[-1])
-    upper = torch.bucketize(values, bins, right=True).clamp(1, bins.numel() - 1)
-    lower = upper - 1
-    weight = ((values - bins[lower]) / (bins[upper] - bins[lower])).clamp(0, 1)
-    return (
-        F.one_hot(lower, bins.numel()) * (1 - weight)[..., None]
-        + F.one_hot(upper, bins.numel()) * weight[..., None]
+def _independent_hl_gauss(values: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
+    """The Gaussian of 0.75 bins at the value's symlog position, integrated over each bin
+    (edges halfway between the centres, the outer ones half a bin out) and renormalised."""
+    position = torch.sign(values) * torch.log1p(values.abs())
+    centres = torch.sign(bins) * torch.log1p(bins.abs())
+    position = position.clamp(centres[0], centres[-1])
+    width = centres[1] - centres[0]
+    edges = torch.cat(
+        [centres[:1] - width / 2, (centres[1:] + centres[:-1]) / 2, centres[-1:] + width / 2]
     )
+    mass = torch.special.ndtr((edges - position[..., None]) / (0.75 * width)).diff(dim=-1)
+    return mass / mass.sum(-1, keepdim=True)
 
 
 def _grouped_cross_entropy(logits, target, runs) -> torch.Tensor:
@@ -208,14 +210,12 @@ def test_each_loss_term_matches_an_independent_computation(segment):
     # value: per-ship levels over valued ships, the outcome per view-step
     valued = own_alive | (ships[..., :OWN, SHIP["respawn_wait"]] > 0)
     expected = []
-    for level in range(5):
-        if level == 4:
-            ce = -(derived["outcome_targets"] * out.outcome_logits.log_softmax(-1)).sum(-1)
-            expected.append(ce.mean())
-        else:
-            target = _independent_two_hot(derived["level_returns"][..., level], net.bins)
-            ce = -(target * out.value_logits[..., level, :].log_softmax(-1)).sum(-1)
-            expected.append(ce[valued].mean())
+    for head in range(len(learner.value_heads) - 1):  # each per-ship part, in order
+        target = _independent_hl_gauss(derived["level_returns"][..., head], net.bins)
+        ce = -(target * out.value_logits[..., head, :].log_softmax(-1)).sum(-1)
+        expected.append(ce[valued].mean())
+    ce = -(derived["outcome_targets"] * out.outcome_logits.log_softmax(-1)).sum(-1)
+    expected.append(ce.mean())  # the outcome head
     torch.testing.assert_close(per_level, torch.stack(expected), rtol=1e-5, atol=1e-6)
     assert math.isclose(got["value"], sum(e.item() for e in expected), rel_tol=1e-5)
 

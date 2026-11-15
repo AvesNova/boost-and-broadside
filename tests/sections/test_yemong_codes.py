@@ -191,13 +191,26 @@ def test_a_ship_on_a_grid_triangle_s_diagonal_counts_no_negative_weight():
     assert not torch.special.xlogy(counts, counts).isnan().any()
 
 
-def test_value_bins_and_two_hot():
-    bins = critic.value_bins(51, 2.0, dtype=torch.float64)
-    values = torch.linspace(-6.0, 6.0, 101, dtype=torch.float64)
-    target = critic.two_hot(values, bins)
-    torch.testing.assert_close((target * bins).sum(-1), values)
-    logits = torch.log(target.clamp_min(1e-300))
-    torch.testing.assert_close(critic.expectation(logits, bins), values)
+def test_the_value_targets_are_hl_gauss_on_the_symlog_bins():
+    """Away from the edges an HL-Gauss target's mean position on the symlog bins is the
+    value's, and its spread 0.75 bin widths (with the bin's own width, sigma^2 + 1/12); past
+    the outer bins it is the edge's target."""
+    count, limit = 77, 3.0
+    bins = critic.value_bins(count, limit, dtype=torch.float64)
+    width = 2.0 * limit / (count - 1)
+    inner = torch.linspace(-2.5, 2.5, 101, dtype=torch.float64)  # symlog, 6+ bins inside
+    values = critic.symexp(inner)
+    target = critic.value_targets(values, bins)
+    torch.testing.assert_close(target.sum(-1), torch.ones_like(inner))
+    position = critic.symlog(bins)
+    mean = (target * position).sum(-1)
+    torch.testing.assert_close(mean, inner)
+    spread = ((target * (position - inner[:, None]) ** 2).sum(-1)).sqrt() / width
+    expected = torch.full_like(inner, (0.75**2 + 1 / 12) ** 0.5)  # Sheppard: the bin width
+    torch.testing.assert_close(spread, expected, rtol=1e-3, atol=0.0)
+    edge = critic.value_targets(torch.tensor([1e6, -1e6], dtype=torch.float64), bins)
+    torch.testing.assert_close(edge, critic.value_targets(bins[[-1, 0]], bins))
+    assert edge[0, -1] > edge[0, -2] > 0.0
 
 
 def test_the_outcome_targets_end_on_the_win_loss_weights():
