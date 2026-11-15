@@ -1,23 +1,27 @@
 # GRU temporal block (arm A16): progress
 
-## RESUME NOTE (2026-11-15 20:53, laptop shutdown)
-- Done: the option (`YemongConfig.temporal_block` "griffin" default / "gru"), tests
-  (`tests/sections/test_yemong_gru.py`, 13 passed CPU), ONNX export test with a "gru" case
-  (passed with "absolute"), docs (`docs/explanation/yemong.md`), docs tests 609 passed.
-  `.venv` was committed by mistake in 1f9af644 and untracked in a later commit.
-- Not done: timing. No numbers yet. Power mode was "performance".
-  - griffin run failed at 20:35: the shared .venv was being rebuilt (libdevice parse error).
-  - gru run failed at ~20:51 in the rollout's CUDA-graph capture: "Cannot copy between CPU
-    and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned"
-    (`buf.copy_(arg391_1)` in the compiled step). UNDIAGNOSED: may be the GRU path or the
-    half-rebuilt venv; rerun griffin first, then gru, to tell. Logs were in the scratchpad
-    (lost on reboot).
-- Next: rerun `time_blocks.sh` (here; edit S= to a scratch dir) as a systemd unit, one
-  arm at a time; if gru repeats the capture error, find which CPU tensor the GRU step
-  feeds (the empty (R, blocks, Q, 0, D) buffer is the prime suspect: a zero-size tensor
-  may stay on the CPU or lose its device somewhere in the rollout's carry handling).
-  Then `sublayer_bench.py` (one sublayer, compiled, 8 and 40 views) for the multiplier;
-  merge origin/feat/imugi-boundary (17690eb7 ignores .venv); final report.
+## RESUME NOTE (2026-11-15 22:02, paused for the author)
+- Done: the option, tests (13 CPU) and ONNX case, docs (see step 1 below); merged
+  origin/feat/imugi-boundary (2da26701, no conflicts); `time_blocks.sh` now takes the block
+  as its argument and logs to the ignored `runs/gru-timing/`.
+- KEY FINDING: the CUDA-graph capture failure is NOT the GRU's. Griffin (the default)
+  fails identically on this tree (21:43-22:00, power "performance"): `rollout.py:431 _act`
+  during `_capture`, "Cannot copy between CPU and CUDA tensors during CUDA graph capture
+  unless the CPU tensor is pinned". So it comes from the merged imugi-boundary tree
+  (split critic or later) with this preset (real_scale_all_modes, league lineup,
+  host_store=true), not from the GRU block. A small repro (tests' SHORT_SQUAD,
+  learner vs chaser, 16 envs, float32, no host_store) captures fine with the GRU.
+  Log: `runs/gru-timing/time-griffin.log`.
+- Timing: no numbers yet.
+- Note: the run sits at the 8G MemoryMax and swaps (~2 GB) while compiling: ~17 min to
+  the capture.
+- Resume: (1) find the CPU tensor fed in `_act` under capture with the full preset: rerun
+  griffin with `TORCH_LOGS=output_code` and look for `empty_strided_cpu` / a CPU
+  argument; suspects: the league `OpponentSlots` path, the split critic, host_store.
+  Tell the coordinator (it affects every arm, not just A16). (2) after the fix:
+  `systemd-run --user --unit=gru-timing -p MemoryMax=8G --wait --collect -E PATH=$PATH
+  /bin/bash /home/vizia/avesnova/bnb-gru/docs/rewrite/sections/gru/time_blocks.sh griffin`,
+  then `... gru`; (3) `sublayer_bench.py` (8 and 40 views); report GRU/Griffin multipliers.
 
 Branch `feat/gru-temporal` (from `feat/imugi-boundary`).
 
