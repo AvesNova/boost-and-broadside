@@ -1,5 +1,6 @@
 """The `bnb` command: `bnb train` trains or clones, `bnb runs` lists runs and uploads
-checkpoints, `bnb ship-card` charts a ship card, `bnb ratings` and `bnb head-to-head` rate
+checkpoints, `bnb average` builds averages of a run's weights after training, `bnb ship-card`
+charts a ship card, `bnb ratings` and `bnb head-to-head` rate
 policies, `bnb crossover` finds the ratio of a policy's ships to the scripted agent's
 at which it wins half its games, `bnb evaluate` decides between two policies, `bnb figures`
 draws what a policy's heads have learned and films it playing.

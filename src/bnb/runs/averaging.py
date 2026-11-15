@@ -362,7 +362,8 @@ def _evaluation_steps(average: AverageSpec, spec: Spec, facts: RunFacts) -> list
 def plan(spec: Spec, facts: RunFacts) -> tuple[list[Accumulator], list[Output]]:
     """The accumulators that fold the spec's averages (one per average and start, shared by
     its evaluation points where the folded updates are a prefix of each other's) and the
-    live outputs, which need no folding."""
+    live outputs, which need no folding. An evaluation point before an average's start has
+    no output."""
     accumulators: list[Accumulator] = []
     lives: list[Output] = []
     updates = facts.updates
@@ -410,10 +411,10 @@ def plan(spec: Spec, facts: RunFacts) -> tuple[list[Accumulator], list[Output]]:
             outputs: dict[int, list[Output]] = {}
             for end in group_ends:
                 taken = tuple(step for step in folded if step <= end)
-                if not taken:
-                    raise ValueError(f"{name}: no update to average by step {end}")
-                outputs.setdefault(end, []).append(Output(name, end, taken))
-            accumulators.append(Accumulator(kind, decay, folded, outputs, average))
+                if taken:  # else the point is before the average's start: none there
+                    outputs.setdefault(end, []).append(Output(name, end, taken))
+            if outputs:
+                accumulators.append(Accumulator(kind, decay, folded, outputs, average))
     return accumulators, lives
 
 
@@ -524,6 +525,8 @@ def build(
     for average in spec.averages:
         name = average.name(facts)
         for end in _evaluation_steps(average, spec, facts):
+            if (name, end) not in paths:  # before the average's start
+                continue
             player = player_name(run, paths[(name, end)])
             if player not in names:
                 names.append(player)
