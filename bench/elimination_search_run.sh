@@ -81,6 +81,10 @@ explore)  # the explore search (tight and wide spacing) against the old centre r
     GAMES=64 run "x-dm-$spacing" deathmatch explore.jsonl --imugi-search explore \
       --imugi-spacing $spacing
   done ;;
+frozen)  # the frozen game (version 21, the presets as they are) with today's Imugi
+  run v21-elimination elimination frozen.jsonl
+  run v21-frontline frontline frozen.jsonl
+  run v21-deathmatch deathmatch frozen.jsonl ;;
 deathmatch)  # the kill rate by search (tickets off, the preset's 600 s)
   for search in centre straight explore; do
     GAMES=64 run "dm-$search" deathmatch deathmatch.jsonl --imugi-search "$search"
