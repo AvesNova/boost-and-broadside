@@ -26,7 +26,7 @@ search-straight    23/66  [0.04]    35/76  [0.05]    44/100 [0.06]    53/129 [0.
 search-waypoint    19/36  [0.00]    25/57  [0.00]    35/75  [0.00]    45/97  [0.00]    67/134 [0.01]
 ```
 
-- **The teams see each other almost at once:** the first hit comes at 15 s in all three. Spawns are within vision range (3 km) of the middle. So the no-target rule decides little at the start; it decides how the last ships are found.
+- **The teams meet at once in all three:** the first hit comes at 15 s. That is the spawns' doing, not vision (a ship sees 1 km at real scale): with the old spawns every team knows where the other is and starts flying at it. The ships spawn nose toward the enemy area's centre, so "straight" flies there too, and "waypoint" heads for the enemy's spawn by construction. All three were handshakes at the start (corrected in section 8, with independent spawn centres).
 - **"Straight"** scatters the fight: the first death comes later (23 s) with a long tail (p90 298 s, 9% of games unfinished at 300 s), and 6% of deaths are ships flying into the still edge. It is the most "uncoupled" and the worst for game length.
 - **"Waypoint"** keeps the first four deaths where "centre" has them (19 / 25 / 35 / 45 s) and slows only the last one (67 s against 52 s): the hunt for the last ship takes longer without the agreed meeting point. Its tail (p90 172 s) is between the two. No boundary deaths.
 
@@ -115,7 +115,7 @@ The cap changes almost nothing (the uncapped power-3 law starts at 195 m/s, the 
 | straight | 4.34 | 0.98 | 3.9 s |
 | waypoint | 4.62 | 1.13 | 5.1 s |
 
-The standard error of each mean is about 0.14, so centre and waypoint are the same, and straight is about 0.35 lower (2.5 SE). The deathmatch map is small enough (4.2 km, vision 3 km) that the search barely matters. The ticket calculation (4.57 per team per minute, 40 tickets for 80% of games ending by tickets within 10 minutes) stands with the waypoint search.
+The standard error of each mean is about 0.14, so centre and waypoint are the same, and straight is about 0.35 lower (2.5 SE). The deathmatch map is small (4.2 km) and its spawn groups are random over it, so the search barely matters. The ticket calculation (4.57 per team per minute, 40 tickets for 80% of games ending by tickets within 10 minutes) stands with the waypoint search.
 
 ## 7. Summary and recommendation
 
