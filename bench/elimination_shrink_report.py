@@ -1,35 +1,55 @@
-"""Elimination shrink sweep: per (start, duration), game length and how much the boundary bears."""
+"""Elimination shrink sweep (`bench/elimination_shrink_run.sh`): per shrink start (hold) and
+duration, game length (mean, median, 80th and 90th percentiles) and how much the boundary
+bears: the share of games ended before the shrink starts, the shares ending with the
+boundary below 75% and 50% of the arena radius (linear law, end fraction taken as 0), the
+boundary's share of deaths, the share of games with a boundary death, and clock ends.
+
+Usage: python bench/elimination_shrink_report.py DATA.jsonl
+"""
 
 import collections
 import json
 import statistics
 import sys
 
-games, meta = collections.defaultdict(list), {}
-for line in open(sys.argv[1]):
-    r = json.loads(line)
-    games[r["label"]] += r["games"]
-    meta[r["label"]] = r
+TICKS_PER_SECOND = 30
 
 
-def q(xs, p):
-    xs = sorted(xs)
-    return xs[min(int(p * len(xs)), len(xs) - 1)]
+def percentile(values: list[float], share: float) -> float:
+    ordered = sorted(values)
+    return ordered[min(int(share * len(ordered)), len(ordered) - 1)]
 
 
-print(
-    "start dur clock |  mean median  p80  p90 | ended before start | radius<75% at end | <50% | boundary deaths | games w/ one | clock ends"
-)
-for label, g in games.items():
-    hold, dur = (int(x[1:]) for x in label.split("_"))
-    clock = hold + dur + 8
-    t = [x["end_tick"] / 30 for x in g]
-    frac = [1 - min(max((s - hold) / dur, 0), 1) for s in t]
-    deaths = sum(x["deaths"] for x in g)
-    bd = sum(x["boundary_deaths"] for x in g)
-    n = len(g)
+def main(path: str) -> None:
+    games = collections.defaultdict(list)
+    with open(path) as lines:
+        for line in lines:
+            record = json.loads(line)
+            games[record["label"]] += record["games"]
     print(
-        f"{hold:5d} {dur:3d} {clock:5d} | {statistics.mean(t):5.0f} {statistics.median(t):6.0f} {q(t, 0.8):4.0f} {q(t, 0.9):4.0f} |"
-        f" {sum(s < hold for s in t) / n:18.2f} | {sum(f < 0.75 for f in frac) / n:17.2f} | {sum(f < 0.5 for f in frac) / n:4.2f} |"
-        f" {bd / deaths:15.3f} | {sum(x['boundary_deaths'] > 0 for x in g) / n:12.2f} | {sum(not x['by_rule'] for x in g) / n:10.2f}"
+        "start duration clock |  mean median  p80  p90 | before start | <75% | <50% |"
+        " boundary deaths | games with one | clock ends"
     )
+    for label, played in games.items():
+        hold, duration = (int(part[1:]) for part in label.split("_"))
+        clock = hold + duration + 8
+        seconds = [game["end_tick"] / TICKS_PER_SECOND for game in played]
+        fractions = [1 - min(max((second - hold) / duration, 0), 1) for second in seconds]
+        deaths = sum(game["deaths"] for game in played)
+        boundary = sum(game["boundary_deaths"] for game in played)
+        count = len(played)
+        print(
+            f"{hold:5d} {duration:8d} {clock:5d} |"
+            f" {statistics.mean(seconds):5.0f} {statistics.median(seconds):6.0f}"
+            f" {percentile(seconds, 0.8):4.0f} {percentile(seconds, 0.9):4.0f} |"
+            f" {sum(second < hold for second in seconds) / count:12.2f} |"
+            f" {sum(fraction < 0.75 for fraction in fractions) / count:4.2f} |"
+            f" {sum(fraction < 0.5 for fraction in fractions) / count:4.2f} |"
+            f" {boundary / deaths:15.3f} |"
+            f" {sum(game['boundary_deaths'] > 0 for game in played) / count:14.2f} |"
+            f" {sum(not game['by_rule'] for game in played) / count:10.2f}"
+        )
+
+
+if __name__ == "__main__":
+    main(sys.argv[1])
