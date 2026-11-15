@@ -42,3 +42,10 @@ Branch `feat/gru-temporal` (from `feat/imugi-boundary`).
   a start forgets; model unroll = step loop in both orders; trains; bf16 autocast;
   policy file round trip; the --set line).
 - Next: the ONNX export test for the GRU, then GPU timing.
+
+## 2026-11-16 04:16 step 2: merge
+- Merged origin/feat/imugi-boundary (graph-capture fix 71629552, HL-Gauss codes, head
+  switches, Yemong v9) as a7a295e6: two conflicts, both keep-both (the config fields and
+  checks; the ONNX cases gain "gru" next to the A13 ones). `.venv` untracked. 130 passed
+  (quick tier: gru, export, model, head switches, codes, training checkpoints); ruff clean.
+- Next: the timing runs (griffin then gru) are queued on the shared GPU lock.
