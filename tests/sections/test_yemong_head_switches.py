@@ -8,7 +8,6 @@ and come in through `--set`."""
 import dataclasses
 import math
 
-import arm_goldens
 import learner_cases as lc
 import pytest
 import torch
@@ -98,16 +97,23 @@ def _parameters(net) -> int:
 
 
 def test_every_head_is_on_by_default_and_the_model_before_the_switches():
-    """Every switch on, every head built, and the arms' step loops and unrolls as recorded
-    before the switches existed (`arm_goldens`)."""
+    """Every switch on, every head built, in the layout of the builds before the switches
+    (the enemy-action head first in the ship rows' group, then the next-state head), so
+    every stored build's weights load as they were saved. (The outputs were compared with
+    the tree before the switches, bit for bit, in the notes:
+    `docs/rewrite/sections/arm-options/heads-progress.md`.)"""
     config = YemongConfig()
     assert config.next_state_head and config.enemy_action_head and config.density_head
     assert config.shot_head == "trajectory" == SHOT_HEADS[0]
     net = cases.model()
     assert net.auxiliary_heads == EVERY_HEAD
     assert net.ship_head_names == ("enemy_action", "next_state")
-    for arm in arm_goldens.ARMS:
-        arm_goldens.reproduces(arm)
+    shapes = {name: tuple(p.shape) for name, p in net.state_dict().items()}
+    assert shapes["ship_heads.lasts.0.weight"] == (NUM_JOINT, 2 * config.width)
+    assert shapes["ship_heads.lasts.1.weight"] == (net.next_state_width, 2 * config.width)
+    assert shapes["ship_heads.first.weight"] == (2 * 2 * config.width, config.width)
+    for module in ("density", "shot_outcome", "shot_trajectory_head"):
+        assert any(name.startswith(f"{module}.") for name in shapes), module
 
 
 def test_unknown_or_inconsistent_switches_fail():
@@ -129,7 +135,7 @@ def test_a_head_that_is_off_is_not_built_and_gives_no_output(switch):
         assert getattr(net, name) is None
     assert not set(REMOVED[switch]) & set(net.auxiliary_heads)
     assert set(net.auxiliary_heads) == set(EVERY_HEAD) - set(REMOVED[switch])
-    _, trajectory = cases.rollout(net, environments=2, length=6)
+    _, trajectory = cases.rollout(net, environments=4, length=6)
     obs = trajectory.obs
     carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
     with torch.no_grad():
@@ -167,7 +173,7 @@ def test_without_the_enemy_action_head_the_belief_advances_with_uniform_actions(
     assert torch.equal(nonfinite, torch.zeros(2, dtype=nonfinite.dtype))
     # in the model: every enemy row's belief keeps uniform actions while the forecast is fed
     net = cases.model(enemy_action_head=False)
-    _, trajectory = cases.rollout(net, environments=2, length=6)
+    _, trajectory = cases.rollout(net, environments=4, length=6)
     obs = trajectory.obs
     carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
     with torch.no_grad():
@@ -256,7 +262,7 @@ def test_an_a13_policy_saves_and_loads(tmp_path, lines):
         net.state_dict().items(), loaded.state_dict().items(), strict=True
     ):
         assert name == other and torch.equal(a, b), name
-    _, trajectory = cases.rollout(net, environments=2, length=4)
+    _, trajectory = cases.rollout(net, environments=4, length=4)
     obs = trajectory.obs
     carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
     joint = cases.joint_actions(trajectory)

@@ -80,8 +80,10 @@ def _mid_game(config: GameConfig, ticks: int):
     return rules, types, views
 
 
-# arm A13's builds (`docs/explanation/yemong.md`): the champion's delta head without the
-# enemy-action, density and shot heads, then without the next-state heads too
+# arm A13's builds (`docs/explanation/yemong.md`): the delta head without the enemy-action,
+# density and shot heads, then without the next-state head too. Without the error head
+# (`delta_split`): its probit (`codes._probit`, erfinv) has no ONNX conversion, with or
+# without the switches.
 A13 = dict(
     next_state="delta",
     delta_baseline="extrapolation",
@@ -98,7 +100,7 @@ A13 = dict(
         dict(next_state="delta"),
         dict(order="temporal_first", acceleration_inputs=True),
         dict(next_state="delta", position_inputs="fourier"),
-        dict(A13, delta_split=True, physics_hidden_decay=0.25),
+        dict(A13),
         dict(A13, next_state_head=False, forecast_feedback=False),
     ],
     ids=["absolute", "delta", "accelerations", "fourier", "a13_but_next_state", "a13_all"],
