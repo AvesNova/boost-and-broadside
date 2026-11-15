@@ -364,8 +364,8 @@ class Crossover:
     (`bnb.league.crossover`). The weaker side fields `--fixed-count` ships (20) and the
     stronger side's count varies downward from it, to `--minimum-count` (1) or the mode's
     smallest team, whichever is larger (Frontline 3): (n, 20) for a policy stronger than the
-    opponent, (20, n) for a weaker one, which side shrinking decided by the games, starting
-    at 20 against 20. The game is each preset's at `--fixed-count` a side, on the preset's
+    opponent, (20, n) for a weaker one, the games deciding which side shrinks, starting at
+    20 against 20. The game is each preset's at `--fixed-count` a side, on the preset's
     own arena (`--map-rule preset`, the default: every map fixed-size, the author's rule of
     2026-11-15) or the density rule's for that fleet (`--map-rule density`, the map-size
     arm's; `bnb.game.api.arena_radius_for`); each team's unused slots are benched (they stay
@@ -377,7 +377,7 @@ class Crossover:
     ratio r = log(policy's ships / opponent's ships), over the games of both sides of
     parity, gives the break-even ratio (the score one half) and its standard error in r;
     each batch places its blocks at the lineups most informative about it (before a fit,
-    over `--bracket` on the side the games point to), until r's standard error reaches
+    over `--bracket` on the side the games point to), until its standard error reaches
     `--target-stderr` or the games reach `--budget-games`. Outcomes separated by ratio (all
     lost below, all won above) give a bound instead, and the range is extended. Prints a
     line per batch with an ETA, then per mode the break-even ratio, the break-even lineup

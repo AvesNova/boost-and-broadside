@@ -26,9 +26,15 @@ the stronger side's count downward.
     opponent's count): a different floor is another measurement, so a resume never plays
     below the current floor.
   - The break-even lineup is reported with the non-fixed side fractional (e.g. 20v16.7).
-- **Worked.** Quick-tier tests on the touched files (see below). A synthetic test runs a
+- **Worked.** Quick tier on the touched files: test_crossover 28 passed; test_evaluation
+  27 passed (4 slow deselected) with test_modes' break-even floor test; docs references
+  and docstrings 607 passed. A synthetic test runs a
   stronger, a weaker, a near-parity and a far-stronger policy through allocate/fit from
   the first parity batch: each finds its ratio within 3 SE, and no lineup exceeds 20 a
   side or goes below the floor.
 - **Not done.** No GPU run; the default target and budget are untested on a real policy.
 - **Next.** The author reviews; merge into `feat/imugi-boundary`.
+
+Also noted, not changed: docs/explanation/league.md's decision-suite paragraph still says
+frontline break-even is left out of the score until the map-size arm reports, which
+contradicts evaluation-suite.md and the default `unscored=()`.
