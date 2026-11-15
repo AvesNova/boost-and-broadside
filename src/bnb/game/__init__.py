@@ -2,10 +2,11 @@
 
 VERSION rises whenever a change alters what the game computes (a rule, a constant, the
 order of a sum that changes its rounding), so policy files and ratings say which game they
-were made in. A refactor that computes the same numbers keeps it. FINGERPRINT is a hash
-of a short seeded match in each game preset at this version
-(`tests/sections/test_game_version.py`), so a change to the numbers fails that test until
-the version is raised.
+were made in. A refactor that computes the same numbers keeps it. A committed reference
+(`tests/sections/game_reference.pt`) holds the final state and observation of a short seeded
+match in each game preset at this version; `tests/sections/test_game_version.py` compares
+floats within a tolerance and integers exactly, so a change to the numbers fails that test
+until the version is raised and the reference regenerated (the command is in that file).
 
 Version 1 named the game from 2026-11-03 to 2026-11-10, though 36 changes to what it
 computes went in under it (the observation's accelerations, whole-Hz fire rates and
@@ -207,8 +208,3 @@ version-21 games.
 """
 
 VERSION = 21
-# Computed on the cloud container (x86 CPU, 2026-11-15). The fingerprint depends on the
-# machine: at the commit that recorded version 20's (362f3bf5) this container computed
-# 95d1e9f94c5eb0a7 against the laptop's 477cbfae2f748b1e, so re-record it on the machine the
-# arms run on before relying on the test there.
-FINGERPRINT = "9cd6140655c90c05"
