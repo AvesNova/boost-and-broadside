@@ -442,6 +442,24 @@ class Records:
         self.candidates.extend(rows)
         self.by_id.update({r["id"]: r for r in rows})
 
+    def forget(self, label: str) -> None:
+        """Drop an unfinished generation (a restart): its candidates and evaluations, its
+        job files and its outputs, so the generation runs again from the scheduler's state."""
+        keep = [c for c in self.candidates if c["generation"] != label]
+        gone = {c["id"] for c in self.candidates} - {c["id"] for c in keep}
+        evaluations = [
+            e for e in self.evaluations if e["id"] not in gone and not e["label"].startswith(label)
+        ]
+        for name, rows in (("candidates.jsonl", keep), ("evaluations.jsonl", evaluations)):
+            path = self.root / name
+            partial = path.with_suffix(".partial")
+            partial.write_text("".join(json.dumps(r) + "\n" for r in rows))
+            partial.replace(path)
+        for pattern in (f"queue/*/{label}*.json", f"results/*/{label}*.jsonl"):
+            for path in self.root.glob(pattern):
+                path.unlink()
+        self.__init__(self.root)
+
     def add_evaluations(self, rows: list[dict]) -> None:
         self.append("evaluations.jsonl", rows)
         self.evaluations.extend(rows)
@@ -573,9 +591,13 @@ def seeds() -> list[tuple[str, dict[str, float]]]:
     return out
 
 
-def make_scheduler(emitters: int, batch: int, sigma: float, learning_rate: float, seed: int):
-    """CMA-MAE: a 10 x 10 GridArchive over the two measures with a learning rate under 1,
-    `emitters` CMA-ES emitters ranked by improvement, started on the seed cards."""
+def make_schedulers(
+    emitters: int, batch: int, sigma: float, learning_rate: float, seed: int, halves: int = 2
+):
+    """CMA-MAE: one 10 x 10 GridArchive over the two measures (a learning rate under 1, the
+    threshold floor 20), `emitters` CMA-ES emitters ranked by improvement, started on the
+    seed cards, split into `halves` schedulers sharing the archive (one half's games play
+    while the other half's cards are solved)."""
     from ribs.archives import GridArchive
     from ribs.emitters import EvolutionStrategyEmitter
     from ribs.schedulers import Scheduler
@@ -589,7 +611,7 @@ def make_scheduler(emitters: int, batch: int, sigma: float, learning_rate: float
         seed=seed,
     )
     starts = [encode(handles) for _, handles in seeds()]
-    order = [1, 4, 2, 0, 5, 3]  # Yongma, G Yongma, E Yongma, Jujak, ...: the far ones first
+    order = [1, 0, 4, 5, 2, 3]  # Yongma, Jujak, G Yongma, G Jujak, E Yongma, E Jujak
     bounds = [(0.0, 1.0)] * len(SPACE)
     emitter_list = [
         EvolutionStrategyEmitter(
@@ -603,7 +625,8 @@ def make_scheduler(emitters: int, batch: int, sigma: float, learning_rate: float
         )
         for n in range(emitters)
     ]
-    return Scheduler(archive, emitter_list)
+    per = math.ceil(emitters / halves)
+    return [Scheduler(archive, emitter_list[h * per : (h + 1) * per]) for h in range(halves)]
 
 
 def prepare(
@@ -662,25 +685,27 @@ def clock(seconds: float) -> str:
 
 
 def search(args) -> None:
-    """The CMA-MAE run: each generation asks, solves, plays (SEARCH_GAMES a condition, seed
-    0) together with the rechecks (RECHECK_GAMES, seed 1), tells, and writes its records
-    before the next; a restart resumes after the last finished generation."""
+    """The CMA-MAE run in two halves (each half's emitters a scheduler on the shared
+    archive): a half asks, solves, queues its games (SEARCH_GAMES a condition, seed 0) with
+    its rechecks (RECHECK_GAMES, seed 1), and is told when they are back, so one half's
+    games play while the other's cards are solved. Each tell writes the records and the
+    state before the half asks again; a restart resumes after the last told step."""
     records = Records(args.out)
     state = args.out / "scheduler.pkl"
     base = dict(reference_ships()[REFERENCE].handles)
     if state.exists():
         with state.open("rb") as handle:
             saved = pickle.load(handle)
-        scheduler, generation = saved["scheduler"], saved["generation"] + 1
-        print(f"resumed at generation {generation}", flush=True)
+        schedulers, next_generation = saved["schedulers"], saved["next_generation"]
+        for half, generation in enumerate(next_generation):
+            records.forget(f"g{generation:04d}{'ab'[half]}")
+        print(f"resumed at generations {next_generation}", flush=True)
     else:
-        scheduler = make_scheduler(
+        schedulers = make_schedulers(
             args.emitters, args.batch, args.sigma, args.learning_rate, args.seed
         )
-        generation = 0
-    started = time.time()
-    deadline = started + args.hours * 3600.0
-    if generation == 0 and not any(c["generation"] == "seed" for c in records.candidates):
+        next_generation = [0] * len(schedulers)
+        records.forget("seed")  # seeds played before the first state is saved
         named = seeds()
         rows = prepare(records, "seed", [encode(h) for _, h in named], base, args.processes)
         for row, (name, _) in zip(rows, named, strict=True):
@@ -694,83 +719,141 @@ def search(args) -> None:
             1,
         )
         records.add_evaluations(collect(records, "seed", outputs, len(valid)))
-        for row in valid:
-            score = records.score(row["id"])
-            scheduler.archive.add(
-                numpy.array([row["coordinates"]]),
-                numpy.array([score["objective"]]),
-                numpy.array([row["measures"]]),
-            )
-            print(f"seed {row['name']}: {json.dumps(score)}", flush=True)
-    per_generation = []
-    while generation < args.generations and time.time() < deadline:
+        archive = schedulers[0].archive
+        for row in rows:
+            score = records.score(row["id"]) if "card" in row else dict(objective=None)
+            print(f"seed {row['name']}: {row.get('failure') or json.dumps(score)}", flush=True)
+            if score["objective"] is not None:
+                archive.add(
+                    numpy.array([row["coordinates"]]),
+                    numpy.array([score["objective"]]),
+                    numpy.array([row["measures"]]),
+                )
+    started = time.time()
+    deadline = started + args.hours * 3600.0
+    in_flight: dict[int, dict] = {}
+    rechecking: set[str] = set()
+    steps: list[float] = []
+
+    def launch(half: int) -> None:
+        """Ask, solve and queue a half's next generation (with up to half the rechecks)."""
+        generation = next_generation[half]
+        label = f"g{generation:04d}{'ab'[half]}"
         begun = time.time()
-        label = f"g{generation:04d}"
-        solutions = scheduler.ask()
+        solutions = schedulers[half].ask()
         batch = args.batch
-        rows = prepare(records, label, solutions, base, args.processes, lambda n: n // batch)
+        rows = prepare(
+            records, label, solutions, base, args.processes, lambda n: half * 1000 + n // batch
+        )
         valid = [r for r in rows if "card" in r]
-        recheck = rechecks(records, RECHECKS_PER_GENERATION)
+        chosen = [i for i in rechecks(records, 2 * RECHECKS_PER_GENERATION) if i not in rechecking]
+        chosen = chosen[: RECHECKS_PER_GENERATION // len(schedulers)]
+        rechecking.update(chosen)
         outputs = submit(
             records, label, [pair_entry(r["id"], r["card"]) for r in valid], SEARCH_GAMES, 0
         )
         recheck_outputs = {}
-        if recheck:
+        if chosen:
             recheck_outputs = submit(
                 records,
                 f"{label}-recheck",
-                [pair_entry(i, records.by_id[i]["card"]) for i in recheck],
+                [pair_entry(i, records.by_id[i]["card"]) for i in chosen],
                 RECHECK_GAMES,
                 1,
             )
-        records.add_evaluations(collect(records, label, outputs, len(valid)))
-        if recheck:
+        in_flight[half] = dict(
+            label=label,
+            rows=rows,
+            valid=valid,
+            outputs=outputs,
+            chosen=chosen,
+            recheck_outputs=recheck_outputs,
+            solved=time.time() - begun,
+            begun=begun,
+        )
+        print(
+            f"{label} {time.strftime('%H:%M:%S')}: queued {len(valid)}/{len(rows)} solved "
+            f"cards and {len(chosen)} rechecks (ask and solve {time.time() - begun:.0f} s)",
+            flush=True,
+        )
+
+    def finish(half: int) -> None:
+        """Collect a half's games, tell its scheduler, save the state and the map."""
+        flight = in_flight.pop(half)
+        label, rows, valid = flight["label"], flight["rows"], flight["valid"]
+        records.add_evaluations(collect(records, label, flight["outputs"], len(valid)))
+        if flight["chosen"]:
             records.add_evaluations(
-                collect(records, f"{label}-recheck", recheck_outputs, len(recheck))
+                collect(
+                    records, f"{label}-recheck", flight["recheck_outputs"], len(flight["chosen"])
+                )
             )
+            rechecking.difference_update(flight["chosen"])
         objectives = []
         for row in rows:
             score = records.score(row["id"]) if "card" in row else dict(objective=None)
             objectives.append(0.0 if score["objective"] is None else score["objective"])
-        scheduler.tell(numpy.array(objectives), numpy.array([r["measures"] for r in rows]))
+        schedulers[half].tell(numpy.array(objectives), numpy.array([r["measures"] for r in rows]))
+        next_generation[half] += 1
         partial = state.with_suffix(".partial")
         with partial.open("wb") as handle:
-            pickle.dump(dict(scheduler=scheduler, generation=generation), handle)
+            pickle.dump(dict(schedulers=schedulers, next_generation=next_generation), handle)
         partial.replace(state)
         cells = records.map()
         (args.out / "map.json").write_text(json.dumps(cells, indent=1))
-        took = time.time() - begun
-        per_generation.append(took)
-        left = min(
-            args.generations - generation - 1, int((deadline - time.time()) / max(took, 1.0))
-        )
-        mean = sum(per_generation[-5:]) / len(per_generation[-5:])
+        took = time.time() - flight["begun"]
+        steps.append(time.time())
+        rate = (len(steps) - 1) / max(steps[-1] - steps[0], 1.0) if len(steps) > 1 else None
+        remaining = sum(args.generations - g for g in next_generation)
+        if rate:
+            remaining = min(remaining, int((deadline - time.time()) * rate))
+            eta = f"done about {clock(remaining / rate)} KST"
+        else:
+            eta = "ETA after the next step"
         line = dict(
-            generation=generation,
+            label=label,
             time=time.strftime("%H:%M:%S"),
             seconds=round(took),
+            solve_seconds=round(flight["solved"]),
             asked=len(rows),
             solved=len(valid),
             infeasible=len(rows) - len(valid),
-            rechecked=len(recheck),
+            rechecked=len(flight["chosen"]),
             best=max(objectives),
             cells=len(cells),
             balanced_cells=sum(c["objective"] >= BALANCED for c in cells.values()),
             confident_cells=sum(
                 c["lower"] >= BALANCED and c["games"] >= 512 for c in cells.values()
             ),
-            archive_cells=len(scheduler.archive),
+            archive_cells=len(schedulers[half].archive),
+            candidates_per_hour=round(
+                sum(1 for c in records.candidates if "card" in c)
+                / max(time.time() - started, 1.0)
+                * 3600.0
+            ),
         )
         records.append("generations.jsonl", [line])
         print(
-            f"{label} {line['time']}: {took / 60:.1f} min; solved {len(valid)}/{len(rows)}, "
-            f"rechecked {len(recheck)}; best {max(objectives):.1f}; map {len(cells)} cells, "
-            f"{line['balanced_cells']} balanced (objective >= {BALANCED}), "
-            f"{line['confident_cells']} at 512 games with the lower bound >= {BALANCED}; "
-            f"bound: {left} more generations, done about {clock(left * mean)} KST",
+            f"{label} {line['time']}: told after {took / 60:.1f} min; solved {len(valid)}/"
+            f"{len(rows)}, rechecked {len(flight['chosen'])}; best {max(objectives):.1f}; map "
+            f"{len(cells)} cells, {line['balanced_cells']} with objective >= {BALANCED}, "
+            f"{line['confident_cells']} with the lower bound >= {BALANCED} at 512 games; "
+            f"bound: {remaining} more half-generations, {eta}",
             flush=True,
         )
-        generation += 1
+
+    def more(half: int) -> bool:
+        return next_generation[half] < args.generations and time.time() < deadline
+
+    for half in range(len(schedulers)):
+        if more(half):
+            launch(half)
+    while in_flight:
+        for half in range(len(schedulers)):
+            if half in in_flight:
+                finish(half)
+                if more(half):
+                    launch(half)
     print("search done", flush=True)
 
 
@@ -779,7 +862,7 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     one = sub.add_parser("search")
     one.add_argument("--out", type=pathlib.Path, required=True)
-    one.add_argument("--generations", type=int, default=60)
+    one.add_argument("--generations", type=int, default=60, help="a half's bound")
     one.add_argument("--hours", type=float, default=12.0)
     one.add_argument("--emitters", type=int, default=4)
     one.add_argument("--batch", type=int, default=32, help="candidates an emitter asks")
