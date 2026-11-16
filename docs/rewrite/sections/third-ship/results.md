@@ -297,7 +297,7 @@ Mutual head-on kills stay at 4%; kills a minute 7.3-8.2 as in the release pair.
    with the pair's: the three trim numbers (sustained turn, damage, shield; g 7 or 8) were
    tuned against A, C', D and E, and the balance agent's newest round (probe3: Yongma paid in
    store, shot cost and vision) will likely be none of them. `retrim.py grid` builds the
-   56-card grid (g 7 and 8) against any pair's ship files; one run per size (2v2, 5v5, 10v10) and
+   64-card grid (g 7 and 8) against any pair's ship files; one run per size (2v2, 5v5, 10v10) and
    `retrim.py pick` choose the trim, then elimination and Frontline as checks. On the box
    workers that is about an hour.
 2. **Is it different enough?** Its fights are different (scissors, measured), its card is the
