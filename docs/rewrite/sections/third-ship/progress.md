@@ -193,3 +193,23 @@ feat/imugi-boundary). Power profile `performance`.
   runs job files from its queue, takes the GPU lock only per sweep). On the box: worker
   `dm10` (deathmatch 10v10) with the options job queued; more workers as needed
   (`/workspace/third-queue/<name>`).
+
+## 11:25 finals: a Bonghwang per balance option, every condition
+
+- `finals1.json`: Bonghwang trimmed for A (v23: t0.63 d1.2 s115), C' (t0.66 d1.1 s90), D (t0.66
+  d1.1 s95), E (t0.70 d1.1 s90; also d1.0 s95), each with the option's own Y v J reference
+  (`finals_table.py` prints the tables). B v J / B v Y:
+  - deathmatch 5v5 (1536): A 0.48 / 0.56, C' 0.54 / 0.57, D 0.47 / 0.52, **E 0.50 / 0.50**;
+  - 2v2 (1024): A 0.31 / 0.66, C' 0.42 / 0.50, D 0.37 / 0.47, E 0.38 / 0.42;
+  - 10v10 (384): A 0.65 / 0.47, C' 0.57 / 0.60, D 0.53 / 0.56, E 0.57 / 0.59;
+  - elimination 5v5 (768): A 0.43 / 0.67, C' 0.53 / 0.61, D 0.48 / 0.56, E 0.46 / 0.57;
+  - Frontline 5v5 (768): A 0.28 / 0.55, C' 0.49 / 0.47, D 0.37 / 0.45, E 0.50 / 0.48;
+  - 1v1 (1024, mostly draws): A 0.34 / 0.59, C' 0.38 / 0.43, D 0.36 / 0.43, E 0.37 / 0.41.
+- Under the flat options Bonghwang keeps a slope of its own (weaker at 2v2, stronger at
+  10v10). The balance agent's finding holds for it: the shield sets the slope over sizes. The
+  slope round (shield 85-90 with more turn or damage) runs on the laptop for E and C' (2v2,
+  5v5, 10v10) and as a 24-card grid on the box workers (2v2, 10v10).
+- Box: the persistent workers sat behind the balance agent's in-lock compiles; jobs that
+  waited too long were moved to the laptop (renamed `.moved` in the queue).
+- Fight shape holds in every option: Bonghwang's mirror 0.39-0.45 scissors (Yongma mirror
+  0.16-0.21), its cross fights 0.18-0.24 (the pair 0.09-0.13); mutual head-on kills 3-4%.
