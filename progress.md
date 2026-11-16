@@ -518,3 +518,8 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Tried: 1v1 ablations (128 games): commit only (stick by energy off): Yongma kill share 0.012, 11.5 merges/game, sustained turn 68%/62%; both rules (default): 0.068, 15.7 merges/game; with BNB_ENERGY_BREAKS_RATE_TIES=1: 0.036. Stick by energy adds merges and kills; rate-first does not help Yongma (left off).
 - Found: DM 2v2 (512 games) Yongma kill share 0.421 -> 0.466 after (band .481-.521): toward balance. Before DM 5v5 0.489.
 - Next: the other 5 balance jobs (ETA 00:25, worst 00:40).
+
+## 2026-11-17 00:16 feat/imugi-initiative (agent)
+- Tried: balance spot check, 512 games each, eager, v24 card (Y0.46, head-on 0.05), before vs after (both rules on).
+- Found: Yongma kill share DM 2v2 0.421 -> 0.466 (band .481-.521), DM 5v5 0.489 -> 0.514 (.494-.507), Elim 5v5 0.544 -> 0.592 (.498-.545, SE 0.013), FL 5v5 0.481 -> 0.507 (.491-.513). Every team mode moves +0.025..+0.048 toward Yongma (the 1v1 the other way); the 5v5 stick/power mix barely moves (the sense manoeuvre is rarely on in a crowd).
+- Next: per-rule ablations on the 4 conditions (commit only, stick only), ETA 00:45 (worst 01:00).
