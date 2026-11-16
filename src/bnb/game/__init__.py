@@ -244,6 +244,14 @@ version-24 run):
   longer flips the committed side and flies the ship out (bench/boundary_deaths.py).
 
 Ratings and records of version 23 or earlier are not reused for version-24 games.
+
+Version 25 (2026-11-17): the re-trim Y0.42-J1.22 for the committed-turn Imugi (the turn sense
+committed at the merge with initiative for the advantaged ship, and stick by energy;
+docs/rewrite/sections/imugi-initiative), which moved every team mode toward Yongma by
+0.025-0.05 of the kill share on version 24's card: Yongma's max_shield factor 0.46 -> 0.42
+(352.6 -> 321.9) and Jujak's 1.1586 -> 1.22 (498.5 -> 524.9), the card re-solved from the
+handles (docs/rewrite/sections/retrim-v25/apply.py, results.md there). Ratings and records
+of version 24 or earlier are not reused for version-25 games.
 """
 
-VERSION = 24
+VERSION = 25
