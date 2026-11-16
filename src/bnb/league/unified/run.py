@@ -86,6 +86,8 @@ MINIMUM_CONCURRENT = 512  # environments each bucket needs to share the device
 
 @dataclasses.dataclass
 class Spec:
+    """A loaded spec: the players, the targets, the lineup types, the buckets and the seed."""
+
     players: list[Player]
     targets: list[Target]
     lineup_types: tuple[int, ...]
@@ -213,6 +215,7 @@ def gpu_utilisation() -> float | None:
 
 
 def clock(seconds: float | None) -> str:
+    """A clock time `seconds` from now, as HH:MM ("unknown" without one)."""
     if seconds is None or not math.isfinite(seconds):
         return "unknown"
     when = datetime.datetime.now().astimezone() + datetime.timedelta(seconds=seconds)
@@ -276,6 +279,7 @@ def remembered_size(key: str) -> int | None:
 
 
 def remember_size(key: str, count: int) -> None:
+    """Store a bucket's measured size for this machine (`remembered_size`)."""
     from bnb.cache import ROOT
 
     try:
@@ -490,6 +494,7 @@ def run(
 
 
 def write_report(out: pathlib.Path, planner: Planner, games: int, started: float) -> dict:
+    """Write report.json: the games, the hours and every target's report; returns it."""
     report = dict(
         games=games,
         hours=(time.time() - started) / 3600.0,

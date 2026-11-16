@@ -892,6 +892,7 @@ class Unified:
 
 
 def unified(options: Unified) -> None:
+    """`bnb unified`: load the spec and run it (`bnb.league.unified.run.run`)."""
     import torch
 
     from bnb.league.unified.run import load_spec, run

@@ -52,6 +52,7 @@ Every target stops at its goal (or its budget); tighten a goal and rerun with th
 
 ## Running
 
+<!-- not-runnable: needs a spec and trained policies -->
 ```bash
 uv run --no-sync bnb unified spec.toml --out runs/eval-x --runs-directory runs
 ```
@@ -65,17 +66,17 @@ uv run --no-sync bnb unified spec.toml --out runs/eval-x --runs-directory runs
 
 Each bucket compiles once (about 4 minutes cold on the laptop, seconds warm). On a box,
 `box/unified_check.sh CHAIN` builds the spec of the dry run's evaluation queue and runs
-it, importing a compile-cache archive first when `CACHE_ARCHIVE` names one.
+it, importing a compile-cache archive first when the script's archive variable names one.
 
 ## What it writes
 
-- `progress.log`: a line every 30 s with the games, games per hour, the GPU's
+- `progress.log`{.plain}: a line every 30 s with the games, games per hour, the GPU's
   utilisation, each bucket's environments and the ETA as a clock time;
-- `games.jsonl`: every finished game (flushed every 10 s, synced), which a rerun resumes
+- `games.jsonl`{.plain}: every finished game (flushed every 10 s, synced), which a rerun resumes
   from;
-- `report.json`: each target's estimate (ratings and standard errors, break-even ratio,
+- `report.json`{.plain}: each target's estimate (ratings and standard errors, break-even ratio,
   scores, a decision's looks and outcome);
-- `sizing.json`: each bucket's measured memory footprint and chosen size.
+- `sizing.json`{.plain}: each bucket's measured memory footprint and chosen size.
 
 ## Decisions
 

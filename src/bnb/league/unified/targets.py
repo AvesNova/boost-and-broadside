@@ -56,6 +56,7 @@ class Target:
         raise NotImplementedError
 
     def add_pending(self, cell: Cell) -> None:
+        """Count a game of `cell` in flight (a cell the target does not use is ignored)."""
         raise NotImplementedError
 
     def record(self, cell: Cell, outcome: Outcome, pending: bool = True) -> None:
@@ -63,9 +64,11 @@ class Target:
         raise NotImplementedError
 
     def done(self) -> bool:
+        """Whether the target is finished (its goals met, its budget spent, or decided)."""
         raise NotImplementedError
 
     def report(self) -> dict:
+        """The target's estimate as a plain dict (report.json)."""
         raise NotImplementedError
 
     def remaining(self) -> float:
@@ -195,6 +198,7 @@ class EloTarget(Target):
         return variance > self.goals**2
 
     def proposals(self, overtime: bool = False) -> dict[Cell, float]:
+        """Cell -> value of one more game there (`Target.proposals`)."""
         if self.finished + self.pending.sum() / 2 >= self.budget:
             return {}
         covariance = self.covariance()
@@ -223,6 +227,7 @@ class EloTarget(Target):
         return out
 
     def cell(self, a: int, b: int) -> Cell:
+        """The cell of players a and b (indices) in the target's condition."""
         return Cell(self.condition, self.players[a], self.players[b])
 
     def _pair(self, cell: Cell) -> tuple[int, int] | None:
@@ -232,6 +237,7 @@ class EloTarget(Target):
         return None if a is None or b is None else (a, b)
 
     def add_pending(self, cell: Cell) -> None:
+        """Count a game of `cell` in flight (a cell the target does not use is ignored)."""
         pair = self._pair(cell)
         if pair is not None:
             a, b = pair
@@ -240,6 +246,7 @@ class EloTarget(Target):
             self._covariance = None
 
     def record(self, cell: Cell, outcome: Outcome, pending: bool = True) -> None:
+        """A finished game of `cell` (pending: it was counted in flight, and leaves it)."""
         pair = self._pair(cell)
         if pair is None:
             return
@@ -296,9 +303,11 @@ class EloTarget(Target):
         return ~((errors <= self.goals * SCALE + 1e-9) | settled)
 
     def done(self) -> bool:
+        """Whether the target is finished (its goals met, its budget spent, or decided)."""
         return self.finished >= self.budget or not self._open().any()
 
     def remaining(self) -> float:
+        """The worst error over its goal, squared, less 1 (0 when done; inf with no estimate)."""
         if self.done():
             return 0.0
         errors = numpy.where(self._open(), self.errors(), 0.0)
@@ -306,6 +315,7 @@ class EloTarget(Target):
         return 0.0 if worst <= 1.0 else (math.inf if not math.isfinite(worst) else worst**2 - 1)
 
     def report(self) -> dict:
+        """The target's estimate as a plain dict (report.json)."""
         errors = self.errors(fresh=True)
         posterior = self.posterior
         return dict(
@@ -350,6 +360,7 @@ class WinRateTarget(Target):
         return self.games + self.pending
 
     def proposals(self, overtime: bool = False) -> dict[Cell, float]:
+        """Cell -> value of one more game there (`Target.proposals`)."""
         planned = self._planned()
         if planned >= self.budget:
             return {}
@@ -362,10 +373,12 @@ class WinRateTarget(Target):
         return {self.cell: _drop(planned) / self.goal**2}
 
     def add_pending(self, cell: Cell) -> None:
+        """Count a game of `cell` in flight (a cell the target does not use is ignored)."""
         if cell == self.cell:
             self.pending += 1
 
     def record(self, cell: Cell, outcome: Outcome, pending: bool = True) -> None:
+        """A finished game of `cell` (pending: it was counted in flight, and leaves it)."""
         if cell != self.cell:
             return
         if pending and self.pending:
@@ -376,9 +389,12 @@ class WinRateTarget(Target):
         self.squares += score * score
 
     def mean(self) -> float | None:
+        """The mean score so far (None without games)."""
         return self.total / self.games if self.games else None
 
     def stderr(self) -> float:
+        """The observed score's standard error (inf before two games; at least the floor
+        of a cell whose every game went one way)."""
         if self.games < 2:
             return math.inf
         mean = self.total / self.games
@@ -387,17 +403,20 @@ class WinRateTarget(Target):
         return math.sqrt(max(variance, 1.0 / (4.0 * self.games)) / self.games)
 
     def done(self) -> bool:
+        """Whether the target is finished (its goals met, its budget spent, or decided)."""
         return self.games >= self.budget or (
             self.games >= self.minimum and self.stderr() <= self.goal
         )
 
     def remaining(self) -> float:
+        """The worst error over its goal, squared, less 1 (0 when done; inf with no estimate)."""
         if self.done():
             return 0.0
         error = self.stderr()
         return math.inf if not math.isfinite(error) else max((error / self.goal) ** 2 - 1, 0.0)
 
     def report(self) -> dict:
+        """The target's estimate as a plain dict (report.json)."""
         return dict(
             kind="win_rate",
             cell=self.cell.key,
@@ -469,6 +488,7 @@ class BreakEvenTarget(Target):
         return max(float(before - after), 0.0) / self.goal**2
 
     def proposals(self, overtime: bool = False) -> dict[Cell, float]:
+        """Cell -> value of one more game there (`Target.proposals`)."""
         if self._planned() >= self.budget or (self.done() and not overtime):
             return {}
         if not self.queue:
@@ -490,6 +510,7 @@ class BreakEvenTarget(Target):
         return (c.first, c.second)
 
     def add_pending(self, cell: Cell) -> None:
+        """Count a game of `cell` in flight (a cell the target does not use is ignored)."""
         lineup = self._lineup(cell)
         if lineup is None:
             return
@@ -498,6 +519,7 @@ class BreakEvenTarget(Target):
             self.queue.remove(lineup)
 
     def record(self, cell: Cell, outcome: Outcome, pending: bool = True) -> None:
+        """A finished game of `cell` (pending: it was counted in flight, and leaves it)."""
         lineup = self._lineup(cell)
         if lineup is None:
             return
@@ -512,12 +534,14 @@ class BreakEvenTarget(Target):
             self.queue = []
 
     def done(self) -> bool:
+        """Whether the target is finished (its goals met, its budget spent, or decided)."""
         if self.games >= self.budget:
             return True
         reason = crossover.stop_reason(self.fit, self.games, self.config, self.by_lineup)
         return reason is not None
 
     def remaining(self) -> float:
+        """The worst error over its goal, squared, less 1 (0 when done; inf with no estimate)."""
         if self.done():
             return 0.0
         if self.fit.status != "crossing":
@@ -525,6 +549,7 @@ class BreakEvenTarget(Target):
         return max((self.fit.stderr / self.goal) ** 2 - 1, 0.0)
 
     def report(self) -> dict:
+        """The target's estimate as a plain dict (report.json)."""
         ratio, ratio_error = self.fit.ratio()
         return dict(
             kind="break_even",
@@ -628,6 +653,7 @@ class DecisionTarget(Target):
         self.games, self.pending, self.total, self.squares = 0, 0, 0.0, 0.0
 
     def proposals(self, overtime: bool = False) -> dict[Cell, float]:
+        """Cell -> value of one more game there (`Target.proposals`)."""
         planned = self.games + self.pending
         if self.done() or planned >= self.test.maximum_games:
             return {}
@@ -635,15 +661,18 @@ class DecisionTarget(Target):
         return {self.cell: _drop(planned) / floor}
 
     def add_pending(self, cell: Cell) -> None:
+        """Count a game of `cell` in flight (a cell the target does not use is ignored)."""
         if cell == self.cell:
             self.pending += 1
 
     def statistic(self) -> float:
+        """The test's statistic: the mean score less one half over its standard error."""
         mean = self.total / self.games
         variance = max(self.squares / self.games - mean * mean, 1e-12)
         return (mean - 0.5) / math.sqrt(variance / self.games)
 
     def record(self, cell: Cell, outcome: Outcome, pending: bool = True) -> None:
+        """A finished game of `cell` (pending: it was counted in flight, and leaves it)."""
         if cell != self.cell:
             return
         if pending and self.pending:
@@ -657,14 +686,17 @@ class DecisionTarget(Target):
             self.test.look(self.games, self.statistic())
 
     def done(self) -> bool:
+        """Whether the target is finished (its goals met, its budget spent, or decided)."""
         return self.test.outcome is not None
 
     def remaining(self) -> float:
+        """The worst error over its goal, squared, less 1 (0 when done; inf with no estimate)."""
         if self.done():
             return 0.0
         return max(self.test.maximum_games / max(self.games, 1) - 1, 0.0)
 
     def report(self) -> dict:
+        """The target's estimate as a plain dict (report.json)."""
         return dict(
             kind="decision",
             cell=self.cell.key,

@@ -63,6 +63,7 @@ class Cell:
 
     @property
     def key(self) -> str:
+        """The cell's record name: the condition's key, then `/<first>_vs_<second>`."""
         return f"{self.condition.key}/{self.first}_vs_{self.second}"
 
 

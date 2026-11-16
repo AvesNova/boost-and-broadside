@@ -192,6 +192,7 @@ def command(arguments: str) -> str | None:
         Runs,
         ShipCard,
         Train,
+        Unified,
     )
     from bnb.contracts.config import MODES
     from bnb.game.modes.rules import PRESETS
@@ -215,6 +216,7 @@ def command(arguments: str) -> str | None:
         "evaluate": Evaluate,
         "pool": Pool,
         "figures": Figures,
+        "unified": Unified,
     }
     if tokens[0] == "queue":
         kinds = {"train": Train, "resume": Train, "ratings": Ratings}

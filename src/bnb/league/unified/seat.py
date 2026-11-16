@@ -167,6 +167,7 @@ class RefillSeat:
     # ---- the controller
 
     def init_carry(self, views: int, device: torch.device) -> RefillCarry:
+        """Every row's carry at the run's start: each row's first player from the pending buffer."""
         model = {}
         for group, decision in enumerate(self.decisions):
             one = decision.controller.init_carry(views, device)

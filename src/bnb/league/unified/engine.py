@@ -622,6 +622,7 @@ class GameLog:
         self.rows: list[dict] = []
 
     def add(self, cell: Cell, outcome: Outcome, slot: Slot, bucket: int) -> None:
+        """Add a finished game to the next flush."""
         c = cell.condition
         self.rows.append(
             dict(
@@ -695,6 +696,7 @@ class GameLog:
             )
 
     def flush(self) -> None:
+        """Append the games since the last flush as one synced line (and to the rating pool)."""
         if not self.rows:
             return
         import os

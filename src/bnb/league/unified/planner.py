@@ -50,6 +50,8 @@ class Planner:
     # ---- costs
 
     def expected_seconds(self, condition: Condition) -> float:
+        """The expected game seconds of a condition: its finished games' mean, shrunk
+        toward half the clock while few."""
         held = self.seconds.get(condition)
         if held and held[1] >= 4:
             return max(held[0] / held[1], 1.0)
@@ -136,6 +138,7 @@ class Planner:
         }
 
     def done(self) -> bool:
+        """Whether the target is finished (its goals met, its budget spent, or decided)."""
         return all(target.done() for target in self.targets)
 
     def demand(self) -> dict[tuple[int, str], float]:
