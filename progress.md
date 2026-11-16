@@ -478,3 +478,8 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Tried: baseline Y0.46, 256 games each (DM 300 s): deaths by cause per ship.
 - Found: DM 1v1 99% of deaths are boundary (Y 2.0/game, J 0.6/game; hits 0.01); 2v2 Y 60% boundary, J 36%; 5v5 Y 22%, J 8%; elim 5v5 Y 18%, J 5%. Every crossing has the edge steer at w=1 and a target, ~370 m/s, turn radius ~400 m (margin is ample).
 - Next: after-fix run (BOUNDARY_OVER_MANEUVERS on), ETA 22:10 KST (worst 22:15).
+
+## 2026-11-16 22:07 diag/boundary-deaths (agent)
+- Tried: same 4 conditions with BOUNDARY_OVER_MANEUVERS on (maneuvers' gate x (1 - edge weight)).
+- Found: boundary deaths ~gone (DM 1v1 2.65 -> 0.02/game, 2v2 Y 60% -> 6%, 5v5 Y 22% -> 2%, elim Y 18% -> 8%); point share now = kill share. Y0.46 kill share 2v2 0.478 -> 0.417, 5v5 0.509 -> 0.494, elim 0.562 -> 0.556. DM 1v1 then has ~0.15 deaths a game (the duel rarely ends in 300 s).
+- Next: author's call; the fix is in imugi_combat.py (BNB_BOUNDARY_OVER_MANEUVERS=0 turns it off). Raw results in docs/rewrite/sections/g-v23/boundary-deaths/.
