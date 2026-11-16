@@ -192,9 +192,15 @@ class Mirror:
         return logged
 
     def follow(self, every: float) -> None:
-        """Sync every `every` seconds until the run is over, then once more."""
+        """Sync every `every` seconds until the run is over, then once more; a failed fetch
+        is retried at the next poll."""
         while True:
-            self.refresh()  # the exit file is fetched before the metrics, so the
+            try:
+                self.refresh()  # the exit file is fetched before the metrics, so the
+            except (subprocess.SubprocessError, OSError) as error:  # the box unreachable
+                self.report(f"fetch failed ({error}); trying again in {every:.0f} s")
+                time.sleep(every)
+                continue
             over = self.over()  # sync after seeing it has every record
             self.sync()
             if over:
