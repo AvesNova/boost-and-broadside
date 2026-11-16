@@ -30,3 +30,28 @@ The search uses build 2. Code: `bench/balance_map.py`; tests `tests/sections/tes
   against its 13.5, Yongma 12.7 against 8.8): the low-speed acceleration is clipped to 85% of
   it, and a card whose cap is under the real floor 8.8 is dropped before the solver (counted).
 - Next: the solve's speed on the box (GPU and CPU), then the pilot.
+
+## 18:50-19:00 the solver made affordable, the run's shape
+
+- Coordinator, 18:40-18:58: Imugi build 2 (ede616c4) merged (used for the whole search);
+  author: no archetype constraints, the deliverable is (1) a pair of balanced cards from far
+  apart cells, (2) ideally 3+ mutually far-apart elites, (3) the full map; picks confirmed
+  against each other (pairwise, all 8 conditions, 512+ games). balance-eval round 2
+  (7148b709) merged: workers at 16384 environments on the 5090 (4096 is launch-bound).
+- Tried: the solver on the 5090's GPU: 64 cards did not finish in 13 min (small tensors,
+  launch-bound; killed). Box CPU, eager, 8 processes: 64 cards near the seeds (sigma 0.15)
+  in 544 s; 55 solved, 6 no convergence (low-speed acceleration 6-20% off, a nose reversal
+  1.6% off), 3 under the low-speed floor.
+- Worked: the compiled flight tick (`bnb.runtime.flights`) in a persistent pool, each process
+  solving PART = 16 cards padded to one shape: 32 cards in 125-148 s on 2 laptop processes
+  (eager: 627 s for 8 cards). The solver's checks run card by card first, so one infeasible
+  card does not fail a batch. Low-speed margin 0.85 -> 0.8 (the remaining failures).
+- The run: 8 emitters x 32 = 256 cards a generation, as two halves of 128 (4 emitters each, one
+  ribs Scheduler each, one shared archive): one half's games play while the other half is
+  asked and solved. Each half fills one worker batch per condition (128 variants x 128
+  games = 16384 environments). Rechecks: up to 16 a half (each cell's best with objective
+  >= 38 and under 512 games) get 384 more games at seed 1. Search games are seed 0 (common
+  spawns for every card).
+- Doctrine: every card (and the reference) flies v23 Jujak's stored doctrine; the card-derived
+  rules (extend-and-return, circle choice, lead) adapt it to each card.
+- Next: the pilot (2 generations a half, 512 cards + 6 seeds), launched 19:01.
