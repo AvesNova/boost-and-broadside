@@ -162,3 +162,16 @@ feat/imugi-boundary). Power profile `performance`.
   0.56. Next: an option-C card for Bonghwang with a lower shield (90-95) and the level from
   damage or the 0.66 turn (optC2: 5v5 and 10v10 on the laptop, 2v2 on the box).
 - Elimination and Frontline against option C queued on the box.
+
+## 09:45 an option-C Bonghwang (lower shield, the 0.66 turn)
+
+- Option-C grid (5v5 256 games, 10v10 192, no-sense doctrine): with the others' shields at
+  80-85, Bonghwang needs a 90-95 shield; the level then comes from damage or the turn.
+  Bt63 (sustained 0.63) d1.3/s95: 5v5 0.49 / 0.46, 10v10 0.59 / 0.55, elimination 0.50 /
+  0.45, but **Frontline 0.37 / 0.25**. **Bt66 (sustained 0.66) d1.1/s95: 5v5 0.53 / 0.52,
+  10v10 0.63 / 0.49, elimination 0.52 / 0.54, Frontline 0.50 / 0.41** (Y v J in those runs
+  0.61 / 0.61 / 0.49 / 0.64). The 2v2 grid is on the box; a 1024-game 5v5 trim around Bt66
+  d1.1/s95 on the laptop.
+- Bonghwang d1.2/s115 (the v23 card) against option C: elimination 0.47 / 0.54.
+- Box practice (coordinator, ~09:30): its CPU compiles for ~10 min a launch, so box jobs are
+  now one mode/size per process with 3-4x the games; small quick jobs stay on the laptop.
