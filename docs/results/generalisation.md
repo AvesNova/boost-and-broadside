@@ -39,9 +39,8 @@ Frontline is played from 3 against 3 up.
 ## Map sizes
 
 The champion against Imugi at 5 against 5 on maps of half and twice each preset's arena
-radius (at least the mode's minimum radius), rated in a pool per scale (Elo, Imugi = 1000; a
-bound where every game, or nearly
-every game, went one way):
+radius (at least the mode's minimum radius), rated in a pool per scale (Elo, Imugi = 1000;
+a bound where every game, or nearly every game, went one way):
 
 | Map | Frontline | Deathmatch | Elimination |
 |---|---|---|---|
