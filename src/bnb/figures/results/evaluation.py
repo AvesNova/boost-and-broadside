@@ -17,6 +17,7 @@ import csv
 import json
 import math
 import pathlib
+import re
 
 from bnb.league.evaluation import read_batches, tallies_of
 from bnb.league.evaluation_settings import BY_NAME, HEAD_TO_HEAD
@@ -349,3 +350,37 @@ def champion_values(path) -> dict[str, float | str | None]:
         "champion_steps": steps,
         "champion_weights": kind,
     }
+
+
+TABLE_PRESET = re.compile(r"^(\S+) \(scored by")
+TABLE_ROW = re.compile(
+    r"^\s+(\S+)\s+(?:(?P<elo>-?[\d.]+) \+-\s+(?P<stderr>[\d.]+)"
+    r"|(?P<sign>[<>])\s+(?P<bound>-?[\d.]+) \(bound\))"
+)
+
+
+def map_values(directory, player: str = "champion") -> dict[str, str | None]:
+    """The map-scale pools' ratings (`<directory>/scale_<s>/table.txt`, `bnb pool table`'s
+    print): per scale and mode `maps_scale_<s>_<mode>_elo`, a string, "1243 ± 32" or a
+    bound where the fit has no finite rating, "> 1721 (a bound: above the pool's range)"
+    or "< 279 (a bound: below the pool's range)"."""
+    values: dict[str, str | None] = {}
+    for table in sorted(pathlib.Path(directory).glob("scale_*/table.txt")):
+        scale = common.slug(float(table.parent.name.removeprefix("scale_")))
+        preset = None
+        for line in table.read_text().splitlines():
+            heading = TABLE_PRESET.match(line)
+            if heading:
+                preset = heading.group(1)
+                continue
+            row = TABLE_ROW.match(line)
+            if not row or row.group(1) != player or preset is None:
+                continue
+            key = f"maps_scale_{scale}_{common.mode_of(preset)}_elo"
+            if row.group("elo"):
+                values[key] = f"{float(row.group('elo')):.0f} ± {float(row.group('stderr')):.0f}"
+            elif row.group("sign") == ">":
+                values[key] = f"> {float(row.group('bound')):.0f} (a bound: above the pool's range)"
+            else:
+                values[key] = f"< {float(row.group('bound')):.0f} (a bound: below the pool's range)"
+    return values

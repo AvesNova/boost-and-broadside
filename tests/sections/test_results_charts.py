@@ -440,3 +440,20 @@ def test_the_champion_values_read_an_average_s_pool_name(tmp_path):
     held = evaluation.champion_values(champion)
     assert held["champion_weights"] == "training_exponential_decay_0.95"
     assert held["champion_run"] == "c-rl" and held["champion_steps"] == 98566144.0
+
+
+def test_the_map_values_read_the_pool_tables(tmp_path):
+    from bnb.figures.results import evaluation
+
+    table = tmp_path / "scale_0.5" / "table.txt"
+    table.parent.mkdir()
+    table.write_text(
+        "frontline_5v5 (scored by win_loss)\n"
+        "  champion                     > 1721.4 (bound)     192 games\n"
+        "  scripted                       1000.0 +-   0.0     192 games\n"
+        "elimination_5v5 (scored by win_loss)\n"
+        "  champion                       1243.1 +-  31.5     192 games\n"
+    )
+    values = evaluation.map_values(tmp_path)
+    assert values["maps_scale_0_5_elimination_elo"] == "1243 ± 32"
+    assert values["maps_scale_0_5_frontline_elo"].startswith("> 1721 (a bound")

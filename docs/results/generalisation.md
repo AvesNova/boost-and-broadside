@@ -36,6 +36,23 @@ Frontline is played from 3 against 3 up.
 
 {{pending: generalisation_reading | What the chart shows: whether the win rate holds away from the training size, where it falls, and whether small games (1 against 1, 2 against 2) differ in kind, for example by running the clock out.}}
 
+## Map sizes
+
+The champion against Imugi at 5 against 5 on maps of half and twice each preset's arena
+radius (at least the mode's minimum radius), rated in a pool per scale (Elo, Imugi = 1000; a
+bound where every game, or nearly
+every game, went one way):
+
+| Map | Frontline | Deathmatch | Elimination |
+|---|---|---|---|
+| half the radius | {{maps_scale_0_5_frontline_elo}} | {{maps_scale_0_5_deathmatch_elo}} | {{maps_scale_0_5_elimination_elo}} |
+| twice the radius | {{maps_scale_2_frontline_elo}} | {{maps_scale_2_deathmatch_elo}} | {{maps_scale_2_elimination_elo}} |
+
+On each preset's own map, the champion's 5 against 5 scores are on
+[Training curves](training.md#the-champion-on-every-condition).
+
+{{pending: maps_reading | What the map sizes show, in particular Frontline on the larger map.}}
+
 ## Why it matters
 
 Small games and large games ask different things: at 1 against 1 a fight is a duel of

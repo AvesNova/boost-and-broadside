@@ -30,6 +30,7 @@ CHARTS = (
     "elo",
     "suite",
     "averaging",
+    "maps",
 )
 
 
@@ -55,7 +56,7 @@ def _draw(options) -> tuple[list, dict]:
         raise SystemExit(f"bnb figures results {options.chart} needs its sources")
     single = sources[0]
     if (
-        options.chart in ("fan", "break-even", "arms", "elo", "suite", "averaging")
+        options.chart in ("fan", "break-even", "arms", "elo", "suite", "averaging", "maps")
         and len(sources) != 1
     ):
         raise SystemExit(f"bnb figures results {options.chart} reads one source, not {sources}")
@@ -98,6 +99,8 @@ def _draw(options) -> tuple[list, dict]:
         written, values = evaluation.draw_elo(single, options.out, formats)
     elif options.chart == "suite":
         written, values = evaluation.draw_suite(single, options.out, formats)
+    elif options.chart == "maps":  # values only: a table on the page, no figure
+        written, values = [], evaluation.map_values(single)
     elif options.chart == "averaging":
         written, values = evaluation.draw_averaging(single, options.out, formats)
         values.update(evaluation.champion_values(single))
