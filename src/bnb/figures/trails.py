@@ -574,15 +574,15 @@ def still(artifact: dict, directory, name: str, config: StillConfig) -> tuple[li
 
 
 def render(artifact: dict, directory: pathlib.Path) -> tuple[list[pathlib.Path], dict]:
-    """The trail stills: trails_game (the whole record), trails_game_dark, trails_opening
-    (the first OPENING_SECONDS), trails_busiest (the busiest 20 s, cropped) and, with fog
-    and ghosts, trails_fog (the busiest 20 s of hidden enemies as team 0 saw them)."""
+    """The trail stills: trails_game (the whole record), trails_opening (the first
+    OPENING_SECONDS), trails_busiest (the busiest 20 s, cropped) and, with fog and ghosts,
+    trails_fog (the busiest 20 s of hidden enemies as team 0 saw them), each also in the
+    theme's dark variant (`<name>_dark`)."""
     match = artifact["match"]
     tick_length = float(match["about"]["tick_length"])
     written, numbers = [], {}
     stills = {
         "trails_game": StillConfig(),
-        "trails_game_dark": StillConfig(theme="dark"),
         "trails_opening": StillConfig(end=OPENING_SECONDS),
     }
     start, end = busiest_window(match, tick_length, 20.0)
@@ -591,6 +591,9 @@ def render(artifact: dict, directory: pathlib.Path) -> tuple[list[pathlib.Path],
     if bool(match["fogged"]) and has_ghosts:
         start, end = busiest_window(match, tick_length, 20.0, team=0)
         stills["trails_fog"] = StillConfig(start=start, end=end, fog=True)
+    stills = {name: config for name, config in stills.items() if not name.endswith("_dark")}
+    for name, config in list(stills.items()):  # every still in the theme's dark variant too
+        stills[name + house.suffix("dark")] = dataclasses.replace(config, theme="dark")
     for name, config in stills.items():
         paths, numbers[name] = still(artifact, directory, name, config)
         written += paths

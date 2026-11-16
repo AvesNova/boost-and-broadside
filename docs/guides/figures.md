@@ -231,7 +231,7 @@ bnb figures trails --capture figures/captures/match_real_scale_elimination_seed0
   the other marks are opt-in (below). The fields are neutral discs (thick air filled,
   thin air a dotted ring); the arena's edge is a solid circle, a shrinking boundary
   (elimination) a dashed one at the window's end.
-- `trails_game_dark`: the same on the dark surface.
+- `<name>_dark`: each still here again on the dark surface (`bnb.figures.theme`).
 - `trails_opening`: the first 60 s, the approach and the first contact.
 - `trails_busiest`: the 20 s with the most hits and deaths, cropped to them: a turning
   fight reads as its circles.
