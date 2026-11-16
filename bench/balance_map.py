@@ -1063,6 +1063,8 @@ def confirm(args) -> None:
     against the reference, and each pair against each other (pairwise: the first's team as
     A). Writes confirm.jsonl (one row a matchup and condition) and prints the table."""
     records = Records(args.out)
+    if args.queue_root is not None:
+        records.queue_root = args.queue_root
     picks = args.ids or choose_picks(records, args.count, args.floor)
     print(f"picks: {picks}", flush=True)
     label = args.label
@@ -1072,7 +1074,10 @@ def confirm(args) -> None:
         for n, a in enumerate(picks)
         for b in picks[n + 1 :]
     ]
-    outputs = submit(records, label, entries, args.games, 2, EVERY)
+    conditions = tuple(args.conditions)
+    if args.pairs_only:
+        entries = [e for e in entries if "~" in e["name"]]
+    outputs = submit(records, label, entries, args.games, args.seed, conditions)
     rows = collect(records, label, outputs, len(entries), poll=15.0)
     for row in rows:
         row["kind"] = "pair" if "~" in row["id"] else "reference"
@@ -1080,11 +1085,13 @@ def confirm(args) -> None:
     by_matchup: dict[str, dict] = {}
     for row in rows:
         by_matchup.setdefault(row["id"], {})[row["condition"]] = row
-    print("| matchup | " + " | ".join(EVERY) + " | worst |")
-    for name, conditions in by_matchup.items():
-        wins = {c: win_equivalent(conditions[c]["kill_share"][0], c) for c in EVERY}
+    print("| matchup | " + " | ".join(conditions) + " | worst |")
+    for name, found in by_matchup.items():
+        wins = {c: win_equivalent(found[c]["kill_share"][0], c) for c in conditions}
         worst = max(abs(w - 50.0) for w in wins.values())
-        print(f"| {name} | " + " | ".join(f"{wins[c]:.1f}" for c in EVERY) + f" | {worst:.1f} |")
+        print(
+            f"| {name} | " + " | ".join(f"{wins[c]:.1f}" for c in conditions) + f" | {worst:.1f} |"
+        )
 
 
 def main() -> None:
@@ -1119,6 +1126,10 @@ def main() -> None:
     one.add_argument("--floor", type=float, default=42.0, help="the lower bound a pick needs")
     one.add_argument("--games", type=int, default=512)
     one.add_argument("--label", default="confirm")
+    one.add_argument("--conditions", nargs="*", default=list(SEARCHED))
+    one.add_argument("--seed", type=int, default=2)
+    one.add_argument("--pairs-only", action="store_true")
+    one.add_argument("--queue-root", type=pathlib.Path, default=None)
     args = parser.parse_args()
     if args.command == "search":
         search(args)
