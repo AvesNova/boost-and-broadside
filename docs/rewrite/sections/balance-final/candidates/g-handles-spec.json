@@ -1,0 +1,16 @@
+[
+ {
+  "name": "G",
+  "energy_handles": {
+   "sustained_turn_rate": 1.1119,
+   "max_shield": 0.55,
+   "ceiling": 1.5216,
+   "climb_time": 1.5221,
+   "shots_per_store": 2.3823
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95,
+   "max_shield": 1.1832
+  }
+ }
+]
