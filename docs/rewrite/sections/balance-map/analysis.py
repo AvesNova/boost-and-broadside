@@ -160,12 +160,6 @@ def partial_dependence_plot(models, x, path: pathlib.Path) -> dict:
         unit = UNITS.get(axis.handle, "")
         panel.set_title(axis.handle.replace("_", " "), fontsize=9, color=INK)
         panel.set_xlabel(unit, fontsize=8, color=MUTED)
-        if axis.log:
-            from matplotlib.ticker import NullFormatter, ScalarFormatter
-
-            panel.set_xscale("log")
-            panel.xaxis.set_major_formatter(ScalarFormatter())
-            panel.xaxis.set_minor_formatter(NullFormatter())
         panel.tick_params(labelsize=7, colors=MUTED)
         for side in ("top", "right"):
             panel.spines[side].set_visible(False)
