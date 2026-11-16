@@ -23,6 +23,10 @@ def _load_hook():
 
 
 HOOK = _load_hook()
+_PLACEHOLDERS_SPEC = importlib.util.spec_from_file_location(
+    "docs_placeholders_hook", pages.DOCS / "hooks" / "placeholders.py")
+PLACEHOLDERS = importlib.util.module_from_spec(_PLACEHOLDERS_SPEC)
+_PLACEHOLDERS_SPEC.loader.exec_module(PLACEHOLDERS)
 
 
 def _ids(page) -> str:
@@ -123,7 +127,8 @@ def test_every_marker_like_comment_is_a_valid_marker():
             if not stripped.startswith("<!--"):
                 continue
             if not (HOOK.MARKER.match(stripped) or stripped == pages.RUNNABLE
-                    or pages.NOT_RUNNABLE.match(stripped)):
+                    or pages.NOT_RUNNABLE.match(stripped)
+                    or (page.path == pages.README and stripped == PLACEHOLDERS.README_NOTE)):
                 bad.append(f"{page.name}:{number}: {stripped}")
     assert not bad, "\n".join(bad)
 

@@ -230,7 +230,9 @@ def command(arguments: str) -> str | None:
         if tokens[0] == "evaluate" and tokens[1:2] in (["decide"], ["design"]):
             chosen = EvaluateDecide if tokens[1] == "decide" else EvaluateDesign
         options = _options(chosen)
-    values = {"--preset": set(PRESETS) | {"mixed"}, "--mode": set(MODES)}
+    from bnb.runtime.train import TRAINING_MIXES
+
+    values = {"--preset": set(PRESETS) | set(TRAINING_MIXES), "--mode": set(MODES)}
     for index, token in enumerate(tokens):
         if not token.startswith("-"):
             continue

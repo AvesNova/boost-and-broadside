@@ -43,6 +43,7 @@ theme:
         name: Light mode
 
 hooks:
+  - docs/hooks/placeholders.py
   - docs/hooks/generated.py
 
 plugins:
@@ -92,6 +93,15 @@ validation:
 
 nav:
   - Home: index.md
+  - Results:
+      - results/index.md
+      - The crossover: results/crossover.md
+      - Training curves: results/training.md
+      - The arms: results/arms.md
+      - Team sizes: results/generalisation.md
+      - Compute: results/compute.md
+      - Behaviour and failures: results/behaviour.md
+      - How it is measured: results/evaluation.md
   - Getting started:
       - getting-started/index.md
       - Installation: getting-started/installation.md
