@@ -1,16 +1,16 @@
 #!/bin/bash
 # unified_check.sh CHAIN [HOURS]: the 5090 check of the unified evaluator (`bnb unified`,
 # docs/guides/unified-evaluation.md) on the dry run's policies, the box queue's targets
-# (box/eval_queue.sh: suite, maps, curves, break-even, team size) in one run:
+# (box/eval_queue.sh's, less the map sizes: evaluation plays the trained map sizes) in one run:
 #   suite      the champion against Imugi, every head-to-head condition (score to +-0.02)
-#   maps       Elo of the champion at 0.5x and 2x maps, each 5v5 mode (+-45)
-#   curves     5v5 Elo of both stages' scheduled snapshots per mode (+-60, the queue's field)
-#   breakeven  the champion's break-even log ratio per mode (+-0.1, at most 2048 games)
+#   curves     5v5 Elo of both stages' scheduled snapshots per mode (+-60, to precision)
+#   breakeven  the champion's break-even ratio per mode, at 5 ships against Imugi's 1 to 20
+#              (+-0.1, at most 2048 games)
 #   teamsize   the champion at n v n, n v 1.5n, n v 2n, n = 1..10, per mode (+-0.05)
 # Launch detached; it takes the GPU lock:
 #   ssh -f box5090 'nohup setsid bash /workspace/wt/ueval/box/unified_check.sh dry-v24-s1 2 \
 #     > /workspace/runs/dry-v24-s1-unified.launch.log 2>&1 < /dev/null &'
-# PARTS="curves" (or any of: suite maps curves breakeven teamsize; default all) picks the
+# PARTS="curves" (or any of: suite curves breakeven teamsize; default all) picks the
 # targets; PRIOR=POOL loads a rating pool's games first (`--prior`, e.g. the queue's
 # $RUNS/CHAIN-eval/curves/pool); OUT overrides the output directory ($RUNS/CHAIN-unified).
 # A compile-cache archive (docs/rewrite/sections/launch/cache.sh export) in $CACHE_ARCHIVE
@@ -45,7 +45,7 @@ if [ -z "$champion" ]; then
   last=$(ls "$RUNS/$chain-rl/policies" | sed -n 's/^step_\([0-9]*\)$/\1/p' | sort -n | tail -1)
   champion=$RUNS/$chain-rl/policies/step_$last/exponential_average
 fi
-"$PY" - "$chain" "$champion" "$RUNS" "${PARTS:-suite maps curves breakeven teamsize}" > "$out/spec.toml" <<'PY'
+"$PY" - "$chain" "$champion" "$RUNS" "${PARTS:-suite curves breakeven teamsize}" > "$out/spec.toml" <<'PY'
 import pathlib, sys
 chain, champion, runs = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
 parts = set(sys.argv[4].split())
@@ -71,14 +71,16 @@ for mode, preset in modes.items():
     sizes = [[5, 5], [10, 10]] + ([[1, 1], [2, 2]] if mode != "frontline" else [])
     if "suite" in parts:
         print(f'\n[[win_rate]]\nname = "suite"\npreset = "{preset}"\nfirst = "champion"\nsecond = "scripted"\nlineups = {sizes}\nstderr = 0.02\nbudget = 512')
-    for scale in (0.5, 2.0) if "maps" in parts else ():
-        print(f'\n[[elo]]\nname = "maps/{mode}/{scale}"\npreset = "{preset}"\narena_scale = {scale}\nplayers = ["scripted", "champion"]\nstderr = 45.0\nbudget = 4096')
+    # no map-scale targets: evaluation plays the map sizes the run trained on (the author,
+    # 2026-11-17; only a run trained on several sizes would rate other ones)
     # curves stop on precision: every snapshot rated to +-60 (no bound is a result); the
     # budget is a safety bound only, reported loudly when reached
     if "curves" in parts:
         print(f'\n[[elo]]\nname = "curves/{mode}"\npreset = "{preset}"\nplayers = {field}\nstderr = 60.0\nbudget = {CURVE_BUDGET}\nprior_keys = ["{preset}", "{mode}_5v5"]')
+    # the fan: the champion at the trained 5 ships, Imugi 1 to 20 (5v5, 5v6, ...); 20 a side
+    # stays in the team-size lineups only
     if "breakeven" in parts:
-        print(f'\n[[break_even]]\npreset = "{preset}"\npolicy = "champion"\nopponent = "scripted"\nstderr = 0.1\nbudget = 2048')
+        print(f'\n[[break_even]]\npreset = "{preset}"\npolicy = "champion"\nopponent = "scripted"\nstderr = 0.1\nbudget = 2048\npolicy_count = 5\nfixed_count = 20')
     lineups = []
     for n in range(1, 11):
         lineups.append([n, n])

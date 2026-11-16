@@ -14,6 +14,7 @@ from bnb.league.unified.engine import BucketEngine, Slot, _split, lane_runs, siz
 from bnb.league.unified.planner import Planner
 from bnb.league.unified.seat import RefillSeat
 from bnb.league.unified.targets import (
+    BreakEvenTarget,
     DecisionTarget,
     EloTarget,
     InformationLooks,
@@ -431,3 +432,19 @@ def test_prior_pool_games_feed_the_elo_target(tmp_path):
     loaded = load_prior(planner, [tmp_path / "pool"], players, say=lambda *a, **k: None)
     assert loaded == {"e": 16} and target.prior_games == 16
     assert target.wins[0, 1] == 3 + 0.5 + 3 and target.wins[1, 0] == 4 + 0.5 + 5
+
+
+def test_break_even_at_the_trained_size_varies_only_the_opponent():
+    from bnb.league import crossover
+
+    config = crossover.CrossoverConfig(fixed_count=20, policy_count=5)
+    lineups = config.lineups()
+    assert {mine for mine, _ in lineups} == {5}
+    assert [theirs for _, theirs in lineups] == list(range(20, 0, -1))  # r rising
+    first = crossover.first_lineups(config)
+    assert first[0] == (5, 20) and first[-1] == (5, 1)
+    stronger = config.bracket_lineups(crossover.POLICY_SHRINKS)
+    assert all(theirs >= 5 for _, theirs in stronger) and (5, 10) in stronger
+    target = BreakEvenTarget("b", FL, "champion", "scripted", policy_count=5)
+    cell = max(target.proposals(), key=lambda c: c.condition.second)
+    assert cell.condition.first == 5

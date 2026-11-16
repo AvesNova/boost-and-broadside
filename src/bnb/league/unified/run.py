@@ -34,6 +34,8 @@ The spec (TOML) names the players and the targets:
     opponent = "scripted"
     stderr = 0.1
     budget = 2048
+    policy_count = 5                     # optional: the policy at 5 ships, the opponent
+    fixed_count = 20                     #   1 to 20 (5v5, 5v6, ...); default: weaker side at 20
 
     [[decision]]                         # A against B, the sequential test
     preset = "real_scale_deathmatch"
@@ -165,6 +167,7 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
                 entry.get("stderr", 0.1),
                 entry.get("fixed_count", 20),
                 entry.get("budget", 2048),
+                policy_count=entry.get("policy_count"),
             )
         )
     for entry in raw.get("decision", []):

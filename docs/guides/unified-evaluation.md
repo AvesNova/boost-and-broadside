@@ -39,6 +39,8 @@ stderr = 0.05
 preset = "real_scale_frontline"
 policy = "champion"
 stderr = 0.1
+policy_count = 5   # the champion at its trained 5 ships, Imugi's count 1 to fixed_count
+fixed_count = 20
 
 [[decision]]
 preset = "real_scale_deathmatch"
@@ -50,6 +52,13 @@ delta = 0.02
 Every target stops at its goal; tighten a goal and rerun with the same `--out` to continue
 from the recorded games. A `budget` (games) and `--hours` are safety bounds only: a target
 they stop short of its goal is named in a `WARNING` line of `progress.log`{.plain}.
+
+Evaluation plays the map sizes the policies trained on (no `arena_scale` targets unless a
+run trained on several sizes). A break-even with `policy_count` holds the policy's side at
+that many ships and varies only the opponent's (5 against 5, 6, 7, ... up to
+`fixed_count`): the fan at the trained size; without it the weaker side is fixed at
+`fixed_count` and the stronger one shrinks (`bnb crossover`'s axis). Twenty a side belongs
+to the team-size lineups.
 
 ## Elo fields
 

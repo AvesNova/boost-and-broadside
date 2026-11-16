@@ -109,6 +109,14 @@ The A-optimal value still picks the pairs; over a long chain it prefers hops of
 p ≈ 0.8–0.95 (the information about a distance D over k hops is best near 400 Elo a
 hop, where x² p (1 − p) peaks), so "near 0.5" is not the optimum for a 5,000-Elo span.
 
+## Map sizes and the fan (the author, 2026-11-17)
+
+Evaluation plays only the map sizes the run trained on (elimination's shrinking map
+included); the map-scale Elo targets are gone from `box/unified_check.sh`. The break-even
+fan holds the policy at the trained 5 ships and varies Imugi's count, 1 to 20
+(`crossover.CrossoverConfig.policy_count`; spec `policy_count = 5`); 20 a side stays in
+the team-size lineups.
+
 ## Decisions at information fractions (`targets.InformationLooks`)
 
 The design (`bnb.league.sequential`: K = 4 looks, O'Brien-Fleming spending, α = 0.05,

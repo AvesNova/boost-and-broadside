@@ -109,7 +109,7 @@ Once the box's GPU is free (the queue holds the lock until it exits):
 2. Optionally `CACHE_ARCHIVE=/workspace/compile-cache.tar.zst` (a 5090 archive) to start
    warm, and `CACHE_EXPORT=...` to keep this run's compiles for the next box.
 3. `nohup setsid bash /workspace/wt/ueval/box/unified_check.sh dry-v24-s1 2 > ... &`
-   (the queue's targets: suite ±0.02, maps ±45, curves ±60 on the queue's own field,
+   (the queue's targets: suite ±0.02, maps ±45 (dropped 2026-11-17: evaluation plays the trained map sizes), curves ±60 on the queue's own field,
    break-even ±0.1 at most 2,048 games a mode, team size n v n, n v 1.5n, n v 2n ±0.05).
 
 What to read in `$RUNS/dry-v24-s1-unified/`:

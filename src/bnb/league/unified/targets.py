@@ -527,7 +527,9 @@ class WinRateTarget(Target):
 class BreakEvenTarget(Target):
     """The break-even log ratio of `policy` against `opponent` in `preset`'s mode
     (`bnb.league.crossover`, on its fixed-count axis), to `stderr` in log ratio, at most
-    `budget` games. Its next lineups come from crossover's allocation over the finished
+    `budget` games; policy_count: the policy's ships held at this count, the opponent's
+    varied from 1 to `fixed_count` (`crossover.CrossoverConfig.policy_count`; the fan at the
+    trained size). Its next lineups come from crossover's allocation over the finished
     games, `queue` pairs at a time (the in-flight ones count toward nothing until they end:
     a pair's two games, one in each seat, are planned together); before a crossing every
     game is worth `EXPLORE`, after one the predicted drop of r*'s variance over the goal's."""
@@ -544,10 +546,14 @@ class BreakEvenTarget(Target):
         fixed_count: int = 20,
         budget: int = 2048,
         queue: int = 16,
+        policy_count: int | None = None,
     ) -> None:
         self.name, self.preset, self.policy, self.opponent = name, preset, policy, opponent
         self.config = crossover.CrossoverConfig(
-            fixed_count=fixed_count, target_stderr=stderr, budget_games=budget
+            fixed_count=fixed_count,
+            target_stderr=stderr,
+            budget_games=budget,
+            policy_count=policy_count,
         )
         self.goal, self.budget, self.queue_pairs = stderr, budget, queue
         self.by_lineup: dict[tuple[int, int], list[float]] = {}

@@ -107,7 +107,9 @@ class CrossoverConfig:
     card) each slot of a game's lineup is drawn from, uniformly; fixed_lineups: play these
     lineups (each side 1 to fixed_count) in place of the break-even's allocation, each to
     `lineup_games` games (the team-size chart's tallies; `fixed_pairs`), the fit reported
-    as usual."""
+    as usual; policy_count: hold the policy's side at this many ships and vary only the
+    opponent's, 1 to `fixed_count` (the fan at the trained size: 5 against 5, 6, 7, ...;
+    None: the weaker side fixed at `fixed_count`, the module docstring's axis)."""
 
     fixed_count: int = 20
     bracket: tuple[int, ...] = (6, 10, 14, 20)
@@ -117,6 +119,7 @@ class CrossoverConfig:
     lineup_types: tuple[int, ...] = (0, 1)
     fixed_lineups: tuple[Lineup, ...] = ()
     lineup_games: int = 256
+    policy_count: int | None = None
 
     def __post_init__(self) -> None:
         if self.fixed_count < 1:
@@ -132,6 +135,8 @@ class CrossoverConfig:
                 raise ValueError(
                     f"lineup {lineup}: two counts, each 1 to the fixed count {self.fixed_count}"
                 )
+        if self.policy_count is not None and not 1 <= self.policy_count <= self.fixed_count:
+            raise ValueError(f"a policy count of {self.policy_count}: 1 to {self.fixed_count}")
         if self.fixed_lineups and self.lineup_games < 2:
             raise ValueError(f"{self.lineup_games} games per fixed lineup: at least a pair")
 
@@ -144,6 +149,8 @@ class CrossoverConfig:
         """Every lineup the measurement may play, in order of r: the policy's count rising
         to parity, then the opponent's falling from it."""
         high = self.fixed_count
+        if self.policy_count is not None:  # the opponent's count falling: r rising
+            return [(self.policy_count, count) for count in range(high, 0, -1)]
         return [(count, high) for count in range(1, high + 1)] + [
             (high, count) for count in range(high - 1, 0, -1)
         ]
@@ -152,6 +159,15 @@ class CrossoverConfig:
         """The bracket's lineups with the shrinking side's ships at the bracket's counts
         (clipped to the range), in order of r, each once."""
         high = self.fixed_count
+        if self.policy_count is not None:  # the opponent's count at the bracket's ratios
+            mine = self.policy_count
+            ratios = [count / high for count in self.bracket]  # (0, 1]
+            counts = set()
+            if shrinking in (POLICY_SHRINKS, BOTH_SHRINK):  # the opponent grows
+                counts |= {min(max(round(mine / ratio), 1), high) for ratio in ratios}
+            if shrinking in (OPPONENT_SHRINKS, BOTH_SHRINK):
+                counts |= {min(max(round(mine * ratio), 1), high) for ratio in ratios}
+            return sorted({(mine, count) for count in counts}, key=log_ratio)
         counts = {min(max(count, 1), high) for count in self.bracket}
         found = set()
         if shrinking in (POLICY_SHRINKS, BOTH_SHRINK):
@@ -353,9 +369,14 @@ def first_lineups(config: CrossoverConfig) -> list[Lineup]:
     """The first batch's lineups, in order of r: `first_ratios` ratios evenly spaced in r
     from 1 against `fixed_count` to `fixed_count` against 1, each the nearest lineup, each
     once."""
-    candidates, span = config.lineups(), math.log(config.fixed_count)
+    candidates = config.lineups()
+    low, high = log_ratio(candidates[0]), log_ratio(candidates[-1])
     count = config.first_ratios
-    targets = [span * (2 * step / (count - 1) - 1) for step in range(count)] if count > 1 else [0]
+    targets = (
+        [low + (high - low) * step / (count - 1) for step in range(count)]
+        if count > 1
+        else [(low + high) / 2]
+    )
     return sorted({_nearest(candidates, target) for target in targets}, key=log_ratio)
 
 
