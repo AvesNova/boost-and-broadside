@@ -107,7 +107,8 @@ def test_a_sets_files_round_trip_with_their_notes(trial):
 
 def test_training_takes_its_games_set_card(trial):
     game = GameConfig(5, 10, 7800.0, ship_set=trial)
-    assert TrainConfig(game=game).ship_card == api.default_card(trial)
+    # the trial set has no drawn lineup types, so its training flies the fixed lineup
+    assert TrainConfig(game=game, lineup_draw=False).ship_card == api.default_card(trial)
     assert TrainConfig(game=api.PRESETS["deathmatch"]).ship_card == api.default_card()
 
 
