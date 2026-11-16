@@ -560,3 +560,10 @@ Q4 rows (score; kill share change from E), 512 games (dm2, el5 1024):
 **The raw Q4x0.8 card is inside 55/45 in all seven mode-sizes** at 512-1024 games (dm10 at the
 edge, where E itself reads 45-50). The vision cards are info only (author). Next: confirm1
 (the handle version, 2048 games) and grid3 (vision-free neighbourhood) are queued.
+- 15:45 G in handle space (`candidates/g-handles-spec.json` -> `g-handles.json`, solved on the
+  box): measuring the tested Q4x0.8 handle card gives exactly seven handle changes (Yongma
+  sustained turn x1.1119, max shield x0.55, ceiling x1.5216, climb time x1.5221, shots per store
+  x2.3823; Jujak sustained turn x0.95, max shield x1.1832); re-solving those reproduces the
+  tested card within 0.07% in every field, so `apply.py --candidates g-handles.json G` writes a
+  consistent ship file. probe4 dropped from dm10 (waiting) and FL10 (after its current chunk,
+  `/workspace/drop-job.sh`): mostly vision cards now; confirm1 runs next there.
