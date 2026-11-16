@@ -71,34 +71,64 @@ a 115-shield Bonghwang is then the tank that wins the big fights).
 (± 0.012 each. Damage is x Jujak's 19.19 a bullet, all at 30 Hz. Under E Yongma's turn is
 0.664 and Jujak's 0.726, so Bonghwang's 0.70 sits between them, as 0.63 does under A.)
 
-## Matchups (option A)
+## Matchups: every option, every condition
 
-Bonghwang at d1.2/s115 with its doctrine, against the release Yongma and the v23 Jujak. The
-release pair's own score is from the same run (its own seed), so each row is a self-contained
-triangle.
+`finals1.json` (the per-option cards above, Bonghwang flying its doctrine), each option's own
+Yongma v Jujak from the same run (an entry whose card is the option's Yongma, flying Yongma's
+doctrine). Deathmatch 300 s, no early win (Bonghwang's points over the other team's); the
+1v1 is mostly draws. Seed-to-seed spread at 5v5 is about ±0.03, larger than one run's SE.
 
-| mode, size (games a pairing) | Bonghwang v Jujak | Bonghwang v Yongma | Yongma v Jujak |
+**A** (Bonghwang B-d1.2-s115)
+
+| condition (games) | Bonghwang v Jujak | Bonghwang v Yongma | Yongma v Jujak |
 |---|---|---|---|
-| **deathmatch 5v5 (1536)** | **0.490 ± 0.012** | **0.567 ± 0.012** | 0.495 ± 0.012 |
-| deathmatch 5v5, other runs (512, 640) | 0.510, 0.473 | 0.597, 0.601 | 0.461 |
-| deathmatch 1v1 (1024; mostly draws) | 0.333 ± 0.009 | 0.565 ± 0.009 | 0.310 ± 0.009 |
-| deathmatch 2v2 (1024) | 0.311 ± 0.013 | 0.674 ± 0.013 | 0.279 ± 0.013 |
-| deathmatch 10v10 (384) | 0.600 ± 0.024 | 0.464 ± 0.025 | 0.732 ± 0.022 |
-| elimination 5v5 (512) | 0.396 ± 0.022 | 0.682 ± 0.021 | 0.356 ± 0.021 |
-| Frontline 5v5 (512) | 0.326 ± 0.020 | 0.635 ± 0.020 | 0.335 ± 0.023 |
-| mirrors | 0.5 by symmetry | | |
+| deathmatch 1v1 (1024) | 0.336 ± 0.008 | 0.587 ± 0.008 | 0.296 ± 0.009 |
+| deathmatch 2v2 (1024) | 0.314 ± 0.013 | 0.656 ± 0.013 | 0.267 ± 0.012 |
+| deathmatch 5v5 (1536) | 0.483 ± 0.012 | 0.562 ± 0.012 | 0.474 ± 0.012 |
+| deathmatch 10v10 (384) | 0.646 ± 0.024 | 0.469 ± 0.025 | 0.732 ± 0.022 |
+| elimination 5v5 (768) | 0.425 ± 0.018 | 0.665 ± 0.017 | 0.378 ± 0.018 |
+| Frontline 5v5 (768) | 0.275 ± 0.015 | 0.549 ± 0.017 | 0.355 ± 0.016 |
 
-Seed-to-seed spread at 5v5 is about ±0.03 (three runs of the same card: 0.47-0.51 against
-Jujak, 0.57-0.60 against Yongma), larger than one run's standard error.
+**C'** (Bonghwang Bt66-d1.1-s90)
 
-**Reading.** At 5v5 deathmatch, the balance target, Bonghwang is level with Jujak and a little
-ahead of Yongma. Off that point it moves less than the release pair does: from 2v2 to 10v10
-Yongma v Jujak runs 0.28 -> 0.73, Bonghwang v Jujak 0.31 -> 0.60 and Bonghwang v Yongma
-0.67 -> 0.46. In every condition Bonghwang lands between the other two (Jujak strongest in
-the small fights, elimination and Frontline; Yongma at 10v10), so where the release pair is
-far apart no third ship can be within 40-60% of both; the size and mode spread is the release
-pair's, and the balance agent's flatter option (C: Jujak turn x0.91, Yongma turn x1.08,
-Yongma shield x0.6) is being checked against Bonghwang now.
+| condition (games) | Bonghwang v Jujak | Bonghwang v Yongma | Yongma v Jujak |
+|---|---|---|---|
+| deathmatch 1v1 (1024) | 0.383 ± 0.008 | 0.428 ± 0.008 | 0.425 ± 0.009 |
+| deathmatch 2v2 (1024) | 0.419 ± 0.014 | 0.499 ± 0.014 | 0.458 ± 0.014 |
+| deathmatch 5v5 (1536) | 0.544 ± 0.012 | 0.567 ± 0.012 | 0.527 ± 0.012 |
+| deathmatch 10v10 (384) | 0.566 ± 0.025 | 0.603 ± 0.024 | 0.501 ± 0.025 |
+| elimination 5v5 (768) | 0.533 ± 0.018 | 0.605 ± 0.018 | 0.458 ± 0.018 |
+| Frontline 5v5 (768) | 0.490 ± 0.017 | 0.471 ± 0.017 | 0.592 ± 0.017 |
+
+**D** (Bonghwang Bt66-d1.1-s95)
+
+| condition (games) | Bonghwang v Jujak | Bonghwang v Yongma | Yongma v Jujak |
+|---|---|---|---|
+| deathmatch 1v1 (1024) | 0.362 ± 0.008 | 0.425 ± 0.008 | 0.398 ± 0.009 |
+| deathmatch 2v2 (1024) | 0.366 ± 0.013 | 0.465 ± 0.014 | 0.407 ± 0.014 |
+| deathmatch 5v5 (1536) | 0.465 ± 0.012 | 0.520 ± 0.012 | 0.479 ± 0.012 |
+| deathmatch 10v10 (384) | 0.526 ± 0.025 | 0.562 ± 0.025 | 0.492 ± 0.024 |
+| elimination 5v5 (768) | 0.483 ± 0.018 | 0.561 ± 0.018 | 0.404 ± 0.018 |
+| Frontline 5v5 (768) | 0.368 ± 0.017 | 0.449 ± 0.017 | 0.493 ± 0.017 |
+
+**E** (Bonghwang Bt70-d1.1-s90)
+
+| condition (games) | Bonghwang v Jujak | Bonghwang v Yongma | Yongma v Jujak |
+|---|---|---|---|
+| deathmatch 1v1 (1024) | 0.369 ± 0.008 | 0.414 ± 0.008 | 0.413 ± 0.009 |
+| deathmatch 2v2 (1024) | 0.376 ± 0.014 | 0.422 ± 0.014 | 0.460 ± 0.014 |
+| deathmatch 5v5 (1536) | 0.498 ± 0.012 | 0.503 ± 0.012 | 0.531 ± 0.012 |
+| deathmatch 10v10 (384) | 0.574 ± 0.024 | 0.592 ± 0.024 | 0.514 ± 0.025 |
+| elimination 5v5 (768) | 0.460 ± 0.018 | 0.574 ± 0.018 | 0.457 ± 0.018 |
+| Frontline 5v5 (768) | 0.495 ± 0.018 | 0.480 ± 0.017 | 0.590 ± 0.017 |
+
+
+**Reading.** At the balance target (deathmatch 5v5) every trim is within 0.46-0.57 of both
+ships, E's at 0.50 / 0.50. Off that point Bonghwang keeps a slope of its own under the flat
+options (weaker in 2v2 and 1v1, a little stronger at 10v10: E 0.38 -> 0.50 -> 0.57 against
+Jujak); a lower shield with more turn or damage should flatten it (the slope round, running).
+Under A the release pair itself spans 0.27-0.73 over sizes, and Bonghwang lands between them
+in every condition; there no third ship can be within 40-60% of both away from 5v5.
 
 **Pace and aspects** (kills per minute, mean; kill aspect shares mutual head-on / offset
 head-on / flank / tail; passes per kill; trades):
