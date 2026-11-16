@@ -205,7 +205,20 @@ Round 17 (512 games) found three cards even at every size; the 1024-game check (
 | D: Jujak turn x0.93, Yongma turn x1.08, Yongma shield x0.6 | 42.3% | 49.0% | 54.2% |
 | **E: Jujak turn x0.95, Yongma turn x1.12, Yongma shield x0.55** | **45.9%** | **47.7%** | **50.1%** |
 
-C' and E are inside 55/45 at every deathmatch size. Kill aspects and kills a minute stay as
+C' and E are inside 55/45 at every deathmatch size. Elimination and Frontline 5v5 (1024
+games, `data/o2-*-laptop.jsonl`):
+
+| card | elimination 5v5 | Frontline 5v5 | Frontline aspects E v T: mutual / offset / flank / tail |
+|---|---|---|---|
+| before | 21.0 ± 1.3% | 10.7 ± 0.9% | 3.6 / 15.9 / 64.8 / 15.7 |
+| C' | 45.6 ± 1.6% | 58.0 ± 1.5% | 4.1 / 21.4 / 62.3 / 12.2 |
+| D | 41.7 ± 1.5% | 54.9 ± 1.5% | 3.9 / 21.0 / 62.8 / 12.3 |
+| E | 45.7 ± 1.6% | 55.2 ± 1.5% | 4.0 / 20.9 / 62.5 / 12.5 |
+
+So E is at or inside 55/45 in every mode measured at 5v5 and every deathmatch size. With the
+closer turns, more kills are offset head-on (about 21% against 16%) and fewer from the tail
+(12% against 16%) in the energy-turn games; mutual head-on stays about 4%; kills a minute as
+before. Kill aspects and kills a minute stay as
 before in all of them (the records). Shield x0.55 is 78.1, a little under Jujak's 79.7;
 x0.6 is 85.2. The turn ratio Jujak over Yongma: C' 1.09, D 1.11, E 1.09 (before 1.29, A 1.20).
 To play them: `apply.py --candidates options.json jt0.91-yt1.08-ys0.55` (C'),
