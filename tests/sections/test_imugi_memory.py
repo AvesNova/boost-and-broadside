@@ -13,6 +13,7 @@ from imugi_cases import CHARACTERISTICS, absent, observation, ship, value
 from bnb.contracts import Obs
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.imugi import Imugi, distribution, mode_index
+from bnb.controllers.imugi_combat import TARGET_DOUBT_SECONDS
 from bnb.controllers.imugi_memory import FORGET_WEIGHT, remember, ways_round
 from bnb.controllers.imugi_parameters import (
     MODES,
@@ -23,6 +24,7 @@ from bnb.controllers.imugi_parameters import (
     Switch,
     switch_probability,
 )
+from bnb.game.rules import Rules
 
 pytestmark = pytest.mark.usefixtures("global_generator")
 PARAMETERS = ImugiParameters()
@@ -75,22 +77,25 @@ def test_the_switching_rate_rises_smoothly_with_the_advantage():
     assert float(hot[0]) > float(probability[0]) and float(hot[-1]) < float(probability[-1])
 
 
-def test_a_near_tie_keeps_the_committed_target_and_a_clearly_nearer_one_takes_over():
+def test_a_near_tie_keeps_the_committed_target_and_a_clearly_nearer_one_takes_over_late():
     gun = value("gun_range", 0)
     agent = _agent()
-    # Commit to enemy 1 (alone in view), then enemy 0 appears just nearer: kept for a second.
+    # Commit to enemy 1 (alone in view), then enemy 0 appears just nearer: kept.
     first = _view([absent(), _enemy(gun * 2.0)])
     tie = _view([_enemy(gun * 1.97), _enemy(gun * 2.0)])
-    carries = _run(agent, [first] + [tie] * 30)
+    carries = _run(agent, [first] + [tie] * 90)
     assert bool((carries[0].target[:, 0] == 1).all())
-    assert float((carries[-1].target[:, 0] == 1).float().mean()) > 0.8
+    assert bool((carries[-1].target[:, 0] == 1).all())
     # The memoryless agent takes the nearer at once.
     off = Imugi(CHARACTERISTICS, 2, PARAMETERS, memory=False)
     assert bool((_run(off, [first, tie])[-1].target[:, 0] == 0).all())
-    # A clearly nearer enemy (a third of the distance) takes over within half a second.
+    # A clearly nearer enemy (a third of the distance) takes over only once it has been
+    # so for TARGET_DOUBT_SECONDS (60 ticks), all at once (no draw)
     near = _view([_enemy(gun * 0.67), _enemy(gun * 2.0)])
-    carries = _run(agent, [first] + [near] * 15)
-    assert float((carries[-1].target[:, 0] == 0).float().mean()) > 0.95
+    ticks = round(TARGET_DOUBT_SECONDS / Rules.tick_length)
+    carries = _run(agent, [first] + [near] * (ticks + 2))
+    assert bool((carries[ticks - 2].target[:, 0] == 1).all())
+    assert bool((carries[-1].target[:, 0] == 0).all())
 
 
 def test_a_lost_target_forces_a_re_choice():

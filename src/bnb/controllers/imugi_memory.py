@@ -27,6 +27,9 @@ from .imugi_parameters import ImugiParameters, Switch, logistic, switch_probabil
 # A remembered enemy is forgotten once its weight as a target falls below this: its
 # prediction is then worth nothing to aim or fire at.
 FORGET_WEIGHT = 0.01
+# s: a hidden committed target is pursued (kept known, dead reckoned) this long after it was
+# last seen (`remember`, `imugi_combat.choose_target`).
+TARGET_LOST_SECONDS = 3.0
 # The explore grid (`track_seen`, `imugi_combat.explore_target`): the hex grid of
 # EXPLORE_RINGS rings over the arena (cell centres in arena radii, about 1 km apart on the
 # 7.8 km map), and the time a seen cell's value takes to fall by e: about 20 s, after which
@@ -62,7 +65,11 @@ class ImugiCarry:
     and the episode progress when last observed (-1 none), and its closing speed (m/s)
     from the last two observations (`track_boundary`). seen (R, C): how recently the team
     has seen each cell of the explore grid (`EXPLORE_CELLS`; 1 in view now, decaying with
-    EXPLORE_SECONDS: `track_seen`)."""
+    EXPLORE_SECONDS: `track_seen`). target_doubt (R, S): the seconds a reason to leave
+    the committed target has held without a break (`imugi_combat.choose_target`).
+    extend_phase (R, S): the extend-and-return rule's clock (`imugi_combat.extend_and_return`):
+    positive, the seconds of extension left; negative, the seconds before another may
+    start; 0, free."""
 
     target: torch.Tensor
     combat_left: torch.Tensor
@@ -81,6 +88,8 @@ class ImugiCarry:
     boundary_progress: torch.Tensor
     boundary_speed: torch.Tensor
     seen: torch.Tensor
+    target_doubt: torch.Tensor
+    extend_phase: torch.Tensor
 
 
 def fresh_carry(views: int, ships: int, enemies: int, device) -> ImugiCarry:
@@ -110,6 +119,8 @@ def fresh_carry(views: int, ships: int, enemies: int, device) -> ImugiCarry:
         boundary_progress=torch.full((views,), -1.0, device=device),
         boundary_speed=torch.zeros(views, device=device),
         seen=torch.zeros((views, EXPLORE_CELLS.shape[0]), device=device),
+        target_doubt=torch.zeros((views, ships), device=device),
+        extend_phase=torch.zeros((views, ships), device=device),
     )
 
 
@@ -121,7 +132,9 @@ def track_boundary(carry: ImugiCarry, obs: Obs, reset: torch.Tensor, seconds: fl
     observation the carry was made from (the same episode progress) keeps the speed, so a
     carry `decide` returned gives the same marginals again."""
     radius = obs.globals[:, GLOBAL["arena_radius"]] * obs.globals[:, GLOBAL["boundary_fraction"]]
-    progress = obs.globals[:, GLOBAL["episode_progress"]]
+    # contiguous: a column of the globals is a strided view, which stored in the carry
+    # made the compiled tick's second call recompile for the carry's new strides
+    progress = obs.globals[:, GLOBAL["episode_progress"]].contiguous()
     last = carry.boundary_progress
     fresh = reset | (last < 0.0) | (progress < last)
     same = ~fresh & (progress == last)
@@ -253,7 +266,12 @@ def remember(
         (offset_x * offset_x + offset_y * offset_y < (vision * vision)[..., None])
         & own_alive[..., None]
     ).any(1)
-    known = seen | (known & enemy_alive & ~in_view & (weight >= FORGET_WEIGHT))
+    # an own ship's committed target stays known while hidden up to the target's lost time
+    # (`imugi_combat.TARGET_LOST_SECONDS`), its weight fading as any other's: the ship
+    # presses the fight past a short loss of sight rather than turning to another
+    committed = carry.target[..., None] == torch.arange(enemy.shape[1], device=enemy.device)
+    pursued = (committed & ~fresh[..., None]).any(1) & (since < TARGET_LOST_SECONDS)
+    known = seen | (known & enemy_alive & ~in_view & ((weight >= FORGET_WEIGHT) | pursued))
     weight = torch.where(known, weight, 0.0)
     carry = dataclasses.replace(
         carry,
