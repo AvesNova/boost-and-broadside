@@ -58,6 +58,13 @@ Host cost of the planner (CPU, no GPU): 0.7 ms a game for the box check's 92 tar
 3.8 ms a game for three 41-player Elo fields (vectorised proposals and cached cell
 hashes; 15 ms before), well under a block's time on either GPU.
 
+**Two buckets sharing the device** (`--concurrent yes`; elimination 5v5 in bucket 5,
+10v10, 3v6 and 6v9 in bucket 10, 256 games each): sized 640 and 832 environments by
+demand, both played in one host loop with the GPU at 100%, each stopped when its games
+were in (1,024 games, 10 minutes with both compiles). The second bucket compiles while
+the first waits (a known cost: compiling one while another plays is not built).
+Scores: 0.98 (5v5), 0.97 (10v10), 0.40 (3v6), 0.86 (6v9).
+
 Bucket size costs: the same 1v1 cells played 2.7x faster in a 1-a-side engine than
 benched in a 5-a-side one (89 s against 242 s for 1,280 games). The default buckets are
 5, 10, 20; a spec heavy in 1v1 and 2v2 games gains from `buckets = [2, 5, 10, 20]` (one

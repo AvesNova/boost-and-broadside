@@ -571,3 +571,4 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - next: benched (bucket 5) vs native (bucket 1) 1v1 scores, the v25-vs-v24 1v1 gap (DM 1v1 0.29 here vs 0.61 on the box), results.md.
 - 05:08 worked: v24 tree reproduces the box suite's 1v1 scores (0.625 vs 0.612, 0.238 vs 0.219); benched = native within 1.7 SE; v25 Imugi is far stronger at 1v1 (DM 0.29 vs 0.62). Per-machine remembered sizes; planner 3.8 ms/game at 3x41-player fields. didn't: bucket 5 plays 1v1s 2.7x slower than a 1-a-side engine (add small buckets when 1v1-heavy).
 - next: concurrent two-bucket test, final report.
+- 05:25 worked: two buckets concurrently (5 and 10, 640 + 832 envs, GPU 100%); results.md and the 5090 checklist written. next: the 5090 check (box/unified_check.sh) once the box is free.
