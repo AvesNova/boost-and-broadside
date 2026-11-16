@@ -241,3 +241,16 @@ feat/imugi-boundary). Power profile `performance`.
 - finals2 (C': the g 7 Bt66 d1.15/s85 and two g 8 cards; E: g 8 t70 d0.95/s80 and g 7 t70
   d1.2/s80; with each option's reference): elimination, Frontline 5v5 and 1v1 on the laptop;
   2v2 (1536), 5v5 (1536, with mirrors) and 10v10 (512) on the box workers.
+
+## 13:25 finals2; laptop released; box only
+
+- **E trim (t0.70 g8 d0.95 s80) at 1536 games: 2v2 0.470 / 0.498, 5v5 0.496 / 0.500**; 10v10
+  0.49-0.50 / 0.47-0.48 (two runs), elimination 5v5 0.49 / 0.53, Frontline 5v5 0.55 / 0.50,
+  1v1 0.41 / 0.50 (E's own Y v J 1v1 0.42). C' trim (t0.66 g8 d0.95 s85): 2v2 0.46 / 0.45,
+  5v5 0.52 / 0.50, 10v10 0.52 / 0.56, elimination 0.48 / 0.49, Frontline 0.55 / 0.43.
+- The author needs the laptop (coordinator, ~13:10): no heavy laptop work; my laptop unit was
+  stopped. Box workers restarted without `--pull` (src unchanged, so the inductor cache hits:
+  37-70 s warm compiles); `boxdocs.sh` refreshes only the third-ship docs and candidates.
+  Idle workers are stopped to keep GPU memory free (the balance agent's three share it).
+- Box queue: mixed-lineup doctrine strength for the A, C' and E trims (dm5), Frontline 10v10
+  and elimination 10v10 for finals2 (the balance agent's hardest condition is Frontline 10v10).

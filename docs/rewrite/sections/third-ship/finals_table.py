@@ -1,5 +1,6 @@
-"""The finals as Markdown: per balance option, each condition's Bonghwang v Jujak, Bonghwang v
-Yongma and the option's own Yongma v Jujak (its reference entry's "C v J"), ± one SE.
+"""The finals as Markdown: per balance option and Bonghwang card, each condition's Bonghwang v
+Jujak and Bonghwang v Yongma, and the option's own Yongma v Jujak (its reference entry's
+"C v J"), ± one SE.
 
     .venv/bin/python docs/rewrite/sections/third-ship/finals_table.py data/finals1-*.jsonl
 """
@@ -14,9 +15,12 @@ NAMES = {
     "dm-1v1": "deathmatch 1v1",
     "dm2": "deathmatch 2v2",
     "dm-5v5": "deathmatch 5v5",
+    "dm5": "deathmatch 5v5",
     "dm10": "deathmatch 10v10",
     "el5": "elimination 5v5",
+    "el10": "elimination 10v10",
     "fl5": "Frontline 5v5",
+    "fl10": "Frontline 10v10",
 }
 
 
@@ -26,32 +30,27 @@ def cell(job: dict) -> str:
 
 
 def main() -> None:
-    table: dict[str, dict[str, dict[str, str]]] = {}
+    cards: dict[tuple[str, str], dict[str, dict]] = {}
+    references: dict[tuple[str, str], str] = {}
     for path in map(pathlib.Path, sys.argv[1:]):
         condition = NAMES.get(CONDITION.match(path.name).group(1), path.name)
         for line in path.read_text().splitlines():
             row = json.loads(line)
             option, name = row["name"].split(":", 1)
-            slot = table.setdefault(option, {}).setdefault(condition, {})
             if name == "ref":
-                slot["Y v J"] = cell(row["jobs"]["C v J"])
+                references[(option, condition)] = cell(row["jobs"]["C v J"])
             else:
-                slot.setdefault("card", name)
-                if name == slot["card"]:
-                    slot["C v J"] = cell(row["jobs"]["C v J"])
-                    slot["C v Y"] = cell(row["jobs"]["C v Y"])
-                    slot["games"] = str(row["jobs"]["C v J"]["games"])
-    order = list(NAMES.values())
-    for option, conditions in table.items():
-        cards = {c.get("card") for c in conditions.values()}
-        print(f"\n**{option}** (Bonghwang {', '.join(sorted(x for x in cards if x))})\n")
+                cards.setdefault((option, name), {})[condition] = row["jobs"]
+    order = list(dict.fromkeys(NAMES.values()))
+    for (option, name), conditions in cards.items():
+        print(f"\n**{option}: {name}**\n")
         print("| condition (games) | Bonghwang v Jujak | Bonghwang v Yongma | Yongma v Jujak |")
         print("|---|---|---|---|")
         for condition in sorted(conditions, key=lambda c: order.index(c) if c in order else 99):
-            c = conditions[condition]
+            jobs = conditions[condition]
             print(
-                f"| {condition} ({c.get('games', '?')}) | {c.get('C v J', '')} | "
-                f"{c.get('C v Y', '')} | {c.get('Y v J', '')} |"
+                f"| {condition} ({jobs['C v J']['games']}) | {cell(jobs['C v J'])} | "
+                f"{cell(jobs['C v Y'])} | {references.get((option, condition), '')} |"
             )
 
 
