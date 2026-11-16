@@ -496,3 +496,8 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Step 0, Imugi's action mix (DM 5v5, 128 games, v24 card, before): Yongma stick straight 7.6%, R/L 0.4 8.5/8.5, 0.75 5.6/5.6, 1.0 32.4/31.8; power coast 3.7, boost 88.5, reverse 7.8; fire 5.4%. Jujak straight 6.8, 0.4 8.8/8.7, 0.75 7.8/7.4, 1.0 30.6/30.0; coast 3.7, boost 87.8, reverse 8.5; fire 7.3. Every action is used, but full stick (~63%) and boost (~88%) dominate; coast under 4%. Elim/FL 5v5 running.
 - Tried: commitment at the merge + initiative (BNB_TURN_COMMIT) and stick by energy (BNB_STICK_BY_ENERGY), both on; turn onset 0.30 s at corner speed (3.3 nose periods, turn_onset.py); dead-on tie: map centre, then left. Imugi tests 104 pass. Commit bf0c1fa1.
 - Next: 1v1 turn_fight before/after (128 games, ETA 23:50), then balance+mix 512 games x 4 conditions before/after (ETA ~01:30), stills on the CPU.
+
+## 2026-11-16 23:45 feat/imugi-initiative (agent)
+- Tried: DM 1v1, 128 games, before vs after (both rules on). Scissors windows 2752 -> 33 (one circle 1096, two circle 883); reversals per post-merge window at 15 deg/s 36.8 -> 1.0; sustained turn (>15 deg/s held 1 s) 14% -> 52%; stick side flips 414-459/min -> 95-145/min.
+- Found: the duel is now decided: Yongma kill share 0.59 -> 0.07 (deaths 1.66 -> 2.47 a game, Yongma's 205 by hits + 86 boundary): in a held turning fight the turn fighter wins, as the card says. Energy-advantaged Yongma takes the initiative into a fight it loses.
+- Next: balance+mix 512 games x4 conditions before/after (running, ETA ~01:30); 1v1 ablations commit-only and ENERGY_BREAKS_RATE_TIES=1; stills on the CPU.
