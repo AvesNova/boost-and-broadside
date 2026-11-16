@@ -56,3 +56,12 @@
   data/r2approach.json, measured on box5090).
 - Tried next: two circles only with a turn rate now 5% above the target's, else one
   circle (1c57c928): measuring.
+- Worked (1c57c928): 1v1 mirror kills/min back to 0.15; 1v1 Yongma v Jujak, Yongma's
+  score 0.29 (lead only) -> 0.41. 5v5 about unchanged from lead only (hit 0.36,
+  kills/min/ship 0.65-0.67, Yongma 0.06).
+- Offset approach ablation (OFFSET_APPROACH off, data/r2nooffset.json): about neutral
+  (5v5 kills/min 0.68 off vs 0.65-0.66 on, 1v1 cross hit rate 0.50 off vs 0.53 on). Kept
+  on: the author asked for it to fly.
+- Modes at c1784a91 (5v5, 256 games): Frontline ends by capture 0.57 (round 1's sticky
+  0.67), median 467 s; elimination median 140 s, 39% of deaths the boundary's.
+- Next: the author flies build 2 (c1784a91); balance map runs on c4ede6c8 elsewhere.
