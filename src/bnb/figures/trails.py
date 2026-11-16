@@ -63,10 +63,10 @@ GHOST_CROWD = 2  # hidden enemies at once the fog window favours
 class StillConfig:
     """start, end: the window, seconds from the game's start (None: its first or last
     tick); crop: fit the view to the action's bounding box (else the whole arena); busy:
-    draw the shot and hit ticks (None: only in a window of at most BUSY_SECONDS); fog: the fog overlay, the hidden enemies as `fog_team`'s
-    view saw them, with a ghost every `ghost_seconds`; theme: "light" or "dark"; size:
-    one of `SIZES`; formats: the files written (png, svg, pdf); title: the caption line
-    above the view."""
+    draw the shot and hit ticks (None: only in a window of at most BUSY_SECONDS); fog: the
+    fog overlay, the hidden enemies as `fog_team`'s view saw them, with a ghost every
+    `ghost_seconds`; theme: "light" or "dark"; size: one of `SIZES`; formats: the files
+    written (png, svg, pdf); title: the caption line above the view."""
 
     start: float | None = None
     end: float | None = None
@@ -569,8 +569,8 @@ def still(artifact: dict, directory, name: str, config: StillConfig) -> tuple[li
 
 def render(artifact: dict, directory: pathlib.Path) -> tuple[list[pathlib.Path], dict]:
     """The trail stills: trails_game (the whole record), trails_game_dark, trails_opening
-    (the first OPENING_SECONDS), trails_busiest (the busiest 20 s, cropped) and, with fog and ghosts, trails_fog (the busiest 30 s of
-    hidden enemies as team 0 saw them)."""
+    (the first OPENING_SECONDS), trails_busiest (the busiest 20 s, cropped) and, with fog
+    and ghosts, trails_fog (the busiest 30 s of hidden enemies as team 0 saw them)."""
     match = artifact["match"]
     tick_length = float(match["about"]["tick_length"])
     written, numbers = [], {}
