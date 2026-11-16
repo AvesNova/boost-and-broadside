@@ -155,6 +155,14 @@ def worker(loop, seconds, parameters, args) -> None:
     queue = args.queue
     queue.mkdir(parents=True, exist_ok=True)
     print(f"worker: {args.mode} {args.ships}v{args.ships}, queue {queue}", flush=True)
+    # compile now, outside the GPU lock (one tick of filler games: the compile is CPU time)
+    from bench.game_loop import FILLER, Group
+
+    started = time.time()
+    state = loop.start([Group(0, "mixed", FILLER, FILLER, loop.B)])
+    loop._tick(*state)
+    torch.cuda.synchronize()
+    print(f"worker: compiled in {time.time() - started:.0f} s", flush=True)
     while not (queue / "stop").exists():
         if args.pull:
             subprocess.run(["git", "pull", "-q"], check=False)
