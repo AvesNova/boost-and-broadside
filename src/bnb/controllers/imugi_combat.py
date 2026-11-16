@@ -445,13 +445,13 @@ def extend_and_return(
     distance: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """The one extension, from the card: after a pass (the target behind the beam inside
-    the own gun range), a ship whose sustained turn rate w (the settled full-stick turn) is
-    below its seen target's and whose energy (kinetic plus store) is above it flies
-    straight away from the target, boosting, until it is one own sustained turn diameter
-    away (2 v / w at its cruise speed v) or 2 / w + 1 s have passed, then comes straight
-    back at the same target: no other extension starts for pi / w (a reversal) plus that
-    bound. Otherwise it stays in the turn. Returns ((R, S) bool extending, the phase after
-    this decision: `ImugiCarry.extend_phase`)."""
+    the own gun range, flying away from the ship), a ship whose sustained turn rate w (the
+    settled full-stick turn) is below its seen target's and whose energy (kinetic plus
+    store) is above it flies straight away from the target, boosting, until it is one own
+    sustained turn diameter away (2 v / w at its cruise speed v) or 2 / w + 1 s have passed,
+    then comes straight back at the same target: no other extension starts for pi / w (a
+    reversal) plus that bound. Otherwise it stays in the turn. Returns ((R, S) bool
+    extending, the phase after this decision: `ImugiCarry.extend_phase`)."""
     own_rate = per_ship(characteristics.turn_rate[..., 2], fleet.own_type)
     target_rate = target_of(per_ship(characteristics.turn_rate[..., 2], fleet.enemy_type))
     cruise = per_ship(characteristics.cruise_speed, fleet.own_type)
@@ -461,7 +461,13 @@ def extend_and_return(
     target_energy = 0.5 * target_speed * target_speed + target_of(column(fleet.enemy, "energy"))
     outturned = has_target & seen & (own_rate < target_rate) & (own_energy > target_energy)
     bearing = signed_angle(fleet.cos, fleet.sin, target_x, target_y)
-    passed = (bearing.abs() > 0.5 * math.pi) & (distance < fleet.gun_range)
+    # passed: the target behind the beam inside the gun range and flying away from the ship
+    # (the two opening after a merge, not the target on the ship's tail)
+    opening = (
+        target_of(column(fleet.enemy, "velocity_x")) * target_x
+        + target_of(column(fleet.enemy, "velocity_y")) * target_y
+    ) > 0.0
+    passed = (bearing.abs() > 0.5 * math.pi) & (distance < fleet.gun_range) & opening
     bound = 2.0 / own_rate + 1.0
     diameter = 2.0 * cruise / own_rate
     phase = torch.where(fleet.carry.fresh, 0.0, fleet.carry.extend_phase)
