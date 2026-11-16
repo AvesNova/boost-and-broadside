@@ -1,10 +1,10 @@
 """The trail stills: one game, or a window of it, as one picture. Each ship's path is a
 long trail in its team's colour, older stretches faded, so a whole manoeuvre reads at a
-glance; an X marks where a ship died; light ticks mark the shots it fired (a short stroke
-along its nose) and the hits it took (a small ring). With the fog overlay, a hidden
-enemy's true path is drawn faint and dashed, with the view's ghost of it (the belief's
-mean and its sigma circle, or Imugi's dead-reckoned memory) at intervals, joined to where
-the ship really was.
+glance, and an X marks where a ship died: by default that is all. Opt-in marks
+(`StillConfig`): light ticks across the trail for the shots a ship fired, small rings for
+the hits it took, its start and end, and the fog overlay: a hidden enemy's true path faint
+and dashed, with the view's ghost of it (the belief's mean and its sigma circle, or
+Imugi's dead-reckoned memory) at intervals, joined to where the ship really was.
 
 It reads a match record (`bnb.figures.match`) only. The colours: each team one hue, its
 ships stepped light to dark along that hue's ramp (blue and orange, the reference
@@ -54,7 +54,6 @@ OLDEST_ALPHA = 0.18  # a trail's oldest stretch, against 1 for its newest
 TELEPORT = 300.0  # m in one tick: a respawn, not flight
 MARGIN = 0.06  # of the cropped view's extent, on every side
 TEAM_NAMES = ("blue team", "orange team")  # team 0's and team 1's, by their colour
-BUSY_SECONDS = 90.0  # the longest window drawn with its shot and hit ticks by default
 OPENING_SECONDS = 60.0  # the opening still's window
 GHOST_CROWD = 2  # hidden enemies at once the fog window favours
 
@@ -62,18 +61,22 @@ GHOST_CROWD = 2  # hidden enemies at once the fog window favours
 @dataclasses.dataclass(frozen=True)
 class StillConfig:
     """start, end: the window, seconds from the game's start (None: its first or last
-    tick); crop: fit the view to the action's bounding box (else the whole arena); busy:
-    draw the shot and hit ticks (None: only in a window of at most BUSY_SECONDS); fog: the
-    fog overlay, the hidden enemies as `fog_team`'s view saw them, with a ghost every
-    `ghost_seconds` for the `ghost_ships` enemies hidden longest in the window (the
-    others' hidden paths drawn without one); theme: "light" or "dark"; size: one of
-    `SIZES`; formats: the files written (png, svg, pdf); title: the caption line above the
-    view."""
+    tick); crop: fit the view to the action's bounding box (else the whole arena). By
+    default a still is the fading trails and an X at each death only; the marks are opt-in:
+    shots (a tick across the trail per shot fired), hits (a ring per hit taken), ends (a dot
+    where each flight starts in the window, a triangle along the nose where it ends) and
+    fog (each hidden enemy's true path dashed, with `fog_team`'s ghost of it every
+    `ghost_seconds` for the `ghost_ships` enemies hidden longest in the window); a still of
+    more than one ship a side takes at most two of shots, hits and fog
+    (`check_marks`). theme: "light" or "dark"; size: one of `SIZES`; formats: the files
+    written (png, svg, pdf); title: the caption line above the view."""
 
     start: float | None = None
     end: float | None = None
     crop: bool = True
-    busy: bool | None = None
+    shots: bool = False
+    hits: bool = False
+    ends: bool = False
     fog: bool = False
     fog_team: int = 0
     ghost_seconds: float = 3.0
@@ -82,6 +85,13 @@ class StillConfig:
     size: str = "web"
     formats: tuple[str, ...] = ("png",)
     title: bool = True
+
+
+def check_marks(config: StillConfig, ships_per_team: int) -> None:
+    """Refuse a still of more than one ship a side with every mark on at once (shots, hits
+    and fog): it buries the trails."""
+    if ships_per_team > 1 and config.shots and config.hits and config.fog:
+        raise ValueError("a still of several ships a side takes at most two of shots, hits, fog")
 
 
 def ship_colours(team: np.ndarray, theme: str) -> list[str]:
@@ -244,9 +254,7 @@ def draw(artifact: dict, config: StillConfig):
     width, dpi, line, font = SIZES[config.size]
     tick_length = float(about["tick_length"])
     first, final = window_ticks(match, config)
-    busy = config.busy
-    if busy is None:
-        busy = (final - first) * tick_length <= BUSY_SECONDS
+    check_marks(config, int(about["ships_per_team"]))
     x, y = match["x"].numpy(), match["y"].numpy()
     heading, alive = match["heading"].numpy(), match["alive"].numpy()
     team = match["team"].numpy()
@@ -290,16 +298,17 @@ def draw(artifact: dict, config: StillConfig):
                     alpha=0.45,
                     zorder=2,
                 )
-            axis.plot(
-                *path[0],
-                "o",
-                markersize=2.4 * line + 1.4,
-                markerfacecolor=colour,
-                markeredgecolor=theme["surface"],
-                markeredgewidth=0.5 * line,
-                zorder=5,
-            )
-        if alive[final, ship]:
+            if config.ends:
+                axis.plot(
+                    *path[0],
+                    "o",
+                    markersize=2.4 * line + 1.4,
+                    markerfacecolor=colour,
+                    markeredgecolor=theme["surface"],
+                    markeredgewidth=0.5 * line,
+                    zorder=5,
+                )
+        if config.ends and alive[final, ship]:
             angle = math.degrees(float(heading[final, ship])) - 90.0
             axis.plot(
                 x[final, ship],
@@ -326,7 +335,7 @@ def draw(artifact: dict, config: StillConfig):
             path_effects=_halo(3.2 * line, theme["surface"]),
             zorder=7,
         )
-    if busy:
+    if config.shots:
         size = (
             0.006 * math.sqrt(max(np.ptp(np.concatenate(points), 0).prod(), 1.0)) if points else 0
         )
@@ -346,6 +355,7 @@ def draw(artifact: dict, config: StillConfig):
                     strokes, colors=colours[ship], linewidths=0.5 * line, alpha=0.6, zorder=4
                 )
             )
+    if config.hits:
         hit = match["hit"].numpy()[first : final + 1]
         for tick, ship in np.argwhere(hit):
             tick += first
@@ -448,7 +458,8 @@ def draw(artifact: dict, config: StillConfig):
 
     # the figure's height follows the view; the legend and the title sit outside it
     aspect = (view[3] - view[2]) / (view[1] - view[0])
-    legend_rows = 3 if config.size == "column" else 2
+    entries = 3 + 2 * config.ends + config.shots + config.hits + 2 * ghost_legend
+    legend_rows = 1 if entries <= 4 else (3 if config.size == "column" else 2)
     legend_height = (font * 1.9 * legend_rows + 6) / 72.0
     title = _title(about, first, final, tick_length, int(width * 72.0 / (0.6 * font)))
     title_height = (font * 1.4 * (title.count("\n") + 1) + 0.6 * font) / 72.0
@@ -471,30 +482,36 @@ def draw(artifact: dict, config: StillConfig):
         Line2D([], [], color=middle[side], linewidth=1.5 * line, label=TEAM_NAMES[side])
         for side in (0, 1)
     ]
-    handles += [
-        Line2D(
-            [], [], marker="o", color=theme["ink"], linestyle="none", markersize=3.5,
-            label="start",
-        ),
-        Line2D(
-            [], [], marker=(3, 0, -90), color=theme["ink"], linestyle="none", markersize=4.5,
-            label="end, heading",
-        ),
+    if config.ends:
+        handles += [
+            Line2D(
+                [], [], marker="o", color=theme["ink"], linestyle="none", markersize=3.5,
+                label="start",
+            ),
+            Line2D(
+                [], [], marker=(3, 0, -90), color=theme["ink"], linestyle="none",
+                markersize=4.5, label="end, heading",
+            ),
+        ]  # fmt: skip
+    handles.append(
         Line2D(
             [], [], marker="x", color=theme["ink"], linestyle="none", markersize=5, label="killed"
-        ),
-    ]  # fmt: skip
-    if busy:
-        handles += [
+        )
+    )  # fmt: skip
+    if config.hits:
+        handles.append(
             Line2D(
                 [], [], marker="o", markerfacecolor="none", markeredgecolor=theme["ink"],
                 alpha=0.6, linestyle="none", markersize=3, label="hit taken",
-            ),
+            )
+        )  # fmt: skip
+    if config.shots:
+        handles.append(
             Line2D(
                 [], [], marker="|", color=theme["muted"], linestyle="none", markersize=5,
                 label="shot fired",
-            ),
-        ]  # fmt: skip
+            )
+        )  # fmt: skip
     if ghost_legend:
         handles += [
             Line2D(

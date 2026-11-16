@@ -105,16 +105,26 @@ def test_a_still_counts_what_it_draws_and_writes_every_format(tmp_path):
     from PIL import Image
 
     artifact = hand_built()
-    config = trails.StillConfig(fog=True, ghost_seconds=0.3, formats=("png", "svg"))
+    config = trails.StillConfig(
+        fog=True, shots=True, hits=True, ends=True, ghost_seconds=0.3, formats=("png", "svg")
+    )
     paths, numbers = trails.still(artifact, tmp_path, "still", config)
     assert [path.suffix for path in paths] == [".png", ".svg"]
     assert numbers["deaths"] == [1, 0] and numbers["hits"] == [5, 0]
     # a ghost every 10 ticks while hidden (ticks 20 to 50), at most one per 9 ticks drawn
     assert numbers["ghosts"] == 4
     assert Image.open(paths[0]).text["Source"] == "hand built"
-    quiet = dataclasses.replace(config, busy=False, fog=False, theme="dark", size="column")
-    _, numbers = trails.still(artifact, tmp_path, "quiet", quiet)
-    assert numbers["shots"] == [0, 0] and numbers["ghosts"] == 0
+    _, numbers = trails.still(artifact, tmp_path, "quiet", trails.StillConfig(theme="dark"))
+    assert numbers["shots"] == [0, 0] and numbers["hits"] == [0, 0] and numbers["ghosts"] == 0
+    assert numbers["deaths"] == [1, 0]  # the X is always drawn
+
+
+def test_a_fleet_still_refuses_every_mark_at_once():
+    config = trails.StillConfig(shots=True, hits=True, fog=True)
+    trails.check_marks(config, 1)  # one ship a side: allowed
+    trails.check_marks(dataclasses.replace(config, hits=False), 5)
+    with pytest.raises(ValueError):
+        trails.check_marks(config, 5)
 
 
 def test_an_imugi_match_records_every_tick_and_draws_the_trails_set(tmp_path):
