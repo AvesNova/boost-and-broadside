@@ -889,6 +889,9 @@ class Unified:
     runs_directory: pathlib.Path | None = None
     # a rating pool the Elo targets' games are also appended to (`bnb pool table` reads it)
     pool: pathlib.Path | None = None
+    # rating pools whose games the Elo targets start from (their conditions' games, this
+    # game version, players matched by weights; pass them again on a resume)
+    prior: tuple[pathlib.Path, ...] = ()
 
 
 def unified(options: Unified) -> None:
@@ -907,6 +910,7 @@ def unified(options: Unified) -> None:
         options.memory_share,
         hours=options.hours,
         pool=options.pool,
+        prior=options.prior,
     )
 
 

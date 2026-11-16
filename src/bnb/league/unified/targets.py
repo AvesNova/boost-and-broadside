@@ -39,6 +39,12 @@ from bnb.league.sequential import SequentialDesign, boundaries, plan
 
 from .cells import Cell, Condition, Outcome
 
+# The Elo planner's prior on the rating step between neighbours of a field (consecutive
+# players in its list, the anchor apart: a run's checkpoints in order), in Elo: planning
+# only, it places a player whose games leave it without a rating (a bound, undetermined)
+# near its neighbours, so its next games go to the opponents nearest it.
+NEIGHBOUR_STEP = 400.0
+
 # The planning variance of one game's score (a win or a loss at even odds): the
 # outcome-independent information every count-based plan uses.
 SCORE_VARIANCE = 0.25
@@ -95,7 +101,23 @@ class EloTarget(Target):
     when reported), every non-anchor player to `stderr` Elo and each contrast (a, b, goal)
     to its goal. pairs: the pairs that may be played (None: every pair); kill_share: score
     team deathmatch by kill share; refit: finished games between fits of the planning view
-    (the planner's ratings and the p (1 - p) a game is planned at); budget: the most games."""
+    (the planner's ratings and the p (1 - p) a game is planned at); budget: a safety bound
+    on the games (reaching it with a goal unmet is reported, `report`'s "stopped");
+    neighbours: the pairs of names the planning prior links (`field_neighbours`; None: list
+    neighbours); prior_keys: the rating-pool presets holding earlier games of this condition
+    (default its key).
+
+    A rating is finished only at its goal: a bound or an undetermined player is never a
+    result. The planning covariance counts a finished game's information only between
+    players of one fitted component (a game across components went one way, and says
+    nothing about the gap but a bound), so such a player keeps the prior's variance
+    (`PLANNING_STDERR`, the least precise in the field) and takes games first. Its planning
+    rating is a penalised fit of every game (`planning_ratings`: list neighbours a
+    `NEIGHBOUR_STEP` prior apart), so its games go to the nearest opponents, above a
+    player bounded from below and below one bounded from above; a rated player's planning
+    rating is its fit. The value of a pair is the A-optimal drop at its p (1 - p), so pairs
+    of near-certain result are worth little and the field chains to the anchor through
+    near neighbours."""
 
     def __init__(
         self,
@@ -108,6 +130,8 @@ class EloTarget(Target):
         kill_share: bool = False,
         refit: int = 64,
         budget: int = 1 << 30,
+        neighbours: list[tuple[str, str]] | None = None,
+        prior_keys: tuple[str, ...] = (),
     ) -> None:
         if len(set(players)) != len(players) or len(players) < 2:
             raise ValueError(f"{name}: at least two distinct players, got {players}")
@@ -144,12 +168,26 @@ class EloTarget(Target):
         self.games = numpy.zeros((count, count))
         self.pending = numpy.zeros((count, count))
         self.finished = 0
+        self.prior_games = 0  # of `finished`, the games loaded from earlier records
         self.since_fit = 0
         self.theta = numpy.zeros(count)  # planning ratings, natural units
         self.difference_variance = numpy.full((count, count), (MARGIN_CAP / SCALE) ** 2)
         self._weights = None
         self._covariance = None
         self.posterior = None
+        self.informative = numpy.ones((count, count), dtype=bool)
+        # the planning prior's neighbours (`field_neighbours`; None: consecutive players in
+        # the list, the anchor apart)
+        if neighbours is None:
+            self.neighbours = [(a, a + 1) for a in range(1, count - 1)]
+        else:
+            self.neighbours = [
+                (self.index[a], self.index[b])
+                for a, b in neighbours
+                if a in self.index and b in self.index and a != b
+            ]
+        # the rating pools' preset keys whose games are this target's (`run.load_prior`)
+        self.prior_keys = tuple(prior_keys) or (condition.key,)
 
     # the planning view
 
@@ -158,11 +196,8 @@ class EloTarget(Target):
         estimate's plan, never a decision's)."""
         posterior = fit_posterior(self.wins, 0)
         self.posterior = posterior
-        theta = numpy.zeros(len(self.players))
         rated = numpy.array([status == RATED for status in posterior.status])
-        relative = posterior.ratings.numpy() / SCALE
-        theta[rated] = relative[rated]
-        self.theta = theta
+        self.theta = planning_ratings(self.wins, self.neighbours)
         covariance = posterior.covariance.numpy() / SCALE**2
         diagonal = numpy.diag(covariance)
         variance = diagonal[:, None] + diagonal[None, :] - 2.0 * covariance
@@ -170,6 +205,8 @@ class EloTarget(Target):
         variance[unrated, :] = (MARGIN_CAP / SCALE) ** 2
         variance[:, unrated] = (MARGIN_CAP / SCALE) ** 2
         self.difference_variance = variance
+        component = posterior.component.numpy()
+        self.informative = component[:, None] == component[None, :]
         self._weights = None
         self._covariance = None
 
@@ -186,10 +223,11 @@ class EloTarget(Target):
 
     def covariance(self) -> numpy.ndarray:
         """(K - 1, K - 1) the planning covariance of the non-anchor ratings (natural units):
-        the finished and in-flight games' planned information, with a weak prior
-        (`PLANNING_STDERR`) so an unplayed player has a finite variance."""
+        the finished games' planned information within the fitted components and the
+        in-flight games', with a weak prior (`PLANNING_STDERR`) so a player without a
+        rating has a finite variance, the field's largest."""
         if self._covariance is None:
-            weights = self._pair_weights() * (self.games + self.pending)
+            weights = self._pair_weights() * (self.games * self.informative + self.pending)
             precision = numpy.diag(weights.sum(1)) - weights
             precision = (
                 precision[1:, 1:]
@@ -290,26 +328,17 @@ class EloTarget(Target):
         return errors
 
     def _open(self) -> numpy.ndarray:
-        """(T,) the goals the fit leaves open: above their error and not on a bound (a
-        player every game of whose went one way is reported as a bound, as the rating
-        pool's fit reports it; `bnb.league.design.Posterior.on_bound`)."""
-        errors = self.errors()
-        import torch
+        """(T,) the goals the fit leaves open: above their error, a bound or an undetermined
+        player's included (its error is infinite; a bound is never the result)."""
+        return ~(self.errors() <= self.goals * SCALE + 1e-9)
 
-        full = numpy.zeros((len(self.directions), len(self.players)))
-        full[:, 1:] = self.directions
-        bound = self.posterior.on_bound(torch.from_numpy(full)).numpy()
-        # a bound stands once its players have played the games an even pair would need
-        # for the goal, 1 / (goal^2 / 4) (else a short sweep would end the target)
-        played = self.games.sum(1)
-        touched = numpy.abs(full) > 0
-        least = numpy.where(touched, played[None, :], numpy.inf).min(1)
-        settled = bound & (least >= 4.0 / self.goals**2)
-        return ~((errors <= self.goals * SCALE + 1e-9) | settled)
+    def met(self) -> bool:
+        """Whether every goal is at its error."""
+        return not self._open().any()
 
     def done(self) -> bool:
-        """Whether the target is finished (its goals met, its budget spent, or decided)."""
-        return self.finished >= self.budget or not self._open().any()
+        """Whether the target is finished (its goals met, or its safety budget spent)."""
+        return self.finished >= self.budget or self.met()
 
     def remaining(self) -> float:
         """The worst error over its goal, squared, less 1 (0 when done; inf with no estimate)."""
@@ -327,6 +356,7 @@ class EloTarget(Target):
             kind="elo",
             condition=self.condition.key,
             games=self.finished,
+            prior_games=self.prior_games,
             ratings={
                 name: (None if math.isnan(r) else 1000.0 + r)
                 for name, r in zip(self.players, posterior.ratings.tolist(), strict=True)
@@ -337,7 +367,63 @@ class EloTarget(Target):
                 for label, e in zip(self.labels, errors.tolist(), strict=True)
             },
             goals=dict(zip(self.labels, (self.goals * SCALE).tolist(), strict=True)),
+            met=self.met(),
+            stopped=None if not self.done() else ("met" if self.met() else "budget"),
+            unmet=[
+                label
+                for label, open_ in zip(self.labels, self._open().tolist(), strict=True)
+                if open_
+            ],
         )
+
+
+def planning_ratings(
+    wins: numpy.ndarray, neighbours: list[tuple[int, int]], iterations: int = 50
+) -> numpy.ndarray:
+    """(K,) every player's planning rating, natural units, the anchor (index 0) at 0: the
+    Bradley-Terry likelihood of every game, a draw half a win, with a prior of
+    `NEIGHBOUR_STEP` on each neighbour pair's difference and `PLANNING_STDERR` on each
+    rating, maximised by Newton's method (strictly concave: finite for every player, a
+    bound's included). Planning only: the reported ratings are `fit_posterior`'s."""
+    wins = numpy.asarray(wins, dtype=numpy.float64)
+    count = wins.shape[0]
+    games = wins + wins.T
+    prior = numpy.eye(count) * (SCALE / PLANNING_STDERR) ** 2
+    step = (SCALE / NEIGHBOUR_STEP) ** 2
+    for a, b in neighbours:
+        prior[a, a] += step
+        prior[b, b] += step
+        prior[a, b] -= step
+        prior[b, a] -= step
+    prior = prior[1:, 1:]
+    theta = numpy.zeros(count)
+
+    def objective(values):
+        difference = values[:, None] - values[None, :]
+        free = values[1:]
+        return float((wins * -numpy.logaddexp(0.0, -difference)).sum() - 0.5 * free @ prior @ free)
+
+    current = objective(theta)
+    for _ in range(iterations):
+        probability = 1.0 / (1.0 + numpy.exp(-(theta[:, None] - theta[None, :])))
+        gradient = (wins - games * probability).sum(1)[1:] - prior @ theta[1:]
+        weight = games * probability * (1.0 - probability)
+        hessian = (numpy.diag(weight.sum(1)) - weight)[1:, 1:] + prior
+        move = numpy.linalg.solve(hessian, gradient)
+        if float(gradient @ move) < 1e-12:
+            break
+        length = 1.0
+        while length > 1e-8:
+            trial = theta.copy()
+            trial[1:] += length * move
+            value = objective(trial)
+            if value >= current:
+                theta, current = trial, value
+                break
+            length *= 0.5
+        else:
+            break
+    return theta
 
 
 # ---- a cell's score

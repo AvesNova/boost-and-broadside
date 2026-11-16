@@ -219,11 +219,56 @@ def test_elo_target_stops_at_its_goal():
     games = _simulate(planner, strengths, [(5, DM)], 20000)
     assert target.done() and games < 20000
     report = target.report()
-    for name, error in report["errors"].items():  # rated to the goal, or a settled bound
-        assert (error is not None and error <= 80.0 + 1e-6) or report["status"][name] != "rated"
+    for name, error in report["errors"].items():  # every player rated to the goal
+        assert error is not None and error <= 80.0 + 1e-6
+        assert report["status"][name] == "rated"
     # A-optimal: no pair is starved and none gets most of the games
     played = target.games[torch.triu_indices(4, 4, 1).unbind()].tolist()
     assert max(played) < 0.6 * sum(played)
+
+
+def test_elo_bound_is_never_a_result_and_plays_its_nearest_opponent():
+    # a learning curve: p3 swept p2 (a bound above), p1 between the anchor and p2
+    players = ["scripted", "p1", "p2", "p3"]
+    target = EloTarget("elo", Condition(DM, 5, 5), players, stderr=60.0, refit=1)
+    games = {("scripted", "p1"): (60, 140), ("p1", "p2"): (60, 140), ("p2", "p3"): (0, 200)}
+    for (a, b), (wins, losses) in games.items():
+        cell = target.cell(target.index[a], target.index[b])
+        for score, count in ((1.0, wins), (0.0, losses)):
+            for _ in range(count):
+                target.record(cell, Outcome(score), pending=False)
+    report = target.report()
+    assert report["status"]["p3"] == "above"
+    assert "p3" in report["unmet"] and not target.done()  # 200 sweeps settle nothing
+    proposals = target.proposals()
+    best = max(proposals, key=proposals.get)
+    assert {best.first, best.second} == {"p2", "p3"}  # the nearest, not the anchor
+
+
+def test_elo_curve_chains_every_player_to_a_rating():
+    # a learning curve spanning 2,400 Elo, the anchor in the middle: every player rated
+    # to the goal, and the games go to pairs of uncertain result
+    steps = [-1200.0, -900.0, -600.0, -300.0, 300.0, 600.0, 900.0, 1200.0]
+    players = ["scripted"] + [f"p{n}" for n in range(len(steps))]
+    strengths = {"scripted": 0.0} | {
+        f"p{n}": elo / 173.7177927613007 for n, elo in enumerate(steps)
+    }
+    target = EloTarget("elo", Condition(DM, 5, 5), players, stderr=80.0)
+    planner = Planner([target])
+    games = _simulate(planner, strengths, [(5, DM)], 40000)
+    assert target.met() and games < 40000
+    report = target.report()
+    assert set(report["status"].values()) == {"rated"}
+    first, second = torch.triu_indices(len(players), len(players), 1).unbind()
+    played = torch.from_numpy(target.games)[first, second]
+    gap = torch.tensor(
+        [
+            strengths[players[a]] - strengths[players[b]]
+            for a, b in zip(first.tolist(), second.tolist())
+        ]
+    )
+    near_certain = played[gap.abs() > 4.6].sum() / played.sum()  # p beyond 0.99
+    assert near_certain < 0.1
 
 
 def test_elo_contrast_goal_draws_games_to_its_pair():
@@ -334,3 +379,55 @@ def test_game_log_resumes_and_exports_to_a_rating_pool(tmp_path):
     assert replayed[2][1].score == 0.5 and replayed[0][1].first_kills == 3
     counted, _, _, _ = fit(pool, condition.key, ("win_loss", "win_loss"))
     assert counted.games == 4  # the Elo condition only
+
+
+# ---- neighbours and prior games
+
+
+def test_field_neighbours_cross_runs_and_chain_stages():
+    import pathlib
+
+    from bnb.league.matches import Player
+    from bnb.league.unified.run import field_neighbours
+
+    def at(run, step):
+        return Player(f"{run}_{step}", pathlib.Path(f"/r/{run}/policies/step_{step}/average"))
+
+    players = [Player("scripted")] + [
+        at(run, step) for run in ("c-bc", "c-rl", "d-rl") for step in (10, 20, 30)
+    ]
+    pairs = {frozenset(pair) for pair in field_neighbours(players)}
+    assert frozenset(("c-rl_10", "c-rl_20")) in pairs  # along a run
+    assert frozenset(("c-bc_30", "c-rl_10")) in pairs  # BC's last to RL's first
+    assert frozenset(("c-bc_20", "c-rl_20")) not in pairs  # stages are not matched by steps
+    assert frozenset(("c-rl_20", "d-rl_20")) in pairs  # other runs at matched steps
+    assert not any("scripted" in pair for pair in pairs)
+
+
+def test_prior_pool_games_feed_the_elo_target(tmp_path):
+    from bnb.game import VERSION
+    from bnb.league.matches import Player
+    from bnb.league.rating_pool import PoolPlayer, RatingPool
+    from bnb.league.unified.run import load_prior
+
+    pool = RatingPool.create(tmp_path / "pool", lineup_types=("Yongma", "Jujak"))
+    pool.register([PoolPlayer("a", "a")])
+    entry = dict(
+        game_version=VERSION,
+        matchups=[["scripted", "a"], ["a", "scripted"]],
+        identities={"scripted": "scripted", "a": "a"},
+        results=[[3, 1, 4], [5, 0, 3]],
+    )
+    pool.append_batch("elimination_5v5", entry)
+    pool.append_batch("elimination_5v5", dict(entry, id="old", game_version=VERSION - 1))
+    target = EloTarget(
+        "e", Condition(EL, 5, 5), ["scripted", "renamed"], prior_keys=("elimination_5v5",)
+    )
+    planner = Planner([target])
+    players = [Player("scripted"), Player("renamed")]
+    players[1] = Player("a")  # matched by identity (a scripted player's is its name)
+    target.index["a"] = target.index.pop("renamed")
+    target.players[1] = "a"
+    loaded = load_prior(planner, [tmp_path / "pool"], players, say=lambda *a, **k: None)
+    assert loaded == {"e": 16} and target.prior_games == 16
+    assert target.wins[0, 1] == 3 + 0.5 + 3 and target.wins[1, 0] == 4 + 0.5 + 5

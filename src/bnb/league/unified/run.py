@@ -63,7 +63,7 @@ from bnb.game.modes.rules import PRESETS
 from bnb.league.matches import Player, player
 from bnb.league.sequential import SequentialDesign
 
-from .cells import BUCKETS, Cell, Condition
+from .cells import BUCKETS, Cell, Condition, Outcome
 from .engine import (
     COMPILED_FACTOR,
     MEMORY_SHARE,
@@ -134,6 +134,8 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
                 pairs,
                 kill_share=entry.get("kill_share", False),
                 budget=entry.get("budget", 1 << 30),
+                neighbours=field_neighbours([p for p in players if p.name in field]),
+                prior_keys=tuple(entry.get("prior_keys", ())),
             )
         )
     for entry in raw.get("win_rate", []):
@@ -190,6 +192,125 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
         raw.get("seed", 0),
         raw,
     )
+
+
+def field_neighbours(players: list[Player]) -> list[tuple[str, str]]:
+    """The planning prior's neighbour pairs of a field (`EloTarget`): a cross of checkpoints
+    near in training. Along a run, each checkpoint and the next one by steps (a policy's
+    run and steps from its path, `bnb.league.rating_pool.policy_name`; players at one run
+    and step, a champion and its snapshot, linked too). Across runs, each checkpoint and the
+    other run's checkpoint at the nearest steps, except between two stages of one chain
+    (`<chain>-bc` and `<chain>-rl`: RL starts from BC's last weights, so its first
+    checkpoint is linked to BC's last). Players without a run (the anchor) have none. Only
+    a starting point: the fit's estimates take over as games come in."""
+    from bnb.league.rating_pool import policy_name
+
+    runs: dict[str, list[tuple[int, str]]] = {}
+    for one in players:
+        parsed = policy_name(one.policy) if one.policy is not None else None
+        if parsed is not None:
+            _, run, step, _ = parsed
+            runs.setdefault(run, []).append((step, one.name))
+    pairs: list[tuple[str, str]] = []
+    for held in runs.values():
+        held.sort()
+        pairs += [(a, b) for (_, a), (_, b) in zip(held, held[1:])]
+
+    def chain(run: str) -> tuple[str, str] | None:
+        for stage in ("-bc", "-rl"):
+            if run.endswith(stage):
+                return run[: -len(stage)], stage
+        return None
+
+    names = sorted(runs)
+    for number, first in enumerate(names):
+        for second in names[number + 1 :]:
+            a, b = chain(first), chain(second)
+            if a is not None and b is not None and a[0] == b[0] and a[1] != b[1]:
+                bc, rl = (first, second) if a[1] == "-bc" else (second, first)
+                pairs.append((runs[bc][-1][1], runs[rl][0][1]))
+                continue
+            for step, name in runs[first]:
+                nearest = min(runs[second], key=lambda other: abs(other[0] - step))
+                pairs.append((name, nearest[1]))
+    return pairs
+
+
+def load_prior(planner: Planner, pools: list[pathlib.Path], players: list[Player], say=print):
+    """Feed every Elo target the games a rating pool already holds (`bnb.league.rating_pool`
+    format: pool.json, players/, games/<preset>/) of its condition (`EloTarget.prior_keys`):
+    the fits and the plan start from everything known. A game counts when both players are
+    the spec's (matched by identity: a policy's weights hash, so names may differ), it is
+    of this game version, and the pool plays the spec's lineup types at the target's map
+    scale; everything left out is reported. Returns each target's prior games."""
+    from bnb.game import VERSION
+    from bnb.league.rating_pool import RatingPool
+    from bnb.league.tournament import identity, recorded_results
+
+    names = {identity(one): one.name for one in players}
+    loaded: dict[str, int] = {}
+    for root in pools:
+        pool = RatingPool(root)
+        settings = pool.settings
+        for target in planner.targets:
+            if not isinstance(target, EloTarget):
+                continue
+            scale = settings.get("arena_scale") or 1.0
+            if abs(scale - target.condition.arena_scale) > 1e-9 or settings.get("lineup"):
+                say(f"prior {root}: other map scale or a fixed lineup; not used for {target.name}")
+                continue
+            scoring = (
+                "kill_share" if target.kill_share else "win_loss",
+                settings.get("deathmatch_score", "win_loss"),
+            )
+            skipped: dict[str, int] = {}
+            counted = 0
+            for key in target.prior_keys:
+                batches, damaged = pool.batches(key)
+                if damaged:
+                    skipped["damaged lines"] = skipped.get("damaged lines", 0) + damaged
+                for entry in batches:
+                    blocks = len(entry["matchups"])
+                    if entry.get("game_version", 1) != VERSION:
+                        version = entry.get("game_version", 1)
+                        reason = f"game version {version} (this tree {VERSION})"
+                        skipped[reason] = skipped.get(reason, 0) + blocks
+                        continue
+                    results = recorded_results(entry, scoring)
+                    if results is None:
+                        skipped["other scoring"] = skipped.get("other scoring", 0) + blocks
+                        continue
+                    held = entry.get("identities", {})
+                    for (first, second), (won, tied, lost) in zip(
+                        entry["matchups"], results, strict=True
+                    ):
+                        a, b = names.get(held.get(first)), names.get(held.get(second))
+                        if a is None or b is None:
+                            skipped["a player not in the spec"] = (
+                                skipped.get("a player not in the spec", 0) + 1
+                            )
+                            continue
+                        cell = Cell(target.condition, a, b)
+                        games = round(won + tied + lost)
+                        if target.kill_share:  # a block's summed share, spread evenly
+                            outcomes = [Outcome(won / games)] * games if games else []
+                        else:
+                            outcomes = (
+                                [Outcome(1.0)] * round(won)
+                                + [Outcome(0.5)] * round(tied)
+                                + [Outcome(0.0)] * round(lost)
+                            )
+                        for outcome in outcomes:
+                            target.record(cell, outcome, pending=False)
+                        counted += len(outcomes)
+            target.prior_games += counted
+            loaded[target.name] = loaded.get(target.name, 0) + counted
+            say(
+                f"prior {root}: {counted} games for {target.name}"
+                + (f", left out (blocks): {skipped}" if skipped else "")
+            )
+    planner._touched_all()
+    return loaded
 
 
 def _preset(target: Target) -> str:
@@ -302,12 +423,14 @@ def run(
     hours: float = 24.0,
     log=print,
     pool: pathlib.Path | None = None,
+    prior: tuple[pathlib.Path, ...] = (),
 ) -> dict:
     """The run (the module docstring). environments: each bucket's batch (None: sized from
     the free memory); concurrent: "auto" (the buckets with work share the device when each
     gets `MINIMUM_CONCURRENT` environments, else they run in turn), "yes" or "no"; pool: a
     rating pool directory the Elo targets' games are also appended to (`GameLog.export_to`;
-    created with the spec's lineup types when new)."""
+    created with the spec's lineup types when new); prior: rating pools whose games of the
+    Elo targets' conditions are loaded first (`load_prior`)."""
     out.mkdir(parents=True, exist_ok=True)
     progress_path = out / "progress.log"
 
@@ -318,6 +441,8 @@ def run(
             file.write(line + "\n")
 
     planner = Planner(spec.targets, spec.buckets)
+    if prior:
+        load_prior(planner, list(prior), spec.players, say)
     games_log = GameLog(out)
     resumed = games_log.replay()
     for cell, outcome in resumed:
@@ -490,7 +615,34 @@ def run(
     games_log.flush()
     report = write_report(out, planner, total_games, started)
     say(f"finished: {total_games} games in {(time.time() - started) / 3600:.2f} h")
+    for line in short_of_goal(planner, out_of_time=time.time() >= finished_by):
+        say(line)
     return report
+
+
+def short_of_goal(planner: Planner, out_of_time: bool) -> list[str]:
+    """Loud lines for every Elo target a safety bound stopped short of its goals (its game
+    budget, or the run's hours): a stop on a bound is never silent."""
+    lines = []
+    for target in planner.targets:
+        if not isinstance(target, EloTarget) or target.met():
+            continue
+        why = (
+            "its game budget"
+            if target.finished >= target.budget
+            else ("the run's hours" if out_of_time else "no game it could play")
+        )
+        report = target.report()
+        unmet = report["unmet"]
+        status = {n: s for n, s in report["status"].items() if s != "rated" and n != ANCHOR}
+        lines.append(
+            f"WARNING {target.name}: stopped by {why} after {target.finished} games with "
+            f"{len(unmet)} goals unmet ({', '.join(unmet[:8])}{', ...' if len(unmet) > 8 else ''})"
+            + (f"; without a rating: {status}" if status else "")
+        )
+    if out_of_time and not planner.done():
+        lines.append("WARNING the run's hours ran out before every target was done")
+    return lines
 
 
 def write_report(out: pathlib.Path, planner: Planner, games: int, started: float) -> dict:

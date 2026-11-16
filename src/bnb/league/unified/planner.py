@@ -100,6 +100,12 @@ class Planner:
         self._values.clear()
         self._slices.clear()
 
+    def _touched_all(self) -> None:
+        """Forget every cached proposal (games recorded behind the planner's back: a prior)."""
+        self._cache.clear()
+        self._values.clear()
+        self._slices.clear()
+
     def choose(
         self, bucket: int, preset: str, fits=lambda cell: True
     ) -> tuple[Cell, int, bool] | None:
