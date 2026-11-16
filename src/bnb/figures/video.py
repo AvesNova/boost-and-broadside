@@ -26,6 +26,8 @@ import subprocess
 import time
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from bnb.game.api import PRESETS
 from bnb.play.loop import TIME_SCALES, MatchSetup, SideSetup
 from bnb.play.sides import Imugi, ImugiAgent, load_agent
@@ -293,42 +295,61 @@ def render(
     )
 
 
-FOLLOW_MARGIN = 1.4  # the framed view: the live ships' extent times this
+FOLLOW_MARGIN = 2.0  # a new framing shows the live ships' extent this many times over
 FOLLOW_SMALLEST = 1.0 / 6.0  # the closest view's half height, as a share of the arena's radius
-FOLLOW_SECONDS = 1.0  # video seconds over which the camera closes about 63% of its gap
+FOLLOW_EDGE = 0.9  # reframe when a live ship is past this share of the view's half size
+FOLLOW_ZOOM_IN = 0.4  # or when the ships' framing needs less than this share of the view
+FOLLOW_SECONDS = 0.3  # video seconds over which a reframe closes about 63% of its gap
 
 
 class Framing:
-    """A camera that frames the live ships: centred on their extent, zoomed to show it
-    `FOLLOW_MARGIN` times over (never closer than `FOLLOW_SMALLEST` of the arena, never
-    wider than the fitted arena), moving smoothly (an exponential approach, about
-    `FOLLOW_SECONDS` of video to close most of the way). The first frame jumps."""
+    """A camera that frames the live ships, in steps: it holds still while they stay well
+    inside the view and its zoom suits them, and otherwise moves to a new framing (their
+    extent `FOLLOW_MARGIN` times over, never closer than `FOLLOW_SMALLEST` of the arena,
+    never wider than the fitted arena) by an exponential approach. A still camera keeps
+    the frames alike, which a GIF needs (a moving one changes every pixel of the
+    background). The first frame jumps."""
 
     def __init__(self) -> None:
-        self.started = False
+        self.target: tuple[float, float, float] | None = None
+
+    def _framing(self, camera, frame) -> tuple[float, float, float] | None:
+        ships = frame.ships
+        if not ships.alive.any():
+            return None
+        x, y = ships.x[ships.alive], ships.y[ships.alive]
+        centre_x, centre_y = 0.5 * (x.min() + x.max()), 0.5 * (y.min() + y.max())
+        scale = max(
+            0.5 * (x.max() - x.min()) * FOLLOW_MARGIN / (0.5 * camera.width),
+            0.5 * (y.max() - y.min()) * FOLLOW_MARGIN / (0.5 * camera.height),
+            FOLLOW_SMALLEST * frame.arena_radius / (0.5 * camera.height),
+        )
+        return float(centre_x), float(centre_y), float(min(scale, camera.fitted))
+
+    def _holds(self, camera, frame, wanted) -> bool:
+        """The current target still frames the live ships."""
+        centre_x, centre_y, scale = self.target
+        ships = frame.ships
+        x, y = ships.x[ships.alive], ships.y[ships.alive]
+        inside_x = np.abs(x - centre_x) <= FOLLOW_EDGE * 0.5 * camera.width * scale
+        inside_y = np.abs(y - centre_y) <= FOLLOW_EDGE * 0.5 * camera.height * scale
+        return bool((inside_x & inside_y).all()) and wanted[2] >= FOLLOW_ZOOM_IN * scale
 
     def update(self, camera, frame, step: float) -> None:
-        """Move `camera` toward the frame's live ships over `step` video seconds."""
-        ships = frame.ships
-        alive = ships.alive
-        if not alive.any():
+        """Move `camera` toward the framing over `step` video seconds."""
+        wanted = self._framing(camera, frame)
+        if wanted is None:
             return
-        x, y = ships.x[alive], ships.y[alive]
-        centre_x, centre_y = 0.5 * (x.min() + x.max()), 0.5 * (y.min() + y.max())
-        half_width = 0.5 * (x.max() - x.min()) * FOLLOW_MARGIN
-        half_height = 0.5 * (y.max() - y.min()) * FOLLOW_MARGIN
-        smallest = FOLLOW_SMALLEST * frame.arena_radius
-        scale = max(
-            half_width / (0.5 * camera.width),
-            half_height / (0.5 * camera.height),
-            smallest / (0.5 * camera.height),
-        )
-        scale = min(scale, camera.fitted)
-        share = 1.0 if not self.started else 1.0 - math.exp(-step / FOLLOW_SECONDS)
-        self.started = True
-        camera.centre_x += share * (float(centre_x) - camera.centre_x)
-        camera.centre_y += share * (float(centre_y) - camera.centre_y)
-        camera.metres_per_pixel += share * (float(scale) - camera.metres_per_pixel)
+        first = self.target is None
+        if first or not self._holds(camera, frame, wanted):
+            self.target = wanted
+        share = 1.0 if first else 1.0 - math.exp(-step / FOLLOW_SECONDS)
+        centre_x, centre_y, scale = self.target
+        camera.centre_x += share * (centre_x - camera.centre_x)
+        camera.centre_y += share * (centre_y - camera.centre_y)
+        camera.metres_per_pixel += share * (scale - camera.metres_per_pixel)
+        if abs(camera.metres_per_pixel - scale) < 1e-3 * scale:  # settled: exactly still
+            camera.centre_x, camera.centre_y, camera.metres_per_pixel = self.target
 
 
 def hold_last_tick(loop, alive) -> None:

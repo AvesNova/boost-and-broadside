@@ -47,9 +47,9 @@ class HeroConfig:
     spare: int = 2
     contested: bool = True
     shield_left: float = 0.25
-    gif_seconds: float = 30.0
+    gif_seconds: float = 24.0
     gif_width: int = 640
-    gif_rate: int = 15
+    gif_rate: int = 12
     gif_bytes: int = 10_000_000
 
 

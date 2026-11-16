@@ -305,8 +305,9 @@ again. It then picks the clip (`bnb.figures.hero.pick`): a win for the policy, e
 between 30 and 120 s, with at least 2 of its ships left, at least one lost and its
 survivors' mean shield at least a quarter; the nearest a middle game among those, else the
 win that misses the fewest rules (said so in `chosen.json`). The clip becomes a
-palette-optimised GIF of at most 30 s (a longer clip plays faster), 640 px wide, under
-10 MB, with its last frame as a PNG poster beside it:
+palette-optimised GIF of at most 24 s at 12 frames a second (a longer clip plays faster),
+640 px wide or narrower until it is under 10 MB (a 194 s game came to 490 px), with its last
+frame as a PNG poster beside it:
 
 <!-- not-runnable: needs ffmpeg, an OpenGL context and a policy file -->
 ```bash
@@ -314,8 +315,10 @@ bnb figures hero --policy RUN --out figures/hero --hero.ships 5 6 --hero.games 8
     --gif docs/images/hero.gif
 ```
 
-The hero videos leave out the interface and frame the live ships (`--video.follow`), as a
-GIF's width leaves the whole real-scale arena too small to read. On a machine without a free
+The hero videos leave out the interface and frame the live ships (`--video.follow`: the
+camera holds still while they stay framed and reframes in quick steps, since a moving
+camera changes every pixel of a GIF's frame), as a GIF's width leaves the whole real-scale
+arena too small to read. On a machine without a free
 GPU, Mesa's software OpenGL draws the frames (on 14 laptop cores a game took 1.4 to 2.5 s
 per game second):
 `EGL_PLATFORM=surfaceless __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json LIBGL_ALWAYS_SOFTWARE=1`.

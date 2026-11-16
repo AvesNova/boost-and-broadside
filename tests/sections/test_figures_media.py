@@ -281,3 +281,27 @@ def test_the_hero_gif_fits_its_length_and_size_with_a_poster(tmp_path):
     assert numbers["bytes"] <= config.gif_bytes
     assert (tmp_path / "out" / "hero.gif").read_bytes()[:3] == b"GIF"
     assert (tmp_path / "out" / "hero.png").read_bytes()[:4] == b"\x89PNG"
+
+
+def test_the_framing_holds_still_while_the_ships_stay_framed_and_reframes_when_they_leave():
+    from types import SimpleNamespace
+
+    from bnb.play.camera import Camera
+
+    camera = Camera(640, 360)
+    camera.fit(7800.0)
+
+    def frame(x, y):
+        ships = SimpleNamespace(x=np.array(x), y=np.array(y), alive=np.ones(len(x), bool))
+        return SimpleNamespace(ships=ships, arena_radius=7800.0)
+
+    framing = video.Framing()
+    framing.update(camera, frame([0.0, 1000.0], [0.0, 500.0]), 1 / 30)
+    first = (camera.centre_x, camera.centre_y, camera.metres_per_pixel)
+    assert first[0] == pytest.approx(500.0)
+    framing.update(camera, frame([100.0, 900.0], [50.0, 450.0]), 1 / 30)  # still inside
+    assert (camera.centre_x, camera.centre_y, camera.metres_per_pixel) == first
+    for _ in range(300):  # a ship far off: the camera moves out to frame it, then rests
+        framing.update(camera, frame([0.0, 6000.0], [0.0, 500.0]), 1 / 30)
+    assert camera.centre_x == pytest.approx(3000.0)
+    assert camera.metres_per_pixel > first[2]
