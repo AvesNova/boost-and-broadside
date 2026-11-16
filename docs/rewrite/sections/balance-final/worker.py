@@ -127,7 +127,8 @@ def main() -> None:
             print(f"job {path.name}: done", flush=True)
         except Exception:  # a bad job must not stop the worker
             (args.queue / "failed" / f"{path.name}.txt").write_text(traceback.format_exc())
-            path.rename(args.queue / "failed" / path.name)
+            if path.exists():  # a job file moved away by hand while it played
+                path.rename(args.queue / "failed" / path.name)
             print(f"job {path.name}: failed\n{traceback.format_exc()}", flush=True)
 
 

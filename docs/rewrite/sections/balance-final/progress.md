@@ -356,3 +356,49 @@ solved, shield x0.6-0.7).
   shot cost, max lift, induced drag; Jujak shield, damage, vision, power, recharge, range),
   512 games each in FL10, FL5, dm5, el5, dm10, el10 on the laptop and dm2 at 1024 on the box
   (worker queue; grid1's dm2 job held in queue/deathmatch-2/held, the laptop has it).
+
+## 12:00 fin3 (A, C', E, F at 5v5 and 10v10, Frontline and elimination); probe1
+
+fin3 (laptop; Frontline/elimination 10v10 512 games, 5v5 1024), Yongma team's score / kill share:
+
+| card | FL5 | el5 | FL10 | el10 |
+|---|---|---|---|---|
+| before | 9.3 / 39.5 | 20.5 / 37.3 | 16.1 / 44.2 | 29.1 / 43.9 |
+| A (Jujak turn x0.93) | 31.3 / 46.6 | 36.8 / 45.9 | 52.2 / 50.5 | 50.0 / 51.2 |
+| C' | 58.6 / 51.9 | 46.5 / 49.7 | 72.6 / 53.4 | 45.3 / 50.0 |
+| E | 55.2 / 51.3 | 46.5 / 50.0 | 69.6 / 52.8 | 48.8 / 50.5 |
+| F (Yongma turn x1.12, shield x0.75) | 47.3 / 49.3 | 41.8 / 48.8 | 56.7 / 51.3 | 51.6 / 52.3 |
+| Jujak x0.95, Yongma turn x1.08, shield x0.75, damage x0.9 | 48.3 / 49.7 | 43.2 / 48.0 | 62.6 / 52.3 | 48.8 / 50.9 |
+| Yongma turn x1.12, shield x0.75, damage x0.9 | 41.0 / 48.4 | 39.8 / 47.0 | 56.8 / 51.1 | 46.7 / 50.3 |
+
+Elimination 10v10 is even for every option; Frontline 10v10 is the outlier, as predicted.
+
+probe1 (24 single-field steps around E, 512 games; `probe_table.py data/probe1-*.jsonl`):
+kill-share change from E, in kill points (SE of a difference about 0.3; el5 about 1):
+
+| probe | dm10 | dm5 | el5 | FL10 | FL5 |
+|---|---|---|---|---|---|
+| Yongma shield x0.9 | -1.1 | -1.5 | -2.1 | -1.0 | -1.1 |
+| Yongma turn (induced drag x0.85, about turn x1.02) | +0.5 | +1.2 | +1.2 | +2.0 | +3.0 |
+| Yongma store x1.3 | +0.2 | +0.4 | +0.9 | **-0.5** | +0.1 |
+| Yongma shot cost x0.7 | +0.9 | +1.4 | +3.9 | **+0.3** | +0.4 |
+| Yongma vision x1.3 | +0.3 | +0.7 | +1.2 | +0.6 | +2.1 |
+| Yongma muzzle speed x1.15 | +1.9 | +2.8 | +4.4 | +2.3 | +3.1 |
+| Yongma hit radius x0.85 | +2.3 | +3.2 | +4.1 | +3.3 | +3.0 |
+| Yongma spawn energy x1.5 | +1.7 | +1.7 | +2.6 | +1.7 | +1.7 |
+| Jujak shield x1.15 | -1.4 | -1.9 | -3.9 | -1.3 | -0.7 |
+| Jujak vision x0.8 | +0.9 | +1.8 | +2.1 | +1.9 | +3.4 |
+| Jujak gun range (bullet life) x0.85 | +0.9 | +1.1 | +3.1 | **+2.0** | +2.0 |
+
+(the rest in the data: recharge rate/delay, explosive share, max lift near 0; damage, power,
+drag, range small and flat.) **Three kinds of profile**: flat (shield, damage, spawn energy,
+hit radius: all modes alike), Frontline-heavy (turn, vision, Jujak's gun range: FL moves 2-4x
+deathmatch 10v10), and Frontline-light: **the energy economy** (Yongma's store and shot cost
+move deathmatch and elimination but not Frontline). A third kind is what the turn+shield cards
+lacked. So: give back some of Yongma's turn (or Jujak's range/vision edge) to pull Frontline
+down, and pay Yongma in the energy economy (cheaper shots, a bigger store) to hold deathmatch
+and elimination. That also keeps the archetypes apart (a larger turn gap; the energy fighter
+gets more energy). The store and shot cost are game knobs, not WWII values.
+probe2 (`candidates/make_probe2.py`): the least-squares combinations (store + vision + less
+Yongma turn; store + shot cost + Jujak range; shot cost + vision + Jujak range) at 0.7/1/1.3 of
+the fitted step plus single checks, in every mode (laptop) and dm2 (box, 1024).

@@ -33,16 +33,18 @@ def main() -> None:
     print("kill share minus E's (kill points); score in brackets")
     print("| probe | " + " | ".join(labels) + " |")
     print("|---|" + "---|" * len(labels))
-    print("| E (kill share) | " + " | ".join(f"{centre[l]:.1f}" for l in labels) + " |")
+    print("| E (kill share) | " + " | ".join(f"{centre[label]:.1f}" for label in labels) + " |")
     for name, row in table.items():
         cells = [
-            f"{row[l][0] - centre[l]:+.1f} ({row[l][2]:.0f})" if l in row else "-" for l in labels
+            f"{row[label][0] - centre[label]:+.1f} ({row[label][2]:.0f})" if label in row else "-"
+            for label in labels
         ]
         print(f"| {name} | " + " | ".join(cells) + " |")
-    print("SE of one kill share (points): " + ", ".join(
-        f"{l} {sum(r[l][1] for r in table.values() if l in r) / sum(l in r for r in table.values()):.2f}"
-        for l in labels
-    ))  # fmt: skip
+    errors = []
+    for label in labels:
+        values = [row[label][1] for row in table.values() if label in row]
+        errors.append(f"{label} {sum(values) / len(values):.2f}")
+    print("SE of one kill share (points): " + ", ".join(errors))
 
 
 if __name__ == "__main__":

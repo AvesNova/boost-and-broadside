@@ -8,7 +8,11 @@ import json
 import pathlib
 
 HERE = pathlib.Path(__file__).parent
-E = next(e for e in json.loads((HERE / "options.json").read_text()) if e["name"] == "jt0.95-yt1.12-ys0.55")
+E = next(
+    e
+    for e in json.loads((HERE / "options.json").read_text())
+    if e["name"] == "jt0.95-yt1.12-ys0.55"
+)
 
 PROBES = [  # (name, side, {field: factor})
     ("E", None, {}),
