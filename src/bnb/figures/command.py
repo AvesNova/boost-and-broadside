@@ -8,7 +8,8 @@ import torch
 from bnb.runs.records import RECORD, Run
 
 from . import capture as capturing
-from . import scenarios
+from . import match as matches
+from . import scenarios, trails
 from .sets import FIGURE_SETS, drawable
 
 CAPTURES = "captures"  # the output directory's subdirectory for capture artifacts
@@ -57,12 +58,17 @@ def figures(options, runs_directory: pathlib.Path) -> None:
     unknown = [name for name in names if name not in FIGURE_SETS and not capture_only]
     if unknown:
         raise SystemExit(f"unknown figure sets {unknown}; choose from {sorted(FIGURE_SETS)}")
-    if options.capture is None and options.policy is None:
-        raise SystemExit("bnb figures needs --policy (to capture) or --capture (to read one)")
+    if options.capture is None and options.policy is None and not options.scripted:
+        raise SystemExit(
+            "bnb figures needs --policy (to capture), --capture (to read one) or --scripted"
+            " (the trails set, Imugi against Imugi)"
+        )
     policy = None if options.policy is None else policy_path(options.policy, runs_directory)
     directory = output_directory(policy, options.capture, options.out)
     if options.capture is not None:
         artifact = capturing.load(options.capture)
+    elif policy is None:  # scripted: the match record alone
+        artifact = record_match(None, options.match, directory)
     else:
         config = capturing.CaptureConfig(
             preset=options.preset,
@@ -75,15 +81,37 @@ def figures(options, runs_directory: pathlib.Path) -> None:
         artifact = capturing.capture(
             policy, config, torch.device(options.device), scenarios=scenarios.measure
         )
+        if "trails" in names:  # the capture holds one whole game too
+            artifact["match"] = record_match(policy, options.match, None)["match"]
         path = directory / CAPTURES / f"{options.preset}_seed{options.seed}.pt"
         print(f"wrote {capturing.save(artifact, path)}")
     if capture_only:
         return
     for name in names:
         if not drawable(name, artifact):
-            print(f"{name}: skipped (the policy has no such head)")
+            print(f"{name}: skipped (the capture has no record for it)")
             continue
-        written, numbers = FIGURE_SETS[name](artifact, directory)
+        if name == "trails" and options.still != trails.StillConfig():
+            written, numbers = trails.still(
+                artifact, directory, options.still_name, options.still
+            )
+        else:
+            written, numbers = FIGURE_SETS[name](artifact, directory)
         for path in written:
             print(f"wrote {path}")
         print(f"{name}: {numbers}")
+
+
+def record_match(policy: pathlib.Path | None, config, directory: pathlib.Path | None) -> dict:
+    """One game's match record (`bnb.figures.match`): the policy against its opponent, or
+    Imugi against Imugi; saved under the output's captures/ when `directory` is given."""
+    artifact = matches.record(matches.sides_of(policy, config), config)
+    about = artifact["match"]["about"]
+    print(
+        f"played {len(artifact['match']['clock']) * about['tick_length']:.0f} s of"
+        f" {config.preset} in {about['seconds_taken']} s"
+    )
+    if directory is not None:
+        path = directory / CAPTURES / f"match_{config.preset}_seed{config.seed}.pt"
+        print(f"wrote {capturing.save(artifact, path)}")
+    return artifact

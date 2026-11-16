@@ -481,3 +481,8 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
   fogged, arena window 30 s since the clear arena's first kill is later, a docstring, formatting).
   Two fail at the base a3e7b09a too and are left: test_layering (set_num_threads in league/design.py,
   models/initialise.py) and test_stacked[False] (1/900 elements over 1e-4). Next: the launch.
+
+## 2026-11-16 22:45 trail stills (feat/trail-stills)
+- Built: bnb.figures.match (one whole game headless via the play shell's MatchLoop, Imugi or a policy per side, events + ghosts per tick) and bnb.figures.trails (renderer); wired as set "trails".
+- Worked: Imugi vs Imugi real-scale elimination 5v5 (205 s game, 3 min CPU) and a 1v1 duel render cleanly; the duel's busiest window is a two-circle fight.
+- Next: policy fog ghosts (no v9 checkpoint exists; capturing rl-v20 v8 in a detached worktree at c262a32b), deathmatch 5v5, tests + docs.
