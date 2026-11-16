@@ -909,7 +909,7 @@ def turn_commitment(
     in_range = distance < 4.0 * fleet.gun_range
     if fleet.decision_key is not None:
         held_long = clock >= COMMIT_HOLD_SECONDS
-        sense = torch.where(approaching & held_long & ~initiative_window, 0.0, sense)
+        sense = torch.where(approaching & held_long, 0.0, sense)
         free = sense == 0.0
         initiative = free & advantaged & initiative_window & ~blocked
         turning = target_rate.abs() > TURNING_RATE
