@@ -545,3 +545,18 @@ Kill share minus E's (score), 512 games (dm2 1024):
   so rather than bring vision back.
 - probe4's jobs not yet started (dm2, dm10, el5, el10, FL5) moved to queue/*/held (mostly
   vision cards; confirm1 covers Q4). dm5 and FL10 had already started theirs.
+
+## 15:25 probe3 complete (all seven)
+
+Q4 rows (score; kill share change from E), 512 games (dm2, el5 1024):
+
+| probe3 | dm2 | dm5 | dm10 | el5 | el10 | FL5 | FL10 |
+|---|---|---|---|---|---|---|---|
+| E (two repeats) | 44 / 48 | 51 / 53 | 50 / 45 | 45 / 42 | 47 / 49 | 60 / 54 | 71 / 69 |
+| **Q4x0.8 (raw)** | **50** | **52** | **45** | **49** | **52** | **47** | **52** |
+| Q4x1.0 | 49 | 53 | 43 | 49 | 52 | 42 | 47 |
+| Q4x1.2 | 51 | 51 | 37 | 46 | 45 | 39 | 40 |
+
+**The raw Q4x0.8 card is inside 55/45 in all seven mode-sizes** at 512-1024 games (dm10 at the
+edge, where E itself reads 45-50). The vision cards are info only (author). Next: confirm1
+(the handle version, 2048 games) and grid3 (vision-free neighbourhood) are queued.
