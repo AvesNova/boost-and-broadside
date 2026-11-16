@@ -494,3 +494,11 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 2026-11-16: worktree up; strict build failed on 3 anchors (fixed). Three read-only audit agents (guides, game, core explanation) reported; applying the clear fixes next.
 - 22:41: guides/contributing and game-page number fixes committed (3 commits). Next: imugi.md one-liners, yemong decays, perception sandbox, nav/roadmap.
 - 22:43: imugi/yemong/perception one-liners, roadmap (league merged), docstring for bench.balance_worker.main; strict build and tests/docs quick tier (610 passed) green. Next: report.
+
+## 2026-11-16 22:15 architecture diagrams (docs/architecture-diagram)
+- Tried: D2 (ELK, dagre, grids): auto-layout put skip lines off-centre and curved, no positions without TALA.
+- Worked: Typst (static binary in ~/.local/bin) with a small helper file: exact coordinates, SVG/PNG/PDF; overviews done.
+- Next: the two-layer detail diagrams, the docs page link, render script + staleness test.
+- 22:45 Worked: layer detail diagrams (vertical + horizontal), render.py (stamps a source hash), staleness test, writing-docs "Diagrams" section, figures on the Yemong page.
+- Didn't: strict mkdocs build has 3 pre-existing anchor warnings (imugi.md, figures.md), none from this branch.
+- Open: the trained model builds temporal first with 2 spatial sublayers per block; the diagrams draw spatial then temporal as asked.

@@ -165,6 +165,37 @@ warned about on most commits covers too much; narrow its `covers`.
 - Short sentences and full words. Abbreviations only where universal (`cos`, `x`, `y`).
 - Name things as the code names them.
 
+## Diagrams
+
+The model's architecture diagrams are [Typst](https://typst.app) sources in
+`docs/images/architecture/`, committed with the SVGs rendered from them (GitHub's README
+and the site show the SVGs; nothing renders Typst at build time).
+`docs/images/architecture/diagram.typ` holds the shared drawing helpers and colours; every
+other `.typ` file there is one diagram, placed by explicit coordinates in points. Each comes in two layouts: `-vertical` (inputs at the
+bottom, for a paper column) and `-horizontal` (inputs on the left, one row of a web page).
+
+Typst is one static binary. Install it in user space, for example into `~/.local/bin`:
+
+<!-- not-runnable: downloads a release -->
+```bash
+curl -fsSL https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-unknown-linux-musl.tar.xz \
+  | tar -xJ --strip-components=1 -C ~/.local/bin typst-x86_64-unknown-linux-musl/typst
+```
+
+Re-render after editing a source:
+
+<!-- not-runnable: needs typst on PATH -->
+```bash
+uv run --no-sync python docs/images/architecture/render.py              # the SVGs
+uv run --no-sync python docs/images/architecture/render.py --png /tmp/architecture-png
+uv run --no-sync python docs/images/architecture/render.py --pdf /tmp/architecture-pdf
+```
+
+Each SVG starts with the hash of its sources, and
+`tests/docs/test_architecture_diagrams.py` fails when an SVG is missing or older than its
+source or the helpers. The text is Noto Sans (DejaVu Sans where it is missing), drawn as
+outlines in the SVG, so a viewer needs no font.
+
 ## Code rules
 
 The code follows [Code style](code-style.md).
@@ -180,6 +211,7 @@ The code follows [Code style](code-style.md).
 | examples | `tests/docs/test_examples.py` | a runnable example fails |
 | docstrings | `tests/docs/test_docstrings.py` | a public module, class or function has no docstring |
 | figure sets | `tests/docs/test_figure_sets.py` | the figures page has no section for a set in `bnb.figures.sets.FIGURE_SETS`, or one for a set not in it |
+| architecture diagrams | `tests/docs/test_architecture_diagrams.py` | a diagram's SVG is missing or was not rendered from its current source |
 | coverage map | `tests/docs/test_staleness.py` | never; it warns, for commits and uncommitted changes |
 
 The docstring report lists public modules, classes and functions whose docstring is

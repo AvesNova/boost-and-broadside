@@ -7,12 +7,15 @@ copyright: MIT license
 
 docs_dir: docs
 # The design records under docs/rewrite/ are internal and stay out of the site. The hook
-# and the roadmap data are build inputs, not pages.
+# and the roadmap data are build inputs, and the diagram sources and their renderer, not pages.
 exclude_docs: |
   rewrite/
   hooks/
   roadmap.yml
   packages.yml
+  images/architecture/*.typ
+  images/architecture/render.py
+  __pycache__/
 
 theme:
   name: material
