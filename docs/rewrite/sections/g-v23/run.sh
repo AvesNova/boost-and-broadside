@@ -3,6 +3,7 @@
 # 5090 box. One condition at a time (one compile each); lines append to $OUT/<condition>.jsonl.
 source /workspace/env.sh
 cd /workspace/wt/g-v23
+export PYTHONPATH=$PWD/src:$PWD   # this worktree, not env.sh's /workspace/bnb
 OUT=/workspace/out/g-v23; mkdir -p $OUT
 for c in deathmatch-5v5 elimination-5v5 frontline-5v5 deathmatch-2v2 deathmatch-1v1 deathmatch-10v10 elimination-10v10 frontline-10v10; do
   echo "$(date +%H:%M:%S) start $c"
