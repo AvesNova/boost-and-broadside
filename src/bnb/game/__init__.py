@@ -217,6 +217,15 @@ Version 22 (2026-11-15, the final freeze check, docs/rewrite/sections/freeze-fin
   the real-scale card has 2 types instead of 3.
 
 Ratings and records of version 21 or earlier are not reused for version-22 games.
+
+Version 23 (2026-11-16, rough, docs/rewrite/sections/lethality-sticky/): longer kills.
+Yongma's and Jujak's max_shield and shield recharge rate x 5.4 (their ratio kept, the
+per-hit damage kept), so sustained core fire from the tail kills in 0.62-1.33 s by pairing
+(was 0.12-0.25 s; target max shield / (shooter hit_damage x fire_rate), time_to_kill.py
+there). The real-scale boundary's most damage x 5.4 too (40 -> 216 per s), so it harms the
+larger shield at the old relative rate and elimination's closing boundary still kills every
+ship before the clock (version 16). Ratings and records of version 22 or earlier are not
+reused for version-23 games.
 """
 
-VERSION = 22
+VERSION = 23
