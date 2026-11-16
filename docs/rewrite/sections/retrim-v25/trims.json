@@ -1,0 +1,46 @@
+[
+ {
+  "name": "Y0.46",
+  "card": {
+   "energy": {},
+   "turn": {}
+  }
+ },
+ {
+  "name": "Y0.42",
+  "card": {
+   "energy": {
+    "max_shield": {
+     "set": 321.94049072265625
+    }
+   },
+   "turn": {}
+  }
+ },
+ {
+  "name": "Y0.38",
+  "card": {
+   "energy": {
+    "max_shield": {
+     "set": 291.2795104980469
+    }
+   },
+   "turn": {}
+  }
+ },
+ {
+  "name": "Y0.42-J1.22",
+  "card": {
+   "energy": {
+    "max_shield": {
+     "set": 321.94049072265625
+    }
+   },
+   "turn": {
+    "max_shield": {
+     "set": 524.9085083007812
+    }
+   }
+  }
+ }
+]

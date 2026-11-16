@@ -71,14 +71,14 @@ def shares(table: torch.Tensor, names) -> dict:
     }
 
 
-def measure(condition_name: str, games: int, seed: int = 0) -> dict:
-    """The condition's "energy v turn" games on the set's own card: the shares and the
-    balance numbers."""
+def measure(condition_name: str, games: int, seed: int = 0, entry: dict | None = None) -> dict:
+    """The condition's "energy v turn" games on the set's own card, or a candidates entry
+    (`bench.balance_sweep.as_pair`): the shares and the balance numbers."""
     condition = bs.CONDITIONS[condition_name]
     loop = bs.balance_loop(condition, games, 1, bs.BALANCE, "cuda", compiled=False)
     loop.__class__ = MixLoop
     loop._tick = loop.tick
-    pair = bs.as_pair({"name": "base"})
+    pair = bs.as_pair(entry or {"name": "base"})
     loop.set_table(bs.card_table([pair["a"]], [pair["b"]], loop.device))
     jobs = bs.jobs_of([pair], games, 0, bs.mode_parameters(condition))
     loop.spawn_seed = seed
@@ -88,6 +88,7 @@ def measure(condition_name: str, games: int, seed: int = 0) -> dict:
     summary = bs.balance_summary(outs[0], loop.rules.tick_length)
     return dict(
         condition=condition_name,
+        entry=pair["name"],
         games=games,
         seconds=time.time() - started,
         kill_share_a=summary["kill_share_a"],
@@ -105,9 +106,14 @@ def main():
     parser.add_argument("--games", type=int, default=128)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", type=pathlib.Path, required=True)
+    parser.add_argument("--entries", type=pathlib.Path, default=None, help="a candidates file")
+    parser.add_argument("--entry", default=None, help="its entry's name (default: the set's card)")
     args = parser.parse_args()
     install()
-    result = measure(args.condition, args.games, args.seed)
+    entry = None
+    if args.entry is not None:
+        entry = next(e for e in json.loads(args.entries.read_text()) if e["name"] == args.entry)
+    result = measure(args.condition, args.games, args.seed, entry)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=1))
     print(json.dumps(result, indent=1), flush=True)
