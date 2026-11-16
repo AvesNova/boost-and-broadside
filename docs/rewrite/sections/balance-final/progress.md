@@ -495,3 +495,21 @@ the fitted step plus single checks, in every mode (laptop) and dm2 (box, 1024).
 - **src follow-up for later (not now)**: `top_speed`'s per-tick `bool()` stop scales with the
   store; the play shell must never stall on a new card, so a vectorized or analytic stop is
   worth doing after the balance.
+
+## 14:45 the Frontline 10v10 recompile inside the lock: a carry stride (warm-up fixed in worker/sweep)
+
+- The coordinator saw frontline-10 recompile the tick ([0/1]) on its first job, inside the lock.
+  `recompile_check.py` (new; the worker's start-up at 64 environments, then a real job's ticks,
+  TORCH_LOGS=recompiles; box CPU, outside the lock) gives the guard:
+  `tensor 'carry.boundary_progress' stride mismatch at index 0. expected 1, actual 15`.
+  `imugi_memory.track_boundary` returns `boundary_progress = obs.globals[:, episode_progress]`,
+  a column view (stride 15, the global columns), while `init_carry` makes it contiguous. So the
+  *second* tick of any game recompiles once per process; the filler start-up ran only one tick.
+  It is a one-time ~3-5 min compile per worker process, not per job (no [0/2]); deathmatch
+  workers show none.
+- Fix (no src change): `sweep.warm`, called by worker.py after the filler tick, plays 3 ticks of
+  a job-like batch (a card dict on every variant, the three lineups, a candidate and the before
+  doctrines) and restores the base card. With it the recompile happens during start-up and the
+  job's ticks compile nothing (check log: [0/1] before "warm done", none after).
+- **src follow-up for later**: make the carry's `boundary_progress` contiguous (or the obs
+  column a copy) in `track_boundary`, so the second tick never recompiles.

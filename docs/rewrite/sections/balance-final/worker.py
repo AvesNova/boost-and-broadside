@@ -37,7 +37,7 @@ import traceback
 HERE = pathlib.Path(__file__).parent
 sys.path.insert(0, str(HERE))
 
-from sweep import MODE_DEFAULTS, Loop, api, before_card, pack, prewarm, sweep  # noqa: E402
+from sweep import MODE_DEFAULTS, Loop, api, before_card, pack, prewarm, sweep, warm  # noqa: E402
 
 from bench.game_loop import FILLER, Group  # noqa: E402
 
@@ -98,6 +98,9 @@ def main() -> None:
     # compile now, outside the GPU lock (torch.compile runs on the first tick): one tick of a
     # filler game (the third-ship agent's fix, tune/third-ship 8ad9de1c)
     loop._tick(*loop.start([Group(0, "mixed", FILLER, FILLER, loop.B)]))
+    # and a few ticks of a job-like batch: the filler alone left Frontline 10v10 to recompile
+    # on its first job, inside the lock
+    warm(loop, parameters, args.variants)
     print(f"worker {args.mode} {args.ships}v{args.ships}: ready, watching {args.queue}", flush=True)
     while True:
         jobs = sorted(args.queue.glob("*.json"))

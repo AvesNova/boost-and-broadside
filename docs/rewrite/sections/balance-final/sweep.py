@@ -36,7 +36,7 @@ import tomllib
 
 import torch
 
-from bench.game_loop import Job, Loop, Player, clock, job_summary, run, variant_types
+from bench.game_loop import Job, Loop, Player, batches, clock, job_summary, run, variant_types
 from bnb.controllers.imugi_defaults import MODE_DEFAULTS
 from bnb.controllers.imugi_doctrine import from_named, named, stored
 from bnb.controllers.imugi_parameters import pack
@@ -194,6 +194,28 @@ def prewarm(
     ) as pool:
         for future in [pool.submit(_prewarm_one, *task) for task in tasks]:
             future.result()
+
+
+def warm(loop: Loop, parameters: tuple[float, ...], variants: int, ticks: int = 3) -> None:
+    """Compile the tick a job plays, outside any lock: a few ticks of a job-like batch (a card
+    on every variant, the three lineups with a candidate and the before doctrines), then the
+    base card back. The filler game alone left Frontline 10v10 to recompile on its first job."""
+    card = {"max_shield": 1.0}  # a card dict on every variant, as a job sets (values as base)
+    loop.set_types([card] * variants, [card] * variants)
+    candidate = player_of({"name": "warm"}, parameters)
+    before = player_of({"name": "before"}, parameters)
+    share = max(2, loop.B // (3 * variants)) // 2 * 2
+    jobs = []
+    for variant in range(variants):
+        jobs.append(Job(variant, "energy v turn", candidate, candidate, share))
+        jobs.append(Job(variant, "mixed", candidate, before, share))
+        jobs.append(Job(variant, "mixed reversed", candidate, before, share))
+    groups = [group for _, group in batches(jobs, loop.B)[0]]
+    arguments = loop.start(groups)
+    for _ in range(ticks):
+        arguments = loop._tick(*arguments)
+    torch.cuda.synchronize(loop.device) if loop.device.type == "cuda" else None
+    loop.set_types([{}] * variants, [{}] * variants)
 
 
 def sweep(

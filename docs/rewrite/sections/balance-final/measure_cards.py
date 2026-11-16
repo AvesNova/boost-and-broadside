@@ -45,7 +45,9 @@ def main() -> None:
     if args.names:
         entries = [e for e in entries if e["name"] in args.names]
     base = before_card(base_card("cpu"))
-    rules = api.rules_of(api.PRESETS["real_scale_deathmatch"], types=api.ship_types(ship_set="real-scale"))
+    rules = api.rules_of(
+        api.PRESETS["real_scale_deathmatch"], types=api.ship_types(ship_set="real-scale")
+    )
     energy = [{}] + [e.get("card", {}).get("energy", {}) for e in entries]
     turn = [{}] + [e.get("card", {}).get("turn", {}) for e in entries]
     types = variant_types(base, energy, turn)
