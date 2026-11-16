@@ -175,3 +175,21 @@ feat/imugi-boundary). Power profile `performance`.
 - Bonghwang d1.2/s115 (the v23 card) against option C: elimination 0.47 / 0.54.
 - Box practice (coordinator, ~09:30): its CPU compiles for ~10 min a launch, so box jobs are
   now one mode/size per process with 3-4x the games; small quick jobs stay on the laptop.
+
+## 10:05 the balance agent's options; a persistent box worker
+
+- The balance agent now offers flat-over-sizes options (its results.md): C' (Jujak turn
+  x0.91, Yongma turn x1.08, shield x0.55), D (x0.93, x1.08, x0.6), E (x0.95, x1.12, x0.55),
+  besides A (v23, in src). Their turns converge (Yongma 0.640-0.664, Jujak 0.696-0.726) and
+  the shields equalise (78-85), so Bonghwang's card depends on the author's pick.
+- Against option C (x0.91, x1.08, x0.6) the 0.63-turn Bonghwang is steep over sizes (d1.2/s115
+  2v2 0.36 / 0.36, 10v10 0.74 / 0.76) and weak in Frontline; the 0.66-turn one with shield
+  90-95 is flat: Bt66 d1.1/s95 2v2 0.45 / 0.48, 5v5 0.56 / 0.55 (1024), 10v10 0.63 / 0.49,
+  elimination 0.52 / 0.54, Frontline 0.50 / 0.41.
+- Against C' (768): ref Y v J 0.52; Bt66 d1.1/s90 **0.514 / 0.541**, d1.05/s95 0.54 / 0.58,
+  d1.1/s95 0.60 / 0.58. Against E: Bt66 d1.1/s95 0.38 / 0.41 (E's Yongma turns 0.664, as well
+  as Bonghwang): needs a 0.68-0.72 turn (solving).
+- `third.py --queue DIR --pull --lock /tmp/gpu.lock`: a persistent worker (compiles once,
+  runs job files from its queue, takes the GPU lock only per sweep). On the box: worker
+  `dm10` (deathmatch 10v10) with the options job queued; more workers as needed
+  (`/workspace/third-queue/<name>`).
