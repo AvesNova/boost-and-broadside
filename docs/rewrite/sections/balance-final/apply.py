@@ -1,5 +1,5 @@
-"""Write a balance candidate (`candidates/final.json`) into the game: its handle changes
-into the real-scale ship files (the card fields from its handle solve, `handle_cards.py`),
+"""Write a balance candidate (`candidates/final.json`, or another file in candidates/ with
+`--candidates`) into the game: its handle changes into the real-scale ship files (the card fields from its handle solve, `handle_cards.py`),
 its Yongma and Jujak doctrine fields into `imugi_doctrines.json`, and copies of the four
 files into after/ (before/ holds the files as they were).
 
@@ -42,13 +42,14 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("candidate", nargs="?")
     parser.add_argument("--restore", action="store_true")
+    parser.add_argument("--candidates", default="final.json", help="a file in candidates/")
     args = parser.parse_args()
     if args.restore:
         for name, path in files().items():
             shutil.copyfile(HERE / "before" / name, path)
             print(f"restored {path}")
         return
-    entries = json.loads((HERE / "candidates" / "final.json").read_text())
+    entries = json.loads((HERE / "candidates" / args.candidates).read_text())
     entry = next(e for e in entries if e["name"] == args.candidate)
     card = entry.get("card", {})
     for side, key in KEYS.items():
