@@ -2,7 +2,7 @@
 # eval_queue.sh CHAIN: the dry run's evaluation queue on the 5090 box, run once the chain
 # (box/dry_run.sh CHAIN: CHAIN-bc then CHAIN-rl) has finished. Launch it detached; it waits
 # for the GPU lock, which the chain holds until it exits, so it may be launched early:
-#   ssh -f box5090 'nohup setsid bash /workspace/bnb-evalq/box/eval_queue.sh dry-v24-s1 \
+#   ssh -f box5090 'nohup setsid bash /workspace/wt/evalq/box/eval_queue.sh dry-v24-s1 \
 #     > /workspace/runs/dry-v24-s1-eval.launch.log 2>&1 < /dev/null &'
 #
 # Runs from its own checkout ($EVALQ, branch feat/eval-queue: crossover's fixed lineups, the
@@ -27,7 +27,7 @@ set -uo pipefail
 chain=${1:?usage: eval_queue.sh CHAIN}
 EVAL_ENV=${EVAL_ENV:-/workspace/env.sh}
 [ "$EVAL_ENV" != none ] && source "$EVAL_ENV"
-EVALQ=${EVALQ:-/workspace/bnb-evalq}
+EVALQ=${EVALQ:-/workspace/wt/evalq}
 PY=${PY:-/workspace/venv/bin/python}
 DEVICE=${DEVICE:-cuda}
 export PYTHONPATH=$EVALQ/src:$EVALQ
@@ -137,7 +137,8 @@ step_average() {
   done < "$dir/players.txt"
   bnb pool rate "$dir/pool" --presets $FIVES --target-stderr 45 \
     --decision "${names[@]}" --decision-stderr "$AVERAGE_STDERR" --budget "$AVERAGE_BUDGET" \
-    --session-players 16 $POOL_LAYOUT --device "$DEVICE" --runs-directory "$RUNS" || return 1
+    --session-players 16 --hopeless inf $POOL_LAYOUT --device "$DEVICE" --runs-directory "$RUNS" \
+    || return 1
   bnb pool table "$dir/pool" --presets $FIVES > "$dir/table.txt" || return 1
   "$PY" "$EVALQ/box/eval_champion.py" "$dir/pool" "$out/champion.json" --presets $FIVES \
     | tee "$dir/champion.txt"
@@ -258,7 +259,7 @@ step_charts() {
   return $code
 }
 
-step average 45
+step average 45   # worst 75 (the 12288-game budget in every mode)
 step suite 35
 step maps 15
 step curves 55

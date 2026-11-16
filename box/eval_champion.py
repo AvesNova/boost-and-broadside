@@ -10,8 +10,9 @@ standard errors of the difference; then the highest mean wins. The difference's 
 error treats the two ratings as independent, which overstates it (both share the anchor),
 so the rule leans toward the incumbent: picking the best of 14 noisy means alone would
 carry the winner's curse into every later step. A candidate needs a finite rating in every
-preset. Writes OUT.json (the champion's name and policy path, every candidate's means, the
-rule and the reason) and prints the reason.
+preset; when none has, the incumbent is the champion by default. Writes OUT.json (the
+champion's name and policy path, every candidate's means, the rule and the reason) and
+prints the reason.
 """
 
 import argparse
@@ -50,13 +51,19 @@ def main() -> int:
         mean = sum(elo for elo, _ in held.values()) / len(held)
         stderr = math.sqrt(sum(se * se for _, se in held.values())) / len(held)
         candidates[name] = dict(mean=mean, stderr=stderr, presets={p: held[p] for p in held})
-    if not candidates:
-        print("no candidate has a finite rating in every preset", file=sys.stderr)
-        return 1
     ranked = sorted(candidates, key=lambda name: -candidates[name]["mean"])
-    best = ranked[0]
     incumbent = next((name for name in ranked if f"/average/{INCUMBENT}_" in name), None)
-    if incumbent is None or incumbent == best:
+    if not candidates:
+        # no rating to compare: the incumbent by default, so the later steps still run
+        incumbent = next((name for name in players if f"/average/{INCUMBENT}_" in name), None)
+        if incumbent is None:
+            print("no candidate has a finite rating in every preset, no incumbent", file=sys.stderr)
+            return 1
+        best = champion = incumbent
+        reason = f"no candidate has a finite rating in every preset: the incumbent {incumbent}"
+        gap = gap_stderr = None
+    elif incumbent is None or incumbent == ranked[0]:
+        best = ranked[0]
         champion = best
         reason = (
             f"{best} has the highest mean Elo ({candidates[best]['mean']:.0f} +- "
@@ -65,6 +72,7 @@ def main() -> int:
         )
         gap = gap_stderr = None
     else:
+        best = ranked[0]
         gap = candidates[best]["mean"] - candidates[incumbent]["mean"]
         gap_stderr = math.hypot(candidates[best]["stderr"], candidates[incumbent]["stderr"])
         if gap > options.margin * gap_stderr:
