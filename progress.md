@@ -486,3 +486,8 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Built: bnb.figures.match (one whole game headless via the play shell's MatchLoop, Imugi or a policy per side, events + ghosts per tick) and bnb.figures.trails (renderer); wired as set "trails".
 - Worked: Imugi vs Imugi real-scale elimination 5v5 (205 s game, 3 min CPU) and a 1v1 duel render cleanly; the duel's busiest window is a two-circle fight.
 - Next: policy fog ghosts (no v9 checkpoint exists; capturing rl-v20 v8 in a detached worktree at c262a32b), deathmatch 5v5, tests + docs.
+
+## 2026-11-16 23:10 trail stills
+- Done: CLI (`bnb figures trails --scripted --match.* --still.*`), docs section, 6 quick tests (16 s), ruff clean; pushed.
+- Worked: real belief ghosts from rl-v20-seed1 (v8) captured in a detached worktree at c262a32b with match.py copied in; early-game window is too crowded (5 hidden ships), so the fog window caps at 2 hidden.
+- Next: whole-game policy elimination capture (running), deathmatch 5v5 Imugi (running), pick and commit the example PNGs.
