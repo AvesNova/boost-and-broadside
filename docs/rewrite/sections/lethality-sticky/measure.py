@@ -16,6 +16,9 @@ HERE = pathlib.Path(__file__).parent
 SECONDS = 300.0
 GAMES = 512
 LINEUPS = ("mixed", "energy v turn", "turn v energy")
+# the turning-fight probe: 1v1 duels (deathmatch, 120 s, respawns), a mirror and the cross
+DUELS = ("turn mirror", "energy v turn")
+DUEL_SECONDS = 120.0
 
 
 def log(line: str) -> None:
@@ -36,6 +39,7 @@ def row(r: dict) -> dict:
         first_hit_to_kill_median=r["ttk_median"],
         score_a=r["score"],
         kill_share_a=r["kill_score"],
+        hit_rate=r.get("hit_rate"),
     )
 
 
@@ -74,6 +78,22 @@ def main() -> None:
             f"{left} left, done about "
             f"{(datetime.datetime.now() + datetime.timedelta(seconds=per * left)):%H:%M}"
         )
+    duel_loop = None
+    for lineup in DUELS:
+        key = f"1v1 {lineup}"
+        if key in results:
+            continue
+        if duel_loop is None:
+            duel_loop = Loop(
+                GAMES, 1, DUEL_SECONDS, mode="deathmatch", ships_per_team=1, fields=True,
+                fixed_map=True,
+            )  # fmt: skip
+        job = Job(0, lineup, player, player, GAMES)
+        (out,) = run(duel_loop, [job], log)
+        full = job_summary(job, out, DUEL_SECONDS)
+        results[key] = dict(summary=row(full), full=full)
+        out_path.write_text(json.dumps(results, indent=1, default=str))
+        log(f"{label} {key}: {json.dumps(row(full))}")
     log(f"all done in {time.time() - started:.0f} s")
 
 
