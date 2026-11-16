@@ -1,0 +1,122 @@
+[
+ {
+  "name": "h-y-turn-1.10",
+  "handles": {
+   "energy_handles": {
+    "sustained_turn_rate": 1.1
+   }
+  },
+  "card": {
+   "energy": {
+    "engine_power": {
+     "set": 9420.9462890625
+    },
+    "engine_power_full_store": {
+     "set": 1997.7291259765625
+    },
+    "static_thrust": {
+     "set": 20.850717544555664
+    },
+    "corner_nose_frequency": {
+     "set": 11.119534492492676
+    },
+    "induced_drag_scale": {
+     "set": 0.31949150562286377
+    },
+    "dive_exchange_scale": {
+     "set": 4.707211494445801
+    },
+    "climb_exchange_scale": {
+     "set": 3.480649471282959
+    },
+    "fine_stick": {
+     "set": 0.2156665027141571
+    },
+    "sustained_stick": {
+     "set": 0.7188883423805237
+    }
+   },
+   "turn": {}
+  }
+ },
+ {
+  "name": "h-y-turn-1.14",
+  "handles": {
+   "energy_handles": {
+    "sustained_turn_rate": 1.14
+   }
+  },
+  "card": {
+   "energy": {
+    "engine_power": {
+     "set": 9428.607421875
+    },
+    "engine_power_full_store": {
+     "set": 2005.39111328125
+    },
+    "static_thrust": {
+     "set": 17.546607971191406
+    },
+    "corner_nose_frequency": {
+     "set": 11.186751365661621
+    },
+    "induced_drag_scale": {
+     "set": 0.24493378400802612
+    },
+    "dive_exchange_scale": {
+     "set": 4.714136600494385
+    },
+    "climb_exchange_scale": {
+     "set": 3.49757719039917
+    },
+    "fine_stick": {
+     "set": 0.22313709557056427
+    },
+    "sustained_stick": {
+     "set": 0.743790328502655
+    }
+   },
+   "turn": {}
+  }
+ },
+ {
+  "name": "h-y-turn-1.16",
+  "handles": {
+   "energy_handles": {
+    "sustained_turn_rate": 1.16
+   }
+  },
+  "card": {
+   "energy": {
+    "engine_power": {
+     "set": 9435.1240234375
+    },
+    "engine_power_full_store": {
+     "set": 2011.9075927734375
+    },
+    "static_thrust": {
+     "set": 16.323837280273438
+    },
+    "corner_nose_frequency": {
+     "set": 11.217662811279297
+    },
+    "induced_drag_scale": {
+     "set": 0.21279074251651764
+    },
+    "dive_exchange_scale": {
+     "set": 4.717122554779053
+    },
+    "climb_exchange_scale": {
+     "set": 3.50494122505188
+    },
+    "fine_stick": {
+     "set": 0.2269037812948227
+    },
+    "sustained_stick": {
+     "set": 0.7563459277153015
+    }
+   },
+   "turn": {}
+  }
+ }
+]
