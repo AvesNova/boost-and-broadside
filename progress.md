@@ -544,3 +544,6 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 02:15 phase 1 done (b0de69bf: 6 docs branches + readme-preview fixes, NACA 868 = Toll 1947, publish check lists all, mode order); merged feat/eval-queue and feat/video-death-marks.
 - Theme module bnb.figures.theme: light/dark for results charts, ladder, trails; figure placeholder emits both variants; Figure style section.
 - Next: dry-v24-s1 RL ends ~02:37, eval queue then; meanwhile health/behaviour/throughput charts from metrics.jsonl.
+- 02:23 new charts: behaviour, throughput, lanes (training records), elo, suite, averaging (eval records); pages wired; team sizes 1-10; site served at http://127.0.0.1:8000 (unit bnb-docs-site).
+- Waiting: RL ends ~02:37, eval queue ~06:30 (worst 07:25); hero clip is another agent (feat/hero-clip).
+- Next: final training charts after RL, then eval charts as records land.
