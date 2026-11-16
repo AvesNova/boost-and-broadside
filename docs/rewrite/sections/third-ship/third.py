@@ -27,17 +27,22 @@ finishes (a candidate already there is skipped, so a stopped run resumes).
 """
 
 import argparse
+import concurrent.futures
+import dataclasses
 import json
+import multiprocessing
+import os
 import pathlib
 import time
 
 import torch
 
-from bench.game_loop import Job, Loop, Player, clock, job_summary, run
+from bench.game_loop import Job, Loop, Player, clock, job_summary, run, variant_types
 from bnb.controllers.imugi_defaults import MODE_DEFAULTS
 from bnb.controllers.imugi_doctrine import Doctrine, from_named, named, stored
 from bnb.controllers.imugi_parameters import pack
 from bnb.game import api
+from bnb.game.handling import characteristics as characteristics_module
 
 KEPT = (
     "games",
@@ -184,6 +189,7 @@ def worker(loop, seconds, parameters, args) -> None:
                     else value,
                 )
             print(f"worker: job {path.name}", flush=True)
+            prewarm(loop, job)  # the CPU-side card measurements, before the lock
             if args.lock:  # the GPU lock only while a sweep runs
                 import fcntl
 
@@ -200,28 +206,25 @@ def worker(loop, seconds, parameters, args) -> None:
     print("worker: stop", flush=True)
 
 
-def sweep(loop, seconds, parameters, args) -> None:
-    """One candidate file's jobs on the loop, each candidate's line appended to `args.out`."""
+def entries_of(args) -> list[dict]:
+    """The job's candidates still to play (the opponents' card files read into `args`)."""
     if args.yongma_card_file:
         args.yongma_card = json.loads(pathlib.Path(args.yongma_card_file).read_text())
     if args.jujak_card_file:
         args.jujak_card = json.loads(pathlib.Path(args.jujak_card_file).read_text())
-    entries = json.loads(args.candidates.read_text())
-    args.out.parent.mkdir(parents=True, exist_ok=True)
+    entries = json.loads(pathlib.Path(args.candidates).read_text())
     if args.only:
         entries = [e for e in entries if e["name"] in args.only]
     done = set()
-    if args.out.exists():
-        done = {json.loads(line)["name"] for line in args.out.read_text().splitlines()}
-    entries = [e for e in entries if e["name"] not in done]
-    if not entries:
-        print("every candidate is done", flush=True)
-        return
-    base = stored()["real-scale"]
+    out = pathlib.Path(args.out)
+    if out.exists():
+        done = {json.loads(line)["name"] for line in out.read_text().splitlines()}
+    return [e for e in entries if e["name"] not in done]
+
+
+def chunk_tables(loop, entries: list[dict], args):
+    """Each chunk's variant table as `sweep` plays it: (first index, part, energy, turn)."""
     K = loop.K
-    reference = Player("release", base["yongma"], base["jujak"], parameters=parameters)
-    started = time.time()
-    first_chunk = True
     for first in range(0, len(entries), args.chunk):
         part = entries[first : first + args.chunk]
         energy = [dict(args.yongma_card)]
@@ -234,6 +237,60 @@ def sweep(loop, seconds, parameters, args) -> None:
         while len(energy) < K:
             energy.append({})
             turn.append({})
+        yield first, part, energy, turn
+
+
+def _prewarm_one(base, energy, turn, rules, device: str) -> None:
+    """One chunk's card characteristics into the disk cache under the loop's device key (the
+    entry `Loop.set_types` then loads), measured on this process's CPU (tune/balance-final's
+    sweep.prewarm)."""
+    torch.set_num_threads(1)
+    key = list(characteristics_module._key(variant_types(base, energy, turn), rules))
+    key[1] = device
+    path = characteristics_module._disk_path(tuple(key))
+    if path.exists():
+        return
+    measured = characteristics_module.measure_characteristics(
+        variant_types(base, energy, turn), rules
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_name(f"{path.stem}.{os.getpid()}.partial")
+    torch.save({f.name: getattr(measured, f.name) for f in dataclasses.fields(measured)}, partial)
+    partial.replace(path)
+
+
+def prewarm(loop, args, processes: int = 12) -> None:
+    """Measure every chunk's card characteristics before the GPU lock: `set_types` runs them
+    on the CPU (the top-speed flight takes minutes on a slow CPU), which would otherwise hold
+    the lock with the GPU idle."""
+    entries = entries_of(args)
+    if not entries:
+        return
+    base = type(loop.base)(
+        **{f.name: getattr(loop.base, f.name).cpu() for f in dataclasses.fields(loop.base)}
+    )
+    device = str(loop.types.max_energy.device)
+    tasks = [(base, e, t, loop.rules, device) for _, _, e, t in chunk_tables(loop, entries, args)]
+    context = multiprocessing.get_context("spawn")
+    with concurrent.futures.ProcessPoolExecutor(
+        min(processes, len(tasks)), mp_context=context
+    ) as pool:
+        for future in [pool.submit(_prewarm_one, *task) for task in tasks]:
+            future.result()
+
+
+def sweep(loop, seconds, parameters, args) -> None:
+    """One candidate file's jobs on the loop, each candidate's line appended to `args.out`."""
+    entries = entries_of(args)
+    pathlib.Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    if not entries:
+        print("every candidate is done", flush=True)
+        return
+    base = stored()["real-scale"]
+    reference = Player("release", base["yongma"], base["jujak"], parameters=parameters)
+    started = time.time()
+    first_chunk = True
+    for first, part, energy, turn in chunk_tables(loop, entries, args):
         loop.set_types(energy, turn)
         jobs, keys = [], []
         if first_chunk and args.reference_games:
