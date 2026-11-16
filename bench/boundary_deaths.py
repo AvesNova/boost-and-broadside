@@ -82,7 +82,7 @@ class DiagLoop(gl.Loop):
         STASH.clear()
         result = super().tick(state, observation, carry, tally)
         B, S, N = self.B, self.S, self.N
-        events, after = STASH["events"], STASH["state"]
+        events = STASH["events"]
         dt = self.rules.tick_length
 
         def sim(name):  # (2B, S) view rows -> (B, N) sim ships
@@ -92,8 +92,11 @@ class DiagLoop(gl.Loop):
         t = self.tick_number
         if t == 1:
             shown = gl.api.display(state)
-            print("mapping check |view x - sim x| max:",
-                  float((sim("view_x") - shown["ships.x"]).abs().max()), flush=True)
+            print(
+                "mapping check |view x - sim x| max:",
+                float((sim("view_x") - shown["ships.x"]).abs().max()),
+                flush=True,
+            )
         side_a = torch.cat(
             [self.a_on_zero[:, None].expand(B, S), (~self.a_on_zero)[:, None].expand(B, S)], 1
         )
@@ -137,7 +140,9 @@ class DiagLoop(gl.Loop):
         cause = torch.where((cause == 2) & recent, 3, cause)
         victim_side = (~side_a).long()
         flat = (victim_side * 2 + kind) * 4 + cause
-        self.causes.view(-1).index_add_(0, flat[died], torch.ones_like(flat[died], dtype=torch.float))
+        self.causes.view(-1).index_add_(
+            0, flat[died], torch.ones_like(flat[died], dtype=torch.float)
+        )
         live = alive_start.float()
         self.alive_ticks.view(-1).index_add_(0, (victim_side * 2 + kind).flatten(), live.flatten())
         boundary_died = died & (killer < 0)
@@ -155,9 +160,16 @@ class DiagLoop(gl.Loop):
                         speed_at_death=float(speed[bb, nn]),
                         cross=dict(
                             zip(
-                                ["speed", "turn_radius", "boundary_radius", "boundary_weight",
-                                 "has_target", "extending", "sense_override",
-                                 "since_enemy_damage"],
+                                [
+                                    "speed",
+                                    "turn_radius",
+                                    "boundary_radius",
+                                    "boundary_weight",
+                                    "has_target",
+                                    "extending",
+                                    "sense_override",
+                                    "since_enemy_damage",
+                                ],
                                 c,
                                 strict=True,
                             )
@@ -178,8 +190,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--condition", required=True)
     parser.add_argument("--entry", default="Y0.46")
-    parser.add_argument("--entries", type=pathlib.Path,
-                        default=pathlib.Path("docs/rewrite/sections/g-v23/trims.json"))
+    parser.add_argument(
+        "--entries",
+        type=pathlib.Path,
+        default=pathlib.Path("docs/rewrite/sections/g-v23/trims.json"),
+    )
     parser.add_argument("--games", type=int, default=256)
     parser.add_argument("--seconds", type=float, default=None)
     parser.add_argument("--out", type=pathlib.Path, required=True)
@@ -211,7 +226,9 @@ def main():
         seconds=time.time() - started,
         kill_share_a=summary.get("kill_share_a"),
         point_share_a=summary.get("point_share_a"),
-        causes=loop.causes.cpu().tolist(),  # [victim side A,B][kind Y,J][hit,ff,boundary,boundary<10s after enemy hit]
+        # [victim side A, B][kind Yongma, Jujak][hit, friendly, boundary, boundary within
+        # 10 s of an enemy hit]
+        causes=loop.causes.cpu().tolist(),
         alive_seconds=(loop.alive_ticks * loop.rules.tick_length).cpu().tolist(),
         records=loop.records,
     )
