@@ -380,9 +380,9 @@ SLOPES = {
 }
 SEARCH_GAMES = 128
 RECHECK_GAMES = 384  # a recheck brings a card to 512 games a condition
-RECHECK_FLOOR = 38.0  # rechecked: a cell's best with an objective at least this
+RECHECK_FLOOR = 40.0  # rechecked: a cell's best with an objective at least this
 RECHECKS_PER_GENERATION = 32
-BALANCED = 45.0  # inside 45-55 win-rate equivalent in every condition
+BALANCED = 45.0  # the conditions' root-mean-square distance from even at most 5 points
 
 
 def win_equivalent(kill_share: float, condition: str) -> float:
@@ -410,11 +410,14 @@ def pooled(evaluations: list[dict]) -> dict[str, tuple[float, float, int]]:
 
 
 def objective_of(shares: dict, conditions=SEARCHED) -> dict:
-    """The objective (50 minus the worst condition's win-equivalent distance from 50), its
-    lower bound (each share moved one standard error away from even), the worst condition
-    and the fewest games; None objective when a condition is missing."""
+    """The search's objective: 50 minus the root mean square of the conditions' win-rate-
+    equivalent distances from 50 (smoother and less noise-biased than the worst condition,
+    the coordinator's 2026-11-16 suggestion; the worst is kept beside it for the final
+    check), its lower bound (each share moved one standard error away from even), the
+    worst condition and its distance, and the fewest games; None objective when a condition
+    is missing."""
     if any(c not in shares for c in conditions):
-        return dict(objective=None, lower=None, worst=None, games=0)
+        return dict(objective=None, lower=None, worst=None, worst_distance=None, games=0)
     distance, upper = {}, {}
     for condition in conditions:
         share, error, _ = shares[condition]
@@ -422,10 +425,16 @@ def objective_of(shares: dict, conditions=SEARCHED) -> dict:
         away = share + math.copysign(error, share - 0.5 if share != 0.5 else 1.0)
         upper[condition] = abs(win_equivalent(away, condition) - 50.0)
     worst = max(distance, key=distance.get)
+
+    def rms(values) -> float:
+        values = list(values)
+        return math.sqrt(sum(v * v for v in values) / len(values))
+
     return dict(
-        objective=50.0 - distance[worst],
-        lower=50.0 - max(upper.values()),
+        objective=50.0 - rms(distance.values()),
+        lower=50.0 - rms(upper.values()),
         worst=worst,
+        worst_distance=distance[worst],
         games=min(shares[c][2] for c in conditions),
         win_equivalent={c: round(win_equivalent(shares[c][0], c), 2) for c in conditions},
     )
@@ -455,6 +464,9 @@ class Records:
     def __init__(self, root: pathlib.Path):
         self.root = root
         root.mkdir(parents=True, exist_ok=True)
+        # this process's token in job and output file names: a restart never reads an output
+        # a worker of an abandoned attempt may still be writing
+        self.attempt = time.strftime("%Y%m%d%H%M%S")
         self.candidates = self._read("candidates.jsonl")
         self.evaluations = self._read("evaluations.jsonl")
         self.by_id = {c["id"]: c for c in self.candidates}
@@ -537,12 +549,12 @@ def submit(
     for condition in conditions:
         queue = records.root / "queue" / condition
         queue.mkdir(parents=True, exist_ok=True)
-        out = records.root / "results" / condition / f"{label}.jsonl"
+        out = records.root / "results" / condition / f"{label}.{records.attempt}.jsonl"
         out.parent.mkdir(parents=True, exist_ok=True)
         job = dict(pairs=entries, out=str(out), games=games, mixed_games=0, seed=seed)
-        partial = queue / f"{label}.json.partial"
+        partial = queue / f"{label}.{records.attempt}.json.partial"
         partial.write_text(json.dumps(job))
-        partial.rename(queue / f"{label}.json")
+        partial.rename(queue / f"{label}.{records.attempt}.json")
         outputs[condition] = out
     return outputs
 
@@ -562,7 +574,8 @@ def collect(
         if done:
             break
         for condition in outputs:
-            failed = records.root / "queue" / condition / "failed" / f"{label}.json.txt"
+            name = f"{label}.{records.attempt}.json.txt"
+            failed = records.root / "queue" / condition / "failed" / name
             if failed.exists():
                 raise RuntimeError(f"{condition} job {label} failed:\n{failed.read_text()}")
         time.sleep(poll)
@@ -716,9 +729,10 @@ def rechecks(records: Records, limit: int) -> list[str]:
     return [identifier for _, identifier in chosen[:limit]]
 
 
-def clock(seconds: float) -> str:
-    """A clock time (local) this many seconds from now."""
-    return time.strftime("%H:%M", time.localtime(time.time() + seconds))
+def clock(after: float, seconds: bool = False) -> str:
+    """A clock time (KST, whatever the machine's zone) this many seconds from now."""
+    form = "%H:%M:%S" if seconds else "%H:%M"
+    return time.strftime(form, time.gmtime(time.time() + after + 9 * 3600))
 
 
 def search(args) -> None:
@@ -809,7 +823,7 @@ def search(args) -> None:
             begun=begun,
         )
         print(
-            f"{label} {time.strftime('%H:%M:%S')}: queued {len(valid)}/{len(rows)} solved "
+            f"{label} {clock(0, seconds=True)}: queued {len(valid)}/{len(rows)} solved "
             f"cards and {len(chosen)} rechecks (ask and solve {time.time() - begun:.0f} s)",
             flush=True,
         )
@@ -849,7 +863,7 @@ def search(args) -> None:
             eta = "ETA after the next step"
         line = dict(
             label=label,
-            time=time.strftime("%H:%M:%S"),
+            time=clock(0, seconds=True),
             seconds=round(took),
             solve_seconds=round(flight["solved"]),
             asked=len(rows),
