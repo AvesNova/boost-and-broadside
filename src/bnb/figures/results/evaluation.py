@@ -43,9 +43,20 @@ def read_curves(path: str | pathlib.Path) -> list[dict]:
     return rows
 
 
+def describe(row: dict | None) -> str | None:
+    """A rating row as the pages quote it: "1234 ± 45", or a bound, "> 1721 (a bound)"."""
+    if row is None or row["calibrated_elo"] is None:
+        return None
+    if row["status"] == "rated":
+        return f"{row['calibrated_elo']:.0f} ± {row['stderr'] or 0.0:.0f}"
+    sign = ">" if row["status"] == "above" else "<"
+    return f"{sign} {row['calibrated_elo']:.0f} (a bound)"
+
+
 def draw_elo(path, out, formats=common.FORMATS, name="elo_over_training"):
     """The Elo chart (see the module); (the files written, the values: per mode the last
-    BC snapshot's and the last RL snapshot's averaged rating, with its standard error)."""
+    BC snapshot's and the last RL snapshot's averaged rating as a string, `describe`, and
+    its chain steps)."""
     rows = read_curves(path)
     offsets = chain_offsets(rows)
     figure, axes = common.new_figure(1, 1, size=(7.2, 3.6))
@@ -100,12 +111,10 @@ def draw_elo(path, out, formats=common.FORMATS, name="elo_over_training"):
                 for suffix, stage in ((BC_SUFFIX, "bc_final"), (RL_SUFFIX, "final")):
                     staged = [row for _, row in points if row["run"].endswith(suffix)]
                     last = max(staged, key=lambda row: row["step"], default=None)
-                    rated_last = last if last and last["status"] == "rated" else None
-                    values[f"elo_{mode}_{stage}"] = last["calibrated_elo"] if last else None
-                    if stage == "final":
-                        values[f"elo_{mode}_final_stderr"] = (
-                            rated_last["stderr"] if rated_last else None
-                        )
+                    values[f"elo_{mode}_{stage}"] = describe(last)
+                    values[f"elo_{mode}_{stage}_steps"] = (
+                        float(last["step"] + offsets.get(last["run"], 0)) if last else None
+                    )
         for run, offset in offsets.items():
             if offset and run.endswith(RL_SUFFIX):
                 handoffs.add(offset / 1e6)

@@ -376,9 +376,11 @@ def test_the_evaluation_charts_read_the_queue_records(tmp_path):
     curves.write_text("\n".join(lines) + "\n")
     written, values = evaluation.draw_elo(curves, tmp_path / "out")
     _drawn(written)
-    assert values["elo_frontline_bc_final"] == 1000.0
-    assert (
-        values["elo_elimination_final"] == 1500.0 and values["elo_elimination_final_stderr"] == 30.0
+    assert values["elo_frontline_bc_final"] == "1000 ± 30"
+    assert values["elo_elimination_final"] == "1500 ± 30"
+    assert values["elo_elimination_final_steps"] == 200_000_000.0
+    assert evaluation.describe(dict(calibrated_elo=1721.4, stderr=None, status="above")) == (
+        "> 1721 (a bound)"
     )
 
     suite = tmp_path / "suite"

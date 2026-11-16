@@ -31,9 +31,9 @@ every 5M steps to 50M, then at an interval that doubles each time the steps doub
 
 | Mode | After behaviour cloning | After reinforcement learning |
 |---|---|---|
-| Frontline | {{elo_frontline_bc_final:.0f}} | {{elo_frontline_final:.0f}} ± {{elo_frontline_final_stderr:.0f}} |
-| Deathmatch | {{elo_deathmatch_bc_final:.0f}} | {{elo_deathmatch_final:.0f}} ± {{elo_deathmatch_final_stderr:.0f}} |
-| Elimination | {{elo_elimination_bc_final:.0f}} | {{elo_elimination_final:.0f}} ± {{elo_elimination_final_stderr:.0f}} |
+| Frontline | {{elo_frontline_bc_final}} | {{elo_frontline_final}} |
+| Deathmatch | {{elo_deathmatch_bc_final}} | {{elo_deathmatch_final}} |
+| Elimination | {{elo_elimination_bc_final}} | {{elo_elimination_final}} |
 
 {{pending: training_reading | What the curves show: how close behaviour cloning comes to Imugi's 1000, how fast reinforcement learning climbs past it, and whether any mode is still climbing at 200M.}}
 
