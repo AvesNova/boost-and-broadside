@@ -414,7 +414,7 @@ def test_the_arms_set_line_builds_the_arm():
     from bnb.runtime.train import TrainConfig, model_build
 
     config = with_settings(
-        TrainConfig(game=GameConfig(5, 10, 2600.0)), map(parse_setting, ARM_SETS)
+        TrainConfig(game=GameConfig(5, 10, 2600.0, fog_share=1.0)), map(parse_setting, ARM_SETS)
     )
     build = model_build(config)
     assert build.config.delta_split and build.config.delta_baseline == "persistence"
@@ -433,7 +433,7 @@ def test_a_new_runs_defaults_are_the_champions_model():
     from bnb.learn.ppo import LearnerConfig
     from bnb.runtime.train import TrainConfig
 
-    default = TrainConfig(game=GameConfig(5, 10, 2600.0))
+    default = TrainConfig(game=GameConfig(5, 10, 2600.0, fog_share=1.0))
     assert default.yemong.next_state == "delta"
     assert default.yemong.delta_baseline == "extrapolation"
     assert default.yemong.delta_split and default.yemong.physics_hidden_decay == 0.25
@@ -478,7 +478,7 @@ def test_the_fourier_arms_set_line_builds_it_and_old_records_read_as_colour():
     from bnb.runtime.train import TrainConfig, model_build
 
     config = with_settings(
-        TrainConfig(game=GameConfig(5, 10, 2600.0)), map(parse_setting, FOURIER_SETS)
+        TrainConfig(game=GameConfig(5, 10, 2600.0, fog_share=1.0)), map(parse_setting, FOURIER_SETS)
     )
     build = model_build(config)
     assert build.config.position_inputs == "fourier" and build.config.delta_split
@@ -947,7 +947,7 @@ def test_the_hidden_arms_set_line_builds_the_arm():
     from bnb.runtime.train import TrainConfig, model_build
 
     config = with_settings(
-        TrainConfig(game=GameConfig(5, 10, 2600.0)), map(parse_setting, HIDDEN_SETS)
+        TrainConfig(game=GameConfig(5, 10, 2600.0, fog_share=1.0)), map(parse_setting, HIDDEN_SETS)
     )
     build = model_build(config)
     assert build.config.physics_hidden_decay == 0.5 and build.config.delta_split
@@ -1206,7 +1206,7 @@ def test_the_fade_arms_set_line_builds_the_arm():
     from bnb.runtime.train import TrainConfig, model_build
 
     config = with_settings(
-        TrainConfig(game=GameConfig(5, 10, 2600.0)), map(parse_setting, FADE_SETS)
+        TrainConfig(game=GameConfig(5, 10, 2600.0, fog_share=1.0)), map(parse_setting, FADE_SETS)
     )
     build = model_build(config)
     assert build.config.physics_hidden_fade and build.config.physics_hidden_decay == 0.5

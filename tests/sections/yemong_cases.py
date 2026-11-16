@@ -16,9 +16,11 @@ from bnb.game.handling.characteristics import characteristics
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 
 CPU = torch.device("cpu")
+# team deathmatch with fog set on (its mode has none since game version 24): the model tests
+# need hidden ships
+SQUAD = GameConfig(5, 10, 2600.0, fog_share=1.0)
 # squad's sizes in a smaller arena with short episodes, so a segment has fights and resets
-SQUAD = GameConfig(5, 10, 2600.0)
-SHORT_SQUAD = GameConfig(5, 10, 1500.0, episode_seconds=2.0, respawn_seconds=1.0)
+SHORT_SQUAD = GameConfig(5, 10, 1500.0, episode_seconds=2.0, respawn_seconds=1.0, fog_share=1.0)
 SHORT_FRONTLINE = GameConfig(
     5, 10, 1500.0, episode_seconds=2.0, respawn_seconds=1.0, mode="frontline"
 )

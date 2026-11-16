@@ -216,7 +216,7 @@ def test_the_arms_set_line_builds_the_arm():
     from bnb.runtime.train import TrainConfig, model_build
 
     config = with_settings(
-        TrainConfig(game=GameConfig(5, 10, 2600.0)), map(parse_setting, ARM_SETS)
+        TrainConfig(game=GameConfig(5, 10, 2600.0, fog_share=1.0)), map(parse_setting, ARM_SETS)
     )
     build = model_build(config)
     assert build.config.delta_baseline == "extrapolation" and build.config.delta_split
@@ -387,7 +387,9 @@ def test_the_arm_4c_set_line_builds_the_arm():
         "yemong.acceleration_inputs=false" if line.startswith("yemong.acceleration") else line
         for line in ARM_SETS
     )
-    config = with_settings(TrainConfig(game=GameConfig(5, 10, 2600.0)), map(parse_setting, sets))
+    config = with_settings(
+        TrainConfig(game=GameConfig(5, 10, 2600.0, fog_share=1.0)), map(parse_setting, sets)
+    )
     build = model_build(config)
     assert build.config.delta_baseline == "extrapolation" and build.config.delta_split
     assert not build.config.acceleration_inputs and build.dynamics is not None
