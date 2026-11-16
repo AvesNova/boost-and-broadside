@@ -126,3 +126,34 @@ What to read in `$RUNS/dry-v24-s1-unified/`:
 - `report.json` against the queue's tables (`dry-v24-s1-eval/suite/summary.txt`,
   `curves/table.txt`, `break-even/`, `team-size/`), allowing for v25's Imugi in small
   fights.
+
+## Elo curves to precision (2026-11-17)
+
+Dry run 1's curves (the queue's `bnb pool rate`, 52 snapshots, ±60, 12,288 games a mode)
+ended with 11 frontline players without a rating (9 bounds, one undetermined, one never
+played) and 40 deathmatch ones (31 bounds, 9 never played), none in elimination; the late
+RL snapshots after one or two sweeps of far weaker
+opponents (`dry-v24-curves-table.txt`, the box's `table.txt`). The planner now never takes
+a bound as a result (plan.md, "Elo: no bound is a result").
+
+**Offline** (`bench/elo_curve_planner.py`, CPU): that table as the truth (a bound placed
+300 Elo past its value, the undetermined player between its neighbours), Bradley-Terry
+games, 1,024 games in flight ending in bursts of 2%, from no games:
+
+| mode | span (Elo) | games to ±60 | old budget | players without a rating | worst SE | games beyond p = 0.95 / 0.99 (after the first wave) | mean p (1 − p) |
+|---|---|---|---|---|---|---|---|
+| elimination | 2,500 | 5,280 | 12,288 | 0 | 59.8 | 11% / 5% | 0.137 |
+| deathmatch | 5,000 | 13,680 | 12,288 | 0 | 60 | 32% / 4% | 0.087 |
+| frontline | 5,400 | 16,960 | 12,288 | 0 | 60 | 39% / 4% | 0.093 |
+
+The first wave (planned before any result) holds most of the near-certain games; after it,
+the games beyond p = 0.95 are mostly the long hops A-optimality picks to chain a span of
+5,000 Elo (per game, the information about a distance is largest near 400 Elo a hop,
+p ≈ 0.92). The fitted errors match the truth (root mean square of error over SE 0.94–1.21).
+With draws (15% of even games, fewer as the odds part, the mean score kept at p), frontline
+took 14,720 games, every player rated, error over SE 0.95.
+
+**Deathmatch caveat (dry run 1):** dry run 1 trained deathmatch with 5·N tickets, but every
+evaluation played the real rule, 4·N^(4/3) rounded to 5 (35 at 5v5, against 25 in
+training). The author expects little effect, mainly in close games decided by a last kill
+against the clock; the curves' deathmatch field carries the note.

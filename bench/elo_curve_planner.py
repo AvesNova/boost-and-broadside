@@ -168,10 +168,11 @@ def simulate(mode, environments, finish, draws, seed, budget, out, every, log=pr
             p = 1.0 / (1.0 + math.exp(-gap))
             expected.append(p)
             u = rng.random()
-            if draws and u < draws * 4 * p * (1 - p):  # draws likeliest when even
+            drawn = draws * 4 * p * (1 - p)  # draws likeliest when even; the mean score p
+            if u < drawn:
                 score = 0.5
             else:
-                score = 1.0 if rng.random() < p else 0.0
+                score = 1.0 if rng.random() < (p - drawn / 2) / (1 - drawn) else 0.0
             planner.finished(cell, Outcome(score, seconds=60.0))
             games += 1
         refill(len(ended))
