@@ -117,3 +117,18 @@ def test_the_values_file_comes_from_the_environment(monkeypatch, tmp_path):
     assert PLACEHOLDERS.render("{{elo_example:.0f}}", "page.md")[0] == "1234"
     monkeypatch.delenv("BNB_RESULTS_VALUES")
     assert PLACEHOLDERS.values_path() == PLACEHOLDERS.VALUES
+
+
+def test_publish_check_lists_every_open_placeholder(monkeypatch, tmp_path):
+    """In publish mode `check` names every open placeholder of every page, not the first."""
+    first, second = tmp_path / "a.md", tmp_path / "b.md"
+    first.write_text("{{pending: one | the first}}\n")
+    second.write_text("{{pending: two | the second}}\n")
+    monkeypatch.setattr(PLACEHOLDERS, "ROOT", tmp_path)
+    monkeypatch.setattr(PLACEHOLDERS, "site_pages", lambda: [first])
+    monkeypatch.setattr(PLACEHOLDERS, "README_TEMPLATE", second)
+    with pytest.raises(PLACEHOLDERS.PlaceholderError) as raised:
+        PLACEHOLDERS.check("publish")
+    assert "2 placeholder(s)" in str(raised.value)
+    assert "pending one" in str(raised.value) and "pending two" in str(raised.value)
+    assert len(PLACEHOLDERS.check("draft")) == 2

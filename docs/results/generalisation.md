@@ -25,13 +25,13 @@ team size.
 
 Even numbers, the policy's win rate against Imugi:
 
-| Team size | Deathmatch | Elimination | Frontline |
+| Team size | Frontline | Deathmatch | Elimination |
 |---|---|---|---|
-| 1 against 1 | {{team_size_deathmatch_ratio_1_size_1_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_1_win_rate:.0%}} | not played |
-| 2 against 2 | {{team_size_deathmatch_ratio_1_size_2_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_2_win_rate:.0%}} | not played |
-| 5 against 5 | {{team_size_deathmatch_ratio_1_size_5_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_5_win_rate:.0%}} | {{team_size_frontline_ratio_1_size_5_win_rate:.0%}} |
-| 10 against 10 | {{team_size_deathmatch_ratio_1_size_10_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_10_win_rate:.0%}} | {{team_size_frontline_ratio_1_size_10_win_rate:.0%}} |
-| 20 against 20 | {{team_size_deathmatch_ratio_1_size_20_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_20_win_rate:.0%}} | {{team_size_frontline_ratio_1_size_20_win_rate:.0%}} |
+| 1 against 1 | not played | {{team_size_deathmatch_ratio_1_size_1_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_1_win_rate:.0%}} |
+| 2 against 2 | not played | {{team_size_deathmatch_ratio_1_size_2_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_2_win_rate:.0%}} |
+| 5 against 5 | {{team_size_frontline_ratio_1_size_5_win_rate:.0%}} | {{team_size_deathmatch_ratio_1_size_5_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_5_win_rate:.0%}} |
+| 10 against 10 | {{team_size_frontline_ratio_1_size_10_win_rate:.0%}} | {{team_size_deathmatch_ratio_1_size_10_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_10_win_rate:.0%}} |
+| 20 against 20 | {{team_size_frontline_ratio_1_size_20_win_rate:.0%}} | {{team_size_deathmatch_ratio_1_size_20_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_20_win_rate:.0%}} |
 
 Frontline is played from 3 against 3 up.
 

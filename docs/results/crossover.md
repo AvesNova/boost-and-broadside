@@ -21,12 +21,12 @@ at 5 against 8 means the policy wins more often than not while outnumbered 8 to 
 
 The last snapshot, by mode and lineup (win rate, with its 95% interval):
 
-| Lineup | Deathmatch | Elimination | Frontline |
+| Lineup | Frontline | Deathmatch | Elimination |
 |---|---|---|---|
-| 5 against 5 | {{fan_deathmatch_5v5_win_rate:.0%}} ({{fan_deathmatch_5v5_low:.0%}}–{{fan_deathmatch_5v5_high:.0%}}) | {{fan_elimination_5v5_win_rate:.0%}} ({{fan_elimination_5v5_low:.0%}}–{{fan_elimination_5v5_high:.0%}}) | {{fan_frontline_5v5_win_rate:.0%}} ({{fan_frontline_5v5_low:.0%}}–{{fan_frontline_5v5_high:.0%}}) |
-| 5 against 6 | {{fan_deathmatch_5v6_win_rate:.0%}} ({{fan_deathmatch_5v6_low:.0%}}–{{fan_deathmatch_5v6_high:.0%}}) | {{fan_elimination_5v6_win_rate:.0%}} ({{fan_elimination_5v6_low:.0%}}–{{fan_elimination_5v6_high:.0%}}) | {{fan_frontline_5v6_win_rate:.0%}} ({{fan_frontline_5v6_low:.0%}}–{{fan_frontline_5v6_high:.0%}}) |
-| 5 against 8 | {{fan_deathmatch_5v8_win_rate:.0%}} ({{fan_deathmatch_5v8_low:.0%}}–{{fan_deathmatch_5v8_high:.0%}}) | {{fan_elimination_5v8_win_rate:.0%}} ({{fan_elimination_5v8_low:.0%}}–{{fan_elimination_5v8_high:.0%}}) | {{fan_frontline_5v8_win_rate:.0%}} ({{fan_frontline_5v8_low:.0%}}–{{fan_frontline_5v8_high:.0%}}) |
-| 5 against 10 | {{fan_deathmatch_5v10_win_rate:.0%}} ({{fan_deathmatch_5v10_low:.0%}}–{{fan_deathmatch_5v10_high:.0%}}) | {{fan_elimination_5v10_win_rate:.0%}} ({{fan_elimination_5v10_low:.0%}}–{{fan_elimination_5v10_high:.0%}}) | {{fan_frontline_5v10_win_rate:.0%}} ({{fan_frontline_5v10_low:.0%}}–{{fan_frontline_5v10_high:.0%}}) |
+| 5 against 5 | {{fan_frontline_5v5_win_rate:.0%}} ({{fan_frontline_5v5_low:.0%}}–{{fan_frontline_5v5_high:.0%}}) | {{fan_deathmatch_5v5_win_rate:.0%}} ({{fan_deathmatch_5v5_low:.0%}}–{{fan_deathmatch_5v5_high:.0%}}) | {{fan_elimination_5v5_win_rate:.0%}} ({{fan_elimination_5v5_low:.0%}}–{{fan_elimination_5v5_high:.0%}}) |
+| 5 against 6 | {{fan_frontline_5v6_win_rate:.0%}} ({{fan_frontline_5v6_low:.0%}}–{{fan_frontline_5v6_high:.0%}}) | {{fan_deathmatch_5v6_win_rate:.0%}} ({{fan_deathmatch_5v6_low:.0%}}–{{fan_deathmatch_5v6_high:.0%}}) | {{fan_elimination_5v6_win_rate:.0%}} ({{fan_elimination_5v6_low:.0%}}–{{fan_elimination_5v6_high:.0%}}) |
+| 5 against 8 | {{fan_frontline_5v8_win_rate:.0%}} ({{fan_frontline_5v8_low:.0%}}–{{fan_frontline_5v8_high:.0%}}) | {{fan_deathmatch_5v8_win_rate:.0%}} ({{fan_deathmatch_5v8_low:.0%}}–{{fan_deathmatch_5v8_high:.0%}}) | {{fan_elimination_5v8_win_rate:.0%}} ({{fan_elimination_5v8_low:.0%}}–{{fan_elimination_5v8_high:.0%}}) |
+| 5 against 10 | {{fan_frontline_5v10_win_rate:.0%}} ({{fan_frontline_5v10_low:.0%}}–{{fan_frontline_5v10_high:.0%}}) | {{fan_deathmatch_5v10_win_rate:.0%}} ({{fan_deathmatch_5v10_low:.0%}}–{{fan_deathmatch_5v10_high:.0%}}) | {{fan_elimination_5v10_win_rate:.0%}} ({{fan_elimination_5v10_low:.0%}}–{{fan_elimination_5v10_high:.0%}}) |
 
 ## The break-even ratio against steps
 
@@ -39,9 +39,9 @@ needing twice Imugi's are the same distance from 1.
 
 | Mode | Break-even ratio | Standard error | At steps |
 |---|---|---|---|
+| Frontline | {{crossover_ratio_frontline:.2f}} | {{crossover_ratio_frontline_stderr:.2f}} | {{crossover_ratio_frontline_steps:,.0f}} |
 | Deathmatch | {{crossover_ratio_deathmatch:.2f}} | {{crossover_ratio_deathmatch_stderr:.2f}} | {{crossover_ratio_deathmatch_steps:,.0f}} |
 | Elimination | {{crossover_ratio_elimination:.2f}} | {{crossover_ratio_elimination_stderr:.2f}} | {{crossover_ratio_elimination_steps:,.0f}} |
-| Frontline | {{crossover_ratio_frontline:.2f}} | {{crossover_ratio_frontline_stderr:.2f}} | {{crossover_ratio_frontline_steps:,.0f}} |
 
 {{pending: crossover_reading | What the curves show: when each mode passes a ratio of 1, whether behaviour cloning alone reaches it, and how the modes differ.}}
 

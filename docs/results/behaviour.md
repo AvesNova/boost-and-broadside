@@ -16,9 +16,9 @@ policy, the mode, the lineup and the seed, so it can be replayed with `bnb play`
 
 | Mode | Median game | Games that ran the clock out |
 |---|---|---|
+| Frontline | {{game_length_frontline_median_seconds:.0f}} s | {{game_length_frontline_clock_out_share:.0%}} |
 | Deathmatch | {{game_length_deathmatch_median_seconds:.0f}} s | {{game_length_deathmatch_clock_out_share:.0%}} |
 | Elimination | {{game_length_elimination_median_seconds:.0f}} s | {{game_length_elimination_clock_out_share:.0%}} |
-| Frontline | {{game_length_frontline_median_seconds:.0f}} s | {{game_length_frontline_clock_out_share:.0%}} |
 
 {{pending: game_length_reading | Whether the trained policy ends games faster or slower than Imugi does against itself, and in which modes.}}
 

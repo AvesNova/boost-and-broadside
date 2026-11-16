@@ -129,14 +129,14 @@
     "value": 95,
     "unit": "deg/s",
     "confidence": "medium",
-    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Gilruth & Turner, roll performance; read via secondary summaries tonight, chart not opened)",
+    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Toll 1947, summary of lateral-control research; read via secondary summaries tonight, chart not opened)",
     "note": "NACA TR-868 chart (P-51B, 50 lb stick force, 10,000 ft) peaks ~95 deg/s; P-51D similar ailerons. Read via https://ww2aircraft.net/forum/threads/relative-rolling-characteristics-of-wwii-fighters.36397/"
    },
    "roll_rate_speed": {
     "value": 156.5,
     "unit": "m/s",
     "confidence": "medium",
-    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Gilruth & Turner, roll performance; read via secondary summaries tonight, chart not opened)",
+    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Toll 1947, summary of lateral-control research; read via secondary summaries tonight, chart not opened)",
     "note": "350 mph. IAS, near the peak of the TR-868 curve; the P-51 overtakes the Fw 190 above ~360 mph."
    },
    "stall_aoa": {
@@ -454,14 +454,14 @@
     "value": 85,
     "unit": "deg/s",
     "confidence": "medium",
-    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Gilruth & Turner, roll performance; read via secondary summaries tonight, chart not opened)",
+    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Toll 1947, summary of lateral-control research; read via secondary summaries tonight, chart not opened)",
     "note": "TR-868 P-47 curve ~80-90 deg/s around 250-350 mph; spring-tab ailerons on late D-30s improved high-speed roll."
    },
    "roll_rate_speed": {
     "value": 134.1,
     "unit": "m/s",
     "confidence": "medium",
-    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Gilruth & Turner, roll performance; read via secondary summaries tonight, chart not opened)",
+    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Toll 1947, summary of lateral-control research; read via secondary summaries tonight, chart not opened)",
     "note": "300 mph. IAS."
    },
    "stall_aoa": {
@@ -1191,14 +1191,14 @@
     "value": 90,
     "unit": "deg/s",
     "confidence": "low",
-    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Gilruth & Turner, roll performance; read via secondary summaries tonight, chart not opened)",
+    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Toll 1947, summary of lateral-control research; read via secondary summaries tonight, chart not opened)",
     "note": "TR-868 Spitfire curves are disputed; metal ailerons give ~85-95 deg/s around 200-250 mph IAS, falling fast above 300 mph. Clipped wing ~ +15%."
    },
    "roll_rate_speed": {
     "value": 102.8,
     "unit": "m/s",
     "confidence": "low",
-    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Gilruth & Turner, roll performance; read via secondary summaries tonight, chart not opened)",
+    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Toll 1947, summary of lateral-control research; read via secondary summaries tonight, chart not opened)",
     "note": "230 mph. IAS."
    },
    "stall_aoa": {
@@ -2683,14 +2683,14 @@
     "value": 150,
     "unit": "deg/s",
     "confidence": "medium",
-    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Gilruth & Turner, roll performance; read via secondary summaries tonight, chart not opened)",
+    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Toll 1947, summary of lateral-control research; read via secondary summaries tonight, chart not opened)",
     "note": "TR-868 and RAE tests on the A-3 give ~160 deg/s near 250 mph IAS; the heavier A-8 slightly less."
    },
    "roll_rate_speed": {
     "value": 111.1,
     "unit": "m/s",
     "confidence": "medium",
-    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Gilruth & Turner, roll performance; read via secondary summaries tonight, chart not opened)",
+    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Toll 1947, summary of lateral-control research; read via secondary summaries tonight, chart not opened)",
     "note": "400 km/h. IAS."
    },
    "stall_aoa": {
@@ -5519,14 +5519,14 @@
     "value": 85,
     "unit": "deg/s",
     "confidence": "medium",
-    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Gilruth & Turner, roll performance; read via secondary summaries tonight, chart not opened)",
+    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Toll 1947, summary of lateral-control research; read via secondary summaries tonight, chart not opened)",
     "note": "TR-868 F4U ~ 80-90 deg/s at 250-300 mph; spring-tab ailerons later."
    },
    "roll_rate_speed": {
     "value": 125.2,
     "unit": "m/s",
     "confidence": "medium",
-    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Gilruth & Turner, roll performance; read via secondary summaries tonight, chart not opened)",
+    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Toll 1947, summary of lateral-control research; read via secondary summaries tonight, chart not opened)",
     "note": "280 mph."
    },
    "stall_aoa": {
@@ -6479,14 +6479,14 @@
     "value": 80,
     "unit": "deg/s",
     "confidence": "medium",
-    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Gilruth & Turner, roll performance; read via secondary summaries tonight, chart not opened)",
+    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Toll 1947, summary of lateral-control research; read via secondary summaries tonight, chart not opened)",
     "note": "TR-868 F6F ~ 75-85 deg/s; spring-tab ailerons later."
    },
    "roll_rate_speed": {
     "value": 111.8,
     "unit": "m/s",
     "confidence": "medium",
-    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Gilruth & Turner, roll performance; read via secondary summaries tonight, chart not opened)",
+    "source": "http://naca.central.cranfield.ac.uk/reports/1947/naca-report-868.pdf (NACA Report 868, Toll 1947, summary of lateral-control research; read via secondary summaries tonight, chart not opened)",
     "note": "250 mph."
    },
    "stall_aoa": {

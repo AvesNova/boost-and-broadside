@@ -226,12 +226,17 @@ def site_pages() -> list[pathlib.Path]:
 
 
 def check(chosen_mode: str | None = None) -> list[Outstanding]:
-    """Render every site page and the README template; what is outstanding. Raises as
-    `render` does."""
+    """Render every site page and the README template; what is outstanding. Raises on an
+    unknown name or a bad form, and in publish mode when anything is outstanding, listing
+    every open placeholder of every page."""
     outstanding = []
     for path in [*site_pages(), README_TEMPLATE]:
         page = str(path.relative_to(ROOT))
-        outstanding += render(path.read_text(), page, chosen_mode=chosen_mode)[1]
+        outstanding += render(path.read_text(), page, chosen_mode="draft")[1]
+    if (chosen_mode or mode()) == "publish" and outstanding:
+        listed = "\n  ".join(map(str, outstanding))
+        raise PlaceholderError(f"publish mode: {len(outstanding)} placeholder(s) still "
+                               f"open:\n  {listed}")
     return outstanding
 
 

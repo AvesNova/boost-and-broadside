@@ -25,9 +25,9 @@ two sides win equally often:
 
 | Mode | Break-even ratio (Imugi's ships per one of ours) | At steps |
 |---|---|---|
+| Frontline | **⟨crossover_ratio_frontline⟩** ± **⟨crossover_ratio_frontline_stderr⟩** | **⟨crossover_ratio_frontline_steps⟩** |
 | Deathmatch | **⟨crossover_ratio_deathmatch⟩** ± **⟨crossover_ratio_deathmatch_stderr⟩** | **⟨crossover_ratio_deathmatch_steps⟩** |
 | Elimination | **⟨crossover_ratio_elimination⟩** ± **⟨crossover_ratio_elimination_stderr⟩** | **⟨crossover_ratio_elimination_steps⟩** |
-| Frontline | **⟨crossover_ratio_frontline⟩** ± **⟨crossover_ratio_frontline_stderr⟩** | **⟨crossover_ratio_frontline_steps⟩** |
 
 How the games are played, fitted and counted, and what the numbers do not show, is on the
 [evaluation page](docs/results/evaluation.md).
