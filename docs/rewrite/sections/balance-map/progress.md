@@ -164,3 +164,37 @@ dm 2v2 / 5v5 / elim 5v5 / Frontline 10v10):
   map's toughness x reach axis is half gun range, so its reach half costs almost nothing).
 - The conversion refit on all pilot cards (chi^2/dof 3-13, mostly far from even) is not
   trusted yet; the slopes stay balance-eval's.
+
+## 20:20 strategy change: a full-space Sobol study with fitted models (author + coordinator)
+
+CMA-MAE stopped at 20:15 (map2's first generation was queued; its cards and outputs stay as
+training data, as do the pilot's). The new design (`bench/balance_study.py`):
+
+- Inputs: the same 13 handles and bounds (`balance_map.SPACE`, band 0.4-2.0 s), the same
+  decode and repairs (damage into the time-to-kill band, low-speed cap), the same compiled
+  solver pool; invalid cards are recorded and counted.
+- Sampling: plain scrambled Sobol (scipy qmc, seed 0) over the 13 coordinates for the whole
+  run (the author's trim: no active sampling).
+- Every card on all 8 conditions, against ONE reference by rotation (card i: v23 Jujak,
+  v23 Yongma, G Yongma for i mod 3), every side flying Jujak's stored doctrine. Target per
+  condition: logit(kill share) = f_c(card) - r_c(reference) (Bradley-Terry-style).
+- Cycle insurance: 32 of each batch's 512 entries are card against card (both from the
+  batch): their residuals against the transitive model's prediction are compared with the
+  card-against-reference residuals.
+- Batch choice (no tuning, one measurement = the first batch): **32 games a card and
+  condition, 512 variants, 16384 environments** (one batch of 16384 = 512 entries x 32
+  games, so every condition's job is exactly one full batch). Reasons: balance-eval's 5090
+  timing (4096 environments is launch-bound at 35-60% GPU; 16384 is not); many distinct cards
+  with few games each for a model; 32 games give a kill share SE of about 1.5-3 points per
+  card (the model pools them).
+- One worker process holds all 8 conditions' compiled loops (box RAM allows about 5
+  single-condition workers at 4.5 GB each), compiled one at a time (about 5 min each, about
+  40 min in all), and plays the queued jobs under the GPU lock. The driver solves the next
+  batch and measures its card table's characteristics (once, in 8 processes; the cache key
+  does not depend on the mode, so all 8 loops find it) while the GPU plays the current one.
+- Records under /workspace/out/study: cards.jsonl (every Sobol point: coordinates, handles,
+  card or failure), evaluations.jsonl (every entry and condition: games, kill share and its
+  SE, kills and deaths a minute, score), batches.jsonl (progress, throughput). A restart
+  resumes (the Sobol index continues; unfinished batches are submitted again).
+- Bounded by the clock (00:00 KST for the data), then the models, then picks and
+  confirmation (2048 games, all 8 conditions, pairs against each other).
