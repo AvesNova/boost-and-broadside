@@ -1,0 +1,182 @@
+[
+ {
+  "name": "K-roll-g8-dive-t68",
+  "base": "jujak",
+  "handles": {
+   "stall_speed": {
+    "set": 94.4
+   },
+   "g_limit": {
+    "set": 8.0
+   },
+   "sustained_turn_rate": {
+    "set": 0.68
+   },
+   "cruise_speed": {
+    "set": 330.0
+   },
+   "climb_time": {
+    "set": 290.0
+   },
+   "low_speed_acceleration": {
+    "set": 18.97
+   },
+   "zero_lift_drag": {
+    "set": 7e-05
+   },
+   "nose_reversal_time": {
+    "set": 0.2493
+   },
+   "fire_rate": {
+    "set": 15.0
+   },
+   "muzzle_speed": {
+    "set": 1040.0
+   },
+   "bullet_spread": {
+    "set": 0.7495
+   },
+   "bullet_drag": {
+    "set": 0.00065
+   },
+   "explosive_share": {
+    "set": 1.0
+   },
+   "gun_range": {
+    "set": 400.0
+   },
+   "shots_per_store": {
+    "set": 384.0
+   },
+   "hit_damage": {
+    "set": 38.3754
+   },
+   "max_shield": {
+    "set": 90.0
+   },
+   "dive_acceleration": {
+    "set": 43.608
+   }
+  }
+ },
+ {
+  "name": "K-roll-g8-dive-t70",
+  "base": "jujak",
+  "handles": {
+   "stall_speed": {
+    "set": 94.4
+   },
+   "g_limit": {
+    "set": 8.0
+   },
+   "sustained_turn_rate": {
+    "set": 0.7
+   },
+   "cruise_speed": {
+    "set": 330.0
+   },
+   "climb_time": {
+    "set": 290.0
+   },
+   "low_speed_acceleration": {
+    "set": 18.97
+   },
+   "zero_lift_drag": {
+    "set": 7e-05
+   },
+   "nose_reversal_time": {
+    "set": 0.2493
+   },
+   "fire_rate": {
+    "set": 15.0
+   },
+   "muzzle_speed": {
+    "set": 1040.0
+   },
+   "bullet_spread": {
+    "set": 0.7495
+   },
+   "bullet_drag": {
+    "set": 0.00065
+   },
+   "explosive_share": {
+    "set": 1.0
+   },
+   "gun_range": {
+    "set": 400.0
+   },
+   "shots_per_store": {
+    "set": 384.0
+   },
+   "hit_damage": {
+    "set": 38.3754
+   },
+   "max_shield": {
+    "set": 90.0
+   },
+   "dive_acceleration": {
+    "set": 43.608
+   }
+  }
+ },
+ {
+  "name": "K-roll-g8-dive-t66",
+  "base": "jujak",
+  "handles": {
+   "stall_speed": {
+    "set": 94.4
+   },
+   "g_limit": {
+    "set": 8.0
+   },
+   "sustained_turn_rate": {
+    "set": 0.66
+   },
+   "cruise_speed": {
+    "set": 330.0
+   },
+   "climb_time": {
+    "set": 290.0
+   },
+   "low_speed_acceleration": {
+    "set": 18.97
+   },
+   "zero_lift_drag": {
+    "set": 7e-05
+   },
+   "nose_reversal_time": {
+    "set": 0.2493
+   },
+   "fire_rate": {
+    "set": 15.0
+   },
+   "muzzle_speed": {
+    "set": 1040.0
+   },
+   "bullet_spread": {
+    "set": 0.7495
+   },
+   "bullet_drag": {
+    "set": 0.00065
+   },
+   "explosive_share": {
+    "set": 1.0
+   },
+   "gun_range": {
+    "set": 400.0
+   },
+   "shots_per_store": {
+    "set": 384.0
+   },
+   "hit_damage": {
+    "set": 38.3754
+   },
+   "max_shield": {
+    "set": 90.0
+   },
+   "dive_acceleration": {
+    "set": 43.608
+   }
+  }
+ }
+]
