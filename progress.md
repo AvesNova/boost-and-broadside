@@ -473,3 +473,8 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Tried: merged lethality-sticky (game v23, sticky Imugi build 2) and balance-eval; both clean, quick tier 95 passed.
 - Worked: game v24, no fog in team deathmatch: GameConfig.fogged_share by mode, resolved per pool in Lineup (every Rollout path); balance_sweep fog follows the mode; ae3ea958.
 - Next: the whole fast suite (author asked), the CPU smoke check of `bnb train --preset real_scale_all_modes` pools.
+
+## 2026-11-16 results charts (branch feat/results-charts, worktree bnb-charts)
+- Tried: read ladder, crossover, rating_pool, evaluation, metrics keys of rl-v20/bc-v21; v1 viz on main.
+- Found: ladder.break_even_points reads `presets` at the result's top level, but write_result nests it under `payload` (real results would give no points); no per-game length record exists anywhere.
+- Next: src/bnb/figures/results/ (fan, break-even, arms, team size, health, game length, values file) + `bnb figures results`.
