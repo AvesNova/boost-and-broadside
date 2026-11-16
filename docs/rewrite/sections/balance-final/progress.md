@@ -427,3 +427,12 @@ the fitted step plus single checks, in every mode (laptop) and dm2 (box, 1024).
   Jujak's longer gun range does not mirror probe1's shorter one (no Frontline gain), so the
   Jujak-range combinations fail; the store + vision + less Yongma turn line works: at x1.0 it
   puts dm5 and FL10 near even together for the first time (48 / 47), FL5 a little low (44).
+- A per-mode linear model on the log factors (probe1 + probe2 points; rms 0.1-0.4 kill
+  points) finds no store/vision/turn/shot-cost card that holds FL5 and FL10 together (FL5 is
+  more turn-sensitive and FL10 less). **Jujak's shield** is the missing handle: it moves FL10
+  twice as much as FL5 (-8.0 against -4.3 per log unit) and deathmatch about like FL10. With
+  it the model has cards inside every band (dm10, dm5, el5, el10, FL10, FL5; dm2 unmodelled).
+  probe3 (`candidates/make_probe3.py`): five such cards (Q1-Q5: Yongma store x1.7-3.7,
+  vision x1.0-1.5, induced drag x1.06-1.22 (less turn), shot cost x0.42-0.61; Jujak shield
+  x1.16-1.32, Q3 also Jujak vision x0.77) at 0.8/1/1.2 of the step, queued in all seven
+  mode-sizes on the box (new frontline-10 and frontline-5 workers; probe3 dm2 at 1024).
