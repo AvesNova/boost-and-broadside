@@ -15,6 +15,7 @@ The last commit touching each file is given.
 
 | Script | What it does | Source (commit) |
 |---|---|---|
+| `setup.sh` | sets up or restores a box on its persistent volume: repository, locked venv, Python, uv/inductor/Triton/hub/bnb caches, runs/out/queue/logs, `env.sh` sourced by every shell, the heartbeat as a supervisor program; idempotent (re-run after a recycle) | written 2026-11-16, tested on the 5090 box |
 | `supervisor.conf` | supervisor programs `heartbeat` and `onehead` (the pipeline driver), started at boot and restarted, so the box resumes alone | run/onehead-champion gpubox2/supervisor.conf (ef75c278) |
 | `heartbeat.sh` | logs a UTC line a minute with GPU utilisation, memory, power; a "boot" line at each start, so gaps are downtime | run/onehead-champion gpubox2/heartbeat.sh (9f11922e) |
 | `downtime.py` | reads the heartbeat log and prints interruptions and up/down totals | run/onehead-champion gpubox2/downtime.py (893d89ba) |
