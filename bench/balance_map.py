@@ -184,9 +184,14 @@ def measures(coordinates) -> tuple[float, float]:
     return float(agility), float(toughness)
 
 
-def solve_cards(handle_sets: list[dict[str, float]], processes: int = 8) -> list[dict | str]:
-    """The solved cards ({field: value}) of handle sets, or the solver's reason a set fails
-    (a string). Solved in batches across processes (`api.solve_handles`, strict=False)."""
+LOW_SPEED_MARGIN = 0.85  # the low-speed acceleration's cap: this share of its closed-form limit
+
+
+def solve_cards(handle_sets: list[dict[str, float]], processes: int = 8) -> list[dict]:
+    """Each handle set solved into a card (`api.solve_handles`, strict=False), in batches
+    across processes: {"card": {field: value}} or {"failure": the solver's reason}, with
+    "low_speed_acceleration" (the handle as solved, after `low_speed_limits`' repair) and
+    "low_speed_limit"."""
     if not handle_sets:
         return []
     import concurrent.futures
@@ -200,44 +205,112 @@ def solve_cards(handle_sets: list[dict[str, float]], processes: int = 8) -> list
     return [card for part in results for card in part]
 
 
-def _solve_part(handle_sets: list[dict[str, float]]) -> list[dict | str]:
-    """One process's batch of solves: (B, 1) handles, one card each."""
-    import torch
-
-    torch.set_num_threads(1)
+def _rules():
     from bnb.game import api
-    from bnb.game.handling import NAMES as HANDLE_NAMES
-    from bnb.game.handling import Handles
-    from bnb.game.handling.errors import Infeasible
 
-    rules = api.rules_of(
+    return api.rules_of(
         api.PRESETS["real_scale_deathmatch"], types=api.ship_types(ship_set=SHIP_SET)
     )
-    handles = Handles(
+
+
+def _handles_tensor(handle_sets: list[dict[str, float]]):
+    import torch
+
+    from bnb.game.handling import NAMES as HANDLE_NAMES
+    from bnb.game.handling import Handles
+
+    return Handles(
         **{
             name: torch.tensor([[h[name]] for h in handle_sets], dtype=torch.float64)
             for name in HANDLE_NAMES
         }
     )
+
+
+def low_speed_limits(handle_sets: list[dict[str, float]], rules=None) -> list[float]:
+    """The largest low-speed acceleration (m/s^2, at the stall speed, store empty) the other
+    handles allow, from the solver's closed forms (`solver.first_guess`): the engine's power
+    (which the cruise speed, the zero-lift drag and the climb set) over the stall speed, less
+    the drag and the exchange there. A set asking more cannot be solved (the solver's usual
+    failure on free handle sets); NaN where the closed forms have no answer."""
+    import torch
+
+    from bnb.game.handling import solver
+    from bnb.game.handling.errors import Infeasible
+
+    rules = rules or _rules()
+    constants = rules.flight
+    tiny = [dict(h, low_speed_acceleration=1e-3) for h in handle_sets]
+    handles = _handles_tensor(tiny)
     try:
-        solution = api.solve_handles(handles, rules, strict=False)
+        combat = solver.combat_card(rules, handles, handles.cruise_speed)
+        parameters = solver.first_guess(rules, handles, combat)
+    except Infeasible:
+        if len(handle_sets) == 1:
+            return [math.nan]
+        return [v for h in handle_sets for v in low_speed_limits([h], rules)]
+    B, type_count = handles.stall_speed.shape
+    columns = torch.arange(type_count, dtype=torch.int32).expand(B, type_count)
+    airframe = solver.airframe_of(solver._card(rules, handles, parameters, combat), columns)
+    stall = handles.stall_speed
+    zeros = torch.zeros_like(stall)
+    drag, current = solver._drag_and_exchange(rules, airframe, stall, zeros, zeros, zeros)
+    null_power, coast = parameters[..., 0], parameters[..., 1]
+    power = null_power + constants.mass * coast * handles.cruise_speed
+    free = (null_power if constants.direct_charge else power) / stall
+    return (free - drag - current.exchange)[:, 0].tolist()
+
+
+def _solve_part(handle_sets: list[dict[str, float]]) -> list[dict]:
+    """One process's batch: the low-speed repair, then the solves ((B, 1) handles)."""
+    import torch
+
+    torch.set_num_threads(1)
+    from bnb.game import api
+    from bnb.game.handling.errors import Infeasible
+
+    rules = _rules()
+    limits = low_speed_limits(handle_sets, rules)
+    repaired = []
+    for handles, limit in zip(handle_sets, limits, strict=True):
+        cap = (
+            LOW_SPEED_MARGIN * limit if math.isfinite(limit) else handles["low_speed_acceleration"]
+        )
+        repaired.append(
+            dict(handles, low_speed_acceleration=min(handles["low_speed_acceleration"], cap))
+        )
+    out = [
+        dict(low_speed_acceleration=h["low_speed_acceleration"], low_speed_limit=limit)
+        for h, limit in zip(repaired, limits, strict=True)
+    ]
+    floor = SPACE[INDEX["low_speed_acceleration"]].low
+    playable = [n for n, h in enumerate(repaired) if h["low_speed_acceleration"] >= floor]
+    for number in set(range(len(repaired))) - set(playable):
+        out[number]["failure"] = (
+            f"low-speed limit: {LOW_SPEED_MARGIN} x {limits[number]:.2f} m/s^2 is under the "
+            f"real floor {floor}"
+        )
+    if not playable:
+        return out
+    try:
+        solution = api.solve_handles(
+            _handles_tensor([repaired[n] for n in playable]), rules, strict=False
+        )
     except Infeasible as error:  # the batch as a whole (a check before any flight)
         if len(handle_sets) == 1:
-            return [f"infeasible: {error}"]
+            out[0]["failure"] = f"infeasible: {error}"[:300]
+            return out
         return [card for h in handle_sets for card in _solve_part([h])]
-    converged = solution.converged.reshape(len(handle_sets), -1)[:, 0].tolist()
-    out = []
-    for number, ok in enumerate(converged):
+    converged = solution.converged.reshape(len(playable), -1)[:, 0].tolist()
+    for position, (number, ok) in enumerate(zip(playable, converged, strict=True)):
         if not ok:
-            reasons = [f for f in solution.failures if f.startswith(f"card {number} ")]
-            out.append("no convergence: " + (reasons[0] if reasons else "unknown"))
+            reasons = [f for f in solution.failures if f.startswith(f"card {position} ")]
+            out[number]["failure"] = ("no convergence: " + (reasons[0] if reasons else "?"))[:300]
             continue
-        out.append(
-            {
-                field.name: float(getattr(solution.types, field.name)[number, 0])
-                for field in dataclasses.fields(solution.types)
-            }
-        )
+        out[number]["card"] = {
+            field.name: float(getattr(solution.types, field.name)[position, 0])
+            for field in dataclasses.fields(solution.types)
+        }
     return out
 
 
@@ -538,21 +611,26 @@ def prepare(
 ) -> list[dict]:
     """Candidates of coordinate vectors: decoded, solved, measured, recorded."""
     handle_sets = [decode(x, base) for x in solutions]
-    cards = solve_cards(handle_sets, processes)
+    results = solve_cards(handle_sets, processes)
     rows = []
-    for number, (x, handles, card) in enumerate(zip(solutions, handle_sets, cards, strict=True)):
+    for number, (x, handles, result) in enumerate(
+        zip(solutions, handle_sets, results, strict=True)
+    ):
+        handles = dict(handles, low_speed_acceleration=result["low_speed_acceleration"])
         row = dict(
             id=f"{label}-{number:03d}",
             generation=label,
             emitter=None if emitter_of is None else emitter_of(number),
             coordinates=[round(float(v), 6) for v in x],
             handles={k: handles[k] for k in STORED},
-            measures=list(measures(x)),
+            low_speed_limit=result["low_speed_limit"],
+            # the axes from the handles as solved (the low-speed repair moves agility)
+            measures=list(measures(encode(handles))),
         )
-        if isinstance(card, str):
-            row["failure"] = card[:300]
+        if "card" in result:
+            row["card"] = result["card"]
         else:
-            row["card"] = card
+            row["failure"] = result["failure"]
         rows.append(row)
     records.add_candidates(rows)
     return rows
