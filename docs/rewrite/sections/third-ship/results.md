@@ -207,8 +207,11 @@ from tune/balance-final into `candidates/options/`):
 # from the worktree root; the candidate paths are relative to docs/rewrite/sections/third-ship
 A=docs/rewrite/sections/third-ship/apply.py
 # E (Jujak turn x0.95, Yongma turn x1.12, Yongma shield x0.55) with its Bonghwang:
-PYTHONPATH=$PWD/src:$PWD .venv/bin/python $A candidates/finals1.json "E:Bt70-d1.1-s90" \
-    candidates/finals1.json "E:Bt70-d1.1-s90" --option jt0.95-yt1.12-ys0.55
+PYTHONPATH=$PWD/src:$PWD .venv/bin/python $A candidates/finals2.json "E:Bg8t70-d0.95-s80" \
+    candidates/finals2.json "E:Bg8t70-d0.95-s80" --option jt0.95-yt1.12-ys0.55
+# C' (Jujak turn x0.91, Yongma turn x1.08, Yongma shield x0.55):
+PYTHONPATH=$PWD/src:$PWD .venv/bin/python $A candidates/finals2.json "Cp:Bg8t66-d0.95-s85" \
+    candidates/finals2.json "Cp:Bg8t66-d0.95-s85" --option jt0.91-yt1.08-ys0.55
 # back to A:
 PYTHONPATH=$PWD/src:$PWD .venv/bin/python $A candidates/trim1.json B-d1.2-s115 \
     candidates/trim1.json B-d1.2-s115

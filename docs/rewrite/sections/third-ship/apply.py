@@ -26,7 +26,6 @@ SOURCE = "the third-ship search (docs/rewrite/sections/third-ship/results.md, 20
 JUJAK_V23 = HERE / "candidates" / "jujak-v23-card.json"
 REASONS = {
     "stall_speed": "the Bf 109K-4's 94.4 (real 75-105.6): a heavy wing; the power-and-roll fighter",
-    "g_limit": "the Fw 190A-8's and Bf 109K-4's 7 (real 6-8)",
     "cruise_speed": "330 (real 261-336; the Bf 109K-4's 330.6)",
     "climb_time": "the Tempest V's 290 s, the real best (real 290-555)",
     "low_speed_acceleration": "the Bf 109K-4's 18.97, the real best (real 8.87-18.97)",
@@ -79,6 +78,7 @@ def main() -> None:
         else:
             notes[name] = SOURCE
     pair = {k: tomllib.loads((directory / f"{k}.toml").read_text()) for k in ("yongma", "jujak")}
+    notes["g_limit"] = f"{handles['g_limit']:g} (real 6-8; the Fw 190A-8's 7, the Spitfire's 8)"
     notes["sustained_turn_rate"] = (
         f"{handles['sustained_turn_rate']:.3f} rad/s (real 0.503-0.785); Yongma "
         f"{pair['yongma']['handles']['sustained_turn_rate']:.3f}, Jujak "
