@@ -16,9 +16,10 @@ one to failed/ with the error in a .txt beside it; the worker keeps going. Every
 can change is data on the compiled loop (cards through `Loop.set_types`, doctrines and the
 lineups through the layout), so no job recompiles. The card variants per batch and the
 environments are fixed per worker (`--variants`, `--environments`); a job's chunk follows
-them. With `--lock`, each job holds the GPU lock (flock) while it plays and releases it
-between jobs, so other agents' flock-wrapped jobs interleave; the first job also compiles
-inside it. Size a job to finish within about 45 minutes. Progress lines go to stdout.
+them. The worker compiles before it takes any lock (one tick of a filler game). With
+`--lock`, each job holds the GPU lock (flock) while it plays and releases it between jobs, so
+other agents' flock-wrapped jobs interleave. Size a job to finish within about 45 minutes.
+Progress lines go to stdout.
 
 Any bench on `bench.game_loop.Loop` can use the same pattern: build the loop once, then call
 the per-batch function on each job (here `sweep.sweep`).
@@ -37,6 +38,8 @@ HERE = pathlib.Path(__file__).parent
 sys.path.insert(0, str(HERE))
 
 from sweep import MODE_DEFAULTS, Loop, api, before_card, pack, sweep  # noqa: E402
+
+from bench.game_loop import FILLER, Group  # noqa: E402
 
 
 @contextlib.contextmanager
@@ -88,6 +91,9 @@ def main() -> None:
         compiled=not args.eager,
     )
     loop.base = before_card(loop.base)
+    # compile now, outside the GPU lock (torch.compile runs on the first tick): one tick of a
+    # filler game (the third-ship agent's fix, tune/third-ship 8ad9de1c)
+    loop._tick(*loop.start([Group(0, "mixed", FILLER, FILLER, loop.B)]))
     print(f"worker {args.mode} {args.ships}v{args.ships}: ready, watching {args.queue}", flush=True)
     while True:
         jobs = sorted(args.queue.glob("*.json"))
