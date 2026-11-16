@@ -12,15 +12,17 @@ in one compiled graph, scored by kill share.
 The measurement's settings (`BALANCE`, the author's decisions of 2026-11-16; the game's and
 training's own defaults are unchanged):
 
-- no fog and no fields (the scripted agent ignores fields; fog slows the games): `Settings`
-  `fog` and `fields`, off here only;
+- fog on (the author's decision of 2026-11-16, after fog off was measured to buy under 1%
+  of speed and change the games: 15% more kills) and no fields (the scripted agent ignores
+  them): `Settings` `fog` and `fields`; fields off here only;
 - seeded spawns: game i of every job starts on the spawn layout drawn from (seed, i)
   (`bench.game_loop.seeded_uniforms`), so candidates are compared on the same spawns (common
   random numbers); the ticks' own randomness (respawns, spread, decisions) is from the
   default generator, seeded per chunk;
-- the whole episode: the preset's own clock, no opening skipped; deathmatch has no early win;
-  elimination and Frontline play their first match to its end (a wipe, the front's
-  threshold or the clock), a batch stopping once every first match has ended;
+- every tick counted, no opening skipped: deathmatch DEATHMATCH_SECONDS (300 s; the preset's
+  600 s is the cap) with no early win; elimination and Frontline play their first match to
+  its end (a wipe, the front's threshold or the clock), a batch stopping once every first
+  match has ended;
 - vision equal for every ship (the cards' own vision; no condition changes it).
 
 The conditions (`CONDITIONS`): deathmatch 1v1, 2v2, 5v5, 10v10 on the density rule's map
@@ -118,13 +120,17 @@ CONDITIONS = {
 class Settings:
     """A measurement's switches (`BALANCE` the balance measurement's)."""
 
-    fog: bool = False
+    fog: bool = True
     fields: bool = False
     spawn_seed: int | None = 0  # None: unseeded spawns
-    seconds: float | None = None  # None: the preset's whole clock (a check may shorten it)
+    # None: deathmatch DEATHMATCH_SECONDS, elimination and Frontline the preset's whole clock
+    seconds: float | None = None
 
 
 BALANCE = Settings()
+# Deathmatch's measured clock (the author, 2026-11-16: 300 s unless a shorter one is measured
+# to give the same kill share; the preset's 600 s is the cap). No early win either way.
+DEATHMATCH_SECONDS = 300.0
 KEPT = (  # what a job's line keeps of `bench.game_loop.job_summary` and `balance_summary`
     "games",
     "kill_share_a",
@@ -165,7 +171,11 @@ def balance_loop(
     controller=None,
 ) -> Loop:
     """The compiled loop of one condition under the settings."""
-    seconds = settings.seconds or api.PRESETS[preset_of(condition)].episode_seconds
+    seconds = settings.seconds or (
+        DEATHMATCH_SECONDS
+        if condition.mode == "deathmatch"
+        else api.PRESETS[preset_of(condition)].episode_seconds
+    )
     return Loop(
         environments,
         variants,
@@ -495,6 +505,90 @@ def speed(args) -> None:
     )
 
 
+def thread_seconds() -> dict[int, float]:
+    """This process's CPU seconds by thread (user + system, from /proc)."""
+    ticks = os.sysconf("SC_CLK_TCK")
+    out = {}
+    for task in pathlib.Path("/proc/self/task").iterdir():
+        try:
+            fields = (task / "stat").read_text().rsplit(")", 1)[1].split()
+        except OSError:  # a thread that ended
+            continue
+        out[int(task.name)] = (int(fields[11]) + int(fields[12])) / ticks
+    return out
+
+
+def timing(args) -> None:
+    """One steady batch of a condition at the balance settings and the worker's sizes, for
+    compute estimates: compile and warm outside the lock, then under it one batch of the
+    base card (Yongma team v Jujak team) with the GPU's utilisation sampled every 0.5 s
+    (nvidia-smi) and each thread's CPU time; a batch whose busiest thread is near 100% while
+    the GPU idles is launch-bound. Prints one JSON line."""
+    import subprocess
+    import threading
+
+    condition = CONDITIONS[args.condition]
+    begun = time.time()
+    loop = balance_loop(condition, args.environments, args.variants, BALANCE, args.device)
+    parameters = mode_parameters(condition)
+    warm(loop, parameters, args.variants)
+    compile_seconds = time.time() - begun
+    jobs = jobs_of([as_pair({"name": "base"})], loop.B, 0, parameters)
+    groups = [group for _, group in batches(jobs, loop.B)[0]]
+    from bench.balance_worker import held
+
+    samples: list[float] = []
+    stop = threading.Event()
+
+    def sample() -> None:
+        while not stop.is_set():
+            try:
+                text = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+                    capture_output=True, text=True, timeout=5,
+                ).stdout  # fmt: skip
+                samples.append(float(text.split()[0]))
+            except Exception:  # a missed sample
+                pass
+            stop.wait(0.5)
+
+    with held(args.lock):
+        torch.manual_seed(0)
+        before = thread_seconds()
+        sampler = threading.Thread(target=sample, daemon=True)
+        sampler.start()
+        started = time.time()
+        out = loop.play(groups)
+        elapsed = time.time() - started
+        stop.set()
+        sampler.join()
+        after = thread_seconds()
+    busy = sorted(((after[t] - before.get(t, 0.0)) / elapsed for t in after), reverse=True)
+    tick = loop.rules.tick_length
+    match_seconds = float(out["match_ticks"].sum()) * tick
+    row = balance_summary(out, tick) | dict(
+        condition=args.condition,
+        environments=loop.B,
+        variants=loop.K,
+        fog=loop.fog,
+        fields=loop.game.num_fields > 0,
+        clock_seconds=loop.ticks * tick,
+        compile_seconds=round(compile_seconds),
+        batch_seconds=elapsed,
+        games_per_second=loop.B / elapsed,
+        game_seconds_per_second=match_seconds / elapsed,
+        seconds_per_card_256_games=256 * elapsed / loop.B,
+        gpu_utilisation_mean=sum(samples) / max(len(samples), 1),
+        gpu_samples=len(samples),
+        busiest_threads=[round(b, 3) for b in busy[:3]],
+        peak_gib=torch.cuda.max_memory_allocated() / 2**30 if loop.device.type == "cuda" else 0,
+    )
+    print(json.dumps(row), flush=True)
+    if args.out:
+        with args.out.open("a") as handle:
+            handle.write(json.dumps(row) + "\n")
+
+
 def main() -> None:
     """The command line: a one-shot sweep or pairwise run, the checks and the speed."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -528,7 +622,16 @@ def main() -> None:
     one.add_argument("--batches", type=int, default=2)
     one.add_argument("--device", default="cuda")
     one.add_argument("--lock", type=pathlib.Path, default=None)
+    one = sub.add_parser("timing")
+    one.add_argument("--condition", choices=CONDITIONS, default="deathmatch-5v5")
+    one.add_argument("--environments", type=int, default=4096)
+    one.add_argument("--variants", type=int, default=32)
+    one.add_argument("--device", default="cuda")
+    one.add_argument("--lock", type=pathlib.Path, default=None)
+    one.add_argument("--out", type=pathlib.Path, default=None, help="a JSON line appended")
     args = parser.parse_args()
+    if args.command == "timing":
+        return timing(args)
     if args.command == "check":
         return check(args)
     if args.command == "speed":
