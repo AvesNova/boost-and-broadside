@@ -190,9 +190,8 @@ class Mixed:
 def clamp(parameters: ImugiParameters) -> ImugiParameters:
     """The parameters inside the search's bounds: each logistic's and switch's scale between
     its floor and SCALE_CEILING floors, a switch's rate within SWITCH_RATES, the fade's
-    centre within FADE_CENTRE, the recovery shield fraction at most 0.9, the combat radius
-    beyond the shoot logistic's centre, each additive number (`ADDITIVE_BOUNDS`: the own
-    time's) within its bounds."""
+    centre within FADE_CENTRE, the combat radius beyond the shoot logistic's centre, each
+    additive number (`ADDITIVE_BOUNDS`: the own time's) within its bounds."""
 
     def bounded(value: float, low: float, high: float) -> float:
         return min(max(value, low), high)
@@ -219,7 +218,6 @@ def clamp(parameters: ImugiParameters) -> ImugiParameters:
         elif name in ADDITIVE_BOUNDS:
             value = bounded(value, *ADDITIVE_BOUNDS[name])
         values[name] = value
-    values["recovery_shield_fraction"] = min(values["recovery_shield_fraction"], 0.9)
     values["combat_radius_in_gun_range"] = max(
         values["combat_radius_in_gun_range"], 1.1 * values["shoot_in_gun_range"].centre
     )

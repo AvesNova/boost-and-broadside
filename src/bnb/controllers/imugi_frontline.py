@@ -1,16 +1,14 @@
 """Imugi's Frontline layer (scripted spec A5): which zone each ship goes to,
-separation from allies, recovery toward its spawn when hurt and threatened, and the blend
-with the combat layer by the nearest enemy's distance.
+separation from allies, and the blend with the combat layer by the nearest enemy's distance.
 
 Strength is a sum of Gaussian kernels over visible, living ships, each weighted by its
 health 0.2 + 0.8 shield / max_shield (a ship at full shield counts 1).
 
-The goal (defend or attack) and recovery are plan choices the agent commits to
-(`imugi_memory.commit`): each rule gives a margin, positive for the first option, and the
-committed option switches at its rate on the other's margin.
+The goal (defend or attack) is a plan choice the agent commits to (`imugi_memory.commit`):
+the rule gives a margin, positive for defending, and the committed option switches at its
+rate on the other's margin.
 """
 
-import math
 from typing import NamedTuple
 
 import torch
@@ -20,7 +18,6 @@ from bnb.game.handling.characteristics import Characteristics
 from bnb.game.ship_types import per_ship
 
 from .imugi_combat import (
-    TINY,
     Combat,
     Context,
     Marginals,
@@ -39,7 +36,7 @@ from .imugi_doctrine import per_ship as per_ship_doctrine
 from .imugi_memory import commit
 from .imugi_parameters import ImugiParameters, Ramp, in_own_time, ramp
 
-OWN_SPAWN, OWN_DEFENSE, ENEMY_DEFENSE = 0, 1, 3  # zone roles for the viewer (ZONE_COLUMNS)
+OWN_DEFENSE, ENEMY_DEFENSE = 1, 3  # zone roles for the viewer (ZONE_COLUMNS)
 # The doctrine's capture-lock term shifts the goal's margin by its weight times this many
 # ship strengths: more than a team's own (a weight of 1 decides the goal).
 LOCK_STRENGTHS = 10.0
@@ -60,12 +57,11 @@ def _pairs(x: torch.Tensor, y: torch.Tensor, to_x: torch.Tensor, to_y: torch.Ten
 
 class Frontline(NamedTuple):
     """The Frontline layer's marginals and the plan choices it made per own ship (R, S): the
-    turn side, the goal (defending) and recovery."""
+    turn side and the goal (defending)."""
 
     marginals: Marginals
     left: torch.Tensor
     defending: torch.Tensor
-    recovering: torch.Tensor
 
 
 def _choice(
@@ -95,9 +91,9 @@ def frontline(
     doctrines: torch.Tensor | None = None,
 ) -> Frontline:
     """The Frontline layer per own ship (R, S): power and stick toward the assigned zone of
-    zones (R, Z, columns), or toward the spawn when recovering, blended with the combat
-    layer's marginals by its target's distance, times the target's weight, where it has a
-    target; the shoot marginal is the combat layer's. doctrines: each ship type's doctrine
+    zones (R, Z, columns), blended with the combat layer's marginals by its target's
+    distance, times the target's weight, where it has a target; the shoot marginal is the
+    combat layer's. doctrines: each ship type's doctrine
     table (`bnb.controllers.imugi_doctrine`), whose capture-lock term shifts the goal
     (`lock_press`); None, or the weight at 0, leave it as it was."""
     combat_marginals, has_target = fighting.marginals, fighting.has_target
@@ -107,13 +103,6 @@ def frontline(
     own_health = torch.where(own_alive, _health(own, fleet.own_type, characteristics), 0.0)
     enemy_health = torch.where(
         fleet.enemy_seen, _health(enemy, fleet.enemy_type, characteristics), 0.0
-    )
-    combat_radius = parameters.combat_radius_in_gun_range * fleet.gun_range  # (R, S)
-
-    # The threat at each own ship: the enemies' strength there.
-    enemy_x, enemy_y = _pairs(fleet.x, fleet.y, column(enemy, "x"), column(enemy, "y"))
-    threat = (enemy_health[:, None, :] * _kernel(enemy_x, enemy_y, combat_radius[..., None])).sum(
-        -1
     )
 
     # The zones the layer reads, as offsets (R, S) from each own ship.
@@ -128,7 +117,6 @@ def frontline(
 
     to_defense = of_role(to_zone_x, OWN_DEFENSE), of_role(to_zone_y, OWN_DEFENSE)
     to_attack = of_role(to_zone_x, ENEMY_DEFENSE), of_role(to_zone_y, ENEMY_DEFENSE)
-    to_spawn = of_role(to_zone_x, OWN_SPAWN), of_role(to_zone_y, OWN_SPAWN)
     support = (parameters.support_radius_in_zone_radius * zones[..., ZONE["radius"]])[:, None, :]
     enemy_near = (
         enemy_health[..., None]
@@ -139,29 +127,13 @@ def frontline(
     against = (zones[..., ZONE["direction"]] < 0.0).float()
     urgency = of_role(against * (1.0 + zones[..., ZONE["progress"]]), OWN_DEFENSE)  # (R,)
 
-    # Recovery: hurt and threatened, fall back to the own spawn.
-    # Recovery's margin: the smaller log margin of its two conditions.
-    shield_fraction = column(own, "shield") / per_ship(characteristics.max_shield, fleet.own_type)
-    recovery_margin = torch.minimum(
-        _log(parameters.recovery_shield_fraction) - torch.log(shield_fraction.clamp_min(TINY)),
-        torch.log(threat.clamp_min(TINY)) - _log(parameters.recovery_threat),
-    )
-    recovering = _choice(
-        fleet,
-        "recovering",
-        fleet.carry.recovering,
-        recovery_margin,
-        parameters.recovery_switch_in_log_ratio,
-    )
-
     # Who defends: the defense wants the floor, or the enemy's strength near it plus a
     # margin, and more by the urgency. Ships nearer the defense
     # zone than the attack zone go first (ties: lowest row), until their strength covers
     # the want; the rest attack, unless their strength times exp(aggression) is below the
     # enemy's near the attack zone, when everyone defends. Every ship of a view reaches
     # the same assignment, so the team splits without memory.
-    assignable = own_alive & ~recovering
-    available = torch.where(assignable, own_health, 0.0)
+    available = torch.where(own_alive, own_health, 0.0)
 
     def per_view(value) -> torch.Tensor:  # a float or a per-view (R, 1) parameter
         # a float is filled on the device: a host copy cannot run inside a graph capture
@@ -213,11 +185,6 @@ def frontline(
     goal_length = torch.sqrt(goal_x * goal_x + goal_y * goal_y).clamp_min(1e-6)
     wanted_x = goal_x / goal_length - parameters.separation_weight * (push * ally_x).sum(-1)
     wanted_y = goal_y / goal_length - parameters.separation_weight * (push * ally_y).sum(-1)
-    wanted_x = torch.where(recovering, to_spawn[0], wanted_x)
-    wanted_y = torch.where(recovering, to_spawn[1], wanted_y)
-    goal_distance = torch.where(
-        recovering, torch.sqrt(to_spawn[0] ** 2 + to_spawn[1] ** 2), goal_length
-    )
 
     stick, left = stick_marginal(
         fleet,
@@ -226,8 +193,8 @@ def frontline(
         fleet.carry.frontline_left,
     )
     power = power_marginal(
-        either(slow(fleet, parameters), far(fleet, goal_distance, parameters)),
-        torch.zeros_like(goal_distance),
+        either(slow(fleet, parameters), far(fleet, goal_length, parameters)),
+        torch.zeros_like(goal_length),
     )
     # Combat takes over from the shooting range's centre in to the combat radius.
     handover = Ramp(
@@ -236,15 +203,12 @@ def frontline(
     weight = torch.where(
         has_target, fighting.weight * ramp(target_distance / fleet.gun_range, handover), 0.0
     )
-    blended_power = blend(combat_marginals.power, power, weight)
-    blended_stick = blend(combat_marginals.stick, stick, weight)
-    keep = recovering[..., None]
     marginals = Marginals(
-        torch.where(keep, power, blended_power),
-        torch.where(keep, stick, blended_stick),
+        blend(combat_marginals.power, power, weight),
+        blend(combat_marginals.stick, stick, weight),
         combat_marginals.shoot,
     )
-    return Frontline(marginals, left, defending, recovering)
+    return Frontline(marginals, left, defending)
 
 
 def lock_press(fleet: Context, zones: torch.Tensor, doctrines: torch.Tensor) -> torch.Tensor:
@@ -264,8 +228,3 @@ def lock_press(fleet: Context, zones: torch.Tensor, doctrines: torch.Tensor) -> 
     held_out = (present[:, None, :] & (lock_own > travel)).any(-1)  # we cannot retake one
     pressing = (present[:, None, :] & (lock_enemy > travel)).any(-1)  # they cannot
     return LOCK_STRENGTHS * doctrine.lock_press * (held_out.float() - pressing.float())
-
-
-def _log(value):
-    """The natural logarithm of a float or a per-view (R, 1) parameter."""
-    return torch.log(value) if isinstance(value, torch.Tensor) else math.log(value)

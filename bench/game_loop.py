@@ -1783,7 +1783,6 @@ SEARCHED_PARAMETERS = (
     "lead_cap_in_gun_range",
     "separation_radius_in_gun_range",
     "separation_weight",
-    "target_switch_in_log_distance",
     "side_commit_in_stall_angle",
     "side_switch_in_radians",
     "memory_fade_in_seconds",

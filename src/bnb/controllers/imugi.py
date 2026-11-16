@@ -145,12 +145,10 @@ def decide(
         carry,
         target=fighting.target,
         combat_left=fighting.left,
-        sense_draw=fighting.sense_draw,
         target_doubt=fighting.target_doubt,
         extend_phase=fighting.extend_phase,
         frontline_left=strategy.left,
         defending=strategy.defending,
-        recovering=strategy.recovering,
         fresh=torch.zeros_like(carry.fresh),
     )
     return parts, after

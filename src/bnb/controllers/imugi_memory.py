@@ -54,11 +54,10 @@ class ImugiCarry:
     """Per view (R leading); own ships (R, S), enemies (R, E).
 
     target (R, S) int64: the committed target's enemy row, -1 for none. combat_left and
-    frontline_left (R, S) bool: each layer's committed turn side. defending, recovering (R,
-    S) bool: the Frontline goal and recovery. fresh (R, S) bool: the ship's plan choices are
+    frontline_left (R, S) bool: each layer's committed turn side. defending (R, S)
+    bool: the Frontline goal. fresh (R, S) bool: the ship's plan choices are
     unset (it re-chooses each outright). agent (R, S) bool: the ship plays the agent (else
-    uniformly: a mixture rung's share). sense_draw (R, S): the uniform drawn for the
-    sense's choice when its gate opened, negative while it is shut.
+    uniformly: a mixture rung's share).
     enemy_x, enemy_y, enemy_velocity_x,
     enemy_velocity_y (R, E): each enemy's last seen state; known (R, E) bool: remembered.
     boundary_radius, boundary_progress and boundary_speed (R,): the boundary's radius (m)
@@ -75,10 +74,8 @@ class ImugiCarry:
     combat_left: torch.Tensor
     frontline_left: torch.Tensor
     defending: torch.Tensor
-    recovering: torch.Tensor
     fresh: torch.Tensor
     agent: torch.Tensor
-    sense_draw: torch.Tensor
     enemy_x: torch.Tensor
     enemy_y: torch.Tensor
     enemy_velocity_x: torch.Tensor
@@ -106,10 +103,8 @@ def fresh_carry(views: int, ships: int, enemies: int, device) -> ImugiCarry:
         combat_left=flag(ships, False),
         frontline_left=flag(ships, False),
         defending=flag(ships, False),
-        recovering=flag(ships, False),
         fresh=flag(ships, True),
         agent=flag(ships, True),
-        sense_draw=torch.full((views, ships), -1.0, device=device),
         enemy_x=zero(),
         enemy_y=zero(),
         enemy_velocity_x=zero(),
