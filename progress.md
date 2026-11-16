@@ -528,3 +528,8 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Tried: per-rule ablations, 512 games x 4 conditions (commit only / stick only).
 - Found: Yongma kill share commit only: DM 2v2 0.471, DM 5v5 0.509, Elim 0.592, FL 0.528; stick only: 0.415, 0.493, 0.539, 0.483 (= before within error). The commitment carries the whole balance shift; stick by energy alone is neutral in team modes and pulls FL back (0.528 -> 0.507 with both).
 - Next: final report; results in docs/rewrite/sections/imugi-initiative/results.md.
+
+## 2026-11-17 01:40 feat/imugi-initiative (agent, re-trim resumed)
+- Tried: re-trim measurement relaunched (Y0.42, Y0.38, Y0.42-J1.22; both rules, head-on 0.05; 512 games x DM 2v2/5v5, Elim 5v5, FL 5v5), 4 at a time, each result to retrim-v25/data/ as it completes.
+- Found: integ/v25 (bnb-v25) merges feat/imugi-initiative + fix/stagger-tallies, pushed. ETA for the 12 jobs 02:25 (worst 02:45).
+- Next: pick the card, apply as game v25, reference, quick tier, merge into feat/imugi-boundary.
