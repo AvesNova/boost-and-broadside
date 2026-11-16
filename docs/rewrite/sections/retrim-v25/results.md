@@ -22,3 +22,14 @@ Every trim has two conditions in band; Y0.42-J1.22 has the smallest worst miss (
 under). Its Elim 5v5 is 0.011 over its band (under one SE); Y0.38 is the only card in band there,
 but at the cost of DM 2v2 (0.043 under) and FL 5v5 (0.004 under). DM 2v2 stays Jujak's on every
 card: a shield trim does not fix it, and it moves the wrong way as Yongma's shield falls.
+
+## 10v10 check (256 games each, after the choice)
+
+| card | DM 10v10 (.497-.504) | Elim 10v10 (.492-.526) | FL 10v10 (.493-.508) |
+|---|---|---|---|
+| Y0.38 | 0.496 / 0.495 | 0.478 / 0.473 | 0.500 / 0.500 |
+| Y0.42-J1.22 | 0.497 / 0.497 | 0.485 / 0.475 | 0.498 / 0.498 |
+
+SE of the kill share 0.003 (DM), 0.015 (Elim), 0.004 (FL). Y0.42-J1.22 is in band in DM and FL
+10v10 and 0.007 under in elimination (under one SE); Y0.38 misses DM by 0.001 and elimination
+by 0.014. The 10v10s agree with the choice.
