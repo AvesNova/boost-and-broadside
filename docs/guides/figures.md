@@ -248,12 +248,12 @@ bnb figures trails --capture figures/captures/match_real_scale_elimination_seed0
 
 One still with any window and look: `--still.start` and `--still.end` (seconds from the
 game's start), `--still.no-crop` (the whole arena, not the action's bounding box),
-`--still.busy` or `--still.no-busy` (the shot and hit ticks on or off; by default on in a window of at most
-90 s), `--still.fog`,
-`--still.fog-team`, `--still.ghost-ships`, `--still.ghost-seconds`, `--still.theme` (light or dark),
-`--still.size` (`web`, 1024 px wide; `column`, 3.4 in at 300 dpi for a paper column;
-`page`, 7 in at 300 dpi), `--still.formats` (png, svg, pdf; the PNG carries the
-provenance) and `--still.no-title`; `--still-name` names the files.
+`--still.busy` or `--still.no-busy` (the shot and hit ticks on or off; by default on in a
+window of at most 90 s), `--still.fog`, `--still.fog-team`, `--still.ghost-ships`,
+`--still.ghost-seconds`, `--still.theme` (light or dark), `--still.size` (`web`, 1024 px
+wide; `column`, 3.4 in at 300 dpi for a paper column; `page`, 7 in at 300 dpi),
+`--still.formats` (png, svg, pdf; the PNG carries the provenance) and `--still.no-title`;
+`--still-name` names the files.
 
 **How to read it.** The fade orders time: the faint end of a trail is its past. Ticks
 dense on a stretch are a ship firing through it; rings on a trail are where it was hit.
