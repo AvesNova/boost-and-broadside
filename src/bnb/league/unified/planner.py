@@ -43,7 +43,9 @@ class Planner:
         self.targets, self.buckets = targets, tuple(sorted(buckets))
         self.seconds: dict[Condition, list[float]] = {}  # [sum, games]
         self.seats: collections.Counter = collections.Counter()
-        self._cache: dict[str, dict[Cell, float]] = {}
+        self._cache: dict[tuple[str, bool], dict[Cell, float]] = {}
+        self._values: dict[bool, dict[Cell, float]] = {}  # the summed values, cached
+        self._slices: dict[bool, dict[tuple[int, str], list[Cell]]] = {}
         self.assigned = 0
         self.finished_games = 0
 
@@ -72,11 +74,20 @@ class Planner:
 
     def values(self, overtime: bool = False) -> dict[Cell, float]:
         """Every proposed cell's summed value (overtime: `Target.proposals`')."""
-        total: dict[Cell, float] = collections.defaultdict(float)
-        for target in self.targets:
-            for cell, value in self._proposals(target, overtime).items():
-                total[cell] += value
-        return dict(total)
+        held = self._values.get(overtime)
+        if held is None:
+            total: dict[Cell, float] = collections.defaultdict(float)
+            for target in self.targets:
+                for cell, value in self._proposals(target, overtime).items():
+                    total[cell] += value
+            held = dict(total)
+            self._values[overtime] = held
+            sliced: dict[tuple[int, str], list[Cell]] = collections.defaultdict(list)
+            for cell in held:
+                key = (bucket_of(cell.condition, self.buckets), cell.condition.preset)
+                sliced[key].append(cell)
+            self._slices[overtime] = sliced
+        return held
 
     def _touched(self, cell: Cell) -> None:
         for key in list(self._cache):
@@ -86,6 +97,8 @@ class Planner:
             for overtime in (False, True):
                 if not self._cache.get((target.name, overtime), True):
                     self._cache.pop((target.name, overtime), None)
+        self._values.clear()
+        self._slices.clear()
 
     def choose(
         self, bucket: int, preset: str, fits=lambda cell: True
@@ -98,11 +111,13 @@ class Planner:
         (every cell's budget spent, or no room: `fits(cell)`, the lanes')."""
         for overtime in (False, True):
             best, best_rate = None, 0.0
-            for cell, value in self.values(overtime).items():
+            values = self.values(overtime)
+            seconds: dict[Condition, float] = {}
+            for cell in self._slices[overtime].get((bucket, preset), ()):
                 condition = cell.condition
-                if condition.preset != preset or bucket_of(condition, self.buckets) != bucket:
-                    continue
-                rate = value / self.expected_seconds(condition)
+                if condition not in seconds:
+                    seconds[condition] = self.expected_seconds(condition)
+                rate = values[cell] / seconds[condition]
                 if rate > best_rate and fits(cell):
                     best, best_rate = cell, rate
             if best is not None:

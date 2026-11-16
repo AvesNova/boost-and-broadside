@@ -118,6 +118,11 @@ class EloTarget(Target):
         if pairs is None:
             pairs = [(a, b) for a in players for b in players if self.index[a] < self.index[b]]
         self.pairs = [(self.index[a], self.index[b]) for a, b in pairs]
+        self._pair_index = (
+            numpy.array([a for a, _ in self.pairs], dtype=numpy.int64),
+            numpy.array([b for _, b in self.pairs], dtype=numpy.int64),
+        )
+        self._cells = [Cell(condition, players[a], players[b]) for a, b in self.pairs]
         directions, goals, labels = [], [], []
         for number in range(1, count):
             row = numpy.zeros(count)
@@ -211,20 +216,20 @@ class EloTarget(Target):
             return {}
         rows = self.directions[unmet] / self.goals[unmet, None]  # (T, K - 1)
         weights = self._pair_weights()
-        out = {}
-        for a, b in self.pairs:
-            direction = numpy.zeros(len(self.players))
-            direction[a], direction[b] = 1.0, -1.0
-            e = direction[1:]
-            column = covariance @ e
-            quadratic = float(e @ column)
-            w = float(weights[a, b])
-            if w <= 0.0:
-                continue
-            reduction = w * float(((rows @ column) ** 2).sum()) / (1.0 + w * quadratic)
-            if reduction > 0.0:
-                out[self.cell(a, b)] = reduction
-        return out
+        first, second = self._pair_index
+        pairs = numpy.zeros((len(first), len(self.players)))
+        pairs[numpy.arange(len(first)), first] = 1.0
+        pairs[numpy.arange(len(first)), second] = -1.0
+        pairs = pairs[:, 1:]  # (P, K - 1), the anchor pinned
+        columns = pairs @ covariance  # (P, K - 1)
+        quadratic = (columns * pairs).sum(1)
+        w = weights[first, second]
+        reduction = w * ((columns @ rows.T) ** 2).sum(1) / (1.0 + w * quadratic)
+        return {
+            cell: float(value)
+            for cell, value in zip(self._cells, reduction.tolist(), strict=True)
+            if value > 0.0
+        }
 
     def cell(self, a: int, b: int) -> Cell:
         """The cell of players a and b (indices) in the target's condition."""

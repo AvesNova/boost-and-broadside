@@ -56,22 +56,38 @@ def check(local: dict, hub: dict) -> tuple[list, list]:
 hub, revision = hub_files()
 local = local_files()
 missing, different = check(local, hub)
-print(f"{len(local)} local files, {len(hub)} hub files: {len(missing)} missing on the hub, "
-      f"{len(different)} different")
+print(
+    f"{len(local)} local files, {len(hub)} hub files: {len(missing)} missing on the hub, "
+    f"{len(different)} different"
+)
 for k in (missing + different)[:40]:
     print("   ", "missing" if k in missing else "different", k)
 if "--repair" in sys.argv and (missing or different):
     for k in missing + different:
-        api.upload_file(path_or_fileobj=str(local[k]), path_in_repo=k, repo_id=REPO,
-                        commit_message=f"final sync {k}")
+        api.upload_file(
+            path_or_fileobj=str(local[k]),
+            path_in_repo=k,
+            repo_id=REPO,
+            commit_message=f"final sync {k}",
+        )
     hub, revision = hub_files()
     missing, different = check(local, hub)
     print(f"after the repair: {len(missing)} missing, {len(different)} different")
 with open(sys.argv[1], "w") as f:
-    f.write(json.dumps(dict(repo=f"https://huggingface.co/{REPO}", revision=revision,
-                            files=len(hub))) + "\n")
+    f.write(
+        json.dumps(dict(repo=f"https://huggingface.co/{REPO}", revision=revision, files=len(hub)))
+        + "\n"
+    )
     for name, s in sorted(hub.items()):
-        f.write(json.dumps(dict(path=name, size=s.size,
-                                sha256=s.lfs.sha256 if s.lfs else None,
-                                git_blob=None if s.lfs else s.blob_id)) + "\n")
+        f.write(
+            json.dumps(
+                dict(
+                    path=name,
+                    size=s.size,
+                    sha256=s.lfs.sha256 if s.lfs else None,
+                    git_blob=None if s.lfs else s.blob_id,
+                )
+            )
+            + "\n"
+        )
 print(f"manifest: {sys.argv[1]} (hub revision {revision})")

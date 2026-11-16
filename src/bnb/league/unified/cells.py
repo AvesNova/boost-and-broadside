@@ -25,12 +25,20 @@ class Condition:
     first: int
     second: int
     arena_scale: float = 1.0
+    _hash: int = dataclasses.field(default=0, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.first < 1 or self.second < 1:
             raise ValueError(f"{self}: each side fields at least one ship")
         if not self.arena_scale > 0.0:
             raise ValueError(f"{self}: the arena scale must be positive")
+        # the planner hashes cells by the thousand per refill: computed once
+        object.__setattr__(
+            self, "_hash", hash((self.preset, self.first, self.second, self.arena_scale))
+        )
+
+    def __hash__(self) -> int:
+        return self._hash
 
     @property
     def largest(self) -> int:
@@ -56,10 +64,15 @@ class Cell:
     condition: Condition
     first: str
     second: str
+    _hash: int = dataclasses.field(default=0, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.first == self.second:
             raise ValueError(f"{self}: a cell needs two players")
+        object.__setattr__(self, "_hash", hash((self.condition, self.first, self.second)))
+
+    def __hash__(self) -> int:
+        return self._hash
 
     @property
     def key(self) -> str:

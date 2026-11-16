@@ -39,13 +39,19 @@ for record in sorted(runs.glob("2026-*/**/checkpoint.json")):
         if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             local_bad.append(key)
             continue
-        api.upload_file(path_or_fileobj=str(path), path_in_repo=key, repo_id=REPO,
-                        commit_message=f"repair {key}")
+        api.upload_file(
+            path_or_fileobj=str(path),
+            path_in_repo=key,
+            repo_id=REPO,
+            commit_message=f"repair {key}",
+        )
         repaired.append(key)
 if repaired:
     hub = hub_hashes()
 still = [k for k in repaired if hub.get(k) is None]
-print(f"hub repair: {len(repaired)} re-uploaded, {len(local_bad)} local files not matching "
-      f"their own record, {len(still)} still wrong after the repair")
+print(
+    f"hub repair: {len(repaired)} re-uploaded, {len(local_bad)} local files not matching "
+    f"their own record, {len(still)} still wrong after the repair"
+)
 for k in repaired + local_bad:
     print("  ", k)

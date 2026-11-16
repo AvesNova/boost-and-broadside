@@ -31,16 +31,20 @@ def main() -> None:
             n += 1
             up += before - up_since
             down += gap
-            print(f"interruption {n}: down {before.astimezone(kst):%m-%d %H:%M:%S} -> "
-                  f"{after.astimezone(kst):%H:%M:%S} KST ({gap.total_seconds() / 60:.1f} min), "
-                  f"after {(before - up_since).total_seconds() / 60:.1f} min up"
-                  + ("" if boot else " (no boot line)"))
+            print(
+                f"interruption {n}: down {before.astimezone(kst):%m-%d %H:%M:%S} -> "
+                f"{after.astimezone(kst):%H:%M:%S} KST ({gap.total_seconds() / 60:.1f} min), "
+                f"after {(before - up_since).total_seconds() / 60:.1f} min up"
+                + ("" if boot else " (no boot line)")
+            )
             up_since = after
     up += lines[-1][0] - up_since
     total = up + down
-    print(f"{n} interruptions; up {up.total_seconds() / 3600:.2f} h, down "
-          f"{down.total_seconds() / 3600:.2f} h of {total.total_seconds() / 3600:.2f} h "
-          f"({100 * up / total:.0f}% up)")
+    print(
+        f"{n} interruptions; up {up.total_seconds() / 3600:.2f} h, down "
+        f"{down.total_seconds() / 3600:.2f} h of {total.total_seconds() / 3600:.2f} h "
+        f"({100 * up / total:.0f}% up)"
+    )
 
 
 if __name__ == "__main__":

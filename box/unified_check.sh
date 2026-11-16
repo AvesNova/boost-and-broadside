@@ -4,7 +4,7 @@
 # (box/eval_queue.sh: suite, maps, curves, break-even, team size) in one run:
 #   suite      the champion against Imugi, every head-to-head condition (score to +-0.02)
 #   maps       Elo of the champion at 0.5x and 2x maps, each 5v5 mode (+-45)
-#   curves     5v5 Elo of the scheduled snapshots per mode (+-60)
+#   curves     5v5 Elo of both stages' scheduled snapshots per mode (+-60, the queue's field)
 #   breakeven  the champion's break-even log ratio per mode (+-0.1, at most 2048 games)
 #   teamsize   the champion at n v n, n v 1.5n, n v 2n, n = 1..10, per mode (+-0.05)
 # Launch detached; it takes the GPU lock:
@@ -50,10 +50,12 @@ def steps(run):
 rl, bc = steps(f"{chain}-rl"), steps(f"{chain}-bc")
 def at(found, millions):
     return next((s for s in found if s >= millions * 1_000_000), found[-1])
-snapshots = {f"rl_{m}m": f"{chain}-rl/policies/step_{at(rl, m)}/exponential_average" for m in (5, 10, 20, 35, 50, 75)}
-snapshots["rl_last"] = f"{chain}-rl/policies/step_{rl[-1]}/exponential_average"
-for share in (25, 50, 75, 100):
-    snapshots[f"bc_{share}"] = f"{chain}-bc/policies/step_{bc[max(len(bc) * share // 100 - 1, 0)]}/exponential_average"
+# the curves' field: the queue's (`bnb pool add --runs`: each stage's scheduled snapshots)
+from bnb.league.rating_pool import scheduled_policies
+snapshots = {}
+for stage in ("bc", "rl"):
+    for path in scheduled_policies(runs / f"{chain}-{stage}", ("exponential_average",)):
+        snapshots[f"{stage}_{path.parent.name[5:]}"] = str(path.relative_to(runs))
 modes = {"frontline": "real_scale_frontline", "deathmatch": "real_scale_deathmatch", "elimination": "real_scale_elimination"}
 print('lineup_types = ["Yongma", "Jujak"]\nbuckets = [5, 10, 20]\nseed = 0\n\n[players]')
 print(f'champion = "{champion}"')
