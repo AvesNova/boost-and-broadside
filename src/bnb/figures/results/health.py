@@ -16,7 +16,7 @@ import re
 
 from bnb.runs.sinks import METRICS, read_metrics
 
-from ..output import MUTED
+from .. import theme
 from . import common
 
 STEPS = "counters/environment_steps"
@@ -148,7 +148,7 @@ def draw(
                     (label, xs_all, moving_mean(ys_all, max(1, len(ys_all) // 30)), colour)
                 )
         for start in offsets[1:]:
-            axis.axvline(start / 1e6, color=MUTED, linewidth=0.8, linestyle="--")
+            axis.axvline(start / 1e6, color=theme.MUTED, linewidth=0.8, linestyle="--")
         common.label_ends(axis, labelled)
     drawn = list(axes.flat[: len(panels)])
     right = max(axis.get_xlim()[1] for axis in drawn)  # one x range: the labelled panels'

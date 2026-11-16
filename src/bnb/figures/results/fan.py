@@ -17,8 +17,8 @@ and RL runs share one axis of its steps (`bnb.figures.ladder.chain_offsets`).
 import math
 import pathlib
 
+from .. import theme
 from ..ladder import chain_offsets, crossover_results
-from ..output import MUTED
 from . import common
 
 MATCH = 0.03  # a played lineup counts as a line's ratio within this in log ratio
@@ -101,9 +101,9 @@ def draw(
     values: dict[str, float] = {}
     for axis, (mode, held) in zip(axes.flat, found.items(), strict=True):
         axis.set_title(mode, fontsize=9)
-        axis.axhline(0.5, color=MUTED, linewidth=0.8, linestyle=":")
+        axis.axhline(0.5, color=theme.MUTED, linewidth=0.8, linestyle=":")
         for handoff in sorted({offset for offset in offsets.values() if offset > 0}):
-            axis.axvline(handoff / 1e6, color=MUTED, linewidth=0.8, linestyle="--")
+            axis.axvline(handoff / 1e6, color=theme.MUTED, linewidth=0.8, linestyle="--")
         labelled = []
         for count, colour in zip(opponent_counts, colours, strict=True):
             line = held["lines"][count]

@@ -18,7 +18,7 @@ import pathlib
 
 import numpy as np
 
-from ..output import MUTED
+from .. import theme
 from . import common
 
 CLOCK_TOLERANCE = 0.5  # seconds: a game within this of its clock ran it out
@@ -87,7 +87,7 @@ def draw(
             median = float(np.median(decided))
             axis.axvline(median, color=colour, linewidth=0.8, linestyle=":")
         if clock:
-            axis.axvline(clock, color=MUTED, linewidth=0.8, linestyle="--")
+            axis.axvline(clock, color=theme.MUTED, linewidth=0.8, linestyle="--")
         key = f"game_length_{common.slug(mode)}"
         quartiles = np.percentile(seconds, [25, 50, 75])
         values[f"{key}_median_seconds"] = float(quartiles[1])

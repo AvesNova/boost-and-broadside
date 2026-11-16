@@ -20,40 +20,23 @@ import pathlib
 import numpy as np
 
 from . import output
+from . import theme as house  # the house theme; `theme` below is a variant's chrome
 
-# Ramp steps light to dark, (light mode, dark mode). Blue is the reference palette's
-# sequential ramp; orange is the same lightness steps at slot 2's hue (OKLCH 41 degrees).
-RAMPS = {
-    0: (
-        ("#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"),
-        ("#b7d3f6", "#86b6ef", "#5598e7", "#2a78d6", "#1c5cab"),
-    ),
-    1: (
-        ("#fe743e", "#e15102", "#b43f03", "#8a2e00", "#611e01"),
-        ("#ffbfa9", "#fe9068", "#f55d16", "#cb4801", "#9e3601"),
-    ),
-}
+# Ramp steps light to dark, (light mode, dark mode): the theme's team ramps.
+RAMPS = {team: (house.team_ramp(team, "light"), house.team_ramp(team, "dark")) for team in (0, 1)}
 THEMES = {
-    "light": dict(
-        surface=output.SURFACE,
-        ink=output.INK,
-        muted=output.MUTED,
-        grid=output.GRID,
-        field="#8a8984",
-    ),
-    "dark": dict(
-        surface="#1a1a19", ink="#ecebe8", muted="#a3a29e", grid="#383835", field="#8f8e89"
-    ),
+    variant: {
+        role: house.chrome(role, variant) for role in ("surface", "ink", "muted", "grid", "field")
+    }
+    for variant in house.VARIANTS
 }
-SIZES = {  # width (in), dpi, the line width (pt) and the font size (pt)
-    "web": (6.4, 160, 1.0, 8.0),
-    "column": (3.4, 300, 0.6, 5.5),
-    "page": (7.0, 300, 0.9, 7.5),
+SIZES = {  # width (in), dpi, the line width (pt) and the font size (pt): the theme's
+    name: (size.width, size.dpi, size.line, size.font) for name, size in house.SIZES.items()
 }
 OLDEST_ALPHA = 0.18  # a trail's oldest stretch, against 1 for its newest
 TELEPORT = 300.0  # m in one tick: a respawn, not flight
 MARGIN = 0.06  # of the cropped view's extent, on every side
-TEAM_NAMES = ("blue team", "orange team")  # team 0's and team 1's, by their colour
+TEAM_NAMES = house.TEAM_NAMES  # team 0's and team 1's, by their colour
 OPENING_SECONDS = 60.0  # the opening still's window
 GHOST_CROWD = 2  # hidden enemies at once the fog window favours
 

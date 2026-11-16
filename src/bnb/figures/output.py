@@ -16,17 +16,16 @@ from bnb.contracts.obs import FIELD
 from bnb.game import api
 from bnb.runs import provenance
 
-# The reference categorical slots (light mode) by role, and the inks.
-PREDICTED = "#2a78d6"  # the model
-TRUE = "#eb6834"  # the truth
-SECOND = "#1baf7a"  # a third series
-BASELINE = "#7d7c78"  # a cheap baseline
-INK = "#0b0b0b"
-MUTED = "#52514e"
-GRID = "#e4e3df"
-SURFACE = "#fcfcfb"
+from . import theme
+
 # ln n, polarity around 1: a diverging pair with a neutral midpoint.
-FIELD_COLOURS = "RdBu_r"
+FIELD_COLOURS = theme.DIVERGING
+
+
+def __getattr__(name: str):
+    """The colour roles (PREDICTED, TRUE, SECOND, BASELINE, INK, MUTED, GRID, SURFACE) in
+    the active theme variant (`bnb.figures.theme`), read when used."""
+    return getattr(theme, name)
 
 
 def text_chunks(meta: dict, numbers: dict | None = None) -> dict[str, str]:
@@ -55,7 +54,9 @@ def save(figure, directory: pathlib.Path, name: str, meta: dict, numbers=None) -
     directory = pathlib.Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{name}.png"
-    figure.savefig(path, dpi=130, metadata=text_chunks(meta, numbers), facecolor=SURFACE)
+    figure.savefig(
+        path, dpi=130, metadata=text_chunks(meta, numbers), facecolor=theme.chrome("surface")
+    )
     plt.close(figure)
     return path
 
@@ -68,10 +69,11 @@ def save_formats(
     numbers=None,
     formats: tuple[str, ...] = ("png",),
     dpi: int = 130,
-    facecolor: str = SURFACE,
+    facecolor: str | None = None,
 ) -> list[pathlib.Path]:
     """Write `figure` as directory/name.<format> for each format (png, svg, pdf) at `dpi`
-    on `facecolor`, the PNG with its provenance in its text chunks; closes it."""
+    on `facecolor` (None: the theme's surface), the PNG with its provenance in its text
+    chunks; closes it."""
     import matplotlib.pyplot as plt
 
     directory = pathlib.Path(directory)
@@ -80,14 +82,17 @@ def save_formats(
     for kind in formats:
         path = directory / f"{name}.{kind}"
         metadata = text_chunks(meta, numbers) if kind == "png" else None
-        figure.savefig(path, dpi=dpi, metadata=metadata, facecolor=facecolor)
+        figure.savefig(
+            path, dpi=dpi, metadata=metadata, facecolor=facecolor or theme.chrome("surface")
+        )
         paths.append(path)
     plt.close(figure)
     return paths
 
 
 def new_figure(rows: int = 1, columns: int = 1, size: tuple[float, float] = (6.0, 4.5), **options):
-    """A figure of rows x columns axes in the house style (light surface, recessive grid)."""
+    """A figure of rows x columns axes in the house style (the theme's surface, a recessive
+    grid)."""
     import matplotlib.pyplot as plt
 
     figure, axes = plt.subplots(
@@ -95,7 +100,7 @@ def new_figure(rows: int = 1, columns: int = 1, size: tuple[float, float] = (6.0
         columns,
         figsize=(size[0] * columns, size[1] * rows),
         squeeze=False,
-        facecolor=SURFACE,
+        facecolor=theme.chrome("surface"),
         **options,
     )
     for axis in axes.flat:
@@ -104,18 +109,8 @@ def new_figure(rows: int = 1, columns: int = 1, size: tuple[float, float] = (6.0
 
 
 def style(axis) -> None:
-    """Recessive axes: no top or right spine, muted ticks and labels, a light grid."""
-    axis.set_facecolor(SURFACE)
-    for side in ("top", "right"):
-        axis.spines[side].set_visible(False)
-    for side in ("left", "bottom"):
-        axis.spines[side].set_color(MUTED)
-    axis.tick_params(colors=MUTED, labelsize=8)
-    axis.xaxis.label.set_color(INK)
-    axis.yaxis.label.set_color(INK)
-    axis.title.set_color(INK)
-    axis.grid(True, color=GRID, linewidth=0.6)
-    axis.set_axisbelow(True)
+    """Recessive axes in the active theme variant (`bnb.figures.theme.style`)."""
+    theme.style(axis)
 
 
 def field_map(

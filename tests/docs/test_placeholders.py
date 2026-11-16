@@ -132,3 +132,17 @@ def test_publish_check_lists_every_open_placeholder(monkeypatch, tmp_path):
     assert "2 placeholder(s)" in str(raised.value)
     assert "pending one" in str(raised.value) and "pending two" in str(raised.value)
     assert len(PLACEHOLDERS.check("draft")) == 2
+
+
+def test_a_figure_with_a_dark_variant_follows_the_colour_scheme(monkeypatch, tmp_path):
+    (tmp_path / "docs" / "results").mkdir(parents=True)
+    for name in ("chart.png", "chart_dark.png"):
+        (tmp_path / "docs" / "results" / name).write_bytes(b"png")
+    monkeypatch.setattr(PLACEHOLDERS, "ROOT", tmp_path)
+    monkeypatch.setattr(PLACEHOLDERS, "README_TEMPLATE", tmp_path / "README.template.md")
+    line = "{{figure: docs/results/chart.png | a chart}}"
+    site, _ = PLACEHOLDERS.render(line, "docs/results/page.md", VALUES, "publish")
+    assert site == "![a chart](chart.png#only-light)![a chart](chart_dark.png#only-dark)"
+    readme, _ = PLACEHOLDERS.render(line, "README.template.md", VALUES, "publish")
+    assert 'media="(prefers-color-scheme: dark)" srcset="docs/results/chart_dark.png"' in readme
+    assert '<img alt="a chart" src="docs/results/chart.png">' in readme

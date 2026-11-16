@@ -14,11 +14,11 @@ import json
 import pathlib
 import re
 
-from .output import BASELINE, INK, MUTED, PREDICTED, SECOND, TRUE, new_figure, provenance
+from . import theme
+from .output import new_figure, provenance
 
 BC_SUFFIX, RL_SUFFIX = "-bc", "-rl"
-COLOURS = (PREDICTED, TRUE, SECOND, BASELINE)  # the series in the order they first appear
-MODES = ("frontline", "deathmatch", "elimination")
+MODES = theme.MODE_ORDER  # the one mode order of every chart
 # a crossover result's directory: <...>/<run>/step_<steps>/artifacts/crossover/<time>/result.json
 BREAK_EVEN_PATH = re.compile(r"([^/]+)/step_(\d+)/artifacts/crossover/[^/]+/result\.json$")
 
@@ -93,14 +93,38 @@ def draw(
     """Write the figure to `out` (a .png path) from `bnb pool curves`' rows
     (`bnb.league.rating_pool.curves`: preset, run, kind, step, calibrated_elo, stderr,
     status) for `conditions` in their order, and break-even's points (`break_even_points`)
-    when given. Returns the path."""
+    when given: the light variant at `out`, the dark one beside it (`theme.suffix`), and the
+    light one at the paper's page width as a PDF. Returns the light PNG's path."""
     out = pathlib.Path(out)
+    for variant in theme.VARIANTS:
+        with theme.use(variant):
+            _draw(
+                rows,
+                conditions,
+                out.with_stem(out.stem + theme.suffix()),
+                break_even,
+                columns,
+                paper=variant == "light",
+            )
+    return out
+
+
+def _draw(
+    rows: list[dict],
+    conditions: tuple[str, ...],
+    out: pathlib.Path,
+    break_even: list[dict] | None,
+    columns: int,
+    paper: bool,
+) -> None:
     offsets = chain_offsets([*rows, *(break_even or [])])
     series: dict[tuple[str, str | None], str] = {}
     for row in sorted(rows, key=lambda row: (not row["run"].endswith(BC_SUFFIX), row["run"])):
         key = (row["run"], row["kind"])
         if key not in series:
-            series[key] = COLOURS[len(series) % len(COLOURS)]
+            series[key] = (theme.PREDICTED, theme.TRUE, theme.SECOND, theme.BASELINE)[
+                len(series) % 4
+            ]  # the series in the order they first appear
     panels = len(conditions)
     grid_rows = -(-panels // columns) + (1 if break_even else 0)
     figure, axes = new_figure(grid_rows, columns, size=(3.2, 2.5), sharex=True)
@@ -108,7 +132,7 @@ def draw(
     for number, condition in enumerate(conditions):
         axis = axes.flat[number]
         axis.set_title(condition.replace("_", " "), fontsize=9)
-        axis.axhline(1000.0, color=MUTED, linewidth=0.8, linestyle=":")
+        axis.axhline(1000.0, color=theme.MUTED, linewidth=0.8, linestyle=":")
         for (run, kind), colour in series.items():
             points = sorted(
                 (row for row in rows if (row["run"], row["kind"]) == (run, kind)),
@@ -149,7 +173,7 @@ def draw(
                     *zip(*bounds, strict=True), facecolors="none", edgecolors=colour, s=30, zorder=3
                 )
         for handoff in handoffs:
-            axis.axvline(handoff / 1e6, color=MUTED, linewidth=0.8, linestyle="--")
+            axis.axvline(handoff / 1e6, color=theme.MUTED, linewidth=0.8, linestyle="--")
         if number % columns == 0:
             axis.set_ylabel("Elo (Imugi 1000)", fontsize=8)
     for number in range(panels, -(-panels // columns) * columns):
@@ -159,7 +183,7 @@ def draw(
         for index, mode in enumerate(MODES):
             axis = axes.flat[first + index]
             axis.set_title(f"{mode} break-even", fontsize=9)
-            axis.axhline(1.0, color=MUTED, linewidth=0.8, linestyle=":")
+            axis.axhline(1.0, color=theme.MUTED, linewidth=0.8, linestyle=":")
             for run in sorted({point["run"] for point in break_even}):
                 points = sorted(
                     (p for p in break_even if p["run"] == run and p["mode"] == mode),
@@ -167,7 +191,7 @@ def draw(
                 )
                 if not points:
                     continue
-                colour = next((c for (r, _), c in series.items() if r == run), INK)
+                colour = next((c for (r, _), c in series.items() if r == run), theme.INK)
                 axis.errorbar(
                     [(p["step"] + offsets.get(run, 0)) / 1e6 for p in points],
                     [p["ratio"] for p in points],
@@ -180,7 +204,7 @@ def draw(
                     capsize=0,
                 )
             for handoff in handoffs:
-                axis.axvline(handoff / 1e6, color=MUTED, linewidth=0.8, linestyle="--")
+                axis.axvline(handoff / 1e6, color=theme.MUTED, linewidth=0.8, linestyle="--")
             if index == 0:
                 axis.set_ylabel("Imugi ships per ours", fontsize=8)
         for number in range(first + len(MODES), grid_rows * columns):
@@ -202,11 +226,17 @@ def draw(
     head, dirty = provenance.commit()
     figure.savefig(
         out,
-        dpi=130,
+        dpi=theme.WEB_DPI,
         facecolor=figure.get_facecolor(),
         metadata={"Commit": f"{head}{' (dirty)' if dirty else ''}", "Time": provenance.now()},
     )
+    if paper:
+        theme.fit(figure, "page")
+        figure.savefig(
+            out.with_name(f"{out.stem}_page.pdf"),
+            facecolor=figure.get_facecolor(),
+            metadata={"Creator": f"bnb at {head}"},
+        )
     import matplotlib.pyplot as plt
 
     plt.close(figure)
-    return out

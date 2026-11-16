@@ -147,7 +147,7 @@ def synthetic_lengths(path: pathlib.Path, games: int = 400) -> pathlib.Path:
 
 
 def _drawn(written: list[pathlib.Path]) -> None:
-    assert [path.suffix for path in written] == [".png", ".pdf"]
+    assert [path.suffix for path in written] == [".png", ".pdf", ".svg"]
     assert all(path.stat().st_size > 1000 for path in written)
 
 
@@ -268,4 +268,19 @@ def test_the_command_draws_a_chart_and_writes_its_values(tmp_path):
         )
     )
     assert (tmp_path / "out" / "break_even_ratio.svg").is_file()
+    assert (tmp_path / "out" / "break_even_ratio_dark.png").is_file()  # both theme variants
+    assert not (tmp_path / "out" / "break_even_ratio_dark.svg").exists()  # the paper is light
     assert "crossover_ratio_deathmatch" in json.loads(values.read_text())
+
+
+def test_the_theme_variants_differ_and_restore():
+    from bnb.figures import output, theme
+
+    assert theme.active() == "light"
+    light = (output.SURFACE, theme.mode_colour("frontline"), common.ordered_colours(3))
+    with theme.use("dark"):
+        assert theme.suffix() == "_dark"
+        dark = (output.SURFACE, theme.mode_colour("frontline"), common.ordered_colours(3))
+    assert theme.active() == "light" and theme.suffix() == ""
+    assert all(a != b for a, b in zip(light, dark, strict=True))
+    assert common.MODES == theme.MODE_ORDER == ("frontline", "deathmatch", "elimination")

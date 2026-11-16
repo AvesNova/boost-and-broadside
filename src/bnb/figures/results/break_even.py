@@ -9,8 +9,8 @@ drawn as one panel of the modes together for the write-up. One chain only (a run
 
 import pathlib
 
+from .. import theme
 from ..ladder import BC_SUFFIX, RL_SUFFIX, break_even_points, chain_offsets
-from ..output import GRID, MUTED
 from . import common
 
 
@@ -43,16 +43,16 @@ def draw(
     figure, axes = common.new_figure(1, 1, size=(6.4, 3.8))
     axis = axes[0, 0]
     axis.set_yscale("log")
-    axis.axhline(1.0, color=MUTED, linewidth=0.8, linestyle=":")
+    axis.axhline(1.0, color=theme.MUTED, linewidth=0.8, linestyle=":")
     for handoff in sorted({offset for offset in offsets.values() if offset > 0}):
-        axis.axvline(handoff / 1e6, color=MUTED, linewidth=0.8, linestyle="--")
+        axis.axvline(handoff / 1e6, color=theme.MUTED, linewidth=0.8, linestyle="--")
         axis.annotate(
             "BC to RL",
             (handoff / 1e6, 1.0),
             xytext=(3, 3),
             textcoords="offset points",
             fontsize=7,
-            color=MUTED,
+            color=theme.MUTED,
         )
     values: dict[str, float] = {}
     labelled = []
@@ -87,8 +87,8 @@ def draw(
 
     axis.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
     axis.yaxis.set_minor_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
-    axis.tick_params(axis="y", which="minor", labelsize=7, colors=MUTED)
-    axis.grid(True, which="minor", axis="y", color=GRID, linewidth=0.6)
+    axis.tick_params(axis="y", which="minor", labelsize=7, colors=theme.MUTED)
+    axis.grid(True, which="minor", axis="y", color=theme.GRID, linewidth=0.6)
     common.label_ends(axis, labelled)
     axis.set_xlabel("environment steps (M)", fontsize=8)
     axis.set_ylabel("Imugi's ships per one of ours at even odds", fontsize=8)

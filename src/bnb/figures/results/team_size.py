@@ -16,7 +16,7 @@ import json
 import math
 import pathlib
 
-from ..output import MUTED
+from .. import theme
 from . import common
 
 MATCH = 0.035
@@ -79,15 +79,15 @@ def draw(
     values: dict[str, float] = {}
     for axis, mode in zip(axes.flat, found, strict=True):
         axis.set_title(mode, fontsize=9)
-        axis.axhline(0.5, color=MUTED, linewidth=0.8, linestyle=":")
-        axis.axvline(trained_team_size, color=MUTED, linewidth=0.8, linestyle="--")
+        axis.axhline(0.5, color=theme.MUTED, linewidth=0.8, linestyle=":")
+        axis.axvline(trained_team_size, color=theme.MUTED, linewidth=0.8, linestyle="--")
         axis.annotate(
             f"trained at {trained_team_size}v{trained_team_size}",
             (trained_team_size, 1.0),
             xytext=(3, -2),
             textcoords="offset points",
             fontsize=7,
-            color=MUTED,
+            color=theme.MUTED,
             va="top",
         )
         labelled = []

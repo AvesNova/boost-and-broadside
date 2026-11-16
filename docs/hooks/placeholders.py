@@ -10,8 +10,11 @@ Three forms, anywhere in a page's Markdown outside fenced blocks and code spans:
         Text that can only be written after seeing the results. The key names it; the
         description says what will go there.
     {{figure: docs/results/win_rate_fan.png | alt text}}
-        An image, on a line of its own, the path from the repository root. Shown when the
-        file exists; otherwise a slot that names it.
+        An image, on a line of its own, the path from the repository root (the light
+        variant). Shown when the file exists; otherwise a slot that names it. When the dark
+        variant exists beside it (win_rate_fan_dark.png), both are shown, each in its
+        colour scheme: Material's #only-light and #only-dark on the site, a <picture> with
+        a prefers-color-scheme source in the README.
 
 The values file can be swapped with the environment variable BNB_RESULTS_VALUES (a path,
 from the repository root or absolute), to preview the pages with example numbers without
@@ -77,6 +80,13 @@ class Outstanding:
         return f"{self.page}:{self.line}: {self.kind} {self.key}{detail}"
 
 
+def dark_variant(path: str) -> str:
+    """A figure's dark theme variant: the same name with "_dark" before the extension
+    (`bnb.figures.theme.suffix`)."""
+    stem, dot, extension = path.rpartition(".")
+    return f"{stem}_dark.{extension}" if dot else f"{path}_dark"
+
+
 def mode() -> str:
     """The mode from BNB_RESULTS: draft (the default) or publish."""
     chosen = os.environ.get("BNB_RESULTS", "draft").strip() or "draft"
@@ -134,6 +144,21 @@ class _Page:
     def link(self, path: str) -> str:
         return posixpath.relpath(path, posixpath.dirname(self.name) or ".")
 
+    def figure(self, path: str, alt: str) -> str:
+        """An existing figure, in both theme variants when its dark one (`dark_variant`)
+        exists: on the site, Material's #only-light and #only-dark images; in the README,
+        GitHub's <picture> with the light image as the fallback."""
+        dark = dark_variant(path)
+        if not (ROOT / dark).is_file():
+            return f"![{alt}]({self.link(path)})"
+        if self.name == str(README_TEMPLATE.relative_to(ROOT)):
+            quoted = alt.replace('"', "&quot;")
+            return (f'<picture><source media="(prefers-color-scheme: dark)" '
+                    f'srcset="{self.link(dark)}"><img alt="{quoted}" '
+                    f'src="{self.link(path)}"></picture>')
+        return (f"![{alt}]({self.link(path)}#only-light)"
+                f"![{alt}]({self.link(dark)}#only-dark)")
+
     def placeholder(self, match: re.Match, number: int, whole_line: bool) -> str:
         body = match.group(1).strip()
         kind, colon, rest = body.partition(":")
@@ -153,7 +178,7 @@ class _Page:
                 raise PlaceholderError(f"{self.name}:{number}: a figure goes on a line of "
                                        "its own")
             if (ROOT / path).is_file():
-                return f"![{alt}]({self.link(path)})"
+                return self.figure(path, alt)
             self.outstanding.append(Outstanding(self.name, number, "figure", path, alt))
             return f"> **Figure to come** ({path}): {alt}"
         name, spec = kind, rest.strip() if colon else ""

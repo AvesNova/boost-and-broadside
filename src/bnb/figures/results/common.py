@@ -17,37 +17,27 @@ import sys
 
 from bnb.runs import provenance
 
+from .. import theme
 from ..ladder import MODES, mode_of
-from ..output import BASELINE, INK, MUTED, PREDICTED, SECOND, SURFACE, TRUE, new_figure
+from ..output import new_figure
 
 __all__ = ["MODES", "mode_of", "new_figure"]
 
 VALUES = pathlib.Path("docs/results/values.json")
-FORMATS = ("png", "pdf")  # the PNG for the docs, the PDF for the paper
-# The modes' colours, in this order everywhere (a fixed categorical order).
-MODE_COLOURS = {"frontline": PREDICTED, "deathmatch": TRUE, "elimination": SECOND}
-# The ratios' ramp: an ordered quantity, so a perceptual sequential map (viridis), sampled
-# short of its pale end so the lightest line still reads on the light surface.
-RATIO_MAP = "viridis"
-RATIO_RANGE = (0.0, 0.82)
+FORMATS = ("png", "pdf", "svg")  # the PNG for the docs, the PDF and SVG for the paper
 DIRECT_LABELS = 4  # at most this many lines are labelled at their ends; more get a legend
 
 
 def mode_colour(mode: str) -> str:
-    """A mode's colour (a preset's mode's), grey for anything else."""
-    return MODE_COLOURS.get(mode_of(mode), BASELINE)
+    """A mode's colour (a preset's mode's) in the active theme variant, grey for anything
+    else (`bnb.figures.theme.mode_colour`)."""
+    return theme.mode_colour(mode)
 
 
 def ordered_colours(count: int) -> list:
-    """`count` colours from the ratio ramp, lowest first (the same ramp, whatever the
-    count: one colour is the ramp's start)."""
-    import matplotlib
-
-    ramp = matplotlib.colormaps[RATIO_MAP]
-    low, high = RATIO_RANGE
-    if count == 1:
-        return [ramp(low)]
-    return [ramp(low + (high - low) * index / (count - 1)) for index in range(count)]
+    """`count` colours from the theme's sequential ramp (an ordered quantity: the ratios),
+    lowest first (`bnb.figures.theme.sequential`)."""
+    return theme.sequential(count)
 
 
 def label_ends(axis, lines: list[tuple[str, list[float], list[float], object]]) -> bool:
@@ -91,12 +81,14 @@ def label_ends(axis, lines: list[tuple[str, list[float], list[float], object]]) 
 
 def title(figure, text: str) -> None:
     """The figure's title, in the house ink."""
-    figure.suptitle(text, fontsize=10, color=INK)
+    figure.suptitle(text, fontsize=10, color=theme.INK)
 
 
 def note(axis, text: str) -> None:
     """A muted note in the axis' corner (what is missing, a bound)."""
-    axis.text(0.02, 0.02, text, transform=axis.transAxes, fontsize=7, color=MUTED, va="bottom")
+    axis.text(
+        0.02, 0.02, text, transform=axis.transAxes, fontsize=7, color=theme.MUTED, va="bottom"
+    )
 
 
 def save(
@@ -107,10 +99,13 @@ def save(
     numbers: dict | None = None,
     formats: tuple[str, ...] = FORMATS,
 ) -> list[pathlib.Path]:
-    """Write `figure` as directory/name.<format> for each format: the PNG with its
-    provenance (the render's commit, command line and time, the sources read, the numbers
-    shown) in its text chunks, a PDF or SVG with the commit and sources in its metadata.
-    Closes the figure; returns the paths."""
+    """Write `figure` for each format: the PNG (the web size, as drawn) as
+    directory/name<suffix>.png, the suffix the theme variant's (`theme.suffix`: none for
+    light, "_dark" for dark), with its provenance (the render's commit, command line and
+    time, the sources read, the numbers shown) in its text chunks; in the light variant
+    only, the PDF and SVG for the paper, fitted to the page width (`theme.fit`), as
+    directory/name.<format> with the commit and sources in their metadata. Closes the
+    figure; returns the paths."""
     import matplotlib.pyplot as plt
 
     directory = pathlib.Path(directory)
@@ -119,25 +114,30 @@ def save(
     commit = f"{head}{' (dirty)' if dirty else ''}"
     command = " ".join(["bnb", *sys.argv[1:]])
     written = []
-    for kind in formats:
-        path = directory / f"{name}.{kind}"
-        if kind == "png":
-            metadata = {
-                "Commit": commit,
-                "Command": command,
-                "Time": provenance.now(),
-                "Sources": json.dumps(sources),
-            }
-            if numbers:
-                metadata["Numbers"] = json.dumps(numbers)
-        elif kind == "pdf":
-            metadata = {"Creator": f"{command} at {commit}", "Subject": json.dumps(sources)}
-        elif kind == "svg":
-            metadata = {"Creator": f"{command} at {commit}", "Source": json.dumps(sources)}
-        else:
-            raise ValueError(f"format {kind!r}: png, pdf or svg")
-        figure.savefig(path, dpi=150, facecolor=SURFACE, metadata=metadata)
+    unknown = set(formats) - {"png", "pdf", "svg"}
+    if unknown:
+        raise ValueError(f"format {sorted(unknown)}: png, pdf or svg")
+    if "png" in formats:
+        metadata = {
+            "Commit": commit,
+            "Command": command,
+            "Time": provenance.now(),
+            "Sources": json.dumps(sources),
+        }
+        if numbers:
+            metadata["Numbers"] = json.dumps(numbers)
+        path = directory / f"{name}{theme.suffix()}.png"
+        figure.savefig(path, dpi=theme.WEB_DPI, facecolor=theme.SURFACE, metadata=metadata)
         written.append(path)
+    paper = [kind for kind in formats if kind != "png"]
+    if paper and theme.active() == "light":
+        theme.fit(figure, "page")
+        for kind in paper:
+            path = directory / f"{name}.{kind}"
+            key = "Subject" if kind == "pdf" else "Source"
+            metadata = {"Creator": f"{command} at {commit}", key: json.dumps(sources)}
+            figure.savefig(path, facecolor=theme.SURFACE, metadata=metadata)
+            written.append(path)
     plt.close(figure)
     return written
 

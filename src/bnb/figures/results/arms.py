@@ -26,15 +26,15 @@ import json
 import math
 import pathlib
 
-from ..output import BASELINE, GRID, INK, MUTED, SECOND, TRUE
+from .. import theme
 from . import common
 
 Z95 = 1.959964
 DECISIONS = ("kept", "rejected", "pending")
 MARKS = {
-    "kept": ("o", SECOND, True),
-    "rejected": ("X", TRUE, True),
-    "pending": ("o", BASELINE, False),
+    "kept": ("o", theme.SECOND, True),
+    "rejected": ("X", theme.TRUE, True),
+    "pending": ("o", theme.BASELINE, False),
 }
 
 
@@ -120,13 +120,13 @@ def draw(
     axis.grid(False, axis="y")
     delta = settings.get("delta")
     if delta:
-        axis.axvspan(-delta, delta, color=GRID, alpha=0.7, linewidth=0, zorder=0)
-    axis.axvline(0.0, color=MUTED, linewidth=0.9)
+        axis.axvspan(-delta, delta, color=theme.GRID, alpha=0.7, linewidth=0, zorder=0)
+    axis.axvline(0.0, color=theme.MUTED, linewidth=0.9)
     values: dict[str, float] = {}
     positions = list(range(len(ordered)))[::-1]
     for y, row in zip(positions, ordered, strict=True):
         if row["kind"] == "seed_noise":
-            marker, colour, filled = ("D", INK, False)
+            marker, colour, filled = ("D", theme.INK, False)
         else:
             marker, colour, filled = MARKS[row["decision"]]
         if row["score"] is None:
@@ -136,7 +136,7 @@ def draw(
                 xytext=(6, 0),
                 textcoords="offset points",
                 fontsize=7,
-                color=MUTED,
+                color=theme.MUTED,
                 va="center",
             )
             continue
@@ -163,7 +163,7 @@ def draw(
         values[f"{prefix}_low"] = row["score"] - half
         values[f"{prefix}_high"] = row["score"] + half
     if noise and arms:
-        axis.axhline(len(noise) - 0.5, color=MUTED, linewidth=0.6, linestyle="--")
+        axis.axhline(len(noise) - 0.5, color=theme.MUTED, linewidth=0.6, linestyle="--")
     labels = [
         row["name"] if row["kind"] == "seed_noise" else f"{row['name']}  ({row['decision']})"
         for row in ordered
@@ -195,13 +195,19 @@ def draw(
     if noise:
         handles.append(
             axis.scatter(
-                [], [], marker="D", s=30, facecolors="white", edgecolors=INK, label="seed to seed"
+                [],
+                [],
+                marker="D",
+                s=30,
+                facecolors="white",
+                edgecolors=theme.INK,
+                label="seed to seed",
             )
         )
     if delta:
         import matplotlib.patches as patches
 
-        handles.append(patches.Patch(color=GRID, label=f"indifference zone, +-{delta:g}"))
+        handles.append(patches.Patch(color=theme.GRID, label=f"indifference zone, +-{delta:g}"))
     columns = 3
     figure.legend(handles=handles, fontsize=7, frameon=False, loc="lower center", ncol=columns)
     legend_rows = -(-len(handles) // columns)

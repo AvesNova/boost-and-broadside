@@ -118,7 +118,11 @@ number, a text that waits on the results, or a figure not yet drawn is a placeho
   results. On a line of its own it renders as a quoted note, inside a sentence as a mark.
   Open until it is replaced by the text.
 - `{{figure: docs/results/chart.png | alt text}}`{.plain}, on a line of its own: the image,
-  its path from the repository root. Open while the file does not exist.
+  its path from the repository root (the light variant). Open while the file does not
+  exist. When the dark variant `chart_dark.png`{.plain} exists beside it, both are shown,
+  each in its colour scheme: Material's `#only-light`{.plain} and `#only-dark`{.plain} on
+  the site, a `<picture>`{.plain} with a `prefers-color-scheme`{.plain} source in the
+  README.
 
 The **values file**, `docs/results/values.json`{.plain}, is one flat JSON object, {name:
 number, string or null}; `bnb figures` merges each chart's numbers into it. A name a page
@@ -211,6 +215,28 @@ warned about on most commits covers too much; narrow its `covers`.
 - No design-debate history. Alternatives considered and rejected belong in `docs/rewrite/`.
 - Short sentences and full words. Abbreviations only where universal (`cos`, `x`, `y`).
 - Name things as the code names them.
+
+## Figure style
+
+Every chart and still takes its look from one module, `bnb.figures.theme`: the categorical
+palette in its fixed order, the mode order and colours (frontline, deathmatch, elimination,
+the first three slots), the team ramps (blue and orange), the chrome (surface, ink, muted
+text, grid), the sequential and diverging maps, the font, the grid's weight and the sizes
+(`web`{.plain}, a paper `column`{.plain} of 3.4 in, a paper `page`{.plain} of 7 in). Drawing
+code reads the role names (`theme.INK`{.plain}, `theme.mode_colour`, `output.MUTED`{.plain}) inside its
+functions, never into module constants, so it follows the active variant.
+
+Each figure comes in a light and a dark variant, from the same theme: `theme.use("dark")`
+switches the colours and matplotlib's defaults for a block, and a dark file carries
+`_dark`{.plain} before its extension (`theme.suffix`). The dark steps are the palette's own
+dark steps, chosen for the dark surface and checked against it, not an inversion.
+`bnb figures results` and the Elo curves (`bnb pool curves --figure`) write both PNGs, and
+for the paper a PDF and an SVG of the light variant fitted to the page width
+(`theme.fit`: fonts and lines keep their point sizes). The trail stills take
+`--still.theme`{.plain} and `--still.size`{.plain}.
+
+An exception to the theme (a colour or size a figure sets for itself) carries a comment
+that says why.
 
 ## Diagrams
 
