@@ -10,7 +10,8 @@ recharge plays no part: every hit restarts its wait. The discrete count is also 
 the hit that empties the shield only breaks it and the next hit kills, so
 hits = ceil(shield / damage) + 1, the first and last (hits - 1) / fire_rate apart.
 
-Usage: PYTHONPATH=$PWD/src uv run --no-sync python docs/rewrite/sections/lethality-sticky/time_to_kill.py
+Usage (from the repository root, PYTHONPATH=$PWD/src):
+  uv run --no-sync python docs/rewrite/sections/lethality-sticky/time_to_kill.py
   [--apply SCALE]  multiply both ships' max_shield and shield_recharge_rate (handle and card)
 """
 
@@ -27,7 +28,9 @@ KEYS = ("yongma", "jujak")
 
 
 def tail_aspect(card: dict[str, float], rules: dict[str, float]) -> float:
-    fraction = rules.get("rules.head_on_fraction", Rules.head_on_fraction) * card["head_on_fraction_scale"]
+    fraction = (
+        rules.get("rules.head_on_fraction", Rules.head_on_fraction) * card["head_on_fraction_scale"]
+    )
     half = rules.get("rules.head_on_angle", Rules.head_on_angle) * card["head_on_angle_scale"]
     ratio = math.pi / half
     return 1.0 - (1.0 - fraction) * math.exp(-math.log(2.0) * ratio ** card["head_on_sharpness"])
@@ -36,8 +39,10 @@ def tail_aspect(card: dict[str, float], rules: dict[str, float]) -> float:
 def table() -> None:
     by_key = {ship.key: ship for ship in ships.load(SET)}
     rules = ships.rules(SET)
-    print(f"{'shooter':>8} {'target':>8} {'shield':>8} {'hit':>7} {'hits':>5} "
-          f"{'continuous s':>13} {'discrete s':>11}")
+    print(
+        f"{'shooter':>8} {'target':>8} {'shield':>8} {'hit':>7} {'hits':>5} "
+        f"{'continuous s':>13} {'discrete s':>11}"
+    )
     for shooter in KEYS:
         for target in KEYS:
             fire, aim = by_key[shooter].card, by_key[target].card
@@ -46,19 +51,30 @@ def table() -> None:
             continuous = shield / (damage * fire["fire_rate"])
             hits = math.ceil(shield / damage) + 1
             discrete = (hits - 1) / fire["fire_rate"]
-            print(f"{shooter:>8} {target:>8} {shield:8.1f} {damage:7.2f} {hits:5d} "
-                  f"{continuous:13.3f} {discrete:11.3f}")
+            print(
+                f"{shooter:>8} {target:>8} {shield:8.1f} {damage:7.2f} {hits:5d} "
+                f"{continuous:13.3f} {discrete:11.3f}"
+            )
 
 
 def apply(scale: float) -> None:
     for ship in ships.load(SET):
         if ship.key not in KEYS:
             continue
-        handles = dict(ship.handles, max_shield=ship.handles["max_shield"] * scale,
-                       shield_recharge_rate=ship.handles["shield_recharge_rate"] * scale)
-        card = dict(ship.card, max_shield=ship.card["max_shield"] * scale,
-                    shield_recharge_rate_scale=ship.card["shield_recharge_rate_scale"] * scale)
-        note = f" Game v{game.VERSION + 1} (lethality-sticky): x {scale:.4g}, about 1 s of sustained core fire"
+        handles = dict(
+            ship.handles,
+            max_shield=ship.handles["max_shield"] * scale,
+            shield_recharge_rate=ship.handles["shield_recharge_rate"] * scale,
+        )
+        card = dict(
+            ship.card,
+            max_shield=ship.card["max_shield"] * scale,
+            shield_recharge_rate_scale=ship.card["shield_recharge_rate_scale"] * scale,
+        )
+        note = (
+            f" Game v{game.VERSION + 1} (lethality-sticky): x {scale:.4g},"
+            " about 1 s of sustained core fire"
+        )
         notes = dict(ship.notes)
         for name in ("max_shield", "shield_recharge_rate"):
             notes[name] = notes.get(name, "") + note

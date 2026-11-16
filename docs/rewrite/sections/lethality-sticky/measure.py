@@ -70,8 +70,10 @@ def main() -> None:
         left = len(LINEUPS) - number - 1
         per = time.time() - began
         log(f"{label} {lineup}: {json.dumps(row(full))}")
-        log(f"{left} left, done about "
-            f"{(datetime.datetime.now() + datetime.timedelta(seconds=per * left)):%H:%M}")
+        log(
+            f"{left} left, done about "
+            f"{(datetime.datetime.now() + datetime.timedelta(seconds=per * left)):%H:%M}"
+        )
     log(f"all done in {time.time() - started:.0f} s")
 
 
