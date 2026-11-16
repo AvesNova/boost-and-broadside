@@ -180,3 +180,35 @@ played a second (scored modes stop early, so their batch time follows the longes
   Frontline 5v5 4.6. Kill shares here (base card, fog on, fields off, seed 0) are the
   Yongma team's: 19.7 (1v1), 35.5 (2v2), 44.5 (5v5), 45.1 (10v10); elimination 36.2 / 40.9;
   Frontline 5v5 38.3.
+
+### Timing for compute estimates: rented RTX 5090 (18:30 KST)
+
+`ssh box5090` (vast.ai): RTX 5090 32 GB, driver 580.178.04, power limit 500 W (max 600),
+max clocks SM 3105 / memory 14001 MHz, persistence on; Ryzen 7 7800X3D. After each batch
+nvidia-smi read P1, SM 2542 MHz, memory 13801 MHz, 87-90 W, 32-36 C (`data/box5090/`).
+The same `timing` at 4096 environments and 32 variants (the worktree at c42bb759: no
+kills-by-minute tally), then deathmatch 5v5 and Frontline 10v10 at 16384:
+
+| condition | clock s | match s (mean) | batch s | games/s | game-s/s | s a card (256 games) | GPU util | busiest threads | kill share Y v J | compile s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| deathmatch-5v5 | 300 | 300 | 15.3 | 268.2 | 80.5k | 0.95 | 59% (28) | 100% / 0% | 44.5 ± 0.1 | 175 |
+| deathmatch-10v10 | 300 | 300 | 17.6 | 233.2 | 70.0k | 1.10 | 84% (32) | 100% / 0% | 45.1 ± 0.1 | 165 |
+| deathmatch-2v2 | 300 | 300 | 13.6 | 300.5 | 90.1k | 0.85 | 69% (25) | 100% / 0% | 35.5 ± 0.2 | 160 |
+| deathmatch-1v1 | 300 | 300 | 13.0 | 314.6 | 94.4k | 0.81 | 35% (23) | 100% / 0% | 20.3 ± 0.6 | 150 |
+| elimination-5v5 | 248 | 82 | 10.7 | 383.1 | 31.2k | 0.67 | 54% (19) | 100% / 0% | 36.2 ± 0.3 | 162 |
+| elimination-10v10 | 248 | 74 | 12.4 | 330.7 | 24.6k | 0.77 | 86% (22) | 100% / 0% | 40.9 ± 0.3 | 160 |
+| frontline-5v5 | 600 | 190 | 32.1 | 127.7 | 24.3k | 2.00 | 59% (60) | 100% / 0% | 38.3 ± 0.2 | 163 |
+| frontline-10v10 | 600 | 175 | 34.4 | 119.1 | 20.8k | 2.15 | 86% (65) | 100% / 0% | 42.1 ± 0.1 | 162 |
+| deathmatch-5v5 | 300 | 300 | 33.8 | 484.6 | 145.4k | 0.53 | 91% (57) | 100% / 0% | 44.6 ± 0.1 | 172 |
+| frontline-10v10 | 600 | 175 | 110.3 | 148.5 | 25.9k | 1.72 | 96% (205) | 100% / 0% | 42.1 ± 0.1 | 174 |
+
+- At 4096 the 5090 is launch-bound: GPU 35-60% at 1v1-5v5, 84-86% at 10v10, the main
+  Python thread at 100%. Against the laptop it is 2.5x at deathmatch 5v5 and 4.5x at 10v10.
+- At 16384 it fills: deathmatch 5v5 485 games/s (1.8x of 4096; GPU 91%), peak memory 1.4
+  GiB; Frontline 10v10 149 games/s (1.25x; GPU 96%; a scored batch waits on its longest
+  match). Workers on the 5090 should run 16384 environments (memory allows far more).
+- Seconds a card at 256 games on the 5090 (4096 environments): deathmatch 0.81 (1v1) - 1.10
+  (10v10), elimination 0.67 / 0.77, Frontline 2.00 / 2.15; at 16384, deathmatch 5v5 0.53 and
+  Frontline 10v10 1.72. Compile 150-175 s per condition (laptop 177-224 s).
+- The kill shares match the laptop's to the decimal at the same seed (deathmatch 5v5 44.5,
+  10v10 45.1; 1v1 20.3 against 19.7, within its 0.6 error).
