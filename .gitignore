@@ -26,3 +26,5 @@ site/
 # box secrets (W&B key): never committed
 secrets.env
 *.key
+# the author's local review folder (images, drafts): never committed
+/review/
