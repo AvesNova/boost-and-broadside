@@ -89,7 +89,38 @@ first round; its flat g 8 version is not searched.)
 **The first-round trims** (g 7, before the slope rounds; still in `finals1.json`): C' t0.66 d1.1
 s90, D t0.66 d1.1 s95, E t0.70 d1.1 s90; their full tables follow.
 
-## Matchups: every option, every condition
+## Matchups: the flat options' trims (finals2)
+
+`finals2.json`, Bonghwang flying its doctrine against each option's pair, the option's own
+Yongma v Jujak from the same run. 2v2 and 5v5 at 1536 games on the 3070; 10v10 512,
+elimination and Frontline 768, 1v1 1024 on the laptop.
+
+**C': Bg8t66-d0.95-s85**
+
+| condition (games) | Bonghwang v Jujak | Bonghwang v Yongma | Yongma v Jujak |
+|---|---|---|---|
+| deathmatch 1v1 (1024) | 0.386 ± 0.009 | 0.474 ± 0.007 | 0.412 ± 0.009 |
+| deathmatch 2v2 (1536) | 0.461 ± 0.011 | 0.447 ± 0.011 | 0.488 ± 0.012 |
+| deathmatch 5v5 (1536) | 0.516 ± 0.012 | 0.495 ± 0.012 | 0.516 ± 0.012 |
+| deathmatch 10v10 (512) | 0.516 ± 0.021 | 0.555 ± 0.021 | 0.498 ± 0.021 |
+| elimination 5v5 (768) | 0.477 ± 0.018 | 0.487 ± 0.018 | 0.473 ± 0.018 |
+| Frontline 5v5 (768) | 0.553 ± 0.017 | 0.430 ± 0.017 | 0.596 ± 0.017 |
+
+**E: Bg8t70-d0.95-s80**
+
+| condition (games) | Bonghwang v Jujak | Bonghwang v Yongma | Yongma v Jujak |
+|---|---|---|---|
+| deathmatch 1v1 (1024) | 0.414 ± 0.009 | 0.495 ± 0.008 | 0.422 ± 0.009 |
+| deathmatch 2v2 (1536) | 0.470 ± 0.011 | 0.498 ± 0.011 | 0.472 ± 0.012 |
+| deathmatch 5v5 (1536) | 0.496 ± 0.012 | 0.500 ± 0.012 | 0.492 ± 0.012 |
+| deathmatch 10v10 (512) | 0.493 ± 0.021 | 0.466 ± 0.021 | 0.530 ± 0.021 |
+| elimination 5v5 (768) | 0.493 ± 0.018 | 0.526 ± 0.018 | 0.448 ± 0.018 |
+| Frontline 5v5 (768) | 0.554 ± 0.017 | 0.501 ± 0.017 | 0.577 ± 0.017 |
+
+(Frontline 10v10 and elimination 10v10, the balance agent's hardest conditions, are queued on
+the box; `data/finals2-fl10-*.jsonl`, `-el10-*` when they land.)
+
+## Matchups: the first-round trims, every option (finals1)
 
 `finals1.json` (the per-option cards above, Bonghwang flying its doctrine), each option's own
 Yongma v Jujak from the same run (an entry whose card is the option's Yongma, flying Yongma's
@@ -241,3 +272,43 @@ turn; against Yongma, never chase it in a straight line.
   sit at its top.
 - **15 Hz cannon** at a real per-bullet ratio (1.5 x a 30 Hz gun's) has 0.75 of its damage per
   second; at balance it needs a per-bullet damage outside the real spread.
+
+## Fight shape and aspects with the flat trims (deathmatch 5v5, 1536 + 128 mirror games)
+
+Post-merge fights one-circle / two-circle / scissors, kill aspects mutual head-on / offset
+head-on / flank / tail, kills a minute, trades:
+
+| | fights | aspects | kills/min | trades |
+|---|---|---|---|---|
+| E: Yongma v Jujak | 0.31 / 0.57 / 0.13 | 0.04 / 0.15 / 0.62 / 0.19 | 8.21 | 0.11 |
+| E: Bonghwang v Jujak | 0.27 / 0.51 / 0.22 | 0.04 / 0.15 / 0.62 / 0.19 | 8.02 | 0.11 |
+| E: Bonghwang v Yongma | 0.27 / 0.51 / 0.22 | 0.04 / 0.15 / 0.62 / 0.19 | 7.59 | 0.10 |
+| E: Yongma mirror | 0.37 / 0.41 / 0.22 | 0.05 / 0.13 / 0.54 / 0.28 | 7.67 | 0.11 |
+| E: Bonghwang mirror | 0.20 / 0.39 / **0.41** | 0.04 / 0.15 / 0.63 / 0.18 | 7.32 | 0.09 |
+| C': Bonghwang mirror | 0.19 / 0.43 / **0.38** | 0.04 / 0.15 / 0.62 / 0.20 | 7.47 | 0.10 |
+
+The scissors signature survives every trim: about twice the release pair's share wherever
+Bonghwang flies, and its mirror is the only one where scissors are the most common fight.
+Mutual head-on kills stay at 4%; kills a minute 7.3-8.2 as in the release pair.
+
+## Open for the author
+
+1. **Bonghwang must be re-trimmed when the Yongma-Jujak card is decided.** Its balance moves
+   with the pair's: the three trim numbers (sustained turn, damage, shield; g 7 or 8) were
+   tuned against A, C', D and E, and the balance agent's newest round (probe3: Yongma paid in
+   store, shot cost and vision) will likely be none of them. `retrim.py grid` builds the
+   40-card grid against any pair's ship files; one run per size (2v2, 5v5, 10v10) and
+   `retrim.py pick` choose the trim, then elimination and Frontline as checks. On the box
+   workers that is about an hour.
+2. **Is it different enough?** Its fights are different (scissors, measured), its card is the
+   extreme on roll, low-speed acceleration and drag, and its doctrine is its own (no
+   post-merge circle). In turn and speed it sits between the other two by construction, and
+   under the flat options all three turn alike (0.66-0.73), so the turn no longer separates
+   them; fly it and say whether it feels like a third way to fly.
+3. **The name**: Bonghwang (봉황, the phoenix) follows the rule (Korean, flying, no "eo"/"eu"). An
+   alternative is Samjogo (삼족오, the three-legged sun crow).
+4. **No cycle**: every edge is near 50%; nothing here makes an RPS cycle. A cycle would need a
+   mechanism the three do not have (gun reach was the strongest axis found, and the set's
+   guns already sit at the real maximum range).
+5. **g limit**: the flat trims use g 8 (the real maximum); Yongma and Jujak are at 9, outside
+   the real range, as are Jujak's climb time and both ships' dive accelerations.
