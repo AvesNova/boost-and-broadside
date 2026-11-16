@@ -119,7 +119,7 @@ each type its own way. Without a table (the default) no ship has a doctrine. The
 doctrines of the real-scale set's Yongma (the energy fighter) and Jujak (the turn fighter)
 are in `src/bnb/controllers/imugi_doctrines.json`
 (`bnb.controllers.imugi_doctrine.set_table` builds a set's table from it); the tuning is
-in [the archetypes page](game/ship-design/archetypes.md#5-the-scripted-agent).
+in [the archetypes page](game/ship-design/archetypes.md#5-imugi).
 
 A doctrine changes the aim point and the power, never the shot (a shot still needs the
 nose on the lead point). Its weight against the committed target is `strength` times
@@ -344,7 +344,7 @@ deathmatch sets), else the wide set when the arena radius is more than
 `WIDE_ARENA_IN_GUN_RANGES` of the card's longest gun range (20.9: the geometric mean of the
 two deathmatch presets' 2600 and 8200 m on the standard card, 11.8 and 37.1 of its 220.8 m
 gun range), else deathmatch's. The real-scale sets are a light retune
-([The real-scale variant](game/real-scale.md#the-scripted-agents-real-scale-sets)). So one
+([The real-scale variant](game/real-scale.md#imugis-real-scale-sets)). So one
 batch may mix the modes, and every use
 plays the mode's set: BC's teacher, the lanes' scripted anchor, the ladder's rungs and the
 head-to-head's `scripted`. Each search's final population (its last generation's 32 sets,

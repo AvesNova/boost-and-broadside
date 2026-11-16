@@ -191,8 +191,8 @@ It reads the capture's `games` record: the critic over the first segment and ove
   ended in the capture, and the Brier skill against the capture's result frequencies by the
   time left to the game's end.
 
-A critic without an outcome head (the single value arm,
-[the learner](../explanation/learner.md#the-single-value-arm)) gives `critic_trace` of its
+A critic without an outcome head (`YemongConfig.outcome_level` None,
+[the model](../explanation/yemong.md)) gives `critic_trace` of its
 values alone, and no `critic_outcome`.
 
 **How to read it.** The outcome head is discounted: its targets put a share on
