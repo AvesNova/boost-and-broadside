@@ -39,7 +39,9 @@ class VideoConfig:
     seconds per video second (one of `bnb.play.loop.TIME_SCALES`); width and height:
     pixels; seed: the match's generator and the agent's; temperature: the agent's sampling
     temperature; interface: draw the shell's top bar and kill feed; quality: ffmpeg's
-    constant rate factor for H.264 (lower is larger and sharper)."""
+    constant rate factor for H.264 (lower is larger and sharper); death_marks: leave a
+    team-coloured X where each ship died, for the rest of the video
+    (`bnb.play.render.marks`)."""
 
     seconds: float = 25.0
     frame_rate: int = 30
@@ -52,6 +54,7 @@ class VideoConfig:
     quality: int = 28
     overlays: tuple[str, ...] = ()
     truth: bool = False
+    death_marks: bool = True
 
 
 def encoder(path: pathlib.Path, config: VideoConfig) -> subprocess.Popen:
@@ -141,6 +144,7 @@ def render(
     (`Tally.summary`), the frames, the game seconds shown, the file's bytes and the
     seconds it took to make."""
     from bnb.play import app  # OpenGL and ImGui: only for a video
+    from bnb.play.render.marks import DeathMarks
 
     if config.time_scale not in TIME_SCALES:
         raise SystemExit(f"--time-scale {config.time_scale}: one of {TIME_SCALES}")
@@ -180,6 +184,8 @@ def render(
     session.show_interface = config.interface
     session.interface.open -= set(COLLAPSED_CARDS)
     session.set_time_scale(config.time_scale)
+    if config.death_marks:
+        session.death_marks = DeathMarks()
     tally = Tally(session.loop.current.ships.team)
     shell_on_tick = session.loop.on_tick
 
