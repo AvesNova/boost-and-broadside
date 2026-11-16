@@ -426,3 +426,14 @@ def test_the_evaluation_charts_read_the_queue_records(tmp_path):
         champion_steps=100.0,
         champion_weights="ema_0.999",
     )
+
+
+def test_the_champion_values_read_an_average_s_pool_name(tmp_path):
+    from bnb.figures.results import evaluation
+
+    champion = tmp_path / "champion.json"
+    name = "c-rl/average/training_exponential_decay_0.95/step_98566144"
+    champion.write_text(json.dumps(dict(champion=name, path=f"/runs/{name}")))
+    held = evaluation.champion_values(champion)
+    assert held["champion_weights"] == "training_exponential_decay_0.95"
+    assert held["champion_run"] == "c-rl" and held["champion_steps"] == 98566144.0

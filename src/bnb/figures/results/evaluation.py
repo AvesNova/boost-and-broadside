@@ -314,19 +314,26 @@ def draw_averaging(path, out, formats=common.FORMATS, name="averaging_sweep"):
 
 
 def champion_values(path) -> dict[str, float | str | None]:
-    """The champion's values from champion.json: its run, steps and weights (from its
-    policy path, `<runs>/<run>/policies/step_<steps>/<kind>`), the rule's reason."""
+    """The champion's values from champion.json: its name, run, steps and weights, read
+    from its pool name or policy path, `<run>/policies/step_<steps>/<kind>` or
+    `<run>/average/<kind>/step_<steps>`."""
     found = json.loads(pathlib.Path(path).read_text())
-    parts = pathlib.PurePosixPath(found.get("path") or "").parts
     run = steps = kind = None
-    if "policies" in parts:
-        at = parts.index("policies")
-        run = parts[at - 1] if at else None
-        if at + 1 < len(parts) and parts[at + 1].startswith("step_"):
-            steps = float(parts[at + 1].removeprefix("step_"))
-        kind = parts[at + 2] if at + 2 < len(parts) else None
-    else:
-        kind = short_name(found.get("champion") or "") or None
+    for text in (found.get("path") or "", found.get("champion") or ""):
+        parts = pathlib.PurePosixPath(text).parts
+        for marker in ("policies", "average"):
+            if marker not in parts:
+                continue
+            at = parts.index(marker)
+            run = parts[at - 1] if at else run
+            rest = parts[at + 1 :]
+            numbered = [part for part in rest if part.startswith("step_")]
+            if numbered:
+                steps = float(numbered[0].removeprefix("step_"))
+            names = [part for part in rest if not part.startswith("step_")]
+            kind = names[0] if names else kind
+        if run is not None:
+            break
     return {
         "champion_name": found.get("champion"),
         "champion_run": run,
