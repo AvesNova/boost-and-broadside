@@ -222,6 +222,79 @@ def test_a_player_that_cannot_be_played_here_is_fitted_but_left_out_of_the_sessi
         rating_pool.rate(pool, "p", lambda one: None, play, config, SCORING, log=print)
 
 
+def test_a_contrast_session_plays_named_policies_against_the_incumbent(tmp_path, monkeypatch):
+    """The averaging sweep's pool (box/eval_queue.sh): averages registered under their own
+    names (`bnb pool add PATH --name`, no run's step directory) are played by `bnb pool
+    rate`, and a session targeting each candidate's difference from the incumbent plays
+    them until every contrast's standard error is met or the budget is spent."""
+    from bnb import cli
+
+    averages = ["incumbent", "uniform", "window", "halflife"]
+    truth = {"scripted": 0.0, "r/step_100/live": 380.0}
+    truth |= {f"r/average/{name}/step_100": 400.0 + 15 * k for k, name in enumerate(averages)}
+    identities = {}
+    pool = RatingPool.create(tmp_path / "pool")
+    for name in truth:
+        if name == "scripted":
+            continue
+        directory = tmp_path / "runs" / name.replace("/step_100/live", "/policies/step_100/live")
+        directory.mkdir(parents=True)
+        identities[str(directory)] = f"sha256:{len(identities)}"
+    monkeypatch.setattr(rating_pool, "policy_identity", lambda path: identities[str(path)])
+    monkeypatch.setattr(  # one network build, read from no files
+        rating_pool,
+        "network_groups",
+        lambda field: [None if one.policy is None else 0 for one in field],
+    )
+    for path in identities:
+        named = None if "/policies/" in path else path.split("/runs/")[1]
+        pool.add_policy(path, named)
+    players, _ = pool.players()
+    assert players["r/average/incumbent/step_100"].run is None  # as on the box
+    incumbent = "r/average/incumbent/step_100"
+    contrasts = tuple(
+        (f"r/average/{name}/step_100", incumbent) for name in averages if name != "incumbent"
+    )
+    budget = 128 * 120
+    config = tournament.TournamentConfig(
+        ArenaConfig(blocks=4, block_environments=32),
+        target_stderr=45.0,
+        budget=budget,
+        contrasts=contrasts,
+        contrast_stderr=20.0,
+    )
+    played = []
+
+    def play(field, matchups):
+        played.extend({field[a].name, field[b].name} for a, b in matchups)
+        return _bradley_terry(truth, 32, 2)(field, matchups)
+
+    logged = []
+    rating_pool.rate(
+        pool,
+        "frontline",
+        lambda one: cli._pool_player(one, tmp_path / "runs", (), "frontline"),
+        play,
+        config,
+        SCORING,
+        log=logged.append,
+    )
+    assert f"a session of {len(truth)} players" in logged[0], logged[0]
+    assert not any("left out of the session" in line for line in logged)
+    for first, second in contrasts:
+        assert {first, second} in played or any(
+            first in pair and second not in pair for pair in played
+        )
+    counted, posterior, _, _ = rating_pool.fit(pool, "frontline", SCORING)
+    targets = config.targets(counted.names)
+    errors, goals = targets.standard_errors(posterior)
+    contrast_errors = errors[-len(contrasts) :]
+    assert torch.isfinite(contrast_errors).all()
+    games = 32 * len(played)
+    assert bool((contrast_errors <= 20.0).all()) or games + 128 > budget, contrast_errors
+    assert "every target of the session is met" in logged[-1], logged[-3:]
+
+
 # ---- importing `bnb ratings` records
 
 
