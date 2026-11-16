@@ -343,11 +343,12 @@ def _solve_part(handle_sets: list[dict[str, float]]) -> list[dict]:
         solution = api.solve_handles(
             _handles_tensor(padded), rules, strict=False, tick_function=_TICK
         )
-    except Infeasible as error:  # after a flight: card by card, eager
+    except Infeasible as error:  # after the first flight: halves, until the card is found
         if len(handle_sets) == 1:
             out[0]["failure"] = f"infeasible: {error}"[:300]
             return out
-        return [card for h in handle_sets for card in _solve_part([h])]
+        half = len(handle_sets) // 2  # the failing half fails at its first iteration: cheap
+        return _solve_part(handle_sets[:half]) + _solve_part(handle_sets[half:])
     converged = solution.converged.reshape(len(padded), -1)[: len(playable), 0].tolist()
     for position, (number, ok) in enumerate(zip(playable, converged, strict=True)):
         if not ok:
