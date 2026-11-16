@@ -501,3 +501,15 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Tried: DM 1v1, 128 games, before vs after (both rules on). Scissors windows 2752 -> 33 (one circle 1096, two circle 883); reversals per post-merge window at 15 deg/s 36.8 -> 1.0; sustained turn (>15 deg/s held 1 s) 14% -> 52%; stick side flips 414-459/min -> 95-145/min.
 - Found: the duel is now decided: Yongma kill share 0.59 -> 0.07 (deaths 1.66 -> 2.47 a game, Yongma's 205 by hits + 86 boundary): in a held turning fight the turn fighter wins, as the card says. Energy-advantaged Yongma takes the initiative into a fight it loses.
 - Next: balance+mix 512 games x4 conditions before/after (running, ETA ~01:30); 1v1 ablations commit-only and ENERGY_BREAKS_RATE_TIES=1; stills on the CPU.
+
+## 2026-11-16 23:50 feat/imugi-initiative (agent): step 0, the action mix (before, 128 games each, v24 card)
+| mode | ship | straight | R/L 0.4 | R/L 0.75 | R/L 1.0 | coast | boost | reverse | fire |
+|---|---|---|---|---|---|---|---|---|---|
+| DM 5v5 | Yongma | 7.6 | 8.5/8.5 | 5.6/5.6 | 32.4/31.8 | 3.7 | 88.5 | 7.8 | 5.4 |
+| DM 5v5 | Jujak | 6.8 | 8.8/8.7 | 7.8/7.4 | 30.6/30.0 | 3.7 | 87.8 | 8.5 | 7.3 |
+| Elim 5v5 | Yongma | 13.0 | 12.0/12.0 | 5.8/5.7 | 25.6/25.8 | 3.8 | 90.0 | 6.2 | 2.6 |
+| Elim 5v5 | Jujak | 12.0 | 12.4/12.4 | 6.9/7.1 | 24.8/24.4 | 3.7 | 89.8 | 6.5 | 3.5 |
+| FL 5v5 | Yongma | 13.5 | 11.9/11.9 | 3.6/3.6 | 27.5/28.0 | 56.0 | 30.9 | 13.1 | 3.6 |
+| FL 5v5 | Jujak | 12.6 | 12.8/12.8 | 4.6/4.6 | 26.3/26.4 | 49.8 | 36.0 | 14.2 | 4.8 |
+- Found: all 7 sticks and 3 powers used everywhere; full stick 51-64%, the sustained level (0.75) the rarest at 7-16%; DM/Elim boost ~88-90% with coast <4% (FL coasts ~50-56%).
+- Next: balance+mix 512 games (4 jobs at a time under one GPU lock hold), 1v1 ablations.
