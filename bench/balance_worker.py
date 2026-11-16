@@ -65,6 +65,7 @@ def entries_of(job: dict) -> list[dict]:
 
 
 def main() -> None:
+    """Parse the options, warm up the condition's loop, then play the queue's jobs."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--condition", choices=CONDITIONS, required=True)
     parser.add_argument("--queue", type=pathlib.Path, required=True)
