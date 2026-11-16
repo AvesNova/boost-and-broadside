@@ -124,6 +124,13 @@ number, a text that waits on the results, or a figure not yet drawn is a placeho
   the site, a `<picture>`{.plain} with a `prefers-color-scheme`{.plain} source in the
   README.
 
+Every image on the site opens enlarged in a lightbox on click (`mkdocs-glightbox`{.plain},
+configured in `mkdocs.yml`{.plain}). The light and dark variants of a figure are two
+galleries, so the lightbox shows the current scheme's variant and steps through that
+scheme's figures only. An image that should not open (a logo, an icon, a badge) takes the
+class `skip-glightbox`{.plain}: `![alt](icon.png){ .skip-glightbox }`{.plain}. The GitHub
+README cannot have this: GitHub opens an image as a link to the file.
+
 The **values file**, `docs/results/values.json`{.plain}, is one flat JSON object, {name:
 number, string or null}; `bnb figures` merges each chart's numbers into it. A name a page
 uses must be in the file, `null`{.plain} until measured, so a typo fails in every mode. A

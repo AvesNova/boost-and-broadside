@@ -25,3 +25,8 @@ def test_the_site_builds_in_strict_mode(tmp_path):
         cwd=pages.ROOT, env=dict(os.environ, NO_MKDOCS_2_WARNING="1", CUDA_VISIBLE_DEVICES=""),
         capture_output=True, text=True, timeout=600)
     assert done.returncode == 0, done.stdout[-4000:] + done.stderr[-8000:]
+
+    # The lightbox: each figure's light and dark variants are separate galleries.
+    html = (tmp_path / "results" / "training" / "index.html").read_text()
+    assert 'data-gallery="light"' in html and 'data-gallery="dark"' in html
+    assert "GLightbox(" in html

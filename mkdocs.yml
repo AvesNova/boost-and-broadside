@@ -48,6 +48,20 @@ hooks:
 
 plugins:
   - search
+  # Click-to-enlarge on every image. The light and dark twins of a figure (#only-light and
+  # #only-dark) are two galleries, so the lightbox shows only the current scheme's variant
+  # and never both. Images with the class skip-glightbox (logos, icons, badges) are left out.
+  - glightbox:
+      touchNavigation: true
+      loop: false
+      effect: zoom
+      slide_effect: slide
+      zoomable: true
+      draggable: true
+      auto_themed: true
+      background: "var(--md-default-bg-color)"
+      skip_classes:
+        - skip-glightbox
   - mkdocstrings:
       default_handler: python
       handlers:
