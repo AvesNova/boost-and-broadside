@@ -80,11 +80,11 @@ behaviour cloning and reinforcement learning.
 {{pending: training_summary | One or two sentences: the final Elo per mode (elo_deathmatch_final and the others) and where the hand-off from cloning to reinforcement learning shows on the curve.}}
 
 **Team sizes it did not train at.** Trained at 5 against 5, the same weights play from
-1 against 1 to 20 against 20.
+1 against 1 to 10 against 10.
 
 {{figure: docs/results/team_size_generalization.png | Win rate against Imugi at each team size, one line per ratio of Imugi's ships to ours, one panel per mode}}
 
-{{pending: generalisation_summary | One sentence on how the win rate at even numbers holds from 1 against 1 to 20 against 20, with the 10 against 10 values.}}
+{{pending: generalisation_summary | One sentence on how the win rate at even numbers holds from 1 against 1 to 10 against 10, with the 10 against 10 values.}}
 
 **Controlled experiments.** Each change to the model or the training is one arm: a full
 training run against the incumbent's, decided by a sequential test on their head-to-head

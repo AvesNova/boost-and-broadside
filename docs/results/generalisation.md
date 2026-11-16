@@ -5,7 +5,7 @@ covers: [src/bnb/league/crossover.py, src/bnb/models/yemong/model.py]
 # Team sizes
 
 **The question:** a policy trained at one team size, how does it play at the others, from
-1 against 1 to 20 against 20?
+1 against 1 to 10 against 10?
 
 Yemong reads the fleet as a set of tokens, one per ship, field and zone, so no weight
 depends on the number of ships ([The model](../explanation/yemong.md)). One set of weights
@@ -31,7 +31,6 @@ Even numbers, the policy's win rate against Imugi:
 | 2 against 2 | not played | {{team_size_deathmatch_ratio_1_size_2_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_2_win_rate:.0%}} |
 | 5 against 5 | {{team_size_frontline_ratio_1_size_5_win_rate:.0%}} | {{team_size_deathmatch_ratio_1_size_5_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_5_win_rate:.0%}} |
 | 10 against 10 | {{team_size_frontline_ratio_1_size_10_win_rate:.0%}} | {{team_size_deathmatch_ratio_1_size_10_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_10_win_rate:.0%}} |
-| 20 against 20 | {{team_size_frontline_ratio_1_size_20_win_rate:.0%}} | {{team_size_deathmatch_ratio_1_size_20_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_20_win_rate:.0%}} |
 
 Frontline is played from 3 against 3 up.
 
@@ -40,6 +39,6 @@ Frontline is played from 3 against 3 up.
 ## Why it matters
 
 Small games and large games ask different things: at 1 against 1 a fight is a duel of
-flying; at 20 against 20 it is a matter of where the fleet concentrates. A policy that
+flying; at 10 against 10 it is more a matter of where the fleet concentrates. A policy that
 plays well at both from one training size has learned something about the game rather than
 about one lineup.
