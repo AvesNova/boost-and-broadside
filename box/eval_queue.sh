@@ -34,7 +34,7 @@ export PYTHONPATH=$EVALQ/src:$EVALQ
 # sizes (the defaults are the real queue's)
 AVERAGE_RUN=${AVERAGE_RUN:-$chain-rl}     # the run whose per-update files are averaged
 AVERAGE_SPEC=${AVERAGE_SPEC:-$EVALQ/docs/rewrite/sections/averaging/suite.toml}
-AVERAGE_STDERR=${AVERAGE_STDERR:-20}      # each average, per mode
+AVERAGE_STDERR=${AVERAGE_STDERR:-20}      # each average minus the incumbent, per mode
 AVERAGE_BUDGET=${AVERAGE_BUDGET:-12288}   # games per mode at most
 SUITE_GAMES=${SUITE_GAMES:-512}           # games per suite condition
 SUITE_LAYOUT=${SUITE_LAYOUT:-}            # e.g. "--head-to-head-blocks 1 ..." for a test
@@ -135,10 +135,20 @@ step_average() {
     echo "$added"
     names+=("${added%% *}")
   done < "$dir/players.txt"
+  # the targets: each average's difference from the incumbent (the rebuilt training
+  # exponential average) to +-AVERAGE_STDERR per mode, which stays measurable when every
+  # average beats Imugi too often for a finite Elo against it (eval_champion.py's rule)
+  local incumbent="" contrasts=() name
+  for name in "${names[@]}"; do
+    [[ $name == */average/training_exponential_* ]] && incumbent=$name
+  done
+  [ -n "$incumbent" ] || { echo "no training_exponential average among the players"; return 1; }
+  for name in "${names[@]}"; do
+    [ "$name" != "$incumbent" ] && contrasts+=("$name:$incumbent")
+  done
   bnb pool rate "$dir/pool" --presets $FIVES --target-stderr 45 \
-    --decision "${names[@]}" --decision-stderr "$AVERAGE_STDERR" --budget "$AVERAGE_BUDGET" \
-    --session-players 16 --hopeless inf $POOL_LAYOUT --device "$DEVICE" --runs-directory "$RUNS" \
-    || return 1
+    --contrast "${contrasts[@]}" --contrast-stderr "$AVERAGE_STDERR" --budget "$AVERAGE_BUDGET" \
+    --session-players 16 $POOL_LAYOUT --device "$DEVICE" --runs-directory "$RUNS" || return 1
   bnb pool table "$dir/pool" --presets $FIVES > "$dir/table.txt" || return 1
   "$PY" "$EVALQ/box/eval_champion.py" "$dir/pool" "$out/champion.json" --presets $FIVES \
     | tee "$dir/champion.txt"

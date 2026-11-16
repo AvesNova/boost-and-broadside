@@ -2,17 +2,20 @@
 
     python box/eval_champion.py POOL OUT.json --presets frontline_5v5 deathmatch_5v5 ...
 
-Each candidate's score is its mean Elo over the presets (one mode each, equal weights, as
-the evaluation suite weighs the modes). The rule, fixed before the games: the incumbent
-(the run's own exponential average, rebuilt: `training_exponential`, the product today)
-stays the champion unless another average's mean is above it by more than `--margin`
-standard errors of the difference; then the highest mean wins. The difference's standard
-error treats the two ratings as independent, which overstates it (both share the anchor),
-so the rule leans toward the incumbent: picking the best of 14 noisy means alone would
-carry the winner's curse into every later step. A candidate needs a finite rating in every
-preset; when none has, the incumbent is the champion by default. Writes OUT.json (the
-champion's name and policy path, every candidate's means, the rule and the reason) and
-prints the reason.
+The incumbent is the run's own exponential average, rebuilt (`training_exponential`, the
+product today). Each other candidate's score is its Elo difference from the incumbent,
+averaged over the presets (one mode each, equal weights, as the evaluation suite weighs
+the modes), with the difference's standard error from the fit's covariance: the two share
+the anchor, so a difference is measured far better than either rating, and it stays
+measured when both sit beyond Imugi's reach (bounds against the anchor). The rule, fixed
+before the games: the incumbent stays unless the best candidate's mean difference is above
+it by more than `--margin` standard errors; picking the best of 13 noisy means alone would
+carry the winner's curse into every later step. A candidate counts only where its
+difference is measured in every preset (the two in one connected component of the fit);
+with none, the incumbent stays by default (with no incumbent among the players, the first
+player), so the later steps still run. Writes OUT.json (the champion's name and policy
+path, every candidate's differences, each player's Elo and status per preset, the rule and
+the reason) and prints the reason.
 """
 
 import argparse
@@ -34,47 +37,60 @@ def main() -> int:
 
     from bnb.cli import _pool_scoring
     from bnb.league import rating_pool
+    from bnb.league.design import RATED
+    from bnb.league.tournament import rating_columns
 
     opened = rating_pool.RatingPool(options.pool)
     players, _ = opened.players()
-    ratings: dict[str, dict[str, tuple[float, float]]] = {}
+    names = [name for name in players if name != rating_pool.ANCHOR]
+    if not names:
+        print("no players in the pool", file=sys.stderr)
+        return 1
+    incumbent = next((name for name in names if f"/average/{INCUMBENT}_" in name), None)
+    differences: dict[str, dict[str, tuple[float, float]]] = {}
+    elo: dict[str, dict[str, dict]] = {}
     for preset in options.presets:
-        rows, _, _ = rating_pool.table(opened, preset, _pool_scoring(opened, preset, None))
-        for row in rows:
-            if row["player"] == rating_pool.ANCHOR or row["status"] != "rated":
+        counted, posterior, _, _ = rating_pool.fit(
+            opened, preset, _pool_scoring(opened, preset, None)
+        )
+        index = {name: number for number, name in enumerate(counted.names)}
+        for name in names:
+            if name not in index:
                 continue
-            ratings.setdefault(row["player"], {})[preset] = (row["calibrated_elo"], row["stderr"])
+            number = index[name]
+            elo.setdefault(name, {})[preset] = rating_columns(posterior, number)
+            if incumbent not in index or name == incumbent:
+                continue
+            other = index[incumbent]
+            if int(posterior.component[number]) != int(posterior.component[other]):
+                continue
+            covariance = posterior.covariance
+            gap = float(posterior.relative[number] - posterior.relative[other])
+            variance = float(
+                covariance[number, number]
+                + covariance[other, other]
+                - 2 * covariance[number, other]
+            )
+            if math.isfinite(gap) and math.isfinite(variance) and variance > 0:
+                differences.setdefault(name, {})[preset] = (gap, math.sqrt(variance))
     candidates = {}
-    for name, held in ratings.items():
+    for name, held in differences.items():
         if len(held) != len(options.presets):
             continue
-        mean = sum(elo for elo, _ in held.values()) / len(held)
+        mean = sum(gap for gap, _ in held.values()) / len(held)
         stderr = math.sqrt(sum(se * se for _, se in held.values())) / len(held)
-        candidates[name] = dict(mean=mean, stderr=stderr, presets={p: held[p] for p in held})
-    ranked = sorted(candidates, key=lambda name: -candidates[name]["mean"])
-    incumbent = next((name for name in ranked if f"/average/{INCUMBENT}_" in name), None)
-    if not candidates:
-        # no rating to compare: the incumbent by default, so the later steps still run
-        incumbent = next((name for name in players if f"/average/{INCUMBENT}_" in name), None)
-        if incumbent is None:
-            print("no candidate has a finite rating in every preset, no incumbent", file=sys.stderr)
-            return 1
-        best = champion = incumbent
-        reason = f"no candidate has a finite rating in every preset: the incumbent {incumbent}"
-        gap = gap_stderr = None
-    elif incumbent is None or incumbent == ranked[0]:
-        best = ranked[0]
-        champion = best
-        reason = (
-            f"{best} has the highest mean Elo ({candidates[best]['mean']:.0f} +- "
-            f"{candidates[best]['stderr']:.0f})"
-            + ("" if incumbent else "; the incumbent has no finite rating in every preset")
-        )
-        gap = gap_stderr = None
+        candidates[name] = dict(gap=mean, stderr=stderr, presets=held)
+    ranked = sorted(candidates, key=lambda name: -candidates[name]["gap"])
+    best = ranked[0] if ranked else None
+    gap = gap_stderr = None
+    if incumbent is None:
+        champion = names[0]
+        reason = f"no incumbent ({INCUMBENT}) among the players: {champion} by default"
+    elif best is None:
+        champion = incumbent
+        reason = f"no candidate measured against the incumbent in every preset: {incumbent}"
     else:
-        best = ranked[0]
-        gap = candidates[best]["mean"] - candidates[incumbent]["mean"]
-        gap_stderr = math.hypot(candidates[best]["stderr"], candidates[incumbent]["stderr"])
+        gap, gap_stderr = candidates[best]["gap"], candidates[best]["stderr"]
         if gap > options.margin * gap_stderr:
             champion = best
             reason = (
@@ -84,30 +100,32 @@ def main() -> int:
         else:
             champion = incumbent
             reason = (
-                f"the incumbent {incumbent} stays: the best mean, {best}, is {gap:.0f} +- "
-                f"{gap_stderr:.0f} Elo above it, within {options.margin:g} standard errors"
+                f"the incumbent {incumbent} stays: the best, {best}, is {gap:+.0f} +- "
+                f"{gap_stderr:.0f} Elo from it, within {options.margin:g} standard errors"
             )
+    if not any(row["status"] == RATED for held in elo.values() for row in held.values()):
+        reason += " (no player has a finite Elo against Imugi)"
     path = next(iter(players[champion].paths), None)
     found = dict(
         champion=champion,
         path=path,
         reason=reason,
         rule=(
-            f"the incumbent ({INCUMBENT}) unless another mean beats it by more than "
-            f"{options.margin:g} standard errors of the difference; mean Elo over "
-            f"{list(options.presets)}"
+            f"the incumbent ({INCUMBENT}) unless another average's mean Elo difference from it "
+            f"over {list(options.presets)} exceeds {options.margin:g} standard errors"
         ),
         best=best,
         incumbent=incumbent,
         gap=gap,
         gap_stderr=gap_stderr,
         ranking=[dict(name=name, **candidates[name]) for name in ranked],
+        elo=elo,
     )
     pathlib.Path(options.out).write_text(json.dumps(found, indent=1) + "\n")
     print(reason)
     for name in ranked:
         held = candidates[name]
-        print(f"  {held['mean']:7.1f} +- {held['stderr']:4.1f}  {name}")
+        print(f"  {held['gap']:+7.1f} +- {held['stderr']:4.1f}  {name}")
     return 0
 
 
