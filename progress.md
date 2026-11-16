@@ -481,6 +481,7 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
   fogged, arena window 30 s since the clear arena's first kill is later, a docstring, formatting).
   Two fail at the base a3e7b09a too and are left: test_layering (set_num_threads in league/design.py,
   models/initialise.py) and test_stacked[False] (1/900 elements over 1e-4). Next: the launch.
+
 ## 2026-11-16 21:45 diag/boundary-deaths (agent)
 - Tried: bench/boundary_deaths.py (eager, wraps api.resolve + Imugi internals) on Y0.46, 4 conditions x 256 games; per-tick CPU traces of 1v1.
 - Found: boundary deaths happen with the edge steer at full weight (w=1) for seconds; the stick flips full-right/full-left in 4-5 tick runs, each flip on a doctrine "sense" tick (post-merge turn sense following the target's turn, applied after the edge steer). Heading stays outward, boosting, ~2 s to death at 216/s.

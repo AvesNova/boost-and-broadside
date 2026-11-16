@@ -25,6 +25,7 @@ STASH: dict = {}
 
 
 def wrap(module, name, after):
+    """Replace module.name with a wrapper that calls after(result, args, kwargs)."""
     original = getattr(module, name)
 
     def wrapper(*args, **kwargs):
@@ -36,6 +37,8 @@ def wrap(module, name, after):
 
 
 def install():
+    """Wrap Imugi's context, maneuvers and the game's resolve to stash each tick's values."""
+
     def on_context(fleet, args, kwargs):
         STASH["boundary_weight"] = fleet.boundary_weight
         STASH["boundary_radius"] = fleet.boundary_radius.expand_as(fleet.x)
@@ -61,7 +64,10 @@ def install():
 
 
 class DiagLoop(gl.Loop):
+    """The game loop with a per-ship tally of deaths by cause and the edge steer's state."""
+
     def start(self, groups):
+        """Start the loop and the tally's tensors."""
         out = super().start(groups)
         B, N = self.B, self.N
         z = dict(device=self.device)
@@ -79,6 +85,7 @@ class DiagLoop(gl.Loop):
         return out
 
     def tick(self, state, observation, carry, tally):
+        """One tick, then the tally of its deaths."""
         STASH.clear()
         result = super().tick(state, observation, carry, tally)
         B, S, N = self.B, self.S, self.N
@@ -182,10 +189,12 @@ class DiagLoop(gl.Loop):
 
 
 def gl_done(events):
+    """No game ends early (the tally runs every game to its clock)."""
     return torch.zeros_like(events.done)
 
 
 def main():
+    """Tally boundary deaths for one condition and print them."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--condition", required=True)
     parser.add_argument("--entry", default="Y0.46")

@@ -230,8 +230,20 @@ reused for version-23 games.
 Version 24 (2026-11-16): team deathmatch has no fog of war at any team size (the author);
 elimination, Frontline and the sandbox keep it. A game's fog is its mode's
 (`GameConfig.fogged_share`) unless set, and a pool's `fog_share` scales it. The deathmatch
-references are clear games now. Ratings and records of version 23 or earlier are not
-reused for version-24 games.
+references are clear games now. Also in version 24 (the same evening, before any
+version-24 run):
+- **The balance card Y0.46 with head-on damage 0.05** (the author;
+  docs/rewrite/sections/balance-y046/apply.py, measured in g-v23/results-fix.md): option G's
+  handle factors on version 23's files with Yongma's max_shield factor 0.46 (Yongma
+  sustained_turn_rate x 1.113, max_shield x 0.46, ceiling x 1.4438, climb_time x 1.4443,
+  shots_per_store x 2.1373; Jujak sustained_turn_rate x 0.95, max_shield x 1.1586), the card
+  re-solved from the handles; both ships' head_on_fraction 0 -> 0.05 (a hit dead ahead does
+  5% of its damage, was none).
+- **Imugi:** the boundary's steer fades the doctrine's maneuvers by its weight
+  (`imugi_combat.BOUNDARY_OVER_MANEUVERS`), so a post-merge turn sense near the edge no
+  longer flips the committed side and flies the ship out (bench/boundary_deaths.py).
+
+Ratings and records of version 23 or earlier are not reused for version-24 games.
 """
 
 VERSION = 24

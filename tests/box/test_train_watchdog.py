@@ -70,7 +70,7 @@ def steady_bc(watch, updates=5):
 
 
 def test_real_chain_replay_reports_milestones_and_no_watchdog_alert(capsys):
-    assert watchdog.main(["--replay", str(FIXTURES / "chain-v20.log")]) == 0
+    assert watchdog.main(["--replay", str(FIXTURES / "chain-v20.txt")]) == 0
     lines = capsys.readouterr().out.splitlines()
     found = [line.split(" KST ", 1)[1] for line in lines if " KST " in line]
     assert [line for line in found if line.startswith("MILESTONE")] == [
@@ -92,7 +92,7 @@ def test_quiet_alerts_silence_named_trainer_rules(capsys):
     watchdog.main(
         [
             "--replay",
-            str(FIXTURES / "chain-v20.log"),
+            str(FIXTURES / "chain-v20.txt"),
             "--quiet-alerts",
             "gauge_runaway",
             "rating_drop",
@@ -156,7 +156,7 @@ def test_errors_in_the_log_fire(line):
 
 
 def test_warnings_in_the_log_do_not_fire():
-    text = (FIXTURES / "chain-v20.log").read_text()
+    text = (FIXTURES / "chain-v20.txt").read_text()
     warnings = [line for line in text.splitlines() if "Warning" in line]
     assert warnings  # the real log's torch warnings
     assert not any(watchdog.ERROR.search(line) for line in warnings)
