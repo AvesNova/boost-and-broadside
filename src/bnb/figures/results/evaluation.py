@@ -227,7 +227,7 @@ def draw_suite(directory, out, formats=common.FORMATS, name="suite_conditions"):
     values["champion_game_version"] = suite_game_version(directory)
     values["suite_games_per_condition"] = float(max(row["games"] for row in rows))
     axes[0, 0].set_ylim(0, 1.08)
-    axes[0, 0].set_ylabel("score against Imugi (wins + half the draws)", fontsize=8)
+    axes[0, 0].set_ylabel("score against Imugi", fontsize=8)
     common.title(
         figure, "The champion against Imugi on every head-to-head condition (95% intervals)"
     )

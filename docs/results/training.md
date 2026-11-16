@@ -60,7 +60,16 @@ candidate's mean Elo difference over the modes exceeds two standard errors.
 
 The decision suite's head-to-head conditions, each played to {{suite_games_per_condition:.0f}}
 games: the champion and Imugi on the same lineup of ship types, the champion's score being
-its wins and half its draws.
+its wins and half its draws, with its 95% interval:
+
+| Team size | Frontline | Deathmatch | Elimination |
+|---|---|---|---|
+| 1 against 1 | not in the suite | {{suite_deathmatch_1v1_score:.0%}} ({{suite_deathmatch_1v1_low:.0%}}–{{suite_deathmatch_1v1_high:.0%}}) | {{suite_elimination_1v1_score:.0%}} ({{suite_elimination_1v1_low:.0%}}–{{suite_elimination_1v1_high:.0%}}) |
+| 2 against 2 | not in the suite | {{suite_deathmatch_2v2_score:.0%}} ({{suite_deathmatch_2v2_low:.0%}}–{{suite_deathmatch_2v2_high:.0%}}) | {{suite_elimination_2v2_score:.0%}} ({{suite_elimination_2v2_low:.0%}}–{{suite_elimination_2v2_high:.0%}}) |
+| 5 against 5 | {{suite_frontline_5v5_score:.0%}} ({{suite_frontline_5v5_low:.0%}}–{{suite_frontline_5v5_high:.0%}}) | {{suite_deathmatch_5v5_score:.0%}} ({{suite_deathmatch_5v5_low:.0%}}–{{suite_deathmatch_5v5_high:.0%}}) | {{suite_elimination_5v5_score:.0%}} ({{suite_elimination_5v5_low:.0%}}–{{suite_elimination_5v5_high:.0%}}) |
+| 10 against 10 | {{suite_frontline_10v10_score:.0%}} ({{suite_frontline_10v10_low:.0%}}–{{suite_frontline_10v10_high:.0%}}) | {{suite_deathmatch_10v10_score:.0%}} ({{suite_deathmatch_10v10_low:.0%}}–{{suite_deathmatch_10v10_high:.0%}}) | {{suite_elimination_10v10_score:.0%}} ({{suite_elimination_10v10_low:.0%}}–{{suite_elimination_10v10_high:.0%}}) |
+
+{{pending: suite_reading | What the conditions show: where the champion is far ahead of Imugi, and the small elimination games it loses.}}
 
 ## Run health
 
