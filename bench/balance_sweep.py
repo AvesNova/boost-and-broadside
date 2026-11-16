@@ -138,6 +138,7 @@ KEPT = (  # what a job's line keeps of `bench.game_loop.job_summary` and `balanc
     "kills_per_minute",
     "deaths_per_minute",
     "match_seconds",
+    "kill_share_by_minute",
     "score",
     "kill_score",
     "wins",
@@ -321,6 +322,21 @@ def balance_summary(out: dict, tick_length: float) -> dict:
         kills_per_minute=(kills.sum(0) / max(minutes, 1e-9)).tolist(),
         deaths_per_minute=(deaths.sum(0) / max(minutes, 1e-9)).tolist(),
         match_seconds=float(out["match_ticks"].float().mean()) * tick_length,
+        **clock_shares(out),
+    )
+
+
+def clock_shares(out: dict) -> dict:
+    """A's kill share had the clock stopped after each whole minute (the kills by minute,
+    cumulative; pooled, the standard error by game): whether a shorter deathmatch clock gives
+    the same kill share. Records without the minutes give nothing."""
+    if "kills_by_minute" not in out:
+        return {}
+    cumulative = out["kills_by_minute"].cumsum(1)  # (games, minutes, 2)
+    return dict(
+        kill_share_by_minute=[
+            ratio(cumulative[:, m, 0], cumulative[:, m].sum(-1)) for m in range(cumulative.shape[1])
+        ]
     )
 
 

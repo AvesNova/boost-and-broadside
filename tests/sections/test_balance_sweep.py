@@ -98,6 +98,11 @@ def test_the_kill_share_pools_the_kills():
     assert math.isclose(row["point_share_a"][0], 6.0 / 11.0)
     assert row["kills_per_minute"] == [1.5, 1.0]  # 6 and 4 kills over 4 minutes
     assert math.isclose(row["match_seconds"], 60.0)
+    by_minute = torch.zeros((4, 3, 2))
+    by_minute[0, 0] = torch.tensor([1.0, 0.0])  # minute 0: A 1, B 0
+    by_minute[0, 2] = torch.tensor([0.0, 1.0])  # minute 2: B 1
+    shares = balance_summary(out | dict(kills_by_minute=by_minute), 1.0 / 30.0)
+    assert [s for s, _ in shares["kill_share_by_minute"]] == [1.0, 1.0, 0.5]
     value, error = ratio(torch.tensor([1.0, 1.0]), torch.tensor([2.0, 2.0]))
     assert value == 0.5 and error == 0.0
 

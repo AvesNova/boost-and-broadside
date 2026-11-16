@@ -104,6 +104,7 @@ MERGE_HYSTERESIS = 30.0  # m
 MERGE_BINS = 16  # merges in an engagement: 0..14, 15 and more
 TURN_BINS = 32  # circles turned by a ship in an engagement, quarter circles: 0..7.75, 8+
 PACE_BINS = 121  # whole seconds 0..119, and 120 or more
+MINUTE_BINS = 10  # the first match's kills by minute: 0..8, 9 and later
 TRADE_WINDOW = 0.5  # s: a death with one on the other team this close is a trade
 # The base card: the ship files' with these factors. The tuning ran on the files before
 # the freeze with hit damage x 0.65 (the author's 2026-11-12 decision: v5's damage per
@@ -283,6 +284,8 @@ def tally_like(B: int, S: int, device) -> dict:
         match_kills=torch.zeros((B, 2), **zeros),
         match_deaths=torch.zeros((B, 2), **zeros),
         match_ticks=torch.zeros((B,), **zeros),
+        # the first match's kills by hits by the minute they fell in (the last bin: later)
+        kills_by_minute=torch.zeros((B, MINUTE_BINS, 2), **zeros),
         # deaths of any cause (the boundary's, friendly fire's too) by victim side A, B: a
         # side's points are the other side's deaths, as team deathmatch's score counts them
         deaths_side=torch.zeros((B, 2), **zeros),
@@ -381,6 +384,7 @@ STATISTICS = (
     "match_kills",
     "match_deaths",
     "match_ticks",
+    "kills_by_minute",
     "result",
     "finished",
     "kills_kind",
@@ -775,6 +779,12 @@ class Loop:
         tally["match_kills"] = tally["match_kills"] + counting[:, None] * kills_now
         tally["match_deaths"] = tally["match_deaths"] + counting[:, None] * deaths_now
         tally["match_ticks"] = tally["match_ticks"] + counting
+        minute = (tick * rules.tick_length / 60.0).long().clamp_max(MINUTE_BINS - 1)
+        in_minute = torch.nn.functional.one_hot(minute, MINUTE_BINS).float()  # (MINUTE_BINS,)
+        tally["kills_by_minute"] = (
+            tally["kills_by_minute"]
+            + (counting[:, None] * kills_now)[:, None, :] * in_minute[:, None]
+        )
         aspect = torch.nn.functional.one_hot(
             events.kill_aspect.long().clamp_min(0), len(ASPECTS)
         ).float()
