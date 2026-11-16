@@ -122,6 +122,7 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
   - **Compile the next arm beside the running one** on the same box. Needed: a compile-only mode with fixed sizes, CPU pinning, and VRAM headroom (check the 5090's real footprint; the trainer currently sizes its budget to the free memory, so cap it). Hedge on the decision rule: first compile the next arm as if the incumbent wins, then the other outcome if there's time.
 
 - **Balance (author):** the Yongma–Jujak balance may adjust the card or both cards, not only Imugi's doctrines. Keep them relatively similar to now, every value within the range of the real WWII aircraft they are based on. Work on `tune/balance-final`, before and after recorded for the author to test; not merged until the author decides.
+- **Vision equal (author, 2026-11-16):** both ships keep the same vision range; unequal vision would make scaling the game for human play harder. Balance cards may not change vision.
 
 ### 2026-11-15
 
