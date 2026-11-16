@@ -50,6 +50,7 @@ from .render.bullets import STYLES as BULLET_STYLES
 from .render.bullets import BulletLook
 from .render.contours import SHAPE_SETS as CONTOUR_SHAPE_SETS
 from .render.grid import PATTERNS as GRID_PATTERNS
+from .render.marks import DeathMarks
 from .render.minimap import DOT_PIXELS
 from .render.overlay import outline_table
 from .render.predictions import OverlayDrawing, overlay_drawing
@@ -230,6 +231,9 @@ class Session:
         self.notice, self.notice_until = "", 0.0
         self.clock = 0.0  # display seconds since the session started
         self.feed: list[tuple[float, MatchEvent]] = []
+        # A team-coloured X where each ship died, kept for the rest of the match (the
+        # figure videos turn it on); None: no marks, a ship vanishes when it dies.
+        self.death_marks: DeathMarks | None = None
         self.last_shot = np.full(1, -np.inf)
         self.recorder: replays.Recorder | None = None
         self.builder: IndexBuilder | None = None
@@ -272,6 +276,8 @@ class Session:
         self.trails = Trails(loop.rules.num_ships, loop.current.stall_angle)
         self.frame = loop.frame()
         self.feed = []
+        if self.death_marks is not None:
+            self.death_marks = DeathMarks()  # a new match starts unmarked
         self.last_shot = np.full(loop.rules.num_ships, -np.inf)
         selection = self.selection
         if selection is not None and selection.kind == "ship":
@@ -539,6 +545,14 @@ class Session:
         now = loop.ticks * loop.tick_length
         self.last_shot[loop.current.ships.fired] = now
         self.feed += [(now, event) for event in events if event.kind == "kill"]
+        if self.death_marks is not None:
+            ships = loop.previous.ships  # the last tick the dead ship flew
+            for event in events:
+                if event.kind == "kill":
+                    ship = event.ship
+                    self.death_marks.add(
+                        ships.x[ship], ships.y[ship], ships.team[ship], ships.hit_radius[ship]
+                    )
         if self.recorder is not None:
             self.recorder.record(actions, realtime, events)
             if self.recorder.ended:
@@ -1126,6 +1140,7 @@ class Session:
             self.grid,
             self.contours,
             self.bullet_look,
+            self.death_marks,
         )
         imgui.set_current_context(self.imgui_context)
         imgui.get_io().delta_time = max(self.elapsed, 1e-4)
