@@ -102,7 +102,7 @@ Notes:
   so it is the after. B's files are not written; its card is
   in `candidates/final.json`.
 
-## After the deliverable: flatter cards (rounds 12-14, 512 games, still running)
+## Flatter cards (rounds 12-16, 512 games)
 
 The v23 card centres deathmatch 5v5 but leaves the sizes apart (2v2 29%, 10v10 71%). Yongma
 team's score, deathmatch:
@@ -154,9 +154,16 @@ uv run --no-sync bnb play --preset yongma-jujak
 # switch to the before card (copies before/'s yongma.toml, jujak.toml and doctrines into src/)
 PYTHONPATH=$PWD/src:$PWD uv run --no-sync python docs/rewrite/sections/balance-final/apply.py --restore
 uv run --no-sync bnb play --preset real_scale_deathmatch
-# back to the after card
+# option C, the flat card (below): writes its handles and solved card into src/
+PYTHONPATH=$PWD/src:$PWD uv run --no-sync python docs/rewrite/sections/balance-final/apply.py \
+    --candidates options.json jt0.91-yt1.08-ys0.6
+uv run --no-sync bnb play --preset real_scale_deathmatch
+# back to the after card (A, v23)
 git checkout -- src/bnb/game/ships/real-scale src/bnb/controllers/imugi_doctrines.json
 ```
+
+The files themselves: `before/` (v22), `after/` (A, as committed in src/), `options/<name>/`
+(C).
 
 (With the before files in src/ the game reference test fails, since VERSION says 23; that is
 expected while testing.) To measure both side by side (energy against turn and mixed
@@ -164,20 +171,41 @@ lineups; the base card is before/'s whatever src/ holds; about 4 minutes on the 
 
 ```
 PYTHONPATH=$PWD/src:$PWD uv run --no-sync python docs/rewrite/sections/balance-final/sweep.py \
-    --mode deathmatch --candidates docs/rewrite/sections/balance-final/candidates/final.json \
-    --out /tmp/final-check.jsonl --games 1024 --mixed-games 256 --variants 3
+    --mode deathmatch --candidates docs/rewrite/sections/balance-final/candidates/options.json \
+    --out /tmp/final-check.jsonl --games 1024 --mixed-games 256 --variants 4
 uv run --no-sync python docs/rewrite/sections/balance-final/table.py /tmp/final-check.jsonl
 ```
 
 `--mode elimination` / `--mode frontline` and `--ships N` for the other conditions. The
 records behind every table here are in `data/` (`table.py` prints them).
 
+## Option C: the flat card (found after the after was committed; not in src/)
+
+Jujak sustained turn x0.91 (0.7647 -> 0.6958), Yongma sustained turn x1.08 (0.5930 -> 0.6404),
+Yongma max shield x0.6 (141.9 -> 85.2, 1.07 times Jujak's 79.7). Every value inside the real
+range (turn 0.503-0.785; shield ratio inside 1.44, which the before's 1.78 is not). Deathmatch,
+512 games, two seeds (rounds 15 and 16):
+
+| | 2v2 | 5v5 | 10v10 |
+|---|---|---|---|
+| before | 15-17% | 20-21% | 43-44% |
+| A (v23) | 29% | 48-52% | 71-72% |
+| **C** | **50.4 / 48.5%** | **54.4 / 60.2%** | **62.6 / 61.8%** |
+
+C is the first card within about 13 points from 2v2 to 10v10, near even at every size. The
+cost: the archetypes move closer (Jujak out-turns Yongma by 1.09 instead of 1.29, and the
+shields are nearly equal; Yongma keeps its speed, climb, dive and 1.2x damage). It is a bigger
+change than "relatively similar"; it is for the author to fly. Its elimination and Frontline
+checks are running (progress.md). If C is chosen it would be v23's card instead of A (the
+reference re-recorded again).
+
 ## Open for the author
 
-1. The size spread (10v10 72%, 2v2 30% with the 5v5 at 48%): accept the 5v5-centred card, or
-   take a flatter pair if round 12 finds one (more Jujak turn with less Yongma shield, which
-   also brings the shield ratio toward the real spread).
+1. A (one handle, v23 on the branch: 5v5 even, 2v2 29%, 10v10 72%) or C (three handles,
+   flat over sizes, the archetypes closer). Rounds 17+ look for a flat card with smaller
+   changes (progress.md).
 2. The card or the controller: as the freeze review said, this is Imugi's balance. The
    trained agent's own Yongma-v-Jujak score after the first arm is the check that matters.
 3. The running-away elements stay off; if the author wants the energy fighter to extend,
    r3-041 is the measured doctrine (+3-5 points, stronger on mixed lineups).
+4. Frontline stays Jujak-favoured with A (5v5 31%, 10v10 46%).

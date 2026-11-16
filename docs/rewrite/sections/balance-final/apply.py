@@ -76,8 +76,9 @@ def main() -> None:
             record["source"] = SOURCE
             print(f"{key} doctrine: {sorted(entry[side])}")
     imugi_doctrine.DOCTRINES.write_text(json.dumps(stored, indent=1) + "\n")
-    after = HERE / "after"
-    after.mkdir(exist_ok=True)
+    # after/ holds the v23 after (A); any other candidate goes to options/<name>/
+    after = HERE / "after" if args.candidate == "jt0.93" else HERE / "options" / args.candidate
+    after.mkdir(parents=True, exist_ok=True)
     for name, path in files().items():
         shutil.copyfile(path, after / name)
     print(f"wrote the candidate into src/ and after/ ({args.candidate})")
