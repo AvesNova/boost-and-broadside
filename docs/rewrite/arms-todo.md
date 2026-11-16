@@ -355,3 +355,8 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
 - The author's W&B key lives on the laptop at `~/.config/bnb/wandb.key` (600) and is copied to each box as `/workspace/secrets.env` (600, `export WANDB_API_KEY=...`), which env.sh sources (box/setup.sh writes that line). Never committed: `.gitignore` covers `secrets.env` and `*.key`. `box/dry_run.sh` passes `--wandb` and refuses to launch without a key.
 - **After the runs (checklist):** delete `/workspace/secrets.env` on every box, and the author revokes the key in W&B.
 - dry-v24-s1 itself launched without W&B; it is mirrored from the laptop (`bnb runs mirror`, unit `bnb-wandb-mirror`).
+
+## 2026-11-17 08:30 KST: dry run 3 on game v26 (author's decision)
+
+- The author stopped dry run 2 (dry-v25-s1, card Y0.42-J1.22) during BC at about 65M steps and restarted on game v26: v24's card (Y0.46: Yongma max_shield 352.6, Jujak 498.5) with the committed-turn Imugi and every fix (deathmatch ticket rule in training 7fd61320, play-shell device fixes, stagger tallies). Branch feat/v26-imugi-y046, run dry-v26-s1.
+- The re-trim (retrim-v25) stays on record; on this card the new Imugi measures Yongma kill share DM 2v2 0.466, DM 5v5 0.514, Elim 5v5 0.592, FL 5v5 0.507.
