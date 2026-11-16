@@ -477,3 +477,7 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
   model tests whose team deathmatch fixtures needed hidden ships: fixed with an explicit
   `fog_share=1.0` (160 passed). Smoke: real_scale_all_modes PPO and BC pools give deathmatch 0/981
   fogged, elimination 981/981, Frontline 1110/1110. Next: rerun the rest for the other 15 failures.
+- 22:47 the rest of the fast suite: 2500 passed, 7 failed; fixed 5 (boundary 216 expectation, ghost test
+  fogged, arena window 30 s since the clear arena's first kill is later, a docstring, formatting).
+  Two fail at the base a3e7b09a too and are left: test_layering (set_num_threads in league/design.py,
+  models/initialise.py) and test_stacked[False] (1/900 elements over 1e-4). Next: the launch.
