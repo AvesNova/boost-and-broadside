@@ -213,3 +213,19 @@ feat/imugi-boundary). Power profile `performance`.
   waited too long were moved to the laptop (renamed `.moved` in the queue).
 - Fight shape holds in every option: Bonghwang's mirror 0.39-0.45 scissors (Yongma mirror
   0.16-0.21), its cross fights 0.18-0.24 (the pair 0.09-0.13); mutual head-on kills 3-4%.
+
+## 12:25 slope rounds; small fights under E
+
+- Slope round (laptop) and the 24-card slope2 grid (box workers, 2v2 and 10v10; 5v5 queued
+  there). Best flat cards by the worst distance from 0.5 over sizes (`retrim.py pick`):
+  - **C': Bt66 d1.15/s85: 2v2 0.43 / 0.46, 5v5 0.51 / 0.52, 10v10 0.49 / 0.55**; Bt68
+    d1.0/s85: 2v2 0.45 / 0.48, 10v10 0.53 / 0.56 (5v5 pending).
+  - E: every card is weak at 2v2 against E's Jujak (0.30-0.39) while level at 5v5 and 10v10;
+    best Bt70 d1.2/s85 0.39 / 0.42, 0.48 / 0.52, 0.56 / 0.51.
+- Sense variants under E (Bt70 d1.1/s90; 2v2 / 5v5 against Jujak): no sense 0.39 / 0.50,
+  Jujak's stored 0.37 / 0.49, two-circle against all 0.34 / 0.38, one-circle against all
+  0.13 / 0.25. The doctrine is not the 2v2 gap; the no-sense doctrine stays.
+- g 8 (the real maximum; Bonghwang had 7) for E and C' running (2v2, 5v5 laptop; 10v10 box):
+  the instantaneous turn is what a duel uses.
+- `retrim.py`: a grid of Bonghwang's three balance numbers against any pair's ship files and
+  the pick over sizes, so a later balance decision needs one grid, not a search.
