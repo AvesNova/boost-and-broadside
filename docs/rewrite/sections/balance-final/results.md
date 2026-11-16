@@ -163,7 +163,7 @@ git checkout -- src/bnb/game/ships/real-scale src/bnb/controllers/imugi_doctrine
 ```
 
 The files themselves: `before/` (v22), `after/` (A, as committed in src/), `options/<name>/`
-(C).
+(C, C', D, E: the ship files and doctrines each would put in src/).
 
 (With the before files in src/ the game reference test fails, since VERSION says 23; that is
 expected while testing.) To measure both side by side (energy against turn and mixed
