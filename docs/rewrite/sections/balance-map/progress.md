@@ -198,3 +198,19 @@ training data, as do the pilot's). The new design (`bench/balance_study.py`):
   resumes (the Sobol index continues; unfinished batches are submitted again).
 - Bounded by the clock (00:00 KST for the data), then the models, then picks and
   confirmation (2048 games, all 8 conditions, pairs against each other).
+
+## 20:20-20:57 the study's first launch failed (host memory); on hold
+
+- Worker (8 loops in one process, 16384 environments, 512 variants): deathmatch 1v1 compiled
+  in 995 s (CPU contention with the solver pool), RSS 10.7 GB after one loop and 12.8 GB
+  during the second compile. The driver solved 1024 Sobol points in 1234 s at nice 19
+  (527 solved, 410 under the low-speed floor, 87 no convergence: uniform Sobol over the
+  box is 51% infeasible), measured the first table's characteristics in 82 s and queued
+  b0000 (480 cards + 32 card-against-card).
+- Didn't: about 20:50 the solver pool broke (BrokenProcessPool: a process killed, likely the
+  host OOM killer: 30 GB, the worker at ~14 GB plus 8 solver processes) and the worker died
+  too. No study games were played; the 1024 solved points are on disk (cards.jsonl).
+- Lessons: 8 compiled loops do not fit in one process beside the solver on this box; compile
+  with the solver stopped (uncontended a compile is about 5-6 min), then hold at most 4 loops
+  a process (two phases over the same batches), or fewer variants.
+- On hold by the coordinator (the author may give the 5090 to tonight's training dry run).
