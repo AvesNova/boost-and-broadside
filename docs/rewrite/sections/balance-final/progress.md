@@ -327,3 +327,32 @@ solved, shield x0.6-0.7).
   queued in each: the options at 2048 games, then grid1 at 384. To add work: drop a job file
   in the directory. The pattern fits any `bench.game_loop.Loop` bench (third.py too): build
   the loop once, then call the per-batch function per job.
+
+## 11:05 (new agent) Frontline 10v10: what drives it; probe1
+
+- **Win rate follows the kill share in every mode**; what differs is the kill share each
+  mode gives a card. Fitting score = Phi(slope x (kill share - 0.5)) over grid1: the 50%
+  point sits at kill share 0.500-0.505 in deathmatch and Frontline at every size, 0.52-0.53
+  in elimination 5v5. The slopes (per unit kill share): dm2 6, el5 5, FL5 11, FL10 16,
+  dm5 18, dm10 34. So 55/45 is a kill-share band of about ±2.1 points at dm2, ±2.4 el5,
+  ±1.2 FL5, ±0.8 FL10, ±0.7 dm5, ±0.4 dm10. Frontline 10v10 is *not* steeper per kill
+  than deathmatch 10v10 (16 against 34): its problem is the kill share itself.
+- Kill share per card (grid1, 60 cards) regressed on the log factors (Jujak turn, Yongma
+  turn, Yongma shield, Yongma damage): the shield and damage move every mode about alike
+  (10-20 kill points per log unit), but the turn moves the small and dispersed fights far
+  more (per log unit of Yongma turn: dm2 169, el5 174, FL5 117, FL10 99, dm5 76), and the
+  modes start from different Yongma shares (dm2 31, el5 36, FL5 39, FL10 44, dm5 46 at the
+  before card). Each mode's line crosses dm5's at a turn gap T = log(J ratio) + log(Y ratio):
+  dm2 0.16, FL5 0.15, el5 0.13 (at its 52.8 target), but **FL10 at 0.075**. E has
+  T = 0.165 (flat over dm2/dm5/dm10, FL5, el5), A has T = 0.073 (flat over dm5 and FL10:
+  fin3 FL10 at 512 games: A 52.2, E 69.6, C' 72.6, before 16.1). So with turn and
+  shield/damage only, FL10 and the small modes want different turn gaps: Frontline 10v10
+  carries about 2.5 kill points of extra Yongma advantage at E's turn gap, and the two
+  knob kinds cannot remove it (shield and damage move FL10 like dm5).
+- So a third kind of knob is needed, one that moves FL10 differently from the rest.
+  **probe1** (`candidates/make_probe.py` -> `candidates/probe1.json`): 24 raw card-field
+  perturbations around E (Yongma shield, recharge rate and delay, vision, power, zero-lift
+  drag, damage, gun range, muzzle speed, hit radius, explosive share, store, spawn energy,
+  shot cost, max lift, induced drag; Jujak shield, damage, vision, power, recharge, range),
+  512 games each in FL10, FL5, dm5, el5, dm10, el10 on the laptop and dm2 at 1024 on the box
+  (worker queue; grid1's dm2 job held in queue/deathmatch-2/held, the laptop has it).
