@@ -6,6 +6,8 @@ the network). The video itself needs an OpenGL context: its test is a gpu test."
 import dataclasses
 import json
 import pathlib
+import shutil
+import subprocess
 
 import numpy as np
 import pytest
@@ -198,3 +200,84 @@ def test_a_video_of_a_frontline_policy_plays_deathmatch(tmp_path, monkeypatch):
     assert path.read_bytes()[4:8] == b"ftyp"  # an MP4
     assert numbers["frames"] == 10 and numbers["bytes"] == path.stat().st_size
     assert numbers["game_seconds"] == pytest.approx(4.0, abs=0.1)  # 1 s at 4x
+
+
+def test_a_video_at_an_uneven_lineup_benches_each_sides_extra_slots():
+    """`VideoConfig.ships` (the policy's, Imugi's) grows the preset's teams to the larger
+    count on the preset's arena and benches the rest; the opponent is Imugi by default."""
+    config = video.VideoConfig(ships=(5, 7))
+    setup = video.setup_of(pathlib.Path("policy"), "elimination", config)
+    preset = api.PRESETS["elimination"]
+    assert setup.config.ships_per_team == 7
+    assert setup.config.arena_radius == preset.arena_radius
+    assert setup.active[video.POLICY_TEAM] == 5 and setup.active[1 - video.POLICY_TEAM] == 7
+    assert setup.sides[1 - video.POLICY_TEAM].controller == "imugi"
+    assert video.setup_of(pathlib.Path("p"), "elimination", video.VideoConfig()).active is None
+
+
+def test_the_tally_keeps_the_first_games_end_its_ships_left_and_their_shields():
+    tally = video.Tally(np.array([0, 0, 0, 1, 1]))
+    alive = np.array([True, True, False, False, False])
+    tally.finish(alive, np.array([1.0, 0.5, 0.0, 0.0, 0.0]), 61.234)
+    tally.finish(~alive, np.ones(5), 99.0)  # a later game's end changes nothing
+    tally.count([MatchEvent(1, "end", team=0)])
+    summary = tally.summary()
+    assert summary["first_result"] == "win" and summary["ended_at"] == 61.23
+    assert (summary["policy_left"], summary["scripted_left"]) == (2, 0)
+    assert summary["policy_shield_left"] == 0.75 and summary["scripted_shield_left"] == 0.0
+
+
+def _game(name: str, result: str = "win", ended: float = 70.0, left: int = 3, **more) -> dict:
+    return dict(
+        name=name,
+        video=f"{name}.mp4",
+        first_result=result,
+        ended_at=ended,
+        policy_left=left,
+        policy_losses=more.get("losses", 2),
+        policy_shield_left=more.get("shield", 0.6),
+    )
+
+
+def test_the_hero_clip_is_a_decisive_win_nearest_a_middle_game():
+    """Losses, blowouts (no ship lost), last-hit finishes, too short or long games and
+    narrow wins are passed over; among the rest the nearest a middle game is chosen; with
+    none, the win missing the fewest rules, said so."""
+    from bnb.figures import hero
+
+    config = hero.HeroConfig(ships=(5, 6))
+    games = [
+        _game("lost", result="loss"),
+        _game("blowout", losses=0, left=5),
+        _game("last_hit", shield=0.05),
+        _game("short", ended=12.0),
+        _game("narrow", left=1),
+        _game("good", ended=100.0, left=2),
+        _game("better", ended=80.0, left=3),
+    ]
+    chosen, reason = hero.pick(games, config)
+    assert chosen["name"] == "better" and "decisive" in reason
+    assert hero.decisive(games[1], config) == ["no ship lost"]
+    chosen, reason = hero.pick(games[:5], config)
+    assert chosen["name"] in ("blowout", "last_hit", "short", "narrow") and "no decisive" in reason
+    assert hero.pick(games[:1], config)[0] is None
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+def test_the_hero_gif_fits_its_length_and_size_with_a_poster(tmp_path):
+    """A clip longer than the GIF's seconds plays faster to fit; the GIF is under its
+    bytes and its poster frame is written beside it."""
+    from bnb.figures import hero
+
+    clip = tmp_path / "clip.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i"]
+        + ["testsrc=duration=4:size=320x180:rate=30", "-pix_fmt", "yuv420p", str(clip)],
+        check=True,
+    )
+    config = hero.HeroConfig(gif_seconds=2.0, gif_width=160, gif_rate=10, gif_bytes=2_000_000)
+    numbers = hero.gif(clip, tmp_path / "out" / "hero.gif", config)
+    assert numbers["speed"] == pytest.approx(2.0, rel=0.05)
+    assert numbers["bytes"] <= config.gif_bytes
+    assert (tmp_path / "out" / "hero.gif").read_bytes()[:3] == b"GIF"
+    assert (tmp_path / "out" / "hero.png").read_bytes()[:4] == b"\x89PNG"
