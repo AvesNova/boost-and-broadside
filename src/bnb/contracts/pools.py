@@ -182,6 +182,9 @@ class Pool:
         (mixed spec 1); None takes the GameConfig's value, and for the clocks then the
         mode's default. Every environment of the pool shares them. The sizes (ships, fields) are the
         GameConfig's, shared by the whole batch.
+    kills_per_ship, ticket_exponent, ticket_rounding: the pool's team deathmatch tickets
+        (`GameConfig`); None takes the GameConfig's. A mixed batch's GameConfig is its first
+        game's, so its deathmatch pools carry the deathmatch preset's own ticket rule.
     arena_scale: map-size sampling (`ArenaScale`): each episode's arena radius drawn about
         the pool's; None plays the pool's radius every episode (evaluation, ratings, play).
     active_fields: field-count sampling (`bnb.contracts.ActiveFields`): each episode plays a
@@ -201,6 +204,9 @@ class Pool:
     spawn_groups: tuple[int, ...] | None = None
     episode_seconds: float | None = None
     respawn_seconds: float | None = None
+    kills_per_ship: int | None = None
+    ticket_exponent: float | None = None
+    ticket_rounding: int | None = None
     arena_scale: ArenaScale | None = None
     active_fields: ActiveFields | None = None
     team_sizes: TeamSizes | None = None
@@ -212,6 +218,9 @@ GAME_FIELDS = (
     "spawn_groups",
     "episode_seconds",
     "respawn_seconds",
+    "kills_per_ship",
+    "ticket_exponent",
+    "ticket_rounding",
     "active_fields",
 )
 

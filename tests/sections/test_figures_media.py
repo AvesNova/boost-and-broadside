@@ -33,6 +33,21 @@ def test_a_policy_of_one_mode_plays_another_only_with_any_mode(tmp_path):
     assert "num_fields" in mismatch(record, fewer, api.rules_of(fewer), types_, any_mode=True)
 
 
+def test_a_mixed_policy_plays_the_deathmatch_tickets_at_any_team_size(tmp_path):
+    """The media's games: a real-scale mixed policy (recording frontline's game) plays the
+    deathmatch preset's tickets, 1v1 as well as 5v5, with any_mode only."""
+    from bnb.league.crossover import sized_game
+
+    policy = tiny_policy(tmp_path / "policy", PRESETS["real_scale_frontline"])
+    record = read_policy(policy).raw
+    types_ = api.ship_types()  # the tiny policy's card
+    for size in (5, 1):
+        game = sized_game(PRESETS["real_scale_deathmatch"], size)
+        rules = api.rules_of(game)
+        assert "ticket_exponent" in mismatch(record, game, rules, types_)
+        assert mismatch(record, game, rules, types_, any_mode=True) is None
+
+
 def test_the_tally_credits_kills_to_the_killer_s_team_and_counts_every_loss():
     tally = video.Tally(np.array([0, 0, 1, 1]))
     tally.count(

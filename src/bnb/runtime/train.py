@@ -103,8 +103,9 @@ def mixed(
 ) -> tuple[GameConfig, tuple[Pool, ...]]:
     """A mixed batch: the shared config (`base`, by default the first game's) and every game
     of the mix (a preset name and its share) crossed with every pool of the lineup, game by
-    game, so each game's environments are one contiguous slice. Pool "frontline/chaser"
-    takes the frontline share of the chaser share."""
+    game, so each game's environments are one contiguous slice, with that game's own
+    settings (`GAME_FIELDS`: its mode, map, clocks, spawn groups and tickets). Pool
+    "frontline/chaser" takes the frontline share of the chaser share."""
     base_name = "the run's game" if base is not None else mix[0][0]
     base = base if base is not None else PRESETS[mix[0][0]]
     pools = []
@@ -127,6 +128,9 @@ def mixed(
                 spawn_groups=game.spawn_groups,
                 episode_seconds=game.episode_seconds,
                 respawn_seconds=game.respawn_seconds,
+                kills_per_ship=game.kills_per_ship,
+                ticket_exponent=game.ticket_exponent,
+                ticket_rounding=game.ticket_rounding,
             )
             for pool in lineup
         )
