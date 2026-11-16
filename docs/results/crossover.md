@@ -11,13 +11,15 @@ own, and at what point in training does it first win while outnumbered?
 
 ## Win rate against training steps
 
-{{figure: docs/results/win_rate_fan.png | Win rate against Imugi over training steps, one line per lineup from 5 against 5 to 5 against 10, one panel per mode}}
+{{figure: docs/results/win_rate_fan.png | Win rate against Imugi over training steps, one line per ratio of Imugi's ships to ours (1, 1.2, 1.6 and 2), one panel per mode}}
 
-Each line is one ratio of ships, the policy's 5 against Imugi's 5, 6, 8 or 10. At every
-training snapshot the crossover's logistic fit is read at that ratio; the band is the fit's
-95% interval, and the open points are the games played at that ratio. The dashed line
-marks the hand-off from behaviour cloning to reinforcement learning. A line above one half
-at 5 against 8 means the policy wins more often than not while outnumbered 8 to 5.
+Each line is one ratio of ships, Imugi's 1, 1.2, 1.6 or 2 per one of the policy's
+(written 5 against 5, 6, 8 and 10 below). The games are played with 20 ships on the larger
+side ([How it is measured](evaluation.md#the-crossover)), and at every training snapshot
+the crossover's logistic fit is read at each ratio; the band is the fit's 95% interval, and
+the open points are the games played at that ratio. The dashed line marks the hand-off
+from behaviour cloning to reinforcement learning. A line above one half at 5 against 8
+means the policy wins more often than not while outnumbered 8 to 5.
 
 The last snapshot, by mode and lineup (win rate, with its 95% interval):
 

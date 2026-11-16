@@ -107,7 +107,8 @@ def draw(
         labelled = []
         for count, colour in zip(opponent_counts, colours, strict=True):
             line = held["lines"][count]
-            label = f"{policy_count}v{count}"
+            label = f"{policy_count}v{count}"  # the value names' lineup
+            shown = f"x{common.slug(count / policy_count).replace('_', '.')}"  # Imugi's ratio
             if line:
                 steps = [point[0] / 1e6 for point in line]
                 axis.fill_between(
@@ -119,9 +120,9 @@ def draw(
                     linewidth=0,
                 )
                 axis.plot(
-                    steps, [point[1] for point in line], color=colour, linewidth=1.6, label=label
+                    steps, [point[1] for point in line], color=colour, linewidth=1.6, label=shown
                 )
-                labelled.append((label, steps, [point[1] for point in line], colour))
+                labelled.append((shown, steps, [point[1] for point in line], colour))
                 last = line[-1]
                 key = f"fan_{common.slug(mode)}_{label}"
                 values[f"{key}_win_rate"] = last[1]
@@ -146,8 +147,8 @@ def draw(
     axes.flat[0].set_ylabel("win rate against Imugi", fontsize=8)
     common.title(
         figure,
-        f"Win rate of {policy_count} ships against Imugi's N (lines: the fit, 95% band; "
-        "points: games played)",
+        "Win rate against Imugi with xN its ships per one of ours (lines: the fit, 95% band; "
+        "points: games played at that ratio)",
     )
     figure.tight_layout(rect=(0, 0, 0.98, 1))
     written = common.save(figure, out, name, [str(directory)], values, formats)

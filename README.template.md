@@ -12,7 +12,7 @@ it, on one GPU.
 
 {{pending: headline | The headline, written after the results: how many of Imugi's ships the trained policy beats per one of its own, in which modes, after how many environment steps.}}
 
-{{figure: docs/results/win_rate_fan.png | Win rate against Imugi over training steps, one line per lineup from 5 against 5 to 5 against 10, one panel per mode}}
+{{figure: docs/results/win_rate_fan.png | Win rate against Imugi over training steps, one line per ratio of Imugi's ships to ours (1, 1.2, 1.6 and 2), one panel per mode}}
 
 *Each line is the trained policy's win rate against Imugi at one ratio of ships, from a
 logistic fit of every game played at that training snapshot; the band is the fit's 95%

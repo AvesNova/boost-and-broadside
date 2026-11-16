@@ -14,7 +14,7 @@ it, on one GPU.
 
 > **Pending (headline).** The headline, written after the results: how many of Imugi's ships the trained policy beats per one of its own, in which modes, after how many environment steps.
 
-> **Figure to come** (docs/results/win_rate_fan.png): Win rate against Imugi over training steps, one line per lineup from 5 against 5 to 5 against 10, one panel per mode
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/results/win_rate_fan_dark.png"><img alt="Win rate against Imugi over training steps, one line per ratio of Imugi's ships to ours (1, 1.2, 1.6 and 2), one panel per mode" src="docs/results/win_rate_fan.png"></picture>
 
 *Each line is the trained policy's win rate against Imugi at one ratio of ships, from a
 logistic fit of every game played at that training snapshot; the band is the fit's 95%
@@ -25,9 +25,9 @@ two sides win equally often:
 
 | Mode | Break-even ratio (Imugi's ships per one of ours) | At steps |
 |---|---|---|
-| Frontline | **⟨crossover_ratio_frontline⟩** ± **⟨crossover_ratio_frontline_stderr⟩** | **⟨crossover_ratio_frontline_steps⟩** |
-| Deathmatch | **⟨crossover_ratio_deathmatch⟩** ± **⟨crossover_ratio_deathmatch_stderr⟩** | **⟨crossover_ratio_deathmatch_steps⟩** |
-| Elimination | **⟨crossover_ratio_elimination⟩** ± **⟨crossover_ratio_elimination_stderr⟩** | **⟨crossover_ratio_elimination_steps⟩** |
+| Frontline | 0.71 ± 0.06 | 199,229,440 |
+| Deathmatch | 0.98 ± 0.06 | 199,229,440 |
+| Elimination | 1.12 ± 0.10 | 199,229,440 |
 
 How the games are played, fitted and counted, and what the numbers do not show, is on the
 [evaluation page](docs/results/evaluation.md).
@@ -77,7 +77,7 @@ on one GPU. The same code runs on a laptop RTX 4070 (8 GB) and on an RTX 5090.
 **Strength over training.** The policy's rating against Imugi in each mode, through
 behaviour cloning and reinforcement learning.
 
-> **Figure to come** (docs/results/elo_over_training.png): Elo against environment steps, one line per mode, Imugi at 1000, the hand-off from behaviour cloning to reinforcement learning marked
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/results/elo_over_training_dark.png"><img alt="Elo against environment steps, one line per mode, Imugi at 1000, the hand-off from behaviour cloning to reinforcement learning marked" src="docs/results/elo_over_training.png"></picture>
 
 > **Pending (training_summary).** One or two sentences: the final Elo per mode (elo_deathmatch_final and the others) and where the hand-off from cloning to reinforcement learning shows on the curve.
 

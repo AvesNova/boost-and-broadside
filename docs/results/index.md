@@ -9,7 +9,7 @@ against Imugi, the scripted agent, and against its own earlier configurations.
 
 {{pending: results_overview | Two or three sentences: the champion's run and steps, its break-even ratio per mode, and its Elo per mode, written after the results.}}
 
-{{figure: docs/results/win_rate_fan.png | Win rate against Imugi over training steps, one line per lineup from 5 against 5 to 5 against 10, one panel per mode}}
+{{figure: docs/results/win_rate_fan.png | Win rate against Imugi over training steps, one line per ratio of Imugi's ships to ours (1, 1.2, 1.6 and 2), one panel per mode}}
 
 ## The pages
 
