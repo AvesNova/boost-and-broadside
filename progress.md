@@ -497,3 +497,9 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 22:45 Worked: layer detail diagrams (vertical + horizontal), render.py (stamps a source hash), staleness test, writing-docs "Diagrams" section, figures on the Yemong page.
 - Didn't: strict mkdocs build has 3 pre-existing anchor warnings (imugi.md, figures.md), none from this branch.
 - Open: the trained model builds temporal first with 2 spatial sublayers per block; the diagrams draw spatial then temporal as asked.
+
+## 2026-11-17 README preview (branch review/readme-preview, worktree bnb-rpreview)
+- Tried: merged docs/white-paper + feat/results-charts + docs/architecture-diagram; ran all six `bnb figures results` charts on the synthetic inputs into docs/results with `--values` on an example file; Elo, throughput, media and champion/compute numbers faked (review/readme-preview/fake_values.json).
+- Worked: every value name the pages quote is written by a chart or is one of the known no-generator names (Elo finals, throughput, champion, compute); placeholders.py gained BNB_RESULTS_VALUES and `readme --out` for previews.
+- Fixed: break-even `--chain r-rl` (a run name) silently drew an empty chart with no values; it now takes a run or chain name and fails on an unknown chain.
+- Open: no generator for elo_over_training.png (ladder.draw takes pool rows, not a values file), throughput.png, the media GIFs, or the elo/throughput/champion/compute values.
