@@ -27,7 +27,8 @@ for k, name in enumerate(("Yongma", "Jujak")):
     speed = (fractions * corner)[None, None].expand(1, 2, -1).clone()
     energy = types.max_energy[None, :, None].expand(1, 2, len(fractions)).clone()
     zeros = torch.zeros_like(speed)
-    flown = trajectory(rules, batched, speed, energy, zeros, zeros, torch.ones_like(speed), zeros, ticks)
+    stick = torch.ones_like(speed)
+    flown = trajectory(rules, batched, speed, energy, zeros, zeros, stick, zeros, ticks)
     path = flown["path"][:, 0, k]  # (ticks + 1, grid)
     rate = (path[1:] - path[:-1]) / rules.tick_length
     peak = rate.amax(0)
@@ -39,5 +40,6 @@ for k, name in enumerate(("Yongma", "Jujak")):
         frequency = max(omega * f, rules.flight.nose_frequency_floor)
         print(
             f"  v/vc {f:.2f}: peak rate {float(peak[i]):.3f} rad/s, t90 {t90:.3f} s, "
-            f"t90 x nose frequency {t90 * frequency:.2f}, turned by t90 {float(path[int(reached[i]), i]):.3f} rad"
+            f"t90 x nose frequency {t90 * frequency:.2f}, "
+            f"turned by t90 {float(path[int(reached[i]), i]):.3f} rad"
         )

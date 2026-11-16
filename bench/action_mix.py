@@ -34,7 +34,10 @@ def install():
 
 
 class MixLoop(gl.Loop):
+    """The game loop with the living ships' stick, power and shoot counts per kind."""
+
     def start(self, groups):
+        """Start the loop and zero the counts."""
         out = super().start(groups)
         z = dict(device=self.device)
         self.stick = torch.zeros((2, len(STICKS)), **z)
@@ -43,6 +46,7 @@ class MixLoop(gl.Loop):
         return out
 
     def tick(self, state, observation, carry, tally):
+        """One tick, then count the actions of the ships alive before it."""
         result = super().tick(state, observation, carry, tally)
         action = STASH["action"]
         alive = api.display(STASH["state_before"])["ships.alive"].bool()
@@ -60,6 +64,7 @@ class MixLoop(gl.Loop):
 
 
 def shares(table: torch.Tensor, names) -> dict:
+    """Each kind's counts (2, C) as shares by name: {kind: {name: share}}."""
     return {
         kind: dict(zip(names, (row / row.sum()).tolist(), strict=True))
         for kind, row in zip(("Yongma", "Jujak"), table.cpu(), strict=True)
@@ -67,6 +72,8 @@ def shares(table: torch.Tensor, names) -> dict:
 
 
 def measure(condition_name: str, games: int, seed: int = 0) -> dict:
+    """The condition's "energy v turn" games on the set's own card: the shares and the
+    balance numbers."""
     condition = bs.CONDITIONS[condition_name]
     loop = bs.balance_loop(condition, games, 1, bs.BALANCE, "cuda", compiled=False)
     loop.__class__ = MixLoop
@@ -92,6 +99,7 @@ def measure(condition_name: str, games: int, seed: int = 0) -> dict:
 
 
 def main():
+    """The command line (the module docstring)."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--condition", default="deathmatch-5v5", choices=bs.CONDITIONS)
     parser.add_argument("--games", type=int, default=128)

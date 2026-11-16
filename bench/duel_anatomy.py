@@ -31,7 +31,10 @@ LOOSE_CONE = math.radians(15.0)
 
 
 class DuelLoop(bd.DiagLoop):
+    """The boundary-death loop with the duel's tallies per kind."""
+
     def start(self, groups):
+        """Start the loop and zero the duel tallies."""
         out = super().start(groups)
         B, N = self.B, self.N
         z = dict(device=self.device)
@@ -53,6 +56,7 @@ class DuelLoop(bd.DiagLoop):
         return out
 
     def tick(self, state, observation, carry, tally):
+        """One tick, then the duel tallies."""
         self.tally_ref = tally
         result = super().tick(state, observation, carry, tally)
         B, S, N = self.B, self.S, self.N
@@ -122,6 +126,7 @@ class DuelLoop(bd.DiagLoop):
 
 
 def install_extra():
+    """Wrap `api.resolve` to keep the state before it and the action."""
     original = api.resolve
 
     def resolve(*args, **kwargs):
@@ -133,6 +138,7 @@ def install_extra():
 
 
 def main():
+    """The command line (the module docstring)."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--entry", default="base")
     parser.add_argument(

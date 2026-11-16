@@ -39,7 +39,10 @@ HELD = 1.0  # s
 
 
 class FightLoop(da.DuelLoop):
+    """The duel loop with the turning fight's tallies and the action counts per kind."""
+
     def start(self, groups):
+        """Start the loop and zero the fight tallies."""
         out = super().start(groups)
         B, N = self.B, self.N
         z = dict(device=self.device)
@@ -63,6 +66,7 @@ class FightLoop(da.DuelLoop):
         return out
 
     def tick(self, state, observation, carry, tally):
+        """One tick, then the turn senses, the post-merge reversals and the actions."""
         result = super().tick(state, observation, carry, tally)
         new_tally = result[3]
         f, dt = self.f, self.rules.tick_length
@@ -122,6 +126,7 @@ class FightLoop(da.DuelLoop):
 
 
 def main():
+    """The command line (the module docstring)."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--games", type=int, default=128)
     parser.add_argument("--seed", type=int, default=0)
