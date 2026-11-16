@@ -112,10 +112,6 @@ def _analytics() -> analytics.Analytics:
 
 def test_the_rollout_series_match_a_hand_computed_shard():
     out = metrics.read(_analytics().shard(_stored()))
-    # results per pool
-    assert out["episode/wins/frontline/self_play"] == 1
-    assert out["episode/draws/deathmatch/league"] == 1
-    assert out["episode/losses/frontline/self_play"] == 0
     # reward per ship and second: level 0 in pool 0 is (2 - 1) / 2 ships / 3 steps / 0.5 s
     assert out["reward/rate/damage_offence/frontline/self_play"] == pytest.approx(1.0 / 2 / 3 / 0.5)
     assert out["reward/rate/damage_defence/deathmatch/league"] == pytest.approx(3.0 / 2 / 3 / 0.5)
@@ -137,6 +133,14 @@ def test_the_rollout_series_match_a_hand_computed_shard():
     # (2 -> 2) does not: 2 switches of 5 pairs
     assert out["policy/switch_rate/power"] == pytest.approx(2 / 5)
     assert out["policy/switch_rate/shoot"] == 0.0
+
+
+def test_the_results_come_from_the_rollouts_per_view_sums():
+    sums = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])  # view 0 won, view 1 drew
+    out = metrics.read(_analytics().results(sums))
+    assert out["episode/wins/frontline/self_play"] == 1
+    assert out["episode/draws/deathmatch/league"] == 1
+    assert out["episode/losses/frontline/self_play"] == 0
 
 
 def test_the_episode_series_come_from_the_rollouts_sums():
@@ -497,11 +501,11 @@ def test_an_update_of_several_shards_counts_each_shards_episodes_once(global_gen
 
     trainer = Trainer(tiny_train_config(shards=2, updates=1), CPU)
     row = trainer.update()
-    store = trainer.rollout.store
-    done = sum(store.shard(("done",), shard)["done"].sum() for shard in range(2))
-    results = sum(
-        row[f"episode/{name}/{pool}"]
-        for name in ("wins", "draws", "losses")
-        for pool in trainer.pool_names
-    )
-    assert results == int(done)
+    lineup = trainer.rollout.lineup
+    for index, pool in enumerate(trainer.pool_names):
+        views = int((trainer.learner_pool == index).sum())
+        if not views:
+            continue
+        results = sum(row[f"episode/{name}/{pool}"] for name in ("wins", "draws", "losses"))
+        # a game ends in each of its environment's learner views
+        assert results == row[f"episode/count/{pool}"] * views // lineup.sizes[index]

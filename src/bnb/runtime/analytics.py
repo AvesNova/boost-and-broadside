@@ -6,10 +6,15 @@ Per pool (a pool's name is its game and its opponent, "frontline/league", or the
 alone in a single-game lineup):
 - `episode/count`, `episode/length_seconds`, `episode/end/decided`, `episode/end/timeout`:
   the games that ended in the update, from the rollout's per-environment sums;
-- `episode/wins`, `episode/draws`, `episode/losses`: the learner views' results (a self-play
-  game ends in two views, a win in one and a loss in the other);
+- `episode/wins`, `episode/draws`, `episode/losses`: the learner views' results, from the
+  rollout's per-view sums over the same ticks (a self-play game ends in two views, a win
+  in one and a loss in the other, so its pool's results are twice its count);
 - `reward/rate/{level}`: the learner's reward per ship and second, per value level (each
   reward level's offence and defence, `bnb.contracts.VALUE_LEVELS`).
+The outcomes (results, episode counts, lengths and end shares, the per-episode sums, team
+sizes, the outcome ledger's scores) leave out each environment's first game when the
+rollout staggers its clocks: that game began part-way through (`Rollout`'s `staggered`) and
+leans to timeouts and mutual wipe-outs, so draws. Training reads it as any other game.
 Over the batch: `episode/alive_share`, `reward/level_share/{level}` (per value level), the
 learner's tokens
 by game and by opponent (`batch/token_share/mode/{mode}`, `.../opponent/{opponent}`), the
@@ -41,10 +46,12 @@ from bnb.contracts.series import Mean, Table
 from bnb.learn.rewards import REWARD_EVENTS, level_rewards
 
 # What the analytics read of a stored shard.
-NAMES = ("reward", "done", "result", "alive", "action")
+NAMES = ("reward", "done", "alive", "action")
 # The rollout's per-environment episode sums (`bnb.runtime.rollout.Rollout.episodes`):
 # episodes ended, ended at the time limit, and their lengths in ticks.
 EPISODE_COLUMNS = ("ends", "timeouts", "ticks")
+# The rollout's per-view result sums (`bnb.runtime.rollout.Rollout.take_results`).
+RESULT_COLUMNS = ("wins", "draws", "losses")
 FACTORS = (("power", NUM_POWER), ("stick", NUM_STICK), ("shoot", NUM_SHOOT))
 
 
@@ -164,6 +171,17 @@ class Analytics:
             out[f"episode/length_seconds/{pool}"] = Mean(ticks[index] * self.tick_length, count)
             out[f"episode/end/timeout/{pool}"] = Mean(timeouts[index], count)
             out[f"episode/end/decided/{pool}"] = Mean(count - timeouts[index], count)
+        return out
+
+    def results(self, sums: torch.Tensor) -> dict:
+        """Per pool with learner views, from the rollout's per-view sums (R,
+        RESULT_COLUMNS) over the update: the views' wins, draws and losses."""
+        columns = (self.member.transpose(0, 1) @ sums).unbind(-1)  # (slices,) each
+        out = {}
+        for index, pool in enumerate(self.slices):
+            if self.viewed[index]:
+                for name, column in zip(RESULT_COLUMNS, columns, strict=True):
+                    out[f"episode/{name}/{pool}"] = column[index].int()
         return out
 
     def team_size_series(self, sums: torch.Tensor, ships_per_team: int) -> dict:
@@ -323,7 +341,7 @@ class Analytics:
     def shard(self, stored: dict) -> dict:
         """The series of one shard (`stored`: the store's NAMES of it, (L, R, ...)), to be
         summed over the update's shards."""
-        reward, done, result = stored["reward"], stored["done"], stored["result"]
+        reward, done = stored["reward"], stored["done"]
         S = reward.shape[2]
         own_alive = stored["alive"][..., :S]
         member = self.member
@@ -333,18 +351,11 @@ class Analytics:
             """(L, R) summed over steps, then over each pool's views: one tensor per pool."""
             return list((values.sum(0) @ member).unbind())
 
-        columns = dict(
-            wins=per_pool((done & (result > 0)).float()),
-            draws=per_pool((done & (result == 0)).float()),
-            losses=per_pool((done & (result < 0)).float()),
-        )
         steps = per_pool(torch.ones_like(done, dtype=torch.float32))  # view-steps
         rates = (reward.mean(2).sum(0).transpose(0, 1) @ member).unbind(-1)  # (levels,) per pool
         for index, pool in enumerate(self.slices):
             if not self.viewed[index]:
                 continue
-            for name in ("wins", "draws", "losses"):
-                out[f"episode/{name}/{pool}"] = columns[name][index].int()
             for level, rate in zip(VALUE_LEVELS, rates[index].unbind(), strict=True):
                 out[f"reward/rate/{level}/{pool}"] = Mean(rate / self.tick_length, steps[index])
         tokens = own_alive.float().sum((0, 2))  # (R,) the learner's tokens per view
@@ -461,6 +472,14 @@ CALIBRATION_BINS = 10
 WIN, TIE, LOSS = 0, 1, 2
 
 
+def result_columns(ended: torch.Tensor, result: torch.Tensor) -> torch.Tensor:
+    """(R, RESULT_COLUMNS) one tick's results of the views: ended (R,) bool, the view's game
+    ended and is counted; result (R,) int, its result for the view's team."""
+    return torch.stack([ended & (result > 0), ended & (result == 0), ended & (result < 0)], -1).to(
+        torch.float32
+    )
+
+
 def blank_game(environments: int, ships: int, device) -> dict:
     """The running per-episode state of the games' sums: each ship's life so far (ticks),
     its reward in the episode per value level, and each environment's episode events."""
@@ -525,12 +544,15 @@ def resolve_tick(
     event_rewards: torch.Tensor,
     rows: torch.Tensor,
     tick_length: float,
+    counted: torch.Tensor | None = None,
 ) -> None:
     """Add one tick to the sums, in place. events: the tick's Events (sim order); reward
     (B, N, len(VALUE_LEVELS)) and event_rewards (B, N, len(REWARD_EVENTS)): the tick's, per
     ship;
     rows (B, N, columns): the privileged rows at the tick's start, in sim order (team 0's
-    view)."""
+    view). counted (B,) bool: the environment's episode counts in the per-episode sums
+    (the ends, results, lives, episode rewards, events and extremes; None: every one); the
+    per-tick sums count every tick, and the running state resets at every end."""
     alive = rows[..., SHIP["alive"]] > 0.5
     living = alive.float()
     hit = events.damage.sum(1)  # (B, N) raw hit damage per target
@@ -540,10 +562,12 @@ def resolve_tick(
     energy = rows[..., SHIP["energy"]]
     in_field = rows[..., SHIP["log_refractive_index"]].abs() > 1e-6
     done = events.done
-    ended = done.float()
+    tallied = done if counted is None else done & counted
+    ended = tallied.float()
     # lives: a ship's life ends at its death or with its episode
     life = game["life_ticks"] + living
     life_ends = events.died | (done[:, None] & alive)
+    lives_counted = life_ends if counted is None else life_ends & counted[:, None]
     episode_reward = game["episode_reward"] + reward
     ship_totals = episode_reward.sum(-1)  # (B, N)
     tick_events = torch.stack(
@@ -571,8 +595,8 @@ def resolve_tick(
         out_of_energy=((energy <= 0.0).float() * living).sum(1),
         in_field=(in_field.float() * living).sum(1),
         shield_restored=events.shield_restored.sum(1),
-        lives_ended=life_ends.float().sum(1),
-        life_seconds=torch.where(life_ends, life, 0.0).sum(1) * tick_length,
+        lives_ended=lives_counted.float().sum(1),
+        life_seconds=torch.where(lives_counted, life, 0.0).sum(1) * tick_length,
         ship_episodes=ended * reward.shape[1],
         team_0_wins=ended * (result > 0).float(),
         team_1_wins=ended * (result < 0).float(),
@@ -597,8 +621,8 @@ def resolve_tick(
             (by_enemy & (events.kill_aspect == index)).float().sum(1)
         )
     sums["resolve"].add_(torch.stack([columns[name] for name in RESOLVE_COLUMNS], -1))
-    low = torch.where(done, ship_totals.amin(1), math.inf)
-    high = torch.where(done, ship_totals.amax(1), -math.inf)
+    low = torch.where(tallied, ship_totals.amin(1), math.inf)
+    high = torch.where(tallied, ship_totals.amax(1), -math.inf)
     extremes = sums["extremes"]
     extremes.copy_(torch.stack([extremes[:, 0].minimum(low), extremes[:, 1].maximum(high)], -1))
     game["life_ticks"].copy_(torch.where(life_ends, 0.0, life))
@@ -710,14 +734,21 @@ def outcome_record(
 
 @torch.no_grad()
 def outcome_score(
-    ledger: dict, tables: dict, done: torch.Tensor, won: torch.Tensor, end_seconds: torch.Tensor
+    ledger: dict,
+    tables: dict,
+    done: torch.Tensor,
+    won: torch.Tensor,
+    end_seconds: torch.Tensor,
+    counted: torch.Tensor | None = None,
 ) -> None:
     """Score the ended views' ledgers (done (R,), won (R,) the view's team won, end_seconds
-    (R,) the episode's length) into the tables and clear them, in place. A block's
-    predictions lie at most a second from its centre."""
+    (R,) the episode's length) into the tables and clear them, in place; counted (R,) bool:
+    the view's episode is scored (None: every one; an uncounted one is cleared alone). A
+    block's predictions lie at most a second from its centre."""
     blocks, bins = ledger["blocks"], ledger["bins"]
-    w = (won & done).float()[:, None]  # (R, 1)
-    scored = done.float()[:, None]
+    tallied = done if counted is None else done & counted
+    w = (won & tallied).float()[:, None]  # (R, 1)
+    scored = tallied.float()[:, None]
     count, total, square = blocks.unbind(-1)  # (R, K)
     centre = torch.arange(blocks.shape[1], device=blocks.device, dtype=blocks.dtype) + 0.5
     to_end = end_seconds[:, None] - centre

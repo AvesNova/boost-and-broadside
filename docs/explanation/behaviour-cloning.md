@@ -193,7 +193,8 @@ Each update reports the BC KL, the labels' and the student's entropy, overall an
 pool (`bc/kl`{.plain}, `bc/kl_by_pool/<pool>`{.plain} and so on); the student's agreement
 with the labels' likeliest action per factor (`bc/agreement/<factor>`{.plain}); the
 explained variance per level; the auxiliary losses; the training games' score per
-opponent kind (`bc/score/<kind>`{.plain}); the lanes' games, scores and ratings
+opponent kind (`bc/score/<kind>`{.plain}, without each environment's first game, which
+the staggered clocks cut short); the lanes' games, scores and ratings
 (`lanes/score/<mode>/<player>_vs_scripted`{.plain}; `rating/live/<mode>`{.plain},
 `rating/average/<mode>`{.plain} for the exponential average as in reinforcement learning,
 and `rating/uniform_average/<mode>`{.plain}); and the stop's windows: the read average's

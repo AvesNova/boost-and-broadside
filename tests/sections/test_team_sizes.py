@@ -457,6 +457,9 @@ def test_bc_and_rl_train_on_drawn_sizes(objective):
         trainer = Trainer(config, CPU)
         assert trainer.model.mask_benched and trainer.model.mask_absent_fields
         assert "active" in trainer.rollout.carry
+        # the update's 8 ticks end only the staggered first games, which the logged series
+        # leave out: count them here, for the team-size series to read
+        trainer.rollout.carry["staggered"].zero_()
         metrics = trainer.update()
     assert int(trainer.rollout.carry["active"].min()) >= 1
     assert "team_size/larger/team_deathmatch" in metrics

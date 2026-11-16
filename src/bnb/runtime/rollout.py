@@ -97,7 +97,10 @@ class Rollout:
     """types: the ship card the games are played with (the carry keeps its own copy).
     shards: segments the store holds (an update consumes them); host_store: keep them in
     pinned host memory (on a CUDA device) rather than on the device; staggered: start each
-    environment's clock at a random tick of its episode (else every game starts fresh);
+    environment's clock at a random tick of its episode (else every game starts fresh); a
+    game a staggered clock cut short trains like any other but stays out of the logged
+    outcomes (the carry's `staggered`: results, episode counts and lengths, the per-episode
+    sums, team sizes and the outcome ledger's scores);
     extra_reads: observation parts the learner's records keep beyond what its controller
     reads (BC's teacher labels the stored observations); lookahead: ticks `run_lookahead`
     plays (a multiple of the graph's block); ship_type: (environments, N) int32, each ship's
@@ -394,6 +397,10 @@ class Rollout:
             },
             counters=torch.zeros(len(COUNTERS), dtype=torch.int64, device=device),
             episodes=torch.zeros((B, len(EPISODE_COLUMNS)), device=device),
+            # each environment's game began with a staggered clock (cut short): its end
+            # stays out of the logged outcomes (`_resolve`), and its reset clears the flag
+            staggered=clock > 0,
+            results=torch.zeros((views, len(analytics.RESULT_COLUMNS)), device=device),
             game=analytics.blank_game(B, self.ship_count, device),
             game_sums=analytics.blank_game_sums(B, device),
         )
@@ -552,6 +559,9 @@ class Rollout:
 
     def _resolve(self, carry: dict) -> None:
         active = carry.get("active")
+        # the logged outcomes count the games that began at their clock's start; a game a
+        # staggered clock cut short still trains (rewards, returns, labels, the league)
+        counted = ~carry["staggered"]
         next_active, next_field_count = self._team_sizes(carry["episode"] + 1)
         if "team_size_sums" in carry:  # the episode being played, before its reset
             fields = api.active_field_count(carry["state"])
@@ -575,7 +585,7 @@ class Rollout:
             self.reward_config, carry["ledger"], events, team, present
         )
         if "team_size_sums" in carry:
-            analytics.team_size_tick(carry["team_size_sums"], events.done, active, fields)
+            analytics.team_size_tick(carry["team_size_sums"], events.done & counted, active, fields)
         if next_active is not None:  # a finished episode's next size, from its reset on
             carry["active"].copy_(torch.where(events.done[:, None], next_active, active))
         _assign(carry["ledger"], ledger)
@@ -587,6 +597,7 @@ class Rollout:
             event_rewards,
             carry["truth"][:, 0],
             self.rules.tick_length,
+            counted,
         )
         reward = reward.reshape(
             self.environments, self.teams, self.ships_per_team, len(VALUE_LEVELS)
@@ -598,6 +609,9 @@ class Rollout:
         # Events.result is team 0's; the other team's is its negation (two teams).
         result = torch.where(team == 0, events.result[environments], -events.result[environments])
         records["result"].index_copy_(0, slot, result[None])
+        carry["results"].add_(
+            analytics.result_columns(events.done[environments] & counted[environments], result)
+        )
         win_loss = events.win_loss[environments]  # team 0's; team 1's is flipped
         win_loss = torch.where((team == 0)[:, None], win_loss, win_loss.flip(-1))
         records["win_loss"].index_copy_(0, slot, win_loss[None])
@@ -624,12 +638,14 @@ class Rollout:
                 events.done[views],
                 result > 0,
                 ticks[views] * self.rules.tick_length,
+                counted[views],
             )
-        ended = events.done.float()
+        ended = (events.done & counted).float()
         timeout = ticks >= self.episode_ticks - 0.5
         carry["episodes"].add_(torch.stack([ended, ended * timeout, ended * ticks], -1))
         episode = carry["episode"] + events.done.long()
         carry["episode"].copy_(episode)
+        carry["staggered"].copy_(carry["staggered"] & ~events.done)
         carry["clock"].copy_(torch.where(events.done, 0, carry["clock"] + 1))
         carry["seat"].copy_(torch.where(events.done, self._seats(episode), carry["seat"]))
         carry["counters"].add_(
@@ -666,6 +682,15 @@ class Rollout:
         (no host read), and the sums zeroed."""
         sums = self.carry["episodes"].clone()
         self.carry["episodes"].zero_()
+        return sums
+
+    def take_results(self) -> torch.Tensor:
+        """The learner views' results since the last take, (R, RESULT_COLUMNS) on the device
+        (no host read): the games that ended in each view, in the update's segments and its
+        lookahead alike, less each environment's first game when the clocks were staggered;
+        and the sums zeroed."""
+        sums = self.carry["results"].clone()
+        self.carry["results"].zero_()
         return sums
 
     def take_team_sizes(self) -> torch.Tensor | None:
@@ -721,8 +746,8 @@ class Rollout:
         """The carry a resume needs (runs spec 3): the game state, the observation, every
         controller's carry, the seats, the episode counts and clocks that key the draws, the
         reward ledger, the counters and the games' running state (`game`, the outcome
-        ledger). Not the staging ring or the segment buffers, which every segment writes
-        before it reads them, nor the update's sums (the episodes', the
+        ledger, the staggered flags). Not the staging ring or the segment buffers, which every segment writes
+        before it reads them, nor the update's sums (the episodes', the results, the
         games', the outcome tables), which every update takes, nor the active ship counts
         of plain benching (the offline match engine's, which no training run resumes); with
         team-size sampling the counts are the episodes' draws, and kept."""
@@ -730,6 +755,7 @@ class Rollout:
             "records",
             "segment",
             "episodes",
+            "results",
             "game_sums",
             "outcome_tables",
             "team_size_sums",

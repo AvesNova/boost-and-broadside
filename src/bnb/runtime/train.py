@@ -787,6 +787,7 @@ class Trainer:
         store, bootstrap = self.collect()
         collector = Collector()
         collector.add(self.analytics.episodes(self.rollout.take_episodes()))
+        collector.add(self.analytics.results(self.rollout.take_results()))
         game_sums, outcome_tables = self.rollout.take_games()
         collector.set(self.analytics.games(game_sums, outcome_tables))
         team_size_sums = self.rollout.take_team_sizes()

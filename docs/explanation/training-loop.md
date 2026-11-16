@@ -94,7 +94,13 @@ is a sequence of compiled stages over that carry (see [Architecture](architectur
   every controller plays both sides equally.
 - **Staggered clocks.** At the start each environment's episode clock is set to a random
   tick within its own episode length, so resets are spread over time rather than
-  simultaneous.
+  simultaneous. That first game is cut short and leans to timeouts and mutual wipe-outs,
+  so draws: it trains like any other game, but the logged outcomes leave it out (the
+  carry's `staggered` flag, cleared at the environment's first reset). Those are the
+  results (`episode/wins`, `draws`, `losses` and the scores built on them), the episode
+  counts, lengths and end shares, the per-episode sums and the outcome ledger's scores.
+  The results are tallied per learner view at each game's end, so they count the
+  lookahead's games as `episode/count` does.
 - **Act.** Each controller receives its views of the current observation, the parts it
   `reads` plus the globals, and returns actions for its ships. The runtime scatters them
   into the batch's action tensor by environment and team.
