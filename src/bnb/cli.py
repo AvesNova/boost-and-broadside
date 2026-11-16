@@ -2495,22 +2495,26 @@ def _pool_table(opened, options: Pool) -> None:
 
 def _pool_player(one, runs_directory: pathlib.Path, lineup: tuple[str, ...], preset: str):
     """A pool player as this machine plays it (`bnb.league.matches.Player`), or None when
-    none of its paths (nor the runs directory's) holds its weights."""
+    none of its paths (nor the runs directory's) holds its weights. A policy is a player
+    with weights (a `sha256:` identity), named by its run's step directory or registered
+    under its own name (an average's `<run>/average/<name>/step_<n>`, which has no run);
+    any other is a scripted player, played by its name."""
     from bnb.league.matches import Player
     from bnb.league.matches import player as resolve
     from bnb.league.rating_pool import policy_identity
     from bnb.runs.checkpoint import CheckpointError
 
-    if one.run is None:
+    if not one.identity.startswith("sha256:"):
         try:
             found = resolve(one.name)
         except ValueError:  # registered elsewhere under a name this checkout cannot play
             return None
     else:
-        candidates = [
-            *one.paths,
-            str(runs_directory / one.run / "policies" / f"step_{one.step}" / one.kind),
-        ]
+        candidates = list(one.paths)
+        if one.run is not None:
+            candidates.append(
+                str(runs_directory / one.run / "policies" / f"step_{one.step}" / one.kind)
+            )
         found = None
         for path in candidates:
             try:
