@@ -269,13 +269,15 @@ step_charts() {
   return $code
 }
 
+# minutes on the 5090, provisional (the laptop pilot's seconds per game over the 3.8x
+# rollout ratio, docs/rewrite/dry-run.md): about 3.9 hours in all, worst about 4.8
 step average 45   # worst 75 (the 12288-game budget in every mode)
-step suite 35
+step suite 25     # worst 40 (13 engines' compiles)
 step maps 15
-step curves 55
+step curves 50    # worst 70
 step breakeven 45
-step teamsize 25
-step media 25
+step teamsize 25  # worst 40 (the 20-a-side engine for every lineup)
+step media 25     # CPU play-shell games: the GPU idles
 step charts 3
 say "queue $chain: finished, $failed steps failed"
 echo "$failed" > "$out/queue.exit"
