@@ -219,7 +219,8 @@ def test_a_head_that_changes_nothing_gains_nothing(segment, global_generator):
 
 def test_the_input_series_count_envelope_breaks_and_non_finite_entries():
     """Four visible living ships: one faster than the velocity code reaches, one with more
-    shield than its type holds; a hidden ship's zeros and a dead ship's count nowhere; one
+    shield than its type holds, one in a level-2 field's core (inside, to float32 rounding)
+    and one beyond the log index's span; a hidden ship's zeros and a dead ship's count nowhere; one
     NaN in the globals."""
     from bnb.models.yemong.state_code import velocity_reach
 
@@ -228,6 +229,9 @@ def test_the_input_series_count_envelope_breaks_and_non_finite_entries():
     ships[..., :5, SHIP["alive"]] = 1.0
     ships[..., 0, SHIP["velocity_x"]] = velocity_reach() + 1.0
     ships[..., 1, SHIP["shield"]] = 101.0
+    # a level-2 field's core, as the medium's float32 mean gives it (2 ulps above ln 2): inside
+    ships[..., 2, SHIP["log_refractive_index"]] = -0.6931473016738892
+    ships[..., 3, SHIP["log_refractive_index"]] = 0.70  # outside
     ships[..., 5, SHIP["visible"]] = 1.0  # dead
     ships[..., 5, SHIP["velocity_x"]] = 1e6
     globals_ = torch.zeros((1, 1, 4))
@@ -250,6 +254,7 @@ def test_the_input_series_count_envelope_breaks_and_non_finite_entries():
     assert out["input/envelope_violation_share/speed"] == 0.25
     assert out["input/envelope_violation_share/shield"] == 0.25
     assert out["input/envelope_violation_share/energy"] == 0.0
+    assert out["input/envelope_violation_share/log_refractive_index"] == 0.25
 
 
 def test_the_fit_explained_variance_comes_from_the_moments():

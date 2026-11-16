@@ -914,7 +914,9 @@ def input_sums(state_code, trajectory: Trajectory) -> dict:
         shield=(column["shield"] < 0.0) | (column["shield"] > shield_max),
         energy=(column["energy"] < 0.0) | (column["energy"] > energy_max),
         gun_cooldown=(column["gun_cooldown"] < 0.0) | (column["gun_cooldown"] > cooldown_limit),
-        log_refractive_index=column["log_refractive_index"].abs() > LOG_INDEX_SPAN,
+        # a level-2 field's core is ln 2 to within float32 rounding (the medium's weighted
+        # mean lands 1-2 ulps above it: 0.15% of shown rows on game v24, all of them)
+        log_refractive_index=column["log_refractive_index"].abs() > LOG_INDEX_SPAN + 1e-6,
     )
     out["input/shown"] = shown.float().sum()
     out["input/outside"] = torch.stack(
