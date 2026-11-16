@@ -86,7 +86,7 @@ def model():
     from sklearn.ensemble import HistGradientBoostingRegressor
 
     return HistGradientBoostingRegressor(
-        max_iter=400,
+        max_iter=300,
         learning_rate=0.05,
         max_leaf_nodes=31,
         min_samples_leaf=20,
@@ -95,7 +95,7 @@ def model():
     )
 
 
-def fit_bt(x, references, y, w, rounds: int = 4):
+def fit_bt(x, references, y, w, rounds: int = 3):
     """f (a fitted model) and the reference offsets {name: r} for y = f(x) - r[reference]
     (backfitting; each round's offsets from 3-fold cross-fitted predictions, so f cannot
     absorb a card's reference into its own value)."""
@@ -118,7 +118,7 @@ def fit_bt(x, references, y, w, rounds: int = 4):
     return f, offsets
 
 
-def cross_validate(x, references, y, w, groups, folds: int = 5):
+def cross_validate(x, references, y, w, groups, folds: int = 3):
     """Out-of-fold predictions of y (folds by card)."""
     from sklearn.model_selection import GroupKFold
 
