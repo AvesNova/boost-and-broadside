@@ -746,11 +746,11 @@ class Rollout:
         """The carry a resume needs (runs spec 3): the game state, the observation, every
         controller's carry, the seats, the episode counts and clocks that key the draws, the
         reward ledger, the counters and the games' running state (`game`, the outcome
-        ledger, the staggered flags). Not the staging ring or the segment buffers, which every segment writes
-        before it reads them, nor the update's sums (the episodes', the results, the
-        games', the outcome tables), which every update takes, nor the active ship counts
-        of plain benching (the offline match engine's, which no training run resumes); with
-        team-size sampling the counts are the episodes' draws, and kept."""
+        ledger, the staggered flags). Not the staging ring or the segment buffers, which
+        every segment writes before it reads them, nor the update's sums (the episodes', the
+        results, the games', the outcome tables), which every update takes, nor the active
+        ship counts of plain benching (the offline match engine's, which no training run
+        resumes); with team-size sampling the counts are the episodes' draws, and kept."""
         excluded = (
             "records",
             "segment",

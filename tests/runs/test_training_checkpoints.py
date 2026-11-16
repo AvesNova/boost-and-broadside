@@ -10,7 +10,7 @@ import safetensors.torch
 import torch
 
 from bnb.models.relational import RelationalConfig
-from bnb.runs import checkpoint
+from bnb.runs import checkpoint, provenance
 from bnb.runs.checkpoint import CheckpointError, FilledDefaults
 from bnb.runs.serialise import SerialiseError
 from bnb.runtime.train import Trainer, model_build
@@ -67,6 +67,27 @@ def test_every_part_of_a_training_checkpoint_round_trips(trained):
     for name, tensor in want_carry.items():
         assert torch.equal(got_carry[name], tensor), name
     assert (loaded.updates_done, loaded.ppo.environment_steps) == (2, trainer.ppo.environment_steps)
+
+
+def test_a_carry_saved_before_the_staggered_flags_loads_with_them_off(tmp_path, trained):
+    """A checkpoint written before the rollout's staggered flags (the dry run's) resumes:
+    every environment's flag is off, and the rest of the carry is the stored one."""
+    trainer, directory = trained
+    old = tmp_path / "old"
+    old.mkdir()
+    for path in directory.iterdir():
+        (old / path.name).write_bytes(path.read_bytes())
+    stored = safetensors.torch.load_file(old / checkpoint.TRAINING)
+    assert checkpoint.STAGGERED in stored
+    del stored[checkpoint.STAGGERED]
+    safetensors.torch.save_file(stored, old / checkpoint.TRAINING)
+    record = json.loads((old / checkpoint.RECORD).read_text())  # as the old code wrote it
+    record["files"][checkpoint.TRAINING] = provenance.file_hash(old / checkpoint.TRAINING)
+    (old / checkpoint.RECORD).write_text(json.dumps(record))
+    with torch.random.fork_rng(devices=[]):
+        loaded = checkpoint.load_training(old, cases.CPU)
+    assert not loaded.rollout.carry["staggered"].any()
+    assert torch.equal(loaded.rollout.carry["clock"], trainer.rollout.carry["clock"])
 
 
 def test_a_training_checkpoint_is_also_a_policy_file(trained):
