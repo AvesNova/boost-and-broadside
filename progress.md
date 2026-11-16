@@ -491,3 +491,8 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Tried: baseline Y0.46, 256 games each (DM 300 s): deaths by cause per ship.
 - Found: DM 1v1 99% of deaths are boundary (Y 2.0/game, J 0.6/game; hits 0.01); 2v2 Y 60% boundary, J 36%; 5v5 Y 22%, J 8%; elim 5v5 Y 18%, J 5%. Every crossing has the edge steer at w=1 and a target, ~370 m/s, turn radius ~400 m (margin is ample).
 - Next: after-fix run (BOUNDARY_OVER_MANEUVERS on), ETA 22:10 KST (worst 22:15).
+
+## 2026-11-16 23:30 feat/imugi-initiative (agent)
+- Step 0, Imugi's action mix (DM 5v5, 128 games, v24 card, before): Yongma stick straight 7.6%, R/L 0.4 8.5/8.5, 0.75 5.6/5.6, 1.0 32.4/31.8; power coast 3.7, boost 88.5, reverse 7.8; fire 5.4%. Jujak straight 6.8, 0.4 8.8/8.7, 0.75 7.8/7.4, 1.0 30.6/30.0; coast 3.7, boost 87.8, reverse 8.5; fire 7.3. Every action is used, but full stick (~63%) and boost (~88%) dominate; coast under 4%. Elim/FL 5v5 running.
+- Tried: commitment at the merge + initiative (BNB_TURN_COMMIT) and stick by energy (BNB_STICK_BY_ENERGY), both on; turn onset 0.30 s at corner speed (3.3 nose periods, turn_onset.py); dead-on tie: map centre, then left. Imugi tests 104 pass. Commit bf0c1fa1.
+- Next: 1v1 turn_fight before/after (128 games, ETA 23:50), then balance+mix 512 games x 4 conditions before/after (ETA ~01:30), stills on the CPU.
