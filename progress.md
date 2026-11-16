@@ -489,3 +489,11 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 2026-11-16 23:40 Worked: 5247438a, `bnb figures results {fan,break-even,arms,team-size,health,game-length}` + values file; 10 CPU tests, ruff clean; previews checked; health drawn from real bc-v20 + rl-v20 records.
 - Didn't: no per-game length record exists (game-length needs one); no driver plays the team-size lineups (n, k n) yet; the W&B path is untested against a live run.
 - Next: real data after tonight's run: crossover per snapshot into $OUT/break-even, then fan / break-even; arms.json as decisions land.
+
+## 2026-11-16 22:15 architecture diagrams (docs/architecture-diagram)
+- Tried: D2 (ELK, dagre, grids): auto-layout put skip lines off-centre and curved, no positions without TALA.
+- Worked: Typst (static binary in ~/.local/bin) with a small helper file: exact coordinates, SVG/PNG/PDF; overviews done.
+- Next: the two-layer detail diagrams, the docs page link, render script + staleness test.
+- 22:45 Worked: layer detail diagrams (vertical + horizontal), render.py (stamps a source hash), staleness test, writing-docs "Diagrams" section, figures on the Yemong page.
+- Didn't: strict mkdocs build has 3 pre-existing anchor warnings (imugi.md, figures.md), none from this branch.
+- Open: the trained model builds temporal first with 2 spatial sublayers per block; the diagrams draw spatial then temporal as asked.

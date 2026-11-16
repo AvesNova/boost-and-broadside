@@ -19,6 +19,18 @@ and the learner trains it (see [The learner](learner.md)).
 Nothing in the weights depends on the number of ships, the number of fields or the arena,
 so one set of weights plays at every size.
 
+![Yemong at a glance: the observation becomes the belief and one token per ship plus a
+global token, an encoder projects them, two blocks of a temporal layer and two spatial
+layers mix them, and the heads read the result.](../images/architecture/overview-vertical.svg)
+
+The figure reads from the bottom up and shows a new run's build (`TrainConfig.yemong`):
+two blocks (`YemongConfig.blocks`), each a temporal layer and then two spatial layers
+(`YemongConfig.order` "temporal_first", `YemongConfig.spatial_per_block`). A stacked card
+runs separately for each token (or each own ship). The temporal layer is stacked because
+its recurrence runs per token, each token carrying its own state across ticks; the spatial
+layer is a single card because its attention runs once across all the tokens of a tick.
+The [Network](#network) section has each layer's inside.
+
 ## The model owns its inputs
 
 Yemong reads the raw observation and composes its own tokens. Everything it remembers
@@ -661,6 +673,9 @@ living rows) and `input/acceleration/slow_frame` (of the valid rows). Select it 
 `--set yemong.acceleration_inputs=true`.
 
 ## Network
+
+![The two layers of a block, each a pre-norm residual pair: RMSNorm, the mixer and a sum,
+then RMSNorm, the gated MLP and a sum.](../images/architecture/layers-horizontal.svg)
 
 - **Encoder:** one first projection per token kind, then a shared one. Fields and zones are
   then projected into the map memory, of width `map_width`.
