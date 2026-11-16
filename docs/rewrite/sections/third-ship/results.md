@@ -6,18 +6,19 @@ Imugi on both sides, fog on, the preset's fields and map, seats alternating; "C 
 of five Bonghwang against five Jujak, the score Bonghwang's (a deathmatch game is won on
 points over 300 s), ± one standard error. The working log is [progress.md](progress.md).
 
-**Status (13:15):** the ship, its doctrine and a trim for each Yongma-Jujak balance option are
+**Status (15:10):** the ship, its doctrine and a trim for each Yongma-Jujak balance option are
 measured; option A's trim is in the game on this branch. The flat options' trims (g 8):
 
 | balance option | Bonghwang trim | 2v2 | 5v5 | 10v10 | elimination 5v5 | Frontline 5v5 |
 |---|---|---|---|---|---|---|
-| **E** (Jujak turn x0.95, Yongma turn x1.12, shield x0.55) | t0.70 g8 d0.95 s80 | 0.46 / 0.50 | 0.49 / 0.47 | 0.49 / 0.47 | 0.49 / 0.53 | 0.55 / 0.50 |
-| **C'** (Jujak x0.91, Yongma x1.08, shield x0.55) | t0.66 g8 d0.95 s85 | 0.43 / 0.50 | 0.51 / 0.51 | 0.52 / 0.56 | 0.48 / 0.49 | 0.55 / 0.43 |
+| **E** (Jujak turn x0.95, Yongma turn x1.12, shield x0.55) | t0.70 g8 d0.95 s80 | 0.47 / 0.50 | 0.50 / 0.50 | 0.49 / 0.47 | 0.49 / 0.53 | 0.55 / 0.50 |
+| **C'** (Jujak x0.91, Yongma x1.08, shield x0.55) | t0.66 g8 d0.95 s85 | 0.46 / 0.45 | 0.52 / 0.50 | 0.52 / 0.56 | 0.48 / 0.49 | 0.55 / 0.43 |
 | A (v23, in src) | t0.63 g7 d1.2 s115 | 0.31 / 0.66 | 0.48 / 0.56 | 0.65 / 0.47 | 0.43 / 0.67 | 0.28 / 0.55 |
 
 (Bonghwang v Jujak / Bonghwang v Yongma, deathmatch unless named; 384-1536 games a cell, SE
 0.012-0.025. Under A the release pair itself runs 0.27 -> 0.73 over sizes, so no third ship
-fits both there.) With E's trim every measured cell is within 0.46-0.55 of both ships.
+fits both there.) With E's trim every measured cell is within 0.41-0.55 of both ships except Frontline 10v10,
+where E's own Yongma beats Jujak 0.68 and Bonghwang does the same (0.68 / 0.52).
 
 ## The ship
 
@@ -92,8 +93,8 @@ s90, D t0.66 d1.1 s95, E t0.70 d1.1 s90; their full tables follow.
 ## Matchups: the flat options' trims (finals2)
 
 `finals2.json`, Bonghwang flying its doctrine against each option's pair, the option's own
-Yongma v Jujak from the same run. 2v2 and 5v5 at 1536 games on the 3070; 10v10 512,
-elimination and Frontline 768, 1v1 1024 on the laptop.
+Yongma v Jujak from the same run. 2v2 and 5v5 at 1536 games and the 10v10 modes at 512 on the
+3070; deathmatch 10v10 512, elimination and Frontline 5v5 768, 1v1 1024 on the laptop.
 
 **C': Bg8t66-d0.95-s85**
 
@@ -104,7 +105,9 @@ elimination and Frontline 768, 1v1 1024 on the laptop.
 | deathmatch 5v5 (1536) | 0.516 ± 0.012 | 0.495 ± 0.012 | 0.516 ± 0.012 |
 | deathmatch 10v10 (512) | 0.516 ± 0.021 | 0.555 ± 0.021 | 0.498 ± 0.021 |
 | elimination 5v5 (768) | 0.477 ± 0.018 | 0.487 ± 0.018 | 0.473 ± 0.018 |
+| elimination 10v10 (512) | 0.496 ± 0.022 | 0.548 ± 0.022 | 0.492 ± 0.022 |
 | Frontline 5v5 (768) | 0.553 ± 0.017 | 0.430 ± 0.017 | 0.596 ± 0.017 |
+| Frontline 10v10 (512) | 0.611 ± 0.021 | 0.422 ± 0.021 | 0.720 ± 0.019 |
 
 **E: Bg8t70-d0.95-s80**
 
@@ -115,10 +118,14 @@ elimination and Frontline 768, 1v1 1024 on the laptop.
 | deathmatch 5v5 (1536) | 0.496 ± 0.012 | 0.500 ± 0.012 | 0.492 ± 0.012 |
 | deathmatch 10v10 (512) | 0.493 ± 0.021 | 0.466 ± 0.021 | 0.530 ± 0.021 |
 | elimination 5v5 (768) | 0.493 ± 0.018 | 0.526 ± 0.018 | 0.448 ± 0.018 |
+| elimination 10v10 (512) | 0.508 ± 0.022 | 0.527 ± 0.022 | 0.502 ± 0.022 |
 | Frontline 5v5 (768) | 0.554 ± 0.017 | 0.501 ± 0.017 | 0.577 ± 0.017 |
+| Frontline 10v10 (512) | 0.682 ± 0.020 | 0.521 ± 0.021 | 0.679 ± 0.020 |
 
-(Frontline 10v10 and elimination 10v10, the balance agent's hardest conditions, are queued on
-the box; `data/finals2-fl10-*.jsonl`, `-el10-*` when they land.)
+Frontline 10v10 is the one condition out of band, and it is the pair's: both options' own
+Yongma beats Jujak there 0.68-0.72 (the balance agent's open problem), and Bonghwang lands at
+Yongma's level (v Yongma 0.42-0.52, v Jujak 0.61-0.68). Every other cell of E's trim is within
+0.41-0.55 (1v1, mostly draws, 0.41 as E's own Yongma's 0.42).
 
 ## Matchups: the first-round trims, every option (finals1)
 
