@@ -14,8 +14,10 @@ generator of its own.
 A policy file loads only when the game it was trained on and its ship card equal the
 match's; otherwise `load_agent` raises `AgentError` naming the difference. With `any_mode`
 the mode's own settings (`bnb.contracts.pools.GAME_FIELDS`: the mode, the arena, the spawn
-groups, the clocks) may differ: a policy trained on a mixed batch records the batch's first
-game only (`bnb.runtime.train.mixed`) and plays every mode of the mix.
+groups, the clocks, the tickets) and the fleet size may differ (`ANY_MODE_FIELDS`): a policy
+trained on a mixed batch records the batch's first game only (`bnb.runtime.train.mixed`)
+and plays every mode of the mix, at any team size (training samples team sizes, and the
+evaluation's team-size step plays 1 to 10 a side).
 
 Each controller names the prediction overlays it can provide (`overlays`,
 `bnb.play.overlays`) and keeps the inputs of its latest decision (`inspection`, references
@@ -407,6 +409,10 @@ def ship_card(types: api.ShipTypes) -> dict:
     return {field.name: getattr(types, field.name).tolist() for field in dataclasses.fields(types)}
 
 
+# The game fields a policy may play other values of with `any_mode` (`mismatch`).
+ANY_MODE_FIELDS = (*GAME_FIELDS, "ships_per_team")
+
+
 def _close(saved, given) -> bool:
     if isinstance(saved, list) and isinstance(given, list):
         return len(saved) == len(given) and all(map(_close, saved, given))
@@ -427,7 +433,8 @@ def mismatch(
     any_size: bool = False,
 ) -> str | None:
     """Why a policy record cannot play this match (its game, ship card or lineup differ),
-    or None when it can. any_mode: the mode's own settings may differ (`GAME_FIELDS`).
+    or None when it can. any_mode: the mode's own settings and the fleet size may differ
+    (`ANY_MODE_FIELDS`).
     card: also check the ship card and the lineup (the play shell only warns about them:
     `trained_differently`). any_size: the ships per team may differ (a Yemong reads any
     number of ships, as the crossover plays it)."""
@@ -437,7 +444,8 @@ def mismatch(
     compared = [
         name
         for name in given
-        if not (any_mode and name in GAME_FIELDS) and not (any_size and name == "ships_per_team")
+        if not (any_mode and name in ANY_MODE_FIELDS)
+        and not (any_size and name == "ships_per_team")
     ]
     differences = [
         f"{name} {saved.get(name)!r} (this match: {given[name]!r})"

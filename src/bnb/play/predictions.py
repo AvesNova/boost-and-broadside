@@ -181,8 +181,10 @@ def network(agent, team: int, observed: Snapshot, following: Snapshot) -> Predic
     ships = observed.ships
     shot = None
     if unrolled.shot_latents is not None:
-        ages = torch.arange(1, model.bullet_moves + 1)
-        logits = model.shot_trajectory(unrolled.shot_latents, ages)
+        # on the model's device (the unroll was moved to the host above), back on the host
+        device = model.bins.device
+        ages = torch.arange(1, model.bullet_moves + 1, device=device)
+        logits = model.shot_trajectory(unrolled.shot_latents.to(device), ages).float().cpu()
         path = decode.shot_path(model.shot_code, logits)
         launch_x = torch.from_numpy(ships.x[order]).float()
         launch_y = torch.from_numpy(ships.y[order]).float()

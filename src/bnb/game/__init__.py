@@ -252,6 +252,12 @@ docs/rewrite/sections/imugi-initiative), which moved every team mode toward Yong
 (352.6 -> 321.9) and Jujak's 1.1586 -> 1.22 (498.5 -> 524.9), the card re-solved from the
 handles (docs/rewrite/sections/retrim-v25/apply.py, results.md there). Ratings and records
 of version 24 or earlier are not reused for version-25 games.
+
+Version 26 (2026-11-17): version 24's card back (Yongma's max_shield 352.6, Jujak's 498.5) with
+version 25's committed-turn Imugi, at the author's request: train on the ships of the first dry
+run with the new scripted agent. Measured on this card with the new Imugi (retrim-v25/results.md,
+"Y0.46 (v24)"): Yongma kill share DM 2v2 0.466, DM 5v5 0.514, Elim 5v5 0.592, FL 5v5 0.507.
+Ratings and records of version 25 or earlier are not reused for version-26 games.
 """
 
-VERSION = 25
+VERSION = 26
