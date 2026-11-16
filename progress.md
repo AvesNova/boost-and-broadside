@@ -547,3 +547,6 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 02:23 new charts: behaviour, throughput, lanes (training records), elo, suite, averaging (eval records); pages wired; team sizes 1-10; site served at http://127.0.0.1:8000 (unit bnb-docs-site).
 - Waiting: RL ends ~02:37, eval queue ~06:30 (worst 07:25); hero clip is another agent (feat/hero-clip).
 - Next: final training charts after RL, then eval charts as records land.
+- 02:59 RL ended at 98.6M (chain 199.2M); training charts + values real (health, behaviour, throughput 19.5k/21.8k steps/s, lanes, compile 3.9 min, hours 1.47/1.31).
+- Averaging sweep played no averages (live vs scripted only); reported, a fix agent re-runs it after the queue; champion = training EMA 0.95 meanwhile, sweep chart pending.
+- Next: suite chart (~03:05), curves/break-even/team-size/media as the queue lands.
