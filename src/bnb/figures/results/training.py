@@ -306,6 +306,7 @@ def draw_throughput(
     for stage in STAGES:
         held = numbers.get(stage, {})
         values[f"chain_hours_{gpu}_{stage}"] = held.get("hours")
+        values[f"chain_steps_{stage}"] = held.get("steps")
     values[f"compile_minutes_{gpu}"] = (
         sum(held["compile_minutes"] for held in numbers.values() if held.get("compile_minutes"))
         or None

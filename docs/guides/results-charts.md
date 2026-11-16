@@ -149,9 +149,9 @@ names, with `<mode>` one of `frontline`, `deathmatch`, `elimination`:
 | `team-size` | `team_size_<mode>_ratio_<k>_size_<n>_win_rate`, k written 1, 1_5, 2 |
 | `health` | `health_<key>_final`: the key's mean over the last twentieth of the last source, the key in lower case with underscores (`health_policy_clip_fraction_final`{.plain}) |
 | `behaviour` | `behaviour_<mode>_<panel>_<stage>_final`: the mean over the stage's last five updates, the panel's title as a slug (`behaviour_elimination_hit_rate_rl_final`{.plain}) |
-| `throughput` | `throughput_<gpu>_<stage>_steps_per_second`, `chain_hours_<gpu>_<stage>`, `compile_minutes_<gpu>` (both stages' first updates over their median update) |
+| `throughput` | `throughput_<gpu>_<stage>_steps_per_second`, `chain_hours_<gpu>_<stage>`, `chain_steps_<stage>`, `compile_minutes_<gpu>` (both stages' first updates over their median update) |
 | `lanes` | `lanes_<mode>_<live or average>_final`, `_final_stderr` |
 | `elo` | `elo_<mode>_bc_final`, `elo_<mode>_final`, `_final_stderr`: the averaged weights' last BC and last RL snapshot |
-| `suite` | `suite_<condition>_score`, `_low`, `_high`, `_games` |
+| `suite` | `suite_<condition>_score`, `_low`, `_high`, `_games`; `suite_games_per_condition`, `champion_game_version` (the batches' game version) |
 | `averaging` | `averaging_best_gap`, `_stderr`, `averaging_candidates`; `champion_name`, `champion_run`, `champion_steps`, `champion_weights` (strings, but for the steps) |
 | `game-length` | `game_length_<mode>_median_seconds`, `_lower_quartile_seconds`, `_upper_quartile_seconds`, `_games`, `_clock_out_share` |

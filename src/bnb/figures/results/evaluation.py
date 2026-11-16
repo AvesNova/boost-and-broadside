@@ -141,6 +141,13 @@ def wilson(score: float, games: float) -> tuple[float, float, float]:
     return rate, middle - half / denominator, middle + half / denominator
 
 
+def suite_game_version(directory) -> float | None:
+    """The game version the suite's batches were played on (None when they disagree)."""
+    batches, _, _ = read_batches(pathlib.Path(directory))
+    versions = {batch.get("game_version") for batch in batches}
+    return float(versions.pop()) if len(versions) == 1 and None not in versions else None
+
+
 def suite_rows(directory) -> list[dict]:
     """Per head-to-head condition of a suite directory: name, mode, size, score, games and
     the Wilson interval, in the suite's condition order."""
@@ -217,6 +224,8 @@ def draw_suite(directory, out, formats=common.FORMATS, name="suite_conditions"):
                 f"{key}_games": row["games"],
             }
         )
+    values["champion_game_version"] = suite_game_version(directory)
+    values["suite_games_per_condition"] = float(max(row["games"] for row in rows))
     axes[0, 0].set_ylim(0, 1.08)
     axes[0, 0].set_ylabel("score against Imugi (wins + half the draws)", fontsize=8)
     common.title(

@@ -26,14 +26,15 @@ against Imugi, the scripted agent, and against its own earlier configurations.
 ## The policy measured
 
 Every result names the policy it measured: the run, its environment steps, and whether it
-is the run's live weights or their exponential average. Unless a page says otherwise, the
-measured policy is the exponential average of the champion's weights at the end of its
+is the run's live weights or an average of them. Unless a page says otherwise, the measured
+policy is the champion: the average of the run's weights that the
+[averaging sweep](training.md#which-weights-the-averaging-sweep) keeps, at the end of
 reinforcement learning:
 
 | | |
 |---|---|
 | Run | {{champion_run}} |
-| Environment steps | {{champion_steps:,.0f}} |
+| Environment steps of reinforcement learning | {{champion_steps:,.0f}} (after {{chain_steps_bc:,.0f}} of behaviour cloning) |
 | Weights | {{champion_weights}} |
 | Game version | {{champion_game_version}} |
 

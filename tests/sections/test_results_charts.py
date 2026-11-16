@@ -351,6 +351,7 @@ def test_the_training_charts_read_a_chain(tmp_path):
     assert values["throughput_laptop_4070_rl_steps_per_second"] is None
     assert values["compile_minutes_rtx_5090"] == pytest.approx(2 * 100.0 / 60)
     assert values["chain_hours_rtx_5090_rl"] == 1.5
+    assert values["chain_steps_bc"] == 4_000_000
     written, values = training.draw_lanes(chain, tmp_path / "out")
     _drawn(written)
     assert values["lanes_deathmatch_live_final"] == 1203.0
@@ -383,6 +384,7 @@ def test_the_evaluation_charts_read_the_queue_records(tmp_path):
     suite = tmp_path / "suite"
     (suite / "batches").mkdir(parents=True)
     batch = dict(
+        game_version=24,
         condition="elimination_5v5",
         batch=0,
         games=40,
@@ -396,6 +398,7 @@ def test_the_evaluation_charts_read_the_queue_records(tmp_path):
     assert values["suite_elimination_5v5_score"] == pytest.approx(0.75)
     assert values["suite_elimination_5v5_low"] < 0.75 < values["suite_elimination_5v5_high"]
     assert values["suite_deathmatch_1v1_score"] == pytest.approx(0.55)
+    assert values["champion_game_version"] == 24.0
 
     champion = tmp_path / "champion.json"
     champion.write_text(
