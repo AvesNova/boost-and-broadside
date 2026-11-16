@@ -1,5 +1,69 @@
 # Balance final: progress (2026-11-16)
 
+## RESUME NOTE (handover, 2026-11-16 ~10:55 KST; read first)
+
+**State of the branch** (`tune/balance-final`, not merged): game v23 = A (Jujak sustained turn
+x0.93) is committed in src/ with the game reference re-recorded. results.md is the
+deliverable (before/after, range check, how to test, options A-F). The before files are in
+before/, A in after/, other options in options/<name>/ (`apply.py --candidates options.json
+<name>` writes one into src/; `apply.py --restore` puts before/ back; `git checkout -- src/...`
+returns to A). sweep.py always plays before/'s card as its base (`--base before`), so every
+candidate's card is relative to v22 whatever src/ holds; handle_cards.py solves from before/.
+
+**Best options so far** (Yongma team's score against a Jujak team):
+
+| card | dm 2v2 | dm 5v5 | dm 10v10 | elim 5v5 | Frontline 5v5 | turn J/Y |
+|---|---|---|---|---|---|---|
+| before | 15 | 22.6 (2048) | 42.8 (2048) | 21 | 11 | 1.29 |
+| A (v23): Jujak turn x0.93 | 29 | 50.0 (2048) | 74.2 (2048) | 38 | 31 | 1.20 |
+| C': Jujak x0.91, Yongma turn x1.08, shield x0.55 | 46 | 50.9 (2048) | 52.9 (2048) | 45.6 | 58.0 | 1.09 |
+| E: Jujak x0.95, Yongma turn x1.12, shield x0.55 | 46 | 50.1 (2048) | 49.6 (2048) | 45.7 | 55.2 | 1.09 |
+| F: Yongma turn x1.12, shield x0.75 (Jujak untouched) | 40 | 54 | ? | 43 | 43 | 1.15 |
+
+(1024 games unless marked; F from grid1 at 256-384.) The open problem: Frontline 10v10 has a
+steeper slope than deathmatch (before 17%; C'/E-like cards about 76-80% at 256 games); F was
+the best all-mode compromise in grid1 (Frontline 10v10 57).
+
+**Running at handover**
+- Laptop (4070; jobs via `laptop_sweep.sh` = systemd-run units under
+  flock /tmp/claude-1000/bnb-gpu.lock, code from this worktree with PYTHONPATH=$PWD/src:$PWD):
+  - fin3 (`candidates/fin3.json`: before, A, C', E, F, and two grid1 neighbours) in Frontline
+    and elimination at 10v10 (512 games, 2048 environments) then 5v5 (1024) ->
+    `data/fin3-{frontline,elimination}-{10v10,5v5}.jsonl`; progress in the scratchpad log of
+    the previous agent (units `balance-fin3-*`; `journalctl --user -u balance-fin3-frontline-10`).
+  - then grid2 (`candidates/grid2.json`, 41 cards around F: Jujak turn 1 / 0.97, Yongma turn
+    1.10-1.16, shield 0.65-0.8, damage 0.9) in Frontline 10v10, Frontline 5v5, elimination 5v5
+    -> `data/grid2-*.jsonl` (units `balance-grid2-*`).
+- Box (RTX 3070, `ssh -p 12149 root@115.73.222.54`, repo /workspace/bnb): three persistent
+  workers (`worker.py`, logs /workspace/worker-deathmatch-{5,2,10}.log) watching
+  /workspace/queue/deathmatch-{5,2,10}/; each job file holds /tmp/gpu.lock while it plays.
+  Queued in each: 01-grid1 (60 cards, 384 games), 02-fin3 (1024), 03-grid2 (384); outputs in
+  /workspace/out/<name>.jsonl (`big-*` = the options at 2048, done for 5v5 and 10v10; 2v2
+  running). Collect: `rsync -a -e "ssh -p 12149" root@115.73.222.54:/workspace/out/ data/`.
+  To add work: drop a JSON job file ({"candidates": path or list, "out", "games",
+  "mixed_games", "seed"}) into a queue directory; new workers compile before taking the
+  lock (`worker.py` docstring).
+
+**Box caveats**: slow Xeon, 10-20 min compile per new process (hence the workers; never start
+one-shot sweeps there); 8 GB VRAM shared with the third-ship agent's workers
+(/workspace/third-queue/), check nvidia-smi before adding workers; `git pull` in /workspace/bnb
+aborts if untracked files collide with committed data (move them to /workspace/boxdata
+first); never `pgrep -f`/`pkill -f` a pattern your own ssh command contains (it kills the
+ssh shell); the box can be interrupted.
+
+**Next on the list**
+1. Collect fin3 (all modes at 5v5 and 10v10) and the box's 2048 2v2, grid1 and fin3 deathmatch;
+   put the numbers into results.md (the options table and the second-pass section).
+2. From grid2 + grid1, pick the most distinct card (largest Jujak/Yongma turn ratio) inside
+   55/45 at dm 2v2/5v5/10v10, elimination 5v5 and Frontline 5v5, with Frontline 10v10 as
+   close as possible; confirm it at 1024-2048 games in every mode at 5v5 and 10v10, with
+   aspects and kills/min (`table.py`, `grid_table.py --band`).
+3. Other slope handles not yet tried with Yongma turn: Yongma power (climb x0.88-0.93 raises
+   10v10 more than 2v2), damage alone at 0.8-0.9, Jujak shield up.
+4. Keep both GPUs busy (the author's standing instruction): small jobs on the laptop, big
+   batches through the box workers. Don't merge; the author decides A vs a flat card.
+
+
 Goal (author, 2026-11-15): Yongma team v Jujak team in deathmatch 5v5 within 55/45 (soft), from
 21.8 ± 1.8% on game v22; doctrines first, cards only if needed; keep the kill-aspect mix,
 mutual head-on near zero, Imugi's strength (mixed lineups v the before doctrines), Frontline
