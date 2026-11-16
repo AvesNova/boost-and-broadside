@@ -39,17 +39,17 @@ Each still is one game of the champion (blue) against Imugi (orange), every ship
 trail in its team's colour, older stretches faded, and an X where a ship died
 ([the trail stills](../guides/figures.md)).
 
-{{figure: docs/results/media/stills/duel_1v1.png | A whole 1 against 1 deathmatch game: the champion's ship and Imugi's, each path a fading trail, an X at each death}}
+{{figure: docs/results/media/stills/elimination_game.png | A whole 5 against 5 elimination game: every ship's path a fading trail, an X at each death, the closing boundary dashed}}
 
-{{figure: docs/results/media/stills/fleet_5v5_opening.png | The first 60 seconds of a 5 against 5 deathmatch game: the approach and the first contact}}
+{{figure: docs/results/media/stills/frontline_opening.png | The first 60 seconds of a 5 against 5 Frontline game: the approach and the first contact}}
 
-{{figure: docs/results/media/stills/elimination_fog.png | 20 seconds of a 5 against 5 elimination game under fog: hidden enemies' true paths dashed, with the champion's belief of where they are}}
+{{figure: docs/results/media/stills/elimination_fog.png | 20 seconds of the elimination game under fog: hidden enemies' true paths dashed, with the champion's belief of where they are}}
 
 ### Manoeuvres
 
-Windows of the 1 against 1 duel, each the busiest stretch of its part of the game:
+The busiest stretch of each quarter of the elimination game, cropped to the fighting:
 
-{{figure: docs/results/media/stills/manoeuvres.png | Four windows of the 1 against 1 duel in a grid, each a few seconds of turning fight}}
+{{figure: docs/results/media/stills/manoeuvres.png | Four windows of the elimination game in a grid, each the busiest 15 seconds of one quarter of the game}}
 
 ## Gallery
 
