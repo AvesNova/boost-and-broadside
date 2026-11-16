@@ -1,0 +1,5 @@
+Nov 16 17:05:54.940880 vizia python[575243]: V1116 17:05:54.940000 575243 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles] Recompiling function tick in /home/vizia/avesnova/bnb-balance-eval/bench/game_loop.py:527
+Nov 16 17:05:54.940880 vizia python[575243]: V1116 17:05:54.940000 575243 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles]     triggered by the following guard failure(s):
+Nov 16 17:05:54.940880 vizia python[575243]: V1116 17:05:54.940000 575243 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles]     - 0/0: tensor 'carry.boundary_progress' stride mismatch at index 0. expected 1, actual 15
+Nov 16 17:07:27.600284 vizia python[575243]: compiled and warm in 223 s
+Nov 16 17:08:29.634327 vizia python[575243]: deathmatch-5v5 fog on fields on: B=2048, 1800 ticks (60 s): batches 4.4, 4.4 s; best 470.52 games/s, 847k env-ticks/s; kills 7.7 a game; peak 0.18 GiB
