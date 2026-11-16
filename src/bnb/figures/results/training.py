@@ -72,13 +72,14 @@ def _preset_mean(row: dict, stem: str, preset_mode: str) -> float | None:
     """The episode-count-weighted mean of `episode/<stem>/<preset>/<pool>` over the pools
     of the presets whose mode is `preset_mode` (lanes left out)."""
     total = weight = 0.0
+    prefix = f"episode/{stem}/"
     for key, value in row.items():
-        parts = key.split("/")
-        if len(parts) != 4 or parts[0] != "episode" or parts[1] != stem:
+        parts = key.removeprefix(prefix).split("/")
+        if not key.startswith(prefix) or len(parts) != 2 or parts[1] == "lane":
             continue
-        if common.mode_of(parts[2]) != preset_mode:
+        if common.mode_of(parts[0]) != preset_mode:
             continue
-        count = row.get(f"episode/count/{parts[2]}/{parts[3]}", 0)
+        count = row.get(f"episode/count/{parts[0]}/{parts[1]}", 0)
         if count:
             total += value * count
             weight += count
@@ -187,6 +188,7 @@ def draw_behaviour(paths, out, formats=common.FORMATS, name="behaviour_over_trai
         axis.set_title(heading, fontsize=9)
         axis.set_ylabel(label, fontsize=8)
         _handoffs(axis, chain)
+    values.update(game_length_values(chain))
     for axis in axes.flat[panels:]:
         axis.set_visible(False)
     for axis in axes[-1]:
@@ -198,6 +200,26 @@ def draw_behaviour(paths, out, formats=common.FORMATS, name="behaviour_over_trai
     figure.tight_layout(rect=(0, 0, 1, 0.97))
     written = common.save(figure, out, name, [str(p) for p in paths], values, formats)
     return written, values
+
+
+def game_length_values(chain, updates: int = 5) -> dict[str, float | None]:
+    """Per mode, over the chain's last stage's last `updates` updates (its own games, every
+    pool but the lanes): the mean game length and the share of games that ran the clock
+    out, `game_length_<mode>_training_mean_seconds` and `_training_clock_out_share`."""
+    rows = chain[-1][2][-updates:] if chain else []
+    values: dict[str, float | None] = {}
+    for mode in common.MODES:
+        lengths = [_preset_mean(row, "length_seconds", mode) for row in rows]
+        clocks = [_preset_mean(row, "end/timeout", mode) for row in rows]
+        lengths = [value for value in lengths if value is not None]
+        clocks = [value for value in clocks if value is not None]
+        values[f"game_length_{mode}_training_mean_seconds"] = (
+            statistics.fmean(lengths) if lengths else None
+        )
+        values[f"game_length_{mode}_training_clock_out_share"] = (
+            statistics.fmean(clocks) if clocks else None
+        )
+    return values
 
 
 def stage_numbers(chain) -> dict[str, dict[str, float]]:

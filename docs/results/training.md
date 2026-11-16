@@ -37,6 +37,31 @@ every 5M steps to 50M, then at an interval that doubles each time the steps doub
 
 {{pending: training_reading | What the curves show: how close behaviour cloning comes to Imugi's 1000, how fast reinforcement learning climbs past it, and whether any mode is still climbing at 200M.}}
 
+The training also rates itself as it goes: its lanes play the live weights and their
+exponential average against Imugi and its snapshots, a few games each update. These live
+ratings are noisier than the pool's, and the deathmatch lanes play fewest games:
+
+{{figure: docs/results/training_ratings.png | The training lanes' Elo against Imugi during reinforcement learning, one panel per mode, the live weights solid and their exponential average dashed with its standard error}}
+
+## Which weights: the averaging sweep
+
+The run keeps every update's weights, so after training any average of them can be built
+and rated. The sweep rates each candidate average against the training's own exponential
+average (the incumbent) in all three modes at 5 against 5, and keeps the incumbent unless a
+candidate's mean Elo difference over the modes exceeds two standard errors.
+
+{{figure: docs/results/averaging_sweep.png | Each weight average's Elo difference from the training's exponential average, the mean over the modes with a 95% interval and a tick per mode, the champion marked}}
+
+{{pending: averaging_reading | Which average won and by how much, or that the incumbent stayed; whether the modes agree.}}
+
+## The champion on every condition
+
+{{figure: docs/results/suite_conditions.png | The champion's score against Imugi on each head-to-head condition of the decision suite, one panel per mode, one point per team size, with 95% intervals}}
+
+The decision suite's head-to-head conditions, each played to {{suite_games_per_condition:.0f}}
+games: the champion and Imugi on the same lineup of ship types, the champion's score being
+its wins and half its draws.
+
 ## Run health
 
 {{figure: docs/results/run_health.png | Small multiples against steps: clip fraction, approximate KL, explained variance and value loss per reward part, entropy per action factor, behaviour cloning's KL to its teacher, and each auxiliary head's loss}}

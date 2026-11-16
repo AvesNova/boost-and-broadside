@@ -313,6 +313,7 @@ def _synthetic_chain(root: pathlib.Path) -> list[pathlib.Path]:
                 row[f"combat/deaths_per_ship_minute/{mode}"] = 0.3
                 row[f"episode/count/{preset}/self_play"] = 10
                 row[f"episode/length_seconds/{preset}/self_play"] = 120.0
+                row[f"episode/end/timeout/{preset}/self_play"] = 0.25
                 for event, value in (
                     ("boundary_deaths", 1.0),
                     ("combat_deaths", 3.0),
@@ -340,6 +341,8 @@ def test_the_training_charts_read_a_chain(tmp_path):
     _drawn(written)
     assert values["behaviour_frontline_deaths_to_the_boundary_rl_final"] == pytest.approx(0.25)
     assert values["behaviour_elimination_hit_rate_bc_final"] == pytest.approx(0.4)
+    assert values["game_length_deathmatch_training_mean_seconds"] == pytest.approx(120.0)
+    assert values["game_length_deathmatch_training_clock_out_share"] == pytest.approx(0.25)
     written, values = training.draw_throughput(
         chain, tmp_path / "out", others={"laptop_4070": {"bc": None, "rl": None}}
     )
