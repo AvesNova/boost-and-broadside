@@ -658,7 +658,8 @@ class FiguresResults:
     (several: a chain, BC first); `game-length`, per-game JSONL files; `behaviour`,
     `throughput` and `lanes`, a chain's run directories, BC first (the training's own
     records: the play over training, steps per second on `--gpu` with the other GPUs' from
-    the values file, the training lanes' ratings).
+    the values file, the training lanes' ratings); `elo`, `bnb pool curves`' CSV; `suite`,
+    a `bnb evaluate` directory; `averaging`, `box/eval_champion.py`'s champion.json.
 
     modes: the modes drawn (fan, team-size; default all found); policy_count and
     opponent_counts: the fan's lineups (5 against each); chain: break-even's chain when the
@@ -677,6 +678,9 @@ class FiguresResults:
             "behaviour",
             "throughput",
             "lanes",
+            "elo",
+            "suite",
+            "averaging",
         ]
     ]
     sources: tyro.conf.Positional[tuple[str, ...]]

@@ -5,7 +5,17 @@ import json
 import pathlib
 
 from .. import theme
-from . import arms, break_even, common, fan, game_length, health, team_size, training
+from . import (
+    arms,
+    break_even,
+    common,
+    evaluation,
+    fan,
+    game_length,
+    health,
+    team_size,
+    training,
+)
 
 CHARTS = (
     "fan",
@@ -17,6 +27,9 @@ CHARTS = (
     "behaviour",
     "throughput",
     "lanes",
+    "elo",
+    "suite",
+    "averaging",
 )
 
 
@@ -41,7 +54,10 @@ def _draw(options) -> tuple[list, dict]:
     if not sources:
         raise SystemExit(f"bnb figures results {options.chart} needs its sources")
     single = sources[0]
-    if options.chart in ("fan", "break-even", "arms") and len(sources) != 1:
+    if (
+        options.chart in ("fan", "break-even", "arms", "elo", "suite", "averaging")
+        and len(sources) != 1
+    ):
         raise SystemExit(f"bnb figures results {options.chart} reads one source, not {sources}")
     formats = tuple(options.formats)
     if options.chart == "fan":
@@ -78,6 +94,13 @@ def _draw(options) -> tuple[list, dict]:
         )
     elif options.chart == "lanes":
         written, values = training.draw_lanes(sources, options.out, formats)
+    elif options.chart == "elo":
+        written, values = evaluation.draw_elo(single, options.out, formats)
+    elif options.chart == "suite":
+        written, values = evaluation.draw_suite(single, options.out, formats)
+    elif options.chart == "averaging":
+        written, values = evaluation.draw_averaging(single, options.out, formats)
+        values.update(evaluation.champion_values(single))
     else:
         raise SystemExit(f"unknown chart {options.chart!r}; choose from {CHARTS}")
     return written, values

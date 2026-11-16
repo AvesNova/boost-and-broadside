@@ -150,13 +150,16 @@ def slug(text) -> str:
     return re.sub(r"[^a-z0-9]+", "_", str(text).lower()).strip("_")
 
 
-def write_values(values: dict[str, float | None], path: str | pathlib.Path = VALUES) -> None:
+def write_values(values: dict[str, float | str | None], path: str | pathlib.Path = VALUES) -> None:
     """Merge `values` into the values file (`path`): each name replaced, the rest kept, the
-    names sorted; a value that is not a finite number is written as null (a pending
-    number). Written atomically."""
+    names sorted; a string is kept as it is, a value that is not a finite number is
+    written as null (a pending number). Written atomically."""
     path = pathlib.Path(path)
     held = json.loads(path.read_text()) if path.exists() else {}
     for name, value in values.items():
+        if isinstance(value, str):
+            held[name] = value
+            continue
         finite = value is not None and math.isfinite(float(value))
         held[name] = float(value) if finite else None
     path.parent.mkdir(parents=True, exist_ok=True)

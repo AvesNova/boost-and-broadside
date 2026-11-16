@@ -24,6 +24,9 @@ bnb figures results game-length games/*.jsonl
 bnb figures results behaviour runs/r0-bc runs/r0-rl      # the training's own records
 bnb figures results throughput runs/r0-bc runs/r0-rl --gpu rtx_5090
 bnb figures results lanes runs/r0-bc runs/r0-rl
+bnb figures results elo $EVAL/curves/curves.csv          # bnb pool curves --out
+bnb figures results suite $EVAL/suite                    # a bnb evaluate directory
+bnb figures results averaging $EVAL/champion.json        # box/eval_champion.py
 ```
 
 The house style (the [figure style](../contributing/writing-docs.md#figure-style)): lines
@@ -117,6 +120,19 @@ is an empty slot marked pending.
 its exponential average with its standard error: the training's own live ratings, not the
 evaluation's.
 
+**`elo`**: the rating against Imugi over the chain's steps, one line per mode, from
+`bnb pool curves`' CSV: the exponential average's weights solid with a band of one standard
+error, the live weights dotted where the pool holds them, a bound an open triangle, the
+hand-off from cloning to RL dashed.
+
+**`suite`**: the champion against Imugi on each head-to-head condition of a `bnb evaluate`
+directory: its score (wins and half the draws) with a 95% Wilson interval, one panel per
+mode, one point per team size.
+
+**`averaging`**: the averaging sweep from `box/eval_champion.py`'s champion.json: each
+weight average's Elo difference from the incumbent (the training's exponential average),
+the mean over the modes with a 95% interval and a tick per mode, the champion marked.
+
 ## The values file
 
 Each chart merges the numbers it shows into one flat JSON object, `docs/results/values.json`{.plain}
@@ -135,4 +151,7 @@ names, with `<mode>` one of `frontline`, `deathmatch`, `elimination`:
 | `behaviour` | `behaviour_<mode>_<panel>_<stage>_final`: the mean over the stage's last five updates, the panel's title as a slug (`behaviour_elimination_hit_rate_rl_final`{.plain}) |
 | `throughput` | `throughput_<gpu>_<stage>_steps_per_second`, `chain_hours_<gpu>_<stage>`, `compile_minutes_<gpu>` (both stages' first updates over their median update) |
 | `lanes` | `lanes_<mode>_<live or average>_final`, `_final_stderr` |
+| `elo` | `elo_<mode>_bc_final`, `elo_<mode>_final`, `_final_stderr`: the averaged weights' last BC and last RL snapshot |
+| `suite` | `suite_<condition>_score`, `_low`, `_high`, `_games` |
+| `averaging` | `averaging_best_gap`, `_stderr`, `averaging_candidates`; `champion_name`, `champion_run`, `champion_steps`, `champion_weights` (strings, but for the steps) |
 | `game-length` | `game_length_<mode>_median_seconds`, `_lower_quartile_seconds`, `_upper_quartile_seconds`, `_games`, `_clock_out_share` |

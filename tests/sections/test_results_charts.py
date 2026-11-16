@@ -351,3 +351,75 @@ def test_the_training_charts_read_a_chain(tmp_path):
     written, values = training.draw_lanes(chain, tmp_path / "out")
     _drawn(written)
     assert values["lanes_deathmatch_live_final"] == 1203.0
+
+
+def test_the_evaluation_charts_read_the_queue_records(tmp_path):
+    from bnb.figures.results import evaluation
+
+    curves = tmp_path / "curves.csv"
+    lines = ["preset,run,kind,step,player,calibrated_elo,stderr,status,games"]
+    for preset in (
+        "real_scale_frontline_5v5",
+        "real_scale_deathmatch_5v5",
+        "real_scale_elimination_5v5",
+    ):
+        for run, steps, elo in (("c-bc", (50, 100), 900.0), ("c-rl", (50, 100), 1400.0)):
+            for step in steps:
+                for kind in ("exponential_average", "live"):
+                    lines.append(
+                        f"{preset},{run},{kind},{step * 1_000_000},p,{elo + step},30.0,rated,100"
+                    )
+    curves.write_text("\n".join(lines) + "\n")
+    written, values = evaluation.draw_elo(curves, tmp_path / "out")
+    _drawn(written)
+    assert values["elo_frontline_bc_final"] == 1000.0
+    assert (
+        values["elo_elimination_final"] == 1500.0 and values["elo_elimination_final_stderr"] == 30.0
+    )
+
+    suite = tmp_path / "suite"
+    (suite / "batches").mkdir(parents=True)
+    batch = dict(
+        condition="elimination_5v5",
+        batch=0,
+        games=40,
+        seconds=1.0,
+        blocks=[dict(wins=30, draws=0, losses=10)],
+    )
+    other = dict(batch, condition="deathmatch_1v1", blocks=[dict(wins=20, draws=4, losses=16)])
+    (suite / "batches" / "w.jsonl").write_text(json.dumps(batch) + "\n" + json.dumps(other) + "\n")
+    written, values = evaluation.draw_suite(suite, tmp_path / "out")
+    _drawn(written)
+    assert values["suite_elimination_5v5_score"] == pytest.approx(0.75)
+    assert values["suite_elimination_5v5_low"] < 0.75 < values["suite_elimination_5v5_high"]
+    assert values["suite_deathmatch_1v1_score"] == pytest.approx(0.55)
+
+    champion = tmp_path / "champion.json"
+    champion.write_text(
+        json.dumps(
+            dict(
+                champion="c-rl/average/ema_0.999",
+                path="/runs/c-rl/policies/step_100/ema_0.999",
+                incumbent="c-rl/average/training_exponential_x",
+                gap=40.0,
+                gap_stderr=10.0,
+                ranking=[
+                    dict(
+                        name="c-rl/average/ema_0.999",
+                        gap=40.0,
+                        stderr=10.0,
+                        presets={"real_scale_frontline_5v5": [30.0, 12.0]},
+                    )
+                ],
+            )
+        )
+    )
+    written, values = evaluation.draw_averaging(champion, tmp_path / "out")
+    _drawn(written)
+    assert values["averaging_best_gap"] == 40.0
+    assert evaluation.champion_values(champion) == dict(
+        champion_name="c-rl/average/ema_0.999",
+        champion_run="c-rl",
+        champion_steps=100.0,
+        champion_weights="ema_0.999",
+    )
