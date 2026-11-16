@@ -101,6 +101,21 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
 
 ### 2026-11-16
 
+- **Evening session (author, 2026-11-16), the game and the scripted agent:**
+  - **Lethality:** a sustained time to kill of about 1 s; the band was later widened to 0.4–2 s, so ships can differ in toughness.
+  - **Imugi:** one simple, sticky, card-derived Imugi is the BC teacher and the 1000-Elo anchor (the scale is arbitrary). It has target hysteresis, extend-and-return, circular lead, an offset approach, a lead turn and the circle choice from card plus state, with no disengagement.
+  - **Where it lives:** `feat/lethality-sticky`, game v23 (shields ×5.4). Build 2 is ede616c4. Not merged; its v23 clashes with tune/balance-final's v23, so one of them is renumbered at merge.
+  - **Bounds:** the real WWII ranges, but faster climb is allowed, the g limit is 6–9, and the cards lean toward responsive and punchy. Combat knobs stay within about ×0.5–2.
+- **Evening session, balance measurement:**
+  - **Settings:** fog on, fields off, kill share as the primary metric, deathmatch 300 s, Frontline included. Code: `feat/balance-eval` 7148b709.
+  - **Conversion:** kill-share bands for 45–55% win rate per condition, fitted with logit(win) = a + b·logit(kill share). The bands are to be refitted at the new settings.
+- **Balance goal (author):** no energy or turn archetypes. The aim is ships that differ and are balanced: candidate pairs, a full map, and eventually 1–4 sliders that keep balance (after the data).
+  - **Method:** a plain Sobol sampling study over about 10 handles, all 8 conditions, the kill-share logit modelled per condition against 2–3 references, plus card-against-card cycle insurance.
+  - **Running:** box5090, `feat/balance-map`. Target 01:00 KST.
+  - **Fallback:** option G on tune/balance-final (old agent and lethality).
+- **Compute (author):** `box5090` is the long-term 5090 with a 200 GB volume, set up by box/setup.sh. The 3070 box was released. The laptop is usable, with 1 core and about 2 GB of RAM left free.
+- **Next to discuss (author):** the charts (the figure-candidates page), then the work needed for the paper, the documentation and the white paper.
+
 - **Game rules (author):** the game-rule questions from the freeze check (2v2 tickets, 1v1 deathmatch, elimination length, merges per kill, Frontline 3v3) wait for the balance result. Game and Yemong version numbers are only consistency checks: bump them whenever anything changes, no cost attached (Yemong v9 confirmed).
 - **Split critic (author):** (7) the return scale follows the offence premium, so A7 tests only the offence/defence balance; (8) the objective levels' sign split must not net within a tick: positive events go to the gain part and negative events to the loss part, even when both happen on the same tick; (9) retiring the two v1 two-hot fixture checks is fine.
 - **Arm-1 golden (author):** 0.016 of scale against 1e-7 everywhere else is too large to call rounding; find the cause before changing the test.
