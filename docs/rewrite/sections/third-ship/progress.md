@@ -145,3 +145,20 @@ feat/imugi-boundary). Power profile `performance`.
 - Running: the tight 5v5 run (laptop: d1.17/s115 and d1.2/s115, 1536 games a pairing, the
   release pair and all three mirrors); the box: elimination 5v5, deathmatch 2v2, Frontline
   5v5, deathmatch 10v10 on d1.2/s115 (queued behind the balance agent's jobs).
+
+## 09:15 modes and sizes; the balance agent's option C
+
+- Against the v23 pair (Bonghwang d1.2/s115; table in results.md): deathmatch 5v5 (1536)
+  **0.490 ± 0.012 / 0.567 ± 0.012** (Y v J 0.495); 1v1 0.33 / 0.57 (Y v J 0.31); 2v2 0.31 /
+  0.67 (0.28); 10v10 0.60 / 0.46 (0.73); elimination 5v5 0.40 / 0.68 (0.36); Frontline 5v5
+  0.33 / 0.64 (0.34). Bonghwang always lands between the other two and moves less than
+  they do; where the pair is far apart (small fights, elimination, Frontline: Jujak; 10v10:
+  Yongma) it cannot be within 40-60% of both.
+- The balance agent's option C (`options/jt0.91-yt1.08-ys0.6`: Jujak turn x0.91, Yongma turn
+  x1.08, Yongma shield x0.6, flat over sizes): Y v J 0.51 (2v2) / 0.61 (5v5) / 0.61 (10v10)
+  here. Bonghwang d1.2/s115 against it: **2v2 0.36 / 0.36, 5v5 0.57 / 0.56, 10v10 0.74 /
+  0.76**: level at 5v5 but steep over sizes (with the others' shields at 80-85 its 115 is
+  the tank; a high shield wins the big fights). d1.1/s105: 0.34 / 0.31, 0.45 / 0.42, 0.56 /
+  0.56. Next: an option-C card for Bonghwang with a lower shield (90-95) and the level from
+  damage or the 0.66 turn (optC2: 5v5 and 10v10 on the laptop, 2v2 on the box).
+- Elimination and Frontline against option C queued on the box.
