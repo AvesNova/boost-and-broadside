@@ -13,6 +13,10 @@ Three forms, anywhere in a page's Markdown outside fenced blocks and code spans:
         An image, on a line of its own, the path from the repository root. Shown when the
         file exists; otherwise a slot that names it.
 
+The values file can be swapped with the environment variable BNB_RESULTS_VALUES (a path,
+from the repository root or absolute), to preview the pages with example numbers without
+touching the real file.
+
 The mode is the environment variable BNB_RESULTS: `draft` (the default) renders every
 outstanding placeholder visibly (a null value as its name in angle brackets, a pending
 marker or a missing figure as a quoted note) and reports them; `publish` refuses to render
@@ -24,6 +28,8 @@ README.md as it is, so README.md is rendered from README.template.md by this fil
     uv run --no-sync python docs/hooks/placeholders.py readme        # write README.md
     uv run --no-sync python docs/hooks/placeholders.py check         # list what is open
     BNB_RESULTS=publish uv run --no-sync python docs/hooks/placeholders.py check
+    # a preview with example numbers, the real README.md and values file untouched:
+    BNB_RESULTS_VALUES=example.json uv run --no-sync python docs/hooks/placeholders.py readme --out preview/README.md
 """
 
 import dataclasses
@@ -79,8 +85,16 @@ def mode() -> str:
     return chosen
 
 
-def load_values(path: pathlib.Path = VALUES) -> dict:
+def values_path() -> pathlib.Path:
+    """The values file: BNB_RESULTS_VALUES when set (from the repository root or absolute),
+    otherwise docs/results/values.json."""
+    chosen = os.environ.get("BNB_RESULTS_VALUES", "").strip()
+    return ROOT / chosen if chosen else VALUES
+
+
+def load_values(path: pathlib.Path | None = None) -> dict:
     """The values file's {name: number, string or null}; empty when there is no file."""
+    path = values_path() if path is None else path
     if not path.exists():
         return {}
     values = json.loads(path.read_text())
@@ -148,7 +162,7 @@ class _Page:
                                    "pending marker or figure")
         if name not in self.values:
             raise PlaceholderError(f"{self.name}:{number}: no value {name!r} in "
-                                   f"{VALUES.relative_to(ROOT)}")
+                                   f"{values_path()}")
         value = self.values[name]
         if value is None:
             self.outstanding.append(Outstanding(self.name, number, "value", name))
@@ -233,16 +247,23 @@ def on_page_markdown(markdown: str, page, config, files) -> str:
 # ------------------------------------------------------------------ the command
 
 def main(arguments: list[str]) -> int:
-    usage = "usage: placeholders.py {readme,check} [--publish]"
+    usage = "usage: placeholders.py {readme,check} [--publish] [--out PATH]"
     if not arguments or arguments[0] not in ("readme", "check"):
         print(usage, file=sys.stderr)
         return 2
     chosen_mode = "publish" if "--publish" in arguments[1:] else None
+    out = README
+    if "--out" in arguments[1:]:
+        at = arguments.index("--out")
+        if at + 1 >= len(arguments):
+            print(usage, file=sys.stderr)
+            return 2
+        out = pathlib.Path(arguments[at + 1])
     try:
         if arguments[0] == "readme":
             text, outstanding = render_readme(chosen_mode)
-            README.write_text(text)
-            print(f"wrote README.md ({len(outstanding)} placeholder(s) open)")
+            out.write_text(text)
+            print(f"wrote {out} ({len(outstanding)} placeholder(s) open)")
             return 0
         outstanding = check(chosen_mode)
     except PlaceholderError as error:
