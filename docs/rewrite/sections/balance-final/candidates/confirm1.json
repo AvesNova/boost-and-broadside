@@ -1,0 +1,341 @@
+[
+{
+"name": "g-E",
+"handles": {
+"energy_handles": {
+"sustained_turn_rate": 1.12,
+"max_shield": 0.55
+},
+"turn_handles": {
+"sustained_turn_rate": 0.95
+}
+},
+"card": {
+"energy": {
+"engine_power": {
+"set": 9423.828125
+},
+"engine_power_full_store": {
+"set": 2000.611083984375
+},
+"static_thrust": {
+"set": 19.028581619262695
+},
+"corner_nose_frequency": {
+"set": 11.153963088989258
+},
+"max_shield": {
+"set": 78.07199096679688
+},
+"induced_drag_scale": {
+"set": 0.28046107292175293
+},
+"dive_exchange_scale": {
+"set": 4.710836887359619
+},
+"climb_exchange_scale": {
+"set": 3.4894843101501465
+},
+"fine_stick": {
+"set": 0.21948039531707764
+},
+"sustained_stick": {
+"set": 0.7316012978553772
+}
+},
+"turn": {
+"engine_power": {
+"set": 11282.396484375
+},
+"engine_power_full_store": {
+"set": 2104.3984375
+},
+"static_thrust": {
+"set": 49.058109283447266
+},
+"corner_nose_frequency": {
+"set": 11.43338394165039
+},
+"induced_drag_scale": {
+"set": 0.36945950984954834
+},
+"dive_exchange_scale": {
+"set": 4.1330485343933105
+},
+"climb_exchange_scale": {
+"set": 3.4593589305877686
+},
+"fine_stick": {
+"set": 0.2132035493850708
+},
+"sustained_stick": {
+"set": 0.7106785178184509
+}
+}
+},
+"probe": {}
+},
+{
+"name": "g-Q4x0.7h",
+"handles": {
+"energy_handles": {
+"sustained_turn_rate": 1.113,
+"max_shield": 0.55
+},
+"turn_handles": {
+"sustained_turn_rate": 0.95
+}
+},
+"card": {
+"energy": {
+"engine_power": {
+"set": 9422.5966796875
+},
+"engine_power_full_store": {
+"set": 1999.3802490234375
+},
+"static_thrust": {
+"set": 19.622161865234375
+},
+"corner_nose_frequency": {
+"set": 11.142090797424316
+},
+"max_shield": {
+"set": 78.07199096679688
+},
+"induced_drag_scale": {
+"set": 0.29371222853660583
+},
+"dive_exchange_scale": {
+"set": 4.709605693817139
+},
+"climb_exchange_scale": {
+"set": 3.486478328704834
+},
+"fine_stick": {
+"set": 0.2181648463010788
+},
+"sustained_stick": {
+"set": 0.7272161841392517
+},
+"max_energy": 1.4438453988846187,
+"bullet_energy_cost": 0.6755309879584539
+},
+"turn": {
+"engine_power": {
+"set": 11282.396484375
+},
+"engine_power_full_store": {
+"set": 2104.3984375
+},
+"static_thrust": {
+"set": 49.058109283447266
+},
+"corner_nose_frequency": {
+"set": 11.43338394165039
+},
+"induced_drag_scale": {
+"set": 0.36945950984954834
+},
+"dive_exchange_scale": {
+"set": 4.1330485343933105
+},
+"climb_exchange_scale": {
+"set": 3.4593589305877686
+},
+"fine_stick": {
+"set": 0.2132035493850708
+},
+"sustained_stick": {
+"set": 0.7106785178184509
+},
+"max_shield": 1.1585655531997716
+}
+},
+"probe": {
+"energy": {
+"max_energy": 1.4438453988846187,
+"bullet_energy_cost": 0.6755309879584539
+},
+"turn": {
+"max_shield": 1.1585655531997716
+}
+}
+},
+{
+"name": "g-Q4x0.8h",
+"handles": {
+"energy_handles": {
+"sustained_turn_rate": 1.112,
+"max_shield": 0.55
+},
+"turn_handles": {
+"sustained_turn_rate": 0.95
+}
+},
+"card": {
+"energy": {
+"engine_power": {
+"set": 9422.4404296875
+},
+"engine_power_full_store": {
+"set": 1999.2237548828125
+},
+"static_thrust": {
+"set": 19.710586547851562
+},
+"corner_nose_frequency": {
+"set": 11.140378952026367
+},
+"max_shield": {
+"set": 78.07199096679688
+},
+"induced_drag_scale": {
+"set": 0.2956407070159912
+},
+"dive_exchange_scale": {
+"set": 4.7094268798828125
+},
+"climb_exchange_scale": {
+"set": 3.486041307449341
+},
+"fine_stick": {
+"set": 0.21796584129333496
+},
+"sustained_stick": {
+"set": 0.7265528440475464
+},
+"max_energy": 1.5216310566887554,
+"bullet_energy_cost": 0.6387176047011408
+},
+"turn": {
+"engine_power": {
+"set": 11282.396484375
+},
+"engine_power_full_store": {
+"set": 2104.3984375
+},
+"static_thrust": {
+"set": 49.058109283447266
+},
+"corner_nose_frequency": {
+"set": 11.43338394165039
+},
+"induced_drag_scale": {
+"set": 0.36945950984954834
+},
+"dive_exchange_scale": {
+"set": 4.1330485343933105
+},
+"climb_exchange_scale": {
+"set": 3.4593589305877686
+},
+"fine_stick": {
+"set": 0.2132035493850708
+},
+"sustained_stick": {
+"set": 0.7106785178184509
+},
+"max_shield": 1.1831835630667646
+}
+},
+"probe": {
+"energy": {
+"max_energy": 1.5216310566887554,
+"induced_drag_scale": 1.044554572594834,
+"bullet_energy_cost": 0.6387176047011408
+},
+"turn": {
+"max_shield": 1.1831835630667646
+}
+}
+},
+{
+"name": "g-Q4x1.0h",
+"handles": {
+"energy_handles": {
+"sustained_turn_rate": 1.11,
+"max_shield": 0.55
+},
+"turn_handles": {
+"sustained_turn_rate": 0.95
+}
+},
+"card": {
+"energy": {
+"engine_power": {
+"set": 9422.1416015625
+},
+"engine_power_full_store": {
+"set": 1998.92529296875
+},
+"static_thrust": {
+"set": 19.890310287475586
+},
+"corner_nose_frequency": {
+"set": 11.136943817138672
+},
+"max_shield": {
+"set": 78.07199096679688
+},
+"induced_drag_scale": {
+"set": 0.29952457547187805
+},
+"dive_exchange_scale": {
+"set": 4.709065914154053
+},
+"climb_exchange_scale": {
+"set": 3.485161781311035
+},
+"fine_stick": {
+"set": 0.21757107973098755
+},
+"sustained_stick": {
+"set": 0.7252369523048401
+},
+"max_energy": 1.69,
+"bullet_energy_cost": 0.571
+},
+"turn": {
+"engine_power": {
+"set": 11282.396484375
+},
+"engine_power_full_store": {
+"set": 2104.3984375
+},
+"static_thrust": {
+"set": 49.058109283447266
+},
+"corner_nose_frequency": {
+"set": 11.43338394165039
+},
+"induced_drag_scale": {
+"set": 0.36945950984954834
+},
+"dive_exchange_scale": {
+"set": 4.1330485343933105
+},
+"climb_exchange_scale": {
+"set": 3.4593589305877686
+},
+"fine_stick": {
+"set": 0.2132035493850708
+},
+"sustained_stick": {
+"set": 0.7106785178184509
+},
+"max_shield": 1.234
+}
+},
+"probe": {
+"energy": {
+"max_energy": 1.69,
+"induced_drag_scale": 1.056,
+"bullet_energy_cost": 0.571
+},
+"turn": {
+"max_shield": 1.234
+}
+}
+}
+]

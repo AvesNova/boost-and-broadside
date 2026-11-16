@@ -1,0 +1,12 @@
+[
+ {
+  "name": "g-Q4x0.7h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.113,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ }
+]

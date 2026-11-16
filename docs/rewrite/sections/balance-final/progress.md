@@ -513,3 +513,25 @@ the fitted step plus single checks, in every mode (laptop) and dm2 (box, 1024).
   job's ticks compile nothing (check log: [0/1] before "warm done", none after).
 - **src follow-up for later**: make the carry's `boundary_progress` contiguous (or the obs
   column a copy) in `track_boundary`, so the second tick never recompiles.
+
+## 15:05 probe3 (dm2, dm5, FL5, FL10 in; dm10 done; el5/el10 playing); confirm1 queued
+
+Kill share minus E's (score), 512 games (dm2 1024):
+
+| probe3 | dm 2v2 | dm 5v5 | FL 10v10 | FL 5v5 |
+|---|---|---|---|---|
+| E | 44-48 | 51-53 | 69-71 | 54-60 |
+| Q1x0.8 | +5.0 (60) | +0.4 (57) | -2.9 (50) | -2.3 (46) |
+| Q2x1.0 | +5.7 (62) | +0.0 (52) | -3.3 (55) | -2.7 (46) |
+| Q3x0.8 | +4.1 (55) | -0.1 (49) | -3.0 (49) | -2.1 (45) |
+| **Q4x0.8** | **+2.1 (50)** | **-0.4 (52)** | **-3.0 (52)** | **-2.6 (47)** |
+| Q4x1.0 | +1.7 (49) | +0.1 (53) | -3.5 (47) | -3.4 (42) |
+| Q5x1.0 | - | -0.4 (50) | -4.3 (32) | - |
+
+- The cards pull FL10 and FL5 down together as modelled, but **dm2 (unmodelled) rises 4-6
+  kill points with vision** (Q1, Q2, Q5 have Yongma vision x1.4-1.5): those are 55-62 at 2v2.
+  Q4 (no vision: store x1.69, shot cost x0.57, Yongma turn x1.110, Jujak shield x1.23) is the
+  only line even at 2v2. Q4x0.8 is inside 55/45 in all four so far.
+- confirm1 (`candidates/make_confirm1.py`): E and Q4 at 0.7 / 0.8 / 1.0 of the step as handle
+  cards (Yongma turn handle 1.113 / 1.112 / 1.110, low-speed acceleration held), 2048 games
+  (10v10 1024) with 256 mixed, queued ahead of probe4 where the worker had not yet started it.
