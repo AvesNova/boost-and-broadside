@@ -243,6 +243,10 @@ bnb figures trails --capture figures/captures/match_real_scale_elimination_seed0
   times the square root of two, as in `belief_ghosts`), joined to where the ship really
   was. Imugi's ghost is its dead-reckoned memory, with no sigma.
 
+`bnb.figures.trails.manoeuvre_strip` draws a stored match (`bnb.figures.capture.load`) as a
+grid of windows, each part of the game's busiest stretch (`part_windows`), for a gallery
+of manoeuvres.
+
 One still with any window and look: `--still.start` and `--still.end` (seconds from the
 game's start), `--still.no-crop` (the whole arena, not the action's bounding box); the
 opt-in marks `--still.shots` (a light tick across the trail per shot fired),
