@@ -76,14 +76,24 @@ REFERENCE_SHOT_COST = REFERENCE_STORE / 865.2401087452062  # 575 J
 # fire rate x tail aspect); Jujak on Jujak 0.75 s. Every candidate fires at 30 Hz with the
 # reference's armour, so time to kill = TIME_PER_SHIELD_PER_DAMAGE x shield / damage.
 TIME_PER_SHIELD_PER_DAMAGE = 0.7495 * REFERENCE_DAMAGE / REFERENCE_SHIELD
-TIME_TO_KILL_BAND = (0.6, 1.4)
+# The author, 2026-11-16 20:00: 0.4-2.0 s for every pairing (was 0.6-1.4, "a rough
+# estimate"), so glass cannons and tanks fit.
+TIME_TO_KILL_BAND = (0.4, 2.0)
+COMBAT_KNOB_RANGE = (0.5, 2.0)  # combat knobs within x0.5-2 of the v23 cards (Jujak's, Yongma's)
 _SHIELD_BAND = tuple(
     REFERENCE_SHIELD * t / (TIME_PER_SHIELD_PER_DAMAGE * REFERENCE_SHIELD / REFERENCE_DAMAGE)
     for t in TIME_TO_KILL_BAND
 )  # the reference shooting the candidate
-_DAMAGE_BAND = tuple(
-    TIME_PER_SHIELD_PER_DAMAGE * REFERENCE_SHIELD / t for t in reversed(TIME_TO_KILL_BAND)
-)  # the candidate shooting the reference
+_DAMAGE_BAND = (
+    max(
+        TIME_PER_SHIELD_PER_DAMAGE * REFERENCE_SHIELD / TIME_TO_KILL_BAND[1],
+        COMBAT_KNOB_RANGE[0] * REFERENCE_DAMAGE,
+    ),
+    min(
+        TIME_PER_SHIELD_PER_DAMAGE * REFERENCE_SHIELD / TIME_TO_KILL_BAND[0],
+        COMBAT_KNOB_RANGE[1] * 22.9824,
+    ),
+)  # the candidate shooting the reference, inside x0.5 Jujak's - x2 Yongma's damage
 
 # The 13 searched handles (bounds: the real WWII types' spread from
 # src/bnb/reference/real-plane-types, leaning to responsiveness and punch, the author's g
@@ -96,8 +106,8 @@ SPACE = (
     Axis("cruise_speed", 260.0, 360.0, log=False),  # real 261 (A6M5) - 336 (Tempest V)
     Axis("stall_speed", 75.0, 106.0, log=False),  # real 75 (A6M5) - 105.6 (Fw 190, P-38L)
     Axis("g_limit", 6.0, 9.0, log=False),  # the author's 6-9 (real 6-8)
-    Axis("max_shield", *_SHIELD_BAND),  # 344-803: the reference's 0.6-1.4 s on it
-    Axis("hit_damage", *_DAMAGE_BAND),  # 10.3-24.0: its 0.6-1.4 s on the reference
+    Axis("max_shield", *_SHIELD_BAND),  # 230-1148: the reference's 0.4-2.0 s on it
+    Axis("hit_damage", *_DAMAGE_BAND),  # 9.6-36.0: its 0.4-2.0 s on the reference, x0.5
     Axis("gun_range", 400.0, 700.0),  # real 400 (Bf 109 K-4) - 600 (Spitfire XIV)
     Axis("store", 0.5 * REFERENCE_STORE, 2.0 * REFERENCE_STORE),  # the ceiling (J), a knob
     Axis("shot_cost", 0.5 * REFERENCE_SHOT_COST, 2.0 * REFERENCE_SHOT_COST),  # J a shot
@@ -467,6 +477,7 @@ class Records:
         # this process's token in job and output file names: a restart never reads an output
         # a worker of an abandoned attempt may still be writing
         self.attempt = time.strftime("%Y%m%d%H%M%S")
+        self.queue_root = root  # the workers' queues (another run's, to share its workers)
         self.candidates = self._read("candidates.jsonl")
         self.evaluations = self._read("evaluations.jsonl")
         self.by_id = {c["id"]: c for c in self.candidates}
@@ -507,7 +518,9 @@ class Records:
         for pattern in (f"queue/*/{label}*.json", f"results/*/{label}*.jsonl"):
             for path in self.root.glob(pattern):
                 path.unlink()
+        queue_root, attempt = self.queue_root, self.attempt
         self.__init__(self.root)
+        self.queue_root, self.attempt = queue_root, attempt
 
     def add_evaluations(self, rows: list[dict]) -> None:
         self.append("evaluations.jsonl", rows)
@@ -519,9 +532,12 @@ class Records:
         """A card's objective on everything played so far."""
         return objective_of(pooled(self.results_of.get(identifier, [])), conditions)
 
-    def map(self, dims=(10, 10)) -> dict:
-        """The map: each cell's best card by the objective's lower bound ({cell: summary})."""
+    def map(self, dims=(10, 10), keep: int = 3) -> dict:
+        """The map: each cell's best card by the objective's lower bound ({cell: summary}),
+        with the next `keep` - 1 as "others" (several near-balanced cards a cell, for a
+        smooth surface through them later)."""
         cells: dict[str, dict] = {}
+        others: dict[str, list] = {}
         for candidate in self.candidates:
             if "card" not in candidate:
                 continue
@@ -531,9 +547,49 @@ class Records:
             cell = cell_of(candidate["measures"], dims)
             key = f"{cell[0]},{cell[1]}"
             row = dict(id=candidate["id"], measures=candidate["measures"], **score)
+            others.setdefault(key, []).append(row)
             if key not in cells or row["lower"] > cells[key]["lower"]:
                 cells[key] = row
+        for key, rows in others.items():
+            rows.sort(key=lambda r: -r["lower"])
+            cells[key]["others"] = [
+                dict(
+                    id=r["id"],
+                    objective=round(r["objective"], 2),
+                    lower=round(r["lower"], 2),
+                    games=r["games"],
+                )
+                for r in rows[1:keep]
+            ]
         return cells
+
+    def import_run(self, other: pathlib.Path, prefix: str = "pilot-") -> int:
+        """Every solved card of another run with its evaluations, ids prefixed, coordinates
+        and measures recomputed under this SPACE (the handles are the record): kept from an
+        earlier band or bounds. Returns the cards imported."""
+        old = Records(other)
+        known = {c["id"] for c in self.candidates}
+        rows, evaluations = [], []
+        for candidate in old.candidates:
+            if "card" not in candidate or prefix + candidate["id"] in known:
+                continue
+            coordinates = encode(candidate["handles"])
+            rows.append(
+                dict(
+                    candidate,
+                    id=prefix + candidate["id"],
+                    generation="import",
+                    coordinates=[round(float(v), 6) for v in coordinates],
+                    measures=list(measures(coordinates)),
+                )
+            )
+            evaluations += [
+                dict(e, id=prefix + e["id"], label="import")
+                for e in old.results_of.get(candidate["id"], [])
+            ]
+        self.add_candidates(rows)
+        self.add_evaluations(evaluations)
+        return len(rows)
 
 
 def cell_of(measures, dims=(10, 10)) -> tuple[int, int]:
@@ -547,7 +603,7 @@ def submit(
     """One job per condition into the workers' queues; returns each condition's output."""
     outputs = {}
     for condition in conditions:
-        queue = records.root / "queue" / condition
+        queue = records.queue_root / "queue" / condition
         queue.mkdir(parents=True, exist_ok=True)
         out = records.root / "results" / condition / f"{label}.{records.attempt}.jsonl"
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -575,7 +631,7 @@ def collect(
             break
         for condition in outputs:
             name = f"{label}.{records.attempt}.json.txt"
-            failed = records.root / "queue" / condition / "failed" / name
+            failed = records.queue_root / "queue" / condition / "failed" / name
             if failed.exists():
                 raise RuntimeError(f"{condition} job {label} failed:\n{failed.read_text()}")
         time.sleep(poll)
@@ -641,8 +697,35 @@ def seeds() -> list[tuple[str, dict[str, float]]]:
     return out
 
 
+def start_points(records: Records, count: int, floor: float = 30.0) -> list:
+    """`count` emitter starts: far-apart cards (max-min distance in coordinates) among those
+    with the objective at least `floor`, the best first; the seeds fill any shortfall."""
+    pool = []
+    for candidate in records.candidates:
+        score = records.score(candidate["id"])
+        if "card" in candidate and score["objective"] is not None and score["objective"] >= floor:
+            pool.append((score["objective"], numpy.array(candidate["coordinates"])))
+    pool.sort(key=lambda r: -r[0])
+    chosen = [pool[0][1]] if pool else []
+    while pool and len(chosen) < count:
+        rest = [x for _, x in pool if all(numpy.linalg.norm(x - c) > 1e-9 for c in chosen)]
+        if not rest:
+            break
+        chosen.append(max(rest, key=lambda x: min(numpy.linalg.norm(x - c) for c in chosen)))
+    named = [encode(handles) for _, handles in seeds()]
+    while len(chosen) < count:
+        chosen.append(named[len(chosen) % len(named)])
+    return chosen
+
+
 def make_schedulers(
-    emitters: int, batch: int, sigma: float, learning_rate: float, seed: int, halves: int = 2
+    emitters: int,
+    batch: int,
+    sigma: float,
+    learning_rate: float,
+    seed: int,
+    halves: int = 2,
+    starts: list | None = None,
 ):
     """CMA-MAE: one 10 x 10 GridArchive over the two measures (a learning rate under 1, the
     threshold floor 20), `emitters` CMA-ES emitters ranked by improvement, started on the
@@ -660,8 +743,11 @@ def make_schedulers(
         threshold_min=20.0,
         seed=seed,
     )
-    starts = [encode(handles) for _, handles in seeds()]
-    order = [1, 0, 4, 5, 2, 3]  # Yongma, Jujak, G Yongma, G Jujak, E Yongma, E Jujak
+    if starts is None:
+        named = [encode(handles) for _, handles in seeds()]
+        # Yongma, Jujak, G Yongma, G Jujak, E Yongma, E Jujak
+        starts = [named[i] for i in (1, 0, 4, 5, 2, 3)]
+    order = list(range(len(starts)))
     bounds = [(0.0, 1.0)] * len(SPACE)
     emitter_list = [
         EvolutionStrategyEmitter(
@@ -742,6 +828,8 @@ def search(args) -> None:
     games play while the other's cards are solved. Each tell writes the records and the
     state before the half asks again; a restart resumes after the last told step."""
     records = Records(args.out)
+    if args.queue_root is not None:
+        records.queue_root = args.queue_root
     state = args.out / "scheduler.pkl"
     base = dict(reference_ships()[REFERENCE].handles)
     if state.exists():
@@ -752,11 +840,28 @@ def search(args) -> None:
             records.forget(f"g{generation:04d}{'ab'[half]}")
         print(f"resumed at generations {next_generation}", flush=True)
     else:
+        starts = None
+        if args.import_run is not None:
+            imported = records.import_run(args.import_run)
+            starts = start_points(records, args.emitters)
+            print(
+                f"imported {imported} cards from {args.import_run}; emitters start on "
+                f"{len(starts)} far-apart near-even cards",
+                flush=True,
+            )
         schedulers = make_schedulers(
-            args.emitters, args.batch, args.sigma, args.learning_rate, args.seed
+            args.emitters, args.batch, args.sigma, args.learning_rate, args.seed, starts=starts
         )
         next_generation = [0] * len(schedulers)
         records.forget("seed")  # seeds played before the first state is saved
+        for candidate in records.candidates:  # the imported cards seed the archive
+            score = records.score(candidate["id"])
+            if candidate["generation"] == "import" and score["objective"] is not None:
+                schedulers[0].archive.add(
+                    numpy.array([candidate["coordinates"]]),
+                    numpy.array([score["objective"]]),
+                    numpy.array([candidate["measures"]]),
+                )
         named = seeds()
         rows = prepare(records, "seed", [encode(h) for _, h in named], base, args.processes)
         for row, (name, _) in zip(rows, named, strict=True):
@@ -995,6 +1100,18 @@ def main() -> None:
     one.add_argument("--learning-rate", type=float, default=0.05)
     one.add_argument("--seed", type=int, default=0)
     one.add_argument("--processes", type=int, default=8, help="solver processes")
+    one.add_argument(
+        "--queue-root",
+        type=pathlib.Path,
+        default=None,
+        help="the workers' run directory (its queue/), when not --out",
+    )
+    one.add_argument(
+        "--import-run",
+        type=pathlib.Path,
+        default=None,
+        help="a fresh run starts from this run's cards and evaluations",
+    )
     one = sub.add_parser("confirm")
     one.add_argument("--out", type=pathlib.Path, required=True)
     one.add_argument("--ids", nargs="*", default=None, help="the picks (default: chosen)")
