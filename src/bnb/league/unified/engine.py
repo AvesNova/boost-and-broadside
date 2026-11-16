@@ -514,8 +514,14 @@ class BucketEngine:
         return len(ended)
 
     def wanted(self) -> bool:
-        """Whether a target still wants a game in this bucket."""
-        return any(bucket == self.bucket for bucket, _ in self.planner.wanted())
+        """Whether the bucket still has work: a target wants a game in it, or a game a target
+        asked for (not overtime) is still being played (its result is wanted)."""
+        if any(bucket == self.bucket for bucket, _ in self.planner.wanted()):
+            return True
+        return any(
+            slot is not None and slot.cell is not None and not slot.overtime
+            for slot in self.current + self.next
+        )
 
 
 def lane_runs(
