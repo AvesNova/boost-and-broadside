@@ -12,8 +12,9 @@ in one compiled graph, scored by kill share.
 The measurement's settings (`BALANCE`, the author's decisions of 2026-11-16; the game's and
 training's own defaults are unchanged):
 
-- fog on (the author's decision of 2026-11-16, after fog off was measured to buy under 1%
-  of speed and change the games: 15% more kills) and no fields (the scripted agent ignores
+- fog by mode (the author's decisions of 2026-11-16): deathmatch without fog at every size,
+  elimination and Frontline with fog (fog off was measured to buy under 1% of speed and
+  change the games: 15% more kills); no fields (the scripted agent ignores
   them): `Settings` `fog` and `fields`; fields off here only;
 - seeded spawns: game i of every job starts on the spawn layout drawn from (seed, i)
   (`bench.game_loop.seeded_uniforms`), so candidates are compared on the same spawns (common
@@ -120,7 +121,7 @@ CONDITIONS = {
 class Settings:
     """A measurement's switches (`BALANCE` the balance measurement's)."""
 
-    fog: bool = True
+    fog: bool | None = None  # None: by mode (`fog_of`), off for deathmatch, on otherwise
     fields: bool = False
     spawn_seed: int | None = 0  # None: unseeded spawns
     # None: deathmatch DEATHMATCH_SECONDS, elimination and Frontline the preset's whole clock
@@ -150,6 +151,11 @@ KEPT = (  # what a job's line keeps of `bench.game_loop.job_summary` and `balanc
     "no_merge_kills",
     "trade_fraction",
 )
+
+
+def fog_of(condition: Condition, settings: Settings) -> bool:
+    """The condition's fog: the settings' if given, else off for deathmatch, on otherwise."""
+    return condition.mode != "deathmatch" if settings.fog is None else settings.fog
 
 
 def preset_of(condition: Condition) -> str:
@@ -184,7 +190,7 @@ def balance_loop(
         device=device,
         compiled=compiled,
         ships_per_team=condition.ships,
-        fog=settings.fog,
+        fog=fog_of(condition, settings),
         mode=condition.mode,
         fields=settings.fields,
         fixed_map=not condition.density_map,

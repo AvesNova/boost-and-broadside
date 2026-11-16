@@ -15,6 +15,7 @@ from bench.balance_sweep import (
     balance_loop,
     balance_summary,
     card_table,
+    fog_of,
     mode_parameters,
     ratio,
     sweep,
@@ -29,10 +30,14 @@ def small_loop(condition="deathmatch-5v5", environments=4, variants=2):
     return balance_loop(CONDITIONS[condition], environments, variants, SHORT, "cpu", False)
 
 
-def test_the_balance_settings_keep_fog_and_turn_fields_off():
+def test_the_balance_settings_fog_by_mode_and_turn_fields_off():
+    state, _, _, _ = small_loop("elimination-5v5").start(
+        [Group(0, "energy v turn", FILLER, FILLER, 4)]
+    )
+    assert bool(state.match.fogged.all())
     loop = small_loop()
     state, _, _, _ = loop.start([Group(0, "energy v turn", FILLER, FILLER, 4)])
-    assert bool(state.match.fogged.all())
+    assert not bool(state.match.fogged.any())
     assert loop.game.num_fields == 0 and not bool(state.fields.present.any())
 
 
@@ -55,7 +60,14 @@ def test_deathmatch_measures_300_seconds():
 def test_the_game_defaults_keep_fog_and_fields():
     """The switches are the measurement's: the presets keep their fields."""
     assert api.PRESETS["real_scale_deathmatch"].num_fields > 0
-    assert BALANCE.fog is True and BALANCE.fields is False
+    assert BALANCE.fog is None and BALANCE.fields is False
+
+
+def test_fog_follows_the_mode():
+    """Deathmatch is measured without fog, elimination and Frontline with it."""
+    for name, condition in CONDITIONS.items():
+        assert fog_of(condition, BALANCE) == (condition.mode != "deathmatch"), name
+    assert fog_of(CONDITIONS["deathmatch-5v5"], dataclasses.replace(BALANCE, fog=True))
 
 
 def test_seeded_spawns_repeat_by_game_index():
@@ -122,7 +134,7 @@ def test_a_short_sweep_writes_a_line_per_entry(tmp_path, global_generator):
     assert set(lines[1]["jobs"]) == {"energy v turn"}
     job = lines[0]["jobs"]["energy v turn"]
     assert job["games"] == 2 and 0.0 <= job["kill_share_a"][0] <= 1.0
-    assert lines[0]["fog"] is True and lines[0]["fields"] is False
+    assert lines[0]["fog"] is False and lines[0]["fields"] is False
 
 
 def test_the_static_no_fog_path_sees_what_the_flag_sees():
