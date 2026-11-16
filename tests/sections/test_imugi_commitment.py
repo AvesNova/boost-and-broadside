@@ -35,10 +35,18 @@ def _decide(obs, carry=None, step: int = 0):
     )
 
 
-def _passed(nose_rate: float, own_speed: float | None = None, own_type: int = AGILE):
+def _passed(
+    nose_rate: float,
+    own_speed: float | None = None,
+    own_type: int = AGILE,
+    target_speed: float | None = None,
+):
     """A target just passed (behind, flying away), turning at `nose_rate` (positive left)."""
     distance = 0.5 * value("gun_range", own_type)
-    enemy = ship(x=-distance, y=-30.0, heading=math.pi, ship_type=own_type, team_relative=1)
+    enemy = ship(
+        x=-distance, y=-30.0, heading=math.pi, speed=target_speed, ship_type=own_type,
+        team_relative=1,
+    )  # fmt: skip
     enemy[SHIP["nose_rate"]] = nose_rate
     own = ship(ship_type=own_type, speed=own_speed)
     return observation([own, absent(own_type, 0)], [enemy, absent(own_type)])
@@ -165,3 +173,21 @@ def test_an_advantaged_dead_on_initiative_turns_toward_the_map_centre():
     assert float(carry.fight_sense[0, 0]) == -1.0
     _, carry = _decide(_head_on(0.0, -500.0, 0.0, 0.5 * onset))
     assert float(carry.fight_sense[0, 0]) == 1.0
+
+
+SUSTAINED_LEVELS = [3, 4]  # the 0.75 stick right and left
+
+
+def test_stick_by_energy_eases_a_slow_two_circle_turn_to_the_sustained_level():
+    """Committed into two circles (the target's own sense) below the corner speed: the
+    sustained stick level; at the corner speed and above, full stick; one circle, full."""
+    corner = value("corner_speed", AGILE)
+    # an even pair (the same type and speed) at the merge turns right by the geometry; a
+    # target turning right makes it two circles
+    slow, _ = _decide(_passed(-0.3, 0.8 * corner, target_speed=0.8 * corner))
+    fast, _ = _decide(_passed(-0.3, 1.2 * corner, target_speed=1.2 * corner))
+    one, _ = _decide(_passed(0.3, 0.8 * corner, target_speed=0.8 * corner))
+    assert float(slow.stick[0, 0, SUSTAINED_LEVELS].sum()) > 0.9
+    assert float(fast.stick[0, 0, RIGHT]) > 0.9
+    assert float(one.stick[0, 0, RIGHTS].sum()) > 0.9
+    assert float(one.stick[0, 0, SUSTAINED_LEVELS].sum()) < 0.1
