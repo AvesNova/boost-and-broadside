@@ -27,7 +27,7 @@ gives the `(R, S, 42)` distribution over the joint action given a carry (`None`:
 one, the memoryless agent), in `bnb.contracts.action.to_joint` order. The joint is the outer product of three marginals, power (3), stick (7) and shoot
 (2), which `bnb.controllers.imugi.marginals` returns. `Imugi.step` samples each
 marginal by its inverse CDF from the decision key's uniforms (`bnb.streams.action_uniforms`,
-the same every controller reads), and its plan switches, its sense choice and a mixture
+the same every controller reads), and its turn-side and goal switches and a mixture
 rung's agent flags from the same key under their own names
 ([Random draws](architecture.md#random-draws)). A dead ship, or one waiting to respawn, takes the no-op action
 with probability 1; a living ship never has an action at probability 0 or 1 (see
@@ -90,7 +90,7 @@ with its last seen velocity.
   spends energy. A dead-reckoned target may be shot at, less the staler it is: the weight
   is the same fade that discounts it as a target, so a target just lost behind a core is
   still worth a shot and one predicted from seconds ago is not; and beyond vision range
-  (1024 m against a gun range of about 210 m) the in-range logistic already gives a hidden
+  (1024 m against a gun range of about 220 m) the in-range logistic already gives a hidden
   target almost no shots.
 - **The boundary:** a ship within a margin of g-limited turn radii (`speed² /
   max_acceleration`) of the arena's edge and flying outward blends a steer toward the
@@ -115,7 +115,9 @@ with its last seen velocity.
 How a ship fights can depend on its type: `bnb.controllers.imugi_doctrine.Doctrine` is
 one type's doctrine, and the agent reads a table of them (`doctrines`, one row per type, or
 per view and type) and flies each own ship by its own type's row, so a mixed team flies
-each type its own way. Without a table (the default) no ship has a doctrine. The tuned
+each type its own way. By default (`bnb.controllers.imugi.STORED`) each ship flies its set's stored doctrine
+(`bnb.controllers.imugi_doctrine.for_card`; a standard card has none), and
+`doctrines=None` flies none. The tuned
 doctrines of the real-scale set's Yongma (the energy fighter) and Jujak (the turn fighter)
 are in `src/bnb/controllers/imugi_doctrines.json`
 (`bnb.controllers.imugi_doctrine.set_table` builds a set's table from it); the tuning is
@@ -159,9 +161,9 @@ by default:
   `brake_in_gun_range`, reverse (the store as a speed brake) to force an overshoot.
 - **Sense** (the post-merge choice): with the target passed behind the 3-9 line within
   `sense_in_gun_range` and turning, turn at full stick, choosing one circle or two from
-  the card and the state now: with the target's rotation (the two-circle) where the own
-  turn rate at the own speed and store is the higher, else against it (the one-circle)
-  where the own turn radius is the smaller, else with it. The choice is the same in every
+  the card and the state now: with the target's rotation (the two-circle) only where the
+  own turn rate at the current speed is more than `TWO_CIRCLE_RATE_MARGIN` (1.05) times
+  the target's, else against it (the one-circle). The choice is the same in every
   matchup and is not drawn. With another known enemy within `sense_crowd_in_gun_range` (the
   falling `sense_in_crowd` on their soft count), it hands over to the **crowd sense**: the
   same side at `crowd_sense_stick` of full stick (0 flies straight, an extension),
@@ -337,7 +339,8 @@ deathmatch, deathmatch_wide, Frontline, real_scale_deathmatch, real_scale_frontl
 real_scale_elimination), each from a search of its own preset but elimination's, a copy of
 real_scale_deathmatch's set without a search (2026-11-12). Each view plays its mode's set, chosen from its
 observation and the card (`bnb.controllers.imugi.mode_index`): on a real-scale card (its
-gravity below `REAL_SCALE_GRAVITY`, 16.3 m/s^2, the geometric mean of 27 and 9.81) the
+gravity nearer in log to `bnb.controllers.imugi_doctrine.REAL_SCALE_GRAVITY`, the
+real-scale set's 39.24 m/s^2, than to the standard 27) the
 real-scale Frontline or elimination set by the mode's flag, else the real-scale deathmatch
 set; otherwise Frontline by the mode's flag (a standard card plays elimination with its
 deathmatch sets), else the wide set when the arena radius is more than

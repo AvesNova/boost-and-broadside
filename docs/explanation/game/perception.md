@@ -48,8 +48,8 @@ that follow (`bnb.game.state.Match`).
 - **Clear:** every living ship is visible to both teams, and `time_since_seen` is 0.
 
 The observation's `fogged` global column says which, per environment. Whether a game has
-fog follows its mode: team deathmatch has none at any team size, elimination and Frontline
-have it (`GameConfig.fogged_share`, which `GameConfig.fog_share` overrides). In training, a
+fog follows its mode: team deathmatch has none at any team size, elimination, Frontline and
+the sandbox have it (`GameConfig.fogged_share`, which `GameConfig.fog_share` overrides). In training, a
 pool's fogged fraction is its `Pool.fog_share` times its game's
 (`bnb.contracts.pools.pool_fog_share`), so a team deathmatch pool is clear whatever its
 `fog_share`. The split is fixed and contiguous: the first fogged fraction of each pool's
