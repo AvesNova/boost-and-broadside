@@ -43,7 +43,10 @@ class Characteristics:
         rate), in closed form: the mass times the cruise times the coast exchange; the
         card's max_energy, bullet_energy_cost (J), max_shield,
         hit_radius (m) and max_acceleration (m/s^2); vision_range (m); gravity (m/s^2), the
-        rules' (the same for every type: Imugi tells a real-scale card by it).
+        rules' (the same for every type: Imugi tells a real-scale card by it);
+        nose_frequency: the card's corner_nose_frequency, the nose's natural frequency at
+        the corner speed (rad/s; it scales with the speed below it), which sets how fast a
+        turn builds.
     """
 
     cruise_speed: torch.Tensor
@@ -62,6 +65,7 @@ class Characteristics:
     max_acceleration: torch.Tensor
     vision_range: torch.Tensor
     gravity: torch.Tensor
+    nose_frequency: torch.Tensor
 
 
 def time_of_flight(
@@ -114,6 +118,7 @@ def measure_characteristics(types: ShipTypes, rules: Rules) -> Characteristics:
         max_acceleration=types.max_acceleration,
         vision_range=rules.vision_range * types.vision_range_scale,
         gravity=torch.full_like(types.max_energy, rules.flight.gravity),
+        nose_frequency=types.corner_nose_frequency,
     )
     return Characteristics(
         **{
