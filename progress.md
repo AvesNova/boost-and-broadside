@@ -556,3 +556,6 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 04:57 curves landed: Elo over training drawn (final: elimination 1971+-53; frontline and deathmatch bounds >1729/>1996; BC 1058/606/918); frontline RL mid-run up to 3597+-214 from chained snapshots.
 - Waiting on break-even (~05:30), team size, media.
 - Next: fan + break-even + team-size charts, stills, README/site build.
+- 05:31 break-even landed: final ratios frontline 0.71, deathmatch 0.98, elimination 1.12 (20 a side; at 20v20 frontline wins 7.5%, elimination 20%); fan relabelled by ratio.
+- Waiting on team size (~05:45) and media (~06:15).
+- Next: team-size chart, stills/strip, review build.
