@@ -388,6 +388,9 @@ class Combat(NamedTuple):
 TARGET_DOUBT_SECONDS = 2.0
 TARGET_FAR_IN_GUN_RANGES = 3.0
 TARGET_SWITCH_RATIO = 2.0
+# The extend-and-return rule (`extend_and_return`); off, an energy fighter stays in the turn
+# (for ablations).
+EXTEND_AND_RETURN = True
 
 
 def choose_target(
@@ -462,6 +465,8 @@ def extend_and_return(
     bound = 2.0 / own_rate + 1.0
     diameter = 2.0 * cruise / own_rate
     phase = torch.where(fleet.carry.fresh, 0.0, fleet.carry.extend_phase)
+    if not EXTEND_AND_RETURN:
+        return torch.zeros_like(phase, dtype=torch.bool), torch.zeros_like(phase)
     if fleet.decision_key is None:  # a re-reading: the phase the decision left
         return phase > 0.0, phase
     extending = phase > 0.0
