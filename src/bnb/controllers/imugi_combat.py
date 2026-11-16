@@ -40,7 +40,6 @@ from .imugi_parameters import (
     ramp,
 )
 
-TARGET_SIZE_RANGE = (math.radians(1.0), math.radians(45.0))  # the clamp on its angular size
 COAST, BOOST, REVERSE = 0, 1, 2  # power indices (bnb.game.rules.POWER_MODES)
 TINY = 1e-6  # m: keeps a direction's length away from zero
 STICK_MAGNITUDES = (0.0, 0.4, 0.75, 1.0)  # bnb.game.rules.STICK_LEVELS by level
@@ -341,6 +340,23 @@ def either(first: torch.Tensor, second: torch.Tensor) -> torch.Tensor:
     return 1.0 - (1.0 - first) * (1.0 - second)
 
 
+def arc(
+    velocity_x: torch.Tensor, velocity_y: torch.Tensor, rate: torch.Tensor, time: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """The displacement over `time` of a ship flying a constant-speed turn at `rate` (rad/s,
+    positive left) from `velocity`: (sin(w t) v + (1 - cos(w t)) v_left) / w, the straight
+    line's v t as w -> 0."""
+    angle = rate * time
+    small = angle.abs() < 1e-3
+    safe = torch.where(small, 1.0, rate)
+    along = torch.where(small, time * (1.0 - angle * angle / 6.0), torch.sin(angle) / safe)
+    across = torch.where(small, 0.5 * angle * time, (1.0 - torch.cos(angle)) / safe)
+    return (
+        along * velocity_x - across * velocity_y,
+        along * velocity_y + across * velocity_x,
+    )
+
+
 def lead(
     fleet: Context,
     characteristics: Characteristics,
@@ -349,18 +365,52 @@ def lead(
     target_y: torch.Tensor,
     target_velocity_x: torch.Tensor,
     target_velocity_y: torch.Tensor,
+    target_rate: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """The aim point (first-order interception), relative to the shooter: the target's
-    displacement when a bullet fired now arrives, `t = time_of_flight(distance)` with the
-    distance capped at lead_cap_in_gun_range. The bullet inherits the shooter's velocity, so
-    the relative velocity carries the target. No field bending."""
-    distance = torch.sqrt(target_x * target_x + target_y * target_y)
+    """The aim point (interception on the target's turn), relative to the shooter: where the
+    target is when a bullet fired now arrives, flying its constant-turn arc at
+    `target_rate` (rad/s, positive left; 0 a straight line), less the shooter's own
+    velocity times the flight time (the bullet inherits it). The flight time is
+    `time_of_flight` at the distance capped at lead_cap_in_gun_range, then once more at the
+    predicted point's distance. No field bending."""
     cap = parameters.lead_cap_in_gun_range * fleet.gun_range
-    flight_time = time_of_flight(characteristics, fleet.own_type, torch.minimum(distance, cap))
-    return (
-        target_x + (target_velocity_x - fleet.velocity_x) * flight_time,
-        target_y + (target_velocity_y - fleet.velocity_y) * flight_time,
+
+    def at(distance: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        flight_time = time_of_flight(characteristics, fleet.own_type, torch.minimum(distance, cap))
+        moved_x, moved_y = arc(target_velocity_x, target_velocity_y, target_rate, flight_time)
+        return (
+            target_x + moved_x - fleet.velocity_x * flight_time,
+            target_y + moved_y - fleet.velocity_y * flight_time,
+        )
+
+    aim_x, aim_y = at(torch.sqrt(target_x * target_x + target_y * target_y))
+    return at(torch.sqrt(aim_x * aim_x + aim_y * aim_y))
+
+
+def path_rate(
+    fleet: Context, characteristics: Characteristics, target_of, has_target: torch.Tensor
+) -> torch.Tensor:
+    """(R, S) the target's flight-path turn rate (rad/s, positive left), from what the team
+    sees: the velocity's turn (v x a / |v|^2) where its acceleration is valid, else its
+    nose rate while seen, else 0 (a hidden target flies straight); held within its g limit
+    at its speed."""
+    vx, vy = (
+        target_of(column(fleet.enemy, "velocity_x")),
+        target_of(column(fleet.enemy, "velocity_y")),
     )
+    ax = target_of(column(fleet.enemy, "acceleration_x"))
+    ay = target_of(column(fleet.enemy, "acceleration_y"))
+    speed_squared = (vx * vx + vy * vy).clamp_min(1.0)
+    seen = has_target & (target_of(fleet.enemy_seen.float()) > 0.5)
+    valid = seen & (target_of(column(fleet.enemy, "acceleration_valid")) > 0.5)
+    rate = torch.where(
+        valid,
+        (vx * ay - vy * ax) / speed_squared,
+        torch.where(seen, target_of(column(fleet.enemy, "nose_rate")), 0.0),
+    )
+    limit = target_of(per_ship(characteristics.max_acceleration, fleet.enemy_type))
+    limit = limit / speed_squared.sqrt().clamp_min(1.0)
+    return torch.maximum(torch.minimum(rate, limit), -limit)
 
 
 class Combat(NamedTuple):
@@ -799,7 +849,6 @@ def combat(
     target_x, target_y = target(offset_x), target(offset_y)
     weight = target(recall.weight)
     distance = torch.sqrt(target_x * target_x + target_y * target_y)
-    safe_distance = distance.clamp_min(TINY)
     aim_x, aim_y = lead(
         fleet,
         characteristics,
@@ -808,7 +857,9 @@ def combat(
         target_y,
         target(recall.velocity_x),
         target(recall.velocity_y),
+        path_rate(fleet, characteristics, target, has_target),
     )
+    lead_x, lead_y = aim_x, aim_y
     aim_error = signed_angle(fleet.cos, fleet.sin, aim_x, aim_y)
     boost = either(
         slow(fleet, parameters), torch.where(has_target, far(fleet, distance, parameters), 0.0)
@@ -911,8 +962,13 @@ def combat(
         draw = torch.where(fleet.carry.fresh, -1.0, fleet.carry.sense_draw)
 
     hit_radius = target(per_ship(characteristics.hit_radius, fleet.enemy_type))
-    size = (2.0 * torch.atan(hit_radius / safe_distance)).clamp(*TARGET_SIZE_RANGE)
-    aligned = logistic(aim_error.abs() / size, parameters.aim_in_target_size, fleet.temperature)
+    # the predicted miss: how far the nose's line passes from the lead point, in the
+    # target's hit radii (the lead point's whole distance when it is behind the beam)
+    reach = torch.sqrt(lead_x * lead_x + lead_y * lead_y)
+    miss = torch.where(aim_error.abs() < 0.5 * math.pi, reach * torch.sin(aim_error.abs()), reach)
+    aligned = logistic(
+        miss / hit_radius.clamp_min(TINY), parameters.aim_in_target_size, fleet.temperature
+    )
     in_range = logistic(
         distance / fleet.gun_range, parameters.shoot_in_gun_range, fleet.temperature
     )

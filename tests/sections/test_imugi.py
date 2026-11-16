@@ -209,12 +209,41 @@ def test_the_lead_moves_the_aim_point_along_a_crossing_target_by_its_time_of_fli
         0.0 * one,
         target_velocity[0] * one,
         crossing * one,
+        0.0 * one,
     )
-    flight = time_of_flight(CHARACTERISTICS, fleet.own_type, torch.tensor(distance))
+    # the flight time once more at the predicted point's distance
+    first = time_of_flight(CHARACTERISTICS, fleet.own_type, torch.tensor(distance))[0, 0]
+    lateral = (crossing - shooter_velocity[1]) * first
+    flight = time_of_flight(
+        CHARACTERISTICS, fleet.own_type, torch.tensor(math.hypot(distance, float(lateral)))
+    )
     torch.testing.assert_close(aim_x[0, 0], torch.tensor(distance))
     torch.testing.assert_close(aim_y[0, 0], (crossing - shooter_velocity[1]) * flight[0, 0])
     _, stick, _ = _marginals(obs)
     assert _levels(stick)[1] > 0.5  # it turns toward the lead, to the left
+
+
+def test_the_lead_follows_a_turning_target_round_its_arc():
+    """A target turning left is led along its circle: the aim point lies inside the turn
+    (to its left of the straight-line lead) and on the circle through the target."""
+    distance, speed, rate = 0.8 * value("gun_range", 0), 100.0, 1.0
+    obs = _duel(
+        0, ship(x=distance, team_relative=1, velocity=(0.0, speed)), own=ship(velocity=(0.0, 0.0))
+    )
+    fleet = imugi_combat.context(obs, CHARACTERISTICS, PARAMETERS)
+    one = torch.ones(1, 2)
+    turning = imugi_combat.lead(
+        fleet, CHARACTERISTICS, PARAMETERS, distance * one, 0 * one, 0 * one, speed * one,
+        rate * one,
+    )  # fmt: skip
+    straight = imugi_combat.lead(
+        fleet, CHARACTERISTICS, PARAMETERS, distance * one, 0 * one, 0 * one, speed * one,
+        0 * one,
+    )  # fmt: skip
+    assert float(turning[0][0, 0]) < float(straight[0][0, 0])  # toward the turn's centre (-x)
+    radius = speed / rate  # the circle's centre is at (distance - radius, 0)
+    on_circle = math.hypot(float(turning[0][0, 0]) - (distance - radius), float(turning[1][0, 0]))
+    assert on_circle == pytest.approx(radius, rel=1e-4)
 
 
 # ------------------------------------------------------------------ the boundary
@@ -437,7 +466,9 @@ def _game_views(mode: str, seed: int = 3):
             api.spread(rules, B, generator=generator),
             api.uniforms(rules, B, generator=generator),
         )
-    state, obs, _ = api.perceive(rules, state)
+    # the state before its perception: a perception updates the previous velocities the
+    # observation's accelerations difference against, so a second one would see none
+    _, obs, _ = api.perceive(rules, state)
     return rules, state, obs
 
 
@@ -464,7 +495,7 @@ def test_the_distribution_does_not_depend_on_the_seat(mode):
     # Mirror: a reflected world reflects the stick and leaves power and shoot.
     view = _view(obs, 0)
     reflected = view.ships.clone()
-    for name in ("y", "heading_sin", "velocity_y", "log_index_gradient_y"):
+    for name in ("y", "heading_sin", "velocity_y", "log_index_gradient_y", "acceleration_y"):
         reflected[..., SHIP[name]] = -reflected[..., SHIP[name]]
     reflected[..., SHIP["angle_of_attack"]] = -reflected[..., SHIP["angle_of_attack"]]
     reflected[..., SHIP["nose_rate"]] = -reflected[..., SHIP["nose_rate"]]
