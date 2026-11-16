@@ -1,0 +1,314 @@
+[
+ {
+  "name": "Y0.50",
+  "card": {
+   "energy": {
+    "engine_power": {
+     "set": 9420.0263671875
+    },
+    "engine_power_full_store": {
+     "set": 1999.3795166015625
+    },
+    "static_thrust": {
+     "set": 19.622251510620117
+    },
+    "max_energy": {
+     "set": 718381.75
+    },
+    "corner_nose_frequency": {
+     "set": 11.142090797424316
+    },
+    "max_shield": {
+     "set": 383.26251220703125
+    },
+    "bullet_energy_cost": {
+     "set": 388.46612548828125
+    },
+    "induced_drag_scale": {
+     "set": 0.29371246695518494
+    },
+    "coast_exchange_scale": {
+     "set": 20.32741355895996
+    },
+    "dive_exchange_scale": {
+     "set": 4.709605693817139
+    },
+    "climb_exchange_scale": {
+     "set": 3.486478328704834
+    },
+    "fine_stick": {
+     "set": 0.21816575527191162
+    },
+    "sustained_stick": {
+     "set": 0.7272192239761353
+    }
+   },
+   "turn": {
+    "engine_power": {
+     "set": 11282.396484375
+    },
+    "engine_power_full_store": {
+     "set": 2104.3984375
+    },
+    "static_thrust": {
+     "set": 49.058109283447266
+    },
+    "corner_nose_frequency": {
+     "set": 11.43338394165039
+    },
+    "max_shield": {
+     "set": 498.4909973144531
+    },
+    "induced_drag_scale": {
+     "set": 0.36945950984954834
+    },
+    "dive_exchange_scale": {
+     "set": 4.1330485343933105
+    },
+    "climb_exchange_scale": {
+     "set": 3.4593589305877686
+    },
+    "fine_stick": {
+     "set": 0.2132035493850708
+    },
+    "sustained_stick": {
+     "set": 0.7106785178184509
+    }
+   }
+  }
+ },
+ {
+  "name": "Y0.46",
+  "card": {
+   "energy": {
+    "engine_power": {
+     "set": 9420.0263671875
+    },
+    "engine_power_full_store": {
+     "set": 1999.3795166015625
+    },
+    "static_thrust": {
+     "set": 19.622251510620117
+    },
+    "max_energy": {
+     "set": 718381.75
+    },
+    "corner_nose_frequency": {
+     "set": 11.142090797424316
+    },
+    "max_shield": {
+     "set": 352.60150146484375
+    },
+    "bullet_energy_cost": {
+     "set": 388.46612548828125
+    },
+    "induced_drag_scale": {
+     "set": 0.29371246695518494
+    },
+    "coast_exchange_scale": {
+     "set": 20.32741355895996
+    },
+    "dive_exchange_scale": {
+     "set": 4.709605693817139
+    },
+    "climb_exchange_scale": {
+     "set": 3.486478328704834
+    },
+    "fine_stick": {
+     "set": 0.21816575527191162
+    },
+    "sustained_stick": {
+     "set": 0.7272192239761353
+    }
+   },
+   "turn": {
+    "engine_power": {
+     "set": 11282.396484375
+    },
+    "engine_power_full_store": {
+     "set": 2104.3984375
+    },
+    "static_thrust": {
+     "set": 49.058109283447266
+    },
+    "corner_nose_frequency": {
+     "set": 11.43338394165039
+    },
+    "max_shield": {
+     "set": 498.4909973144531
+    },
+    "induced_drag_scale": {
+     "set": 0.36945950984954834
+    },
+    "dive_exchange_scale": {
+     "set": 4.1330485343933105
+    },
+    "climb_exchange_scale": {
+     "set": 3.4593589305877686
+    },
+    "fine_stick": {
+     "set": 0.2132035493850708
+    },
+    "sustained_stick": {
+     "set": 0.7106785178184509
+    }
+   }
+  }
+ },
+ {
+  "name": "J1.25",
+  "card": {
+   "energy": {
+    "engine_power": {
+     "set": 9420.0263671875
+    },
+    "engine_power_full_store": {
+     "set": 1999.3795166015625
+    },
+    "static_thrust": {
+     "set": 19.622251510620117
+    },
+    "max_energy": {
+     "set": 718381.75
+    },
+    "corner_nose_frequency": {
+     "set": 11.142090797424316
+    },
+    "max_shield": {
+     "set": 421.5887451171875
+    },
+    "bullet_energy_cost": {
+     "set": 388.46612548828125
+    },
+    "induced_drag_scale": {
+     "set": 0.29371246695518494
+    },
+    "coast_exchange_scale": {
+     "set": 20.32741355895996
+    },
+    "dive_exchange_scale": {
+     "set": 4.709605693817139
+    },
+    "climb_exchange_scale": {
+     "set": 3.486478328704834
+    },
+    "fine_stick": {
+     "set": 0.21816575527191162
+    },
+    "sustained_stick": {
+     "set": 0.7272192239761353
+    }
+   },
+   "turn": {
+    "engine_power": {
+     "set": 11282.396484375
+    },
+    "engine_power_full_store": {
+     "set": 2104.3984375
+    },
+    "static_thrust": {
+     "set": 49.058109283447266
+    },
+    "corner_nose_frequency": {
+     "set": 11.43338394165039
+    },
+    "max_shield": {
+     "set": 537.8161010742188
+    },
+    "induced_drag_scale": {
+     "set": 0.36945950984954834
+    },
+    "dive_exchange_scale": {
+     "set": 4.1330485343933105
+    },
+    "climb_exchange_scale": {
+     "set": 3.4593589305877686
+    },
+    "fine_stick": {
+     "set": 0.2132035493850708
+    },
+    "sustained_stick": {
+     "set": 0.7106785178184509
+    }
+   }
+  }
+ },
+ {
+  "name": "Y0.50-J1.22",
+  "card": {
+   "energy": {
+    "engine_power": {
+     "set": 9420.0263671875
+    },
+    "engine_power_full_store": {
+     "set": 1999.3795166015625
+    },
+    "static_thrust": {
+     "set": 19.622251510620117
+    },
+    "max_energy": {
+     "set": 718381.75
+    },
+    "corner_nose_frequency": {
+     "set": 11.142090797424316
+    },
+    "max_shield": {
+     "set": 383.26251220703125
+    },
+    "bullet_energy_cost": {
+     "set": 388.46612548828125
+    },
+    "induced_drag_scale": {
+     "set": 0.29371246695518494
+    },
+    "coast_exchange_scale": {
+     "set": 20.32741355895996
+    },
+    "dive_exchange_scale": {
+     "set": 4.709605693817139
+    },
+    "climb_exchange_scale": {
+     "set": 3.486478328704834
+    },
+    "fine_stick": {
+     "set": 0.21816575527191162
+    },
+    "sustained_stick": {
+     "set": 0.7272192239761353
+    }
+   },
+   "turn": {
+    "engine_power": {
+     "set": 11282.396484375
+    },
+    "engine_power_full_store": {
+     "set": 2104.3984375
+    },
+    "static_thrust": {
+     "set": 49.058109283447266
+    },
+    "corner_nose_frequency": {
+     "set": 11.43338394165039
+    },
+    "max_shield": {
+     "set": 524.9085083007812
+    },
+    "induced_drag_scale": {
+     "set": 0.36945950984954834
+    },
+    "dive_exchange_scale": {
+     "set": 4.1330485343933105
+    },
+    "climb_exchange_scale": {
+     "set": 3.4593589305877686
+    },
+    "fine_stick": {
+     "set": 0.2132035493850708
+    },
+    "sustained_stick": {
+     "set": 0.7106785178184509
+    }
+   }
+  }
+ }
+]
