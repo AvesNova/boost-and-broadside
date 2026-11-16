@@ -104,7 +104,10 @@ class CrossoverConfig:
     target_stderr: the standard error of the break-even log ratio that stops the
     measurement (0.02: 0.3 ships at 15 against 20); budget_games: the most games (the batch
     that reaches it is the last); lineup_types: the ship types (indices into the game's
-    card) each slot of a game's lineup is drawn from, uniformly."""
+    card) each slot of a game's lineup is drawn from, uniformly; fixed_lineups: play these
+    lineups (each side 1 to fixed_count) in place of the break-even's allocation, each to
+    `lineup_games` games (the team-size chart's tallies; `fixed_pairs`), the fit reported
+    as usual."""
 
     fixed_count: int = 20
     bracket: tuple[int, ...] = (6, 10, 14, 20)
@@ -112,6 +115,8 @@ class CrossoverConfig:
     target_stderr: float = 0.02
     budget_games: int = 8192
     lineup_types: tuple[int, ...] = (0, 1)
+    fixed_lineups: tuple[Lineup, ...] = ()
+    lineup_games: int = 256
 
     def __post_init__(self) -> None:
         if self.fixed_count < 1:
@@ -122,6 +127,13 @@ class CrossoverConfig:
             raise ValueError("the target standard error and the budget must be positive")
         if not self.lineup_types:
             raise ValueError("no ship types to draw lineups from")
+        for lineup in self.fixed_lineups:
+            if len(lineup) != 2 or not all(1 <= count <= self.fixed_count for count in lineup):
+                raise ValueError(
+                    f"lineup {lineup}: two counts, each 1 to the fixed count {self.fixed_count}"
+                )
+        if self.fixed_lineups and self.lineup_games < 2:
+            raise ValueError(f"{self.lineup_games} games per fixed lineup: at least a pair")
 
     @property
     def ships_per_team(self) -> int:
@@ -382,6 +394,8 @@ def _pairs(
     current: Fit, by_lineup: dict[Lineup, list[float]], config: CrossoverConfig, pairs: int
 ) -> list[Lineup]:
     """`allocate`'s lineup per pair of games, `pairs` pairs."""
+    if config.fixed_lineups:
+        return fixed_pairs(by_lineup, config, pairs)
     candidates = config.lineups()
     if current.status == "empty":
         return _spread(first_lineups(config), pairs)
@@ -442,6 +456,31 @@ def _pairs(
     return sorted(chosen, key=log_ratio)
 
 
+def fixed_pairs(
+    by_lineup: dict[Lineup, list[float]], config: CrossoverConfig, pairs: int
+) -> list[Lineup]:
+    """`pairs` pairs of games over the fixed lineups (`CrossoverConfig.fixed_lineups`), each
+    pair to the lineup with the fewest games so far (this batch's pairs counted, ties in
+    the given order), so every lineup fills toward `lineup_games` evenly."""
+    held = {lineup: by_lineup.get(lineup, [0.0, 0.0])[1] for lineup in config.fixed_lineups}
+    chosen = []
+    for _ in range(pairs):
+        lineup = min(config.fixed_lineups, key=lambda one: held[one])
+        held[lineup] += 2
+        chosen.append(lineup)
+    return sorted(chosen, key=log_ratio)
+
+
+def fixed_games_left(by_lineup: dict[Lineup, list[float]], config: CrossoverConfig) -> int:
+    """The games the fixed lineups still need to reach `lineup_games` each."""
+    return int(
+        sum(
+            max(config.lineup_games - by_lineup.get(lineup, [0.0, 0.0])[1], 0)
+            for lineup in config.fixed_lineups
+        )
+    )
+
+
 def block_tallies(lineups: list[Lineup], outcomes: torch.Tensor, block_games: int) -> list[dict]:
     """A batch's games tallied per block and lineup: {block, policy_count, opponent_count,
     wins, draws, losses}, by block then r, from each game's lineup and its (games, 3)
@@ -478,9 +517,17 @@ def games_per_lineup(lineups: list[Lineup]) -> str:
     )
 
 
-def stop_reason(current: Fit, games: int, config: CrossoverConfig) -> str | None:
+def stop_reason(
+    current: Fit,
+    games: int,
+    config: CrossoverConfig,
+    by_lineup: dict[Lineup, list[float]] | None = None,
+) -> str | None:
     """Why the measurement stops (see the module docstring): "target", "bound" or
-    "budget", or None to play on."""
+    "budget", or None to play on; with fixed lineups, "lineups" once each has its games
+    (`fixed_games_left` of `by_lineup`)."""
+    if config.fixed_lineups:
+        return "lineups" if fixed_games_left(by_lineup or {}, config) == 0 else None
     if current.status == "crossing" and current.stderr <= config.target_stderr:
         return "target"
     if current.status == "separated":
@@ -531,6 +578,8 @@ def record_key(policy: Player, opponent: Player, game: GameConfig, seed: int, co
         fixed_count=config.fixed_count,
         lineup_types=list(config.lineup_types),
     )
+    if config.fixed_lineups:  # another measurement than the break-even's (older keys unchanged)
+        key["fixed_lineups"] = [list(lineup) for lineup in config.fixed_lineups]
     return json.loads(json.dumps(key))
 
 
@@ -550,10 +599,15 @@ def clock_time(seconds_from_now: float) -> str:
     )
 
 
-def _remaining_batches(current: Fit, games: int, batch_games: int, config) -> tuple[int, int]:
+def _remaining_batches(
+    current: Fit, games: int, batch_games: int, config, by_lineup=None
+) -> tuple[int, int]:
     """(expected, worst) batches still to play: the expected from the standard error
     shrinking as one over the root of the games (to the budget at most), the worst the
-    budget's."""
+    budget's; with fixed lineups, both the batches their games left take."""
+    if config.fixed_lineups:
+        left = math.ceil(fixed_games_left(by_lineup or {}, config) / batch_games)
+        return left, left
     worst = max(math.ceil((config.budget_games - games) / batch_games), 0)
     if current.status != "crossing":
         return worst, worst
@@ -588,7 +642,7 @@ def measure(
     by_lineup = tallies(blocks)
     current = fit(by_lineup)
     games = int(sum(held[1] for held in by_lineup.values()))
-    reason = stop_reason(current, games, config)
+    reason = stop_reason(current, games, config, by_lineup)
     if stored:
         progress(f"reusing {len(stored)} batches, {games} games, from {record}")
     arena = None
@@ -630,9 +684,9 @@ def measure(
         with record.open("a") as handle:
             handle.write(json.dumps(line) + "\n")
             handle.flush()
-        reason = stop_reason(current, games, config)
+        reason = stop_reason(current, games, config, by_lineup)
         per_batch = (time.perf_counter() - started) / played
-        expected, worst = _remaining_batches(current, games, batch_games, config)
+        expected, worst = _remaining_batches(current, games, batch_games, config, by_lineup)
         progress(
             f"batch {number}: lineups {games_per_lineup(lineups)}, "
             f"{games} games, {describe(current, config.fixed_count)}"
