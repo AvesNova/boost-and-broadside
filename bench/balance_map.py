@@ -894,6 +894,80 @@ def search(args) -> None:
     print("search done", flush=True)
 
 
+def mutual_time_to_kill(a: dict, b: dict) -> tuple[float, float]:
+    """(a on b, b on a) time to kill (s) from two cards' handles."""
+    return (
+        time_to_kill(b["max_shield"], a["hit_damage"]),
+        time_to_kill(a["max_shield"], b["hit_damage"]),
+    )
+
+
+def choose_picks(records: Records, count: int, floor: float, games: int = 512) -> list[str]:
+    """Far-apart balanced elites: the map's cells whose best card has the objective's lower
+    bound at least `floor` on at least `games`; greedily the two farthest apart on the map,
+    then each next the farthest from those chosen (max-min distance), keeping every pair's
+    time to kill inside TIME_TO_KILL_BAND both ways."""
+    cells = records.map()
+    pool = [c for c in cells.values() if c["lower"] >= floor and c["games"] >= games]
+    if len(pool) < 2:
+        return [c["id"] for c in pool]
+
+    def distance(a, b):
+        return math.dist(a["measures"], b["measures"])
+
+    def compatible(a, b):
+        times = mutual_time_to_kill(
+            records.by_id[a["id"]]["handles"], records.by_id[b["id"]]["handles"]
+        )
+        return all(TIME_TO_KILL_BAND[0] <= t <= TIME_TO_KILL_BAND[1] for t in times)
+
+    pairs = [
+        (distance(a, b), a, b)
+        for n, a in enumerate(pool)
+        for b in pool[n + 1 :]
+        if compatible(a, b)
+    ]
+    if not pairs:
+        return []
+    _, first, second = max(pairs, key=lambda r: r[0])
+    chosen = [first, second]
+    while len(chosen) < count:
+        options = [c for c in pool if c not in chosen and all(compatible(c, o) for o in chosen)]
+        if not options:
+            break
+        chosen.append(max(options, key=lambda c: min(distance(c, o) for o in chosen)))
+    return [c["id"] for c in chosen]
+
+
+def confirm(args) -> None:
+    """The picks played on every condition at `--games` (seed 2, games no search saw): each
+    against the reference, and each pair against each other (pairwise: the first's team as
+    A). Writes confirm.jsonl (one row a matchup and condition) and prints the table."""
+    records = Records(args.out)
+    picks = args.ids or choose_picks(records, args.count, args.floor)
+    print(f"picks: {picks}", flush=True)
+    label = args.label
+    entries = [pair_entry(i, records.by_id[i]["card"]) for i in picks]
+    entries += [
+        pair_entry(f"{a}~{b}", records.by_id[a]["card"], records.by_id[b]["card"])
+        for n, a in enumerate(picks)
+        for b in picks[n + 1 :]
+    ]
+    outputs = submit(records, label, entries, args.games, 2, EVERY)
+    rows = collect(records, label, outputs, len(entries), poll=15.0)
+    for row in rows:
+        row["kind"] = "pair" if "~" in row["id"] else "reference"
+    records.append("confirm.jsonl", rows)
+    by_matchup: dict[str, dict] = {}
+    for row in rows:
+        by_matchup.setdefault(row["id"], {})[row["condition"]] = row
+    print("| matchup | " + " | ".join(EVERY) + " | worst |")
+    for name, conditions in by_matchup.items():
+        wins = {c: win_equivalent(conditions[c]["kill_share"][0], c) for c in EVERY}
+        worst = max(abs(w - 50.0) for w in wins.values())
+        print(f"| {name} | " + " | ".join(f"{wins[c]:.1f}" for c in EVERY) + f" | {worst:.1f} |")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -907,9 +981,18 @@ def main() -> None:
     one.add_argument("--learning-rate", type=float, default=0.05)
     one.add_argument("--seed", type=int, default=0)
     one.add_argument("--processes", type=int, default=8, help="solver processes")
+    one = sub.add_parser("confirm")
+    one.add_argument("--out", type=pathlib.Path, required=True)
+    one.add_argument("--ids", nargs="*", default=None, help="the picks (default: chosen)")
+    one.add_argument("--count", type=int, default=4)
+    one.add_argument("--floor", type=float, default=42.0, help="the lower bound a pick needs")
+    one.add_argument("--games", type=int, default=512)
+    one.add_argument("--label", default="confirm")
     args = parser.parse_args()
     if args.command == "search":
         search(args)
+    if args.command == "confirm":
+        confirm(args)
 
 
 if __name__ == "__main__":
