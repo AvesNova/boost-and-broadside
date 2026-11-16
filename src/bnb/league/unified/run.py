@@ -332,7 +332,8 @@ def run(
         torch.cuda.synchronize(device)
         say(
             f"bucket {bucket}: {engine.environments} environments {shares}, capacity "
-            f"{engine.capacity}, warm-up {time.time() - built:.0f} s"
+            f"{[(len(m), c) for _, m, c in engine.runs]} (players, rows per lane), "
+            f"warm-up {time.time() - built:.0f} s"
         )
         return engine
 
