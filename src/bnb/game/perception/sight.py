@@ -91,11 +91,19 @@ def vision_range(rules: Rules, state: State) -> torch.Tensor:
     return state.match.vision_range
 
 
-def visibility(state: State) -> torch.Tensor:
+def visibility(state: State, fog: bool = True) -> torch.Tensor:
     """(B, 2, N): ship n visible to team T, in sim order (game spec 10.1). Range tests use
     d^2 <= V^2 with the observer's V (`Match.vision_range`). In an environment without fog
-    every living ship is visible."""
+    every living ship is visible. fog False (static): no environment has fog (the caller
+    reset every one unfogged), so the sight test is skipped; the same result."""
     fields, ships = state.fields, state.ships
+    if not fog:
+        enemies = enemy(ships.alive)
+        own = torch.ones_like(enemies)
+        return torch.stack(
+            [torch.cat([own[:, 0], enemies[:, 0]], -1), torch.cat([enemies[:, 1], own[:, 1]], -1)],
+            1,
+        )
     core, outer = core_radius(fields), outer_radius(fields)
     discs = (fields.x, fields.y, core * core, outer * outer)
     observer_x, observer_y = by_team(ships.x), by_team(ships.y)
