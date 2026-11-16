@@ -56,7 +56,10 @@ boundary in 128 games, Jujak 25). Stick by energy adds merges and kills.
 
 | condition | band | before | commit only | stick only | both |
 |---|---|---|---|---|---|
-ABLATIONS
+| deathmatch-2v2 | .481-.521 | 0.421 ± 0.005 | 0.471 ± 0.005 | 0.415 ± 0.005 | 0.466 ± 0.006 |
+| deathmatch-5v5 | .494-.507 | 0.489 ± 0.003 | 0.509 ± 0.003 | 0.493 ± 0.003 | 0.514 ± 0.003 |
+| elimination-5v5 | .498-.545 | 0.544 ± 0.013 | 0.592 ± 0.014 | 0.539 ± 0.013 | 0.592 ± 0.014 |
+| frontline-5v5 | .491-.513 | 0.481 ± 0.004 | 0.528 ± 0.004 | 0.483 ± 0.004 | 0.507 ± 0.004 |
 
 Point shares follow within 0.01 (data/). The commitment carries the shift; stick by energy alone
 is neutral.
