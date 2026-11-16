@@ -1,6 +1,6 @@
 """Render the architecture diagrams: every `*.typ` here but `diagram.typ` (the shared helpers)
 to an SVG beside it, with Typst (https://typst.app, one static binary; see
-`docs/guides/figures.md#architecture-diagrams`).
+`docs/contributing/writing-docs.md#diagrams`).
 
 Each SVG starts with a comment holding the hash of its sources (the diagram and
 `diagram.typ`), so `tests/docs/test_architecture_diagrams.py` can tell a stale SVG
@@ -44,15 +44,19 @@ def render(diagram: Path, png: Path | None, pdf: Path | None) -> None:
     """Compile one diagram to its stamped SVG, and to a PNG or a PDF where asked."""
     typst = shutil.which("typst")
     if typst is None:
-        raise SystemExit("typst is not on PATH: see docs/guides/figures.md#architecture-diagrams")
+        raise SystemExit("typst is not on PATH: see docs/contributing/writing-docs.md#diagrams")
     svg = diagram.with_suffix(".svg")
     subprocess.run([typst, "compile", "--format", "svg", diagram, svg], check=True)
     svg.write_text(stamp(diagram) + svg.read_text())
     if png is not None:
         target = png / f"{diagram.stem}.png"
-        subprocess.run([typst, "compile", "--format", "png", "--ppi", "200", diagram, target], check=True)
+        subprocess.run(
+            [typst, "compile", "--format", "png", "--ppi", "200", diagram, target], check=True
+        )
     if pdf is not None:
-        subprocess.run([typst, "compile", "--format", "pdf", diagram, pdf / f"{diagram.stem}.pdf"], check=True)
+        subprocess.run(
+            [typst, "compile", "--format", "pdf", diagram, pdf / f"{diagram.stem}.pdf"], check=True
+        )
 
 
 def main() -> None:

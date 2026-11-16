@@ -11,8 +11,8 @@
 #let heads-top = 4
 #let row-one = heads-top + 66
 #let row-two = row-one + 74
-#let row-three = row-two + 20 + 14 + 23
-#let row-four = row-three + 23 + 14 + 28
+#let row-three = row-two + 20 + 14 + 28
+#let row-four = row-three + 28 + 14 + 28
 #let heads-bottom = row-four + 28 + 12
 #let y = (heads-top + heads-bottom) / 2
 
@@ -49,8 +49,8 @@
   lines: ("joint-action logits",), stacked: true, badge: "× own ships")
 #card(head-x, row-two, head-width, 40, "Value head (critic)",
   lines: ("a categorical value per level",), stacked: true, badge: "× own ships")
-#card(head-x, row-three, head-width, 46, "Outcome head",
-  lines: ("global token: win, tie, loss",))
+#card(head-x, row-three, head-width, 56, "Outcome head",
+  lines: ("global token:", "win, tie, loss, unresolved"))
 #card(head-x, row-four, head-width, 56, "Auxiliary heads",
   lines: ("next state, error, enemy action,", "density, shots, geometry"), kind: "auxiliary", dashed: true)
 

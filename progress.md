@@ -478,3 +478,6 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Tried: D2 (ELK, dagre, grids): auto-layout put skip lines off-centre and curved, no positions without TALA.
 - Worked: Typst (static binary in ~/.local/bin) with a small helper file: exact coordinates, SVG/PNG/PDF; overviews done.
 - Next: the two-layer detail diagrams, the docs page link, render script + staleness test.
+- 22:45 Worked: layer detail diagrams (vertical + horizontal), render.py (stamps a source hash), staleness test, writing-docs "Diagrams" section, figures on the Yemong page.
+- Didn't: strict mkdocs build has 3 pre-existing anchor warnings (imugi.md, figures.md), none from this branch.
+- Open: the trained model builds temporal first with 2 spatial sublayers per block; the diagrams draw spatial then temporal as asked.
