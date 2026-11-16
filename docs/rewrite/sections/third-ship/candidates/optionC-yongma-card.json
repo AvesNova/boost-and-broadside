@@ -1,0 +1,32 @@
+{
+ "engine_power": {
+  "set": 9420.07421875
+ },
+ "engine_power_full_store": {
+  "set": 1996.8575439453125
+ },
+ "static_thrust": {
+  "set": 23.149099349975586
+ },
+ "corner_nose_frequency": {
+  "set": 11.08359432220459
+ },
+ "max_shield": {
+  "set": 85.16944584081936
+ },
+ "induced_drag_scale": {
+  "set": 0.3623064458370209
+ },
+ "dive_exchange_scale": {
+  "set": 4.7032341957092285
+ },
+ "climb_exchange_scale": {
+  "set": 3.47102427482605
+ },
+ "fine_stick": {
+  "set": 0.2120523601770401
+ },
+ "sustained_stick": {
+  "set": 0.7068411707878113
+ }
+}
