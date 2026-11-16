@@ -23,6 +23,8 @@ import tyro
 
 from bnb.contracts import VALUE_LEVELS
 from bnb.contracts.config import TEAM_DEATHMATCH
+from bnb.figures.match import MatchConfig
+from bnb.figures.trails import StillConfig
 from bnb.figures.video import VideoConfig
 from bnb.league.evaluation_settings import EvaluationConfig
 
@@ -414,6 +416,12 @@ class Crossover:
     lineup types) and continues; the result (with the provenance and the
     policy's SHA-256) goes to `artifacts/crossover/<time>/result.json`.
 
+    Fixed lineups (`--lineups 5v5 5v10 ...`, the policy's ships first): those lineups in
+    place of the break-even's allocation, each played to `--lineup-games` games (the
+    team-size chart's tallies, `bnb figures results team-size`), on the same engine (no
+    side above `--fixed-count`), recorded as their own measurement; the fit is reported as
+    usual.
+
     policy: the policy (as for bnb head-to-head); opponent: its opponent; fixed_count: the
     weaker side's ships; presets; map_rule:
     "preset" or "density" (above); bracket: the stronger side's counts before a fit;
@@ -421,7 +429,8 @@ class Crossover:
     0.3 ships at 15 against 20); budget_games: the most games per mode; lineup_types: ship
     type names of the preset's set; blocks and block_environments: the engine's layout (a
     batch is blocks x block_environments games, a block one lineup); seed: the games' draws
-    and lineups; device; out; runs_directory: as for bnb train.
+    and lineups; device; out; runs_directory: as for bnb train; lineups and lineup_games:
+    the fixed lineups and their games each (above).
     """
 
     policy: tyro.conf.Positional[str]
@@ -443,6 +452,19 @@ class Crossover:
     device: str = "cuda"
     out: str | None = None
     runs_directory: str | None = None
+    lineups: tuple[str, ...] = ()
+    lineup_games: int = 256
+
+
+def parse_lineups(lineups: tuple[str, ...]) -> tuple[tuple[int, int], ...]:
+    """Lineups in words ("5v10": the policy's ships, then the opponent's) as pairs."""
+    pairs = []
+    for lineup in lineups:
+        policy_ships, _, opponent_ships = lineup.partition("v")
+        if not (policy_ships.isdigit() and opponent_ships.isdigit()):
+            raise SystemExit(f"--lineups {lineup!r}: the policy's ships v the opponent's (5v10)")
+        pairs.append((int(policy_ships), int(opponent_ships)))
+    return tuple(pairs)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -535,6 +557,13 @@ class Figures:
     capture, else figures/); preset, environments, ticks, seed and spread_samples: the
     capture, and game_segments (more segments of the same games, for the critic set:
     `bnb.figures.capture.CaptureConfig`); device; runs_directory: as for bnb train.
+    The trails set draws one game (`bnb.figures.match`): scripted plays it Imugi against
+    Imugi with no policy (`bnb figures trails --scripted`); match: that game
+    (`--match.preset`, `--match.ships-per-team`, `--match.seconds` and so on:
+    `bnb.figures.match.MatchConfig`); still: one still of it in place of the set's
+    defaults when any of its options is given (`--still.start`, `--still.end`,
+    `--still.fog`, `--still.theme`, `--still.size`, `--still.formats` and so on:
+    `bnb.figures.trails.StillConfig`), named still_name.
     """
 
     sets: tyro.conf.Positional[tuple[str, ...]] = ("all",)
@@ -549,6 +578,10 @@ class Figures:
     game_segments: int = 0
     device: str = "cpu"
     runs_directory: str | None = None
+    scripted: bool = False
+    match: MatchConfig = MatchConfig()
+    still: StillConfig = StillConfig()
+    still_name: str = "trails_still"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -608,6 +641,42 @@ class FiguresWatch:
     threads: int = 4
     nice: int = 10
     runs_directory: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class FiguresResults:
+    """A results chart of the write-up (`bnb figures results CHART SOURCE ...`,
+    `bnb.figures.results`; docs/guides/results-charts.md): drawn from records the runs and
+    the measurements already write, as a PNG with its provenance and the `--formats`' vector
+    copies in `--out`, its numbers merged into the values file `--values` (names quoted by
+    the docs as {{name}}; "" writes none). Needs the tools extra (matplotlib).
+
+    Charts and their sources: `fan` and `break-even`, a directory of per-snapshot
+    `bnb crossover` results (`<run>/step_<n>/artifacts/crossover/...`); `arms`, a forest
+    input (JSON or CSV); `team-size`, game tallies (`<preset>.batches.jsonl` files or
+    directories); `health`, a run directory, its metrics.jsonl or `wandb:ENTITY/PROJECT/ID`
+    (several: a chain, BC first); `game-length`, per-game JSONL files.
+
+    modes: the modes drawn (fan, team-size; default all found); policy_count and
+    opponent_counts: the fan's lineups (5 against each); chain: break-even's chain when the
+    directory holds several; ratios: team-size's Imugi ships per ours; trained_team_size:
+    the size marked; samples: W&B history samples per key (health).
+    """
+
+    chart: tyro.conf.Positional[
+        Literal["fan", "break-even", "arms", "team-size", "health", "game-length"]
+    ]
+    sources: tyro.conf.Positional[tuple[str, ...]]
+    out: str = "docs/results"
+    values: str = "docs/results/values.json"
+    formats: tuple[str, ...] = ("png", "pdf")
+    modes: tuple[str, ...] = ()
+    policy_count: int = 5
+    opponent_counts: tuple[int, ...] = (5, 6, 8, 10)
+    chain: str | None = None
+    ratios: tuple[float, ...] = (1.0, 1.5, 2.0)
+    trained_team_size: int = 5
+    samples: int = 1000
 
 
 @dataclasses.dataclass(frozen=True)
@@ -779,7 +848,8 @@ def main() -> None:
     ...` finds a policy's break-even lineup, `bnb evaluate ...` decides between two
     policies, `bnb pool ...` keeps the shared rating pool, `bnb figures ...` draws what a
     policy's heads have learned (`bnb figures video ...` films a game, `bnb figures watch
-    RUN` makes both while a run trains), `bnb queue ...` queues and runs GPU jobs."""
+    RUN` makes both while a run trains, `bnb figures results CHART ...` draws the write-up's
+    results charts), `bnb queue ...` queues and runs GPU jobs."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
     # The CUDA caching allocator grows its segments in place rather than caching fixed blocks:
     # at a real-scale PPO update (160 micro-batch rows) 0.73 GB less reserved memory and the
@@ -831,6 +901,10 @@ def main() -> None:
             figures_video(tyro.cli(FiguresVideo, args=arguments[1:], prog="bnb figures video"))
         elif kind == "watch":
             figures_watch(tyro.cli(FiguresWatch, args=arguments[1:], prog="bnb figures watch"))
+        elif kind == "results":
+            figures_results(
+                tyro.cli(FiguresResults, args=arguments[1:], prog="bnb figures results")
+            )
         else:
             figures(tyro.cli(Figures, args=arguments, prog="bnb figures"))
     else:
@@ -1872,6 +1946,8 @@ def crossover(options: Crossover) -> None:
             bracket=options.bracket,
             target_stderr=options.target_stderr,
             budget_games=options.budget_games,
+            fixed_lineups=parse_lineups(options.lineups),
+            lineup_games=options.lineup_games,
         )
         layout = ArenaConfig(
             blocks=options.blocks, block_environments=options.block_environments, seed=options.seed
@@ -2091,6 +2167,13 @@ def figures_video(options: FiguresVideo) -> None:
     numbers = video.render(policy, options.preset, options.video, path)
     print(f"wrote {path}")
     print(f"video: {numbers}")
+
+
+def figures_results(options: FiguresResults) -> None:
+    """`bnb figures results`: one results chart (`bnb.figures.results.command.results`)."""
+    from bnb.figures.results.command import results
+
+    results(options)
 
 
 def figures_watch(options: FiguresWatch) -> None:

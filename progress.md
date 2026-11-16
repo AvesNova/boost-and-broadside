@@ -533,3 +533,30 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Tried: 3 shield trims of v24's card with the committed-turn Imugi, 512 games x DM 2v2/5v5, Elim 5v5, FL 5v5 (retrim-v25/results.md).
 - Found: each trim lands 2 of 4 in band; Y0.42-J1.22 has the smallest worst miss (DM 2v2 0.449, 0.032 under; Elim 0.556, 0.011 over). Applied as game v25, reference regenerated, quick tier + ruff pass.
 - Next: 10v10 at 256 games for Y0.42-J1.22 and Y0.38 (running, laptop); dry run 2 from feat/imugi-boundary.
+## 2026-11-16 22:45 trail stills (feat/trail-stills)
+- Built: bnb.figures.match (one whole game headless via the play shell's MatchLoop, Imugi or a policy per side, events + ghosts per tick) and bnb.figures.trails (renderer); wired as set "trails".
+- Worked: Imugi vs Imugi real-scale elimination 5v5 (205 s game, 3 min CPU) and a 1v1 duel render cleanly; the duel's busiest window is a two-circle fight.
+- Next: policy fog ghosts (no v9 checkpoint exists; capturing rl-v20 v8 in a detached worktree at c262a32b), deathmatch 5v5, tests + docs.
+
+## 2026-11-16 23:10 trail stills
+- Done: CLI (`bnb figures trails --scripted --match.* --still.*`), docs section, 6 quick tests (16 s), ruff clean; pushed.
+- Worked: real belief ghosts from rl-v20-seed1 (v8) captured in a detached worktree at c262a32b with match.py copied in; early-game window is too crowded (5 hidden ships), so the fog window caps at 2 hidden.
+- Next: whole-game policy elimination capture (running), deathmatch 5v5 Imugi (running), pick and commit the example PNGs.
+
+## 2026-11-16 23:35 trail stills: examples
+- Done: four examples in docs/images/stills-examples/ (deathmatch 5v5 opening, light and dark; 1v1 two-circle duel; elimination 5v5 fog with rl-v20-seed1's belief ghosts).
+- Learned: a 10-min 5v5 game in one still is texture only (ticks now off past 90 s); the fog still needs at most 2 ghosted ships and a fight window to read.
+- Open: no v9 policy exists, so the fog example comes from a v8 policy captured at c262a32b (game v19) with match.py copied in.
+
+## 2026-11-16 23:55 trail stills: author feedback
+- Done: rebased on feat/imugi-boundary (bbb52a66; the final card commit had not landed); stills now draw trails + death X only, shots/hits/ends/fog opt-in, never all three in a fleet still.
+- Re-recorded the 1v1 duel (120 s) and the 5v5 deathmatch opening (60 s) on this tree: identical paths to before, as the earlier base already held sticky Imugi build 2.
+- Duel shape: tight circles (~400-500 m across), straight under 3 deg/s only 8-12% of the time; no racetrack legs. PNGs in /home/vizia/avesnova/review/stills/.
+
+## 2026-11-16 results charts (branch feat/results-charts, worktree bnb-charts)
+- Tried: read ladder, crossover, rating_pool, evaluation, metrics keys of rl-v20/bc-v21; v1 viz on main.
+- Found: ladder.break_even_points reads `presets` at the result's top level, but write_result nests it under `payload` (real results would give no points); no per-game length record exists anywhere.
+- Next: src/bnb/figures/results/ (fan, break-even, arms, team size, health, game length, values file) + `bnb figures results`.
+- 2026-11-16 23:40 Worked: 5247438a, `bnb figures results {fan,break-even,arms,team-size,health,game-length}` + values file; 10 CPU tests, ruff clean; previews checked; health drawn from real bc-v20 + rl-v20 records.
+- Didn't: no per-game length record exists (game-length needs one); no driver plays the team-size lineups (n, k n) yet; the W&B path is untested against a live run.
+- Next: real data after tonight's run: crossover per snapshot into $OUT/break-even, then fan / break-even; arms.json as decisions land.

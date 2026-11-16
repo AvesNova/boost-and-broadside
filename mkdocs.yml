@@ -107,6 +107,7 @@ nav:
       - Designing a ship: guides/designing-a-ship.md
       - Playing and spectating: guides/playing.md
       - Figures: guides/figures.md
+      - Results charts: guides/results-charts.md
   - Explanation:
       - explanation/index.md
       - Architecture: explanation/architecture.md

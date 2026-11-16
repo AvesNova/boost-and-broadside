@@ -644,3 +644,45 @@ def test_the_command_measures_each_preset_and_records_the_result(tmp_path, monke
     assert result["payload"]["presets"]["tiny"]["games"] == 16
     assert result["payload"]["lineup_types"] == list(names[:2])
     assert "command" in result["provenance"]
+
+
+def test_fixed_lineups_fill_evenly_and_stop_when_each_has_its_games():
+    """`--lineups`: the pairs go to the lineup with the fewest games, the stop waits for
+    every lineup's games, and the key tells the measurement from the break-even's."""
+    fixed = dataclasses.replace(SMALL, fixed_lineups=((1, 1), (1, 2), (2, 3)), lineup_games=8)
+    empty = break_even.fit({})
+    first = break_even.allocate(empty, {}, fixed, 16)
+    assert collections.Counter(first) == {(1, 1): 6, (1, 2): 6, (2, 3): 4}
+    assert break_even.stop_reason(empty, 0, fixed, {}) is None
+    held = {(1, 1): [3.0, 8.0], (1, 2): [2.0, 8.0], (2, 3): [1.0, 4.0]}
+    assert set(break_even.allocate(break_even.fit(held), held, fixed, 4)) == {(2, 3)}
+    assert break_even.fixed_games_left(held, fixed) == 4
+    assert break_even.stop_reason(break_even.fit(held), 20, fixed, held) is None
+    held[(2, 3)] = [2.0, 8.0]
+    assert break_even.stop_reason(break_even.fit(held), 24, fixed, held) == "lineups"
+    key = break_even.record_key(_scripted(), _scripted(), SHORT, 0, fixed)
+    assert key["fixed_lineups"] == [[1, 1], [1, 2], [2, 3]]
+    assert "fixed_lineups" not in break_even.record_key(_scripted(), _scripted(), SHORT, 0, SMALL)
+    with pytest.raises(ValueError, match="fixed count"):
+        dataclasses.replace(SMALL, fixed_lineups=((1, 4),))
+
+
+@pytest.mark.usefixtures("global_generator")
+def test_a_fixed_lineups_measurement_plays_and_records_only_its_lineups(tmp_path):
+    record = tmp_path / "small.batches.jsonl"
+    fixed = dataclasses.replace(SMALL, fixed_lineups=((1, 1), (1, 2)), lineup_games=16)
+    found = break_even.measure(_scripted(), _scripted(), SHORT, CPU, LAYOUT, fixed, record, print)
+    assert found["stop"] == "lineups"
+    assert {(row["policy_count"], row["opponent_count"]) for row in found["lineups"]} == {
+        (1, 1),
+        (1, 2),
+    }
+    assert all(row["games"] == 16 for row in found["lineups"])
+
+
+def test_the_command_parses_lineups():
+    from bnb.cli import parse_lineups
+
+    assert parse_lineups(("5v10", "1v1")) == ((5, 10), (1, 1))
+    with pytest.raises(SystemExit):
+        parse_lineups(("5:10",))
