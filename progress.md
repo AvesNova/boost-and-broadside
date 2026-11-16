@@ -491,3 +491,40 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Tried: baseline Y0.46, 256 games each (DM 300 s): deaths by cause per ship.
 - Found: DM 1v1 99% of deaths are boundary (Y 2.0/game, J 0.6/game; hits 0.01); 2v2 Y 60% boundary, J 36%; 5v5 Y 22%, J 8%; elim 5v5 Y 18%, J 5%. Every crossing has the edge steer at w=1 and a target, ~370 m/s, turn radius ~400 m (margin is ample).
 - Next: after-fix run (BOUNDARY_OVER_MANEUVERS on), ETA 22:10 KST (worst 22:15).
+
+## 2026-11-16 23:30 feat/imugi-initiative (agent)
+- Step 0, Imugi's action mix (DM 5v5, 128 games, v24 card, before): Yongma stick straight 7.6%, R/L 0.4 8.5/8.5, 0.75 5.6/5.6, 1.0 32.4/31.8; power coast 3.7, boost 88.5, reverse 7.8; fire 5.4%. Jujak straight 6.8, 0.4 8.8/8.7, 0.75 7.8/7.4, 1.0 30.6/30.0; coast 3.7, boost 87.8, reverse 8.5; fire 7.3. Every action is used, but full stick (~63%) and boost (~88%) dominate; coast under 4%. Elim/FL 5v5 running.
+- Tried: commitment at the merge + initiative (BNB_TURN_COMMIT) and stick by energy (BNB_STICK_BY_ENERGY), both on; turn onset 0.30 s at corner speed (3.3 nose periods, turn_onset.py); dead-on tie: map centre, then left. Imugi tests 104 pass. Commit bf0c1fa1.
+- Next: 1v1 turn_fight before/after (128 games, ETA 23:50), then balance+mix 512 games x 4 conditions before/after (ETA ~01:30), stills on the CPU.
+
+## 2026-11-16 23:45 feat/imugi-initiative (agent)
+- Tried: DM 1v1, 128 games, before vs after (both rules on). Scissors windows 2752 -> 33 (one circle 1096, two circle 883); reversals per post-merge window at 15 deg/s 36.8 -> 1.0; sustained turn (>15 deg/s held 1 s) 14% -> 52%; stick side flips 414-459/min -> 95-145/min.
+- Found: the duel is now decided: Yongma kill share 0.59 -> 0.07 (deaths 1.66 -> 2.47 a game, Yongma's 205 by hits + 86 boundary): in a held turning fight the turn fighter wins, as the card says. Energy-advantaged Yongma takes the initiative into a fight it loses.
+- Next: balance+mix 512 games x4 conditions before/after (running, ETA ~01:30); 1v1 ablations commit-only and ENERGY_BREAKS_RATE_TIES=1; stills on the CPU.
+
+## 2026-11-16 23:50 feat/imugi-initiative (agent): step 0, the action mix (before, 128 games each, v24 card)
+| mode | ship | straight | R/L 0.4 | R/L 0.75 | R/L 1.0 | coast | boost | reverse | fire |
+|---|---|---|---|---|---|---|---|---|---|
+| DM 5v5 | Yongma | 7.6 | 8.5/8.5 | 5.6/5.6 | 32.4/31.8 | 3.7 | 88.5 | 7.8 | 5.4 |
+| DM 5v5 | Jujak | 6.8 | 8.8/8.7 | 7.8/7.4 | 30.6/30.0 | 3.7 | 87.8 | 8.5 | 7.3 |
+| Elim 5v5 | Yongma | 13.0 | 12.0/12.0 | 5.8/5.7 | 25.6/25.8 | 3.8 | 90.0 | 6.2 | 2.6 |
+| Elim 5v5 | Jujak | 12.0 | 12.4/12.4 | 6.9/7.1 | 24.8/24.4 | 3.7 | 89.8 | 6.5 | 3.5 |
+| FL 5v5 | Yongma | 13.5 | 11.9/11.9 | 3.6/3.6 | 27.5/28.0 | 56.0 | 30.9 | 13.1 | 3.6 |
+| FL 5v5 | Jujak | 12.6 | 12.8/12.8 | 4.6/4.6 | 26.3/26.4 | 49.8 | 36.0 | 14.2 | 4.8 |
+- Found: all 7 sticks and 3 powers used everywhere; full stick 51-64%, the sustained level (0.75) the rarest at 7-16%; DM/Elim boost ~88-90% with coast <4% (FL coasts ~50-56%).
+- Next: balance+mix 512 games (4 jobs at a time under one GPU lock hold), 1v1 ablations.
+
+## 2026-11-16 23:57 feat/imugi-initiative (agent)
+- Tried: 1v1 ablations (128 games): commit only (stick by energy off): Yongma kill share 0.012, 11.5 merges/game, sustained turn 68%/62%; both rules (default): 0.068, 15.7 merges/game; with BNB_ENERGY_BREAKS_RATE_TIES=1: 0.036. Stick by energy adds merges and kills; rate-first does not help Yongma (left off).
+- Found: DM 2v2 (512 games) Yongma kill share 0.421 -> 0.466 after (band .481-.521): toward balance. Before DM 5v5 0.489.
+- Next: the other 5 balance jobs (ETA 00:25, worst 00:40).
+
+## 2026-11-17 00:16 feat/imugi-initiative (agent)
+- Tried: balance spot check, 512 games each, eager, v24 card (Y0.46, head-on 0.05), before vs after (both rules on).
+- Found: Yongma kill share DM 2v2 0.421 -> 0.466 (band .481-.521), DM 5v5 0.489 -> 0.514 (.494-.507), Elim 5v5 0.544 -> 0.592 (.498-.545, SE 0.013), FL 5v5 0.481 -> 0.507 (.491-.513). Every team mode moves +0.025..+0.048 toward Yongma (the 1v1 the other way); the 5v5 stick/power mix barely moves (the sense manoeuvre is rarely on in a crowd).
+- Next: per-rule ablations on the 4 conditions (commit only, stick only), ETA 00:45 (worst 01:00).
+
+## 2026-11-17 00:52 feat/imugi-initiative (agent)
+- Tried: per-rule ablations, 512 games x 4 conditions (commit only / stick only).
+- Found: Yongma kill share commit only: DM 2v2 0.471, DM 5v5 0.509, Elim 0.592, FL 0.528; stick only: 0.415, 0.493, 0.539, 0.483 (= before within error). The commitment carries the whole balance shift; stick by energy alone is neutral in team modes and pulls FL back (0.528 -> 0.507 with both).
+- Next: final report; results in docs/rewrite/sections/imugi-initiative/results.md.

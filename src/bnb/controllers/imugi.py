@@ -147,6 +147,8 @@ def decide(
         combat_left=fighting.left,
         target_doubt=fighting.target_doubt,
         extend_phase=fighting.extend_phase,
+        fight_sense=fighting.fight_sense,
+        fight_clock=fighting.fight_clock,
         frontline_left=strategy.left,
         defending=strategy.defending,
         fresh=torch.zeros_like(carry.fresh),

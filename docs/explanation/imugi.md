@@ -162,7 +162,17 @@ by default:
   the card and the state now: with the target's rotation (the two-circle) where the own
   turn rate at the own speed and store is the higher, else against it (the one-circle)
   where the own turn radius is the smaller, else with it. The choice is the same in every
-  matchup and is not drawn. With another known enemy within `sense_crowd_in_gun_range` (the
+  matchup and is not drawn. It is **committed** once per turning fight
+  (`imugi_combat.turn_commitment`, `BNB_TURN_COMMIT`, on): the ship that out-turns or
+  out-energies its target takes the **initiative**, turning on a head-on approach at the
+  last tick that has its turn at full rate at the crossing (its turn onset: 3.3 nose
+  periods, about 0.3 s at the corner speed, the nose still inside the head-on armour's
+  angle), toward the side of the target's tail; the other answers the observed sense once
+  at the merge; an even pair turns by the geometry (a dead-on merge toward the map centre,
+  then left). The sense then holds until the next merge (after 2.5 s at least), the
+  target's loss or change, an extension or the edge steer. **Stick by energy**
+  (`BNB_STICK_BY_ENERGY`, on): a two-circle turn below the corner speed eases to the
+  sustained stick level, the turn that holds speed. With another known enemy within `sense_crowd_in_gun_range` (the
   falling `sense_in_crowd` on their soft count), it hands over to the **crowd sense**: the
   same side at `crowd_sense_stick` of full stick (0 flies straight, an extension),
   boosting with weight `crowd_sense_boost`.

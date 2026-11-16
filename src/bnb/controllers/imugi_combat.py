@@ -368,6 +368,33 @@ def arc(
 LOW_STORE_FRACTION = 0.1
 # Two circles need my turn rate now above the target's by this factor (`maneuvers`).
 TWO_CIRCLE_RATE_MARGIN = 1.05
+# The turning fight's commitment (`turn_commitment`; the author's rules of 2026-11-16): the
+# turn sense is chosen once, at the merge, and held for the fight; the advantaged ship
+# commits first, just before a head-on merge. Off (BNB_TURN_COMMIT=0): the sense
+# re-decided every tick from the target's current turn (the old behaviour).
+TURN_COMMIT = os.environ.get("BNB_TURN_COMMIT", "1") == "1"
+# Stick by energy (`maneuvers`): in a committed two-circle fight below the corner speed, the
+# sustained stick level (the card's `sustained_stick` lift fraction: the turn that holds
+# speed) until back near the corner speed; full stick otherwise. Off
+# (BNB_STICK_BY_ENERGY=0): full stick throughout (the old behaviour).
+STICK_BY_ENERGY = os.environ.get("BNB_STICK_BY_ENERGY", "1") == "1"
+# s: a commitment holds at least this long before the next merge may release it
+COMMIT_HOLD_SECONDS = 2.5
+# own over target energy (kinetic plus store) above this is an energy advantage
+ENERGY_ADVANTAGE_RATIO = 1.1
+# The initiative's advantage: the turn rate now first, the energy only between even rates
+# (BNB_ENERGY_BREAKS_RATE_TIES=1); else either (0: a faster ship that turns slower also
+# takes the initiative into a turning fight it then loses)
+ENERGY_BREAKS_RATE_TIES = os.environ.get("BNB_ENERGY_BREAKS_RATE_TIES", "0") == "1"
+# The initiative turn's onset: a full-stick turn from straight flight reaches 90% of its rate
+# in about this many nose periods (1 / the nose frequency, which scales with the speed up to
+# the corner speed): 3.3 / omega_c is 0.30 s at the corner speed on both real-scale ships
+# (docs/rewrite/sections/imugi-initiative/turn_onset.py).
+TURN_ONSET_NOSE_PERIODS = 3.3
+# m: a lateral offset within this is no offset (a dead-on merge: the tie-break)
+TIE_OFFSET = 1.0
+# below this fraction of the corner speed the two-circle turn eases to the sustained level
+EASE_BELOW_CORNER = 0.95
 
 
 def turn_now(
@@ -495,8 +522,8 @@ class Combat(NamedTuple):
     """The combat layer's result: its marginals; per own ship (R, S): has_target, the
     target's distance (0 without one) and its weight (1 seen, fading when dead reckoned, 0
     without one); the plan choices it made, the target (-1 none) and the turn side; and the
-    target's doubt and the extension's phase after the decision
-    (`ImugiCarry`)."""
+    target's doubt, the extension's phase and the turning fight's commitment (its sense and
+    clock) after the decision (`ImugiCarry`)."""
 
     marginals: Marginals
     has_target: torch.Tensor
@@ -506,6 +533,8 @@ class Combat(NamedTuple):
     left: torch.Tensor
     target_doubt: torch.Tensor
     extend_phase: torch.Tensor
+    fight_sense: torch.Tensor
+    fight_clock: torch.Tensor
 
 
 # The committed target (`choose_target`) holds until it is dead, unseen for
@@ -781,6 +810,125 @@ def commanded_stick(left: torch.Tensor, fraction) -> torch.Tensor:
     return torch.stack(parts, -1)
 
 
+class Commitment(NamedTuple):
+    """The turning fight's commitment per own ship (R, S): the sense (+1 left, -1 right, 0
+    none), the seconds since it was made, and where the committed turn is flown now (the
+    target behind the beam, or the initiative turn just before the merge)."""
+
+    sense: torch.Tensor
+    clock: torch.Tensor
+    flown: torch.Tensor
+
+
+def turn_onset(
+    fleet: Context, characteristics: Characteristics, speed: torch.Tensor
+) -> torch.Tensor:
+    """(R, S) s: the time a full-stick turn from straight flight takes to reach its full
+    rate at `speed`: TURN_ONSET_NOSE_PERIODS over the nose frequency (the card's at the
+    corner speed, `Characteristics.nose_frequency`, scaled by the speed up to it; at least
+    the rules' floor of 1 rad/s)."""
+    frequency = per_ship(characteristics.nose_frequency, fleet.own_type)
+    scale = (speed / fleet.corner_speed).clamp(max=1.0)
+    return TURN_ONSET_NOSE_PERIODS / (frequency * scale).clamp_min(1.0)
+
+
+def tie_side(fleet: Context, lateral: torch.Tensor) -> torch.Tensor:
+    """(R, S) +1 left or -1 right: the lateral offset's side (positive left), and where it
+    is within TIE_OFFSET (a dead-on merge) toward the map centre, and where that too is
+    exactly ambiguous (the ship at the centre or flying through it), left. Deterministic."""
+    centre = fleet.cos * -fleet.y - fleet.sin * -fleet.x  # the centre's side, positive left
+    side = torch.where(centre < 0.0, -1.0, 1.0)
+    return torch.where(lateral.abs() > TIE_OFFSET, torch.sign(lateral), side)
+
+
+def turn_commitment(
+    fleet: Context,
+    characteristics: Characteristics,
+    target_of,
+    has_target: torch.Tensor,
+    geometry: tuple,
+    released: tuple,
+    advantage: tuple,
+) -> Commitment:
+    """The turning fight's committed sense (the author's rules of 2026-11-16).
+
+    Release (`released`: (released, blocked), from the caller): no target, a new target,
+    the target unseen, an extension or the boundary steer (all but the new target also
+    block a commitment this decision), or the next merge (a head-on approach) once the
+    commitment has held COMMIT_HOLD_SECONDS. Commit (an uncommitted ship, once):
+    - initiative: the advantaged ship (`advantage`: its full-stick turn rate now above the
+      target's by TWO_CIRCLE_RATE_MARGIN, or its energy above by ENERGY_ADVANTAGE_RATIO),
+      on a head-on approach, at the latest tick that still has its turn at full rate at the
+      crossing: the time to the closest approach within its turn onset (`turn_onset`), to
+      the sense that closes on the target's tail (`tie_side` of the tail point's offset);
+    - at the merge (the target behind the beam, inside four gun ranges), once: where one
+      ship of the pair holds an advantage and the target is turning, to the card's choice
+      against the target's observed sense (`maneuvers`: two circles where the own rate now
+      is clearly the higher, else one circle), so the outmatched ship reacts to the
+      initiative turn; an even pair, or a target not turning, by the geometry (the tail
+      point's side).
+    Without a decision key (a re-reading) the carry's commitment holds unchanged."""
+    target_x, target_y, distance = geometry[:3]
+    target_vx, target_vy = geometry[6], geometry[7]
+    released, blocked = released
+    advantaged, outmatched, target_rate, one_circle = advantage
+    carry = fleet.carry
+    if fleet.decision_key is None:
+        sense = torch.where(carry.fresh, 0.0, carry.fight_sense)
+        clock = carry.fight_clock
+    else:
+        # a dead ship is fresh at its next observation: none for it either
+        dead = column(fleet.own, "alive") < 0.5
+        sense = torch.where(carry.fresh | released | dead, 0.0, carry.fight_sense)
+        blocked = blocked | dead
+        clock = carry.fight_clock + fleet.seconds
+    seen = has_target & (target_of(fleet.enemy_seen.float()) > 0.5)
+    bearing = signed_angle(fleet.cos, fleet.sin, target_x, target_y)
+    target_speed = torch.sqrt(target_vx * target_vx + target_vy * target_vy).clamp_min(TINY)
+    # head-on: the tracks within 60 degrees of opposite (the line of sight swings wide
+    # close to an offset pass, the tracks do not)
+    opposed = -(target_vx * fleet.velocity_x + target_vy * fleet.velocity_y) / (
+        target_speed * fleet.speed.clamp_min(TINY)
+    )
+    relative_x, relative_y = target_vx - fleet.velocity_x, target_vy - fleet.velocity_y
+    closing_rate = relative_x * target_x + relative_y * target_y  # negative closing
+    approaching = (
+        seen
+        & (closing_rate < 0.0)
+        & (bearing.abs() < 0.5 * math.pi)
+        & (opposed > math.cos(math.radians(60.0)))
+    )
+    relative_squared = (relative_x * relative_x + relative_y * relative_y).clamp_min(TINY)
+    crossing = (-closing_rate / relative_squared).clamp_min(0.0)  # s to the closest approach
+    onset = turn_onset(fleet, characteristics, fleet.speed)
+    # the latest tick: the crossing within the onset (rounded to the decision's length)
+    initiative_window = approaching & (crossing <= onset + 0.5 * fleet.seconds)
+    # the tail point: one own turn radius behind the target along its track
+    _, radius_now = turn_now(characteristics, fleet.own_type, fleet.speed, fleet.energy_fraction)
+    tail_x = target_x - radius_now * target_vx / target_speed
+    tail_y = target_y - radius_now * target_vy / target_speed
+    lateral = fleet.cos * tail_y - fleet.sin * tail_x  # positive: the tail on the left
+    geometric = tie_side(fleet, lateral)
+    abeam = seen & (bearing.abs() > 0.5 * math.pi)
+    in_range = distance < 4.0 * fleet.gun_range
+    if fleet.decision_key is not None:
+        held_long = clock >= COMMIT_HOLD_SECONDS
+        sense = torch.where(approaching & held_long, 0.0, sense)
+        free = sense == 0.0
+        initiative = free & advantaged & initiative_window & ~blocked
+        turning = target_rate.abs() > TURNING_RATE
+        reaction = torch.where((target_rate > 0.0) ^ one_circle, 1.0, -1.0)
+        at_merge = free & ~initiative & abeam & in_range & ~blocked
+        merged = torch.where((advantaged | outmatched) & turning, reaction, geometric)
+        new = torch.where(initiative, geometric, merged)
+        committing = initiative | at_merge
+        sense = torch.where(committing, new, sense)
+        clock = torch.where(committing, 0.0, clock)
+    committed = sense != 0.0
+    flown = committed & (abeam | (initiative_window & advantaged))
+    return Commitment(sense, clock, flown)
+
+
 def maneuvers(
     fleet: Context,
     characteristics: Characteristics,
@@ -792,13 +940,16 @@ def maneuvers(
     left: torch.Tensor,
     power: torch.Tensor,
     others: tuple,
+    released: tuple | None = None,
 ):
     """The doctrine's maneuver (`bnb.controllers.imugi_doctrine`: the sense, the duel
     extension and the crowd extension) on the combat layer's stick, committed side and
     power. others: the other known enemies' distances in own gun ranges (R, S, E; inf
     elsewhere), the angles between their tracks and the lines from them to the ship (R, S,
     E), and the own ships' distances in own gun ranges (R, S, S; inf for the ship itself and
-    the dead). Returns (stick, left, power)."""
+    the dead). released: ((R, S) bool the turning fight's commitment released this
+    decision, (R, S) bool none made this decision) (`turn_commitment`; None: neither).
+    Returns (stick, left, power, commitment)."""
     target_x, target_y, distance = geometry[:3]
     temperature = fleet.temperature
     boost = power_marginal(torch.ones_like(distance), torch.zeros_like(distance))
@@ -836,6 +987,56 @@ def maneuvers(
     )
     one_circle = own_rate_now <= TWO_CIRCLE_RATE_MARGIN * target_rate_now
     sense_left = (target_rate > 0.0) ^ one_circle
+    # the situation: own over target specific energy, shield and maximum lift coefficient
+    target_speed_now = target_of(column(fleet.enemy, "proper_speed"))
+    own_energy = 0.5 * fleet.speed * fleet.speed + column(fleet.own, "energy")
+    target_energy = 0.5 * target_speed_now * target_speed_now + target_of(
+        column(fleet.enemy, "energy")
+    )
+    energy_ratio = torch.where(seen, own_energy / target_energy.clamp_min(1.0), 1.0)
+    commitment = Commitment(
+        torch.zeros_like(distance), torch.zeros_like(distance), torch.zeros_like(seen)
+    )
+    if TURN_COMMIT:
+        if released is None:
+            released = (torch.zeros_like(seen), torch.zeros_like(seen))
+        blocked = released[1] | ~seen | (fleet.boundary_weight > 0.5)
+        released = (released[0] | blocked, blocked)
+        rate_ahead = own_rate_now > TWO_CIRCLE_RATE_MARGIN * target_rate_now
+        rate_behind = target_rate_now > TWO_CIRCLE_RATE_MARGIN * own_rate_now
+        energy_ahead = energy_ratio > ENERGY_ADVANTAGE_RATIO
+        energy_behind = energy_ratio * ENERGY_ADVANTAGE_RATIO < 1.0
+        if ENERGY_BREAKS_RATE_TIES:  # the turn rate first; energy only between even rates
+            even = ~rate_ahead & ~rate_behind
+            advantaged = rate_ahead | (even & energy_ahead)
+            outmatched = rate_behind | (even & energy_behind)
+        else:
+            advantaged, outmatched = rate_ahead | energy_ahead, rate_behind | energy_behind
+        commitment = turn_commitment(
+            fleet,
+            characteristics,
+            target_of,
+            has_target,
+            geometry,
+            released,
+            (advantaged, outmatched, target_rate, one_circle),
+        )
+        sense_left = commitment.sense > 0.0
+        geometry_gate = torch.where(
+            commitment.flown,
+            logistic(distance / fleet.gun_range, doctrine.sense_in_gun_range, temperature),
+            0.0,
+        )
+        if BOUNDARY_OVER_MANEUVERS:
+            geometry_gate = geometry_gate * (1.0 - fleet.boundary_weight)
+    # the stick by energy: a two-circle turn (the target's rotation sense) below the corner
+    # speed eases to the sustained level, the turn that holds speed; else full stick
+    two_circle = (sense_left == (target_rate > 0.0)) & (target_rate.abs() > TURNING_RATE)
+    easing = two_circle & (fleet.speed < EASE_BELOW_CORNER * fleet.corner_speed)
+    if STICK_BY_ENERGY:
+        level = torch.where(easing, STICK_MAGNITUDES[2], 1.0)
+    else:
+        level = 1.0
     # alone: no other threatening known enemy near (a soft count of them inside the crowd's
     # radius, their tracks toward the ship), less the weighted count of own ships near
     enemies, tracks, allies = others
@@ -849,13 +1050,6 @@ def maneuvers(
     friends = torch.where(torch.isfinite(allies), logistic(allies, per_enemy, heat), 0.0).sum(-1)
     crowd = crowd - doctrine.sense_crowd_ally_weight * friends
     alone = logistic(crowd, doctrine.sense_in_crowd, temperature)
-    # the situation: own over target specific energy, shield and maximum lift coefficient
-    target_speed_now = target_of(column(fleet.enemy, "proper_speed"))
-    own_energy = 0.5 * fleet.speed * fleet.speed + column(fleet.own, "energy")
-    target_energy = 0.5 * target_speed_now * target_speed_now + target_of(
-        column(fleet.enemy, "energy")
-    )
-    energy_ratio = torch.where(seen, own_energy / target_energy.clamp_min(1.0), 1.0)
     shield_ratio = torch.where(
         seen,
         column(fleet.own, "shield").clamp_min(TINY)
@@ -887,13 +1081,13 @@ def maneuvers(
         * (alone * (1.0 - duel_extending) + (1.0 - alone) * (1.0 - stay_out))
     )
     in_crowd = doctrine.crowd_sense * geometry_gate * (1.0 - alone) * stay_out + duel_extending
-    stick = stick + sensing[..., None] * (commanded_stick(sense_left, 1.0) - stick)
+    stick = stick + sensing[..., None] * (commanded_stick(sense_left, level) - stick)
     left = torch.where(sensing > 0.5, sense_left, left)
     stick = stick + in_crowd[..., None] * (
         commanded_stick(sense_left, doctrine.crowd_sense_stick) - stick
     )
     power = power + (in_crowd * doctrine.crowd_sense_boost)[..., None] * (boost - power)
-    return stick, left, power
+    return stick, left, power, commitment
 
 
 def combat(
@@ -947,7 +1141,7 @@ def combat(
         logistic(distance / fleet.gun_range, parameters.reverse_in_gun_range, fleet.temperature),
         0.0,
     )
-    power, doctrine, geometry = None, None, None
+    power, doctrine, geometry, shaped = None, None, None, None
     if doctrines is not None:  # the own types' doctrines shape the aim point and the power
         geometry = (
             target_x,
@@ -1003,6 +1197,7 @@ def combat(
     hold = (~has_target & ~toward_centre)[..., None]
     held, _ = stick_marginal(fleet, torch.zeros_like(fleet.x), parameters)
     stick = torch.where(hold, held, steered)
+    fight_sense, fight_clock = torch.zeros_like(distance), torch.zeros_like(distance)
     if doctrine is not None:
         # the other known enemies' distances in own gun ranges (inf for the target and the
         # unknown): the sense's crowd
@@ -1024,7 +1219,11 @@ def combat(
         allies = torch.sqrt(ally_x * ally_x + ally_y * ally_y) / fleet.gun_range[..., None]
         itself = torch.eye(allies.shape[-1], dtype=torch.bool, device=allies.device)
         allies = torch.where(own_alive[:, None, :] & ~itself, allies, math.inf)
-        stick, left, power = maneuvers(
+        # the turning fight's commitment ends with the target, its change, or an extension
+        # (and none is made without a target or while extending)
+        blocked = ~has_target | extending | (shaped.extending > 0.5)
+        released = (blocked | (chosen != fleet.carry.target), blocked)
+        stick, left, power, commitment = maneuvers(
             fleet,
             characteristics,
             doctrine,
@@ -1035,7 +1234,9 @@ def combat(
             left,
             power,
             (others, tracks, allies),
+            released,
         )
+        fight_sense, fight_clock = commitment.sense, commitment.clock
 
     hit_radius = target(per_ship(characteristics.hit_radius, fleet.enemy_type))
     # the predicted miss: how far the nose's line passes from the lead point, in the
@@ -1061,6 +1262,8 @@ def combat(
         left,
         doubt,
         extend_phase,
+        fight_sense,
+        fight_clock,
     )
 
 

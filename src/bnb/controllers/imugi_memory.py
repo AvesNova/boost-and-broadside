@@ -68,7 +68,9 @@ class ImugiCarry:
     the committed target has held without a break (`imugi_combat.choose_target`).
     extend_phase (R, S): the extend-and-return rule's clock (`imugi_combat.extend_and_return`):
     positive, the seconds of extension left; negative, the seconds before another may
-    start; 0, free."""
+    start; 0, free. fight_sense (R, S): the turning fight's committed rotation sense (+1
+    left, -1 right, 0 none; `imugi_combat.turn_commitment`), and fight_clock (R, S) the
+    seconds since it was committed."""
 
     target: torch.Tensor
     combat_left: torch.Tensor
@@ -87,6 +89,8 @@ class ImugiCarry:
     seen: torch.Tensor
     target_doubt: torch.Tensor
     extend_phase: torch.Tensor
+    fight_sense: torch.Tensor
+    fight_clock: torch.Tensor
 
 
 def fresh_carry(views: int, ships: int, enemies: int, device) -> ImugiCarry:
@@ -116,6 +120,8 @@ def fresh_carry(views: int, ships: int, enemies: int, device) -> ImugiCarry:
         seen=torch.zeros((views, EXPLORE_CELLS.shape[0]), device=device),
         target_doubt=torch.zeros((views, ships), device=device),
         extend_phase=torch.zeros((views, ships), device=device),
+        fight_sense=torch.zeros((views, ships), device=device),
+        fight_clock=torch.zeros((views, ships), device=device),
     )
 
 
