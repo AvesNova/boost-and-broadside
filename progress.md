@@ -560,3 +560,8 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 2026-11-16 23:40 Worked: 5247438a, `bnb figures results {fan,break-even,arms,team-size,health,game-length}` + values file; 10 CPU tests, ruff clean; previews checked; health drawn from real bc-v20 + rl-v20 records.
 - Didn't: no per-game length record exists (game-length needs one); no driver plays the team-size lineups (n, k n) yet; the W&B path is untested against a live run.
 - Next: real data after tonight's run: crossover per snapshot into $OUT/break-even, then fan / break-even; arms.json as decisions land.
+
+## feat/unified-eval (2026-11-17, laptop 4070)
+- 03:55 tried: one continuously refilled engine per size bucket (players, seats, team sizes, lineups, map scale as pending data; modes as static slices); planner over Elo / break-even / win-rate / decision targets.
+- worked: CPU tests (18 quick); laptop smoke 256 envs, 3 players, games tally and refill with no missed games; null false-positive 0.050 (no draws) / 0.054 (20% draws, 213-game max), 0.045/0.048 at 850.
+- next: sizing probe + throughput vs the box queue's suite (6656 games in 32 min), concurrency, 5090 check script, docs.
