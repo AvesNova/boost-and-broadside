@@ -1,0 +1,611 @@
+"""The unified evaluator's engine: one compiled rollout per size bucket, run continuously.
+
+**A bucket's batch.** One rollout of `environments` games at the bucket's ships per team
+(every smaller game padded with benched slots: `bnb.game.api`'s `active` counts), its
+environments split into one contiguous slice per game preset in play (the modes' rules are
+the compiled graph's constants, so a slice keeps its mode; the split follows the planner's
+demand at the start). Everything else is data the host writes between graph replays, for
+each environment's NEXT game: its players (`RefillSeat.pending`), seat, active ship counts,
+ship lineup and arena scale (`BucketRollout`'s pending buffers). When a game ends, the
+environment starts its next game at once inside the graph, from those buffers.
+
+**The host loop** (`BucketEngine.step`) never waits on the block it has just launched:
+it replays block k, queues the game logs' copy to pinned memory behind it, then reads
+block k - 1's logs (long done), tallies the games that ended there (`Planner.finished`),
+asks the planner for each such environment's game after next, and queues those writes
+behind block k. So the GPU always has the next block queued while the host plans. A game
+lasts thousands of ticks, so the one-block lag never meets an environment twice.
+
+**Sizing** (`size_environments`): the free memory over a measured per-environment
+footprint (two eager probes at small batches separate the fixed cost from the
+per-environment one), at `MEMORY_SHARE` of the free memory, rounded down to a multiple of
+`ROUNDING` so a machine's size, and so its compiled shapes, repeat run to run (one warm-up
+per bucket per machine; the compile caches export and import as the box's
+`docs/rewrite/sections/launch/cache.sh` does). An explicit count overrides it.
+"""
+
+import dataclasses
+import json
+import math
+import pathlib
+import random
+import time
+
+import torch
+
+from bnb.contracts import ArenaScale, GameConfig, Pool
+from bnb.contracts.config import TEAM_DEATHMATCH
+from bnb.contracts.pools import pool_game
+from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
+from bnb.game.modes.rules import PRESETS, mode_rules_of
+from bnb.league.matches import Player, card_of, imugi_play, network_groups
+from bnb.models.yemong.model import Yemong
+from bnb.runs import checkpoint
+from bnb.runtime.rollout import Rollout
+from bnb.runtime.train import model_controller
+
+from .cells import Cell, Condition, Outcome, arena_uniform, bucket_of
+from .planner import Planner
+from .seat import RefillSeat, SeatPlayer
+
+SEAT = "unified"
+MEMORY_SHARE = 0.7  # of the free device memory the batch may take
+ROUNDING = 64  # environments: a sized batch is a multiple of this
+SCALE_SAMPLING = ArenaScale()  # the map-size draw a slice with scaled cells is built with
+CAPACITY_SLACK = 1.5  # a lane's rows over its player's expected share of the network rows
+MINIMUM_CAPACITY = 32
+
+
+def base_game(presets: list[str], ships_per_team: int) -> GameConfig:
+    """The batch's shared config: team deathmatch's preset when one plays (its tickets are
+    config fields, not a pool's), else the first, at the bucket's size. Raises ValueError
+    when a preset's game is not the one its pool would play (another size, set or rule)."""
+    first = next((p for p in presets if PRESETS[p].mode == TEAM_DEATHMATCH), presets[0])
+    base = dataclasses.replace(PRESETS[first], ships_per_team=ships_per_team)
+    for preset in presets:
+        game = dataclasses.replace(PRESETS[preset], ships_per_team=ships_per_team)
+        pooled = pool_game(base, preset_pool(preset, 1.0))
+        if (game.num_fields, game.ship_set) != (base.num_fields, base.ship_set):
+            raise ValueError(f"{preset}: other fields or ship set than {first}: one batch")
+        if mode_rules_of(pooled) != mode_rules_of(game) or pooled.episode_seconds != (
+            game.episode_seconds
+        ):
+            raise ValueError(f"{preset}: its pool in a {first} batch would play other rules")
+    return base
+
+
+def preset_pool(preset: str, share: float, scaled: bool = False) -> Pool:
+    """A preset's slice of the batch: its mode, arena and clocks, both seats the unified
+    seat; scaled: built with map-size sampling (each game's scale then set by the host)."""
+    game = PRESETS[preset]
+    return Pool(
+        preset,
+        share,
+        (SEAT, SEAT),
+        mode=game.mode,
+        arena_radius=game.arena_radius,
+        spawn_groups=game.spawn_groups,
+        episode_seconds=game.episode_seconds,
+        respawn_seconds=game.respawn_seconds,
+        arena_scale=SCALE_SAMPLING if scaled else None,
+    )
+
+
+class BucketRollout(Rollout):
+    """The training rollout with each environment's next game read from pending buffers the
+    host writes (seat, active counts, lineup, arena scale's uniform) instead of keyed
+    draws. `start` begins every environment's first game from them."""
+
+    def __init__(self, config, types, pools, controllers, environments, length, device, **kwargs):
+        S, N = config.ships_per_team, 2 * config.ships_per_team
+        self.pending_seat = torch.zeros(environments, dtype=torch.int64, device=device)
+        self.pending_active = torch.full((environments, 2), S, dtype=torch.int32, device=device)
+        self.pending_ship_type = torch.zeros((environments, N), dtype=torch.int32, device=device)
+        self.pending_arena = torch.full((environments,), -1.0, device=device)
+        self.arena_slot = None
+        super().__init__(
+            config,
+            types,
+            pools,
+            controllers,
+            SEAT,
+            environments,
+            length,
+            device,
+            staggered=False,
+            benching=True,
+            lineup_types=(0,),
+            **kwargs,
+        )
+        if self.rules.samples_arena:
+            self.arena_slot = self.rules.map_uniform_count + api.TEAMS + self.rules.num_ships
+
+    def _seats(self, episode):
+        return self.pending_seat
+
+    def _lineups(self, episode):
+        return self.pending_ship_type
+
+    def _team_sizes(self, episode):
+        return self.pending_active, None
+
+    def _episode_uniforms(self, episode):
+        uniforms = super()._episode_uniforms(episode)
+        if getattr(self, "arena_slot", None) is None:
+            return uniforms
+        slot = self.arena_slot
+        chosen = torch.where(self.pending_arena >= 0.0, self.pending_arena, uniforms[:, slot])
+        return torch.cat([uniforms[:, :slot], chosen[:, None], uniforms[:, slot + 1 :]], 1)
+
+    def _initial_carry(self, types, staggered, active=None, batch=0):
+        if active is None:
+            active = self.pending_active.clone()
+        return super()._initial_carry(types, staggered, active, batch)
+
+    @torch.no_grad()
+    def start(self, batch: int = 0) -> None:
+        """Every environment starts its first game from the pending buffers (a new carry,
+        copied in place)."""
+        from bnb.runtime.rollout import _assign
+
+        _assign(self.carry, self._initial_carry(self.carry["types"], False, None, batch))
+
+    @torch.no_grad()
+    def play_block(self) -> None:
+        """Advance `length` ticks (the records go to the store's first shard, unread)."""
+        self.carry["segment_tick"].zero_()
+        self._play(self.length, 0)
+
+
+@dataclasses.dataclass
+class Slot:
+    """An environment's game: its cell, the seat its first player takes, and whether it is
+    filler (no target wanted a game there: the slice's last cell, played again)."""
+
+    cell: Cell
+    seat: int
+    filler: bool = False
+
+
+def seat_players(players: list[Player]) -> tuple[list[SeatPlayer], list[int | None]]:
+    """The seat's view of the run's players, and each one's network group."""
+    groups = network_groups(players)
+    seat = []
+    for one, group in zip(players, groups, strict=True):
+        play = imugi_play(one)
+        if one.cheese is not None or one.ablations:
+            raise ValueError(f"{one.name}: the unified evaluator plays no cheese or ablations")
+        if play is not None:
+            if play.parameters is not None:
+                raise ValueError(f"{one.name}: no doctrine players")
+            seat.append(SeatPlayer(one.name, None, play.temperature, play.share, play.floor))
+        else:
+            seat.append(SeatPlayer(one.name, group, temperature=one.temperature))
+    return seat, groups
+
+
+class BucketEngine:
+    """One bucket's continuously running batch (module docstring). players: every player of
+    the run (`bnb.league.matches.Player`, by name); shares: each preset's share of the
+    environments; planner: the run's; lineup_types: ship type indices a game's lineup is
+    drawn from (each slot uniformly, both teams flying it); scaled: the presets whose
+    slice needs map-size sampling; capacity: each network group's rows per lane (None:
+    from `network_share`, each group's expected share of the rows); record: the games'
+    callback (`record(cell, outcome, slot)`)."""
+
+    def __init__(
+        self,
+        bucket: int,
+        environments: int,
+        shares: dict[str, float],
+        players: list[Player],
+        planner: Planner,
+        device: torch.device,
+        lineup_types: tuple[int, ...] = (0, 1),
+        scaled: tuple[str, ...] = (),
+        capacity: list[int] | None = None,
+        network_share: list[float] | None = None,
+        compiled: bool = True,
+        length: int = 32,
+        graph_ticks: int = 8,
+        seed: int = 0,
+        record=None,
+    ) -> None:
+        self.bucket, self.planner, self.device = bucket, planner, device
+        self.players = players
+        self.index = {one.name: number for number, one in enumerate(players)}
+        self.random = random.Random(seed * 1_000_003 + bucket)
+        self.lineup_types = tuple(lineup_types)
+        self.record = record
+        presets = [p for p, share in shares.items() if share > 0.0]
+        self.game = base_game(presets, bucket)
+        counts = _split(environments, [shares[p] for p in presets])
+        presets = [p for p, c in zip(presets, counts, strict=True) if c > 0]
+        counts = [c for c in counts if c > 0]
+        self.environments = sum(counts)
+        self.presets = presets
+        pools = tuple(
+            preset_pool(p, c / self.environments, p in scaled)
+            for p, c in zip(presets, counts, strict=True)
+        )
+        self.preset_of = [p for p, c in zip(presets, counts, strict=True) for _ in range(c)]
+        seat_view, groups = seat_players(players)
+        self.network = [group is not None for group in groups]
+        self.group_of = groups
+        templates, states, loaded = [], {}, {}
+        for index, group in enumerate(groups):
+            if group is None:
+                continue
+            one = players[index]
+            if one.policy in loaded:
+                states[index] = states[loaded[one.policy]]
+                continue
+            loaded[one.policy] = index
+            model = checkpoint.load_policy(one.policy, device).requires_grad_(False)
+            if group == len(templates):
+                templates.append(model)
+            states[index] = {k: v.detach() for k, v in model.state_dict().items()}
+        for template in templates:
+            if isinstance(template, Yemong):
+                template.mask_benched = True
+        controllers = [model_controller(template, self.game) for template in templates]
+        rows = 2 * self.environments
+        if capacity is None:
+            shares_of = network_share or [1.0] * len(templates)
+            capacity = []
+            for group in range(len(templates)):
+                lanes = groups.count(group)
+                expected = rows * shares_of[group] / max(lanes, 1)
+                capacity.append(
+                    min(rows, max(MINIMUM_CAPACITY, math.ceil(CAPACITY_SLACK * expected)))
+                )
+        self.capacity = capacity
+        self.types = card_of(players, self.game, device)
+        rules = api.rules_of(self.game)
+        self.seat = RefillSeat(
+            controllers,
+            seat_view,
+            states,
+            capacity,
+            rows,
+            characteristics(self.types, rules),
+            bucket,
+            device,
+        )
+        self.rollout = BucketRollout(
+            self.game,
+            self.types,
+            pools,
+            {SEAT: self.seat},
+            self.environments,
+            length,
+            device,
+            compiled=compiled,
+            graph_ticks=graph_ticks,
+            seed=seed,
+        )
+        lineup = self.rollout.lineup
+        environments_of, role = lineup.environments[SEAT].cpu(), lineup.role[SEAT].cpu()
+        self.first_row = torch.zeros(self.environments, dtype=torch.int64)
+        self.second_row = torch.zeros(self.environments, dtype=torch.int64)
+        for row, (environment, r) in enumerate(zip(environments_of.tolist(), role.tolist())):
+            (self.first_row if r == 0 else self.second_row)[environment] = row
+        self.first_row_device = self.first_row.to(device)
+        self.tick_length = self.rollout.rules.tick_length
+        self.in_use = [0] * len(players)
+        self.current: list[Slot | None] = [None] * self.environments
+        self.next: list[Slot | None] = [None] * self.environments
+        self.last_cell: dict[str, Cell] = {}
+        self.finished_seen = torch.zeros(self.environments, dtype=torch.int64)
+        self.games = 0
+        self.blocks = 0
+        self.missed = 0
+        self._previous = None  # (pinned logs, event) of the last block
+        self.idle = 0
+
+    # ---- assignment
+
+    def fits(self, cell: Cell) -> bool:
+        for name in (cell.first, cell.second):
+            index = self.index[name]
+            group = self.group_of[index]
+            if group is not None and self.in_use[index] + 1 > self.capacity[group]:
+                return False
+        return True
+
+    def _take(self, cell: Cell, sign: int) -> None:
+        for name in (cell.first, cell.second):
+            self.in_use[self.index[name]] += sign
+
+    def _choose(self, environment: int) -> Slot | None:
+        preset = self.preset_of[environment]
+        chosen = self.planner.choose(self.bucket, preset, self.fits)
+        if chosen is not None:
+            cell, seat = chosen
+            self.last_cell[preset] = cell
+            self._take(cell, 1)
+            return Slot(cell, seat)
+        cell = self.last_cell.get(preset)
+        if cell is None or not self.fits(cell):
+            return None
+        self.planner.pending(cell)
+        self._take(cell, 1)
+        return Slot(cell, self.random.randrange(2), filler=True)
+
+    def _pending_values(self, slot: Slot) -> tuple:
+        """(seat, active (2,), ship types (N,), arena uniform, first player, second player)
+        of a slot, as the buffers hold them."""
+        S = self.bucket
+        condition = slot.cell.condition
+        active = [0, 0]
+        active[slot.seat] = condition.first
+        active[1 - slot.seat] = condition.second
+        team = [self.random.choice(self.lineup_types) for _ in range(S)]
+        arena = -1.0
+        if condition.arena_scale != 1.0 or self.rollout.arena_slot is not None:
+            arena = arena_uniform(
+                condition.arena_scale, SCALE_SAMPLING.sigma, SCALE_SAMPLING.low, SCALE_SAMPLING.high
+            )
+        return (
+            slot.seat,
+            active,
+            team + team,
+            arena,
+            self.index[slot.cell.first],
+            self.index[slot.cell.second],
+        )
+
+    def _write(self, environments: list[int], slots: list[Slot]) -> None:
+        """Queue the pending buffers' writes for these environments' next games."""
+        if not environments:
+            return
+        values = [self._pending_values(slot) for slot in slots]
+        index = torch.tensor(environments, dtype=torch.int64).pin_memory()
+        seat = torch.tensor([v[0] for v in values], dtype=torch.int64).pin_memory()
+        active = torch.tensor([v[1] for v in values], dtype=torch.int32).pin_memory()
+        ship_type = torch.tensor([v[2] for v in values], dtype=torch.int32).pin_memory()
+        arena = torch.tensor([v[3] for v in values], dtype=torch.float32).pin_memory()
+        rows = torch.cat([self.first_row[index], self.second_row[index]]).pin_memory()
+        players = torch.tensor(
+            [v[4] for v in values] + [v[5] for v in values], dtype=torch.int64
+        ).pin_memory()
+        device, rollout = self.device, self.rollout
+        index = index.to(device, non_blocking=True)
+        rollout.pending_seat.index_copy_(0, index, seat.to(device, non_blocking=True))
+        rollout.pending_active.index_copy_(0, index, active.to(device, non_blocking=True))
+        rollout.pending_ship_type.index_copy_(0, index, ship_type.to(device, non_blocking=True))
+        rollout.pending_arena.index_copy_(0, index, arena.to(device, non_blocking=True))
+        self.seat.pending.index_copy_(
+            0, rows.to(device, non_blocking=True), players.to(device, non_blocking=True)
+        )
+
+    def start(self) -> None:
+        """Every environment's first game and the one after it, chosen and written; the
+        rollout started from the first."""
+        firsts = [self._choose(e) for e in range(self.environments)]
+        if any(slot is None for slot in firsts):
+            raise RuntimeError(f"bucket {self.bucket}: no cell for some environment at the start")
+        self.current = firsts
+        self._write(list(range(self.environments)), firsts)
+        self.rollout.start()
+        self.next = [self._choose(e) for e in range(self.environments)]
+        chosen = [e for e in range(self.environments) if self.next[e] is not None]
+        self._write(chosen, [self.next[e] for e in chosen])
+
+    # ---- the loop
+
+    def _logs(self) -> torch.Tensor:
+        """(B, 6) the first-role rows' game logs: finished games, the last game's result,
+        its own and enemy deaths, its ticks; and the lanes' overflow count."""
+        carry = self.rollout.carry["controllers"][SEAT]
+        rows = self.first_row_device
+        return torch.cat(
+            [
+                carry.finished[rows].double()[:, None],
+                carry.last_result[rows].double()[:, None],
+                carry.last_deaths[rows].double(),
+                carry.last_ticks[rows].double()[:, None],
+                self.seat.overflow.double().expand(rows.shape[0])[:, None],
+            ],
+            1,
+        )
+
+    def step(self) -> int:
+        """One block: replay it, queue its logs' copy, tally the previous block's ended
+        games and queue their environments' next writes. Returns the games tallied."""
+        self.rollout.play_block()
+        self.blocks += 1
+        logs = torch.empty((self.environments, 6), dtype=torch.float64, pin_memory=True)
+        logs.copy_(self._logs(), non_blocking=True)
+        event = torch.cuda.Event() if self.device.type == "cuda" else None
+        if event is not None:
+            event.record()
+        previous, self._previous = self._previous, (logs, event)
+        if previous is None:
+            return 0
+        held, held_event = previous
+        if held_event is not None:
+            held_event.synchronize()
+        return self._tally(held)
+
+    def drain(self) -> int:
+        """Tally the last block's logs (at the end)."""
+        if self._previous is None:
+            return 0
+        held, event = self._previous
+        if event is not None:
+            event.synchronize()
+        self._previous = None
+        return self._tally(held)
+
+    def _tally(self, logs: torch.Tensor) -> int:
+        finished = logs[:, 0].long()
+        delta = finished - self.finished_seen
+        if int(logs[0, 5]) > 0:
+            raise RuntimeError(f"bucket {self.bucket}: rows past a lane's capacity")
+        ended = delta.nonzero().flatten().tolist()
+        environments, slots = [], []
+        for environment in ended:
+            if int(delta[environment]) > 1:  # never at a game's length; counted, not tallied
+                self.missed += int(delta[environment]) - 1
+            result, own_deaths, enemy_deaths, ticks = logs[environment, 1:5].tolist()
+            slot = self.current[environment]
+            outcome = Outcome(
+                score=(result + 1.0) / 2.0,
+                first_kills=round(enemy_deaths),
+                second_kills=round(own_deaths),
+                seconds=ticks * self.tick_length,
+            )
+            self.planner.finished(slot.cell, outcome)
+            self._take(slot.cell, -1)
+            if self.record is not None:
+                self.record(slot.cell, outcome, slot, self.bucket)
+            self.games += 1
+            self.current[environment] = self.next[environment]
+            if self.current[environment] is None:
+                # nothing was pending: it replays its pending buffers' game (the last one
+                # written), a filler the host does not count
+                self.current[environment] = Slot(slot.cell, slot.seat, filler=True)
+                self.planner.pending(slot.cell)
+                self._take(slot.cell, 1)
+            following = self._choose(environment)
+            self.next[environment] = following
+            if following is not None:
+                environments.append(environment)
+                slots.append(following)
+        self.finished_seen = finished
+        self._write(environments, slots)
+        return len(ended)
+
+    def wanted(self) -> bool:
+        """Whether a target still wants a game in this bucket."""
+        return any(bucket == self.bucket for bucket, _ in self.planner.wanted())
+
+
+def _split(total: int, weights: list[float]) -> list[int]:
+    """`total` in whole parts by the weights' largest remainders (a weight of 0 gets 0)."""
+    weight = sum(weights)
+    shares = [total * w / weight for w in weights]
+    parts = [math.floor(s) for s in shares]
+    order = sorted(range(len(weights)), key=lambda i: shares[i] - parts[i], reverse=True)
+    for index in order[: total - sum(parts)]:
+        parts[index] += 1
+    return parts
+
+
+# ---- sizing
+
+
+def free_memory(device: torch.device) -> int:
+    """The device's free bytes (the caching allocator's reserve counted free)."""
+    free, _ = torch.cuda.mem_get_info(device)
+    return free + torch.cuda.memory_reserved(device) - torch.cuda.memory_allocated(device)
+
+
+def footprint(make, device: torch.device, small: int = 32, large: int = 96) -> tuple[float, float]:
+    """(fixed bytes, bytes per environment) of an engine: `make(environments)` builds an
+    uncompiled engine, two of them (small and large) play a few eager ticks, and the peaks
+    give the line. Eager peaks over-count a compiled graph's (fused) activations, so the
+    sizing errs on the safe side."""
+    peaks = []
+    for environments in (small, large):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats(device)
+        before = torch.cuda.memory_allocated(device)
+        engine = make(environments)
+        engine.start()
+        for _ in range(2):
+            engine.rollout._tick()
+        torch.cuda.synchronize(device)
+        peaks.append(torch.cuda.max_memory_allocated(device) - before)
+        del engine
+    per = max((peaks[1] - peaks[0]) / (large - small), 1.0)
+    return max(peaks[0] - per * small, 0.0), per
+
+
+def size_environments(fixed: float, per: float, free: int, share: float = MEMORY_SHARE) -> int:
+    """The environments that fit `share` of `free` bytes, as a multiple of `ROUNDING` (at
+    least one multiple)."""
+    count = int((share * free - fixed) // per)
+    return max(ROUNDING, count // ROUNDING * ROUNDING)
+
+
+# ---- records
+
+
+class GameLog:
+    """The run's durable record: `games.jsonl`, one line per flush with every game finished
+    since (each line written whole and synced), read back on a resume."""
+
+    def __init__(self, directory: pathlib.Path) -> None:
+        self.path = directory / "games.jsonl"
+        directory.mkdir(parents=True, exist_ok=True)
+        self.rows: list[dict] = []
+
+    def add(self, cell: Cell, outcome: Outcome, slot: Slot, bucket: int) -> None:
+        c = cell.condition
+        self.rows.append(
+            dict(
+                preset=c.preset,
+                first_count=c.first,
+                second_count=c.second,
+                arena_scale=c.arena_scale,
+                first=cell.first,
+                second=cell.second,
+                seat=slot.seat,
+                filler=slot.filler,
+                bucket=bucket,
+                score=outcome.score,
+                kills=[outcome.first_kills, outcome.second_kills],
+                seconds=round(outcome.seconds, 3),
+            )
+        )
+
+    def flush(self) -> None:
+        if not self.rows:
+            return
+        import os
+
+        with self.path.open("a") as file:
+            file.write(json.dumps(dict(time=time.time(), games=self.rows)) + "\n")
+            file.flush()
+            os.fsync(file.fileno())
+        self.rows = []
+
+    def replay(self) -> list[tuple[Cell, Outcome]]:
+        """Every recorded game (a last line cut short is skipped)."""
+        if not self.path.exists():
+            return []
+        found = []
+        for line in self.path.read_text().splitlines():
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            for row in entry["games"]:
+                condition = Condition(
+                    row["preset"], row["first_count"], row["second_count"], row["arena_scale"]
+                )
+                outcome = Outcome(row["score"], row["kills"][0], row["kills"][1], row["seconds"])
+                found.append((Cell(condition, row["first"], row["second"]), outcome))
+        return found
+
+
+def bucket_cells(planner: Planner) -> dict[int, dict[str, float]]:
+    """Each bucket's presets and their demand shares (`Planner.demand`)."""
+    out: dict[int, dict[str, float]] = {}
+    for (bucket, preset), share in planner.demand().items():
+        out.setdefault(bucket, {})[preset] = share
+    return out
+
+
+def scaled_presets(planner: Planner, bucket: int) -> tuple[str, ...]:
+    """The presets of a bucket with a cell off the preset's own map."""
+    found = set()
+    for target in planner.targets:
+        for cell in target.proposals():
+            c = cell.condition
+            if c.arena_scale != 1.0 and bucket_of(c, planner.buckets) == bucket:
+                found.add(c.preset)
+    return tuple(sorted(found))

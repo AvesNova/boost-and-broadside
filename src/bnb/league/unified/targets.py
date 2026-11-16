@@ -21,6 +21,7 @@ so the refills of one round spread over the cells instead of all taking the best
 """
 
 import dataclasses
+import functools
 import math
 
 import numpy
@@ -68,6 +69,12 @@ class Target:
         """The worst error over its goal, squared, less 1 (0 when done): the progress logs'
         and the ETA's measure."""
         raise NotImplementedError
+
+
+def _drop(planned: int) -> float:
+    """The planned variance's drop from one more game after `planned`, with one pseudo-game
+    of prior (so the first game's drop is finite and the largest): V/(m+1) - V/(m+2)."""
+    return SCORE_VARIANCE / ((planned + 1) * (planned + 2))
 
 
 def _score(outcome: Outcome, kill_share: bool) -> float:
@@ -188,7 +195,9 @@ class EloTarget(Target):
         if self.finished + self.pending.sum() / 2 >= self.budget:
             return {}
         covariance = self.covariance()
-        unmet = self._unmet(covariance)
+        # a goal is played for while the fit leaves it unmet (and off a bound), unless the
+        # games in flight are planned to meet it
+        unmet = self._open() & (self._unmet(covariance) | (self.pending.sum() == 0))
         if not unmet.any():
             return {}
         rows = self.directions[unmet] / self.goals[unmet, None]  # (T, K - 1)
@@ -245,28 +254,54 @@ class EloTarget(Target):
             self.since_fit = 0
             self._fit()
 
-    def errors(self) -> numpy.ndarray:
-        """(T,) each goal's standard error now, in Elo (inf without a rating): the fit's."""
+    def errors(self, fresh: bool = False) -> numpy.ndarray:
+        """(T,) each goal's standard error, in Elo (inf without a rating): the fit's, refitted
+        after every `refit` finished games (fresh: whenever a game has finished since)."""
+        held = getattr(self, "_errors", None)
+        if held is not None and (
+            held[0] == self.finished or (not fresh and self.finished - held[0] < self.refit)
+        ):
+            return held[1]
         posterior = fit_posterior(self.wins, 0)
         self.posterior = posterior
         import torch
 
         full = numpy.zeros((len(self.directions), len(self.players)))
         full[:, 1:] = self.directions
-        return posterior.variance(torch.from_numpy(full)).sqrt().numpy()
+        errors = posterior.variance(torch.from_numpy(full)).sqrt().numpy()
+        self._errors = (self.finished, errors)
+        return errors
+
+    def _open(self) -> numpy.ndarray:
+        """(T,) the goals the fit leaves open: above their error and not on a bound (a
+        player every game of whose went one way is reported as a bound, as the rating
+        pool's fit reports it; `bnb.league.design.Posterior.on_bound`)."""
+        errors = self.errors()
+        import torch
+
+        full = numpy.zeros((len(self.directions), len(self.players)))
+        full[:, 1:] = self.directions
+        bound = self.posterior.on_bound(torch.from_numpy(full)).numpy()
+        # a bound stands once its players have played the games an even pair would need
+        # for the goal, 1 / (goal^2 / 4) (else a short sweep would end the target)
+        played = self.games.sum(1)
+        touched = numpy.abs(full) > 0
+        least = numpy.where(touched, played[None, :], numpy.inf).min(1)
+        settled = bound & (least >= 4.0 / self.goals**2)
+        return ~((errors <= self.goals * SCALE + 1e-9) | settled)
 
     def done(self) -> bool:
-        if self.finished >= self.budget:
-            return True
-        return bool((self.errors() <= self.goals * SCALE + 1e-9).all())
+        return self.finished >= self.budget or not self._open().any()
 
     def remaining(self) -> float:
-        errors = self.errors()
+        if self.done():
+            return 0.0
+        errors = numpy.where(self._open(), self.errors(), 0.0)
         worst = float(numpy.max(errors / (self.goals * SCALE)))
         return 0.0 if worst <= 1.0 else (math.inf if not math.isfinite(worst) else worst**2 - 1)
 
     def report(self) -> dict:
-        errors = self.errors()
+        errors = self.errors(fresh=True)
         posterior = self.posterior
         return dict(
             kind="elo",
@@ -313,12 +348,9 @@ class WinRateTarget(Target):
         planned = self._planned()
         if planned >= self.budget or self.done():
             return {}
-        if planned and SCORE_VARIANCE / planned <= self.goal**2:
-            return {}
-        if planned == 0:
-            return {self.cell: 1.0}
-        drop = SCORE_VARIANCE / planned - SCORE_VARIANCE / (planned + 1)
-        return {self.cell: drop / self.goal**2}
+        if self.pending and SCORE_VARIANCE / planned <= self.goal**2:
+            return {}  # the games in flight should do (a look after them decides)
+        return {self.cell: _drop(planned) / self.goal**2}
 
     def add_pending(self, cell: Cell) -> None:
         if cell == self.cell:
@@ -502,6 +534,17 @@ class BreakEvenTarget(Target):
 # ---- decisions
 
 
+@functools.cache
+def _plan(design: SequentialDesign) -> float:
+    """The design's planned drift at delta (`bnb.league.sequential.plan`), once per design."""
+    return plan(design)[0]
+
+
+@functools.lru_cache(maxsize=4096)
+def _boundaries(design: SequentialDesign, fractions: tuple, drift: float, final: bool):
+    return boundaries(design, list(fractions), drift, final)
+
+
 @dataclasses.dataclass
 class Look:
     """One look of a decision: the games at it, its information fraction, the statistic and
@@ -526,7 +569,7 @@ class InformationLooks:
 
     def __init__(self, design: SequentialDesign, variance: float = SCORE_VARIANCE) -> None:
         self.design, self.variance = design, variance
-        drift, _ = plan(design)
+        drift = _plan(design)
         self.drift = drift
         self.maximum_information = (drift / design.delta) ** 2
         self.maximum_games = math.ceil(self.maximum_information * variance)
@@ -555,7 +598,7 @@ class InformationLooks:
         fraction = games / self.maximum_games
         final = fraction >= self.planned[-1] - 1e-12
         fractions = [one.fraction for one in self.looks] + [fraction]
-        found = boundaries(self.design, fractions, self.drift, final)
+        found = _boundaries(self.design, tuple(fractions), self.drift, final)
         upper, inner = found.upper[-1], found.inner[-1]
         outcome = found.decision(len(fractions) - 1, z)
         self.looks.append(Look(games, fraction, z, upper, inner, outcome))
@@ -580,10 +623,7 @@ class DecisionTarget(Target):
         if self.done() or planned >= self.test.maximum_games:
             return {}
         floor = SCORE_VARIANCE / self.test.maximum_games
-        if planned == 0:
-            return {self.cell: 1.0}
-        drop = SCORE_VARIANCE / planned - SCORE_VARIANCE / (planned + 1)
-        return {self.cell: drop / floor}
+        return {self.cell: _drop(planned) / floor}
 
     def add_pending(self, cell: Cell) -> None:
         if cell == self.cell:
