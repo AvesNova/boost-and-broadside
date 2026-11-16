@@ -480,3 +480,4 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 2026-11-16 22:25 started: worktree docs/white-paper; read READMEs, hook, charts branch (values.json flat {name: number|null}, figure names). Plan: docs/hooks/placeholders.py hook + README.template.md + docs/results/*
 - 2026-11-16 22:28 tried: docs/hooks/placeholders.py (values/pending/figure, draft|publish via BNB_RESULTS, README.template.md -> README.md) and the README template. Next: results pages, values.json, test, build.
 - 2026-11-16 22:35 worked: results pages (8), values.json (84 null names), test_placeholders.py + test_references 683 passed; fixed the command check's preset list (training mixes). Next: strict build, README review, push.
+- 2026-11-16 22:35 done: strict build shows only the 3 known anchor warnings (imugi.md x2, guides/figures.md); 138 placeholders open in draft. Branch docs/white-paper pushed.
