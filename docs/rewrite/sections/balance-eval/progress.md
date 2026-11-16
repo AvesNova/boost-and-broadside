@@ -151,3 +151,32 @@ per-game mean of the point share (deaths of any cause), not the pooled kills by 
   win edge faster, so the slopes here are likely a little shallow for the new settings and
   the bands a little wide; the centre (a) should carry. Refit on a few dozen cards measured
   at the new settings before using the bands to accept a card.
+
+### Timing for compute estimates: laptop (RTX 4070 Laptop, power profile performance)
+
+One steady batch each at the balance settings (fog on, fields off; deathmatch 300 s,
+elimination and Frontline their own clocks, a batch stopping when every first match has
+ended), 4096 environments, 32 variants, the base card's Yongma team v Jujak team; compiled
+and warmed outside the lock (`bench.balance_sweep timing`, `data/timing.jsonl`,
+`timing_table.py`). Frontline 10v10 not run on the laptop (stopped at 18:05 to keep the
+laptop free for the author's flight; the 5090 has it). "game-s/s": first-match seconds
+played a second (scored modes stop early, so their batch time follows the longest match).
+
+| condition | clock s | match s (mean) | batch s | games/s | game-s/s | s a card (256 games) | GPU util | busiest threads | kill share Y v J | compile s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| deathmatch-5v5 | 300 | 300 | 37.9 | 108.0 | 32.4k | 2.37 | 99% (71) | 100% / 0% | 44.5 ± 0.1 | 211 |
+| deathmatch-10v10 | 300 | 300 | 79.6 | 51.5 | 15.4k | 4.97 | 99% (151) | 100% / 0% | 45.1 ± 0.1 | 223 |
+| deathmatch-2v2 | 300 | 300 | 16.4 | 249.9 | 75.0k | 1.02 | 89% (30) | 100% / 0% | 35.5 ± 0.2 | 186 |
+| deathmatch-1v1 | 300 | 300 | 15.1 | 271.0 | 81.3k | 0.94 | 80% (28) | 100% / 0% | 19.7 ± 0.6 | 177 |
+| elimination-5v5 | 248 | 82 | 25.1 | 163.4 | 13.3k | 1.57 | 96% (47) | 100% / 0% | 36.2 ± 0.3 | 224 |
+| elimination-10v10 | 248 | 74 | 54.8 | 74.7 | 5.5k | 3.43 | 99% (103) | 100% / 0% | 40.9 ± 0.3 | 186 |
+| frontline-5v5 | 600 | 190 | 73.0 | 56.1 | 10.7k | 4.56 | 99% (138) | 100% / 0% | 38.3 ± 0.2 | 198 |
+
+- GPU-bound in every condition: utilisation 96-99% at 5v5 and 10v10, 89% at deathmatch 2v2,
+  80% at 1v1. The busiest thread at 100% is the main Python thread (launching and waiting
+  on the GPU); every other thread is idle, and the GPU stays near full, so the batch is not
+  launch-limited at these sizes. 1v1 is the one place a larger batch would gain.
+- Seconds a card at 256 games: deathmatch 0.9 (1v1) - 5.0 (10v10), elimination 1.6 / 3.4,
+  Frontline 5v5 4.6. Kill shares here (base card, fog on, fields off, seed 0) are the
+  Yongma team's: 19.7 (1v1), 35.5 (2v2), 44.5 (5v5), 45.1 (10v10); elimination 36.2 / 40.9;
+  Frontline 5v5 38.3.
