@@ -59,3 +59,21 @@ then 27 s a batch of 256 games of 600 s; no recompile inside the job (the one gu
 - The mirror is 1.8 standard errors off 50%; the kill share's standard error is the ratio
   estimator's by game, and the ticks' randomness is not common across entries (only the
   spawns), so a mirror check at more games is worth one run before trusting 0.3-point errors.
+
+## 17:22 KST: ready; open points for the author
+
+1. The deathmatch 1v1 and 2v2 maps sit on the mode's 3000 m floor (`api.arena_radius_for`), so
+   they are larger than pure density (1878 m and 2656 m). Kept as the game's rule; a pure
+   density switch is one line in `balance_sweep.CONDITIONS` if wanted.
+2. Elimination and Frontline play the preset's own map (7800 m) at 10v10 too, as the game does
+   since 2026-11-15; the density map would be 11031 m. Say if they should scale.
+3. The whole clock is the preset's: deathmatch is 600 s (balance-final swept 300 s), so a
+   deathmatch candidate costs twice what it did.
+4. Fog off changes the games (kills a game 10.2 -> 11.7 at 60 s, fields off) for under 1% of
+   speed: the measurement is of a different game than the one played with fog.
+5. Only the spawns are common across entries; respawns, spread and decisions draw from the
+   default generator (seeded per chunk), so they differ by batch position.
+6. A pair's cards fly their base ships' stored doctrines (Yongma's or Jujak's); a sampled card
+   with no base ship needs one named.
+7. A controller that derives settings from the card must read `loop.card` in the graph or
+   define `refresh(card, types)` (`Loop.set_table` calls it after a new card table).
