@@ -325,15 +325,24 @@ def run(
                 f"bucket {bucket}: {per / 1e6:.2f} MB an environment + {fixed / 1e9:.2f} GB, "
                 f"{free / 1e9:.1f} GB free x {share_of_free:.2f}: {count} environments"
             )
+        torch.cuda.reset_peak_memory_stats(device)
         engine = make(bucket, shares, count)
         built = time.time()
         engine.start()
         engine.step()
         torch.cuda.synchronize(device)
+        peak = torch.cuda.max_memory_allocated(device)
+        record = sizing.setdefault(bucket, dict(environments=count))
+        record.update(
+            peak_allocated=peak,
+            peak_reserved=torch.cuda.max_memory_reserved(device),
+            compiled_per_environment=peak / count,
+        )
+        (out / "sizing.json").write_text(json.dumps(sizing, indent=1))
         say(
             f"bucket {bucket}: {engine.environments} environments {shares}, capacity "
             f"{[(len(m), c) for _, m, c in engine.runs]} (players, rows per lane), "
-            f"warm-up {time.time() - built:.0f} s"
+            f"warm-up {time.time() - built:.0f} s, peak {peak / 1e9:.2f} GB allocated"
         )
         return engine
 

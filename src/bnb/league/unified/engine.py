@@ -52,6 +52,9 @@ from .seat import RefillSeat, SeatPlayer
 SEAT = "unified"
 MEMORY_SHARE = 0.7  # of the free device memory the batch may take
 ROUNDING = 64  # environments: a sized batch is a multiple of this
+# the compiled engine's bytes per environment over the eager probe's (the captured graph's
+# pool, the warm-up's carry copy): measured on the laptop 4070 (unified-eval/results.md)
+COMPILED_FACTOR = 1.0
 SCALE_SAMPLING = ArenaScale()  # the map-size draw a slice with scaled cells is built with
 CAPACITY_SLACK = 1.5  # a lane's rows over its player's expected share of the network rows
 MINIMUM_CAPACITY = 32
@@ -564,13 +567,17 @@ def free_memory(device: torch.device) -> int:
     return free + torch.cuda.memory_reserved(device) - torch.cuda.memory_allocated(device)
 
 
-def footprint(make, device: torch.device, small: int = 32, large: int = 96) -> tuple[float, float]:
+def footprint(make, device: torch.device, small: int = 64, large: int = 256) -> tuple[float, float]:
     """(fixed bytes, bytes per environment) of an engine: `make(environments)` builds an
-    uncompiled engine, two of them (small and large) play a few eager ticks, and the peaks
-    give the line. Eager peaks over-count a compiled graph's (fused) activations, so the
-    sizing errs on the safe side."""
+    uncompiled engine; after a first throwaway build (the device's one-time allocations),
+    two of them (small and large) play a few eager ticks, and the peaks give the line.
+    The compiled engine's footprint differs from the eager one's (`COMPILED_FACTOR`)."""
     peaks = []
-    for environments in (small, large):
+    import gc
+
+    for environments in (small, small, large):
+        gc.collect()
+        torch.cuda.synchronize(device)
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats(device)
         before = torch.cuda.memory_allocated(device)
@@ -581,14 +588,17 @@ def footprint(make, device: torch.device, small: int = 32, large: int = 96) -> t
         torch.cuda.synchronize(device)
         peaks.append(torch.cuda.max_memory_allocated(device) - before)
         del engine
+        gc.collect()
+    peaks = peaks[1:]
     per = max((peaks[1] - peaks[0]) / (large - small), 1.0)
     return max(peaks[0] - per * small, 0.0), per
 
 
 def size_environments(fixed: float, per: float, free: int, share: float = MEMORY_SHARE) -> int:
-    """The environments that fit `share` of `free` bytes, as a multiple of `ROUNDING` (at
-    least one multiple)."""
-    count = int((share * free - fixed) // per)
+    """The environments that fit `share` of `free` bytes at the compiled engine's footprint
+    (the eager probe's per-environment bytes times `COMPILED_FACTOR`), as a multiple of
+    `ROUNDING` (at least one multiple)."""
+    count = int((share * free - fixed) // (per * COMPILED_FACTOR))
     return max(ROUNDING, count // ROUNDING * ROUNDING)
 
 
