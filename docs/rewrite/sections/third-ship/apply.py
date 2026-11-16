@@ -44,21 +44,31 @@ def main() -> None:
     parser.add_argument("name")
     parser.add_argument("doctrines", type=pathlib.Path, nargs="?")
     parser.add_argument("doctrine_name", nargs="?")
+    parser.add_argument(
+        "--option",
+        help="a balance option's folder (candidates/options/NAME): its Yongma and Jujak files "
+        "replace the set's instead of the v23 Jujak",
+    )
     args = parser.parse_args()
     entry = next(e for e in json.loads((HERE / args.cards).read_text()) if e["name"] == args.name)
     directory = ships.directory_of(SET)
-    # Jujak's v23 card (the balance agent's adoption)
     jujak_path = directory / "jujak.toml"
-    data = tomllib.loads(jujak_path.read_text())
-    for field, change in json.loads(JUJAK_V23.read_text()).items():
-        data["card"][field] = change["set"]
-    data["handles"]["sustained_turn_rate"] = 0.7646540176662846 * 0.93
-    tag = "; the energy-turn balance (tune/balance-final, game v23): x0.93"
-    note = data["notes"]["sustained_turn_rate"].split(tag)[0]
-    data["notes"]["sustained_turn_rate"] = note + tag
-    ships.write_ship(
-        ships.Ship("jujak", data["name"], data["handles"], data["card"], data["notes"]), SET
-    )
+    if args.option:  # the balance option's pair, as its files stand
+        for key in ("yongma", "jujak"):
+            source = HERE / "candidates" / "options" / args.option / f"{key}.toml"
+            (directory / f"{key}.toml").write_text(source.read_text())
+    else:
+        # Jujak's v23 card (the balance agent's adoption)
+        data = tomllib.loads(jujak_path.read_text())
+        for field, change in json.loads(JUJAK_V23.read_text()).items():
+            data["card"][field] = change["set"]
+        data["handles"]["sustained_turn_rate"] = 0.7646540176662846 * 0.93
+        tag = "; the energy-turn balance (tune/balance-final, game v23): x0.93"
+        note = data["notes"]["sustained_turn_rate"].split(tag)[0]
+        data["notes"]["sustained_turn_rate"] = note + tag
+        ships.write_ship(
+            ships.Ship("jujak", data["name"], data["handles"], data["card"], data["notes"]), SET
+        )
     # the third ship
     handles = dict(entry["solved_handles"])
     jujak = tomllib.loads(jujak_path.read_text())["handles"]
