@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/cli.py, src/bnb/runs/chain.py, src/bnb/runtime/train.py, src/bnb/contracts/pools.py, src/bnb/contracts/config.py, src/bnb/game/modes/rules.py]
+covers: [src/bnb/cli.py, src/bnb/runs/chain.py, src/bnb/runtime/train.py, src/bnb/contracts/pools.py, src/bnb/contracts/config.py, src/bnb/game/modes/rules.py, src/bnb/runs/mirror.py]
 reviewed: 2026-11-11 15:15
 ---
 
@@ -262,6 +262,27 @@ finished gets it as its budget), `--device`, `--runs-directory`, `--checkpoint-e
 directory) ends the process after the stage in progress, with its checkpoint; so does a
 BC stage that did not finish. Each stage's run can also be resumed alone as a plain run,
 which does not go on to the next stage.
+
+## Mirror a run into W&B
+
+A run trained without `--wandb` (on a box with no W&B login) can be mirrored into W&B from
+a machine that is logged in. `bnb runs mirror` (`bnb.runs.mirror`) reads the run's
+`metrics.jsonl`{.plain}, `config.json`{.plain} and `run.json`{.plain}, locally or fetched with
+rsync over ssh into `~/.cache/bnb/mirror/HOST`{.plain}, and logs each record as `--wandb` would
+have: the same project, name, config and `counters/environment_steps` x-axis, a chain's
+stages as two W&B runs in the chain's group. A chain's name mirrors its stages that exist.
+
+<!-- not-runnable: needs W&B and a box -->
+```bash
+uv run --no-sync bnb runs mirror 2026-11-12-chain-example
+uv run --no-sync bnb runs mirror dry-v24-s1 --follow --host box5090 --remote-runs /workspace/runs
+```
+
+It can be run again at any time: the W&B run's id is derived from the run's name (or is the
+one its `run.json`{.plain} keeps, for a run that streamed live) and resumed, and the newest
+step mirrored, kept in the run's `wandb_mirror.json`{.plain}, is not logged twice. `--follow`
+polls every `--every` seconds (300) until the chain's `<name>.exit`{.plain} file
+(box/dry_run.sh writes one) appears or no stage is left running, then syncs once more.
 
 ## Stop a run that stops fighting
 

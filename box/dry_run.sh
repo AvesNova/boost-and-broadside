@@ -11,8 +11,12 @@
 # per slot, policy snapshots at 1-20M then every 5M, league snapshots every 5M to 50M then
 # doubling, BC's 100M budget), plus what the 5090 runs bc-v20/rl-v20 measured: segments on
 # the device (host_store=false), 480 micro-batch rows; BC without rating lanes (the snapshots
-# are rated afterwards, docs/rewrite/dry-run.md). No W&B (no key on the box). Every update's policy
-# files kept in both stages (update_policies=all, the author 2026-11-16: the averaging sweep).
+# are rated afterwards, docs/rewrite/dry-run.md). Every update's policy files kept in both
+# stages (update_policies=all, the author 2026-11-16: the averaging sweep). Streams to W&B
+# (--wandb): the box needs its own W&B login first, once (`/workspace/venv/bin/wandb login`,
+# or `export WANDB_API_KEY=...` in /workspace/env.sh); without one it refuses to launch. A run
+# launched without W&B can be mirrored from a logged-in machine (`bnb runs mirror CHAIN
+# --follow --host box5090`).
 set -uo pipefail
 chain=${1:?usage: dry_run.sh CHAIN}
 source /workspace/env.sh
@@ -26,12 +30,16 @@ if ! flock -n 9; then
   echo "the GPU lock $GPU_LOCK is held: not launching" >&2
   exit 3
 fi
+if [ -z "${WANDB_API_KEY:-}" ] && ! grep -qs 'machine api.wandb.ai' "$HOME/.netrc"; then
+  echo "no W&B login on this box (WANDB_API_KEY or ~/.netrc): run /workspace/venv/bin/wandb login once" >&2
+  exit 4
+fi
 cd "$BNB"
 echo "commit $(git rev-parse HEAD) $(date -u +%FT%TZ)" > "$log"
 bnb train --objective chain --chain-budget-steps 200000000 \
   --preset real_scale_all_modes --environments 2048 --seed 0 \
   --name "$chain" --runs-directory "$RUNS" --micro-batch-rows 480 \
-  --set host_store=false --set update_policies=all --bc-set lanes.environments=0 \
+  --set host_store=false --set update_policies=all --bc-set lanes.environments=0 --wandb \
   >> "$log" 2>&1 < /dev/null &
 pid=$!
 echo "$pid" > "$pidfile"

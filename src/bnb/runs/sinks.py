@@ -92,10 +92,29 @@ def shutdown_telemetry() -> None:
         proxy.shutdown()
 
 
+def wandb_group(record: dict) -> str | None:
+    """The W&B group of a run (its run.json `record`): a chain's stages go in the chain's
+    group, a plain run in none."""
+    chain = record.get("chain")
+    return chain["name"] if chain else None
+
+
+def wandb_values(wandb, record: dict) -> dict:
+    """What W&B logs of `record`: numbers as series, tables as W&B tables; values that are
+    neither (None, text) are left out."""
+    logged = {}
+    for name, value in record.items():
+        if is_table(value):
+            logged[name] = wandb.Table(columns=value["columns"], data=value["rows"])
+        elif isinstance(value, bool | int | float):
+            logged[name] = value
+    return logged
+
+
 class WandbSink:
-    """Streams each record to a W&B run named for the run, in project PROJECT, and saves the
-    run's views after the first. A resumed run continues the W&B run whose id `run.json`
-    keeps."""
+    """Streams each record to a W&B run named for the run, in project PROJECT (a chain's
+    stages grouped by the chain, `wandb_group`), and saves the run's views after the first.
+    A resumed run continues the W&B run whose id `run.json` keeps."""
 
     def __init__(self, run: Run, config: dict) -> None:
         import wandb
@@ -104,6 +123,7 @@ class WandbSink:
         self.session = wandb.init(
             project=PROJECT,
             name=run.record["name"],
+            group=wandb_group(run.record),
             id=identifier,
             resume="allow",
             dir=str(run.directory),
@@ -118,15 +138,8 @@ class WandbSink:
         self.views_due = True
 
     def write(self, record: dict) -> None:
-        """Log `record`: numbers as series, tables as W&B tables; values that are neither
-        (None, text) are left out."""
-        logged = {}
-        for name, value in record.items():
-            if is_table(value):
-                logged[name] = self.wandb.Table(columns=value["columns"], data=value["rows"])
-            elif isinstance(value, bool | int | float):
-                logged[name] = value
-        self.session.log(logged)
+        """Log `record` (`wandb_values`)."""
+        self.session.log(wandb_values(self.wandb, record))
         if self.views_due:
             self.views_due = False
             self.save_views()

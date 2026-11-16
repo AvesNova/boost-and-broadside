@@ -173,12 +173,18 @@ RESUME_FIELDS = {
 @dataclasses.dataclass(frozen=True)
 class Runs:
     """List the runs (`bnb runs`), show one (`bnb runs show RUN`), upload a chosen
-    checkpoint (`bnb runs upload RUN [--at STEP] [--league]`) as a W&B artifact, or build the
-    run's W&B dashboards (`bnb runs dashboard RUN`, the `tools` extra).
+    checkpoint (`bnb runs upload RUN [--at STEP] [--league]`) as a W&B artifact, build the
+    run's W&B dashboards (`bnb runs dashboard RUN`, the `tools` extra), or mirror a run
+    trained without --wandb into W&B (`bnb runs mirror RUN [--follow] [--host HOST]`,
+    `bnb.runs.mirror`).
 
-    action: list, show, upload or dashboard; run: the run's name (all but list).
+    action: list, show, upload, dashboard or mirror; run: the run's (or for mirror a
+    chain's) name (all but list).
     at: the checkpoint's step (default: the newest); league: upload the league's snapshots
     instead; to: the target (wandb only, for now); runs_directory: as for bnb train.
+    follow: mirror until the run is over, polling every `every` seconds; host: fetch the
+    run from this ssh host's `remote_runs` into `cache_directory` (default
+    ~/.cache/bnb/mirror/HOST).
     """
 
     action: tyro.conf.Positional[str] = "list"
@@ -187,6 +193,11 @@ class Runs:
     league: bool = False
     to: str = "wandb"
     runs_directory: str | None = None
+    follow: bool = False
+    every: float = 300.0
+    host: str | None = None
+    remote_runs: str = "/workspace/runs"
+    cache_directory: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1455,6 +1466,25 @@ def runs(options: Runs) -> None:
     """`bnb runs`: list the runs, show one, or upload a checkpoint."""
     from bnb.runs.records import Run, list_runs
 
+    if options.action == "mirror":
+        from bnb.runs import mirror
+
+        if options.run is None:
+            raise SystemExit("bnb runs mirror needs a run or chain name")
+        cache = None if options.cache_directory is None else pathlib.Path(options.cache_directory)
+        try:
+            mirror.mirror(
+                runs_directory_of(options.runs_directory) if options.host is None else None,
+                options.run,
+                follow=options.follow,
+                every=options.every,
+                host=options.host,
+                remote_runs=options.remote_runs,
+                cache=cache,
+            )
+        except FileNotFoundError as error:
+            raise SystemExit(str(error)) from error
+        return
     runs_directory = runs_directory_of(options.runs_directory)
     if options.action == "list":
         print(f"{'run':44s} {'status':16s} {'newest step':>12s}  {'started':25s} commit")
@@ -1485,7 +1515,8 @@ def runs(options: Runs) -> None:
             print(upload.upload(run, options.at, options.league))
         else:
             raise SystemExit(
-                f"bnb runs {options.action!r}: the actions are list, show, upload, dashboard"
+                f"bnb runs {options.action!r}: the actions are list, show, upload, dashboard, "
+                f"mirror"
             )
     except FileNotFoundError as error:
         raise SystemExit(str(error)) from error
