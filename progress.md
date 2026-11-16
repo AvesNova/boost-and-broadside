@@ -559,3 +559,6 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 05:31 break-even landed: final ratios frontline 0.71, deathmatch 0.98, elimination 1.12 (20 a side; at 20v20 frontline wins 7.5%, elimination 20%); fan relabelled by ratio.
 - Waiting on team size (~05:45) and media (~06:15).
 - Next: team-size chart, stills/strip, review build.
+- 06:08 queue finished (media failed: play shell refuses the champion on the evolved deathmatch rules and other team sizes); stills drawn locally from 5v5 elimination/frontline; team size, fan, break-even, Elo charted; strict build + quick tier + ruff pass.
+- Open: averaging sweep re-run (fix agent), hero GIF (feat/hero-clip), laptop 4070 throughput, arms forest, gallery GIFs, interpretive text.
+- Next: author review in the morning.
