@@ -30,11 +30,9 @@ REASONS = {
     "cruise_speed": "330 (real 261-336; the Bf 109K-4's 330.6)",
     "climb_time": "the Tempest V's 290 s, the real best (real 290-555)",
     "low_speed_acceleration": "the Bf 109K-4's 18.97, the real best (real 8.87-18.97)",
-    "sustained_turn_rate": "0.63 rad/s, between Yongma's and Jujak's (real 0.503-0.785)",
     "nose_reversal_time": "the Fw 190A-8's 0.249 s, the real fastest roll (real 0.249-0.623)",
     "dive_acceleration": "the A6M5's 43.6, the real floor (real 43.6-44.3): no dive escape",
     "zero_lift_drag": "7.0e-5 (real 4.97e-5 to 1.06e-4; the Bf 109K-4's 7.03e-5): the draggiest of the three",
-    "max_shield": "between Jujak's 80 and Yongma's 142",
 }
 
 
@@ -80,6 +78,16 @@ def main() -> None:
             notes[name] = "Jujak's"
         else:
             notes[name] = SOURCE
+    pair = {k: tomllib.loads((directory / f"{k}.toml").read_text()) for k in ("yongma", "jujak")}
+    notes["sustained_turn_rate"] = (
+        f"{handles['sustained_turn_rate']:.3f} rad/s (real 0.503-0.785); Yongma "
+        f"{pair['yongma']['handles']['sustained_turn_rate']:.3f}, Jujak "
+        f"{pair['jujak']['handles']['sustained_turn_rate']:.3f}: tuned for the balance"
+    )
+    notes["max_shield"] = (
+        f"{handles['max_shield']:g}; Yongma {pair['yongma']['handles']['max_shield']:.1f}, "
+        f"Jujak {pair['jujak']['handles']['max_shield']:.1f}: tuned for the balance"
+    )
     notes["hit_damage"] = (
         f"x{handles['hit_damage'] / 19.1877:.3f} Jujak's 19.19 (Yongma's 22.98): the set's own "
         "damage scale, tuned for the balance"
