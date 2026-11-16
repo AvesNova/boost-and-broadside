@@ -29,3 +29,15 @@
   5v5 kills come without a head-on pass of the killer's pair (bounces), whatever the target
   rule does.
 - Next: Frontline and elimination check (modes.py), then hand over for the 18:30 flight.
+
+## 17:15-17:25 Frontline and elimination still work (modes.py, 256 games each, 5v5)
+| run | Frontline by capture | Frontline median s | Elim. median s | Elim. deaths by boundary | Elim. last death by boundary |
+|---|---|---|---|---|---|
+| v22, old Imugi | 0.77 | 290 | 91 | 0.09 | 0.17 |
+| v23, old Imugi | 0.54 | 531 | 143 | 0.44 | 0.46 |
+| v23, sticky Imugi | 0.67 | 368 | 146 | 0.40 | 0.48 |
+- Frontline: the sticky Imugi recovers most of the captures lethality cost.
+- Elimination: no game reaches the clock, but with 5.4x shields about 40% of deaths are
+  the closing boundary's (was 9%): the fights are slower than the shrink. Lethality's,
+  not Imugi's. For the author: lengthen elimination's clock / shrink hold, or accept.
+- Next: the author flies (18:30).
