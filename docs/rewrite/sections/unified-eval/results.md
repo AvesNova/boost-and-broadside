@@ -1,0 +1,82 @@
+# Unified evaluator: laptop results (2026-11-17)
+
+RTX 4070 laptop (36 SMs, 8 GB), branch `feat/unified-eval`. Policies: the dry run's
+(`dry-v24-s1`, game v24), copied from the box: the champion (training exponential
+average, decay 0.95, step 98,566,144), RL exponential averages at 5M and 20M, BC's last.
+The box's reference is its queue on the 5090 (`/workspace/runs/dry-v24-s1-eval`, game v24):
+the suite took 32 min for 6,656 games (25.7 min of batches, the rest compiles).
+
+## Statistics: the same numbers as the queue
+
+On a **v24 tree** (`4c6c7227` with the unified package copied in), bucket 1, the champion
+against Imugi:
+
+| condition | unified (laptop) | box queue's suite (`bnb evaluate`) |
+|---|---|---|
+| elimination 1v1 | 0.238 ± 0.015 (768 games) | 0.219 ± 0.018 (512) |
+| deathmatch 1v1 | 0.625 ± 0.020 (512) | 0.612 ± 0.020 (512) |
+
+Both within one standard error of the difference.
+
+**Benched against native** (v25 tree, the same two cells): played in a 5-a-side bucket
+(4 slots a side benched) against a 1-a-side engine:
+
+| condition | bucket 5 (benched) | bucket 1 (native) | difference / SE |
+|---|---|---|---|
+| elimination 1v1 | 0.078 ± 0.010 | 0.070 ± 0.009 | +0.6 |
+| deathmatch 1v1 | 0.250 ± 0.016 | 0.289 ± 0.017 | −1.7 |
+
+No significant difference (the deathmatch one is worth a bigger look on the 5090).
+
+**v25 against v24, a finding for the author:** the v25 tree's Imugi (the committed-turn
+Imugi of `676bf90c`) beats the v24 champion far more often in small fights: deathmatch
+1v1 0.29 (v25) against 0.62 (v24), elimination 1v1 0.07 against 0.24, elimination 2v2
+0.27 against 0.30 (box). The 5v5 scores are unchanged (deathmatch 1.00, elimination
+0.98, frontline 1.00). The policies were trained on v24, so this is Imugi's change.
+
+## Throughput
+
+Bucket 5, 1,024 environments (the 7 suite conditions of 5 a side or fewer, 512 games
+each, plus a 5-player elimination Elo field to ±60):
+
+- 37,000–45,000 games an hour once warm, the GPU at 100% on every progress line;
+- the same 6,973 games (by condition) took the queue's 5090 engine 1,198 s of batches;
+  the laptop played them in 675 s, so **the laptop runs 1.8x the 5090 queue's batch
+  throughput on the same games**; at the measured 3.8x rollout ratio, the 5090 should
+  run about 6.7x the queue's (most of it from not waiting for a batch's longest game:
+  the frontline games here averaged 69 s of game time against the queue's 0.33 s a game);
+- a bucket's cold compile was 3–5 min; warm from the cache, 26 s (bucket 1).
+
+Bucket size costs: the same 1v1 cells played 2.7x faster in a 1-a-side engine than
+benched in a 5-a-side one (89 s against 242 s for 1,280 games). The default buckets are
+5, 10, 20; a spec heavy in 1v1 and 2v2 games gains from `buckets = [2, 5, 10, 20]` (one
+more compile).
+
+## Memory and sizing
+
+Eager probes (after a throwaway one, with garbage collection between): 76 MB fixed plus
+1.12 MB an environment at bucket 5, stable over three repeats (the first version, without
+the throwaway probe, gave 0.8–5.3 MB and once sized 6,336 environments, which ran out of
+memory). The compiled engine at 1,024 environments: 1.33 GB allocated (1.29 MB an
+environment), 1.69 GB reserved (1.57 MB), so `COMPILED_FACTOR` = 1.5 over the eager
+probe; at 70% of the free memory the laptop sizes bucket 5 at about 3,000 environments.
+
+## Planner behaviour seen on the GPU
+
+- The first version filled a slice whose goals were met with "filler" games (its last
+  cell again): 3,037 games of one Elo pair. Replaced by **overtime**: such a slice plays
+  the planner's values with every goal taken as unmet (budgets binding), else parks.
+- A bucket stopped as soon as nothing more was wanted, abandoning the games in flight;
+  it now plays until every game a target asked for has ended.
+- The host's planning share of the wall time rounds to 0% on the laptop (`host planning`
+  in progress.log).
+
+## Decisions under the null (CPU simulation)
+
+`InformationLooks` with K = 4, α = 0.05, games ending in random bursts of 1–12 (the
+refill's), scored win/draw/loss: false-positive rate 0.050 ± 0.0015 without draws and
+0.054 ± 0.0016 with 20% draws at a 213-game maximum (20,000 tests; the first look at 53
+games, where the estimated variance runs small); 0.045 and 0.048 ± 0.002 at an 850-game
+maximum (10,000 tests). Each look schedule's exact null crossing probability, from the
+boundaries spent at its actual fractions, is α (the test `test_irregular_looks_...`).
+A real decision (δ = 0.02) plans about 5,300 games.
