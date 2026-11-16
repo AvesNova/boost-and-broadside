@@ -360,3 +360,11 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
 
 - The author stopped dry run 2 (dry-v25-s1, card Y0.42-J1.22) during BC at about 65M steps and restarted on game v26: v24's card (Y0.46: Yongma max_shield 352.6, Jujak 498.5) with the committed-turn Imugi and every fix (deathmatch ticket rule in training 7fd61320, play-shell device fixes, stagger tallies). Branch feat/v26-imugi-y046, run dry-v26-s1.
 - The re-trim (retrim-v25) stays on record; on this card the new Imugi measures Yongma kill share DM 2v2 0.466, DM 5v5 0.514, Elim 5v5 0.592, FL 5v5 0.507.
+
+## 2026-11-17 ~08:50 KST: Elo-curve planning and dry run 1's data (author's decisions)
+
+- Dry run 1's deathmatch data are slightly flawed by the ticket bug (trained on 5N, evaluated on 4·N^(4/3) rounded to 5). The author expects little effect (mainly close games decided by a last-second kill against the clock); note it on the results regardless.
+- Every evaluation tool uses the data we already have as prior, for both the fits and the choice of what to play next, across all modes.
+- Pairing: near-50% opponents by estimated Elo; for players with no estimate yet, "nearby" is a cross: adjacent checkpoints in time on the same run (1-hop, 2-hop, ...) and matched training steps on other runs. Estimated skill from real games supersedes the neighbour rule. Unresolved (bound/undetermined) ratings are the least precise and get games first. No extra checkpoints added.
+- Stop on precision; the game budget is only a large safety cap, reported loudly if reached.
+- Dry run 1's curves are completed on the laptop with the unified evaluator, its 36,672 old games as prior (the end-to-end test before dry run 3's evaluation on the 5090).
