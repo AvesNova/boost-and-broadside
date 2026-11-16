@@ -691,3 +691,38 @@ def test_a_view_reflected_about_frontlines_neutral_axis_reflects_the_stick():
     torch.testing.assert_close(
         mirrored.stick[~tie], original.stick[..., swap_sides][~tie], atol=1e-4, rtol=0
     )
+
+
+def test_a_head_on_approach_aims_a_turn_radius_aside_until_a_turn_diameter_out():
+    """A target flying straight at the ship, a little left of its nose: far out the aim
+    point is one turn radius (at the ship's speed now) to the target's right, so the two
+    pass left to left; inside one turn diameter it is the lead point again (the lead turn)."""
+    rate, radius = imugi_combat.turn_now(
+        CHARACTERISTICS,
+        torch.zeros(1, 2, dtype=torch.int32),
+        value("cruise_speed", 0) * torch.ones(1, 2),
+        torch.ones(1, 2),
+    )
+    radius = float(radius[0, 0])
+
+    def aimed(distance: float) -> tuple[float, float]:
+        y = 0.05 * distance
+        target = ship(x=distance, y=y, heading=math.pi, team_relative=1)
+        fleet = imugi_combat.context(_duel(0, target), CHARACTERISTICS, PARAMETERS)
+        one = torch.ones(1, 2)
+
+        def target_of(values):
+            values = values if values.dim() == 3 else values[:, None, :]
+            return values[..., 0]
+
+        has = torch.ones(1, 2, dtype=torch.bool)
+        aim_x, aim_y = imugi_combat.offset_approach(
+            fleet, CHARACTERISTICS, target_of, has, distance * one, y * one, distance * one,
+            y * one,
+        )  # fmt: skip
+        return float(aim_x[0, 0]), float(aim_y[0, 0]) - y
+
+    _, far_aside = aimed(8.0 * radius)
+    assert far_aside == pytest.approx(-radius, rel=0.01)  # to the right of the target
+    assert aimed(1.5 * radius)[1] == pytest.approx(0.0, abs=1e-3)
+    assert float(rate[0, 0]) == pytest.approx(value("cruise_speed", 0) / radius)
