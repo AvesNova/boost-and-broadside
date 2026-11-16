@@ -77,10 +77,37 @@ Targets (`targets.py`):
 
 | target | estimate | value of a game | stops |
 |---|---|---|---|
-| `EloTarget` | Bradley-Terry fit (`design.fit_posterior`) per condition | A-optimal drop on the planning precision (p (1 − p) at one SE past the fitted difference) | each player and contrast at its SE, or a bound once its players have the games an even pair would need |
+| `EloTarget` | Bradley-Terry fit (`design.fit_posterior`) per condition | A-optimal drop on the planning precision (p (1 − p) at one SE past the planning difference) | each player and contrast at its SE (a bound or an undetermined player never) |
 | `BreakEvenTarget` | crossover logistic fit (`crossover.fit`) | crossover's own allocation (`crossover.allocate`) picks the lineup; c-optimal drop of var(r*) | crossover's `stop_reason` (target, bound, budget) |
 | `WinRateTarget` | the cell's mean score | drop of 0.25 / n | observed SE at the goal (16 games at least) |
 | `DecisionTarget` | score − ½, group-sequential | drop of 0.25 / n toward its value at the planned maximum: **counts only** | a look's decision |
+
+## Elo: no bound is a result (2026-11-17)
+
+Dry run 1's curves (`bnb pool rate`, 12,288 games a mode) ended with late RL snapshots as
+one-sided bounds after one or two sweeps of far weaker opponents: a bound was accepted
+once its player had the games an even pair would need, and the unified `EloTarget` had the
+same rule. Now (the author's decisions):
+
+- **A bound or an undetermined player is never a result.** The planning covariance counts
+  a finished game's information only between players of one fitted component (a game
+  across components went one way and says nothing about the gap), so such a player keeps
+  the prior's variance (`PLANNING_STDERR`, 1000 Elo): the least precise of the field, it
+  takes games first.
+- **Planning ratings for every player** (`targets.planning_ratings`): the Bradley-Terry
+  likelihood of every game with a prior of `NEIGHBOUR_STEP` (400 Elo) on each neighbour
+  pair's difference and 1000 Elo on each rating, so a bound's games go to the opponents
+  just past it, not to the anchor. Neighbours (`run.field_neighbours`) are a cross: a
+  run's consecutive checkpoints; other runs' checkpoints at the nearest steps; a chain's
+  first RL checkpoint and its last BC one. The fit's estimates take over as games come in.
+- **Stop on precision.** A `budget` and `--hours` are safety bounds; a target stopped
+  short is named in a `WARNING` line (`run.short_of_goal`) and its report's `stopped`.
+- **Prior games** (`run.load_prior`, `--prior POOL`): a rating pool's games of each Elo
+  target's condition (`prior_keys`), this game version, players matched by weights.
+
+The A-optimal value still picks the pairs; over a long chain it prefers hops of
+p ≈ 0.8–0.95 (the information about a distance D over k hops is best near 400 Elo a
+hop, where x² p (1 − p) peaks), so "near 0.5" is not the optimum for a 5,000-Elo span.
 
 ## Decisions at information fractions (`targets.InformationLooks`)
 

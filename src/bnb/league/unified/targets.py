@@ -105,7 +105,7 @@ class EloTarget(Target):
     on the games (reaching it with a goal unmet is reported, `report`'s "stopped");
     neighbours: the pairs of names the planning prior links (`field_neighbours`; None: list
     neighbours); prior_keys: the rating-pool presets holding earlier games of this condition
-    (default its key).
+    (default its key); note: a caveat the report carries.
 
     A rating is finished only at its goal: a bound or an undetermined player is never a
     result. The planning covariance counts a finished game's information only between
@@ -132,6 +132,7 @@ class EloTarget(Target):
         budget: int = 1 << 30,
         neighbours: list[tuple[str, str]] | None = None,
         prior_keys: tuple[str, ...] = (),
+        note: str = "",
     ) -> None:
         if len(set(players)) != len(players) or len(players) < 2:
             raise ValueError(f"{name}: at least two distinct players, got {players}")
@@ -188,6 +189,7 @@ class EloTarget(Target):
             ]
         # the rating pools' preset keys whose games are this target's (`run.load_prior`)
         self.prior_keys = tuple(prior_keys) or (condition.key,)
+        self.note = note  # a caveat carried into the report (and the tables drawn from it)
 
     # the planning view
 
@@ -357,6 +359,7 @@ class EloTarget(Target):
             condition=self.condition.key,
             games=self.finished,
             prior_games=self.prior_games,
+            note=self.note,
             ratings={
                 name: (None if math.isnan(r) else 1000.0 + r)
                 for name, r in zip(self.players, posterior.ratings.tolist(), strict=True)

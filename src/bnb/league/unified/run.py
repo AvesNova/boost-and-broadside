@@ -17,6 +17,8 @@ The spec (TOML) names the players and the targets:
     stderr = 60.0                        # Elo, every player
     contrasts = [["champion", "early", 30.0]]
     pairs = "all"                        # or "anchor": each player against the anchor only
+    prior_keys = ["deathmatch_5v5"]      # optional: a --prior pool's preset keys for it
+    note = "..."                         # optional: a caveat carried into report.json
     lineup = [5, 5]                      # optional; arena_scale = 1.0 optional
 
     [[win_rate]]                         # a cell's score (team sizes)
@@ -136,6 +138,7 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
                 budget=entry.get("budget", 1 << 30),
                 neighbours=field_neighbours([p for p in players if p.name in field]),
                 prior_keys=tuple(entry.get("prior_keys", ())),
+                note=entry.get("note", ""),
             )
         )
     for entry in raw.get("win_rate", []):
