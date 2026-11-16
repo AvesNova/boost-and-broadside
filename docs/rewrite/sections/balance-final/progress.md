@@ -477,3 +477,21 @@ the fitted step plus single checks, in every mode (laptop) and dm2 (box, 1024).
   /workspace/out/probe4-*.jsonl), probe2's dm10/el leftovers after it. ETA for probe3 everywhere
   about 17:00 KST (worst 18:00; 7 jobs of 30-45 min sharing the lock with the third-ship agent),
   probe4 about 3.5 h after that.
+
+## 14:20 the box GPU at 0%: card characteristics measured inside the lock (fixed in worker/sweep)
+
+- The coordinator saw the GPU at 0% for ~35 min with a worker holding the lock at 100% CPU.
+  Cause: `Loop.set_types` measures each chunk's card characteristics on the CPU
+  (`measure_characteristics`), and `top_speed` (src/bnb/game/handling/shown.py) flies a boost
+  until every store is spent, with a `bool()` stop each tick: its length grows with
+  `max_energy`. Laptop CPU: 6.6 s for E and Q2 (store unchanged), >5 min for Q1 (store x1.93);
+  on the box's Xeon minutes a chunk, all inside the GPU lock. No recompiles (every card field
+  is a tensor). probe2's store cards were slow for the same reason.
+- Fix (worker.py/sweep.py only, no src change, so the workers stay warm): `sweep.prewarm`
+  measures every chunk's characteristics in spawned CPU processes (12 by default) into the
+  disk cache under the loop's device key *before* the lock is taken; `set_types` inside the
+  lock then loads them. `sweep.chunk_cards` is the one chunking both use. Checked on the
+  laptop CPU (2 cards: the cache entry the loop reads is there).
+- **src follow-up for later (not now)**: `top_speed`'s per-tick `bool()` stop scales with the
+  store; the play shell must never stall on a new card, so a vectorized or analytic stop is
+  worth doing after the balance.

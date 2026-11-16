@@ -37,7 +37,7 @@ import traceback
 HERE = pathlib.Path(__file__).parent
 sys.path.insert(0, str(HERE))
 
-from sweep import MODE_DEFAULTS, Loop, api, before_card, pack, sweep  # noqa: E402
+from sweep import MODE_DEFAULTS, Loop, api, before_card, pack, prewarm, sweep  # noqa: E402
 
 from bench.game_loop import FILLER, Group  # noqa: E402
 
@@ -67,6 +67,10 @@ def main() -> None:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--poll", type=float, default=5.0, help="seconds between queue looks")
     parser.add_argument("--eager", action="store_true", help="no torch.compile (a CPU check)")
+    parser.add_argument(
+        "--prewarm-processes", type=int, default=12,
+        help="CPU processes measuring the cards' characteristics before the lock is taken",
+    )  # fmt: skip
     parser.add_argument("--once", action="store_true", help="stop when the queue is empty")
     parser.add_argument(
         "--lock", type=pathlib.Path, default=None,
@@ -118,6 +122,9 @@ def main() -> None:
             mixed = int(job.get("mixed_games", games)) // 2
             print(f"job {path.name}: {len(entries)} candidates -> {out}", flush=True)
             if entries:
+                begun = time.time()
+                prewarm(loop, entries, games, mixed, args.variants, args.prewarm_processes)
+                print(f"job {path.name}: cards measured in {time.time() - begun:.0f} s", flush=True)
                 with held(args.lock):
                     sweep(
                         loop, entries, out, games, mixed, int(job.get("seed", 0)),

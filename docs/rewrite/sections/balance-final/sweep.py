@@ -25,19 +25,23 @@ so a stopped sweep resumes).
 """
 
 import argparse
+import concurrent.futures
 import dataclasses
 import json
+import multiprocessing
+import os
 import pathlib
 import time
 import tomllib
 
 import torch
 
-from bench.game_loop import Job, Loop, Player, clock, job_summary, run
+from bench.game_loop import Job, Loop, Player, clock, job_summary, run, variant_types
 from bnb.controllers.imugi_defaults import MODE_DEFAULTS
 from bnb.controllers.imugi_doctrine import from_named, named, stored
 from bnb.controllers.imugi_parameters import pack
 from bnb.game import api
+from bnb.game.handling import characteristics as characteristics_module
 
 HERE = pathlib.Path(__file__).parent
 BEFORE = HERE / "before" / "imugi_doctrines.json"
@@ -139,6 +143,59 @@ def main() -> None:
     )  # fmt: skip
 
 
+def chunk_cards(loop: Loop, entries: list[dict], games: int, mixed: int, variants: int):
+    """Each chunk's card variants as `sweep` plays them: (first index, candidates in the chunk,
+    energy dicts, turn dicts)."""
+    chunk = max(1, loop.B // (games + 2 * mixed))
+    if any("card" in entry for entry in entries):
+        chunk = min(chunk, variants)
+    for first in range(0, len(entries), chunk):
+        cards = [entry.get("card", {}) for entry in entries[first : first + chunk]][:variants]
+        cards += [{}] * (variants - len(cards))
+        size = len(entries[first : first + chunk])
+        yield first, size, [c.get("energy", {}) for c in cards], [c.get("turn", {}) for c in cards]
+
+
+def _prewarm_one(base, energy, turn, rules, device: str) -> None:
+    """One chunk's card characteristics into the disk cache under the loop's device key (the
+    entry `Loop.set_types` then loads), measured on this process's CPU."""
+    torch.set_num_threads(1)
+    key = list(characteristics_module._key(variant_types(base, energy, turn), rules))
+    key[1] = device
+    path = characteristics_module._disk_path(tuple(key))
+    if path.exists():
+        return
+    measured = characteristics_module.measure_characteristics(
+        variant_types(base, energy, turn), rules
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_name(f"{path.stem}.{os.getpid()}.partial")
+    torch.save({f.name: getattr(measured, f.name) for f in dataclasses.fields(measured)}, partial)
+    partial.replace(path)
+
+
+def prewarm(
+    loop: Loop, entries: list[dict], games: int, mixed: int, variants: int, processes: int = 12
+) -> None:
+    """Measure every chunk's card characteristics before the GPU is taken: `set_types` runs
+    them on the CPU (`top_speed` flies a boost until the store is spent, minutes for a large
+    store on a slow CPU), so a job would otherwise hold the GPU lock with the GPU idle."""
+    base = type(loop.base)(
+        **{f.name: getattr(loop.base, f.name).cpu() for f in dataclasses.fields(loop.base)}
+    )
+    device = str(loop.types.max_energy.device)
+    tasks = [
+        (base, e, t, loop.rules, device)
+        for _, _, e, t in chunk_cards(loop, entries, games, mixed, variants)
+    ]
+    context = multiprocessing.get_context("spawn")
+    with concurrent.futures.ProcessPoolExecutor(
+        min(processes, len(tasks)), mp_context=context
+    ) as pool:
+        for future in [pool.submit(_prewarm_one, *task) for task in tasks]:
+            future.result()
+
+
 def sweep(
     loop: Loop,
     entries: list[dict],
@@ -158,17 +215,10 @@ def sweep(
     before = player_of({"name": "before"}, parameters)
     started = time.time()
     # a chunk of candidates fills about one batch, so each line is written as it finishes
-    per_candidate = games + 2 * mixed
-    chunk = max(1, loop.B // per_candidate)
-    if any("card" in entry for entry in entries):
-        chunk = min(chunk, variants)
-    for first in range(0, len(entries), chunk):
-        part = entries[first : first + chunk]
+    for first, size, energy, turn in chunk_cards(loop, entries, games, mixed, variants):
+        part = entries[first : first + size]
         players = [player_of(entry, parameters) for entry in part]
-        # one card variant per candidate (with one variant, the chunk's only card)
-        cards = [entry.get("card", {}) for entry in part][:variants]
-        cards += [{}] * (variants - len(cards))
-        loop.set_types([c.get("energy", {}) for c in cards], [c.get("turn", {}) for c in cards])
+        loop.set_types(energy, turn)
         jobs = []
         for variant, candidate in enumerate(players):
             variant = variant if variants > 1 else 0
