@@ -38,6 +38,48 @@ def screened(local: pathlib.Path) -> dict[str, set[str]]:
     return out
 
 
+def play(condition: str, pairs: pathlib.Path, out: pathlib.Path, games: int, seed: int) -> None:
+    """One `bench.balance_sweep pairwise` job on the laptop GPU (laptop_job.sh)."""
+    unit = f"bnb-map-{condition}-{int(time.time())}"
+    subprocess.run(
+        [
+            LAPTOP_JOB,
+            unit,
+            str(WORKTREE),
+            str(WORKTREE / ".venv/bin/python"),
+            "-m",
+            "bench.balance_sweep",
+            "pairwise",
+            "--condition",
+            condition,
+            "--pairs",
+            str(pairs),
+            "--out",
+            str(out),
+            "--games",
+            str(games),
+            "--seed",
+            str(seed),
+            "--environments",
+            "4096",
+            "--variants",
+            "32",
+        ],
+        check=False,
+    )
+
+
+def confirm(args) -> None:
+    """Pair entries (`balance_map.pair_entry`) played once on each of --conditions at
+    --games (seed 2): LOCAL/<tag>/<condition>.jsonl."""
+    folder = args.local / args.tag
+    folder.mkdir(parents=True, exist_ok=True)
+    for condition in args.conditions:
+        print(f"{time.strftime('%H:%M:%S')} {args.tag} {condition}", flush=True)
+        play(condition, args.entries, folder / f"{condition}.jsonl", args.games, 2)
+    print(f"{args.tag} done", flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--remote", required=True)
@@ -46,7 +88,17 @@ def main() -> None:
     parser.add_argument("--floor", type=float, default=40.0)
     parser.add_argument("--games", type=int, default=512)
     parser.add_argument("--wait", type=float, default=300.0, help="seconds between empty rounds")
+    parser.add_argument(
+        "--entries",
+        type=pathlib.Path,
+        default=None,
+        help="a confirmation instead: these pair entries, once, on --conditions",
+    )
+    parser.add_argument("--conditions", nargs="*", default=list(OTHER))
+    parser.add_argument("--tag", default="confirm")
     args = parser.parse_args()
+    if args.entries is not None:
+        return confirm(args)
     deadline = time.time() + args.hours * 3600.0
     run = args.local / "run"
     run.mkdir(parents=True, exist_ok=True)
@@ -75,15 +127,7 @@ def main() -> None:
             pairs = args.local / "screen" / f"pairs-{condition}.json"
             pairs.write_text(json.dumps([balance_map.pair_entry(c["id"], c["card"]) for c in todo]))
             print(f"{time.strftime('%H:%M:%S')} {condition}: {len(todo)} cards", flush=True)
-            unit = f"bnb-map-screen-{condition}-{int(time.time())}"
-            subprocess.run(
-                [LAPTOP_JOB, unit, str(WORKTREE), str(WORKTREE / ".venv/bin/python"), "-m",
-                 "bench.balance_sweep", "pairwise", "--condition", condition, "--pairs",
-                 str(pairs), "--out", str(args.local / "screen" / f"{condition}.jsonl"),
-                 "--games", str(args.games), "--seed", "1", "--environments", "4096",
-                 "--variants", "32"],
-                check=False,
-            )  # fmt: skip
+            play(condition, pairs, args.local / "screen" / f"{condition}.jsonl", args.games, 1)
             played = True
         if not played:
             time.sleep(args.wait)
