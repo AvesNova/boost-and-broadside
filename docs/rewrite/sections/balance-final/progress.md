@@ -240,3 +240,26 @@ solved, shield x0.6-0.7).
   (queue9: all seven options at 2048 games, one process per deathmatch size; the small
   queues 6-8 were stopped before they started). The laptop takes the small jobs: options at
   1024 in all deathmatch sizes (running), then options2 in Frontline and elimination 5v5.
+
+## 10:05 option checks in the other modes; grid1; the box worker
+
+- C', D, E in elimination and Frontline 5v5 (1024, laptop): elimination 45.6 / 41.7 / 45.7,
+  Frontline 58.0 / 54.9 / 55.2 (before 21.0 / 10.7). E is at or inside 55/45 in every mode
+  measured at 5v5 and every deathmatch size. With the turns closer, offset head-on kills rise
+  (about 21% against 16%) and tail kills fall (12% against 16%) in the energy-turn games;
+  mutual head-on about 4%. In results.md.
+- grid1: 60 cards = Jujak turn {1, 0.95, 0.91} x Yongma turn {1, 1.04, 1.08, 1.12} x the
+  slope handle {none, shield x0.75, x0.6, damage x0.8, shield x0.75 + damage x0.9}.
+  Frontline 5v5 (384 games, laptop) is even near a turn ratio of 1.13-1.15 (e.g. Jujak x0.95 +
+  Yongma turn x1.08 + shield x0.75 50.8; Yongma turn x1.12 + damage x0.8 48.8); at 1.09 it is
+  Yongma-favoured (64-82) unless the shield is cut. Raising Yongma's turn moves it more than
+  lowering Jujak's at the same ratio. `grid_table.py` lists a card per row over the files.
+  The deathmatch sizes of grid1 are on the box; elimination 5v5 on the laptop.
+- **The box worker** (`worker.py`, the coordinator's request): one process per mode and size
+  builds and compiles the loop once and then plays job files from
+  /workspace/queue/<mode>-<ships>/ (JSON: candidates file or list, out, games, mixed_games,
+  seed), moving each to done/ or failed/; each job takes /tmp/gpu.lock while it plays and
+  releases it between jobs. Running: deathmatch 5, 2 and 10 (4096 environments, 8 variants);
+  queued in each: the options at 2048 games, then grid1 at 384. To add work: drop a job file
+  in the directory. The pattern fits any `bench.game_loop.Loop` bench (third.py too): build
+  the loop once, then call the per-batch function per job.
