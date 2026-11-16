@@ -613,6 +613,42 @@ class FiguresWatch:
 
 
 @dataclasses.dataclass(frozen=True)
+class FiguresResults:
+    """A results chart of the write-up (`bnb figures results CHART SOURCE ...`,
+    `bnb.figures.results`; docs/guides/results-charts.md): drawn from records the runs and
+    the measurements already write, as a PNG with its provenance and the `--formats`' vector
+    copies in `--out`, its numbers merged into the values file `--values` (names quoted by
+    the docs as {{name}}; "" writes none). Needs the tools extra (matplotlib).
+
+    Charts and their sources: `fan` and `break-even`, a directory of per-snapshot
+    `bnb crossover` results (`<run>/step_<n>/artifacts/crossover/...`); `arms`, a forest
+    input (JSON or CSV); `team-size`, game tallies (`<preset>.batches.jsonl` files or
+    directories); `health`, a run directory, its metrics.jsonl or `wandb:ENTITY/PROJECT/ID`
+    (several: a chain, BC first); `game-length`, per-game JSONL files.
+
+    modes: the modes drawn (fan, team-size; default all found); policy_count and
+    opponent_counts: the fan's lineups (5 against each); chain: break-even's chain when the
+    directory holds several; ratios: team-size's Imugi ships per ours; trained_team_size:
+    the size marked; samples: W&B history samples per key (health).
+    """
+
+    chart: tyro.conf.Positional[
+        Literal["fan", "break-even", "arms", "team-size", "health", "game-length"]
+    ]
+    sources: tyro.conf.Positional[tuple[str, ...]]
+    out: str = "docs/results"
+    values: str = "docs/results/values.json"
+    formats: tuple[str, ...] = ("png", "pdf")
+    modes: tuple[str, ...] = ()
+    policy_count: int = 5
+    opponent_counts: tuple[int, ...] = (5, 6, 8, 10)
+    chain: str | None = None
+    ratios: tuple[float, ...] = (1.0, 1.5, 2.0)
+    trained_team_size: int = 5
+    samples: int = 1000
+
+
+@dataclasses.dataclass(frozen=True)
 class Pool:
     """The shared rating pool (`bnb pool ACTION POOL ...`, `bnb.league.rating_pool`): every
     rated checkpoint of many runs in one directory per pool, which several machines may
@@ -781,7 +817,8 @@ def main() -> None:
     ...` finds a policy's break-even lineup, `bnb evaluate ...` decides between two
     policies, `bnb pool ...` keeps the shared rating pool, `bnb figures ...` draws what a
     policy's heads have learned (`bnb figures video ...` films a game, `bnb figures watch
-    RUN` makes both while a run trains), `bnb queue ...` queues and runs GPU jobs."""
+    RUN` makes both while a run trains, `bnb figures results CHART ...` draws the write-up's
+    results charts), `bnb queue ...` queues and runs GPU jobs."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
     # The CUDA caching allocator grows its segments in place rather than caching fixed blocks:
     # at a real-scale PPO update (160 micro-batch rows) 0.73 GB less reserved memory and the
@@ -833,6 +870,10 @@ def main() -> None:
             figures_video(tyro.cli(FiguresVideo, args=arguments[1:], prog="bnb figures video"))
         elif kind == "watch":
             figures_watch(tyro.cli(FiguresWatch, args=arguments[1:], prog="bnb figures watch"))
+        elif kind == "results":
+            figures_results(
+                tyro.cli(FiguresResults, args=arguments[1:], prog="bnb figures results")
+            )
         else:
             figures(tyro.cli(Figures, args=arguments, prog="bnb figures"))
     else:
@@ -2073,6 +2114,13 @@ def figures_video(options: FiguresVideo) -> None:
     numbers = video.render(policy, options.preset, options.video, path)
     print(f"wrote {path}")
     print(f"video: {numbers}")
+
+
+def figures_results(options: FiguresResults) -> None:
+    """`bnb figures results`: one results chart (`bnb.figures.results.command.results`)."""
+    from bnb.figures.results.command import results
+
+    results(options)
 
 
 def figures_watch(options: FiguresWatch) -> None:
