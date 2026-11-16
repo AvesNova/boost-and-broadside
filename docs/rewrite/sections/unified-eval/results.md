@@ -47,6 +47,17 @@ each, plus a 5-player elimination Elo field to ±60):
   the frontline games here averaged 69 s of game time against the queue's 0.33 s a game);
 - a bucket's cold compile was 3–5 min; warm from the cache, 26 s (bucket 1).
 
+Sized from the memory (the second run, the eager probe reading high that time): 1,344
+environments, 35,000–63,000 games an hour, the GPU at 100%, the host's tallying and
+planning 0–1% of the wall time, the process at 5 GB of host memory. With the suite's
+cells at their budgets, the elimination slice played **overtime** for the Elo field
+(errors 15–25 against the goal of 60) while the deathmatch slice finished its long games,
+and the frontline slice, its one cell done, parked.
+
+Host cost of the planner (CPU, no GPU): 0.7 ms a game for the box check's 92 targets;
+3.8 ms a game for three 41-player Elo fields (vectorised proposals and cached cell
+hashes; 15 ms before), well under a block's time on either GPU.
+
 Bucket size costs: the same 1v1 cells played 2.7x faster in a 1-a-side engine than
 benched in a 5-a-side one (89 s against 242 s for 1,280 games). The default buckets are
 5, 10, 20; a spec heavy in 1v1 and 2v2 games gains from `buckets = [2, 5, 10, 20]` (one
