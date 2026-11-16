@@ -300,7 +300,7 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
 
 ## Box setup
 
-- [ ] A setup script that creates the volume layout (runs, caches, ratings, repository and virtual environment) and sets `CACHE`, `RUNS` and the uv and Hugging Face cache paths in the shell profile.
+- [x] A setup script that creates the volume layout (runs, caches, ratings, repository and virtual environment) and sets `CACHE`, `RUNS` and the uv and Hugging Face cache paths in the shell profile: `box/setup.sh` (e329c83b), run on the author's 5090 box (`ssh box5090`, 200 GB volume) 2026-11-16, with the heartbeat as a supervisor program.
 - [ ] Supervisor services that resume runs after a reboot.
 - [ ] A periodic copy of the volume to the laptop.
 - [ ] First jobs: 2 arms × 2 seeds (the noise of the difference between arms), and the steps-per-second check of the seed streams.
