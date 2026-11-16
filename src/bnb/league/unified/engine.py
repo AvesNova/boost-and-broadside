@@ -306,6 +306,7 @@ class BucketEngine:
         self.missed = 0
         self._previous = None  # (pinned logs, event) of the last block
         self.parked = 0
+        self.host_seconds = 0.0  # the host's tallying and planning (`step`)
 
     # ---- assignment
 
@@ -457,7 +458,10 @@ class BucketEngine:
         held, held_event = previous
         if held_event is not None:
             held_event.synchronize()
-        return self._tally(held)
+        started = time.perf_counter()
+        tallied = self._tally(held)
+        self.host_seconds += time.perf_counter() - started  # planning, while the GPU plays
+        return tallied
 
     def drain(self) -> int:
         """Tally the last block's logs (at the end)."""

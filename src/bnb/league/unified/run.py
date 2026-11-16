@@ -402,11 +402,18 @@ def run(
                     rate = (history[-1][1] - history[0][1]) / (history[-1][0] - history[0][0])
                     eta = (1.0 - fraction) / rate
                 rate_hour = (total_games - games_at_progress) / (now - time_at_progress) * 3600
+                time_at_progress_before = time_at_progress
                 games_at_progress, time_at_progress = total_games, now
                 utilisation = gpu_utilisation()
+                host = sum(e.host_seconds for e in running)
+                for engine in running:
+                    engine.host_seconds = 0.0
+                parked = sum(e.parked for e in running)
                 say(
                     f"{total_games} games ({rate_hour:,.0f}/h), information {fraction:.3f}, "
-                    f"GPU {utilisation}%, buckets "
+                    f"GPU {utilisation}%, "
+                    f"host planning {host / (now - time_at_progress_before):.0%}, "
+                    f"parked {parked}, buckets "
                     + ", ".join(f"{e.bucket}:{e.environments}" for e in running)
                     + f", ETA {clock(eta)}"
                 )
