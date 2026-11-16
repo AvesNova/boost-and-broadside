@@ -52,7 +52,26 @@ the sense; extend and the extensions off by the author's 2026-11-14 decision) fo
 better: every element at full weight costs strength (lag most), and the best searched
 doctrines' gains were the same sense change.
 
-## Matchups
+## One ship, a trim per balance option
+
+The Yongma-Jujak balance is not final (tune/balance-final offers A, in src as v23, and the
+flatter C', D and E for the author), and Bonghwang's balance moves with it. Its identity (the
+roll, the acceleration, the drag, g 7, the in-range dive, its doctrine) stays; three numbers
+are trimmed per option: the sustained turn (each option moves the pair's turns toward each
+other, so Bonghwang's follows), damage and shield (the options bring the shields to 78-85, and
+a 115-shield Bonghwang is then the tank that wins the big fights).
+
+| balance option (Yongma, Jujak) | Bonghwang: sustained turn, damage per bullet, shield | DM 5v5, 1536 games: B v J / B v Y / Y v J |
+|---|---|---|
+| **A** (v23, in src): Jujak turn x0.93 | 0.630, 23.03 (x1.2), 115 | 0.483 / 0.562 / 0.474 |
+| **C'**: Jujak x0.91, Yongma turn x1.08, shield x0.55 | 0.660, 21.11 (x1.1), 90 | 0.544 / 0.567 / 0.527 |
+| **D**: Jujak x0.93, Yongma turn x1.08, shield x0.6 | 0.660, 21.11 (x1.1), 95 | 0.465 / 0.520 / 0.479 |
+| **E**: Jujak x0.95, Yongma turn x1.12, shield x0.55 | 0.700, 21.11 (x1.1), 90 | 0.498 / 0.503 / 0.531 |
+
+(± 0.012 each. Damage is x Jujak's 19.19 a bullet, all at 30 Hz. Under E Yongma's turn is
+0.664 and Jujak's 0.726, so Bonghwang's 0.70 sits between them, as 0.63 does under A.)
+
+## Matchups (option A)
 
 Bonghwang at d1.2/s115 with its doctrine, against the release Yongma and the v23 Jujak. The
 release pair's own score is from the same run (its own seed), so each row is a self-contained
