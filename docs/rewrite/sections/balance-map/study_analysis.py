@@ -64,6 +64,32 @@ def load(run: pathlib.Path):
     return cards, references, read_lines(run / "evaluations.jsonl")
 
 
+def load_search(run: pathlib.Path, prefix: str):
+    """A CMA-MAE run's cards (`bench.balance_map` records: four conditions, each card's team
+    against v23 Jujak's) as study cards and reference rows, ids prefixed."""
+    records = balance_map.Records(run)
+    cards, rows = {}, []
+    for candidate in records.candidates:
+        if "card" not in candidate:
+            continue
+        name = prefix + candidate["id"]
+        cards[name] = dict(candidate, id=name, x=balance_map.encode(candidate["handles"]))
+        for e in records.results_of.get(candidate["id"], []):
+            rows.append(
+                dict(
+                    name=f"{name}|jujak",
+                    a=name,
+                    b="jujak",
+                    kind="reference",
+                    condition=e["condition"],
+                    games=e["games"],
+                    kill_share=e["kill_share"],
+                    source="search",
+                )
+            )
+    return cards, rows
+
+
 def rows_of(evaluations, cards, condition, kind):
     """(card ids a, opponents b, y logits, w weights) for one condition and kind."""
     a, b, y, w = [], [], [], []
@@ -279,9 +305,20 @@ def main() -> None:
     parser.add_argument("run", type=pathlib.Path)
     parser.add_argument("out", type=pathlib.Path)
     parser.add_argument("--pairs", type=int, default=6)
+    parser.add_argument(
+        "--search",
+        type=pathlib.Path,
+        nargs="*",
+        help="CMA-MAE runs whose evaluations join the data (their four conditions)",
+    )
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     cards, reference_x, evaluations = load(args.run)
+    for number, extra in enumerate(args.search or []):
+        more, rows = load_search(extra, f"m{number}-")
+        cards.update(more)
+        evaluations += rows
+        print(f"{extra}: {len(more)} cards, {len(rows)} rows (four conditions)", flush=True)
     models, report = {}, {}
     for condition in CONDITIONS:
         a, b, y, w = rows_of(evaluations, cards, condition, "reference")
