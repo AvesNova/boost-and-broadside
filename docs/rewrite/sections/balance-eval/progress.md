@@ -151,3 +151,93 @@ per-game mean of the point share (deaths of any cause), not the pooled kills by 
   win edge faster, so the slopes here are likely a little shallow for the new settings and
   the bands a little wide; the centre (a) should carry. Refit on a few dozen cards measured
   at the new settings before using the bands to accept a card.
+
+### Timing for compute estimates: laptop (RTX 4070 Laptop, power profile performance)
+
+One steady batch each at the balance settings (fog on, fields off; deathmatch 300 s,
+elimination and Frontline their own clocks, a batch stopping when every first match has
+ended), 4096 environments, 32 variants, the base card's Yongma team v Jujak team; compiled
+and warmed outside the lock (`bench.balance_sweep timing`, `data/timing.jsonl`,
+`timing_table.py`). Frontline 10v10 not run on the laptop (stopped at 18:05 to keep the
+laptop free for the author's flight; the 5090 has it). "game-s/s": first-match seconds
+played a second (scored modes stop early, so their batch time follows the longest match).
+
+| condition | clock s | match s (mean) | batch s | games/s | game-s/s | s a card (256 games) | GPU util | busiest threads | kill share Y v J | compile s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| deathmatch-5v5 | 300 | 300 | 37.9 | 108.0 | 32.4k | 2.37 | 99% (71) | 100% / 0% | 44.5 ± 0.1 | 211 |
+| deathmatch-10v10 | 300 | 300 | 79.6 | 51.5 | 15.4k | 4.97 | 99% (151) | 100% / 0% | 45.1 ± 0.1 | 223 |
+| deathmatch-2v2 | 300 | 300 | 16.4 | 249.9 | 75.0k | 1.02 | 89% (30) | 100% / 0% | 35.5 ± 0.2 | 186 |
+| deathmatch-1v1 | 300 | 300 | 15.1 | 271.0 | 81.3k | 0.94 | 80% (28) | 100% / 0% | 19.7 ± 0.6 | 177 |
+| elimination-5v5 | 248 | 82 | 25.1 | 163.4 | 13.3k | 1.57 | 96% (47) | 100% / 0% | 36.2 ± 0.3 | 224 |
+| elimination-10v10 | 248 | 74 | 54.8 | 74.7 | 5.5k | 3.43 | 99% (103) | 100% / 0% | 40.9 ± 0.3 | 186 |
+| frontline-5v5 | 600 | 190 | 73.0 | 56.1 | 10.7k | 4.56 | 99% (138) | 100% / 0% | 38.3 ± 0.2 | 198 |
+
+- GPU-bound in every condition: utilisation 96-99% at 5v5 and 10v10, 89% at deathmatch 2v2,
+  80% at 1v1. The busiest thread at 100% is the main Python thread (launching and waiting
+  on the GPU); every other thread is idle, and the GPU stays near full, so the batch is not
+  launch-limited at these sizes. 1v1 is the one place a larger batch would gain.
+- Seconds a card at 256 games: deathmatch 0.9 (1v1) - 5.0 (10v10), elimination 1.6 / 3.4,
+  Frontline 5v5 4.6. Kill shares here (base card, fog on, fields off, seed 0) are the
+  Yongma team's: 19.7 (1v1), 35.5 (2v2), 44.5 (5v5), 45.1 (10v10); elimination 36.2 / 40.9;
+  Frontline 5v5 38.3.
+
+### Timing for compute estimates: rented RTX 5090 (18:30 KST)
+
+`ssh box5090` (vast.ai): RTX 5090 32 GB, driver 580.178.04, power limit 500 W (max 600),
+max clocks SM 3105 / memory 14001 MHz, persistence on; Ryzen 7 7800X3D. After each batch
+nvidia-smi read P1, SM 2542 MHz, memory 13801 MHz, 87-90 W, 32-36 C (`data/box5090/`).
+The same `timing` at 4096 environments and 32 variants (the worktree at c42bb759: no
+kills-by-minute tally), then deathmatch 5v5 and Frontline 10v10 at 16384:
+
+| condition | clock s | match s (mean) | batch s | games/s | game-s/s | s a card (256 games) | GPU util | busiest threads | kill share Y v J | compile s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| deathmatch-5v5 | 300 | 300 | 15.3 | 268.2 | 80.5k | 0.95 | 59% (28) | 100% / 0% | 44.5 ± 0.1 | 175 |
+| deathmatch-10v10 | 300 | 300 | 17.6 | 233.2 | 70.0k | 1.10 | 84% (32) | 100% / 0% | 45.1 ± 0.1 | 165 |
+| deathmatch-2v2 | 300 | 300 | 13.6 | 300.5 | 90.1k | 0.85 | 69% (25) | 100% / 0% | 35.5 ± 0.2 | 160 |
+| deathmatch-1v1 | 300 | 300 | 13.0 | 314.6 | 94.4k | 0.81 | 35% (23) | 100% / 0% | 20.3 ± 0.6 | 150 |
+| elimination-5v5 | 248 | 82 | 10.7 | 383.1 | 31.2k | 0.67 | 54% (19) | 100% / 0% | 36.2 ± 0.3 | 162 |
+| elimination-10v10 | 248 | 74 | 12.4 | 330.7 | 24.6k | 0.77 | 86% (22) | 100% / 0% | 40.9 ± 0.3 | 160 |
+| frontline-5v5 | 600 | 190 | 32.1 | 127.7 | 24.3k | 2.00 | 59% (60) | 100% / 0% | 38.3 ± 0.2 | 163 |
+| frontline-10v10 | 600 | 175 | 34.4 | 119.1 | 20.8k | 2.15 | 86% (65) | 100% / 0% | 42.1 ± 0.1 | 162 |
+| deathmatch-5v5 | 300 | 300 | 33.8 | 484.6 | 145.4k | 0.53 | 91% (57) | 100% / 0% | 44.6 ± 0.1 | 172 |
+| frontline-10v10 | 600 | 175 | 110.3 | 148.5 | 25.9k | 1.72 | 96% (205) | 100% / 0% | 42.1 ± 0.1 | 174 |
+
+- At 4096 the 5090 is launch-bound: GPU 35-60% at 1v1-5v5, 84-86% at 10v10, the main
+  Python thread at 100%. Against the laptop it is 2.5x at deathmatch 5v5 and 4.5x at 10v10.
+- At 16384 it fills: deathmatch 5v5 485 games/s (1.8x of 4096; GPU 91%), peak memory 1.4
+  GiB; Frontline 10v10 149 games/s (1.25x; GPU 96%; a scored batch waits on its longest
+  match). Workers on the 5090 should run 16384 environments (memory allows far more).
+- Seconds a card at 256 games on the 5090 (4096 environments): deathmatch 0.81 (1v1) - 1.10
+  (10v10), elimination 0.67 / 0.77, Frontline 2.00 / 2.15; at 16384, deathmatch 5v5 0.53 and
+  Frontline 10v10 1.72. Compile 150-175 s per condition (laptop 177-224 s).
+- The kill shares match the laptop's to the decimal at the same seed (deathmatch 5v5 44.5,
+  10v10 45.1; 1v1 20.3 against 19.7, within its 0.6 error).
+
+### Deathmatch clock (5090, 18:55 KST)
+
+`clock_5090.sh` (worktree at 5bcb20bb, with the kills-by-minute tally): Yongma team v
+Jujak team, 4096 games of the 600 s cap at 2v2, 5v5 and 10v10 (seed 0, fog on, fields off);
+the kill share had the clock stopped after each minute, from the same games (`clock_table.py`,
+`data/box5090/clock-*.jsonl`). "cost": game-seconds for a given error, relative to 300 s
+(SE^2 x clock over 300 s's).
+
+| condition | games | 1 min | 2 min | 3 min | 4 min | 5 min | 6 min | 7 min | 8 min | 9 min | 10 min |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| deathmatch-10v10 | 4096 | 44.6 ± 0.2 | 45.1 ± 0.1 | 45.2 ± 0.1 | 45.1 ± 0.1 | 45.1 ± 0.1 | 45.1 ± 0.1 | 45.1 ± 0.0 | 45.2 ± 0.0 | 45.2 ± 0.0 | 45.2 ± 0.0 |
+| deathmatch-2v2 | 4096 | 37.3 ± 0.4 | 36.2 ± 0.3 | 35.9 ± 0.2 | 35.7 ± 0.2 | 35.5 ± 0.2 | 35.6 ± 0.2 | 35.4 ± 0.2 | 35.2 ± 0.1 | 35.2 ± 0.1 | 35.2 ± 0.1 |
+| deathmatch-5v5 | 4096 | 44.6 ± 0.2 | 44.7 ± 0.2 | 44.7 ± 0.1 | 44.6 ± 0.1 | 44.5 ± 0.1 | 44.4 ± 0.1 | 44.3 ± 0.1 | 44.2 ± 0.1 | 44.2 ± 0.1 | 44.1 ± 0.1 |
+
+| condition | cost at 1 / 2 / 3 / 5 / 10 min |
+|---|---|
+| deathmatch-2v2 | 1.18 / 1.08 / 1.07 / 1.00 / 0.99 |
+| deathmatch-5v5 | 1.06 / 0.90 / 0.94 / 1.00 / 1.14 |
+| deathmatch-10v10 | 1.58 / 1.12 / 1.03 / 1.00 / 1.06 |
+
+- 300 s stays: from 3 to 10 minutes the cost of a given error is flat within about 10%,
+  and no shorter clock is cheaper at every size (2 min saves 10% at 5v5 but costs 8-12% at
+  2v2 and 10v10). The first minute (the opening merge) reads off: 2v2 37.3 against 35.5 at
+  300 s, 10v10 44.6 against 45.1, and costs 18-58% more.
+- The kill share drifts little past 300 s: 2v2 35.5 -> 35.2, 5v5 44.5 -> 44.1, 10v10 45.1 ->
+  45.2 at 600 s.
+- The 10v10 run shared the GPU with another agent's unlocked `solve_one.py`; it changes
+  the time, not the games.
