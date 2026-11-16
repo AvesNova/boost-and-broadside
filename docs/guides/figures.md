@@ -238,17 +238,19 @@ bnb figures trails --capture figures/captures/match_real_scale_elimination_seed0
 - `trails_opening`: the first 60 s, the approach and the first contact.
 - `trails_busiest`: the 20 s with the most hits and deaths, cropped to them: a turning
   fight reads as its circles.
-- `trails_fog`, in a game with fog: the 30 s with the most hidden enemies that team 0's
-  view holds a ghost of. A hidden enemy's true path is dashed and faint; every 3 s its
-  ghost is drawn: the mean (a plus) and, for a policy's belief, the one-sigma circle
-  (radius sigma times the square root of two, as in `belief_ghosts`), joined to where the
-  ship really was. Imugi's ghost is its dead-reckoned memory, with no sigma.
+- `trails_fog`, in a game with fog: the 20 s with the most fighting and hidden enemies
+  (up to two at once) that team 0's view holds a ghost of. A hidden enemy's true path is
+  dashed and faint. For the two enemies hidden longest in the window
+  (`--still.ghost-ships`), every 3 s (`--still.ghost-seconds`) the ghost is drawn: the
+  mean (a plus) and, for a policy's belief, the one-sigma circle (radius sigma times the
+  square root of two, as in `belief_ghosts`), joined to where the ship really was. Imugi's
+  ghost is its dead-reckoned memory, with no sigma.
 
 One still with any window and look: `--still.start` and `--still.end` (seconds from the
-game's start), `--still.no-crop` (the whole arena, not the action's bounding box), `--still.busy` or
-`--still.no-busy` (the shot and hit ticks on or off; by default on in a window of at most
+game's start), `--still.no-crop` (the whole arena, not the action's bounding box),
+`--still.busy` or `--still.no-busy` (the shot and hit ticks on or off; by default on in a window of at most
 90 s), `--still.fog`,
-`--still.fog-team`, `--still.ghost-seconds`, `--still.theme` (light or dark),
+`--still.fog-team`, `--still.ghost-ships`, `--still.ghost-seconds`, `--still.theme` (light or dark),
 `--still.size` (`web`, 1024 px wide; `column`, 3.4 in at 300 dpi for a paper column;
 `page`, 7 in at 300 dpi), `--still.formats` (png, svg, pdf; the PNG carries the
 provenance) and `--still.no-title`; `--still-name` names the files.

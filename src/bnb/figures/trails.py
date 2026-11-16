@@ -66,8 +66,9 @@ class StillConfig:
     draw the shot and hit ticks (None: only in a window of at most BUSY_SECONDS); fog: the
     fog overlay, the hidden enemies as `fog_team`'s view saw them, with a ghost every
     `ghost_seconds` for the `ghost_ships` enemies hidden longest in the window (the
-    others' hidden paths drawn without one); theme: "light" or "dark"; size: one of `SIZES`; formats: the files
-    written (png, svg, pdf); title: the caption line above the view."""
+    others' hidden paths drawn without one); theme: "light" or "dark"; size: one of
+    `SIZES`; formats: the files written (png, svg, pdf); title: the caption line above the
+    view."""
 
     start: float | None = None
     end: float | None = None
