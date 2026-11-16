@@ -22,3 +22,5 @@ is done.
   learned, set by set.
 - [Results charts](results-charts.md): the write-up's results charts from the runs'
   records, and the values file the docs quote.
+- [Unified evaluation](unified-evaluation.md): every evaluation target in one
+  continuously refilled engine per size bucket, `bnb unified`.

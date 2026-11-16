@@ -108,6 +108,7 @@ nav:
       - Playing and spectating: guides/playing.md
       - Figures: guides/figures.md
       - Results charts: guides/results-charts.md
+      - Unified evaluation: guides/unified-evaluation.md
   - Explanation:
       - explanation/index.md
       - Architecture: explanation/architecture.md
