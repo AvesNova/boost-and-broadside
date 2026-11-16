@@ -75,9 +75,14 @@ def doctrine_of(entry: dict, key: str = "doctrine") -> Doctrine:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", default="deathmatch", choices=("deathmatch", "elimination", "frontline"))
-    parser.add_argument("--candidates", type=pathlib.Path, required=True)
-    parser.add_argument("--out", type=pathlib.Path, required=True)
+    parser.add_argument(
+        "--mode", default="deathmatch", choices=("deathmatch", "elimination", "frontline")
+    )
+    parser.add_argument("--candidates", type=pathlib.Path)
+    parser.add_argument("--out", type=pathlib.Path)
+    parser.add_argument("--queue", type=pathlib.Path, help="run as a worker on this queue")
+    parser.add_argument("--pull", action="store_true", help="worker: git pull before each scan")
+    parser.add_argument("--lock", type=pathlib.Path, help="worker: hold this flock per sweep")
     parser.add_argument("--only", nargs="*", default=None, help="candidate names to run")
     parser.add_argument("--ships", type=int, default=5)
     parser.add_argument("--games", type=int, default=256)
@@ -95,14 +100,104 @@ def main() -> None:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--eager", action="store_true")
     args = parser.parse_args()
-    if args.yongma_card_file:
-        args.yongma_card = json.loads(args.yongma_card_file.read_text())
-    if args.jujak_card_file:
-        args.jujak_card = json.loads(args.jujak_card_file.read_text())
+    loop, seconds, parameters = make_loop(args)
+    if args.queue:
+        worker(loop, seconds, parameters, args)
+        return
+    sweep(loop, seconds, parameters, args)
+
+
+def make_loop(args) -> tuple:
+    """The compiled loop for the run's mode, size and environments (compiles once)."""
     preset = f"real_scale_{args.mode}"
     seconds = args.seconds or (300.0 if args.mode == "deathmatch" else None)
     seconds = seconds or api.PRESETS[preset].episode_seconds
     parameters = tuple(pack(MODE_DEFAULTS.sets[preset]))
+    loop = Loop(
+        args.environments,
+        1 + 2 * args.chunk,
+        seconds,
+        ships_per_team=args.ships,
+        mode=args.mode,
+        fields=True,
+        fixed_map=True,
+        device=args.device,
+        compiled=not args.eager,
+    )
+    return loop, seconds, parameters
+
+
+JOB_KEYS = (
+    "candidates",
+    "out",
+    "only",
+    "games",
+    "mirror_games",
+    "mixed_games",
+    "reference_games",
+    "seed",
+    "yongma_card",
+    "jujak_card",
+    "yongma_card_file",
+    "jujak_card_file",
+)
+
+
+def worker(loop, seconds, parameters, args) -> None:
+    """A persistent worker (the box compiles for ~10 min a launch): every `*.json` job file
+    in `--queue`, in name order, is a sweep of this loop's mode and size; its keys (JOB_KEYS)
+    replace the command line's for that job. A finished job is renamed `.done`, a failed one
+    `.failed` (with the error in `.log`). With `--pull`, `git pull` before each scan, so new
+    candidate files arrive. A file named `stop` in the queue ends the worker."""
+    import subprocess
+    import traceback
+
+    queue = args.queue
+    queue.mkdir(parents=True, exist_ok=True)
+    print(f"worker: {args.mode} {args.ships}v{args.ships}, queue {queue}", flush=True)
+    while not (queue / "stop").exists():
+        if args.pull:
+            subprocess.run(["git", "pull", "-q"], check=False)
+        jobs = sorted(queue.glob("*.json"))
+        if not jobs:
+            time.sleep(30)
+            continue
+        path = jobs[0]
+        job = argparse.Namespace(**vars(args))
+        try:
+            for key, value in json.loads(path.read_text()).items():
+                if key not in JOB_KEYS:
+                    raise KeyError(f"unknown job key {key!r}")
+                setattr(
+                    job,
+                    key,
+                    pathlib.Path(value)
+                    if key in ("candidates", "out") or key.endswith("_file")
+                    else value,
+                )
+            print(f"worker: job {path.name}", flush=True)
+            if args.lock:  # the GPU lock only while a sweep runs
+                import fcntl
+
+                with open(args.lock, "a") as handle:
+                    fcntl.flock(handle, fcntl.LOCK_EX)
+                    sweep(loop, seconds, parameters, job)
+            else:
+                sweep(loop, seconds, parameters, job)
+            path.rename(path.with_suffix(".done"))
+        except Exception:
+            (path.with_suffix(".log")).write_text(traceback.format_exc())
+            print(traceback.format_exc(), flush=True)
+            path.rename(path.with_suffix(".failed"))
+    print("worker: stop", flush=True)
+
+
+def sweep(loop, seconds, parameters, args) -> None:
+    """One candidate file's jobs on the loop, each candidate's line appended to `args.out`."""
+    if args.yongma_card_file:
+        args.yongma_card = json.loads(pathlib.Path(args.yongma_card_file).read_text())
+    if args.jujak_card_file:
+        args.jujak_card = json.loads(pathlib.Path(args.jujak_card_file).read_text())
     entries = json.loads(args.candidates.read_text())
     args.out.parent.mkdir(parents=True, exist_ok=True)
     if args.only:
@@ -115,18 +210,7 @@ def main() -> None:
         print("every candidate is done", flush=True)
         return
     base = stored()["real-scale"]
-    K = 1 + 2 * args.chunk
-    loop = Loop(
-        args.environments,
-        K,
-        seconds,
-        ships_per_team=args.ships,
-        mode=args.mode,
-        fields=True,
-        fixed_map=True,
-        device=args.device,
-        compiled=not args.eager,
-    )
+    K = loop.K
     reference = Player("release", base["yongma"], base["jujak"], parameters=parameters)
     started = time.time()
     first_chunk = True
@@ -165,7 +249,9 @@ def main() -> None:
                 jobs.append(Job(va, "energy mirror", with_j, with_j, args.mirror_games))
                 keys.append((entry["name"], "C mirror"))
             if args.mixed_games and "versus" in entry:
-                other = Player("versus", doctrine_of(entry, "versus"), base["jujak"], parameters=parameters)
+                other = Player(
+                    "versus", doctrine_of(entry, "versus"), base["jujak"], parameters=parameters
+                )
                 jobs.append(Job(va, "mixed", with_j, other, args.mixed_games // 2))
                 keys.append((entry["name"], "mixed"))
                 jobs.append(Job(va, "mixed reversed", with_j, other, args.mixed_games // 2))
@@ -186,7 +272,11 @@ def main() -> None:
                     seconds=seconds,
                     yongma_card=args.yongma_card,
                     jujak_card=args.jujak_card,
-                    candidate={k: v for k, v in entry.items() if k not in ("card", "solved_handles", "spec")},
+                    candidate={
+                        k: v
+                        for k, v in entry.items()
+                        if k not in ("card", "solved_handles", "spec")
+                    },
                     jobs=jobs_of,
                 )
                 handle.write(json.dumps(line) + "\n")
