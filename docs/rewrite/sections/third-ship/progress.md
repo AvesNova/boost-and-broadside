@@ -229,3 +229,15 @@ feat/imugi-boundary). Power profile `performance`.
   the instantaneous turn is what a duel uses.
 - `retrim.py`: a grid of Bonghwang's three balance numbers against any pair's ship files and
   the pick over sizes, so a later balance decision needs one grid, not a search.
+
+## 12:50 g 8; finals2
+
+- g 8 (the real maximum, Bonghwang's was 7) helps the small fights most: under E, 2v2 against
+  Jujak at t70 d1.0/s85 0.38 (g 7) -> 0.50 (g 8), but it lifts 5v5 (0.58) and 10v10 (0.62)
+  too. Under E the turn sets the 2v2 level steeply (g 8, 2v2 v Jujak: t66 0.30, t68 0.38-0.40,
+  t70 0.46-0.50). Trimmed down: **E Bg8 t70 d0.95/s80: 2v2 0.46 / 0.50, 5v5 0.49 / 0.47**;
+  **C' Bg8 t66 d0.95/s85: 2v2 0.43 / 0.50, 5v5 0.51 / 0.52**, d1.0/s85 0.49 / 0.50, 0.54 /
+  0.56. 10v10 for these on the box.
+- finals2 (C': the g 7 Bt66 d1.15/s85 and two g 8 cards; E: g 8 t70 d0.95/s80 and g 7 t70
+  d1.2/s80; with each option's reference): elimination, Frontline 5v5 and 1v1 on the laptop;
+  2v2 (1536), 5v5 (1536, with mirrors) and 10v10 (512) on the box workers.
