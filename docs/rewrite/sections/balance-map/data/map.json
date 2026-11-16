@@ -1,0 +1,665 @@
+{
+ "6,4": {
+  "id": "seed-000",
+  "measures": [
+   0.637494976900032,
+   0.46992508666678
+  ],
+  "objective": 45.89230318738751,
+  "lower": 43.153362748977514,
+  "worst": "elimination-5v5",
+  "games": 512,
+  "win_equivalent": {
+   "deathmatch-2v2": 52.86,
+   "deathmatch-5v5": 48.93,
+   "elimination-5v5": 54.11,
+   "frontline-10v10": 51.98
+  }
+ },
+ "2,8": {
+  "id": "seed-001",
+  "measures": [
+   0.26666332355483646,
+   0.8186132882387647
+  ],
+  "objective": 0.19444847649891983,
+  "lower": 0.1775868615377334,
+  "worst": "deathmatch-5v5",
+  "games": 512,
+  "win_equivalent": {
+   "deathmatch-2v2": 4.74,
+   "deathmatch-5v5": 0.19,
+   "elimination-5v5": 0.81,
+   "frontline-10v10": 0.4
+  }
+ },
+ "3,4": {
+  "id": "g0001a-087",
+  "measures": [
+   0.36544219627767593,
+   0.4503671644159989
+  ],
+  "objective": 30.557503853647276,
+  "lower": 26.05558965635477,
+  "worst": "elimination-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 31.16,
+   "deathmatch-5v5": 68.82,
+   "elimination-5v5": 69.44,
+   "frontline-10v10": 54.73
+  }
+ },
+ "5,4": {
+  "id": "g0001a-045",
+  "measures": [
+   0.5999458011848258,
+   0.4484343952903004
+  ],
+  "objective": 44.73041741897091,
+  "lower": 40.06865301048157,
+  "worst": "deathmatch-2v2",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 44.73,
+   "deathmatch-5v5": 45.94,
+   "elimination-5v5": 54.19,
+   "frontline-10v10": 45.72
+  }
+ },
+ "5,5": {
+  "id": "g0000a-047",
+  "measures": [
+   0.5656943080624595,
+   0.5114407615167013
+  ],
+  "objective": 34.60142629243015,
+  "lower": 31.202010079867254,
+  "worst": "deathmatch-2v2",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 34.6,
+   "deathmatch-5v5": 40.36,
+   "elimination-5v5": 50.68,
+   "frontline-10v10": 48.85
+  }
+ },
+ "3,6": {
+  "id": "g0000a-005",
+  "measures": [
+   0.33054232080201007,
+   0.6088249503929569
+  ],
+  "objective": 0.1299025402874605,
+  "lower": 0.10595756761095032,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 4.27,
+   "deathmatch-5v5": 0.13,
+   "elimination-5v5": 1.89,
+   "frontline-10v10": 0.52
+  }
+ },
+ "3,7": {
+  "id": "g0000b-077",
+  "measures": [
+   0.37582530807758807,
+   0.7704382383898216
+  ],
+  "objective": 0.811015507311474,
+  "lower": 0.6863981758088826,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 7.72,
+   "deathmatch-5v5": 0.81,
+   "elimination-5v5": 2.18,
+   "frontline-10v10": 1.94
+  }
+ },
+ "3,9": {
+  "id": "g0000b-072",
+  "measures": [
+   0.3174829075792912,
+   0.9369806607861125
+  ],
+  "objective": 0.24564459068407984,
+  "lower": 0.17951371363842838,
+  "worst": "frontline-10v10",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 4.67,
+   "deathmatch-5v5": 0.34,
+   "elimination-5v5": 0.79,
+   "frontline-10v10": 0.25
+  }
+ },
+ "2,7": {
+  "id": "g0000b-073",
+  "measures": [
+   0.2746798239244992,
+   0.79157198673525
+  ],
+  "objective": 0.30554250042463593,
+  "lower": 0.2499049107334912,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 4.76,
+   "deathmatch-5v5": 0.31,
+   "elimination-5v5": 4.46,
+   "frontline-10v10": 0.44
+  }
+ },
+ "3,8": {
+  "id": "g0000b-071",
+  "measures": [
+   0.3668226827905558,
+   0.8177556443019798
+  ],
+  "objective": 4.409703069658583,
+  "lower": 3.715878795800954,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 13.01,
+   "deathmatch-5v5": 4.41,
+   "elimination-5v5": 7.89,
+   "frontline-10v10": 14.0
+  }
+ },
+ "2,6": {
+  "id": "g0000a-019",
+  "measures": [
+   0.28921895874119297,
+   0.6820730523172426
+  ],
+  "objective": 0.07349449116512119,
+  "lower": 0.05993493844449915,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 2.49,
+   "deathmatch-5v5": 0.07,
+   "elimination-5v5": 0.64,
+   "frontline-10v10": 0.53
+  }
+ },
+ "1,7": {
+  "id": "g0000b-083",
+  "measures": [
+   0.1830392064637721,
+   0.7044007379724315
+  ],
+  "objective": 0.022460518266647966,
+  "lower": 0.015175488067605158,
+  "worst": "frontline-10v10",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 2.44,
+   "deathmatch-5v5": 0.03,
+   "elimination-5v5": 0.13,
+   "frontline-10v10": 0.02
+  }
+ },
+ "4,6": {
+  "id": "g0000b-011",
+  "measures": [
+   0.43352877340537643,
+   0.6981472091318632
+  ],
+  "objective": 26.07607181593587,
+  "lower": 23.217636177529045,
+  "worst": "deathmatch-2v2",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 26.08,
+   "deathmatch-5v5": 51.79,
+   "elimination-5v5": 39.07,
+   "frontline-10v10": 70.42
+  }
+ },
+ "4,8": {
+  "id": "g0000b-069",
+  "measures": [
+   0.4019633052099398,
+   0.8749884372188866
+  ],
+  "objective": 0.9149962926324378,
+  "lower": 0.7646961307110729,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 5.29,
+   "deathmatch-5v5": 0.91,
+   "elimination-5v5": 5.81,
+   "frontline-10v10": 11.45
+  }
+ },
+ "6,3": {
+  "id": "g0001a-047",
+  "measures": [
+   0.6644229590269997,
+   0.35740243188112913
+  ],
+  "objective": 32.922114571908224,
+  "lower": 29.08274654614725,
+  "worst": "frontline-10v10",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 58.53,
+   "deathmatch-5v5": 49.41,
+   "elimination-5v5": 52.46,
+   "frontline-10v10": 67.08
+  }
+ },
+ "4,4": {
+  "id": "g0001a-085",
+  "measures": [
+   0.4769986502278303,
+   0.43337491153211394
+  ],
+  "objective": 31.19686787429697,
+  "lower": 26.962805513372274,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 37.42,
+   "deathmatch-5v5": 68.8,
+   "elimination-5v5": 40.96,
+   "frontline-10v10": 64.59
+  }
+ },
+ "6,5": {
+  "id": "g0000a-051",
+  "measures": [
+   0.6617938822119586,
+   0.5944109042112251
+  ],
+  "objective": 36.328455512864274,
+  "lower": 34.10768334626238,
+  "worst": "elimination-5v5",
+  "games": 512,
+  "win_equivalent": {
+   "deathmatch-2v2": 51.39,
+   "deathmatch-5v5": 51.79,
+   "elimination-5v5": 63.67,
+   "frontline-10v10": 54.62
+  }
+ },
+ "5,6": {
+  "id": "g0000a-098",
+  "measures": [
+   0.555239790011881,
+   0.6280659259581923
+  ],
+  "objective": 37.02547662078307,
+  "lower": 35.51321951690594,
+  "worst": "deathmatch-2v2",
+  "games": 512,
+  "win_equivalent": {
+   "deathmatch-2v2": 37.03,
+   "deathmatch-5v5": 51.94,
+   "elimination-5v5": 50.93,
+   "frontline-10v10": 48.05
+  }
+ },
+ "7,5": {
+  "id": "g0000b-116",
+  "measures": [
+   0.7344174756960834,
+   0.5963775318580251
+  ],
+  "objective": 9.967537542560805,
+  "lower": 8.536673132543598,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 62.77,
+   "deathmatch-5v5": 90.03,
+   "elimination-5v5": 81.01,
+   "frontline-10v10": 80.82
+  }
+ },
+ "5,3": {
+  "id": "g0001a-046",
+  "measures": [
+   0.5766803398191246,
+   0.3963162588974905
+  ],
+  "objective": 29.27085859275251,
+  "lower": 26.182220510646623,
+  "worst": "deathmatch-2v2",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 29.27,
+   "deathmatch-5v5": 40.17,
+   "elimination-5v5": 36.26,
+   "frontline-10v10": 47.12
+  }
+ },
+ "4,5": {
+  "id": "g0001a-090",
+  "measures": [
+   0.4767475983598697,
+   0.5164781708591935
+  ],
+  "objective": 31.698856987902825,
+  "lower": 29.009451076115262,
+  "worst": "deathmatch-2v2",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 31.7,
+   "deathmatch-5v5": 58.5,
+   "elimination-5v5": 49.69,
+   "frontline-10v10": 65.72
+  }
+ },
+ "7,4": {
+  "id": "g0001a-038",
+  "measures": [
+   0.7145935349674589,
+   0.48940808038910444
+  ],
+  "objective": 20.48534417346176,
+  "lower": 17.802204841333406,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 51.89,
+   "deathmatch-5v5": 20.49,
+   "elimination-5v5": 44.18,
+   "frontline-10v10": 50.67
+  }
+ },
+ "3,3": {
+  "id": "g0000b-023",
+  "measures": [
+   0.39227748418517105,
+   0.39416828669951287
+  ],
+  "objective": 3.3965765663749536,
+  "lower": 2.8376875587876995,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 10.65,
+   "deathmatch-5v5": 3.4,
+   "elimination-5v5": 9.85,
+   "frontline-10v10": 9.88
+  }
+ },
+ "3,5": {
+  "id": "g0000a-066",
+  "measures": [
+   0.3528398037751195,
+   0.5076020145633826
+  ],
+  "objective": 17.839196056182658,
+  "lower": 14.78596361076832,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 29.26,
+   "deathmatch-5v5": 82.16,
+   "elimination-5v5": 64.12,
+   "frontline-10v10": 46.52
+  }
+ },
+ "2,4": {
+  "id": "g0000b-000",
+  "measures": [
+   0.2639000489167105,
+   0.48187704795263386
+  ],
+  "objective": 0.07353692676559831,
+  "lower": 0.06201128488007157,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 3.82,
+   "deathmatch-5v5": 0.07,
+   "elimination-5v5": 0.5,
+   "frontline-10v10": 0.11
+  }
+ },
+ "4,3": {
+  "id": "g0000b-117",
+  "measures": [
+   0.4958265169412104,
+   0.3563528494404192
+  ],
+  "objective": 25.882665300334352,
+  "lower": 21.63884621359393,
+  "worst": "elimination-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 30.31,
+   "deathmatch-5v5": 43.21,
+   "elimination-5v5": 25.88,
+   "frontline-10v10": 42.96
+  }
+ },
+ "5,7": {
+  "id": "g0000a-105",
+  "measures": [
+   0.5636766528636776,
+   0.7151541941519824
+  ],
+  "objective": 41.28131179985879,
+  "lower": 39.11746543930065,
+  "worst": "frontline-10v10",
+  "games": 512,
+  "win_equivalent": {
+   "deathmatch-2v2": 45.51,
+   "deathmatch-5v5": 50.38,
+   "elimination-5v5": 53.47,
+   "frontline-10v10": 41.28
+  }
+ },
+ "6,7": {
+  "id": "g0001a-010",
+  "measures": [
+   0.6169750319837706,
+   0.7681195700013554
+  ],
+  "objective": 32.433388700998094,
+  "lower": 27.790628440404113,
+  "worst": "deathmatch-2v2",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 32.43,
+   "deathmatch-5v5": 41.71,
+   "elimination-5v5": 32.44,
+   "frontline-10v10": 46.16
+  }
+ },
+ "4,2": {
+  "id": "g0001a-077",
+  "measures": [
+   0.49266822798547916,
+   0.28297177542246
+  ],
+  "objective": 21.563407437610007,
+  "lower": 18.510885133764162,
+  "worst": "frontline-10v10",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 24.97,
+   "deathmatch-5v5": 22.28,
+   "elimination-5v5": 37.82,
+   "frontline-10v10": 21.56
+  }
+ },
+ "7,6": {
+  "id": "g0000b-063",
+  "measures": [
+   0.7517223960049721,
+   0.6646599737934538
+  ],
+  "objective": 21.92275727279734,
+  "lower": 18.664372250763492,
+  "worst": "frontline-10v10",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 49.3,
+   "deathmatch-5v5": 73.3,
+   "elimination-5v5": 57.17,
+   "frontline-10v10": 78.08
+  }
+ },
+ "2,5": {
+  "id": "g0000b-064",
+  "measures": [
+   0.28292167296103293,
+   0.5995852340008576
+  ],
+  "objective": 0.01349397585429557,
+  "lower": 0.010870386325990467,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 2.1,
+   "deathmatch-5v5": 0.01,
+   "elimination-5v5": 0.2,
+   "frontline-10v10": 0.12
+  }
+ },
+ "4,7": {
+  "id": "g0000b-079",
+  "measures": [
+   0.44630910995564455,
+   0.7861911604877203
+  ],
+  "objective": 22.698850811005475,
+  "lower": 19.4111952591116,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 23.2,
+   "deathmatch-5v5": 22.7,
+   "elimination-5v5": 24.66,
+   "frontline-10v10": 40.45
+  }
+ },
+ "2,9": {
+  "id": "g0000b-078",
+  "measures": [
+   0.2954642928157482,
+   0.9404766391759444
+  ],
+  "objective": 0.3715564174004058,
+  "lower": 0.30856766157876336,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 4.61,
+   "deathmatch-5v5": 0.37,
+   "elimination-5v5": 2.22,
+   "frontline-10v10": 2.33
+  }
+ },
+ "6,2": {
+  "id": "g0001a-054",
+  "measures": [
+   0.6219056181516942,
+   0.2937568571077584
+  ],
+  "objective": 22.45572455326222,
+  "lower": 19.56471864564443,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 33.51,
+   "deathmatch-5v5": 22.46,
+   "elimination-5v5": 23.24,
+   "frontline-10v10": 29.51
+  }
+ },
+ "6,6": {
+  "id": "g0001a-027",
+  "measures": [
+   0.6447561888556914,
+   0.6923863600413636
+  ],
+  "objective": 35.675473896840124,
+  "lower": 31.244555232282163,
+  "worst": "frontline-10v10",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 42.84,
+   "deathmatch-5v5": 39.62,
+   "elimination-5v5": 49.23,
+   "frontline-10v10": 35.68
+  }
+ },
+ "5,8": {
+  "id": "g0001a-001",
+  "measures": [
+   0.5805854563416961,
+   0.871616029021863
+  ],
+  "objective": 2.9094960196794375,
+  "lower": 2.222538095473169,
+  "worst": "elimination-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 84.21,
+   "deathmatch-5v5": 96.7,
+   "elimination-5v5": 97.09,
+   "frontline-10v10": 89.36
+  }
+ },
+ "7,7": {
+  "id": "g0001a-112",
+  "measures": [
+   0.7054493655906605,
+   0.7561378268256906
+  ],
+  "objective": 3.7554396946098336,
+  "lower": 2.9678463385482274,
+  "worst": "frontline-10v10",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 72.51,
+   "deathmatch-5v5": 95.02,
+   "elimination-5v5": 86.39,
+   "frontline-10v10": 96.24
+  }
+ },
+ "6,8": {
+  "id": "g0001a-018",
+  "measures": [
+   0.6524778629616319,
+   0.8348130081872926
+  ],
+  "objective": 0.2798807280982487,
+  "lower": 0.22572588300070606,
+  "worst": "deathmatch-5v5",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 94.71,
+   "deathmatch-5v5": 99.72,
+   "elimination-5v5": 98.62,
+   "frontline-10v10": 99.18
+  }
+ },
+ "7,3": {
+  "id": "g0001a-055",
+  "measures": [
+   0.7118696392977399,
+   0.3797654391365012
+  ],
+  "objective": 0.7196964629056879,
+  "lower": 0.5563535378280022,
+  "worst": "frontline-10v10",
+  "games": 128,
+  "win_equivalent": {
+   "deathmatch-2v2": 35.48,
+   "deathmatch-5v5": 50.5,
+   "elimination-5v5": 57.91,
+   "frontline-10v10": 99.28
+  }
+ }
+}

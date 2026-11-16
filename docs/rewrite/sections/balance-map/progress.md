@@ -138,3 +138,29 @@ The search uses build 2. Code: `bench/balance_map.py`; tests `tests/sections/tes
    predicted balanced set, continued from the previous slider step so the path is smooth).
 4. Checks: replay points along the path (512-2048 games) and refit where the surrogate is
    wrong; the TTK band and the solver's feasibility (low-speed cap) as constraints.
+
+## 20:10 early findings: what each handle does (pilot, 457 cards, old band)
+
+The analysis (`analysis.py`, `data/pilot/`): gradient boosting from the 13 coordinates to
+logit(kill share) per condition, 5-fold cross-validated R^2 0.90 (dm 2v2), 0.91 (dm 5v5), 0.85
+(elim 5v5), 0.91 (Frontline 10v10); the noise is 0.3-1.5% of the variance, so the model's error
+(win-equivalent RMSE 8-14 points, over cards mostly far from even) is the model's, not the
+games'. Each handle's partial-dependence swing (win-equivalent points over its bounds;
+dm 2v2 / 5v5 / elim 5v5 / Frontline 10v10):
+
+| handle | swing | direction |
+|---|---|---|
+| sustained turn rate | 61 / 91 / 67 / 99 | up; a cliff at 0.68-0.75 rad/s (Jujak 0.765) |
+| stall speed | 15 / 47 / 30 / 85 | **higher stall is stronger** (Frontline most); to check |
+| max shield | 16 / 37 / 26 / 57 | up, flat past about 600 |
+| climb power (climb time) | 16 / 33 / 29 / 28 | shorter climb is stronger |
+| shot cost | 8 / 18 / 18 / 3 | cheaper is stronger (not in Frontline) |
+| g limit | 13 / 17 / 7 / 5 | up past 8 g |
+| hit damage | 4 / 9 / 7 / 18 | up |
+| cruise, nose reversal, store, gun range, dive, low-speed acceleration | 1-8 | weak |
+
+- So the balance trades mostly between turn, stall speed, shield, climb and shot cost; gun
+  range, the store, nose reversal and low-speed acceleration are nearly free character (the
+  map's toughness x reach axis is half gun range, so its reach half costs almost nothing).
+- The conversion refit on all pilot cards (chi^2/dof 3-13, mostly far from even) is not
+  trusted yet; the slopes stay balance-eval's.
