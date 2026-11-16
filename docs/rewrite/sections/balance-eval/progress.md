@@ -77,3 +77,77 @@ then 27 s a batch of 256 games of 600 s; no recompile inside the job (the one gu
    with no base ship needs one named.
 7. A controller that derives settings from the card must read `loop.card` in the graph or
    define `refresh(card, types)` (`Loop.set_table` calls it after a new card table).
+
+## 17:35 KST: round 2 (the author's decisions of 2026-11-16)
+
+Decisions: fog back on (fields stay off); kill share primary, with a conversion to win rate;
+maps as the game uses them; deathmatch 300 s (the cap 600 s; shorter only if measured to
+give the same kill share at less cost); measure the error bars. `BALANCE` is now
+`Settings(fog=True, fields=False, spawn_seed=0)` with `DEATHMATCH_SECONDS = 300`.
+
+### Error bars (deathmatch 5v5, 300 s, fog on, fields off; laptop)
+
+A Jujak and a Yongma mirror, 4 seeds x 512 games each (the worker at 1024 environments,
+`round2_run.sh`; `error_bars.py`, `data/error_bars.md`, records
+`data/mirrors-deathmatch-5v5-seed*.jsonl`). A mirror's truth is 50% (the same card on both
+sides, seats alternating).
+
+| metric | mirror | seeds: value ± se | mean se | sd between seeds / mean se |
+|---|---|---|---|---|
+| kill_share_a | Jujak mirror | 49.82 ± 0.36, 50.82 ± 0.35, 49.71 ± 0.36, 50.02 ± 0.37 | 0.36 | 1.39 |
+| kill_share_a | Yongma mirror | 49.65 ± 0.23, 49.64 ± 0.22, 49.75 ± 0.24, 49.90 ± 0.23 | 0.23 | 0.52 |
+| kill_share_a | both: mean z^2 against 50% over 8 | 1.58 (error scale 1.26) | | |
+| point_share_a | Jujak mirror | 49.85 ± 0.34, 50.70 ± 0.33, 49.67 ± 0.34, 50.02 ± 0.34 | 0.34 | 1.34 |
+| point_share_a | Yongma mirror | 49.64 ± 0.21, 49.64 ± 0.21, 49.77 ± 0.22, 49.88 ± 0.22 | 0.22 | 0.53 |
+| point_share_a | both: mean z^2 against 50% over 8 | 1.59 (error scale 1.26) | | |
+| kill_score | Jujak mirror | 49.96 ± 0.57, 50.69 ± 0.54, 49.32 ± 0.58, 49.99 ± 0.58 | 0.57 | 0.99 |
+| kill_score | Yongma mirror | 49.57 ± 0.47, 49.72 ± 0.47, 49.44 ± 0.51, 49.77 ± 0.51 | 0.49 | 0.31 |
+| kill_score | both: mean z^2 against 50% over 8 | 0.71 (error scale 0.84) | | |
+| score | Jujak mirror | 49.61 ± 2.11, 55.27 ± 2.10, 48.34 ± 2.12, 48.44 ± 2.11 | 2.11 | 1.56 |
+| score | Yongma mirror | 47.46 ± 2.06, 47.07 ± 2.05, 47.56 ± 2.07, 49.41 ± 2.05 | 2.06 | 0.51 |
+| score | both: mean z^2 against 50% over 8 | 1.57 (error scale 1.25) | | |
+
+- The per-game standard error holds: the spread between seeds is 1.39 and 0.52 times it
+  (Jujak, Yongma: about 1 on average), and against the known 50% the mean z^2 over the 8
+  values is 1.58 (kill share) and 1.57 (score), inside the 0.27-1.94 that 8 values give
+  95% of the time when the error is right. Each game is an independent environment and the
+  only shared draw is the spawn layout by game index, so a cluster or bootstrap error would
+  equal the per-game one; not changed. 8 values cannot rule out an error up to about 1.4x too
+  small; a 16-seed mirror would.
+- To watch: the Yongma mirror reads under 50% on all four seeds (pooled 49.74 ± 0.12, 2.3
+  sigma; Jujak 50.09 ± 0.18). Could be chance (one of two tests at 2.3 sigma), or a small
+  seat effect; worth a 16-seed mirror before reading differences under half a point.
+- The old per-game mean kill_score has about twice the error of the pooled kill share
+  (0.57 against 0.36 points for Jujak), for the same games.
+- A 1024-game job (2 mirrors x 512, 300 s) took about 18 s after the worker's 202 s warm-up.
+
+### Conversion: score against kill share (balance-final records, card candidates)
+
+`conversion_fit.py` on balance-final's data/ and data/box-out/ (`data/conversion_fit.md`):
+logit(score) = a + b logit(kill_score), weighted, per condition; doctrine candidates left
+out (with them deathmatch 5v5 fit at chi^2/dof 4.1; without, 0.31). kill_score there is the
+per-game mean of the point share (deaths of any cause), not the pooled kills by hits.
+
+| condition | cards | slope b | intercept a | R^2 | chi^2/dof | residual (score) | kill share for 45 / 50 / 55% | kill shares measured |
+|---|---|---|---|---|---|---|---|---|
+| deathmatch-1v1 | 3 | 0.99 | -0.034 | 0.997 | 0.00 | 0.0 pts | 45.8 / 50.9 / 55.9 | 31-32 |
+| deathmatch-2v2 | 269 | 2.50 | -0.011 | 0.994 | 0.23 | 1.2 pts | 48.1 / 50.1 / 52.1 | 29-69 |
+| deathmatch-5v5 | 373 | 7.62 | -0.009 | 0.992 | 0.31 | 1.3 pts | 49.4 / 50.0 / 50.7 | 41-61 |
+| deathmatch-10v10 | 241 | 14.15 | -0.014 | 0.989 | 0.52 | 1.4 pts | 49.7 / 50.0 / 50.4 | 45-58 |
+| elimination-2v2 | 3 | 1.43 | -0.088 | 0.939 | 0.91 | 0.9 pts | 48.0 / 51.5 / 55.1 | 28-35 |
+| elimination-5v5 | 184 | 2.12 | -0.185 | 0.972 | 0.58 | 1.8 pts | 49.8 / 52.2 / 54.5 | 30-72 |
+| elimination-10v10 | 75 | 3.00 | -0.109 | 0.877 | 0.82 | 2.2 pts | 49.2 / 50.9 / 52.6 | 43-56 |
+| frontline-5v5 | 226 | 4.66 | -0.040 | 0.975 | 1.04 | 2.3 pts | 49.1 / 50.2 / 51.3 | 35-64 |
+| frontline-10v10 | 202 | 6.73 | -0.015 | 0.948 | 2.06 | 3.4 pts | 49.3 / 50.1 / 50.8 | 39-64 |
+
+- The win rate's 45-55% band is a narrow kill-share band, and narrower the larger the fight:
+  deathmatch 2v2 48.1-52.1, 5v5 49.4-50.7, 10v10 49.7-50.4; Frontline 5v5 49.1-51.3, 10v10
+  49.3-50.8; elimination 5v5 49.8-54.5, 10v10 49.2-52.6. Elimination's intercept is
+  negative: at an even kill share the Yongma team loses (45% at 5v5), so its band sits above
+  50.
+- The 1v1 and elimination 2v2 rows have 3 cards each: not a fit.
+- How far it carries over: those games ran with fog AND fields on; fields off adds kills
+  (7.7 -> 10.2 a game in 60 s at 5v5 with fog), and more kills a game make a kill edge into a
+  win edge faster, so the slopes here are likely a little shallow for the new settings and
+  the bands a little wide; the centre (a) should carry. Refit on a few dozen cards measured
+  at the new settings before using the bands to accept a card.
