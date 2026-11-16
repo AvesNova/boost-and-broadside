@@ -71,15 +71,23 @@ are trimmed per option: the sustained turn (each option moves the pair's turns t
 other, so Bonghwang's follows), damage and shield (the options bring the shields to 78-85, and
 a 115-shield Bonghwang is then the tank that wins the big fights).
 
-| balance option (Yongma, Jujak) | Bonghwang: sustained turn, damage per bullet, shield | DM 5v5, 1536 games: B v J / B v Y / Y v J |
+| balance option (Yongma, Jujak) | Bonghwang: sustained turn, g, damage per bullet, shield | DM 5v5: B v J / B v Y / Y v J |
 |---|---|---|
-| **A** (v23, in src): Jujak turn x0.93 | 0.630, 23.03 (x1.2), 115 | 0.483 / 0.562 / 0.474 |
-| **C'**: Jujak x0.91, Yongma turn x1.08, shield x0.55 | 0.660, 21.11 (x1.1), 90 | 0.544 / 0.567 / 0.527 |
-| **D**: Jujak x0.93, Yongma turn x1.08, shield x0.6 | 0.660, 21.11 (x1.1), 95 | 0.465 / 0.520 / 0.479 |
-| **E**: Jujak x0.95, Yongma turn x1.12, shield x0.55 | 0.700, 21.11 (x1.1), 90 | 0.498 / 0.503 / 0.531 |
+| **A** (v23, in src): Jujak turn x0.93 | 0.630, 7, 23.03 (x1.2), 115 | 0.483 / 0.562 / 0.474 (1536) |
+| **C'**: Jujak x0.91, Yongma turn x1.08, shield x0.55 | 0.660, 8, 18.23 (x0.95), 85 | 0.513 / 0.515 / 0.52 (1024) |
+| **D**: Jujak x0.93, Yongma turn x1.08, shield x0.6 | 0.660, 7, 21.11 (x1.1), 95 | 0.465 / 0.520 / 0.479 (1536) |
+| **E**: Jujak x0.95, Yongma turn x1.12, shield x0.55 | 0.700, 8, 18.23 (x0.95), 80 | 0.491 / 0.468 / 0.53 (1024) |
 
-(± 0.012 each. Damage is x Jujak's 19.19 a bullet, all at 30 Hz. Under E Yongma's turn is
-0.664 and Jujak's 0.726, so Bonghwang's 0.70 sits between them, as 0.63 does under A.)
+(Damage is x Jujak's 19.19 a bullet, all at 30 Hz. Under E Yongma's turn is 0.664 and
+Jujak's 0.726, so Bonghwang's 0.70 sits between them, as 0.63 does under A. The flat options
+equalise the shields at 78-85; at 115 Bonghwang would be the tank that wins the big fights,
+so its shield follows theirs. With g 7 the flat options leave Bonghwang weak in the small
+fights (E, 2v2 against Jujak: 0.30-0.39 at any turn, damage and shield tried): the duel uses
+the instantaneous turn, so these trims take the real maximum, g 8. D's trim is g 7 from the
+first round; its flat g 8 version is not searched.)
+
+**The first-round trims** (g 7, before the slope rounds; still in `finals1.json`): C' t0.66 d1.1
+s90, D t0.66 d1.1 s95, E t0.70 d1.1 s90; their full tables follow.
 
 ## Matchups: every option, every condition
 
