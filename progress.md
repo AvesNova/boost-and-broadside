@@ -572,3 +572,9 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 05:08 worked: v24 tree reproduces the box suite's 1v1 scores (0.625 vs 0.612, 0.238 vs 0.219); benched = native within 1.7 SE; v25 Imugi is far stronger at 1v1 (DM 0.29 vs 0.62). Per-machine remembered sizes; planner 3.8 ms/game at 3x41-player fields. didn't: bucket 5 plays 1v1s 2.7x slower than a 1-a-side engine (add small buckets when 1v1-heavy).
 - next: concurrent two-bucket test, final report.
 - 05:25 worked: two buckets concurrently (5 and 10, 640 + 832 envs, GPU 100%); results.md and the 5090 checklist written. next: the 5090 check (box/unified_check.sh) once the box is free.
+
+## feat/unified-eval: Elo curves to precision (2026-11-17 morning)
+- 08:40 tried: dry run 1's curves left late RL snapshots as bounds; the unified EloTarget had the same rule (a bound "settled" after 4/goal^2 games, unrated players planned at the anchor's rating).
+- worked: bounds/undetermined never a result; their finished games carry no planning information across fitted components (prior variance 1000 Elo, so they go first); planning ratings from a penalised fit with a neighbour prior (run steps, matched steps across runs, BC last to RL first); prior games from rating pools (`--prior`); loud WARNING when a safety bound stops a target. Offline (bench/elo_curve_planner.py, dry run 1's table as truth, 1024 in flight, from scratch): elimination 5,280 games, deathmatch 13,680, frontline 16,960; every player rated, worst SE <= 60.
+- didn't: ~40% of frontline games sit beyond p = 0.95 (the A-optimal long hops of a 5,400-Elo span; information per game peaks near 400 Elo hops); ~4% beyond 0.99 after the first wave.
+- next: laptop run of dry run 1's curves on the v24 tree with the old pool's 36,672 games as prior (ueval-runs/curves-v24).
