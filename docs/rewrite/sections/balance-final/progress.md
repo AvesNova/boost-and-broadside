@@ -1,5 +1,20 @@
 # Balance final: progress (2026-11-16)
 
+## RESUME NOTE 2 (handover, 2026-11-16 ~13:10 KST; read first, then the 11:05-12:45 sections at the end)
+
+- Laptop: the author's (no heavy jobs). All work is on the box (`ssh -p 12149 root@115.73.222.54`,
+  /workspace/bnb fixed at 8488056e, do not pull src). Workers (worker.py, logs
+  /workspace/worker-<mode>-<size>.log, queues /workspace/queue/<mode>-<size>/): deathmatch 2/5/10,
+  elimination 5/10, frontline 5/10. Queued: probe2 (dm10, el5, el10, dm2), probe3 in all seven
+  (outputs /workspace/out/probe{2,3}-*.jsonl). Collect: `rsync -a -e "ssh -p 12149"
+  root@115.73.222.54:/workspace/out/ data/`, then `probe_table.py data/probe3-*.jsonl`.
+- Finding: Frontline 10v10's offset is a kill-share effect, not a steeper win curve. Turn and
+  shield/damage cannot hold FL10 with the rest; the energy economy (Yongma store, shot cost) is
+  Frontline-light and Jujak's shield moves FL10 twice FL5. probe3 tests the model's cards (Q1-Q5).
+- Next: pick the best probe3 card, express its turn change as a handle (Yongma
+  sustained_turn_rate solved via handle_cards.py instead of the raw induced drag factor), range-check,
+  confirm at 1024-2048 games in every mode, write it into results.md as option G.
+
 ## RESUME NOTE (handover, 2026-11-16 ~10:55 KST; read first)
 
 **State of the branch** (`tune/balance-final`, not merged): game v23 = A (Jujak sustained turn
