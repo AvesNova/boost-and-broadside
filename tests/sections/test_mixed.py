@@ -160,6 +160,24 @@ def test_the_all_modes_mix_plays_the_three_real_scale_modes_at_their_shares():
     ]
 
 
+def test_each_mixed_game_keeps_its_own_ticket_rule():
+    """A mixed batch's GameConfig is its first game's (frontline: 5 N tickets); the
+    deathmatch pools still play the deathmatch preset's 4 N^(4/3) to the nearest 5."""
+    from bnb.game.api import PRESETS
+    from bnb.runtime.train import LINEUP, TRAINING_MIXES, mixed
+
+    base, pools = mixed(LINEUP, TRAINING_MIXES["real_scale_all_modes"])
+    rules = api.rules_of(base, pools, 2048)
+    deathmatch = PRESETS["real_scale_deathmatch"]
+    found = next(pool.mode for pool in rules.pools if pool.mode.name == "team_deathmatch")
+    assert (found.kills_per_ship, found.ticket_exponent, found.ticket_rounding) == (
+        deathmatch.kills_per_ship,
+        deathmatch.ticket_exponent,
+        deathmatch.ticket_rounding,
+    )
+    assert base.kills_per_ship != deathmatch.kills_per_ship  # the base alone would differ
+
+
 def test_the_all_modes_mix_splits_2048_environments_into_whole_pools():
     """Each mode's self-play and league pools are whole at the launch's 2048 environments:
     384 / 320 / 320 each (6/5/5 of 16, decided 2026-11-14)."""

@@ -537,6 +537,16 @@ def rate(
     lanes = default_lanes(groups, 2 * config.arena.blocks)
     session_names = [names[number] for number in session]
     log(f"{preset}: a session of {len(session)} players: {session_names}")
+    targeted = dict.fromkeys(
+        (*config.decision, *(name for pair in config.contrasts for name in pair))
+    )
+    left_out = [name for name in targeted if name not in session_names]
+    if left_out:  # their targets are not this session's (another machine may play them)
+        unplayable = [name for name in left_out if made[name] is None]
+        log(
+            f"{preset}: the targets naming {left_out} are left out of the session "
+            f"(not playable here: {unplayable})"
+        )
     decision = tuple(session_names.index(name) for name in config.decision if name in session_names)
     session_config = dataclasses.replace(
         config,

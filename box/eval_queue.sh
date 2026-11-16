@@ -22,9 +22,19 @@
 #   6 media     trail stills (deathmatch 1v1 and 5v5, elimination 5v5 with fog ghosts) and
 #               an MP4 against Imugi (5v5: the play shell has no uneven teams)
 #   7 charts    the figures from the records (CPU): curves, fan, break-even, team size, health
+# `--only STEP` (after CHAIN) runs that step alone (unless done/STEP marks it done: remove
+# the marker to re-run it), e.g. after a fix:
+#   rm -f /workspace/runs/dry-v24-s1-eval/done/average
+#   bash /workspace/wt/evalq/box/eval_queue.sh dry-v24-s1 --only average
 # The sizes below are environment variables, so a small test run can shrink them.
 set -uo pipefail
-chain=${1:?usage: eval_queue.sh CHAIN}
+usage="usage: eval_queue.sh CHAIN [--only STEP]"
+chain=${1:?$usage}
+ONLY=
+if [ $# -gt 1 ]; then
+  [ "$2" = --only ] && [ $# = 3 ] || { echo "$usage" >&2; exit 2; }
+  ONLY=$3
+fi
 EVAL_ENV=${EVAL_ENV:-/workspace/env.sh}
 [ "$EVAL_ENV" != none ] && source "$EVAL_ENV"
 EVALQ=${EVALQ:-/workspace/wt/evalq}
@@ -84,6 +94,7 @@ done
 # step NAME MINUTES: run step_NAME unless done, with its log and ETA; a failure is counted
 step() {
   local name=$1 minutes=$2
+  [ -z "$ONLY" ] || [ "$name" = "$ONLY" ] || return 0
   if [ -e "$out/done/$name" ]; then
     say "$name: done before, skipped"
     return
@@ -268,6 +279,10 @@ step_charts() {
     --values "$charts/values.json" || code=1
   return $code
 }
+
+if [ -n "$ONLY" ] && ! declare -F "step_$ONLY" > /dev/null; then
+  say "no step $ONLY"; echo 2 > "$out/queue.exit"; exit 2
+fi
 
 # minutes on the 5090, provisional (the laptop pilot's seconds per game over the 3.8x
 # rollout ratio, docs/rewrite/dry-run.md): about 3.9 hours in all, worst about 4.8
