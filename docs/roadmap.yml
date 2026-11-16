@@ -22,7 +22,7 @@
   spec: docs/rewrite/sections/ship-card-spec.md
   page: explanation/game/ship-card.md
 - section: "3"
-  title: Modes (team deathmatch, Frontline, sandbox)
+  title: Modes (team deathmatch, Frontline, elimination, sandbox)
   status: merged
   spec: docs/rewrite/sections/modes-spec.md
   page: explanation/game/modes.md
@@ -58,7 +58,7 @@
   page: explanation/behaviour-cloning.md
 - section: "8"
   title: League and ratings
-  status: specified
+  status: merged
   spec: docs/rewrite/sections/league-spec.md
   page: explanation/league.md
 - section: "9"
