@@ -55,3 +55,37 @@ The search uses build 2. Code: `bench/balance_map.py`; tests `tests/sections/tes
 - Doctrine: every card (and the reference) flies v23 Jujak's stored doctrine; the card-derived
   rules (extend-and-return, circle choice, lead) adapt it to each card.
 - Next: the pilot (2 generations a half, 512 cards + 6 seeds), launched 19:01.
+
+## 19:00-19:40 the pilot on box5090
+
+- Workers at 16384 environments, 128 variants: cold compile 308-340 s each, one at a time
+  (19:01-19:22 KST), RSS about 3.6 GB each after.
+- Seeds (512 games a condition, win-rate equivalent against the v23 Jujak team):
+  | seed | dm 2v2 | dm 5v5 | elim 5v5 | Frontline 10v10 | objective |
+  |---|---|---|---|---|---|
+  | v23 Jujak (the mirror) | 52.9 | 48.9 | 54.1 | 52.0 | 45.9 |
+  | v23 Yongma | 4.7 | 0.2 | 0.8 | 0.4 | 0.2 |
+  | E Yongma (turn x1.12, shield x0.55) | 12.2 | 3.3 | 4.8 | 7.8 | 3.3 |
+  | E Jujak (turn x0.95) | 24.0 | 12.7 | 11.7 | 12.9 | 11.7 |
+  | G Yongma | 13.8 | 6.6 | 10.1 | 6.8 | 6.6 |
+  | G Jujak (turn x0.95, shield x1.16) | 26.2 | 18.9 | 13.5 | 22.0 | 13.5 |
+  - The sustained turn rate dominates under build 2 + v23 lethality: Jujak's own card with 5%
+    less turn falls to a 39% kill share at 2v2 and 44% at 5v5 (12-24 win-equivalent).
+  - The mirror itself reads 45.9: at 512 games the worst of four noisy conditions sits ~4
+    points off even, so 45 is at the noise floor of a 512-game check (confirm at 2048).
+- Doctrine check (512 games, v23 Yongma card against the Jujak team): its own stored doctrine
+  23.5% / 31.0% kill share (dm 2v2 / 5v5) against 23.1% / 30.6% for the seed's Yongma card on
+  Jujak's doctrine (the seed's card also takes Jujak's unsearched handles: explosive share 0,
+  zero-lift drag). One doctrine for every card does not handicap the energy-style card.
+- Throughput: a half (128 asked) solves in 122-156 s on 8 CPU processes (83-87% solved;
+  failures: 27 no convergence, 12 under the low-speed floor of 262 asked), plays its 4
+  conditions in about 7 min, GPU 94-98%. About 900 solved cards an hour, GPU-bound.
+- Search so far (g0000a): median objective 2.2; the worst condition is deathmatch 5v5 for
+  56% of cards, Frontline 10v10 for 30%. Best new card 44.2 (dm 2v2 46.8, 5v5 48.1, elim
+  55.8, Frontline 10v10 44.5).
+- Conversion refit on the pilot (all cards, mostly far from even): chi^2/dof 3-13, so not
+  used yet; balance-eval's slopes kept until there are enough near-even cards.
+- Laptop: `screen.py` plays the four unsearched conditions for cards at objective >= 40 on
+  512 games (laptop_job.sh), from 19:26.
+- Next: the long run continues from the pilot's state (no recompile): 40 generations a half
+  or 12 h, started automatically when the pilot's search ends.
