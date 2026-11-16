@@ -1,0 +1,586 @@
+% References for Boost and Broadside (v2): the README / white paper, the docs results pages
+% and the research paper. Annotated list, grouped by topic: docs/references.md.
+%
+% Every entry was checked on 2026-11-16 against a primary record: the arXiv listing (via the
+% arXiv API), the publisher's DOI record (via Crossref), the venue's proceedings page, or
+% NASA's technical reports server. Entries that could not be checked that way carry a
+% `note` that starts "Unverified" and are listed as such in references.md.
+%
+% Keys: first author's family name, year, first content word of the title.
+
+% ---------------------------------------------------------------------------------------
+% Reinforcement learning: objective, advantages, trust regions
+% ---------------------------------------------------------------------------------------
+
+@misc{schulman2017proximal,
+  author        = {Schulman, John and Wolski, Filip and Dhariwal, Prafulla and Radford, Alec and Klimov, Oleg},
+  title         = {Proximal Policy Optimization Algorithms},
+  year          = {2017},
+  eprint        = {1707.06347},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@inproceedings{schulman2016high,
+  author        = {Schulman, John and Moritz, Philipp and Levine, Sergey and Jordan, Michael and Abbeel, Pieter},
+  title         = {High-Dimensional Continuous Control Using Generalized Advantage Estimation},
+  booktitle     = {International Conference on Learning Representations (ICLR)},
+  year          = {2016},
+  eprint        = {1506.02438},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{yu2025dapo,
+  author        = {Yu, Qiying and Zhang, Zheng and Zhu, Ruofei and Yuan, Yufeng and Zuo, Xiaochen and Yue, Yu and Dai, Weinan and Fan, Tiantian and Liu, Gaohong and Liu, Lingjun and Liu, Xin and Lin, Haibin and Lin, Zhiqi and Ma, Bole and Sheng, Guangming and Tong, Yuxuan and Zhang, Chi and Zhang, Mofan and Zhang, Wang and Zhu, Hang and Zhu, Jinhua and Chen, Jiaze and Chen, Jiangjie and Wang, Chengyi and Yu, Hongli and Song, Yuxuan and Wei, Xiangpeng and Zhou, Hao and Liu, Jingjing and Ma, Wei-Ying and Zhang, Ya-Qin and Yan, Lin and Qiao, Mu and Wu, Yonghui and Wang, Mingxuan},
+  title         = {{DAPO}: An Open-Source {LLM} Reinforcement Learning System at Scale},
+  booktitle     = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume        = {38},
+  year          = {2025},
+  eprint        = {2503.14476},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{qi2026rethinking,
+  author        = {Qi, Penghui and Zhou, Xiangxin and Liu, Zichen and Pang, Tianyu and Du, Chao and Lin, Min and Lee, Wee Sun},
+  title         = {Rethinking the Trust Region in {LLM} Reinforcement Learning},
+  booktitle     = {International Conference on Machine Learning (ICML)},
+  year          = {2026},
+  eprint        = {2602.04879},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{pardo2018time,
+  author        = {Pardo, Fabio and Tavakoli, Arash and Levdik, Vitaly and Kormushev, Petar},
+  title         = {Time Limits in Reinforcement Learning},
+  booktitle     = {Proceedings of the 35th International Conference on Machine Learning (ICML)},
+  series        = {Proceedings of Machine Learning Research},
+  volume        = {80},
+  year          = {2018},
+  eprint        = {1712.00378},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{ng1999policy,
+  author        = {Ng, Andrew Y. and Harada, Daishi and Russell, Stuart J.},
+  title         = {Policy Invariance Under Reward Transformations: Theory and Application to Reward Shaping},
+  booktitle     = {Proceedings of the Sixteenth International Conference on Machine Learning (ICML)},
+  pages         = {278--287},
+  year          = {1999}
+}
+
+@inproceedings{kapturowski2019recurrent,
+  author        = {Kapturowski, Steven and Ostrovski, Georg and Quan, John and Munos, R{\'e}mi and Dabney, Will},
+  title         = {Recurrent Experience Replay in Distributed Reinforcement Learning},
+  booktitle     = {International Conference on Learning Representations (ICLR)},
+  year          = {2019}
+}
+
+% ---------------------------------------------------------------------------------------
+% Imitation, league and self-play
+% ---------------------------------------------------------------------------------------
+
+@inproceedings{ross2011reduction,
+  author        = {Ross, St{\'e}phane and Gordon, Geoffrey J. and Bagnell, J. Andrew},
+  title         = {A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning},
+  booktitle     = {Proceedings of the Fourteenth International Conference on Artificial Intelligence and Statistics (AISTATS)},
+  series        = {Proceedings of Machine Learning Research},
+  volume        = {15},
+  year          = {2011},
+  eprint        = {1011.0686},
+  archivePrefix = {arXiv}
+}
+
+@article{vinyals2019grandmaster,
+  author        = {Vinyals, Oriol and Babuschkin, Igor and Czarnecki, Wojciech M. and Mathieu, Micha{\"e}l and Dudzik, Andrew and Chung, Junyoung and Choi, David H. and Powell, Richard and Ewalds, Timo and Georgiev, Petko and Oh, Junhyuk and Horgan, Dan and Kroiss, Manuel and Danihelka, Ivo and Huang, Aja and Sifre, Laurent and Cai, Trevor and Agapiou, John P. and Jaderberg, Max and Vezhnevets, Alexander S. and Leblond, R{\'e}mi and Pohlen, Tobias and Dalibard, Valentin and Budden, David and Sulsky, Yury and Molloy, James and Paine, Tom L. and Gulcehre, Caglar and Wang, Ziyu and Pfaff, Tobias and Wu, Yuhuai and Ring, Roman and Yogatama, Dani and W{\"u}nsch, Dario and McKinney, Katrina and Smith, Oliver and Schaul, Tom and Lillicrap, Timothy and Kavukcuoglu, Koray and Hassabis, Demis and Apps, Chris and Silver, David},
+  title         = {Grandmaster level in {StarCraft II} using multi-agent reinforcement learning},
+  journal       = {Nature},
+  volume        = {575},
+  number        = {7782},
+  pages         = {350--354},
+  year          = {2019},
+  doi           = {10.1038/s41586-019-1724-z}
+}
+
+@misc{berner2019dota,
+  author        = {{OpenAI} and Berner, Christopher and Brockman, Greg and Chan, Brooke and Cheung, Vicki and D{\k{e}}biak, Przemys{\l}aw and Dennison, Christy and Farhi, David and Fischer, Quirin and Hashme, Shariq and Hesse, Chris and J{\'o}zefowicz, Rafal and Gray, Scott and Olsson, Catherine and Pachocki, Jakub and Petrov, Michael and Pinto, Henrique P. d. O. and Raiman, Jonathan and Salimans, Tim and Schlatter, Jeremy and Schneider, Jonas and Sidor, Szymon and Sutskever, Ilya and Tang, Jie and Wolski, Filip and Zhang, Susan},
+  title         = {Dota 2 with Large Scale Deep Reinforcement Learning},
+  year          = {2019},
+  eprint        = {1912.06680},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@article{silver2018general,
+  author        = {Silver, David and Hubert, Thomas and Schrittwieser, Julian and Antonoglou, Ioannis and Lai, Matthew and Guez, Arthur and Lanctot, Marc and Sifre, Laurent and Kumaran, Dharshan and Graepel, Thore and Lillicrap, Timothy and Simonyan, Karen and Hassabis, Demis},
+  title         = {A general reinforcement learning algorithm that masters chess, shogi, and {Go} through self-play},
+  journal       = {Science},
+  volume        = {362},
+  number        = {6419},
+  pages         = {1140--1144},
+  year          = {2018},
+  doi           = {10.1126/science.aar6404},
+  note          = {Preprint: arXiv:1712.01815, ``Mastering Chess and Shogi by Self-Play with a General Reinforcement Learning Algorithm''}
+}
+
+@inproceedings{samvelyan2019starcraft,
+  author        = {Samvelyan, Mikayel and Rashid, Tabish and Schroeder de Witt, Christian and Farquhar, Gregory and Nardelli, Nantas and Rudner, Tim G. J. and Hung, Chia-Man and Torr, Philip H. S. and Foerster, Jakob and Whiteson, Shimon},
+  title         = {The {StarCraft} Multi-Agent Challenge},
+  booktitle     = {Proceedings of the 18th International Conference on Autonomous Agents and MultiAgent Systems (AAMAS)},
+  pages         = {2186--2188},
+  year          = {2019},
+  eprint        = {1902.04043},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{yu2022surprising,
+  author        = {Yu, Chao and Velu, Akash and Vinitsky, Eugene and Gao, Jiaxuan and Wang, Yu and Bayen, Alexandre and Wu, Yi},
+  title         = {The Surprising Effectiveness of {PPO} in Cooperative Multi-Agent Games},
+  booktitle     = {Advances in Neural Information Processing Systems (NeurIPS), Datasets and Benchmarks Track},
+  year          = {2022},
+  eprint        = {2103.01955},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{pinto2018asymmetric,
+  author        = {Pinto, Lerrel and Andrychowicz, Marcin and Welinder, Peter and Zaremba, Wojciech and Abbeel, Pieter},
+  title         = {Asymmetric Actor Critic for Image-Based Robot Learning},
+  booktitle     = {Robotics: Science and Systems XIV (RSS)},
+  year          = {2018},
+  doi           = {10.15607/RSS.2018.XIV.008},
+  eprint        = {1710.06542},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{lyu2021contrasting,
+  author        = {Lyu, Xueguang and Xiao, Yuchen and Daley, Brett and Amato, Christopher},
+  title         = {Contrasting Centralized and Decentralized Critics in Multi-Agent Reinforcement Learning},
+  booktitle     = {Proceedings of the 20th International Conference on Autonomous Agents and MultiAgent Systems (AAMAS)},
+  pages         = {844--852},
+  year          = {2021},
+  eprint        = {2102.04402},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{lyu2022deeper,
+  author        = {Lyu, Xueguang and Baisero, Andrea and Xiao, Yuchen and Amato, Christopher},
+  title         = {A Deeper Understanding of State-Based Critics in Multi-Agent Reinforcement Learning},
+  booktitle     = {Proceedings of the AAAI Conference on Artificial Intelligence},
+  volume        = {36},
+  number        = {9},
+  pages         = {9396--9404},
+  year          = {2022},
+  doi           = {10.1609/aaai.v36i9.21171},
+  eprint        = {2201.01221},
+  archivePrefix = {arXiv}
+}
+
+@article{lyu2023centralized,
+  author        = {Lyu, Xueguang and Baisero, Andrea and Xiao, Yuchen and Daley, Brett and Amato, Christopher},
+  title         = {On Centralized Critics in Multi-Agent Reinforcement Learning},
+  journal       = {Journal of Artificial Intelligence Research},
+  volume        = {77},
+  pages         = {295--354},
+  year          = {2023},
+  doi           = {10.1613/jair.1.14386}
+}
+
+@inproceedings{baisero2022unbiased,
+  author        = {Baisero, Andrea and Amato, Christopher},
+  title         = {Unbiased Asymmetric Reinforcement Learning under Partial Observability},
+  booktitle     = {Proceedings of the 21st International Conference on Autonomous Agents and Multiagent Systems (AAMAS)},
+  pages         = {44--52},
+  year          = {2022},
+  eprint        = {2105.11674},
+  archivePrefix = {arXiv}
+}
+
+% ---------------------------------------------------------------------------------------
+% Weight averaging
+% ---------------------------------------------------------------------------------------
+
+@inproceedings{izmailov2018averaging,
+  author        = {Izmailov, Pavel and Podoprikhin, Dmitrii and Garipov, Timur and Vetrov, Dmitry and Wilson, Andrew Gordon},
+  title         = {Averaging Weights Leads to Wider Optima and Better Generalization},
+  booktitle     = {Conference on Uncertainty in Artificial Intelligence (UAI)},
+  year          = {2018},
+  eprint        = {1803.05407},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{kaddour2022stop,
+  author        = {Kaddour, Jean},
+  title         = {Stop Wasting My Time! Saving Days of {ImageNet} and {BERT} Training with Latest Weight Averaging},
+  booktitle     = {NeurIPS 2022 Workshop: Has It Trained Yet? (HITY)},
+  year          = {2022},
+  eprint        = {2209.14981},
+  archivePrefix = {arXiv}
+}
+
+% ---------------------------------------------------------------------------------------
+% Ratings, paired comparisons and evaluation
+% ---------------------------------------------------------------------------------------
+
+@article{bradley1952rank,
+  author        = {Bradley, Ralph Allan and Terry, Milton E.},
+  title         = {Rank Analysis of Incomplete Block Designs: {I}. The Method of Paired Comparisons},
+  journal       = {Biometrika},
+  volume        = {39},
+  number        = {3/4},
+  pages         = {324--345},
+  year          = {1952},
+  doi           = {10.2307/2334029}
+}
+
+@book{elo1978rating,
+  author        = {Elo, Arpad E.},
+  title         = {The Rating of Chessplayers, Past and Present},
+  publisher     = {Arco},
+  address       = {New York},
+  year          = {1978},
+  isbn          = {0-668-04721-6}
+}
+
+@article{thurstone1927law,
+  author        = {Thurstone, L. L.},
+  title         = {A law of comparative judgment},
+  journal       = {Psychological Review},
+  volume        = {34},
+  number        = {4},
+  pages         = {273--286},
+  year          = {1927},
+  doi           = {10.1037/h0070288}
+}
+
+@inproceedings{balduzzi2018reevaluating,
+  author        = {Balduzzi, David and Tuyls, Karl and Perolat, Julien and Graepel, Thore},
+  title         = {Re-evaluating Evaluation},
+  booktitle     = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume        = {31},
+  year          = {2018},
+  eprint        = {1806.02643},
+  archivePrefix = {arXiv}
+}
+
+@article{kiefer1960equivalence,
+  author        = {Kiefer, J. and Wolfowitz, J.},
+  title         = {The Equivalence of Two Extremum Problems},
+  journal       = {Canadian Journal of Mathematics},
+  volume        = {12},
+  pages         = {363--366},
+  year          = {1960},
+  doi           = {10.4153/CJM-1960-030-4}
+}
+
+@article{silvey1978algorithm,
+  author        = {Silvey, S. D. and Titterington, D. H. and Torsney, B.},
+  title         = {An algorithm for optimal designs on a design space},
+  journal       = {Communications in Statistics -- Theory and Methods},
+  volume        = {7},
+  number        = {14},
+  pages         = {1379--1389},
+  year          = {1978},
+  doi           = {10.1080/03610927808827719}
+}
+
+@inproceedings{domhan2015speeding,
+  author        = {Domhan, Tobias and Springenberg, Jost Tobias and Hutter, Frank},
+  title         = {Speeding up Automatic Hyperparameter Optimization of Deep Neural Networks by Extrapolation of Learning Curves},
+  booktitle     = {Proceedings of the Twenty-Fourth International Joint Conference on Artificial Intelligence (IJCAI)},
+  pages         = {3460--3467},
+  year          = {2015}
+}
+
+@misc{jones2021scaling,
+  author        = {Jones, Andy L.},
+  title         = {Scaling Scaling Laws with Board Games},
+  year          = {2021},
+  eprint        = {2104.03113},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+% ---------------------------------------------------------------------------------------
+% Sequential testing
+% ---------------------------------------------------------------------------------------
+
+@article{armitage1969repeated,
+  author        = {Armitage, P. and McPherson, C. K. and Rowe, B. C.},
+  title         = {Repeated Significance Tests on Accumulating Data},
+  journal       = {Journal of the Royal Statistical Society. Series A (General)},
+  volume        = {132},
+  number        = {2},
+  pages         = {235--244},
+  year          = {1969},
+  doi           = {10.2307/2343787}
+}
+
+@article{obrien1979multiple,
+  author        = {O'Brien, Peter C. and Fleming, Thomas R.},
+  title         = {A Multiple Testing Procedure for Clinical Trials},
+  journal       = {Biometrics},
+  volume        = {35},
+  number        = {3},
+  pages         = {549--556},
+  year          = {1979},
+  doi           = {10.2307/2530245}
+}
+
+@article{lan1983discrete,
+  author        = {Lan, K. K. Gordon and DeMets, David L.},
+  title         = {Discrete sequential boundaries for clinical trials},
+  journal       = {Biometrika},
+  volume        = {70},
+  number        = {3},
+  pages         = {659--663},
+  year          = {1983},
+  doi           = {10.1093/biomet/70.3.659}
+}
+
+@book{jennison1999group,
+  author        = {Jennison, Christopher and Turnbull, Bruce W.},
+  title         = {Group Sequential Methods with Applications to Clinical Trials},
+  publisher     = {Chapman and Hall/CRC},
+  year          = {1999},
+  doi           = {10.1201/9780367805326},
+  note          = {Publisher's record dates it 15 September 1999; often cited as 2000}
+}
+
+% ---------------------------------------------------------------------------------------
+% Model architecture
+% ---------------------------------------------------------------------------------------
+
+@misc{de2024griffin,
+  author        = {De, Soham and Smith, Samuel L. and Fernando, Anushan and Botev, Aleksandar and Cristian-Muraru, George and Gu, Albert and Haroun, Ruba and Berrada, Leonard and Chen, Yutian and Srinivasan, Srivatsan and Desjardins, Guillaume and Doucet, Arnaud and Budden, David and Teh, Yee Whye and Pascanu, Razvan and De Freitas, Nando and Gulcehre, Caglar},
+  title         = {Griffin: Mixing Gated Linear Recurrences with Local Attention for Efficient Language Models},
+  year          = {2024},
+  eprint        = {2402.19427},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@inproceedings{cho2014learning,
+  author        = {Cho, Kyunghyun and van Merri{\"e}nboer, Bart and Gulcehre, Caglar and Bahdanau, Dzmitry and Bougares, Fethi and Schwenk, Holger and Bengio, Yoshua},
+  title         = {Learning Phrase Representations using {RNN} Encoder--Decoder for Statistical Machine Translation},
+  booktitle     = {Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  pages         = {1724--1734},
+  year          = {2014},
+  doi           = {10.3115/v1/D14-1179}
+}
+
+@inproceedings{vaswani2017attention,
+  author        = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N. and Kaiser, {\L}ukasz and Polosukhin, Illia},
+  title         = {Attention Is All You Need},
+  booktitle     = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume        = {30},
+  year          = {2017},
+  eprint        = {1706.03762},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{zhang2019root,
+  author        = {Zhang, Biao and Sennrich, Rico},
+  title         = {Root Mean Square Layer Normalization},
+  booktitle     = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume        = {32},
+  year          = {2019},
+  eprint        = {1910.07467},
+  archivePrefix = {arXiv}
+}
+
+@misc{shazeer2020glu,
+  author        = {Shazeer, Noam},
+  title         = {{GLU} Variants Improve Transformer},
+  year          = {2020},
+  eprint        = {2002.05202},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@article{su2024roformer,
+  author        = {Su, Jianlin and Ahmed, Murtadha and Lu, Yu and Pan, Shengfeng and Bo, Wen and Liu, Yunfeng},
+  title         = {{RoFormer}: Enhanced Transformer with Rotary Position Embedding},
+  journal       = {Neurocomputing},
+  volume        = {568},
+  pages         = {127063},
+  year          = {2024},
+  doi           = {10.1016/j.neucom.2023.127063},
+  note          = {Preprint: arXiv:2104.09864 (2021)}
+}
+
+@inproceedings{qiu2025gated,
+  author        = {Qiu, Zihan and Wang, Zekun and Zheng, Bo and Huang, Zeyu and Wen, Kaiyue and Yang, Songlin and Men, Rui and Yu, Le and Huang, Fei and Huang, Suozhi and Liu, Dayiheng and Zhou, Jingren and Lin, Junyang},
+  title         = {Gated Attention for Large Language Models: Non-linearity, Sparsity, and Attention-Sink-Free},
+  booktitle     = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume        = {38},
+  year          = {2025},
+  eprint        = {2505.06708},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{lee2019set,
+  author        = {Lee, Juho and Lee, Yoonho and Kim, Jungtaek and Kosiorek, Adam R. and Choi, Seungjin and Teh, Yee Whye},
+  title         = {Set Transformer: A Framework for Attention-based Permutation-Invariant Neural Networks},
+  booktitle     = {Proceedings of the 36th International Conference on Machine Learning (ICML)},
+  series        = {Proceedings of Machine Learning Research},
+  volume        = {97},
+  year          = {2019},
+  eprint        = {1810.00825},
+  archivePrefix = {arXiv}
+}
+
+@misc{balestriero2025lejepa,
+  author        = {Balestriero, Randall and LeCun, Yann},
+  title         = {{LeJEPA}: Provable and Scalable Self-Supervised Learning Without the Heuristics},
+  year          = {2025},
+  eprint        = {2511.08544},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+% ---------------------------------------------------------------------------------------
+% Value targets and input codes
+% ---------------------------------------------------------------------------------------
+
+@inproceedings{imani2018improving,
+  author        = {Imani, Ehsan and White, Martha},
+  title         = {Improving Regression Performance with Distributional Losses},
+  booktitle     = {Proceedings of the 35th International Conference on Machine Learning (ICML)},
+  series        = {Proceedings of Machine Learning Research},
+  volume        = {80},
+  year          = {2018},
+  eprint        = {1806.04613},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{farebrother2024stop,
+  author        = {Farebrother, Jesse and Orbay, Jordi and Vuong, Quan and Ta{\"i}ga, Adrien Ali and Chebotar, Yevgen and Xiao, Ted and Irpan, Alex and Levine, Sergey and Castro, Pablo Samuel and Faust, Aleksandra and Kumar, Aviral and Agarwal, Rishabh},
+  title         = {Stop Regressing: Training Value Functions via Classification for Scalable Deep {RL}},
+  booktitle     = {Proceedings of the 41st International Conference on Machine Learning (ICML)},
+  series        = {Proceedings of Machine Learning Research},
+  volume        = {235},
+  pages         = {13049--13071},
+  year          = {2024},
+  eprint        = {2403.03950},
+  archivePrefix = {arXiv}
+}
+
+@article{hafner2025mastering,
+  author        = {Hafner, Danijar and Pasukonis, Jurgis and Ba, Jimmy and Lillicrap, Timothy},
+  title         = {Mastering diverse control tasks through world models},
+  journal       = {Nature},
+  volume        = {640},
+  number        = {8059},
+  pages         = {647--653},
+  year          = {2025},
+  doi           = {10.1038/s41586-025-08744-2},
+  note          = {DreamerV3. Preprint: arXiv:2301.04104 (2023), ``Mastering Diverse Domains through World Models''}
+}
+
+@article{schrittwieser2020mastering,
+  author        = {Schrittwieser, Julian and Antonoglou, Ioannis and Hubert, Thomas and Simonyan, Karen and Sifre, Laurent and Schmitt, Simon and Guez, Arthur and Lockhart, Edward and Hassabis, Demis and Graepel, Thore and Lillicrap, Timothy and Silver, David},
+  title         = {Mastering {Atari}, {Go}, chess and shogi by planning with a learned model},
+  journal       = {Nature},
+  volume        = {588},
+  number        = {7839},
+  pages         = {604--609},
+  year          = {2020},
+  doi           = {10.1038/s41586-020-03051-4},
+  note          = {MuZero. Preprint: arXiv:1911.08265}
+}
+
+% ---------------------------------------------------------------------------------------
+% Search, sampling and systems
+% ---------------------------------------------------------------------------------------
+
+@article{hansen2001completely,
+  author        = {Hansen, Nikolaus and Ostermeier, Andreas},
+  title         = {Completely Derandomized Self-Adaptation in Evolution Strategies},
+  journal       = {Evolutionary Computation},
+  volume        = {9},
+  number        = {2},
+  pages         = {159--195},
+  year          = {2001},
+  doi           = {10.1162/106365601750190398}
+}
+
+@misc{hansen2016cma,
+  author        = {Hansen, Nikolaus},
+  title         = {The {CMA} Evolution Strategy: A Tutorial},
+  year          = {2016},
+  eprint        = {1604.00772},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@article{sobol1967distribution,
+  author        = {Sobol', I. M.},
+  title         = {On the distribution of points in a cube and the approximate evaluation of integrals},
+  journal       = {USSR Computational Mathematics and Mathematical Physics},
+  volume        = {7},
+  number        = {4},
+  pages         = {86--112},
+  year          = {1967},
+  doi           = {10.1016/0041-5553(67)90144-9}
+}
+
+@inproceedings{ansel2024pytorch,
+  author        = {Ansel, Jason and Yang, Edward and He, Horace and Gimelshein, Natalia and Jain, Animesh and Voznesensky, Michael and Bao, Bin and Bell, Peter and Berard, David and Burovski, Evgeni and Chauhan, Geeta and Chourdia, Anjali and Constable, Will and Desmaison, Alban and DeVito, Zachary and Ellison, Elias and Feng, Will and Gong, Jiong and Gschwind, Michael and Hirsh, Brian and Huang, Sherlock and Kalambarkar, Kshiteej and Kirsch, Laurent and Lazos, Michael and Lezcano, Mario and Liang, Yanbo and Liang, Jason and Lu, Yinghai and Luk, C. K. and Maher, Bert and Pan, Yunjie and Puhrsch, Christian and Reso, Matthias and Saroufim, Mark and Siraichi, Marcos Yukio and Suk, Helen and Zhang, Shunting and Suo, Michael and Tillet, Phil and Zhao, Xu and Wang, Eikan and Zhou, Keren and Zou, Richard and Wang, Xiaodong and Mathews, Ajit and Wen, William and Chanan, Gregory and Wu, Peng and Chintala, Soumith},
+  title         = {{PyTorch 2}: Faster Machine Learning Through Dynamic {Python} Bytecode Transformation and Graph Compilation},
+  booktitle     = {Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2 (ASPLOS '24)},
+  pages         = {929--947},
+  year          = {2024},
+  doi           = {10.1145/3620665.3640366}
+}
+
+@inproceedings{tillet2019triton,
+  author        = {Tillet, Philippe and Kung, H. T. and Cox, David},
+  title         = {Triton: An Intermediate Language and Compiler for Tiled Neural Network Computations},
+  booktitle     = {Proceedings of the 3rd ACM SIGPLAN International Workshop on Machine Learning and Programming Languages (MAPL)},
+  pages         = {10--19},
+  year          = {2019},
+  doi           = {10.1145/3315508.3329973}
+}
+
+@article{machado2009physiologically,
+  author        = {Machado, Gustavo M. and Oliveira, Manuel M. and Fernandes, Leandro A. F.},
+  title         = {A Physiologically-based Model for Simulation of Color Vision Deficiency},
+  journal       = {IEEE Transactions on Visualization and Computer Graphics},
+  volume        = {15},
+  number        = {6},
+  pages         = {1291--1298},
+  year          = {2009},
+  doi           = {10.1109/TVCG.2009.113}
+}
+
+% ---------------------------------------------------------------------------------------
+% Flight and aircraft performance
+% ---------------------------------------------------------------------------------------
+
+@techreport{toll1947summary,
+  author        = {Toll, Thomas A.},
+  title         = {Summary of Lateral-Control Research},
+  institution   = {National Advisory Committee for Aeronautics},
+  type          = {NACA Report},
+  number        = {868},
+  year          = {1947},
+  note          = {NASA NTRS 19930090943}
+}
+
+@techreport{gilruth1941lateral,
+  author        = {Gilruth, R. R. and Turner, W. N.},
+  title         = {Lateral Control Required for Satisfactory Flying Qualities Based on Flight Tests of Numerous Airplanes},
+  institution   = {National Advisory Committee for Aeronautics},
+  type          = {NACA Report},
+  number        = {715},
+  year          = {1941},
+  note          = {NASA NTRS 19930091793}
+}
+
+@techreport{boyd1966energy,
+  author        = {Boyd, John R. and Christie, Thomas P. and Gibson, James},
+  title         = {Energy-Maneuverability},
+  institution   = {Air Proving Ground Center, Eglin Air Force Base},
+  number        = {APGC-TR-66-4},
+  year          = {1966},
+  note          = {Unverified: no primary record found (DTIC); details from secondary sources. Gibson's given names not confirmed}
+}
