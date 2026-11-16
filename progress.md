@@ -539,3 +539,8 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Worked: every value name the pages quote is written by a chart or is one of the known no-generator names (Elo finals, throughput, champion, compute); placeholders.py gained BNB_RESULTS_VALUES and `readme --out` for previews.
 - Fixed: break-even `--chain r-rl` (a run name) silently drew an empty chart with no values; it now takes a run or chain name and fails on an unknown chain.
 - Open: no generator for elo_over_training.png (ladder.draw takes pool rows, not a values file), throughput.png, the media GIFs, or the elo/throughput/champion/compute values.
+
+## 2026-11-17 v2 write-up (branch docs/v2-writeup, worktree bnb-writeup)
+- 02:15 phase 1 done (b0de69bf: 6 docs branches + readme-preview fixes, NACA 868 = Toll 1947, publish check lists all, mode order); merged feat/eval-queue and feat/video-death-marks.
+- Theme module bnb.figures.theme: light/dark for results charts, ladder, trails; figure placeholder emits both variants; Figure style section.
+- Next: dry-v24-s1 RL ends ~02:37, eval queue then; meanwhile health/behaviour/throughput charts from metrics.jsonl.
