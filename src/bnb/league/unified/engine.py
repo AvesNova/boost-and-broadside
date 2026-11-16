@@ -446,7 +446,8 @@ class BucketEngine:
 
     def step(self) -> int:
         """One block: replay it, queue its logs' copy, tally the previous block's ended
-        games and queue their environments' next writes. Returns the games tallied."""
+        games and queue their environments' next writes. Returns the games tallied (parked
+        games are not)."""
         self.rollout.play_block()
         self.blocks += 1
         logs = torch.empty((self.environments, 6), dtype=torch.float64, pin_memory=True)
@@ -482,6 +483,7 @@ class BucketEngine:
             raise RuntimeError(f"bucket {self.bucket}: rows past a lane's capacity")
         ended = delta.nonzero().flatten().tolist()
         environments, slots = [], []
+        tallied = 0
         for environment in ended:
             if int(delta[environment]) > 1:  # never at a game's length; counted, not tallied
                 self.missed += int(delta[environment]) - 1
@@ -498,6 +500,7 @@ class BucketEngine:
                 if self.record is not None:
                     self.record(slot.cell, outcome, slot, self.bucket)
                 self.games += 1
+                tallied += 1
             else:
                 self.parked += 1
             # the next game is under way: it becomes the current one, and the one after it
@@ -511,7 +514,7 @@ class BucketEngine:
             slots.append(following)
         self.finished_seen = finished
         self._write(environments, slots)
-        return len(ended)
+        return tallied
 
     def wanted(self) -> bool:
         """Whether the bucket still has work: a target wants a game in it, or a game a target
