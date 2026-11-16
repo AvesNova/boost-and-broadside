@@ -52,11 +52,16 @@ did). Buckets run in turn, or share the device when each gets at least 512 envir
 
 ## Sizing
 
-`engine.footprint`: two eager probes (32 and 96 environments, a few ticks each) give the
-fixed and per-environment bytes; `size_environments` takes 70% of the free memory
-(`--memory-share`) and rounds down to a multiple of 64, so a machine gets the same shapes
-run after run (one compile per bucket per machine, which the box's `cache.sh` archive
-carries to a box of the same GPU model). `--environments` overrides it.
+`engine.footprint`: after a throwaway build, two eager probes (64 and 256 environments, a
+few ticks each, garbage collected between) give the fixed and per-environment bytes;
+`size_environments` takes 70% of the free memory (`--memory-share`) at the eager
+footprint times `COMPILED_FACTOR` (1.5, measured on the laptop) and rounds down to a
+multiple of 64. After the warm-up the run measures the compiled engine's reserved memory
+and remembers the size it allows for this machine (`bnb.cache.ROOT/unified-sizes.json`,
+keyed by GPU, memory, bucket, slices and shares), and later runs use it, so a machine
+plays the same shapes run after run (one compile per bucket per machine, which the box's
+`cache.sh` archive carries to a box of the same GPU model, the sizes file with it).
+`--environments` overrides both.
 
 ## The planner (`planner.Planner`)
 
