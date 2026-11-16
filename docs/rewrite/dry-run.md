@@ -65,3 +65,15 @@ bnb pool table $POOL --presets $CONDITIONS > $OUT/table.txt   # leaderboards and
 - **Labels:** every series is named by its stage and weights kind ("BC exponential average", "RL exponential average"). Live weights appear only with `--kinds ... live`, as their own series.
 - **Bounds:** a snapshot whose games give no finite rating (it won or lost everything) is drawn as an open marker at its bound. That happens mostly with early BC snapshots in the small conditions.
 - **Re-drawing:** `curves` reads the pool's records only, so the figure can be redrawn anywhere the pool directory is copied, the laptop included (no GPU).
+
+## The evaluation queue (box/eval_queue.sh)
+
+`box/eval_queue.sh CHAIN` runs the evaluation in the author's order (2026-11-17) once the chain has finished: it waits for the GPU lock, checks `CHAIN.exit`, and writes `$RUNS/CHAIN-eval/` (progress.log with a clock-time ETA per step, logs/, done/ markers so a rerun skips finished steps, queue.exit). It runs from its own checkout (`/workspace/wt/evalq`, a worktree of `/workspace/bnb` at `origin/feat/eval-queue`) with the box's venv. `box/fetch_eval.sh CHAIN` copies the outputs to the laptop.
+
+1. **Averaging sweep:** `bnb average` (the 14-average suite) over the RL stage's per-update files, rated in one pool on the three 5v5 conditions, each average's difference from the incumbent (the rebuilt training exponential average) to ±20 Elo per mode (`--contrast`; a difference stays measurable when every average beats Imugi too often for a finite Elo against it). The champion (`box/eval_champion.py`): the incumbent stays unless another average's mean difference over the modes is above it by more than two standard errors (from the fit's covariance); `champion.json` records the choice and why. With no difference measured, the incumbent stays by default.
+2. **The suite:** `bnb evaluate CHAMPION imugi --games 512` on all 13 conditions (Imugi's own break-even, about 1, doubles as a check of seats and benching), and pools at 0.5× and 2× maps (5v5, champion and Imugi).
+3. **5v5 curves:** the commands above at ±60 Elo, the three 5v5 conditions only.
+4. **Break-even:** BC's last snapshot and RL at 5, 10, 20, 35, 50, 75M and its last, laid out for `bnb figures results fan` and `break-even`.
+5. **Team sizes:** `bnb crossover CHAMPION --lineups ... --lineup-games 128`: n v n, n v 1.5n (even n) and n v 2n for n = 1 to 10, every mode, on the 20-a-side engine.
+6. **Media:** trail stills of the champion against Imugi (deathmatch 1v1 and 5v5, elimination 5v5 with its belief ghosts) and an MP4 at 5v5 deathmatch. The play shell has no uneven teams (`bnb.runtime.realtime` neither resets nor ticks with `active`), so the video can't play the break-even ratio yet.
+7. **Charts:** the curves figure and the fan, break-even, team-size and health charts into `charts/`.

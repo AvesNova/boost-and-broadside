@@ -416,6 +416,12 @@ class Crossover:
     lineup types) and continues; the result (with the provenance and the
     policy's SHA-256) goes to `artifacts/crossover/<time>/result.json`.
 
+    Fixed lineups (`--lineups 5v5 5v10 ...`, the policy's ships first): those lineups in
+    place of the break-even's allocation, each played to `--lineup-games` games (the
+    team-size chart's tallies, `bnb figures results team-size`), on the same engine (no
+    side above `--fixed-count`), recorded as their own measurement; the fit is reported as
+    usual.
+
     policy: the policy (as for bnb head-to-head); opponent: its opponent; fixed_count: the
     weaker side's ships; presets; map_rule:
     "preset" or "density" (above); bracket: the stronger side's counts before a fit;
@@ -423,7 +429,8 @@ class Crossover:
     0.3 ships at 15 against 20); budget_games: the most games per mode; lineup_types: ship
     type names of the preset's set; blocks and block_environments: the engine's layout (a
     batch is blocks x block_environments games, a block one lineup); seed: the games' draws
-    and lineups; device; out; runs_directory: as for bnb train.
+    and lineups; device; out; runs_directory: as for bnb train; lineups and lineup_games:
+    the fixed lineups and their games each (above).
     """
 
     policy: tyro.conf.Positional[str]
@@ -445,6 +452,19 @@ class Crossover:
     device: str = "cuda"
     out: str | None = None
     runs_directory: str | None = None
+    lineups: tuple[str, ...] = ()
+    lineup_games: int = 256
+
+
+def parse_lineups(lineups: tuple[str, ...]) -> tuple[tuple[int, int], ...]:
+    """Lineups in words ("5v10": the policy's ships, then the opponent's) as pairs."""
+    pairs = []
+    for lineup in lineups:
+        policy_ships, _, opponent_ships = lineup.partition("v")
+        if not (policy_ships.isdigit() and opponent_ships.isdigit()):
+            raise SystemExit(f"--lineups {lineup!r}: the policy's ships v the opponent's (5v10)")
+        pairs.append((int(policy_ships), int(opponent_ships)))
+    return tuple(pairs)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1926,6 +1946,8 @@ def crossover(options: Crossover) -> None:
             bracket=options.bracket,
             target_stderr=options.target_stderr,
             budget_games=options.budget_games,
+            fixed_lineups=parse_lineups(options.lineups),
+            lineup_games=options.lineup_games,
         )
         layout = ArenaConfig(
             blocks=options.blocks, block_environments=options.block_environments, seed=options.seed
