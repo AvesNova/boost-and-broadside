@@ -473,3 +473,7 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Tried: merged lethality-sticky (game v23, sticky Imugi build 2) and balance-eval; both clean, quick tier 95 passed.
 - Worked: game v24, no fog in team deathmatch: GameConfig.fogged_share by mode, resolved per pool in Lineup (every Rollout path); balance_sweep fog follows the mode; ae3ea958.
 - Next: the whole fast suite (author asked), the CPU smoke check of `bnb train --preset real_scale_all_modes` pools.
+- 22:12 tried: the whole fast suite (`not slow and not gpu`): 2613 passed, 54 failed. 39 were Yemong
+  model tests whose team deathmatch fixtures needed hidden ships: fixed with an explicit
+  `fog_share=1.0` (160 passed). Smoke: real_scale_all_modes PPO and BC pools give deathmatch 0/981
+  fogged, elimination 981/981, Frontline 1110/1110. Next: rerun the rest for the other 15 failures.
