@@ -1,0 +1,22 @@
+Nov 16 17:08:35.975591 vizia systemd[4305]: Started balance-eval-worker.service - [systemd-run] /home/vizia/avesnova/bnb-balance-eval/.venv/bin/python -m bench.balance_worker --condition deathmatch-5v5 --queue /home/vizia/avesnova/bnb-balance-eval/docs/rewrite/sections/balance-eval/queue/deathmatch-5v5 --environments 256 --variants 32 --once --lock /tmp/claude-1000/bnb-gpu.lock.
+Nov 16 17:08:48.337106 vizia python[578252]: /home/vizia/avesnova/bnb-balance-eval/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/functions.py:3115: UserWarning: Dynamo detected a call to a `functools.lru_cache`-wrapped function at 'layout.py:250'. Dynamo ignores the cache wrapper and directly traces the wrapped function. Silent incorrectness is only a *potential* risk, not something we have observed. Enable TORCH_LOGS=+dynamo for a DEBUG stack trace.
+Nov 16 17:08:48.337106 vizia python[578252]: This call originates from:
+Nov 16 17:08:48.337106 vizia python[578252]:   File "/home/vizia/avesnova/bnb-balance-eval/src/bnb/game/layout.py", line 250, in zero_share
+Nov 16 17:08:48.337106 vizia python[578252]:     return _zero_share(int(law), float(ramp_width))
+Nov 16 17:08:48.337106 vizia python[578252]:   torch._dynamo.utils.warn_once(msg)
+Nov 16 17:09:23.973663 vizia python[578252]: W1116 17:09:23.973000 578252 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+Nov 16 17:10:33.757324 vizia python[578252]: /home/vizia/avesnova/bnb-balance-eval/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+Nov 16 17:10:33.757324 vizia python[578252]:   warn_once(FP_FUSION_DEFAULT_WARNING)
+Nov 16 17:10:44.149700 vizia python[578252]: V1116 17:10:44.149000 578252 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles] Recompiling function tick in /home/vizia/avesnova/bnb-balance-eval/bench/game_loop.py:527
+Nov 16 17:10:44.149700 vizia python[578252]: V1116 17:10:44.149000 578252 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles]     triggered by the following guard failure(s):
+Nov 16 17:10:44.149700 vizia python[578252]: V1116 17:10:44.149000 578252 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles]     - 0/0: tensor 'carry.boundary_progress' stride mismatch at index 0. expected 1, actual 15
+Nov 16 17:12:07.961203 vizia python[578252]: worker deathmatch-5v5: ready in 211 s, watching /home/vizia/avesnova/bnb-balance-eval/docs/rewrite/sections/balance-eval/queue/deathmatch-5v5
+Nov 16 17:12:07.963300 vizia python[578252]: job 01-check.json: 2 entries -> /home/vizia/avesnova/bnb-balance-eval/docs/rewrite/sections/balance-eval/data/check-deathmatch-5v5.jsonl
+Nov 16 17:12:17.150351 vizia python[578252]: job 01-check.json: cards measured in 9 s
+Nov 16 17:13:25.986764 vizia python[578252]:   batch 1/2 27 s; ETA 17:13 KST
+Nov 16 17:13:53.227661 vizia python[578252]:   batch 2/2 54 s; ETA 17:13 KST
+Nov 16 17:13:53.230685 vizia python[578252]: base: Yongma team v Jujak team: A kill share 0.449 ± 0.002, kills/min A 5.45 B 6.70; score 0.117 ± 0.020
+Nov 16 17:13:53.230736 vizia python[578252]: pair: Jujak v Jujak: A kill share 0.506 ± 0.003, kills/min A 6.39 B 6.24; score 0.539 ± 0.031
+Nov 16 17:13:53.230767 vizia python[578252]: 2/2 entries; done about 17:13 KST
+Nov 16 17:13:53.232668 vizia python[578252]: job 01-check.json: done
+Nov 16 17:14:00.007792 vizia systemd[4305]: balance-eval-worker.service: Consumed 6min 38.635s CPU time over 5min 24.032s wall clock time, 4.6G memory peak.

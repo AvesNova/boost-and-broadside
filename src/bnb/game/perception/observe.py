@@ -97,21 +97,23 @@ def _hidden_columns(
 
 
 def perceive(
-    rules: Rules, state: State, active: torch.Tensor | None = None
+    rules: Rules, state: State, active: torch.Tensor | None = None, fog: bool = True
 ) -> tuple[State, Obs, Privileged]:
     """Visibility, the per-view observation and the truth. Returns the state with
     `ticks_since_seen` advanced and this tick's velocities, nose rates, life and sight kept
     for the next tick's accelerations (the only state perception changes). active (B, 2)
     int32: each team's active ships, as the tick was given (`bnb.game.physics.step`; None,
     every ship), which sets team deathmatch's winning score and the rows' benched flag (shown
-    to both teams); a benched ship's other columns are a dead ship's, from the state."""
+    to both teams); a benched ship's other columns are a dead ship's, from the state. fog
+    False (static, a measurement's switch): no environment has fog, the sight test skipped
+    (`sight.visibility`); the caller resets every environment unfogged."""
     ships, fields, match = state.ships, state.fields, state.match
     B, N = ships.x.shape
     S, device = rules.ships_per_team, ships.x.device
     order = view_order(S, device)  # (2, N)
     views = torch.arange(TEAMS, device=device)[:, None]
 
-    visible = visibility(state)  # (B, 2, N) sim order
+    visible = visibility(state, fog)  # (B, 2, N) sim order
     unfogged = ~match.fogged[:, None, None]
     since = torch.where(
         visible | unfogged, 0, (match.ticks_since_seen + 1).clamp_max(TICKS_SINCE_SEEN_CAP)

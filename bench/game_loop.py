@@ -104,6 +104,7 @@ MERGE_HYSTERESIS = 30.0  # m
 MERGE_BINS = 16  # merges in an engagement: 0..14, 15 and more
 TURN_BINS = 32  # circles turned by a ship in an engagement, quarter circles: 0..7.75, 8+
 PACE_BINS = 121  # whole seconds 0..119, and 120 or more
+MINUTE_BINS = 10  # the first match's kills by minute: 0..8, 9 and later
 TRADE_WINDOW = 0.5  # s: a death with one on the other team this close is a trade
 # The base card: the ship files' with these factors. The tuning ran on the files before
 # the freeze with hit damage x 0.65 (the author's 2026-11-12 decision: v5's damage per
@@ -208,6 +209,9 @@ class Group:
     a: Player
     b: Player
     environments: int
+    # the job's index of the group's first game (`batches`): its games are first_game, ...;
+    # an even game seats A on team 0, and a seeded loop draws game g's spawns from g
+    first_game: int = 0
 
     def key(self) -> dict:
         """The group's identity as a dict: variant, lineup and the players' names."""
@@ -228,8 +232,10 @@ def teams_of(lineup: str, ships_per_team: int = 5) -> tuple[tuple[int, ...], ...
 
 def layout(groups: list[Group], variants: int, device, ships_per_team: int = 5) -> dict:
     """The per-environment tensors of a list of groups: ship types (B, N) int32, side A on
-    team 0 (B,), the group index (B,), and the view doctrine table (2B, 2K, WIDTH)."""
+    team 0 (B,), the group index (B,), each game's index in its job (B,), and the view
+    doctrine table (2B, 2K, WIDTH)."""
     ship_type, a_on_zero, group_index, view_rows, temperature = [], [], [], [], []
+    game_index = []
     parameter_rows = []
     default = default_parameters()
     for number, group in enumerate(groups):
@@ -245,11 +251,13 @@ def layout(groups: list[Group], variants: int, device, ships_per_team: int = 5) 
             return [group.variant + kind * variants for kind in team]
 
         for e in range(group.environments):
-            on_zero = e % 2 == 0
+            game = group.first_game + e
+            on_zero = game % 2 == 0
             team0, team1 = (first, second) if on_zero else (second, first)
             ship_type.append(types_of(team0) + types_of(team1))
             a_on_zero.append(on_zero)
             group_index.append(number)
+            game_index.append(game)
             for team_side in ("a", "b") if on_zero else ("b", "a"):
                 energy_row, turn_row = rows[team_side]
                 view_rows.append([energy_row] * variants + [turn_row] * variants)
@@ -259,6 +267,7 @@ def layout(groups: list[Group], variants: int, device, ships_per_team: int = 5) 
         ship_type=torch.tensor(ship_type, dtype=torch.int32, device=device),
         a_on_zero=torch.tensor(a_on_zero, device=device),
         group=torch.tensor(group_index, device=device),
+        game=torch.tensor(game_index, dtype=torch.int64),
         doctrines=torch.tensor(view_rows, dtype=torch.float32, device=device),
         temperature=torch.tensor(temperature, dtype=torch.float32, device=device),
         parameters=torch.tensor(parameter_rows, dtype=torch.float32, device=device),
@@ -270,6 +279,13 @@ def tally_like(B: int, S: int, device) -> dict:
     zeros = dict(device=device)
     return dict(
         kills_side=torch.zeros((B, 2), **zeros),  # by killer side A, B
+        # the first match's (the whole clock in deathmatch): kills by hits by killer side,
+        # deaths of any cause by victim side, its ticks
+        match_kills=torch.zeros((B, 2), **zeros),
+        match_deaths=torch.zeros((B, 2), **zeros),
+        match_ticks=torch.zeros((B,), **zeros),
+        # the first match's kills by hits by the minute they fell in (the last bin: later)
+        kills_by_minute=torch.zeros((B, MINUTE_BINS, 2), **zeros),
         # deaths of any cause (the boundary's, friendly fire's too) by victim side A, B: a
         # side's points are the other side's deaths, as team deathmatch's score counts them
         deaths_side=torch.zeros((B, 2), **zeros),
@@ -370,6 +386,10 @@ STATISTICS = (
     "hits",
     "kills_side",
     "deaths_side",
+    "match_kills",
+    "match_deaths",
+    "match_ticks",
+    "kills_by_minute",
     "result",
     "finished",
     "kills_kind",
@@ -402,7 +422,19 @@ class Loop:
         settings: dict[str, float] | None = None,
         fields: bool = False,
         fixed_map: bool = False,
+        controller=None,
+        spawn_seed: int | None = None,
+        stop_when_finished: bool = False,
     ) -> None:
+        """fog: every game fogged, or none (static: without fog the sight test is skipped,
+        `bnb.game.perception.sight.visibility`). controller: a factory (the loop) -> an agent
+        with `init_carry(views, device)` and `step(carry, obs, reset, keys)`
+        (`imugi_controller`, the default); an agent with `refresh(card, types)` is told of a
+        new card table. spawn_seed: each game's spawn layout drawn from (seed, the game's
+        index in its job) (`seeded_uniforms`), so every job's game i starts on the same
+        spawns (common random numbers); None: from the default generator. Settable between
+        games (`start` reads it). stop_when_finished: a scored mode stops once every
+        environment's first match has ended (the later matches are not scored)."""
         self.device = torch.device(device)
         self.mode = mode
         base_game = api.PRESETS[MODES[mode]]
@@ -442,13 +474,10 @@ class Loop:
         self.parameters = torch.tensor(
             [default_parameters()] * (2 * self.B), dtype=torch.float32, device=self.device
         )
-        self.agent = imugi.Imugi(
-            self.card,
-            self.S,
-            parameters=unpack(self.parameters),
-            temperature=self.temperature,
-            doctrines=self.doctrines,
-        )
+        self.unpacked_parameters = unpack(self.parameters)
+        self.spawn_seed = spawn_seed
+        self.stop_when_finished = stop_when_finished
+        self.agent = (controller or imugi_controller)(self)
         self.ship_type = torch.zeros((self.B, self.N), dtype=torch.int32, device=self.device)
         self.a_on_zero = torch.zeros((self.B,), dtype=torch.bool, device=self.device)
         self.grace = float(round(MERGE_GRACE / self.rules.tick_length))
@@ -460,14 +489,20 @@ class Loop:
 
     def set_types(self, energy: list[dict], turn: list[dict]) -> None:
         """New card variants, written in place (no recompile)."""
-        fresh = variant_types(self.base, energy, turn)
-        for field in dataclasses.fields(fresh):
-            getattr(self.types, field.name).copy_(getattr(fresh, field.name))
+        self.set_table(variant_types(self.base, energy, turn))
+
+    def set_table(self, table: ShipTypes) -> None:
+        """A new card table (2K,) of any rows, written in place (no recompile): the first K
+        rows the slot kind 0's variants, the last K kind 1's (`variant_types`' order)."""
+        for field in dataclasses.fields(table):
+            getattr(self.types, field.name).copy_(getattr(table, field.name))
         card = characteristics(self.types, self.rules)
         for field in dataclasses.fields(card):
             value = getattr(self.card, field.name)
             if isinstance(value, torch.Tensor):
                 value.copy_(getattr(card, field.name))
+        if hasattr(self.agent, "refresh"):
+            self.agent.refresh(self.card, self.types)
 
     def start(self, groups: list[Group]):
         """A fresh game in every environment of the layout."""
@@ -480,14 +515,18 @@ class Loop:
         self.temperature.copy_(placed["temperature"])
         self.parameters.copy_(placed["parameters"])
         self.group = placed["group"]
+        if self.spawn_seed is None:
+            uniforms = api.uniforms(self.rules, self.B, self.device)
+        else:
+            uniforms = seeded_uniforms(self.rules, self.spawn_seed, placed["game"], self.device)
         state = api.reset(
             self.rules,
             self.types,
-            api.uniforms(self.rules, self.B, self.device),
+            uniforms,
             torch.full((self.B,), self.fog, dtype=torch.bool, device=self.device),
             ship_type=self.ship_type,
         )
-        state, observation, _ = api.perceive(self.rules, state)
+        state, observation, _ = api.perceive(self.rules, state, fog=self.fog)
         carry = self.agent.init_carry(2 * self.B, self.device)
         tally = tally_like(self.B, self.S, self.device)
         shown = api.display(state)
@@ -517,6 +556,10 @@ class Loop:
         )
         tally = dict(tally)
         tick = tally["tick"]
+        # the first match's own tallies: every tick up to and including the one it ends on
+        # (deathmatch: the whole clock), kills by hits by killer side, deaths of any cause
+        # by victim side (the counts below, masked)
+        in_match = ~tally["finished"]
         first_end = events.done & ~tally["finished"]
         tally["result"] = torch.where(first_end, events.result.to(torch.int32), tally["result"])
         tally["finished"] = tally["finished"] | events.done
@@ -736,9 +779,18 @@ class Loop:
         tally["kills_side"] = tally["kills_side"] + torch.stack(
             [(kill * killer_side_a).sum(1), (kill * ~killer_side_a).sum(1)], -1
         )
-        tally["deaths_side"] = (
-            tally["deaths_side"]
-            + torch.stack([(died & side_a).sum(1), (died & ~side_a).sum(1)], -1).float()
+        kills_now = torch.stack([(kill * killer_side_a).sum(1), (kill * ~killer_side_a).sum(1)], -1)
+        deaths_now = torch.stack([(died & side_a).sum(1), (died & ~side_a).sum(1)], -1).float()
+        tally["deaths_side"] = tally["deaths_side"] + deaths_now
+        counting = in_match.float()
+        tally["match_kills"] = tally["match_kills"] + counting[:, None] * kills_now
+        tally["match_deaths"] = tally["match_deaths"] + counting[:, None] * deaths_now
+        tally["match_ticks"] = tally["match_ticks"] + counting
+        minute = (tick * rules.tick_length / 60.0).long().clamp_max(MINUTE_BINS - 1)
+        in_minute = torch.nn.functional.one_hot(minute, MINUTE_BINS).float()  # (MINUTE_BINS,)
+        tally["kills_by_minute"] = (
+            tally["kills_by_minute"]
+            + (counting[:, None] * kills_now)[:, None, :] * in_minute[:, None]
         )
         aspect = torch.nn.functional.one_hot(
             events.kill_aspect.long().clamp_min(0), len(ASPECTS)
@@ -947,7 +999,7 @@ class Loop:
         tally["window"] = window
         tally["same"], tally["opposite"], tally["reversals"] = same, opposite, reversals
         tally["tick"] = tick + 1
-        state, observation, _ = api.perceive(rules, state)
+        state, observation, _ = api.perceive(rules, state, fog=self.fog)
         return state, observation, carry, tally
 
     def play(self, groups: list[Group]) -> dict:
@@ -956,8 +1008,12 @@ class Loop:
         # deathmatch: the game ends (and resets) on its last tick, which is not played; a
         # scored mode plays it, so the clock's result is read
         ticks = self.ticks - 1 if self.mode == "deathmatch" else self.ticks
-        for _ in range(ticks):
+        stopping = self.stop_when_finished and self.mode != "deathmatch"
+        for number in range(ticks):
             state, observation, carry, tally = self._tick(state, observation, carry, tally)
+            if stopping and number % FINISHED_CHECK == FINISHED_CHECK - 1:
+                if bool(tally["finished"].all()):  # every first match over
+                    break
         torch.cuda.synchronize(self.device) if self.device.type == "cuda" else None
         ships = torch.full((self.B,), float(self.N))  # ships a game, for the per-ship pace
         out = {name: tally[name].cpu() for name in STATISTICS} | {
@@ -968,6 +1024,36 @@ class Loop:
             a_result = torch.where(self.a_on_zero, tally["result"], -tally["result"])
             out["a_result"] = a_result.cpu()
         return out
+
+
+FINISHED_CHECK = 60  # ticks between a scored batch's looks at whether every match ended
+
+
+def imugi_controller(loop: Loop):
+    """Imugi on the loop's card, with the loop's per-view parameters, temperatures and
+    doctrine tables (data: a new layout writes them in place)."""
+    return imugi.Imugi(
+        loop.card,
+        loop.S,
+        parameters=loop.unpacked_parameters,
+        temperature=loop.temperature,
+        doctrines=loop.doctrines,
+    )
+
+
+def seeded_uniforms(rules, seed: int, games: torch.Tensor, device) -> torch.Tensor:
+    """(B, U) reset uniforms, each environment's row drawn from its own generator seeded by
+    (seed, its game index): the same game index gives the same spawn layout in any batch,
+    position or job (`api.uniforms`' columns)."""
+    import numpy
+
+    # numpy's seed sequence of (seed, game): torch's CPU generator keeps only 32 bits of a seed
+    rows = [
+        numpy.random.default_rng([seed, game]).random(rules.tick_uniform_count)
+        for game in games.tolist()
+    ]
+    below_one = 1.0 - 2.0**-24  # a double near 1 would round up to 1.0 in float32
+    return torch.tensor(numpy.stack(rows), dtype=torch.float32).clamp_max(below_one).to(device)
 
 
 def per_type(table: torch.Tensor, ship_type: torch.Tensor) -> torch.Tensor:
@@ -1309,10 +1395,11 @@ def batches(jobs: list[Job], environments: int) -> list[list[tuple[int, Group]]]
     (job index or -1, group)."""
     out, current, room = [], [], environments
     for number, job in enumerate(jobs):
-        left = job.games + job.games % 2
+        total = left = job.games + job.games % 2
         while left > 0:
             take = min(left, room)
-            current.append((number, Group(job.variant, job.lineup, job.a, job.b, take)))
+            group = Group(job.variant, job.lineup, job.a, job.b, take, first_game=total - left)
+            current.append((number, group))
             left -= take
             room -= take
             if room == 0:
