@@ -6,8 +6,8 @@ Imugi on both sides, fog on, the preset's fields and map, seats alternating; "C 
 of five Bonghwang against five Jujak, the score Bonghwang's (a deathmatch game is won on
 points over 300 s), ± one standard error. The working log is [progress.md](progress.md).
 
-**Status: provisional.** The card and doctrine below are the current front-runner; the mode
-checks (elimination, Frontline, 2v2, 10v10) and a final trim are running.
+**Status:** the card and doctrine are in the game on this branch (d1.2/s115). Open: the
+re-check against the balance agent's final Yongma/Jujak cards (its option C is running).
 
 ## The ship
 
@@ -52,16 +52,34 @@ the sense; extend and the extensions off by the author's 2026-11-14 decision) fo
 better: every element at full weight costs strength (lag most), and the best searched
 doctrines' gains were the same sense change.
 
-## Matchups (deathmatch 5v5)
+## Matchups
 
-| | score (Bonghwang's) | games |
-|---|---|---|
-| Bonghwang v Jujak | 0.510 ± 0.021 | 512 |
-| Bonghwang v Yongma | 0.597 ± 0.021 | 512 |
-| Yongma v Jujak (reference, same run) | 0.461 ± 0.021 | 512 |
-| mirrors | 0.5 by symmetry | |
+Bonghwang at d1.2/s115 with its doctrine, against the release Yongma and the v23 Jujak. The
+release pair's own score is from the same run (its own seed), so each row is a self-contained
+triangle.
 
-(Card d1.2/s115 with its doctrine, kdoctrine4; trim and the tight run pending.)
+| mode, size (games a pairing) | Bonghwang v Jujak | Bonghwang v Yongma | Yongma v Jujak |
+|---|---|---|---|
+| **deathmatch 5v5 (1536)** | **0.490 ± 0.012** | **0.567 ± 0.012** | 0.495 ± 0.012 |
+| deathmatch 5v5, other runs (512, 640) | 0.510, 0.473 | 0.597, 0.601 | 0.461 |
+| deathmatch 1v1 (1024; mostly draws) | 0.333 ± 0.009 | 0.565 ± 0.009 | 0.310 ± 0.009 |
+| deathmatch 2v2 (1024) | 0.311 ± 0.013 | 0.674 ± 0.013 | 0.279 ± 0.013 |
+| deathmatch 10v10 (384) | 0.600 ± 0.024 | 0.464 ± 0.025 | 0.732 ± 0.022 |
+| elimination 5v5 (512) | 0.396 ± 0.022 | 0.682 ± 0.021 | 0.356 ± 0.021 |
+| Frontline 5v5 (512) | 0.326 ± 0.020 | 0.635 ± 0.020 | 0.335 ± 0.023 |
+| mirrors | 0.5 by symmetry | | |
+
+Seed-to-seed spread at 5v5 is about ±0.03 (three runs of the same card: 0.47-0.51 against
+Jujak, 0.57-0.60 against Yongma), larger than one run's standard error.
+
+**Reading.** At 5v5 deathmatch, the balance target, Bonghwang is level with Jujak and a little
+ahead of Yongma. Off that point it moves less than the release pair does: from 2v2 to 10v10
+Yongma v Jujak runs 0.28 -> 0.73, Bonghwang v Jujak 0.31 -> 0.60 and Bonghwang v Yongma
+0.67 -> 0.46. In every condition Bonghwang lands between the other two (Jujak strongest in
+the small fights, elimination and Frontline; Yongma at 10v10), so where the release pair is
+far apart no third ship can be within 40-60% of both; the size and mode spread is the release
+pair's, and the balance agent's flatter option (C: Jujak turn x0.91, Yongma turn x1.08,
+Yongma shield x0.6) is being checked against Bonghwang now.
 
 **Pace and aspects** (kills per minute, mean; kill aspect shares mutual head-on / offset
 head-on / flank / tail; passes per kill; trades):
@@ -114,7 +132,9 @@ uv run --no-sync bnb play --preset bonghwang-yongma
 uv run --no-sync bnb play --preset three-ships        # all three
 ```
 
-(Pending: `apply.py` writes the ship file, the doctrine and the maps once the card is final.)
+`apply.py` (`docs/rewrite/sections/third-ship/apply.py candidates/trim1.json B-d1.2-s115
+candidates/trim1.json B-d1.2-s115`) wrote the ship file, the doctrine, Jujak's v23 card and the
+maps; in the play shell's tuning panel Bonghwang is the third type.
 
 ## What did not work
 
