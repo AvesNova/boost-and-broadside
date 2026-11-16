@@ -1,6 +1,6 @@
 """The timing records (`bench.balance_sweep timing`, data/timing.jsonl) as a Markdown table.
 
-    cd docs/rewrite/sections/balance-eval && python timing_table.py data/timing.jsonl
+cd docs/rewrite/sections/balance-eval && python timing_table.py data/timing.jsonl
 """
 
 import json

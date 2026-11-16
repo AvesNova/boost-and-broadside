@@ -212,3 +212,32 @@ kills-by-minute tally), then deathmatch 5v5 and Frontline 10v10 at 16384:
   Frontline 10v10 1.72. Compile 150-175 s per condition (laptop 177-224 s).
 - The kill shares match the laptop's to the decimal at the same seed (deathmatch 5v5 44.5,
   10v10 45.1; 1v1 20.3 against 19.7, within its 0.6 error).
+
+### Deathmatch clock (5090, 18:55 KST)
+
+`clock_5090.sh` (worktree at 5bcb20bb, with the kills-by-minute tally): Yongma team v
+Jujak team, 4096 games of the 600 s cap at 2v2, 5v5 and 10v10 (seed 0, fog on, fields off);
+the kill share had the clock stopped after each minute, from the same games (`clock_table.py`,
+`data/box5090/clock-*.jsonl`). "cost": game-seconds for a given error, relative to 300 s
+(SE^2 x clock over 300 s's).
+
+| condition | games | 1 min | 2 min | 3 min | 4 min | 5 min | 6 min | 7 min | 8 min | 9 min | 10 min |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| deathmatch-10v10 | 4096 | 44.6 ± 0.2 | 45.1 ± 0.1 | 45.2 ± 0.1 | 45.1 ± 0.1 | 45.1 ± 0.1 | 45.1 ± 0.1 | 45.1 ± 0.0 | 45.2 ± 0.0 | 45.2 ± 0.0 | 45.2 ± 0.0 |
+| deathmatch-2v2 | 4096 | 37.3 ± 0.4 | 36.2 ± 0.3 | 35.9 ± 0.2 | 35.7 ± 0.2 | 35.5 ± 0.2 | 35.6 ± 0.2 | 35.4 ± 0.2 | 35.2 ± 0.1 | 35.2 ± 0.1 | 35.2 ± 0.1 |
+| deathmatch-5v5 | 4096 | 44.6 ± 0.2 | 44.7 ± 0.2 | 44.7 ± 0.1 | 44.6 ± 0.1 | 44.5 ± 0.1 | 44.4 ± 0.1 | 44.3 ± 0.1 | 44.2 ± 0.1 | 44.2 ± 0.1 | 44.1 ± 0.1 |
+
+| condition | cost at 1 / 2 / 3 / 5 / 10 min |
+|---|---|
+| deathmatch-2v2 | 1.18 / 1.08 / 1.07 / 1.00 / 0.99 |
+| deathmatch-5v5 | 1.06 / 0.90 / 0.94 / 1.00 / 1.14 |
+| deathmatch-10v10 | 1.58 / 1.12 / 1.03 / 1.00 / 1.06 |
+
+- 300 s stays: from 3 to 10 minutes the cost of a given error is flat within about 10%,
+  and no shorter clock is cheaper at every size (2 min saves 10% at 5v5 but costs 8-12% at
+  2v2 and 10v10). The first minute (the opening merge) reads off: 2v2 37.3 against 35.5 at
+  300 s, 10v10 44.6 against 45.1, and costs 18-58% more.
+- The kill share drifts little past 300 s: 2v2 35.5 -> 35.2, 5v5 44.5 -> 44.1, 10v10 45.1 ->
+  45.2 at 600 s.
+- The 10v10 run shared the GPU with another agent's unlocked `solve_one.py`; it changes
+  the time, not the games.
