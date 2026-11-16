@@ -65,6 +65,7 @@ from bnb.league.sequential import SequentialDesign
 
 from .cells import BUCKETS, Cell, Condition
 from .engine import (
+    COMPILED_FACTOR,
     MEMORY_SHARE,
     BucketEngine,
     GameLog,
@@ -249,6 +250,43 @@ def player_shares(planner: Planner) -> dict[str, float]:
     return {name: h / total for name, h in held.items()} if total else {}
 
 
+SIZES = "unified-sizes.json"  # under `bnb.cache.ROOT`: each machine's measured sizes
+
+
+def machine_key(device, bucket: int, shares: dict, share_of_free: float, memory_share: float):
+    """A bucket's sizing key on this machine: the GPU, its memory, the bucket, its slices
+    and its share of the memory."""
+    properties = torch.cuda.get_device_properties(device)
+    slices = ",".join(sorted(shares))
+    return (
+        f"{properties.name}|{properties.total_memory}|{bucket}|{slices}|"
+        f"{share_of_free:.3f}|{memory_share:.3f}"
+    )
+
+
+def remembered_size(key: str) -> int | None:
+    """The size a previous run measured for this key (the compiled engine's footprint), so
+    a machine plays the same shapes run after run (one compile per bucket per machine)."""
+    from bnb.cache import ROOT
+
+    try:
+        return json.loads((ROOT / SIZES).read_text()).get(key)
+    except OSError, ValueError:
+        return None
+
+
+def remember_size(key: str, count: int) -> None:
+    from bnb.cache import ROOT
+
+    try:
+        held = json.loads((ROOT / SIZES).read_text())
+    except OSError, ValueError:
+        held = {}
+    held[key] = count
+    ROOT.mkdir(parents=True, exist_ok=True)
+    (ROOT / SIZES).write_text(json.dumps(held, indent=1))
+
+
 def run(
     spec: Spec,
     out: pathlib.Path,
@@ -324,6 +362,11 @@ def run(
 
     def build(bucket: int, shares: dict[str, float], share_of_free: float) -> BucketEngine:
         count = environments
+        key = machine_key(device, bucket, shares, share_of_free, memory_share)
+        if count is None:
+            count = remembered_size(key)
+            if count is not None:
+                say(f"bucket {bucket}: {count} environments, this machine's measured size")
         if count is None:
             fixed, per = probe(bucket, shares)
             free = free_memory(device)
@@ -348,6 +391,15 @@ def run(
             compiled_per_environment=peak / count,
         )
         (out / "sizing.json").write_text(json.dumps(sizing, indent=1))
+        if environments is None:  # the next run's size: the compiled footprint measured
+            reserved = torch.cuda.max_memory_reserved(device)
+            free = free_memory(device) + reserved
+            remember_size(
+                key,
+                size_environments(
+                    0.0, reserved / count / COMPILED_FACTOR, int(free * share_of_free), memory_share
+                ),
+            )
         say(
             f"bucket {bucket}: {engine.environments} environments {shares}, capacity "
             f"{[(len(m), c) for _, m, c in engine.runs]} (players, rows per lane), "
