@@ -80,8 +80,9 @@ def test_arena_uniform_inverts_the_draw():
 def test_split_and_sizing():
     assert _split(10, [1.0, 1.0, 0.0]) == [5, 5, 0]
     assert sum(_split(1000, [0.3, 0.3, 0.4])) == 1000
-    # 0.7 of 8 GB less 1 GB fixed at 1 MB an environment: 4600 -> 4544 (a multiple of 64)
-    assert size_environments(1e9, 1e6, 8_000_000_000) == 4544
+    # 0.7 of 8 GB less 1 GB fixed at 1 MB an environment, times the compiled factor 1.5:
+    # 3066 -> 3008 (a multiple of 64)
+    assert size_environments(1e9, 1e6, 8_000_000_000) == 3008
     assert size_environments(1e9, 1e9, 1e9) == 64  # at least one multiple
 
 
