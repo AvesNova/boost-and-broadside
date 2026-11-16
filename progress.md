@@ -550,3 +550,6 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 02:59 RL ended at 98.6M (chain 199.2M); training charts + values real (health, behaviour, throughput 19.5k/21.8k steps/s, lanes, compile 3.9 min, hours 1.47/1.31).
 - Averaging sweep played no averages (live vs scripted only); reported, a fix agent re-runs it after the queue; champion = training EMA 0.95 meanwhile, sweep chart pending.
 - Next: suite chart (~03:05), curves/break-even/team-size/media as the queue lands.
+- 03:43 suite (512 games/condition: 5v5 98-100%, elimination 1v1 22%, 2v2 30%) and map pools (frontline at 2x radius below 279 Elo) charted/valued; Elo values now strings with bounds.
+- Waiting on curves (ETA ~04:07), then break-even, team size, media.
+- Next: elo/fan/break-even/team-size charts and stills as each lands.
