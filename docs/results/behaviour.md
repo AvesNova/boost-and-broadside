@@ -33,6 +33,24 @@ The clock is 600 s in Frontline and deathmatch and 248 s in elimination.
 
 {{pending: game_length_reading | Whether the trained policy ends games faster or slower than Imugi does against itself, and in which modes.}}
 
+## Stills
+
+Each still is one game of the champion (blue) against Imugi (orange), every ship's path a
+trail in its team's colour, older stretches faded, and an X where a ship died
+([the trail stills](../guides/figures.md)).
+
+{{figure: docs/results/media/stills/duel_1v1.png | A whole 1 against 1 deathmatch game: the champion's ship and Imugi's, each path a fading trail, an X at each death}}
+
+{{figure: docs/results/media/stills/fleet_5v5_opening.png | The first 60 seconds of a 5 against 5 deathmatch game: the approach and the first contact}}
+
+{{figure: docs/results/media/stills/elimination_fog.png | 20 seconds of a 5 against 5 elimination game under fog: hidden enemies' true paths dashed, with the champion's belief of where they are}}
+
+### Manoeuvres
+
+Windows of the 1 against 1 duel, each the busiest stretch of its part of the game:
+
+{{figure: docs/results/media/stills/manoeuvres.png | Four windows of the 1 against 1 duel side by side, each a few seconds of turning fight}}
+
 ## Gallery
 
 {{figure: docs/results/media/outnumbered_win.gif | The champion winning while outnumbered, at the break-even ratio}}

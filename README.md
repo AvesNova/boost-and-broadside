@@ -102,7 +102,7 @@ together:
 | GPU | Behaviour cloning | Reinforcement learning |
 |---|---|---|
 | RTX 4070 Laptop (8 GB) | **⟨throughput_laptop_4070_bc_steps_per_second⟩** | **⟨throughput_laptop_4070_rl_steps_per_second⟩** |
-| RTX 5090 (32 GB) | **⟨throughput_rtx_5090_bc_steps_per_second⟩** | **⟨throughput_rtx_5090_rl_steps_per_second⟩** |
+| RTX 5090 (32 GB) | 19,511 | 21,770 |
 
 [All results](docs/results/index.md) ·
 [How they are measured](docs/results/evaluation.md)
