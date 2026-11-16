@@ -49,6 +49,7 @@ GPU by every process on the machine. `tests/conftest.py` keeps them apart:
 | `tests/reference` | sections against goldens from float64 references, through adapters (see [Reference fixtures](../guides/reference-fixtures.md)) |
 | `tests/sections` | each section's own unit and property tests |
 | `tests/loop` | the training loop end to end: the lineup, toy learning |
+| `tests/runs` | run directories, checkpoints, resume, policy files, the queue, the CLI, and the compatibility set |
 | `tests/docs` | these docs: the strict build, code references, examples, staleness |
 
 One test file runs in a few seconds:

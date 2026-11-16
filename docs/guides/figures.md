@@ -9,7 +9,7 @@ reviewed: 2026-11-06 16:00
 in two steps, so a figure can be redrawn without the model:
 
 1. **Capture.** Play a short self-play rollout with the policy's model (both seats, fog of
-   war on, fresh games), run the model over it as the learner does
+   war as the game has it (none in team deathmatch), fresh games), run the model over it as the learner does
    (`bnb.models.yemong.model.Yemong.unroll`), decode every head with the decoder layer
    (`bnb.models.yemong.decode`) and store observations, truth and predictions as one
    artifact file (`bnb.figures.capture`). The capture also runs the scenario lab.
@@ -205,7 +205,7 @@ games gives a noisy reliability curve: the counts beside each point are ticks, n
 ## Videos
 
 `bnb figures video` films one game: the policy (team 0) against the scripted chaser
-(team 1), fog on, drawn by the play shell offscreen and encoded to MP4 by ffmpeg
+(team 1), fog as the game has it (none in team deathmatch), drawn by the play shell offscreen and encoded to MP4 by ffmpeg
 (`bnb.figures.video`). The frame is the shell's own, with its top bar (the score and the
 clock) and kill feed; the fleets card and the minimap stay collapsed and the camera fits
 the arena. A policy trained on a mixed batch records the batch's first game only
@@ -249,7 +249,7 @@ complete checkpoint without media (`bnb.figures.watch`):
    (`--sets`: `shots`, `belief`, `next_state`, `density`, `enemy_action`) into
    `artifacts/figures/<checkpoint>/<mode>/`; the capture is deleted unless
    `--keep-captures` (about 60 MB a mode);
-2. per mode, films one game against Imugi, the scripted agent, into `<checkpoint>/videos/`;
+2. per mode, films one game against the scripted chaser into `<checkpoint>/videos/`;
 3. writes `<checkpoint>/media.json` last: what was made, the sets' numbers, the videos'
    tallies, the seconds each part took and any error.
 

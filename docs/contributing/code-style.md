@@ -27,7 +27,8 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
 
   <!-- not-runnable: the dependency order, not a command -->
   ```text
-  contracts <- game <- controllers, models <- learn <- runtime <- runs <- league <- play, figures
+  contracts, reference, streams <- game <- controllers, models <- learn <- runtime <- runs <- league
+      <- play, figures <- cli
   ```
 
   An import points down this order, never up. `tests/contract/test_imports.py` checks it.
@@ -196,9 +197,10 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
   | Directory | Holds |
   |---|---|
   | `tests/contract/` | the contracts: shapes, dtypes, versions, exports, the dependency order |
-  | `tests/reference/` | equivalence with float64 fixtures generated from v1's code; see [Reference fixtures](../guides/reference-fixtures.md) |
+  | `tests/reference/` | equivalence with float64 fixtures (from v1's code and the physics race's oracle); see [Reference fixtures](../guides/reference-fixtures.md) |
   | `tests/sections/` | each section's own tests |
   | `tests/loop/` | end-to-end runs and small learning tests |
+  | `tests/runs/` | runs, checkpoints, resume, policy files, the queue, the CLI, the compatibility set |
   | `tests/docs/` | the documentation checks |
 
 - **Fixed reference sets:** the goldens and their tests are never edited to make a change
