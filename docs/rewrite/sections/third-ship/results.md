@@ -57,7 +57,8 @@ its cross fights 0.18-0.23 against 0.12 in Yongma v Jujak. Without the roll the 
 **Its doctrine** (Imugi): Jujak's stored doctrine with the post-merge sense off (`sense` 0):
 Bonghwang never commits to a one-circle after a merge; it keeps the pursuit and its rolls. On
 mixed lineups (Bonghwang + Jujak against Bonghwang + Jujak) this doctrine scores **0.542 ±
-0.015** (2048 games) against the same ship flying Jujak's doctrine; the release types fly one
+0.015** (2048 games) against the same ship flying Jujak's doctrine (with each final trim, 2048
+games each: A 0.547, C' 0.539, E 0.567, ± 0.011); the release types fly one
 circle in their mirrors. A random search of the allowed elements (slash, bleed, lag, deny,
 the sense; extend and the extensions off by the author's 2026-11-14 decision) found nothing
 better: every element at full weight costs strength (lag most), and the best searched

@@ -254,3 +254,17 @@ feat/imugi-boundary). Power profile `performance`.
   Idle workers are stopped to keep GPU memory free (the balance agent's three share it).
 - Box queue: mixed-lineup doctrine strength for the A, C' and E trims (dm5), Frontline 10v10
   and elimination 10v10 for finals2 (the balance agent's hardest condition is Frontline 10v10).
+
+## 15:20 last box jobs in; handover
+
+- Frontline 10v10 (512): the options' own Y v J 0.68 (E) / 0.72 (C'); Bonghwang E trim 0.68 /
+  0.52, C' trim 0.61 / 0.42: at Yongma's level, out of band against Jujak like Yongma (the
+  balance agent's open Frontline 10v10 problem). Elimination 10v10: E trim 0.51 / 0.53, C'
+  0.50 / 0.55.
+- Doctrine strength on mixed lineups (Bonghwang + Jujak, no-sense doctrine v Jujak's stored,
+  2048 games): A trim 0.547, C' 0.539, E 0.567 (± 0.011).
+- The balance agent's newest round (probe3: Yongma paid in store, shot cost and vision) will
+  likely give a card that is neither A, C' nor E: **Bonghwang must be re-trimmed then**
+  (`retrim.py`, results.md "Open for the author"). Box workers stopped (stop files); no box
+  work queued. Prewarm ported from tune/balance-final (characteristics measured before the
+  GPU lock).
