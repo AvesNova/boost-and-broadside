@@ -119,7 +119,6 @@ def main() -> None:
     if not entries:
         print("every candidate is done", flush=True)
         return
-    before = player_of({"name": "before"}, parameters)
     mixed = (args.mixed_games or args.games) // 2
     loop = Loop(
         args.environments,
@@ -134,35 +133,58 @@ def main() -> None:
     )
     if args.base == "before":
         loop.base = before_card(loop.base)
+    sweep(
+        loop, entries, args.out, args.games, mixed, args.seed, args.variants, args.mode,
+        args.ships, seconds, parameters,
+    )  # fmt: skip
+
+
+def sweep(
+    loop: Loop,
+    entries: list[dict],
+    out: pathlib.Path,
+    games: int,
+    mixed: int,
+    seed: int,
+    variants: int,
+    mode: str,
+    ships: int,
+    seconds: float,
+    parameters: tuple[float, ...],
+) -> None:
+    """Every entry's three jobs on a built loop, a chunk of candidates per batch; each
+    candidate's line is appended to `out` as its chunk finishes (`worker.py` calls this on its
+    one compiled loop)."""
+    before = player_of({"name": "before"}, parameters)
     started = time.time()
     # a chunk of candidates fills about one batch, so each line is written as it finishes
-    per_candidate = args.games + 2 * mixed
-    chunk = max(1, args.environments // per_candidate)
+    per_candidate = games + 2 * mixed
+    chunk = max(1, loop.B // per_candidate)
     if any("card" in entry for entry in entries):
-        chunk = min(chunk, args.variants)
+        chunk = min(chunk, variants)
     for first in range(0, len(entries), chunk):
         part = entries[first : first + chunk]
         players = [player_of(entry, parameters) for entry in part]
-        # one card variant per candidate (with --variants 1, the chunk's only card)
-        cards = [entry.get("card", {}) for entry in part][: args.variants]
-        cards += [{}] * (args.variants - len(cards))
+        # one card variant per candidate (with one variant, the chunk's only card)
+        cards = [entry.get("card", {}) for entry in part][:variants]
+        cards += [{}] * (variants - len(cards))
         loop.set_types([c.get("energy", {}) for c in cards], [c.get("turn", {}) for c in cards])
         jobs = []
         for variant, candidate in enumerate(players):
-            variant = variant if args.variants > 1 else 0
-            jobs.append(Job(variant, "energy v turn", candidate, candidate, args.games))
+            variant = variant if variants > 1 else 0
+            jobs.append(Job(variant, "energy v turn", candidate, candidate, games))
             jobs.append(Job(variant, "mixed", candidate, before, mixed))
             jobs.append(Job(variant, "mixed reversed", candidate, before, mixed))
-        torch.manual_seed(args.seed + first)
+        torch.manual_seed(seed + first)
         outs = run(loop, jobs, log=lambda line: None)
         rows = [job_summary(j, o, seconds) for j, o in zip(jobs, outs, strict=True)]
-        with args.out.open("a") as handle:
+        with out.open("a") as handle:
             for number, entry in enumerate(part):
                 three = rows[3 * number : 3 * number + 3]
                 line = dict(
                     name=entry["name"],
-                    mode=args.mode,
-                    ships=args.ships,
+                    mode=mode,
+                    ships=ships,
                     seconds=seconds,
                     candidate=entry,
                     jobs={r["lineup"]: {k: r[k] for k in KEPT} for r in three},
