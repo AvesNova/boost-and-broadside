@@ -96,8 +96,8 @@ A real decision (δ = 0.02) plans about 5,300 games.
 
 Once the box's GPU is free (the queue holds the lock until it exits):
 
-1. `git -C /workspace/repo fetch && git -C /workspace/repo worktree add /workspace/wt/ueval
-   origin/feat/unified-eval` (game v25; the dry run's policies are v24, so 1v1 and 2v2
+1. A checkout of `origin/feat/unified-eval` at `/workspace/wt/ueval` (as the queue's
+   `/workspace/wt/evalq`; game v25: the dry run's policies are v24, so 1v1 and 2v2
    scores against Imugi will read lower than the queue's, as on the laptop).
 2. Optionally `CACHE_ARCHIVE=/workspace/compile-cache.tar.zst` (a 5090 archive) to start
    warm, and `CACHE_EXPORT=...` to keep this run's compiles for the next box.
