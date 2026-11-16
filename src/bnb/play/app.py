@@ -50,6 +50,7 @@ from .render.bullets import STYLES as BULLET_STYLES
 from .render.bullets import BulletLook
 from .render.contours import SHAPE_SETS as CONTOUR_SHAPE_SETS
 from .render.grid import PATTERNS as GRID_PATTERNS
+from .render.marks import DeathMarks
 from .render.minimap import DOT_PIXELS
 from .render.overlay import outline_table
 from .render.predictions import OverlayDrawing, overlay_drawing
@@ -84,6 +85,9 @@ class Options:
 
     preset: str = "real_scale_deathmatch"  # a game preset (api.PRESETS) or a saved map's name
     ships_per_team: int | None = None
+    # each team's ships in play (team 0, team 1), the rest of its slots benched (uneven
+    # teams); the game's ships per team grows to the larger count. None: every slot
+    active: tuple[int, int] | None = None
     fields: int | None = None
     arena_radius: float | None = None  # m
     # the match has fog of war (team views show what the team sees); None: the game's (none
@@ -159,11 +163,19 @@ class Options:
         )
         game_map = maps.find(self.preset)
         game = self.game(maps)
+        if self.active is not None and max(self.active) > game.ships_per_team:
+            game = dataclasses.replace(game, ships_per_team=max(self.active), spawn_groups=())
         lineup = game_map.lineup_types()
         if lineup is None or len(lineup) != game.ships_per_team:
             lineup = tuple(default_lineup(game.ships_per_team, game.ship_set))
         return MatchSetup(
-            game, lineup, fogged=self.fog, seed=self.seed, sides=sides, tuning=game_map.tuning
+            game,
+            lineup,
+            fogged=self.fog,
+            seed=self.seed,
+            sides=sides,
+            tuning=game_map.tuning,
+            active=self.active,
         )
 
 
@@ -230,6 +242,9 @@ class Session:
         self.notice, self.notice_until = "", 0.0
         self.clock = 0.0  # display seconds since the session started
         self.feed: list[tuple[float, MatchEvent]] = []
+        # A team-coloured X where each ship died, kept for the rest of the match (the
+        # figure videos turn it on); None: no marks, a ship vanishes when it dies.
+        self.death_marks: DeathMarks | None = None
         self.last_shot = np.full(1, -np.inf)
         self.recorder: replays.Recorder | None = None
         self.builder: IndexBuilder | None = None
@@ -272,6 +287,8 @@ class Session:
         self.trails = Trails(loop.rules.num_ships, loop.current.stall_angle)
         self.frame = loop.frame()
         self.feed = []
+        if self.death_marks is not None:
+            self.death_marks = DeathMarks()  # a new match starts unmarked
         self.last_shot = np.full(loop.rules.num_ships, -np.inf)
         selection = self.selection
         if selection is not None and selection.kind == "ship":
@@ -539,6 +556,14 @@ class Session:
         now = loop.ticks * loop.tick_length
         self.last_shot[loop.current.ships.fired] = now
         self.feed += [(now, event) for event in events if event.kind == "kill"]
+        if self.death_marks is not None:
+            ships = loop.previous.ships  # the last tick the dead ship flew
+            for event in events:
+                if event.kind == "kill":
+                    ship = event.ship
+                    self.death_marks.add(
+                        ships.x[ship], ships.y[ship], ships.team[ship], ships.hit_radius[ship]
+                    )
         if self.recorder is not None:
             self.recorder.record(actions, realtime, events)
             if self.recorder.ended:
@@ -1126,6 +1151,7 @@ class Session:
             self.grid,
             self.contours,
             self.bullet_look,
+            self.death_marks,
         )
         imgui.set_current_context(self.imgui_context)
         imgui.get_io().delta_time = max(self.elapsed, 1e-4)

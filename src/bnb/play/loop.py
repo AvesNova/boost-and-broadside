@@ -51,8 +51,10 @@ class SideSetup:
 class MatchSetup:
     """Everything a match starts from: the game, the lineup (each slot's ship type, the
     same for both teams; None for the game's default), fog, the seed of the match's
-    generator, each side's controller, and the tuning it starts from (`Tuning`: the rules'
-    settings and the ship card where they differ from the game's, and the time scale)."""
+    generator, each side's controller, the tuning it starts from (`Tuning`: the rules'
+    settings and the ship card where they differ from the game's, and the time scale), and
+    each team's ships in play (`active`: (team 0, team 1), the rest of a team's slots
+    benched, `bnb.runtime.realtime`; None: every slot)."""
 
     config: GameConfig
     lineup: tuple[int, ...] | None = None
@@ -60,6 +62,7 @@ class MatchSetup:
     seed: int = 0
     sides: tuple[SideSetup, SideSetup] = (SideSetup(), SideSetup())
     tuning: Tuning = Tuning()
+    active: tuple[int, int] | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -149,6 +152,7 @@ class MatchLoop:
                 background=background,
                 settings=settings,
                 types=types,
+                active=setup.active,
             )
         self.realtime = realtime
         self.rules, self.types = realtime.rules, realtime.types

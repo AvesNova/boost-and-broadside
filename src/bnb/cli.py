@@ -23,6 +23,7 @@ import tyro
 
 from bnb.contracts import VALUE_LEVELS
 from bnb.contracts.config import TEAM_DEATHMATCH
+from bnb.figures.hero import HeroConfig
 from bnb.figures.match import MatchConfig
 from bnb.figures.trails import StillConfig
 from bnb.figures.video import VideoConfig
@@ -609,6 +610,31 @@ class FiguresVideo:
 
 
 @dataclasses.dataclass(frozen=True)
+class FiguresHero:
+    """The README's hero clip (`bnb figures hero --policy P`): `--hero.games` games of the
+    policy against Imugi at one lineup (`--hero.ships 5 6`: the policy's ships, then
+    Imugi's), each filmed to its end with the death marks, an MP4 and a JSON of its outcome
+    per game in `--out`; then the clip is picked (a decisive win, `bnb.figures.hero.pick`)
+    and made a GIF with its poster frame (`--gif`, default <out>/hero.gif).
+    docs/guides/figures.md.
+
+    policy: a policy directory or a run's name; preset: the game (the real-scale
+    elimination); out: the games' directory; gif: the GIF's path; hero: the games, the
+    pick's rules and the GIF's settings (`bnb.figures.hero.HeroConfig`, its videos'
+    under `--hero.video.*`); device, threads, runs_directory: as for bnb figures video.
+    """
+
+    policy: str
+    out: str
+    preset: str = "real_scale_elimination"
+    gif: str | None = None
+    hero: HeroConfig = HeroConfig()
+    device: str = "cpu"
+    threads: int = 4
+    runs_directory: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
 class FiguresWatch:
     """Media of a training run while it trains (`bnb figures watch RUN`): a second process
     that only reads the run, polls its checkpoints and, for each new one, captures each
@@ -847,9 +873,10 @@ def main() -> None:
     card, `bnb ratings ...` and `bnb head-to-head ...` rate policies offline, `bnb crossover
     ...` finds a policy's break-even lineup, `bnb evaluate ...` decides between two
     policies, `bnb pool ...` keeps the shared rating pool, `bnb figures ...` draws what a
-    policy's heads have learned (`bnb figures video ...` films a game, `bnb figures watch
-    RUN` makes both while a run trains, `bnb figures results CHART ...` draws the write-up's
-    results charts), `bnb queue ...` queues and runs GPU jobs."""
+    policy's heads have learned (`bnb figures video ...` films a game, `bnb figures hero
+    ...` the README clip, `bnb figures watch RUN` makes both while a run trains, `bnb
+    figures results CHART ...` draws the write-up's results charts), `bnb queue ...` queues
+    and runs GPU jobs."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
     # The CUDA caching allocator grows its segments in place rather than caching fixed blocks:
     # at a real-scale PPO update (160 micro-batch rows) 0.73 GB less reserved memory and the
@@ -899,6 +926,8 @@ def main() -> None:
         kind = (arguments[:1] or [""])[0]
         if kind == "video":
             figures_video(tyro.cli(FiguresVideo, args=arguments[1:], prog="bnb figures video"))
+        elif kind == "hero":
+            figures_hero(tyro.cli(FiguresHero, args=arguments[1:], prog="bnb figures hero"))
         elif kind == "watch":
             figures_watch(tyro.cli(FiguresWatch, args=arguments[1:], prog="bnb figures watch"))
         elif kind == "results":
@@ -2167,6 +2196,23 @@ def figures_video(options: FiguresVideo) -> None:
     numbers = video.render(policy, options.preset, options.video, path)
     print(f"wrote {path}")
     print(f"video: {numbers}")
+
+
+def figures_hero(options: FiguresHero) -> None:
+    """`bnb figures hero`: games filmed, the clip picked, its GIF (`bnb.figures.hero`)."""
+    if options.device == "cpu":
+        hide_gpu()
+    import torch
+
+    from bnb.figures import hero
+    from bnb.figures.command import policy_path
+
+    torch.set_num_threads(options.threads)
+    policy = policy_path(options.policy, runs_directory_of(options.runs_directory))
+    result = hero.make(policy, options.preset, options.hero, pathlib.Path(options.out), options.gif)
+    print(f"pick: {result['reason']}")
+    if result["chosen"] is not None:
+        print(f"chosen: {result['chosen']['name']}; gif: {result['gif']}")
 
 
 def figures_results(options: FiguresResults) -> None:

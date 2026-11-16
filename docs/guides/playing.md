@@ -21,6 +21,7 @@ uv run bnb play --preset real_scale_frontline
 uv run bnb play --preset arena
 uv run bnb play --preset clover
 uv run bnb play --agent1 runs/<run>/policy
+uv run bnb play --preset real_scale_elimination --active 5 7  # uneven teams, 5 against 7
 ```
 
 The first match comes from the options (a preset, `real_scale_deathmatch` by default, and

@@ -262,8 +262,9 @@ honest belief; a ghost far outside its circle is an overconfident one.
 
 ## Videos
 
-`bnb figures video` films one game: the policy (team 0) against the scripted chaser
-(team 1), fog on, drawn by the play shell offscreen and encoded to MP4 by ffmpeg
+`bnb figures video` films one game: the policy (team 0) against Imugi (team 1; the
+evaluations' Imugi, `--video.opponent chaser` for the scripted chaser), with the game's
+fog, drawn by the play shell offscreen and encoded to MP4 by ffmpeg
 (`bnb.figures.video`). The frame is the shell's own, with its top bar (the score and the
 clock) and kill feed; the fleets card and the minimap stay collapsed and the camera fits
 the arena. A policy trained on a mixed batch records the batch's first game only
@@ -278,7 +279,9 @@ bnb figures video --policy RUN --video.seconds 10 --video.time-scale 8
 ```
 
 The defaults (`bnb.figures.video.VideoConfig`): 25 s at 30 frames per second and 4x the
-game's speed, so the first 100 s of the game, at 1280 x 720. `--video.overlays` draws the
+game's speed, so the first 100 s of the game, at 1280 x 720. Each death leaves an X in the
+dead ship's team colour, no larger than a ship, where it died, for the rest of the video
+(`bnb.play.render.marks`; `--video.no-death-marks` turns them off). `--video.overlays` draws the
 shell's [prediction overlays](playing.md#prediction-overlays) on every frame (the
 policy's predictions, and the true bullet paths; the shot path needs a selected ship, so
 a video draws none), and `--video.truth` the truth beside them:
@@ -287,6 +290,39 @@ a video draws none), and `--video.truth` the truth beside them:
 ```bash
 bnb figures video --policy RUN --video.overlays bullet_paths belief density --video.truth
 ```
+
+The teams may be uneven: `--video.ships 5 7` fields 5 of the policy's ships against 7 of
+Imugi's, each team's other slots benched as the crossover benches them (the game's ships
+per team grown to the larger count, on the preset's arena), and `--video.until-end` stops
+at the game's end, holding its last frame `--video.hold` seconds.
+
+### The hero clip
+
+`bnb figures hero` films `--hero.games` games at one lineup, each to its end, and writes
+each game's MP4 with a JSON of its outcome (the result, the ships left per side and their
+shield, the game seconds, the kills) into `--out`; a game filmed before is not played
+again. It then picks the clip (`bnb.figures.hero.pick`): a win for the policy, ended
+between 30 and 120 s, with at least 2 of its ships left, at least one lost and its
+survivors' mean shield at least a quarter; the nearest a middle game among those, else the
+win that misses the fewest rules (said so in `chosen.json`). The clip becomes a
+palette-optimised GIF of at most 24 s at 12 frames a second (a longer clip plays faster),
+640 px wide or narrower until it is under 10 MB (a 194 s game came to 490 px), with its last
+frame as a PNG poster beside it:
+
+<!-- not-runnable: needs ffmpeg, an OpenGL context and a policy file -->
+```bash
+bnb figures hero --policy RUN --out figures/hero --hero.ships 5 6 --hero.games 8 \
+    --gif docs/images/hero.gif
+```
+
+The hero videos leave out the interface and frame the live ships (`--video.follow`: the
+camera holds still while they stay framed and reframes in quick steps, since a moving
+camera changes every pixel of a GIF's frame), as a GIF's width leaves the whole real-scale
+arena too small to read. On a machine without a free
+GPU, Mesa's software OpenGL draws the frames (on 14 laptop cores a game took 1.4 to 2.5 s
+per game second):
+`EGL_PLATFORM=surfaceless __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json LIBGL_ALWAYS_SOFTWARE=1`.
+`box/hero_clip.sh` makes the clip of the evaluation queue's champion on the box.
  The file is about 0.5 MB. The
 agent runs on the CPU (`--device cpu` hides the GPU from torch); the drawing uses the GPU's
 OpenGL over EGL, which is not CUDA, and about 100 MiB of its memory. One video takes about

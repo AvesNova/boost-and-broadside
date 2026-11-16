@@ -188,6 +188,7 @@ class Replay:
                 compiled=False,
                 fogged=setup.fogged,
                 lineup=setup.lineup,
+                active=setup.active,
                 **tuned(setup),
             ).keyframe()
         )
@@ -230,6 +231,7 @@ class ReplayLoop(MatchLoop):
             compiled=compiled,
             fogged=setup.fogged,
             lineup=setup.lineup,
+            active=setup.active,
             background=compiled,
             **tuned(setup),
         )

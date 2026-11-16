@@ -15,6 +15,11 @@ serves every value of them, keyed on the rules with those values blanked
 (`api.tuning.static_of`), and the ship card is an input too. So a live change
 (`Realtime.retune`: new tunable values or a new card, of the same sizes) is new data on the
 next tick, never a rebuild.
+
+Uneven teams (`active`, each team's ships in play): a team's last slots are benched at
+the reset, as training and evaluation bench them (`bnb.game.api`: kept as dead ships,
+out of play, shown with the benched flag). The counts are an input of the tick, so one
+library plays every lineup.
 """
 
 import dataclasses
@@ -38,7 +43,7 @@ _TICK_CODE = ("game", "contracts", "runtime/realtime.py", "runtime/built.py")  #
 @dataclasses.dataclass(frozen=True)
 class Tick:
     """The tick for these static rules: move, resolve and perceive, with the rules' live
-    values, the card and the draws as inputs."""
+    values, the card, each team's active ships (1, 2) and the draws as inputs."""
 
     static: api.Rules
 
@@ -47,6 +52,7 @@ class Tick:
         state: api.State,
         types: api.ShipTypes,
         live: dict[str, torch.Tensor],
+        active: torch.Tensor,
         actions: torch.Tensor,
         spread: torch.Tensor,
         uniforms: torch.Tensor,
@@ -54,8 +60,8 @@ class Tick:
         rules = api.tuning.with_live(self.static, live)
         action = Action.unpack(actions[None])
         moved, sweep = api.move(rules, types, state, action, spread)
-        stepped, events = api.resolve(rules, types, moved, sweep, action, uniforms)
-        stepped, obs, _ = api.perceive(rules, stepped)
+        stepped, events = api.resolve(rules, types, moved, sweep, action, uniforms, active)
+        stepped, obs, _ = api.perceive(rules, stepped, active)
         return stepped, obs, events
 
 
@@ -74,13 +80,25 @@ def library_path(static: api.Rules) -> pathlib.Path:
     return cache.path("ticks", static, packages=_TICK_CODE, suffix=".pt2")
 
 
-def library(rules: api.Rules, static: api.Rules, state, types, live) -> built.Library:
+def library(
+    rules: api.Rules, static: api.Rules, state, types, live, active: torch.Tensor
+) -> built.Library:
     """The process's built tick for these static rules (`bnb.runtime.built.library`: built
     in a child process when no earlier run built it)."""
-    tick, arguments = Tick(static), (state, types, live, *_throwaway_inputs(rules))
+    tick, arguments = Tick(static), (state, types, live, active, *_throwaway_inputs(rules))
     with torch.no_grad():  # the outputs' structure: the uncompiled tick's (it draws nothing)
         outputs = tick(*clone(arguments))
     return built.library(library_path(static), tick, arguments, outputs, name="tick-build")
+
+
+def active_counts(rules: api.Rules, active: tuple[int, int] | None) -> torch.Tensor:
+    """(1, 2) int32: each team's ships in play (None: every slot), or ValueError for a
+    count outside 1 to the rules' ships per team."""
+    S = rules.ships_per_team
+    counts = (S, S) if active is None else tuple(int(count) for count in active)
+    if len(counts) != api.TEAMS or not all(1 <= count <= S for count in counts):
+        raise ValueError(f"active {active}: a count per team, each from 1 to {S}")
+    return torch.tensor([counts], dtype=torch.int32)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -107,6 +125,8 @@ class Realtime:
     `api.tuning.most_bullet_slots`, room for any fire rate and bullet life live tuning
     allows, and `longest_bullet_moves` the longest life a card may have: a match never runs
     out of slots while it is tuned, and spare slots cost the tick next to nothing).
+    active: each team's ships in play, (team 0, team 1), each from 1 to the config's ships
+    per team; a team's slots past its count are benched (None: every ship plays).
     """
 
     def __init__(
@@ -120,6 +140,7 @@ class Realtime:
         settings: dict[str, float] | None = None,
         types: api.ShipTypes | None = None,
         bullet_slots: int | None = None,
+        active: tuple[int, int] | None = None,
     ) -> None:
         types = api.ship_types(ship_set=config.ship_set) if types is None else types
         rules = api.rules_of(config, types=types)
@@ -135,13 +156,14 @@ class Realtime:
         self.config, self.rules = config, rules
         self.static, self.live = api.tuning.static_of(rules), api.tuning.live_of(rules)
         self.types = types
+        self.active = active_counts(rules, active)
         self.generator = torch.Generator().manual_seed(0) if generator is None else generator
         if fogged is None:  # the game's: clear in team deathmatch, fogged in the others
             fogged = config.fogged_share >= 0.5
         fog_flags = torch.tensor([fogged])
         uniforms = api.uniforms(rules, 1, generator=self.generator)
-        self.state = api.reset(rules, self.types, uniforms, fog_flags)
-        self.state, self.obs, _ = api.perceive(rules, self.state)
+        self.state = api.reset(rules, self.types, uniforms, fog_flags, active=self.active)
+        self.state, self.obs, _ = api.perceive(rules, self.state, self.active)
         self.events: Events | None = None
         self._eager = Tick(self.static)
         self._path = library_path(self.static)
@@ -168,7 +190,7 @@ class Realtime:
         """Load the built tick for these rules (`library`: built in a child process first
         when no earlier run built it)."""
         try:
-            library(self.rules, self.static, clone(self.state), self.types, self.live)
+            library(self.rules, self.static, clone(self.state), self.types, self.live, self.active)
         except BaseException as error:  # reported by `compiling`; the match stays uncompiled
             self._compile_error = error
 
@@ -201,7 +223,7 @@ class Realtime:
         tick = self._tick(eager)
         spread, uniforms = self._draws()
         self.state, self.obs, self.events = tick(
-            self.state, self.types, self.live, actions, spread, uniforms
+            self.state, self.types, self.live, self.active, actions, spread, uniforms
         )
         return self.obs
 
