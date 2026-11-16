@@ -168,8 +168,8 @@ def command(arguments: str) -> str | None:
     """None if `bnb <arguments>` names a command (`bnb.cli.COMMANDS`) and uses only its
     options (`bnb.cli.Train`, `Runs`, `Average`, `ShipCard`, `Ratings`, `HeadToHead`, `Crossover`,
     `Evaluate`, `Pool` or `Figures`, and `EvaluateDecide` and `EvaluateDesign` for `bnb evaluate
-    decide` and `bnb evaluate design`, `FiguresVideo` and `FiguresWatch` for `bnb figures video`
-    and `bnb figures watch`;
+    decide` and `bnb evaluate design`, `FiguresVideo`, `FiguresWatch` and `FiguresResults` for
+    `bnb figures video`, `bnb figures watch` and `bnb figures results`;
     `bnb queue`'s own, `bnb.cli.QUEUE_FLAGS`, and for `bnb queue add KIND` the job's
     command's), with a known preset and mode (for `bnb play`, also a saved map's name)."""
     import shlex
@@ -183,6 +183,7 @@ def command(arguments: str) -> str | None:
         EvaluateDecide,
         EvaluateDesign,
         Figures,
+        FiguresResults,
         FiguresVideo,
         FiguresWatch,
         HeadToHead,
@@ -222,8 +223,10 @@ def command(arguments: str) -> str | None:
         options = set(QUEUE_FLAGS) | job
     else:
         chosen = commands[tokens[0]]
-        if tokens[0] == "figures" and tokens[1:2] in (["video"], ["watch"]):
-            chosen = FiguresVideo if tokens[1] == "video" else FiguresWatch
+        if tokens[0] == "figures" and tokens[1:2] in (["video"], ["watch"], ["results"]):
+            chosen = {"video": FiguresVideo, "watch": FiguresWatch, "results": FiguresResults}[
+                tokens[1]
+            ]
         if tokens[0] == "evaluate" and tokens[1:2] in (["decide"], ["design"]):
             chosen = EvaluateDecide if tokens[1] == "decide" else EvaluateDesign
         options = _options(chosen)

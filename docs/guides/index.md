@@ -25,3 +25,5 @@ is done.
   the theme editor, offscreen renders.
 - [Figures](figures.md): capture a policy's rollout and draw what its heads have
   learned, set by set.
+- [Results charts](results-charts.md): the write-up's results charts from the runs'
+  records, and the values file the docs quote.
