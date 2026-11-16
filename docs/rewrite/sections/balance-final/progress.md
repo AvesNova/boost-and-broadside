@@ -470,3 +470,10 @@ the fitted step plus single checks, in every mode (laptop) and dm2 (box, 1024).
 - probe4 (`candidates/make_probe4.py`): each probe3 card with Yongma's turn as the handle at
   the measured value (E's other handles), the store/shot cost/vision and Jujak's shield/vision
   raw on top. Solving on the box CPU now; queued behind probe3 once solved.
+- 13:45 probe4 solved (16 solves, box CPU, ~14 min, all feasible: Yongma induced drag
+  0.296-0.371 against the raw cards' 0.32-0.34 and E's 0.2805; static thrust 19.7-23.7, the
+  sticks 0.70-0.73), measured: turn as intended, low-speed acceleration x1.000. Queued in all
+  seven queues right after probe3 (dm2/el5 1024 games, the rest 512; outputs
+  /workspace/out/probe4-*.jsonl), probe2's dm10/el leftovers after it. ETA for probe3 everywhere
+  about 17:00 KST (worst 18:00; 7 jobs of 30-45 min sharing the lock with the third-ship agent),
+  probe4 about 3.5 h after that.
