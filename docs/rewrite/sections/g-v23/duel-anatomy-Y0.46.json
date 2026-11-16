@@ -1,0 +1,85 @@
+{
+ "entry": "Y0.46",
+ "games": 128,
+ "seconds": 640.045503616333,
+ "kill_share_a": [
+  0.5333333333333333,
+  0.12931837842768568
+ ],
+ "point_share_a": [
+  0.4444444444444444,
+  0.11758160134151854
+ ],
+ "deaths_per_game": 0.140625,
+ "causes": [
+  [
+   [
+    7.0,
+    0.0,
+    1.0,
+    2.0
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  ],
+  [
+   [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    8.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  ]
+ ],
+ "merges_per_game": 23.2890625,
+ "post_merge_circles_one_two_scissors": [
+  3.0,
+  0.0,
+  3014.0
+ ],
+ "both_alive_minutes_per_game": 4.976006944444444,
+ "both_circle_same_sense_share": 0.0023158001242071327,
+ "both_circle_opposite_sense_share": 8.722411013962835e-06,
+ "both_extending_share": 0.0,
+ "one_extending_share": 0.10106483193658458,
+ "per_kind": {
+  "Yongma": {
+   "quiet_share": 0.009499752801008293,
+   "longest_quiet_s_mean": 0.065625,
+   "longest_quiet_s_max": 0.1,
+   "shield_restored_per_game": 0.0,
+   "shield_lost_per_game": 45.128292083740234,
+   "shots_per_game": 523.4375,
+   "hits_per_game": 314.71875,
+   "on_nose_in_range_share": 0.05751728652103977,
+   "within_15deg_in_range_share": 0.06797188894846423,
+   "in_range_share": 0.16886911683808117,
+   "sustained_turn_share": 0.004684594976637955,
+   "extending_share": 0.10085370694037282
+  },
+  "Jujak": {
+   "quiet_share": 0.009267733359316277,
+   "longest_quiet_s_mean": 0.06536458333333334,
+   "longest_quiet_s_max": 0.1,
+   "shield_restored_per_game": 0.0,
+   "shield_lost_per_game": 55.126827239990234,
+   "shots_per_game": 378.4375,
+   "hits_per_game": 235.0390625,
+   "on_nose_in_range_share": 0.04881458617521784,
+   "within_15deg_in_range_share": 0.06867413908298767,
+   "in_range_share": 0.16741077642604604,
+   "sustained_turn_share": 0.013136466134016313,
+   "extending_share": 0.0
+  }
+ }
+}
