@@ -105,3 +105,36 @@ The search uses build 2. Code: `bench/balance_map.py`; tests `tests/sections/tes
 - Also: job and output files carry an attempt token (a restarted search never reads an output
   that an abandoned attempt's job may still be writing), and ETAs print in KST (the box runs
   in UTC).
+
+## 20:00 the author's answers: band 0.4-2.0 s, more games where needed, sliders later
+
+- Time to kill 0.4-2.0 s for every pairing (mirrors and the reference included): shield
+  bounds 230-1148 (the reference's fire on the candidate), damage 9.6-36.0 (the candidate's
+  on the reference, inside x0.5 Jujak's and x2 Yongma's damage); the mirror repair uses the
+  wider band; picks are filtered pairwise on it.
+- The decode changed, so the pilot's scheduler state cannot resume. **Run map2**
+  (/workspace/out/map2) starts fresh on the same workers (`--queue-root /workspace/out/map`),
+  imports every solved pilot card with its evaluations (ids `pilot-...`, coordinates and
+  measures re-encoded under the new bounds; every pilot card is valid under the wider band),
+  adds them to the new archive, and starts its 8 emitters on far-apart near-even pilot cards
+  (`start_points`: max-min distance among objective >= 30). Bound: 45 generations a half or
+  12 h. Started automatically when the pilot's last half is told (about 20:05).
+- Games: search 128 a condition, racing to 512 (objective >= 40), confirmation 2048. More
+  where the noise demands it (the confirmation's per-condition SE decides).
+- Smoothness for the sliders: the map keeps each cell's best three by lower bound
+  (`others` in map.json), and every evaluated card stays in the records. A neighbour-distance
+  penalty is not in the objective (it would make the objective depend on the archive's state,
+  which CMA-MAE's improvement ranking does not expect); smoothing belongs in the slider fit.
+
+### What the slider step needs (later; nothing here blocks it)
+
+1. A surrogate per condition: kill share's logit from the 13 coordinates (the analysis's
+   gradient boosting now; a Gaussian process or a small smooth network is better for
+   gradients), fitted on every evaluated card with inverse-variance weights.
+2. A balance function B(x) = RMS of the predicted win-equivalent distances, and its gradient.
+3. The slider: a curve or surface x(s) through the balanced set: for each target descriptor
+   value (agility, toughness x reach, or 1-4 chosen directions in handle space), minimise
+   B(x) + lambda |x - x_prev|^2 subject to the descriptors = target (projection onto the
+   predicted balanced set, continued from the previous slider step so the path is smooth).
+4. Checks: replay points along the path (512-2048 games) and refit where the surrogate is
+   wrong; the TTK band and the solver's feasibility (low-speed cap) as constraints.
