@@ -42,7 +42,7 @@ with different arenas or clocks run in one slice.
 
 ## Map-size sampling
 
-A pool with `arena_scale` (`bnb.contracts.ArenaScale`, game v17) plays a different arena
+A pool with `arena_scale` (`bnb.contracts.ArenaScale`, game v19) plays a different arena
 size each episode. At every reset each of its environments draws a scale: ln scale ~
 Normal(0, sigma), truncated to [low, high]. The draw is one tick uniform through the
 truncated inverse CDF (`bnb.game.layout.draw_arena_scale`), so there is no rejection loop

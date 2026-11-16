@@ -5,9 +5,10 @@ covers: [src/bnb/game/real_scale.py, src/bnb/game/ships/real-scale/, src/bnb/gam
 # The real-scale variant
 
 The standard game is built for play: its ships turn fast, on a small map, under a gravity
-of 27 m/s^2. The real-scale variant keeps the game and changes its units so that one
-metre is a metre and one second a second, its ships derived from a P-51D that flies as
-the research has it ([The real planes](real-planes.md)). It is
+of 27 m/s^2. The real-scale variant keeps the game and changes its units to metres and
+seconds, its ships derived from a P-51D that flies as the research has it
+([The real planes](real-planes.md)), and plays at twice the planes' speed (game v13,
+`bnb.game.real_scale.EQUIVALENT_FACTOR`): the set's files hold the x 2 values. It is
 the ship set `real-scale` (`src/bnb/game/ships/real-scale/`) and the presets
 real_scale_deathmatch, real_scale_frontline and real_scale_elimination, with the arena and
 Clover maps (`bnb.game.modes.rules.PRESETS`). Everything stays per unit mass:
@@ -20,7 +21,9 @@ energies are J/kg and powers W/kg.
 Today's fighter maps onto a P-51D with lengths x 5.82 and times x 4.00: its stall speed,
 31.6 m/s, becomes 46 m/s (x 1.455), and its gravity, 27 m/s^2, becomes 9.81 m/s^2
 (x 0.3633, length over time squared). The time factor is the one that turns one gravity
-into the other, sqrt(5.82 x 27 / 9.81) = 4.0023.
+into the other, sqrt(5.82 x 27 / 9.81) = 4.0023. The set then plays at twice that speed
+(game v13): lengths are kept and times halve, so its speeds double and its gravity is
+39.24 m/s^2.
 
 Every flight constant scales by its units (`bnb.game.handling.similarity`): the
 exchanges, as accelerations, by 0.3633; the nose frequency floor, a rate, by 1/4.00; the
@@ -34,39 +37,40 @@ bullet drag per metre scales by 1/5.82.
 The map is three times the standard one in metres: the presets' arena radius is 7800 m
 with the map scale's reference radius kept at 2600 m, so the map scale is 3 and the
 fields, the zones and the spawn disc scale by themselves. The distances that do not follow
-the map scale are set three times in the set's rules: the field band width (120 m) and
+the map scale are set three times in the set's rules: the field band width (160 m) and
 team deathmatch's spawn distances (group radius 900 m, respawn distances 750 to 1800 m,
 spawn margin 150 m).
 
-The random maps' fields are the author's (game v14): band width 160 m, and radii from
+The random maps' fields are the author's (game v15): band width 160 m, and radii from
 120 m to 1200 m at map scale 1 (360 m to 3600 m on the 7800 m map), drawn lognormal with
 median 400 m and log spread 0.6, their centres within 0.85 arena radii, half of them high
-and half strong. Boundary damage is at most 40 per s, over a ramp of 100 m at map scale 1
+and half strong. Boundary damage is at most 216 per s (40 before game v23), over a ramp of 100 m at map scale 1
 (300 m on the 7800 m map). Team deathmatch plays a 4200 m arena (map scale 1.6), Frontline
 and elimination the 7800 m one.
 
 The rules' times follow the map, not the ship. A P-51 cruises about 1.57 times as fast as
 today's fighter in metres per second, over a map three times as wide, so crossing between
 fields takes about twice as long. The episode doubles to 600 s, and the capture time (20 s)
-and the respawn waits (10 s in team deathmatch, 16 s in Frontline) double with it.
+and the respawn waits double with it: 10 s in team deathmatch, and in Frontline 8 s at
+least, then the team's next wave (every 20 s).
 
 ## The rules
 
 | Rule | Value | Why |
 |---|---|---|
-| gravity | 9.81 m/s^2 | real |
+| gravity | 39.24 m/s^2 | real (9.81) at twice the speed |
 | tick | 30 Hz | unchanged |
-| bullet drag | 1.375e-4 /m | today's 8e-4 /m over 5.82 |
+| bullet drag | 5e-4 /m | the .50 cal's (game v6; it was today's 8e-4 /m over 5.82) |
 | vision range | 3072 m | today's 1024 m times the map scale |
-| spawn speed | 72.6 m/s | 1.3 times the researched types' fastest stall speed (the Hammerhead's 55.9 m/s) |
-| field band width | 120 m | three times today's |
+| spawn speed | 145.3 m/s | twice 72.6 m/s, which is 1.3 times the researched types' fastest stall speed at the planes' speed (the Hammerhead's 55.9 m/s) |
+| field band width | 160 m | the author's (game v15) |
 | episode | 600 s | twice today's |
 | capture time | 20 s | twice today's |
 
 The gun flight time, 0.6 s (18 ticks), is the time in which the P-51's bullet covers about
 600 m (587 m at its researched speeds); every type's gun range is its own bullet's reach in
-that time at its cruise and muzzle speed, so every type's bullet life is 0.6 s
-(`bnb.game.real_scale.gun_flight_time`). A type's life follows its gun range, so a gun
+that time at its cruise and muzzle speed, so every type's bullet life is 0.6 s at the
+planes' speed (`bnb.game.real_scale.gun_flight_time`), 0.37 s (11 ticks) at the set's. A type's life follows its gun range, so a gun
 range tuned later sets its own life. The spawn speed is set above every stall speed so that no ship
 starts in a stall: the build took 1.3 times the fastest of the researched types, and the
 rules keep it (a player's type that stalls faster starts in a stall).
@@ -138,8 +142,10 @@ share, and kills faster. In Frontline it captures less: in self-play the front m
 drawn on the clock. Every Frontline finalist did the same (0.14 to 0.21 a minute in
 self-play), so it is the search's direction, not one candidate's.
 
-The [balancing](real-scale-balance.md) has since replaced both sets with champions
-searched on mixed lineups of every type (its round 1). The pass did not cover the other
+Both sets have since been replaced: team deathmatch's by the game loop's champion (r9,
+2026-11-12), Frontline's by the [balancing](real-scale-balance.md)'s round-1 champion,
+searched on mixed lineups of every type; elimination plays a copy of the deathmatch set
+(`src/bnb/controllers/imugi_real_scale.json`). The pass did not cover the other
 types, the timing parameters' bounds, the decision floors or the chaser; the backlog holds a proper retune (`docs/rewrite/backlog.md`).
 
 With these sets Imugi has flown every type against every other: [The ship-type
@@ -153,7 +159,7 @@ by people and Imugi. Imugi states its distances in gun ranges,
 corner radii and the like, and plays the real-scale presets with its own lightly retuned
 sets (above); the chaser keeps the standard distances in the card's lengths. The solver's
 windows and error floors follow each card's own scales ([The ship
-card](ship-card.md#measuring)); a 125 kJ store climbs for about an hour of game time, so
+card](ship-card.md#measuring)); a real-scale card climbs to its ceiling in about 5 minutes of game time (270 to 334 s), so
 a real-scale card takes minutes to measure or solve on a CPU, where a standard one takes
 seconds. The tuning panel shows its sliders at once from the ship files and measures only
 the shown type and the types in the match, 7 to 20 s a real-scale type.
