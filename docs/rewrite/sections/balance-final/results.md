@@ -258,8 +258,83 @@ change than "relatively similar"; it is for the author to fly. Its elimination a
 checks are running (progress.md). If C is chosen it would be v23's card instead of A (the
 reference re-recorded again).
 
+## Option G: inside 55/45 in every mode and size (found 2026-11-16 afternoon; not in src/)
+
+The turn-and-shield cards (A-F) leave Frontline 10v10 apart: each mode is even at a different
+turn gap. G pays Yongma in the energy economy instead (a bigger store, cheaper shots) and gives
+Jujak more shield, with a slightly smaller Yongma turn step than E. Vision is equal for both ships
+(the author's rule, 2026-11-16).
+
+Yongma team's score against a Jujak team (wins + half the draws), `data/confirm1-*.jsonl`
+(2048 games, 10v10 1024; SE 1.0-1.6 points), with the before and A from the tables below:
+
+| card | dm 2v2 | dm 5v5 | dm 10v10 | elim 5v5 | elim 10v10 | Frontline 5v5 | Frontline 10v10 |
+|---|---|---|---|---|---|---|---|
+| before (v22) | 14.7 | 22.6 | 42.8 | 20.4 | 25.0 | 9.3 | 16.1 |
+| A (v23, in src/) | 28.7 | 50.0 | 74.2 | 36.8 | 50.0 | 31.3 | 52.2 |
+| E | 47.5 | 50.7 | 48.1 | 45.3 | 46.9 | 56.4 | 65.1 |
+| **G** | **50.4 ± 1.0** | **51.4 ± 1.1** | **45.9 ± 1.5** | **48.3 ± 1.1** | **49.9 ± 1.6** | **45.7 ± 1.1** | **53.7 ± 1.5** |
+
+(before and A: 512-2048 games from the tables below, other seeds.) Kill aspects and kills a minute
+stay as E's in every mode: deathmatch 5v5 energy-turn games mutual / offset head-on / flank / tail
+4.0 / 15.6 / 61.7 / 18.7% (E 4.2 / 14.9 / 61.6 / 19.3), kills a minute 8.34 (E 8.15); Frontline
+10v10 4.4 / 19.1 / 59.7 / 16.8% (E 4.5 / 19.2 / 59.8 / 16.4), 15.96 a minute (E 16.31). The
+edges: deathmatch 10v10 and Frontline 5v5 at about 46 (the Yongma team the weaker), Frontline
+10v10 at 54.
+
+**The change, seven handles** (every other handle held; the card re-solved, `api.solve_handles`):
+
+| ship | handle | before | G | |
+|---|---|---|---|---|
+| Yongma | sustained turn rate (rad/s) | 0.5930 | **0.6600** (x1.113) | real 0.503-0.785: inside |
+| Yongma | max shield | 141.95 | **78.07** (x0.55) | as C', E |
+| Yongma | ceiling = the energy store (J) | 497,563 | **718,382** (x1.444) | game knob |
+| Yongma | shots per store | 865 | **1,849** (x2.137; shot cost 575 -> 388 J, x0.676) | game knob |
+| Yongma | climb time (s, empty to full store) | 333.6 | **481.8** (x1.444) | follows the store: the rate of climb (engine power) is unchanged |
+| Jujak | sustained turn rate (rad/s) | 0.7647 | **0.7264** (x0.95) | as E: inside |
+| Jujak | max shield | 79.68 | **92.31** (x1.159) | |
+
+Range check: both turn rates inside the real spread (Jujak over Yongma 1.10; before 1.29, A 1.20,
+E 1.09); low-speed acceleration unchanged (Yongma 1% under the P-47D's, as before); damage
+unchanged (dps ratio 1.20); the shield ratio 1.18, inside the real 1.44 (before 1.78, outside).
+**The store and the shot cost depart from reality on purpose** (game knobs): the energy fighter
+carries 44% more energy and pays 32% less a shot, so a full store buys 2.1 times the shots. The
+climb-time handle grows with the store because it is the time to fill it; the climb rate is the
+same.
+
+**The trade-off to decide: Jujak becomes the tougher ship** (shield 92 against Yongma's 78;
+before Yongma had 1.78 times Jujak's). Yongma stays the energy fighter (store, shots, speed, climb
+and dive unchanged or larger) and Jujak the turn fighter (1.10 times the sustained turn), but the
+toughness edge flips. grid3 (running on the box) tests cards with the shields closer (Yongma x0.60
+/ 0.65, Jujak x1.10) and the store / shot cost / Jujak-shield neighbourhood.
+
+How it was found: Frontline 10v10's offset is a kill-share effect; single-field probes
+(`probe1`) showed three profiles: flat (shield, damage), Frontline-heavy (turn, vision) and
+Frontline-light (the store and shot cost); Jujak's shield moves Frontline 10v10 twice Frontline
+5v5. probe3 combined them (raw card factors, 512-1024 games, all seven mode-sizes); its Q4 line
+(no vision) was the only one even at 2v2. The raw probe's Yongma turn step (induced drag x1.04)
+also cut Yongma's low-speed acceleration 2.5% (outside the range rule), so G expresses the turn as
+the handle with the acceleration held (`candidates/make_confirm1.py`, `g-handles-spec.json`); the
+handle card re-solved from the seven handles matches the tested card within 0.07% in every field.
+
+To play it:
+
+```
+PYTHONPATH=$PWD/src:$PWD uv run --no-sync python docs/rewrite/sections/balance-final/apply.py \
+    --candidates g-handles.json G
+uv run --no-sync bnb play --preset real_scale_frontline
+git checkout -- src/bnb/game/ships/real-scale src/bnb/controllers/imugi_doctrines.json  # back to A
+```
+
+The files it writes are in `options/G/`. To measure it: `sweep.py --candidates
+candidates/confirm1.json` (G is `g-Q4x0.7h` there, the same card as raw factors on before/).
+
 ## Open for the author
 
+0. **G** (above) is the first card inside 55/45 in all seven mode-sizes, vision equal. It asks
+   two decisions: Jujak's shield above Yongma's (92 against 78), and the store and shot cost as
+   game knobs beyond the real aircraft. If adopted, it replaces A as v23's card (the game
+   reference re-recorded).
 1. A (one handle, v23 on the branch: 5v5 even, 2v2 29%, 10v10 72%) or a flat card (C', D:
    three handles, even from 2v2 to 10v10, the archetypes closer: Jujak out-turns Yongma by
    1.09-1.12 instead of 1.29, and the shields about equal). My pick if the sizes matter: C'
