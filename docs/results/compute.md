@@ -28,8 +28,10 @@ each measurement, since it sets the GPU's power limit.
 
 The RTX 5090's numbers are the dry run's, `dry-v24-s1`{.plain}: commit `e643c8f9`{.plain},
 preset `real_scale_all_modes`{.plain}, 2,048 environments, `--micro-batch-rows 480`{.plain},
-one chain of 100M steps of behaviour cloning then 100M of reinforcement learning on a rented
-machine.
+one chain with a budget of 200M steps, 100.7M of behaviour cloning then 98.6M of
+reinforcement learning (whole updates of 1,048,576 steps within the budget), on a rented
+machine. The compile time is the first update's time over the median update's, in each
+stage.
 
 {{pending: throughput_conditions_laptop | The RTX 4070 Laptop's measurement: its commit, configuration (micro-batch rows) and power profile.}}
 
@@ -37,8 +39,8 @@ machine.
 
 | | RTX 5090 |
 |---|---|
-| Behaviour cloning, 100M steps | {{chain_hours_rtx_5090_bc:.1f}} h |
-| Reinforcement learning, 100M steps | {{chain_hours_rtx_5090_rl:.1f}} h |
-| First compile (not cached) | {{compile_minutes_rtx_5090:.0f}} min |
+| Behaviour cloning, 100.7M steps | {{chain_hours_rtx_5090_bc:.1f}} h |
+| Reinforcement learning, 98.6M steps | {{chain_hours_rtx_5090_rl:.1f}} h |
+| First compile (not cached), both stages | {{compile_minutes_rtx_5090:.0f}} min |
 
 {{pending: compute_reading | One or two sentences: the cost of the whole arm program in GPU hours, and what the laptop can and cannot do (for example a full run in days rather than hours).}}
