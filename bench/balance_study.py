@@ -426,6 +426,37 @@ def drive(args) -> None:
     print(f"{kst()} drive done", flush=True)
 
 
+def confirm(args) -> None:
+    """Pairs ({"a", "b"} card ids, `study_analysis` pairs.json) played against each other
+    on all 8 conditions at --games (seed 2, games no batch saw); appends confirm.jsonl and
+    prints each pair's win-rate equivalents and its worst condition."""
+    out = args.out
+    cards = {c["id"]: c for c in read_lines(out / "cards.jsonl") if "card" in c}
+    pairs = json.loads(args.pairs.read_text())
+    entries = [
+        balance_map.pair_entry(f"{p['a']}~{p['b']}", cards[p["a"]]["card"], cards[p["b"]]["card"])
+        for p in pairs
+    ]
+    outputs = submit(out, args.label, entries, args.games, 2)
+    while not finished(outputs, len(entries)):
+        time.sleep(10.0)
+    rows = evaluations_of(args.label, outputs)
+    append(out / "confirm.jsonl", rows)
+    print("| pair | " + " | ".join(CONDITION_ORDER) + " | worst |")
+    for entry in entries:
+        found = {r["condition"]: r for r in rows if r["name"] == entry["name"]}
+        wins = {
+            c: balance_map.win_equivalent(found[c]["kill_share"][0], c) for c in CONDITION_ORDER
+        }
+        worst = max(abs(v - 50.0) for v in wins.values())
+        print(
+            f"| {entry['name']} | "
+            + " | ".join(f"{wins[c]:.1f}" for c in CONDITION_ORDER)
+            + f" | {worst:.1f} |",
+            flush=True,
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -442,9 +473,16 @@ def main() -> None:
     one.add_argument("--ahead", type=int, default=2, help="batches queued at once")
     one.add_argument("--processes", type=int, default=8)
     one.add_argument("--seed", type=int, default=0)
+    one = sub.add_parser("confirm")
+    one.add_argument("--out", type=pathlib.Path, required=True)
+    one.add_argument("--pairs", type=pathlib.Path, required=True)
+    one.add_argument("--games", type=int, default=2048)
+    one.add_argument("--label", default="confirm")
     args = parser.parse_args()
     if args.command == "worker":
         worker(args)
+    elif args.command == "confirm":
+        confirm(args)
     else:
         drive(args)
 
