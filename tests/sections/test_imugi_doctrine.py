@@ -135,9 +135,11 @@ def test_extending_it_flies_away_from_a_close_target_off_its_nose():
     torch.testing.assert_close(agent.stick, extending.stick, atol=0.02, rtol=0.0)
 
 
-def test_without_the_energy_to_engage_it_extends_from_a_target_on_its_nose():
+def test_without_the_energy_to_engage_it_extends_from_a_target_on_its_nose(monkeypatch):
     """A target on the nose with far more energy (a full store against an empty one): the
-    energy rule turns the ship away; with the energy (a type of its own store), it attacks."""
+    energy rule turns the ship away; with the energy (a type of its own store), it attacks.
+    (Without the offset approach, which would turn the head-on approach off the nose.)"""
+    monkeypatch.setattr("bnb.controllers.imugi_combat.OFFSET_APPROACH", False)
     doctrine = Doctrine(
         strength=1.0,
         in_advantage=ALWAYS,
@@ -182,9 +184,11 @@ def test_bleeding_reverses_toward_the_corner_speed_in_a_turning_fight():
     assert float(_decide(slow, _every_type(doctrine)).power[0, 0, 2]) < 0.5
 
 
-def test_denying_turns_off_the_line_of_a_target_whose_nose_is_on_the_ship():
+def test_denying_turns_off_the_line_of_a_target_whose_nose_is_on_the_ship(monkeypatch):
     """A target two gun ranges ahead, nose on, slightly left of the line: the agent flies
-    straight at it; denying, the ship turns (to the side it is already off its nose)."""
+    straight at it; denying, the ship turns (to the side it is already off its nose).
+    (Without the offset approach, which would turn the head-on approach off the nose.)"""
+    monkeypatch.setattr("bnb.controllers.imugi_combat.OFFSET_APPROACH", False)
     doctrine = Doctrine(
         strength=1.0,
         in_advantage=ALWAYS,
@@ -234,85 +238,58 @@ def test_a_doctrine_packs_and_names_both_ways():
 LEFT_LEVELS, RIGHT_LEVELS = (2, 4, 6), (1, 3, 5)
 
 
-def test_the_sense_turns_with_or_against_the_targets_rotation_after_the_merge():
-    """A target just passed (behind, its tail to the ship's tail) turning left: the
-    two-circle sense turns left (with its rotation), the one-circle sense right."""
-    distance = 0.5 * value("gun_range", STIFF)
-    enemy = ship(x=-distance, y=-30.0, heading=math.pi, ship_type=STIFF, team_relative=1)
+def _sense_stick(own_type: int, enemy_type: int, own_speed: float | None = None):
+    """The (right, left) full-stick commands of the sense against a target just passed
+    (behind, its tail to the ship's tail) turning left, own ship of `own_type` at `own_speed`."""
+    distance = 0.5 * value("gun_range", own_type)
+    enemy = ship(x=-distance, y=-30.0, heading=math.pi, ship_type=enemy_type, team_relative=1)
     enemy[SHIP["nose_rate"]] = 0.3
-    obs = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(STIFF)])
-    two = _decide(obs, _every_type(Doctrine(sense=1.0)))
-    one = _decide(obs, _every_type(Doctrine(sense=1.0, sense_one_circle=1.0)))
-    assert float(two.stick[0, 0, 6]) > 0.9
-    assert float(one.stick[0, 0, 5]) > 0.9
-
-
-def test_the_sense_gates_by_the_lift_ratio_and_the_mirror():
-    """Against a target of the other type: the mirror-only sense does not act, nor does a
-    sense whose lift-ratio gate the pair's ratio is below."""
-    distance = 0.5 * value("gun_range", STIFF)
-    other = AGILE if AGILE != STIFF else STIFF
-    enemy = ship(x=-distance, y=-30.0, heading=math.pi, ship_type=other, team_relative=1)
-    enemy[SHIP["nose_rate"]] = 0.3
-    obs = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(other)])
-    agent = _decide(obs)
-    one = Doctrine(sense=1.0, sense_one_circle=1.0)
-    mirror_only = _decide(obs, _every_type(dataclasses.replace(one, sense_mirror_only=1.0)))
-    torch.testing.assert_close(mirror_only.stick, agent.stick)
-    lift = CHARACTERISTICS.max_acceleration / CHARACTERISTICS.corner_speed**2
-    ratio = float(lift[STIFF] / lift[other])
-    gated = dataclasses.replace(one, sense_in_lift_ratio=Logistic(ratio * 10.0, 0.05, True))
-    torch.testing.assert_close(
-        _decide(obs, _every_type(gated)).stick, agent.stick, atol=1e-3, rtol=0
+    obs = observation(
+        [ship(ship_type=own_type, speed=own_speed), absent(own_type, 0)],
+        [enemy, absent(enemy_type)],
     )
-    assert float(_decide(obs, _every_type(one)).stick[0, 0, 5]) > 0.9
+    flown = _decide(obs, _every_type(Doctrine(sense=1.0)))
+    return float(flown.stick[0, 0, 5]), float(flown.stick[0, 0, 6])
+
+
+def test_the_faster_turning_ship_takes_two_circles_with_the_targets_rotation():
+    """A target just passed turning left: a ship whose turn rate now is higher, or equal
+    (the same card and speed), turns left (with its rotation), in a mirror and across types."""
+    for own_type, enemy_type in ((STIFF, STIFF), (AGILE, AGILE), (AGILE, STIFF)):
+        right, left = _sense_stick(own_type, enemy_type)
+        assert left > 0.9 and right < 0.1
+
+
+def test_a_smaller_radius_with_a_lower_rate_takes_one_circle_against_the_rotation():
+    """A ship slowed to a smaller radius now but a lower rate than the target turns right
+    (against its rotation): the same card and across types (the sense has no gate by type)."""
+    for own_type, enemy_type in ((AGILE, AGILE), (STIFF, AGILE)):
+        right, left = _sense_stick(own_type, enemy_type, own_speed=50.0)
+        assert right > 0.9 and left < 0.1
+    # a lower rate and a larger radius (the slower card at cruise against the other): two circles
+    right, left = _sense_stick(STIFF, AGILE)
+    assert left > 0.9 and right < 0.1
 
 
 def test_the_sense_hands_over_to_the_crowd_sense_with_another_enemy_near():
-    """The one-circle sense alone with its target; with another enemy near, the crowd
+    """The sense alone with its target; with another enemy near, the crowd
     sense flies straight (stick 0) and boosts."""
     gun = value("gun_range", STIFF)
     enemy = ship(x=-0.5 * gun, y=-30.0, heading=math.pi, ship_type=STIFF, team_relative=1)
     enemy[SHIP["nose_rate"]] = 0.3
     doctrine = Doctrine(
         sense=1.0,
-        sense_one_circle=1.0,
         sense_in_crowd=Logistic(0.5, 0.1, False),
         crowd_sense=1.0,
         crowd_sense_boost=1.0,
     )
     alone = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(STIFF)])
-    assert float(_decide(alone, _every_type(doctrine)).stick[0, 0, 5]) > 0.9
+    assert float(_decide(alone, _every_type(doctrine)).stick[0, 0, 6]) > 0.9
     other = ship(x=-2.0 * gun, y=2.0 * gun, heading=0.0, ship_type=STIFF, team_relative=1)
     crowd = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, other])
     flown = _decide(crowd, _every_type(doctrine))
     assert float(flown.stick[0, 0, 0]) > 0.9
     assert float(flown.power[0, 0, 1]) > 0.8
-
-
-def test_the_sense_draws_its_choice_once_as_its_gate_opens():
-    """At sense_one_circle 1/2 the choice is drawn once when the gate opens and kept: a
-    re-read carry gives the same stick; over many views both choices are made."""
-    distance = 0.5 * value("gun_range", STIFF)
-    enemy = ship(x=-distance, y=-30.0, heading=math.pi, ship_type=STIFF, team_relative=1)
-    enemy[SHIP["nose_rate"]] = 0.3
-    obs = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(STIFF)])
-    obs = Obs(
-        **{
-            k: None if v is None else v.expand(256, *v.shape[1:])
-            for k, v in dataclasses.asdict(obs).items()
-        }
-    )
-    doctrines = _every_type(Doctrine(sense=1.0, sense_one_circle=0.5))
-    keys = torch.arange(obs.ships.shape[0])
-    parts, carry = decide(obs, CHARACTERISTICS, PARAMETERS, decision_key=keys, doctrines=doctrines)
-    draw = carry.sense_draw[:, 0]
-    assert bool((draw >= 0.0).all())
-    one = parts.stick[:, 0, 5] > 0.9
-    torch.testing.assert_close(one, draw < 0.5)
-    assert 50 < int(one.sum()) < 206
-    again = decide(obs, CHARACTERISTICS, PARAMETERS, carry=carry, doctrines=doctrines)[0]
-    torch.testing.assert_close(again.stick, parts.stick, atol=0.01, rtol=0.0)
 
 
 def _passed_target(other_type: int = STIFF) -> torch.Tensor:
@@ -326,7 +303,6 @@ def _passed_target(other_type: int = STIFF) -> torch.Tensor:
 
 CROWDED = Doctrine(
     sense=1.0,
-    sense_one_circle=1.0,
     sense_in_crowd=Logistic(0.5, 0.1, False),
     crowd_sense=1.0,
     crowd_sense_boost=1.0,
@@ -342,34 +318,34 @@ def test_the_crowd_extension_presses_by_the_situation():
     crowd = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [_passed_target(), other])
     assert float(_decide(crowd, _every_type(CROWDED)).stick[0, 0, 0]) > 0.9
     rich = dataclasses.replace(CROWDED, crowd_sense_in_energy_ratio=Logistic(1e-3, 0.05, False))
-    assert float(_decide(crowd, _every_type(rich)).stick[0, 0, 5]) > 0.9
+    assert float(_decide(crowd, _every_type(rich)).stick[0, 0, 6]) > 0.9
     wing = ship(x=0.0, y=gun, ship_type=STIFF)
     pair = observation([ship(ship_type=STIFF), wing], [_passed_target(), other])
     assert float(_decide(pair, _every_type(CROWDED)).stick[0, 0, 0]) > 0.9
     allied = dataclasses.replace(CROWDED, sense_crowd_ally_weight=1.0)
-    assert float(_decide(pair, _every_type(allied)).stick[0, 0, 5]) > 0.9
+    assert float(_decide(pair, _every_type(allied)).stick[0, 0, 6]) > 0.9
     # the other enemy flies +x, 45 degrees off the line to the ship
     threats = dataclasses.replace(CROWDED, sense_crowd_in_nose_angle=Logistic(0.3, 0.1, False))
-    assert float(_decide(crowd, _every_type(threats)).stick[0, 0, 5]) > 0.9
+    assert float(_decide(crowd, _every_type(threats)).stick[0, 0, 6]) > 0.9
 
 
 def test_the_duel_extension_flies_straight_behind_on_the_lift_ratio():
-    """Alone with a target: the one-circle sense; with the duel extension's lift gate above
+    """Alone with a target: the sense's two circles; with the duel extension's lift gate above
     the pair's ratio, straight and boosting; its default gates are shut."""
     alone = observation(
         [ship(ship_type=STIFF), absent(STIFF, 0)], [_passed_target(), absent(STIFF)]
     )
     shut = dataclasses.replace(CROWDED, duel_extend=1.0)
-    assert float(_decide(alone, _every_type(shut)).stick[0, 0, 5]) > 0.9
+    assert float(_decide(alone, _every_type(shut)).stick[0, 0, 6]) > 0.9
     behind = dataclasses.replace(shut, duel_extend_in_lift_ratio=Logistic(10.0, 0.05, False))
     flown = _decide(alone, _every_type(behind))
     assert float(flown.stick[0, 0, 0]) > 0.9
     assert float(flown.power[0, 0, 1]) > 0.8
-    # mirror only: against the other type the sense's turn stays (the sense on any type)
+    # mirror only: against the other type the sense's turn stays (the sense flies on any type)
     other = observation(
         [ship(ship_type=STIFF), absent(STIFF, 0)], [_passed_target(AGILE), absent(AGILE)]
     )
-    mirror = dataclasses.replace(behind, duel_extend_mirror_only=1.0, sense_mirror_only=0.0)
+    mirror = dataclasses.replace(behind, duel_extend_mirror_only=1.0)
     hurt = dataclasses.replace(mirror, duel_extend_in_shield_ratio=Logistic(10.0, 0.05, False))
     assert float(_decide(other, _every_type(hurt)).stick[0, 0, 0]) < 0.5
     # against another type, gated on another known enemy anywhere: none here, so the turn

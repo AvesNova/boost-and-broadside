@@ -158,11 +158,11 @@ by default:
 - **Brake**: with a closing target in the rear hemisphere, its nose on the ship, inside
   `brake_in_gun_range`, reverse (the store as a speed brake) to force an overshoot.
 - **Sense** (the post-merge choice): with the target passed behind the 3-9 line within
-  `sense_in_gun_range` and turning, turn at full stick against its rotation (the
-  one-circle) with probability `sense_one_circle`, drawn once per merge, else with it (the
-  two-circle). It is gated by the lift-coefficient ratio (`sense_in_lift_ratio`; the slow
-  turn's radius is one over the maximum lift coefficient) and, optionally, to the own type
-  (`sense_mirror_only`). With another known enemy within `sense_crowd_in_gun_range` (the
+  `sense_in_gun_range` and turning, turn at full stick, choosing one circle or two from
+  the card and the state now: with the target's rotation (the two-circle) where the own
+  turn rate at the own speed and store is the higher, else against it (the one-circle)
+  where the own turn radius is the smaller, else with it. The choice is the same in every
+  matchup and is not drawn. With another known enemy within `sense_crowd_in_gun_range` (the
   falling `sense_in_crowd` on their soft count), it hands over to the **crowd sense**: the
   same side at `crowd_sense_stick` of full stick (0 flies straight, an extension),
   boosting with weight `crowd_sense_boost`.

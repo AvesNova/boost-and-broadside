@@ -29,12 +29,10 @@ The maneuvers (the combat layer's `maneuvers`) are weighted on their own, not by
 and `in_advantage`, so they fly in the mirrors too; each reads the committed target:
 
 - **Sense** (the post-merge choice): with the target behind the ship's 3-9 line within
-  `sense_in_gun_range` and turning, turn at full stick in its rotation sense (the
-  two-circle), or against it (the one-circle) with probability `sense_one_circle`, drawn
-  once each time the gate opens (the carry's `sense_draw`); weighted
-  by `sense_in_lift_ratio`, rising in the own maximum lift coefficient over the target's
-  (the inverse of the slow turn's radius: the one-circle goes to the smaller radius), and,
-  with `sense_mirror_only` above 1/2, only against the own type. In a crowd (the soft
+  `sense_in_gun_range` and turning, turn at full stick, in the target's rotation sense
+  (the two-circle) where the own turn rate now is the higher, else against it (the
+  one-circle) where the own turn radius now is the smaller, else in its sense; the same
+  in every matchup, not drawn. In a crowd (the soft
   count of the other known enemies within `sense_crowd_in_gun_range`, through the falling
   `sense_in_crowd`; open by default) the sense hands over to `crowd_sense`: the same side at
   `crowd_sense_stick` of full stick, boosting with weight `crowd_sense_boost` (whatever
@@ -130,10 +128,7 @@ class Doctrine:
     deny_in_gun_range: Logistic = Logistic(3.0, 0.2, False)
     deny_angle: float = 0.5  # rad
     sense: float = 0.0
-    sense_one_circle: float = 0.0
     sense_in_gun_range: Logistic = Logistic(2.0, 0.2, False)
-    sense_in_lift_ratio: Logistic = Logistic(1e-3, 0.05, True)
-    sense_mirror_only: float = 0.0
     sense_crowd_in_gun_range: Logistic = Logistic(3.0, 0.1, False)
     sense_in_crowd: Logistic = Logistic(1e4, 0.1, False)
     crowd_sense: float = 0.0
@@ -169,8 +164,6 @@ WEIGHTS = (
 )
 # The maneuvers' fractions, each in [0, 1] (searched like a weight).
 FRACTIONS = (
-    "sense_one_circle",
-    "sense_mirror_only",
     "crowd_sense_stick",
     "crowd_sense_boost",
     "duel_extend_mirror_only",
@@ -190,7 +183,6 @@ SCALE_FLOORS = {
     "deny_in_stall_angle": 0.158,
     "deny_in_gun_range": 0.1,
     "sense_in_gun_range": 0.1,
-    "sense_in_lift_ratio": 0.03,
     "sense_crowd_in_gun_range": 0.1,
     "sense_in_crowd": 0.1,
     "crowd_sense_in_energy_ratio": 0.03,

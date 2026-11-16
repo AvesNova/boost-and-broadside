@@ -130,7 +130,7 @@ class Context(NamedTuple):
 
 def choice_uniforms(fleet: Context, name: str, like: torch.Tensor) -> torch.Tensor | None:
     """Uniforms shaped like `like` (R, ...) for the decision's draw `name` (a plan choice's
-    switch, the sense), keyed by the decision's key; None for a decision that does not
+    switch), keyed by the decision's key; None for a decision that does not
     switch (`Context.decision_key`)."""
     if fleet.decision_key is None:
         return None
@@ -487,7 +487,7 @@ class Combat(NamedTuple):
     """The combat layer's result: its marginals; per own ship (R, S): has_target, the
     target's distance (0 without one) and its weight (1 seen, fading when dead reckoned, 0
     without one); the plan choices it made, the target (-1 none) and the turn side; and the
-    sense's draw, the target's doubt and the extension's phase after the decision
+    target's doubt and the extension's phase after the decision
     (`ImugiCarry`)."""
 
     marginals: Marginals
@@ -496,7 +496,6 @@ class Combat(NamedTuple):
     weight: torch.Tensor
     target: torch.Tensor
     left: torch.Tensor
-    sense_draw: torch.Tensor
     target_doubt: torch.Tensor
     extend_phase: torch.Tensor
 
@@ -791,7 +790,7 @@ def maneuvers(
     power. others: the other known enemies' distances in own gun ranges (R, S, E; inf
     elsewhere), the angles between their tracks and the lines from them to the ship (R, S,
     E), and the own ships' distances in own gun ranges (R, S, S; inf for the ship itself and
-    the dead). Returns (stick, left, power, sense_draw)."""
+    the dead). Returns (stick, left, power)."""
     target_x, target_y, distance = geometry[:3]
     temperature = fleet.temperature
     boost = power_marginal(torch.ones_like(distance), torch.zeros_like(distance))
@@ -827,7 +826,6 @@ def maneuvers(
         / per_ship(characteristics.max_energy, target_type),
     )
     one_circle = (own_rate_now <= target_rate_now) & (own_radius_now < target_radius_now)
-    draw = torch.full_like(distance, -1.0)
     sense_left = (target_rate > 0.0) ^ one_circle
     # alone: no other threatening known enemy near (a soft count of them inside the crowd's
     # radius, their tracks toward the ship), less the weighted count of own ships near
@@ -886,7 +884,7 @@ def maneuvers(
         commanded_stick(sense_left, doctrine.crowd_sense_stick) - stick
     )
     power = power + (in_crowd * doctrine.crowd_sense_boost)[..., None] * (boost - power)
-    return stick, left, power, draw
+    return stick, left, power
 
 
 def combat(
@@ -1017,7 +1015,7 @@ def combat(
         allies = torch.sqrt(ally_x * ally_x + ally_y * ally_y) / fleet.gun_range[..., None]
         itself = torch.eye(allies.shape[-1], dtype=torch.bool, device=allies.device)
         allies = torch.where(own_alive[:, None, :] & ~itself, allies, math.inf)
-        stick, left, power, draw = maneuvers(
+        stick, left, power = maneuvers(
             fleet,
             characteristics,
             doctrine,
@@ -1029,8 +1027,6 @@ def combat(
             power,
             (others, tracks, allies),
         )
-    else:
-        draw = torch.where(fleet.carry.fresh, -1.0, fleet.carry.sense_draw)
 
     hit_radius = target(per_ship(characteristics.hit_radius, fleet.enemy_type))
     # the predicted miss: how far the nose's line passes from the lead point, in the
@@ -1054,7 +1050,6 @@ def combat(
         weight,
         chosen,
         left,
-        draw,
         doubt,
         extend_phase,
     )
