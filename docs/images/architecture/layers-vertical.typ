@@ -1,4 +1,5 @@
-// The two layers of a Yemong block, for a paper column: two separate panels, each read
+// The two layers of a Yemong block (temporal first, as a new run builds), for a paper
+// column: two separate panels, each read
 // from the bottom up as a pre-norm residual pair (norm, mixer, sum; norm, MLP, sum).
 #import "diagram.typ": *
 
@@ -52,10 +53,10 @@
 }
 
 #let gap = 44 // between the panels
-#let temporal-bottom = 14 + panel-height(58)
-#let spatial-bottom = temporal-bottom + gap + panel-height(box-height)
+#let spatial-bottom = 14 + panel-height(box-height)
+#let temporal-bottom = spatial-bottom + gap + panel-height(58)
 
-#show: canvas.with(width, spatial-bottom + 14)
+#show: canvas.with(width, temporal-bottom + 14)
 
 #panel(
   temporal-bottom, "Temporal layer", "per token, across ticks", "temporal",

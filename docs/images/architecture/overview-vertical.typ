@@ -16,14 +16,14 @@
 #let row-one = heads-top + 58
 #let row-one-height = 40
 #let row-two = row-one + row-one-height / 2 + 14 + 28
-#let row-two-height = 56
+#let row-two-height = 66
 #let heads-bottom = row-two + row-two-height / 2 + 12
 
 // The block group, then the encoder and the inputs below it.
 #let block-top = heads-bottom + gap
-#let temporal = block-top + 58 + card-height / 2
-#let spatial = temporal + card-height + gap
-#let block-bottom = spatial + card-height / 2 + 14
+#let spatial = block-top + 50 + card-height / 2
+#let temporal = spatial + card-height + gap + 2 * stack-offset
+#let block-bottom = temporal + card-height / 2 + 14
 #let encoder = block-bottom + gap + 2 * stack-offset + card-height / 2
 #let tokens = encoder + card-height + gap + 2 * stack-offset
 #let observation = tokens + card-height + gap
@@ -39,13 +39,13 @@
 #card(left-head, row-two, head-width, row-two-height, "Outcome head",
   lines: ("global token:", "win, tie, loss, unresolved"))
 #card(right-head, row-two, head-width, row-two-height, "Auxiliary heads",
-  lines: ("next state, error, enemy action,", "density, shots, geometry"), kind: "auxiliary", dashed: true)
+  lines: ("next state, forecast error,", "enemy action, density,", "shots, geometry"), kind: "auxiliary", dashed: true)
 
-#group(x - 150, block-top, x + 150, block-bottom, "Yemong block × L",
-  subtitle: "spatial, then temporal")
+#group(x - 150, block-top, x + 150, block-bottom, "Yemong block × 2",
+  subtitle: "temporal, then spatial × 2")
 #card(x, temporal, card-width, card-height, "Temporal layer",
   lines: ("recurrence across ticks, per token",), kind: "temporal", stacked: true, badge: "× tokens")
-#card(x, spatial, card-width, card-height, "Spatial layer",
+#card(x, spatial, card-width, card-height, "Spatial layer × 2",
   lines: ("attention across ships, per tick",), kind: "attention")
 
 #card(x, encoder, card-width, card-height, "Encoder",
@@ -58,6 +58,6 @@
 #wire((x, observation - card-height / 2), (x, tokens + card-height / 2))
 #wire((x, tokens - card-height / 2), (x, encoder + card-height / 2))
 #wire((x, encoder - card-height / 2), (x, block-bottom))
-#wire((x, block-bottom), (x, spatial + card-height / 2), head: false)
-#wire((x, spatial - card-height / 2), (x, temporal + card-height / 2))
-#wire((x, temporal - card-height / 2 - 2 * stack-offset), (x, heads-bottom))
+#wire((x, block-bottom), (x, temporal + card-height / 2), head: false)
+#wire((x, temporal - card-height / 2 - 2 * stack-offset), (x, spatial + card-height / 2))
+#wire((x, spatial - card-height / 2), (x, heads-bottom))

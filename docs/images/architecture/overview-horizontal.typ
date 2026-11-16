@@ -12,17 +12,17 @@
 #let row-one = heads-top + 66
 #let row-two = row-one + 74
 #let row-three = row-two + 20 + 14 + 28
-#let row-four = row-three + 28 + 14 + 28
-#let heads-bottom = row-four + 28 + 12
+#let row-four = row-three + 28 + 14 + 33
+#let heads-bottom = row-four + 33 + 12
 #let y = (heads-top + heads-bottom) / 2
 
 #let observation = 4 + card-width / 2
 #let tokens = observation + card-width + gap
 #let encoder = tokens + card-width + stacked-room + gap
 #let block-left = encoder + card-width / 2 + stacked-room + gap
-#let spatial = block-left + 14 + card-width / 2
-#let temporal = spatial + card-width + gap
-#let block-right = temporal + card-width / 2 + stacked-room + 14
+#let temporal = block-left + 14 + card-width / 2
+#let spatial = temporal + card-width + stacked-room + gap
+#let block-right = spatial + card-width / 2 + 14
 #let heads-left = block-right + gap
 #let head-x = heads-left + 12 + head-width / 2
 #let heads-right = head-x + head-width / 2 + stacked-room + 12
@@ -38,8 +38,8 @@
   lines: ("per-kind projection,", "then shared"), stacked: true, badge: "× tokens")
 
 #group(block-left, y - card-height / 2 - 62, block-right, y + card-height / 2 + 14,
-  "Yemong block × L", subtitle: "spatial, then temporal")
-#card(spatial, y, card-width, card-height, "Spatial layer",
+  "Yemong block × 2", subtitle: "temporal, then spatial × 2")
+#card(spatial, y, card-width, card-height, "Spatial layer × 2",
   lines: ("attention across", "ships, per tick"), kind: "attention")
 #card(temporal, y, card-width, card-height, "Temporal layer",
   lines: ("recurrence across", "ticks, per token"), kind: "temporal", stacked: true, badge: "× tokens")
@@ -51,11 +51,11 @@
   lines: ("a categorical value per level",), stacked: true, badge: "× own ships")
 #card(head-x, row-three, head-width, 56, "Outcome head",
   lines: ("global token:", "win, tie, loss, unresolved"))
-#card(head-x, row-four, head-width, 56, "Auxiliary heads",
-  lines: ("next state, error, enemy action,", "density, shots, geometry"), kind: "auxiliary", dashed: true)
+#card(head-x, row-four, head-width, 66, "Auxiliary heads",
+  lines: ("next state, forecast error,", "enemy action, density,", "shots, geometry"), kind: "auxiliary", dashed: true)
 
 #wire((observation + card-width / 2, y), (tokens - card-width / 2, y))
 #wire((tokens + card-width / 2 + stacked-room, y), (encoder - card-width / 2, y))
-#wire((encoder + card-width / 2 + stacked-room, y), (spatial - card-width / 2, y))
-#wire((spatial + card-width / 2, y), (temporal - card-width / 2, y))
-#wire((temporal + card-width / 2 + stacked-room, y), (heads-left, y))
+#wire((encoder + card-width / 2 + stacked-room, y), (temporal - card-width / 2, y))
+#wire((temporal + card-width / 2 + stacked-room, y), (spatial - card-width / 2, y))
+#wire((spatial + card-width / 2, y), (heads-left, y))

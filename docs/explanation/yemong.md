@@ -20,15 +20,16 @@ Nothing in the weights depends on the number of ships, the number of fields or t
 so one set of weights plays at every size.
 
 ![Yemong at a glance: the observation becomes the belief and one token per ship plus a
-global token, an encoder projects them, L blocks of a spatial layer and a temporal layer
-mix them, and the heads read the result.](../images/architecture/overview-vertical.svg)
+global token, an encoder projects them, two blocks of a temporal layer and two spatial
+layers mix them, and the heads read the result.](../images/architecture/overview-vertical.svg)
 
-The figure reads from the bottom up. A stacked card runs once per token (or per own ship);
-the spatial layer mixes the tokens of one tick, and the temporal layer carries each token
-across ticks. The order within a block is `YemongConfig.order`: a new run builds the
-temporal layer first, and its blocks hold two spatial layers each
-(`YemongConfig.spatial_per_block`). The [Network](#network) section has each layer's
-inside.
+The figure reads from the bottom up and shows a new run's build (`TrainConfig.yemong`):
+two blocks (`YemongConfig.blocks`), each a temporal layer and then two spatial layers
+(`YemongConfig.order` "temporal_first", `YemongConfig.spatial_per_block`). A stacked card
+runs separately for each token (or each own ship). The temporal layer is stacked because
+its recurrence runs per token, each token carrying its own state across ticks; the spatial
+layer is a single card because its attention runs once across all the tokens of a tick.
+The [Network](#network) section has each layer's inside.
 
 ## The model owns its inputs
 

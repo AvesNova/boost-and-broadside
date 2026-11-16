@@ -52,7 +52,7 @@
 #show: canvas.with(width, 2 * panel-height + gap + 8)
 
 #panel(
-  4, "Spatial layer", "per tick, across tokens", "spatial",
+  4 + panel-height + gap, "Spatial layer", "per tick, across tokens", "spatial",
   ("Multi-head attention", "rotary position and heading"), "attention",
   edge => {
     card(mixer, edge + 30 + 22, 150, 44, "Map memory",
@@ -62,7 +62,7 @@
 )
 
 #panel(
-  4 + panel-height + gap, "Temporal layer", "per token, across ticks", "temporal",
+  4, "Temporal layer", "per token, across ticks", "temporal",
   ("Recurrent mixer", "linear, causal conv, RG-LRU;", "times a GELU gate, linear"), "temporal",
   edge => {
     // The recurrence: the state carries over to the next tick.
