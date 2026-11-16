@@ -451,3 +451,22 @@ the fitted step plus single checks, in every mode (laptop) and dm2 (box, 1024).
   vision x1.0-1.5, induced drag x1.06-1.22 (less turn), shot cost x0.42-0.61; Jujak shield
   x1.16-1.32, Q3 also Jujak vision x0.77) at 0.8/1/1.2 of the step, queued in all seven
   mode-sizes on the box (new frontline-10 and frontline-5 workers; probe3 dm2 at 1024).
+
+## 13:28 (new agent, third) box reordered; probe3's raw cards measured; probe4 = the handle versions
+
+- Box: the dm10, el10 and el5 workers were waiting on the lock with probe2 announced; stopped
+  them (not playing), renamed their probe2 jobs to sort after probe3 (dm10 07-probe2, el 03-probe2),
+  restarted with the same arguments (warm, ~1-2 min). dm2's stale 02-fin3 and 03-grid2 moved to
+  queue/deathmatch-2/held (fin3/big already cover them). probe3 now runs first in every mode.
+- `measure_cards.py` (new; flies a candidate file's cards with `api.measure_handles`, CPU, 1.5 min
+  for 18 cards): **probe3's raw induced-drag step is a small turn change and a real
+  low-speed-acceleration loss**: Yongma turn x1.08-1.11 (from E's 1.12), but low-speed
+  acceleration x0.85-0.975, with Yongma already 1% under the real floor (P-47D 8.87): Q1x1.0
+  would be 8.03, 9% under. So the raw cards break the range rule; the handle version is needed
+  anyway, and it may play differently (the acceleration loss was part of the probe's effect).
+- The store changes the climb-time handle as a side effect (climb_time = time to fill the store:
+  Q1 x1.93, Q5 x3.7); the rate of climb at a given energy (the engine power) is unchanged.
+  Jujak's shield at Q1-Q3 x1.0 is 98-105 against Yongma's 78 (the flag in the brief).
+- probe4 (`candidates/make_probe4.py`): each probe3 card with Yongma's turn as the handle at
+  the measured value (E's other handles), the store/shot cost/vision and Jujak's shield/vision
+  raw on top. Solving on the box CPU now; queued behind probe3 once solved.

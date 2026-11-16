@@ -1,0 +1,162 @@
+[
+ {
+  "name": "p4-E",
+  "energy_handles": {
+   "sustained_turn_rate": 1.12,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q1x0.8h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.099,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q1x1.0h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.094,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q1x1.2h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.088,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q2x0.8h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.093,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q2x1.0h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.086,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q2x1.2h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.08,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q3x0.8h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.091,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q3x1.0h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.084,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q3x1.2h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.076,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q4x0.8h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.112,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q4x1.0h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.11,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q4x1.2h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.108,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q5x0.8h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.103,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q5x1.0h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.099,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ },
+ {
+  "name": "p4-Q5x1.2h",
+  "energy_handles": {
+   "sustained_turn_rate": 1.094,
+   "max_shield": 0.55
+  },
+  "turn_handles": {
+   "sustained_turn_rate": 0.95
+  }
+ }
+]
