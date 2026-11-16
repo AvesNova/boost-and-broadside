@@ -598,3 +598,56 @@ def render(artifact: dict, directory: pathlib.Path) -> tuple[list[pathlib.Path],
         paths, numbers[name] = still(artifact, directory, name, config)
         written += paths
     return written, numbers
+
+
+def part_windows(match: dict, tick_length: float, parts: int, seconds: float):
+    """[(start, end)] s: in each of `parts` equal parts of the game, its busiest window of
+    `seconds` (`busiest_window` over that part alone)."""
+    ticks = int(match["hit"].shape[0])
+    windows = []
+    for part in range(parts):
+        first, last = part * ticks // parts, (part + 1) * ticks // parts
+        piece = {key: match[key][first:last] for key in ("hit", "died")}
+        start, end = busiest_window(piece, tick_length, seconds)
+        windows.append((first * tick_length + start, first * tick_length + end))
+    return windows
+
+
+def manoeuvre_strip(
+    artifact: dict,
+    directory: pathlib.Path,
+    name: str = "manoeuvres",
+    parts: int = 4,
+    seconds: float = 15.0,
+    variant: str = "light",
+    columns: int = 2,
+) -> pathlib.Path:
+    """The manoeuvre strip: the busiest `seconds` of each of `parts` equal parts of the game
+    (`part_windows`), each a cropped still, in a grid of `columns` in one PNG,
+    directory/name<theme suffix>.png. Returns its path."""
+    import tempfile
+
+    from PIL import Image
+
+    match = artifact["match"]
+    tick_length = float(match["about"]["tick_length"])
+    windows = part_windows(match, tick_length, parts, seconds)
+    with tempfile.TemporaryDirectory() as scratch:
+        images = []
+        for number, (start, end) in enumerate(windows):
+            config = StillConfig(start=start, end=end, theme=variant)
+            paths, _ = still(artifact, pathlib.Path(scratch), f"window_{number}", config)
+            images.append(Image.open(paths[0]).convert("RGB"))
+        width = max(image.width for image in images)
+        height = max(image.height for image in images)
+        columns = min(columns, len(images))
+        rows = -(-len(images) // columns)
+        strip = Image.new("RGB", (columns * width, rows * height), house.chrome("surface", variant))
+        for number, image in enumerate(images):
+            row, column = divmod(number, columns)
+            strip.paste(image, (column * width + (width - image.width) // 2, row * height))
+    directory = pathlib.Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{name}{house.suffix(variant)}.png"
+    strip.save(path)
+    return path

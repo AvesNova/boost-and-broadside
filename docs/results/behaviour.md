@@ -49,7 +49,7 @@ trail in its team's colour, older stretches faded, and an X where a ship died
 
 Windows of the 1 against 1 duel, each the busiest stretch of its part of the game:
 
-{{figure: docs/results/media/stills/manoeuvres.png | Four windows of the 1 against 1 duel side by side, each a few seconds of turning fight}}
+{{figure: docs/results/media/stills/manoeuvres.png | Four windows of the 1 against 1 duel in a grid, each a few seconds of turning fight}}
 
 ## Gallery
 

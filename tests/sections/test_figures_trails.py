@@ -159,3 +159,18 @@ def test_a_policy_s_ghosts_carry_its_belief_sigma(tmp_path):
     sigma = record["ghost_sigma"][sampled]
     assert torch.isfinite(sigma).all() and (sigma > 0).all()
     assert all(math.isfinite(float(v)) for v in record["clock"])
+
+
+def test_the_manoeuvre_strip_puts_each_part_s_busiest_window_side_by_side(tmp_path):
+    pytest.importorskip("matplotlib")
+    from PIL import Image
+
+    artifact = hand_built()
+    tick = float(artifact["match"]["about"]["tick_length"])
+    windows = trails.part_windows(artifact["match"], tick, 2, 0.5)
+    assert len(windows) == 2 and windows[0][1] <= 30 * tick <= windows[1][0] + tick
+    light = trails.manoeuvre_strip(artifact, tmp_path, parts=2, seconds=0.5)
+    dark = trails.manoeuvre_strip(artifact, tmp_path, parts=2, seconds=0.5, variant="dark")
+    assert light.name == "manoeuvres.png" and dark.name == "manoeuvres_dark.png"
+    single = Image.open(trails.still(artifact, tmp_path, "one", trails.StillConfig())[0][0])
+    assert Image.open(light).width >= 2 * single.width - 4  # two windows, one row
