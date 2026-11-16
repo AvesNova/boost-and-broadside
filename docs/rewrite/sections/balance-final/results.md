@@ -102,6 +102,31 @@ Notes:
   so it is the after. B's files are not written; its card is
   in `candidates/final.json`.
 
+## Second pass (2026-11-16 from 09:30): 2048-game deathmatch checks, Frontline 10v10
+
+Deathmatch at 2048 games a card (the 3070's worker, seed 400, `data/big-deathmatch-*.jsonl`):
+
+| card | 5v5 | 10v10 |
+|---|---|---|
+| before | 22.6 ± 0.9% | 42.8 ± 1.1% |
+| A (v23) | 50.0 ± 1.1% | 74.2 ± 0.9% |
+| C' | 50.9 ± 1.1% | 52.9 ± 1.1% |
+| D | 50.2 ± 1.1% | 54.8 ± 1.1% |
+| **E** | **50.1 ± 1.1%** | **49.6 ± 1.1%** |
+
+(2v2 is still running.) With the closer turns the aspect mix shifts a little toward the
+front in every mode: in the deathmatch 5v5 energy-turn games mutual head-on 3.4 -> 4.0-4.2%,
+offset 12.5 -> 15%, tail 23 -> 19%; kills a minute 8.2 -> 8.2-8.4.
+
+**A new problem: Frontline 10v10.** grid1 (60 cards, 256-384 games, laptop) shows Frontline
+10v10 with a steeper slope than deathmatch: before 17%, and the cards that are flat in
+deathmatch put it at 76-80% (Jujak x0.95, Yongma turn x1.12, shield x0.6: 76%). No grid1 card
+is within 10 points of even in all of deathmatch 2v2 and 5v5, elimination and Frontline 5v5
+and Frontline 10v10. The best compromise there, with the most distinct turns (1.15), leaves
+Jujak's card alone: **F = Yongma sustained turn x1.12, Yongma shield x0.75** (2v2 40, 5v5 54,
+Frontline 5v5 43, elimination 5v5 43, Frontline 10v10 57; 256-384 games). A, C', E and F are
+being measured at 1024 games in every mode at 5v5 and 10v10 (`candidates/fin3.json`).
+
 ## Flatter cards (rounds 12-16, 512 games)
 
 The v23 card centres deathmatch 5v5 but leaves the sizes apart (2v2 29%, 10v10 71%). Yongma
