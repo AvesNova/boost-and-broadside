@@ -382,6 +382,10 @@ STICK_BY_ENERGY = os.environ.get("BNB_STICK_BY_ENERGY", "1") == "1"
 COMMIT_HOLD_SECONDS = 2.5
 # own over target energy (kinetic plus store) above this is an energy advantage
 ENERGY_ADVANTAGE_RATIO = 1.1
+# The initiative's advantage: the turn rate now first, the energy only between even rates
+# (BNB_ENERGY_BREAKS_RATE_TIES=1); else either (0: a faster ship that turns slower also
+# takes the initiative into a turning fight it then loses)
+ENERGY_BREAKS_RATE_TIES = os.environ.get("BNB_ENERGY_BREAKS_RATE_TIES", "0") == "1"
 # The initiative turn's onset: a full-stick turn from straight flight reaches 90% of its rate
 # in about this many nose periods (1 / the nose frequency, which scales with the speed up to
 # the corner speed): 3.3 / omega_c is 0.30 s at the corner speed on both real-scale ships
@@ -998,12 +1002,16 @@ def maneuvers(
             released = (torch.zeros_like(seen), torch.zeros_like(seen))
         blocked = released[1] | ~seen | (fleet.boundary_weight > 0.5)
         released = (released[0] | blocked, blocked)
-        advantaged = (own_rate_now > TWO_CIRCLE_RATE_MARGIN * target_rate_now) | (
-            energy_ratio > ENERGY_ADVANTAGE_RATIO
-        )
-        outmatched = (target_rate_now > TWO_CIRCLE_RATE_MARGIN * own_rate_now) | (
-            energy_ratio * ENERGY_ADVANTAGE_RATIO < 1.0
-        )
+        rate_ahead = own_rate_now > TWO_CIRCLE_RATE_MARGIN * target_rate_now
+        rate_behind = target_rate_now > TWO_CIRCLE_RATE_MARGIN * own_rate_now
+        energy_ahead = energy_ratio > ENERGY_ADVANTAGE_RATIO
+        energy_behind = energy_ratio * ENERGY_ADVANTAGE_RATIO < 1.0
+        if ENERGY_BREAKS_RATE_TIES:  # the turn rate first; energy only between even rates
+            even = ~rate_ahead & ~rate_behind
+            advantaged = rate_ahead | (even & energy_ahead)
+            outmatched = rate_behind | (even & energy_behind)
+        else:
+            advantaged, outmatched = rate_ahead | energy_ahead, rate_behind | energy_behind
         commitment = turn_commitment(
             fleet,
             characteristics,
