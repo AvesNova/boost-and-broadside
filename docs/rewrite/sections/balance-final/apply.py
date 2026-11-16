@@ -1,7 +1,8 @@
 """Write a balance candidate (`candidates/final.json`, or another file in candidates/ with
-`--candidates`) into the game: its handle changes into the real-scale ship files (the card fields from its handle solve, `handle_cards.py`),
-its Yongma and Jujak doctrine fields into `imugi_doctrines.json`, and copies of the four
-files into after/ (before/ holds the files as they were).
+`--candidates`) into the game: its handle changes into the real-scale ship files (the card
+fields from its handle solve, `handle_cards.py`), its Yongma and Jujak doctrine fields into
+`imugi_doctrines.json`, and copies of the files into after/ (before/ holds them as they
+were).
 
     PYTHONPATH=$PWD/src:$PWD uv run --no-sync python \
         docs/rewrite/sections/balance-final/apply.py jt0.93
