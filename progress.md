@@ -565,3 +565,5 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 03:55 tried: one continuously refilled engine per size bucket (players, seats, team sizes, lineups, map scale as pending data; modes as static slices); planner over Elo / break-even / win-rate / decision targets.
 - worked: CPU tests (18 quick); laptop smoke 256 envs, 3 players, games tally and refill with no missed games; null false-positive 0.050 (no draws) / 0.054 (20% draws, 213-game max), 0.045/0.048 at 850.
 - next: sizing probe + throughput vs the box queue's suite (6656 games in 32 min), concurrency, 5090 check script, docs.
+- 04:15 tried: VRAM sizing by eager probes; worked after a throwaway probe + gc (76 MB + 1.12 MB/env, stable); didn't: first probes unstable (0.8-5.3 MB/env) and a 6336-env batch OOMed; /tmp quota hit by the inductor cache (this session's entries deleted, runs now cache under ueval-runs/cache).
+- next: compiled per-env factor from a 1024-env run, then games/hour and GPU use vs the box suite; results.md.
