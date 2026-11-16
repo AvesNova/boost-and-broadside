@@ -214,3 +214,30 @@ training data, as do the pilot's). The new design (`bench/balance_study.py`):
   with the solver stopped (uncontended a compile is about 5-6 min), then hold at most 4 loops
   a process (two phases over the same batches), or fewer variants.
 - On hold by the coordinator (the author may give the 5090 to tonight's training dry run).
+
+## 21:05 closed: the author cancelled the map study
+
+- Built (all on feat/balance-map): `bench/balance_map.py` (13-handle search space with the
+  time-to-kill and low-speed repairs, the compiled persistent solver pool, the RMS objective,
+  CMA-MAE in two pipelined halves on `ribs`, picks and confirm), `bench/balance_study.py`
+  (Sobol study: 8 conditions in one worker, rotated references, card-against-card entries,
+  characteristics measured once a table), `analysis.py` and `study_analysis.py` (gradient
+  boosting, Bradley-Terry backfitting, partial dependence, active subspaces, cycle check,
+  pairs), `screen.py` (laptop jobs), `run_map.sh`, quick tests in
+  tests/sections/test_balance_map.py.
+- Data: the CMA-MAE pilot, 457 solved cards + 6 seeds, each against v23 Jujak on dm 2v2,
+  dm 5v5, elim 5v5 and Frontline 10v10 at 128 games (the cell bests at 512); map2's first
+  half-generation partly played. On the box: /workspace/out/map (pilot) and
+  /workspace/out/map2; laptop copies: /home/vizia/avesnova/bnb-map-copy/map1 and
+  .../map2 (and .../run, a mid-pilot copy). The study's 1024 solved Sobol points (no games):
+  /workspace/out/study/cards.jsonl. Summary figures: data/pilot/.
+- Model: gradient boosting from the coordinates to logit(kill share), cross-validated R^2 0.85
+  (elim 5v5) to 0.91 (dm 5v5, Frontline 10v10); turn rate dominates, then stall speed,
+  shield, climb and shot cost (the 20:10 table).
+- Findings for a next attempt: uniform Sobol over the box is 51% infeasible (40% under the
+  low-speed floor, 8.5% no convergence), so sample inside the feasible set (the closed-form
+  low-speed limit) instead; eight compiled loops in one process do not fit beside the solver
+  in 30 GB (10.7 GB after one loop, 12.8 GB during the second compile; the host OOM killed
+  the pool and the worker); compiles take 5-6 min each without contention (308-340 s at
+  16384 environments) and 16+ min beside 8 solver processes.
+- Nothing of this study is running on box5090 or the laptop.
