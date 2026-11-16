@@ -181,9 +181,30 @@ uv run --no-sync bnb play --preset bonghwang-yongma
 uv run --no-sync bnb play --preset three-ships        # all three
 ```
 
-`apply.py` (`docs/rewrite/sections/third-ship/apply.py candidates/trim1.json B-d1.2-s115
-candidates/trim1.json B-d1.2-s115`) wrote the ship file, the doctrine, Jujak's v23 card and the
-maps; in the play shell's tuning panel Bonghwang is the third type.
+The branch holds option A (v23's Jujak with Bonghwang d1.2/s115), written by `apply.py`. To fly
+another option's pair with its Bonghwang trim (the option's Yongma and Jujak files are copied
+from tune/balance-final into `candidates/options/`):
+
+```bash
+cd docs/rewrite/sections/third-ship
+# E (Jujak turn x0.95, Yongma turn x1.12, Yongma shield x0.55) with its Bonghwang:
+PYTHONPATH=$PWD/../../../../src .venv/bin/python apply.py candidates/finals1.json \
+    "E:Bt70-d1.1-s90" candidates/finals1.json "E:Bt70-d1.1-s90" --option jt0.95-yt1.12-ys0.55
+# back to A:
+PYTHONPATH=... apply.py candidates/trim1.json B-d1.2-s115 candidates/trim1.json B-d1.2-s115
+```
+
+(from the worktree root: `PYTHONPATH=$PWD/src:$PWD .venv/bin/python
+docs/rewrite/sections/third-ship/apply.py ...`; the paths after it are relative to the
+third-ship folder.) A changed card needs the game reference re-recorded before the quick
+tests pass (`python -m tests.sections.test_game_version --write`).
+
+**Flying it.** Stay fast and work the engine: Bonghwang's drag punishes coasting, and its
+low-speed acceleration recovers speed faster than anything else. At the merge, do not commit
+to a circle: reverse (the roll is 0.25 s against 0.39) when the bandit commits, make it
+overshoot, and take the snap shot at the crossing; accelerate out rather than extend in a dive
+(it cannot out-dive Yongma) and re-engage. Against Jujak, never settle into a sustained
+turn; against Yongma, never chase it in a straight line.
 
 ## What did not work
 
