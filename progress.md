@@ -478,3 +478,6 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Tried: read ladder, crossover, rating_pool, evaluation, metrics keys of rl-v20/bc-v21; v1 viz on main.
 - Found: ladder.break_even_points reads `presets` at the result's top level, but write_result nests it under `payload` (real results would give no points); no per-game length record exists anywhere.
 - Next: src/bnb/figures/results/ (fan, break-even, arms, team size, health, game length, values file) + `bnb figures results`.
+- 2026-11-16 23:40 Worked: 5247438a, `bnb figures results {fan,break-even,arms,team-size,health,game-length}` + values file; 10 CPU tests, ruff clean; previews checked; health drawn from real bc-v20 + rl-v20 records.
+- Didn't: no per-game length record exists (game-length needs one); no driver plays the team-size lineups (n, k n) yet; the W&B path is untested against a live run.
+- Next: real data after tonight's run: crossover per snapshot into $OUT/break-even, then fan / break-even; arms.json as decisions land.
