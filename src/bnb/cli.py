@@ -863,7 +863,47 @@ COMMANDS = (
     "pool",
     "figures",
     "queue",
+    "unified",
 )
+
+
+@dataclasses.dataclass(frozen=True)
+class Unified:
+    """The unified evaluator (`bnb unified SPEC --out DIR`): every evaluation target of the
+    spec (Elo per condition, break-even per mode, team-size win rates, sequential decisions)
+    played by one continuously running engine per size bucket, each environment refilled
+    with the most valuable game the moment its game ends (`bnb.league.unified`;
+    docs/guides/unified-evaluation.md). A rerun with the same --out resumes."""
+
+    spec: pathlib.Path
+    out: pathlib.Path
+    device: str = "cuda"
+    # each bucket's environments (None: sized from the free device memory)
+    environments: int | None = None
+    # "auto": the buckets with work share the device when each gets 512 environments
+    concurrent: str = "auto"
+    # the share of the free device memory a batch may take
+    memory_share: float = 0.7
+    # the most hours to play
+    hours: float = 24.0
+    runs_directory: pathlib.Path | None = None
+
+
+def unified(options: Unified) -> None:
+    import torch
+
+    from bnb.league.unified.run import load_spec, run
+
+    spec = load_spec(options.spec, options.runs_directory)
+    run(
+        spec,
+        options.out,
+        torch.device(options.device),
+        options.environments,
+        options.concurrent,
+        options.memory_share,
+        hours=options.hours,
+    )
 
 
 def main() -> None:
@@ -884,7 +924,16 @@ def main() -> None:
     # at the first CUDA allocation, so it has to be set here, before any.
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     command, arguments = (sys.argv[1:2] or [""])[0], sys.argv[2:]
-    if command in ("train", "ratings", "head-to-head", "crossover", "evaluate", "pool", "figures"):
+    if command in (
+        "train",
+        "ratings",
+        "head-to-head",
+        "crossover",
+        "evaluate",
+        "pool",
+        "figures",
+        "unified",
+    ):
         compile_limits()
     if command == "ship-card":
         os.environ.setdefault("MPLBACKEND", "Agg")  # the charts go to files: no display
@@ -907,6 +956,8 @@ def main() -> None:
         head_to_head(tyro.cli(HeadToHead, args=arguments, prog="bnb head-to-head"))
     elif command == "crossover":
         crossover(tyro.cli(Crossover, args=arguments, prog="bnb crossover"))
+    elif command == "unified":
+        unified(tyro.cli(Unified, args=arguments, prog="bnb unified"))
     elif command == "evaluate":
         kind = (arguments[:1] or [""])[0]
         if kind == "decide":

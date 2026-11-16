@@ -254,12 +254,12 @@ def test_irregular_looks_spend_exactly_alpha_under_the_null():
         assert rate.a_wins + rate.b_wins == pytest.approx(design.alpha, abs=2e-3)
 
 
-def _null_decisions(tests: int, seed: int, draw_share: float = 0.2) -> float:
+def _null_decisions(tests: int, seed: int, draw_share: float = 0.2, delta: float = 0.1) -> float:
     """The share of decisions with a winner when A and B are equal, games ending in random
     bursts (the continuous refill's) and scored win, draw or loss."""
     rng = random.Random(seed)
     cell = Cell(Condition(DM, 5, 5), "a", "b")
-    design = SequentialDesign(4, 0.05, 0.2, 0.1)
+    design = SequentialDesign(4, 0.05, 0.2, delta)
     winners = 0
     for _ in range(tests):
         target = DecisionTarget("d", cell, design)
@@ -278,6 +278,10 @@ def test_null_false_positive_rate_quick():
 
 @pytest.mark.slow
 def test_null_false_positive_rate():
-    tests = 2000
-    rate = _null_decisions(tests, 2)
+    """At an 850-game maximum (delta 0.05; the first look at about 210 games). Measured
+    2026-11-17: 0.045 and 0.048 +- 0.002 over 10,000 tests without and with 20% draws; at a
+    213-game maximum (delta 0.1, the first look at 53 games) 0.050 and 0.054 +- 0.0016
+    over 20,000, the estimated variance's small-sample excess."""
+    tests = 4000
+    rate = _null_decisions(tests, 2, delta=0.05)
     assert rate <= 0.05 + 2 * math.sqrt(0.05 * 0.95 / tests)
