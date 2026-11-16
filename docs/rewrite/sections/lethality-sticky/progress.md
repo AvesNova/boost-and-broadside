@@ -41,3 +41,18 @@
   the closing boundary's (was 9%): the fights are slower than the shrink. Lethality's,
   not Imugi's. For the author: lengthen elimination's clock / shrink hold, or accept.
 - Next: the author flies (18:30).
+
+## 17:45-18:15 round 2: circular lead, offset approach, lead turn, the circle choice
+- Measure: measure.py now adds the hit rate (bench.game_loop's new shots / damaging enemy
+  hits tally) and two 1v1 duels (turn mirror, Yongma v Jujak; 120 s, 512 games).
+- Worked (build 1, c4ede6c8): circular lead + fire on the predicted miss in hit radii.
+  Hit rate 5v5 0.32 -> 0.36, 1v1 mirror 0.45 -> 0.50, 1v1 Y v J 0.32 -> 0.49. Yongma's
+  5v5 score 0.16 -> 0.07 (aim helps the turner). The author flew it: a good start.
+- Cleanups merged: target_switch_in_log_distance and Frontline recovery removed (26a4664a);
+  the sense's draw, mirror and lift-ratio gates and ImugiCarry.sense_draw removed
+  (95a2321b).
+- Didn't work: the first circle rule (two circles unless my radius is smaller) made
+  mirrors settle into even two-circle fights: 1v1 mirror kills/min 0.17 -> 0.05 (fb7dd03d,
+  data/r2approach.json, measured on box5090).
+- Tried next: two circles only with a turn rate now 5% above the target's, else one
+  circle (1c57c928): measuring.
