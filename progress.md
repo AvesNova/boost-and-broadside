@@ -567,3 +567,5 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - next: sizing probe + throughput vs the box queue's suite (6656 games in 32 min), concurrency, 5090 check script, docs.
 - 04:15 tried: VRAM sizing by eager probes; worked after a throwaway probe + gc (76 MB + 1.12 MB/env, stable); didn't: first probes unstable (0.8-5.3 MB/env) and a 6336-env batch OOMed; /tmp quota hit by the inductor cache (this session's entries deleted, runs now cache under ueval-runs/cache).
 - next: compiled per-env factor from a 1024-env run, then games/hour and GPU use vs the box suite; results.md.
+- 04:45 worked: laptop bucket-5 run, 1024 envs: 37-45k games/h, GPU 100%, the same 6973 games took the 5090 queue 1198 engine-s vs 675 s here (laptop 1.8x the 5090 queue). didn't: filler games skewed the Elo allocation (3037 rl_20m-bc games) -> replaced by overtime; a bucket stopped before its in-flight games ended -> fixed.
+- next: benched (bucket 5) vs native (bucket 1) 1v1 scores, the v25-vs-v24 1v1 gap (DM 1v1 0.29 here vs 0.61 on the box), results.md.
