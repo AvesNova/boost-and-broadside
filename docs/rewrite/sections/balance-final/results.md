@@ -192,7 +192,20 @@ range (turn 0.503-0.785; shield ratio inside 1.44, which the before's 1.78 is no
 | A (v23) | 29% | 48-52% | 71-72% |
 | **C** | **50.4 / 48.5%** | **54.4 / 60.2%** | **62.6 / 61.8%** |
 
-C is the first card within about 13 points from 2v2 to 10v10, near even at every size. The
+Round 17 (512 games, one seed) found three cards even at every size; their 1024-game
+checks (all deathmatch sizes, elimination and Frontline 5v5) are queued (progress.md):
+
+| card | 2v2 | 5v5 | 10v10 |
+|---|---|---|---|
+| **C': Jujak turn x0.91, Yongma turn x1.08, Yongma shield x0.55** | 49.4% | 49.2% | 47.8% |
+| **D: Jujak turn x0.93 (as A), Yongma turn x1.08, Yongma shield x0.6** | 43.9% | 50.1% | 53.1% |
+| Jujak turn x0.95, Yongma turn x1.12, Yongma shield x0.55 | 46.9% | 51.7% | 48.3% |
+
+(SE about 2 points each.) Shield x0.55 is 78.1, a little under Jujak's 79.7; x0.6 is 85.2.
+D is A plus two Yongma changes. To play them: `apply.py --candidates options.json
+jt0.91-yt1.08-ys0.55` (C') or `... jt0.93-yt1.08-ys0.6` (D).
+
+C was the first card within about 13 points from 2v2 to 10v10, near even at every size. The
 cost: the archetypes move closer (Jujak out-turns Yongma by 1.09 instead of 1.29, and the
 shields are nearly equal; Yongma keeps its speed, climb, dive and 1.2x damage). It is a bigger
 change than "relatively similar"; it is for the author to fly. Its elimination and Frontline
@@ -201,9 +214,10 @@ reference re-recorded again).
 
 ## Open for the author
 
-1. A (one handle, v23 on the branch: 5v5 even, 2v2 29%, 10v10 72%) or C (three handles,
-   flat over sizes, the archetypes closer). Rounds 17+ look for a flat card with smaller
-   changes (progress.md).
+1. A (one handle, v23 on the branch: 5v5 even, 2v2 29%, 10v10 72%) or a flat card (C', D:
+   three handles, even from 2v2 to 10v10, the archetypes closer: Jujak out-turns Yongma by
+   1.09-1.12 instead of 1.29, and the shields about equal). My pick if the sizes matter: D
+   (it keeps A's Jujak), pending its 1024-game checks.
 2. The card or the controller: as the freeze review said, this is Imugi's balance. The
    trained agent's own Yongma-v-Jujak score after the first arm is the check that matters.
 3. The running-away elements stay off; if the author wants the energy fighter to extend,
