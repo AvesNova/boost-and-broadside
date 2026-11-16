@@ -23,3 +23,6 @@ wandb/
 site/
 !tests/sections/golden/*.pt
 .venv
+# box secrets (W&B key): never committed
+secrets.env
+*.key
