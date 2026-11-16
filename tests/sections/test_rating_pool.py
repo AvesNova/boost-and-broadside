@@ -586,7 +586,11 @@ def test_the_pool_rates_drawn_lineups_and_draws_its_curves_on_the_cpu(tmp_path, 
     result = tmp_path / "break-even" / "r-rl" / "step_5" / "artifacts" / "crossover" / "t1"
     result.mkdir(parents=True)
     (result / "result.json").write_text(
-        json.dumps(dict(presets=dict(real_scale_deathmatch=dict(ratio=1.3, ratio_stderr=0.1))))
+        json.dumps(
+            dict(
+                payload=dict(presets=dict(real_scale_deathmatch=dict(ratio=1.3, ratio_stderr=0.1)))
+            )
+        )
     )
     points = ladder.break_even_points(tmp_path / "break-even")
     assert points == [dict(run="r-rl", step=5, mode="deathmatch", ratio=1.3, stderr=0.1)]

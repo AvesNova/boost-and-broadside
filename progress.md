@@ -481,3 +481,11 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 2026-11-16 22:28 tried: docs/hooks/placeholders.py (values/pending/figure, draft|publish via BNB_RESULTS, README.template.md -> README.md) and the README template. Next: results pages, values.json, test, build.
 - 2026-11-16 22:35 worked: results pages (8), values.json (84 null names), test_placeholders.py + test_references 683 passed; fixed the command check's preset list (training mixes). Next: strict build, README review, push.
 - 2026-11-16 22:35 done: strict build shows only the 3 known anchor warnings (imugi.md x2, guides/figures.md); 138 placeholders open in draft. Branch docs/white-paper pushed.
+
+## 2026-11-16 results charts (branch feat/results-charts, worktree bnb-charts)
+- Tried: read ladder, crossover, rating_pool, evaluation, metrics keys of rl-v20/bc-v21; v1 viz on main.
+- Found: ladder.break_even_points reads `presets` at the result's top level, but write_result nests it under `payload` (real results would give no points); no per-game length record exists anywhere.
+- Next: src/bnb/figures/results/ (fan, break-even, arms, team size, health, game length, values file) + `bnb figures results`.
+- 2026-11-16 23:40 Worked: 5247438a, `bnb figures results {fan,break-even,arms,team-size,health,game-length}` + values file; 10 CPU tests, ruff clean; previews checked; health drawn from real bc-v20 + rl-v20 records.
+- Didn't: no per-game length record exists (game-length needs one); no driver plays the team-size lineups (n, k n) yet; the W&B path is untested against a live run.
+- Next: real data after tonight's run: crossover per snapshot into $OUT/break-even, then fan / break-even; arms.json as decisions land.
