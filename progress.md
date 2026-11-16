@@ -553,3 +553,6 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - 03:43 suite (512 games/condition: 5v5 98-100%, elimination 1v1 22%, 2v2 30%) and map pools (frontline at 2x radius below 279 Elo) charted/valued; Elo values now strings with bounds.
 - Waiting on curves (ETA ~04:07), then break-even, team size, media.
 - Next: elo/fan/break-even/team-size charts and stills as each lands.
+- 04:57 curves landed: Elo over training drawn (final: elimination 1971+-53; frontline and deathmatch bounds >1729/>1996; BC 1058/606/918); frontline RL mid-run up to 3597+-214 from chained snapshots.
+- Waiting on break-even (~05:30), team size, media.
+- Next: fan + break-even + team-size charts, stills, README/site build.
