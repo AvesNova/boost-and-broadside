@@ -147,12 +147,21 @@ def save_update_policies(
 
 def act(run: Run, trainer: Trainer, recorder: Recorder, record: dict) -> None:
     """The skipped-step rule's action: a checkpoint and the batch dump, with the dump's
-    path in run.json and on the console."""
+    path in run.json and on the console, for the run's first `TrainConfig.skipped_step_dumps`
+    such updates; after them, the console line alone (the alert is in the record)."""
     if not recorder.triggers.fired(record, "skipped_step"):
+        return
+    dumps = run.record.get("dumps", [])
+    if len(dumps) >= trainer.config.skipped_step_dumps:
+        print(
+            f"skipped {record.get('train/skipped_steps', '?')} non-finite steps: no dump "
+            f"(the run holds {len(dumps)}, skipped_step_dumps {trainer.config.skipped_step_dumps})",
+            flush=True,
+        )
         return
     save(run, trainer, recorder=recorder)
     dumped = recording.dump_batch(run, trainer, record)
-    run.update(dumps=run.record.get("dumps", []) + [str(dumped)])
+    run.update(dumps=dumps + [str(dumped)])
     print(f"skipped a non-finite step: checkpoint and batch dump in {dumped}", flush=True)
 
 

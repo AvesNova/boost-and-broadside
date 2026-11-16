@@ -280,6 +280,12 @@ many consecutive updates with either up, and `run.json`{.plain} records the rule
 uv run --no-sync bnb train --preset mixed --set combat_collapse_stop=5
 ```
 
+The `skipped_step` rule is up for an update with non-finite minibatches (their optimizer
+steps are skipped). It writes a checkpoint and the update's batch under
+`dumps/step_<steps>/` in the run, for replaying the step, at most
+`TrainConfig.skipped_step_dumps` times per run (default 1: a full-scale dump is about 10 GB);
+later skipped updates are alerted and logged only.
+
 ## Configure a run in Python
 
 `bnb.runtime.train.TrainConfig` holds the loop's settings, and `bnb.runtime.train.train`

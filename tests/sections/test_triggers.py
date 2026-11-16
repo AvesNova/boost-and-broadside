@@ -315,6 +315,39 @@ def test_a_non_finite_step_writes_the_checkpoint_and_the_dump_and_training_conti
     assert all(torch.isfinite(p).all() for p in trainer.model.parameters())
 
 
+@pytest.mark.parametrize("limit", [0, 1, 2])
+def test_the_skipped_step_action_dumps_only_the_runs_first_skipped_updates(
+    tmp_path, monkeypatch, capsys, limit
+):
+    """`TrainConfig.skipped_step_dumps`: a checkpoint and a batch dump (~10 GB at full
+    scale) for the run's first `limit` skipped updates; every later one is logged only."""
+    import dataclasses
+    import types
+
+    from bnb.runs import recording, session
+    from bnb.runs.records import Run
+
+    config = dataclasses.replace(_tiny(), skipped_step_dumps=limit)
+    run = Run.create(tmp_path, "skips", config, ["test"], None)
+    trainer = types.SimpleNamespace(config=config)
+    recorder = types.SimpleNamespace(triggers=types.SimpleNamespace(fired=lambda *_: True))
+    saved, dumped = [], []
+    monkeypatch.setattr(session, "save", lambda *a, **k: saved.append(1))
+
+    def dump(run, trainer, record):
+        dumped.append(run.directory / "dumps" / f"step_{len(dumped)}")
+        return dumped[-1]
+
+    monkeypatch.setattr(recording, "dump_batch", dump)
+    for _ in range(4):
+        session.act(run, trainer, recorder, {"train/skipped_steps": 8})
+    assert len(saved) == len(dumped) == limit
+    assert run.record.get("dumps", []) == [str(path) for path in dumped]
+    out = capsys.readouterr().out
+    assert out.count("checkpoint and batch dump") == limit
+    assert out.count("no dump") == 4 - limit
+
+
 def test_the_code_builds_the_headline_and_curated_views():
     pytest.importorskip("wandb_workspaces")
     from bnb.runtime import dashboards

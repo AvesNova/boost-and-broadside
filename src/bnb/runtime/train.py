@@ -369,6 +369,10 @@ class TrainConfig:
     # end a PPO run after this many consecutive updates with a combat-collapse alert
     # (`bnb.runs.triggers.CombatCollapse`), recording why; 0: never (the default)
     combat_collapse_stop: int = 0
+    # the skipped-step rule's checkpoint and batch dump (`bnb.runs.session.act`) for at most
+    # this many updates of a run (a dump is ~10 GB at full scale); later skipped updates are
+    # alerted and logged only
+    skipped_step_dumps: int = 1
     mode_mix: dict[str, int] | None = None
     self_play_seats: str = "both"
 
@@ -404,6 +408,8 @@ class TrainConfig:
                 "learner.entropy_floor is RL's: BC has no entropy term (a chain sets it with "
                 "--rl-set)"
             )
+        if self.skipped_step_dumps < 0:
+            raise ValueError(f"skipped_step_dumps {self.skipped_step_dumps} is negative")
         if self.combat_collapse_stop < 0:
             raise ValueError(f"combat_collapse_stop {self.combat_collapse_stop} is negative")
         if self.model not in MODELS:
