@@ -402,3 +402,28 @@ gets more energy). The store and shot cost are game knobs, not WWII values.
 probe2 (`candidates/make_probe2.py`): the least-squares combinations (store + vision + less
 Yongma turn; store + shot cost + Jujak range; shot cost + vision + Jujak range) at 0.7/1/1.3 of
 the fitted step plus single checks, in every mode (laptop) and dm2 (box, 1024).
+
+## 12:45 probe2 (part); the laptop is the author's now
+
+- The author needs the laptop (coordinator, ~12:40): no heavy laptop jobs until told. The
+  probe2 chain was stopped after FL10, FL5 and dm5; dm10, el5 (1024) and el10 are queued on
+  the box (dm10 worker; new elimination-5 and elimination-10 workers), dm2 behind probe1's dm2.
+  The box stays at commit 8488056e (no src pulls: a warm relaunch is ~30 s, a pull costs a
+  recompile).
+- probe2 so far, kill share from E (score):
+
+| probe | dm5 | FL10 | FL5 |
+|---|---|---|---|
+| E | 50.3 (51) | 52.5 (67) | 51.4 (57) |
+| store x1.35 + vision x1.25 + Yongma induced x1.18 (x0.7) | -0.0 (53) | -1.1 (58) | -1.6 (46) |
+| **store x1.53 + vision x1.37 + induced x1.27 (x1.0)** | -0.5 (48) | **-2.4 (47)** | -2.5 (44) |
+| store x1.74 + vision x1.51 + induced x1.36 (x1.3) | -1.1 (43) | -3.4 (43) | -4.3 (34) |
+| shot cost x0.86 + vision x1.71 + induced x1.40 | -0.8 (45) | -2.7 (51) | -3.2 (42) |
+| Yongma induced x1.27 alone | -2.3 (39) | -2.6 (50) | -3.9 (37) |
+| Yongma store x1.6 / x2 alone | +0.9 / +0.6 | -0.4 / -0.7 | -0.2 / -1.5 |
+| Yongma vision x1.5 alone | +1.5 | +1.5 | +2.7 |
+| store/shot cost + Jujak range up (3 scales) | +1.1..+1.4 | -0.5..-0.7 | -0.6..-1.5 |
+
+  Jujak's longer gun range does not mirror probe1's shorter one (no Frontline gain), so the
+  Jujak-range combinations fail; the store + vision + less Yongma turn line works: at x1.0 it
+  puts dm5 and FL10 near even together for the first time (48 / 47), FL5 a little low (44).
