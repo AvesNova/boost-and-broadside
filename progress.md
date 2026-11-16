@@ -491,3 +491,8 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Done: CLI (`bnb figures trails --scripted --match.* --still.*`), docs section, 6 quick tests (16 s), ruff clean; pushed.
 - Worked: real belief ghosts from rl-v20-seed1 (v8) captured in a detached worktree at c262a32b with match.py copied in; early-game window is too crowded (5 hidden ships), so the fog window caps at 2 hidden.
 - Next: whole-game policy elimination capture (running), deathmatch 5v5 Imugi (running), pick and commit the example PNGs.
+
+## 2026-11-16 23:35 trail stills: examples
+- Done: four examples in docs/images/stills-examples/ (deathmatch 5v5 opening, light and dark; 1v1 two-circle duel; elimination 5v5 fog with rl-v20-seed1's belief ghosts).
+- Learned: a 10-min 5v5 game in one still is texture only (ticks now off past 90 s); the fog still needs at most 2 ghosted ships and a fight window to read.
+- Open: no v9 policy exists, so the fog example comes from a v8 policy captured at c262a32b (game v19) with match.py copied in.

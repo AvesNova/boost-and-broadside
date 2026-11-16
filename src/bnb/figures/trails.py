@@ -65,7 +65,8 @@ class StillConfig:
     tick); crop: fit the view to the action's bounding box (else the whole arena); busy:
     draw the shot and hit ticks (None: only in a window of at most BUSY_SECONDS); fog: the
     fog overlay, the hidden enemies as `fog_team`'s view saw them, with a ghost every
-    `ghost_seconds`; theme: "light" or "dark"; size: one of `SIZES`; formats: the files
+    `ghost_seconds` for the `ghost_ships` enemies hidden longest in the window (the
+    others' hidden paths drawn without one); theme: "light" or "dark"; size: one of `SIZES`; formats: the files
     written (png, svg, pdf); title: the caption line above the view."""
 
     start: float | None = None
@@ -75,6 +76,7 @@ class StillConfig:
     fog: bool = False
     fog_team: int = 0
     ghost_seconds: float = 3.0
+    ghost_ships: int = 2
     theme: str = "light"
     size: str = "web"
     formats: tuple[str, ...] = ("png",)
@@ -115,7 +117,7 @@ def busiest_window(match: dict, tick_length: float, seconds: float, team: int | 
         hidden = hidden_enemies(match, team)
         held = ~np.isnan(match["ghost_x"].numpy()[:, team])
         ghosts = np.minimum((hidden & held).sum(-1), GHOST_CROWD)
-        activity = activity + 0.5 * ghosts * _ghost_ticks(match)
+        activity = activity + 0.1 * ghosts * _ghost_ticks(match)
     length = max(1, round(seconds / tick_length))
     if len(activity) <= length:
         return 0.0, (len(activity) - 1) * tick_length
@@ -367,9 +369,12 @@ def draw(artifact: dict, config: StillConfig):
         every = max(1, round(config.ghost_seconds / tick_length))
         held = np.flatnonzero(~np.isnan(ghost_x).all(-1))
         held = held[(held >= first) & (held <= final)]
+        sampled = hidden[held] & ~np.isnan(ghost_x[held])  # (samples, N)
+        chosen = np.argsort(-sampled.sum(0), kind="stable")[: config.ghost_ships]
+        chosen = chosen[sampled.sum(0)[chosen] > 0]
         last_drawn = {}
         for tick in held:
-            for ship in np.flatnonzero(hidden[tick] & ~np.isnan(ghost_x[tick])):
+            for ship in chosen[hidden[tick, chosen] & ~np.isnan(ghost_x[tick, chosen])]:
                 if tick - last_drawn.get(ship, -every) < every:
                     continue
                 last_drawn[ship] = tick
@@ -404,7 +409,7 @@ def draw(artifact: dict, config: StillConfig):
                             edgecolor=colours[ship],
                             linewidth=0.6 * line,
                             linestyle=(0, (3, 2)),
-                            alpha=0.8,
+                            alpha=0.6,
                             zorder=3,
                         )
                     )
@@ -570,7 +575,7 @@ def still(artifact: dict, directory, name: str, config: StillConfig) -> tuple[li
 def render(artifact: dict, directory: pathlib.Path) -> tuple[list[pathlib.Path], dict]:
     """The trail stills: trails_game (the whole record), trails_game_dark, trails_opening
     (the first OPENING_SECONDS), trails_busiest (the busiest 20 s, cropped) and, with fog
-    and ghosts, trails_fog (the busiest 30 s of hidden enemies as team 0 saw them)."""
+    and ghosts, trails_fog (the busiest 20 s of hidden enemies as team 0 saw them)."""
     match = artifact["match"]
     tick_length = float(match["about"]["tick_length"])
     written, numbers = [], {}
@@ -583,7 +588,7 @@ def render(artifact: dict, directory: pathlib.Path) -> tuple[list[pathlib.Path],
     stills["trails_busiest"] = StillConfig(start=start, end=end)
     has_ghosts = bool((~np.isnan(match["ghost_x"].numpy()[:, 0])).any())
     if bool(match["fogged"]) and has_ghosts:
-        start, end = busiest_window(match, tick_length, 30.0, team=0)
+        start, end = busiest_window(match, tick_length, 20.0, team=0)
         stills["trails_fog"] = StillConfig(start=start, end=end, fog=True)
     for name, config in stills.items():
         paths, numbers[name] = still(artifact, directory, name, config)
