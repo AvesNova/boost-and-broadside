@@ -385,7 +385,8 @@ def hl_gauss_scalar_at(
     total = torch.sqrt(torch.clamp_min(target - (smoothing - sigma * sigma), sigma * sigma))
     code = folded_hl_gauss(coordinate, total, width)
     ends = folded_hl_gauss(
-        torch.tensor([0.0, float(last)], dtype=dtype, device=device),
+        # made on the device (no host copy: the play shell captures this in a CUDA graph)
+        torch.arange(2, dtype=dtype, device=device) * float(last),
         torch.full((2,), sigma, dtype=dtype, device=device),
         width,
     )  # (2, width): the HL-Gauss at the lowest and at the highest bin
