@@ -109,11 +109,12 @@ def _first_view(loop):
 
 def test_an_arena_match_of_imugi_fights():
     """The arena (no fields, no zones) with Imugi on both sides: the ships
-    close and shoot each other down within seconds, and a ship is never dead two ticks
-    running (it respawns on the next)."""
+    close and shoot each other down within half a minute, and a ship is never dead two ticks
+    running (it respawns on the next). The arena is a team deathmatch, clear since game
+    version 24: this seed's first shot-down kill comes at 21 s (9.3 s with fog)."""
     game = PRESETS["arena"]
     loop = MatchLoop(MatchSetup(game, lineup=api.preset_lineup("arena"), seed=1), compiled=False)
-    for _ in range(12 * 30):
+    for _ in range(30 * 30):
         dead = ~loop.realtime.state.ships.alive[0]
         loop.step()
         assert loop.realtime.state.ships.alive[0][dead].all()

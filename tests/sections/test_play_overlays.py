@@ -249,7 +249,7 @@ def test_the_dead_reckoning_ghosts_are_the_memorys_recall():
     memory = ImugiAgent(api.rules_of(SMALL), api.ship_types(), seed=2)
     found = None
     loop = MatchLoop(
-        MatchSetup(SMALL, seed=7),
+        MatchSetup(SMALL, fogged=True, seed=7),  # fog: Imugi loses sight
         sides=[memory, Imugi(api.rules_of(SMALL), api.ship_types())],
         compiled=False,
     )

@@ -817,9 +817,7 @@ def maneuvers(
     # own rotation sense) only where my turn rate at my speed is clearly the higher
     # (TWO_CIRCLE_RATE_MARGIN), else one circle (the other sense), where the smaller radius
     # wins and a mirror does not settle into an even two-circle fight
-    own_rate_now, _ = turn_now(
-        characteristics, fleet.own_type, fleet.speed, fleet.energy_fraction
-    )
+    own_rate_now, _ = turn_now(characteristics, fleet.own_type, fleet.speed, fleet.energy_fraction)
     target_type = target_of(fleet.enemy_type.float()).round().to(torch.int32)
     target_rate_now, _ = turn_now(
         characteristics,

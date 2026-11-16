@@ -58,7 +58,7 @@ def test_the_presets_play_the_real_scale_set_on_a_map_three_times_wider():
         assert (rules.field_radius_min, rules.field_radius_max) == (120.0, 1200.0)
         assert rules.field_radius_distribution == 2
         assert (rules.field_radius_median, rules.field_radius_log_sigma) == (400.0, 0.6)
-        assert (rules.boundary_max_damage, rules.boundary_ramp_width) == (40.0, 100.0)
+        assert (rules.boundary_max_damage, rules.boundary_ramp_width) == (216.0, 100.0)  # v23
 
 
 def test_the_rules_are_todays_in_real_units_at_x2_speed():
