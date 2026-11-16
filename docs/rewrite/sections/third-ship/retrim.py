@@ -31,12 +31,15 @@ GUN = dict(
     shots_per_store=865.24,
     explosive_share=0.0,
 )
-TURNS = {
-    0.63: "K-roll-g7-dive",
-    0.66: "K-roll-g7-dive-t66",
-    0.68: "K-roll-g7-dive-t68",
-    0.70: "K-roll-g7-dive-t70",
-    0.72: "K-roll-g7-dive-t72",
+TURNS = {  # (sustained turn, g limit): the solved airframe
+    (0.63, 7): "K-roll-g7-dive",
+    (0.66, 7): "K-roll-g7-dive-t66",
+    (0.68, 7): "K-roll-g7-dive-t68",
+    (0.70, 7): "K-roll-g7-dive-t70",
+    (0.72, 7): "K-roll-g7-dive-t72",
+    (0.66, 8): "K-roll-g8-dive-t66",
+    (0.68, 8): "K-roll-g8-dive-t68",
+    (0.70, 8): "K-roll-g8-dive-t70",
 }
 COMBAT = (
     (1.0, 85),
@@ -63,10 +66,10 @@ def grid(tag: str, yongma: pathlib.Path, jujak: pathlib.Path, out: pathlib.Path)
         jujak_card={k: {"set": v} for k, v in j.items()},
     )
     entries = [dict(name=f"{tag}:ref", card=y, doctrine_base="yongma", doctrine={}, **pair)]
-    for turn, flight in TURNS.items():
+    for (turn, g), flight in TURNS.items():
         for damage, shield in COMBAT:
             spec = dict(
-                name=f"{tag}:Bt{round(turn * 100)}-d{damage}-s{shield}",
+                name=f"{tag}:Bg{g}t{round(turn * 100)}-d{damage}-s{shield}",
                 flight_from=flight,
                 handles={k: {"set": v} for k, v in GUN.items()}
                 | dict(
