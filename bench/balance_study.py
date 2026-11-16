@@ -112,6 +112,14 @@ def worker(args) -> None:
 
 
 def _rss() -> None:
+    """Return the compile's freed heap to the system (glibc malloc_trim), then print the
+    resident memory."""
+    try:
+        import ctypes
+
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
     try:
         text = pathlib.Path("/proc/self/status").read_text()
         line = next(line for line in text.splitlines() if line.startswith("VmRSS"))
