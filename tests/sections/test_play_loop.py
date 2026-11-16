@@ -1,12 +1,14 @@
 """The match loop (`bnb.play.loop`): the same states as the realtime sim alone, and the
 fixed timestep, pause, single step and time scale."""
 
+import dataclasses
+
 import pytest
 import torch
 from torch.utils import _pytree
 
 from bnb.contracts import GameConfig
-from bnb.contracts.obs import GLOBAL
+from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.game import api
 from bnb.game.modes.rules import PRESETS
 from bnb.play.loop import TIME_SCALES, MatchLoop, MatchSetup, SideSetup, team_view
@@ -120,3 +122,25 @@ def test_an_arena_match_of_imugi_fights():
         assert loop.realtime.state.ships.alive[0][dead].all()
     kills = [event for event in loop.events if event.kind == "kill"]
     assert any(event.other >= 0 for event in kills)  # shot down, not only by the boundary
+
+
+def test_an_uneven_elimination_match_starts_with_each_sides_ships_in_play():
+    """A 5-against-7 elimination match (`MatchSetup.active`) benches each team's slots past
+    its count at the reset, as training's lineup does: 5 and 7 ships live, the benched ones
+    flagged to both teams, and they stay out of play while the match runs."""
+    game = dataclasses.replace(PRESETS["elimination"], ships_per_team=7)
+    setup = MatchSetup(
+        game, seed=3, sides=(SideSetup("scripted"), SideSetup("scripted")), active=(5, 7)
+    )
+    loop = MatchLoop(setup, compiled=False)
+    ships = loop.current.ships
+    assert [int(ships.alive[ships.team == team].sum()) for team in (0, 1)] == [5, 7]
+    benched = api.benched_of(7, torch.tensor([[5, 7]]))[0].numpy()
+    assert not ships.alive[benched].any() and benched.sum() == 2
+    column = loop.realtime.obs.ships[0, :, :, SHIP["benched"]]  # (2 views, N) in view order
+    assert int((column > 0.5).sum()) == 2 * 2  # both teams see the 2 benched slots
+    for _ in range(30):
+        loop.step()
+    assert not loop.current.ships.alive[benched].any()
+    with pytest.raises(ValueError):
+        Realtime(game, compiled=False, active=(0, 7))

@@ -85,6 +85,9 @@ class Options:
 
     preset: str = "real_scale_deathmatch"  # a game preset (api.PRESETS) or a saved map's name
     ships_per_team: int | None = None
+    # each team's ships in play (team 0, team 1), the rest of its slots benched (uneven
+    # teams); the game's ships per team grows to the larger count. None: every slot
+    active: tuple[int, int] | None = None
     fields: int | None = None
     arena_radius: float | None = None  # m
     # the match has fog of war (team views show what the team sees); None: the game's (none
@@ -160,11 +163,19 @@ class Options:
         )
         game_map = maps.find(self.preset)
         game = self.game(maps)
+        if self.active is not None and max(self.active) > game.ships_per_team:
+            game = dataclasses.replace(game, ships_per_team=max(self.active), spawn_groups=())
         lineup = game_map.lineup_types()
         if lineup is None or len(lineup) != game.ships_per_team:
             lineup = tuple(default_lineup(game.ships_per_team, game.ship_set))
         return MatchSetup(
-            game, lineup, fogged=self.fog, seed=self.seed, sides=sides, tuning=game_map.tuning
+            game,
+            lineup,
+            fogged=self.fog,
+            seed=self.seed,
+            sides=sides,
+            tuning=game_map.tuning,
+            active=self.active,
         )
 
 

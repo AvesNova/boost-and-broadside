@@ -424,15 +424,21 @@ def mismatch(
     types: api.ShipTypes,
     any_mode: bool = False,
     card: bool = True,
+    any_size: bool = False,
 ) -> str | None:
     """Why a policy record cannot play this match (its game, ship card or lineup differ),
     or None when it can. any_mode: the mode's own settings may differ (`GAME_FIELDS`).
     card: also check the ship card and the lineup (the play shell only warns about them:
-    `trained_differently`)."""
+    `trained_differently`). any_size: the ships per team may differ (a Yemong reads any
+    number of ships, as the crossover plays it)."""
     if record.get("game") is None:
         return "the policy file does not record the game it was trained on"
     saved, given = record["game"], to_json(config)
-    compared = [name for name in given if not (any_mode and name in GAME_FIELDS)]
+    compared = [
+        name
+        for name in given
+        if not (any_mode and name in GAME_FIELDS) and not (any_size and name == "ships_per_team")
+    ]
     differences = [
         f"{name} {saved.get(name)!r} (this match: {given[name]!r})"
         for name in compared
@@ -468,10 +474,14 @@ def load_agent(
     seed: int = 0,
     graph: bool | None = None,
     any_mode: bool = False,
+    benching: bool = False,
 ) -> Agent:
     """The agent of a policy file (or training checkpoint) for this match, on `agent_device()`.
     Raises AgentError with the reason when it cannot play it (another game); a ship card or
-    lineup it was not trained with only sets its `warning`. any_mode: see `mismatch`."""
+    lineup it was not trained with only sets its `warning`. any_mode: see `mismatch`.
+    benching: the match has benched ships (uneven teams), which a Yemong then reads no
+    attention from (`Yemong.mask_benched`, as training and evaluation set it), at any
+    number of ships per team (`mismatch`'s any_size, as the crossover plays it)."""
     directory = pathlib.Path(directory)
     try:
         policy = checkpoint.read_policy(directory)
@@ -479,7 +489,8 @@ def load_agent(
         raise AgentError(str(error)) from error
     if policy.name not in SUPPORTED_MODELS:
         raise AgentError(f"{policy.name} models do not play in the shell ({SUPPORTED_MODELS})")
-    reason = mismatch(policy.raw, config, rules, types, any_mode, card=False)
+    any_size = benching and policy.name == "yemong"
+    reason = mismatch(policy.raw, config, rules, types, any_mode, card=False, any_size=any_size)
     if reason is not None:
         raise AgentError(f"{directory.name} cannot play this match: {reason}")
     warning = trained_differently(policy.raw, config, rules, types)
@@ -487,6 +498,8 @@ def load_agent(
     drawn = [device] if device.type == "cuda" else []
     with torch.random.fork_rng(devices=drawn):  # the model's initialisation draws; keep it local
         model = checkpoint.load_policy(directory, device).eval()
+    if benching and hasattr(model, "mask_benched"):
+        model.mask_benched = True
     agent = Agent(
         model,
         policy.name,
@@ -554,7 +567,15 @@ def controller_of(
     (None: the card's own, measured if no run has)."""
     seed = setup.seed + team
     if side.controller == "agent":
-        return load_agent(side.policy, setup.config, rules, types, side.temperature, seed)
+        return load_agent(
+            side.policy,
+            setup.config,
+            rules,
+            types,
+            side.temperature,
+            seed,
+            benching=setup.active is not None,
+        )
     if side.controller == "imugi":
         return ImugiAgent(
             rules,
