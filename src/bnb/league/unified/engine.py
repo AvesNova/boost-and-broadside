@@ -53,8 +53,10 @@ SEAT = "unified"
 MEMORY_SHARE = 0.7  # of the free device memory the batch may take
 ROUNDING = 64  # environments: a sized batch is a multiple of this
 # the compiled engine's bytes per environment over the eager probe's (the captured graph's
-# pool, the warm-up's carry copy): measured on the laptop 4070 (unified-eval/results.md)
-COMPILED_FACTOR = 1.0
+# pool, the warm-up's carry copy, the allocator's reserve): on the laptop 4070 at bucket 5,
+# 1024 environments, the eager probe gave 1.12 MB an environment and the compiled engine
+# 1.22 MB allocated, 1.57 MB reserved (1.4x); 1.5 leaves room (unified-eval/results.md)
+COMPILED_FACTOR = 1.5
 SCALE_SAMPLING = ArenaScale()  # the map-size draw a slice with scaled cells is built with
 CAPACITY_SLACK = 1.5  # a lane's rows over its player's expected share of the network rows
 MINIMUM_CAPACITY = 32
