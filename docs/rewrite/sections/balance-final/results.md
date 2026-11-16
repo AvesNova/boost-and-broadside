@@ -192,18 +192,26 @@ range (turn 0.503-0.785; shield ratio inside 1.44, which the before's 1.78 is no
 | A (v23) | 29% | 48-52% | 71-72% |
 | **C** | **50.4 / 48.5%** | **54.4 / 60.2%** | **62.6 / 61.8%** |
 
-Round 17 (512 games, one seed) found three cards even at every size; their 1024-game
-checks (all deathmatch sizes, elimination and Frontline 5v5) are queued (progress.md):
+Round 17 (512 games) found three cards even at every size; the 1024-game check (seed 200,
+`data/options-deathmatch-*.jsonl`, SE 1.0-1.5 points) holds it:
 
-| card | 2v2 | 5v5 | 10v10 |
+| card (deathmatch, 1024 games) | 2v2 | 5v5 | 10v10 |
 |---|---|---|---|
-| **C': Jujak turn x0.91, Yongma turn x1.08, Yongma shield x0.55** | 49.4% | 49.2% | 47.8% |
-| **D: Jujak turn x0.93 (as A), Yongma turn x1.08, Yongma shield x0.6** | 43.9% | 50.1% | 53.1% |
-| Jujak turn x0.95, Yongma turn x1.12, Yongma shield x0.55 | 46.9% | 51.7% | 48.3% |
+| before | 14.7% | 22.6% | 45.5% |
+| A (v23): Jujak turn x0.93 | 28.7% | 48.2% | 74.4% |
+| B: Jujak turn x0.95, Yongma climb x0.88 | 27.1% | 52.2% | 76.0% |
+| C: Jujak turn x0.91, Yongma turn x1.08, Yongma shield x0.6 | 51.2% | 57.2% | 65.0% |
+| **C': Jujak turn x0.91, Yongma turn x1.08, Yongma shield x0.55** | **46.0%** | **49.6%** | **54.2%** |
+| D: Jujak turn x0.93, Yongma turn x1.08, Yongma shield x0.6 | 42.3% | 49.0% | 54.2% |
+| **E: Jujak turn x0.95, Yongma turn x1.12, Yongma shield x0.55** | **45.9%** | **47.7%** | **50.1%** |
 
-(SE about 2 points each.) Shield x0.55 is 78.1, a little under Jujak's 79.7; x0.6 is 85.2.
-D is A plus two Yongma changes. To play them: `apply.py --candidates options.json
-jt0.91-yt1.08-ys0.55` (C') or `... jt0.93-yt1.08-ys0.6` (D).
+C' and E are inside 55/45 at every deathmatch size. Kill aspects and kills a minute stay as
+before in all of them (the records). Shield x0.55 is 78.1, a little under Jujak's 79.7;
+x0.6 is 85.2. The turn ratio Jujak over Yongma: C' 1.09, D 1.11, E 1.09 (before 1.29, A 1.20).
+To play them: `apply.py --candidates options.json jt0.91-yt1.08-ys0.55` (C'),
+`... jt0.93-yt1.08-ys0.6` (D), `... jt0.95-yt1.12-ys0.55` (E). Their elimination and Frontline
+5v5 checks are running on the laptop (`data/o2-*-laptop.jsonl`), and 2048-game deathmatch
+runs of every option on the 3070 (`/workspace/out/big-deathmatch-*.jsonl` on the box).
 
 C was the first card within about 13 points from 2v2 to 10v10, near even at every size. The
 cost: the archetypes move closer (Jujak out-turns Yongma by 1.09 instead of 1.29, and the
@@ -216,8 +224,9 @@ reference re-recorded again).
 
 1. A (one handle, v23 on the branch: 5v5 even, 2v2 29%, 10v10 72%) or a flat card (C', D:
    three handles, even from 2v2 to 10v10, the archetypes closer: Jujak out-turns Yongma by
-   1.09-1.12 instead of 1.29, and the shields about equal). My pick if the sizes matter: D
-   (it keeps A's Jujak), pending its 1024-game checks.
+   1.09-1.12 instead of 1.29, and the shields about equal). My pick if the sizes matter: C'
+   or E (inside 55/45 at 2v2, 5v5 and 10v10 at 1024 games), pending their elimination and
+   Frontline checks; E moves Jujak least, C' moves Yongma's turn least.
 2. The card or the controller: as the freeze review said, this is Imugi's balance. The
    trained agent's own Yongma-v-Jujak score after the first arm is the check that matters.
 3. The running-away elements stay off; if the author wants the energy fighter to extend,
