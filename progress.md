@@ -569,3 +569,5 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - next: compiled per-env factor from a 1024-env run, then games/hour and GPU use vs the box suite; results.md.
 - 04:45 worked: laptop bucket-5 run, 1024 envs: 37-45k games/h, GPU 100%, the same 6973 games took the 5090 queue 1198 engine-s vs 675 s here (laptop 1.8x the 5090 queue). didn't: filler games skewed the Elo allocation (3037 rl_20m-bc games) -> replaced by overtime; a bucket stopped before its in-flight games ended -> fixed.
 - next: benched (bucket 5) vs native (bucket 1) 1v1 scores, the v25-vs-v24 1v1 gap (DM 1v1 0.29 here vs 0.61 on the box), results.md.
+- 05:08 worked: v24 tree reproduces the box suite's 1v1 scores (0.625 vs 0.612, 0.238 vs 0.219); benched = native within 1.7 SE; v25 Imugi is far stronger at 1v1 (DM 0.29 vs 0.62). Per-machine remembered sizes; planner 3.8 ms/game at 3x41-player fields. didn't: bucket 5 plays 1v1s 2.7x slower than a 1-a-side engine (add small buckets when 1v1-heavy).
+- next: concurrent two-bucket test, final report.
