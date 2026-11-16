@@ -87,8 +87,9 @@ DOCTRINE_NAMES = {"baekho": "Baekho"}  # as the interface shows them
 # The play shell's Imugi fires at aim errors this many times wider than the trained
 # defaults' (playtesting: more, riskier shots than the tuned agent takes). The window is in
 # units of the target's angular size, so it still widens with the hit radius. Training, the
-# Elo anchor and the BC data keep the defaults.
-PLAY_FIRE_ANGLE_SCALE = 1.5
+# Elo anchor and the BC data keep the defaults. 1.0, off (author, 2026-11-16: the shell's
+# Imugi fires as the trained defaults do, to judge its aim; removed if it stays off).
+PLAY_FIRE_ANGLE_SCALE = 1.0
 
 
 def wider_fire(parameters: ModeParameters, scale: float) -> ModeParameters:

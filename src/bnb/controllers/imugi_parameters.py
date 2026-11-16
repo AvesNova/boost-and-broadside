@@ -12,9 +12,9 @@ logarithm, flattened by the agent's temperature and held off exactly 0 and 1
 fire, and P(shoot) is 0. Weights that are not probabilities (the boundary's steer toward the
 centre, the Frontline layer's hand-over to combat) are linear `Ramp`s.
 
-The plan choices the agent remembers (its target, its turn side, its Frontline goal and its
-recovery) change at a `Switch`'s rate: with probability 1 - exp(-rate dt) per decision, the
-rate rising smoothly with how much better the best alternative is than the committed option.
+The plan choices the agent remembers (its turn side and its Frontline goal) change at a
+`Switch`'s rate: with probability 1 - exp(-rate dt) per decision, the rate rising smoothly
+with how much better the best alternative is than the committed option.
 """
 
 import dataclasses
@@ -140,18 +140,15 @@ class ImugiParameters:
     the enemy's near the attack zone; defense_urgency, added to the defense zone's want
     while its meter moves against the viewer, times 1 + the meter's progress (the enemy's
     share of the capture); separation_radius_in_gun_range and
-    separation_weight; recovery_shield_fraction and recovery_threat, below and above which a
-    ship falls back to its spawn.
+    separation_weight.
 
     Memory: memory_fade_in_seconds, a hidden enemy's weight as a target by the time since it
     was seen (falling; its dead-reckoned distance is divided by the weight);
-    target_switch_in_log_distance, the target's switch by the log ratio of the committed
-    target's (weighted) distance to the best alternative's; side_commit_in_stall_angle, how
-    much the committed turn side outweighs the error's sign, by the error;
+    side_commit_in_stall_angle, how much the committed turn side outweighs the error's sign,
+    by the error;
     side_switch_in_radians, the side's switch by how much shorter the other way round is;
     goal_switch_in_strength, the Frontline goal's (defend or attack) by the margin of the
-    other goal's rule, in ship strengths; recovery_switch_in_log_ratio, recovery's by the
-    log margin of the other choice's rule.
+    other goal's rule, in ship strengths.
 
     Own time: time_unit_exponent, the memory fade's time and every switch's rate are in the
     ship's own time, its corner turn time over the card's first type's (`time_unit`),
@@ -181,14 +178,10 @@ class ImugiParameters:
     defense_urgency: float = 3.87
     separation_radius_in_gun_range: float = 0.625
     separation_weight: float = 0.553
-    recovery_shield_fraction: float = 0.133
-    recovery_threat: float = 1.56
     memory_fade_in_seconds: Logistic = Logistic(1.0, 0.25, False)
-    target_switch_in_log_distance: Switch = Switch(8.0, 0.3, 0.06)
     side_commit_in_stall_angle: Logistic = Logistic(4.0, 0.2, True)
     side_switch_in_radians: Switch = Switch(8.0, 0.6, 0.12)
     goal_switch_in_strength: Switch = Switch(8.0, 0.3, 0.06)
-    recovery_switch_in_log_ratio: Switch = Switch(8.0, 0.3, 0.06)
     time_unit_exponent: float = 0.0
 
 
@@ -213,13 +206,10 @@ SCALE_FLOORS = {
 # is an exact 0), from off to whole.
 ADDITIVE_BOUNDS = {"time_unit_exponent": (0.0, 1.0)}
 # Each switch's smallest scale, in its advantage's unit: about a tenth of the range its
-# advantage spans in play (a log distance ratio, radians of turn, ship strengths, a log
-# margin).
+# advantage spans in play (radians of turn, ship strengths).
 SWITCH_SCALE_FLOORS = {
-    "target_switch_in_log_distance": 0.05,
     "side_switch_in_radians": 0.1,
     "goal_switch_in_strength": 0.05,
-    "recovery_switch_in_log_ratio": 0.05,
 }
 
 NAMES = tuple(field.name for field in dataclasses.fields(ImugiParameters))

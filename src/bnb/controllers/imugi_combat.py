@@ -21,6 +21,7 @@ from bnb.streams import purpose_key, row_uniforms
 from .imugi_doctrine import Doctrine
 from .imugi_doctrine import per_ship as doctrine_of
 from .imugi_memory import (
+    TARGET_LOST_SECONDS,
     ImugiCarry,
     Recall,
     commit,
@@ -39,7 +40,6 @@ from .imugi_parameters import (
     ramp,
 )
 
-TARGET_SIZE_RANGE = (math.radians(1.0), math.radians(45.0))  # the clamp on its angular size
 COAST, BOOST, REVERSE = 0, 1, 2  # power indices (bnb.game.rules.POWER_MODES)
 TINY = 1e-6  # m: keeps a direction's length away from zero
 STICK_MAGNITUDES = (0.0, 0.4, 0.75, 1.0)  # bnb.game.rules.STICK_LEVELS by level
@@ -130,7 +130,7 @@ class Context(NamedTuple):
 
 def choice_uniforms(fleet: Context, name: str, like: torch.Tensor) -> torch.Tensor | None:
     """Uniforms shaped like `like` (R, ...) for the decision's draw `name` (a plan choice's
-    switch, the sense), keyed by the decision's key; None for a decision that does not
+    switch), keyed by the decision's key; None for a decision that does not
     switch (`Context.decision_key`)."""
     if fleet.decision_key is None:
         return None
@@ -340,6 +340,95 @@ def either(first: torch.Tensor, second: torch.Tensor) -> torch.Tensor:
     return 1.0 - (1.0 - first) * (1.0 - second)
 
 
+def arc(
+    velocity_x: torch.Tensor, velocity_y: torch.Tensor, rate: torch.Tensor, time: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """The displacement over `time` of a ship flying a constant-speed turn at `rate` (rad/s,
+    positive left) from `velocity`: (sin(w t) v + (1 - cos(w t)) v_left) / w, the straight
+    line's v t as w -> 0."""
+    angle = rate * time
+    small = angle.abs() < 1e-3
+    safe = torch.where(small, 1.0, rate)
+    along = torch.where(small, time * (1.0 - angle * angle / 6.0), torch.sin(angle) / safe)
+    across = torch.where(small, 0.5 * angle * time, (1.0 - torch.cos(angle)) / safe)
+    return (
+        along * velocity_x - across * velocity_y,
+        along * velocity_y + across * velocity_x,
+    )
+
+
+# A ship's store below this fraction of its most cannot hold more than its sustained turn
+# (`turn_now`).
+LOW_STORE_FRACTION = 0.1
+# Two circles need my turn rate now above the target's by this factor (`maneuvers`).
+TWO_CIRCLE_RATE_MARGIN = 1.05
+
+
+def turn_now(
+    characteristics: Characteristics,
+    ship_type: torch.Tensor,
+    speed: torch.Tensor,
+    store_fraction: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """((R, S) the full-stick turn rate (rad/s) and radius (m) a ship of this type has at
+    `speed` now, from the card: the g limit's acceleration above the corner speed, the
+    lift's (a_max (v / v_corner)^2) below it, over the speed; with the store below
+    LOW_STORE_FRACTION, at most its sustained rate (it cannot pay for more)."""
+    limit = per_ship(characteristics.max_acceleration, ship_type)
+    corner = per_ship(characteristics.corner_speed, ship_type)
+    speed = speed.clamp_min(1.0)
+    acceleration = limit * (torch.minimum(speed, corner) / corner) ** 2
+    rate = acceleration / speed
+    sustained = per_ship(characteristics.turn_rate[..., 2], ship_type)
+    rate = torch.where(store_fraction < LOW_STORE_FRACTION, torch.minimum(rate, sustained), rate)
+    return rate, speed / rate
+
+
+def offset_approach(
+    fleet: Context,
+    characteristics: Characteristics,
+    target_of,
+    has_target: torch.Tensor,
+    target_x: torch.Tensor,
+    target_y: torch.Tensor,
+    aim_x: torch.Tensor,
+    aim_y: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """The aim point on a head-on approach (the target seen, its nose within 45 degrees of
+    the ship, the ship's within 60 of it, closing): one own turn radius at the current speed
+    (`turn_now`) to the side of the target away from the side it is already on, so the two
+    pass that far apart; while the range is above one turn diameter and the line of sight
+    turns slower than the ship can. Then the offset drops and the ship turns onto its lead
+    (the lead turn), before the pass. Elsewhere `aim` unchanged."""
+    rate_now, radius_now = turn_now(
+        characteristics, fleet.own_type, fleet.speed, fleet.energy_fraction
+    )
+    distance = torch.sqrt(target_x * target_x + target_y * target_y).clamp_min(TINY)
+    seen = has_target & (target_of(fleet.enemy_seen.float()) > 0.5)
+    target_vx = target_of(column(fleet.enemy, "velocity_x"))
+    target_vy = target_of(column(fleet.enemy, "velocity_y"))
+    target_speed = torch.sqrt(target_vx * target_vx + target_vy * target_vy).clamp_min(TINY)
+    # the target's nose (track) toward the ship: cos of the angle to the line from it
+    toward = -(target_vx * target_x + target_vy * target_y) / (target_speed * distance)
+    bearing = signed_angle(fleet.cos, fleet.sin, target_x, target_y)
+    relative_x, relative_y = target_vx - fleet.velocity_x, target_vy - fleet.velocity_y
+    closing = (relative_x * target_x + relative_y * target_y) < 0.0
+    sight_rate = (target_x * relative_y - target_y * relative_x) / (distance * distance)
+    approach = (
+        seen
+        & (toward > math.cos(math.radians(45.0)))
+        & (bearing.abs() < math.radians(60.0))
+        & closing
+        & (distance > 2.0 * radius_now)
+        & (sight_rate.abs() < rate_now)
+    )
+    # the target left of the nose: aim to its right (the two pass left to left), and back
+    side = torch.where(bearing >= 0.0, -1.0, 1.0)
+    offset_x = target_x - side * radius_now * target_y / distance
+    offset_y = target_y + side * radius_now * target_x / distance
+    return torch.where(approach, offset_x, aim_x), torch.where(approach, offset_y, aim_y)
+
+
 def lead(
     fleet: Context,
     characteristics: Characteristics,
@@ -348,25 +437,60 @@ def lead(
     target_y: torch.Tensor,
     target_velocity_x: torch.Tensor,
     target_velocity_y: torch.Tensor,
+    target_rate: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """The aim point (first-order interception), relative to the shooter: the target's
-    displacement when a bullet fired now arrives, `t = time_of_flight(distance)` with the
-    distance capped at lead_cap_in_gun_range. The bullet inherits the shooter's velocity, so
-    the relative velocity carries the target. No field bending."""
-    distance = torch.sqrt(target_x * target_x + target_y * target_y)
+    """The aim point (interception on the target's turn), relative to the shooter: where the
+    target is when a bullet fired now arrives, flying its constant-turn arc at
+    `target_rate` (rad/s, positive left; 0 a straight line), less the shooter's own
+    velocity times the flight time (the bullet inherits it). The flight time is
+    `time_of_flight` at the distance capped at lead_cap_in_gun_range, then once more at the
+    predicted point's distance. No field bending."""
     cap = parameters.lead_cap_in_gun_range * fleet.gun_range
-    flight_time = time_of_flight(characteristics, fleet.own_type, torch.minimum(distance, cap))
-    return (
-        target_x + (target_velocity_x - fleet.velocity_x) * flight_time,
-        target_y + (target_velocity_y - fleet.velocity_y) * flight_time,
+
+    def at(distance: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        flight_time = time_of_flight(characteristics, fleet.own_type, torch.minimum(distance, cap))
+        moved_x, moved_y = arc(target_velocity_x, target_velocity_y, target_rate, flight_time)
+        return (
+            target_x + moved_x - fleet.velocity_x * flight_time,
+            target_y + moved_y - fleet.velocity_y * flight_time,
+        )
+
+    aim_x, aim_y = at(torch.sqrt(target_x * target_x + target_y * target_y))
+    return at(torch.sqrt(aim_x * aim_x + aim_y * aim_y))
+
+
+def path_rate(
+    fleet: Context, characteristics: Characteristics, target_of, has_target: torch.Tensor
+) -> torch.Tensor:
+    """(R, S) the target's flight-path turn rate (rad/s, positive left), from what the team
+    sees: the velocity's turn (v x a / |v|^2) where its acceleration is valid, else its
+    nose rate while seen, else 0 (a hidden target flies straight); held within its g limit
+    at its speed."""
+    vx, vy = (
+        target_of(column(fleet.enemy, "velocity_x")),
+        target_of(column(fleet.enemy, "velocity_y")),
     )
+    ax = target_of(column(fleet.enemy, "acceleration_x"))
+    ay = target_of(column(fleet.enemy, "acceleration_y"))
+    speed_squared = (vx * vx + vy * vy).clamp_min(1.0)
+    seen = has_target & (target_of(fleet.enemy_seen.float()) > 0.5)
+    valid = seen & (target_of(column(fleet.enemy, "acceleration_valid")) > 0.5)
+    rate = torch.where(
+        valid,
+        (vx * ay - vy * ax) / speed_squared,
+        torch.where(seen, target_of(column(fleet.enemy, "nose_rate")), 0.0),
+    )
+    limit = target_of(per_ship(characteristics.max_acceleration, fleet.enemy_type))
+    limit = limit / speed_squared.sqrt().clamp_min(1.0)
+    return torch.maximum(torch.minimum(rate, limit), -limit)
 
 
 class Combat(NamedTuple):
     """The combat layer's result: its marginals; per own ship (R, S): has_target, the
     target's distance (0 without one) and its weight (1 seen, fading when dead reckoned, 0
     without one); the plan choices it made, the target (-1 none) and the turn side; and the
-    sense's draw after the decision (`ImugiCarry.sense_draw`)."""
+    target's doubt and the extension's phase after the decision
+    (`ImugiCarry`)."""
 
     marginals: Marginals
     has_target: torch.Tensor
@@ -374,37 +498,116 @@ class Combat(NamedTuple):
     weight: torch.Tensor
     target: torch.Tensor
     left: torch.Tensor
-    sense_draw: torch.Tensor
+    target_doubt: torch.Tensor
+    extend_phase: torch.Tensor
 
 
-def choose_target(fleet: Context, offset_x: torch.Tensor, offset_y: torch.Tensor, parameters):
-    """The committed target (R, S) int64, -1 without a known enemy: the nearest known enemy
-    by its distance over its weight (ties: lowest row) when the ship is fresh or its target
-    is gone, else the committed one, switching to that nearest at
-    target_switch_in_log_distance's rate on the log ratio of the two."""
+# The committed target (`choose_target`) holds until it is dead, unseen for
+# TARGET_LOST_SECONDS, or for TARGET_DOUBT_SECONDS without a break either farther than
+# TARGET_FAR_IN_GUN_RANGES own gun ranges or TARGET_SWITCH_RATIO times farther than the best
+# known enemy (its distance over its weight): a fight is pressed, not re-scored each tick.
+TARGET_DOUBT_SECONDS = 2.0
+TARGET_FAR_IN_GUN_RANGES = 3.0
+TARGET_SWITCH_RATIO = 2.0
+# The extend-and-return rule (`extend_and_return`); off, an energy fighter stays in the turn
+# (for ablations).
+EXTEND_AND_RETURN = True
+# The offset approach and its lead turn (`offset_approach`); off, a head-on approach aims
+# at the lead point all the way in (for ablations).
+OFFSET_APPROACH = True
+
+
+def choose_target(
+    fleet: Context, offset_x: torch.Tensor, offset_y: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(the committed target (R, S) int64, -1 without one; the doubt after this decision
+    (R, S) s). A fresh ship, or one whose target is dead or unseen for TARGET_LOST_SECONDS,
+    takes the best known enemy: the nearest by its distance over its weight (ties: lowest
+    row). Otherwise the target holds; the doubt counts the seconds that it has been beyond
+    TARGET_FAR_IN_GUN_RANGES or TARGET_SWITCH_RATIO times the best's score, without a
+    break, and at TARGET_DOUBT_SECONDS the ship takes the best. Deterministic; without a
+    decision key (a re-reading) the doubt holds and only a forced choice changes the
+    target."""
     recall = fleet.recall
     known = recall.known[:, None, :]  # (R, 1, E)
     distance = torch.sqrt(offset_x * offset_x + offset_y * offset_y).clamp_min(TINY)
     score = torch.log(distance) - torch.log(recall.weight.clamp_min(1e-30))[:, None, :]
     score = torch.where(known, score, math.inf)  # (R, S, E)
     best = score.argmin(-1)
+    any_known = recall.known.any(-1, keepdim=True)
+    best = torch.where(any_known, best, -1)
     committed = fleet.carry.target
-    held = committed.clamp_min(0)[..., None]
-    valid = (committed >= 0) & known.expand_as(score).gather(-1, held)[..., 0]
-    advantage = torch.where(
-        valid, score.gather(-1, held)[..., 0] - score.gather(-1, best[..., None])[..., 0], 0.0
+    held = committed.clamp_min(0)
+    # known: alive, and seen, or hidden but pursued (`imugi_memory.remember`: up to
+    # TARGET_LOST_SECONDS, and not where it would be seen)
+    since = torch.where(fleet.enemy_seen, 0.0, column(fleet.enemy, "time_since_seen"))
+    valid = (
+        (committed >= 0)
+        & recall.known.gather(1, held)
+        & (since.gather(1, held) < TARGET_LOST_SECONDS)
     )
-    target = commit(
-        committed,
-        best,
-        advantage,
-        fleet.carry.fresh | ~valid,
-        in_own_time(parameters.target_switch_in_log_distance, fleet.time_unit),
-        fleet.temperature,
-        fleet.seconds,
-        choice_uniforms(fleet, "target", advantage),
+    forced = fleet.carry.fresh | ~valid
+    held_distance = distance.gather(-1, held[..., None])[..., 0]
+    best_score = score.gather(-1, best.clamp_min(0)[..., None])[..., 0]
+    far_away = held_distance > TARGET_FAR_IN_GUN_RANGES * fleet.gun_range
+    outscored = any_known & (torch.log(held_distance) > best_score + math.log(TARGET_SWITCH_RATIO))
+    if fleet.decision_key is None:
+        return torch.where(forced, best, committed), fleet.carry.target_doubt
+    doubt = torch.where(far_away | outscored, fleet.carry.target_doubt + fleet.seconds, 0.0)
+    switch = forced | (doubt >= TARGET_DOUBT_SECONDS)
+    target = torch.where(switch, best, committed)
+    return target, torch.where(switch, 0.0, doubt)
+
+
+def extend_and_return(
+    fleet: Context,
+    characteristics: Characteristics,
+    target_of,
+    has_target: torch.Tensor,
+    target_x: torch.Tensor,
+    target_y: torch.Tensor,
+    distance: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """The one extension, from the card: after a pass (the target behind the beam inside
+    the own gun range, flying away from the ship), a ship whose sustained turn rate w (the
+    settled full-stick turn) is below its seen target's and whose energy (kinetic plus
+    store) is above it flies straight away from the target, boosting, until it is one own
+    sustained turn diameter away (2 v / w at its cruise speed v) or 2 / w + 1 s have passed,
+    then comes straight back at the same target: no other extension starts for pi / w (a
+    reversal) plus that bound. Otherwise it stays in the turn. Returns ((R, S) bool
+    extending, the phase after this decision: `ImugiCarry.extend_phase`)."""
+    own_rate = per_ship(characteristics.turn_rate[..., 2], fleet.own_type)
+    target_rate = target_of(per_ship(characteristics.turn_rate[..., 2], fleet.enemy_type))
+    cruise = per_ship(characteristics.cruise_speed, fleet.own_type)
+    seen = target_of(fleet.enemy_seen.float()) > 0.5
+    target_speed = target_of(column(fleet.enemy, "proper_speed"))
+    own_energy = 0.5 * fleet.speed * fleet.speed + column(fleet.own, "energy")
+    target_energy = 0.5 * target_speed * target_speed + target_of(column(fleet.enemy, "energy"))
+    outturned = has_target & seen & (own_rate < target_rate) & (own_energy > target_energy)
+    bearing = signed_angle(fleet.cos, fleet.sin, target_x, target_y)
+    # passed: the target behind the beam inside the gun range and flying away from the ship
+    # (the two opening after a merge, not the target on the ship's tail)
+    opening = (
+        target_of(column(fleet.enemy, "velocity_x")) * target_x
+        + target_of(column(fleet.enemy, "velocity_y")) * target_y
+    ) > 0.0
+    passed = (bearing.abs() > 0.5 * math.pi) & (distance < fleet.gun_range) & opening
+    bound = 2.0 / own_rate + 1.0
+    diameter = 2.0 * cruise / own_rate
+    phase = torch.where(fleet.carry.fresh, 0.0, fleet.carry.extend_phase)
+    if not EXTEND_AND_RETURN:
+        return torch.zeros_like(phase, dtype=torch.bool), torch.zeros_like(phase)
+    if fleet.decision_key is None:  # a re-reading: the phase the decision left
+        return phase > 0.0, phase
+    extending = phase > 0.0
+    finished = (phase <= fleet.seconds) | (distance >= diameter) | ~has_target
+    after = torch.where(
+        extending,
+        torch.where(finished, -(math.pi / own_rate + bound), phase - fleet.seconds),
+        torch.where(phase < 0.0, (phase + fleet.seconds).clamp_max(0.0), 0.0),
     )
-    return torch.where(recall.known.any(-1, keepdim=True), target, -1)
+    after = torch.where((phase == 0.0) & outturned & passed, bound, after)
+    return after > 0.0, after
 
 
 def advantage_weight(
@@ -589,11 +792,9 @@ def maneuvers(
     power. others: the other known enemies' distances in own gun ranges (R, S, E; inf
     elsewhere), the angles between their tracks and the lines from them to the ship (R, S,
     E), and the own ships' distances in own gun ranges (R, S, S; inf for the ship itself and
-    the dead). Returns (stick, left, power, sense_draw)."""
+    the dead). Returns (stick, left, power)."""
     target_x, target_y, distance = geometry[:3]
     temperature = fleet.temperature
-    carry = fleet.carry
-    fresh = carry.fresh
     boost = power_marginal(torch.ones_like(distance), torch.zeros_like(distance))
     bearing = signed_angle(fleet.cos, fleet.sin, target_x, target_y)
 
@@ -612,25 +813,22 @@ def maneuvers(
         logistic(distance / fleet.gun_range, doctrine.sense_in_gun_range, temperature),
         0.0,
     )
-    duel_gate = torch.where(
-        same_type | (doctrine.sense_mirror_only <= 0.5),
-        logistic(lift_ratio, doctrine.sense_in_lift_ratio, temperature),
-        0.0,
+    # the choice, from the card and the state now (`turn_now`): two circles (the target's
+    # own rotation sense) only where my turn rate at my speed is clearly the higher
+    # (TWO_CIRCLE_RATE_MARGIN), else one circle (the other sense), where the smaller radius
+    # wins and a mirror does not settle into an even two-circle fight
+    own_rate_now, _ = turn_now(
+        characteristics, fleet.own_type, fleet.speed, fleet.energy_fraction
     )
-    # the choice: one-circle with probability sense_one_circle, drawn once as the gate opens
-    opened = geometry_gate > 0.5
-    fresh_draw = choice_uniforms(fleet, "sense", distance)
-    if fresh_draw is not None:
-        draw = torch.where(
-            opened,
-            torch.where(carry.sense_draw < 0.0, fresh_draw, carry.sense_draw),
-            -1.0,
-        )
-    else:
-        draw = torch.where(fresh, -1.0, carry.sense_draw)
-    one_circle = torch.where(
-        draw >= 0.0, draw < doctrine.sense_one_circle, doctrine.sense_one_circle > 0.5
+    target_type = target_of(fleet.enemy_type.float()).round().to(torch.int32)
+    target_rate_now, _ = turn_now(
+        characteristics,
+        target_type,
+        target_of(column(fleet.enemy, "proper_speed")),
+        target_of(column(fleet.enemy, "energy"))
+        / per_ship(characteristics.max_energy, target_type),
     )
+    one_circle = own_rate_now <= TWO_CIRCLE_RATE_MARGIN * target_rate_now
     sense_left = (target_rate > 0.0) ^ one_circle
     # alone: no other threatening known enemy near (a soft count of them inside the crowd's
     # radius, their tracks toward the ship), less the weighted count of own ships near
@@ -680,7 +878,6 @@ def maneuvers(
     sensing = (
         doctrine.sense
         * geometry_gate
-        * duel_gate
         * (alone * (1.0 - duel_extending) + (1.0 - alone) * (1.0 - stay_out))
     )
     in_crowd = doctrine.crowd_sense * geometry_gate * (1.0 - alone) * stay_out + duel_extending
@@ -690,7 +887,7 @@ def maneuvers(
         commanded_stick(sense_left, doctrine.crowd_sense_stick) - stick
     )
     power = power + (in_crowd * doctrine.crowd_sense_boost)[..., None] * (boost - power)
-    return stick, left, power, draw
+    return stick, left, power
 
 
 def combat(
@@ -707,7 +904,7 @@ def combat(
     recall = fleet.recall
     offset_x = recall.x[:, None, :] - fleet.x[..., None]  # (R, S, E)
     offset_y = recall.y[:, None, :] - fleet.y[..., None]
-    chosen = choose_target(fleet, offset_x, offset_y, parameters)
+    chosen, doubt = choose_target(fleet, offset_x, offset_y)
     has_target = chosen >= 0
     pick = torch.nn.functional.one_hot(chosen.clamp_min(0), offset_x.shape[-1]).bool()
     pick = pick & has_target[..., None]
@@ -720,7 +917,6 @@ def combat(
     target_x, target_y = target(offset_x), target(offset_y)
     weight = target(recall.weight)
     distance = torch.sqrt(target_x * target_x + target_y * target_y)
-    safe_distance = distance.clamp_min(TINY)
     aim_x, aim_y = lead(
         fleet,
         characteristics,
@@ -729,8 +925,14 @@ def combat(
         target_y,
         target(recall.velocity_x),
         target(recall.velocity_y),
+        path_rate(fleet, characteristics, target, has_target),
     )
-    aim_error = signed_angle(fleet.cos, fleet.sin, aim_x, aim_y)
+    lead_x, lead_y = aim_x, aim_y
+    aim_error = signed_angle(fleet.cos, fleet.sin, aim_x, aim_y)  # the gun's, to the lead
+    if OFFSET_APPROACH:
+        aim_x, aim_y = offset_approach(
+            fleet, characteristics, target, has_target, target_x, target_y, aim_x, aim_y
+        )
     boost = either(
         slow(fleet, parameters), torch.where(has_target, far(fleet, distance, parameters), 0.0)
     )
@@ -762,6 +964,20 @@ def combat(
         )
         power = attack + shaped.extending[..., None] * (extend - attack)
 
+    # The extend-and-return rule: away from the target, boosting.
+    extending, extend_phase = extend_and_return(
+        fleet, characteristics, target, has_target, target_x, target_y, distance
+    )
+    aim_x = torch.where(extending, -target_x, aim_x)
+    aim_y = torch.where(extending, -target_y, aim_y)
+    if power is None:
+        power = power_marginal(boost, reverse)
+    power = torch.where(
+        extending[..., None],
+        power_marginal(torch.ones_like(boost), torch.zeros_like(boost)),
+        power,
+    )
+
     # Without a target: the search (`SEARCH`).
     idle_x, idle_y, may_hold = idle_direction(fleet)
     toward_centre = fleet.distance_from_centre > (
@@ -781,8 +997,6 @@ def combat(
     hold = (~has_target & ~toward_centre)[..., None]
     held, _ = stick_marginal(fleet, torch.zeros_like(fleet.x), parameters)
     stick = torch.where(hold, held, steered)
-    if power is None:
-        power = power_marginal(boost, reverse)
     if doctrine is not None:
         # the other known enemies' distances in own gun ranges (inf for the target and the
         # unknown): the sense's crowd
@@ -804,7 +1018,7 @@ def combat(
         allies = torch.sqrt(ally_x * ally_x + ally_y * ally_y) / fleet.gun_range[..., None]
         itself = torch.eye(allies.shape[-1], dtype=torch.bool, device=allies.device)
         allies = torch.where(own_alive[:, None, :] & ~itself, allies, math.inf)
-        stick, left, power, draw = maneuvers(
+        stick, left, power = maneuvers(
             fleet,
             characteristics,
             doctrine,
@@ -816,12 +1030,15 @@ def combat(
             power,
             (others, tracks, allies),
         )
-    else:
-        draw = torch.where(fleet.carry.fresh, -1.0, fleet.carry.sense_draw)
 
     hit_radius = target(per_ship(characteristics.hit_radius, fleet.enemy_type))
-    size = (2.0 * torch.atan(hit_radius / safe_distance)).clamp(*TARGET_SIZE_RANGE)
-    aligned = logistic(aim_error.abs() / size, parameters.aim_in_target_size, fleet.temperature)
+    # the predicted miss: how far the nose's line passes from the lead point, in the
+    # target's hit radii (the lead point's whole distance when it is behind the beam)
+    reach = torch.sqrt(lead_x * lead_x + lead_y * lead_y)
+    miss = torch.where(aim_error.abs() < 0.5 * math.pi, reach * torch.sin(aim_error.abs()), reach)
+    aligned = logistic(
+        miss / hit_radius.clamp_min(TINY), parameters.aim_in_target_size, fleet.temperature
+    )
     in_range = logistic(
         distance / fleet.gun_range, parameters.shoot_in_gun_range, fleet.temperature
     )
@@ -836,7 +1053,8 @@ def combat(
         weight,
         chosen,
         left,
-        draw,
+        doubt,
+        extend_phase,
     )
 
 

@@ -279,6 +279,9 @@ def tally_like(B: int, S: int, device) -> dict:
         kills_kind=torch.zeros((B, 2, 2, len(ASPECTS)), **zeros),  # killer, victim kind
         damage_kind=torch.zeros((B, 2, 2, len(ASPECTS)), **zeros),  # victim side, kind
         passes=torch.zeros((B, PASS_BINS), **zeros),
+        # shots fired, and enemy hits that did damage (a shooter-victim pair a tick)
+        shots=torch.zeros((B,), **zeros),
+        hits=torch.zeros((B,), **zeros),
         first_merge=torch.zeros((B,), **zeros),
         killer_first=torch.zeros((B,), **zeros),
         ttk=torch.zeros((B, TTK_BINS), **zeros),
@@ -363,6 +366,8 @@ STATISTICS = (
     "first_hit_tick",
     "deaths",
     "traded",
+    "shots",
+    "hits",
     "kills_side",
     "deaths_side",
     "result",
@@ -649,6 +654,8 @@ class Loop:
         damage = events.damage
         hit_ij = damage[:, team0][:, :, team1] > 0.0
         hit_ji = (damage[:, team1][:, :, team0] > 0.0).transpose(1, 2)
+        tally["shots"] = tally["shots"] + state.ships.fired.float().sum(1)
+        tally["hits"] = tally["hits"] + hit_ij.float().sum((1, 2)) + hit_ji.float().sum((1, 2))
         first_hit = tally["first_hit"]
         new_first = (first_hit < 0) & (hit_ij | hit_ji)
         first_hit = torch.where(
@@ -1144,6 +1151,11 @@ def summary(out: dict, mask: torch.Tensor, seconds: float) -> dict:
         ],
         circles=(circles / circles.sum().clamp_min(1)).tolist(),
         circle_count=float(circles.sum()),
+        hit_rate=(
+            float(out["hits"][mask].sum() / out["shots"][mask].sum().clamp_min(1))
+            if "hits" in out
+            else None
+        ),
         trade_fraction=float(out["traded"][mask].sum() / out["deaths"][mask].sum().clamp_min(1)),
         **pace(out, mask, seconds),
         engagement=engagements_summary(out, mask),
@@ -1684,7 +1696,6 @@ SEARCHED_PARAMETERS = (
     "lead_cap_in_gun_range",
     "separation_radius_in_gun_range",
     "separation_weight",
-    "target_switch_in_log_distance",
     "side_commit_in_stall_angle",
     "side_switch_in_radians",
     "memory_fade_in_seconds",
