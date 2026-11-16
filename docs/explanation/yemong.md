@@ -169,8 +169,8 @@ The next-state head predicts the same vector, so a forecast carries its own unce
 state code above, are the same either way. A new run (`TrainConfig.yemong`, since
 2026-11-12) builds the champion's head, the
 2026-11-09-*-deadreckon-split-hiddenphysics run's: `"delta"` on the extrapolation baseline,
-split (`delta_split`), the physics head's hidden rows decayed with 0.5 s
-(`physics_hidden_decay`), its coefficient `LearnerConfig.next_state` 0.0033. `YemongConfig()`'s
+split (`delta_split`), the physics head's hidden rows decayed with 0.25 s
+(`physics_hidden_decay`; 0.5 s before the x 2 game), its coefficient `LearnerConfig.next_state` 0.0033. `YemongConfig()`'s
 own defaults are the record defaults (`"absolute"`, persistence, no split), which a build
 record written before a field existed reads. The arms' `--set` lines below are each arm's
 change from the record defaults; on a new run's defaults an arm without the split also
@@ -295,7 +295,7 @@ row has no valid rate (a first tick, just spotted, spawned) every rate is 0 and 
 take the rule. A hidden row **holds its last sighting's rates** (`Carry.held`): the
 acceleration along and across its velocity (turned back with the belief's velocity), the
 nose's and the scalars' last change, each decayed by `exp(-dt / tau)` per tick, tau
-`YemongConfig.extrapolation_decay` (0.5 s), while the belief holds the ship; its shield
+`YemongConfig.extrapolation_decay` (0.25 s; 0.5 s before the x 2 game), while the belief holds the ship; its shield
 and countdowns take the rule. The brief had a hidden row difference its own belief, as
 its acceleration inputs do. On a short CPU run that ran away: the belief's change holds the
 head's decoded change, which came back as the next tick's acceleration and compounded, to

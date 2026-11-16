@@ -122,14 +122,15 @@ positive (reverse) trades speed for store, and zero (coast) leaves the slow exch
 fades as the store fills.
 
 Two flight constants change how the engine and the drag work. Both are off by default and
-on in the real-scale set's rules (`ships/real-scale/rules.toml`, game version 8):
+on in the real-scale set's rules (`ships/real-scale/rules.toml`, game version 9):
 
 - **The direct charge** (`direct_charge`). The engine's power above its null power (the
   card's `engine_power` less `engine_power_full_store`, less still as the store fills past
   the knee) charges the store directly, at a constant power, in every power mode. A turn
   fades the charge as it fades the exchange (by the lift's share left over), and the
   charge stops at the top of the store. The speed sees only the null power, so in a
-  sustained turn a ship fights its drag with about a real fighter's power (250-265 W/kg).
+  sustained turn a ship fights its drag with about a real fighter's power (250-265 W/kg at the planes' speed, before the set's x 2 of
+  game v13).
   Without it, the charge drives the thrust and the coast exchange takes it back from the
   speed as an acceleration. Straight at cruise, the two are the same flight. Below cruise,
   the old form left the charge's surplus, `a_0 (u_cruise - u)`, as extra thrust, and the
@@ -137,9 +138,10 @@ on in the real-scale set's rules (`ships/real-scale/rules.toml`, game version 8)
   about 5 (a WWII fighter's is 12-15). Under the direct charge it is about 12.
 - **The drag rise** (`critical_speed` u_c, `drag_rise_exponent` q). The zero-lift drag is
   the card's times `1 + (u / u_c)^q`: compressibility as the speed nears that of sound,
-  which bounds a dive. The real-scale set has u_c = 197 m/s and q = 12, which costs about
-  15% more zero-lift drag at cruise (the solve holds the cruise) and stops a boost from
-  cruise near 1.35 x cruise (217-225 m/s; it reached 350-420 m/s without it).
+  which bounds a dive. The real-scale set has u_c = 394 m/s and q = 12 (197 m/s at the planes' speed, before
+  game v13), which costs about 15% more zero-lift drag at cruise (the solve holds the
+  cruise) and stops a boost from cruise near 1.35 x cruise (measured at the planes' speed:
+  217-225 m/s; it reached 350-420 m/s without it).
 
 The shared flight constants (`bnb.game.rules.FlightConstants`). The induced-drag factor,
 the stall angle and the three exchanges are scaled per type by the card:
@@ -168,7 +170,7 @@ complement 1 at every point, so `n` is the same as on a map without it.
   shot's energy cost. The bullet starts at the ship's position with the ship's velocity plus
   the muzzle speed along the nose, plus the shooter's random spread. It lives its shooter's
   type's bullet life (the card's `bullet_life`, a whole number of moves at the rules'
-  tick; 0.4 s for the standard types, 0.67 to 0.77 s for the real-scale ones).
+  tick; 0.4 s for the standard types, 0.37 s (11 ticks) for the real-scale ones).
 - **Drag.** Bullets slow quadratically on their proper speed, dw/dt = -k w² / n, so over
   distance w(s) = w0 exp(-k s): each type's own drag `k` (the `bullet_drag` handle; the
   card holds it as a scale of the rules' bullet drag, the floor). The real-scale sets' floor
@@ -220,12 +222,12 @@ complement 1 at every point, so `n` is the same as on a map without it.
 - **The arena** is a disc with no wall. A ship beyond the boundary takes
   `boundary_max_damage` per second times the smootherstep (the fields' quintic step) of
   its depth over `boundary_ramp_width`: little just past the edge, all of it from one ramp
-  width out, and smooth in the position (game v14; it was 5 + 0.05 per metre of depth).
+  width out, and smooth in the position (game v15; it was 5 + 0.05 per metre of depth).
   The ramp width is in metres at map scale 1 and scales with the arena, as the other map
   lengths do: 30 per s over 100 m in the standard game, 216 per s at real scale (40 before
   game v23, which raised the real-scale shields x 5.4), so on the
-  7800 m real-scale map a ship 150 m out takes half and one 300 m out takes all, a
-  standard shield in about 2.5 s. The boundary is the arena's edge, except in elimination,
+  7800 m real-scale map a ship 150 m out takes half and one 300 m out takes all: Jujak's
+  430 shield in about 2.0 s, Yongma's 767 in about 3.5 s. The boundary is the arena's edge, except in elimination,
   where it shrinks inside it over the clock ([modes](modes.md#elimination)).
 - **The killer** of a ship is the owner of its earliest hit this tick, ties to the lower
   bullet index.

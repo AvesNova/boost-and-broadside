@@ -47,7 +47,7 @@ compiled. The options:
   out; in elimination the ships each team has left, and the boundary's radius as a share
   of the arena's and its time to zero, as "edge 31%, 0:45", then "edge closed" once it has
   passed the centre and every ship is outside it), and the clock in the middle; the speed controls
-  on the right: pause or play, one tick while paused, and ×1, ×2, ×4, ×8. Left of the
+  on the right: pause or play, one tick while paused, and ×¼, ×½, ×1, ×2, ×4, ×8. Left of the
   speed controls, the frame rate: frames per second and the frame time, smoothed over about
   half a second, and the longest frame of the last second (`max`), so a stall shows. F4,
   **Settings** → **Frame rate** and `--no-fps` hide it (offscreen renders never draw it).
@@ -78,8 +78,9 @@ dragging the battlefield pans and the wheel zooms.
 The view selector (or V) chooses:
 
 - **Spectator:** no fog; every ship and every bullet is drawn.
-- **Team 0** and **Team 1:** what that team sees. Fog of war is on by default
-  (`--no-fog` turns it off): what the team cannot see is darker, its colours kept, and
+- **Team 0** and **Team 1:** what that team sees. Fog of war follows the game (none in
+  team deathmatch, on in elimination and Frontline; `--fog True` or `--fog False`
+  overrides it): what the team cannot see is darker, its colours kept, and
   only the ships the team sees are drawn, with the parts of their trails it saw. The
   minimap shows the same. Every bullet is drawn in every view, above the fog at full
   brightness; agents never see bullets. In a team view only what the team sees can be
@@ -184,7 +185,9 @@ The menu (the top bar's menu button, or Escape) pauses a live match and offers *
 types are Yongma and Jujak (with any type a player added after them), on a
 map three times the standard one; or **Arena**: a 2v2 dogfight of a Yongma and a Jujak a
 team on a 1950 m map with no fields, a ship shot down back in the fight on the next
-tick, the `arena` preset in [Modes](../explanation/game/modes.md#clocks-and-presets); then
+tick, the `arena` preset in [Modes](../explanation/game/modes.md#clocks-and-presets); or
+**Clover**: real-scale elimination, 2v2, on the author's fixed layout, the `clover` preset
+in [Modes](../explanation/game/modes.md#fixed-layouts-and-clover); then
 your [saved maps](#making-and-saving-maps), each in its own mode).
 Choosing a map takes its fleet size, fields and lineup (and a saved map's mode and tuning); then the ships a side, the fields
 (0 to 64), the lineup (a dropdown per
@@ -193,8 +196,8 @@ Jujak, or a set's first two types where it has not both; the map starts at **Rea
 scale**), fog, the seed, and each side's controller: **Imugi Baekho** (Imugi, `bnb.controllers.imugi.Imugi`, flying
 Baekho, the one stored doctrine (`imugi_doctrines.json`): the training's BC teacher, its
 league opponent and the ratings' anchor. It plays the mode's objectives, remembers each
-enemy it saw and dead reckons it while hidden, extends from crowds and from a duel it is
-losing, and on Frontline attacks or defends by the capture locks), **Chaser** (`--scripted0 scripted`: it turns toward the nearest visible enemy and
+enemy it saw and dead reckons it while hidden, holds its target, extends and returns
+after a pass when it is out-turned but has more energy, and on Frontline attacks or defends by the capture locks), **Chaser** (`--scripted0 scripted`: it turns toward the nearest visible enemy and
 fires, and reads no zones) or a trained agent. Imugi and the chaser need their
 ship card's characteristics, measured once per card in a separate process (about 15 s for
 the standard set and longer for the real-scale types on a laptop CPU) and kept

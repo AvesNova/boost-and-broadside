@@ -43,8 +43,8 @@ training run draws its lineups (`TrainConfig.lineup_draw`, the default: each epi
 every slot Yongma or Jujak with equal chance, both teams alike). The lineup
 is kept beside the config, not in it, because a policy file records every field of its
 game's config and one recorded without a field is another game. The arena is about three
-full-stick turn circles of its two ships across (each turns at about 500-600 m at its
-162 m/s cruise): first set at 1300 m, two circles across, and widened by half for more
+full-stick turn circles of its two ships across (each turned at about 500-600 m at its
+162 m/s cruise, before the real-scale set's x 2 speed of game v13): first set at 1300 m, two circles across, and widened by half for more
 room. Its ships come within gun range (about 600 m) within seconds of spawning: in the
 Imugi's 2v2s on it, 0-12 s after the start, the first kill 9-23 s in, with 3-10%
 of the ships' time beyond the boundary (at 1300 m: 0-7.5 s, 6-14 s and 10-16%).
@@ -84,7 +84,7 @@ objective events and decides whether the match is won.
 - `result` is for team 0: +1 a win, -1 a loss, 0 a draw. It is the win rule's when the win
   ended the match, otherwise the clock rule's (`bnb.game.modes.phase.clock_result`), and 0
   where the match goes on.
-- `win_loss` (game v17) is team 0's weights of a win and of a loss where the match ended
+- `win_loss` (game v19) is team 0's weights of a win and of a loss where the match ended
   (`bnb.game.modes.phase.win_loss`), a draw the rest: the result one-hot, except in team
   deathmatch (below). The RL outcome reward and the outcome head's targets read it; the
   win/draw/loss tallies read `result`.
@@ -166,7 +166,7 @@ deathmatch, every death a point for the other team, with one kill per enemy ship
   area, nose toward the map's centre within `side_heading_jitter` (15 degrees), turned the
   least that keeps team deathmatch's edge rule. A fixed layout's spawns (Clover) replace
   it.
-- **The boundary shrinks** (game v14, closing before the clock since v16;
+- **The boundary shrinks** (game v15, closing before the clock since v16;
   `bnb.game.layout.boundary_fraction`): it stays at the arena radius for
   `ModeRules.shrink_hold_seconds` (18 s in the standard game; 0 at real scale since the
   freeze, game v21), then shrinks past radius 0 to minus one ramp width, which it reaches
@@ -183,8 +183,8 @@ deathmatch, every death a point for the other team, with one kill per enemy ship
   sides fly. A negative radius puts every point beyond the boundary: from the zero
   crossing even a ship at the centre is hurt every tick, so its shield does not recharge,
   and from the close it takes the boundary's most. The lead is set so the largest shield
-  of either set dies in it: 160 at 30 per s (40 at real scale) is 5.3 s, plus a tick to
-  kill a broken shield, leaving 2.6 s of margin before the damage between the zero
+  of either set dies in it: 160 at 30 per s is 5.3 s (at real scale Yongma's 767 at
+  216 per s is 3.5 s), plus a tick to kill a broken shield, leaving 2.6 s of margin before the damage between the zero
   crossing and the close is counted. So every ship dies before the clock; the tie-break
   below decides only ships that die together. The three settings are live, in the Map /
   mode panel's Elimination group. Positions and every map length keep the arena radius
@@ -256,7 +256,7 @@ None, as in training) the game is bit-identical to the game without the input
   neutral, team 0's spawn, team 0's defense, team 1's defense, team 1's spawn.
 - **Size:** the ring's radius is `zone_ring_fraction` (0.615) of the arena radius and each
   zone's radius `zone_radius` (330 m) times the map scale, so both follow the arena. Two
-  floors (game v17) stop a small or sampled arena from shrinking them past 70% of the 5v5
+  floors (game v19) stop a small or sampled arena from shrinking them past 70% of the 5v5
   map's: every zone's radius is at least `zone_radius_floor` (231 m) and adjacent zone
   centres at least `zone_spacing_floor` (1315.8 m) apart, the ring growing to fit. Both
   are m at map scale 1 times the ship set's map scale (3 at real scale: 693 m and

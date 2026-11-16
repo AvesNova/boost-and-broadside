@@ -178,6 +178,8 @@ The code follows [Code style](code-style.md).
 | strict build | `tests/docs/test_build.py` | a link, anchor, page, nav entry, reference link (including every linked `bnb.` name) or generated block is broken |
 | code references | `tests/docs/test_references.py` | a full name, short name, word, path, `:::` target, `bnb` command or Python import does not resolve; a fence has no language or no run marker; a page has no `covers`; a block name is unknown; a README link is broken |
 | examples | `tests/docs/test_examples.py` | a runnable example fails |
+| docstrings | `tests/docs/test_docstrings.py` | a public module, class or function has no docstring |
+| figure sets | `tests/docs/test_figure_sets.py` | the figures page has no section for a set in `bnb.figures.sets.FIGURE_SETS`, or one for a set not in it |
 | coverage map | `tests/docs/test_staleness.py` | never; it warns, for commits and uncommitted changes |
 
 The docstring report lists public modules, classes and functions whose docstring is

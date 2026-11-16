@@ -1,4 +1,4 @@
-# feat/lethality progress (game v12, gpubox4)
+# Docs staleness audit (docs/staleness)
 
 ## Playable now
 Game v13: the real-scale set at x2 native speed, with the lethality rules. Fly it with:
@@ -491,3 +491,6 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Tried: baseline Y0.46, 256 games each (DM 300 s): deaths by cause per ship.
 - Found: DM 1v1 99% of deaths are boundary (Y 2.0/game, J 0.6/game; hits 0.01); 2v2 Y 60% boundary, J 36%; 5v5 Y 22%, J 8%; elim 5v5 Y 18%, J 5%. Every crossing has the edge steer at w=1 and a target, ~370 m/s, turn radius ~400 m (margin is ample).
 - Next: after-fix run (BOUNDARY_OVER_MANEUVERS on), ETA 22:10 KST (worst 22:15).
+- 2026-11-16: worktree up; strict build failed on 3 anchors (fixed). Three read-only audit agents (guides, game, core explanation) reported; applying the clear fixes next.
+- 22:41: guides/contributing and game-page number fixes committed (3 commits). Next: imugi.md one-liners, yemong decays, perception sandbox, nav/roadmap.
+- 22:43: imugi/yemong/perception one-liners, roadmap (league merged), docstring for bench.balance_worker.main; strict build and tests/docs quick tier (610 passed) green. Next: report.

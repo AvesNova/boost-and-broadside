@@ -140,8 +140,9 @@ the reachable range; raise `--teacher-floor` for a higher one. `--calibration-se
 (4 by default) sets how many segments of 128 ticks it records. The natural entropy is low
 (0.40 nats on the training mix,
 [measured](../explanation/behaviour-cloning.md#measurements)), and at floor 0 the
-temperature alone reaches about 0.75. `--teacher-floor` defaults to 0.01, so no label
-gives an action probability 0. Pass the temperature to the BC run with
+temperature alone reaches about 0.75. `--teacher-floor` defaults to 0: Imugi's own
+gate floors (`bnb.controllers.imugi_parameters.EPSILONS`) already keep every label's
+action probabilities above 0. Pass the temperature to the BC run with
 `--teacher-temperature`.
 
 ## From Python

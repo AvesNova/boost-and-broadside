@@ -14,7 +14,8 @@ page lists every place a new one plugs in.
 ## 1. Name it and give it a clock
 
 - Add a constant for its name beside `bnb.contracts.config.TEAM_DEATHMATCH`{.nolink},
-  `bnb.contracts.config.FRONTLINE`{.nolink} and `bnb.contracts.config.SANDBOX`{.nolink}, and
+  `bnb.contracts.config.FRONTLINE`{.nolink}, `bnb.contracts.config.ELIMINATION`{.nolink} and
+  `bnb.contracts.config.SANDBOX`{.nolink}, and
   add it to `bnb.contracts.config.MODES`. `GameConfig` rejects any other name.
 - Add its default episode length and respawn wait to `bnb.game.modes.rules.CLOCKS`. Both
   must be whole multiples of the tick.

@@ -319,7 +319,7 @@ runs it. The command builds the same objects.
 <!-- generated: learner-config -->
 
 A custom lineup, here learner against the chaser on half the batch and self-play on the
-other half, with no fog in the chaser pool:
+other half:
 
 <!-- not-runnable: needs CUDA -->
 ```python
@@ -329,8 +329,8 @@ from bnb.contracts import GameConfig, Pool
 from bnb.runtime.train import LEARNER, TrainConfig, train
 
 pools = (Pool("self_play", 0.5, (LEARNER, LEARNER)),
-         Pool("chaser", 0.5, (LEARNER, "chaser"), fog_share=0.0))
-config = TrainConfig(game=GameConfig(5, 10, 2600.0), pools=pools, environments=1024, updates=200)
+         Pool("chaser", 0.5, (LEARNER, "chaser")))
+config = TrainConfig(game=GameConfig(5, 10, 2600.0, mode=FRONTLINE), pools=pools, environments=1024, updates=200)
 train(config, torch.device("cuda"))
 ```
 

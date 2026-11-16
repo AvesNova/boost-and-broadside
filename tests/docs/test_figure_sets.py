@@ -1,5 +1,5 @@
 """The figures page (`docs/guides/figures.md`) describes every figure set, and only those:
-one `## \`name\`` section per entry of `bnb.figures.sets.FIGURE_SETS`."""
+one `## name` section (the name in backticks) per entry of `bnb.figures.sets.FIGURE_SETS`."""
 
 import re
 
