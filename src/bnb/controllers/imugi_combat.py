@@ -360,6 +360,8 @@ def arc(
 # A ship's store below this fraction of its most cannot hold more than its sustained turn
 # (`turn_now`).
 LOW_STORE_FRACTION = 0.1
+# Two circles need my turn rate now above the target's by this factor (`maneuvers`).
+TWO_CIRCLE_RATE_MARGIN = 1.05
 
 
 def turn_now(
@@ -812,20 +814,21 @@ def maneuvers(
         0.0,
     )
     # the choice, from the card and the state now (`turn_now`): two circles (the target's
-    # own rotation sense) where my turn rate at my speed is the higher, else one circle (the
-    # other sense) where my radius at my speed is the smaller, else two circles
-    own_rate_now, own_radius_now = turn_now(
+    # own rotation sense) only where my turn rate at my speed is clearly the higher
+    # (TWO_CIRCLE_RATE_MARGIN), else one circle (the other sense), where the smaller radius
+    # wins and a mirror does not settle into an even two-circle fight
+    own_rate_now, _ = turn_now(
         characteristics, fleet.own_type, fleet.speed, fleet.energy_fraction
     )
     target_type = target_of(fleet.enemy_type.float()).round().to(torch.int32)
-    target_rate_now, target_radius_now = turn_now(
+    target_rate_now, _ = turn_now(
         characteristics,
         target_type,
         target_of(column(fleet.enemy, "proper_speed")),
         target_of(column(fleet.enemy, "energy"))
         / per_ship(characteristics.max_energy, target_type),
     )
-    one_circle = (own_rate_now <= target_rate_now) & (own_radius_now < target_radius_now)
+    one_circle = own_rate_now <= TWO_CIRCLE_RATE_MARGIN * target_rate_now
     sense_left = (target_rate > 0.0) ^ one_circle
     # alone: no other threatening known enemy near (a soft count of them inside the crowd's
     # radius, their tracks toward the ship), less the weighted count of own ships near

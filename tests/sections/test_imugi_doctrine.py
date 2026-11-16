@@ -238,11 +238,23 @@ def test_a_doctrine_packs_and_names_both_ways():
 LEFT_LEVELS, RIGHT_LEVELS = (2, 4, 6), (1, 3, 5)
 
 
-def _sense_stick(own_type: int, enemy_type: int, own_speed: float | None = None):
+def _sense_stick(
+    own_type: int,
+    enemy_type: int,
+    own_speed: float | None = None,
+    target_speed: float | None = None,
+):
     """The (right, left) full-stick commands of the sense against a target just passed
     (behind, its tail to the ship's tail) turning left, own ship of `own_type` at `own_speed`."""
     distance = 0.5 * value("gun_range", own_type)
-    enemy = ship(x=-distance, y=-30.0, heading=math.pi, ship_type=enemy_type, team_relative=1)
+    enemy = ship(
+        x=-distance,
+        y=-30.0,
+        heading=math.pi,
+        speed=target_speed,
+        ship_type=enemy_type,
+        team_relative=1,
+    )
     enemy[SHIP["nose_rate"]] = 0.3
     obs = observation(
         [ship(ship_type=own_type, speed=own_speed), absent(own_type, 0)],
@@ -252,23 +264,27 @@ def _sense_stick(own_type: int, enemy_type: int, own_speed: float | None = None)
     return float(flown.stick[0, 0, 5]), float(flown.stick[0, 0, 6])
 
 
-def test_the_faster_turning_ship_takes_two_circles_with_the_targets_rotation():
-    """A target just passed turning left: a ship whose turn rate now is higher, or equal
-    (the same card and speed), turns left (with its rotation), in a mirror and across types."""
-    for own_type, enemy_type in ((STIFF, STIFF), (AGILE, AGILE), (AGILE, STIFF)):
-        right, left = _sense_stick(own_type, enemy_type)
+def test_a_clearly_faster_turning_ship_takes_two_circles_with_the_targets_rotation():
+    """A target just passed turning left: a ship whose turn rate now is clearly higher (the
+    target slowed below its corner speed) turns left, with its rotation, across types too."""
+    for own_type, enemy_type in ((AGILE, AGILE), (AGILE, STIFF)):
+        right, left = _sense_stick(own_type, enemy_type, target_speed=50.0)
         assert left > 0.9 and right < 0.1
-
-
-def test_a_smaller_radius_with_a_lower_rate_takes_one_circle_against_the_rotation():
-    """A ship slowed to a smaller radius now but a lower rate than the target turns right
-    (against its rotation): the same card and across types (the sense has no gate by type)."""
-    for own_type, enemy_type in ((AGILE, AGILE), (STIFF, AGILE)):
-        right, left = _sense_stick(own_type, enemy_type, own_speed=50.0)
-        assert right > 0.9 and left < 0.1
-    # a lower rate and a larger radius (the slower card at cruise against the other): two circles
+    # the g limit's rate at cruise: the stiffer card's 216 / 104 rad/s against 160 / 106
     right, left = _sense_stick(STIFF, AGILE)
     assert left > 0.9 and right < 0.1
+
+
+def test_otherwise_it_takes_one_circle_against_the_rotation():
+    """An even rate (a mirror at the same speed) or a lower one with a smaller radius (slowed
+    below the corner speed): one circle, against the target's rotation."""
+    for own_type, enemy_type, speed in (
+        (STIFF, STIFF, None),
+        (AGILE, AGILE, None),
+        (AGILE, AGILE, 50.0),
+    ):
+        right, left = _sense_stick(own_type, enemy_type, own_speed=speed)
+        assert right > 0.9 and left < 0.1
 
 
 def test_the_sense_hands_over_to_the_crowd_sense_with_another_enemy_near():
@@ -284,7 +300,7 @@ def test_the_sense_hands_over_to_the_crowd_sense_with_another_enemy_near():
         crowd_sense_boost=1.0,
     )
     alone = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, absent(STIFF)])
-    assert float(_decide(alone, _every_type(doctrine)).stick[0, 0, 6]) > 0.9
+    assert float(_decide(alone, _every_type(doctrine)).stick[0, 0, 5]) > 0.9
     other = ship(x=-2.0 * gun, y=2.0 * gun, heading=0.0, ship_type=STIFF, team_relative=1)
     crowd = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [enemy, other])
     flown = _decide(crowd, _every_type(doctrine))
@@ -318,15 +334,15 @@ def test_the_crowd_extension_presses_by_the_situation():
     crowd = observation([ship(ship_type=STIFF), absent(STIFF, 0)], [_passed_target(), other])
     assert float(_decide(crowd, _every_type(CROWDED)).stick[0, 0, 0]) > 0.9
     rich = dataclasses.replace(CROWDED, crowd_sense_in_energy_ratio=Logistic(1e-3, 0.05, False))
-    assert float(_decide(crowd, _every_type(rich)).stick[0, 0, 6]) > 0.9
+    assert float(_decide(crowd, _every_type(rich)).stick[0, 0, 5]) > 0.9
     wing = ship(x=0.0, y=gun, ship_type=STIFF)
     pair = observation([ship(ship_type=STIFF), wing], [_passed_target(), other])
     assert float(_decide(pair, _every_type(CROWDED)).stick[0, 0, 0]) > 0.9
     allied = dataclasses.replace(CROWDED, sense_crowd_ally_weight=1.0)
-    assert float(_decide(pair, _every_type(allied)).stick[0, 0, 6]) > 0.9
+    assert float(_decide(pair, _every_type(allied)).stick[0, 0, 5]) > 0.9
     # the other enemy flies +x, 45 degrees off the line to the ship
     threats = dataclasses.replace(CROWDED, sense_crowd_in_nose_angle=Logistic(0.3, 0.1, False))
-    assert float(_decide(crowd, _every_type(threats)).stick[0, 0, 6]) > 0.9
+    assert float(_decide(crowd, _every_type(threats)).stick[0, 0, 5]) > 0.9
 
 
 def test_the_duel_extension_flies_straight_behind_on_the_lift_ratio():
@@ -336,7 +352,7 @@ def test_the_duel_extension_flies_straight_behind_on_the_lift_ratio():
         [ship(ship_type=STIFF), absent(STIFF, 0)], [_passed_target(), absent(STIFF)]
     )
     shut = dataclasses.replace(CROWDED, duel_extend=1.0)
-    assert float(_decide(alone, _every_type(shut)).stick[0, 0, 6]) > 0.9
+    assert float(_decide(alone, _every_type(shut)).stick[0, 0, 5]) > 0.9
     behind = dataclasses.replace(shut, duel_extend_in_lift_ratio=Logistic(10.0, 0.05, False))
     flown = _decide(alone, _every_type(behind))
     assert float(flown.stick[0, 0, 0]) > 0.9
