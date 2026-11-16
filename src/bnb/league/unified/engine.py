@@ -623,6 +623,60 @@ class GameLog:
             )
         )
 
+    def export_to(self, pool, players: list[Player], conditions: set[str]) -> None:
+        """Also append the games of these condition keys (`Condition.key`, the Elo
+        targets') to a rating pool (`bnb.league.rating_pool.RatingPool`), one batch per
+        condition per flush, each game a block, the players registered under their spec
+        names with their identities, so `bnb pool table` and `bnb pool curves` read them."""
+        from bnb.league.rating_pool import PoolPlayer
+        from bnb.league.tournament import identity
+
+        held, _ = pool.players()
+        identities = {one.name: identity(one) for one in players}
+        fresh = [
+            PoolPlayer(name, mark, paths=(str(one.policy),) if one.policy else ())
+            for one in players
+            for name, mark in ((one.name, identities[one.name]),)
+            if name not in held
+        ]
+        if fresh:
+            pool.register(fresh)
+        self.pool, self.identities, self.conditions = pool, identities, conditions
+
+    def _export(self) -> None:
+        import datetime
+
+        from bnb.game import VERSION
+
+        by_key: dict[str, list[dict]] = {}
+        for row in self.rows:
+            key = Condition(
+                row["preset"], row["first_count"], row["second_count"], row["arena_scale"]
+            ).key
+            if key in self.conditions:
+                by_key.setdefault(key, []).append(row)
+        for key, rows in by_key.items():
+            results = [
+                [1, 0, 0] if r["score"] == 1.0 else ([0, 1, 0] if r["score"] == 0.5 else [0, 0, 1])
+                for r in rows
+            ]
+            kills = [r["kills"] for r in rows]
+            self.pool.append_batch(
+                key,
+                dict(
+                    game_version=VERSION,
+                    matchups=[[r["first"], r["second"]] for r in rows],
+                    identities={
+                        n: self.identities[n] for r in rows for n in (r["first"], r["second"])
+                    },
+                    results=results,
+                    kill_share=[a / (a + b) if a + b else 0.5 for a, b in kills],
+                    kills=kills,
+                    layout=dict(unified=True),
+                    wall_time=datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+                ),
+            )
+
     def flush(self) -> None:
         if not self.rows:
             return
@@ -632,6 +686,8 @@ class GameLog:
             file.write(json.dumps(dict(time=time.time(), games=self.rows)) + "\n")
             file.flush()
             os.fsync(file.fileno())
+        if getattr(self, "pool", None) is not None:
+            self._export()
         self.rows = []
 
     def replay(self) -> list[tuple[Cell, Outcome]]:

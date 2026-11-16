@@ -887,6 +887,8 @@ class Unified:
     # the most hours to play
     hours: float = 24.0
     runs_directory: pathlib.Path | None = None
+    # a rating pool the Elo targets' games are also appended to (`bnb pool table` reads it)
+    pool: pathlib.Path | None = None
 
 
 def unified(options: Unified) -> None:
@@ -903,6 +905,7 @@ def unified(options: Unified) -> None:
         options.concurrent,
         options.memory_share,
         hours=options.hours,
+        pool=options.pool,
     )
 
 

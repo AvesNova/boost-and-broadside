@@ -250,10 +250,13 @@ def run(
     compiled: bool = True,
     hours: float = 24.0,
     log=print,
+    pool: pathlib.Path | None = None,
 ) -> dict:
     """The run (the module docstring). environments: each bucket's batch (None: sized from
     the free memory); concurrent: "auto" (the buckets with work share the device when each
-    gets `MINIMUM_CONCURRENT` environments, else they run in turn), "yes" or "no"."""
+    gets `MINIMUM_CONCURRENT` environments, else they run in turn), "yes" or "no"; pool: a
+    rating pool directory the Elo targets' games are also appended to (`GameLog.export_to`;
+    created with the spec's lineup types when new)."""
     out.mkdir(parents=True, exist_ok=True)
     progress_path = out / "progress.log"
 
@@ -270,6 +273,15 @@ def run(
         planner.finished(cell, outcome, pending=False)
     if resumed:
         say(f"resumed {len(resumed)} games from {games_log.path}")
+    if pool is not None:
+        from bnb.league.rating_pool import RatingPool
+
+        names = api.type_names(PRESETS[_preset(spec.targets[0])].ship_set)
+        rating_pool = RatingPool.create(
+            pool, lineup_types=tuple(names[i] for i in sorted(set(spec.lineup_types)))
+        )
+        elo = {t.condition.key for t in spec.targets if isinstance(t, EloTarget)}
+        games_log.export_to(rating_pool, spec.players, elo)
     started = time.time()
     total_games = len(resumed)
     sizing = {}

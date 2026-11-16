@@ -292,3 +292,30 @@ def test_null_false_positive_rate():
     tests = 4000
     rate = _null_decisions(tests, 2, delta=0.05)
     assert rate <= 0.05 + 2 * math.sqrt(0.05 * 0.95 / tests)
+
+
+# ---- records
+
+
+def test_game_log_resumes_and_exports_to_a_rating_pool(tmp_path):
+    from bnb.league.matches import player
+    from bnb.league.rating_pool import RatingPool, fit
+    from bnb.league.unified.engine import GameLog
+
+    players = [player("imugi"), player("rung_T2")]
+    names = [one.name for one in players]
+    pool = RatingPool.create(tmp_path / "pool", lineup_types=("Yongma", "Jujak"))
+    log = GameLog(tmp_path / "run")
+    condition = Condition(DM, 5, 5)
+    log.export_to(pool, players, {condition.key})
+    cell = Cell(condition, names[0], names[1])
+    for score in (1.0, 1.0, 0.5, 0.0):
+        log.add(cell, Outcome(score, 3, 1, 120.0), Slot(cell, 0), 5)
+    other = Cell(Condition(EL, 2, 3), names[0], names[1])
+    log.add(other, Outcome(1.0), Slot(other, 1), 5)
+    log.flush()
+    replayed = GameLog(tmp_path / "run").replay()
+    assert [c for c, _ in replayed] == [cell] * 4 + [other]
+    assert replayed[2][1].score == 0.5 and replayed[0][1].first_kills == 3
+    counted, _, _, _ = fit(pool, condition.key, ("win_loss", "win_loss"))
+    assert counted.games == 4  # the Elo condition only
