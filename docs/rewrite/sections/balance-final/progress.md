@@ -228,3 +228,15 @@ solved, shield x0.6-0.7).
 - results.md now offers C (options.json, apply.py --candidates options.json) beside A (v23 in
   src/). Next: round 17 (C with shield x0.5-0.55, Yongma turn x1.12), C at 1024 games in all
   deathmatch sizes (laptop), C in elimination and Frontline 5v5 (3070, queue7).
+
+## 09:20 round 17; the box re-planned for compile cost
+
+- Round 17 (laptop, 512): three cards even at every deathmatch size: C' (Jujak x0.91, Yongma
+  turn x1.08, shield x0.55) 49.4 / 49.2 / 47.8; D (Jujak x0.93, Yongma turn x1.08, shield
+  x0.6) 43.9 / 50.1 / 53.1; Jujak x0.95, Yongma turn x1.12, shield x0.55 46.9 / 51.7 / 48.3.
+  Shield x0.5 overshoots the other way (10v10 40.5); Jujak x0.91 + Yongma turn x1.05 + shield
+  x0.6 37.8 / 41.6 / 46.7. results.md offers C' and D.
+- The box compiles ~10 min per launch on its slow CPU, so it now runs big batches only
+  (queue9: all seven options at 2048 games, one process per deathmatch size; the small
+  queues 6-8 were stopped before they started). The laptop takes the small jobs: options at
+  1024 in all deathmatch sizes (running), then options2 in Frontline and elimination 5v5.
