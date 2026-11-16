@@ -1,0 +1,4 @@
+Nov 16 17:15:54.008004 vizia python[581967]: V1116 17:15:54.007000 581967 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles] Recompiling function tick in /home/vizia/avesnova/bnb-balance-eval/bench/game_loop.py:527
+Nov 16 17:15:54.008004 vizia python[581967]: V1116 17:15:54.007000 581967 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles]     - 0/0: tensor 'carry.boundary_progress' stride mismatch at index 0. expected 1, actual 15
+Nov 16 17:17:26.640305 vizia python[581967]: compiled and warm in 188 s
+Nov 16 17:19:51.115910 vizia python[581967]: deathmatch-5v5 fog off fields on: B=2048, 1800 ticks (60 s): batches 4.4, 4.3, 4.3 s; best 473.28 games/s, 852k env-ticks/s; kills 8.3 a game; peak 0.18 GiB
