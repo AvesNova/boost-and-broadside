@@ -1,6 +1,8 @@
 """Perception: views depend on team only through team_relative; fog of war per
 environment."""
 
+import dataclasses
+
 import pytest
 import torch
 
@@ -144,7 +146,7 @@ def test_rollout_fogs_the_first_share_of_each_pool(global_generator):
 
     pools = (Pool("a", 0.5, ("r", "r"), fog_share=0.5), Pool("b", 0.5, ("r", "r"), fog_share=0.0))
     rollout = Rollout(
-        GameConfig(1, 1, 600.0),
+        GameConfig(1, 1, 600.0, fog_share=1.0),  # team deathmatch, fog set on for the test
         api.ship_types(),
         pools,
         {"r": Random(1)},
@@ -158,3 +160,32 @@ def test_rollout_fogs_the_first_share_of_each_pool(global_generator):
     assert torch.equal(rollout.carry["state"].match.fogged, want)
     rollout.run()
     assert torch.equal(rollout.carry["obs"]["globals"][:, 0, GLOBAL["fogged"]] == 1, want)
+
+
+def test_deathmatch_pools_are_clear_and_the_other_modes_fogged():
+    """Fog follows the pool's mode (game version 24): the training mix's team deathmatch
+    pools have no fog, its elimination and Frontline pools have it, whatever the lineup's
+    fog_share; a game's fog_share overrides the mode's."""
+    from bnb.contracts.pools import environments_per_pool, pool_fog_share
+    from bnb.runtime.lineup import Lineup
+    from bnb.runtime.train import LINEUP, TRAINING_MIXES, mixed
+
+    game, pools = mixed(LINEUP, TRAINING_MIXES["real_scale_all_modes"])
+    lineup = Lineup(pools, 2048, torch.device("cpu"), game)
+    sizes = environments_per_pool(pools, 2048)
+    start = 0
+    for pool, size in zip(pools, sizes, strict=True):
+        fogged = lineup.fogged[start : start + size]
+        if pool.mode == "team_deathmatch":
+            assert not bool(fogged.any()), pool.name
+        else:
+            assert pool.mode in ("elimination", "frontline") and bool(fogged.all()), pool.name
+        start += size
+    assert {pool.mode for pool in pools} == {"team_deathmatch", "elimination", "frontline"}
+    deathmatch = next(pool for pool in pools if pool.mode == "team_deathmatch")
+    assert pool_fog_share(game, deathmatch) == 0.0
+    forced = dataclasses.replace(game, fog_share=1.0)
+    assert pool_fog_share(forced, deathmatch) == 1.0
+    assert api.PRESETS["real_scale_deathmatch"].fogged_share == 0.0
+    assert api.PRESETS["real_scale_elimination"].fogged_share == 1.0
+    assert api.PRESETS["real_scale_frontline"].fogged_share == 1.0

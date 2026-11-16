@@ -11,6 +11,10 @@ MODES = (TEAM_DEATHMATCH, FRONTLINE, ELIMINATION, SANDBOX)
 # The modes a fixed layout may place: those whose spawns draw tick uniforms of their own
 # (the jitter reads them) and own no zones (Frontline's mirror the fields about its ring).
 LAYOUT_MODES = (TEAM_DEATHMATCH, ELIMINATION)
+# The modes played without fog of war by default (`GameConfig.fog_share`): team deathmatch
+# at every team size (the author, 2026-11-16, game version 24); elimination, Frontline and
+# the sandbox keep fog.
+CLEAR_MODES = (TEAM_DEATHMATCH,)
 STANDARD_SHIP_SET = "standard"
 
 
@@ -142,6 +146,9 @@ class GameConfig:
         elimination; None draws the map at random at every new match.
     active_fields: field-count sampling (`ActiveFields`): each episode plays a drawn number
         of the num_fields slots, the rest absent; None plays every field.
+    fog_share: the share of the game's environments with fog of war, which a pool's own
+        `Pool.fog_share` multiplies; None takes the mode's (`fogged_share`: 0 in team
+        deathmatch, 1 in the other modes). A whole-batch override, for an ablation.
     """
 
     ships_per_team: int
@@ -157,8 +164,11 @@ class GameConfig:
     ship_set: str = STANDARD_SHIP_SET
     layout: MapLayout | None = None
     active_fields: ActiveFields | None = None
+    fog_share: float | None = None
 
     def __post_init__(self) -> None:
+        if self.fog_share is not None and not 0.0 <= self.fog_share <= 1.0:
+            raise ValueError(f"fog_share {self.fog_share} is not in [0, 1]")
         if not 1 <= self.ships_per_team or self.num_ships > MAX_SHIPS:
             raise ValueError(f"need 1 <= ships per team and at most {MAX_SHIPS} ships")
         if not 0 <= self.num_fields <= MAX_FIELDS:
@@ -213,6 +223,14 @@ class GameConfig:
         for field in layout.fields:
             if field.radius <= 0.0 or not field.levels or 0 in field.levels:
                 raise ValueError(f"field {field}: a positive radius and non-zero levels")
+
+    @property
+    def fogged_share(self) -> float:
+        """The share of the game's environments with fog of war: fog_share, or the mode's
+        (0 in `CLEAR_MODES`, 1 otherwise)."""
+        if self.fog_share is not None:
+            return self.fog_share
+        return 0.0 if self.mode in CLEAR_MODES else 1.0
 
     @property
     def num_ships(self) -> int:

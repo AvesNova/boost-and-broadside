@@ -76,10 +76,11 @@ def encoder(path: pathlib.Path, config: VideoConfig) -> subprocess.Popen:
 
 
 def setup_of(policy: pathlib.Path, preset: str, config: VideoConfig) -> MatchSetup:
-    """The match: the preset's game with fog, the policy's side and the chaser."""
+    """The match: the preset's game (fog as the game has it: none in team deathmatch), the
+    policy's side and the chaser."""
     sides = [SideSetup("scripted"), SideSetup("scripted")]
     sides[POLICY_TEAM] = SideSetup("agent", str(policy), config.temperature)
-    return MatchSetup(PRESETS[preset], fogged=True, seed=config.seed, sides=tuple(sides))
+    return MatchSetup(PRESETS[preset], seed=config.seed, sides=tuple(sides))
 
 
 class Tally:

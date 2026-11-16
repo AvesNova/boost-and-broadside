@@ -21,6 +21,11 @@ The modes are `bnb.contracts.config.MODES`:
 - **sandbox**: the physics game alone, with no score and no win, only the clock. The race's
   reference tests run in it.
 
+Team deathmatch is played without fog of war at every team size; elimination, Frontline and
+the sandbox are played with it (the author, 2026-11-16; game version 24). The mode sets the
+default (`GameConfig.fogged_share`, from `CLEAR_MODES`); `GameConfig.fog_share` overrides
+it for a whole batch, and a pool's `fog_share` scales it ([perception](perception.md#fog-of-war)).
+
 ## Clocks and presets
 
 A match ends when its clock runs out or when the win rule ends it. The clocks by mode

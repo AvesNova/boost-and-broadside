@@ -113,7 +113,7 @@ class Realtime:
         self,
         config: GameConfig,
         compiled: bool = True,
-        fogged: bool = True,
+        fogged: bool | None = None,
         generator: torch.Generator | None = None,
         lineup: tuple[int, ...] | None = None,
         background: bool = False,
@@ -136,6 +136,8 @@ class Realtime:
         self.static, self.live = api.tuning.static_of(rules), api.tuning.live_of(rules)
         self.types = types
         self.generator = torch.Generator().manual_seed(0) if generator is None else generator
+        if fogged is None:  # the game's: clear in team deathmatch, fogged in the others
+            fogged = config.fogged_share >= 0.5
         fog_flags = torch.tensor([fogged])
         uniforms = api.uniforms(rules, 1, generator=self.generator)
         self.state = api.reset(rules, self.types, uniforms, fog_flags)

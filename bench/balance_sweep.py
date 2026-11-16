@@ -7,14 +7,16 @@ in one compiled graph, scored by kill share.
     PYTHONPATH=src:. python -m bench.balance_sweep pairwise --condition deathmatch-5v5 \
         --pairs pairs.json --out out/pairs.jsonl --games 512
     PYTHONPATH=src:. python -m bench.balance_sweep check --device cpu   # the switches' proofs
-    PYTHONPATH=src:. python -m bench.balance_sweep speed --condition deathmatch-5v5 --fog on
+    PYTHONPATH=src:. python -m bench.balance_sweep speed --condition elimination-5v5 --fog on
 
 The measurement's settings (`BALANCE`, the author's decisions of 2026-11-16; the game's and
 training's own defaults are unchanged):
 
-- fog on (the author's decision of 2026-11-16, after fog off was measured to buy under 1%
-  of speed and change the games: 15% more kills) and no fields (the scripted agent ignores
-  them): `Settings` `fog` and `fields`; fields off here only;
+- fog as the mode has it (the author's decisions of 2026-11-16): none in deathmatch, which
+  is played without fog at every team size (game version 24), and fog in elimination and
+  Frontline (fog off was measured to buy under 1% of speed and to change the games: 15% more
+  kills in deathmatch 5v5); no fields (the scripted agent ignores them): `Settings` `fog`
+  (None: the mode's) and `fields`; fields off here only;
 - seeded spawns: game i of every job starts on the spawn layout drawn from (seed, i)
   (`bench.game_loop.seeded_uniforms`), so candidates are compared on the same spawns (common
   random numbers); the ticks' own randomness (respawns, spread, decisions) is from the
@@ -120,7 +122,7 @@ CONDITIONS = {
 class Settings:
     """A measurement's switches (`BALANCE` the balance measurement's)."""
 
-    fog: bool = True
+    fog: bool | None = None  # None: the mode's (`fog_of`: off in deathmatch, else on)
     fields: bool = False
     spawn_seed: int | None = 0  # None: unseeded spawns
     # None: deathmatch DEATHMATCH_SECONDS, elimination and Frontline the preset's whole clock
@@ -157,6 +159,14 @@ def preset_of(condition: Condition) -> str:
     return f"real_scale_{condition.mode}"
 
 
+def fog_of(condition: Condition, settings: Settings) -> bool:
+    """Whether the condition's games have fog: the settings' switch, else the mode's (none
+    in deathmatch, `GameConfig.fogged_share`)."""
+    if settings.fog is not None:
+        return settings.fog
+    return api.PRESETS[preset_of(condition)].fogged_share >= 0.5
+
+
 def mode_parameters(condition: Condition) -> tuple[float, ...]:
     """Imugi's parameter set for the condition's mode, packed."""
     return tuple(pack(MODE_DEFAULTS.sets[preset_of(condition)]))
@@ -184,7 +194,7 @@ def balance_loop(
         device=device,
         compiled=compiled,
         ships_per_team=condition.ships,
-        fog=settings.fog,
+        fog=fog_of(condition, settings),
         mode=condition.mode,
         fields=settings.fields,
         fixed_map=not condition.density_map,
@@ -493,7 +503,8 @@ def speed(args) -> None:
     """Games per second of one condition with fog and fields as given: compile and warm
     outside the lock, then time `--batches` batches of `--seconds` under it."""
     condition = CONDITIONS[args.condition]
-    settings = Settings(fog=args.fog == "on", fields=args.fields == "on", seconds=args.seconds)
+    fog = None if args.fog == "mode" else args.fog == "on"
+    settings = Settings(fog=fog, fields=args.fields == "on", seconds=args.seconds)
     begun = time.time()
     loop = balance_loop(condition, args.environments, args.variants, settings, args.device)
     parameters = mode_parameters(condition)
@@ -630,7 +641,7 @@ def main() -> None:
     one.add_argument("--device", default="cpu")
     one = sub.add_parser("speed")
     one.add_argument("--condition", choices=CONDITIONS, default="deathmatch-5v5")
-    one.add_argument("--fog", choices=("on", "off"), default="off")
+    one.add_argument("--fog", choices=("mode", "on", "off"), default="mode")
     one.add_argument("--fields", choices=("on", "off"), default="off")
     one.add_argument("--environments", type=int, default=2048)
     one.add_argument("--variants", type=int, default=32)

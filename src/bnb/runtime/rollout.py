@@ -159,7 +159,7 @@ class Rollout:
             config.num_ships,
         )
         self.environments, self.length, self.device = environments, length, device
-        self.lineup = Lineup(pools, environments, device)
+        self.lineup = Lineup(pools, environments, device, config)
         self.team_size_table = _team_size_table(config, self.lineup, device)
         if self.team_size_table is not None:
             benching = True

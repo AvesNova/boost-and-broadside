@@ -226,6 +226,12 @@ there). The real-scale boundary's most damage x 5.4 too (40 -> 216 per s), so it
 larger shield at the old relative rate and elimination's closing boundary still kills every
 ship before the clock (version 16). Ratings and records of version 22 or earlier are not
 reused for version-23 games.
+
+Version 24 (2026-11-16): team deathmatch has no fog of war at any team size (the author);
+elimination, Frontline and the sandbox keep it. A game's fog is its mode's
+(`GameConfig.fogged_share`) unless set, and a pool's `fog_share` scales it. The deathmatch
+references are clear games now. Ratings and records of version 23 or earlier are not
+reused for version-24 games.
 """
 
-VERSION = 23
+VERSION = 24

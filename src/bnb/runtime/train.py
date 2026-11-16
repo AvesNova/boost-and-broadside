@@ -600,7 +600,7 @@ class Trainer:
             config.environments,
             config.lanes,
         )
-        lineup = Lineup(self.pools, self.batch_environments, device)
+        lineup = Lineup(self.pools, self.batch_environments, device, game)
         opponent_pools = [self.pools[index] for index in lineup.pool_of.get(OPPONENTS, [])]
         # the league's gauges: one per mode of the opponents' pools, in order
         self.modes = tuple(dict.fromkeys(mode_key(pool, game) for pool in opponent_pools))

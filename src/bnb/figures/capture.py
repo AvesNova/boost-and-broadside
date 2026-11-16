@@ -3,7 +3,8 @@ it saw, what was true and what each head predicted (decoded by
 `bnb.models.yemong.decode`) as one artifact file. Renderers read the artifact only.
 
 The rollout is the training runtime's own (`bnb.runtime.rollout.Rollout`), uncompiled, with
-the policy in both seats of every game, fog on, from fresh games. The model's outputs are
+the policy in both seats of every game, fog as its game has it (none in team deathmatch),
+from fresh games. The model's outputs are
 its `unroll` over the stored segment, as the learner computes them; the shots are the
 learner's re-simulation (`bnb.learn.shots.resimulate`) of the bullet every living ship
 would fire on every tick: at zero spread (the flight through the fields alone), at the

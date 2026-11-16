@@ -56,7 +56,7 @@ class MatchSetup:
 
     config: GameConfig
     lineup: tuple[int, ...] | None = None
-    fogged: bool = True
+    fogged: bool | None = None  # None: the game's (clear in team deathmatch)
     seed: int = 0
     sides: tuple[SideSetup, SideSetup] = (SideSetup(), SideSetup())
     tuning: Tuning = Tuning()

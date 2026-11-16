@@ -86,7 +86,9 @@ class Options:
     ships_per_team: int | None = None
     fields: int | None = None
     arena_radius: float | None = None  # m
-    fog: bool = True  # the match has fog of war (team views show what the team sees)
+    # the match has fog of war (team views show what the team sees); None: the game's (none
+    # in team deathmatch, fog in the other modes)
+    fog: bool | None = None
     view: Literal["spectator", "team0", "team1"] = "spectator"
     theme: str = themes.DEFAULT
     seed: int = 0
@@ -214,7 +216,9 @@ class Session:
         self.map_panel = MapPanel()
         self.tuner: Tuner | None = None
         self.scale = options.scale
-        self.fog_default = options.fog
+        self.fog_default = (  # Settings' fog in new matches: the first game's by default
+            options.fog if options.fog is not None else options.game().fogged_share >= 0.5
+        )
         self.interface = Interface(self)
         self.selection: Selection | None = None
         self.following: int | None = None

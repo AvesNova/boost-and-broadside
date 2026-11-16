@@ -13,9 +13,10 @@ of 2026-11-15); the density rule's map (`bnb.game.api.arena_radius_for`) is the 
 arm's opt-in (`map_rule` "density"). A condition in `unscored` (none by default; every
 break-even is scored, frontline's included, the author's decision of 2026-11-15) is
 neither played nor scored, and its mode's
-weight is shared among the rest. Every game is played with fog of war
-(the engine's default), the networks sampling at temperature 1, each game's lineup drawn
-slot by slot from `lineup_types` with equal chance and flown by both teams (`Arena`'s
+weight is shared among the rest. Every game has fog of war as its mode does (none in team
+deathmatch, fog in elimination and Frontline: `GameConfig.fogged_share`), the networks
+sampling at temperature 1, each game's lineup drawn slot by slot
+from `lineup_types` with equal chance and flown by both teams (`Arena`'s
 game_lineups, keyed by the seed, the condition and the batch), and the seats alternating
 from game to game. A batch's games are keyed by its number (`Arena`'s first_batch), each
 condition's numbers continuing past its recorded batches.

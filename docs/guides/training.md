@@ -57,7 +57,8 @@ has its own lineup and objective; see [Behaviour cloning](behaviour-cloning.md).
 
 Each pool's `share` times the batch size must be a whole number of environments, and the
 shares must sum to 1. `fog_share` is the fraction of the pool's environments with fog of
-war; it too must come to a whole number. Every field of a pool:
+war where its game has fog (none in team deathmatch: `GameConfig.fogged_share`); it too
+must come to a whole number. Every field of a pool:
 
 <!-- generated: pool-fields -->
 
