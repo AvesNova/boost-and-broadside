@@ -89,3 +89,19 @@ The search uses build 2. Code: `bench/balance_map.py`; tests `tests/sections/tes
   512 games (laptop_job.sh), from 19:26.
 - Next: the long run continues from the pilot's state (no recompile): 40 generations a half
   or 12 h, started automatically when the pilot's search ends.
+
+## 19:45 the objective changed for the long run (coordinator's suggestion)
+
+- At 128 games the worst of four noisy conditions is biased low and noisy (the Jujak mirror
+  reads 45.9 at 512 games), so CMA-MAE would keep lucky draws. From the long run on, the
+  search's objective is **50 minus the root mean square of the four conditions'
+  win-equivalent distances from 50**; the worst condition is kept beside it (worst,
+  worst_distance) and decides only the final confirmation (2048 games). Rechecks (racing):
+  each cell's best with objective >= 40 is brought to 512 games and the map keeps the pooled
+  value (the map ranks by the lower bound, each share one standard error away from even).
+- The pilot's generations (g0000-g0001) were told the worst-of value; the archive keeps those
+  thresholds (lower, so they are passed sooner). Every number in the records is recomputed
+  from the evaluations, so the map and the analysis use the RMS objective throughout.
+- Also: job and output files carry an attempt token (a restarted search never reads an output
+  that an abandoned attempt's job may still be writing), and ETAs print in KST (the box runs
+  in UTC).
