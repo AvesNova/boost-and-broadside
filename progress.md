@@ -513,3 +513,8 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 | FL 5v5 | Jujak | 12.6 | 12.8/12.8 | 4.6/4.6 | 26.3/26.4 | 49.8 | 36.0 | 14.2 | 4.8 |
 - Found: all 7 sticks and 3 powers used everywhere; full stick 51-64%, the sustained level (0.75) the rarest at 7-16%; DM/Elim boost ~88-90% with coast <4% (FL coasts ~50-56%).
 - Next: balance+mix 512 games (4 jobs at a time under one GPU lock hold), 1v1 ablations.
+
+## 2026-11-16 23:57 feat/imugi-initiative (agent)
+- Tried: 1v1 ablations (128 games): commit only (stick by energy off): Yongma kill share 0.012, 11.5 merges/game, sustained turn 68%/62%; both rules (default): 0.068, 15.7 merges/game; with BNB_ENERGY_BREAKS_RATE_TIES=1: 0.036. Stick by energy adds merges and kills; rate-first does not help Yongma (left off).
+- Found: DM 2v2 (512 games) Yongma kill share 0.421 -> 0.466 after (band .481-.521): toward balance. Before DM 5v5 0.489.
+- Next: the other 5 balance jobs (ETA 00:25, worst 00:40).
