@@ -280,13 +280,31 @@ how much better the alternative is in the choice's own unit:
 
 | Choice | Advantage | Parameter |
 |---|---|---|
-| target | log ratio of the committed target's weighted distance to the best's | `target_switch_in_log_distance` |
 | turn side | how much shorter the other way round is, in radians | `side_switch_in_radians` |
 | Frontline goal | the other goal's margin, in ship strengths | `goal_switch_in_strength` |
 | recovery | the other choice's log margin | `recovery_switch_in_log_ratio` |
 
 Near-equal options switch at `r_max · σ(−centre / scale)`, almost never; a clearly better
-one within a fraction of a second. A fresh ship (after an episode reset, its death or its
+one within a fraction of a second.
+
+**The target holds** (since 2026-11-16, `imugi_combat.choose_target`; deterministic, not
+a switching rate). A ship keeps its committed target until the target dies, has been
+unseen for `TARGET_LOST_SECONDS` (3 s; a hidden committed target stays known, dead
+reckoned, that long), or for `TARGET_DOUBT_SECONDS` (2 s) without a break has been either
+beyond `TARGET_FAR_IN_GUN_RANGES` (3) own gun ranges or `TARGET_SWITCH_RATIO` (2) times
+farther than the best known enemy (distance over weight); then it takes the best. So a
+fight is pressed through the merge and the turn back, and two ships do not both re-score
+to another fight on the same tick. `target_switch_in_log_distance` no longer acts (the
+parameter tables still carry it).
+
+**One extension** (`imugi_combat.extend_and_return`, the switch `EXTEND_AND_RETURN`).
+After a pass (the target behind the beam inside the own gun range, the two opening), a
+ship whose sustained turn rate w is below its seen target's and whose energy (kinetic plus
+store) is above it flies straight away, boosting, until one own turn diameter (2 v_cruise
+/ w) or 2 / w + 1 s, then comes straight back at the same target; no other extension for
+π / w plus that bound. Otherwise it stays in the turn. The doctrines' own extensions
+(`extend`, `duel_extend`, `crowd_sense`) were already 0 in the real-scale doctrines, and the
+real-scale Frontline set's recovery is off (`recovery_shield_fraction` 0.001). A fresh ship (after an episode reset, its death or its
 spawn) re-chooses each outright, the memoryless choice; so does a ship whose target died or
 was forgotten. The turn side is committed only for large errors: the committed side
 outweighs the error's sign by `side_commit_in_stall_angle`, a logistic in the error, so a

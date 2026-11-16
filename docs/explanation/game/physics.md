@@ -222,7 +222,8 @@ complement 1 at every point, so `n` is the same as on a map without it.
   its depth over `boundary_ramp_width`: little just past the edge, all of it from one ramp
   width out, and smooth in the position (game v14; it was 5 + 0.05 per metre of depth).
   The ramp width is in metres at map scale 1 and scales with the arena, as the other map
-  lengths do: 30 per s over 100 m in the standard game, 40 per s at real scale, so on the
+  lengths do: 30 per s over 100 m in the standard game, 216 per s at real scale (40 before
+  game v23, which raised the real-scale shields x 5.4), so on the
   7800 m real-scale map a ship 150 m out takes half and one 300 m out takes all, a
   standard shield in about 2.5 s. The boundary is the arena's edge, except in elimination,
   where it shrinks inside it over the clock ([modes](modes.md#elimination)).
