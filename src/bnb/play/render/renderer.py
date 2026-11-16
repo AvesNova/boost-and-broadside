@@ -2,14 +2,15 @@
 target, then the ImGui layer (HUD and panels) on top.
 
 Draw order: sky and arena, the dot grid (`grid.py`), fields, the distance contours
-(`contours.py`), zones, trails, ships, rings, fog, the density overlay, bullets, the other
-prediction overlays (`predictions.py`), the selection's outline; then the minimap into its
-own texture (`minimap.py`). A spectator sees everything; a team's view draws only the
-ships that team sees (its observation's `visible`) and the parts of their trails it saw,
-and in a fogged match darkens what it cannot see. Every bullet is drawn in every view,
-above the fog at full brightness: agents never see bullets, so this is an advantage human
-players have. In a match without fog every ship is visible to both teams, so a team's view
-draws no fog. Rendering reads snapshots (numpy) and never imports torch.
+(`contours.py`), zones, trails, the death marks (`marks.py`), ships, rings, fog, the
+density overlay, bullets, the other prediction overlays (`predictions.py`), the
+selection's outline; then the minimap into its own texture (`minimap.py`). A spectator
+sees everything; a team's view draws only the ships that team sees (its observation's
+`visible`) and the parts of their trails it saw, and in a fogged match darkens what it
+cannot see. Every bullet is drawn in every view, above the fog at full brightness: agents
+never see bullets, so this is an advantage human players have. In a match without fog
+every ship is visible to both teams, so a team's view draws no fog. Rendering reads
+snapshots (numpy) and never imports torch.
 """
 
 import contextlib
@@ -29,6 +30,7 @@ from .fog import FogPass
 from .grid import GridPass
 from .imgui_renderer import ImguiRenderer
 from .lines import LinesPass
+from .marks import DeathMarks
 from .minimap import MinimapPass
 from .rings import ring_table
 from .ships import ShipsPass, ring_radius, silhouette_size
@@ -141,6 +143,7 @@ class Renderer:
         grid: str = "off",
         contours: str = "off",
         bullet_look: BulletLook | None = None,
+        marks: DeathMarks | None = None,
     ) -> None:
         """Draw the frame as `view` (SPECTATOR or a team) sees it onto `target`; `now`:
         game time (s), for the trails; overlay: an arcs table drawn last (the selection's
@@ -148,7 +151,8 @@ class Renderer:
         the ships at their size in metres, with no minimum on screen (`ships`); playback:
         the playback speed (seconds of play per second shown), for the bullets' tracers; grid:
         the dot grid's pattern, or "off"; contours: the distance contours' shape set, or
-        "off"; bullet_look: how bullets draw (None: the default tracer)."""
+        "off"; bullet_look: how bullets draw (None: the default tracer); marks: the
+        death marks, drawn under the ships (None: none)."""
         bullet_look = BulletLook() if bullet_look is None else bullet_look
         context, uniforms = self.context, camera.uniforms()
         ships, pixel = frame.ships, camera.metres_per_pixel
@@ -193,6 +197,9 @@ class Renderer:
         with self._measure("trails"):
             seen = trails.seen[view] if team_view else np.ones_like(trails.seen[0])
             self.trails.draw(uniforms, theme, trails, now, seen, ships.team, ships.ship_type, body)
+        if marks is not None and len(marks):
+            with self._measure("marks"):
+                self.lines.draw(uniforms, marks.segments(theme, pixel, true_size))
         with self._measure("ships"):
             self.ships.draw(
                 uniforms,

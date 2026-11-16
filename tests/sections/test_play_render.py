@@ -21,6 +21,7 @@ from bnb.play.loop import MatchLoop, MatchSetup
 from bnb.play.render.bullets import BulletLook, tracer_lengths
 from bnb.play.render.contours import CONTOUR_PIXELS, contour_level
 from bnb.play.render.grid import GRID_PIXELS, PATTERNS
+from bnb.play.render.marks import ARM_FRACTION, DeathMarks
 from bnb.play.render.renderer import SPECTATOR, Renderer
 from bnb.play.render.ships import MINIMUM_RING_PIXELS, ring_radius, silhouette_size
 from bnb.play.render.silhouettes import WINGTIPS, polygon, silhouette_of
@@ -979,3 +980,77 @@ def test_no_contours_draw_when_off_or_for_shapes_the_map_has_not(renderer, conte
     for shapes in ("off", "fields", "zones"):
         assert not _contour_drawing(renderer, context, frame, camera, shapes).any()
     assert _contour_drawing(renderer, context, frame, camera, "edge").any()
+
+
+def test_a_death_mark_draws_an_x_in_the_dead_ships_team_colour(renderer, context):
+    """A dead ship leaves an X in its team's colour where it died: its centre and a point
+    on each arm take the colour, and with no marks the same pixels do not."""
+    loop = _loop(PRESETS["deathmatch"], ticks=10)
+    frame = loop.current
+    theme = themes.load(themes.DEFAULT)
+    ships = frame.ships
+    distance = np.hypot(ships.x[:, None] - ships.x, ships.y[:, None] - ships.y)
+    distance[np.diag_indices_from(distance)] = np.inf
+    chosen = int(np.argmax(distance.min(1) * ships.alive))  # the most isolated ship
+    alive = ships.alive.copy()
+    alive[chosen] = False  # it died: no silhouette, only its mark
+    frame = dataclasses.replace(frame, ships=dataclasses.replace(ships, alive=alive))
+    x, y = float(ships.x[chosen]), float(ships.y[chosen])
+    camera = Camera(WIDTH, HEIGHT, x, y, 0.2)
+    marks = DeathMarks()
+    marks.add(x, y, ships.team[chosen], ships.hit_radius[chosen])
+    grid, values = build(frame.fields, frame.arena_radius)
+    renderer.set_map(frame, grid, values)
+    trails = Trails(len(ships.x), frame.stall_angle)
+
+    def drawn(marked: DeathMarks | None) -> np.ndarray:
+        target = _target(context)
+        renderer.draw(frame, SPECTATOR, camera, theme, trails, 0.0, target, marks=marked)
+        assert context.error == "GL_NO_ERROR"
+        return read_pixels(target).astype(int)
+
+    arm = ARM_FRACTION * float(ring_radius(ships.hit_radius[chosen : chosen + 1], 0.2)[0])
+    points = [(x, y)] + [
+        (x + sx * 0.5 * arm, y + sy * 0.5 * arm) for sx in (-1, 1) for sy in (-1, 1)
+    ]
+    colour = np.array(theme.team[int(ships.team[chosen])].floats()[:3]) * 255
+    with_marks, without = drawn(marks), drawn(None)
+    for point in points:
+        row, column = _pixel_of(camera, *point)
+        assert np.abs(with_marks[row, column] - colour).max() <= 1
+        assert np.abs(without[row, column] - colour).max() > 1
+    # Not larger than the ship: nothing changed beyond its ring.
+    ring = ring_radius(ships.hit_radius[chosen : chosen + 1], 0.2)[0] / 0.2  # px
+    rows, columns = np.nonzero(np.any(with_marks != without, -1))
+    centre_row, centre_column = _pixel_of(camera, x, y)
+    reach = np.hypot(rows - centre_row, columns - centre_column).max()
+    assert reach <= ring + 2
+
+
+def test_a_kill_in_a_session_with_death_marks_leaves_a_mark_where_the_ship_was(context, tmp_path):
+    """The session records a mark per kill at the dead ship's last position, and none
+    when its marks are off (the shell's default)."""
+    from bnb.play.app import Session
+    from bnb.play.loop import MatchEvent
+
+    session = Session(
+        Options(compile=False, replays=tmp_path / "replays", record=False),
+        context,
+        WIDTH,
+        HEIGHT,
+        library=themes.Library(tmp_path),
+    )
+    session.update(1.0 / 60.0)
+    assert session.death_marks is None
+    kill = MatchEvent(1, "kill", ship=2, other=0)
+    session._on_tick(None, None, [kill])  # marks off: nothing recorded, nothing raised
+    session.death_marks = DeathMarks()
+    session._on_tick(None, None, [kill, MatchEvent(1, "capture", team=0)])
+    ships = session.loop.previous.ships
+    assert session.death_marks.rows == [
+        (float(ships.x[2]), float(ships.y[2]), int(ships.team[2]), float(ships.hit_radius[2]))
+    ]
+    target = _target(context)
+    session.draw(target)
+    assert context.error == "GL_NO_ERROR"
+    session.close()

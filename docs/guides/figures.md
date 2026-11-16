@@ -278,7 +278,9 @@ bnb figures video --policy RUN --video.seconds 10 --video.time-scale 8
 ```
 
 The defaults (`bnb.figures.video.VideoConfig`): 25 s at 30 frames per second and 4x the
-game's speed, so the first 100 s of the game, at 1280 x 720. `--video.overlays` draws the
+game's speed, so the first 100 s of the game, at 1280 x 720. Each death leaves an X in the
+dead ship's team colour, no larger than a ship, where it died, for the rest of the video
+(`bnb.play.render.marks`; `--video.no-death-marks` turns them off). `--video.overlays` draws the
 shell's [prediction overlays](playing.md#prediction-overlays) on every frame (the
 policy's predictions, and the true bullet paths; the shot path needs a selected ship, so
 a video draws none), and `--video.truth` the truth beside them:
