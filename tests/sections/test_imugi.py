@@ -417,22 +417,6 @@ def test_frontline_hands_over_to_combat_from_the_combat_radius_in(ship_type):
     assert 0.25 < left < 0.75 and 0.25 < right < 0.75
 
 
-@pytest.mark.parametrize("ship_type", TYPES)
-def test_frontline_it_falls_back_to_its_spawn_when_hurt_and_threatened(ship_type):
-    gun_range = value("gun_range", ship_type)
-    threats = [
-        ship(x=1.5 * gun_range, y=(0.5 + 0.2 * i) * gun_range, team_relative=1) for i in range(2)
-    ]
-    hurt = ship(
-        ship_type=ship_type,
-        shield=0.5 * PARAMETERS.recovery_shield_fraction * value("max_shield", ship_type),
-    )
-    healthy = ship(ship_type=ship_type)
-    for own, side in ((hurt, 2), (healthy, 1)):  # spawn on the right, the threats on the left
-        obs = observation([own, absent(team_relative=0)], threats, _ring())
-        assert _levels(_marginals(obs)[1])[side] > SURE_TWICE
-
-
 # ------------------------------------------------------------------ invariance
 
 

@@ -150,7 +150,6 @@ def decide(
         extend_phase=fighting.extend_phase,
         frontline_left=strategy.left,
         defending=strategy.defending,
-        recovering=strategy.recovering,
         fresh=torch.zeros_like(carry.fresh),
     )
     return parts, after

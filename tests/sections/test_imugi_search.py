@@ -44,7 +44,6 @@ def test_children_stay_in_bounds_and_keep_every_direction():
             floor = SCALE_FLOORS[name]
             assert floor <= shape.scale <= search.SCALE_CEILING * floor + 1e-9, name
             assert shape.centre > 0.0 and shape.rising == getattr(DEFAULTS, name).rising
-        assert child.recovery_shield_fraction <= 0.9
         assert child.combat_radius_in_gun_range >= child.shoot_in_gun_range.centre
         ramp = child.boundary_steer_ramp_in_margin
         assert ramp.low < ramp.high and (ramp.at_low, ramp.at_high) == (0.0, 1.0)

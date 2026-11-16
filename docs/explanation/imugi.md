@@ -203,10 +203,6 @@ health `0.2 + 0.8 · shield / max_shield`.
   enemy's strength there times `exp(−aggression)` less the attackers'), and the ship's
   committed goal switches on the larger at `goal_switch_in_strength`'s rate.
 - **Separation** from allies within a radius, stronger the nearer.
-- **Recovery:** a ship below a shield fraction with enemy strength above a threshold
-  at its position falls back toward its own spawn zone. Recovery overrides power and
-  stick. Its margin is the smaller of the two log ratios, and the committed choice
-  switches at `recovery_switch_in_log_ratio`'s rate.
 - **The blend with combat:** the two layers' power and stick marginals are blended in log
   probability by the target's distance, by a linear ramp (a weight) times the target's
   weight: all combat at the shoot logistic's centre and all strategy at the combat radius.
@@ -244,9 +240,10 @@ finite temperature no power or stick value of a living ship has probability 0 or
 the shot is certain only at its gates (no target, or a gun that cannot fire).
 
 Two weights are not probabilities and stay linear `Ramp`s: the boundary's steer toward the
-centre and the Frontline layer's hand-over to combat. The plan choices (the target, the
-turn side, the zone assignment, recovery) are committed options that switch at a smooth
-rate ([Memory](#memory-soft-hysteresis-and-dead-reckoning)); they take no floor beyond it.
+centre and the Frontline layer's hand-over to combat. The plan choices (the turn side
+and the zone assignment) are committed options that switch at a smooth rate
+([Memory](#memory-soft-hysteresis-and-dead-reckoning)); they take no floor beyond it. The
+target is held by a deterministic rule instead.
 
 **The temperature** T multiplies every logistic's and switch's scale: T = 1 is the agent, a larger T
 flattens every logistic toward an even choice, and the floors stay. `Imugi(temperature=T)`
@@ -268,7 +265,7 @@ training presets; the search cannot go below it, so no logistic can act as a ste
 ## Memory: soft hysteresis and dead reckoning
 
 The carry (`bnb.controllers.imugi_memory.ImugiCarry`) holds, per view, each own
-ship's committed target, turn side (one per layer), Frontline goal and recovery, and a
+ship's committed target, turn side (one per layer), Frontline goal and a
 `fresh` flag; each enemy's last seen position and velocity and whether it is known; and
 each ship's agent flag (the share's draw).
 
@@ -282,7 +279,6 @@ how much better the alternative is in the choice's own unit:
 |---|---|---|
 | turn side | how much shorter the other way round is, in radians | `side_switch_in_radians` |
 | Frontline goal | the other goal's margin, in ship strengths | `goal_switch_in_strength` |
-| recovery | the other choice's log margin | `recovery_switch_in_log_ratio` |
 
 Near-equal options switch at `r_max · σ(−centre / scale)`, almost never; a clearly better
 one within a fraction of a second.
@@ -294,8 +290,7 @@ reckoned, that long), or for `TARGET_DOUBT_SECONDS` (2 s) without a break has be
 beyond `TARGET_FAR_IN_GUN_RANGES` (3) own gun ranges or `TARGET_SWITCH_RATIO` (2) times
 farther than the best known enemy (distance over weight); then it takes the best. So a
 fight is pressed through the merge and the turn back, and two ships do not both re-score
-to another fight on the same tick. `target_switch_in_log_distance` no longer acts (the
-parameter tables still carry it).
+to another fight on the same tick.
 
 **One extension** (`imugi_combat.extend_and_return`, the switch `EXTEND_AND_RETURN`).
 After a pass (the target behind the beam inside the own gun range, the two opening), a
@@ -303,8 +298,8 @@ ship whose sustained turn rate w is below its seen target's and whose energy (ki
 store) is above it flies straight away, boosting, until one own turn diameter (2 v_cruise
 / w) or 2 / w + 1 s, then comes straight back at the same target; no other extension for
 π / w plus that bound. Otherwise it stays in the turn. The doctrines' own extensions
-(`extend`, `duel_extend`, `crowd_sense`) were already 0 in the real-scale doctrines, and the
-real-scale Frontline set's recovery is off (`recovery_shield_fraction` 0.001). A fresh ship (after an episode reset, its death or its
+(`extend`, `duel_extend`, `crowd_sense`) were already 0 in the real-scale doctrines.
+A fresh ship (after an episode reset, its death or its
 spawn) re-chooses each outright, the memoryless choice; so does a ship whose target died or
 was forgotten. The turn side is committed only for large errors: the committed side
 outweighs the error's sign by `side_commit_in_stall_angle`, a logistic in the error, so a
@@ -465,7 +460,7 @@ engine; `tests/sections/test_league_cheese.py` covers them as league entries.
 `tests/sections/test_imugi.py` covers the behaviour on constructed observations for
 both ship types (the stick, the gun, power, the lead with a still and a moving shooter, the
 boundary heading out and heading in, no target; in Frontline the defense assignment with
-its urgency, progress and tie-break, the hand-over to combat by distance, and recovery),
+its urgency, progress and tie-break, and the hand-over to combat by distance),
 the invariances (the seat, a mirrored world, permuted rows, the
 values of hidden rows' zeroed columns), the softness (no certain action of a living ship,
 the temperature's flattening, the scale floors), the rungs and per-view parameters.
