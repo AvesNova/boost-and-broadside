@@ -1,5 +1,5 @@
 ---
-covers: [docs/hooks/generated.py, tests/docs/]
+covers: [docs/hooks/generated.py, docs/hooks/placeholders.py, tests/docs/]
 reviewed: 2026-11-02
 ---
 
@@ -106,6 +106,53 @@ Two data files hold what the code does not:
 - `docs/packages.yml`: what each package holds, its reference page, or the roadmap section
   that will build it. The layers come from `LAYER` in `tests/contract/test_imports.py`.
 
+## Results placeholders
+
+The results pages and the README are written before every result exists, so a measured
+number, a text that waits on the results, or a figure not yet drawn is a placeholder.
+`docs/hooks/placeholders.py` renders them. Three forms, outside fences and code spans:
+
+- `{{name}}`{.plain}, or `{{name:.0%}}`{.plain} with a Python format spec: the value
+  `name`{.plain} from the values file. Open while the value is `null`{.plain}.
+- `{{pending: key | description}}`{.plain}: text that can only be written after seeing the
+  results. On a line of its own it renders as a quoted note, inside a sentence as a mark.
+  Open until it is replaced by the text.
+- `{{figure: docs/results/chart.png | alt text}}`{.plain}, on a line of its own: the image,
+  its path from the repository root. Open while the file does not exist.
+
+The **values file**, `docs/results/values.json`{.plain}, is one flat JSON object, {name:
+number, string or null}; `bnb figures` merges each chart's numbers into it. A name a page
+uses must be in the file, `null`{.plain} until measured, so a typo fails in every mode. A
+value quoted on several pages is changed in one place.
+
+The site renders the placeholders at build time (the hook runs before the generated
+blocks). GitHub shows `README.md` without the hook, so `README.md` is generated from
+`README.template.md`: edit the template, then render it.
+
+<!-- not-runnable: rewrites README.md -->
+```bash
+uv run --no-sync python docs/hooks/placeholders.py readme
+```
+
+**Draft and publish.** The environment variable `BNB_RESULTS`{.plain} picks the mode. In
+`draft`{.plain}, the default, an open placeholder renders visibly (a value as its name in
+angle brackets, a pending text or a missing figure as a note) and the check lists it. In
+`publish`{.plain}, the build, the README render and `tests/docs/test_placeholders.py` fail
+while any placeholder is open. Before a release:
+
+<!-- not-runnable: fails until every result is in -->
+```bash
+BNB_RESULTS=publish uv run --no-sync python docs/hooks/placeholders.py check
+BNB_RESULTS=publish uv run --no-sync pytest tests/docs/test_placeholders.py
+```
+
+What is open, in either mode:
+
+<!-- runnable -->
+```bash
+uv run --no-sync python docs/hooks/placeholders.py check
+```
+
 ## Fences and examples
 
 Every fence names its language: `python`, `bash`, `markdown`, `text`, `yaml` and so on.
@@ -178,6 +225,7 @@ The code follows [Code style](code-style.md).
 | strict build | `tests/docs/test_build.py` | a link, anchor, page, nav entry, reference link (including every linked `bnb.` name) or generated block is broken |
 | code references | `tests/docs/test_references.py` | a full name, short name, word, path, `:::` target, `bnb` command or Python import does not resolve; a fence has no language or no run marker; a page has no `covers`; a block name is unknown; a README link is broken |
 | examples | `tests/docs/test_examples.py` | a runnable example fails |
+| results placeholders | `tests/docs/test_placeholders.py` | a value name is not in the values file, a placeholder is malformed, README.md is not the rendered template; in publish mode, anything is open |
 | coverage map | `tests/docs/test_staleness.py` | never; it warns, for commits and uncommitted changes |
 
 The docstring report lists public modules, classes and functions whose docstring is
