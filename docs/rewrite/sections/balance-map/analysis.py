@@ -272,6 +272,38 @@ def proposals(models, records: balance_map.Records, cells: dict, count: int, sam
     return out[:count]
 
 
+def conversion_refit(records: balance_map.Records) -> dict:
+    """balance-eval's conversion refit on this run's own evaluations (fog on, fields off):
+    logit(score) = a + b logit(kill share) by condition, weighted least squares (the score's
+    logit variance), every evaluation a point; with the kill shares at 45 / 50 / 55%."""
+    out = {}
+    conditions = sorted({e["condition"] for e in records.evaluations})
+    for condition in conditions:
+        rows = [e for e in records.evaluations if e["condition"] == condition]
+        k = numpy.array([r["kill_share"][0] for r in rows])
+        score = numpy.array([r["score"][0] for r in rows])
+        error = numpy.array([max(r["score"][1], 1e-3) for r in rows])
+        keep = (k > 0.02) & (k < 0.98) & (score > 0.02) & (score < 0.98)
+        if keep.sum() < 8:
+            continue
+        x, y = logit(k[keep]), logit(score[keep])
+        w = (score[keep] * (1 - score[keep]) / error[keep]) ** 2
+        design = numpy.stack([numpy.ones_like(x), x], -1)
+        a, b = numpy.linalg.solve(design.T @ (design * w[:, None]), design.T @ (w * y))
+        residual = y - (a + b * x)
+        chi2 = float((w * residual**2).sum() / max(len(x) - 2, 1))
+        band = [float(1 / (1 + numpy.exp(-(logit(t) - a) / b))) for t in (0.45, 0.5, 0.55)]
+        out[condition] = dict(
+            points=int(keep.sum()),
+            intercept=round(float(a), 3),
+            slope=round(float(b), 3),
+            chi2_per_dof=round(chi2, 2),
+            kill_share_at_45_50_55=[round(v, 4) for v in band],
+            slope_used=balance_map.SLOPES.get(condition),
+        )
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("run", type=pathlib.Path)
@@ -290,7 +322,11 @@ def main() -> None:
             dict(models=models, conditions=balance_map.SEARCHED, features=balance_map.NAMES), handle
         )
     proposed = proposals(models, records, cells, args.proposals)
-    (args.out / "model.json").write_text(json.dumps(dict(accuracy=report, swings=swings), indent=1))
+    refit = conversion_refit(records)
+    (args.out / "model.json").write_text(
+        json.dumps(dict(accuracy=report, swings=swings, conversion_refit=refit), indent=1)
+    )
+    print(json.dumps(refit, indent=1))
     (args.out / "proposals.json").write_text(json.dumps(proposed, indent=1))
     lines = [
         "| cell | id | objective | lower | games | worst | win-equivalent by condition |",
