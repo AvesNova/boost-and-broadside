@@ -49,7 +49,10 @@ class Target:
 
     name: str
 
-    def proposals(self) -> dict[Cell, float]:
+    def proposals(self, overtime: bool = False) -> dict[Cell, float]:
+        """Cell -> value (module docstring). overtime: the values with every goal taken as
+        unmet (a met goal's further precision), for a slice with nothing else wanted; a
+        budget still binds, and a decided test proposes nothing."""
         raise NotImplementedError
 
     def add_pending(self, cell: Cell) -> None:
@@ -191,13 +194,15 @@ class EloTarget(Target):
         variance = numpy.einsum("tk,kl,tl->t", self.directions, covariance, self.directions)
         return variance > self.goals**2
 
-    def proposals(self) -> dict[Cell, float]:
+    def proposals(self, overtime: bool = False) -> dict[Cell, float]:
         if self.finished + self.pending.sum() / 2 >= self.budget:
             return {}
         covariance = self.covariance()
         # a goal is played for while the fit leaves it unmet (and off a bound), unless the
         # games in flight are planned to meet it
         unmet = self._open() & (self._unmet(covariance) | (self.pending.sum() == 0))
+        if overtime:
+            unmet = numpy.ones_like(unmet)
         if not unmet.any():
             return {}
         rows = self.directions[unmet] / self.goals[unmet, None]  # (T, K - 1)
@@ -344,9 +349,13 @@ class WinRateTarget(Target):
     def _planned(self) -> int:
         return self.games + self.pending
 
-    def proposals(self) -> dict[Cell, float]:
+    def proposals(self, overtime: bool = False) -> dict[Cell, float]:
         planned = self._planned()
-        if planned >= self.budget or self.done():
+        if planned >= self.budget:
+            return {}
+        if overtime:
+            return {self.cell: _drop(planned) / self.goal**2}
+        if self.done():
             return {}
         if self.pending and SCORE_VARIANCE / planned <= self.goal**2:
             return {}  # the games in flight should do (a look after them decides)
@@ -459,8 +468,8 @@ class BreakEvenTarget(Target):
         after = gradient @ numpy.linalg.solve(after_information, gradient)
         return max(float(before - after), 0.0) / self.goal**2
 
-    def proposals(self) -> dict[Cell, float]:
-        if self._planned() >= self.budget or self.done():
+    def proposals(self, overtime: bool = False) -> dict[Cell, float]:
+        if self._planned() >= self.budget or (self.done() and not overtime):
             return {}
         if not self.queue:
             self.queue = crossover.allocate(
@@ -618,7 +627,7 @@ class DecisionTarget(Target):
         self.test = InformationLooks(design)
         self.games, self.pending, self.total, self.squares = 0, 0, 0.0, 0.0
 
-    def proposals(self) -> dict[Cell, float]:
+    def proposals(self, overtime: bool = False) -> dict[Cell, float]:
         planned = self.games + self.pending
         if self.done() or planned >= self.test.maximum_games:
             return {}

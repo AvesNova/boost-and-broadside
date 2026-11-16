@@ -219,12 +219,21 @@ def clock(seconds: float | None) -> str:
 
 
 def information_fraction(planner: Planner) -> float:
-    """The mean over targets of the information held over the information their goals need
-    (1 / (1 + remaining), 0 for a target with no estimate yet)."""
-    remaining = planner.remaining().values()
-    return sum(1.0 / (1.0 + r) if math.isfinite(r) else 0.0 for r in remaining) / max(
-        len(remaining), 1
-    )
+    """The mean over targets of the work done: the information held over what the goal
+    needs (1 / (1 + remaining), 0 with no estimate yet), or the games over the budget,
+    whichever is more."""
+    fractions = []
+    for target in planner.targets:
+        remaining = target.remaining()
+        fraction = 1.0 / (1.0 + remaining) if math.isfinite(remaining) else 0.0
+        games = getattr(target, "games", None)
+        if isinstance(target, EloTarget):
+            games = target.finished
+        budget = getattr(target, "budget", None)
+        if isinstance(games, int | float) and budget:
+            fraction = max(fraction, min(games / budget, 1.0))
+        fractions.append(fraction)
+    return sum(fractions) / max(len(fractions), 1)
 
 
 def player_shares(planner: Planner) -> dict[str, float]:
@@ -262,7 +271,7 @@ def run(
 
     def say(text: str) -> None:
         line = f"{datetime.datetime.now():%F %H:%M:%S} {text}"
-        log(line)
+        log(line, flush=True)
         with progress_path.open("a") as file:
             file.write(line + "\n")
 

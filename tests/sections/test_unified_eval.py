@@ -139,7 +139,7 @@ def _simulate(planner: Planner, strengths: dict, slices, rounds: int, seed: int 
             chosen = planner.choose(bucket, preset)
             if chosen is None:
                 continue
-            cell, _ = chosen
+            cell = chosen[0]
             gap = strengths[cell.first] - strengths[cell.second]
             score = 1.0 if rng.random() < 1 / (1 + math.exp(-gap)) else 0.0
             planner.finished(cell, Outcome(score, seconds=60.0))
@@ -176,6 +176,20 @@ def test_choose_keeps_to_bucket_preset_and_fits():
     assert planner.choose(10, EL)[0] == c
     assert planner.choose(5, FL) is None
     assert planner.choose(5, DM, fits=lambda cell: False) is None
+
+
+def test_overtime_when_every_goal_is_met():
+    cell = Cell(Condition(EL, 1, 1), "a", "b")
+    target = WinRateTarget("w", cell, 0.2, minimum=2, budget=30)
+    planner = Planner([target])
+    for _ in range(10):
+        planner.finished(cell, Outcome(1.0), pending=False)
+    assert target.done() and target.proposals() == {}
+    chosen, _, overtime = planner.choose(5, EL)
+    assert chosen == cell and overtime  # the slice's met goal, tightened
+    for _ in range(19):
+        planner.choose(5, EL)
+    assert planner.choose(5, EL) is None  # the budget binds overtime too
 
 
 def test_seats_alternate_per_cell():

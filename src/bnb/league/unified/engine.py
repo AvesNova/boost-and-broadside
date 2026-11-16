@@ -167,12 +167,12 @@ class BucketRollout(Rollout):
 @dataclasses.dataclass
 class Slot:
     """An environment's game: its cell, the seat its first player takes, and whether it is
-    filler (no target wanted a game there: the slice's last cell, played again, tallied)
-    or parked (no cell at all: Imugi against itself at 1 against 1, untallied)."""
+    overtime (chosen for a met goal's further precision, `Planner.choose`) or parked (no
+    cell at all: Imugi against itself at 1 against 1, untallied)."""
 
     cell: Cell | None
     seat: int
-    filler: bool = False
+    overtime: bool = False
     parked: bool = False
 
 
@@ -300,14 +300,12 @@ class BucketEngine:
         self.current: list[Slot] = []
         self.next: list[Slot | None] = [None] * self.environments
         self.scripted = next(i for i, g in enumerate(groups) if g is None)
-        self.last_cell: dict[str, Cell] = {}
         self.finished_seen = torch.zeros(self.environments, dtype=torch.int64)
         self.games = 0
         self.blocks = 0
         self.missed = 0
         self._previous = None  # (pinned logs, event) of the last block
         self.parked = 0
-        self.filler = True
 
     # ---- assignment
 
@@ -349,21 +347,15 @@ class BucketEngine:
         return fits
 
     def _choose(self, environment: int) -> Slot:
-        """An environment's next game: the planner's; else (nothing wanted in its slice, or
-        no room) its slice's last cell again as filler while it fits; else parked (Imugi
-        against itself, 1 against 1, untallied)."""
-        preset = self.preset_of[environment]
-        fits = self._fits(environment)
-        chosen = self.planner.choose(self.bucket, preset, fits)
-        if chosen is not None:
-            cell, seat = chosen
-            self.last_cell[preset] = cell
-            return Slot(cell, seat)
-        cell = self.last_cell.get(preset)
-        if cell is not None and fits(cell) and self.filler:
-            self.planner.pending(cell)
-            return Slot(cell, self.random.randrange(2), filler=True)
-        return Slot(None, 0, parked=True)
+        """An environment's next game: the planner's (overtime when its slice's goals are
+        met); else parked (Imugi against itself, 1 against 1, untallied)."""
+        chosen = self.planner.choose(
+            self.bucket, self.preset_of[environment], self._fits(environment)
+        )
+        if chosen is None:
+            return Slot(None, 0, parked=True)
+        cell, seat, overtime = chosen
+        return Slot(cell, seat, overtime=overtime)
 
     def _set_next(self, environment: int, slot: Slot) -> None:
         self._count(environment, -1)
@@ -625,7 +617,7 @@ class GameLog:
                 first=cell.first,
                 second=cell.second,
                 seat=slot.seat,
-                filler=slot.filler,
+                overtime=slot.overtime,
                 bucket=bucket,
                 score=outcome.score,
                 kills=[outcome.first_kills, outcome.second_kills],

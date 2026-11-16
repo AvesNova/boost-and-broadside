@@ -91,7 +91,7 @@ decision are not the test's.
 ## Records
 
 `games.jsonl`: one line per flush (every 10 s), every game finished since (cell, seat,
-bucket, filler flag, score, kills, seconds), written whole and synced. A rerun with the
+bucket, overtime flag, score, kills, seconds), written whole and synced. A rerun with the
 same `--out` replays it into the targets and continues. `report.json` holds every
 target's estimate, rewritten with each progress line; `progress.log` a line every 30 s
 with games, games per hour, GPU utilisation, each bucket's environments and the ETA as a
@@ -101,9 +101,11 @@ clock time (from the rise of the mean information fraction, goal² / SE² per ta
 
 - Rating-pool export: Elo games are in `games.jsonl`, not yet appended to a
   `bnb.league.rating_pool` pool (so `bnb pool table` does not read them).
-- A mode's slice is fixed per bucket run: when its targets finish first, its environments
-  play filler games (the slice's last cell again, recorded as filler) until the bucket's
-  other slices finish. Rebuilding the bucket with a new split costs a compile.
+- A mode's slice is fixed per bucket run: when its goals are all met first, its
+  environments play **overtime** (the planner's values with every goal taken as unmet,
+  budgets still binding; the games are tallied and flagged), else park (Imugi against
+  itself at 1v1, untallied) until the bucket's other slices finish. Rebuilding the bucket
+  with a new split costs a compile.
 - Kill-share scoring for deathmatch Elo is an option (`kill_share = true`), not the
   default (the pools' default is win/loss).
 - Decisions are direct head-to-heads in one condition; a decision on a Bradley-Terry

@@ -52,7 +52,7 @@ class Planner:
     def expected_seconds(self, condition: Condition) -> float:
         held = self.seconds.get(condition)
         if held and held[1] >= 4:
-            return held[0] / held[1]
+            return max(held[0] / held[1], 1.0)
         prior = 0.5 * clock_seconds(condition.preset)
         if held and held[1]:
             return (held[0] + 4 * prior) / (held[1] + 4)  # shrunk toward the prior
@@ -60,46 +60,55 @@ class Planner:
 
     # ---- proposals
 
-    def _proposals(self, target: Target) -> dict[Cell, float]:
-        found = self._cache.get(target.name)
+    def _proposals(self, target: Target, overtime: bool = False) -> dict[Cell, float]:
+        key = (target.name, overtime)
+        found = self._cache.get(key)
         if found is None:
-            found = target.proposals()
-            self._cache[target.name] = found
+            found = target.proposals(overtime)
+            self._cache[key] = found
         return found
 
-    def values(self) -> dict[Cell, float]:
-        """Every proposed cell's summed value."""
+    def values(self, overtime: bool = False) -> dict[Cell, float]:
+        """Every proposed cell's summed value (overtime: `Target.proposals`')."""
         total: dict[Cell, float] = collections.defaultdict(float)
         for target in self.targets:
-            for cell, value in self._proposals(target).items():
+            for cell, value in self._proposals(target, overtime).items():
                 total[cell] += value
         return dict(total)
 
     def _touched(self, cell: Cell) -> None:
-        for target in self.targets:
-            cached = self._cache.get(target.name)
-            if cached is None or cell in cached:
-                self._cache.pop(target.name, None)
+        for key in list(self._cache):
+            if cell in self._cache[key]:
+                self._cache.pop(key, None)
+        for target in self.targets:  # a target that proposed nothing may propose now
+            for overtime in (False, True):
+                if not self._cache.get((target.name, overtime), True):
+                    self._cache.pop((target.name, overtime), None)
 
-    def choose(self, bucket: int, preset: str, fits=lambda cell: True) -> tuple[Cell, int] | None:
+    def choose(
+        self, bucket: int, preset: str, fits=lambda cell: True
+    ) -> tuple[Cell, int, bool] | None:
         """The next game of an environment of size bucket `bucket` playing `preset`: (the
-        cell, the seat its first player takes, 0 or 1), counted in flight with every
-        target; None when no cell there is wanted (or none fits: `fits(cell)`, the lanes'
-        room)."""
-        best, best_rate = None, 0.0
-        for cell, value in self.values().items():
-            condition = cell.condition
-            if condition.preset != preset or bucket_of(condition, self.buckets) != bucket:
-                continue
-            rate = value / self.expected_seconds(condition)
-            if rate > best_rate and fits(cell):
-                best, best_rate = cell, rate
-        if best is None:
-            return None
-        self.pending(best)
-        seat = self.seats[best] % 2
-        self.seats[best] += 1
-        return best, seat
+        cell, the seat its first player takes, 0 or 1, and whether it is overtime), counted
+        in flight with every target. When no unmet goal wants a game in the slice, the
+        overtime values choose (a met goal's further precision: the slice's modes are fixed
+        while the bucket runs, `bnb.league.unified.engine`); None when even those want none
+        (every cell's budget spent, or no room: `fits(cell)`, the lanes')."""
+        for overtime in (False, True):
+            best, best_rate = None, 0.0
+            for cell, value in self.values(overtime).items():
+                condition = cell.condition
+                if condition.preset != preset or bucket_of(condition, self.buckets) != bucket:
+                    continue
+                rate = value / self.expected_seconds(condition)
+                if rate > best_rate and fits(cell):
+                    best, best_rate = cell, rate
+            if best is not None:
+                self.pending(best)
+                seat = self.seats[best] % 2
+                self.seats[best] += 1
+                return best, seat, overtime
+        return None
 
     def pending(self, cell: Cell) -> None:
         """Count a game of `cell` in flight with every target."""
