@@ -213,3 +213,18 @@ every value inside the real spread. Round 16: smaller steps around it (Yongma tu
 solved, shield x0.6-0.7).
 - The 3070 has been held since ~08:00 by another agent's compile-memory measure (the lock
   held, the GPU at 0%); my Frontline 5v5 final and round 13 wait behind it.
+
+## 09:05 round 13, round 16, option C in results.md
+
+- Round 13 (3070, deathmatch 5v5, 512): Jujak x0.91 + Yongma shield x0.8 43.8; + Yongma
+  climb x0.88 54.3; + climb x0.93 50.5; shield x0.85 + climb x0.93 49.3; shield x0.75 + climb
+  x0.88 50.3; shield x0.8 + damage x1.08 47.7; shield x0.85 + climb x0.88 55.1. Its 10v10 and
+  2v2 wait on the box's lock.
+- Round 16 (laptop, 512): C = Jujak x0.91 + Yongma turn x1.08 + shield x0.6 repeats at
+  48.5 / 60.2 / 61.8 (2v2 / 5v5 / 10v10; round 15 had 50.4 / 54.4 / 62.6). Smaller steps:
+  Jujak x0.91 + Yongma turn x1.05 + shield x0.65 40.3 / 49.2 / 59.3; Jujak x0.93 + Yongma turn
+  x1.08 + shield x0.65 45.4 / 57.2 / 64.7; Jujak x0.91 + Yongma turn x1.04 + shield x0.7 40.1 /
+  52.8 / 61.9; with shield x0.65 / x0.7 at turn x1.08 the 10v10 climbs to 71 / 83.
+- results.md now offers C (options.json, apply.py --candidates options.json) beside A (v23 in
+  src/). Next: round 17 (C with shield x0.5-0.55, Yongma turn x1.12), C at 1024 games in all
+  deathmatch sizes (laptop), C in elimination and Frontline 5v5 (3070, queue7).
