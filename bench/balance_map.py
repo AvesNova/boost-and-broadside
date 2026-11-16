@@ -184,24 +184,44 @@ def measures(coordinates) -> tuple[float, float]:
     return float(agility), float(toughness)
 
 
-LOW_SPEED_MARGIN = 0.85  # the low-speed acceleration's cap: this share of its closed-form limit
+LOW_SPEED_MARGIN = 0.8  # the low-speed acceleration's cap: this share of its closed-form limit
+
+
+PART = 16  # cards a solver process solves at once (padded: one compiled shape)
+_POOL = None
+_TICK = None
+
+
+def _start_solver() -> None:
+    """A solver process: one thread, the compiled flight tick (`bnb.runtime.flights`: about
+    14x the eager tick on a CPU; compiled once for the PART shape, then the disk cache)."""
+    import torch
+
+    global _TICK
+    torch.set_num_threads(1)
+    from bnb.runtime.flights import compiled_flight_tick
+
+    _TICK = compiled_flight_tick()
 
 
 def solve_cards(handle_sets: list[dict[str, float]], processes: int = 8) -> list[dict]:
-    """Each handle set solved into a card (`api.solve_handles`, strict=False), in batches
-    across processes: {"card": {field: value}} or {"failure": the solver's reason}, with
-    "low_speed_acceleration" (the handle as solved, after `low_speed_limits`' repair) and
-    "low_speed_limit"."""
+    """Each handle set solved into a card (`api.solve_handles`, strict=False), PART at a time
+    in a persistent pool of solver processes: {"card": {field: value}} or {"failure": the
+    solver's reason}, with "low_speed_acceleration" (the handle as solved, after
+    `low_speed_limits`' repair) and "low_speed_limit"."""
     if not handle_sets:
         return []
     import concurrent.futures
     import multiprocessing
 
-    size = max(1, math.ceil(len(handle_sets) / processes))
-    parts = [handle_sets[i : i + size] for i in range(0, len(handle_sets), size)]
-    context = multiprocessing.get_context("spawn")
-    with concurrent.futures.ProcessPoolExecutor(len(parts), mp_context=context) as pool:
-        results = list(pool.map(_solve_part, parts))
+    global _POOL
+    if _POOL is None:
+        context = multiprocessing.get_context("spawn")
+        _POOL = concurrent.futures.ProcessPoolExecutor(
+            processes, mp_context=context, initializer=_start_solver
+        )
+    parts = [handle_sets[i : i + PART] for i in range(0, len(handle_sets), PART)]
+    results = list(_POOL.map(_solve_part, parts))
     return [card for part in results for card in part]
 
 
@@ -292,16 +312,33 @@ def _solve_part(handle_sets: list[dict[str, float]]) -> list[dict]:
         )
     if not playable:
         return out
+    # the solver's checks before any flight, card by card (one failure fails a whole batch)
+    from bnb.game.handling import solver
+
+    for number in list(playable):
+        single = _handles_tensor([repaired[number]])
+        try:
+            solver.check(rules, single)
+            solver.first_guess(
+                rules, single, solver.combat_card(rules, single, single.cruise_speed)
+            )
+        except Infeasible as error:
+            out[number]["failure"] = f"infeasible: {error}"[:300]
+            playable.remove(number)
+    if not playable:
+        return out
+    batch = [repaired[n] for n in playable]
+    padded = batch + [batch[0]] * (PART - len(batch)) if len(batch) <= PART else batch
     try:
         solution = api.solve_handles(
-            _handles_tensor([repaired[n] for n in playable]), rules, strict=False
+            _handles_tensor(padded), rules, strict=False, tick_function=_TICK
         )
-    except Infeasible as error:  # the batch as a whole (a check before any flight)
+    except Infeasible as error:  # after a flight: card by card, eager
         if len(handle_sets) == 1:
             out[0]["failure"] = f"infeasible: {error}"[:300]
             return out
         return [card for h in handle_sets for card in _solve_part([h])]
-    converged = solution.converged.reshape(len(playable), -1)[:, 0].tolist()
+    converged = solution.converged.reshape(len(padded), -1)[: len(playable), 0].tolist()
     for position, (number, ok) in enumerate(zip(playable, converged, strict=True)):
         if not ok:
             reasons = [f for f in solution.failures if f.startswith(f"card {position} ")]
@@ -864,7 +901,7 @@ def main() -> None:
     one.add_argument("--out", type=pathlib.Path, required=True)
     one.add_argument("--generations", type=int, default=60, help="a half's bound")
     one.add_argument("--hours", type=float, default=12.0)
-    one.add_argument("--emitters", type=int, default=4)
+    one.add_argument("--emitters", type=int, default=8)
     one.add_argument("--batch", type=int, default=32, help="candidates an emitter asks")
     one.add_argument("--sigma", type=float, default=0.15)
     one.add_argument("--learning-rate", type=float, default=0.05)

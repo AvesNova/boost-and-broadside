@@ -8,7 +8,8 @@
 #       OUT ARGS... >/dev/null 2>&1 </dev/null &'
 #
 # OUT: the run's directory; ARGS: `bench.balance_map search`'s (--generations, --hours, ...).
-# CONDITIONS (environment): the workers' conditions (default the searched four).
+# CONDITIONS (environment): the workers' conditions (default the searched four);
+# ENVIRONMENTS and VARIANTS the workers' sizes (16384 and 128: at 4096 the 5090 is launch-bound).
 set -uo pipefail
 source /workspace/env.sh
 WORKTREE=/workspace/wt/map
@@ -21,7 +22,8 @@ mkdir -p "$OUT/logs"
 python -c "import bnb; print('bnb', bnb.__file__)" >> "$OUT/logs/run.log"
 git -C "$WORKTREE" log --oneline -1 >> "$OUT/logs/run.log"
 if [ "${1:-}" != "--workers-only" ]; then
-  python -u -m bench.balance_map search --out "$OUT" "$@" >> "$OUT/logs/search.log" 2>&1 &
+  # the search's solver is CPU-only: no GPU outside the lock
+  CUDA_VISIBLE_DEVICES="" python -u -m bench.balance_map search --out "$OUT" "$@" >> "$OUT/logs/search.log" 2>&1 &
   search=$!
   echo "search $search" >> "$OUT/logs/pids"
 fi
@@ -29,7 +31,7 @@ workers=()
 for condition in $CONDITIONS; do
   log="$OUT/logs/worker-$condition.log"
   python -u -m bench.balance_worker --condition "$condition" --queue "$OUT/queue/$condition" \
-    --lock "$GPU_LOCK" --environments "${ENVIRONMENTS:-4096}" --variants "${VARIANTS:-32}" \
+    --lock "$GPU_LOCK" --environments "${ENVIRONMENTS:-16384}" --variants "${VARIANTS:-128}" \
     --prewarm-processes 4 >> "$log" 2>&1 &
   pid=$!
   workers+=("$pid")
