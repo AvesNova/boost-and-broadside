@@ -91,3 +91,31 @@ games, where the estimated variance runs small); 0.045 and 0.048 ± 0.002 at an 
 maximum (10,000 tests). Each look schedule's exact null crossing probability, from the
 boundaries spent at its actual fractions, is α (the test `test_irregular_looks_...`).
 A real decision (δ = 0.02) plans about 5,300 games.
+
+## The 5090 check (Tuesday morning)
+
+Once the box's GPU is free (the queue holds the lock until it exits):
+
+1. `git -C /workspace/repo fetch && git -C /workspace/repo worktree add /workspace/wt/ueval
+   origin/feat/unified-eval` (game v25; the dry run's policies are v24, so 1v1 and 2v2
+   scores against Imugi will read lower than the queue's, as on the laptop).
+2. Optionally `CACHE_ARCHIVE=/workspace/compile-cache.tar.zst` (a 5090 archive) to start
+   warm, and `CACHE_EXPORT=...` to keep this run's compiles for the next box.
+3. `nohup setsid bash /workspace/wt/ueval/box/unified_check.sh dry-v24-s1 2 > ... &`
+   (the queue's targets: suite ±0.02, maps ±45, curves ±60 on the queue's own field,
+   break-even ±0.1 at most 2,048 games a mode, team size n v n, n v 1.5n, n v 2n ±0.05).
+
+What to read in `$RUNS/dry-v24-s1-unified/`:
+
+- `sizing.json`: each bucket's environments; expect about 4x the laptop's (bucket 5: the
+  laptop sizes about 1,300–3,000), and the peak reserved within 70% of 32 GB;
+- `progress.log`: GPU above 90%, host planning a few percent at most; games per hour per
+  bucket 3.8x (the training-rollout ratio) to 5x (SMs times clock) the laptop's
+  35,000–63,000 at bucket 5;
+- the whole queue's equivalent took 32 (suite) + 4 (maps) + 86 (curves) + about 40
+  (break-even) + team size minutes of batches and compiles on the 5090; the laptop
+  measured 1.8x the queue's batch throughput on the same games, so the 5090 should
+  finish the same targets in roughly a fifth of the queue's time, plus 3 compiles;
+- `report.json` against the queue's tables (`dry-v24-s1-eval/suite/summary.txt`,
+  `curves/table.txt`, `break-even/`, `team-size/`), allowing for v25's Imugi in small
+  fights.
