@@ -1,0 +1,46 @@
+# The laptop check (RTX 4070, 8 GB): the 5-a-side bucket's share of the box queue's suite
+# (the champion against Imugi in every 5v5, 2v2 and 1v1 condition, 512 games each, as
+# `bnb evaluate --games 512` played them) plus a small Elo field among four policies, all
+# in one engine. Paths are inside --runs-directory (the dry run's policies, game v24).
+lineup_types = ["Yongma", "Jujak"]
+buckets = [5, 10, 20]
+seed = 0
+
+[players]
+champion = "dry-v24-s1-rl/average/training_exponential_decay_0.95/step_98566144"
+rl_5m = "dry-v24-s1-rl/policies/step_5242880/exponential_average"
+rl_20m = "dry-v24-s1-rl/policies/step_20971520/exponential_average"
+bc = "dry-v24-s1-bc/policies/step_99614720/exponential_average"
+
+[[win_rate]]
+name = "suite"
+preset = "real_scale_deathmatch"
+first = "champion"
+second = "scripted"
+lineups = [[5, 5], [2, 2], [1, 1]]
+stderr = 0.0001
+budget = 512
+
+[[win_rate]]
+name = "suite"
+preset = "real_scale_elimination"
+first = "champion"
+second = "scripted"
+lineups = [[5, 5], [2, 2], [1, 1]]
+stderr = 0.0001
+budget = 512
+
+[[win_rate]]
+name = "suite"
+preset = "real_scale_frontline"
+first = "champion"
+second = "scripted"
+lineups = [[5, 5]]
+stderr = 0.0001
+budget = 512
+
+[[elo]]
+name = "curves_elimination_5v5"
+preset = "real_scale_elimination"
+players = ["scripted", "champion", "rl_5m", "rl_20m", "bc"]
+stderr = 60.0

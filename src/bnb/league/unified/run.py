@@ -227,21 +227,17 @@ def information_fraction(planner: Planner) -> float:
     )
 
 
-def network_shares(planner: Planner, players: list[Player], groups: list) -> list[float]:
-    """Each network group's expected share of a batch's rows: its players' seats in the
-    proposed cells, weighted by value."""
-    count = 1 + max((g for g in groups if g is not None), default=-1)
-    held = [0.0] * count
+def player_shares(planner: Planner) -> dict[str, float]:
+    """Each player's expected share of a batch's seats: its seats in the proposed cells,
+    weighted by value (each at most 1), the lanes' sizing (`engine.lane_runs`)."""
+    held: dict[str, float] = {}
     total = 0.0
-    index = {one.name: n for n, one in enumerate(players)}
     for cell, value in planner.values().items():
         weight = min(value, 1.0)
         for name in (cell.first, cell.second):
+            held[name] = held.get(name, 0.0) + weight
             total += weight
-            group = groups[index[name]]
-            if group is not None:
-                held[group] += weight
-    return [h / total if total else 1.0 for h in held]
+    return {name: h / total for name, h in held.items()} if total else {}
 
 
 def run(
@@ -274,9 +270,6 @@ def run(
         planner.finished(cell, outcome, pending=False)
     if resumed:
         say(f"resumed {len(resumed)} games from {games_log.path}")
-    from .engine import seat_players
-
-    _, groups = seat_players(spec.players)
     started = time.time()
     total_games = len(resumed)
     sizing = {}
@@ -292,7 +285,7 @@ def run(
             device,
             spec.lineup_types,
             scaled_presets(planner, bucket),
-            network_share=network_shares(planner, spec.players, groups),
+            player_share=player_shares(planner) or None,
             compiled=compiled_engine,
             seed=spec.seed,
             record=games_log.add,

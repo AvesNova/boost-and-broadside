@@ -55,6 +55,8 @@ ROUNDING = 64  # environments: a sized batch is a multiple of this
 SCALE_SAMPLING = ArenaScale()  # the map-size draw a slice with scaled cells is built with
 CAPACITY_SLACK = 1.5  # a lane's rows over its player's expected share of the network rows
 MINIMUM_CAPACITY = 32
+MAXIMUM_RUNS = 3  # stacked forwards per network group
+TICKETS = ("kills_per_ship", "ticket_exponent", "ticket_rounding")
 
 
 def base_game(presets: list[str], ships_per_team: int) -> GameConfig:
@@ -68,9 +70,10 @@ def base_game(presets: list[str], ships_per_team: int) -> GameConfig:
         pooled = pool_game(base, preset_pool(preset, 1.0))
         if (game.num_fields, game.ship_set) != (base.num_fields, base.ship_set):
             raise ValueError(f"{preset}: other fields or ship set than {first}: one batch")
-        if mode_rules_of(pooled) != mode_rules_of(game) or pooled.episode_seconds != (
-            game.episode_seconds
-        ):
+        theirs, ours = mode_rules_of(game), mode_rules_of(pooled)
+        if game.mode != TEAM_DEATHMATCH:  # the tickets are read in team deathmatch only
+            ours = dataclasses.replace(ours, **{k: getattr(theirs, k) for k in TICKETS})
+        if ours != theirs or pooled.episode_seconds != game.episode_seconds:
             raise ValueError(f"{preset}: its pool in a {first} batch would play other rules")
     return base
 
@@ -161,11 +164,13 @@ class BucketRollout(Rollout):
 @dataclasses.dataclass
 class Slot:
     """An environment's game: its cell, the seat its first player takes, and whether it is
-    filler (no target wanted a game there: the slice's last cell, played again)."""
+    filler (no target wanted a game there: the slice's last cell, played again, tallied)
+    or parked (no cell at all: Imugi against itself at 1 against 1, untallied)."""
 
-    cell: Cell
+    cell: Cell | None
     seat: int
     filler: bool = False
+    parked: bool = False
 
 
 def seat_players(players: list[Player]) -> tuple[list[SeatPlayer], list[int | None]]:
@@ -190,9 +195,9 @@ class BucketEngine:
     the run (`bnb.league.matches.Player`, by name); shares: each preset's share of the
     environments; planner: the run's; lineup_types: ship type indices a game's lineup is
     drawn from (each slot uniformly, both teams flying it); scaled: the presets whose
-    slice needs map-size sampling; capacity: each network group's rows per lane (None:
-    from `network_share`, each group's expected share of the rows); record: the games'
-    callback (`record(cell, outcome, slot)`)."""
+    slice needs map-size sampling; player_share: each network player's expected share of
+    the seats (`lane_runs` cuts the players into runs and sizes their lanes by it; None:
+    equal shares); record: the games' callback (`record(cell, outcome, slot, bucket)`)."""
 
     def __init__(
         self,
@@ -204,8 +209,7 @@ class BucketEngine:
         device: torch.device,
         lineup_types: tuple[int, ...] = (0, 1),
         scaled: tuple[str, ...] = (),
-        capacity: list[int] | None = None,
-        network_share: list[float] | None = None,
+        player_share: dict[str, float] | None = None,
         compiled: bool = True,
         length: int = 32,
         graph_ticks: int = 8,
@@ -251,23 +255,19 @@ class BucketEngine:
                 template.mask_benched = True
         controllers = [model_controller(template, self.game) for template in templates]
         rows = 2 * self.environments
-        if capacity is None:
-            shares_of = network_share or [1.0] * len(templates)
-            capacity = []
-            for group in range(len(templates)):
-                lanes = groups.count(group)
-                expected = rows * shares_of[group] / max(lanes, 1)
-                capacity.append(
-                    min(rows, max(MINIMUM_CAPACITY, math.ceil(CAPACITY_SLACK * expected)))
-                )
-        self.capacity = capacity
+        networks = [one.name for one, g in zip(players, groups, strict=True) if g is not None]
+        if player_share is None:
+            player_share = {name: 1.0 / max(len(networks), 1) for name in networks}
+        runs = lane_runs(groups, [player_share.get(one.name, 0.0) for one in players], rows)
+        self.runs = runs
+        self.capacity_of = {index: capacity for _, members, capacity in runs for index in members}
         self.types = card_of(players, self.game, device)
         rules = api.rules_of(self.game)
         self.seat = RefillSeat(
             controllers,
             seat_view,
             states,
-            capacity,
+            runs,
             rows,
             characteristics(self.types, rules),
             bucket,
@@ -294,67 +294,98 @@ class BucketEngine:
         self.first_row_device = self.first_row.to(device)
         self.tick_length = self.rollout.rules.tick_length
         self.in_use = [0] * len(players)
-        self.current: list[Slot | None] = [None] * self.environments
+        self.current: list[Slot] = []
         self.next: list[Slot | None] = [None] * self.environments
+        self.scripted = next(i for i, g in enumerate(groups) if g is None)
         self.last_cell: dict[str, Cell] = {}
         self.finished_seen = torch.zeros(self.environments, dtype=torch.int64)
         self.games = 0
         self.blocks = 0
         self.missed = 0
         self._previous = None  # (pinned logs, event) of the last block
-        self.idle = 0
+        self.parked = 0
+        self.filler = True
 
     # ---- assignment
 
-    def fits(self, cell: Cell) -> bool:
-        for name in (cell.first, cell.second):
-            index = self.index[name]
-            group = self.group_of[index]
-            if group is not None and self.in_use[index] + 1 > self.capacity[group]:
-                return False
-        return True
+    def _rows(self, environment: int) -> set[tuple[int, int]]:
+        """The (role, player) rows an environment's current and next games hold: a lane's
+        rows in use, each row counted once however many of its games a player plays."""
+        held = set()
+        for slot in (self.current[environment], self.next[environment]):
+            if slot is not None:
+                held.add((0, self.index_of(slot, 0)))
+                held.add((1, self.index_of(slot, 1)))
+        return held
 
-    def _take(self, cell: Cell, sign: int) -> None:
-        for name in (cell.first, cell.second):
-            self.in_use[self.index[name]] += sign
+    def index_of(self, slot: Slot, role: int) -> int:
+        """The player index of a slot's role (a parked slot: Imugi in both)."""
+        if slot.cell is None:
+            return self.scripted
+        return self.index[slot.cell.first if role == 0 else slot.cell.second]
 
-    def _choose(self, environment: int) -> Slot | None:
+    def _count(self, environment: int, sign: int) -> None:
+        for _, index in self._rows(environment):
+            self.in_use[index] += sign
+
+    def _fits(self, environment: int):
+        """The planner's room check for an environment's next game: each network player's
+        rows, with this game's, within its lane's capacity."""
+        held = self._rows(environment)
+
+        def fits(cell: Cell) -> bool:
+            for role, name in ((0, cell.first), (1, cell.second)):
+                index = self.index[name]
+                capacity = self.capacity_of.get(index)
+                if capacity is None or (role, index) in held:
+                    continue
+                if self.in_use[index] + 1 > capacity:
+                    return False
+            return True
+
+        return fits
+
+    def _choose(self, environment: int) -> Slot:
+        """An environment's next game: the planner's; else (nothing wanted in its slice, or
+        no room) its slice's last cell again as filler while it fits; else parked (Imugi
+        against itself, 1 against 1, untallied)."""
         preset = self.preset_of[environment]
-        chosen = self.planner.choose(self.bucket, preset, self.fits)
+        fits = self._fits(environment)
+        chosen = self.planner.choose(self.bucket, preset, fits)
         if chosen is not None:
             cell, seat = chosen
             self.last_cell[preset] = cell
-            self._take(cell, 1)
             return Slot(cell, seat)
         cell = self.last_cell.get(preset)
-        if cell is None or not self.fits(cell):
-            return None
-        self.planner.pending(cell)
-        self._take(cell, 1)
-        return Slot(cell, self.random.randrange(2), filler=True)
+        if cell is not None and fits(cell) and self.filler:
+            self.planner.pending(cell)
+            return Slot(cell, self.random.randrange(2), filler=True)
+        return Slot(None, 0, parked=True)
+
+    def _set_next(self, environment: int, slot: Slot) -> None:
+        self._count(environment, -1)
+        self.next[environment] = slot
+        self._count(environment, 1)
 
     def _pending_values(self, slot: Slot) -> tuple:
         """(seat, active (2,), ship types (N,), arena uniform, first player, second player)
         of a slot, as the buffers hold them."""
         S = self.bucket
-        condition = slot.cell.condition
-        active = [0, 0]
-        active[slot.seat] = condition.first
-        active[1 - slot.seat] = condition.second
+        active = [1, 1]
+        scale = 1.0
+        if slot.cell is not None:
+            condition = slot.cell.condition
+            active[slot.seat] = condition.first
+            active[1 - slot.seat] = condition.second
+            scale = condition.arena_scale
         team = [self.random.choice(self.lineup_types) for _ in range(S)]
         arena = -1.0
-        if condition.arena_scale != 1.0 or self.rollout.arena_slot is not None:
+        if scale != 1.0 or self.rollout.arena_slot is not None:
             arena = arena_uniform(
-                condition.arena_scale, SCALE_SAMPLING.sigma, SCALE_SAMPLING.low, SCALE_SAMPLING.high
+                scale, SCALE_SAMPLING.sigma, SCALE_SAMPLING.low, SCALE_SAMPLING.high
             )
-        return (
-            slot.seat,
-            active,
-            team + team,
-            arena,
-            self.index[slot.cell.first],
-            self.index[slot.cell.second],
-        )
+        first, second = self.index_of(slot, 0), self.index_of(slot, 1)
+        return (slot.seat, active, team + team, arena, first, second)
 
     def _write(self, environments: list[int], slots: list[Slot]) -> None:
         """Queue the pending buffers' writes for these environments' next games."""
@@ -383,15 +414,19 @@ class BucketEngine:
     def start(self) -> None:
         """Every environment's first game and the one after it, chosen and written; the
         rollout started from the first."""
-        firsts = [self._choose(e) for e in range(self.environments)]
-        if any(slot is None for slot in firsts):
-            raise RuntimeError(f"bucket {self.bucket}: no cell for some environment at the start")
-        self.current = firsts
-        self._write(list(range(self.environments)), firsts)
+        self.current = [None] * self.environments
+        for environment in range(self.environments):
+            self._set_next(environment, self._choose(environment))
+        # the chosen become the current games
+        for environment in range(self.environments):
+            self._count(environment, -1)
+            self.current[environment], self.next[environment] = self.next[environment], None
+            self._count(environment, 1)
+        self._write(list(range(self.environments)), self.current)
         self.rollout.start()
-        self.next = [self._choose(e) for e in range(self.environments)]
-        chosen = [e for e in range(self.environments) if self.next[e] is not None]
-        self._write(chosen, [self.next[e] for e in chosen])
+        for environment in range(self.environments):
+            self._set_next(environment, self._choose(environment))
+        self._write(list(range(self.environments)), self.next)
 
     # ---- the loop
 
@@ -451,29 +486,28 @@ class BucketEngine:
                 self.missed += int(delta[environment]) - 1
             result, own_deaths, enemy_deaths, ticks = logs[environment, 1:5].tolist()
             slot = self.current[environment]
-            outcome = Outcome(
-                score=(result + 1.0) / 2.0,
-                first_kills=round(enemy_deaths),
-                second_kills=round(own_deaths),
-                seconds=ticks * self.tick_length,
-            )
-            self.planner.finished(slot.cell, outcome)
-            self._take(slot.cell, -1)
-            if self.record is not None:
-                self.record(slot.cell, outcome, slot, self.bucket)
-            self.games += 1
-            self.current[environment] = self.next[environment]
-            if self.current[environment] is None:
-                # nothing was pending: it replays its pending buffers' game (the last one
-                # written), a filler the host does not count
-                self.current[environment] = Slot(slot.cell, slot.seat, filler=True)
-                self.planner.pending(slot.cell)
-                self._take(slot.cell, 1)
+            if slot.cell is not None:
+                outcome = Outcome(
+                    score=(result + 1.0) / 2.0,
+                    first_kills=round(enemy_deaths),
+                    second_kills=round(own_deaths),
+                    seconds=ticks * self.tick_length,
+                )
+                self.planner.finished(slot.cell, outcome)
+                if self.record is not None:
+                    self.record(slot.cell, outcome, slot, self.bucket)
+                self.games += 1
+            else:
+                self.parked += 1
+            # the next game is under way: it becomes the current one, and the one after it
+            # is chosen (the pending buffers already hold the game now begun)
+            self._count(environment, -1)
+            self.current[environment], self.next[environment] = self.next[environment], None
+            self._count(environment, 1)
             following = self._choose(environment)
-            self.next[environment] = following
-            if following is not None:
-                environments.append(environment)
-                slots.append(following)
+            self._set_next(environment, following)
+            environments.append(environment)
+            slots.append(following)
         self.finished_seen = finished
         self._write(environments, slots)
         return len(ended)
@@ -481,6 +515,33 @@ class BucketEngine:
     def wanted(self) -> bool:
         """Whether a target still wants a game in this bucket."""
         return any(bucket == self.bucket for bucket, _ in self.planner.wanted())
+
+
+def lane_runs(
+    groups: list[int | None], shares: list[float], rows: int, slack: float = CAPACITY_SLACK
+) -> list[tuple[int, list[int], int]]:
+    """The network players cut into runs, each one stacked forward: within a group, the
+    players by their expected rows (rows x their seat share) from the most, a run taking
+    the next player while it expects at least half the run's first's; at most `MAXIMUM_RUNS`
+    runs a group (each is a network copy in the compiled graph). Each run's lanes hold
+    `slack` times its first player's expected rows (at least `MINIMUM_CAPACITY`, at most
+    every row)."""
+    runs = []
+    for group in sorted({g for g in groups if g is not None}):
+        members = sorted(
+            (index for index, g in enumerate(groups) if g == group), key=lambda i: -shares[i]
+        )
+        cut: list[list[int]] = []
+        for index in members:
+            if cut and (shares[index] * 2 >= shares[cut[-1][0]] or len(cut) == MAXIMUM_RUNS):
+                cut[-1].append(index)
+            else:
+                cut.append([index])
+        for run in cut:
+            expected = rows * shares[run[0]]
+            capacity = min(rows, max(MINIMUM_CAPACITY, math.ceil(slack * expected)))
+            runs.append((group, run, capacity))
+    return runs
 
 
 def _split(total: int, weights: list[float]) -> list[int]:

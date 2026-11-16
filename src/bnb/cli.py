@@ -875,7 +875,7 @@ class Unified:
     with the most valuable game the moment its game ends (`bnb.league.unified`;
     docs/guides/unified-evaluation.md). A rerun with the same --out resumes."""
 
-    spec: pathlib.Path
+    spec: tyro.conf.Positional[pathlib.Path]
     out: pathlib.Path
     device: str = "cuda"
     # each bucket's environments (None: sized from the free device memory)

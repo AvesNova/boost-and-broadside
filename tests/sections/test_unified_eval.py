@@ -10,7 +10,7 @@ import torch
 
 from bnb.league.sequential import SequentialDesign, boundaries, operating_characteristics
 from bnb.league.unified.cells import Cell, Condition, Outcome, arena_uniform, bucket_of
-from bnb.league.unified.engine import BucketEngine, Slot, _split, size_environments
+from bnb.league.unified.engine import BucketEngine, Slot, _split, lane_runs, size_environments
 from bnb.league.unified.planner import Planner
 from bnb.league.unified.seat import RefillSeat
 from bnb.league.unified.targets import (
@@ -46,6 +46,7 @@ def _stub_engine(bucket: int = 5) -> BucketEngine:
     engine.bucket, engine.lineup_types = bucket, (0, 1)
     engine.random = random.Random(0)
     engine.index = {"a": 0, "b": 1}
+    engine.scripted = 0
 
     class Rollout:
         arena_slot = None
@@ -87,25 +88,22 @@ def test_split_and_sizing():
 # ---- the seat's lanes
 
 
-def _stub_seat(groups: list[int | None], capacity: list[int], rows: int) -> RefillSeat:
+def _stub_seat(runs: list[list[int]], capacity: list[int], players: int, rows: int):
     seat = RefillSeat.__new__(RefillSeat)
-    seat.rows = rows
-    seat.lanes = [[i for i, g in enumerate(groups) if g == group] for group in range(len(capacity))]
-    seat.capacity = capacity
-    lane_of = [-1] * len(groups)
-    for lanes in seat.lanes:
-        for lane, index in enumerate(lanes):
-            lane_of[index] = lane
-    seat.lane_of = torch.tensor(lane_of)
-    seat.group_of = torch.tensor([-1 if g is None else g for g in groups])
+    seat.rows, seat.lanes, seat.capacity = rows, runs, capacity
+    lane_of, run_of = [-1] * players, [-1] * players
+    for run, members in enumerate(runs):
+        for lane, index in enumerate(members):
+            lane_of[index], run_of[index] = lane, run
+    seat.lane_of, seat.run_of = torch.tensor(lane_of), torch.tensor(run_of)
     seat.overflow = torch.zeros(1, dtype=torch.int64)
     seat._row = torch.arange(rows)
     return seat
 
 
 def test_lane_tables_compact_each_players_rows():
-    # players 0 scripted, 1 and 2 in group 0, 3 in group 1
-    seat = _stub_seat([None, 0, 0, 1], [3, 2], rows=8)
+    # players 0 scripted, 1 and 2 in run 0, 3 in run 1
+    seat = _stub_seat([[1, 2], [3]], [3, 2], players=4, rows=8)
     player = torch.tensor([1, 0, 2, 1, 3, 0, 2, 2])
     read, write = seat._table(0, player)
     assert read.shape == (2, 3)
@@ -117,6 +115,15 @@ def test_lane_tables_compact_each_players_rows():
     assert int(seat.overflow) == 0
     seat._table(1, torch.full((8,), 3))  # 8 rows of player 3, capacity 2
     assert int(seat.overflow) == 6
+
+
+def test_lane_runs_cut_players_by_demand():
+    # group 0: a champion in half the seats, two light players; group 1: one player
+    groups = [None, 0, 0, 0, 1]
+    shares = [0.4, 0.5, 0.05, 0.04, 0.01]
+    runs = lane_runs(groups, shares, rows=1000)
+    assert [(g, members) for g, members, _ in runs] == [(0, [1]), (0, [2, 3]), (1, [4])]
+    assert [capacity for *_, capacity in runs] == [750, 75, 32]
 
 
 # ---- the planner

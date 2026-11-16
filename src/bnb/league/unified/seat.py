@@ -88,7 +88,8 @@ class _Decision(torch.nn.Module):
 
 class RefillSeat:
     """controllers: one network controller per group (over a template model of the group's
-    build); players: every player of the run; capacity: each group's rows per lane; rows:
+    build); players: every player of the run; runs: (group, its players, rows per lane),
+    the network players cut into runs of like demand, each run one stacked forward; rows:
     the seat's rows (2 per environment); characteristics and ships_per_team: Imugi's.
     states: each network player's model state dict, loaded into its lane once."""
 
@@ -97,7 +98,7 @@ class RefillSeat:
         controllers: list,
         players: list[SeatPlayer],
         states: dict[int, dict[str, torch.Tensor]],
-        capacity: list[int],
+        runs: list[tuple[int, list[int], int]],
         rows: int,
         characteristics,
         ships_per_team: int,
@@ -124,36 +125,35 @@ class RefillSeat:
             characteristics, ships_per_team, temperature=self.temperature, share=self.share
         )
         self.decisions = [_Decision(controller) for controller in controllers]
-        self.lanes: list[list[int]] = [[] for _ in controllers]  # each group's players
-        for index, one in enumerate(players):
-            if one.group is not None:
-                self.lanes[one.group].append(index)
-        if len(capacity) != len(controllers):
-            raise ValueError(f"capacity {capacity}: one per network group")
-        self.capacity = [min(int(c), rows) for c in capacity]
-        # each player's lane in its group (-1 scripted), and each group's lane keys
+        for decision in self.decisions:
+            decision.requires_grad_(False)
+        # the runs: (group, its players, capacity); every network player in exactly one
+        self.run_group = [group for group, _, _ in runs]
+        self.lanes = [list(members) for _, members, _ in runs]
+        self.capacity = [min(int(capacity), rows) for _, _, capacity in runs]
+        placed = sorted(index for members in self.lanes for index in members)
+        networks = [index for index, one in enumerate(players) if one.group is not None]
+        if placed != networks:
+            raise ValueError(f"runs {runs}: each network player in exactly one run")
         lane_of = torch.full((count,), -1, dtype=torch.int64)
-        for players_of in self.lanes:
-            for lane, index in enumerate(players_of):
-                lane_of[index] = lane
-        self.lane_of = lane_of.to(device)
-        group_of = torch.tensor(
-            [-1 if one.group is None else one.group for one in players], dtype=torch.int64
-        )
-        self.group_of = group_of.to(device)
+        run_of = torch.full((count,), -1, dtype=torch.int64)
+        for run, members in enumerate(self.lanes):
+            for lane, index in enumerate(members):
+                if players[index].group != self.run_group[run]:
+                    raise ValueError(f"run {run}: player {index} is of another group")
+                lane_of[index], run_of[index] = lane, run
+        self.lane_of, self.run_of = lane_of.to(device), run_of.to(device)
         self.parameters: list[dict[str, torch.Tensor]] = []
         reads = Imugi.reads
-        for group, decision in enumerate(self.decisions):
-            decision.requires_grad_(False)
+        for decision in self.decisions:
             reads = decision.controller.reads + reads
-            template = decision.state_dict()
+        for run, members in enumerate(self.lanes):
+            template = self.decisions[self.run_group[run]].state_dict()
             stacked_state = {
-                name: value.detach()[None]
-                .repeat((len(self.lanes[group]),) + (1,) * value.dim())
-                .clone()
+                name: value.detach()[None].repeat((len(members),) + (1,) * value.dim()).clone()
                 for name, value in template.items()
             }
-            for lane, index in enumerate(self.lanes[group]):
+            for lane, index in enumerate(members):
                 for name, value in states[index].items():
                     stacked_state[f"model.{name}"][lane].copy_(value)
             self.parameters.append(stacked_state)
@@ -188,13 +188,13 @@ class RefillSeat:
             stepped=torch.zeros(views, dtype=torch.bool, device=device),
         )
 
-    def _table(self, group: int, player: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def _table(self, run: int, player: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """(lanes, capacity) the rows each lane's player plays now, as (the rows to read,
         padding reading row 0; the rows to write, padding writing the spare row `rows`): the
         rows sorted by (lane, row), a static compaction."""
-        lanes, capacity = len(self.lanes[group]), self.capacity[group]
-        in_group = self.group_of[player] == group
-        lane = torch.where(in_group, self.lane_of[player], lanes)  # outside: past the last
+        lanes, capacity = len(self.lanes[run]), self.capacity[run]
+        in_run = self.run_of[player] == run
+        lane = torch.where(in_run, self.lane_of[player], lanes)  # outside: past the last
         order = torch.argsort(lane * self.rows + self._row)
         counts = (lane[None, :] == torch.arange(lanes, device=lane.device)[:, None]).sum(1)
         starts = torch.cumsum(counts, 0) - counts
@@ -221,16 +221,17 @@ class RefillSeat:
         if self.decisions:
             network = torch.zeros_like(action)
             temperature = self.player_network_temperature[player]
-            for group, decision in enumerate(self.decisions):
-                read, write = self._table(group, player)
+            for run, group in enumerate(self.run_group):
+                decision = self.decisions[group]
+                read, write = self._table(run, player)
                 flat, target = read.reshape(-1), write.reshape(-1)
-                arguments = (carry.model.get(str(group)), obs, reset, decision_key, temperature)
+                arguments = (model_carry.get(str(group)), obs, reset, decision_key, temperature)
                 inputs = _pytree.tree_map_only(
                     torch.Tensor,
                     lambda x: x.index_select(0, flat).unflatten(0, read.shape),
                     arguments,
                 )
-                packed, lane_carry = stacked.call(decision, self.parameters[group], inputs)
+                packed, lane_carry = stacked.call(decision, self.parameters[run], inputs)
 
                 def written(full, part, target=target):
                     if full is None:
@@ -242,7 +243,7 @@ class RefillSeat:
                 network = written(network, packed)
                 if lane_carry is not None:
                     model_carry[str(group)] = _pytree.tree_map(
-                        written, carry.model[str(group)], lane_carry
+                        written, model_carry[str(group)], lane_carry
                     )
             is_scripted = self.scripted_player[player]
             action = torch.where(is_scripted[:, None, None], action, network)
