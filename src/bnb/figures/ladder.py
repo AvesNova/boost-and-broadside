@@ -36,11 +36,11 @@ def chain_offsets(rows: list[dict]) -> dict[str, int]:
     return offsets
 
 
-def break_even_points(directory: str | pathlib.Path) -> list[dict]:
+def crossover_results(directory: str | pathlib.Path) -> dict[tuple[str, int], dict]:
     """Every `bnb crossover` result below `directory` laid out as
-    `<run>/step_<steps>/artifacts/crossover/<time>/result.json` (the dry run's loop), one
-    row per mode with a crossing: run, step, mode, ratio and its standard error. The newest
-    result of a snapshot stands."""
+    `<run>/step_<steps>/artifacts/crossover/<time>/result.json` (the dry run's loop), by
+    (run, step): the result's payload (`bnb.runs.provenance.write_result`: presets, config,
+    ...). The newest result of a snapshot stands."""
     found: dict[tuple[str, int], tuple[str, dict]] = {}
     for path in sorted(pathlib.Path(directory).rglob("result.json")):
         matched = BREAK_EVEN_PATH.search(path.as_posix())
@@ -49,18 +49,28 @@ def break_even_points(directory: str | pathlib.Path) -> list[dict]:
         key = (matched.group(1), int(matched.group(2)))
         time = path.parent.name
         if key not in found or time > found[key][0]:
-            found[key] = (time, json.loads(path.read_text()))
+            found[key] = (time, json.loads(path.read_text())["payload"])
+    return {key: payload for key, (_, payload) in sorted(found.items())}
+
+
+def mode_of(preset: str) -> str:
+    """The mode a preset or condition plays (`MODES`), else the preset itself."""
+    return next((mode for mode in MODES if mode in preset), preset)
+
+
+def break_even_points(directory: str | pathlib.Path) -> list[dict]:
+    """One row per snapshot and mode with a crossing, from `crossover_results`: run, step,
+    mode, ratio and its standard error."""
     points = []
-    for (run, step), (_, result) in sorted(found.items()):
-        for preset, measured in result.get("presets", {}).items():
+    for (run, step), payload in crossover_results(directory).items():
+        for preset, measured in payload.get("presets", {}).items():
             if measured.get("ratio") is None:
                 continue
-            mode = next((mode for mode in MODES if preset.endswith(mode)), preset)
             points.append(
                 dict(
                     run=run,
                     step=step,
-                    mode=mode,
+                    mode=mode_of(preset),
                     ratio=float(measured["ratio"]),
                     stderr=float(measured.get("ratio_stderr") or 0.0),
                 )
