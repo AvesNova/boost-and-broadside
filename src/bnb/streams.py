@@ -94,11 +94,21 @@ def keyed_uniform(key: int, *coordinates: torch.Tensor) -> torch.Tensor:
     return unit(keyed_hash(key, *coordinates))
 
 
+def normal(hashed: torch.Tensor) -> torch.Tensor:
+    """Standard normals float32 from 32-bit hashes (their top 24 bits) by the inverse CDF
+    of a uniform in (0, 1); within 5.4 standard deviations. The erfinv argument 2u - 1 is
+    formed exactly, as the odd integers 2k + 1 - 2^24 (k the top 24 bits) over 2^24, so it
+    stays inside (-1, 1): forming u = (k + 0.5) / 2^24 in float32 first rounded the top k
+    up to u = 1 and gave +inf, once in 2^24 draws (about twice per update's shot spread,
+    which made the shot labels NaN; 2026-11-16)."""
+    odd = 2 * (hashed >> 8) + (1 - (1 << 24))
+    return torch.erfinv(odd.to(torch.float32) * SCALE) * 2.0**0.5
+
+
 def keyed_normal(key: int, *coordinates: torch.Tensor) -> torch.Tensor:
-    """Standard normals float32 by the inverse CDF of a keyed uniform in (0, 1) (as
-    `keyed_hash`); within 5.4 standard deviations, from 24 bits."""
-    uniform = ((keyed_hash(key, *coordinates) >> 8).to(torch.float32) + 0.5) * SCALE
-    return torch.erfinv(2.0 * uniform - 1.0) * 2.0**0.5
+    """Standard normals float32, a pure function of the key and the coordinates (as
+    `keyed_hash`; `normal`)."""
+    return normal(keyed_hash(key, *coordinates))
 
 
 def element_index(shape: tuple[int, ...], device: torch.device | None = None) -> torch.Tensor:

@@ -3,6 +3,8 @@ is the bullet the game fires from that state, tick by tick (position, velocity, 
 including friendly fire, fields and flights that an episode end cuts short; and the ages the
 trajectory head is queried at."""
 
+import math
+
 import pytest
 import torch
 
@@ -437,3 +439,37 @@ def test_the_labels_hold_the_snapshots_at_the_queried_ages(played):
     for name in ("hit", "distance", "side", "target"):
         assert torch.equal(getattr(queried, name), getattr(shots, name))
     assert torch.equal(queried.damage, shots.damage / full)
+
+
+def test_an_unread_shots_non_finite_label_leaves_the_update_finite(global_generator, monkeypatch):
+    """A shot the loss does not read (outside the shot mask: a flight past the window, an
+    enemy's) may re-simulate to a non-finite label; its masked-out code still sits in the
+    graph, and zero times a NaN gradient is NaN: the 2026-11-16 dry run skipped 8
+    minibatches per update with every loss term finite. The learner writes a finite label
+    for every unread shot, so the update skips nothing; without that it skips."""
+    import learner_cases as lc
+    import yemong_cases as cases
+
+    from bnb.learn import shots as shot_module
+    from bnb.runtime import metrics
+
+    net = cases.model()
+    runner = lc.rollout(net, environments=4, length=16)
+    learner = lc.learner(net, runner)
+    learner.prepare(runner.store, runner.bootstrap())
+    _, stored = next(learner.staged(runner.store, [torch.arange(runner.store.views)]))
+    unread = ~stored["mask"]  # (L, V, N); the mask does not depend on the spread
+    assert unread.any() and stored["mask"].any()
+    draws = learner.shot_label_uniforms
+
+    def infinite_spread(length, views):  # an unread shot's spread +inf: its flight is NaN
+        spread, drawn = draws(length, views)
+        return torch.where(unread[..., None], torch.inf, spread), drawn
+
+    monkeypatch.setattr(learner, "shot_label_uniforms", infinite_spread)
+    out = metrics.read(learner.update(runner.store, runner.bootstrap()))
+    assert out["train/skipped_steps"] == 0
+    assert math.isfinite(out["shot/loss/trajectory"]) and math.isfinite(out["shot/loss/outcome"])
+    monkeypatch.setattr(shot_module, "masked", lambda labels, mask: labels)
+    out = metrics.read(learner.update(runner.store, runner.bootstrap()))
+    assert out["train/skipped_steps"] > 0  # the unread NaN label's gradient

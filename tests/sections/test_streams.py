@@ -13,6 +13,7 @@ from bnb.streams import (
     action_uniforms,
     inverse_cdf,
     keyed_normal,
+    normal,
     row_uniforms,
     stream_generator,
     stream_key,
@@ -28,6 +29,16 @@ def test_keyed_normals_are_standard_and_pure():
     assert torch.isfinite(normal).all()
     assert torch.equal(normal, keyed_normal(key, index))
     assert not torch.equal(normal, keyed_normal(stream_key(1, "test"), index))
+
+
+def test_every_hash_gives_a_finite_normal():
+    """All 2^24 values of the top 24 bits: finite and symmetric. The top one gave +inf
+    before (u rounded to 1 in float32), about twice per update's shot spread."""
+    top = torch.arange(1 << 24, dtype=torch.int64) << 8
+    values = normal(top)
+    assert torch.isfinite(values).all()
+    assert float(values.max()) == -float(values.min()) and 5.0 < float(values.max()) < 5.6
+    assert float(normal(top[: 1 << 23]).max()) < 0 < float(normal(top[1 << 23 :]).min())
 
 
 def test_a_rows_uniforms_are_keyed_by_the_row_and_the_element():

@@ -614,7 +614,8 @@ class Learner:
         rows = torch.arange(visible.shape[-1], device=visible.device) < own
         shooters = rows if self.shot_runs is None else rows | visible
         full = per_ship(self.types.hit_damage, trajectory.capture.launch.ship_type)
-        return shots.labels(shot, drawn, full), shot.valid & shooters
+        mask = shot.valid & shooters
+        return shots.masked(shots.labels(shot, drawn, full), mask), mask
 
     @torch.no_grad()
     def labels(self, trajectory: Trajectory, shot_labels: dict | None) -> dict:

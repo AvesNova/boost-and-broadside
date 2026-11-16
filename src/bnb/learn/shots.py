@@ -340,3 +340,22 @@ def labels(shots: Shots, drawn: torch.Tensor, full_damage: torch.Tensor) -> Shot
         target=shots.target,
         damage=shots.damage / full_damage,
     )
+
+
+def masked(labels: ShotLabels, mask: torch.Tensor) -> ShotLabels:
+    """labels with every shot outside mask (L, R, N) set to a fixed finite label (no flight,
+    no hit, no pass; index 1). The loss reads only masked-in shots, but its masked sum
+    backpropagates zero through every shot's code, and zero times a non-finite label's
+    gradient is NaN: an unread shot's label must be finite, whatever its shooter's state."""
+    keep = mask[..., None, None]
+    rest = torch.zeros_like(labels.snapshots)
+    rest[..., 4] = 1.0
+    return ShotLabels(
+        ages=labels.ages,
+        snapshots=torch.where(keep, labels.snapshots, rest),
+        hit=torch.where(mask, labels.hit, HIT_NONE),
+        distance=torch.where(mask, labels.distance, torch.inf),
+        side=labels.side,
+        target=torch.where(mask, labels.target, -1),
+        damage=torch.where(mask, labels.damage, 0.0),
+    )
