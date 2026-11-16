@@ -304,6 +304,13 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
 - [ ] A periodic copy of the volume to the laptop.
 - [ ] First jobs: 2 arms × 2 seeds (the noise of the difference between arms), and the steps-per-second check of the seed streams.
 
+## Src follow-ups found by the balance sweeps (2026-11-16; fix after the balance round, each one is a cold compile on the box)
+
+- [ ] `imugi_memory.track_boundary` returns `boundary_progress` as a column view of `obs.globals` (stride 15), while `init_carry` makes it contiguous. The second tick of a game recompiles once per process (guard: stride mismatch). Elimination and Frontline are affected; check the training rollout's act stage too (its warm-up ticks may hide it). Make it contiguous.
+- [ ] `handling.shown.top_speed` flies until the store is spent, with a per-tick `bool()` stop. Its time grows with `max_energy` (over 100 s on the laptop CPU for a store ×1.93). The play shell must never stall on a new card: use a vectorised or closed-form stop.
+- [ ] `bench.game_loop.card_passes` (closed-form passes to kill) counts the shield-breaking hit as the kill, one hit short. It also uses the no-core average damage (8/15) where the cards have a 5 m core (17/24).
+- [ ] The harness records no shots fired or hits: add a shots and hits tally, so the reports can show shots per kill and hit rate.
+
 ## Cheap checks (no arm needed)
 
 - [ ] **Seat symmetry (47).** A probe predicting the viewer's team from the trunk's features should score no better than chance. A mirror match, a checkpoint against itself scored by seat, should be 50/50.
