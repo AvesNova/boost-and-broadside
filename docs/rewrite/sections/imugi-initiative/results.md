@@ -61,8 +61,20 @@ boundary in 128 games, Jujak 25). Stick by energy adds merges and kills.
 | elimination-5v5 | .498-.545 | 0.544 ± 0.013 | 0.592 ± 0.014 | 0.539 ± 0.013 | 0.592 ± 0.014 |
 | frontline-5v5 | .491-.513 | 0.481 ± 0.004 | 0.528 ± 0.004 | 0.483 ± 0.004 | 0.507 ± 0.004 |
 
-Point shares follow within 0.01 (data/). The commitment carries the shift; stick by energy alone
-is neutral.
+Point shares follow within 0.015 (data/). The commitment carries the shift; stick by energy alone
+is neutral, and with the commitment it pulls Frontline back into its band (0.528 -> 0.507).
+
+## Recommendation
+
+Adopt both rules for the next BC teacher: the per-tick sense chase is gone (scissors 99.6% -> 1%
+of post-merge windows, 37 -> 1 reversals a window), the fights read as circles, and the 1v1 kills
+come in 9 merges instead of 13. The sustained stick level the BC prior had little of rises.
+The card was trimmed on the old agent, so the commitment moves every team mode toward Yongma by
+0.025-0.05: Frontline 5v5 lands in its band and DM 2v2 closer to it, but DM 5v5 ends 0.007 over
+and elimination 5v5 0.047 over its band. A small Yongma trim (or a re-run of the shield-trim
+sweep with this agent) should follow before the card is frozen. The lone duel is now a
+decided turning fight that the energy fighter loses (Yongma 0.07); its doctrine (extend rather
+than turn) is the place to answer that, not the commitment.
 
 ## Action mix
 
