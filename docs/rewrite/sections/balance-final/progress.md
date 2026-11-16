@@ -567,3 +567,22 @@ edge, where E itself reads 45-50). The vision cards are info only (author). Next
   tested card within 0.07% in every field, so `apply.py --candidates g-handles.json G` writes a
   consistent ship file. probe4 dropped from dm10 (waiting) and FL10 (after its current chunk,
   `/workspace/drop-job.sh`): mostly vision cards now; confirm1 runs next there.
+
+## 16:05 confirm1 (handle cards, 2048 games; 10v10 1024): Q4x0.7 is G
+
+Yongma team's score (SE 1.0-1.6):
+
+| card | dm2 | dm5 | dm10 | el5 | el10 | FL5 | FL10 |
+|---|---|---|---|---|---|---|---|
+| E | 47.5 | 50.7 | 48.1 | 45.3 | 46.9 | 56.4 | 65.1 |
+| **Q4x0.7h (G)** | **50.4** | **51.4** | **45.9** | **48.3** | **49.9** | **45.7** | **53.7** |
+| Q4x0.8h | 49.7 | 51.7 | 45.2 | 48.4 | 46.1 | 44.6 | 54.7 |
+| Q4x1.0h | 49.9 | 48.9 | 38.7 | 47.4 | 48.2 | 40.3 | 48.2 |
+
+- Q4x0.7h is inside 55/45 in all seven (the edges: dm10 45.9 ± 1.5, FL5 45.7 ± 1.1, FL10
+  53.7 ± 1.5); x0.8 has FL5 just outside. The handle version holds the raw probe's result
+  (low-speed acceleration held, so the range rule holds).
+- Aspects and kills a minute as E's in every mode (e.g. dm5 E v T mutual / offset / flank / tail
+  4.0 / 15.6 / 61.7 / 18.7 against E's 4.2 / 14.9 / 61.6 / 19.3; kills/min 8.34 against 8.15).
+- The residual pattern: dm10 and FL5 at the low edge, FL10 at the high edge. grid3 (queued)
+  maps store / shot cost / Jujak shield around Q4x0.8, including closer-shield cards.
