@@ -92,9 +92,7 @@ def figures(options, runs_directory: pathlib.Path) -> None:
             print(f"{name}: skipped (the capture has no record for it)")
             continue
         if name == "trails" and options.still != trails.StillConfig():
-            written, numbers = trails.still(
-                artifact, directory, options.still_name, options.still
-            )
+            written, numbers = trails.still(artifact, directory, options.still_name, options.still)
         else:
             written, numbers = FIGURE_SETS[name](artifact, directory)
         for path in written:

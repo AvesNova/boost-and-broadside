@@ -149,12 +149,13 @@ def about_of(sides: tuple[str, str], labels: list[str], config: MatchConfig, gam
 
 
 @torch.no_grad()
-def record(sides: tuple[str, str], config: MatchConfig) -> dict:
+def record(sides: tuple[str, str], config: MatchConfig, game: GameConfig | None = None) -> dict:
     """Play one game with `sides` (each "imugi" or a policy directory) and return its
-    artifact: `meta` and `match`."""
+    artifact: `meta` and `match`. game: the game in place of the config's preset (a test's
+    small one)."""
     from bnb.play.loop import MatchLoop, MatchSetup
 
-    game = game_of(config)
+    game = game_of(config) if game is None else game
     setup = MatchSetup(game, fogged=config.fogged, seed=config.seed)
     loop = MatchLoop(setup, sides=[None, None], compiled=False)
     loop.sides = _sides(loop, sides, game, config)
@@ -234,7 +235,9 @@ def record(sides: tuple[str, str], config: MatchConfig) -> dict:
         ghost_y=ghost[:, :, 1],
         ghost_sigma=ghost[:, :, 2],
     )
-    labels = [getattr(controller, "label", str(side)) for controller, side in zip(loop.sides, sides)]
+    labels = [
+        getattr(controller, "label", str(side)) for controller, side in zip(loop.sides, sides)
+    ]
     match["about"] = about_of(sides, labels, config, game, loop)
     match["about"]["seconds_taken"] = round(time.perf_counter() - started, 1)
     meta = meta_of(sides, config, game)

@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/figures/, src/bnb/models/yemong/decode.py, src/bnb/play/sides.py]
+covers: [src/bnb/figures/, src/bnb/models/yemong/decode.py, src/bnb/play/sides.py, src/bnb/play/loop.py]
 reviewed: 2026-11-06 16:00
 ---
 
@@ -201,6 +201,58 @@ renormalise the resolved classes, P(win) / (P(win) + P(tie) + P(loss)), as its f
 the result. A skill above zero beats always forecasting the result frequencies; it should
 rise as the end nears. The ticks of one game are strongly correlated, so a capture of few
 games gives a noisy reliability curve: the counts beside each point are ticks, not games.
+
+## `trails`
+
+**The question:** what did each ship do over a whole game, or over one fight: where it
+flew, where it fought and where it died?
+
+The set reads a match record (`bnb.figures.match`), not the rollout: one whole game played
+headless through the play shell's match loop (`bnb.play.loop.MatchLoop`, uncompiled, on
+the CPU), with every tick kept in sim order: each ship's position, heading and life, its
+shots, the hits it took and its death, and every 15 ticks each side's view of the
+enemies it cannot see. A side is Imugi (as the play shell flies it, memory on) or a
+policy, so `--scripted` draws Imugi against Imugi with no policy at all; with `--policy`
+the policy flies team 0 against Imugi (`--match.opponent policy`: against itself) and the
+record joins the capture. A real-scale game takes 2 to 5 minutes on one CPU thread.
+
+<!-- not-runnable: minutes on the CPU -->
+```bash
+bnb figures trails --scripted --match.preset real_scale_deathmatch
+bnb figures trails --scripted --match.preset real_scale_deathmatch --match.ships-per-team 1 \
+    --match.seconds 240
+bnb figures trails --capture figures/captures/match_real_scale_elimination_seed0.pt \
+    --still.start 150 --still.end 175 --still.fog --still.size column --still.formats png pdf
+```
+
+- `trails_game`: the whole game. Each ship's path is a trail in its team's colour (blue,
+  team 0; orange, team 1), its ships stepped light to dark along the team's ramp, the
+  older stretches faded. A dot marks where a life starts, a triangle where the ship is at
+  the window's end, pointing along its nose, and an X where it died. Light ticks across
+  the trail mark each shot the ship fired; small rings, each hit it took. The fields are
+  neutral discs (thick air filled, thin air a dotted ring); the arena's edge is a solid
+  circle, a shrinking boundary (elimination) a dashed one at the window's end.
+- `trails_game_dark`: the same on the dark surface.
+- `trails_busiest`: the 20 s with the most hits and deaths, cropped to them: a turning
+  fight reads as its circles.
+- `trails_fog`, in a game with fog: the 30 s with the most hidden enemies that team 0's
+  view holds a ghost of. A hidden enemy's true path is dashed and faint; every 3 s its
+  ghost is drawn: the mean (a plus) and, for a policy's belief, the one-sigma circle
+  (radius sigma times the square root of two, as in `belief_ghosts`), joined to where the
+  ship really was. Imugi's ghost is its dead-reckoned memory, with no sigma.
+
+One still with any window and look: `--still.start` and `--still.end` (seconds from the
+game's start), `--still.no-crop` (the whole arena, not the action's bounding box), `--still.no-busy`
+(no shot or hit ticks, for a clean picture), `--still.fog`,
+`--still.fog-team`, `--still.ghost-seconds`, `--still.theme` (light or dark),
+`--still.size` (`web`, 1024 px wide; `column`, 3.4 in at 300 dpi for a paper column;
+`page`, 7 in at 300 dpi), `--still.formats` (png, svg, pdf; the PNG carries the
+provenance) and `--still.no-title`; `--still-name` names the files.
+
+**How to read it.** The fade orders time: the faint end of a trail is its past. Ticks
+dense on a stretch are a ship firing through it; rings on a trail are where it was hit.
+In the fog still, a ghost close to the true position with a circle around it is an
+honest belief; a ghost far outside its circle is an overconfident one.
 
 ## Videos
 

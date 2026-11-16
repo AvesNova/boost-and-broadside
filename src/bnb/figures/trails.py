@@ -41,7 +41,9 @@ THEMES = {
         grid=output.GRID,
         field="#8a8984",
     ),
-    "dark": dict(surface="#1a1a19", ink="#ecebe8", muted="#a3a29e", grid="#383835", field="#8f8e89"),
+    "dark": dict(
+        surface="#1a1a19", ink="#ecebe8", muted="#a3a29e", grid="#383835", field="#8f8e89"
+    ),
 }
 SIZES = {  # width (in), dpi, the line width (pt) and the font size (pt)
     "web": (6.4, 160, 1.0, 8.0),
@@ -52,6 +54,7 @@ OLDEST_ALPHA = 0.18  # a trail's oldest stretch, against 1 for its newest
 TELEPORT = 300.0  # m in one tick: a respawn, not flight
 MARGIN = 0.06  # of the cropped view's extent, on every side
 TEAM_NAMES = ("blue team", "orange team")  # team 0's and team 1's, by their colour
+GHOST_CROWD = 2  # hidden enemies at once the fog window favours
 
 
 @dataclasses.dataclass(frozen=True)
@@ -69,7 +72,7 @@ class StillConfig:
     busy: bool = True
     fog: bool = False
     fog_team: int = 0
-    ghost_seconds: float = 2.0
+    ghost_seconds: float = 3.0
     theme: str = "light"
     size: str = "web"
     formats: tuple[str, ...] = ("png",)
@@ -103,13 +106,14 @@ def window_ticks(match: dict, config: StillConfig) -> tuple[int, int]:
 
 def busiest_window(match: dict, tick_length: float, seconds: float, team: int | None = None):
     """(start, end) s of the window of `seconds` with the most hits and deaths (deaths
-    weighted 5); with `team`, also the most enemies hidden from that team's view while it
-    holds a ghost of them."""
+    weighted 5); with `team`, also the enemies hidden from that team's view while it holds
+    a ghost of them (up to GHOST_CROWD at once: more would bury the fight in circles)."""
     activity = match["hit"].numpy().sum(-1) + 5.0 * match["died"].numpy().sum(-1)
     if team is not None:
         hidden = hidden_enemies(match, team)
         held = ~np.isnan(match["ghost_x"].numpy()[:, team])
-        activity = 0.1 * activity + (hidden & held).sum(-1) * _ghost_ticks(match)
+        ghosts = np.minimum((hidden & held).sum(-1), GHOST_CROWD)
+        activity = activity + 0.5 * ghosts * _ghost_ticks(match)
     length = max(1, round(seconds / tick_length))
     if len(activity) <= length:
         return 0.0, (len(activity) - 1) * tick_length
@@ -200,15 +204,26 @@ def _view(points: np.ndarray, arena: float, crop: bool) -> tuple[float, float, f
     return (centre[0] - half[0], centre[0] + half[0], centre[1] - half[1], centre[1] + half[1])
 
 
-def _title(about: dict, first: int, final: int, tick_length: float) -> str:
-    labels = about["labels"]
-    labels = [f"{label} (blue)" if side == 0 else f"{label} (orange)" for side, label in enumerate(labels)]
+def short_label(label: str) -> str:
+    """A side's label for the title: a training checkpoint's as its run and steps."""
+    run, _, step = label.partition("/step_")
+    if step.isdigit():
+        return f"{run} at {int(step) / 1e6:.0f}M steps"
+    return label
+
+
+def _title(about: dict, first: int, final: int, tick_length: float, characters: int) -> str:
+    """The caption: the sides, the game and the window, wrapped to `characters`."""
+    import textwrap
+
+    blue, orange = (short_label(label) for label in about["labels"])
+    sides = f"{blue}, self-play" if blue == orange else f"{blue} (blue) vs {orange} (orange)"
     size = about["ships_per_team"]
     mode = about["preset"].replace("_", " ")
-    return (
-        f"{labels[0]} vs {labels[1]}, {mode} {size}v{size}: "
-        f"{first * tick_length:.0f} to {final * tick_length:.0f} s"
+    text = (
+        f"{sides}, {mode} {size}v{size}: {first * tick_length:.0f} to {final * tick_length:.0f} s"
     )
+    return "\n".join(textwrap.wrap(text, characters))
 
 
 def draw(artifact: dict, config: StillConfig):
@@ -304,7 +319,9 @@ def draw(artifact: dict, config: StillConfig):
             zorder=7,
         )
     if config.busy:
-        size = 0.006 * math.sqrt(max(np.ptp(np.concatenate(points), 0).prod(), 1.0)) if points else 0
+        size = (
+            0.006 * math.sqrt(max(np.ptp(np.concatenate(points), 0).prod(), 1.0)) if points else 0
+        )
         fired = match["fired"].numpy()[first : final + 1]
         for ship in range(count):
             ticks = np.flatnonzero(fired[:, ship]) + first
@@ -353,7 +370,8 @@ def draw(artifact: dict, config: StillConfig):
                 last_drawn[ship] = tick
                 ghost = np.array([ghost_x[tick, ship], ghost_y[tick, ship]])
                 truth = np.array([x[tick, ship], y[tick, ship]])
-                points.append(ghost[None])
+                reach = math.sqrt(2.0) * float(np.nan_to_num(sigma[tick, ship]))
+                points.append(ghost[None] + reach * np.array([[0, 0], [1, 1], [-1, -1]]))
                 numbers["ghosts"] += 1
                 ghost_legend = True
                 axis.plot(
@@ -364,7 +382,6 @@ def draw(artifact: dict, config: StillConfig):
                     alpha=0.7,
                     zorder=3,
                 )
-                axis.plot(*truth, ".", color=colours[ship], markersize=2.0 * line + 1, zorder=4)
                 axis.plot(
                     *ghost,
                     "+",
@@ -422,15 +439,17 @@ def draw(artifact: dict, config: StillConfig):
     aspect = (view[3] - view[2]) / (view[1] - view[0])
     legend_rows = 3 if config.size == "column" else 2
     legend_height = (font * 1.9 * legend_rows + 6) / 72.0
-    title_height = (font * 2.0) / 72.0 if config.title else 0.0
+    title = _title(about, first, final, tick_length, int(width * 72.0 / (0.6 * font)))
+    title_height = (font * 1.4 * (title.count("\n") + 1) + 0.6 * font) / 72.0
+    title_height = title_height if config.title else 0.0
     height = width * aspect + legend_height + title_height
     figure.set_size_inches(width, height)
     axis.set_position((0.0, legend_height / height, 1.0, width * aspect / height))
     if config.title:
         figure.text(
             0.5,
-            1.0 - 0.25 * title_height / height,
-            _title(about, first, final, tick_length),
+            1.0 - 0.3 * font / 72.0 / height,
+            title,
             ha="center",
             va="top",
             fontsize=font + 0.5,
