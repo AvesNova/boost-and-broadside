@@ -26,7 +26,12 @@ and learning together, at steady state after the first compile, from the run's o
 (train/environment_steps_per_second). On the laptop the power profile is recorded with
 each measurement, since it sets the GPU's power limit.
 
-{{pending: throughput_conditions | The commit, the configuration (preset, environments, micro-batch rows) and the power profile of each measurement.}}
+The RTX 5090's numbers are the dry run's, `dry-v24-s1`{.plain}: commit `e643c8f9`{.plain},
+preset `real_scale_all_modes`{.plain}, 2,048 environments, `--micro-batch-rows 480`{.plain},
+one chain of 100M steps of behaviour cloning then 100M of reinforcement learning on a rented
+machine.
+
+{{pending: throughput_conditions_laptop | The RTX 4070 Laptop's measurement: its commit, configuration (micro-batch rows) and power profile.}}
 
 ## One run
 

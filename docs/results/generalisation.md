@@ -12,7 +12,7 @@ depends on the number of ships ([The model](../explanation/yemong.md)). One set 
 plays every team size without retraining; what it learned at the training size may or may
 not carry over.
 
-{{pending: training_team_sizes | The team sizes the measured policy trained at: 5 against 5 alone, or the sizes drawn per game if the team-size arm (A2) was kept.}}
+The measured policy trained at 5 against 5 alone, in all three modes.
 
 ## Win rate by team size
 
