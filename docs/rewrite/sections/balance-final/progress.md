@@ -535,3 +535,13 @@ Kill share minus E's (score), 512 games (dm2 1024):
 - confirm1 (`candidates/make_confirm1.py`): E and Q4 at 0.7 / 0.8 / 1.0 of the step as handle
   cards (Yongma turn handle 1.113 / 1.112 / 1.110, low-speed acceleration held), 2048 games
   (10v10 1024) with 256 mixed, queued ahead of probe4 where the worker had not yet started it.
+
+## 15:15 author's decision: vision stays equal
+
+- Author (2026-11-16, via the coordinator): **both ships keep equal vision** (unequal vision
+  makes scaling the game for human play harder). The vision cards (probe2's store+vision line,
+  probe3's Q1, Q2, Q3, Q5, Jujak vision x0.77 in Q3) are information only, not options. Q4-style
+  cards only: store, shot cost, Jujak shield, turn. If no vision-free card reaches the band, say
+  so rather than bring vision back.
+- probe4's jobs not yet started (dm2, dm10, el5, el10, FL5) moved to queue/*/held (mostly
+  vision cards; confirm1 covers Q4). dm5 and FL10 had already started theirs.
