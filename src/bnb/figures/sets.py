@@ -9,7 +9,7 @@ capture.
 
 from collections.abc import Callable
 
-from . import belief, critic, density, enemy_action, next_state, scenarios, shots
+from . import belief, critic, density, enemy_action, next_state, scenarios, shots, trails
 
 FIGURE_SETS: dict[str, Callable] = {
     "shots": shots.render,
@@ -19,10 +19,16 @@ FIGURE_SETS: dict[str, Callable] = {
     "density": density.render,
     "enemy_action": enemy_action.render,
     "critic": critic.render,
+    "trails": trails.render,
 }
-# The record each head's set reads, by its path in the artifact: absent when the policy
-# does not build the head (`bnb.models.yemong.model.Yemong.auxiliary_heads`).
+# The record each set reads, by its path in the artifact: a head's is absent when the
+# policy does not build the head (`bnb.models.yemong.model.Yemong.auxiliary_heads`); the
+# rollout's and the games' when the artifact is a match record alone (`bnb.figures.match`:
+# Imugi against Imugi), and the match's when the capture played none.
 HEAD_RECORDS: dict[str, tuple[str, ...]] = {
+    "belief": ("rollout",),
+    "critic": ("games",),
+    "trails": ("match",),
     "shots": ("rollout", "shots"),
     "scenarios": ("scenarios",),
     "next_state": ("rollout", "next_state"),

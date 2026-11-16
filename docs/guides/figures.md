@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/figures/, src/bnb/models/yemong/decode.py, src/bnb/play/sides.py]
+covers: [src/bnb/figures/, src/bnb/models/yemong/decode.py, src/bnb/play/sides.py, src/bnb/play/loop.py]
 reviewed: 2026-11-06 16:00
 ---
 
@@ -201,6 +201,64 @@ renormalise the resolved classes, P(win) / (P(win) + P(tie) + P(loss)), as its f
 the result. A skill above zero beats always forecasting the result frequencies; it should
 rise as the end nears. The ticks of one game are strongly correlated, so a capture of few
 games gives a noisy reliability curve: the counts beside each point are ticks, not games.
+
+## `trails`
+
+**The question:** what did each ship do over a whole game, or over one fight: where it
+flew, where it fought and where it died?
+
+The set reads a match record (`bnb.figures.match`), not the rollout: one whole game played
+headless through the play shell's match loop (`bnb.play.loop.MatchLoop`, uncompiled, on
+the CPU), with every tick kept in sim order: each ship's position, heading and life, its
+shots, the hits it took and its death, and every 15 ticks each side's view of the
+enemies it cannot see. A side is Imugi (as the play shell flies it, memory on) or a
+policy, so `--scripted` draws Imugi against Imugi with no policy at all; with `--policy`
+the policy flies team 0 against Imugi (`--match.opponent policy`: against itself) and the
+record joins the capture. A real-scale game takes 2 to 5 minutes on one CPU thread.
+
+<!-- not-runnable: minutes on the CPU -->
+```bash
+bnb figures trails --scripted --match.preset real_scale_deathmatch
+bnb figures trails --scripted --match.preset real_scale_deathmatch --match.ships-per-team 1 \
+    --match.seconds 240
+bnb figures trails --capture figures/captures/match_real_scale_elimination_seed0.pt \
+    --still.start 150 --still.end 175 --still.fog --still.size column --still.formats png pdf
+```
+
+- `trails_game`: the whole game. Each ship's path is a trail in its team's colour (blue,
+  team 0; orange, team 1), its ships stepped light to dark along the team's ramp, the
+  older stretches faded, and an X where it died. That is all a still draws by default;
+  the other marks are opt-in (below). The fields are neutral discs (thick air filled,
+  thin air a dotted ring); the arena's edge is a solid circle, a shrinking boundary
+  (elimination) a dashed one at the window's end.
+- `trails_game_dark`: the same on the dark surface.
+- `trails_opening`: the first 60 s, the approach and the first contact.
+- `trails_busiest`: the 20 s with the most hits and deaths, cropped to them: a turning
+  fight reads as its circles.
+- `trails_fog`, in a game with fog: the 20 s with the most fighting and hidden enemies
+  (up to two at once) that team 0's view holds a ghost of, with the fog marks on (and no
+  others): a hidden enemy's true path dashed and faint and, for the two enemies hidden
+  longest in the window (`--still.ghost-ships`), every 3 s (`--still.ghost-seconds`) its
+  ghost: the mean (a plus) and, for a policy's belief, the one-sigma circle (radius sigma
+  times the square root of two, as in `belief_ghosts`), joined to where the ship really
+  was. Imugi's ghost is its dead-reckoned memory, with no sigma.
+
+One still with any window and look: `--still.start` and `--still.end` (seconds from the
+game's start), `--still.no-crop` (the whole arena, not the action's bounding box); the
+opt-in marks `--still.shots` (a light tick across the trail per shot fired),
+`--still.hits` (a small ring per hit taken), `--still.ends` (a dot where each flight
+starts in the window, a triangle along the nose where it ends) and `--still.fog` (above,
+with `--still.fog-team`, `--still.ghost-ships`, `--still.ghost-seconds`); a still of more
+than one ship a side takes at most two of shots, hits and fog. `--still.theme` (light or
+dark), `--still.size` (`web`, 1024 px wide; `column`, 3.4 in at 300 dpi for a paper
+column; `page`, 7 in at 300 dpi), `--still.formats` (png, svg, pdf; the PNG carries the
+provenance) and `--still.no-title`; `--still-name` names the files.
+
+**How to read it.** The fade orders time: the faint end of a trail is its past. With the
+marks on, ticks dense on a stretch are a ship firing through it; rings on a trail are where
+it was hit.
+In the fog still, a ghost close to the true position with a circle around it is an
+honest belief; a ghost far outside its circle is an overconfident one.
 
 ## Videos
 

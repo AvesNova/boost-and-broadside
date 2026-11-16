@@ -60,6 +60,32 @@ def save(figure, directory: pathlib.Path, name: str, meta: dict, numbers=None) -
     return path
 
 
+def save_formats(
+    figure,
+    directory: pathlib.Path,
+    name: str,
+    meta: dict,
+    numbers=None,
+    formats: tuple[str, ...] = ("png",),
+    dpi: int = 130,
+    facecolor: str = SURFACE,
+) -> list[pathlib.Path]:
+    """Write `figure` as directory/name.<format> for each format (png, svg, pdf) at `dpi`
+    on `facecolor`, the PNG with its provenance in its text chunks; closes it."""
+    import matplotlib.pyplot as plt
+
+    directory = pathlib.Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for kind in formats:
+        path = directory / f"{name}.{kind}"
+        metadata = text_chunks(meta, numbers) if kind == "png" else None
+        figure.savefig(path, dpi=dpi, metadata=metadata, facecolor=facecolor)
+        paths.append(path)
+    plt.close(figure)
+    return paths
+
+
 def new_figure(rows: int = 1, columns: int = 1, size: tuple[float, float] = (6.0, 4.5), **options):
     """A figure of rows x columns axes in the house style (light surface, recessive grid)."""
     import matplotlib.pyplot as plt

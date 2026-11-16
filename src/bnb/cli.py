@@ -23,6 +23,8 @@ import tyro
 
 from bnb.contracts import VALUE_LEVELS
 from bnb.contracts.config import TEAM_DEATHMATCH
+from bnb.figures.match import MatchConfig
+from bnb.figures.trails import StillConfig
 from bnb.figures.video import VideoConfig
 from bnb.league.evaluation_settings import EvaluationConfig
 
@@ -535,6 +537,13 @@ class Figures:
     capture, else figures/); preset, environments, ticks, seed and spread_samples: the
     capture, and game_segments (more segments of the same games, for the critic set:
     `bnb.figures.capture.CaptureConfig`); device; runs_directory: as for bnb train.
+    The trails set draws one game (`bnb.figures.match`): scripted plays it Imugi against
+    Imugi with no policy (`bnb figures trails --scripted`); match: that game
+    (`--match.preset`, `--match.ships-per-team`, `--match.seconds` and so on:
+    `bnb.figures.match.MatchConfig`); still: one still of it in place of the set's
+    defaults when any of its options is given (`--still.start`, `--still.end`,
+    `--still.fog`, `--still.theme`, `--still.size`, `--still.formats` and so on:
+    `bnb.figures.trails.StillConfig`), named still_name.
     """
 
     sets: tyro.conf.Positional[tuple[str, ...]] = ("all",)
@@ -549,6 +558,10 @@ class Figures:
     game_segments: int = 0
     device: str = "cpu"
     runs_directory: str | None = None
+    scripted: bool = False
+    match: MatchConfig = MatchConfig()
+    still: StillConfig = StillConfig()
+    still_name: str = "trails_still"
 
 
 @dataclasses.dataclass(frozen=True)
