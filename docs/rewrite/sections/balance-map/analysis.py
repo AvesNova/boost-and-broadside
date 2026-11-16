@@ -144,7 +144,13 @@ def partial_dependence_plot(models, x, path: pathlib.Path) -> dict:
         swings[axis.handle] = {}
         for column, (condition, model) in enumerate(zip(balance_map.SEARCHED, models, strict=True)):
             result = partial_dependence(
-                model, x, [number], grid_resolution=21, custom_values={number: grid}, kind="average", method="brute"
+                model,
+                x,
+                [number],
+                grid_resolution=21,
+                custom_values={number: grid},
+                kind="average",
+                method="brute",
             )
             average = result["average"][0]
             win = 100.0 / (1.0 + numpy.exp(-balance_map.SLOPES[condition] * average))
