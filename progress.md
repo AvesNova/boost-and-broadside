@@ -468,3 +468,13 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 - Item 6, league: no-flee scripted agents and the fast-chaser ship. ETA ~15:45.
 - Item 7: round 6 (v15) is running in tmux `lethality-r6`; then 10v10 and 0.5x / 2x arena
   spot-checks for the finalists. Item 6's chaser needs a third kind in bench.game_loop to play.
+
+## 2026-11-16 21:45 diag/boundary-deaths (agent)
+- Tried: bench/boundary_deaths.py (eager, wraps api.resolve + Imugi internals) on Y0.46, 4 conditions x 256 games; per-tick CPU traces of 1v1.
+- Found: boundary deaths happen with the edge steer at full weight (w=1) for seconds; the stick flips full-right/full-left in 4-5 tick runs, each flip on a doctrine "sense" tick (post-merge turn sense following the target's turn, applied after the edge steer). Heading stays outward, boosting, ~2 s to death at 216/s.
+- Next: fix = scale the maneuvers' geometry gate by (1 - boundary_weight) (BOUNDARY_OVER_MANEUVERS); before/after on the same 4 conditions.
+
+## 2026-11-16 21:55 diag/boundary-deaths (agent)
+- Tried: baseline Y0.46, 256 games each (DM 300 s): deaths by cause per ship.
+- Found: DM 1v1 99% of deaths are boundary (Y 2.0/game, J 0.6/game; hits 0.01); 2v2 Y 60% boundary, J 36%; 5v5 Y 22%, J 8%; elim 5v5 Y 18%, J 5%. Every crossing has the edge steer at w=1 and a target, ~370 m/s, turn radius ~400 m (margin is ample).
+- Next: after-fix run (BOUNDARY_OVER_MANEUVERS on), ETA 22:10 KST (worst 22:15).

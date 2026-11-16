@@ -7,6 +7,7 @@ recalls (`imugi_memory`), seen or dead reckoned.
 """
 
 import math
+import os
 from typing import NamedTuple
 
 import torch
@@ -59,6 +60,11 @@ MOVING_EDGE = True
 # pushed off allies that come too close.
 SEARCH = "explore"  # decided 2026-11-15 (the author), with the wide spacing
 SEARCH_MODES = ("centre", "straight", "explore")
+# Whether the boundary's steer fades the doctrine's maneuvers (`maneuvers`: the sense and
+# the extensions) by its weight. Off, a post-merge sense near the edge overrides the turn
+# back and, following the target's own turn, flips the committed side every few ticks, so
+# the ship flies on out (diagnosis 2026-11-16, bench/boundary_deaths.py).
+BOUNDARY_OVER_MANEUVERS = os.environ.get("BNB_BOUNDARY_OVER_MANEUVERS", "1") == "1"
 # the cohesion pull: none within COHESION_IN_GUN_RANGE[0] own gun ranges of the team's
 # centre of mass, all of the steer beyond [1]; the separation push: from allies within
 # SEPARATION_IN_GUN_RANGE, growing to all of the steer at none. SPACINGS: the variants
@@ -813,6 +819,8 @@ def maneuvers(
         logistic(distance / fleet.gun_range, doctrine.sense_in_gun_range, temperature),
         0.0,
     )
+    if BOUNDARY_OVER_MANEUVERS:  # the edge steer outranks the maneuvers' forced turn sense
+        geometry_gate = geometry_gate * (1.0 - fleet.boundary_weight)
     # the choice, from the card and the state now (`turn_now`): two circles (the target's
     # own rotation sense) only where my turn rate at my speed is clearly the higher
     # (TWO_CIRCLE_RATE_MARGIN), else one circle (the other sense), where the smaller radius
