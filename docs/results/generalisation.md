@@ -19,20 +19,18 @@ The measured policy trained at 5 against 5 alone, in all three modes.
 {{figure: docs/results/team_size_generalization.png | Win rate against Imugi at each team size, one line per ratio of Imugi's ships to ours (1, 1.5 and 2), one panel per mode, the training size marked}}
 
 Each point is the policy's win rate against Imugi at one lineup, with Wilson's 95%
-interval (a draw counts half a win). The x axis is the policy's ship count; each line is a
-ratio of Imugi's ships to the policy's. Every game plays the preset's own arena at every
-team size.
+interval (a draw counts half a win), from about 128 games per lineup. The x axis is the
+policy's ship count, 1 to 10; each line is a ratio of Imugi's ships to the policy's (1.5 at
+even sizes only). Every game plays the preset's own arena at every team size.
 
 Even numbers, the policy's win rate against Imugi:
 
 | Team size | Frontline | Deathmatch | Elimination |
 |---|---|---|---|
-| 1 against 1 | not played | {{team_size_deathmatch_ratio_1_size_1_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_1_win_rate:.0%}} |
-| 2 against 2 | not played | {{team_size_deathmatch_ratio_1_size_2_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_2_win_rate:.0%}} |
+| 1 against 1 | {{team_size_frontline_ratio_1_size_1_win_rate:.0%}} | {{team_size_deathmatch_ratio_1_size_1_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_1_win_rate:.0%}} |
+| 2 against 2 | {{team_size_frontline_ratio_1_size_2_win_rate:.0%}} | {{team_size_deathmatch_ratio_1_size_2_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_2_win_rate:.0%}} |
 | 5 against 5 | {{team_size_frontline_ratio_1_size_5_win_rate:.0%}} | {{team_size_deathmatch_ratio_1_size_5_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_5_win_rate:.0%}} |
 | 10 against 10 | {{team_size_frontline_ratio_1_size_10_win_rate:.0%}} | {{team_size_deathmatch_ratio_1_size_10_win_rate:.0%}} | {{team_size_elimination_ratio_1_size_10_win_rate:.0%}} |
-
-Frontline is played from 3 against 3 up.
 
 {{pending: generalisation_reading | What the chart shows: whether the win rate holds away from the training size, where it falls, and whether small games (1 against 1, 2 against 2) differ in kind, for example by running the clock out.}}
 

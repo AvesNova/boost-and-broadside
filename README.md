@@ -84,7 +84,7 @@ behaviour cloning and reinforcement learning.
 **Team sizes it did not train at.** Trained at 5 against 5, the same weights play from
 1 against 1 to 10 against 10.
 
-> **Figure to come** (docs/results/team_size_generalization.png): Win rate against Imugi at each team size, one line per ratio of Imugi's ships to ours, one panel per mode
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/results/team_size_generalization_dark.png"><img alt="Win rate against Imugi at each team size, one line per ratio of Imugi's ships to ours, one panel per mode" src="docs/results/team_size_generalization.png"></picture>
 
 > **Pending (generalisation_summary).** One sentence on how the win rate at even numbers holds from 1 against 1 to 10 against 10, with the 10 against 10 values.
 

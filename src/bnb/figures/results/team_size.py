@@ -122,8 +122,9 @@ def draw(
                     f"team_size_{common.slug(mode)}_ratio_{common.slug(ratio)}_size_{size}_win_rate"
                 ] = rate
         axis.set_ylim(-0.02, 1.02)
-        axis.set_xlim(0.5, 20.5)
-        axis.set_xticks([1, 5, 10, 15, 20])
+        largest = max((key[1] for key in tallies if key[0] == mode), default=20)
+        axis.set_xlim(0.5, largest + 0.5)  # the largest team the tallies hold
+        axis.set_xticks([size for size in (1, 5, 10, 15, 20) if size <= largest])
         axis.set_xlabel("our ships", fontsize=8)
         common.label_ends(axis, labelled)
     axes.flat[0].set_ylabel("win rate against Imugi", fontsize=8)
