@@ -13,7 +13,7 @@ from imugi_cases import CHARACTERISTICS, absent, observation, ship, value
 from bnb.contracts import Obs
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.imugi import Imugi, distribution, mode_index
-from bnb.controllers.imugi_combat import TARGET_DOUBT_SECONDS
+from bnb.controllers.imugi_combat import BOOST, TARGET_DOUBT_SECONDS, TARGET_LOST_SECONDS
 from bnb.controllers.imugi_memory import FORGET_WEIGHT, remember, ways_round
 from bnb.controllers.imugi_parameters import (
     MODES,
@@ -267,3 +267,48 @@ def test_the_mode_defaults_lie_within_the_searchs_bounds_and_the_populations_loa
     stored = populations()
     assert set(stored) == set(STANDARD_MODES)
     assert all(len(stored[mode]) == 32 for mode in STANDARD_MODES)
+
+
+def test_a_hidden_committed_target_is_pursued_until_lost():
+    vision = value("vision_range", 0)
+    agent = _agent()
+    away = (150.0, 0.0)  # its prediction runs on out of view
+    both = _view([_enemy(1.2 * vision, velocity=away), _enemy(1.5 * vision)], views=1)
+    carries = _run(agent, [both])
+    assert int(carries[0].target[0, 0]) == 0
+
+    def hidden(since: float) -> Obs:
+        row = _enemy(0.0, visible=False, since=since)
+        return _view([row, _enemy(1.5 * vision)], views=1)
+
+    kept = _run(agent, [hidden(1.0)], carries[0])
+    assert int(kept[0].target[0, 0]) == 0 and bool(kept[0].known[0, 0])
+    lost = _run(agent, [hidden(TARGET_LOST_SECONDS + 0.5)], kept[0])
+    assert int(lost[0].target[0, 0]) == 1
+
+
+def _extension(enemy_type: int, enemy_heading: float) -> tuple[torch.Tensor, torch.Tensor]:
+    """(the carry's extend phase, P(boost)) after one decision: own type 0 at the origin
+    (nose +x, a full store), the target half a gun range behind with an empty store."""
+    gun = value("gun_range", 0)
+    target = ship(
+        x=-0.5 * gun, heading=enemy_heading, ship_type=enemy_type, team_relative=1, energy=0.0
+    )
+    view = _view([target, absent()], views=1)
+    agent = _agent()
+    carry = agent.init_carry(1, CPU)
+    parts, carry = agent.decide(carry, view, torch.ones(1, dtype=torch.bool), torch.arange(1))
+    return carry.extend_phase[0, 0], parts.power[0, 0, BOOST]
+
+
+def test_an_outturned_ship_with_more_energy_extends_after_a_pass_only():
+    # type 0 turns slower than type 1 (the standard card); the target flying away: extend
+    assert value("cruise_speed", 0) > 0 and float(CHARACTERISTICS.turn_rate[0, 2]) < float(
+        CHARACTERISTICS.turn_rate[1, 2]
+    )
+    phase, boost = _extension(1, math.pi)
+    assert float(phase) > 0.0 and float(boost) > 0.9
+    # the target on the tail (flying toward the ship): no extension
+    assert float(_extension(1, 0.0)[0]) == 0.0
+    # a mirror (the same turn rate): it stays in the turn
+    assert float(_extension(0, math.pi)[0]) == 0.0
