@@ -19,7 +19,9 @@ A player flies the stored doctrines (`imugi_doctrines.json`) for Yongma and Juja
 candidate's doctrine for C: its "doctrine" fields over the stored doctrine of its
 "doctrine_base" (jujak by default; "off": the default Doctrine, every element off).
 `--yongma-card` / `--jujak-card` (JSON: field -> factor or {"set": value}) change the
-release cards (the balance agent's adopted changes). Each run also plays the release pair
+release cards (an entry's own "yongma_card" / "jujak_card" override them for its jobs, so one
+run can hold several balance options; a reference for an option is an entry whose card is
+that option's Yongma, flying Yongma's doctrine: its "C v J" is the option's Y v J) (the balance agent's adopted changes). Each run also plays the release pair
 once ("Y v J", variant 0) as the reference. Each candidate's line goes to `--out` as it
 finishes (a candidate already there is skipped, so a stopped run resumes).
 """
@@ -134,8 +136,9 @@ def main() -> None:
         turn = [dict(args.jujak_card)]
         for entry in part:
             c = {name: {"set": value} for name, value in entry["card"].items()}
-            energy += [c, dict(args.yongma_card)]
-            turn += [dict(args.jujak_card), c]
+            # an entry's own opponents ("yongma_card", "jujak_card": a balance option's cards)
+            energy += [c, dict(entry.get("yongma_card", args.yongma_card))]
+            turn += [dict(entry.get("jujak_card", args.jujak_card)), c]
         while len(energy) < K:
             energy.append({})
             turn.append({})

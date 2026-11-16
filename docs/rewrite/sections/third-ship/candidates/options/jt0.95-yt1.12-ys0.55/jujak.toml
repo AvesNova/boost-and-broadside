@@ -1,0 +1,113 @@
+# Jujak: a ship type (bnb.game.ships). The tuning panel in `bnb play` saves
+# it; [card] is solved from [handles], so edit the handles, not the card.
+name = 'Jujak'
+
+[handles]
+# What a designer sets (bnb.game.handling.Handles, SI units), as the ship flies.
+stall_speed = 83.12964425174337
+g_limit = 9.0
+cruise_speed = 316.15585436846834
+climb_time = 269.80083750758234
+ceiling = 497563.2
+low_speed_acceleration = 13.53928225428396
+sustained_turn_rate = 0.7264213167829703
+half_lift_drag = 0.25
+nose_reversal_time = 0.3937061234098994
+dive_acceleration = 40.92301568920662
+zoom_acceleration = -34.87186437287164
+stall_angle = 0.27052603405912107
+vision_range = 1000.0
+zero_lift_drag = 5.80698270078619e-05
+hit_damage = 19.1877
+explosive_share = 0.0
+fire_rate = 30.0
+muzzle_speed = 1712.0
+bullet_spread = 3.0844823457636035
+gun_range = 584.3383178710938
+bullet_drag = 0.0005
+shots_per_store = 865.2401087452062
+max_shield = 79.67646064861042
+shield_recharge_rate = 24.0
+shield_recharge_delay = 3.0
+head_on_fraction = 0.0
+head_on_angle = 0.7853981633974483
+head_on_sharpness = 3.0
+arming_distance = 0.0
+hit_radius = 12.0
+core_radius = 5.0
+spawn_energy = 199025.28000000003
+
+[card]
+# The physics parameters the game reads (bnb.game.ship_types.ShipTypes).
+max_lift_coefficient = 0.005678284447640181
+max_acceleration = 353.1600036621094
+zero_lift_drag = 5.8069828810403123e-05
+engine_power = 11282.396484375
+engine_power_full_store = 2104.3984375
+static_thrust = 49.058109283447266
+max_energy = 497563.1875
+corner_nose_frequency = 11.43338394165039
+max_shield = 79.67646026611328
+hit_radius = 12.0
+core_radius = 5.0
+hit_damage = 19.187700271606445
+muzzle_speed = 1712.0
+bullet_energy_cost = 575.0579223632812
+fire_rate = 30.0
+bullet_life = 0.36666667461395264
+spawn_energy = 199025.28125
+explosive_share = 0.0
+reference_bullet_speed = 1745.64990234375
+bleed_exponent = 2.0
+induced_drag_scale = 0.36945950984954834
+stall_angle_scale = 1.0333333015441895
+coast_exchange_scale = 26.633010864257812
+dive_exchange_scale = 4.1330485343933105
+climb_exchange_scale = 3.4593589305877686
+vision_range_scale = 0.3255208432674408
+bullet_spread_scale = 0.25704020261764526
+bullet_drag_scale = 1.0
+shield_recharge_rate_scale = 2.0
+shield_recharge_delay_scale = 0.5
+head_on_fraction_scale = 0.0
+head_on_angle_scale = 1.0644670724868774
+head_on_sharpness = 3.0
+arming_distance = 0.0
+engine_knee_scale = 1.0
+fine_stick = 0.2132035493850708
+sustained_stick = 0.7106785178184509
+
+[notes]
+# Where each handle's value comes from.
+stall_speed = "vizia's 44.7 x 0.9299: the turn fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+g_limit = "vizia's"
+cruise_speed = "vizia's 162.7 x 0.9716: the turn fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+climb_time = "vizia's 600 x 0.8993: the turn fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+ceiling = "vizia's"
+low_speed_acceleration = "vizia's 2.72797 x 1.2408: the turn fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+sustained_turn_rate = "vizia's 19.29 deg/s x 1.1356: the turn fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4); flight realism (game v8-v11): vizia's 15.70 -> 18.70 -> 21.30 -> 19.29 deg/s the energy-turn balance (docs/rewrite/sections/balance-final/results.md, 2026-11-16): 0.764654 -> 0.726421"
+half_lift_drag = "vizia's"
+nose_reversal_time = "vizia's"
+dive_acceleration = "vizia's 10.902 x 0.9384: the turn fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+zoom_acceleration = "vizia's"
+stall_angle = "vizia's"
+vision_range = "vizia's"
+zero_lift_drag = "vizia's 4.96704e-05 x 1.1691: the turn fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4)"
+hit_damage = "vizia's 8 x 0.9137: the turn fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4) Centre hit (game v6): 7.31 -> 13.71, x 15/8 (the closeness's mean over a uniform impact parameter is 8/15), at the reference distance. the game loop's tuning (docs/rewrite/sections/game-loop/progress.md): 13.7058 -> 2.67263 (Jujak's final card) Game v12 (lethality, docs/explanation/game/physics.md): 2.673 -> 19.19, 21 x the archetype delta 0.9137 (about 6 core hits kill)"
+explosive_share = "proposal: the default, pure kinetic"
+fire_rate = "vizia's"
+muzzle_speed = "vizia's"
+bullet_spread = "vizia's"
+gun_range = "follows from the set's bullet life (vizia's), cruise and muzzle speed"
+bullet_drag = "researched (medium): the .50 cal's, the set's floor (BULLET_DRAG_FLOOR)"
+shots_per_store = "vizia's"
+max_shield = "vizia's 100 x 0.9158: the turn fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4) the game loop's tuning (docs/rewrite/sections/game-loop/progress.md): 91.5821 -> 79.6765 (Jujak's final card)"
+shield_recharge_rate = "the doctrine tuning's armour (docs/rewrite/sections/doctrines/ships.py) Game v12: kept at the old timing (the author, after flying v12)"
+shield_recharge_delay = "the doctrine tuning's armour (docs/rewrite/sections/doctrines/ships.py) Game v12: kept at the old timing (the author, after flying v12)"
+head_on_fraction = "the doctrine tuning's armour (docs/rewrite/sections/doctrines/ships.py) the game loop's tuning (docs/rewrite/sections/game-loop/progress.md): 0.2 -> 0.3 (Jujak's final card) Game v12 (lethality, docs/explanation/game/physics.md): -> 0, no damage dead ahead"
+head_on_angle = "the doctrine tuning's armour (docs/rewrite/sections/doctrines/ships.py) the game loop's tuning (docs/rewrite/sections/game-loop/progress.md): 0.737832 -> 0.368916 (Jujak's final card) Game v12 (lethality, docs/explanation/game/physics.md): -> 45 deg, half damage there"
+head_on_sharpness = "placeholder: the standard fighter's Game v12 (lethality, docs/explanation/game/physics.md): -> 3, a flatter armoured nose"
+arming_distance = "placeholder: the standard fighter's"
+hit_radius = "vizia's 10 x 0.9678: the turn fighter's archetype delta (docs/explanation/game/ship-design/archetypes.md, section 4) Game v12 (lethality, docs/explanation/game/physics.md): 9.678 -> 12, the damage profile's outer radius"
+spawn_energy = "vizia's"
+core_radius = "game v12: full damage inside 5 m, a smoothstep to 0 at the hit radius"
