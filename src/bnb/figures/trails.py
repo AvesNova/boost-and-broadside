@@ -54,6 +54,8 @@ OLDEST_ALPHA = 0.18  # a trail's oldest stretch, against 1 for its newest
 TELEPORT = 300.0  # m in one tick: a respawn, not flight
 MARGIN = 0.06  # of the cropped view's extent, on every side
 TEAM_NAMES = ("blue team", "orange team")  # team 0's and team 1's, by their colour
+BUSY_SECONDS = 90.0  # the longest window drawn with its shot and hit ticks by default
+OPENING_SECONDS = 60.0  # the opening still's window
 GHOST_CROWD = 2  # hidden enemies at once the fog window favours
 
 
@@ -61,7 +63,7 @@ GHOST_CROWD = 2  # hidden enemies at once the fog window favours
 class StillConfig:
     """start, end: the window, seconds from the game's start (None: its first or last
     tick); crop: fit the view to the action's bounding box (else the whole arena); busy:
-    draw the shot and hit ticks; fog: the fog overlay, the hidden enemies as `fog_team`'s
+    draw the shot and hit ticks (None: only in a window of at most BUSY_SECONDS); fog: the fog overlay, the hidden enemies as `fog_team`'s
     view saw them, with a ghost every `ghost_seconds`; theme: "light" or "dark"; size:
     one of `SIZES`; formats: the files written (png, svg, pdf); title: the caption line
     above the view."""
@@ -69,7 +71,7 @@ class StillConfig:
     start: float | None = None
     end: float | None = None
     crop: bool = True
-    busy: bool = True
+    busy: bool | None = None
     fog: bool = False
     fog_team: int = 0
     ghost_seconds: float = 3.0
@@ -239,6 +241,9 @@ def draw(artifact: dict, config: StillConfig):
     width, dpi, line, font = SIZES[config.size]
     tick_length = float(about["tick_length"])
     first, final = window_ticks(match, config)
+    busy = config.busy
+    if busy is None:
+        busy = (final - first) * tick_length <= BUSY_SECONDS
     x, y = match["x"].numpy(), match["y"].numpy()
     heading, alive = match["heading"].numpy(), match["alive"].numpy()
     team = match["team"].numpy()
@@ -318,7 +323,7 @@ def draw(artifact: dict, config: StillConfig):
             path_effects=_halo(3.2 * line, theme["surface"]),
             zorder=7,
         )
-    if config.busy:
+    if busy:
         size = (
             0.006 * math.sqrt(max(np.ptp(np.concatenate(points), 0).prod(), 1.0)) if points else 0
         )
@@ -473,7 +478,7 @@ def draw(artifact: dict, config: StillConfig):
             [], [], marker="x", color=theme["ink"], linestyle="none", markersize=5, label="killed"
         ),
     ]  # fmt: skip
-    if config.busy:
+    if busy:
         handles += [
             Line2D(
                 [], [], marker="o", markerfacecolor="none", markeredgecolor=theme["ink"],
@@ -563,8 +568,8 @@ def still(artifact: dict, directory, name: str, config: StillConfig) -> tuple[li
 
 
 def render(artifact: dict, directory: pathlib.Path) -> tuple[list[pathlib.Path], dict]:
-    """The trail stills: trails_game (the whole record), trails_game_dark, trails_busiest
-    (the busiest 20 s, cropped) and, with fog and ghosts, trails_fog (the busiest 30 s of
+    """The trail stills: trails_game (the whole record), trails_game_dark, trails_opening
+    (the first OPENING_SECONDS), trails_busiest (the busiest 20 s, cropped) and, with fog and ghosts, trails_fog (the busiest 30 s of
     hidden enemies as team 0 saw them)."""
     match = artifact["match"]
     tick_length = float(match["about"]["tick_length"])
@@ -572,6 +577,7 @@ def render(artifact: dict, directory: pathlib.Path) -> tuple[list[pathlib.Path],
     stills = {
         "trails_game": StillConfig(),
         "trails_game_dark": StillConfig(theme="dark"),
+        "trails_opening": StillConfig(end=OPENING_SECONDS),
     }
     start, end = busiest_window(match, tick_length, 20.0)
     stills["trails_busiest"] = StillConfig(start=start, end=end)

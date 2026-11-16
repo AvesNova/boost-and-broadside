@@ -232,7 +232,10 @@ bnb figures trails --capture figures/captures/match_real_scale_elimination_seed0
   the trail mark each shot the ship fired; small rings, each hit it took. The fields are
   neutral discs (thick air filled, thin air a dotted ring); the arena's edge is a solid
   circle, a shrinking boundary (elimination) a dashed one at the window's end.
+  A window longer than 90 s leaves the shot and hit ticks out unless `--still.busy`
+  asks for them: over a whole game they bury the paths.
 - `trails_game_dark`: the same on the dark surface.
+- `trails_opening`: the first 60 s, the approach and the first contact.
 - `trails_busiest`: the 20 s with the most hits and deaths, cropped to them: a turning
   fight reads as its circles.
 - `trails_fog`, in a game with fog: the 30 s with the most hidden enemies that team 0's
@@ -242,8 +245,9 @@ bnb figures trails --capture figures/captures/match_real_scale_elimination_seed0
   ship really was. Imugi's ghost is its dead-reckoned memory, with no sigma.
 
 One still with any window and look: `--still.start` and `--still.end` (seconds from the
-game's start), `--still.no-crop` (the whole arena, not the action's bounding box), `--still.no-busy`
-(no shot or hit ticks, for a clean picture), `--still.fog`,
+game's start), `--still.no-crop` (the whole arena, not the action's bounding box), `--still.busy` or
+`--still.no-busy` (the shot and hit ticks on or off; by default on in a window of at most
+90 s), `--still.fog`,
 `--still.fog-team`, `--still.ghost-seconds`, `--still.theme` (light or dark),
 `--still.size` (`web`, 1024 px wide; `column`, 3.4 in at 300 dpi for a paper column;
 `page`, 7 in at 300 dpi), `--still.formats` (png, svg, pdf; the PNG carries the
