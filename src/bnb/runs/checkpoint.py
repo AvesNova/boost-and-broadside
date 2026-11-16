@@ -555,6 +555,7 @@ def _restore(
             trainer.opponents.load_state_dict(
                 tree_from_named(trainer.opponents.state_dict(), stored, "opponents.")
             )
+        stored = with_staggered_default(stored, trainer.rollout.environments)
         trainer.rollout.load_carry(tree_from_named(trainer.rollout.saved_carry(), stored, "carry."))
         for name, generator in _generators(trainer).items():
             generator.set_state(stored[f"generator.{name}"])
@@ -562,6 +563,20 @@ def _restore(
         if trainer.stop_rule is not None:
             trainer.stop_rule = StopRule(trainer.config.stop, record["stop_rule"])
         _restore_teacher_carry(trainer, stored)
+
+
+STAGGERED = "carry.staggered"
+
+
+def with_staggered_default(stored: dict[str, torch.Tensor], environments: int) -> dict:
+    """`stored` with the rollout's staggered flags all False where it has none.
+    Compatibility, temporary: checkpoints written before the flags (1dd28782, 2026-11-17),
+    such as the dry run's, resume on the newer code. Every environment of such a run is past
+    its first, staggered game in practice, so its games count. Remove once no such
+    checkpoint is resumed."""
+    if STAGGERED in stored or not any(name.startswith("carry.") for name in stored):
+        return stored
+    return {**stored, STAGGERED: torch.zeros(environments, dtype=torch.bool)}
 
 
 def _restore_teacher_carry(trainer: Trainer, stored: dict[str, torch.Tensor]) -> None:

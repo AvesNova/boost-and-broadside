@@ -17,7 +17,7 @@ from bnb.game import api
 from bnb.game.layout import environment, slices
 from bnb.learn import rewards
 from bnb.models.relational import RelationalConfig
-from bnb.runtime import analytics, metrics
+from bnb.runtime import metrics
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
@@ -562,7 +562,7 @@ def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
     )
     trainer = Trainer(cfg, torch.device("cpu"))
     store, bootstrap = trainer.collect()
-    series = metrics.read(trainer.analytics.shard(store.shard(analytics.NAMES, 0)))
+    series = metrics.read(trainer.analytics.results(trainer.rollout.take_results()))
     assert {name.removeprefix("episode/wins/") for name in series if "episode/wins/" in name} == (
         set(GAMES)
     )

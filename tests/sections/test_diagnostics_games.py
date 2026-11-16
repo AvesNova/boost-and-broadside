@@ -236,3 +236,69 @@ def test_a_rollouts_game_sums_agree_with_its_counters(global_generator):
     assert resolve["environment_ticks"] == runner.environments * runner.length
     assert tables is not None and tables["calibration"][:, 0].sum() > 0
     assert math.isfinite(resolve["speed"]) and resolve["alive_ship_ticks"] > 0
+
+
+def test_the_staggered_first_games_stay_out_of_the_logged_outcomes():
+    """Each environment's first game, begun at a staggered clock, ends in the records (it
+    trains) but stays out of the logged results and episode sums, which count every later
+    game, in the segments and the lookahead alike."""
+    from bnb.contracts import GameConfig, Pool
+    from bnb.controllers.scripted import Random
+    from bnb.game import api
+    from bnb.runtime.rollout import Rollout
+
+    config = GameConfig(2, 2, 1500.0, episode_seconds=1.0, respawn_seconds=1.0)
+    environments, length = 8, 8
+    rollout = Rollout(
+        config,
+        api.ship_types(),
+        (Pool("self_play", 1.0, ("r", "r")),),
+        {"r": Random(config.ships_per_team)},
+        "r",
+        environments,
+        length,
+        torch.device("cpu"),
+        compiled=False,
+        extra_reads=("globals",),  # a stored observation, for the lookahead's shot records
+        lookahead=4 * length,
+    )
+    staggered = rollout.carry["clock"] > 0
+    assert staggered.any()
+    view_environment = rollout.lineup.environments["r"]
+    done, result = [], []
+    for _ in range(12):
+        trajectory = rollout.run()
+        done.append(trajectory.done.clone())
+        result.append(trajectory.result.clone())
+    # the lookahead's ticks end games too (the next segment continues after them); it keeps
+    # no results, so its games are checked by count
+    rollout.run_lookahead()
+    done, result = torch.cat(done), torch.cat(result)  # (ticks, R)
+    done = torch.cat([done, rollout.store.lookahead(("done",))["done"]])
+    played = result.shape[0]
+    expected = torch.zeros((done.shape[1], 3))
+    later = torch.zeros(done.shape[1])  # the lookahead's counted ends per view
+    skipped = 0
+    for view in range(done.shape[1]):
+        ends = done[:, view].nonzero().flatten().tolist()
+        if staggered[view_environment[view]] and ends:
+            ends, skipped = ends[1:], skipped + 1
+        for tick in ends:
+            if tick >= played:
+                later[view] += 1
+                continue
+            outcome = int(result[tick, view])
+            expected[view, 0 if outcome > 0 else 1 if outcome == 0 else 2] += 1
+    assert skipped > 0 and expected.sum() > 0, "the case should end first and later games"
+    assert later.sum() > 0, "the case should end games in the lookahead"
+    results = rollout.take_results()
+    torch.testing.assert_close(results.sum(-1), expected.sum(-1) + later, rtol=0, atol=0)
+    assert (results >= expected).all()
+    expected = results
+    # the episode sums count each environment's games once (self-play: two views of one)
+    ends = rollout.take_episodes()[:, 0]
+    assert float(ends.sum()) * 2 == float(expected.sum())
+    # the records keep every game: training reads the cut-short ones as well
+    assert int(done.sum()) == int(expected.sum()) + skipped
+    # and the flags clear at the first reset
+    assert not rollout.carry["staggered"].any()
