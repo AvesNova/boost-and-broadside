@@ -107,3 +107,13 @@ def test_the_readme_is_the_rendered_template():
     assert pages.README.read_text() == text, (
         "README.md is not README.template.md rendered: run "
         "uv run --no-sync python docs/hooks/placeholders.py readme")
+
+
+def test_the_values_file_comes_from_the_environment(monkeypatch, tmp_path):
+    example = tmp_path / "example.json"
+    example.write_text('{"elo_example": 1234.5}')
+    monkeypatch.setenv("BNB_RESULTS_VALUES", str(example))
+    assert PLACEHOLDERS.values_path() == example
+    assert PLACEHOLDERS.render("{{elo_example:.0f}}", "page.md")[0] == "1234"
+    monkeypatch.delenv("BNB_RESULTS_VALUES")
+    assert PLACEHOLDERS.values_path() == PLACEHOLDERS.VALUES

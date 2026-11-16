@@ -55,7 +55,7 @@ behaviour-cloning teacher and the anchor of every rating (Imugi = 1000 Elo).
 
 ## The model
 
-> **Figure to come** (docs/images/architecture/overview-horizontal.svg): Yemong: the observation's tokens through blocks of spatial attention across ships and temporal recurrence per ship, to per-ship heads
+![Yemong: the observation's tokens through blocks of spatial attention across ships and temporal recurrence per ship, to per-ship heads](docs/images/architecture/overview-horizontal.svg)
 
 Yemong is one network that commands the whole fleet. Each tick, a spatial layer of
 attention mixes the ships, the map's fields and zones; a temporal layer of recurrence
