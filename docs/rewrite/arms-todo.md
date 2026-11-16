@@ -345,3 +345,8 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
 - Self-play: train both sides, or one side with more environments and "latest" as a league member at a fixed share.
 - Clipping against DPPO (before the learning-rate arm).
 - The rest of the numbered list in [ideas.md](ideas.md), with the comments from 2026-11-14.
+
+### 2026-11-17 W&B key on the boxes
+- The author's W&B key lives on the laptop at `~/.config/bnb/wandb.key` (600) and is copied to each box as `/workspace/secrets.env` (600, `export WANDB_API_KEY=...`), which env.sh sources (box/setup.sh writes that line). Never committed: `.gitignore` covers `secrets.env` and `*.key`. `box/dry_run.sh` passes `--wandb` and refuses to launch without a key.
+- **After the runs (checklist):** delete `/workspace/secrets.env` on every box, and the author revokes the key in W&B.
+- dry-v24-s1 itself launched without W&B; it is mirrored from the laptop (`bnb runs mirror`, unit `bnb-wandb-mirror`).
