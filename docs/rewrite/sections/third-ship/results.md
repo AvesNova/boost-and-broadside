@@ -186,17 +186,17 @@ another option's pair with its Bonghwang trim (the option's Yongma and Jujak fil
 from tune/balance-final into `candidates/options/`):
 
 ```bash
-cd docs/rewrite/sections/third-ship
+# from the worktree root; the candidate paths are relative to docs/rewrite/sections/third-ship
+A=docs/rewrite/sections/third-ship/apply.py
 # E (Jujak turn x0.95, Yongma turn x1.12, Yongma shield x0.55) with its Bonghwang:
-PYTHONPATH=$PWD/../../../../src .venv/bin/python apply.py candidates/finals1.json \
-    "E:Bt70-d1.1-s90" candidates/finals1.json "E:Bt70-d1.1-s90" --option jt0.95-yt1.12-ys0.55
+PYTHONPATH=$PWD/src:$PWD .venv/bin/python $A candidates/finals1.json "E:Bt70-d1.1-s90" \
+    candidates/finals1.json "E:Bt70-d1.1-s90" --option jt0.95-yt1.12-ys0.55
 # back to A:
-PYTHONPATH=... apply.py candidates/trim1.json B-d1.2-s115 candidates/trim1.json B-d1.2-s115
+PYTHONPATH=$PWD/src:$PWD .venv/bin/python $A candidates/trim1.json B-d1.2-s115 \
+    candidates/trim1.json B-d1.2-s115
 ```
 
-(from the worktree root: `PYTHONPATH=$PWD/src:$PWD .venv/bin/python
-docs/rewrite/sections/third-ship/apply.py ...`; the paths after it are relative to the
-third-ship folder.) A changed card needs the game reference re-recorded before the quick
+A changed card needs the game reference re-recorded before the quick
 tests pass (`python -m tests.sections.test_game_version --write`).
 
 **Flying it.** Stay fast and work the engine: Bonghwang's drag punishes coasting, and its
