@@ -255,7 +255,7 @@ def predicted_pairs(models, cards, jujak_ability, count: int, pool_size: int = 4
     condition's win-equivalent gap between the two (from the logit difference); among pairs
     with predicted imbalance under 3 points and the time to kill in the band both ways, the
     farthest apart in coordinates, greedily (each card in at most one pair)."""
-    ids = list(cards)
+    ids = [i for i in cards if i.startswith("s")]  # the study's own cards (confirmable)
     x = numpy.array([cards[i]["x"] for i in ids])
     ability = numpy.stack([models[c]["f"].predict(x) - jujak_ability[c] for c in CONDITIONS], -1)
     slopes = numpy.array([balance_map.SLOPES[c] for c in CONDITIONS])
