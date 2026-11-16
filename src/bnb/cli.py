@@ -655,7 +655,10 @@ class FiguresResults:
     `bnb crossover` results (`<run>/step_<n>/artifacts/crossover/...`); `arms`, a forest
     input (JSON or CSV); `team-size`, game tallies (`<preset>.batches.jsonl` files or
     directories); `health`, a run directory, its metrics.jsonl or `wandb:ENTITY/PROJECT/ID`
-    (several: a chain, BC first); `game-length`, per-game JSONL files.
+    (several: a chain, BC first); `game-length`, per-game JSONL files; `behaviour`,
+    `throughput` and `lanes`, a chain's run directories, BC first (the training's own
+    records: the play over training, steps per second on `--gpu` with the other GPUs' from
+    the values file, the training lanes' ratings).
 
     modes: the modes drawn (fan, team-size; default all found); policy_count and
     opponent_counts: the fan's lineups (5 against each); chain: break-even's chain when the
@@ -664,12 +667,22 @@ class FiguresResults:
     """
 
     chart: tyro.conf.Positional[
-        Literal["fan", "break-even", "arms", "team-size", "health", "game-length"]
+        Literal[
+            "fan",
+            "break-even",
+            "arms",
+            "team-size",
+            "health",
+            "game-length",
+            "behaviour",
+            "throughput",
+            "lanes",
+        ]
     ]
     sources: tyro.conf.Positional[tuple[str, ...]]
     out: str = "docs/results"
     values: str = "docs/results/values.json"
-    formats: tuple[str, ...] = ("png", "pdf")
+    formats: tuple[str, ...] = ("png", "pdf", "svg")
     modes: tuple[str, ...] = ()
     policy_count: int = 5
     opponent_counts: tuple[int, ...] = (5, 6, 8, 10)
@@ -677,6 +690,7 @@ class FiguresResults:
     ratios: tuple[float, ...] = (1.0, 1.5, 2.0)
     trained_team_size: int = 5
     samples: int = 1000
+    gpu: str = "rtx_5090"
 
 
 @dataclasses.dataclass(frozen=True)

@@ -8,8 +8,9 @@ reviewed: 2026-11-16 23:30
 `bnb figures results CHART SOURCE ...` draws one chart of the write-up's results from
 records the runs and the measurements already write. Each chart is a PNG, with its
 provenance (the render's commit, command line and time, the sources read and the numbers
-shown) in its PNG text chunks, plus a PDF for the paper (`--formats png svg` for SVG
-instead). The output goes to `--out` (`docs/results/`{.plain} by default). Each chart's numbers are
+shown) in its PNG text chunks, in the theme's light variant and a dark one beside it
+(`_dark`{.plain} before the extension; `bnb.figures.theme`), plus the light variant fitted to
+the paper's page width as a PDF and an SVG (`--formats` picks among png, pdf and svg). The output goes to `--out` (`docs/results/`{.plain} by default). Each chart's numbers are
 merged into the values file (below). Needs the tools extra (matplotlib).
 
 <!-- not-runnable: needs a run's records -->
@@ -20,11 +21,15 @@ bnb figures results arms docs/results/arms.json
 bnb figures results team-size $OUT/team-sizes            # *.batches.jsonl below it
 bnb figures results health runs/r0-bc runs/r0-rl         # or wandb:ENTITY/PROJECT/ID
 bnb figures results game-length games/*.jsonl
+bnb figures results behaviour runs/r0-bc runs/r0-rl      # the training's own records
+bnb figures results throughput runs/r0-bc runs/r0-rl --gpu rtx_5090
+bnb figures results lanes runs/r0-bc runs/r0-rl
 ```
 
-The house style: lines and densities, not bars; the modes in a fixed order and colour
-(frontline blue, deathmatch orange, elimination green); ratios on the viridis ramp, lowest
-darkest; no second y axis; up to four lines labelled at their ends, a legend beyond that.
+The house style (the [figure style](../contributing/writing-docs.md#figure-style)): lines
+and densities, bars only for throughput; the modes in one order and colour (frontline blue,
+deathmatch orange, elimination green); ratios on the viridis ramp, lowest darkest; no second
+y axis; up to four lines labelled at their ends, a legend beyond that.
 
 ## The charts and their inputs
 
@@ -96,6 +101,22 @@ decided before it, and their share is in the legend. The sources are JSONL files
 per line, `{"mode": "deathmatch", "seconds": 212.4, "clock_seconds": 360}` (`preset` in
 place of `mode` works too), or one line per mode with `"lengths": [...]`.
 
+**`behaviour`**: the policy's play over training from the chain's own metrics, one line
+per mode: kills per ship-minute, game length, the share of deaths to the boundary, the hit
+rate (hits per shot), the front's moves per minute (frontline) and the mean speed. The games
+are the training's (cloning's student games, then self-play and the league), so the chart
+shows how the play changed, not how strong it is. The sources are the chain's run
+directories, BC first.
+
+**`throughput`**: environment steps per second, whole updates, per stage and GPU: the
+median over the updates after the first (which compiles). `--gpu` names the GPU of the
+chain in the sources; the other GPUs' numbers come from the values file, and a missing one
+is an empty slot marked pending.
+
+**`lanes`**: the training lanes' ratings against Imugi (1000) per mode, the live policy and
+its exponential average with its standard error: the training's own live ratings, not the
+evaluation's.
+
 ## The values file
 
 Each chart merges the numbers it shows into one flat JSON object, `docs/results/values.json`{.plain}
@@ -111,4 +132,7 @@ names, with `<mode>` one of `frontline`, `deathmatch`, `elimination`:
 | `arms` | `arm_<key>_score`, `_low`, `_high`; `seed_noise_score`{.plain}, `_low`, `_high` |
 | `team-size` | `team_size_<mode>_ratio_<k>_size_<n>_win_rate`, k written 1, 1_5, 2 |
 | `health` | `health_<key>_final`: the key's mean over the last twentieth of the last source, the key in lower case with underscores (`health_policy_clip_fraction_final`{.plain}) |
+| `behaviour` | `behaviour_<mode>_<panel>_<stage>_final`: the mean over the stage's last five updates, the panel's title as a slug (`behaviour_elimination_hit_rate_rl_final`{.plain}) |
+| `throughput` | `throughput_<gpu>_<stage>_steps_per_second`, `chain_hours_<gpu>_<stage>`, `compile_minutes_<gpu>` (both stages' first updates over their median update) |
+| `lanes` | `lanes_<mode>_<live or average>_final`, `_final_stderr` |
 | `game-length` | `game_length_<mode>_median_seconds`, `_lower_quartile_seconds`, `_upper_quartile_seconds`, `_games`, `_clock_out_share` |

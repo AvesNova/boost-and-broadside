@@ -284,3 +284,70 @@ def test_the_theme_variants_differ_and_restore():
     assert theme.active() == "light" and theme.suffix() == ""
     assert all(a != b for a, b in zip(light, dark, strict=True))
     assert common.MODES == theme.MODE_ORDER == ("frontline", "deathmatch", "elimination")
+
+
+def _synthetic_chain(root: pathlib.Path) -> list[pathlib.Path]:
+    """A BC run and an RL run with the keys the training charts read."""
+    runs = []
+    start = 0
+    for stage, rows in (("bc", 4), ("rl", 4)):
+        directory = root / f"chain-{stage}"
+        directory.mkdir(parents=True)
+        (directory / "run.json").write_text(json.dumps({"name": f"chain-{stage}", "hours": 1.5}))
+        lines = []
+        for update in range(rows):
+            steps = (update + 1) * 1_000_000
+            row = {
+                "counters/environment_steps": steps,
+                "counters/chain_environment_steps": start + steps,
+                "train/environment_steps_per_second": 20000.0 + update,
+                "train/time/update_seconds": 150.0 if update == 0 else 50.0,
+                "frontline/front_moves_per_environment_minute": 0.5,
+                "physics/speed_metres_per_second": 250.0,
+            }
+            for mode, preset in (
+                ("frontline", "real_scale_frontline"),
+                ("team_deathmatch", "real_scale_deathmatch"),
+                ("elimination", "real_scale_elimination"),
+            ):
+                row[f"combat/deaths_per_ship_minute/{mode}"] = 0.3
+                row[f"episode/count/{preset}/self_play"] = 10
+                row[f"episode/length_seconds/{preset}/self_play"] = 120.0
+                for event, value in (
+                    ("boundary_deaths", 1.0),
+                    ("combat_deaths", 3.0),
+                    ("hits", 40.0),
+                    ("shots_fired", 100.0),
+                ):
+                    row[f"episode/event/{event}/{preset}/self_play"] = value
+                if stage == "rl":
+                    row[f"rating/live/{preset}"] = 1200.0 + update
+                    row[f"rating/live_stderr/{preset}"] = 30.0
+                    row[f"rating/average/{preset}"] = 1100.0 + update
+                    row[f"rating/average_stderr/{preset}"] = 25.0
+            lines.append(json.dumps(row))
+        (directory / "metrics.jsonl").write_text("\n".join(lines) + "\n")
+        start += rows * 1_000_000
+        runs.append(directory)
+    return runs
+
+
+def test_the_training_charts_read_a_chain(tmp_path):
+    from bnb.figures.results import training
+
+    chain = _synthetic_chain(tmp_path / "runs")
+    written, values = training.draw_behaviour(chain, tmp_path / "out")
+    _drawn(written)
+    assert values["behaviour_frontline_deaths_to_the_boundary_rl_final"] == pytest.approx(0.25)
+    assert values["behaviour_elimination_hit_rate_bc_final"] == pytest.approx(0.4)
+    written, values = training.draw_throughput(
+        chain, tmp_path / "out", others={"laptop_4070": {"bc": None, "rl": None}}
+    )
+    _drawn(written)
+    assert values["throughput_rtx_5090_bc_steps_per_second"] == pytest.approx(20002.0)
+    assert values["throughput_laptop_4070_rl_steps_per_second"] is None
+    assert values["compile_minutes_rtx_5090"] == pytest.approx(2 * 100.0 / 60)
+    assert values["chain_hours_rtx_5090_rl"] == 1.5
+    written, values = training.draw_lanes(chain, tmp_path / "out")
+    _drawn(written)
+    assert values["lanes_deathmatch_live_final"] == 1203.0

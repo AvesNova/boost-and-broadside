@@ -1,10 +1,23 @@
 """What `bnb figures results` does: draw one chart from its sources, write it (PNG with its
 provenance, and the vector formats), and merge its numbers into the values file."""
 
-from .. import theme
-from . import arms, break_even, common, fan, game_length, health, team_size
+import json
+import pathlib
 
-CHARTS = ("fan", "break-even", "arms", "team-size", "health", "game-length")
+from .. import theme
+from . import arms, break_even, common, fan, game_length, health, team_size, training
+
+CHARTS = (
+    "fan",
+    "break-even",
+    "arms",
+    "team-size",
+    "health",
+    "game-length",
+    "behaviour",
+    "throughput",
+    "lanes",
+)
 
 
 def results(options) -> None:
@@ -57,6 +70,28 @@ def _draw(options) -> tuple[list, dict]:
         written, values = health.draw(sources, options.out, options.samples, formats=formats)
     elif options.chart == "game-length":
         written, values = game_length.draw(sources, options.out, formats)
+    elif options.chart == "behaviour":
+        written, values = training.draw_behaviour(sources, options.out, formats)
+    elif options.chart == "throughput":
+        written, values = training.draw_throughput(
+            sources, options.out, options.gpu, _other_gpus(options), formats
+        )
+    elif options.chart == "lanes":
+        written, values = training.draw_lanes(sources, options.out, formats)
     else:
         raise SystemExit(f"unknown chart {options.chart!r}; choose from {CHARTS}")
     return written, values
+
+
+def _other_gpus(options) -> dict:
+    """The other GPUs' steps per second from the values file (a null is a pending slot)."""
+    path = pathlib.Path(options.values) if options.values else None
+    held = json.loads(path.read_text()) if path and path.exists() else {}
+    others = {}
+    for gpu in training.GPUS:
+        if gpu != options.gpu:
+            others[gpu] = {
+                stage: held.get(f"throughput_{gpu}_{stage}_steps_per_second")
+                for stage in training.STAGES
+            }
+    return others
