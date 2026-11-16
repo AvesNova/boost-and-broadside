@@ -304,7 +304,7 @@ shield, the game seconds, the kills) into `--out`; a game filmed before is not p
 again. It then picks the clip (`bnb.figures.hero.pick`): a win for the policy, ended
 between 30 and 120 s, with at least 2 of its ships left, at least one lost and its
 survivors' mean shield at least a quarter; the nearest a middle game among those, else the
-win that misses the fewest rules (said so in `chosen.json`). The clip becomes a
+win that misses the fewest rules (said so in `chosen.json`{.plain}). The clip becomes a
 palette-optimised GIF of at most 24 s at 12 frames a second (a longer clip plays faster),
 640 px wide or narrower until it is under 10 MB (a 194 s game came to 490 px), with its last
 frame as a PNG poster beside it:
