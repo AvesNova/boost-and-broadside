@@ -179,6 +179,10 @@ def test_break_even_draws_one_line_per_mode_of_the_chain(tmp_path):
     assert values["crossover_ratio_elimination"] > 0.0
     with pytest.raises(SystemExit, match="no crossover results"):
         break_even.draw(tmp_path / "empty", tmp_path / "out")
+    by_run = break_even.draw(directory, tmp_path / "out", chain="r-rl")[1]  # a run names its chain
+    assert by_run == values
+    with pytest.raises(SystemExit, match="no chain"):
+        break_even.draw(directory, tmp_path / "out", chain="other")
 
 
 def test_the_arms_forest_reads_rows_and_marks_decisions(tmp_path):

@@ -35,8 +35,10 @@ def draw(
         raise SystemExit(f"no crossover results with a crossing below {directory}")
     if chain is None and len(chains) > 1:
         raise SystemExit(f"several chains below {directory}: {chains}; pick one with --chain")
-    chain = chain or chains[0]
+    chain = chain_name(chain) if chain else chains[0]
     points = [point for point in points if chain_name(point["run"]) == chain]
+    if not points:
+        raise SystemExit(f"no chain {chain!r} below {directory}: {chains}")
     offsets = chain_offsets(points)
     figure, axes = common.new_figure(1, 1, size=(6.4, 3.8))
     axis = axes[0, 0]
