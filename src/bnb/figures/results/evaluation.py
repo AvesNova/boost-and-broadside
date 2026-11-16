@@ -134,7 +134,13 @@ def draw_elo(path, out, formats=common.FORMATS, name="elo_over_training"):
     axis.set_xlabel("environment steps (M)", fontsize=8)
     axis.set_ylabel("Elo against Imugi (Imugi = 1000)", fontsize=8)
     common.label_ends(axis, lines)
-    common.title(figure, "Strength over training, 5 against 5 (the averaged weights; live dotted)")
+    has_live = any(row["kind"] == LIVE for row in rows)
+    common.title(
+        figure,
+        "Strength over training, 5 against 5: the averaged weights"
+        + ("; live dotted" if has_live else "")
+        + "; a triangle is a bound (every game, or nearly, one way)",
+    )
     figure.tight_layout(rect=(0, 0, 1, 0.95))
     written = common.save(figure, out, name, [str(path)], values, formats)
     return written, values

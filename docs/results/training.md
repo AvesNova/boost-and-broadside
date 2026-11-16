@@ -26,8 +26,10 @@ elimination, at 5 ships a side.
 {{figure: docs/results/elo_over_training.png | Elo against environment steps, one line per mode, Imugi at 1000, the hand-off from behaviour cloning to reinforcement learning marked}}
 
 Each point is one snapshot of the run, rated against Imugi and the run's other snapshots in
-the shared rating pool ([How it is measured](evaluation.md#elo)). The snapshots are taken
-every 5M steps to 50M, then at an interval that doubles each time the steps double.
+the shared rating pool ([How it is measured](evaluation.md#elo)), 5 against 5. The
+snapshots are taken at 1, 2, 3, 4, 6, 8, 10, 12 and 16M steps into each stage, then every
+5M. A triangle is a bound: the snapshot won (or lost) every game, or nearly every game,
+against the pool, so its rating has no finite estimate. The band is one standard error.
 
 | Mode | After behaviour cloning | After reinforcement learning |
 |---|---|---|
