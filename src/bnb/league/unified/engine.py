@@ -103,7 +103,6 @@ WINDOW_SLACK = 1.5
 # games are long (elimination's mid-BC games run 150-220 game seconds), so the next windows
 # play beside them rather than after a barrier
 WINDOW_AHEAD = 1
-WINDOW_CAP = 2  # a lane's capacity: at most this many even shares
 TICKETS = ("kills_per_ship", "ticket_exponent", "ticket_rounding")
 
 
@@ -276,7 +275,7 @@ class BucketEngine:
         residents: int | None = RESIDENTS,
         rules: dict[str, tuple[bool, bool]] | None = None,
         stream: list[str] | None = None,
-        windows: tuple[int, int] | None = None,
+        windows: tuple[int, int, int | None] | None = None,
         log=None,
     ) -> None:
         self.bucket, self.planner, self.device = bucket, planner, device
@@ -413,7 +412,7 @@ class BucketEngine:
         """The fixed windows of the streaming order and their one run of lanes (one lane a
         window place, the capacity from the design's counts, `WINDOW_SLACK`), the first
         window with games seated."""
-        size, overlap = windows
+        size, overlap, fixed = windows
         missing = [n for n in networks if n not in stream]
         if missing:
             raise ValueError(f"fixed windows: network players outside the stream order {missing}")
@@ -436,11 +435,13 @@ class BucketEngine:
                         per[name] = per.get(name, 0) + games
             most = max([most, *per.values()])
         lanes = size + WINDOW_AHEAD * (size - overlap)  # and the next windows' newcomers
-        # every lane runs its capacity each tick (padding included): at most twice the even
-        # share (32 lanes at 1.5x the busiest player's games cut the laptop's rate 2.6x)
+        # every lane runs its capacity each tick, padding included, and those padded rows
+        # set the tick's cost (laptop, 1024 environments: env-steps/s x padded rows constant
+        # at 122M over 3.2k, 4.8k and 8.3k rows): the spec's capacity, else the busiest
+        # player's games (`WINDOW_SLACK`) up to the even share of the rows
         even = math.ceil(RESIDENT_SLACK * rows / lanes)
-        wanted = min(math.ceil(WINDOW_SLACK * most), WINDOW_CAP * even)
-        capacity = min(rows, max(MINIMUM_CAPACITY, even, wanted))
+        capacity = fixed or min(even, math.ceil(WINDOW_SLACK * most))
+        capacity = min(rows, max(MINIMUM_CAPACITY, capacity))
         self.window = self._next_window()
         if self.window is None:
             self.window = 0

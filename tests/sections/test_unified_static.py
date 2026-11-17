@@ -291,4 +291,4 @@ def test_spec_windows_must_overlap_by_the_reach(tmp_path):
         except ValueError:
             assert not fits
         else:
-            assert fits and spec.windows == (3, overlap)
+            assert fits and spec.windows == (3, overlap, None)

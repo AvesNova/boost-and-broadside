@@ -19,7 +19,7 @@
 # PILOT stage 1's goal factor, default 1: the full prior design) or adaptive (the per-game
 # planner); LINEUP_TYPES the lineups' ship types (default "Yongma Jujak"); PRESETS="MODE=PRESET ..."
 # overrides a mode's preset (the release run: elimination=real_scale_elimination_hemisphere);
-# WINDOWS=SIZE,OVERLAP fixed windows of the training order for the static curves (e.g. 16,8;
+# WINDOWS=SIZE,OVERLAP[,CAPACITY] fixed windows of the training order for the static curves (e.g. 16,8;
 # each played out, then the next loaded in place; default: the sliding resident window);
 # RESIDENTS the resident window's network players (default 12); PRIOR=POOL loads a rating pool's games first (`--prior`, e.g. the queue's
 # $RUNS/CHAIN-eval/curves/pool); OUT overrides the output directory ($RUNS/CHAIN-unified).
