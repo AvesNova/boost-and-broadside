@@ -238,6 +238,7 @@ class BucketEngine:
     ) -> None:
         self.bucket, self.planner, self.device = bucket, planner, device
         self.players = players
+        self.length = length  # ticks a block
         self.index = {one.name: number for number, one in enumerate(players)}
         self.random = random.Random(seed * 1_000_003 + bucket)
         self.lineup_types = tuple(lineup_types)

@@ -577,6 +577,7 @@ def run(
             running.append(build(order[0], demand[order[0]], 1.0))
         last_flush = last_progress = time.time()
         games_at_progress, time_at_progress = total_games, time.time()
+        steps_at_progress = 0
         while running:
             for engine in list(running):
                 total_games += engine.step()
@@ -593,6 +594,9 @@ def run(
                     rate = (history[-1][1] - history[0][1]) / (history[-1][0] - history[0][0])
                     eta = (1.0 - fraction) / rate
                 rate_hour = (total_games - games_at_progress) / (now - time_at_progress) * 3600
+                steps = sum(e.blocks * e.length * e.environments for e in running)
+                steps_rate = (steps - steps_at_progress) / (now - time_at_progress)
+                steps_at_progress = steps
                 time_at_progress_before = time_at_progress
                 games_at_progress, time_at_progress = total_games, now
                 utilisation = gpu_utilisation()
@@ -601,7 +605,8 @@ def run(
                     engine.host_seconds = 0.0
                 parked = sum(e.parked for e in running)
                 say(
-                    f"{total_games} games ({rate_hour:,.0f}/h), information {fraction:.3f}, "
+                    f"{total_games} games ({rate_hour:,.0f}/h, {steps_rate:,.0f} env-steps/s), "
+                    f"information {fraction:.3f}, "
                     f"GPU {utilisation}%, "
                     f"host planning {host / (now - time_at_progress_before):.0%}, "
                     f"parked {parked}, swaps {sum(e.swaps for e in running)}, buckets "
