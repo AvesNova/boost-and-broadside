@@ -1,7 +1,7 @@
 # Unified evaluator: design as built
 
-Branch `feat/unified-eval` (from `feat/imugi-boundary`, game v25, with `feat/hero-clip` and
-`fix/average-sweep` merged). Code: `src/bnb/league/unified/`; command: `bnb unified`;
+Branch `feat/unified-eval` (from `feat/imugi-boundary`, with `feat/hero-clip` and
+`fix/average-sweep` merged; `feat/v26-imugi-y046` merged 2026-11-17, so it plays game v26, dry run 3's). Code: `src/bnb/league/unified/`; command: `bnb unified`;
 tests: `tests/sections/test_unified_eval.py`; box check: `box/unified_check.sh`.
 
 ## Why
