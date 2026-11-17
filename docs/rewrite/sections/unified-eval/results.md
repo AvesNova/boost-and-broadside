@@ -344,3 +344,18 @@ Root mean square of the error over the SE is 0.65-1.5 per run (correlated along 
   thousands of games or leaves the bounds unresolved. Those modes need stage-2 pairs
   chosen by fitted rating (each checkpoint against the nearest in fitted Elo), as the
   linking stage will be.
+
+**Dry run 3 on its own, with the box run's games** (CPU). The prior is games.stamped.jsonl:
+22,850 elimination 5v5 games among dry run 3's 62 checkpoints and the anchor, 26 of the
+checkpoints without a rating. The simulation's truth is that prior's planning ratings:
+
+| reach | pilot | stage 1 | stage 2 | worst SE | above 60 |
+|---|---|---|---|---|---|
+| 2 | 1 | 15,038 | 374 | 58.0 | 0 |
+| 4 | 1.5 | 3,264 | 1,238 | 57.9 | 0 |
+| 4 | 2 | 1,481 | 1,871 | 58.8 | 0 |
+
+The prior games barely reduce stage 1 at reach 2. Most of them are long hops, not the +-1/+-2
+neighbour pairs the design wants. An eager GPU smoke on the laptop (12 checkpoints of dry
+run 1, goal 200, 4 residents, 256 environments) ran end to end: stage 1 (69 games) and
+stage 2 (11), 16 window swaps, a stop, and one WARNING line (rl_2097152 at 203).
