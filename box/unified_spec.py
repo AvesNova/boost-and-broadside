@@ -53,6 +53,7 @@ def main() -> None:
     parser.add_argument("chains")
     parser.add_argument("--parts", default="suite curves breakeven teamsize")
     parser.add_argument("--old-imugi", action="store_true")
+    parser.add_argument("--modes", default=" ".join(MODES), help="the modes to evaluate")
     args = parser.parse_args()
     from bnb.league.rating_pool import scheduled_policies
 
@@ -75,7 +76,8 @@ def main() -> None:
     scripted = ["scripted"] + (["imugi_v24"] if args.old_imugi else [])
     field = json.dumps(scripted + list(players))
     v24 = any("v24" in chain for chain in chains)
-    for mode, preset in MODES.items():
+    modes = args.modes.split()
+    for mode, preset in ((m, p) for m, p in MODES.items() if m in modes):
         sizes = [[5, 5], [10, 10]] + ([[1, 1], [2, 2]] if mode != "frontline" else [])
         team = []
         for n in range(1, 11):

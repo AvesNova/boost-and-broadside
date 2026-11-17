@@ -43,7 +43,7 @@ if [ -n "${CACHE_ARCHIVE:-}" ] && [ -s "$CACHE_ARCHIVE" ]; then
   bash "$UEVAL/docs/rewrite/sections/launch/cache.sh" import "$CACHE_ARCHIVE"
 fi
 "$PY" "$UEVAL/box/unified_spec.py" "$RUNS" "$chain" \
-  --parts "${PARTS:-suite curves breakeven teamsize}" ${OLD_IMUGI:+--old-imugi} \
+  --parts "${PARTS:-suite curves breakeven teamsize}" ${OLD_IMUGI:+--old-imugi} --modes "${MODES:-frontline deathmatch elimination}" \
   > "$out/spec.toml" || exit 1
 echo "spec: $out/spec.toml"
 exec 9> "${GPU_LOCK:-/tmp/gpu.lock}"
