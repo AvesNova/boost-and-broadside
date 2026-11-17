@@ -193,13 +193,15 @@ rechecking capacity with [`benchmarks/bullet_throughput.py`](../benchmarks/bulle
 ## Evaluate
 
 ```bash
-# Direct parallel matchup
+# Direct parallel matchup (a quick check only: collect-stats plays a fixed environment,
+# one tick per decision and no resource spread, not the one a run trained in; use
+# crossover or elo-calibrate, which read the environment from the checkpoint, for results)
 uv run bnb collect-stats \
   --team0 checkpoints/<run>/<checkpoint>.pt --team1 scripted --sizes 4v4 8v11
 
 # Post-hoc Elo calibration for a completed run
 uv run bnb elo-calibrate \
-  --run resilient-resonance-682
+  --run wild-universe-731 --target-stderr 12 --max-batches 8
 
 # Bradley-Terry calibration for any explicit stationary agent field
 uv run bnb elo-calibrate \
@@ -207,18 +209,18 @@ uv run bnb elo-calibrate \
 
 # Rate frozen checkpoints across symmetric fleet sizes (resumable)
 uv run bnb elo-scale \
-  --run resilient-resonance-682 --sizes 1,2,4,8,16,32,64
+  --run wild-universe-731 --sizes 1,2,4,8,16,32,64
 
 # Measure the random-to-scripted reference ladder used to condition scale ratings
 uv run bnb semi-random \
-  --run resilient-resonance-682 --sizes 1,2,4,8,16,32,64
+  --run wild-universe-731 --sizes 1,2,4,8,16,32,64
 
 # Measure it under a training profile's environment instead, with no run involved
 uv run bnb semi-random --profile rl --sizes 4
 
 # Search the scripted-team crossover for selected learned-team sizes
 uv run bnb crossover \
-  --run resilient-resonance-682 --sizes 4,8,16,32,64 --games-per-matchup 256
+  --run wild-universe-731 --sizes 4,8,16,32,64 --games-per-matchup 256
 ```
 
 Every evaluation writes a versioned artifact rather than a file of its own choosing.
@@ -245,7 +247,7 @@ count, ship config, fleet size or scripted controller moves; see
 
 ```bash
 uv run bnb capture \
-  --run resilient-resonance-682 \
+  --run wild-universe-731 \
   --scenarios vs_scripted \
   --sizes 8v11 \
   --seeds 3 \

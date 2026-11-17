@@ -242,8 +242,8 @@ Training applies:
 
 The measured channel errors are shown in [evaluation](evaluation.md#auxiliary-dynamics-learning),
 with deeper autoregressive diagnostics in the reference run's
-[autoregressive report](../checkpoints/good-leaf-719/artifacts/figures/ar_report_4v4/) and
-[noise calibration](../checkpoints/good-leaf-719/artifacts/figures/noise_calibration/).
+[autoregressive report](../checkpoints/wild-universe-731/artifacts/figures/ar_report_4v4/) and
+[noise calibration](../checkpoints/wild-universe-731/artifacts/figures/noise_calibration/).
 
 ## Why team size can change
 

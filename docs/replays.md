@@ -4,14 +4,18 @@ These clips complement the aggregate results with examples of tactics at differe
 sizes. In every `vs_scripted` replay, the learned fleet is blue and the scripted fleet is
 red.
 
-**These clips are out of date.** All fifteen show `resilient-resonance-682`, which was the
-reference run when they were captured. Every number on this page and in
-[evaluation](evaluation.md) comes from `good-leaf-719`, which trained under different
-combat physics, a different decision rate, and with refractive fields — so the footage
+**These clips are from an earlier run.** All fifteen show `resilient-resonance-682`,
+which was the reference run when they were captured. Every number on this page and in
+[evaluation](evaluation.md) comes from `wild-universe-731`, which trained under different combat
+physics, a different decision rate, frontal armour and refractive fields — so the footage
 shows a policy playing a different game from the one the figures measure. Read them as
 illustrations of what variable-cardinality fleet combat looks like, not as the run being
-reported. Recapturing them against 719 is
+reported. Recapturing them against `wild-universe-731` is
 [on the roadmap](../ROADMAP.md).
+
+<!-- Clip slots: chosen wild-universe-731 clips go in docs/results/v1-731/clips/, each
+named in docs/figures.yml (clip_hero is the first slot) and placed here with a figure
+placeholder. -->
 
 ## Primary replay: 8 learned vs 11 scripted
 
@@ -20,8 +24,11 @@ reported. Recapturing them against 719 is
 The learned fleet starts three ships down and finishes with three ships to spare. The
 matchup is compact and easy to follow, which is why it serves as the README hero.
 
-The quantitative sweep reports a 72.7% learned-team win rate at this 8-vs-11 matchup
-(186 wins, 70 losses in 256 games) and 48.4% at 8-vs-12; see
+The quantitative sweep of `wild-universe-731`'s final live checkpoint reports a
+89.1% learned-team win rate at this 8-vs-11 matchup
+(228 wins, 21 losses in
+256 games) and 78.1% at
+8-vs-12; see
 [zero-shot crossover](evaluation.md#zero-shot-crossover) for the raw data and statistical
 caveats. A clip is one qualitative realization, not the source of those aggregate rates.
 
@@ -29,9 +36,12 @@ caveats. A clip is one qualitative realization, not the source of those aggregat
 
 ![Sixty-four learned blue ships versus eighty scripted red ships](results/replays/vs_scripted_64v80_seed01.gif)
 
-The same variable-cardinality execution path at a much larger scale. The stored crossover
-sweep searches upward from parity and does not probe 64-vs-80 directly; it locates the
-empirical boundary between 88 and 89 scripted ships, at a 50.3% win rate over 173 games.
+The same variable-cardinality execution path at a much larger scale. `wild-universe-731`'s
+stored crossover sweep locates the empirical boundary for 64 learned ships between
+76 and 77 scripted ships, at a
+54.9% win rate over
+204 games, so 80 scripted ships lie beyond what its
+final live checkpoint beats on average; this clip is the earlier run's.
 
 ## Self-play
 

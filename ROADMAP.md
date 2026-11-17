@@ -26,7 +26,7 @@ Ideas under consideration, roughly ordered by interest. None are commitments.
 
 ## Results and presentation
 
-- **Recapture the replays against `good-leaf-719`**: all fifteen clips, including the
+- **Recapture the replays against `wild-universe-731`**: all fifteen clips, including the
   README hero, show `resilient-resonance-682`, which trained under different physics and
   a different decision rate than the run every published figure now measures.
 - **Replay provenance**: the clips carry no sidecar and no poster frame, so nothing but the
