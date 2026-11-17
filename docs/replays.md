@@ -4,44 +4,26 @@ These clips complement the aggregate results with examples of tactics at differe
 sizes. In every `vs_scripted` replay, the learned fleet is blue and the scripted fleet is
 red.
 
-**These clips are from an earlier run.** All fifteen show `resilient-resonance-682`,
-which was the reference run when they were captured. Every number on this page and in
-[evaluation](evaluation.md) comes from `wild-universe-731`, which trained under different combat
-physics, a different decision rate, frontal armour and refractive fields — so the footage
-shows a policy playing a different game from the one the figures measure. Read them as
-illustrations of what variable-cardinality fleet combat looks like, not as the run being
-reported. Recapturing them against `wild-universe-731` is
-[on the roadmap](../ROADMAP.md).
+The two featured clips below are of `wild-universe-731`'s averaged weights, the agent every
+number on this page and in [evaluation](evaluation.md) measures. Each is one game from a
+seeded batch, so it replays exactly from its seed and game index.
 
-<!-- Clip slots: chosen wild-universe-731 clips go in docs/results/v1-731/clips/, each
-named in docs/figures.yml (clip_hero is the first slot) and placed here with a figure
-placeholder. -->
+The other clips (self-play and the further examples) are from `resilient-resonance-682`,
+an earlier run that trained under different combat physics, a different decision rate,
+frontal armour and refractive fields. Read them as illustrations of fleet combat, not as
+the run being reported.
 
-## Primary replay: 8 learned vs 11 scripted
+## Primary replay: 4 learned vs 7 scripted
 
-![Eight blue learned-policy ships versus eleven red scripted ships](results/replays/vs_scripted_8v11_seed03.gif)
+![Four learned blue ships against seven scripted red ships](results/v1-731/clips/hero_4v7_seed2001_env406.gif)
 
-The learned fleet starts three ships down and finishes with three ships to spare. The
-matchup is compact and easy to follow, which is why it serves as the README hero.
+*Figure 1. wild-universe-731, averaged weights, against the scripted opponent (seed 2001, game 406). Down to one ship against six, the learned side still wins. At 4 vs 7 it wins 62% of 4,096 games.*
 
-The quantitative sweep of `wild-universe-731`'s final live checkpoint reports a
-89.1% learned-team win rate at this 8-vs-11 matchup
-(228 wins, 21 losses in
-256 games) and 78.1% at
-8-vs-12; see
-[zero-shot crossover](evaluation.md#zero-shot-crossover) for the raw data and statistical
-caveats. A clip is one qualitative realization, not the source of those aggregate rates.
+## Large battle: 32 learned vs 50 scripted
 
-## Large-scale transfer: 64 vs 80
+![Thirty-two learned blue ships against fifty scripted red ships](results/v1-731/clips/large_32v50_seed4001_env057.gif)
 
-![Sixty-four learned blue ships versus eighty scripted red ships](results/replays/vs_scripted_64v80_seed01.gif)
-
-The same variable-cardinality execution path at a much larger scale. `wild-universe-731`'s
-stored crossover sweep locates the empirical boundary for 64 learned ships between
-76 and 77 scripted ships, at a
-54.9% win rate over
-204 games, so 80 scripted ships lie beyond what its
-final live checkpoint beats on average; this clip is the earlier run's.
+*Figure 2. wild-universe-731, averaged weights (seed 4001, game 57). An 82-ship battle comes down to one blue ship, which clears the last eight. At 32 ships the averaged policy breaks even against 1.55 scripted ships per learned ship, so 50 is just past even odds.*
 
 ## Self-play
 

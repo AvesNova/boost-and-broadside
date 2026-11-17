@@ -100,8 +100,21 @@ fan_32_ships:
 
 # Clip slots: filled when the author picks the wild-universe-731 clips.
 clip_hero:
-  path: docs/results/v1-731/clips/hero.gif
-  title: Learned blue fleet against a larger scripted red fleet
+  path: docs/results/v1-731/clips/hero_4v7_seed2001_env406.gif
+  title: Four learned blue ships against seven scripted red ships
+  caption: >-
+    {{run_name}}, averaged weights, against the scripted opponent (seed 2001, game 406). Down
+    to one ship against six, the learned side still wins. At 4 vs 7 it wins
+    {{fan_4_ships_vs_7_averaged_win_rate:.0%}} of {{fan_4_ships_vs_7_averaged_games:,}} games.
+
+clip_large_battle:
+  path: docs/results/v1-731/clips/large_32v50_seed4001_env057.gif
+  title: Thirty-two learned blue ships against fifty scripted red ships
+  caption: >-
+    {{run_name}}, averaged weights (seed 4001, game 57). An 82-ship battle comes down to one
+    blue ship, which clears the last eight. At 32 ships the averaged policy breaks even
+    against {{fan_32_ships_averaged_break_even_ratio:.2f}} scripted ships per learned ship,
+    so 50 is just past even odds.
 
 elo_history_731:
   path: docs/results/v1-731/elo_history_731.png

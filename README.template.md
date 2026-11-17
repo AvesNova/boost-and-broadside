@@ -2,15 +2,9 @@
 
 ### Zero-shot fleet coordination from a 4-vs-4 policy
 
-<!-- Clip slot: when a wild-universe-731 clip is chosen, set clip_hero's path in
-docs/figures.yml and replace the image, sub line and italic line below with the figure
-placeholder for clip_hero. -->
-![Eight learned blue ships defeating eleven scripted red ships](docs/results/replays/vs_scripted_8v11_seed03.gif)
+{{figure: clip_hero}}
 
-<sub>Replay of <code>resilient-resonance-682</code>, an earlier run; the figures below
-measure <code>{{run_name}}</code>. See <a href="docs/replays.md">replays</a>.</sub>
-
-*Outnumbered 11 ships to 8, the learned fleet wins with three ships to spare.*
+<sub>More replays: <a href="docs/replays.md">replays</a>.</sub>
 
 Boost and Broadside is a tensorized 2D dogfighting environment and reinforcement
 learning system built to study coordination at scale. The central question is simple:

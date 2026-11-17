@@ -2,15 +2,11 @@
 
 ### Zero-shot fleet coordination from a 4-vs-4 policy
 
-<!-- Clip slot: when a wild-universe-731 clip is chosen, set clip_hero's path in
-docs/figures.yml and replace the image, sub line and italic line below with the figure
-placeholder for clip_hero. -->
-![Eight learned blue ships defeating eleven scripted red ships](docs/results/replays/vs_scripted_8v11_seed03.gif)
+![Four learned blue ships against seven scripted red ships](docs/results/v1-731/clips/hero_4v7_seed2001_env406.gif)
 
-<sub>Replay of <code>resilient-resonance-682</code>, an earlier run; the figures below
-measure <code>wild-universe-731</code>. See <a href="docs/replays.md">replays</a>.</sub>
+*Figure 1. wild-universe-731, averaged weights, against the scripted opponent (seed 2001, game 406). Down to one ship against six, the learned side still wins. At 4 vs 7 it wins 62% of 4,096 games.*
 
-*Outnumbered 11 ships to 8, the learned fleet wins with three ships to spare.*
+<sub>More replays: <a href="docs/replays.md">replays</a>.</sub>
 
 Boost and Broadside is a tensorized 2D dogfighting environment and reinforcement
 learning system built to study coordination at scale. The central question is simple:
@@ -34,7 +30,7 @@ during training.
 
 ![Calibrated rating across symmetric fleet sizes](checkpoints/wild-universe-731/artifacts/figures/elo_scale_scripted_1000.png)
 
-*Figure 1. Elo of the final live checkpoint (672M steps) in a separate stationary tournament at each symmetric size, with the scripted controller fixed at 1000 and the reference ladder joined in; the band is ±1 standard error. The policy trained at 4-vs-4 only.*
+*Figure 2. Elo of the final live checkpoint (672M steps) in a separate stationary tournament at each symmetric size, with the scripted controller fixed at 1000 and the reference ladder joined in; the band is ±1 standard error. The policy trained at 4-vs-4 only.*
 
 Rated against the same scripted controller at every size, the 4-vs-4 policy is stronger
 at 8-vs-8 and 16-vs-16 than at the size it trained at: about 2,277 Elo
@@ -74,7 +70,7 @@ means ten-to-one odds. Its best averaged checkpoint rates
 
 ![Post-hoc calibrated Elo over training](checkpoints/wild-universe-731/artifacts/figures/elo_curve.png)
 
-*Figure 2. The line is the live policy at each update, refit from its recorded games against the calibrated opponents; the dots are tournament-rated checkpoints (±1 SE), the last of them the final live checkpoint. Scripted controller fixed at 1000.*
+*Figure 3. The line is the live policy at each update, refit from its recorded games against the calibrated opponents; the dots are tournament-rated checkpoints (±1 SE), the last of them the final live checkpoint. Scripted controller fixed at 1000.*
 
 The calibrated rating keeps rising long after wins against the scripted controller stop
 being informative: the policy first wins 99% of evaluation games against it at
