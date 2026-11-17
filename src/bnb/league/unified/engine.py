@@ -70,6 +70,11 @@ RESIDENTS = 12
 RESIDENT_SLACK = 1.15
 SWAP_RATIO = 2.0
 REBALANCE_BLOCKS = 4
+# An environment's next game keeps its players (no new lane rows) when that game is worth at
+# least this share of the best one (`Planner.choose`'s prefer), with a resident set: an
+# environment holds its current and next games' rows, so new players for every next game
+# would need twice the lanes.
+PREFER_RATIO = 0.5
 TICKETS = ("kills_per_ship", "ticket_exponent", "ticket_rounding")
 
 
@@ -376,8 +381,18 @@ class BucketEngine:
     def _choose(self, environment: int) -> Slot:
         """An environment's next game: the planner's (overtime when its slice's goals are
         met); else parked (Imugi against itself, 1 against 1, untallied)."""
+        prefer = None
+        if self.resident_set:  # a next game on the rows the environment holds costs no lane room
+            held = self._rows(environment)
+
+            def prefer(cell: Cell) -> bool:
+                return (0, self.index[cell.first]) in held and (
+                    1,
+                    self.index[cell.second],
+                ) in held
+
         chosen = self.planner.choose(
-            self.bucket, self.preset_of[environment], self._fits(environment)
+            self.bucket, self.preset_of[environment], self._fits(environment), prefer, PREFER_RATIO
         )
         if chosen is None:
             return Slot(None, 0, parked=True)

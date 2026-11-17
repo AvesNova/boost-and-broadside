@@ -107,16 +107,24 @@ class Planner:
         self._slices.clear()
 
     def choose(
-        self, bucket: int, preset: str, fits=lambda cell: True
+        self,
+        bucket: int,
+        preset: str,
+        fits=lambda cell: True,
+        prefer=None,
+        prefer_ratio: float = 0.5,
     ) -> tuple[Cell, int, bool] | None:
         """The next game of an environment of size bucket `bucket` playing `preset`: (the
         cell, the seat its first player takes, 0 or 1, and whether it is overtime), counted
         in flight with every target. When no unmet goal wants a game in the slice, the
         overtime values choose (a met goal's further precision: the slice's modes are fixed
         while the bucket runs, `bnb.league.unified.engine`); None when even those want none
-        (every cell's budget spent, or no room: `fits(cell)`, the lanes')."""
+        (every cell's budget spent, or no room: `fits(cell)`, the lanes'). prefer(cell): a
+        cell the engine plays more cheaply (one whose players the environment already
+        seats), taken when its rate is at least `prefer_ratio` of the best's."""
         for overtime in (False, True):
             best, best_rate = None, 0.0
+            liked, liked_rate = None, 0.0
             values = self.values(overtime)
             seconds: dict[Condition, float] = {}
             for cell in self._slices[overtime].get((bucket, preset), ()):
@@ -126,6 +134,10 @@ class Planner:
                 rate = values[cell] / seconds[condition]
                 if rate > best_rate and fits(cell):
                     best, best_rate = cell, rate
+                if prefer is not None and rate > liked_rate and prefer(cell) and fits(cell):
+                    liked, liked_rate = cell, rate
+            if liked is not None and liked_rate >= prefer_ratio * best_rate:
+                best = liked
             if best is not None:
                 self.pending(best)
                 seat = self.seats[best] % 2
