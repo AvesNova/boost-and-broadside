@@ -128,7 +128,10 @@ def main() -> None:
         if "curves" in parts:
             out += ["", "[[elo]]", f'name = "curves/{mode}"', f'preset = "{preset}"']
             if args.curve_design == "static":  # the anchor and the checkpoints only
-                out += [f"players = {json.dumps(['scripted', *players])}", 'design = "static"']
+                # a champion outside the policies/step_N snapshots (an averaging sweep's pick) is
+                # on no run's chain: the static design cannot place it, so it is left out here
+                chained = [n for n, path in players.items() if "/policies/step_" in f"/{path}"]
+                out += [f"players = {json.dumps(['scripted', *chained])}", 'design = "static"']
                 out += [f"reach = {args.reach}", f"pilot = {args.pilot}"]
             else:
                 out.append(f"players = {field}")

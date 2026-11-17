@@ -390,3 +390,8 @@ Branch `feat/release-jujak-elim` (from `feat/v26-imugi-y046`), launched by `box/
 - **Mode rules as per-environment inputs, not graph constants:** elimination's shrinking border, frontline's fields, deathmatch's ticket rule, fog, clock, respawn. Any environment can then change mode between games without a recompile (evaluator re-splits automatically; training's mode mix too). Measure the masked all-modes cost per tick first; equivalence tests against the current modes.
 - **Ticket: audit for other numbers baked into compiled graphs that should be inputs** (game settings, lineup/ship-count details, schedules, evaluator constants), list each with its cost/benefit.
 - Evaluator resident set, if not done before: a spare lane (load the incoming player while the outgoing drains), take the best available game instead of parking, and give a leaving player elimination games (short) where it still needs elimination data.
+
+## Box evaluation setup bugs (2026-11-17, box5080)
+
+- Fixed: `box/setup.sh` exited silently under `set -e` on a box without `secrets.env` (env.sh ended in a failing `[ -f ] &&`); now `|| true`.
+- Fixed: `box/unified_spec.py` put a champion that is not a `policies/step_N` snapshot (an averaging sweep's pick, dry run 1) into the static curve field, and the static design raised "not on a run"; such champions are now left out of the static curve (they stay in suite, break-even and team-size). Consequence: that champion has no Elo on the curve.
