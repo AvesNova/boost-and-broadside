@@ -1,7 +1,9 @@
 """The unified evaluator's spec for one or more dry-run chains (box/unified_check.sh).
 
     python box/unified_spec.py RUNS CHAIN[,CHAIN...] [--parts "suite curves breakeven teamsize"]
-        [--old-imugi] > spec.toml
+        [--old-imugi] [--modes elimination] [--preset elimination=PRESET]
+        [--lineup-types "Jujak"] [--curve-design static|adaptive] [--reach 2] [--pilot 1]
+        > spec.toml
 
 Players: every chain's league-schedule snapshots of both stages (`scheduled_policies`, the
 exponential averages; a run that keeps every update's policy gives the same snapshots) and
@@ -64,23 +66,35 @@ def main() -> None:
         help="the curves' design: static (fixed counts in two stages, `static_target`) or the "
         "adaptive per-game planner",
     )
+    parser.add_argument(
+        "--preset",
+        action="append",
+        default=[],
+        help="MODE=PRESET: a mode's preset (e.g. elimination=real_scale_elimination_hemisphere)",
+    )
+    parser.add_argument("--lineup-types", default="Yongma Jujak", help="the lineups' ship types")
     parser.add_argument("--reach", type=int, default=2, help="static: chain neighbours a side")
     parser.add_argument("--pilot", type=float, default=1.0, help="static: stage 1's goal factor")
     args = parser.parse_args()
     from bnb.league.rating_pool import scheduled_policies
 
     runs, chains, parts = args.runs, args.chains.split(","), set(args.parts.split())
+    presets = dict(MODES) | dict(one.split("=", 1) for one in args.preset)
     several = len(chains) > 1
     players: dict[str, str] = {}
     champions = []
     for chain in chains:
         prefix = f"{chain}/" if several else ""
         for stage in ("bc", "rl"):
+            if not (runs / f"{chain}-{stage}" / "policies").is_dir():
+                print(f"note: {chain}-{stage} has no policies; left out", file=sys.stderr)
+                continue
             for path in scheduled_policies(runs / f"{chain}-{stage}", ("exponential_average",)):
                 players[f"{prefix}{stage}_{path.parent.name[5:]}"] = str(path.relative_to(runs))
         players[f"{prefix}champion"] = champion_of(runs, chain)
         champions.append(f"{prefix}champion")
-    out = ['lineup_types = ["Yongma", "Jujak"]', "buckets = [5, 10, 20]", "seed = 0", ""]
+    lineup = json.dumps(args.lineup_types.split())
+    out = [f"lineup_types = {lineup}", "buckets = [5, 10, 20]", "seed = 0", ""]
     out.append("[players]")
     if args.old_imugi:
         out.append('imugi_v24 = "imugi_v24"')
@@ -89,7 +103,7 @@ def main() -> None:
     field = json.dumps(scripted + list(players))
     v24 = any("v24" in chain for chain in chains)
     modes = args.modes.split()
-    for mode, preset in ((m, p) for m, p in MODES.items() if m in modes):
+    for mode, preset in ((m, p) for m, p in presets.items() if m in modes):
         sizes = [[5, 5], [10, 10]] + ([[1, 1], [2, 2]] if mode != "frontline" else [])
         team = []
         for n in range(1, 11):

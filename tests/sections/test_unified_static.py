@@ -1,6 +1,7 @@
 """The static Elo-curve design (`bnb.league.unified.static_design`, `static_target`) and the
 engine's streaming window, on the CPU."""
 
+import json
 import math
 import pathlib
 import random
@@ -180,7 +181,8 @@ def test_spec_static_curves_load_with_the_anchor_and_the_chain(tmp_path):
         for step in (1000, 2000, 3000):
             where = tmp_path / f"dry-{stage}/policies/step_{step}/exponential_average"
             where.mkdir(parents=True)
-            (where / "checkpoint.json").write_text("{}")
+            record = {"files": {"weights.safetensors": f"{stage}{step}"}}
+            (where / "checkpoint.json").write_text(json.dumps(record))
             lines.append(f'{stage}_{step} = "{where}"')
     lines.append(f'champion = "{where}"')
     names = ["scripted"] + [f"{s}_{n}" for s in ("bc", "rl") for n in (1000, 2000, 3000)]
