@@ -135,12 +135,19 @@ def draw_elo(path, out, formats=common.FORMATS, name="elo_over_training"):
     axis.set_ylabel("Elo against Imugi (Imugi = 1000)", fontsize=8)
     common.label_ends(axis, lines)
     has_live = any(row["kind"] == LIVE for row in rows)
-    common.title(
-        figure,
-        "Strength over training, 5 against 5: the averaged weights"
-        + ("; live dotted" if has_live else "")
-        + "; a triangle is a bound (every game, or nearly, one way)",
-    )
+    if has_live:  # the key to the two weights' line styles
+        from matplotlib.lines import Line2D
+
+        axis.legend(
+            handles=[
+                Line2D([], [], color=theme.MUTED, linestyle="-", label="averaged weights"),
+                Line2D([], [], color=theme.MUTED, linestyle=":", label="live weights"),
+            ],
+            fontsize=7,
+            frameon=False,
+            loc="upper left",
+        )
+    common.title(figure, name)
     figure.tight_layout(rect=(0, 0, 1, 0.95))
     written = common.save(figure, out, name, [str(path)], values, formats)
     return written, values
@@ -244,9 +251,7 @@ def draw_suite(directory, out, formats=common.FORMATS, name="suite_conditions"):
     values["suite_games_per_condition"] = float(max(row["games"] for row in rows))
     axes[0, 0].set_ylim(0, 1.08)
     axes[0, 0].set_ylabel("score against Imugi", fontsize=8)
-    common.title(
-        figure, "The champion against Imugi on every head-to-head condition (95% intervals)"
-    )
+    common.title(figure, name)
     figure.tight_layout(rect=(0, 0, 1, 0.93))
     written = common.save(figure, out, name, [str(directory)], values, formats)
     return written, values
@@ -324,10 +329,7 @@ def draw_averaging(path, out, formats=common.FORMATS, name="averaging_sweep"):
         frameon=False,
         loc="lower right",
     )
-    common.title(
-        figure,
-        "The averaging sweep: each weight average against the training's exponential average",
-    )
+    common.title(figure, name)
     figure.tight_layout(rect=(0, 0, 1, 0.94))
     values = {
         "averaging_best_gap": found.get("gap"),

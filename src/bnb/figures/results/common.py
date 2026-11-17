@@ -17,7 +17,7 @@ import sys
 
 from bnb.runs import provenance
 
-from .. import theme
+from .. import captions, theme
 from ..ladder import MODES, mode_of
 from ..output import new_figure
 
@@ -79,9 +79,12 @@ def label_ends(axis, lines: list[tuple[str, list[float], list[float], object]]) 
     return True
 
 
-def title(figure, text: str) -> None:
-    """The figure's title, in the house ink."""
-    figure.suptitle(text, fontsize=10, color=theme.INK)
+def title(figure, name: str, text: str | None = None) -> None:
+    """The figure's short title, in the house ink: the captions file's title for the
+    figure `name` (`bnb.figures.captions`), or `text` when given. The details go in the
+    figure's caption, not the title. The web PNG draws it; the paper's PDF and SVG do not
+    (`save`)."""
+    figure.suptitle(text or captions.title(name), fontsize=10, color=theme.INK)
 
 
 def note(axis, text: str) -> None:
@@ -104,8 +107,9 @@ def save(
     light, "_dark" for dark), with its provenance (the render's commit, command line and
     time, the sources read, the numbers shown) in its text chunks; in the light variant
     only, the PDF and SVG for the paper, fitted to the page width (`theme.fit`), as
-    directory/name.<format> with the commit and sources in their metadata. Closes the
-    figure; returns the paths."""
+    directory/name.<format> with the commit and sources in their metadata and without the
+    drawn title (the paper's caption carries it; the title goes in the metadata). Closes
+    the figure; returns the paths."""
     import matplotlib.pyplot as plt
 
     directory = pathlib.Path(directory)
@@ -131,11 +135,17 @@ def save(
         written.append(path)
     paper = [kind for kind in formats if kind != "png"]
     if paper and theme.active() == "light":
+        heading = figure._suptitle.get_text() if figure._suptitle is not None else ""
+        if figure._suptitle is not None:  # the paper's figure environment holds the title
+            figure._suptitle.set_text("")
+            figure._suptitle.set_in_layout(False)
         theme.fit(figure, "page")
         for kind in paper:
             path = directory / f"{name}.{kind}"
             key = "Subject" if kind == "pdf" else "Source"
             metadata = {"Creator": f"{command} at {commit}", key: json.dumps(sources)}
+            if heading:
+                metadata["Title"] = heading
             figure.savefig(path, facecolor=theme.SURFACE, metadata=metadata)
             written.append(path)
     plt.close(figure)

@@ -78,6 +78,31 @@ def series(
     return {mode: found[mode] for mode in [*common.MODES, *sorted(found)] if mode in found}
 
 
+def sample_values(results: dict[tuple[str, int], dict]) -> dict[str, float | str]:
+    """What the captions quote about the sample: crossover_fixed_count, the ships of the
+    side held fixed in every lineup (a string of the counts when they differ);
+    crossover_snapshots; crossover_games_min and _max, a snapshot's games in one mode."""
+    fixed = sorted(
+        {
+            measured.get("fixed_count")
+            for payload in results.values()
+            for measured in payload.get("presets", {}).values()
+        }
+        - {None}
+    )
+    games = [
+        measured.get("games", 0)
+        for payload in results.values()
+        for measured in payload.get("presets", {}).values()
+    ]
+    return dict(
+        crossover_fixed_count=float(fixed[0]) if len(fixed) == 1 else ", ".join(map(str, fixed)),
+        crossover_snapshots=float(len(results)),
+        crossover_games_min=float(min(games, default=0)),
+        crossover_games_max=float(max(games, default=0)),
+    )
+
+
 def draw(
     directory: str | pathlib.Path,
     out: str | pathlib.Path,
@@ -98,7 +123,7 @@ def draw(
         raise SystemExit(f"no crossover results below {directory}")
     figure, axes = common.new_figure(1, len(found), size=(4.2, 3.4), sharey=True)
     colours = common.ordered_colours(len(opponent_counts))
-    values: dict[str, float] = {}
+    values: dict[str, float | str] = sample_values(results)
     for axis, (mode, held) in zip(axes.flat, found.items(), strict=True):
         axis.set_title(mode, fontsize=9)
         axis.axhline(0.5, color=theme.MUTED, linewidth=0.8, linestyle=":")
@@ -145,11 +170,7 @@ def draw(
         if held["separated"]:
             common.note(axis, f"{held['separated']} snapshot(s) without a crossing")
     axes.flat[0].set_ylabel("win rate against Imugi", fontsize=8)
-    common.title(
-        figure,
-        "Win rate against Imugi with xN its ships per one of ours (lines: the fit, 95% band; "
-        "points: games played at that ratio)",
-    )
+    common.title(figure, name)
     figure.tight_layout(rect=(0, 0, 0.98, 1))
     written = common.save(figure, out, name, [str(directory)], values, formats)
     return written, values

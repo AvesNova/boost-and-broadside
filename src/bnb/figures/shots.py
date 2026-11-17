@@ -255,9 +255,7 @@ def _gallery(meta, rollout, paths, directory, numbers) -> pathlib.Path:
         Line2D([], [], color=output.BASELINE, linestyle="--", label="straight line"),
     ]
     figure.legend(handles=handles, loc="lower center", ncol=4, frameon=False, fontsize=8)
-    figure.suptitle(
-        "Shots: the true flight against the head's path, one dot per age", color=output.INK
-    )
+    figure.suptitle("Shot paths", color=output.INK)
     return output.save(figure, directory, "shots_gallery", meta, numbers)
 
 
@@ -331,8 +329,7 @@ def _errors(meta, paths, numbers, shots, directory) -> pathlib.Path:
     axis.set_ylabel("head's offset left of the straight line (m)")
     axis.set_aspect("equal")
     figure.suptitle(
-        "Shot head: displacement error by age, bent against straight flights "
-        f"(bent: more than {BEND_THRESHOLD:g} m to the side)",
+        f"Shot error by age\nbent: more than {BEND_THRESHOLD:g} m to the side",
         color=output.INK,
     )
     figure.tight_layout()

@@ -16,6 +16,8 @@ it, on one GPU.
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="docs/results/win_rate_fan_dark.png"><img alt="Win rate against Imugi over training steps, one line per ratio of Imugi's ships to ours (1, 1.2, 1.6 and 2), one panel per mode" src="docs/results/win_rate_fan.png"></picture>
 
+<sub>**Figure 1.** Each line is one ratio of Imugi's ships to the policy's (×1, ×1.2, ×1.6, ×2), read off the crossover's logistic fit at each snapshot; the band is the fit's 95% interval and the open points are games played at exactly that ratio. The policy is the training's exponential average of the weights, at 8 snapshots of reinforcement learning; the dashed line is the hand-off from behaviour cloning. Every lineup has 20 ships on its larger side, the policy's or Imugi's; 256 to 512 games per snapshot and mode. Deathmatch in this run is slightly off: it trained with 5 tickets per ship (5N) and was evaluated with 4·N^(4/3) tickets, rounded to 5.</sub>
+
 *Each line is the trained policy's win rate against Imugi at one ratio of ships, from a
 logistic fit of every game played at that training snapshot; the band is the fit's 95%
 interval.*
@@ -57,6 +59,8 @@ behaviour-cloning teacher and the anchor of every rating (Imugi = 1000 Elo).
 
 ![Yemong: the observation's tokens through blocks of spatial attention across ships and temporal recurrence per ship, to per-ship heads](docs/images/architecture/overview-horizontal.svg)
 
+<sub>**Figure 2. Yemong.** The observation's tokens (one per ship, field and zone) pass through blocks of spatial attention across the ships and temporal recurrence per ship, then to per-ship heads.</sub>
+
 Yemong is one network that commands the whole fleet. Each tick, a spatial layer of
 attention mixes the ships, the map's fields and zones; a temporal layer of recurrence
 carries each ship through time. Every head gives one output per ship, and nothing in the
@@ -79,12 +83,16 @@ behaviour cloning and reinforcement learning.
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="docs/results/elo_over_training_dark.png"><img alt="Elo against environment steps, one line per mode, Imugi at 1000, the hand-off from behaviour cloning to reinforcement learning marked" src="docs/results/elo_over_training.png"></picture>
 
+<sub>**Figure 3.** Each point is one snapshot of the training's exponential average of the weights, rated 5 against 5 in the shared pool of both stages' snapshots and Imugi, Imugi fixed at 1000; the band is one standard error. An open triangle is a bound: the snapshot won (up) or lost (down) all or nearly all its games, so its rating has no finite estimate. Live weights, where the pool rates them, are dotted. The dashed line is the hand-off from behaviour cloning to reinforcement learning. Deathmatch in this run is slightly off: it trained with 5 tickets per ship (5N) and was evaluated with 4·N^(4/3) tickets, rounded to 5.</sub>
+
 > **Pending (training_summary).** One or two sentences: the final Elo per mode (elo_deathmatch_final and the others) and where the hand-off from cloning to reinforcement learning shows on the curve.
 
 **Team sizes it did not train at.** Trained at 5 against 5, the same weights play from
 1 against 1 to 10 against 10.
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="docs/results/team_size_generalization_dark.png"><img alt="Win rate against Imugi at each team size, one line per ratio of Imugi's ships to ours, one panel per mode" src="docs/results/team_size_generalization.png"></picture>
+
+<sub>**Figure 4.** The champion, trained at 5 against 5 alone (dashed line), against Imugi from 1 to 10 of its own ships. Each line is one ratio of Imugi's ships to the policy's (1:1, 1:1.5, 1:2; 1:1.5 at even sizes only); the band is Wilson's 95% interval, a draw counting half a win, from 132 to 134 games per point. Every size plays the preset's own arena. Deathmatch in this run is slightly off: it trained with 5 tickets per ship (5N) and was evaluated with 4·N^(4/3) tickets, rounded to 5.</sub>
 
 > **Pending (generalisation_summary).** One sentence on how the win rate at even numbers holds from 1 against 1 to 10 against 10, with the 10 against 10 values.
 

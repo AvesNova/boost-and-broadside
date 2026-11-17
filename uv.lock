@@ -65,6 +65,7 @@ dependencies = [
 [package.optional-dependencies]
 tools = [
     { name = "matplotlib" },
+    { name = "pyyaml" },
     { name = "scikit-learn" },
     { name = "wandb-workspaces" },
 ]
@@ -93,6 +94,7 @@ requires-dist = [
     { name = "moderngl", specifier = ">=5.13.0" },
     { name = "numpy", specifier = ">=2.5" },
     { name = "platformdirs", specifier = ">=4.3" },
+    { name = "pyyaml", marker = "extra == 'tools'", specifier = ">=6.0.3" },
     { name = "safetensors", specifier = ">=0.8.0" },
     { name = "scikit-learn", marker = "extra == 'tools'", specifier = ">=1.9.1" },
     { name = "torch", specifier = "==2.15.0", index = "https://download.pytorch.org/whl/cu132" },

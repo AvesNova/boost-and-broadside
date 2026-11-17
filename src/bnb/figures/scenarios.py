@@ -423,9 +423,8 @@ def render(artifact: dict, directory: pathlib.Path) -> tuple[list[pathlib.Path],
     figure.legend(handles=handles, loc="lower center", ncol=3, frameon=False, fontsize=8)
     template_at = lab["template"]
     figure.suptitle(
-        f"Scenario lab: one shot (view {template_at['view']}, ship "
-        f"{template_at['row']}, tick {template_at['tick']}) on edited maps; bend "
-        "is the offset from the open-field flight",
+        f"Scenario lab\none shot: view {template_at['view']}, ship {template_at['row']}, "
+        f"tick {template_at['tick']}",
         color=output.INK,
     )
     return [output.save(figure, directory, "shots_scenarios", meta, numbers)], numbers

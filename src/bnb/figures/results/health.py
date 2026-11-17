@@ -159,7 +159,7 @@ def draw(
     for index in range(len(panels)):
         if index >= len(panels) - columns:
             axes.flat[index].set_xlabel("environment steps (M)", fontsize=8)
-    common.title(figure, "Run health and auxiliary heads over training")
+    common.title(figure, name)
     figure.tight_layout(rect=(0, 0, 1, 1))
     written = common.save(figure, out, name, list(sources), values, formats)
     return written, values

@@ -12,6 +12,7 @@ exclude_docs: |
   rewrite/
   hooks/
   roadmap.yml
+  figures.yml
   packages.yml
   images/architecture/*.typ
   images/architecture/render.py
@@ -41,6 +42,9 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Light mode
+
+extra_css:
+  - stylesheets/extra.css
 
 hooks:
   - docs/hooks/placeholders.py

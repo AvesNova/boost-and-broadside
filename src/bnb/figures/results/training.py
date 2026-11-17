@@ -193,10 +193,7 @@ def draw_behaviour(paths, out, formats=common.FORMATS, name="behaviour_over_trai
         axis.set_visible(False)
     for axis in axes[-1]:
         axis.set_xlabel("environment steps (M)", fontsize=8)
-    common.title(
-        figure,
-        "Behaviour over training (the training's own games; BC, then RL from the dashed line)",
-    )
+    common.title(figure, name)
     figure.tight_layout(rect=(0, 0, 1, 0.97))
     written = common.save(figure, out, name, [str(p) for p in paths], values, formats)
     return written, values
@@ -297,7 +294,7 @@ def draw_throughput(
         bbox_to_anchor=(0.5, -0.28),
         ncol=2,
     )
-    common.title(figure, "Throughput")
+    common.title(figure, name)
     figure.tight_layout()
     values: dict[str, float | None] = {}
     for key in order:
@@ -361,7 +358,7 @@ def draw_lanes(paths, out, formats=common.FORMATS, name="training_ratings"):
         _handoffs(axis, chain)
     axes[0, 0].set_ylabel("Elo (Imugi = 1000)", fontsize=8)
     axes[0, 0].legend(fontsize=7, frameon=False, loc="lower right")
-    common.title(figure, "Training lanes' ratings against the scripted anchor (live and averaged)")
+    common.title(figure, name)
     figure.tight_layout(rect=(0, 0, 1, 0.94))
     written = common.save(figure, out, name, [str(p) for p in paths], values, formats)
     return written, values

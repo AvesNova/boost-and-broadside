@@ -101,7 +101,7 @@ def draw(
     axis.legend(fontsize=7, frameon=False, loc="upper right")
     axis.set_xlabel("game length (game seconds); dotted: median, dashed: the clock", fontsize=8)
     axis.set_ylabel("density (per second)", fontsize=8)
-    common.title(figure, "Game length per mode")
+    common.title(figure, name)
     figure.tight_layout(rect=(0, 0, 1, 1))
     written = common.save(figure, out, name, list(map(str, paths)), values, formats)
     return written, values

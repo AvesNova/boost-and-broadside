@@ -4,6 +4,7 @@ README.template.md. In publish mode (BNB_RESULTS=publish) nothing may be open; i
 mode, the default, what is open is listed as a warning and the tests pass."""
 
 import importlib.util
+import re
 import warnings
 
 import pytest
@@ -146,3 +147,68 @@ def test_a_figure_with_a_dark_variant_follows_the_colour_scheme(monkeypatch, tmp
     readme, _ = PLACEHOLDERS.render(line, "README.template.md", VALUES, "publish")
     assert 'media="(prefers-color-scheme: dark)" srcset="docs/results/chart_dark.png"' in readme
     assert '<img alt="a chart" src="docs/results/chart.png">' in readme
+
+
+def _captioned(monkeypatch, tmp_path, **entry):
+    """A chart.png (and its dark twin) under tmp_path, held by the captions file."""
+    (tmp_path / "docs" / "results").mkdir(parents=True)
+    for name in ("chart.png", "chart_dark.png"):
+        (tmp_path / "docs" / "results" / name).write_bytes(b"png")
+    monkeypatch.setattr(PLACEHOLDERS, "ROOT", tmp_path)
+    monkeypatch.setattr(PLACEHOLDERS, "README_TEMPLATE", tmp_path / "README.template.md")
+    held = PLACEHOLDERS.captions.parse({"notes": {"caveat": "A caveat."}, "figures": {
+        "chart": dict(title="Short title", caption="At {{steps:,.0f}} steps.",
+                      notes=["caveat"], **entry)}})
+    monkeypatch.setattr(PLACEHOLDERS.captions, "load", lambda: held)
+
+
+def test_a_captioned_figure_is_a_figure_with_its_caption(monkeypatch, tmp_path):
+    """On the site: a <figure> of both variants, each telling the lightbox its title and
+    the caption to show, and a numbered <figcaption> with the values and the notes."""
+    _captioned(monkeypatch, tmp_path)
+    line = "{{figure: docs/results/chart.png | a chart}}"
+    site, _ = PLACEHOLDERS.render(f"{line}\n\n{line}", "docs/results/page.md", VALUES, "publish")
+    assert site.count('<figure class="captioned" markdown="1">') == 2
+    assert ('![a chart](chart.png#only-light){ data-title="Short title" '
+            'data-description=".figure-caption-1" }') in site
+    assert "![a chart](chart_dark.png#only-dark)" in site
+    assert ('<figcaption class="figure-caption-1" markdown="span">**Figure 1.** At '
+            "100,000,000 steps. A caveat.</figcaption>") in site
+    assert "**Figure 2.**" in site and "figure-caption-2" in site
+
+
+def test_a_captioned_figure_in_the_readme_is_a_small_line(monkeypatch, tmp_path):
+    _captioned(monkeypatch, tmp_path)
+    readme, _ = PLACEHOLDERS.render("{{figure: docs/results/chart.png}}", "README.template.md",
+                                    VALUES, "publish")
+    picture, caption = readme.split("\n\n")
+    assert picture.startswith("<picture>") and 'alt="Short title"' in picture
+    assert caption == "<sub>**Figure 1.** At 100,000,000 steps. A caveat.</sub>"
+
+
+def test_a_figure_without_a_drawn_title_leads_its_caption_with_it(monkeypatch, tmp_path):
+    _captioned(monkeypatch, tmp_path, title_in_image=False)
+    site, _ = PLACEHOLDERS.render("{{figure: docs/results/chart.png | a}}",
+                                  "docs/results/page.md", VALUES, "publish")
+    assert "**Figure 1. Short title.** At 100,000,000 steps." in site
+
+
+def test_every_figure_on_the_pages_has_a_title_and_a_caption():
+    """Every {{figure: ...}} placeholder (outside code spans) names a figure the captions
+    file holds."""
+    figure = re.compile(r"\{\{\s*figure:\s*([^|}]+)")
+    held = PLACEHOLDERS.captions.load()
+    missing = []
+    for path in [*PLACEHOLDERS.site_pages(), PLACEHOLDERS.README_TEMPLATE]:
+        for number, line in enumerate(path.read_text().splitlines(), 1):
+            for found in figure.finditer(PLACEHOLDERS.CODE_SPAN.sub("", line)):
+                name = PLACEHOLDERS.captions.name_of(found.group(1).strip())
+                if name not in held:
+                    missing.append(f"{path.relative_to(pages.ROOT)}:{number}: {name}")
+    assert not missing, "add these to docs/figures.yml: " + ", ".join(missing)
+
+
+def test_every_caption_renders():
+    """Every caption's values are in the values file."""
+    for entry in PLACEHOLDERS.captions.load().values():
+        PLACEHOLDERS.render(entry.caption, "docs/figures.yml")

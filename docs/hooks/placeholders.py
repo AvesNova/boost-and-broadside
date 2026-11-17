@@ -14,7 +14,11 @@ Three forms, anywhere in a page's Markdown outside fenced blocks and code spans:
         variant). Shown when the file exists; otherwise a slot that names it. When the dark
         variant exists beside it (win_rate_fan_dark.png), both are shown, each in its
         colour scheme: Material's #only-light and #only-dark on the site, a <picture> with
-        a prefers-color-scheme source in the README.
+        a prefers-color-scheme source in the README. When docs/figures.yml holds the
+        figure (`bnb.figures.captions`), its caption follows, "Figure N." numbered per
+        page: on the site a <figure> with a <figcaption> that the lightbox shows as the
+        image's description, in the README a <sub> line. The alt text may then be left
+        out ({{figure: path}}); the title stands in.
 
 The values file can be swapped with the environment variable BNB_RESULTS_VALUES (a path,
 from the repository root or absolute), to preview the pages with example numbers without
@@ -58,6 +62,17 @@ CODE_SPAN = re.compile(r"(`+)(?:.+?)\1")
 NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 
 log = logging.getLogger("mkdocs.hooks.placeholders")
+
+try:  # the captions file's reader, from the repository's source tree when not installed
+    from bnb.figures import captions
+except ImportError:
+    sys.path.insert(0, str(ROOT / "src"))
+    from bnb.figures import captions
+
+
+def _attribute(text: str) -> str:
+    """Text for a double-quoted HTML attribute."""
+    return text.replace("&", "&amp;").replace('"', "&quot;")
 
 
 class PlaceholderError(ValueError):
@@ -140,24 +155,57 @@ class _Page:
     name: str  # from the repository root
     values: dict
     outstanding: list[Outstanding]
+    figures: int = 0  # the figures captioned so far, for "Figure N."
 
     def link(self, path: str) -> str:
         return posixpath.relpath(path, posixpath.dirname(self.name) or ".")
 
-    def figure(self, path: str, alt: str) -> str:
+    def caption(self, path: str, number: int) -> tuple[str, str] | None:
+        """(the title, the caption's Markdown led by "Figure N.") of the figure at `path`
+        from the captions file (`bnb.figures.captions`), its values rendered; None for a
+        figure the file does not hold."""
+        entry = captions.find(path)
+        if entry is None:
+            return None
+        self.figures += 1
+        lead = f"Figure {self.figures}."
+        if not entry.title_in_image:  # the image draws no title: the caption carries it
+            lead = f"{lead} {entry.title}."
+        return entry.title, f"**{lead}** {self.line(entry.caption, number)}"
+
+    def figure(self, path: str, alt: str, number: int) -> str:
         """An existing figure, in both theme variants when its dark one (`dark_variant`)
-        exists: on the site, Material's #only-light and #only-dark images; in the README,
-        GitHub's <picture> with the light image as the fallback."""
+        exists, with its caption beneath when the captions file holds it. On the site, a
+        <figure> of Material's #only-light and #only-dark images and a <figcaption>, which
+        the lightbox shows as the image's description; in the README, GitHub's <picture>
+        with the light image as the fallback and the caption as a small line."""
         dark = dark_variant(path)
-        if not (ROOT / dark).is_file():
-            return f"![{alt}]({self.link(path)})"
+        has_dark = (ROOT / dark).is_file()
+        captioned = self.caption(path, number)
         if self.name == str(README_TEMPLATE.relative_to(ROOT)):
             quoted = alt.replace('"', "&quot;")
-            return (f'<picture><source media="(prefers-color-scheme: dark)" '
-                    f'srcset="{self.link(dark)}"><img alt="{quoted}" '
-                    f'src="{self.link(path)}"></picture>')
-        return (f"![{alt}]({self.link(path)}#only-light)"
-                f"![{alt}]({self.link(dark)}#only-dark)")
+            image = (f'<picture><source media="(prefers-color-scheme: dark)" '
+                     f'srcset="{self.link(dark)}"><img alt="{quoted}" '
+                     f'src="{self.link(path)}"></picture>' if has_dark
+                     else f"![{alt}]({self.link(path)})")
+            if captioned is None:
+                return image
+            return f"{image}\n\n<sub>{captioned[1]}</sub>"
+        if captioned is None:
+            if not has_dark:
+                return f"![{alt}]({self.link(path)})"
+            return (f"![{alt}]({self.link(path)}#only-light)"
+                    f"![{alt}]({self.link(dark)}#only-dark)")
+        title, text = captioned
+        hook = f"figure-caption-{self.figures}"
+        attributes = (f'{{ data-title="{_attribute(title)}" '
+                      f'data-description=".{hook}" }}')
+        images = (f"![{alt}]({self.link(path)}#only-light){attributes}"
+                  f"![{alt}]({self.link(dark)}#only-dark){attributes}" if has_dark
+                  else f"![{alt}]({self.link(path)}){attributes}")
+        return (f'<figure class="captioned" markdown="1">\n\n{images}\n\n'
+                f'<figcaption class="{hook}" markdown="span">{text}</figcaption>\n'
+                f"</figure>")
 
     def placeholder(self, match: re.Match, number: int, whole_line: bool) -> str:
         body = match.group(1).strip()
@@ -177,8 +225,11 @@ class _Page:
             if not whole_line:
                 raise PlaceholderError(f"{self.name}:{number}: a figure goes on a line of "
                                        "its own")
+            if not alt:
+                entry = captions.find(path)
+                alt = entry.title if entry else ""
             if (ROOT / path).is_file():
-                return self.figure(path, alt)
+                return self.figure(path, alt, number)
             self.outstanding.append(Outstanding(self.name, number, "figure", path, alt))
             return f"> **Figure to come** ({path}): {alt}"
         name, spec = kind, rest.strip() if colon else ""

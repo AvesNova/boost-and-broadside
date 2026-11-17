@@ -29,7 +29,9 @@ bnb figures results suite $EVAL/suite                    # a bnb evaluate direct
 bnb figures results averaging $EVAL/champion.json        # box/eval_champion.py
 ```
 
-The house style (the [figure style](../contributing/writing-docs.md#figure-style)): lines
+Each chart's title and caption are in `docs/figures.yml`{.plain} ([titles and
+captions](../contributing/writing-docs.md#titles-and-captions)). The house style (the
+[figure style](../contributing/writing-docs.md#figure-style)): lines
 and densities, bars only for throughput; the modes in one order and colour (frontline blue,
 deathmatch orange, elimination green); ratios on the viridis ramp, lowest darkest; no second
 y axis; up to four lines labelled at their ends, a legend beyond that.
@@ -143,10 +145,10 @@ names, with `<mode>` one of `frontline`, `deathmatch`, `elimination`:
 
 | Chart | Names |
 |---|---|
-| `fan` | `fan_<mode>_<p>v<o>_win_rate`, `_low`, `_high`: the last snapshot's win rate at p against o and its 95% interval |
-| `break-even` | `crossover_ratio_<mode>`, `_stderr`, `_steps`: the last snapshot's ratio, its standard error and the chain's steps |
+| `fan` | `fan_<mode>_<p>v<o>_win_rate`, `_low`, `_high`: the last snapshot's win rate at p against o and its 95% interval; `crossover_fixed_count`{.plain} (the ships on every lineup's larger side), `crossover_snapshots`{.plain}, `crossover_games_min`{.plain}, `_max`{.plain} (a snapshot's games in one mode), for the caption |
+| `break-even` | `crossover_ratio_<mode>`, `_stderr`, `_steps`: the last snapshot's ratio, its standard error and the chain's steps; `crossover_chain`{.plain} (a string) |
 | `arms` | `arm_<key>_score`, `_low`, `_high`; `seed_noise_score`{.plain}, `_low`, `_high` |
-| `team-size` | `team_size_<mode>_ratio_<k>_size_<n>_win_rate`, k written 1, 1_5, 2 |
+| `team-size` | `team_size_<mode>_ratio_<k>_size_<n>_win_rate`, k written 1, 1_5, 2; `team_size_games_min`{.plain}, `_max`{.plain}: a point's games, for the caption |
 | `health` | `health_<key>_final`: the key's mean over the last twentieth of the last source, the key in lower case with underscores (`health_policy_clip_fraction_final`{.plain}) |
 | `behaviour` | `behaviour_<mode>_<panel>_<stage>_final`: the mean over the stage's last five updates, the panel's title as a slug (`behaviour_elimination_hit_rate_rl_final`{.plain}) |
 | `throughput` | `throughput_<gpu>_<stage>_steps_per_second`, `chain_hours_<gpu>_<stage>`, `chain_steps_<stage>`, `compile_minutes_<gpu>` (both stages' first updates over their median update) |

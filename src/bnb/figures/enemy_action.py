@@ -152,7 +152,7 @@ def render(artifact: dict, directory: pathlib.Path) -> tuple[list[pathlib.Path],
         if name in numbers
     )
     figure.suptitle(
-        f"Enemy action: the head's distribution against the action taken\n{summary}",
+        f"Enemy-action head\n{summary}",
         color=output.INK,
         fontsize=10,
     )

@@ -189,7 +189,7 @@ def render(artifact: dict, directory: pathlib.Path) -> tuple[list[pathlib.Path],
         + f"; right sigma {numbers['expected_within_one_sigma']})",
         fontsize=8,
     )
-    figure.suptitle("Next state: one-step position forecasts", color=output.INK)
+    figure.suptitle("Next-state forecasts", color=output.INK)
     figure.tight_layout()
     return [output.save(figure, directory, "next_state_track", meta, numbers)], numbers
 

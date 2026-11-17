@@ -122,7 +122,9 @@ number, a text that waits on the results, or a figure not yet drawn is a placeho
   exist. When the dark variant `chart_dark.png`{.plain} exists beside it, both are shown,
   each in its colour scheme: Material's `#only-light`{.plain} and `#only-dark`{.plain} on
   the site, a `<picture>`{.plain} with a `prefers-color-scheme`{.plain} source in the
-  README.
+  README. When `docs/figures.yml`{.plain} holds the figure, its caption follows it
+  ([Figure style](#figure-style)); the alt text may then be left out (`{{figure:
+  docs/results/chart.png}}`{.plain}) and the title stands in.
 
 Every image on the site opens enlarged in a lightbox on click (`mkdocs-glightbox`{.plain},
 configured in `mkdocs.yml`{.plain}). The light and dark variants of a figure are two
@@ -244,6 +246,52 @@ for the paper a PDF and an SVG of the light variant fitted to the page width
 
 An exception to the theme (a colour or size a figure sets for itself) carries a comment
 that says why.
+
+### Titles and captions
+
+**A title is a few words; everything else goes in the caption.** The title says what the
+figure is about, short enough to remember ("Win rate when outnumbered", "Run health"), at
+most six words, quoting no values. The caption, beneath the figure as in a paper, gives
+what a reader needs to read it correctly and cannot see: what the lines, bands and points
+are, the sample (snapshots, games), the conditions (team sizes, the side held fixed),
+which weights (live or averaged), and the caveats. It does not state the obvious ("a
+histogram of ..."). Axis labels stay clear and complete on their own.
+
+Both live in one file, `docs/figures.yml`{.plain}, by the figure's file stem
+(`bnb.figures.captions`), so the chart, the site, the README and the paper never drift:
+
+```yaml
+notes:
+  deathmatch_tickets: >-
+    Deathmatch in this run is slightly off: ...
+figures:
+  win_rate_fan:
+    title: Win rate when outnumbered
+    caption: >-
+      Each line is one ratio of Imugi's ships to the policy's ... Every lineup has
+      {{crossover_fixed_count}} ships on its larger side ...
+    notes: [deathmatch_tickets]
+  elimination_game:
+    title: A whole elimination game
+    title_in_image: false
+    caption: >-
+      The champion (blue) against Imugi (orange) ...
+```
+
+- A caption may quote the values file (`{{name}}`{.plain}, `{{name:format}}`{.plain}), so a
+  sample size or a team size follows the data. A chart writes the numbers its caption
+  quotes.
+- A caveat shared by several figures is one entry under `notes`{.plain}, named by each
+  figure that carries it, and removed in one place when it no longer holds.
+- The web PNG draws the title (`common.title(figure, name)`{.plain} reads it); the paper's
+  PDF and SVG draw no title, since the paper's figure environment carries the title and
+  the caption (the title is in their metadata). A still, a clip or a diagram draws no title
+  (`title_in_image: false`{.plain}), and its caption leads with it.
+- On the site, `{{figure: ...}}`{.plain} becomes a `<figure>`{.plain} with a
+  `<figcaption>`{.plain} ("Figure N." numbered per page; styled in
+  `docs/stylesheets/extra.css`{.plain}), and the lightbox shows the title and the caption
+  with the enlarged image. In the README, the caption is a `<sub>`{.plain} line under the
+  image.
 
 ## Diagrams
 

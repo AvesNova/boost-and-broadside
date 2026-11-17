@@ -211,7 +211,7 @@ def draw(
     columns = 3
     figure.legend(handles=handles, fontsize=7, frameon=False, loc="lower center", ncol=columns)
     legend_rows = -(-len(handles) // columns)
-    common.title(figure, settings.get("title", "Arm decisions"))
+    common.title(figure, name, settings.get("title"))
     figure.tight_layout(rect=(0, (0.12 + 0.22 * legend_rows) / height, 1, 1))
     if not math.isfinite(limit):
         raise ValueError("a non-finite score or standard error")

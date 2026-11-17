@@ -220,6 +220,6 @@ def _outcome(artifact, part, directory, numbers) -> pathlib.Path:
     axis.set_xlabel("time left to the game's end")
     axis.set_ylabel("Brier skill against the result frequencies")
     axis.set_title(f"overall {numbers.get('brier_skill')}", fontsize=9)
-    figure.suptitle("Outcome head: does its win probability come true?", color=output.INK)
+    figure.suptitle("Outcome head calibration", color=output.INK)
     figure.tight_layout()
     return output.save(figure, directory, "critic_outcome", meta, numbers)

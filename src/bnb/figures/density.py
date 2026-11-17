@@ -174,7 +174,7 @@ def _maps(artifact, part, directory, numbers) -> pathlib.Path:
             axis.set_title(f"t={tick} view {view}: {title}", fontsize=8)
             figure.colorbar(image, ax=axis, shrink=0.75)
     figure.suptitle(
-        "Density: enemy ships per hex cell (dots: seen enemies; rings: hidden ones)",
+        "Density maps",
         color=output.INK,
     )
     return output.save(figure, directory, "density_maps", meta, numbers)
@@ -223,8 +223,6 @@ def _errors(artifact, numbers, directory) -> pathlib.Path:
     axis.set_xlabel("ring (0: the arena's centre)")
     axis.set_ylabel("head's squared error per cell")
     axis.legend(frameon=False, fontsize=8)
-    figure.suptitle(
-        "Density head: R^2, error against hidden enemies, error by ring", color=output.INK
-    )
+    figure.suptitle("Density head error", color=output.INK)
     figure.tight_layout()
     return output.save(figure, directory, "density_error", meta, numbers)

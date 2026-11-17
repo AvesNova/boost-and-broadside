@@ -1,0 +1,195 @@
+# Every figure's short title and caption, in one place: the charts draw the title
+# (`bnb figures results`), the site and the README put the caption under the figure
+# (docs/hooks/placeholders.py), and the paper's figure environment takes both. The rules,
+# the format and the fields: bnb.figures.captions and docs/contributing/writing-docs.md
+# (Figure style). Captions may quote the values file: {{name}} or {{name:format}}.
+
+notes:
+  deathmatch_tickets: >-
+    Deathmatch in this run is slightly off: it trained with 5 tickets per ship (5N) and was
+    evaluated with 4·N^(4/3) tickets, rounded to 5.
+
+figures:
+  # ------------------------------------------------------------------ the crossover
+  win_rate_fan:
+    title: Win rate when outnumbered
+    caption: >-
+      Each line is one ratio of Imugi's ships to the policy's (×1, ×1.2, ×1.6, ×2), read
+      off the crossover's logistic fit at each snapshot; the band is the fit's 95% interval
+      and the open points are games played at exactly that ratio. The policy is the
+      training's exponential average of the weights, at {{crossover_snapshots:.0f}}
+      snapshots of reinforcement learning; the dashed line is the hand-off from behaviour
+      cloning. Every lineup has {{crossover_fixed_count}} ships on its larger side, the
+      policy's or Imugi's; {{crossover_games_min:,.0f}} to
+      {{crossover_games_max:,.0f}} games per snapshot and mode.
+    notes: [deathmatch_tickets]
+
+  break_even_ratio:
+    title: Break-even ratio
+    caption: >-
+      Imugi's ships per one of the policy's at which each side wins half the games, from
+      the crossover's logistic fit, with one standard error, on a log axis: above 1 the
+      policy holds more than its own number. The policy is the training's exponential
+      average of the weights, at each snapshot of chain {{crossover_chain}}'s reinforcement
+      learning; every lineup has {{crossover_fixed_count}} ships on its larger side.
+    notes: [deathmatch_tickets]
+
+  # ------------------------------------------------------------------ training curves
+  elo_over_training:
+    title: Elo over training
+    caption: >-
+      Each point is one snapshot of the training's exponential average of the weights,
+      rated 5 against 5 in the shared pool of both stages' snapshots and Imugi, Imugi fixed
+      at 1000; the band is one standard error. An open triangle is a bound: the snapshot
+      won (up) or lost (down) all or nearly all its games, so its rating has no finite
+      estimate. Live weights, where the pool rates them, are dotted. The dashed line is the
+      hand-off from behaviour cloning to reinforcement learning.
+    notes: [deathmatch_tickets]
+
+  training_ratings:
+    title: Ratings during training
+    caption: >-
+      The training's own rating lanes, Elo against Imugi (1000) from a few games per
+      update against Imugi and the run's snapshots: the live weights solid, their
+      exponential average dashed with one standard error. Noisier than the pool's ratings;
+      the deathmatch lanes play the fewest games. The dashed vertical line is the hand-off
+      from behaviour cloning.
+
+  averaging_sweep:
+    title: The averaging sweep
+    caption: >-
+      Each candidate average of the run's weights against the incumbent, the training's
+      own exponential average: the mean Elo difference over the three modes at 5 against
+      5 with its 95% interval, and a tick per mode. The champion is highlighted; a
+      candidate replaces the incumbent only beyond two standard errors.
+
+  suite_conditions:
+    title: The champion, condition by condition
+    caption: >-
+      The champion ({{champion_weights}}, {{champion_steps:,.0f}} steps of reinforcement
+      learning) against Imugi on each head-to-head condition of the decision suite, both
+      sides on the same lineup of ship types: the score (wins plus half the draws) with
+      its 95% Wilson interval, from {{suite_games_per_condition:,.0f}} games per condition.
+      Frontline has no 1 against 1 or 2 against 2 condition.
+    notes: [deathmatch_tickets]
+
+  run_health:
+    title: Run health
+    caption: >-
+      The learner's own records against environment steps, each a faint raw line under a
+      centred moving mean; the dashed line is the hand-off from behaviour cloning to
+      reinforcement learning. The PPO panels start at the hand-off and the teacher's KL
+      ends there. Explained variance and value loss are per reward part, entropy per
+      action factor; the head losses are in each head's own units.
+
+  # ------------------------------------------------------------------ the arms
+  arms_forest:
+    title: The arm decisions
+    caption: >-
+      One row per arm, in the order they ran: its expected score against the incumbent
+      less one half, averaged over the decision suite's conditions, with its 95% interval
+      (0 is even, positive favours the arm). The shaded band is the indifference zone set
+      by seed-to-seed noise, shown in the last row; the marker gives the decision.
+
+  # ------------------------------------------------------------------ team sizes
+  team_size_generalization:
+    title: Win rate by team size
+    caption: >-
+      The champion, trained at 5 against 5 alone (dashed line), against Imugi from 1 to 10
+      of its own ships. Each line is one ratio of Imugi's ships to the policy's (1:1, 1:1.5,
+      1:2; 1:1.5 at even sizes only); the band is Wilson's 95% interval, a draw counting
+      half a win, from {{team_size_games_min:,.0f}} to {{team_size_games_max:,.0f}} games
+      per point. Every size plays the preset's own arena.
+    notes: [deathmatch_tickets]
+
+  # ------------------------------------------------------------------ compute
+  throughput:
+    title: Training throughput
+    caption: >-
+      Environment steps per second over whole updates, collection and learning together:
+      the median over the updates after the first, which compiles. RTX 5090: the dry run
+      dry-v24-s1, 2,048 environments, micro-batches of 480 rows. A dotted slot is a GPU
+      not yet measured.
+
+  # ------------------------------------------------------------------ behaviour
+  behaviour_over_training:
+    title: How the play changed
+    caption: >-
+      The training's own games, per update: the student's games during behaviour cloning,
+      then self-play and the league during reinforcement learning (from the dashed line).
+      They show how the play changed, not how strong it is. Mean speed is over all modes.
+
+  game_length:
+    title: Game length
+    caption: >-
+      The length of the games per mode as a density (a Gaussian kernel, reflected at zero
+      and at the clock), each mode's median marked. Games that ran the clock out are left
+      out of the curve, which integrates to the share decided before the clock; that share
+      is in the mode's label.
+
+  elimination_game:
+    title: A whole elimination game
+    title_in_image: false
+    caption: >-
+      The champion (blue) against Imugi (orange), 5 against 5, the whole game. Each ship's
+      path fades with age, an X marks each death; the dashed circle is the closing
+      boundary at the end, the solid one the arena's edge, the grey discs the fields (thick
+      air filled, thin air dotted).
+
+  frontline_opening:
+    title: A Frontline opening
+    title_in_image: false
+    caption: >-
+      The first 60 seconds of a 5 against 5 Frontline game, the champion (blue) against
+      Imugi (orange): the approach and the first contact.
+
+  elimination_fog:
+    title: Fighting under fog
+    title_in_image: false
+    caption: >-
+      The 20 seconds of the elimination game with the most fighting while enemies were
+      hidden from the champion (blue). A hidden enemy's true path is dashed; every 3
+      seconds the champion's belief of where it is, a plus with its one-sigma circle, is
+      joined to where it really was. A plus far outside its circle is an overconfident
+      belief.
+
+  manoeuvres:
+    title: Manoeuvres
+    title_in_image: false
+    caption: >-
+      The busiest 15 seconds of each quarter of the elimination game, cropped to the
+      fighting, the window's time above each panel; the champion blue, Imugi orange.
+
+  hero:
+    title: Outnumbered
+    title_in_image: false
+    caption: >-
+      The trained fleet (blue) against a larger fleet of Imugi, the scripted agent, at the
+      break-even ratio.
+
+  outnumbered_win:
+    title: Winning outnumbered
+    title_in_image: false
+    caption: >-
+      The champion (blue) against more of Imugi's ships (orange), at the break-even ratio.
+
+  frontline_push:
+    title: Taking the zones
+    title_in_image: false
+    caption: >-
+      A Frontline game: the champion (blue) taking and holding zones under fog of war.
+
+  elimination_boundary:
+    title: The closing boundary
+    title_in_image: false
+    caption: >-
+      An elimination game as the boundary closes, the champion blue and Imugi orange.
+
+  # ------------------------------------------------------------------ the model
+  overview-horizontal:
+    title: Yemong
+    title_in_image: false
+    caption: >-
+      The observation's tokens (one per ship, field and zone) pass through blocks of
+      spatial attention across the ships and temporal recurrence per ship, then to per-ship
+      heads.

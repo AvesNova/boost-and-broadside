@@ -54,7 +54,7 @@ def draw(
             fontsize=7,
             color=theme.MUTED,
         )
-    values: dict[str, float] = {}
+    values: dict[str, float | str] = {"crossover_chain": chain}
     labelled = []
     modes = [mode for mode in common.MODES if any(p["mode"] == mode for p in points)]
     modes += sorted({p["mode"] for p in points} - set(modes))
@@ -92,7 +92,7 @@ def draw(
     common.label_ends(axis, labelled)
     axis.set_xlabel("environment steps (M)", fontsize=8)
     axis.set_ylabel("Imugi's ships per one of ours at even odds", fontsize=8)
-    common.title(figure, f"Break-even ratio over training ({chain})")
+    common.title(figure, name)
     figure.tight_layout(rect=(0, 0, 1, 1))
     written = common.save(figure, out, name, [str(directory)], values, formats)
     return written, values

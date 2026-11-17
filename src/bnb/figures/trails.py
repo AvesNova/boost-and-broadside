@@ -52,7 +52,9 @@ class StillConfig:
     `ghost_seconds` for the `ghost_ships` enemies hidden longest in the window); a still of
     more than one ship a side takes at most two of shots, hits and fog
     (`check_marks`). theme: "light" or "dark"; size: one of `SIZES`; formats: the files
-    written (png, svg, pdf); title: the caption line above the view."""
+    written (png, svg, pdf); title: a line above the view, `heading` when given, else the
+    sides, the game and the window (a figure with a caption of its own, as in the write-up,
+    takes title False: docs/figures.yml)."""
 
     start: float | None = None
     end: float | None = None
@@ -68,6 +70,7 @@ class StillConfig:
     size: str = "web"
     formats: tuple[str, ...] = ("png",)
     title: bool = True
+    heading: str = ""
 
 
 def check_marks(config: StillConfig, ships_per_team: int) -> None:
@@ -444,7 +447,9 @@ def draw(artifact: dict, config: StillConfig):
     entries = 3 + 2 * config.ends + config.shots + config.hits + 2 * ghost_legend
     legend_rows = 1 if entries <= 4 else (3 if config.size == "column" else 2)
     legend_height = (font * 1.9 * legend_rows + 6) / 72.0
-    title = _title(about, first, final, tick_length, int(width * 72.0 / (0.6 * font)))
+    title = config.heading or _title(
+        about, first, final, tick_length, int(width * 72.0 / (0.6 * font))
+    )
     title_height = (font * 1.4 * (title.count("\n") + 1) + 0.6 * font) / 72.0
     title_height = title_height if config.title else 0.0
     height = width * aspect + legend_height + title_height
@@ -624,7 +629,7 @@ def manoeuvre_strip(
 ) -> pathlib.Path:
     """The manoeuvre strip: the busiest `seconds` of each of `parts` equal parts of the game
     (`part_windows`), each a cropped still, in a grid of `columns` in one PNG,
-    directory/name<theme suffix>.png. Returns its path."""
+    directory/name<theme suffix>.png, each panel headed by its window. Returns its path."""
     import tempfile
 
     from PIL import Image
@@ -635,7 +640,8 @@ def manoeuvre_strip(
     with tempfile.TemporaryDirectory() as scratch:
         images = []
         for number, (start, end) in enumerate(windows):
-            config = StillConfig(start=start, end=end, theme=variant)
+            heading = f"{start:.0f} to {end:.0f} s"  # the caption names the rest
+            config = StillConfig(start=start, end=end, theme=variant, heading=heading)
             paths, _ = still(artifact, pathlib.Path(scratch), f"window_{number}", config)
             images.append(Image.open(paths[0]).convert("RGB"))
         width = max(image.width for image in images)

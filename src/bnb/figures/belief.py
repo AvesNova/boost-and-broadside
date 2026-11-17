@@ -198,9 +198,7 @@ def _ghosts(artifact, part, directory, numbers) -> pathlib.Path:
         ),
     ]
     figure.legend(handles=handles, loc="lower center", ncol=4, frameon=False, fontsize=8)
-    figure.suptitle(
-        "Belief: the ghost of each hidden enemy against its true position", color=output.INK
-    )
+    figure.suptitle("Belief ghosts", color=output.INK)
     return output.save(figure, directory, "belief_ghosts", meta, numbers)
 
 
@@ -264,8 +262,6 @@ def _coverage(artifact, numbers, directory) -> pathlib.Path:
     axis.set_ylabel("m")
     axis.legend(frameon=False, fontsize=7)
     counts = ", ".join(str(numbers[b]["count"]) for b in buckets)
-    figure.suptitle(
-        f"Belief coverage by time since seen (rows per bucket: {counts})", color=output.INK
-    )
+    figure.suptitle(f"Belief coverage\nrows per bucket: {counts}", color=output.INK)
     figure.tight_layout()
     return output.save(figure, directory, "belief_coverage", meta, numbers)

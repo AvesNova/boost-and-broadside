@@ -77,18 +77,20 @@ def draw(
     figure, axes = common.new_figure(1, len(found), size=(4.2, 3.4), sharey=True)
     colours = common.ordered_colours(len(ratios))
     values: dict[str, float] = {}
+    games: list[float] = []
     for axis, mode in zip(axes.flat, found, strict=True):
         axis.set_title(mode, fontsize=9)
         axis.axhline(0.5, color=theme.MUTED, linewidth=0.8, linestyle=":")
         axis.axvline(trained_team_size, color=theme.MUTED, linewidth=0.8, linestyle="--")
-        axis.annotate(
+        axis.annotate(  # at the foot, clear of the lines near 1
             f"trained at {trained_team_size}v{trained_team_size}",
-            (trained_team_size, 1.0),
-            xytext=(3, -2),
+            (trained_team_size, 0.0),
+            xycoords=("data", "axes fraction"),
+            xytext=(3, 3),
             textcoords="offset points",
             fontsize=7,
             color=theme.MUTED,
-            va="top",
+            va="bottom",
         )
         labelled = []
         for ratio, colour in zip(ratios, colours, strict=True):
@@ -101,6 +103,7 @@ def draw(
             )
             if not points:
                 continue
+            games += [sums[1] for _, sums in points]
             sizes = [policy for policy, _ in points]
             rates = [score / games for _, (score, games) in points]
             intervals = [wilson(score, games) for _, (score, games) in points]
@@ -127,8 +130,10 @@ def draw(
         axis.set_xticks([size for size in (1, 5, 10, 15, 20) if size <= largest])
         axis.set_xlabel("our ships", fontsize=8)
         common.label_ends(axis, labelled)
+    values["team_size_games_min"] = float(min(games, default=0))
+    values["team_size_games_max"] = float(max(games, default=0))
     axes.flat[0].set_ylabel("win rate against Imugi", fontsize=8)
-    common.title(figure, "Win rate against Imugi by team size (Imugi's ships per ours: 1:k)")
+    common.title(figure, name)
     figure.tight_layout(rect=(0, 0, 0.98, 1))
     written = common.save(figure, out, name, list(map(str, paths)), values, formats)
     return written, values
