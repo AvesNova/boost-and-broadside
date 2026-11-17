@@ -39,7 +39,7 @@ export BNB_CACHE=$VOLUME/cache/bnb
 export PYTHONPATH=$VOLUME/bnb/src:$VOLUME/bnb
 export PATH=$VOLUME/venv/bin:\$PATH
 # the W&B key, copied from the laptop (never committed; delete after the runs)
-[ -f $VOLUME/secrets.env ] && . $VOLUME/secrets.env
+[ -f $VOLUME/secrets.env ] && . $VOLUME/secrets.env || true
 EOF
 grep -q "$VOLUME/env.sh" ~/.bashrc 2>/dev/null || echo "source $VOLUME/env.sh" >> ~/.bashrc
 # shellcheck disable=SC1091
