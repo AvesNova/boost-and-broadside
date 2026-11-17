@@ -125,6 +125,47 @@ The A-optimal value still picks the pairs; over a long chain it prefers hops of
 p ≈ 0.8–0.95 (the information about a distance D over k hops is best near 400 Elo a
 hop, where x² p (1 − p) peaks), so "near 0.5" is not the optimum for a 5,000-Elo span.
 
+## Elo curves: the static design (the author, 2026-11-17 afternoon)
+
+The adaptive planner is replaced for learning curves by a design fixed in advance
+(`static_design.py`, `static_target.StaticEloTarget`; spec `design = "static"`, the
+default `box/unified_spec.py` writes for curves; `--curve-design adaptive` restores the
+planner). Win-rate, team-size and break-even targets keep their planning.
+
+- **Players:** the anchor (this tree's Imugi, 1000 in the fit) and each run's snapshots.
+  A champion with a snapshot's weights is that snapshot, never a second player. No old
+  Imugi in the field, and no other scripted player.
+- **Design prior** (counts only, never the fit): adjacent checkpoints 100 Elo apart along
+  BC then RL; Imugi at the first RL checkpoint, 100 above BC's last.
+- **Pairs:** each checkpoint against its +-1 .. +-`reach` neighbours on its run (default 2,
+  BC continuing into RL). The anchor plays the checkpoints within 3 places of the first RL
+  one, plus every second one out to 8 places (the links).
+- **Counts:** A-optimal under the prior. A greedy pass adds games by the variance drop over
+  the unmet goals per game (rank-one updates). A trim pass then takes back every game the
+  goals do not need. Existing games count at their information and reduce the counts. The
+  information matrix must be full rank (every checkpoint connected to the anchor), checked.
+- **Two stages:** stage 1 plays the prior design (`pilot` > 1 designs it to pilot x the
+  goal). Once its last result is in: the fit, then the A-optimal top-up at the fitted
+  ratings, to 0.95 x the goal (`static_target.MARGIN`: the fit moves with the new games).
+  A player outside the anchor's fitted component counts no information toward it. Then
+  the target stops, and every player still above the goal gets a `WARNING` line
+  (`run.short_of_goal`). A rerun designs again from every game in hand.
+- **Engine:** every cell short of its count is proposed (no probe caps, no overtime, no
+  filler). A resident set streams along the fixed training order (`BucketEngine._stream`,
+  no values). A resident without proposed cells drains and leaves, and the next player in
+  order with cells takes the free lane. If nothing is playable among the seated players
+  and no lane can free up, the earliest resident leaves. `static_design.streaming_schedule`
+  prints the idealised window steps.
+- **Each run on its own first.** Several runs in one field are each resolved against the
+  anchor (no cross-run pairs). The linking stage comes after the single-run stages, as its
+  own stage or command: each checkpoint of run A against run B's checkpoint nearest in
+  fitted rating, counts A-optimal for the run-to-run offset, then a joint fit. Not built.
+
+Simulated on dry run 1's curves (results.md, "Static design"): elimination meets +-60 in
+~15,600 games with the spec's pairs (the adaptive planner took 4,940). reach 4 with pilot 2
+takes ~7,000. Fields with large fitted gaps (deathmatch, frontline) need pairs chosen by
+fitted rating, not by place (open).
+
 ## Two runs in one field (the author, 2026-11-17)
 
 Dry run 1 (game v24) and dry run 3 (v26) share the ship card and the game rules; only

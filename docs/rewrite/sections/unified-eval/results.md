@@ -310,3 +310,37 @@ dropping.
 
 The win-rate targets' report had no `met` field (a reader's default gave False for all 63);
 every target's report now carries `met` and `stopped`.
+
+## Static design on dry run 1's curves (CPU, 2026-11-17 afternoon)
+
+`bench/elo_static_design.py`: dry run 1's fitted table as the truth (as
+`bench/elo_curve_planner.py`). The field is the anchor and the 52 snapshots (the champion
+is an alias). Bradley-Terry games, 2,048 in flight ending in bursts of 2%, from no games,
+goal +-60. Final errors are the fit's.
+
+| mode | reach | pilot | games (4 seeds) | stage 1 | worst SE | above 60 | adaptive planner |
+|---|---|---|---|---|---|---|---|
+| elimination | 2 (spec) | 1 (spec) | 15,583-15,615 | 15,577 | 57.0 | 0 | 4,940 |
+| elimination | 2 | 2 | 12,880-13,271 | 3,829 | 56.5-58.4 | 0 | |
+| elimination | 4 | 1 | 10,891-11,021 | 10,888 | 57.0-57.3 | 0 | |
+| elimination | 4 | 1.5 | 6,991-7,190 | 4,727 | 56.7-58.8 | 0 | |
+| elimination | 4 | 2 | 6,459-7,360 | 2,670 | 55.9-59.5 | 0 | |
+| elimination | 6 | 2 | 5,655-6,284 | 2,617 | 56.0-61.4 | 0-7 | |
+| frontline | 2 | 1 | 40,776 (1 seed) | 15,082 | 60.3 | 2 | 15,408 |
+| frontline | 4 | 2 | 14,795 | 2,573 | 211 | 30 | |
+| deathmatch | 2 | 1 | 376,945 | 10,600 | 78.4 | 6 | 11,776 |
+| deathmatch | 4 | 2 | 22,971 | 1,851 | 118 | 29 | |
+
+Root mean square of the error over the SE is 0.65-1.5 per run (correlated along the chain).
+
+- **The prior's span costs most.** Elimination's fitted span is 2,500 Elo over 52
+  snapshots (48 a step), against the prior's 5,100. With true ratings the same pairs need
+  11,172 games at reach 2, 6,116 at reach 4 and 4,720 at reach 8. So place-based pairs
+  are the other cost: the adaptive planner chained hops near 400 Elo.
+- **Stage 2 to the bare goal ends a few players at 60-62.** The stage-2 margin (0.95 of
+  the goal) clears that at reach 2-4.
+- **Large fitted gaps break place-based pairs.** In deathmatch and frontline the truth has
+  jumps where +-2 neighbours have p near 1. The top-up then either buys hundreds of
+  thousands of games or leaves the bounds unresolved. Those modes need stage-2 pairs
+  chosen by fitted rating (each checkpoint against the nearest in fitted Elo), as the
+  linking stage will be.

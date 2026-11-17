@@ -1,0 +1,196 @@
+"""The static Elo-curve design (`bnb.league.unified.static_design`, `static_target`) and the
+engine's streaming window, on the CPU."""
+
+import math
+import pathlib
+import random
+import types
+
+import numpy
+
+from bnb.league.matches import Player
+from bnb.league.ratings import SCALE
+from bnb.league.unified import static_design
+from bnb.league.unified.cells import Cell, Condition, Outcome
+from bnb.league.unified.engine import BucketEngine
+from bnb.league.unified.planner import Planner
+from bnb.league.unified.static_target import StaticEloTarget, static_elo
+
+EL = "real_scale_elimination"
+
+
+def chain_players(bc: int, rl: int, run: str = "dry") -> list[Player]:
+    players = [Player("scripted")]
+    for stage, count in (("bc", bc), ("rl", rl)):
+        for step in range(1, count + 1):
+            path = pathlib.Path(
+                f"/runs/{run}-{stage}/policies/step_{step * 1000}/exponential_average"
+            )
+            players.append(Player(f"{stage}_{step}", policy=path))
+    return players
+
+
+def test_prior_pairs_and_order_follow_the_chain():
+    found, other = static_design.checkpoints(chain_players(3, 3))
+    assert other == ["scripted"]
+    chains = static_design.chains_of(found)
+    order = static_design.design_order(chains)
+    assert order == ["bc_1", "bc_2", "bc_3", "rl_1", "rl_2", "rl_3"]
+    prior = static_design.prior_ratings(chains)
+    assert prior["rl_1"] == 0.0 and prior["bc_3"] == -100.0 and prior["rl_3"] == 200.0
+    pairs = static_design.candidate_pairs(chains, "scripted")
+    assert ("bc_3", "rl_1") in pairs and ("bc_2", "rl_1") in pairs  # across the transition
+    assert ("bc_1", "bc_3") in pairs and ("bc_1", "rl_1") not in pairs
+    assert ("scripted", "rl_1") in pairs
+
+
+def test_a_optimal_meets_every_goal_connected_and_existing_games_reduce_it():
+    found, _ = static_design.checkpoints(chain_players(6, 6))
+    chains = static_design.chains_of(found)
+    names = ["scripted"] + static_design.design_order(chains)
+    index = {n: i for i, n in enumerate(names)}
+    prior = static_design.prior_ratings(chains)
+    theta = numpy.array([0.0] + [prior[n] / SCALE for n in names[1:]])
+    pairs = [(index[a], index[b]) for a, b in static_design.candidate_pairs(chains, "scripted")]
+    design = static_design.a_optimal(len(names), pairs, theta, 60.0)
+    assert design.rank == len(names) - 1
+    assert design.stderr[1:].max() <= 60.0 * (1 + 1e-5) and design.games > 0
+    # the same design's games already played: nothing more is needed
+    first = numpy.array([a for a, _ in pairs])
+    second = numpy.array([b for _, b in pairs])
+    held = static_design.precision(
+        len(names), first, second, design.counts * static_design.pair_weights(theta, first, second)
+    )
+    again = static_design.a_optimal(len(names), pairs, theta, 60.0, existing=held)
+    assert again.games == 0
+
+
+def test_streaming_schedule_plays_every_cell_with_both_players_seated():
+    order = [f"p{i}" for i in range(20)]
+    cells = {(order[i], order[j]): 5 for i in range(20) for j in range(i + 1, min(i + 3, 20))}
+    cells.update({("scripted", name): 3 for name in order[::4]})
+    steps = static_design.streaming_schedule(order, cells, 5)
+    played = sum(step["games"] for step in steps)
+    assert played == sum(cells.values())
+    for step in steps:
+        assert len(step["seated"]) <= 5
+
+
+def simulate(target: StaticEloTarget, truth: dict[str, float], seed: int = 0) -> Planner:
+    planner = Planner([target])
+    rng = random.Random(seed)
+    for _ in range(100_000):
+        chosen = planner.choose(5, EL)
+        if chosen is None:
+            break
+        cell = chosen[0]
+        p = 1.0 / (1.0 + math.exp(-(truth[cell.first] - truth[cell.second]) / SCALE))
+        planner.finished(cell, Outcome(1.0 if rng.random() < p else 0.0, seconds=30.0))
+    return planner
+
+
+def test_two_stages_then_done_with_every_error_reported():
+    players = chain_players(4, 6)
+    target = static_elo(
+        "curves/elimination",
+        Condition(EL, 5, 5),
+        [p.name for p in players],
+        players,
+        80.0,
+        "scripted",
+    )
+    truth = {"scripted": 0.0} | {n: 60.0 * (i - 4) for i, n in enumerate(target.order)}
+    planner = simulate(target, truth)
+    assert target.stage == 3 and target.done() and planner.done()
+    assert set(target.designs) == {1, 2}
+    report = target.report()
+    assert report["design"]["kind"] == "static" and report["stopped"] in ("met", "design")
+    assert planner.choose(5, EL) is None  # no overtime, no filler: the counts are the design
+    # every played pair is a candidate (no per-game planning beyond the design)
+    played = {(a, b) for a, b in zip(*numpy.nonzero(numpy.triu(target.games)), strict=True)}
+    assert played <= set(target.pairs) | {(b, a) for a, b in target.pairs}
+
+
+def test_prior_games_reduce_the_stage_one_counts():
+    players = chain_players(3, 4)
+    names = [p.name for p in players]
+
+    def fresh():
+        return static_elo("c", Condition(EL, 5, 5), names, players, 80.0, "scripted")
+
+    empty = fresh()
+    empty.design()
+    loaded = fresh()
+    for _ in range(200):
+        loaded.record(Cell(Condition(EL, 5, 5), "rl_1", "rl_2"), Outcome(0.5), pending=False)
+    loaded.design()
+    assert loaded.designs[1].games < empty.designs[1].games
+
+
+def test_a_champion_of_a_snapshots_weights_is_not_a_second_player():
+    players = chain_players(2, 3)
+    players.append(Player("champion", policy=players[-1].policy))
+    target = static_elo(
+        "c", Condition(EL, 5, 5), [p.name for p in players], players, 80.0, "scripted"
+    )
+    assert "champion" not in target.players
+
+
+def test_stream_window_unloads_done_residents_and_loads_the_next_in_order():
+    swapped = []
+
+    class Seat:
+        lanes = [[1, 2]]
+
+        def swap(self, run, lane, index):
+            swapped.append((lane, index))
+            self.lanes[run][lane] = index
+
+    condition = Condition(EL, 5, 5)
+    values = {Cell(condition, "b", "c"): 1.0, Cell(condition, "scripted", "d"): 1.0}
+    engine = types.SimpleNamespace(
+        bucket=5,
+        planner=types.SimpleNamespace(values=lambda overtime=False: values, buckets=(5, 10, 20)),
+        index={"scripted": 0, "a": 1, "b": 2, "c": 3, "d": 4},
+        network=[False, True, True, True, True],
+        group_of=[None, 0, 0, 0, 0],
+        runs=[(0, [1, 2], 100)],
+        seat=Seat(),
+        capacity_of={1: 100, 2: 100},
+        leaving=set(),
+        in_use=[0, 2, 0, 0, 0],
+        swaps=0,
+        stream_rank={0: 9, 1: 0, 2: 1, 3: 2, 4: 3},
+    )
+    engine._working = types.MethodType(BucketEngine._working, engine)
+    BucketEngine._stream(engine)
+    assert engine.leaving == {1}  # "a" has nothing left: it drains
+    assert swapped == []  # no lane free yet
+    engine.in_use[1] = 0
+    BucketEngine._stream(engine)
+    # "a"'s lane is emptied, then seats "c" (next in order with games), before "d"
+    assert swapped == [(0, None), (0, 3)] and 3 in engine.capacity_of
+
+
+def test_spec_static_curves_load_with_the_anchor_and_the_chain(tmp_path):
+    from bnb.league.unified.run import load_spec, stream_order
+
+    lines = ["[players]"]
+    for stage in ("bc", "rl"):
+        for step in (1000, 2000, 3000):
+            where = tmp_path / f"dry-{stage}/policies/step_{step}/exponential_average"
+            where.mkdir(parents=True)
+            (where / "checkpoint.json").write_text("{}")
+            lines.append(f'{stage}_{step} = "{where}"')
+    lines.append(f'champion = "{where}"')
+    names = ["scripted"] + [f"{s}_{n}" for s in ("bc", "rl") for n in (1000, 2000, 3000)]
+    lines += ["", "[[elo]]", f'preset = "{EL}"', 'design = "static"', "reach = 3", "pilot = 2.0"]
+    lines.append(f"players = {names + ['champion']}".replace("'", '"'))
+    (tmp_path / "spec.toml").write_text("\n".join(lines) + "\n")
+    spec = load_spec(tmp_path / "spec.toml")
+    (target,) = spec.targets
+    assert isinstance(target, StaticEloTarget) and target.pilot == 2.0
+    assert target.players == names  # the champion: the same weights as rl_3000
+    pairs = {(target.players[a], target.players[b]) for a, b in target.pairs}
+    assert ("bc_1000", "rl_1000") in pairs and ("bc_1000", "rl_2000") not in pairs  # reach 3
+    assert stream_order(Planner(spec.targets)) == names[1:]

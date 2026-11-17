@@ -265,6 +265,7 @@ class BucketEngine:
         record=None,
         residents: int | None = RESIDENTS,
         rules: dict[str, tuple[bool, bool]] | None = None,
+        stream: list[str] | None = None,
     ) -> None:
         self.bucket, self.planner, self.device = bucket, planner, device
         self.players = players
@@ -310,6 +311,19 @@ class BucketEngine:
         if player_share is None:
             player_share = {name: 1.0 / max(len(networks), 1) for name in networks}
         shares_of = [player_share.get(one.name, 0.0) for one in players]
+        # a static design's streaming order (`StaticEloTarget.stream`): the resident window
+        # slides along it (`_stream`), the first players with games seated first
+        self.stream_rank = None
+        if stream is not None:
+            self.stream_rank = {self.index[n]: r for r, n in enumerate(stream) if n in self.index}
+            later = len(self.stream_rank)
+            for index in range(len(players)):
+                self.stream_rank.setdefault(index, later + index)
+            working = self._working()
+            shares_of = [
+                (1.0 / (1.0 + self.stream_rank[i]) if i in working else 0.0)
+                for i in range(len(players))
+            ]
         self.resident_set = residents is not None and len(networks) > residents
         if self.resident_set:
             runs = resident_runs(groups, shares_of, rows, residents)
@@ -656,6 +670,9 @@ class BucketEngine:
         that much more, up to `ROTATING` residents drain at once. A player swapped in stays
         for its first `FRESH_GAMES` games. Weights are copied on the device, between
         replays."""
+        if getattr(self, "stream_rank", None) is not None:  # a static design's window
+            self._stream()
+            return
         value = self._player_values()
         if not hasattr(self, "fresh"):
             self.fresh = {}
@@ -712,6 +729,68 @@ class BucketEngine:
                 outside.pop(0)
                 self.leaving.add(staying.pop(0))
                 draining += 1
+
+    def _working(self) -> set[int]:
+        """The players with a proposed (not overtime) cell in this bucket."""
+        working = set()
+        for cell in self.planner.values():
+            if bucket_of(cell.condition, self.planner.buckets) != self.bucket:
+                continue
+            for name in (cell.first, cell.second):
+                if name in self.index:
+                    working.add(self.index[name])
+        return working
+
+    def _stream(self) -> None:
+        """The static design's resident window (`static_design.streaming_schedule`, no
+        values): a resident without a proposed cell leaves (it drains as any leaving one);
+        a drained lane is emptied; each empty lane seats the next player of the streaming
+        order with a proposed cell. Should every resident wait on players outside (nothing
+        playable among the seated) with no lane to come, the earliest in the order leaves
+        (it comes back when its partners are seated)."""
+        working = self._working()
+        rank = self.stream_rank
+        values = self.planner.values()
+        for run, (group, _, capacity) in enumerate(self.runs):
+            lanes = self.seat.lanes[run]
+            for lane, index in enumerate(lanes):
+                if index in self.leaving and self.in_use[index] == 0:
+                    self.leaving.discard(index)
+                    self.capacity_of.pop(index, None)
+                    self.seat.swap(run, lane, None)
+            for index in lanes:
+                if index is not None and index not in working:
+                    self.leaving.add(index)
+            outside = sorted(
+                (
+                    i
+                    for i, g in enumerate(self.group_of)
+                    if g == group and i not in self.capacity_of and i in working
+                ),
+                key=lambda i: rank[i],
+            )
+            empty = [lane for lane, index in enumerate(lanes) if index is None]
+            for lane in empty:
+                if not outside:
+                    break
+                incoming = outside.pop(0)
+                self.seat.swap(run, lane, incoming)
+                self.capacity_of[incoming] = capacity
+                self.swaps += 1
+            if outside and len(empty) == 0 and not any(i in self.leaving for i in lanes):
+                seated = {i for i in lanes if i is not None}
+                playable = any(
+                    all(
+                        not self.network[self.index[n]] or self.index[n] in seated
+                        for n in (cell.first, cell.second)
+                    )
+                    for cell in values
+                    if bucket_of(cell.condition, self.planner.buckets) == self.bucket
+                    and cell.first in self.index
+                    and cell.second in self.index
+                )
+                if not playable:
+                    self.leaving.add(min(seated, key=lambda i: rank[i]))
 
     def wanted(self) -> bool:
         """Whether the bucket still has work: a target wants a game in it, or a game a target

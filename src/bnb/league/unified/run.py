@@ -81,6 +81,8 @@ from .engine import (
     size_environments,
 )
 from .planner import Planner
+from .static_design import NEIGHBOURS
+from .static_target import StaticEloTarget, static_elo
 from .targets import BreakEvenTarget, DecisionTarget, EloTarget, Target, WinRateTarget
 
 ANCHOR = "scripted"
@@ -183,6 +185,29 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
         contrasts = tuple(tuple(c) for c in entry.get("contrasts", ()))
         check(*(n for c in contrasts for n in c[:2]))
         contrasts = tuple((canonical(a), canonical(b), *rest) for a, b, *rest in contrasts)
+        if entry.get("design", "adaptive") == "static":  # `static_target`: fixed counts
+            targets.append(
+                static_elo(
+                    entry.get("name", f"elo/{condition.key}"),
+                    condition,
+                    field,
+                    players,
+                    entry.get("stderr", 60.0),
+                    ANCHOR,
+                    reach=entry.get("reach", NEIGHBOURS),
+                    pilot=entry.get("pilot", 1.0),
+                    kill_share=entry.get("kill_share", False),
+                    budget=entry.get("budget", 1 << 30),
+                    prior_keys=tuple(entry.get("prior_keys", ())),
+                    note=entry.get("note", ""),
+                    aliases={
+                        alias: name
+                        for alias, name in aliases.items()
+                        if alias in entry["players"] and name in field
+                    },
+                )
+            )
+            continue
         targets.append(
             EloTarget(
                 entry.get("name", f"elo/{condition.key}"),
@@ -657,6 +682,7 @@ def run(
             record=games_log.add,
             residents=residents,
             rules=spec.rules,
+            stream=stream_order(planner),
         )
 
     footprints: dict[int, tuple[float, float]] = {}
@@ -818,12 +844,33 @@ def run(
     return report
 
 
+def stream_order(planner: Planner) -> list[str] | None:
+    """The static Elo targets' streaming order, merged (`StaticEloTarget.stream`; one
+    chain order serves every mode), or None without one (the resident set by value)."""
+    order: dict[str, None] = {}
+    for target in planner.targets:
+        if isinstance(target, StaticEloTarget):
+            order.update(dict.fromkeys(target.stream()))
+    return list(order) if order else None
+
+
 def short_of_goal(planner: Planner, out_of_time: bool) -> list[str]:
     """Loud lines for every Elo target a safety bound stopped short of its goals (its game
     budget, or the run's hours): a stop on a bound is never silent."""
     lines = []
     for target in planner.targets:
         if not isinstance(target, EloTarget) or target.met():
+            continue
+        if isinstance(target, StaticEloTarget) and target.stage == 3:
+            report = target.report()
+            for label in report["unmet"]:
+                error = report["errors"].get(label)
+                lines.append(
+                    f"WARNING {target.name}: {label} at "
+                    + (f"{error:.1f}" if error is not None else "no rating")
+                    + f" against the goal {target.goal:.0f} after the static design's two stages"
+                    f" ({target.finished} games)"
+                )
             continue
         why = (
             "its game budget"

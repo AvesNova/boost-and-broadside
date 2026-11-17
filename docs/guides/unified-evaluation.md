@@ -74,6 +74,27 @@ other runs' checkpoints at the nearest steps; a chain's first RL checkpoint and 
 BC one) and moves to the fitted estimates as games come in, so a learning curve's ratings
 chain along the run to the anchor through pairs of uncertain result.
 
+### Learning curves: the static design
+
+A learning curve's field (the anchor and a run's snapshots) has its own design,
+`design = "static"` in its `[[elo]]` (the default `box/unified_spec.py` writes for the
+curves): no per-game planning. Each checkpoint plays its neighbours on its run (`reach`,
+default 2 a side, BC continuing into RL) and the anchor plays the checkpoints near the
+first RL one. The games per pair are fixed in advance, A-optimal under a design prior
+(adjacent checkpoints 100 Elo apart, Imugi at the first RL checkpoint): the fewest games
+that bring every checkpoint's expected standard error to the goal. Stage 1 plays them
+(`pilot = 2.0` designs stage 1 to twice the goal, a cheaper first look). Then the fit, and
+stage 2 tops up, at the fitted ratings, only where errors exceed the goal; then the target
+stops. A player still above the goal gets a `WARNING` line. Earlier games reduce the
+counts. A champion with a snapshot's weights is that snapshot. Only the anchor and
+checkpoints belong in a static field. Print a spec's design, per-pair table and streaming
+schedule (CPU) with
+`python -m bnb.league.unified.static_design --spec spec.toml --runs-directory RUNS`.
+
+With more network players than `--residents`, the resident set slides along the run in
+training order. A player leaves once its cells are played, and the next player with games
+takes its lane.
+
 Earlier games count: `--prior POOL` (repeatable) loads a rating pool's games
 (`bnb pool rate`'s records) of each Elo target's condition before the first game, players
 matched by their weights, games of another game version left out (the log says how many).
@@ -97,7 +118,8 @@ uv run --no-sync bnb unified spec.toml --out runs/eval-x --runs-directory runs
 - `--concurrent auto|yes|no`: buckets with work share the device when each gets 512
   environments, else they run in turn;
 - `--hours 24`: the safety bound on the run's time (reported when reached);
-- `--prior POOL`: a rating pool whose games the Elo targets start from.
+- `--prior POOL`: a rating pool whose games the Elo targets start from;
+- `--residents 12`: the network players seated at once in a field with more.
 
 Each bucket compiles once (about 4 minutes cold on the laptop, seconds warm). On a box,
 `box/unified_check.sh CHAIN` builds the spec of the dry run's evaluation queue and runs

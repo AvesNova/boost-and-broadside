@@ -11,8 +11,11 @@ its champion (`RUNS/CHAIN-eval/champion.json`, else the last RL step's average);
 champion); several are prefixed with the chain ("dry-v24-s1/rl_N").
 
 Targets, per mode (no map-scale targets: evaluation plays the trained map sizes):
-- curves: the 5v5 Elo field of every player, +-60, stopping on precision (a safety budget
-  of `CURVE_BUDGET`), with the rating pools' preset keys for --prior;
+- curves: the 5v5 Elo field of every player, +-60, with the rating pools' preset keys for
+  --prior; by default the static design (`--curve-design static`: the anchor and the
+  checkpoints only, each run resolved against the anchor in two fixed stages,
+  `bnb.league.unified.static_target`; `--reach`, `--pilot`), else the adaptive planner
+  (stopping on precision, a safety budget of `CURVE_BUDGET`);
 - suite: each champion against the anchor at 5v5, 10v10 (and 1v1, 2v2 outside Frontline),
   +-0.02; against imugi_v24 at 5v5 only;
 - breakeven: each champion at 5 ships against the anchor's 1 to 20 (+-0.1);
@@ -41,7 +44,7 @@ TICKET_NOTE = (
 def champion_of(runs: pathlib.Path, chain: str) -> str:
     try:
         return json.loads((runs / f"{chain}-eval" / "champion.json").read_text())["path"]
-    except (OSError, ValueError, KeyError):
+    except OSError, ValueError, KeyError:
         root = runs / f"{chain}-rl" / "policies"
         last = max(int(p.name[5:]) for p in root.glob("step_*") if p.name[5:].isdigit())
         return str(root / f"step_{last}" / "exponential_average")
@@ -54,6 +57,15 @@ def main() -> None:
     parser.add_argument("--parts", default="suite curves breakeven teamsize")
     parser.add_argument("--old-imugi", action="store_true")
     parser.add_argument("--modes", default=" ".join(MODES), help="the modes to evaluate")
+    parser.add_argument(
+        "--curve-design",
+        choices=("static", "adaptive"),
+        default="static",
+        help="the curves' design: static (fixed counts in two stages, `static_target`) or the "
+        "adaptive per-game planner",
+    )
+    parser.add_argument("--reach", type=int, default=2, help="static: chain neighbours a side")
+    parser.add_argument("--pilot", type=float, default=1.0, help="static: stage 1's goal factor")
     args = parser.parse_args()
     from bnb.league.rating_pool import scheduled_policies
 
@@ -89,7 +101,12 @@ def main() -> None:
             team = [lineup for lineup in team if min(lineup) >= 3]
         if "curves" in parts:
             out += ["", "[[elo]]", f'name = "curves/{mode}"', f'preset = "{preset}"']
-            out += [f"players = {field}", "stderr = 60.0", f"budget = {CURVE_BUDGET}"]
+            if args.curve_design == "static":  # the anchor and the checkpoints only
+                out += [f"players = {json.dumps(['scripted', *players])}", 'design = "static"']
+                out += [f"reach = {args.reach}", f"pilot = {args.pilot}"]
+            else:
+                out.append(f"players = {field}")
+            out += ["stderr = 60.0", f"budget = {CURVE_BUDGET}"]
             out.append(f'prior_keys = ["{preset}", "{mode}_5v5"]')
             if mode == "deathmatch" and v24:
                 out.append(f"note = {json.dumps(TICKET_NOTE)}")

@@ -14,7 +14,10 @@
 # box/unified_spec.py); OLD_IMUGI=1 adds game v24's Imugi as "imugi_v24" (the anchor stays
 # this tree's Imugi). PRIOR may name several pools or unified run directories (space-
 # separated). PARTS="curves" (or any of: suite curves breakeven teamsize; default all) picks the
-# targets; PRIOR=POOL loads a rating pool's games first (`--prior`, e.g. the queue's
+# targets; CURVE_DESIGN=static (default: fixed counts in two stages, the anchor and each
+# run's checkpoints, bnb.league.unified.static_target; REACH chain neighbours a side, default 2;
+# PILOT stage 1's goal factor, default 1: the full prior design) or adaptive (the per-game
+# planner); RESIDENTS the resident window's network players (default 12); PRIOR=POOL loads a rating pool's games first (`--prior`, e.g. the queue's
 # $RUNS/CHAIN-eval/curves/pool); OUT overrides the output directory ($RUNS/CHAIN-unified).
 # A compile-cache archive (docs/rewrite/sections/launch/cache.sh export) in $CACHE_ARCHIVE
 # is imported first, so a box of the same GPU model starts warm. Writes $RUNS/CHAIN-unified/
@@ -43,14 +46,14 @@ if [ -n "${CACHE_ARCHIVE:-}" ] && [ -s "$CACHE_ARCHIVE" ]; then
   bash "$UEVAL/docs/rewrite/sections/launch/cache.sh" import "$CACHE_ARCHIVE"
 fi
 "$PY" "$UEVAL/box/unified_spec.py" "$RUNS" "$chain" \
-  --parts "${PARTS:-suite curves breakeven teamsize}" ${OLD_IMUGI:+--old-imugi} --modes "${MODES:-frontline deathmatch elimination}" \
+  --parts "${PARTS:-suite curves breakeven teamsize}" ${OLD_IMUGI:+--old-imugi} --curve-design "${CURVE_DESIGN:-static}" --reach "${REACH:-2}" --pilot "${PILOT:-1}" --modes "${MODES:-frontline deathmatch elimination}" \
   > "$out/spec.toml" || exit 1
 echo "spec: $out/spec.toml"
 exec 9> "${GPU_LOCK:-/tmp/gpu.lock}"
 flock 9
 "$PY" -c 'import sys; from bnb.cli import main; sys.argv[0] = "bnb"; sys.exit(main())' \
   unified "$out/spec.toml" --out "$out" --runs-directory "$RUNS" --hours "$hours" \
-  ${PRIOR:+--prior $PRIOR}
+  ${RESIDENTS:+--residents $RESIDENTS} ${PRIOR:+--prior $PRIOR}
 code=$?
 echo "$code" > "$out/exit"
 if [ -n "${CACHE_EXPORT:-}" ]; then
