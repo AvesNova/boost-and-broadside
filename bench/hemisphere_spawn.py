@@ -164,6 +164,7 @@ def still(spawns: list[dict], path: pathlib.Path, game_radius: float, rules) -> 
 
 
 def main() -> None:
+    """The command: the batches, their records, the summary and the still."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--games", type=int, default=256)
     parser.add_argument("--batch", type=int, default=128)
