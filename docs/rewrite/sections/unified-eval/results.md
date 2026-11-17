@@ -359,3 +359,34 @@ The prior games barely reduce stage 1 at reach 2. Most of them are long hops, no
 neighbour pairs the design wants. An eager GPU smoke on the laptop (12 checkpoints of dry
 run 1, goal 200, 4 residents, 256 environments) ran end to end: stage 1 (69 games) and
 stage 2 (11), 16 window swaps, a stop, and one WARNING line (rl_2097152 at 203).
+
+## Dry run 3 elimination by the static design, laptop GPU (2026-11-17 afternoon)
+
+Reach 4, pilot 2, goal +-60, the new Imugi only, 1024 environments; prior: the box run's
+stamped games (22,850 elimination games). Stage 1 designed 1,481 games, stage 2 1,562; 3,029
+new games in all (25,879 with the prior). Every checkpoint rated, worst SE 58.5 (bc_16777216),
+no WARNING. Curve: review/elo-static/dry-v26-s1-elimination.png (outside the repository).
+
+Three engines in turn, resuming one games.jsonl:
+
+| engine | lanes x rows | env-steps/s | what happened |
+|---|---|---|---|
+| windows 16/8, barrier | 16 x 197 | 38,000 | window 1 (606 games) 133 s of play; window 2 (91 games) 348 s, 99% of it waiting on its slowest game |
+| windows, two ahead, no barrier | 32 x 258 | 14,600 | the windows cascade, but the tick 2.6x slower |
+| windows, one ahead | 24 x 198 | 25,600 | stopped for the whole field |
+| whole field, lanes by the design | 4 x 347, 13 x 170, 45 x 43 | 18,500 | the finish below |
+
+- **A tick's cost is the padded network rows.** env-steps/s x padded rows = 122M at 3.2k,
+  4.8k and 8.3k rows (1024 environments): the environments hardly count.
+- **Windows are too small for the batch.** Stage 1 is 1,481 games over 7 windows; mid-BC
+  games run 150-220 game seconds (about 3 minutes of wall time at 0.6-1.2 game seconds a
+  second per environment), so each window lasts its slowest game, and 90-99% of the
+  environments play parked games meanwhile.
+- **Whole field** (MemoryMax=16G): cold compile 676 s, scope memory peak 10.8 GB (over the
+  8 GB cap that killed this morning's 52-player compile), GPU peak 2.9 GB. Stage 1's last 763
+  games (the resume's remainder) 15:35:08-15:41:30, its last 2 minutes a tail. Stage 2 15:41:40
+  -16:10:03 (28 minutes): about 3 minutes with every environment parked (each had a parked
+  next game: fixed, a new stage re-chooses them), then 1,562 games held back by lane room:
+  the top-up fell on the early BC (bc_20971520 307 games, bc_40894464 291, ...), all in the
+  43-row lanes sized by stage 1. Fixed: a new stage reseats the players by its games, the
+  busiest in the widest lanes, weights copied in place (no recompile; not yet run on a GPU).
