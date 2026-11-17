@@ -24,6 +24,30 @@ fan:
   sizes: [4, 8, 16, 32]
   rows: docs/results/v1-731/fan_731_n{size}.jsonl
 
-# Clip survivor counts, one JSON per chosen clip; a missing file leaves its values null.
+# Derived fan charts' data (scripts in the fan study): break-even ratio by size, averaged
+# minus live win rate, and game length by ratio. Missing files leave their values null.
+fan_extras:
+  crossover_by_size: docs/results/v1-731/crossover_by_size.json
+  averaged_vs_final: docs/results/v1-731/averaged_vs_final.json
+  game_length_by_ratio: docs/results/v1-731/game_length_by_ratio.json
+
+# Clip survivor counts, one JSON per matchup; a missing file leaves its values null.
 clips:
   survivors: docs/results/v1-731/clips/survivors_*.json
+
+# `scripts/docs_values.py --pull` copies the studies' result files (light charts and data
+# only) from the author's machine into docs/results/v1-731/ before building the values.
+incoming:
+  root: /home/vizia/avesnova/v1-results
+  files:
+    - fan/fan_731_n*.jsonl
+    - fan/fan_731_n*.png
+    - fan/crossover_by_size.json
+    - fan/crossover_by_size.png
+    - fan/averaged_vs_final.json
+    - fan/averaged_vs_final.png
+    - fan/game_length_by_ratio.json
+    - fan/game_length_by_ratio.png
+  clip_files:
+    - clips/survivors_*.json
+    - clips/survivors_*.png

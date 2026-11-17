@@ -1,0 +1,46 @@
+{
+ "run": "wild-universe-731",
+ "method": "linear interpolation of win rate (ties as non-wins); 95% CI = 2.5/97.5 percentiles of 4000 parametric bootstrap resamples of the five grid points",
+ "sizes": {
+  "4": {
+   "final_live": {
+    "ratio": 1.7866847826086956,
+    "opponents": 7.146739130434782,
+    "ratio_ci95": [
+     1.7466766222580177,
+     1.8198379658051445
+    ],
+    "bootstrap_no_crossing_share": 0.0
+   },
+   "final_averaged": {
+    "ratio": 1.8946188340807175,
+    "opponents": 7.57847533632287,
+    "ratio_ci95": [
+     1.8712738219553584,
+     1.921055595068753
+    ],
+    "bootstrap_no_crossing_share": 0.0
+   }
+  },
+  "8": {
+   "final_live": {
+    "ratio": 1.7560483870967742,
+    "opponents": 14.048387096774194,
+    "ratio_ci95": [
+     1.7296597397523739,
+     1.7843672236046926
+    ],
+    "bootstrap_no_crossing_share": 0.0
+   },
+   "final_averaged": {
+    "ratio": 1.8201923076923077,
+    "opponents": 14.561538461538461,
+    "ratio_ci95": [
+     1.7957440599387366,
+     1.8420543510200655
+    ],
+    "bootstrap_no_crossing_share": 0.0
+   }
+  }
+ }
+}

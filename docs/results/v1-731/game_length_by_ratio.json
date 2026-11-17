@@ -1,0 +1,103 @@
+{
+ "run": "wild-universe-731",
+ "checkpoint": "avg_step_000671846400.pt",
+ "tick_seconds": 0.016666666666666666,
+ "episode_cap_ticks": 1024,
+ "note": "mean over all games incl. capped ones (capped games count as 1024 ticks)",
+ "sizes": {
+  "4": [
+   {
+    "scripted": 4,
+    "ratio": 1.0,
+    "mean_ticks": 326.314453125,
+    "mean_seconds": 5.43857421875,
+    "ties": 0,
+    "capped": null,
+    "games": 1024
+   },
+   {
+    "scripted": 5,
+    "ratio": 1.25,
+    "mean_ticks": 386.953125,
+    "mean_seconds": 6.44921875,
+    "ties": 1,
+    "capped": null,
+    "games": 1024
+   },
+   {
+    "scripted": 6,
+    "ratio": 1.5,
+    "mean_ticks": 452.6875,
+    "mean_seconds": 7.544791666666667,
+    "ties": 7,
+    "capped": null,
+    "games": 1024
+   },
+   {
+    "scripted": 7,
+    "ratio": 1.75,
+    "mean_ticks": 472.017578125,
+    "mean_seconds": 7.866959635416666,
+    "ties": 7,
+    "capped": null,
+    "games": 1024
+   },
+   {
+    "scripted": 8,
+    "ratio": 2.0,
+    "mean_ticks": 455.67578125,
+    "mean_seconds": 7.594596354166667,
+    "ties": 8,
+    "capped": null,
+    "games": 1024
+   }
+  ],
+  "8": [
+   {
+    "scripted": 8,
+    "ratio": 1.0,
+    "mean_ticks": 344.638671875,
+    "mean_seconds": 5.743977864583333,
+    "ties": 0,
+    "capped": 0,
+    "games": 1024
+   },
+   {
+    "scripted": 10,
+    "ratio": 1.25,
+    "mean_ticks": 417.83984375,
+    "mean_seconds": 6.963997395833333,
+    "ties": 4,
+    "capped": 3,
+    "games": 1024
+   },
+   {
+    "scripted": 12,
+    "ratio": 1.5,
+    "mean_ticks": 494.748046875,
+    "mean_seconds": 8.24580078125,
+    "ties": 11,
+    "capped": 10,
+    "games": 1024
+   },
+   {
+    "scripted": 14,
+    "ratio": 1.75,
+    "mean_ticks": 509.14453125,
+    "mean_seconds": 8.4857421875,
+    "ties": 12,
+    "capped": 12,
+    "games": 1024
+   },
+   {
+    "scripted": 16,
+    "ratio": 2.0,
+    "mean_ticks": 486.22265625,
+    "mean_seconds": 8.1037109375,
+    "ties": 17,
+    "capped": 17,
+    "games": 1024
+   }
+  ]
+ }
+}

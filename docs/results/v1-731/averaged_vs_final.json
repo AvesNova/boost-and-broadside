@@ -1,0 +1,100 @@
+{
+ "run": "wild-universe-731",
+ "note": "independent samples; CI of difference = 1.96*sqrt(se_a^2+se_f^2)",
+ "sizes": {
+  "4": [
+   {
+    "scripted": 4,
+    "ratio": 1.0,
+    "final_live": 0.99609375,
+    "averaged": 0.998046875,
+    "difference": 0.001953125,
+    "difference_ci95": 0.004680839256734271,
+    "games": 1024
+   },
+   {
+    "scripted": 5,
+    "ratio": 1.25,
+    "final_live": 0.9365234375,
+    "averaged": 0.9755859375,
+    "difference": 0.0390625,
+    "difference_ci95": 0.017674133476884936,
+    "games": 1024
+   },
+   {
+    "scripted": 6,
+    "ratio": 1.5,
+    "final_live": 0.783203125,
+    "averaged": 0.8212890625,
+    "difference": 0.0380859375,
+    "difference_ci95": 0.03446200256414123,
+    "games": 1024
+   },
+   {
+    "scripted": 7,
+    "ratio": 1.75,
+    "final_live": 0.5263671875,
+    "averaged": 0.6259765625,
+    "difference": 0.099609375,
+    "difference_ci95": 0.04258679849317267,
+    "games": 1024
+   },
+   {
+    "scripted": 8,
+    "ratio": 2.0,
+    "final_live": 0.3466796875,
+    "averaged": 0.408203125,
+    "difference": 0.0615234375,
+    "difference_ci95": 0.04190441100461269,
+    "games": 1024
+   }
+  ],
+  "8": [
+   {
+    "scripted": 8,
+    "ratio": 1.0,
+    "final_live": 0.998046875,
+    "averaged": 0.9990234375,
+    "difference": 0.0009765625,
+    "difference_ci95": 0.0033125544399610304,
+    "games": 1024
+   },
+   {
+    "scripted": 10,
+    "ratio": 1.25,
+    "final_live": 0.9658203125,
+    "averaged": 0.9853515625,
+    "difference": 0.01953125,
+    "difference_ci95": 0.013341439125202362,
+    "games": 1024
+   },
+   {
+    "scripted": 12,
+    "ratio": 1.5,
+    "final_live": 0.779296875,
+    "averaged": 0.8515625,
+    "difference": 0.072265625,
+    "difference_ci95": 0.03345826110539097,
+    "games": 1024
+   },
+   {
+    "scripted": 14,
+    "ratio": 1.75,
+    "final_live": 0.505859375,
+    "averaged": 0.5712890625,
+    "difference": 0.0654296875,
+    "difference_ci95": 0.04308812505057305,
+    "games": 1024
+   },
+   {
+    "scripted": 16,
+    "ratio": 2.0,
+    "final_live": 0.263671875,
+    "averaged": 0.3173828125,
+    "difference": 0.0537109375,
+    "difference_ci95": 0.03925737893164046,
+    "games": 1024
+   }
+  ]
+ }
+}

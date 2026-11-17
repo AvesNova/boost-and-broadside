@@ -107,8 +107,8 @@ of the scripted controller.
 ## Outnumbered over training
 
 The crossover sweep rates one checkpoint. The fan charts follow a fixed learned-team size
-through training instead, against every scripted team from equal numbers to twice as many,
-at each frozen ladder checkpoint and at the final live checkpoint, and mark the final
+through training instead, against scripted teams of 1, 1.25, 1.5, 1.75 and 2 times its
+size, at each frozen ladder checkpoint and at the final live checkpoint, and mark the final
 averaged checkpoint beside them.
 
 {{figure: fan_4_ships}}
@@ -129,9 +129,32 @@ games. The live curves stop improving after about 250M steps.
 
 {{figure: fan_averaged_vs_final}}
 
+The averaged weights win more often than the live ones at every ratio above equal
+numbers. At 1.75 times as many scripted ships, the closest to even, they win
+{{fan_4_ships_vs_7_averaged_minus_live:.1%}} more of the games at 4 ships (95% interval
+±{{fan_4_ships_vs_7_averaged_minus_live_ci95:.1%}}) and
+{{fan_8_ships_vs_14_averaged_minus_live:.1%}} more at 8
+(±{{fan_8_ships_vs_14_averaged_minus_live_ci95:.1%}}).
+
 {{figure: fan_crossover_by_size}}
 
+Interpolated between the grid points, the averaged weights hold even against
+{{fan_4_ships_averaged_break_even_ratio:.2f}}x their number at 4 ships
+({{fan_4_ships_averaged_break_even_ratio_low:.2f}}–{{fan_4_ships_averaged_break_even_ratio_high:.2f}}),
+{{fan_8_ships_averaged_break_even_ratio:.2f}}x at 8, {{fan_16_ships_averaged_break_even_ratio:.2f}}x
+at 16 and {{fan_32_ships_averaged_break_even_ratio:.2f}}x at 32; the final live weights
+against {{fan_4_ships_live_break_even_ratio:.2f}}x, {{fan_8_ships_live_break_even_ratio:.2f}}x,
+{{fan_16_ships_live_break_even_ratio:.2f}}x and {{fan_32_ships_live_break_even_ratio:.2f}}x.
+The crossover sweep's coarser integer search above gives
+{{crossover_4_ships_ratio:.2f}}x and {{crossover_8_ships_ratio:.2f}}x for the final live
+checkpoint at 4 and 8 ships.
+
 {{figure: fan_game_length_by_ratio}}
+
+Games get longer as the odds worsen, from about
+{{fan_4_ships_vs_4_averaged_mean_seconds:.1f}} s at equal numbers to about
+{{fan_4_ships_vs_7_averaged_mean_seconds:.1f}} s at 1.75 times as many scripted ships (4
+learned ships, averaged weights), far inside the {{config_episode_seconds:.1f}} s cap.
 
 ## Qualitative crossover evidence
 

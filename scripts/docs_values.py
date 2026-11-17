@@ -381,22 +381,19 @@ def earlier_run_values(key: str, run_dir: Path) -> dict:
 # --------------------------------------------------------------- incoming result files
 
 
-def fan_values(spec: dict) -> dict:
+def fan_values(spec: dict, final_step: int) -> dict:
     """Per fan size N: the win rate of the final live and final averaged checkpoints
-    against every scripted count S, and the largest S each still beats."""
+    against N, 1.25N, 1.5N, 1.75N and 2N scripted ships (the fan's grid)."""
     values = {}
     for size in spec["sizes"]:
         path = ROOT / spec["rows"].format(size=size)
         rows = []
         if path.is_file():
             rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
-        final_step = max(
-            (int(re.search(r"(\d+)\.pt$", row["ckpt"]).group(1)) for row in rows), default=None
-        )
         for kind, prefix in (("live", "step_"), ("averaged", "avg_step_")):
-            name = f"{prefix}{final_step:012d}.pt" if final_step is not None else None
+            name = f"{prefix}{final_step:012d}.pt"
             chosen = {row["scripted"]: row for row in rows if row["ckpt"].split("/")[-1] == name}
-            for scripted in range(size, 2 * size + 1):
+            for scripted in (size * quarters // 4 for quarters in (4, 5, 6, 7, 8)):
                 row = chosen.get(scripted)
                 values[f"fan_{size}_ships_vs_{scripted}_{kind}_win_rate"] = (
                     row["win_rate"] if row else None
@@ -404,9 +401,6 @@ def fan_values(spec: dict) -> dict:
                 values[f"fan_{size}_ships_vs_{scripted}_{kind}_games"] = (
                     row["games"] if row else None
                 )
-            beaten = [s for s, row in chosen.items() if row["win_rate"] >= 0.5]
-            values[f"fan_{size}_ships_{kind}_beats_up_to"] = max(beaten) if beaten else None
-            values[f"fan_{size}_ships_{kind}_ratio"] = max(beaten) / size if beaten else None
     return values
 
 
@@ -423,6 +417,64 @@ def clip_values(spec: dict) -> dict:
     return values
 
 
+def fan_extra_values(spec: dict, sizes: list[int]) -> dict:
+    """The derived fan charts' data: break-even ratio by size (live and averaged, with a
+    95% interval), averaged minus live win rate, and the averaged policy's game length."""
+    values = {}
+    for size in sizes:  # null until the study reaches this size
+        for kind in ("live", "averaged"):
+            for suffix in ("", "_low", "_high"):
+                values[f"fan_{size}_ships_{kind}_break_even_ratio{suffix}"] = None
+        for quarters in (4, 5, 6, 7, 8):
+            prefix = f"fan_{size}_ships_vs_{size * quarters // 4}"
+            values[f"{prefix}_averaged_minus_live"] = None
+            values[f"{prefix}_averaged_minus_live_ci95"] = None
+            values[f"{prefix}_averaged_mean_seconds"] = None
+    by_size = ROOT / spec["crossover_by_size"]
+    if by_size.is_file():
+        for size, entry in read_json(by_size)["sizes"].items():
+            for kind, key in (("live", "final_live"), ("averaged", "final_averaged")):
+                fit = entry.get(key) or {}
+                interval = fit.get("ratio_ci95") or [None, None]
+                values[f"fan_{size}_ships_{kind}_break_even_ratio"] = fit.get("ratio")
+                values[f"fan_{size}_ships_{kind}_break_even_ratio_low"] = interval[0]
+                values[f"fan_{size}_ships_{kind}_break_even_ratio_high"] = interval[1]
+    difference = ROOT / spec["averaged_vs_final"]
+    if difference.is_file():
+        for size, points in read_json(difference)["sizes"].items():
+            for point in points:
+                prefix = f"fan_{size}_ships_vs_{point['scripted']}"
+                values[f"{prefix}_averaged_minus_live"] = point["difference"]
+                values[f"{prefix}_averaged_minus_live_ci95"] = point["difference_ci95"]
+    length = ROOT / spec["game_length_by_ratio"]
+    if length.is_file():
+        for size, points in read_json(length)["sizes"].items():
+            for point in points:
+                values[f"fan_{size}_ships_vs_{point['scripted']}_averaged_mean_seconds"] = point[
+                    "mean_seconds"
+                ]
+    return values
+
+
+def pull(spec: dict) -> None:
+    """Copy the studies' result files from their working directory into the repository."""
+    import shutil
+
+    root = Path(spec["root"])
+    target = ROOT / "docs" / "results" / "v1-731"
+    for pattern, subdirectory in [(p, "") for p in spec["files"]] + [
+        (p, "clips") for p in spec.get("clip_files", [])
+    ]:
+        for source in sorted(root.glob(pattern)):
+            if source.stem.endswith("_dark") or source.stat().st_size == 0:
+                continue
+            destination = target / subdirectory / source.name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if not destination.exists() or destination.read_bytes() != source.read_bytes():
+                shutil.copyfile(source, destination)
+                print(f"pulled {destination.relative_to(ROOT)}")
+
+
 def build() -> dict:
     sources = yaml.safe_load(SOURCES.read_text())
     run_name = sources["run"]
@@ -436,7 +488,8 @@ def build() -> dict:
     values.update(history_values(run_dir))
     for key, path in sources.get("history", {}).items():
         values.update(earlier_run_values(key, ROOT / path))
-    values.update(fan_values(sources["fan"]))
+    values.update(fan_values(sources["fan"], values["run_steps"]))
+    values.update(fan_extra_values(sources["fan_extras"], sources["fan"]["sizes"]))
     values.update(clip_values(sources["clips"]))
     return {name: rounded(value) for name, value in sorted(values.items())}
 
@@ -444,7 +497,12 @@ def build() -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--check", action="store_true", help="fail if values.json is stale")
+    parser.add_argument(
+        "--pull", action="store_true", help="first copy the incoming result files in"
+    )
     args = parser.parse_args(argv)
+    if args.pull:
+        pull(yaml.safe_load(SOURCES.read_text())["incoming"])
     text = json.dumps(build(), indent=1) + "\n"
     if args.check:
         if not VALUES.exists() or VALUES.read_text() != text:
