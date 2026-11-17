@@ -29,6 +29,7 @@ REFERENCED = (
     "real_scale_frontline",
     "real_scale_elimination",
     "clover",
+    "real_scale_elimination_hemisphere",
 )
 REFERENCE_PATH = Path(__file__).with_name("game_reference.pt")
 # "Within rounding", not bitwise: machines differ in the last bit or two of a float32 (a

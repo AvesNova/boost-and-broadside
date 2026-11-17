@@ -276,9 +276,10 @@ def game_presets() -> str:
     for name, game in PRESETS.items():
         episode, respawn = CLOCKS[game.mode]
         respawn = game.respawn_seconds if game.respawn_seconds else respawn
+        spawn = "uniform" if game.spawn == "mode" else _code(game.spawn)
         rows.append((_code(name), _code(game.mode), game.ships_per_team, game.num_fields,
                      _number(game.arena_radius), _code(game.spawn_groups) if game.spawn_groups
-                     else "uniform", _number(game.episode_seconds if game.episode_seconds else episode),
+                     else spawn, _number(game.episode_seconds if game.episode_seconds else episode),
                      "none" if respawn is None else _number(respawn),
                      "fixed" if game.layout is not None else "random",
                      " / ".join(LINEUPS[name]) if name in LINEUPS else "default"))

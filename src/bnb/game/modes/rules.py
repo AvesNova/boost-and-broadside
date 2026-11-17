@@ -94,6 +94,13 @@ REAL_SCALE_ELIMINATION_SECONDS = 248.0
 PRESETS["real_scale_elimination"] = dataclasses.replace(
     PRESETS["real_scale_elimination"], episode_seconds=REAL_SCALE_ELIMINATION_SECONDS
 )
+# The release run's game (the author, 2026-11-17): real-scale elimination without fog, each
+# team spawning over its half of the disc (`GameConfig.spawn` "hemisphere",
+# `modes.spawns.hemisphere_placement`). The training preset that plays it is
+# `bnb.runtime.train`'s release_jujak_elimination.
+PRESETS["real_scale_elimination_hemisphere"] = dataclasses.replace(
+    PRESETS["real_scale_elimination"], fog_share=0.0, spawn="hemisphere"
+)
 # The smallest team each mode is played at (the freeze, 2026-11-15): Frontline 3v3 (at
 # 2v2 captures are rare and most games end on the clock); the others 1v1. Training's and
 # evaluation's equal-size fleets keep to it; break-even's uneven lineups go down to 1 ship
@@ -341,6 +348,19 @@ class ModeRules:
     shrink_max_speed: float = 0.0  # m/s; 150 at real scale (the set's [mode])
     layout: MapLayout | None = None
     deathmatch_outcome: str = "kill_lead"
+    # The spawn rule (`GameConfig.spawn`): "mode", the mode's own; "hemisphere",
+    # elimination's half-disc spawn (`modes.spawns.hemisphere_placement`, 2026-11-17): each
+    # team uniform by area over its half of the disc, less an edge band as wide as the
+    # boundary closes in its first hemisphere_edge_seconds (from the episode's own shrink
+    # schedule, so the closing boundary cannot reach a ship before it can turn in) and a
+    # middle band hemisphere_middle_seconds of flight at the spawn speed wide (half on each
+    # side of the dividing line; with no fog it only sets the time to first contact), each
+    # ship at least hemisphere_spacing_seconds of flight from its earlier teammates, nose
+    # across the dividing line within side_heading_jitter; team 1 at team 0's image.
+    spawn: str = "mode"
+    hemisphere_edge_seconds: float = 5.0
+    hemisphere_middle_seconds: float = 5.0
+    hemisphere_spacing_seconds: float = 2.0
 
     def __post_init__(self) -> None:
         if self.deathmatch_outcome not in DEATHMATCH_OUTCOMES:
@@ -381,6 +401,7 @@ def mode_rules_of(config: GameConfig) -> ModeRules:
         ticket_rounding=1 if config.mode == ELIMINATION else config.ticket_rounding,
         spawn_groups=config.spawn_groups,
         layout=config.layout,
+        spawn=config.spawn,
         set_map_scale=SET_MAP_SCALE.get(config.ship_set, 1.0),
         **given,
     )

@@ -467,3 +467,89 @@ def test_bc_and_rl_train_on_drawn_sizes(objective):
         value for name, value in metrics.items() if "loss" in name and isinstance(value, float)
     ]
     assert losses and all(torch.isfinite(torch.tensor(losses)))
+
+
+# ------------------------------------------------------------------ the release run's lineups
+
+RELEASE_SIZES = TeamSizes(
+    rule="table",
+    pairs=((5, 5, 0.5), (5, 4, 0.25), (5, 3, 0.25)),
+    fields="game",
+    pools="opponents",
+    learner_side="smaller",
+)
+
+
+def test_the_learner_side_rows_are_by_seat_the_first_seat_the_smaller():
+    table = RELEASE_SIZES.table(5, 10)
+    assert {row[:2]: row[3] for row in table} == pytest.approx(
+        {(5, 5): 0.5, (4, 5): 0.25, (3, 5): 0.25}
+    )
+    assert all(row[0] <= row[1] and row[2] == -1 for row in table)
+    with pytest.raises(ValueError):
+        TeamSizes(learner_side="larger")
+    with pytest.raises(ValueError):
+        TeamSizes(pools="league")
+
+
+def test_the_opponents_scope_leaves_self_play_at_every_slot():
+    from bnb.runtime.train import LINEUP
+
+    config = TrainConfig(api.PRESETS["deathmatch"], pools=LINEUP, team_sizes=RELEASE_SIZES)
+    sizes = {pool.name: pool.team_sizes for pool in training_pools(config)}
+    assert sizes == {"self_play": None, "league": RELEASE_SIZES}
+
+
+def test_the_learner_always_plays_the_smaller_side_whichever_its_seat():
+    """Over many episodes of a pool whose first seat is the learner: the learner's team (the
+    seat's) has the fewer ships in every uneven game, the shares are the table's, and both
+    seats occur."""
+    game = GameConfig(5, 4, 1500.0, episode_seconds=0.5, respawn_seconds=0.2)
+    chaser = Chaser(characteristics(TYPES, api.rules_of(game)), 5)
+    rollout = Rollout(
+        game,
+        api.ship_types(CPU),
+        (Pool("league", 1.0, ("learner", "other"), 0.5, team_sizes=RELEASE_SIZES),),
+        {"learner": chaser, "other": Random(5)},
+        "learner",
+        ENVIRONMENTS,
+        LENGTH,
+        CPU,
+        compiled=False,
+    )
+    episodes = 800
+    learner, other, seats = [], [], []
+    for e in range(episodes):
+        episode = torch.full((ENVIRONMENTS,), e)
+        active, _ = rollout._team_sizes(episode)
+        seat = rollout._seats(episode)  # the learner (role 0) plays team `seat`
+        learner.append(active.gather(1, seat[:, None])[:, 0])
+        other.append(active.gather(1, 1 - seat[:, None])[:, 0])
+        seats.append(seat)
+    learner, other, seats = torch.cat(learner), torch.cat(other), torch.cat(seats)
+    assert bool((learner <= other).all()) and bool((other == 5).all())
+    assert float(seats.float().mean()) == pytest.approx(0.5, abs=0.05)
+    for ships, share in ((5, 0.5), (4, 0.25), (3, 0.25)):
+        assert float((learner == ships).float().mean()) == pytest.approx(share, abs=0.03)
+
+
+@pytest.mark.parametrize("objective", ["bc", "ppo"])
+def test_the_release_preset_carries_its_settings(objective):
+    """`--preset release_jujak_elimination` alone gives the release run's settings, in both
+    stages; a command's own --set still comes after them."""
+    from bnb import cli
+
+    options = cli.Train(preset="release_jujak_elimination", objective=objective)
+    config = cli._requested(options)
+    assert config.game == api.PRESETS["real_scale_elimination_hemisphere"]
+    assert config.lineup == ("Jujak",) * 5 and not config.lineup_draw
+    assert config.team_sizes == RELEASE_SIZES
+    yemong = config.yemong
+    assert not (yemong.next_state_head or yemong.forecast_feedback or yemong.delta_split)
+    assert yemong.physics_hidden_decay is None and not yemong.enemy_action_head
+    assert yemong.density_head and yemong.geometry_head and yemong.shot_head == "trajectory"
+    sizes = {pool.name.split("/")[1]: pool.team_sizes for pool in training_pools(config)}
+    opponent = "scripted" if objective == "bc" else "league"
+    assert sizes == {"self_play": None, opponent: RELEASE_SIZES}
+    overridden = cli._requested(dataclasses.replace(options, set=("lineup_draw=true",)))
+    assert overridden.lineup_draw

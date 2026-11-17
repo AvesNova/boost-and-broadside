@@ -400,3 +400,66 @@ def test_an_elimination_match_spawns_by_side_and_clover_keeps_its_layout():
     closest = 2.0 * mode.side_centre_radius_min * math.cos(mode.side_centre_half_angle)
     gap = torch.hypot(x[:, 0].mean(-1) - x[:, 1].mean(-1), y[:, 0].mean(-1) - y[:, 1].mean(-1))
     assert float(gap.min()) > (closest - 2.0 * mode.side_area_fraction) * SIDES.arena_radius
+
+
+# ------------------------------------------------------------------ the hemisphere spawn
+
+HEMISPHERE = PRESETS["real_scale_elimination_hemisphere"]
+
+
+def _hemisphere(batch=2048, seed=5):
+    """Every ship's spawn at a new match of the hemisphere preset: (rules, the spawn axis
+    (B, 2), x, y, heading cos, sin (B, N))."""
+    rules = api.rules_of(HEMISPHERE, types=REAL_SCALE)
+    generator = torch.Generator().manual_seed(seed)
+    state = api.reset(rules, REAL_SCALE, api.uniforms(rules, batch, generator=generator))
+    ships, match = state.ships, state.match
+    axis = torch.stack([match.spawn_axis_x, match.spawn_axis_y], -1)
+    return rules, axis, ships.x, ships.y, ships.heading_cos, ships.heading_sin
+
+
+def test_the_hemisphere_preset_is_clear_elimination_with_its_spawn():
+    assert HEMISPHERE.mode == "elimination" and HEMISPHERE.spawn == "hemisphere"
+    assert HEMISPHERE.fogged_share == 0.0
+    assert dataclasses.replace(HEMISPHERE, spawn="mode") == dataclasses.replace(
+        PRESETS["real_scale_elimination"], fog_share=0.0
+    )
+    with pytest.raises(ValueError, match="hemisphere"):
+        GameConfig(5, 10, 2600.0, spawn="hemisphere")  # team deathmatch
+    with pytest.raises(ValueError, match="spawn"):
+        GameConfig(5, 10, 2600.0, mode="elimination", spawn="corners")
+
+
+def test_hemisphere_spawns_fill_each_half_less_the_bands_with_team_1_the_image():
+    rules, axis, x, y, cos, sin = _hemisphere()
+    mode, S, R = rules.modes[0], rules.ships_per_team, HEMISPHERE.arena_radius
+    # the edge band: the boundary's travel over its first 5 s (linear from the start, past
+    # 0 to a ramp width inside the centre 8 s before the 248 s clock)
+    ramp = rules.boundary_ramp_width * R / 2600.0
+    band = mode.hemisphere_edge_seconds * (R + ramp) / (HEMISPHERE.episode_seconds - 8.0)
+    half = 0.5 * mode.hemisphere_middle_seconds * rules.spawn_speed
+    across = x * axis[:, :1] + y * axis[:, 1:]  # signed distance across the dividing line
+    distance = torch.hypot(x, y)
+    assert float(distance.max()) <= R - band + 0.5
+    assert float(distance.max()) > R - band - 30.0  # it reaches the band
+    assert bool((across[:, :S] <= -half + 0.5).all()) and bool((across[:, S:] >= half - 0.5).all())
+    assert float(across[:, :S].max()) > -half - 30.0
+    torch.testing.assert_close(x[:, S:], -x[:, :S])
+    torch.testing.assert_close(y[:, S:], -y[:, :S])
+    torch.testing.assert_close(cos[:, S:], -cos[:, :S])
+    # uniform by area: the squared radius over the disc's is uniform (mean 1/2, less the
+    # middle band's small share near the centre)
+    share = (distance[:, :S] / (R - band)) ** 2
+    assert float(share.mean()) == pytest.approx(0.5, abs=0.02)
+    # teammates at least the spacing apart (the fallback is rarer than 1 in 10^9)
+    spacing = mode.hemisphere_spacing_seconds * rules.spawn_speed
+    gaps = torch.cdist(torch.stack([x[:, :S], y[:, :S]], -1), torch.stack([x[:, :S], y[:, :S]], -1))
+    gaps = gaps + torch.eye(S) * 1e9
+    assert float(gaps.min()) >= spacing - 0.5
+    # noses across the line toward team 1, within the jitter (turned more only near the edge)
+    off = torch.atan2(
+        cos[:, :S] * axis[:, 1:] - sin[:, :S] * axis[:, :1],
+        cos[:, :S] * axis[:, :1] + sin[:, :S] * axis[:, 1:],
+    ).abs()
+    clear = distance[:, :S] < R - band - rules.spawn_turn_distance
+    assert float(off[clear].max()) <= mode.side_heading_jitter + 1e-4

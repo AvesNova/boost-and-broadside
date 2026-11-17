@@ -16,6 +16,7 @@ The last commit touching each file is given.
 | Script | What it does | Source (commit) |
 |---|---|---|
 | `dry_run.sh` | the v2 dry run (BC 100M then RL 100M) under the GPU lock, every update's policy files kept | written 2026-11-16 |
+| `release_run.sh` | the release run: dry run 3's settings with `--preset release_jujak_elimination` (Jujak-only clear elimination, the hemisphere spawn, the belief off, the opponents' pools at 5v5 / 4v5 / 3v5 with the learner smaller), BC 100M then RL to 200M | written 2026-11-17 |
 | `eval_queue.sh` | the dry run's evaluation queue after the chain: averaging sweep and champion (`eval_champion.py`), suite, map scales, 5v5 curves, break-even, team sizes, media, charts; resumable, under the GPU lock | written 2026-11-17, steps tested small on the laptop CPU (see dry-run.md) |
 | `fetch_eval.sh` | laptop side: copies the queue's outputs, the champion's policy and the chain's records to `review/dry-run/` | written 2026-11-17 |
 | `setup.sh` | sets up or restores a box on its persistent volume: repository, locked venv, Python, uv/inductor/Triton/hub/bnb caches, runs/out/queue/logs, `env.sh` sourced by every shell, the heartbeat as a supervisor program; idempotent (re-run after a recycle) | written 2026-11-16, tested on the 5090 box |

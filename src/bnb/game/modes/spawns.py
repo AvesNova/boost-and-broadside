@@ -285,6 +285,77 @@ def side_placement(
     return Placement(x=x, y=y, heading_cos=heading_cos, heading_sin=heading_sin)
 
 
+def hemisphere_placement(
+    rules: Rules,
+    mode_rules: ModeRules,
+    arena_radius: torch.Tensor,
+    uniforms: torch.Tensor,
+    axis_x: torch.Tensor,
+    axis_y: torch.Tensor,
+    edge_band: torch.Tensor,
+) -> Placement:
+    """Elimination's hemisphere spawn (`GameConfig.spawn` "hemisphere", 2026-11-17): team 0
+    on the -axis half of the disc, team 1 at its 180-degree image (the map's own symmetry:
+    its fields are point-symmetric), the dividing line through the centre across the spawn
+    axis (B,), drawn per match.
+
+    Team 0's region is its half of the disc of radius R_a - edge_band (B,) (the boundary's
+    travel over its first `ModeRules.hemisphere_edge_seconds`, `physics.step`), less the
+    band within h of the dividing line, h half of hemisphere_middle_seconds of flight at
+    `Rules.spawn_speed`. Each of team 0's slots, in slot order, takes the first of its C
+    candidates (the mode's per-ship radius and angle uniforms: a uniform point of the disc
+    folded onto the half, so uniform by area over it) that lies in the region and at least
+    hemisphere_spacing_seconds of flight at the spawn speed from every earlier slot; with
+    none spaced, the first in the region; with none there (about 0.06^C), candidate 0
+    moved onto the band's edge. So the region's points are drawn uniformly by area,
+    conditioned on the spacing. The nose points across the dividing line (along +axis)
+    turned by a uniform angle within side_heading_jitter (the ship's heading uniform), then
+    the least that leaves it room to turn away from the edge (`_edge_safe`). Team 1's
+    uniforms are unused."""
+    B, N, S = uniforms.shape[0], rules.num_ships, rules.ships_per_team
+    candidates = mode_rules.spawn_candidates
+    per_ship = uniforms.reshape(B, N, -1)[:, :S]  # team 0's
+    outer = (arena_radius - edge_band).clamp_min(0.0)[:, None, None]  # (B, 1, 1)
+    half_band = 0.5 * mode_rules.hemisphere_middle_seconds * rules.spawn_speed
+    spacing = mode_rules.hemisphere_spacing_seconds * rules.spawn_speed
+    radius = outer * torch.sqrt(per_ship[..., :candidates])  # (B, S, C)
+    angle = 2.0 * math.pi * per_ship[..., candidates : 2 * candidates]
+    along = radius * torch.cos(angle)  # along the dividing line
+    across = -(radius * torch.sin(angle)).abs()  # toward -axis: team 0's half
+    inside = across <= -half_band
+    # the fallback: candidate 0 onto the band's edge, along the line within the disc
+    reach = torch.sqrt((outer[..., 0] ** 2 - half_band * half_band).clamp_min(0.0))  # (B, 1)
+    fallback_along = along[..., 0].clamp(-reach, reach)
+    fallback_across = torch.minimum(across[..., 0], torch.full_like(across[..., 0], -half_band))
+    chosen_along, chosen_across = [], []
+    rank = torch.arange(candidates, 0, -1, device=uniforms.device, dtype=torch.float32)
+    for slot in range(S):
+        a, b = along[:, slot], across[:, slot]  # (B, C)
+        spaced = torch.ones_like(a, dtype=torch.bool)
+        for earlier_a, earlier_b in zip(chosen_along, chosen_across, strict=True):
+            da, db = a - earlier_a[:, None], b - earlier_b[:, None]
+            spaced = spaced & (da * da + db * db >= spacing * spacing)
+        valid = inside[:, slot]
+        score = (2.0 * (valid & spaced).float() + valid.float()) * (candidates + 1) + rank
+        pick = score.argmax(-1, keepdim=True)
+        found = valid.any(-1)
+        chosen_along.append(torch.where(found, a.gather(-1, pick)[:, 0], fallback_along[:, slot]))
+        chosen_across.append(torch.where(found, b.gather(-1, pick)[:, 0], fallback_across[:, slot]))
+    along, across = torch.stack(chosen_along, -1), torch.stack(chosen_across, -1)  # (B, S)
+    normal_x, normal_y = axis_x[:, None], axis_y[:, None]  # +axis: across, toward team 1
+    x = along * -normal_y + across * normal_x
+    y = along * normal_x + across * normal_y
+    swing = mode_rules.side_heading_jitter * (2.0 * per_ship[..., 2 * candidates] - 1.0)
+    heading = torch.atan2(normal_y, normal_x) + swing
+    heading_cos, heading_sin = _edge_safe(rules, arena_radius, x, y, heading)
+    return Placement(
+        x=torch.cat([x, -x], -1),
+        y=torch.cat([y, -y], -1),
+        heading_cos=torch.cat([heading_cos, -heading_cos], -1),
+        heading_sin=torch.cat([heading_sin, -heading_sin], -1),
+    )
+
+
 def frontline_placement(
     rules: Rules, mode_rules: ModeRules, uniforms: torch.Tensor, mode: ModeState
 ) -> Placement:
@@ -372,13 +443,19 @@ def placement(
     rotation,
     keys,
     benched=None,
+    edge_band=None,
 ) -> Placement:
     """The mode's placement for every ship (selected later by the spawn mask); arena_radius
     and map_scale (B,); benched (B, N) or None: ships that do not play. A fixed layout's
     spawn points (`layout_placement`) take the place of the mode's own; elimination
-    places by team side (`side_placement`)."""
+    places by team side (`side_placement`), or by halves of the disc with the hemisphere
+    spawn (`hemisphere_placement`; edge_band (B,), m, its edge band)."""
     if mode_rules.layout is not None and mode_rules.layout.spawns:
         return layout_placement(rules, mode_rules, uniforms, axis_x, axis_y)
+    if mode_rules.spawn == "hemisphere":
+        return hemisphere_placement(
+            rules, mode_rules, arena_radius, uniforms, axis_x, axis_y, edge_band
+        )
     if mode_rules.name == ELIMINATION:
         return side_placement(rules, mode_rules, arena_radius, uniforms, axis_x, axis_y)
     if mode_rules.name == TEAM_DEATHMATCH:
