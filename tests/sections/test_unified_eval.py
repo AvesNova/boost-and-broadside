@@ -515,6 +515,15 @@ def test_choose_takes_filler_past_the_probe_caps_before_parking():
     assert tiers[0] is False and tiers[-1] is True
 
 
+def test_choose_reads_only_the_named_players_cells():
+    condition = Condition(DM, 5, 5)
+    target = EloTarget("elo", condition, ["scripted", "a", "b", "c"])
+    planner = Planner([target])
+    for _ in range(20):
+        cell, _, _ = planner.choose(5, DM, players={"scripted", "c"})
+        assert {cell.first, cell.second} == {"scripted", "c"}
+
+
 def test_v24_games_are_admitted_with_their_imugi_as_imugi_v24(tmp_path):
     from bnb.league.matches import Player
     from bnb.league.rating_pool import RatingPool

@@ -32,6 +32,10 @@ REBUILD_EVERY = 4096  # value updates between full re-sums
 # has nothing that fits; an environment parks only when none has
 FILLER = "filler"
 TIERS = (False, True, FILLER)
+# the filler values are refreshed every this many games counted or finished, not after each
+# (a 108-player field's filler re-sum costs most of a choice; a filler cell then takes at
+# most this many games before its value moves, and the lanes' room spreads them anyway)
+FILLER_REFRESH = 64
 
 
 def clock_seconds(preset: str) -> float:
@@ -53,9 +57,12 @@ class Planner:
         self._cache: dict[tuple[str, bool], dict[Cell, float]] = {}
         self._values: dict[bool, dict[Cell, float]] = {}  # the summed values, cached
         self._slices: dict[bool, dict[tuple[int, str], dict[Cell, None]]] = {}
+        # the same cells by each of their players: (bucket, preset, player) -> cells
+        self._members: dict[bool, dict[tuple[int, str, str], dict[Cell, None]]] = {}
         self._used: dict[bool, dict[tuple[str, bool], dict[Cell, float]]] = {}
         self._counts: dict[bool, collections.Counter] = {}
         self._updates = 0
+        self._filler_stale = 0  # touches since the filler values' refresh
         self.assigned = 0
         self.finished_games = 0
 
@@ -93,8 +100,10 @@ class Planner:
         if held is None or self._updates % REBUILD_EVERY == 0:
             held, sliced, used = {}, collections.defaultdict(dict), {}
             self._values[overtime], self._slices[overtime] = held, sliced
+            self._members[overtime] = collections.defaultdict(dict)
             self._used[overtime], self._counts[overtime] = used, collections.Counter()
         sliced, used, counts = self._slices[overtime], self._used[overtime], self._counts[overtime]
+        members = self._members[overtime]
         for target in self.targets:
             key = (target.name, overtime)
             if key in self._cache and key in used:
@@ -109,7 +118,10 @@ class Planner:
                 if counts[cell] <= 0:
                     del counts[cell]
                     held.pop(cell, None)
-                    sliced[self._slice_of(cell)].pop(cell, None)
+                    where = self._slice_of(cell)
+                    sliced[where].pop(cell, None)
+                    members[where + (cell.first,)].pop(cell, None)
+                    members[where + (cell.second,)].pop(cell, None)
                 else:
                     held[cell] -= value
             for cell, value in fresh.items():
@@ -117,7 +129,10 @@ class Planner:
                     continue
                 held[cell] = held.get(cell, 0.0) + value
                 counts[cell] += 1
-                sliced[self._slice_of(cell)][cell] = None
+                where = self._slice_of(cell)
+                sliced[where][cell] = None
+                members[where + (cell.first,)][cell] = None
+                members[where + (cell.second,)][cell] = None
             used[key] = fresh
         return held
 
@@ -125,7 +140,15 @@ class Planner:
         return (bucket_of(cell.condition, self.buckets), cell.condition.preset)
 
     def _touched(self, cell: Cell) -> None:
+        self._filler_stale += 1
+        refresh = self._filler_stale >= FILLER_REFRESH
+        if refresh:
+            self._filler_stale = 0
         for key in list(self._cache):
+            if key[1] == FILLER:
+                if refresh:  # every target's, the touches since counted
+                    self._cache.pop(key, None)
+                continue
             if cell in self._cache[key]:
                 self._cache.pop(key, None)
         for target in self.targets:  # a target that proposed nothing may propose now
@@ -138,6 +161,7 @@ class Planner:
         self._cache.clear()
         self._values.clear()
         self._slices.clear()
+        self._members.clear()
         self._used.clear()
         self._counts.clear()
 
@@ -148,6 +172,7 @@ class Planner:
         fits=lambda cell: True,
         prefer=None,
         prefer_ratio: float = 0.5,
+        players: set[str] | None = None,
     ) -> tuple[Cell, int, bool] | None:
         """The next game of an environment of size bucket `bucket` playing `preset`: (the
         cell, the seat its first player takes, 0 or 1, and whether it is overtime), counted
@@ -158,13 +183,25 @@ class Planner:
         flagged overtime too); None only when none of these has a cell that fits
         (`fits(cell)`, the lanes') or every budget is spent. prefer(cell): a
         cell the engine plays more cheaply (one whose players the environment already
-        seats), taken when its rate is at least `prefer_ratio` of the best's."""
+        seats), taken when its rate is at least `prefer_ratio` of the best's. players: the
+        only players a cell may have (None: any; a resident set's, so only their cells are
+        read)."""
         for overtime in TIERS:
             best, best_rate = None, 0.0
             liked, liked_rate = None, 0.0
             values = self.values(overtime)
             seconds: dict[Condition, float] = {}
-            for cell in self._slices[overtime].get((bucket, preset), ()):
+            if players is None:
+                cells = self._slices[overtime].get((bucket, preset), ())
+            else:
+                members = self._members[overtime]
+                cells = [
+                    cell
+                    for name in players
+                    for cell in members.get((bucket, preset, name), ())
+                    if cell.first == name and cell.second in players
+                ]
+            for cell in cells:
                 condition = cell.condition
                 if condition not in seconds:
                     seconds[condition] = self.expected_seconds(condition)

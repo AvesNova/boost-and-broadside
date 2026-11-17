@@ -427,8 +427,20 @@ class BucketEngine:
                     self.index[cell.second],
                 ) in held
 
+        players = None
+        if self.resident_set:  # only the residents' and the scripted players' cells are read
+            players = {
+                name
+                for name, index in self.index.items()
+                if not self.network[index] or index in self.capacity_of
+            }
         chosen = self.planner.choose(
-            self.bucket, self.preset_of[environment], self._fits(environment), prefer, PREFER_RATIO
+            self.bucket,
+            self.preset_of[environment],
+            self._fits(environment),
+            prefer,
+            PREFER_RATIO,
+            players,
         )
         if chosen is None:
             return Slot(None, 0, parked=True)
