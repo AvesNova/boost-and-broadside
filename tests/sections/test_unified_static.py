@@ -196,3 +196,68 @@ def test_spec_static_curves_load_with_the_anchor_and_the_chain(tmp_path):
     pairs = {(target.players[a], target.players[b]) for a, b in target.pairs}
     assert ("bc_1000", "rl_1000") in pairs and ("bc_1000", "rl_2000") not in pairs  # reach 3
     assert stream_order(Planner(spec.targets)) == names[1:]
+
+
+def test_fixed_windows_overlap_and_each_pair_in_its_first_window():
+    order = [f"c{i}" for i in range(20)]
+    held = static_design.windows(order, 8, 4)
+    assert [w[0] for w in held] == ["c0", "c4", "c8", "c12"] and held[-1][-1] == "c19"
+    pairs = [("c5", "c7"), ("c6", "c9"), ("scripted", "c13"), ("c17", "c19")]
+    where = static_design.assign_windows(held, pairs, {"scripted"})
+    assert where == {("c5", "c7"): 0, ("c6", "c9"): 1, ("scripted", "c13"): 2, ("c17", "c19"): 3}
+    try:
+        static_design.assign_windows(held, [("c0", "c9")], {"scripted"})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a pair no window holds must raise")
+
+
+def test_window_seating_keeps_the_staying_players_lanes():
+    swapped = []
+
+    class Seat:
+        lanes = [[1, 2, 3]]
+
+        def swap(self, run, lane, index):
+            swapped.append((lane, index))
+            self.lanes[run][lane] = index
+
+    engine = types.SimpleNamespace(
+        index={"scripted": 0, "a": 1, "b": 2, "c": 3, "d": 4, "e": 5},
+        window_sets=[["a", "b", "c"], ["c", "d", "e"]],
+        seat=Seat(),
+        runs=[(0, [1, 2, 3], 100)],
+        capacity_of={1: 100, 2: 100, 3: 100},
+        in_use=[0] * 6,
+        stream_rank={1: 0, 2: 1, 3: 2, 4: 3, 5: 4},
+        swaps=0,
+        window=0,
+    )
+    BucketEngine._seat_window(engine, 1)
+    assert engine.seat.lanes == [[4, 5, 3]] and engine.window == 1 and engine.swaps == 2
+    assert set(engine.capacity_of) == {3, 4, 5}
+
+
+def test_spec_windows_must_overlap_by_the_reach(tmp_path):
+    from bnb.league.unified.run import load_spec
+
+    lines = ["[players]"]
+    for step in (1000, 2000, 3000, 4000):
+        where = tmp_path / f"dry-rl/policies/step_{step}/exponential_average"
+        where.mkdir(parents=True)
+        record = {"files": {"weights.safetensors": f"rl{step}"}}
+        (where / "checkpoint.json").write_text(json.dumps(record))
+        lines.append(f'rl_{step} = "{where}"')
+    names = ["scripted"] + [f"rl_{n}" for n in (1000, 2000, 3000, 4000)]
+    body = ["", "[[elo]]", f'preset = "{EL}"', 'design = "static"', "reach = 2"]
+    body.append(f"players = {names}".replace("'", '"'))
+    for overlap, fits in ((1, False), (2, True)):
+        head = [f"windows = {{size = 3, overlap = {overlap}}}"]
+        (tmp_path / "spec.toml").write_text("\n".join(head + lines + body) + "\n")
+        try:
+            spec = load_spec(tmp_path / "spec.toml")
+        except ValueError:
+            assert not fits
+        else:
+            assert fits and spec.windows == (3, overlap)

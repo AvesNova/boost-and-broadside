@@ -45,6 +45,7 @@ from bnb.runs import checkpoint
 from bnb.runtime.rollout import Rollout
 from bnb.runtime.train import model_controller
 
+from . import static_design
 from .cells import Cell, Condition, Outcome, arena_uniform, bucket_of
 from .planner import Planner
 from .seat import RefillSeat, SeatPlayer
@@ -94,6 +95,10 @@ SHORT_SECONDS = 120.0
 # environment holds its current and next games' rows, so new players for every next game
 # would need twice the lanes.
 PREFER_RATIO = 0.5
+# Fixed windows (`BucketEngine` windows): a lane holds this many times the most games one
+# player has in a window (the design's counts at the build), at least `RESIDENT_SLACK` times
+# an even part of the rows
+WINDOW_SLACK = 1.5
 TICKETS = ("kills_per_ship", "ticket_exponent", "ticket_rounding")
 
 
@@ -266,6 +271,8 @@ class BucketEngine:
         residents: int | None = RESIDENTS,
         rules: dict[str, tuple[bool, bool]] | None = None,
         stream: list[str] | None = None,
+        windows: tuple[int, int] | None = None,
+        log=None,
     ) -> None:
         self.bucket, self.planner, self.device = bucket, planner, device
         self.players = players
@@ -324,11 +331,17 @@ class BucketEngine:
                 (1.0 / (1.0 + self.stream_rank[i]) if i in working else 0.0)
                 for i in range(len(players))
             ]
-        self.resident_set = residents is not None and len(networks) > residents
-        if self.resident_set:
-            runs = resident_runs(groups, shares_of, rows, residents)
+        self.log = log
+        self.window_sets = None  # fixed windows of the streaming order (`_window_step`)
+        if windows is not None and stream is not None:
+            runs = self._window_runs(windows, stream, networks, groups, rows)
+            self.resident_set = True  # the window's players only, sticky next games
         else:
-            runs = lane_runs(groups, shares_of, rows)
+            self.resident_set = residents is not None and len(networks) > residents
+            if self.resident_set:
+                runs = resident_runs(groups, shares_of, rows, residents)
+            else:
+                runs = lane_runs(groups, shares_of, rows)
         self.runs = runs
         self.capacity_of = {
             index: capacity
@@ -386,6 +399,199 @@ class BucketEngine:
         self.parked_ticks = 0.0  # environment ticks of the parked games ended
         self.real_ticks = 0.0  # and of the tallied ones
         self.host_seconds = 0.0  # the host's tallying and planning (`step`)
+        if self.window_sets is not None:
+            self._window_opened()
+
+    # ---- fixed windows (a static design's; `static_design.windows`)
+
+    def _window_runs(self, windows, stream, networks, groups, rows):
+        """The fixed windows of the streaming order and their one run of lanes (one lane a
+        window place, the capacity from the design's counts, `WINDOW_SLACK`), the first
+        window with games seated."""
+        size, overlap = windows
+        missing = [n for n in networks if n not in stream]
+        if missing:
+            raise ValueError(f"fixed windows: network players outside the stream order {missing}")
+        found = {g for g in groups if g is not None}
+        if len(found) != 1:
+            raise ValueError(f"fixed windows need one network group, not {sorted(found)}")
+        self.window_sets = static_design.windows(
+            [n for n in stream if n in networks], size, overlap
+        )
+        self.window_size, self.window_overlap = size, overlap
+        cells = self._window_cells()
+        most = 0
+        for number, held in enumerate(self.window_sets):
+            per: dict[str, int] = {}
+            for cell, games in cells.items():
+                if self._window_of(cell) != number:
+                    continue
+                for name in (cell.first, cell.second):
+                    if name in networks:
+                        per[name] = per.get(name, 0) + games
+            most = max([most, *per.values()])
+        even = math.ceil(RESIDENT_SLACK * rows / size)
+        capacity = min(rows, max(MINIMUM_CAPACITY, even, math.ceil(WINDOW_SLACK * most)))
+        self.window = self._next_window()
+        if self.window is None:
+            self.window = 0
+        seated = [self.index[n] for n in self.window_sets[self.window]]
+        return [(next(iter(found)), seated + [None] * (size - len(seated)), capacity)]
+
+    def _window_cells(self) -> dict[Cell, int]:
+        """This bucket's proposed cells and the games each still has to start (a target
+        without `cells_left` counts 1 a cell)."""
+        left: dict[Cell, int] = {}
+        counts = {}
+        for target in self.planner.targets:
+            if hasattr(target, "cells_left"):
+                for (a, b), games in target.cells_left().items():
+                    counts[(target.condition.key, a, b)] = games
+        for cell in self.planner.values():
+            if bucket_of(cell.condition, self.planner.buckets) != self.bucket:
+                continue
+            if cell.first not in self.index or cell.second not in self.index:
+                continue
+            left[cell] = counts.get((cell.condition.key, cell.first, cell.second), 1)
+        return left
+
+    def _window_of(self, cell: Cell) -> int | None:
+        """The first window holding both of a cell's players (a scripted one is in every
+        window; `static_design.assign_windows`), None when none does."""
+        outside = {n for n, i in self.index.items() if not self.network[i]}
+        try:
+            where = static_design.assign_windows(
+                self.window_sets, [(cell.first, cell.second)], outside
+            )
+        except ValueError:
+            return None
+        return where[(cell.first, cell.second)]
+
+    def _in_window(self, cell: Cell, number: int) -> bool:
+        held = self.window_sets[number]
+        return all(not self.network[self.index[n]] or n in held for n in (cell.first, cell.second))
+
+    def _next_window(self) -> int | None:
+        """The first window with a cell to play (a cell no window holds is an error)."""
+        found = None
+        for cell in self._window_cells():
+            number = self._window_of(cell)
+            if number is None:
+                raise ValueError(f"fixed windows: no window holds both players of {cell}")
+            found = number if found is None else min(found, number)
+        return found
+
+    def _window_opened(self) -> None:
+        self.window_started = time.time()
+        self.window_games = self.games
+        self.window_ticks = (self.parked_ticks, self.real_ticks)
+        self.window_tail = None  # when the window's last cell started
+        self.window_stages = self._stages()
+        self.window_log: list[dict] = getattr(self, "window_log", [])
+        held = self.window_sets[self.window]
+        self._say(
+            f"bucket {self.bucket}: window {self.window + 1}/{len(self.window_sets)} "
+            f"({held[0]} .. {held[-1]}, {len(held)} checkpoints and the anchor): "
+            f"{sum(g for c, g in self._window_cells().items() if self._in_window(c, self.window))}"
+            f" games to start, capacity {self.runs[0][2]} rows a lane"
+        )
+
+    def _stages(self) -> tuple:
+        return tuple(getattr(t, "stage", None) for t in self.planner.targets)
+
+    def _say(self, text: str) -> None:
+        if self.log is not None:
+            self.log(text)
+
+    def _window_step(self) -> int:
+        """Fixed windows (every `REBALANCE_BLOCKS` blocks): while the window has a cell to
+        start or a game in flight it plays on (its idle tail starts with its last cell);
+        then a barrier: the last block tallied, the next window with games loaded in place
+        (weights copied, no recompile) and every environment's next game chosen anew.
+        Returns the games the barrier's drain tallied."""
+        now = time.time()
+        stages = self._stages()
+        if stages != self.window_stages:
+            for target, before, after in zip(
+                self.planner.targets, self.window_stages, stages, strict=True
+            ):
+                if before != after and after in (1, 2, 3):
+                    designed = getattr(target, "designs", {}).get(after)
+                    self._say(
+                        f"{target.name}: stage {after}"
+                        + (
+                            f" designed, {designed.games} games"
+                            if designed is not None
+                            else " (done)"
+                        )
+                        + f" (window {self.window + 1})"
+                    )
+            self.window_stages = stages
+        playable = any(self._in_window(c, self.window) for c in self._window_cells())
+        if playable:
+            return 0
+        if self.window_tail is None:
+            self.window_tail = now
+        in_flight = any(
+            slot is not None and slot.cell is not None for slot in self.current + self.next
+        )
+        if in_flight:
+            return 0
+        tallied = self.drain()
+        if any(self._in_window(c, self.window) for c in self._window_cells()):
+            return tallied  # the drained games designed more of this window's
+        ended = time.time()
+        wall = ended - self.window_started
+        ticks = [
+            a - b
+            for a, b in zip((self.parked_ticks, self.real_ticks), self.window_ticks, strict=True)
+        ]
+        record = dict(
+            window=self.window + 1,
+            first=self.window_sets[self.window][0],
+            last=self.window_sets[self.window][-1],
+            games=self.games - self.window_games,
+            seconds=round(wall, 1),
+            tail_seconds=round(ended - self.window_tail, 1),
+            parked_ticks_share=round(ticks[0] / sum(ticks), 3) if sum(ticks) > 0 else 0.0,
+        )
+        self.window_log.append(record)
+        self._say(
+            f"bucket {self.bucket}: window {record['window']}/{len(self.window_sets)} done: "
+            f"{record['games']} games in {wall:.0f} s, idle tail {record['tail_seconds']:.0f} s "
+            f"({record['tail_seconds'] / max(wall, 1e-9):.0%}), parked "
+            f"{record['parked_ticks_share']:.0%} of the ended games' environment ticks"
+        )
+        following = self._next_window()
+        if following is None:
+            return tallied
+        self._seat_window(following)
+        self._window_opened()
+        # every environment plays a parked game now: its next game chosen anew in the window
+        environments = list(range(self.environments))
+        for environment in environments:
+            self._set_next(environment, self._choose(environment))
+        self._write(environments, self.next)
+        return tallied
+
+    def _seat_window(self, number: int) -> None:
+        """Seat a window's players in place: the players staying keep their lanes, the
+        leaving ones' lanes take the incoming ones (their weights copied on the device)."""
+        held = {self.index[n] for n in self.window_sets[number]}
+        lanes = self.seat.lanes[0]
+        for lane, index in enumerate(lanes):
+            if index is not None and index not in held:
+                if self.in_use[index]:
+                    raise RuntimeError(f"window {number + 1}: player {index} still holds rows")
+                self.seat.swap(0, lane, None)
+                self.capacity_of.pop(index, None)
+        capacity = self.runs[0][2]
+        for index in sorted(held - set(lanes), key=lambda i: self.stream_rank[i]):
+            lane = lanes.index(None)
+            self.seat.swap(0, lane, index)
+            self.capacity_of[index] = capacity
+            self.swaps += 1
+        self.window = number
 
     # ---- assignment
 
@@ -579,6 +785,8 @@ class BucketEngine:
             held_event.synchronize()
         started = time.perf_counter()
         tallied = self._tally(held)
+        if getattr(self, "window_sets", None) is not None and self.blocks % REBALANCE_BLOCKS == 0:
+            tallied += self._window_step()
         self.host_seconds += time.perf_counter() - started  # planning, while the GPU plays
         return tallied
 
@@ -670,6 +878,8 @@ class BucketEngine:
         that much more, up to `ROTATING` residents drain at once. A player swapped in stays
         for its first `FRESH_GAMES` games. Weights are copied on the device, between
         replays."""
+        if getattr(self, "window_sets", None) is not None:  # fixed windows: `_window_step`
+            return
         if getattr(self, "stream_rank", None) is not None:  # a static design's window
             self._stream()
             return

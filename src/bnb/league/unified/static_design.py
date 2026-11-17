@@ -34,6 +34,12 @@ last cell is done, and its partners come within the next few places), the anchor
 every row (scripted, no lane). `BucketEngine` follows the same order (`StaticEloTarget
 .stream`).
 
+**Windows** (`windows`, `assign_windows`; a spec's `windows = {size = 16, overlap = 8}`,
+the author 2026-11-17): fixed overlapping windows of the order instead (`size` checkpoints,
+stepping by `size - overlap`; the anchor in every one). Each pair is played in the first
+window holding both its players (an overlap of at least the reach holds every pair); a
+window is played to its last game, then the next window with games is loaded in place.
+
     uv run --no-sync python -m bnb.league.unified.static_design --demo 52
 """
 
@@ -302,6 +308,41 @@ def streaming_schedule(
         seated = [name for name in seated if name not in unloads]
         steps.append(dict(loads=loads, unloads=unloads, games=played, seated=sorted(here)))
     return steps
+
+
+def windows(order: list[str], size: int, overlap: int) -> list[list[str]]:
+    """Fixed overlapping windows of the streaming order (module docstring): `size` players
+    each, starting every `size - overlap` places, the last one reaching the order's end."""
+    if not 0 <= overlap < size:
+        raise ValueError(f"windows of {size} with an overlap of {overlap}: 0 <= overlap < size")
+    step = size - overlap
+    held, start = [], 0
+    while True:
+        held.append(order[start : start + size])
+        if start + size >= len(order):
+            return held
+        start += step
+
+
+def assign_windows(
+    held: list[list[str]], pairs, outside: set[str] | frozenset = frozenset()
+) -> dict[tuple[str, str], int]:
+    """Each pair's window: the first holding both its players (a player in `outside`, the
+    anchor, is in every window). Raises for a pair no window holds."""
+    where = {}
+    for pair in pairs:
+        number = next(
+            (
+                n
+                for n, members in enumerate(held)
+                if all(name in outside or name in members for name in pair)
+            ),
+            None,
+        )
+        if number is None:
+            raise ValueError(f"no window holds both players of {pair}: overlap too small")
+        where[tuple(pair)] = number
+    return where
 
 
 def design_order(chains: dict[str, list[Checkpoint]]) -> list[str]:

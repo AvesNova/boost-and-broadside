@@ -3,6 +3,7 @@
     python box/unified_spec.py RUNS CHAIN[,CHAIN...] [--parts "suite curves breakeven teamsize"]
         [--old-imugi] [--modes elimination] [--preset elimination=PRESET]
         [--lineup-types "Jujak"] [--curve-design static|adaptive] [--reach 2] [--pilot 1]
+        [--windows 16,8]
         > spec.toml
 
 Players: every chain's league-schedule snapshots of both stages (`scheduled_policies`, the
@@ -75,6 +76,12 @@ def main() -> None:
     parser.add_argument("--lineup-types", default="Yongma Jujak", help="the lineups' ship types")
     parser.add_argument("--reach", type=int, default=2, help="static: chain neighbours a side")
     parser.add_argument("--pilot", type=float, default=1.0, help="static: stage 1's goal factor")
+    parser.add_argument(
+        "--windows",
+        default="",
+        help="static: SIZE,OVERLAP fixed windows of the training order (e.g. 16,8), each "
+        "played out before the next is loaded; empty: the sliding resident window",
+    )
     args = parser.parse_args()
     from bnb.league.rating_pool import scheduled_policies
 
@@ -94,7 +101,11 @@ def main() -> None:
         players[f"{prefix}champion"] = champion_of(runs, chain)
         champions.append(f"{prefix}champion")
     lineup = json.dumps(args.lineup_types.split())
-    out = [f"lineup_types = {lineup}", "buckets = [5, 10, 20]", "seed = 0", ""]
+    out = [f"lineup_types = {lineup}", "buckets = [5, 10, 20]", "seed = 0"]
+    if args.windows:
+        size, overlap = (int(x) for x in args.windows.split(","))
+        out.append(f"windows = {{size = {size}, overlap = {overlap}}}")
+    out.append("")
     out.append("[players]")
     if args.old_imugi:
         out.append('imugi_v24 = "imugi_v24"')

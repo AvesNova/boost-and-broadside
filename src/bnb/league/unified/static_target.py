@@ -52,11 +52,13 @@ class StaticEloTarget(EloTarget):
         prior: dict[str, float],
         pilot: float = 1.0,
         margin: float = MARGIN,
+        reach: int | None = None,
         **kwargs,
     ) -> None:
         super().__init__(name, condition, players, stderr, (), pairs, **kwargs)
         self.margin = margin  # stage 2 designs to the goal times this (the fit moves after)
         self.pilot = pilot  # stage 1's goal is the goal times this (1: the full prior design)
+        self.reach = reach  # chain neighbours a side (`static_design.candidate_pairs`)
         self.order = list(order)
         self.rank = {name: number for number, name in enumerate(order)}
         self.prior_theta = numpy.array([prior.get(p, 0.0) / SCALE for p in players])
@@ -261,4 +263,6 @@ def static_elo(
     kwargs["neighbours"] = [
         (a.name, b.name) for chain in chains.values() for a, b in zip(chain, chain[1:])
     ]
-    return StaticEloTarget(name, condition, names, stderr, order, pairs, prior, pilot, **kwargs)
+    return StaticEloTarget(
+        name, condition, names, stderr, order, pairs, prior, pilot, reach=reach, **kwargs
+    )
