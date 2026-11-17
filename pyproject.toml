@@ -19,8 +19,10 @@ dependencies = [
 
 [project.optional-dependencies]
 # Offline tools: `bnb ship-card` writes its charts with matplotlib; analysis scripts fit with
-# scikit-learn.
+# scikit-learn; box/hf_backup uploads run data with huggingface_hub.
 tools = [
+    "hf-xet>=1.2",
+    "huggingface-hub>=2.4",
     "matplotlib>=3.10",
     "scikit-learn>=1.9.1",
     "wandb-workspaces>=0.4.13",

@@ -36,3 +36,49 @@ The last commit touching each file is given.
 No environment/volume setup script existed on either branch; setup was done by hand and
 described in `docs/rewrite/sections/gpu-box-log.md` and `gpubox2/log.md` on those branches
 (deleted with them; recoverable from the commits above until garbage collection).
+
+## Hugging Face backup (`box/hf_backup/`)
+
+`hf_backup.py` copies run folders and evaluation data to the private model repository
+`julianzia/boost-and-broadside-runs` every 30 minutes, from the box and from the laptop. Each
+source folder is one `HfApi.upload_folder(path_in_repo=...)` call (huggingface_hub 2.x with
+`hf_xet`: several commits per folder, files already in the repo skipped, interrupted uploads resumed
+by the next run). Never uploaded: compile caches (`inductor`, `triton`), skipped-step `dumps/`,
+`*.dump`, `__pycache__`, `*secrets.env`, `*.key`, `*.pid`, venvs, `.git`. A lock file keeps two
+backups from overlapping; each source logs one line (bytes uploaded, bytes skipped, files, seconds)
+and the exit status is 1 if any source failed.
+
+Where the data land:
+
+| Machine | Local folder | Repo path |
+|---|---|---|
+| box | `/workspace/runs/<run>` and its loose logs | `box/runs/<run>`, `box/runs/<file>` |
+| laptop | `~/avesnova/ueval-runs/<name>` (not `cache/`) | `laptop/ueval-runs/<name>` |
+| laptop | `~/avesnova/watch-runs/<name>` | `laptop/watch-runs/<name>` |
+| laptop | `boost-and-broadside-v2/review` | `laptop/review` |
+
+The token is read from `HF_TOKEN`, else `~/.config/bnb/hf.key` (laptop), else `HF_TOKEN=` in
+`/workspace/secrets.env` (box). `--dry-run` lists what would upload, with sizes, without a token.
+
+Laptop (a systemd user timer, installed disabled):
+
+    cp box/hf_backup/bnb-hf-backup.{service,timer} ~/.config/systemd/user/
+    systemctl --user enable --now bnb-hf-backup.timer
+    systemctl --user start bnb-hf-backup.service   # one backup now; journalctl --user -u bnb-hf-backup
+
+Box (supervisor, not systemd; `autostart=false`):
+
+    ssh box5090 'mkdir -p /workspace/hf-backup'
+    scp box/hf_backup/hf_backup.py box/hf_backup/hf_backup_loop.sh box5090:/workspace/hf-backup/
+    scp box/hf_backup/hf_backup.supervisor.conf box5090:/etc/supervisor/conf.d/bnb-hf-backup.conf
+    ssh box5090 'supervisorctl reread && supervisorctl update && supervisorctl start bnb-hf-backup'
+
+The loop logs to `/workspace/logs/hf_backup.log` and idles until `HF_TOKEN` exists.
+
+Restore (any machine with the token):
+
+    hf download julianzia/boost-and-broadside-runs --include "box/runs/dry-v26-s1-rl/*" --local-dir restore
+    # or in Python: snapshot_download("julianzia/boost-and-broadside-runs",
+    #     allow_patterns=["box/runs/dry-v26-s1-rl/*"], local_dir="restore")
+
+Tests: `tests/box/test_hf_backup.py` (the ignore patterns, the source layout, the token order).

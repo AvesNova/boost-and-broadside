@@ -1,0 +1,8 @@
+[Unit]
+Description=Back up laptop run data to the private Hugging Face repository
+
+[Service]
+Type=oneshot
+ExecStart=%h/avesnova/boost-and-broadside-v2/.venv/bin/python %h/avesnova/bnb-hfbackup/box/hf_backup/hf_backup.py --profile laptop
+Nice=10
+IOSchedulingClass=idle
