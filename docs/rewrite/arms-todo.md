@@ -369,3 +369,9 @@ Every branch below is pushed; none is merged into `feat/imugi-boundary` yet. On 
 - Stop on precision; the game budget is only a large safety cap, reported loudly if reached.
 - Dry run 1's curves are completed on the laptop with the unified evaluator, its 36,672 old games as prior (the end-to-end test before dry run 3's evaluation on the 5090).
 - 2026-11-17 ~09:25 KST, candidate evaluation condition (author): "spread spawn" — each team spawns uniformly (by area) over its half disc, minus a band at the edge (so the closing border doesn't kill at once) and a band along the middle (about the fog sight range, so teams don't see each other at spawn but meet quickly). Motivation: 20v20 elimination spawns as a mob using little of the map. After the current evaluation data: measure how much it changes already trained models (a separate condition, not the headline mode).
+
+## After Wednesday (author, 2026-11-17)
+
+- **Mode rules as per-environment inputs, not graph constants:** elimination's shrinking border, frontline's fields, deathmatch's ticket rule, fog, clock, respawn. Any environment can then change mode between games without a recompile (evaluator re-splits automatically; training's mode mix too). Measure the masked all-modes cost per tick first; equivalence tests against the current modes.
+- **Ticket: audit for other numbers baked into compiled graphs that should be inputs** (game settings, lineup/ship-count details, schedules, evaluator constants), list each with its cost/benefit.
+- Evaluator resident set, if not done before: a spare lane (load the incoming player while the outgoing drains), take the best available game instead of parking, and give a leaving player elimination games (short) where it still needs elimination data.
