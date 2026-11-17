@@ -459,3 +459,39 @@ def test_resident_runs_seat_the_most_wanted_with_even_lanes():
     group, seated, capacity = run
     assert group == 0 and seated == list(range(20, 12, -1))
     assert capacity == math.ceil(RESIDENT_SLACK * 4096 / 8)
+
+
+def test_resident_swap_waits_for_a_drained_lane_and_takes_the_most_valuable():
+    import types
+
+    from bnb.league.unified.engine import BucketEngine
+
+    swapped = []
+
+    class Seat:
+        lanes = [[1, 2]]
+
+        def swap(self, run, lane, index):
+            swapped.append((lane, index))
+            self.lanes[run][lane] = index
+
+    condition = Condition(DM, 5, 5)
+    values = {Cell(condition, "a", "b"): 0.1, Cell(condition, "c", "scripted"): 1.0}
+    engine = types.SimpleNamespace(
+        planner=types.SimpleNamespace(values=lambda overtime=False: values),
+        index={"scripted": 0, "a": 1, "b": 2, "c": 3, "d": 4},
+        network=[False, True, True, True, True],
+        group_of=[None, 0, 0, 0, 0],
+        runs=[(0, [1, 2], 100)],
+        seat=Seat(),
+        capacity_of={1: 100, 2: 100},
+        leaving=set(),
+        in_use=[0, 3, 3, 0, 0],
+        swaps=0,
+    )
+    engine._player_values = types.MethodType(BucketEngine._player_values, engine)
+    BucketEngine._rebalance(engine)
+    assert engine.leaving == {1} and not swapped  # marked, but still playing
+    engine.in_use[1] = 0
+    BucketEngine._rebalance(engine)
+    assert swapped == [(0, 3)] and 3 in engine.capacity_of and 1 not in engine.capacity_of
