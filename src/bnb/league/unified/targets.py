@@ -44,6 +44,11 @@ from .cells import Cell, Condition, Outcome
 # only, it places a player whose games leave it without a rating (a bound, undetermined)
 # near its neighbours, so its next games go to the opponents nearest it.
 NEIGHBOUR_STEP = 400.0
+# Games in flight for a player without a rating (a bound, undetermined, unplayed): at most
+# this many a pair and in all, until results come in (its planning rating is a guess, and a
+# refill round would otherwise commit hundreds of games to it at once).
+PROBE_PAIR = 8
+PROBE_PLAYER = 32
 
 # The planning variance of one game's score (a win or a loss at even odds): the
 # outcome-independent information every count-based plan uses.
@@ -177,6 +182,8 @@ class EloTarget(Target):
         self._covariance = None
         self.posterior = None
         self.informative = numpy.ones((count, count), dtype=bool)
+        self.unresolved = numpy.ones(count, dtype=bool)  # no rating yet (before a fit: all)
+        self.unresolved[0] = False
         # the planning prior's neighbours (`field_neighbours`; None: consecutive players in
         # the list, the anchor apart)
         if neighbours is None:
@@ -209,6 +216,8 @@ class EloTarget(Target):
         self.difference_variance = variance
         component = posterior.component.numpy()
         self.informative = component[:, None] == component[None, :]
+        self.unresolved = ~rated
+        self.unresolved[0] = False  # the anchor
         self._weights = None
         self._covariance = None
 
@@ -265,6 +274,16 @@ class EloTarget(Target):
         quadratic = (columns * pairs).sum(1)
         w = weights[first, second]
         reduction = w * ((columns @ rows.T) ** 2).sum(1) / (1.0 + w * quadratic)
+        # probes: a player without a rating has its planning rating from little or nothing,
+        # so its games in flight are capped (per pair and in all) until results come in
+        probing = self.unresolved[first] | self.unresolved[second]
+        if probing.any():
+            in_flight = self.pending.sum(1)
+            full = (self.pending[first, second] >= PROBE_PAIR) | (
+                (self.unresolved[first] & (in_flight[first] >= PROBE_PLAYER))
+                | (self.unresolved[second] & (in_flight[second] >= PROBE_PLAYER))
+            )
+            reduction = numpy.where(probing & full, 0.0, reduction)
         return {
             cell: float(value)
             for cell, value in zip(self._cells, reduction.tolist(), strict=True)

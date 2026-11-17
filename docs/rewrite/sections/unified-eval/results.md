@@ -142,14 +142,21 @@ games, 1,024 games in flight ending in bursts of 2%, from no games:
 
 | mode | span (Elo) | games to ±60 | old budget | players without a rating | worst SE | games beyond p = 0.95 / 0.99 (after the first wave) | mean p (1 − p) |
 |---|---|---|---|---|---|---|---|
-| elimination | 2,500 | 5,280 | 12,288 | 0 | 59.8 | 11% / 5% | 0.137 |
-| deathmatch | 5,000 | 13,680 | 12,288 | 0 | 60 | 32% / 4% | 0.087 |
-| frontline | 5,400 | 16,960 | 12,288 | 0 | 60 | 39% / 4% | 0.093 |
+| elimination | 2,500 | 4,940 | 12,288 | 0 | 59.9 | 11% / 6% | 0.137 |
+| deathmatch | 5,000 | 11,776 | 12,288 | 0 | 59.7 | 32% / 5% | 0.087 |
+| frontline | 5,400 | 15,408 | 12,288 | 0 | 59.9 | 38% / 7% | 0.089 |
 
-The first wave (planned before any result) holds most of the near-certain games; after it,
-the games beyond p = 0.95 are mostly the long hops A-optimality picks to chain a span of
-5,000 Elo (per game, the information about a distance is largest near 400 Elo a hop,
-p ≈ 0.92). The fitted errors match the truth (root mean square of error over SE 0.94–1.21).
+A player without a rating has at most 8 games in flight a pair and 32 in all until results
+come in (`PROBE_PAIR`, `PROBE_PLAYER`): without the cap a refill round committed dozens of
+games to a guess (on the laptop, 54 deathmatch games of an early BC snapshot against one
+rated far above it, every one lost); the cap took 7–14% off the games above. The near-certain
+games that remain are structural: frontline's field has a 700-Elo hole above the early
+BC snapshots (−1,124 to −419), and ±60 on both sides of it needs games across it (of the
+games beyond p = 0.99 after the first wave, 46% were a bound below against a rated player,
+42% two rated players bridging the hole). Per game, the information about a distance is
+largest at hops near 400 Elo (p ≈ 0.92), so a long span is chained in such hops, not at
+0.5. The fitted errors match the truth (root mean square of error over SE 0.73–1.41,
+one run each).
 With draws (15% of even games, fewer as the odds part, the mean score kept at p), frontline
 took 14,720 games, every player rated, error over SE 0.95.
 
