@@ -192,8 +192,12 @@ class Slot:
     parked: bool = False
 
 
-def seat_players(players: list[Player]) -> tuple[list[SeatPlayer], list[int | None]]:
-    """The seat's view of the run's players, and each one's network group."""
+def seat_players(
+    players: list[Player], rules: dict[str, tuple[bool, bool]] | None = None
+) -> tuple[list[SeatPlayer], list[int | None]]:
+    """The seat's view of the run's players, and each one's network group. rules: a
+    scripted player's own Imugi rules by name (`SeatPlayer.rules`)."""
+    rules = rules or {}
     groups = network_groups(players)
     seat = []
     for one, group in zip(players, groups, strict=True):
@@ -203,7 +207,11 @@ def seat_players(players: list[Player]) -> tuple[list[SeatPlayer], list[int | No
         if play is not None:
             if play.parameters is not None:
                 raise ValueError(f"{one.name}: no doctrine players")
-            seat.append(SeatPlayer(one.name, None, play.temperature, play.share, play.floor))
+            seat.append(
+                SeatPlayer(
+                    one.name, None, play.temperature, play.share, play.floor, rules.get(one.name)
+                )
+            )
         else:
             seat.append(SeatPlayer(one.name, group, temperature=one.temperature))
     return seat, groups
@@ -235,6 +243,7 @@ class BucketEngine:
         seed: int = 0,
         record=None,
         residents: int | None = RESIDENTS,
+        rules: dict[str, tuple[bool, bool]] | None = None,
     ) -> None:
         self.bucket, self.planner, self.device = bucket, planner, device
         self.players = players
@@ -255,7 +264,7 @@ class BucketEngine:
             for p, c in zip(presets, counts, strict=True)
         )
         self.preset_of = [p for p, c in zip(presets, counts, strict=True) for _ in range(c)]
-        seat_view, groups = seat_players(players)
+        seat_view, groups = seat_players(players, rules)
         self.network = [group is not None for group in groups]
         self.group_of = groups
         templates, states, loaded = [], {}, {}

@@ -395,9 +395,11 @@ def test_field_neighbours_cross_runs_and_chain_stages():
         return Player(f"{run}_{step}", pathlib.Path(f"/r/{run}/policies/step_{step}/average"))
 
     players = [Player("scripted")] + [
-        at(run, step) for run in ("c-bc", "c-rl", "d-rl") for step in (10, 20, 30)
+        at(run, step) for run in ("c-bc", "c-rl", "d-rl", "d-bc") for step in (10, 20, 30)
     ]
     pairs = {frozenset(pair) for pair in field_neighbours(players)}
+    assert frozenset(("c-bc_20", "d-bc_20")) in pairs  # two chains: BC with BC
+    assert frozenset(("c-bc_20", "d-rl_20")) not in pairs  # not BC with the other's RL
     assert frozenset(("c-rl_10", "c-rl_20")) in pairs  # along a run
     assert frozenset(("c-bc_30", "c-rl_10")) in pairs  # BC's last to RL's first
     assert frozenset(("c-bc_20", "c-rl_20")) not in pairs  # stages are not matched by steps
@@ -495,3 +497,44 @@ def test_resident_swap_waits_for_a_drained_lane_and_takes_the_most_valuable():
     engine.in_use[1] = 0
     BucketEngine._rebalance(engine)
     assert swapped == [(0, 3)] and 3 in engine.capacity_of and 1 not in engine.capacity_of
+
+
+def test_v24_games_are_admitted_with_their_imugi_as_imugi_v24(tmp_path):
+    from bnb.league.matches import Player
+    from bnb.league.rating_pool import RatingPool
+    from bnb.league.unified import run as unified_run
+
+    pool = RatingPool.create(tmp_path / "pool", lineup_types=("Yongma", "Jujak"))
+    entry = dict(
+        matchups=[["scripted", "a"]],
+        identities={"scripted": "scripted", "a": "a"},
+        results=[[3, 0, 5]],
+    )
+    pool.append_batch("elimination_5v5", dict(entry, game_version=24))
+    pool.append_batch("elimination_5v5", dict(entry, game_version=23))
+    players = ["scripted", "imugi_v24", "a"]
+    target = EloTarget("e", Condition(EL, 5, 5), players, prior_keys=("elimination_5v5",))
+    planner = Planner([target])
+    seated = [Player("scripted"), Player("imugi_v24"), Player("a")]
+    lines = []
+    original = dict(unified_run.ADMITTED)
+    unified_run.ADMITTED.clear()
+    unified_run.ADMITTED[(24, unified_run_version())] = {"scripted": "imugi_v24"}
+    try:
+        unified_run.load_prior(
+            planner, [tmp_path / "pool"], seated, say=lines.append,
+            variants={"imugi_v24": "imugi_v24"},
+        )  # fmt: skip
+    finally:
+        unified_run.ADMITTED.clear()
+        unified_run.ADMITTED.update(original)
+    assert target.prior_games == 8  # v24's only; v23 left out
+    assert target.wins[1, 2] == 3 and target.wins[2, 1] == 5  # its Imugi as imugi_v24
+    assert target.games[0].sum() == 0  # never as the anchor
+    assert "admitted game v24" in lines[0] and "game version 23" in lines[0]
+
+
+def unified_run_version():
+    from bnb.game import VERSION
+
+    return VERSION

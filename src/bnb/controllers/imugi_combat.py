@@ -132,6 +132,11 @@ class Context(NamedTuple):
     next_wave: torch.Tensor
     zone_lock_own: torch.Tensor
     zone_lock_enemy: torch.Tensor
+    # the agent's rules (`Rules of Imugi`, `maneuvers`): the turning fight's commitment and
+    # the stick by energy, each a bool or (R, 1) bool per view; None: the process defaults
+    # (`TURN_COMMIT`, `STICK_BY_ENERGY`, from the environment)
+    turn_commit: torch.Tensor | bool | None = None
+    stick_by_energy: torch.Tensor | bool | None = None
 
 
 def choice_uniforms(fleet: Context, name: str, like: torch.Tensor) -> torch.Tensor | None:
@@ -158,10 +163,12 @@ def context(
     recall: Recall | None = None,
     seconds: float = Rules.tick_length,
     decision_key: torch.Tensor | None = None,
+    rules: tuple | None = None,
 ) -> Context:
     """The Context both layers read, from one team's views (R, ...), own rows first, at the
     agent's temperature (a float, or (R, 1) per view), with its memory (`remember`'s carry
-    and recall; None for a fresh one's: the memoryless agent)."""
+    and recall; None for a fresh one's: the memoryless agent). rules: (turn commit, stick
+    by energy), each a bool or (R, 1) bool (None: the process defaults)."""
     if carry is None:
         ships = obs.ships
         S = ships.shape[-2] // 2
@@ -239,6 +246,8 @@ def context(
         next_wave=obs.globals[:, GLOBAL["next_wave_own"]],
         zone_lock_own=obs.zones[..., ZONE["lock_own"]],
         zone_lock_enemy=obs.zones[..., ZONE["lock_enemy"]],
+        turn_commit=None if rules is None else rules[0],
+        stick_by_energy=None if rules is None else rules[1],
     )
 
 
@@ -997,7 +1006,10 @@ def maneuvers(
     commitment = Commitment(
         torch.zeros_like(distance), torch.zeros_like(distance), torch.zeros_like(seen)
     )
-    if TURN_COMMIT:
+    commit = TURN_COMMIT if fleet.turn_commit is None else fleet.turn_commit
+    per_view = isinstance(commit, torch.Tensor)  # each view its own rule: both computed
+    old_sense, old_gate = sense_left, geometry_gate
+    if per_view or commit:
         if released is None:
             released = (torch.zeros_like(seen), torch.zeros_like(seen))
         blocked = released[1] | ~seen | (fleet.boundary_weight > 0.5)
@@ -1029,11 +1041,22 @@ def maneuvers(
         )
         if BOUNDARY_OVER_MANEUVERS:
             geometry_gate = geometry_gate * (1.0 - fleet.boundary_weight)
+        if per_view:  # the old rule's views: re-decided each tick, nothing committed
+            sense_left = torch.where(commit, sense_left, old_sense)
+            geometry_gate = torch.where(commit, geometry_gate, old_gate)
+            commitment = Commitment(
+                torch.where(commit, commitment.sense, 0.0),
+                torch.where(commit, commitment.clock, 0.0),
+                commitment.flown & commit,
+            )
     # the stick by energy: a two-circle turn (the target's rotation sense) below the corner
     # speed eases to the sustained level, the turn that holds speed; else full stick
     two_circle = (sense_left == (target_rate > 0.0)) & (target_rate.abs() > TURNING_RATE)
     easing = two_circle & (fleet.speed < EASE_BELOW_CORNER * fleet.corner_speed)
-    if STICK_BY_ENERGY:
+    by_energy = STICK_BY_ENERGY if fleet.stick_by_energy is None else fleet.stick_by_energy
+    if isinstance(by_energy, torch.Tensor):
+        level = torch.where(easing & by_energy, STICK_MAGNITUDES[2], 1.0)
+    elif by_energy:
         level = torch.where(easing, STICK_MAGNITUDES[2], 1.0)
     else:
         level = 1.0

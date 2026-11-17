@@ -191,3 +191,42 @@ def test_stick_by_energy_eases_a_slow_two_circle_turn_to_the_sustained_level():
     assert float(fast.stick[0, 0, RIGHT]) > 0.9
     assert float(one.stick[0, 0, RIGHTS].sum()) > 0.9
     assert float(one.stick[0, 0, SUSTAINED_LEVELS].sum()) < 0.1
+
+
+def test_per_view_rules_play_v24_and_v25_imugi_side_by_side(monkeypatch):
+    """Each view its own rules (`Imugi(rules=...)`, the unified evaluator's two Imugis in
+    one pass): a view with both rules off plays exactly what the process flags off play
+    (v24's Imugi), a view with both on what the flags on play."""
+    from torch.utils import _pytree
+
+    corner = value("corner_speed", AGILE)
+    rates = [0.3, -0.3, 0.3, 0.2, -0.25, -0.3, 0.3, -0.1]
+    observations = [_passed(rate, 0.8 * corner, target_speed=0.8 * corner) for rate in rates]
+
+    def run(flags, rules=None, views=1):
+        monkeypatch.setattr(imugi_combat, "TURN_COMMIT", flags)
+        monkeypatch.setattr(imugi_combat, "STICK_BY_ENERGY", flags)
+        carry, sticks, senses = None, [], []
+        for step, obs in enumerate(observations):
+            if views == 2:
+                obs = _pytree.tree_map_only(torch.Tensor, lambda x: torch.cat([x, x]), obs)
+            keys = torch.arange(views) * 0 + 7 * step
+            parts, carry = decide(
+                obs, CHARACTERISTICS, PARAMETERS, carry=carry, decision_key=keys,
+                doctrines=DOCTRINES, rules=rules,
+            )  # fmt: skip
+            sticks.append(parts.stick)
+            senses.append(carry.fight_sense)
+        return torch.stack(sticks), torch.stack(senses)
+
+    new_stick, new_sense = run(True)
+    old_stick, old_sense = run(False)
+    assert not torch.equal(new_stick, old_stick)  # the rules matter in this fight
+    mixed = torch.tensor([[True], [False]])
+    stick, sense = run(True, rules=(mixed, mixed), views=2)
+    torch.testing.assert_close(stick[:, :1], new_stick)
+    torch.testing.assert_close(stick[:, 1:], old_stick)
+    torch.testing.assert_close(sense[:, :1], new_sense)
+    torch.testing.assert_close(sense[:, 1:], old_sense)
+    stick_off, _ = run(True, rules=(False, False))  # a plain switch, whatever the flags
+    torch.testing.assert_close(stick_off, old_stick)

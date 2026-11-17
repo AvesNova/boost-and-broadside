@@ -26,6 +26,8 @@ from bnb.game.modes.rules import CLOCKS, PRESETS
 from .cells import BUCKETS, Cell, Condition, Outcome, bucket_of
 from .targets import Target
 
+REBUILD_EVERY = 4096  # value updates between full re-sums
+
 
 def clock_seconds(preset: str) -> float:
     """The preset's episode length in game seconds."""
@@ -45,7 +47,10 @@ class Planner:
         self.seats: collections.Counter = collections.Counter()
         self._cache: dict[tuple[str, bool], dict[Cell, float]] = {}
         self._values: dict[bool, dict[Cell, float]] = {}  # the summed values, cached
-        self._slices: dict[bool, dict[tuple[int, str], list[Cell]]] = {}
+        self._slices: dict[bool, dict[tuple[int, str], dict[Cell, None]]] = {}
+        self._used: dict[bool, dict[tuple[str, bool], dict[Cell, float]]] = {}
+        self._counts: dict[bool, collections.Counter] = {}
+        self._updates = 0
         self.assigned = 0
         self.finished_games = 0
 
@@ -73,21 +78,45 @@ class Planner:
         return found
 
     def values(self, overtime: bool = False) -> dict[Cell, float]:
-        """Every proposed cell's summed value (overtime: `Target.proposals`')."""
+        """Every proposed cell's summed value (overtime: `Target.proposals`'). Kept up to
+        date incrementally: only the targets whose proposals changed are re-summed (a field
+        of a hundred players proposes thousands of cells; rebuilt from scratch every
+        `REBUILD_EVERY` updates against rounding drift)."""
         held = self._values.get(overtime)
-        if held is None:
-            total: dict[Cell, float] = collections.defaultdict(float)
-            for target in self.targets:
-                for cell, value in self._proposals(target, overtime).items():
-                    total[cell] += value
-            held = dict(total)
-            self._values[overtime] = held
-            sliced: dict[tuple[int, str], list[Cell]] = collections.defaultdict(list)
-            for cell in held:
-                key = (bucket_of(cell.condition, self.buckets), cell.condition.preset)
-                sliced[key].append(cell)
-            self._slices[overtime] = sliced
+        self._updates += 1
+        if held is None or self._updates % REBUILD_EVERY == 0:
+            held, sliced, used = {}, collections.defaultdict(dict), {}
+            self._values[overtime], self._slices[overtime] = held, sliced
+            self._used[overtime], self._counts[overtime] = used, collections.Counter()
+        sliced, used, counts = self._slices[overtime], self._used[overtime], self._counts[overtime]
+        for target in self.targets:
+            key = (target.name, overtime)
+            if key in self._cache and key in used:
+                continue
+            old = used.pop(key, {})
+            fresh = self._proposals(target, overtime)
+            for cell, value in old.items():
+                if cell in fresh:  # still proposed: only its value moves
+                    held[cell] += fresh[cell] - value
+                    continue
+                counts[cell] -= 1
+                if counts[cell] <= 0:
+                    del counts[cell]
+                    held.pop(cell, None)
+                    sliced[self._slice_of(cell)].pop(cell, None)
+                else:
+                    held[cell] -= value
+            for cell, value in fresh.items():
+                if cell in old:
+                    continue
+                held[cell] = held.get(cell, 0.0) + value
+                counts[cell] += 1
+                sliced[self._slice_of(cell)][cell] = None
+            used[key] = fresh
         return held
+
+    def _slice_of(self, cell: Cell) -> tuple[int, str]:
+        return (bucket_of(cell.condition, self.buckets), cell.condition.preset)
 
     def _touched(self, cell: Cell) -> None:
         for key in list(self._cache):
@@ -97,14 +126,14 @@ class Planner:
             for overtime in (False, True):
                 if not self._cache.get((target.name, overtime), True):
                     self._cache.pop((target.name, overtime), None)
-        self._values.clear()
-        self._slices.clear()
 
     def _touched_all(self) -> None:
         """Forget every cached proposal (games recorded behind the planner's back: a prior)."""
         self._cache.clear()
         self._values.clear()
         self._slices.clear()
+        self._used.clear()
+        self._counts.clear()
 
     def choose(
         self,

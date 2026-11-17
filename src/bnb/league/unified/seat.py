@@ -30,6 +30,7 @@ from torch.utils import _pytree
 
 from bnb.contracts import Action, Obs, Outputs
 from bnb.contracts.tree import contract
+from bnb.controllers import imugi_combat
 from bnb.controllers.imugi import Imugi
 from bnb.controllers.scripted import floored_actions
 from bnb.runtime import stacked
@@ -47,6 +48,8 @@ class SeatPlayer:
     temperature: float = 1.0
     share: float = 1.0
     floor: float = 0.0
+    # a scripted player's Imugi rules (turn commit, stick by energy); None: the process's
+    rules: tuple[bool, bool] | None = None
 
 
 @contract
@@ -121,8 +124,27 @@ class RefillSeat:
         # the scripted pass reads these per row, refreshed from the tables each tick
         self.temperature = torch.ones(rows, device=device)
         self.share = torch.ones(rows, device=device)
+        # Imugi's rules per row, from each scripted player's (two Imugis in one pass: v25's
+        # and v24's, `imugi_combat.Context`), only when some player sets its own
+        rules = None
+        if any(one.rules is not None for one in players):
+            default = (imugi_combat.TURN_COMMIT, imugi_combat.STICK_BY_ENERGY)
+            self.player_rules = [
+                torch.tensor(
+                    [(one.rules or default)[k] for one in players], dtype=torch.bool, device=device
+                )
+                for k in (0, 1)
+            ]
+            self.rules = [torch.ones(rows, dtype=torch.bool, device=device) for _ in (0, 1)]
+            rules = tuple(self.rules)
+        else:
+            self.player_rules, self.rules = None, None
         self.agent = Imugi(
-            characteristics, ships_per_team, temperature=self.temperature, share=self.share
+            characteristics,
+            ships_per_team,
+            temperature=self.temperature,
+            share=self.share,
+            rules=rules,
         )
         self.decisions = [_Decision(controller) for controller in controllers]
         for decision in self.decisions:
@@ -242,6 +264,9 @@ class RefillSeat:
         player = torch.where(reset & carry.stepped, self.pending, carry.player)
         self.temperature.copy_(self.player_temperature[player])
         self.share.copy_(self.player_share[player])
+        if self.rules is not None:
+            for row_rule, table in zip(self.rules, self.player_rules, strict=True):
+                row_rule.copy_(table[player])
         scripted, scripted_carry, _ = self.agent.step(carry.scripted, obs, reset, decision_key)
         action = floored_actions(scripted.packed(), self.player_floor[player], decision_key)
         model_carry = dict(carry.model)

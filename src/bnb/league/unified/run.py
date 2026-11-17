@@ -99,14 +99,34 @@ class Spec:
     buckets: tuple[int, ...]
     seed: int
     raw: dict
+    # scripted players with their own Imugi rules, by name (`IMUGI_VARIANTS`)
+    rules: dict[str, tuple[bool, bool]] = dataclasses.field(default_factory=dict)
+
+
+# Imugi variants a spec's [players] may name (a player's value): Imugi with these rules
+# (turn commit, stick by energy; `imugi_combat`), whatever the process flags. "imugi_v24"
+# is game v24's Imugi (both off); the anchor, "scripted", plays the process's (v25 on).
+IMUGI_VARIANTS = {"imugi_v24": (False, False), "imugi_v25": (True, True)}
+# Games of another game version a v-tree admits, by (recorded version, this version), with
+# the recorded player each stands for here (identity -> a spec player's variant): v24 and
+# v26 share the ship card and the game rules; only Imugi differs, so v24's "scripted" is
+# this tree's "imugi_v24" (the author, 2026-11-17). Nothing else is admitted.
+ADMITTED = {(24, 26): {"scripted": "imugi_v24"}}
 
 
 def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) -> Spec:
     """The players and targets a spec names (the module docstring)."""
     raw = tomllib.loads(pathlib.Path(path).read_text())
     players = [dataclasses.replace(player("imugi"), name=ANCHOR)]
+    rules: dict[str, tuple[bool, bool]] = {}
+    variants: dict[str, str] = {}
     for name, where in raw.get("players", {}).items():
         if name == ANCHOR:
+            continue
+        if where in IMUGI_VARIANTS:
+            players.append(dataclasses.replace(player("imugi"), name=name))
+            rules[name] = IMUGI_VARIANTS[where]
+            variants[where] = name
             continue
         players.append(dataclasses.replace(player(where, runs_directory), name=name))
     known = {one.name for one in players}
@@ -191,14 +211,18 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
     ship_set = ship_sets.pop()
     names = api.type_names(ship_set)
     lineup_types = tuple(names.index(n) for n in raw.get("lineup_types", ["Yongma", "Jujak"]))
-    return Spec(
+    spec = Spec(
         players,
         targets,
         lineup_types,
         tuple(raw.get("buckets", BUCKETS)),
         raw.get("seed", 0),
         raw,
+        rules,
     )
+    spec.variants = variants  # variant -> the player playing it
+    spec.runs_directory = runs_directory
+    return spec
 
 
 def field_neighbours(players: list[Player]) -> list[tuple[str, str]]:
@@ -206,10 +230,11 @@ def field_neighbours(players: list[Player]) -> list[tuple[str, str]]:
     near in training. Along a run, each checkpoint and the next one by steps (a policy's
     run and steps from its path, `bnb.league.rating_pool.policy_name`; players at one run
     and step, a champion and its snapshot, linked too). Across runs, each checkpoint and the
-    other run's checkpoint at the nearest steps, except between two stages of one chain
-    (`<chain>-bc` and `<chain>-rl`: RL starts from BC's last weights, so its first
-    checkpoint is linked to BC's last). Players without a run (the anchor) have none. Only
-    a starting point: the fit's estimates take over as games come in."""
+    other run's checkpoint at the nearest steps (two chains: stage with stage, RL with RL,
+    BC with BC), except between two stages of one chain (`<chain>-bc` and `<chain>-rl`: RL
+    starts from BC's last weights, so its first checkpoint is linked to BC's last). Players
+    without a run (the anchor) have none. Only a starting point: the fit's estimates take
+    over as games come in."""
     from bnb.league.rating_pool import policy_name
 
     runs: dict[str, list[tuple[int, str]]] = {}
@@ -233,17 +258,25 @@ def field_neighbours(players: list[Player]) -> list[tuple[str, str]]:
     for number, first in enumerate(names):
         for second in names[number + 1 :]:
             a, b = chain(first), chain(second)
-            if a is not None and b is not None and a[0] == b[0] and a[1] != b[1]:
-                bc, rl = (first, second) if a[1] == "-bc" else (second, first)
-                pairs.append((runs[bc][-1][1], runs[rl][0][1]))
-                continue
+            if a is not None and b is not None and a[1] != b[1]:
+                if a[0] == b[0]:  # one chain's stages: BC's last, RL's first
+                    bc, rl = (first, second) if a[1] == "-bc" else (second, first)
+                    pairs.append((runs[bc][-1][1], runs[rl][0][1]))
+                continue  # other chains' other stages: not near by steps
             for step, name in runs[first]:
                 nearest = min(runs[second], key=lambda other: abs(other[0] - step))
                 pairs.append((name, nearest[1]))
     return pairs
 
 
-def load_prior(planner: Planner, pools: list[pathlib.Path], players: list[Player], say=print):
+def load_prior(
+    planner: Planner,
+    pools: list[pathlib.Path],
+    players: list[Player],
+    say=print,
+    variants: dict[str, str] | None = None,
+    runs_directory: pathlib.Path | None = None,
+):
     """Feed every Elo target the games a rating pool already holds (`bnb.league.rating_pool`
     format: pool.json, players/, games/<preset>/) of its condition (`EloTarget.prior_keys`):
     the fits and the plan start from everything known. A game counts when both players are
@@ -255,8 +288,13 @@ def load_prior(planner: Planner, pools: list[pathlib.Path], players: list[Player
     from bnb.league.tournament import identity, recorded_results
 
     names = {identity(one): one.name for one in players}
+    variants = variants or {}
     loaded: dict[str, int] = {}
     for root in pools:
+        if (pathlib.Path(root) / "games.jsonl").is_file():  # a unified run's records
+            for name, count in _prior_run(planner, pathlib.Path(root), names, say, runs_directory):
+                loaded[name] = loaded.get(name, 0) + count
+            continue
         pool = RatingPool(root)
         settings = pool.settings
         for target in planner.targets:
@@ -271,6 +309,7 @@ def load_prior(planner: Planner, pools: list[pathlib.Path], players: list[Player
                 settings.get("deathmatch_score", "win_loss"),
             )
             skipped: dict[str, int] = {}
+            admitted: dict[int, int] = {}
             counted = 0
             for key in target.prior_keys:
                 batches, damaged = pool.batches(key)
@@ -278,16 +317,28 @@ def load_prior(planner: Planner, pools: list[pathlib.Path], players: list[Player
                     skipped["damaged lines"] = skipped.get("damaged lines", 0) + damaged
                 for entry in batches:
                     blocks = len(entry["matchups"])
-                    if entry.get("game_version", 1) != VERSION:
-                        version = entry.get("game_version", 1)
-                        reason = f"game version {version} (this tree {VERSION})"
-                        skipped[reason] = skipped.get(reason, 0) + blocks
-                        continue
+                    version = entry.get("game_version", 1)
+                    standing: dict[str, str] = {}
+                    if version != VERSION:
+                        equivalent = ADMITTED.get((version, VERSION))
+                        missing = equivalent is None or any(
+                            v not in variants for v in equivalent.values()
+                        )
+                        if missing:
+                            reason = f"game version {version} (this tree {VERSION})"
+                            skipped[reason] = skipped.get(reason, 0) + blocks
+                            continue
+                        # admitted: its scripted player stands for the variant's player
+                        standing = {old: variants[v] for old, v in equivalent.items()}
+                        admitted[version] = admitted.get(version, 0) + blocks
                     results = recorded_results(entry, scoring)
                     if results is None:
                         skipped["other scoring"] = skipped.get("other scoring", 0) + blocks
                         continue
-                    held = entry.get("identities", {})
+                    held = {
+                        name: standing.get(mark, mark)
+                        for name, mark in entry.get("identities", {}).items()
+                    }
                     for (first, second), (won, tied, lost) in zip(
                         entry["matchups"], results, strict=True
                     ):
@@ -314,10 +365,52 @@ def load_prior(planner: Planner, pools: list[pathlib.Path], players: list[Player
             loaded[target.name] = loaded.get(target.name, 0) + counted
             say(
                 f"prior {root}: {counted} games for {target.name}"
+                + (
+                    "".join(
+                        f", admitted game v{v} as v{VERSION} ({n} blocks, its "
+                        f"{list(ADMITTED[(v, VERSION)])} as "
+                        f"{[variants[x] for x in ADMITTED[(v, VERSION)].values()]})"
+                        for v, n in admitted.items()
+                    )
+                )
                 + (f", left out (blocks): {skipped}" if skipped else "")
             )
     planner._touched_all()
     return loaded
+
+
+def _prior_run(planner: Planner, root: pathlib.Path, names: dict, say, runs_directory):
+    """A unified run's finished games (its games.jsonl, players by its spec.toml) as prior:
+    each player matched by identity to this run's, every target recording the games of its
+    cells (the same game version: a unified run plays its tree's). Yields (target, games)."""
+    from bnb.league.tournament import identity
+
+    old = load_spec(root / "spec.toml", runs_directory)
+    rename = {}
+    for one in old.players:
+        mark = identity(one)
+        if one.name in old.rules:  # a variant's identity is its name: match by variant
+            variant = next(v for v, n in old.variants.items() if n == one.name)
+            mark = variant
+        rename[one.name] = names.get(mark)
+    counts: dict[str, int] = {}
+    skipped = 0
+    for cell, outcome in GameLog(root).replay():
+        first, second = rename.get(cell.first), rename.get(cell.second)
+        if first is None or second is None:
+            skipped += 1
+            continue
+        moved = Cell(cell.condition, first, second)
+        for target in planner.targets:
+            before = getattr(target, "finished", getattr(target, "games", 0))
+            target.record(moved, outcome, pending=False)
+            after = getattr(target, "finished", getattr(target, "games", 0))
+            if after != before:
+                counts[target.name] = counts.get(target.name, 0) + 1
+                if isinstance(target, EloTarget):
+                    target.prior_games += 1
+    say(f"prior {root}: {sum(counts.values())} target games {counts}, {skipped} left out")
+    return list(counts.items())
 
 
 def _preset(target: Target) -> str:
@@ -451,7 +544,14 @@ def run(
 
     planner = Planner(spec.targets, spec.buckets)
     if prior:
-        load_prior(planner, list(prior), spec.players, say)
+        load_prior(
+            planner,
+            list(prior),
+            spec.players,
+            say,
+            getattr(spec, "variants", {}),
+            runs_directory=getattr(spec, "runs_directory", None),
+        )
     games_log = GameLog(out)
     resumed = games_log.replay()
     for cell, outcome in resumed:
@@ -487,6 +587,7 @@ def run(
             seed=spec.seed,
             record=games_log.add,
             residents=residents,
+            rules=spec.rules,
         )
 
     footprints: dict[int, tuple[float, float]] = {}

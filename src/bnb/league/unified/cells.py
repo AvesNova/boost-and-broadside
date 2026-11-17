@@ -8,6 +8,7 @@ benched slots) and the arena scale. A cell's games are tallied from its first pl
 """
 
 import dataclasses
+import functools
 import math
 
 # The default size buckets (ships per team of each compiled engine): a cell plays in the
@@ -98,6 +99,7 @@ class Outcome:
         return self.first_kills / both if both else 0.5
 
 
+@functools.lru_cache(maxsize=65536)
 def bucket_of(condition: Condition, buckets: tuple[int, ...] = BUCKETS) -> int:
     """The smallest bucket holding the condition's larger team. Raises ValueError when none
     does."""

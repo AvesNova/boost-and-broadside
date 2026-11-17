@@ -91,6 +91,7 @@ def decide(
     seconds: float = Rules.tick_length,
     decision_key: torch.Tensor | None = None,
     doctrines: torch.Tensor | None = None,
+    rules: tuple | None = None,
 ) -> tuple[Marginals, ImugiCarry]:
     """Imugi's power, stick and shoot marginals per own ship at a temperature (a
     float, or (R, 1) per view), given its carry, and the carry after the decision: the
@@ -105,7 +106,8 @@ def decide(
     same marginals again (a label's re-reading). parameters: one
     set, per view, or per mode (`ModeParameters`: each view its mode's). doctrines: each
     ship type's doctrine (`bnb.controllers.imugi_doctrine`), a table (T, D) or per view
-    (R, T, D); None flies none."""
+    (R, T, D); None flies none. rules: (turn commit, stick by energy), each a bool or
+    (R, 1) bool per view (`imugi_combat.Context`; None: the process defaults)."""
     parameters = resolved(parameters, obs, characteristics)
     ships = obs.ships
     views, S = ships.shape[0], ships.shape[-2] // 2
@@ -117,7 +119,7 @@ def decide(
     carry = track_seen(carry, obs, reset, characteristics, seconds)  # before track_boundary
     carry = track_boundary(carry, obs, reset, seconds)
     fleet = context(
-        obs, characteristics, parameters, temperature, carry, recall, seconds, decision_key
+        obs, characteristics, parameters, temperature, carry, recall, seconds, decision_key, rules
     )
     fighting = combat(fleet, characteristics, parameters, doctrines)
     strategy = frontline(fleet, obs.zones, characteristics, parameters, fighting, doctrines)
@@ -163,10 +165,13 @@ def marginals(
     temperature: torch.Tensor | float = 1.0,
     carry: ImugiCarry | None = None,
     doctrines: torch.Tensor | None = None,
+    rules: tuple | None = None,
 ) -> Marginals:
     """The marginals `decide` gives (without switching): with carry None, the memoryless
     agent's, from the observation alone."""
-    return decide(obs, characteristics, parameters, temperature, carry, doctrines=doctrines)[0]
+    return decide(
+        obs, characteristics, parameters, temperature, carry, doctrines=doctrines, rules=rules
+    )[0]
 
 
 def joint(parts: Marginals) -> torch.Tensor:
@@ -232,6 +237,7 @@ class Imugi:
         memory: bool = True,
         seconds: float = Rules.tick_length,
         doctrines: torch.Tensor | str | None = STORED,
+        rules: tuple | None = None,
     ) -> None:
         if isinstance(doctrines, str):
             if doctrines != STORED:
@@ -251,6 +257,18 @@ class Imugi:
         self.temperature, self.share = temperature, share
         self.memory, self.seconds = memory, seconds
         self.doctrines = doctrines
+        # (turn commit, stick by energy), each a bool or (R,) bool per view (a tensor may be
+        # written in place between graph replays); None: the process defaults, from
+        # BNB_TURN_COMMIT and BNB_STICK_BY_ENERGY (both on: v25's rules; both off: v24's)
+        self.rules = rules
+
+    def _rules(self) -> tuple | None:
+        """The rules per view, (R, 1) for a tensor."""
+        if self.rules is None:
+            return None
+        return tuple(
+            one[:, None] if isinstance(one, torch.Tensor) else bool(one) for one in self.rules
+        )
 
     def init_carry(self, views: int, device: torch.device) -> ImugiCarry:
         """Nothing committed or remembered (the first observation's reset draws the agent
@@ -291,6 +309,7 @@ class Imugi:
             self.seconds,
             decision_key=decision_key,
             doctrines=self.doctrines,
+            rules=self._rules(),
         )
 
     def marginals(self, obs: Obs, carry: ImugiCarry | None = None) -> Marginals:
@@ -302,6 +321,7 @@ class Imugi:
             self._temperature(),
             carry,
             self.doctrines,
+            self._rules(),
         )
 
     def action_distribution(self, obs: Obs, carry: ImugiCarry | None = None) -> torch.Tensor:

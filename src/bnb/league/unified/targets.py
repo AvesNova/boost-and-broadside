@@ -244,7 +244,7 @@ class EloTarget(Target):
                 precision[1:, 1:]
                 + numpy.eye(len(self.players) - 1) * (SCALE / PLANNING_STDERR) ** 2
             )
-            self._covariance = numpy.linalg.inv(precision)
+            self._covariance = _inverse(precision)
         return self._covariance
 
     def _unmet(self, covariance: numpy.ndarray) -> numpy.ndarray:
@@ -266,14 +266,16 @@ class EloTarget(Target):
         rows = self.directions[unmet] / self.goals[unmet, None]  # (T, K - 1)
         weights = self._pair_weights()
         first, second = self._pair_index
-        pairs = numpy.zeros((len(first), len(self.players)))
-        pairs[numpy.arange(len(first)), first] = 1.0
-        pairs[numpy.arange(len(first)), second] = -1.0
-        pairs = pairs[:, 1:]  # (P, K - 1), the anchor pinned
-        columns = pairs @ covariance  # (P, K - 1)
-        quadratic = (columns * pairs).sum(1)
+        # a pair's direction is e_a - e_b (the anchor's column pinned at 0): its products
+        # with the covariance are differences of rows, gathered, not multiplied
+        padded = numpy.zeros((len(self.players), len(self.players)))
+        padded[1:, 1:] = covariance
+        projected = padded[:, 1:] @ rows.T  # (K, T): each player's row of Sigma times rows
+        along = projected[first] - projected[second]  # (P, T)
+        diagonal = numpy.diag(padded)
+        quadratic = diagonal[first] + diagonal[second] - 2.0 * padded[first, second]
         w = weights[first, second]
-        reduction = w * ((columns @ rows.T) ** 2).sum(1) / (1.0 + w * quadratic)
+        reduction = w * (along**2).sum(1) / (1.0 + w * quadratic)
         # probes: a player without a rating has its planning rating from little or nothing,
         # so its games in flight are capped (per pair and in all) until results come in
         probing = self.unresolved[first] | self.unresolved[second]
@@ -397,6 +399,19 @@ class EloTarget(Target):
                 if open_
             ],
         )
+
+
+def _inverse(matrix: numpy.ndarray) -> numpy.ndarray:
+    """A small matrix's inverse on one thread (torch's; numpy's BLAS spread a 100-player
+    field's inverse over the process's threads and took 46 ms against well under 1)."""
+    import torch
+
+    threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    try:
+        return torch.linalg.inv(torch.from_numpy(matrix)).numpy()
+    finally:
+        torch.set_num_threads(threads)
 
 
 def planning_ratings(
