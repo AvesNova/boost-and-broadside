@@ -335,6 +335,10 @@ class BucketEngine:
                 (1.0 / (1.0 + self.stream_rank[i]) if i in working else 0.0)
                 for i in range(len(players))
             ]
+            if windows is None and (residents is None or len(networks) <= residents):
+                # the whole field seated (the author, 2026-11-17 15:25): each lane sized by
+                # its player's share of the design's games, so the lanes finish together
+                shares_of = self._design_shares(players)
         self.log = log
         self.window_sets = None  # fixed windows of the streaming order (`_window_step`)
         if windows is not None and stream is not None:
@@ -405,6 +409,20 @@ class BucketEngine:
         self.host_seconds = 0.0  # the host's tallying and planning (`step`)
         if self.window_sets is not None:
             self._window_opened()
+
+    def _design_shares(self, players: list[Player]) -> list[float]:
+        """Each player's share of the rows by the static designs' counts still to start
+        (its games over twice the games: each game holds two rows)."""
+        games: dict[str, int] = {}
+        total = 0
+        for target in self.planner.targets:
+            if not hasattr(target, "cells_left"):
+                continue
+            for (a, b), count in target.cells_left().items():
+                total += count
+                for name in (a, b):
+                    games[name] = games.get(name, 0) + count
+        return [games.get(one.name, 0) / max(2 * total, 1) for one in players]
 
     # ---- fixed windows (a static design's; `static_design.windows`)
 
