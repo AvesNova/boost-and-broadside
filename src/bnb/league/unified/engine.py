@@ -81,6 +81,10 @@ SPARE_LANES = 1
 # 70 s of wall time and one lane at a time seated 2 newcomers in 15 minutes, leaving 15 of a
 # 117-network field unplayed after 85k games (unified-eval/results.md)
 ROTATING = 4
+# A player swapped in stays until this many of its games have ended: its first games are its
+# probes (`targets.PROBE_PLAYER` in flight), which cap its value until they return, so it
+# would otherwise look the least valuable resident and leave unplayed
+FRESH_GAMES = 16
 # A leaving resident still takes games expected to last at most this many game seconds
 # (elimination's, in that slice) while one of its longer games is in flight, so its lane
 # keeps playing as it drains and the drain ends no later.
@@ -319,6 +323,7 @@ class BucketEngine:
             if index is not None
         }
         self.leaving: set[int] = set()  # residents draining before a swap
+        self.fresh: dict[int, int] = {}  # residents swapped in: their games ended since
         self.swaps = 0
         self.types = card_of(players, self.game, device)
         rules = api.rules_of(self.game)
@@ -594,6 +599,12 @@ class BucketEngine:
                     seconds=ticks * self.tick_length,
                 )
                 self.planner.finished(slot.cell, outcome)
+                fresh = getattr(self, "fresh", {})
+                for index in (self.index[slot.cell.first], self.index[slot.cell.second]):
+                    if index in fresh:
+                        fresh[index] += 1
+                        if fresh[index] >= FRESH_GAMES:
+                            del fresh[index]
                 if self.record is not None:
                     self.record(slot.cell, outcome, slot, self.bucket)
                 self.games += 1
@@ -638,12 +649,16 @@ class BucketEngine:
         return held
 
     def _rebalance(self) -> None:
-        """Swap residents (module constants): a drained leaving resident's lane is emptied
-        (the next spare); while a run has an empty lane, the most valuable outsider is
-        seated in it at once when it is worth `SWAP_RATIO` times the least valuable staying
-        resident, who is marked leaving (no new games but short ones, `_fits`). Weights are
-        copied on the device, between replays."""
+        """Swap residents (module constants): a drained leaving resident's lane is emptied;
+        each empty lane seats the most valuable outsider at once, the last one (the spare)
+        only for one worth `SWAP_RATIO` times the least valuable staying resident, who is
+        marked leaving (no new games but short ones, `_fits`); and while outsiders are worth
+        that much more, up to `ROTATING` residents drain at once. A player swapped in stays
+        for its first `FRESH_GAMES` games. Weights are copied on the device, between
+        replays."""
         value = self._player_values()
+        if not hasattr(self, "fresh"):
+            self.fresh = {}
         for run, (group, _, capacity) in enumerate(self.runs):
             lanes = self.seat.lanes[run]
             for lane, index in enumerate(lanes):
@@ -660,8 +675,12 @@ class BucketEngine:
                 key=lambda i: -value.get(i, 0.0),
             )
             empty = [lane for lane, index in enumerate(lanes) if index is None]
-            staying = sorted(
-                (i for i in lanes if i is not None and i not in self.leaving),
+            staying = sorted(  # who may leave: not draining, not just seated
+                (
+                    i
+                    for i in lanes
+                    if i is not None and i not in self.leaving and i not in self.fresh
+                ),
                 key=lambda i: value.get(i, 0.0),
             )
 
@@ -684,6 +703,7 @@ class BucketEngine:
                 incoming = outside.pop(0)
                 self.seat.swap(run, lane, incoming)
                 self.capacity_of[incoming] = capacity
+                self.fresh[incoming] = 0
                 self.swaps += 1
             # and while outsiders are worth more, more residents drain (`ROTATING`), each
             # lane seating the next outsider once drained

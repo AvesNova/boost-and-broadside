@@ -618,6 +618,12 @@ def test_rotation_drains_several_residents_while_outsiders_are_worth_more():
     BucketEngine._rebalance(engine)
     # every drained lane seats the next outsider
     assert engine.swaps == 1 + unified_engine.ROTATING
+    # the newly seated are worth little while their probes are out, but do not leave yet
+    values.update({Cell(condition, str(i), "scripted"): 0.01 for i in range(6, 12)})
+    values[Cell(condition, "11", "scripted")] = 1.0
+    leaving = set(engine.leaving)
+    BucketEngine._rebalance(engine)
+    assert not (engine.leaving - leaving) & set(engine.fresh)
 
 
 def test_win_rate_report_says_whether_its_goal_is_met():

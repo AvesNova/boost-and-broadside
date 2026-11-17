@@ -233,3 +233,80 @@ Open: a leaving resident still drains over its current and next long games (deat
 about 370 s each), so swaps come about one per drain. Its not-yet-started next games are
 not re-planned, because the one-block lag means one may already have begun. More spare
 lanes would allow concurrent swaps, at about 8% more padded network rows each.
+
+## The box's two-run elimination curve (2026-11-17 afternoon)
+
+The run dry-v26-v24-unified (120 players: both chains' snapshots, each champion, the anchor
+and imugi_v24) was stopped at 13:29 KST after 103k games, 85k of them in the elimination
+condition, with four faults in the curve. Data: ueval-runs/dry-v26-v24-unified (copied
+from the box).
+
+**Fifteen players never played.** dry-v26-s1/bc_30408704 and rl_40894464 to rl_105906176
+had no game at all, though their value to the planner was 3-4 times every resident's
+(11,000-12,000 against about 3,000 at the end). The resident set seats 12 of the 117
+networks, and a swap waited for a leaving resident to drain its current and next games.
+On the 5090's 14,784 environments an elimination game lasts about 70 s of wall time, so
+the last session (15 minutes, 56k games) made 2 swaps and played 16 players. 34,882 of its
+56,563 games were the anchor against imugi_v24: the only pair that always fits when the
+residents' lanes are full. A CPU replay of that session (the real planner from the
+games before it, the engine's assignment methods, 3,000 environments) gives the same: 6
+swaps in 600 game seconds. Fix: up to `ROTATING` (4) residents drain at once while an
+outsider is worth `SWAP_RATIO` times them, each drained lane seating the next outsider,
+and a player swapped in stays for its first `FRESH_GAMES` (16) games (its probes cap its
+value until they return; without this rule the replay evicted newcomers within one check).
+The same replay with the fix: 9 swaps by 240 game seconds (5 by 60), against 2 by 600
+before. A drain still takes up to two games (the current and the next), so the pace is
+about 4 lanes per drain rather than one.
+
+**The champion and its snapshot were two players.** dry-v26-s1/champion is
+policies/step_148897792/exponential_average, the snapshot rl_148897792's weights. They
+were rated 1536 ± 28 and 1726 ± 14 and never played each other. The champion's games were
+the win-rate and break-even targets' (602 against the anchor at 0.950) and a cluster of
+RL 115-135M seated with it in the second session; the snapshot's were RL 20-35M and 140-
+146M. Fix: players of the same weights are one player, the later name an alias reported
+with the same estimate.
+
+**A resume credited the old champion's games to the new one.** Each launch rewrites
+spec.toml; the first session (02:21 UTC, before the RL run's extension) named
+step_98566144 "dry-v26-s1/champion", the later ones step_148897792. games.jsonl held names
+only, so the resume gave the second weights 1,583 games of the first (all its 1v1, 1v2
+and 4v4 suite games, its 81 games against imugi_v24). Fix: every games.jsonl line records
+its players' identities, and a resume or a unified-run prior matches by them. The
+existing file was stamped after the fact (games.stamped.jsonl next to it: session-1 lines
+give the champion step_98566144's hash, so they are left out).
+
+**The late-RL block is two islands.** RL 115-135M played the champion (42-78 games each)
+and each other, the anchor 8-10 times (all won) and RL 12/16M; RL 140-148M played RL 20-35M
+and the anchor (1,458-1,543 games at 0.96-0.97). Between the two: no games. Each island's
+level comes from its own long hops (the champion's 0.95 against the anchor; RL 30M's 0.98
+and the head-to-heads above it), which a Bradley-Terry fit does not reconcile, hence the
+dip at RL 120-130M. Dry run 3's early BC (1-25M) is a third: about 40 games each, among
+themselves and against the anchor (every one lost), so the fit holds them as a bound. The
+BC-BC cross neighbours are a planning prior only; the ratings come from games, and these
+players never met dry run 1's BC.
+
+Re-fit of the stamped games with the fixes (CPU; 87,102 elimination games: 1,583 of
+session 1's left out, the champion an alias of rl_148897792):
+
+| dry run 3 RL | before | re-fit |
+|---|---|---|
+| 110M | 1637 ± 75 | 1627 ± 74 |
+| 115M | 1625 ± 40 | 1772 ± 35 |
+| 120M | 1542 ± 37 | 1696 ± 30 |
+| 125M | 1527 ± 40 | 1674 ± 35 |
+| 130M | 1591 ± 38 | 1745 ± 31 |
+| 135M | 1560 ± 38 | 1715 ± 30 |
+| 140M | 1709 ± 13 | 1698 ± 13 |
+| 145M | 1682 ± 10 | 1673 ± 10 |
+| 149M (and the champion) | 1726 ± 14 (champion 1536 ± 28) | 1702 ± 13 |
+
+The merged player holds both islands' games, so the late block joins: 1673-1772 from RL
+115M on. The fifteen unplayed players and the early BC still need games: about 27 players
+at the 200-odd games a rated player here took, 6-10k games against near neighbours (dry run
+1's BC for dry run 3's early BC). That is minutes of the 5090's 250k games an hour; the
+rotation (4 lanes a drain of about 140 s of wall time) sets it at about 15-20 minutes.
+Resume from games.stamped.jsonl (renamed games.jsonl) on this commit; no other game needs
+dropping.
+
+The win-rate targets' report had no `met` field (a reader's default gave False for all 63);
+every target's report now carries `met` and `stopped`.
