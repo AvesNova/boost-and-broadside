@@ -19,6 +19,8 @@
 # PILOT stage 1's goal factor, default 1: the full prior design) or adaptive (the per-game
 # planner); LINEUP_TYPES the lineups' ship types (default "Yongma Jujak"); PRESETS="MODE=PRESET ..."
 # overrides a mode's preset (the release run: elimination=real_scale_elimination_hemisphere);
+# WINDOWS=SIZE,OVERLAP fixed windows of the training order for the static curves (e.g. 16,8;
+# each played out, then the next loaded in place; default: the sliding resident window);
 # RESIDENTS the resident window's network players (default 12); PRIOR=POOL loads a rating pool's games first (`--prior`, e.g. the queue's
 # $RUNS/CHAIN-eval/curves/pool); OUT overrides the output directory ($RUNS/CHAIN-unified).
 # A compile-cache archive (docs/rewrite/sections/launch/cache.sh export) in $CACHE_ARCHIVE
@@ -48,7 +50,7 @@ if [ -n "${CACHE_ARCHIVE:-}" ] && [ -s "$CACHE_ARCHIVE" ]; then
   bash "$UEVAL/docs/rewrite/sections/launch/cache.sh" import "$CACHE_ARCHIVE"
 fi
 "$PY" "$UEVAL/box/unified_spec.py" "$RUNS" "$chain" \
-  --parts "${PARTS:-suite curves breakeven teamsize}" ${OLD_IMUGI:+--old-imugi} --curve-design "${CURVE_DESIGN:-static}" --reach "${REACH:-2}" --pilot "${PILOT:-1}" --modes "${MODES:-frontline deathmatch elimination}" --lineup-types "${LINEUP_TYPES:-Yongma Jujak}" ${PRESETS:+$(for p in $PRESETS; do printf -- "--preset %s " "$p"; done)} \
+  --parts "${PARTS:-suite curves breakeven teamsize}" ${OLD_IMUGI:+--old-imugi} --curve-design "${CURVE_DESIGN:-static}" --reach "${REACH:-2}" --pilot "${PILOT:-1}" ${WINDOWS:+--windows "$WINDOWS"} --modes "${MODES:-frontline deathmatch elimination}" --lineup-types "${LINEUP_TYPES:-Yongma Jujak}" ${PRESETS:+$(for p in $PRESETS; do printf -- "--preset %s " "$p"; done)} \
   > "$out/spec.toml" || exit 1
 echo "spec: $out/spec.toml"
 exec 9> "${GPU_LOCK:-/tmp/gpu.lock}"

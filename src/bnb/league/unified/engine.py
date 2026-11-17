@@ -99,6 +99,10 @@ PREFER_RATIO = 0.5
 # player has in a window (the design's counts at the build), at least `RESIDENT_SLACK` times
 # an even part of the rows
 WINDOW_SLACK = 1.5
+# and its run has lanes for this many windows' newcomers beyond the window: a window's last
+# games are long (elimination's mid-BC games run 150-220 game seconds), so the next windows
+# play beside them rather than after a barrier
+WINDOW_AHEAD = 2
 TICKETS = ("kills_per_ship", "ticket_exponent", "ticket_rounding")
 
 
@@ -436,7 +440,8 @@ class BucketEngine:
         if self.window is None:
             self.window = 0
         seated = [self.index[n] for n in self.window_sets[self.window]]
-        return [(next(iter(found)), seated + [None] * (size - len(seated)), capacity)]
+        lanes = size + WINDOW_AHEAD * (size - overlap)  # and the next windows' newcomers
+        return [(next(iter(found)), seated + [None] * (lanes - len(seated)), capacity)]
 
     def _window_cells(self) -> dict[Cell, int]:
         """This bucket's proposed cells and the games each still has to start (a target
@@ -486,6 +491,7 @@ class BucketEngine:
         self.window_games = self.games
         self.window_ticks = (self.parked_ticks, self.real_ticks)
         self.window_tail = None  # when the window's last cell started
+        self.window_closed = False
         self.window_stages = self._stages()
         self.window_log: list[dict] = getattr(self, "window_log", [])
         held = self.window_sets[self.window]
@@ -504,11 +510,24 @@ class BucketEngine:
             self.log(text)
 
     def _window_step(self) -> int:
-        """Fixed windows (every `REBALANCE_BLOCKS` blocks): while the window has a cell to
-        start or a game in flight it plays on (its idle tail starts with its last cell);
-        then a barrier: the last block tallied, the next window with games loaded in place
-        (weights copied, no recompile) and every environment's next game chosen anew.
-        Returns the games the barrier's drain tallied."""
+        """`_window_advance` until a window waits on its cells or on lanes."""
+        tallied = 0
+        while True:
+            advanced, drained = self._window_advance()
+            tallied += drained
+            if not advanced:
+                return tallied
+
+    def _window_advance(self) -> tuple[bool, int]:
+        """Fixed windows (every `REBALANCE_BLOCKS` blocks). While the window has a cell to
+        start it plays on. Once its last cell has started, the next window with games is
+        seated at once in the spare lanes (`size - overlap` beyond the window): its
+        newcomers loaded in place (weights copied, no recompile), the players it drops
+        marked leaving (no new games; their lanes empty once their games end), the last
+        block drained and every environment's parked next game chosen anew. So the next
+        window starts on the environments the current one's last games leave free; the
+        wait is only for a lane (the leavers of the window before) and each environment's
+        current parked game. Returns whether it advanced and the games the drain tallied."""
         now = time.time()
         stages = self._stages()
         if stages != self.window_stages:
@@ -521,27 +540,64 @@ class BucketEngine:
                         f"{target.name}: stage {after}"
                         + (
                             f" designed, {designed.games} games"
-                            if designed is not None
+                            if designed is not None and after != 3
                             else " (done)"
                         )
                         + f" (window {self.window + 1})"
                     )
             self.window_stages = stages
-        playable = any(self._in_window(c, self.window) for c in self._window_cells())
-        if playable:
-            return 0
+        lanes = self.seat.lanes[0]
+        for lane, index in enumerate(lanes):  # drained leavers free their lanes
+            if index is not None and index in self.leaving and self.in_use[index] == 0:
+                self.leaving.discard(index)
+                self.capacity_of.pop(index, None)
+                self.seat.swap(0, lane, None)
+        cells = self._window_cells()
+        if any(self._in_window(c, self.window) for c in cells):
+            self.window_tail = None  # (stage 2 may give a played-out window new cells)
+            self.window_closed = False
+            return False, 0
         if self.window_tail is None:
             self.window_tail = now
-        in_flight = any(
-            slot is not None and slot.cell is not None for slot in self.current + self.next
-        )
-        if in_flight:
-            return 0
-        tallied = self.drain()
-        if any(self._in_window(c, self.window) for c in self._window_cells()):
-            return tallied  # the drained games designed more of this window's
-        ended = time.time()
-        wall = ended - self.window_started
+        following = self._next_window()
+        if following is None:
+            in_flight = any(
+                slot is not None and slot.cell is not None for slot in self.current + self.next
+            )
+            if not in_flight and not self.window_closed:
+                self.window_closed = True
+                self._window_record(now, None)
+            return False, 0
+        held = {self.index[n] for n in self.window_sets[following]}
+        seated = {i for i in lanes if i is not None}
+        incoming = sorted(held - seated, key=lambda i: self.stream_rank[i])
+        free = [lane for lane, index in enumerate(lanes) if index is None]
+        if len(free) < len(incoming):
+            return False, 0  # earlier windows' leavers still play: wait for their lanes
+        self._window_record(now, following)
+        tallied = self.drain()  # no block in flight: the next games may be rewritten
+        for index in seated - held:
+            self.leaving.add(index)
+        capacity = self.runs[0][2]
+        for lane, index in zip(free, incoming, strict=False):
+            self.seat.swap(0, lane, index)
+            self.capacity_of[index] = capacity
+            self.swaps += 1
+        self.window = following
+        self._window_opened()
+        environments = [
+            e for e in range(self.environments) if self.next[e] is None or self.next[e].cell is None
+        ]
+        for environment in environments:
+            self._set_next(environment, self._choose(environment))
+        self._write(environments, [self.next[e] for e in environments])
+        return True, tallied
+
+    def _window_record(self, now: float, following: int | None) -> None:
+        """A window's line: its games (ended since it opened), its wall time to the next
+        window's seating (or to its last game), the wait from its last cell started, and
+        the parked share of the ended games' environment ticks."""
+        wall = now - self.window_started
         ticks = [
             a - b
             for a, b in zip((self.parked_ticks, self.real_ticks), self.window_ticks, strict=True)
@@ -552,48 +608,19 @@ class BucketEngine:
             last=self.window_sets[self.window][-1],
             games=self.games - self.window_games,
             seconds=round(wall, 1),
-            tail_seconds=round(ended - self.window_tail, 1),
+            wait_seconds=round(now - self.window_tail, 1),
             parked_ticks_share=round(ticks[0] / sum(ticks), 3) if sum(ticks) > 0 else 0.0,
+            next=None if following is None else following + 1,
         )
         self.window_log.append(record)
         self._say(
-            f"bucket {self.bucket}: window {record['window']}/{len(self.window_sets)} done: "
-            f"{record['games']} games in {wall:.0f} s, idle tail {record['tail_seconds']:.0f} s "
-            f"({record['tail_seconds'] / max(wall, 1e-9):.0%}), parked "
+            f"bucket {self.bucket}: window {record['window']}/{len(self.window_sets)} "
+            + ("done" if following is None else f"-> window {following + 1}")
+            + f": {record['games']} games ended in {wall:.0f} s, "
+            + ("idle tail" if following is None else "lane wait")
+            + f" {record['wait_seconds']:.0f} s after its last cell started, parked "
             f"{record['parked_ticks_share']:.0%} of the ended games' environment ticks"
         )
-        following = self._next_window()
-        if following is None:
-            return tallied
-        self._seat_window(following)
-        self._window_opened()
-        # every environment plays a parked game now: its next game chosen anew in the window
-        environments = list(range(self.environments))
-        for environment in environments:
-            self._set_next(environment, self._choose(environment))
-        self._write(environments, self.next)
-        return tallied
-
-    def _seat_window(self, number: int) -> None:
-        """Seat a window's players in place: the players staying keep their lanes, the
-        leaving ones' lanes take the incoming ones (their weights copied on the device)."""
-        held = {self.index[n] for n in self.window_sets[number]}
-        lanes = self.seat.lanes[0]
-        for lane, index in enumerate(lanes):
-            if index is not None and index not in held:
-                if self.in_use[index]:
-                    raise RuntimeError(f"window {number + 1}: player {index} still holds rows")
-                self.seat.swap(0, lane, None)
-                self.capacity_of.pop(index, None)
-        capacity = self.runs[0][2]
-        for index in sorted(held - set(lanes), key=lambda i: self.stream_rank[i]):
-            lane = lanes.index(None)
-            self.seat.swap(0, lane, index)
-            self.capacity_of[index] = capacity
-            self.swaps += 1
-        self.window = number
-
-    # ---- assignment
 
     def _rows(self, environment: int) -> set[tuple[int, int]]:
         """The (role, player) rows an environment's current and next games hold: a lane's
@@ -636,6 +663,8 @@ class BucketEngine:
                 capacity = self.capacity_of.get(index)
                 if self.network[index] and capacity is None:
                     return False  # not resident
+                if index in self.leaving and getattr(self, "window_sets", None) is not None:
+                    return False  # a window's leaver: its lane frees once its games end
                 if index in self.leaving and not (self.long_held[index] > 0 and self._short(cell)):
                     return False  # draining: short games only, while a longer one plays
                 if capacity is None or (role, index) in held:

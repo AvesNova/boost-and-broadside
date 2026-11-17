@@ -213,30 +213,61 @@ def test_fixed_windows_overlap_and_each_pair_in_its_first_window():
         raise AssertionError("a pair no window holds must raise")
 
 
-def test_window_seating_keeps_the_staying_players_lanes():
+def test_next_window_seats_in_the_spare_lanes_while_the_leavers_drain():
     swapped = []
 
     class Seat:
-        lanes = [[1, 2, 3]]
+        lanes = [[1, 2, 3, None]]  # a window of 3 and one spare lane (overlap 2)
 
         def swap(self, run, lane, index):
             swapped.append((lane, index))
             self.lanes[run][lane] = index
 
+    condition = Condition(EL, 5, 5)
+    values = {Cell(condition, "c", "d"): 1.0}
+    names = ["scripted", "a", "b", "c", "d"]
     engine = types.SimpleNamespace(
-        index={"scripted": 0, "a": 1, "b": 2, "c": 3, "d": 4, "e": 5},
-        window_sets=[["a", "b", "c"], ["c", "d", "e"]],
-        seat=Seat(),
-        runs=[(0, [1, 2, 3], 100)],
-        capacity_of={1: 100, 2: 100, 3: 100},
-        in_use=[0] * 6,
-        stream_rank={1: 0, 2: 1, 3: 2, 4: 3, 5: 4},
-        swaps=0,
+        bucket=5,
+        planner=types.SimpleNamespace(
+            values=lambda overtime=False: values, buckets=(5, 10, 20), targets=[]
+        ),
+        index={n: i for i, n in enumerate(names)},
+        network=[False, True, True, True, True],
+        window_sets=[["a", "b", "c"], ["b", "c", "d"]],
         window=0,
+        window_stages=(),
+        window_tail=None,
+        window_closed=False,
+        seat=Seat(),
+        runs=[(0, [1, 2, 3, None], 100)],
+        capacity_of={1: 100, 2: 100, 3: 100},
+        leaving=set(),
+        in_use=[0, 2, 0, 0, 0],  # "a" still plays its last game
+        stream_rank={1: 0, 2: 1, 3: 2, 4: 3},
+        swaps=0,
+        environments=0,
+        current=[],
+        next=[],
+        log=None,
     )
-    BucketEngine._seat_window(engine, 1)
-    assert engine.seat.lanes == [[4, 5, 3]] and engine.window == 1 and engine.swaps == 2
-    assert set(engine.capacity_of) == {3, 4, 5}
+    for name in (
+        "_stages",
+        "_window_cells",
+        "_window_of",
+        "_in_window",
+        "_next_window",
+        "_window_advance",
+    ):
+        setattr(engine, name, types.MethodType(getattr(BucketEngine, name), engine))
+    for name in ("_window_record", "_window_opened", "_say", "_set_next", "_write"):
+        setattr(engine, name, lambda *a, **k: None)
+    engine.drain = lambda: 0
+    BucketEngine._window_step(engine)
+    # "d" comes in at once in the spare lane while "a" (dropped) drains
+    assert swapped == [(3, 4)] and engine.window == 1 and engine.leaving == {1}
+    engine.in_use[1] = 0
+    BucketEngine._window_step(engine)
+    assert swapped[-1] == (0, None) and 1 not in engine.capacity_of and not engine.leaving
 
 
 def test_spec_windows_must_overlap_by_the_reach(tmp_path):
