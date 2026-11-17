@@ -1,0 +1,29 @@
+# Inputs of scripts/docs_values.py, which writes docs/values.json for scripts/render_docs.py.
+#
+# The reference run's own artifacts (checkpoints/<run>/artifacts/) are found by type; the
+# newest artifact of each type is used. Everything else the pages quote is listed here.
+
+# The run every page reports on.
+run: wild-universe-731
+
+# Facts the artifacts do not record. The W&B export has no GPU field; the run trained on
+# the same laptop its evaluations ran on (their artifacts record the device).
+facts:
+  run_gpu: RTX 4070 Laptop
+
+# Historical runs quoted in training-runs.md, as calibrated Elo of their final live
+# checkpoint within their own tournaments.
+history:
+  good_leaf_719: checkpoints/good-leaf-719
+  resilient_resonance_682: checkpoints/resilient-resonance-682
+
+# Fan charts: N learned ships against N..2N scripted ships, over the run's frozen ladder,
+# its final live checkpoint and its final averaged checkpoint. One JSONL per N, one row
+# per (checkpoint, scripted count). A missing file leaves its values null (pending).
+fan:
+  sizes: [4, 8, 16, 32]
+  rows: docs/results/v1-731/fan_731_n{size}.jsonl
+
+# Clip survivor counts, one JSON per chosen clip; a missing file leaves its values null.
+clips:
+  survivors: docs/results/v1-731/clips/survivors_*.json

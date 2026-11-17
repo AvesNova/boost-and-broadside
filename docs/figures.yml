@@ -1,0 +1,104 @@
+# Every figure the README and docs show: id -> path (from the repository root), title (also
+# the image's alt text unless `alt` is given) and caption. Pages place a figure with
+# {{figure: id}} on a line of its own (scripts/render_docs.py); the caption renders in
+# italics beneath it, numbered per page. Captions may quote docs/values.json with
+# {{name}} or {{name:format}}. A figure whose file is not in the repository yet renders as
+# a visible "Figure pending" note.
+#
+# The run's own charts are drawn by `uv run bnb figures --run <run>` into
+# checkpoints/<run>/artifacts/figures/, and are linked there rather than copied.
+
+elo_scale:
+  path: checkpoints/wild-universe-731/artifacts/figures/elo_scale_scripted_1000.png
+  title: Calibrated rating across symmetric fleet sizes
+  caption: >-
+    Elo of the final live checkpoint ({{calibration_final_live_steps_millions:.0f}}M steps)
+    in a separate stationary tournament at each symmetric size, with the scripted
+    controller fixed at 1000 and the reference ladder joined in; the band is ±1 standard
+    error. The policy trained at 4-vs-4 only.
+
+elo_curve:
+  path: checkpoints/wild-universe-731/artifacts/figures/elo_curve.png
+  title: Post-hoc calibrated Elo over training
+  caption: >-
+    The line is the live policy at each update, refit from its recorded games against the
+    calibrated opponents; the dots are tournament-rated checkpoints (±1 SE), the last of
+    them the final live checkpoint. Scripted controller fixed at 1000.
+
+crossover_phase:
+  path: checkpoints/wild-universe-731/artifacts/figures/crossover_phase.png
+  title: Policy-controlled vs scripted-controlled crossover
+  caption: >-
+    The final live checkpoint against the scripted controller at learned-team sizes
+    {{crossover_sizes}}, {{crossover_games_per_matchup}} games per matchup where memory
+    allows; the boundary is drawn halfway between the largest scripted team still beaten
+    and the first one not, and straight between measured sizes.
+
+crossover_ratio:
+  path: checkpoints/wild-universe-731/artifacts/figures/crossover_ratio.png
+  title: Scripted ships beaten per policy-controlled ship
+  caption: >-
+    The largest scripted team the final live checkpoint still beats, divided by its own
+    team size, from the same sweep.
+
+semi_random_connectivity:
+  path: checkpoints/wild-universe-731/artifacts/figures/semi_random_connectivity.png
+  title: Reference-ladder connectivity
+  caption: >-
+    Expected score of the stronger rung against its neighbour, for every adjacent pair at
+    every fleet size; {{ladder_games_per_pair}} side-balanced games per pair.
+
+win_rate_vs_scripted:
+  path: checkpoints/wild-universe-731/artifacts/figures/win_rate_vs_scripted.png
+  title: Win rate against the scripted controller
+  caption: >-
+    The live policy's 4-vs-4 win rate against the scripted controller in the evaluation
+    battery at each update.
+
+next_state_error:
+  path: checkpoints/wild-universe-731/artifacts/figures/next_state_error.png
+  title: Normalised next-state prediction error
+  caption: >-
+    The auxiliary dynamics head's normalised error per state channel over training, log
+    scale.
+
+training_health:
+  path: checkpoints/wild-universe-731/artifacts/figures/training_health.png
+  title: Training diagnostics
+  caption: >-
+    Critic explained variance, mean episode reward, policy-update KL divergence and PPO
+    clip fraction over training.
+
+fan_4_ships:
+  path: docs/results/v1-731/fan_731_n4.png
+  title: Four trained ships against more
+  caption: >-
+    Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder
+    checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final
+    averaged checkpoint (diamonds); 1,024 games per point, ties count as losses.
+
+fan_8_ships:
+  path: docs/results/v1-731/fan_731_n8.png
+  title: Eight trained ships against more
+  caption: >-
+    Win rate of 8 learned ships against 8 to 16 scripted ships over training, live
+    checkpoints as lines and the final averaged checkpoint as diamonds.
+
+fan_16_ships:
+  path: docs/results/v1-731/fan_731_n16.png
+  title: Sixteen trained ships against more
+  caption: >-
+    Win rate of 16 learned ships against 16 to 32 scripted ships over training, live
+    checkpoints as lines and the final averaged checkpoint as diamonds.
+
+fan_32_ships:
+  path: docs/results/v1-731/fan_731_n32.png
+  title: Thirty-two trained ships against more
+  caption: >-
+    Win rate of 32 learned ships against 32 to 64 scripted ships over training, live
+    checkpoints as lines and the final averaged checkpoint as diamonds.
+
+# Clip slots: filled when the author picks the wild-universe-731 clips.
+clip_hero:
+  path: docs/results/v1-731/clips/hero.gif
+  title: Learned blue fleet against a larger scripted red fleet
