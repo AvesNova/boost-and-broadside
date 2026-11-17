@@ -14,6 +14,67 @@ Two policies come out of every run, and each number below says which it measures
 average of those weights that the run keeps beside them, and is the one the project treats
 as its product.
 
+## At a glance
+
+{{figure: elo_scale}}
+
+Trained at 4-vs-4 only, the final live checkpoint stays far above the scripted controller
+at every symmetric size from 1-vs-1 to 64-vs-64; how the ratings are measured is under
+[symmetric fleet-scale ratings](#symmetric-fleet-scale-ratings). The fan charts below follow
+the policy through training when it is outnumbered.
+
+## Outnumbered over training
+
+The [crossover sweep](#zero-shot-crossover) below rates one checkpoint. The fan charts follow a fixed learned-team size
+through training instead, against scripted teams of 1, 1.25, 1.5, 1.75 and 2 times its
+size, at each frozen ladder checkpoint and at the final live checkpoint, and mark the final
+averaged checkpoint beside them.
+
+{{figure: fan_4_ships}}
+
+At 4 ships, the averaged weights hold more than the live ones at the end of training:
+{{fan_4_ships_vs_6_averaged_win_rate:.1%}} against 6 scripted ships where the live weights
+win {{fan_4_ships_vs_6_live_win_rate:.1%}}, {{fan_4_ships_vs_7_averaged_win_rate:.1%}}
+against 7 where they win {{fan_4_ships_vs_7_live_win_rate:.1%}}, and
+{{fan_4_ships_vs_8_averaged_win_rate:.1%}} against 8 where they win
+{{fan_4_ships_vs_8_live_win_rate:.1%}}, each over {{fan_4_ships_vs_8_averaged_games:,}}
+games. The live curves stop improving after about 250M steps.
+
+{{figure: fan_8_ships}}
+
+{{figure: fan_16_ships}}
+
+{{figure: fan_32_ships}}
+
+{{figure: fan_averaged_vs_final}}
+
+The averaged weights win more often than the live ones at every ratio above equal
+numbers. At 1.75 times as many scripted ships, the closest to even, they win
+{{fan_4_ships_vs_7_averaged_minus_live:.1%}} more of the games at 4 ships (95% interval
+±{{fan_4_ships_vs_7_averaged_minus_live_ci95:.1%}}) and
+{{fan_8_ships_vs_14_averaged_minus_live:.1%}} more at 8
+(±{{fan_8_ships_vs_14_averaged_minus_live_ci95:.1%}}).
+
+{{figure: fan_crossover_by_size}}
+
+Interpolated between the grid points, the averaged weights hold even against
+{{fan_4_ships_averaged_break_even_ratio:.2f}}x their number at 4 ships
+({{fan_4_ships_averaged_break_even_ratio_low:.2f}}–{{fan_4_ships_averaged_break_even_ratio_high:.2f}}),
+{{fan_8_ships_averaged_break_even_ratio:.2f}}x at 8, {{fan_16_ships_averaged_break_even_ratio:.2f}}x
+at 16 and {{fan_32_ships_averaged_break_even_ratio:.2f}}x at 32; the final live weights
+against {{fan_4_ships_live_break_even_ratio:.2f}}x, {{fan_8_ships_live_break_even_ratio:.2f}}x,
+{{fan_16_ships_live_break_even_ratio:.2f}}x and {{fan_32_ships_live_break_even_ratio:.2f}}x.
+The crossover sweep's coarser integer search [below](#zero-shot-crossover) gives
+{{crossover_4_ships_ratio:.2f}}x and {{crossover_8_ships_ratio:.2f}}x for the final live
+checkpoint at 4 and 8 ships.
+
+{{figure: fan_game_length_by_ratio}}
+
+Games get longer as the odds worsen, from about
+{{fan_4_ships_vs_4_averaged_mean_seconds:.1f}} s at equal numbers to about
+{{fan_4_ships_vs_7_averaged_mean_seconds:.1f}} s at 1.75 times as many scripted ships (4
+learned ships, averaged weights), far inside the {{config_episode_seconds:.1f}} s cap.
+
 ## Reference run and provenance
 
 All headline figures refer to `{{run_name}}` (`{{run_wandb_id}}`). It is the first run
@@ -103,58 +164,6 @@ The ratio view describes where the measured numerical advantage is larger: from
 training size of four down to {{crossover_64_ships_ratio:.2f}}x at 64. Its shape is
 descriptive: no ablation separates coordination, per-ship tactical skill, and weaknesses
 of the scripted controller.
-
-## Outnumbered over training
-
-The crossover sweep rates one checkpoint. The fan charts follow a fixed learned-team size
-through training instead, against scripted teams of 1, 1.25, 1.5, 1.75 and 2 times its
-size, at each frozen ladder checkpoint and at the final live checkpoint, and mark the final
-averaged checkpoint beside them.
-
-{{figure: fan_4_ships}}
-
-At 4 ships, the averaged weights hold more than the live ones at the end of training:
-{{fan_4_ships_vs_6_averaged_win_rate:.1%}} against 6 scripted ships where the live weights
-win {{fan_4_ships_vs_6_live_win_rate:.1%}}, {{fan_4_ships_vs_7_averaged_win_rate:.1%}}
-against 7 where they win {{fan_4_ships_vs_7_live_win_rate:.1%}}, and
-{{fan_4_ships_vs_8_averaged_win_rate:.1%}} against 8 where they win
-{{fan_4_ships_vs_8_live_win_rate:.1%}}, each over {{fan_4_ships_vs_8_averaged_games:,}}
-games. The live curves stop improving after about 250M steps.
-
-{{figure: fan_8_ships}}
-
-{{figure: fan_16_ships}}
-
-{{figure: fan_32_ships}}
-
-{{figure: fan_averaged_vs_final}}
-
-The averaged weights win more often than the live ones at every ratio above equal
-numbers. At 1.75 times as many scripted ships, the closest to even, they win
-{{fan_4_ships_vs_7_averaged_minus_live:.1%}} more of the games at 4 ships (95% interval
-±{{fan_4_ships_vs_7_averaged_minus_live_ci95:.1%}}) and
-{{fan_8_ships_vs_14_averaged_minus_live:.1%}} more at 8
-(±{{fan_8_ships_vs_14_averaged_minus_live_ci95:.1%}}).
-
-{{figure: fan_crossover_by_size}}
-
-Interpolated between the grid points, the averaged weights hold even against
-{{fan_4_ships_averaged_break_even_ratio:.2f}}x their number at 4 ships
-({{fan_4_ships_averaged_break_even_ratio_low:.2f}}–{{fan_4_ships_averaged_break_even_ratio_high:.2f}}),
-{{fan_8_ships_averaged_break_even_ratio:.2f}}x at 8, {{fan_16_ships_averaged_break_even_ratio:.2f}}x
-at 16 and {{fan_32_ships_averaged_break_even_ratio:.2f}}x at 32; the final live weights
-against {{fan_4_ships_live_break_even_ratio:.2f}}x, {{fan_8_ships_live_break_even_ratio:.2f}}x,
-{{fan_16_ships_live_break_even_ratio:.2f}}x and {{fan_32_ships_live_break_even_ratio:.2f}}x.
-The crossover sweep's coarser integer search above gives
-{{crossover_4_ships_ratio:.2f}}x and {{crossover_8_ships_ratio:.2f}}x for the final live
-checkpoint at 4 and 8 ships.
-
-{{figure: fan_game_length_by_ratio}}
-
-Games get longer as the odds worsen, from about
-{{fan_4_ships_vs_4_averaged_mean_seconds:.1f}} s at equal numbers to about
-{{fan_4_ships_vs_7_averaged_mean_seconds:.1f}} s at 1.75 times as many scripted ships (4
-learned ships, averaged weights), far inside the {{config_episode_seconds:.1f}} s cap.
 
 ## Qualitative crossover evidence
 
@@ -259,9 +268,7 @@ Ratings again fix the scripted controller at 1000. The plotted quantity is there
 checkpoint's advantage over a consistent opponent, directly comparable with the calibrated
 training curve above.
 
-{{figure: elo_scale}}
-
-The 4-vs-4 checkpoint is stronger at 8-vs-8 and 16-vs-16 than at its training size, then
+The ratings are plotted [at the top of this page](#at-a-glance). The 4-vs-4 checkpoint is stronger at 8-vs-8 and 16-vs-16 than at its training size, then
 weakens at 32-vs-32 and falls well below its 1-vs-1 rating at 64-vs-64.
 
 | Ships per team | Tournament games | Final live checkpoint Elo (±1 SE) | Reached ±{{scale_target_stderr:.0f}} target |

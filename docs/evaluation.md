@@ -14,6 +14,83 @@ Two policies come out of every run, and each number below says which it measures
 average of those weights that the run keeps beside them, and is the one the project treats
 as its product.
 
+## At a glance
+
+![Calibrated rating across symmetric fleet sizes](../checkpoints/wild-universe-731/artifacts/figures/elo_scale_scripted_1000.png)
+
+*Figure 1. Elo of the final live checkpoint (672M steps) in a separate stationary tournament at each symmetric size, with the scripted controller fixed at 1000 and the reference ladder joined in; the band is ±1 standard error. The policy trained at 4-vs-4 only.*
+
+Trained at 4-vs-4 only, the final live checkpoint stays far above the scripted controller
+at every symmetric size from 1-vs-1 to 64-vs-64; how the ratings are measured is under
+[symmetric fleet-scale ratings](#symmetric-fleet-scale-ratings). The fan charts below follow
+the policy through training when it is outnumbered.
+
+## Outnumbered over training
+
+The [crossover sweep](#zero-shot-crossover) below rates one checkpoint. The fan charts follow a fixed learned-team size
+through training instead, against scripted teams of 1, 1.25, 1.5, 1.75 and 2 times its
+size, at each frozen ladder checkpoint and at the final live checkpoint, and mark the final
+averaged checkpoint beside them.
+
+![Four trained ships against more](results/v1-731/fan_731_n4.png)
+
+*Figure 2. Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final averaged checkpoint (diamonds); 1,024 games per point, ties count as losses.*
+
+At 4 ships, the averaged weights hold more than the live ones at the end of training:
+83.3% against 6 scripted ships where the live weights
+win 78.2%, 61.6%
+against 7 where they win 55.0%, and
+40.9% against 8 where they win
+35.3%, each over 4,096
+games. The live curves stop improving after about 250M steps.
+
+![Eight trained ships against more](results/v1-731/fan_731_n8.png)
+
+*Figure 3. Win rate of 8 learned ships against 8 to 16 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds.*
+
+![Sixteen trained ships against more](results/v1-731/fan_731_n16.png)
+
+*Figure 4. Win rate of 16 learned ships against 16 to 32 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds.*
+
+![Thirty-two trained ships against more](results/v1-731/fan_731_n32.png)
+
+*Figure 5. Win rate of 32 learned ships against 32 to 64 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds.*
+
+![Averaged against final live weights](results/v1-731/averaged_vs_final.png)
+
+*Figure 6. Win rate of the final averaged weights (diamonds) and the final live weights (dots) at each ratio of scripted to learned ships, one panel per learned-team size; 1,024 games per point, ties count as losses.*
+
+The averaged weights win more often than the live ones at every ratio above equal
+numbers. At 1.75 times as many scripted ships, the closest to even, they win
+6.7% more of the games at 4 ships (95% interval
+±2.1%) and
+8.8% more at 8
+(±2.2%).
+
+![How many scripted ships it takes to hold them even](results/v1-731/crossover_by_size.png)
+
+*Figure 7. Scripted ships per learned ship at which the learned team wins half its games, by learned-team size, for the final live and the final averaged weights; interpolated between the fan's grid ratios (1x to 2x), with 95% bootstrap intervals. Ties count as losses.*
+
+Interpolated between the grid points, the averaged weights hold even against
+1.89x their number at 4 ships
+(1.88–1.90),
+1.82x at 8, 1.71x
+at 16 and 1.55x at 32; the final live weights
+against 1.81x, 1.73x,
+1.63x and 1.44x.
+The crossover sweep's coarser integer search [below](#zero-shot-crossover) gives
+1.75x and 1.62x for the final live
+checkpoint at 4 and 8 ships.
+
+![Game length against the odds](results/v1-731/game_length_by_ratio.png)
+
+*Figure 8. Mean game length in seconds of game time against the ratio of scripted to learned ships, one line per learned-team size, for the final averaged weights; 1,024 games per point. The episode cap is 17.1 s.*
+
+Games get longer as the odds worsen, from about
+5.4 s at equal numbers to about
+7.9 s at 1.75 times as many scripted ships (4
+learned ships, averaged weights), far inside the 17.1 s cap.
+
 ## Reference run and provenance
 
 All headline figures refer to `wild-universe-731` (`mwvvm4kb`). It is the first run
@@ -52,7 +129,7 @@ a property of the trained policy.
 
 ![Policy-controlled vs scripted-controlled crossover](../checkpoints/wild-universe-731/artifacts/figures/crossover_phase.png)
 
-*Figure 1. The final live checkpoint against the scripted controller at learned-team sizes 1, 2, 4, 8, 16, 32, 64, 256 games per matchup where memory allows; the boundary is drawn halfway between the largest scripted team still beaten and the first one not, and straight between measured sizes.*
+*Figure 9. The final live checkpoint against the scripted controller at learned-team sizes 1, 2, 4, 8, 16, 32, 64, 256 games per matchup where memory allows; the boundary is drawn halfway between the largest scripted team still beaten and the first one not, and straight between measured sizes.*
 
 The final live checkpoint's 50% crossover stays above equal numbers at every size
 measured.
@@ -100,79 +177,13 @@ fit. The 64-ship boundary above rests on 204 games at
 
 ![Scripted ships beaten per policy-controlled ship](../checkpoints/wild-universe-731/artifacts/figures/crossover_ratio.png)
 
-*Figure 2. The largest scripted team the final live checkpoint still beats, divided by its own team size, from the same sweep.*
+*Figure 10. The largest scripted team the final live checkpoint still beats, divided by its own team size, from the same sweep.*
 
 The ratio view describes where the measured numerical advantage is larger: from
 2.00x at one ship (a 51.2% rate, within noise of even) and 1.75x at the
 training size of four down to 1.19x at 64. Its shape is
 descriptive: no ablation separates coordination, per-ship tactical skill, and weaknesses
 of the scripted controller.
-
-## Outnumbered over training
-
-The crossover sweep rates one checkpoint. The fan charts follow a fixed learned-team size
-through training instead, against scripted teams of 1, 1.25, 1.5, 1.75 and 2 times its
-size, at each frozen ladder checkpoint and at the final live checkpoint, and mark the final
-averaged checkpoint beside them.
-
-![Four trained ships against more](results/v1-731/fan_731_n4.png)
-
-*Figure 3. Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final averaged checkpoint (diamonds); 1,024 games per point, ties count as losses.*
-
-At 4 ships, the averaged weights hold more than the live ones at the end of training:
-83.3% against 6 scripted ships where the live weights
-win 78.2%, 61.6%
-against 7 where they win 55.0%, and
-40.9% against 8 where they win
-35.3%, each over 4,096
-games. The live curves stop improving after about 250M steps.
-
-![Eight trained ships against more](results/v1-731/fan_731_n8.png)
-
-*Figure 4. Win rate of 8 learned ships against 8 to 16 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds.*
-
-![Sixteen trained ships against more](results/v1-731/fan_731_n16.png)
-
-*Figure 5. Win rate of 16 learned ships against 16 to 32 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds.*
-
-![Thirty-two trained ships against more](results/v1-731/fan_731_n32.png)
-
-*Figure 6. Win rate of 32 learned ships against 32 to 64 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds.*
-
-![Averaged against final live weights](results/v1-731/averaged_vs_final.png)
-
-*Figure 7. Win rate of the final averaged weights (diamonds) and the final live weights (dots) at each ratio of scripted to learned ships, one panel per learned-team size; 1,024 games per point, ties count as losses.*
-
-The averaged weights win more often than the live ones at every ratio above equal
-numbers. At 1.75 times as many scripted ships, the closest to even, they win
-6.7% more of the games at 4 ships (95% interval
-±2.1%) and
-8.8% more at 8
-(±2.2%).
-
-![How many scripted ships it takes to hold them even](results/v1-731/crossover_by_size.png)
-
-*Figure 8. Scripted ships per learned ship at which the learned team wins half its games, by learned-team size, for the final live and the final averaged weights; interpolated between the fan's grid ratios (1x to 2x), with 95% bootstrap intervals. Ties count as losses.*
-
-Interpolated between the grid points, the averaged weights hold even against
-1.89x their number at 4 ships
-(1.88–1.90),
-1.82x at 8, 1.71x
-at 16 and 1.55x at 32; the final live weights
-against 1.81x, 1.73x,
-1.63x and 1.44x.
-The crossover sweep's coarser integer search above gives
-1.75x and 1.62x for the final live
-checkpoint at 4 and 8 ships.
-
-![Game length against the odds](results/v1-731/game_length_by_ratio.png)
-
-*Figure 9. Mean game length in seconds of game time against the ratio of scripted to learned ships, one line per learned-team size, for the final averaged weights; 1,024 games per point. The episode cap is 17.1 s.*
-
-Games get longer as the odds worsen, from about
-5.4 s at equal numbers to about
-7.9 s at 1.75 times as many scripted ships (4
-learned ships, averaged weights), far inside the 17.1 s cap.
 
 ## Qualitative crossover evidence
 
@@ -186,13 +197,13 @@ qualitative realization, not the source of the aggregate rates above.
 
 ![Survivors, 8 learned ships against 15 scripted](results/v1-731/clips/survivors_8v15.png)
 
-*Figure 10. 4096 seeded games of 8 learned ships (averaged weights) against 15 scripted ships; the learned side won 1720 (42%). Left: learned ships alive at the end of each win. Right: scripted ships alive at the end of each loss.*
+*Figure 11. 4096 seeded games of 8 learned ships (averaged weights) against 15 scripted ships; the learned side won 1720 (42%). Left: learned ships alive at the end of each win. Right: scripted ships alive at the end of each loss.*
 
 ## Post-hoc Elo calibration
 
 ![Post-hoc calibrated Elo over training](../checkpoints/wild-universe-731/artifacts/figures/elo_curve.png)
 
-*Figure 11. The line is the live policy at each update, refit from its recorded games against the calibrated opponents; the dots are tournament-rated checkpoints (±1 SE), the last of them the final live checkpoint. Scripted controller fixed at 1000.*
+*Figure 12. The line is the live policy at each update, refit from its recorded games against the calibrated opponents; the dots are tournament-rated checkpoints (±1 SE), the last of them the final live checkpoint. Scripted controller fixed at 1000.*
 
 Every rating on this page is calibrated Elo. Training keeps a separate *live* Elo for
 opponent sampling and progress reporting; it drifts with sequential K-factor updates and
@@ -267,7 +278,7 @@ marked beside it.
 
 ![Live Elo during training](results/v1-731/elo_history_731.png)
 
-*Figure 12. The live Elo the trainer kept while it ran (dark line: live policy; light line: averaged policy), from sequential updates against a changing opponent pool: a shape, not a rating. The orange points are post-hoc calibrated ratings, of the final live checkpoint (2,110 ± 11) and the best averaged checkpoint (2,052 ± 11). Drawn by scripts/plot_elo_history.py.*
+*Figure 13. The live Elo the trainer kept while it ran (dark line: live policy; light line: averaged policy), from sequential updates against a changing opponent pool: a shape, not a rating. The orange points are post-hoc calibrated ratings, of the final live checkpoint (2,110 ± 11) and the best averaged checkpoint (2,052 ± 11). Drawn by scripts/plot_elo_history.py.*
 
 ## Symmetric fleet-scale ratings
 
@@ -283,11 +294,7 @@ Ratings again fix the scripted controller at 1000. The plotted quantity is there
 checkpoint's advantage over a consistent opponent, directly comparable with the calibrated
 training curve above.
 
-![Calibrated rating across symmetric fleet sizes](../checkpoints/wild-universe-731/artifacts/figures/elo_scale_scripted_1000.png)
-
-*Figure 13. Elo of the final live checkpoint (672M steps) in a separate stationary tournament at each symmetric size, with the scripted controller fixed at 1000 and the reference ladder joined in; the band is ±1 standard error. The policy trained at 4-vs-4 only.*
-
-The 4-vs-4 checkpoint is stronger at 8-vs-8 and 16-vs-16 than at its training size, then
+The ratings are plotted [at the top of this page](#at-a-glance). The 4-vs-4 checkpoint is stronger at 8-vs-8 and 16-vs-16 than at its training size, then
 weakens at 32-vs-32 and falls well below its 1-vs-1 rating at 64-vs-64.
 
 | Ships per team | Tournament games | Final live checkpoint Elo (±1 SE) | Reached ±10 target |

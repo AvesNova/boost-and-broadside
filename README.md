@@ -28,11 +28,12 @@ recurrence carries information through time. Because the network operates over a
 variable-length token sequence, the same weights can run at fleet sizes never seen
 during training.
 
-![Calibrated rating across symmetric fleet sizes](checkpoints/wild-universe-731/artifacts/figures/elo_scale_scripted_1000.png)
+![Four trained ships against more](docs/results/v1-731/fan_731_n4.png)
 
-*Figure 2. Elo of the final live checkpoint (672M steps) in a separate stationary tournament at each symmetric size, with the scripted controller fixed at 1000 and the reference ladder joined in; the band is ±1 standard error. The policy trained at 4-vs-4 only.*
+*Figure 2. Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final averaged checkpoint (diamonds); 1,024 games per point, ties count as losses.*
 
-Rated against the same scripted controller at every size, the 4-vs-4 policy is stronger
+Rated against the same scripted controller at every size
+([chart](docs/evaluation.md#at-a-glance)), the 4-vs-4 policy is stronger
 at 8-vs-8 and 16-vs-16 than at the size it trained at: about 2,277 Elo
 at 16-vs-16 against 2,128 at 4-vs-4. Past that it weakens, to
 2,085 at 32-vs-32 and 1,605 at 64-vs-64, still far

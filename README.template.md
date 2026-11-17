@@ -26,9 +26,10 @@ recurrence carries information through time. Because the network operates over a
 variable-length token sequence, the same weights can run at fleet sizes never seen
 during training.
 
-{{figure: elo_scale}}
+{{figure: fan_4_ships}}
 
-Rated against the same scripted controller at every size, the 4-vs-4 policy is stronger
+Rated against the same scripted controller at every size
+([chart](docs/evaluation.md#at-a-glance)), the 4-vs-4 policy is stronger
 at 8-vs-8 and 16-vs-16 than at the size it trained at: about {{scale_16_ships_elo:,.0f}} Elo
 at 16-vs-16 against {{scale_4_ships_elo:,.0f}} at 4-vs-4. Past that it weakens, to
 {{scale_32_ships_elo:,.0f}} at 32-vs-32 and {{scale_64_ships_elo:,.0f}} at 64-vs-64, still far
