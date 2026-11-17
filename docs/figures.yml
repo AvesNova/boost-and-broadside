@@ -75,28 +75,32 @@ fan_4_ships:
   caption: >-
     Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder
     checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final
-    averaged checkpoint (diamonds); 1,024 games per point, ties count as losses.
+    averaged checkpoint (diamonds); 1,024 games per ladder point and 4,096 for the final live and
+    averaged checkpoints, ties count as losses.
 
 fan_8_ships:
   path: docs/results/v1-731/fan_731_n8.png
   title: Eight trained ships against more
   caption: >-
     Win rate of 8 learned ships against 8 to 16 scripted ships over training, live
-    checkpoints as lines and the final averaged checkpoint as diamonds.
+    checkpoints as lines and the final averaged checkpoint as diamonds; 1,024 games per ladder point and 4,096 for the final live and
+    averaged checkpoints, ties count as losses.
 
 fan_16_ships:
   path: docs/results/v1-731/fan_731_n16.png
   title: Sixteen trained ships against more
   caption: >-
     Win rate of 16 learned ships against 16 to 32 scripted ships over training, live
-    checkpoints as lines and the final averaged checkpoint as diamonds.
+    checkpoints as lines and the final averaged checkpoint as diamonds; 1,024 games per ladder point and 4,096 for the final live and
+    averaged checkpoints, ties count as losses.
 
 fan_32_ships:
   path: docs/results/v1-731/fan_731_n32.png
   title: Thirty-two trained ships against more
   caption: >-
     Win rate of 32 learned ships against 32 to 64 scripted ships over training, live
-    checkpoints as lines and the final averaged checkpoint as diamonds.
+    checkpoints as lines and the final averaged checkpoint as diamonds; 1,024 games per ladder point and 3,072 for the final live and
+    averaged checkpoints, ties count as losses.
 
 # Clip slots: filled when the author picks the wild-universe-731 clips.
 clip_hero:

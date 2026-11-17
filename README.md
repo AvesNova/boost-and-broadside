@@ -30,7 +30,7 @@ during training.
 
 ![Four trained ships against more](docs/results/v1-731/fan_731_n4.png)
 
-*Figure 2. Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final averaged checkpoint (diamonds); 1,024 games per point, ties count as losses.*
+*Figure 2. Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final averaged checkpoint (diamonds); 1,024 games per ladder point and 4,096 for the final live and averaged checkpoints, ties count as losses.*
 
 Rated against the same scripted controller at every size
 ([chart](docs/evaluation.md#at-a-glance)), the 4-vs-4 policy is stronger

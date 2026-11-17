@@ -34,7 +34,7 @@ averaged checkpoint beside them.
 
 ![Four trained ships against more](results/v1-731/fan_731_n4.png)
 
-*Figure 2. Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final averaged checkpoint (diamonds); 1,024 games per point, ties count as losses.*
+*Figure 2. Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final averaged checkpoint (diamonds); 1,024 games per ladder point and 4,096 for the final live and averaged checkpoints, ties count as losses.*
 
 At 4 ships, the averaged weights hold more than the live ones at the end of training:
 83.3% against 6 scripted ships where the live weights
@@ -46,15 +46,15 @@ games. The live curves stop improving after about 250M steps.
 
 ![Eight trained ships against more](results/v1-731/fan_731_n8.png)
 
-*Figure 3. Win rate of 8 learned ships against 8 to 16 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds.*
+*Figure 3. Win rate of 8 learned ships against 8 to 16 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds; 1,024 games per ladder point and 4,096 for the final live and averaged checkpoints, ties count as losses.*
 
 ![Sixteen trained ships against more](results/v1-731/fan_731_n16.png)
 
-*Figure 4. Win rate of 16 learned ships against 16 to 32 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds.*
+*Figure 4. Win rate of 16 learned ships against 16 to 32 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds; 1,024 games per ladder point and 4,096 for the final live and averaged checkpoints, ties count as losses.*
 
 ![Thirty-two trained ships against more](results/v1-731/fan_731_n32.png)
 
-*Figure 5. Win rate of 32 learned ships against 32 to 64 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds.*
+*Figure 5. Win rate of 32 learned ships against 32 to 64 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds; 1,024 games per ladder point and 3,072 for the final live and averaged checkpoints, ties count as losses.*
 
 ![Averaged against final live weights](results/v1-731/averaged_vs_final.png)
 
