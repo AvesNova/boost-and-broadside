@@ -95,6 +95,100 @@
     "difference_ci95": 0.03925737893164046,
     "games": 1024
    }
+  ],
+  "16": [
+   {
+    "scripted": 16,
+    "ratio": 1.0,
+    "final_live": 1.0,
+    "averaged": 1.0,
+    "difference": 0.0,
+    "difference_ci95": 0.0,
+    "games": 1024
+   },
+   {
+    "scripted": 20,
+    "ratio": 1.25,
+    "final_live": 0.966796875,
+    "averaged": 0.986328125,
+    "difference": 0.01953125,
+    "difference_ci95": 0.013077360160457725,
+    "games": 1024
+   },
+   {
+    "scripted": 24,
+    "ratio": 1.5,
+    "final_live": 0.69921875,
+    "averaged": 0.81640625,
+    "difference": 0.1171875,
+    "difference_ci95": 0.03676015459275142,
+    "games": 1024
+   },
+   {
+    "scripted": 28,
+    "ratio": 1.75,
+    "final_live": 0.3095703125,
+    "averaged": 0.4375,
+    "difference": 0.1279296875,
+    "difference_ci95": 0.04153410707194609,
+    "games": 1024
+   },
+   {
+    "scripted": 32,
+    "ratio": 2.0,
+    "final_live": 0.1083984375,
+    "averaged": 0.1708984375,
+    "difference": 0.0625,
+    "difference_ci95": 0.029902321375085396,
+    "games": 1024
+   }
+  ],
+  "32": [
+   {
+    "scripted": 32,
+    "ratio": 1.0,
+    "final_live": 1.0,
+    "averaged": 1.0,
+    "difference": 0.0,
+    "difference_ci95": 0.0,
+    "games": 1024
+   },
+   {
+    "scripted": 40,
+    "ratio": 1.25,
+    "final_live": 0.857421875,
+    "averaged": 0.955078125,
+    "difference": 0.09765625,
+    "difference_ci95": 0.024891438089561506,
+    "games": 1024
+   },
+   {
+    "scripted": 48,
+    "ratio": 1.5,
+    "final_live": 0.40234375,
+    "averaged": 0.568359375,
+    "difference": 0.166015625,
+    "difference_ci95": 0.04269042626679455,
+    "games": 1024
+   },
+   {
+    "scripted": 56,
+    "ratio": 1.75,
+    "final_live": 0.0869140625,
+    "averaged": 0.16015625,
+    "difference": 0.0732421875,
+    "difference_ci95": 0.028325475156414693,
+    "games": 1024
+   },
+   {
+    "scripted": 64,
+    "ratio": 2.0,
+    "final_live": 0.021484375,
+    "averaged": 0.0390625,
+    "difference": 0.017578125,
+    "difference_ci95": 0.014821920103599258,
+    "games": 1024
+   }
   ]
  }
 }

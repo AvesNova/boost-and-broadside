@@ -141,8 +141,10 @@ fan_averaged_vs_final:
     each ratio of scripted to learned ships, one panel per learned-team size; 1,024 games
     per point, ties count as losses.
 
-clip_survivors_8vk:
-  path: docs/results/v1-731/clips/survivors_8vK.png
-  title: Survivors, 8 learned ships against K scripted
+clip_survivors_8v15:
+  path: docs/results/v1-731/clips/survivors_8v15.png
+  title: Survivors, 8 learned ships against 15 scripted
   caption: >-
-    Learned ships left alive at the end of seeded 8-vs-K games, by K.
+    {{clip_survivors_8v15_games}} seeded games of 8 learned ships (averaged weights) against 15 scripted ships;
+    the learned side won {{clip_survivors_8v15_blue_wins}} ({{clip_survivors_8v15_win_rate:.0%}}). Left: learned
+    ships alive at the end of each win. Right: scripted ships alive at the end of each loss.

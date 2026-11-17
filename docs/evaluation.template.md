@@ -166,7 +166,7 @@ wins {{crossover_8_ships_vs_11_win_rate:.1%}} of {{crossover_8_ships_vs_11_games
 8-vs-11. See [replays](replays.md) for larger battles and capture details. A clip is one
 qualitative realization, not the source of the aggregate rates above.
 
-{{figure: clip_survivors_8vk}}
+{{figure: clip_survivors_8v15}}
 
 ## Post-hoc Elo calibration
 

@@ -41,6 +41,46 @@
     ],
     "bootstrap_no_crossing_share": 0.0
    }
+  },
+  "16": {
+   "final_live": {
+    "ratio": 1.6278195488721805,
+    "opponents": 26.045112781954888,
+    "ratio_ci95": [
+     1.614862349942995,
+     1.6405482520162027
+    ],
+    "bootstrap_no_crossing_share": 0.0
+   },
+   "final_averaged": {
+    "ratio": 1.708762886597938,
+    "opponents": 27.34020618556701,
+    "ratio_ci95": [
+     1.6929606653340947,
+     1.7274013426587707
+    ],
+    "bootstrap_no_crossing_share": 0.0
+   }
+  },
+  "32": {
+   "final_live": {
+    "ratio": 1.446351931330472,
+    "opponents": 46.283261802575105,
+    "ratio_ci95": [
+     1.4343177189409368,
+     1.4602655488392078
+    ],
+    "bootstrap_no_crossing_share": 0.0
+   },
+   "final_averaged": {
+    "ratio": 1.541866028708134,
+    "opponents": 49.33971291866029,
+    "ratio_ci95": [
+     1.5252587483090432,
+     1.556156114252433
+    ],
+    "bootstrap_no_crossing_share": 0.0
+   }
   }
  }
 }

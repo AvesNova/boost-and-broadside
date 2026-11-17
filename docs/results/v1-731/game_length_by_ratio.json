@@ -98,6 +98,100 @@
     "capped": 17,
     "games": 1024
    }
+  ],
+  "16": [
+   {
+    "scripted": 16,
+    "ratio": 1.0,
+    "mean_ticks": 348.765625,
+    "mean_seconds": 5.812760416666666,
+    "ties": 0,
+    "capped": 0,
+    "games": 1024
+   },
+   {
+    "scripted": 20,
+    "ratio": 1.25,
+    "mean_ticks": 432.8515625,
+    "mean_seconds": 7.214192708333333,
+    "ties": 2,
+    "capped": 2,
+    "games": 1024
+   },
+   {
+    "scripted": 24,
+    "ratio": 1.5,
+    "mean_ticks": 525.28515625,
+    "mean_seconds": 8.754752604166667,
+    "ties": 13,
+    "capped": 13,
+    "games": 1024
+   },
+   {
+    "scripted": 28,
+    "ratio": 1.75,
+    "mean_ticks": 527.9765625,
+    "mean_seconds": 8.799609375,
+    "ties": 19,
+    "capped": 19,
+    "games": 1024
+   },
+   {
+    "scripted": 32,
+    "ratio": 2.0,
+    "mean_ticks": 450.654296875,
+    "mean_seconds": 7.510904947916667,
+    "ties": 13,
+    "capped": 13,
+    "games": 1024
+   }
+  ],
+  "32": [
+   {
+    "scripted": 32,
+    "ratio": 1.0,
+    "mean_ticks": 357.869140625,
+    "mean_seconds": 5.964485677083333,
+    "ties": 0,
+    "capped": 0,
+    "games": 1024
+   },
+   {
+    "scripted": 40,
+    "ratio": 1.25,
+    "mean_ticks": 470.603515625,
+    "mean_seconds": 7.843391927083333,
+    "ties": 6,
+    "capped": 6,
+    "games": 1024
+   },
+   {
+    "scripted": 48,
+    "ratio": 1.5,
+    "mean_ticks": 548.2265625,
+    "mean_seconds": 9.137109375,
+    "ties": 16,
+    "capped": 16,
+    "games": 1024
+   },
+   {
+    "scripted": 56,
+    "ratio": 1.75,
+    "mean_ticks": 448.626953125,
+    "mean_seconds": 7.477115885416667,
+    "ties": 14,
+    "capped": 13,
+    "games": 1024
+   },
+   {
+    "scripted": 64,
+    "ratio": 2.0,
+    "mean_ticks": 363.111328125,
+    "mean_seconds": 6.05185546875,
+    "ties": 1,
+    "capped": 1,
+    "games": 1024
+   }
   ]
  }
 }

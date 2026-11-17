@@ -1,0 +1,27 @@
+{
+ "matchup": "4v7",
+ "scenario": "vs_scripted",
+ "checkpoint": "wild-universe-731/avg_step_000671846400.pt",
+ "games": 1024,
+ "blue_wins": 603,
+ "red_wins": 410,
+ "ties": 11,
+ "win_rate": 0.5888671875,
+ "wins_by_blue_survivors": {
+  "1": 167,
+  "2": 236,
+  "3": 163,
+  "4": 37
+ },
+ "losses_by_red_survivors": {
+  "1": 52,
+  "2": 96,
+  "3": 115,
+  "4": 79,
+  "5": 46,
+  "6": 16,
+  "7": 6
+ },
+ "max_steps": 1024,
+ "note": "Each game is one env of a seeded batch; finished envs are not reset. Survivors = ships of the winning side alive at the end."
+}
