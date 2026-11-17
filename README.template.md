@@ -2,10 +2,13 @@
 
 ### Zero-shot fleet coordination from a 4-vs-4 policy
 
+<!-- Clip slot: when a wild-universe-731 clip is chosen, set clip_hero's path in
+docs/figures.yml and replace the image, sub line and italic line below with the figure
+placeholder for clip_hero. -->
 ![Eight learned blue ships defeating eleven scripted red ships](docs/results/replays/vs_scripted_8v11_seed03.gif)
 
-<sub>Replay of <code>resilient-resonance-682</code>, the previous reference run; the
-figures below measure <code>good-leaf-719</code>. See <a href="docs/replays.md">replays</a>.</sub>
+<sub>Replay of <code>resilient-resonance-682</code>, an earlier run; the figures below
+measure <code>{{run_name}}</code>. See <a href="docs/replays.md">replays</a>.</sub>
 
 *Outnumbered 11 ships to 8, the learned fleet wins with three ships to spare.*
 
@@ -14,8 +17,8 @@ learning system built to study coordination at scale. The central question is si
 can a policy trained with a small team command much larger fleets without retraining?
 
 The reference policy trained exclusively in **4-vs-4** combat, then transferred
-zero-shot to fleets of one to 64 ships. A single recurrent network commands the
-whole fleet, producing an action for every ship on each forward pass.
+zero-shot to fleets of one to {{crossover_largest_size}} ships. A single recurrent network
+commands the whole fleet, producing an action for every ship on each forward pass.
 
 [Explore the results](docs/evaluation.md) · [Watch more replays](docs/replays.md) ·
 [Understand the architecture](docs/architecture.md) · [Get started](docs/getting-started.md) ·
@@ -29,37 +32,51 @@ recurrence carries information through time. Because the network operates over a
 variable-length token sequence, the same weights can run at fleet sizes never seen
 during training.
 
-![Calibrated rating across symmetric fleet sizes](checkpoints/good-leaf-719/artifacts/figures/elo_scale_scripted_1000.png)
+{{figure: elo_scale}}
 
-*Rated against the same scripted controller at every size, the 4-vs-4 policy is stronger
-the larger the fleet it is given — the coordination it learned scales further than the
-setting it learned it in.*
+Rated against the same scripted controller at every size, the 4-vs-4 policy is stronger
+at 8-vs-8 and 16-vs-16 than at the size it trained at: about {{scale_16_ships_elo:,.0f}} Elo
+at 16-vs-16 against {{scale_4_ships_elo:,.0f}} at 4-vs-4. Past that it weakens, to
+{{scale_32_ships_elo:,.0f}} at 32-vs-32 and {{scale_64_ships_elo:,.0f}} at 64-vs-64, still far
+above the scripted controller's 1000.
 
-Selected results from the [recorded crossover sweep](checkpoints/good-leaf-719/artifacts/figures/crossover.json),
-each row the largest scripted fleet the policy still beats:
+Selected results from the [recorded crossover sweep](checkpoints/{{run_name}}/artifacts/figures/crossover.json)
+of the final live checkpoint, each row the largest scripted fleet it still beats:
 
-| Learned ships | Scripted ships | Win rate |
+| Learned ships | Scripted ships | Win rate (live) |
 |---:|---:|---:|
-| 4 | 6 | **63.3%** |
-| 8 | 12 | **59.8%** |
-| 16 | 23 | **64.8%** |
-| 32 | 44 | **57.4%** |
-| 64 | 79 | **54.4%** |
+| 4 | {{crossover_4_ships_beats_up_to}} | **{{crossover_4_ships_beats_up_to_win_rate:.1%}}** |
+| 8 | {{crossover_8_ships_beats_up_to}} | **{{crossover_8_ships_beats_up_to_win_rate:.1%}}** |
+| 16 | {{crossover_16_ships_beats_up_to}} | **{{crossover_16_ships_beats_up_to_win_rate:.1%}}** |
+| 32 | {{crossover_32_ships_beats_up_to}} | **{{crossover_32_ships_beats_up_to_win_rate:.1%}}** |
+| 64 | {{crossover_64_ships_beats_up_to}} | **{{crossover_64_ships_beats_up_to_win_rate:.1%}}** |
 
-The [evaluation guide](docs/evaluation.md#zero-shot-crossover) covers the search method,
+The averaged policy, the running average of the weights that the run keeps beside the live
+ones, holds more when outnumbered: four averaged ships win
+{{fan_4_ships_vs_7_averaged_win_rate:.1%}} of games against seven scripted ships, where the
+final live weights win {{fan_4_ships_vs_7_live_win_rate:.1%}}
+([over training](docs/evaluation.md#outnumbered-over-training)). The
+[evaluation guide](docs/evaluation.md#zero-shot-crossover) covers the search method,
 sample sizes, raw artifacts, and limitations behind these measurements.
 
 ## Learning progression
 
-A one-billion-step training run completed in about four days on a single RTX 4070
-Laptop. Post-hoc calibration places the final checkpoint at about **1748 Elo** on a
-scale that fixes the scripted controller at 1000, a lead of roughly **748 points**,
-where 400 points already means ten-to-one odds.
+The reference run, `{{run_name}}`, trained for {{run_steps_millions:.0f}}M of a planned
+{{run_target_steps_millions:,.0f}}M environment steps in about {{run_days:.1f}} days on a
+single {{run_gpu}}, and was stopped there. Post-hoc calibration places its final live
+checkpoint at about **{{calibration_final_live_elo:,.0f}} Elo** on a scale that fixes the
+scripted controller at 1000, a lead of roughly
+**{{calibration_final_live_lead_over_scripted:,.0f}} points**, where 400 points already
+means ten-to-one odds. Its best averaged checkpoint rates
+{{calibration_best_averaged_elo:,.0f}} in the same tournament.
 
-![Post-hoc calibrated Elo over training](checkpoints/good-leaf-719/artifacts/figures/elo_curve.png)
+{{figure: elo_curve}}
 
-*The calibrated rating keeps rising long after wins against the scripted controller
-stop being informative.*
+The calibrated rating keeps rising long after wins against the scripted controller stop
+being informative: the policy first wins 99% of evaluation games against it at
+{{scripted_win_rate_first_99_millions:.0f}}M steps, while its rating climbs from about
+{{calibration_curve_elo_at_100m:,.0f}} at 100M to about
+{{calibration_curve_elo_at_250m:,.0f}} at 250M before levelling off.
 
 See [results and methodology](docs/evaluation.md#post-hoc-elo-calibration) for the rating
 procedure, exact values, and uncertainty.
@@ -89,14 +106,14 @@ emits one output per ship, however many there are.
   [`crossover.py`](src/boost_and_broadside/modes/crossover.py).
 
 Every headline number names the artifact it came from. The figures are linked from
-[the reference run's own directory](checkpoints/good-leaf-719/artifacts/figures/), which
+[the reference run's own directory](checkpoints/{{run_name}}/artifacts/figures/), which
 records the measurement behind each one.
 
 ## Quick start
 
-Requires [uv](https://docs.astral.sh/uv/). Git LFS is only needed for the historical
-reference artifacts; those weights predate the current refractive-field observation
-schema and are not loadable by this version. After cloning:
+Requires [uv](https://docs.astral.sh/uv/). Git LFS is only needed for the reference
+checkpoints: `{{run_name}}`, and the earlier `good-leaf-719` and
+`resilient-resonance-682`, all of which load in this version. After cloning:
 
 ```bash
 git lfs pull   # fetch reference checkpoints (skip if training from scratch)
@@ -108,13 +125,22 @@ uv run bnb train --profile rl --print-config
 # Play a 1v1 match against a null ship in four refractive fields
 uv run bnb play
 
-# Human vs a newly trained current-schema checkpoint (WASD, Shift, Space)
+# Human vs a trained checkpoint (WASD, Shift, Space)
 uv run bnb watch --team0 null --team1 checkpoints/<run>/<checkpoint>.pt
 ```
 
 Training is designed for CUDA hardware; the simulator and test suite also run on CPU.
 The [setup and usage guide](docs/getting-started.md) covers checkpoints, training,
 evaluation, replay capture, and development checks.
+
+## Where the numbers come from
+
+The README and the pages in `docs/` are rendered from `*.template.md` files beside them.
+Every run-specific number is a named value in [`docs/values.json`](docs/values.json),
+built from the reference run's artifacts by `scripts/docs_values.py`, and every chart is
+named in [`docs/figures.yml`](docs/figures.yml). Edit a template, then run
+`uv run python scripts/render_docs.py`; with `--check` it fails on an unknown name or a
+page out of date.
 
 ## License
 

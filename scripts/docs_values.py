@@ -291,6 +291,9 @@ def crossover_values(run_dir: Path) -> dict:
         rate = row["win_rate_at_beats_up_to"]
         games = curve[beats]["games"]
         values[f"{prefix}_beats_up_to_binomial_stderr"] = math.sqrt(rate * (1 - rate) / games)
+        for scripted, point in curve.items():
+            for field in ("win_rate", "games", "wins", "losses", "ties"):
+                values[f"{prefix}_vs_{scripted}_{field}"] = point[field]
     return values
 
 

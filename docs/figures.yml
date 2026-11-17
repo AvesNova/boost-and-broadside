@@ -102,3 +102,42 @@ fan_32_ships:
 clip_hero:
   path: docs/results/v1-731/clips/hero.gif
   title: Learned blue fleet against a larger scripted red fleet
+
+elo_history_731:
+  path: docs/results/v1-731/elo_history_731.png
+  title: Live Elo during training
+  caption: >-
+    The live Elo the trainer kept while it ran (dark line: live policy; light line:
+    averaged policy), from sequential updates against a changing opponent pool: a shape,
+    not a rating. The orange points are post-hoc calibrated ratings, of the final live
+    checkpoint ({{calibration_final_live_elo:,.0f}} ± {{calibration_final_live_stderr:.0f}})
+    and the best averaged checkpoint ({{calibration_best_averaged_elo:,.0f}} ±
+    {{calibration_best_averaged_stderr:.0f}}). Drawn by scripts/plot_elo_history.py.
+
+# Slots for charts arriving from the fan and clip studies (copied from
+# /home/vizia/avesnova/v1-results/ into docs/results/v1-731/ when they land).
+fan_crossover_by_size:
+  path: docs/results/v1-731/crossover_by_size.png
+  title: Crossover by fleet size
+  caption: >-
+    Largest scripted team beaten at each learned-team size, live and averaged final
+    checkpoints.
+
+fan_game_length_by_ratio:
+  path: docs/results/v1-731/game_length_by_ratio.png
+  title: Game length by force ratio
+  caption: >-
+    Mean game length against the ratio of scripted to learned ships.
+
+fan_averaged_vs_final:
+  path: docs/results/v1-731/averaged_vs_final.png
+  title: Averaged against final live weights
+  caption: >-
+    Win rate of the final averaged checkpoint against that of the final live checkpoint
+    in the same matchups.
+
+clip_survivors_8vk:
+  path: docs/results/v1-731/clips/survivors_8vK.png
+  title: Survivors, 8 learned ships against K scripted
+  caption: >-
+    Learned ships left alive at the end of seeded 8-vs-K games, by K.
