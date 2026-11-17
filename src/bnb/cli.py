@@ -892,6 +892,8 @@ class Unified:
     # rating pools whose games the Elo targets start from (their conditions' games, this
     # game version, players matched by weights; pass them again on a resume)
     prior: tuple[pathlib.Path, ...] = ()
+    # network players seated at once per build when the field has more (swapped by value)
+    residents: int = 12
 
 
 def unified(options: Unified) -> None:
@@ -911,6 +913,7 @@ def unified(options: Unified) -> None:
         hours=options.hours,
         pool=options.pool,
         prior=options.prior,
+        residents=options.residents,
     )
 
 

@@ -448,3 +448,14 @@ def test_break_even_at_the_trained_size_varies_only_the_opponent():
     target = BreakEvenTarget("b", FL, "champion", "scripted", policy_count=5)
     cell = max(target.proposals(), key=lambda c: c.condition.second)
     assert cell.condition.first == 5
+
+
+def test_resident_runs_seat_the_most_wanted_with_even_lanes():
+    from bnb.league.unified.engine import RESIDENT_SLACK, resident_runs
+
+    groups = [None] + [0] * 20
+    shares = [0.0] + [n / 210 for n in range(1, 21)]
+    (run,) = resident_runs(groups, shares, rows=4096, residents=8)
+    group, seated, capacity = run
+    assert group == 0 and seated == list(range(20, 12, -1))
+    assert capacity == math.ceil(RESIDENT_SLACK * 4096 / 8)

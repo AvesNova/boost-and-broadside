@@ -71,6 +71,7 @@ from .cells import BUCKETS, Cell, Condition, Outcome
 from .engine import (
     COMPILED_FACTOR,
     MEMORY_SHARE,
+    RESIDENTS,
     BucketEngine,
     GameLog,
     bucket_cells,
@@ -430,13 +431,15 @@ def run(
     log=print,
     pool: pathlib.Path | None = None,
     prior: tuple[pathlib.Path, ...] = (),
+    residents: int | None = RESIDENTS,
 ) -> dict:
     """The run (the module docstring). environments: each bucket's batch (None: sized from
     the free memory); concurrent: "auto" (the buckets with work share the device when each
     gets `MINIMUM_CONCURRENT` environments, else they run in turn), "yes" or "no"; pool: a
     rating pool directory the Elo targets' games are also appended to (`GameLog.export_to`;
     created with the spec's lineup types when new); prior: rating pools whose games of the
-    Elo targets' conditions are loaded first (`load_prior`)."""
+    Elo targets' conditions are loaded first (`load_prior`); residents: the network players
+    a group seats at once when the field has more (`engine.RESIDENTS`; None: every one)."""
     out.mkdir(parents=True, exist_ok=True)
     progress_path = out / "progress.log"
 
@@ -483,6 +486,7 @@ def run(
             compiled=compiled_engine,
             seed=spec.seed,
             record=games_log.add,
+            residents=residents,
         )
 
     footprints: dict[int, tuple[float, float]] = {}
@@ -600,7 +604,7 @@ def run(
                     f"{total_games} games ({rate_hour:,.0f}/h), information {fraction:.3f}, "
                     f"GPU {utilisation}%, "
                     f"host planning {host / (now - time_at_progress_before):.0%}, "
-                    f"parked {parked}, buckets "
+                    f"parked {parked}, swaps {sum(e.swaps for e in running)}, buckets "
                     + ", ".join(f"{e.bucket}:{e.environments}" for e in running)
                     + f", ETA {clock(eta)}"
                 )

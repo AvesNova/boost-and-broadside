@@ -131,14 +131,17 @@ class RefillSeat:
         self.run_group = [group for group, _, _ in runs]
         self.lanes = [list(members) for _, members, _ in runs]
         self.capacity = [min(int(capacity), rows) for _, _, capacity in runs]
-        placed = sorted(index for members in self.lanes for index in members)
+        placed = sorted(index for members in self.lanes for index in members if index is not None)
         networks = [index for index, one in enumerate(players) if one.group is not None]
-        if placed != networks:
-            raise ValueError(f"runs {runs}: each network player in exactly one run")
+        if len(set(placed)) != len(placed) or not set(placed) <= set(networks):
+            raise ValueError(f"runs {runs}: each network player in one lane at most")
+        self.states = states  # every network player's weights, for `swap`
         lane_of = torch.full((count,), -1, dtype=torch.int64)
         run_of = torch.full((count,), -1, dtype=torch.int64)
         for run, members in enumerate(self.lanes):
             for lane, index in enumerate(members):
+                if index is None:  # an empty lane (a resident set's, filled by `swap`)
+                    continue
                 if players[index].group != self.run_group[run]:
                     raise ValueError(f"run {run}: player {index} is of another group")
                 lane_of[index], run_of[index] = lane, run
@@ -154,6 +157,8 @@ class RefillSeat:
                 for name, value in template.items()
             }
             for lane, index in enumerate(members):
+                if index is None:
+                    continue
                 for name, value in states[index].items():
                     stacked_state[f"model.{name}"][lane].copy_(value)
             self.parameters.append(stacked_state)
@@ -163,6 +168,27 @@ class RefillSeat:
         # rows past a lane's capacity this tick (never, when the host keeps to it)
         self.overflow = torch.zeros(1, dtype=torch.int64, device=device)
         self._row = torch.arange(rows, device=device)
+
+    def swap(self, run: int, lane: int, index: int | None) -> None:
+        """Seat player `index` in a lane in place of its player (a resident set's swap): its
+        weights copied into the lane's stacked weights and the lane tables updated, all in
+        place on the device's stream (shapes and addresses unchanged: no recompile, the
+        captured graphs read the new values). The host makes sure no row plays or is due
+        to play the lane's old player."""
+        old = self.lanes[run][lane]
+        if old is not None:
+            self.lane_of[old] = -1
+            self.run_of[old] = -1
+        self.lanes[run][lane] = index
+        if index is None:
+            return
+        if self.players[index].group != self.run_group[run]:
+            raise ValueError(f"player {index} is not of run {run}'s group")
+        stacked_state = self.parameters[run]
+        for name, value in self.states[index].items():
+            stacked_state[f"model.{name}"][lane].copy_(value, non_blocking=True)
+        self.lane_of[index] = lane
+        self.run_of[index] = run
 
     # ---- the controller
 
