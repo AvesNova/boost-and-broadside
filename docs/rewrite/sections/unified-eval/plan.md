@@ -121,6 +121,24 @@ The A-optimal value still picks the pairs; over a long chain it prefers hops of
 p ≈ 0.8–0.95 (the information about a distance D over k hops is best near 400 Elo a
 hop, where x² p (1 − p) peaks), so "near 0.5" is not the optimum for a 5,000-Elo span.
 
+## Two runs in one field (the author, 2026-11-17)
+
+Dry run 1 (game v24) and dry run 3 (v26) share the ship card and the game rules; only
+Imugi differs. So one field rates both runs' snapshots and champions with both Imugis as
+players: the anchor "scripted" (this tree's Imugi, 1000) and "imugi_v24" (`[players]`
+value `"imugi_v24"`, `run.IMUGI_VARIANTS`: the turn commitment and the stick by energy
+off). Each scripted player's rules are per row (`Imugi(rules=...)`, `imugi_combat.Context`),
+so both play in one Imugi pass; the process flags stay the default. v24 games are admitted
+into a v26 tree by an explicit table (`run.ADMITTED`: v24's "scripted" stands for
+"imugi_v24"; every other version mismatch is still left out, and the log counts both).
+`--prior` also takes a unified run's directory (games.jsonl, players by its spec.toml, by
+identity). `box/unified_spec.py` builds the spec for several chains (names prefixed with
+the chain); matched steps across two chains are cross neighbours stage with stage.
+
+The planner over a 108-player field took 68 ms a choice; now about 8 ms (pair products
+gathered from the covariance's rows instead of multiplied, the inverse on one thread, the
+value sums kept incrementally).
+
 ## Map sizes and the fan (the author, 2026-11-17)
 
 Evaluation plays only the map sizes the run trained on (elimination's shrinking map

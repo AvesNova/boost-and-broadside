@@ -74,7 +74,10 @@ chain along the run to the anchor through pairs of uncertain result.
 Earlier games count: `--prior POOL` (repeatable) loads a rating pool's games
 (`bnb pool rate`'s records) of each Elo target's condition before the first game, players
 matched by their weights, games of another game version left out (the log says how many).
-A target's `prior_keys` names the pool's preset keys for its condition (default: the
+A directory of an earlier `bnb unified` run also works as a prior (its games.jsonl, its
+players matched through its spec.toml). Games of game v24 are admitted into a v26 run, their
+Imugi standing for a player named in `[players]` as `imugi_v24 = "imugi_v24"` (game v24's
+Imugi, which plays beside the anchor). A target's `prior_keys` names the pool's preset keys for its condition (default: the
 condition's own key; the evaluation queue's pools use `frontline_5v5` and the like). Pass
 the same `--prior` again on a resume.
 
