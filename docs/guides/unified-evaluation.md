@@ -50,7 +50,10 @@ delta = 0.02
 ```
 
 Every target stops at its goal; tighten a goal and rerun with the same `--out` to continue
-from the recorded games. A `budget` (games) and `--hours` are safety bounds only: a target
+from the recorded games. A rerun matches the recorded games to the spec's players by their
+weights, not their names, so a name that now points at other weights (a newer champion)
+does not inherit the old weights' games. Two names of the same weights (a champion and its
+snapshot) are one player; the later name is an alias, reported with the same estimate. A `budget` (games) and `--hours` are safety bounds only: a target
 they stop short of its goal is named in a `WARNING` line of `progress.log`{.plain}.
 
 Evaluation plays the map sizes the policies trained on (no `arena_scale` targets unless a
@@ -106,10 +109,10 @@ it, importing a compile-cache archive first when the script's archive variable n
   second, the GPU's utilisation, the share of environments parked now and of the ended
   games' ticks that were parked, the resident swaps, each bucket's environments and the
   ETA as a clock time;
-- `games.jsonl`{.plain}: every finished game (flushed every 10 s, synced), which a rerun resumes
-  from;
+- `games.jsonl`{.plain}: every finished game (flushed every 10 s, synced) with the identities
+  of its players, which a rerun resumes from;
 - `report.json`{.plain}: each target's estimate (ratings and standard errors, break-even ratio,
-  scores, a decision's looks and outcome);
+  scores, a decision's looks and outcome) and whether it is met (`met`, `stopped`);
 - `sizing.json`{.plain}: each bucket's measured memory footprint and chosen size.
 
 ## Decisions

@@ -382,6 +382,83 @@ def test_game_log_resumes_and_exports_to_a_rating_pool(tmp_path):
     assert counted.games == 4  # the Elo condition only
 
 
+def _policies(root, **hashes):
+    """Policy directories under root whose checkpoint.json records these weights hashes."""
+    import json
+
+    for name, digest in hashes.items():
+        directory = root / name
+        directory.mkdir(parents=True)
+        (directory / "checkpoint.json").write_text(
+            json.dumps(dict(files={"weights.safetensors": digest}))
+        )
+
+
+def test_resume_matches_players_by_identity_not_name(tmp_path):
+    import json
+
+    from bnb.league.unified.engine import GameLog
+
+    condition = Condition(EL, 5, 5)
+    cell = Cell(condition, "champion", "scripted")
+    old = GameLog(tmp_path, {"champion": "sha256:old", "scripted": "scripted"})
+    old.add(cell, Outcome(1.0), Slot(cell, 0), 5)
+    old.flush()
+    new = GameLog(tmp_path, {"champion": "sha256:new", "scripted": "scripted"})
+    new.add(cell, Outcome(0.0), Slot(cell, 0), 5)
+    new.flush()
+    with (tmp_path / "games.jsonl").open("a") as file:  # a line from before the stamps
+        row = dict(preset=EL, first_count=5, second_count=5, arena_scale=1.0, first="snapshot")
+        row.update(second="scripted", score=0.5, kills=[0, 0], seconds=1.0)
+        file.write(json.dumps(dict(time=0, games=[row])) + "\n")
+    log = GameLog(tmp_path)
+    names = {"sha256:new": "champion", "scripted": "scripted", "sha256:s": "renamed"}
+    found = log.replay(names, legacy={"snapshot": "sha256:s", "scripted": "scripted"})
+    # the old weights' game under the name is left out; the unstamped line goes by legacy
+    assert [(c.first, o.score) for c, o in found] == [("champion", 0.0), ("renamed", 0.5)]
+    assert log.skipped == 1 and log.unstamped == 1
+    assert len(log.replay()) == 3  # no names: every game as recorded
+
+
+def test_players_of_the_same_weights_are_one_player_with_aliases(tmp_path):
+    from bnb.league.unified.run import load_spec
+
+    _policies(tmp_path, rl_9=f"{1:064x}", rl_5=f"{2:064x}")
+    (tmp_path / "spec.toml").write_text(
+        f"""
+[players]
+snapshot = "{tmp_path / "rl_9"}"
+early = "{tmp_path / "rl_5"}"
+champion = "{tmp_path / "rl_9"}"
+
+[[elo]]
+name = "curves"
+preset = "{EL}"
+players = ["scripted", "early", "snapshot", "champion"]
+
+[[win_rate]]
+name = "suite"
+preset = "{EL}"
+first = "champion"
+second = "scripted"
+"""
+    )
+    spec = load_spec(tmp_path / "spec.toml")
+    assert spec.aliases == {"champion": "snapshot"}
+    assert [one.name for one in spec.players] == ["scripted", "snapshot", "early"]
+    elo, rate = spec.targets
+    assert elo.players == ["scripted", "early", "snapshot"]
+    assert rate.cell.first == "snapshot" and rate.name.endswith("champion_vs_scripted")
+    cell = Cell(Condition(EL, 5, 5), "snapshot", "scripted")
+    for score in (1.0, 0.0, 1.0):
+        elo.record(cell, Outcome(score), pending=False)
+        rate.record(cell, Outcome(score), pending=False)
+    report = elo.report()
+    assert report["ratings"]["champion"] == report["ratings"]["snapshot"]
+    assert report["aliases"] == {"champion": "snapshot"}
+    assert rate.games == 3
+
+
 # ---- neighbours and prior games
 
 
@@ -501,6 +578,55 @@ def test_resident_swap_seats_the_incoming_in_the_spare_lane_while_the_outgoing_d
     engine.in_use[1] = 0
     BucketEngine._rebalance(engine)
     assert swapped[1] == (0, None) and 1 not in engine.capacity_of and not engine.leaving
+
+
+def test_rotation_drains_several_residents_while_outsiders_are_worth_more():
+    import types
+
+    from bnb.league.unified import engine as unified_engine
+    from bnb.league.unified.engine import BucketEngine
+
+    class Seat:
+        lanes = [[1, 2, 3, 4, 5, None]]
+
+        def swap(self, run, lane, index):
+            self.lanes[run][lane] = index
+
+    condition = Condition(DM, 5, 5)
+    # outsiders 6..11 each worth 1 (against the anchor), residents 1..5 worth 0.1
+    values = {Cell(condition, str(i), "scripted"): 1.0 for i in range(6, 12)}
+    values.update({Cell(condition, str(i), "scripted"): 0.1 for i in range(1, 6)})
+    names = ["scripted"] + [str(i) for i in range(1, 12)]
+    engine = types.SimpleNamespace(
+        planner=types.SimpleNamespace(values=lambda overtime=False: values),
+        index={n: i for i, n in enumerate(names)},
+        network=[False] + [True] * 11,
+        group_of=[None] + [0] * 11,
+        runs=[(0, [1, 2, 3, 4, 5, None], 100)],
+        seat=Seat(),
+        capacity_of={i: 100 for i in range(1, 6)},
+        leaving=set(),
+        in_use=[0] + [3] * 11,
+        swaps=0,
+    )
+    engine._player_values = types.MethodType(BucketEngine._player_values, engine)
+    BucketEngine._rebalance(engine)
+    # one seated in the spare lane at once, and ROTATING residents draining in all
+    assert engine.swaps == 1 and len(engine.leaving) == unified_engine.ROTATING
+    for index in engine.leaving:
+        engine.in_use[index] = 0
+    BucketEngine._rebalance(engine)
+    # every drained lane seats the next outsider
+    assert engine.swaps == 1 + unified_engine.ROTATING
+
+
+def test_win_rate_report_says_whether_its_goal_is_met():
+    cell = Cell(Condition(EL, 5, 5), "a", "scripted")
+    target = WinRateTarget("w", cell, 0.02, budget=512)
+    for _ in range(600):
+        target.record(cell, Outcome(1.0), pending=False)
+    report = target.report()
+    assert report["met"] and report["stopped"] == "met" and report["stderr"] <= 0.02
 
 
 def test_choose_takes_filler_past_the_probe_caps_before_parking():

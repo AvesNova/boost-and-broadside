@@ -115,7 +115,8 @@ class EloTarget(Target):
     on the games (reaching it with a goal unmet is reported, `report`'s "stopped");
     neighbours: the pairs of names the planning prior links (`field_neighbours`; None: list
     neighbours); prior_keys: the rating-pool presets holding earlier games of this condition
-    (default its key); note: a caveat the report carries.
+    (default its key); note: a caveat the report carries; aliases: other names of a
+    player (alias -> its name: the same weights), reported with its estimate.
 
     A rating is finished only at its goal: a bound or an undetermined player is never a
     result. The planning covariance counts a finished game's information only between
@@ -143,6 +144,7 @@ class EloTarget(Target):
         neighbours: list[tuple[str, str]] | None = None,
         prior_keys: tuple[str, ...] = (),
         note: str = "",
+        aliases: dict[str, str] | None = None,
     ) -> None:
         if len(set(players)) != len(players) or len(players) < 2:
             raise ValueError(f"{name}: at least two distinct players, got {players}")
@@ -202,6 +204,7 @@ class EloTarget(Target):
         # the rating pools' preset keys whose games are this target's (`run.load_prior`)
         self.prior_keys = tuple(prior_keys) or (condition.key,)
         self.note = note  # a caveat carried into the report (and the tables drawn from it)
+        self.aliases = dict(aliases or {})
 
     # the planning view
 
@@ -389,21 +392,28 @@ class EloTarget(Target):
         """The target's estimate as a plain dict (report.json)."""
         errors = self.errors(fresh=True)
         posterior = self.posterior
+        ratings = {
+            name: (None if math.isnan(r) else 1000.0 + r)
+            for name, r in zip(self.players, posterior.ratings.tolist(), strict=True)
+        }
+        status = dict(zip(self.players, posterior.status, strict=True))
+        held = {
+            label: (None if not math.isfinite(e) else e)
+            for label, e in zip(self.labels, errors.tolist(), strict=True)
+        }
+        for alias, name in self.aliases.items():  # the same player's estimate
+            ratings[alias], status[alias] = ratings[name], status[name]
+            held[alias] = held.get(name)
         return dict(
             kind="elo",
             condition=self.condition.key,
             games=self.finished,
             prior_games=self.prior_games,
             note=self.note,
-            ratings={
-                name: (None if math.isnan(r) else 1000.0 + r)
-                for name, r in zip(self.players, posterior.ratings.tolist(), strict=True)
-            },
-            status=dict(zip(self.players, posterior.status, strict=True)),
-            errors={
-                label: (None if not math.isfinite(e) else e)
-                for label, e in zip(self.labels, errors.tolist(), strict=True)
-            },
+            aliases=self.aliases,
+            ratings=ratings,
+            status=status,
+            errors=held,
             goals=dict(zip(self.labels, (self.goals * SCALE).tolist(), strict=True)),
             met=self.met(),
             stopped=None if not self.done() else ("met" if self.met() else "budget"),
@@ -544,11 +554,13 @@ class WinRateTarget(Target):
         # a cell every game of which went one way still has the planning floor's error
         return math.sqrt(max(variance, 1.0 / (4.0 * self.games)) / self.games)
 
+    def met(self) -> bool:
+        """Whether the score is at its goal (at least `minimum` games in)."""
+        return self.games >= self.minimum and self.stderr() <= self.goal
+
     def done(self) -> bool:
         """Whether the target is finished (its goals met, its budget spent, or decided)."""
-        return self.games >= self.budget or (
-            self.games >= self.minimum and self.stderr() <= self.goal
-        )
+        return self.games >= self.budget or self.met()
 
     def remaining(self) -> float:
         """The worst error over its goal, squared, less 1 (0 when done; inf with no estimate)."""
@@ -566,6 +578,8 @@ class WinRateTarget(Target):
             score=self.mean(),
             stderr=None if not math.isfinite(self.stderr()) else self.stderr(),
             goal=self.goal,
+            met=self.met(),
+            stopped=None if not self.done() else ("met" if self.met() else "budget"),
         )
 
 
@@ -683,10 +697,7 @@ class BreakEvenTarget(Target):
 
     def done(self) -> bool:
         """Whether the target is finished (its goals met, its budget spent, or decided)."""
-        if self.games >= self.budget:
-            return True
-        reason = crossover.stop_reason(self.fit, self.games, self.config, self.by_lineup)
-        return reason is not None
+        return self.games >= self.budget or self._reason() is not None
 
     def remaining(self) -> float:
         """The worst error over its goal, squared, less 1 (0 when done; inf with no estimate)."""
@@ -699,6 +710,7 @@ class BreakEvenTarget(Target):
     def report(self) -> dict:
         """The target's estimate as a plain dict (report.json)."""
         ratio, ratio_error = self.fit.ratio()
+        reason = "budget" if self.games >= self.budget else self._reason()
         return dict(
             kind="break_even",
             preset=self.preset,
@@ -710,7 +722,13 @@ class BreakEvenTarget(Target):
             ratio_stderr=ratio_error,
             goal=self.goal,
             lineups={crossover.lineup_name(k): v for k, v in sorted(self.by_lineup.items())},
+            # at its goal ("target") or bounded off the axis ("bound"); stopped: why it ended
+            met=reason in ("target", "bound"),
+            stopped=reason,
         )
+
+    def _reason(self) -> str | None:
+        return crossover.stop_reason(self.fit, self.games, self.config, self.by_lineup)
 
 
 # ---- decisions
@@ -852,4 +870,6 @@ class DecisionTarget(Target):
             maximum_games=self.test.maximum_games,
             outcome=self.test.outcome,
             looks=[dataclasses.asdict(look) for look in self.test.looks],
+            met=self.done(),
+            stopped="decided" if self.done() else None,
         )

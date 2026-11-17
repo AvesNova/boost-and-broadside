@@ -101,6 +101,10 @@ class Spec:
     raw: dict
     # scripted players with their own Imugi rules, by name (`IMUGI_VARIANTS`)
     rules: dict[str, tuple[bool, bool]] = dataclasses.field(default_factory=dict)
+    # every name's identity (`player_marks`; an alias's is its player's)
+    marks: dict[str, str] = dataclasses.field(default_factory=dict)
+    # names of the same weights as an earlier name, to that name (`load_spec`)
+    aliases: dict[str, str] = dataclasses.field(default_factory=dict)
 
 
 # Imugi variants a spec's [players] may name (a player's value): Imugi with these rules
@@ -114,8 +118,20 @@ IMUGI_VARIANTS = {"imugi_v24": (False, False), "imugi_v25": (True, True)}
 ADMITTED = {(24, 26): {"scripted": "imugi_v24"}}
 
 
+def player_mark(one: Player, variant: str | None = None) -> str:
+    """A spec player's identity across runs: a policy's weights (`tournament.identity`); a
+    scripted player's its name, an Imugi variant's its variant ("variant:imugi_v24"), so a
+    record's names can be matched to another spec's players whatever they are called."""
+    from bnb.league.tournament import identity
+
+    return f"variant:{variant}" if variant is not None else identity(one)
+
+
 def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) -> Spec:
-    """The players and targets a spec names (the module docstring)."""
+    """The players and targets a spec names (the module docstring). Players of the same
+    identity (the same weights at two names: a champion and its snapshot) are one player,
+    the first named; the later names are its aliases (`Spec.aliases`): the targets play the
+    player, the reports carry each alias with its player's estimate."""
     raw = tomllib.loads(pathlib.Path(path).read_text())
     players = [dataclasses.replace(player("imugi"), name=ANCHOR)]
     rules: dict[str, tuple[bool, bool]] = {}
@@ -129,7 +145,23 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
             variants[where] = name
             continue
         players.append(dataclasses.replace(player(where, runs_directory), name=name))
-    known = {one.name for one in players}
+    marks: dict[str, str] = {}
+    aliases: dict[str, str] = {}
+    first_of: dict[str, str] = {}
+    kept = []
+    for one in players:
+        mark = player_mark(one, variant_of(one.name, variants) if one.name in rules else None)
+        marks[one.name] = mark
+        if mark in first_of:
+            aliases[one.name] = first_of[mark]
+            continue
+        first_of[mark] = one.name
+        kept.append(one)
+    players = kept
+    known = {one.name for one in players} | set(aliases)
+
+    def canonical(name: str) -> str:
+        return aliases.get(name, name)
 
     def check(*names):
         unknown = [n for n in names if n not in known]
@@ -140,6 +172,7 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
     for entry in raw.get("elo", []):
         field = entry["players"]
         check(*field)
+        field = list(dict.fromkeys(canonical(one) for one in field))  # aliases: one player
         if field[0] != ANCHOR:
             field = [ANCHOR] + [one for one in field if one != ANCHOR]
         first, second = entry.get("lineup", [5, 5])
@@ -149,6 +182,7 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
             pairs = [(ANCHOR, one) for one in field[1:]]
         contrasts = tuple(tuple(c) for c in entry.get("contrasts", ()))
         check(*(n for c in contrasts for n in c[:2]))
+        contrasts = tuple((canonical(a), canonical(b), *rest) for a, b, *rest in contrasts)
         targets.append(
             EloTarget(
                 entry.get("name", f"elo/{condition.key}"),
@@ -162,16 +196,22 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
                 neighbours=field_neighbours([p for p in players if p.name in field]),
                 prior_keys=tuple(entry.get("prior_keys", ())),
                 note=entry.get("note", ""),
+                aliases={
+                    alias: name
+                    for alias, name in aliases.items()
+                    if alias in entry["players"] and name in field
+                },
             )
         )
     for entry in raw.get("win_rate", []):
         check(entry["first"], entry["second"])
         for first, second in entry.get("lineups", [entry.get("lineup", [5, 5])]):
             condition = Condition(entry["preset"], first, second, entry.get("arena_scale", 1.0))
-            cell = Cell(condition, entry["first"], entry["second"])
+            named = Cell(condition, entry["first"], entry["second"])  # the name the spec gave
+            cell = Cell(condition, canonical(entry["first"]), canonical(entry["second"]))
             targets.append(
                 WinRateTarget(
-                    f"{entry.get('name', 'win_rate')}/{cell.key}",
+                    f"{entry.get('name', 'win_rate')}/{named.key}",
                     cell,
                     entry.get("stderr", 0.05),
                     budget=entry.get("budget", 1 << 30),
@@ -183,8 +223,8 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
             BreakEvenTarget(
                 entry.get("name", f"break_even/{entry['preset']}/{entry['policy']}"),
                 entry["preset"],
-                entry["policy"],
-                entry.get("opponent", ANCHOR),
+                canonical(entry["policy"]),
+                canonical(entry.get("opponent", ANCHOR)),
                 entry.get("stderr", 0.1),
                 entry.get("fixed_count", 20),
                 entry.get("budget", 2048),
@@ -194,14 +234,17 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
     for entry in raw.get("decision", []):
         check(entry["first"], entry["second"])
         first, second = entry.get("lineup", [5, 5])
-        cell = Cell(Condition(entry["preset"], first, second), entry["first"], entry["second"])
+        named = Cell(Condition(entry["preset"], first, second), entry["first"], entry["second"])
+        cell = Cell(named.condition, canonical(entry["first"]), canonical(entry["second"]))
+        if cell.first == cell.second:
+            raise ValueError(f"{path}: decision {named.key}: one player (the same weights)")
         design = SequentialDesign(
             entry.get("looks", 4),
             entry.get("alpha", 0.05),
             entry.get("beta", 0.2),
             entry.get("delta", 0.02),
         )
-        targets.append(DecisionTarget(entry.get("name", f"decision/{cell.key}"), cell, design))
+        targets.append(DecisionTarget(entry.get("name", f"decision/{named.key}"), cell, design))
     if not targets:
         raise ValueError(f"{path}: no targets")
     presets = {_preset(target) for target in targets}
@@ -219,10 +262,17 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
         raw.get("seed", 0),
         raw,
         rules,
+        marks,
+        aliases,
     )
     spec.variants = variants  # variant -> the player playing it
     spec.runs_directory = runs_directory
     return spec
+
+
+def variant_of(name: str, variants: dict[str, str]) -> str:
+    """The Imugi variant (`IMUGI_VARIANTS`) a spec's player plays."""
+    return next(v for v, n in variants.items() if n == name)
 
 
 def field_neighbours(players: list[Player]) -> list[tuple[str, str]]:
@@ -287,12 +337,18 @@ def load_prior(
     from bnb.league.rating_pool import RatingPool
     from bnb.league.tournament import identity, recorded_results
 
-    names = {identity(one): one.name for one in players}
     variants = variants or {}
+    names = {identity(one): one.name for one in players}  # a pool's (a scripted player's: its name)
+    marks = {  # a unified run's (`player_mark`)
+        player_mark(
+            one, variant_of(one.name, variants) if one.name in variants.values() else None
+        ): one.name
+        for one in players
+    }
     loaded: dict[str, int] = {}
     for root in pools:
         if (pathlib.Path(root) / "games.jsonl").is_file():  # a unified run's records
-            for name, count in _prior_run(planner, pathlib.Path(root), names, say, runs_directory):
+            for name, count in _prior_run(planner, pathlib.Path(root), marks, say, runs_directory):
                 loaded[name] = loaded.get(name, 0) + count
             continue
         pool = RatingPool(root)
@@ -383,24 +439,14 @@ def _prior_run(planner: Planner, root: pathlib.Path, names: dict, say, runs_dire
     """A unified run's finished games (its games.jsonl, players by its spec.toml) as prior:
     each player matched by identity to this run's, every target recording the games of its
     cells (the same game version: a unified run plays its tree's). Yields (target, games)."""
-    from bnb.league.tournament import identity
-
     old = load_spec(root / "spec.toml", runs_directory)
-    rename = {}
-    for one in old.players:
-        mark = identity(one)
-        if one.name in old.rules:  # a variant's identity is its name: match by variant
-            variant = next(v for v, n in old.variants.items() if n == one.name)
-            mark = variant
-        rename[one.name] = names.get(mark)
     counts: dict[str, int] = {}
-    skipped = 0
-    for cell, outcome in GameLog(root).replay():
-        first, second = rename.get(cell.first), rename.get(cell.second)
-        if first is None or second is None:
-            skipped += 1
-            continue
-        moved = Cell(cell.condition, first, second)
+    log = GameLog(root)
+    # a line stamped with its players' identities is matched by them; an older line by the
+    # names of the run's spec.toml (its last launch's: a rerun rewrites it)
+    found = log.replay(names, legacy=old.marks)
+    skipped = log.skipped
+    for moved, outcome in found:
         for target in planner.targets:
             before = getattr(target, "finished", getattr(target, "games", 0))
             target.record(moved, outcome, pending=False)
@@ -409,7 +455,10 @@ def _prior_run(planner: Planner, root: pathlib.Path, names: dict, say, runs_dire
                 counts[target.name] = counts.get(target.name, 0) + 1
                 if isinstance(target, EloTarget):
                     target.prior_games += 1
-    say(f"prior {root}: {sum(counts.values())} target games {counts}, {skipped} left out")
+    say(
+        f"prior {root}: {sum(counts.values())} target games {counts}, {skipped} left out"
+        + (f" ({log.unstamped} matched by name: lines without identities)" if log.unstamped else "")
+    )
     return list(counts.items())
 
 
@@ -552,12 +601,32 @@ def run(
             getattr(spec, "variants", {}),
             runs_directory=getattr(spec, "runs_directory", None),
         )
-    games_log = GameLog(out)
-    resumed = games_log.replay()
+    if spec.aliases:
+        say(f"aliases (the same weights, one player): {spec.aliases}")
+    marks = spec.marks or {one.name: one.name for one in spec.players}
+    games_log = GameLog(out, marks)
+    # a resume matches each game's players by identity: a rerun's spec may name other
+    # weights at a name (a newer champion), whose games are not this player's
+    seated = {one.name for one in spec.players}
+    resumed = games_log.replay(
+        {mark: name for name, mark in marks.items() if name in seated}, legacy=marks
+    )
     for cell, outcome in resumed:
         planner.finished(cell, outcome, pending=False)
-    if resumed:
-        say(f"resumed {len(resumed)} games from {games_log.path}")
+    if resumed or games_log.skipped:
+        say(
+            f"resumed {len(resumed)} games from {games_log.path}"
+            + (
+                f", {games_log.skipped} left out (players not this spec's)"
+                if games_log.skipped
+                else ""
+            )
+            + (
+                f", {games_log.unstamped} matched by name (lines without identities)"
+                if games_log.unstamped
+                else ""
+            )
+        )
     if pool is not None:
         from bnb.league.rating_pool import RatingPool
 

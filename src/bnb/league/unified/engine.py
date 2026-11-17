@@ -74,6 +74,13 @@ REBALANCE_BLOCKS = 4
 # incoming player in a spare lane at once, while the outgoing one drains, so no environment
 # waits on a swap; the drained lane is the next spare.
 SPARE_LANES = 1
+# At most this many residents of a run drain at once: besides the one an incoming player
+# displaces, the least valuable residents leave while outsiders are worth `SWAP_RATIO` times
+# them, so the rotation's pace is this many lanes per drain (a drain lasts up to two games,
+# the current and the next), not one: on the 5090's 14784 environments a game takes about
+# 70 s of wall time and one lane at a time seated 2 newcomers in 15 minutes, leaving 15 of a
+# 117-network field unplayed after 85k games (unified-eval/results.md)
+ROTATING = 4
 # A leaving resident still takes games expected to last at most this many game seconds
 # (elimination's, in that slice) while one of its longer games is in flight, so its lane
 # keeps playing as it drains and the drain ends no later.
@@ -644,21 +651,47 @@ class BucketEngine:
                     self.leaving.discard(index)
                     self.capacity_of.pop(index, None)
                     self.seat.swap(run, lane, None)
-            outside = [
-                i for i, g in enumerate(self.group_of) if g == group and i not in self.capacity_of
-            ]
+            outside = sorted(
+                (
+                    i
+                    for i, g in enumerate(self.group_of)
+                    if g == group and i not in self.capacity_of
+                ),
+                key=lambda i: -value.get(i, 0.0),
+            )
             empty = [lane for lane, index in enumerate(lanes) if index is None]
-            staying = [i for i in lanes if i is not None and i not in self.leaving]
-            if not outside or not empty or not staying:
-                continue
-            incoming = max(outside, key=lambda i: value.get(i, 0.0))
-            worst = min(staying, key=lambda i: value.get(i, 0.0))
-            best = value.get(incoming, 0.0)
-            if best > 0.0 and best > SWAP_RATIO * value.get(worst, 0.0):
-                self.seat.swap(run, empty[0], incoming)
+            staying = sorted(
+                (i for i in lanes if i is not None and i not in self.leaving),
+                key=lambda i: value.get(i, 0.0),
+            )
+
+            def worth(incoming: int, worst: int) -> bool:
+                best = value.get(incoming, 0.0)
+                return best > 0.0 and best > SWAP_RATIO * value.get(worst, 0.0)
+
+            # an empty lane seats the most valuable outsider at once; the last empty one (the
+            # spare) only for one worth more than the least valuable resident, who leaves
+            # for it (the next spare)
+            for number, lane in enumerate(empty):
+                if not outside:
+                    break
+                if number == len(empty) - 1:
+                    if not staying or not worth(outside[0], staying[0]):
+                        break
+                    self.leaving.add(staying.pop(0))
+                elif value.get(outside[0], 0.0) <= 0.0:
+                    break
+                incoming = outside.pop(0)
+                self.seat.swap(run, lane, incoming)
                 self.capacity_of[incoming] = capacity
-                self.leaving.add(worst)
                 self.swaps += 1
+            # and while outsiders are worth more, more residents drain (`ROTATING`), each
+            # lane seating the next outsider once drained
+            draining = sum(1 for i in lanes if i in self.leaving)
+            while draining < ROTATING and outside and staying and worth(outside[0], staying[0]):
+                outside.pop(0)
+                self.leaving.add(staying.pop(0))
+                draining += 1
 
     def wanted(self) -> bool:
         """Whether the bucket still has work: a target wants a game in it, or a game a target
@@ -778,12 +811,16 @@ def size_environments(fixed: float, per: float, free: int, share: float = MEMORY
 
 class GameLog:
     """The run's durable record: `games.jsonl`, one line per flush with every game finished
-    since (each line written whole and synced), read back on a resume."""
+    since (each line written whole and synced) and the identities of its players (marks:
+    name -> identity, `run.player_mark`), read back on a resume."""
 
-    def __init__(self, directory: pathlib.Path) -> None:
+    def __init__(self, directory: pathlib.Path, marks: dict[str, str] | None = None) -> None:
         self.path = directory / "games.jsonl"
         directory.mkdir(parents=True, exist_ok=True)
         self.rows: list[dict] = []
+        self.marks = marks
+        self.skipped = 0  # the last replay's games of players not named
+        self.unstamped = 0  # and its games from lines without identities
 
     def add(self, cell: Cell, outcome: Outcome, slot: Slot, bucket: int) -> None:
         """Add a finished game to the next flush."""
@@ -865,30 +902,56 @@ class GameLog:
             return
         import os
 
+        line = dict(time=time.time(), games=self.rows)
+        if self.marks is not None:
+            names = {n for row in self.rows for n in (row["first"], row["second"])}
+            line["identities"] = {n: self.marks[n] for n in sorted(names)}
         with self.path.open("a") as file:
-            file.write(json.dumps(dict(time=time.time(), games=self.rows)) + "\n")
+            file.write(json.dumps(line) + "\n")
             file.flush()
             os.fsync(file.fileno())
         if getattr(self, "pool", None) is not None:
             self._export()
         self.rows = []
 
-    def replay(self) -> list[tuple[Cell, Outcome]]:
-        """Every recorded game (a last line cut short is skipped)."""
+    def replay(
+        self, names: dict[str, str] | None = None, legacy: dict[str, str] | None = None
+    ) -> list[tuple[Cell, Outcome]]:
+        """Every recorded game (a last line cut short is skipped). names: identity -> the
+        name to give its player (None: every game under its recorded names); a game whose
+        players are not both there is left out (`skipped`). A line's players are known by
+        its identities; a line without them (written before they were recorded) by
+        `legacy` (name -> identity; None: the names as they are), counted in `unstamped`."""
+        self.skipped = self.unstamped = 0
         if not self.path.exists():
             return []
         found = []
+        known = set(names.values()) if names is not None else set()
         for line in self.path.read_text().splitlines():
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            marks = entry.get("identities")
+            if marks is None and names is not None:
+                self.unstamped += len(entry["games"])
+                marks = legacy
             for row in entry["games"]:
+                first, second = row["first"], row["second"]
+                if names is not None:
+                    if marks is None:  # trusted by name
+                        first = first if first in known else None
+                        second = second if second in known else None
+                    else:
+                        first, second = names.get(marks.get(first)), names.get(marks.get(second))
+                    if first is None or second is None:
+                        self.skipped += 1
+                        continue
                 condition = Condition(
                     row["preset"], row["first_count"], row["second_count"], row["arena_scale"]
                 )
                 outcome = Outcome(row["score"], row["kills"][0], row["kills"][1], row["seconds"])
-                found.append((Cell(condition, row["first"], row["second"]), outcome))
+                found.append((Cell(condition, first, second), outcome))
         return found
 
 
