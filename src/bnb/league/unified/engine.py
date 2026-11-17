@@ -68,7 +68,7 @@ MAXIMUM_RUNS = 3  # stacked forwards per network group
 # valuable resident's; `REBALANCE_BLOCKS` blocks between the checks.
 RESIDENTS = 12
 RESIDENT_SLACK = 1.15
-SWAP_RATIO = 2.0
+SWAP_RATIO = 1.25
 REBALANCE_BLOCKS = 4
 # An environment's next game keeps its players (no new lane rows) when that game is worth at
 # least this share of the best one (`Planner.choose`'s prefer), with a resident set: an

@@ -39,7 +39,8 @@ each), batches were small and launch-bound, and every batch waited for its longe
   only 12 are seated, in one run of even lanes (1.15 x the rows over 12); the planner's
   `fits` admits only residents. Every 4 blocks the engine values each player by the
   planner's values of its cells (those against an outsider at half) and marks the least
-  valuable resident as leaving when the best outsider is worth twice it; a leaving
+  valuable resident as leaving when the best outsider is worth 1.25 times it (values run flat
+  over a curve's field: at 2x no swap came in 30 minutes); a leaving
   resident takes no new games, and once its games are done its lane takes the best
   outsider (`RefillSeat.swap`: weights copied in place, tables updated; nothing
   recompiles). An environment's next game keeps its current players when worth half the
