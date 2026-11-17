@@ -160,7 +160,34 @@ one run each).
 With draws (15% of even games, fewer as the odds part, the mean score kept at p), frontline
 took 14,720 games, every player rated, error over SE 0.95.
 
+
+## Dry run 1's curves completed on the laptop (2026-11-17, in progress)
+
+The v24 tree with the unified package copied in (`ueval-runs/curves-v24`), the queue's pool
+(`dry-v24-s1-eval/curves/pool`, 36,672 games: 12,288 frontline, 12,288 deathmatch, 12,096
+elimination) loaded as prior (`--prior`), the queue's 52 snapshots, ±60, stopping on
+precision (safety: 60,000 games a mode with the prior, 3 hours a launch). Elimination met
+every goal from the prior alone (0 new games). Frontline: 11 players without a rating in the
+prior, all rated after about 750 new games.
+
+**Throughput.** The first launch played 4,000–9,000 games an hour against 37,000–63,000 in
+the earlier laptop checks. Where the time went: those checks seated one or a few network
+players (lanes 2,730 rows a tick for 2,688 rows); 52 players cut into two runs sized by
+share padded the 4,096 rows to 8,996 a tick, and the 5v5 frontline and deathmatch games are
+3–6 times longer in game time than the checks' 5v5 eliminations (about 220 and 370 s).
+GPU 100%, host planning 0–1%, no recompiles. In game-seconds the first launch ran 905 a
+wall second at steady state (about 27,000 env-steps a second at 30 ticks a game second);
+the earlier checks 1,450–1,680 at 1,024–1,344 environments.
+
+The resident set (plan.md) seats 12 players in 12 lanes of 393 rows (4,716 a tick):
+52,600–57,400 env-steps a second on the same field (progress.log now prints env-steps a
+second). Its first version parked environments (222 in 10 minutes: an environment holds lane
+rows for its current and its next game), so an environment's next game keeps its players
+when worth half the best; at a swap ratio of 2 no swap came in 30 minutes (the values run
+flat over a curve's field), so it is 1.25. A direct A/B against all 52 seated was not
+measured: that layout's cold compile was killed at the 8 GB host-memory cap.
+
 **Deathmatch caveat (dry run 1):** dry run 1 trained deathmatch with 5·N tickets, but every
 evaluation played the real rule, 4·N^(4/3) rounded to 5 (35 at 5v5, against 25 in
 training). The author expects little effect, mainly in close games decided by a last kill
-against the clock; the curves' deathmatch field carries the note.
+against the clock.
