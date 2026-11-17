@@ -102,7 +102,8 @@ WINDOW_SLACK = 1.5
 # and its run has lanes for this many windows' newcomers beyond the window: a window's last
 # games are long (elimination's mid-BC games run 150-220 game seconds), so the next windows
 # play beside them rather than after a barrier
-WINDOW_AHEAD = 2
+WINDOW_AHEAD = 1
+WINDOW_CAP = 2  # a lane's capacity: at most this many even shares
 TICKETS = ("kills_per_ship", "ticket_exponent", "ticket_rounding")
 
 
@@ -434,13 +435,16 @@ class BucketEngine:
                     if name in networks:
                         per[name] = per.get(name, 0) + games
             most = max([most, *per.values()])
-        even = math.ceil(RESIDENT_SLACK * rows / size)
-        capacity = min(rows, max(MINIMUM_CAPACITY, even, math.ceil(WINDOW_SLACK * most)))
+        lanes = size + WINDOW_AHEAD * (size - overlap)  # and the next windows' newcomers
+        # every lane runs its capacity each tick (padding included): at most twice the even
+        # share (32 lanes at 1.5x the busiest player's games cut the laptop's rate 2.6x)
+        even = math.ceil(RESIDENT_SLACK * rows / lanes)
+        wanted = min(math.ceil(WINDOW_SLACK * most), WINDOW_CAP * even)
+        capacity = min(rows, max(MINIMUM_CAPACITY, even, wanted))
         self.window = self._next_window()
         if self.window is None:
             self.window = 0
         seated = [self.index[n] for n in self.window_sets[self.window]]
-        lanes = size + WINDOW_AHEAD * (size - overlap)  # and the next windows' newcomers
         return [(next(iter(found)), seated + [None] * (lanes - len(seated)), capacity)]
 
     def _window_cells(self) -> dict[Cell, int]:
