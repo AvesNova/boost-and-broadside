@@ -55,8 +55,14 @@ CONFIG_SETTINGS = {
     "mode.kills_per_ship": "kills_per_ship",
 }
 # The game presets the pages offer as maps: not the fleet-size evaluation presets (the
-# New match page sets the fleet size itself).
-MAP_PRESETS = {name: config for name, config in PRESETS.items() if name not in FLEET_PRESETS}
+# New match page sets the fleet size itself), nor a preset with a spawn rule of its own
+# (`GameConfig.spawn`: the release run's hemisphere spawn, an elimination-only training
+# game the pages' mode switch could not carry).
+MAP_PRESETS = {
+    name: config
+    for name, config in PRESETS.items()
+    if name not in FLEET_PRESETS and config.spawn == "mode"
+}
 MODE_WORDS = {
     "team_deathmatch": "deathmatch",
     "frontline": "frontline",

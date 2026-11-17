@@ -166,6 +166,24 @@ deathmatch, every death a point for the other team, with one kill per enemy ship
   area, nose toward the map's centre within `side_heading_jitter` (15 degrees), turned the
   least that keeps team deathmatch's edge rule. A fixed layout's spawns (Clover) replace
   it.
+- **Spawns, by halves of the disc** (the release run's, the author 2026-11-17;
+  `GameConfig.spawn` "hemisphere", `bnb.game.modes.spawns.hemisphere_placement`, the
+  `real_scale_elimination_hemisphere` preset, which is also clear: no fog). The match's
+  spawn axis, drawn per match, cuts the disc in two; team 0 spawns uniformly by area over
+  its half, less two bands, and team 1 at team 0's 180-degree image, ship for ship (the
+  map's fields are point-symmetric, so both teams start in the same position relative to
+  them). The edge band is as wide as the boundary closes in its first
+  `ModeRules.hemisphere_edge_seconds` (5 s), from the episode's own shrink schedule: 169 m
+  at real scale (8100 m over 240 s, about 34 m/s), so the closing boundary cannot reach a
+  ship before it can turn in. The middle band is `hemisphere_middle_seconds` (5 s) of
+  flight at the spawn speed wide, half on each side of the dividing line: 726 m at real
+  scale. Without fog it only sets the time to first contact. Each ship takes the first of
+  its 8 candidate points that lies in the region and at least `hemisphere_spacing_seconds`
+  (2 s, 291 m at real scale) of flight from its earlier teammates, which keeps the draw
+  uniform by area conditioned on the spacing. Its nose points across the dividing line
+  within `side_heading_jitter` (15 degrees), then the edge rule. The setting is the whole
+  batch's (like `fog_share`), elimination only, and the play shell's map pages do not list
+  the preset.
 - **The boundary shrinks** (game v14, closing before the clock since v16;
   `bnb.game.layout.boundary_fraction`): it stays at the arena radius for
   `ModeRules.shrink_hold_seconds` (18 s in the standard game; 0 at real scale since the

@@ -261,11 +261,15 @@ class Rollout:
         (None, None) without team-size sampling."""
         if self.team_size_table is None:
             return None, None
-        bounds, rows, gives_fields = self.team_size_table
+        bounds, rows, gives_fields, by_seat = self.team_size_table
         uniform = keyed_uniform(TEAM_SIZE_DRAWS, self._episode_keys(episode))
         index = (uniform[:, None] >= bounds).sum(-1, keepdim=True)  # (B, 1)
         drawn = rows.gather(1, index[..., None].expand(-1, 1, rows.shape[-1]))[:, 0]
-        return drawn[:, :2], drawn[:, 2] if gives_fields else None
+        active = drawn[:, :2]
+        if by_seat is not None:  # (the first seat's, the other's): to teams by the seat
+            turned = by_seat & (self._seats(episode) % self.teams == 1)
+            active = torch.where(turned[:, None], active.flip(-1), active)
+        return active, drawn[:, 2] if gives_fields else None
 
     def _decision_keys(self, ticks: torch.Tensor, name: str) -> torch.Tensor:
         """(R,) the decision keys of controller `name`'s rows: their environment's tick key
@@ -891,12 +895,14 @@ class Rollout:
 
 def _team_size_table(
     config: GameConfig, lineup: Lineup, device: torch.device
-) -> tuple[torch.Tensor, torch.Tensor, bool] | None:
+) -> tuple[torch.Tensor, torch.Tensor, bool, torch.Tensor | None] | None:
     """Each environment's team-size table (`Pool.team_sizes`, `TeamSizes.table`, within its
     mode's smallest team, `api.MINIMUM_SHIPS_PER_TEAM`): (bounds (B, K - 1), the cumulative
     probabilities of its first K - 1 rows, the inverse CDF's bounds; rows (B, K, 3) int32,
     each row's (team 0's ships, team 1's ships, fields); whether some pool gives the field
-    count). A draw u in [0, 1) plays the row of index the bounds at most u. Tables shorter
+    count; by_seat (B,) bool, the environments whose rows are by seat instead, the first
+    seat's ships then the other's (`TeamSizes.learner_side` "smaller"), or None where no
+    pool's are). A draw u in [0, 1) plays the row of index the bounds at most u. Tables shorter
     than the longest repeat their last row with probability 0; a pool that does not sample
     plays every slot, its game's own fields. None when no pool samples."""
     if all(pool.team_sizes is None for pool in lineup.pools):
@@ -919,4 +925,21 @@ def _team_size_table(
         values = torch.tensor([row[:3] for row in padded], dtype=torch.int32)
         rows.append(values.expand(size, -1, -1))
     gives_fields = any(row[2] >= 0 for table in tables for row in table)
-    return torch.cat(bounds).to(device), torch.cat(rows).to(device), gives_fields
+    seated = [
+        pool.team_sizes is not None and pool.team_sizes.learner_side == "smaller"
+        for pool in lineup.pools
+    ]
+    by_seat = None
+    if any(seated):
+        by_seat = torch.cat(
+            [
+                torch.full((size,), flag, dtype=torch.bool)
+                for flag, size in zip(seated, lineup.sizes, strict=True)
+            ]
+        ).to(device)
+    return (
+        torch.cat(bounds).to(device),
+        torch.cat(rows).to(device),
+        gives_fields,
+        by_seat,
+    )

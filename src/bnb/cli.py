@@ -48,7 +48,10 @@ class Train:
     training mix in one batch (`bnb.runtime.train.TRAINING_MIXES`): mixed, frontline and
     deathmatch half each; real_scale_mixed, the same on the real-scale maps and ships;
     real_scale_all_modes, the three real-scale modes at 6/16 frontline, 5/16 deathmatch and
-    5/16 elimination (the arms' mix);
+    5/16 elimination (the arms' mix); release_jujak_elimination, the release run's
+    (real-scale elimination alone, clear, the hemisphere spawn, Jujak only, the belief off,
+    the opponents' pools at 5v5, 4v5 and 3v5 with the learner the smaller side: its
+    settings are `bnb.runtime.train.PRESET_SETTINGS`', applied before --set);
     without one, the mode and sizes below.
     precision: bfloat16 (the model's matmuls), float32 or tf32; old_log_probabilities:
     rollout or recomputed (by unroll before the first epoch).
@@ -1061,7 +1064,14 @@ def _requested(options: Train):
     from bnb.learn.ppo import LearnerConfig
     from bnb.runtime import cloning
     from bnb.runtime.lanes import LaneConfig
-    from bnb.runtime.train import LINEUP, TRAINING_MIXES, TrainConfig, arranged, mixed
+    from bnb.runtime.train import (
+        LINEUP,
+        PRESET_SETTINGS,
+        TRAINING_MIXES,
+        TrainConfig,
+        arranged,
+        mixed,
+    )
 
     cloned = options.objective == "bc"
     pools = cloning.LINEUP if cloned else LINEUP
@@ -1103,8 +1113,10 @@ def _requested(options: Train):
         )
     except ValueError as error:
         raise SystemExit(str(error)) from error
+    # the preset's own settings (`PRESET_SETTINGS`), then the command's --set
+    settings = [*PRESET_SETTINGS.get(options.preset, ()), *map(parse_setting, options.set)]
     try:  # the pools the lineup and mix settings name (`arranged`)
-        config = arranged(with_settings(config, map(parse_setting, options.set)), options.preset)
+        config = arranged(with_settings(config, settings), options.preset)
     except ValueError as error:
         raise SystemExit(str(error)) from error
     multiple = environment_multiple(config.pools)

@@ -90,6 +90,26 @@ spawn groups. The 8/4/4 arm (A5), on top of `--preset real_scale_all_modes`:
 --set 'mode_mix={"real_scale_frontline": 8, "real_scale_deathmatch": 4, "real_scale_elimination": 4}'
 ```
 
+A training preset may carry settings besides its games
+(`bnb.runtime.train.PRESET_SETTINGS`, applied before the command's own `--set`), so a run
+of it traces to the committed settings alone. `--preset release_jujak_elimination`, the
+release run's (the author, 2026-11-17), is real-scale elimination alone
+(`real_scale_elimination_hemisphere`: no fog, the hemisphere spawn of
+[Modes](../explanation/game/modes.md)) with:
+
+- Jujak in every slot of both teams (`lineup`, `lineup_draw` false), the rating lanes too;
+- the belief off: no next-state head, so no forecast fed back and no error head
+  (`YemongConfig.next_state_head`, `forecast_feedback`, `delta_split` false,
+  `physics_hidden_decay` null), and no enemy-action head; the density, shot and geometry
+  heads stay;
+- the lineups (`team_sizes`, a `bnb.contracts.TeamSizes` table with `pools` "opponents"
+  and `learner_side` "smaller"): self-play 5v5; every pool with an opponent (the league's,
+  BC's Imugi pool) 5v5 in half its games, the learner 4 against 5 in a quarter and 3
+  against 5 in a quarter, the learner always the smaller side, every field in play. The
+  rating lanes play 5v5, so the training Elo curve stays one game.
+
+`box/release_run.sh` launches it on the 5090 box.
+
 Setting `pools` by hand gives every pool the `GameConfig`'s game unless each pool names its
 own; `mode_mix` does not have that trap. A trainer refuses pools whose games and shares
 are not the mix's (`bnb.runtime.train.check_pools`).

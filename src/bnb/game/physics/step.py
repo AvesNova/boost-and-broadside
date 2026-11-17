@@ -125,6 +125,14 @@ def _placement(
         keys,
         benched,
     ):
+        edge_band = None
+        if mode_rules.spawn == "hemisphere":
+            # how far the boundary closes in the episode's first hemisphere_edge_seconds, by
+            # its own schedule (`boundary_fraction`; 0 while it holds), m (B,)
+            elapsed = torch.full_like(
+                arena.arena_radius, mode_rules.hemisphere_edge_seconds / rules.tick_length
+            )
+            edge_band = arena.arena_radius * (1.0 - boundary_fraction(arena, elapsed))
         return placement(
             rules,
             mode_rules,
@@ -141,6 +149,7 @@ def _placement(
             rotation,
             keys,
             benched,
+            edge_band,
         )
 
     return per_mode(

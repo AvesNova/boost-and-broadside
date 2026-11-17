@@ -15,6 +15,10 @@ LAYOUT_MODES = (TEAM_DEATHMATCH, ELIMINATION)
 # at every team size (the author, 2026-11-16, game version 24); elimination, Frontline and
 # the sandbox keep fog.
 CLEAR_MODES = (TEAM_DEATHMATCH,)
+# The spawn rules a game may name (`GameConfig.spawn`): "mode", the mode's own placement;
+# "hemisphere", elimination's half-disc spawn (`bnb.game.modes.spawns.hemisphere_placement`,
+# the release run's, 2026-11-17).
+SPAWNS = ("mode", "hemisphere")
 STANDARD_SHIP_SET = "standard"
 
 
@@ -149,6 +153,11 @@ class GameConfig:
     fog_share: the share of the game's environments with fog of war, which a pool's own
         `Pool.fog_share` multiplies; None takes the mode's (`fogged_share`: 0 in team
         deathmatch, 1 in the other modes). A whole-batch override, for an ablation.
+    spawn (`SPAWNS`): "mode", the mode's own placement (the default, every game before
+        2026-11-17); "hemisphere", elimination only: each team uniform by area over its half
+        of the disc, less an edge band and a middle band, team 1 at team 0's 180-degree
+        image (`bnb.game.modes.spawns.hemisphere_placement`). A whole-batch setting, as
+        fog_share is: every elimination pool of the batch plays it.
     """
 
     ships_per_team: int
@@ -165,8 +174,15 @@ class GameConfig:
     layout: MapLayout | None = None
     active_fields: ActiveFields | None = None
     fog_share: float | None = None
+    spawn: str = "mode"
 
     def __post_init__(self) -> None:
+        if self.spawn not in SPAWNS:
+            raise ValueError(f"spawn {self.spawn!r} is not one of {SPAWNS}")
+        if self.spawn == "hemisphere" and (
+            self.mode != ELIMINATION or (self.layout is not None and self.layout.spawns)
+        ):
+            raise ValueError("the hemisphere spawn is elimination's, without a layout's spawns")
         if self.fog_share is not None and not 0.0 <= self.fog_share <= 1.0:
             raise ValueError(f"fog_share {self.fog_share} is not in [0, 1]")
         if not 1 <= self.ships_per_team or self.num_ships > MAX_SHIPS:

@@ -81,6 +81,42 @@ TRAINING_MIXES = {
         ("real_scale_deathmatch", 0.3125),
         ("real_scale_elimination", 0.3125),
     ),
+    # the release run (the author, 2026-11-17): real-scale elimination alone, clear, with
+    # the hemisphere spawn; its other settings are `PRESET_SETTINGS`'
+    "release_jujak_elimination": (("real_scale_elimination_hemisphere", 1.0),),
+}
+# The TrainConfig settings a training preset carries besides its games, as `--set` paths and
+# JSON values, applied before the command's own --set (`bnb.cli`), so a run of the preset
+# traces to the committed settings alone.
+# release_jujak_elimination (the author, 2026-11-17; docs/rewrite/arms-todo.md):
+# - Jujak only, both teams, every slot (no per-episode draw), the rating lanes too;
+# - the belief off: no next-state (physics) head, so no forecast fed back and no error head
+#   (forecast_feedback, delta_split, physics_hidden_decay off with it), and no enemy-action
+#   head (the belief's enemy actions stay uniform); the other auxiliary heads (density,
+#   shots, geometry) stay. Without fog every enemy is seen, so the belief has nothing to
+#   carry;
+# - the lineups: self-play every slot (5v5); the pools with an opponent (the league's, BC's
+#   Imugi) 5v5 in half the games, the learner 4 against 5 in a quarter and 3 against 5 in a
+#   quarter, the learner always the smaller side, every field in play; the rating lanes
+#   play 5v5 (they never sample), so the training Elo curve stays one game.
+RELEASE_TEAM_SIZES = {
+    "rule": "table",
+    "pairs": [[5, 5, 0.5], [5, 4, 0.25], [5, 3, 0.25]],
+    "fields": "game",
+    "pools": "opponents",
+    "learner_side": "smaller",
+}
+PRESET_SETTINGS: dict[str, tuple[tuple[str, object], ...]] = {
+    "release_jujak_elimination": (
+        ("lineup", ["Jujak"] * 5),
+        ("lineup_draw", False),
+        ("team_sizes", RELEASE_TEAM_SIZES),
+        ("yemong.next_state_head", False),
+        ("yemong.forecast_feedback", False),
+        ("yemong.delta_split", False),
+        ("yemong.physics_hidden_decay", None),
+        ("yemong.enemy_action_head", False),
+    ),
 }
 # Self-play is a fixed share of each mode's batch, the league's seat the rest (league spec 1).
 LINEUP = (Pool("self_play", 0.5, (LEARNER, LEARNER)), Pool("league", 0.5, (LEARNER, OPPONENTS)))
@@ -191,16 +227,25 @@ def check_pools(config: TrainConfig) -> None:
 def training_pools(config: TrainConfig) -> tuple[Pool, ...]:
     """The config's training pools with its map-size sampling (`TrainConfig.arena_scale`),
     its field-count sampling (`TrainConfig.active_fields`) and its team-size sampling
-    (`TrainConfig.team_sizes`)."""
+    (`TrainConfig.team_sizes`; with its `pools` "opponents" only where a seat is not the
+    learner's, self-play keeping every slot)."""
     return tuple(
         dataclasses.replace(
             pool,
             arena_scale=config.arena_scale,
             active_fields=config.active_fields,
-            team_sizes=config.team_sizes,
+            team_sizes=config.team_sizes if samples_sizes(config.team_sizes, pool) else None,
         )
         for pool in config.pools
     )
+
+
+def samples_sizes(team_sizes: TeamSizes | None, pool: Pool) -> bool:
+    """The pool takes the team-size sampling: there is one, and it covers every pool or the
+    pool has a seat other than the learner (`TeamSizes.pools`)."""
+    if team_sizes is None:
+        return False
+    return team_sizes.pools == "all" or any(seat != LEARNER for seat in pool.seats)
 
 
 def samples_team_sizes(pools: tuple[Pool, ...]) -> bool:

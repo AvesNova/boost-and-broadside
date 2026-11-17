@@ -28,6 +28,10 @@ class ArenaScale:
 # Team-size sampling's ship rules (`TeamSizes.rule`) and field rules (`TeamSizes.fields`).
 SIZE_RULES = ("uniform_pairs", "independent_teams", "near_full", "table")
 FIELD_RULES = ("per_ship", "game")
+# Which pools take the sampling (`TeamSizes.pools`) and which team the pool's first seat
+# plays (`TeamSizes.learner_side`).
+SIZE_POOLS = ("all", "opponents")
+LEARNER_SIDES = ("either", "smaller")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -59,7 +63,14 @@ class TeamSizes:
     - "game": the game's own (every field, or the pool's `active_fields` draw), drawn
       apart from the ships.
     series: the training log's series of the drawn sizes per mode
-    (`bnb.runtime.analytics.team_size_series`)."""
+    (`bnb.runtime.analytics.team_size_series`).
+    pools (`SIZE_POOLS`): "all", every training pool samples; "opponents" (the release run,
+    2026-11-17), only the pools with a seat other than the learner (the league's, BC's
+    Imugi pool), self-play keeping every slot (`bnb.runtime.train.training_pools`).
+    learner_side (`LEARNER_SIDES`): "either", each uneven pair split evenly between the two
+    orientations of the teams; "smaller", the pool's first seat (the learner, in every
+    training lineup) always plays the smaller team: the drawn pair's orientation follows
+    the episode's seat (`bnb.runtime.rollout`), so the learner is never the larger side."""
 
     rule: str = "uniform_pairs"
     full_share: float = 0.5
@@ -70,10 +81,18 @@ class TeamSizes:
     fields: str = "per_ship"
     field_spread: int = 0
     series: bool = True
+    pools: str = "all"
+    learner_side: str = "either"
 
     def __post_init__(self) -> None:
         if self.rule not in SIZE_RULES:
             raise ValueError(f"{self}: rule {self.rule!r} is not one of {SIZE_RULES}")
+        if self.pools not in SIZE_POOLS:
+            raise ValueError(f"{self}: pools {self.pools!r} is not one of {SIZE_POOLS}")
+        if self.learner_side not in LEARNER_SIDES:
+            raise ValueError(
+                f"{self}: learner_side {self.learner_side!r} is not one of {LEARNER_SIDES}"
+            )
         if self.fields not in FIELD_RULES:
             raise ValueError(f"{self}: fields {self.fields!r} is not one of {FIELD_RULES}")
         if not 0.0 < self.full_share <= 1.0:
@@ -155,10 +174,15 @@ class TeamSizes:
         self, ships_per_team: int, num_fields: int, minimum: int = 1
     ) -> tuple[tuple[int, int, int, float], ...]:
         """The draw's table: (team 0's ships, team 1's ships, fields, probability), the
-        probabilities summing to 1; fields -1 where the game draws its own ("game")."""
+        probabilities summing to 1; fields -1 where the game draws its own ("game"). With
+        learner_side "smaller" the first two are by seat instead, (the pool's first seat's
+        ships, the other's), the first the smaller: the rollout turns them to teams."""
         rows = []
         for (a, b), chance in self.pair_probabilities(ships_per_team, minimum).items():
-            sides = ((a, b),) if a == b else ((a, b), (b, a))
+            if self.learner_side == "smaller":
+                sides = ((b, a),)
+            else:
+                sides = ((a, b),) if a == b else ((a, b), (b, a))
             if self.fields == "game":
                 fields = {-1: 1.0}
             else:

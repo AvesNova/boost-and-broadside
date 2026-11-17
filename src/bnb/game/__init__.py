@@ -258,6 +258,13 @@ version 25's committed-turn Imugi, at the author's request: train on the ships o
 run with the new scripted agent. Measured on this card with the new Imugi (retrim-v25/results.md,
 "Y0.46 (v24)"): Yongma kill share DM 2v2 0.466, DM 5v5 0.514, Elim 5v5 0.592, FL 5v5 0.507.
 Ratings and records of version 25 or earlier are not reused for version-26 games.
+
+Also in version 26 (2026-11-17, the release run): the hemisphere spawn came in
+(`GameConfig.spawn` "hemisphere", `modes.spawns.hemisphere_placement`) with its preset
+real_scale_elimination_hemisphere (real-scale elimination, clear): a new game, told apart by
+its config's spawn field, while every existing game computes the same numbers (its
+default, "mode", is every earlier game's placement), so the version stayed 26, as when
+elimination came in under version 3; the fingerprint covers the new preset as well.
 """
 
 VERSION = 26
