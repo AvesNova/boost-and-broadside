@@ -292,3 +292,29 @@ def test_spec_windows_must_overlap_by_the_reach(tmp_path):
             assert not fits
         else:
             assert fits and spec.windows == (3, overlap, None)
+
+
+def test_a_new_stage_rechooses_the_parked_next_games():
+    from bnb.league.unified.engine import Slot
+
+    condition = Condition(EL, 5, 5)
+    target = types.SimpleNamespace(stage=1, name="t", designs={})
+    chosen, written = [], []
+    real = Slot(Cell(condition, "a", "scripted"), 0)
+    engine = types.SimpleNamespace(
+        planner=types.SimpleNamespace(targets=[target]),
+        seen_stages=(1,),
+        environments=3,
+        next=[Slot(None, 0, parked=True), real, None],
+        log=None,
+    )
+    engine._stages = types.MethodType(BucketEngine._stages, engine)
+    engine._say = lambda text: None
+    engine.drain = lambda: 0
+    engine._choose = lambda e: chosen.append(e) or real
+    engine._set_next = lambda e, slot: engine.next.__setitem__(e, slot)
+    engine._write = lambda environments, slots: written.extend(environments)
+    assert BucketEngine._stage_step(engine) == 0 and not chosen  # no new stage: nothing
+    target.stage = 2
+    BucketEngine._stage_step(engine)
+    assert chosen == [0, 2] and written == [0, 2] and engine.seen_stages == (2,)
