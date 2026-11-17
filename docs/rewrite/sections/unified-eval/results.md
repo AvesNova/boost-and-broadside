@@ -191,3 +191,45 @@ measured: that layout's cold compile was killed at the 8 GB host-memory cap.
 evaluation played the real rule, 4·N^(4/3) rounded to 5 (35 at 5v5, against 25 in
 training). The author expects little effect, mainly in close games decided by a last kill
 against the clock.
+
+
+## Parking on the box's 108-player field (2026-11-17 noon)
+
+The box's two-run field (dry-v26-v24-unified: 108 players, 12 residents in lanes of 3,092
+rows, 16,128 environments in bucket 5) parked more games than it played ("2395 games ...
+parked 3150, swaps 0"). Cause: the residents are seated by value, and the most valuable
+players are those without a rating, which the probe caps hold to 32 games in flight
+(`targets.PROBE_PLAYER`). In the v24 chain every player is without a rating at first: its
+pool's games connect it to imugi_v24, not to the anchor. So 10 of 12 lanes ran at about 96
+of 3,092 rows, nothing else fitted, and the environments parked. The swap rule saw the
+capped residents as worth little and marked 3 leaving at once. Each then waited out its
+current and next 5v5 games before its lane could take anyone, which is why no swap had
+come yet.
+
+Changes (planner and host only): `Planner.choose` takes a third tier, filler
+(`Target.filler`: an Elo target's pairs with the probe caps lifted, flagged overtime),
+before it parks. A resident set has a spare lane, so the incoming player is seated at once
+while the outgoing one drains. A leaving resident still takes short games (elimination)
+while a longer one is in flight. The choice reads only the seated players' cells, and the
+filler values refresh every 64 games. progress.log prints the parked share of the
+environments and of the ended games' ticks.
+
+CPU simulation (`bench/unified_park_sim.py`: the real planner, targets and engine
+assignment methods; the box's field rebuilt from dry run 1's pool, a renamed copy as the
+v26 chain with the laptop's unified games as its prior; static slices 36/46/18%; game
+lengths from the laptop's games; 600 game seconds):
+
+| 16,128 environments | parked (environment time) | real games | real games an environment-second | swaps | host seconds |
+|---|---|---|---|---|---|
+| before (f7acfbb7) | 63% (70.7% at the end) | 30,693 | 0.0032 | 0 | 131 start + 899 |
+| after | 0% | 49,555 | 0.0051 | 1 | 27 start + 337 |
+
+At 2,048 environments: 49% parked and 4,897 real games in 900 s before; 0% and 9,849
+after. An eager GPU smoke of the real engine (64 environments, 5 players, 2 residents)
+swapped through the spare lane, emptied and reused a drained lane, with no overflow and no
+missed games.
+
+Open: a leaving resident still drains over its current and next long games (deathmatch
+about 370 s each), so swaps come about one per drain. Its not-yet-started next games are
+not re-planned, because the one-block lag means one may already have begun. More spare
+lanes would allow concurrent swaps, at about 8% more padded network rows each.
