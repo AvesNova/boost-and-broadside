@@ -36,15 +36,19 @@ each), batches were small and launch-bound, and every batch waited for its longe
   capacity (current and next game counted); a device counter reports any overflow and
   the run stops on one.
 - **Resident set** (a field of more than `engine.RESIDENTS` = 12 network players a build):
-  only 12 are seated, in one run of even lanes (1.15 x the rows over 12); the planner's
-  `fits` admits only residents. Every 4 blocks the engine values each player by the
-  planner's values of its cells (those against an outsider at half) and marks the least
-  valuable resident as leaving when the best outsider is worth 1.25 times it (values run flat
-  over a curve's field: at 2x no swap came in 30 minutes); a leaving
-  resident takes no new games, and once its games are done its lane takes the best
-  outsider (`RefillSeat.swap`: weights copied in place, tables updated; nothing
-  recompiles). An environment's next game keeps its current players when worth half the
-  best (`Planner.choose`'s prefer), since its current and next games both hold lane rows.
+  only 12 are seated, in one run of even lanes (1.15 x the rows over 12) plus one spare
+  lane (`engine.SPARE_LANES`); the planner's `fits` admits only residents. Every 4 blocks
+  the engine values each player by the planner's values of its cells (those against an
+  outsider at half). While the run has an empty lane, the best outsider is seated in it
+  at once when it is worth 1.25 times the least valuable staying resident (values run
+  flat over a curve's field: at 2x no swap came in 30 minutes), and that resident is
+  marked leaving (`RefillSeat.swap`: weights copied in place, tables updated; nothing
+  recompiles). A leaving resident takes only short games (expected at most
+  `engine.SHORT_SECONDS` = 120 game seconds: elimination's, in that slice) while one of its
+  longer games is still in flight; once its games are done its lane is emptied and is the
+  next spare. So no environment waits on a swap. An environment's next game keeps its
+  current players when worth half the best (`Planner.choose`'s prefer), since its current
+  and next games both hold lane rows.
   Why: each run's lanes are padded to capacity every tick, and 52 players cut into runs
   sized by share padded 4,096 rows to 8,996.
 - **Map size**: a slice with scaled cells is built with map-size sampling, and each game's
@@ -173,8 +177,10 @@ clock time (from the rise of the mean information fraction, goal² / SE² per ta
   `bnb.league.rating_pool` pool (so `bnb pool table` does not read them).
 - A mode's slice is fixed per bucket run: when its goals are all met first, its
   environments play **overtime** (the planner's values with every goal taken as unmet,
-  budgets still binding; the games are tallied and flagged), else park (Imugi against
-  itself at 1v1, untallied) until the bucket's other slices finish. Rebuilding the bucket
+  budgets still binding; the games are tallied and flagged), then **filler** (an Elo
+  target's pairs with the probe caps lifted, `Target.filler`; also flagged overtime), and
+  park (Imugi against itself at 1v1, untallied) only when none of these fits, until the
+  bucket's other slices finish. Rebuilding the bucket
   with a new split costs a compile.
 - Kill-share scoring for deathmatch Elo is an option (`kill_share = true`), not the
   default (the pools' default is win/loss).

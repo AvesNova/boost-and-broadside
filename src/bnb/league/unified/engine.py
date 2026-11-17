@@ -70,6 +70,14 @@ RESIDENTS = 12
 RESIDENT_SLACK = 1.15
 SWAP_RATIO = 1.25
 REBALANCE_BLOCKS = 4
+# A resident set's run has `SPARE_LANES` lanes beyond its residents: a swap seats the
+# incoming player in a spare lane at once, while the outgoing one drains, so no environment
+# waits on a swap; the drained lane is the next spare.
+SPARE_LANES = 1
+# A leaving resident still takes games expected to last at most this many game seconds
+# (elimination's, in that slice) while one of its longer games is in flight, so its lane
+# keeps playing as it drains and the drain ends no later.
+SHORT_SECONDS = 120.0
 # An environment's next game keeps its players (no new lane rows) when that game is worth at
 # least this share of the best one (`Planner.choose`'s prefer), with a resident set: an
 # environment holds its current and next games' rows, so new players for every next game
@@ -183,13 +191,15 @@ class BucketRollout(Rollout):
 @dataclasses.dataclass
 class Slot:
     """An environment's game: its cell, the seat its first player takes, and whether it is
-    overtime (chosen for a met goal's further precision, `Planner.choose`) or parked (no
-    cell at all: Imugi against itself at 1 against 1, untallied)."""
+    overtime (chosen for a met goal's further precision or as filler, `Planner.choose`),
+    parked (no cell at all: Imugi against itself at 1 against 1, untallied) or short
+    (expected to last at most `SHORT_SECONDS`)."""
 
     cell: Cell | None
     seat: int
     overtime: bool = False
     parked: bool = False
+    short: bool = False
 
 
 def seat_players(
@@ -336,6 +346,8 @@ class BucketEngine:
         self.first_row_device = self.first_row.to(device)
         self.tick_length = self.rollout.rules.tick_length
         self.in_use = [0] * len(players)
+        # environments whose current or next game is a longer than short one of each player
+        self.long_held = [0] * len(players)
         self.current: list[Slot] = []
         self.next: list[Slot | None] = [None] * self.environments
         self.scripted = next(i for i, g in enumerate(groups) if g is None)
@@ -344,7 +356,9 @@ class BucketEngine:
         self.blocks = 0
         self.missed = 0
         self._previous = None  # (pinned logs, event) of the last block
-        self.parked = 0
+        self.parked = 0  # parked games ended
+        self.parked_ticks = 0.0  # environment ticks of the parked games ended
+        self.real_ticks = 0.0  # and of the tallied ones
         self.host_seconds = 0.0  # the host's tallying and planning (`step`)
 
     # ---- assignment
@@ -368,6 +382,16 @@ class BucketEngine:
     def _count(self, environment: int, sign: int) -> None:
         for _, index in self._rows(environment):
             self.in_use[index] += sign
+        held = set()
+        for slot in (self.current[environment], self.next[environment]):
+            if slot is not None and slot.cell is not None and not slot.short:
+                held.update((self.index_of(slot, 0), self.index_of(slot, 1)))
+        for index in held:
+            self.long_held[index] += sign
+
+    def parked_now(self) -> int:
+        """The environments playing a parked game now."""
+        return sum(1 for slot in self.current if slot is not None and slot.cell is None)
 
     def _fits(self, environment: int):
         """The planner's room check for an environment's next game: each network player's
@@ -378,8 +402,10 @@ class BucketEngine:
             for role, name in ((0, cell.first), (1, cell.second)):
                 index = self.index[name]
                 capacity = self.capacity_of.get(index)
-                if self.network[index] and (capacity is None or index in self.leaving):
-                    return False  # not resident, or draining
+                if self.network[index] and capacity is None:
+                    return False  # not resident
+                if index in self.leaving and not (self.long_held[index] > 0 and self._short(cell)):
+                    return False  # draining: short games only, while a longer one plays
                 if capacity is None or (role, index) in held:
                     continue
                 if self.in_use[index] + 1 > capacity:
@@ -407,7 +433,10 @@ class BucketEngine:
         if chosen is None:
             return Slot(None, 0, parked=True)
         cell, seat, overtime = chosen
-        return Slot(cell, seat, overtime=overtime)
+        return Slot(cell, seat, overtime=overtime, short=self._short(cell))
+
+    def _short(self, cell: Cell) -> bool:
+        return self.planner.expected_seconds(cell.condition) <= SHORT_SECONDS
 
     def _set_next(self, environment: int, slot: Slot) -> None:
         self._count(environment, -1)
@@ -550,22 +579,27 @@ class BucketEngine:
                     self.record(slot.cell, outcome, slot, self.bucket)
                 self.games += 1
                 tallied += 1
+                self.real_ticks += ticks
             else:
                 self.parked += 1
-            # the next game is under way: it becomes the current one, and the one after it
-            # is chosen (the pending buffers already hold the game now begun)
-            self._count(environment, -1)
-            self.current[environment], self.next[environment] = self.next[environment], None
-            self._count(environment, 1)
-            following = self._choose(environment)
-            self._set_next(environment, following)
+                self.parked_ticks += ticks
             environments.append(environment)
-            slots.append(following)
+            slots.append(self._advance(environment))
         self.finished_seen = finished
         self._write(environments, slots)
         if self.resident_set and self.blocks % REBALANCE_BLOCKS == 0:
             self._rebalance()
         return tallied
+
+    def _advance(self, environment: int) -> Slot:
+        """An environment's game ended: its next game is under way and becomes the current
+        one (the pending buffers already hold it), and the one after it is chosen."""
+        self._count(environment, -1)
+        self.current[environment], self.next[environment] = self.next[environment], None
+        self._count(environment, 1)
+        following = self._choose(environment)
+        self._set_next(environment, following)
+        return following
 
     # ---- the resident set
 
@@ -585,40 +619,34 @@ class BucketEngine:
         return held
 
     def _rebalance(self) -> None:
-        """Swap residents (module constants): a drained leaving resident's lane takes the
-        most valuable outsider; a resident is marked leaving when the best outsider is worth
-        `SWAP_RATIO` times it. Weights are copied on the device, between replays."""
+        """Swap residents (module constants): a drained leaving resident's lane is emptied
+        (the next spare); while a run has an empty lane, the most valuable outsider is
+        seated in it at once when it is worth `SWAP_RATIO` times the least valuable staying
+        resident, who is marked leaving (no new games but short ones, `_fits`). Weights are
+        copied on the device, between replays."""
         value = self._player_values()
         for run, (group, _, capacity) in enumerate(self.runs):
             lanes = self.seat.lanes[run]
+            for lane, index in enumerate(lanes):
+                if index in self.leaving and self.in_use[index] == 0:
+                    self.leaving.discard(index)
+                    self.capacity_of.pop(index, None)
+                    self.seat.swap(run, lane, None)
             outside = [
                 i for i, g in enumerate(self.group_of) if g == group and i not in self.capacity_of
             ]
-            outside.sort(key=lambda i: -value.get(i, 0.0))
-            for lane, index in enumerate(lanes):
-                empty = index is None
-                drained = index in self.leaving and self.in_use[index] == 0
-                if not (empty or drained) or not outside:
-                    continue
-                incoming = outside.pop(0)
-                if value.get(incoming, 0.0) <= 0.0 and not empty:
-                    self.leaving.discard(index)  # nothing better: it stays
-                    continue
-                if index is not None:
-                    self.leaving.discard(index)
-                    self.capacity_of.pop(index, None)
-                self.seat.swap(run, lane, incoming)
-                self.capacity_of[incoming] = capacity
-                self.swaps += 1
-            if not outside:
-                continue
+            empty = [lane for lane, index in enumerate(lanes) if index is None]
             staying = [i for i in lanes if i is not None and i not in self.leaving]
-            if len(lanes) - len(staying) >= max(1, len(lanes) // 4) or not staying:
+            if not outside or not empty or not staying:
                 continue
+            incoming = max(outside, key=lambda i: value.get(i, 0.0))
             worst = min(staying, key=lambda i: value.get(i, 0.0))
-            best = value.get(outside[0], 0.0)
+            best = value.get(incoming, 0.0)
             if best > 0.0 and best > SWAP_RATIO * value.get(worst, 0.0):
+                self.seat.swap(run, empty[0], incoming)
+                self.capacity_of[incoming] = capacity
                 self.leaving.add(worst)
+                self.swaps += 1
 
     def wanted(self) -> bool:
         """Whether the bucket still has work: a target wants a game in it, or a game a target
@@ -663,7 +691,8 @@ def resident_runs(
 ) -> list[tuple[int, list[int | None], int]]:
     """A resident set's runs: per network group one run of at most `residents` lanes,
     seated with the group's players of the largest expected share, each lane holding
-    `RESIDENT_SLACK` times an even part of the rows (`BucketEngine._rebalance` swaps)."""
+    `RESIDENT_SLACK` times an even part of the rows, and `SPARE_LANES` empty lanes more
+    when the group has more players than lanes (`BucketEngine._rebalance` swaps)."""
     found = sorted({g for g in groups if g is not None})
     members = {g: [i for i, one in enumerate(groups) if one == g] for g in found}
     lanes = {g: min(residents, len(members[g])) for g in found}
@@ -672,7 +701,8 @@ def resident_runs(
     for group in found:
         seated = sorted(members[group], key=lambda i: -shares[i])[: lanes[group]]
         capacity = min(rows, max(MINIMUM_CAPACITY, math.ceil(RESIDENT_SLACK * rows / total)))
-        runs.append((group, list(seated), capacity))
+        spare = SPARE_LANES if len(members[group]) > lanes[group] else 0
+        runs.append((group, list(seated) + [None] * spare, capacity))
     return runs
 
 

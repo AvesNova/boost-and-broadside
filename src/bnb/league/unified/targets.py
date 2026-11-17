@@ -66,6 +66,11 @@ class Target:
         budget still binds, and a decided test proposes nothing."""
         raise NotImplementedError
 
+    def filler(self) -> dict[Cell, float]:
+        """Cell -> value of the games worth playing only when nothing proposed fits (an
+        environment would otherwise park, `Planner.choose`'s last tier): none by default."""
+        return {}
+
     def add_pending(self, cell: Cell) -> None:
         """Count a game of `cell` in flight (a cell the target does not use is ignored)."""
         raise NotImplementedError
@@ -253,6 +258,15 @@ class EloTarget(Target):
 
     def proposals(self, overtime: bool = False) -> dict[Cell, float]:
         """Cell -> value of one more game there (`Target.proposals`)."""
+        return self._values(overtime, probes=True)
+
+    def filler(self) -> dict[Cell, float]:
+        """Every pair's overtime value with no probe cap: a player without a rating takes
+        more games in flight than `PROBE_PLAYER` only when the alternative is a parked
+        environment (`Planner.choose`'s last tier)."""
+        return self._values(True, probes=False)
+
+    def _values(self, overtime: bool, probes: bool) -> dict[Cell, float]:
         if self.finished + self.pending.sum() / 2 >= self.budget:
             return {}
         covariance = self.covariance()
@@ -279,7 +293,7 @@ class EloTarget(Target):
         # probes: a player without a rating has its planning rating from little or nothing,
         # so its games in flight are capped (per pair and in all) until results come in
         probing = self.unresolved[first] | self.unresolved[second]
-        if probing.any():
+        if probes and probing.any():
             in_flight = self.pending.sum(1)
             full = (self.pending[first, second] >= PROBE_PAIR) | (
                 (self.unresolved[first] & (in_flight[first] >= PROBE_PLAYER))

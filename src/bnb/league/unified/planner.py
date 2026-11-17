@@ -27,6 +27,11 @@ from .cells import BUCKETS, Cell, Condition, Outcome, bucket_of
 from .targets import Target
 
 REBUILD_EVERY = 4096  # value updates between full re-sums
+# `choose`'s tiers: the unmet goals' values, then overtime (every goal taken as unmet), then
+# filler (`Target.filler`: overtime without the probe caps), each tried when the one before
+# has nothing that fits; an environment parks only when none has
+FILLER = "filler"
+TIERS = (False, True, FILLER)
 
 
 def clock_seconds(preset: str) -> float:
@@ -69,16 +74,17 @@ class Planner:
 
     # ---- proposals
 
-    def _proposals(self, target: Target, overtime: bool = False) -> dict[Cell, float]:
+    def _proposals(self, target: Target, overtime: bool | str = False) -> dict[Cell, float]:
         key = (target.name, overtime)
         found = self._cache.get(key)
         if found is None:
-            found = target.proposals(overtime)
+            found = target.filler() if overtime == FILLER else target.proposals(overtime)
             self._cache[key] = found
         return found
 
-    def values(self, overtime: bool = False) -> dict[Cell, float]:
-        """Every proposed cell's summed value (overtime: `Target.proposals`'). Kept up to
+    def values(self, overtime: bool | str = False) -> dict[Cell, float]:
+        """Every proposed cell's summed value (overtime: `Target.proposals`'; `FILLER`:
+        `Target.filler`'s). Kept up to
         date incrementally: only the targets whose proposals changed are re-summed (a field
         of a hundred players proposes thousands of cells; rebuilt from scratch every
         `REBUILD_EVERY` updates against rounding drift)."""
@@ -123,7 +129,7 @@ class Planner:
             if cell in self._cache[key]:
                 self._cache.pop(key, None)
         for target in self.targets:  # a target that proposed nothing may propose now
-            for overtime in (False, True):
+            for overtime in TIERS:
                 if not self._cache.get((target.name, overtime), True):
                     self._cache.pop((target.name, overtime), None)
 
@@ -145,13 +151,15 @@ class Planner:
     ) -> tuple[Cell, int, bool] | None:
         """The next game of an environment of size bucket `bucket` playing `preset`: (the
         cell, the seat its first player takes, 0 or 1, and whether it is overtime), counted
-        in flight with every target. When no unmet goal wants a game in the slice, the
-        overtime values choose (a met goal's further precision: the slice's modes are fixed
-        while the bucket runs, `bnb.league.unified.engine`); None when even those want none
-        (every cell's budget spent, or no room: `fits(cell)`, the lanes'). prefer(cell): a
+        in flight with every target. When no unmet goal wants a game in the slice that
+        fits, the overtime values choose (a met goal's further precision: the slice's modes
+        are fixed while the bucket runs, `bnb.league.unified.engine`), then the filler
+        values (`Target.filler`: any pair an Elo target may play, its probe caps lifted;
+        flagged overtime too); None only when none of these has a cell that fits
+        (`fits(cell)`, the lanes') or every budget is spent. prefer(cell): a
         cell the engine plays more cheaply (one whose players the environment already
         seats), taken when its rate is at least `prefer_ratio` of the best's."""
-        for overtime in (False, True):
+        for overtime in TIERS:
             best, best_rate = None, 0.0
             liked, liked_rate = None, 0.0
             values = self.values(overtime)
@@ -171,7 +179,7 @@ class Planner:
                 self.pending(best)
                 seat = self.seats[best] % 2
                 self.seats[best] += 1
-                return best, seat, overtime
+                return best, seat, overtime is not False
         return None
 
     def pending(self, cell: Cell) -> None:

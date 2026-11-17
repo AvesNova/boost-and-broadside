@@ -459,11 +459,11 @@ def test_resident_runs_seat_the_most_wanted_with_even_lanes():
     shares = [0.0] + [n / 210 for n in range(1, 21)]
     (run,) = resident_runs(groups, shares, rows=4096, residents=8)
     group, seated, capacity = run
-    assert group == 0 and seated == list(range(20, 12, -1))
+    assert group == 0 and seated == list(range(20, 12, -1)) + [None]  # a spare lane
     assert capacity == math.ceil(RESIDENT_SLACK * 4096 / 8)
 
 
-def test_resident_swap_waits_for_a_drained_lane_and_takes_the_most_valuable():
+def test_resident_swap_seats_the_incoming_in_the_spare_lane_while_the_outgoing_drains():
     import types
 
     from bnb.league.unified.engine import BucketEngine
@@ -471,7 +471,7 @@ def test_resident_swap_waits_for_a_drained_lane_and_takes_the_most_valuable():
     swapped = []
 
     class Seat:
-        lanes = [[1, 2]]
+        lanes = [[1, 2, None]]
 
         def swap(self, run, lane, index):
             swapped.append((lane, index))
@@ -484,7 +484,7 @@ def test_resident_swap_waits_for_a_drained_lane_and_takes_the_most_valuable():
         index={"scripted": 0, "a": 1, "b": 2, "c": 3, "d": 4},
         network=[False, True, True, True, True],
         group_of=[None, 0, 0, 0, 0],
-        runs=[(0, [1, 2], 100)],
+        runs=[(0, [1, 2, None], 100)],
         seat=Seat(),
         capacity_of={1: 100, 2: 100},
         leaving=set(),
@@ -493,10 +493,26 @@ def test_resident_swap_waits_for_a_drained_lane_and_takes_the_most_valuable():
     )
     engine._player_values = types.MethodType(BucketEngine._player_values, engine)
     BucketEngine._rebalance(engine)
-    assert engine.leaving == {1} and not swapped  # marked, but still playing
+    # the incoming one plays at once in the spare lane; the outgoing one drains
+    assert swapped == [(2, 3)] and engine.swaps == 1 and 3 in engine.capacity_of
+    assert engine.leaving == {1}
+    BucketEngine._rebalance(engine)
+    assert swapped == [(2, 3)]  # no spare lane while it drains
     engine.in_use[1] = 0
     BucketEngine._rebalance(engine)
-    assert swapped == [(0, 3)] and 3 in engine.capacity_of and 1 not in engine.capacity_of
+    assert swapped[1] == (0, None) and 1 not in engine.capacity_of and not engine.leaving
+
+
+def test_choose_takes_filler_past_the_probe_caps_before_parking():
+    from bnb.league.unified.targets import PROBE_PLAYER
+
+    condition = Condition(DM, 5, 5)
+    target = EloTarget("elo", condition, ["scripted", "a", "b"])
+    planner = Planner([target])
+    tiers = [planner.choose(5, DM)[2] for _ in range(4 * PROBE_PLAYER)]
+    # the unrated players' probes fill first; past their caps the games are filler
+    # (flagged overtime), never None (a park)
+    assert tiers[0] is False and tiers[-1] is True
 
 
 def test_v24_games_are_admitted_with_their_imugi_as_imugi_v24(tmp_path):

@@ -679,6 +679,7 @@ def run(
         last_flush = last_progress = time.time()
         games_at_progress, time_at_progress = total_games, time.time()
         steps_at_progress = 0
+        ticks_at_progress = (0.0, 0.0)  # (parked, tallied) game ticks ended
         while running:
             for engine in list(running):
                 total_games += engine.step()
@@ -705,12 +706,24 @@ def run(
                 for engine in running:
                     engine.host_seconds = 0.0
                 parked = sum(e.parked for e in running)
+                parked_now = sum(e.parked_now() for e in running) / max(
+                    sum(e.environments for e in running), 1
+                )
+                ticks = (
+                    sum(e.parked_ticks for e in running),
+                    sum(e.real_ticks for e in running),
+                )
+                spent = [a - b for a, b in zip(ticks, ticks_at_progress, strict=True)]
+                ticks_at_progress = ticks
+                parked_share = spent[0] / sum(spent) if sum(spent) > 0 else 0.0
                 say(
                     f"{total_games} games ({rate_hour:,.0f}/h, {steps_rate:,.0f} env-steps/s), "
                     f"information {fraction:.3f}, "
                     f"GPU {utilisation}%, "
                     f"host planning {host / (now - time_at_progress_before):.0%}, "
-                    f"parked {parked}, swaps {sum(e.swaps for e in running)}, buckets "
+                    f"parked {parked_now:.1%} of environments now, {parked_share:.1%} of the "
+                    f"ended games' ticks ({parked} games in all), "
+                    f"swaps {sum(e.swaps for e in running)}, buckets "
                     + ", ".join(f"{e.bucket}:{e.environments}" for e in running)
                     + f", ETA {clock(eta)}"
                 )

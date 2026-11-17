@@ -102,8 +102,10 @@ it, importing a compile-cache archive first when the script's archive variable n
 
 ## What it writes
 
-- `progress.log`{.plain}: a line every 30 s with the games, games per hour, the GPU's
-  utilisation, each bucket's environments and the ETA as a clock time;
+- `progress.log`{.plain}: a line every 30 s with the games, games per hour, env-steps a
+  second, the GPU's utilisation, the share of environments parked now and of the ended
+  games' ticks that were parked, the resident swaps, each bucket's environments and the
+  ETA as a clock time;
 - `games.jsonl`{.plain}: every finished game (flushed every 10 s, synced), which a rerun resumes
   from;
 - `report.json`{.plain}: each target's estimate (ratings and standard errors, break-even ratio,
