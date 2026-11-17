@@ -120,11 +120,11 @@ averaged checkpoint beside them.
 *Figure 3. Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final averaged checkpoint (diamonds); 1,024 games per point, ties count as losses.*
 
 At 4 ships, the averaged weights hold more than the live ones at the end of training:
-82.1% against 6 scripted ships where the live weights
-win 78.3%, 62.6%
-against 7 where they win 52.6%, and
-40.8% against 8 where they win
-34.7%, each over 1,024
+83.3% against 6 scripted ships where the live weights
+win 78.2%, 61.6%
+against 7 where they win 55.0%, and
+40.9% against 8 where they win
+35.3%, each over 4,096
 games. The live curves stop improving after about 250M steps.
 
 ![Eight trained ships against more](results/v1-731/fan_731_n8.png)
@@ -145,10 +145,10 @@ games. The live curves stop improving after about 250M steps.
 
 The averaged weights win more often than the live ones at every ratio above equal
 numbers. At 1.75 times as many scripted ships, the closest to even, they win
-10.0% more of the games at 4 ships (95% interval
-±4.3%) and
-6.5% more at 8
-(±4.3%).
+6.7% more of the games at 4 ships (95% interval
+±2.1%) and
+8.8% more at 8
+(±2.2%).
 
 ![How many scripted ships it takes to hold them even](results/v1-731/crossover_by_size.png)
 
@@ -156,11 +156,11 @@ numbers. At 1.75 times as many scripted ships, the closest to even, they win
 
 Interpolated between the grid points, the averaged weights hold even against
 1.89x their number at 4 ships
-(1.87–1.92),
+(1.88–1.90),
 1.82x at 8, 1.71x
-at 16 and 1.54x at 32; the final live weights
-against 1.79x, 1.76x,
-1.63x and 1.45x.
+at 16 and 1.55x at 32; the final live weights
+against 1.81x, 1.73x,
+1.63x and 1.44x.
 The crossover sweep's coarser integer search above gives
 1.75x and 1.62x for the final live
 checkpoint at 4 and 8 ships.

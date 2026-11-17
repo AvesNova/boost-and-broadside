@@ -55,8 +55,8 @@ of the final live checkpoint, each row the largest scripted fleet it still beats
 
 The averaged policy, the running average of the weights that the run keeps beside the live
 ones, holds more when outnumbered: four averaged ships win
-62.6% of games against seven scripted ships, where the
-final live weights win 52.6%
+61.6% of games against seven scripted ships, where the
+final live weights win 55.0%
 ([over training](docs/evaluation.md#outnumbered-over-training)). The
 [evaluation guide](docs/evaluation.md#zero-shot-crossover) covers the search method,
 sample sizes, raw artifacts, and limitations behind these measurements.
