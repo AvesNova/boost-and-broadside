@@ -35,6 +35,17 @@ each), batches were small and launch-bound, and every batch waited for its longe
   (padding writes a spare row). The host keeps each player's rows within its lane's
   capacity (current and next game counted); a device counter reports any overflow and
   the run stops on one.
+- **Resident set** (a field of more than `engine.RESIDENTS` = 12 network players a build):
+  only 12 are seated, in one run of even lanes (1.15 x the rows over 12); the planner's
+  `fits` admits only residents. Every 4 blocks the engine values each player by the
+  planner's values of its cells (those against an outsider at half) and marks the least
+  valuable resident as leaving when the best outsider is worth twice it; a leaving
+  resident takes no new games, and once its games are done its lane takes the best
+  outsider (`RefillSeat.swap`: weights copied in place, tables updated; nothing
+  recompiles). An environment's next game keeps its current players when worth half the
+  best (`Planner.choose`'s prefer), since its current and next games both hold lane rows.
+  Why: each run's lanes are padded to capacity every tick, and 52 players cut into runs
+  sized by share padded 4,096 rows to 8,996.
 - **Map size**: a slice with scaled cells is built with map-size sampling, and each game's
   uniform is the inverse of the draw at the cell's scale (`cells.arena_uniform`).
 - **Fog** follows the preset (the pool's fog share), as the queue played it.
