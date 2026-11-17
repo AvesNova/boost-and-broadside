@@ -317,6 +317,9 @@ def history_values(run_dir: Path) -> dict:
     late = [w for s, w in zip(steps, win) if s > 200e6]
     values["scripted_win_rate_min_after_200m"] = float(min(late)) if late else None
 
+    _, learning_rate = history.series(rows, "schedule/learning_rate")
+    values["learning_rate_peak"] = float(max(learning_rate))
+
     _, explained = history.series(rows, "overview/explained_variance")
     values["explained_variance_final"] = float(explained[-1])
     values["explained_variance_max"] = float(max(explained))
@@ -353,7 +356,17 @@ def earlier_run_values(key: str, run_dir: Path) -> dict:
         )
     )
     final = players[f"ckpt_{step}"]
+    crossover = {}
+    try:
+        rows = read_json(newest_artifact(run_dir, "crossover") / "result.json")["rows"]
+    except FileNotFoundError:
+        rows = []
+    for row in rows:
+        size = row["trained"]
+        crossover[f"history_{key}_crossover_{size}_ships_beats_up_to"] = row["beats_up_to"]
+        crossover[f"history_{key}_crossover_{size}_ships_ratio"] = row["beats_up_to"] / size
     return {
+        **crossover,
         f"history_{key}_steps_millions": step / 1e6,
         f"history_{key}_final_live_elo": final["calibrated_elo"],
         f"history_{key}_final_live_stderr": final["stderr"],
