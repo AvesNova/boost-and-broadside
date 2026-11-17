@@ -21,7 +21,7 @@ in which a glancing bullet does 30% of full damage.
 Trained 4-vs-4 with 4 refractive fields. The final live policy calibrates
 to **2,110 Elo** and the best averaged checkpoint to
 2,052. Against the scripted controller the final live
-policy holds a numerical advantage from 2.00x at 1-vs-1 and
+policy holds a numerical advantage from 2.00x at 1-vs-1 (by a 51.2% margin) and
 1.75x at its training size down to
 1.19x at 64-vs-64 — sixteen times its training width. Learning
 is front-loaded: the calibrated curve passes 1,780 by

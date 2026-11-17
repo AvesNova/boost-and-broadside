@@ -99,7 +99,7 @@ fit. The 64-ship boundary above rests on {{crossover_64_ships_beats_up_to_games}
 {{figure: crossover_ratio}}
 
 The ratio view describes where the measured numerical advantage is larger: from
-{{crossover_1_ships_ratio:.2f}}x at one ship and {{crossover_4_ships_ratio:.2f}}x at the
+{{crossover_1_ships_ratio:.2f}}x at one ship (a {{crossover_1_ships_beats_up_to_win_rate:.1%}} rate, within noise of even) and {{crossover_4_ships_ratio:.2f}}x at the
 training size of four down to {{crossover_64_ships_ratio:.2f}}x at 64. Its shape is
 descriptive: no ablation separates coordination, per-ship tactical skill, and weaknesses
 of the scripted controller.

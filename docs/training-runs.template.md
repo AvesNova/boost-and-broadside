@@ -21,7 +21,7 @@ in which a glancing bullet does {{config_bullet_min_damage_fraction:.0%}} of ful
 Trained 4-vs-4 with {{config_fields}} refractive fields. The final live policy calibrates
 to **{{calibration_final_live_elo:,.0f}} Elo** and the best averaged checkpoint to
 {{calibration_best_averaged_elo:,.0f}}. Against the scripted controller the final live
-policy holds a numerical advantage from {{crossover_1_ships_ratio:.2f}}x at 1-vs-1 and
+policy holds a numerical advantage from {{crossover_1_ships_ratio:.2f}}x at 1-vs-1 (by a {{crossover_1_ships_beats_up_to_win_rate:.1%}} margin) and
 {{crossover_4_ships_ratio:.2f}}x at its training size down to
 {{crossover_64_ships_ratio:.2f}}x at 64-vs-64 — sixteen times its training width. Learning
 is front-loaded: the calibrated curve passes {{calibration_curve_elo_at_150m:,.0f}} by

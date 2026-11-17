@@ -103,7 +103,7 @@ fit. The 64-ship boundary above rests on 204 games at
 *Figure 2. The largest scripted team the final live checkpoint still beats, divided by its own team size, from the same sweep.*
 
 The ratio view describes where the measured numerical advantage is larger: from
-2.00x at one ship and 1.75x at the
+2.00x at one ship (a 51.2% rate, within noise of even) and 1.75x at the
 training size of four down to 1.19x at 64. Its shape is
 descriptive: no ablation separates coordination, per-ship tactical skill, and weaknesses
 of the scripted controller.
