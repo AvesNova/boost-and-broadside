@@ -156,6 +156,19 @@ planner). Win-rate, team-size and break-even targets keep their planning.
   order with cells takes the free lane. If nothing is playable among the seated players
   and no lane can free up, the earliest resident leaves. `static_design.streaming_schedule`
   prints the idealised window steps.
+- **Fixed windows** (the author, 2026-11-17 14:40; spec `windows = {size = 16, overlap = 8}`,
+  `box/unified_spec.py --windows 16,8`, `unified_check.sh WINDOWS=16,8`): instead of the
+  sliding resident set, overlapping windows of the training order (`static_design.windows`:
+  `size` checkpoints stepping by `size - overlap`, the anchor in every one). Each pair is
+  played in the first window holding both its players (`assign_windows`; an overlap below
+  the reach is refused at the spec). A window plays every cell with both players seated,
+  then a barrier (`BucketEngine._window_step`): the last block drained, the next window
+  with games seated in place (staying players keep their lanes, weights copied, no
+  recompile) and every environment's next game chosen anew. Stage 2's top-up plays only
+  the windows holding its cells. One run of `size` lanes, each holding `WINDOW_SLACK` (1.5)
+  times the most games one player has in a window (stage 1's counts), at least the even
+  share. progress.log prints each window's games, wall time and idle tail (from its last
+  cell started to its last game ended).
 - **Each run on its own first.** Several runs in one field are each resolved against the
   anchor (no cross-run pairs). The linking stage comes after the single-run stages, as its
   own stage or command: each checkpoint of run A against run B's checkpoint nearest in

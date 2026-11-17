@@ -196,3 +196,99 @@ def test_spec_static_curves_load_with_the_anchor_and_the_chain(tmp_path):
     pairs = {(target.players[a], target.players[b]) for a, b in target.pairs}
     assert ("bc_1000", "rl_1000") in pairs and ("bc_1000", "rl_2000") not in pairs  # reach 3
     assert stream_order(Planner(spec.targets)) == names[1:]
+
+
+def test_fixed_windows_overlap_and_each_pair_in_its_first_window():
+    order = [f"c{i}" for i in range(20)]
+    held = static_design.windows(order, 8, 4)
+    assert [w[0] for w in held] == ["c0", "c4", "c8", "c12"] and held[-1][-1] == "c19"
+    pairs = [("c5", "c7"), ("c6", "c9"), ("scripted", "c13"), ("c17", "c19")]
+    where = static_design.assign_windows(held, pairs, {"scripted"})
+    assert where == {("c5", "c7"): 0, ("c6", "c9"): 1, ("scripted", "c13"): 2, ("c17", "c19"): 3}
+    try:
+        static_design.assign_windows(held, [("c0", "c9")], {"scripted"})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a pair no window holds must raise")
+
+
+def test_next_window_seats_in_the_spare_lanes_while_the_leavers_drain():
+    swapped = []
+
+    class Seat:
+        lanes = [[1, 2, 3, None]]  # a window of 3 and one spare lane (overlap 2)
+
+        def swap(self, run, lane, index):
+            swapped.append((lane, index))
+            self.lanes[run][lane] = index
+
+    condition = Condition(EL, 5, 5)
+    values = {Cell(condition, "c", "d"): 1.0}
+    names = ["scripted", "a", "b", "c", "d"]
+    engine = types.SimpleNamespace(
+        bucket=5,
+        planner=types.SimpleNamespace(
+            values=lambda overtime=False: values, buckets=(5, 10, 20), targets=[]
+        ),
+        index={n: i for i, n in enumerate(names)},
+        network=[False, True, True, True, True],
+        window_sets=[["a", "b", "c"], ["b", "c", "d"]],
+        window=0,
+        window_stages=(),
+        window_tail=None,
+        window_closed=False,
+        seat=Seat(),
+        runs=[(0, [1, 2, 3, None], 100)],
+        capacity_of={1: 100, 2: 100, 3: 100},
+        leaving=set(),
+        in_use=[0, 2, 0, 0, 0],  # "a" still plays its last game
+        stream_rank={1: 0, 2: 1, 3: 2, 4: 3},
+        swaps=0,
+        environments=0,
+        current=[],
+        next=[],
+        log=None,
+    )
+    for name in (
+        "_stages",
+        "_window_cells",
+        "_window_of",
+        "_in_window",
+        "_next_window",
+        "_window_advance",
+    ):
+        setattr(engine, name, types.MethodType(getattr(BucketEngine, name), engine))
+    for name in ("_window_record", "_window_opened", "_say", "_set_next", "_write"):
+        setattr(engine, name, lambda *a, **k: None)
+    engine.drain = lambda: 0
+    BucketEngine._window_step(engine)
+    # "d" comes in at once in the spare lane while "a" (dropped) drains
+    assert swapped == [(3, 4)] and engine.window == 1 and engine.leaving == {1}
+    engine.in_use[1] = 0
+    BucketEngine._window_step(engine)
+    assert swapped[-1] == (0, None) and 1 not in engine.capacity_of and not engine.leaving
+
+
+def test_spec_windows_must_overlap_by_the_reach(tmp_path):
+    from bnb.league.unified.run import load_spec
+
+    lines = ["[players]"]
+    for step in (1000, 2000, 3000, 4000):
+        where = tmp_path / f"dry-rl/policies/step_{step}/exponential_average"
+        where.mkdir(parents=True)
+        record = {"files": {"weights.safetensors": f"rl{step}"}}
+        (where / "checkpoint.json").write_text(json.dumps(record))
+        lines.append(f'rl_{step} = "{where}"')
+    names = ["scripted"] + [f"rl_{n}" for n in (1000, 2000, 3000, 4000)]
+    body = ["", "[[elo]]", f'preset = "{EL}"', 'design = "static"', "reach = 2"]
+    body.append(f"players = {names}".replace("'", '"'))
+    for overlap, fits in ((1, False), (2, True)):
+        head = [f"windows = {{size = 3, overlap = {overlap}}}"]
+        (tmp_path / "spec.toml").write_text("\n".join(head + lines + body) + "\n")
+        try:
+            spec = load_spec(tmp_path / "spec.toml")
+        except ValueError:
+            assert not fits
+        else:
+            assert fits and spec.windows == (3, overlap, None)

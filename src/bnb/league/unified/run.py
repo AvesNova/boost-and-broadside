@@ -107,6 +107,10 @@ class Spec:
     marks: dict[str, str] = dataclasses.field(default_factory=dict)
     # names of the same weights as an earlier name, to that name (`load_spec`)
     aliases: dict[str, str] = dataclasses.field(default_factory=dict)
+    # fixed windows of the static designs' streaming order, (size, overlap, lane capacity or
+    # None) (spec `windows = {size = 16, overlap = 8, capacity = 64}`; `engine.BucketEngine`),
+    # None: the sliding window
+    windows: tuple[int, int, int | None] | None = None
 
 
 # Imugi variants a spec's [players] may name (a player's value): Imugi with these rules
@@ -290,6 +294,16 @@ def load_spec(path: pathlib.Path, runs_directory: pathlib.Path | None = None) ->
         marks,
         aliases,
     )
+    if "windows" in raw:
+        size, overlap = int(raw["windows"]["size"]), int(raw["windows"]["overlap"])
+        for target in targets:
+            reach = getattr(target, "reach", None)
+            if reach is not None and overlap < reach:
+                raise ValueError(
+                    f"{path}: windows overlap {overlap} below {target.name}'s reach {reach}: "
+                    "a pair of neighbours would fit no window"
+                )
+        spec.windows = (size, overlap, raw["windows"].get("capacity"))
     spec.variants = variants  # variant -> the player playing it
     spec.runs_directory = runs_directory
     return spec
@@ -683,6 +697,8 @@ def run(
             residents=residents,
             rules=spec.rules,
             stream=stream_order(planner),
+            windows=getattr(spec, "windows", None),
+            log=say if own_planner is None else None,
         )
 
     footprints: dict[int, tuple[float, float]] = {}
