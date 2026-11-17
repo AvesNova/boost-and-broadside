@@ -437,6 +437,8 @@ class BucketEngine:
                 )
         self.seen_stages = stages
         tallied = self.drain()
+        if not self.resident_set:
+            self._reseat_by_design()
         environments = [
             e for e in range(self.environments) if self.next[e] is None or self.next[e].cell is None
         ]
@@ -444,6 +446,36 @@ class BucketEngine:
             self._set_next(environment, self._choose(environment))
         self._write(environments, [self.next[e] for e in environments])
         return tallied
+
+    def _reseat_by_design(self) -> None:
+        """The whole field seated: the lanes keep their capacities (the compiled shapes),
+        the players move between them by the new stage's games (the busiest in the widest
+        lanes, weights copied in place). Stage 2's top-up falls on other players than stage
+        1's (dry run 3: 1,562 games on the early BC, all in 43-row lanes). Skipped while
+        any network player still holds rows."""
+        if any(self.in_use[i] for i in self.capacity_of):
+            self._say(f"bucket {self.bucket}: lanes kept (games in flight at the new stage)")
+            return
+        shares = self._design_shares(self.players)
+        slots = sorted(
+            (
+                (capacity, run, lane)
+                for run, (_, members, capacity) in enumerate(self.runs)
+                for lane in range(len(members))
+            ),
+            key=lambda slot: -slot[0],
+        )
+        ranked = sorted(self.capacity_of, key=lambda i: -shares[i])
+        for _, run, lane in slots:
+            self.seat.swap(run, lane, None)
+        self.capacity_of = {}
+        for (capacity, run, lane), index in zip(slots, ranked, strict=False):
+            self.seat.swap(run, lane, index)
+            self.capacity_of[index] = capacity
+        widest = [self.players[i].name for i in ranked[:4]]
+        self._say(
+            f"bucket {self.bucket}: lanes reseated by the new stage's games (widest: {widest})"
+        )
 
     def _design_shares(self, players: list[Player]) -> list[float]:
         """Each player's share of the rows by the static designs' counts still to start

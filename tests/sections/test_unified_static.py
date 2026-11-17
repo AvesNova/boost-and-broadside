@@ -304,6 +304,7 @@ def test_a_new_stage_rechooses_the_parked_next_games():
     engine = types.SimpleNamespace(
         planner=types.SimpleNamespace(targets=[target]),
         seen_stages=(1,),
+        resident_set=True,
         environments=3,
         next=[Slot(None, 0, parked=True), real, None],
         log=None,
@@ -318,3 +319,27 @@ def test_a_new_stage_rechooses_the_parked_next_games():
     target.stage = 2
     BucketEngine._stage_step(engine)
     assert chosen == [0, 2] and written == [0, 2] and engine.seen_stages == (2,)
+
+
+def test_a_new_stage_moves_its_busiest_players_to_the_widest_lanes():
+    class Seat:
+        lanes = [[1], [2, 3]]
+
+        def swap(self, run, lane, index):
+            self.lanes[run][lane] = index
+
+    players = [types.SimpleNamespace(name=n) for n in ("scripted", "a", "b", "c")]
+    engine = types.SimpleNamespace(
+        bucket=5,
+        players=players,
+        runs=[(0, [1], 300), (0, [2, 3], 40)],
+        seat=Seat(),
+        capacity_of={1: 300, 2: 40, 3: 40},
+        in_use=[0, 0, 0, 0],
+        log=None,
+    )
+    engine._say = lambda text: None
+    engine._design_shares = lambda players: [0.0, 0.01, 0.0, 0.4]  # "c" has stage 2's games
+    BucketEngine._reseat_by_design(engine)
+    assert engine.seat.lanes[0] == [3] and engine.capacity_of[3] == 300
+    assert sorted(engine.seat.lanes[1]) == [1, 2] and engine.capacity_of[1] == 40
