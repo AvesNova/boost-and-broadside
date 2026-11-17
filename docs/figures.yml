@@ -38,19 +38,31 @@ figures:
   elo_over_training:
     title: Elo over training
     caption: >-
-      Each point is one snapshot of the training's exponential average of the weights,
-      rated 5 against 5 in the shared pool of both stages' snapshots and Imugi, Imugi fixed
-      at 1000; the band is one standard error. An open triangle is a bound: the snapshot
-      won (up) or lost (down) all or nearly all its games, so its rating has no finite
-      estimate. Live weights, where the pool rates them, are dotted. The dashed line is the
-      hand-off from behaviour cloning to reinforcement learning.
-    notes: [deathmatch_tickets]
+      Each point is one snapshot of a run's exponential average of the weights, rated 5
+      against 5 in one field that holds both dry runs' snapshots and champions: dry run 3
+      (dry-v26-s1, game v26) in colour, dry run 1 (dry-v24-s1, game v24) in grey. Imugi
+      of game v26 is fixed at 1000; Imugi of game v24 is a rated player (the lower dotted
+      line), and dry run 1's earlier games against it are part of the field. The band is
+      one standard error; an open triangle is a bound (the snapshot lost nearly all its
+      games, so its rating has no finite estimate); a snapshot not yet rated is left out
+      and breaks its line ({{elo_dry_v26_s1_elimination_unrated:.0f}} of dry run 3's so
+      far). A star is the run's champion. The dashed line is the hand-off from behaviour
+      cloning. Drawn: {{elo_modes_drawn}}; the other modes' fields are still being played.
+
+  champion_break_even:
+    title: Break-even at five ships
+    caption: >-
+      Each run's champion with {{break_even_policy_count:.0f}} ships against 1 to 20 of
+      Imugi's (game v26): the score at each lineup played (open points, 95% Wilson
+      intervals) and the logistic fit of those lineups alone, with its 95% band; the
+      dashed line is the break-even ratio. Dry run 3's champion in colour, dry run 1's in
+      grey.
 
   training_ratings:
     title: Ratings during training
     caption: >-
-      The training's own rating lanes, Elo against Imugi (1000) from a few games per
-      update against Imugi and the run's snapshots: the live weights solid, their
+      Dry run 3's (dry-v26-s1) own rating lanes, Elo against Imugi (1000) from a few
+      games per update against Imugi and the run's snapshots: the live weights solid, their
       exponential average dashed with one standard error. Noisier than the pool's ratings;
       the deathmatch lanes play the fewest games. The dashed vertical line is the hand-off
       from behaviour cloning.
@@ -76,7 +88,7 @@ figures:
   run_health:
     title: Run health
     caption: >-
-      The learner's own records against environment steps, each a faint raw line under a
+      Dry run 3's (dry-v26-s1) learner records against environment steps, each a faint raw line under a
       centred moving mean; the dashed line is the hand-off from behaviour cloning to
       reinforcement learning. The PPO panels start at the hand-off and the teacher's KL
       ends there. Explained variance and value loss are per reward part, entropy per
@@ -107,15 +119,15 @@ figures:
     title: Training throughput
     caption: >-
       Environment steps per second over whole updates, collection and learning together:
-      the median over the updates after the first, which compiles. RTX 5090: the dry run
-      dry-v24-s1, 2,048 environments, micro-batches of 480 rows. A dotted slot is a GPU
+      the median over the updates after the first, which compiles. RTX 5090: dry run 3,
+      dry-v26-s1, 2,048 environments, micro-batches of 480 rows. A dotted slot is a GPU
       not yet measured.
 
   # ------------------------------------------------------------------ behaviour
   behaviour_over_training:
     title: How the play changed
     caption: >-
-      The training's own games, per update: the student's games during behaviour cloning,
+      Dry run 3's (dry-v26-s1) own games, per update: the student's games during behaviour cloning,
       then self-play and the league during reinforcement learning (from the dashed line).
       They show how the play changed, not how strong it is. Mean speed is over all modes.
 

@@ -7,6 +7,8 @@ covers: []
 The results of version 2: one network trained to command a fleet in three modes, measured
 against Imugi, the scripted agent, and against its own earlier configurations.
 
+{{pending: release_run | The release run's results: elimination only, Jujak against Jujak, no fog of war. Until then these pages show the dry runs, three modes on mixed lineups.}}
+
 {{pending: results_overview | Two or three sentences: the champion's run and steps, its break-even ratio per mode, and its Elo per mode, written after the results.}}
 
 {{figure: docs/results/win_rate_fan.png | Win rate against Imugi over training steps, one line per ratio of Imugi's ships to ours (1, 1.2, 1.6 and 2), one panel per mode}}

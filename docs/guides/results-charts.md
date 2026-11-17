@@ -27,7 +27,15 @@ bnb figures results lanes runs/r0-bc runs/r0-rl
 bnb figures results elo $EVAL/curves/curves.csv          # bnb pool curves --out
 bnb figures results suite $EVAL/suite                    # a bnb evaluate directory
 bnb figures results averaging $EVAL/champion.json        # box/eval_champion.py
+bnb figures results elo $UNIFIED/report.json --modes elimination --chain r1 \
+  --labels "r1=run 1" "r0=run 0"                         # the unified evaluator's field
+bnb figures results champion-break-even $UNIFIED/report.json --chain r1
+bnb figures results matchup table.txt --labels A=r1-bc B=r0-bc --opponent imugi_v24
 ```
+
+`box/refresh_writeup.sh` re-pulls the dry runs' records and the unified evaluator's report
+from the box and runs the charts that read them, then renders the README and the review
+copy; its header lists what it draws.
 
 Each chart's title and caption are in `docs/figures.yml`{.plain} ([titles and
 captions](../contributing/writing-docs.md#titles-and-captions)). The house style (the
@@ -127,6 +135,20 @@ evaluation's.
 error, the live weights dotted where the pool holds them, a bound an open triangle, the
 hand-off from cloning to RL dashed.
 
+From the unified evaluator's `report.json` (`bnb.figures.results.report`; its `spec.toml`{.plain}
+beside it gives the champions' steps), one field of several chains' snapshots and
+champions, the anchor `scripted` at 1000 and other fixed players (an earlier game's Imugi)
+rated as players: **`elo`** draws one panel per mode in `--modes` (elimination first by
+default), one line per chain (`--chain` in the mode's colour, the others grey,
+`--labels CHAIN=LABEL`), broken where a scheduled snapshot has no rating yet, a bound an
+open triangle, each champion a star, and each fixed player's rating a dotted reference line.
+**`champion-break-even`** draws each champion's score at `--policy-count` of its ships
+against 1 to N of Imugi's, refitted on those lineups alone (the report's own fit pools every
+lineup of the field, the team-size games' included), with its 95% band and the break-even
+ratio; until such lineups are played it draws nothing and writes its values as pending.
+**`matchup`** reads a matchup table's lines ("A elimination n=256 W/D/L 95/0/161 score
+0.371 ± 0.030") into values only.
+
 **`suite`**: the champion against Imugi on each head-to-head condition of a `bnb evaluate`
 directory: its score (wins and half the draws) with a 95% Wilson interval, one panel per
 mode, one point per team size.
@@ -154,6 +176,9 @@ names, with `<mode>` one of `frontline`, `deathmatch`, `elimination`:
 | `throughput` | `throughput_<gpu>_<stage>_steps_per_second`, `chain_hours_<gpu>_<stage>`, `chain_steps_<stage>`, `compile_minutes_<gpu>` (both stages' first updates over their median update) |
 | `lanes` | `lanes_<mode>_<live or average>_final`, `_final_stderr` |
 | `elo` | `elo_<mode>_bc_final`, `elo_<mode>_final`: the averaged weights' last BC and last RL snapshot as text, "1234 ± 45" or a bound "> 1721 (a bound)"; `_steps`: its chain steps |
+| `elo` (report.json) | per chain `elo_<chain>_<mode>_bc_final`, `_final`, `_champion` (text, as above) and their `_steps`, `_unrated` (snapshots not yet rated); the `--chain` also as `elo_<mode>_bc_final` and `elo_<mode>_final`; `elo_<player>_<mode>` per fixed player; `elo_modes_drawn`, `elo_report_games`; `h2h_<chain>_<mode>_<lineup>_vs_<opponent>_score`, `_stderr`, `_games` per played win-rate cell; a mode not drawn is null |
+| `champion-break-even` | `break_even_<chain>_<mode>_ratio`, `_ratio_stderr`, `_status`, `_games`; `break_even_policy_count` |
+| `matchup` | `matchup_<name>_<mode>_vs_<opponent>_score`, `_stderr`, `_games`, `_wins`, `_draws`, `_losses`{.plain} |
 | `suite` | `suite_<condition>_score`, `_low`, `_high`, `_games`; `suite_games_per_condition`, `champion_game_version` (the batches' game version) |
 | `averaging` | `averaging_best_gap`, `_stderr`, `averaging_candidates`; `champion_name`, `champion_run`, `champion_steps`, `champion_weights` (strings, but for the steps) |
 | `game-length` | `game_length_<mode>_median_seconds`, `_lower_quartile_seconds`, `_upper_quartile_seconds`, `_games`, `_clock_out_share` |

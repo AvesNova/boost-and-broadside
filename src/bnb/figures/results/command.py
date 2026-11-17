@@ -13,6 +13,7 @@ from . import (
     fan,
     game_length,
     health,
+    report,
     team_size,
     training,
 )
@@ -31,6 +32,8 @@ CHARTS = (
     "suite",
     "averaging",
     "maps",
+    "champion-break-even",
+    "matchup",
 )
 
 
@@ -56,7 +59,18 @@ def _draw(options) -> tuple[list, dict]:
         raise SystemExit(f"bnb figures results {options.chart} needs its sources")
     single = sources[0]
     if (
-        options.chart in ("fan", "break-even", "arms", "elo", "suite", "averaging", "maps")
+        options.chart
+        in (
+            "fan",
+            "break-even",
+            "arms",
+            "elo",
+            "suite",
+            "averaging",
+            "maps",
+            "champion-break-even",
+            "matchup",
+        )
         and len(sources) != 1
     ):
         raise SystemExit(f"bnb figures results {options.chart} reads one source, not {sources}")
@@ -95,8 +109,29 @@ def _draw(options) -> tuple[list, dict]:
         )
     elif options.chart == "lanes":
         written, values = training.draw_lanes(sources, options.out, formats)
+    elif options.chart == "elo" and single.endswith(".json"):  # the unified evaluator's
+        written, values = report.draw_elo(
+            single,
+            options.out,
+            tuple(options.modes),
+            options.chain,
+            formats,
+            labels=_labels(options),
+        )
     elif options.chart == "elo":
         written, values = evaluation.draw_elo(single, options.out, formats)
+    elif options.chart == "champion-break-even":
+        written, values = report.draw_break_even(
+            single,
+            options.out,
+            options.policy_count,
+            tuple(options.modes),
+            options.chain,
+            formats,
+            labels=_labels(options),
+        )
+    elif options.chart == "matchup":  # values only: a table on the page, no figure
+        written, values = [], evaluation.matchup_values(single, _labels(options), options.opponent)
     elif options.chart == "suite":
         written, values = evaluation.draw_suite(single, options.out, formats)
     elif options.chart == "maps":  # values only: a table on the page, no figure
@@ -107,6 +142,15 @@ def _draw(options) -> tuple[list, dict]:
     else:
         raise SystemExit(f"unknown chart {options.chart!r}; choose from {CHARTS}")
     return written, values
+
+
+def _labels(options) -> dict[str, str]:
+    """`--labels`' NAME=LABEL pairs as {name: label}."""
+    pairs = [label.split("=", 1) for label in options.labels]
+    bad = [label for label, pair in zip(options.labels, pairs, strict=True) if len(pair) != 2]
+    if bad:
+        raise SystemExit(f"--labels takes NAME=LABEL pairs, not {bad}")
+    return dict(pairs)
 
 
 def _other_gpus(options) -> dict:

@@ -14,7 +14,7 @@ policy, the mode, the lineup and the seed, so it can be replayed with `bnb play`
 
 {{figure: docs/results/behaviour_over_training.png | Against environment steps, one line per mode: kills per ship-minute, game length, the share of deaths to the boundary, the hit rate, the front's moves per minute in Frontline, and the mean speed; the hand-off from behaviour cloning to reinforcement learning dashed}}
 
-These are the training's own games, from the run's metrics: during behaviour cloning the
+These are dry run 3's (`dry-v26-s1`{.plain}) own games, from the run's metrics: during behaviour cloning the
 student's games against its teacher, during reinforcement learning its games against itself
 and its league. They show how the play changed, not how strong it is; strength is on
 [Training curves](training.md).

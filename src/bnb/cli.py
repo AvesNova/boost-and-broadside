@@ -661,11 +661,18 @@ class FiguresResults:
     the values file, the training lanes' ratings); `elo`, `bnb pool curves`' CSV; `suite`,
     a `bnb evaluate` directory; `averaging`, `box/eval_champion.py`'s champion.json;
     `maps`, the map-scale pools' directory (`scale_<s>/table.txt`; values only, no figure).
+    The unified evaluator's report.json (`bnb.figures.results.report`): `elo` from it (every
+    chain in its field on one scale) and `champion-break-even` (each champion at
+    `policy_count` of its ships against 1 to N of Imugi's); `matchup`, a matchup table
+    (values only; `labels` maps its line labels to names, A=dry-v26-s1-bc, against
+    `opponent`). For the report's charts `labels` maps a chain to its line's label
+    (dry-v26-s1="dry run 3").
 
-    modes: the modes drawn (fan, team-size; default all found); policy_count and
-    opponent_counts: the fan's lineups (5 against each); chain: break-even's chain when the
-    directory holds several; ratios: team-size's Imugi ships per ours; trained_team_size:
-    the size marked; samples: W&B history samples per key (health).
+    modes: the modes drawn (fan, team-size, the report's charts; default all found);
+    policy_count and opponent_counts: the fan's lineups (5 against each); chain:
+    break-even's chain when the directory holds several, and the report charts' own chain
+    (drawn in the mode's colour, the others neutral); ratios: team-size's Imugi ships per
+    ours; trained_team_size: the size marked; samples: W&B history samples per key (health).
     """
 
     chart: tyro.conf.Positional[
@@ -683,6 +690,8 @@ class FiguresResults:
             "suite",
             "averaging",
             "maps",
+            "champion-break-even",
+            "matchup",
         ]
     ]
     sources: tyro.conf.Positional[tuple[str, ...]]
@@ -697,6 +706,8 @@ class FiguresResults:
     trained_team_size: int = 5
     samples: int = 1000
     gpu: str = "rtx_5090"
+    labels: tuple[str, ...] = ()
+    opponent: str = "scripted"
 
 
 @dataclasses.dataclass(frozen=True)

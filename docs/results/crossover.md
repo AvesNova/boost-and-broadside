@@ -9,6 +9,13 @@ own, and at what point in training does it first win while outnumbered?
 
 {{pending: crossover_headline | The headline sentence, chosen after the results; the same text as the README's.}}
 
+{{pending: release_run_crossover | The release run's break-even, elimination only, in place of the dry runs' charts below.}}
+
+The fan and the break-even ratio over training below are dry run 1's (`dry-v24-s1`{.plain},
+game v24, against its own Imugi), every lineup with 20 ships on its larger side. The two
+dry runs' champions at 5 ships against the current Imugi are in
+[the last section](#both-champions-at-five-ships).
+
 ## Win rate against training steps
 
 {{figure: docs/results/win_rate_fan.png | Win rate against Imugi over training steps, one line per ratio of Imugi's ships to ours (1, 1.2, 1.6 and 2), one panel per mode}}
@@ -42,6 +49,18 @@ needing twice Imugi's are the same distance from 1.
 | Elimination | {{crossover_ratio_elimination:.2f}} | {{crossover_ratio_elimination_stderr:.2f}} | {{crossover_ratio_elimination_steps:,.0f}} |
 
 {{pending: crossover_reading | What the curves show: when each mode passes a ratio of 1, whether behaviour cloning alone reaches it, and how the modes differ.}}
+
+## Both champions at five ships
+
+Each dry run's champion with 5 of its ships against 1 to 20 of Imugi's (game v26), in
+elimination, fitted on those lineups alone:
+
+{{figure: docs/results/champion_break_even.png | The score against Imugi at each lineup of 5 of ours against N of Imugi's, with each champion's logistic fit and break-even ratio}}
+
+| Champion | Break-even ratio | Standard error | Games |
+|---|---|---|---|
+| Dry run 3 | {{break_even_dry_v26_s1_elimination_ratio:.2f}} | {{break_even_dry_v26_s1_elimination_ratio_stderr:.2f}} | {{break_even_dry_v26_s1_elimination_games:,.0f}} |
+| Dry run 1 | {{break_even_dry_v24_s1_elimination_ratio:.2f}} | {{break_even_dry_v24_s1_elimination_ratio_stderr:.2f}} | {{break_even_dry_v24_s1_elimination_games:,.0f}} |
 
 ## Why this measurement
 

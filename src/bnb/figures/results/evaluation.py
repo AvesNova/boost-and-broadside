@@ -401,3 +401,29 @@ def map_values(directory, player: str = "champion") -> dict[str, str | None]:
             else:
                 values[key] = f"< {float(row.group('bound')):.0f} (a bound: below the pool's range)"
     return values
+
+
+MATCHUP_ROW = re.compile(
+    r"^(?P<label>\S+)\s+(?P<mode>[a-z]+)\s+n=(?P<games>\d+)\s+W/D/L\s+"
+    r"(?P<wins>\d+)/(?P<draws>\d+)/(?P<losses>\d+)\s+score\s+(?P<score>[\d.]+)\s+"
+    r"(?:\+-|±)\s+(?P<stderr>[\d.]+)"
+)
+
+
+def matchup_values(path, labels: dict[str, str], opponent: str) -> dict[str, float | None]:
+    """A matchup table's values (one line per policy and mode, "A elimination n=256 W/D/L
+    95/0/161 score 0.371 ± 0.030", a 5 against 5 `bnb crossover` tallied): per line
+    `matchup_<name>_<mode>_vs_<opponent>_score`, `_stderr`, `_games`, `_wins`, `_draws`
+    and `_losses`, the name the line's label mapped through `labels` (A=dry-v26-s1-bc)."""
+    values: dict[str, float | None] = {}
+    for line in pathlib.Path(path).read_text().splitlines():
+        row = MATCHUP_ROW.match(line.strip())
+        if not row:
+            continue
+        name = labels.get(row.group("label"), row.group("label"))
+        stem = f"matchup_{common.slug(name)}_{row.group('mode')}_vs_{common.slug(opponent)}"
+        for key in ("score", "stderr", "games", "wins", "draws", "losses"):
+            values[f"{stem}_{key}"] = float(row.group(key))
+    if not values:
+        raise SystemExit(f"no matchup lines in {path}")
+    return values

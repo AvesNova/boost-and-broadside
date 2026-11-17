@@ -83,7 +83,7 @@ behaviour cloning and reinforcement learning.
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="docs/results/elo_over_training_dark.png"><img alt="Elo against environment steps, one line per mode, Imugi at 1000, the hand-off from behaviour cloning to reinforcement learning marked" src="docs/results/elo_over_training.png"></picture>
 
-<sub>**Figure 3.** Each point is one snapshot of the training's exponential average of the weights, rated 5 against 5 in the shared pool of both stages' snapshots and Imugi, Imugi fixed at 1000; the band is one standard error. An open triangle is a bound: the snapshot won (up) or lost (down) all or nearly all its games, so its rating has no finite estimate. Live weights, where the pool rates them, are dotted. The dashed line is the hand-off from behaviour cloning to reinforcement learning. Deathmatch in this run is slightly off: it trained with 5 tickets per ship (5N) and was evaluated with 4·N^(4/3) tickets, rounded to 5.</sub>
+<sub>**Figure 3.** Each point is one snapshot of a run's exponential average of the weights, rated 5 against 5 in one field that holds both dry runs' snapshots and champions: dry run 3 (dry-v26-s1, game v26) in colour, dry run 1 (dry-v24-s1, game v24) in grey. Imugi of game v26 is fixed at 1000; Imugi of game v24 is a rated player (the lower dotted line), and dry run 1's earlier games against it are part of the field. The band is one standard error; an open triangle is a bound (the snapshot lost nearly all its games, so its rating has no finite estimate); a snapshot not yet rated is left out and breaks its line (15 of dry run 3's so far). A star is the run's champion. The dashed line is the hand-off from behaviour cloning. Drawn: elimination; the other modes' fields are still being played.</sub>
 
 > **Pending (training_summary).** One or two sentences: the final Elo per mode (elo_deathmatch_final and the others) and where the hand-off from cloning to reinforcement learning shows on the curve.
 
@@ -110,7 +110,7 @@ together:
 | GPU | Behaviour cloning | Reinforcement learning |
 |---|---|---|
 | RTX 4070 Laptop (8 GB) | **⟨throughput_laptop_4070_bc_steps_per_second⟩** | **⟨throughput_laptop_4070_rl_steps_per_second⟩** |
-| RTX 5090 (32 GB) | 19,511 | 21,770 |
+| RTX 5090 (32 GB) | 19,304 | 21,622 |
 
 [All results](docs/results/index.md) ·
 [How they are measured](docs/results/evaluation.md)

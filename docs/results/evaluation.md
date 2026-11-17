@@ -22,8 +22,8 @@ and finds the ratio of ships at which each side wins half the games
 ([the break-even lineup](../explanation/league.md#published-ratings)):
 
 - **Lineups.** The weaker side fields 20 ships and the stronger side fewer; unused slots
-  are benched, dead and out of play. Every game draws its lineup of ship types, each slot
-  Yongma or Jujak with equal chance, both teams flying it slot for slot.
+  are benched, dead and out of play. In the dry runs every game draws its lineup of ship
+  types, each slot Yongma or Jujak with equal chance, both teams flying it slot for slot.
 - **Fit.** One logistic regression of the policy's score (a win 1, a draw one half, a loss
   0) on the log ratio of ships, over every game. The break-even ratio is where the fitted
   curve crosses one half; its standard error comes from the fit's covariance.

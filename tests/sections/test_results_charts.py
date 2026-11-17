@@ -459,3 +459,96 @@ def test_the_map_values_read_the_pool_tables(tmp_path):
     values = evaluation.map_values(tmp_path)
     assert values["maps_scale_0_5_elimination_elo"] == "1243 ± 32"
     assert values["maps_scale_0_5_frontline_elo"].startswith("> 1721 (a bound")
+
+
+def synthetic_report(directory: pathlib.Path, far_lineups: bool = True) -> pathlib.Path:
+    """A unified evaluator's report.json and spec.toml: two chains' snapshots, champions,
+    the anchor and an earlier Imugi in an elimination field (one RL snapshot unplayed, one
+    BC snapshot a bound), win-rate cells and each champion's break-even lineups."""
+    directory.mkdir(parents=True, exist_ok=True)
+    ratings, status, errors = {"scripted": 1000.0, "imugi_v24": 980.0}, {}, {"imugi_v24": 3.0}
+    status.update(scripted="rated", imugi_v24="rated")
+    players = {"imugi_v24": "imugi_v24"}
+    for index, chain in enumerate(("new-s1", "old-s1")):
+        for stage, steps in (("bc", 1), ("bc", 2), ("bc", 4), ("rl", 1), ("rl", 2), ("rl", 4)):
+            name = f"{chain}/{stage}_{steps * 1048576}"
+            ratings[name] = 600.0 + 100 * steps + (400 if stage == "rl" else 0) - 50 * index
+            status[name], errors[name] = "rated", 30.0
+            players[name] = f"{chain}-{stage}/policies/step_{steps * 1048576}/exponential_average"
+        ratings[f"{chain}/champion"], status[f"{chain}/champion"] = 1500.0, "rated"
+        errors[f"{chain}/champion"] = 20.0
+        players[f"{chain}/champion"] = f"/runs/{chain}-rl/policies/step_{4 * 1048576}/x"
+    status["new-s1/rl_2097152"], ratings["new-s1/rl_2097152"] = "unplayed", None
+    status["old-s1/bc_1048576"] = "below"
+    elo = dict(kind="elo", ratings=ratings, status=status, errors=errors, games=900)
+    targets = {"curves/elimination": elo}
+    for chain, strength in (("new-s1", 1.4), ("old-s1", 1.1)):
+        lineups = {"1v1": [10.0, 40.0], "5v5": [60.0, 64.0]}
+        for theirs in (6, 8, 10) if far_lineups else ():
+            share = 1 / (1 + math.exp(-3 * math.log(5 * strength / theirs)))
+            lineups[f"5v{theirs}"] = [round(share * 64), 64.0]
+        targets[f"break_even/real_scale_elimination/{chain}/champion"] = dict(
+            kind="break_even",
+            preset="real_scale_elimination",
+            policy=f"{chain}/champion",
+            lineups=lineups,
+        )
+        targets[f"suite/real_scale_elimination/{chain}/champion_vs_scripted"] = dict(
+            kind="win_rate",
+            cell=f"real_scale_elimination/{chain}/champion_vs_scripted",
+            games=64,
+            score=0.9,
+            stderr=0.04,
+        )
+    path = directory / "report.json"
+    path.write_text(json.dumps(dict(games=900, targets=targets)))
+    spec = "\n".join(f'"{name}" = "{where}"' for name, where in players.items())
+    (directory / "spec.toml").write_text(f"[players]\n{spec}\n")
+    return path
+
+
+def test_the_report_elo_puts_both_chains_on_one_scale(tmp_path):
+    from bnb.figures.results import report
+
+    path = synthetic_report(tmp_path / "unified")
+    written, values = report.draw_elo(path, tmp_path / "out", ("elimination",), "new-s1")
+    _drawn(written)
+    assert values["elo_new_s1_elimination_bc_final"] == "1000 ± 30"
+    assert values["elo_new_s1_elimination_final"] == "1400 ± 30"
+    assert values["elo_old_s1_elimination_final"] == "1350 ± 30"
+    assert values["elo_elimination_final"] == values["elo_new_s1_elimination_final"]
+    assert values["elo_new_s1_elimination_champion_steps"] == 8 * 1048576  # BC 4M + RL 4M
+    assert values["elo_new_s1_elimination_unrated"] == 1
+    assert values["elo_imugi_v24_elimination"] == "980 ± 3"
+    assert values["elo_frontline_final"] is None  # a mode not drawn is pending
+    assert values["h2h_new_s1_elimination_5v5_vs_scripted_score"] == 0.9
+    target = json.loads(path.read_text())["targets"]["curves/elimination"]
+    runs = report.rated_segments(target, "new-s1")
+    assert [len(run) for run in runs] == [4, 1]  # the unplayed RL snapshot breaks the line
+
+
+def test_the_champion_break_even_fits_its_own_lineups_or_waits(tmp_path):
+    from bnb.figures.results import report
+
+    path = synthetic_report(tmp_path / "unified")
+    written, values = report.draw_break_even(path, tmp_path / "out", 5)
+    _drawn(written)
+    assert values["break_even_new_s1_elimination_status"] == "crossing"
+    assert 1.2 < values["break_even_new_s1_elimination_ratio"] < 1.7
+    assert values["break_even_new_s1_elimination_games"] == 64 * 4  # the 1v1 games left out
+    waiting = synthetic_report(tmp_path / "waiting", far_lineups=False)
+    written, values = report.draw_break_even(waiting, tmp_path / "none", 5)
+    assert written == [] and values["break_even_new_s1_elimination_ratio"] is None
+
+
+def test_the_matchup_values_read_the_table(tmp_path):
+    from bnb.figures.results import evaluation
+
+    table = tmp_path / "table.txt"
+    table.write_text(
+        "A elimination  n=256 W/D/L 95/0/161 score 0.371 ± 0.030\n"
+        "B deathmatch   n=256 W/D/L 16/10/230 score 0.082 +- 0.016\n"
+    )
+    values = evaluation.matchup_values(table, {"A": "run-bc"}, "imugi_v24")
+    assert values["matchup_run_bc_elimination_vs_imugi_v24_score"] == 0.371
+    assert values["matchup_b_deathmatch_vs_imugi_v24_losses"] == 230
