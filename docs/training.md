@@ -10,8 +10,8 @@ they matter. Exact results and post-hoc methodology are in [evaluation](evaluati
 
 ## Reference run at a glance
 
-The reference run is `good-leaf-719`. Its
-[stored configuration](../checkpoints/good-leaf-719/artifacts/wandb-export/) records:
+The reference run is `wild-universe-731`. Its
+[stored configuration](../checkpoints/wild-universe-731/artifacts/wandb-export/) records:
 
 | Setting | Value |
 |---|---:|
@@ -26,9 +26,11 @@ The reference run is `good-leaf-719`. Its
 | Opponent paradigm | `ego_pass` |
 | Elo evaluation games per matchup slot | 512 |
 
-The run logged 999,309,312 steps over 1,004 updates before finishing. Where this page
-and the stored configuration disagree, the stored configuration is what actually ran.
-Earlier runs are listed in [training runs](training-runs.md).
+The run logged 671,846,400 steps over 674 updates and was stopped there,
+short of its target (status `interrupted`). Where this page and the stored
+configuration disagree, the stored configuration is what actually ran. Several
+measurements quoted below come from the previous reference run, `good-leaf-719`, and say
+so. Earlier runs are listed in [training runs](training-runs.md).
 
 ## Recurrent PPO lifecycle
 
@@ -132,7 +134,7 @@ The buffer stores precision-tolerant leaves in bfloat16 and categorical channels
 integer dtypes, while reductions and running statistics use float32. Current profiles can
 also collect multiple fixed-width rollout shards into a host-backed logical batch, a
 newer design documented in [memory optimization](engineering/memory-optimization.md);
-the reference run predates it.
+`good-leaf-719` predates it.
 
 ## `ego_pass` and team perspective
 
@@ -193,7 +195,7 @@ component's own scale with the guard's. Both are true epsilons:
 the terminal win signal's advantage RMS is around 0.008, two orders of magnitude below a
 per-step damage signal, and an earlier floor of 0.1 was downweighting it roughly
 thirteenfold in the policy gradient. `return_min_span` was likewise held at 1.0 for a
-time, where it bound eight of twelve components on every update of the reference run and
+time, where it bound eight of twelve components on every update of run 719 and
 suppressed `field_death`'s critic gradient by four orders of magnitude; it now sits at
 1e-3, more than an order of magnitude below the narrowest live component's spread.
 `scaler/floor_bound_span/*` and
@@ -277,11 +279,11 @@ the kill side delivers roughly 87% of the death side's gradient magnitude. Weigh
 what an event *means*; how much pressure it exerts is allowed to follow how coherent the
 signal actually is. That is deliberate — a component whose behaviour the policy has already
 solved produces gradients that increasingly cancel, and its influence should fade on its
-own rather than be propped up. In the reference run `field_death`'s coherence halved as
+own rather than be propped up. In run 719 `field_death`'s coherence halved as
 field deaths fell eightfold.
 
 The numbers are **solved, not chosen.** The target is the one configuration measured that
-beat the reference run, by +58 Elo at matched steps on a joint Bradley-Terry fit. That
+beat run 719, by +58 Elo at matched steps on a joint Bradley-Terry fit. That
 run's weights were not derived — they came from `w = share / d` against measured gradient
 coherence, which is why no two of them are equal — so these five numbers are the closest
 the derivation can come to that vector, by least squares on log weights. Log space because
@@ -296,7 +298,7 @@ per-component solve rather than out of any principle.
 
 Two earlier vectors are worth knowing about, because they are what this replaced. Setting
 the numbers to a *tier-share target* was tried twice and lost both times. Copying the
-reference run's own vector exactly was tried once: it reproduced that run — parity at 133M
+719's own vector exactly was tried once: it reproduced that run — parity at 133M
 and 154M steps — and came nowhere near the run being reconstructed here. Matching the
 reference is evidently enough to match it and not enough to beat it.
 
@@ -316,7 +318,7 @@ A lambda aggregation matrix then maps local event signals to training targets:
 Each row of that matrix is normalized to a mean over the contributors it actually has —
 one ship for a local component, the live teammates for a global one — and the component
 weight is applied afterwards. The order matters: normalizing a row that already carries
-its weight divides the weight back out, which is how the reference run's `ally_win`
+its weight divides the weight back out, which is how run 719's `ally_win`
 weight of 1.5 came to train identically to 0.25 per ally — an effective total of 1.0 across
 a four-ship team, whatever the configured number was. Because advantages are already
 per-component unit-RMS before aggregation, the weight is then a pure importance term,
@@ -330,7 +332,7 @@ partition: an outcome is discounted over a whole episode, a kill over an engagem
 over an exchange, geometry over the next moment.
 
 Three of the four scales hold flat, and that is the settled answer for them: the realised
-tier shares already drift the way a curriculum would move them — measured on the reference run,
+tier shares already drift the way a curriculum would move them — measured on run 719,
 the outcome tier's share of the policy gradient rises about 1.29x over a run while the
 kill/death tier falls to 0.73x — so scheduling them would fight a trend rather than create
 one.
@@ -547,7 +549,11 @@ follow from the definition in
 The linear placement is an approximation and a rough one at the weak end. Measured against
 ladders fitted by `bnb semi-random` and regauged to the same two endpoints, it rates the
 `p=0.2` rung about 106 Elo too high in the zero-field environment and 77 too high with
-fields; from `p=0.6` upward it is within 40 points in both. Two consequences come with it:
+fields; from `p=0.6` upward it is within 40 points in both. In `wild-universe-731`'s
+environment, with this version's physics, the gap is wider: about
+139 at `p=0.2`, up to
+153 in the middle rungs, and within
+47 only from `p=0.8` up. Two consequences come with it:
 proximity sampling meets an over-rated rung slightly earlier than it otherwise would, and
 the milestone grid that decides when checkpoints freeze is read on these numbers.
 
@@ -591,6 +597,17 @@ The naming is the enforcement. Nothing the trainer emits sits under a bare `elo/
 that could be read as either, and the calibration chart files deliberately do not reuse
 the trainer's key names even though they share its file shape. Published figures and prose
 quote the calibrated series only.
+
+The one exception is this comparison, labelled as such. In `wild-universe-731` the two end close together: the trainer's last live rating is
+2,093 for the live policy and
+2,035 for the averaged one, where calibration rates the
+final live checkpoint 2,110 ±
+11 and the best averaged checkpoint
+2,052 ± 11.
+
+![Live Elo during training](results/v1-731/elo_history_731.png)
+
+*Figure 1. The live Elo the trainer kept while it ran (dark line: live policy; light line: averaged policy), from sequential updates against a changing opponent pool: a shape, not a rating. The orange points are post-hoc calibrated ratings, of the final live checkpoint (2,110 ± 11) and the best averaged checkpoint (2,052 ± 11). Drawn by scripts/plot_elo_history.py.*
 
 Every rung's `p_scripted` is persisted in `roster.json` and restored on resume. It has to be:
 the evaluator builds the rungs itself from a scripted/uniform blend, and a rung rebuilt without
@@ -677,7 +694,8 @@ rung (27–0). Complete separation sends both opponents' maximum likelihood to �
 prior bounds them, and its shrinkage weakens as games accumulate — so the agent with *fewer*
 games came out higher, ranking random a hundred points above a rung it is plainly worse than.
 The trade for pinning is a known one: the linear rung assignment sits up to ~106 Elo from a
-fitted ladder at the weak end, so that bias propagates into the checkpoint ratings. It is
+fitted ladder at the weak end (up to 153 in
+`wild-universe-731`'s environment), so that bias propagates into the checkpoint ratings. It is
 bounded and identical in every run under the same gauge, which is what matters for comparing
 runs, where an unpinned fit at low connectivity is unbounded and different every time.
 
@@ -805,7 +823,7 @@ that is avoidable, which is what makes two runs of one configuration comparable.
 
 W&B logging runs off the main training path. The reference run's sampled metric history,
 configuration, summary, and run metadata are exported under
-[`wandb_export/`](../checkpoints/resilient-resonance-682/wandb_export/) so the published
+[`artifacts/wandb-export/`](../checkpoints/wild-universe-731/artifacts/wandb-export/) so the published
 charts can be rebuilt without relying on a hosted dashboard.
 
 ### What `--vram` may and may not change

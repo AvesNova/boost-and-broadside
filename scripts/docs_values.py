@@ -61,6 +61,8 @@ def rounded(value, digits: int = 6):
 
 def run_values(run_dir: Path, run_name: str) -> dict:
     run = read_json(run_dir / "run.json")
+    elo_history = (run_dir / "elo_history.jsonl").read_text().splitlines()
+    last_live = json.loads(elo_history[-1])
     export = newest_artifact(run_dir, "wandb-export")
     config = read_json(export / "config.json")
     meta = read_json(export / "run_meta.json")
@@ -88,6 +90,8 @@ def run_values(run_dir: Path, run_name: str) -> dict:
         "run_steps_per_second": steps / seconds,
         "run_ship_tokens_per_second": steps * ships / seconds,
         "run_git_commit": run["git_commit"][:8],
+        "training_live_elo_final": last_live["live"],
+        "training_averaged_live_elo_final": last_live["avg"],
         "config_parallel_environments": config["train/scales"][0]["num_envs"],
         "config_rollouts_per_update": setting("train", "rollouts_per_update"),
         "config_ships_per_environment": ships,

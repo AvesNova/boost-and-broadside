@@ -1104,5 +1104,7 @@
  "scripted_win_rate_first_95_millions": 86.593536,
  "scripted_win_rate_first_99_millions": 114.46272,
  "scripted_win_rate_min_after_200m": 0.97,
- "scripted_win_rate_points": 674
+ "scripted_win_rate_points": 674,
+ "training_averaged_live_elo_final": 2034.793861,
+ "training_live_elo_final": 2093.086949
 }
