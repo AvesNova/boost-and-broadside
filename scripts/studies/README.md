@@ -23,7 +23,8 @@ merged data and light charts from `out/studies/` (or `DIR`, or `$BNB_STUDIES_DIR
 
 The studies ran on 2026-11-17. Every laptop job (RTX 4070 Laptop) ran from a clean
 checkout of `main` at `d017f0b0`. The 16- and 32-ship seed-1 sweeps ran on a rented
-RTX 5090 from a clone of the same version; its logs do not record the commit. The scripts
+RTX 5090 from a fresh clone of `main` made that day; its logs do not record the commit, but
+`main` has been at `d017f0b0` since 2026-09-07, so the clone was that commit. The scripts
 here are the ones that ran, with three kinds of change since: absolute paths replaced by
 the defaults above, lint fixes (variable renames, line wraps), and, in `fan/extras.py`,
 chart notes that read the game counts from the data and end labels that no longer overlap.
