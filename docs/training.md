@@ -134,7 +134,7 @@ The buffer stores precision-tolerant leaves in bfloat16 and categorical channels
 integer dtypes, while reductions and running statistics use float32. Current profiles can
 also collect multiple fixed-width rollout shards into a host-backed logical batch, a
 newer design documented in [memory optimization](engineering/memory-optimization.md);
-`good-leaf-719` predates it.
+`wild-universe-731` collected three rollout shards per update.
 
 ## `ego_pass` and team perspective
 

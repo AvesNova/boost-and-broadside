@@ -11,7 +11,7 @@ clip is one game from a seeded batch, so it replays exactly from its seed and ga
 ([`scripts/studies/`](../scripts/studies/README.md) has the commands).
 
 The other clips (self-play and the further examples) are from `resilient-resonance-682`,
-an earlier run that trained under different combat physics (frontal armour at 0.1 rather
+an earlier run that trained under different combat physics (among other differences, frontal armour at 0.1 rather
 than 0.3), a different decision rate, and without
 refractive fields. Read them as illustrations of fleet combat, not as the run being
 reported.
