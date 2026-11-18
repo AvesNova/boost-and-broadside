@@ -6,7 +6,7 @@ combat remains effective without retraining as the learned fleet grows from one 
 quantitative view; seeded replays show what that transfer looks like in motion.
 
 This page distinguishes stored measurements from interpretations and describes the raw
-artifacts behind every headline number. Known gaps are collected in
+artifacts and study records behind every headline number. Known gaps are collected in
 [remaining limitations](#remaining-limitations).
 
 Two policies come out of every run, and each number below says which it measures. The
@@ -34,7 +34,7 @@ averaged checkpoint beside them.
 
 ![Four trained ships against more](results/v1-731/fan_731_n4.png)
 
-*Figure 2. Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final averaged checkpoint (diamonds); 1,024 games per ladder point and 4,096 for the final live and averaged checkpoints, ties count as losses.*
+*Figure 2. Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final averaged checkpoint (diamonds); 1,024 games per ladder point and 4,096 for the final live and averaged checkpoints, ties count as losses. Ties reach 10% of games at some points, so each ratio also has a dotted line counting wins plus half the ties.*
 
 At 4 ships, the averaged weights hold more than the live ones at the end of training:
 83.3% against 6 scripted ships where the live weights
@@ -46,7 +46,7 @@ games. The live curves stop improving after about 250M steps.
 
 ![Eight trained ships against more](results/v1-731/fan_731_n8.png)
 
-*Figure 3. Win rate of 8 learned ships against 8 to 16 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds; 1,024 games per ladder point and 4,096 for the final live and averaged checkpoints, ties count as losses.*
+*Figure 3. Win rate of 8 learned ships against 8 to 16 scripted ships over training, live checkpoints as lines and the final averaged checkpoint as diamonds; 1,024 games per ladder point and 4,096 for the final live and averaged checkpoints, ties count as losses. Ties reach 6% of games at some points, so each ratio also has a dotted line counting wins plus half the ties.*
 
 ![Sixteen trained ships against more](results/v1-731/fan_731_n16.png)
 
@@ -58,7 +58,7 @@ games. The live curves stop improving after about 250M steps.
 
 ![Averaged against final live weights](results/v1-731/averaged_vs_final.png)
 
-*Figure 6. Win rate of the final averaged weights (diamonds) and the final live weights (dots) at each ratio of scripted to learned ships, one panel per learned-team size; 1,024 games per point, ties count as losses.*
+*Figure 6. Win rate of the final averaged weights (diamonds) and the final live weights (dots) at each ratio of scripted to learned ships, one panel per learned-team size; 4,096 games per point (3,072 at 32 ships), ties count as losses.*
 
 The averaged weights win more often than the live ones at every ratio above equal
 numbers. At 1.75 times as many scripted ships, the closest to even, they win
@@ -69,7 +69,7 @@ numbers. At 1.75 times as many scripted ships, the closest to even, they win
 
 ![How many scripted ships it takes to hold them even](results/v1-731/crossover_by_size.png)
 
-*Figure 7. Scripted ships per learned ship at which the learned team wins half its games, by learned-team size, for the final live and the final averaged weights; interpolated between the fan's grid ratios (1x to 2x), with 95% bootstrap intervals. Ties count as losses.*
+*Figure 7. Scripted ships per learned ship at which the learned team wins half its games, by learned-team size, for the final live and the final averaged weights; interpolated between the fan's grid ratios (1x to 2x), with 95% bootstrap intervals, from the fan's 4,096 games per point (3,072 at 32 ships). Ties count as losses.*
 
 Interpolated between the grid points, the averaged weights hold even against
 1.89x their number at 4 ships
@@ -84,35 +84,47 @@ checkpoint at 4 and 8 ships.
 
 ![Game length against the odds](results/v1-731/game_length_by_ratio.png)
 
-*Figure 8. Mean game length in seconds of game time against the ratio of scripted to learned ships, one line per learned-team size, for the final averaged weights; 1,024 games per point. The episode cap is 17.1 s.*
+*Figure 8. Mean game length in seconds of game time against the ratio of scripted to learned ships, one line per learned-team size, for the final averaged weights; 4,096 games per point (3,072 at 32 ships). The episode cap is 17.1 s.*
 
-Games get longer as the odds worsen, from about
-5.4 s at equal numbers to about
-7.9 s at 1.75 times as many scripted ships (4
-learned ships, averaged weights), far inside the 17.1 s cap.
+Games get longer as the odds worsen, then shorter again at the worst odds. With 4 learned
+ships (averaged weights) they run from about 5.4 s
+at equal numbers to about 7.9 s at 1.75 times as
+many scripted ships, then 7.5 s at twice as many;
+with 32 they peak earlier, at 9.2 s at 1.5
+times, and fall to 6.0 s at twice as many. All
+of them stay far inside the 17.1 s cap.
 
 ## Reference run and provenance
 
-All headline figures refer to `wild-universe-731` (`mwvvm4kb`). It is the first run
-trained under frontal armour and the only one trained under this version's physics, in
-which a glancing bullet still does 30% of full damage.
-Its preserved artifacts include:
+All headline figures refer to `wild-universe-731` (`mwvvm4kb`). It is the only run
+trained under this version's physics: frontal armour at
+0.3, so a head-on hit lands
+30% of its damage and the reduction fades with the
+hit angle until a broadside hit lands nearly in full. Its preserved artifacts include:
 
 - [W&B export](../checkpoints/wild-universe-731/artifacts/wandb-export/): training
   configuration, sampled metric history, and final summary;
 - [raw live match history](../checkpoints/wild-universe-731/elo_history.jsonl);
 - [crossover sweep](../checkpoints/wild-universe-731/artifacts/figures/crossover.json);
-- [curated seeded replays](results/replays/), which come from an earlier run (see
-  [replays](replays.md)).
+- seeded clips of its averaged weights in [`results/v1-731/clips/`](results/v1-731/clips/),
+  beside the older curated replays of an earlier run in [`results/replays/`](results/replays/)
+  (see [replays](replays.md)).
 
-Every run figure on this page *is* a file under
+The run's own figures on this page are files under
 [`checkpoints/wild-universe-731/artifacts/`](../checkpoints/wild-universe-731/artifacts/), linked
-where it lies rather than copied here. Its
+where they lie rather than copied here. Its
 [`figures` artifact](../checkpoints/wild-universe-731/artifacts/figures/artifact.json) records
 which measurement each chart was drawn from and that measurement's digest, and each
 measurement in turn records the command that produced it, its seeds, resolved settings,
-checkpoint hashes, and the commit it was run from. Earlier runs are summarised in
-[training runs](training-runs.md).
+checkpoint hashes, and the commit it was run from.
+
+The fan charts, the averaged-against-live, crossover-by-size and game-length charts, the
+survivor chart and the clips come instead from studies run with the scripts in
+[`scripts/studies/`](../scripts/studies/). They have no artifact record; their results are
+under [`results/v1-731/`](results/v1-731/), and the
+[studies README](../scripts/studies/README.md) records their commands, seeds, games per
+point and the commit they ran against, so they can be reproduced. Earlier runs are
+summarised in [training runs](training-runs.md).
 
 The run targeted 1,000M environment steps and was stopped
 (status `interrupted`) after 671,846,400 of them over 674 updates, in
@@ -129,7 +141,7 @@ a property of the trained policy.
 
 ![Policy-controlled vs scripted-controlled crossover](../checkpoints/wild-universe-731/artifacts/figures/crossover_phase.png)
 
-*Figure 9. The final live checkpoint against the scripted controller at learned-team sizes 1, 2, 4, 8, 16, 32, 64, 256 games per matchup where memory allows; the boundary is drawn halfway between the largest scripted team still beaten and the first one not, and straight between measured sizes.*
+*Figure 9. The final live checkpoint against the scripted controller at learned-team sizes 1, 2, 4, 8, 16, 32, 64 (256 games per matchup where memory allows; ties count as non-wins); the boundary is drawn halfway between the largest scripted team still beaten and the first one not, and straight between measured sizes.*
 
 The final live checkpoint's 50% crossover stays above equal numbers at every size
 measured.
@@ -197,13 +209,13 @@ qualitative realization, not the source of the aggregate rates above.
 
 ![Survivors, 8 learned ships against 15 scripted](results/v1-731/clips/survivors_8v15.png)
 
-*Figure 11. 4096 seeded games of 8 learned ships (averaged weights) against 15 scripted ships; the learned side won 1720 (42%). Left: learned ships alive at the end of each win. Right: scripted ships alive at the end of each loss.*
+*Figure 11. 4,096 seeded games of 8 learned ships (averaged weights) against 15 scripted ships; the learned side won 1,720 (42%). The 67 games that reached the episode cap with both sides alive are ties: they count as non-wins and appear in neither panel. Left: learned ships alive at the end of each win. Right: scripted ships alive at the end of each loss.*
 
 ## Post-hoc Elo calibration
 
 ![Post-hoc calibrated Elo over training](../checkpoints/wild-universe-731/artifacts/figures/elo_curve.png)
 
-*Figure 12. The line is the live policy at each update, refit from its recorded games against the calibrated opponents; the dots are tournament-rated checkpoints (±1 SE), the last of them the final live checkpoint. Scripted controller fixed at 1000.*
+*Figure 12. The line is the live policy at each update, refit from its recorded games against the calibrated opponents; the dots are tournament-rated checkpoints (±1 SE), the last of them the final live checkpoint. The dot just before it, below the line, is the best averaged checkpoint (2,052 at 666M steps). Scripted controller fixed at 1000.*
 
 Every rating on this page is calibrated Elo. Training keeps a separate *live* Elo for
 opponent sampling and progress reporting; it drifts with sequential K-factor updates and
@@ -300,12 +312,18 @@ weakens at 32-vs-32 and falls well below its 1-vs-1 rating at 64-vs-64.
 | Ships per team | Tournament games | Final live checkpoint Elo (±1 SE) | Reached ±10 target |
 |---:|---:|---:|---|
 | 1 | 81,920 | 2001 ± 10 | yes |
-| 2 | 65,536 | 1989 ± 11 | yes |
+| 2 | 65,536 | 1989 ± 11 | yes¹ |
 | 4 | 98,304 | 2128 ± 10 | yes |
 | 8 | 109,375 | 2271 ± 10 | yes |
 | 16 | 46,872 | 2277 ± 16 | no |
 | 32 | 11,712 | 2085 ± 31 | no |
 | 64 | 2,928 | 1605 ± 45 | no |
+
+¹ The target applies to each tournament's own fit, whose errors are conditioned on that
+tournament's reference player; at 2-vs-2 its largest was
+±9.95. The table's errors are those of the joined fit with the
+scripted controller at 1000, a different conditioning, which puts this row at
+±10.5.
 
 At the native 4-vs-4 scale this tournament rates the final live checkpoint
 2128 ± 10, against the calibration
@@ -369,7 +387,7 @@ the contract was measured on.
 
 ![Win rate against the scripted controller](../checkpoints/wild-universe-731/artifacts/figures/win_rate_vs_scripted.png)
 
-*Figure 15. The live policy's 4-vs-4 win rate against the scripted controller in the evaluation battery at each update.*
+*Figure 15. The live policy's 4-vs-4 win rate against the scripted controller in the evaluation battery at each update; ties count as non-wins.*
 
 Across the 674 sampled history points with this metric, the live
 policy first reaches 95% at 86.6M environment steps
@@ -414,7 +432,8 @@ task-performance measures.
 
 ## Reproduce the figures
 
-Every run figure comes from one command, run against a finished run's own measurements:
+Every figure drawn from the run's own artifacts comes from one command, run against a
+finished run's own measurements:
 
 ```bash
 uv run bnb figures --run wild-universe-731
@@ -434,14 +453,16 @@ directory>` refits the saved win/tie matrices and writes a new artifact. Rerunni
 measurements themselves does need one; see
 [getting started](getting-started.md#evaluate).
 
-The numbers quoted on this page are read from the same artifacts by
-`scripts/docs_values.py` into [`values.json`](values.json), and every chart is named in
+The numbers quoted on this page are read from the same artifacts, and from the study
+results under `results/v1-731/`, by `scripts/docs_values.py` into
+[`values.json`](values.json), and every chart is named in
 [`figures.yml`](figures.yml); `scripts/render_docs.py` renders the page from
 `evaluation.template.md`.
 
-The curated replays are the one class of output no renderer produces. A clip is captured
-as scratch under `out/`, reviewed, then copied into `docs/results/replays/` and committed.
-The committed file is the clip.
+The study results are reproduced from [`scripts/studies/`](../scripts/studies/) rather than
+by `bnb figures`; its README gives the commands and seeds. Clips are the one class of
+output no renderer produces. A clip is captured as scratch under `out/`, reviewed, then
+copied into `docs/results/` and committed. The committed file is the clip.
 
 ## Remaining limitations
 
@@ -450,9 +471,9 @@ The committed file is the clip.
   ±16, ±31, and
   ±45; the largest fleets are measured from far fewer games than
   the smaller ones.
-- The crossover boundary at the largest sizes rests on fewer than
-  256 games per point, so each boundary carries several points
-  of binomial noise.
+- The crossover boundary rests on 256 games per point, and at
+  64 ships on fewer (204 at the boundary), so each
+  boundary carries several points of binomial noise.
 - The run stopped at 672M of its planned
   1,000M steps. The calibrated curve had levelled off by then
   (within 50 Elo of the final rating from about

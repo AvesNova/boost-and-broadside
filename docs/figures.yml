@@ -23,15 +23,18 @@ elo_curve:
   caption: >-
     The line is the live policy at each update, refit from its recorded games against the
     calibrated opponents; the dots are tournament-rated checkpoints (±1 SE), the last of
-    them the final live checkpoint. Scripted controller fixed at 1000.
+    them the final live checkpoint. The dot just before it, below the line, is the best
+    averaged checkpoint ({{calibration_best_averaged_elo:,.0f}} at
+    {{calibration_best_averaged_steps_millions:.0f}}M steps). Scripted controller fixed at
+    1000.
 
 crossover_phase:
   path: checkpoints/wild-universe-731/artifacts/figures/crossover_phase.png
   title: Policy-controlled vs scripted-controlled crossover
   caption: >-
     The final live checkpoint against the scripted controller at learned-team sizes
-    {{crossover_sizes}}, {{crossover_games_per_matchup}} games per matchup where memory
-    allows; the boundary is drawn halfway between the largest scripted team still beaten
+    {{crossover_sizes}} ({{crossover_games_per_matchup}} games per matchup where memory
+    allows; ties count as non-wins); the boundary is drawn halfway between the largest scripted team still beaten
     and the first one not, and straight between measured sizes.
 
 crossover_ratio:
@@ -53,7 +56,7 @@ win_rate_vs_scripted:
   title: Win rate against the scripted controller
   caption: >-
     The live policy's 4-vs-4 win rate against the scripted controller in the evaluation
-    battery at each update.
+    battery at each update; ties count as non-wins.
 
 next_state_error:
   path: checkpoints/wild-universe-731/artifacts/figures/next_state_error.png
@@ -75,34 +78,42 @@ fan_4_ships:
   caption: >-
     Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder
     checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final
-    averaged checkpoint (diamonds); 1,024 games per ladder point and 4,096 for the final live and
-    averaged checkpoints, ties count as losses.
+    averaged checkpoint (diamonds); {{fan_4_ships_ladder_games:,}} games per ladder point and
+    {{fan_4_ships_final_games:,}} for the final live and averaged checkpoints, ties count as
+    losses. Ties reach {{fan_4_ships_max_tie_share:.0%}} of games at some points, so each
+    ratio also has a dotted line counting wins plus half the ties.
 
 fan_8_ships:
   path: docs/results/v1-731/fan_731_n8.png
   title: Eight trained ships against more
   caption: >-
     Win rate of 8 learned ships against 8 to 16 scripted ships over training, live
-    checkpoints as lines and the final averaged checkpoint as diamonds; 1,024 games per ladder point and 4,096 for the final live and
-    averaged checkpoints, ties count as losses.
+    checkpoints as lines and the final averaged checkpoint as diamonds;
+    {{fan_8_ships_ladder_games:,}} games per ladder point and {{fan_8_ships_final_games:,}}
+    for the final live and averaged checkpoints, ties count as losses. Ties reach
+    {{fan_8_ships_max_tie_share:.0%}} of games at some points, so each ratio also has a dotted
+    line counting wins plus half the ties.
 
 fan_16_ships:
   path: docs/results/v1-731/fan_731_n16.png
   title: Sixteen trained ships against more
   caption: >-
     Win rate of 16 learned ships against 16 to 32 scripted ships over training, live
-    checkpoints as lines and the final averaged checkpoint as diamonds; 1,024 games per ladder point and 4,096 for the final live and
-    averaged checkpoints, ties count as losses.
+    checkpoints as lines and the final averaged checkpoint as diamonds;
+    {{fan_16_ships_ladder_games:,}} games per ladder point and {{fan_16_ships_final_games:,}}
+    for the final live and averaged checkpoints, ties count as losses.
 
 fan_32_ships:
   path: docs/results/v1-731/fan_731_n32.png
   title: Thirty-two trained ships against more
   caption: >-
     Win rate of 32 learned ships against 32 to 64 scripted ships over training, live
-    checkpoints as lines and the final averaged checkpoint as diamonds; 1,024 games per ladder point and 3,072 for the final live and
-    averaged checkpoints, ties count as losses.
+    checkpoints as lines and the final averaged checkpoint as diamonds;
+    {{fan_32_ships_ladder_games:,}} games per ladder point and {{fan_32_ships_final_games:,}}
+    for the final live and averaged checkpoints, ties count as losses.
 
-# Clip slots: filled when the author picks the wild-universe-731 clips.
+# Clips of wild-universe-731, from scripts/studies/clips (seeds and commands in
+# scripts/studies/README.md).
 clip_hero:
   path: docs/results/v1-731/clips/hero_4v7_seed2001_env406.gif
   title: Four learned blue ships against seven scripted red ships
@@ -131,37 +142,43 @@ elo_history_731:
     and the best averaged checkpoint ({{calibration_best_averaged_elo:,.0f}} ±
     {{calibration_best_averaged_stderr:.0f}}). Drawn by scripts/plot_elo_history.py.
 
-# Slots for charts arriving from the fan and clip studies (copied from
-# /home/vizia/avesnova/v1-results/ into docs/results/v1-731/ when they land).
+# Charts from the fan and clip studies in scripts/studies/, copied into
+# docs/results/v1-731/ by `scripts/docs_values.py --pull`.
 fan_crossover_by_size:
   path: docs/results/v1-731/crossover_by_size.png
   title: How many scripted ships it takes to hold them even
   caption: >-
     Scripted ships per learned ship at which the learned team wins half its games, by
     learned-team size, for the final live and the final averaged weights; interpolated
-    between the fan's grid ratios (1x to 2x), with 95% bootstrap intervals. Ties count as
-    losses.
+    between the fan's grid ratios (1x to 2x), with 95% bootstrap intervals, from the fan's
+    {{fan_4_ships_final_games:,}} games per point ({{fan_32_ships_final_games:,}} at 32
+    ships). Ties count as losses.
 
 fan_game_length_by_ratio:
   path: docs/results/v1-731/game_length_by_ratio.png
   title: Game length against the odds
   caption: >-
     Mean game length in seconds of game time against the ratio of scripted to learned
-    ships, one line per learned-team size, for the final averaged weights; 1,024 games
-    per point. The episode cap is {{config_episode_seconds:.1f}} s.
+    ships, one line per learned-team size, for the final averaged weights;
+    {{fan_4_ships_final_games:,}} games per point ({{fan_32_ships_final_games:,}} at 32
+    ships). The episode cap is {{config_episode_seconds:.1f}} s.
 
 fan_averaged_vs_final:
   path: docs/results/v1-731/averaged_vs_final.png
   title: Averaged against final live weights
   caption: >-
     Win rate of the final averaged weights (diamonds) and the final live weights (dots) at
-    each ratio of scripted to learned ships, one panel per learned-team size; 1,024 games
-    per point, ties count as losses.
+    each ratio of scripted to learned ships, one panel per learned-team size;
+    {{fan_4_ships_final_games:,}} games per point ({{fan_32_ships_final_games:,}} at 32
+    ships), ties count as losses.
 
 clip_survivors_8v15:
   path: docs/results/v1-731/clips/survivors_8v15.png
   title: Survivors, 8 learned ships against 15 scripted
   caption: >-
-    {{clip_survivors_8v15_games}} seeded games of 8 learned ships (averaged weights) against 15 scripted ships;
-    the learned side won {{clip_survivors_8v15_blue_wins}} ({{clip_survivors_8v15_win_rate:.0%}}). Left: learned
-    ships alive at the end of each win. Right: scripted ships alive at the end of each loss.
+    {{clip_survivors_8v15_games:,}} seeded games of 8 learned ships (averaged weights)
+    against 15 scripted ships; the learned side won {{clip_survivors_8v15_blue_wins:,}}
+    ({{clip_survivors_8v15_win_rate:.0%}}). The {{clip_survivors_8v15_ties}} games that
+    reached the episode cap with both sides alive are ties: they count as non-wins and
+    appear in neither panel. Left: learned ships alive at the end of each win. Right:
+    scripted ships alive at the end of each loss.

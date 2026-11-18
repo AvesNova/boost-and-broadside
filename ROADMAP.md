@@ -8,10 +8,6 @@ Ideas under consideration, roughly ordered by interest. None are commitments.
   regeneration rate and higher energy cap) to reward aggression mechanically
   rather than only through reward shaping.
 - **Respawning**: continuous battles instead of elimination rounds.
-- **Head-on damage reduction**: the `bullet_min_damage_frac` mechanic exists in
-  the physics engine but is disabled in the training config (see
-  [docs/environment.md](docs/environment.md)); evaluate enabling it once the
-  meta stabilizes.
 
 ## Training & performance
 
@@ -26,11 +22,14 @@ Ideas under consideration, roughly ordered by interest. None are commitments.
 
 ## Results and presentation
 
-- **Recapture the replays against `wild-universe-731`**: all fifteen clips, including the
-  README hero, show `resilient-resonance-682`, which trained under different physics and
-  a different decision rate than the run every published figure now measures.
-- **Replay provenance**: the clips carry no sidecar and no poster frame, so nothing but the
-  filename says which checkpoint, seed, and commit produced one.
+- **Recapture the remaining replays against `wild-universe-731`**: the README hero
+  (4 vs 7, seed 2001, game 406) and the 32 vs 50 large battle on the replays page are
+  `wild-universe-731` clips, but the fifteen in `docs/results/replays/` (self-play and the
+  other asymmetric examples) still show `resilient-resonance-682`, which trained under
+  different physics and a different decision rate.
+- **Replay provenance**: the clips carry no sidecar and no poster frame. The two
+  `wild-universe-731` clips are recorded in `scripts/studies/README.md`; for the others
+  nothing but the filename says which checkpoint, seed, and commit produced one.
 - **A boundary or failure replay** near a measured crossover, so the qualitative page shows
   a loss as well as wins.
 - **A count-agnostic system diagram**: simulation to observation to team policy to

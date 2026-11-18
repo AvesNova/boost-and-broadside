@@ -29,14 +29,16 @@ during training.
 {{figure: fan_4_ships}}
 
 Rated against the same scripted controller at every size
-([chart](docs/evaluation.md#at-a-glance)), the 4-vs-4 policy is stronger
-at 8-vs-8 and 16-vs-16 than at the size it trained at: about {{scale_16_ships_elo:,.0f}} Elo
+([chart](docs/evaluation.md#at-a-glance)), the final live checkpoint of the 4-vs-4 policy
+is stronger at 8-vs-8 and 16-vs-16 than at the size it trained at: about {{scale_16_ships_elo:,.0f}} Elo
 at 16-vs-16 against {{scale_4_ships_elo:,.0f}} at 4-vs-4. Past that it weakens, to
 {{scale_32_ships_elo:,.0f}} at 32-vs-32 and {{scale_64_ships_elo:,.0f}} at 64-vs-64, still far
 above the scripted controller's 1000.
 
 Selected results from the [recorded crossover sweep](checkpoints/{{run_name}}/artifacts/figures/crossover.json)
-of the final live checkpoint, each row the largest scripted fleet it still beats:
+of the final live checkpoint, each row the largest scripted fleet it still beats, from
+{{crossover_games_per_matchup}} games per point ({{crossover_64_ships_beats_up_to_games}} at
+64 ships); ties count as non-wins:
 
 | Learned ships | Scripted ships | Win rate (live) |
 |---:|---:|---:|
@@ -48,9 +50,13 @@ of the final live checkpoint, each row the largest scripted fleet it still beats
 
 The averaged policy, the running average of the weights that the run keeps beside the live
 ones, holds more when outnumbered: four averaged ships win
-{{fan_4_ships_vs_7_averaged_win_rate:.1%}} of games against seven scripted ships, where the
-final live weights win {{fan_4_ships_vs_7_live_win_rate:.1%}}
-([over training](docs/evaluation.md#outnumbered-over-training)). The
+{{fan_4_ships_vs_7_averaged_win_rate:.1%}} of {{fan_4_ships_vs_7_averaged_games:,}} games
+against seven scripted ships, where the final live weights win
+{{fan_4_ships_vs_7_live_win_rate:.1%}} of {{fan_4_ships_vs_7_live_games:,}}
+([over training](docs/evaluation.md#outnumbered-over-training)); ties again count as
+non-wins. That {{fan_4_ships_vs_7_live_win_rate:.1%}} and the table's
+{{crossover_4_ships_vs_7_win_rate:.1%}} measure the same checkpoint at 4-vs-7, over
+{{fan_4_ships_vs_7_live_games:,}} and {{crossover_4_ships_vs_7_games}} games. The
 [evaluation guide](docs/evaluation.md#zero-shot-crossover) covers the search method,
 sample sizes, raw artifacts, and limitations behind these measurements.
 
@@ -67,9 +73,10 @@ means ten-to-one odds. Its best averaged checkpoint rates
 
 {{figure: elo_curve}}
 
-The calibrated rating keeps rising long after wins against the scripted controller stop
-being informative: the policy first wins 99% of evaluation games against it at
-{{scripted_win_rate_first_99_millions:.0f}}M steps, while its rating climbs from about
+The live policy's calibrated rating keeps rising long after wins against the scripted
+controller stop being informative: the live policy first wins 99% of evaluation games
+against it at {{scripted_win_rate_first_99_millions:.0f}}M steps, while its refit rating
+climbs from about
 {{calibration_curve_elo_at_100m:,.0f}} at 100M to about
 {{calibration_curve_elo_at_250m:,.0f}} at 250M before levelling off.
 
@@ -100,9 +107,12 @@ emits one output per ship, however many there are.
   measurements with qualitative behavior. The crossover evaluator is
   [`crossover.py`](src/boost_and_broadside/modes/crossover.py).
 
-Every headline number names the artifact it came from. The figures are linked from
-[the reference run's own directory](checkpoints/{{run_name}}/artifacts/figures/), which
-records the measurement behind each one.
+The run's own charts are linked from
+[its artifacts](checkpoints/{{run_name}}/artifacts/figures/), whose records name the
+measurement behind each chart and that measurement's command, seeds and commit. The fan,
+survivor and `{{run_name}}` clip results come from the scripts in
+[`scripts/studies/`](scripts/studies/), whose [README](scripts/studies/README.md) records
+their commands, seeds, games per point and commit.
 
 ## Quick start
 
@@ -132,7 +142,8 @@ evaluation, replay capture, and development checks.
 
 The README and the pages in `docs/` are rendered from `*.template.md` files beside them.
 Every run-specific number is a named value in [`docs/values.json`](docs/values.json),
-built from the reference run's artifacts by `scripts/docs_values.py`, and every chart is
+built by `scripts/docs_values.py` from the reference run's artifacts and the study results
+in `docs/results/`, and every chart is
 named in [`docs/figures.yml`](docs/figures.yml). Edit a template, then run
 `uv run python scripts/render_docs.py`; with `--check` it fails on an unknown name or a
 page out of date.

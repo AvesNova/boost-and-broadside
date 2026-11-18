@@ -4,14 +4,17 @@ These clips complement the aggregate results with examples of tactics at differe
 sizes. In every `vs_scripted` replay, the learned fleet is blue and the scripted fleet is
 red.
 
-The two featured clips below are of `wild-universe-731`'s averaged weights, the agent every
-number on this page and in [evaluation](evaluation.md) measures. Each is one game from a
-seeded batch, so it replays exactly from its seed and game index.
+The two featured clips below are of `wild-universe-731`'s final averaged weights, the policy the
+project treats as its product. Most numbers in [evaluation](evaluation.md) rate the final
+live checkpoint instead; the fan charts and the captions here rate the averaged one. Each
+clip is one game from a seeded batch, so it replays exactly from its seed and game index
+([`scripts/studies/`](../scripts/studies/README.md) has the commands).
 
 The other clips (self-play and the further examples) are from `resilient-resonance-682`,
-an earlier run that trained under different combat physics, a different decision rate,
-frontal armour and refractive fields. Read them as illustrations of fleet combat, not as
-the run being reported.
+an earlier run that trained under different combat physics (frontal armour at 0.1 rather
+than 0.3), a different decision rate, and without
+refractive fields. Read them as illustrations of fleet combat, not as the run being
+reported.
 
 ## Primary replay: 4 learned vs 7 scripted
 
@@ -80,7 +83,10 @@ A GIF encodes frames and nothing else, so a clip carries no record of where it c
 Git carries it instead: the tracked file is the reviewed file, and its history says when
 it changed and why.
 
-All fifteen come from `resilient-resonance-682`'s final checkpoint, captured with the
-command above and the seed named in each filename. The clips do not record their own
-capture arguments — there is no sidecar and no poster frame — so the filename and this
-page are what identify them.
+The fifteen clips in `docs/results/replays/` come from `resilient-resonance-682`'s final
+checkpoint, captured with the command above and the seed named in each filename. The clips
+do not record their own capture arguments — there is no sidecar and no poster frame — so
+the filename and this page are what identify them. The two `wild-universe-731` clips in
+`docs/results/v1-731/clips/` were filmed by `scripts/studies/clips/hero.py`; their batch
+seeds and game indices are in their filenames and in the
+[studies README](../scripts/studies/README.md).

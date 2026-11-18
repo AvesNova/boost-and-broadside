@@ -6,7 +6,7 @@ combat remains effective without retraining as the learned fleet grows from one 
 quantitative view; seeded replays show what that transfer looks like in motion.
 
 This page distinguishes stored measurements from interpretations and describes the raw
-artifacts behind every headline number. Known gaps are collected in
+artifacts and study records behind every headline number. Known gaps are collected in
 [remaining limitations](#remaining-limitations).
 
 Two policies come out of every run, and each number below says which it measures. The
@@ -70,33 +70,45 @@ checkpoint at 4 and 8 ships.
 
 {{figure: fan_game_length_by_ratio}}
 
-Games get longer as the odds worsen, from about
-{{fan_4_ships_vs_4_averaged_mean_seconds:.1f}} s at equal numbers to about
-{{fan_4_ships_vs_7_averaged_mean_seconds:.1f}} s at 1.75 times as many scripted ships (4
-learned ships, averaged weights), far inside the {{config_episode_seconds:.1f}} s cap.
+Games get longer as the odds worsen, then shorter again at the worst odds. With 4 learned
+ships (averaged weights) they run from about {{fan_4_ships_vs_4_averaged_mean_seconds:.1f}} s
+at equal numbers to about {{fan_4_ships_vs_7_averaged_mean_seconds:.1f}} s at 1.75 times as
+many scripted ships, then {{fan_4_ships_vs_8_averaged_mean_seconds:.1f}} s at twice as many;
+with 32 they peak earlier, at {{fan_32_ships_vs_48_averaged_mean_seconds:.1f}} s at 1.5
+times, and fall to {{fan_32_ships_vs_64_averaged_mean_seconds:.1f}} s at twice as many. All
+of them stay far inside the {{config_episode_seconds:.1f}} s cap.
 
 ## Reference run and provenance
 
-All headline figures refer to `{{run_name}}` (`{{run_wandb_id}}`). It is the first run
-trained under frontal armour and the only one trained under this version's physics, in
-which a glancing bullet still does {{config_bullet_min_damage_fraction:.0%}} of full damage.
-Its preserved artifacts include:
+All headline figures refer to `{{run_name}}` (`{{run_wandb_id}}`). It is the only run
+trained under this version's physics: frontal armour at
+{{config_bullet_min_damage_fraction}}, so a head-on hit lands
+{{config_bullet_min_damage_fraction:.0%}} of its damage and the reduction fades with the
+hit angle until a broadside hit lands nearly in full. Its preserved artifacts include:
 
 - [W&B export](../checkpoints/{{run_name}}/artifacts/wandb-export/): training
   configuration, sampled metric history, and final summary;
 - [raw live match history](../checkpoints/{{run_name}}/elo_history.jsonl);
 - [crossover sweep](../checkpoints/{{run_name}}/artifacts/figures/crossover.json);
-- [curated seeded replays](results/replays/), which come from an earlier run (see
-  [replays](replays.md)).
+- seeded clips of its averaged weights in [`results/v1-731/clips/`](results/v1-731/clips/),
+  beside the older curated replays of an earlier run in [`results/replays/`](results/replays/)
+  (see [replays](replays.md)).
 
-Every run figure on this page *is* a file under
+The run's own figures on this page are files under
 [`checkpoints/{{run_name}}/artifacts/`](../checkpoints/{{run_name}}/artifacts/), linked
-where it lies rather than copied here. Its
+where they lie rather than copied here. Its
 [`figures` artifact](../checkpoints/{{run_name}}/artifacts/figures/artifact.json) records
 which measurement each chart was drawn from and that measurement's digest, and each
 measurement in turn records the command that produced it, its seeds, resolved settings,
-checkpoint hashes, and the commit it was run from. Earlier runs are summarised in
-[training runs](training-runs.md).
+checkpoint hashes, and the commit it was run from.
+
+The fan charts, the averaged-against-live, crossover-by-size and game-length charts, the
+survivor chart and the clips come instead from studies run with the scripts in
+[`scripts/studies/`](../scripts/studies/). They have no artifact record; their results are
+under [`results/v1-731/`](results/v1-731/), and the
+[studies README](../scripts/studies/README.md) records their commands, seeds, games per
+point and the commit they ran against, so they can be reproduced. Earlier runs are
+summarised in [training runs](training-runs.md).
 
 The run targeted {{run_target_steps_millions:,.0f}}M environment steps and was stopped
 (status `{{run_status}}`) after {{run_steps:,}} of them over {{run_updates}} updates, in
@@ -274,12 +286,18 @@ weakens at 32-vs-32 and falls well below its 1-vs-1 rating at 64-vs-64.
 | Ships per team | Tournament games | Final live checkpoint Elo (±1 SE) | Reached ±{{scale_target_stderr:.0f}} target |
 |---:|---:|---:|---|
 | 1 | {{scale_1_ships_games:,}} | {{scale_1_ships_elo:.0f}} ± {{scale_1_ships_stderr:.0f}} | {{scale_1_ships_converged}} |
-| 2 | {{scale_2_ships_games:,}} | {{scale_2_ships_elo:.0f}} ± {{scale_2_ships_stderr:.0f}} | {{scale_2_ships_converged}} |
+| 2 | {{scale_2_ships_games:,}} | {{scale_2_ships_elo:.0f}} ± {{scale_2_ships_stderr:.0f}} | {{scale_2_ships_converged}}¹ |
 | 4 | {{scale_4_ships_games:,}} | {{scale_4_ships_elo:.0f}} ± {{scale_4_ships_stderr:.0f}} | {{scale_4_ships_converged}} |
 | 8 | {{scale_8_ships_games:,}} | {{scale_8_ships_elo:.0f}} ± {{scale_8_ships_stderr:.0f}} | {{scale_8_ships_converged}} |
 | 16 | {{scale_16_ships_games:,}} | {{scale_16_ships_elo:.0f}} ± {{scale_16_ships_stderr:.0f}} | {{scale_16_ships_converged}} |
 | 32 | {{scale_32_ships_games:,}} | {{scale_32_ships_elo:.0f}} ± {{scale_32_ships_stderr:.0f}} | {{scale_32_ships_converged}} |
 | 64 | {{scale_64_ships_games:,}} | {{scale_64_ships_elo:.0f}} ± {{scale_64_ships_stderr:.0f}} | {{scale_64_ships_converged}} |
+
+¹ The target applies to each tournament's own fit, whose errors are conditioned on that
+tournament's reference player; at 2-vs-2 its largest was
+±{{scale_2_ships_max_stderr:.2f}}. The table's errors are those of the joined fit with the
+scripted controller at 1000, a different conditioning, which puts this row at
+±{{scale_2_ships_stderr:.1f}}.
 
 At the native 4-vs-4 scale this tournament rates the final live checkpoint
 {{scale_4_ships_elo:.0f}} ± {{scale_4_ships_stderr:.0f}}, against the calibration
@@ -380,7 +398,8 @@ task-performance measures.
 
 ## Reproduce the figures
 
-Every run figure comes from one command, run against a finished run's own measurements:
+Every figure drawn from the run's own artifacts comes from one command, run against a
+finished run's own measurements:
 
 ```bash
 uv run bnb figures --run wild-universe-731
@@ -400,14 +419,16 @@ directory>` refits the saved win/tie matrices and writes a new artifact. Rerunni
 measurements themselves does need one; see
 [getting started](getting-started.md#evaluate).
 
-The numbers quoted on this page are read from the same artifacts by
-`scripts/docs_values.py` into [`values.json`](values.json), and every chart is named in
+The numbers quoted on this page are read from the same artifacts, and from the study
+results under `results/v1-731/`, by `scripts/docs_values.py` into
+[`values.json`](values.json), and every chart is named in
 [`figures.yml`](figures.yml); `scripts/render_docs.py` renders the page from
 `evaluation.template.md`.
 
-The curated replays are the one class of output no renderer produces. A clip is captured
-as scratch under `out/`, reviewed, then copied into `docs/results/replays/` and committed.
-The committed file is the clip.
+The study results are reproduced from [`scripts/studies/`](../scripts/studies/) rather than
+by `bnb figures`; its README gives the commands and seeds. Clips are the one class of
+output no renderer produces. A clip is captured as scratch under `out/`, reviewed, then
+copied into `docs/results/` and committed. The committed file is the clip.
 
 ## Remaining limitations
 
@@ -416,9 +437,9 @@ The committed file is the clip.
   ±{{scale_16_ships_stderr:.0f}}, ±{{scale_32_ships_stderr:.0f}}, and
   ±{{scale_64_ships_stderr:.0f}}; the largest fleets are measured from far fewer games than
   the smaller ones.
-- The crossover boundary at the largest sizes rests on fewer than
-  {{crossover_games_per_matchup}} games per point, so each boundary carries several points
-  of binomial noise.
+- The crossover boundary rests on {{crossover_games_per_matchup}} games per point, and at
+  64 ships on fewer ({{crossover_64_ships_beats_up_to_games}} at the boundary), so each
+  boundary carries several points of binomial noise.
 - The run stopped at {{run_steps_millions:.0f}}M of its planned
   {{run_target_steps_millions:,.0f}}M steps. The calibrated curve had levelled off by then
   (within 50 Elo of the final rating from about

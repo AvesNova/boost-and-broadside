@@ -16,16 +16,17 @@ comparable across runs that trained under different physics — see the note at 
 2.9 days on one RTX 4070 Laptop; the run was stopped there (status
 `interrupted`). W&B run `mwvvm4kb`.
 
-The first run under frontal armour, and the only one trained under this version's physics,
-in which a glancing bullet does 30% of full damage.
+The only run trained under this version's physics: frontal armour at
+0.3, so a head-on hit lands
+30% of its damage and a broadside hit nearly all of it.
 Trained 4-vs-4 with 4 refractive fields. The final live policy calibrates
 to **2,110 Elo** and the best averaged checkpoint to
 2,052. Against the scripted controller the final live
 policy holds a numerical advantage from 2.00x at 1-vs-1 (by a 51.2% margin) and
 1.75x at its training size down to
 1.19x at 64-vs-64 — sixteen times its training width. Learning
-is front-loaded: the calibrated curve passes 1,780 by
-150M steps and stays within 50 Elo of the final rating from about
+is front-loaded: the live policy's calibrated curve stands at about
+1,780 at 150M steps and stays within 50 Elo of the final rating from about
 457M onward.
 
 Reward weights, in the derived form this version uses: win 1, death
@@ -79,10 +80,11 @@ Elo *on its own scale*; see below.
 
 ## A note on comparing ratings
 
-Elo is defined within a pool playing one game. 682 trained with glancing bullets doing a
-tenth of full damage, twice the decision rate, and no refractive fields; 719 trained with
-every bullet at full damage and half the decision rate; wild-universe-731 trained with frontal
-armour and glancing bullets at 30% of full damage.
+Elo is defined within a pool playing one game. 682 trained with frontal armour at 0.1 (a
+head-on hit landing a tenth of its damage), twice the decision rate, and no refractive
+fields; 719 trained with every bullet at full damage and half the decision rate;
+wild-universe-731 trained with frontal armour at 0.3, a
+head-on hit landing 30% of its damage.
 The rules change how dangerous an untrained policy is, so they stretch or compress the
 whole ladder: the distance from random to the scripted controller is
 1,335 Elo in 682's world,

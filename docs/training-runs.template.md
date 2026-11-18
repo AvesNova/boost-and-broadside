@@ -16,16 +16,17 @@ comparable across runs that trained under different physics — see the note at 
 {{run_days:.1f}} days on one {{run_gpu}}; the run was stopped there (status
 `{{run_status}}`). W&B run `{{run_wandb_id}}`.
 
-The first run under frontal armour, and the only one trained under this version's physics,
-in which a glancing bullet does {{config_bullet_min_damage_fraction:.0%}} of full damage.
+The only run trained under this version's physics: frontal armour at
+{{config_bullet_min_damage_fraction}}, so a head-on hit lands
+{{config_bullet_min_damage_fraction:.0%}} of its damage and a broadside hit nearly all of it.
 Trained 4-vs-4 with {{config_fields}} refractive fields. The final live policy calibrates
 to **{{calibration_final_live_elo:,.0f}} Elo** and the best averaged checkpoint to
 {{calibration_best_averaged_elo:,.0f}}. Against the scripted controller the final live
 policy holds a numerical advantage from {{crossover_1_ships_ratio:.2f}}x at 1-vs-1 (by a {{crossover_1_ships_beats_up_to_win_rate:.1%}} margin) and
 {{crossover_4_ships_ratio:.2f}}x at its training size down to
 {{crossover_64_ships_ratio:.2f}}x at 64-vs-64 — sixteen times its training width. Learning
-is front-loaded: the calibrated curve passes {{calibration_curve_elo_at_150m:,.0f}} by
-150M steps and stays within 50 Elo of the final rating from about
+is front-loaded: the live policy's calibrated curve stands at about
+{{calibration_curve_elo_at_150m:,.0f}} at 150M steps and stays within 50 Elo of the final rating from about
 {{calibration_curve_within_50_from_millions:.0f}}M onward.
 
 Reward weights, in the derived form this version uses: win {{config_reward_win}}, death
@@ -79,10 +80,11 @@ Elo *on its own scale*; see below.
 
 ## A note on comparing ratings
 
-Elo is defined within a pool playing one game. 682 trained with glancing bullets doing a
-tenth of full damage, twice the decision rate, and no refractive fields; 719 trained with
-every bullet at full damage and half the decision rate; {{run_name}} trained with frontal
-armour and glancing bullets at {{config_bullet_min_damage_fraction:.0%}} of full damage.
+Elo is defined within a pool playing one game. 682 trained with frontal armour at 0.1 (a
+head-on hit landing a tenth of its damage), twice the decision rate, and no refractive
+fields; 719 trained with every bullet at full damage and half the decision rate;
+{{run_name}} trained with frontal armour at {{config_bullet_min_damage_fraction}}, a
+head-on hit landing {{config_bullet_min_damage_fraction:.0%}} of its damage.
 The rules change how dangerous an untrained policy is, so they stretch or compress the
 whole ladder: the distance from random to the scripted controller is
 {{history_resilient_resonance_682_random_to_scripted:,.0f}} Elo in 682's world,

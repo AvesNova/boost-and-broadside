@@ -30,17 +30,19 @@ during training.
 
 ![Four trained ships against more](docs/results/v1-731/fan_731_n4.png)
 
-*Figure 2. Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final averaged checkpoint (diamonds); 1,024 games per ladder point and 4,096 for the final live and averaged checkpoints, ties count as losses.*
+*Figure 2. Win rate of 4 learned ships against 4 to 8 scripted ships at each frozen ladder checkpoint and the final live checkpoint (lines, 95% Wilson bands), and of the final averaged checkpoint (diamonds); 1,024 games per ladder point and 4,096 for the final live and averaged checkpoints, ties count as losses. Ties reach 10% of games at some points, so each ratio also has a dotted line counting wins plus half the ties.*
 
 Rated against the same scripted controller at every size
-([chart](docs/evaluation.md#at-a-glance)), the 4-vs-4 policy is stronger
-at 8-vs-8 and 16-vs-16 than at the size it trained at: about 2,277 Elo
+([chart](docs/evaluation.md#at-a-glance)), the final live checkpoint of the 4-vs-4 policy
+is stronger at 8-vs-8 and 16-vs-16 than at the size it trained at: about 2,277 Elo
 at 16-vs-16 against 2,128 at 4-vs-4. Past that it weakens, to
 2,085 at 32-vs-32 and 1,605 at 64-vs-64, still far
 above the scripted controller's 1000.
 
 Selected results from the [recorded crossover sweep](checkpoints/wild-universe-731/artifacts/figures/crossover.json)
-of the final live checkpoint, each row the largest scripted fleet it still beats:
+of the final live checkpoint, each row the largest scripted fleet it still beats, from
+256 games per point (204 at
+64 ships); ties count as non-wins:
 
 | Learned ships | Scripted ships | Win rate (live) |
 |---:|---:|---:|
@@ -52,9 +54,13 @@ of the final live checkpoint, each row the largest scripted fleet it still beats
 
 The averaged policy, the running average of the weights that the run keeps beside the live
 ones, holds more when outnumbered: four averaged ships win
-61.6% of games against seven scripted ships, where the
-final live weights win 55.0%
-([over training](docs/evaluation.md#outnumbered-over-training)). The
+61.6% of 4,096 games
+against seven scripted ships, where the final live weights win
+55.0% of 4,096
+([over training](docs/evaluation.md#outnumbered-over-training)); ties again count as
+non-wins. That 55.0% and the table's
+55.9% measure the same checkpoint at 4-vs-7, over
+4,096 and 256 games. The
 [evaluation guide](docs/evaluation.md#zero-shot-crossover) covers the search method,
 sample sizes, raw artifacts, and limitations behind these measurements.
 
@@ -71,11 +77,12 @@ means ten-to-one odds. Its best averaged checkpoint rates
 
 ![Post-hoc calibrated Elo over training](checkpoints/wild-universe-731/artifacts/figures/elo_curve.png)
 
-*Figure 3. The line is the live policy at each update, refit from its recorded games against the calibrated opponents; the dots are tournament-rated checkpoints (±1 SE), the last of them the final live checkpoint. Scripted controller fixed at 1000.*
+*Figure 3. The line is the live policy at each update, refit from its recorded games against the calibrated opponents; the dots are tournament-rated checkpoints (±1 SE), the last of them the final live checkpoint. The dot just before it, below the line, is the best averaged checkpoint (2,052 at 666M steps). Scripted controller fixed at 1000.*
 
-The calibrated rating keeps rising long after wins against the scripted controller stop
-being informative: the policy first wins 99% of evaluation games against it at
-114M steps, while its rating climbs from about
+The live policy's calibrated rating keeps rising long after wins against the scripted
+controller stop being informative: the live policy first wins 99% of evaluation games
+against it at 114M steps, while its refit rating
+climbs from about
 1,469 at 100M to about
 2,001 at 250M before levelling off.
 
@@ -106,9 +113,12 @@ emits one output per ship, however many there are.
   measurements with qualitative behavior. The crossover evaluator is
   [`crossover.py`](src/boost_and_broadside/modes/crossover.py).
 
-Every headline number names the artifact it came from. The figures are linked from
-[the reference run's own directory](checkpoints/wild-universe-731/artifacts/figures/), which
-records the measurement behind each one.
+The run's own charts are linked from
+[its artifacts](checkpoints/wild-universe-731/artifacts/figures/), whose records name the
+measurement behind each chart and that measurement's command, seeds and commit. The fan,
+survivor and `wild-universe-731` clip results come from the scripts in
+[`scripts/studies/`](scripts/studies/), whose [README](scripts/studies/README.md) records
+their commands, seeds, games per point and commit.
 
 ## Quick start
 
@@ -138,7 +148,8 @@ evaluation, replay capture, and development checks.
 
 The README and the pages in `docs/` are rendered from `*.template.md` files beside them.
 Every run-specific number is a named value in [`docs/values.json`](docs/values.json),
-built from the reference run's artifacts by `scripts/docs_values.py`, and every chart is
+built by `scripts/docs_values.py` from the reference run's artifacts and the study results
+in `docs/results/`, and every chart is
 named in [`docs/figures.yml`](docs/figures.yml). Edit a template, then run
 `uv run python scripts/render_docs.py`; with `--check` it fails on an unknown name or a
 page out of date.
