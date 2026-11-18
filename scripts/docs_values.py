@@ -11,6 +11,11 @@ fleet-scale figure does.
 
     uv run --no-sync python scripts/docs_values.py            # write docs/values.json
     uv run --no-sync python scripts/docs_values.py --check    # fail if it is out of date
+    uv run --no-sync python scripts/docs_values.py --pull [DIR]   # first copy study results in
+
+`--pull` copies the result files of the studies in `scripts/studies/` from their output
+directory: DIR if given, else $BNB_STUDIES_DIR, else `incoming.root` in
+docs/values_sources.yml (`out/studies`, where the study launchers write by default).
 
 Names are full words: `<measurement>_<subject>_<quantity>`, e.g.
 `crossover_4_ships_beats_up_to`, `calibration_final_live_elo`. Win rates are fractions;
@@ -383,13 +388,32 @@ def earlier_run_values(key: str, run_dir: Path) -> dict:
 
 def fan_values(spec: dict, final_step: int) -> dict:
     """Per fan size N: the win rate of the final live and final averaged checkpoints
-    against N, 1.25N, 1.5N, 1.75N and 2N scripted ships (the fan's grid)."""
+    against N, 1.25N, 1.5N, 1.75N and 2N scripted ships (the fan's grid), the games per
+    point of the ladder and of those final checkpoints, and the largest share of tied
+    games at any point (the fan chart draws wins plus half the ties above 5%)."""
     values = {}
     for size in spec["sizes"]:
         path = ROOT / spec["rows"].format(size=size)
         rows = []
         if path.is_file():
             rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+        finals = {f"step_{final_step:012d}.pt", f"avg_step_{final_step:012d}.pt"}
+
+        def games_per_point(chosen: list[dict]):
+            counts = {row["games"] for row in chosen}
+            if len(counts) > 1:
+                raise ValueError(f"{path.name}: uneven games per point {sorted(counts)}")
+            return counts.pop() if counts else None
+
+        values[f"fan_{size}_ships_final_games"] = games_per_point(
+            [row for row in rows if row["ckpt"].split("/")[-1] in finals]
+        )
+        values[f"fan_{size}_ships_ladder_games"] = games_per_point(
+            [row for row in rows if row["ckpt"].split("/")[-1] not in finals]
+        )
+        values[f"fan_{size}_ships_max_tie_share"] = (
+            max(row["ties"] / row["games"] for row in rows) if rows else None
+        )
         for kind, prefix in (("live", "step_"), ("averaged", "avg_step_")):
             name = f"{prefix}{final_step:012d}.pt"
             chosen = {row["scripted"]: row for row in rows if row["ckpt"].split("/")[-1] == name}
@@ -456,17 +480,26 @@ def fan_extra_values(spec: dict, sizes: list[int]) -> dict:
     return values
 
 
-def pull(spec: dict) -> None:
-    """Copy the studies' result files from their working directory into the repository."""
+def pull(spec: dict, directory: str | None = None) -> None:
+    """Copy the studies' result files from their output directory into the repository.
+
+    Only merged results are copied: a file whose name carries a further suffix before its
+    extension (`fan_731_n4.base.jsonl`, `.extra.jsonl`) is an intermediate and stays behind.
+    """
+    import os
     import shutil
 
-    root = Path(spec["root"])
+    root = Path(directory or os.environ.get("BNB_STUDIES_DIR") or spec["root"])
+    if not root.is_absolute():
+        root = ROOT / root
+    if not root.is_dir():
+        raise FileNotFoundError(f"study output directory {root} does not exist")
     target = ROOT / "docs" / "results" / "v1-731"
     for pattern, subdirectory in [(p, "") for p in spec["files"]] + [
         (p, "clips") for p in spec.get("clip_files", [])
     ]:
         for source in sorted(root.glob(pattern)):
-            if source.stem.endswith("_dark") or source.stat().st_size == 0:
+            if source.stem.endswith("_dark") or "." in source.stem or source.stat().st_size == 0:
                 continue
             destination = target / subdirectory / source.name
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -498,11 +531,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--check", action="store_true", help="fail if values.json is stale")
     parser.add_argument(
-        "--pull", action="store_true", help="first copy the incoming result files in"
+        "--pull",
+        nargs="?",
+        const="",
+        metavar="DIR",
+        help="first copy the study result files in, from DIR (default: $BNB_STUDIES_DIR, "
+        "else incoming.root in docs/values_sources.yml)",
     )
     args = parser.parse_args(argv)
-    if args.pull:
-        pull(yaml.safe_load(SOURCES.read_text())["incoming"])
+    if args.pull is not None:
+        pull(yaml.safe_load(SOURCES.read_text())["incoming"], args.pull or None)
     text = json.dumps(build(), indent=1) + "\n"
     if args.check:
         if not VALUES.exists() or VALUES.read_text() != text:

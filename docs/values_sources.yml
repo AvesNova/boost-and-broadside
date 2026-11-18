@@ -24,7 +24,7 @@ fan:
   sizes: [4, 8, 16, 32]
   rows: docs/results/v1-731/fan_731_n{size}.jsonl
 
-# Derived fan charts' data (scripts in the fan study): break-even ratio by size, averaged
+# Derived fan charts' data (scripts/studies/fan/extras.py): break-even ratio by size, averaged
 # minus live win rate, and game length by ratio. Missing files leave their values null.
 fan_extras:
   crossover_by_size: docs/results/v1-731/crossover_by_size.json
@@ -35,10 +35,12 @@ fan_extras:
 clips:
   survivors: docs/results/v1-731/clips/survivors_*.json
 
-# `scripts/docs_values.py --pull` copies the studies' result files (light charts and data
-# only) from the author's machine into docs/results/v1-731/ before building the values.
+# `scripts/docs_values.py --pull [DIR]` copies the result files of the studies in
+# scripts/studies/ (light charts and merged data only) into docs/results/v1-731/ before
+# building the values. DIR defaults to $BNB_STUDIES_DIR, else to `root` below (relative to
+# the repository), which is where the study launchers write.
 incoming:
-  root: /home/vizia/avesnova/v1-results
+  root: out/studies
   files:
     - fan/fan_731_n*.jsonl
     - fan/fan_731_n*.png
