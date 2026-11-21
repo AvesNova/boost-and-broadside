@@ -1,0 +1,129 @@
+  return torch.rms_norm(input, normalized_shape, weight, eps)
+controllers: {'learner': 'YemongController', 'opponents': 'OpponentSlots', 'lanes': 'LaneSeat'}
+
+== v2 ppo rollout tick, 2048 environments + 1024 lane environments: 27019 compute ops (+8641 view ops) ==
+  model: forecast: correction-code decode (error head)    exclusive   9068  inclusive   9068  (33.6%)
+  scripted/other controller: Imugi                        exclusive   4290  inclusive   4290  (15.9%)
+  model: input features and codes (tokens)                exclusive   3111  inclusive   3111  (11.5%)
+  game: resolve (hits, damage, deaths, mode rules)        exclusive   1866  inclusive   1866  ( 6.9%)
+  game: move (flight physics, bullets)                    exclusive   1861  inclusive   1861  ( 6.9%)
+  model: forecast: delta-code decode (physics head)       exclusive   1519  inclusive   1519  ( 5.6%)
+  controller OpponentSlots (outside the model)            exclusive    973  inclusive   8314  ( 3.6%)
+  game: perceive (observation, fog)                       exclusive    828  inclusive    828  ( 3.1%)
+  model: trunk spatial attention blocks                   exclusive    504  inclusive    504  ( 1.9%)
+  stage _act                                              exclusive    503  inclusive  21352  ( 1.9%)
+  stage _resolve                                          exclusive    411  inclusive   2604  ( 1.5%)
+  model: trunk temporal (RG-LRU) blocks                   exclusive    376  inclusive    376  ( 1.4%)
+  stage _advance                                          exclusive    244  inclusive   2105  ( 0.9%)
+  model: action sampling                                  exclusive    216  inclusive    216  ( 0.8%)
+  model: carry reset on new episode                       exclusive    210  inclusive    210  ( 0.8%)
+  analytics (resolve)                                     exclusive    168  inclusive    168  ( 0.6%)
+  model: input encoder (codes -> embeddings)              exclusive    167  inclusive    167  ( 0.6%)
+  rewards                                                 exclusive    159  inclusive    159  ( 0.6%)
+  model: next-state decode                                exclusive    138  inclusive    138  ( 0.5%)
+  analytics (perceive)                                    exclusive    118  inclusive    118  ( 0.4%)
+  controller LaneSeat (outside the model)                 exclusive     70  inclusive   7459  ( 0.3%)
+  model: other (step glue)                                exclusive     60  inclusive  15285  ( 0.2%)
+  model: belief update from sightings                     exclusive     51  inclusive     51  ( 0.2%)
+  model: belief forecast                                  exclusive     39  inclusive  10626  ( 0.1%)
+  model: output heads (MLPs)                              exclusive     18  inclusive     18  ( 0.1%)
+  model: value decode                                     exclusive     18  inclusive     18  ( 0.1%)
+  controller YemongController (outside the model)         exclusive     15  inclusive  15516  ( 0.1%)
+  stage _perceive                                         exclusive     12  inclusive    958  ( 0.0%)
+  model: trunk (other)                                    exclusive      6  inclusive    886  ( 0.0%)
+
+Inclusive by stage:
+  stage _act            21352
+  stage _advance         2105
+  stage _resolve         2604
+  stage _perceive         958
+
+Model sections, inclusive, total in the tick / calls / per call:
+  controller LaneSeat (outside the model)                                  7459 /   1 =    7459
+  controller OpponentSlots (outside the model)                             8314 /   1 =    8314
+  controller YemongController (outside the model)                         15516 /   3 =    5172
+  model: action sampling                                                    216 /   6 =      36
+  model: belief forecast                                                  10626 /   6 =    1771
+  model: belief update from sightings                                        51 /   3 =      17
+  model: carry reset on new episode                                         210 /   3 =      70
+  model: forecast: correction-code decode (error head)                     9068 /   3 =    3023
+  model: forecast: delta-code decode (physics head)                        1519 /   3 =     506
+  model: input encoder (codes -> embeddings)                                167 /   3 =      56
+  model: input features and codes (tokens)                                 3111 /   3 =    1037
+  model: next-state decode                                                  138 /   6 =      23
+  model: other (step glue)                                                15285 /   3 =    5095
+  model: output heads (MLPs)                                                 18 /  15 =       1
+  model: trunk (other)                                                      886 /   3 =     295
+  model: trunk spatial attention blocks                                     504 /  12 =      42
+  model: trunk temporal (RG-LRU) blocks                                     376 /   6 =      63
+  model: value decode                                                        18 /   3 =       6
+
+Game sections, inclusive:
+  analytics (perceive)                                            118
+  analytics (resolve)                                             168
+  game: move (flight physics, bullets)                           1861
+  game: perceive (observation, fog)                               828
+  game: resolve (hits, damage, deaths, mode rules)               1866
+  rewards                                                         159
+
+Top ops in the input features region:
+     723 aten.mul.Tensor
+     309 aten.add.Tensor
+     267 aten.div.Tensor
+     150 aten.remainder.Scalar
+     150 aten.sub.Tensor
+     123 aten.rsub.Scalar
+     120 aten._to_copy.default
+      99 aten.arange.default
+      87 aten.where.self
+      81 aten.clamp_min.default
+      75 aten.pow.Tensor_Scalar
+      72 aten.stack.default
+
+Top ops in model: forecast: correction-code decode (error head):
+    1698 aten.mul.Tensor
+    1419 aten.sub.Tensor
+     522 aten._to_copy.default
+     468 aten.where.self
+     450 aten.scalar_tensor.default
+     435 aten.clamp.default
+     390 aten.add.Tensor
+     378 aten.erfinv.default
+     366 aten.gt.Scalar
+     261 aten.sum.dim_IntList
+
+Top ops in model: forecast: delta-code decode (physics head):
+     342 aten.mul.Tensor
+     174 aten.add.Tensor
+     144 aten.sub.Tensor
+      99 aten.where.self
+      42 aten._to_copy.default
+      42 aten.clamp_min.default
+      42 aten.div.Tensor
+      39 aten.arange.default
+      36 aten.clamp.default
+      36 aten.index.Tensor
+
+Top ops in controller OpponentSlots (outside the model):
+     190 aten.mul.Tensor
+      92 aten.where.self
+      92 aten.add.Tensor
+      70 aten.scalar_tensor.default
+      58 aten.sub.Tensor
+      47 aten.div.Tensor
+      31 aten._to_copy.default
+      24 aten.index.Tensor
+      24 aten.bitwise_and.Tensor
+      23 aten.clone.default
+
+Top ops in controller LaneSeat (outside the model):
+      29 aten.index.Tensor
+      18 aten.index_copy.default
+      17 aten.index_select.default
+       2 aten.stack.default
+       1 aten.zeros.default
+       1 aten.bitwise_and.Tensor
+       1 aten.where.self
+       1 aten.ones_like.default
+
+Top ops in (outside any region):

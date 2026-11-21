@@ -1,0 +1,78 @@
+profile rl: EnvConfig(num_ships=8, max_bullets=10, max_episode_steps=1024, num_fields=4, single_team=False, action_repeat=2, spawn_resource_spread=0.25) model ModelConfig(d_model=128, n_heads=4, n_yemong_blocks=2, n_spatial_per_block=2, n_temporal_per_block=1, encoder_split=False, n_bullet_cross_per_block=1, bullet_encoder_hidden=64, grad_checkpoint=False)
+[PPOTrainer] Generating refractive-field map cache (512 maps)...
+[PPOTrainer] Field map cache ready: 512 maps
+  with torch.autocast("cuda", dtype=torch.bfloat16):
+  with torch.autocast("cuda", dtype=torch.bfloat16):
+
+== v1 rl rollout step, 2592 environments, elo 512 per matchup: 7574 compute ops (+2995 view ops) ==
+  game: ship physics (flight, fields)                     exclusive   2280  inclusive   2280  (30.1%)
+  scripted agent                                          exclusive    852  inclusive    852  (11.2%)
+  game: bullets                                           exclusive    684  inclusive    684  ( 9.0%)
+  env: rewards and episode stats (per physics tick)       exclusive    598  inclusive   2328  ( 7.9%)
+  model: trunk temporal (RG-LRU) blocks                   exclusive    534  inclusive    534  ( 7.1%)
+  game: collisions, damage, deaths                        exclusive    484  inclusive    484  ( 6.4%)
+  model: trunk spatial attention blocks                   exclusive    456  inclusive    456  ( 6.0%)
+  model: output heads (MLPs, team pooling)                exclusive    323  inclusive    323  ( 4.3%)
+  model: input features and encoder (ships, fields)       exclusive    300  inclusive    300  ( 4.0%)
+  env: resets                                             exclusive    292  inclusive    292  ( 3.9%)
+  elo evaluation games (other)                            exclusive    225  inclusive   3963  ( 3.0%)
+  model: input features and encoder (bullets)             exclusive    144  inclusive    144  ( 1.9%)
+  model: action sampling                                  exclusive    144  inclusive    144  ( 1.9%)
+  training step (other)                                   exclusive    126  inclusive   3611  ( 1.7%)
+  game: observation                                       exclusive     53  inclusive     53  ( 0.7%)
+  model: trunk (other)                                    exclusive     30  inclusive   1020  ( 0.4%)
+  env: wrapper step (other)                               exclusive     22  inclusive   2549  ( 0.3%)
+  model: other (step glue)                                exclusive     15  inclusive   1946  ( 0.2%)
+  env: tick (other)                                       exclusive     12  inclusive   3460  ( 0.2%)
+
+Sections, inclusive, total in the step / calls / per call:
+  (outside any region)                                           7574 /   0 =    7574
+  elo evaluation games (other)                                   3963 /   1 =    3963
+  env: resets                                                     292 /   2 =     146
+  env: rewards and episode stats (per physics tick)              2328 /   2 =    1164
+  env: tick (other)                                              3460 /   4 =     865
+  env: wrapper step (other)                                      2549 /   1 =    2549
+  game: bullets                                                   684 /   4 =     171
+  game: collisions, damage, deaths                                484 /   4 =     121
+  game: observation                                                53 /   2 =      26
+  game: ship physics (flight, fields)                            2280 /   4 =     570
+  model: action sampling                                          144 /   3 =      48
+  model: input features and encoder (bullets)                     144 /   3 =      48
+  model: input features and encoder (ships, fields)               300 /   3 =     100
+  model: other (step glue)                                       1946 /   3 =     649
+  model: output heads (MLPs, team pooling)                        323 /  15 =      22
+  model: trunk (other)                                           1020 /   6 =     170
+  model: trunk spatial attention blocks                           456 /  12 =      38
+  model: trunk temporal (RG-LRU) blocks                           534 /  12 =      44
+  scripted agent                                                  852 /   5 =     170
+  training step (other)                                          3611 /   1 =    3611
+
+Top ops in model: input features and encoder (ships, fields):
+      54 aten.mul.Tensor
+      21 aten.sin.default
+      21 aten.cos.default
+      18 aten.div.Tensor
+      18 aten._to_copy.default
+      15 aten.index.Tensor
+      12 aten.arange.default
+      12 aten.pow.Scalar
+
+Top ops in game: collisions, damage, deaths:
+      88 aten.sub.Tensor
+      56 aten.add.Tensor
+      52 aten.mul.Tensor
+      40 aten.bitwise_and.Tensor
+      36 aten.pow.Tensor_Scalar
+      32 aten.remainder.Scalar
+      24 aten.eq.Scalar
+      20 aten.clamp.default
+
+Top ops in env: rewards and episode stats (per physics tick):
+      86 aten.bitwise_and.Tensor
+      74 aten.mul.Tensor
+      58 aten._to_copy.default
+      38 aten.sum.dim_IntList
+      32 aten.copy_.default
+      30 aten.sum.default
+      30 aten.add_.Tensor
+      24 aten.eq.Scalar
