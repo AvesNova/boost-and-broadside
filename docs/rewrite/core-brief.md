@@ -36,32 +36,68 @@ Fixed scope:
 - **Custom kernels before the simple version is profiled.**
 - **Publication-grade statistics on routine decisions.** They are for the paper's claims.
 
-## 3. Budgets
+## 3. Requirements, instruments and principles
 
-### Hard budgets
+Hard limits apply to outcomes the project needs. Proxies such as operation counts are
+instruments: measured and reported, with no target number to fill up to.
+
+### Requirements
 
 A change that breaks one is reverted or brought to the author.
 
-| Budget | Value | Measured by |
+| Requirement | Measure | Where |
 |---|---|---|
-| Play: game step plus both teams' decisions, one match, CPU, one core | p99 at most 4 ms, worst frame at most 8 ms, per 33 ms tick (*proposed*) | play benchmark |
-| Play: stalls | nothing compiles, builds, synchronises or allocates at scale after a match starts | play benchmark |
-| Operations per tick, uncompiled (compute operations, any batch size) | game step at most 1,500; policy forward at most 700; scripted opponent step at most 600 (*proposed*; v1: about 1,300, 649, 170) | scoreboard tier 1 |
-| Cold compile of everything a training run compiles | at most 3 minutes on the laptop; warm at most 30 s (*proposed*) | scoreboard tier 2 |
-| Recompiles | none when the batch size or the team size changes | scoreboard tier 2 |
-| Fast test tier | at most 2 minutes on the laptop CPU (*proposed*) | scoreboard tier 1 |
-| Smoke run | start to first update with metrics in at most 5 minutes on the laptop (*proposed*) | scoreboard tier 2 |
-| Memory | the smoke configuration fits the laptop GPU (8 GB) | scoreboard tier 2 |
+| **Playable without stutter, using a small share of the machine** | Frame-time distribution of the simulation plus the agents (p99 and worst frame) against the 33 ms tick and the display frame; the share of CPU and GPU a match uses; from 1v1 up to the largest supported size | The laptop (reference); integrated graphics (stretch) |
+| **No stall once a match starts** | Nothing compiles, builds, synchronises with the host or allocates at scale during a match | The play benchmark |
+| **Training uses the GPU efficiently** | Per phase: measured time against its roofline floor (the larger of FLOPs over peak compute and bytes over peak bandwidth); model FLOPs utilisation; memory-bandwidth utilisation. The utilisation monitor's percentage is not a measure | The laptop GPU and a 5090 |
+| **Short workflows are short** | Time from command to result, compile included: a 512-game head-to-head evaluation; a restart after a settings change (recompiles nothing); a restart after a code change (recompiles only the changed graph); the fast test tier; a smoke run to its first update. *Proposed:* minutes, not tens of minutes; a settings restart with no compile at all | The laptop |
+| **Uncompiled is close to compiled** | Uncompiled step time against compiled. *Proposed:* within about 3x, so short jobs need no compile | The laptop GPU |
+| **No recompile for sizes** | Changing the batch size or the team size triggers no recompile | Scoreboard tier 2 |
+| **Memory** | The smoke configuration fits the laptop GPU (8 GB) | Scoreboard tier 2 |
 
-### Objectives
+Compile time matters per restart, not as a share of a long run: a run restarted after a
+fix pays its compile again, so the requirement is on the workflows above.
 
-Improve these, and make every trade between them explicit:
-- training steps per second at the reference configuration, on the laptop and on a 5090;
-- environment steps needed to pass the learning canary;
+### Instruments
+
+Measured on the scoreboard and reported with every change, with no target number:
+- operations per tick and per section, uncompiled;
+- traced operations per compiled graph;
+- FLOPs and bytes moved per training sample;
+- training steps per second, and environment steps to pass the learning canary;
 - lines of code and the number of configuration options.
 
-Baselines: v2's steady real-scale RL is about 5,000 steps per second on the laptop at
-160-row micro-batches; v1's whole-run average was about 2,700.
+The rule is a ratchet, not a ceiling. Every change reports its deltas for the areas it
+touches, and any growth carries one line saying what it buys. Each milestone's deletion
+pass works the numbers down.
+
+Reference values, for comparison only:
+
+| | Game step | Policy forward | Scripted opponent |
+|---|---|---|---|
+| v1 | about 1,200-1,300 per physics tick | 649 | 170 |
+| v2 | about 4,500 per tick | 5,172 | 2,145 |
+
+v2's steady real-scale RL ran at about 5,000 steps per second on the laptop at 160-row
+micro-batches; v1's whole-run average was about 2,700.
+
+### Principles
+
+How speed is usually reached, each for a reason:
+- **Fewer, larger operations.** Every operation pays a launch and a dispatch; small ones
+  pay it for little work.
+- **Batch everything that can be batched,** including every player's rows into one call
+  per player.
+- **No host synchronisation in a hot loop.** Each one idles the GPU.
+- **Let the compiler fuse;** write code it can fuse (no per-component Python loops, no
+  branches computed for every row and then selected).
+- **Constant work happens once:** at construction or at a reset, not every tick or epoch.
+- **bf16 matrix multiplies with fp32 accumulation.**
+- **One house data layout:** batch first, contiguous, features last. A local deviation
+  needs a measured gain at the top of the profile; consistency is worth more than a
+  slice-by-slice optimum.
+- **Profile before optimising,** and optimise only where a phase takes a large share of
+  the time and sits far from its roofline floor.
 
 ### Minimum effects
 
@@ -72,7 +108,6 @@ A difference smaller than these does not decide anything:
 | Step or update time | 3% |
 | Compile time | 10% |
 | Rating | 50 Elo |
-| Operations | any growth past a budget |
 
 ## 4. Strategy
 
@@ -83,12 +118,12 @@ A difference smaller than these does not decide anything:
   - PPO;
   - a scripted opponent.
 
-  The skeleton meets every hard budget and learns before anything is added.
+  The skeleton meets every requirement and learns before anything is added.
 - **v2 is the reference, not the base.** It is checked out beside the branch as a
   read-only worktree. Port behaviour (the flight physics and the mode rules are game
   content), not structure. The new game matches v2's dynamics statistically, not bit for
   bit.
-- **Grow by earned additions,** one change at a time, each keeping the budgets. The likely
+- **Grow by earned additions,** one change at a time, each keeping the requirements. The likely
   order:
   1. fog;
   2. the frontline and elimination modes;
@@ -98,17 +133,18 @@ A difference smaller than these does not decide anything:
   6. the play shell on the new core;
   7. evaluation;
   8. variable maps.
-- **Framework checkpoint after the skeleton.** If the skeleton's cold compile misses its
-  budget in PyTorch, run a measured JAX comparison before continuing.
+- **Framework checkpoint after the skeleton.** If compile time keeps the short workflows
+  from meeting their requirement in PyTorch, run a measured JAX comparison before
+  continuing.
 
 ## 5. Milestones
 
 | Milestone | Content | Exit criteria |
 |---|---|---|
 | M0 | Scoreboard and baselines | The scoreboard runs in one command per tier; v1 and v2 baselines recorded in `docs/findings.md` |
-| M1 | Walking skeleton | Every hard budget met; team size changes without recompiling; passes the learning canary (defined during M1) |
-| M2 onward | One port each (section 4) | Budgets still met; each addition justified by measurement or by the scope |
-| Done | | Budgets met; canary passed; playable at the real-time target; every open question resolved or explicitly deferred |
+| M1 | Walking skeleton | Every requirement met; team size changes without recompiling; passes the learning canary (defined during M1) |
+| M2 onward | One port each (section 4) | Requirements still met; each addition justified by measurement or by the scope |
+| Done | | Requirements met; canary passed; playable at the real-time target; every open question resolved or explicitly deferred |
 
 ## 6. How the work is organised
 
@@ -130,13 +166,20 @@ A difference smaller than these does not decide anything:
 
 The lead decides and records anything reversible that stays within sections 1 to 3. It
 asks the author before:
-- changing a goal, non-goal or budget;
+- changing a goal, non-goal or requirement;
 - changing a game rule in a way that changes how the game plays;
-- spending more than 8 GPU hours on one experiment (*proposed*);
 - dropping a v2 capability with no planned replacement.
 
 Questions go to `docs/questions.md`, batched for the next milestone. Work continues on
 other items meanwhile.
+
+**Runs and time.**
+- Runs on rented GPUs are proposed by the agent and launched by the author.
+- Laptop work is time-boxed by the author's deadline. At the deadline the agent stops,
+  leaves the tree committed and clean, and reports what is done, what is not, and what it
+  would do next. An unfinished, accurate report is preferred to rushed final checks.
+- Development time is a resource like GPU time. Spend rigour where a mistake is expensive
+  or hard to undo, and move quickly everywhere else.
 
 ## 7. Measuring
 
@@ -144,8 +187,8 @@ other items meanwhile.
 
 | Tier | Cost | Contents |
 |---|---|---|
-| 1 | CPU, seconds | operations per tick and per section; traced operations per compiled graph; lines of code; fast-test-tier time |
-| 2 | GPU, minutes, behind the lock | uncompiled and compiled step time at batch sizes 1 and 2,048; play p99 and worst frame; cold and warm compile time; learner step time; peak memory |
+| 1 | CPU, seconds | operations per tick and per section; traced operations per compiled graph; FLOPs and bytes per training sample; lines of code; fast-test-tier time |
+| 2 | GPU, minutes, behind the lock | uncompiled and compiled step time at batch sizes 1 and 2,048; play frame-time distribution; the short workflows' times; learner step time and its roofline gap per phase; peak memory |
 | 3 | GPU, at milestones | the learning canary |
 
 **Benchmark protocol:**
@@ -159,6 +202,20 @@ other items meanwhile.
   Close calls get more repeats.
 - **Learning:** at least 3 seeds and a bootstrap confidence interval.
 - One small helper function for these is enough. No experiment framework.
+
+**Verification in proportion to the stakes:**
+
+| Level | When | What runs |
+|---|---|---|
+| Inner loop | Every change, seconds to a minute | The tests for what was touched, and the instruments for that area. Most changes stop here |
+| Batch | Before merging a set of changes | The fast test tier and the benchmarks for the phases the changes affect. Many small commits share one run; a regression is found by bisecting |
+| Milestone | At a milestone | The full test suite, the learning canary and the full scoreboard |
+
+Decisions follow the same split. A **two-way door** (easy to undo; most code changes, since
+git can undo them) is decided quickly and recorded. A **one-way door** gets rigour: a core
+interface, the house data layout, a game rule, a paper's claim. A standard choice needs no
+A/B test. "Good enough, revisit later" is a valid outcome when it is recorded in
+`docs/assumptions.md`.
 
 ## 8. Records
 
@@ -192,7 +249,7 @@ known ones, not the only ones: any decision can be revisited by stating what cha
 |---|---|---|
 | A small comparison | Which collision test is faster | The commit message: numbers and conditions |
 | An experiment | Informs a decision, costs GPU hours, or is a negative result likely to be cited | `docs/experiments/<date>-<name>/` with a one-page README in the result format, raw results and the command to rerun; one line in the index |
-| A recurring check | The budgets | The scoreboard |
+| A recurring check | The requirements and instruments | The scoreboard |
 
 Scripts are disposable once their result is recorded, unless they join the scoreboard.
 
@@ -212,7 +269,7 @@ under v2's conditions.
 - **Working notes** in code are allowed while working and removed before merge. A review
   helper checks each diff for narrative and opinion.
 - **Tests check behaviour:** game invariants, game dynamics against v2 statistically, and
-  the budgets. No bitwise tests. Tests are deleted with the code they test.
+  the requirements. No bitwise tests. Tests are deleted with the code they test.
 - **Text that reports results** (findings, experiment records) states what was measured.
   Interpretation goes in a separate, labelled section.
 
@@ -220,7 +277,7 @@ under v2's conditions.
 
 | Assumption | Because | Depends on |
 |---|---|---|
-| PyTorch | Dynamic shapes; native GPU support on Windows for play | A lean graph compiles within budget (checked after M1) |
+| PyTorch | Dynamic shapes; native GPU support on Windows for play | A lean graph compiles fast enough for the short workflows (checked after M1) |
 | Griffin trunk: spatial attention plus RG-LRU | Small in v2 (295 operations per forward); standard | Later alternatives tested as experiments |
 | No belief system; memory in the recurrent trunk | Standard under partial observability | Fog as designed |
 | Inputs in metres at fixed scales, never normalised by the arena | Local dynamics do not depend on map size | Variable maps |
