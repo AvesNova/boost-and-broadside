@@ -23,6 +23,16 @@ EXCLUSIVE = collections.defaultdict(lambda: [0, 0])  # label -> [compute, view]
 INCLUSIVE = collections.defaultdict(lambda: [0, 0])
 OPS = collections.defaultdict(collections.Counter)  # label -> op name -> count (compute)
 CALLS = collections.Counter()  # label -> times entered
+BYTES = collections.Counter()  # label -> bytes read and written by compute ops (eager, unfused)
+BYTES_EX = collections.Counter()  # the same, by innermost region
+
+
+def tensor_bytes(tree) -> int:
+    total = 0
+    for leaf in torch.utils._pytree.tree_leaves(tree):
+        if isinstance(leaf, torch.Tensor):
+            total += leaf.numel() * leaf.element_size()
+    return total
 _SUPPRESS = [0]
 
 METADATA = {"aten.sym_size.int", "aten.sym_stride.int", "aten.sym_numel.default",
@@ -40,11 +50,17 @@ class Counter(TorchDispatchMode):
                 INCLUSIVE[label][kind] += 1
             if kind == 0:
                 OPS[STACK[-1]][name] += 1
-        return func(*args, **(kwargs or {}))
+        out = func(*args, **(kwargs or {}))
+        if not _SUPPRESS[0] and name not in METADATA and not getattr(func, "is_view", False):
+            moved = tensor_bytes((args, kwargs)) + tensor_bytes(out)
+            BYTES_EX[STACK[-1]] += moved
+            for label in set(STACK):
+                BYTES[label] += moved
+        return out
 
 
 def reset() -> None:
-    EXCLUSIVE.clear(); INCLUSIVE.clear(); OPS.clear(); CALLS.clear()
+    EXCLUSIVE.clear(); INCLUSIVE.clear(); OPS.clear(); CALLS.clear(); BYTES.clear(); BYTES_EX.clear()
 
 
 def region(owner, attribute: str, label: str) -> None:
@@ -77,8 +93,11 @@ def fused(label: str, plain):
         finally:
             _SUPPRESS[0] -= 1
         EXCLUSIVE[STACK[-1]][0] += 1
+        moved = tensor_bytes((args, kwargs)) + tensor_bytes(out)
+        BYTES_EX[STACK[-1]] += moved
         for item in set(STACK):
             INCLUSIVE[item][0] += 1
+            BYTES[item] += moved
         OPS[STACK[-1]][f"[fused kernel] {label}"] += 1
         return out
 
@@ -135,6 +154,9 @@ def fused_autograd(label: str, plain):
                 finally:
                     _SUPPRESS[0] -= 1
                 _count_one(label)
+                BYTES_EX[STACK[-1]] += tensor_bytes(flat) + tensor_bytes(out)
+                for item in set(STACK):
+                    BYTES[item] += tensor_bytes(flat) + tensor_bytes(out)
                 ctx.single = isinstance(out, torch.Tensor)
                 outs = (out,) if ctx.single else tuple(out)
                 return tuple(o.detach() for o in outs)
@@ -160,6 +182,9 @@ def fused_autograd(label: str, plain):
                 finally:
                     _SUPPRESS[0] -= 1
                 _count_one(label + " (backward)")
+                BYTES_EX[STACK[-1]] += 2 * tensor_bytes(grads) + tensor_bytes(got)
+                for item in set(STACK):
+                    BYTES[item] += 2 * tensor_bytes(grads) + tensor_bytes(got)
                 by_id = {id(t): g for t, g in zip(wrt, got)}
                 result = []
                 for k, i in enumerate(tensor_positions):

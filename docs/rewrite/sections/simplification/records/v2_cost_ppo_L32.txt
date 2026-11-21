@@ -1,0 +1,65 @@
+learner ppo, L 32, micro-batch views 12, view-ticks 384
+FLOPs per view-tick: forward 60.6 M, forward+backward 213.6 M
+FLOPs per view-tick by module (top, M):
+      213.64  Global
+      119.26  SpatialBlock
+       79.96  SpatialBlock.map_norm
+       63.44  SpatialBlock.feedforward
+       56.65  Linear
+       31.72  GatedMLP
+       26.04  HeadGroup
+       18.72  Encoder
+       17.30  SpatialBlock.feedforward.down
+       12.98  SpatialBlock.query_key_value
+       12.18  Encoder.zone.first
+        9.81  Encoder.field.first
+        9.32  Encoder.ship.first
+        8.65  GatedMLP.down
+        8.39  Encoder.global_token.first
+        6.70  HeadGroup.lasts.1
+        5.90  SpatialBlock.map_key_value
+        5.02  HeadGroup.lasts.0
+        4.33  SpatialBlock.output
+        3.41  Encoder.shared
+        0.74  Encoder.map_memory
+        0.49  RMSNorm
+
+Bytes moved per view-tick, by phase (eager, unfused, KB):
+       6858.9  phase: backward (per micro-batch)
+       1277.8  phase: clip and optimizer (per minibatch)
+      10083.7  phase: forward and loss (per micro-batch)
+       7212.7  phase: heads' sums (cadence only)
+        505.4  phase: label codes (per micro-batch)
+      59931.1  phase: prepare (once per update)
+
+Top functions by bytes moved (exclusive, all phases, KB per view-tick):
+      45661.2  learn.shots.tick
+       8170.0  models.yemong.layers.GatedMLP.forward
+       7829.8  learn.ppo.Learner.prepare
+       7823.0  models.yemong.spatial.SpatialBlock.forward
+       6858.9  phase: backward (per micro-batch)
+       3149.0  learn.shots.resimulate
+       2972.8  models.yemong.codes.grouped_cross_entropy
+       2839.0  models.yemong.network.Encoder._kinds
+       2007.1  models.yemong.heads.HeadGroup.forward
+       1324.7  models.yemong.geometry.GeometryHead.query
+       1250.9  models.yemong.codes.wrapped_hl_gauss
+       1057.3  models.yemong.codes.symlog_decode_at
+       1038.5  models.yemong.codes.hl_gauss
+       1004.7  models.yemong.codes.match_moments
+        916.2  models.yemong.codes.scalar_encode
+        759.2  learn.head_statistics._masked
+        752.7  models.yemong.state_code.ellipse
+        683.4  learn.ppo.Adam.step
+        625.3  models.yemong.codes.symlog_median_at
+        534.9  learn.ppo.Learner._step
+        454.7  models.yemong.codes.grouped_log_softmax
+        440.9  models.yemong.geometry.quantities
+        427.8  models.yemong.codes.symlog_quantile
+        373.5  models.yemong.codes.two_hot_at
+        327.4  models.yemong.codes.circular_sharp
+        317.6  models.yemong.temporal.CausalConvolution.sequence
+        309.9  models.yemong.temporal.TemporalBlock.sequence
+        301.9  learn.returns.per_level_gae
+        278.2  models.yemong.codes._one_hot
+        255.0  (outside any region)

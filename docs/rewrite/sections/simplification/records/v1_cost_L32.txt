@@ -1,0 +1,18 @@
+v1 learner, num_steps 32, micro-batch envs 9, env-ticks 288
+FLOPs per env-tick: forward 56.3 M, forward+backward 168.7 M
+      168.74  Global
+      124.53  TransformerBlock
+       56.62  TransformerBlock.ffn
+       52.90  TransformerBlock.norm_bullet
+       31.46  TransformerBlock.kv_bullet
+       31.46  TransformerBlock.ffn.up_proj
+       28.31  GatedMLP
+       18.87  TransformerBlock.ffn.gate_proj
+       18.87  TransformerBlock.ffn.down_proj
+       15.73  GatedMLP.up_proj
+       14.16  TransformerBlock.qkv
+       12.58  RMSNorm
+Bytes moved per env-tick by phase (eager, KB):
+      15366.2  phase: backward (per micro-batch)
+        741.7  phase: clip and optimizer (per minibatch)
+       7742.8  phase: forward and loss (per micro-batch)

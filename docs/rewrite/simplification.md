@@ -622,6 +622,88 @@ Each band-aid above traces to one of these. They are what to remove.
    (R10).
 9. **Monitoring and options instead of decisions** (R11).
 
+## The hunt: budgets from the goals, and the root problems (2026-11-21)
+
+Each goal implies a budget. Measured against them, v2 is far over on operations and on
+everything around the model, but not on the model's arithmetic.
+
+### Real time
+
+A tick is 1/30 s (`Rules.tick_length`), so the frame budget is 33 ms and the goal (p99
+under half of it) leaves about 16 ms for a game step and the agents' decisions at batch
+size 1. An uncompiled B=1 tick of about 4,500 operations measured 25-30 ms
+(`sections/play.md`): about 6 microseconds per operation on the CPU.
+
+| | Game step | Policy decisions (one per team) | Total | At 6 us per operation |
+|---|---|---|---|---|
+| Budget | | | about 2,800 | 16 ms |
+| v1 | about 1,300 per physics tick | 2 x 649 | about 2,600 | about 16 ms |
+| v2 | about 4,500 | 2 x 5,172 | about 14,900 | about 90 ms |
+
+v2 is about 5 times over the budget eager, which is why the play shell needed AOT builds,
+CUDA graphs and background compiles, and froze when one was missing.
+
+### Compile time
+
+Cold compiles on the laptop cost about 7-25 ms per traced operation (act stage 143 s at
+5,623; loss 64 s at 3,162; advance 12.6 s at 1,841; the play tick 25.8 s at 2,867), and
+about 7 times that on the rented boxes (single-threaded tracing on slower cores). A cold
+compile of a few minutes on the laptop therefore allows roughly 10,000 traced operations
+across every graph a run compiles, once each. v2's graphs total well over 25,000 (rollout
+stages, label codes, loss, heads' sums, shot tick), and every new shape compiles them all
+again.
+
+### GPU hours
+
+The learner's arithmetic per sample is not the problem (`v2_cost.py`, `v1_cost.py`;
+`FlopCounterMode`, matrix-multiply FLOPs, forward and backward, at L 32):
+
+| | FLOPs per sample | Bytes moved per sample, eager (forward + backward) | Once per update |
+|---|---|---|---|
+| v1 (per environment tick) | 169 M | about 23 MB | negligible |
+| v2 (per view tick) | 214 M (includes kernel recompute in the backward) | about 17 MB | about 60 MB per view tick (shot re-simulation 46 MB) |
+
+The model is within about a quarter of v1's arithmetic per sample. v2 trains on 1.5 views
+per environment step (both sides of self-play), which is useful signal, not waste. The
+waste is around the model:
+
+- **The shot re-simulation moves about as many bytes as the whole four-epoch training** (60
+  MB per view tick once per update, against 17 MB per view tick in each of four epochs;
+  eager, unfused counts, so the ratio rather than the size is the point).
+- **The rollout plays 75% more than it trains on:** the lanes add 50% environments and the
+  lookahead 25% ticks.
+- **Small micro-batches are launch- and host-bound** (the 3090's step: 26-36 ms wall for 23
+  ms of kernels at 160 rows), so the operation count costs GPU hours as well as eager time.
+- Labels rebuilt every epoch, every branch on every row.
+
+### The root problems
+
+Underneath the band-aids (R1-R11) are five problems. They are what to fix.
+
+1. **No budgets.** Nothing measured operations per tick, traced operations per graph,
+   frame time or compile time against a target, so cost accumulated unseen, and each
+   symptom got a local fix when it hurt. The notes recorded how fast each piece was, not
+   whether it should exist. Fix: the budgets above, as tests.
+2. **The representation: everything as hand-built codes.** Every input and output is a
+   categorical or multi-level code over a very wide range, written per component in Python
+   (two-hot codes, symlog HL-Gauss, colour codes, quantile decodes, a 236 km frame). That is
+   where the operation count, the decoding, the label machinery, the reward scaling and
+   most precision fixes come from; the trunk itself is lean (295 operations). Fix:
+   physical inputs in metres with a few fixed-scale features, standard heads (regression
+   or a single categorical where needed), no decoding fed back.
+3. **The static-shape, capture-everything paradigm, adopted as law.** Inherited from the
+   JAX plan and kept after the switch to PyTorch: fixed shapes, every branch computed and
+   selected, constants as tensors, the configuration bent to compile once, a recompile per
+   shape. Fix: dynamic batch and ship dimensions where they are cheap, per-slice code,
+   constants as numbers, CUDA graphs only where measured to pay.
+4. **Requirements never pruned.** Bit-exactness, backward compatibility, generality and
+   options were adopted early and never revisited, and features were on by default without
+   having to earn their place (arms A13 and A14 never ran). Fix: the non-goals above, and
+   the earn-your-place rule.
+5. **Effort aimed at the wrong place.** Speed work went into the rollout (about 10% of an
+   update) and into kernels, while the cost was in the representation, the learner's
+   surroundings and the extra environments. Fix: profile against the budgets first.
+
 ## Not yet examined
 
 1. The learner on the GPU: time and memory traffic per section (the laptop). The learner's
