@@ -433,3 +433,18 @@ rewrite will be credited with gains that deletion alone would give.
   move the compile-time comparison before M1, alongside the dynamic-shape test.
 - **Not pursued:** 11 (experiments against what the core removes), 12, 17, 18, 24. They
   stand as questions; I did not check them.
+
+## Addendum after the model audit (2026-11-21)
+
+`model-audit.md` followed this review. It corrects three things here:
+
+- **The "+27 Elo" for the error head** (specific question 5, "no belief") came from a
+  tournament run on a wrong base and compares a bundle of changes, not the error head
+  with its absence. Belief against no belief has never been measured.
+- **Objection 3** treated 110 Elo as unpaired seed noise. The seed effect is common across
+  arms (112, 115 and 110 Elo in three configurations), so same-seed comparisons are much
+  tighter. The objection stands in a weaker form: two seeds, all clean pairs in BC, and
+  the pairing needs a seed to fix the initialisation and data order.
+- **The headline goal** (zero-shot play at 20v20 and 50v50 from training at 5v5) is not
+  in the brief and was not in this review. It should be the first requirement and part
+  of the canary; see the audit's last section.
