@@ -4,7 +4,7 @@
 set -u
 out=$1; name=$2; shift 2
 here=$(cd "$(dirname "$0")/.." && pwd)
-python=${BNB_PYTHON:-/home/vizia/avesnova/boost-and-broadside-v2/.venv/bin/python}
+python=${BNB_PYTHON:-/home/vizia/avesnova/boost-and-broadside/v2/.venv/bin/python}
 mkdir -p "$out"
 caches=$(mktemp -d "${TMPDIR:-/tmp}/bnb-warm-$name.XXXX")
 for run in cold warm; do

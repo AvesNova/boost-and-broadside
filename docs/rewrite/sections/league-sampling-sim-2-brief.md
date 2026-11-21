@@ -43,7 +43,7 @@ the clean cut. Change no league behaviour.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-league-sim2`, branch `feat/league-sampling-sim-2`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-league-sim2`, branch `feat/league-sampling-sim-2`
   (from v2). Work only there. Scratch in `/tmp/bnb-scratch-league-sim2`. Don't read other
   directories under `/home/vizia/avesnova`, except `runs-v2/2026-11-06-mixed-calm-fern`
   (read only).

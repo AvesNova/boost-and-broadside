@@ -7,7 +7,7 @@ games like Age of Empires II and Civilization V. It must look clean and stay fas
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-play-m2`, branch `section/play-m2` (from v2).
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-play-m2`, branch `section/play-m2` (from v2).
   Work only here. Scratch in `/tmp/bnb-scratch-play-m2`.
 - **Do not read or modify** any other directory under `/home/vizia/avesnova`: no v1, no
   `physics-race*`, no other worktree.

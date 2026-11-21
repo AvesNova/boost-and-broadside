@@ -40,7 +40,7 @@ Write the numbers to `/tmp/bnb-scratch-belief/baselines.md` (a table per quantit
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-belief-calibration`, branch
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-belief-calibration`, branch
   `fix/belief-calibration` (from v2). Scratch `/tmp/bnb-scratch-belief`.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""`, `nice -n 15`, at most 8 threads; a BC run owns
   the GPU. Never take the bench lock.

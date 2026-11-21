@@ -66,7 +66,7 @@ Say which frame leaves the two axes least correlated at each horizon.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-baselines-bench`, branch `bench/baselines` (from
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-baselines-bench`, branch `bench/baselines` (from
   v2). Scratch `/tmp/bnb-scratch-baselines`.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""`, `nice -n 15`, at most 8 threads; a BC run owns the
   GPU. Never take the bench lock. No training runs.

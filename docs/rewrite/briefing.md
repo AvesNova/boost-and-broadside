@@ -72,7 +72,7 @@ See **Open for the author** in [arms-todo.md](arms-todo.md) (8 items). In short:
     --out <dir>/pilot-fixed/rl-mix-kl --device cuda --games 512 --unscored
   ```
 
-  `--unscored` with no names plays frontline break-even too. Then `bnb evaluate decide <dir> --peek` for the per-condition variances and costs, and `bnb evaluate design <dir> --looks 2 3 4 5 --simulations 400`. Record the result in evaluation-suite.md's "Design pilot". It replaces the density-map numbers for 1v1, 2v2, 10v10 and break-even, and measures what 30-a-side break-even games cost. On the laptop the checkpoints were under `/home/vizia/avesnova/box-5090-backup/runs/`; the server needs a copy.
+  `--unscored` with no names plays frontline break-even too. Then `bnb evaluate decide <dir> --peek` for the per-condition variances and costs, and `bnb evaluate design <dir> --looks 2 3 4 5 --simulations 400`. Record the result in evaluation-suite.md's "Design pilot". It replaces the density-map numbers for 1v1, 2v2, 10v10 and break-even, and measures what 30-a-side break-even games cost. On the laptop the checkpoints were under `/home/vizia/avesnova/boost-and-broadside/data/box-5090-backup/runs/`; the server needs a copy.
 - Nothing else is running.
 
 ## Working agreements (from the author)

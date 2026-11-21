@@ -60,7 +60,7 @@ recurred once the caches were warm.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-intermittent`, branch `fix/intermittent` (from
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-intermittent`, branch `fix/intermittent` (from
   v2). Work only here. Scratch in `/tmp/bnb-scratch-intermittent`.
 - Do not read any other directory under `/home/vizia/avesnova`.
 - **Python:** `uv sync`, then always `uv run --no-sync ...`.

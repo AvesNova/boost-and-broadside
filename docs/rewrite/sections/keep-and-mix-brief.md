@@ -38,7 +38,7 @@ on and off) differ in build and must be rated in one field.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-keep-mix`, branch `feat/keep-and-mix` (from v2).
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-keep-mix`, branch `feat/keep-and-mix` (from v2).
   Work only there. Scratch in `/tmp/bnb-scratch-keep-mix`. Don't read other directories
   under `/home/vizia/avesnova`.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""` for everything; never take the bench lock; no

@@ -1,6 +1,6 @@
 ## 1v1: 3 jobs, B 8192, 19:15 KST
 W1112 19:16:20.835000 1602032 torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
-/home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+/home/vizia/avesnova/boost-and-broadside/v2/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
   warn_once(FP_FUSION_DEFAULT_WARNING)
 1v1                  frozen (r9)   energy v turn v c0: score 0.013 ± 0.003  kills m/o/f/t 0.16 / 0.14 / 0.41 / 0.30  life 168 s  kpm/ship 0.34  trades 0.00
 1v1                  frozen (r9)     turn mirror v c0: score 0.498 ± 0.011  kills m/o/f/t 0.81 / 0.17 / 0.02 / 0.00  life 152 s  kpm/ship 0.37  trades 0.03

@@ -23,7 +23,7 @@ Regenerate the screenshots that change (`docs/images/play/interface-*`) and look
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-play-fix`, branch `fix/play-m2` (from v2). Work
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-play-fix`, branch `fix/play-m2` (from v2). Work
   only here. Scratch in `/tmp/bnb-scratch-play-fix`.
 - **Do not read** any other directory under `/home/vizia/avesnova`.
 - **Python:** `uv sync`, then always `uv run --no-sync ...`.

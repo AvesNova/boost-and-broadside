@@ -1,7 +1,7 @@
 # Mode layer tuning — progress
 
 Branch `tune/modes` (from `integrate/next-runs` at 3d36a721), 2026-11-12. Worktree
-`/home/vizia/avesnova/bnb-tune-modes` (the `bnb-modes` path holds an older `section/modes`
+`/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-tune-modes` (the `bnb-modes` path holds an older `section/modes`
 worktree, left alone).
 
 ## Step 1: elimination spawns by team side (done)
@@ -499,7 +499,7 @@ calibration after the freeze).
 
 # Handoff (2026-11-12 18:30 KST)
 
-Branch `tune/modes`, worktree `/home/vizia/avesnova/bnb-tune-modes` (the `bnb-modes` path
+Branch `tune/modes`, worktree `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-tune-modes` (the `bnb-modes` path
 is an older `section/modes` worktree, untouched). All measurements: the tree's default
 real-scale cards (game v7) before the combat freeze; re-measure after it.
 

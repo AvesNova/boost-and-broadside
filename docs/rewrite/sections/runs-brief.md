@@ -15,7 +15,7 @@ read in one sitting.
 
 ## Where you work
 
-- **Your worktree:** `/home/vizia/avesnova/bnb-runs`, branch `section/runs`. Work only
+- **Your worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-runs`, branch `section/runs`. Work only
   here.
 - **Scratch:** use `/tmp/bnb-scratch-runs` for temporary files.
 - **Do not read or modify** any other directory under `/home/vizia/avesnova`. In

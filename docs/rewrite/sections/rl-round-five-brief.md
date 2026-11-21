@@ -35,7 +35,7 @@ Read `docs/rewrite/sections/league-sampling-sim.md` (rounds 1 and 2,
 CPU only, no training: on a captured self-play game (or a short CPU rollout) with two
 calm-fern policies of the same build (for example `players-calm-fern/step_73400320-live`
 and `step_88080384-live`, also `step_7340032-live` for a far pair; read only under
-`/home/vizia/avesnova/runs-v2/players-calm-fern/`), switch the opponent from A to B
+`/home/vizia/avesnova/boost-and-broadside/data/runs-v2/players-calm-fern/`), switch the opponent from A to B
 mid-game three ways: (a) B with its own state warmed from the game's start (the truth),
 (b) B starting from A's state, (c) B from a reset state. Report B's action-distribution KL
 from (a) over the following ticks (by seconds after the switch), for a near and a far pair,
@@ -68,7 +68,7 @@ block's output in both orders (spatial_first stays as today: its temporal sublay
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-rl-five`, branch `feat/rl-round-five` (from v2).
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-rl-five`, branch `feat/rl-round-five` (from v2).
   Work only there. Scratch in `/tmp/bnb-scratch-rl-five`. Don't read other directories
   under `/home/vizia/avesnova`, except the read-only policies named above.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""`, `nice -n 15`; BC arms own the GPU. Never take the

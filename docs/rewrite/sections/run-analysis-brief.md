@@ -6,19 +6,19 @@ looks odd, give the numbers. Another reviewer judges the flags.
 
 ## The runs (read only)
 
-- **BC:** `/home/vizia/avesnova/runs-v2/2026-11-04-mixed-wandering-quill/` — behaviour
+- **BC:** `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-04-mixed-wandering-quill/` — behaviour
   cloning of Imugi, 100M environment steps, finished. Built before
   "diagnostics round 2", so it lacks many series.
-- **RL:** `/home/vizia/avesnova/runs-v2/2026-11-04-mixed-tidy-harbour/` — PPO warm-started
+- **RL:** `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-04-mixed-tidy-harbour/` — PPO warm-started
   from the BC clone, 381 updates (~50M steps), **still running**: read whatever rows exist;
   never write, move or lock anything in either directory.
 - In each: `metrics.jsonl` (one JSON object per update, every series by name, x-axis
   `counters/environment_steps`), `config.json`, `run.json`. The launch logs are
-  `/home/vizia/avesnova/runs-v2/bc-launch.log` and `rl-launch.log`.
+  `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/bc-launch.log` and `rl-launch.log`.
 
 ## What the series mean
 
-Read, in `/home/vizia/avesnova/boost-and-broadside-v2` (read only):
+Read, in `/home/vizia/avesnova/boost-and-broadside/v2` (read only):
 `docs/rewrite/diagnostics.md` (the audit: every series, its meaning, healthy range),
 `docs/rewrite/sections/diagnostics-spec.md`, `diagnostics-notes.md`,
 `src/bnb/runtime/dashboards.py` (how the series group into sections),
@@ -62,7 +62,7 @@ series, for the reports that follow.
 
 - Scratch only: `/tmp/bnb-scratch-run-analysis`. Write scripts and charts there.
 - **CPU only**, `CUDA_VISIBLE_DEVICES=""`; the GPU is busy with the RL run. Run Python with
-  `uv run --no-sync python` from `/home/vizia/avesnova/boost-and-broadside-v2`.
+  `uv run --no-sync python` from `/home/vizia/avesnova/boost-and-broadside/v2`.
 - **Nothing on W&B:** don't use the W&B API or create anything there; all data is on disk.
 - Change no repository files.
 

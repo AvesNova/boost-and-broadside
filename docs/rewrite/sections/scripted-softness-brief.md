@@ -1,6 +1,6 @@
 # Brief: how soft is Imugi, and what is BC's ceiling against it
 
-The new BC clone (`/home/vizia/avesnova/runs-v2/2026-11-05-mixed-sunny-ember/policy`, 50M
+The new BC clone (`/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-05-mixed-sunny-ember/policy`, 50M
 steps) scores 0.190 ± 0.019 against the raw Imugi (frontline 0.23, deathmatch 0.25,
 deathmatch_wide 0.09). The old clone (`.../2026-11-04-mixed-wandering-quill/policy`, 100M)
 scores 0.250. BC's stop targets parity (0.5).
@@ -57,7 +57,7 @@ least about 4–5% on each side.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-scripted-softness`, branch
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-scripted-softness`, branch
   `diag/scripted-softness` (from v2). Work only there. Scratch in
   `/tmp/bnb-scratch-scripted-softness`. Do not read other directories under
   `/home/vizia/avesnova`, except the two policy directories above.

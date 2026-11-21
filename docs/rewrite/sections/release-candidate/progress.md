@@ -1,7 +1,7 @@
 # Release candidate: progress
 
 Branch `rel/candidate` from `origin/integrate/next-runs` 40cbd425, worktree
-`/home/vizia/avesnova/bnb-release`, 2026-11-12 20:35-. CPU only (`CUDA_VISIBLE_DEVICES=""`):
+`/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-release`, 2026-11-12 20:35-. CPU only (`CUDA_VISIBLE_DEVICES=""`):
 the laptop GPU is another agent's. For the 5090 dry run (BC -> RL mainline).
 
 ## 1. Merges

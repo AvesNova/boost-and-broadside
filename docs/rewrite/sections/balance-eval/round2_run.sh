@@ -4,7 +4,7 @@
 # one steady batch of every condition at 4096 environments and 32 variants (`timing`). Each a
 # systemd user unit as laptop_job.sh's, compiling outside the GPU lock (--lock for the play).
 set -u
-here=/home/vizia/avesnova/bnb-balance-eval
+here=/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval
 data=$here/docs/rewrite/sections/balance-eval/data
 lock=/tmp/claude-1000/bnb-gpu.lock
 py=$here/.venv/bin/python

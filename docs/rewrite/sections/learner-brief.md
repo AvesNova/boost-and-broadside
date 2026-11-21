@@ -8,7 +8,7 @@ the fastest straightforward design, and code the next person can read and change
 
 ## Where you work
 
-- **Your worktree:** `/home/vizia/avesnova/bnb-learner`, branch `section/learner`. Work
+- **Your worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-learner`, branch `section/learner`. Work
   only here.
 - **Scratch:** use `/tmp/bnb-scratch-learner` for temporary files.
 - **Do not read or modify** any other directory under `/home/vizia/avesnova`. In

@@ -140,8 +140,8 @@ def ratings_case(options: dict, phases: dict) -> dict:
         if options.get("players")
         else [
             "scripted",
-            "/home/vizia/avesnova/runs-v2/2026-11-08-bc-arm2d-persistence/policy-exponential",
-            "/home/vizia/avesnova/runs-v2/2026-11-08-bc-arm2d-persistence/policy-live",
+            "/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-08-bc-arm2d-persistence/policy-exponential",
+            "/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-08-bc-arm2d-persistence/policy-live",
         ]
     )
     preset = options.get("preset", "frontline")

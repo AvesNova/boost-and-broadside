@@ -54,7 +54,7 @@ Branch `feat/rating-allocator` from `integrate/next-runs` (997a700e).
 
       systemd-run --user --unit=rating-layout-probe -p MemoryMax=8G \
         uv run --no-sync python bench/rating_layout_probe.py \
-        players=scripted,/home/vizia/avesnova/live-elo/rl-v20/runs/rl-v20/policies/step_75497472/exponential_average,/home/vizia/avesnova/live-elo/rl-mix-kl/runs/rl-mix-kl/policies/step_75497472/exponential_average,/home/vizia/avesnova/live-elo/rl-v20/runs/rl-v20/policies/step_30408704/exponential_average \
+        players=scripted,/home/vizia/avesnova/boost-and-broadside/data/live-elo/rl-v20/runs/rl-v20/policies/step_75497472/exponential_average,/home/vizia/avesnova/boost-and-broadside/data/live-elo/rl-mix-kl/runs/rl-mix-kl/policies/step_75497472/exponential_average,/home/vizia/avesnova/boost-and-broadside/data/live-elo/rl-v20/runs/rl-v20/policies/step_30408704/exponential_average \
         preset=real_scale_frontline layouts=2x96x32,4x96x32,8x96x32,4x128x32,8x128x32,2x96x64,8x128x64 \
         batches=3 device=cuda lineup=Yongma,Yongma,Jujak,Jujak,Jujak \
         out=docs/rewrite/sections/rating-allocator/probe-frontline.jsonl

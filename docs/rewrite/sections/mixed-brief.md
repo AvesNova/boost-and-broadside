@@ -8,7 +8,7 @@ change.
 
 ## Where you work
 
-- **Your worktree:** `/home/vizia/avesnova/bnb-mixed`, branch `section/mixed`. Work only
+- **Your worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-mixed`, branch `section/mixed`. Work only
   here.
 - **Scratch:** use `/tmp/bnb-scratch-mixed` for temporary files.
 - **Do not read or modify** any other directory under `/home/vizia/avesnova`. In

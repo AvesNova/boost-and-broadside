@@ -1,8 +1,8 @@
 #!/bin/bash
 # Elimination at fixed map sizes (no shrink): game length and deaths per minute by radius.
 # Spawns, fields and the boundary ramp scale with the radius (layout map_scale).
-cd /home/vizia/avesnova/boost-and-broadside-v2; export PYTHONPATH=src
-PY=/home/vizia/avesnova/boost-and-broadside-v2/.venv/bin/python
+cd /home/vizia/avesnova/boost-and-broadside/v2; export PYTHONPATH=src
+PY=/home/vizia/avesnova/boost-and-broadside/v2/.venv/bin/python
 while systemctl --user is-active -q elim-shrink; do sleep 15; done
 for radius in 7800 6000 4500 3500 2500 1800 1200 800 500 300 100; do
   name=r$radius; echo "== $name start $(date +%H:%M:%S)"

@@ -33,7 +33,7 @@ then the league's state. Each must fail part 1, with a message naming the field.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-resume`, branch `fix/resume-integrity` (from
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-resume`, branch `fix/resume-integrity` (from
   v2). Work only here. Scratch in `/tmp/bnb-scratch-resume`.
 - **Do not read** any other directory under `/home/vizia/avesnova`.
 - **Python:** `uv sync`, then always `uv run --no-sync ...`.

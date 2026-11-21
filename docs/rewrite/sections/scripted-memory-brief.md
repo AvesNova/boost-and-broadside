@@ -91,7 +91,7 @@ random. Keep the names clear, and keep the lanes' ladder chain calibrating them.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-scripted-memory`, branch `feat/scripted-memory`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-scripted-memory`, branch `feat/scripted-memory`
   (from v2). Work only there. Scratch in `/tmp/bnb-scratch-scripted-memory`. Do not read
   other directories under `/home/vizia/avesnova`, apart from the round-one scratch,
   `/tmp/bnb-scratch-scripted-redesign`, where the frozen old agent and the audit script

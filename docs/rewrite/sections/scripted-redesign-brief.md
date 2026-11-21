@@ -95,7 +95,7 @@ All against 128 games per preset:
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-scripted-redesign`, branch `feat/scripted-redesign`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-scripted-redesign`, branch `feat/scripted-redesign`
   (from v2). Work only there. Scratch in `/tmp/bnb-scratch-scripted-redesign`. Do not read
   other directories under `/home/vizia/avesnova`, except the earlier scratch named above.
 - **Python:** `uv sync --all-extras`, then always `uv run --no-sync ...`.

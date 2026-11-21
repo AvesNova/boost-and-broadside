@@ -5,13 +5,13 @@ with evidence, and fix it.
 
 ## What we know
 
-- **The clone:** `/home/vizia/avesnova/runs-v2/2026-11-04-mixed-wandering-quill/policy`.
+- **The clone:** `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-04-mixed-wandering-quill/policy`.
   Its closed-loop score against Imugi was about 0.40 over 1,000-game windows
   (BC, 100M steps, mixed preset, fog on).
-- **The RL run:** `/home/vizia/avesnova/runs-v2/2026-11-04-mixed-tidy-harbour` (PPO,
+- **The RL run:** `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-04-mixed-tidy-harbour` (PPO,
   `--init-from` the clone, mixed preset, stopped by Ctrl-C at about update 237 of 381;
   read-only: its checkpoints, `metrics.jsonl`, `config.json`). Its launch log is
-  `/home/vizia/avesnova/runs-v2/rl-launch.log`.
+  `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/rl-launch.log`.
 - **A metrics sweep** of both runs: `/tmp/bnb-scratch-run-analysis/findings.md`, with
   per-series summaries (`rl_summ.tsv`, `bc_summ.tsv`) and charts. Its main points:
   - `pool/score/scripted` falls to about 0.04 from update ~26 on, and the live policy
@@ -59,7 +59,7 @@ with evidence, and fix it.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-rl-degradation`, branch `fix/rl-degradation`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-rl-degradation`, branch `fix/rl-degradation`
   (from v2). Work only there. Scratch and your runs in `/tmp/bnb-scratch-rl-degradation`
   (`--runs-directory`). Read the two run directories and the analysis scratch above; do not
   read any other directory under `/home/vizia/avesnova`.

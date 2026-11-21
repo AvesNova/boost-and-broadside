@@ -34,7 +34,7 @@ floor; that run never reached 0.45 in 100M steps.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-bc-stop`, branch `fix/bc-stop` (from v2). Work
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-bc-stop`, branch `fix/bc-stop` (from v2). Work
   only here; scratch in `/tmp/bnb-scratch-bc-stop`.
 - **Do not read or modify** any other directory under `/home/vizia/avesnova`.
 - **Python:** `uv sync`, then always `uv run --no-sync ...`.

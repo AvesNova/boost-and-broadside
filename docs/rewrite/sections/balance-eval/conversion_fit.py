@@ -6,7 +6,7 @@ of any cause). Those records ran with fog and fields on, each preset's own map, 
 out: a doctrine change moves the wins and the kills differently).
 
     PYTHONPATH=src:. python docs/rewrite/sections/balance-eval/conversion_fit.py \
-        /home/vizia/avesnova/bnb-balance-final/docs/rewrite/sections/balance-final/data
+        /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-final/docs/rewrite/sections/balance-final/data
 
 The fit per condition: logit(score) = a + b logit(kill share), weighted least squares with
 each point's variance the score's (delta method) plus b^2 times the kill share's, iterated.

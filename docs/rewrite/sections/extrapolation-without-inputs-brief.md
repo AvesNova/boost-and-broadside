@@ -29,7 +29,7 @@ validation): decouple them.
 
 ## Where you work
 
-Worktree `/home/vizia/avesnova/bnb-extrap-noinputs`, branch `fix/extrapolation-without-inputs`
+Worktree `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-extrap-noinputs`, branch `fix/extrapolation-without-inputs`
 (from v2); scratch `/tmp/bnb-scratch-extrap-noinputs`. CPU only (`CUDA_VISIBLE_DEVICES=""`,
 `nice -n 15`, at most 8 threads); never the bench lock, queue file, units or run directories.
 Long commands under `systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0`. Never

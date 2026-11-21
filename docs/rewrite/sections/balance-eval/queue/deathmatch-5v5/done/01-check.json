@@ -1,3 +1,3 @@
 {"candidates": [{"name": "base: Yongma team v Jujak team"},
                 {"name": "pair: Jujak v Jujak", "a": {"ship": "jujak"}, "b": {"ship": "jujak"}}],
- "out": "/home/vizia/avesnova/bnb-balance-eval/docs/rewrite/sections/balance-eval/data/check-deathmatch-5v5.jsonl", "games": 256, "mixed_games": 0, "seed": 0}
+ "out": "/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval/docs/rewrite/sections/balance-eval/data/check-deathmatch-5v5.jsonl", "games": 256, "mixed_games": 0, "seed": 0}

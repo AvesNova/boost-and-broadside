@@ -6,7 +6,7 @@ after training (`bnb ratings`, `bnb head-to-head`).
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-league`, branch `section/league` (from v2).
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-league`, branch `section/league` (from v2).
   Work only here. Scratch in `/tmp/bnb-scratch-league`.
 - **Do not read** any other directory under `/home/vizia/avesnova`: no v1, no
   `physics-race*`, no other worktree.

@@ -5,9 +5,9 @@
 # runs/gru-timing (ignored).
 block=$1
 environments=${2:-256}
-cd /home/vizia/avesnova/bnb-gru
-export PYTHONPATH=/home/vizia/avesnova/bnb-gru/src
-S=/home/vizia/avesnova/bnb-gru/runs/gru-timing
+cd /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-gru
+export PYTHONPATH=/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-gru/src
+S=/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-gru/runs/gru-timing
 mkdir -p $S
 echo "=== $block $environments $(date +%T) $(powerprofilesctl get)" >> $S/time_blocks.log
 .venv/bin/python -c "import bnb.cli; bnb.cli.main()" train --preset real_scale_all_modes --environments $environments --updates 4 \

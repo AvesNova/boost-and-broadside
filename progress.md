@@ -551,7 +551,7 @@ so B-5v5 = A-5v5); C the arena x (n / 5)^0.25 with fleet size (only 10v10 change
 ## 2026-11-16 23:55 trail stills: author feedback
 - Done: rebased on feat/imugi-boundary (bbb52a66; the final card commit had not landed); stills now draw trails + death X only, shots/hits/ends/fog opt-in, never all three in a fleet still.
 - Re-recorded the 1v1 duel (120 s) and the 5v5 deathmatch opening (60 s) on this tree: identical paths to before, as the earlier base already held sticky Imugi build 2.
-- Duel shape: tight circles (~400-500 m across), straight under 3 deg/s only 8-12% of the time; no racetrack legs. PNGs in /home/vizia/avesnova/review/stills/.
+- Duel shape: tight circles (~400-500 m across), straight under 3 deg/s only 8-12% of the time; no racetrack legs. PNGs in /home/vizia/avesnova/boost-and-broadside/review/stills/.
 
 ## 2026-11-16 results charts (branch feat/results-charts, worktree bnb-charts)
 - Tried: read ladder, crossover, rating_pool, evaluation, metrics keys of rl-v20/bc-v21; v1 viz on main.

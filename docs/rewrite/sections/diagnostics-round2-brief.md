@@ -41,7 +41,7 @@ message. A fresh agent or the coordinator will run the GPU part.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-diagnostics-2`, branch `section/diagnostics-2`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-diagnostics-2`, branch `section/diagnostics-2`
   (from v2). Work only here. Scratch in `/tmp/bnb-scratch-diagnostics-2`.
 - **Everything else** is as in `diagnostics-brief.md`: what to read, the boundaries, the
   test tiers, hand breaks, no network in tests, full words, no legacy.

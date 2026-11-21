@@ -1,13 +1,13 @@
 #!/bin/bash
 # fetch_eval.sh CHAIN [DEST]: copy box/eval_queue.sh's outputs from the 5090 box to the laptop
-# (DEST, default /home/vizia/avesnova/review/dry-run): $RUNS/CHAIN-eval/ whole (pools, records,
+# (DEST, default /home/vizia/avesnova/boost-and-broadside/review/dry-run): $RUNS/CHAIN-eval/ whole (pools, records,
 # logs, media, charts; small), the champion's policy file (to play or re-render it here),
 # the chain's run records the health chart reads (run.json, config.json, metrics.jsonl), and
 # the queue's and the chain's top-level logs. Safe while the queue runs (a partial copy; run
 # it again). BOX overrides the ssh host (box5090), RUNS the box's runs directory.
 set -euo pipefail
 chain=${1:?usage: fetch_eval.sh CHAIN [DEST]}
-dest=${2:-/home/vizia/avesnova/review/dry-run}
+dest=${2:-/home/vizia/avesnova/boost-and-broadside/review/dry-run}
 box=${BOX:-box5090}
 runs=${RUNS_BOX:-/workspace/runs}
 mkdir -p "$dest/runs"

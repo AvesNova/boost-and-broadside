@@ -51,7 +51,7 @@ Read first: `docs/rewrite/sections/round2-plan.md` (5.1, 8), `acceleration-input
   the same as arm 1's (the model's "just spotted" check becomes the observation's flag).
 - **Equivalence:** on recorded play, the inputs from the new path equal arm 1's model-computed
   inputs within float32 rounding on every row (visible and hidden), and arm 1's policy
-  (`/home/vizia/avesnova/runs-v2/2026-11-08-bc-arm-C-accel/checkpoints/` latest, read only, or
+  (`/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-08-bc-arm-C-accel/checkpoints/` latest, read only, or
   any build with the switch on) steps to the same actions on a recorded segment. If they
   differ, find out why before going on.
 - Replays and anything that stores observation rows: widen as needed; say what changed in
@@ -65,7 +65,7 @@ Read first: `docs/rewrite/sections/round2-plan.md` (5.1, 8), `acceleration-input
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-observation-accel`, branch
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-observation-accel`, branch
   `feat/observation-accelerations` (from v2). Scratch `/tmp/bnb-scratch-observation-accel`.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""`, `nice -n 15`, at most 8 threads; a BC run owns the
   GPU. Never take the bench lock; never touch the queue file, units or run directories (read

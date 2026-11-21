@@ -30,13 +30,13 @@ our rating data from all of the games, including the lane games?"
 
 ## The machine
 
-An RL run owns the GPU for hours (`/home/vizia/avesnova/runs-v2/2026-11-06-mixed-calm-fern`,
+An RL run owns the GPU for hours (`/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-06-mixed-calm-fern`,
 read only). Work on the CPU (`CUDA_VISIBLE_DEVICES=""`), never take the bench lock, no
 training runs.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-rating-games`, branch `feat/rating-all-games`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-rating-games`, branch `feat/rating-all-games`
   (from v2). Work only there. Scratch in `/tmp/bnb-scratch-rating-games`. Don't read other
   directories under `/home/vizia/avesnova`, except the run above.
 - **Python:** `uv sync --all-extras`, then always `uv run --no-sync ...`.

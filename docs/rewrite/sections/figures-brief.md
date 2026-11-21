@@ -87,15 +87,15 @@ your notes before the next:
 
 ## Checkpoints to look at
 
-- The BC clone, averaged: `/home/vizia/avesnova/runs-v2/averages/eager-acorn-uniform-66M-rated`
-  (and its live clone, `/home/vizia/avesnova/runs-v2/2026-11-05-mixed-eager-acorn/policy`).
-- The RL run training now, `/home/vizia/avesnova/runs-v2/2026-11-06-mixed-lively-meadow`:
+- The BC clone, averaged: `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/averages/eager-acorn-uniform-66M-rated`
+  (and its live clone, `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-05-mixed-eager-acorn/policy`).
+- The RL run training now, `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-06-mixed-lively-meadow`:
   its checkpoints as they appear. Read only; never write into a run directory except
   under `artifacts/figures/`.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-figures`, branch `feat/figures` (from v2). Work
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-figures`, branch `feat/figures` (from v2). Work
   only there. Scratch in `/tmp/bnb-scratch-figures`. Don't read other directories under
   `/home/vizia/avesnova`, except the run and checkpoint paths above.
 - **Python:** `uv sync --all-extras`, then always `uv run --no-sync ...`. Add libraries

@@ -14,10 +14,10 @@ first: it says what the kernels are, what they buy, and what the author decided.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-fast-yemong`, branch `perf/fast-yemong` (from
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-fast-yemong`, branch `perf/fast-yemong` (from
   v2). Work only here. Scratch in `/tmp/bnb-scratch-fast-yemong`.
 - **The source of the kernels:** the branch `race/yemong-blind`, in
-  `/home/vizia/avesnova/bnb-yemong-blind`, read-only. Its `NOTES.md` explains each kernel
+  `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-yemong-blind`, read-only. Its `NOTES.md` explains each kernel
   and its measurements, and its `tests/test_swift_kernels.py` its tests. You may read that
   directory. Do not read any other directory under `/home/vizia/avesnova` (no v1, no
   `physics-race*`, no other worktree).
@@ -75,7 +75,7 @@ first: it says what the kernels are, what they buy, and what the author decided.
 ## Measure
 
 - **The race benchmark:** copy `bench/comparison/v2_speed.py` and `blind_synthetic.py`
-  from the `race/yemong-blind` branch (`/home/vizia/avesnova/bnb-yemong-blind`) into
+  from the `race/yemong-blind` branch (`/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-yemong-blind`) into
   `bench/yemong_speed.py` (and a helper module), and run it before you start and after each kernel. The coordinator's quiet-machine
   baseline and the blind model's numbers are in the audit; aim for the blind model's.
 - **Training throughput:** `bnb train` at 5v5 with 1024 environments, env-ticks/s and

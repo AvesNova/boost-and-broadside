@@ -63,7 +63,7 @@ A durable job list and one runner, so the GPU runs one job at a time, in order:
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-run-control`, branch `feat/run-control` (from
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-run-control`, branch `feat/run-control` (from
   v2). Scratch `/tmp/bnb-scratch-run-control`.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""`, `nice -n 15`, at most 8 threads; BC runs own the
   GPU. Never take the bench lock (tests use a stand-in lock path). Never touch the real

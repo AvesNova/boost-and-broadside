@@ -45,7 +45,7 @@ integrity, not bits"), `docs/contributing/code-style.md` and
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-hygiene`, branch `fix/hygiene` (from v2). Work
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-hygiene`, branch `fix/hygiene` (from v2). Work
   only here. Scratch in `/tmp/bnb-scratch-hygiene`.
 - **Do not read** any other directory under `/home/vizia/avesnova`.
 - **Python:** `uv sync`, then always `uv run --no-sync ...`.

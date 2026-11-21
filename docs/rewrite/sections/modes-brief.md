@@ -9,7 +9,7 @@ code at batch size 1 on the CPU, and code the next person can read and change.
 
 ## Where you work
 
-- **Your worktree:** `/home/vizia/avesnova/bnb-modes`, branch `section/modes`. Work only
+- **Your worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-modes`, branch `section/modes`. Work only
   here.
 - **Scratch:** use `/tmp/bnb-scratch-modes` for temporary files.
 - **Do not read or modify** any other directory under `/home/vizia/avesnova`. In

@@ -40,7 +40,7 @@ from bnb.runtime.train import model_controller
 from bnb.streams import decision_key_from
 
 PARTS = ("ships", "fields", "globals", "zones")
-CALM_FERN = "/home/vizia/avesnova/runs-v2/players-calm-fern/step_100663296-exponential_average"
+CALM_FERN = "/home/vizia/avesnova/boost-and-broadside/data/runs-v2/players-calm-fern/step_100663296-exponential_average"
 
 
 def build(player: str, game, device):

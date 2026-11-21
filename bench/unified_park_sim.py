@@ -24,7 +24,7 @@ from bnb.league.unified.planner import Planner
 from bnb.league.unified.run import load_prior, load_spec, player_shares
 from bnb.league.unified.targets import BreakEvenTarget, EloTarget, WinRateTarget, planning_ratings
 
-R = pathlib.Path("/home/vizia/avesnova/ueval-runs")
+R = pathlib.Path("/home/vizia/avesnova/boost-and-broadside/data/ueval-runs")
 MODES = {
     "frontline": "real_scale_frontline",
     "deathmatch": "real_scale_deathmatch",

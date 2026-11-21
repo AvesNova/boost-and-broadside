@@ -1,35 +1,35 @@
-Nov 16 17:29:07.034771 vizia systemd[4305]: Started balance-eval-mirrors.service - [systemd-run] /home/vizia/avesnova/bnb-balance-eval/.venv/bin/python -m bench.balance_worker --condition deathmatch-5v5 --queue /home/vizia/avesnova/bnb-balance-eval/docs/rewrite/sections/balance-eval/queue/mirrors-deathmatch-5v5 --environments 1024 --variants 32 --once --lock /tmp/claude-1000/bnb-gpu.lock.
-Nov 16 17:29:19.219901 vizia python[590511]: /home/vizia/avesnova/bnb-balance-eval/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/functions.py:3115: UserWarning: Dynamo detected a call to a `functools.lru_cache`-wrapped function at 'layout.py:250'. Dynamo ignores the cache wrapper and directly traces the wrapped function. Silent incorrectness is only a *potential* risk, not something we have observed. Enable TORCH_LOGS=+dynamo for a DEBUG stack trace.
+Nov 16 17:29:07.034771 vizia systemd[4305]: Started balance-eval-mirrors.service - [systemd-run] /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval/.venv/bin/python -m bench.balance_worker --condition deathmatch-5v5 --queue /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval/docs/rewrite/sections/balance-eval/queue/mirrors-deathmatch-5v5 --environments 1024 --variants 32 --once --lock /tmp/claude-1000/bnb-gpu.lock.
+Nov 16 17:29:19.219901 vizia python[590511]: /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval/.venv/lib/python3.14/site-packages/torch/_dynamo/variables/functions.py:3115: UserWarning: Dynamo detected a call to a `functools.lru_cache`-wrapped function at 'layout.py:250'. Dynamo ignores the cache wrapper and directly traces the wrapped function. Silent incorrectness is only a *potential* risk, not something we have observed. Enable TORCH_LOGS=+dynamo for a DEBUG stack trace.
 Nov 16 17:29:19.219901 vizia python[590511]: This call originates from:
-Nov 16 17:29:19.219901 vizia python[590511]:   File "/home/vizia/avesnova/bnb-balance-eval/src/bnb/game/layout.py", line 250, in zero_share
+Nov 16 17:29:19.219901 vizia python[590511]:   File "/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval/src/bnb/game/layout.py", line 250, in zero_share
 Nov 16 17:29:19.219901 vizia python[590511]:     return _zero_share(int(law), float(ramp_width))
 Nov 16 17:29:19.219901 vizia python[590511]:   torch._dynamo.utils.warn_once(msg)
-Nov 16 17:29:54.551127 vizia python[590511]: W1116 17:29:54.550000 590511 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
-Nov 16 17:30:58.126440 vizia python[590511]: /home/vizia/avesnova/bnb-balance-eval/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+Nov 16 17:29:54.551127 vizia python[590511]: W1116 17:29:54.550000 590511 /home/vizia/avesnova/boost-and-broadside/v2/.venv/lib/python3.14/site-packages/torch/_inductor/utils.py:2143] [0/0] Not enough SMs to use max_autotune_gemm mode
+Nov 16 17:30:58.126440 vizia python[590511]: /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval/.venv/lib/python3.14/site-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
 Nov 16 17:30:58.126440 vizia python[590511]:   warn_once(FP_FUSION_DEFAULT_WARNING)
-Nov 16 17:31:08.416241 vizia python[590511]: V1116 17:31:08.415000 590511 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles] Recompiling function tick in /home/vizia/avesnova/bnb-balance-eval/bench/game_loop.py:527
-Nov 16 17:31:08.416241 vizia python[590511]: V1116 17:31:08.415000 590511 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles]     triggered by the following guard failure(s):
-Nov 16 17:31:08.416241 vizia python[590511]: V1116 17:31:08.415000 590511 /home/vizia/avesnova/boost-and-broadside-v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles]     - 0/0: tensor 'carry.boundary_progress' stride mismatch at index 0. expected 1, actual 15
-Nov 16 17:32:30.048403 vizia python[590511]: worker deathmatch-5v5: ready in 202 s, watching /home/vizia/avesnova/bnb-balance-eval/docs/rewrite/sections/balance-eval/queue/mirrors-deathmatch-5v5
-Nov 16 17:32:30.048802 vizia python[590511]: job 00-mirrors.json: 2 entries -> /home/vizia/avesnova/bnb-balance-eval/docs/rewrite/sections/balance-eval/data/mirrors-deathmatch-5v5-seed0.jsonl
+Nov 16 17:31:08.416241 vizia python[590511]: V1116 17:31:08.415000 590511 /home/vizia/avesnova/boost-and-broadside/v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles] Recompiling function tick in /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval/bench/game_loop.py:527
+Nov 16 17:31:08.416241 vizia python[590511]: V1116 17:31:08.415000 590511 /home/vizia/avesnova/boost-and-broadside/v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles]     triggered by the following guard failure(s):
+Nov 16 17:31:08.416241 vizia python[590511]: V1116 17:31:08.415000 590511 /home/vizia/avesnova/boost-and-broadside/v2/.venv/lib/python3.14/site-packages/torch/_dynamo/guards.py:6374] [0/1] [__recompiles]     - 0/0: tensor 'carry.boundary_progress' stride mismatch at index 0. expected 1, actual 15
+Nov 16 17:32:30.048403 vizia python[590511]: worker deathmatch-5v5: ready in 202 s, watching /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval/docs/rewrite/sections/balance-eval/queue/mirrors-deathmatch-5v5
+Nov 16 17:32:30.048802 vizia python[590511]: job 00-mirrors.json: 2 entries -> /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval/docs/rewrite/sections/balance-eval/data/mirrors-deathmatch-5v5-seed0.jsonl
 Nov 16 17:32:38.849152 vizia python[590511]: job 00-mirrors.json: cards measured in 9 s
 Nov 16 17:32:53.668277 vizia python[590511]: Jujak mirror: A kill share 0.498 ± 0.004, kills/min A 3.74 B 3.77; score 0.496 ± 0.021
 Nov 16 17:32:53.668559 vizia python[590511]: Yongma mirror: A kill share 0.496 ± 0.002, kills/min A 3.73 B 3.78; score 0.475 ± 0.021
 Nov 16 17:32:53.668559 vizia python[590511]: 2/2 entries; done about 17:32 KST
 Nov 16 17:32:53.668559 vizia python[590511]: job 00-mirrors.json: done
-Nov 16 17:32:53.668657 vizia python[590511]: job 01-mirrors.json: 2 entries -> /home/vizia/avesnova/bnb-balance-eval/docs/rewrite/sections/balance-eval/data/mirrors-deathmatch-5v5-seed1.jsonl
+Nov 16 17:32:53.668657 vizia python[590511]: job 01-mirrors.json: 2 entries -> /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval/docs/rewrite/sections/balance-eval/data/mirrors-deathmatch-5v5-seed1.jsonl
 Nov 16 17:32:55.429771 vizia python[590511]: job 01-mirrors.json: cards measured in 2 s
 Nov 16 17:33:11.589708 vizia python[590511]: Jujak mirror: A kill share 0.508 ± 0.004, kills/min A 3.92 B 3.79; score 0.553 ± 0.021
 Nov 16 17:33:11.589708 vizia python[590511]: Yongma mirror: A kill share 0.496 ± 0.002, kills/min A 3.69 B 3.75; score 0.471 ± 0.021
 Nov 16 17:33:11.590156 vizia python[590511]: 2/2 entries; done about 17:33 KST
 Nov 16 17:33:11.590156 vizia python[590511]: job 01-mirrors.json: done
-Nov 16 17:33:11.590156 vizia python[590511]: job 02-mirrors.json: 2 entries -> /home/vizia/avesnova/bnb-balance-eval/docs/rewrite/sections/balance-eval/data/mirrors-deathmatch-5v5-seed2.jsonl
+Nov 16 17:33:11.590156 vizia python[590511]: job 02-mirrors.json: 2 entries -> /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval/docs/rewrite/sections/balance-eval/data/mirrors-deathmatch-5v5-seed2.jsonl
 Nov 16 17:33:13.251778 vizia python[590511]: job 02-mirrors.json: cards measured in 2 s
 Nov 16 17:33:29.658535 vizia python[590511]: Jujak mirror: A kill share 0.497 ± 0.004, kills/min A 3.98 B 4.02; score 0.483 ± 0.021
 Nov 16 17:33:29.658824 vizia python[590511]: Yongma mirror: A kill share 0.498 ± 0.002, kills/min A 3.66 B 3.69; score 0.476 ± 0.021
 Nov 16 17:33:29.658824 vizia python[590511]: 2/2 entries; done about 17:33 KST
 Nov 16 17:33:29.658824 vizia python[590511]: job 02-mirrors.json: done
-Nov 16 17:33:29.658871 vizia python[590511]: job 03-mirrors.json: 2 entries -> /home/vizia/avesnova/bnb-balance-eval/docs/rewrite/sections/balance-eval/data/mirrors-deathmatch-5v5-seed3.jsonl
+Nov 16 17:33:29.658871 vizia python[590511]: job 03-mirrors.json: 2 entries -> /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval/docs/rewrite/sections/balance-eval/data/mirrors-deathmatch-5v5-seed3.jsonl
 Nov 16 17:33:31.352234 vizia python[590511]: job 03-mirrors.json: cards measured in 2 s
 Nov 16 17:33:47.881385 vizia python[590511]: Jujak mirror: A kill share 0.500 ± 0.004, kills/min A 3.90 B 3.90; score 0.484 ± 0.021
 Nov 16 17:33:47.881879 vizia python[590511]: Yongma mirror: A kill share 0.499 ± 0.002, kills/min A 3.63 B 3.65; score 0.494 ± 0.020

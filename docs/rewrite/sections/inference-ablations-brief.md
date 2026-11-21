@@ -35,19 +35,19 @@ Say so in every result.
 Field, frontline and deathmatch, target standard error 25 (the engine's record, resume and
 ETA as merged):
 
-- the best model `/home/vizia/avesnova/runs-v2/players-calm-fern/step_100663296-exponential_average`,
+- the best model `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/players-calm-fern/step_100663296-exponential_average`,
   and the same policy with `rotary` off, and with `forecast` off;
 - the ladder: `players-calm-fern/step_7340032-live`,
   `2026-11-06-mixed-calm-fern/league/step_18874368/checkpoint`,
   `2026-11-06-mixed-calm-fern/league/step_37748736/checkpoint`,
   `players-calm-fern/step_51380224-live`, `players-calm-fern/step_73400320-live`,
   `players-calm-fern/step_100663296-live`;
-- the BC clone `/home/vizia/avesnova/runs-v2/averages/eager-acorn-uniform-66M-rated`;
+- the BC clone `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/averages/eager-acorn-uniform-66M-rated`;
 - scripted, playing only the BC clone and the 7.3M model.
 
 Before launching, write a launch note in progress.md: the field, where the per-batch record
 is, the expected and worst-case finish as local clock times. Copy the results to
-`/home/vizia/avesnova/runs-v2/ratings/2026-11-06-ablations/` when done. Report each
+`/home/vizia/avesnova/boost-and-broadside/data/runs-v2/ratings/2026-11-06-ablations/` when done. Report each
 ablated player's Elo and its difference from the unablated EMA, with the difference's
 standard error (from the fit's covariance if you have it, else say how you estimated it).
 
@@ -61,7 +61,7 @@ The GPU is free. Hold the bench lock for every GPU command:
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-ablations`, branch `feat/inference-ablations`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-ablations`, branch `feat/inference-ablations`
   (from v2). Work only there. Scratch in `/tmp/bnb-scratch-ablations`. Don't read other
   directories under `/home/vizia/avesnova`, except the run and players named above.
 - **Python:** `uv sync --all-extras`, then always `uv run --no-sync ...`.

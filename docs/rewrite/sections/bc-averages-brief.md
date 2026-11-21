@@ -45,7 +45,7 @@ the bench lock, no training runs. The next BC run is the integration test.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-bc-averages`, branch `feat/bc-averages` (from
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-bc-averages`, branch `feat/bc-averages` (from
   v2). Work only there. Scratch in `/tmp/bnb-scratch-bc-averages`. Don't read other
   directories under `/home/vizia/avesnova`.
 - **Python:** `uv sync --all-extras`, then always `uv run --no-sync ...`.

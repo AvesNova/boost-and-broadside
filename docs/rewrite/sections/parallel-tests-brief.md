@@ -56,7 +56,7 @@ minutes, and with CUDA hidden the full suite about 17. Two changes (author, 2026
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-parallel-tests`, branch `ci/parallel-tests`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-parallel-tests`, branch `ci/parallel-tests`
   (from v2). Work only here. Scratch in `/tmp/bnb-scratch-parallel-tests`.
 - **Do not read** any other directory under `/home/vizia/avesnova`.
 - **Python:** `uv sync`, then always `uv run --no-sync ...`.

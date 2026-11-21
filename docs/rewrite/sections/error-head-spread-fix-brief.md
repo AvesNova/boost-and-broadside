@@ -47,7 +47,7 @@ was too narrow, not too wide), unless you find the same problem there; then say 
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-error-spread`, branch `fix/error-head-spread` (from
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-error-spread`, branch `fix/error-head-spread` (from
   v2). Scratch `/tmp/bnb-scratch-error-spread`. Earlier short-run records for comparison:
   `/tmp/bnb-scratch-arms34/arm3_short*.jsonl`, `arm4_short*.jsonl`.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""`, `nice -n 15`, at most 8 threads; a BC run owns the

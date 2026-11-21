@@ -6,7 +6,7 @@
 set -u
 out=$1; shift
 here=$(cd "$(dirname "$0")/.." && pwd)
-python=${BNB_PYTHON:-/home/vizia/avesnova/boost-and-broadside-v2/.venv/bin/python}
+python=${BNB_PYTHON:-/home/vizia/avesnova/boost-and-broadside/v2/.venv/bin/python}
 mkdir -p "$out"
 for spec in "$@"; do
   name=${spec%%:*}; arguments=${spec#*:}

@@ -241,7 +241,7 @@
    "mixed": [
     {
      "preset": "real_scale_deathmatch",
-     "first": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-deathmatch.jsonl:32:2",
+     "first": "/home/vizia/avesnova/boost-and-broadside/v2/runs/real-scale-balance/round-2/search-deathmatch.jsonl:32:2",
      "second": "real_scale_deathmatch",
      "games": 1024,
      "score": 0.56591796875,
@@ -289,8 +289,8 @@
     },
     {
      "preset": "real_scale_deathmatch",
-     "first": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-deathmatch.jsonl:32:2",
-     "second": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-deathmatch.jsonl:32:2",
+     "first": "/home/vizia/avesnova/boost-and-broadside/v2/runs/real-scale-balance/round-2/search-deathmatch.jsonl:32:2",
+     "second": "/home/vizia/avesnova/boost-and-broadside/v2/runs/real-scale-balance/round-2/search-deathmatch.jsonl:32:2",
      "games": 1024,
      "score": 0.5224609375,
      "score_stderr": 0.015323751602770217,
@@ -387,7 +387,7 @@
    "held_out": [
     {
      "preset": "real_scale_deathmatch",
-     "first": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-deathmatch.jsonl:32:2",
+     "first": "/home/vizia/avesnova/boost-and-broadside/v2/runs/real-scale-balance/round-2/search-deathmatch.jsonl:32:2",
      "second": "real_scale_deathmatch",
      "games": 512,
      "score": 0.5546875,
@@ -609,7 +609,7 @@
    "mixed": [
     {
      "preset": "real_scale_frontline",
-     "first": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-frontline.jsonl:25:2",
+     "first": "/home/vizia/avesnova/boost-and-broadside/v2/runs/real-scale-balance/round-2/search-frontline.jsonl:25:2",
      "second": "real_scale_frontline",
      "games": 1024,
      "score": 0.52001953125,
@@ -657,8 +657,8 @@
     },
     {
      "preset": "real_scale_frontline",
-     "first": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-frontline.jsonl:25:2",
-     "second": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-frontline.jsonl:25:2",
+     "first": "/home/vizia/avesnova/boost-and-broadside/v2/runs/real-scale-balance/round-2/search-frontline.jsonl:25:2",
+     "second": "/home/vizia/avesnova/boost-and-broadside/v2/runs/real-scale-balance/round-2/search-frontline.jsonl:25:2",
      "games": 1024,
      "score": 0.48828125,
      "score_stderr": 0.012882829582177915,
@@ -755,7 +755,7 @@
    "held_out": [
     {
      "preset": "real_scale_frontline",
-     "first": "/home/vizia/avesnova/boost-and-broadside-v2/runs/real-scale-balance/round-2/search-frontline.jsonl:25:2",
+     "first": "/home/vizia/avesnova/boost-and-broadside/v2/runs/real-scale-balance/round-2/search-frontline.jsonl:25:2",
      "second": "real_scale_frontline",
      "games": 512,
      "score": 0.591796875,

@@ -5,7 +5,7 @@ what actually works for us instead of just guessing." No training runs.
 
 ## The finding to explain
 
-In `2026-11-06-mixed-calm-fern` (read only, `/home/vizia/avesnova/runs-v2/`), late in the
+In `2026-11-06-mixed-calm-fern` (read only, `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/`), late in the
 run the league's games went about 50% to the ladder's rungs, which the live policy beat
 100% of the time (`pool/game_share/rung`, `pool/score/rung` in `metrics.jsonl`), while
 past snapshots got about 0-5% (`pool/game_share/checkpoint`) with 4 snapshots in the pool.
@@ -47,7 +47,7 @@ a test-quality module if it is reusable (your call). Change no league behaviour.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-league-sim`, branch `feat/league-sampling-sim`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-league-sim`, branch `feat/league-sampling-sim`
   (from v2). Work only there. Scratch in `/tmp/bnb-scratch-league-sim`. Don't read other
   directories under `/home/vizia/avesnova`, except the run above.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""` and `nice -n 15` for anything heavy; a BC run

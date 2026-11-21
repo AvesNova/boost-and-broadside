@@ -8,7 +8,7 @@ next person can read and change.
 
 ## Where you work
 
-- **Your worktree:** `/home/vizia/avesnova/bnb-ship-card`, branch `section/ship-card`.
+- **Your worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-ship-card`, branch `section/ship-card`.
   Work only here.
 - **Scratch:** use `/tmp/bnb-scratch-ship-card` for temporary files.
 - **Do not read or modify** any other directory under `/home/vizia/avesnova`. In

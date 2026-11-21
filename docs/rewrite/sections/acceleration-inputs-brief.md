@@ -85,7 +85,7 @@ the slow-frame fraction, the padding share.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-acceleration`, branch `feat/acceleration-inputs`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-acceleration`, branch `feat/acceleration-inputs`
   (from v2). Scratch `/tmp/bnb-scratch-acceleration`.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""`, `nice -n 15`, at most 8 threads; a BC run owns the
   GPU. Never take the bench lock. No training runs.

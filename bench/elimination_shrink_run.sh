@@ -1,7 +1,7 @@
 #!/bin/bash
 # Elimination shrink sweep: start (hold) x duration; clock = hold + duration + 8 (the end lead).
-cd /home/vizia/avesnova/boost-and-broadside-v2; export PYTHONPATH=src
-PY=/home/vizia/avesnova/boost-and-broadside-v2/.venv/bin/python
+cd /home/vizia/avesnova/boost-and-broadside/v2; export PYTHONPATH=src
+PY=/home/vizia/avesnova/boost-and-broadside/v2/.venv/bin/python
 for hold in 0 18 36 60 90; do for duration in 60 90 135 180; do
   clock=$((hold + duration + 8)); name=h${hold}_d${duration}
   echo "== $name start $(date +%H:%M:%S)"

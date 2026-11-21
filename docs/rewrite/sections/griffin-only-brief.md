@@ -45,7 +45,7 @@ are launched by the coordinator afterwards.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-griffin-only`, branch `feat/griffin-only` (from
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-griffin-only`, branch `feat/griffin-only` (from
   v2). Work only there. Scratch in `/tmp/bnb-scratch-griffin-only`. Don't read other
   directories under `/home/vizia/avesnova`.
 - **Python:** `uv sync --all-extras`, then always `uv run --no-sync ...`.

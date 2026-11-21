@@ -64,8 +64,8 @@ rl-v20's final exponential average against the scripted agent at 20, all three m
 
 ```bash
 uv run --no-sync bnb crossover \
-  /home/vizia/avesnova/box-5090-backup/runs/rl-v20/policies/step_170917888/exponential_average \
-  --out /home/vizia/avesnova/runs-v2/break-even/rl-v20
+  /home/vizia/avesnova/boost-and-broadside/data/box-5090-backup/runs/rl-v20/policies/step_170917888/exponential_average \
+  --out /home/vizia/avesnova/boost-and-broadside/data/runs-v2/break-even/rl-v20
 ```
 
 Defaults: `--opponent scripted --opponent-count 20 --minimum-count 1 --maximum-count 20

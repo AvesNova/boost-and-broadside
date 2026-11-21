@@ -20,7 +20,7 @@
   argument; suspects: the league `OpponentSlots` path, the split critic, host_store.
   Tell the coordinator (it affects every arm, not just A16). (2) after the fix:
   `systemd-run --user --unit=gru-timing -p MemoryMax=8G --wait --collect -E PATH=$PATH
-  /bin/bash /home/vizia/avesnova/bnb-gru/docs/rewrite/sections/gru/time_blocks.sh griffin`,
+  /bin/bash /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-gru/docs/rewrite/sections/gru/time_blocks.sh griffin`,
   then `... gru`; (3) `sublayer_bench.py` (8 and 40 views); report GRU/Griffin multipliers.
 
 Branch `feat/gru-temporal` (from `feat/imugi-boundary`).

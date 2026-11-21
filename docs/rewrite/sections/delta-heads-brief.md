@@ -85,7 +85,7 @@ head's share matches the absolute head's in C-fixed (say the number and how you 
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-delta-heads`, branch `feat/delta-heads` (from
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-delta-heads`, branch `feat/delta-heads` (from
   v2). Scratch `/tmp/bnb-scratch-delta-heads`.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""`, `nice -n 15`, at most 8 threads; a BC run owns
   the GPU. Never take the bench lock. No training runs.

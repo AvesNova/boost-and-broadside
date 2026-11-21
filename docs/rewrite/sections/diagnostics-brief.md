@@ -8,7 +8,7 @@ answer.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-diagnostics`, branch `section/diagnostics`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-diagnostics`, branch `section/diagnostics`
   (from v2). Work only here. Scratch in `/tmp/bnb-scratch-diagnostics`.
 - **Do not read** any other directory under `/home/vizia/avesnova`: no v1, no
   `physics-race*`, no other worktree.

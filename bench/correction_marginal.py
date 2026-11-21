@@ -40,7 +40,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="/home/vizia/avesnova/runs-v2/2026-11-08-bc-arm2-persistence/config.json",
+        default="/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-08-bc-arm2-persistence/config.json",
     )
     parser.add_argument("--baseline", default="persistence")
     parser.add_argument("--updates", type=int, default=6)

@@ -44,14 +44,14 @@ fall back to rendering frames another way. Never take the bench lock.
 
 ## Test it on the live run
 
-`/home/vizia/avesnova/runs-v2/2026-11-06-mixed-calm-fern` is training now (checkpoints
+`/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-06-mixed-calm-fern` is training now (checkpoints
 every ~7.3M steps, about 29 minutes). Once the watcher works, run it on that run with
 `--wandb`: that is the real test. Read only from the run directory, except
 `artifacts/figures/`.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-media`, branch `feat/media` (from v2). Work only
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-media`, branch `feat/media` (from v2). Work only
   there. Scratch in `/tmp/bnb-scratch-media`. Don't read other directories under
   `/home/vizia/avesnova`, except the run above.
 - **Python:** `uv sync --all-extras`, then always `uv run --no-sync ...`.

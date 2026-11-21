@@ -8,7 +8,7 @@ the developer view.
 
 ## Where you work
 
-- **Your worktree:** `/home/vizia/avesnova/bnb-play`, branch `section/play`. Work only
+- **Your worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-play`, branch `section/play`. Work only
   here.
 - **Scratch:** use `/tmp/bnb-scratch-play` for temporary files.
 - **Do not read or modify** any other directory under `/home/vizia/avesnova`. In

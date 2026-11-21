@@ -1,6 +1,6 @@
 #!/bin/bash
 # a candidate's duel images: the mixed 1v1 and the Jujak mirror (traj_duels.sh CANDIDATES INDEX PREFIX)
-cd /home/vizia/avesnova/bnb-balance
+cd /home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance
 T=docs/rewrite/sections/balance-sizes/trajectories.py
 for lineup in "energy v turn" "turn mirror"; do
   short=$(echo $lineup | sed 's/energy v turn/evt/; s/turn mirror/jj/')

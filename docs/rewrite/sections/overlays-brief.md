@@ -49,10 +49,10 @@ you can read PNGs.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-overlays`, branch `feat/overlays` (from v2). Work
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-overlays`, branch `feat/overlays` (from v2). Work
   only there. Scratch in `/tmp/bnb-scratch-overlays`. Policies to use (read only):
-  `/home/vizia/avesnova/runs-v2/averages/eager-acorn-uniform-66M-rated` and the checkpoints
-  of `/home/vizia/avesnova/runs-v2/2026-11-06-mixed-calm-fern`. Don't read other
+  `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/averages/eager-acorn-uniform-66M-rated` and the checkpoints
+  of `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-06-mixed-calm-fern`. Don't read other
   directories under `/home/vizia/avesnova`.
 - **Python:** `uv sync --all-extras`, then always `uv run --no-sync ...`.
 - **Progress notes:** append brief milestone notes to

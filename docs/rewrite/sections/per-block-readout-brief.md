@@ -33,7 +33,7 @@ and read-out off unchanged bit for bit. Quick tier, ruff, docs (`yemong.md`, `le
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-per-block`, branch `feat/per-block-readout`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-per-block`, branch `feat/per-block-readout`
   (from v2). Work only there. Scratch `/tmp/bnb-scratch-per-block`.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""`, `nice -n 15`, at most 8 threads; arm C trains on
   the GPU. Never take the bench lock.

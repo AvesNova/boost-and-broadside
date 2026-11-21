@@ -1,6 +1,6 @@
 import re, numpy as np
 from sklearn.isotonic import IsotonicRegression
-LIVE="/home/vizia/avesnova/live-elo/"
+LIVE="/home/vizia/avesnova/boost-and-broadside/data/live-elo/"
 def parse(path):
     out={}
     for line in open(path):

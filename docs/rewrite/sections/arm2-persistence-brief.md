@@ -101,7 +101,7 @@ share.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-arm2`, branch `feat/arm2-persistence` (from v2).
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-arm2`, branch `feat/arm2-persistence` (from v2).
   Scratch `/tmp/bnb-scratch-arm2`.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""`, `nice -n 15`, at most 8 threads; a BC run owns the
   GPU. Never take the bench lock; never touch the queue file, units or run directories (read

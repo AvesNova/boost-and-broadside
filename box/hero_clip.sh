@@ -10,7 +10,7 @@
 #     elimination at the lineup, pick the clip and make its GIF and poster frame, into
 #     $RUNS/CHAIN-eval/media/hero/ (each game's MP4 and JSON as it ends; a rerun continues)
 #   fetch (laptop): copy hero.gif, hero.png, chosen.json and the games' JSONs to DEST
-#     (default /home/vizia/avesnova/boost-and-broadside-v2/review/writeup/media/)
+#     (default /home/vizia/avesnova/boost-and-broadside/v2/review/writeup/media/)
 # The lineup: HERO_SHIPS ("5 7": the champion's ships, then Imugi's), else the elimination
 # break-even ratio of the RL stage's last snapshot (the queue's breakeven step) at
 # HERO_POLICY_SHIPS (5) of the champion's ships, Imugi's rounded. On the laptop's CPU
@@ -32,7 +32,7 @@ if [ "$mode" = launch ]; then
 fi
 
 if [ "$mode" = fetch ]; then
-  dest=${3:-/home/vizia/avesnova/boost-and-broadside-v2/review/writeup/media}
+  dest=${3:-/home/vizia/avesnova/boost-and-broadside/v2/review/writeup/media}
   mkdir -p "$dest/hero-games"
   source=/workspace/runs/$chain-eval/media/hero
   rsync -a "$box:$source/hero.gif" "$box:$source/hero.png" "$box:$source/chosen.json" "$dest/" \

@@ -58,7 +58,7 @@ The Yemong page (the order, the read-out, what D is); the learner page (the new 
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-temporal-first`, branch `feat/temporal-first`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-temporal-first`, branch `feat/temporal-first`
   (from v2). Work only there. Scratch in `/tmp/bnb-scratch-temporal-first`. Don't read
   other directories under `/home/vizia/avesnova`.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""`, `nice -n 15`; the GPU is running training.

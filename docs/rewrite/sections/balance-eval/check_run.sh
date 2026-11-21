@@ -5,7 +5,7 @@
 # (MemoryMax 20G, 15 cores, caches on the NVMe), compiling outside the GPU lock and holding
 # it only to time or play (--lock).
 set -u
-here=/home/vizia/avesnova/bnb-balance-eval
+here=/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-balance-eval
 data=$here/docs/rewrite/sections/balance-eval/data
 lock=/tmp/claude-1000/bnb-gpu.lock
 unit() {

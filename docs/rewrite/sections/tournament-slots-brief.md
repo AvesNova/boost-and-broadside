@@ -31,8 +31,8 @@ played to their end, ~9,000 ticks).
 
 The RL run `2026-11-06-mixed-calm-fern` (read only). Players (policy files):
 
-- the BC clone `/home/vizia/avesnova/runs-v2/averages/eager-acorn-uniform-66M-rated`;
-- live models: `/home/vizia/avesnova/runs-v2/players-calm-fern/step_7340032-live`,
+- the BC clone `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/averages/eager-acorn-uniform-66M-rated`;
+- live models: `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/players-calm-fern/step_7340032-live`,
   `.../2026-11-06-mixed-calm-fern/league/step_18874368/checkpoint`,
   `.../league/step_37748736/checkpoint`, and from `players-calm-fern/`:
   `step_51380224-live`, `step_58720256-live`, `step_73400320-live`, `step_80740352-live`,
@@ -51,7 +51,7 @@ engine's memory and time per batch and say them.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-tournament`, branch `feat/tournament-slots` (from
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-tournament`, branch `feat/tournament-slots` (from
   v2). Work only there. Scratch in `/tmp/bnb-scratch-tournament`. Don't read other
   directories under `/home/vizia/avesnova`, except the run and players above.
 - **Python:** `uv sync --all-extras`, then always `uv run --no-sync ...`.

@@ -34,9 +34,9 @@ resume unchanged).
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-arena-fix`, branch `fix/arena-mixed-builds`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-arena-fix`, branch `fix/arena-mixed-builds`
   (from v2). Scratch `/tmp/bnb-scratch-arena-fix`. Read policies under
-  `/home/vizia/avesnova/runs-v2/` (read-only): the four arms'
+  `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/` (read-only): the four arms'
   `2026-11-06-bc-arm-{A,R,C,D}/policy-uniform`.
 - **GPU:** you may use it; nothing else is running. Every GPU command goes through the bench
   lock: `uv run --no-sync python ~/.local/share/bnb/locked.py <cmd>`. Keep each GPU job

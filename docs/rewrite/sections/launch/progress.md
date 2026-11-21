@@ -1,7 +1,7 @@
 # Launch: progress
 
 Branch `feat/launch` (from `integrate/next-runs` abcecd53). Worktree
-`/home/vizia/avesnova/bnb-launch`. Times KST, 2026-11-12. Runbook: `runbook.md`.
+`/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-launch`. Times KST, 2026-11-12. Runbook: `runbook.md`.
 
 ## 14:20-14:45 Merges and the training-side switches
 

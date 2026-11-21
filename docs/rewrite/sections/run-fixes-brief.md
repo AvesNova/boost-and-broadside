@@ -32,7 +32,7 @@ each, with a test, and update the docs that describe the behaviour.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-run-fixes`, branch `fix/first-run` (from v2).
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-run-fixes`, branch `fix/first-run` (from v2).
   Work only there. Scratch in `/tmp/bnb-scratch-run-fixes`. Do not read other directories
   under `/home/vizia/avesnova`.
 - **Python:** `uv sync --all-extras`, then always `uv run --no-sync ...`.

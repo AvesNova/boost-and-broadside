@@ -16,7 +16,7 @@ state (persistence) to its logits.
 ## 1. Measure (CPU rollouts, memory-capped)
 
 Players: Imugi, and calm-fern's RL agent
-`/home/vizia/avesnova/runs-v2/players-calm-fern/step_100663296-exponential_average`
+`/home/vizia/avesnova/boost-and-broadside/data/runs-v2/players-calm-fern/step_100663296-exponential_average`
 (read-only). Each in self-play, on every preset (`bnb.game.api.PRESETS`: frontline,
 deathmatch, deathmatch_wide at least), on enough games for stable 99.9% quantiles; say the
 counts.
@@ -54,7 +54,7 @@ one code per quantity and say why, and what you would check in training.
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-state-deltas`, branch `analysis/state-deltas`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-state-deltas`, branch `analysis/state-deltas`
   (from v2). Scratch `/tmp/bnb-scratch-deltas`. Scripts under `bench/` in the branch.
 - **CPU only:** `CUDA_VISIBLE_DEVICES=""`, `nice -n 15`, at most 8 threads; the GPU is
   training. Never take the bench lock.

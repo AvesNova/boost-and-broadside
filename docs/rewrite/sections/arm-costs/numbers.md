@@ -1,11 +1,11 @@
 # Arm costs: the extracted numbers (2026-11-15)
 
-`extract.py` reads the run records in `/home/vizia/avesnova/box-5090-backup/runs/` (each run's `run.json` and log) and the laptop live-Elo logs in `/home/vizia/avesnova/live-elo/*/live_elo.log`:
+`extract.py` reads the run records in `/home/vizia/avesnova/boost-and-broadside/data/box-5090-backup/runs/` (each run's `run.json` and log) and the laptop live-Elo logs in `/home/vizia/avesnova/boost-and-broadside/data/live-elo/*/live_elo.log`:
 
 <!-- not-runnable: needs the run records on the laptop -->
 ```bash
 uv run --no-sync python docs/rewrite/sections/arm-costs/extract.py \
-  /home/vizia/avesnova/box-5090-backup/runs /home/vizia/avesnova/live-elo
+  /home/vizia/avesnova/boost-and-broadside/data/box-5090-backup/runs /home/vizia/avesnova/boost-and-broadside/data/live-elo
 ```
 
 - **GPU:** from each record's memory probe (32 GB is the rented 5090, host `0af31102a785`; 8 GB is the laptop's 4070, host `vizia`). rl-v20-seed1 ran on the laptop.

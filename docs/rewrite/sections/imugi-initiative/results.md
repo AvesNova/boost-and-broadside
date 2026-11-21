@@ -85,6 +85,6 @@ too (6.9% -> 20.4%).
 
 ## Stills
 
-/home/vizia/avesnova/review/stills/initiative/: {before,after}_{duel,5v5}_{game,opening,busiest}.png
+/home/vizia/avesnova/boost-and-broadside/review/stills/initiative/: {before,after}_{duel,5v5}_{game,opening,busiest}.png
 (`bnb figures trails --scripted`, real-scale deathmatch; duel 1v1 120 s, 5v5 60 s, seed 0). The
 duel after: clean two-circle loops and repeated merges; before: weaving S-curves.

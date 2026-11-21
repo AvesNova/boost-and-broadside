@@ -75,7 +75,7 @@ Evidence: `docs/rewrite/sections/rl-degradation-brief.md` and its branch's notes
 
 ## Where you work
 
-- **Worktree:** `/home/vizia/avesnova/bnb-rollout-lanes`, branch `feat/rollout-lanes`
+- **Worktree:** `/home/vizia/avesnova/boost-and-broadside/worktrees/bnb-rollout-lanes`, branch `feat/rollout-lanes`
   (from v2). Work only there. Scratch and runs in `/tmp/bnb-scratch-rollout-lanes`.
   Do not read other directories under `/home/vizia/avesnova`, apart from the evidence
   paths above.
@@ -90,7 +90,7 @@ Evidence: `docs/rewrite/sections/rl-degradation-brief.md` and its branch's notes
   in the files you touched pass under the lock; `ruff check` and `ruff format --check` are
   clean; the docs that describe each behaviour are updated.
 - A short GPU run at the new defaults (mixed preset, PPO from the clone
-  `/home/vizia/avesnova/runs-v2/2026-11-04-mixed-wandering-quill/policy`, a few updates):
+  `/home/vizia/avesnova/boost-and-broadside/data/runs-v2/2026-11-04-mixed-wandering-quill/policy`, a few updates):
   its update time, memory peak, lane games per update per matchup, and the lane ratings.
 - Commit to `feat/rollout-lanes` and push, in logical commits. Author Julian Kizanis
   <julianzia@gmail.com>; end every message with
