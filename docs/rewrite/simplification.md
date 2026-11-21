@@ -54,10 +54,21 @@ All three, together:
 
 - **Team sizes:** the ship dimension is either dynamic after compilation or rounded to a few
   fixed sizes; changing it must not cost a cold compile per size.
-- **Variable maps:** positions are encoded over a bounded range (the largest map), relative
-  to the arena, not a 236 km frame with a random offset.
-- **Real time:** a game step plus an agent's decision at batch size 1 fits the frame
-  budget, eager or with a cheap build, on the player's machine.
+- **Variable maps without rescaling** (the author, 2026-11-21): speed and local dynamics (a
+  ship-against-ship fight) are the same whatever the map's size, so the model never has
+  to reinterpret distances per map. Positions and distances stay in physical units (metres),
+  never normalised by the arena; relations between entities are relative, in metres; the
+  arena enters as what it is (the boundary's distance and direction, its radius as an
+  input), not as a scale on everything else. Encodings use fixed physical scales over a
+  bounded range (up to the largest map), not a 236 km frame with a random offset.
+- **Faster than real time, in the tail too** (the author, 2026-11-21): a game step plus an
+  agent's decision at batch size 1 fits the frame budget with room to spare at the 99th
+  percentile and at the worst frame, not only on average, on the player's machine. So
+  nothing may stall a running game: no compile, recompile or build after play starts, no
+  host synchronisation in the frame, no large allocations or collections mid-match.
+  Proposed: p99 under half the frame budget.
+- **Fast GPU training stays a first-class goal** alongside play: neither is traded away for
+  the other.
 
 ### Non-goals
 
