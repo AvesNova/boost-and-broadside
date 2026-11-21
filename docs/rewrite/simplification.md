@@ -232,6 +232,8 @@ Each finding is an assumption that brought in complexity, with its status.
     copies; plain arithmetic with Python numbers makes none. **Open.**
 12. **Diagnostics in the hot path** (analytics 286 operations per tick, head statistics 960
     lines, triggers 647 lines). Cheap at run time, a maintenance load. **Open.**
+13. **N-team generality** ("free-for-all must not require a rewrite", `decisions.md`).
+    Not yet measured. **Open.**
 14. **Custom Triton kernels** (attention, gated MLP, heads, scan, temporal mix):
     1,287 lines plus 695 lines of tests; each has a plain twin (two implementations to keep
     equal), custom autograd and autotuning (about 60 s of a cold stage), handling so that
@@ -242,8 +244,6 @@ Each finding is an assumption that brought in complexity, with its status.
     shot-head kernel goes with the shot trajectory head. Standard alternatives: SDPA or
     FlexAttention with rotary applied before (the compiler fuses it), plain compiled code
     for the rest. **Open.**
-13. **N-team generality** ("free-for-all must not require a rewrite", `decisions.md`).
-    Not yet measured. **Open.**
 
 ## Notes on the open questions
 
