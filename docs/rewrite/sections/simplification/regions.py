@@ -99,3 +99,84 @@ def report(title: str, order: list[str] | None = None, top: int = 0) -> None:
         if top:
             for name, n in OPS[label].most_common(top):
                 print(f"      {n:>5}  {name}")
+
+
+def _count_one(label: str) -> None:
+    EXCLUSIVE[STACK[-1]][0] += 1
+    for item in set(STACK):
+        INCLUSIVE[item][0] += 1
+    OPS[STACK[-1]][f"[fused kernel] {label}"] += 1
+
+
+def fused_autograd(label: str, plain):
+    """A GPU kernel with its own backward: forward and backward each count as one op; the plain
+    twin computes the values (and, recomputed, the gradients) uncounted. Gradients reach the
+    tensor arguments and the parameters of module arguments."""
+
+    simple = fused(label, plain)
+
+    def wrapped(*args, **kwargs):
+        if not torch.is_grad_enabled():
+            return simple(*args, **kwargs)
+        device = next(a for a in list(args) if isinstance(a, torch.Tensor)).device.type
+        autocast = (torch.is_autocast_enabled(device), torch.get_autocast_dtype(device))
+        modules = [a for a in list(args) + list(kwargs.values()) if isinstance(a, torch.nn.Module)]
+        params = [p for m in modules for p in m.parameters()]
+        tuples = [t for a in args if isinstance(a, tuple) for t in a if isinstance(t, torch.Tensor)]
+        tensor_positions = [i for i, a in enumerate(args) if isinstance(a, torch.Tensor)]
+        inputs = [args[i] for i in tensor_positions] + tuples + params
+
+        class Kernel(torch.autograd.Function):
+            @staticmethod
+            def forward(ctx, *flat):
+                _SUPPRESS[0] += 1
+                try:
+                    out = plain(*args, **kwargs)
+                finally:
+                    _SUPPRESS[0] -= 1
+                _count_one(label)
+                ctx.single = isinstance(out, torch.Tensor)
+                outs = (out,) if ctx.single else tuple(out)
+                return tuple(o.detach() for o in outs)
+
+            @staticmethod
+            def backward(ctx, *grads):
+                _SUPPRESS[0] += 1
+                try:
+                    with torch.enable_grad(), torch.autocast(device, autocast[1], enabled=autocast[0]):
+                        copies = list(args)
+                        need = []
+                        for i in tensor_positions:
+                            t = args[i].detach()
+                            if args[i].requires_grad:
+                                t.requires_grad_(True)
+                            copies[i] = t
+                            need.append(t)
+                        out = plain(*copies, **kwargs)
+                        outs = (out,) if isinstance(out, torch.Tensor) else tuple(out)
+                        wrt = [t for t in need + tuples + params if t.requires_grad]
+                        pairs = [(o, g) for o, g in zip(outs, grads) if g is not None and o.requires_grad]
+                        got = torch.autograd.grad([o for o, _ in pairs], wrt, [g for _, g in pairs], allow_unused=True) if pairs and wrt else []
+                finally:
+                    _SUPPRESS[0] -= 1
+                _count_one(label + " (backward)")
+                by_id = {id(t): g for t, g in zip(wrt, got)}
+                result = []
+                for k, i in enumerate(tensor_positions):
+                    result.append(by_id.get(id(need[k])) if args[i].requires_grad else None)
+                for t in tuples + params:
+                    g = by_id.get(id(t))
+                    if g is not None and t.is_leaf and t.requires_grad:
+                        t.grad = g if t.grad is None else t.grad + g
+                        g = None
+                    result.append(g)
+                return tuple(result)
+
+        outs = Kernel.apply(*inputs)
+        return outs[0] if len(outs) == 1 and not isinstance(plain, tuple) and _single(outs) else outs
+
+    return wrapped
+
+
+def _single(outs) -> bool:
+    return len(outs) == 1

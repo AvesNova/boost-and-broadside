@@ -1,0 +1,228 @@
+######## length 16
+learner ppo, segment length 16, views 384
+
+== By phase (inclusive compute ops) ==
+  phase: backward (per micro-batch)                      782
+  phase: clip and optimizer (per minibatch)             2808
+  phase: forward and loss (per micro-batch)             3996
+  phase: heads' sums (cadence only)                     8516
+  phase: label codes (per micro-batch)                  1538
+  phase: prepare (once per update)                    236562
+
+== phase: prepare (once per update): 236562 ops; top functions (exclusive ops, calls) ==
+   195696  calls   648  learn.shots.tick
+    15189  calls     1  learn.ppo.Learner.prepare
+    13824  calls   384  models.yemong.state_code.ellipse
+     3936  calls    24  learn.shots.resimulate
+     2880  calls   960  learn.head_statistics._masked
+     1219  calls    24  learn.head_statistics.add
+      648  calls    24  models.yemong.geometry.quantities
+      624  calls    24  learn.ppo.Learner.shots
+      592  calls     2  learn.returns.per_level_gae
+      240  calls    24  learn.shots.query_ages
+      227  calls     1  models.yemong.critic.outcome_targets
+      216  calls    24  models.yemong.geometry.partner_rows
+      192  calls    24  learn.labels.next_state_mask
+      168  calls    24  models.yemong.geometry.pairs
+      144  calls    48  learn.head_statistics._wrapped
+      144  calls    24  models.yemong.state_code.unpack_covariance
+       96  calls    24  models.yemong.inputs.truth
+       91  calls     1  learn.ppo.Learner._target_series
+       64  calls     2  learn.ppo.explained_variance
+       63  calls     9  learn.advantages._deviation
+       52  calls     1  learn.advantages.level_series
+       48  calls    24  learn.shots.labels
+
+== phase: label codes (per micro-batch): 1538 ops; top functions (exclusive ops, calls) ==
+      374  calls    17  models.yemong.model.Yemong.rates
+      200  calls    20  models.yemong.delta.velocity_frame
+      133  calls    19  models.yemong.delta.to_frame
+      126  calls    18  models.yemong.delta.from_frame
+      107  calls     1  models.yemong.delta.DeltaCode.baseline
+       74  calls     1  models.yemong.model.Yemong.segment_rates
+       71  calls     1  models.yemong.codes.scalar_encode
+       60  calls     1  models.yemong.density.HexGrid.counts
+       59  calls     1  models.yemong.codes.match_moments
+       43  calls     1  models.yemong.inputs.accelerations
+       28  calls     7  models.yemong.inputs.truth
+       27  calls     1  models.yemong.geometry.quantities
+       24  calls     1  models.yemong.shots.outcome_code
+       21  calls     3  models.yemong.inputs.believed
+       19  calls     1  models.yemong.delta.arc
+       18  calls     2  models.yemong.codes.hl_gauss
+       17  calls     1  learn.labels.split_masks
+       16  calls     2  models.yemong.delta.DeltaCode._maxima
+       12  calls     2  models.yemong.codes.symlog_coordinate
+        9  calls     1  models.yemong.geometry.partner_rows
+        9  calls     1  learn.labels._merged
+        8  calls     1  learn.labels.next_state_mask
+
+== phase: forward and loss (per micro-batch): 3996 ops; top functions (exclusive ops, calls) ==
+      352  calls    16  models.yemong.model.Yemong.rates
+      257  calls     4  models.yemong.codes.grouped_cross_entropy
+      213  calls     3  models.yemong.codes.scalar_encode
+      190  calls    19  models.yemong.delta.velocity_frame
+      177  calls     3  models.yemong.codes.match_moments
+      153  calls    17  models.yemong.codes.hl_gauss
+      152  calls     4  models.yemong.spatial.SpatialBlock.forward
+      134  calls     7  models.yemong.codes.circular_coordinates
+      133  calls    19  models.yemong.delta.from_frame
+      112  calls    16  models.yemong.delta.to_frame
+      108  calls    36  models.yemong.codes._one_hot
+      107  calls     1  models.yemong.delta.DeltaCode.baseline
+       96  calls    16  models.yemong.codes.symlog_coordinate
+       86  calls     2  models.yemong.inputs.accelerations
+       74  calls     1  models.yemong.model.Yemong.segment_rates
+       65  calls     1  models.yemong.inputs.compose
+       65  calls     5  models.yemong.codes.circular_encode
+       64  calls    16  models.yemong.codes.symlog_encode_at
+       64  calls    11  models.yemong.codes.two_hot_at
+       63  calls     1  models.yemong.delta.DeltaCode.advance
+       56  calls     9  models.yemong.codes._scalar_coordinate
+       51  calls     3  models.yemong.codes.wrapped_hl_gauss
+
+== phase: backward (per micro-batch): 782 ops; top functions (exclusive ops, calls) ==
+      782  calls     1  phase: backward (per micro-batch)
+
+== phase: heads' sums (cadence only): 8516 ops; top functions (exclusive ops, calls) ==
+     1056  calls    48  models.yemong.model.Yemong.rates
+     1050  calls    42  models.yemong.codes.symlog_quantile
+      570  calls    57  models.yemong.delta.velocity_frame
+      504  calls   126  models.yemong.codes._probit
+      399  calls    57  models.yemong.delta.from_frame
+      336  calls    48  models.yemong.delta.to_frame
+      324  calls    54  models.yemong.codes.symlog_value
+      322  calls    23  models.yemong.codes.invert_mean
+      321  calls   107  learn.head_statistics._masked
+      321  calls     3  models.yemong.delta.DeltaCode.baseline
+      308  calls    14  models.yemong.codes.symlog_spread
+      289  calls    17  models.yemong.codes.symlog_median_at
+      244  calls     1  learn.head_statistics._correction
+      222  calls     3  models.yemong.model.Yemong.segment_rates
+      189  calls     3  models.yemong.delta.DeltaCode.advance
+      144  calls    16  models.yemong.codes.hl_gauss
+      129  calls     3  models.yemong.inputs.accelerations
+       96  calls    16  models.yemong.codes.symlog_coordinate
+       84  calls    12  models.yemong.inputs.believed
+       84  calls     6  models.yemong.delta.rotate_variances
+       80  calls     3  models.yemong.codes.grouped_cross_entropy
+       78  calls    26  models.yemong.codes._one_hot
+
+== phase: clip and optimizer (per minibatch): 2808 ops; top functions (exclusive ops, calls) ==
+     1524  calls     1  learn.ppo.Learner._step
+     1272  calls     1  learn.ppo.Adam.step
+       12  calls     1  phase: clip and optimizer (per minibatch)
+######## length 32
+learner ppo, segment length 32, views 384
+
+== By phase (inclusive compute ops) ==
+  phase: backward (per micro-batch)                      782
+  phase: clip and optimizer (per minibatch)             2808
+  phase: forward and loss (per micro-batch)             4796
+  phase: heads' sums (cadence only)                    10916
+  phase: label codes (per micro-batch)                  2338
+  phase: prepare (once per update)                    353330
+
+== phase: prepare (once per update): 353330 ops; top functions (exclusive ops, calls) ==
+   311664  calls  1032  learn.shots.tick
+    15189  calls     1  learn.ppo.Learner.prepare
+    13824  calls   384  models.yemong.state_code.ellipse
+     3936  calls    24  learn.shots.resimulate
+     2880  calls   960  learn.head_statistics._masked
+     1219  calls    24  learn.head_statistics.add
+     1168  calls     2  learn.returns.per_level_gae
+      648  calls    24  models.yemong.geometry.quantities
+      624  calls    24  learn.ppo.Learner.shots
+      451  calls     1  models.yemong.critic.outcome_targets
+      240  calls    24  learn.shots.query_ages
+      216  calls    24  models.yemong.geometry.partner_rows
+      192  calls    24  learn.labels.next_state_mask
+      168  calls    24  models.yemong.geometry.pairs
+      144  calls    48  learn.head_statistics._wrapped
+      144  calls    24  models.yemong.state_code.unpack_covariance
+       96  calls    24  models.yemong.inputs.truth
+       91  calls     1  learn.ppo.Learner._target_series
+       64  calls     2  learn.ppo.explained_variance
+       63  calls     9  learn.advantages._deviation
+       52  calls     1  learn.advantages.level_series
+       48  calls    24  learn.shots.labels
+
+== phase: label codes (per micro-batch): 2338 ops; top functions (exclusive ops, calls) ==
+      726  calls    33  models.yemong.model.Yemong.rates
+      360  calls    36  models.yemong.delta.velocity_frame
+      245  calls    35  models.yemong.delta.to_frame
+      238  calls    34  models.yemong.delta.from_frame
+      138  calls     1  models.yemong.model.Yemong.segment_rates
+      107  calls     1  models.yemong.delta.DeltaCode.baseline
+       71  calls     1  models.yemong.codes.scalar_encode
+       60  calls     1  models.yemong.density.HexGrid.counts
+       59  calls     1  models.yemong.codes.match_moments
+       43  calls     1  models.yemong.inputs.accelerations
+       28  calls     7  models.yemong.inputs.truth
+       27  calls     1  models.yemong.geometry.quantities
+       24  calls     1  models.yemong.shots.outcome_code
+       21  calls     3  models.yemong.inputs.believed
+       19  calls     1  models.yemong.delta.arc
+       18  calls     2  models.yemong.codes.hl_gauss
+       17  calls     1  learn.labels.split_masks
+       16  calls     2  models.yemong.delta.DeltaCode._maxima
+       12  calls     2  models.yemong.codes.symlog_coordinate
+        9  calls     1  models.yemong.geometry.partner_rows
+        9  calls     1  learn.labels._merged
+        8  calls     1  learn.labels.next_state_mask
+
+== phase: forward and loss (per micro-batch): 4796 ops; top functions (exclusive ops, calls) ==
+      704  calls    32  models.yemong.model.Yemong.rates
+      350  calls    35  models.yemong.delta.velocity_frame
+      257  calls     4  models.yemong.codes.grouped_cross_entropy
+      245  calls    35  models.yemong.delta.from_frame
+      224  calls    32  models.yemong.delta.to_frame
+      213  calls     3  models.yemong.codes.scalar_encode
+      177  calls     3  models.yemong.codes.match_moments
+      153  calls    17  models.yemong.codes.hl_gauss
+      152  calls     4  models.yemong.spatial.SpatialBlock.forward
+      138  calls     1  models.yemong.model.Yemong.segment_rates
+      134  calls     7  models.yemong.codes.circular_coordinates
+      108  calls    36  models.yemong.codes._one_hot
+      107  calls     1  models.yemong.delta.DeltaCode.baseline
+       96  calls    16  models.yemong.codes.symlog_coordinate
+       86  calls     2  models.yemong.inputs.accelerations
+       65  calls     1  models.yemong.inputs.compose
+       65  calls     5  models.yemong.codes.circular_encode
+       64  calls    16  models.yemong.codes.symlog_encode_at
+       64  calls    11  models.yemong.codes.two_hot_at
+       63  calls     1  models.yemong.delta.DeltaCode.advance
+       56  calls     9  models.yemong.codes._scalar_coordinate
+       51  calls     3  models.yemong.codes.wrapped_hl_gauss
+
+== phase: backward (per micro-batch): 782 ops; top functions (exclusive ops, calls) ==
+      782  calls     1  phase: backward (per micro-batch)
+
+== phase: heads' sums (cadence only): 10916 ops; top functions (exclusive ops, calls) ==
+     2112  calls    96  models.yemong.model.Yemong.rates
+     1050  calls   105  models.yemong.delta.velocity_frame
+     1050  calls    42  models.yemong.codes.symlog_quantile
+      735  calls   105  models.yemong.delta.from_frame
+      672  calls    96  models.yemong.delta.to_frame
+      504  calls   126  models.yemong.codes._probit
+      414  calls     3  models.yemong.model.Yemong.segment_rates
+      324  calls    54  models.yemong.codes.symlog_value
+      322  calls    23  models.yemong.codes.invert_mean
+      321  calls   107  learn.head_statistics._masked
+      321  calls     3  models.yemong.delta.DeltaCode.baseline
+      308  calls    14  models.yemong.codes.symlog_spread
+      289  calls    17  models.yemong.codes.symlog_median_at
+      244  calls     1  learn.head_statistics._correction
+      189  calls     3  models.yemong.delta.DeltaCode.advance
+      144  calls    16  models.yemong.codes.hl_gauss
+      129  calls     3  models.yemong.inputs.accelerations
+       96  calls    16  models.yemong.codes.symlog_coordinate
+       84  calls    12  models.yemong.inputs.believed
+       84  calls     6  models.yemong.delta.rotate_variances
+       80  calls     3  models.yemong.codes.grouped_cross_entropy
+       78  calls    26  models.yemong.codes._one_hot
+
+== phase: clip and optimizer (per minibatch): 2808 ops; top functions (exclusive ops, calls) ==
+     1524  calls     1  learn.ppo.Learner._step
+     1272  calls     1  learn.ppo.Adam.step
+       12  calls     1  phase: clip and optimizer (per minibatch)

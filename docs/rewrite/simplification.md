@@ -263,9 +263,84 @@ offsets (`torch._grouped_mm`, or Triton's grouped GEMM) does it in one launch, w
 padding or `RUN_SLACK` grouping, at a fixed total row count. To check: support on the
 laptop's GPU and the 5090 in this build. First settle how many weight sets a tick needs.
 
+## The learner (counted 2026-11-21)
+
+`v2_learn.py` and `v1_learn.py` count one update's learner phases: the preparation done once
+per update, and one micro-batch's label codes, forward and loss, and backward. Every
+function of the model and the learner is a region. v2's Triton kernels count as one
+operation forward and one backward (their plain twin computes the values and gradients
+uncounted). Each was run at segment lengths 16 and 32 to see what grows with the length.
+Records: `records/v2_learn_ppo_L16_L32.txt`, `records/v1_learn_L16_L32.txt`.
+
+### Per micro-batch
+
+| Phase | v1 (L 16 / 32) | v2 L 16 | v2 L 32 | v2 L 128 (extrapolated) |
+|---|---|---|---|---|
+| Label codes | (once per update) | 1,538 | 2,338 | about 7,100 |
+| Forward and loss | 1,043 / 1,053 | 3,996 | 4,796 | about 9,600 |
+| Backward | 1,153 / 1,175 | 782 | 782 | 782 |
+| **Total** | **about 2,200** | **6,316** | **7,916** | **about 17,500** |
+
+v1 barely grows with the length (its log-depth scan adds about 10 operations per doubling).
+v2 grows by about 50 operations per tick in both the label codes and the forward. The
+extrapolation: v2's growth is linear in the two measured points.
+
+v2's backward is smaller than v1's because its kernels count as one operation each. Most of
+v2's forward is not differentiable: label encodings, decodes, the per-tick loop below.
+
+The clip and optimizer phase is not comparable here: on the CPU both versions run an
+unfused Adam (v2 also saves and restores every tensor); on a GPU v2's Adam is fused.
+
+### Once per update
+
+| | v1 | v2 L 16 | v2 L 32 |
+|---|---|---|---|
+| Prepare (returns, advantages, labels written to the store) | 1,761 | 236,562 | 353,330 |
+| Heads' sums (every 10th update, a sample of micro-batches) | | 8,516 | 10,916 |
+
+### Learner findings
+
+L1. **A Python loop over every tick in the extrapolation baseline.** `Yemong.rates`, via
+    `Yemong.segment_rates`, steps tick by tick: about 50 operations per tick, in the label
+    codes and again in the forward. At a segment length of 128 that is about 5,600
+    operations in each graph, more than half of it, so the compiled graphs and their
+    compile time grow with the segment length. Part of the belief: removed by the
+    2026-11-21 decision.
+
+L2. **Shot re-simulation for the shot labels** (`bnb.learn.shots.resimulate`): about 300
+    operations per simulated tick, in a Python loop of L + 11 ticks per chunk of views,
+    chunks the size of a loss micro-batch. At the launch's RL settings (12,288 views,
+    64-view micro-batches, L 128) that is 192 x 139 = about 26,700 calls of the shot tick
+    per update: about 8 million operations eager, and 26,700 calls of a compiled function
+    compiled. It flies a hypothetical shot for every ship at every tick, so it serves the
+    shot trajectory head and the shot outcome head alike. **Keeping the shot outcome head
+    keeps this machinery** unless its labels change (for example, real shots only, labelled
+    by the game's own hit events).
+
+L3. **Labels recomputed every epoch.** The label codes (about 7,100 operations per
+    micro-batch at L 128) are rebuilt for every micro-batch of every epoch, though they do
+    not change within an update. The BC teacher's labels were already moved to `prepare`
+    for this reason.
+
+L4. **The heads' sums diagnostic** (8,500 to 10,900 operations per sampled micro-batch) uses
+    the same per-tick loop and the same decodes.
+
+### Per update, uncompiled (estimate)
+
+- v2 RL at the launch's settings: 4 epochs x 32 minibatches x 6 micro-batches = 768
+  micro-batch steps x about 17,500, plus about 8 million for the shot labels: **about 21
+  million operations**.
+- v1 (`wild-universe-731`): 4 x 32 x 15 = 1,920 micro-batch steps x about 2,200, plus
+  preparation: **about 4.3 million operations**.
+
+Both updates are about a million environment steps. These are estimates from the counts
+above, not measurements of an update.
+
 ## Not yet examined
 
-1. **The learner** by section, forward and backward. About 90% of steady time.
+1. The learner on the GPU: time and memory traffic per section (the laptop). The learner's
+   steady time is GPU-bound (220 of 227 ms of kernels per step), so the counts above
+   explain compile time and eager speed, not its steady speed.
 2. Resolve and perceive split by mode, fog and bookkeeping (in more detail than above).
 3. A laptop GPU benchmark of compile time and step time for: fully static; dynamic batch
    dimension; dynamic ship dimension; Python constants instead of tensors.

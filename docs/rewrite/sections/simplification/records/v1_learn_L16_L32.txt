@@ -1,0 +1,76 @@
+######## num_steps 16
+rollouts per update 1 minibatch tokens 1728
+v1 learner, num_steps 16
+
+== phase: prepare (once per update): 1761 ops; top functions (exclusive ops, calls) ==
+     1571  calls     0  (outside any region)
+       96  calls    32  train.rl.buffer.AdvantageScaler.normalize
+       43  calls     9  train.rl.features.Feature.get_target
+       36  calls     6  train.rl.features.UnitCirclePredictor.compute_labels
+        8  calls     2  train.rl.features.symmetric_logarithm
+        2  calls     9  train.rl.features.Accessor.get
+        2  calls     1  train.rl.features.FeatureCoordinator.compute_labels
+        2  calls     2  train.rl.features.AdditivePredictor.compute_labels
+        1  calls     1  train.rl.features.FeatureCoordinator.get_target_vector
+
+== phase: forward and loss (per micro-batch): 1043 ops; top functions (exclusive ops, calls) ==
+      181  calls     1  phase: forward and loss (per micro-batch)
+      115  calls    30  train.rl.features.Feature.get_input
+       72  calls     3  train.rl.features._triangle_conv_loss
+       64  calls     8  models.yemong.attention.GatedMLP.forward
+       58  calls     1  models.yemong.policy.TeamPMA.forward
+       58  calls     1  models.yemong.policy._evaluate_action
+       56  calls     4  models.yemong.attention.TransformerBlock.forward
+       48  calls     2  models.yemong.griffin.GriffinTemporalBlock.forward_nonrecurrent
+       46  calls     4  models.yemong.attention.TransformerBlock._attn
+       46  calls     2  models.yemong.griffin.GriffinTemporalBlock.forward_sequence
+       44  calls     2  models.yemong.griffin._parallel_scan
+       40  calls     1  models.yemong.policy.YemongPolicy.evaluate_actions
+       34  calls     2  models.yemong.griffin.RGLRU.forward_sequence
+       28  calls     2  models.yemong.griffin._causal_depthwise_conv
+       22  calls     2  models.yemong.griffin._causal_conv_tap_validity
+       18  calls     6  models.yemong.attention.TransformerBlock._key_bias
+
+== phase: backward (per micro-batch): 1153 ops; top functions (exclusive ops, calls) ==
+     1153  calls     1  phase: backward (per micro-batch)
+
+== phase: clip and optimizer (per minibatch): 1110 ops; top functions (exclusive ops, calls) ==
+     1110  calls     1  phase: clip and optimizer (per minibatch)
+######## num_steps 32
+rollouts per update 1 minibatch tokens 3456
+v1 learner, num_steps 32
+
+== phase: prepare (once per update): 1761 ops; top functions (exclusive ops, calls) ==
+     1571  calls     0  (outside any region)
+       96  calls    32  train.rl.buffer.AdvantageScaler.normalize
+       43  calls     9  train.rl.features.Feature.get_target
+       36  calls     6  train.rl.features.UnitCirclePredictor.compute_labels
+        8  calls     2  train.rl.features.symmetric_logarithm
+        2  calls     9  train.rl.features.Accessor.get
+        2  calls     1  train.rl.features.FeatureCoordinator.compute_labels
+        2  calls     2  train.rl.features.AdditivePredictor.compute_labels
+        1  calls     1  train.rl.features.FeatureCoordinator.get_target_vector
+
+== phase: forward and loss (per micro-batch): 1053 ops; top functions (exclusive ops, calls) ==
+      181  calls     1  phase: forward and loss (per micro-batch)
+      115  calls    30  train.rl.features.Feature.get_input
+       72  calls     3  train.rl.features._triangle_conv_loss
+       64  calls     8  models.yemong.attention.GatedMLP.forward
+       58  calls     1  models.yemong.policy.TeamPMA.forward
+       58  calls     1  models.yemong.policy._evaluate_action
+       56  calls     4  models.yemong.attention.TransformerBlock.forward
+       54  calls     2  models.yemong.griffin._parallel_scan
+       48  calls     2  models.yemong.griffin.GriffinTemporalBlock.forward_nonrecurrent
+       46  calls     4  models.yemong.attention.TransformerBlock._attn
+       46  calls     2  models.yemong.griffin.GriffinTemporalBlock.forward_sequence
+       40  calls     1  models.yemong.policy.YemongPolicy.evaluate_actions
+       34  calls     2  models.yemong.griffin.RGLRU.forward_sequence
+       28  calls     2  models.yemong.griffin._causal_depthwise_conv
+       22  calls     2  models.yemong.griffin._causal_conv_tap_validity
+       18  calls     6  models.yemong.attention.TransformerBlock._key_bias
+
+== phase: backward (per micro-batch): 1175 ops; top functions (exclusive ops, calls) ==
+     1175  calls     1  phase: backward (per micro-batch)
+
+== phase: clip and optimizer (per minibatch): 1110 ops; top functions (exclusive ops, calls) ==
+     1110  calls     1  phase: clip and optimizer (per minibatch)
