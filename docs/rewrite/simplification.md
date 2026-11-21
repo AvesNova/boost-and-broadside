@@ -42,6 +42,7 @@ Measurement scripts and raw records: `docs/rewrite/sections/simplification/`.
 | 2026-11-21 | **Keep:** a next-state head (simplest form), the shot outcome head, the geometry head. |
 | 2026-11-21 | **Positions:** the 236 km range and the random offset served varied map sizes, which are not needed now. The map is not toroidal (v1's was). Start with a much simpler encoding, preferably grid-cell-like (see "Position encoding"). |
 | 2026-11-21 | **League matchmaking keeps a live rating**, or failing that a precomputed schedule. |
+| 2026-11-21 | **Drop the custom Triton kernels.** They treated the symptom (too many small operations) rather than its cause. Use standard tools (SDPA or FlexAttention, plain compiled code); a kernel comes back only if a profile of the simplified model shows it pays. |
 
 ## Open questions
 
@@ -67,9 +68,15 @@ Measurement scripts and raw records: `docs/rewrite/sections/simplification/`.
   launch tick (the label is known within a bullet's life, at most 11 ticks). Real bullets
   only (labels only where the policy fires), or real and ghost bullets (ghosts flown in the
   rollout's tick, dense labels). Either removes the learner's re-simulation (finding L2).
-  Leaning: real bullets first, ghosts as an A/B.
-- **The Triton kernels** (finding 14): drop all five and use standard tools, re-adding a
-  kernel only where a profile shows it pays?
+  Ghost bullets respect the gun's cooldown (the author): a ghost fills a slot a real shot
+  could have used, so real and ghost bullets together never exceed a ship firing at its
+  full rate. The game already sizes its slots for that rate (`most_bullet_slots`) and tests
+  every slot each tick, so ghosts cost about the existing worst case, with perhaps one or
+  two extra slots. To settle: ghosts spend no energy; one cooldown timer for real and ghost
+  shots, so every tick the gun is ready carries a real or a ghost label.
+- **Other treatments of the same symptom**, to re-examine once the simplified model exists:
+  CUDA-graph capture of the rollout, `vmap` stacking with `RUN_SLACK` grouping, the raised
+  recompile limit.
 
 ## Measurements
 
@@ -243,7 +250,7 @@ Each finding is an assumption that brought in complexity, with its status.
     attention 9.0 ms, gated MLP 2.0, scan 1.7, temporal mix 0.9, heads 0.2. The staged
     shot-head kernel goes with the shot trajectory head. Standard alternatives: SDPA or
     FlexAttention with rotary applied before (the compiler fuses it), plain compiled code
-    for the rest. **Open.**
+    for the rest. **Decided 2026-11-21: dropped.**
 
 ## Notes on the open questions
 
