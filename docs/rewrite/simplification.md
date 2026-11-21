@@ -7,6 +7,80 @@ something is decided or measured, and commit it.
 
 Measurement scripts and raw records: `docs/rewrite/sections/simplification/`.
 
+## Goals and non-goals (the author, 2026-11-21)
+
+Every later decision is checked against this section. The numbers marked "proposed" are
+starting targets, to be confirmed.
+
+### What the project is for
+
+All three, together:
+
+1. **A game people play and find fun.** Simple rules with a lot of depth (think Rocket
+   League). A human plays against trained agents, so the game and an agent must run at
+   least in real time in evaluation and play.
+2. **Interesting experiments, possibly a paper.** Arms that answer questions cleanly.
+3. **Training that is quick and cheap in GPU hours,** so the experiments are affordable.
+
+### Fixed scope
+
+- One GPU.
+- The real-scale ship set only.
+- Training and evaluation robust to many team sizes.
+- Variable map sizes, if they can be made to work (arm A1).
+- The human-playable game is in scope. That v2's play shell exists does not mean it is
+  built well.
+
+### How it is built
+
+1. **Readable, changeable, testable code.** One implementation of each thing: one game
+   step, one model forward, no plain twins kept in agreement with fast ones.
+2. **Fast on the GPU uncompiled, faster compiled.** Held by an operation budget per
+   section, enforced in tests.
+3. **Compile time a small fraction of a run.** Proposed: a cold compile of a few minutes
+   at most and under 5% of a run; no recompile when a batch size or a team size changes.
+4. **Fail fast.** Errors at startup; a non-finite value stops the run; a smoke run
+   finishes in minutes.
+5. **Fast iteration.** The measure is the time from a change to a signal worth trusting.
+   Proposed: a laptop smoke test in under about 5 minutes; an A/B signal in hours.
+6. **Standard methods first.** A bespoke mechanism only with evidence that the standard one
+   falls short.
+7. **Every feature earns its place.** Anything expensive in operations, compile time,
+   lines or maintenance wins an A/B or lives on a branch. This holds for game rules too:
+   a rule earns its place by the depth it adds to play.
+8. **Effort where the time goes.** Profile before optimising.
+
+### Requirements that follow from the scope
+
+- **Team sizes:** the ship dimension is either dynamic after compilation or rounded to a few
+  fixed sizes; changing it must not cost a cold compile per size.
+- **Variable maps:** positions are encoded over a bounded range (the largest map), relative
+  to the arena, not a 236 km frame with a random offset.
+- **Real time:** a game step plus an agent's decision at batch size 1 fits the frame
+  budget, eager or with a cheap build, on the player's machine.
+
+### Non-goals
+
+- **Bit-exactness:** bitwise resume, common random numbers across runs, game fingerprints,
+  equality across devices or compile modes. Results reproduce within noise from a seed.
+- **Backward compatibility:** old checkpoints, build records, game versions and observation
+  columns.
+- **Generality the scope does not ask for:** more than two teams or free-for-all, several
+  ship sets side by side, ONNX or other exports, CPU and GPU parity as a requirement.
+- **Platform features for outside users:** fixed contracts for model exchange, a
+  leaderboard.
+- **Options kept forever:** alternatives (trust regions, model variants) live on branches
+  and in arms, not as switches in the main code.
+- **The last few per cent of speed** before the design is lean: no custom kernels until a
+  profile of the simple version shows the need.
+- **Publication-grade statistics on routine decisions;** reserve them for the paper's
+  claims.
+
+### Open
+
+- Packaging and distribution of the game (v2 planned a Windows build as an early
+  milestone).
+
 ## Why this audit
 
 - **Compile time.** Cold compiles take 5–10 minutes per stage on the laptop and about an
