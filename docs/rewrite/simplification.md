@@ -61,6 +61,15 @@ Measurement scripts and raw records: `docs/rewrite/sections/simplification/`.
 - **MoE tooling** (grouped GEMM) for several weight sets per tick, if any remain after the
   lanes question.
 - **Bit-level reproducibility machinery:** how much to remove (finding 9).
+- **Shot outcome labels from the real game** (the author's idea, 2026-11-21): record, for
+  each bullet, whether it hit an enemy, an ally or nothing, and the damage, when
+  `bnb.game.physics.combat.hits` resolves it; written back to the shooter's record at the
+  launch tick (the label is known within a bullet's life, at most 11 ticks). Real bullets
+  only (labels only where the policy fires), or real and ghost bullets (ghosts flown in the
+  rollout's tick, dense labels). Either removes the learner's re-simulation (finding L2).
+  Leaning: real bullets first, ghosts as an A/B.
+- **The Triton kernels** (finding 14): drop all five and use standard tools, re-adding a
+  kernel only where a profile shows it pays?
 
 ## Measurements
 
@@ -223,6 +232,16 @@ Each finding is an assumption that brought in complexity, with its status.
     copies; plain arithmetic with Python numbers makes none. **Open.**
 12. **Diagnostics in the hot path** (analytics 286 operations per tick, head statistics 960
     lines, triggers 647 lines). Cheap at run time, a maintenance load. **Open.**
+14. **Custom Triton kernels** (attention, gated MLP, heads, scan, temporal mix):
+    1,287 lines plus 695 lines of tests; each has a plain twin (two implementations to keep
+    equal), custom autograd and autotuning (about 60 s of a cold stage), handling so that
+    autotuning repeats the bits, and no `vmap` rule (the stacked lanes call each once per
+    lane). Measured gain (`sections/fast-yemong-notes.md`, laptop, 160-row micro-batches):
+    training bf16 51.5 -> 37.7 ms (1.23x of training throughput; fp32 1.10x), of which
+    attention 9.0 ms, gated MLP 2.0, scan 1.7, temporal mix 0.9, heads 0.2. The staged
+    shot-head kernel goes with the shot trajectory head. Standard alternatives: SDPA or
+    FlexAttention with rotary applied before (the compiler fuses it), plain compiled code
+    for the rest. **Open.**
 13. **N-team generality** ("free-for-all must not require a rewrite", `decisions.md`).
     Not yet measured. **Open.**
 
