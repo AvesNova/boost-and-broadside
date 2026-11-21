@@ -268,10 +268,40 @@ under v2's conditions.
   `log`, `min`, `max`.
 - **Working notes** in code are allowed while working and removed before merge. A review
   helper checks each diff for narrative and opinion.
-- **Tests check behaviour:** game invariants, game dynamics against v2 statistically, and
-  the requirements. No bitwise tests. Tests are deleted with the code they test.
 - **Text that reports results** (findings, experiment records) states what was measured.
   Interpretation goes in a separate, labelled section.
+
+### Tests
+
+A test earns its place like any other code. Its value is how likely it is to fail when
+something is wrong, times what that problem would cost undetected, times how much earlier
+it is caught than by anything else. Its cost is writing it, running it on every run, and
+maintaining it whenever the behaviour it pins changes on purpose. v2's suite had 1,604 tests
+in 44,700 lines, about 0.7 lines of test per line of source, and 13 MB of fixtures.
+
+- **Every test names the failure it catches,** in its name or a one-line docstring: the
+  defect, not the implementation.
+- **Prefer, roughly in this order:**
+  - properties and invariants (a team swap mirrors the outcome; ships stay inside the
+    arena; nothing becomes non-finite);
+  - behaviour checked statistically (the scripted agent beats random; game lengths in a
+    plausible range; a short run reduces its loss);
+  - contracts at real boundaries (game to observation, model to actions, saved files);
+  - regression tests for bugs that occurred, while the code path exists.
+- **A reference implementation** only when it is much simpler than the code it checks.
+- **Pinned outputs** (goldens, exact snapshots, exact equality) only where exactness is the
+  specification: integer logic, file formats, replays. During a refactor meant to preserve
+  behaviour, a pin may be used temporarily and is deleted afterwards.
+- **A test that fails on intended changes and is fixed by updating its expected value has
+  caught nothing.** When that happens twice, delete the test or rewrite it to check a
+  property.
+- **Do not duplicate other signals.** The scoreboard covers speed, the learning canary
+  covers training, and runtime checks cover non-finite values.
+- **Fixtures are small and generated** by code in the repository, not stored data.
+- **A flaky test** is fixed or deleted the same day.
+- **Tests are deleted with the code they test,** and the milestone deletion pass includes
+  them. The test tiers follow the verification levels in section 7: the fast tier in
+  minutes on the CPU, slower and GPU tests at batch and milestone level.
 
 ## 10. Assumption register (seed)
 
