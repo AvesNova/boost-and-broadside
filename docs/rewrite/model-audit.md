@@ -190,7 +190,7 @@ Now everything is in nats. Is some of it no longer needed?"
 
 | Piece | Verdict | Why |
 |---|---|---|
-| Return scale (EMA of the 5th-95th percentile gap, floor 1.0) and policy weight 27 | Replace with advantages divided by their standard deviation over the update, coefficient 1 | The pair is DreamerV3's actor normaliser applied to per-tick GAE advantages; 27 compensates for the mismatch. Never tested against the standard. The floor meant "one win" when the outcome weight was 1; it is now 10. `origin/main` had already found a floor of 1.0 binding and moved to a standard deviation; the working branch went back without a note |
+| Return scale (EMA of the 5th-95th percentile gap, floor 1.0) and policy weight 27 | Test against advantages divided by their standard deviation over the update, coefficient 1 | The form is DreamerV3's, which the citation check confirms divides the baseline-subtracted return by max(1, S), so the project's use is closer to the source than the blind pass assumed. What is not from the source: the floor meant "one win" when the outcome weight was 1 and the weight is now 10; the EMA has no bias correction; and 27 was tuned around it. Never tested against an alternative. `origin/main` had found a floor of 1.0 binding and moved to a standard deviation; the working branch went back without a note. Neither option is "the standard": the PPO paper has no advantage normalisation, and the largest study of PPO choices found the per-minibatch kind "seems not to affect the performance too much" |
 | Nine coefficients from 0.0033 to 27 | Collapse to about three: policy 1, value small, one shared auxiliary weight | With every term a mean in nats per softmax group and standardised advantages |
 | The rule "set weights from measured trunk-gradient shares" | Keep | It is the one piece with a measurement behind it. Re-run it once on the new model |
 | Value weight small | Keep small | Measured (run 756): a large critic share hurt play |
@@ -210,7 +210,7 @@ where history shows the reason has gone, it is listed for a decision.
 | Entity-set model with no slot, index or count parameters; per-kind encoders; a global token | 2.1-2.9 | Standard for entity-attention policies |
 | Trunk: spatial attention plus a Griffin recurrent block, RMSNorm, gated MLP; small and cheap (295 of 5,172 operations per forward) | 3.1-3.14 | Published (Griffin); standard parts |
 | Rotary relative position in attention | 1.26, 3.3 | Measured in v2: switched off at inference the best model loses every game. Sequence rotary is standard; its use on metric 2D coordinates is the project's own (see `citations.md`) |
-| Categorical outputs trained by cross-entropy | 5.x | Published for value functions; the owner's stated reason holds |
+| Categorical outputs trained by cross-entropy | 5.x | The owner's stated reason holds. Published support for categorical value targets is for value-based and model-based agents; no experiment with PPO was found, and two-hot (what the code uses) is the weakest variant in the main paper |
 | Joint 42-way action per ship, ships sampled independently | 6.2 | Origin not recoverable; nothing against it. Keep, untested |
 | PPO, clip 0.2, GAE, Adam 3e-4 | 9.x | Standard |
 | Multi-level rewards with a discount per level | 7.1, 7.5 | One confounded run in favour; a published precedent for separate value heads with different discounts. See "decisions" |
@@ -250,7 +250,6 @@ Each chain is one removal (`history-model.md` section 8).
 | Own and enemy split by row position | 2.8 | A team column and an `exists` mask | Structural obstacle to unequal teams |
 | Fixed 5v5 in training | 11.7, 12.3, 12.46 | Team sizes, zone and field counts and arena scale drawn per environment, unequal teams included | Finding 2. A modest range first; the literature's one very wide range trained badly |
 | Griffin decay initialisation | 3.8, 3.9 | The paper's initialisation | **(checked)** `temporal.py:82` sets the logits to `linspace(0, 4)` with exponent 8, which at a fully open gate gives a memory of at most about 7 ticks (a quarter of a second). A long-memory initialisation was decided in 2026-10 and never built, while `references.md` says the paper's was kept |
-| Return scale and weight 27 | 7.9, 7.10, 8.1 | Standardised advantages | Above |
 
 ### Disagreements and open rows: for the owner
 
@@ -310,8 +309,9 @@ Each chain is one removal (`history-model.md` section 8).
    pass's reading is that the bonus was the same order as the range-normalised
    advantages, so the ablation shows mis-scaling, not that entropy hurts. Entropy later
    fell to 0.4 in rl-v20. *Recommendation:* re-test at 0.001 to 0.003 after the advantage
-   change. The standard protection for a cloned policy is a distillation term toward it
-   (see `citations.md`), which v2 does not have.
+   change, and add a decaying distillation term toward the cloned policy. Every
+   BC-then-RL source the citation check read keeps both an entropy term and such a term;
+   v2's configuration (entropy 0, no distillation) has no provenance.
 8. **RL update size.** By the blind pass's arithmetic from `launch.toml`, RL gets about
    48 PPO updates (10 of them warm-up) at the launch budget, with far fewer optimiser
    steps than BC. Worth one run at a quarter of the update size.
@@ -334,17 +334,17 @@ be tested. "d" rows are the test list. Sources are in `citations.md` and
 | Part | Choice | Cat. |
 |---|---|---|
 | Observation | Ship, zone and field rows of variable count, with `exists`, `team`, `visible`, `alive`; padded and masked | a |
-| Ship inputs | About 20 state scalars at fixed physical scales; type one-hot; flags | a |
+| Ship inputs | About 20 state scalars at fixed physical scales (symlog where the range is wide); type one-hot; flags | a. No RL source was found for two-hot or binned inputs; DreamerV3 uses symlog scalars for inputs and two-hot only for targets |
 | Position | None absolute. Clipped distance and direction to the boundary per ship | d |
-| Hidden enemies | Last-seen token: state zeroed, last-seen position, time since seen; never-seen enemies masked | d (precedent: OpenAI Five reuses the last observation) |
+| Hidden enemies | Last-seen token: state zeroed, last-seen position, time since seen; never-seen enemies masked | b by precedent: OpenAI Five reuses the last-seen observation for fogged enemy heroes (confirmed) |
 | Encoder | Per kind: linear, norm, activation, shared linear to the width | a |
-| Spatial attention | Standard scaled dot-product attention with a key mask and one learned null key | a for the mask; d for the null key |
-| Relative position | Rotary on queries and keys, about six bands sized to the largest intended map, not a power-of-two ladder | c (load-bearing in v2); d for the ladder |
+| Spatial attention | Standard scaled dot-product attention with a key mask and one learned null key | a for the mask (hide-and-seek, REFIL); d for the null key (register tokens support it by analogy only) |
+| Relative position | Rotary on queries and keys, about six bands sized to the largest intended map, not a power-of-two ladder | c (load-bearing in v2); d for the ladder. No published use of rotary on metric world coordinates of a variable entity set was found, so this is the project's own mechanism |
 | Temporal | Griffin recurrent block per token, the paper's decay initialisation | b |
 | Normalisation | Per-token only; nothing computed across the entity axis | a |
 | Policy head | Joint 42-way categorical per ship, read from that ship's token | d |
-| Value | Per-ship categorical critic per reward level, including outcome | b |
-| Auxiliary heads | Next state as an open-loop change from the current state; shot outcome from game-recorded labels; geometry | d each |
+| Value | Per-ship categorical critic per reward level, including outcome, with HL-Gauss targets | b for categorical targets (not shown with PPO) and for per-level heads (RND) |
+| Auxiliary heads | Next state as an open-loop change from the current state; shot outcome from game-recorded labels; geometry | d each. No source read shows a forward-prediction auxiliary loss helping an on-policy actor-critic, and the planned experiment on the heads never ran |
 
 **Learner**
 
@@ -352,12 +352,14 @@ be tested. "d" rows are the test list. Sources are in `citations.md` and
 |---|---|---|
 | Algorithm | PPO, clip 0.2, 4 epochs, GAE, one lambda | a |
 | Discounts | One per reward level | b, with weak c |
-| Advantages | Sum over levels, divided by the standard deviation over the update | a |
+| Advantages | Sum over levels, then one normaliser: the standard deviation over the update, or DreamerV3's percentile range with the floor and EMA fixed. Recompute advantages once per pass over the data | d (one comparison run); b for recomputing |
 | Losses | Every term a mean in nats per softmax group; policy 1; value small; one shared auxiliary weight, set once from a measured trunk-gradient share | c for the rule and the small value weight |
 | Entropy | One coefficient, re-tested after the advantage change | d |
 | Returns | Bootstrap from the value at the rollout's end; no lookahead; rewards averaged per ship so targets do not grow with fleet size | a; b for the per-ship averaging |
 | Optimiser | Adam 3e-4, short warm-up, ordinary gradient clip, bf16 with fp32 accumulation | a |
 | BC | Soft-label cloning from the scripted agent, the same return settings as RL | a |
+| BC to RL | A distillation term toward the cloned policy, decayed to zero, alongside an entropy term | b (Kickstarting; every BC-then-RL source read keeps both terms). v2 has neither |
+| Averaged weights | At most one average, and only if measured to help | d. No source supports averaged policy weights for evaluation or a league |
 | Training distribution | Team sizes, unequal teams, zone and field counts and arena scale drawn per environment | b |
 | Evaluation in training | A periodic evaluation at a size never trained on, reported beside the training-size rating | d |
 
@@ -365,6 +367,49 @@ What this keeps from v2: the entity-set formulation, the trunk, rotary, categori
 outputs, the joint action, the reward levels and the gradient-share rule. What it takes
 from `origin/main`: masked keys and standard-deviation normalisation. What it drops is
 almost all in the inputs, the belief path and the learner's unused switches.
+
+## Citation check
+
+A separate pass fetched and read the sources the baseline rests on (`citations.md`; 21
+claims, all against full text except the AlphaStar Nature paper and one other). What it
+changed:
+
+- **Griffin's decay initialisation: confirmed, and worse than stated.** The paper
+  initialises so that the per-step retention is uniform between 0.9 and 0.999. The
+  project's range lies entirely below that: its longest-memory channel (retention 0.865,
+  about 7 ticks) forgets faster than the paper's shortest (0.9, about 10 ticks), and the
+  paper's longest is about 1,000 ticks.
+- **Advantage normalisation is not "the PPO standard".** It is not in the PPO paper. The
+  largest empirical study (Andrychowicz et al.) found per-minibatch normalisation makes
+  little difference, found value-loss clipping hurts, and recommends recomputing
+  advantages once per pass. So replacing the return scale is a test, not a correction;
+  the audit's tables above say so.
+- **DreamerV3's normaliser** divides the baseline-subtracted return, as the project does.
+  Its entropy scale of 3e-4 is presented as working because of that normaliser.
+- **Categorical value targets have no PPO evidence.** The supporting paper's experiments
+  are value-based, offline or distillation, with one IMPALA result; two-hot is its
+  weakest variant.
+- **Rotary on metric coordinates has no precedent found.** The vision work uses integer
+  grid indices. It is the project's own mechanism, measured here to matter.
+- **Auxiliary prediction heads have no on-policy support.** The forward-prediction results
+  are on value-based agents, and in UNREAL input reconstruction made scores worse.
+- **BC then RL with no entropy and no distillation term has no provenance.**
+- **Averaged policy weights for evaluation or a league: no support found.**
+- **Confirmed as cited:** per-level value heads with separate discounts (RND); the
+  k-nearest masking result (Hsu et al.; note the mask is over targets, applied at
+  evaluation, with a value-based algorithm); the softmax dispersion numbers (and that
+  adaptive temperature did not fix it); OpenAI Five's last-seen observation for fogged
+  heroes, per-hero recurrent state and max-pooling over units; attention masking of
+  absent entities (hide-and-seek, REFIL; not UPDeT, which masks actions).
+- **Papers that could not be read in full:** the AlphaStar Nature paper (its distillation
+  term and league weighting are confirmed only second-hand) and Nikishin et al. 2018.
+  Those two are the only ones worth the owner downloading.
+
+The net effect on the baseline: fewer rows are category (a) than the blind passes
+claimed. PPO, GAE, masking and scalar inputs are standard. The categorical critic, the
+auxiliary heads, rotary on world coordinates and the advantage normaliser are the
+project's own choices with partial or no outside support, which makes them the test
+list.
 
 ## Lessons to carry into the rewrite
 
