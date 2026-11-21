@@ -55,8 +55,10 @@ Measurement scripts and raw records: `docs/rewrite/sections/simplification/`.
   league's own games (`bnb.league.league`); the lanes add 1,024 environments (half again
   the 2,048 training ones), a stacked forward and Imugi every tick.
 - **Imugi:** how much of it is needed (it is bloated; see the measurements).
-- **Mixed batches:** do the three modes, two pools per mode and drawn lineups need to share
-  one batch? This generality makes every rule a per-environment tensor.
+- **Mixed batches** (answered 2026-11-21): mixing stays. Per-environment values are set at
+  reset and carried; shared logic is written once with parameters (no zones = zone count
+  0, no shrink = rate 0, no respawn = infinite delay); mode-specific code runs on its own
+  slice of the batch.
 - **Dynamic shapes:** which dimensions can be dynamic after compilation (see below).
 - **Constants as Python values** instead of tensors (see below).
 - **MoE tooling** (grouped GEMM) for several weight sets per tick, if any remain after the
@@ -402,10 +404,18 @@ of making fewer of them.
 | Recompile and memory telemetry, recompile alert | `runs/recording.py`, `runs/triggers.py:448-456` | Recompile alert goes; the memory probe stays |
 | Inductor's comprehensive padding off for the learner | `runtime/train.py:360-371` | Goes with the 154-wide shot code |
 
-### R3. Mixed batches
+### R3. Every branch computed for every environment every tick (was: "mixed batches")
 
-Three modes, two pools per mode and drawn lineups share one batch, so every rule is a
-per-environment tensor and every player kind runs on every row.
+Corrected 2026-11-21 after the author's question. Mixing modes in one batch is not the
+problem: the modes differ in a few parameters (respawn: none, a wait, or waves; spawn
+placement; scoring and win conditions; the boundary; timings and layouts) plus one real
+sub-game (Frontline's zones, capture, roles, lock and waves). The cost comes from three
+implementation choices: per-environment rules rebuilt every tick instead of set at reset;
+every mode's code (four spawn algorithms, the capture logic, the shrink, the episode-end
+reset) run on every environment and selected with `where`, though each mode is already a
+contiguous fixed slice of the batch (`bnb.game.layout.per_mode`), so its code could run on
+its slice alone; and per-environment values made awkward (ship constants as `where` chains,
+Imugi inferring its mode). Mixing stays; these go.
 
 | Band-aid | Where | Goes? |
 |---|---|---|
@@ -513,7 +523,9 @@ Each band-aid above traces to one of these. They are what to remove.
    kernels, CUDA graphs and AOT builds treat it.
 2. **The hand-built belief** (R5): a closed loop through decoded outputs. Each fix for a
    runaway added more. Decided: removed.
-3. **Mixed batches** (R3): every rule per environment, every player kind on every row.
+3. **Every branch computed for every environment every tick** (R3): rules rebuilt each
+   tick, every mode's code and every player kind run on every row then selected. Mixing
+   modes in one batch is not itself the problem.
 4. **Every shape compiled separately** (R2): `dynamic=False`, inherited from the JAX plan;
    the configuration bent to fit it.
 5. **Bit-exact reproducibility** (R4): keyed RNG, exact resume, bit agreement, fingerprints.
