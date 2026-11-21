@@ -362,6 +362,169 @@ L4. **The heads' sums diagnostic** (8,500 to 10,900 operations per sampled micro
 Both updates are about a million environment steps. These are estimates from the counts
 above, not measurements of an update.
 
+## Band-aids, by root cause (2026-11-21)
+
+A band-aid is a mechanism added to mitigate a symptom instead of removing its cause. Four
+read-only reviews (runtime and compilation; model; learner and league; game and Imugi)
+listed them with file and note evidence; the surprising claims were checked against the
+code (marked "checked"). Paths are under `src/bnb/` unless given in full. "Goes" means it
+should not be needed once its root cause is fixed or the decisions above are carried out.
+
+### R1. Far too many small operations per tick
+
+The tick and the policy step are launch-bound, so the fixes made launches cheaper instead
+of making fewer of them.
+
+| Band-aid | Where | Goes? |
+|---|---|---|
+| CUDA-graph capture of the rollout, and the rules it imposes: static buffers, every output copied back into the carry, every change between segments copied in place, a device tick counter | `runtime/rollout.py` (capture at 681-695), `runtime/opponents.py`, `runtime/lanes.py`, `runtime/cloning.py`, `runtime/analytics.py` | Measure. The rollout is 16-18 s of a 90-250 s update, and v1's CUDA graphs were measured as a wash (`decisions.md`, checked). Capture's warm cost is 33-38 s (laptop) to 87-91 s (3090) |
+| Constants filled on the device, index tables as buffers, "no host copy" rules (about 22 sites in the game and Imugi, about 15 in the model) | e.g. `game/modes/phase.py`, `controllers/imugi_frontline.py`, `models/yemong/state_code.py`, `models/yemong/delta.py` | Goes with eager capture |
+| Five custom Triton kernels | `models/yemong/kernels/` | Decided: dropped |
+| AOTInductor builds of the play tick and Imugi's step, in a child process, with an eager fallback until built | `runtime/built.py`, `runtime/realtime.py`, `runtime/imugi_step.py`, `play/sides.py` | Probably, if the tick and Imugi shrink about 10x |
+| The play agent's B=1 Yemong step in a CUDA graph (eager GPU 15.5 ms, CPU 7.2 ms) | `play/sides.py:302-381` | Probably |
+| A compiled flight tick for live tuning; ship characteristics flown at run time, cached on disk, in a child process | `runtime/flights.py`, `game/handling/characteristics.py` | Store characteristics with the card |
+| Hand op-batching ("families", `*_at` twins of every code function) | `models/yemong/delta.py:840-881`, `models/yemong/codes.py` | Goes with the codes |
+| Four separately compiled rollout stages; the bootstrap left eager | `runtime/rollout.py:195-203` | Measure once graphs are small |
+| Per-tick analytics accumulated inside the graph (286 operations per tick) | `runtime/analytics.py` | Compute from the stored segment |
+
+### R2. Every shape compiled separately, and graphs too large to recompile cheaply
+
+| Band-aid | Where | Goes? |
+|---|---|---|
+| Training choices bent so the learner compiles once: 2,048 environments, mode shares in sixteenths, minibatch counts that divide the views, micro-batch size families, equal-row lane weights | `learn/ppo.py:301-316`, `runtime/train.py:67-72`, `runtime/lanes.py:86-111`, `runs/session.py:217-235` | Goes with a dynamic batch dimension |
+| Dynamo's recompile limit raised to 64; every `Rollout` recompiles its stages (guards read the instance) | `cli.py:789-797` | Goes: compile pure stage functions |
+| vmap stacking of weight sets; players grouped by row count (`RUN_SLACK`, which pads up to about 2x, not 10% as the notes say: checked) | `runtime/stacked.py`, `runtime/lanes.py:239-326` | Grouped matmul, or fewer weight sets per tick |
+| Compile-cache logistics: queue warm keys, cache shipping, pruning (which once corrupted the cache) | `runs/queue.py`, `docs/rewrite/sections/launch/cache.sh` | Goes with short compiles |
+| `compile_split`, measured as not paying | `runtime/train.py`, `learn/ppo.py:399-405` | Goes |
+| The heads' sums run eagerly on a sample ("compiled it was the largest single compile of a cold start, 554 s") | `learn/ppo.py:285-291, 409-411` | Goes with the heads |
+| Live-tunable rules as 0-d tensors with every branch computed (play shell only) | `game/tuning.py:435-541`, about 16 dual tensor/number paths | Goes if the play tick is cheap to rebuild or eager |
+| Bullet slots sized for the longest life any tuning allows; the hit test over all slots (about 5% active) | `game/rules.py:36-38, 285-293`, `game/physics/combat.py:58-85` | Fixed slots for training are fine |
+| Recompile and memory telemetry, recompile alert | `runs/recording.py`, `runs/triggers.py:448-456` | Recompile alert goes; the memory probe stays |
+| Inductor's comprehensive padding off for the learner | `runtime/train.py:360-371` | Goes with the 154-wide shot code |
+
+### R3. Mixed batches
+
+Three modes, two pools per mode and drawn lineups share one batch, so every rule is a
+per-environment tensor and every player kind runs on every row.
+
+| Band-aid | Where | Goes? |
+|---|---|---|
+| Every opponent kind runs on every opponent row, then `where` picks one: the stacked network forward, a full Imugi pass, all six cheese agents (checked) | `runtime/opponents.py:327-347` | Goes: group rows by player |
+| Per-environment rules rebuilt every tick (844 operations) | `game/layout.py:149-200` | Goes: one game per batch |
+| `per_ship` and `lookup` as chains of `where` (484 operations) | `game/ship_types.py:216-228`, `game/physics/numerics.py:61-69` | Goes |
+| Imugi's per-view parameter tables, and mode and ship set inferred from the observation (map size in gun ranges, gravity, type count) | `controllers/imugi_parameters.py:311-337`, `controllers/imugi.py:33-77`, `controllers/imugi_doctrine.py:337-348` | Goes: pass the game at construction |
+| Imugi runs its combat and frontline layers on every row | `controllers/imugi.py:125-137` | Goes |
+| Episode-end work (new map, mode state, spawn placement) built for every environment every tick, then selected by `where(done, ...)` (checked) | `game/physics/step.py:347-371`, `game/physics/spawning.py:208` | Mostly: reset only finished environments |
+| Padding to one shape across modes: 5 zone slots everywhere (+3.4% rollout), absent fields as fake fields, fog sight computed in unfogged environments | `contracts/obs.py:123-126`, `game/physics/medium.py:19-22`, `game/perception/sight.py:106-108` | Mostly |
+
+### R4. Bit-exact reproducibility
+
+| Band-aid | Where | Goes? |
+|---|---|---|
+| Keyed counter-based random draws (173 call sites), crc32 keys made Dynamo-constant, salts kept so draws match earlier runs (Imugi: 616 operations per tick) | `streams.py`, `controllers/imugi_combat.py:98-105` | Goes: ordinary generators |
+| Exact resume of the rollout carry and generators, about 630 lines of resume tests | `runs/checkpoint.py:360-430`, `tests/runs/test_resume.py` | Partly: weights, optimizer and league state stay |
+| The step/unroll bit-agreement machinery: a replay record per tick, int16 actions, float32 spreads, the rule "never store a rounded copy a compiled stage also reads unrounded" | `models/yemong/inputs.py:42-53, 155-171` | Goes with the belief |
+| Kernel autotune caches kept to repeat the bits; fixed 32-row groups | `models/yemong/kernels/` | Goes with the kernels |
+| The step/unroll ratio "drift" check, with its own eager unroll | `learn/ppo.py:293-298, 1682-1706` | Goes |
+| Game fingerprint hash (the version number stays) | `game/__init__.py`, `tests/sections/test_game_version.py` | Goes |
+| Small patches: a -0.0 turned into +0.0 for tie order, a gun range "to the last bit", float32 tempering, truncated series matched to a float64 reference | `game/physics/combat.py:69-77`, `controllers/scripted.py:17-25`, `models/yemong/policy.py:36-42`, `game/physics/numerics.py` | Goes |
+
+### R5. The hand-built belief feeding the model's own decoded outputs back in
+
+| Band-aid | Where | Goes? |
+|---|---|---|
+| The error head's confidence-shrunk, rate-limited, capped step toward a median (it "ran away" without them) | `models/yemong/correction.py` (842 lines) | Decided: removed |
+| Held, decaying extrapolation rates (a velocity error of 1,040 m/s ran away without the decay) and the per-tick loop | `models/yemong/model.py:904-995`, `models/yemong/delta.py` | Removed |
+| Covariance caps, the decoupled Jacobian, the fade, the non-finite scrub and its counter | `models/yemong/delta.py:723-752, 1304-1321`, `models/yemong/belief.py:65-73` | Removed |
+| The decode-correction stack: padding bins, the mean-inverse table, the median window, probit quantiles | `models/yemong/codes.py:550-849` | Mostly removed |
+| The `sigma_miscalibrated` alert, hidden-row weighting of the next-state loss, belief sums in `prepare` | `runs/triggers.py:592`, `learn/ppo.py:244-260, 1100-1112` | Removed |
+
+### R6. Categorical outputs over fixed, very wide ranges
+
+| Band-aid | Where | Goes? |
+|---|---|---|
+| Return units: every reward weight x10, value support widened to 77 bins over ±3, the return-scale floor of 1, the support-clipping alert, zero entropy at warm start (the EMA of the scale also starts at 0 without bias correction) | `learn/rewards.py:45-63`, `models/yemong/model.py:250-251`, `models/yemong/critic.py:87-110`, `learn/ppo.py:149, 207-212` | Goes: normalise advantages per batch and predict normalised returns |
+| The outcome as its own 4-class value level with its own γ and λ (BC needed different ones) | `learn/ppo.py:374-482`, `models/yemong/critic.py`, `learn/bc.py:43-50` | Decided: merged into value |
+| Hard-coded marginal bias tables for the next-state head (about 510 lines of quantiles) and the baseline floor | `models/yemong/delta.py:134-648`, `models/yemong/codes.py:529-545` | Probably |
+| Shot-code memory tricks: the bf16 kept factor, encoding inside the loss, the custom grouped cross-entropy | `models/yemong/codes.py:482-526`, `models/yemong/shots.py` | Goes with the shot trajectory head |
+
+### R7. Positions in a 236 km frame, and map-size sampling
+
+| Band-aid | Where | Goes? |
+|---|---|---|
+| Float32 precision fixes for the offset frame: a remainder per level, exact periods, unwrapping, absent rows placed at the centre "which would reveal the offset" | `models/yemong/codes.py:38-50`, `models/yemong/layers.py:31-46`, `models/yemong/decode.py:152-157`, `models/yemong/inputs.py:405-408` | Decided: simpler positions |
+| A cascade of floors for sampled small maps: zone radius and spacing floors, then an arena floor so the floored zones fit | `game/modes/rules.py:88-109, 266-272`, `game/layout.py:105-113` | Goes if fixed maps stay |
+
+### R8. Labels and targets rebuilt after the fact
+
+| Band-aid | Where | Goes? |
+|---|---|---|
+| Shot re-simulation (about 26,700 compiled calls per update) | `learn/shots.py:163-200` | Goes with game-recorded labels |
+| A 128-tick lookahead after every segment, played and never trained on (about 25% extra rollout), for the returns' tail and the shot labels | `runtime/train.py:159-161, 210`, `learn/ppo.py:1024-1029` | Goes: bootstrap the tail from the value, as standard PPO does; shot labels need at most 11 ticks |
+| Label codes rebuilt every epoch | `learn/ppo.py:567-597` | Goes: compute once per update |
+
+### R9. Memory pressure from bloated per-tick records
+
+| Band-aid | Where | Goes? |
+|---|---|---|
+| The pinned-host segment store: a copy stream, events, double-buffered staging on a worker thread. One race fixed (1f5558ac); pinning about 11 GB of host RAM made two rented boxes stop answering | `runtime/store.py`, `runtime/rollout.py:697-712`, `runtime/train.py:244` | Probably: without the shot capture, the belief replay and the long lookahead, the segment may fit on the device |
+| View indices kept on the host, pinned copies per micro-batch | `learn/ppo.py:1008-1015, 1157-1170` | With the store |
+
+### R10. Live rating through extra machinery
+
+| Band-aid | Where | Goes? |
+|---|---|---|
+| Rating lanes | `runtime/lanes.py`, `league/lanes.py` | Leaning: rate from training games |
+| Bookkeeping for weights swapped mid-game and staggered starts: a row's first game not counted, games in progress at a cut not credited, lane generations | `runtime/opponents.py:214-219, 389-406` | Mostly, if an opponent changes only at its row's reset |
+| Corrections inside the rating fit: prior games, a moving-player window, a snapshot credited with the live policy's games, the gauge reset, `GAUGE_DISTANCE` and the `gauge_runaway` alert (the runaway was a fit bug, since fixed) | `league/ratings.py:76-94`, `league/gauge.py:76-84`, `league/league.py:477-491` | The alert goes; some regularisation stays |
+
+### R11. Monitoring a symptom, or keeping an option nobody uses
+
+| Item | Where | Goes? |
+|---|---|---|
+| The trigger framework (647 lines), with placeholder thresholds | `runs/triggers.py` | Mostly |
+| Non-finite steps skipped and counted, via fused Adam's private `found_inf`. The one real NaN came from the game (a 0/0); the learner never produced one | `learn/ppo.py:1289-1327` | Goes: check once per update and stop the run |
+| KL early stop ("never fires"); BC's plateau rule and score window (only the budget fires; about 240 lines) | `learn/ppo.py:1412-1419`, `learn/bc.py:382-663` | Goes |
+| The combat-collapse alert. Its cause is the reward and discount design: one discount for every level let a run stop fighting | `runs/triggers.py:361-414` | Fix the cause; the monitor can stay |
+| Four trust regions, and the rollout recording the full 42-way distribution for one of them | `learn/ppo.py:84, 204-206` | Keep one |
+| Team mixing: `team_spirit` is 0 on every level, so it computes an identity (checked) | `learn/returns.py:55-93`, `learn/ppo.py:147` | Goes |
+| Loss-weight balancing machinery (gradient decomposition on a cadence), mostly for heads being dropped | `learn/ppo.py:1532-1681`, `learn/gradients.py` | Mostly |
+| Legacy weight: 20+ record-default switches in `YemongConfig`, ONNX-shaped logic for a contract test only, legacy observation columns, `imugi_populations.json` (5,170 lines read only by one test: checked), three standard Imugi parameter sets if training is real-scale only | `models/yemong/model.py:104-342`, `contracts/obs.py`, `controllers/imugi_defaults.py` | Goes |
+| An `Adam` subclass that skips the capture health check on the CPU | `learn/ppo.py:94-108` | Unclear |
+
+### Suspected defects found on the way (unconfirmed)
+
+- **The next-state code's bounds may predate the game the model trains on.** The constants
+  in `models/yemong/delta.py` were last changed at game version 3 and were measured on the
+  standard ship set at x1 speed. Training runs the real-scale set at x2 native speed
+  (game v13), where a tick's move may pass the position bound of 8.7 m. To measure before
+  relying on any next-state result; moot if the head is rebuilt simply.
+- **The return scale's EMA starts at 0 without bias correction**, so early updates sit on
+  the floor (`scale_floored 1` in the 3090 logs).
+- **Stale notes:** `RUN_SLACK` described as 10%; a gradient-clip rationale from v1 ("fires
+  every step") that does not hold in v2 (clip fire rate 0).
+
+## Root causes, ranked
+
+Each band-aid above traces to one of these. They are what to remove.
+
+1. **Far too many small operations** (R1): the encodings, the decodes, the belief, Imugi,
+   and the game's generality. Cause of the eager slowness and of most compile time; the
+   kernels, CUDA graphs and AOT builds treat it.
+2. **The hand-built belief** (R5): a closed loop through decoded outputs. Each fix for a
+   runaway added more. Decided: removed.
+3. **Mixed batches** (R3): every rule per environment, every player kind on every row.
+4. **Every shape compiled separately** (R2): `dynamic=False`, inherited from the JAX plan;
+   the configuration bent to fit it.
+5. **Bit-exact reproducibility** (R4): keyed RNG, exact resume, bit agreement, fingerprints.
+   Contradicted by the principles.
+6. **Categorical outputs over fixed wide ranges** (R6): reward scaling, floors, bias tables.
+7. **Labels built after the fact** (R8) and **bloated per-tick records** (R9): the
+   re-simulation, the long lookahead, the pinned-host store.
+8. **Absolute positions in a huge frame** (R7) and **live rating via extra environments**
+   (R10).
+9. **Monitoring and options instead of decisions** (R11).
+
 ## Not yet examined
 
 1. The learner on the GPU: time and memory traffic per section (the laptop). The learner's
