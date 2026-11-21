@@ -196,7 +196,7 @@ known ones, not the only ones: any decision can be revisited by stating what cha
 
 Scripts are disposable once their result is recorded, unless they join the scoreboard.
 
-**v2's notes are not in the tree.** `docs/rewrite/v2-notes-index.md` on the `v2` branch
+**v2's notes are not in the tree.** `docs/rewrite/v2-notes-index.md` (on the `simplify/audit` branch, which holds the `v2` notes)
 maps topics to files. Read the notes for an area when porting that area, as evidence
 under v2's conditions.
 
