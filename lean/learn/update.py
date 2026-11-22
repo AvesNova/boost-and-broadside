@@ -3,7 +3,7 @@
 import torch
 from torch import Tensor
 
-from lean.learn.collect import Rollout, map_fields
+from lean.learn.collect import Rollout, index_carry, map_fields
 from lean.learn.config import LearnConfig, bc_weight, learning_rate
 from lean.learn.returns import expected_value, generalised_advantages, hl_gauss, normalise_advantages, value_centres
 
@@ -39,7 +39,7 @@ def fresh_targets(config: LearnConfig, policy, rollout: Rollout, batches: list[T
     for index in batches:
         index = index.to(own.device)
         observation = map_fields(rollout.observation, lambda tensor: tensor[:, index])
-        _, value_logits, _, _ = policy.sequence(observation, rollout.initial_carry[index], rollout.reset[:, index])
+        _, value_logits, _, _ = policy.sequence(observation, index_carry(rollout.initial_carry, index), rollout.reset[:, index])
         centres = value_centres(config, value_logits.shape[-1], value_logits.device)
         value[:, index] = expected_value(value_logits, centres) * own[:, index, :, None]
     discounts = torch.tensor(config.discounts, dtype=value.dtype, device=value.device)
@@ -81,7 +81,7 @@ def update(
             observation = map_fields(rollout.observation, lambda tensor: tensor[:, index])
             own = observation.own
             logits, value_logits, next_state, _ = policy.sequence(
-                observation, rollout.initial_carry[index], rollout.reset[:, index]
+                observation, index_carry(rollout.initial_carry, index), rollout.reset[:, index]
             )
             log_policy = torch.log_softmax(logits, -1)
             log_probability = log_policy.gather(-1, rollout.action[:, index, :, None]).squeeze(-1)
@@ -124,7 +124,7 @@ def update(
                     "clip_fraction": masked_mean(((ratio - 1.0).abs() > config.clip).float(), own),
                 }
             for name, measure in measures.items():
-                totals[name] = totals.get(name, 0.0) + float(measure)
+                totals[name] = totals.get(name, 0.0) + float(measure.detach())
             steps += 1
     metrics = {name: total / max(1, steps) for name, total in totals.items()}
     metrics["bc_weight"] = bc_coefficient

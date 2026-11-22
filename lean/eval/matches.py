@@ -6,7 +6,7 @@ import math
 import torch
 from torch import Tensor
 
-from lean.learn.collect import generator_device, sample_joint, scripted_actions, select_environments, split_joint
+from lean.learn.collect import generator_device, reset_carry, sample_joint, scripted_actions, split_joint
 
 
 def wilson_interval(wins: float, games: int, z: float = 1.96) -> tuple[float, float]:
@@ -64,9 +64,9 @@ def play(
         state, step_out = game.step(game_config, state, action, game.draw_noise(game_config, games, slots, generator, device))
         result = torch.where(step_out.done & (result < 0), step_out.result, result)
         state = game.reset_done(game_config, state, step_out.done, sizes, generator)
-        carry = select_environments(step_out.done, torch.zeros_like(carry), carry)
+        carry = reset_carry(carry, step_out.done)
         if opponent_is_policy:
-            opponent_carry = select_environments(step_out.done, torch.zeros_like(opponent_carry), opponent_carry)
+            opponent_carry = reset_carry(opponent_carry, step_out.done)
         if (tick + 1) % check_every == 0 and bool((result >= 0).all()):
             break
     wins = int((result == 0).sum())

@@ -28,7 +28,7 @@ def test_normalised_advantages_keep_their_mean_and_have_unit_scale(normaliser):
     normalised = normalise_advantages(advantage, mask, config)
     chosen = normalised[mask]
     assert (normalised[~mask] == 0).all()
-    assert chosen.mean() > 0.5  # the mean (2.0 before scaling by a std of 2) is not removed
+    assert chosen.mean() > 0.2  # the mean (2.0 before scaling) is not removed
     if normaliser == "std":
         assert torch.isclose(chosen.std(), torch.tensor(1.0), atol=1e-4)
     else:

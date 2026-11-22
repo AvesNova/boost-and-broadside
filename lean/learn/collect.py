@@ -103,6 +103,24 @@ class Rollout:
     episodes: Tensor
 
 
+def carry_axis(carry: Tensor) -> int:
+    """The environment axis of a recurrent carry: 0 for (E, N, width), 1 for
+    lean.model's (blocks, E, 1 + N, width)."""
+    return 1 if carry.dim() == 4 else 0
+
+
+def reset_carry(carry: Tensor, done: Tensor) -> Tensor:
+    """Zero the carry of the environments in `done` (E,) bool."""
+    shape = [1] * carry.dim()
+    shape[carry_axis(carry)] = -1
+    return carry * (~done).view(shape)
+
+
+def index_carry(carry: Tensor, index: Tensor) -> Tensor:
+    """The carry of the environments in `index`."""
+    return carry.index_select(carry_axis(carry), index)
+
+
 def generator_device(generator):
     return generator.device if generator is not None else torch.device("cpu")
 
@@ -153,7 +171,10 @@ def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: in
     game = game or importlib.import_module("lean.game")
     scripted = scripted or importlib.import_module("lean.scripted")
     device = generator_device(generator)
-    state = game.reset(game_config, envs, draw_team_sizes(config, envs, generator), generator, device)
+    sizes = draw_team_sizes(config, envs, generator)
+    # The game sizes its slot axis from the largest total dealt at reset.
+    sizes[0] = config.team_size_maximum
+    state = game.reset(game_config, envs, sizes, generator, device)
     slots = state.exists.shape[1]
     carry = CollectCarry(
         policy=policy.initial_carry(envs, slots, device),
@@ -236,8 +257,8 @@ def collect(
         learner_team = torch.where(done, torch.randint(0, 2, (envs,), generator=generator, device=device), learner_team)
         fresh = scripted.personas(opponent.scripted_config, envs, slots, generator, device, opponent.persona_spread)
         persona = {name: select_environments(done, fresh[name], persona[name]) for name in persona}
-        policy_carry = select_environments(done, torch.zeros_like(policy_carry), policy_carry)
-        snapshot_carry = select_environments(done, torch.zeros_like(snapshot_carry), snapshot_carry)
+        policy_carry = reset_carry(policy_carry, done)
+        snapshot_carry = reset_carry(snapshot_carry, done)
         reset = done
 
     final_observation = team_view(game, game_config, state, learner_team)
