@@ -36,6 +36,11 @@ def map_fields(record, function):
     return dataclasses.replace(record, **changes)
 
 
+def whole(tensor: Tensor) -> Tensor:
+    """`tensor` with contiguous strides (a copy only when some stride is 0, a broadcast)."""
+    return tensor.clone(memory_format=torch.contiguous_format) if 0 in tensor.stride() else tensor
+
+
 def select_environments(chosen: Tensor, when_chosen: Tensor, otherwise: Tensor) -> Tensor:
     """Per-environment choice between two tensors with a leading E; `chosen` is (E,) bool."""
     return torch.where(chosen.view(-1, *[1] * (otherwise.dim() - 1)), when_chosen, otherwise)
@@ -473,6 +478,13 @@ def collect(
 
         act_part, advance_part, move = graphs.act, graphs.advance, graphs.snapshot_move
         generator = None
+        graphs.prepare(game_config)
+        # A fresh state can hold broadcast (stride 0) tensors where a re-dealt one holds
+        # whole ones (even empty ones: fields with F = 0); the graphs are specialised on
+        # strides, so start from whole tensors.
+        state = map_fields(state, whole)
+        if dataclasses.is_dataclass(getattr(state, "constants", None)):
+            state = dataclasses.replace(state, constants=map_fields(state.constants, whole))
     else:
         act_part, advance_part, move = act, advance, snapshot_move
     initial_carry = carry.policy

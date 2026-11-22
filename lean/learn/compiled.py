@@ -45,23 +45,31 @@ for _name in ("rand", "randn", "randint"):
     if not hasattr(getattr(torch, _name), "__wrapped__"):
         setattr(torch, _name, _without_none_generator(getattr(torch, _name)))
 
-# Workaround until lean.game marks it itself: lean.game.core.derived_characteristics (a
-# functools.cache of per-type numbers solved once, ending in `.tolist()` of float tensors)
-# is called by every deal. Dynamo ignores the cache, traces the solve and breaks the graph
-# at the float `.tolist()`, and the break inside reset_done's `_deal` then sends the whole
-# deal back to eager (a dynamo failure resuming the `uniform` closure after the break).
-# Replaced by a lookup of the numbers solved once here.
 _core = importlib.import_module("lean.game.core")
-if not getattr(_core.derived_characteristics, "_lean_constant", False):
-    # Solved eagerly here for both flight models; the replacement only looks them up, so a
-    # trace reads plain Python numbers (constants) and never reaches the solve.
-    _SOLVED = {model: _core.derived_characteristics(model) for model in ("v2", "core")}
 
-    def _solved_characteristics(flight_model: str) -> dict[str, tuple[float, ...]]:
-        return _SOLVED[flight_model]
+# Workaround until lean.game keeps the card out of the trace: every deal calls
+# lean.game.core.ship_card, a functools.cache whose builder ends in `.item()`. Dynamo looks
+# through the cache, traces the builder and breaks the graph there, and the break inside
+# reset_done's `_deal` then sends the whole deal back to eager (dynamo fails to resume the
+# `uniform` closure after the break). `prepare` builds the run's card eagerly; the
+# replacement below then only looks it up, so a trace reads a built card.
+_CARDS: dict = {}
+if not getattr(_core._ship_card, "_lean_lookup", False):
+    _build_card = _core._ship_card
 
-    _solved_characteristics._lean_constant = True
-    _core.derived_characteristics = _solved_characteristics
+    def _card_lookup(*key):
+        if key not in _CARDS:
+            _CARDS[key] = _build_card(*key)
+        return _CARDS[key]
+
+    _card_lookup._lean_lookup = True
+    _core._ship_card = _card_lookup
+
+
+def prepare(game_config) -> None:
+    """Build what the traced tick must find ready (the ship card of `game_config`)."""
+    _core.ship_card(game_config)
+
 
 # Workaround until lean.game reads the fields of the instance: reset_done iterates
 # `dataclasses.fields(State)` (the class), which dynamo cannot trace (gb0180, "dataclass
