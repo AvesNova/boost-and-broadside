@@ -21,6 +21,9 @@ it blocks. Answered questions move to the bottom with the answer and its date.
    21 operations; the scripted call is now 193 against the 170 tripwire. What it buys: the
    yardstick never shoots its own team. Sign off, or ask for savings elsewhere (agreed fix 6,
    one call for both teams, removes a whole second call per tick).
+   Update (2026-11-23): fix 6 is made. One call for both teams is 188 operations (one team
+   190; at this tree one team was 196 before), so the teacher costs 188 per tick instead of
+   392; the 170 tripwire per call is still exceeded by 18.
 
 12. **Training speed against the 5,000 steps/s floor (2026-11-23).** Compiled, bf16, laptop
    RTX 4070, league full (8 snapshots): v2 game 5,160 (256 envs) and 5,057 (1,024); core game

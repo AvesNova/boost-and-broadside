@@ -89,10 +89,10 @@ superseded by v2's levels, 2026-11-23: see "Reward levels and the hit head" at t
   blocks, E, 1 + N, width) and 0 otherwise (`carry_axis`). The learner zeroes the carry
   itself on reset and does not use `Policy.step`'s optional `reset` or `position_offset`.
 - `game.reset` sizes N from the largest total dealt, so `start` forces environment 0 to
-  the maximum size; `reset_done` is assumed to keep N.
-- `scripted.act` is called without its optional memory argument and with uniforms
-  (E, N, 3) from `torch.rand`, not `scripted.draw_uniforms`; personas are redrawn for
-  the whole batch every tick and selected per finished environment (every persona
+  the maximum size; `game.deal` is called at that N.
+- `scripted.act` is called once per tick for both teams (`team=None`), without its
+  optional memory argument and with uniforms (E, N, 3) from `torch.rand`, not
+  `scripted.draw_uniforms`; personas are drawn with the segment's deals (every persona
   field is assumed to have a leading E).
 - Next-state loss: the target here is the change in `obs.ship`, used only if the head's
   width equals SHIP_FEATURES. lean.model's head predicts scaled changes of State fields
@@ -100,12 +100,12 @@ superseded by v2's levels, 2026-11-23: see "Reward levels and the hit head" at t
   next-state loss is currently ZERO. To fix: record that target in `collect`.
 - The value helpers are local copies; lean.model has `hl_gauss_targets` and its own
   centres, which may differ from `value_centres` here. Unify before trusting values.
-- Stepping continues after `done` only through `reset_done`.
+- Stepping continues after `done` only through `take_deal` (collect) or `reset_done` (eval).
 
 ## Known weaknesses
 
-- `collect` draws personas, team sizes and learner teams for all environments on every
-  tick to avoid a host branch; cheap, but worth moving into a reset-only path if it shows up.
+- `collect` drew the deal, personas, team sizes and learner teams for all environments on
+  every tick: since 2026-11-23 once per segment (below, "Waste fixes 6, 7 and 9").
 - `team_view` calls `observe` twice per tick (three or four times with a snapshot).
 - `play` reads one flag back every 32 ticks.
 
@@ -520,3 +520,60 @@ recompiles in every row.
 - Compile start-up: 199 s cold, 72 s warm (dynamo tracing alone is about 60 s).
 - Snapshots still cost 3.7 ms a tick (8 slots x 128 environments of policy step); with a
   league smaller than its capacity the empty slots are computed too.
+
+## Waste fixes 6, 7 and 9 (2026-11-23)
+
+The learn-side items of the agreed waste fixes (lean/game/NOTES.md, "Agreed waste fixes").
+
+- **6, one scripted call for both teams.** `lean.scripted.act(config, state, None, ...)` (and
+  `marginals`, `engage`) decide for every ship of both teams in one call: own ships and
+  team-mates from the state, enemies from `lean.game.core.enemy_view` (every ship as its enemy
+  team knows it: under fog its last-seen row; with fog off the state itself). `scripted_actions`
+  (collect's teacher and scripted member, and eval's scripted opponent) makes that one call.
+  Same behaviour: bit-identical to the two single-team calls added, checked over 300 ticks of
+  fights, 16 environments, 3v3 to 5v5, personas at spread 0 and 1, v2 and core configs
+  (fog, fields), both spawns, with resets: marginals, targets and sampled actions all equal
+  (`test_one_call_for_both_teams_equals_the_two_single_team_calls`). A single-team call is
+  bit-identical to the tree before too.
+- **7 and 9, deals drawn once per segment.** `collect` draws `NextEpisodes` at the start of each
+  segment: E game deals (`lean.game.deal`, team sizes drawn as before), E sets of personas, E
+  learner teams and position offsets. A finished environment takes the next unused deal in
+  order (`lean.game.take_deal` with an index: the k-th environment to finish in the segment
+  takes deal k), still with no host read; its league member is drawn as it finishes, as
+  before, so the PFSP draw sees the tallies as they stand. Before, every tick dealt every
+  environment afresh (the game's deal, the personas, the sizes, the learner team, the offset)
+  and kept the deals of the finished ones. This is item 9 in the form that keeps behaviour:
+  finished environments are not frozen; they restart on the tick after they finish, as before.
+  `abandon` draws its own deals (rare, between segments).
+- **Draws.** 6 changes none. 7 and 9 change which random numbers each deal and each tick
+  receive (the deals are drawn at the segment start, and the per-tick deal draws are gone, so
+  every later draw from the generator shifts), not their distribution: each episode still
+  starts from an independent deal drawn by the same functions. One exception: a segment in
+  which more than E games end reuses deals (modulo E), counted in `Rollout.repeated_deals`.
+  The shortest episodes measured (128 environments, 3,000 ticks; scripted and uniform random
+  actions; 1v1 and 4v4; v2 and core games) were 403 to 920 ticks against 128-tick segments,
+  so a reuse needs every environment to finish more than once in a segment and was never
+  seen; `test_a_segment_counts_deals_used_twice` forces it with a 4-tick clock. With
+  `persona_spread` 0 (the default) personas use no random numbers at all.
+- **Operations per tick** (eager, CPU, one thread, 5v5, regions counter, inclusive compute
+  ops; scratch count of a 4-tick collect with self-play and the scripted league side):
+
+  | | v2 game before | after | core game before | after |
+  |---|---|---|---|---|
+  | scripted teacher (`scripted_actions`) | 370 (2 x 184 + 2) | 185 | 394 (2 x 196 + 2) | 189 |
+  | re-deal (`redeal`) | 149 | 61 | 342 | 65 |
+  | of which the game's (`reset_done` / `take_deal`) | 87 | 18 | 280 | 22 |
+  | of which personas | 29 | 0 | 29 | 0 |
+  | segment deals (`draw_next_episodes`), once per segment | | 115 | | 306 |
+  | first half of a tick (`act`) | 1,077 | 892 | 1,165 | 960 |
+  | second half (`advance`) | 1,541 | 1,453 | 2,108 | 1,831 |
+
+  Per tick (both halves): v2 2,618 to 2,345 (-10%), core 3,273 to 2,791 (-15%), plus the
+  segment deals over 128 ticks (about 1 and 2 a tick). game_ops.py: the scripted act for one
+  team 196 to 190 (the enemy view is cheaper than the team view), for both teams in one
+  call 188; per tick the teacher was 392 and is 188 (the tripwire of docs/questions.md
+  item 11 is 170 per call).
+- **Compiled.** A compiled collect on the CPU (6 environments, 2v2 to 3v3, a snapshot in the
+  league, two 3-tick segments; v2 and core games; and the core game with a 4-tick clock so
+  that games end and take deals: 6 in the second segment, none reused): 0 graph breaks,
+  3 frames, 0 recompiles, every value finite.

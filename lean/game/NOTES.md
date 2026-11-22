@@ -335,16 +335,25 @@ overhead in eager, gone when compiled. The core config's reset_done (280) is mos
 map drawn and seen (the medium at the spawn and the fog's sight test with ten fields) for
 every environment every call: fix 9.
 
-**Not made (need lean/learn):**
-- 6, one scripted call for both teams: `lean/learn/collect.py` `scripted_actions` calls
-  `scripted.act` once per team and adds them. A both-teams act in lean/scripted is possible
-  without a learn change to the game (under fog, ship j as ship i's team knows it is live for
-  a team-mate and `seen[j]` for an enemy, a pairwise (E, N, N) where), but nothing calls it
-  until collect does.
-- 7, personas drawn only at a reset: `collect.py` `redeal` draws personas for every
-  environment on every call and selects them by done.
-- 9, batched resets: the collect loop must freeze finished environments, re-deal them every
-  k ticks or at a segment boundary, and mask the frozen ticks.
+**Fixes 6, 7 and 9 (2026-11-23, with lean/learn):** details, checks and operation counts in
+lean/learn/NOTES.md, "Waste fixes 6, 7 and 9".
+- 6, one scripted call for both teams: `lean.scripted.act(..., team=None, ...)`; enemies are
+  read from `core.enemy_view(state)` (every ship as its enemy team knows it; one record per
+  ship, so one view serves both teams). Bit-identical to the two single-team calls added.
+  Operations (game_ops.py): one team 190 (was 196), both teams in one call 188 (was 2 x 196).
+- 7 and 9, deals once per segment: `core.deal` (was `_deal`) is public and `core.take_deal`
+  selects a held deal into the finished environments, by index; `reset_done` is the two
+  together (eval and the tests still use it). lean.learn draws E deals and personas at each
+  segment's start and the k-th environment to finish takes deal k: no per-tick deal of every
+  environment. Finished environments are not frozen (the "wait frozen, re-deal every k ticks"
+  form in item 9 above was not needed). `take_deal` per tick: 18 (v2) and 22 (core)
+  operations, against `reset_done`'s 87 and 280.
+
+**Compile-safe at the source (2026-11-23):** random draws go through
+`lean.contract.random_keywords` (no `generator=None` keyword); the ship card is kept in a
+plain dict, built by the first (eager) deal and only looked up in a trace; `take_deal`
+iterates the instance's fields. lean.learn.compiled's runtime patches of lean.game are gone.
+Same draws and values as before (the keyword is passed whenever there is a generator).
 
 **Outside lean/game and lean/scripted:** `lean/sandbox/world.py` builds and edits a state by
 hand with the old fields (`dataclasses.replace(state, x=...)`, a constants dict with field_
