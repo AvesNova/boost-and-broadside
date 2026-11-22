@@ -188,3 +188,54 @@ def test_at_the_edges_dive_and_climb_act_as_coast_on_the_wing():
         lateral, *_ = core._setting(c, control, speed, store * c.max_energy)
         rates[name] = lateral.item()
     assert abs(rates["climb"] - rates["coast"]) < 1e-3 * abs(rates["coast"])
+
+
+def test_speeds_in_order_minimum_radius_then_best_sustained_rate_then_corner():
+    """The author's requirement (2026-11-23): slowest to fastest, the minimum sustained radius,
+    then the best sustained turn rate, then the corner speed (quasi-steady, coasting, spawn
+    store, each ship type)."""
+    import numpy as np
+
+    speeds = torch.linspace(100.0, 420.0, 321)
+    sticks = torch.linspace(0.0, 1.0, 101)
+    for ship_type in range(3):
+        c = SimpleNamespace(
+            **core.ship_constants(CONFIG, torch.full((len(speeds) * len(sticks),), ship_type))
+        )
+        v = speeds.repeat(len(sticks))
+        stick = sticks.repeat_interleave(len(speeds))
+        control = SimpleNamespace(
+            model="core",
+            thrust_scale=1.0,
+            stick_size=stick,
+            stick_sign=torch.ones_like(v),
+            commanded=c.commanded_table[:, COAST],
+            demand=c.demand_table[:, COAST],
+        )
+        control.inverse_demand = 1.0 / control.demand
+        setting = core._setting(c, control, v, c.spawn_energy)
+        lateral, _, _, thrust, _ = setting
+        reach = (lateral.abs() / (v * v) * c.inverse_lift).clamp(0.0, 1.0)
+        angle = c.stall * (1.0 - torch.sqrt(1.0 - reach))
+        lift = core._lift_coefficient(c, angle)
+        rate = (
+            ((lift * v * v + thrust * torch.sin(angle)) / v)
+            .reshape(len(sticks), len(speeds))
+            .numpy()
+        )
+        speed_rate, store_rate = core._rates(
+            c, setting, torch.ones_like(v), v, lift, torch.cos(angle), 1.0 / (v * v)
+        )
+        energy_rate = (v * speed_rate + store_rate).reshape(len(sticks), len(speeds)).numpy()
+        sustained = np.where(energy_rate >= 0.0, rate, 0.0).max(0)  # best held rate per speed
+        held = sustained > 1e-3
+        radius = np.where(held, speeds.numpy() / np.maximum(sustained, 1e-9), np.inf)
+        minimum_radius_speed = float(speeds[int(np.argmin(radius))])
+        best_rate_speed = float(speeds[int(np.argmax(sustained))])
+        corner = float(speeds[int(np.argmax(rate[-1]))])
+        assert minimum_radius_speed < best_rate_speed < corner, (
+            ship_type,
+            minimum_radius_speed,
+            best_rate_speed,
+            corner,
+        )

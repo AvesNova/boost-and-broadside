@@ -159,6 +159,15 @@ Flight physics: agreed direction (author, 2026-11-23), a deliberate change after
 - The band's edges (2026-11-23): a smootherstep taper on the exchange rate over 5% of the
   band at the top and at the bottom (today a linear 2%, STORE_FADE_BAND). Smootherstep
   reaches exactly zero at the edge, so the band's limits stay exact.
+- The band's edges are a ceiling and a floor (author 2026-11-23): the engine is the same
+  throughout; only dive and climb fade out near the edges (a gradual ramp), the width
+  whatever flies best (5% for now).
+- Required order, slowest to fastest (author 2026-11-23): minimum (sustained) radius, best
+  sustained turn rate, corner speed. Anything else means something is wrong. Held as a test
+  (tests/test_core_flight.py); the core model meets it for every type (Vizia 124, 160,
+  268 m/s). The instantaneous full-stick minimum radius sits near the corner, as the
+  constant-lift-coefficient formula gives; a slower one would need a low-speed lift bonus
+  (flaps-like), to add only if flying shows it is missing.
 - Checked with the turn-performance tool before it becomes the default; the author flies it.
 
 Sizes

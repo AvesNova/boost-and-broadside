@@ -166,3 +166,9 @@ checked, the commit. Numbers are measured unless marked otherwise.
   since (gate initialisation, null key dropped, Griffin block ported, rotary layout, rotated
   values, the league floor and tally, the core flight model, firing, the damage term, ghost
   bullets, the medium cache). Kinds as in core-brief.md section 3.
+- 08:35 Author's answers: the band edges are a ceiling and a floor with a gradual ramp (as
+  built); the required order is minimum sustained radius, best sustained rate, corner speed.
+  New test (tests/test_core_flight.py): the core model meets the order for all three types.
+  Correction to my 05:05 note: the order I gave (best sustained, then minimum radius, then
+  corner) used the instantaneous full-stick radius; on the sustained basis the order is the
+  author's.
