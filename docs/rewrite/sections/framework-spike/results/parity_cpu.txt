@@ -1,0 +1,40 @@
+[torch] dumped 29 arrays to /tmp/parity_t.npz
+[torch] game after 600 ticks: 12 of 40 ships have died and respawned (all start one hit from death), 1 dead now, 53 live bullets, max |pos| 4021 m
+[torch] sequence forward vs repeated single steps: max |diff| logits 7.15e-07, values 7.15e-07
+[torch] padded to 100 slots vs exact (the 10 real ships): max |diff| pos 0.00e+00, hp 0.00e+00, ship features 1.19e-07, global features 0.00e+00, policy logits 7.15e-07
+[jax] dumped 29 arrays to /tmp/parity_j.npz
+[jax] game after 600 ticks: 12 of 40 ships have died and respawned (all start one hit from death), 1 dead now, 53 live bullets, max |pos| 4021 m
+[jax] sequence forward vs repeated single steps: max |diff| logits 1.07e-06, values 1.07e-06
+[jax] padded to 100 slots vs exact (the 10 real ships): max |diff| pos 0.00e+00, hp 0.00e+00, ship features 0.00e+00, global features 0.00e+00, policy logits 9.54e-07
+array                           shape                   max |diff|   max |value|       ratio
+step.logits                     (3, 10, 42)               9.54e-07         1.875    3.32e-07
+step.values                     (3, 10, 77)               1.07e-06         1.954    3.63e-07
+step.h                          (2, 3, 11, 128)           2.50e-06          2.04    8.24e-07
+sequence.logits                 (2, 12, 10, 42)           1.07e-06         2.114    3.45e-07
+sequence.values                 (2, 12, 10, 77)           1.07e-06         2.292    3.26e-07
+sequence.h                      (2, 2, 11, 128)           4.19e-06         5.393    6.56e-07
+game.exists                     (4, 10)                          0 elements differ
+game.team                       (4, 10)                          0 elements differ
+game.spawn_pos                  (4, 10, 2)                0.00e+00          1547    0.00e+00
+game.spawn_heading              (4, 10)                   0.00e+00         3.142    0.00e+00
+game.pos                        (4, 10, 2)                6.10e-04          4021    1.52e-07
+game.heading                    (4, 10)                   0.00e+00         2.975    0.00e+00
+game.speed                      (4, 10)                   1.53e-05           150    1.01e-07
+game.hp                         (4, 10)                   0.00e+00           100    0.00e+00
+game.alive                      (4, 10)                          0 elements differ
+game.cooldown                   (4, 10)                          0 elements differ
+game.respawn                    (4, 10)                          0 elements differ
+game.bullet_pos                 (4, 10, 8, 2)             6.84e-03          6066    1.13e-06
+game.bullet_vel                 (4, 10, 8, 2)             6.10e-05          1007    6.05e-08
+game.bullet_life                (4, 10, 8)                       0 elements differ
+game.tick                       (4,)                             0 elements differ
+observe.ship                    (4, 10, 20)               1.79e-07         1.363    7.57e-08
+observe.glob                    (4, 8)                    4.47e-08             1    2.24e-08
+tick.logits                     (4, 10, 42)               8.94e-07         2.147    2.84e-07
+tick.values                     (4, 10, 77)               9.54e-07         2.025    3.15e-07
+tick.h                          (2, 2, 4, 11, 128)        2.90e-06        0.6148    1.79e-06
+ppo.loss                        ()                        4.77e-07         2.392    1.41e-07
+ppo.grad_norm                   ()                        1.19e-07         1.374    5.02e-08
+ppo.losses_after_updates        (5,)                      1.43e-06         2.392    4.22e-07
+
+worst max|diff| / (1 + max|value|) = 1.79e-06 (tolerance 0.0001); ALL AGREE

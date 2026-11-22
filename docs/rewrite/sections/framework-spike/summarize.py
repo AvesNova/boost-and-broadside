@@ -20,6 +20,7 @@ def load(paths):
         for record in data["records"]:
             record["framework"] = meta["framework"]
             record["device"] = meta["device"]
+            record["source"] = path.replace("\\", "/").split("/")[-1]
             rows.append(record)
     return rows, metas
 
@@ -129,9 +130,9 @@ def main(paths):
     print("Single process, E = 1, every tick timed individually after warm-up. Threads: `default` = framework default; "
           "`1` = `torch.set_num_threads(1)` / XLA flags asking for no intra-op thread pool; `pin` = the whole process "
           "pinned to one core with `os.sched_setaffinity`.\n")
-    body = [[r["device"], r["ships"], label(r), r["threads"], ms(r["p50_ms"]), ms(r["p99_ms"]), ms(r["max_ms"]), r["ticks"]]
-            for r in sorted(of("latency"), key=lambda r: (r["device"], int(r["ships"]), r["threads"], label(r)))]
-    print(table(["device", "N", "variant", "threads", "p50", "p99", "max", "ticks"], body))
+    body = [[r["device"], r["ships"], label(r), r["threads"], ms(r["p50_ms"]), ms(r["p99_ms"]), ms(r["max_ms"]), r["ticks"], r["source"]]
+            for r in sorted(of("latency"), key=lambda r: (r["device"], int(r["ships"]), r["threads"], label(r), r["source"]))]
+    print(table(["device", "N", "variant", "threads", "p50", "p99", "max", "ticks", "record file"], body))
 
     print("## 6. Operation counts (context)\n")
     print("PyTorch: operations dispatched per call when uncompiled (TorchDispatchMode counter; view ops launch no kernel). "
