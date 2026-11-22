@@ -800,8 +800,12 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     c = state.constants
     h = config.tick_length
     exists, alive = state.exists, state.alive
-    velocity_x = state.speed * (state.heading_cos * state.angle_cos + state.heading_sin * state.angle_sin)
-    velocity_y = state.speed * (state.heading_sin * state.angle_cos - state.heading_cos * state.angle_sin)
+    # World-frame motion, as v2 observes it: the proper speed over the refractive index, so a
+    # field that slows a ship shows as a slower ship (src/bnb/game/perception/observe.py).
+    log_index, _, _ = medium(c, state.x, state.y)
+    speed = state.speed * torch.exp(-log_index)
+    velocity_x = speed * (state.heading_cos * state.angle_cos + state.heading_sin * state.angle_sin)
+    velocity_y = speed * (state.heading_sin * state.angle_cos - state.heading_cos * state.angle_sin)
     distance = torch.sqrt(state.x * state.x + state.y * state.y)
     inverse_distance = 1.0 / distance.clamp_min(1.0)
     K = state.bullet_moves_left.shape[-1]
@@ -811,7 +815,7 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     scalars = [
         velocity_x / SPEED_SCALE,
         velocity_y / SPEED_SCALE,
-        state.speed / SPEED_SCALE,
+        speed / SPEED_SCALE,
         state.angle / ANGLE_SCALE,
         state.angle_cos,
         state.angle_sin,

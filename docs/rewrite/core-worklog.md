@@ -39,3 +39,6 @@ checked, the commit. Numbers are measured unless marked otherwise.
   120 s; v2 climbs to 95%); full stick settles at 111 m/s, 25 deg/s (v2 139, 38.6); the store
   is crossed in about 1.5 s per half (a tuning question); firing costs 6 to 7 m/s per second.
   A10 (core charts) handed to a background agent (chart scripts take FLIGHT_MODEL).
+- 03:55 B1: the observation's speed and velocity are in the world frame (proper speed over
+  the refractive index, as v2's observe.py), per the author. Test
+  tests/test_observe.py (a ship inside a strong field). `pytest lean`: all pass.
