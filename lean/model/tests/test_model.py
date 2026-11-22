@@ -251,3 +251,20 @@ def test_adam_fits_a_tiny_fixed_batch():
     print("policy cross-entropy first, last:", losses[0], losses[-1])
     assert all(torch.isfinite(torch.tensor(losses)))
     assert losses[-1] < 0.5 * losses[0], (losses[0], losses[-1])
+
+
+def test_bf16_autocast_step_stays_close_to_float32():
+    """Catches position phases computed in bf16 (measured: 0.18 to 0.26 logit drift before
+    the phases were pinned to float32, 0.03 after) and a carry that leaves float32."""
+    policy = make_policy()
+    obs = make_obs((4,), 10)
+    carry = torch.randn(policy.initial_carry(4, 10, "cpu").shape)
+    with torch.no_grad():
+        logits, values, new_carry = policy.step(obs, carry)
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            half_logits, half_values, half_carry = policy.step(obs, carry)
+    live = obs.key_mask
+    assert half_carry.dtype == torch.float32
+    assert (logits - half_logits.float())[live].abs().max() < 0.08
+    assert (values - half_values.float())[live].abs().max() < 0.08
+    assert (new_carry - half_carry).abs().max() < 0.03

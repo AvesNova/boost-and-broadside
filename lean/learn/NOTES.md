@@ -5,8 +5,9 @@
 - `config.py`: `LearnConfig`, `bc_weight`, `shaping_scale`, `learning_rate`.
 - `rewards.py`: `rewards(step_out, state, config, shaping) -> (E, N, LEVELS)`.
 - `collect.py`: `start`, `collect`, `Opponent`, `CollectCarry`, `Rollout`, team-size draws.
-- `returns.py`: categorical value helpers (`value_centres`, `expected_value`, `hl_gauss`),
-  `generalised_advantages`, `normalise_advantages`.
+- `returns.py`: `value_centres` (the learner's support, built with lean.model.value),
+  `generalised_advantages`, `normalise_advantages`. HL-Gauss targets and decoding are
+  lean.model.value's `hl_gauss_targets` and `decode_value`.
 - `update.py`: `make_optimiser`, `update`.
 - `pool.py`: `SnapshotPool`.
 - `lean/eval/matches.py`: `play`, `head_to_head`, `crossover`, `wilson_interval`, `games_for`.
@@ -114,3 +115,69 @@
 4. `torch.compile` of `policy.step` and of the tick body; check that the varying
    `faces_scripted` and snapshot branch do not retrace.
 5. The scripted win rate gauge against `head_to_head` on 1,000 games.
+
+## Second pass: what changed, what ran, and the profile
+
+Changed:
+
+- Next-state loss is live. `collect` records `lean.model.next_state_target(policy.config,
+  state, next_state)` around each game step (before the re-deal) as `Rollout.next_state`,
+  with `next_valid = own & next_state.alive & ~done`. `update` regresses the head on it
+  and raises ValueError when the head and the target differ in shape; there is no skip.
+- Value helpers come from `lean.model.value`. The support is `LearnConfig.value_low` and
+  `value_high` (outermost bin centres per level): outcome +-1.5, kill +-2, damage +-2,
+  shaping +-4. With 77 bins three bins are 0.12, 0.16, 0.16 and 0.32. Bounds used:
+  outcome returns lie in +-1; kill and death at 4v4 in about -0.28 to +1.13; shaping at
+  most (0.09 + 0.08) / (1 - 0.951) = 3.47, so 3.79 with margin. The damage bound depends
+  on the game's damage per tick against `damage_unit` and was not measured: +-2 is
+  unverified. Larger teams need the kill level widened. The model's own `value_low` and
+  `value_high` buffer is not used by the learner.
+- `--device` in `lean/train.py` (cuda when available, else cpu) places the model and the
+  generator; the state, carries and draws follow the generator's device. Not run on a
+  GPU: there is none here. `--threads` sets torch's CPU threads.
+- Position offset: drawn per environment in `start`, redrawn where an episode ends,
+  passed to the learner's and the snapshot's `step`, stored as `Rollout.position_offset`
+  (T, E, 2) and passed to `sequence` in `update`. `lean/eval` passes none.
+- The stand-in policy has a `config` (position periods, next-state fields) and accepts
+  `position_offset`. `lean.learn` now imports `lean.model` at import time.
+
+Ran (CPU, OMP_NUM_THREADS=1): `python -m pytest lean/learn lean/eval -q`, 12 passed;
+`python -m lean.train --smoke` completed (two updates, one with a snapshot opponent, then
+the crossover). Not run: a GPU, a width mismatch with the real model, unequal teams with
+the real game.
+
+Profile of `python -m lean.train --smoke` with a wall-clock timer around each call, one
+thread, 6.8 s in all (4 environments, 2v2, 8 ticks, 2 updates; crossover 2 games of 1v1):
+
+| Part | Seconds | Share |
+|---|---|---|
+| crossover (576 match ticks of 2 games) | 5.11 | 75.5% |
+| collect, both rollouts | 0.24 | 3.6% |
+| update, both | 0.13 | 1.9% |
+| imports and start-up | the rest | about 19% |
+
+By function over the whole run (592 game ticks, nearly all in the crossover):
+
+| Function | Seconds | Share | Per call |
+|---|---|---|---|
+| `lean.game.step` | 2.11 | 31.3% | 3.57 ms |
+| `lean.model.Policy.step` | 1.40 | 20.7% | 2.32 ms |
+| `lean.scripted.act` (two calls per tick) | 0.78 | 11.5% | 0.66 ms |
+| `lean.game.reset_done` | 0.71 | 10.4% | 1.19 ms |
+| `lean.game.observe` | 0.21 | 3.0% | 0.33 ms |
+| `lean.model.Policy.sequence` | 0.05 | 0.7% | 6.2 ms |
+| `lean.learn.rewards` | 0.008 | 0.1% | 0.50 ms |
+
+Collect and update together ran at 150 to 180 steps per second with one thread and the
+same with four. The earlier 3 to 5 steps per second did not reproduce; nothing in these
+files was slow, and nothing was changed for speed. The smoke run's wall time is the
+crossover: 1v1 games that run hundreds of ticks at about 8.9 ms a tick, which is fixed
+per-call overhead at this batch size (game step, then model step). `game.reset_done`
+costs a third of a game step on every tick, though almost no tick ends a game; skipping
+it would need a read-back of `done` in the loop or a cheaper path inside lean.game.
+
+Found on the way, not in these files: the energy column of the next-state target has a
+mean square of about 1470 in the smoke rollout (the other columns 0.001 to 0.14, shield
+0), because energy changes by hundreds of units in a tick against the model's scale of
+10. The loss reads 209.8 and, at coefficient 0.1, outweighs every other term until the
+scale in `ModelConfig.next_state_fields` is set from measured changes.
