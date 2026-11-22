@@ -11,6 +11,7 @@ passes StepOut.done to reset_done.
 from __future__ import annotations
 
 import dataclasses
+import functools
 import math
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -101,7 +102,47 @@ class GameConfig:
 # --------------------------------------------------------------------------- constants
 
 
-def ship_constants(config: GameConfig, ship_type: Tensor) -> dict[str, Tensor]:
+@functools.cache
+def derived_characteristics(flight_model: str) -> dict[str, tuple[float, ...]]:
+    """Per ship type (card order): cruise speed (straight, coasting, thrust equal to drag),
+    corner speed (the g limit meets the lift limit), bullet launch speed (cruise plus muzzle)
+    and gun range (how far a bullet fired at cruise travels in its life under drag: v2's
+    `api.gun_range`). Solved once per flight model with the game's own flight functions, so
+    the scripted opponent is told these, not guessed."""
+    types = torch.arange(len(card.TYPE_NAMES))
+    config = GameConfig(flight_model=flight_model)
+    c = SimpleNamespace(**ship_constants(config, types, derived=False))
+    count = len(types)
+    control = SimpleNamespace(
+        model=flight_model, thrust_scale=1.0, stick_size=torch.zeros(count),
+        stick_sign=torch.ones(count), commanded=c.commanded_table[:, 0],
+        demand=c.demand_table[:, 0],
+    )
+    control.inverse_demand = 1.0 / control.demand
+    low, high = torch.full((count,), 20.0), torch.full((count,), 1000.0)
+    with torch.no_grad():
+        for _ in range(60):  # bisection on d speed / dt = 0
+            middle = 0.5 * (low + high)
+            setting = _setting(c, control, middle, c.spawn_energy)
+            one, zero = torch.ones_like(middle), torch.zeros_like(middle)
+            rate, _ = _rates(c, setting, one, middle, zero, one, 1.0 / (middle * middle))
+            low, high = torch.where(rate > 0.0, middle, low), torch.where(rate > 0.0, high, middle)
+    cruise = 0.5 * (low + high)
+    launch = cruise + c.muzzle_speed
+    life = c.bullet_moves.float() * config.tick_length
+    gun_range = torch.log1p(c.bullet_drag * launch * life) / c.bullet_drag
+    corner = torch.sqrt(c.max_acceleration / c.lift)
+    return {
+        "cruise_speed": tuple(cruise.tolist()),
+        "corner_speed": tuple(corner.tolist()),
+        "bullet_launch_speed": tuple(launch.tolist()),
+        "gun_range": tuple(gun_range.tolist()),
+    }
+
+
+def ship_constants(
+    config: GameConfig, ship_type: Tensor, derived: bool = True
+) -> dict[str, Tensor]:
     """Per-ship constants for types (E, N) long: every value (E, N) float32 except the stick
     table (E, N, 7), the power tables (E, N, 3), the integer counts (E, N) long and the
     field arrays (F,)."""
@@ -140,7 +181,7 @@ def ship_constants(config: GameConfig, ship_type: Tensor) -> dict[str, Tensor]:
     fields = torch.tensor(config.fields, dtype=torch.float32, device=device).reshape(-1, 5)
     hit_radius = of("hit_radius")
     head_on_angle = card.HEAD_ON_ANGLE * of("head_on_angle_scale")
-    return {
+    constants = {
         "lift": lift,
         "inverse_lift": 1.0 / lift,
         "inverse_lift_squared": 1.0 / (lift * lift),
@@ -188,6 +229,11 @@ def ship_constants(config: GameConfig, ship_type: Tensor) -> dict[str, Tensor]:
         "field_band": fields[:, 3],
         "field_target": fields[:, 4] * card.LN_SQRT2,
     }
+    if derived:
+        for name, values in derived_characteristics(config.flight_model).items():
+            table = torch.tensor(values, dtype=torch.float32, device=device)
+            constants[name] = table[ship_type]
+    return constants
 
 
 # --------------------------------------------------------------------------- numerics

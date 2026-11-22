@@ -149,3 +149,10 @@ checked, the commit. Numbers are measured unless marked otherwise.
     next-state head's last layer orthogonal 0.01, not v2's zero; depth scale 2/6;
     sqrt(1 - a^2) kept at a reset as v2; grid cells with Blair's exponential gain; fields'
     rotary heading 0 as v2's memory tokens.
+- 07:50 E1 (part, "tell, do not infer"): the game's constants carry each type's cruise speed,
+  corner speed, bullet launch speed and gun range (`core.derived_characteristics`, solved once
+  per flight model with the game's own flight functions, cached; v2's definitions). Values
+  match the measured top speeds (Yongma 334.9, Jujak 316.2, Vizia 325.4 m/s) and the scripted
+  opponent's former Vizia fallbacks exactly (634.8 m, 2,037.4 m/s, 268.2 m/s); the opponent
+  reads them per type (it flew Yongma and Jujak with Vizia's). Test in
+  lean/scripted/tests. `pytest lean/game lean/scripted`: 44 passed, 1 xfailed.

@@ -1,6 +1,7 @@
 """Invariants of the scripted opponent and the chaser, and one match between them."""
 
 import math
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -111,7 +112,9 @@ def test_spread_zero_is_one_fixed_setting():
         assert torch.equal(first[name], second[name])
         assert (first[name] == first[name][0, 0]).all()
     uniforms = draw_uniforms(16, 10, torch.Generator().manual_seed(8), "cpu")
-    assert torch.equal(act(config, state, 0, first, uniforms), act(config, state, 0, second, uniforms))
+    assert torch.equal(
+        act(config, state, 0, first, uniforms), act(config, state, 0, second, uniforms)
+    )
 
 
 def test_turns_toward_a_target_on_its_left():
@@ -151,7 +154,9 @@ def test_opponent_beats_chaser_five_a_side():
     result = torch.full((envs,), -1, dtype=torch.long)
     for _ in range(horizon_ticks):
         uniforms = draw_uniforms(envs, slots, generator, "cpu")
-        scripted = act(config, state, 0, persona, uniforms) + act(config, state, 1, persona, uniforms)
+        scripted = act(config, state, 0, persona, uniforms) + act(
+            config, state, 1, persona, uniforms
+        )
         chaser = chaser_act(config, state, 0) + chaser_act(config, state, 1)
         action = torch.where(is_opponent[..., None], scripted, chaser)
         noise = game.draw_noise(game_config, envs, slots, generator, "cpu")
@@ -165,3 +170,18 @@ def test_opponent_beats_chaser_five_a_side():
     print(f"opponent against chaser: {wins} wins, {losses} losses, {ended} ended of {envs}")
     assert ended >= envs // 2
     assert wins > 0.65 * ended
+
+
+def test_the_game_tells_the_opponent_each_types_characteristics():
+    """Tell, do not infer (author 2026-11-22): the game's constants carry each type's gun range,
+    corner speed and launch speed, and the opponent reads those rather than one type's fallback."""
+    from lean.game import core
+    from lean.scripted.opponent import ScriptedConfig, characteristic
+
+    constants = core.ship_constants(core.GameConfig(), torch.tensor([[0, 1, 2]]))
+    for name in ("gun_range", "corner_speed", "bullet_launch_speed"):
+        assert name in constants
+        assert len(set(constants[name][0].tolist())) == 3, name  # differs by type
+    state = SimpleNamespace(constants=constants)
+    read = characteristic(ScriptedConfig(), state, "corner_speed")
+    assert torch.equal(read, constants["corner_speed"])
