@@ -63,7 +63,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 
 | # | Item | Status |
 |---|---|---|
-| E1 | Behaviour decisions from imugi-behaviours.md (core-decisions.md "Scripted opponent") | todo |
+| E1 | Behaviour decisions from imugi-behaviours.md (core-decisions.md "Scripted opponent") | partly done: per-type characteristics, line-of-fire block (worklog 07:50, 08:10); fly-straight rule and manoeuvres wait for A12 |
 | E2 | Basic fighter manoeuvres for the new physics (after A settles) | blocked: A12 |
 | E3 | Reads its team's view, never the state (with fog) | todo |
 

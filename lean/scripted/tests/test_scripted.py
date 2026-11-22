@@ -185,3 +185,38 @@ def test_the_game_tells_the_opponent_each_types_characteristics():
     state = SimpleNamespace(constants=constants)
     read = characteristic(ScriptedConfig(), state, "corner_speed")
     assert torch.equal(read, constants["corner_speed"])
+
+
+def test_never_shoots_through_a_team_mate():
+    """Author 2026-11-23: no shot with a team-mate in the line of fire. A shooter aimed at an
+    enemy 400 m ahead does not fire with a team-mate 200 m ahead on the line, and may fire
+    with the team-mate 150 m off it."""
+    import dataclasses
+
+    from lean.game import core
+
+    config = core.GameConfig(spawn="mixed")
+    state = core.reset(
+        config, 1, torch.tensor([[2, 1]]), torch.Generator().manual_seed(0), torch.device("cpu")
+    )
+    zeros = torch.zeros_like(state.x)
+    base = dataclasses.replace(
+        state,
+        heading_cos=torch.ones_like(state.x),
+        heading_sin=zeros,
+        speed=torch.full_like(state.x, 250.0),
+        angle=zeros,
+        angle_cos=torch.ones_like(state.x),
+        angle_sin=zeros,
+        cooldown=torch.zeros_like(state.cooldown),
+    )
+    scripted = ScriptedConfig()
+    persona = personas(scripted, 1, 3, torch.Generator().manual_seed(1), torch.device("cpu"), 0.0)
+    fire = {}
+    for name, ally_y in (("blocked", 0.0), ("clear", 150.0)):
+        placed = dataclasses.replace(
+            base, x=torch.tensor([[0.0, 200.0, 400.0]]), y=torch.tensor([[0.0, ally_y, 0.0]])
+        )
+        fire[name] = float(marginals(scripted, placed, 0, persona).fire[0, 0])
+    assert fire["blocked"] == 0.0
+    assert fire["clear"] > 0.1

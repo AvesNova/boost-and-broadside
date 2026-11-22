@@ -17,6 +17,10 @@ it blocks. Answered questions move to the bottom with the answer and its date.
    (c) Engine power is the card's full-store power (Vizia 2.04 kW/kg; top speed 325 m/s
    unchanged). (d) Full stick while coasting now settles at 111 m/s and 25 deg/s (v2: 139,
    38.6) because coast holds 1 g. Fly with `python -m lean.sandbox --core`.
+11. **Scripted tripwire (2026-11-23).** The team-mate line-of-fire check you asked for costs
+   21 operations; the scripted call is now 193 against the 170 tripwire. What it buys: the
+   yardstick never shoots its own team. Sign off, or ask for savings elsewhere (agreed fix 6,
+   one call for both teams, removes a whole second call per tick).
 
 ## Answered
 

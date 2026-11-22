@@ -89,6 +89,8 @@ class ScriptedConfig:
     bullet_drag: float = 5e-4  # 1 / metre, quadratic drag law
     stall_angle: float = 0.2705  # radians
     corner_speed: float = 268.2  # metres per second
+    # A team-mate within this many of its own hit radii of the line of fire blocks the shot.
+    ally_clearance_in_hit_radii: float = 2.0
     max_acceleration: float = 353.16  # metres per second squared
     max_energy: float = 497563.0  # joules per kilogram
     hit_radius: float = 12.0  # metres
@@ -131,9 +133,7 @@ def personas(
     gates = len(GATES)
     centre = torch.tensor(config.gate_centre, dtype=torch.float32, device=device)
     scale = torch.tensor(config.gate_scale, dtype=torch.float32, device=device)
-    sign = torch.tensor(
-        [1.0 if rising else -1.0 for rising in config.gate_rising], device=device
-    )
+    sign = torch.tensor([1.0 if rising else -1.0 for rising in config.gate_rising], device=device)
     shape = (envs, slots)
     if spread > 0.0:
         normal = torch.randn((*shape, gates + 5), generator=generator, device=device)
@@ -144,7 +144,9 @@ def personas(
     temperature = torch.exp(spread * config.temperature_log_spread * normal[..., gates])
     hold_span = 1.0 + min(spread, 1.0) * (config.hold_ticks_maximum - 1)
     hold_ticks = (1.0 + uniform[..., 0] * hold_span).floor().clamp(1, config.hold_ticks_maximum)
-    hold_ticks = hold_ticks.long() if spread > 0.0 else torch.ones(shape, dtype=torch.long, device=device)
+    hold_ticks = (
+        hold_ticks.long() if spread > 0.0 else torch.ones(shape, dtype=torch.long, device=device)
+    )
     return {
         "gate_centre": centre * torch.exp(spread * config.centre_log_spread * normal[..., :gates]),
         "gate_sharpness": (sign / scale) / temperature[..., None],
@@ -217,6 +219,12 @@ class Engagement:
     target_velocity_y: Tensor
     velocity_x: Tensor  # own velocity
     velocity_y: Tensor
+    ally_in_line: Tensor  # bool: a living team-mate is in the line of fire, nearer than the target
+
+
+def _per_other(value: Tensor | float) -> Tensor | float:
+    """A per-ship value (E, N) laid along the "other ship" axis of (E, own, other) pairs."""
+    return value[:, None, :] if isinstance(value, Tensor) else value
 
 
 def engage(
@@ -226,11 +234,14 @@ def engage(
     max_energy: Tensor | float = 1.0,
     kept_target: Tensor | None = None,
     keep_factor: float = 1.0,
+    clearance: Tensor | float = 24.0,
 ) -> Engagement:
     """Choose each ship's target: the living enemy with the smallest score, where the
     score is the distance times (1 + weakest_weight * the enemy's store fraction). An
     enemy equal to `kept_target` has its score multiplied by `keep_factor` (below 1), so
-    it is kept unless another scores better by that factor."""
+    it is kept unless another scores better by that factor. A team-mate blocks the shot when
+    it is ahead along the nose, nearer than the target, and within `clearance` metres of the
+    line of fire."""
     present = state.exists & state.alive
     own_team = state.team == team
     controlled = present & own_team
@@ -253,17 +264,24 @@ def engage(
     target_x, target_y, target_velocity_x, target_velocity_y = chosen.unbind(-1)
     target_x = target_x - state.x
     target_y = target_y - state.y
+    distance = torch.sqrt(target_x * target_x + target_y * target_y)
+    along = offset_x * state.heading_cos[..., None] + offset_y * state.heading_sin[..., None]
+    across = offset_x * state.heading_sin[..., None] - offset_y * state.heading_cos[..., None]
+    slots = torch.arange(state.x.shape[1], device=state.x.device)
+    ally = present[:, None, :] & own_team[:, None, :] & (slots[:, None] != slots[None, :])
+    blocking = ally & (along > 0.0) & (along < distance[..., None]) & (across.abs() < clearance)
     return Engagement(
         controlled=controlled,
         has_target=controlled & enemy.any(-1, keepdim=True),
         target=target,
         offset_x=target_x,
         offset_y=target_y,
-        distance=torch.sqrt(target_x * target_x + target_y * target_y),
+        distance=distance,
         target_velocity_x=target_velocity_x,
         target_velocity_y=target_velocity_y,
         velocity_x=velocity_x,
         velocity_y=velocity_y,
+        ally_in_line=blocking.any(-1),
     )
 
 
@@ -304,6 +322,9 @@ def marginals(
         max_energy,
         kept_target,
         config.target_keep_factor,
+        clearance=_per_other(
+            config.ally_clearance_in_hit_radii * characteristic(config, state, "hit_radius")
+        ),
     )
     has_target = fight.has_target
     safe_distance = fight.distance.clamp_min(TINY)
@@ -326,7 +347,9 @@ def marginals(
     turn_radius = state.speed * state.speed / characteristic(config, state, "max_acceleration")
     margin = (persona["boundary_margin"] * turn_radius).clamp_min(1.0)
     depth = (distance_from_centre - (arena_radius - margin)) / margin
-    ramp = (depth - config.boundary_ramp_low) / (config.boundary_ramp_high - config.boundary_ramp_low)
+    ramp = (depth - config.boundary_ramp_low) / (
+        config.boundary_ramp_high - config.boundary_ramp_low
+    )
     outward = state.x * fight.velocity_x + state.y * fight.velocity_y > 0.0
     centre_weight = torch.where(outward & has_target, ramp.clamp(0.0, 1.0), 0.0)
     centre_weight = torch.where(has_target, centre_weight, 1.0)
@@ -338,9 +361,9 @@ def marginals(
 
     # All eight gates in one logistic: sigmoid(sharpness * (ln quantity - ln centre)).
     turn_size = stick_error.abs() / stall_angle
-    target_size = (2.0 * torch.atan(characteristic(config, state, "hit_radius") / safe_distance)).clamp(
-        config.target_size_minimum, config.target_size_maximum
-    )
+    target_size = (
+        2.0 * torch.atan(characteristic(config, state, "hit_radius") / safe_distance)
+    ).clamp(config.target_size_minimum, config.target_size_maximum)
     quantity = torch.stack(
         [
             turn_size,
@@ -356,7 +379,9 @@ def marginals(
     )
     centre = persona["gate_centre"]
     reverse_centre = torch.maximum(centre[..., REVERSE], persona["stand_off"])
-    centre = torch.cat([centre[..., :REVERSE], reverse_centre[..., None], centre[..., REVERSE + 1 :]], -1)
+    centre = torch.cat(
+        [centre[..., :REVERSE], reverse_centre[..., None], centre[..., REVERSE + 1 :]], -1
+    )
     logit = persona["gate_sharpness"] * torch.log(quantity.clamp_min(TINY) / centre)
     floor = quantity.new_tensor(config.gate_floor)
     gate = floor + (1.0 - 2.0 * floor) * torch.sigmoid(logit.clamp(-LOGIT_LIMIT, LOGIT_LIMIT))
@@ -369,8 +394,14 @@ def marginals(
     )
     left = torch.where(stick_error > 0.0, 1.0 - config.side_floor, config.side_floor)[..., None]
     left_levels = left * levels
-    sides = (left_levels, levels - left_levels) if config.left_is_even else (levels - left_levels, left_levels)
-    stick = torch.cat([(1.0 - turn)[..., None], torch.stack([sides[1], sides[0]], -1).flatten(-2)], -1)
+    sides = (
+        (left_levels, levels - left_levels)
+        if config.left_is_even
+        else (levels - left_levels, left_levels)
+    )
+    stick = torch.cat(
+        [(1.0 - turn)[..., None], torch.stack([sides[1], sides[0]], -1).flatten(-2)], -1
+    )
 
     # Power: reverse when very close; else boost when slow, or far with store; else coast.
     target_gate = has_target.to(gate.dtype)
@@ -380,7 +411,10 @@ def marginals(
     power = torch.stack([1.0 - boost - reverse, boost, reverse], -1)
 
     # Gun: aligned times in range, zero without a target or while the gun cannot fire.
-    ready = (state.cooldown <= 0) & (state.energy >= characteristic(config, state, "bullet_energy_cost"))
+    ready = (state.cooldown <= 0) & (
+        state.energy >= characteristic(config, state, "bullet_energy_cost")
+    )
+    ready = ready & ~fight.ally_in_line  # never shoot through a team-mate (author 2026-11-23)
     fire = torch.where(has_target & ready, gate[..., ALIGNED] * gate[..., IN_RANGE], 0.0)
     return Marginals(stick, power, fire, fight.controlled, fight.target)
 

@@ -156,3 +156,9 @@ checked, the commit. Numbers are measured unless marked otherwise.
   opponent's former Vizia fallbacks exactly (634.8 m, 2,037.4 m/s, 268.2 m/s); the opponent
   reads them per type (it flew Yongma and Jujak with Vizia's). Test in
   lean/scripted/tests. `pytest lean/game lean/scripted`: 44 passed, 1 xfailed.
+- 08:10 E1 (part): the scripted opponent never shoots through a team-mate: a living team-mate
+  ahead along the nose, nearer than the target and within 2 of its hit radii of the line of
+  fire zeroes the gun gate (`ScriptedConfig.ally_clearance_in_hit_radii`). Test: blocked at
+  200 m on the line, clear at 150 m off it. The check costs 21 operations: the scripted call
+  is now 193, over the 170 tripwire (question 11 for the author). `pytest lean/scripted`:
+  8 passed.
