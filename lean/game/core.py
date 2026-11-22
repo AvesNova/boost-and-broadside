@@ -251,24 +251,34 @@ def _setting(p, control, speed, energy):
     command = softmin(control.stick_size * reach, p.max_acceleration, q)
     sink_room = (energy * p.inverse_fade).clamp(0.0, 1.0)
     budget_squared = budget * budget
+    demand, commanded = control.demand, control.commanded
     if core:
         # Weight always on the wing: the vertical demand is held first and the turn gets the rest
-        # (dive lowers the demand and frees lift for the turn). Smootherstep edges of the store.
+        # (dive lowers the demand and frees lift for the turn). Smootherstep edges of the store;
+        # at an edge, dive or climb fades to coast in its effect on the wing as well as in the
+        # trade (no free turn from diving on the deck, no lost turn from climbing at the top).
         sink_room = smootherstep(sink_room)
-        held = softmin(control.demand, budget, q)
+        top_room = smootherstep(((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0))
+        room = torch.where(commanded > 0.0, top_room, torch.where(commanded < 0.0, sink_room, 1.0))
+        demand = card.GRAVITY + (demand - card.GRAVITY) * room
+        commanded = commanded * room
+        held = softmin(demand, budget, q)
     else:
-        held = softmin(control.demand * (1.0 - sink_room), budget, q)
+        held = softmin(demand * (1.0 - sink_room), budget, q)
     lateral_size = softmin(command, torch.sqrt((budget_squared - held * held).clamp_min(0.0)), q)
     if core:
         vertical = held  # held first; the turn took only what was left
     else:
         vertical = softmin(control.demand, torch.sqrt((budget_squared - lateral_size * lateral_size).clamp_min(0.0)), q)
-    exchange = control.commanded - (control.demand - vertical)
     share = (lateral_size / budget).clamp(0.0, 1.0)
     headroom = ((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0)
     if core:
-        headroom = smootherstep(headroom)
-    exchange = exchange * torch.where(exchange > 0.0, headroom, sink_room)
+        # The commanded trade is already faded at the edges; a shortfall in the vertical (the
+        # wing cannot hold the demand) sinks the ship, and that needs store to sink.
+        exchange = commanded - (demand - vertical).clamp_min(0.0) * sink_room
+    else:
+        exchange = commanded - (demand - vertical)
+        exchange = exchange * torch.where(exchange > 0.0, headroom, sink_room)
     thrust = softmin(p.power_full_store / speed, p.static_thrust, card.THRUST_SOFTMIN_EXPONENT)
     if core:
         # The engine drives speed only (constant power, the card's full-store power) and never

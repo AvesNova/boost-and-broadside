@@ -1,12 +1,27 @@
-"""Turn-performance helpers around lean.game.core.flight_tick (no fields)."""
+"""Turn-performance helpers around lean.game.core.flight_tick (no fields).
+
+The flight model comes from the environment variable FLIGHT_MODEL: "v2" (the default) or
+"core" (GameConfig.core()). Every script in this folder reads it from here.
+"""
 import math
+import os
 from types import SimpleNamespace
+
 import torch
-from lean.game import core, card
+
+from lean.game import card, core
 
 torch.set_num_threads(1)
-CONFIG = core.GameConfig()
+MODEL = os.environ.get("FLIGHT_MODEL", "v2")
+if MODEL not in ("v2", "core"):
+    raise ValueError(f"FLIGHT_MODEL={MODEL!r}: need 'v2' or 'core'")
+CONFIG = core.GameConfig.core() if MODEL == "core" else core.GameConfig()
+SUFFIX = "-core" if MODEL == "core" else ""  # output file names
 H = CONFIG.tick_length
+_SIZES = core.ship_constants(CONFIG, torch.arange(3))
+MAX_ENERGY = [float(e) for e in _SIZES["max_energy"]]  # J/kg per ship type, this model's store
+SPAWN = [float(e) for e in _SIZES["spawn_energy"]]
+FADE_BAND = CONFIG.store_edge_band if MODEL == "core" else card.STORE_FADE_BAND  # share of the store
 
 
 def make(ship_type, speeds, energy):
@@ -39,7 +54,7 @@ def run(ship_type, speeds, energy, stick, power, ticks, every=1):
     previous = track(s)
     with torch.no_grad():
         for _ in range(ticks):
-            s = core.flight_tick(constants, H, s, stick_t, power_t)
+            s = core.flight_tick(constants, H, s, stick_t, power_t, model=MODEL)
             now = track(s)
             d = torch.remainder(now - previous + math.pi, 2 * math.pi) - math.pi
             previous = now
@@ -71,7 +86,7 @@ def run_batch(types, speeds, energies, sticks, powers, ticks, keep_every=1, magn
     previous = track(s)
     with torch.no_grad():
         for k in range(ticks):
-            s = core.flight_tick(constants, H, s, stick_t, power_t)
+            s = core.flight_tick(constants, H, s, stick_t, power_t, model=MODEL)
             now = track(s)
             d = torch.remainder(now - previous + math.pi, 2 * math.pi) - math.pi
             previous = now

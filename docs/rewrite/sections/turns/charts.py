@@ -6,6 +6,9 @@ time histories step `lean.game.core.flight_tick` (no fields, no guns).
 
     OMP_NUM_THREADS=1 PYTHONPATH=.:src uv run --no-sync python docs/rewrite/sections/turns/charts.py
 
+FLIGHT_MODEL=core draws the core flight model (GameConfig.core()); the default is v2. The core
+model's files are chart-<name>-core.png.
+
 Writes chart-<name>.png into docs/rewrite/.
 """
 
@@ -35,15 +38,15 @@ from doghouse import (  # noqa: E402
     style,
     sustained,
 )
-from sim import H, make, track  # noqa: E402
+from sim import FADE_BAND, MAX_ENERGY, MODEL, SPAWN, SUFFIX, H, make, track  # noqa: E402
 
 from lean.game import card, core  # noqa: E402
 
 torch.set_num_threads(1)
 plt.rcParams.update({"font.size": 10})
 V = speeds.numpy()
-MAX_ENERGY = card.CARD["max_energy"]
-SPAWN = card.CARD["spawn_energy"]
+CORE = MODEL == "core"
+VIZIA_ONLY = "The core game currently flies Vizia only; Yongma and Jujak are the card's other two types under the core physics."
 SPAWN_PERCENT = 100.0 * SPAWN[0] / MAX_ENERGY[0]
 FULL_STICK, STRAIGHT = 6, 0
 COAST, DIVE, CLIMB = 0, 1, 2
@@ -54,7 +57,7 @@ TIE = 0.05  # deg/s: closer than this counts as equal
 def save(figure, name, footnote, foot_height):
     figure.text(0.01, 0.004, footnote, color=INK_2, fontsize=FOOT, va="bottom")
     figure.tight_layout(rect=(0, foot_height, 1, 1))
-    path = os.path.abspath(os.path.join(OUT, f"chart-{name}.png"))
+    path = os.path.abspath(os.path.join(OUT, f"chart-{name}{SUFFIX}.png"))
     figure.savefig(path, dpi=130, facecolor=SURFACE)
     plt.close(figure)
     return path
@@ -93,7 +96,7 @@ def simulate(ship_type, speed, energy, stick, power, ticks):
     previous, turned = track(s), 0.0
     with torch.no_grad():
         for k in range(ticks):
-            s = core.flight_tick(constants, H, s, stick_t, power_t)
+            s = core.flight_tick(constants, H, s, stick_t, power_t, model=MODEL)
             now = track(s)
             step = float(torch.remainder(now - previous + math.pi, 2 * math.pi) - math.pi)
             previous = now
@@ -196,8 +199,17 @@ def who_wins():
         ax.set_xlim(100.0, V[-1])
         ax.set_ylim(0, max(np.nanmax(full[a]), np.nanmax(full[b])) * 1.45)
         axes_labels(ax, "speed (m/s)", "turn rate (deg/s)")
-        title(ax, f"{NAMES[a]} vs {NAMES[b]}")
+        title(ax, f"{NAMES[a]} vs {NAMES[b]}" + (", core model" if CORE else ""))
         legend(ax, loc="upper left", ncol=1)
+    if CORE:
+        foot = (
+            f"Core model. Coast, spawn store ({SPAWN_PERCENT:.0f}% of each ship's store), no fields; quasi-steady (nose "
+            "settled on the\nstick's angle of attack, from core._setting/_lift_coefficient/_rates). Solid: full stick "
+            "(instantaneous). Dashed: the\nhighest rate with total energy rate Ps >= 0 (the engine never feeds the store). "
+            "Shading: the gap between the two\nfull-stick curves, in the colour of the ship that turns faster there "
+            "(equal: within 0.05 deg/s).\n" + VIZIA_ONLY
+        )
+        return save(figure, "who-wins", foot, 0.047)
     foot = (
         "Coast, spawn store (40%), no fields; quasi-steady (nose settled on the stick's angle of attack, from\n"
         "core._setting/_lift_coefficient/_rates). Solid: full stick (instantaneous). Dashed: the highest rate with\n"
@@ -216,8 +228,22 @@ def straight(ship_type, fraction, power):
     return speed_rate, store_rate, speed_rate + store_rate / V  # last: dE/dt over v
 
 
+ACCELERATION_FOOT_CORE = (
+    "Core model. Straight flight (no turn), coast, no fields; quasi-steady from core._setting/_rates. Solid: the "
+    "speed's\nrate of change. Dashed: the total energy rate d(v^2/2 + store)/dt divided by v. The engine never "
+    "feeds the store,\nso the two differ only at low speed, where the wing cannot hold 1 g and the store pays for the "
+    "sink (less of it\ninside the bottom edge band). Lines leave the frame at the bottom (above 450 m/s); the "
+    "frame is the same\non all three panels. " + "The core game currently flies Vizia only; "
+    "Yongma and Jujak are\nthe card's other two types under the core physics."
+)
+
+
 def acceleration():
-    stores = (("store 90%", 0.9), (f"spawn store ({SPAWN_PERCENT:.0f}%)", None), ("store 1%", 0.01))
+    if CORE:
+        stores = (("store 97.5% (top edge band)", 0.975), (f"spawn store ({SPAWN_PERCENT:.0f}%)", None),
+                  ("store 2.5% (bottom edge band)", 0.025))
+    else:
+        stores = (("store 90%", 0.9), (f"spawn store ({SPAWN_PERCENT:.0f}%)", None), ("store 1%", 0.01))
     figure, axes = plt.subplots(3, 1, figsize=(7.5, 16), facecolor=SURFACE)
     tops = {}
     curves = {(fraction, t): straight(t, fraction, COAST) for _, fraction in stores for t in range(3)}
@@ -249,18 +275,30 @@ def acceleration():
         ax.set_ylim(-60.0, high)
         ax.set_xlim(V[0], V[-1])
         axes_labels(ax, "speed (m/s)", "rate (m/s per s)")
-        title(ax, f"Straight flight, coast, {label}")
+        title(ax, f"Straight flight, coast, {label}" + (", core model" if CORE else ""))
         legend(ax, loc="lower left", ncol=1)
-    foot = (
+    foot = ACCELERATION_FOOT_CORE if CORE else (
         "Straight flight (no turn), coast, no fields; quasi-steady from core._setting/_rates. Solid: the speed's "
         "rate of\nchange. Dashed: the total energy rate d(v^2/2 + store)/dt divided by v, i.e. the acceleration "
         "if all of it went\ninto speed (the gap is the engine surplus charging the store). Lines leave the frame at "
         "the top (low speed)\nand the bottom (above 450 m/s); the frame is the same on all three panels."
     )
-    return save(figure, "acceleration", foot, 0.04), tops
+    return save(figure, "acceleration", foot, 0.056 if CORE else 0.04), tops
 
 
 # --------------------------------------------------------------------------- 3. dive and climb
+
+
+DIVE_CLIMB_FOOT_CORE = (
+    "Core model. Straight flight, no fields. (a) quasi-steady from core._setting/_rates at the spawn store; dive = "
+    "power 1\n('boost', store into speed), climb = power 2 ('reverse', speed into store), equal and opposite rates. "
+    "(b) flight_tick at\n30 Hz from each ship's coast top speed at spawn store. Dive held until the store enters the "
+    f"{100 * FADE_BAND:.0f}% bottom edge band,\nclimb until it enters the {100 * FADE_BAND:.0f}% top edge band (or "
+    "speed reaches 100 m/s); in the bands a smootherstep fades the\nexchange out. Dots: the stop; faint lines: the "
+    "same hold continued (to 30 s; the frame shows the first 6 s).\nStore sizes differ per ship (two vertical loops "
+    "at corner speed).\n"
+    "The core game currently flies Vizia only; Yongma and Jujak are the card's other two types under the core physics."
+)
 
 
 def dive_climb():
@@ -286,7 +324,7 @@ def dive_climb():
         ax.set_xlim(V[0], V[-1])
         legend(ax, ncol=3, loc="upper right" if ax is ax_speed else "upper left")
     axes_labels(ax_speed, "speed (m/s)", "dv/dt (m/s per s)")
-    title(ax_speed, f"(a) Speed rate, straight, spawn store ({SPAWN_PERCENT:.0f}%)")
+    title(ax_speed, f"(a) Speed rate, straight, spawn store ({SPAWN_PERCENT:.0f}%)" + (", core model" if CORE else ""))
     axes_labels(ax_store, "speed (m/s)", "store rate (% of max per s)")
     title(ax_store, f"(a) Store rate, straight, spawn store ({SPAWN_PERCENT:.0f}%)")
     ticks = int(round(30.0 / H))
@@ -296,13 +334,16 @@ def dive_climb():
         start = zero_crossing(V, straight(t, None, COAST)[0])
         climb_floor = zero_crossing(V[::-1], -straight(t, None, CLIMB)[0][::-1])  # climb's dv/dt = 0 from below
         dive = simulate(t, start, SPAWN[t], STRAIGHT, DIVE, ticks)
-        band = card.STORE_FADE_BAND * MAX_ENERGY[t]
+        band = FADE_BAND * MAX_ENERGY[t]
         emptied = dive["store"] <= band
         stop = int(np.argmax(emptied)) if emptied.any() else ticks
         climb = simulate(t, start, SPAWN[t], STRAIGHT, CLIMB, ticks)
         settled = np.zeros(len(climb["speed"]), bool)
         settled[second:] = np.abs(climb["speed"][second:] - climb["speed"][:-second]) < 0.1
-        done = (climb["speed"] <= 100.0) | (climb["store"] >= MAX_ENERGY[t] * 0.999) | settled
+        if CORE:  # symmetric with the dive: until the store enters the top edge band
+            done = (climb["speed"] <= 100.0) | (climb["store"] >= MAX_ENERGY[t] - band)
+        else:
+            done = (climb["speed"] <= 100.0) | (climb["store"] >= MAX_ENERGY[t] * 0.999) | settled
         climb_stop = int(np.argmax(done)) if done.any() else ticks
         results[t] = dict(
             start=start,
@@ -355,11 +396,14 @@ def dive_climb():
                     markeredgewidth=2,
                     zorder=5,
                 )
-        why = "settles" if settled[climb_stop] and climb["speed"][climb_stop] > 100.0 else "reaches"
+        if CORE:
+            climb_text = f"climb {climb['speed'][climb_stop]:.0f} m/s, store in the top band at {climb['time'][climb_stop]:.1f} s"
+        else:
+            why = "settles" if settled[climb_stop] and climb["speed"][climb_stop] > 100.0 else "reaches"
+            climb_text = f"climb {why} {climb['speed'][climb_stop]:.0f} m/s at {climb['time'][climb_stop]:.1f} s"
         lines.append(
             f"{NAMES[t]}: start {start:.0f}; dive peak {results[t]['dive_peak']:.0f}, store in the "
-            f"{100 * card.STORE_FADE_BAND:.0f}% band at {dive['time'][stop]:.1f} s;\n    climb {why} "
-            f"{climb['speed'][climb_stop]:.0f} m/s at {climb['time'][climb_stop]:.1f} s"
+            + ("bottom band" if CORE else f"{100 * FADE_BAND:.0f}% band") + f" at {dive['time'][stop]:.1f} s;\n    " + climb_text
         )
     ax_time_speed.text(
         0.99,
@@ -374,26 +418,39 @@ def dive_climb():
         bbox=dict(facecolor=SURFACE, edgecolor="#e7e6e2", boxstyle="round,pad=0.4"),
     )
     axes_labels(ax_time_speed, "time (s)", "speed (m/s)")
-    title(ax_time_speed, "(b) Simulated from coast top speed, spawn store (speeds in m/s)")
+    title(ax_time_speed, "(b) Simulated from coast top speed, spawn store (speeds in m/s)" + (", core" if CORE else ""))
     axes_labels(ax_time_store, "time (s)", "store (% of max)")
     title(ax_time_store, "(b) Store over the same runs")
     ax_time_store.set_ylim(0, 105)
     for ax in (ax_time_speed, ax_time_store):
-        ax.set_xlim(0, 30)
-        legend(ax, ncol=3, loc="lower center" if ax is ax_time_speed else "upper center")
+        ax.set_xlim(0, 6 if CORE else 30)
+        legend(ax, ncol=3, loc="lower center" if ax is ax_time_speed else "center right" if CORE else "upper center")
     ylow, yhigh = ax_time_speed.get_ylim()
     ax_time_speed.set_ylim(ylow - 0.25 * (yhigh - ylow), yhigh)
-    foot = (
+    foot = DIVE_CLIMB_FOOT_CORE if CORE else (
         "Straight flight, no fields. (a) quasi-steady from core._setting/_rates at the spawn store; dive = power 1 "
         "('boost',\nstore into speed), climb = power 2 ('reverse', speed into store). (b) flight_tick at 30 Hz from "
         "each ship's coast\ntop speed at spawn store. Dive held until the store enters the 2% fade band, where the "
         "code fades the exchange\nout (it never reaches zero); climb held until speed reaches 100 m/s, the store is "
         "full, or speed settles (< 0.1 m/s\nchange in 1 s). Dots: the stop; faint lines: the same hold continued to 30 s."
     )
-    return save(figure, "dive-climb", foot, 0.04), results
+    return save(figure, "dive-climb", foot, 0.052 if CORE else 0.04), results
 
 
 # --------------------------------------------------------------------------- 4. bleed
+
+
+OTHER_STORE = 0.025 if CORE else 0.9  # the bleed chart's second store level
+OTHER_TAG = f"store {100 * OTHER_STORE:g}%"
+
+
+def bleed_foot_core(difference):
+    return (
+        "Core model. flight_tick at 30 Hz, no fields, coast, full stick held 20 s from straight flight at each ship's "
+        "corner\nspeed (the peak of the quasi-steady full-stick envelope at spawn store, doghouse.evaluate). The store "
+        f"2.5% runs\n(inside the bottom edge band) against the spawn-store runs: largest speed difference {difference:.3g} m/s. "
+        "The core game\ncurrently flies Vizia only; Yongma and Jujak are the card's other two types under the core physics."
+    )
 
 
 def bleed():
@@ -405,10 +462,10 @@ def bleed():
     for t in range(3):
         start, peak = corner_speed(t)
         runs = {}
-        for fraction, dash, width in ((None, "-", 2.4), (0.9, (0, (3, 3)), 1.4)):
+        for fraction, dash, width in ((None, "-", 2.4), (OTHER_STORE, (0, (3, 3)), 1.4)):
             energy = SPAWN[t] if fraction is None else fraction * MAX_ENERGY[t]
             run = simulate(t, start, energy, FULL_STICK, COAST, ticks)
-            tag = "spawn store" if fraction is None else "store 90%"
+            tag = "spawn store" if fraction is None else OTHER_TAG
             runs[tag] = run
             colour = SERIES[t] if fraction is None else SURFACE
             label = NAMES[t] if fraction is None else None
@@ -428,7 +485,7 @@ def bleed():
                 store_end=run["store"][-1] / MAX_ENERGY[t],
             )
         r = results[(t, "spawn store")]
-        differences.append(float(np.abs(runs["spawn store"]["speed"] - runs["store 90%"]["speed"]).max()))
+        differences.append(float(np.abs(runs["spawn store"]["speed"] - runs[OTHER_TAG]["speed"]).max()))
         notes.append(
             (
                 f"{NAMES[t]}: {start:.0f} to {r['end_speed']:.0f} m/s",
@@ -448,15 +505,15 @@ def bleed():
             color=INK,
             bbox=dict(facecolor=SURFACE, edgecolor="#e7e6e2", boxstyle="round,pad=0.4"),
         )
-        ax.plot([], [], color=MUTED, linewidth=2.4, label="solid: spawn store (40%)")
-        ax.plot([], [], color=MUTED, linewidth=1.4, linestyle=(0, (3, 3)), label="light dashes on top: store 90%")
+        ax.plot([], [], color=MUTED, linewidth=2.4, label=f"solid: spawn store ({SPAWN_PERCENT:.0f}%)")
+        ax.plot([], [], color=MUTED, linewidth=1.4, linestyle=(0, (3, 3)), label=f"light dashes on top: {OTHER_TAG}")
         ax.set_xlim(0, 20)
         legend(ax, ncol=2, loc="upper right" if k < 2 else "upper left")
     top = max(r["turned"] for r in results.values()) * 1.3
     for k in range(1, int(top // 360) + 1):
         axes[2].axhline(360.0 * k, color=MUTED, linewidth=0.6, linestyle=":")
     axes_labels(axes[0], "time (s)", "speed (m/s)")
-    title(axes[0], "Speed, full stick from corner speed, coast")
+    title(axes[0], "Speed, full stick from corner speed, coast" + (", core model" if CORE else ""))
     axes_labels(axes[1], "time (s)", "turn rate (deg/s)")
     title(axes[1], "Turn rate (velocity direction)")
     axes_labels(axes[2], "time (s)", "degrees turned")
@@ -465,13 +522,13 @@ def bleed():
     axes[0].set_ylim(lo, hi + 0.25 * (hi - lo))
     axes[1].set_ylim(0, axes[1].get_ylim()[1] * 1.3)
     axes[2].set_ylim(0, top)
-    foot = (
+    foot = bleed_foot_core(max(differences)) if CORE else (
         "flight_tick at 30 Hz, no fields, coast, full stick held 20 s from straight flight at each ship's corner "
         "speed (the peak\nof the quasi-steady full-stick envelope at spawn store, doghouse.evaluate). The store 90% "
         f"runs lie exactly on the spawn-store\nruns (largest speed difference {max(differences):.3g} m/s): at coast "
         "the store changes only the engine's charge, not thrust or lift."
     )
-    return save(figure, "bleed", foot, 0.03), results
+    return save(figure, "bleed", foot, 0.04 if CORE else 0.03), results
 
 
 # --------------------------------------------------------------------------- 5. circles
@@ -521,9 +578,12 @@ def circles():
             )
             extent += [x.min(), x.max(), y.min(), y.max()]
         ax.plot(0, 0, "o", color=INK, markersize=5)
-        ax.annotate("start, heading +x", (0, 0), xytext=(6, -14), textcoords="offset points", color=INK_2, fontsize=8.5)
+        ax.annotate("start, heading +x", (0, 0), xytext=(0, 22) if CORE else (6, -14), textcoords="offset points",
+                    color=INK_2, fontsize=8.5, ha="center" if CORE else "left")
         low_x, high_x, high_y = min(extent[0::4]), max(extent[1::4]), max(extent[3::4])
         bar_y = -0.12 * high_y
+        if CORE:  # the core spirals drift below the start: keep their ends in the frame
+            bar_y = min(bar_y, min(extent[2::4]) - 0.06 * high_y)
         ax.plot([low_x, low_x + reach], [bar_y, bar_y], color=INK, linewidth=3, solid_capstyle="butt")
         ax.annotate(
             f"gun reach {reach:.0f} m (muzzle {card.CARD['muzzle_speed'][0]:.0f} m/s x life "
@@ -541,18 +601,18 @@ def circles():
         axes_labels(ax, "x (m)", "y (m)")
         title(
             ax,
-            "(a) One 360 of heading from corner speed"
+            "(a) One 360 of heading from corner speed" + (", core model" if CORE else "")
             if case == "corner"
-            else f"(b) One 360 of heading from {case:.0f} m/s",
+            else f"(b) One 360 of heading from {case:.0f} m/s" + (", core model" if CORE else ""),
         )
         legend(ax, loc="upper right" if case == "corner" else "upper right")
-    foot = (
-        "flight_tick at 30 Hz, coast, spawn store (40%), no fields, full stick from straight flight, until the "
+    foot = ("Core model. " if CORE else "") + (
+        f"flight_tick at 30 Hz, coast, spawn store ({SPAWN_PERCENT:.0f}%), no fields, full stick from straight flight, until the "
         "velocity\ndirection has turned 360 deg. All ships start at the origin heading +x; equal axes, to scale. "
         f"The small ring at\nthe start is the {hit:.0f} m hit radius to scale (a ship is a {2 * hit:.0f} m target). "
         "Dots: end of the 360. Gun reach\nignores bullet drag and the shooter's own velocity."
-    )
-    return save(figure, "circles", foot, 0.04), results, reach
+    ) + ("\n" + VIZIA_ONLY if CORE else "")
+    return save(figure, "circles", foot, 0.05 if CORE else 0.04), results, reach
 
 
 if __name__ == "__main__":

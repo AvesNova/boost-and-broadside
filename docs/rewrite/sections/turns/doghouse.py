@@ -11,11 +11,15 @@ diagrams show Ps. Positive = gaining energy.
 
     OMP_NUM_THREADS=1 PYTHONPATH=.:src uv run --no-sync python docs/rewrite/sections/turns/doghouse.py
 
+FLIGHT_MODEL=core draws the core flight model (GameConfig.core()); the default is v2. The core
+model's files get a "-core" suffix.
+
 Writes PNGs next to docs/rewrite/turn-performance.md.
 """
 
 import math
 import os
+import sys
 from types import SimpleNamespace
 
 import matplotlib
@@ -25,6 +29,9 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
 from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(__file__))
+from sim import CONFIG, MAX_ENERGY, MODEL, SPAWN, SUFFIX  # noqa: E402
 
 from lean.game import card, core  # noqa: E402
 
@@ -38,8 +45,15 @@ NAMES = ("Yongma", "Jujak", "Vizia")
 SERIES = ("#2a78d6", "#eb6834", "#1baf7a")
 SURFACE, INK, INK_2, MUTED = "#fcfcfb", "#0b0b0b", "#52514e", "#898781"
 DIVERGING = LinearSegmentedColormap.from_list("ps", ["#e34948", "#f0efec", "#2a78d6"])
-STORES = (("high store (90%): engine at its full-store power", 0.9), ("spawn store (40%): engine surplus charging the store", None),
-          ("low store (1%): weight back on the wing", 0.01))
+SPAWN_PERCENT = 100.0 * SPAWN[0] / MAX_ENERGY[0]
+if MODEL == "core":
+    STORES = (("store 97.5%: inside the top edge band", 0.975), (f"spawn store ({SPAWN_PERCENT:.0f}%)", None),
+              ("store 2.5%: inside the bottom edge band", 0.025))
+    VIZIA_ONLY = "The core game currently flies Vizia only; Yongma and Jujak are the card's other two types under the core physics."
+else:
+    STORES = (("high store (90%): engine at its full-store power", 0.9),
+              ("spawn store (40%): engine surplus charging the store", None),
+              ("low store (1%): weight back on the wing", 0.01))
 
 speeds = torch.linspace(20.0, 470.0, 226)
 sticks = torch.linspace(0.0, 1.0, 201)
@@ -50,11 +64,11 @@ def evaluate(ship_type: int, store_fraction, power: int = 0):
     v = speeds.repeat(len(sticks))
     s = sticks.repeat_interleave(len(speeds))
     b = v.shape[0]
-    p = SimpleNamespace(**core.ship_constants(core.GameConfig(), torch.full((b,), ship_type)))
-    store = card.CARD["spawn_energy"][ship_type] if store_fraction is None else store_fraction * card.CARD["max_energy"][ship_type]
+    p = SimpleNamespace(**core.ship_constants(CONFIG, torch.full((b,), ship_type)))
+    store = SPAWN[ship_type] if store_fraction is None else store_fraction * MAX_ENERGY[ship_type]
     energy = torch.full((b,), float(store))
     control = SimpleNamespace(
-        stick_size=s, stick_sign=torch.ones(b),
+        model=MODEL, stick_size=s, stick_sign=torch.ones(b),
         commanded=p.commanded_table[:, power], demand=p.demand_table[:, power],
     )
     control.inverse_demand = 1.0 / control.demand
@@ -101,6 +115,23 @@ def style(ax):
     ax.set_axisbelow(True)
 
 
+DOGHOUSE_FOOT = {
+    "v2": "Thick: full stick (lift and g limit). Thin: the game's sustained and fine stick.\n"
+    "Dash-dot: full stick while diving or climbing (on the full-stick line whenever the store is\n"
+    "above 2%: today diving and climbing do not change the turn). Black dashed: Ps = 0 (sustained).\n"
+    "Grey dotted: turn radius. Grey dashed: load in game g (39.24 m/s^2). Shaded below 100 m/s:\n"
+    "quasi-steady maths only; hard turns there cannot be held in flight.",
+    "core": "Core model: 1 g of weight always on the wing, the turn gets the rest of the lift and g limit;\n"
+    "the engine drives speed only. Thick: full stick. Thin: the game's sustained and fine stick.\n"
+    "Dash-dot: full stick while diving or climbing (diving lowers the weight on the wing, climbing\n"
+    "raises it). Black dashed: Ps = 0 (sustained). Grey dotted: turn radius. Grey dashed: load in\n"
+    "game g (39.24 m/s^2). Shaded below 100 m/s: quasi-steady maths only, no best-sustained mark there.\n"
+    "Coasting, turn rate and Ps do not depend on the store. Inside an edge band (the outer 5%) dive or climb\n"
+    "fades to coast, in the trade and in the wing's load: at 97.5% and 2.5% the band is half faded.\n"
+    + "The core game currently flies Vizia only; Yongma and Jujak are the card's other types under core physics.",
+}
+
+
 def doghouse(ship_type: int):
     figure, axes = plt.subplots(3, 1, figsize=(7.5, 16), facecolor=SURFACE)
     v = speeds.numpy()
@@ -143,10 +174,16 @@ def doghouse(ship_type: int):
             row = int(round(card.CARD[key][ship_type] * (len(sticks) - 1)))
             level = grid["rate"][row]
             ax.plot(v, level, color=INK, linewidth=1.1)
-            ax.annotate(name, (v[label_at], level[label_at]), xytext=(-4, 4), textcoords="offset points",
-                        color=INK, fontsize=8, ha="right")
+            if MODEL == "core":  # right of the steep low-speed part of the full-stick line
+                at = int(np.searchsorted(v, 215.0))
+                ax.annotate(name, (v[at], level[at]), xytext=(4, -12), textcoords="offset points",
+                            color=INK, fontsize=8, ha="left")
+            else:
+                ax.annotate(name, (v[label_at], level[label_at]), xytext=(-4, 4), textcoords="offset points",
+                            color=INK, fontsize=8, ha="right")
         # Full stick while diving and while climbing (power 1 and 2), same store.
-        for power, name, offset in ((1, "full stick, diving", (4, 4)), (2, "full stick, climbing", (4, -12))):
+        offsets = ((4, 7), (4, -24)) if MODEL == "core" else ((4, 4), (4, -12))
+        for (power, name), offset in zip(((1, "full stick, diving"), (2, "full stick, climbing")), offsets):
             moved = evaluate(ship_type, fraction, power)["rate"][-1]
             ax.plot(v, moved, color=INK_2, linewidth=1.1, linestyle="-.")
             here = int(np.searchsorted(v, 380.0))
@@ -169,17 +206,14 @@ def doghouse(ship_type: int):
         ax.set_xlabel("speed (m/s)", color=INK_2)
         ax.set_ylabel("turn rate (deg/s)", color=INK_2)
         ax.axvspan(v[0], 100.0, color="#e7e6e2", alpha=0.5, linewidth=0)
-        ax.set_title(f"{NAMES[ship_type]}, coast, {label}", color=INK, fontsize=10, loc="left")
+        ax.set_title(f"{NAMES[ship_type]}, coast, {label}" + (", core model" if MODEL == "core" else ""),
+                     color=INK, fontsize=10, loc="left")
         bar = figure.colorbar(filled, ax=ax, fraction=0.04, pad=0.02)
         bar.set_label("energy rate Ps, m/s altitude-equivalent (blue gain, red loss)", color=INK_2, fontsize=8)
         bar.ax.tick_params(labelsize=8, colors=INK_2)
-    figure.text(0.01, 0.004, "Thick: full stick (lift and g limit). Thin: the game's sustained and fine stick.\n"
-                "Dash-dot: full stick while diving or climbing (on the full-stick line whenever the store is\n"
-                "above 2%: today diving and climbing do not change the turn). Black dashed: Ps = 0 (sustained).\n"
-                "Grey dotted: turn radius. Grey dashed: load in game g (39.24 m/s^2). Shaded below 100 m/s:\n"
-                "quasi-steady maths only; hard turns there cannot be held in flight.", color=INK_2, fontsize=8)
-    figure.tight_layout(rect=(0, 0.055, 1, 1))
-    path = os.path.join(OUT, f"doghouse-{NAMES[ship_type].lower()}.png")
+    figure.text(0.01, 0.004, DOGHOUSE_FOOT[MODEL], color=INK_2, fontsize=8)
+    figure.tight_layout(rect=(0, 0.055 if MODEL == "v2" else 0.08, 1, 1))
+    path = os.path.join(OUT, f"doghouse-{NAMES[ship_type].lower()}{SUFFIX}.png")
     figure.savefig(path, dpi=130, facecolor=SURFACE)
     plt.close(figure)
     return path
@@ -204,6 +238,16 @@ def comparison():
             ax.plot(v[keep], held[keep], color=SERIES[t], linewidth=2.0, linestyle="--" if full is not None else "-",
                     label=f"{NAMES[t]} sustained")
             series = np.where(keep, held if full is None else full, np.nan)
+            if MODEL == "core":  # the core curves converge past their peaks: label inside the gaps
+                if "rate" in title:
+                    j, offset, align = int(np.searchsorted(v, 200.0)), (6, -14), "left"
+                elif "radius" in title:
+                    j, offset, align = int(np.searchsorted(v, 200.0)), (0, (4, -14, 4)[t]), "left"
+                else:
+                    j, offset, align = int(np.nanargmin(series)), (0, -16), "center"
+                ax.annotate(NAMES[t], (v[j], series[j]), xytext=offset, textcoords="offset points", color=INK,
+                            fontsize=9, ha=align)
+                continue
             if "rate" in title:
                 j = int(np.nanargmax(series))
                 offset = (4, 4)
@@ -217,13 +261,18 @@ def comparison():
             ax.set_ylim(0, 20)
         ax.set_xlim(100.0, v[-1])
         ax.set_xlabel("speed (m/s)", color=INK_2)
-        ax.set_title(title + ", coast, spawn store", color=INK, fontsize=11, loc="left")
+        ax.set_title(title + ", coast, spawn store" + (", core" if MODEL == "core" else ""), color=INK, fontsize=11, loc="left")
         ax.legend(fontsize=8, frameon=False, labelcolor=INK_2, ncol=2)
-    figure.text(0.01, 0.005, "Solid: full stick (instantaneous). Dashed: sustained (Ps >= 0, total energy, so it includes "
-                "the engine surplus charging the store at 40%).",
-                color=INK_2, fontsize=8)
-    figure.tight_layout(rect=(0, 0.015, 1, 1))
-    path = os.path.join(OUT, "doghouse-comparison.png")
+    if MODEL == "core":
+        foot = ("Core model. Solid: full stick (instantaneous). Dashed: sustained (Ps >= 0, total energy; the engine never\n"
+                f"feeds the store, so at coast this is speed held). Spawn store = {SPAWN_PERCENT:.0f}% of each ship's store.\n"
+                + VIZIA_ONLY)
+    else:
+        foot = ("Solid: full stick (instantaneous). Dashed: sustained (Ps >= 0, total energy, so it includes "
+                "the engine surplus charging the store at 40%).")
+    figure.text(0.01, 0.005, foot, color=INK_2, fontsize=8)
+    figure.tight_layout(rect=(0, 0.015 if MODEL == "v2" else 0.04, 1, 1))
+    path = os.path.join(OUT, f"doghouse-comparison{SUFFIX}.png")
     figure.savefig(path, dpi=130, facecolor=SURFACE)
     plt.close(figure)
     return path

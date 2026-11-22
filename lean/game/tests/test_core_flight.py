@@ -164,3 +164,27 @@ def test_firing_costs_speed_and_no_store():
     after, out = core.step(CONFIG, state, action, noise)
     assert bool(out.fired[0, 0])
     assert torch.allclose(after.energy[0, 0], before[0, 0], rtol=1e-6)
+
+
+def test_at_the_edges_dive_and_climb_act_as_coast_on_the_wing():
+    """At the band's edges dive or climb acts as coast: diving on an empty store frees no lift
+    for the turn, and climbing at a full store takes none from it."""
+    coast_empty, _ = fly(150.0, 0.0, FULL, COAST, 2.0)
+    dive_empty, _ = fly(150.0, 0.0, FULL, DIVE, 2.0)
+    assert abs(dive_empty[-1] - coast_empty[-1]) < 0.5
+    rates = {}
+    for name, power, store in (("coast", COAST, 1.0), ("climb", CLIMB, 1.0)):
+        c = SimpleNamespace(**constants())
+        speed = torch.full((1, 1), 200.0)
+        control = SimpleNamespace(
+            model="core",
+            thrust_scale=1.0,
+            stick_size=torch.ones(1, 1),
+            stick_sign=torch.ones(1, 1),
+            commanded=c.commanded_table[..., power],
+            demand=c.demand_table[..., power],
+        )
+        control.inverse_demand = 1.0 / control.demand
+        lateral, *_ = core._setting(c, control, speed, store * c.max_energy)
+        rates[name] = lateral.item()
+    assert abs(rates["climb"] - rates["coast"]) < 1e-3 * abs(rates["coast"])

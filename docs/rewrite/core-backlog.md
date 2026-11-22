@@ -18,7 +18,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | A7 | One ship first (Vizia), built so more ships can follow | done (overnight, see worklog 03:20) |
 | A8 | Assumption tests for the core model (store constant while coasting straight; dive at an empty store and climb at a full store do nothing; the engine never raises the store; coast at full stick holds altitude above the 1 g speed; firing costs speed) | done (overnight, see worklog 03:20) |
 | A9 | Measurements: top speed, corner, best sustained, minimum radius, dive and climb rates, time to cross the band, speed lost per second of firing | done (worklog 03:45) |
-| A10 | Before and after charts (doghouse, comparison, the five charts) for "core" | doing (background agent) |
+| A10 | Before and after charts (doghouse, comparison, the five charts) for "core" | done (worklog 05:05) |
 | A11 | Sandbox flies "core" (`--set flight_model=core`); readout shows the model | done (overnight, see worklog 03:20) |
 | A12 | Number tuning (engine power, exchange caps, store size, fire fraction): needs the author's flying | blocked: author |
 

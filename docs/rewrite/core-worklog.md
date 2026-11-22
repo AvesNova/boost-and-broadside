@@ -59,3 +59,21 @@ checked, the commit. Numbers are measured unless marked otherwise.
   - Checked: tests/test_fields.py (5 tests: v2's bounds and symmetry; per-environment fields
     and medium; redraw only where done; observation rows; a 60-tick core game with fields
     stays finite). `pytest lean`: 63 passed, 1 xfailed.
+- 05:05 A10 and a fix found by it.
+  - A10: the chart scripts draw either model (`FLIGHT_MODEL=core`, files suffixed `-core`);
+    v2 charts re-rendered pixel-identical. Core charts: doghouse per ship and comparison,
+    who-wins, acceleration, dive-climb, bleed, circles. Store levels for core: 97.5% (inside
+    the top band), 50% (spawn), 2.5% (inside the bottom band).
+  - Fix: inside an edge band, dive and climb faded only the trade, not their effect on the
+    wing, so diving on an empty store still freed lift for the turn (a free turn boost on
+    the deck) against the decision "at the edges dive or climb acts as coast". Now the band
+    taper fades dive and climb's vertical demand back toward 1 g as well as the trade, and
+    a vertical shortfall (sinking) is the only part scaled by the bottom band. A first
+    version faded the trade twice (band crossing 3.5 s instead of 1.6 s); corrected, the
+    measurements are unchanged from 03:45. New test: at the edges dive and climb act as
+    coast on the wing. `pytest lean/game`: 32 passed, 1 xfailed.
+  - Core numbers (charts, coast, spawn store; v2 in brackets): best sustained Vizia 160 m/s,
+    32 deg/s [260, 54]; Jujak 160, 39 [248, 64]; Yongma 164, 26 [262, 44]. Corner and top
+    speed unchanged. Minimum full-stick radius now away from the stall: Vizia 213 m at
+    224 m/s. So the three speeds separate: minimum radius about 220 m/s, best sustained
+    about 160 m/s, corner 268 m/s (v2: all three at about the corner).
