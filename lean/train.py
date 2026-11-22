@@ -22,6 +22,8 @@ def main() -> None:
     parser.add_argument("--updates", type=int, default=1000)
     parser.add_argument("--crossover-every", type=int, default=50)
     parser.add_argument("--crossover-games", type=int, default=64)
+    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--threads", type=int, default=0, help="CPU threads for torch; 0 keeps the default")
     arguments = parser.parse_args()
 
     config = LearnConfig()
@@ -32,11 +34,14 @@ def main() -> None:
         envs, updates, ticks = 4, 2, 8
         crossover_every, crossover_games, crossover_sizes = 2, 2, [1]
 
+    device = torch.device(arguments.device)
+    if arguments.threads > 0:
+        torch.set_num_threads(arguments.threads)
     torch.manual_seed(arguments.seed)
-    generator = torch.Generator().manual_seed(arguments.seed)
+    generator = torch.Generator(device=device).manual_seed(arguments.seed)
     game_config = game.GameConfig()
     scripted_config = scripted.ScriptedConfig()
-    policy = model.Policy(model.ModelConfig())
+    policy = model.Policy(model.ModelConfig()).to(device)
     optimiser = make_optimiser(config, policy)
     pool = SnapshotPool(policy, config.snapshot_every, config.snapshot_capacity)
     opponent = Opponent(scripted_config, None, config.scripted_share, config.persona_spread)

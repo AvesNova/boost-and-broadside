@@ -5,7 +5,8 @@ from torch import Tensor
 
 from lean.learn.collect import Rollout, index_carry, map_fields
 from lean.learn.config import LearnConfig, bc_weight, learning_rate
-from lean.learn.returns import expected_value, generalised_advantages, hl_gauss, normalise_advantages, value_centres
+from lean.learn.returns import generalised_advantages, normalise_advantages, value_centres
+from lean.model.value import decode_value, hl_gauss_targets
 
 
 def make_optimiser(config: LearnConfig, policy) -> torch.optim.Optimizer:
@@ -39,9 +40,11 @@ def fresh_targets(config: LearnConfig, policy, rollout: Rollout, batches: list[T
     for index in batches:
         index = index.to(own.device)
         observation = map_fields(rollout.observation, lambda tensor: tensor[:, index])
-        _, value_logits, _, _ = policy.sequence(observation, index_carry(rollout.initial_carry, index), rollout.reset[:, index])
+        _, value_logits, _, _ = policy.sequence(
+            observation, index_carry(rollout.initial_carry, index), rollout.reset[:, index], rollout.position_offset[:, index]
+        )
         centres = value_centres(config, value_logits.shape[-1], value_logits.device)
-        value[:, index] = expected_value(value_logits, centres) * own[:, index, :, None]
+        value[:, index] = decode_value(value_logits, centres) * own[:, index, :, None]
     discounts = torch.tensor(config.discounts, dtype=value.dtype, device=value.device)
     advantage, target = generalised_advantages(
         rollout.reward, value, rollout.bootstrap_value, rollout.done, discounts, config.gae_lambda
@@ -60,7 +63,9 @@ def update(
 
     Every term is a mean over its valid tokens: the learner's living ships (`own`) for
     surrogate, entropy, BC and value (value also averaged over levels, so it is nats per
-    softmax group); `next_valid` rows and their features for the next-state squared error.
+    softmax group); `next_valid` rows and their columns for the next-state squared error
+    against the target recorded at collection. A next-state head whose width differs from
+    the recorded target raises ValueError.
     A minibatch is a set of whole environments with the full segment, run through
     Policy.sequence from the stored carry. Advantages and value targets are recomputed
     from the current weights at the start of every epoch. `generator` fixes the order of
@@ -81,7 +86,8 @@ def update(
             observation = map_fields(rollout.observation, lambda tensor: tensor[:, index])
             own = observation.own
             logits, value_logits, next_state, _ = policy.sequence(
-                observation, index_carry(rollout.initial_carry, index), rollout.reset[:, index]
+                observation, index_carry(rollout.initial_carry, index), rollout.reset[:, index],
+                rollout.position_offset[:, index],
             )
             log_policy = torch.log_softmax(logits, -1)
             log_probability = log_policy.gather(-1, rollout.action[:, index, :, None]).squeeze(-1)
@@ -94,15 +100,15 @@ def update(
             bc = masked_mean(-log_policy.gather(-1, rollout.teacher[:, index, :, None]).squeeze(-1), own)
 
             centres = value_centres(config, value_logits.shape[-1], value_logits.device)
-            target_distribution = hl_gauss(target[:, index], centres, config.value_sigma_ratio)
+            target_distribution = hl_gauss_targets(target[:, index], centres, config.value_sigma_ratio)
             value_loss = masked_mean(-(target_distribution * torch.log_softmax(value_logits, -1)).sum(-1), own)
 
-            next_ship = rollout.next_ship[:, index]
-            if next_state.shape[-1] == next_ship.shape[-1]:
-                change = next_ship - observation.ship
-                next_state_loss = masked_mean((next_state - change) ** 2, rollout.next_valid[:, index])
-            else:
-                next_state_loss = logits.new_zeros(())
+            next_target = rollout.next_state[:, index]
+            if next_state.shape != next_target.shape:
+                raise ValueError(
+                    f"next-state head gives {tuple(next_state.shape)}, the recorded target is {tuple(next_target.shape)}"
+                )
+            next_state_loss = masked_mean((next_state.float() - next_target) ** 2, rollout.next_valid[:, index])
 
             loss = (
                 surrogate

@@ -69,6 +69,10 @@ def test_rollout_shapes_and_outcome_reward_reach_both_teams():
     assert int(rollout.episodes) == 16
     assert (rollout.value[~rollout.observation.own] == 0).all()
     assert torch.isfinite(rollout.log_probability).all()
+    outcome = rollout.reward[..., 0][rollout.done]  # (ended episodes, N)
+    assert (outcome > 0).any() and (outcome < 0).any()  # winners and losers are both paid
+    assert rollout.position_offset.shape == (16, 8, 2)
+    assert not rollout.next_valid[rollout.done].any()
 
 
 def test_updates_on_the_stand_in_reduce_the_bc_loss():
@@ -91,3 +95,35 @@ def test_real_packages_smoke():
     rollout = collect(config, game_config, policy, opponent, state, carry, 8, generator)
     metrics = update(config, policy, make_optimiser(config, policy), rollout, generator=generator)
     assert all(value == value for value in metrics.values())
+
+
+def test_next_state_loss_is_live_with_the_real_packages():
+    game = pytest.importorskip("lean.game")
+    scripted = pytest.importorskip("lean.scripted")
+    model = pytest.importorskip("lean.model")
+    torch.manual_seed(0)
+    generator = torch.Generator().manual_seed(0)
+    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1)
+    policy = model.Policy(model.ModelConfig())
+    opponent = Opponent(scripted_config=scripted.ScriptedConfig())
+    state, carry = start(config, game.GameConfig(), policy, opponent, 4, generator)
+    rollout = collect(config, game.GameConfig(), policy, opponent, state, carry, 8, generator)
+    assert rollout.next_state.shape == (8, 4, 4, policy.config.next_state_size)
+    assert rollout.next_valid.any()
+    assert torch.isfinite(rollout.next_state[rollout.next_valid]).all()
+    assert rollout.next_state[rollout.next_valid].abs().sum() > 0
+    metrics = update(config, policy, make_optimiser(config, policy), rollout, generator=generator)
+    assert metrics["next_state"] > 0 and metrics["next_state"] == metrics["next_state"] and metrics["next_state"] < float("inf")
+
+
+def test_a_next_state_width_mismatch_raises():
+    torch.manual_seed(0)
+    generator = torch.Generator().manual_seed(0)
+    config = LearnConfig(team_size_minimum=1, team_size_maximum=2, minibatches=2, epochs=1)
+    policy = standins.TinyPolicy()
+    opponent = Opponent(scripted_config=None)
+    state, carry = start(config, standins.GameConfig(), policy, opponent, 4, generator, game=standins.game, scripted=standins.scripted)
+    rollout = collect(config, standins.GameConfig(), policy, opponent, state, carry, 8, generator, game=standins.game, scripted=standins.scripted)
+    rollout.next_state = rollout.next_state[..., :1]
+    with pytest.raises(ValueError):
+        update(config, policy, make_optimiser(config, policy), rollout, generator=generator)

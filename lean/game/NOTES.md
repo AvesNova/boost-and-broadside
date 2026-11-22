@@ -15,21 +15,45 @@
   the quiet rule, deaths as a mask, win check, clock, counters. No respawn, shrink, zones
   or fog. `step` never resets; the caller passes `StepOut.done` to `reset_done`.
 
-## What was run (CPU, torch 2.15, Python 3.14)
+## What was run (CPU, one thread, torch 2.15, Python 3.14; 2026-11-22)
 
-- `tests/test_invariants.py`, first version: the two 300-tick finite/padding tests
-  (3v5 and 20v20, each batched with smaller sizes) PASSED. The team-swap test's
-  comparisons (done, died, mirrored result, damage, positions over 120 ticks) all held;
-  it failed only on its last line, which demanded that some game finish in 120 ticks.
-  That line was changed to demand that some damage was dealt. **The changed file was not
-  re-run.** The run took 100 s, nearly all in the 20v20 case: too slow for "seconds";
-  cut the environments or ticks.
-- `tests/test_against_v2.py` (checks A and B): **written, never completed a run.** One
-  attempt was killed by a 110 s timeout before printing anything (v2's import and eager
-  stepping are slow on this CPU). **Not yet passing; unknown what differs.** Nothing in
-  the lean step has been compared with v2 numerically.
-- Not run: any GPU, `torch.compile`, an operation count, fields (every run had
-  `fields=()`), the "sides" spawn in a test, check C and check D.
+Command: `OMP_NUM_THREADS=1 PYTHONPATH=.:src python -m pytest lean/game/tests -q`
+-> 4 passed in 9 s (both test files call `torch.set_num_threads(1)`; the earlier timeout
+was thread contention, not v2 itself).
+
+- `tests/test_against_v2.py` (32 environments, 5v5, 150 ticks, no fields, no shrink,
+  random sticky actions, v2's spread): ran to completion, assertions held. In the run:
+  13,553 shots, 169 deaths, energy 131,550 to 227,486, **no game ended** (`done` never
+  true, so the result coding at the end and the clock rule were not compared with v2).
+  - Check A, one lean step from each v2 state, ships alive at tick start, not dying
+    this tick, (99.9% quantile, max) of |lean - v2|:
+    x (2.4e-7, 6.1e-5) m; y (2.4e-7, 7.6e-6) m; speed (1.5e-5, 1.5e-5) m/s;
+    angle of attack (3.2e-8, 8.2e-8) rad; heading cos/sin (6.0e-8, 1.2e-7);
+    angle cos (6.0e-8, 1.2e-7), sin (3.2e-8, 8.9e-8); nose rate (2.4e-7, 3.6e-7) rad/s;
+    energy (0, 0); shield (7.6e-6, 1.5e-5).
+    Audit bounds: 99.9% within 1e-3 m, 1e-4 m/s, 3e-7 rad; all within 2e-3 m, 2e-3 m/s,
+    5e-4 rad. All inside, at float32 rounding level. No renaming slip in the flight.
+  - Discrete mismatches (died, fired, done, result, killer, bullet moves left, gun
+    cooldown): 0.
+  - Check B, open-loop lean rollout on v2's actions, max over living ships, 32 of 32
+    environments kept: tick 30 position 3.4e-5 m, speed 3.1e-5 m/s, energy 0,
+    shield 2.1e-4; tick 150 position 1.8e-4 m, speed 4.6e-5 m/s, energy 0.047,
+    shield 8.7e-4.
+  - The first completed run (8 environments, 30 ticks) failed check A on speed (max
+    184.7 m/s) and nose rate (0.81): only on ships dying that tick, where v2 writes the
+    speed floor and zero and lean keeps the values (listed under known differences).
+    The test now leaves those rows out of check A; `core.py` was not changed.
+- `tests/test_invariants.py`: 3 passed in 4.9 s. The team-swap test with its changed
+  last assertion passed. The 20v20 case now runs 30 ticks (3v5 still 300); it still
+  asserts at least one death.
+- Operation count, one uncompiled `step`, 5v5, 4 environments, `fields=()`, counter
+  `docs/rewrite/sections/simplification/regions.py` (compute ops, views apart):
+  step 1,312 compute + 111 view; of which `flight_tick` 929 (+54 view),
+  `bullet_motion` 84, `medium` 4 calls x 1 op, the rest of the step 298 (+57 view).
+  `observe` for one team: 74 compute + 4 view. Against the targets: flight under 1,000
+  holds (929); the rest is 383, under 500.
+- Not run: any GPU, `torch.compile`, fields (every run had `fields=()`), the "sides"
+  spawn in a test, a game end against v2, check C and check D.
 
 ## Choices where the audit left it open (section 7.1)
 
@@ -70,9 +94,8 @@
 
 ## Check first on the GPU
 
-1. Run `tests/test_against_v2.py` to completion and read check A's table; the flight
-   came from a prototype that matched v2, but this copy was renamed by hand.
-2. Operation count per tick (target: flight under 1,000, the rest under 500).
+1. Re-run `tests/test_against_v2.py` on the GPU (done on the CPU, see above).
+2. Operation count with fields (the CPU count above is without fields).
 3. Memory of the (E, N K, N) hit test at the evaluation sizes; about 30 temporaries.
 4. `torch.compile` of `step` (the `SimpleNamespace` mutation in `_kick` and the Python
    branch on the number of fields are the likely snags).

@@ -11,6 +11,7 @@ import torch
 from torch import nn
 
 SHIP_FEATURES = 3
+MODEL_CONFIG = SimpleNamespace(position_periods=(100.0,), next_state_fields=(("x", 1.0), ("speed", 1.0)))
 
 
 @dataclass
@@ -126,21 +127,22 @@ class TinyPolicy(nn.Module):
     def __init__(self, levels=4, bins=21, width=32):
         super().__init__()
         self.width, self.levels, self.bins = width, levels, bins
+        self.config = MODEL_CONFIG
         self.body = nn.Sequential(nn.Linear(SHIP_FEATURES + width, width), nn.Tanh())
         self.remember = nn.Linear(SHIP_FEATURES, width)
         self.action = nn.Linear(width, 42)
         self.value = nn.Linear(width, levels * bins)
-        self.next_state = nn.Linear(width, SHIP_FEATURES)
+        self.next_state = nn.Linear(width, len(MODEL_CONFIG.next_state_fields))
 
     def initial_carry(self, envs, slots, device):
         return torch.zeros(envs, slots, self.width, device=device)
 
-    def step(self, obs, carry):
+    def step(self, obs, carry, position_offset=None):
         carry = 0.5 * carry + 0.5 * torch.tanh(self.remember(obs.ship))
         hidden = self.body(torch.cat([obs.ship, carry], -1))
         return self.action(hidden), self.value(hidden).unflatten(-1, (self.levels, self.bins)), carry
 
-    def sequence(self, obs, carry, reset):
+    def sequence(self, obs, carry, reset, position_offset=None):
         logits, values, nexts = [], [], []
         for tick in range(reset.shape[0]):
             carry = carry * (~reset[tick])[:, None, None]

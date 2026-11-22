@@ -158,3 +158,96 @@ def test_hl_gauss_targets_sum_to_one_and_decode_to_the_value():
     assert ((decoded - values).abs() < 1e-2 * width).all()
     outside = hl_gauss_targets(torch.tensor([100.0, -100.0]), centres)
     assert torch.allclose(outside.sum(-1), torch.ones(2), atol=1e-5)
+
+
+def training_batch(ticks=8, envs=4, slots=10):
+    obs = make_obs((ticks, envs), slots)
+    obs.key_mask[:, :, -1] = False  # a slot that is never live
+    obs.key_mask[:, :, 0] = True
+    reset = torch.zeros(ticks, envs, dtype=torch.bool)
+    reset[3, 1] = reset[5, envs - 1] = True
+    generator = torch.Generator().manual_seed(7)
+    targets = SimpleNamespace(
+        actions=torch.randint(0, 42, (ticks, envs, slots), generator=generator),
+        bins=torch.randint(0, 77, (ticks, envs, slots, 4), generator=generator),
+        next_state=torch.randn(ticks, envs, slots, ModelConfig().next_state_size, generator=generator),
+    )
+    return obs, reset, targets
+
+
+def training_loss(policy, obs, reset, targets, carry=None):
+    ticks, envs, slots = obs.key_mask.shape
+    if carry is None:
+        carry = policy.initial_carry(envs, slots, "cpu")
+    logits, values, next_state, final = policy.sequence(obs, carry, reset)
+    live = obs.key_mask
+    policy_loss = torch.nn.functional.cross_entropy(logits[live], targets.actions[live])
+    value_loss = torch.nn.functional.cross_entropy(values[live].flatten(0, 1), targets.bins[live].flatten())
+    next_loss = (next_state[live] - targets.next_state[live]).square().mean()
+    return policy_loss + value_loss + next_loss, policy_loss, final
+
+
+def test_backward_reaches_every_parameter_and_no_masked_row():
+    """Catches dead parameters, non-finite gradients, and masked rows leaking into the loss."""
+    policy = make_policy().train()
+    obs, reset, targets = training_batch()
+    for name in ("ship", "pos", "heading", "globals"):
+        getattr(obs, name).requires_grad_(True)
+    carry = torch.randn(policy.initial_carry(4, 10, "cpu").shape).requires_grad_(True)
+    loss, _, final = training_loss(policy, obs, reset, targets, carry)
+    (loss + final.square().mean()).backward()
+    assert torch.isfinite(loss)
+    dead = [name for name, p in policy.named_parameters() if p.grad is None or not p.grad.abs().sum() > 0]
+    bad = [name for name, p in policy.named_parameters() if p.grad is not None and not torch.isfinite(p.grad).all()]
+    assert not dead, f"parameters with no gradient: {dead}"
+    assert not bad, f"parameters with a non-finite gradient: {bad}"
+    masked = ~obs.key_mask
+    for name in ("ship", "pos", "heading"):
+        grad = getattr(obs, name).grad
+        assert torch.isfinite(grad).all()
+        assert grad[masked].abs().max() == 0, f"a masked row's {name} has a gradient"
+        assert grad[obs.key_mask].abs().sum() > 0
+    # The carry of a row masked at tick 0 is multiplied by keep = 0.
+    assert carry.grad[:, :, 1:][:, ~obs.key_mask[0]].abs().max() == 0
+    assert carry.grad[:, :, 1:][:, obs.key_mask[0]].abs().sum() > 0
+
+    # Changing a masked row's inputs leaves the loss unchanged.
+    with torch.no_grad():
+        changed = SimpleNamespace(**{k: v.detach().clone() for k, v in vars(obs).items()})
+        changed.ship[masked] = torch.randn_like(changed.ship[masked]) * 50.0
+        changed.pos[masked] = torch.randn_like(changed.pos[masked]) * 5000.0
+        changed.heading[masked] = 2.5
+        again, _, again_final = training_loss(policy, changed, reset, targets, carry)
+    assert torch.allclose(again, loss, atol=1e-5)
+    assert torch.allclose(again_final, final, atol=1e-5)
+
+
+def test_gradient_without_perturbed_heads_or_loss_on_carry():
+    """The same with the real initialisation (value head zero) and the loss alone: lists
+    what a fresh model's first step actually trains."""
+    torch.manual_seed(0)
+    policy = Policy(ModelConfig(), SHIP_FEATURES, GLOBAL_FEATURES)
+    obs, reset, targets = training_batch()
+    loss, _, _ = training_loss(policy, obs, reset, targets)
+    loss.backward()
+    dead = [name for name, p in policy.named_parameters() if p.grad is None or not p.grad.abs().sum() > 0]
+    assert not dead, f"parameters with no gradient: {dead}"
+    assert all(torch.isfinite(p.grad).all() for p in policy.parameters())
+
+
+def test_adam_fits_a_tiny_fixed_batch():
+    """Catches a model that cannot fit: policy cross-entropy to fixed random actions."""
+    torch.manual_seed(0)
+    policy = Policy(ModelConfig(), SHIP_FEATURES, GLOBAL_FEATURES)
+    obs, reset, targets = training_batch(ticks=8, envs=2, slots=6)
+    optimiser = torch.optim.Adam(policy.parameters(), lr=1e-3)
+    losses = []
+    for _ in range(60):
+        optimiser.zero_grad()
+        _, policy_loss, _ = training_loss(policy, obs, reset, targets)
+        policy_loss.backward()
+        optimiser.step()
+        losses.append(policy_loss.item())
+    print("policy cross-entropy first, last:", losses[0], losses[-1])
+    assert all(torch.isfinite(torch.tensor(losses)))
+    assert losses[-1] < 0.5 * losses[0], (losses[0], losses[-1])

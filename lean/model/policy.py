@@ -337,7 +337,14 @@ class Policy(nn.Module):
         pairs = self.config.rotary_pairs
 
         coded = pos if position_offset is None else pos + position_offset.unsqueeze(-2)
-        code_phase = coded @ self.wave_vectors.T
+        # Phases are float32 even under bf16 autocast (which would cast these matmuls):
+        # thousands of metres over a 64 m period is hundreds of radians, and bf16 keeps
+        # 8 bits. Measured: see NOTES.md.
+        with torch.autocast(pos.device.type, enabled=False):
+            code_phase = coded.float() @ self.wave_vectors.T
+            rotary_phase = torch.cat(
+                [pos.float() @ self.wave_vectors.T, heading.float().unsqueeze(-1) * self.harmonics], dim=-1
+            )
         position_code = torch.cat([code_phase.cos(), code_phase.sin()], dim=-1)
         ship_tokens = self.ship_encoder(torch.cat([ship, position_code], dim=-1))
         global_token = self.global_encoder(globals_).unsqueeze(-2)
@@ -345,7 +352,6 @@ class Policy(nn.Module):
 
         # Rotary uses the true positions: only differences enter a score, so the offset
         # would cancel and only cost float32 precision.
-        rotary_phase = torch.cat([pos @ self.wave_vectors.T, heading.unsqueeze(-1) * self.harmonics], dim=-1)
         positionless_cos = 0.0 if self.config.positionless_rotary == "zero" else 1.0
         one_cos = rotary_phase.new_full((ticks, envs, 1, pairs), positionless_cos)
         one_sin = rotary_phase.new_zeros((ticks, envs, 1, pairs))

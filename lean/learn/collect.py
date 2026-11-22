@@ -8,7 +8,9 @@ import torch
 from torch import Tensor
 
 from lean.learn.config import LearnConfig
-from lean.learn.returns import expected_value, value_centres
+from lean.learn.returns import value_centres
+from lean.model import draw_position_offset, next_state_target
+from lean.model.value import decode_value
 from lean.learn.rewards import rewards
 
 POWERS_TIMES_FIRES, FIRES = 6, 2
@@ -63,6 +65,7 @@ class CollectCarry:
     learner_team: Tensor  # (E,) long, the team the learner plays this episode
     persona: dict  # the scripted agent's per-ship parameters, tensors with leading E
     reset: Tensor  # (E,) bool, the environment was re-dealt before the next tick
+    position_offset: Tensor  # (E, 2) the model's position offset of the current match
 
 
 @dataclass
@@ -75,8 +78,10 @@ class Rollout:
     log_probability: (T, E, N). value: (T, E, N, LEVELS), zero outside `own`.
     reward: (T, E, N, LEVELS). done: (T, E) the episode ended on this tick.
     reset: (T, E) the environment was re-dealt just before this tick.
-    next_ship: (T, E, N, SHIP_FEATURES) the ship features one tick later;
-    next_valid: (T, E, N) that row is a target (own now, attendable next, no reset between).
+    position_offset: (T, E, 2) the model's position offset of the match played at that tick.
+    next_state: (T, E, N, NEXT_STATE) lean.model.next_state_target of the game step;
+    next_valid: (T, E, N) that row is a target (own now, alive after the step, and the
+    episode did not end on the tick).
     bootstrap_value: (E, N, LEVELS) value after the last tick, zero outside `own`.
     initial_carry: the learner's carry before the first tick.
     state, carry: where to continue collecting.
@@ -92,7 +97,8 @@ class Rollout:
     reward: Tensor
     done: Tensor
     reset: Tensor
-    next_ship: Tensor
+    position_offset: Tensor
+    next_state: Tensor
     next_valid: Tensor
     bootstrap_value: Tensor
     initial_carry: Tensor
@@ -122,6 +128,7 @@ def index_carry(carry: Tensor, index: Tensor) -> Tensor:
 
 
 def generator_device(generator):
+    """The device a generator draws on; the CPU when there is none."""
     return generator.device if generator is not None else torch.device("cpu")
 
 
@@ -182,6 +189,7 @@ def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: in
         learner_team=torch.randint(0, 2, (envs,), generator=generator, device=device),
         persona=scripted.personas(opponent.scripted_config, envs, slots, generator, device, opponent.persona_spread),
         reset=torch.ones(envs, dtype=torch.bool, device=device),
+        position_offset=draw_position_offset(policy.config, envs, generator, device),
     )
     return state, carry
 
@@ -211,27 +219,28 @@ def collect(
 
     policy_carry, snapshot_carry = carry.policy, carry.snapshot
     learner_team, persona, reset = carry.learner_team, carry.persona, carry.reset
+    position_offset = carry.position_offset
     initial_carry = policy_carry
     centres = None
-    records = {name: [] for name in ("observation", "action", "teacher", "log_probability", "value", "reward", "done", "reset")}
+    records = {name: [] for name in ("observation", "action", "teacher", "log_probability", "value", "reward", "done", "reset", "position_offset", "next_state", "next_valid")}
     scripted_games = torch.zeros((), dtype=torch.long, device=device)
     scripted_wins = torch.zeros((), dtype=torch.long, device=device)
     episodes = torch.zeros((), dtype=torch.long, device=device)
 
     for _ in range(ticks):
         observation = team_view(game, game_config, state, learner_team)
-        logits, value_logits, policy_carry = policy.step(observation, policy_carry)
+        logits, value_logits, policy_carry = policy.step(observation, policy_carry, position_offset)
         if centres is None:
             centres = value_centres(config, value_logits.shape[-1], device)
         joint = sample_joint(logits, generator)
         log_probability = torch.log_softmax(logits, -1).gather(-1, joint[..., None]).squeeze(-1)
-        value = expected_value(value_logits, centres) * observation.own[..., None]
+        value = decode_value(value_logits, centres) * observation.own[..., None]
 
         teacher = scripted_actions(scripted, opponent.scripted_config, state, persona, generator)
         opponent_action = teacher
         if opponent.snapshot is not None:
             opponent_view = team_view(game, game_config, state, 1 - learner_team)
-            opponent_logits, _, snapshot_carry = opponent.snapshot.step(opponent_view, snapshot_carry)
+            opponent_logits, _, snapshot_carry = opponent.snapshot.step(opponent_view, snapshot_carry, position_offset)
             snapshot_action = split_joint(sample_joint(opponent_logits, generator))
             opponent_action = select_environments(faces_scripted, teacher, snapshot_action)
         learner_ship = state.team == learner_team[:, None]
@@ -245,6 +254,9 @@ def collect(
             ("observation", observation), ("action", joint), ("teacher", join_action(teacher)),
             ("log_probability", log_probability), ("value", value),
             ("reward", rewards(step_out, state, config, shaping)), ("done", done), ("reset", reset),
+            ("position_offset", position_offset),
+            ("next_state", next_state_target(policy.config, state, next_state)),
+            ("next_valid", observation.own & next_state.alive & ~done[:, None]),
         ):
             records[name].append(item)
 
@@ -257,13 +269,15 @@ def collect(
         learner_team = torch.where(done, torch.randint(0, 2, (envs,), generator=generator, device=device), learner_team)
         fresh = scripted.personas(opponent.scripted_config, envs, slots, generator, device, opponent.persona_spread)
         persona = {name: select_environments(done, fresh[name], persona[name]) for name in persona}
+        fresh_offset = draw_position_offset(policy.config, envs, generator, device)
+        position_offset = torch.where(done[:, None], fresh_offset, position_offset)
         policy_carry = reset_carry(policy_carry, done)
         snapshot_carry = reset_carry(snapshot_carry, done)
         reset = done
 
     final_observation = team_view(game, game_config, state, learner_team)
-    _, final_logits, _ = policy.step(final_observation, policy_carry)
-    bootstrap_value = expected_value(final_logits, centres) * final_observation.own[..., None]
+    _, final_logits, _ = policy.step(final_observation, policy_carry, position_offset)
+    bootstrap_value = decode_value(final_logits, centres) * final_observation.own[..., None]
     # After a reset the final observation belongs to a new episode; GAE never reads the
     # bootstrap there because `done` on the last tick cuts it.
 
@@ -275,8 +289,6 @@ def collect(
     }
     observation = dataclasses.replace(first, **stacked)
     done = torch.stack(records["done"])
-    next_ship = torch.cat([observation.ship[1:], final_observation.ship[None]])
-    next_key = torch.cat([observation.key_mask[1:], final_observation.key_mask[None]])
     return Rollout(
         observation=observation,
         action=torch.stack(records["action"]),
@@ -286,12 +298,13 @@ def collect(
         reward=torch.stack(records["reward"]),
         done=done,
         reset=torch.stack(records["reset"]),
-        next_ship=next_ship,
-        next_valid=observation.own & next_key & ~done[:, :, None],
+        position_offset=torch.stack(records["position_offset"]),
+        next_state=torch.stack(records["next_state"]),
+        next_valid=torch.stack(records["next_valid"]),
         bootstrap_value=bootstrap_value,
         initial_carry=initial_carry,
         state=state,
-        carry=CollectCarry(policy_carry, snapshot_carry, learner_team, persona, reset),
+        carry=CollectCarry(policy_carry, snapshot_carry, learner_team, persona, reset, position_offset),
         scripted_games=scripted_games,
         scripted_wins=scripted_wins,
         episodes=episodes,

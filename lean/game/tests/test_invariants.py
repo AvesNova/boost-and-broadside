@@ -5,6 +5,8 @@ import dataclasses
 import pytest
 import torch
 
+torch.set_num_threads(1)
+
 from lean.contract import State
 from lean.game import GameConfig, draw_noise, observe, reset, reset_done, step
 
@@ -24,8 +26,8 @@ def floats(tree):
             yield field.name, value
 
 
-@pytest.mark.parametrize("sizes", [(3, 5), (20, 20)])
-def test_finite_and_padding_inert_over_300_ticks(sizes):
+@pytest.mark.parametrize("sizes, ticks", [((3, 5), 300), ((20, 20), 30)])
+def test_finite_and_padding_inert(sizes, ticks):
     """Catches a division by zero on a padded or dead row, and padding that acts or is hit."""
     generator = torch.Generator().manual_seed(1)
     envs = 4
@@ -34,7 +36,7 @@ def test_finite_and_padding_inert_over_300_ticks(sizes):
     slots = state.x.shape[1]
     assert slots == sum(sizes)
     deaths = 0
-    for _ in range(300):
+    for _ in range(ticks):
         action = random_action(envs, slots, generator)
         state, out = step(CLOSE, state, action, draw_noise(CLOSE, envs, slots, generator, "cpu"))
         for name, value in list(floats(state)) + list(floats(out)):

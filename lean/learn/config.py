@@ -37,11 +37,13 @@ class LearnConfig:
     bc_coefficient: float = 2.0
     bc_gate: float = 0.45
 
-    # Categorical critic: bin centres span [-half_width, +half_width] per level.
-    value_half_widths: tuple[float, ...] = (1.5, 2.0, 2.0, 4.0)
+    # Categorical critic: the outermost bin centres per level, in return units. The learner
+    # owns the support; each must hold that level's returns with three bins of margin.
+    value_low: tuple[float, ...] = (-1.5, -2.0, -2.0, -4.0)
+    value_high: tuple[float, ...] = (1.5, 2.0, 2.0, 4.0)
     value_sigma_ratio: float = 0.75  # Gaussian width of a target, in bin widths
 
-    # Rewards (v1 run 731 weights; the side causing an event is paid twice the victim's charge).
+    # Rewards. The side causing an event is paid twice the victim's charge.
     win_reward: float = 1.0
     death_penalty: float = 0.283
     kill_reward: float = 0.283

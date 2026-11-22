@@ -1,40 +1,16 @@
 """Returns: categorical value helpers, GAE per reward level, advantage normalisation."""
 
-import math
-
 import torch
 from torch import Tensor
 
 from lean.learn.config import LearnConfig
+from lean.model.value import value_bin_centres
 
 
 def value_centres(config: LearnConfig, bins: int, device=None) -> Tensor:
-    """Bin centres of the categorical critic, (LEVELS, bins), evenly spaced over
-    [-half_width, +half_width] of each level."""
-    half = torch.tensor(config.value_half_widths, dtype=torch.float32, device=device)
-    unit = torch.linspace(-1.0, 1.0, bins, device=device)
-    return half[:, None] * unit[None, :]
-
-
-def expected_value(value_logits: Tensor, centres: Tensor) -> Tensor:
-    """Scalar value per level, (..., LEVELS), from logits (..., LEVELS, BINS)."""
-    return (torch.softmax(value_logits, dim=-1) * centres).sum(-1)
-
-
-def hl_gauss(target: Tensor, centres: Tensor, sigma_ratio: float) -> Tensor:
-    """Gaussian-binned target distribution (HL-Gauss), (..., LEVELS, BINS).
-
-    `target` (..., LEVELS) is clamped to the support; each bin gets the mass of a normal
-    centred on the target with standard deviation sigma_ratio * bin width, renormalised
-    over the support.
-    """
-    width = centres[:, 1] - centres[:, 0]
-    edges = torch.cat([centres - width[:, None] / 2, centres[:, -1:] + width[:, None] / 2], dim=1)
-    clamped = torch.maximum(torch.minimum(target, centres[:, -1]), centres[:, 0])
-    sigma = (sigma_ratio * width).clamp(min=1e-8)
-    cumulative = 0.5 * (1.0 + torch.erf((edges - clamped[..., None]) / (sigma[:, None] * math.sqrt(2.0))))
-    mass = cumulative[..., 1:] - cumulative[..., :-1]
-    return mass / mass.sum(-1, keepdim=True).clamp(min=1e-8)
+    """Bin centres of the categorical critic, (LEVELS, bins), evenly spaced from
+    config.value_low to config.value_high of each level."""
+    return value_bin_centres(torch.tensor(config.value_low), torch.tensor(config.value_high), bins).to(device)
 
 
 def generalised_advantages(
