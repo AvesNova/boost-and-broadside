@@ -69,6 +69,8 @@ def main() -> None:
     state, carry = start(config, game_config, policy, opponent, envs, generator)
 
     steps = 0
+    # Each crossover walks from the previous one's ratios (parity the first time).
+    crossover_ratios = {}
     for index in range(updates):
         began = time.perf_counter()
         rollout = collect(config, game_config, policy, opponent, state, carry, ticks, generator, compiled=compiled)
@@ -94,9 +96,16 @@ def main() -> None:
         if warnings:
             print(f"update {index} WARNING value support: {' '.join(warnings)}", flush=True)
         if (index + 1) % crossover_every == 0:
-            report = crossover(game_config, policy, scripted_config, crossover_sizes, crossover_games, generator)
+            report = crossover(
+                game_config, policy, scripted_config, crossover_sizes, crossover_games, generator, start_ratio=crossover_ratios,
+            )
+            crossover_ratios = {size: entry["ratio"] for size, entry in report["sizes"].items()}
             for size, entry in report["sizes"].items():
-                print(f"crossover {size}: beats_up_to {entry['beats_up_to']} ratio {entry['ratio']:.2f}", flush=True)
+                print(
+                    f"crossover {size}: beats_up_to {entry['beats_up_to']} ratio {entry['ratio']:.2f} "
+                    f"(rounds {report['rounds']}, matches {len(entry['matches'])})",
+                    flush=True,
+                )
 
 
 if __name__ == "__main__":

@@ -42,6 +42,13 @@ def test_crossover_plays_every_size_in_rounds_of_batched_matches():
     assert near["rounds"] == 1 and [near["sizes"][n]["beats_up_to"] for n in (2, 4, 8)] == [2, 4, 8]
     # The start's neighbours are played and kept: `spread` (2) sizes either side of parity.
     assert sorted(near["sizes"][4]["matches"]) == [2, 3, 4, 5, 6]
+    # Started from the previous evaluation's ratios: the same answer in one round.
+    ratios = {n: entry["ratio"] for n, entry in report["sizes"].items()}
+    again = crossover(None, None, None, [2, 4, 8], 10, None, start_ratio=ratios, match=lambda n, s, g: g if s <= 1.5 * n else 0)
+    assert again["rounds"] == 1
+    assert [again["sizes"][n]["beats_up_to"] for n in (2, 4, 8)] == [report["sizes"][n]["beats_up_to"] for n in (2, 4, 8)]
+    losing = crossover(None, None, None, [4], 10, None, start_ratio={4: 0.0}, match=lambda n, s, g: 0)
+    assert losing["rounds"] == 1 and losing["sizes"][4]["beats_up_to"] == 0
 
 
 def test_play_matches_counts_each_size_of_a_mixed_batch():

@@ -125,16 +125,16 @@ def head_to_head(game_config, policy_a, policy_b_or_scripted, team_sizes: tuple[
     }
 
 
-def walk(network_size: int, matches: dict, limit: int) -> tuple[int | None, tuple[int, int] | None]:
+def walk(start: int, matches: dict, limit: int) -> tuple[int | None, tuple[int, int] | None]:
     """v1's walk for one network size over the matches played so far ({scripted_size:
-    {"win_rate", ...}}), from parity: upward while the network wins at least half its
-    games, or downward to the first count it does (a tie is a non-win).
+    {"win_rate", ...}}), from the scripted size `start`: upward while the network wins at
+    least half its games, or downward to the first count it does (a tie is a non-win).
 
     Returns (beats_up_to, None) when the walk is complete, else (None, (scripted_size,
     direction)): the next scripted size it needs and the way it is walking (+1 up, -1
     down, 0 at the start).
     """
-    count = min(max(1, network_size), limit)
+    count = min(max(1, start), limit)
     if count not in matches:
         return None, (count, 0)
     if matches[count]["win_rate"] >= 0.5:
@@ -156,22 +156,24 @@ def walk(network_size: int, matches: dict, limit: int) -> tuple[int | None, tupl
 
 def crossover(
     game_config, policy, scripted_config, sizes, games, generator,
-    *, maximum_total_ships: int = 320, spread: int = 2, maximum_games: int | None = None,
-    match=None, **options,
+    *, maximum_total_ships: int = 320, start_ratio: float | dict = 1.0, spread: int = 2,
+    maximum_games: int | None = None, match=None, **options,
 ) -> dict:
     """v1's size-curve protocol, every network size at once.
 
     The network is always team 0 and the scripted agent team 1. For each network team
-    size in `sizes` the scripted team's size is walked one ship at a time from parity
-    (`walk`): upward while the network wins at least half its games, or downward to the
+    size in `sizes` the scripted team's size is walked one ship at a time (`walk`) from
+    round(network_size * start_ratio) (parity by default; `start_ratio` may be a dict by
+    network size, such as the previous evaluation's ratios): upward while the network wins at least half its games, or downward to the
     first count it does. A tie is a non-win. The walk assumes the win rate falls as
     scripted ships are added, and stops at `maximum_total_ships`.
 
     The walks run in rounds. Each round plays, in one batch of environments, the next
     scripted size every unfinished walk needs with its neighbours: `spread` sizes either
     side at the start, then 2 * `spread` further sizes in the walk's direction. A walk
-    whose beats_up_to lies in network_size - spread .. network_size + spread - 1
-    finishes in one round.
+    whose beats_up_to lies in start - spread .. start + spread - 1 finishes in one round.
+    Under the walk's assumption the start changes which matches are played, not the
+    answer.
     `maximum_games` caps the environments of one batch (a round then plays in several).
 
     `games` is an int or a function of the total ship count (see `games_for`).
@@ -194,7 +196,8 @@ def crossover(
         wanted = []
         for network_size in sorted(played):
             limit = maximum_total_ships - network_size
-            beats_up_to, need = walk(network_size, played[network_size], limit)
+            ratio = start_ratio.get(network_size, 1.0) if isinstance(start_ratio, dict) else start_ratio
+            beats_up_to, need = walk(round(network_size * ratio), played[network_size], limit)
             if need is None:
                 beaten[network_size] = beats_up_to
                 continue
