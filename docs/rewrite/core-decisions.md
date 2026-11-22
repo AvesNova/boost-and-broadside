@@ -135,16 +135,21 @@ Flight physics: agreed direction (author, 2026-11-23), a deliberate change after
   speed).
 - Bank implicit and instant (snappy; a roll seen from above looks like nothing): no roll
   state and no roll physics.
-- No climb or dive angle: horizontal speed is the speed; altitude is the store, exchanged
-  with speed at capped rates.
-- The store sized to about two vertical loops, starting in the middle (today about 14
-  loops: 498,000 J/kg, about 12.7 km at the game's 39.24 m/s^2).
-- Proposed: engine power not tied to the store (today it falls about fivefold above half
-  full).
-- Dropped: more energy giving more damage or shield.
-- Future: guns separate from the store, with an overheating mechanism.
-- Open: whether climbing and diving stay on the power action (coast / dive / climb, today
-  named boost and reverse), and whether reverse thrust is separate from climbing.
+- No climb or dive angle: horizontal speed is the speed; altitude is the store.
+- The power action (2026-11-23): coast holds altitude; dive (store into speed) and climb
+  (speed into store) are equal and opposite trades at a capped rate. At the band's edges
+  climb or dive acts as coast. Coast holds altitude only while the wing can carry 1 g;
+  otherwise the ship sinks (store into speed), which is also the low-speed safety net.
+  No separate reverse thrust.
+- The engine always at full effort and only ever drives speed; drag sets cruise speed. The
+  engine never feeds the store. Engine power is not tied to the store.
+- The store sized to about two vertical loops; fights start at half store and cruise
+  speed. Climbing to a full store before a fight is allowed (it costs time).
+- No thinner air with altitude; no energy-for-damage or energy-for-shield.
+- Guns (2026-11-23): firing cuts the engine (to zero or a lower fraction) on the ticks it
+  fires; bullets no longer cost store energy. To measure: speed lost per second of firing
+  at cruise and corner speed, to set the fraction. Known quirk: firing doubles as an air
+  brake (the only way to cut thrust); recoil drag is the fix if it proves exploitable.
 - Checked with the turn-performance tool before it becomes the default; the author flies it.
 
 Sizes
