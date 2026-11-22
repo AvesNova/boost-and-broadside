@@ -32,6 +32,7 @@ from lean.contract import (
     Obs,
     State,
     StepOut,
+    random_keywords,
 )
 
 from . import card
@@ -273,9 +274,8 @@ class ShipCard:
     table: Tensor
 
 
-@functools.cache
-def _ship_card(flight_model: str, store_loops: float, store_edge_band: float, tick_length: float,
-               lineup: tuple[str, ...]) -> ShipCard:
+def _build_ship_card(flight_model: str, store_loops: float, store_edge_band: float, tick_length: float,
+                     lineup: tuple[str, ...]) -> ShipCard:
     config = GameConfig(flight_model=flight_model, store_loops=store_loops, store_edge_band=store_edge_band,
                         tick_length=tick_length, lineup=lineup)
     used = torch.tensor([card.TYPE_NAMES.index(name) for name in lineup])
@@ -293,10 +293,18 @@ def _ship_card(flight_model: str, store_loops: float, store_edge_band: float, ti
     return ShipCard(uniform, columns, torch.cat(rows, 0).contiguous())
 
 
+# Built ship cards by (flight model, store loops, store edge band, tick length, lineup).
+_SHIP_CARDS: dict[tuple, ShipCard] = {}
+
+
 def ship_card(config: GameConfig) -> ShipCard:
-    """The run's ship card, built once per flight settings and lineup."""
-    return _ship_card(config.flight_model, config.store_loops, config.store_edge_band, config.tick_length,
-                      tuple(config.lineup))
+    """The run's ship card, built once per flight settings and lineup. The build reads numbers
+    back to the host (`.item()`), so it runs eagerly: the first deal of a run (`reset`, always
+    before any compiled tick) builds it, and a traced deal only looks it up."""
+    key = (config.flight_model, config.store_loops, config.store_edge_band, config.tick_length, tuple(config.lineup))
+    if key not in _SHIP_CARDS:
+        _SHIP_CARDS[key] = _build_ship_card(*key)
+    return _SHIP_CARDS[key]
 
 
 @built_once
@@ -702,7 +710,7 @@ def bullet_motion(fields, tick_length, x, y, direction_x, direction_y, speed, dr
 
 def draw_noise(config: GameConfig, envs: int, slots: int, generator: torch.Generator, device) -> dict[str, Tensor]:
     """The random draws one tick needs: "spread" (E, N, 2) standard normals."""
-    return {"spread": torch.randn((envs, slots, 2), generator=generator, device=device)}
+    return {"spread": torch.randn((envs, slots, 2), **random_keywords(generator, device))}
 
 
 def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tensor]) -> tuple[State, StepOut]:
@@ -979,7 +987,7 @@ def draw_fields(config: GameConfig, envs: int, generator, device) -> Tensor:
     last field sits at the centre."""
     count, pairs = config.field_count, config.field_count // 2
     scale = config.arena_radius / MAP_SCALE_RADIUS
-    uniforms = torch.rand((envs, count, 4), generator=generator, device=device)
+    uniforms = torch.rand((envs, count, 4), **random_keywords(generator, device))
     drawn = torch.cat([uniforms[:, :pairs], uniforms[:, :pairs], uniforms[:, 2 * pairs :]], 1)
     disc = config.field_disc_fraction * config.arena_radius
     distance = disc * torch.sqrt(uniforms[:, :pairs, 0])
@@ -1037,11 +1045,12 @@ def _per_slot(value: Tensor | float, like: Tensor) -> Tensor:
     return value if isinstance(value, Tensor) else filled(like.shape, value, like.dtype, like.device)
 
 
-def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generator, device) -> State:
+def deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generator, device) -> State:
     """A fresh state of (E, N): team 0 in the first team_sizes[:, 0] slots, team 1 in the
     next team_sizes[:, 1], the rest not existing (parked at the centre at spawn speed). The rows
     that every fresh deal starts with (no bullets, tick 0) are shared fixed tensors: `reset`
-    copies them, `reset_done` only selects from them."""
+    copies them, `take_deal` only selects from them, so a deal may be held and taken from
+    later (lean.learn draws one per environment once per segment)."""
     device = torch.device(device)
     team_sizes = team_sizes.to(device=device, dtype=torch.long)
     slot = slot_indices(slots, device).ship.expand(envs, slots)
@@ -1060,7 +1069,7 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
         fields = fixed_fields(config, envs, device)
 
     def uniform(*shape):
-        return torch.rand(shape, generator=generator, device=device)
+        return torch.rand(shape, **random_keywords(generator, device))
 
     radius_draw, angle_draw, heading_draw = uniform(envs, slots), uniform(envs, slots), uniform(envs, slots)
     axis = 2.0 * math.pi * uniform(envs, 1)
@@ -1126,24 +1135,24 @@ def reset(config: GameConfig, envs: int, team_sizes: Tensor, generator: torch.Ge
     """A fresh state. team_sizes: (E, 2) long, ships per team, each at least 1. N is the
     largest total over the environments; unused slots have exists = False."""
     slots = int(team_sizes.sum(-1).max())
-    state = _deal(config, envs, slots, team_sizes, generator, device)
+    state = deal(config, envs, slots, team_sizes, generator, device)
     # The state is the caller's: its own copies of the deal's shared fixed rows.
     shared = ("bullets", "bullet_counts", "bullet_real", "tick")
     return dataclasses.replace(state, **{name: getattr(state, name).clone() for name in shared})
 
 
-def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tensor, generator: torch.Generator) -> State:
-    """The state with the environments in done (E,) bool dealt afresh at team_sizes (E, 2),
-    whose totals must fit the state's N. Every environment's draws are made, so nothing
-    reads done on the host."""
-    envs, slots = state.x.shape
-    fresh = _deal(config, envs, slots, team_sizes, generator, state.ships.device)
+def take_deal(state: State, done: Tensor, fresh: State, index: Tensor | None = None) -> State:
+    """The state with each environment in done (E,) bool replaced by a fresh deal: environment e
+    takes row index[e] of `fresh` (a `deal` of the same N; any number of environments), or row
+    e when index is None (fresh has E environments). Nothing reads done on the host."""
+    envs = done.shape[0]
 
     def select(new: Tensor, old: Tensor) -> Tensor:
+        new = new if index is None else new.index_select(0, index)
         return torch.where(done.reshape((envs,) + (1,) * (new.dim() - 1)), new, old)
 
     values = {}
-    for field in dataclasses.fields(State):
+    for field in dataclasses.fields(state):
         new, old = getattr(fresh, field.name), getattr(state, field.name)
         if new is None:  # fog's fields with fog off
             values[field.name] = None
@@ -1152,6 +1161,14 @@ def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tenso
         else:
             values[field.name] = select(new, old)
     return State(**values)
+
+
+def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tensor, generator: torch.Generator) -> State:
+    """The state with the environments in done (E,) bool dealt afresh at team_sizes (E, 2),
+    whose totals must fit the state's N. Every environment's draws are made, so nothing
+    reads done on the host (lean.learn instead deals once per segment and uses `take_deal`)."""
+    envs, slots = state.x.shape
+    return take_deal(state, done, deal(config, envs, slots, team_sizes, generator, state.ships.device))
 
 
 # --------------------------------------------------------------------------- fog
@@ -1249,6 +1266,21 @@ def team_view(state: State, team: int) -> State:
         state,
         ships=known[:, : len(SHIP_COLUMNS)],
         # A shot reveals its ship on that tick, so the true flag is known.
+        flags=torch.stack([alive, state.exists, state.fired], 1),
+        bullets=None, bullet_counts=None, bullet_real=None, seen=None, ticks_since_seen=None,
+    )
+
+
+def enemy_view(state: State) -> State:
+    """Every ship as its enemy team knows it: its last-seen row (a never-seen or seen-dead ship
+    not alive), so that one call can read each ship's enemies for both teams at once (each
+    ship has one enemy team). Bullets are not perceived (None). With fog off the state itself."""
+    if state.seen is None:
+        return state
+    alive = (state.seen[:, SEEN_ALIVE] > 0.5) & (state.seen[:, SEEN_KNOWN] > 0.5)
+    return dataclasses.replace(
+        state,
+        ships=state.seen[:, : len(SHIP_COLUMNS)],
         flags=torch.stack([alive, state.exists, state.fired], 1),
         bullets=None, bullet_counts=None, bullet_real=None, seen=None, ticks_since_seen=None,
     )

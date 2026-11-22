@@ -73,3 +73,4 @@ if __name__ == "__main__":
     uniforms = draw_uniforms(E, state.x.shape[1], torch.Generator().manual_seed(2), "cpu")
     with torch.no_grad():
         measure("scripted act (one team), core config state", lambda: act(scripted, state, 0, persona, uniforms))
+        measure("scripted act (both teams, one call), core config state", lambda: act(scripted, state, None, persona, uniforms))

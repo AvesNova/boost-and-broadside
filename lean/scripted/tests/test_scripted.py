@@ -229,3 +229,35 @@ def test_never_shoots_through_a_team_mate():
         fire[name] = float(marginals(scripted, placed, 0, persona).fire[0, 0])
     assert fire["blocked"] == 0.0
     assert fire["clear"] > 0.1
+
+
+def test_one_call_for_both_teams_equals_the_two_single_team_calls():
+    """Agreed fix 6: `team=None` decides for every ship in one call, each ship exactly as in
+    its own team's call (under fog too: its team-mates live, its enemies as last seen)."""
+    from lean import game
+
+    generator = torch.Generator().manual_seed(3)
+    config = ScriptedConfig()
+    for game_config in (game.GameConfig(arena_radius=1500.0, spawn="mixed"),
+                        game.GameConfig.core(arena_radius=1500.0, spawn="mixed")):
+        envs = 8
+        sizes = torch.randint(3, 6, (envs, 2), generator=generator)
+        state = game.reset(game_config, envs, sizes, generator, "cpu")
+        slots = state.x.shape[1]
+        persona = personas(config, envs, slots, generator, "cpu", 1.0)
+        deaths = 0
+        for _ in range(120):
+            uniforms = draw_uniforms(envs, slots, generator, "cpu")
+            both = marginals(config, state, None, persona)
+            for team in (0, 1):
+                single = marginals(config, state, team, persona)
+                rows = single.controlled
+                assert torch.equal(rows, both.controlled & (state.team == team))
+                for name in ("stick", "power", "fire", "target"):
+                    assert torch.equal(getattr(single, name)[rows], getattr(both, name)[rows]), name
+            action = act(config, state, None, persona, uniforms)
+            assert torch.equal(action, act(config, state, 0, persona, uniforms) + act(config, state, 1, persona, uniforms))
+            noise = game.draw_noise(game_config, envs, slots, generator, "cpu")
+            state, out = game.step(game_config, state, action, noise)
+            deaths += int(out.died.sum())
+        assert deaths > 0  # the ships fought
