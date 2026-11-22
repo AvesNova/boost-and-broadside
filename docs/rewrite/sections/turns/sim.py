@@ -19,7 +19,7 @@ CONFIG = core.GameConfig.core() if MODEL == "core" else core.GameConfig()
 THEME = os.environ.get("THEME", "light")  # "dark": the dark-mode palette and surfaces
 SUFFIX = ("-core" if MODEL == "core" else "") + ("-dark" if THEME == "dark" else "")  # output file names
 H = CONFIG.tick_length
-_SIZES = core.ship_constants(CONFIG, torch.arange(3))
+_SIZES = core.ship_constants(CONFIG, torch.arange(len(card.TYPE_NAMES)))
 MAX_ENERGY = [float(e) for e in _SIZES["max_energy"]]  # J/kg per ship type, this model's store
 SPAWN = [float(e) for e in _SIZES["spawn_energy"]]
 FADE_BAND = CONFIG.store_edge_band if MODEL == "core" else card.STORE_FADE_BAND  # share of the store
