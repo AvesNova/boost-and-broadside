@@ -151,6 +151,14 @@ Flight physics: agreed direction (author, 2026-11-23), a deliberate change after
   fires; bullets no longer cost store energy. To measure: speed lost per second of firing
   at cruise and corner speed, to set the fraction. Known quirk: firing doubles as an air
   brake (the only way to cut thrust); recoil drag is the fix if it proves exploitable.
+- Over-turning when slow (2026-11-23): altitude wins. Coast always holds 1 g, so a slow
+  ship at full stick turns less; dive holds less than 1 g and frees lift for the turn (the
+  descending turn as a deliberate move). Below the speed where the wing cannot carry 1 g
+  flying straight, the ship sinks regardless. The other option (the turn wins and the ship
+  sinks) built behind a switch so the author can fly both.
+- The band's edges (2026-11-23): a smootherstep taper on the exchange rate over 5% of the
+  band at the top and at the bottom (today a linear 2%, STORE_FADE_BAND). Smootherstep
+  reaches exactly zero at the edge, so the band's limits stay exact.
 - Checked with the turn-performance tool before it becomes the default; the author flies it.
 
 Sizes
