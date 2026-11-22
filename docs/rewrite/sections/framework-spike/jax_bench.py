@@ -675,6 +675,8 @@ def main():
         "optax": optax.__version__, "numpy": np.__version__, "device": a.device,
         "backend": jax.default_backend(), "devices": [str(d) for d in jax.devices()],
         "compile_options": "jax.jit(fn) with defaults; float32 (jax_enable_x64 off)",
+        "default_matmul_precision": str(jax.config.jax_default_matmul_precision),
+        "xla_flags": os.environ.get("XLA_FLAGS", ""),
         "argv": sys.argv[1:], "envs": envs, "compile_envs": compile_envs, "size_envs": size_envs,
         "micro_batch": micro, "machine": spec.machine(),
     }

@@ -2,12 +2,13 @@
 
 The two frameworks live in different virtualenvs, so this runs in three steps:
 
-    <torch python> parity.py dump torch /tmp/parity_torch.npz
-    <jax python>   parity.py dump jax   /tmp/parity_jax.npz
+    <torch python> parity.py dump torch /tmp/parity_torch.npz [cpu|cuda]
+    <jax python>   parity.py dump jax   /tmp/parity_jax.npz   [cpu|cuda]
     <any python>   parity.py compare /tmp/parity_torch.npz /tmp/parity_jax.npz
 
-Both dumps start from the same numpy weights, inputs, game state and actions (spec.py), on the
-CPU in float32. Compared: the single-step policy forward, the learner (sequence) forward, 600
+Both dumps start from the same numpy weights, inputs, game state and actions (spec.py), in
+float32, on the CPU unless `cuda` is given (PyTorch at its default float32 matmul precision,
+JAX at its default matmul precision). Compared: the single-step policy forward, the learner (sequence) forward, 600
 game ticks under the same random actions (ships start one hit from death), the observation, the PPO loss, its gradient norm, and
 the loss after each of 5 Adam steps. Not compared: sampled actions (different random generators).
 Each dump also checks two things inside its own framework: the sequence forward equals repeated
@@ -23,7 +24,7 @@ import spec
 GAME_TICKS = 600
 
 
-def dump(framework: str, path: str) -> None:
+def dump(framework: str, path: str, device: str = "cpu") -> None:
     rng = np.random.default_rng(7)
     params = spec.init_params()
     single = spec.make_policy_inputs(3, 10)
@@ -44,10 +45,10 @@ def dump(framework: str, path: str) -> None:
         import torch
         import torch_bench as tb
         torch.manual_seed(0)
-        t = lambda x: torch.from_numpy(np.ascontiguousarray(x))
+        t = lambda x: torch.from_numpy(np.ascontiguousarray(x)).to(device)
         tree = lambda d: {k: t(v) for k, v in d.items()}
-        n = lambda x: x.detach().numpy()
-        policy = tb.load_params(tb.Policy(), params)
+        n = lambda x: x.detach().cpu().numpy()
+        policy = tb.load_params(tb.Policy(), params).to(device)
         forward = lambda i, h: [n(x) for x in policy.step(t(i["ship"]), t(i["glob"]), t(i["pos"]), t(i["alive"]), t(h))]
         sequence = lambda i, h: [n(x) for x in policy.sequence(t(i["ship"]), t(i["glob"]), t(i["pos"]), t(i["alive"]), t(h))]
 
@@ -71,9 +72,12 @@ def dump(framework: str, path: str) -> None:
             by_steps = seq_by_steps(forward, seq, seq_h0)
         loss, grad_norm, losses = ppo()
     else:
+        if device == "cuda":
+            sys.argv += ["--device", "cuda"]   # jax_bench picks its platform from argv at import
+        import jax_bench as jb                 # first: it sets JAX_PLATFORMS before jax is imported
         import jax
         import jax.numpy as jnp
-        import jax_bench as jb
+        print(f"[jax] devices: {jax.devices()}")
         p = jb.to_jax(params)
         n = np.asarray
         forward = lambda i, h: [n(x) for x in jb.policy_step(p, i["ship"], i["glob"], i["pos"], i["alive"], h)]
@@ -110,7 +114,7 @@ def dump(framework: str, path: str) -> None:
                 "ppo.losses_after_updates": np.asarray(losses, np.float32)})
     np.savez(path, **out)
 
-    print(f"[{framework}] dumped {len(out)} arrays to {path}")
+    print(f"[{framework}] dumped {len(out)} arrays to {path} (device {device})")
     print(f"[{framework}] game after {GAME_TICKS} ticks: {int((final['hp'] == spec.MAX_HP).sum())} of 40 ships have "
           f"died and respawned (all start one hit from death), {int((~final['alive']).sum())} dead now, {int((final['bullet_life'] > 0).sum())} live bullets, "
           f"max |pos| {float(np.abs(final['pos']).max()):.0f} m")
@@ -158,8 +162,8 @@ def compare(path_a: str, path_b: str, tolerance: float = 1e-4) -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 4 and sys.argv[1] == "dump" and sys.argv[2] in ("torch", "jax"):
-        dump(sys.argv[2], sys.argv[3])
+    if len(sys.argv) in (4, 5) and sys.argv[1] == "dump" and sys.argv[2] in ("torch", "jax"):
+        dump(*sys.argv[2:])
     elif len(sys.argv) == 4 and sys.argv[1] == "compare":
         sys.exit(compare(sys.argv[2], sys.argv[3]))
     else:

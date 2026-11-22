@@ -1,0 +1,42 @@
+# CUDA, float32: PyTorch default (float32 matmul precision 'highest') vs JAX with JAX_DEFAULT_MATMUL_PRECISION=highest
+[torch] dumped 29 arrays to /tmp/claude-1000/-home-vizia-avesnova-boost-and-broadside-v2/b2bd0ccb-72d6-4dc6-8edf-f233185f60c4/scratchpad/pt_cuda.npz (device cuda)
+[torch] game after 600 ticks: 12 of 40 ships have died and respawned (all start one hit from death), 1 dead now, 53 live bullets, max |pos| 4021 m
+[torch] sequence forward vs repeated single steps: max |diff| logits 6.11e-07, values 6.11e-07
+[torch] padded to 100 slots vs exact (the 10 real ships): max |diff| pos 0.00e+00, hp 0.00e+00, ship features 0.00e+00, global features 0.00e+00, policy logits 5.96e-07
+[jax] devices: [CudaDevice(id=0)]
+[jax] dumped 29 arrays to /tmp/claude-1000/-home-vizia-avesnova-boost-and-broadside-v2/b2bd0ccb-72d6-4dc6-8edf-f233185f60c4/scratchpad/pj_cuda_hi.npz (device cuda)
+[jax] game after 600 ticks: 12 of 40 ships have died and respawned (all start one hit from death), 1 dead now, 53 live bullets, max |pos| 4021 m
+[jax] sequence forward vs repeated single steps: max |diff| logits 6.26e-07, values 8.34e-07
+[jax] padded to 100 slots vs exact (the 10 real ships): max |diff| pos 0.00e+00, hp 0.00e+00, ship features 5.96e-08, global features 1.49e-08, policy logits 8.34e-07
+array                           shape                   max |diff|   max |value|       ratio
+step.logits                     (3, 10, 42)               8.34e-07         1.875    2.90e-07
+step.values                     (3, 10, 77)               9.54e-07         1.954    3.23e-07
+step.h                          (2, 3, 11, 128)           5.66e-07          2.04    1.86e-07
+sequence.logits                 (2, 12, 10, 42)           9.54e-07         2.114    3.06e-07
+sequence.values                 (2, 12, 10, 77)           1.31e-06         2.292    3.98e-07
+sequence.h                      (2, 2, 11, 128)           2.05e-06         5.393    3.21e-07
+game.exists                     (4, 10)                          0 elements differ
+game.team                       (4, 10)                          0 elements differ
+game.spawn_pos                  (4, 10, 2)                0.00e+00          1547    0.00e+00
+game.spawn_heading              (4, 10)                   0.00e+00         3.142    0.00e+00
+game.pos                        (4, 10, 2)                2.44e-04          4021    6.07e-08
+game.heading                    (4, 10)                   0.00e+00         2.975    0.00e+00
+game.speed                      (4, 10)                   0.00e+00           150    0.00e+00
+game.hp                         (4, 10)                   0.00e+00           100    0.00e+00
+game.alive                      (4, 10)                          0 elements differ
+game.cooldown                   (4, 10)                          0 elements differ
+game.respawn                    (4, 10)                          0 elements differ
+game.bullet_pos                 (4, 10, 8, 2)             2.44e-04          6066    4.02e-08
+game.bullet_vel                 (4, 10, 8, 2)             0.00e+00          1007    0.00e+00
+game.bullet_life                (4, 10, 8)                       0 elements differ
+game.tick                       (4,)                             0 elements differ
+observe.ship                    (4, 10, 20)               1.19e-07         1.363    5.04e-08
+observe.glob                    (4, 8)                    5.96e-08             1    2.98e-08
+tick.logits                     (4, 10, 42)               1.01e-06         2.147    3.22e-07
+tick.values                     (4, 10, 77)               1.07e-06         2.025    3.55e-07
+tick.h                          (2, 2, 4, 11, 128)        2.58e-06        0.6148    1.60e-06
+ppo.loss                        ()                        2.38e-07         2.392    7.03e-08
+ppo.grad_norm                   ()                        0.00e+00         1.374    0.00e+00
+ppo.losses_after_updates        (5,)                      1.19e-06         2.392    3.51e-07
+
+worst max|diff| / (1 + max|value|) = 1.60e-06 (tolerance 0.0001); ALL AGREE

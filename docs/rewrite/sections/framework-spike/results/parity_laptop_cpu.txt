@@ -1,0 +1,41 @@
+[torch] dumped 29 arrays to /tmp/claude-1000/-home-vizia-avesnova-boost-and-broadside-v2/b2bd0ccb-72d6-4dc6-8edf-f233185f60c4/scratchpad/pt_cpu.npz (device cpu)
+[torch] game after 600 ticks: 12 of 40 ships have died and respawned (all start one hit from death), 1 dead now, 53 live bullets, max |pos| 4021 m
+[torch] sequence forward vs repeated single steps: max |diff| logits 8.34e-07, values 9.54e-07
+[torch] padded to 100 slots vs exact (the 10 real ships): max |diff| pos 0.00e+00, hp 0.00e+00, ship features 1.19e-07, global features 0.00e+00, policy logits 7.75e-07
+[jax] devices: [CpuDevice(id=0)]
+[jax] dumped 29 arrays to /tmp/claude-1000/-home-vizia-avesnova-boost-and-broadside-v2/b2bd0ccb-72d6-4dc6-8edf-f233185f60c4/scratchpad/pj_cpu.npz (device cpu)
+[jax] game after 600 ticks: 12 of 40 ships have died and respawned (all start one hit from death), 1 dead now, 53 live bullets, max |pos| 4021 m
+[jax] sequence forward vs repeated single steps: max |diff| logits 1.07e-06, values 9.54e-07
+[jax] padded to 100 slots vs exact (the 10 real ships): max |diff| pos 0.00e+00, hp 0.00e+00, ship features 0.00e+00, global features 0.00e+00, policy logits 7.15e-07
+array                           shape                   max |diff|   max |value|       ratio
+step.logits                     (3, 10, 42)               9.54e-07         1.875    3.32e-07
+step.values                     (3, 10, 77)               8.34e-07         1.954    2.82e-07
+step.h                          (2, 3, 11, 128)           5.36e-07          2.04    1.76e-07
+sequence.logits                 (2, 12, 10, 42)           8.34e-07         2.114    2.68e-07
+sequence.values                 (2, 12, 10, 77)           9.54e-07         2.292    2.90e-07
+sequence.h                      (2, 2, 11, 128)           1.48e-06         5.393    2.32e-07
+game.exists                     (4, 10)                          0 elements differ
+game.team                       (4, 10)                          0 elements differ
+game.spawn_pos                  (4, 10, 2)                0.00e+00          1547    0.00e+00
+game.spawn_heading              (4, 10)                   0.00e+00         3.142    0.00e+00
+game.pos                        (4, 10, 2)                6.10e-04          4021    1.52e-07
+game.heading                    (4, 10)                   0.00e+00         2.975    0.00e+00
+game.speed                      (4, 10)                   1.53e-05           150    1.01e-07
+game.hp                         (4, 10)                   0.00e+00           100    0.00e+00
+game.alive                      (4, 10)                          0 elements differ
+game.cooldown                   (4, 10)                          0 elements differ
+game.respawn                    (4, 10)                          0 elements differ
+game.bullet_pos                 (4, 10, 8, 2)             6.84e-03          6066    1.13e-06
+game.bullet_vel                 (4, 10, 8, 2)             6.10e-05          1007    6.05e-08
+game.bullet_life                (4, 10, 8)                       0 elements differ
+game.tick                       (4,)                             0 elements differ
+observe.ship                    (4, 10, 20)               1.79e-07         1.363    7.57e-08
+observe.glob                    (4, 8)                    4.47e-08             1    2.24e-08
+tick.logits                     (4, 10, 42)               8.34e-07         2.147    2.65e-07
+tick.values                     (4, 10, 77)               9.54e-07         2.025    3.15e-07
+tick.h                          (2, 2, 4, 11, 128)        9.87e-07        0.6148    6.11e-07
+ppo.loss                        ()                        0.00e+00         2.392    0.00e+00
+ppo.grad_norm                   ()                        0.00e+00         1.374    0.00e+00
+ppo.losses_after_updates        (5,)                      1.19e-06         2.392    3.51e-07
+
+worst max|diff| / (1 + max|value|) = 1.13e-06 (tolerance 0.0001); ALL AGREE

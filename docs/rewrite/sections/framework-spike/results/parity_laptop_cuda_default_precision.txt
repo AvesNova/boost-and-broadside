@@ -1,0 +1,76 @@
+# CUDA, each framework at its DEFAULT float32 matmul precision: PyTorch 'highest' vs JAX default (expected to disagree: JAX's default is reduced precision on this GPU)
+[jax] devices: [CudaDevice(id=0)]
+[jax] dumped 29 arrays to /tmp/claude-1000/-home-vizia-avesnova-boost-and-broadside-v2/b2bd0ccb-72d6-4dc6-8edf-f233185f60c4/scratchpad/pj_cuda.npz (device cuda)
+[jax] game after 600 ticks: 12 of 40 ships have died and respawned (all start one hit from death), 1 dead now, 53 live bullets, max |pos| 4021 m
+[jax] sequence forward vs repeated single steps: max |diff| logits 4.74e-04, values 4.10e-04
+[jax] padded to 100 slots vs exact (the 10 real ships): max |diff| pos 0.00e+00, hp 0.00e+00, ship features 5.96e-08, global features 1.49e-08, policy logits 5.67e-04
+array                           shape                   max |diff|   max |value|       ratio
+step.logits                     (3, 10, 42)               8.92e-04         1.875    3.10e-04
+step.values                     (3, 10, 77)               9.20e-04         1.954    3.11e-04
+step.h                          (2, 3, 11, 128)           3.11e-04          2.04    1.02e-04
+sequence.logits                 (2, 12, 10, 42)           1.34e-03         2.114    4.31e-04
+sequence.values                 (2, 12, 10, 77)           1.02e-03         2.292    3.09e-04
+sequence.h                      (2, 2, 11, 128)           1.56e-03         5.393    2.45e-04
+game.exists                     (4, 10)                          0 elements differ
+game.team                       (4, 10)                          0 elements differ
+game.spawn_pos                  (4, 10, 2)                0.00e+00          1547    0.00e+00
+game.spawn_heading              (4, 10)                   0.00e+00         3.142    0.00e+00
+game.pos                        (4, 10, 2)                2.44e-04          4021    6.07e-08
+game.heading                    (4, 10)                   0.00e+00         2.975    0.00e+00
+game.speed                      (4, 10)                   0.00e+00           150    0.00e+00
+game.hp                         (4, 10)                   0.00e+00           100    0.00e+00
+game.alive                      (4, 10)                          0 elements differ
+game.cooldown                   (4, 10)                          0 elements differ
+game.respawn                    (4, 10)                          0 elements differ
+game.bullet_pos                 (4, 10, 8, 2)             2.44e-04          6066    4.02e-08
+game.bullet_vel                 (4, 10, 8, 2)             0.00e+00          1007    0.00e+00
+game.bullet_life                (4, 10, 8)                       0 elements differ
+game.tick                       (4,)                             0 elements differ
+observe.ship                    (4, 10, 20)               1.19e-07         1.363    5.04e-08
+observe.glob                    (4, 8)                    5.96e-08             1    2.98e-08
+tick.logits                     (4, 10, 42)               1.53e-03         2.147    4.86e-04
+tick.values                     (4, 10, 77)               1.57e-03         2.026    5.18e-04
+tick.h                          (2, 2, 4, 11, 128)        4.67e-04        0.6148    2.89e-04
+ppo.loss                        ()                        9.54e-07         2.392    2.81e-07
+ppo.grad_norm                   ()                        1.80e-05         1.374    7.58e-06
+ppo.losses_after_updates        (5,)                      2.65e-05         2.392    7.80e-06
+
+worst max|diff| / (1 + max|value|) = 5.18e-04 (tolerance 0.0001); DISAGREE: ['step.logits', 'step.values', 'step.h', 'sequence.logits', 'sequence.values', 'sequence.h', 'tick.logits', 'tick.values', 'tick.h']
+
+# CUDA, both on TF32: PyTorch TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1 vs JAX default
+[torch] dumped 29 arrays to /tmp/claude-1000/-home-vizia-avesnova-boost-and-broadside-v2/b2bd0ccb-72d6-4dc6-8edf-f233185f60c4/scratchpad/pt_cuda_tf32.npz (device cuda)
+[torch] game after 600 ticks: 12 of 40 ships have died and respawned (all start one hit from death), 1 dead now, 53 live bullets, max |pos| 4021 m
+[torch] sequence forward vs repeated single steps: max |diff| logits 5.30e-04, values 5.33e-04
+[torch] padded to 100 slots vs exact (the 10 real ships): max |diff| pos 0.00e+00, hp 0.00e+00, ship features 0.00e+00, global features 0.00e+00, policy logits 6.99e-04
+array                           shape                   max |diff|   max |value|       ratio
+step.logits                     (3, 10, 42)               6.11e-04         1.875    2.12e-04
+step.values                     (3, 10, 77)               7.49e-04         1.954    2.54e-04
+step.h                          (2, 3, 11, 128)           1.24e-04          2.04    4.08e-05
+sequence.logits                 (2, 12, 10, 42)           5.26e-04         2.114    1.69e-04
+sequence.values                 (2, 12, 10, 77)           5.71e-04         2.292    1.73e-04
+sequence.h                      (2, 2, 11, 128)           3.10e-04         5.393    4.86e-05
+game.exists                     (4, 10)                          0 elements differ
+game.team                       (4, 10)                          0 elements differ
+game.spawn_pos                  (4, 10, 2)                0.00e+00          1547    0.00e+00
+game.spawn_heading              (4, 10)                   0.00e+00         3.142    0.00e+00
+game.pos                        (4, 10, 2)                2.44e-04          4021    6.07e-08
+game.heading                    (4, 10)                   0.00e+00         2.975    0.00e+00
+game.speed                      (4, 10)                   0.00e+00           150    0.00e+00
+game.hp                         (4, 10)                   0.00e+00           100    0.00e+00
+game.alive                      (4, 10)                          0 elements differ
+game.cooldown                   (4, 10)                          0 elements differ
+game.respawn                    (4, 10)                          0 elements differ
+game.bullet_pos                 (4, 10, 8, 2)             2.44e-04          6066    4.02e-08
+game.bullet_vel                 (4, 10, 8, 2)             0.00e+00          1007    0.00e+00
+game.bullet_life                (4, 10, 8)                       0 elements differ
+game.tick                       (4,)                             0 elements differ
+observe.ship                    (4, 10, 20)               1.19e-07         1.363    5.04e-08
+observe.glob                    (4, 8)                    5.96e-08             1    2.98e-08
+tick.logits                     (4, 10, 42)               7.01e-04         2.147    2.23e-04
+tick.values                     (4, 10, 77)               7.22e-04         2.026    2.39e-04
+tick.h                          (2, 2, 4, 11, 128)        1.54e-04        0.6148    9.53e-05
+ppo.loss                        ()                        3.34e-06         2.392    9.84e-07
+ppo.grad_norm                   ()                        7.94e-05         1.374    3.34e-05
+ppo.losses_after_updates        (5,)                      1.50e-05         2.392    4.43e-06
+
+worst max|diff| / (1 + max|value|) = 2.54e-04 (tolerance 0.0001); DISAGREE: ['step.logits', 'step.values', 'sequence.logits', 'sequence.values', 'tick.logits', 'tick.values']

@@ -227,13 +227,35 @@ def machine() -> dict:
     return info
 
 
+GPU_QUERY = "pstate,temperature.gpu,clocks.sm,power.draw,enforced.power.limit,utilization.gpu,memory.used"
+
+
+def load_snapshot() -> dict:
+    """Machine load outside the timed region: 1/5/15-minute load average and, if `nvidia-smi`
+    exists, the GPU's state (temperature, SM clock, power, utilisation, memory in use)."""
+    snapshot = {"loadavg": [round(x, 2) for x in os.getloadavg()]}
+    try:
+        text = subprocess.run(["nvidia-smi", f"--query-gpu={GPU_QUERY}", "--format=csv,noheader"],
+                              capture_output=True, text=True, timeout=10).stdout.strip()
+        if text:
+            snapshot["gpu"] = dict(zip(GPU_QUERY.split(","), (v.strip() for v in text.split(","))))
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return snapshot
+
+
 def run_child(script: str, argv: list, env: dict | None = None) -> list:
-    """Run `script` in a fresh process; collect the records it prints as 'RECORD <json>' lines."""
+    """Run `script` in a fresh process; collect the records it prints as 'RECORD <json>' lines.
+    Each record gets the machine load just before and just after the child ran."""
     full_env = dict(os.environ)
     full_env.update(env or {})
+    before = load_snapshot()
     done = subprocess.run([sys.executable, script] + [str(a) for a in argv],
                           capture_output=True, text=True, env=full_env)
+    after = load_snapshot()
     records = [json.loads(line[7:]) for line in done.stdout.splitlines() if line.startswith("RECORD ")]
+    for record in records:
+        record["load_before"], record["load_after"] = before, after
     if done.returncode != 0:
         records.append({"suite": "error", "argv": [str(a) for a in argv], "returncode": done.returncode,
                         "stderr_tail": done.stderr[-3000:]})
