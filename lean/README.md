@@ -18,6 +18,29 @@ results did not favour either framework clearly. If G1 chooses JAX, the game ste
 model translate; `docs/rewrite/sections/framework-spike/` has a parity-tested twin of the
 trunk.
 
+## State on 2026-11-23 (read this first)
+
+What `lean` is for and every deliberate change to v2: `docs/rewrite/core-decisions.md`.
+Planned work and status: `docs/rewrite/core-backlog.md`. What was done, when and how it was
+checked: `docs/rewrite/core-worklog.md`. Questions for the author: `docs/questions.md`.
+
+- **Game** (`lean/game`): v2's game, checked against v2 including fields, games that end and
+  the clock (`docs/rewrite/game-parity.md`; three bugs fixed). `GameConfig.core()` is the core
+  game: the new flight model (weight on the wing, the engine driving speed only, a two-loop
+  store, firing cutting the engine), the cheaper head-on damage term, ghost bullets with
+  per-bullet outcomes, ten fields drawn per environment, Vizia only. `GameConfig()` stays v2.
+  Measured: `docs/rewrite/core-flight-measurements.md`, charts `docs/rewrite/*-core.png`.
+- **Sandbox** (`python -m lean.sandbox --core`): fly the core physics by keyboard.
+- **Model** (`lean/model`): v2's model maths with the decided changes (Griffin block,
+  per-kind encoder, fields as attention memory, gated attention, rotary values, 4x MLP, 64
+  linear HL-Gauss bins, swappable position code); 2.0M parameters, 509 operations per step.
+- **Learner** (`lean/learn`): the league is being rebuilt to the author's design (half
+  self-play, half league with the scripted agent as a member); v2's recipe compared in
+  `docs/rewrite/recipe-v2-vs-lean.md`.
+- **Scoreboard**: `docs/rewrite/scoreboard.md`.
+
+The sections below describe the first cut (2026-11-22) and are kept for the record.
+
 ## State at the end of the session
 
 Run on the CPU, one thread: `OMP_NUM_THREADS=1 PYTHONPATH=.:src python -m pytest lean -q`
