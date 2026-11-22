@@ -116,6 +116,19 @@ class GameConfig:
         return cls(**{**settings, **overrides})
 
 
+def built_once(build):
+    """Cache a builder of fixed tensors per argument (agreed fix 4: built once, not every tick).
+    While torch.compile traces, the builder runs in the graph instead (constants there, and no
+    cache keyed on traced sizes)."""
+    cached = functools.cache(build)
+
+    @functools.wraps(build)
+    def get(*args):
+        return build(*args) if torch.compiler.is_compiling() else cached(*args)
+
+    return get
+
+
 # --------------------------------------------------------------------------- constants
 
 # Constants counted in whole ticks: they must be equal for every type of a run.
@@ -278,7 +291,7 @@ def ship_card(config: GameConfig) -> ShipCard:
                       tuple(config.lineup))
 
 
-@functools.cache
+@built_once
 def _card_table(ship_card_: ShipCard, device: torch.device) -> Tensor:
     return ship_card_.table.to(device)
 
@@ -299,7 +312,7 @@ def ship_constants(config: GameConfig, ship_type: Tensor) -> Constants:
 # (agreed fix 4), not every tick. They are shared: never written, never handed out in a state.
 
 
-@functools.cache
+@built_once
 def slot_indices(slots: int, device: torch.device) -> SimpleNamespace:
     """For N slots: ship (N,) 0..N-1; bullet_slot (K,); owner (N K,) the ship of each bullet;
     other (N K, N) bool, the bullet is not that ship's own; bullet_index (N K,); pair (N K,)
@@ -316,13 +329,13 @@ def slot_indices(slots: int, device: torch.device) -> SimpleNamespace:
     )
 
 
-@functools.cache
+@built_once
 def filled(shape: tuple[int, ...], value: float | int | bool, dtype: torch.dtype, device: torch.device) -> Tensor:
     """A constant tensor (the start of a scatter, a fixed row of a fresh deal), built once."""
     return torch.full(shape, value, dtype=dtype, device=device)
 
 
-@functools.cache
+@built_once
 def _eye(dtype: torch.dtype, device: torch.device) -> Tensor:
     return torch.eye(2, dtype=dtype, device=device)
 
@@ -984,7 +997,7 @@ def draw_fields(config: GameConfig, envs: int, generator, device) -> Tensor:
     )
 
 
-@functools.cache
+@built_once
 def _fixed_fields(fields: tuple[tuple[float, float, float, float, float], ...], device: torch.device) -> Tensor:
     table = torch.tensor(fields, dtype=torch.float32).reshape(-1, 5).T.contiguous()
     table[FIELD_TARGET] *= card.LN_SQRT2
@@ -998,12 +1011,12 @@ def fixed_fields(config: GameConfig, envs: int, device) -> Tensor:
     return table.expand(envs, *table.shape)
 
 
-@functools.cache
+@built_once
 def _lineup_types(lineup: tuple[str, ...], device: torch.device) -> Tensor:
     return torch.tensor([card.TYPE_NAMES.index(name) for name in lineup], device=device)
 
 
-@functools.cache
+@built_once
 def _no_bullets(envs: int, slots: int, device: torch.device) -> Tensor:
     """The bullet block of a fresh deal: every bullet inactive, at the origin, pointing along x."""
     bullets = torch.zeros((envs, len(BULLET_COLUMNS), slots, BULLET_SLOTS), device=device)

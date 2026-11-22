@@ -10,14 +10,13 @@ Action indices follow `lean.contract.State`: stick 0 straight, then (1, 2) fine,
 sustained, (5, 6) full; power 0 coast, 1 boost, 2 reverse; fire 0 or 1.
 """
 
-import functools
 import math
 from dataclasses import dataclass
 
 import torch
 from torch import Tensor
 
-from lean.game.core import slot_indices, team_view
+from lean.game.core import built_once, slot_indices, team_view
 
 # The eight logistic gates, in the order of the persona's "gate_centre" and
 # "gate_sharpness" columns. Each maps a positive, dimensionless quantity to a probability.
@@ -422,7 +421,7 @@ def marginals(
     return Marginals(stick, power, fire, fight.controlled, fight.target)
 
 
-@functools.cache
+@built_once
 def _gate_floor(floor: tuple[float, ...], device: torch.device) -> Tensor:
     return torch.tensor(floor, dtype=torch.float32, device=device)
 
