@@ -21,32 +21,32 @@ def test_fields_are_point_symmetric_pairs_within_v2s_bounds():
     """v2's map: pairs mirrored through the centre, radius in the scaled bounds, centres inside
     the disc, levels in -2, -1, +1, +2 half-octaves."""
     state, _, _ = fresh()
-    c = state.constants
+    fields = state.fields
     count, pairs = CONFIG.field_count, CONFIG.field_count // 2
-    x, y = c["field_x"][:, 0], c["field_y"][:, 0]
+    x, y = fields[:, core.FIELD_X], fields[:, core.FIELD_Y]
     assert x.shape == (64, count)
     assert torch.allclose(x[:, pairs : 2 * pairs], -x[:, :pairs]) and torch.allclose(
         y[:, pairs : 2 * pairs], -y[:, :pairs]
     )
-    assert torch.equal(c["field_radius"][:, 0, :pairs], c["field_radius"][:, 0, pairs : 2 * pairs])
+    radius = fields[:, core.FIELD_RADIUS]
+    assert torch.equal(radius[:, :pairs], radius[:, pairs : 2 * pairs])
     scale = CONFIG.arena_radius / core.MAP_SCALE_RADIUS
-    radius = c["field_radius"][:, 0]
     assert radius.min() >= scale * CONFIG.field_radius_min - 1e-3
     assert radius.max() <= scale * CONFIG.field_radius_max + 1e-3
     assert (
         torch.sqrt(x * x + y * y).max() <= CONFIG.field_disc_fraction * CONFIG.arena_radius + 1e-3
     )
-    levels = torch.round(c["field_target"][:, 0] / card.LN_SQRT2)
+    levels = torch.round(fields[:, core.FIELD_TARGET] / card.LN_SQRT2)
     assert set(levels.unique().tolist()) <= {-2.0, -1.0, 1.0, 2.0}
 
 
 def test_each_environment_has_its_own_fields_and_sees_them():
     """Fields differ between environments, and the medium at the same point differs with them."""
     state, _, _ = fresh()
-    x = state.constants["field_x"][:, 0]
+    x = state.fields[:, core.FIELD_X]
     assert (x[0] != x[1]).any()
-    centre_of_first = state.constants["field_x"][:, 0, :1], state.constants["field_y"][:, 0, :1]
-    log_index, _, _ = core.medium(state.constants, *centre_of_first)
+    centre_of_first = state.fields[:, core.FIELD_X, :1], state.fields[:, core.FIELD_Y, :1]
+    log_index, _, _ = core.medium(state.fields, *centre_of_first)
     assert log_index.abs().max() > 0.1  # each environment sees its own first field at its centre
 
 
@@ -56,7 +56,7 @@ def test_reset_done_redraws_fields_only_where_a_game_ended():
     done = torch.zeros(64, dtype=torch.bool)
     done[::2] = True
     after = core.reset_done(CONFIG, state, done, sizes, generator)
-    before_x, after_x = state.constants["field_x"][:, 0], after.constants["field_x"][:, 0]
+    before_x, after_x = state.fields[:, core.FIELD_X], after.fields[:, core.FIELD_X]
     assert torch.equal(after_x[1::2], before_x[1::2])
     assert (after_x[::2] != before_x[::2]).any(-1).all()
 
@@ -66,9 +66,9 @@ def test_the_observation_carries_the_fields():
     state, _, _ = fresh(envs=4)
     observation = core.observe(CONFIG, state, 0)
     assert observation.field.shape == (4, CONFIG.field_count, 3)
-    assert torch.allclose(observation.field_pos[..., 0], state.constants["field_x"][:, 0])
+    assert torch.allclose(observation.field_pos[..., 0], state.fields[:, core.FIELD_X])
     assert torch.allclose(
-        observation.field[..., 0] * core.FIELD_RADIUS_SCALE, state.constants["field_radius"][:, 0]
+        observation.field[..., 0] * core.FIELD_RADIUS_SCALE, state.fields[:, core.FIELD_RADIUS]
     )
     assert observation.field_mask.all()
 

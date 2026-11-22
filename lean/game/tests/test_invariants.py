@@ -68,10 +68,9 @@ def test_swapping_teams_mirrors_the_outcome():
         return value.flip(1) if value is not None and value.dim() >= 2 else value
 
     values = {f.name: getattr(state, f.name) for f in dataclasses.fields(State)}
-    mirror = {name: flipped(value) for name, value in values.items() if name != "constants"}
-    mirror["constants"] = {
-        key: value if key.startswith("field_") else flipped(value) for key, value in state.constants.items()
-    }
+    mirror = {name: flipped(value) for name, value in values.items() if name not in ("constants", "fields")}
+    mirror["constants"] = dataclasses.replace(state.constants, table=state.constants.table.flip(2))
+    mirror["fields"] = state.fields
     mirror["team"] = 1 - mirror["team"]
     other = State(**mirror)
     finished = torch.zeros(envs, dtype=torch.bool)

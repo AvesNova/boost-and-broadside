@@ -16,7 +16,7 @@ from bnb.contracts import Action  # noqa: E402
 
 from lean.contract import State  # noqa: E402
 from lean.game import GameConfig, step  # noqa: E402
-from lean.game.core import ship_constants  # noqa: E402
+from lean.game.core import fixed_fields, ship_constants  # noqa: E402
 
 ENVS, TICKS, PER_TEAM = 32, 150, 5  # about 6 s on one CPU thread
 torch.set_num_threads(1)
@@ -67,6 +67,7 @@ def to_lean(config, v2_state) -> State:
         bullet_medium=torch.stack(
             [bullets.log_refractive_index, bullets.log_index_gradient_x, bullets.log_index_gradient_y], -1
         ),
+        fields=fixed_fields(config, envs, "cpu"),
     )
 
 

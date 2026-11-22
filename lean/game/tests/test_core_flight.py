@@ -4,6 +4,7 @@ Each test names the rule it guards. They fly one ship with `flight_tick` (or one
 `GameConfig.core()`; no fields.
 """
 
+import dataclasses
 from types import SimpleNamespace
 
 import torch
@@ -15,10 +16,13 @@ CONFIG = core.GameConfig.core()
 VIZIA = 2
 COAST, DIVE, CLIMB = 0, 1, 2
 STRAIGHT, FULL = 0, 6
+NO_FIELDS = torch.zeros(1, 5, 0)
 
 
-def constants(ship_type=VIZIA):
-    return core.ship_constants(CONFIG, torch.full((1, 1), ship_type))
+def constants(ship_type=VIZIA, slots=1):
+    """One ship type's constants for (1, slots) slots, in a run of that type alone."""
+    config = dataclasses.replace(CONFIG, lineup=(card.TYPE_NAMES[ship_type],))
+    return core.ship_constants(config, torch.full((1, slots), ship_type))
 
 
 def fly(speed, store_fraction, stick, power, seconds, thrust_scale=1.0, ship_type=VIZIA):
@@ -35,7 +39,7 @@ def fly(speed, store_fraction, stick, power, seconds, thrust_scale=1.0, ship_typ
         angle_cos=torch.ones(1, 1),
         angle_sin=z.clone(),
         nose_rate=z.clone(),
-        energy=store_fraction * c["max_energy"].clone(),
+        energy=store_fraction * torch.full((1, 1), c["max_energy"]),
         log_index=z.clone(),
         gradient_x=z.clone(),
         gradient_y=z.clone(),
@@ -46,7 +50,7 @@ def fly(speed, store_fraction, stick, power, seconds, thrust_scale=1.0, ship_typ
     with torch.no_grad():
         for _ in range(round(seconds / CONFIG.tick_length)):
             s = core.flight_tick(
-                c, CONFIG.tick_length, s, stick_t, power_t, model="core", thrust_scale=thrust_scale
+                c, NO_FIELDS, CONFIG.tick_length, s, stick_t, power_t, model="core", thrust_scale=thrust_scale
             )
             speeds.append(s.speed.item())
             stores.append((s.energy / c["max_energy"]).item())
@@ -64,8 +68,8 @@ def test_store_is_two_loops_at_corner_speed_and_spawn_is_half():
     lift, limit = card.CARD["max_lift_coefficient"][VIZIA], card.CARD["max_acceleration"][VIZIA]
     corner_radius = (limit / lift) / (limit**2 - card.GRAVITY**2) ** 0.5
     expected = CONFIG.store_loops * card.GRAVITY * 2.0 * corner_radius
-    assert abs(c["max_energy"].item() - expected) < 1e-3 * expected
-    assert abs(c["spawn_energy"].item() - 0.5 * expected) < 1e-3 * expected
+    assert abs(c["max_energy"] - expected) < 1e-3 * expected
+    assert abs(c["spawn_energy"] - 0.5 * expected) < 1e-3 * expected
 
 
 def test_coasting_straight_holds_altitude():
@@ -98,9 +102,9 @@ def test_below_the_one_g_speed_the_ship_sinks():
 
 def test_dive_and_climb_are_equal_and_opposite():
     """Dive and climb trade at the same rate: straight, mid-band, the store's rates are opposite."""
-    c = SimpleNamespace(**constants())
+    c = constants()
     speed = torch.full((1, 1), 250.0)
-    energy = 0.5 * c.max_energy
+    energy = torch.full((1, 1), 0.5 * c.max_energy)
     rates = []
     for power in (DIVE, CLIMB):
         control = SimpleNamespace(
@@ -108,8 +112,8 @@ def test_dive_and_climb_are_equal_and_opposite():
             thrust_scale=1.0,
             stick_size=torch.zeros(1, 1),
             stick_sign=torch.ones(1, 1),
-            commanded=c.commanded_table[..., power],
-            demand=c.demand_table[..., power],
+            commanded=c.commanded_table[:, power],
+            demand=c.demand_table[:, power],
         )
         control.inverse_demand = 1.0 / control.demand
         setting = core._setting(c, control, speed, energy)
@@ -174,18 +178,18 @@ def test_at_the_edges_dive_and_climb_act_as_coast_on_the_wing():
     assert abs(dive_empty[-1] - coast_empty[-1]) < 0.5
     rates = {}
     for name, power, store in (("coast", COAST, 1.0), ("climb", CLIMB, 1.0)):
-        c = SimpleNamespace(**constants())
+        c = constants()
         speed = torch.full((1, 1), 200.0)
         control = SimpleNamespace(
             model="core",
             thrust_scale=1.0,
             stick_size=torch.ones(1, 1),
             stick_sign=torch.ones(1, 1),
-            commanded=c.commanded_table[..., power],
-            demand=c.demand_table[..., power],
+            commanded=c.commanded_table[:, power],
+            demand=c.demand_table[:, power],
         )
         control.inverse_demand = 1.0 / control.demand
-        lateral, *_ = core._setting(c, control, speed, store * c.max_energy)
+        lateral, *_ = core._setting(c, control, speed, torch.full((1, 1), store * c.max_energy))
         rates[name] = lateral.item()
     assert abs(rates["climb"] - rates["coast"]) < 1e-3 * abs(rates["coast"])
 
@@ -199,9 +203,7 @@ def test_speeds_in_order_minimum_radius_then_best_sustained_rate_then_corner():
     speeds = torch.linspace(100.0, 420.0, 321)
     sticks = torch.linspace(0.0, 1.0, 101)
     for ship_type in range(3):
-        c = SimpleNamespace(
-            **core.ship_constants(CONFIG, torch.full((len(speeds) * len(sticks),), ship_type))
-        )
+        c = constants(ship_type, slots=len(speeds) * len(sticks))
         v = speeds.repeat(len(sticks))
         stick = sticks.repeat_interleave(len(speeds))
         control = SimpleNamespace(
@@ -209,11 +211,11 @@ def test_speeds_in_order_minimum_radius_then_best_sustained_rate_then_corner():
             thrust_scale=1.0,
             stick_size=stick,
             stick_sign=torch.ones_like(v),
-            commanded=c.commanded_table[:, COAST],
-            demand=c.demand_table[:, COAST],
+            commanded=c.commanded_table[0, COAST],
+            demand=c.demand_table[0, COAST],
         )
         control.inverse_demand = 1.0 / control.demand
-        setting = core._setting(c, control, v, c.spawn_energy)
+        setting = core._setting(c, control, v, torch.full_like(v, c.spawn_energy))
         lateral, _, _, thrust, _ = setting
         reach = (lateral.abs() / (v * v) * c.inverse_lift).clamp(0.0, 1.0)
         angle = c.stall * (1.0 - torch.sqrt(1.0 - reach))

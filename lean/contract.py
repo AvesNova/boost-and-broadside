@@ -38,6 +38,39 @@ def join_action(action: Tensor) -> Tensor:
 
 
 @dataclass
+class Constants:
+    """Per-ship constants of one run, read by name: `constants["lift"]` or `constants.lift`.
+
+    A constant equal for every ship of the run (every type in the lineup, or fixed by the
+    rules) is a Python number in `uniform`, compiled into the graph. One that differs by ship
+    type is a row of `table` (E, C, N) float32, gathered once per slot at reset; `columns`
+    gives its first row and width (width 1 reads as (E, N), a wider one, an action-indexed
+    table, as (E, width, N)). Action-indexed tables are always rows of `table`.
+    """
+
+    uniform: dict[str, float | int]
+    columns: dict[str, tuple[int, int]]
+    table: Tensor
+
+    def __getitem__(self, name: str) -> Tensor | float | int:
+        if name in self.uniform:
+            return self.uniform[name]
+        start, width = self.columns[name]
+        return self.table[:, start] if width == 1 else self.table[:, start : start + width]
+
+    def __getattr__(self, name: str) -> Tensor | float | int:
+        if name.startswith("__") or name in ("uniform", "columns", "table"):
+            raise AttributeError(name)
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def __contains__(self, name: str) -> bool:
+        return name in self.uniform or name in self.columns
+
+
+@dataclass
 class State:
     """The whole game state. Every field is a tensor of shape (E, N) unless noted.
 
@@ -63,7 +96,7 @@ class State:
     exists: Tensor  # bool, fixed for an episode
     team: Tensor  # long, 0 or 1
     type: Tensor  # long, index into the ship card
-    constants: dict[str, Tensor]  # per-ship constants gathered at reset
+    constants: Constants  # per-ship constants: Python numbers and one table gathered at reset
     bullet_x: Tensor  # (E, N, K) float32
     bullet_y: Tensor
     bullet_dir_x: Tensor  # unit direction of travel
@@ -78,6 +111,9 @@ class State:
     # last tick (fields are fixed within an episode), as v2 caches it.
     medium: Tensor  # (E, N, 3) float32
     bullet_medium: Tensor  # (E, N, K, 3) float32
+    # The environment's refractive fields, (E, 5, F) float32 rows [x, y, radius, band width,
+    # target ln n]; F may be 0 (no medium).
+    fields: Tensor
     # Fog (None with fog off). Each ship as its enemy team last saw it: (E, SEEN_COLUMNS, N)
     # float32 raw values in the order of lean.game.core.SEEN_COLUMNS (the last two are "alive"
     # at that sighting, 1 until seen dead, and "known", 1 once ever seen); and the ticks since

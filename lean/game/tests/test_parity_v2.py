@@ -22,7 +22,7 @@ from bnb.game.physics import combat  # noqa: E402
 from bnb.game.physics.medium import medium as v2_medium  # noqa: E402
 from lean.contract import BULLET_SLOTS, State  # noqa: E402
 from lean.game import GameConfig, card, reset, step  # noqa: E402
-from lean.game.core import ship_constants  # noqa: E402
+from lean.game.core import fixed_fields, ship_constants  # noqa: E402
 
 torch.set_num_threads(1)
 replace = dataclasses.replace
@@ -135,6 +135,7 @@ def to_lean(game: Game, v2_state) -> State:
         bullet_medium=torch.stack(
             [bullets.log_refractive_index, bullets.log_index_gradient_x, bullets.log_index_gradient_y], -1
         )[:, slots],
+        fields=fixed_fields(game.config, alive.shape[0], "cpu"),
     )
 
 

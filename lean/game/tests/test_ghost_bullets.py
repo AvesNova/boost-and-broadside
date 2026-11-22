@@ -62,7 +62,7 @@ def test_each_bullet_reports_its_outcome_once():
     tick it was fired; ghosts' outcomes include hits."""
     config = dataclasses.replace(BASE, ghost_bullets=True)
     states, outs = play(config, 60, fire_share=0.0)
-    life = int(states[0].constants["bullet_moves"].max())
+    life = states[0].constants["bullet_moves"]
     ended = {}
     for tick, out in enumerate(outs):
         index = torch.nonzero(out.shot_outcome >= 0)

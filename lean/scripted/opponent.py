@@ -48,8 +48,8 @@ class ScriptedConfig:
     and scales are v2 Imugi's `real_scale_elimination` set.
 
     A characteristic is read from `state.constants[name]` when the game provides that
-    name ((E, N) float32) and from the field here otherwise, so the fields are the
-    fallback for one ship type.
+    name (a number when equal for every ship of the run, else (E, N) float32) and from the
+    field here otherwise, so the fields are the fallback for one ship type.
     """
 
     # Gate centres, scales and directions, in `GATES` order.
@@ -186,8 +186,8 @@ def fresh_memory(envs: int, slots: int, device: torch.device | str) -> dict[str,
 
 
 def characteristic(config: ScriptedConfig, state, name: str) -> Tensor | float:
-    """A ship characteristic: the game's per-ship constant ((E, N)) when it provides
-    `name`, the config's fallback float otherwise."""
+    """A ship characteristic: the game's per-ship constant (a number, or (E, N) when it
+    differs by type) when it provides `name`, the config's fallback float otherwise."""
     constants = state.constants
     game_name = GAME_CONSTANT_NAMES.get(name, name)
     return constants[game_name] if game_name in constants else getattr(config, name)

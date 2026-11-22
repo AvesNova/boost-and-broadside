@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from lean.contract import BULLET_SLOTS, FIRES, POWERS, STICKS, State
+from lean.contract import BULLET_SLOTS, FIRES, POWERS, STICKS, Constants, State
 from lean.scripted import (
     ScriptedConfig,
     act,
@@ -49,7 +49,7 @@ def random_state(envs: int, slots: int, seed: int) -> State:
         exists=exists,
         team=(torch.arange(slots) % 2).expand(envs, slots).clone(),
         type=torch.zeros(envs, slots, dtype=torch.long),
-        constants={},
+        constants=Constants({}, {}, torch.zeros(envs, 0, slots)),  # the opponent's fallbacks
         bullet_x=torch.zeros(bullets),
         bullet_y=torch.zeros(bullets),
         bullet_dir_x=torch.zeros(bullets),
@@ -62,6 +62,7 @@ def random_state(envs: int, slots: int, seed: int) -> State:
         bullet_fired_tick=torch.zeros(bullets, dtype=torch.long),
         medium=torch.zeros(bullets[:2] + (3,)),
         bullet_medium=torch.zeros(bullets + (3,)),
+        fields=torch.zeros(envs, 5, 0),
     )
 
 
@@ -178,7 +179,8 @@ def test_the_game_tells_the_opponent_each_types_characteristics():
     from lean.game import core
     from lean.scripted.opponent import ScriptedConfig, characteristic
 
-    constants = core.ship_constants(core.GameConfig(), torch.tensor([[0, 1, 2]]))
+    every_type = core.GameConfig(lineup=("yongma", "jujak", "vizia"))
+    constants = core.ship_constants(every_type, torch.tensor([[0, 1, 2]]))
     for name in ("gun_range", "corner_speed", "bullet_launch_speed"):
         assert name in constants
         assert len(set(constants[name][0].tolist())) == 3, name  # differs by type

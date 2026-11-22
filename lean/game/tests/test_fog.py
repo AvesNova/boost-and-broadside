@@ -25,10 +25,10 @@ def duel(positions, config=FOG, headings=None, vision=None):
     x = torch.tensor([[p[0] for p in positions]], dtype=torch.float32)
     y = torch.tensor([[p[1] for p in positions]], dtype=torch.float32)
     angle = torch.tensor([headings if headings is not None else [0.0] * count], dtype=torch.float32)
-    constants = dict(state.constants)
+    constants = state.constants
     if vision is not None:
-        constants["vision_range"] = torch.full_like(constants["vision_range"], vision)
-    medium = torch.stack(core.medium(constants, x, y), -1)
+        constants = with_vision(constants, vision)
+    medium = torch.stack(core.medium(state.fields, x, y), -1)
     seen = torch.zeros_like(state.seen)
     seen[:, core.SEEN_ALIVE] = 1.0
     state = dataclasses.replace(
@@ -43,6 +43,11 @@ def duel(positions, config=FOG, headings=None, vision=None):
         ticks_since_seen=torch.zeros_like(state.ticks_since_seen),
     )
     return core.perceive(state, torch.zeros_like(state.exists))
+
+
+def with_vision(constants, vision):
+    """The constants with every ship's vision range set to `vision` metres."""
+    return dataclasses.replace(constants, uniform={**constants.uniform, "vision_range": vision})
 
 
 def idle(state, fire=None):
@@ -71,8 +76,7 @@ def test_fog_off_is_full_information_and_leaves_the_game_unchanged():
     a = reset(plain, 4, sizes, torch.Generator().manual_seed(1), CPU)
     b = reset(fogged, 4, sizes, torch.Generator().manual_seed(1), CPU)
     assert a.seen is None and a.ticks_since_seen is None and b.seen is not None
-    wide = {**b.constants, "vision_range": torch.full_like(b.constants["vision_range"], 1e5)}
-    b = core.perceive(dataclasses.replace(b, constants=wide), torch.zeros_like(b.exists))
+    b = core.perceive(dataclasses.replace(b, constants=with_vision(b.constants, 1e5)), torch.zeros_like(b.exists))
     compared = 0
     for _ in range(40):
         action = torch.stack(
@@ -108,10 +112,7 @@ def test_sight_range_and_field_cores():
     """Rule: "in sight" is v2's sight test: within the observer's vision range (1,000 m),
     all round, blocked only by a field's core (core to band sees, core to outside does not,
     a line through a core is blocked, both in one core see each other)."""
-    assert torch.allclose(
-        reset(FOG, 1, torch.tensor([[1, 1]]), None, CPU).constants["vision_range"],
-        torch.tensor(1000.0),
-    )
+    assert abs(reset(FOG, 1, torch.tensor([[1, 1]]), None, CPU).constants["vision_range"] - 1000.0) < 1e-3
     assert core.sighted_by_enemy(duel([(0.0, 0.0), (999.0, 0.0)], headings=[math.pi, 0.0])).all()
     assert not core.sighted_by_enemy(duel([(0.0, 0.0), (1001.0, 0.0)])).any()
     # One field at the centre: radius 300, band 160, so core 220 and outer disc 380.
