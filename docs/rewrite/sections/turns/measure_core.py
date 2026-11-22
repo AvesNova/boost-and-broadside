@@ -17,7 +17,8 @@ torch.set_num_threads(1)
 DEGREES = 180.0 / math.pi
 COAST, DIVE, CLIMB = 0, 1, 2
 FULL, SUSTAINED, FINE, STRAIGHT = 6, 4, 2, 0
-CONFIGS = {"v2": core.GameConfig(), "core": core.GameConfig.core()}
+LINEUP = tuple(card.TYPE_NAMES)  # every type, so a ship is flown by its card index
+CONFIGS = {"v2": core.GameConfig(lineup=LINEUP), "core": core.GameConfig.core(lineup=LINEUP)}
 
 
 class Ship:
@@ -28,7 +29,7 @@ class Ship:
         self.s = SimpleNamespace(
             x=z.clone(), y=z.clone(), heading_cos=torch.ones(1, 1), heading_sin=z.clone(),
             speed=torch.full((1, 1), float(speed)), angle=z.clone(), angle_cos=torch.ones(1, 1),
-            angle_sin=z.clone(), nose_rate=z.clone(), energy=store_fraction * self.c["max_energy"].clone(),
+            angle_sin=z.clone(), nose_rate=z.clone(), energy=store_fraction * torch.ones(1, 1) * self.c["max_energy"],
             log_index=z.clone(), gradient_x=z.clone(), gradient_y=z.clone(),
         )
         self.time = 0.0
@@ -51,7 +52,7 @@ class Ship:
         turned, previous = 0.0, self.track()
         with torch.no_grad():
             for _ in range(round(seconds / self.config.tick_length)):
-                self.s = core.flight_tick(self.c, self.config.tick_length, self.s, stick_t, power_t,
+                self.s = core.flight_tick(self.c, torch.zeros(1, 5, 0), self.config.tick_length, self.s, stick_t, power_t,
                                           model=self.model, thrust_scale=thrust_scale)
                 self.time += self.config.tick_length
                 now = self.track()

@@ -140,7 +140,7 @@ ACTION_TABLES = ("stick_table", "commanded_table", "demand_table")
 def _per_type(config: GameConfig) -> dict[str, Tensor]:
     """Every ship constant for every card type: float32 (T,), the action tables (T, width), the
     whole-tick counts long; computed with the game's own float32 arithmetic."""
-    types = torch.arange(len(card.TYPE_NAMES))
+    types = torch.arange(len(next(iter(card.CARD.values()))))  # every row of the card
 
     def of(name: str) -> Tensor:
         return torch.tensor(card.CARD[name], dtype=torch.float32)[types]
@@ -229,7 +229,7 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
     `api.gun_range`). Solved with the game's own flight functions, so the scripted opponent is
     told these, not guessed."""
     c = SimpleNamespace(**values)
-    count = len(card.TYPE_NAMES)
+    count = len(c.lift)  # every row of the card
     control = SimpleNamespace(
         model=config.flight_model, thrust_scale=1.0, stick_size=torch.zeros(count),
         stick_sign=torch.ones(count), commanded=c.commanded_table[:, 0],
@@ -253,6 +253,14 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
         "bullet_launch_speed": launch,
         "gun_range": torch.log1p(c.bullet_drag * launch * life) / c.bullet_drag,
     }
+
+
+def per_type_constants(config: GameConfig, ship_type: Tensor) -> SimpleNamespace:
+    """For analysis tools (charts, tuning, measurements): every ship constant of card rows
+    `ship_type` (any shape S, card indices), float32 S-shaped (action tables S + (width,)),
+    read from the card each call: not the run's lineup and not cached, so a tool may change
+    the card (lean.game.tuning appends a row)."""
+    return SimpleNamespace(**{name: value[ship_type] for name, value in _per_type(config).items()})
 
 
 @dataclass(frozen=True, eq=False)

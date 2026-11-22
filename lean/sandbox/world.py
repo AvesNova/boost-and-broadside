@@ -50,13 +50,20 @@ class World:
     def _types(self) -> torch.Tensor:
         return torch.tensor([[self.player_type, self.chaser_type]])
 
+    def _constants(self):
+        """Both ships' constants; any type may be flown, so the card is read for every type."""
+        every_type = dataclasses.replace(self.config, lineup=card.TYPE_NAMES)
+        return core.ship_constants(every_type, self._types())
+
+    def constant(self, name: str, slot: int) -> float:
+        """One ship's constant (a number when equal for every type, else a per-slot row)."""
+        return float(torch.as_tensor(self.state.constants[name]).expand(1, 2)[0, slot])
+
     def reset(self) -> None:
         state = core.reset(self.config, 1, torch.tensor([[1, 1]]), self.generator, "cpu")
-        drawn = {k: v for k, v in state.constants.items() if k.startswith("field_")}
-        constants = {**core.ship_constants(self.config, self._types()), **drawn}
-        log_index, _, _ = core.medium(constants, torch.zeros(1, 2), torch.zeros(1, 2))
-        self.state = dataclasses.replace(
-            state,
+        constants = self._constants()
+        log_index, _, _ = core.medium(state.fields, torch.zeros(1, 2), torch.zeros(1, 2))
+        self.state = core.with_velocity(state.replace(
             type=self._types(),
             constants=constants,
             x=torch.zeros(1, 2),
@@ -64,10 +71,10 @@ class World:
             heading_cos=torch.tensor([[0.0, 0.0]]),
             heading_sin=torch.tensor([[1.0, 1.0]]),
             speed=card.SPAWN_SPEED * torch.exp(log_index),
-            energy=constants["spawn_energy"].clone(),
-            shield=constants["max_shield"].clone(),
+            energy=torch.as_tensor(constants["spawn_energy"]).expand(1, 2),
+            shield=torch.as_tensor(constants["max_shield"]).expand(1, 2),
             alive=torch.tensor([[True, False]]),
-        )
+        ))
         self._place_chaser()
         self.state.alive[0, 1] = self.chaser_on
         self.tick = 0
@@ -96,20 +103,20 @@ class World:
         s.heading_cos[0, 1], s.heading_sin[0, 1] = math.cos(toward), math.sin(toward)
         s.speed[0, 1] = card.SPAWN_SPEED
         s.angle[0, 1], s.angle_cos[0, 1], s.angle_sin[0, 1], s.nose_rate[0, 1] = 0.0, 1.0, 0.0, 0.0
-        s.energy[0, 1] = s.constants["spawn_energy"][0, 1]
-        s.shield[0, 1] = s.constants["max_shield"][0, 1]
+        s.energy[0, 1] = self.constant("spawn_energy", 1)
+        s.shield[0, 1] = self.constant("max_shield", 1)
         s.alive[0, 1] = True
         refresh_medium(s)
 
     def set_player_type(self, ship_type: int) -> None:
         """Swap the player's ship card in flight; position, speed and store are kept."""
         self.player_type = ship_type
-        self.state.type = self._types()
-        fields = {k: v for k, v in self.state.constants.items() if k.startswith("field_")}
-        self.state.constants = {**core.ship_constants(self.config, self.state.type), **fields}
+        self.state = self.state.replace(type=self._types(), constants=self._constants())
         s = self.state
-        s.energy = torch.minimum(s.energy, s.constants["max_energy"])
-        s.shield = torch.minimum(s.shield, s.constants["max_shield"])
+        self.state = s.replace(
+            energy=torch.minimum(s.energy, torch.as_tensor(s.constants["max_energy"])),
+            shield=torch.minimum(s.shield, torch.as_tensor(s.constants["max_shield"])),
+        )
 
     def toggle_chaser(self) -> None:
         self.chaser_on = not self.chaser_on
@@ -153,7 +160,7 @@ class World:
         if bool(out.died[0, 0]):
             self.deaths += 1
             s.alive[0, 0] = True
-            s.shield[0, 0] = s.constants["max_shield"][0, 0]
+            s.shield[0, 0] = self.constant("max_shield", 0)
         if bool(out.died[0, 1]):
             self.chaser_kills += 1
             self.chaser_respawn = self.tick + int(CHASER_RESPAWN_SECONDS / self.h)
@@ -171,10 +178,10 @@ class World:
     def ground_speed(self) -> float:
         """Metres per second over the map: the proper speed over the refractive index."""
         s = self.state
-        return float(s.speed[0, 0] * torch.exp(-s.medium[0, 0, 0]))
+        return float(s.speed[0, 0] * torch.exp(-s.log_index[0, 0]))
 
     def store_fraction(self) -> float:
-        return float(self.state.energy[0, 0] / self.state.constants["max_energy"][0, 0])
+        return float(self.state.energy[0, 0]) / self.constant("max_energy", 0)
 
     def readout(self) -> dict[str, float]:
         speed = self.ground_speed()
@@ -188,18 +195,14 @@ class World:
             "lateral_g": lateral / card.GRAVITY,
             "store": self.store_fraction(),
             "angle_of_attack_degrees": math.degrees(float(s.angle[0, 0])),
-            "stall_degrees": math.degrees(float(s.constants["stall"][0, 0])),
-            "shield": float(s.shield[0, 0] / s.constants["max_shield"][0, 0]),
+            "stall_degrees": math.degrees(self.constant("stall", 0)),
+            "shield": float(s.shield[0, 0]) / self.constant("max_shield", 0),
         }
 
 
 def field_list(state) -> list[tuple[float, float, float, float, float]]:
     """The first environment's fields as (x, y, radius, band, level in half-octaves)."""
-    c = state.constants
-    columns = [
-        c[name].reshape(-1, c[name].shape[-1])[0] if c[name].dim() > 1 else c[name]
-        for name in ("field_x", "field_y", "field_radius", "field_band", "field_target")
-    ]
+    columns = state.fields[0]  # rows x, y, radius, band, target ln n
     return [
         (float(x), float(y), float(r), float(b), float(t) / card.LN_SQRT2)
         for x, y, r, b, t in zip(*columns)
@@ -207,6 +210,10 @@ def field_list(state) -> list[tuple[float, float, float, float, float]]:
 
 
 def refresh_medium(state) -> None:
-    """Recompute the cached medium at every ship (after placing ships by hand)."""
-    log_index, gradient_x, gradient_y = core.medium(state.constants, state.x, state.y)
-    state.medium = torch.stack([log_index, gradient_x, gradient_y], -1)
+    """Recompute, in place, the cached medium at every ship and the stored velocity (after
+    placing ships by hand)."""
+    for name, value in zip(("log_index", "gradient_x", "gradient_y"), core.medium(state.fields, state.x, state.y)):
+        getattr(state, name).copy_(value)
+    velocity = core.path_velocity(state.speed, state.heading_cos, state.heading_sin, state.angle_cos, state.angle_sin)
+    state.velocity_x.copy_(velocity[0])
+    state.velocity_y.copy_(velocity[1])

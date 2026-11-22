@@ -16,12 +16,14 @@ MODEL = os.environ.get("FLIGHT_MODEL", "v2")
 if MODEL not in ("v2", "core"):
     raise ValueError(f"FLIGHT_MODEL={MODEL!r}: need 'v2' or 'core'")
 CONFIG = core.GameConfig.core() if MODEL == "core" else core.GameConfig()
+# Every card type in the lineup (in card order), so a tool can fly any type by its card index.
+CONFIG = core.dataclasses.replace(CONFIG, lineup=tuple(card.TYPE_NAMES))
 THEME = os.environ.get("THEME", "light")  # "dark": the dark-mode palette and surfaces
 SUFFIX = ("-core" if MODEL == "core" else "") + ("-dark" if THEME == "dark" else "")  # output file names
 H = CONFIG.tick_length
-_SIZES = core.ship_constants(CONFIG, torch.arange(len(card.TYPE_NAMES)))
-MAX_ENERGY = [float(e) for e in _SIZES["max_energy"]]  # J/kg per ship type, this model's store
-SPAWN = [float(e) for e in _SIZES["spawn_energy"]]
+_SIZES = core.per_type_constants(CONFIG, torch.arange(len(card.TYPE_NAMES)))
+MAX_ENERGY = [float(e) for e in _SIZES.max_energy]  # J/kg per ship type, this model's store
+SPAWN = [float(e) for e in _SIZES.spawn_energy]
 FADE_BAND = CONFIG.store_edge_band if MODEL == "core" else card.STORE_FADE_BAND  # share of the store
 
 
@@ -97,3 +99,8 @@ def run_batch(types, speeds, energies, sticks, powers, ticks, keep_every=1, magn
                 out["rate"].append(d[:, 0] / H)
                 out["angle"].append(s.angle[:, 0].clone())
     return {k: torch.stack(v) for k, v in out.items()}
+
+
+def no_fields(envs: int) -> torch.Tensor:
+    """The fields argument of `core.flight_tick` for no fields: (E, 5, 0)."""
+    return torch.zeros(envs, 5, 0)

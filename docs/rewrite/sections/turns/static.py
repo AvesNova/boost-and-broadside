@@ -10,7 +10,7 @@ for t in range(3):
     for energy_label, energy in (("spawn", card.CARD["spawn_energy"][t]), ("low", 0.01 * card.CARD["max_energy"][t])):
         for power in range(3):
             b = v.shape[0]
-            p = SimpleNamespace(**core.ship_constants(core.GameConfig(), torch.full((b,), t)))
+            p = core.per_type_constants(core.GameConfig(), torch.full((b,), t))
             control = SimpleNamespace()
             signed = p.stick_table[:, 6]
             control.stick_size, control.stick_sign = signed.abs(), torch.sign(signed)

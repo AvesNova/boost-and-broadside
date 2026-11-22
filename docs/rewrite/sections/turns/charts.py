@@ -39,7 +39,7 @@ from doghouse import (  # noqa: E402
     style,
     sustained,
 )
-from sim import FADE_BAND, MAX_ENERGY, MODEL, SPAWN, SUFFIX, H, make, track  # noqa: E402
+from sim import FADE_BAND, MAX_ENERGY, MODEL, SPAWN, SUFFIX, H, make, no_fields, track  # noqa: E402
 
 from lean.game import card, core  # noqa: E402
 
@@ -97,7 +97,7 @@ def simulate(ship_type, speed, energy, stick, power, ticks):
     previous, turned = track(s), 0.0
     with torch.no_grad():
         for k in range(ticks):
-            s = core.flight_tick(constants, H, s, stick_t, power_t, model=MODEL)
+            s = core.flight_tick(constants, no_fields(s.x.shape[0]), H, s, stick_t, power_t, model=MODEL)
             now = track(s)
             step = float(torch.remainder(now - previous + math.pi, 2 * math.pi) - math.pi)
             previous = now

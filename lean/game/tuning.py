@@ -347,12 +347,11 @@ def performance(
     with torch.no_grad(), _with_row(row, plain) as index:
         speeds = torch.arange(30.0, 700.0, 0.05, dtype=torch.float64)
         n = speeds.shape[0]
+        constants = core.per_type_constants(config, torch.full((n,), index))
         c = SimpleNamespace(
             **{
                 k: (v.double() if torch.is_tensor(v) and v.is_floating_point() else v)
-                for k, v in core.ship_constants(
-                    config, torch.full((n,), index), derived=False
-                ).items()
+                for k, v in vars(constants).items()
             }
         )
         energy = 0.5 * c.max_energy
