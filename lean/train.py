@@ -1,7 +1,9 @@
 """Train the lean core: python -m lean.train [--smoke].
 
 Wires the game, the scripted opponent, the model, collect, update and a periodic
-crossover. `--seed` fixes the initial weights, the scenario draws and the data order.
+crossover. `--seed` fixes the initial weights, the scenario draws and the data order
+(compiled, the rollout's draws come from torch's default generator, seeded by `--seed`
+too). `--compile` (the default) compiles the rollout tick and the update's loss.
 """
 
 import argparse
@@ -37,6 +39,10 @@ def main() -> None:
         "--game", choices=("v2", "core"), default="v2",
         help="v2: lean.game.GameConfig() with ghost bullets (labels for the hit head); core: GameConfig.core()",
     )
+    parser.add_argument(
+        "--compile", action=argparse.BooleanOptionalAction, default=True,
+        help="compile the rollout tick and the update's loss (lean.learn.compiled); --no-compile runs eagerly",
+    )
     arguments = parser.parse_args()
 
     config = LearnConfig()
@@ -48,6 +54,8 @@ def main() -> None:
         crossover_every, crossover_games, crossover_sizes = 2, 2, [1]
 
     device = torch.device(arguments.device)
+    # The smoke run stays eager: on the CPU a compile costs more than the run.
+    compiled = arguments.compile and not arguments.smoke
     if arguments.threads > 0:
         torch.set_num_threads(arguments.threads)
     torch.manual_seed(arguments.seed)
@@ -63,12 +71,13 @@ def main() -> None:
     steps = 0
     for index in range(updates):
         began = time.perf_counter()
-        rollout = collect(config, game_config, policy, opponent, state, carry, ticks, generator)
+        rollout = collect(config, game_config, policy, opponent, state, carry, ticks, generator, compiled=compiled)
         state, carry = rollout.state, rollout.carry
         steps += envs * ticks
         win_rate = league.scripted_win_rate()
         metrics = update(
-            config, policy, optimiser, rollout, scripted_win_rate=win_rate, update_index=index, generator=generator
+            config, policy, optimiser, rollout, scripted_win_rate=win_rate, update_index=index, generator=generator,
+            compiled=compiled,
         )
         replaced = league.maybe_add(policy, index + 1)
         if replaced is not None:
