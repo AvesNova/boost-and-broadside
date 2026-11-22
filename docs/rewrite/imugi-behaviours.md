@@ -86,8 +86,8 @@ OMP_NUM_THREADS=1 PYTHONPATH=.:src uv run --no-sync python \
   docs/rewrite/sections/imugi/measure_lean.py 256 450
 ```
 
-(The scripts and their logs, `imugi_E256.log` and `lean_E256.log`, are in that scratch
-folder, which a reboot may clear.)
+(The scripts and their logs, `imugi_E256.log` and `lean_E256.log`, are in
+`docs/rewrite/sections/imugi/`.)
 
 - **Imugi.** `bnb.game.api` with `real_scale_elimination`, shrink held off
   (`shrink_hold_seconds = 1e9`, as in the audit's `match.py`), fog off, E = 256. Imugi

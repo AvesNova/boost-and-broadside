@@ -45,7 +45,11 @@ Model
   time since it was seen. Memory is the Griffin temporal block (v2's block, not a bare
   recurrence).
 - No shot-trajectory head. Instead a hit head: would this tick's bullet hit an enemy, an
-  ally, or nothing. The last ticks of a segment go unlabelled.
+  ally, or nothing. The last ticks of a segment go unlabelled. Labels from ghost bullets
+  (2026-11-22, if it stays simple): every ship puts a bullet in its ring every tick; a flag
+  marks it real or ghost; only real bullets cost energy, damage and stop; a ghost records
+  its first contact (enemy, ally, none) and is removed. The ring (11 slots, one per tick)
+  is already sized for this.
 - No null key. Gated attention as the default (Qiu et al. 2025, the Qwen team; the author,
   2026-11-22): a sigmoid gate on each head's attention output before the output
   projection, which v2 already has as an option (src/bnb/models/yemong/spatial.py). Which
@@ -86,10 +90,6 @@ Provenance
 
 ## Proposals, not decided
 
-- Hit-head labels from ghost bullets: every ship puts a bullet in its ring every tick; a
-  flag marks it real or ghost; only real bullets cost energy, damage and stop; a ghost
-  records its first contact (enemy, ally, none) and is removed. The ring (11 slots, one per
-  tick) is already sized for this.
 - Grid cells in RL: look for papers that used them (docs/rewrite/provenance-check.md).
 - A keep, drop or simplify table of Imugi's behaviours with rough costs (operations, lines,
   time per call, parameters): docs/rewrite/imugi-behaviours.md, ready for the author.
