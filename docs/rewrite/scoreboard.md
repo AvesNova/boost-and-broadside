@@ -62,7 +62,32 @@ short run): 3.10 ms eager, 1.38 ms compiled, first compile 10.9 s. Training at t
 size: 2,800 steps/s with 8 minibatches (4.8 GB), 3,150 with 16 (2.5 GB); 4 minibatches run
 out of memory.
 
+## GPU: uncompiled against compiled, compile time, new team sizes (2026-11-23 03:50)
+
+Laptop RTX 4070 (8 GB), committed code at 25478e10 (a clean worktree), E = 2048, one fresh
+process per row with an empty inductor cache; policy under bf16 autocast. Script:
+docs/rewrite/sections/scoreboard/gpu_compile.py. "First call" includes the compile; the sizes
+run in order 5v5, 10v10, 20v20, 50v50 in one process.
+
+| | 5v5 | 10v10 | 20v20 | 50v50 |
+|---|---|---|---|---|
+| Game step (core config), uncompiled: steady ms | 9.38 | 22.04 | 62.29 | out of memory |
+| Game step, compiled (default): first call s / steady ms | 18.38 / 0.95 | 15.90 / 3.85 | 0.01 / 9.22 | 0.04 / 35.75 |
+| Game step, compiled dynamic=True: first call s / steady ms | 27.49 / 1.25 | 27.97 / 3.82 | 0.01 / 9.12 | 0.03 / 33.51 |
+| Policy step, uncompiled: steady ms | 28.93 | 62.58 | 129.05 | 317.17 |
+| Policy step, compiled (default): first call s / steady ms | 12.04 / 14.36 | 14.97 / 31.24 | 0.06 / 63.90 | 0.16 / 159.20 |
+| Policy step, compiled dynamic=True: first call s / steady ms | 18.59 / 16.07 | 17.70 / 31.39 | 0.06 / 64.20 | 0.16 / 159.44 |
+
+- Compiling makes the game step about 10x faster at 5v5 and the policy step about 2x.
+- The policy dominates a rollout tick: two policy steps (one per team) are about 29 ms
+  against 0.95 ms for the game step at 5v5.
+- The uncompiled game step runs out of 8 GB at 50v50, E = 2048 (the dense (E, N K, N) hit
+  test's temporaries); compiled it fits.
+- A new team size: the first new size recompiles once (about 16 s for the game, 15 s for the
+  policy), then no more. `dynamic=True` recompiles at the second size as well, so something in
+  both graphs specialises on the ship count: to find (it decides what "a new size costs").
+- Compile time, cold: game 18 s, policy 12 s.
+
 ## Not yet measured
 
-Policy forward operations and time (after the model port), compiled against uncompiled step
-time, compile time, and the cost of a new team size: these need the GPU and the new model.
+The compiled backward pass and the learner's update; traced operations across every graph.
