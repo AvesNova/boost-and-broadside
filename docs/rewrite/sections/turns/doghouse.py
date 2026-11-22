@@ -158,6 +158,7 @@ def doghouse(ship_type: int):
                     (v[corner], envelope[corner]), xytext=(8, 6), textcoords="offset points",
                     color=INK, fontsize=9)
         best, _ = sustained(grid)
+        best = np.where(v >= 100.0, best, np.nan)  # below 100 m/s the turn cannot be held in flight
         if np.any(np.isfinite(best)):
             k = int(np.nanargmax(best))
             ax.plot(v[k], best[k], "s", color=INK, markersize=8)
@@ -172,12 +173,12 @@ def doghouse(ship_type: int):
         bar = figure.colorbar(filled, ax=ax, fraction=0.04, pad=0.02)
         bar.set_label("energy rate Ps, m/s altitude-equivalent (blue gain, red loss)", color=INK_2, fontsize=8)
         bar.ax.tick_params(labelsize=8, colors=INK_2)
-    figure.text(0.01, 0.005, "Thick: full stick (lift and g limit); thin: the game's sustained and fine stick; "
-                "dash-dot: full stick while diving or climbing\n(on the full-stick line whenever the store is above 2%: today diving and climbing do not change the turn). Black dashed contour: Ps = 0 (sustained). "
-                "Grey dotted: turn radius. Grey dashed: load in game g (39.24 m/s^2).\n"
-                "Shaded below 100 m/s: quasi-steady maths only; hard turns there cannot be held in flight "
-                "(nose response, sinking).", color=INK_2, fontsize=8)
-    figure.tight_layout(rect=(0, 0.045, 1, 1))
+    figure.text(0.01, 0.004, "Thick: full stick (lift and g limit). Thin: the game's sustained and fine stick.\n"
+                "Dash-dot: full stick while diving or climbing (on the full-stick line whenever the store is\n"
+                "above 2%: today diving and climbing do not change the turn). Black dashed: Ps = 0 (sustained).\n"
+                "Grey dotted: turn radius. Grey dashed: load in game g (39.24 m/s^2). Shaded below 100 m/s:\n"
+                "quasi-steady maths only; hard turns there cannot be held in flight.", color=INK_2, fontsize=8)
+    figure.tight_layout(rect=(0, 0.055, 1, 1))
     path = os.path.join(OUT, f"doghouse-{NAMES[ship_type].lower()}.png")
     figure.savefig(path, dpi=130, facecolor=SURFACE)
     plt.close(figure)
