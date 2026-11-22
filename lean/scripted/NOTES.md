@@ -24,16 +24,25 @@
 
 ## What was run and what was not
 
-- `PYTHONPATH=. python -m pytest lean/scripted/tests -q`: 5 passed, 1 skipped (CPU).
-  The tests use a random `lean.contract.State` built in the test file, not the game.
-- **The match test was not run.** It skipped because `lean.game` could not be imported
-  when this was written (`lean/game/__init__.py` imported a `core` module that did not
-  exist yet). It is written against CONTRACT.md's `GameConfig()`, `reset`, `step`,
-  `draw_noise` and has never executed, so expect to fix small things in it.
+- `OMP_NUM_THREADS=1 PYTHONPATH=. python -m pytest lean/scripted/tests -q -s` on the
+  CPU. The invariant tests use a random `lean.contract.State` built in the test file.
+  The match test plays `lean.game` (default `GameConfig`: 4200 m arena, Yongma and
+  Jujak alternating, "sides" spawn), 48 games of 5v5, seats split by environment, the
+  opponent memoryless at spread 0. Result: 6 passed in 29 s; the match printed
+  "43 wins, 1 losses, 44 ended of 48" (4 games still running at the 3000-tick horizon).
+- A separate 32-game run of the same match (seed 11, single thread, 20 s): the opponent
+  won 30, lost 2, drew 0; the last game ended at tick 2431.
+- With the default thread count on a loaded 4-core machine the match was many times
+  slower than with one thread; set `OMP_NUM_THREADS=1` for these small batches.
 - Nothing ran on a GPU and nothing was compiled.
-- Not checked against the real game: the stick side (`left_is_even`), the names in
-  `state.constants`, the arena radius, whether `cooldown <= 0` means ready, and whether
-  the bullet inherits the shooter's velocity (the lead assumes it does, as in v2).
+- The stick side was checked only by reading `lean/game/card.py` (`STICK_LEVELS`, even
+  indices positive) and by the match result. Not checked: that positive is a left turn
+  in the game's frame by a direct flight test, and that the bullet inherits the
+  shooter's velocity (the lead assumes it does, as in v2).
+- `state.constants` names used from the game: `max_acceleration`, `max_energy`,
+  `bullet_drag`, `hit_radius`, `stall` (as `stall_angle`), `bullet_cost` (as
+  `bullet_energy_cost`). The game provides no `gun_range`, `corner_speed` or
+  `bullet_launch_speed`, so those are the config's Vizia fallbacks for every type.
 
 ## Operation count (measured, eager CPU, E = 256, N = 10)
 
@@ -109,7 +118,8 @@ the log of the quantity with the logit clamp.
   values, so with a game that provides none of the derived names, Yongma and Jujak are
   flown with Vizia's gun range, corner speed and launch speed (a few percent off). The
   target's angular size uses the shooter's `hit_radius` (all types have 12 m).
-  `arena_radius` falls back to 3000 m, a placeholder: set it from `GameConfig`.
+  `arena_radius` falls back to 4200 m (the game's default); set it from `GameConfig`
+  when that differs, since `act` is not given the game's config.
 - **Velocity** is speed times the nose turned back by the angle of attack, with a
   refractive index of 1 (no fields).
 - **Sampling** is inverse transform on each head with `uniform >= cumulative`.
