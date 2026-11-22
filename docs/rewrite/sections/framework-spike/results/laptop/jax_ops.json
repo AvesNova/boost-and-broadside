@@ -1,0 +1,215 @@
+{
+ "meta": {
+  "framework": "jax",
+  "jax": "0.12.1",
+  "jaxlib": "0.12.1",
+  "optax": "0.2.9",
+  "numpy": "2.5.5",
+  "device": "cpu",
+  "backend": "cpu",
+  "devices": [
+   "cpu:0"
+  ],
+  "compile_options": "jax.jit(fn) with defaults; float32 (jax_enable_x64 off)",
+  "default_matmul_precision": "highest",
+  "xla_flags": "",
+  "argv": [
+   "--device",
+   "cpu",
+   "--suite",
+   "ops",
+   "--out",
+   "results/laptop/jax_ops.json"
+  ],
+  "envs": [
+   1,
+   256
+  ],
+  "compile_envs": 256,
+  "size_envs": 32,
+  "micro_batch": "16x128",
+  "machine": {
+   "platform": "Linux-7.0.0-43-generic-x86_64-with-glibc2.43",
+   "python": "3.14.2",
+   "cpu_count": 16,
+   "lscpu CPU(s)": "16",
+   "lscpu Model name": "13th Gen Intel(R) Core(TM) i7-13620H",
+   "lscpu Thread(s) per core": "2",
+   "lscpu Core(s) per socket": "10",
+   "lscpu L2 cache": "9.5 MiB (7 instances)",
+   "lscpu L3 cache": "24 MiB (1 instance)",
+   "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ]
+  }
+ },
+ "records": [
+  {
+   "suite": "ops",
+   "what": "rollout tick (observe + 2 forwards + sample + game step)",
+   "ships": 10,
+   "jaxpr_primitives": 1354,
+   "load_before": {
+    "loadavg": [
+     6.85,
+     5.48,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P4",
+     "temperature.gpu": "68",
+     "clocks.sm": "285 MHz",
+     "power.draw": "8.14 W",
+     "enforced.power.limit": "114.98 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     6.85,
+     5.48,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P4",
+     "temperature.gpu": "67",
+     "clocks.sm": "210 MHz",
+     "power.draw": "7.90 W",
+     "enforced.power.limit": "112.19 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   }
+  },
+  {
+   "suite": "ops",
+   "what": "observe",
+   "ships": 10,
+   "jaxpr_primitives": 101,
+   "load_before": {
+    "loadavg": [
+     6.85,
+     5.48,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P4",
+     "temperature.gpu": "68",
+     "clocks.sm": "285 MHz",
+     "power.draw": "8.14 W",
+     "enforced.power.limit": "114.98 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     6.85,
+     5.48,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P4",
+     "temperature.gpu": "67",
+     "clocks.sm": "210 MHz",
+     "power.draw": "7.90 W",
+     "enforced.power.limit": "112.19 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   }
+  },
+  {
+   "suite": "ops",
+   "what": "one policy forward (A)",
+   "ships": 10,
+   "jaxpr_primitives": 508,
+   "load_before": {
+    "loadavg": [
+     6.85,
+     5.48,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P4",
+     "temperature.gpu": "68",
+     "clocks.sm": "285 MHz",
+     "power.draw": "8.14 W",
+     "enforced.power.limit": "114.98 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     6.85,
+     5.48,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P4",
+     "temperature.gpu": "67",
+     "clocks.sm": "210 MHz",
+     "power.draw": "7.90 W",
+     "enforced.power.limit": "112.19 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   }
+  },
+  {
+   "suite": "ops",
+   "what": "game step (B)",
+   "ships": 10,
+   "jaxpr_primitives": 186,
+   "load_before": {
+    "loadavg": [
+     6.85,
+     5.48,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P4",
+     "temperature.gpu": "68",
+     "clocks.sm": "285 MHz",
+     "power.draw": "8.14 W",
+     "enforced.power.limit": "114.98 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     6.85,
+     5.48,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P4",
+     "temperature.gpu": "67",
+     "clocks.sm": "210 MHz",
+     "power.draw": "7.90 W",
+     "enforced.power.limit": "112.19 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   }
+  }
+ ]
+}

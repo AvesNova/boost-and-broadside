@@ -1,0 +1,416 @@
+{
+ "meta": {
+  "framework": "pytorch",
+  "torch": "2.15.0+cu132",
+  "numpy": "2.5.4",
+  "device": "cpu",
+  "gpu": null,
+  "cuda_runtime": null,
+  "torch_num_threads_default": 10,
+  "compile_options": "torch.compile(fn) with defaults: backend='inductor', mode='default', dynamic=None, fullgraph=False; 'dynamic' = dynamic=True; 'mark_dynamic' = defaults + torch._dynamo.mark_dynamic on the ship axis",
+  "float32_matmul_precision": "highest",
+  "cxx": "/usr/bin/g++",
+  "argv": [
+   "--device",
+   "cpu",
+   "--suite",
+   "ops",
+   "--out",
+   "results/laptop/torch_ops.json"
+  ],
+  "envs": [
+   1,
+   256
+  ],
+  "compile_envs": 256,
+  "size_envs": 32,
+  "micro_batch": "16x128",
+  "machine": {
+   "platform": "Linux-7.0.0-43-generic-x86_64-with-glibc2.43",
+   "python": "3.14.2",
+   "cpu_count": 16,
+   "lscpu CPU(s)": "16",
+   "lscpu Model name": "13th Gen Intel(R) Core(TM) i7-13620H",
+   "lscpu Thread(s) per core": "2",
+   "lscpu Core(s) per socket": "10",
+   "lscpu L2 cache": "9.5 MiB (7 instances)",
+   "lscpu L3 cache": "24 MiB (1 instance)",
+   "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ]
+  }
+ },
+ "records": [
+  {
+   "suite": "ops",
+   "what": "rollout tick (observe + 2 forwards + sample + game step)",
+   "ships": 10,
+   "compute_ops": 713,
+   "view_ops": 276,
+   "top_compute_ops": [
+    [
+     "aten.mul.Tensor",
+     180
+    ],
+    [
+     "aten._unsafe_view.default",
+     57
+    ],
+    [
+     "aten.add.Tensor",
+     49
+    ],
+    [
+     "aten.addmm.default",
+     44
+    ],
+    [
+     "aten.sub.Tensor",
+     32
+    ],
+    [
+     "aten.mean.dim",
+     27
+    ],
+    [
+     "aten.cat.default",
+     26
+    ],
+    [
+     "aten.pow.Tensor_Scalar",
+     26
+    ],
+    [
+     "aten.add_.Scalar",
+     26
+    ],
+    [
+     "aten.rsqrt.default",
+     26
+    ],
+    [
+     "aten.where.self",
+     23
+    ],
+    [
+     "aten.scalar_tensor.default",
+     22
+    ]
+   ],
+   "load_before": {
+    "loadavg": [
+     7.19,
+     5.52,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "71",
+     "clocks.sm": "2430 MHz",
+     "power.draw": "27.06 W",
+     "enforced.power.limit": "120.00 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     6.85,
+     5.48,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P4",
+     "temperature.gpu": "68",
+     "clocks.sm": "375 MHz",
+     "power.draw": "8.40 W",
+     "enforced.power.limit": "114.98 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   }
+  },
+  {
+   "suite": "ops",
+   "what": "observe",
+   "ships": 10,
+   "compute_ops": 69,
+   "view_ops": 15,
+   "top_compute_ops": [
+    [
+     "aten.div.Tensor",
+     16
+    ],
+    [
+     "aten.mul.Tensor",
+     14
+    ],
+    [
+     "aten.sum.dim_IntList",
+     11
+    ],
+    [
+     "aten._to_copy.default",
+     9
+    ],
+    [
+     "aten.sub.Tensor",
+     4
+    ],
+    [
+     "aten.clamp.default",
+     4
+    ],
+    [
+     "aten.sqrt.default",
+     2
+    ],
+    [
+     "aten.gt.Scalar",
+     1
+    ],
+    [
+     "aten.mean.dim",
+     1
+    ],
+    [
+     "aten.cos.default",
+     1
+    ],
+    [
+     "aten.sin.default",
+     1
+    ],
+    [
+     "aten.rsub.Scalar",
+     1
+    ]
+   ],
+   "load_before": {
+    "loadavg": [
+     7.19,
+     5.52,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "71",
+     "clocks.sm": "2430 MHz",
+     "power.draw": "27.06 W",
+     "enforced.power.limit": "120.00 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     6.85,
+     5.48,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P4",
+     "temperature.gpu": "68",
+     "clocks.sm": "375 MHz",
+     "power.draw": "8.40 W",
+     "enforced.power.limit": "114.98 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   }
+  },
+  {
+   "suite": "ops",
+   "what": "one policy forward (A)",
+   "ships": 10,
+   "compute_ops": 265,
+   "view_ops": 113,
+   "top_compute_ops": [
+    [
+     "aten.mul.Tensor",
+     76
+    ],
+    [
+     "aten._unsafe_view.default",
+     28
+    ],
+    [
+     "aten.addmm.default",
+     22
+    ],
+    [
+     "aten.add.Tensor",
+     20
+    ],
+    [
+     "aten.pow.Tensor_Scalar",
+     13
+    ],
+    [
+     "aten.mean.dim",
+     13
+    ],
+    [
+     "aten.add_.Scalar",
+     13
+    ],
+    [
+     "aten.rsqrt.default",
+     13
+    ],
+    [
+     "aten.cat.default",
+     12
+    ],
+    [
+     "aten.sub.Tensor",
+     8
+    ],
+    [
+     "aten.scalar_tensor.default",
+     8
+    ],
+    [
+     "aten.gelu.default",
+     6
+    ]
+   ],
+   "load_before": {
+    "loadavg": [
+     7.19,
+     5.52,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "71",
+     "clocks.sm": "2430 MHz",
+     "power.draw": "27.06 W",
+     "enforced.power.limit": "120.00 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     6.85,
+     5.48,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P4",
+     "temperature.gpu": "68",
+     "clocks.sm": "375 MHz",
+     "power.draw": "8.40 W",
+     "enforced.power.limit": "114.98 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   }
+  },
+  {
+   "suite": "ops",
+   "what": "game step (B)",
+   "ships": 10,
+   "compute_ops": 102,
+   "view_ops": 27,
+   "top_compute_ops": [
+    [
+     "aten.mul.Tensor",
+     14
+    ],
+    [
+     "aten.where.self",
+     13
+    ],
+    [
+     "aten.sub.Tensor",
+     11
+    ],
+    [
+     "aten.bitwise_and.Tensor",
+     11
+    ],
+    [
+     "aten.add.Tensor",
+     8
+    ],
+    [
+     "aten.clamp.default",
+     6
+    ],
+    [
+     "aten.scalar_tensor.default",
+     6
+    ],
+    [
+     "aten.remainder.Scalar",
+     3
+    ],
+    [
+     "aten._to_copy.default",
+     3
+    ],
+    [
+     "aten.eq.Scalar",
+     3
+    ],
+    [
+     "aten.div.Tensor",
+     2
+    ],
+    [
+     "aten.sum.dim_IntList",
+     2
+    ]
+   ],
+   "load_before": {
+    "loadavg": [
+     7.19,
+     5.52,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "71",
+     "clocks.sm": "2430 MHz",
+     "power.draw": "27.06 W",
+     "enforced.power.limit": "120.00 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     6.85,
+     5.48,
+     2.97
+    ],
+    "gpu": {
+     "pstate": "P4",
+     "temperature.gpu": "68",
+     "clocks.sm": "375 MHz",
+     "power.draw": "8.40 W",
+     "enforced.power.limit": "114.98 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "62 MiB"
+    }
+   }
+  }
+ ]
+}

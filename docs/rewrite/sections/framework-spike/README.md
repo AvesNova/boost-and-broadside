@@ -342,3 +342,47 @@ Notes for the GPU run:
 - `loop`: `ticks/s` is rollout ticks; `env-ticks/s` multiplies by E.
 - `latency`: p99 is the number to hold against the 16 ms budget; treat `max` with care (one
   sample in 3,000).
+
+## Laptop GPU results (2026-11-22)
+
+RTX 4070 Laptop, power profile "performance", JAX matmul precision `highest` (PyTorch's
+default). Full tables: `results/results_laptop.md` (from `aggregate.py`, 5 repeats for the
+compile, sizes and latency suites; one invocation of 7 timed repeats for steady and loop).
+Repeat 1 of the compile and sizes suites ran at 15:00 under other load (load average up to
+13.9, against 0.5 to 4 for repeats 2 to 5); the medians absorb it.
+
+**The PPO update was unfair to PyTorch** in `torch_bench.py`: the recurrence over time is a
+Python loop of 128 steps (JAX: `lax.scan`). `update_bench.py` replaces it with a log-step
+(doubling) scan, which matches the loop to float32 rounding (loss difference 2.4e-7,
+largest gradient difference 2.5e-7 relative, `--check` on the CPU), and also tries compiling
+clipping and Adam. Three fresh processes per row, steady ms per update, 16 envs x 128 ticks:
+
+| | f32 | bf16 | cold compile f32 / bf16 s |
+|---|---|---|---|
+| PyTorch loop, uncompiled | 85.5 | 70.9 | |
+| PyTorch loop, loss compiled (`torch_bench.py`) | 102.8 | 75.7 | 100.6 / 97.3 |
+| PyTorch doubling, uncompiled | 58.5 | 43.8 | |
+| PyTorch doubling, loss compiled | 35.0 | 19.0 | 19.6 / 22.6 |
+| PyTorch doubling, loss, clip and Adam compiled | 35.0 | 19.0 | 27.4 / 30.5 |
+| JAX `lax.scan`, one jit (`results_laptop.md`) | 23.3 | 13.0 | 34.4 / 12.7 |
+
+Compiling clip and Adam gains nothing. `lean/model` has the same Python loop over time.
+
+**Headline numbers** (medians; f32 unless stated):
+
+| | JAX | PyTorch compiled | PyTorch eager |
+|---|---|---|---|
+| Rollout tick, E = 2048, ms | 14.8 | 15.5 | 20.5 |
+| Rollout tick, E = 1, ms | 0.19 | 0.94 | 3.62 |
+| Whole 128-tick rollout, E = 2048, env-ticks/s | 140,056 (scan) | 131,652 | 99,332 |
+| PPO update (fair), ms, f32 / bf16 | 23.3 / 13.0 | 35.0 / 19.0 | 58.5 / 43.8 |
+| Cold compile, rollout tick, s | 15.4 | 13.3 | |
+| Warm-cache first call, rollout tick, s | 0.22 | 1.44 | |
+| New team size (5v5 compiled, then 10v10, 20v20, 50v50) | re-jit every size, 15.5 to 17.6 s each | default: one recompile at the second size (16.1 s), then none; `dynamic=True` or `mark_dynamic`: none | |
+| Padding to 100 slots instead | 22 ms per tick at every size (1.3 at 5v5 exact) | 18 ms per tick (2.0 at 5v5 exact) | |
+| CPU batch-size-1 tick + 2 decisions, p99 ms, best thread setting, 5v5 / 20v20 / 50v50 | 0.55 / 1.38 / 3.31 (pinned) | 0.82 / 1.60 / 2.83 | 2.30 / 3.11 / 5.46 |
+
+Every CPU latency configuration meets p99 at most 16 ms. One frame broke the 33 ms worst
+frame: JAX pinned at 20v20, 35.3 ms (p99 1.4 ms). PyTorch eager with default threads is
+about three times slower than with one thread (6.0 against 2.1 ms at 5v5). All of this is
+on the toy game (102 operations per step, against 1,312 for `lean/game`).

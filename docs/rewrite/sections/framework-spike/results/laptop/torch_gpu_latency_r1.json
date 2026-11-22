@@ -1,0 +1,442 @@
+{
+ "meta": {
+  "framework": "pytorch",
+  "torch": "2.15.0+cu132",
+  "numpy": "2.5.4",
+  "device": "cuda",
+  "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "cuda_runtime": "13.2",
+  "torch_num_threads_default": 10,
+  "compile_options": "torch.compile(fn) with defaults: backend='inductor', mode='default', dynamic=None, fullgraph=False; 'dynamic' = dynamic=True; 'mark_dynamic' = defaults + torch._dynamo.mark_dynamic on the ship axis",
+  "float32_matmul_precision": "highest",
+  "cxx": "/usr/bin/g++",
+  "argv": [
+   "--device",
+   "cuda",
+   "--suite",
+   "latency",
+   "--latency-ships",
+   "10,40,100",
+   "--latency-threads",
+   "default",
+   "--out",
+   "results/laptop/torch_gpu_latency_r1.json"
+  ],
+  "envs": [
+   1,
+   2048
+  ],
+  "compile_envs": 2048,
+  "size_envs": 256,
+  "micro_batch": "16x128",
+  "machine": {
+   "platform": "Linux-7.0.0-43-generic-x86_64-with-glibc2.43",
+   "python": "3.14.2",
+   "cpu_count": 16,
+   "lscpu CPU(s)": "16",
+   "lscpu Model name": "13th Gen Intel(R) Core(TM) i7-13620H",
+   "lscpu Thread(s) per core": "2",
+   "lscpu Core(s) per socket": "10",
+   "lscpu L2 cache": "9.5 MiB (7 instances)",
+   "lscpu L3 cache": "24 MiB (1 instance)",
+   "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ]
+  }
+ },
+ "records": [
+  {
+   "suite": "latency",
+   "variant": "eager",
+   "ships": 10,
+   "threads": "default",
+   "torch_num_threads": 10,
+   "warmup": 300,
+   "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ],
+   "p50_ms": 3.4381274999759626,
+   "p99_ms": 3.6714549500356943,
+   "max_ms": 7.975523000141038,
+   "mean_ms": 3.4459833739987666,
+   "ticks": 3000,
+   "load_before": {
+    "loadavg": [
+     1.76,
+     3.86,
+     3.15
+    ],
+    "gpu": {
+     "pstate": "P8",
+     "temperature.gpu": "48",
+     "clocks.sm": "210 MHz",
+     "power.draw": "3.54 W",
+     "enforced.power.limit": "100.00 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "64 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     2.39,
+     3.9,
+     3.17
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "50",
+     "clocks.sm": "1980 MHz",
+     "power.draw": "19.40 W",
+     "enforced.power.limit": "118.33 W",
+     "utilization.gpu": "40 %",
+     "memory.used": "64 MiB"
+    }
+   }
+  },
+  {
+   "suite": "latency",
+   "variant": "compiled",
+   "ships": 10,
+   "threads": "default",
+   "torch_num_threads": 10,
+   "warmup": 300,
+   "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ],
+   "p50_ms": 0.8475640000824569,
+   "p99_ms": 1.1399612901186627,
+   "max_ms": 2.7904080000098475,
+   "mean_ms": 0.8620462643316387,
+   "ticks": 3000,
+   "load_before": {
+    "loadavg": [
+     2.39,
+     3.9,
+     3.17
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "50",
+     "clocks.sm": "1980 MHz",
+     "power.draw": "19.40 W",
+     "enforced.power.limit": "118.33 W",
+     "utilization.gpu": "40 %",
+     "memory.used": "64 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     2.44,
+     3.88,
+     3.17
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "51",
+     "clocks.sm": "2445 MHz",
+     "power.draw": "21.38 W",
+     "enforced.power.limit": "114.05 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "64 MiB"
+    }
+   }
+  },
+  {
+   "suite": "latency",
+   "variant": "eager",
+   "ships": 40,
+   "threads": "default",
+   "torch_num_threads": 10,
+   "warmup": 300,
+   "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ],
+   "p50_ms": 3.661857000111013,
+   "p99_ms": 3.929471189987907,
+   "max_ms": 5.128926999987016,
+   "mean_ms": 3.6584024373320667,
+   "ticks": 3000,
+   "load_before": {
+    "loadavg": [
+     2.44,
+     3.88,
+     3.17
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "51",
+     "clocks.sm": "2445 MHz",
+     "power.draw": "21.38 W",
+     "enforced.power.limit": "114.05 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "64 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     2.12,
+     3.74,
+     3.13
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "52",
+     "clocks.sm": "2415 MHz",
+     "power.draw": "26.29 W",
+     "enforced.power.limit": "118.76 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "64 MiB"
+    }
+   }
+  },
+  {
+   "suite": "latency",
+   "variant": "compiled",
+   "ships": 40,
+   "threads": "default",
+   "torch_num_threads": 10,
+   "warmup": 300,
+   "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ],
+   "p50_ms": 0.957478000032097,
+   "p99_ms": 1.0792638901102685,
+   "max_ms": 1.1622649999480927,
+   "mean_ms": 0.9648989266670469,
+   "ticks": 3000,
+   "load_before": {
+    "loadavg": [
+     2.12,
+     3.74,
+     3.13
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "52",
+     "clocks.sm": "2415 MHz",
+     "power.draw": "26.29 W",
+     "enforced.power.limit": "118.76 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "64 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     2.82,
+     3.82,
+     3.17
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "53",
+     "clocks.sm": "2445 MHz",
+     "power.draw": "22.15 W",
+     "enforced.power.limit": "118.18 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "64 MiB"
+    }
+   }
+  },
+  {
+   "suite": "latency",
+   "variant": "eager",
+   "ships": 100,
+   "threads": "default",
+   "torch_num_threads": 10,
+   "warmup": 300,
+   "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ],
+   "p50_ms": 3.5238525000522714,
+   "p99_ms": 3.782554960073412,
+   "max_ms": 5.817143000058422,
+   "mean_ms": 3.5328233180025563,
+   "ticks": 3000,
+   "load_before": {
+    "loadavg": [
+     2.82,
+     3.82,
+     3.17
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "53",
+     "clocks.sm": "2445 MHz",
+     "power.draw": "22.32 W",
+     "enforced.power.limit": "118.18 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "64 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     2.49,
+     3.69,
+     3.14
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "53",
+     "clocks.sm": "2445 MHz",
+     "power.draw": "28.61 W",
+     "enforced.power.limit": "117.82 W",
+     "utilization.gpu": "41 %",
+     "memory.used": "64 MiB"
+    }
+   }
+  },
+  {
+   "suite": "latency",
+   "variant": "compiled",
+   "ships": 100,
+   "threads": "default",
+   "torch_num_threads": 10,
+   "warmup": 300,
+   "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ],
+   "p50_ms": 0.920452000059413,
+   "p99_ms": 1.077832659918839,
+   "max_ms": 1.4939749999030028,
+   "mean_ms": 0.9309189863356551,
+   "ticks": 3000,
+   "load_before": {
+    "loadavg": [
+     2.49,
+     3.69,
+     3.14
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "53",
+     "clocks.sm": "2445 MHz",
+     "power.draw": "28.03 W",
+     "enforced.power.limit": "117.82 W",
+     "utilization.gpu": "41 %",
+     "memory.used": "64 MiB"
+    }
+   },
+   "load_after": {
+    "loadavg": [
+     4.01,
+     3.97,
+     3.24
+    ],
+    "gpu": {
+     "pstate": "P0",
+     "temperature.gpu": "55",
+     "clocks.sm": "2445 MHz",
+     "power.draw": "22.42 W",
+     "enforced.power.limit": "117.64 W",
+     "utilization.gpu": "0 %",
+     "memory.used": "64 MiB"
+    }
+   }
+  }
+ ]
+}
