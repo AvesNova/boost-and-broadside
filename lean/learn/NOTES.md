@@ -577,3 +577,10 @@ The learn-side items of the agreed waste fixes (lean/game/NOTES.md, "Agreed wast
   league, two 3-tick segments; v2 and core games; and the core game with a 4-tick clock so
   that games end and take deals: 6 in the second segment, none reused): 0 graph breaks,
   3 frames, 0 recompiles, every value finite.
+- **GPU, one row** (docs/rewrite/sections/scoreboard/train_gpu.py, compiled, bf16, 256
+  environments, v2 game, 8 snapshots, 3 updates; laptop RTX 4070, profile "performance", no
+  other GPU job; 2026-11-23 06:27): steady collect 28,620 steps/s (scoreboard before: 25,974),
+  update 6,440 (6,439), loop 5,257 (5,160); peak 3.68 / 4.35 GiB; first update 98.1 + 92.9 s
+  (compile cache cold for the changed graphs). One run each, so the collect gain (+10%) is the
+  only difference larger than run-to-run noise is likely to be; the core game was not run.
+  `python -m lean.train --smoke --device cuda` ran.
