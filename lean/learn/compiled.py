@@ -1,5 +1,5 @@
 """The learner's hot paths under torch.compile: the two halves of a rollout tick, a league
-snapshot's move, the bootstrap value, the critic's target pass and the minibatch loss
+snapshot's move, the critic's target pass and the minibatch loss
 (forward and backward). Adam and the gradient clipping stay eager (the framework spike
 found nothing to gain there).
 
@@ -10,8 +10,10 @@ size recompiles. With it off and `dynamic=True` each graph compiles once and eve
 size, environment count and minibatch size after costs nothing (docs/rewrite/scoreboard.md).
 """
 
+import dataclasses
 import functools
 import importlib
+import types
 
 import torch
 import torch.fx.experimental._config as fx_config
@@ -48,11 +50,36 @@ for _name in ("rand", "randn", "randint"):
 # is called by every deal. Dynamo ignores the cache, traces the solve and breaks the graph
 # at the float `.tolist()`, and the break inside reset_done's `_deal` then sends the whole
 # deal back to eager (a dynamo failure resuming the `uniform` closure after the break).
-# Marked as a constant result, it is called once at trace time and its numbers baked in.
+# Replaced by a lookup of the numbers solved once here.
 _core = importlib.import_module("lean.game.core")
 if not getattr(_core.derived_characteristics, "_lean_constant", False):
-    _core.derived_characteristics = torch.compiler.assume_constant_result(_core.derived_characteristics)
-    _core.derived_characteristics._lean_constant = True
+    # Solved eagerly here for both flight models; the replacement only looks them up, so a
+    # trace reads plain Python numbers (constants) and never reaches the solve.
+    _SOLVED = {model: _core.derived_characteristics(model) for model in ("v2", "core")}
+
+    def _solved_characteristics(flight_model: str) -> dict[str, tuple[float, ...]]:
+        return _SOLVED[flight_model]
+
+    _solved_characteristics._lean_constant = True
+    _core.derived_characteristics = _solved_characteristics
+
+# Workaround until lean.game reads the fields of the instance: reset_done iterates
+# `dataclasses.fields(State)` (the class), which dynamo cannot trace (gb0180, "dataclass
+# fields failure" on a class) and so breaks the graph at every deal. lean.game.core's
+# `dataclasses` is swapped for a copy whose `fields` returns State's fields, taken once
+# here, for the class and defers to dataclasses.fields for anything else.
+if not getattr(_core.dataclasses, "_lean_fields", False):
+    _STATE_FIELDS = dataclasses.fields(_core.State)
+
+    def _fields(item):
+        if item is _core.State:
+            return _STATE_FIELDS
+        return dataclasses.fields(item)
+
+    _core.dataclasses = types.SimpleNamespace(
+        **{name: getattr(dataclasses, name) for name in dataclasses.__all__ if name != "fields"}, fields=_fields,
+        _lean_fields=True,
+    )
 
 
 def _compile(function):
@@ -61,7 +88,16 @@ def _compile(function):
 
 act = _compile(_collect.act)
 advance = _compile(_collect.advance)
-bootstrap = _compile(_collect.bootstrap)
-snapshot_move = _compile(_collect.snapshot_move)
+_snapshot_move = _compile(_collect.snapshot_move)
+
+
+def snapshot_move(policy, views, environment, team, carry, position_offset, generator):
+    """collect.snapshot_move, compiled for two or more environments. A member playing a
+    single environment runs eagerly: dynamic shapes specialise a size of 1, so it would
+    otherwise be a second compile of the whole policy step."""
+    move = _snapshot_move if environment.shape[0] >= 2 else _collect.snapshot_move
+    return move(policy, views, environment, team, carry, position_offset, generator)
+
+
 minibatch_values = _compile(_update.minibatch_values)
 minibatch_loss = _compile(_update.minibatch_loss)

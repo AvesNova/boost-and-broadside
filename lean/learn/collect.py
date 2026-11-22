@@ -436,16 +436,6 @@ def advance(
     return state, carry, records, counters
 
 
-def bootstrap(config: LearnConfig, game_config, policy, state, carry: CollectCarry, game) -> Tensor:
-    """The live policy's value after the last tick, (S, N, LEVELS), zero outside `own`."""
-    self_play = state.exists.shape[0] - carry.member.shape[0]
-    seat_environment, seat_team = seats(carry.learner_team, self_play)
-    views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
-    observation = seat_view(views, seat_environment, seat_team)
-    _, logits, _ = policy.step(observation, carry.policy, carry.position_offset.index_select(0, seat_environment))
-    return decode_value(logits, value_centres(config, logits.shape[-1], logits.device)) * observation.own[..., None]
-
-
 @torch.no_grad()
 def collect(
     config: LearnConfig, game_config, policy, opponent: Opponent, state, carry: CollectCarry, ticks: int, generator,
@@ -462,7 +452,7 @@ def collect(
     tallies.
 
     All random draws come from `generator`; with `compiled` (a tick's two halves, the
-    snapshot move and the bootstrap run as lean.learn.compiled's graphs) they come from
+    snapshot move run as lean.learn.compiled's graphs) they come from
     torch's default generator of the device instead, since a compiled graph cannot take a
     generator object. Nothing is read back to the host in the loop except the member
     counts while the league holds snapshots (league_actions).
@@ -475,10 +465,10 @@ def collect(
     if compiled:
         from lean.learn import compiled as graphs
 
-        act_part, advance_part, bootstrap_part, move = graphs.act, graphs.advance, graphs.bootstrap, graphs.snapshot_move
+        act_part, advance_part, move = graphs.act, graphs.advance, graphs.snapshot_move
         generator = None
     else:
-        act_part, advance_part, bootstrap_part, move = act, advance, bootstrap, snapshot_move
+        act_part, advance_part, move = act, advance, snapshot_move
     initial_carry = carry.policy
     records = {name: [] for name in ("observation", "action", "teacher", "log_probability", "value", "reward", "done", "reset", "position_offset", "next_state", "next_valid")}
     counters = {name: torch.zeros((), dtype=torch.long, device=device) for name in ("league_games", "league_wins", "scripted_games", "scripted_wins", "episodes")}
@@ -504,7 +494,9 @@ def collect(
         tick = tick + 1
 
     seat_environment, seat_team = seats(carry.learner_team, self_play)
-    bootstrap_value = bootstrap_part(config, game_config, policy, state, carry, game)
+    # The value after the last tick from the tick's first half (one graph fewer to compile;
+    # its samples and the scripted actions are discarded).
+    bootstrap_value = act_part(config, game_config, policy, opponent, state, carry, generator, game, scripted)[5]
     # After a reset the final observation belongs to a new episode; GAE never reads the
     # bootstrap there because `done` on the last tick cuts it.
 
