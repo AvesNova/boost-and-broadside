@@ -1,0 +1,84 @@
+"""The real-scale ship card and the shared rule constants, as v2 holds them (game version 20).
+
+Rows of every card tuple are indexed by ship type in the order of TYPE_NAMES. Units: metres,
+seconds, radians, joules; lift and drag coefficients are per metre (mass 1).
+"""
+
+import math
+
+TYPE_NAMES = ("yongma", "jujak", "vizia")
+
+CARD = {
+    "max_lift_coefficient": (0.00424512755125761, 0.005678284447640181, 0.0049096886068582535),
+    "max_acceleration": (353.1600036621094, 353.1600036621094, 353.1600036621094),
+    "zero_lift_drag": (4.2485891754040495e-05, 5.8069828810403123e-05, 4.967039785697125e-05),
+    "engine_power": (9439.37109375, 11269.7060546875, 10292.57421875),
+    "engine_power_full_store": (2016.1539306640625, 2091.707275390625, 2038.4674072265625),
+    "static_thrust": (49.05462646484375, 33.45197296142578, 35.69484329223633),
+    "max_energy": (497563.1875, 497563.1875, 497563.1875),
+    "corner_nose_frequency": (10.925199508666992, 11.559896469116211, 11.23144817352295),
+    "max_shield": (141.94908142089844, 79.67646026611328, 100.0),
+    "hit_radius": (12.0, 12.0, 12.0),
+    "core_radius": (5.0, 5.0, 5.0),
+    "hit_damage": (22.98240089416504, 19.187700271606445, 21.0),
+    "muzzle_speed": (1712.0, 1712.0, 1712.0),
+    "bullet_energy_cost": (575.0579223632812, 575.0579223632812, 575.0579223632812),
+    "fire_rate": (30.0, 30.0, 30.0),
+    "bullet_life": (0.36666667461395264, 0.36666667461395264, 0.36666667461395264),
+    "spawn_energy": (199025.28125, 199025.28125, 199025.28125),
+    "explosive_share": (0.5, 0.0, 0.0),
+    "reference_bullet_speed": (1761.7950439453125, 1745.64990234375, 1753.606201171875),
+    "induced_drag_scale": (0.5831313729286194, 0.26635676622390747, 0.39490920305252075),
+    "stall_angle_scale": (1.0333333015441895, 1.0333333015441895, 1.0333333015441895),
+    "dive_exchange_scale": (4.682722568511963, 4.143795013427734, 4.406386375427246),
+    "climb_exchange_scale": (3.422452211380005, 3.4853007793426514, 3.4585301876068115),
+    "bullet_spread_scale": (0.25704020261764526, 0.25704020261764526, 0.25704020261764526),
+    "bullet_drag_scale": (1.0, 1.0, 1.0),
+    "shield_recharge_rate_scale": (2.0, 2.0, 2.0),
+    "shield_recharge_delay_scale": (0.5, 0.5, 0.5),
+    "head_on_fraction_scale": (0.0, 0.0, 0.0),
+    "head_on_angle_scale": (1.0644670724868774, 1.0644670724868774, 1.0644670724868774),
+    "head_on_sharpness": (3.0, 3.0, 3.0),
+    "engine_knee_scale": (1.0, 1.0, 1.0),
+    "fine_stick": (0.1964104026556015, 0.2223183661699295, 0.21010109782218933),
+    "sustained_stick": (0.654701292514801, 0.7410612106323242, 0.7003369927406311),
+}
+
+# Flight constants shared by every type.
+GRAVITY = 39.24
+STALL_ANGLE = 0.2617993877991494
+INDUCED_DRAG_FACTOR = 66.348
+ENGINE_KNEE = 0.5
+STORE_FADE_BAND = 0.02
+CLIMB_EXCHANGE = 9.810000000000002
+DIVE_EXCHANGE = 9.810000000000002
+LIFT_SOFTMIN_EXPONENT = 16.0
+THRUST_SOFTMIN_EXPONENT = 2.0
+NOSE_DAMPING = 0.7
+NOSE_FREQUENCY_FLOOR = 0.4997135491028137
+SPEED_FLOOR = 1.454166427889188e-06
+CRITICAL_SPEED = 394.0
+DRAG_RISE_EXPONENT = 12.0
+SEPARATION_DRAG = 1.0
+SEPARATION_EXPONENT = 8.0
+
+# Guns, shields, boundary, spawns.
+BULLET_DRAG = 0.0005
+BULLET_SPREAD = 12.0
+HEAD_ON_FRACTION = 0.3
+HEAD_ON_ANGLE = 0.737832313317803
+SHIELD_RECHARGE_DELAY = 6.0
+SHIELD_RECHARGE_RATE = 12.0
+BOUNDARY_MAX_DAMAGE = 40.0
+SPAWN_SPEED = 145.288
+SPAWN_OFFSET = 0.8
+SPAWN_TURN_DISTANCE = 436.5
+SIDE_AREA_FRACTION = 0.15
+SIDE_HEADING_JITTER = 0.2617993877991494
+MIXED_AREA_FRACTION = 0.85
+LN_SQRT2 = 0.5 * math.log(2.0)
+LN_2 = math.log(2.0)
+
+# Stick index to signed level; power index 0 coast, 1 boost, 2 reverse.
+STICK_LEVELS = (0.0, -1.0, 1.0, -2.0, 2.0, -3.0, 3.0)
+QUIET_STICK_MAX = 2  # stick indices 0..2 (straight and the fine turns) keep the shield quiet
