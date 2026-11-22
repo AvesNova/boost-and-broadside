@@ -31,7 +31,7 @@ import torch  # noqa: E402
 from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(__file__))
-from sim import CONFIG, MAX_ENERGY, MODEL, SPAWN, SUFFIX  # noqa: E402
+from sim import CONFIG, MAX_ENERGY, MODEL, SPAWN, SUFFIX, THEME  # noqa: E402
 
 from lean.game import card, core  # noqa: E402
 
@@ -42,9 +42,17 @@ G = card.GRAVITY
 NAMES = ("Yongma", "Jujak", "Vizia")
 # Reference palette (dataviz skill, references/palette.md): categorical slots 1-3, diverging
 # blue <-> red through a grey midpoint, chart surface and inks.
-SERIES = ("#2a78d6", "#eb6834", "#1baf7a")
-SURFACE, INK, INK_2, MUTED = "#fcfcfb", "#0b0b0b", "#52514e", "#898781"
-DIVERGING = LinearSegmentedColormap.from_list("ps", ["#e34948", "#f0efec", "#2a78d6"])
+if THEME == "dark":  # the reference palette's dark steps (validated against the dark surface)
+    SERIES = ("#3987e5", "#d95926", "#199e70")
+    SURFACE, INK, INK_2, MUTED, GRID = "#1a1a19", "#f0efec", "#c3c2b7", "#898781", "#2e2e2c"
+    DIVERGING = LinearSegmentedColormap.from_list("ps", ["#e66767", "#383835", "#3987e5"])
+else:
+    SERIES = ("#2a78d6", "#eb6834", "#1baf7a")
+    SURFACE, INK, INK_2, MUTED, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e7e6e2"
+    DIVERGING = LinearSegmentedColormap.from_list("ps", ["#e34948", "#f0efec", "#2a78d6"])
+matplotlib.rcParams.update({"text.color": INK, "axes.labelcolor": INK_2, "axes.edgecolor": MUTED,
+                            "xtick.color": INK_2, "ytick.color": INK_2, "legend.facecolor": SURFACE,
+                            "legend.edgecolor": GRID, "figure.facecolor": SURFACE, "axes.facecolor": SURFACE})
 SPAWN_PERCENT = 100.0 * SPAWN[0] / MAX_ENERGY[0]
 if MODEL == "core":
     STORES = (("store 97.5%: inside the top edge band", 0.975), (f"spawn store ({SPAWN_PERCENT:.0f}%)", None),
@@ -111,20 +119,20 @@ def style(ax):
     for side in ("left", "bottom"):
         ax.spines[side].set_color(MUTED)
     ax.tick_params(colors=INK_2, labelsize=9)
-    ax.grid(color="#e7e6e2", linewidth=0.6)
+    ax.grid(color=GRID, linewidth=0.6)
     ax.set_axisbelow(True)
 
 
 DOGHOUSE_FOOT = {
     "v2": "Thick: full stick (lift and g limit). Thin: the game's sustained and fine stick.\n"
     "Dash-dot: full stick while diving or climbing (on the full-stick line whenever the store is\n"
-    "above 2%: today diving and climbing do not change the turn). Black dashed: Ps = 0 (sustained).\n"
+    "above 2%: today diving and climbing do not change the turn). " + ("White" if THEME == "dark" else "Black") + " dashed: Ps = 0 (sustained).\n"
     "Grey dotted: turn radius. Grey dashed: load in game g (39.24 m/s^2). Shaded below 100 m/s:\n"
     "quasi-steady maths only; hard turns there cannot be held in flight.",
     "core": "Core model: 1 g of weight always on the wing, the turn gets the rest of the lift and g limit;\n"
     "the engine drives speed only. Thick: full stick. Thin: the game's sustained and fine stick.\n"
     "Dash-dot: full stick while diving or climbing (diving lowers the weight on the wing, climbing\n"
-    "raises it). Black dashed: Ps = 0 (sustained). Grey dotted: turn radius. Grey dashed: load in\n"
+    "raises it). " + ("White" if THEME == "dark" else "Black") + " dashed: Ps = 0 (sustained). Grey dotted: turn radius. Grey dashed: load in\n"
     "game g (39.24 m/s^2). Shaded below 100 m/s: quasi-steady maths only, no best-sustained mark there.\n"
     "Coasting, turn rate and Ps do not depend on the store. Inside an edge band (the outer 5%) dive or climb\n"
     "fades to coast, in the trade and in the wing's load: at 97.5% and 2.5% the band is half faded.\n"
@@ -205,7 +213,7 @@ def doghouse(ship_type: int):
         ax.set_ylim(0, top)
         ax.set_xlabel("speed (m/s)", color=INK_2)
         ax.set_ylabel("turn rate (deg/s)", color=INK_2)
-        ax.axvspan(v[0], 100.0, color="#e7e6e2", alpha=0.5, linewidth=0)
+        ax.axvspan(v[0], 100.0, color=GRID, alpha=0.5, linewidth=0)
         ax.set_title(f"{NAMES[ship_type]}, coast, {label}" + (", core model" if MODEL == "core" else ""),
                      color=INK, fontsize=10, loc="left")
         bar = figure.colorbar(filled, ax=ax, fraction=0.04, pad=0.02)

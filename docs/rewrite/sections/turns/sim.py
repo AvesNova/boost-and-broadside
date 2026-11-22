@@ -16,7 +16,8 @@ MODEL = os.environ.get("FLIGHT_MODEL", "v2")
 if MODEL not in ("v2", "core"):
     raise ValueError(f"FLIGHT_MODEL={MODEL!r}: need 'v2' or 'core'")
 CONFIG = core.GameConfig.core() if MODEL == "core" else core.GameConfig()
-SUFFIX = "-core" if MODEL == "core" else ""  # output file names
+THEME = os.environ.get("THEME", "light")  # "dark": the dark-mode palette and surfaces
+SUFFIX = ("-core" if MODEL == "core" else "") + ("-dark" if THEME == "dark" else "")  # output file names
 H = CONFIG.tick_length
 _SIZES = core.ship_constants(CONFIG, torch.arange(3))
 MAX_ENERGY = [float(e) for e in _SIZES["max_energy"]]  # J/kg per ship type, this model's store

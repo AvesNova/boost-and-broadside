@@ -26,6 +26,7 @@ import torch  # noqa: E402
 sys.path.insert(0, os.path.dirname(__file__))
 from doghouse import (  # noqa: E402
     DEGREES,
+    GRID,
     INK,
     INK_2,
     MUTED,
@@ -194,7 +195,7 @@ def who_wins():
             va="top",
             fontsize=8.5,
             color=INK,
-            bbox=dict(facecolor=SURFACE, edgecolor="#e7e6e2", boxstyle="round,pad=0.4"),
+            bbox=dict(facecolor=SURFACE, edgecolor=GRID, boxstyle="round,pad=0.4"),
         )
         ax.set_xlim(100.0, V[-1])
         ax.set_ylim(0, max(np.nanmax(full[a]), np.nanmax(full[b])) * 1.45)
@@ -415,7 +416,7 @@ def dive_climb():
         multialignment="left",
         fontsize=8.5,
         color=INK,
-        bbox=dict(facecolor=SURFACE, edgecolor="#e7e6e2", boxstyle="round,pad=0.4"),
+        bbox=dict(facecolor=SURFACE, edgecolor=GRID, boxstyle="round,pad=0.4"),
     )
     axes_labels(ax_time_speed, "time (s)", "speed (m/s)")
     title(ax_time_speed, "(b) Simulated from coast top speed, spawn store (speeds in m/s)" + (", core" if CORE else ""))
@@ -503,7 +504,7 @@ def bleed():
             va="center" if k < 2 else "bottom",
             fontsize=9,
             color=INK,
-            bbox=dict(facecolor=SURFACE, edgecolor="#e7e6e2", boxstyle="round,pad=0.4"),
+            bbox=dict(facecolor=SURFACE, edgecolor=GRID, boxstyle="round,pad=0.4"),
         )
         ax.plot([], [], color=MUTED, linewidth=2.4, label=f"solid: spawn store ({SPAWN_PERCENT:.0f}%)")
         ax.plot([], [], color=MUTED, linewidth=1.4, linestyle=(0, (3, 3)), label=f"light dashes on top: {OTHER_TAG}")
