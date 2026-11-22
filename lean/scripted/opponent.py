@@ -17,7 +17,7 @@ import torch
 from torch import Tensor
 
 from lean.contract import random_keywords
-from lean.game.core import built_once, slot_indices, team_view
+from lean.game.core import built_once, enemy_view, slot_indices
 
 # The eight logistic gates, in the order of the persona's "gate_centre" and
 # "gate_sharpness" columns. Each maps a positive, dimensionless quantity to a probability.
@@ -231,37 +231,50 @@ def _per_other(value: Tensor | float) -> Tensor | float:
 
 def engage(
     state,
-    team: int,
+    team: int | None,
     weakest_weight: Tensor | float = 0.0,
     max_energy: Tensor | float = 1.0,
     kept_target: Tensor | None = None,
     keep_factor: float = 1.0,
     clearance: Tensor | float = 24.0,
+    enemies=None,
 ) -> Engagement:
     """Choose each ship's target: the living enemy with the smallest score, where the
     score is the distance times (1 + weakest_weight * the enemy's store fraction). An
     enemy equal to `kept_target` has its score multiplied by `keep_factor` (below 1), so
     it is kept unless another scores better by that factor. A team-mate blocks the shot when
     it is ahead along the nose, nearer than the target, and within `clearance` metres of the
-    line of fire."""
+    line of fire.
+
+    team: the team whose rows act, or None for every ship of both teams (each against the
+    other team). Own ships and team-mates are read from `state`; enemies from `enemies`, the
+    state with every ship as its enemy team knows it (`lean.game.core.enemy_view`; default
+    `state`, as for a team view or with fog off)."""
+    enemies = state if enemies is None else enemies
     present = state.exists & state.alive
-    own_team = state.team == team
-    controlled = present & own_team
-    enemy = present & ~own_team
+    controlled = present if team is None else present & (state.team == team)
+    same_team = state.team[:, :, None] == state.team[:, None, :]  # (E, own, other)
+    enemy = (enemies.exists & enemies.alive)[:, None, :] & ~same_team
     velocity_x, velocity_y = world_velocity(state)
-    offset_x = state.x[:, None, :] - state.x[:, :, None]  # (E, own, other)
-    offset_y = state.y[:, None, :] - state.y[:, :, None]
-    score = offset_x * offset_x + offset_y * offset_y
+    enemy_x = enemies.x[:, None, :] - state.x[:, :, None]  # (E, own, other)
+    enemy_y = enemies.y[:, None, :] - state.y[:, :, None]
+    if enemies is state:
+        offset_x, offset_y = enemy_x, enemy_y
+    else:
+        offset_x = state.x[:, None, :] - state.x[:, :, None]
+        offset_y = state.y[:, None, :] - state.y[:, :, None]
+    score = enemy_x * enemy_x + enemy_y * enemy_y
     if not (isinstance(weakest_weight, float) and weakest_weight == 0.0):
-        store = (state.energy / max_energy)[:, None, :]
+        store = (enemies.energy / max_energy)[:, None, :]
         preference = 1.0 + weakest_weight[..., None] * store
         score = score * preference * preference
     slots = slot_indices(state.x.shape[1], state.x.device).ship
     if kept_target is not None:
         score = torch.where(slots == kept_target[..., None], score * keep_factor**2, score)
-    score = torch.where(enemy[:, None, :], score, math.inf)
+    score = torch.where(enemy, score, math.inf)
     target = score.argmin(-1)
-    features = torch.stack([state.x, state.y, velocity_x, velocity_y], -1)  # (E, N, 4)
+    enemy_velocity_x, enemy_velocity_y = world_velocity(enemies)
+    features = torch.stack([enemies.x, enemies.y, enemy_velocity_x, enemy_velocity_y], -1)  # (E, N, 4)
     chosen = torch.gather(features, 1, target[..., None].expand(-1, -1, 4))
     target_x, target_y, target_velocity_x, target_velocity_y = chosen.unbind(-1)
     target_x = target_x - state.x
@@ -269,11 +282,11 @@ def engage(
     distance = torch.sqrt(target_x * target_x + target_y * target_y)
     along = offset_x * state.heading_cos[..., None] + offset_y * state.heading_sin[..., None]
     across = offset_x * state.heading_sin[..., None] - offset_y * state.heading_cos[..., None]
-    ally = present[:, None, :] & own_team[:, None, :] & (slots[:, None] != slots[None, :])
+    ally = present[:, None, :] & same_team & (slots[:, None] != slots[None, :])
     blocking = ally & (along > 0.0) & (along < distance[..., None]) & (across.abs() < clearance)
     return Engagement(
         controlled=controlled,
-        has_target=controlled & enemy.any(-1, keepdim=True),
+        has_target=controlled & enemy.any(-1),
         target=target,
         offset_x=target_x,
         offset_y=target_y,
@@ -301,17 +314,20 @@ class Marginals:
 def marginals(
     config: ScriptedConfig,
     state,
-    team: int,
+    team: int | None,
     persona: dict[str, Tensor],
     kept_target: Tensor | None = None,
 ) -> Marginals:
-    """The opponent's action distributions for the rows of `team`.
+    """The opponent's action distributions for the rows of `team`, or of every ship of both
+    teams when `team` is None (one call for both: each ship decides exactly as in its own
+    team's call).
 
     state: `lean.contract.State`; persona: from `personas`; kept_target: (E, N) long
     slot of last tick's target (-1 for none) for the hysteresis, or None for none. Under fog
-    the opponent reads only its team's view: enemies at their last sighting, none never seen.
+    each ship reads only its team's view: its own team as it is, enemies at their last
+    sighting (`enemy_view`), none never seen.
     """
-    state = team_view(state, team)
+    enemies = enemy_view(state)
     gun_range = characteristic(config, state, "gun_range")
     stall_angle = characteristic(config, state, "stall_angle")
     max_energy = characteristic(config, state, "max_energy")
@@ -328,6 +344,7 @@ def marginals(
         clearance=_per_other(
             config.ally_clearance_in_hit_radii * characteristic(config, state, "hit_radius")
         ),
+        enemies=enemies,
     )
     has_target = fight.has_target
     safe_distance = fight.distance.clamp_min(TINY)
@@ -444,14 +461,15 @@ def act(
     uniforms: Tensor,
     memory: dict[str, Tensor] | None = None,
 ) -> Tensor:
-    """The opponent's actions for the rows of `team`.
+    """The opponent's actions for the rows of `team`, or of every ship of both teams when
+    `team` is None (one call; the same actions as the two single-team calls added).
 
     state: `lean.contract.State`; persona: from `personas`; uniforms: (E, N, 3) float32
     on [0, 1) from `draw_uniforms`; memory: from `fresh_memory`, overwritten in place, or
     None for a memoryless opponent (no target hysteresis, no action hold).
 
-    Returns (E, N, 3) long [stick, power, fire]; rows of the other team and rows that
-    are dead or do not exist are 0.
+    Returns (E, N, 3) long [stick, power, fire]; rows of the other team (with a `team`) and
+    rows that are dead or do not exist are 0.
     """
     if memory is None:
         return sample(marginals(config, state, team, persona), uniforms)

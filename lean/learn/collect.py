@@ -185,10 +185,10 @@ def scripted_uniforms(envs: int, slots: int, generator, device=None) -> Tensor:
 
 
 def scripted_actions(scripted, scripted_config, state, persona, generator) -> Tensor:
-    """The scripted agent's action for every ship of both teams, (E, N, 3) long."""
+    """The scripted agent's action for every ship of both teams, (E, N, 3) long, in one call."""
     envs, slots = state.exists.shape
     uniforms = scripted_uniforms(envs, slots, generator, state.exists.device)
-    return scripted.act(scripted_config, state, 0, persona, uniforms) + scripted.act(scripted_config, state, 1, persona, uniforms)
+    return scripted.act(scripted_config, state, None, persona, uniforms)
 
 
 def sample_joint(logits: Tensor, generator) -> Tensor:

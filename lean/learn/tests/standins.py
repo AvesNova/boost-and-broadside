@@ -140,7 +140,7 @@ def personas(config, envs, slots, generator, device, spread):
 
 def act(config, state, team, persona, uniforms):
     action = torch.zeros(*state.team.shape, 3, dtype=torch.long, device=state.team.device)
-    action[..., 2] = (state.team == team).long()
+    action[..., 2] = 1 if team is None else (state.team == team).long()
     return action
 
 

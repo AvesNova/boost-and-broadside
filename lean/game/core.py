@@ -1262,6 +1262,21 @@ def team_view(state: State, team: int) -> State:
     )
 
 
+def enemy_view(state: State) -> State:
+    """Every ship as its enemy team knows it: its last-seen row (a never-seen or seen-dead ship
+    not alive), so that one call can read each ship's enemies for both teams at once (each
+    ship has one enemy team). Bullets are not perceived (None). With fog off the state itself."""
+    if state.seen is None:
+        return state
+    alive = (state.seen[:, SEEN_ALIVE] > 0.5) & (state.seen[:, SEEN_KNOWN] > 0.5)
+    return dataclasses.replace(
+        state,
+        ships=state.seen[:, : len(SHIP_COLUMNS)],
+        flags=torch.stack([alive, state.exists, state.fired], 1),
+        bullets=None, bullet_counts=None, bullet_real=None, seen=None, ticks_since_seen=None,
+    )
+
+
 # --------------------------------------------------------------------------- observation
 
 SPEED_SCALE = 400.0  # m/s
