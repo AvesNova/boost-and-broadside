@@ -22,6 +22,17 @@ it blocks. Answered questions move to the bottom with the answer and its date.
    yardstick never shoots its own team. Sign off, or ask for savings elsewhere (agreed fix 6,
    one call for both teams, removes a whole second call per tick).
 
+12. **Training speed against the 5,000 steps/s floor (2026-11-23).** Compiled, bf16, laptop
+   RTX 4070, league full (8 snapshots): v2 game 5,160 (256 envs) and 5,057 (1,024); core game
+   4,640 and 4,589, below the floor. Table in docs/rewrite/scoreboard.md, "Training on the
+   GPU". Decisions: (a) bf16 autocast is now on by default (GPU only, losses float32); fp32
+   compiled runs at 2,992. v2 trained in bf16; earlier lean runs were fp32. (b) Value targets
+   once per update (v2's rule, `targets_every_epoch=False`) gives 6,457 on the v2 game; the
+   default is still every epoch. Proposal: v2's rule. (c) Minibatches default 8 (4 runs out of
+   memory on 8 GB); v2 used 32; the update size is yours. (d) Compiling costs 199 s cold, 72 s
+   warm before the first update ends (eager 17 s); it pays back after about 20 updates cold.
+   Blocks: the first real training run's settings.
+
 ## Answered
 
 1. **Fields in `lean/game` (2026-11-22).** The author says fields are the default, but

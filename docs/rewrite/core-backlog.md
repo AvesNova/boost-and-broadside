@@ -57,7 +57,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | D2 | v2's training recipe (discounts, batch size, KL stop, weight averaging); reward levels as v2's five, no shaping | report done (recipe-v2-vs-lean.md); adoption needs the author (BC stage, weight averaging, five levels) |
 | D3 | Shaping-field bug (moot once shaping is dropped) | todo |
 | D4 | Damage reward unit (departure audit row 2) | todo |
-| D5 | Compilation in training | todo |
+| D5 | Compilation in training | done 2026-11-23 (merged; v2 game meets 5,000 steps/s, core game 4,640: question 12) |
 | D6 | Batched evaluation across sizes | todo |
 
 ## E. Scripted opponent
