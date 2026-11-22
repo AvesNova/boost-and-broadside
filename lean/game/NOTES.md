@@ -244,3 +244,110 @@ Choices for the author:
    death becomes known. No respawn in lean yet, so every death is for good.
 4. A hit reveals for real bullets only (ghosts are labels); friendly hits reveal too.
 5. `Obs.since_seen` carries symlog(seconds) (v2's model input), not raw seconds.
+
+## Waste fixes done (2026-11-23)
+
+The agreed fixes 1 to 5 and 8, one commit each (82a1469d, 67a25f57, a257a1f6, 62010d71,
+357f4b11, 9b313c69; then 5e67560a, the fixed tensors traced into the graph under compile).
+Fixes 6, 7 and 9 need lean/learn and were not made (below).
+
+- **1, constants.** `contract.Constants`: a constant equal for every type of the run's lineup
+  (or fixed by the rules) is a Python number (`uniform`); one that differs by type is a row
+  of one per-slot table (E, C, N), gathered once at reset. The action-indexed tables (stick,
+  commanded, demand) are always rows of it. Read by name: `c["lift"]` or `c.lift`. Built
+  once per flight settings and lineup (`ship_card`). In the core config (Vizia alone) all 43
+  constants are numbers and the table holds only the 13 action-table rows; in the v2 config
+  (Yongma, Jujak) 25 are numbers and 21 differ by type (31 rows with the tables). Damage
+  gathers only the target constants that differ by type: none with today's card. Slots that
+  do not exist take the lineup's first type (was type 0). The fields left the constants:
+  `State.fields` (E, 5, F), rows x, y, radius, band, target ln n (`core.FIELD_*`).
+- **2, packed state.** `State` is ships (E, 19, N) float32 (motion, store, shields, gun
+  cooldown and next bullet slot as whole numbers, the cached medium, the velocity), flags
+  (alive, exists, fired), identity (team, type), bullets (E, 8, N, K) with their medium,
+  bullet counts (moves left, fired tick) long, bullet_real, tick, constants, fields, and the
+  fog's record. Every quantity reads by its old name as a view (`contract.SHIP_COLUMNS` and
+  the other tuples); `State.pack` builds one from named quantities, `State.replace` replaces
+  some. `state.medium` and `state.bullet_medium` are now `log_index`, `gradient_x`,
+  `gradient_y` (and `bullet_` ones). A reset's select is one where per block; a new bullet
+  is one where per block; bullet motion is selected once; the swept test runs x and y on
+  one axis, (E, 2, N K, N), and damage gathers the target's start and motion from it. The
+  fog record (`SEEN_COLUMNS`) is the ship row plus share, alive, known; `team_view` slices it.
+- **3, dead ships.** Every slot flies; the new ship block is selected once against the old
+  by alive at tick start. The hit test and damage read the unselected flight (a dead ship
+  is never a target: its reach is -1; it takes no boundary damage). A dead ship's cooldown
+  is held instead of counted down (masked wherever read).
+- **4, built once.** The aranges, the bullet-owner index and its not-own mask, the hit
+  matrix's row offsets, the scatters' starting values, the 2x2 identity, the lineup's type
+  indices and a fresh deal's fixed rows (no bullets, tick 0) are built once per size and
+  device (`built_once`, shared read-only; `reset` copies the shared rows it returns). While
+  torch.compile traces, the builders run in the graph instead. The core model's zero charge
+  is no longer a tensor. The scripted opponent reuses the slot index and its gate floors.
+- **5, velocity.** `velocity_x`, `velocity_y` in the ship block: the velocity at proper speed
+  along the flight path, computed once at the end of the step (and at a deal). The next
+  tick's fire, `observe` (over the refractive index), the scripted opponent and the fog
+  record read it. After setting motion by hand, `core.with_velocity(state)` refreshes it.
+- **8, no fields.** With F = 0 the flight, bullets, observe and a deal skip the medium's
+  arithmetic (n = 1, no gradient, no bend, no stretch): the same values.
+
+**Same maths.** Each commit was compared with the one before over 300 ticks, 16 environments,
+team sizes 3 to 5, random sticky actions, resets (games ending, and forced at ticks 40 and
+190), every state quantity, step output, both teams' observations, the scripted opponent's
+marginals and its sampled actions with memory; v2 config, v2 config with two fixed fields,
+core config (fields drawn, fog, ghosts), arena 1,500 m with the "mixed" spawn so that ships
+fight (23 to 28 deaths, 160 to 440 hits per run). Expectation for every commit: the same
+within float32 rounding, no discrete difference. Result: fix 1, largest relative difference
+5e-5 (damage: the drag constant is now a Python number, one rounding fewer, and the closeness
+amplifies it); marginals 4e-5; states 1e-7 to 1e-5. Fix 2: bit-identical but for one ulp of
+atan2 in the observed heading. Fixes 3, 4 and 8: bit-identical. Fix 5: bit-identical but the
+observed velocity, 1.2e-7 relative. No discrete difference anywhere. `pytest lean` passes
+after each commit (115 passed, 1 xfailed), with `test_against_v2.py` and `test_parity_v2.py`
+unchanged in their bounds (only their state construction changed) and the fog-off and ghost
+equality tests passing. An inductor-compiled step (CPU) matches eager within float32 rounding
+over 20 ticks; step, observe and the scripted act trace as one graph, no break.
+
+**Operations per call** (`docs/rewrite/sections/scoreboard/game_ops.py`, compute ops, views
+apart; uncompiled, CPU, one thread, E = 256, 5v5). Each column is the tree after that fix.
+
+| call | before | 1 | 2 | 3 | 4 | 5 | 8 |
+|---|---|---|---|---|---|---|---|
+| step, v2 config (no fields) | 1,348 | 1,334 | 1,309 | 1,295 | 1,280 | 1,280 | **1,148** |
+| step, v2 config, 10 fixed fields | 1,516 | 1,502 | 1,477 | 1,463 | 1,448 | 1,448 | **1,448** |
+| step, core config | 1,599 | 1,586 | 1,561 | 1,547 | 1,522 | 1,522 | **1,522** |
+| observe (one team), v2 config | 82 | 82 | 81 | 81 | 81 | 75 | **70** |
+| observe (one team), v2 config, fields | 82 | 82 | 81 | 81 | 81 | 75 | **75** |
+| observe (one team), core config | 110 | 110 | 108 | 108 | 108 | 102 | **102** |
+| reset_done, v2 config | 281 | 131 | 99 | 99 | 88 | 90 | **87** |
+| reset_done, v2 config, fields | 365 | 215 | 183 | 183 | 172 | 174 | **174** |
+| reset_done, core config | 487 | 322 | 290 | 290 | 278 | 280 | **280** |
+| scripted act (one team), core config | 208 | 206 | 205 | 205 | 204 | 196 | **196** |
+
+View ops went up (127 to 201 in the v2 step; 8 to 41 in observe): every named read of a
+packed block is a view (no kernel). CPU time on this machine (another agent's load, timings
+noisy; base and final interleaved, three runs, E = 256): step about the same (v2 10 to 11 ms
+both; core 16 to 20 ms both: memory-bound at this size, and most of the step's operations are
+the flight's arithmetic, which the fixes do not thin); reset_done v2 1.4 to 0.56 ms, core
+4.6 to 3.7 ms.
+
+What is left in the counts: the core step's 1,522 are mostly the flight (two kicks of about
+400 each) and the medium (fields on). 54 of the step's operations are `aten.scalar_tensor`
+from `torch.where(..., scalar)`: a CPU 0-dim wrapped number each, no GPU kernel, host
+overhead in eager, gone when compiled. The core config's reset_done (280) is mostly a new
+map drawn and seen (the medium at the spawn and the fog's sight test with ten fields) for
+every environment every call: fix 9.
+
+**Not made (need lean/learn):**
+- 6, one scripted call for both teams: `lean/learn/collect.py` `scripted_actions` calls
+  `scripted.act` once per team and adds them. A both-teams act in lean/scripted is possible
+  without a learn change to the game (under fog, ship j as ship i's team knows it is live for
+  a team-mate and `seen[j]` for an enemy, a pairwise (E, N, N) where), but nothing calls it
+  until collect does.
+- 7, personas drawn only at a reset: `collect.py` `redeal` draws personas for every
+  environment on every call and selects them by done.
+- 9, batched resets: the collect loop must freeze finished environments, re-deal them every
+  k ticks or at a segment boundary, and mask the frozen ticks.
+
+**Outside lean/game and lean/scripted:** `lean/sandbox/world.py` builds and edits a state by
+hand with the old fields (`dataclasses.replace(state, x=...)`, a constants dict with field_
+keys, `state.medium`) and no longer runs; not edited (outside this task's scope). A patch
+that makes it run on the packed state (World with both configs, a type switch, the chaser
+toggle, 250 ticks) was written and checked but not applied.

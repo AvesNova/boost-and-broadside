@@ -6,7 +6,8 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from lean.contract import BULLET_SLOTS, FIRES, POWERS, STICKS, State
+from lean.contract import BULLET_SLOTS, FIRES, POWERS, STICKS, Constants, State
+from lean.game.core import path_velocity
 from lean.scripted import (
     ScriptedConfig,
     act,
@@ -20,7 +21,7 @@ from lean.scripted import (
 
 def random_state(envs: int, slots: int, seed: int) -> State:
     """A state with random ships inside a 3 km arena, two teams by slot parity, and a
-    few dead and non-existent rows; no game package needed."""
+    few dead and non-existent rows; no game step needed."""
     generator = torch.Generator().manual_seed(seed)
 
     def uniform(low: float, high: float) -> torch.Tensor:
@@ -29,13 +30,18 @@ def random_state(envs: int, slots: int, seed: int) -> State:
     heading = uniform(-math.pi, math.pi)
     angle = uniform(-0.2, 0.2)
     exists = uniform(0.0, 1.0) > 0.15
+    x, y = uniform(-2000.0, 2000.0), uniform(-2000.0, 2000.0)  # drawn in the order of the fields below
+    speed = uniform(100.0, 440.0)
+    velocity_x, velocity_y = path_velocity(speed, heading.cos(), heading.sin(), angle.cos(), angle.sin())
     bullets = (envs, slots, BULLET_SLOTS)
-    return State(
-        x=uniform(-2000.0, 2000.0),
-        y=uniform(-2000.0, 2000.0),
+    return State.pack(
+        x=x,
+        y=y,
         heading_cos=heading.cos(),
         heading_sin=heading.sin(),
-        speed=uniform(100.0, 440.0),
+        speed=speed,
+        velocity_x=velocity_x,
+        velocity_y=velocity_y,
         angle=angle,
         angle_cos=angle.cos(),
         angle_sin=angle.sin(),
@@ -43,13 +49,16 @@ def random_state(envs: int, slots: int, seed: int) -> State:
         energy=uniform(0.0, 497563.0),
         shield=uniform(0.0, 100.0),
         shield_wait=torch.zeros(envs, slots),
-        cooldown=(uniform(0.0, 3.0)).long(),
-        next_slot=torch.zeros(envs, slots, dtype=torch.long),
+        cooldown=(uniform(0.0, 3.0)).floor(),
+        log_index=torch.zeros(envs, slots),
+        gradient_x=torch.zeros(envs, slots),
+        gradient_y=torch.zeros(envs, slots),
+        next_slot=torch.zeros(envs, slots),
         alive=exists & (uniform(0.0, 1.0) > 0.2),
         exists=exists,
         team=(torch.arange(slots) % 2).expand(envs, slots).clone(),
         type=torch.zeros(envs, slots, dtype=torch.long),
-        constants={},
+        constants=Constants({}, {}, torch.zeros(envs, 0, slots)),  # the opponent's fallbacks
         bullet_x=torch.zeros(bullets),
         bullet_y=torch.zeros(bullets),
         bullet_dir_x=torch.zeros(bullets),
@@ -60,8 +69,10 @@ def random_state(envs: int, slots: int, seed: int) -> State:
         fired=torch.zeros(bullets[:2], dtype=torch.bool),
         bullet_real=torch.zeros(bullets, dtype=torch.bool),
         bullet_fired_tick=torch.zeros(bullets, dtype=torch.long),
-        medium=torch.zeros(bullets[:2] + (3,)),
-        bullet_medium=torch.zeros(bullets + (3,)),
+        bullet_log_index=torch.zeros(bullets),
+        bullet_gradient_x=torch.zeros(bullets),
+        bullet_gradient_y=torch.zeros(bullets),
+        fields=torch.zeros(envs, 5, 0),
     )
 
 
@@ -178,7 +189,8 @@ def test_the_game_tells_the_opponent_each_types_characteristics():
     from lean.game import core
     from lean.scripted.opponent import ScriptedConfig, characteristic
 
-    constants = core.ship_constants(core.GameConfig(), torch.tensor([[0, 1, 2]]))
+    every_type = core.GameConfig(lineup=("yongma", "jujak", "vizia"))
+    constants = core.ship_constants(every_type, torch.tensor([[0, 1, 2]]))
     for name in ("gun_range", "corner_speed", "bullet_launch_speed"):
         assert name in constants
         assert len(set(constants[name][0].tolist())) == 3, name  # differs by type
@@ -191,8 +203,6 @@ def test_never_shoots_through_a_team_mate():
     """Author 2026-11-23: no shot with a team-mate in the line of fire. A shooter aimed at an
     enemy 400 m ahead does not fire with a team-mate 200 m ahead on the line, and may fire
     with the team-mate 150 m off it."""
-    import dataclasses
-
     from lean.game import core
 
     config = core.GameConfig(spawn="mixed")
@@ -200,8 +210,7 @@ def test_never_shoots_through_a_team_mate():
         config, 1, torch.tensor([[2, 1]]), torch.Generator().manual_seed(0), torch.device("cpu")
     )
     zeros = torch.zeros_like(state.x)
-    base = dataclasses.replace(
-        state,
+    base = core.with_velocity(state.replace(
         heading_cos=torch.ones_like(state.x),
         heading_sin=zeros,
         speed=torch.full_like(state.x, 250.0),
@@ -209,13 +218,13 @@ def test_never_shoots_through_a_team_mate():
         angle_cos=torch.ones_like(state.x),
         angle_sin=zeros,
         cooldown=torch.zeros_like(state.cooldown),
-    )
+    ))
     scripted = ScriptedConfig()
     persona = personas(scripted, 1, 3, torch.Generator().manual_seed(1), torch.device("cpu"), 0.0)
     fire = {}
     for name, ally_y in (("blocked", 0.0), ("clear", 150.0)):
-        placed = dataclasses.replace(
-            base, x=torch.tensor([[0.0, 200.0, 400.0]]), y=torch.tensor([[0.0, ally_y, 0.0]])
+        placed = base.replace(
+            x=torch.tensor([[0.0, 200.0, 400.0]]), y=torch.tensor([[0.0, ally_y, 0.0]])
         )
         fire[name] = float(marginals(scripted, placed, 0, persona).fire[0, 0])
     assert fire["blocked"] == 0.0

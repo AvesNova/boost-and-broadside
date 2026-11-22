@@ -1,6 +1,5 @@
 """The observation's motion is in the world frame (author 2026-11-23, as v2 observes it)."""
 
-import dataclasses
 import math
 
 import torch
@@ -17,11 +16,9 @@ def test_observed_speed_is_world_speed_inside_a_field():
     config = core.GameConfig(fields=(field,))
     generator = torch.Generator().manual_seed(0)
     state = core.reset(config, 1, torch.tensor([[1, 1]]), generator, torch.device("cpu"))
-    state = dataclasses.replace(state, x=torch.zeros_like(state.x), y=torch.zeros_like(state.y))
-    log_index, gradient_x, gradient_y = core.medium(state.constants, state.x, state.y)
-    state = dataclasses.replace(
-        state, medium=torch.stack([log_index, gradient_x, gradient_y], -1)
-    )  # moved: refresh
+    state = state.replace(x=torch.zeros_like(state.x), y=torch.zeros_like(state.y))
+    log_index, gradient_x, gradient_y = core.medium(state.fields, state.x, state.y)
+    state = state.replace(log_index=log_index, gradient_x=gradient_x, gradient_y=gradient_y)  # moved: refresh
     assert float(log_index[0, 0]) > 0.1  # the ship really is inside the field
     observation = core.observe(config, state, 0)
     world_speed = state.speed * torch.exp(-log_index)

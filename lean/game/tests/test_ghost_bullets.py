@@ -51,7 +51,7 @@ def test_every_living_ship_emits_a_bullet_every_tick():
     shots are marked real."""
     states, _ = play(dataclasses.replace(BASE, ghost_bullets=True), 15, fire_share=0.0)
     before, last = states[-2], states[-1]
-    slot = ((last.next_slot - 1) % last.bullet_x.shape[-1])[..., None]
+    slot = ((last.next_slot.long() - 1) % last.bullet_x.shape[-1])[..., None]
     stamped = last.bullet_fired_tick.gather(-1, slot)[..., 0]
     assert torch.equal(stamped[before.alive], before.tick[:, None].expand_as(stamped)[before.alive])
     assert not last.bullet_real.any()
@@ -62,7 +62,7 @@ def test_each_bullet_reports_its_outcome_once():
     tick it was fired; ghosts' outcomes include hits."""
     config = dataclasses.replace(BASE, ghost_bullets=True)
     states, outs = play(config, 60, fire_share=0.0)
-    life = int(states[0].constants["bullet_moves"].max())
+    life = states[0].constants["bullet_moves"]
     ended = {}
     for tick, out in enumerate(outs):
         index = torch.nonzero(out.shot_outcome >= 0)

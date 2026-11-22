@@ -20,17 +20,30 @@ import torch
 from torch import Tensor
 
 from lean.contract import (
+    BULLET_COLUMNS,
+    BULLET_COUNT_COLUMNS,
     BULLET_SLOTS,
     FIELD_FEATURES,
     GLOBAL_FEATURES,
+    SHIP_COLUMNS,
     SHIP_FEATURES,
     SHIP_TYPES,
+    Constants,
     Obs,
     State,
     StepOut,
 )
 
 from . import card
+
+# Rows of the packed state read by index here (lean.contract's *_COLUMNS).
+X, Y = SHIP_COLUMNS.index("x"), SHIP_COLUMNS.index("y")
+LOG_INDEX, GRADIENT_Y = SHIP_COLUMNS.index("log_index"), SHIP_COLUMNS.index("gradient_y")
+BULLET_X, BULLET_Y = BULLET_COLUMNS.index("bullet_x"), BULLET_COLUMNS.index("bullet_y")
+BULLET_DIR_X, BULLET_DIR_Y = BULLET_COLUMNS.index("bullet_dir_x"), BULLET_COLUMNS.index("bullet_dir_y")
+BULLET_SPEED, BULLET_LOG_INDEX = BULLET_COLUMNS.index("bullet_speed"), BULLET_COLUMNS.index("bullet_log_index")
+MOVES_LEFT = BULLET_COUNT_COLUMNS.index("bullet_moves_left")
+FIRED_TICK = BULLET_COUNT_COLUMNS.index("bullet_fired_tick")
 
 
 @dataclass
@@ -103,57 +116,34 @@ class GameConfig:
         return cls(**{**settings, **overrides})
 
 
+def built_once(build):
+    """Cache a builder of fixed tensors per argument (agreed fix 4: built once, not every tick).
+    While torch.compile traces, the builder runs in the graph instead (constants there, and no
+    cache keyed on traced sizes)."""
+    cached = functools.cache(build)
+
+    @functools.wraps(build)
+    def get(*args):
+        return build(*args) if torch.compiler.is_compiling() else cached(*args)
+
+    return get
+
+
 # --------------------------------------------------------------------------- constants
 
+# Constants counted in whole ticks: they must be equal for every type of a run.
+INTEGER_CONSTANTS = ("bullet_moves", "fire_interval")
+# Action-indexed tables (by stick index, by power index): always rows of the per-slot table.
+ACTION_TABLES = ("stick_table", "commanded_table", "demand_table")
 
-@functools.cache
-def derived_characteristics(flight_model: str) -> dict[str, tuple[float, ...]]:
-    """Per ship type (card order): cruise speed (straight, coasting, thrust equal to drag),
-    corner speed (the g limit meets the lift limit), bullet launch speed (cruise plus muzzle)
-    and gun range (how far a bullet fired at cruise travels in its life under drag: v2's
-    `api.gun_range`). Solved once per flight model with the game's own flight functions, so
-    the scripted opponent is told these, not guessed."""
+
+def _per_type(config: GameConfig) -> dict[str, Tensor]:
+    """Every ship constant for every card type: float32 (T,), the action tables (T, width), the
+    whole-tick counts long; computed with the game's own float32 arithmetic."""
     types = torch.arange(len(card.TYPE_NAMES))
-    config = GameConfig(flight_model=flight_model)
-    c = SimpleNamespace(**ship_constants(config, types, derived=False))
-    count = len(types)
-    control = SimpleNamespace(
-        model=flight_model, thrust_scale=1.0, stick_size=torch.zeros(count),
-        stick_sign=torch.ones(count), commanded=c.commanded_table[:, 0],
-        demand=c.demand_table[:, 0],
-    )
-    control.inverse_demand = 1.0 / control.demand
-    low, high = torch.full((count,), 20.0), torch.full((count,), 1000.0)
-    with torch.no_grad():
-        for _ in range(60):  # bisection on d speed / dt = 0
-            middle = 0.5 * (low + high)
-            setting = _setting(c, control, middle, c.spawn_energy)
-            one, zero = torch.ones_like(middle), torch.zeros_like(middle)
-            rate, _ = _rates(c, setting, one, middle, zero, one, 1.0 / (middle * middle))
-            low, high = torch.where(rate > 0.0, middle, low), torch.where(rate > 0.0, high, middle)
-    cruise = 0.5 * (low + high)
-    launch = cruise + c.muzzle_speed
-    life = c.bullet_moves.float() * config.tick_length
-    gun_range = torch.log1p(c.bullet_drag * launch * life) / c.bullet_drag
-    corner = torch.sqrt(c.max_acceleration / c.lift)
-    return {
-        "cruise_speed": tuple(cruise.tolist()),
-        "corner_speed": tuple(corner.tolist()),
-        "bullet_launch_speed": tuple(launch.tolist()),
-        "gun_range": tuple(gun_range.tolist()),
-    }
-
-
-def ship_constants(
-    config: GameConfig, ship_type: Tensor, derived: bool = True
-) -> dict[str, Tensor]:
-    """Per-ship constants for types (E, N) long: every value (E, N) float32 except the stick
-    table (E, N, 7), the power tables (E, N, 3), the integer counts (E, N) long and the
-    field arrays (F,)."""
-    device = ship_type.device
 
     def of(name: str) -> Tensor:
-        return torch.tensor(card.CARD[name], dtype=torch.float32, device=device)[ship_type]
+        return torch.tensor(card.CARD[name], dtype=torch.float32)[types]
 
     lift, acceleration, max_energy = of("max_lift_coefficient"), of("max_acceleration"), of("max_energy")
     stall = card.STALL_ANGLE * of("stall_angle_scale")
@@ -178,14 +168,13 @@ def ship_constants(
         raise ValueError(f"flight_model {config.flight_model!r}: need 'v2' or 'core'")
     fine, sustained = of("fine_stick"), of("sustained_stick")
     zeros, ones = torch.zeros_like(fine), torch.ones_like(fine)
-    levels = torch.tensor(card.STICK_LEVELS, device=device)
+    levels = torch.tensor(card.STICK_LEVELS)
     magnitude = torch.stack([zeros, fine, fine, sustained, sustained, ones, ones], -1)
     width = card.GRAVITY / 32.0
     raw = torch.stack([torch.full_like(climb, card.GRAVITY), card.GRAVITY - dive, card.GRAVITY + climb], -1)
-    fields = torch.tensor(config.fields, dtype=torch.float32, device=device).reshape(-1, 5)
     hit_radius = of("hit_radius")
     head_on_angle = card.HEAD_ON_ANGLE * of("head_on_angle_scale")
-    constants = {
+    values = {
         "lift": lift,
         "inverse_lift": 1.0 / lift,
         "inverse_lift_squared": 1.0 / (lift * lift),
@@ -228,25 +217,145 @@ def ship_constants(
         "shield_delay": card.SHIELD_RECHARGE_DELAY * of("shield_recharge_delay_scale"),
         "spawn_energy": spawn_energy,
         "vision_range": card.VISION_RANGE * of("vision_range_scale"),
-        "field_x": fields[:, 0],
-        "field_y": fields[:, 1],
-        "field_radius": fields[:, 2],
-        "field_band": fields[:, 3],
-        "field_target": fields[:, 4] * card.LN_SQRT2,
     }
-    if derived:
-        for name, values in derived_characteristics(config.flight_model).items():
-            table = torch.tensor(values, dtype=torch.float32, device=device)
-            constants[name] = table[ship_type]
-    return constants
+    values.update(_derived_characteristics(config, values))
+    return values
+
+
+def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> dict[str, Tensor]:
+    """Per ship type (card order): cruise speed (straight, coasting, thrust equal to drag),
+    corner speed (the g limit meets the lift limit), bullet launch speed (cruise plus muzzle)
+    and gun range (how far a bullet fired at cruise travels in its life under drag: v2's
+    `api.gun_range`). Solved with the game's own flight functions, so the scripted opponent is
+    told these, not guessed."""
+    c = SimpleNamespace(**values)
+    count = len(card.TYPE_NAMES)
+    control = SimpleNamespace(
+        model=config.flight_model, thrust_scale=1.0, stick_size=torch.zeros(count),
+        stick_sign=torch.ones(count), commanded=c.commanded_table[:, 0],
+        demand=c.demand_table[:, 0],
+    )
+    control.inverse_demand = 1.0 / control.demand
+    low, high = torch.full((count,), 20.0), torch.full((count,), 1000.0)
+    with torch.no_grad():
+        for _ in range(60):  # bisection on d speed / dt = 0
+            middle = 0.5 * (low + high)
+            setting = _setting(c, control, middle, c.spawn_energy)
+            one, zero = torch.ones_like(middle), torch.zeros_like(middle)
+            rate, _ = _rates(c, setting, one, middle, zero, one, 1.0 / (middle * middle))
+            low, high = torch.where(rate > 0.0, middle, low), torch.where(rate > 0.0, high, middle)
+    cruise = 0.5 * (low + high)
+    launch = cruise + c.muzzle_speed
+    life = c.bullet_moves.float() * config.tick_length
+    return {
+        "cruise_speed": cruise,
+        "corner_speed": torch.sqrt(c.max_acceleration / c.lift),
+        "bullet_launch_speed": launch,
+        "gun_range": torch.log1p(c.bullet_drag * launch * life) / c.bullet_drag,
+    }
+
+
+@dataclass(frozen=True, eq=False)
+class ShipCard:
+    """The run's per-ship constants before they are dealt to slots: the uniform ones as Python
+    numbers, the rest as a per-type table (C, T) float32 on the CPU whose rows `columns` names."""
+
+    uniform: dict[str, float | int]
+    columns: dict[str, tuple[int, int]]
+    table: Tensor
+
+
+@functools.cache
+def _ship_card(flight_model: str, store_loops: float, store_edge_band: float, tick_length: float,
+               lineup: tuple[str, ...]) -> ShipCard:
+    config = GameConfig(flight_model=flight_model, store_loops=store_loops, store_edge_band=store_edge_band,
+                        tick_length=tick_length, lineup=lineup)
+    used = torch.tensor([card.TYPE_NAMES.index(name) for name in lineup])
+    uniform, columns, rows = {}, {}, []
+    for name, values in _per_type(config).items():
+        chosen = values[used]
+        if name not in ACTION_TABLES and bool((chosen == chosen[0]).all()):
+            uniform[name] = chosen[0].item()
+            continue
+        if name in INTEGER_CONSTANTS:
+            raise ValueError(f"{name} differs between the lineup's types {lineup}; it must be equal")
+        block = values.reshape(len(card.TYPE_NAMES), -1).T  # (width, T)
+        columns[name] = (sum(len(row) for row in rows), block.shape[0])
+        rows.append(block)
+    return ShipCard(uniform, columns, torch.cat(rows, 0).contiguous())
+
+
+def ship_card(config: GameConfig) -> ShipCard:
+    """The run's ship card, built once per flight settings and lineup."""
+    return _ship_card(config.flight_model, config.store_loops, config.store_edge_band, config.tick_length,
+                      tuple(config.lineup))
+
+
+@built_once
+def _card_table(ship_card_: ShipCard, device: torch.device) -> Tensor:
+    return ship_card_.table.to(device)
+
+
+def ship_constants(config: GameConfig, ship_type: Tensor) -> Constants:
+    """The per-ship constants of slots of types ship_type (E, N) long, each a type of the lineup:
+    the card's uniform numbers, and its per-type rows gathered once into (E, C, N)."""
+    ship_card_ = ship_card(config)
+    table = _card_table(ship_card_, ship_type.device)
+    envs, slots = ship_type.shape
+    rows = table.shape[0]
+    gathered = table[None].expand(envs, rows, -1).gather(2, ship_type[:, None].expand(envs, rows, slots))
+    return Constants(ship_card_.uniform, ship_card_.columns, gathered)
+
+
+# --------------------------------------------------------------------------- fixed tensors
+# Index tensors and fill values that depend only on the sizes, built once per size and device
+# (agreed fix 4), not every tick. They are shared: never written, never handed out in a state.
+
+
+@built_once
+def slot_indices(slots: int, device: torch.device) -> SimpleNamespace:
+    """For N slots: ship (N,) 0..N-1; bullet_slot (K,); owner (N K,) the ship of each bullet;
+    other (N K, N) bool, the bullet is not that ship's own; bullet_index (N K,); pair (N K,)
+    the owner's row start in a flattened (N, N) matrix."""
+    ship = torch.arange(slots, device=device)
+    owner = ship.repeat_interleave(BULLET_SLOTS)
+    return SimpleNamespace(
+        ship=ship,
+        bullet_slot=torch.arange(BULLET_SLOTS, device=device),
+        owner=owner,
+        other=owner[:, None] != ship,
+        bullet_index=torch.arange(slots * BULLET_SLOTS, device=device),
+        pair=owner * slots,
+    )
+
+
+@built_once
+def filled(shape: tuple[int, ...], value: float | int | bool, dtype: torch.dtype, device: torch.device) -> Tensor:
+    """A constant tensor (the start of a scatter, a fixed row of a fresh deal), built once."""
+    return torch.full(shape, value, dtype=dtype, device=device)
+
+
+@built_once
+def _eye(dtype: torch.dtype, device: torch.device) -> Tensor:
+    return torch.eye(2, dtype=dtype, device=device)
 
 
 # --------------------------------------------------------------------------- numerics
 
 
-def softmin(a: Tensor, b: Tensor, exponent: float) -> Tensor:
+def minimum(a: Tensor, b: Tensor | float) -> Tensor:
+    """torch.minimum for a constant that may be a Python number."""
+    return torch.minimum(a, b) if isinstance(b, Tensor) else a.clamp_max(b)
+
+
+def maximum(a: Tensor, b: Tensor | float) -> Tensor:
+    """torch.maximum for a constant that may be a Python number."""
+    return torch.maximum(a, b) if isinstance(b, Tensor) else a.clamp_min(b)
+
+
+def softmin(a: Tensor, b: Tensor | float, exponent: float) -> Tensor:
     """low (1 + (low / high)^q)^(-1/q) for a, b >= 0: a smooth minimum."""
-    low, high = torch.minimum(a, b), torch.maximum(a, b)
+    low, high = minimum(a, b), maximum(a, b)
     return low * (1.0 + (low / high.clamp_min(1e-30)) ** exponent) ** (-1.0 / exponent)
 
 
@@ -263,16 +372,21 @@ def smootherstep(t: Tensor) -> Tensor:
     return t * t * t * (t * (6.0 * t - 15.0) + 10.0)
 
 
-def medium(constants: dict[str, Tensor], x: Tensor, y: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-    """(ln n, d/dx ln n, d/dy ln n) at points (E, P) for the run's fixed fields (F,).
+FIELD_X, FIELD_Y, FIELD_RADIUS, FIELD_BAND, FIELD_TARGET = range(5)  # rows of State.fields
+
+
+def medium(fields: Tensor, x: Tensor, y: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    """(ln n, d/dx ln n, d/dy ln n) at points (E, ...) for each environment's fields (E, 5, F).
     With no fields the medium is exactly 0."""
-    if constants["field_x"].shape[-1] == 0:
+    count = fields.shape[-1]
+    if count == 0:
         zeros = torch.zeros_like(x)
         return zeros, zeros, zeros
-    target, band = constants["field_target"], constants["field_band"]
-    offset_x, offset_y = x[..., None] - constants["field_x"], y[..., None] - constants["field_y"]
+    shape = (fields.shape[0],) + (1,) * (x.dim() - 1) + (count,)
+    field_x, field_y, radius, band, target = (fields[:, row].reshape(shape) for row in range(5))
+    offset_x, offset_y = x[..., None] - field_x, y[..., None] - field_y
     distance = torch.sqrt(offset_x * offset_x + offset_y * offset_y)
-    depth = 0.5 - (distance - constants["field_radius"]) / band
+    depth = 0.5 - (distance - radius) / band
     inward = depth.clamp(0.0, 1.0)
     outward = 1.0 - inward
     profile = smootherstep(inward)
@@ -349,7 +463,7 @@ def _setting(p, control, speed, energy):
     if core:
         # The engine drives speed only (constant power, the card's full-store power) and never
         # feeds the store; firing scales the thrust on the ticks it fires.
-        charge = torch.zeros_like(exchange)
+        charge = None
         thrust = thrust * getattr(control, "thrust_scale", 1.0)
     else:
         charge = (
@@ -360,7 +474,8 @@ def _setting(p, control, speed, energy):
 
 
 def _rates(p, setting, inverse_index, speed, lift, angle_cos, inverse_speed_squared):
-    """(d speed / dt, d energy / dt) for a setting, a lift coefficient and an angle of attack."""
+    """(d speed / dt, d energy / dt) for a setting, a lift coefficient and an angle of attack.
+    inverse_index: 1 / n, or None where there is no medium (n = 1)."""
     _, exchange, vertical, thrust, charge = setting
     induced = vertical * inverse_speed_squared
     load = lift * lift + induced * induced
@@ -369,7 +484,11 @@ def _rates(p, setting, inverse_index, speed, lift, angle_cos, inverse_speed_squa
         + p.induced_drag * load
         * (1.0 + card.SEPARATION_DRAG * (load * p.inverse_lift_squared) ** (0.5 * card.SEPARATION_EXPONENT))
     ) * speed * speed
-    return (thrust * angle_cos - drag - exchange) * inverse_index, (speed * exchange + charge) * inverse_index
+    store = speed * exchange if charge is None else speed * exchange + charge  # no charge in the core model
+    speed_rate = thrust * angle_cos - drag - exchange
+    if inverse_index is None:
+        return speed_rate, store
+    return speed_rate * inverse_index, store * inverse_index
 
 
 def _lift_coefficient(p, angle):
@@ -381,7 +500,7 @@ def _lift_coefficient(p, angle):
 def _matrix_exponential(a11, a12, a21, a22, duration):
     """exp(duration * A) for 2x2 A given by its entries (E, N): a degree-4 series, squared once."""
     b = torch.stack([torch.stack([a11, a12], -1), torch.stack([a21, a22], -1)], -2) * (duration / 2.0)
-    eye = torch.eye(2, dtype=b.dtype, device=b.device)
+    eye = _eye(b.dtype, b.device)
     h = eye + b / 4.0
     h = eye + (b @ h) / 3.0
     h = eye + (b @ h) / 2.0
@@ -399,7 +518,8 @@ def _nose_frame(s):
 
 
 def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duration):
-    """Advance speed, angle of attack, nose rate and energy by duration at a fixed position."""
+    """Advance speed, angle of attack, nose rate and energy by duration at a fixed position.
+    With no medium inverse_index and the gradient are None (n = 1, no gradient)."""
     speed0, angle0, cos0, sin0, energy, nose_rate = s.speed, s.angle, s.angle_cos, s.angle_sin, s.energy, s.nose_rate
     floor = card.SPEED_FLOOR
     safe0 = speed0.clamp_min(floor)
@@ -411,21 +531,28 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
     lateral, _, _, thrust, _ = current
     speed_squared = speed * speed
     inverse_speed_squared = 1.0 / speed_squared
-    over = inverse_index / speed
-    path_rate = (lift0 * speed_squared + thrust * sin0) * over + (speed * inverse_index) * (
-        cos0 * gradient_across + sin0 * gradient_along
-    )
+    if inverse_index is None:
+        over = 1.0 / speed
+        path_rate = (lift0 * speed_squared + thrust * sin0) * over
+    else:
+        over = inverse_index / speed
+        path_rate = (lift0 * speed_squared + thrust * sin0) * over + (speed * inverse_index) * (
+            cos0 * gradient_across + sin0 * gradient_along
+        )
     ratio = (angle0 * p.inverse_stall).abs()
     # The lift coefficient's slope: negative past the stall, zero from twice the stall angle (v2's
     # lift_slope, src/bnb/game/physics/flight.py).
     slope = torch.where(ratio < 2.0, p.lift_over_stall * (2.0 - 2.0 * ratio), 0.0)
     kappa = (slope * speed_squared + thrust * cos0) * over
-    omega = (p.nose_frequency * speed).clamp_min(card.NOSE_FREQUENCY_FLOOR) * inverse_index
+    omega = (p.nose_frequency * speed).clamp_min(card.NOSE_FREQUENCY_FLOOR)
+    if inverse_index is not None:
+        omega = omega * inverse_index
     reach = (lateral.abs() * inverse_speed_squared * p.inverse_lift).clamp(0.0, 1.0)
     step_angle = torch.sign(lateral) * p.stall * (1.0 - torch.sqrt(1.0 - reach)) - angle0
     damping = 2.0 * card.NOSE_DAMPING * omega
     m11, m12, m21, m22 = _matrix_exponential(
-        -kappa, torch.ones_like(kappa), damping * kappa - omega * omega, -damping, duration
+        -kappa, filled((), 1.0, kappa.dtype, kappa.device).expand_as(kappa), damping * kappa - omega * omega,
+        -damping, duration
     )
     steady = kappa * step_angle
     offset = (nose_rate - path_rate) - steady
@@ -444,12 +571,13 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
     s.angle = angle0 + turn
     s.angle_cos, s.angle_sin = cos0 * turn_cos - sin0 * turn_sin, cos0 * turn_sin + sin0 * turn_cos
     s.nose_rate = new_rate
-    s.energy = torch.minimum((energy + duration * energy_rate2).clamp_min(0.0), p.max_energy)
+    s.energy = minimum((energy + duration * energy_rate2).clamp_min(0.0), p.max_energy)
     return s
 
 
 def flight_tick(
-    constants: dict[str, Tensor],
+    constants: Constants,
+    fields: Tensor,
     tick_length: float,
     s: SimpleNamespace,
     stick: Tensor,
@@ -461,24 +589,29 @@ def flight_tick(
 
     s carries x, y, heading_cos, heading_sin, speed, angle, angle_cos, angle_sin, nose_rate,
     energy and the medium at the ship (log_index, gradient_x, gradient_y); it is updated in
-    place and returned. stick, power: (E, N) long action indices.
+    place and returned. fields: (E, 5, F); with none (F = 0) the medium's arithmetic is
+    skipped (n = 1, no gradient: the same values). stick, power: (E, N) long action indices.
     """
-    p = SimpleNamespace(**constants)
+    p = constants
     control = SimpleNamespace(model=model, thrust_scale=thrust_scale)
-    signed = torch.gather(p.stick_table, -1, stick[..., None])[..., 0]
+    signed = p.stick_table.gather(1, stick[:, None])[:, 0]
     control.stick_size, control.stick_sign = signed.abs(), torch.sign(signed)
-    control.commanded = torch.gather(p.commanded_table, -1, power[..., None])[..., 0]
-    control.demand = torch.gather(p.demand_table, -1, power[..., None])[..., 0]
+    control.commanded = p.commanded_table.gather(1, power[:, None])[:, 0]
+    control.demand = p.demand_table.gather(1, power[:, None])[:, 0]
     control.inverse_demand = 1.0 / control.demand
     h = tick_length
-    inverse_index = torch.exp(-s.log_index)
-    s = _kick(p, control, s, inverse_index, *_nose_frame(s), 0.5 * h)
-    along, across = _nose_frame(s)
-    velocity = s.speed * inverse_index
-    velocity_x, velocity_y = velocity * s.angle_cos, -velocity * s.angle_sin
-    correction = 0.5 * h * (along * velocity_x + across * velocity_y)
-    stretch = 1.0 / (1.0 + correction * (1.0 + correction * (0.5 + correction / 6.0)))
-    velocity_x, velocity_y = velocity_x * stretch, velocity_y * stretch
+    if fields.shape[-1] == 0:  # no medium (agreed fix 8)
+        s = _kick(p, control, s, None, None, None, 0.5 * h)
+        velocity_x, velocity_y = s.speed * s.angle_cos, -s.speed * s.angle_sin
+    else:
+        inverse_index = torch.exp(-s.log_index)
+        s = _kick(p, control, s, inverse_index, *_nose_frame(s), 0.5 * h)
+        along, across = _nose_frame(s)
+        velocity = s.speed * inverse_index
+        velocity_x, velocity_y = velocity * s.angle_cos, -velocity * s.angle_sin
+        correction = 0.5 * h * (along * velocity_x + across * velocity_y)
+        stretch = 1.0 / (1.0 + correction * (1.0 + correction * (0.5 + correction / 6.0)))
+        velocity_x, velocity_y = velocity_x * stretch, velocity_y * stretch
     arc = s.nose_rate * h
     arc_squared = arc * arc
     forward = (1.0 - arc_squared * (1.0 / 6.0 - arc_squared / 120.0)) * h
@@ -494,8 +627,28 @@ def flight_tick(
     s.heading_cos, s.heading_sin = heading_cos * norm, heading_sin * norm
     norm = torch.rsqrt(s.angle_cos * s.angle_cos + s.angle_sin * s.angle_sin)
     s.angle_cos, s.angle_sin = s.angle_cos * norm, s.angle_sin * norm
-    s.log_index, s.gradient_x, s.gradient_y = medium(constants, s.x, s.y)
+    if fields.shape[-1] == 0:
+        return _kick(p, control, s, None, None, None, 0.5 * h)
+    s.log_index, s.gradient_x, s.gradient_y = medium(fields, s.x, s.y)
     return _kick(p, control, s, torch.exp(-s.log_index), *_nose_frame(s), 0.5 * h)
+
+
+def path_velocity(speed: Tensor, heading_cos: Tensor, heading_sin: Tensor, angle_cos: Tensor,
+                  angle_sin: Tensor) -> tuple[Tensor, Tensor]:
+    """The velocity at proper speed along the flight path: the nose turned back by the angle of
+    attack (State's velocity rows)."""
+    return (
+        speed * (heading_cos * angle_cos + heading_sin * angle_sin),
+        speed * (heading_sin * angle_cos - heading_cos * angle_sin),
+    )
+
+
+def with_velocity(state: State) -> State:
+    """The state with its stored velocity recomputed from speed, heading and angle of attack,
+    after the motion was set by hand."""
+    velocity_x, velocity_y = path_velocity(state.speed, state.heading_cos, state.heading_sin, state.angle_cos,
+                                           state.angle_sin)
+    return state.replace(velocity_x=velocity_x, velocity_y=velocity_y)
 
 
 # --------------------------------------------------------------------------- bullets
@@ -508,24 +661,32 @@ def _half_bend(tick_length, direction_x, direction_y, speed, index, gradient_x, 
     return direction_x * cos - direction_y * sin, direction_x * sin + direction_y * cos
 
 
-def bullet_motion(constants, tick_length, x, y, direction_x, direction_y, speed, drag, start_medium):
-    """One move of every bullet (E, P): half drag, half bend, the step, half bend, half
-    drag. drag: (E, P) the shooter's drag constant, 1/m. start_medium: (E, P, 3) the medium at
-    the start (cached). Returns x, y, direction, speed and the medium at the end (E, P, 3)."""
-    log_index, gradient_x, gradient_y = start_medium.unbind(-1)
-    index = torch.exp(log_index)
+def bullet_motion(fields, tick_length, x, y, direction_x, direction_y, speed, drag, start_medium):
+    """One move of every bullet (E, ...): half drag, half bend, the step, half bend, half
+    drag. fields: (E, 5, F). drag: the shooter's drag constant, 1/m, a number or broadcast
+    against the bullets. start_medium: (ln n, d/dx ln n, d/dy ln n) at the start (cached).
+    Returns x, y, direction x and y, speed and the medium at the end (three tensors). With no
+    fields the medium's arithmetic is skipped (n = 1, no bend: the same values)."""
+    log_index, gradient_x, gradient_y = start_medium
     half = drag * 0.5 * tick_length
+    if fields.shape[-1] == 0:  # no medium (agreed fix 8)
+        speed = speed / (1.0 + half * speed)
+        step = speed * tick_length
+        x, y = x + direction_x * step, y + direction_y * step
+        speed = speed / (1.0 + half * speed)
+        return x, y, direction_x, direction_y, speed, log_index, gradient_x, gradient_y
+    index = torch.exp(log_index)
     speed = speed / (1.0 + half * speed / index)
     direction_x, direction_y = _half_bend(tick_length, direction_x, direction_y, speed, index, gradient_x, gradient_y)
     through = speed / index
     correction = 0.5 * tick_length * through * (direction_x * gradient_x + direction_y * gradient_y)
     step = through * tick_length / (1.0 + correction * (1.0 + correction * (0.5 + correction / 6.0)))
     x, y = x + direction_x * step, y + direction_y * step
-    log_index, gradient_x, gradient_y = medium(constants, x, y)
+    log_index, gradient_x, gradient_y = medium(fields, x, y)
     index = torch.exp(log_index)
     direction_x, direction_y = _half_bend(tick_length, direction_x, direction_y, speed, index, gradient_x, gradient_y)
     speed = speed / (1.0 + half * speed / index)
-    return x, y, direction_x, direction_y, speed, torch.stack([log_index, gradient_x, gradient_y], -1)
+    return x, y, direction_x, direction_y, speed, log_index, gradient_x, gradient_y
 
 
 # --------------------------------------------------------------------------- the tick
@@ -544,90 +705,85 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     """
     c = state.constants
     h = config.tick_length
-    E, N, K = state.bullet_x.shape
-    device = state.x.device
+    E, _, N, K = state.bullets.shape
+    device = state.ships.device
+    index = slot_indices(N, device)
     stick, power, shoot = action[..., 0], action[..., 1], action[..., 2] == 1
     alive0 = state.alive
-    log_index, gradient_x, gradient_y = state.medium.unbind(-1)  # cached from the last tick
+
+    def of_ship(values: Tensor | float) -> Tensor | float:  # a per-ship constant against (E, N, K)
+        return values[..., None] if isinstance(values, Tensor) else values
 
     # Fire, from the tick-start state.
     fired = alive0 & shoot & (state.cooldown == 0) & (state.energy >= c["bullet_cost"])
-    path_x = state.speed * (state.heading_cos * state.angle_cos + state.heading_sin * state.angle_sin)
-    path_y = state.speed * (state.heading_sin * state.angle_cos - state.heading_cos * state.angle_sin)
     spread = noise["spread"]
-    launch_x = path_x + c["muzzle_speed"] * state.heading_cos + c["spread_speed"] * spread[..., 0]
-    launch_y = path_y + c["muzzle_speed"] * state.heading_sin + c["spread_speed"] * spread[..., 1]
+    launch_x = state.velocity_x + c["muzzle_speed"] * state.heading_cos + c["spread_speed"] * spread[..., 0]
+    launch_y = state.velocity_y + c["muzzle_speed"] * state.heading_sin + c["spread_speed"] * spread[..., 1]
     launch_speed = torch.sqrt(launch_x * launch_x + launch_y * launch_y)
-    slot = torch.arange(K, device=device)
     emits = alive0 if config.ghost_bullets else fired  # a ghost every tick, or real shots only
-    written = emits[..., None] & (slot == state.next_slot[..., None])
-
-    def write(new: Tensor, old: Tensor) -> Tensor:
-        return torch.where(written, new[..., None], old)
-
-    bullet_x0, bullet_y0 = write(state.x, state.bullet_x), write(state.y, state.bullet_y)
-    direction_x0 = write(launch_x / launch_speed, state.bullet_dir_x)
-    direction_y0 = write(launch_y / launch_speed, state.bullet_dir_y)
-    bullet_speed0 = write(launch_speed, state.bullet_speed)
-    moves_left0 = write(c["bullet_moves"], state.bullet_moves_left)
+    written = emits[..., None] & (index.bullet_slot == state.next_slot[..., None])
+    # A new bullet starts at its ship, with the ship's cached medium; the others keep theirs.
+    launched = torch.cat(
+        [state.ships[:, X : Y + 1], torch.stack([launch_x / launch_speed, launch_y / launch_speed, launch_speed], 1),
+         state.ships[:, LOG_INDEX : GRADIENT_Y + 1]],
+        1,
+    )
+    bullets0 = torch.where(written[:, None], launched[..., None], state.bullets)
+    counts0 = torch.where(
+        written[:, None],
+        torch.stack([filled((E,), c["bullet_moves"], torch.long, device), state.tick], 1)[:, :, None, None],
+        state.bullet_counts,
+    )
+    bullet_real = torch.where(written, fired[..., None], state.bullet_real)
     energy = torch.where(fired, state.energy - c["bullet_cost"], state.energy)
     cooldown = torch.where(fired, c["fire_interval"], state.cooldown)
     next_slot = torch.where(emits, (state.next_slot + 1) % K, state.next_slot)
-    bullet_real0 = torch.where(written, fired[..., None], state.bullet_real)
-    bullet_fired_tick = torch.where(written, state.tick[:, None, None], state.bullet_fired_tick)
 
-    # Flight; slots not alive at tick start keep everything. In the core model firing cuts thrust.
+    # Flight for every slot; a slot not alive at tick start keeps its row (one select at the end).
+    # In the core model firing cuts thrust.
     core_model = config.flight_model == "core"
     firing_thrust = torch.where(fired, config.fire_thrust_fraction, 1.0) if core_model else 1.0
     flown = flight_tick(
-        c, h,
+        c, state.fields, h,
         SimpleNamespace(
             x=state.x, y=state.y, heading_cos=state.heading_cos, heading_sin=state.heading_sin,
             speed=state.speed, angle=state.angle, angle_cos=state.angle_cos, angle_sin=state.angle_sin,
             nose_rate=state.nose_rate, energy=energy,
-            log_index=log_index, gradient_x=gradient_x, gradient_y=gradient_y,
+            log_index=state.log_index, gradient_x=state.gradient_x, gradient_y=state.gradient_y,
         ),
         stick, power,
         model=config.flight_model,
         thrust_scale=firing_thrust,
     )
 
-    def flew(new: Tensor, old: Tensor) -> Tensor:
-        return torch.where(alive0, new, old)
-
-    x, y = flew(flown.x, state.x), flew(flown.y, state.y)
-    heading_cos, heading_sin = flew(flown.heading_cos, state.heading_cos), flew(flown.heading_sin, state.heading_sin)
+    # A dead ship's flight below is never read: it is no target (the hit test's reach is -1)
+    # and takes no boundary damage.
+    x, y, heading_cos, heading_sin = flown.x, flown.y, flown.heading_cos, flown.heading_sin
 
     # Bullet motion; inactive bullets are frozen.
-    flying = moves_left0 > 0
-    flat = (E, N * K)
-    # A new bullet starts at its ship, whose medium is cached; the others carry their own.
-    bullet_medium0 = torch.where(written[..., None], state.medium[:, :, None, :], state.bullet_medium)
-    *moved, end_medium = bullet_motion(
-        c, h, bullet_x0.reshape(flat), bullet_y0.reshape(flat), direction_x0.reshape(flat),
-        direction_y0.reshape(flat), bullet_speed0.reshape(flat),
-        c["bullet_drag"][..., None].expand(E, N, K).reshape(flat), bullet_medium0.reshape(E, N * K, 3),
+    flying = counts0[:, MOVES_LEFT] > 0
+    x0, y0, direction_x0, direction_y0, speed0 = bullets0[:, :BULLET_LOG_INDEX].unbind(1)
+    moved = bullet_motion(
+        state.fields, h, x0, y0, direction_x0, direction_y0, speed0, of_ship(c["bullet_drag"]),
+        bullets0[:, BULLET_LOG_INDEX:].unbind(1),
     )
-    bullet_x, bullet_y, direction_x, direction_y, bullet_speed = (
-        torch.where(flying, new.reshape(E, N, K), old)
-        for new, old in zip(moved, (bullet_x0, bullet_y0, direction_x0, direction_y0, bullet_speed0))
-    )
-    bullet_medium = torch.where(flying[..., None], end_medium.reshape(E, N, K, 3), bullet_medium0)
+    bullets = torch.where(flying[:, None], torch.stack(moved, 1), bullets0)
+    direction_x, direction_y, bullet_speed = bullets[:, BULLET_DIR_X : BULLET_SPEED + 1].unbind(1)
 
-    # The swept test between the two motions, every bullet against every ship: (E, N K, N).
-    per_bullet = (E, N * K, 1)
-    start_x = bullet_x0.reshape(per_bullet) - state.x[:, None, :]
-    start_y = bullet_y0.reshape(per_bullet) - state.y[:, None, :]
-    relative_x = (bullet_x - bullet_x0).reshape(per_bullet) - (x - state.x)[:, None, :]
-    relative_y = (bullet_y - bullet_y0).reshape(per_bullet) - (y - state.y)[:, None, :]
-    relative_squared = (relative_x * relative_x + relative_y * relative_y).clamp_min(1e-12)
-    tau = (-(start_x * relative_x + start_y * relative_y) / relative_squared).clamp(0.0, 1.0)
-    miss_x, miss_y = start_x + tau * relative_x, start_y + tau * relative_y
-    miss_squared = miss_x * miss_x + miss_y * miss_y
-    ship = torch.arange(N, device=device)
-    owner = ship.repeat_interleave(K)
+    # The swept test between the two motions, every bullet against every ship: (E, 2, N K, N),
+    # x and y on the second axis.
+    per_bullet = (E, 2, N * K, 1)
+    start = bullets0[:, BULLET_X : BULLET_Y + 1].reshape(per_bullet) - state.ships[:, X : Y + 1, None, :]
+    moved_xy = torch.stack([x, y], 1) - state.ships[:, X : Y + 1]
+    relative = (bullets[:, BULLET_X : BULLET_Y + 1] - bullets0[:, BULLET_X : BULLET_Y + 1]).reshape(per_bullet)
+    relative = relative - moved_xy[:, :, None, :]
+    relative_squared = (relative * relative).sum(1).clamp_min(1e-12)
+    tau = (-(start * relative).sum(1) / relative_squared).clamp(0.0, 1.0)
+    miss = start + tau[:, None] * relative
+    miss_squared = (miss * miss).sum(1)
+    owner = index.owner
     reach = torch.where(alive0, c["hit_radius_squared"], -1.0)
-    contact = (miss_squared < reach[:, None, :]) & (owner[:, None] != ship) & flying.reshape(per_bullet)
+    contact = (miss_squared < reach[:, None, :]) & index.other & flying.reshape(E, N * K, 1)
 
     # First contact: the smallest tau, ties within 1e-6 to the closer pass.
     infinity = torch.inf
@@ -637,15 +793,13 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     target = torch.where(tied, miss_squared, infinity).argmin(-1)
     hit = first_tau < infinity
 
-    # Damage per bullet on its target (the target is slot 0 and unused for a miss).
-    def of_target(values: Tensor) -> Tensor:
-        return values.gather(1, target)
+    # Damage per bullet on its target (the target is slot 0 and unused for a miss). A constant
+    # equal for every ship is a number and needs no gather.
+    def of_target(values: Tensor | float) -> Tensor | float:
+        return values.gather(1, target) if isinstance(values, Tensor) else values
 
-    def of_owner(values: Tensor) -> Tensor:
-        return values[..., None].expand(E, N, K).reshape(flat)
-
+    flat = (E, N * K)
     flat_direction_x, flat_direction_y = direction_x.reshape(flat), direction_y.reshape(flat)
-    flat_speed = bullet_speed.reshape(flat)
     nose_cos, nose_sin = of_target(heading_cos), of_target(heading_sin)
     core_damage = config.damage_model == "core"
     if not core_damage:
@@ -653,20 +807,20 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
             (flat_direction_x * nose_sin - flat_direction_y * nose_cos).abs(),
             -(flat_direction_x * nose_cos + flat_direction_y * nose_sin),
         )
-    speed_ratio = flat_speed * of_owner(c["inverse_reference_bullet_speed"])
-    explosive = of_owner(c["explosive_share"])
-    full = of_owner(c["hit_damage"]) * (explosive + (1.0 - explosive) * speed_ratio * speed_ratio)
-    target_start_x = bullet_x0.reshape(flat) - of_target(state.x)
-    target_start_y = bullet_y0.reshape(flat) - of_target(state.y)
-    target_relative_x = (bullet_x - bullet_x0).reshape(flat) - of_target(x - state.x)
-    target_relative_y = (bullet_y - bullet_y0).reshape(flat) - of_target(y - state.y)
+    # The owner's constants broadcast over its K bullets.
+    speed_ratio = bullet_speed * of_ship(c["inverse_reference_bullet_speed"])
+    explosive = of_ship(c["explosive_share"])
+    full = (of_ship(c["hit_damage"]) * (explosive + (1.0 - explosive) * speed_ratio * speed_ratio)).reshape(flat)
+    # The swept test's start and relative motion against the target.
+    on_target = target[:, None, :, None].expand(E, 2, -1, 1)
+    target_start_x, target_start_y = start.gather(3, on_target)[..., 0].unbind(1)
+    target_relative_x, target_relative_y = relative.gather(3, on_target)[..., 0].unbind(1)
     cross = target_start_x * target_relative_y - target_start_y * target_relative_x
-    relative_x, relative_y = target_relative_x, target_relative_y
-    relative_squared = relative_x * relative_x + relative_y * relative_y
-    line = cross * cross / relative_squared.clamp_min(1e-12)
+    line = cross * cross / relative_squared.gather(2, target[..., None])[..., 0]
     impact_squared = torch.minimum(line, target_start_x * target_start_x + target_start_y * target_start_y)
     radius, core = of_target(c["hit_radius"]), of_target(c["core_radius"])
-    band = ((impact_squared.sqrt() - core) / (radius - core).clamp_min(1e-6)).clamp(0.0, 1.0)
+    band_width = (radius - core).clamp_min(1e-6) if isinstance(radius - core, Tensor) else max(radius - core, 1e-6)
+    band = ((impact_squared.sqrt() - core) / band_width).clamp(0.0, 1.0)
     closeness = 1.0 - band * band * (3.0 - 2.0 * band)
     head_on = of_target(c["head_on"])
     if core_damage:
@@ -680,23 +834,22 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
         ratio = theta * of_target(c["inverse_head_on_angle"])
         powered = ratio.pow(of_target(c["head_on_sharpness"]))
     aspect = 1.0 - (1.0 - head_on) * torch.exp(-card.LN_2 * powered)
-    real = bullet_real0.reshape(flat)
+    real = bullet_real.reshape(flat)
     bullet_damage = torch.where(hit & real, full * closeness * aspect, 0.0)
 
     enemy = state.team[:, owner] != of_target(state.team)
-    hit_taken = torch.zeros((E, N), dtype=bullet_damage.dtype, device=device).scatter_add(1, target, bullet_damage)
+    hit_taken = filled((E, N), 0.0, bullet_damage.dtype, device).scatter_add(1, target, bullet_damage)
     damage_dealt = torch.where(enemy, bullet_damage, 0.0).reshape(E, N, K).sum(-1)
     friendly_damage = torch.where(enemy, 0.0, bullet_damage).reshape(E, N, K).sum(-1)
 
     # The earliest hit on each ship names its killer: smallest tau, then lowest bullet index.
     real_hit = hit & real
     hit_tau = torch.where(real_hit, first_tau, infinity)
-    earliest_tau = torch.full((E, N), infinity, device=device).scatter_reduce(1, target, hit_tau, "amin")
+    earliest_tau = filled((E, N), infinity, hit_tau.dtype, device).scatter_reduce(1, target, hit_tau, "amin")
     earliest = real_hit & (hit_tau <= earliest_tau.gather(1, target))
     no_bullet = N * K
-    bullet_index = torch.arange(N * K, device=device).expand(E, -1)
-    earliest_bullet = torch.full((E, N), no_bullet, dtype=torch.long, device=device).scatter_reduce(
-        1, target, torch.where(earliest, bullet_index, no_bullet), "amin"
+    earliest_bullet = filled((E, N), no_bullet, torch.long, device).scatter_reduce(
+        1, target, torch.where(earliest, index.bullet_index, no_bullet), "amin"
     )
     first_shooter = torch.where(earliest_bullet < no_bullet, earliest_bullet // K, -1)
 
@@ -739,42 +892,35 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
 
     # Every bullet whose flight ends this tick: its first contact, or its last move without one.
     hit_slots = hit.reshape(E, N, K)
+    moves_left0 = counts0[:, MOVES_LEFT]
     moves_left = torch.where(hit_slots, 0, torch.where(flying, moves_left0 - 1, moves_left0))
     ended = hit_slots | (flying & (moves_left == 0))
     outcome = torch.where(hit_slots, torch.where(enemy.reshape(E, N, K), 1, 2), 0)
     shot_outcome = torch.where(ended, outcome, -1)
+    fired_tick = counts0[:, FIRED_TICK]
 
+    # Slots not alive at tick start keep their whole row (agreed fix 3: one select, not one per field).
+    ships = torch.where(
+        alive0[:, None],
+        torch.stack(
+            [
+                x, y, heading_cos, heading_sin, flown.speed, flown.angle, flown.angle_cos, flown.angle_sin,
+                flown.nose_rate, flown.energy, shield + restored, wait, (cooldown - 1).clamp_min(0),
+                flown.log_index, flown.gradient_x, flown.gradient_y,
+                *path_velocity(flown.speed, heading_cos, heading_sin, flown.angle_cos, flown.angle_sin), next_slot,
+            ],
+            1,
+        ),
+        state.ships,
+    )
     new_state = dataclasses.replace(
         state,
-        x=x,
-        y=y,
-        heading_cos=heading_cos,
-        heading_sin=heading_sin,
-        speed=flew(flown.speed, state.speed),
-        angle=flew(flown.angle, state.angle),
-        angle_cos=flew(flown.angle_cos, state.angle_cos),
-        angle_sin=flew(flown.angle_sin, state.angle_sin),
-        nose_rate=flew(flown.nose_rate, state.nose_rate),
-        energy=flew(flown.energy, state.energy),
-        shield=torch.where(alive0, shield + restored, state.shield),
-        shield_wait=torch.where(alive0, wait, state.shield_wait),
-        cooldown=(cooldown - 1).clamp_min(0),
-        next_slot=next_slot,
-        alive=alive,
-        bullet_x=bullet_x,
-        bullet_y=bullet_y,
-        bullet_dir_x=direction_x,
-        bullet_dir_y=direction_y,
-        bullet_speed=bullet_speed,
-        bullet_moves_left=moves_left,
+        ships=ships,
+        flags=torch.stack([alive, state.exists, fired], 1),
+        bullets=bullets,
+        bullet_counts=torch.stack([moves_left, fired_tick], 1),
+        bullet_real=bullet_real,
         tick=tick,
-        fired=fired,
-        bullet_real=bullet_real0,
-        bullet_fired_tick=bullet_fired_tick,
-        medium=torch.where(
-            alive0[..., None], torch.stack([flown.log_index, flown.gradient_x, flown.gradient_y], -1), state.medium
-        ),
-        bullet_medium=bullet_medium,
     )
     out = StepOut(
         damage_dealt=damage_dealt,
@@ -786,9 +932,9 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
         done=done,
         result=result,
         shot_outcome=shot_outcome,
-        shot_tick=bullet_fired_tick,
-        hit_damage=torch.zeros((E, N * N), dtype=bullet_damage.dtype, device=device)
-        .scatter_add(1, owner[None, :].expand(E, -1) * N + target, bullet_damage)
+        shot_tick=fired_tick,
+        hit_damage=filled((E, N * N), 0.0, bullet_damage.dtype, device)
+        .scatter_add(1, index.pair + target, bullet_damage)
         .reshape(E, N, N),
         boundary_damage=boundary,
         shield_restored=torch.where(alive0, restored, 0.0),
@@ -819,8 +965,8 @@ def _edge_safe(config: GameConfig, x: Tensor, y: Tensor, angle: Tensor) -> tuple
 MAP_SCALE_RADIUS = 2600.0  # m: the arena radius of map scale 1 (v2's rules.py)
 
 
-def draw_fields(config: GameConfig, envs: int, generator, device) -> dict[str, Tensor]:
-    """Each environment's fields, (E, 1, F) per quantity (v2's new_map): point-symmetric pairs,
+def draw_fields(config: GameConfig, envs: int, generator, device) -> Tensor:
+    """Each environment's fields, (E, 5, F) (v2's new_map; rows as State.fields): point-symmetric pairs,
     field P + i is field i rotated by 180 degrees about the centre, and for an odd count the
     last field sits at the centre."""
     count, pairs = config.field_count, config.field_count // 2
@@ -839,29 +985,71 @@ def draw_fields(config: GameConfig, envs: int, generator, device) -> dict[str, T
     edges = ((1.0 - high) * strong, 1.0 - high, 1.0 - high + high * (1.0 - strong))
     index = sum((drawn[..., 3] >= edge).long() for edge in edges)
     level = torch.tensor([-2.0, -1.0, 1.0, 2.0], device=device)[index]
-    return {
-        "field_x": torch.cat([x, -x, centre], 1)[:, None],
-        "field_y": torch.cat([y, -y, centre], 1)[:, None],
-        "field_radius": radius[:, None],
-        "field_band": torch.full_like(radius, config.field_band_width)[:, None],
-        "field_target": (level * card.LN_SQRT2)[:, None],
-    }
+    return torch.stack(
+        [
+            torch.cat([x, -x, centre], 1),
+            torch.cat([y, -y, centre], 1),
+            radius,
+            torch.full_like(radius, config.field_band_width),
+            level * card.LN_SQRT2,
+        ],
+        1,
+    )
+
+
+@built_once
+def _fixed_fields(fields: tuple[tuple[float, float, float, float, float], ...], device: torch.device) -> Tensor:
+    table = torch.tensor(fields, dtype=torch.float32).reshape(-1, 5).T.contiguous()
+    table[FIELD_TARGET] *= card.LN_SQRT2
+    return table.to(device)
+
+
+def fixed_fields(config: GameConfig, envs: int, device) -> Tensor:
+    """The config's fixed fields as State.fields (E, 5, F) (an expanded view; the level turned
+    into the target ln n)."""
+    table = _fixed_fields(config.fields, torch.device(device))
+    return table.expand(envs, *table.shape)
+
+
+@built_once
+def _lineup_types(lineup: tuple[str, ...], device: torch.device) -> Tensor:
+    return torch.tensor([card.TYPE_NAMES.index(name) for name in lineup], device=device)
+
+
+@built_once
+def _no_bullets(envs: int, slots: int, device: torch.device) -> Tensor:
+    """The bullet block of a fresh deal: every bullet inactive, at the origin, pointing along x."""
+    bullets = torch.zeros((envs, len(BULLET_COLUMNS), slots, BULLET_SLOTS), device=device)
+    bullets[:, BULLET_DIR_X] = 1.0
+    return bullets
+
+
+def _per_slot(value: Tensor | float, like: Tensor) -> Tensor:
+    """A per-ship constant as an (E, N) tensor (a shared fixed one for a number)."""
+    return value if isinstance(value, Tensor) else filled(like.shape, value, like.dtype, like.device)
 
 
 def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generator, device) -> State:
     """A fresh state of (E, N): team 0 in the first team_sizes[:, 0] slots, team 1 in the
-    next team_sizes[:, 1], the rest not existing (parked at the centre at spawn speed)."""
+    next team_sizes[:, 1], the rest not existing (parked at the centre at spawn speed). The rows
+    that every fresh deal starts with (no bullets, tick 0) are shared fixed tensors: `reset`
+    copies them, `reset_done` only selects from them."""
+    device = torch.device(device)
     team_sizes = team_sizes.to(device=device, dtype=torch.long)
-    slot = torch.arange(slots, device=device).expand(envs, slots)
+    slot = slot_indices(slots, device).ship.expand(envs, slots)
     first, both = team_sizes[:, :1], team_sizes.sum(-1, keepdim=True)
     exists = slot < both
     team = ((slot >= first) & exists).long()
     rank = torch.where(team == 1, slot - first, slot)
-    names = torch.tensor([card.TYPE_NAMES.index(name) for name in config.lineup], device=device)
-    ship_type = torch.where(exists, names[rank % len(config.lineup)], 0)
+    names = _lineup_types(tuple(config.lineup), device)
+    # Slots that do not exist take the lineup's first type, so a constant equal for the lineup
+    # stays one number.
+    ship_type = names[torch.where(exists, rank % len(config.lineup), 0)]
     constants = ship_constants(config, ship_type)
     if config.field_count > 0:
-        constants.update(draw_fields(config, envs, generator, device))
+        fields = draw_fields(config, envs, generator, device)
+    else:
+        fields = fixed_fields(config, envs, device)
 
     def uniform(*shape):
         return torch.rand(shape, generator=generator, device=device)
@@ -886,42 +1074,35 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
     heading_cos, heading_sin = _edge_safe(config, x, y, angle)
     x, y = torch.where(exists, x, 0.0), torch.where(exists, y, 0.0)
     heading_cos, heading_sin = torch.where(exists, heading_cos, 1.0), torch.where(exists, heading_sin, 0.0)
-    log_index, gradient_x, gradient_y = medium(constants, x, y)
-    zeros = torch.zeros((envs, slots), device=device)
-    whole = torch.zeros((envs, slots), dtype=torch.long, device=device)
-    bullets = torch.zeros((envs, slots, BULLET_SLOTS), device=device)
+    zeros = filled((envs, slots), 0.0, torch.float32, device)
+    ones = filled((envs, slots), 1.0, torch.float32, device)
+    if fields.shape[-1] == 0:  # no medium: n = 1 everywhere
+        log_index = gradient_x = gradient_y = zeros
+        speed = filled((envs, slots), card.SPAWN_SPEED, torch.float32, device)
+    else:
+        log_index, gradient_x, gradient_y = medium(fields, x, y)
+        speed = card.SPAWN_SPEED * torch.exp(log_index)
+    named = {
+        "x": x, "y": y, "heading_cos": heading_cos, "heading_sin": heading_sin,
+        "speed": speed, "angle": zeros, "angle_cos": ones, "angle_sin": zeros,
+        "nose_rate": zeros, "energy": _per_slot(constants["spawn_energy"], zeros),
+        "shield": _per_slot(constants["max_shield"], zeros), "shield_wait": zeros, "cooldown": zeros,
+        "log_index": log_index, "gradient_x": gradient_x, "gradient_y": gradient_y, "next_slot": zeros,
+    }
+    # At zero angle of attack the flight path is the nose.
+    named["velocity_x"], named["velocity_y"] = named["speed"] * heading_cos, named["speed"] * heading_sin
+    bullet_shape = (envs, slots, BULLET_SLOTS)
     state = State(
-        x=x,
-        y=y,
-        heading_cos=heading_cos,
-        heading_sin=heading_sin,
-        speed=card.SPAWN_SPEED * torch.exp(log_index),
-        angle=zeros,
-        angle_cos=torch.ones_like(zeros),
-        angle_sin=zeros.clone(),
-        nose_rate=zeros.clone(),
-        energy=constants["spawn_energy"].clone(),
-        shield=constants["max_shield"].clone(),
-        shield_wait=zeros.clone(),
-        cooldown=whole,
-        next_slot=whole.clone(),
-        alive=exists.clone(),
-        exists=exists,
-        team=team,
-        type=ship_type,
+        ships=torch.stack([named[name] for name in SHIP_COLUMNS], 1),
+        # alive, exists, fired
+        flags=torch.stack([exists, exists, filled((envs, slots), False, torch.bool, device)], 1),
+        identity=torch.stack([team, ship_type], 1),
         constants=constants,
-        bullet_x=bullets,
-        bullet_y=bullets.clone(),
-        bullet_dir_x=torch.ones_like(bullets),
-        bullet_dir_y=bullets.clone(),
-        bullet_speed=bullets.clone(),
-        bullet_moves_left=torch.zeros((envs, slots, BULLET_SLOTS), dtype=torch.long, device=device),
-        tick=torch.zeros(envs, dtype=torch.long, device=device),
-        fired=torch.zeros((envs, slots), dtype=torch.bool, device=device),
-        bullet_real=torch.zeros((envs, slots, BULLET_SLOTS), dtype=torch.bool, device=device),
-        bullet_fired_tick=torch.zeros((envs, slots, BULLET_SLOTS), dtype=torch.long, device=device),
-        medium=torch.stack([log_index, gradient_x, gradient_y], -1),
-        bullet_medium=torch.zeros((envs, slots, BULLET_SLOTS, 3), device=device),
+        bullets=_no_bullets(envs, slots, device),
+        bullet_counts=filled((envs, len(BULLET_COUNT_COLUMNS), slots, BULLET_SLOTS), 0, torch.long, device),
+        bullet_real=filled(bullet_shape, False, torch.bool, device),
+        tick=filled((envs,), 0, torch.long, device),
+        fields=fields,
     )
     if not config.fog:
         return state
@@ -929,7 +1110,7 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
     # the spawn are seen at once (no other reveal at a spawn).
     seen = torch.zeros((envs, len(SEEN_COLUMNS), slots), device=device)
     seen[:, SEEN_ALIVE] = exists.to(torch.float32)
-    state = dataclasses.replace(state, seen=seen, ticks_since_seen=whole.clone())
+    state = dataclasses.replace(state, seen=seen, ticks_since_seen=filled((envs, slots), 0, torch.long, device))
     return perceive(state, torch.zeros_like(exists))
 
 
@@ -937,7 +1118,10 @@ def reset(config: GameConfig, envs: int, team_sizes: Tensor, generator: torch.Ge
     """A fresh state. team_sizes: (E, 2) long, ships per team, each at least 1. N is the
     largest total over the environments; unused slots have exists = False."""
     slots = int(team_sizes.sum(-1).max())
-    return _deal(config, envs, slots, team_sizes, generator, device)
+    state = _deal(config, envs, slots, team_sizes, generator, device)
+    # The state is the caller's: its own copies of the deal's shared fixed rows.
+    shared = ("bullets", "bullet_counts", "bullet_real", "tick")
+    return dataclasses.replace(state, **{name: getattr(state, name).clone() for name in shared})
 
 
 def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tensor, generator: torch.Generator) -> State:
@@ -945,7 +1129,7 @@ def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tenso
     whose totals must fit the state's N. Every environment's draws are made, so nothing
     reads done on the host."""
     envs, slots = state.x.shape
-    fresh = _deal(config, envs, slots, team_sizes, generator, state.x.device)
+    fresh = _deal(config, envs, slots, team_sizes, generator, state.ships.device)
 
     def select(new: Tensor, old: Tensor) -> Tensor:
         return torch.where(done.reshape((envs,) + (1,) * (new.dim() - 1)), new, old)
@@ -956,11 +1140,7 @@ def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tenso
         if new is None:  # fog's fields with fog off
             values[field.name] = None
         elif field.name == "constants":
-            values[field.name] = {
-                key: old[key] if key.startswith("field_") and old[key].dim() == 1
-                else select(new[key], old[key])
-                for key in old
-            }
+            values[field.name] = dataclasses.replace(old, table=select(new.table, old.table))
         else:
             values[field.name] = select(new, old)
     return State(**values)
@@ -968,14 +1148,10 @@ def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tenso
 
 # --------------------------------------------------------------------------- fog
 
-# The raw values a team keeps of an enemy ship from its last sighting (State.seen's columns).
-SEEN_COLUMNS = (
-    "x", "y", "heading_cos", "heading_sin", "speed", "angle", "angle_cos", "angle_sin", "nose_rate",
-    "energy", "shield", "shield_wait", "cooldown", "log_index", "gradient_x", "gradient_y",
-    "bullet_share", "alive", "known",
-)
-SEEN_COOLDOWN = SEEN_COLUMNS.index("cooldown")
-SEEN_MEDIUM = SEEN_COLUMNS.index("log_index")
+# The raw values a team keeps of an enemy ship from its last sighting (State.seen's columns): the
+# ship's row of the packed state as it was, then its share of bullet slots in flight, alive and
+# known.
+SEEN_COLUMNS = SHIP_COLUMNS + ("bullet_share", "alive", "known")
 SEEN_SHARE = SEEN_COLUMNS.index("bullet_share")
 SEEN_ALIVE = SEEN_COLUMNS.index("alive")
 SEEN_KNOWN = SEEN_COLUMNS.index("known")
@@ -997,21 +1173,22 @@ def sighted_by_enemy(state: State) -> Tensor:
     line_y = y[:, :, None] - y[:, None, :]
     length_squared = line_x * line_x + line_y * line_y
     vision = c["vision_range"]
+    vision_squared = vision * vision
     clear = (
-        (length_squared <= (vision * vision)[:, None, :])
+        (length_squared <= (vision_squared[:, None, :] if isinstance(vision, Tensor) else vision_squared))
         & state.alive[:, None, :]
         & (state.team[:, :, None] != state.team[:, None, :])
     )
-    count = c["field_x"].shape[-1]
+    count = state.fields.shape[-1]
     if count > 0:
-        def per_field(name: str) -> Tensor:  # (E or 1, 1, F): drawn per environment or fixed
-            return c[name].reshape(-1, 1, count)
+        def per_field(row: int) -> Tensor:  # (E, 1, F)
+            return state.fields[:, row, None, :]
 
-        radius, half_band = per_field("field_radius"), 0.5 * per_field("field_band")
+        radius, half_band = per_field(FIELD_RADIUS), 0.5 * per_field(FIELD_BAND)
         core = (radius - half_band).clamp_min(0.0)
         core_squared, outer = core * core, radius + half_band
-        offset_x = x[..., None] - per_field("field_x")  # (E, N, F)
-        offset_y = y[..., None] - per_field("field_y")
+        offset_x = x[..., None] - per_field(FIELD_X)  # (E, N, F)
+        offset_y = y[..., None] - per_field(FIELD_Y)
         distance_squared = offset_x * offset_x + offset_y * offset_y
         in_core, in_field = distance_squared < core_squared, distance_squared < outer * outer
         core_target, core_observer = in_core[:, :, None], in_core[:, None]  # (E, N, N, F)
@@ -1035,17 +1212,8 @@ def _snapshot(state: State) -> Tensor:
     Columns on the middle axis, so each column read back is an (E, N) slice with unit stride
     along N."""
     bullet_share = ((state.bullet_moves_left > 0) & state.bullet_real).to(torch.float32).mean(-1)
-    log_index, gradient_x, gradient_y = state.medium.unbind(-1)
     alive = state.alive.to(torch.float32)
-    return torch.stack(
-        [
-            state.x, state.y, state.heading_cos, state.heading_sin, state.speed, state.angle,
-            state.angle_cos, state.angle_sin, state.nose_rate, state.energy, state.shield,
-            state.shield_wait, state.cooldown.to(torch.float32), log_index, gradient_x, gradient_y,
-            bullet_share, alive, torch.ones_like(alive),
-        ],
-        1,
-    )
+    return torch.cat([state.ships, torch.stack([bullet_share, alive, torch.ones_like(alive)], 1)], 1)
 
 
 def perceive(state: State, revealed: Tensor) -> State:
@@ -1067,19 +1235,14 @@ def team_view(state: State, team: int) -> State:
     if state.seen is None:
         return state
     enemy = (state.team != team)[:, None]
-    columns = torch.where(enemy, state.seen, _snapshot(state)).unbind(1)
-    named = dict(zip(SEEN_COLUMNS, columns))
-    alive = (named["alive"] > 0.5) & (named["known"] > 0.5)
+    known = torch.where(enemy, state.seen, _snapshot(state))
+    alive = (known[:, SEEN_ALIVE] > 0.5) & (known[:, SEEN_KNOWN] > 0.5)
     return dataclasses.replace(
         state,
-        **{name: named[name] for name in SEEN_COLUMNS[:12]},
-        cooldown=named["cooldown"].long(),
-        medium=torch.stack([named["log_index"], named["gradient_x"], named["gradient_y"]], -1),
-        alive=alive,
-        fired=state.fired,  # a shot reveals its ship on that tick, so the true flag is known
-        bullet_x=None, bullet_y=None, bullet_dir_x=None, bullet_dir_y=None, bullet_speed=None,
-        bullet_moves_left=None, bullet_real=None, bullet_fired_tick=None, bullet_medium=None,
-        seen=None, ticks_since_seen=None,
+        ships=known[:, : len(SHIP_COLUMNS)],
+        # A shot reveals its ship on that tick, so the true flag is known.
+        flags=torch.stack([alive, state.exists, state.fired], 1),
+        bullets=None, bullet_counts=None, bullet_real=None, seen=None, ticks_since_seen=None,
     )
 
 
@@ -1140,9 +1303,12 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     exists, alive = state.exists, view.alive
     # World-frame motion, as v2 observes it: the proper speed over the refractive index, so a
     # field that slows a ship shows as a slower ship (src/bnb/game/perception/observe.py).
-    speed = view.speed * torch.exp(-view.medium[..., 0])
-    velocity_x = speed * (view.heading_cos * view.angle_cos + view.heading_sin * view.angle_sin)
-    velocity_y = speed * (view.heading_sin * view.angle_cos - view.heading_cos * view.angle_sin)
+    if state.fields.shape[-1] == 0:  # no medium (n = 1)
+        speed, velocity_x, velocity_y = view.speed, view.velocity_x, view.velocity_y
+    else:
+        inverse_index = torch.exp(-view.log_index)
+        speed = view.speed * inverse_index
+        velocity_x, velocity_y = view.velocity_x * inverse_index, view.velocity_y * inverse_index  # stored
     distance = torch.sqrt(view.x * view.x + view.y * view.y)
     inverse_distance = 1.0 / distance.clamp_min(1.0)
     fired_last = state.fired  # stored by the step (agreed fix 12), not inferred from the ring
@@ -1158,7 +1324,7 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         view.shield / c["max_shield"],
         view.shield / SHIELD_SCALE,
         (view.shield_wait / SHIELD_WAIT_SCALE).clamp(0.0, 1.0),
-        (view.cooldown.to(torch.float32) * h).clamp(0.0, COOLDOWN_CLIP),
+        (view.cooldown * h).clamp(0.0, COOLDOWN_CLIP),
         ((config.arena_radius - distance) / BOUNDARY_CLIP).clamp(-1.0, 1.0),
         view.x * inverse_distance,
         view.y * inverse_distance,
@@ -1189,17 +1355,12 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         -1,
     )
     assert globals_.shape[-1] == GLOBAL_FEATURES
-    envs = state.x.shape[0]
-
-    def per_environment(name: str) -> Tensor:
-        value = c[name]
-        return value.reshape(envs, -1) if value.dim() == 3 else value.expand(envs, -1)
-
-    field_level = per_environment("field_target") / card.LN_SQRT2
+    fields = state.fields
+    field_level = fields[:, FIELD_TARGET] / card.LN_SQRT2
     field = torch.stack(
         [
-            per_environment("field_radius") / FIELD_RADIUS_SCALE,
-            per_environment("field_band") / FIELD_BAND_SCALE,
+            fields[:, FIELD_RADIUS] / FIELD_RADIUS_SCALE,
+            fields[:, FIELD_BAND] / FIELD_BAND_SCALE,
             field_level / FIELD_LEVEL_SCALE,
         ],
         -1,
@@ -1220,7 +1381,7 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         own=same_team & alive,
         globals=globals_,
         field=field,
-        field_pos=torch.stack([per_environment("field_x"), per_environment("field_y")], -1),
+        field_pos=torch.stack([fields[:, FIELD_X], fields[:, FIELD_Y]], -1),
         field_mask=torch.ones(field.shape[:2], dtype=torch.bool, device=field.device),  # all present
         visible=visible,
         since_seen=since_seen,
