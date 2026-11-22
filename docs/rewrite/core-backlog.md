@@ -9,17 +9,17 @@ Every planned item, in order, with its status. Decisions behind the items are in
 
 | # | Item | Status |
 |---|---|---|
-| A1 | `GameConfig.flight_model` switch: "v2" (today, the default) and "core" (the new physics) | todo |
-| A2 | Weight on the wing: coast holds 1 g; the turn is limited unless diving (remove the `1 - sink_room` exemption in `_setting`) | todo |
-| A3 | Engine always at full effort, constant power, drives speed only; never feeds the store (no charge term) | todo |
-| A4 | Store of about two vertical loops, start at half; dive and climb equal and opposite at a capped rate | todo |
-| A5 | Smootherstep taper on the exchange over 5% of the band at top and bottom | todo |
-| A6 | Firing cuts the engine (fraction to measure); bullets no longer cost store | todo |
-| A7 | One ship first (Vizia), built so more ships can follow | todo |
-| A8 | Assumption tests for the core model (store constant while coasting straight; dive at an empty store and climb at a full store do nothing; the engine never raises the store; coast at full stick holds altitude above the 1 g speed; firing costs speed) | todo |
+| A1 | `GameConfig.flight_model` switch: "v2" (today, the default) and "core" (the new physics) | done (overnight, see worklog 03:20) |
+| A2 | Weight on the wing: coast holds 1 g; the turn is limited unless diving (remove the `1 - sink_room` exemption in `_setting`) | done (overnight, see worklog 03:20) |
+| A3 | Engine always at full effort, constant power, drives speed only; never feeds the store (no charge term) | done (overnight, see worklog 03:20) |
+| A4 | Store of about two vertical loops, start at half; dive and climb equal and opposite at a capped rate | done (overnight, see worklog 03:20) |
+| A5 | Smootherstep taper on the exchange over 5% of the band at top and bottom | done (overnight, see worklog 03:20) |
+| A6 | Firing cuts the engine (fraction to measure); bullets no longer cost store | done (overnight, see worklog 03:20) |
+| A7 | One ship first (Vizia), built so more ships can follow | done (overnight, see worklog 03:20) |
+| A8 | Assumption tests for the core model (store constant while coasting straight; dive at an empty store and climb at a full store do nothing; the engine never raises the store; coast at full stick holds altitude above the 1 g speed; firing costs speed) | done (overnight, see worklog 03:20) |
 | A9 | Measurements: top speed, corner, best sustained, minimum radius, dive and climb rates, time to cross the band, speed lost per second of firing | todo |
 | A10 | Before and after charts (doghouse, comparison, the five charts) for "core" | todo |
-| A11 | Sandbox flies "core" (`--set flight_model=core`); readout shows the model | todo |
+| A11 | Sandbox flies "core" (`--set flight_model=core`); readout shows the model | done (overnight, see worklog 03:20) |
 | A12 | Number tuning (engine power, exchange caps, store size, fire fraction): needs the author's flying | blocked: author |
 
 ## B. Game corrections and settings

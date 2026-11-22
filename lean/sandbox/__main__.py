@@ -28,9 +28,12 @@ HELP = (
 )
 
 
-def parse_config(settings: list[str]) -> core.GameConfig:
-    """GameConfig with --set name=value overrides (Python literals where they parse)."""
+def parse_config(settings: list[str], core_model: bool = False) -> core.GameConfig:
+    """GameConfig with --set name=value overrides (Python literals where they parse); with
+    core_model, the core game (`GameConfig.core()`: the new flight model) underneath."""
     values = {"clock_ticks": 10**9}
+    if core_model:
+        values.update(flight_model="core", lineup=("vizia",))
     for item in settings:
         name, _, text = item.partition("=")
         try:
@@ -53,7 +56,7 @@ def physics_label(config: core.GameConfig) -> str:
 
 class App:
     def __init__(self, args):
-        self.config = parse_config(args.set)
+        self.config = parse_config(args.set, args.core)
         self.world = World(
             self.config, player_type=card.TYPE_NAMES.index(args.ship), chaser_on=not args.no_chaser
         )
@@ -372,7 +375,12 @@ class App:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ship", choices=card.TYPE_NAMES, default="jujak")
+    parser.add_argument(
+        "--ship", choices=card.TYPE_NAMES, default=None, help="default: jujak, or vizia with --core"
+    )
+    parser.add_argument(
+        "--core", action="store_true", help="the new flight model (GameConfig.core())"
+    )
     parser.add_argument(
         "--no-chaser", action="store_true", help="start without the chaser (C toggles it)"
     )
@@ -390,7 +398,10 @@ def main():
         "--demo", action="store_true", help="scripted inputs instead of the keyboard (testing)"
     )
     torch.set_num_threads(1)
-    App(parser.parse_args()).run()
+    arguments = parser.parse_args()
+    if arguments.ship is None:
+        arguments.ship = "vizia" if arguments.core else "jujak"
+    App(arguments).run()
 
 
 if __name__ == "__main__":

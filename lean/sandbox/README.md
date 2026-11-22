@@ -62,3 +62,12 @@ killed chaser comes back 2 s later, 1500 m away.
 
 `--headless --demo --seconds 5` hides the window, feeds a scripted input cycle and quits after
 5 s, printing the tick and frame counts. A display is still needed (Tk), but no window shows.
+
+## The core flight model
+
+`--core` flies the new flight model (`GameConfig.core()`: weight on the wing, the engine
+driving speed only, a two-loop store, firing cutting the engine) with Vizia:
+
+    PYTHONPATH=.:src uv run --no-sync python -m lean.sandbox --core
+
+Single settings can still be changed with `--set`, e.g. `--set fire_thrust_fraction=0.5`.

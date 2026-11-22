@@ -49,6 +49,21 @@ class GameConfig:
     fields: tuple[tuple[float, float, float, float, float], ...] = ()
     lineup: tuple[str, ...] = ("yongma", "jujak")
     tick_length: float = 1.0 / 30.0
+    # Flight model: "v2" (v2's flight, tested equal to v2) or "core" (the agreed new physics,
+    # docs/rewrite/core-decisions.md "Flight physics"): weight always on the wing, the turn
+    # limited unless diving; the engine drives speed only and never feeds the store; a store of
+    # `store_loops` vertical loops at corner speed; dive and climb equal and opposite; a
+    # smootherstep taper over `store_edge_band` of the store at each end; firing scales thrust
+    # by `fire_thrust_fraction` on the ticks it fires and costs no store.
+    flight_model: str = "v2"
+    store_loops: float = 2.0
+    store_edge_band: float = 0.05
+    fire_thrust_fraction: float = 0.0
+
+    @classmethod
+    def core(cls, **overrides) -> "GameConfig":
+        """The core game as decided so far: the new flight model and one ship (Vizia)."""
+        return cls(**{"flight_model": "core", "lineup": ("vizia",), **overrides})
 
 
 # --------------------------------------------------------------------------- constants
@@ -68,6 +83,22 @@ def ship_constants(config: GameConfig, ship_type: Tensor) -> dict[str, Tensor]:
     knee = card.ENGINE_KNEE * of("engine_knee_scale")
     climb = card.CLIMB_EXCHANGE * of("climb_exchange_scale")
     dive = card.DIVE_EXCHANGE * of("dive_exchange_scale")
+    bullet_cost = of("bullet_energy_cost")
+    spawn_energy = of("spawn_energy")
+    fade_band = card.STORE_FADE_BAND
+    if config.flight_model == "core":
+        # The store: `store_loops` vertical loops at corner speed. A loop climbs twice the corner
+        # turn radius, whose sideways acceleration is the g limit with 1 g held on the wing.
+        corner_speed_squared = acceleration / lift
+        corner_radius = corner_speed_squared / torch.sqrt(acceleration * acceleration - card.GRAVITY**2)
+        max_energy = config.store_loops * card.GRAVITY * 2.0 * corner_radius
+        spawn_energy = 0.5 * max_energy
+        # Dive and climb equal and opposite: the mean of the card's two rates.
+        dive = climb = 0.5 * (climb + dive)
+        bullet_cost = torch.zeros_like(bullet_cost)
+        fade_band = config.store_edge_band
+    elif config.flight_model != "v2":
+        raise ValueError(f"flight_model {config.flight_model!r}: need 'v2' or 'core'")
     fine, sustained = of("fine_stick"), of("sustained_stick")
     zeros, ones = torch.zeros_like(fine), torch.ones_like(fine)
     levels = torch.tensor(card.STICK_LEVELS, device=device)
@@ -89,7 +120,7 @@ def ship_constants(config: GameConfig, ship_type: Tensor) -> dict[str, Tensor]:
         "static_thrust": of("static_thrust"),
         "max_energy": max_energy,
         "inverse_max_energy": 1.0 / max_energy,
-        "inverse_fade": 1.0 / (card.STORE_FADE_BAND * max_energy),
+        "inverse_fade": 1.0 / (fade_band * max_energy),
         "stall": stall,
         "inverse_stall": 1.0 / stall,
         "knee": knee,
@@ -100,7 +131,7 @@ def ship_constants(config: GameConfig, ship_type: Tensor) -> dict[str, Tensor]:
         "demand_table": 0.5 * (raw + torch.sqrt(raw * raw + width * width)),
         "muzzle_speed": of("muzzle_speed"),
         "spread_speed": card.BULLET_SPREAD * of("bullet_spread_scale"),
-        "bullet_cost": of("bullet_energy_cost"),
+        "bullet_cost": bullet_cost,
         "bullet_drag": card.BULLET_DRAG * of("bullet_drag_scale"),
         "bullet_moves": torch.round(of("bullet_life") / config.tick_length).long(),
         "fire_interval": torch.round(1.0 / (config.tick_length * of("fire_rate"))).long(),
@@ -116,7 +147,7 @@ def ship_constants(config: GameConfig, ship_type: Tensor) -> dict[str, Tensor]:
         "max_shield": of("max_shield"),
         "shield_rate": card.SHIELD_RECHARGE_RATE * of("shield_recharge_rate_scale"),
         "shield_delay": card.SHIELD_RECHARGE_DELAY * of("shield_recharge_delay_scale"),
-        "spawn_energy": of("spawn_energy"),
+        "spawn_energy": spawn_energy,
         "field_x": fields[:, 0],
         "field_y": fields[:, 1],
         "field_radius": fields[:, 2],
@@ -192,6 +223,7 @@ def medium(constants: dict[str, Tensor], x: Tensor, y: Tensor) -> tuple[Tensor, 
 def _setting(p, control, speed, energy):
     """The controls resolved at a speed and store: signed lateral acceleration, the
     exchange between speed and store, the vertical acceleration held, thrust and charge."""
+    core = getattr(control, "model", "v2") == "core"
     t = ((energy * p.inverse_max_energy - p.knee) * p.inverse_above_knee).clamp(0.0, 1.0)
     fall = t * t * (3.0 - 2.0 * t)
     reach = p.lift * speed * speed
@@ -200,18 +232,35 @@ def _setting(p, control, speed, energy):
     command = softmin(control.stick_size * reach, p.max_acceleration, q)
     sink_room = (energy * p.inverse_fade).clamp(0.0, 1.0)
     budget_squared = budget * budget
-    held = softmin(control.demand * (1.0 - sink_room), budget, q)
+    if core:
+        # Weight always on the wing: the vertical demand is held first and the turn gets the rest
+        # (dive lowers the demand and frees lift for the turn). Smootherstep edges of the store.
+        sink_room = smootherstep(sink_room)
+        held = softmin(control.demand, budget, q)
+    else:
+        held = softmin(control.demand * (1.0 - sink_room), budget, q)
     lateral_size = softmin(command, torch.sqrt((budget_squared - held * held).clamp_min(0.0)), q)
-    vertical = softmin(control.demand, torch.sqrt((budget_squared - lateral_size * lateral_size).clamp_min(0.0)), q)
+    if core:
+        vertical = held  # held first; the turn took only what was left
+    else:
+        vertical = softmin(control.demand, torch.sqrt((budget_squared - lateral_size * lateral_size).clamp_min(0.0)), q)
     exchange = control.commanded - (control.demand - vertical)
     share = (lateral_size / budget).clamp(0.0, 1.0)
     headroom = ((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0)
+    if core:
+        headroom = smootherstep(headroom)
     exchange = exchange * torch.where(exchange > 0.0, headroom, sink_room)
-    charge = (
-        p.power_surplus * (1.0 - fall) * torch.sqrt(1.0 - share * share)
-        * (vertical * control.inverse_demand) * headroom
-    )
     thrust = softmin(p.power_full_store / speed, p.static_thrust, card.THRUST_SOFTMIN_EXPONENT)
+    if core:
+        # The engine drives speed only (constant power, the card's full-store power) and never
+        # feeds the store; firing scales the thrust on the ticks it fires.
+        charge = torch.zeros_like(exchange)
+        thrust = thrust * getattr(control, "thrust_scale", 1.0)
+    else:
+        charge = (
+            p.power_surplus * (1.0 - fall) * torch.sqrt(1.0 - share * share)
+            * (vertical * control.inverse_demand) * headroom
+        )
     return control.stick_sign * lateral_size, exchange, vertical, thrust, charge
 
 
@@ -304,7 +353,15 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
     return s
 
 
-def flight_tick(constants: dict[str, Tensor], tick_length: float, s: SimpleNamespace, stick: Tensor, power: Tensor):
+def flight_tick(
+    constants: dict[str, Tensor],
+    tick_length: float,
+    s: SimpleNamespace,
+    stick: Tensor,
+    power: Tensor,
+    model: str = "v2",
+    thrust_scale: Tensor | float = 1.0,
+):
     """One tick of flight for every slot (E, N): half a kick, a drift, half a kick.
 
     s carries x, y, heading_cos, heading_sin, speed, angle, angle_cos, angle_sin, nose_rate,
@@ -312,7 +369,7 @@ def flight_tick(constants: dict[str, Tensor], tick_length: float, s: SimpleNames
     place and returned. stick, power: (E, N) long action indices.
     """
     p = SimpleNamespace(**constants)
-    control = SimpleNamespace()
+    control = SimpleNamespace(model=model, thrust_scale=thrust_scale)
     signed = torch.gather(p.stick_table, -1, stick[..., None])[..., 0]
     control.stick_size, control.stick_sign = signed.abs(), torch.sign(signed)
     control.commanded = torch.gather(p.commanded_table, -1, power[..., None])[..., 0]
@@ -420,7 +477,9 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     cooldown = torch.where(fired, c["fire_interval"], state.cooldown)
     next_slot = torch.where(fired, (state.next_slot + 1) % K, state.next_slot)
 
-    # Flight; slots not alive at tick start keep everything.
+    # Flight; slots not alive at tick start keep everything. In the core model firing cuts thrust.
+    core_model = config.flight_model == "core"
+    firing_thrust = torch.where(fired, config.fire_thrust_fraction, 1.0) if core_model else 1.0
     flown = flight_tick(
         c, h,
         SimpleNamespace(
@@ -430,6 +489,8 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
             log_index=log_index, gradient_x=gradient_x, gradient_y=gradient_y,
         ),
         stick, power,
+        model=config.flight_model,
+        thrust_scale=firing_thrust,
     )
 
     def flew(new: Tensor, old: Tensor) -> Tensor:
