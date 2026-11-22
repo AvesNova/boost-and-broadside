@@ -144,7 +144,8 @@ Flight physics: agreed direction (author, 2026-11-23), a deliberate change after
 - The engine always at full effort and only ever drives speed; drag sets cruise speed. The
   engine never feeds the store. Engine power is not tied to the store.
 - The store sized to about two vertical loops; fights start at half store and cruise
-  speed. Climbing to a full store before a fight is allowed (it costs time).
+  speed. Climbing to a full store before a fight is allowed (it costs time). Today the
+  store is about 14 loops: 498,000 J/kg, about 12.7 km at the game's 39.24 m/s^2.
 - No thinner air with altitude; no energy-for-damage or energy-for-shield.
 - Guns (2026-11-23): firing cuts the engine (to zero or a lower fraction) on the ticks it
   fires; bullets no longer cost store energy. To measure: speed lost per second of firing
