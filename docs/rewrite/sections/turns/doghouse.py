@@ -120,7 +120,7 @@ def doghouse(ship_type: int):
         limit = np.nanpercentile(np.abs(ps_field), 98)
         norm = TwoSlopeNorm(vmin=-limit, vcenter=0.0, vmax=limit)
         filled = ax.contourf(v, rate_axis, ps_field, levels=21, cmap=DIVERGING, norm=norm)
-        ax.contour(v, rate_axis, ps_field, levels=[0.0], colors=INK, linewidths=2.0)
+        ax.contour(v, rate_axis, ps_field, levels=[0.0], colors=INK, linewidths=2.0, linestyles=[(0, (6, 3))])
         # Radius and load lines: geometry only.
         for radius in (150, 200, 300, 500, 1000, 2000):
             line = v / radius * DEGREES
@@ -135,6 +135,23 @@ def doghouse(ship_type: int):
             if 0 < j < len(v) - 1:
                 ax.text(v[j], line[j], f"{load} g", color=MUTED, fontsize=8, ha="left", va="bottom")
         ax.plot(v, envelope, color=INK, linewidth=2.0)
+        label_at = int(np.searchsorted(v, 135.0))
+        ax.annotate("full stick", (v[label_at], envelope[label_at]), xytext=(-4, 6), textcoords="offset points",
+                    color=INK, fontsize=8, ha="right")
+        # The game's other stick levels (the card's fine and sustained values for this type).
+        for name, key in (("sustained stick", "sustained_stick"), ("fine stick", "fine_stick")):
+            row = int(round(card.CARD[key][ship_type] * (len(sticks) - 1)))
+            level = grid["rate"][row]
+            ax.plot(v, level, color=INK, linewidth=1.1)
+            ax.annotate(name, (v[label_at], level[label_at]), xytext=(-4, 4), textcoords="offset points",
+                        color=INK, fontsize=8, ha="right")
+        # Full stick while diving and while climbing (power 1 and 2), same store.
+        for power, name, offset in ((1, "full stick, diving", (4, 4)), (2, "full stick, climbing", (4, -12))):
+            moved = evaluate(ship_type, fraction, power)["rate"][-1]
+            ax.plot(v, moved, color=INK_2, linewidth=1.1, linestyle="-.")
+            here = int(np.searchsorted(v, 380.0))
+            ax.annotate(name, (v[here], moved[here]), xytext=offset, textcoords="offset points",
+                        color=INK_2, fontsize=8)
         corner = int(np.nanargmax(envelope))
         ax.plot(v[corner], envelope[corner], "o", color=INK, markersize=8)
         ax.annotate(f"corner {v[corner]:.0f} m/s, {envelope[corner]:.0f} deg/s",
@@ -155,11 +172,12 @@ def doghouse(ship_type: int):
         bar = figure.colorbar(filled, ax=ax, fraction=0.04, pad=0.02)
         bar.set_label("energy rate Ps, m/s altitude-equivalent (blue gain, red loss)", color=INK_2, fontsize=8)
         bar.ax.tick_params(labelsize=8, colors=INK_2)
-    figure.text(0.01, 0.005, "Thick line: full stick (lift and g limit). Black contour: Ps = 0 (sustained). "
-                "Dotted: turn radius. Dashed: load in game g (39.24 m/s^2).\n"
+    figure.text(0.01, 0.005, "Thick: full stick (lift and g limit); thin: the game's sustained and fine stick; "
+                "dash-dot: full stick while diving or climbing\n(on the full-stick line whenever the store is above 2%: today diving and climbing do not change the turn). Black dashed contour: Ps = 0 (sustained). "
+                "Grey dotted: turn radius. Grey dashed: load in game g (39.24 m/s^2).\n"
                 "Shaded below 100 m/s: quasi-steady maths only; hard turns there cannot be held in flight "
                 "(nose response, sinking).", color=INK_2, fontsize=8)
-    figure.tight_layout(rect=(0, 0.025, 1, 1))
+    figure.tight_layout(rect=(0, 0.045, 1, 1))
     path = os.path.join(OUT, f"doghouse-{NAMES[ship_type].lower()}.png")
     figure.savefig(path, dpi=130, facecolor=SURFACE)
     plt.close(figure)
