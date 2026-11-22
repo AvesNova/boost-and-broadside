@@ -109,3 +109,8 @@ checked, the commit. Numbers are measured unless marked otherwise.
     32 games, with deaths); every living ship stamps a bullet each tick; every bullet reports
     its outcome once, within its life. `pytest lean/game lean/scripted`: 43 passed, 1 xfailed
     (v2 parity unchanged: ghosts are off by default).
+- 06:30 F3 (game side): docs/rewrite/scoreboard.md. Step 1,339 operations (v2 config, no
+  fields), 1,675 with 10 fields, 1,692 core config; observe 165 with fields; reset_done 266
+  to 401; scripted act 172. Over the 1,300 tripwire before fields; fields add about 340
+  (fix 11 halves it). Policy, compile and new-size numbers wait for the model port and the
+  GPU.

@@ -1,0 +1,47 @@
+# Scoreboard (core-brief.md section 3)
+
+First numbers, 2026-11-23, laptop CPU, one thread, uncompiled, platform profile
+"performance". Operation counts: compute operations dispatched per call (the rule of
+docs/rewrite/sections/simplification/regions.py: every aten op, views and metadata apart);
+they do not depend on the batch size. Times: E = 256 environments, 5v5, median of 30 calls.
+Script: docs/rewrite/sections/scoreboard/game_ops.py.
+
+## Game and scripted opponent
+
+| call | compute ops | view ops | CPU ms per call (E = 256, 5v5, one thread) |
+|---|---|---|---|
+| step, v2 config (no fields) | 1339 | 116 | 11.16 |
+| observe (one team), v2 config (no fields) | 81 | 7 | 0.31 |
+| reset_done, v2 config (no fields) | 266 | 77 | 1.21 |
+| step, v2 config, 10 fixed fields | 1675 | 124 | 22.25 |
+| observe (one team), v2 config, 10 fixed fields | 165 | 9 | 0.75 |
+| reset_done, v2 config, 10 fixed fields | 350 | 79 | 1.71 |
+| step, core config (core flight and damage, ghosts, 10 drawn fields) | 1692 | 124 | 23.38 |
+| observe (one team), core config (core flight and damage, ghosts, 10 drawn fields) | 165 | 9 | 0.77 |
+| reset_done, core config (core flight and damage, ghosts, 10 drawn fields) | 401 | 100 | 1.94 |
+| scripted act (one team), core config state | 172 | 31 | 0.65 |
+
+## Against the tripwires
+
+| Tripwire | Value | Now | |
+|---|---|---|---|
+| Operations per game tick, uncompiled | 1,300 | 1,339 (v2 config, no fields); 1,692 (core config, 10 fields) | over |
+| Operations per scripted call | 170 | 172 | at |
+| Operations per policy forward | 650 | pending the model port (C) | |
+| Traced operations across every compiled graph | 10,000 | pending (GPU) | |
+
+## Reading
+
+- Fields cost about 340 operations per step (1,339 to 1,675): the medium is evaluated four
+  times per tick (ships twice, bullets twice). Agreed fix 11 caches the end-of-tick values
+  and halves that.
+- `reset_done` is 266 to 401 operations, about a fifth to a quarter of a step, every tick
+  (agreed fixes 1, 2 and 9 target it).
+- The core config costs 17 operations more than the v2 config with fields (core flight's
+  branches, ghost bullets and outcomes); the time difference (25.1 against 21.3 ms) includes
+  ten drawn fields per environment against ten shared ones.
+
+## Not yet measured
+
+Policy forward operations and time (after the model port), compiled against uncompiled step
+time, compile time, and the cost of a new team size: these need the GPU and the new model.
