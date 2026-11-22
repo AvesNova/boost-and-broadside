@@ -127,20 +127,30 @@ To do after the step-3 scoreboard ("before" numbers), each checked against v2 wi
    together every k ticks or at a segment boundary, with no host read; the learner masks
    the frozen ticks.
 
-10. **One observation call for both teams** (author 2026-11-22, with care about cheating):
-    the viewer's team as an (E,) input. Rule for when fog arrives: share only each ship's
-    raw state; everything derived (visibility, last-seen tokens, globals such as the
-    enemy alive fraction) is computed per team from that team's own visibility. The
-    scripted opponent must then read its team's view, not the state.
+10. **No shared-observation shortcut now** (author 2026-11-22): fog is coming and would
+    replace it. **Fog rule:** a ship is visible to the enemy team when it is in the enemy's
+    actual sight, and on any tick it fires, is hit by a bullet, or dies; every ship is
+    always visible to its own team. The scripted opponent must not cheat: under fog it
+    reads its team's view, not the state.
 11. **Fields drawn per environment** (author 2026-11-22: "fields are randomised for every
     new env"): fields in the state as (E, F, 5), drawn at reset, padded with zero-strength
     fields; the medium at the ships and at the bullets' end of move cached in the state, so
     it is evaluated twice per tick instead of four times. The policy needs field tokens
     (a contract change) before any training with fields.
 
-Future check (author 2026-11-22): the dense (E, N K, N) hit test at 50v50.
+12. **Stored, not guessed:** a `fired` flag in the state (the observation reads it).
+13. **The scripted opponent is told everything up front:** each ship's type and its
+    constants (gun range, corner speed, launch speed per type), and the environment's mode.
+    Modes come in a fixed share of environments for the whole run, so an environment's mode
+    is a constant of that environment and environments can be grouped by mode.
+14. **Cheaper damage form** (author 2026-11-22: agreed): the kinetic term kept; closeness
+    from the hit test's miss distance; the head-on term from the hit angle's cosine, fitted
+    per type to today's curve, the largest difference reported.
 
-Proposed, not decided: a cheaper damage form with the same three ideas (kinetic term
-kept; closeness from the swept test's miss distance, one gather instead of about 15
-operations; the head-on term as a function of the hit angle's cosine instead of atan2,
-pow and exp, fitted per type to today's curve, the largest difference reported).
+Collision code read (2026-11-22): no error found. Swept straight-segment closest approach,
+first contact by earliest tau, no self-hits, friendly fire on, a dead ship's bullets keep
+flying. K = 11 bullet slots per ship is exact (bullet life 11 ticks, one shot a tick at
+most), so damage arithmetic runs on N x 11 rows. Fire rate, bullet life and bullet energy
+cost are equal for every type: constants for the graph.
+
+Future check (author 2026-11-22): the dense (E, N K, N) hit test at 50v50.

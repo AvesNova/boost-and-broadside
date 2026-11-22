@@ -258,3 +258,18 @@ contract change) or packed into one `(blocks, E, 1 + N, 4, width)` tensor (shape
 signatures do not). Reset and the key mask must zero the buffer as well as the state, and
 `sequence` needs the buffer handled across resets inside a segment (v2 does this). The
 sequence-equals-steps and masked-carry tests would need to cover the buffer.
+
+## Token kinds and attention: lean departs from the design (found 2026-11-22)
+
+The design (the author, and v2: `src/bnb/models/yemong/network.py` `Encoder`,
+`spatial.py` `SpatialBlock`): one first projection per token kind (ship, global, field,
+zone), then one shared second projection. Queries are the ships and the global token; keys
+and values are those plus the fields and zones (map memory, own norm and key/value
+projection, never updated), all in one attention operation per sublayer. Outside
+frontline an absent zone is one learned token.
+
+`lean/model` has two separate two-layer encoders (ship, global), no shared projection, no
+field or zone tokens, and a learned null key. To fix: v2's structure, with field tokens
+(fields are drawn per environment, `lean/game/NOTES.md` fix 11) and zone tokens when
+frontline arrives. The null key is kept only if still needed once fields are always keys.
+Bullets are not tokens (author 2026-11-22).
