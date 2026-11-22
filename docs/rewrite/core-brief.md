@@ -1,85 +1,146 @@
 # Operating brief: the lean core
 
-Status: draft for the author's review, 2026-11-21. On the `core` branch this file becomes
-the root `CLAUDE.md`, the instructions every agent working on the branch reads first.
-Values marked *proposed* are starting targets for the author to confirm.
+Status: second draft, 2026-11-22, revised after the independent review (`review.md`), the
+model and learner audit (`model-audit.md`) and the author's answers to both. On the `core`
+branch this file becomes the root `CLAUDE.md`, the instructions every agent working on
+the branch reads first. Values marked *proposed* are for the author to confirm; values
+marked *pending* wait on a named measurement.
 
 ## 1. Purpose
 
 The project has three aims, held together:
 
 1. **A game people play and find fun.** Simple rules with a lot of depth. A human plays
-   against trained agents in real time.
+   against trained agents in real time, on an ordinary modern computer.
 2. **Experiments that answer questions cleanly,** possibly a paper.
 3. **Training that is quick and cheap in GPU hours,** so the experiments are affordable.
+
+**The claim the project is built around: zero-shot generalisation across sizes.** A model
+trained at about 4v4 or 5v5 plays, with no fine-tuning and no change to its parameters,
+at 20v20 and 50v50, with unbalanced teams and other zone counts. It comes in two stages:
+
+- **Stage 1, the first result the core must reproduce: v1's fleet-size curve on a fixed
+  map.** v1 (`origin/main`, run 731, trained 4v4) held a break-even of 1.75 scripted
+  ships per network ship at the training size, 1.62 at 8, 1.56 at 16, 1.44 at 32 and
+  1.19 at 64, staying above parity throughout.
+- **Stage 2: other map sizes.** A model cannot be expected to handle a map size it never
+  trained on, so variable maps appear in evaluation only once they are in training. The
+  target then is a large fleet on a map scaled to the local density seen in training,
+  which is the case the literature supports.
+
+The rewrite is a port, not a redesign. The game's rules and the feel of the ships stay
+the same within reason. The model keeps its core (entity attention with rotary position,
+a recurrent block per entity, categorical outputs) and loses the parts the audit found
+had outlived their reasons. New ideas are tested afterwards, on the cheap base this
+produces.
 
 Fixed scope:
 - one GPU for training;
 - the real-scale ship set only;
 - two teams;
-- training and evaluation over many team sizes;
-- variable map sizes, if they can be made to work;
+- training and evaluation over many team sizes, unequal teams included;
+- variable map sizes, in stage 2;
 - the playable game.
+
+v2 is set aside while this runs. Its planned experiments are paused, not cancelled, and
+the branch is kept as the reference.
 
 ## 2. Non-goals
 
-- **Bit-exactness.** No bitwise resume, common random numbers across runs, game
-  fingerprints, or equality across devices or compile modes. Results reproduce within
-  noise from a seed.
+- **Bit-exactness.** No bitwise resume, game fingerprints, or equality across devices or
+  compile modes. **A seed fixes what it reasonably can:** the initial weights, the map
+  pool, the scenario draws and the order of the data at the start of a run. It does not
+  try to match what cannot be matched once two runs diverge. Comparisons between arms use
+  the same seeds, because v2 measured the seed's effect as common to every arm.
 - **Backward compatibility** with v2's checkpoints, build records, game versions and
   observation columns.
-- **Generality the scope does not ask for:** more than two teams, several ship sets, ONNX
-  or other exports, CPU and GPU parity as a requirement.
+- **Generality the scope does not ask for:** more than two teams, several ship sets, CPU
+  and GPU parity as a requirement. An export for play is a non-goal only if the play
+  measurement (gate G2) shows it is not needed.
 - **Platform features for outside users:** model-exchange contracts, a leaderboard.
 - **Options kept forever.** Alternatives live on branches and in experiments, not as
   switches in the main code.
 - **Custom kernels before the simple version is profiled.**
 - **Publication-grade statistics on routine decisions.** They are for the paper's claims.
 
-## 3. Requirements, instruments and principles
+## 3. Requirements, tripwires and principles
 
-Hard limits apply to outcomes the project needs. Proxies such as operation counts are
-instruments: measured and reported, with no target number to fill up to.
+Requirements are outcomes the project needs, each with a number and where the number
+comes from. Tripwires are proxies: they are reported with every change and are not
+targets, but crossing one stops the work and raises a question to the author. Neither is
+something to fill up to.
 
 ### Requirements
 
-A change that breaks one is reverted or brought to the author.
+A change that breaks one is reverted or brought to the author. "Laptop" is the author's
+RTX 4070 Laptop (8 GB); "reference CPU" is that laptop's CPU with the GPU left free for
+drawing.
 
-| Requirement | Measure | Where |
-|---|---|---|
-| **Playable without stutter, using a small share of the machine** | Frame-time distribution of the simulation plus the agents (p99 and worst frame) against the 33 ms tick and the display frame; the share of CPU and GPU a match uses; from 1v1 up to the largest supported size | The laptop (reference); integrated graphics (stretch) |
-| **No stall once a match starts** | Nothing compiles, builds, synchronises with the host or allocates at scale during a match | The play benchmark |
-| **Training uses the GPU efficiently** | Per phase: measured time against its roofline floor (the larger of FLOPs over peak compute and bytes over peak bandwidth); model FLOPs utilisation; memory-bandwidth utilisation. The utilisation monitor's percentage is not a measure | The laptop GPU and a 5090 |
-| **Short workflows are short** | Time from command to result, compile included: a 512-game head-to-head evaluation; a restart after a settings change (recompiles nothing); a restart after a code change (recompiles only the changed graph); the fast test tier; a smoke run to its first update. *Proposed:* minutes, not tens of minutes; a settings restart with no compile at all | The laptop |
-| **Uncompiled is close to compiled** | Uncompiled step time against compiled. *Proposed:* within about 3x, so short jobs need no compile | The laptop GPU |
-| **No recompile for sizes** | Changing the batch size or the team size triggers no recompile | Scoreboard tier 2 |
-| **Memory** | The smoke configuration fits the laptop GPU (8 GB) | Scoreboard tier 2 |
+**Play**
 
-Compile time matters per restart, not as a share of a long run: a run restarted after a
-fix pays its compile again, so the requirement is on the workflows above.
-
-### Instruments
-
-Measured on the scoreboard and reported with every change, with no target number:
-- operations per tick and per section, uncompiled;
-- traced operations per compiled graph;
-- FLOPs and bytes moved per training sample;
-- training steps per second, and environment steps to pass the learning canary;
-- lines of code and the number of configuration options.
-
-The rule is a ratchet, not a ceiling. Every change reports its deltas for the areas it
-touches, and any growth carries one line saying what it buys. Each milestone's deletion
-pass works the numbers down.
-
-Reference values, for comparison only:
-
-| | Game step | Policy forward | Scripted opponent |
+| Requirement | Number | Anchor | Status |
 |---|---|---|---|
-| v1 | about 1,200-1,300 per physics tick | 649 | 170 |
-| v2 | about 4,500 per tick | 5,172 | 2,145 |
+| A game tick plus both teams' decisions, batch size 1 | p99 at most 16 ms; worst frame at most 33 ms | The 30 Hz tick, with half of it spare | Fixed |
+| Sizes this holds for | 1v1 to 20v20; 50v50 as a stretch | The claim | Proposed |
+| Where play runs | The reference CPU, no discrete GPU needed | "Any reasonably modern computer" | Pending G2 |
+| No stall once a match starts | No compile, build, host synchronisation or large allocation during a match; measured as the worst frame over a full match | | Fixed |
+| From launch to a playable match | At most 30 s | | Proposed |
 
-v2's steady real-scale RL ran at about 5,000 steps per second on the laptop at 160-row
-micro-batches; v1's whole-run average was about 2,700.
+**Workflows** (laptop, from command to result, compile included)
+
+| Requirement | Number | Anchor | Status |
+|---|---|---|---|
+| Smoke run to its first update | At most 5 min | The goals section | Proposed |
+| Restart after a settings change | At most 1 min | | Proposed |
+| Restart after a code change | At most 5 min | | Proposed |
+| A 512-game head-to-head evaluation | At most 10 min | | Proposed |
+| Evaluating at a team size not yet run in this session | At most 1 min added | See below | Proposed |
+| Fast test tier, CPU | At most 2 min | | Proposed |
+| A learning comparison worth trusting | Hours, not days | The goals section | Proposed |
+
+How a new size is made cheap is not prescribed. Dynamic dimensions, padding to a fixed
+maximum with masks, and a compiler fast enough that a recompile does not matter all meet
+it. Which one is used follows from gate G1.
+
+**Training**
+
+| Requirement | Number | Anchor | Status |
+|---|---|---|---|
+| Steady environment steps per second, laptop, real-scale RL | Not below v2's (about 5,000) | v2's record | Fixed as a floor |
+| Memory | The smoke configuration fits 8 GB | The laptop | Fixed |
+| Per phase: measured time against its roofline floor | Reported; no number | The learner is GPU-bound, so the gap is meaningful there | Reported |
+
+**Learning.** These exist so that speed cannot be bought with slower learning. The
+numbers are recorded from v1's and v2's logs in M0, before M1 starts, and confirmed by
+the author.
+
+| Requirement | Number | Anchor | Status |
+|---|---|---|---|
+| **Clone:** BC from the scripted opponent reaches a set score against it | Steps and laptop GPU hours no worse than v2's | v2's BC records | Set in M0 |
+| **RL at the training size:** break-even against the scripted opponent | At least 1.5 scripted ships per network ship, within a GPU-hour budget | v1 1.75 at 4v4; v2 1.49 at 5v5 | Budget set in M0 |
+| **Size curve:** v1's crossover protocol at 1, 2, 4, 8, 16, 32 and 64 a side on the training map | Above parity at every size | v1's result | Fixed |
+
+### Tripwires
+
+Reported on the scoreboard with every change. Crossing one needs the author's sign-off
+and one line saying what it buys.
+
+| Tripwire | Value | Anchor |
+|---|---|---|
+| Operations per physics tick of the game, uncompiled | 1,300 | v1 |
+| Operations per policy forward | 650 | v1 |
+| Operations per call of the scripted opponent | 170, or the simplified opponent's count once set | v1 |
+| Traced operations across every graph a run compiles | 10,000 | The audit's estimate for a compile of a few minutes; revisit after G1 |
+| Source lines | 33,000 | v1 |
+
+Also reported, with no tripwire: FLOPs and bytes moved per training sample; environment
+steps to pass each learning requirement; the number of configuration options; test lines
+per source line.
+
+Operation counts matter less if G1 chooses a framework in which the whole loop is
+compiled; the tripwires are then restated in that framework's terms.
+
+Each milestone's deletion pass works the numbers down.
 
 ### Principles
 
@@ -99,6 +160,22 @@ How speed is usually reached, each for a reason:
 - **Profile before optimising,** and optimise only where a phase takes a large share of
   the time and sits far from its roofline floor.
 
+### Provenance
+
+Every component of the model and the learner has a row in `docs/provenance.md`: what it
+does, the problem it solves, and where it comes from. The source is one of:
+
+- **(a)** the standard choice;
+- **(b)** published work shows it beats the standard for a comparable purpose;
+- **(c)** measured in this project;
+- **(d)** a reasoned choice not yet tested, with the test that would settle it.
+
+A citation counts only when a reviewer has fetched the paper and read the passage; each
+carries a label saying so. From memory is not provenance. A paper's result at a fixed
+team size is not evidence that something scales, so each row also says how the project's
+setting differs. A component with no row does not go into the main code. Rows of kind (d)
+are the experiment list.
+
 ### Minimum effects
 
 A difference smaller than these does not decide anything:
@@ -107,44 +184,92 @@ A difference smaller than these does not decide anything:
 |---|---|
 | Step or update time | 3% |
 | Compile time | 10% |
-| Rating | 50 Elo |
+| Rating, same-seed pairs | Set at M1 from the measured spread of paired differences |
 
 ## 4. Strategy
 
-- **A walking skeleton first,** on a new branch `core`. It contains:
-  - the game step: flight, bullets, hits, deaths, respawn, one mode, any team size;
-  - a policy with physical inputs, a Griffin trunk (spatial attention and RG-LRU in plain
-    PyTorch), a policy head and a value head;
-  - PPO;
-  - a scripted opponent.
+### Gates before M1
 
-  The skeleton meets every requirement and learns before anything is added.
-- **v2 is the reference, not the base.** It is checked out beside the branch as a
-  read-only worktree. Port behaviour (the flight physics and the mode rules are game
-  content), not structure. The new game matches v2's dynamics statistically, not bit for
-  bit.
-- **Grow by earned additions,** one change at a time, each keeping the requirements. The likely
-  order:
-  1. fog;
-  2. the frontline and elimination modes;
-  3. the league with prioritised fictitious self-play and live rating from training games;
-  4. Imugi, ported lean, and BC from it;
-  5. the kept heads: next state, shot outcome from game-recorded labels, geometry;
-  6. the play shell on the new core;
-  7. evaluation;
-  8. variable maps.
-- **Framework checkpoint after the skeleton.** If compile time keeps the short workflows
-  from meeting their requirement in PyTorch, run a measured JAX comparison before
-  continuing.
+| Gate | Question | How it is settled |
+|---|---|---|
+| G1 | PyTorch or JAX | Three head-to-heads on the laptop GPU (`sections/framework-spike/`): a policy forward plus a game step, one PPO update, and the same model run at several team sizes. Measured: compile time, steady speed, and what a new size costs |
+| G2 | Where play runs | Batch-size-1 latency of a tick plus two decisions on a CPU, in both frameworks, from the same benchmark |
+| G3 | The yardstick's numbers | v1's and v2's clone, RL and size-curve results collected into `docs/findings.md`, and the learning requirements' numbers set from them |
+
+### The skeleton
+
+On a new branch `core`. It is built in this order, and each step works before the next
+starts:
+
+1. **The scripted opponent and the game step.** The opponent comes first because it is
+   the only yardstick v1, v2 and the core share. The game step is flight, bullets, hits,
+   deaths and respawn, in deathmatch on one fixed map, at any team size. The flight
+   physics is lifted from v2 as nearly verbatim as the framework allows and checked by
+   running both from the same states and actions and comparing short trajectories within
+   a tolerance. The author flies a ship against the scripted opponent at this step.
+2. **The observation contract and the model.** Rows of variable count with `exists`,
+   `team`, `visible` and `alive`, padded to a maximum and masked. The model is the
+   audit's baseline (below).
+3. **BC from the scripted opponent.** Passes the clone requirement.
+4. **PPO, with team sizes drawn per environment,** unequal teams included, inside one
+   tensor shape. Passes the RL and size-curve requirements. This is stage 1 of the
+   claim.
+
+### The model and learner at M1
+
+From `model-audit.md`, which gives the reasons and the provenance of each line.
+
+- **Inputs:** about 20 state scalars per ship at fixed physical scales, flags and ship
+  type. A multi-scale position code in the token, sized for the maps in use, with the
+  random per-match offset kept. Clipped distance and direction to the boundary.
+- **Attention:** standard attention with a key mask for anything that does not exist,
+  and one learned null key. Rotary relative position on queries and keys, with fewer
+  bands than v2, sized for the maps in use; rotary on heading kept.
+- **Memory:** a Griffin recurrent block per token with the paper's decay initialisation.
+  A hidden enemy that has been seen stays as a last-seen token with the time since;
+  one never seen is masked. No belief, nothing decoded and fed back.
+- **Heads:** a joint categorical action per ship; a per-ship categorical critic per
+  reward level with Gaussian-binned targets. Auxiliary heads are added later, each as an
+  experiment.
+- **Learner:** PPO with GAE; reward levels with a discount each; every loss a mean in
+  nats per softmax group with three coefficients; an entropy term; a decaying
+  distillation term toward the cloned policy at the start of RL.
+
+**v2 is the reference, not the base.** It is checked out beside the branch as a read-only
+worktree. Lift what is good (the flight physics, the trunk, the mode rules); port
+behaviour, not structure.
+
+### Additions after M1
+
+One change at a time, each keeping the requirements, each with a provenance row. The
+order follows what stage 1 and then stage 2 need:
+
+1. fog;
+2. the position-code comparison: colour codes, Fourier features and grid cells;
+3. the frontline and elimination modes, with zone counts drawn in training;
+4. the league with prioritised fictitious self-play;
+5. variable maps in training, then the stage 2 evaluation;
+6. the kept auxiliary heads (next state, shot outcome from game-recorded labels,
+   geometry), each against its absence;
+7. the play shell on the new core;
+8. the evaluation suite.
+
+### Time and fallback
+
+The author sets a time box for M1 before it starts. If M1 has not exited by then, the
+work stops and the author decides between extending it and returning to v2 with the
+audit's deletions.
 
 ## 5. Milestones
 
 | Milestone | Content | Exit criteria |
 |---|---|---|
-| M0 | Scoreboard and baselines | The scoreboard runs in one command per tier; v1 and v2 baselines recorded in `docs/findings.md` |
-| M1 | Walking skeleton | Every requirement met; team size changes without recompiling; passes the learning canary (defined during M1) |
-| M2 onward | One port each (section 4) | Requirements still met; each addition justified by measurement or by the scope |
-| Done | | Requirements met; canary passed; playable at the real-time target; every open question resolved or explicitly deferred |
+| M0 | Scoreboard, baselines, gates | The scoreboard runs in one command per tier; gates G1 to G3 closed; every *proposed* and *pending* value in section 3 confirmed by the author |
+| M1a | Scripted opponent and game step | Trajectories match v2 within the stated tolerance; the author has flown it; play requirements met for the game step |
+| M1b | Contract, model, BC | The clone requirement met; play and workflow requirements met; the author has reviewed the interfaces before the bulk is written |
+| M1c | PPO with sizes drawn | The RL and size-curve requirements met; every requirement met; the seed spread of paired differences measured |
+| M2 onward | One addition each (section 4) | Requirements still met; a provenance row; justified by measurement or by the scope |
+| Done | | Requirements met; stage 1 reproduced; stage 2 attempted and reported; playable at the real-time target; every open question resolved or explicitly deferred |
 
 ## 6. How the work is organised
 
@@ -156,8 +281,9 @@ A difference smaller than these does not decide anything:
   records it if it is small and reversible; otherwise it stops and reports.
 - **The GPU runs one job at a time,** behind a lock file. CPU work runs in parallel.
 - **At every milestone:**
-  - a fresh helper reviews the code against the assumption register (section 10), without
-    the lead's notes;
+  - a fresh helper reviews the code against the goals, the provenance table and the
+    scoreboard's output, without the lead's notes. It first writes down what it would
+    check, then checks it;
   - a subtraction pass asks what can be deleted.
 - **Past results are evidence under the stated conditions, not prohibitions.** Anything may
   be tried again by stating what differs.
@@ -169,6 +295,10 @@ asks the author before:
 - changing a goal, non-goal or requirement;
 - changing a game rule in a way that changes how the game plays;
 - dropping a v2 capability with no planned replacement.
+
+It also asks before crossing a tripwire, and before fixing a core interface, the house
+data layout or the observation contract, which are settled with the author inside M1b
+before the bulk of the code is written.
 
 Questions go to `docs/questions.md`, batched for the next milestone. Work continues on
 other items meanwhile.
@@ -189,7 +319,7 @@ other items meanwhile.
 |---|---|---|
 | 1 | CPU, seconds | operations per tick and per section; traced operations per compiled graph; FLOPs and bytes per training sample; lines of code; fast-test-tier time |
 | 2 | GPU, minutes, behind the lock | uncompiled and compiled step time at batch sizes 1 and 2,048; play frame-time distribution; the short workflows' times; learner step time and its roofline gap per phase; peak memory |
-| 3 | GPU, at milestones | the learning canary |
+| 3 | GPU, at milestones | the learning requirements: clone, RL at the training size, the size curve |
 
 **Benchmark protocol:**
 - the performance power profile, with no other heavy process running;
@@ -200,7 +330,9 @@ other items meanwhile.
 **Statistics, sized to the decision:**
 - **Speed:** a difference well above the minimum effect and the spread needs no test.
   Close calls get more repeats.
-- **Learning:** at least 3 seeds and a bootstrap confidence interval.
+- **Learning:** arms are compared on the same seeds, as paired differences. The number of
+  seeds follows from the paired spread measured at M1c. BC comparisons are preferred
+  where they answer the question, since they are cheaper and v2's clean pairs were there.
 - One small helper function for these is enough. No experiment framework.
 
 **Verification in proportion to the stakes:**
@@ -208,8 +340,8 @@ other items meanwhile.
 | Level | When | What runs |
 |---|---|---|
 | Inner loop | Every change, seconds to a minute | The tests for what was touched, and the instruments for that area. Most changes stop here |
-| Batch | Before merging a set of changes | The fast test tier and the benchmarks for the phases the changes affect. Many small commits share one run; a regression is found by bisecting |
-| Milestone | At a milestone | The full test suite, the learning canary and the full scoreboard |
+| Batch | Before merging a set of changes | The fast test tier, the benchmarks for the phases the changes affect, and a short learning check (minutes, one seed, a coarse threshold) that catches gross breakage. Many small commits share one run; a regression is found by bisecting |
+| Milestone | At a milestone | The full test suite, the learning requirements and the full scoreboard |
 
 Decisions follow the same split. A **two-way door** (easy to undo; most code changes, since
 git can undo them) is decided quickly and recorded. A **one-way door** gets rigour: a core
@@ -220,7 +352,12 @@ A/B test. "Good enough, revisit later" is a valid outcome when it is recorded in
 ## 8. Records
 
 **Living documents,** each at most a few pages. Adding past the limit means pruning first.
+The limit is on what is read by default. Experiment records, the provenance table and the
+list of lessons are not pruned.
 - `docs/goals.md`: sections 1 to 3 of this brief.
+- `docs/provenance.md`: one row per component (section 3).
+- `docs/lessons.md`: failures that happened in v1 and v2 and what prevents each, seeded
+  from `model-audit.md`.
 - `docs/decisions.md`
 - `docs/assumptions.md`
 - `docs/questions.md`
@@ -295,8 +432,10 @@ in 44,700 lines, about 0.7 lines of test per line of source, and 13 MB of fixtur
 - **A test that fails on intended changes and is fixed by updating its expected value has
   caught nothing.** When that happens twice, delete the test or rewrite it to check a
   property.
-- **Do not duplicate other signals.** The scoreboard covers speed, the learning canary
-  covers training, and runtime checks cover non-finite values.
+- **Do not duplicate other signals.** The scoreboard covers speed, the learning
+  requirements cover training, and runtime checks cover non-finite values.
+- **A statistical test fixes its seeds** and is designed to a stated false-failure rate,
+  so that it is not deleted as flaky for being statistical.
 - **Fixtures are small and generated** by code in the repository, not stored data.
 - **A flaky test** is fixed or deleted the same day.
 - **Tests are deleted with the code they test,** and the milestone deletion pass includes
@@ -305,29 +444,51 @@ in 44,700 lines, about 0.7 lines of test per line of source, and 13 MB of fixtur
 
 ## 10. Assumption register (seed)
 
+Each row moves to `docs/provenance.md` or `docs/assumptions.md` with its source.
+
 | Assumption | Because | Depends on |
 |---|---|---|
-| PyTorch | Dynamic shapes; native GPU support on Windows for play | A lean graph compiles fast enough for the short workflows (checked after M1) |
-| Griffin trunk: spatial attention plus RG-LRU | Small in v2 (295 operations per forward); standard | Later alternatives tested as experiments |
-| No belief system; memory in the recurrent trunk | Standard under partial observability | Fog as designed |
-| Inputs in metres at fixed scales, never normalised by the arena | Local dynamics do not depend on map size | Variable maps |
-| Plain PPO with one clipping rule | Standard | |
-| One value head; advantages normalised per batch | Removes reward scaling, floors and bias tables | |
-| Modes mixed in one batch, each mode a contiguous slice; per-environment values set at reset | The modes differ in a few parameters plus Frontline's rules | |
-| Dynamic batch and ship dimensions | No recompile per size | Measured step-time cost within the minimum effect |
+| The framework | Decided at gate G1 | Compile time, steady speed, and the cost of a new team size, measured |
+| Play on the CPU | Reaches ordinary computers; frees the GPU for drawing | Gate G2 |
+| Griffin trunk: spatial attention plus RG-LRU, the paper's initialisation | Small in v2 (295 operations per forward); published | Later alternatives tested as experiments |
+| No belief system; hidden enemies as last-seen tokens; memory in the recurrent trunk | OpenAI Five reuses the last observation for fogged units; belief against no belief was never measured | A probe of what the trunk remembers about hidden enemies |
+| State inputs as scalars at fixed scales | Standard; no source found for binned inputs | |
+| Position: a multi-scale code in the token with a random offset, plus rotary in attention | Rotary selects which tokens to read; the code carries the numbers to calculate with. Rotary is measured to matter in v2 | The position-code comparison; rotating the values as an alternative |
+| Attention masks from the start of training, with a null key | Standard masking; a trained model depends on the make-up of its key set | Training and evaluation key sets kept alike |
+| Team sizes drawn in training, inside one tensor shape | The best-supported lever for size generalisation | The size curve |
+| Variable maps in evaluation only when in training | Rotary and position codes do not extrapolate to unseen separations | Stage 2 |
+| PPO with one clipping rule | Standard | |
+| Reward levels with a discount each | One confounded run in favour; a published precedent | The single-value experiment |
+| Categorical critic with Gaussian-binned targets | Published for actor-critics; not shown with PPO | |
+| Losses as mean nats per group, three coefficients, set once from a measured gradient share | The rule is measured; the old numbers are stale | Re-measured on the new model |
+| Entropy term, and a decaying distillation term toward the clone | Every BC-then-RL source read keeps both | |
+| Modes mixed in one batch, each a contiguous slice; per-environment values set at reset | The modes differ in a few parameters plus Frontline's rules | |
 | No CUDA graphs in training until measured to pay | v1 measured them as no gain; v2's rollout is about 10% of an update | Profiles of the lean core |
 | Shot labels recorded by the game (real bullets first) | Removes the re-simulation | |
 | Returns' tail bootstrapped from the value; no lookahead | Standard PPO | |
 | Two teams | Scope | |
 
-## 11. Open questions (seed)
+## 11. Open questions
 
-- The value head's form; the next-state head's form; whether to keep the enemy-action head.
-- Reward and discount design. One discount for every level preceded a run learning to stop
-  fighting in v2, under v2's reward design.
-- Whether ratings from training games are precise enough for matchmaking; if not, a
-  precomputed schedule.
-- How much of Imugi to port. A reference version is frozen as the canary's yardstick.
-- The skeleton's first mode, and the learning canary's definition.
-- Game design for the author: the frontline capture lock, the elimination shrink.
-- Packaging and distribution of the game.
+- **The value form.** Reward levels and per-level discounts stay for now. One discount for
+  every level preceded a run learning to stop fighting in v2, with a long discount and no
+  entropy term, so the cause was never isolated. The single-value run is the first
+  learner experiment.
+- **The advantage normaliser.** DreamerV3's percentile range was a starting point, not a
+  measured choice; the alternative is the standard deviation over the update.
+- **How loss weights are chosen.**
+- **Position codes:** colour codes, Fourier features or grid cells; and whether rotating
+  the values in attention can replace the code in the token.
+- **Nearest-k attention** as an arm for large fleets.
+- **The scripted opponent:** how far to simplify it, and whether to broaden it so the
+  clone sees more varied behaviour, closer to what human play would give.
+- **Why v2's frontline falls with fleet size on the training map.** Four evaluation-only
+  tests are listed in `model-audit.md`; they run on a v2 checkpoint when a GPU is free,
+  or on the core's first trained model.
+- **The league:** whether ratings from training games are precise enough for
+  matchmaking; whether one grouped matrix multiply serves several opponents' weights.
+- **The next-state head's form; whether to keep the enemy-action head.**
+- **Game design for the author:** the frontline capture lock, the elimination shrink.
+- **The game side has not had the audit the model has.** A lighter pass (what exists
+  only because of something now removed) happens during the port.
+- **Packaging and distribution of the game.**

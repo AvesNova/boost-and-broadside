@@ -49,10 +49,18 @@ are in `sections/model-audit/`.
    five zone slots and two arena radii. Size, field-count and map-size sampling exist in
    the code and are off. Unequal teams are never trained. This is the best-supported
    single change for the headline goal.
-3. **The simplest model on record generalised furthest.** `origin/main` (trained 4v4,
-   dead keys masked, no belief, no rotary) held a crossover of 1.19 scripted ships per
-   network ship at 64 a side. The runs are not comparable with v2's (different game and
-   opponent), but nothing in the record shows v2's additions improving size transfer.
+3. **v1's fleet-size result is the best on record, but v2's deathmatch result is closer
+   to it than first stated here.** `origin/main` (trained 4v4, dead keys masked, no
+   belief, no rotary) held a break-even of 1.75 scripted ships per network ship at 4 a
+   side, 1.56 at 16, 1.44 at 32 and 1.19 at 64. v1's world was one fixed torus and its
+   game was deathmatch-like **(checked)**. Read off v2's fixed-odds table for deathmatch
+   on its fixed arena, v2's break-even is 1.49 at 5 a side, between 1.5 and 2 at 10 and
+   20, and about 1.2 at 40. So at four and eight times the training size the two are of
+   the same order; v2 has no measurement at sixteen times. The runs are not comparable
+   (different game, opponent and map), and v1's scripted agent may simply have been
+   weaker at scale. What v2 adds that v1 never tested is where v2 fails: frontline, and
+   maps larger than training's. Nothing in the record shows v2's additions improving
+   size transfer.
 4. **The owner's question about balancing machinery has a different answer from the one
    expected.** The scalar-era machinery is already gone. Today's loss weights were set
    after everything was categorical, by measured gradient shares, and most were never
