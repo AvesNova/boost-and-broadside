@@ -584,3 +584,79 @@ The learn-side items of the agreed waste fixes (lean/game/NOTES.md, "Agreed wast
   (compile cache cold for the changed graphs). One run each, so the collect gain (+10%) is the
   only difference larger than run-to-run noise is likely to be; the core game was not run.
   `python -m lean.train --smoke --device cuda` ran.
+
+## Batched crossover (D6, 2026-11-23)
+
+### What changed
+
+- `lean.eval.play_results` plays environments of different team sizes in one batch (the
+  game pads each to the largest total) and returns each environment's first result.
+  `play` is that at one size, as before. `play_matches` plays a list of (network size,
+  scripted size, games) in one batch and returns the wins per match (`maximum_games`
+  splits a long list into consecutive batches; a match is never split).
+- `crossover` runs every network size's walk at once, in rounds. A round plays, in one
+  batch, the scripted size each unfinished walk needs next with its neighbours: `spread`
+  (2) either side of the start, then 4 more in the walk's direction. The walk itself is
+  v1's (`walk`), read from the matches played so far, so beats_up_to, crossover, the
+  win rates and ratio mean what they did. The report adds `rounds`, and `matches` holds
+  the neighbours too.
+- **Start of the walk.** Each size walks from round(network_size * `start_ratio`):
+  parity by default, or a dict of ratios by size. v1 started each size from the previous
+  size's crossover, which needs that size finished first. `lean/train.py` passes the
+  previous evaluation's ratios, so a training run's first crossover starts at parity and
+  the later ones at the last answer. Under the walk's assumption (the win rate falls as
+  scripted ships are added) the start changes which matches are played, not the answer.
+
+### Equivalence (CPU, OMP_NUM_THREADS=4)
+
+The scripted agent played team 0 through the policy interface (so the rates are neither
+0 nor 1), against the scripted agent, v2 game with ghost bullets. Old: `play` one size at
+a time (the code before this change); new: all sizes in one `play_matches` batch, padded
+to 10 slots. Same number of games per size; z = difference over its standard error.
+
+| Match | seed 1, 128 games: old / new / z | seed 2, 128 games: old / new / z |
+|---|---|---|
+| 2v1 | 1.000 / 0.992 / +1.00 | 1.000 / 1.000 / 0 |
+| 2v2 | 0.484 / 0.445 / +0.63 | 0.523 / 0.477 / +0.75 |
+| 2v3 | 0.102 / 0.141 / -0.96 | 0.148 / 0.109 / +0.93 |
+| 4v3 | 0.859 / 0.883 / -0.56 | 0.859 / 0.820 / +0.85 |
+| 4v4 | 0.359 / 0.422 / -1.03 | 0.531 / 0.492 / +0.63 |
+| 4v5 | 0.141 / 0.250 / -2.23 | 0.234 / 0.250 / -0.29 |
+| 4v6 | 0.062 / 0.086 / -0.72 | 0.039 / 0.094 / -1.77 |
+
+Sum of z squared 14.9 over 14 comparisons (expected 14 if the two agree). Because 4v5
+and 4v6 leaned the same way, a third run of 384 games each (2v1, 4v5, 4v6 in one batch,
+seed 3): 4v5 0.221 / 0.237 (z -0.52), 4v6 0.099 / 0.073 (z +1.29). Pooled over the three
+runs (640 games a side) 4v6 is 51 wins to 51. A first run of 16 games (seed 0) agreed
+too. Script: kept outside the repository; the adapter wraps `lean.game.observe` to hand
+the state to `scripted_actions` and returns one-hot logits.
+
+### Timing (untrained lean.model policy against the scripted agent, v2 game, eager)
+
+| Where | Sizes, games | Old | New from parity | New from the previous ratios |
+|---|---|---|---|---|
+| CPU, 4 threads | [4], 64 | 56.0 s, 4 matches | 102.0 s, 6 matches, 2 rounds | 40.4 s, 3 matches, 1 round |
+| CPU, 4 threads | [4, 8], 32 | 47.6 s, 5 matches | 267.4 s, 16 matches, 2 rounds | 58.1 s, 6 matches, 1 round |
+| GPU (RTX 4070 Laptop, profile "performance") | [4, 8], 128 | 67.6 s, 5 matches | 83.0 s, 16 matches, 2 rounds | not run |
+
+One run each; the CPU machine had other load (load average 1.7 to 3.9). An untrained
+policy beats no scripted count, the worst case for a parity start: the walk runs to 1,
+and the old protocol's chained start made size 8 a single match. A pass lasts about the
+same number of ticks whatever is in it (about 1,000 here: 960 to 1,152 ticks on the CPU
+for 16 to 160 environments), but a tick's cost grows with environments times slots on the
+CPU (7.1 ms at 16 environments, 71 ms at 160 with 18 slots), and on the GPU eagerly at
+these sizes too (about 13.5 s per old pass of 128 environments, 41 s per new pass of up to
+1,280). So batching pays only where a tick of the larger batch costs little more than a
+tick of the smaller one, and the extra neighbour matches and the padding to the largest
+team cost real work. Where every match is needed anyway it pays even on the CPU: the
+equivalence runs' seven matches of 128 games took 202.8 and 200.9 s one at a time, 134.9
+and 135.7 s in one batch. The GPU check covered the parity start only.
+
+### Open
+
+- Whether the batch is cheaper than the sequential walk on the GPU depends on the
+  environment count at which the eager (or compiled) tick stops being flat; measure
+  `start_ratio` from the previous ratios on the GPU, and with `games_for` at larger sizes.
+- `spread` 2 is a guess: smaller means fewer wasted matches and more rounds.
+- Mixing team sizes pads every environment to the largest total; grouping sizes by
+  total into separate batches would cut that at the price of more passes.

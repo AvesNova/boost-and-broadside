@@ -58,7 +58,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | D3 | Shaping-field bug (moot once shaping is dropped) | dropped: shaping removed with v2's five levels (worklog 03:49) |
 | D4 | Damage reward unit (departure audit row 2) | done: v2's unit, 2.74 per 100 points (worklog 03:49; lean/learn/config.py) |
 | D5 | Compilation in training | done 2026-11-23 (merged; v2 game meets 5,000 steps/s, core game 4,640: question 12) |
-| D6 | Batched evaluation across sizes | todo |
+| D6 | Batched evaluation across sizes | done: all sizes in rounds of one batch, walk from the previous ratios (learn/NOTES.md "Batched crossover"); the GPU gain is not shown yet |
 
 ## E. Scripted opponent
 
