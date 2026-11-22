@@ -125,6 +125,28 @@ Scripted opponent (from docs/rewrite/imugi-behaviours.md, author 2026-11-22)
   same in our flight model? If so there is no one-circle against two-circle choice
   (docs/rewrite/turn-performance.md, in progress).
 
+Flight physics: agreed direction (author, 2026-11-23), a deliberate change after the v2 port
+- Goal: real choices between turn radius, sustained rate and corner speed (today one speed,
+  corner, wins nearly everything: docs/rewrite/turn-performance.md), and 2.5D energy
+  fighting within a 2D game; collisions stay 2D.
+- Weight on the wing: the vertical lift always holds 1 g (today it is paid from the store
+  while the store is above 2%, through the `1 - sink_room` factor in `_setting`), so the
+  sideways budget is sqrt(budget^2 - g^2). A ship that cannot hold 1 g sinks (store into
+  speed).
+- Bank implicit and instant (snappy; a roll seen from above looks like nothing): no roll
+  state and no roll physics.
+- No climb or dive angle: horizontal speed is the speed; altitude is the store, exchanged
+  with speed at capped rates.
+- The store sized to about two vertical loops, starting in the middle (today about 14
+  loops: 498,000 J/kg, about 12.7 km at the game's 39.24 m/s^2).
+- Proposed: engine power not tied to the store (today it falls about fivefold above half
+  full).
+- Dropped: more energy giving more damage or shield.
+- Future: guns separate from the store, with an overheating mechanism.
+- Open: whether climbing and diving stay on the power action (coast / dive / climb, today
+  named boost and reverse), and whether reverse thrust is separate from climbing.
+- Checked with the turn-performance tool before it becomes the default; the author flies it.
+
 Sizes
 - Sizes batch- and GPU-friendly by default (powers of two, fractions such as one eighth)
   unless there is a reason not to (2026-11-22).
