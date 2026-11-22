@@ -77,3 +77,17 @@ checked, the commit. Numbers are measured unless marked otherwise.
     speed unchanged. Minimum full-stick radius now away from the stall: Vizia 213 m at
     224 m/s. So the three speeds separate: minimum radius about 220 m/s, best sustained
     about 160 m/s, corner 268 m/s (v2: all three at about the corner).
+- 05:40 B5: the cheaper damage form behind `GameConfig.damage_model` ("v2" default, "core"
+  in `GameConfig.core()`).
+  - Head-on term: v2's curve written in the hit angle's cosine, (1 - c) / (1 - cos theta_0)
+    in place of (theta / theta_0)^2, which keeps the half-damage angle (45 deg) and differs
+    from v2's curve by at most 0.0235 (largest at 68 deg). No atan2 or cross product; no new
+    constant to tune. (Rejected: a power of (1 + c) / 2, 0.088 off; a smoothstep in c,
+    0.092 off.)
+  - Closeness: kept v2's. The agreed shortcut (the hit test's own miss distance) gave 6.8%
+    less damage over 150 ticks x 64 games: it is the closest approach within the tick, not
+    the distance to the bullet's line of flight (v2's impact parameter), so it changes the
+    game. So the saving is smaller than proposed: a few operations, not about 25.
+  - Checked: tests/test_core_damage.py (the curve within 0.024 and the same half-damage
+    angle; total damage within 2% of v2's on the same hits, the same hits doing damage).
+    `pytest lean/game`: 34 passed, 1 xfailed.

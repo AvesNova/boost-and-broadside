@@ -73,6 +73,13 @@ class GameConfig:
     field_band_width: float = 160.0
     field_high_share: float = 0.5
     field_strong_share: float = 0.5
+    # Damage form: "v2" (v2's) or "core" (the agreed cheaper form with the same effects: the
+    # head-on term written in the hit angle's cosine, (1 - c) / (1 - cos theta_0) in place of
+    # (theta / theta_0)^2, which keeps the half-damage angle and differs from v2's curve by at
+    # most 0.024; no atan2 or cross product). The closeness stays v2's: the hit test's own miss
+    # distance (closest approach within the tick) read 6.8% less damage than v2's impact
+    # parameter (the distance to the bullet's line), so it is not the same effect.
+    damage_model: str = "v2"
     flight_model: str = "v2"
     store_loops: float = 2.0
     store_edge_band: float = 0.05
@@ -82,7 +89,8 @@ class GameConfig:
     def core(cls, **overrides) -> GameConfig:
         """The core game as decided so far: the new flight model, one ship (Vizia), and v2's ten
         fields drawn per environment."""
-        return cls(**{"flight_model": "core", "lineup": ("vizia",), "field_count": 10, **overrides})
+        settings = {"flight_model": "core", "damage_model": "core", "lineup": ("vizia",), "field_count": 10}
+        return cls(**{**settings, **overrides})
 
 
 # --------------------------------------------------------------------------- constants
@@ -126,6 +134,7 @@ def ship_constants(config: GameConfig, ship_type: Tensor) -> dict[str, Tensor]:
     raw = torch.stack([torch.full_like(climb, card.GRAVITY), card.GRAVITY - dive, card.GRAVITY + climb], -1)
     fields = torch.tensor(config.fields, dtype=torch.float32, device=device).reshape(-1, 5)
     hit_radius = of("hit_radius")
+    head_on_angle = card.HEAD_ON_ANGLE * of("head_on_angle_scale")
     return {
         "lift": lift,
         "inverse_lift": 1.0 / lift,
@@ -163,6 +172,7 @@ def ship_constants(config: GameConfig, ship_type: Tensor) -> dict[str, Tensor]:
         "head_on": card.HEAD_ON_FRACTION * of("head_on_fraction_scale"),
         "inverse_head_on_angle": 1.0 / (card.HEAD_ON_ANGLE * of("head_on_angle_scale")),
         "head_on_sharpness": of("head_on_sharpness"),
+        "inverse_one_minus_cos_head_on": 1.0 / (1.0 - torch.cos(head_on_angle)),
         "max_shield": of("max_shield"),
         "shield_rate": card.SHIELD_RECHARGE_RATE * of("shield_recharge_rate_scale"),
         "shield_delay": card.SHIELD_RECHARGE_DELAY * of("shield_recharge_delay_scale"),
@@ -574,10 +584,12 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     flat_direction_x, flat_direction_y = direction_x.reshape(flat), direction_y.reshape(flat)
     flat_speed = bullet_speed.reshape(flat)
     nose_cos, nose_sin = of_target(heading_cos), of_target(heading_sin)
-    theta = torch.atan2(
-        (flat_direction_x * nose_sin - flat_direction_y * nose_cos).abs(),
-        -(flat_direction_x * nose_cos + flat_direction_y * nose_sin),
-    )
+    core_damage = config.damage_model == "core"
+    if not core_damage:
+        theta = torch.atan2(
+            (flat_direction_x * nose_sin - flat_direction_y * nose_cos).abs(),
+            -(flat_direction_x * nose_cos + flat_direction_y * nose_sin),
+        )
     speed_ratio = flat_speed * of_owner(c["inverse_reference_bullet_speed"])
     explosive = of_owner(c["explosive_share"])
     full = of_owner(c["hit_damage"]) * (explosive + (1.0 - explosive) * speed_ratio * speed_ratio)
@@ -586,14 +598,25 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     target_relative_x = (bullet_x - bullet_x0).reshape(flat) - of_target(x - state.x)
     target_relative_y = (bullet_y - bullet_y0).reshape(flat) - of_target(y - state.y)
     cross = target_start_x * target_relative_y - target_start_y * target_relative_x
-    line = cross * cross / (target_relative_x * target_relative_x + target_relative_y * target_relative_y).clamp_min(1e-12)
+    relative_x, relative_y = target_relative_x, target_relative_y
+    relative_squared = relative_x * relative_x + relative_y * relative_y
+    line = cross * cross / relative_squared.clamp_min(1e-12)
     impact_squared = torch.minimum(line, target_start_x * target_start_x + target_start_y * target_start_y)
     radius, core = of_target(c["hit_radius"]), of_target(c["core_radius"])
     band = ((impact_squared.sqrt() - core) / (radius - core).clamp_min(1e-6)).clamp(0.0, 1.0)
     closeness = 1.0 - band * band * (3.0 - 2.0 * band)
     head_on = of_target(c["head_on"])
-    aspect_ratio = theta * of_target(c["inverse_head_on_angle"])
-    aspect = 1.0 - (1.0 - head_on) * torch.exp(-card.LN_2 * aspect_ratio.pow(of_target(c["head_on_sharpness"])))
+    if core_damage:
+        # cos of the hit angle (1 head-on); (1 - c) / (1 - cos theta_0) stands for
+        # (theta / theta_0)^2.
+        hit_cos = -(flat_direction_x * nose_cos + flat_direction_y * nose_sin)
+        inverse = of_target(c["inverse_one_minus_cos_head_on"])
+        squared_ratio = ((1.0 - hit_cos) * inverse).clamp_min(0.0)
+        powered = squared_ratio.pow(0.5 * of_target(c["head_on_sharpness"]))
+    else:
+        ratio = theta * of_target(c["inverse_head_on_angle"])
+        powered = ratio.pow(of_target(c["head_on_sharpness"]))
+    aspect = 1.0 - (1.0 - head_on) * torch.exp(-card.LN_2 * powered)
     bullet_damage = torch.where(hit, full * closeness * aspect, 0.0)
 
     enemy = state.team[:, owner] != of_target(state.team)
