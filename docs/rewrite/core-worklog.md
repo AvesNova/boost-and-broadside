@@ -193,7 +193,7 @@ checked, the commit. Numbers are measured unless marked otherwise.
 - 03:31 Correction: the times in this log from 02:43 on were first written from my estimate,
   not the clock; they now come from the commits' times (git log). The whole session so far,
   02:37 to 03:29, took 52 minutes.
-- 03:50 F3 (GPU part): scoreboard.md "GPU". Game step (core) 9.4 ms uncompiled, 0.95 ms
+- 03:36 F3 (GPU part): scoreboard.md "GPU". Game step (core) 9.4 ms uncompiled, 0.95 ms
   compiled at 5v5, E = 2048 (cold compile 18 s); policy step 28.9 / 14.4 ms (compile 12 s);
   the policy dominates the rollout. A new team size recompiles once (about 15 s) then never;
   dynamic=True also recompiles once (to investigate). Uncompiled game at 50v50, E = 2048 runs

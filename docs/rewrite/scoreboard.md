@@ -62,7 +62,7 @@ short run): 3.10 ms eager, 1.38 ms compiled, first compile 10.9 s. Training at t
 size: 2,800 steps/s with 8 minibatches (4.8 GB), 3,150 with 16 (2.5 GB); 4 minibatches run
 out of memory.
 
-## GPU: uncompiled against compiled, compile time, new team sizes (2026-11-23 03:50)
+## GPU: uncompiled against compiled, compile time, new team sizes (2026-11-23 03:36)
 
 Laptop RTX 4070 (8 GB), committed code at 25478e10 (a clean worktree), E = 2048, one fresh
 process per row with an empty inductor cache; policy under bf16 autocast. Script:
