@@ -127,5 +127,20 @@ To do after the step-3 scoreboard ("before" numbers), each checked against v2 wi
    together every k ticks or at a segment boundary, with no host read; the learner masks
    the frozen ticks.
 
-Proposed, not decided: build the features both teams' observations share once per tick;
-the dense (E, N K, N) hit test as the first place to look at large team sizes.
+10. **One observation call for both teams** (author 2026-11-22, with care about cheating):
+    the viewer's team as an (E,) input. Rule for when fog arrives: share only each ship's
+    raw state; everything derived (visibility, last-seen tokens, globals such as the
+    enemy alive fraction) is computed per team from that team's own visibility. The
+    scripted opponent must then read its team's view, not the state.
+11. **Fields drawn per environment** (author 2026-11-22: "fields are randomised for every
+    new env"): fields in the state as (E, F, 5), drawn at reset, padded with zero-strength
+    fields; the medium at the ships and at the bullets' end of move cached in the state, so
+    it is evaluated twice per tick instead of four times. The policy needs field tokens
+    (a contract change) before any training with fields.
+
+Future check (author 2026-11-22): the dense (E, N K, N) hit test at 50v50.
+
+Proposed, not decided: a cheaper damage form with the same three ideas (kinetic term
+kept; closeness from the swept test's miss distance, one gather instead of about 15
+operations; the head-on term as a function of the hit angle's cosine instead of atan2,
+pow and exp, fitted per type to today's curve, the largest difference reported).

@@ -5,6 +5,10 @@ it blocks. Answered questions move to the bottom with the answer and its date.
 
 ## Open
 
+(none)
+
+## Answered
+
 1. **Fields in `lean/game` (2026-11-22).** The author says fields are the default, but
    `GameConfig.fields` defaults to none and no field map is defined yet. The game also
    supports only one fixed set of fields for the whole run (a constant of the run), where
@@ -14,3 +18,6 @@ it blocks. Answered questions move to the bottom with the answer and its date.
    (E, F, 5) and makes the medium a per-environment evaluation. Blocks: the default
    `GameConfig`, the step-4 comparison of fields against v2, and the field-path
    operation count.
+
+   **Answered 2026-11-22:** fields are randomised for every new environment, as (b). How
+   to do it efficiently is in `lean/game/NOTES.md`, agreed fix 11.
