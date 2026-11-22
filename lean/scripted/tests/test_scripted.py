@@ -7,6 +7,7 @@ import pytest
 import torch
 
 from lean.contract import BULLET_SLOTS, FIRES, POWERS, STICKS, Constants, State
+from lean.game.core import path_velocity
 from lean.scripted import (
     ScriptedConfig,
     act,
@@ -20,7 +21,7 @@ from lean.scripted import (
 
 def random_state(envs: int, slots: int, seed: int) -> State:
     """A state with random ships inside a 3 km arena, two teams by slot parity, and a
-    few dead and non-existent rows; no game package needed."""
+    few dead and non-existent rows; no game step needed."""
     generator = torch.Generator().manual_seed(seed)
 
     def uniform(low: float, high: float) -> torch.Tensor:
@@ -29,13 +30,18 @@ def random_state(envs: int, slots: int, seed: int) -> State:
     heading = uniform(-math.pi, math.pi)
     angle = uniform(-0.2, 0.2)
     exists = uniform(0.0, 1.0) > 0.15
+    x, y = uniform(-2000.0, 2000.0), uniform(-2000.0, 2000.0)  # drawn in the order of the fields below
+    speed = uniform(100.0, 440.0)
+    velocity_x, velocity_y = path_velocity(speed, heading.cos(), heading.sin(), angle.cos(), angle.sin())
     bullets = (envs, slots, BULLET_SLOTS)
     return State.pack(
-        x=uniform(-2000.0, 2000.0),
-        y=uniform(-2000.0, 2000.0),
+        x=x,
+        y=y,
         heading_cos=heading.cos(),
         heading_sin=heading.sin(),
-        speed=uniform(100.0, 440.0),
+        speed=speed,
+        velocity_x=velocity_x,
+        velocity_y=velocity_y,
         angle=angle,
         angle_cos=angle.cos(),
         angle_sin=angle.sin(),
@@ -204,7 +210,7 @@ def test_never_shoots_through_a_team_mate():
         config, 1, torch.tensor([[2, 1]]), torch.Generator().manual_seed(0), torch.device("cpu")
     )
     zeros = torch.zeros_like(state.x)
-    base = state.replace(
+    base = core.with_velocity(state.replace(
         heading_cos=torch.ones_like(state.x),
         heading_sin=zeros,
         speed=torch.full_like(state.x, 250.0),
@@ -212,7 +218,7 @@ def test_never_shoots_through_a_team_mate():
         angle_cos=torch.ones_like(state.x),
         angle_sin=zeros,
         cooldown=torch.zeros_like(state.cooldown),
-    )
+    ))
     scripted = ScriptedConfig()
     persona = personas(scripted, 1, 3, torch.Generator().manual_seed(1), torch.device("cpu"), 0.0)
     fire = {}

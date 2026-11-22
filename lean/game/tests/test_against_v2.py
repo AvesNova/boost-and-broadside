@@ -16,7 +16,7 @@ from bnb.contracts import Action  # noqa: E402
 
 from lean.contract import State  # noqa: E402
 from lean.game import GameConfig, step  # noqa: E402
-from lean.game.core import fixed_fields, ship_constants  # noqa: E402
+from lean.game.core import fixed_fields, path_velocity, ship_constants  # noqa: E402
 
 ENVS, TICKS, PER_TEAM = 32, 150, 5  # about 6 s on one CPU thread
 torch.set_num_threads(1)
@@ -53,6 +53,9 @@ def to_lean(config, v2_state) -> State:
     for name in ("x", "y", "heading_cos", "heading_sin", "speed", "angle", "angle_cos", "angle_sin",
                  "nose_rate", "energy", "shield", "shield_wait"):
         values[name] = getattr(ships, V2_NAMES.get(name, name))
+    values["velocity_x"], values["velocity_y"] = path_velocity(
+        values["speed"], values["heading_cos"], values["heading_sin"], values["angle_cos"], values["angle_sin"]
+    )
     return State.pack(
         **values,
         cooldown=ships.gun_cooldown, next_slot=ships.next_slot, alive=ships.alive,

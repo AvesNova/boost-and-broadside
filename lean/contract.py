@@ -94,6 +94,10 @@ SHIP_COLUMNS = (
     "log_index",
     "gradient_x",
     "gradient_y",
+    # The velocity at proper speed along the flight path (the nose turned back by the angle of
+    # attack), stored by the step once (the world velocity is this over the refractive index).
+    "velocity_x",
+    "velocity_y",
     "next_slot",  # the bullet slot the next shot is written to, a whole number
 )
 FLAG_COLUMNS = (

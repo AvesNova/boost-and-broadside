@@ -43,7 +43,7 @@ def duel(positions, config=FOG, headings=None, vision=None):
         seen=seen,
         ticks_since_seen=torch.zeros_like(state.ticks_since_seen),
     )
-    return core.perceive(state, torch.zeros_like(state.exists))
+    return core.perceive(core.with_velocity(state), torch.zeros_like(state.exists))
 
 
 def with_vision(constants, vision):
@@ -264,7 +264,7 @@ def perturb_hidden(state, slots):
         return torch.where(change, value + by, value)
 
     bullets = change[..., None].expand_as(state.bullet_moves_left)
-    return state.replace(
+    return core.with_velocity(state.replace(
         x=bump(state.x, 123.0),
         y=bump(state.y, -77.0),
         speed=bump(state.speed, 40.0),
@@ -281,7 +281,7 @@ def perturb_hidden(state, slots):
         gradient_y=torch.where(change, 0.1, state.gradient_y),
         bullet_moves_left=torch.where(bullets, 5, state.bullet_moves_left),
         bullet_real=torch.where(bullets, True, state.bullet_real),
-    )
+    ))
 
 
 def test_no_hidden_information_reaches_the_observation():

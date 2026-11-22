@@ -602,6 +602,24 @@ def flight_tick(
     return _kick(p, control, s, torch.exp(-s.log_index), *_nose_frame(s), 0.5 * h)
 
 
+def path_velocity(speed: Tensor, heading_cos: Tensor, heading_sin: Tensor, angle_cos: Tensor,
+                  angle_sin: Tensor) -> tuple[Tensor, Tensor]:
+    """The velocity at proper speed along the flight path: the nose turned back by the angle of
+    attack (State's velocity rows)."""
+    return (
+        speed * (heading_cos * angle_cos + heading_sin * angle_sin),
+        speed * (heading_sin * angle_cos - heading_cos * angle_sin),
+    )
+
+
+def with_velocity(state: State) -> State:
+    """The state with its stored velocity recomputed from speed, heading and angle of attack,
+    after the motion was set by hand."""
+    velocity_x, velocity_y = path_velocity(state.speed, state.heading_cos, state.heading_sin, state.angle_cos,
+                                           state.angle_sin)
+    return state.replace(velocity_x=velocity_x, velocity_y=velocity_y)
+
+
 # --------------------------------------------------------------------------- bullets
 
 
@@ -660,11 +678,9 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
 
     # Fire, from the tick-start state.
     fired = alive0 & shoot & (state.cooldown == 0) & (state.energy >= c["bullet_cost"])
-    path_x = state.speed * (state.heading_cos * state.angle_cos + state.heading_sin * state.angle_sin)
-    path_y = state.speed * (state.heading_sin * state.angle_cos - state.heading_cos * state.angle_sin)
     spread = noise["spread"]
-    launch_x = path_x + c["muzzle_speed"] * state.heading_cos + c["spread_speed"] * spread[..., 0]
-    launch_y = path_y + c["muzzle_speed"] * state.heading_sin + c["spread_speed"] * spread[..., 1]
+    launch_x = state.velocity_x + c["muzzle_speed"] * state.heading_cos + c["spread_speed"] * spread[..., 0]
+    launch_y = state.velocity_y + c["muzzle_speed"] * state.heading_sin + c["spread_speed"] * spread[..., 1]
     launch_speed = torch.sqrt(launch_x * launch_x + launch_y * launch_y)
     emits = alive0 if config.ghost_bullets else fired  # a ghost every tick, or real shots only
     written = emits[..., None] & (index.bullet_slot == state.next_slot[..., None])
@@ -852,7 +868,8 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
             [
                 x, y, heading_cos, heading_sin, flown.speed, flown.angle, flown.angle_cos, flown.angle_sin,
                 flown.nose_rate, flown.energy, shield + restored, wait, (cooldown - 1).clamp_min(0),
-                flown.log_index, flown.gradient_x, flown.gradient_y, next_slot,
+                flown.log_index, flown.gradient_x, flown.gradient_y,
+                *path_velocity(flown.speed, heading_cos, heading_sin, flown.angle_cos, flown.angle_sin), next_slot,
             ],
             1,
         ),
@@ -1029,6 +1046,8 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
         "shield": _per_slot(constants["max_shield"], zeros), "shield_wait": zeros, "cooldown": zeros,
         "log_index": log_index, "gradient_x": gradient_x, "gradient_y": gradient_y, "next_slot": zeros,
     }
+    # At zero angle of attack the flight path is the nose.
+    named["velocity_x"], named["velocity_y"] = named["speed"] * heading_cos, named["speed"] * heading_sin
     bullet_shape = (envs, slots, BULLET_SLOTS)
     state = State(
         ships=torch.stack([named[name] for name in SHIP_COLUMNS], 1),
@@ -1241,9 +1260,9 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     exists, alive = state.exists, view.alive
     # World-frame motion, as v2 observes it: the proper speed over the refractive index, so a
     # field that slows a ship shows as a slower ship (src/bnb/game/perception/observe.py).
-    speed = view.speed * torch.exp(-view.log_index)
-    velocity_x = speed * (view.heading_cos * view.angle_cos + view.heading_sin * view.angle_sin)
-    velocity_y = speed * (view.heading_sin * view.angle_cos - view.heading_cos * view.angle_sin)
+    inverse_index = torch.exp(-view.log_index)
+    speed = view.speed * inverse_index
+    velocity_x, velocity_y = view.velocity_x * inverse_index, view.velocity_y * inverse_index  # stored by the step
     distance = torch.sqrt(view.x * view.x + view.y * view.y)
     inverse_distance = 1.0 / distance.clamp_min(1.0)
     fired_last = state.fired  # stored by the step (agreed fix 12), not inferred from the ring

@@ -196,11 +196,9 @@ def characteristic(config: ScriptedConfig, state, name: str) -> Tensor | float:
 
 def world_velocity(state) -> tuple[Tensor, Tensor]:
     """Each ship's velocity (E, N) in metres per second: the proper speed along the
-    flight path, which is the nose turned back by the angle of attack. Assumes a
-    refractive index of 1 (no fields)."""
-    direction_x = state.heading_cos * state.angle_cos + state.heading_sin * state.angle_sin
-    direction_y = state.heading_sin * state.angle_cos - state.heading_cos * state.angle_sin
-    return state.speed * direction_x, state.speed * direction_y
+    flight path, which is the nose turned back by the angle of attack (stored by the game).
+    Assumes a refractive index of 1 (no fields)."""
+    return state.velocity_x, state.velocity_y
 
 
 def signed_angle(cos: Tensor, sin: Tensor, x: Tensor, y: Tensor) -> Tensor:

@@ -22,7 +22,7 @@ from bnb.game.physics import combat  # noqa: E402
 from bnb.game.physics.medium import medium as v2_medium  # noqa: E402
 from lean.contract import BULLET_SLOTS, State  # noqa: E402
 from lean.game import GameConfig, card, reset, step  # noqa: E402
-from lean.game.core import fixed_fields, ship_constants  # noqa: E402
+from lean.game.core import fixed_fields, path_velocity, ship_constants  # noqa: E402
 
 torch.set_num_threads(1)
 replace = dataclasses.replace
@@ -117,6 +117,9 @@ def to_lean(game: Game, v2_state) -> State:
     values = {name: getattr(ships, V2_SHIP.get(name, name))[:, slots].clone()
               for name in ("x", "y", "heading_cos", "heading_sin", "speed", "angle", "angle_cos", "angle_sin",
                            "nose_rate", "energy", "shield", "shield_wait")}
+    values["velocity_x"], values["velocity_y"] = path_velocity(
+        values["speed"], values["heading_cos"], values["heading_sin"], values["angle_cos"], values["angle_sin"]
+    )
     bullet_values = {name: getattr(bullets, V2_BULLET[name])[:, slots].clone()
                      for name in ("bullet_x", "bullet_y", "bullet_dir_x", "bullet_dir_y", "bullet_speed")}
     alive = ships.alive[:, slots].clone()
