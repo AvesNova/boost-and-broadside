@@ -51,7 +51,7 @@ def test_every_living_ship_emits_a_bullet_every_tick():
     shots are marked real."""
     states, _ = play(dataclasses.replace(BASE, ghost_bullets=True), 15, fire_share=0.0)
     before, last = states[-2], states[-1]
-    slot = ((last.next_slot - 1) % last.bullet_x.shape[-1])[..., None]
+    slot = ((last.next_slot.long() - 1) % last.bullet_x.shape[-1])[..., None]
     stamped = last.bullet_fired_tick.gather(-1, slot)[..., 0]
     assert torch.equal(stamped[before.alive], before.tick[:, None].expand_as(stamped)[before.alive])
     assert not last.bullet_real.any()

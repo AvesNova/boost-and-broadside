@@ -28,17 +28,18 @@ def duel(positions, config=FOG, headings=None, vision=None):
     constants = state.constants
     if vision is not None:
         constants = with_vision(constants, vision)
-    medium = torch.stack(core.medium(state.fields, x, y), -1)
+    log_index, gradient_x, gradient_y = core.medium(state.fields, x, y)
     seen = torch.zeros_like(state.seen)
     seen[:, core.SEEN_ALIVE] = 1.0
-    state = dataclasses.replace(
-        state,
+    state = state.replace(
         x=x,
         y=y,
         heading_cos=angle.cos(),
         heading_sin=angle.sin(),
         constants=constants,
-        medium=medium,
+        log_index=log_index,
+        gradient_x=gradient_x,
+        gradient_y=gradient_y,
         seen=seen,
         ticks_since_seen=torch.zeros_like(state.ticks_since_seen),
     )
@@ -145,7 +146,7 @@ def test_own_team_always_visible_and_dead_observers_see_nothing():
             and (obs.since_seen[0, own] == 0).all()
         )
     assert core.sighted_by_enemy(state)[0].tolist() == [True, False, True, False]
-    dead = dataclasses.replace(state, alive=torch.tensor([[False, True, True, True]]))
+    dead = state.replace(alive=torch.tensor([[False, True, True, True]]))
     assert core.sighted_by_enemy(dead)[0].tolist() == [True, False, False, False]
 
 
@@ -185,7 +186,7 @@ def test_last_seen_values_freeze_and_time_since_seen_counts_and_caps():
     for tick in range(1, 4):
         # Move ship 1 out of sight by hand, then step: its row stays at the sighting.
         if tick == 1:
-            state = dataclasses.replace(state, x=state.x + torch.tensor([[0.0, 2000.0]]))
+            state = state.replace(x=state.x + torch.tensor([[0.0, 2000.0]]))
         state, _ = step(FOG, state, idle(state), no_noise(state))
         obs = observe(FOG, state, 0)
         assert state.ticks_since_seen[0, 1] == tick
@@ -220,12 +221,12 @@ def test_never_seen_enemies_are_masked_and_seen_dead_enemies_drop_out():
         [(0.0, 0.0), (2500.0, 0.0), (-3000.0, 0.0), (3000.0, 0.0)]
     )  # team 0: 0, 1; team 1: 2, 3
     assert state.seen[0, core.SEEN_KNOWN, :2].tolist() == [0.0, 1.0]
-    state = dataclasses.replace(state, alive=torch.tensor([[True, False, True, True]]))
+    state = state.replace(alive=torch.tensor([[True, False, True, True]]))
     state = core.perceive(state, torch.zeros_like(state.exists))
     view = observe(FOG, state, 1)
     assert not view.key_mask[0, 1] and float(view.globals[0, 2]) == 0.5
     # Enemy 0 of team 1's view dies out of sight: team 1 does not know.
-    hidden_death = dataclasses.replace(state, alive=torch.tensor([[False, False, True, True]]))
+    hidden_death = state.replace(alive=torch.tensor([[False, False, True, True]]))
     assert torch.equal(observe(FOG, hidden_death, 1).globals, view.globals)
 
 
@@ -245,7 +246,7 @@ def hidden_enemy_scene():
         (3500.0, 0.0),
     ]
     state = duel(positions, headings=[0.0] * 5 + [math.pi] * 5)
-    state = dataclasses.replace(state, x=state.x + torch.tensor([[0.0] * 7 + [2500.0, 0.0, 0.0]]))
+    state = state.replace(x=state.x + torch.tensor([[0.0] * 7 + [2500.0, 0.0, 0.0]]))
     for _ in range(3):
         state, _ = step(FOG, state, idle(state), no_noise(state))
     assert state.seen[0, core.SEEN_KNOWN, 7] == 1.0 and state.ticks_since_seen[0, 7] == 3
@@ -263,8 +264,7 @@ def perturb_hidden(state, slots):
         return torch.where(change, value + by, value)
 
     bullets = change[..., None].expand_as(state.bullet_moves_left)
-    return dataclasses.replace(
-        state,
+    return state.replace(
         x=bump(state.x, 123.0),
         y=bump(state.y, -77.0),
         speed=bump(state.speed, 40.0),
@@ -274,9 +274,11 @@ def perturb_hidden(state, slots):
         energy=bump(state.energy, -1000.0),
         shield=bump(state.shield, -20.0),
         shield_wait=bump(state.shield_wait, 1.0),
-        cooldown=torch.where(change, 1, state.cooldown),
+        cooldown=torch.where(change, 1.0, state.cooldown),
         alive=torch.where(change, False, state.alive),
-        medium=torch.where(change[..., None], 0.1, state.medium),
+        log_index=torch.where(change, 0.1, state.log_index),
+        gradient_x=torch.where(change, 0.1, state.gradient_x),
+        gradient_y=torch.where(change, 0.1, state.gradient_y),
         bullet_moves_left=torch.where(bullets, 5, state.bullet_moves_left),
         bullet_real=torch.where(bullets, True, state.bullet_real),
     )

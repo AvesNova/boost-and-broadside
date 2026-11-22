@@ -52,21 +52,20 @@ def to_lean(config, v2_state) -> State:
     values = {}
     for name in ("x", "y", "heading_cos", "heading_sin", "speed", "angle", "angle_cos", "angle_sin",
                  "nose_rate", "energy", "shield", "shield_wait"):
-        values[name] = getattr(ships, V2_NAMES.get(name, name)).clone()
-    return State(
+        values[name] = getattr(ships, V2_NAMES.get(name, name))
+    return State.pack(
         **values,
-        cooldown=ships.gun_cooldown.long(), next_slot=ships.next_slot.long(), alive=ships.alive.clone(),
+        cooldown=ships.gun_cooldown, next_slot=ships.next_slot, alive=ships.alive,
         exists=torch.ones_like(ships.alive), team=(torch.arange(slots) >= PER_TEAM).long().expand(envs, slots),
         type=ship_type, constants=ship_constants(config, ship_type),
-        bullet_x=bullets.x.clone(), bullet_y=bullets.y.clone(), bullet_dir_x=bullets.direction_x.clone(),
-        bullet_dir_y=bullets.direction_y.clone(), bullet_speed=bullets.proper_speed.clone(),
-        bullet_moves_left=bullets.moves_left.long(), tick=v2_state.match.episode_tick.long(),
+        bullet_x=bullets.x, bullet_y=bullets.y, bullet_dir_x=bullets.direction_x,
+        bullet_dir_y=bullets.direction_y, bullet_speed=bullets.proper_speed,
+        bullet_moves_left=bullets.moves_left, tick=v2_state.match.episode_tick.long(),
         fired=torch.zeros_like(bullets.moves_left[..., 0], dtype=torch.bool),
-        bullet_real=bullets.moves_left > 0, bullet_fired_tick=torch.zeros_like(bullets.moves_left.long()),
-        medium=torch.stack([ships.log_refractive_index, ships.log_index_gradient_x, ships.log_index_gradient_y], -1),
-        bullet_medium=torch.stack(
-            [bullets.log_refractive_index, bullets.log_index_gradient_x, bullets.log_index_gradient_y], -1
-        ),
+        bullet_real=bullets.moves_left > 0, bullet_fired_tick=torch.zeros_like(bullets.moves_left),
+        log_index=ships.log_refractive_index, gradient_x=ships.log_index_gradient_x,
+        gradient_y=ships.log_index_gradient_y, bullet_log_index=bullets.log_refractive_index,
+        bullet_gradient_x=bullets.log_index_gradient_x, bullet_gradient_y=bullets.log_index_gradient_y,
         fields=fixed_fields(config, envs, "cpu"),
     )
 

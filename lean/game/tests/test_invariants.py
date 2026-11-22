@@ -7,7 +7,6 @@ import torch
 
 torch.set_num_threads(1)
 
-from lean.contract import State
 from lean.game import GameConfig, draw_noise, observe, reset, reset_done, step
 
 CLOSE = GameConfig(arena_radius=700.0, spawn="mixed", clock_ticks=400)
@@ -64,15 +63,11 @@ def test_swapping_teams_mirrors_the_outcome():
     state = reset(CLOSE, envs, team_sizes, generator, "cpu")
     slots = state.x.shape[1]
 
-    def flipped(value):
-        return value.flip(1) if value is not None and value.dim() >= 2 else value
-
-    values = {f.name: getattr(state, f.name) for f in dataclasses.fields(State)}
-    mirror = {name: flipped(value) for name, value in values.items() if name not in ("constants", "fields")}
+    # The slot axis of each packed field: 2 in the blocks (E, rows, N[, K]), 1 in (E, N[, K]).
+    slot_axis = {"ships": 2, "flags": 2, "identity": 2, "bullets": 2, "bullet_counts": 2, "bullet_real": 1}
+    mirror = {name: getattr(state, name).flip(axis) for name, axis in slot_axis.items()}
     mirror["constants"] = dataclasses.replace(state.constants, table=state.constants.table.flip(2))
-    mirror["fields"] = state.fields
-    mirror["team"] = 1 - mirror["team"]
-    other = State(**mirror)
+    other = dataclasses.replace(state, **mirror).replace(team=1 - state.team.flip(1))
     finished = torch.zeros(envs, dtype=torch.bool)
     damage = 0.0
     for _ in range(120):

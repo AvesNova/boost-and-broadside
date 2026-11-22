@@ -120,21 +120,19 @@ def to_lean(game: Game, v2_state) -> State:
     bullet_values = {name: getattr(bullets, V2_BULLET[name])[:, slots].clone()
                      for name in ("bullet_x", "bullet_y", "bullet_dir_x", "bullet_dir_y", "bullet_speed")}
     alive = ships.alive[:, slots].clone()
-    return State(
+    return State.pack(
         **values, **bullet_values,
-        cooldown=ships.gun_cooldown.long()[:, slots], next_slot=ships.next_slot.long()[:, slots], alive=alive,
+        cooldown=ships.gun_cooldown[:, slots], next_slot=ships.next_slot[:, slots], alive=alive,
         exists=torch.ones_like(alive), team=game.team, type=ship_type,
         constants=ship_constants(game.config, ship_type),
-        bullet_moves_left=bullets.moves_left.long()[:, slots], tick=v2_state.match.episode_tick.long(),
+        bullet_moves_left=bullets.moves_left[:, slots], tick=v2_state.match.episode_tick.long(),
         fired=torch.zeros_like(bullets.moves_left[:, slots][..., 0], dtype=torch.bool),
         bullet_real=bullets.moves_left[:, slots] > 0,
-        bullet_fired_tick=torch.zeros_like(bullets.moves_left.long()[:, slots]),
-        medium=torch.stack(
-            [ships.log_refractive_index, ships.log_index_gradient_x, ships.log_index_gradient_y], -1
-        )[:, slots],
-        bullet_medium=torch.stack(
-            [bullets.log_refractive_index, bullets.log_index_gradient_x, bullets.log_index_gradient_y], -1
-        )[:, slots],
+        bullet_fired_tick=torch.zeros_like(bullets.moves_left[:, slots]),
+        log_index=ships.log_refractive_index[:, slots], gradient_x=ships.log_index_gradient_x[:, slots],
+        gradient_y=ships.log_index_gradient_y[:, slots], bullet_log_index=bullets.log_refractive_index[:, slots],
+        bullet_gradient_x=bullets.log_index_gradient_x[:, slots],
+        bullet_gradient_y=bullets.log_index_gradient_y[:, slots],
         fields=fixed_fields(game.config, alive.shape[0], "cpu"),
     )
 
