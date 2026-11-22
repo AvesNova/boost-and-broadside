@@ -247,3 +247,4 @@ checked, the commit. Numbers are measured unless marked otherwise.
   its own visible flag and time since seen. `pytest lean`: 115 passed, 1 xfailed. A smoke
   run of the whole core game (`python -m lean.train --smoke --game core`: core flight, drawn
   fields, ghost bullets, fog, the new model, the league, v2's rewards) completes on the CPU.
+- 04:20 Charts: the core doghouse is one panel (coasting does not depend on the store; the footnote says how dive and climb fade at the edges); THEME=dark renders dark versions. P-51D model and the port of v2's tuning code handed to a background agent (worktree).

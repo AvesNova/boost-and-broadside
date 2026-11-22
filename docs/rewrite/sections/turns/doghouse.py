@@ -55,8 +55,9 @@ matplotlib.rcParams.update({"text.color": INK, "axes.labelcolor": INK_2, "axes.e
                             "legend.edgecolor": GRID, "figure.facecolor": SURFACE, "axes.facecolor": SURFACE})
 SPAWN_PERCENT = 100.0 * SPAWN[0] / MAX_ENERGY[0]
 if MODEL == "core":
-    STORES = (("store 97.5%: inside the top edge band", 0.975), (f"spawn store ({SPAWN_PERCENT:.0f}%)", None),
-              ("store 2.5%: inside the bottom edge band", 0.025))
+    # One panel: in the core model coasting does not depend on the store; only dive and climb
+    # fade inside the outer 5% at each edge (the footnote says so).
+    STORES = ((f"any store outside the edge bands (shown at the spawn store, {SPAWN_PERCENT:.0f}%)", None),)
     VIZIA_ONLY = "The core game currently flies Vizia only; Yongma and Jujak are the card's other two types under the core physics."
 else:
     STORES = (("high store (90%): engine at its full-store power", 0.9),
@@ -134,14 +135,16 @@ DOGHOUSE_FOOT = {
     "Dash-dot: full stick while diving or climbing (diving lowers the weight on the wing, climbing\n"
     "raises it). " + ("White" if THEME == "dark" else "Black") + " dashed: Ps = 0 (sustained). Grey dotted: turn radius. Grey dashed: load in\n"
     "game g (39.24 m/s^2). Shaded below 100 m/s: quasi-steady maths only, no best-sustained mark there.\n"
-    "Coasting, turn rate and Ps do not depend on the store. Inside an edge band (the outer 5%) dive or climb\n"
-    "fades to coast, in the trade and in the wing's load: at 97.5% and 2.5% the band is half faded.\n"
+    "Coasting, turn rate and Ps do not depend on the store. Inside an edge band (the outer 5% at the top and\n"
+    "bottom) dive or climb fades to coast, in the trade and in the wing's load; outside it, as drawn.\n"
     + "The core game currently flies Vizia only; Yongma and Jujak are the card's other types under core physics.",
 }
 
 
 def doghouse(ship_type: int):
-    figure, axes = plt.subplots(3, 1, figsize=(7.5, 16), facecolor=SURFACE)
+    panels = len(STORES)
+    figure, axes = plt.subplots(panels, 1, figsize=(7.5, 5.4 * panels + 2.0), facecolor=SURFACE, squeeze=False)
+    axes = axes[:, 0]
     v = speeds.numpy()
     for ax, (label, fraction) in zip(axes, STORES):
         grid = evaluate(ship_type, fraction)
@@ -220,7 +223,7 @@ def doghouse(ship_type: int):
         bar.set_label("energy rate Ps, m/s altitude-equivalent (blue gain, red loss)", color=INK_2, fontsize=8)
         bar.ax.tick_params(labelsize=8, colors=INK_2)
     figure.text(0.01, 0.004, DOGHOUSE_FOOT[MODEL], color=INK_2, fontsize=8)
-    figure.tight_layout(rect=(0, 0.055 if MODEL == "v2" else 0.08, 1, 1))
+    figure.tight_layout(rect=(0, 0.055 if MODEL == "v2" else 0.21, 1, 1))
     path = os.path.join(OUT, f"doghouse-{NAMES[ship_type].lower()}{SUFFIX}.png")
     figure.savefig(path, dpi=130, facecolor=SURFACE)
     plt.close(figure)
