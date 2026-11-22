@@ -272,7 +272,9 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
         cos0 * gradient_across + sin0 * gradient_along
     )
     ratio = (angle0 * p.inverse_stall).abs()
-    slope = (p.lift_over_stall * (2.0 - 2.0 * ratio)).clamp_min(0.0)
+    # The lift coefficient's slope: negative past the stall, zero from twice the stall angle (v2's
+    # lift_slope, src/bnb/game/physics/flight.py).
+    slope = torch.where(ratio < 2.0, p.lift_over_stall * (2.0 - 2.0 * ratio), 0.0)
     kappa = (slope * speed_squared + thrust * cos0) * over
     omega = (p.nose_frequency * speed).clamp_min(card.NOSE_FREQUENCY_FLOOR) * inverse_index
     reach = (lateral.abs() * inverse_speed_squared * p.inverse_lift).clamp(0.0, 1.0)
@@ -543,9 +545,16 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     left_one = (alive & team_one).sum(-1)
     wiped = (left_zero == 0) | (left_one == 0)
     wipe_result = torch.where(left_zero > 0, 0, torch.where(left_one > 0, 1, 2))
-    health = torch.where(alive, shield / c["max_shield"], 0.0)
-    lead = torch.where(team_one, -health, health).sum(-1)
-    clock_result = torch.where(lead > 0.0, 0, torch.where(lead < 0.0, 1, 2))
+    # Clock rule (v2's clock_result, src/bnb/game/modes/phase.py): the team with more health over
+    # its living ships wins, equal health a draw; health is the shield after this tick's recharge.
+    # A lead within float32 rounding of the sums is a draw: the two sums add their ships in
+    # different orders, so an exact tie can differ by a rounding residue.
+    health = torch.where(alive, (shield + restored) / c["max_shield"], 0.0)
+    left_health_zero = torch.where(team_one, 0.0, health).sum(-1)
+    left_health_one = torch.where(team_one, health, 0.0).sum(-1)
+    lead = left_health_zero - left_health_one
+    tie = lead.abs() <= 1e-5 * (left_health_zero + left_health_one).clamp_min(1.0)
+    clock_result = torch.where(tie, 2, torch.where(lead > 0.0, 0, 1))
     tick = state.tick + 1
     done = wiped | (tick >= config.clock_ticks)
     result = torch.where(done, torch.where(wiped, wipe_result, clock_result), -1)

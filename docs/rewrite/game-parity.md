@@ -222,3 +222,22 @@ Read and found equal by reading, with a test covering each:
   to match v2, its xfail test starts to pass and pytest reports an error until its mark is
   removed.
 - **NOTES.md** says the post-stall spread is rounding. It is not; it is row 1.
+
+## Fixed (2026-11-23)
+
+The three behaviour-changing differences were bugs against "lean computes v2's mathematics"
+and are fixed in `lean/game/core.py`:
+
+1. Lift slope past the stall: v2's form, negative between one and two stall angles, zero
+   beyond (`torch.where(ratio < 2.0, ..., 0.0)`).
+2. The clock's health reads the shield after the last tick's recharge (`shield + restored`,
+   the value the state stores).
+3. The clock compares the two teams' health sums. A lead within float32 rounding of the
+   sums (1e-5 relative) is a draw: lean adds each team's ships in a different order inside
+   one masked reduction, so an exact mirrored tie can differ by a rounding residue; v2's
+   ties are exact only because its layout adds both teams in the same order. Within
+   rounding, not bitwise, is the bar.
+
+Their three strict xfails are now plain tests and pass. `pytest lean -q` on the CPU, one
+thread: 48 passed, 1 xfailed (the "mixed" spawn, a recorded configuration choice, not a
+bug), in 32 s.

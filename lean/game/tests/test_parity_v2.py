@@ -387,8 +387,6 @@ def _quiet_actions(envs, slots, quiet_team, per_team):
     return lambda tick: action
 
 
-@pytest.mark.xfail(strict=True, reason="lean's clock rule reads the shield before the last tick's "
-                   "recharge; v2's after it (game-parity.md)")
 def test_clock_counts_the_last_ticks_recharge():
     """Guards the tie-break's timing: 1v1 with a one-tick clock, both shields at half, team 0
     recharging on that tick (quiet, wait over), team 1 boosting. Health is equal before the
@@ -402,8 +400,6 @@ def test_clock_counts_the_last_ticks_recharge():
     assert report["mismatches"]["result"] == 0, report["mismatches"]
 
 
-@pytest.mark.xfail(strict=True, reason="lean sums the signed health of both teams in one sum, which "
-                   "leaves a rounding residue on an exact tie; v2 compares the two team sums (game-parity.md)")
 def test_clock_mirrored_health_is_a_draw():
     """Guards the tie at the clock: 5v5, each team-1 ship with its team-0 twin's shield
     fraction, nobody firing or recharging; v2 calls it a draw, and so must lean (its signed
@@ -421,8 +417,6 @@ def test_clock_mirrored_health_is_a_draw():
 # --------------------------------------------------------------------------- flight edge
 
 
-@pytest.mark.xfail(strict=True, reason="lean clamps the lift slope at 0 past the stall angle; v2 keeps "
-                   "it negative up to twice the stall angle (game-parity.md)")
 def test_post_stall_matches_v2():
     """Guards the nose oscillator past the stall: angles of attack spread over -1.9 to 1.9
     stall angles, one step, coasting straight; check A's bounds on angle and nose rate."""

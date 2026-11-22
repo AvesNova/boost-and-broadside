@@ -156,3 +156,13 @@ most), so damage arithmetic runs on N x 11 rows. Fire rate, bullet life and bull
 cost are equal for every type: constants for the graph.
 
 Future check (author 2026-11-22): the dense (E, N K, N) hit test at 50v50.
+
+## Parity with v2 completed (2026-11-23)
+
+`tests/test_parity_v2.py` extends the comparison to fields, games that end (wipes, boundary
+deaths, simultaneous wipes, the clock), the "sides" spawn's distribution, 3v5 and 20v20; the
+card equals v2's exactly. Three behaviour-changing bugs were found and fixed (the lift slope
+past the stall, and two in the clock rule): see docs/rewrite/game-parity.md, which also has
+the full difference table. Remaining differences are recorded configuration choices (arena
+4,200 m, boundary ramp 300 m, fixed lineup, the "mixed" spawn) or not yet built (shrink,
+fields per environment, fog).
