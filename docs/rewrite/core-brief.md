@@ -6,6 +6,14 @@ branch this file becomes the root `CLAUDE.md`, the instructions every agent work
 the branch reads first. Values marked *proposed* are for the author to confirm; values
 marked *pending* wait on a named measurement.
 
+**Where things stand (2026-11-22).** A first cut of the skeleton is in `lean/`, written
+on a CPU-only machine: the game step (checked against v2 to float32 rounding), a
+simplified scripted opponent, the model and the learner, with 36 CPU tests passing and a
+smoke run completing. Nothing has run on a GPU, gates G1 to G3 are not closed (G1 has a
+partial laptop result, G3's numbers are proposed in `sections/yardstick.md`), and no
+training run has been made. `lean/README.md` has the state and the order of work;
+`lean/LAPTOP_PROMPT.md` has a prompt for the next agent.
+
 ## 1. Purpose
 
 The project has three aims, held together:
