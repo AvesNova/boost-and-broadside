@@ -65,7 +65,7 @@ def test_swapping_teams_mirrors_the_outcome():
     slots = state.x.shape[1]
 
     def flipped(value):
-        return value.flip(1) if value.dim() >= 2 else value
+        return value.flip(1) if value is not None and value.dim() >= 2 else value
 
     values = {f.name: getattr(state, f.name) for f in dataclasses.fields(State)}
     mirror = {name: flipped(value) for name, value in values.items() if name != "constants"}

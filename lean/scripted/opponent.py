@@ -1,6 +1,7 @@
 """The scripted opponent: Imugi's combat core without doctrines, memory layers or Frontline.
 
-One decision per living ship of one team per call, read from the true game state:
+One decision per living ship of one team per call, read from that team's view of the game
+(`lean.game.core.team_view`: the true state with fog off; with fog on, enemies as last seen):
 nearest living enemy, a drag-law lead, a logistic stick choice toward the lead point,
 logistic power and gun gates, a steer toward the centre near the arena edge, and one
 ordinary uniform draw per action head. Everything is (E, N): E environments, N ship slots.
@@ -14,6 +15,8 @@ from dataclasses import dataclass
 
 import torch
 from torch import Tensor
+
+from lean.game.core import team_view
 
 # The eight logistic gates, in the order of the persona's "gate_centre" and
 # "gate_sharpness" columns. Each maps a positive, dimensionless quantity to a probability.
@@ -307,8 +310,10 @@ def marginals(
     """The opponent's action distributions for the rows of `team`.
 
     state: `lean.contract.State`; persona: from `personas`; kept_target: (E, N) long
-    slot of last tick's target (-1 for none) for the hysteresis, or None for none.
+    slot of last tick's target (-1 for none) for the hysteresis, or None for none. Under fog
+    the opponent reads only its team's view: enemies at their last sighting, none never seen.
     """
+    state = team_view(state, team)
     gun_range = characteristic(config, state, "gun_range")
     stall_angle = characteristic(config, state, "stall_angle")
     max_energy = characteristic(config, state, "max_energy")

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
+from lean.game.core import team_view
+
 from .opponent import ScriptedConfig, characteristic, engage, signed_angle
 
 
@@ -28,6 +30,7 @@ def chaser_act(
     other rows, dead rows and rows that do not exist are 0. Power is always coast.
     `config` supplies the ship characteristics and the stick layout."""
     chaser = chaser or ChaserConfig()
+    state = team_view(state, team)  # under fog, its team's view only
     fight = engage(state, team)
     error = signed_angle(state.heading_cos, state.heading_sin, fight.offset_x, fight.offset_y)
     size = error.abs()

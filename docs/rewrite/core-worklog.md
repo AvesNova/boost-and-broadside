@@ -204,3 +204,19 @@ checked, the commit. Numbers are measured unless marked otherwise.
   thread: uncompiled p99 7.8 / 10.8 / 19.3 ms at 5v5 / 20v20 / 50v50; compiled p99 4.0 (5v5),
   6.1 (20v20), 12.6 ms (50v50). Compile 31 to 34 s cold, 12 s warm: start uncompiled, switch
   when a background build is ready. Machine loaded by agents: to re-measure quiet.
+- 03:45 B7 (fog, game side; background agent, reviewed): `GameConfig.fog` (False by default;
+  True in `GameConfig.core()`). v2's sight test ported exactly (all-round, 1,000 m for every
+  type, fields block only through their cores; sight.py), plus the author's reveals (firing,
+  a real bullet's hit; not boundary damage; that tick only). Last-seen records per ship
+  (`State.seen`, `State.ticks_since_seen`), `Obs.visible` and `Obs.since_seen`
+  (symlog seconds, as v2's model reads). The observation under fog is built only from the
+  team's view (no hidden information: tested by perturbing a hidden enemy); the scripted
+  opponent and chaser read their team's view. Fog off is bit-identical to 25478e10 (200
+  ticks, both configs). Tests: lean/game/tests/test_fog.py (8). `pytest lean/game
+  lean/scripted`: 54 passed, 1 xfailed. Operations with fog: step 1,593 (core), observe 110,
+  scripted 208.
+  - Choices for the author: no reveal at a spawn (v2 reveals spawns); deaths known only when
+    seen (v2 shows all deaths; a bullet kill is always seen since the hit reveals); wrecks
+    can be sighted; only real bullets reveal on a hit. The model does not read `visible`
+    and `since_seen` yet, so a stale last-seen row looks current to it: the model must
+    read them before any training under fog (backlog C10).

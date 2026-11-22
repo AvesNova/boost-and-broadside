@@ -89,13 +89,17 @@ class GameConfig:
     store_loops: float = 2.0
     store_edge_band: float = 0.05
     fire_thrust_fraction: float = 0.0
+    # Fog of war (docs/rewrite/core-decisions.md): an enemy is visible in the team's sight (v2's
+    # sight test: `sighted_by_enemy`) and on the tick it fires or is hit by a bullet; a hidden
+    # enemy is its last-seen row. False: full information, exactly as before.
+    fog: bool = False
 
     @classmethod
     def core(cls, **overrides) -> GameConfig:
-        """The core game as decided so far: the new flight model, one ship (Vizia), and v2's ten
-        fields drawn per environment."""
+        """The core game as decided so far: the new flight model, one ship (Vizia), v2's ten
+        fields drawn per environment, and fog of war."""
         settings = {"flight_model": "core", "damage_model": "core", "ghost_bullets": True}
-        settings.update(lineup=("vizia",), field_count=10)
+        settings.update(lineup=("vizia",), field_count=10, fog=True)
         return cls(**{**settings, **overrides})
 
 
@@ -223,6 +227,7 @@ def ship_constants(
         "shield_rate": card.SHIELD_RECHARGE_RATE * of("shield_recharge_rate_scale"),
         "shield_delay": card.SHIELD_RECHARGE_DELAY * of("shield_recharge_delay_scale"),
         "spawn_energy": spawn_energy,
+        "vision_range": card.VISION_RANGE * of("vision_range_scale"),
         "field_x": fields[:, 0],
         "field_y": fields[:, 1],
         "field_radius": fields[:, 2],
@@ -783,6 +788,10 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
         shot_outcome=shot_outcome,
         shot_tick=bullet_fired_tick,
     )
+    if config.fog:
+        # A shot or a real bullet's hit reveals the ship for this tick (boundary damage does not).
+        struck = earliest_bullet < no_bullet
+        new_state = perceive(new_state, fired | struck)
     return new_state, out
 
 
@@ -876,7 +885,7 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
     zeros = torch.zeros((envs, slots), device=device)
     whole = torch.zeros((envs, slots), dtype=torch.long, device=device)
     bullets = torch.zeros((envs, slots, BULLET_SLOTS), device=device)
-    return State(
+    state = State(
         x=x,
         y=y,
         heading_cos=heading_cos,
@@ -909,6 +918,14 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
         medium=torch.stack([log_index, gradient_x, gradient_y], -1),
         bullet_medium=torch.zeros((envs, slots, BULLET_SLOTS, 3), device=device),
     )
+    if not config.fog:
+        return state
+    # Nothing seen yet: every row unknown and taken as alive until seen dead. Ships in sight at
+    # the spawn are seen at once (no other reveal at a spawn).
+    seen = torch.zeros((envs, len(SEEN_COLUMNS), slots), device=device)
+    seen[:, SEEN_ALIVE] = exists.to(torch.float32)
+    state = dataclasses.replace(state, seen=seen, ticks_since_seen=whole.clone())
+    return perceive(state, torch.zeros_like(exists))
 
 
 def reset(config: GameConfig, envs: int, team_sizes: Tensor, generator: torch.Generator, device) -> State:
@@ -931,7 +948,9 @@ def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tenso
     values = {}
     for field in dataclasses.fields(State):
         new, old = getattr(fresh, field.name), getattr(state, field.name)
-        if field.name == "constants":
+        if new is None:  # fog's fields with fog off
+            values[field.name] = None
+        elif field.name == "constants":
             values[field.name] = {
                 key: old[key] if key.startswith("field_") and old[key].dim() == 1
                 else select(new[key], old[key])
@@ -940,6 +959,123 @@ def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tenso
         else:
             values[field.name] = select(new, old)
     return State(**values)
+
+
+# --------------------------------------------------------------------------- fog
+
+# The raw values a team keeps of an enemy ship from its last sighting (State.seen's columns).
+SEEN_COLUMNS = (
+    "x", "y", "heading_cos", "heading_sin", "speed", "angle", "angle_cos", "angle_sin", "nose_rate",
+    "energy", "shield", "shield_wait", "cooldown", "log_index", "gradient_x", "gradient_y",
+    "bullet_share", "alive", "known",
+)
+SEEN_COOLDOWN = SEEN_COLUMNS.index("cooldown")
+SEEN_MEDIUM = SEEN_COLUMNS.index("log_index")
+SEEN_SHARE = SEEN_COLUMNS.index("bullet_share")
+SEEN_ALIVE = SEEN_COLUMNS.index("alive")
+SEEN_KNOWN = SEEN_COLUMNS.index("known")
+TICKS_SINCE_SEEN_CAP = 1 << 30  # v2's cap (src/bnb/game/perception/observe.py)
+
+
+def sighted_by_enemy(state: State) -> Tensor:
+    """(E, N) bool: some living ship of the other team sees the ship (v2's sight test,
+    src/bnb/game/perception/sight.py `sighted`, game spec 10.1). Sight is all round, out to the
+    observer's vision range (d^2 <= V^2), and blocked only by fields' cores: field i, with core
+    radius max(r - w / 2, 0) and outer radius r + w / 2, blocks the line when exactly one end is
+    strictly inside its core and the two ends are not both inside its outer disc (core and band
+    see each other), or when neither end is inside its core and the segment passes strictly
+    within the core radius of the centre. Dead targets are tested like living ones (a wreck in
+    sight is seen); dead observers see nothing. Bullets are not perceived."""
+    c = state.constants
+    x, y = state.x, state.y
+    line_x = x[:, :, None] - x[:, None, :]  # (E, target, observer): target minus observer, d
+    line_y = y[:, :, None] - y[:, None, :]
+    length_squared = line_x * line_x + line_y * line_y
+    vision = c["vision_range"]
+    clear = (
+        (length_squared <= (vision * vision)[:, None, :])
+        & state.alive[:, None, :]
+        & (state.team[:, :, None] != state.team[:, None, :])
+    )
+    count = c["field_x"].shape[-1]
+    if count > 0:
+        def per_field(name: str) -> Tensor:  # (E or 1, 1, F): drawn per environment or fixed
+            return c[name].reshape(-1, 1, count)
+
+        radius, half_band = per_field("field_radius"), 0.5 * per_field("field_band")
+        core = (radius - half_band).clamp_min(0.0)
+        core_squared, outer = core * core, radius + half_band
+        offset_x = x[..., None] - per_field("field_x")  # (E, N, F)
+        offset_y = y[..., None] - per_field("field_y")
+        distance_squared = offset_x * offset_x + offset_y * offset_y
+        in_core, in_field = distance_squared < core_squared, distance_squared < outer * outer
+        core_target, core_observer = in_core[:, :, None], in_core[:, None]  # (E, N, N, F)
+        ends = (core_target ^ core_observer) & ~(in_field[:, :, None] & in_field[:, None])
+        # u = centre - observer = -(observer's offset); along = u . d, across = u x d.
+        along = -(offset_x[:, None] * line_x[..., None] + offset_y[:, None] * line_y[..., None])
+        across = offset_x[:, None] * line_y[..., None] - offset_y[:, None] * line_x[..., None]
+        length = length_squared[..., None]
+        passes = (
+            ~(core_target | core_observer)
+            & (across * across < core_squared[:, None] * length)
+            & (along > 0.0)
+            & (along < length)
+        )
+        clear = clear & ~(ends | passes).any(-1)
+    return clear.any(-1)
+
+
+def _snapshot(state: State) -> Tensor:
+    """(E, SEEN_COLUMNS, N) float32: each ship's raw values now, as a sighting records them.
+    Columns on the middle axis, so each column read back is an (E, N) slice with unit stride
+    along N."""
+    bullet_share = ((state.bullet_moves_left > 0) & state.bullet_real).to(torch.float32).mean(-1)
+    log_index, gradient_x, gradient_y = state.medium.unbind(-1)
+    alive = state.alive.to(torch.float32)
+    return torch.stack(
+        [
+            state.x, state.y, state.heading_cos, state.heading_sin, state.speed, state.angle,
+            state.angle_cos, state.angle_sin, state.nose_rate, state.energy, state.shield,
+            state.shield_wait, state.cooldown.to(torch.float32), log_index, gradient_x, gradient_y,
+            bullet_share, alive, torch.ones_like(alive),
+        ],
+        1,
+    )
+
+
+def perceive(state: State, revealed: Tensor) -> State:
+    """The state with each ship's sighting by its enemy team brought up to date: a ship in the
+    enemy's sight or `revealed` (E, N) bool (it fired or was hit this tick) is recorded as it is
+    now and its ticks since seen set to 0; any other ship keeps its last-seen row and counts up
+    to the cap. Each ship has one enemy team, so one row per ship serves."""
+    visible = (sighted_by_enemy(state) | revealed) & state.exists
+    seen = torch.where(visible[:, None], _snapshot(state), state.seen)
+    since = torch.where(visible, 0, (state.ticks_since_seen + 1).clamp_max(TICKS_SINCE_SEEN_CAP))
+    return dataclasses.replace(state, seen=seen, ticks_since_seen=since)
+
+
+def team_view(state: State, team: int) -> State:
+    """The game as team `team` knows it: its own ships as they are, every enemy as last seen
+    (a never-seen or seen-dead enemy is not alive), and no bullets (bullets are not perceived;
+    the bullet fields are None). With fog off (state.seen is None) the state itself. Fields
+    that are fixed and told at reset (exists, team, type, constants, tick) are shared."""
+    if state.seen is None:
+        return state
+    enemy = (state.team != team)[:, None]
+    columns = torch.where(enemy, state.seen, _snapshot(state)).unbind(1)
+    named = dict(zip(SEEN_COLUMNS, columns))
+    alive = (named["alive"] > 0.5) & (named["known"] > 0.5)
+    return dataclasses.replace(
+        state,
+        **{name: named[name] for name in SEEN_COLUMNS[:12]},
+        cooldown=named["cooldown"].long(),
+        medium=torch.stack([named["log_index"], named["gradient_x"], named["gradient_y"]], -1),
+        alive=alive,
+        fired=state.fired,  # a shot reveals its ship on that tick, so the true flag is known
+        bullet_x=None, bullet_y=None, bullet_dir_x=None, bullet_dir_y=None, bullet_speed=None,
+        bullet_moves_left=None, bullet_real=None, bullet_fired_tick=None, bullet_medium=None,
+        seen=None, ticks_since_seen=None,
+    )
 
 
 # --------------------------------------------------------------------------- observation
@@ -957,7 +1093,9 @@ FIELD_LEVEL_SCALE = 2.0  # half-octaves
 
 
 def observe(config: GameConfig, state: State, team: int) -> Obs:
-    """Team `team`'s view of every slot, full information.
+    """Team `team`'s view of every slot: full information with fog off; with fog on, built
+    from `team_view` only (enemies as last seen), so nothing in it depends on what the team
+    cannot see.
 
     ship (E, N, SHIP_FEATURES): 20 scalars [velocity x, y and speed over 400 m/s; angle of
     attack over 0.27 rad, its cos and sin; nose rate over 3 rad/s; energy and shield as
@@ -968,53 +1106,82 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     viewer, alive, exists, fired last tick], then the ship-type one-hot. Rows of slots that
     do not exist are zero. Fired last tick is the step's stored flag; the share of bullet slots
     in flight counts real bullets only (ghosts are not observed).
+
+    Fog: an enemy row holds its values at its last sighting, alive is "not seen dead", and
+    key_mask leaves out never-seen and seen-dead enemies; never-seen rows are zero. visible is
+    True for own rows and enemies seen this tick; since_seen is symlog of the seconds since the
+    last sighting (v2's time_since_seen as its model reads it), 0 for own rows. The globals'
+    enemy alive fraction counts enemies not seen dead.
     """
     c = state.constants
     h = config.tick_length
-    exists, alive = state.exists, state.alive
+    same_team = state.team == team
+    if config.fog:
+        view = team_view(state, team)
+        enemy_seen = torch.where(same_team[:, None], 0.0, state.seen[:, SEEN_SHARE:])
+        known = same_team | (enemy_seen[:, SEEN_KNOWN - SEEN_SHARE] > 0.5)
+        # Own rows: the live share; enemy rows: as last seen.
+        bullet_share = torch.where(
+            same_team,
+            ((state.bullet_moves_left > 0) & state.bullet_real).to(torch.float32).mean(-1),
+            enemy_seen[:, 0],
+        )
+        # For the globals: own ships alive, enemies not seen dead (never-seen count as alive).
+        counted = torch.where(same_team, state.alive, enemy_seen[:, SEEN_ALIVE - SEEN_SHARE] > 0.5)
+    else:
+        view = state
+        in_flight = (state.bullet_moves_left > 0) & state.bullet_real
+        bullet_share = in_flight.to(torch.float32).mean(-1)
+    exists, alive = state.exists, view.alive
     # World-frame motion, as v2 observes it: the proper speed over the refractive index, so a
     # field that slows a ship shows as a slower ship (src/bnb/game/perception/observe.py).
-    speed = state.speed * torch.exp(-state.medium[..., 0])
-    velocity_x = speed * (state.heading_cos * state.angle_cos + state.heading_sin * state.angle_sin)
-    velocity_y = speed * (state.heading_sin * state.angle_cos - state.heading_cos * state.angle_sin)
-    distance = torch.sqrt(state.x * state.x + state.y * state.y)
+    speed = view.speed * torch.exp(-view.medium[..., 0])
+    velocity_x = speed * (view.heading_cos * view.angle_cos + view.heading_sin * view.angle_sin)
+    velocity_y = speed * (view.heading_sin * view.angle_cos - view.heading_cos * view.angle_sin)
+    distance = torch.sqrt(view.x * view.x + view.y * view.y)
     inverse_distance = 1.0 / distance.clamp_min(1.0)
     fired_last = state.fired  # stored by the step (agreed fix 12), not inferred from the ring
-    same_team = state.team == team
     scalars = [
         velocity_x / SPEED_SCALE,
         velocity_y / SPEED_SCALE,
         speed / SPEED_SCALE,
-        state.angle / ANGLE_SCALE,
-        state.angle_cos,
-        state.angle_sin,
-        state.nose_rate / NOSE_RATE_SCALE,
-        state.energy * c["inverse_max_energy"],
-        state.shield / c["max_shield"],
-        state.shield / SHIELD_SCALE,
-        (state.shield_wait / SHIELD_WAIT_SCALE).clamp(0.0, 1.0),
-        (state.cooldown.to(torch.float32) * h).clamp(0.0, COOLDOWN_CLIP),
+        view.angle / ANGLE_SCALE,
+        view.angle_cos,
+        view.angle_sin,
+        view.nose_rate / NOSE_RATE_SCALE,
+        view.energy * c["inverse_max_energy"],
+        view.shield / c["max_shield"],
+        view.shield / SHIELD_SCALE,
+        (view.shield_wait / SHIELD_WAIT_SCALE).clamp(0.0, 1.0),
+        (view.cooldown.to(torch.float32) * h).clamp(0.0, COOLDOWN_CLIP),
         ((config.arena_radius - distance) / BOUNDARY_CLIP).clamp(-1.0, 1.0),
-        state.x * inverse_distance,
-        state.y * inverse_distance,
-        state.heading_cos,
-        state.heading_sin,
-        state.x / config.arena_radius,
-        state.y / config.arena_radius,
-        ((state.bullet_moves_left > 0) & state.bullet_real).to(torch.float32).mean(-1),
+        view.x * inverse_distance,
+        view.y * inverse_distance,
+        view.heading_cos,
+        view.heading_sin,
+        view.x / config.arena_radius,
+        view.y / config.arena_radius,
+        bullet_share,
     ]
     flags = [same_team, alive, exists, fired_last & alive]
     one_hot = torch.nn.functional.one_hot(state.type, SHIP_TYPES)
+    shown = (exists & known) if config.fog else exists
     ship = torch.cat(
         [torch.stack(scalars, -1), torch.stack(flags, -1).to(torch.float32), one_hot.to(torch.float32)], -1
-    ) * exists[..., None]
+    ) * shown[..., None]
     assert ship.shape[-1] == SHIP_FEATURES
 
-    def alive_fraction(mask: Tensor) -> Tensor:
-        return (alive & mask).sum(-1) / (exists & mask).sum(-1).clamp_min(1)
+    def alive_fraction(mask: Tensor, living: Tensor) -> Tensor:
+        return (living & mask).sum(-1) / (exists & mask).sum(-1).clamp_min(1)
 
+    enemy_living = counted if config.fog else alive
     globals_ = torch.stack(
-        [state.tick.to(torch.float32) / config.clock_ticks, alive_fraction(same_team), alive_fraction(~same_team)], -1
+        [
+            state.tick.to(torch.float32) / config.clock_ticks,
+            alive_fraction(same_team, alive),
+            alive_fraction(~same_team, enemy_living),
+        ],
+        -1,
     )
     assert globals_.shape[-1] == GLOBAL_FEATURES
     envs = state.x.shape[0]
@@ -1033,14 +1200,23 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         -1,
     )
     assert field.shape[-1] == FIELD_FEATURES
+    if config.fog:
+        hidden_ticks = torch.where(same_team, 0, state.ticks_since_seen)
+        visible = known & (hidden_ticks == 0)
+        since_seen = torch.log1p(hidden_ticks.to(torch.float32) * h)
+    else:
+        visible = torch.ones_like(exists)
+        since_seen = torch.zeros_like(state.x)
     return Obs(
         ship=ship,
-        pos=torch.stack([state.x, state.y], -1),
-        heading=torch.atan2(state.heading_sin, state.heading_cos),
+        pos=torch.stack([view.x, view.y], -1),  # a never-seen enemy's last-seen row is zero
+        heading=torch.atan2(view.heading_sin, view.heading_cos),
         key_mask=exists & alive,
         own=same_team & alive,
         globals=globals_,
         field=field,
         field_pos=torch.stack([per_environment("field_x"), per_environment("field_y")], -1),
         field_mask=torch.ones(field.shape[:2], dtype=torch.bool, device=field.device),  # all present
+        visible=visible,
+        since_seen=since_seen,
     )

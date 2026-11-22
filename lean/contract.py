@@ -78,6 +78,12 @@ class State:
     # last tick (fields are fixed within an episode), as v2 caches it.
     medium: Tensor  # (E, N, 3) float32
     bullet_medium: Tensor  # (E, N, K, 3) float32
+    # Fog (None with fog off). Each ship as its enemy team last saw it: (E, SEEN_COLUMNS, N)
+    # float32 raw values in the order of lean.game.core.SEEN_COLUMNS (the last two are "alive"
+    # at that sighting, 1 until seen dead, and "known", 1 once ever seen); and the ticks since
+    # the enemy team last saw it, (E, N) long, 0 while visible, capped (v2's ticks_since_seen).
+    seen: Tensor | None = None
+    ticks_since_seen: Tensor | None = None
 
 
 @dataclass
@@ -101,7 +107,8 @@ class StepOut:
 
 @dataclass
 class Obs:
-    """One team's view of the game; full information."""
+    """One team's view of the game: full information with fog off; with fog on, enemy rows are
+    their last-seen values and nothing depends on what the team cannot see."""
 
     ship: Tensor  # (E, N, SHIP_FEATURES) float32
     pos: Tensor  # (E, N, 2) float32 metres
@@ -112,3 +119,5 @@ class Obs:
     field: Tensor  # (E, F, FIELD_FEATURES) float32; F may be 0
     field_pos: Tensor  # (E, F, 2) float32 metres, the field's centre
     field_mask: Tensor  # (E, F) bool: the field is present
+    visible: Tensor  # (E, N) bool: the row is seen this tick (own rows always; all with fog off)
+    since_seen: Tensor  # (E, N) float32: symlog of the seconds since the row was seen (0 visible)

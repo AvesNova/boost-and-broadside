@@ -141,3 +141,13 @@ script is the harness.
 - The match against the chaser, then the operation count under compilation.
 - `torch.where(..., math.inf)` and the `argmin` over an all-infinite row (rows without
   a living enemy) give index 0; those rows are masked by `has_target`.
+
+## Fog (2026-11-23)
+
+`marginals` and `chaser_act` first replace the state by `lean.game.core.team_view(state,
+team)`: with fog off the state itself (no cost); with fog on, own ships live and enemies at
+their last sighting, never-seen and seen-dead enemies not alive, no bullet fields. So the
+opponent chases a hidden enemy's last-seen place and, with no enemy ever seen, steers to the
+centre. Callers are unchanged (`lean/learn/collect.py` passes the true state). Cost: 15
+operations; `act` for one team is 208 (fog on) against 193. Test:
+`lean/game/tests/test_fog.py::test_scripted_opponent_does_not_cheat`.

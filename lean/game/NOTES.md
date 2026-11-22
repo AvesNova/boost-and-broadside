@@ -13,7 +13,7 @@
 - Step order: fire, flight, bullet motion, swept test (dense (E, N K, N)), first contact,
   damage (kinetic x cored closeness x aspect), boundary (constant radius), shields with
   the quiet rule, deaths as a mask, win check, clock, counters. No respawn, shrink, zones
-  or fog. `step` never resets; the caller passes `StepOut.done` to `reset_done`.
+  or fog (fog added 2026-11-23, see the last section). `step` never resets; the caller passes `StepOut.done` to `reset_done`.
 
 ## What was run (CPU, one thread, torch 2.15, Python 3.14; 2026-11-22)
 
@@ -165,4 +165,82 @@ card equals v2's exactly. Three behaviour-changing bugs were found and fixed (th
 past the stall, and two in the clock rule): see docs/rewrite/game-parity.md, which also has
 the full difference table. Remaining differences are recorded configuration choices (arena
 4,200 m, boundary ramp 300 m, fixed lineup, the "mixed" spawn) or not yet built (shrink,
-fields per environment, fog).
+fields per environment; fog since built, below).
+
+## Fog of war (2026-11-23)
+
+Rules: docs/rewrite/core-decisions.md and docs/questions.md items 2 and 5. `GameConfig.fog`
+(default False; True in `GameConfig.core()`). Fog off is bit-identical to the tree before fog:
+`step`, `observe` and `reset_done` compared with HEAD (25478e10) over 200 ticks with resets,
+v2 config and core config, every state, step-output and observation field `torch.equal`.
+
+**v2's sight rule as read** (src/bnb/game/perception/sight.py `sighted`, `visibility`;
+observe.py `perceive`): sight is all round (no cone), out to the observer's vision range,
+d^2 <= V^2. V is the rule's 3,072 m times the type's `vision_range_scale` 0.3255: 1,000 m for
+every real-scale type, not scaled with the map. Only living observers see. Fields block by
+their cores only: core radius max(r - w/2, 0), outer radius r + w/2. Field i blocks the line
+when exactly one end is strictly inside its core and the two ends are not both inside its
+outer disc (core to band sees, core to outside does not), or when neither end is inside its
+core and the segment passes strictly within the core radius (foot of the perpendicular inside
+the segment: 0 < u.d < |d|^2 and |u x d|^2 < rho^2 |d|^2). Two ends in the same core see each
+other. Field strength and sign do not matter. Bullets are not perceived. v2 reveals an enemy
+that is alive and (sighted, or fired this tick, or spawned this tick); a team always sees its
+own ships. v2 does not reveal on a hit and does not keep last-seen values: hidden rows are
+zero, `time_since_seen` is ticks times the tick length in seconds (cap 2^30 ticks) and its
+model reads symlog of it; v2 shows `alive` for every ship (deaths are public in v2).
+
+**What lean does.**
+- `State.seen` (E, 19, N) float32, columns `core.SEEN_COLUMNS`: each ship's raw values at its
+  last sighting by its enemy team (x, y, heading, speed, angle, nose rate, energy, shield,
+  shield wait, cooldown, the medium, the real-bullet share, alive, known), and
+  `State.ticks_since_seen` (E, N) long. Each ship has one enemy team, so one record per ship.
+  None with fog off. Columns on the middle axis so each column read back has unit stride.
+- `perceive(state, revealed)` at the end of `step` (and in the reset on the spawn positions):
+  visible = (sighted by a living enemy | fired a real shot | hit by a real bullet) & exists;
+  a visible ship's record is replaced by its current values and its count set to 0, any other
+  counts up to the cap. Inside `step` because "hit this tick" is known only there (not stored).
+- `team_view(state, team)`: own ships live, enemies as recorded, a never-seen or seen-dead enemy
+  not alive, bullet fields None. `observe` under fog is built from it; `key_mask` = exists and
+  alive in the view; never-seen rows are zero; `Obs.visible`, `Obs.since_seen` =
+  log1p(seconds since seen) (0 for own rows; with fog off all visible, all 0). Globals: the
+  enemy alive fraction counts only deaths the team saw (never-seen enemies count as alive).
+- The scripted opponent and the chaser call `team_view` first: under fog they target enemies at
+  their last-seen place, ignore never-seen ones (no target: steer to the centre), never read
+  bullets. With fog off `team_view` returns the state itself (no cost).
+
+Tests `tests/test_fog.py` (8): fog off unchanged and full information; v2's sight (range and
+the field-core cases); own team always visible, dead observers blind; firing and hits reveal for
+one tick, boundary damage does not; last-seen values freeze, count, cap; never-seen masked and
+seen deaths dropped, unseen deaths not known; no hidden information in the observation (a
+hidden enemy's motion, store, gun, life and bullets changed: every `Obs` field equal; the same
+change in sight does change it); the scripted opponent and the chaser unchanged by it.
+
+Operations (docs/rewrite/sections/scoreboard/game_ops.py's counter, uncompiled, CPU, one
+thread, 5v5, E = 256; compute + view):
+
+| call | fog off | fog on |
+|---|---|---|
+| step, core config (10 drawn fields) | 1,527 + 128 | 1,593 + 158 |
+| step, v2 config (no fields) | 1,342 + 124 | 1,370 + 134 |
+| observe, one team | 82 + 8 (HEAD 80) | 110 + 16 |
+| scripted act, one team | 193 + 41 | 208 + 44 |
+| of which `perceive` (10 fields / none) | | 64 / 26 |
+| of which `team_view` | | 15 |
+
+Fog off observe +2 (the two new `Obs` fields). The sight test is dense (E, N, N, F) with the
+fields vectorised, not v2's per-field loop: 2.2 ms per perceive at E = 256 with 10 fields on the
+CPU; at 50v50 an uncompiled call holds about 100k booleans and floats per environment per
+temporary (check on the GPU with the hit test). Scripted vs scripted, core config, 64 games
+of 5v5, 1,500 ticks: fog off 385 deaths, 42 games ended; fog on 372 deaths, 39 ended; team 0
+saw 50% of the living enemy rows on a tick and had 60% in its key mask.
+
+Choices for the author:
+1. No reveal at a spawn: the decided rule has none; v2 reveals every ship on its spawn tick
+   (so at tick 0 in v2 everyone is seen). With the "sides" spawn nobody is seen at the start.
+2. Deaths are known only when seen (on the death tick, or a wreck later in sight; a kill by a
+   bullet is always seen, since the hit reveals). v2 shows every death. An unseen boundary
+   death stays a last-seen row and counts as alive in the globals.
+3. Wrecks can be sighted (v2's sight test ignores the target's life); this is how a hidden
+   death becomes known. No respawn in lean yet, so every death is for good.
+4. A hit reveals for real bullets only (ghosts are labels); friendly hits reveal too.
+5. `Obs.since_seen` carries symlog(seconds) (v2's model input), not raw seconds.

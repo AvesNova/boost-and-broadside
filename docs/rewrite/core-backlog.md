@@ -32,7 +32,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | B4 | The agreed waste fixes in lean/game/NOTES.md (constants packed or compiled in, packed state, dead ships free, constant work at reset, velocity once per step, one scripted call, personas at reset, no-fields path, batched resets) | todo |
 | B5 | Cheaper damage form (agreed fix 14) | done, head-on term only (worklog 03:01) |
 | B6 | Ghost-bullet hit labels | game side done (worklog 03:06); the hit head is in C and D |
-| B7 | Fog (rules in core-decisions.md) | todo |
+| B7 | Fog (rules in core-decisions.md) | game side done (fog off by default; on in core()); model must read it (C10) |
 
 ## C. Model (port v2's mathematics with the agreed changes)
 
@@ -46,6 +46,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | C6 | Rotary: drop bands far larger than the map; same layout in both heads; rotate values | done (worklog 03:13) |
 | C7 | Critic: HL-Gauss, linear bins, 64 per level, v2's five levels; range monitoring | bins done (64, linear); v2's five levels with D2 (worklog 03:13) |
 | C8 | MLP width 4x as v1 and v2 (departure audit row) | done (worklog 03:13) |
+| C10 | The model reads fog: `Obs.visible` and `Obs.since_seen` as ship inputs (a last-seen token plus the time since seen); needed before any training under fog | todo |
 | C9 | Swappable position code: v2's categorical codes, Fourier hexagonal, grid cells | done (worklog 03:13) |
 
 ## D. Learner and league

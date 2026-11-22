@@ -42,6 +42,7 @@ CARD = {
     "engine_knee_scale": (1.0, 1.0, 1.0),
     "fine_stick": (0.1964104026556015, 0.2223183661699295, 0.21010109782218933),
     "sustained_stick": (0.654701292514801, 0.7410612106323242, 0.7003369927406311),
+    "vision_range_scale": (0.3255208432674408, 0.3255208432674408, 0.3255208432674408),
 }
 
 # Flight constants shared by every type.
@@ -76,6 +77,7 @@ SPAWN_TURN_DISTANCE = 436.5
 SIDE_AREA_FRACTION = 0.15
 SIDE_HEADING_JITTER = 0.2617993877991494
 MIXED_AREA_FRACTION = 0.85
+VISION_RANGE = 3072.0  # m; times the type's vision_range_scale: 1,000 m for every type
 LN_SQRT2 = 0.5 * math.log(2.0)
 LN_2 = math.log(2.0)
 
