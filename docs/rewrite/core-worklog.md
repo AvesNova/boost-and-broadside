@@ -42,3 +42,20 @@ checked, the commit. Numbers are measured unless marked otherwise.
 - 03:55 B1: the observation's speed and velocity are in the world frame (proper speed over
   the refractive index, as v2's observe.py), per the author. Test
   tests/test_observe.py (a ship inside a strong field). `pytest lean`: all pass.
+- 04:35 B3 and the game half of C4: fields drawn per environment at every reset, and field
+  rows in the observation.
+  - `GameConfig.field_count` (0: the fixed `fields` as before; `GameConfig.core()` uses 10)
+    and v2's real-scale elimination map rules (src/bnb/game/physics/spawning.py `new_map`,
+    values from `api.rules_of(PRESETS["real_scale_elimination"])`): point-symmetric pairs
+    plus a centre field for an odd count; centres uniform in 0.85 of the arena; radius
+    log-normal, median 400 m, sigma 0.6, clamped to [120, 1200] m, times the map scale
+    (arena / 2,600 m: 1.615 at 4,200 m, so median 646 m); band 160 m; level -2, -1, +1, +2
+    half-octaves, a quarter each. Stored per environment as (E, 1, F) constants;
+    `reset_done` redraws them where a game ended; `medium` broadcasts over environments.
+  - Contract: `Obs.field` (E, F, 3: radius / 1000 m, band / 40 m, level / 2, v2's input
+    scales), `Obs.field_pos` (E, F, 2), `Obs.field_mask` (E, F). The model does not read
+    them yet (C4's model half).
+  - Sandbox: draws the first environment's drawn fields; Tab keeps the fields.
+  - Checked: tests/test_fields.py (5 tests: v2's bounds and symmetry; per-environment fields
+    and medium; redraw only where done; observation rows; a 60-tick core game with fields
+    stays finite). `pytest lean`: 63 passed, 1 xfailed.

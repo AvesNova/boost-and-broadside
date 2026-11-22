@@ -28,7 +28,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 |---|---|---|
 | B1 | Observation velocity in world coordinates (divide by the refractive index, as v2) | done (worklog 03:55) |
 | B2 | Boundary ramp: v2 scales it with the arena (161.5 m at 4,200 m), lean fixes 300 m | blocked: author (docs/questions.md) |
-| B3 | Fields drawn per environment at reset (agreed fix 11) | todo |
+| B3 | Fields drawn per environment at reset (agreed fix 11) | done (worklog 04:35) |
 | B4 | The agreed waste fixes in lean/game/NOTES.md (constants packed or compiled in, packed state, dead ships free, constant work at reset, velocity once per step, one scripted call, personas at reset, no-fields path, batched resets) | todo |
 | B5 | Cheaper damage form (agreed fix 14) | todo |
 | B6 | Ghost-bullet hit labels | todo |
@@ -41,7 +41,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | C1 | Doubling scan for the recurrence over time (same maths, measured 2.9x faster update) | todo |
 | C2 | Griffin temporal block (v2's block) with the paper's initialisation | todo |
 | C3 | Encoder: one first layer per token kind, a shared second layer | todo |
-| C4 | Field tokens as key/value memory in the same attention operation (needs the Obs contract to carry fields) | todo |
+| C4 | Field tokens as key/value memory in the same attention operation (needs the Obs contract to carry fields) | doing: game and contract done (worklog 04:35); model next |
 | C5 | Gated attention, element-wise, released-code initialisation; no null key | todo |
 | C6 | Rotary: drop bands far larger than the map; same layout in both heads; rotate values | todo |
 | C7 | Critic: HL-Gauss, linear bins, 64 per level, v2's five levels; range monitoring | todo |

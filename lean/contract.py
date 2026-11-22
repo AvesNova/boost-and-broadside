@@ -19,6 +19,9 @@ SHIP_SCALARS = 20
 SHIP_FLAGS = 4
 SHIP_FEATURES = SHIP_SCALARS + SHIP_FLAGS + SHIP_TYPES
 GLOBAL_FEATURES = 3
+# Per-field observation row (v2's field inputs, src/bnb/models/yemong/inputs.py): radius over
+# 1000 m, band width over 40 m, level (half-octaves of the refractive index) over 2.
+FIELD_FEATURES = 3
 
 
 def split_joint(joint: Tensor) -> Tensor:
@@ -94,3 +97,6 @@ class Obs:
     key_mask: Tensor  # (E, N) bool: row may be attended (exists and alive)
     own: Tensor  # (E, N) bool: rows this view controls (own team, alive)
     globals: Tensor  # (E, GLOBAL_FEATURES) float32
+    field: Tensor  # (E, F, FIELD_FEATURES) float32; F may be 0
+    field_pos: Tensor  # (E, F, 2) float32 metres, the field's centre
+    field_mask: Tensor  # (E, F) bool: the field is present

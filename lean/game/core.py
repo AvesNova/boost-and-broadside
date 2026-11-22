@@ -8,6 +8,8 @@ deaths, win check and clock, counters. Nothing here resets an environment: the c
 passes StepOut.done to reset_done.
 """
 
+from __future__ import annotations
+
 import dataclasses
 import math
 from dataclasses import dataclass
@@ -18,6 +20,7 @@ from torch import Tensor
 
 from lean.contract import (
     BULLET_SLOTS,
+    FIELD_FEATURES,
     GLOBAL_FEATURES,
     SHIP_FEATURES,
     SHIP_TYPES,
@@ -55,15 +58,31 @@ class GameConfig:
     # `store_loops` vertical loops at corner speed; dive and climb equal and opposite; a
     # smootherstep taper over `store_edge_band` of the store at each end; firing scales thrust
     # by `fire_thrust_fraction` on the ticks it fires and costs no store.
+    # Fields drawn per environment at every reset (v2's random map, src/bnb/game/physics/
+    # spawning.py new_map, real-scale elimination's values): `field_count` fields in
+    # point-symmetric pairs (and one at the centre for an odd count), centres uniform in
+    # `field_disc_fraction` of the arena, radius log-normal (median, sigma) clamped to
+    # [min, max], all times the map scale (arena radius / 2,600 m), band `field_band_width`,
+    # level -2, -1, +1 or +2 half-octaves. 0: the fixed `fields` above instead.
+    field_count: int = 0
+    field_disc_fraction: float = 0.85
+    field_radius_median: float = 400.0
+    field_radius_log_sigma: float = 0.6
+    field_radius_min: float = 120.0
+    field_radius_max: float = 1200.0
+    field_band_width: float = 160.0
+    field_high_share: float = 0.5
+    field_strong_share: float = 0.5
     flight_model: str = "v2"
     store_loops: float = 2.0
     store_edge_band: float = 0.05
     fire_thrust_fraction: float = 0.0
 
     @classmethod
-    def core(cls, **overrides) -> "GameConfig":
-        """The core game as decided so far: the new flight model and one ship (Vizia)."""
-        return cls(**{"flight_model": "core", "lineup": ("vizia",), **overrides})
+    def core(cls, **overrides) -> GameConfig:
+        """The core game as decided so far: the new flight model, one ship (Vizia), and v2's ten
+        fields drawn per environment."""
+        return cls(**{"flight_model": "core", "lineup": ("vizia",), "field_count": 10, **overrides})
 
 
 # --------------------------------------------------------------------------- constants
@@ -181,7 +200,7 @@ def smootherstep(t: Tensor) -> Tensor:
 def medium(constants: dict[str, Tensor], x: Tensor, y: Tensor) -> tuple[Tensor, Tensor, Tensor]:
     """(ln n, d/dx ln n, d/dy ln n) at points (E, P) for the run's fixed fields (F,).
     With no fields the medium is exactly 0."""
-    if constants["field_x"].shape[0] == 0:
+    if constants["field_x"].shape[-1] == 0:
         zeros = torch.zeros_like(x)
         return zeros, zeros, zeros
     target, band = constants["field_target"], constants["field_band"]
@@ -674,6 +693,38 @@ def _edge_safe(config: GameConfig, x: Tensor, y: Tensor, angle: Tensor) -> tuple
     return torch.cos(normal + off_normal), torch.sin(normal + off_normal)
 
 
+MAP_SCALE_RADIUS = 2600.0  # m: the arena radius of map scale 1 (v2's rules.py)
+
+
+def draw_fields(config: GameConfig, envs: int, generator, device) -> dict[str, Tensor]:
+    """Each environment's fields, (E, 1, F) per quantity (v2's new_map): point-symmetric pairs,
+    field P + i is field i rotated by 180 degrees about the centre, and for an odd count the
+    last field sits at the centre."""
+    count, pairs = config.field_count, config.field_count // 2
+    scale = config.arena_radius / MAP_SCALE_RADIUS
+    uniforms = torch.rand((envs, count, 4), generator=generator, device=device)
+    drawn = torch.cat([uniforms[:, :pairs], uniforms[:, :pairs], uniforms[:, 2 * pairs :]], 1)
+    disc = config.field_disc_fraction * config.arena_radius
+    distance = disc * torch.sqrt(uniforms[:, :pairs, 0])
+    angle = 2.0 * math.pi * uniforms[:, :pairs, 1]
+    x, y = distance * torch.cos(angle), distance * torch.sin(angle)
+    centre = torch.zeros((envs, count - 2 * pairs), device=device)
+    z = math.sqrt(2.0) * torch.erfinv(2.0 * drawn[..., 2].clamp(1e-6, 1.0 - 1e-6) - 1.0)
+    radius = config.field_radius_median * torch.exp(config.field_radius_log_sigma * z)
+    radius = scale * radius.clamp(config.field_radius_min, config.field_radius_max)
+    high, strong = config.field_high_share, config.field_strong_share
+    edges = ((1.0 - high) * strong, 1.0 - high, 1.0 - high + high * (1.0 - strong))
+    index = sum((drawn[..., 3] >= edge).long() for edge in edges)
+    level = torch.tensor([-2.0, -1.0, 1.0, 2.0], device=device)[index]
+    return {
+        "field_x": torch.cat([x, -x, centre], 1)[:, None],
+        "field_y": torch.cat([y, -y, centre], 1)[:, None],
+        "field_radius": radius[:, None],
+        "field_band": torch.full_like(radius, config.field_band_width)[:, None],
+        "field_target": (level * card.LN_SQRT2)[:, None],
+    }
+
+
 def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generator, device) -> State:
     """A fresh state of (E, N): team 0 in the first team_sizes[:, 0] slots, team 1 in the
     next team_sizes[:, 1], the rest not existing (parked at the centre at spawn speed)."""
@@ -686,6 +737,8 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
     names = torch.tensor([card.TYPE_NAMES.index(name) for name in config.lineup], device=device)
     ship_type = torch.where(exists, names[rank % len(config.lineup)], 0)
     constants = ship_constants(config, ship_type)
+    if config.field_count > 0:
+        constants.update(draw_fields(config, envs, generator, device))
 
     def uniform(*shape):
         return torch.rand(shape, generator=generator, device=device)
@@ -766,7 +819,9 @@ def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tenso
         new, old = getattr(fresh, field.name), getattr(state, field.name)
         if field.name == "constants":
             values[field.name] = {
-                key: old[key] if key.startswith("field_") else select(new[key], old[key]) for key in old
+                key: old[key] if key.startswith("field_") and old[key].dim() == 1
+                else select(new[key], old[key])
+                for key in old
             }
         else:
             values[field.name] = select(new, old)
@@ -782,6 +837,9 @@ SHIELD_WAIT_SCALE = 3.0  # s, the recharge delay
 COOLDOWN_CLIP = 0.5  # s
 BOUNDARY_CLIP = 1000.0  # m
 SHIELD_SCALE = 150.0
+FIELD_RADIUS_SCALE = 1000.0  # m (v2's inputs.py)
+FIELD_BAND_SCALE = 40.0  # m
+FIELD_LEVEL_SCALE = 2.0  # half-octaves
 
 
 def observe(config: GameConfig, state: State, team: int) -> Obs:
@@ -848,6 +906,22 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         [state.tick.to(torch.float32) / config.clock_ticks, alive_fraction(same_team), alive_fraction(~same_team)], -1
     )
     assert globals_.shape[-1] == GLOBAL_FEATURES
+    envs = state.x.shape[0]
+
+    def per_environment(name: str) -> Tensor:
+        value = c[name]
+        return value.reshape(envs, -1) if value.dim() == 3 else value.expand(envs, -1)
+
+    field_level = per_environment("field_target") / card.LN_SQRT2
+    field = torch.stack(
+        [
+            per_environment("field_radius") / FIELD_RADIUS_SCALE,
+            per_environment("field_band") / FIELD_BAND_SCALE,
+            field_level / FIELD_LEVEL_SCALE,
+        ],
+        -1,
+    )
+    assert field.shape[-1] == FIELD_FEATURES
     return Obs(
         ship=ship,
         pos=torch.stack([state.x, state.y], -1),
@@ -855,4 +929,7 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         key_mask=exists & alive,
         own=same_team & alive,
         globals=globals_,
+        field=field,
+        field_pos=torch.stack([per_environment("field_x"), per_environment("field_y")], -1),
+        field_mask=torch.ones(field.shape[:2], dtype=torch.bool, device=field.device),  # all present
     )

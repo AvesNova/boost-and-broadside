@@ -103,7 +103,8 @@ class World:
         """Swap the player's ship card in flight; position, speed and store are kept."""
         self.player_type = ship_type
         self.state.type = self._types()
-        self.state.constants = core.ship_constants(self.config, self.state.type)
+        fields = {k: v for k, v in self.state.constants.items() if k.startswith("field_")}
+        self.state.constants = {**core.ship_constants(self.config, self.state.type), **fields}
         s = self.state
         s.energy = torch.minimum(s.energy, s.constants["max_energy"])
         s.shield = torch.minimum(s.shield, s.constants["max_shield"])
@@ -189,3 +190,16 @@ class World:
             "stall_degrees": math.degrees(float(s.constants["stall"][0, 0])),
             "shield": float(s.shield[0, 0] / s.constants["max_shield"][0, 0]),
         }
+
+
+def field_list(state) -> list[tuple[float, float, float, float, float]]:
+    """The first environment's fields as (x, y, radius, band, level in half-octaves)."""
+    c = state.constants
+    columns = [
+        c[name].reshape(-1, c[name].shape[-1])[0] if c[name].dim() > 1 else c[name]
+        for name in ("field_x", "field_y", "field_radius", "field_band", "field_target")
+    ]
+    return [
+        (float(x), float(y), float(r), float(b), float(t) / card.LN_SQRT2)
+        for x, y, r, b, t in zip(*columns)
+    ]

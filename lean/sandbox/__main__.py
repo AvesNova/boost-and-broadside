@@ -15,7 +15,7 @@ import torch
 
 from lean.game import card, core
 
-from .world import World, stick_index
+from .world import World, field_list, stick_index
 
 LEVEL_NAMES = {1: "fine", 2: "sustained", 3: "full"}
 POWER_NAMES = {0: "coast", 1: "dive (boost)", 2: "climb (reverse)"}
@@ -218,7 +218,7 @@ class App:
             c.create_line(*points, fill=colour, width=2, dash=dash)
 
         # Fields: the outer and inner edges of each band, blue raises the index, purple lowers it.
-        for fx, fy, radius, band, level in self.config.fields:
+        for fx, fy, radius, band, level in field_list(w.state):
             colour = "#4d7cfe" if level > 0 else "#b26bff"
             for r in (radius - band / 2, radius + band / 2):
                 if r > 0:
