@@ -45,6 +45,11 @@ Model
   recurrence).
 - No shot-trajectory head. Instead a hit head: would this tick's bullet hit an enemy, an
   ally, or nothing. The last ticks of a segment go unlabelled.
+- No null key. Gated attention instead (Qiu et al. 2025, the Qwen team; the author,
+  2026-11-22): a sigmoid gate on each head's attention output before the output
+  projection, which v2 already has as an option (src/bnb/models/yemong/spatial.py). Which
+  variant (element-wise or per head) follows the paper's result, read in
+  docs/rewrite/provenance-check.md.
 - Encoder and attention as v2: one first layer per token kind, a shared second; ships and
   the game token are queries; fields and zones are key/value memory in the same
   attention operation. Bullets are not tokens.
@@ -81,10 +86,6 @@ Provenance
   flag marks it real or ghost; only real bullets cost energy, damage and stop; a ghost
   records its first contact (enemy, ally, none) and is removed. The ring (11 slots, one per
   tick) is already sized for this.
-- Replace the null key with a published mechanism that removes the need for it and
-  stabilises training (the author recalls Kimi; candidates: gated attention, Qiu et al.
-  2025, which v2 has as an option; learned per-head sinks as in gpt-oss). Pending the
-  source check.
 - Grid-cell position code as a third option; look for papers that used grid cells in RL.
 - A keep, drop or simplify table of Imugi's behaviours with rough costs (operations, lines,
   time per call, parameters): docs/rewrite/imugi-behaviours.md, in progress.
