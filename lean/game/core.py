@@ -1045,11 +1045,12 @@ def _per_slot(value: Tensor | float, like: Tensor) -> Tensor:
     return value if isinstance(value, Tensor) else filled(like.shape, value, like.dtype, like.device)
 
 
-def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generator, device) -> State:
+def deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generator, device) -> State:
     """A fresh state of (E, N): team 0 in the first team_sizes[:, 0] slots, team 1 in the
     next team_sizes[:, 1], the rest not existing (parked at the centre at spawn speed). The rows
     that every fresh deal starts with (no bullets, tick 0) are shared fixed tensors: `reset`
-    copies them, `reset_done` only selects from them."""
+    copies them, `take_deal` only selects from them, so a deal may be held and taken from
+    later (lean.learn draws one per environment once per segment)."""
     device = torch.device(device)
     team_sizes = team_sizes.to(device=device, dtype=torch.long)
     slot = slot_indices(slots, device).ship.expand(envs, slots)
@@ -1134,20 +1135,20 @@ def reset(config: GameConfig, envs: int, team_sizes: Tensor, generator: torch.Ge
     """A fresh state. team_sizes: (E, 2) long, ships per team, each at least 1. N is the
     largest total over the environments; unused slots have exists = False."""
     slots = int(team_sizes.sum(-1).max())
-    state = _deal(config, envs, slots, team_sizes, generator, device)
+    state = deal(config, envs, slots, team_sizes, generator, device)
     # The state is the caller's: its own copies of the deal's shared fixed rows.
     shared = ("bullets", "bullet_counts", "bullet_real", "tick")
     return dataclasses.replace(state, **{name: getattr(state, name).clone() for name in shared})
 
 
-def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tensor, generator: torch.Generator) -> State:
-    """The state with the environments in done (E,) bool dealt afresh at team_sizes (E, 2),
-    whose totals must fit the state's N. Every environment's draws are made, so nothing
-    reads done on the host."""
-    envs, slots = state.x.shape
-    fresh = _deal(config, envs, slots, team_sizes, generator, state.ships.device)
+def take_deal(state: State, done: Tensor, fresh: State, index: Tensor | None = None) -> State:
+    """The state with each environment in done (E,) bool replaced by a fresh deal: environment e
+    takes row index[e] of `fresh` (a `deal` of the same N; any number of environments), or row
+    e when index is None (fresh has E environments). Nothing reads done on the host."""
+    envs = done.shape[0]
 
     def select(new: Tensor, old: Tensor) -> Tensor:
+        new = new if index is None else new.index_select(0, index)
         return torch.where(done.reshape((envs,) + (1,) * (new.dim() - 1)), new, old)
 
     values = {}
@@ -1160,6 +1161,14 @@ def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tenso
         else:
             values[field.name] = select(new, old)
     return State(**values)
+
+
+def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tensor, generator: torch.Generator) -> State:
+    """The state with the environments in done (E,) bool dealt afresh at team_sizes (E, 2),
+    whose totals must fit the state's N. Every environment's draws are made, so nothing
+    reads done on the host (lean.learn instead deals once per segment and uses `take_deal`)."""
+    envs, slots = state.x.shape
+    return take_deal(state, done, deal(config, envs, slots, team_sizes, generator, state.ships.device))
 
 
 # --------------------------------------------------------------------------- fog
