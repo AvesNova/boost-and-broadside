@@ -18,7 +18,10 @@ def test_observed_speed_is_world_speed_inside_a_field():
     generator = torch.Generator().manual_seed(0)
     state = core.reset(config, 1, torch.tensor([[1, 1]]), generator, torch.device("cpu"))
     state = dataclasses.replace(state, x=torch.zeros_like(state.x), y=torch.zeros_like(state.y))
-    log_index, _, _ = core.medium(state.constants, state.x, state.y)
+    log_index, gradient_x, gradient_y = core.medium(state.constants, state.x, state.y)
+    state = dataclasses.replace(
+        state, medium=torch.stack([log_index, gradient_x, gradient_y], -1)
+    )  # moved: refresh
     assert float(log_index[0, 0]) > 0.1  # the ship really is inside the field
     observation = core.observe(config, state, 0)
     world_speed = state.speed * torch.exp(-log_index)

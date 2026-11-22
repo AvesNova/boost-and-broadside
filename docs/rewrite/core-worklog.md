@@ -114,3 +114,11 @@ checked, the commit. Numbers are measured unless marked otherwise.
   to 401; scripted act 172. Over the 1,300 tripwire before fields; fields add about 340
   (fix 11 halves it). Policy, compile and new-size numbers wait for the model port and the
   GPU.
+- 07:05 Agreed fix 11 (part): the medium cached in the state (`State.medium` (E, N, 3),
+  `State.bullet_medium` (E, N, K, 3)), as v2 caches it: the ships' end-of-tick values are the
+  next tick's start values; a new bullet takes its ship's; the observation reads the cache.
+  Evaluations per tick: 4 to 2. Step with 10 fields: 1,675 to 1,510 operations; core config
+  1,692 to 1,527 and 25.1 to 13.7 ms (E = 256, CPU). v2 parity unchanged (the comparison
+  tests take v2's own cached values). Whoever places a ship by hand must refresh the cache
+  (the observation test and the sandbox do; `lean.sandbox.world.refresh_medium`). Also fixed:
+  the sandbox dropped the drawn fields at start (it rebuilt the constants).

@@ -21,11 +21,24 @@ Script: docs/rewrite/sections/scoreboard/game_ops.py.
 | reset_done, core config (core flight and damage, ghosts, 10 drawn fields) | 401 | 100 | 1.94 |
 | scripted act (one team), core config state | 172 | 31 | 0.65 |
 
+### After agreed fix 11 (the medium cached, 2026-11-23 07:05)
+
+| call | compute ops | view ops | CPU ms per call |
+|---|---|---|---|
+| step, v2 config (no fields) | 1342 | 124 | 10.54 |
+| step, v2 config, 10 fixed fields | 1510 | 128 | 15.08 |
+| step, core config | 1527 | 128 | 13.67 |
+| observe (one team), with fields | 80 | 8 | 0.33 |
+| reset_done, core config | 405 | 102 | 1.97 |
+
+Fields now cost about 170 operations instead of 340, and the core config's step takes
+13.7 ms instead of 25.1 at E = 256.
+
 ## Against the tripwires
 
 | Tripwire | Value | Now | |
 |---|---|---|---|
-| Operations per game tick, uncompiled | 1,300 | 1,339 (v2 config, no fields); 1,692 (core config, 10 fields) | over |
+| Operations per game tick, uncompiled | 1,300 | 1,342 (v2 config, no fields); 1,527 (core config, 10 fields; 1,692 before fix 11) | over |
 | Operations per scripted call | 170 | 172 | at |
 | Operations per policy forward | 650 | pending the model port (C) | |
 | Traced operations across every compiled graph | 10,000 | pending (GPU) | |

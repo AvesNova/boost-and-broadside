@@ -74,6 +74,10 @@ class State:
     fired: Tensor  # (E, N) bool: the ship fired a real bullet on the last tick (stored, not inferred)
     bullet_real: Tensor  # (E, N, K) bool: a real bullet (False: a ghost, which does no damage)
     bullet_fired_tick: Tensor  # (E, N, K) long: the episode tick the bullet left the gun
+    # The medium (ln n, d/dx ln n, d/dy ln n) at each ship and bullet, cached from the end of the
+    # last tick (fields are fixed within an episode), as v2 caches it.
+    medium: Tensor  # (E, N, 3) float32
+    bullet_medium: Tensor  # (E, N, K, 3) float32
 
 
 @dataclass

@@ -457,10 +457,11 @@ def _half_bend(tick_length, direction_x, direction_y, speed, index, gradient_x, 
     return direction_x * cos - direction_y * sin, direction_x * sin + direction_y * cos
 
 
-def bullet_motion(constants, tick_length, x, y, direction_x, direction_y, speed, drag):
+def bullet_motion(constants, tick_length, x, y, direction_x, direction_y, speed, drag, start_medium):
     """One move of every bullet (E, P): half drag, half bend, the step, half bend, half
-    drag. drag: (E, P) the shooter's drag constant, 1/m. Returns x, y, direction, speed."""
-    log_index, gradient_x, gradient_y = medium(constants, x, y)
+    drag. drag: (E, P) the shooter's drag constant, 1/m. start_medium: (E, P, 3) the medium at
+    the start (cached). Returns x, y, direction, speed and the medium at the end (E, P, 3)."""
+    log_index, gradient_x, gradient_y = start_medium.unbind(-1)
     index = torch.exp(log_index)
     half = drag * 0.5 * tick_length
     speed = speed / (1.0 + half * speed / index)
@@ -473,7 +474,7 @@ def bullet_motion(constants, tick_length, x, y, direction_x, direction_y, speed,
     index = torch.exp(log_index)
     direction_x, direction_y = _half_bend(tick_length, direction_x, direction_y, speed, index, gradient_x, gradient_y)
     speed = speed / (1.0 + half * speed / index)
-    return x, y, direction_x, direction_y, speed
+    return x, y, direction_x, direction_y, speed, torch.stack([log_index, gradient_x, gradient_y], -1)
 
 
 # --------------------------------------------------------------------------- the tick
@@ -496,7 +497,7 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     device = state.x.device
     stick, power, shoot = action[..., 0], action[..., 1], action[..., 2] == 1
     alive0 = state.alive
-    log_index, gradient_x, gradient_y = medium(c, state.x, state.y)
+    log_index, gradient_x, gradient_y = state.medium.unbind(-1)  # cached from the last tick
 
     # Fire, from the tick-start state.
     fired = alive0 & shoot & (state.cooldown == 0) & (state.energy >= c["bullet_cost"])
@@ -549,15 +550,18 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     # Bullet motion; inactive bullets are frozen.
     flying = moves_left0 > 0
     flat = (E, N * K)
-    moved = bullet_motion(
+    # A new bullet starts at its ship, whose medium is cached; the others carry their own.
+    bullet_medium0 = torch.where(written[..., None], state.medium[:, :, None, :], state.bullet_medium)
+    *moved, end_medium = bullet_motion(
         c, h, bullet_x0.reshape(flat), bullet_y0.reshape(flat), direction_x0.reshape(flat),
         direction_y0.reshape(flat), bullet_speed0.reshape(flat),
-        c["bullet_drag"][..., None].expand(E, N, K).reshape(flat),
+        c["bullet_drag"][..., None].expand(E, N, K).reshape(flat), bullet_medium0.reshape(E, N * K, 3),
     )
     bullet_x, bullet_y, direction_x, direction_y, bullet_speed = (
         torch.where(flying, new.reshape(E, N, K), old)
         for new, old in zip(moved, (bullet_x0, bullet_y0, direction_x0, direction_y0, bullet_speed0))
     )
+    bullet_medium = torch.where(flying[..., None], end_medium.reshape(E, N, K, 3), bullet_medium0)
 
     # The swept test between the two motions, every bullet against every ship: (E, N K, N).
     per_bullet = (E, N * K, 1)
@@ -716,6 +720,10 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
         fired=fired,
         bullet_real=bullet_real0,
         bullet_fired_tick=bullet_fired_tick,
+        medium=torch.where(
+            alive0[..., None], torch.stack([flown.log_index, flown.gradient_x, flown.gradient_y], -1), state.medium
+        ),
+        bullet_medium=bullet_medium,
     )
     out = StepOut(
         damage_dealt=damage_dealt,
@@ -818,7 +826,7 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
     heading_cos, heading_sin = _edge_safe(config, x, y, angle)
     x, y = torch.where(exists, x, 0.0), torch.where(exists, y, 0.0)
     heading_cos, heading_sin = torch.where(exists, heading_cos, 1.0), torch.where(exists, heading_sin, 0.0)
-    log_index, _, _ = medium(constants, x, y)
+    log_index, gradient_x, gradient_y = medium(constants, x, y)
     zeros = torch.zeros((envs, slots), device=device)
     whole = torch.zeros((envs, slots), dtype=torch.long, device=device)
     bullets = torch.zeros((envs, slots, BULLET_SLOTS), device=device)
@@ -852,6 +860,8 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
         fired=torch.zeros((envs, slots), dtype=torch.bool, device=device),
         bullet_real=torch.zeros((envs, slots, BULLET_SLOTS), dtype=torch.bool, device=device),
         bullet_fired_tick=torch.zeros((envs, slots, BULLET_SLOTS), dtype=torch.long, device=device),
+        medium=torch.stack([log_index, gradient_x, gradient_y], -1),
+        bullet_medium=torch.zeros((envs, slots, BULLET_SLOTS, 3), device=device),
     )
 
 
@@ -918,8 +928,7 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     exists, alive = state.exists, state.alive
     # World-frame motion, as v2 observes it: the proper speed over the refractive index, so a
     # field that slows a ship shows as a slower ship (src/bnb/game/perception/observe.py).
-    log_index, _, _ = medium(c, state.x, state.y)
-    speed = state.speed * torch.exp(-log_index)
+    speed = state.speed * torch.exp(-state.medium[..., 0])
     velocity_x = speed * (state.heading_cos * state.angle_cos + state.heading_sin * state.angle_sin)
     velocity_y = speed * (state.heading_sin * state.angle_cos - state.heading_cos * state.angle_sin)
     distance = torch.sqrt(state.x * state.x + state.y * state.y)

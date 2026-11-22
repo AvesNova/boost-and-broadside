@@ -63,6 +63,10 @@ def to_lean(config, v2_state) -> State:
         bullet_moves_left=bullets.moves_left.long(), tick=v2_state.match.episode_tick.long(),
         fired=torch.zeros_like(bullets.moves_left[..., 0], dtype=torch.bool),
         bullet_real=bullets.moves_left > 0, bullet_fired_tick=torch.zeros_like(bullets.moves_left.long()),
+        medium=torch.stack([ships.log_refractive_index, ships.log_index_gradient_x, ships.log_index_gradient_y], -1),
+        bullet_medium=torch.stack(
+            [bullets.log_refractive_index, bullets.log_index_gradient_x, bullets.log_index_gradient_y], -1
+        ),
     )
 
 

@@ -52,7 +52,8 @@ class World:
 
     def reset(self) -> None:
         state = core.reset(self.config, 1, torch.tensor([[1, 1]]), self.generator, "cpu")
-        constants = core.ship_constants(self.config, self._types())
+        drawn = {k: v for k, v in state.constants.items() if k.startswith("field_")}
+        constants = {**core.ship_constants(self.config, self._types()), **drawn}
         log_index, _, _ = core.medium(constants, torch.zeros(1, 2), torch.zeros(1, 2))
         self.state = dataclasses.replace(
             state,
@@ -98,6 +99,7 @@ class World:
         s.energy[0, 1] = s.constants["spawn_energy"][0, 1]
         s.shield[0, 1] = s.constants["max_shield"][0, 1]
         s.alive[0, 1] = True
+        refresh_medium(s)
 
     def set_player_type(self, ship_type: int) -> None:
         """Swap the player's ship card in flight; position, speed and store are kept."""
@@ -169,8 +171,7 @@ class World:
     def ground_speed(self) -> float:
         """Metres per second over the map: the proper speed over the refractive index."""
         s = self.state
-        log_index, _, _ = core.medium(s.constants, s.x[:, :1], s.y[:, :1])
-        return float(s.speed[0, 0] * torch.exp(-log_index[0, 0]))
+        return float(s.speed[0, 0] * torch.exp(-s.medium[0, 0, 0]))
 
     def store_fraction(self) -> float:
         return float(self.state.energy[0, 0] / self.state.constants["max_energy"][0, 0])
@@ -203,3 +204,9 @@ def field_list(state) -> list[tuple[float, float, float, float, float]]:
         (float(x), float(y), float(r), float(b), float(t) / card.LN_SQRT2)
         for x, y, r, b, t in zip(*columns)
     ]
+
+
+def refresh_medium(state) -> None:
+    """Recompute the cached medium at every ship (after placing ships by hand)."""
+    log_index, gradient_x, gradient_y = core.medium(state.constants, state.x, state.y)
+    state.medium = torch.stack([log_index, gradient_x, gradient_y], -1)
