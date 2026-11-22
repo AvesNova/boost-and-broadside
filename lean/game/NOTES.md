@@ -101,3 +101,31 @@ was thread contention, not v2 itself).
    branch on the number of fields are the likely snags).
 5. `reset_done` draws every environment each call; confirm its cost and that generators
    on the device behave.
+
+## Agreed waste fixes (author, 2026-11-22)
+
+To do after the step-3 scoreboard ("before" numbers), each checked against v2 with
+`tests/test_against_v2.py` and recounted:
+
+1. **Constants:** a constant equal for every ship type, or fixed for the run, becomes a
+   Python number compiled into the graph; one that differs by type goes into one packed
+   per-type table, gathered once per slot at reset, (E, N, C). Damage then needs one
+   gather for the target and one for the owner instead of about ten.
+2. **Packed state:** the state fields as a few packed tensors (floats, integers, bullets),
+   so the reset's select and similar per-field work is a handful of operations.
+3. **Dead ships** are not held still field by field: whatever is simplest and fastest, as
+   long as their values stay finite (they are masked everywhere they are read).
+4. **Constant work at reset:** the aranges, the bullet-owner index and fixed buffers are
+   built once, not every tick.
+5. **Velocity once per step**, stored in the state; `observe` and the scripted opponent
+   read it instead of recomputing it.
+6. **One scripted call for both teams** (today two calls, each computing every slot), shared
+   with the behaviour-cloning teacher.
+7. **Personas drawn only at a reset**, not for every environment every tick.
+8. **A quick no-fields path.** Fields are the default, so this is minor.
+9. **Batched resets** (possibly): finished environments wait frozen and are re-dealt
+   together every k ticks or at a segment boundary, with no host read; the learner masks
+   the frozen ticks.
+
+Proposed, not decided: build the features both teams' observations share once per tick;
+the dense (E, N K, N) hit test as the first place to look at large team sizes.
