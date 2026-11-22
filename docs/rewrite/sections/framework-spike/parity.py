@@ -7,8 +7,8 @@ The two frameworks live in different virtualenvs, so this runs in three steps:
     <any python>   parity.py compare /tmp/parity_torch.npz /tmp/parity_jax.npz
 
 Both dumps start from the same numpy weights, inputs, game state and actions (spec.py), on the
-CPU in float32. Compared: the single-step policy forward, the learner (sequence) forward, 300
-game ticks under the same random actions, the observation, the PPO loss, its gradient norm, and
+CPU in float32. Compared: the single-step policy forward, the learner (sequence) forward, 600
+game ticks under the same random actions (ships start one hit from death), the observation, the PPO loss, its gradient norm, and
 the loss after each of 5 Adam steps. Not compared: sampled actions (different random generators).
 Each dump also checks two things inside its own framework: the sequence forward equals repeated
 single steps, and padding 10 ships to 100 slots leaves the 10 real ships' outputs unchanged.
@@ -20,7 +20,7 @@ import numpy as np
 
 import spec
 
-GAME_TICKS = 300
+GAME_TICKS = 600
 
 
 def dump(framework: str, path: str) -> None:
@@ -32,6 +32,8 @@ def dump(framework: str, path: str) -> None:
     seq_h0 = (0.5 * rng.standard_normal((spec.BLOCKS, 2, 11, spec.WIDTH))).astype(np.float32)
     state = spec.init_state(4, 10)
     padded_state = spec.init_state(4, 10, pad_to=100)
+    for start in (state, padded_state):      # one hit kills, so death and respawn are exercised
+        start["hp"] = np.minimum(start["hp"], spec.DAMAGE)
     actions = spec.random_actions(11, GAME_TICKS, 4, 10)
     padded_actions = np.zeros((GAME_TICKS, 4, 100), np.int32)
     padded_actions[:, :, :10] = actions
@@ -62,7 +64,7 @@ def dump(framework: str, path: str) -> None:
             grads = torch.autograd.grad(loss, list(policy.parameters()))
             norm = torch.sqrt(sum((g * g).sum() for g in grads))
             optimizer = tb.make_optimizer(policy)
-            losses = [float(tb.ppo_update(tb.ppo_loss, policy, optimizer, batch, False)[0]) for _ in range(5)]
+            losses = [tb.ppo_update(tb.ppo_loss, policy, optimizer, batch, False)[0].item() for _ in range(5)]
             return float(loss), float(norm), losses
         with torch.no_grad():
             results = forward(single, h0), sequence(seq, seq_h0), play(state, actions), play(padded_state, padded_actions)
@@ -109,8 +111,8 @@ def dump(framework: str, path: str) -> None:
     np.savez(path, **out)
 
     print(f"[{framework}] dumped {len(out)} arrays to {path}")
-    print(f"[{framework}] game after {GAME_TICKS} ticks: {int((final['hp'] < spec.MAX_HP).sum())} damaged ships, "
-          f"{int((~final['alive']).sum())} dead, {int((final['bullet_life'] > 0).sum())} live bullets, "
+    print(f"[{framework}] game after {GAME_TICKS} ticks: {int((final['hp'] == spec.MAX_HP).sum())} of 40 ships have "
+          f"died and respawned (all start one hit from death), {int((~final['alive']).sum())} dead now, {int((final['bullet_life'] > 0).sum())} live bullets, "
           f"max |pos| {float(np.abs(final['pos']).max()):.0f} m")
     print(f"[{framework}] sequence forward vs repeated single steps: max |diff| logits "
           f"{np.abs(by_steps[0] - seq_logits).max():.2e}, values {np.abs(by_steps[1] - seq_values).max():.2e}")
@@ -134,7 +136,7 @@ def seq_by_steps(forward, seq, h):
 def compare(path_a: str, path_b: str, tolerance: float = 1e-4) -> int:
     a, b = np.load(path_a), np.load(path_b)
     worst, failed = 0.0, []
-    print(f"{'array':<32}{'shape':<22}{'max |diff|':>12}{'max |diff| / (1 + |value|)':>30}")
+    print(f"{'array':<32}{'shape':<22}{'max |diff|':>12}{'max |value|':>14}{'ratio':>12}")
     for name in a.files:
         x, y = a[name], b[name]
         if x.dtype.kind in "bi":
@@ -143,13 +145,14 @@ def compare(path_a: str, path_b: str, tolerance: float = 1e-4) -> int:
             if different:
                 failed.append(name)
             continue
-        diff = np.abs(x.astype(np.float64) - y)
-        scaled = float((diff / (1.0 + np.abs(y))).max())
-        print(f"{name:<32}{str(x.shape):<22}{float(diff.max()):>12.2e}{scaled:>30.2e}")
+        diff = float(np.abs(x.astype(np.float64) - y).max())
+        scale = float(np.abs(y).max())
+        scaled = diff / (1.0 + scale)
+        print(f"{name:<32}{str(x.shape):<22}{diff:>12.2e}{scale:>14.4g}{scaled:>12.2e}")
         worst = max(worst, scaled)
         if scaled > tolerance:
             failed.append(name)
-    print(f"\nworst scaled difference {worst:.2e} (tolerance {tolerance:g}); "
+    print(f"\nworst max|diff| / (1 + max|value|) = {worst:.2e} (tolerance {tolerance:g}); "
           + ("ALL AGREE" if not failed else f"DISAGREE: {failed}"))
     return 1 if failed else 0
 

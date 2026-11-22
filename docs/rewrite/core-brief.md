@@ -17,12 +17,14 @@ The project has three aims, held together:
 
 **The claim the project is built around: zero-shot generalisation across sizes.** A model
 trained at about 4v4 or 5v5 plays, with no fine-tuning and no change to its parameters,
-at 20v20 and 50v50, with unbalanced teams and other zone counts. It comes in two stages:
+at up to 50v50, with unbalanced teams and other zone counts. 50v50 is the goal; 20v20 is
+the fallback if 50v50 cannot be reached. It comes in two stages:
 
 - **Stage 1, the first result the core must reproduce: v1's fleet-size curve on a fixed
   map.** v1 (`origin/main`, run 731, trained 4v4) held a break-even of 1.75 scripted
   ships per network ship at the training size, 1.62 at 8, 1.56 at 16, 1.44 at 32 and
-  1.19 at 64, staying above parity throughout.
+  1.19 at 64, staying above parity throughout. Stage 1 uses the mode closest to v1's:
+  elimination with the shrinking map switched off.
 - **Stage 2: other map sizes.** A model cannot be expected to handle a map size it never
   trained on, so variable maps appear in evaluation only once they are in training. The
   target then is a large fleet on a map scaled to the local density seen in training,
@@ -81,10 +83,10 @@ drawing.
 | Requirement | Number | Anchor | Status |
 |---|---|---|---|
 | A game tick plus both teams' decisions, batch size 1 | p99 at most 16 ms; worst frame at most 33 ms | The 30 Hz tick, with half of it spare | Fixed |
-| Sizes this holds for | 1v1 to 20v20; 50v50 as a stretch | The claim | Proposed |
-| Where play runs | The reference CPU, no discrete GPU needed | "Any reasonably modern computer" | Pending G2 |
+| Sizes this holds for | 1v1 to 50v50; 20v20 as the fallback | The claim | Fixed |
+| Where play runs | The reference CPU if it meets the numbers above; a GPU, integrated or discrete, is allowed if it does not | "Any reasonably modern computer" | Pending G2 |
 | No stall once a match starts | No compile, build, host synchronisation or large allocation during a match; measured as the worst frame over a full match | | Fixed |
-| From launch to a playable match | At most 30 s | | Proposed |
+| From launch to a playable match | At most 10 s; lower if G2 shows room (importing the framework alone takes seconds) | | Pending G2 |
 
 **Workflows** (laptop, from command to result, compile included)
 
@@ -174,7 +176,8 @@ A citation counts only when a reviewer has fetched the paper and read the passag
 carries a label saying so. From memory is not provenance. A paper's result at a fixed
 team size is not evidence that something scales, so each row also says how the project's
 setting differs. A component with no row does not go into the main code. Rows of kind (d)
-are the experiment list.
+carry their reasoning and are the first places to look when something goes wrong; how
+they are tested, if at all, follows "Deciding without a training run" in section 4.
 
 ### Minimum effects
 
@@ -202,8 +205,9 @@ On a new branch `core`. It is built in this order, and each step works before th
 starts:
 
 1. **The scripted opponent and the game step.** The opponent comes first because it is
-   the only yardstick v1, v2 and the core share. The game step is flight, bullets, hits,
-   deaths and respawn, in deathmatch on one fixed map, at any team size. The flight
+   the only yardstick v1, v2 and the core share. The game step is flight, bullets, hits
+   and deaths, in elimination on one fixed map with no shrink, at any team size.
+   Respawn arrives with the other modes. The flight
    physics is lifted from v2 as nearly verbatim as the framework allows and checked by
    running both from the same states and actions and comparing short trajectories within
    a tolerance. The author flies a ship against the scripted opponent at this step.
@@ -212,16 +216,22 @@ starts:
    audit's baseline (below).
 3. **BC from the scripted opponent.** Passes the clone requirement.
 4. **PPO, with team sizes drawn per environment,** unequal teams included, inside one
-   tensor shape. Passes the RL and size-curve requirements. This is stage 1 of the
-   claim.
+   tensor shape, and with league self-play in its simplest form: opponents drawn from a
+   pool of past snapshots and the scripted opponent. v1 trained with league slots, and
+   self-play against past selves is standard, so it belongs here. Passes the RL and
+   size-curve requirements. This is stage 1 of the claim.
 
 ### The model and learner at M1
 
 From `model-audit.md`, which gives the reasons and the provenance of each line.
 
 - **Inputs:** about 20 state scalars per ship at fixed physical scales, flags and ship
-  type. A multi-scale position code in the token, sized for the maps in use, with the
-  random per-match offset kept. Clipped distance and direction to the boundary.
+  type. Position in the token as Fourier features on three axes 60 degrees apart (a
+  grid-cell layout), at about six scales sized for the maps in use, with the random
+  per-match offset kept. Fourier features are the published way to give a network
+  coordinates; the hexagonal layout is the same thing with even resolution in every
+  direction; and the token code and rotary share one set of wave vectors. Clipped
+  distance and direction to the boundary.
 - **Attention:** standard attention with a key mask for anything that does not exist,
   and one learned null key. Rotary relative position on queries and keys, with fewer
   bands than v2, sized for the maps in use; rotary on heading kept.
@@ -229,8 +239,10 @@ From `model-audit.md`, which gives the reasons and the provenance of each line.
   A hidden enemy that has been seen stays as a last-seen token with the time since;
   one never seen is masked. No belief, nothing decoded and fed back.
 - **Heads:** a joint categorical action per ship; a per-ship categorical critic per
-  reward level with Gaussian-binned targets. Auxiliary heads are added later, each as an
-  experiment.
+  reward level with Gaussian-binned targets. One auxiliary head: next state, as an
+  open-loop change from the current state. v1 and v2 both trained with one, so it stays
+  by precedent. The shot-outcome and geometry heads are left out until something shows a
+  need for them.
 - **Learner:** PPO with GAE; reward levels with a discount each; every loss a mean in
   nats per softmax group with three coefficients; an entropy term; a decaying
   distillation term toward the cloned policy at the start of RL.
@@ -242,17 +254,34 @@ behaviour, not structure.
 ### Additions after M1
 
 One change at a time, each keeping the requirements, each with a provenance row. The
-order follows what stage 1 and then stage 2 need:
+order follows what stage 2 and the game need:
 
 1. fog;
-2. the position-code comparison: colour codes, Fourier features and grid cells;
-3. the frontline and elimination modes, with zone counts drawn in training;
-4. the league with prioritised fictitious self-play;
-5. variable maps in training, then the stage 2 evaluation;
-6. the kept auxiliary heads (next state, shot outcome from game-recorded labels,
-   geometry), each against its absence;
-7. the play shell on the new core;
-8. the evaluation suite.
+2. the frontline and deathmatch modes, with respawn, the elimination shrink, and zone
+   counts drawn in training;
+3. the league's refinements: prioritised fictitious self-play weighting and rating;
+4. variable maps in training, then the stage 2 evaluation;
+5. the play shell on the new core;
+6. the evaluation suite.
+
+### Deciding without a training run
+
+Full training comparisons are expensive and there is no budget for one per component.
+Each choice is settled at the cheapest level that can settle it:
+
+1. **Published work or theory.** If a source read in full supports the choice for a
+   comparable purpose, or the argument is clear, it is decided and recorded with its
+   provenance. Most choices stop here.
+2. **A test that needs no training run:** an evaluation of an existing model with one
+   thing changed, a probe of what the trunk has learned, a gradient-share measurement, a
+   benchmark.
+3. **A short BC run,** same seeds, when the question is about what the model can
+   represent.
+4. **A full training comparison,** only when the choice matters to the claim, the levels
+   above cannot settle it, and the author agrees to the cost.
+
+A choice of kind (d) does not owe a test. It owes a stated reason, and it is revisited if
+a problem points at it. The stage 1 run is the one full training run the plan commits to.
 
 ### Time and fallback
 
@@ -453,7 +482,7 @@ Each row moves to `docs/provenance.md` or `docs/assumptions.md` with its source.
 | Griffin trunk: spatial attention plus RG-LRU, the paper's initialisation | Small in v2 (295 operations per forward); published | Later alternatives tested as experiments |
 | No belief system; hidden enemies as last-seen tokens; memory in the recurrent trunk | OpenAI Five reuses the last observation for fogged units; belief against no belief was never measured | A probe of what the trunk remembers about hidden enemies |
 | State inputs as scalars at fixed scales | Standard; no source found for binned inputs | |
-| Position: a multi-scale code in the token with a random offset, plus rotary in attention | Rotary selects which tokens to read; the code carries the numbers to calculate with. Rotary is measured to matter in v2 | The position-code comparison; rotating the values as an alternative |
+| Position: Fourier features on a grid-cell layout in the token, with a random offset, plus rotary in attention | Rotary selects which tokens to read; the code carries the numbers to calculate with. Rotary is measured to matter in v2 | Rotating the values as an alternative |
 | Attention masks from the start of training, with a null key | Standard masking; a trained model depends on the make-up of its key set | Training and evaluation key sets kept alike |
 | Team sizes drawn in training, inside one tensor shape | The best-supported lever for size generalisation | The size curve |
 | Variable maps in evaluation only when in training | Rotary and position codes do not extrapolate to unseen separations | Stage 2 |
@@ -477,8 +506,9 @@ Each row moves to `docs/provenance.md` or `docs/assumptions.md` with its source.
 - **The advantage normaliser.** DreamerV3's percentile range was a starting point, not a
   measured choice; the alternative is the standard deviation over the update.
 - **How loss weights are chosen.**
-- **Position codes:** colour codes, Fourier features or grid cells; and whether rotating
-  the values in attention can replace the code in the token.
+- **Position codes.** The default is Fourier features on a grid-cell layout, chosen on
+  the literature and not by a comparison. v2's colour code is dropped as bespoke. Whether
+  rotating the values in attention can replace the code in the token stays open.
 - **Nearest-k attention** as an arm for large fleets.
 - **The scripted opponent:** how far to simplify it, and whether to broaden it so the
   clone sees more varied behaviour, closer to what human play would give.

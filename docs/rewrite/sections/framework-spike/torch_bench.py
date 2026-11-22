@@ -441,7 +441,7 @@ class Units:
             def run():
                 if variant == "mark_dynamic":
                     mark_ship_dim(self.state, self.h)
-                self.state, self.h, _, _, _ = step(self.policy, self.state, self.h)
+                self.state, self.h, *self.last = step(self.policy, self.state, self.h)
         elif unit == "C":
             self.batch = to_device(spec.make_rollout(self.micro[0], self.micro[1], self.ships), self.device)
             self.batch["action"] = self.batch["action"].long()
@@ -543,9 +543,12 @@ def child_loop(a, device):
     units = Units(device, a.variant, a.child_envs, a.ships)
     tick = units.build("tick")
 
-    def rollout():
+    def rollout():   # keeps actions and log-probs, as the JAX scan does
+        kept = []
         for _ in range(a.ticks):
             tick()
+            kept.append(units.last[:2])
+        units.kept = torch.stack([k[0] for k in kept]), torch.stack([k[1] for k in kept])
 
     start = time.perf_counter()
     rollout()

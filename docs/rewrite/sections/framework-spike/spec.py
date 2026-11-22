@@ -42,7 +42,7 @@ START_SPEED = 150.0
 MUZZLE_SPEED = 900.0
 BULLET_LIFE = 11     # ticks
 COOLDOWN = 5         # ticks
-HIT_RADIUS = 40.0
+HIT_RADIUS = 60.0
 DAMAGE = 25.0
 MAX_HP = 100.0
 RESPAWN_DELAY = 30   # ticks
@@ -106,8 +106,9 @@ def init_state(envs: int, ships: int, pad_to: int | None = None, seed: int = 0) 
     slot_in_team = np.where(team == 1, index - half, index)
     x = np.where(team == 0, -1500.0, 1500.0)
     y = (slot_in_team - (half - 1) / 2.0) * 150.0
-    spawn = np.stack([x, y], -1)[None] + rng.uniform(-50.0, 50.0, (envs, n, 2))
-    spawn = np.where(exists[None, :, None], spawn, 0.0).astype(np.float32)
+    jitter = np.zeros((envs, n, 2))
+    jitter[:, :ships] = rng.uniform(-50.0, 50.0, (envs, ships, 2))   # same draws padded or not
+    spawn = np.where(exists[None, :, None], np.stack([x, y], -1)[None] + jitter, 0.0).astype(np.float32)
     spawn_heading = np.broadcast_to(np.where(team == 0, 0.0, math.pi), (envs, n)).astype(np.float32)
     full = lambda value, dtype: np.full((envs, n), value, dtype)
     return {
