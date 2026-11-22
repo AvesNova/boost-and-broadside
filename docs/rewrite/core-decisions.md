@@ -38,9 +38,14 @@ Model
   on a hexagonal layout, and a grid-cell module (the author would like grid cells as the
   default; for now one option among three, 2026-11-22).
 - Fewer rotary dimensions (medium or smaller maps for now; larger maps later, with the
-  rotary revisited then). Heading stays in the rotary, with few harmonics.
-- Griffin's initialisation as the paper specifies; v2's is wrong (to be checked against the
-  paper, docs/rewrite/provenance-check.md).
+  rotary revisited then): drop the bands far larger than the map (removing the lowest
+  frequencies beats leaving dimensions unrotated, Barbero et al. 2025). The share of each
+  head rotated is open, pending docs/rewrite/rotary-and-gate-check.md. Heading stays in the rotary, with few harmonics.
+- Griffin's initialisation (decided 2026-11-22): the decay as the paper's text says
+  (a^c uniform in [0.9, 0.999], c = 8); what the paper leaves out from the official
+  recurrentgemma code (LeCun initialisation of the gates, the convolution's spread 0.05,
+  biases zero). v2's is wrong: its decay gives half-lives of 0.1 to 4.8 ticks, against
+  6.6 to 693 in the paper (docs/rewrite/provenance-check.md section 4).
 - No belief and nothing decoded and fed back. A hidden enemy is a last-seen token plus the
   time since it was seen. Memory is the Griffin temporal block (v2's block, not a bare
   recurrence).
@@ -53,8 +58,9 @@ Model
 - No null key. Gated attention as the default (Qiu et al. 2025, the Qwen team; the author,
   2026-11-22): a sigmoid gate on each head's attention output before the output
   projection, which v2 already has as an option (src/bnb/models/yemong/spatial.py). Which
-  variant (element-wise or per head) follows the paper's result, read in
-  docs/rewrite/provenance-check.md.
+  variant: element-wise, the paper's best (decided 2026-11-22). Used without first
+  measuring for an attention sink: cheap and low risk. Its initialisation: what released
+  code (Qwen3-Next, Kimi Linear) does, being checked (docs/rewrite/rotary-and-gate-check.md).
 - Encoder and attention as v2: one first layer per token kind, a shared second; ships and
   the game token are queries; fields and zones are key/value memory in the same
   attention operation. Bullets are not tokens.
@@ -62,11 +68,14 @@ Model
 Learner and league
 - Every reward level the same: HL-Gauss targets, the same number of bins, a scale per
   level; the outcome is one of these levels. Not too hot (the HL-Gauss width checked).
-  Linear against symlog bins to be revisited (2026-11-22): HL-Gauss's paper may use linear
-  bins, and DreamerV3's reason for symlog (one configuration across many games) may not
-  apply to one game. Check both papers (docs/rewrite/provenance-check.md).
+  Decided 2026-11-22 after the source check (docs/rewrite/provenance-check.md): linear
+  bins as in the HL-Gauss paper, 64 per level, sigma 0.75 bin widths. Each level's range
+  set from its measured returns, and watched during training: a warning when a share of
+  targets is clamped at the outer bins, and when targets occupy only a few middle bins.
 - No rating lanes and no lookahead. League weighting (1 - p)^2 with a small uniform floor
-  (2026-11-22): one eighth of league games uniform over the pool.
+  (2026-11-22): one eighth of league games uniform over the pool. Win rates per pool
+  member kept as AlphaStar's pseudocode does: an unplayed pair counts as 0.5 and every
+  game decays a pair's tally by 0.99.
 - No shaping level (2026-11-22), as in v2: lean's facing and closing terms go.
 - Half self-play (both sides train), half league games (the live side trains); the scripted
   agent is one league member.
