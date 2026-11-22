@@ -168,3 +168,21 @@ PyTorch: operations dispatched per call when uncompiled (TorchDispatchMode count
 | one policy forward (A) | 10 | 265 | 113 | 508 |
 | game step (B) | 10 | 102 | 27 | 186 |
 
+
+## Addendum: batch-size-1 latency at 50v50 (N = 100), CPU container
+
+Run after the main suite, same machine and versions; records `torch_cpu_latency_n100.json`
+and `jax_cpu_latency_n100.json`. Milliseconds, 3,000 ticks each.
+
+| variant | threads | p50 | p99 | max |
+|---|---|---|---|---|
+| PyTorch eager | default | 8.11 | 29.76 | 95.19 |
+| PyTorch compiled | default | 3.52 | 9.74 | 561.9 |
+| JAX jit | default | 6.49 | 8.87 | 25.37 |
+| PyTorch compiled | pinned to 1 core | 5.40 | 8.30 | 17.14 |
+| JAX jit | pinned to 1 core | 4.09 | 7.69 | 29.10 |
+
+Compiled PyTorch and JAX keep p99 under 10 ms at 50v50. Uncompiled PyTorch misses the
+16 ms target (p99 29.8 ms). The worst single frame is unstable on this shared container
+(one 562 ms tick in compiled PyTorch with default threads), so the worst-frame requirement
+needs the laptop. The game step is the toy stand-in, about a quarter of v1's size.

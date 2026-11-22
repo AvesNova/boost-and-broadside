@@ -1,0 +1,89 @@
+{
+ "meta": {
+  "framework": "jax",
+  "jax": "0.12.1",
+  "jaxlib": "0.12.1",
+  "optax": "0.2.9",
+  "numpy": "2.5.5",
+  "device": "cpu",
+  "backend": "cpu",
+  "devices": [
+   "cpu:0"
+  ],
+  "compile_options": "jax.jit(fn) with defaults; float32 (jax_enable_x64 off)",
+  "argv": [
+   "--device",
+   "cpu",
+   "--suite",
+   "latency",
+   "--latency-ships",
+   "100",
+   "--latency-threads",
+   "default,pin",
+   "--out",
+   "/tmp/claude-0/-home-user-boost-and-broadside/bf4c0758-f091-53dd-a269-e94d54b68e77/scratchpad/lat/jax_cpu_latency_n100.json"
+  ],
+  "envs": [
+   1,
+   256
+  ],
+  "compile_envs": 256,
+  "size_envs": 32,
+  "micro_batch": "16x128",
+  "machine": {
+   "platform": "Linux-6.18.44-fc-v726-x86_64-with-glibc2.39",
+   "python": "3.13.18",
+   "cpu_count": 4,
+   "lscpu CPU(s)": "4",
+   "lscpu Model name": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+   "lscpu Thread(s) per core": "1",
+   "lscpu Core(s) per socket": "4",
+   "lscpu Hypervisor vendor": "KVM",
+   "lscpu L2 cache": "8 MiB (4 instances)",
+   "lscpu L3 cache": "260 MiB (1 instance)",
+   "affinity": [
+    0,
+    1,
+    2,
+    3
+   ]
+  }
+ },
+ "records": [
+  {
+   "suite": "latency",
+   "variant": "jit",
+   "ships": 100,
+   "threads": "default",
+   "xla_flags": "",
+   "warmup": 300,
+   "affinity": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "p50_ms": 6.491043000011132,
+   "p99_ms": 8.868381259983373,
+   "max_ms": 25.37429399995972,
+   "mean_ms": 6.53811896533432,
+   "ticks": 3000
+  },
+  {
+   "suite": "latency",
+   "variant": "jit",
+   "ships": 100,
+   "threads": "pin",
+   "xla_flags": "",
+   "warmup": 300,
+   "affinity": [
+    0
+   ],
+   "p50_ms": 4.08728149997728,
+   "p99_ms": 7.687657690007633,
+   "max_ms": 29.103598999995484,
+   "mean_ms": 4.389585172000713,
+   "ticks": 3000
+  }
+ ]
+}

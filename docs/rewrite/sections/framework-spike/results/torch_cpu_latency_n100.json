@@ -1,0 +1,123 @@
+{
+ "meta": {
+  "framework": "pytorch",
+  "torch": "2.15.0+cu132",
+  "numpy": "2.5.5",
+  "device": "cpu",
+  "gpu": null,
+  "cuda_runtime": null,
+  "torch_num_threads_default": 4,
+  "compile_options": "torch.compile(fn) with defaults: backend='inductor', mode='default', dynamic=None, fullgraph=False; 'dynamic' = dynamic=True; 'mark_dynamic' = defaults + torch._dynamo.mark_dynamic on the ship axis",
+  "float32_matmul_precision": "highest",
+  "cxx": "/usr/bin/g++",
+  "argv": [
+   "--device",
+   "cpu",
+   "--suite",
+   "latency",
+   "--latency-ships",
+   "100",
+   "--latency-threads",
+   "default,pin",
+   "--out",
+   "/tmp/claude-0/-home-user-boost-and-broadside/bf4c0758-f091-53dd-a269-e94d54b68e77/scratchpad/lat/torch_cpu_latency_n100.json"
+  ],
+  "envs": [
+   1,
+   256
+  ],
+  "compile_envs": 256,
+  "size_envs": 32,
+  "micro_batch": "16x128",
+  "machine": {
+   "platform": "Linux-6.18.44-fc-v726-x86_64-with-glibc2.39",
+   "python": "3.14.6",
+   "cpu_count": 4,
+   "lscpu CPU(s)": "4",
+   "lscpu Model name": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+   "lscpu Thread(s) per core": "1",
+   "lscpu Core(s) per socket": "4",
+   "lscpu Hypervisor vendor": "KVM",
+   "lscpu L2 cache": "8 MiB (4 instances)",
+   "lscpu L3 cache": "260 MiB (1 instance)",
+   "affinity": [
+    0,
+    1,
+    2,
+    3
+   ]
+  }
+ },
+ "records": [
+  {
+   "suite": "latency",
+   "variant": "eager",
+   "ships": 100,
+   "threads": "default",
+   "torch_num_threads": 4,
+   "warmup": 300,
+   "affinity": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "p50_ms": 8.108436000000552,
+   "p99_ms": 29.759301419993076,
+   "max_ms": 95.18755499999543,
+   "mean_ms": 9.089893325666727,
+   "ticks": 3000
+  },
+  {
+   "suite": "latency",
+   "variant": "compiled",
+   "ships": 100,
+   "threads": "default",
+   "torch_num_threads": 4,
+   "warmup": 300,
+   "affinity": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "p50_ms": 3.5248025000100824,
+   "p99_ms": 9.73944776997576,
+   "max_ms": 561.9406950000325,
+   "mean_ms": 4.439749503666235,
+   "ticks": 3000
+  },
+  {
+   "suite": "latency",
+   "variant": "eager",
+   "ships": 100,
+   "threads": "pin",
+   "torch_num_threads": 1,
+   "warmup": 300,
+   "affinity": [
+    0
+   ],
+   "p50_ms": 9.204891499990708,
+   "p99_ms": 15.112703119999646,
+   "max_ms": 22.713639000016883,
+   "mean_ms": 9.560357195999737,
+   "ticks": 3000
+  },
+  {
+   "suite": "latency",
+   "variant": "compiled",
+   "ships": 100,
+   "threads": "pin",
+   "torch_num_threads": 1,
+   "warmup": 300,
+   "affinity": [
+    0
+   ],
+   "p50_ms": 5.399732999990192,
+   "p99_ms": 8.29702312998108,
+   "max_ms": 17.137872000034804,
+   "mean_ms": 5.619207321000148,
+   "ticks": 3000
+  }
+ ]
+}
