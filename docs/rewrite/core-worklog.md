@@ -91,3 +91,21 @@ checked, the commit. Numbers are measured unless marked otherwise.
   - Checked: tests/test_core_damage.py (the curve within 0.024 and the same half-damage
     angle; total damage within 2% of v2's on the same hits, the same hits doing damage).
     `pytest lean/game`: 34 passed, 1 xfailed.
+- 06:15 B6 (ghost-bullet hit labels, game side) and agreed fix 12 (stored `fired` flag).
+  - `GameConfig.ghost_bullets` (False by default, True in `GameConfig.core()`): every living
+    ship writes a bullet in its ring every tick (the ring has 11 slots, one per tick of a
+    bullet's life); `State.bullet_real` marks real shots; only real bullets damage or earn
+    kill credit; a ghost ends at its first contact like a real bullet. `State.bullet_fired_tick`
+    stamps each bullet with its tick.
+  - `StepOut.shot_outcome` (E, N, K): for every bullet whose flight ended this tick, real or
+    ghost: 0 missed, 1 hit an enemy, 2 hit a team-mate (-1 otherwise); `StepOut.shot_tick`
+    the tick it left the gun, which is the tick the hit head labels. The learner does not
+    read these yet (the hit head is part of the model and learner work).
+  - `State.fired` is stored by the step; the observation's "fired last tick" reads it (it was
+    inferred from the ring and missed a shot that hit on its first move), and its "bullets in
+    flight" share counts real bullets only. The sandbox draws real bullets only.
+  - Checked: tests/test_ghost_bullets.py: with the same actions and noise, the game with
+    ghosts equals the game without exactly (ships, shields, deaths, kill credit; 400 ticks,
+    32 games, with deaths); every living ship stamps a bullet each tick; every bullet reports
+    its outcome once, within its life. `pytest lean/game lean/scripted`: 43 passed, 1 xfailed
+    (v2 parity unchanged: ghosts are off by default).

@@ -56,6 +56,9 @@ def random_state(envs: int, slots: int, seed: int) -> State:
         bullet_speed=torch.zeros(bullets),
         bullet_moves_left=torch.zeros(bullets, dtype=torch.long),
         tick=torch.zeros(envs, dtype=torch.long),
+        fired=torch.zeros(bullets[:2], dtype=torch.bool),
+        bullet_real=torch.zeros(bullets, dtype=torch.bool),
+        bullet_fired_tick=torch.zeros(bullets, dtype=torch.long),
     )
 
 

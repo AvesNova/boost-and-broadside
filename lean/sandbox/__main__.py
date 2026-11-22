@@ -235,7 +235,7 @@ class App:
         for ship in range(2):  # bullets as one-tick streaks
             colour = "#ffd166" if ship == 0 else "#ff9e64"
             for k in range(s.bullet_x.shape[2]):
-                if int(s.bullet_moves_left[0, ship, k]) > 0:
+                if int(s.bullet_moves_left[0, ship, k]) > 0 and bool(s.bullet_real[0, ship, k]):
                     bx, by = float(s.bullet_x[0, ship, k]), float(s.bullet_y[0, ship, k])
                     step = float(s.bullet_speed[0, ship, k]) * w.h
                     tail = (

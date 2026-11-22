@@ -140,7 +140,7 @@ To do after the step-3 scoreboard ("before" numbers), each checked against v2 wi
     it is evaluated twice per tick instead of four times. The policy needs field tokens
     (a contract change) before any training with fields.
 
-12. **Stored, not guessed:** a `fired` flag in the state (the observation reads it).
+12. **Stored, not guessed:** a `fired` flag in the state (the observation reads it). Done 2026-11-23.
 13. **The scripted opponent is told everything up front:** each ship's type and its
     constants (gun range, corner speed, launch speed per type), and the environment's mode.
     Modes come in a fixed share of environments for the whole run, so an environment's mode

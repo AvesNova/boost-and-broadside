@@ -79,6 +79,10 @@ class GameConfig:
     # most 0.024; no atan2 or cross product). The closeness stays v2's: the hit test's own miss
     # distance (closest approach within the tick) read 6.8% less damage than v2's impact
     # parameter (the distance to the bullet's line), so it is not the same effect.
+    # Ghost bullets (the hit head's labels, author 2026-11-22): every living ship puts a bullet
+    # in its ring every tick; only a real shot costs, damages and kills; a ghost ends at its
+    # first contact like a real bullet. Every bullet's outcome is reported when its flight ends.
+    ghost_bullets: bool = False
     damage_model: str = "v2"
     flight_model: str = "v2"
     store_loops: float = 2.0
@@ -89,7 +93,8 @@ class GameConfig:
     def core(cls, **overrides) -> GameConfig:
         """The core game as decided so far: the new flight model, one ship (Vizia), and v2's ten
         fields drawn per environment."""
-        settings = {"flight_model": "core", "damage_model": "core", "lineup": ("vizia",), "field_count": 10}
+        settings = {"flight_model": "core", "damage_model": "core", "ghost_bullets": True}
+        settings.update(lineup=("vizia",), field_count=10)
         return cls(**{**settings, **overrides})
 
 
@@ -502,7 +507,8 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     launch_y = path_y + c["muzzle_speed"] * state.heading_sin + c["spread_speed"] * spread[..., 1]
     launch_speed = torch.sqrt(launch_x * launch_x + launch_y * launch_y)
     slot = torch.arange(K, device=device)
-    written = fired[..., None] & (slot == state.next_slot[..., None])
+    emits = alive0 if config.ghost_bullets else fired  # a ghost every tick, or real shots only
+    written = emits[..., None] & (slot == state.next_slot[..., None])
 
     def write(new: Tensor, old: Tensor) -> Tensor:
         return torch.where(written, new[..., None], old)
@@ -514,7 +520,9 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     moves_left0 = write(c["bullet_moves"], state.bullet_moves_left)
     energy = torch.where(fired, state.energy - c["bullet_cost"], state.energy)
     cooldown = torch.where(fired, c["fire_interval"], state.cooldown)
-    next_slot = torch.where(fired, (state.next_slot + 1) % K, state.next_slot)
+    next_slot = torch.where(emits, (state.next_slot + 1) % K, state.next_slot)
+    bullet_real0 = torch.where(written, fired[..., None], state.bullet_real)
+    bullet_fired_tick = torch.where(written, state.tick[:, None, None], state.bullet_fired_tick)
 
     # Flight; slots not alive at tick start keep everything. In the core model firing cuts thrust.
     core_model = config.flight_model == "core"
@@ -617,7 +625,8 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
         ratio = theta * of_target(c["inverse_head_on_angle"])
         powered = ratio.pow(of_target(c["head_on_sharpness"]))
     aspect = 1.0 - (1.0 - head_on) * torch.exp(-card.LN_2 * powered)
-    bullet_damage = torch.where(hit, full * closeness * aspect, 0.0)
+    real = bullet_real0.reshape(flat)
+    bullet_damage = torch.where(hit & real, full * closeness * aspect, 0.0)
 
     enemy = state.team[:, owner] != of_target(state.team)
     hit_taken = torch.zeros((E, N), dtype=bullet_damage.dtype, device=device).scatter_add(1, target, bullet_damage)
@@ -625,9 +634,10 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     friendly_damage = torch.where(enemy, 0.0, bullet_damage).reshape(E, N, K).sum(-1)
 
     # The earliest hit on each ship names its killer: smallest tau, then lowest bullet index.
-    hit_tau = torch.where(hit, first_tau, infinity)
+    real_hit = hit & real
+    hit_tau = torch.where(real_hit, first_tau, infinity)
     earliest_tau = torch.full((E, N), infinity, device=device).scatter_reduce(1, target, hit_tau, "amin")
-    earliest = hit & (hit_tau <= earliest_tau.gather(1, target))
+    earliest = real_hit & (hit_tau <= earliest_tau.gather(1, target))
     no_bullet = N * K
     bullet_index = torch.arange(N * K, device=device).expand(E, -1)
     earliest_bullet = torch.full((E, N), no_bullet, dtype=torch.long, device=device).scatter_reduce(
@@ -672,6 +682,13 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     done = wiped | (tick >= config.clock_ticks)
     result = torch.where(done, torch.where(wiped, wipe_result, clock_result), -1)
 
+    # Every bullet whose flight ends this tick: its first contact, or its last move without one.
+    hit_slots = hit.reshape(E, N, K)
+    moves_left = torch.where(hit_slots, 0, torch.where(flying, moves_left0 - 1, moves_left0))
+    ended = hit_slots | (flying & (moves_left == 0))
+    outcome = torch.where(hit_slots, torch.where(enemy.reshape(E, N, K), 1, 2), 0)
+    shot_outcome = torch.where(ended, outcome, -1)
+
     new_state = dataclasses.replace(
         state,
         x=x,
@@ -694,8 +711,11 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
         bullet_dir_x=direction_x,
         bullet_dir_y=direction_y,
         bullet_speed=bullet_speed,
-        bullet_moves_left=torch.where(hit.reshape(E, N, K), 0, torch.where(flying, moves_left0 - 1, moves_left0)),
+        bullet_moves_left=moves_left,
         tick=tick,
+        fired=fired,
+        bullet_real=bullet_real0,
+        bullet_fired_tick=bullet_fired_tick,
     )
     out = StepOut(
         damage_dealt=damage_dealt,
@@ -706,6 +726,8 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
         killer=torch.where(died, first_shooter, -1),
         done=done,
         result=result,
+        shot_outcome=shot_outcome,
+        shot_tick=bullet_fired_tick,
     )
     return new_state, out
 
@@ -827,6 +849,9 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
         bullet_speed=bullets.clone(),
         bullet_moves_left=torch.zeros((envs, slots, BULLET_SLOTS), dtype=torch.long, device=device),
         tick=torch.zeros(envs, dtype=torch.long, device=device),
+        fired=torch.zeros((envs, slots), dtype=torch.bool, device=device),
+        bullet_real=torch.zeros((envs, slots, BULLET_SLOTS), dtype=torch.bool, device=device),
+        bullet_fired_tick=torch.zeros((envs, slots, BULLET_SLOTS), dtype=torch.long, device=device),
     )
 
 
@@ -885,8 +910,8 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     clipped to [-1, 1]; the outward unit direction x, y; heading cos, sin; position over the
     arena radius x, y; the share of bullet slots in flight], then flags [same team as the
     viewer, alive, exists, fired last tick], then the ship-type one-hot. Rows of slots that
-    do not exist are zero. Fired last tick is read from the bullet ring (a bullet in the
-    previous slot with one move spent), so a shot that hit on its first move is not flagged.
+    do not exist are zero. Fired last tick is the step's stored flag; the share of bullet slots
+    in flight counts real bullets only (ghosts are not observed).
     """
     c = state.constants
     h = config.tick_length
@@ -899,9 +924,7 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     velocity_y = speed * (state.heading_sin * state.angle_cos - state.heading_cos * state.angle_sin)
     distance = torch.sqrt(state.x * state.x + state.y * state.y)
     inverse_distance = 1.0 / distance.clamp_min(1.0)
-    K = state.bullet_moves_left.shape[-1]
-    previous = ((state.next_slot - 1) % K)[..., None]
-    fired_last = state.bullet_moves_left.gather(-1, previous)[..., 0] == c["bullet_moves"] - 1
+    fired_last = state.fired  # stored by the step (agreed fix 12), not inferred from the ring
     same_team = state.team == team
     scalars = [
         velocity_x / SPEED_SCALE,
@@ -923,7 +946,7 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         state.heading_sin,
         state.x / config.arena_radius,
         state.y / config.arena_radius,
-        (state.bullet_moves_left > 0).to(torch.float32).mean(-1),
+        ((state.bullet_moves_left > 0) & state.bullet_real).to(torch.float32).mean(-1),
     ]
     flags = [same_team, alive, exists, fired_last & alive]
     one_hot = torch.nn.functional.one_hot(state.type, SHIP_TYPES)

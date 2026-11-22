@@ -71,6 +71,9 @@ class State:
     bullet_speed: Tensor  # metres per second
     bullet_moves_left: Tensor  # (E, N, K) long; 0 is inactive
     tick: Tensor  # (E,) long
+    fired: Tensor  # (E, N) bool: the ship fired a real bullet on the last tick (stored, not inferred)
+    bullet_real: Tensor  # (E, N, K) bool: a real bullet (False: a ghost, which does no damage)
+    bullet_fired_tick: Tensor  # (E, N, K) long: the episode tick the bullet left the gun
 
 
 @dataclass
@@ -85,6 +88,11 @@ class StepOut:
     killer: Tensor  # (E, N) long, slot of the killer or -1
     done: Tensor  # (E,) bool
     result: Tensor  # (E,) long: 0 or 1 = winning team, 2 = draw, -1 = not done
+    # Bullets whose flight ended this tick (real and ghost alike), per slot (E, N, K):
+    # shot_outcome -1 none ended, 0 missed (ran out of moves), 1 hit an enemy, 2 hit a team-mate;
+    # shot_tick the episode tick that bullet left the gun (the tick the hit head labels).
+    shot_outcome: Tensor
+    shot_tick: Tensor
 
 
 @dataclass

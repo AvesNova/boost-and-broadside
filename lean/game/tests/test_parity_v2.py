@@ -126,6 +126,9 @@ def to_lean(game: Game, v2_state) -> State:
         exists=torch.ones_like(alive), team=game.team, type=ship_type,
         constants=ship_constants(game.config, ship_type),
         bullet_moves_left=bullets.moves_left.long()[:, slots], tick=v2_state.match.episode_tick.long(),
+        fired=torch.zeros_like(bullets.moves_left[:, slots][..., 0], dtype=torch.bool),
+        bullet_real=bullets.moves_left[:, slots] > 0,
+        bullet_fired_tick=torch.zeros_like(bullets.moves_left.long()[:, slots]),
     )
 
 

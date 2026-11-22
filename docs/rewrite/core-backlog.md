@@ -31,7 +31,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | B3 | Fields drawn per environment at reset (agreed fix 11) | done (worklog 04:35) |
 | B4 | The agreed waste fixes in lean/game/NOTES.md (constants packed or compiled in, packed state, dead ships free, constant work at reset, velocity once per step, one scripted call, personas at reset, no-fields path, batched resets) | todo |
 | B5 | Cheaper damage form (agreed fix 14) | done, head-on term only (worklog 05:40) |
-| B6 | Ghost-bullet hit labels | todo |
+| B6 | Ghost-bullet hit labels | game side done (worklog 06:15); the hit head is in C and D |
 | B7 | Fog (rules in core-decisions.md) | todo |
 
 ## C. Model (port v2's mathematics with the agreed changes)

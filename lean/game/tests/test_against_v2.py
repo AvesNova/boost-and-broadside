@@ -61,6 +61,8 @@ def to_lean(config, v2_state) -> State:
         bullet_x=bullets.x.clone(), bullet_y=bullets.y.clone(), bullet_dir_x=bullets.direction_x.clone(),
         bullet_dir_y=bullets.direction_y.clone(), bullet_speed=bullets.proper_speed.clone(),
         bullet_moves_left=bullets.moves_left.long(), tick=v2_state.match.episode_tick.long(),
+        fired=torch.zeros_like(bullets.moves_left[..., 0], dtype=torch.bool),
+        bullet_real=bullets.moves_left > 0, bullet_fired_tick=torch.zeros_like(bullets.moves_left.long()),
     )
 
 
