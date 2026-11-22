@@ -386,9 +386,13 @@ changed:
   the audit's tables above say so.
 - **DreamerV3's normaliser** divides the baseline-subtracted return, as the project does.
   Its entropy scale of 3e-4 is presented as working because of that normaliser.
-- **Categorical value targets have no PPO evidence.** The supporting paper's experiments
-  are value-based, offline or distillation, with one IMPALA result; two-hot is its
-  weakest variant.
+- **Categorical value targets are well supported for actor-critics, with one gap and one
+  mismatch.** DreamerV3's critic is a two-hot symlog categorical and the HL-Gauss paper
+  has an IMPALA result, so the choice is category (b). The gap: none of the papers read
+  runs PPO. The mismatch **(checked):** the project uses HL-Gauss (sigma 0.75 bins) for
+  the state, next-state and geometry codes, but the critic in
+  `models/yemong/critic.py` uses plain two-hot, which is the weakest variant in the
+  HL-Gauss paper. Moving the critic to HL-Gauss is a one-line change with support.
 - **Rotary on metric coordinates has no precedent found.** The vision work uses integer
   grid indices. It is the project's own mechanism, measured here to matter.
 - **Auxiliary prediction heads have no on-policy support.** The forward-prediction results
@@ -406,10 +410,26 @@ changed:
   Those two are the only ones worth the owner downloading.
 
 The net effect on the baseline: fewer rows are category (a) than the blind passes
-claimed. PPO, GAE, masking and scalar inputs are standard. The categorical critic, the
-auxiliary heads, rotary on world coordinates and the advantage normaliser are the
-project's own choices with partial or no outside support, which makes them the test
-list.
+claimed. PPO, GAE, masking and scalar inputs are standard, and the categorical critic is
+supported. The next-state and other auxiliary heads, rotary on world coordinates and
+heading, the advantage normaliser and the way loss weights are chosen are the project's
+own choices with partial or no outside support, which makes them the test list.
+
+## Open questions agreed with the owner (2026-11-22)
+
+- **Value form:** reward levels and per-level discounts stay for now; the single-value
+  run is the first learner experiment.
+- **Advantage normaliser:** DreamerV3's form was taken as a starting point, not as a
+  measured choice.
+- **Loss weights:** how the weights between heads and between value and policy are chosen.
+- **Nearest-k attention:** an arm to test.
+- **Heading in rotary:** the blind pass dropped the heading harmonics for want of a
+  source. The owner's argument for them is sound (two ships side by side are in very
+  different situations depending on their attitudes, and an angle is exactly periodic,
+  so rotary cannot alias on it). Keep them, as category (d).
+- **Settled:** hidden enemies as last-seen tokens with time since seen; Griffin's decay
+  at the paper's initialisation; an entropy term in RL; variable maps in evaluation only
+  if they are in training.
 
 ## Lessons to carry into the rewrite
 
