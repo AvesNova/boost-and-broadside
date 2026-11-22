@@ -44,6 +44,8 @@ class ModelConfig:
     the rotated dimensions from every score and value involving the game token.
     next_state_fields: the State fields whose one-tick change the next-state head predicts,
     each with the divisor that brings the change to order one.
+    hit_classes: the hit head's outcomes for the bullet a ship emits on a tick, in
+    lean.contract's StepOut.shot_outcome order (0 missed, 1 hit an enemy, 2 hit a team-mate).
     """
 
     width: int = 128
@@ -54,8 +56,9 @@ class ModelConfig:
     mlp_ratio: int = 4
     head_hidden: int = 256
     actions: int = 42
-    levels: int = 4
+    levels: int = 5
     bins: int = 64
+    hit_classes: int = 3  # the hit head: miss, enemy, team-mate
     recurrence_exponent: float = 8.0
     retention_low: float = 0.9
     retention_high: float = 0.999
@@ -296,7 +299,10 @@ class Policy(nn.Module):
         self.encoder = Encoder(ship_features + code, global_features + code, field_features + code, config)
         self.blocks = nn.ModuleList(Block(config) for _ in range(config.blocks))
         self.heads = HeadGroup(config.width, config.head_hidden, (config.actions, config.levels * config.bins), config)
-        self.next_state_head = HeadGroup(config.width, config.head_hidden, (config.next_state_size,), config)
+        # The learner's auxiliary heads, one group: next state and hit.
+        self.auxiliary_heads = HeadGroup(
+            config.width, config.head_hidden, (config.next_state_size, config.hit_classes), config
+        )
 
     def initial_carry(self, envs: int, slots: int, device) -> Tensor:
         """The zero recurrent state, (blocks, envs, 1 + slots, 4, width) float32."""
@@ -312,12 +318,12 @@ class Policy(nn.Module):
         Returns policy logits (E, N, 42), value logits (E, N, LEVELS, BINS) and the new
         carry. Outputs of rows with key_mask False are meaningless and their carry is zero.
         """
-        logits, value_logits, _, carry = self._forward(
+        logits, value_logits, _, _, carry = self._forward(
             {name: getattr(obs, name)[None] for name in OBS_FIELDS},
             carry,
             None if reset is None else reset[None],
             None if position_offset is None else position_offset[None],
-            with_next_state=False,
+            with_auxiliary=False,
         )
         return logits[0], value_logits[0], carry
 
@@ -329,15 +335,16 @@ class Policy(nn.Module):
         (E, 2) or (T, E, 2) metres.
         Returns policy logits (T, E, N, 42), value logits (T, E, N, LEVELS, BINS),
         next_state (T, E, N, NEXT_STATE) (the predicted scaled change of
-        config.next_state_fields to the next tick) and the carry after the last tick.
+        config.next_state_fields to the next tick), hit logits (T, E, N, HIT_CLASSES) (the
+        outcome of the bullet each ship emits on that tick) and the carry after the last tick.
         """
         if position_offset is not None and position_offset.dim() == 2:
             position_offset = position_offset[None]
         return self._forward(
-            {name: getattr(obs, name) for name in OBS_FIELDS}, carry, reset, position_offset, with_next_state=True
+            {name: getattr(obs, name) for name in OBS_FIELDS}, carry, reset, position_offset, with_auxiliary=True
         )
 
-    def _forward(self, obs: dict, carry, reset, position_offset, with_next_state):
+    def _forward(self, obs: dict, carry, reset, position_offset, with_auxiliary):
         ticks, envs, slots = obs["key_mask"].shape
         pos, field_pos = obs["pos"], obs["field_pos"]
         offset = pos.new_zeros(ticks, envs, 2) if position_offset is None else position_offset.expand(ticks, envs, 2)
@@ -393,8 +400,8 @@ class Policy(nn.Module):
         ships = tokens[:, :, 1:]
         logits, value_logits = self.heads(ships)
         value_logits = value_logits.view(ticks, envs, slots, self.config.levels, self.config.bins)
-        next_state = self.next_state_head(ships)[0] if with_next_state else None
-        return logits, value_logits, next_state, torch.stack(new_carry)
+        next_state, hit_logits = self.auxiliary_heads(ships) if with_auxiliary else (None, None)
+        return logits, value_logits, next_state, hit_logits, torch.stack(new_carry)
 
 
 OBS_FIELDS = ("ship", "pos", "heading", "key_mask", "globals", "field", "field_pos", "field_mask")

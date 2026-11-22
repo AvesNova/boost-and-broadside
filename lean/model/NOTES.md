@@ -209,3 +209,25 @@ Ops by region (eager `step`, compute; counted at E = 4, so the totals differ fro
 few ops): spatial 61 per sublayer (was 85 before rotating
 the stacked query/key/value once and building the additive mask once), temporal 72 per
 block, encoder 52, heads 23, position code 5 per call (3 calls), rotary 4 per call.
+
+## The hit head and five value levels (2026-11-23)
+
+- `ModelConfig.levels` 5 (v2's reward levels: damage, kill_death, objective_progress,
+  objective, outcome; lean/learn/config.py `LEVEL_NAMES`), `bins` 64 as before.
+- `ModelConfig.hit_classes` 3: the hit head, a categorical over the outcome of the bullet a
+  ship emits on the tick (0 missed, 1 hit an enemy, 2 hit a team-mate, as
+  `StepOut.shot_outcome`). It reads each ship token, like every head.
+- `Policy.auxiliary_heads` replaces `next_state_head`: one `HeadGroup` with two outputs,
+  next state and hit (one first matrix, a hidden block, norm and last layer per head; v2's
+  head initialisation). Run only by `sequence` (the learner), not by `step`.
+- `Policy.sequence` returns five values: logits, value logits, next state, **hit logits
+  (T, E, N, 3)**, carry. `lean/CONTRACT.md` still lists four and the old level order; it
+  was left alone because another agent is editing the contract.
+- Tests: `test_sequence_equals_repeated_steps` checks the hit logits' shape; the backward
+  test includes a hit cross-entropy, so the head must receive a gradient. Two rounding
+  bounds were loosened after the head changed the random draws: padding and permutation
+  (atol 1e-5 to 5e-5: measured 0.4e-5 to 2.3e-5 over eight weight seeds on outputs of
+  magnitude 4) and bf16 carry drift (0.03 to 0.05: measured 0.025 to 0.036 over eight
+  seeds). Both are float rounding, not behaviour.
+- Parameters: **2,048,180** (fourier; was 1,997,681): the hit head adds 34,051 (first
+  block 128 x 256 + 256, norm 256, last 256 x 3 + 3) and the fifth value level 16,448.

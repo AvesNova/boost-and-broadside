@@ -1,24 +1,27 @@
-"""Settings of the learner: PPO, reward terms, team-size draws, self-play and the league."""
+"""Settings of the learner: PPO, reward levels, the hit head, team-size draws, self-play
+and the league."""
 
 from dataclasses import dataclass
 
-LEVELS = 4
-OUTCOME, KILL, DAMAGE, SHAPING = 0, 1, 2, 3
+# v2's reward levels (src/bnb/contracts/trajectory.py at 4cfd1e86), in v2's order.
+LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outcome")
+LEVELS = len(LEVEL_NAMES)
+DAMAGE, KILL_DEATH, OBJECTIVE_PROGRESS, OBJECTIVE, OUTCOME = range(LEVELS)
 
 
 @dataclass
 class LearnConfig:
     """Every number the learner uses.
 
-    Discounts are per tick. The game ticks at 30 Hz and the policy decides every tick, so
-    one tick is one decision; v1 decided at 30 Hz (60 Hz physics, action repeat 2) and its
-    per-decision discounts (0.998, 0.990, 0.982, 0.951) therefore carry over unchanged.
-    A different tick rate `f` would use `discount ** (30 / f)`.
+    Discounts are per tick. Both v2 and this game tick at 30 Hz with one decision per tick,
+    so v2's per-level discounts and GAE lambdas carry over unchanged
+    (v2 src/bnb/learn/ppo.py:172-173 at 4cfd1e86). A different tick rate `f` would use
+    `discount ** (30 / f)`.
     """
 
-    # Returns. Order of levels: outcome, kill and death, damage, shaping.
-    discounts: tuple[float, ...] = (0.998, 0.990, 0.982, 0.951)
-    gae_lambda: float = 0.95
+    # Returns, per level in LEVEL_NAMES order.
+    discounts: tuple[float, ...] = (0.982, 0.990, 0.995, 0.999, 0.9997)
+    gae_lambdas: tuple[float, ...] = (0.81, 0.90, 0.95, 0.97, 0.97)
     advantage_normaliser: str = "std"  # "std" or "percentile"
     advantage_percentiles: tuple[float, float] = (0.05, 0.95)
 
@@ -36,28 +39,38 @@ class LearnConfig:
     next_state_coefficient: float = 0.1
     bc_coefficient: float = 2.0
     bc_gate: float = 0.45
+    hit_coefficient: float = 0.05  # cross-entropy of the hit head, nats per labelled row
 
-    # Categorical critic: the outermost bin centres per level, in return units. The learner
-    # owns the support; each must hold that level's returns with three bins of margin.
-    value_low: tuple[float, ...] = (-1.5, -2.0, -2.0, -4.0)
-    value_high: tuple[float, ...] = (1.5, 2.0, 2.0, 4.0)
+    # Categorical critic: the outermost bin centres per level, in return units (LEVEL_NAMES
+    # order). Each holds the level's measured returns with margin (lean/learn/NOTES.md,
+    # "Reward levels"). The learner owns the support.
+    # Measured 2026-11-23 (scripted against scripted, whole episodes, 4v4 to 8v8, v2 and
+    # core games; and the learner's first rollouts): damage -4.9 to 5.9, kill_death -5.7 to
+    # 7.9, outcome +-10 (its bound). Symmetric, so an untrained critic (uniform softmax)
+    # reads 0. Objective levels: placeholders, no mode pays them yet.
+    value_low: tuple[float, ...] = (-7.0, -8.0, -1.0, -1.0, -12.0)
+    value_high: tuple[float, ...] = (7.0, 8.0, 1.0, 1.0, 12.0)
     value_sigma_ratio: float = 0.75  # Gaussian width of a target, in bin widths
+    # Range monitoring (per level, per epoch's targets): a warning when more than this share
+    # of the valued targets lies beyond the outermost centres (clamped), and when the
+    # targets occupy fewer than this many bins (a bin counts when it holds at least
+    # range_bin_share of them). A level that paid no reward in the rollout is not warned narrow.
+    range_clamped_warning: float = 0.01
+    range_narrow_bins: int = 8
+    range_bin_share: float = 0.001
 
-    # Rewards. The side causing an event is paid twice the victim's charge.
-    win_reward: float = 1.0
-    death_penalty: float = 0.283
-    kill_reward: float = 0.283
-    damage_dealt_reward: float = 0.548
-    damage_taken_penalty: float = 0.274
-    friendly_damage_penalty: float = 0.548
-    damage_unit: float = 1.0  # damage that counts as 1.0, in the game's damage units
-    individual_share: float = 0.5  # rest of kill and damage terms is the team mean
-    facing_reward: float = 0.09
-    closing_reward: float = 0.08
-    speed_unit: float = 100.0  # metres per second that count as closing speed 1.0
-    shaping_full_steps: float = 100e6  # shaping scale is 1 until here
-    shaping_floor: float = 0.05
-    shaping_floor_steps: float = 400e6  # and decays exponentially to the floor here
+    # Rewards: v2's level weights (v2 src/bnb/learn/rewards.py:74-79, v1's times 10).
+    damage_weight: float = 2.74  # per damage_unit points
+    kill_death_weight: float = 2.83
+    objective_progress_weight: float = 20.0
+    objective_weight: float = 20.0
+    outcome_weight: float = 10.0
+    damage_unit: float = 100.0  # points, for every ship type
+
+    @property
+    def reward_weights(self) -> tuple[float, ...]:
+        """The level weights in LEVEL_NAMES order."""
+        return tuple(getattr(self, f"{name}_weight") for name in LEVEL_NAMES)
 
     # Scenario draws at reset.
     team_size_minimum: int = 4
@@ -75,17 +88,6 @@ class LearnConfig:
 def bc_weight(config: LearnConfig, scripted_win_rate: float) -> float:
     """Coefficient of the BC term: bc_coefficient * max(0, 1 - win_rate / gate)."""
     return config.bc_coefficient * max(0.0, 1.0 - scripted_win_rate / config.bc_gate)
-
-
-def shaping_scale(config: LearnConfig, steps: float) -> float:
-    """Taper of the shaping level: 1 until shaping_full_steps, then exponential decay
-    reaching shaping_floor at shaping_floor_steps and held there. `steps` counts
-    environment ticks collected so far."""
-    if steps <= config.shaping_full_steps:
-        return 1.0
-    span = config.shaping_floor_steps - config.shaping_full_steps
-    fraction = min(1.0, (steps - config.shaping_full_steps) / span)
-    return config.shaping_floor**fraction
 
 
 def learning_rate(config: LearnConfig, update_index: int) -> float:

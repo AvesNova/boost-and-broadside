@@ -15,6 +15,7 @@ from lean.learn import (
     start,
     update,
 )
+from lean.learn.config import OUTCOME
 from lean.learn.tests import standins
 
 ENVS = 8  # 4 self-play, 4 league
@@ -79,7 +80,7 @@ def test_both_sides_of_a_self_play_game_are_the_live_policy():
     league = League(every=1, capacity=2)
     config, opponent, state, carry, generator = setup(policy, league)
     rollout = run(config, policy, opponent, state, carry, 6, generator)
-    outcome = rollout.reward[-1, ..., 0] * rollout.observation.own[-1]  # every episode ends on tick 5
+    outcome = rollout.reward[-1, ..., OUTCOME] * rollout.observation.own[-1]  # every episode ends on tick 5
     assert rollout.done[-1].all()
     assert (outcome[rollout.self_play] == 0).all()  # draws
     assert (outcome[~rollout.self_play].sum(-1) < 0).all()  # losses

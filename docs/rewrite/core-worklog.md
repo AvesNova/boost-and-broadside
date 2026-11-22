@@ -220,3 +220,19 @@ checked, the commit. Numbers are measured unless marked otherwise.
     can be sighted; only real bullets reveal on a hit. The model does not read `visible`
     and `since_seen` yet, so a stale last-seen row looks current to it: the model must
     read them before any training under fog (backlog C10).
+- 03:49 D2 (part) and the hit head (background agent, reviewed): v2's five reward levels (damage,
+  kill_death, objective_progress, objective, outcome) with v2's weights, discounts (0.982,
+  0.990, 0.995, 0.999, 0.9997) and lambdas (0.81 to 0.97); zero-sum damage and kills with
+  v2's damage ledger and kill assists; boundary deaths pay the other team; shaping removed.
+  Supports from measured returns (damage +-7, kill_death +-8, outcome +-12, objective +-1
+  placeholders) and range monitoring every epoch (clamped share and bins in use per level;
+  a WARNING line in train.py). The hit head: 3-way (miss, enemy, team-mate) per ship, labels
+  written back to the tick the bullet left the gun, loss on labelled own rows only,
+  coefficient 0.05; `train.py` plays ghost bullets by default, `--game core` the core game.
+  Parameters 2,048,180. `pytest lean`: 113 passed, 1 xfailed; smoke completes.
+  - Gap: the rewards rebuild attacker-by-target damage from per-ship totals (approximate when
+    one attacker hits two targets, or two attackers one target, on the same tick) and copy the
+    game's boundary formula. Fix: StepOut fields hit_damage (E, N, N), boundary_damage and
+    shield_restored (next item).
+  - Lint: lean's files are written at 120 columns against pyproject's 100 (141 long lines
+    before, 176 now in learn/model/train): a cleanup to decide (reformat or raise the limit).

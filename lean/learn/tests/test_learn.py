@@ -13,6 +13,7 @@ from lean.learn import (
     start,
     update,
 )
+from lean.learn.config import LEVELS, OUTCOME
 from lean.learn.tests import standins
 
 
@@ -76,13 +77,13 @@ def run_updates(updates, snapshot=False):
 def test_rollout_shapes_and_outcome_reward_reach_both_teams():
     rollout, _ = run_updates(1, snapshot=True)
     # 8 environments, 4 of them self-play with two live seats: 12 seats.
-    assert rollout.reward.shape == (16, 12, 4, 4)
+    assert rollout.reward.shape == (16, 12, 4, LEVELS)
     assert rollout.observation.ship.shape == (16, 12, 4, 3)
     assert int(rollout.episodes) == 16  # 8 environments, episodes of 6 ticks, 16 ticks
     assert rollout.done.sum() == 24  # each self-play episode ends for both of its seats
     assert (rollout.value[~rollout.observation.own] == 0).all()
     assert torch.isfinite(rollout.log_probability).all()
-    outcome = rollout.reward[..., 0][rollout.done]  # (ended episodes, N)
+    outcome = rollout.reward[..., OUTCOME][rollout.done]  # (ended episodes, N)
     assert (outcome > 0).any() and (outcome < 0).any()  # winners and losers are both paid
     assert rollout.position_offset.shape == (16, 12, 2)
     assert not rollout.next_valid[rollout.done].any()

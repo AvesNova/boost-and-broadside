@@ -1,99 +1,239 @@
-"""Per-ship rewards on the four levels."""
+"""Per-ship rewards on v2's five levels (v2's src/bnb/learn/rewards.py at commit 4cfd1e86).
+
+Levels, in this order: damage, kill_death, objective_progress, objective, outcome. Each is
+zero-sum between the teams as v2's is: every event a team earns pairs with the same amount
+charged to the other team. A ledger per environment holds each attacker's damage to each
+target that has not healed; recharge charges it back, and a kill is shared by it (assists).
+The objective levels are zero until a mode with objectives exists; their columns are kept.
+
+v2 splits each level into an offence and a defence part (ten critic parts). Lean keeps
+the five levels (one critic target each, the author's decision); the parts' sum is the
+level, so the rewards per level are v2's.
+
+The components below are v2's functions with the same mathematics; they take any leading
+axes and `team` (..., N) broadcasting against them.
+"""
+
+from dataclasses import dataclass
 
 import torch
 from torch import Tensor
 
-from lean.learn.config import DAMAGE, KILL, LEVELS, OUTCOME, SHAPING, LearnConfig
+from lean.game import card
+from lean.game.core import smootherstep
+from lean.learn.config import LearnConfig
 
 
-def team_mean(values: Tensor, team: Tensor, exists: Tensor) -> Tensor:
-    """Mean of `values` (E, N) over the ships that exist on each ship's own team, given
-    back per ship (E, N). Ships that do not exist get 0."""
-    result = torch.zeros_like(values)
-    for side in (0, 1):
-        members = (exists & (team == side)).to(values.dtype)
-        mean = (values * members).sum(1, keepdim=True) / members.sum(1, keepdim=True).clamp(min=1.0)
-        result = result + mean * members
-    return result
+@dataclass
+class Ledger:
+    """Outstanding damage: ships (E, N, N) [attacker, target], each ship's damage to each
+    target that has not healed; boundary (E, N), the boundary's. Each living ship's column
+    plus its boundary entry is its shield deficit."""
+
+    ships: Tensor
+    boundary: Tensor
 
 
-def shaping_terms(state) -> tuple[Tensor, Tensor]:
-    """Facing and closing terms toward the nearest living enemy, each (E, N) in [-1, 1].
+def blank_ledger(envs: int, slots: int, device=None) -> Ledger:
+    """No outstanding damage."""
+    return Ledger(ships=torch.zeros(envs, slots, slots, device=device), boundary=torch.zeros(envs, slots, device=device))
 
-    Facing is the cosine between the nose direction and the direction to that enemy;
-    closing is the velocity component toward it in metres per second (not yet scaled).
-    Ships with no living enemy get 0.
+
+def clear_ledger(ledger: Ledger, chosen: Tensor) -> Ledger:
+    """The ledger with the environments in `chosen` (E,) bool emptied (re-dealt games)."""
+    return Ledger(
+        ships=torch.where(chosen[:, None, None], 0.0, ledger.ships),
+        boundary=torch.where(chosen[:, None], 0.0, ledger.boundary),
+    )
+
+
+@dataclass
+class TickEvents:
+    """One tick's events in the form v2's rewards read (v2's `Events`).
+
+    raw (E, N, N) [attacker, target]: raw hit damage of real bullets. boundary (E, N): raw
+    boundary damage. shield_lost, shield_restored (E, N): what the shield lost and regained.
+    died (E, N) bool, done (E,) bool, win_loss (E, 2) team 0's win and loss weights (a
+    result one-hot, a draw neither). present (E, N) bool: the slot is in the match.
     """
-    alive = state.alive & state.exists
-    enemy = alive[:, None, :] & alive[:, :, None] & (state.team[:, :, None] != state.team[:, None, :])
-    delta_x = state.x[:, None, :] - state.x[:, :, None]
-    delta_y = state.y[:, None, :] - state.y[:, :, None]
-    distance = torch.sqrt(delta_x**2 + delta_y**2).masked_fill(~enemy, float("inf"))
-    nearest_distance, nearest = distance.min(dim=2)
-    found = torch.isfinite(nearest_distance)
-    scale = torch.where(found, nearest_distance, torch.ones_like(nearest_distance)).clamp(min=1e-6)
-    unit_x = delta_x.gather(2, nearest[:, :, None]).squeeze(2) / scale
-    unit_y = delta_y.gather(2, nearest[:, :, None]).squeeze(2) / scale
-    facing = (state.angle_cos * unit_x + state.angle_sin * unit_y) * found
-    closing = state.speed * (state.heading_cos * unit_x + state.heading_sin * unit_y) * found
-    return facing, closing
+
+    raw: Tensor
+    boundary: Tensor
+    shield_lost: Tensor
+    shield_restored: Tensor
+    died: Tensor
+    done: Tensor
+    win_loss: Tensor
+    present: Tensor
 
 
-def rewards(step_out, state, config: LearnConfig, shaping: float = 0.0) -> Tensor:
-    """Rewards of one tick, (E, N, LEVELS) float32, for every ship of both teams.
+def boundary_damage(game_config, state, next_state) -> Tensor:
+    """The boundary's raw damage of the tick, (E, N): lean.game's formula (core.step) on the
+    position after the move, for ships alive at the tick's start."""
+    depth = torch.sqrt(next_state.x**2 + next_state.y**2) - game_config.arena_radius
+    ramp = smootherstep((depth / game_config.boundary_ramp_width).clamp(0.0, 1.0))
+    return torch.where(state.alive, card.BOUNDARY_MAX_DAMAGE * ramp * game_config.tick_length, 0.0)
 
-    `state` is the state the tick started from (its `exists` and `team` are those of the
-    episode; its `alive` says who could act). `shaping` is the taper in [0, 1].
 
-    How each level is kept independent of fleet size:
+def tick_events(step_out, state, next_state, game_config) -> TickEvents:
+    """v2's events from lean's StepOut and the states around the step (before any re-deal).
 
-    - outcome: on the tick the episode ends, each ship that existed (dead included) gets
-      +win_reward if its team won, -win_reward if it lost, 0 for a draw. One value per
-      ship, never summed over the team.
-    - kill and death, damage: an event term per ship (own death, own kills through
-      `killer`, own damage dealt and taken, own friendly fire and friendly kills as
-      penalties; damage in units of `damage_unit`). The reward is
-      individual_share * own term + (1 - individual_share) * mean of the term over the
-      ships that exist on the ship's team. A team mean divides by the team's size at
-      reset, so a ship's return is bounded by events per ship, not events per fleet.
-    - shaping: facing and closing speed toward the nearest living enemy for living ships,
-      times `shaping`; already per ship.
-
-    v1 instead divided every reward by the total ship count.
+    Interim, until the contract's StepOut carries the attacker-by-target damage, the
+    boundary damage and the shield's restoration. Exact here: shield_lost and
+    shield_restored (from the two states), died, done, win_loss. Mirrored from the game:
+    the boundary damage (`boundary_damage`), hence each target's hit damage, damage_taken
+    less the boundary. Reconstructed: the raw matrix, which only its margins identify (each
+    attacker's damage to enemies and to team-mates, each target's hit damage). Each
+    target's hit damage is split over the attackers who could have dealt it in proportion
+    to their damage of that kind (enemy damage for an enemy target, friendly damage for a
+    team-mate). Exact when no attacker hits two targets on one tick or no target is hit
+    by two attackers; otherwise every column total is exact and rows are approximate.
     """
-    exists = state.exists
-    team = state.team
-    dtype = step_out.damage_dealt.dtype
-    reward = torch.zeros(*exists.shape, LEVELS, dtype=dtype, device=exists.device)
+    alive = state.alive
+    total = step_out.damage_taken
+    boundary = torch.minimum(boundary_damage(game_config, state, next_state), total)
+    hit = (total - boundary).clamp_min(0.0)
+    enemies = state.team[:, :, None] != state.team[:, None, :]
+    slots = state.team.shape[1]
+    others = ~torch.eye(slots, dtype=torch.bool, device=total.device)
+    weight = torch.where(enemies, step_out.damage_dealt[:, :, None], step_out.friendly_damage[:, :, None]) * others
+    weight_total = weight.sum(1, keepdim=True)
+    raw = torch.where(weight_total > 0.0, weight / torch.where(weight_total > 0.0, weight_total, 1.0), 0.0) * hit[:, None, :]
 
-    result = step_out.result[:, None]
-    decided = step_out.done[:, None] & (result >= 0) & (result < 2)
-    sign = torch.where(result == team, 1.0, -1.0)
-    reward[..., OUTCOME] = config.win_reward * sign * (decided & exists)
+    hurt = total > 0.0
+    lost = torch.where(alive, torch.minimum(state.shield, total), 0.0)
+    restored = torch.where(alive & ~hurt, (next_state.shield - state.shield).clamp_min(0.0), 0.0)
+    result = step_out.result
+    win_loss = torch.stack([result == 0, result == 1], -1).to(total.dtype)
+    return TickEvents(
+        raw=raw, boundary=boundary, shield_lost=lost, shield_restored=restored, died=step_out.died,
+        done=step_out.done, win_loss=win_loss, present=state.exists,
+    )
 
-    died = step_out.died & exists
-    slots = exists.shape[1]
-    has_killer = died & (step_out.killer >= 0)
-    killer = step_out.killer.clamp(min=0)
-    killer_team = team.gather(1, killer)
-    enemy_kill = (has_killer & (killer_team != team)).to(dtype)
-    friendly_kill = (has_killer & (killer_team == team) & (killer != torch.arange(slots, device=team.device))).to(dtype)
-    kill_credit = torch.zeros_like(enemy_kill).scatter_add(1, killer, enemy_kill - friendly_kill)
-    kill_term = config.kill_reward * kill_credit - config.death_penalty * died.to(dtype)
 
-    damage_term = (
-        config.damage_dealt_reward * step_out.damage_dealt
-        - config.damage_taken_penalty * step_out.damage_taken
-        - config.friendly_damage_penalty * step_out.friendly_damage
-    ) / config.damage_unit
+def _column_total(values: Tensor) -> Tensor:
+    """(..., 1, N): each target's total over the rows."""
+    return values.sum(-2, keepdim=True)
 
-    share = config.individual_share
-    for level, term in ((KILL, kill_term), (DAMAGE, damage_term)):
-        term = term * exists
-        reward[..., level] = share * term + (1.0 - share) * team_mean(term, team, exists)
 
-    if shaping > 0.0 and (config.facing_reward > 0.0 or config.closing_reward > 0.0):
-        facing, closing = shaping_terms(state)
-        closing = (closing / config.speed_unit).clamp(-1.0, 1.0)
-        reward[..., SHAPING] = shaping * (config.facing_reward * facing + config.closing_reward * closing)
-    return reward
+def _shares(values: Tensor, total: Tensor | None = None) -> Tensor:
+    """values (..., N, N) as fractions of each target's column total (0 for an empty one)."""
+    total = _column_total(values) if total is None else total
+    return torch.where(total > 0.0, values / torch.where(total > 0.0, total, 1.0), 0.0)
+
+
+def _enemies(team: Tensor) -> Tensor:
+    """(..., N, N) [i, j]: ships i and j are on different teams."""
+    return team[..., :, None] != team[..., None, :]
+
+
+def attribute_recharge(ledger: Tensor, recharge: Tensor, deficit: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    """Recharge (..., N) attributed pro rata over the ledger's rows (..., rows, N), with the
+    fraction min(recharge / deficit, 1). Returns (attributed (..., rows, N), unattributed
+    (..., N), the ledger less the attributed)."""
+    positive = deficit > 0.0
+    fraction = torch.where(positive, (recharge / torch.where(positive, deficit, 1.0)).clamp_max(1.0), 0.0)
+    attributed = ledger * fraction[..., None, :]
+    return attributed, recharge - _column_total(attributed)[..., 0, :], ledger - attributed
+
+
+def enemy_team_share(value: Tensor, team: Tensor, present: Tensor) -> Tensor:
+    """Each ship's value (..., N) paid to the opposing team: every present ship receives the
+    other team's total over its own team's present count; a slot out of the match none."""
+    enemies = _enemies(team)
+    total = torch.where(enemies, value[..., None, :], 0.0).sum(-1)
+    own_size = (~enemies & present[..., None, :]).sum(-1).clamp_min(1)
+    return torch.where(present, total / own_size, 0.0)
+
+
+def outcome_reward(team: Tensor, win_loss: Tensor, done: Tensor) -> Tensor:
+    """(..., N): on done environments each ship's team's win weight less its loss weight,
+    the living and the dead alike (+1 a win, -1 a loss, 0 a draw). win_loss (..., 2) is
+    team 0's; team 1's is it flipped."""
+    win, loss = torch.where(done[..., None], win_loss, 0.0)[..., None, :].unbind(-1)
+    on_team0 = team == 0
+    return torch.where(on_team0, win, loss) - torch.where(on_team0, loss, win)
+
+
+def kill_death_reward(team, combat_death, boundary_death, raw, ledger, present) -> Tensor:
+    """(..., N): v2's death, kill, ally kill and unforced events summed.
+
+    Death -1 (in combat or at the boundary). A dead ship's kill is shared half by the final
+    tick's raw hits and half by the ledger's outstanding damage (by the hits alone when
+    nothing is outstanding), so assists earn a share. Shares held by enemies are kills;
+    shares held by allies blame them (-share) and pay the opposing team twice. A boundary
+    death pays the opposing team 1.
+    """
+    raw_share = _shares(raw)
+    ledger_total = _column_total(ledger)
+    held = torch.where(ledger_total > 0.0, _shares(ledger, ledger_total), raw_share)
+    share = combat_death[..., None, :] * (0.5 * raw_share + 0.5 * held)
+    enemies = _enemies(team)
+    ally_share = torch.where(enemies, 0.0, share)
+    kill = torch.where(enemies, share, 0.0).sum(-1)
+    unforced = enemy_team_share(boundary_death + 2.0 * ally_share.sum(-2), team, present)
+    death = (combat_death | boundary_death).to(share.dtype)
+    return kill - death - ally_share.sum(-1) + unforced
+
+
+def damage_reward(team, combat_applied, boundary_applied, raw, recharge, recharge_attributed, unattributed, present) -> Tensor:
+    """(..., N) in damage points: v2's taken, dealt, friendly fire, recharge, charge-back,
+    refund and unforced events summed.
+
+    Applied damage is split over its attackers by raw impact. Damage to an enemy pays the
+    shooter; to an ally it blames the shooter and pays the opposing team twice. Recharge
+    refunds the target, charges back each enemy attacker pro rata and refunds each ally
+    attacker's blame. Boundary damage pays, and its unattributed healing charges, the
+    opposing team.
+    """
+    applied = _shares(raw) * combat_applied[..., None, :]
+    enemies = _enemies(team)
+    ally_applied = torch.where(enemies, 0.0, applied).sum(-1)
+    ally_attributed = torch.where(enemies, 0.0, recharge_attributed).sum(-1)
+    enemy_attributed = torch.where(enemies, recharge_attributed, 0.0).sum(-1)
+    unforced = 2.0 * ally_applied + boundary_applied - unattributed - 2.0 * ally_attributed
+    return (
+        -(combat_applied + boundary_applied)
+        + torch.where(enemies, applied, 0.0).sum(-1)
+        - ally_applied
+        + recharge
+        - enemy_attributed
+        + ally_attributed
+        + enemy_team_share(unforced, team, present)
+    )
+
+
+def reward_step(config: LearnConfig, ledger: Ledger, events: TickEvents, team: Tensor) -> tuple[Tensor, Ledger]:
+    """Rewards of one tick, (E, N, LEVELS) float32 for every ship of both teams, weighted
+    (damage per `damage_unit` points), and the ledger after the tick (v2's reward_step).
+    A slot out of the match is rewarded nothing."""
+    raw, present = events.raw, events.present
+    hit = _column_total(raw)[..., 0, :]
+    total = hit + events.boundary
+    lost = torch.where(total > 0.0, events.shield_lost / torch.where(total > 0.0, total, 1.0), 0.0)
+    combat_applied, boundary_applied = hit * lost, events.boundary * lost
+
+    ships = ledger.ships + _shares(raw) * combat_applied[..., None, :]
+    boundary_row = (ledger.boundary + boundary_applied)[..., None, :]
+
+    died = events.died
+    combat_death = died & (hit > 0.0)
+    kill_death = kill_death_reward(team, combat_death, died & ~combat_death, raw, ships, present)
+
+    restored = events.shield_restored
+    deficit = (_column_total(ships) + boundary_row)[..., 0, :]
+    ship_attributed, unattributed, ships = attribute_recharge(ships, restored, deficit)
+    _, _, boundary_row = attribute_recharge(boundary_row, restored, deficit)
+    damage = damage_reward(team, combat_applied, boundary_applied, raw, restored, ship_attributed, unattributed, present)
+    outcome = outcome_reward(team, events.win_loss, events.done)
+
+    zero = torch.zeros_like(outcome)
+    levels = (damage / config.damage_unit, kill_death, zero, zero, outcome)
+    reward = torch.stack([weight * level for weight, level in zip(config.reward_weights, levels, strict=True)], -1)
+    reward = torch.where(present[..., None], reward, 0.0)
+    # A death makes the damage done to the ship stick; a finished match starts afresh. A
+    # ship's row (its claims on others) survives its own death.
+    clear = died[..., None, :] | events.done[..., None, None]
+    return reward, Ledger(
+        ships=torch.where(clear, 0.0, ships), boundary=torch.where(clear[..., 0, :], 0.0, boundary_row[..., 0, :])
+    )

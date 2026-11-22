@@ -18,7 +18,6 @@ from lean.learn import (
     abandon,
     collect,
     make_optimiser,
-    shaping_scale,
     start,
     update,
 )
@@ -34,6 +33,10 @@ def main() -> None:
     parser.add_argument("--crossover-games", type=int, default=64)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--threads", type=int, default=0, help="CPU threads for torch; 0 keeps the default")
+    parser.add_argument(
+        "--game", choices=("v2", "core"), default="v2",
+        help="v2: lean.game.GameConfig() with ghost bullets (labels for the hit head); core: GameConfig.core()",
+    )
     arguments = parser.parse_args()
 
     config = LearnConfig()
@@ -49,7 +52,7 @@ def main() -> None:
         torch.set_num_threads(arguments.threads)
     torch.manual_seed(arguments.seed)
     generator = torch.Generator(device=device).manual_seed(arguments.seed)
-    game_config = game.GameConfig()
+    game_config = game.GameConfig(ghost_bullets=True) if arguments.game == "v2" else game.GameConfig.core()
     scripted_config = scripted.ScriptedConfig()
     policy = model.Policy(model.ModelConfig()).to(device)
     optimiser = make_optimiser(config, policy)
@@ -60,9 +63,7 @@ def main() -> None:
     steps = 0
     for index in range(updates):
         began = time.perf_counter()
-        rollout = collect(
-            config, game_config, policy, opponent, state, carry, ticks, generator, shaping=shaping_scale(config, steps)
-        )
+        rollout = collect(config, game_config, policy, opponent, state, carry, ticks, generator)
         state, carry = rollout.state, rollout.carry
         steps += envs * ticks
         win_rate = league.scripted_win_rate()
@@ -73,13 +74,16 @@ def main() -> None:
         if replaced is not None:
             state, carry = abandon(config, game_config, policy, opponent, state, carry, replaced, generator)
         rate = envs * ticks / (time.perf_counter() - began)
-        shown = " ".join(f"{name}={value:.4g}" for name, value in metrics.items())
+        warnings = [name.removeprefix("range_warning_") for name, value in metrics.items() if name.startswith("range_warning_") and value > 0]
+        shown = " ".join(f"{name}={value:.4g}" for name, value in metrics.items() if not name.startswith("range_warning_"))
         rates = " ".join(f"{value:.2f}" for value in league.win_rates()[league.present].tolist())
         print(
             f"update {index} steps {steps} scripted_win_rate {win_rate:.3f} league_win_rates [{rates}] "
             f"steps_per_second {rate:.0f} {shown}",
             flush=True,
         )
+        if warnings:
+            print(f"update {index} WARNING value support: {' '.join(warnings)}", flush=True)
         if (index + 1) % crossover_every == 0:
             report = crossover(game_config, policy, scripted_config, crossover_sizes, crossover_games, generator)
             for size, entry in report["sizes"].items():

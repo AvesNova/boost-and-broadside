@@ -9,7 +9,7 @@ from torch import Tensor
 
 from lean.learn.config import LearnConfig
 from lean.learn.returns import value_centres
-from lean.learn.rewards import rewards
+from lean.learn.rewards import Ledger, blank_ledger, clear_ledger, reward_step, tick_events
 from lean.model import draw_position_offset, next_state_target
 from lean.model.value import decode_value
 
@@ -74,6 +74,7 @@ class CollectCarry:
     persona: dict  # the scripted agent's per-ship parameters, tensors with leading E
     reset: Tensor  # (E,) bool, the environment was re-dealt before the next tick
     position_offset: Tensor  # (E, 2) the model's position offset of the current match
+    ledger: Ledger  # the rewards' outstanding damage per environment (lean.learn.rewards)
 
 
 @dataclass
@@ -91,6 +92,10 @@ class Rollout:
     next_state: (T, S, N, NEXT_STATE) lean.model.next_state_target of the game step;
     next_valid: (T, S, N) that row is a target (own now, alive after the step, and the
     episode did not end on the tick).
+    hit_label: (T, S, N) long, the outcome of the bullet the ship emitted on that tick
+    (0 missed, 1 hit an enemy, 2 hit a team-mate; -1 unlabelled: no bullet, or it had not
+    ended by the segment's end). Labels every slot of the seat's environment; the loss
+    takes the `own` rows.
     bootstrap_value: (S, N, LEVELS) value after the last tick, zero outside `own`.
     seat_environment, seat_team: (S,) the environment of each seat and its team at the
     last tick. self_play: (S,) bool, the seat's environment is a self-play one.
@@ -112,6 +117,7 @@ class Rollout:
     position_offset: Tensor
     next_state: Tensor
     next_valid: Tensor
+    hit_label: Tensor
     bootstrap_value: Tensor
     seat_environment: Tensor
     seat_team: Tensor
@@ -271,6 +277,7 @@ def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: in
         persona=scripted.personas(opponent.scripted_config, envs, slots, generator, device, opponent.persona_spread),
         reset=torch.ones(envs, dtype=torch.bool, device=device),
         position_offset=draw_position_offset(policy.config, envs, generator, device),
+        ledger=blank_ledger(envs, slots, device),
     )
     return state, carry
 
@@ -295,6 +302,7 @@ def redeal(config: LearnConfig, game_config, policy, opponent: Opponent, state, 
         persona={name: select_environments(done, fresh[name], carry.persona[name]) for name in carry.persona},
         reset=done,
         position_offset=torch.where(done[:, None], draw_position_offset(policy.config, envs, generator, device), carry.position_offset),
+        ledger=clear_ledger(carry.ledger, done),
     )
     return state, carry
 
@@ -314,10 +322,27 @@ def abandon(config: LearnConfig, game_config, policy, opponent: Opponent, state,
     return state, dataclasses.replace(fresh, reset=carry.reset | chosen)
 
 
+def hit_label_entries(step_out, state, tick: int, slot_index: Tensor, environment_index: Tensor, ticks: int):
+    """(index, outcome) for scattering this tick's ended bullets into the flat hit labels
+    (tick, environment, slot) of `collect`.
+
+    A bullet that ended on segment tick `tick` left the gun on episode tick
+    step_out.shot_tick; the rollout row of that tick is tick - (state.tick - shot_tick),
+    since episode ticks and rollout rows advance together within an episode. A bullet
+    fired before the segment (a negative row) goes to the spare last entry.
+    """
+    envs, slots = state.exists.shape
+    row = tick - (state.tick[:, None, None] - step_out.shot_tick)
+    landed = (step_out.shot_outcome >= 0) & (row >= 0)
+    index = (row * envs + environment_index) * slots + slot_index
+    index = torch.where(landed, index, ticks * envs * slots)
+    return index.flatten(), step_out.shot_outcome.flatten()
+
+
 @torch.no_grad()
 def collect(
     config: LearnConfig, game_config, policy, opponent: Opponent, state, carry: CollectCarry, ticks: int, generator,
-    *, shaping: float = 1.0, game=None, scripted=None,
+    *, game=None, scripted=None,
 ) -> Rollout:
     """Step E environments for `ticks` ticks and record every seat the live policy plays.
 
@@ -339,8 +364,13 @@ def collect(
     centres = None
     records = {name: [] for name in ("observation", "action", "teacher", "log_probability", "value", "reward", "done", "reset", "position_offset", "next_state", "next_valid")}
     counters = {name: torch.zeros((), dtype=torch.long, device=device) for name in ("league_games", "league_wins", "scripted_games", "scripted_wins", "episodes")}
+    # Hit labels over (tick, environment, slot), flat, with one spare entry at the end that
+    # takes every bullet without a row in this segment.
+    hit_label = torch.full((ticks * envs * slots + 1,), -1, dtype=torch.long, device=device)
+    slot_index = torch.arange(slots, device=device)[None, :, None]
+    environment_index = torch.arange(envs, device=device)[:, None, None]
 
-    for _ in range(ticks):
+    for tick in range(ticks):
         seat_environment, seat_team = seats(carry.learner_team, self_play)
         views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
         observation = seat_view(views, seat_environment, seat_team)
@@ -363,11 +393,13 @@ def collect(
         next_state, step_out = game.step(game_config, state, action, noise)
         done = step_out.done
         seat_done = done.index_select(0, seat_environment)
+        reward, ledger = reward_step(config, carry.ledger, tick_events(step_out, state, next_state, game_config), state.team)
+        hit_label.scatter_(0, *hit_label_entries(step_out, state, tick, slot_index, environment_index, ticks))
 
         for name, item in (
             ("observation", observation), ("action", joint), ("teacher", join_action(teacher).index_select(0, seat_environment)),
             ("log_probability", log_probability), ("value", value),
-            ("reward", rewards(step_out, state, config, shaping).index_select(0, seat_environment)), ("done", seat_done),
+            ("reward", reward.index_select(0, seat_environment)), ("done", seat_done),
             ("reset", carry.reset.index_select(0, seat_environment)), ("position_offset", seat_offset),
             ("next_state", next_state_target(policy.config, state, next_state).index_select(0, seat_environment)),
             ("next_valid", observation.own & next_state.alive.index_select(0, seat_environment) & ~seat_done[:, None]),
@@ -386,7 +418,7 @@ def collect(
         if opponent.league is not None:
             opponent.league.record(carry.member, finished, won, drawn)
 
-        carry = dataclasses.replace(carry, policy=policy_carry, opponent=opponent_carry)
+        carry = dataclasses.replace(carry, policy=policy_carry, opponent=opponent_carry, ledger=ledger)
         state, carry = redeal(config, game_config, policy, opponent, next_state, carry, done, generator, game, scripted)
 
     seat_environment, seat_team = seats(carry.learner_team, self_play)
@@ -407,6 +439,7 @@ def collect(
     return Rollout(
         observation=observation,
         **{name: torch.stack(records[name]) for name in records if name != "observation"},
+        hit_label=hit_label[:-1].view(ticks, envs, slots).index_select(1, seat_environment),
         bootstrap_value=bootstrap_value,
         seat_environment=seat_environment,
         seat_team=seat_team,

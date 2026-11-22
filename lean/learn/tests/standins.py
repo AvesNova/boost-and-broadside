@@ -2,6 +2,9 @@
 
 The game: every living ship that fires adds one point to its team; an episode lasts
 `config.length` ticks; the team with more points wins. The scripted agent always fires.
+Every ship emits a bullet every tick; the bullet emitted on episode tick s ends on tick
+s + config.flight with outcome (s + slot) % 3 (`bullet_outcome`), one bullet slot. No
+damage, deaths or boundary.
 """
 
 from dataclasses import dataclass, replace
@@ -9,6 +12,8 @@ from types import SimpleNamespace
 
 import torch
 from torch import nn
+
+from lean.learn.config import LEVELS
 
 SHIP_FEATURES = 3
 MODEL_CONFIG = SimpleNamespace(offset_span=100.0, next_state_fields=(("x", 1.0), ("speed", 1.0)))
@@ -23,6 +28,7 @@ class State:
     angle_cos: torch.Tensor
     angle_sin: torch.Tensor
     speed: torch.Tensor
+    shield: torch.Tensor
     alive: torch.Tensor
     exists: torch.Tensor
     team: torch.Tensor
@@ -40,6 +46,8 @@ class StepOut:
     killer: torch.Tensor
     done: torch.Tensor
     result: torch.Tensor
+    shot_outcome: torch.Tensor
+    shot_tick: torch.Tensor
 
 
 @dataclass
@@ -56,6 +64,15 @@ class Obs:
 class GameConfig:
     slots: int = 4
     length: int = 6
+    flight: int = 3  # ticks from a bullet's emission to its end
+    arena_radius: float = 1e9  # no boundary
+    boundary_ramp_width: float = 1.0
+    tick_length: float = 1.0 / 30.0
+
+
+def bullet_outcome(fired_tick, slot):
+    """The stand-in's outcome of the bullet emitted on episode tick `fired_tick` by `slot`."""
+    return (fired_tick + slot) % 3
 
 
 def reset(config, envs, team_sizes, generator, device):
@@ -65,7 +82,7 @@ def reset(config, envs, team_sizes, generator, device):
     exists = index < first + second
     return State(
         x=index.float(), y=zeros, heading_cos=zeros + 1, heading_sin=zeros, angle_cos=zeros + 1, angle_sin=zeros,
-        speed=zeros, alive=exists, exists=exists, team=(index >= first).long(),
+        speed=zeros, shield=zeros, alive=exists, exists=exists, team=(index >= first).long(),
         points=torch.zeros(envs, 2, device=device), tick=torch.zeros(envs, dtype=torch.long, device=device),
     )
 
@@ -82,9 +99,14 @@ def step(config, state, action, noise):
     lead = points[:, 0] - points[:, 1]
     result = torch.where(lead > 0, 0, torch.where(lead < 0, 1, 2))
     zeros = torch.zeros_like(state.x)
+    fired_tick = (state.tick - config.flight)[:, None].expand_as(state.team)
+    slot = torch.arange(state.team.shape[1], device=state.team.device).expand_as(state.team)
+    ended = fired_tick >= 0
     out = StepOut(
         damage_dealt=fired.float() * 0.1, damage_taken=zeros, friendly_damage=zeros, died=torch.zeros_like(fired),
         fired=fired, killer=torch.full_like(state.team, -1), done=done, result=torch.where(done, result, -1),
+        shot_outcome=torch.where(ended, bullet_outcome(fired_tick, slot), -1)[..., None],
+        shot_tick=fired_tick[..., None],
     )
     return replace(state, points=points, tick=tick), out
 
@@ -124,7 +146,7 @@ scripted = SimpleNamespace(personas=personas, act=act)
 class TinyPolicy(nn.Module):
     """A per-ship MLP with a leaky running mean as its carry; same methods as lean.model.Policy."""
 
-    def __init__(self, levels=4, bins=21, width=32):
+    def __init__(self, levels=LEVELS, bins=21, width=32):
         super().__init__()
         self.width, self.levels, self.bins = width, levels, bins
         self.config = MODEL_CONFIG
@@ -133,6 +155,7 @@ class TinyPolicy(nn.Module):
         self.action = nn.Linear(width, 42)
         self.value = nn.Linear(width, levels * bins)
         self.next_state = nn.Linear(width, len(MODEL_CONFIG.next_state_fields))
+        self.hit = nn.Linear(width, 3)
 
     def initial_carry(self, envs, slots, device):
         return torch.zeros(envs, slots, self.width, device=device)
@@ -143,7 +166,7 @@ class TinyPolicy(nn.Module):
         return self.action(hidden), self.value(hidden).unflatten(-1, (self.levels, self.bins)), carry
 
     def sequence(self, obs, carry, reset, position_offset=None):
-        logits, values, nexts = [], [], []
+        logits, values, nexts, hits = [], [], [], []
         for tick in range(reset.shape[0]):
             carry = carry * (~reset[tick])[:, None, None]
             carry = 0.5 * carry + 0.5 * torch.tanh(self.remember(obs.ship[tick]))
@@ -151,4 +174,5 @@ class TinyPolicy(nn.Module):
             logits.append(self.action(hidden))
             values.append(self.value(hidden).unflatten(-1, (self.levels, self.bins)))
             nexts.append(self.next_state(hidden))
-        return torch.stack(logits), torch.stack(values), torch.stack(nexts), carry
+            hits.append(self.hit(hidden))
+        return torch.stack(logits), torch.stack(values), torch.stack(nexts), torch.stack(hits), carry
