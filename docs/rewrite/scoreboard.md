@@ -21,7 +21,7 @@ Script: docs/rewrite/sections/scoreboard/game_ops.py.
 | reset_done, core config (core flight and damage, ghosts, 10 drawn fields) | 401 | 100 | 1.94 |
 | scripted act (one team), core config state | 172 | 31 | 0.65 |
 
-### After agreed fix 11 (the medium cached, 2026-11-23 07:05)
+### After agreed fix 11 (the medium cached, 2026-11-23 03:10)
 
 | call | compute ops | view ops | CPU ms per call |
 |---|---|---|---|

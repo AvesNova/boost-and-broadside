@@ -8,7 +8,7 @@ checked, the commit. Numbers are measured unless marked otherwise.
 - 02:37 Overnight session starts (author asleep until 09:00). Plan: section A (flight
   physics behind a switch), then B1, then section C when blocked. Machine: laptop,
   platform profile "performance", GPU idle.
-- 03:20 A1-A8, A11: the core flight model behind `GameConfig.flight_model` ("v2" default,
+- 02:43 A1-A8, A11: the core flight model behind `GameConfig.flight_model` ("v2" default,
   "core" new) and `GameConfig.core()` (core model, Vizia only).
   - What changed (lean/game/core.py): in `_setting`, the vertical demand is held first
     (`held = softmin(demand, budget)`, no `1 - sink_room` exemption) and the vertical lift is
@@ -34,15 +34,15 @@ checked, the commit. Numbers are measured unless marked otherwise.
     almost like a wall. Options for the author: a lower exchange cap, a wider band, or a
     larger store.
   - Sandbox: `--core` flies GameConfig.core() (Vizia by default); README updated.
-- 03:45 A9: measurements in docs/rewrite/core-flight-measurements.md (script
+- 02:45 A9: measurements in docs/rewrite/core-flight-measurements.md (script
   docs/rewrite/sections/turns/measure_core.py). Key: coasting holds altitude (50.0% after
   120 s; v2 climbs to 95%); full stick settles at 111 m/s, 25 deg/s (v2 139, 38.6); the store
   is crossed in about 1.5 s per half (a tuning question); firing costs 6 to 7 m/s per second.
   A10 (core charts) handed to a background agent (chart scripts take FLIGHT_MODEL).
-- 03:55 B1: the observation's speed and velocity are in the world frame (proper speed over
+- 02:47 B1: the observation's speed and velocity are in the world frame (proper speed over
   the refractive index, as v2's observe.py), per the author. Test
   tests/test_observe.py (a ship inside a strong field). `pytest lean`: all pass.
-- 04:35 B3 and the game half of C4: fields drawn per environment at every reset, and field
+- 02:52 B3 and the game half of C4: fields drawn per environment at every reset, and field
   rows in the observation.
   - `GameConfig.field_count` (0: the fixed `fields` as before; `GameConfig.core()` uses 10)
     and v2's real-scale elimination map rules (src/bnb/game/physics/spawning.py `new_map`,
@@ -59,7 +59,7 @@ checked, the commit. Numbers are measured unless marked otherwise.
   - Checked: tests/test_fields.py (5 tests: v2's bounds and symmetry; per-environment fields
     and medium; redraw only where done; observation rows; a 60-tick core game with fields
     stays finite). `pytest lean`: 63 passed, 1 xfailed.
-- 05:05 A10 and a fix found by it.
+- 02:57 A10 and a fix found by it.
   - A10: the chart scripts draw either model (`FLIGHT_MODEL=core`, files suffixed `-core`);
     v2 charts re-rendered pixel-identical. Core charts: doghouse per ship and comparison,
     who-wins, acceleration, dive-climb, bleed, circles. Store levels for core: 97.5% (inside
@@ -77,7 +77,7 @@ checked, the commit. Numbers are measured unless marked otherwise.
     speed unchanged. Minimum full-stick radius now away from the stall: Vizia 213 m at
     224 m/s. So the three speeds separate: minimum radius about 220 m/s, best sustained
     about 160 m/s, corner 268 m/s (v2: all three at about the corner).
-- 05:40 B5: the cheaper damage form behind `GameConfig.damage_model` ("v2" default, "core"
+- 03:01 B5: the cheaper damage form behind `GameConfig.damage_model` ("v2" default, "core"
   in `GameConfig.core()`).
   - Head-on term: v2's curve written in the hit angle's cosine, (1 - c) / (1 - cos theta_0)
     in place of (theta / theta_0)^2, which keeps the half-damage angle (45 deg) and differs
@@ -91,7 +91,7 @@ checked, the commit. Numbers are measured unless marked otherwise.
   - Checked: tests/test_core_damage.py (the curve within 0.024 and the same half-damage
     angle; total damage within 2% of v2's on the same hits, the same hits doing damage).
     `pytest lean/game`: 34 passed, 1 xfailed.
-- 06:15 B6 (ghost-bullet hit labels, game side) and agreed fix 12 (stored `fired` flag).
+- 03:06 B6 (ghost-bullet hit labels, game side) and agreed fix 12 (stored `fired` flag).
   - `GameConfig.ghost_bullets` (False by default, True in `GameConfig.core()`): every living
     ship writes a bullet in its ring every tick (the ring has 11 slots, one per tick of a
     bullet's life); `State.bullet_real` marks real shots; only real bullets damage or earn
@@ -109,12 +109,12 @@ checked, the commit. Numbers are measured unless marked otherwise.
     32 games, with deaths); every living ship stamps a bullet each tick; every bullet reports
     its outcome once, within its life. `pytest lean/game lean/scripted`: 43 passed, 1 xfailed
     (v2 parity unchanged: ghosts are off by default).
-- 06:30 F3 (game side): docs/rewrite/scoreboard.md. Step 1,339 operations (v2 config, no
+- 03:07 F3 (game side): docs/rewrite/scoreboard.md. Step 1,339 operations (v2 config, no
   fields), 1,675 with 10 fields, 1,692 core config; observe 165 with fields; reset_done 266
   to 401; scripted act 172. Over the 1,300 tripwire before fields; fields add about 340
   (fix 11 halves it). Policy, compile and new-size numbers wait for the model port and the
   GPU.
-- 07:05 Agreed fix 11 (part): the medium cached in the state (`State.medium` (E, N, 3),
+- 03:10 Agreed fix 11 (part): the medium cached in the state (`State.medium` (E, N, 3),
   `State.bullet_medium` (E, N, K, 3)), as v2 caches it: the ships' end-of-tick values are the
   next tick's start values; a new bullet takes its ship's; the observation reads the cache.
   Evaluations per tick: 4 to 2. Step with 10 fields: 1,675 to 1,510 operations; core config
@@ -122,7 +122,7 @@ checked, the commit. Numbers are measured unless marked otherwise.
   tests take v2's own cached values). Whoever places a ship by hand must refresh the cache
   (the observation test and the sandbox do; `lean.sandbox.world.refresh_medium`). Also fixed:
   the sandbox dropped the drawn fields at start (it rebuilt the constants).
-- 07:20 C1-C3, C5-C9 and the model half of C4 (background agent, reviewed): v2's model maths in
+- 03:13 C1-C3, C5-C9 and the model half of C4 (background agent, reviewed): v2's model maths in
   lean/model with the decided changes. New files temporal.py (v2's Griffin block: input
   projection, 4-tap causal convolution, RG-LRU, GeLU gate branch, output projection, then v2's
   4x MLP; paper initialisation, recurrentgemma code for the rest; doubling scan; the
@@ -149,30 +149,30 @@ checked, the commit. Numbers are measured unless marked otherwise.
     next-state head's last layer orthogonal 0.01, not v2's zero; depth scale 2/6;
     sqrt(1 - a^2) kept at a reset as v2; grid cells with Blair's exponential gain; fields'
     rotary heading 0 as v2's memory tokens.
-- 07:50 E1 (part, "tell, do not infer"): the game's constants carry each type's cruise speed,
+- 03:17 E1 (part, "tell, do not infer"): the game's constants carry each type's cruise speed,
   corner speed, bullet launch speed and gun range (`core.derived_characteristics`, solved once
   per flight model with the game's own flight functions, cached; v2's definitions). Values
   match the measured top speeds (Yongma 334.9, Jujak 316.2, Vizia 325.4 m/s) and the scripted
   opponent's former Vizia fallbacks exactly (634.8 m, 2,037.4 m/s, 268.2 m/s); the opponent
   reads them per type (it flew Yongma and Jujak with Vizia's). Test in
   lean/scripted/tests. `pytest lean/game lean/scripted`: 44 passed, 1 xfailed.
-- 08:10 E1 (part): the scripted opponent never shoots through a team-mate: a living team-mate
+- 03:18 E1 (part): the scripted opponent never shoots through a team-mate: a living team-mate
   ahead along the nose, nearer than the target and within 2 of its hit radii of the line of
   fire zeroes the gun gate (`ScriptedConfig.ally_clearance_in_hit_radii`). Test: blocked at
   200 m on the line, clear at 150 m off it. The check costs 21 operations: the scripted call
   is now 193, over the 170 tripwire (question 11 for the author). `pytest lean/scripted`:
   8 passed.
-- 08:25 F2: docs/provenance.md, from the literature drafts plus rows for the decisions taken
+- 03:19 F2: docs/provenance.md, from the literature drafts plus rows for the decisions taken
   since (gate initialisation, null key dropped, Griffin block ported, rotary layout, rotated
   values, the league floor and tally, the core flight model, firing, the damage term, ghost
   bullets, the medium cache). Kinds as in core-brief.md section 3.
-- 08:35 Author's answers: the band edges are a ceiling and a floor with a gradual ramp (as
+- 03:20 Author's answers: the band edges are a ceiling and a floor with a gradual ramp (as
   built); the required order is minimum sustained radius, best sustained rate, corner speed.
   New test (tests/test_core_flight.py): the core model meets the order for all three types.
-  Correction to my 05:05 note: the order I gave (best sustained, then minimum radius, then
+  Correction to my 02:57 note: the order I gave (best sustained, then minimum radius, then
   corner) used the instantaneous full-stick radius; on the sustained basis the order is the
   author's.
-- 08:50 D1 (background agent, reviewed): the league as the author designed it. Half the
+- 03:29 D1 (background agent, reviewed): the league as the author designed it. Half the
   environments (fixed by index) are self-play with two live seats, both training; half are
   league games with one live seat against a member drawn at each reset. `League` (pool.py):
   member 0 the scripted agent plus up to 8 snapshots; draws 7/8 by (1 - p)^2, 1/8 uniform;
@@ -190,3 +190,6 @@ checked, the commit. Numbers are measured unless marked otherwise.
     0.02; outcome discount 0.9997 (lean 0.998); advantage scaled by a slow EMA of the
     returns' spread; 81 symlog bins to +-19; zero-sum rewards with a damage ledger and kill
     assists; weight averaging (EMA 0.95 and a uniform average, both league members).
+- 03:31 Correction: the times in this log from 02:43 on were first written from my estimate,
+  not the clock; they now come from the commits' times (git log). The whole session so far,
+  02:37 to 03:29, took 52 minutes.
