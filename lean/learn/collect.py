@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from lean.learn.config import LearnConfig
+from lean.learn.config import LearnConfig, policy_precision
 from lean.learn.returns import value_centres
 from lean.learn.rewards import Ledger, blank_ledger, clear_ledger, reward_step, tick_events
 from lean.model import draw_position_offset, next_state_target
@@ -97,6 +97,7 @@ class Rollout:
     ended by the segment's end). Labels every slot of the seat's environment; the loss
     takes the `own` rows.
     bootstrap_value: (S, N, LEVELS) value after the last tick, zero outside `own`.
+    value_centres: (LEVELS, BINS) the critic's support the values were decoded with.
     seat_environment, seat_team: (S,) the environment of each seat and its team at the
     last tick. self_play: (S,) bool, the seat's environment is a self-play one.
     initial_carry: the live policy's carry before the first tick.
@@ -119,6 +120,7 @@ class Rollout:
     next_valid: Tensor
     hit_label: Tensor
     bootstrap_value: Tensor
+    value_centres: Tensor
     seat_environment: Tensor
     seat_team: Tensor
     self_play: Tensor
@@ -223,16 +225,18 @@ def draw_members(opponent: Opponent, count: int, generator, device) -> Tensor:
     return opponent.league.draw(count, generator)
 
 
-def snapshot_move(policy, views, environment: Tensor, team: Tensor, carry: Tensor, position_offset: Tensor, generator):
+def snapshot_move(config: LearnConfig, policy, views, environment: Tensor, team: Tensor, carry: Tensor,
+                  position_offset: Tensor, generator):
     """One snapshot member's move on its environments: the view of team `team[i]` in
     environment `environment[i]`, one policy step from `carry` (those environments' rows)
     and a sampled action. Returns ((count, N, 3) long, new carry rows)."""
-    logits, _, new_carry = policy.step(seat_view(views, environment, team), carry, position_offset)
-    return split_joint(sample_joint(logits, generator)), new_carry
+    with policy_precision(config, position_offset.device):
+        logits, _, new_carry = policy.step(seat_view(views, environment, team), carry, position_offset)
+    return split_joint(sample_joint(logits.float(), generator)), new_carry
 
 
-def league_actions(opponent: Opponent, views, state, carry: CollectCarry, scripted_action: Tensor, generator,
-                   move=snapshot_move):
+def league_actions(config: LearnConfig, opponent: Opponent, views, state, carry: CollectCarry, scripted_action: Tensor,
+                   generator, move=snapshot_move):
     """Actions of the league side of every league environment, (L, N, 3), and the new
     opponent carry.
 
@@ -264,7 +268,7 @@ def league_actions(opponent: Opponent, views, state, carry: CollectCarry, script
         chosen = order[begin:begin + count]
         begin += count
         member_action, new_carry = move(
-            league.frozen[index - 1], views, chosen + first, team.index_select(0, chosen),
+            config, league.frozen[index - 1], views, chosen + first, team.index_select(0, chosen),
             index_carry(opponent_carry, chosen), offset.index_select(0, chosen), generator,
         )
         opponent_carry = opponent_carry.index_copy(carry_axis(opponent_carry), chosen, new_carry)
@@ -364,20 +368,22 @@ def act(config: LearnConfig, game_config, policy, opponent: Opponent, state, car
     """The first half of a tick: both teams' views, the live policy on every seat (its
     sampled joint action, log-probability and value) and the scripted agent's action for
     every ship. Returns (views, observation, seat_offset, joint, log_probability, value,
-    teacher, policy_carry)."""
+    teacher, policy_carry, centres), centres the critic's support (LEVELS, BINS)."""
     envs = state.exists.shape[0]
     self_play = envs - carry.member.shape[0]
     seat_environment, seat_team = seats(carry.learner_team, self_play)
     views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
     observation = seat_view(views, seat_environment, seat_team)
     seat_offset = carry.position_offset.index_select(0, seat_environment)
-    logits, value_logits, policy_carry = policy.step(observation, carry.policy, seat_offset)
+    with policy_precision(config, seat_offset.device):
+        logits, value_logits, policy_carry = policy.step(observation, carry.policy, seat_offset)
+    logits, value_logits = logits.float(), value_logits.float()
     joint = sample_joint(logits, generator)
     log_probability = torch.log_softmax(logits, -1).gather(-1, joint[..., None]).squeeze(-1)
     centres = value_centres(config, value_logits.shape[-1], value_logits.device)
     value = decode_value(value_logits, centres) * observation.own[..., None]
     teacher = scripted_actions(scripted, opponent.scripted_config, state, carry.persona, generator)
-    return views, observation, seat_offset, joint, log_probability, value, teacher, policy_carry
+    return views, observation, seat_offset, joint, log_probability, value, teacher, policy_carry, centres
 
 
 def advance(
@@ -478,10 +484,10 @@ def collect(
     tick = torch.zeros((), dtype=torch.long, device=device)
 
     for _ in range(ticks):
-        views, observation, seat_offset, joint, log_probability, value, teacher, policy_carry = act_part(
+        views, observation, seat_offset, joint, log_probability, value, teacher, policy_carry, _ = act_part(
             config, game_config, policy, opponent, state, carry, generator, game, scripted
         )
-        league_action, opponent_carry = league_actions(opponent, views, state, carry, teacher, generator, move)
+        league_action, opponent_carry = league_actions(config, opponent, views, state, carry, teacher, generator, move)
         state, carry, tick_records, counters = advance_part(
             config, game_config, policy, opponent, state, carry, observation, joint, teacher, league_action,
             opponent_carry, policy_carry, tick, hit_label, counters, generator, game, scripted,
@@ -496,7 +502,8 @@ def collect(
     seat_environment, seat_team = seats(carry.learner_team, self_play)
     # The value after the last tick from the tick's first half (one graph fewer to compile;
     # its samples and the scripted actions are discarded).
-    bootstrap_value = act_part(config, game_config, policy, opponent, state, carry, generator, game, scripted)[5]
+    final = act_part(config, game_config, policy, opponent, state, carry, generator, game, scripted)
+    bootstrap_value, centres = final[5], final[8]
     # After a reset the final observation belongs to a new episode; GAE never reads the
     # bootstrap there because `done` on the last tick cuts it.
 
@@ -512,6 +519,7 @@ def collect(
         **{name: torch.stack(records[name]) for name in records if name != "observation"},
         hit_label=hit_label[:-1].view(ticks, envs, slots).index_select(1, seat_environment),
         bootstrap_value=bootstrap_value,
+        value_centres=centres,
         seat_environment=seat_environment,
         seat_team=seat_team,
         self_play=seat_environment < self_play,

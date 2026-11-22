@@ -91,12 +91,12 @@ advance = _compile(_collect.advance)
 _snapshot_move = _compile(_collect.snapshot_move)
 
 
-def snapshot_move(policy, views, environment, team, carry, position_offset, generator):
+def snapshot_move(config, policy, views, environment, team, carry, position_offset, generator):
     """collect.snapshot_move, compiled for two or more environments. A member playing a
     single environment runs eagerly: dynamic shapes specialise a size of 1, so it would
     otherwise be a second compile of the whole policy step."""
     move = _snapshot_move if environment.shape[0] >= 2 else _collect.snapshot_move
-    return move(policy, views, environment, team, carry, position_offset, generator)
+    return move(config, policy, views, environment, team, carry, position_offset, generator)
 
 
 minibatch_values = _compile(_update.minibatch_values)

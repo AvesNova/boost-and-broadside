@@ -71,6 +71,14 @@ def fresh_targets(config: LearnConfig, policy, rollout: Rollout, batches: list[T
             config, policy, observation, index_carry(rollout.initial_carry, index), rollout.reset[:, index],
             rollout.position_offset[:, index],
         )
+    return targets_from(config, rollout, value, centres)
+
+
+@torch.no_grad()
+def targets_from(config: LearnConfig, rollout: Rollout, value: Tensor, centres: Tensor) -> tuple[Tensor, Tensor, dict]:
+    """Normalised advantages, value targets and range metrics (see fresh_targets) from
+    the values `value` (T, E, N, LEVELS), zero outside `own`."""
+    own = rollout.observation.own
     discounts = torch.tensor(config.discounts, dtype=value.dtype, device=value.device)
     lambdas = torch.tensor(config.gae_lambdas, dtype=value.dtype, device=value.device)
     advantage, target = generalised_advantages(rollout.reward, value, rollout.bootstrap_value, rollout.done, discounts, lambdas)
@@ -149,7 +157,9 @@ def update(
     A minibatch is a set of whole environments with the full segment, run through
     Policy.sequence from the stored carry. Advantages and value targets are recomputed
     from the current weights at the start of every epoch. `generator` fixes the order of
-    the data; `update_index` sets the warm-up learning rate. `compiled` runs the loss
+    the data; `update_index` sets the warm-up learning rate. With
+    config.targets_every_epoch False they come once from the values stored at collection.
+    `compiled` runs the loss
     (forward and backward) and the critic's target pass as lean.learn.compiled's graphs;
     Adam and the clipping stay eager. The measures stay on the device until the end: one
     read-back per update.
@@ -170,9 +180,13 @@ def update(
     totals: dict[str, Tensor] = {}
     range_totals: dict[str, float] = {}
     steps = 0
+    stored = None
     for _ in range(config.epochs):
         batches = environment_batches(envs, config.minibatches, generator)
-        advantage, target, usage = fresh_targets(config, policy, rollout, batches, values)
+        if config.targets_every_epoch:
+            advantage, target, usage = fresh_targets(config, policy, rollout, batches, values)
+        elif stored is None:
+            stored = advantage, target, usage = targets_from(config, rollout, rollout.value, rollout.value_centres)
         for name, measure in usage.items():
             range_totals[name] = range_totals.get(name, 0.0) + measure
         for index in batches:

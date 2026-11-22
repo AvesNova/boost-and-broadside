@@ -3,7 +3,7 @@ against compiled, with peak memory and the first update's time (the compile).
 
     PYTHONPATH=.:src python docs/rewrite/sections/scoreboard/train_gpu.py \
         [--compile | --no-compile] [--envs 256] [--updates 3] [--game v2|core] \
-        [--minibatches 8] [--snapshots 8] [--cached-counts]
+        [--minibatches 8] [--snapshots 8] [--cached-counts] [--targets-once] [--no-bf16]
 
 The loop is lean/train.py's (collect, update, league addition and abandon) with the
 league filled with `--snapshots` copies of the initial weights before the first rollout,
@@ -30,6 +30,7 @@ import torch  # noqa: E402
 
 from lean import game, model, scripted  # noqa: E402
 from lean.learn import League, LearnConfig, Opponent, collect, make_optimiser, start, update  # noqa: E402
+
 collect_module = importlib.import_module("lean.learn.collect")
 
 
@@ -38,10 +39,10 @@ def cached_counts_league_actions():
     original = collect_module.league_actions
     cache = {}
 
-    def patched(opponent, views, state, carry, scripted_action, generator, move=collect_module.snapshot_move):
+    def patched(config, opponent, views, state, carry, scripted_action, generator, move=collect_module.snapshot_move):
         league = opponent.league
         if league is None or league.snapshots == 0:
-            return original(opponent, views, state, carry, scripted_action, generator, move)
+            return original(config, opponent, views, state, carry, scripted_action, generator, move)
         if "counts" not in cache:
             cache["counts"] = torch.bincount(carry.member, minlength=league.members).tolist()
         counts = cache["counts"]
@@ -59,7 +60,7 @@ def cached_counts_league_actions():
             chosen = order[begin:begin + count]
             begin += count
             member_action, new_carry = move(
-                league.frozen[index - 1], views, chosen + first, team.index_select(0, chosen),
+                config, league.frozen[index - 1], views, chosen + first, team.index_select(0, chosen),
                 collect_module.index_carry(opponent_carry, chosen), offset.index_select(0, chosen), generator,
             )
             opponent_carry = opponent_carry.index_copy(collect_module.carry_axis(opponent_carry), chosen, new_carry)
@@ -80,13 +81,17 @@ def main() -> None:
     parser.add_argument("--snapshots", type=int, default=8)
     parser.add_argument("--cached-counts", action="store_true")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--targets-once", action="store_true", help="LearnConfig.targets_every_epoch = False")
+    parser.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=True, help="LearnConfig.bf16")
     arguments = parser.parse_args()
 
     device = torch.device("cuda")
     config = LearnConfig()
     if arguments.minibatches is not None:
         config = dataclasses.replace(config, minibatches=arguments.minibatches)
-    config = dataclasses.replace(config, snapshot_every=10**9)
+    config = dataclasses.replace(
+        config, snapshot_every=10**9, bf16=arguments.bf16, targets_every_epoch=not arguments.targets_once
+    )
     envs, ticks = arguments.envs, config.segment_ticks
     torch.manual_seed(arguments.seed)
     generator = torch.Generator(device=device).manual_seed(arguments.seed)
@@ -102,7 +107,7 @@ def main() -> None:
     cache = cached_counts_league_actions() if arguments.cached_counts else None
     compiled = arguments.compile
     print(
-        f"compile={compiled} envs={envs} ticks={ticks} game={arguments.game} minibatches={config.minibatches} "
+        f"compile={compiled} bf16={config.bf16} envs={envs} ticks={ticks} game={arguments.game} minibatches={config.minibatches} "
         f"epochs={config.epochs} snapshots={league.snapshots} cached_counts={arguments.cached_counts} "
         f"torch {torch.__version__} {torch.cuda.get_device_name()}",
         flush=True,
@@ -143,7 +148,7 @@ def main() -> None:
     mean = [statistics.mean(row[k] for row in steady) for k in range(3)]
     steps = envs * ticks
     print(
-        f"SUMMARY compile={compiled} envs={envs} game={arguments.game} minibatches={config.minibatches} "
+        f"SUMMARY compile={compiled} bf16={config.bf16} targets_every_epoch={config.targets_every_epoch} envs={envs} game={arguments.game} minibatches={config.minibatches} "
         f"cached_counts={arguments.cached_counts} | first update: collect {rows[0][0]:.1f} s update {rows[0][1]:.1f} s "
         f"| steady steps/s: collect {steps / mean[0]:.0f} update {steps / mean[1]:.0f} loop {steps / mean[2]:.0f} "
         f"| peak allocated {torch.cuda.max_memory_allocated() / 2**30:.2f} GiB reserved "
