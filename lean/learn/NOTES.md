@@ -474,18 +474,21 @@ v2 game: collect 26k, update 6.4k, loop 5,160 environment steps per second (eage
 ### Graph breaks and host synchronisations found
 
 1. `torch.rand/randn/randint(..., generator=None)` with a symbolic size fails to trace in
-   PyTorch 2.15 (fake-tensor error); without the keyword it traces. lean.game and
-   lean.scripted pass their generator argument through. Workaround in lean.learn.compiled:
-   those three factories drop a None generator (wrapped once, process-wide).
-2. The ship card (`lean.game.core._ship_card`, a functools.cache whose builder ends in
-   `.item()`): dynamo traces through the cache and breaks the graph; the break inside
-   `_deal` then threw the whole deal back to eager (dynamo fails to resume the `uniform`
-   closure). Workaround: `_ship_card` replaced by a lookup filled eagerly
-   (`compiled.prepare(game_config)`, called by collect). Before the rebase on 681eb492 the
-   same happened with `derived_characteristics` (float `.tolist()`).
-3. `reset_done` iterates `dataclasses.fields(State)` on the class, which dynamo cannot
-   trace (gb0180). Workaround: lean.game.core's `dataclasses` is swapped for a copy whose
-   `fields(State)` returns the fields taken once.
+   PyTorch 2.15 (fake-tensor error); without the keyword it traces. Fixed at the source
+   (2026-11-23): lean.game, lean.scripted and lean.learn.collect draw through
+   `lean.contract.random_keywords(generator, device)`, which leaves `generator` out when it
+   is None. (Was a process-wide wrap of the three factories in lean.learn.compiled.)
+2. The ship card (a functools.cache whose builder ends in `.item()`): dynamo traced through
+   the cache and broke the graph; the break inside `_deal` then threw the whole deal back to
+   eager (dynamo fails to resume the `uniform` closure). Fixed at the source (2026-11-23):
+   `lean.game.core.ship_card` keeps built cards in a plain dict; the first deal of a run
+   (`reset`, eager, before any compiled tick) builds the card and a traced deal only looks
+   it up. (Was a runtime replacement of `_ship_card` plus `compiled.prepare`, both gone.)
+   Before the rebase on 681eb492 the same happened with `derived_characteristics` (float
+   `.tolist()`).
+3. `reset_done` iterated `dataclasses.fields(State)` on the class, which dynamo cannot
+   trace (gb0180). Fixed at the source (2026-11-23): it iterates the instance's fields.
+   (Was a swapped `dataclasses` module inside lean.game.core.)
 4. Stride recompiles: a fresh state holds broadcast tensors (stride 0, also the empty
    `fields` when F = 0) where a re-dealt one holds whole ones; collect makes them whole
    before the graphs. The opponent carry is kept contiguous for the same reason.
@@ -496,11 +499,10 @@ v2 game: collect 26k, update 6.4k, loop 5,160 environment steps per second (eage
    left. Per update: one read of the measures, one of the range metrics per epoch, the
    advantage normaliser's boolean index per epoch, the BC gate's win rate.
 
-Workarounds 1 to 3 patch lean.game at runtime from lean/learn (I may not edit lean/game).
-**Wanted in lean.game** so they can go: build the ship card outside any trace (or mark it
-`torch.compiler.assume_constant_result`-safe), iterate the fields of the instance
-(`dataclasses.fields(state)`), and leave out `generator=` when it is None (or draw with a
-helper that does).
+lean.learn.compiled no longer patches anything: it sets duck sizing off and compiles. A
+compiled collect on the CPU (6 environments, 2v2 to 3v3, a snapshot in the league, two
+segments, v2 and core games) after the fixes: 0 graph breaks, 3 frames (act, advance,
+snapshot_actions), 0 recompiles.
 
 ### Ran
 

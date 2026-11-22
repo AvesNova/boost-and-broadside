@@ -10,6 +10,7 @@ from torch import Tensor
 from torch.func import functional_call, vmap
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
+from lean.contract import random_keywords
 from lean.learn.config import LearnConfig, policy_precision
 from lean.learn.returns import value_centres
 from lean.learn.rewards import Ledger, blank_ledger, clear_ledger, reward_step, tick_events
@@ -171,7 +172,7 @@ def draw_team_sizes(config: LearnConfig, envs: int, generator, device=None) -> T
     defaults to the generator's."""
     span = config.team_size_maximum - config.team_size_minimum + 1
     device = generator_device(generator) if device is None else device
-    sizes = config.team_size_minimum + torch.randint(0, span, (envs, 2), generator=generator, device=device)
+    sizes = config.team_size_minimum + torch.randint(0, span, (envs, 2), **random_keywords(generator, device))
     if config.equal_teams:
         sizes[:, 1] = sizes[:, 0]
     return sizes
@@ -180,7 +181,7 @@ def draw_team_sizes(config: LearnConfig, envs: int, generator, device=None) -> T
 def scripted_uniforms(envs: int, slots: int, generator, device=None) -> Tensor:
     """The uniform draws lean.scripted.act consumes for one tick. Assumed (E, N, 3)."""
     device = generator_device(generator) if device is None else device
-    return torch.rand(envs, slots, 3, generator=generator, device=device)
+    return torch.rand(envs, slots, 3, **random_keywords(generator, device))
 
 
 def scripted_actions(scripted, scripted_config, state, persona, generator) -> Tensor:
@@ -192,7 +193,7 @@ def scripted_actions(scripted, scripted_config, state, persona, generator) -> Te
 
 def sample_joint(logits: Tensor, generator) -> Tensor:
     """One sample per row from categorical logits (..., JOINT), by the Gumbel-max trick."""
-    uniform = torch.rand(logits.shape, generator=generator, device=logits.device).clamp(1e-10, 1.0 - 1e-7)
+    uniform = torch.rand(logits.shape, **random_keywords(generator, logits.device)).clamp(1e-10, 1.0 - 1e-7)
     return (logits - torch.log(-torch.log(uniform))).argmax(-1)
 
 
@@ -292,7 +293,7 @@ def league_actions(config: LearnConfig, opponent: Opponent, views, carry: Collec
 def draw_offset(policy, envs: int, generator, device) -> Tensor:
     """lean.model.draw_position_offset drawn directly on `device` (that one draws on the
     generator's device, the CPU without one, which a compiled tick must not)."""
-    uniform = torch.rand(envs, 2, generator=generator, device=device)
+    uniform = torch.rand(envs, 2, **random_keywords(generator, device))
     return (uniform - 0.5) * policy.config.offset_span
 
 
@@ -311,7 +312,7 @@ def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: in
         policy=policy.initial_carry(envs + self_play, slots, device),
         opponent=policy.initial_carry(envs - self_play, slots, device),
         member=draw_members(opponent, envs - self_play, generator, device),
-        learner_team=torch.randint(0, 2, (envs,), generator=generator, device=device),
+        learner_team=torch.randint(0, 2, (envs,), **random_keywords(generator, device)),
         persona=scripted.personas(opponent.scripted_config, envs, slots, generator, device, opponent.persona_spread),
         reset=torch.ones(envs, dtype=torch.bool, device=device),
         position_offset=draw_position_offset(policy.config, envs, generator, device),
@@ -336,7 +337,7 @@ def redeal(config: LearnConfig, game_config, policy, opponent: Opponent, state, 
         policy=reset_carry(carry.policy, done.index_select(0, seat_environment)),
         opponent=reset_carry(carry.opponent, league_done),
         member=torch.where(league_done, draw_members(opponent, league_done.shape[0], generator, device), carry.member),
-        learner_team=torch.where(done, torch.randint(0, 2, (envs,), generator=generator, device=device), carry.learner_team),
+        learner_team=torch.where(done, torch.randint(0, 2, (envs,), **random_keywords(generator, device)), carry.learner_team),
         persona={name: select_environments(done, fresh[name], carry.persona[name]) for name in carry.persona},
         reset=done,
         position_offset=torch.where(done[:, None], draw_offset(policy, envs, generator, device), carry.position_offset),
@@ -485,7 +486,6 @@ def collect(
 
         act_part, advance_part, snapshots = graphs.act, graphs.advance, graphs.snapshot_actions
         generator = None
-        graphs.prepare(game_config)
         # A fresh state can hold broadcast (stride 0) tensors where a re-dealt one holds
         # whole ones (even empty ones: fields with F = 0); the graphs are specialised on
         # strides, so start from whole tensors.

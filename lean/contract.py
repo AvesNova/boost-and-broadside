@@ -40,6 +40,17 @@ def join_action(action: Tensor) -> Tensor:
     return action[..., 0] * (POWERS * FIRES) + action[..., 1] * FIRES + action[..., 2]
 
 
+def random_keywords(generator: torch.Generator | None, device) -> dict:
+    """Keywords for a random factory (torch.rand, randn, randint) drawing on `device` from
+    `generator`, or from torch's default generator of the device when it is None. The
+    `generator` keyword is left out when it is None: torch.compile (PyTorch 2.15) cannot
+    trace a factory called with `generator=None` and a symbolic size, and a compiled graph
+    always draws from the default generator."""
+    if generator is None:
+        return {"device": device}
+    return {"generator": generator, "device": device}
+
+
 @dataclass
 class Constants:
     """Per-ship constants of one run, read by name: `constants["lift"]` or `constants.lift`.

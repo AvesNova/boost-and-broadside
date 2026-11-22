@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
+from lean.contract import random_keywords
 from lean.game.core import built_once, slot_indices, team_view
 
 # The eight logistic gates, in the order of the persona's "gate_centre" and
@@ -139,8 +140,8 @@ def personas(
     sign = torch.tensor([1.0 if rising else -1.0 for rising in config.gate_rising], device=device)
     shape = (envs, slots)
     if spread > 0.0:
-        normal = torch.randn((*shape, gates + 5), generator=generator, device=device)
-        uniform = torch.rand((*shape, 2), generator=generator, device=device)
+        normal = torch.randn((*shape, gates + 5), **random_keywords(generator, device))
+        uniform = torch.rand((*shape, 2), **random_keywords(generator, device))
     else:
         normal = torch.zeros((*shape, gates + 5), device=device)
         uniform = torch.zeros((*shape, 2), device=device)
@@ -172,7 +173,7 @@ def draw_uniforms(
 ) -> Tensor:
     """The random draw one `act` call needs: (E, N, 3) float32 uniform on [0, 1), one
     per action head [stick, power, fire]."""
-    return torch.rand((envs, slots, 3), generator=generator, device=device)
+    return torch.rand((envs, slots, 3), **random_keywords(generator, device))
 
 
 def fresh_memory(envs: int, slots: int, device: torch.device | str) -> dict[str, Tensor]:
