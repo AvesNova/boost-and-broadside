@@ -34,3 +34,8 @@ checked, the commit. Numbers are measured unless marked otherwise.
     almost like a wall. Options for the author: a lower exchange cap, a wider band, or a
     larger store.
   - Sandbox: `--core` flies GameConfig.core() (Vizia by default); README updated.
+- 03:45 A9: measurements in docs/rewrite/core-flight-measurements.md (script
+  docs/rewrite/sections/turns/measure_core.py). Key: coasting holds altitude (50.0% after
+  120 s; v2 climbs to 95%); full stick settles at 111 m/s, 25 deg/s (v2 139, 38.6); the store
+  is crossed in about 1.5 s per half (a tuning question); firing costs 6 to 7 m/s per second.
+  A10 (core charts) handed to a background agent (chart scripts take FLIGHT_MODEL).

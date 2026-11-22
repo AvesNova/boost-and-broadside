@@ -9,6 +9,14 @@ it blocks. Answered questions move to the bottom with the answer and its date.
    over which boundary damage rises from zero to its maximum. v2 scales it with the map
    (100 m times the map scale: 161.5 m at a 4,200 m arena); lean fixes it at 300 m (a
    builder's assumption). Proposal: v2's rule. Blocks: nothing urgent.
+10. **Core flight numbers to fly and tune (2026-11-23).** Measured in
+   docs/rewrite/core-flight-measurements.md. (a) The two-loop store is crossed in about 1.5 s
+   per half at the full exchange rate (38.6 m/s^2, about 1 g) and is worth about +-45 m/s
+   around cruise: thin? Options: a larger store, a slower exchange, or as is. (b) Firing with
+   the engine fully cut costs 6 to 7 m/s per second of firing: enough? (`fire_thrust_fraction`).
+   (c) Engine power is the card's full-store power (Vizia 2.04 kW/kg; top speed 325 m/s
+   unchanged). (d) Full stick while coasting now settles at 111 m/s and 25 deg/s (v2: 139,
+   38.6) because coast holds 1 g. Fly with `python -m lean.sandbox --core`.
 
 ## Answered
 
