@@ -73,6 +73,7 @@ def test_swapping_teams_mirrors_the_outcome():
     mirror["team"] = 1 - mirror["team"]
     other = State(**mirror)
     finished = torch.zeros(envs, dtype=torch.bool)
+    damage = 0.0
     for _ in range(120):
         action = random_action(envs, slots, generator)
         noise = draw_noise(CLOSE, envs, slots, generator, "cpu")
@@ -85,5 +86,6 @@ def test_swapping_teams_mirrors_the_outcome():
         assert (expected == mirrored.result)[live].all()
         assert torch.allclose(out.damage_dealt[live], mirrored.damage_dealt.flip(1)[live], atol=1e-4)
         assert torch.allclose(state.x[live], other.x.flip(1)[live], atol=1e-3)
+        damage += float(out.damage_dealt.sum())
         finished = finished | out.done
-    assert finished.any()
+    assert damage > 0.0

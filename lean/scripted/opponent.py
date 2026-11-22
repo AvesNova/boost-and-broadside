@@ -30,6 +30,8 @@ GATES = (
 TURN, LEVEL_TWO, LEVEL_THREE, BOOST_SLOW, BOOST_FAR, REVERSE, ALIGNED, IN_RANGE = range(8)
 COAST_POWER, BOOST_POWER, REVERSE_POWER = 0, 1, 2
 TINY = 1e-6  # keeps lengths and ratios away from zero
+# The game's name in `state.constants` where it differs from the characteristic's name here.
+GAME_CONSTANT_NAMES = {"stall_angle": "stall", "bullet_energy_cost": "bullet_cost"}
 LOGIT_LIMIT = 30.0
 
 
@@ -72,7 +74,7 @@ class ScriptedConfig:
     boundary_margin_in_turn_radius: float = 2.28
     boundary_ramp_low: float = 0.0554
     boundary_ramp_high: float = 0.52
-    arena_radius: float = 3000.0  # metres; overridden by state.constants["arena_radius"]
+    arena_radius: float = 4200.0  # metres; overridden by state.constants["arena_radius"]
 
     # Target angular size clamp, radians.
     target_size_minimum: float = math.radians(1.0)
@@ -182,7 +184,8 @@ def characteristic(config: ScriptedConfig, state, name: str) -> Tensor | float:
     """A ship characteristic: the game's per-ship constant ((E, N)) when it provides
     `name`, the config's fallback float otherwise."""
     constants = state.constants
-    return constants[name] if name in constants else getattr(config, name)
+    game_name = GAME_CONSTANT_NAMES.get(name, name)
+    return constants[game_name] if game_name in constants else getattr(config, name)
 
 
 def world_velocity(state) -> tuple[Tensor, Tensor]:

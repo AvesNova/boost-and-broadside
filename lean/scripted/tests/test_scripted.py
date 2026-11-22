@@ -136,11 +136,10 @@ def test_opponent_beats_chaser_five_a_side():
     envs, slots, horizon_ticks = 48, 10, 3000
     generator = torch.Generator().manual_seed(11)
     game_config = game.GameConfig()
-    config = ScriptedConfig()
+    config = ScriptedConfig(arena_radius=game_config.arena_radius)
     team_sizes = torch.full((envs, 2), 5, dtype=torch.long)
     state = game.reset(game_config, envs, team_sizes, generator, "cpu")
     persona = personas(config, envs, slots, generator, "cpu", 0.0)
-    memory = fresh_memory(envs, slots, "cpu")
     # The opponent plays team 0 in the first half of the environments and team 1 in the rest.
     opponent_team = (torch.arange(envs) >= envs // 2).long()
     is_opponent = state.team == opponent_team[:, None]
@@ -155,7 +154,6 @@ def test_opponent_beats_chaser_five_a_side():
         result = torch.where((result < 0) & out.done, out.result, result)
         if (result >= 0).all():
             break
-    del memory
     wins = (result == opponent_team).sum().item()
     losses = (result == 1 - opponent_team).sum().item()
     ended = (result >= 0).sum().item()

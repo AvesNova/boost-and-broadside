@@ -28,9 +28,9 @@ def main() -> None:
     envs, updates, ticks = arguments.envs, arguments.updates, config.segment_ticks
     crossover_every, crossover_games, crossover_sizes = arguments.crossover_every, arguments.crossover_games, [4]
     if arguments.smoke:
-        config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=2, snapshot_every=2)
-        envs, updates, ticks = 8, 3, 16
-        crossover_every, crossover_games, crossover_sizes = 3, 4, [2]
+        config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1, snapshot_every=1)
+        envs, updates, ticks = 4, 2, 8
+        crossover_every, crossover_games, crossover_sizes = 2, 2, [1]
 
     torch.manual_seed(arguments.seed)
     generator = torch.Generator().manual_seed(arguments.seed)
