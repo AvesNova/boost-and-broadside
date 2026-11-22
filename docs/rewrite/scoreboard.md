@@ -184,3 +184,8 @@ is the author's decision (lean/learn/NOTES.md).
 ## Not yet measured
 
 Traced operations across every graph.
+
+**After waste fixes 6, 7 and 9 (2026-11-23, one run, compiled, 256 environments, v2 game,
+performance profile):** collect 28,620 (was 25,974), update 6,440 (6,439), loop 5,257 (5,160);
+peak 3.68 / 4.35 GiB. Operations per tick (eager CPU, 5v5): v2 game 2,618 -> 2,345, core game
+3,273 -> 2,791. The core game was not re-run on the GPU.

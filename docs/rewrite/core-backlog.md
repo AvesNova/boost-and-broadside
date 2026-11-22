@@ -29,7 +29,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | B1 | Observation velocity in world coordinates (divide by the refractive index, as v2) | done (worklog 02:47) |
 | B2 | Boundary ramp: v2 scales it with the arena (161.5 m at 4,200 m), lean fixes 300 m | blocked: author (docs/questions.md) |
 | B3 | Fields drawn per environment at reset (agreed fix 11) | done (worklog 02:52) |
-| B4 | The agreed waste fixes in lean/game/NOTES.md (constants packed or compiled in, packed state, dead ships free, constant work at reset, velocity once per step, one scripted call, personas at reset, no-fields path, batched resets) | todo |
+| B4 | The agreed waste fixes in lean/game/NOTES.md (constants packed or compiled in, packed state, dead ships free, constant work at reset, velocity once per step, one scripted call, personas at reset, no-fields path, batched resets) | done 2026-11-23 (game side 04:52, learn side 06:34) |
 | B5 | Cheaper damage form (agreed fix 14) | done, head-on term only (worklog 03:01) |
 | B6 | Ghost-bullet hit labels | game side done (worklog 03:06); the hit head is in C and D |
 | B7 | Fog (rules in core-decisions.md) | game side done (fog off by default; on in core()); model must read it (C10) |
