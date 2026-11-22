@@ -86,16 +86,19 @@ def act(config, state, team: int, persona, uniforms) -> Tensor   # (E, N, 3) lon
 
 ```python
 @dataclass
-class ModelConfig: ...                   # width 128, blocks 2, heads 2, levels, bins, ...
+class ModelConfig: ...                   # width, blocks, heads, levels 5, bins 64, position_code, ...
 class Policy(nn.Module):
-    def initial_carry(self, envs, slots, device) -> Tensor
-    def step(self, obs: Obs, carry) -> tuple[Tensor, Tensor, Tensor]
+    def initial_carry(self, envs, slots, device) -> Tensor   # (blocks, E, 1 + N, 4, width)
+    def step(self, obs: Obs, carry, position_offset=None, reset=None) -> tuple[Tensor, Tensor, Tensor]
         # logits (E, N, 42), value_logits (E, N, LEVELS, BINS), new carry
-    def sequence(self, obs: Obs, carry, reset) -> tuple[Tensor, Tensor, Tensor, Tensor]
+    def sequence(self, obs: Obs, carry, reset, position_offset=None)
         # obs fields carry a leading T; reset (T, E) bool zeroes the carry before that tick
         # returns logits (T, E, N, 42), value_logits (T, E, N, LEVELS, BINS),
-        #         next_state (T, E, N, NEXT_STATE) and the final carry
+        #         next_state (T, E, N, NEXT_STATE), hit_logits (T, E, N, 3) and the final carry
 ```
+
+The model reads from `Obs`: ship, pos, heading, key_mask, globals, field, field_pos,
+field_mask, visible, since_seen (`lean.model.policy.OBS_FIELDS`).
 
 ## `lean/learn` (rollout, PPO) and `lean/eval` (crossover)
 
@@ -105,7 +108,8 @@ def update(config, policy, optimiser, rollout) -> dict[str, float]
 def crossover(game_config, policy, scripted_config, sizes, games, generator) -> dict
 ```
 
-Reward levels (index into LEVELS): 0 outcome, 1 kill and death, 2 damage, 3 shaping.
+Reward levels (index into LEVELS), v2's: 0 damage, 1 kill_death, 2 objective_progress,
+3 objective, 4 outcome. Hit classes: 0 missed, 1 enemy, 2 team-mate.
 
 ## Rules for this first cut
 
