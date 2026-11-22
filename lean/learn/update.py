@@ -4,7 +4,7 @@ import torch
 from torch import Tensor
 
 from lean.learn.collect import Rollout, index_carry, map_fields
-from lean.learn.config import LearnConfig, bc_weight, learning_rate
+from lean.learn.config import LearnConfig, bc_weight, learning_rate, policy_precision
 from lean.learn.returns import (
     generalised_advantages,
     normalise_advantages,
@@ -47,7 +47,9 @@ def minibatch_values(
 ) -> tuple[Tensor, Tensor]:
     """The critic's decoded values (T, B, N, LEVELS) of one minibatch, zero outside `own`,
     and the support's centres (LEVELS, BINS)."""
-    _, value_logits, _, _, _ = policy.sequence(observation, carry, reset, position_offset)
+    with policy_precision(config, carry.device):
+        _, value_logits, _, _, _ = policy.sequence(observation, carry, reset, position_offset)
+    value_logits = value_logits.float()
     centres = value_centres(config, value_logits.shape[-1], value_logits.device)
     return decode_value(value_logits, centres) * observation.own[..., None], centres
 
@@ -95,7 +97,10 @@ def minibatch_loss(
     bc_coefficient is a 0-d tensor so that a compiled graph does not take each new value
     as a constant."""
     own = observation.own
-    logits, value_logits, next_state, hit_logits, _ = policy.sequence(observation, carry, reset, position_offset)
+    with policy_precision(config, carry.device):
+        outputs = policy.sequence(observation, carry, reset, position_offset)
+    # The losses in float32.
+    logits, value_logits, next_state, hit_logits = (output.float() for output in outputs[:4])
     log_policy = torch.log_softmax(logits, -1)
     log_probability = log_policy.gather(-1, action[..., None]).squeeze(-1)
     log_ratio = log_probability - old_log_probability
