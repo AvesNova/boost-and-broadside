@@ -58,7 +58,7 @@ SPAWN_PERCENT = 100.0 * SPAWN[0] / MAX_ENERGY[0]
 if MODEL == "core":
     # One panel: in the core model coasting does not depend on the store; only dive and climb
     # fade inside the outer 5% at each edge (the footnote says so).
-    STORES = ((f"any store outside the edge bands (shown at the spawn store, {SPAWN_PERCENT:.0f}%)", None),)
+    STORES = ((f"any store outside the edge bands (shown at {SPAWN_PERCENT:.0f}%)", None),)
     VIZIA_ONLY = "The core game currently flies Vizia only; Yongma and Jujak are the card's other two types under the core physics."
 else:
     STORES = (("high store (90%): engine at its full-store power", 0.9),
@@ -238,8 +238,8 @@ def doghouse(ship_type: int, real: bool = False):
         ax.set_xlabel("speed (m/s, real)" if real else "speed (m/s)", color=INK_2)
         ax.set_ylabel("turn rate (deg/s)", color=INK_2)
         ax.axvspan(v[0], 100.0 / f, color=GRID, alpha=0.5, linewidth=0)
-        ax.set_title(f"{NAMES[ship_type]}, coast, {label}" + (", core model" if MODEL == "core" else "")
-                     + (", real units" if real else ""),
+        ax.set_title(f"{NAMES[ship_type]}, coast" + (", core model" if MODEL == "core" else "")
+                     + (", real units" if real else "") + f"\n{label}",
                      color=INK, fontsize=10, loc="left")
         bar = figure.colorbar(filled, ax=ax, fraction=0.04, pad=0.02)
         bar.set_label("energy rate Ps, m/s altitude-equivalent (blue gain, red loss)", color=INK_2, fontsize=8)
