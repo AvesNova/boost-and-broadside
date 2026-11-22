@@ -200,3 +200,7 @@ checked, the commit. Numbers are measured unless marked otherwise.
   out of memory; compiled fits (35.8 ms). Measured from a clean worktree of 25478e10 while
   two agents edit lean/ (learner targets; fog).
 - 03:39 F3: the recompile at a new team size is duck sizing (10 slots = 10 fields at 5v5); with duck sizing off and dynamic=True each graph compiles once (game 30 s, policy 18 s) and 10v10 to 50v50 cost nothing. Proposed for D5.
+- 03:43 F4 (gate G2, provisional): play on the CPU. Real game and new model at batch size 1, one
+  thread: uncompiled p99 7.8 / 10.8 / 19.3 ms at 5v5 / 20v20 / 50v50; compiled p99 4.0 (5v5),
+  6.1 (20v20), 12.6 ms (50v50). Compile 31 to 34 s cold, 12 s warm: start uncompiled, switch
+  when a background build is ready. Machine loaded by agents: to re-measure quiet.

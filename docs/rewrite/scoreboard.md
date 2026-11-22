@@ -95,6 +95,31 @@ run in order 5v5, 10v10, 20v20, 50v50 in one process.
   with nothing added; proposed as the compile setting for training and evaluation (D5).
 - Compile time, cold: game 18 s, policy 12 s.
 
+## Play latency on the CPU (gate G2, 2026-11-23 03:43)
+
+One play tick at batch size 1: two observations, two policy steps (one per team), one game
+step; core config, the new model, one thread, CPU of the laptop (GPU unused). 1,000 ticks after
+50 warm-up ticks (300 for the warm-cache row). Committed code at 25478e10. **Provisional: the
+machine was loaded (load average 1.7 to 4.5) by two agents' test runs.** Script:
+docs/rewrite/sections/scoreboard/play_latency.py.
+
+| | first tick | p50 ms | p99 ms | worst ms | against p99 16 ms, worst 33 ms |
+|---|---|---|---|---|---|
+| uncompiled, 5v5 | | 6.98 | 7.78 | 10.50 | meets |
+| uncompiled, 20v20 | | 9.66 | 10.84 | 17.07 | meets |
+| uncompiled, 50v50 | | 17.35 | 19.28 | 23.41 | p99 over |
+| compiled (dynamic), 5v5, cold cache | 31.5 s | 3.30 | 3.99 | 4.23 | meets |
+| compiled (dynamic), 50v50, cold cache | 34.1 s | 11.36 | 12.58 | 17.61 | meets |
+| compiled, 20v20, cold cache | 33.0 s (38.4 s from launch) | 5.58 | 6.10 | 6.24 | meets |
+| compiled, 20v20, warm cache | 12.4 s (16.8 s from launch) | 5.12 | 5.98 | 7.10 | meets |
+
+- Compiled, every size to 50v50 meets the frame budget on the CPU; uncompiled meets it to
+  20v20.
+- Launch: a compile takes 31 to 34 s cold and still 12 s warm, against "launch to a playable
+  match at most 10 s". So play starts uncompiled and switches to the compiled step when a
+  background child process has built it (v2's play shell did this with AOT builds), or the
+  compiled artefact ships prebuilt.
+
 ## Not yet measured
 
 The compiled backward pass and the learner's update; traced operations across every graph.
