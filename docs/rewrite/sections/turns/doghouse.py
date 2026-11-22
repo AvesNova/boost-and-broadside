@@ -39,7 +39,8 @@ torch.set_num_threads(1)
 OUT = os.path.join(os.path.dirname(__file__), "..", "..")
 DEGREES = 180.0 / math.pi
 G = card.GRAVITY
-NAMES = ("Yongma", "Jujak", "Vizia")
+NAMES = ("Yongma", "Jujak", "Vizia", "P-51D", "Vizia, climb mods reverted")
+TIME_FACTOR = 2.0  # the game against real time (lean.game.tuning.TIME_FACTOR)
 # Reference palette (dataviz skill, references/palette.md): categorical slots 1-3, diverging
 # blue <-> red through a grey midpoint, chart surface and inks.
 if THEME == "dark":  # the reference palette's dark steps (validated against the dark surface)
@@ -140,11 +141,31 @@ DOGHOUSE_FOOT = {
 }
 
 
-def doghouse(ship_type: int):
+def foot(ship_type: int, real: bool) -> str:
+    """The footnote: the model's, with the lean-only types' note and real units where drawn."""
+    text = DOGHOUSE_FOOT[MODEL]
+    if ship_type >= 3:
+        text = text.replace(
+            "The core game currently flies Vizia only; Yongma and Jujak are the card's other types under core physics.",
+            {3: "P-51D: the real airframe at 2x time (lean.game.tuning, docs/rewrite/p51d-model.md).",
+             4: "Vizia with v2's climb modifications reverted (lean.game.tuning, docs/rewrite/p51d-model.md)."}[ship_type],
+        )
+    if real:
+        text = text.replace("load in\ngame g (39.24 m/s^2)", "load in\ng (9.81 m/s^2)").replace("below 100 m/s", "below 50 m/s")
+        text += "\nReal units: the game at 2x time shown at real time (speeds, turn rates and Ps halved; radii unchanged)."
+    return text
+
+
+def doghouse(ship_type: int, real: bool = False):
+    """real: in real units at the game's 2x time (speeds, turn rates and Ps halved; radii and
+    loads unchanged)."""
+    f = TIME_FACTOR if real else 1.0
     figure, axes = plt.subplots(3, 1, figsize=(7.5, 16), facecolor=SURFACE)
-    v = speeds.numpy()
+    game_v = speeds.numpy()
+    v = game_v / f
     for ax, (label, fraction) in zip(axes, STORES):
         grid = evaluate(ship_type, fraction)
+        grid["rate"], grid["ps"] = grid["rate"] / f, grid["ps"] / f
         style(ax)
         envelope = grid["rate"][-1]
         top = float(np.nanmax(envelope)) * 1.15
@@ -168,13 +189,13 @@ def doghouse(ship_type: int):
             if 0 < j < len(v):
                 ax.text(v[j], line[j], f"{radius} m", color=MUTED, fontsize=8, ha="right", va="bottom")
         for load in (2, 4, 6, 8, 9):
-            line = load * G / v * DEGREES
+            line = load * G / game_v * DEGREES / f
             ax.plot(v, line, color=MUTED, linewidth=0.7, linestyle="--")
             j = np.searchsorted(-line, -top * 0.95)
             if 0 < j < len(v) - 1:
                 ax.text(v[j], line[j], f"{load} g", color=MUTED, fontsize=8, ha="left", va="bottom")
         ax.plot(v, envelope, color=INK, linewidth=2.0)
-        label_at = int(np.searchsorted(v, 135.0))
+        label_at = int(np.searchsorted(game_v, 135.0))
         ax.annotate("full stick", (v[label_at], envelope[label_at]), xytext=(-4, 6), textcoords="offset points",
                     color=INK, fontsize=8, ha="right")
         # The game's other stick levels (the card's fine and sustained values for this type).
@@ -183,7 +204,7 @@ def doghouse(ship_type: int):
             level = grid["rate"][row]
             ax.plot(v, level, color=INK, linewidth=1.1)
             if MODEL == "core":  # right of the steep low-speed part of the full-stick line
-                at = int(np.searchsorted(v, 215.0))
+                at = int(np.searchsorted(game_v, 215.0))
                 ax.annotate(name, (v[at], level[at]), xytext=(4, -12), textcoords="offset points",
                             color=INK, fontsize=8, ha="left")
             else:
@@ -192,9 +213,9 @@ def doghouse(ship_type: int):
         # Full stick while diving and while climbing (power 1 and 2), same store.
         offsets = ((4, 7), (4, -24)) if MODEL == "core" else ((4, 4), (4, -12))
         for (power, name), offset in zip(((1, "full stick, diving"), (2, "full stick, climbing")), offsets):
-            moved = evaluate(ship_type, fraction, power)["rate"][-1]
+            moved = evaluate(ship_type, fraction, power)["rate"][-1] / f
             ax.plot(v, moved, color=INK_2, linewidth=1.1, linestyle="-.")
-            here = int(np.searchsorted(v, 380.0))
+            here = int(np.searchsorted(game_v, 380.0))
             ax.annotate(name, (v[here], moved[here]), xytext=offset, textcoords="offset points",
                         color=INK_2, fontsize=8)
         corner = int(np.nanargmax(envelope))
@@ -203,7 +224,7 @@ def doghouse(ship_type: int):
                     (v[corner], envelope[corner]), xytext=(8, 6), textcoords="offset points",
                     color=INK, fontsize=9)
         best, _ = sustained(grid)
-        best = np.where(v >= 100.0, best, np.nan)  # below 100 m/s the turn cannot be held in flight
+        best = np.where(game_v >= 100.0, best, np.nan)  # below 100 m/s the turn cannot be held in flight
         if np.any(np.isfinite(best)):
             k = int(np.nanargmax(best))
             ax.plot(v[k], best[k], "s", color=INK, markersize=8)
@@ -211,17 +232,19 @@ def doghouse(ship_type: int):
                         xytext=(8, -14), textcoords="offset points", color=INK, fontsize=9)
         ax.set_xlim(v[0], v[-1])
         ax.set_ylim(0, top)
-        ax.set_xlabel("speed (m/s)", color=INK_2)
+        ax.set_xlabel("speed (m/s, real)" if real else "speed (m/s)", color=INK_2)
         ax.set_ylabel("turn rate (deg/s)", color=INK_2)
-        ax.axvspan(v[0], 100.0, color=GRID, alpha=0.5, linewidth=0)
-        ax.set_title(f"{NAMES[ship_type]}, coast, {label}" + (", core model" if MODEL == "core" else ""),
+        ax.axvspan(v[0], 100.0 / f, color=GRID, alpha=0.5, linewidth=0)
+        ax.set_title(f"{NAMES[ship_type]}, coast, {label}" + (", core model" if MODEL == "core" else "")
+                     + (", real units" if real else ""),
                      color=INK, fontsize=10, loc="left")
         bar = figure.colorbar(filled, ax=ax, fraction=0.04, pad=0.02)
         bar.set_label("energy rate Ps, m/s altitude-equivalent (blue gain, red loss)", color=INK_2, fontsize=8)
         bar.ax.tick_params(labelsize=8, colors=INK_2)
-    figure.text(0.01, 0.004, DOGHOUSE_FOOT[MODEL], color=INK_2, fontsize=8)
+    figure.text(0.01, 0.004, foot(ship_type, real), color=INK_2, fontsize=8)
     figure.tight_layout(rect=(0, 0.055 if MODEL == "v2" else 0.08, 1, 1))
-    path = os.path.join(OUT, f"doghouse-{NAMES[ship_type].lower()}{SUFFIX}.png")
+    suffix = ("-core" if MODEL == "core" else "") + ("-real" if real else "") + ("-dark" if THEME == "dark" else "")
+    path = os.path.join(OUT, f"doghouse-{card.TYPE_NAMES[ship_type].replace('_', '-')}{suffix}.png")
     figure.savefig(path, dpi=130, facecolor=SURFACE)
     plt.close(figure)
     return path
