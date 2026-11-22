@@ -130,7 +130,9 @@ To do after the step-3 scoreboard ("before" numbers), each checked against v2 wi
 10. **No shared-observation shortcut now** (author 2026-11-22): fog is coming and would
     replace it. **Fog rule:** a ship is visible to the enemy team when it is in the enemy's
     actual sight, and on any tick it fires, is hit by a bullet, or dies; every ship is
-    always visible to its own team. The scripted opponent must not cheat: under fog it
+    always visible to its own team. Boundary damage does not reveal a ship. A reveal lasts only for the
+    tick of the shot or the bullet hit. A dead ship that will respawn is visible; a ship
+    dead for good (elimination) is masked out. The scripted opponent must not cheat: under fog it
     reads its team's view, not the state.
 11. **Fields drawn per environment** (author 2026-11-22: "fields are randomised for every
     new env"): fields in the state as (E, F, 5), drawn at reset, padded with zero-strength

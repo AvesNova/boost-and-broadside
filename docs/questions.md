@@ -5,18 +5,7 @@ it blocks. Answered questions move to the bottom with the answer and its date.
 
 ## Open
 
-5. **Fog: what else reveals a ship, and for how long (2026-11-22).** Answer 2 below says
-   a hit reveals a ship. Does boundary damage also reveal it? Is a reveal for that tick
-   only, followed by a last-seen token?
-6. **Both sides training in snapshot games (2026-11-22).** In lean, half the environments
-   play the learner against a frozen past copy of the policy (a snapshot from a pool of 8);
-   only the learner's side is trained on. v1 played half its games as live self-play,
-   both sides the current policy, both training. Should lean do that?
-7. **Reward scaling with team size (2026-11-22).** Additive per-ship rewards (each ship's
-   own kills and damage, whatever the team size) or scaled by team size? No literature
-   settles it here; it is kind (d). It matters only once training draws team sizes per
-   environment (core-brief skeleton step 4). The author's argument for additive: each
-   added agent sees the same effect from its own actions.
+(none)
 
 ## Answered
 
@@ -50,3 +39,23 @@ it blocks. Answered questions move to the bottom with the answer and its date.
 4. **Tell, do not infer (author, 2026-11-22).** The mode, the ship type and anything else
    known at reset are given as inputs and stored, not inferred. An environment's mode is
    fixed for the whole run.
+
+5. **Fog: what else reveals a ship, and for how long (2026-11-22).** Does boundary damage
+   reveal a ship? Is a reveal for that tick only?
+   **Answered 2026-11-22:** boundary damage does not reveal a ship. A reveal lasts only
+   for the tick the ship fires or is hit by a bullet. A dead ship that will respawn is
+   visible; a ship dead for good (elimination) is masked out.
+
+6. **Both sides training in snapshot games (2026-11-22).** Withdrawn: PPO trains on the
+   current policy's actions only, so a snapshot's side never trains. The real gap was the
+   missing self-play; see 8.
+
+7. **Reward scaling with team size (2026-11-22).** **Answered 2026-11-22:** keep the
+   current scaling; not a concern for now.
+
+8. **The league (author, 2026-11-22).** Half the environments are self-play (the current
+   policy on both sides, both sides train) and half are league games (the current policy
+   against an opponent from the league, the live side trains). The scripted agent is one
+   member of the league, not a fixed half. `lean/learn` today has a fixed half against
+   the scripted agent, a half against snapshots, and no self-play: a departure to fix.
+

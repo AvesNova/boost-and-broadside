@@ -181,3 +181,12 @@ mean square of about 1470 in the smoke rollout (the other columns 0.001 to 0.14,
 0), because energy changes by hundreds of units in a tick against the model's scale of
 10. The loss reads 209.8 and, at coefficient 0.1, outweighs every other term until the
 scale in `ModelConfig.next_state_fields` is set from measured changes.
+
+## The league: the author's design (2026-11-22)
+
+Half the environments self-play (the current policy on both sides; both sides' data
+trains). Half play league games: the current policy against an opponent drawn from the
+league, which holds past snapshots and the scripted agent as one member among them; only
+the live side trains (PPO is on-policy). This replaces the fixed scripted half and the
+snapshot half above. The statement under "Followed from v1" that half of the environments
+always face the scripted agent is wrong by the author's account of v1.
