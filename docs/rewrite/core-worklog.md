@@ -172,3 +172,21 @@ checked, the commit. Numbers are measured unless marked otherwise.
   Correction to my 05:05 note: the order I gave (best sustained, then minimum radius, then
   corner) used the instantaneous full-stick radius; on the sustained basis the order is the
   author's.
+- 08:50 D1 (background agent, reviewed): the league as the author designed it. Half the
+  environments (fixed by index) are self-play with two live seats, both training; half are
+  league games with one live seat against a member drawn at each reset. `League` (pool.py):
+  member 0 the scripted agent plus up to 8 snapshots; draws 7/8 by (1 - p)^2, 1/8 uniform;
+  per-member tallies decayed by 0.99 per game, an unplayed member at 0.5; win rates from the
+  training games (no lanes). The live policy runs once per tick over all seats; the scripted
+  action is still the BC target for every live ship. Tests: lean/learn/tests/test_league.py
+  (8). `pytest lean`: 89 passed, 1 xfailed; smoke on the CPU completes.
+  - Choices for the author (lean/learn/NOTES.md): the BC gate reads the tally against the
+    scripted member (0 until the first scripted game, not the 0.5 prior); a replaced member's
+    running games are re-dealt; the self-play/league split fixed by index; memory now 1.5x
+    the rows per environment (the default size needs 12 to 16 minibatches on 8 GB).
+  - D2 report: docs/rewrite/recipe-v2-vs-lean.md (v2's release run, commit 4cfd1e86). Main
+    differences: v2 cloned in a separate 100M-step BC stage and started RL from the clone's
+    EMA with no BC term; v2's updates are 1.05M ticks in 32 minibatches with a KL stop at
+    0.02; outcome discount 0.9997 (lean 0.998); advantage scaled by a slow EMA of the
+    returns' spread; 81 symlog bins to +-19; zero-sum rewards with a damage ledger and kill
+    assists; weight averaging (EMA 0.95 and a uniform average, both league members).

@@ -52,8 +52,8 @@ Every planned item, in order, with its status. Decisions behind the items are in
 
 | # | Item | Status |
 |---|---|---|
-| D1 | Half self-play (both sides train), half league; scripted agent a league member; (1 - p)^2 with one-eighth uniform floor; AlphaStar's win-rate tally | todo |
-| D2 | v2's training recipe (discounts, batch size, KL stop, weight averaging); reward levels as v2's five, no shaping | todo; note: the default size needs 8+ minibatches with the new model (worklog 07:20) |
+| D1 | Half self-play (both sides train), half league; scripted agent a league member; (1 - p)^2 with one-eighth uniform floor; AlphaStar's win-rate tally | done (worklog 08:50) |
+| D2 | v2's training recipe (discounts, batch size, KL stop, weight averaging); reward levels as v2's five, no shaping | report done (recipe-v2-vs-lean.md); adoption needs the author (BC stage, weight averaging, five levels) |
 | D3 | Shaping-field bug (moot once shaping is dropped) | todo |
 | D4 | Damage reward unit (departure audit row 2) | todo |
 | D5 | Compilation in training | todo |

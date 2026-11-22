@@ -9,9 +9,9 @@ from torch import Tensor
 
 from lean.learn.config import LearnConfig
 from lean.learn.returns import value_centres
+from lean.learn.rewards import rewards
 from lean.model import draw_position_offset, next_state_target
 from lean.model.value import decode_value
-from lean.learn.rewards import rewards
 
 POWERS_TIMES_FIRES, FIRES = 6, 2
 
@@ -43,26 +43,34 @@ def select_environments(chosen: Tensor, when_chosen: Tensor, otherwise: Tensor) 
 
 @dataclass
 class Opponent:
-    """Who plays the other team.
+    """Who plays whom.
 
-    The first round(scripted_share * E) environments always face the scripted agent. The
-    rest face `snapshot` (a frozen Policy) when one is given, otherwise the scripted
-    agent too.
+    The first round(self_play_share * E) environments are self-play: the live policy
+    flies both teams and both teams' rows train. The rest are league games: the live
+    policy against one member of `league` (lean.learn.pool.League), drawn per environment
+    at every reset; only the live side trains. Member 0 is the scripted agent. Without a
+    league every league game is against the scripted agent and nothing is tallied.
     """
 
     scripted_config: object
-    snapshot: object = None
-    scripted_share: float = 0.5
+    league: object = None
+    self_play_share: float = 0.5
     persona_spread: float = 0.0
 
 
 @dataclass
 class CollectCarry:
-    """What persists between rollouts besides the game state."""
+    """What persists between rollouts besides the game state.
 
-    policy: Tensor  # the learner's recurrent carry, leading E
-    snapshot: Tensor  # the snapshot opponent's carry, leading E
-    learner_team: Tensor  # (E,) long, the team the learner plays this episode
+    A seat is one team of one environment played by the live policy: seat s < E is the
+    team `learner_team[s]` of environment s; seat E + e is the other team of self-play
+    environment e. League environments are e >= E_s (E_s self-play environments).
+    """
+
+    policy: Tensor  # the live policy's recurrent carry over seats (S = E + E_s)
+    opponent: Tensor  # the league opponents' carry over the league environments (L = E - E_s)
+    member: Tensor  # (L,) long, the league member each league environment plays this episode
+    learner_team: Tensor  # (E,) long
     persona: dict  # the scripted agent's per-ship parameters, tensors with leading E
     reset: Tensor  # (E,) bool, the environment was re-dealt before the next tick
     position_offset: Tensor  # (E, 2) the model's position offset of the current match
@@ -70,23 +78,27 @@ class CollectCarry:
 
 @dataclass
 class Rollout:
-    """T ticks of E environments. Time first, as Policy.sequence takes it.
+    """T ticks over S seats (see CollectCarry). Time first, as Policy.sequence takes it;
+    the seat axis plays the part of Policy.sequence's environment axis.
 
-    observation: the learner's view, every field with a leading T; `own` marks the valued
-    and trained rows, `key_mask` the attendable ones.
-    action, teacher: (T, E, N) long joint actions (sampled; the scripted agent's choice).
-    log_probability: (T, E, N). value: (T, E, N, LEVELS), zero outside `own`.
-    reward: (T, E, N, LEVELS). done: (T, E) the episode ended on this tick.
-    reset: (T, E) the environment was re-dealt just before this tick.
-    position_offset: (T, E, 2) the model's position offset of the match played at that tick.
-    next_state: (T, E, N, NEXT_STATE) lean.model.next_state_target of the game step;
-    next_valid: (T, E, N) that row is a target (own now, alive after the step, and the
+    observation: each seat's view, every field (T, S, ...); `own` marks the valued and
+    trained rows (that seat's living ships), `key_mask` the attendable ones.
+    action, teacher: (T, S, N) long joint actions (sampled; the scripted agent's choice).
+    log_probability: (T, S, N). value: (T, S, N, LEVELS), zero outside `own`.
+    reward: (T, S, N, LEVELS). done: (T, S) the seat's episode ended on this tick.
+    reset: (T, S) the seat's environment was re-dealt just before this tick.
+    position_offset: (T, S, 2).
+    next_state: (T, S, N, NEXT_STATE) lean.model.next_state_target of the game step;
+    next_valid: (T, S, N) that row is a target (own now, alive after the step, and the
     episode did not end on the tick).
-    bootstrap_value: (E, N, LEVELS) value after the last tick, zero outside `own`.
-    initial_carry: the learner's carry before the first tick.
+    bootstrap_value: (S, N, LEVELS) value after the last tick, zero outside `own`.
+    seat_environment, seat_team: (S,) the environment of each seat and its team at the
+    last tick. self_play: (S,) bool, the seat's environment is a self-play one.
+    initial_carry: the live policy's carry before the first tick.
     state, carry: where to continue collecting.
-    scripted_games, scripted_wins, episodes: 0-d tensors counted over this rollout;
-    a win is the learner's team winning an episode against the scripted agent.
+    league_games, league_wins, scripted_games, scripted_wins, episodes: 0-d tensors
+    counted over this rollout (episodes over environments; a win is the live team
+    winning a league game).
     """
 
     observation: object
@@ -101,9 +113,14 @@ class Rollout:
     next_state: Tensor
     next_valid: Tensor
     bootstrap_value: Tensor
+    seat_environment: Tensor
+    seat_team: Tensor
+    self_play: Tensor
     initial_carry: Tensor
     state: object
     carry: CollectCarry
+    league_games: Tensor
+    league_wins: Tensor
     scripted_games: Tensor
     scripted_wins: Tensor
     episodes: Tensor
@@ -147,19 +164,6 @@ def scripted_uniforms(envs: int, slots: int, generator) -> Tensor:
     return torch.rand(envs, slots, 3, generator=generator, device=generator_device(generator))
 
 
-def team_view(game, game_config, state, team: Tensor):
-    """The observation of team `team[e]` in each environment e, merged from the two fixed-team views."""
-    first = game.observe(game_config, state, 0)
-    second = game.observe(game_config, state, 1)
-    chosen = team == 0
-    changes = {
-        field.name: select_environments(chosen, getattr(first, field.name), getattr(second, field.name))
-        for field in dataclasses.fields(first)
-        if isinstance(getattr(first, field.name), Tensor)
-    }
-    return dataclasses.replace(first, **changes)
-
-
 def scripted_actions(scripted, scripted_config, state, persona, generator) -> Tensor:
     """The scripted agent's action for every ship of both teams, (E, N, 3) long."""
     envs, slots = state.exists.shape
@@ -173,6 +177,81 @@ def sample_joint(logits: Tensor, generator) -> Tensor:
     return (logits - torch.log(-torch.log(uniform))).argmax(-1)
 
 
+def self_play_count(opponent: Opponent, envs: int) -> int:
+    """E_s, the number of self-play environments (the first E_s indices)."""
+    return round(opponent.self_play_share * envs)
+
+
+def seats(learner_team: Tensor, self_play: int) -> tuple[Tensor, Tensor]:
+    """(seat_environment, seat_team), each (S,) long: every environment's learner team,
+    then the other team of the first `self_play` environments."""
+    envs = learner_team.shape[0]
+    environment = torch.cat([torch.arange(envs, device=learner_team.device), torch.arange(self_play, device=learner_team.device)])
+    team = torch.cat([learner_team, 1 - learner_team[:self_play]])
+    return environment, team
+
+
+def seat_view(views, environment: Tensor, team: Tensor):
+    """The view of team `team[s]` in environment `environment[s]`, merged from the two
+    fixed-team views `views` = (team 0's, team 1's), each with a leading E."""
+    first, second = views
+    chosen = team == 0
+    changes = {
+        field.name: select_environments(
+            chosen, getattr(first, field.name).index_select(0, environment), getattr(second, field.name).index_select(0, environment)
+        )
+        for field in dataclasses.fields(first)
+        if isinstance(getattr(first, field.name), Tensor)
+    }
+    return dataclasses.replace(first, **changes)
+
+
+def draw_members(opponent: Opponent, count: int, generator, device) -> Tensor:
+    """League members for `count` league environments: drawn from the league, or all the
+    scripted agent (member 0) without one."""
+    if opponent.league is None or count == 0:
+        return torch.zeros(count, dtype=torch.long, device=device)
+    return opponent.league.draw(count, generator)
+
+
+def league_actions(opponent: Opponent, views, state, carry: CollectCarry, scripted_action: Tensor, generator):
+    """Actions of the league side of every league environment, (L, N, 3), and the new
+    opponent carry.
+
+    Scripted members' environments take `scripted_action` (the scripted agent's action,
+    already computed for the BC target). Each snapshot member present in some league
+    environment runs once on just its environments: the league environments are grouped
+    by member with one read-back per tick (the member counts), and the loop runs over the
+    members present (at most the league's capacity). Without snapshots nothing is read back.
+    """
+    envs = state.exists.shape[0]
+    league_envs = carry.member.shape[0]
+    first = envs - league_envs
+    action = scripted_action[first:]
+    opponent_carry = carry.opponent
+    league = opponent.league
+    if league is None or league.snapshots == 0 or league_envs == 0:
+        return action, opponent_carry
+    member = carry.member
+    counts = torch.bincount(member, minlength=league.members).tolist()
+    order = torch.argsort(member, stable=True)
+    team = 1 - carry.learner_team[first:]
+    begin = counts[0]
+    for index in range(1, league.members):
+        count = counts[index]
+        if count == 0:
+            continue
+        chosen = order[begin:begin + count]
+        begin += count
+        view = seat_view(views, chosen + first, team.index_select(0, chosen))
+        logits, _, new_carry = league.frozen[index - 1].step(
+            view, index_carry(opponent_carry, chosen), carry.position_offset[first:].index_select(0, chosen)
+        )
+        opponent_carry = opponent_carry.index_copy(carry_axis(opponent_carry), chosen, new_carry)
+        action = action.index_copy(0, chosen, split_joint(sample_joint(logits, generator)))
+    return action, opponent_carry
+
+
 def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: int, generator, game=None, scripted=None):
     """Deal E environments and build the carry. Returns (state, CollectCarry)."""
     game = game or importlib.import_module("lean.game")
@@ -183,9 +262,11 @@ def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: in
     sizes[0] = config.team_size_maximum
     state = game.reset(game_config, envs, sizes, generator, device)
     slots = state.exists.shape[1]
+    self_play = self_play_count(opponent, envs)
     carry = CollectCarry(
-        policy=policy.initial_carry(envs, slots, device),
-        snapshot=policy.initial_carry(envs, slots, device),
+        policy=policy.initial_carry(envs + self_play, slots, device),
+        opponent=policy.initial_carry(envs - self_play, slots, device),
+        member=draw_members(opponent, envs - self_play, generator, device),
         learner_team=torch.randint(0, 2, (envs,), generator=generator, device=device),
         persona=scripted.personas(opponent.scripted_config, envs, slots, generator, device, opponent.persona_spread),
         reset=torch.ones(envs, dtype=torch.bool, device=device),
@@ -194,89 +275,124 @@ def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: in
     return state, carry
 
 
+def redeal(config: LearnConfig, game_config, policy, opponent: Opponent, state, carry: CollectCarry, done: Tensor,
+           generator, game, scripted):
+    """Deal the environments in `done` (E,) bool afresh: new team sizes, learner team,
+    personas, position offset and league member; both carries zeroed there. Every draw is
+    made for every environment, so nothing is read back."""
+    envs, slots = state.exists.shape
+    device = state.exists.device
+    self_play = envs - carry.member.shape[0]
+    state = game.reset_done(game_config, state, done, draw_team_sizes(config, envs, generator), generator)
+    fresh = scripted.personas(opponent.scripted_config, envs, slots, generator, device, opponent.persona_spread)
+    seat_environment, _ = seats(carry.learner_team, self_play)
+    league_done = done[self_play:]
+    carry = CollectCarry(
+        policy=reset_carry(carry.policy, done.index_select(0, seat_environment)),
+        opponent=reset_carry(carry.opponent, league_done),
+        member=torch.where(league_done, draw_members(opponent, league_done.shape[0], generator, device), carry.member),
+        learner_team=torch.where(done, torch.randint(0, 2, (envs,), generator=generator, device=device), carry.learner_team),
+        persona={name: select_environments(done, fresh[name], carry.persona[name]) for name in carry.persona},
+        reset=done,
+        position_offset=torch.where(done[:, None], draw_position_offset(policy.config, envs, generator, device), carry.position_offset),
+    )
+    return state, carry
+
+
+def abandon(config: LearnConfig, game_config, policy, opponent: Opponent, state, carry: CollectCarry, member: int,
+            generator, *, game=None, scripted=None):
+    """Re-deal the league environments playing `member` (whose weights the league just
+    replaced) and draw them new opponents. Their unfinished games are not tallied. The
+    previous rollout bootstrapped those seats from the old state, as at a segment end.
+    Returns (state, carry); carry.reset marks the re-dealt environments."""
+    game = game or importlib.import_module("lean.game")
+    scripted = scripted or importlib.import_module("lean.scripted")
+    envs = state.exists.shape[0]
+    self_play = envs - carry.member.shape[0]
+    chosen = torch.cat([torch.zeros(self_play, dtype=torch.bool, device=carry.member.device), carry.member == member])
+    state, fresh = redeal(config, game_config, policy, opponent, state, carry, chosen, generator, game, scripted)
+    return state, dataclasses.replace(fresh, reset=carry.reset | chosen)
+
+
 @torch.no_grad()
 def collect(
     config: LearnConfig, game_config, policy, opponent: Opponent, state, carry: CollectCarry, ticks: int, generator,
     *, shaping: float = 1.0, game=None, scripted=None,
 ) -> Rollout:
-    """Step E environments for `ticks` ticks and record the learner's side.
+    """Step E environments for `ticks` ticks and record every seat the live policy plays.
 
-    The learner's policy acts for team `carry.learner_team[e]` in environment e; the
-    opponent acts for the other team. Finished environments are re-dealt at once with
-    fresh team sizes, a fresh learner team and fresh personas, and both recurrent carries
-    are zeroed there. All random draws come from `generator`, whose device is the device
-    of the run. `shaping` is the taper passed to `rewards`. `game` and `scripted` default
-    to the lean.game and lean.scripted modules. Nothing is read back to the host inside
-    the loop.
+    Self-play environments (the first E_s) have two live seats, league environments one;
+    the league side plays the member `carry.member` (the scripted agent or a frozen
+    snapshot). The scripted agent's action is computed for every ship every tick: it is
+    the BC target and the scripted member's move. Finished environments are re-dealt at
+    once with fresh team sizes, learner team, personas, position offset and league member,
+    and the carries are zeroed there; league games that end are added to the league's
+    tallies. All random draws come from `generator`. Nothing is read back to the host in
+    the loop except the member counts while the league holds snapshots (league_actions).
     """
     game = game or importlib.import_module("lean.game")
     scripted = scripted or importlib.import_module("lean.scripted")
     envs, slots = state.exists.shape
     device = state.exists.device
-    faces_scripted = torch.arange(envs, device=device) < round(opponent.scripted_share * envs)
-    if opponent.snapshot is None:
-        faces_scripted = torch.ones_like(faces_scripted)
-
-    policy_carry, snapshot_carry = carry.policy, carry.snapshot
-    learner_team, persona, reset = carry.learner_team, carry.persona, carry.reset
-    position_offset = carry.position_offset
-    initial_carry = policy_carry
+    self_play = envs - carry.member.shape[0]
+    initial_carry = carry.policy
     centres = None
     records = {name: [] for name in ("observation", "action", "teacher", "log_probability", "value", "reward", "done", "reset", "position_offset", "next_state", "next_valid")}
-    scripted_games = torch.zeros((), dtype=torch.long, device=device)
-    scripted_wins = torch.zeros((), dtype=torch.long, device=device)
-    episodes = torch.zeros((), dtype=torch.long, device=device)
+    counters = {name: torch.zeros((), dtype=torch.long, device=device) for name in ("league_games", "league_wins", "scripted_games", "scripted_wins", "episodes")}
 
     for _ in range(ticks):
-        observation = team_view(game, game_config, state, learner_team)
-        logits, value_logits, policy_carry = policy.step(observation, policy_carry, position_offset)
+        seat_environment, seat_team = seats(carry.learner_team, self_play)
+        views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
+        observation = seat_view(views, seat_environment, seat_team)
+        seat_offset = carry.position_offset.index_select(0, seat_environment)
+        logits, value_logits, policy_carry = policy.step(observation, carry.policy, seat_offset)
         if centres is None:
             centres = value_centres(config, value_logits.shape[-1], device)
         joint = sample_joint(logits, generator)
         log_probability = torch.log_softmax(logits, -1).gather(-1, joint[..., None]).squeeze(-1)
         value = decode_value(value_logits, centres) * observation.own[..., None]
 
-        teacher = scripted_actions(scripted, opponent.scripted_config, state, persona, generator)
-        opponent_action = teacher
-        if opponent.snapshot is not None:
-            opponent_view = team_view(game, game_config, state, 1 - learner_team)
-            opponent_logits, _, snapshot_carry = opponent.snapshot.step(opponent_view, snapshot_carry, position_offset)
-            snapshot_action = split_joint(sample_joint(opponent_logits, generator))
-            opponent_action = select_environments(faces_scripted, teacher, snapshot_action)
-        learner_ship = state.team == learner_team[:, None]
-        action = torch.where(learner_ship[..., None], split_joint(joint), opponent_action)
+        teacher = scripted_actions(scripted, opponent.scripted_config, state, carry.persona, generator)
+        league_action, opponent_carry = league_actions(opponent, views, state, carry, teacher, generator)
+        live_action = split_joint(joint)
+        other_side = torch.cat([live_action[envs:], league_action])
+        learner_ship = state.team == carry.learner_team[:, None]
+        action = torch.where(learner_ship[..., None], live_action[:envs], other_side)
 
         noise = game.draw_noise(game_config, envs, slots, generator, device)
         next_state, step_out = game.step(game_config, state, action, noise)
         done = step_out.done
+        seat_done = done.index_select(0, seat_environment)
 
         for name, item in (
-            ("observation", observation), ("action", joint), ("teacher", join_action(teacher)),
+            ("observation", observation), ("action", joint), ("teacher", join_action(teacher).index_select(0, seat_environment)),
             ("log_probability", log_probability), ("value", value),
-            ("reward", rewards(step_out, state, config, shaping)), ("done", done), ("reset", reset),
-            ("position_offset", position_offset),
-            ("next_state", next_state_target(policy.config, state, next_state)),
-            ("next_valid", observation.own & next_state.alive & ~done[:, None]),
+            ("reward", rewards(step_out, state, config, shaping).index_select(0, seat_environment)), ("done", seat_done),
+            ("reset", carry.reset.index_select(0, seat_environment)), ("position_offset", seat_offset),
+            ("next_state", next_state_target(policy.config, state, next_state).index_select(0, seat_environment)),
+            ("next_valid", observation.own & next_state.alive.index_select(0, seat_environment) & ~seat_done[:, None]),
         ):
             records[name].append(item)
 
-        against_scripted = done & faces_scripted
-        scripted_games += against_scripted.sum()
-        scripted_wins += (against_scripted & (step_out.result == learner_team)).sum()
-        episodes += done.sum()
+        finished = done[self_play:]
+        won = step_out.result[self_play:] == carry.learner_team[self_play:]
+        drawn = step_out.result[self_play:] == 2
+        against_scripted = finished & (carry.member == 0)
+        counters["league_games"] += finished.sum()
+        counters["league_wins"] += (finished & won).sum()
+        counters["scripted_games"] += against_scripted.sum()
+        counters["scripted_wins"] += (against_scripted & won).sum()
+        counters["episodes"] += done.sum()
+        if opponent.league is not None:
+            opponent.league.record(carry.member, finished, won, drawn)
 
-        state = game.reset_done(game_config, next_state, done, draw_team_sizes(config, envs, generator), generator)
-        learner_team = torch.where(done, torch.randint(0, 2, (envs,), generator=generator, device=device), learner_team)
-        fresh = scripted.personas(opponent.scripted_config, envs, slots, generator, device, opponent.persona_spread)
-        persona = {name: select_environments(done, fresh[name], persona[name]) for name in persona}
-        fresh_offset = draw_position_offset(policy.config, envs, generator, device)
-        position_offset = torch.where(done[:, None], fresh_offset, position_offset)
-        policy_carry = reset_carry(policy_carry, done)
-        snapshot_carry = reset_carry(snapshot_carry, done)
-        reset = done
+        carry = dataclasses.replace(carry, policy=policy_carry, opponent=opponent_carry)
+        state, carry = redeal(config, game_config, policy, opponent, next_state, carry, done, generator, game, scripted)
 
-    final_observation = team_view(game, game_config, state, learner_team)
-    _, final_logits, _ = policy.step(final_observation, policy_carry, position_offset)
+    seat_environment, seat_team = seats(carry.learner_team, self_play)
+    views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
+    final_observation = seat_view(views, seat_environment, seat_team)
+    _, final_logits, _ = policy.step(final_observation, carry.policy, carry.position_offset.index_select(0, seat_environment))
     bootstrap_value = decode_value(final_logits, centres) * final_observation.own[..., None]
     # After a reset the final observation belongs to a new episode; GAE never reads the
     # bootstrap there because `done` on the last tick cuts it.
@@ -288,24 +404,15 @@ def collect(
         if isinstance(getattr(first, field.name), Tensor)
     }
     observation = dataclasses.replace(first, **stacked)
-    done = torch.stack(records["done"])
     return Rollout(
         observation=observation,
-        action=torch.stack(records["action"]),
-        teacher=torch.stack(records["teacher"]),
-        log_probability=torch.stack(records["log_probability"]),
-        value=torch.stack(records["value"]),
-        reward=torch.stack(records["reward"]),
-        done=done,
-        reset=torch.stack(records["reset"]),
-        position_offset=torch.stack(records["position_offset"]),
-        next_state=torch.stack(records["next_state"]),
-        next_valid=torch.stack(records["next_valid"]),
+        **{name: torch.stack(records[name]) for name in records if name != "observation"},
         bootstrap_value=bootstrap_value,
+        seat_environment=seat_environment,
+        seat_team=seat_team,
+        self_play=seat_environment < self_play,
         initial_carry=initial_carry,
         state=state,
-        carry=CollectCarry(policy_carry, snapshot_carry, learner_team, persona, reset, position_offset),
-        scripted_games=scripted_games,
-        scripted_wins=scripted_wins,
-        episodes=episodes,
+        carry=carry,
+        **counters,
     )

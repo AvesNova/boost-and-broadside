@@ -2,7 +2,16 @@ import pytest
 import torch
 
 from lean.learn import (
-    LearnConfig, Opponent, bc_weight, collect, generalised_advantages, make_optimiser, normalise_advantages, start, update,
+    League,
+    LearnConfig,
+    Opponent,
+    bc_weight,
+    collect,
+    generalised_advantages,
+    make_optimiser,
+    normalise_advantages,
+    start,
+    update,
 )
 from lean.learn.tests import standins
 
@@ -49,8 +58,11 @@ def run_updates(updates, snapshot=False):
     config = LearnConfig(team_size_minimum=1, team_size_maximum=2, equal_teams=False, minibatches=2, epochs=2, warmup_updates=1)
     game_config = standins.GameConfig()
     policy = standins.TinyPolicy()
-    frozen = standins.TinyPolicy() if snapshot else None
-    opponent = Opponent(scripted_config=None, snapshot=frozen)
+    league = None
+    if snapshot:
+        league = League(every=1, capacity=2)
+        league.maybe_add(standins.TinyPolicy(), 0)
+    opponent = Opponent(scripted_config=None, league=league)
     optimiser = make_optimiser(config, policy)
     state, carry = start(config, game_config, policy, opponent, 8, generator, game=standins.game, scripted=standins.scripted)
     history = []
@@ -63,15 +75,16 @@ def run_updates(updates, snapshot=False):
 
 def test_rollout_shapes_and_outcome_reward_reach_both_teams():
     rollout, _ = run_updates(1, snapshot=True)
-    assert rollout.reward.shape == (16, 8, 4, 4)
-    assert rollout.observation.ship.shape == (16, 8, 4, 3)
-    assert rollout.done.sum() == 16  # 8 environments, episodes of 6 ticks, 16 ticks
-    assert int(rollout.episodes) == 16
+    # 8 environments, 4 of them self-play with two live seats: 12 seats.
+    assert rollout.reward.shape == (16, 12, 4, 4)
+    assert rollout.observation.ship.shape == (16, 12, 4, 3)
+    assert int(rollout.episodes) == 16  # 8 environments, episodes of 6 ticks, 16 ticks
+    assert rollout.done.sum() == 24  # each self-play episode ends for both of its seats
     assert (rollout.value[~rollout.observation.own] == 0).all()
     assert torch.isfinite(rollout.log_probability).all()
     outcome = rollout.reward[..., 0][rollout.done]  # (ended episodes, N)
     assert (outcome > 0).any() and (outcome < 0).any()  # winners and losers are both paid
-    assert rollout.position_offset.shape == (16, 8, 2)
+    assert rollout.position_offset.shape == (16, 12, 2)
     assert not rollout.next_valid[rollout.done].any()
 
 
@@ -108,7 +121,7 @@ def test_next_state_loss_is_live_with_the_real_packages():
     opponent = Opponent(scripted_config=scripted.ScriptedConfig())
     state, carry = start(config, game.GameConfig(), policy, opponent, 4, generator)
     rollout = collect(config, game.GameConfig(), policy, opponent, state, carry, 8, generator)
-    assert rollout.next_state.shape == (8, 4, 4, policy.config.next_state_size)
+    assert rollout.next_state.shape == (8, 6, 4, policy.config.next_state_size)  # 4 environments, 2 self-play: 6 seats
     assert rollout.next_valid.any()
     assert torch.isfinite(rollout.next_state[rollout.next_valid]).all()
     assert rollout.next_state[rollout.next_valid].abs().sum() > 0

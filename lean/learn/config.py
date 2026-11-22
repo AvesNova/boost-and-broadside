@@ -1,4 +1,4 @@
-"""Settings of the learner: PPO, reward terms, team-size draws and the self-play mix."""
+"""Settings of the learner: PPO, reward terms, team-size draws, self-play and the league."""
 
 from dataclasses import dataclass
 
@@ -64,13 +64,13 @@ class LearnConfig:
     team_size_maximum: int = 4
     equal_teams: bool = True
 
-    # Self-play.
-    scripted_share: float = 0.5  # share of environments that always face the scripted agent
-    snapshot_every: int = 10  # updates between additions to the pool
-    snapshot_capacity: int = 8
+    # Self-play and the league (lean.learn.pool.League).
+    self_play_share: float = 0.5  # share of environments where the live policy flies both teams
+    snapshot_every: int = 10  # updates between additions to the league
+    snapshot_capacity: int = 8  # snapshot members; the scripted agent is one more
+    league_floor: float = 0.125  # share of league draws uniform over the members
+    league_decay: float = 0.99  # each game decays its member's win tallies by this first
     persona_spread: float = 0.0
-    win_rate_momentum: float = 0.9
-
 
 def bc_weight(config: LearnConfig, scripted_win_rate: float) -> float:
     """Coefficient of the BC term: bc_coefficient * max(0, 1 - win_rate / gate)."""

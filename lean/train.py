@@ -11,7 +11,17 @@ import torch
 
 from lean import game, model, scripted
 from lean.eval import crossover
-from lean.learn import LearnConfig, Opponent, SnapshotPool, collect, make_optimiser, shaping_scale, start, update
+from lean.learn import (
+    League,
+    LearnConfig,
+    Opponent,
+    abandon,
+    collect,
+    make_optimiser,
+    shaping_scale,
+    start,
+    update,
+)
 
 
 def main() -> None:
@@ -43,30 +53,33 @@ def main() -> None:
     scripted_config = scripted.ScriptedConfig()
     policy = model.Policy(model.ModelConfig()).to(device)
     optimiser = make_optimiser(config, policy)
-    pool = SnapshotPool(policy, config.snapshot_every, config.snapshot_capacity)
-    opponent = Opponent(scripted_config, None, config.scripted_share, config.persona_spread)
+    league = League(config.snapshot_every, config.snapshot_capacity, device, config.league_floor, config.league_decay)
+    opponent = Opponent(scripted_config, league, config.self_play_share, config.persona_spread)
     state, carry = start(config, game_config, policy, opponent, envs, generator)
 
-    win_rate, steps = 0.0, 0
+    steps = 0
     for index in range(updates):
         began = time.perf_counter()
-        opponent.snapshot = pool.sample(generator)
         rollout = collect(
             config, game_config, policy, opponent, state, carry, ticks, generator, shaping=shaping_scale(config, steps)
         )
         state, carry = rollout.state, rollout.carry
         steps += envs * ticks
-        games = int(rollout.scripted_games)
-        if games > 0:
-            momentum = config.win_rate_momentum
-            win_rate = momentum * win_rate + (1.0 - momentum) * int(rollout.scripted_wins) / games
+        win_rate = league.scripted_win_rate()
         metrics = update(
             config, policy, optimiser, rollout, scripted_win_rate=win_rate, update_index=index, generator=generator
         )
-        pool.maybe_add(policy, index + 1)
+        replaced = league.maybe_add(policy, index + 1)
+        if replaced is not None:
+            state, carry = abandon(config, game_config, policy, opponent, state, carry, replaced, generator)
         rate = envs * ticks / (time.perf_counter() - began)
         shown = " ".join(f"{name}={value:.4g}" for name, value in metrics.items())
-        print(f"update {index} steps {steps} win_rate {win_rate:.3f} steps_per_second {rate:.0f} {shown}", flush=True)
+        rates = " ".join(f"{value:.2f}" for value in league.win_rates()[league.present].tolist())
+        print(
+            f"update {index} steps {steps} scripted_win_rate {win_rate:.3f} league_win_rates [{rates}] "
+            f"steps_per_second {rate:.0f} {shown}",
+            flush=True,
+        )
         if (index + 1) % crossover_every == 0:
             report = crossover(game_config, policy, scripted_config, crossover_sizes, crossover_games, generator)
             for size, entry in report["sizes"].items():
