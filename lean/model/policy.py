@@ -64,7 +64,7 @@ class ModelConfig:
         ("heading_cos", 0.1),
         ("heading_sin", 0.1),
         ("speed", 5.0),
-        ("energy", 10.0),
+        ("energy", 400.0),
         ("shield", 10.0),
     )
 
