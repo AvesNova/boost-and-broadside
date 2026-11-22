@@ -461,7 +461,8 @@ def _setting(p, control, speed, energy):
 
 
 def _rates(p, setting, inverse_index, speed, lift, angle_cos, inverse_speed_squared):
-    """(d speed / dt, d energy / dt) for a setting, a lift coefficient and an angle of attack."""
+    """(d speed / dt, d energy / dt) for a setting, a lift coefficient and an angle of attack.
+    inverse_index: 1 / n, or None where there is no medium (n = 1)."""
     _, exchange, vertical, thrust, charge = setting
     induced = vertical * inverse_speed_squared
     load = lift * lift + induced * induced
@@ -471,7 +472,10 @@ def _rates(p, setting, inverse_index, speed, lift, angle_cos, inverse_speed_squa
         * (1.0 + card.SEPARATION_DRAG * (load * p.inverse_lift_squared) ** (0.5 * card.SEPARATION_EXPONENT))
     ) * speed * speed
     store = speed * exchange if charge is None else speed * exchange + charge  # no charge in the core model
-    return (thrust * angle_cos - drag - exchange) * inverse_index, store * inverse_index
+    speed_rate = thrust * angle_cos - drag - exchange
+    if inverse_index is None:
+        return speed_rate, store
+    return speed_rate * inverse_index, store * inverse_index
 
 
 def _lift_coefficient(p, angle):
@@ -501,7 +505,8 @@ def _nose_frame(s):
 
 
 def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duration):
-    """Advance speed, angle of attack, nose rate and energy by duration at a fixed position."""
+    """Advance speed, angle of attack, nose rate and energy by duration at a fixed position.
+    With no medium inverse_index and the gradient are None (n = 1, no gradient)."""
     speed0, angle0, cos0, sin0, energy, nose_rate = s.speed, s.angle, s.angle_cos, s.angle_sin, s.energy, s.nose_rate
     floor = card.SPEED_FLOOR
     safe0 = speed0.clamp_min(floor)
@@ -513,16 +518,22 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
     lateral, _, _, thrust, _ = current
     speed_squared = speed * speed
     inverse_speed_squared = 1.0 / speed_squared
-    over = inverse_index / speed
-    path_rate = (lift0 * speed_squared + thrust * sin0) * over + (speed * inverse_index) * (
-        cos0 * gradient_across + sin0 * gradient_along
-    )
+    if inverse_index is None:
+        over = 1.0 / speed
+        path_rate = (lift0 * speed_squared + thrust * sin0) * over
+    else:
+        over = inverse_index / speed
+        path_rate = (lift0 * speed_squared + thrust * sin0) * over + (speed * inverse_index) * (
+            cos0 * gradient_across + sin0 * gradient_along
+        )
     ratio = (angle0 * p.inverse_stall).abs()
     # The lift coefficient's slope: negative past the stall, zero from twice the stall angle (v2's
     # lift_slope, src/bnb/game/physics/flight.py).
     slope = torch.where(ratio < 2.0, p.lift_over_stall * (2.0 - 2.0 * ratio), 0.0)
     kappa = (slope * speed_squared + thrust * cos0) * over
-    omega = (p.nose_frequency * speed).clamp_min(card.NOSE_FREQUENCY_FLOOR) * inverse_index
+    omega = (p.nose_frequency * speed).clamp_min(card.NOSE_FREQUENCY_FLOOR)
+    if inverse_index is not None:
+        omega = omega * inverse_index
     reach = (lateral.abs() * inverse_speed_squared * p.inverse_lift).clamp(0.0, 1.0)
     step_angle = torch.sign(lateral) * p.stall * (1.0 - torch.sqrt(1.0 - reach)) - angle0
     damping = 2.0 * card.NOSE_DAMPING * omega
@@ -565,7 +576,8 @@ def flight_tick(
 
     s carries x, y, heading_cos, heading_sin, speed, angle, angle_cos, angle_sin, nose_rate,
     energy and the medium at the ship (log_index, gradient_x, gradient_y); it is updated in
-    place and returned. fields: (E, 5, F). stick, power: (E, N) long action indices.
+    place and returned. fields: (E, 5, F); with none (F = 0) the medium's arithmetic is
+    skipped (n = 1, no gradient: the same values). stick, power: (E, N) long action indices.
     """
     p = constants
     control = SimpleNamespace(model=model, thrust_scale=thrust_scale)
@@ -575,14 +587,18 @@ def flight_tick(
     control.demand = p.demand_table.gather(1, power[:, None])[:, 0]
     control.inverse_demand = 1.0 / control.demand
     h = tick_length
-    inverse_index = torch.exp(-s.log_index)
-    s = _kick(p, control, s, inverse_index, *_nose_frame(s), 0.5 * h)
-    along, across = _nose_frame(s)
-    velocity = s.speed * inverse_index
-    velocity_x, velocity_y = velocity * s.angle_cos, -velocity * s.angle_sin
-    correction = 0.5 * h * (along * velocity_x + across * velocity_y)
-    stretch = 1.0 / (1.0 + correction * (1.0 + correction * (0.5 + correction / 6.0)))
-    velocity_x, velocity_y = velocity_x * stretch, velocity_y * stretch
+    if fields.shape[-1] == 0:  # no medium (agreed fix 8)
+        s = _kick(p, control, s, None, None, None, 0.5 * h)
+        velocity_x, velocity_y = s.speed * s.angle_cos, -s.speed * s.angle_sin
+    else:
+        inverse_index = torch.exp(-s.log_index)
+        s = _kick(p, control, s, inverse_index, *_nose_frame(s), 0.5 * h)
+        along, across = _nose_frame(s)
+        velocity = s.speed * inverse_index
+        velocity_x, velocity_y = velocity * s.angle_cos, -velocity * s.angle_sin
+        correction = 0.5 * h * (along * velocity_x + across * velocity_y)
+        stretch = 1.0 / (1.0 + correction * (1.0 + correction * (0.5 + correction / 6.0)))
+        velocity_x, velocity_y = velocity_x * stretch, velocity_y * stretch
     arc = s.nose_rate * h
     arc_squared = arc * arc
     forward = (1.0 - arc_squared * (1.0 / 6.0 - arc_squared / 120.0)) * h
@@ -598,6 +614,8 @@ def flight_tick(
     s.heading_cos, s.heading_sin = heading_cos * norm, heading_sin * norm
     norm = torch.rsqrt(s.angle_cos * s.angle_cos + s.angle_sin * s.angle_sin)
     s.angle_cos, s.angle_sin = s.angle_cos * norm, s.angle_sin * norm
+    if fields.shape[-1] == 0:
+        return _kick(p, control, s, None, None, None, 0.5 * h)
     s.log_index, s.gradient_x, s.gradient_y = medium(fields, s.x, s.y)
     return _kick(p, control, s, torch.exp(-s.log_index), *_nose_frame(s), 0.5 * h)
 
@@ -634,10 +652,17 @@ def bullet_motion(fields, tick_length, x, y, direction_x, direction_y, speed, dr
     """One move of every bullet (E, ...): half drag, half bend, the step, half bend, half
     drag. fields: (E, 5, F). drag: the shooter's drag constant, 1/m, a number or broadcast
     against the bullets. start_medium: (ln n, d/dx ln n, d/dy ln n) at the start (cached).
-    Returns x, y, direction x and y, speed and the medium at the end (three tensors)."""
+    Returns x, y, direction x and y, speed and the medium at the end (three tensors). With no
+    fields the medium's arithmetic is skipped (n = 1, no bend: the same values)."""
     log_index, gradient_x, gradient_y = start_medium
-    index = torch.exp(log_index)
     half = drag * 0.5 * tick_length
+    if fields.shape[-1] == 0:  # no medium (agreed fix 8)
+        speed = speed / (1.0 + half * speed)
+        step = speed * tick_length
+        x, y = x + direction_x * step, y + direction_y * step
+        speed = speed / (1.0 + half * speed)
+        return x, y, direction_x, direction_y, speed, log_index, gradient_x, gradient_y
+    index = torch.exp(log_index)
     speed = speed / (1.0 + half * speed / index)
     direction_x, direction_y = _half_bend(tick_length, direction_x, direction_y, speed, index, gradient_x, gradient_y)
     through = speed / index
@@ -1036,12 +1061,17 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
     heading_cos, heading_sin = _edge_safe(config, x, y, angle)
     x, y = torch.where(exists, x, 0.0), torch.where(exists, y, 0.0)
     heading_cos, heading_sin = torch.where(exists, heading_cos, 1.0), torch.where(exists, heading_sin, 0.0)
-    log_index, gradient_x, gradient_y = medium(fields, x, y)
     zeros = filled((envs, slots), 0.0, torch.float32, device)
     ones = filled((envs, slots), 1.0, torch.float32, device)
+    if fields.shape[-1] == 0:  # no medium: n = 1 everywhere
+        log_index = gradient_x = gradient_y = zeros
+        speed = filled((envs, slots), card.SPAWN_SPEED, torch.float32, device)
+    else:
+        log_index, gradient_x, gradient_y = medium(fields, x, y)
+        speed = card.SPAWN_SPEED * torch.exp(log_index)
     named = {
         "x": x, "y": y, "heading_cos": heading_cos, "heading_sin": heading_sin,
-        "speed": card.SPAWN_SPEED * torch.exp(log_index), "angle": zeros, "angle_cos": ones, "angle_sin": zeros,
+        "speed": speed, "angle": zeros, "angle_cos": ones, "angle_sin": zeros,
         "nose_rate": zeros, "energy": _per_slot(constants["spawn_energy"], zeros),
         "shield": _per_slot(constants["max_shield"], zeros), "shield_wait": zeros, "cooldown": zeros,
         "log_index": log_index, "gradient_x": gradient_x, "gradient_y": gradient_y, "next_slot": zeros,
@@ -1260,9 +1290,12 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     exists, alive = state.exists, view.alive
     # World-frame motion, as v2 observes it: the proper speed over the refractive index, so a
     # field that slows a ship shows as a slower ship (src/bnb/game/perception/observe.py).
-    inverse_index = torch.exp(-view.log_index)
-    speed = view.speed * inverse_index
-    velocity_x, velocity_y = view.velocity_x * inverse_index, view.velocity_y * inverse_index  # stored by the step
+    if state.fields.shape[-1] == 0:  # no medium (n = 1)
+        speed, velocity_x, velocity_y = view.speed, view.velocity_x, view.velocity_y
+    else:
+        inverse_index = torch.exp(-view.log_index)
+        speed = view.speed * inverse_index
+        velocity_x, velocity_y = view.velocity_x * inverse_index, view.velocity_y * inverse_index  # stored
     distance = torch.sqrt(view.x * view.x + view.y * view.y)
     inverse_distance = 1.0 / distance.clamp_min(1.0)
     fired_last = state.fired  # stored by the step (agreed fix 12), not inferred from the ring
