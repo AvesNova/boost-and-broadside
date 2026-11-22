@@ -55,8 +55,8 @@ Every planned item, in order, with its status. Decisions behind the items are in
 |---|---|---|
 | D1 | Half self-play (both sides train), half league; scripted agent a league member; (1 - p)^2 with one-eighth uniform floor; AlphaStar's win-rate tally | done (worklog 03:29) |
 | D2 | v2's training recipe (discounts, batch size, KL stop, weight averaging); reward levels as v2's five, no shaping | report done (recipe-v2-vs-lean.md); adoption needs the author (BC stage, weight averaging, five levels) |
-| D3 | Shaping-field bug (moot once shaping is dropped) | todo |
-| D4 | Damage reward unit (departure audit row 2) | todo |
+| D3 | Shaping-field bug (moot once shaping is dropped) | dropped: shaping removed with v2's five levels (worklog 03:49) |
+| D4 | Damage reward unit (departure audit row 2) | done: v2's unit, 2.74 per 100 points (worklog 03:49; lean/learn/config.py) |
 | D5 | Compilation in training | done 2026-11-23 (merged; v2 game meets 5,000 steps/s, core game 4,640: question 12) |
 | D6 | Batched evaluation across sizes | todo |
 
@@ -66,7 +66,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 |---|---|---|
 | E1 | Behaviour decisions from imugi-behaviours.md (core-decisions.md "Scripted opponent") | partly done: per-type characteristics, line-of-fire block (worklog 03:17, 03:18); fly-straight rule and manoeuvres wait for A12 |
 | E2 | Basic fighter manoeuvres for the new physics (after A settles) | blocked: A12 |
-| E3 | Reads its team's view, never the state (with fog) | todo |
+| E3 | Reads its team's view, never the state (with fog) | done (worklog 03:45; both teams in one call via `enemy_view`, 06:34) |
 
 ## F. Documents and gates
 
