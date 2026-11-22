@@ -31,12 +31,15 @@ Game
 - Per-tick analytics leave the compiled tick.
 
 Model
-- Swappable modules: each part of the model (position code, temporal block, attention,
-  heads) is a slot with one interface, chosen at construction, so the compiled graph holds
-  only the chosen module. Position code options: v2's categorical codes, Fourier features
+- Swappable modules: no interface framework. Clean, loosely coupled code, so that changing
+  one part of the model (position code, temporal block, attention, heads) does not touch
+  many places; the choice is made at construction, so the compiled graph holds only the
+  chosen module. Position code options: v2's categorical codes, Fourier features
   on a hexagonal layout, and (later) a grid-cell module.
 - Fewer rotary dimensions (medium or smaller maps for now; larger maps later, with the
   rotary revisited then). Heading stays in the rotary, with few harmonics.
+- Griffin's initialisation as the paper specifies; v2's is wrong (to be checked against the
+  paper, docs/rewrite/provenance-check.md).
 - No belief and nothing decoded and fed back. A hidden enemy is a last-seen token plus the
   time since it was seen. Memory is the Griffin temporal block (v2's block, not a bare
   recurrence).
@@ -47,9 +50,13 @@ Model
   attention operation. Bullets are not tokens.
 
 Learner and league
-- Every reward level the same: HL-Gauss targets, the same number of bins, symlog, a scale
-  per level; the outcome is one of these levels. Not too hot (the HL-Gauss width checked).
-- No rating lanes and no lookahead.
+- Every reward level the same: HL-Gauss targets, the same number of bins, a scale per
+  level; the outcome is one of these levels. Not too hot (the HL-Gauss width checked).
+  Linear against symlog bins to be revisited (2026-11-22): HL-Gauss's paper may use linear
+  bins, and DreamerV3's reason for symlog (one configuration across many games) may not
+  apply to one game. Check both papers (docs/rewrite/provenance-check.md).
+- No rating lanes and no lookahead. League weighting (1 - p)^2 with a small uniform floor
+  (2026-11-22); the floor's size open (proposal: 10% uniform, revisit).
 - Half self-play (both sides train), half league games (the live side trains); the scripted
   agent is one league member.
 - Reward scaling with team size: as now (additive per ship).
@@ -57,16 +64,27 @@ Learner and league
 Tests
 - A test names the assumption or bug it guards (example: holding reverse thrust never takes
   a ship well below its stall speed). No goldens or recorded numbers without a reason.
-  Comparisons against v2 are porting scaffolding, removed once a component is ported.
+  Comparisons against v2 are transition tests, deleted once a component is ported. For
+  every change during the port, note in advance whether the result should be the same,
+  similar (within a stated tolerance) or different, and test that.
+
+Provenance
+- A provenance table (docs/provenance.md) for every overarching decision (why Griffin, why
+  grid cells, why HL-Gauss, and so on): the paper or papers it comes from, or else the
+  reasoning or test behind it. Not per line of code.
 
 ## Proposals, not decided
 
-- Shaping: inside one of v2's five levels or a sixth level.
+- Shaping: drop it, as v2 did (lean's sixth level: facing the nearest enemy and closing
+  speed toward it, v1's terms; not zero-sum, hard to tune, invites reward hacking).
 - Hit-head labels from ghost bullets: every ship puts a bullet in its ring every tick; a
   flag marks it real or ghost; only real bullets cost energy, damage and stop; a ghost
   records its first contact (enemy, ally, none) and is removed. The ring (11 slots, one per
   tick) is already sized for this.
-- League weighting (1 - p)^2 with a small uniform floor and no rating lanes; the floor's
-  games keep every member's win rate current. The floor's size is open.
-- Drop the null key (the game token and fields are always present as keys).
-- A keep-or-drop table of Imugi's behaviours for the scripted opponent.
+- Replace the null key with a published mechanism that removes the need for it and
+  stabilises training (the author recalls Kimi; candidates: gated attention, Qiu et al.
+  2025, which v2 has as an option; learned per-head sinks as in gpt-oss). Pending the
+  source check.
+- Grid-cell position code as a third option; look for papers that used grid cells in RL.
+- A keep, drop or simplify table of Imugi's behaviours with rough costs (operations, lines,
+  time per call, parameters): docs/rewrite/imugi-behaviours.md, in progress.
