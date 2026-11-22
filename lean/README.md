@@ -18,16 +18,34 @@ results did not favour either framework clearly. If G1 chooses JAX, the game ste
 model translate; `docs/rewrite/sections/framework-spike/` has a parity-tested twin of the
 trunk.
 
+## State at the end of the session
+
+What each builder reported. None of it has been re-checked by anyone else.
+
+| Package | Ran on the CPU | Known to be wrong or unfinished |
+|---|---|---|
+| `game/` | Invariants pass at 3v5 and 20v20 (no non-finite values; non-existent slots never fire, take damage or get attended) | **Never compared with v2:** the trajectory harness did not complete a run. The team-swap test had one assertion changed and was not re-run. No operation count, no fields, the "sides" spawn untested. A dead ship keeps its speed (v2 zeroes it). The 20v20 test takes 100 s |
+| `scripted/` | Six tests pass. Beats the chaser 43 to 1 over 48 games at 5v5; 166 operations per call without memory | Not played against v2's Imugi. Gun range, corner speed and launch speed use one ship type's values for all. Persona spreads are guesses and unplayed. The caller must pass the arena radius |
+| `model/` | Ten tests pass: rollout and learner forms agree; padding and permutation leave real ships unchanged; runs at 5v5, 20v20 and 50v50; 616,677 parameters; 289 operations per forward | No backward pass, compile or bf16 run. Value support is a placeholder of -2 to 2. Next-state scales are guesses. The temporal block is the recurrent unit only, not Griffin's full block |
+| `learn/`, `eval/`, `train.py` | Ten tests pass. `python -m lean.train --smoke` completes against the real packages: two updates, then a crossover | **The next-state loss is silently zero** (the learner and the model disagree on the target). **About 3 to 5 steps per second on the CPU,** not profiled. Its value helpers are a local copy. The device is hard-wired to the CPU. The model's random position offset is never passed |
+
+Set `OMP_NUM_THREADS=1` for small CPU runs; with default threads on a loaded machine
+they are much slower.
+
+Departures from v1's recipe that need the author's eye before a real run are listed in
+`learn/NOTES.md`: how kill and damage rewards are shared, a uniform snapshot pool in place
+of rating-based sampling, one team per environment training, the BC target and its gate,
+and no KL stop or weight averaging.
+
 ## When the laptop is back, in this order
 
 Run from the repository root with `PYTHONPATH=.:src`.
 
 1. **Read each `NOTES.md`.** They say what was run, what was not, and what each builder
    had to assume about the others.
-2. **Make the packages work together on the CPU.**
-   `python -m pytest lean -q`, then `python lean/train.py --smoke`. Fix interface
-   mismatches first; they are the most likely failure, since the packages were written
-   at the same time.
+2. **Fix the two known faults, then re-run everything on the CPU.** Record the model's
+   own next-state target in the rollout so that loss is live; find where the smoke run's
+   time goes. Then `python -m pytest lean -q` and `python -m lean.train --smoke`.
 3. **Finish the framework benchmark** (gates G1 and G2):
    `docs/rewrite/sections/framework-spike/run_laptop.sh`. The first repeat of the
    compile and team-size suites is in `results/laptop/`; steady speed, the whole-loop
