@@ -120,6 +120,67 @@ docs/rewrite/sections/scoreboard/play_latency.py.
   background child process has built it (v2's play shell did this with AOT builds), or the
   compiled artefact ships prebuilt.
 
+## Training on the GPU (2026-11-23 05:25 to 05:55)
+
+Laptop RTX 4070 (8 GB), platform profile "performance", load average 1.5 to 2.1 (no other GPU
+job). Code: branch core rebased on 681eb492, commits 8c3deab4 and 94706d2d (the second only
+changes the eager snapshot path; the fp32 and eager rows ran on it). Script:
+docs/rewrite/sections/scoreboard/train_gpu.py, one fresh process per row, 3 updates each:
+the first update includes the compile, "steady" is the mean of updates 2 and 3. The loop is
+lean/train.py's: collect (128 ticks), update (4 epochs, advantages and value targets
+recomputed from the critic each epoch), league addition. The league holds all 8 snapshots
+from the start (copies of the initial weights), as in a run's steady state; half the
+environments self-play, so the update trains 1.5 seats per environment. Steps are
+environment ticks (E x 128 per update). Policy forward passes under bf16 autocast unless
+marked fp32. Peak memory: torch's peak allocated / reserved over the run.
+
+| E, game | | collect steps/s | update steps/s | loop steps/s | peak GiB | first update (compile) |
+|---|---|---|---|---|---|---|
+| 256, v2 | eager | 11,377 | 2,590 | 2,110 | 5.16 / 5.62 | 3.1 + 12.7 s |
+| 256, v2 | compiled | 25,974 | 6,439 | **5,160** | 3.67 / 4.35 | 103.7 + 93.9 s cold; 42.3 + 27.9 s warm |
+| 256, core | eager | 8,251 | 2,226 | 1,753 | 5.56 / 6.10 | 4.0 + 14.8 s |
+| 256, core | compiled | 22,038 | 5,877 | 4,640 | 3.97 / 4.76 | 132.9 + 100.3 s (cold for the core game's graphs) |
+| 1024, v2 (32 minibatches) | eager | 12,106 | 2,594 | 2,136 | 5.54 / 6.20 | 11.0 + 50.6 s |
+| 1024, v2 (32 minibatches) | compiled | 23,243 | 6,464 | 5,057 | 4.05 / 4.67 | warm |
+| 1024, core (32 minibatches) | compiled | 20,662 | 5,899 | 4,589 | 4.37 / 5.27 | warm |
+| 256, v2, fp32 | eager (16 minibatches) | 9,296 | 2,357 | 1,880 | 3.76 / 4.05 | |
+| 256, v2, fp32 | compiled | 17,029 | 3,630 | 2,992 | 5.80 / 6.44 | |
+
+Variants, compiled, 256, v2:
+
+| | collect | update | loop |
+|---|---|---|---|
+| default (above) | 25,974 | 6,439 | 5,160 |
+| no snapshots in the league | 87,345 | 6,447 | 6,003 |
+| targets once per update from the stored values (v2's rule; `targets_every_epoch=False`) | 25,655 | 8,628 | 6,457 |
+
+- **Start-up.** Process start to the end of the first update: 199 s with a cold inductor
+  cache, 72 s warm (dynamo still traces every graph; the cache saves the inductor builds).
+  Eager starts in 17 s. The compile saves 9.2 s an update, so it is repaid after about 20
+  updates cold, 6 warm; not within the first update.
+- **Graph breaks and recompiles:** none in any row (TORCH_LOGS=graph_breaks,recompiles),
+  across team sizes, environment counts and minibatch sizes.
+- **Memory.** 8 minibatches (48 seats of 128 ticks) fit 8 GB at E = 256 with about 3 GB to
+  spare compiled, 2 GB eager; 4 minibatches run out of memory (bf16, compiled; 6.5 GB
+  allocated at the failure). At E = 1024, 32 minibatches keep the same minibatch size.
+- **The update is now the cost:** at 256, 5.1 s of the 6.3 s loop. Of that (timed with
+  synchronised wrappers before the rebase on 681eb492, same update code): the critic's
+  target pass (one forward over the rollout per epoch) about 1.3 s, the minibatch forwards
+  1.4 s, the backward passes 2.3 s; Adam, clipping and GAE together under 0.1 s.
+- **Snapshots** cost 3.7 ms a tick at 256 (collect 26k against 87k steps/s without them):
+  every snapshot slot runs on every league environment in one vmapped call (8 x 128 rows).
+  The earlier form (each member present on just its environments, grouped with a per-tick
+  read-back of the member counts) ran at 20,546 steps/s; the read-back itself cost 5% of
+  collect (21,577 with the counts read once per rollout), the eight small model calls the rest.
+- **bf16** nearly doubles the update (3,630 to 6,439 steps/s compiled) and lowers its memory
+  (5.8 to 3.7 GiB).
+
+**Against v2's floor of about 5,000 steady environment steps per second on the laptop:** met
+with the v2 game (the training default) at 256 environments, 5,160, and at 1,024, 5,057; by
+3% and 1%. Not met with the core game (fields and fog): 4,640 and 4,589. Computing the
+targets once per update from the stored values, as v2 does, would give 6,457 (v2 game); that
+is the author's decision (lean/learn/NOTES.md).
+
 ## Not yet measured
 
-The compiled backward pass and the learner's update; traced operations across every graph.
+Traced operations across every graph.
