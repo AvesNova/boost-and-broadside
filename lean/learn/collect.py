@@ -111,8 +111,8 @@ class Rollout:
 
 def carry_axis(carry: Tensor) -> int:
     """The environment axis of a recurrent carry: 0 for (E, N, width), 1 for
-    lean.model's (blocks, E, 1 + N, width)."""
-    return 1 if carry.dim() == 4 else 0
+    lean.model's (blocks, E, 1 + N, 4, width)."""
+    return 1 if carry.dim() >= 4 else 0
 
 
 def reset_carry(carry: Tensor, done: Tensor) -> Tensor:

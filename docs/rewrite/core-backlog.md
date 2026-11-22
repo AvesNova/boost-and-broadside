@@ -38,22 +38,22 @@ Every planned item, in order, with its status. Decisions behind the items are in
 
 | # | Item | Status |
 |---|---|---|
-| C1 | Doubling scan for the recurrence over time (same maths, measured 2.9x faster update) | todo |
-| C2 | Griffin temporal block (v2's block) with the paper's initialisation | todo |
-| C3 | Encoder: one first layer per token kind, a shared second layer | todo |
-| C4 | Field tokens as key/value memory in the same attention operation (needs the Obs contract to carry fields) | doing: game and contract done (worklog 04:35); model next |
-| C5 | Gated attention, element-wise, released-code initialisation; no null key | todo |
-| C6 | Rotary: drop bands far larger than the map; same layout in both heads; rotate values | todo |
-| C7 | Critic: HL-Gauss, linear bins, 64 per level, v2's five levels; range monitoring | todo |
-| C8 | MLP width 4x as v1 and v2 (departure audit row) | todo |
-| C9 | Swappable position code: v2's categorical codes, Fourier hexagonal, grid cells | todo |
+| C1 | Doubling scan for the recurrence over time (same maths, measured 2.9x faster update) | done (worklog 07:20) |
+| C2 | Griffin temporal block (v2's block) with the paper's initialisation | done (worklog 07:20) |
+| C3 | Encoder: one first layer per token kind, a shared second layer | done (worklog 07:20) |
+| C4 | Field tokens as key/value memory in the same attention operation (needs the Obs contract to carry fields) | done (worklog 04:35, 07:20) |
+| C5 | Gated attention, element-wise, released-code initialisation; no null key | done (worklog 07:20) |
+| C6 | Rotary: drop bands far larger than the map; same layout in both heads; rotate values | done (worklog 07:20) |
+| C7 | Critic: HL-Gauss, linear bins, 64 per level, v2's five levels; range monitoring | bins done (64, linear); v2's five levels with D2 (worklog 07:20) |
+| C8 | MLP width 4x as v1 and v2 (departure audit row) | done (worklog 07:20) |
+| C9 | Swappable position code: v2's categorical codes, Fourier hexagonal, grid cells | done (worklog 07:20) |
 
 ## D. Learner and league
 
 | # | Item | Status |
 |---|---|---|
 | D1 | Half self-play (both sides train), half league; scripted agent a league member; (1 - p)^2 with one-eighth uniform floor; AlphaStar's win-rate tally | todo |
-| D2 | v2's training recipe (discounts, batch size, KL stop, weight averaging); reward levels as v2's five, no shaping | todo |
+| D2 | v2's training recipe (discounts, batch size, KL stop, weight averaging); reward levels as v2's five, no shaping | todo; note: the default size needs 8+ minibatches with the new model (worklog 07:20) |
 | D3 | Shaping-field bug (moot once shaping is dropped) | todo |
 | D4 | Damage reward unit (departure audit row 2) | todo |
 | D5 | Compilation in training | todo |

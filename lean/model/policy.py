@@ -1,9 +1,12 @@
-"""The policy: one token per ship plus a global token, blocks of one recurrent sublayer and
-two masked rotary attention sublayers, and heads that read each ship's own token.
+"""The policy: v2's Yemong trunk without beliefs (src/bnb/models/yemong/): an encoder with one
+first projection per token kind and a shared second; blocks of one temporal sublayer
+(Griffin's recurrent block) and two spatial sublayers (gated rotary attention of the ship
+and game tokens over themselves and the fields, then a gated MLP); per-ship MLP heads.
 
-Sizes: T ticks, E environments, N ship slots, M = 1 + N trunk tokens (the global token
-first, then the ship slots in the caller's order). The model has no parameter or buffer
-whose shape depends on N, and nothing is computed across the entity axis except attention.
+Sizes: T ticks, E environments, N ship slots, M = 1 + N trunk tokens (the game token first,
+then the ship slots in the caller's order), F field slots (keys and values only). The model
+has no parameter or buffer whose shape depends on N or F, and nothing is computed across the
+entity axis except attention.
 """
 
 import math
@@ -13,7 +16,8 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from lean.model.value import value_bin_centres
+from lean.model.position import Rotary, make_position_code
+from lean.model.temporal import Temporal
 
 
 def _default_position_periods() -> tuple[float, ...]:
@@ -22,42 +26,52 @@ def _default_position_periods() -> tuple[float, ...]:
 
 @dataclass
 class ModelConfig:
-    """Sizes and constants of the policy.
+    """Sizes and constants of the policy (v2's defaults where v2 has one).
 
-    position_periods: spatial periods in metres of the Fourier position code and of the
-    rotary position rotation (one shared set). The coarsest must exceed twice the arena
-    diameter so that no pair of ships aliases, and the ladder must not be a power of two.
+    position_code: the token inputs' position code, "fourier", "grid_cells" or "v2_codes"
+    (lean.model.position). position_periods: the Fourier periods and the grid spacings
+    (metres; the coarsest sets the position offset's range). grid_phases: grid-cell phases
+    per lattice axis (phases^2 cells per spacing). colour_period, colour_levels: v2's
+    categorical code (a new v2 run's: 236,196 m, 9 levels, finest colour 12 m).
+    rotary_*: the rotary bands, v2's layout (two axes per band, each band's axes turned
+    rotary_turn degrees from the coarser one's, periods rotary_finest * rotary_ratio^k),
+    keeping only the bands up to a little above the arena's diameter (8.4 km).
     heading_harmonics: multiples of the heading angle used as rotary angles.
-    rotate_values: also rotate the attention values by the key's position and heading and
-    rotate the attended sum back by the query's (the audit's open arm).
-    positionless_rotary: what the global and null tokens do in the rotated dimensions of
-    queries and keys. "zero" removes those dimensions from every score that involves such
-    a token; "identity" leaves them unrotated, which places the token at the arena origin
-    with heading zero.
-    value_low, value_high: per reward level, the outermost value bin centres in return
-    units (level order: outcome, kill and death, damage, shaping).
-    next_state_fields: the State fields whose one-tick change the next-state head
-    predicts, each with the divisor that brings the change to order one.
+    rotate_values: also rotate the attention values by the key's angles and the attended sum
+    back by the query's.
+    positionless_rotary: the game token's rotary angles. "centre" (v2): the arena centre
+    (the origin) with heading 0, the identity rotation. "zero": cos = sin = 0, which removes
+    the rotated dimensions from every score and value involving the game token.
+    next_state_fields: the State fields whose one-tick change the next-state head predicts,
+    each with the divisor that brings the change to order one.
     """
 
     width: int = 128
     blocks: int = 2
     spatial_per_block: int = 2
     heads: int = 2
+    map_width: int = 64
+    mlp_ratio: int = 4
+    head_hidden: int = 256
     actions: int = 42
     levels: int = 4
-    bins: int = 77
+    bins: int = 64
     recurrence_exponent: float = 8.0
     retention_low: float = 0.9
     retention_high: float = 0.999
-    norm_epsilon: float = 1e-6
+    norm_epsilon: float | None = None  # torch's default: the dtype's machine epsilon (v2)
+    position_code: str = "fourier"
     position_periods: tuple[float, ...] = _default_position_periods()
-    heading_harmonics: tuple[float, ...] = (1.0, 2.0, 4.0)
-    rotate_values: bool = False
-    positionless_rotary: str = "zero"
-    value_low: tuple[float, ...] = (-2.0, -2.0, -2.0, -2.0)
-    value_high: tuple[float, ...] = (2.0, 2.0, 2.0, 2.0)
-    hl_gauss_sigma_bins: float = 0.75
+    grid_phases: int = 2
+    colour_period: float = 36.0 * 3.0**8
+    colour_levels: int = 9
+    rotary_finest: float = 64.0
+    rotary_ratio: float = 3.405
+    rotary_bands: int = 5
+    rotary_turn: float = 35.0
+    heading_harmonics: tuple[float, ...] = (1.0, 2.0)
+    rotate_values: bool = True
+    positionless_rotary: str = "centre"
     next_state_fields: tuple[tuple[str, float], ...] = (
         ("x", 10.0),
         ("y", 10.0),
@@ -69,19 +83,19 @@ class ModelConfig:
     )
 
     @property
-    def position_axes(self) -> int:
-        """Number of wave directions (60 degrees apart)."""
-        return 3
-
-    @property
-    def position_phases(self) -> int:
-        """Number of position wave vectors: axes times scales."""
-        return self.position_axes * len(self.position_periods)
+    def rotary_periods(self) -> tuple[float, ...]:
+        """The rotary bands' periods in metres, finest first."""
+        return tuple(self.rotary_finest * self.rotary_ratio**band for band in range(self.rotary_bands))
 
     @property
     def rotary_pairs(self) -> int:
-        """Number of rotated dimension pairs in each attention head."""
-        return self.position_phases + len(self.heading_harmonics)
+        """Rotated dimension pairs in each attention head: two axes per band, then heading."""
+        return 2 * self.rotary_bands + len(self.heading_harmonics)
+
+    @property
+    def offset_span(self) -> float:
+        """The position offset's range in metres: the position code's coarsest period."""
+        return self.colour_period if self.position_code == "v2_codes" else max(self.position_periods)
 
     @property
     def next_state_size(self) -> int:
@@ -89,27 +103,14 @@ class ModelConfig:
         return len(self.next_state_fields)
 
 
-def position_wave_vectors(periods: tuple[float, ...]) -> Tensor:
-    """Wave vectors in radians per metre, (3 * len(periods), 2) float32.
-
-    Three unit directions at 0, 60 and 120 degrees (a grid-cell layout, even resolution in
-    every direction), each at every period; ordered axis-major.
-    """
-    angles = torch.tensor([0.0, math.pi / 3.0, 2.0 * math.pi / 3.0])
-    directions = torch.stack([angles.cos(), angles.sin()], dim=-1)
-    rates = 2.0 * math.pi / torch.tensor(periods, dtype=torch.float32)
-    return (directions[:, None, :] * rates[None, :, None]).reshape(-1, 2)
-
-
 def draw_position_offset(config: ModelConfig, envs: int, generator: torch.Generator | None, device) -> Tensor:
     """A random translation per environment for the token position code, (E, 2) float32 metres.
 
-    Uniform over a square one coarsest period wide, so the phase of every scale is
-    uniform and absolute positions cannot be memorised. Draw once per match.
+    Uniform over a square one coarsest period wide (config.offset_span), so the phase of
+    every scale is uniform and absolute positions cannot be memorised. Draw once per match.
     """
-    span = max(config.position_periods)
     uniform = torch.rand(envs, 2, generator=generator, device=generator.device if generator else "cpu")
-    return ((uniform - 0.5) * span).to(device)
+    return ((uniform - 0.5) * config.offset_span).to(device)
 
 
 def next_state_target(config: ModelConfig, state, next_state) -> Tensor:
@@ -130,189 +131,192 @@ def next_state_target(config: ModelConfig, state, next_state) -> Tensor:
 def rotate(tensor: Tensor, cos: Tensor, sin: Tensor) -> Tensor:
     """Rotate the first 2 * pairs dimensions of each head, pairing dimension i with i + pairs.
 
-    tensor: (batch, heads, tokens, head_width). cos, sin: (batch, 1, tokens, pairs).
-    Dimensions past 2 * pairs pass through unchanged.
+    tensor: (..., head_width); cos, sin: (..., pairs), broadcast against the tensor's
+    leading axes. Dimensions past 2 * pairs pass through unchanged.
     """
     pairs = cos.shape[-1]
     first, second, rest = tensor[..., :pairs], tensor[..., pairs : 2 * pairs], tensor[..., 2 * pairs :]
     return torch.cat([first * cos - second * sin, first * sin + second * cos, rest], dim=-1)
 
 
+class KindProjection(nn.Module):
+    """One token kind's first projection: gelu(norm(W x + b)), to 2 * width (v2)."""
+
+    def __init__(self, inputs: int, config: ModelConfig):
+        super().__init__()
+        self.first = nn.Linear(inputs, 2 * config.width)
+        self.norm = nn.RMSNorm(2 * config.width, eps=config.norm_epsilon)
+
+    def forward(self, tokens: Tensor) -> Tensor:
+        return F.gelu(self.norm(self.first(tokens)))
+
+
 class Encoder(nn.Module):
-    """Linear, RMSNorm, GELU, Linear to the trunk width; applied to each row on its own."""
+    """v2's Encoder without zones: a first projection per kind (ship, game, field), one
+    shared Linear(2 width, width) and norm; the fields then go to the map memory width
+    through a Linear without bias and a norm."""
 
-    def __init__(self, features: int, config: ModelConfig):
+    def __init__(self, ship_inputs: int, game_inputs: int, field_inputs: int, config: ModelConfig):
         super().__init__()
-        self.input = nn.Linear(features, config.width)
-        self.norm = nn.RMSNorm(config.width, eps=config.norm_epsilon)
-        self.output = nn.Linear(config.width, config.width)
+        self.ship = KindProjection(ship_inputs, config)
+        self.game = KindProjection(game_inputs, config)
+        self.field = KindProjection(field_inputs, config)
+        self.shared = nn.Linear(2 * config.width, config.width)
+        self.shared_norm = nn.RMSNorm(config.width, eps=config.norm_epsilon)
+        self.map_memory = nn.Linear(config.width, config.map_width, bias=False)
+        self.map_memory_norm = nn.RMSNorm(config.map_width, eps=config.norm_epsilon)
 
-    def forward(self, features: Tensor) -> Tensor:
-        return self.output(F.gelu(self.norm(self.input(features))))
-
-
-class Temporal(nn.Module):
-    """Temporal sublayer: x + RG-LRU(RMSNorm(x)), an independent recurrence per token.
-
-    The RG-LRU of Griffin (De et al. 2024): with r_t and i_t sigmoid gates of the input,
-    a_t = a^(c r_t), a = sigmoid(decay), and
-    h_t = a_t h_{t-1} + sqrt(1 - a_t^2) (i_t x_t).
-    The decay is initialised so that a^c is uniform in [retention_low, retention_high].
-    """
-
-    def __init__(self, config: ModelConfig):
-        super().__init__()
-        self.exponent = config.recurrence_exponent
-        self.norm = nn.RMSNorm(config.width, eps=config.norm_epsilon)
-        self.recurrence_gate = nn.Linear(config.width, config.width)
-        self.input_gate = nn.Linear(config.width, config.width)
-        retention = torch.empty(config.width).uniform_(config.retention_low, config.retention_high)
-        base = retention ** (1.0 / self.exponent)
-        self.decay = nn.Parameter(torch.log(base / (1.0 - base)))
-
-    def retention_at_open_gate(self) -> Tensor:
-        """a^c per channel, (width,): the per-tick retention when the recurrence gate is 1."""
-        return torch.sigmoid(self.decay) ** self.exponent
-
-    def forward(self, tokens: Tensor, carry: Tensor, fresh: Tensor, keep: Tensor) -> tuple[Tensor, Tensor]:
-        """Run the recurrence over the leading time axis.
-
-        tokens: (T, E, M, width). carry: (E, M, width) float32, the state before tick 0.
-        fresh: (T, E, 1, 1) float32, 0 where the carry is zeroed before that tick (an
-        episode start) and 1 elsewhere. keep: (T, E, M, 1) float32, 0 for rows that are
-        not attendable, whose state is held at zero. Returns the tokens with the
-        recurrent state added, (T, E, M, width), and the state after the last tick.
-        """
-        normed = self.norm(tokens)
-        # The recurrence is float32 even under bf16 autocast: 1 - a_t^2 with a_t near 1
-        # has no precision left in bf16.
-        recurrence = torch.sigmoid(self.recurrence_gate(normed)).float()
-        gated_input = torch.sigmoid(self.input_gate(normed)).float() * normed.float()
-        retention = torch.exp(self.exponent * recurrence * F.logsigmoid(self.decay.float()))
-        update = torch.sqrt(1.0 - retention * retention) * gated_input
-        states = []
-        for tick in range(tokens.shape[0]):
-            carry = (retention[tick] * (carry * fresh[tick]) + update[tick]) * keep[tick]
-            states.append(carry)
-        return tokens + torch.stack(states).to(tokens.dtype), carry
+    def forward(self, ship: Tensor, game: Tensor, field: Tensor) -> tuple[Tensor, Tensor]:
+        """ship (..., N, ship_inputs), game (..., 1, game_inputs), field (..., F, field_inputs)
+        to the trunk tokens (..., 1 + N, width), game first, and the map memory (..., F,
+        map_width)."""
+        tokens = self.shared_norm(self.shared(torch.cat([self.game(game), self.ship(ship)], -2)))
+        memory = self.map_memory_norm(self.map_memory(self.shared_norm(self.shared(self.field(field)))))
+        return tokens, memory
 
 
 class Spatial(nn.Module):
-    """Spatial sublayer: pre-norm masked multi-head self-attention with rotary position and
-    heading on queries and keys, then a pre-norm gated MLP. The learned null token is
-    appended as a key (and value) only; it is never a query and has no residual stream.
+    """Spatial sublayer (v2's SpatialBlock): pre-norm rotary attention of the trunk tokens
+    over themselves and the map memory in one softmax, an element-wise output gate, then a
+    pre-norm gated MLP of 4 x width. No biases.
+
+    The gate (Qiu et al. 2025, position G1): each head's attention output times
+    sigmoid(W x), x the normed query token, before the output projection. W is extra output
+    columns of the query projection with no bias, so it starts as the query projection does
+    (centred on 0.5), as the released code does (docs/rewrite/rotary-and-gate-check.md).
+    The map memory has its own norm and key/value projection; it is never a query.
     """
 
     def __init__(self, config: ModelConfig):
         super().__init__()
+        width, hidden = config.width, config.mlp_ratio * config.width
         self.heads = config.heads
         self.rotate_values = config.rotate_values
-        self.attention_norm = nn.RMSNorm(config.width, eps=config.norm_epsilon)
-        self.query_key_value = nn.Linear(config.width, 3 * config.width, bias=False)
-        self.attention_output = nn.Linear(config.width, config.width)
-        self.mlp_norm = nn.RMSNorm(config.width, eps=config.norm_epsilon)
-        self.mlp_input = nn.Linear(config.width, 2 * config.width)
-        self.mlp_output = nn.Linear(config.width, config.width)
+        self.attention_norm = nn.RMSNorm(width, eps=config.norm_epsilon)
+        self.query_key_value_gate = nn.Linear(width, 4 * width, bias=False)
+        self.output = nn.Linear(width, width, bias=False)
+        self.map_norm = nn.RMSNorm(config.map_width, eps=config.norm_epsilon)
+        self.map_key_value = nn.Linear(config.map_width, 2 * width, bias=False)
+        self.mlp_norm = nn.RMSNorm(width, eps=config.norm_epsilon)
+        self.mlp_input = nn.Linear(width, 2 * hidden, bias=False)  # gate rows, then up rows
+        self.mlp_output = nn.Linear(hidden, width, bias=False)
 
-    def forward(self, tokens: Tensor, null: Tensor, key_mask: Tensor, cos: Tensor, sin: Tensor) -> Tensor:
-        """tokens: (B, M, width). null: (width,), the null token. key_mask: (B, 1, 1, M + 1)
-        bool, True where a key may be attended (the null key is last). cos, sin:
-        (B, 1, M + 1, pairs) rotary terms of every key; the first M are also the queries'.
-        Returns (B, M, width)."""
+    def forward(self, tokens: Tensor, memory: Tensor, key_mask: Tensor, rotary: tuple[Tensor, ...]) -> Tensor:
+        """tokens (B, M, width); memory (B, F, map_width); key_mask (B, 1, 1, M + F) float,
+        0 where a key may be attended and -inf elsewhere; rotary: cos and sin of the tokens (B, M, 1, 1,
+        pairs) and of the memory (B, F, 1, 1, pairs). Returns (B, M, width)."""
+        token_cos, token_sin, memory_cos, memory_sin = rotary
         batch, count, width = tokens.shape
-        keys_in = torch.cat([tokens, null.to(tokens.dtype).expand(batch, 1, width)], dim=1)
-        projected = self.query_key_value(self.attention_norm(keys_in))
-        projected = projected.view(batch, count + 1, 3, self.heads, -1)
-        query, key, value = projected.permute(2, 0, 3, 1, 4)
-        query_cos, query_sin = cos[:, :, :count], sin[:, :, :count]
-        query = rotate(query[:, :, :count], query_cos, query_sin)
-        key = rotate(key, cos, sin)
-        if self.rotate_values:
-            value = rotate(value, cos, sin)
-        attended = F.scaled_dot_product_attention(query, key, value, attn_mask=key_mask)
-        if self.rotate_values:
-            attended = rotate(attended, query_cos, -query_sin)
-        tokens = tokens + self.attention_output(attended.transpose(1, 2).reshape(batch, count, width))
-        hidden, gate = self.mlp_input(self.mlp_norm(tokens)).chunk(2, dim=-1)
-        return tokens + self.mlp_output(F.gelu(hidden) * gate)
+        head_width = width // self.heads
+        # (B, M, [query, key, value, gate], heads, head_width): one rotation for every part
+        # that takes the token's angles, one for the memory's keys (and values).
+        projected = self.query_key_value_gate(self.attention_norm(tokens)).view(batch, count, 4, self.heads, head_width)
+        memory = self.map_key_value(self.map_norm(memory)).view(batch, memory.shape[1], 2, self.heads, head_width)
+        rotated = 3 if self.rotate_values else 2
+        projected = torch.cat([rotate(projected[:, :, :rotated], token_cos, token_sin), projected[:, :, rotated:]], 2)
+        kept = rotated - 1  # the memory's key, and its value with rotate_values
+        memory = torch.cat([rotate(memory[:, :, :kept], memory_cos, memory_sin), memory[:, :, kept:]], 2)
+        query, key, value, gate = projected.unbind(2)
+        key = torch.cat([key, memory[:, :, 0]], 1).transpose(1, 2)
+        value = torch.cat([value, memory[:, :, 1]], 1).transpose(1, 2)
+        attended = F.scaled_dot_product_attention(query.transpose(1, 2), key, value, attn_mask=key_mask).transpose(1, 2)
+        if self.rotate_values:  # back from the keys' frames to the query's
+            attended = rotate(attended, token_cos[:, :, 0], -token_sin[:, :, 0])
+        attended = attended * torch.sigmoid(gate)
+        tokens = tokens + self.output(attended.reshape(batch, count, width))
+        gate, up = self.mlp_input(self.mlp_norm(tokens)).chunk(2, -1)
+        return tokens + self.mlp_output(F.gelu(gate) * up)
+
+
+class HeadGroup(nn.Module):
+    """v2's HeadGroup: MLP heads reading the same token, each last(gelu(norm(first x))), the
+    first projections one matrix. Initialisation (v2 spec 7): each head's block of `first`
+    orthogonal with gain sqrt 2, each `last` orthogonal with gain 0.01, biases zero."""
+
+    def __init__(self, inputs: int, hidden: int, outputs: tuple[int, ...], config: ModelConfig):
+        super().__init__()
+        self.hidden = hidden
+        self.first = nn.Linear(inputs, hidden * len(outputs))
+        self.norms = nn.ModuleList(nn.RMSNorm(hidden, eps=config.norm_epsilon) for _ in outputs)
+        self.lasts = nn.ModuleList(nn.Linear(hidden, size) for size in outputs)
+        with torch.no_grad():
+            for block in self.first.weight.split(hidden):
+                nn.init.orthogonal_(block, math.sqrt(2.0))
+            self.first.bias.zero_()
+            for last in self.lasts:
+                nn.init.orthogonal_(last.weight, 0.01)
+                last.bias.zero_()
+
+    def forward(self, inputs: Tensor) -> list[Tensor]:
+        parts = self.first(inputs).split(self.hidden, -1)
+        return [last(F.gelu(norm(part))) for part, norm, last in zip(parts, self.norms, self.lasts, strict=True)]
 
 
 class Block(nn.Module):
-    """One temporal sublayer, then `spatial_per_block` spatial sublayers."""
+    """One temporal sublayer, then `spatial_per_block` spatial sublayers (v2's temporal_first)."""
 
     def __init__(self, config: ModelConfig):
         super().__init__()
-        self.temporal = Temporal(config)
+        self.temporal = Temporal(config, residual_layers=config.blocks * (1 + config.spatial_per_block))
         self.spatial = nn.ModuleList(Spatial(config) for _ in range(config.spatial_per_block))
 
 
 class Policy(nn.Module):
     """The policy and critic for one team's view (lean/CONTRACT.md).
 
-    ship_features and global_features default to lean.contract's SHIP_FEATURES and
-    GLOBAL_FEATURES. The carry is (blocks, E, 1 + N, width) float32: token 0 is the
-    global token, token 1 + n is ship slot n.
+    ship_features, global_features and field_features default to lean.contract's. The carry
+    is (blocks, E, 1 + N, 4, width) float32: token 0 is the game token, token 1 + n ship
+    slot n; per token row 0 is the RG-LRU state and rows 1..3 the convolution's last three
+    inputs, oldest first. Field slots have no carry.
     """
 
-    def __init__(self, config: ModelConfig, ship_features: int | None = None, global_features: int | None = None):
+    def __init__(
+        self,
+        config: ModelConfig,
+        ship_features: int | None = None,
+        global_features: int | None = None,
+        field_features: int | None = None,
+    ):
         super().__init__()
-        if ship_features is None or global_features is None:
-            from lean import contract
+        from lean import contract
 
-            ship_features = contract.SHIP_FEATURES if ship_features is None else ship_features
-            global_features = contract.GLOBAL_FEATURES if global_features is None else global_features
+        ship_features = contract.SHIP_FEATURES if ship_features is None else ship_features
+        global_features = contract.GLOBAL_FEATURES if global_features is None else global_features
+        field_features = contract.FIELD_FEATURES if field_features is None else field_features
         if config.width % config.heads != 0:
             raise ValueError("width must be a multiple of heads")
         if 2 * config.rotary_pairs > config.width // config.heads:
             raise ValueError("the rotary pairs do not fit in one attention head")
-        if config.positionless_rotary not in ("zero", "identity"):
-            raise ValueError("positionless_rotary must be 'zero' or 'identity'")
+        if config.positionless_rotary not in ("centre", "zero"):
+            raise ValueError("positionless_rotary must be 'centre' or 'zero'")
         self.config = config
-        self.ship_encoder = Encoder(ship_features + 2 * config.position_phases, config)
-        self.global_encoder = Encoder(global_features, config)
-        self.null_token = nn.Parameter(torch.randn(config.width))
+        self.position_code = make_position_code(config)
+        self.rotary = Rotary(config)
+        code = self.position_code.features
+        self.encoder = Encoder(ship_features + code, global_features + code, field_features + code, config)
         self.blocks = nn.ModuleList(Block(config) for _ in range(config.blocks))
-        self.final_norm = nn.RMSNorm(config.width, eps=config.norm_epsilon)
-        self.policy_head = nn.Linear(config.width, config.actions)
-        self.value_head = nn.Linear(config.width, config.levels * config.bins)
-        self.next_state_head = nn.Linear(config.width, config.next_state_size)
-        # A near-uniform first policy and an exactly uniform first value distribution.
-        with torch.no_grad():
-            self.policy_head.weight.mul_(0.01)
-            self.policy_head.bias.zero_()
-            self.value_head.weight.zero_()
-            self.value_head.bias.zero_()
-        self.register_buffer("wave_vectors", position_wave_vectors(config.position_periods), persistent=False)
-        self.register_buffer("harmonics", torch.tensor(config.heading_harmonics), persistent=False)
-        self.register_buffer(
-            "bin_centres",
-            value_bin_centres(torch.tensor(config.value_low), torch.tensor(config.value_high), config.bins),
-            persistent=False,
-        )
+        self.heads = HeadGroup(config.width, config.head_hidden, (config.actions, config.levels * config.bins), config)
+        self.next_state_head = HeadGroup(config.width, config.head_hidden, (config.next_state_size,), config)
 
     def initial_carry(self, envs: int, slots: int, device) -> Tensor:
-        """The zero recurrent state, (blocks, envs, 1 + slots, width) float32."""
-        return torch.zeros(self.config.blocks, envs, 1 + slots, self.config.width, device=device)
+        """The zero recurrent state, (blocks, envs, 1 + slots, 4, width) float32."""
+        return torch.zeros(self.config.blocks, envs, 1 + slots, 4, self.config.width, device=device)
 
     def step(self, obs, carry: Tensor, position_offset: Tensor | None = None, reset: Tensor | None = None):
         """One tick.
 
-        obs: lean.contract.Obs with fields shaped (E, N, ...). carry: from initial_carry
-        or a previous call. position_offset: optional (E, 2) metres added to positions in
-        the token code only (see draw_position_offset). reset: optional (E,) bool, zero
-        the carry of those environments before this tick.
+        obs: lean.contract.Obs with fields shaped (E, ...). carry: from initial_carry or a
+        previous call. position_offset: optional (E, 2) metres added to positions in the
+        token code only (see draw_position_offset). reset: optional (E,) bool, zero the
+        carry of those environments before this tick.
         Returns policy logits (E, N, 42), value logits (E, N, LEVELS, BINS) and the new
         carry. Outputs of rows with key_mask False are meaningless and their carry is zero.
         """
         logits, value_logits, _, carry = self._forward(
-            obs.ship[None],
-            obs.pos[None],
-            obs.heading[None],
-            obs.key_mask[None],
-            obs.globals[None],
+            {name: getattr(obs, name)[None] for name in OBS_FIELDS},
             carry,
             None if reset is None else reset[None],
-            position_offset,
+            None if position_offset is None else position_offset[None],
             with_next_state=False,
         )
         return logits[0], value_logits[0], carry
@@ -320,47 +324,57 @@ class Policy(nn.Module):
     def sequence(self, obs, carry: Tensor, reset: Tensor, position_offset: Tensor | None = None):
         """T ticks for the learner; equal to T calls of step.
 
-        obs: Obs whose fields carry a leading T, (T, E, N, ...). carry: the state before
-        tick 0. reset: (T, E) bool, zero the carry before that tick. position_offset:
-        optional (E, 2) or (T, E, 2) metres.
+        obs: Obs whose fields carry a leading T, (T, E, ...). carry: the state before tick
+        0. reset: (T, E) bool, zero the carry before that tick. position_offset: optional
+        (E, 2) or (T, E, 2) metres.
         Returns policy logits (T, E, N, 42), value logits (T, E, N, LEVELS, BINS),
         next_state (T, E, N, NEXT_STATE) (the predicted scaled change of
         config.next_state_fields to the next tick) and the carry after the last tick.
         """
+        if position_offset is not None and position_offset.dim() == 2:
+            position_offset = position_offset[None]
         return self._forward(
-            obs.ship, obs.pos, obs.heading, obs.key_mask, obs.globals, carry, reset, position_offset,
-            with_next_state=True,
+            {name: getattr(obs, name) for name in OBS_FIELDS}, carry, reset, position_offset, with_next_state=True
         )
 
-    def _forward(self, ship, pos, heading, key_mask, globals_, carry, reset, position_offset, with_next_state):
-        ticks, envs, slots = key_mask.shape
-        pairs = self.config.rotary_pairs
+    def _forward(self, obs: dict, carry, reset, position_offset, with_next_state):
+        ticks, envs, slots = obs["key_mask"].shape
+        pos, field_pos = obs["pos"], obs["field_pos"]
+        offset = pos.new_zeros(ticks, envs, 2) if position_offset is None else position_offset.expand(ticks, envs, 2)
+        offset = offset.unsqueeze(-2)
 
-        coded = pos if position_offset is None else pos + position_offset.unsqueeze(-2)
-        # Phases are float32 even under bf16 autocast (which would cast these matmuls):
-        # thousands of metres over a 64 m period is hundreds of radians, and bf16 keeps
-        # 8 bits. Measured: see NOTES.md.
-        with torch.autocast(pos.device.type, enabled=False):
-            code_phase = coded.float() @ self.wave_vectors.T
-            rotary_phase = torch.cat(
-                [pos.float() @ self.wave_vectors.T, heading.float().unsqueeze(-1) * self.harmonics], dim=-1
+        # Token inputs: the features and the position code of the offset positions; the game
+        # token reads the arena centre's code (v2's inputs.py).
+        code = self.position_code
+        ship_in = torch.cat([obs["ship"], code(pos + offset).to(obs["ship"].dtype)], -1)
+        game_in = torch.cat([obs["globals"].unsqueeze(-2), code(offset).to(obs["globals"].dtype)], -1)
+        field_in = torch.cat([obs["field"], code(field_pos + offset).to(obs["field"].dtype)], -1)
+        tokens, memory = self.encoder(ship_in, game_in, field_in)
+        memory = memory.flatten(0, 1)
+
+        # Rotary uses the true positions: only differences enter a ship-ship score, and the
+        # game token sits at the arena centre (the origin) or nowhere ("zero"). Fields take
+        # their centre and heading 0.
+        ship_angles = self.rotary.angles(pos, obs["heading"])
+        pairs = ship_angles.shape[-1]
+        centre = 1.0 if self.config.positionless_rotary == "centre" else 0.0
+        game_cos = ship_angles.new_full((ticks, envs, 1, pairs), centre)
+        game_sin = ship_angles.new_zeros((ticks, envs, 1, pairs))
+        field_angles = self.rotary.position_angles(field_pos)
+        rotary = tuple(
+            part.flatten(0, 1)[:, :, None, None, :]
+            for part in (
+                torch.cat([game_cos, ship_angles.cos()], -2),
+                torch.cat([game_sin, ship_angles.sin()], -2),
+                field_angles.cos(),
+                field_angles.sin(),
             )
-        position_code = torch.cat([code_phase.cos(), code_phase.sin()], dim=-1)
-        ship_tokens = self.ship_encoder(torch.cat([ship, position_code], dim=-1))
-        global_token = self.global_encoder(globals_).unsqueeze(-2)
-        tokens = torch.cat([global_token, ship_tokens], dim=-2)
+        )
 
-        # Rotary uses the true positions: only differences enter a score, so the offset
-        # would cancel and only cost float32 precision.
-        positionless_cos = 0.0 if self.config.positionless_rotary == "zero" else 1.0
-        one_cos = rotary_phase.new_full((ticks, envs, 1, pairs), positionless_cos)
-        one_sin = rotary_phase.new_zeros((ticks, envs, 1, pairs))
-        cos = torch.cat([one_cos, rotary_phase.cos(), one_cos], dim=-2).flatten(0, 1).unsqueeze(1)
-        sin = torch.cat([one_sin, rotary_phase.sin(), one_sin], dim=-2).flatten(0, 1).unsqueeze(1)
-
-        always = torch.ones_like(key_mask[..., :1])
-        live = torch.cat([always, key_mask], dim=-1)
-        attention_mask = torch.cat([live, always], dim=-1).flatten(0, 1)[:, None, None, :]
+        live = torch.cat([torch.ones_like(obs["key_mask"][..., :1]), obs["key_mask"]], -1)
+        attendable = torch.cat([live, obs["field_mask"]], -1).flatten(0, 1)[:, None, None, :]
+        # Additive, built once: a boolean mask costs a conversion in every sublayer.
+        attention_mask = torch.zeros(attendable.shape, device=attendable.device).masked_fill(~attendable, -math.inf)
         keep = live.unsqueeze(-1).float()
         if reset is None:
             fresh = keep.new_ones((ticks, envs, 1, 1))
@@ -369,15 +383,18 @@ class Policy(nn.Module):
 
         new_carry = []
         for index, block in enumerate(self.blocks):
-            tokens, state = block.temporal(tokens, carry[index], fresh, keep)
-            new_carry.append(state)
+            tokens, block_carry = block.temporal(tokens, carry[index], fresh, keep)
+            new_carry.append(block_carry)
             tokens = tokens.flatten(0, 1)
             for spatial in block.spatial:
-                tokens = spatial(tokens, self.null_token, attention_mask, cos, sin)
+                tokens = spatial(tokens, memory, attention_mask, rotary)
             tokens = tokens.view(ticks, envs, 1 + slots, -1)
 
-        ship_out = self.final_norm(tokens[:, :, 1:])
-        logits = self.policy_head(ship_out)
-        value_logits = self.value_head(ship_out).view(ticks, envs, slots, self.config.levels, self.config.bins)
-        next_state = self.next_state_head(ship_out) if with_next_state else None
+        ships = tokens[:, :, 1:]
+        logits, value_logits = self.heads(ships)
+        value_logits = value_logits.view(ticks, envs, slots, self.config.levels, self.config.bins)
+        next_state = self.next_state_head(ships)[0] if with_next_state else None
         return logits, value_logits, next_state, torch.stack(new_carry)
+
+
+OBS_FIELDS = ("ship", "pos", "heading", "key_mask", "globals", "field", "field_pos", "field_mask")

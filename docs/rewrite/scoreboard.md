@@ -40,7 +40,7 @@ Fields now cost about 170 operations instead of 340, and the core config's step 
 |---|---|---|---|
 | Operations per game tick, uncompiled | 1,300 | 1,342 (v2 config, no fields); 1,527 (core config, 10 fields; 1,692 before fix 11) | over |
 | Operations per scripted call | 170 | 172 | at |
-| Operations per policy forward | 650 | pending the model port (C) | |
+| Operations per policy forward | 650 | 509 compute (+294 view) per `step`, new model | under |
 | Traced operations across every compiled graph | 10,000 | pending (GPU) | |
 
 ## Reading
@@ -53,6 +53,14 @@ Fields now cost about 170 operations instead of 340, and the core config's step 
 - The core config costs 17 operations more than the v2 config with fields (core flight's
   branches, ghost bullets and outcomes); the time difference (25.1 against 21.3 ms) includes
   ten drawn fields per environment against ten shared ones.
+
+## Policy (after the model port, 2026-11-23)
+
+1,997,681 parameters. Per `step` forward: 509 compute and 294 view operations; `sequence`
+at T = 8: 552 and 328. CPU, E = 256, N = 10, F = 10: 144 ms on one thread. GPU (bf16, one
+short run): 3.10 ms eager, 1.38 ms compiled, first compile 10.9 s. Training at the default
+size: 2,800 steps/s with 8 minibatches (4.8 GB), 3,150 with 16 (2.5 GB); 4 minibatches run
+out of memory.
 
 ## Not yet measured
 

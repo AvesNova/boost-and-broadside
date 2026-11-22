@@ -122,3 +122,30 @@ checked, the commit. Numbers are measured unless marked otherwise.
   tests take v2's own cached values). Whoever places a ship by hand must refresh the cache
   (the observation test and the sandbox do; `lean.sandbox.world.refresh_medium`). Also fixed:
   the sandbox dropped the drawn fields at start (it rebuilt the constants).
+- 07:20 C1-C3, C5-C9 and the model half of C4 (background agent, reviewed): v2's model maths in
+  lean/model with the decided changes. New files temporal.py (v2's Griffin block: input
+  projection, 4-tap causal convolution, RG-LRU, GeLU gate branch, output projection, then v2's
+  4x MLP; paper initialisation, recurrentgemma code for the rest; doubling scan; the
+  convolution buffer in the carry, now (blocks, E, 1+N, 4, width)) and position.py (position
+  code "fourier" | "grid_cells" | "v2_codes", chosen at construction). policy.py: v2's encoder
+  (per-kind first layer, shared second), fields as key/value memory in the same attention,
+  element-wise gate (released-code initialisation, mean 0.500 at start), no null key, rotary
+  5 bands 64 m to 8.6 km with heading harmonics 1 and 2, the same in both heads, values
+  rotated; 4x MLP; 64 linear HL-Gauss bins. Parameters 1,997,681 (was 616,677; v1 about 2.0M).
+  - Operations per `step`: 509 compute (+294 view). The 650 tripwire is v1's 649 compute
+    operations per policy call, so the model is under it on the same rule (the agent's
+    "803" counted views as well).
+  - Checked: `pytest lean`: 78 passed, 1 xfailed (23 model tests: carry and convolution
+    buffer under resets and masks, field permutation and F = 0, scan against loop, gate start,
+    decay range, each position code, compiled step against eager). Smoke on CPU and GPU
+    completes (first value loss 4.158 = ln 64).
+  - Finding: at the default size (256 envs x 128 ticks) the update runs out of the 8 GB with
+    the default 4 minibatches (the model is 3x larger, 4x MLP, Griffin block, and the doubling
+    scan keeps its levels for the backward pass). 8 minibatches: 4.8 GB peak, about 2,800
+    steps/s; 16: 2.5 GB, about 3,150 steps/s. v2's recipe used 32 (backlog D2).
+  - Choices for the author (lean/model/NOTES.md): the game token uses v2's "centre" rotary
+    (identity) rather than lean's "zero"; rotary on v2's two axes per band turned 35 deg per
+    band rather than lean's three hexagonal axes; heads as v2 (one hidden layer of 256);
+    next-state head's last layer orthogonal 0.01, not v2's zero; depth scale 2/6;
+    sqrt(1 - a^2) kept at a reset as v2; grid cells with Blair's exponential gain; fields'
+    rotary heading 0 as v2's memory tokens.

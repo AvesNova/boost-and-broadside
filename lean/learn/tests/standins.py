@@ -11,7 +11,7 @@ import torch
 from torch import nn
 
 SHIP_FEATURES = 3
-MODEL_CONFIG = SimpleNamespace(position_periods=(100.0,), next_state_fields=(("x", 1.0), ("speed", 1.0)))
+MODEL_CONFIG = SimpleNamespace(offset_span=100.0, next_state_fields=(("x", 1.0), ("speed", 1.0)))
 
 
 @dataclass
