@@ -294,6 +294,39 @@ def ship_constants(config: GameConfig, ship_type: Tensor) -> Constants:
     return Constants(ship_card_.uniform, ship_card_.columns, gathered)
 
 
+# --------------------------------------------------------------------------- fixed tensors
+# Index tensors and fill values that depend only on the sizes, built once per size and device
+# (agreed fix 4), not every tick. They are shared: never written, never handed out in a state.
+
+
+@functools.cache
+def slot_indices(slots: int, device: torch.device) -> SimpleNamespace:
+    """For N slots: ship (N,) 0..N-1; bullet_slot (K,); owner (N K,) the ship of each bullet;
+    other (N K, N) bool, the bullet is not that ship's own; bullet_index (N K,); pair (N K,)
+    the owner's row start in a flattened (N, N) matrix."""
+    ship = torch.arange(slots, device=device)
+    owner = ship.repeat_interleave(BULLET_SLOTS)
+    return SimpleNamespace(
+        ship=ship,
+        bullet_slot=torch.arange(BULLET_SLOTS, device=device),
+        owner=owner,
+        other=owner[:, None] != ship,
+        bullet_index=torch.arange(slots * BULLET_SLOTS, device=device),
+        pair=owner * slots,
+    )
+
+
+@functools.cache
+def filled(shape: tuple[int, ...], value: float | int | bool, dtype: torch.dtype, device: torch.device) -> Tensor:
+    """A constant tensor (the start of a scatter, a fixed row of a fresh deal), built once."""
+    return torch.full(shape, value, dtype=dtype, device=device)
+
+
+@functools.cache
+def _eye(dtype: torch.dtype, device: torch.device) -> Tensor:
+    return torch.eye(2, dtype=dtype, device=device)
+
+
 # --------------------------------------------------------------------------- numerics
 
 
@@ -417,7 +450,7 @@ def _setting(p, control, speed, energy):
     if core:
         # The engine drives speed only (constant power, the card's full-store power) and never
         # feeds the store; firing scales the thrust on the ticks it fires.
-        charge = torch.zeros_like(exchange)
+        charge = None
         thrust = thrust * getattr(control, "thrust_scale", 1.0)
     else:
         charge = (
@@ -437,7 +470,8 @@ def _rates(p, setting, inverse_index, speed, lift, angle_cos, inverse_speed_squa
         + p.induced_drag * load
         * (1.0 + card.SEPARATION_DRAG * (load * p.inverse_lift_squared) ** (0.5 * card.SEPARATION_EXPONENT))
     ) * speed * speed
-    return (thrust * angle_cos - drag - exchange) * inverse_index, (speed * exchange + charge) * inverse_index
+    store = speed * exchange if charge is None else speed * exchange + charge  # no charge in the core model
+    return (thrust * angle_cos - drag - exchange) * inverse_index, store * inverse_index
 
 
 def _lift_coefficient(p, angle):
@@ -449,7 +483,7 @@ def _lift_coefficient(p, angle):
 def _matrix_exponential(a11, a12, a21, a22, duration):
     """exp(duration * A) for 2x2 A given by its entries (E, N): a degree-4 series, squared once."""
     b = torch.stack([torch.stack([a11, a12], -1), torch.stack([a21, a22], -1)], -2) * (duration / 2.0)
-    eye = torch.eye(2, dtype=b.dtype, device=b.device)
+    eye = _eye(b.dtype, b.device)
     h = eye + b / 4.0
     h = eye + (b @ h) / 3.0
     h = eye + (b @ h) / 2.0
@@ -493,7 +527,8 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
     step_angle = torch.sign(lateral) * p.stall * (1.0 - torch.sqrt(1.0 - reach)) - angle0
     damping = 2.0 * card.NOSE_DAMPING * omega
     m11, m12, m21, m22 = _matrix_exponential(
-        -kappa, torch.ones_like(kappa), damping * kappa - omega * omega, -damping, duration
+        -kappa, filled((), 1.0, kappa.dtype, kappa.device).expand_as(kappa), damping * kappa - omega * omega,
+        -damping, duration
     )
     steady = kappa * step_angle
     offset = (nose_rate - path_rate) - steady
@@ -616,6 +651,7 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     h = config.tick_length
     E, _, N, K = state.bullets.shape
     device = state.ships.device
+    index = slot_indices(N, device)
     stick, power, shoot = action[..., 0], action[..., 1], action[..., 2] == 1
     alive0 = state.alive
 
@@ -630,9 +666,8 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     launch_x = path_x + c["muzzle_speed"] * state.heading_cos + c["spread_speed"] * spread[..., 0]
     launch_y = path_y + c["muzzle_speed"] * state.heading_sin + c["spread_speed"] * spread[..., 1]
     launch_speed = torch.sqrt(launch_x * launch_x + launch_y * launch_y)
-    slot = torch.arange(K, device=device)
     emits = alive0 if config.ghost_bullets else fired  # a ghost every tick, or real shots only
-    written = emits[..., None] & (slot == state.next_slot[..., None])
+    written = emits[..., None] & (index.bullet_slot == state.next_slot[..., None])
     # A new bullet starts at its ship, with the ship's cached medium; the others keep theirs.
     launched = torch.cat(
         [state.ships[:, X : Y + 1], torch.stack([launch_x / launch_speed, launch_y / launch_speed, launch_speed], 1),
@@ -642,7 +677,7 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     bullets0 = torch.where(written[:, None], launched[..., None], state.bullets)
     counts0 = torch.where(
         written[:, None],
-        torch.stack([torch.full_like(state.tick, c["bullet_moves"]), state.tick], 1)[:, :, None, None],
+        torch.stack([filled((E,), c["bullet_moves"], torch.long, device), state.tick], 1)[:, :, None, None],
         state.bullet_counts,
     )
     bullet_real = torch.where(written, fired[..., None], state.bullet_real)
@@ -692,10 +727,9 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     tau = (-(start * relative).sum(1) / relative_squared).clamp(0.0, 1.0)
     miss = start + tau[:, None] * relative
     miss_squared = (miss * miss).sum(1)
-    ship = torch.arange(N, device=device)
-    owner = ship.repeat_interleave(K)
+    owner = index.owner
     reach = torch.where(alive0, c["hit_radius_squared"], -1.0)
-    contact = (miss_squared < reach[:, None, :]) & (owner[:, None] != ship) & flying.reshape(E, N * K, 1)
+    contact = (miss_squared < reach[:, None, :]) & index.other & flying.reshape(E, N * K, 1)
 
     # First contact: the smallest tau, ties within 1e-6 to the closer pass.
     infinity = torch.inf
@@ -750,19 +784,18 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     bullet_damage = torch.where(hit & real, full * closeness * aspect, 0.0)
 
     enemy = state.team[:, owner] != of_target(state.team)
-    hit_taken = torch.zeros((E, N), dtype=bullet_damage.dtype, device=device).scatter_add(1, target, bullet_damage)
+    hit_taken = filled((E, N), 0.0, bullet_damage.dtype, device).scatter_add(1, target, bullet_damage)
     damage_dealt = torch.where(enemy, bullet_damage, 0.0).reshape(E, N, K).sum(-1)
     friendly_damage = torch.where(enemy, 0.0, bullet_damage).reshape(E, N, K).sum(-1)
 
     # The earliest hit on each ship names its killer: smallest tau, then lowest bullet index.
     real_hit = hit & real
     hit_tau = torch.where(real_hit, first_tau, infinity)
-    earliest_tau = torch.full((E, N), infinity, device=device).scatter_reduce(1, target, hit_tau, "amin")
+    earliest_tau = filled((E, N), infinity, hit_tau.dtype, device).scatter_reduce(1, target, hit_tau, "amin")
     earliest = real_hit & (hit_tau <= earliest_tau.gather(1, target))
     no_bullet = N * K
-    bullet_index = torch.arange(N * K, device=device).expand(E, -1)
-    earliest_bullet = torch.full((E, N), no_bullet, dtype=torch.long, device=device).scatter_reduce(
-        1, target, torch.where(earliest, bullet_index, no_bullet), "amin"
+    earliest_bullet = filled((E, N), no_bullet, torch.long, device).scatter_reduce(
+        1, target, torch.where(earliest, index.bullet_index, no_bullet), "amin"
     )
     first_shooter = torch.where(earliest_bullet < no_bullet, earliest_bullet // K, -1)
 
@@ -845,8 +878,8 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
         result=result,
         shot_outcome=shot_outcome,
         shot_tick=fired_tick,
-        hit_damage=torch.zeros((E, N * N), dtype=bullet_damage.dtype, device=device)
-        .scatter_add(1, owner[None, :].expand(E, -1) * N + target, bullet_damage)
+        hit_damage=filled((E, N * N), 0.0, bullet_damage.dtype, device)
+        .scatter_add(1, index.pair + target, bullet_damage)
         .reshape(E, N, N),
         boundary_damage=boundary,
         shield_restored=torch.where(alive0, restored, 0.0),
@@ -923,21 +956,37 @@ def fixed_fields(config: GameConfig, envs: int, device) -> Tensor:
     return table.expand(envs, *table.shape)
 
 
+@functools.cache
+def _lineup_types(lineup: tuple[str, ...], device: torch.device) -> Tensor:
+    return torch.tensor([card.TYPE_NAMES.index(name) for name in lineup], device=device)
+
+
+@functools.cache
+def _no_bullets(envs: int, slots: int, device: torch.device) -> Tensor:
+    """The bullet block of a fresh deal: every bullet inactive, at the origin, pointing along x."""
+    bullets = torch.zeros((envs, len(BULLET_COLUMNS), slots, BULLET_SLOTS), device=device)
+    bullets[:, BULLET_DIR_X] = 1.0
+    return bullets
+
+
 def _per_slot(value: Tensor | float, like: Tensor) -> Tensor:
-    """A per-ship constant as a fresh (E, N) tensor."""
-    return value.clone() if isinstance(value, Tensor) else torch.full_like(like, value)
+    """A per-ship constant as an (E, N) tensor (a shared fixed one for a number)."""
+    return value if isinstance(value, Tensor) else filled(like.shape, value, like.dtype, like.device)
 
 
 def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generator, device) -> State:
     """A fresh state of (E, N): team 0 in the first team_sizes[:, 0] slots, team 1 in the
-    next team_sizes[:, 1], the rest not existing (parked at the centre at spawn speed)."""
+    next team_sizes[:, 1], the rest not existing (parked at the centre at spawn speed). The rows
+    that every fresh deal starts with (no bullets, tick 0) are shared fixed tensors: `reset`
+    copies them, `reset_done` only selects from them."""
+    device = torch.device(device)
     team_sizes = team_sizes.to(device=device, dtype=torch.long)
-    slot = torch.arange(slots, device=device).expand(envs, slots)
+    slot = slot_indices(slots, device).ship.expand(envs, slots)
     first, both = team_sizes[:, :1], team_sizes.sum(-1, keepdim=True)
     exists = slot < both
     team = ((slot >= first) & exists).long()
     rank = torch.where(team == 1, slot - first, slot)
-    names = torch.tensor([card.TYPE_NAMES.index(name) for name in config.lineup], device=device)
+    names = _lineup_types(tuple(config.lineup), device)
     # Slots that do not exist take the lineup's first type, so a constant equal for the lineup
     # stays one number.
     ship_type = names[torch.where(exists, rank % len(config.lineup), 0)]
@@ -971,8 +1020,8 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
     x, y = torch.where(exists, x, 0.0), torch.where(exists, y, 0.0)
     heading_cos, heading_sin = torch.where(exists, heading_cos, 1.0), torch.where(exists, heading_sin, 0.0)
     log_index, gradient_x, gradient_y = medium(fields, x, y)
-    zeros = torch.zeros((envs, slots), device=device)
-    ones = torch.ones((envs, slots), device=device)
+    zeros = filled((envs, slots), 0.0, torch.float32, device)
+    ones = filled((envs, slots), 1.0, torch.float32, device)
     named = {
         "x": x, "y": y, "heading_cos": heading_cos, "heading_sin": heading_sin,
         "speed": card.SPAWN_SPEED * torch.exp(log_index), "angle": zeros, "angle_cos": ones, "angle_sin": zeros,
@@ -980,18 +1029,17 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
         "shield": _per_slot(constants["max_shield"], zeros), "shield_wait": zeros, "cooldown": zeros,
         "log_index": log_index, "gradient_x": gradient_x, "gradient_y": gradient_y, "next_slot": zeros,
     }
-    bullets = torch.zeros((envs, len(BULLET_COLUMNS), slots, BULLET_SLOTS), device=device)
-    bullets[:, BULLET_DIR_X] = 1.0
+    bullet_shape = (envs, slots, BULLET_SLOTS)
     state = State(
         ships=torch.stack([named[name] for name in SHIP_COLUMNS], 1),
-        flags=torch.stack([exists, exists, torch.zeros_like(exists)], 1),  # alive, exists, fired
+        # alive, exists, fired
+        flags=torch.stack([exists, exists, filled((envs, slots), False, torch.bool, device)], 1),
         identity=torch.stack([team, ship_type], 1),
         constants=constants,
-        bullets=bullets,
-        bullet_counts=torch.zeros((envs, len(BULLET_COUNT_COLUMNS), slots, BULLET_SLOTS), dtype=torch.long,
-                                  device=device),
-        bullet_real=torch.zeros((envs, slots, BULLET_SLOTS), dtype=torch.bool, device=device),
-        tick=torch.zeros(envs, dtype=torch.long, device=device),
+        bullets=_no_bullets(envs, slots, device),
+        bullet_counts=filled((envs, len(BULLET_COUNT_COLUMNS), slots, BULLET_SLOTS), 0, torch.long, device),
+        bullet_real=filled(bullet_shape, False, torch.bool, device),
+        tick=filled((envs,), 0, torch.long, device),
         fields=fields,
     )
     if not config.fog:
@@ -1000,9 +1048,7 @@ def _deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generat
     # the spawn are seen at once (no other reveal at a spawn).
     seen = torch.zeros((envs, len(SEEN_COLUMNS), slots), device=device)
     seen[:, SEEN_ALIVE] = exists.to(torch.float32)
-    state = dataclasses.replace(
-        state, seen=seen, ticks_since_seen=torch.zeros((envs, slots), dtype=torch.long, device=device)
-    )
+    state = dataclasses.replace(state, seen=seen, ticks_since_seen=filled((envs, slots), 0, torch.long, device))
     return perceive(state, torch.zeros_like(exists))
 
 
@@ -1010,7 +1056,10 @@ def reset(config: GameConfig, envs: int, team_sizes: Tensor, generator: torch.Ge
     """A fresh state. team_sizes: (E, 2) long, ships per team, each at least 1. N is the
     largest total over the environments; unused slots have exists = False."""
     slots = int(team_sizes.sum(-1).max())
-    return _deal(config, envs, slots, team_sizes, generator, device)
+    state = _deal(config, envs, slots, team_sizes, generator, device)
+    # The state is the caller's: its own copies of the deal's shared fixed rows.
+    shared = ("bullets", "bullet_counts", "bullet_real", "tick")
+    return dataclasses.replace(state, **{name: getattr(state, name).clone() for name in shared})
 
 
 def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tensor, generator: torch.Generator) -> State:

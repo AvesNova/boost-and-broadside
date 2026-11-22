@@ -10,13 +10,14 @@ Action indices follow `lean.contract.State`: stick 0 straight, then (1, 2) fine,
 sustained, (5, 6) full; power 0 coast, 1 boost, 2 reverse; fire 0 or 1.
 """
 
+import functools
 import math
 from dataclasses import dataclass
 
 import torch
 from torch import Tensor
 
-from lean.game.core import team_view
+from lean.game.core import slot_indices, team_view
 
 # The eight logistic gates, in the order of the persona's "gate_centre" and
 # "gate_sharpness" columns. Each maps a positive, dimensionless quantity to a probability.
@@ -257,8 +258,8 @@ def engage(
         store = (state.energy / max_energy)[:, None, :]
         preference = 1.0 + weakest_weight[..., None] * store
         score = score * preference * preference
+    slots = slot_indices(state.x.shape[1], state.x.device).ship
     if kept_target is not None:
-        slots = torch.arange(state.x.shape[1], device=state.x.device)
         score = torch.where(slots == kept_target[..., None], score * keep_factor**2, score)
     score = torch.where(enemy[:, None, :], score, math.inf)
     target = score.argmin(-1)
@@ -270,7 +271,6 @@ def engage(
     distance = torch.sqrt(target_x * target_x + target_y * target_y)
     along = offset_x * state.heading_cos[..., None] + offset_y * state.heading_sin[..., None]
     across = offset_x * state.heading_sin[..., None] - offset_y * state.heading_cos[..., None]
-    slots = torch.arange(state.x.shape[1], device=state.x.device)
     ally = present[:, None, :] & own_team[:, None, :] & (slots[:, None] != slots[None, :])
     blocking = ally & (along > 0.0) & (along < distance[..., None]) & (across.abs() < clearance)
     return Engagement(
@@ -337,7 +337,7 @@ def marginals(
 
     # Lead: where the target is, relative to the shooter, when a bullet fired now arrives.
     # The bullet inherits the shooter's velocity, so the relative velocity carries it.
-    lead_distance = torch.minimum(range_ratio, range_ratio.new_tensor(config.lead_cap_in_gun_range))
+    lead_distance = range_ratio.clamp_max(config.lead_cap_in_gun_range)
     flight_time = torch.expm1(bullet_drag * gun_range * lead_distance) / (
         bullet_drag * characteristic(config, state, "bullet_launch_speed")
     )
@@ -388,7 +388,7 @@ def marginals(
         [centre[..., :REVERSE], reverse_centre[..., None], centre[..., REVERSE + 1 :]], -1
     )
     logit = persona["gate_sharpness"] * torch.log(quantity.clamp_min(TINY) / centre)
-    floor = quantity.new_tensor(config.gate_floor)
+    floor = _gate_floor(config.gate_floor, quantity.device)
     gate = floor + (1.0 - 2.0 * floor) * torch.sigmoid(logit.clamp(-LOGIT_LIMIT, LOGIT_LIMIT))
 
     # Stick: P(turn), then the level by two further gates, the side by the error's sign.
@@ -422,6 +422,11 @@ def marginals(
     ready = ready & ~fight.ally_in_line  # never shoot through a team-mate (author 2026-11-23)
     fire = torch.where(has_target & ready, gate[..., ALIGNED] * gate[..., IN_RANGE], 0.0)
     return Marginals(stick, power, fire, fight.controlled, fight.target)
+
+
+@functools.cache
+def _gate_floor(floor: tuple[float, ...], device: torch.device) -> Tensor:
+    return torch.tensor(floor, dtype=torch.float32, device=device)
 
 
 def sample(parts: Marginals, uniforms: Tensor) -> Tensor:
