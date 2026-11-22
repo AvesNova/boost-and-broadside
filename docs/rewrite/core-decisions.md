@@ -86,6 +86,10 @@ Provenance
 
 ## Proposals, not decided
 
+- Hit-head labels from ghost bullets: every ship puts a bullet in its ring every tick; a
+  flag marks it real or ghost; only real bullets cost energy, damage and stop; a ghost
+  records its first contact (enemy, ally, none) and is removed. The ring (11 slots, one per
+  tick) is already sized for this.
 - Grid cells in RL: look for papers that used them (docs/rewrite/provenance-check.md).
 - A keep, drop or simplify table of Imugi's behaviours with rough costs (operations, lines,
   time per call, parameters): docs/rewrite/imugi-behaviours.md, ready for the author.
