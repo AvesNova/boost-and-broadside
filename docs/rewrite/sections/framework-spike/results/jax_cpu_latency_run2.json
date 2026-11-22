@@ -1,0 +1,158 @@
+{
+ "meta": {
+  "framework": "jax",
+  "jax": "0.12.1",
+  "jaxlib": "0.12.1",
+  "optax": "0.2.9",
+  "numpy": "2.5.5",
+  "device": "cpu",
+  "backend": "cpu",
+  "devices": [
+   "cpu:0"
+  ],
+  "compile_options": "jax.jit(fn) with defaults; float32 (jax_enable_x64 off)",
+  "argv": [
+   "--device",
+   "cpu",
+   "--suite",
+   "latency",
+   "--out",
+   "results/jax_cpu_latency_run2.json"
+  ],
+  "envs": [
+   1,
+   256
+  ],
+  "compile_envs": 256,
+  "size_envs": 32,
+  "micro_batch": "16x128",
+  "machine": {
+   "platform": "Linux-6.18.44-fc-v726-x86_64-with-glibc2.39",
+   "python": "3.13.18",
+   "cpu_count": 4,
+   "lscpu CPU(s)": "4",
+   "lscpu Model name": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+   "lscpu Thread(s) per core": "1",
+   "lscpu Core(s) per socket": "4",
+   "lscpu Hypervisor vendor": "KVM",
+   "lscpu L2 cache": "8 MiB (4 instances)",
+   "lscpu L3 cache": "260 MiB (1 instance)",
+   "affinity": [
+    0,
+    1,
+    2,
+    3
+   ]
+  }
+ },
+ "records": [
+  {
+   "suite": "latency",
+   "variant": "jit",
+   "ships": 10,
+   "threads": "default",
+   "xla_flags": "",
+   "warmup": 300,
+   "affinity": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "p50_ms": 1.4951954999560257,
+   "p99_ms": 2.178793029838743,
+   "max_ms": 4.493243000069924,
+   "mean_ms": 1.5167842479947165,
+   "ticks": 3000
+  },
+  {
+   "suite": "latency",
+   "variant": "jit",
+   "ships": 10,
+   "threads": "1",
+   "xla_flags": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+   "warmup": 300,
+   "affinity": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "p50_ms": 1.6723614996863034,
+   "p99_ms": 2.3847583000588193,
+   "max_ms": 5.682557000000088,
+   "mean_ms": 1.6887767183226667,
+   "ticks": 3000
+  },
+  {
+   "suite": "latency",
+   "variant": "jit",
+   "ships": 10,
+   "threads": "pin",
+   "xla_flags": "",
+   "warmup": 300,
+   "affinity": [
+    0
+   ],
+   "p50_ms": 0.8871155000633735,
+   "p99_ms": 1.7478588500352994,
+   "max_ms": 3.5407959999247396,
+   "mean_ms": 0.9313162966630747,
+   "ticks": 3000
+  },
+  {
+   "suite": "latency",
+   "variant": "jit",
+   "ships": 40,
+   "threads": "default",
+   "xla_flags": "",
+   "warmup": 300,
+   "affinity": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "p50_ms": 3.0874550002408796,
+   "p99_ms": 4.895028059809191,
+   "max_ms": 15.87241700008235,
+   "mean_ms": 3.1734853046724916,
+   "ticks": 3000
+  },
+  {
+   "suite": "latency",
+   "variant": "jit",
+   "ships": 40,
+   "threads": "1",
+   "xla_flags": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+   "warmup": 300,
+   "affinity": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "p50_ms": 3.1523420000212354,
+   "p99_ms": 4.453725970283811,
+   "max_ms": 9.573242999977083,
+   "mean_ms": 3.197129180660189,
+   "ticks": 3000
+  },
+  {
+   "suite": "latency",
+   "variant": "jit",
+   "ships": 40,
+   "threads": "pin",
+   "xla_flags": "",
+   "warmup": 300,
+   "affinity": [
+    0
+   ],
+   "p50_ms": 1.8827989999863348,
+   "p99_ms": 3.0466820400897627,
+   "max_ms": 5.395194999891828,
+   "mean_ms": 1.9854484830066212,
+   "ticks": 3000
+  }
+ ]
+}
