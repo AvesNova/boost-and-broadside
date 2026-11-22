@@ -264,7 +264,10 @@ def snapshot_actions(config: LearnConfig, template, parameters: dict, buffers: d
     action = torch.where(snapshot[:, None, None], sampled, scripted_action[first:])
     shape = [1] * carry.opponent.dim()
     shape[axis] = -1
-    return action, torch.where(snapshot.view(shape), chosen_carry.to(carry.opponent.dtype), carry.opponent)
+    # Contiguous, so the carry keeps one layout from tick to tick (a compiled graph is
+    # specialised on strides).
+    chosen_carry = chosen_carry.to(carry.opponent.dtype).contiguous()
+    return action, torch.where(snapshot.view(shape), chosen_carry, carry.opponent).contiguous()
 
 
 def league_actions(config: LearnConfig, opponent: Opponent, views, carry: CollectCarry, scripted_action: Tensor,

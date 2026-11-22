@@ -3,14 +3,12 @@ against compiled, with peak memory and the first update's time (the compile).
 
     PYTHONPATH=.:src python docs/rewrite/sections/scoreboard/train_gpu.py \
         [--compile | --no-compile] [--envs 256] [--updates 3] [--game v2|core] \
-        [--minibatches 8] [--snapshots 8] [--cached-counts] [--targets-once] [--no-bf16]
+        [--minibatches 8] [--snapshots 8] [--targets-once] [--no-bf16]
 
 The loop is lean/train.py's (collect, update, league addition and abandon) with the
 league filled with `--snapshots` copies of the initial weights before the first rollout,
 so every league member is present as in a run's steady state (snapshot_every is set
-beyond the run, so nothing is added or abandoned during it). `--cached-counts` reads the
-league's member counts once per rollout instead of every tick (wrong groups once a game
-re-deals, same work): the difference is what the per-tick read-back costs.
+beyond the run, so nothing is added or abandoned during it).
 
 Prints one line per update (collect s, update s, loop s, environment steps per second of
 each) and a summary: the first update (the compile, cold or warm by the inductor cache
@@ -20,7 +18,6 @@ allocated and reserved, and the seconds from process start to the end of the fir
 
 import argparse
 import dataclasses
-import importlib
 import statistics
 import time
 
@@ -31,45 +28,6 @@ import torch  # noqa: E402
 from lean import game, model, scripted  # noqa: E402
 from lean.learn import League, LearnConfig, Opponent, collect, make_optimiser, start, update  # noqa: E402
 
-collect_module = importlib.import_module("lean.learn.collect")
-
-
-def cached_counts_league_actions():
-    """league_actions with the member counts read once per rollout (see the docstring)."""
-    original = collect_module.league_actions
-    cache = {}
-
-    def patched(config, opponent, views, state, carry, scripted_action, generator, move=collect_module.snapshot_move):
-        league = opponent.league
-        if league is None or league.snapshots == 0:
-            return original(config, opponent, views, state, carry, scripted_action, generator, move)
-        if "counts" not in cache:
-            cache["counts"] = torch.bincount(carry.member, minlength=league.members).tolist()
-        counts = cache["counts"]
-        envs = state.exists.shape[0]
-        first = envs - carry.member.shape[0]
-        action, opponent_carry = scripted_action[first:], carry.opponent
-        order = torch.argsort(carry.member, stable=True)
-        team = 1 - carry.learner_team[first:]
-        offset = carry.position_offset[first:]
-        begin = counts[0]
-        for index in range(1, league.members):
-            count = counts[index]
-            if count == 0:
-                continue
-            chosen = order[begin:begin + count]
-            begin += count
-            member_action, new_carry = move(
-                config, league.frozen[index - 1], views, chosen + first, team.index_select(0, chosen),
-                collect_module.index_carry(opponent_carry, chosen), offset.index_select(0, chosen), generator,
-            )
-            opponent_carry = opponent_carry.index_copy(collect_module.carry_axis(opponent_carry), chosen, new_carry)
-            action = action.index_copy(0, chosen, member_action)
-        return action, opponent_carry
-
-    collect_module.league_actions = patched
-    return cache
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -79,7 +37,6 @@ def main() -> None:
     parser.add_argument("--game", choices=("v2", "core"), default="v2")
     parser.add_argument("--minibatches", type=int, default=None, help="default: LearnConfig's")
     parser.add_argument("--snapshots", type=int, default=8)
-    parser.add_argument("--cached-counts", action="store_true")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--targets-once", action="store_true", help="LearnConfig.targets_every_epoch = False")
     parser.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=True, help="LearnConfig.bf16")
@@ -104,11 +61,10 @@ def main() -> None:
     league.every = config.snapshot_every
     opponent = Opponent(scripted.ScriptedConfig(), league, config.self_play_share, config.persona_spread)
     state, carry = start(config, game_config, policy, opponent, envs, generator)
-    cache = cached_counts_league_actions() if arguments.cached_counts else None
     compiled = arguments.compile
     print(
         f"compile={compiled} bf16={config.bf16} envs={envs} ticks={ticks} game={arguments.game} minibatches={config.minibatches} "
-        f"epochs={config.epochs} snapshots={league.snapshots} cached_counts={arguments.cached_counts} "
+        f"epochs={config.epochs} snapshots={league.snapshots} "
         f"torch {torch.__version__} {torch.cuda.get_device_name()}",
         flush=True,
     )
@@ -116,8 +72,6 @@ def main() -> None:
     rows = []
     first_update_end = None
     for index in range(arguments.updates):
-        if cache is not None:
-            cache.clear()
         torch.cuda.synchronize()
         began = time.perf_counter()
         rollout = collect(config, game_config, policy, opponent, state, carry, ticks, generator, compiled=compiled)
@@ -149,7 +103,7 @@ def main() -> None:
     steps = envs * ticks
     print(
         f"SUMMARY compile={compiled} bf16={config.bf16} targets_every_epoch={config.targets_every_epoch} envs={envs} game={arguments.game} minibatches={config.minibatches} "
-        f"cached_counts={arguments.cached_counts} | first update: collect {rows[0][0]:.1f} s update {rows[0][1]:.1f} s "
+        f"| first update: collect {rows[0][0]:.1f} s update {rows[0][1]:.1f} s "
         f"| steady steps/s: collect {steps / mean[0]:.0f} update {steps / mean[1]:.0f} loop {steps / mean[2]:.0f} "
         f"| peak allocated {torch.cuda.max_memory_allocated() / 2**30:.2f} GiB reserved "
         f"{torch.cuda.max_memory_reserved() / 2**30:.2f} GiB | start to first update end "
