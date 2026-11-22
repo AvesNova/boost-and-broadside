@@ -5,7 +5,10 @@ it blocks. Answered questions move to the bottom with the answer and its date.
 
 ## Open
 
-(none)
+9. **Boundary ramp (2026-11-23).** The boundary ramp is the distance beyond the arena edge
+   over which boundary damage rises from zero to its maximum. v2 scales it with the map
+   (100 m times the map scale: 161.5 m at a 4,200 m arena); lean fixes it at 300 m (a
+   builder's assumption). Proposal: v2's rule. Blocks: nothing urgent.
 
 ## Answered
 
