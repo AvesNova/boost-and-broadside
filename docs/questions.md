@@ -5,15 +5,14 @@ it blocks. Answered questions move to the bottom with the answer and its date.
 
 ## Open
 
-2. **Fog: what reveals a ship, and for how long (2026-11-22).** Agreed: firing, being hit
-   by a bullet, and dying reveal a ship to the enemy. Does boundary damage also reveal it
-   ("takes damage" or "hit by a bullet")? Is the reveal for that tick only, followed by a
-   last-seen token?
-3. **Both sides training in snapshot games (2026-11-22).** In lean, half the environments
+5. **Fog: what else reveals a ship, and for how long (2026-11-22).** Answer 2 below says
+   a hit reveals a ship. Does boundary damage also reveal it? Is a reveal for that tick
+   only, followed by a last-seen token?
+6. **Both sides training in snapshot games (2026-11-22).** In lean, half the environments
    play the learner against a frozen past copy of the policy (a snapshot from a pool of 8);
    only the learner's side is trained on. v1 played half its games as live self-play,
    both sides the current policy, both training. Should lean do that?
-4. **Reward scaling with team size (2026-11-22).** Additive per-ship rewards (each ship's
+7. **Reward scaling with team size (2026-11-22).** Additive per-ship rewards (each ship's
    own kills and damage, whatever the team size) or scaled by team size? No literature
    settles it here; it is kind (d). It matters only once training draws team sizes per
    environment (core-brief skeleton step 4). The author's argument for additive: each
