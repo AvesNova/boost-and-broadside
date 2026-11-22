@@ -12,7 +12,7 @@ from torch import Tensor
 STICKS, POWERS, FIRES = 7, 3, 2
 JOINT = STICKS * POWERS * FIRES
 BULLET_SLOTS = 11
-SHIP_TYPES = 3
+SHIP_TYPES = 5  # len(lean.game.card.TYPE_NAMES): v2's three, then p51d and vizia_plain
 
 # Per-ship observation row: 20 scaled scalars, 4 flags, then the ship-type one-hot.
 SHIP_SCALARS = 20

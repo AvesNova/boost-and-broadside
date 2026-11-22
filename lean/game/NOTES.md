@@ -3,8 +3,8 @@
 ## What is implemented
 
 - `lean/contract.py`: `State`, `StepOut`, `Obs`, `split_joint`, `join_action`, sizes.
-  `SHIP_FEATURES = 27` (20 scalars, 4 flags, 3-type one-hot), `GLOBAL_FEATURES = 3`.
-- `card.py`: the real-scale card (Yongma, Jujak, Vizia) and the shared rule constants,
+  `SHIP_FEATURES = 29` (20 scalars, 4 flags, 5-type one-hot), `GLOBAL_FEATURES = 3`.
+- `card.py`: the real-scale card (Yongma, Jujak, Vizia; then lean's P-51D and Vizia-plain from `tuning.py`) and the shared rule constants,
   copied as literals from v2's `api.ship_types` / `api.rules_of` for
   `real_scale_elimination`. `lean` does not import `bnb`.
 - `core.py`: `GameConfig`, `ship_constants` (gathered once per reset into

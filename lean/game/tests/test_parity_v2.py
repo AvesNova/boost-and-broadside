@@ -540,9 +540,11 @@ def test_card_and_rules_match_v2():
     types = api.ship_types(ship_set=game.ship_set)
     rules = api.rules_of(game, types=types)
     mode = rules.pools[0].mode
-    assert tuple(name.lower() for name in api.type_names(game.ship_set)) == card.TYPE_NAMES
+    # v2's types lead the card; lean's own (p51d, vizia_plain: lean.game.tuning) follow.
+    v2_count = len(api.type_names(game.ship_set))
+    assert tuple(name.lower() for name in api.type_names(game.ship_set)) == card.TYPE_NAMES[:v2_count]
     for name, values in card.CARD.items():
-        assert torch.equal(torch.tensor(values, dtype=torch.float32), getattr(types, name)), name
+        assert torch.equal(torch.tensor(values[:v2_count], dtype=torch.float32), getattr(types, name)), name
     # Left out of lean: inert at these values (bleed 2 is the plain square; arming 0 is off;
     # the coast exchange is unused with direct charge); vision belongs to fog.
     assert (types.bleed_exponent == 2.0).all() and (types.arming_distance == 0.0).all()
