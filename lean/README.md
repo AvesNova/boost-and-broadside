@@ -32,6 +32,15 @@ GPU.** The rest is what each builder reported.
 | `model/` | Fourteen tests: rollout and learner forms agree; padding and permutation leave real ships unchanged; runs at 5v5, 20v20 and 50v50; every parameter gets a gradient and masked rows contribute none; fits a fixed batch (cross-entropy 3.74 to 0.08 in 60 steps); `torch.compile` works and matches eager, with one recompile at the first new team size by default and none with `dynamic=True`; bf16 runs with position phases and the recurrence pinned to float32. 616,677 parameters; 289 operations per forward | The time loop is unrolled, so a new segment length will recompile. No compiled backward pass. The temporal block is the recurrent unit only, not Griffin's full block (`model/NOTES.md` says what adopting it would change). Next-state scales are rough |
 | `learn/`, `eval/`, `train.py` | Twelve tests. The next-state loss is live. Value targets use the model's helpers with an explicit support per level. The random position offset is drawn per match and stored with the rollout. `--device` is wired. Collect plus update run at 150 to 210 steps per second on one CPU thread at smoke size | `--device cuda` untested. The damage level's value support is unmeasured and the kill level's needs widening for larger teams. `eval` passes no position offset. Unequal teams not run with the real game |
 
+**First laptop run (2026-11-22, RTX 4070 Laptop, power profile "performance", eager, no
+compile).** `pytest lean -q` on the CPU: 36 passed in 17.5 s. `--smoke --device cpu`: 6.2 s
+wall, 234 and 383 steps per second for the two updates, 1.05 GB peak resident memory.
+`--smoke --device cuda`: completes with no change to the code, 85 and 209 steps per second
+(4 environments, so launch overhead only), peak CUDA memory 25.6 MiB allocated. At the
+default size (`--device cuda --updates 3`: 256 environments, 4v4, 128 ticks, collect plus
+update) 2,956, 2,923 and 2,882 steps per second, peak 3,576 MiB allocated (4,200 MiB
+reserved). That is below v2's floor of about 5,000 before any compilation.
+
 Set `OMP_NUM_THREADS=1` for small CPU runs. With default threads on a loaded machine they
 are many times slower, which is what made the first smoke run look like 3 to 5 steps per
 second.
