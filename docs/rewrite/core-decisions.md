@@ -13,6 +13,10 @@ generality). `lean` re-expresses v2's mathematics in clean code, with the narrow
 deliberate changes below. Done = every v2 feature the author wants is back. The training
 recipe leans towards v2's, with the deliberate changes below.
 
+## Framework
+
+- PyTorch (gate G1, decided 2026-11-22; docs/rewrite/sections/framework-spike/README.md).
+
 ## Deliberate changes to v2
 
 Game
@@ -39,8 +43,11 @@ Model
   default; for now one option among three, 2026-11-22).
 - Fewer rotary dimensions (medium or smaller maps for now; larger maps later, with the
   rotary revisited then): drop the bands far larger than the map (removing the lowest
-  frequencies beats leaving dimensions unrotated, Barbero et al. 2025). The share of each
-  head rotated is open, pending docs/rewrite/rotary-and-gate-check.md. Heading stays in the rotary, with few harmonics.
+  frequencies beats leaving dimensions unrotated, Barbero et al. 2025). Both heads the same
+  layout: x, y and attitude in each (decided 2026-11-22). Values rotated as well as queries
+  and keys: the author asked for what is most likely to work; GTA (multi-view vision) found
+  the value transform mattered most, QCNet (trajectory prediction) adds relative pose to the
+  values; thin evidence, kind (b) at best for this setting. Heading stays in the rotary, with few harmonics.
 - Griffin's initialisation (decided 2026-11-22): the decay as the paper's text says
   (a^c uniform in [0.9, 0.999], c = 8); what the paper leaves out from the official
   recurrentgemma code (LeCun initialisation of the gates, the convolution's spread 0.05,
@@ -59,8 +66,9 @@ Model
   2026-11-22): a sigmoid gate on each head's attention output before the output
   projection, which v2 already has as an option (src/bnb/models/yemong/spatial.py). Which
   variant: element-wise, the paper's best (decided 2026-11-22). Used without first
-  measuring for an attention sink: cheap and low risk. Its initialisation: what released
-  code (Qwen3-Next, Kimi Linear) does, being checked (docs/rewrite/rotary-and-gate-check.md).
+  measuring for an attention sink: cheap and low risk. Initialised as released code does
+  (Qwen3-Next, Kimi Linear, the official repo): like the query projection, no bias, so it
+  starts near 0.5 (decided 2026-11-22; docs/rewrite/rotary-and-gate-check.md).
 - Encoder and attention as v2: one first layer per token kind, a shared second; ships and
   the game token are queries; fields and zones are key/value memory in the same
   attention operation. Bullets are not tokens.
