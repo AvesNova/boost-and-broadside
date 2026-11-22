@@ -25,7 +25,9 @@ def make_policy(**overrides) -> Policy:
     return policy.eval()
 
 
-def make_obs(lead: tuple[int, ...], slots: int, fields: int = 4, seed: int = 1, live_fraction: float = 0.8):
+def make_obs(
+    lead: tuple[int, ...], slots: int, fields: int = 4, seed: int = 1, live_fraction: float = 0.8
+):
     generator = torch.Generator().manual_seed(seed)
     key_mask = torch.rand(*lead, slots, generator=generator) < live_fraction
     return SimpleNamespace(
@@ -38,10 +40,12 @@ def make_obs(lead: tuple[int, ...], slots: int, fields: int = 4, seed: int = 1, 
         field=torch.randn(*lead, fields, FIELD_FEATURES, generator=generator),
         field_pos=(torch.rand(*lead, fields, 2, generator=generator) - 0.5) * 6000.0,
         field_mask=torch.rand(*lead, fields, generator=generator) < 0.75,
+        visible=torch.rand(*lead, slots, generator=generator) < 0.7,
+        since_seen=torch.rand(*lead, slots, generator=generator) * 2.0,
     )
 
 
-SHIP_NAMES = ("ship", "pos", "heading", "key_mask", "own")
+SHIP_NAMES = ("ship", "pos", "heading", "key_mask", "own", "visible", "since_seen")
 FIELD_NAMES = ("field", "field_pos", "field_mask")
 
 
@@ -51,7 +55,9 @@ def index_obs(obs, index):
 
 def select(obs, names, order):
     """Reorder (or subset) the ship or field slots of a single-tick observation."""
-    return SimpleNamespace(**{name: value[:, order] if name in names else value for name, value in vars(obs).items()})
+    return SimpleNamespace(
+        **{name: value[:, order] if name in names else value for name, value in vars(obs).items()}
+    )
 
 
 def step_all(policy, obs, carry, reset, offset=None):
@@ -100,7 +106,9 @@ def test_a_reset_forgets_state_and_convolution_buffer():
         logits, _, _, _, final = policy.sequence(obs, carry, reset)
         later = index_obs(obs, slice(start, None))
         fresh_logits, _, _, _, fresh_final = policy.sequence(
-            later, policy.initial_carry(envs, slots, "cpu"), torch.zeros(ticks - start, envs, dtype=torch.bool)
+            later,
+            policy.initial_carry(envs, slots, "cpu"),
+            torch.zeros(ticks - start, envs, dtype=torch.bool),
         )
     assert torch.allclose(logits[start:], fresh_logits, atol=1e-5)
     assert torch.allclose(final, fresh_final, atol=1e-5)
@@ -131,9 +139,15 @@ def test_padding_and_permutation_of_ships_leave_real_ships_unchanged(positionles
     order = torch.randperm(padded, generator=torch.Generator().manual_seed(3))
     shuffled = select(obs, SHIP_NAMES, order)
     with torch.no_grad():
-        base_logits, base_values, base_carry = policy.step(small, policy.initial_carry(envs, real, "cpu"))
-        pad_logits, pad_values, pad_carry = policy.step(obs, policy.initial_carry(envs, padded, "cpu"))
-        mix_logits, mix_values, mix_carry = policy.step(shuffled, policy.initial_carry(envs, padded, "cpu"))
+        base_logits, base_values, base_carry = policy.step(
+            small, policy.initial_carry(envs, real, "cpu")
+        )
+        pad_logits, pad_values, pad_carry = policy.step(
+            obs, policy.initial_carry(envs, padded, "cpu")
+        )
+        mix_logits, mix_values, mix_carry = policy.step(
+            shuffled, policy.initial_carry(envs, padded, "cpu")
+        )
     # float32 rounding of softmaxes over different key counts: 0.4e-5 to 2.3e-5 on outputs
     # of magnitude 4 over eight weight seeds (2026-11-23), so 5e-5.
     assert torch.allclose(pad_logits[:, :real], base_logits, atol=5e-5)
@@ -142,7 +156,9 @@ def test_padding_and_permutation_of_ships_leave_real_ships_unchanged(positionles
     live = shuffled.key_mask
     assert torch.allclose(mix_logits[live], pad_logits[:, order][live], atol=1e-5)
     assert torch.allclose(mix_values[live], pad_values[:, order][live], atol=1e-5)
-    assert torch.allclose(mix_carry[:, :, 1:][:, live], pad_carry[:, :, 1:][:, :, order][:, live], atol=1e-5)
+    assert torch.allclose(
+        mix_carry[:, :, 1:][:, live], pad_carry[:, :, 1:][:, :, order][:, live], atol=1e-5
+    )
     assert torch.allclose(mix_carry[:, :, 0], pad_carry[:, :, 0], atol=1e-5)
 
 
@@ -196,7 +212,9 @@ def test_attention_reads_only_relative_positions():
     policy.position_code = ConstantCode(policy.position_code.features)
     obs = make_obs((envs,), slots)
     shift = torch.tensor([1234.5, -876.5])
-    moved = SimpleNamespace(**{**vars(obs), "pos": obs.pos + shift, "field_pos": obs.field_pos + shift})
+    moved = SimpleNamespace(
+        **{**vars(obs), "pos": obs.pos + shift, "field_pos": obs.field_pos + shift}
+    )
     carry = policy.initial_carry(envs, slots, "cpu")
     with torch.no_grad():
         base_logits, _, _ = policy.step(obs, carry)
@@ -257,7 +275,9 @@ def test_attention_gate_starts_near_one_half():
     spatial = policy.blocks[0].spatial[0]
     tokens = torch.randn(64, 11, policy.config.width)
     width = policy.config.width
-    gate = torch.sigmoid(spatial.query_key_value_gate(spatial.attention_norm(tokens))[..., 3 * width :])
+    gate = torch.sigmoid(
+        spatial.query_key_value_gate(spatial.attention_norm(tokens))[..., 3 * width :]
+    )
     assert abs(gate.mean().item() - 0.5) < 0.03
     assert 0.05 < gate.std().item() < 0.25
 
@@ -302,7 +322,9 @@ def test_position_codes_have_their_defining_symmetries():
     assert torch.allclose(colour.sum(-1), torch.ones(50, 9), atol=1e-5) and (colour >= 0).all()
     fourier = FourierCode((500.0,))
     assert torch.allclose(fourier(points), fourier(points + torch.tensor([1000.0, 0.0])), atol=1e-3)
-    assert not torch.allclose(fourier(points), fourier(points + torch.tensor([500.0, 0.0])), atol=1e-2)
+    assert not torch.allclose(
+        fourier(points), fourier(points + torch.tensor([500.0, 0.0])), atol=1e-2
+    )
 
 
 def test_hl_gauss_targets_sum_to_one_and_decode_to_the_value():
@@ -333,7 +355,9 @@ def training_batch(ticks=8, envs=4, slots=10, fields=5):
     config = ModelConfig()
     targets = SimpleNamespace(
         actions=torch.randint(0, 42, (ticks, envs, slots), generator=generator),
-        bins=torch.randint(0, config.bins, (ticks, envs, slots, config.levels), generator=generator),
+        bins=torch.randint(
+            0, config.bins, (ticks, envs, slots, config.levels), generator=generator
+        ),
         next_state=torch.randn(ticks, envs, slots, config.next_state_size, generator=generator),
         hit=torch.randint(0, config.hit_classes, (ticks, envs, slots), generator=generator),
     )
@@ -347,7 +371,9 @@ def training_loss(policy, obs, reset, targets, carry=None):
     logits, values, next_state, hit, final = policy.sequence(obs, carry, reset)
     live = obs.key_mask
     policy_loss = torch.nn.functional.cross_entropy(logits[live], targets.actions[live])
-    value_loss = torch.nn.functional.cross_entropy(values[live].flatten(0, 1), targets.bins[live].flatten())
+    value_loss = torch.nn.functional.cross_entropy(
+        values[live].flatten(0, 1), targets.bins[live].flatten()
+    )
     next_loss = (next_state[live] - targets.next_state[live]).square().mean()
     hit_loss = torch.nn.functional.cross_entropy(hit[live], targets.hit[live])
     return policy_loss + value_loss + next_loss + hit_loss, policy_loss, final
@@ -364,11 +390,22 @@ def test_backward_reaches_every_parameter_and_no_masked_row():
     loss, _, final = training_loss(policy, obs, reset, targets, carry)
     (loss + final.square().mean()).backward()
     assert torch.isfinite(loss)
-    dead = [name for name, p in policy.named_parameters() if p.grad is None or not p.grad.abs().sum() > 0]
-    bad = [name for name, p in policy.named_parameters() if p.grad is not None and not torch.isfinite(p.grad).all()]
+    dead = [
+        name
+        for name, p in policy.named_parameters()
+        if p.grad is None or not p.grad.abs().sum() > 0
+    ]
+    bad = [
+        name
+        for name, p in policy.named_parameters()
+        if p.grad is not None and not torch.isfinite(p.grad).all()
+    ]
     assert not dead, f"parameters with no gradient: {dead}"
     assert not bad, f"parameters with a non-finite gradient: {bad}"
-    for names, mask in ((("ship", "pos", "heading"), obs.key_mask), (("field", "field_pos"), obs.field_mask)):
+    for names, mask in (
+        (("ship", "pos", "heading"), obs.key_mask),
+        (("field", "field_pos"), obs.field_mask),
+    ):
         for name in names:
             grad = getattr(obs, name).grad
             assert torch.isfinite(grad).all()
@@ -400,7 +437,11 @@ def test_gradient_without_perturbed_heads_or_loss_on_carry():
     obs, reset, targets = training_batch()
     loss, _, _ = training_loss(policy, obs, reset, targets)
     loss.backward()
-    dead = [name for name, p in policy.named_parameters() if p.grad is None or not p.grad.abs().sum() > 0]
+    dead = [
+        name
+        for name, p in policy.named_parameters()
+        if p.grad is None or not p.grad.abs().sum() > 0
+    ]
     assert not dead, f"parameters with no gradient: {dead}"
     assert all(torch.isfinite(p.grad).all() for p in policy.parameters())
 
@@ -454,3 +495,22 @@ def test_compiled_step_matches_eager():
     live = obs.key_mask
     assert torch.allclose(eager_logits[live], compiled_logits[live], atol=1e-4)
     assert torch.allclose(eager_carry, compiled_carry, atol=1e-4)
+
+
+def test_the_model_reads_fog():
+    """C10: under fog a last-seen row must not look current: the outputs of a ship depend on its
+    own visible flag and time since seen."""
+    policy = make_policy().eval()
+    obs = make_obs((1,), 8, live_fraction=1.0)
+    carry = policy.initial_carry(1, 8, torch.device("cpu"))
+    with torch.no_grad():
+        base, _, _ = policy.step(obs, carry)
+        stale = SimpleNamespace(
+            **{
+                **vars(obs),
+                "visible": torch.zeros_like(obs.visible),
+                "since_seen": obs.since_seen + 3.0,
+            }
+        )
+        changed, _, _ = policy.step(stale, carry)
+    assert (base - changed).abs().max() > 1e-4

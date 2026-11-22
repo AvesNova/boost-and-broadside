@@ -296,7 +296,8 @@ class Policy(nn.Module):
         self.position_code = make_position_code(config)
         self.rotary = Rotary(config)
         code = self.position_code.features
-        self.encoder = Encoder(ship_features + code, global_features + code, field_features + code, config)
+        ship_inputs = ship_features + FOG_FEATURES + code
+        self.encoder = Encoder(ship_inputs, global_features + code, field_features + code, config)
         self.blocks = nn.ModuleList(Block(config) for _ in range(config.blocks))
         self.heads = HeadGroup(config.width, config.head_hidden, (config.actions, config.levels * config.bins), config)
         # The learner's auxiliary heads, one group: next state and hit.
@@ -353,7 +354,11 @@ class Policy(nn.Module):
         # Token inputs: the features and the position code of the offset positions; the game
         # token reads the arena centre's code (v2's inputs.py).
         code = self.position_code
-        ship_in = torch.cat([obs["ship"], code(pos + offset).to(obs["ship"].dtype)], -1)
+        # Fog (C10): whether the row is seen this tick and how long since it was (symlog
+        # seconds); with fog off every row is visible and current.
+        dtype = obs["ship"].dtype
+        seen = [obs["visible"].to(dtype)[..., None], obs["since_seen"].to(dtype)[..., None]]
+        ship_in = torch.cat([obs["ship"], *seen, code(pos + offset).to(obs["ship"].dtype)], -1)
         game_in = torch.cat([obs["globals"].unsqueeze(-2), code(offset).to(obs["globals"].dtype)], -1)
         field_in = torch.cat([obs["field"], code(field_pos + offset).to(obs["field"].dtype)], -1)
         tokens, memory = self.encoder(ship_in, game_in, field_in)
@@ -404,4 +409,7 @@ class Policy(nn.Module):
         return logits, value_logits, next_state, hit_logits, torch.stack(new_carry)
 
 
-OBS_FIELDS = ("ship", "pos", "heading", "key_mask", "globals", "field", "field_pos", "field_mask")
+OBS_FIELDS = (
+    "ship", "pos", "heading", "key_mask", "globals", "field", "field_pos", "field_mask", "visible", "since_seen",
+)
+FOG_FEATURES = 2  # visible, since_seen

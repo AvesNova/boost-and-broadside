@@ -242,3 +242,8 @@ checked, the commit. Numbers are measured unless marked otherwise.
   reconstruction from totals, no copy of the boundary formula). Test: the matrix's rows and
   columns match the per-ship totals over 200 ticks with hits (test_damage_detail.py).
   `pytest lean`: 114 passed, 1 xfailed.
+- 03:55 C10: the model reads fog: `Obs.visible` and `Obs.since_seen` enter the ship encoder
+  (two inputs), so a last-seen row no longer looks current. Test: a ship's outputs change with
+  its own visible flag and time since seen. `pytest lean`: 115 passed, 1 xfailed. A smoke
+  run of the whole core game (`python -m lean.train --smoke --game core`: core flight, drawn
+  fields, ghost bullets, fog, the new model, the league, v2's rewards) completes on the CPU.
