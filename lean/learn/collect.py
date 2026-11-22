@@ -1,5 +1,6 @@
 """Rollout collection: the learner on one team per environment, an opponent on the other."""
 
+import contextlib
 import dataclasses
 import importlib
 from dataclasses import dataclass
@@ -7,6 +8,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 from torch.func import functional_call, vmap
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from lean.learn.config import LearnConfig, policy_precision
 from lean.learn.returns import value_centres
@@ -250,7 +252,11 @@ def snapshot_actions(config: LearnConfig, template, parameters: dict, buffers: d
     def one_member(member_parameters, member_buffers, _):
         return functional_call(template, (member_parameters, member_buffers), (view, carry.opponent, offset))
 
-    with policy_precision(config, device):
+    # Eagerly, vmap hands the fused attention kernels a mask whose batch stride they reject
+    # on the GPU ("attn_bias is not correctly aligned"); the math kernel takes any layout.
+    # Compiled, the attention is decomposed and keeps the fused path.
+    eager_attention = contextlib.nullcontext() if torch.compiler.is_compiling() else sdpa_kernel(SDPBackend.MATH)
+    with policy_precision(config, device), eager_attention:
         # The slot index is a batched input so that vmap has one even for a weightless policy.
         logits, _, new_carry = vmap(one_member)(parameters, buffers, torch.arange(slots, device=device))
     # Each environment's own member: slot member - 1 (scripted environments read slot 0 and
