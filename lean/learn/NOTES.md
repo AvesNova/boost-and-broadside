@@ -421,3 +421,100 @@ real-game labels with and without ghost bullets).
   returns' 5-95% gap, floor 1, once per update; lean the advantage std every epoch), the
   policy coefficient (27) against value (0.007 summed), the 128-tick lookahead before the
   bootstrap, the entropy settings, Adam's epsilon.
+
+## Compiled training on the GPU (2026-11-23)
+
+Measurements: docs/rewrite/scoreboard.md, "Training on the GPU" (script
+docs/rewrite/sections/scoreboard/train_gpu.py). Compiled with bf16 at 256 environments, the
+v2 game: collect 26k, update 6.4k, loop 5,160 environment steps per second (eager 2,110).
+
+### What changed
+
+- `--compile` in lean/train.py (default on; `--no-compile` eager; the smoke run stays
+  eager). `collect(..., compiled=True)` and `update(..., compiled=True)` run the graphs of
+  `lean/learn/compiled.py`: `act` (both views, the live policy step, sampling, value decode,
+  the scripted agent), `advance` (actions, game step, rewards, hit labels, counters, league
+  tallies, re-deal), `snapshot_actions` (every league snapshot), `minibatch_values` (the
+  critic's target pass) and `minibatch_loss` (forward; its backward is compiled by
+  AOTAutograd). Adam and clipping stay eager. All with `dynamic=True` and duck sizing off
+  (set on importing lean.learn.compiled): no recompile across team sizes, environment
+  counts or minibatch sizes.
+- **Random draws under compile** come from torch's default generator of the device (seeded
+  by `--seed` through `torch.manual_seed`), not the explicit generator: a graph cannot take
+  a generator object. Eager keeps the generator. `draw_offset` replaces
+  lean.model.draw_position_offset inside collect (that one draws on the generator's device,
+  the CPU without one).
+- **League snapshots in one call** (`snapshot_actions`): `League.weights` holds every
+  snapshot slot's parameters stacked (capacity on a leading axis; a slot not yet filled
+  repeats the first snapshot and is never selected), `League.template` a weightless
+  `Stepper`; torch.func.vmap runs all slots on all league environments and each keeps its
+  own member's output. Fixed work (capacity x L rows), **no read-back, no loop**. This
+  replaced the per-member grouping with its per-tick `bincount().tolist()` (measured: the
+  read-back cost 5% of collect, the eight small model calls most of the rest; collect went
+  from 20,546 to 25,974 steps/s). `League.frozen` is gone. Eagerly the vmapped attention
+  uses the math kernel (the fused ones reject vmap's mask layout on the GPU).
+- **bf16 autocast** for the policy's forward passes, rollout and update
+  (`LearnConfig.bf16`, default True, GPU only; the losses in float32). The update runs 1.8x
+  faster and in two thirds of the memory. The model keeps position phases and the
+  recurrence in float32 (lean.model). A choice for the author to confirm: the earlier
+  lean runs were float32; v2 trained in bf16.
+- **`minibatches` 8** (was 4): the smallest power of two that fits 8 GB at 256
+  environments (3.7 GiB peak compiled, 5.2 GiB eager; 4 runs out of memory). v2's recipe
+  used 32 minibatches (docs/rewrite/recipe-v2-vs-lean.md); the update size itself is the
+  author's decision. At 1,024 environments 32 minibatches keep the same minibatch size.
+- **`targets_every_epoch`** (default True, unchanged behaviour): False takes advantages
+  and value targets once per update from the values stored at collection, as v2 does.
+  Measured 6,457 steps/s against 5,160 (the target pass is a quarter of the update). Not
+  adopted: the author's call. `Rollout.value_centres` carries the support the values were
+  decoded with.
+- Host reads: the update's measures stay on the device and are read once per update (were
+  eleven `float()` per minibatch); `support_usage` reads its twenty numbers in one go.
+  The bootstrap value comes from `act` (one graph fewer to compile).
+
+### Graph breaks and host synchronisations found
+
+1. `torch.rand/randn/randint(..., generator=None)` with a symbolic size fails to trace in
+   PyTorch 2.15 (fake-tensor error); without the keyword it traces. lean.game and
+   lean.scripted pass their generator argument through. Workaround in lean.learn.compiled:
+   those three factories drop a None generator (wrapped once, process-wide).
+2. The ship card (`lean.game.core._ship_card`, a functools.cache whose builder ends in
+   `.item()`): dynamo traces through the cache and breaks the graph; the break inside
+   `_deal` then threw the whole deal back to eager (dynamo fails to resume the `uniform`
+   closure). Workaround: `_ship_card` replaced by a lookup filled eagerly
+   (`compiled.prepare(game_config)`, called by collect). Before the rebase on 681eb492 the
+   same happened with `derived_characteristics` (float `.tolist()`).
+3. `reset_done` iterates `dataclasses.fields(State)` on the class, which dynamo cannot
+   trace (gb0180). Workaround: lean.game.core's `dataclasses` is swapped for a copy whose
+   `fields(State)` returns the fields taken once.
+4. Stride recompiles: a fresh state holds broadcast tensors (stride 0, also the empty
+   `fields` when F = 0) where a re-dealt one holds whole ones; collect makes them whole
+   before the graphs. The opponent carry is kept contiguous for the same reason.
+5. `tick` as a Python int would be a new constant every tick: it is a 0-d device tensor.
+6. A snapshot group of one environment specialised a size of 1 (a second policy compile):
+   gone with the batched snapshots.
+7. Host syncs in the per-tick loop: the member-count read-back (gone, item above). None
+   left. Per update: one read of the measures, one of the range metrics per epoch, the
+   advantage normaliser's boolean index per epoch, the BC gate's win rate.
+
+Workarounds 1 to 3 patch lean.game at runtime from lean/learn (I may not edit lean/game).
+**Wanted in lean.game** so they can go: build the ship card outside any trace (or mark it
+`torch.compiler.assume_constant_result`-safe), iterate the fields of the instance
+(`dataclasses.fields(state)`), and leave out `generator=` when it is None (or draw with a
+helper that does).
+
+### Ran
+
+CPU, OMP_NUM_THREADS=1: `pytest lean -q -m "not slow"` passes (new: the stored-targets
+test, the batched-snapshot test). `lean/learn/tests/test_compiled.py` (slow, CPU): the
+compiled collect and update run with the real packages and a snapshot, and the compiled
+loss and gradients equal eager. GPU: the scoreboard rows; 0 graph breaks and 0
+recompiles in every row.
+
+### Open
+
+- The floor is met with the v2 game only, by 3%; the core game (fields, fog) runs at 4,640.
+  The update dominates (5.1 of 6.3 s). Levers, all the author's: targets once per update
+  (6,457), fewer epochs, a smaller update.
+- Compile start-up: 199 s cold, 72 s warm (dynamo tracing alone is about 60 s).
+- Snapshots still cost 3.7 ms a tick (8 slots x 128 environments of policy step); with a
+  league smaller than its capacity the empty slots are computed too.

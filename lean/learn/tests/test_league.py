@@ -215,3 +215,34 @@ def test_snapshot_members_run_with_the_real_packages():
     assert not torch.equal(after[:, 1:], before[:, 1:])  # the snapshot ran there
     metrics = update(config, policy, make_optimiser(config, policy), rollout, generator=generator)
     assert all(value == value for value in metrics.values())
+
+
+def test_batched_snapshots_give_each_environment_its_own_members_step():
+    """snapshot_actions runs every slot on every league environment at once; each
+    environment must get the carry its own member's step gives, and scripted environments
+    keep theirs and take the scripted action."""
+    from lean.learn.collect import carry_axis, seat_view, snapshot_actions
+
+    torch.manual_seed(0)
+    members = [standins.TinyPolicy() for _ in range(3)]
+    league = League(every=1, capacity=3)
+    for member in members:
+        league.maybe_add(member, 0)
+    policy = standins.TinyPolicy()
+    config, opponent, state, carry, generator = setup(policy, league, envs=12)
+    carry.member = torch.tensor([0, 1, 2, 3, 1, 3])  # the 6 league environments
+    carry.opponent = torch.randn_like(carry.opponent)
+    views = (standins.game.observe(standins.GameConfig(), state, 0), standins.game.observe(standins.GameConfig(), state, 1))
+    scripted = torch.full((12, state.exists.shape[1], 3), 7)
+    parameters, buffers = league.weights
+    action, new_carry = snapshot_actions(config, league.template, parameters, buffers, views, carry, scripted, generator)
+    first = 6
+    view = seat_view(views, torch.arange(first, 12), 1 - carry.learner_team[first:])
+    axis = carry_axis(carry.opponent)
+    for row, member in enumerate(carry.member.tolist()):
+        if member == 0:
+            assert (action[row] == 7).all()
+            assert torch.equal(new_carry.select(axis, row), carry.opponent.select(axis, row))
+            continue
+        _, _, expected = members[member - 1].step(view, carry.opponent, carry.position_offset[first:])
+        assert torch.allclose(new_carry.select(axis, row), expected.select(axis, row), atol=1e-6)

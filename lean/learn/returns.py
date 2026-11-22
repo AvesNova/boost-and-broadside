@@ -89,9 +89,14 @@ def support_usage(target: Tensor, reward: Tensor, mask: Tensor, centres: Tensor,
     counts.scatter_add_(1, nearest.T, torch.ones_like(nearest.T, dtype=counts.dtype))
     occupied = (counts / chosen.shape[0] >= config.range_bin_share).sum(1)
     silent = (reward == 0).flatten(0, -2).all(0)
+    # One read-back for every level's four measures.
+    rows = torch.stack([
+        clamped, occupied.float(), (clamped > config.range_clamped_warning).float(),
+        ((occupied < config.range_narrow_bins) & ~silent).float(),
+    ]).tolist()
     for level, name in enumerate(LEVEL_NAMES):
-        metrics[f"range_clamped_{name}"] = float(clamped[level])
-        metrics[f"range_bins_{name}"] = float(occupied[level])
-        metrics[f"range_warning_clamped_{name}"] = float(clamped[level] > config.range_clamped_warning)
-        metrics[f"range_warning_narrow_{name}"] = float((occupied[level] < config.range_narrow_bins) & ~silent[level])
+        metrics[f"range_clamped_{name}"] = rows[0][level]
+        metrics[f"range_bins_{name}"] = rows[1][level]
+        metrics[f"range_warning_clamped_{name}"] = rows[2][level]
+        metrics[f"range_warning_narrow_{name}"] = rows[3][level]
     return metrics
