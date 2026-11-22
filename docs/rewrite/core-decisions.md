@@ -79,6 +79,35 @@ Tests
   every change during the port, note in advance whether the result should be the same,
   similar (within a stated tolerance) or different, and test that.
 
+Scripted opponent (from docs/rewrite/imugi-behaviours.md, author 2026-11-22)
+- Randomness only from sampling the action probabilities, which are the BC soft labels.
+  No random switches or changing switch probabilities; hysteresis by concrete rules. Open:
+  the tie-break of a perfectly symmetric head-on pass (a fixed rule such as "turn
+  clockwise", or a random draw).
+- Target: the nearest remembered enemy; keep it unless another is closer than 0.8 of its
+  distance. Idea for later: a closeness that also counts the turn needed to face each other.
+- Lead (intercept): keep. Power (boost, coast, reverse): keep.
+- Fly straight only when already aimed at the target (replaces the second stick call).
+- Gun: fire when aimed at the lead point within the target's size and in range; never while
+  cooling or short of energy. New: no shot with an ally in the line of fire.
+- Boundary steer: keep; the moving boundary handled simply (it shrinks linearly).
+- Drop: dead reckoning, type doctrines, switch-rate commitments, keyed draws, mode
+  inference, the random-play share.
+- Manoeuvres: rewritten as basic fighter manoeuvres, not dropped: recognise one-circle
+  against two-circle (and angled merges, scissors), lead-turn before the merge so ships pass
+  at their maximum turn rate, commit decisively with rule-based hysteresis (no wiggling,
+  no racetracks). No crowd or duel breakaway. Based on real doctrine
+  (docs/rewrite/bfm-doctrine.md, in progress).
+- Frontline layer: needed for frontline, rewritten cleanly. Spacing from allies applies in
+  every mode. Retreat or extend only by a carefully designed rule, or not at all; the game
+  should make a badly timed escape from a committed fight fatal (worth a test).
+- Mode, ship type and every constant (gun range and so on) and the map are given, never
+  inferred. Per-mode behaviour where needed, mostly frontline.
+- Temperature per environment, fixed at reset, folded into the gates at no cost.
+- Physics question raised: are the speeds of minimum turn radius and maximum turn rate the
+  same in our flight model? If so there is no one-circle against two-circle choice
+  (docs/rewrite/turn-performance.md, in progress).
+
 Sizes
 - Sizes batch- and GPU-friendly by default (powers of two, fractions such as one eighth)
   unless there is a reason not to (2026-11-22).
