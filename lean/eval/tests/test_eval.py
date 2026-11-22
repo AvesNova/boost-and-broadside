@@ -1,6 +1,6 @@
 import torch
 
-from lean.eval import crossover, head_to_head, wilson_interval
+from lean.eval import crossover, head_to_head, play_matches, play_results, wilson_interval
 from lean.learn.tests import standins
 
 
@@ -32,3 +32,36 @@ def test_head_to_head_counts_sum_to_games_and_ties_are_draws():
     assert report["wins"] == 0  # the stand-in scripted agent always fires, so it can be tied but not beaten
     low, high = wilson_interval(16, 32)
     assert low < 0.5 < high and abs((low + high) / 2 - 0.5) < 1e-9
+
+
+def test_crossover_plays_every_size_in_rounds_of_batched_matches():
+    # Every round is one batch: a walk ending near parity needs one round, a far one more.
+    report = crossover(None, None, None, [2, 4, 8], 10, None, match=lambda n, s, g: g if s <= 1.5 * n else 0)
+    assert report["rounds"] == 2
+    near = crossover(None, None, None, [2, 4, 8], 10, None, match=lambda n, s, g: g if s <= n else 0)
+    assert near["rounds"] == 1 and [near["sizes"][n]["beats_up_to"] for n in (2, 4, 8)] == [2, 4, 8]
+    # The start's neighbours are played and kept: `spread` (2) sizes either side of parity.
+    assert sorted(near["sizes"][4]["matches"]) == [2, 3, 4, 5, 6]
+    # Started from the previous evaluation's ratios: the same answer in one round.
+    ratios = {n: entry["ratio"] for n, entry in report["sizes"].items()}
+    again = crossover(None, None, None, [2, 4, 8], 10, None, start_ratio=ratios, match=lambda n, s, g: g if s <= 1.5 * n else 0)
+    assert again["rounds"] == 1
+    assert [again["sizes"][n]["beats_up_to"] for n in (2, 4, 8)] == [report["sizes"][n]["beats_up_to"] for n in (2, 4, 8)]
+    losing = crossover(None, None, None, [4], 10, None, start_ratio={4: 0.0}, match=lambda n, s, g: 0)
+    assert losing["rounds"] == 1 and losing["sizes"][4]["beats_up_to"] == 0
+
+
+def test_play_matches_counts_each_size_of_a_mixed_batch():
+    matches = [(1, 3, 24), (3, 1, 24), (2, 2, 16)]
+    options = dict(game=standins.game, scripted=standins.scripted)
+    torch.manual_seed(0)
+    policy = standins.TinyPolicy()
+    wins = play_matches(standins.GameConfig(), policy, None, matches, torch.Generator().manual_seed(3), **options)
+    # The same draws as one batch of environments, each keeping its own team sizes.
+    sizes = torch.tensor([[1, 3]] * 24 + [[3, 1]] * 24 + [[2, 2]] * 16)
+    result = play_results(standins.GameConfig(), policy, None, sizes, torch.Generator().manual_seed(3), **options)
+    assert wins == [int((result[:24] == 0).sum()), int((result[24:48] == 0).sum()), int((result[48:] == 0).sum())]
+    assert wins[0] == 0 and wins[2] == 0  # one ship cannot outscore three that always fire; 2v2 can tie at best
+    # A cap on the batch splits between matches, never inside one.
+    split = play_matches(standins.GameConfig(), policy, None, matches, torch.Generator().manual_seed(3), maximum_games=30, **options)
+    assert len(split) == 3 and split[0] == 0 and split[2] == 0
