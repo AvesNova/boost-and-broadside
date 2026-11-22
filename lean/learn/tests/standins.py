@@ -116,13 +116,21 @@ def step(config, state, action, noise):
     return replace(state, points=points, tick=tick), out
 
 
-def reset_done(config, state, done, team_sizes, generator):
-    fresh = reset(config, done.shape[0], team_sizes, generator, done.device)
+def deal(config, envs, slots, team_sizes, generator, device):
+    return reset(config, envs, team_sizes, generator, device)
+
+
+def take_deal(state, done, fresh, index=None):
     changes = {}
     for name in State.__dataclass_fields__:
         old, new = getattr(state, name), getattr(fresh, name)
+        new = new if index is None else new.index_select(0, index)
         changes[name] = torch.where(done.view(-1, *[1] * (old.dim() - 1)), new, old)
     return State(**changes)
+
+
+def reset_done(config, state, done, team_sizes, generator):
+    return take_deal(state, done, reset(config, done.shape[0], team_sizes, generator, done.device))
 
 
 def observe(config, state, team):
@@ -144,7 +152,7 @@ def act(config, state, team, persona, uniforms):
     return action
 
 
-game = SimpleNamespace(reset=reset, step=step, draw_noise=draw_noise, reset_done=reset_done, observe=observe)
+game = SimpleNamespace(reset=reset, step=step, draw_noise=draw_noise, deal=deal, take_deal=take_deal, reset_done=reset_done, observe=observe)
 scripted = SimpleNamespace(personas=personas, act=act)
 
 
