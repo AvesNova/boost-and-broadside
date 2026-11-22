@@ -650,7 +650,8 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     cooldown = torch.where(fired, c["fire_interval"], state.cooldown)
     next_slot = torch.where(emits, (state.next_slot + 1) % K, state.next_slot)
 
-    # Flight; slots not alive at tick start keep everything. In the core model firing cuts thrust.
+    # Flight for every slot; a slot not alive at tick start keeps its row (one select at the end).
+    # In the core model firing cuts thrust.
     core_model = config.flight_model == "core"
     firing_thrust = torch.where(fired, config.fire_thrust_fraction, 1.0) if core_model else 1.0
     flown = flight_tick(
@@ -666,11 +667,9 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
         thrust_scale=firing_thrust,
     )
 
-    def flew(new: Tensor, old: Tensor) -> Tensor:
-        return torch.where(alive0, new, old)
-
-    x, y = flew(flown.x, state.x), flew(flown.y, state.y)
-    heading_cos, heading_sin = flew(flown.heading_cos, state.heading_cos), flew(flown.heading_sin, state.heading_sin)
+    # A dead ship's flight below is never read: it is no target (the hit test's reach is -1)
+    # and takes no boundary damage.
+    x, y, heading_cos, heading_sin = flown.x, flown.y, flown.heading_cos, flown.heading_sin
 
     # Bullet motion; inactive bullets are frozen.
     flying = counts0[:, MOVES_LEFT] > 0
@@ -813,16 +812,18 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     shot_outcome = torch.where(ended, outcome, -1)
     fired_tick = counts0[:, FIRED_TICK]
 
-    ships = torch.stack(
-        [
-            x, y, heading_cos, heading_sin, flew(flown.speed, state.speed), flew(flown.angle, state.angle),
-            flew(flown.angle_cos, state.angle_cos), flew(flown.angle_sin, state.angle_sin),
-            flew(flown.nose_rate, state.nose_rate), flew(flown.energy, state.energy),
-            flew(shield + restored, state.shield), flew(wait, state.shield_wait), (cooldown - 1).clamp_min(0),
-            flew(flown.log_index, state.log_index), flew(flown.gradient_x, state.gradient_x),
-            flew(flown.gradient_y, state.gradient_y), next_slot,
-        ],
-        1,
+    # Slots not alive at tick start keep their whole row (agreed fix 3: one select, not one per field).
+    ships = torch.where(
+        alive0[:, None],
+        torch.stack(
+            [
+                x, y, heading_cos, heading_sin, flown.speed, flown.angle, flown.angle_cos, flown.angle_sin,
+                flown.nose_rate, flown.energy, shield + restored, wait, (cooldown - 1).clamp_min(0),
+                flown.log_index, flown.gradient_x, flown.gradient_y, next_slot,
+            ],
+            1,
+        ),
+        state.ships,
     )
     new_state = dataclasses.replace(
         state,
