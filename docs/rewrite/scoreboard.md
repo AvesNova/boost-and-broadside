@@ -84,8 +84,15 @@ run in order 5v5, 10v10, 20v20, 50v50 in one process.
 - The uncompiled game step runs out of 8 GB at 50v50, E = 2048 (the dense (E, N K, N) hit
   test's temporaries); compiled it fits.
 - A new team size: the first new size recompiles once (about 16 s for the game, 15 s for the
-  policy), then no more. `dynamic=True` recompiles at the second size as well, so something in
-  both graphs specialises on the ship count: to find (it decides what "a new size costs").
+  policy), then no more. `dynamic=True` recompiled too. Cause (TORCH_LOGS=recompiles): "duck
+  sizing" tied the ship-slot count to the field count because both were 10 at 5v5
+  (`state.constants['field_x'].size()[2] == state.bullet_x.size()[1]`; for the policy
+  `obs.field.size()[1] == obs.ship.size()[1]`); at 10v10 the guess fails.
+- **With duck sizing off** (`torch.fx.experimental._config.use_duck_shape = False`) and
+  `dynamic=True`: one compile (game 30.4 s, policy 18.4 s at E = 256), then 10v10, 20v20 and
+  50v50 cost nothing (first calls 0.00 to 0.02 s). Steady at E = 256: game 0.49, 0.67, 1.32,
+  5.14 ms; policy 1.60, 2.62, 5.72, 16.91 ms. This meets "a new team size adds at most 1 min"
+  with nothing added; proposed as the compile setting for training and evaluation (D5).
 - Compile time, cold: game 18 s, policy 12 s.
 
 ## Not yet measured

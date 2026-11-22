@@ -199,3 +199,4 @@ checked, the commit. Numbers are measured unless marked otherwise.
   dynamic=True also recompiles once (to investigate). Uncompiled game at 50v50, E = 2048 runs
   out of memory; compiled fits (35.8 ms). Measured from a clean worktree of 25478e10 while
   two agents edit lean/ (learner targets; fog).
+- 03:39 F3: the recompile at a new team size is duck sizing (10 slots = 10 fields at 5v5); with duck sizing off and dynamic=True each graph compiles once (game 30 s, policy 18 s) and 10v10 to 50v50 cost nothing. Proposed for D5.

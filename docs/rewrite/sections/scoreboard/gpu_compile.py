@@ -18,8 +18,10 @@ from lean.game import core
 UNIT, VARIANT = sys.argv[1], sys.argv[2]
 E = int(sys.argv[3]) if len(sys.argv) > 3 else 2048
 DEVICE = torch.device("cuda")
-SIZES = (5, 10, 20, 50)
+SIZES = tuple(int(x) for x in __import__("os").environ.get("SIZES", "5,10,20,50").split(","))
 torch.manual_seed(0)
+if __import__("os").environ.get("NO_DUCK"):
+    torch.fx.experimental._config.use_duck_shape = False
 
 
 def wrap(fn):
