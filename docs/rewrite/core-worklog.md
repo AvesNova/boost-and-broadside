@@ -162,3 +162,7 @@ checked, the commit. Numbers are measured unless marked otherwise.
   200 m on the line, clear at 150 m off it. The check costs 21 operations: the scripted call
   is now 193, over the 170 tripwire (question 11 for the author). `pytest lean/scripted`:
   8 passed.
+- 08:25 F2: docs/provenance.md, from the literature drafts plus rows for the decisions taken
+  since (gate initialisation, null key dropped, Griffin block ported, rotary layout, rotated
+  values, the league floor and tally, the core flight model, firing, the damage term, ghost
+  bullets, the medium cache). Kinds as in core-brief.md section 3.

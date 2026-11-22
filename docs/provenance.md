@@ -1,0 +1,46 @@
+# Provenance
+
+One row per overarching decision (core-brief.md section 3): what it does, the problem it
+solves, where it comes from, and how this project's setting differs. Kinds: (a) the standard
+choice; (b) published work shows it beats the standard for a comparable purpose; (c) measured
+in this project; (d) reasoned, not yet tested, with the test that would settle it. A citation
+counts only when the passage was read; "(read)" marks those. Sources and passages in full:
+docs/rewrite/provenance-check.md and docs/rewrite/rotary-and-gate-check.md. Decisions:
+docs/rewrite/core-decisions.md. First version 2026-11-23 from those drafts; rows updated for
+the decisions taken since.
+
+## Model and learner
+
+| Component | What it does | Problem it solves | Kind | Source and passage | How this project's setting differs |
+|---|---|---|---|---|---|
+| HL-Gauss value targets | Cross-entropy against a Gaussian (σ in bin widths) integrated over each bin | MSE value regression scales badly and is hurt by noisy targets | b | Farebrother et al. 2024, §3.1 Eq. 3.3, p. 6; §4 and §5.1-5.2; Fig. 13 (read) | Value-based RL (DQN/CQL), single reward scale, uniform bins; here a PPO critic with several reward levels |
+| σ = 0.75 bin widths | Width of the target Gaussian | Too narrow ≈ lossy one-hot (worse than Two-Hot); too wide blurs | b, tuned there | Farebrother et al. 2024, p. 6; Table B.3; Fig. 13 (read) | Their optimum is a width in value units (~0.3 on [−10, 10], 51 bins); "0.75 bins" carries over only with a comparable bins-to-range ratio |
+| Linear against symlog bins | Spacing of the value support | Returns spanning orders of magnitude (symlog) against resolution near typical values (linear) | d | HL-Gauss tested only linear bins (Listing 1, read); DreamerV3 used symexp two-hot (Hafner et al. 2023, Eqs. 9-11, p. 7, read) | DreamerV3's reason is one config across domains plus avoiding running normalisation; one game with a scale per level may not need it. Test: per-level return histograms over training |
+| Same bin count for every level | One support shape for all reward levels | Uniform code and scaling | d | None | Untested |
+| Attention output gate (G1) | Per-head (or per-element) sigmoid gate on SDPA output from the query's hidden state | Attention sinks, loss spikes, low-rank W_V·W_O | b | Qiu et al. 2025, §2.2 Eq. 5, Table 1, §4.3, Table 4, Fig. 2 (read); adopted in Kimi Linear §4 Eq. 10, Table 1 (read) | LLMs with thousands of tokens; here a few dozen tokens per query; initialised as released code does (Qwen3-Next, Kimi Linear: like the query projection, no bias; starts near 0.5; rotary-and-gate-check.md, read); element-wise, the paper's best |
+| Null key / learned sink | Lets a head attend to nothing | Softmax forces the weights to sum to one | a/b | StreamingLLM §3.3, Table 3 (read); gpt-oss card §2.2 (read); Miller 2023 (read, no experiment) | Dropped in lean 2026-11-23: the gate lets a head output nothing (d: reasoned with the gate on; whether sinks form over a few dozen tokens is unmeasured) |
+| QK-Clip | Rescales W_q, W_k per head when the max logit exceeds τ | Attention-logit explosion (with Muon) | b, for Muon | Kimi K2 report §2.1 (read) | Only relevant if Muon or logit growth is seen; not proposed |
+| RG-LRU recurrence | Gated diagonal linear recurrence a_t = σ(Λ)^(c·r_t), c = 8 | Per-token memory across ticks at linear cost | b | De et al. 2024, §2.4 Eqs. 1-4, App. A Eq. 6 (read) | Language modelling at 2k-8k tokens; here per-ship memory over decision steps |
+| RG-LRU decay init | a^c ~ U[0.9, 0.999] (paper) or a ~ ring-uniform [0.9, 0.999] (official code) | Memory timescales from steps to hundreds of steps at start | a (paper) | De et al. 2024, §2.4 p. 4 (read); recurrentgemma `rnn_param_init` (read) | Paper and code disagree by a factor of 8 in the exponent; v2 uses neither (a^c ∈ [0.004, 0.865]); the right range depends on decision rate and episode length here |
+| Griffin recurrent block | Linear → Conv1D(4) → RG-LRU, times GeLU(linear), → linear | Local mixing plus gated memory | b | De et al. 2024, §2.3 p. 4 (read) | Ported to lean 2026-11-23 (v2's block, followed by v2's 4x MLP) |
+| Griffin block init | LeCun gates; code: N(0, 1/D) projections, depth-scaled output, Conv1D std 0.05, zero biases | Well-scaled start | a | De et al. 2024 §2.4 (read); recurrentgemma `modules.py`, `layers.py` (read) | Ported to lean 2026-11-23 (lean/model/temporal.py); v2 used torch defaults (a third of the variance, random biases, Conv1D ±½) |
+| PFSP (1 − x)² | Opponent weight from the learner's win rate x | Focus on opponents not yet beaten | b | AlphaStar Supplementary pseudocode `multiagent.py` `pfsp`, `MainPlayer.get_match` (read); Methods text could not fetch | StarCraft league with exploiters and 0.5 prior plus 0.99 decay; no uniform floor; here one policy plus a scripted member |
+| Self-play share 50% | Share of games against the current policy | Fast learning against forgetting | b | AlphaStar main text Fig. 3 caption, 50/50 (read); pseudocode 50/15/35 (read); OpenAI Five App. N, 80/20 (read) | Different games and league sizes; shares were not tuned for transfer |
+| Hexagonal Fourier position code | sin/cos of position on 3 directions 60° apart, multi-scale | Even resolution in every direction; multi-scale location | d | Blair et al. 2007, Methods "Cosine grating model" (read); Space2Vec Table 1, theory 0.144 against x/y 0.139 MRR (read); Banino 2018 (read, learned code); Solstad 2006 could not fetch | No fixed hexagonal code tested in RL; the edge over x/y is small and from a supervised geographic task |
+| Partial rotary | Rotate only part of each head's query/key dims | Keeps position-free channels; cheaper | b (LLMs) | GPT-NeoX-20B §2.1.1 (read, no numbers); Barbero et al. 2025 Table 2 (read); HF configs (read) | 1D token distance in LLMs; here 2D position and heading over few tokens. lean: 5 bands 64 m to 8.6 km (bands far larger than the map dropped), heading harmonics 1 and 2, the same layout in both heads |
+| Rotating the values | Values rotated by the key's rotary angle and the sum rotated back by the query's | Relative geometry reaches the values, not only the attention weights | b, thin | GTA, Miyato et al. ICLR 2024 (multi-view vision; the value transform mattered most, about 2.4 dB, read); QCNet adds relative pose to keys and values (code, read) | Vision and trajectory prediction; no ablation in an RL entity setting |
+| One-eighth uniform floor in league games | 7/8 of league games by (1 - p)^2, 1/8 uniform over the pool | Keeps every member's win rate current, so a forgotten ability shows within updates | d | AlphaStar has no floor (pseudocode, read) | Test: how fast a deliberate regression against an old member is detected |
+| AlphaStar's win-rate tally | Every game decays a pair's counts by 0.99; an unplayed pair reads 0.5 | Recent, defined win rates for PFSP | b | AlphaStar pseudocode `multiagent.py` (read) | StarCraft league sizes |
+| Linear HL-Gauss bins, 64 per level | One support shape for every reward level | Simple, the paper's spacing | b (linear), d (64 and one count) | Farebrother et al. 2024, linear bins (read) | Test: per-level return histograms against the support (range monitoring) |
+
+## Game
+
+| Component | What it does | Problem it solves | Kind | Source | How this setting differs |
+|---|---|---|---|---|---|
+| Weight on the wing (core flight) | Coast holds 1 g on the wing first; the turn gets what is left; dive lowers the demand | Separates minimum radius, best sustained rate and corner speed (one speed won all in v2) | a (standard flight mechanics: sideways lift sqrt(n^2 - 1) g) | Navy BFM manual P-1289 and NACA turning studies (bfm-doctrine.md, read) | 2D game: no climb angle; altitude is the store |
+| Engine drives speed only, constant power | No engine power into the store | Diving on the deck and hoarding altitude paid; v2's store-fed boost erased sustained turns | d | Author's design 2026-11-23 | Test: the sandbox (A12) and the measurements in core-flight-measurements.md |
+| Two-loop store | Store of two vertical loops at corner speed, start at half | Keeps height advantage reachable (IL-2's "far above me" problem) | d | Author's design | Measured: the band is crossed in about 1.5 s per half at full exchange (question 10) |
+| Firing cuts the engine | Thrust scaled by `fire_thrust_fraction` on firing ticks | Shooting becomes a decision without ammunition counting | d | Author's design | Measured: 6 to 7 m/s per second of firing |
+| Head-on term in the hit angle's cosine | (1 - c) / (1 - cos theta_0) for (theta / theta_0)^2 | Fewer operations (no atan2, no cross product) | c | Measured: within 0.0235 of v2's curve; total damage within 2% on the same hits (test_core_damage.py) | |
+| Ghost bullets | Every living ship emits a bullet each tick; only real ones damage | Dense labels for the hit head (would this tick's bullet hit an enemy, an ally, nothing) | c (no effect on the game) | Measured: the game with ghosts equals the game without, exactly (test_ghost_bullets.py) | |
+| Medium cached in the state | The end-of-tick medium reused at the next tick's start | Two evaluations per tick instead of four | a (v2 does it) | test_parity_v2.py with fields | |
