@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import torch
 from torch import Tensor
+from torch.func import functional_call, vmap
 
 from lean.learn.config import LearnConfig, policy_precision
 from lean.learn.returns import value_centres
@@ -230,55 +231,53 @@ def draw_members(opponent: Opponent, count: int, generator, device) -> Tensor:
     return opponent.league.draw(count, generator)
 
 
-def snapshot_move(config: LearnConfig, policy, views, environment: Tensor, team: Tensor, carry: Tensor,
-                  position_offset: Tensor, generator):
-    """One snapshot member's move on its environments: the view of team `team[i]` in
-    environment `environment[i]`, one policy step from `carry` (those environments' rows)
-    and a sampled action. Returns ((count, N, 3) long, new carry rows)."""
-    with policy_precision(config, position_offset.device):
-        logits, _, new_carry = policy.step(seat_view(views, environment, team), carry, position_offset)
-    return split_joint(sample_joint(logits.float(), generator)), new_carry
-
-
-def league_actions(config: LearnConfig, opponent: Opponent, views, state, carry: CollectCarry, scripted_action: Tensor,
-                   generator, move=snapshot_move):
-    """Actions of the league side of every league environment, (L, N, 3), and the new
-    opponent carry.
-
-    Scripted members' environments take `scripted_action` (the scripted agent's action,
-    already computed for the BC target). Each snapshot member present in some league
-    environment runs once on just its environments: the league environments are grouped
-    by member with one read-back per tick (the member counts), and the loop runs over the
-    members present (at most the league's capacity). Without snapshots nothing is read back.
-    `move` is snapshot_move or its compiled form.
-    """
-    envs = state.exists.shape[0]
+def snapshot_actions(config: LearnConfig, template, parameters: dict, buffers: dict, views, carry: CollectCarry,
+                     scripted_action: Tensor, generator):
+    """The league side's actions (L, N, 3) and opponent carry when the league holds
+    snapshots: every snapshot slot runs on every league environment in one batched call
+    (torch.func.vmap over the stacked weights, League.weights, through the weightless
+    `template`), and each environment keeps the output of the member it plays. Scripted
+    environments take `scripted_action`'s rows and keep their carry. A fixed amount of
+    work (capacity x L rows), no read-back and no loop over members."""
     league_envs = carry.member.shape[0]
+    envs = carry.learner_team.shape[0]
     first = envs - league_envs
-    action = scripted_action[first:]
-    opponent_carry = carry.opponent
-    league = opponent.league
-    if league is None or league.snapshots == 0 or league_envs == 0:
-        return action, opponent_carry
-    member = carry.member
-    counts = torch.bincount(member, minlength=league.members).tolist()
-    order = torch.argsort(member, stable=True)
-    team = 1 - carry.learner_team[first:]
+    device = carry.member.device
+    view = seat_view(views, torch.arange(first, envs, device=device), 1 - carry.learner_team[first:])
     offset = carry.position_offset[first:]
-    begin = counts[0]
-    for index in range(1, league.members):
-        count = counts[index]
-        if count == 0:
-            continue
-        chosen = order[begin:begin + count]
-        begin += count
-        member_action, new_carry = move(
-            config, league.frozen[index - 1], views, chosen + first, team.index_select(0, chosen),
-            index_carry(opponent_carry, chosen), offset.index_select(0, chosen), generator,
-        )
-        opponent_carry = opponent_carry.index_copy(carry_axis(opponent_carry), chosen, new_carry)
-        action = action.index_copy(0, chosen, member_action)
-    return action, opponent_carry
+    slots = next(iter((parameters or buffers).values())).shape[0]
+
+    def one_member(member_parameters, member_buffers, _):
+        return functional_call(template, (member_parameters, member_buffers), (view, carry.opponent, offset))
+
+    with policy_precision(config, device):
+        # The slot index is a batched input so that vmap has one even for a weightless policy.
+        logits, _, new_carry = vmap(one_member)(parameters, buffers, torch.arange(slots, device=device))
+    # Each environment's own member: slot member - 1 (scripted environments read slot 0 and
+    # are overwritten below).
+    slot = (carry.member - 1).clamp(min=0)
+    rows = torch.arange(league_envs, device=device)
+    snapshot = carry.member > 0
+    axis = carry_axis(carry.opponent)
+    chosen_carry = new_carry.movedim(axis + 1, 1)[slot, rows].movedim(0, axis)
+    sampled = split_joint(sample_joint(logits[slot, rows].float(), generator))
+    action = torch.where(snapshot[:, None, None], sampled, scripted_action[first:])
+    shape = [1] * carry.opponent.dim()
+    shape[axis] = -1
+    return action, torch.where(snapshot.view(shape), chosen_carry.to(carry.opponent.dtype), carry.opponent)
+
+
+def league_actions(config: LearnConfig, opponent: Opponent, views, carry: CollectCarry, scripted_action: Tensor,
+                   generator, snapshots=snapshot_actions):
+    """Actions of the league side of every league environment, (L, N, 3), and the new
+    opponent carry: the scripted agent's (already computed as the BC target) until the
+    league holds a snapshot, then `snapshots` (snapshot_actions or its compiled form)."""
+    league = opponent.league
+    league_envs = carry.member.shape[0]
+    if league is None or league.snapshots == 0 or league_envs == 0:
+        return scripted_action[scripted_action.shape[0] - league_envs:], carry.opponent
+    parameters, buffers = league.weights
+    return snapshots(config, league.template, parameters, buffers, views, carry, scripted_action, generator)
 
 
 def draw_offset(policy, envs: int, generator, device) -> Tensor:
@@ -463,10 +462,9 @@ def collect(
     tallies.
 
     All random draws come from `generator`; with `compiled` (a tick's two halves, the
-    snapshot move run as lean.learn.compiled's graphs) they come from
+    snapshots' moves run as lean.learn.compiled's graphs) they come from
     torch's default generator of the device instead, since a compiled graph cannot take a
-    generator object. Nothing is read back to the host in the loop except the member
-    counts while the league holds snapshots (league_actions).
+    generator object. Nothing is read back to the host in the loop.
     """
     game = game or importlib.import_module("lean.game")
     scripted = scripted or importlib.import_module("lean.scripted")
@@ -476,7 +474,7 @@ def collect(
     if compiled:
         from lean.learn import compiled as graphs
 
-        act_part, advance_part, move = graphs.act, graphs.advance, graphs.snapshot_move
+        act_part, advance_part, snapshots = graphs.act, graphs.advance, graphs.snapshot_actions
         generator = None
         graphs.prepare(game_config)
         # A fresh state can hold broadcast (stride 0) tensors where a re-dealt one holds
@@ -486,7 +484,7 @@ def collect(
         if dataclasses.is_dataclass(getattr(state, "constants", None)):
             state = dataclasses.replace(state, constants=map_fields(state.constants, whole))
     else:
-        act_part, advance_part, move = act, advance, snapshot_move
+        act_part, advance_part, snapshots = act, advance, snapshot_actions
     initial_carry = carry.policy
     records = {name: [] for name in ("observation", "action", "teacher", "log_probability", "value", "reward", "done", "reset", "position_offset", "next_state", "next_valid")}
     counters = {name: torch.zeros((), dtype=torch.long, device=device) for name in ("league_games", "league_wins", "scripted_games", "scripted_wins", "episodes")}
@@ -499,7 +497,7 @@ def collect(
         views, observation, seat_offset, joint, log_probability, value, teacher, policy_carry, _ = act_part(
             config, game_config, policy, opponent, state, carry, generator, game, scripted
         )
-        league_action, opponent_carry = league_actions(config, opponent, views, state, carry, teacher, generator, move)
+        league_action, opponent_carry = league_actions(config, opponent, views, carry, teacher, generator, snapshots)
         state, carry, tick_records, counters = advance_part(
             config, game_config, policy, opponent, state, carry, observation, joint, teacher, league_action,
             opponent_carry, policy_carry, tick, hit_label, counters, generator, game, scripted,

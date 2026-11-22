@@ -16,17 +16,32 @@ The tallies live on the run's device and are updated without reading back to the
 import copy
 
 import torch
-from torch import Tensor
+from torch import Tensor, nn
 
 SCRIPTED = 0
+
+
+class Stepper(nn.Module):
+    """A policy whose forward is its `step`, so that torch.func.functional_call can run
+    the step with stacked snapshot weights."""
+
+    def __init__(self, policy):
+        super().__init__()
+        self.policy = policy
+
+    def forward(self, obs, carry, position_offset):
+        return self.policy.step(obs, carry, position_offset)
 
 
 class League:
     """The opponents of league games.
 
-    `frozen[k - 1]` is the frozen policy of member k (created on first use, then reloaded
-    with new weights when the slot is replaced). `present` (members,) bool marks who can
-    be drawn; the scripted agent is always present.
+    The snapshot members' weights are stacked: `weights` (parameters, buffers), each
+    tensor with a leading axis of `capacity` slots, slot k - 1 holding member k (a slot not
+    yet filled repeats the first snapshot's weights and is never drawn); `template` is a
+    weightless (meta) Stepper of the same policy for torch.func.functional_call. Every
+    snapshot member runs in one batched call that way (lean.learn.collect.league_actions).
+    `present` (members,) bool marks who can be drawn; the scripted agent is always present.
     """
 
     def __init__(self, every: int, capacity: int, device=None, floor: float = 1.0 / 8.0, decay: float = 0.99):
@@ -36,7 +51,8 @@ class League:
         self.decay = decay
         self.device = torch.device(device) if device is not None else torch.device("cpu")
         self.members = capacity + 1
-        self.frozen: list = [None] * capacity
+        self.weights: tuple[dict, dict] | None = None
+        self.template: nn.Module | None = None
         self.present = torch.zeros(self.members, dtype=torch.bool, device=self.device)
         self.present[SCRIPTED] = True
         self.games = torch.zeros(self.members, device=self.device)
@@ -57,10 +73,17 @@ class League:
         if self.capacity == 0 or update_index % self.every != 0:
             return None
         slot = self.added % self.capacity
-        if self.frozen[slot] is None:
-            self.frozen[slot] = copy.deepcopy(policy).eval().requires_grad_(False)
-        else:
-            self.frozen[slot].load_state_dict(policy.state_dict())
+        stepper = Stepper(policy)
+        if self.weights is None:
+            self.template = copy.deepcopy(stepper).to("meta").eval()
+            self.weights = tuple(
+                {name: tensor.detach()[None].repeat(self.capacity, *[1] * tensor.dim()) for name, tensor in named}
+                for named in (stepper.named_parameters(), stepper.named_buffers())
+            )
+        with torch.no_grad():
+            for stacked, named in zip(self.weights, (stepper.named_parameters(), stepper.named_buffers()), strict=True):
+                for name, tensor in named:
+                    stacked[name][slot].copy_(tensor)
         member = slot + 1
         self.present[member] = True
         self.games[member] = 0.0

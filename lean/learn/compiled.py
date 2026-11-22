@@ -1,5 +1,5 @@
-"""The learner's hot paths under torch.compile: the two halves of a rollout tick, a league
-snapshot's move, the critic's target pass and the minibatch loss
+"""The learner's hot paths under torch.compile: the two halves of a rollout tick, the league
+snapshots' moves, the critic's target pass and the minibatch loss
 (forward and backward). Adam and the gradient clipping stay eager (the framework spike
 found nothing to gain there).
 
@@ -96,16 +96,6 @@ def _compile(function):
 
 act = _compile(_collect.act)
 advance = _compile(_collect.advance)
-_snapshot_move = _compile(_collect.snapshot_move)
-
-
-def snapshot_move(config, policy, views, environment, team, carry, position_offset, generator):
-    """collect.snapshot_move, compiled for two or more environments. A member playing a
-    single environment runs eagerly: dynamic shapes specialise a size of 1, so it would
-    otherwise be a second compile of the whole policy step."""
-    move = _snapshot_move if environment.shape[0] >= 2 else _collect.snapshot_move
-    return move(config, policy, views, environment, team, carry, position_offset, generator)
-
-
+snapshot_actions = _compile(_collect.snapshot_actions)
 minibatch_values = _compile(_update.minibatch_values)
 minibatch_loss = _compile(_update.minibatch_loss)
