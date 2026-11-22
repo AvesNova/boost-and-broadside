@@ -1,0 +1,89 @@
+"""Invariants of the game step: finite values, inert padding, and team symmetry."""
+
+import dataclasses
+
+import pytest
+import torch
+
+from lean.contract import State
+from lean.game import GameConfig, draw_noise, observe, reset, reset_done, step
+
+CLOSE = GameConfig(arena_radius=700.0, spawn="mixed", clock_ticks=400)
+
+
+def random_action(envs, slots, generator):
+    return torch.stack(
+        [torch.randint(0, n, (envs, slots), generator=generator) for n in (7, 3, 2)], -1
+    )
+
+
+def floats(tree):
+    for field in dataclasses.fields(tree):
+        value = getattr(tree, field.name)
+        if isinstance(value, torch.Tensor) and value.is_floating_point():
+            yield field.name, value
+
+
+@pytest.mark.parametrize("sizes", [(3, 5), (20, 20)])
+def test_finite_and_padding_inert_over_300_ticks(sizes):
+    """Catches a division by zero on a padded or dead row, and padding that acts or is hit."""
+    generator = torch.Generator().manual_seed(1)
+    envs = 4
+    team_sizes = torch.tensor([sizes, (2, 2), sizes, (1, 3)])
+    state = reset(CLOSE, envs, team_sizes, generator, "cpu")
+    slots = state.x.shape[1]
+    assert slots == sum(sizes)
+    deaths = 0
+    for _ in range(300):
+        action = random_action(envs, slots, generator)
+        state, out = step(CLOSE, state, action, draw_noise(CLOSE, envs, slots, generator, "cpu"))
+        for name, value in list(floats(state)) + list(floats(out)):
+            assert torch.isfinite(value).all(), name
+        observation = observe(CLOSE, state, 0)
+        assert torch.isfinite(observation.ship).all() and torch.isfinite(observation.globals).all()
+        absent = ~state.exists
+        assert not out.fired[absent].any() and not out.died[absent].any()
+        assert (out.damage_taken[absent] == 0).all() and (out.damage_dealt[absent] == 0).all()
+        assert not observation.key_mask[absent].any() and not observation.own[absent].any()
+        assert not state.alive[absent].any()
+        assert (state.bullet_moves_left[absent] == 0).all()
+        assert ((out.result >= 0) == out.done).all()
+        deaths += int(out.died.sum())
+        state = reset_done(CLOSE, state, out.done, team_sizes, generator)
+    assert deaths > 0
+
+
+def test_swapping_teams_mirrors_the_outcome():
+    """Catches any dependence on slot order or team label: the slots reversed and the team
+    labels exchanged must give the same game with the result mirrored."""
+    generator = torch.Generator().manual_seed(2)
+    envs = 8
+    team_sizes = torch.tensor([(4, 4)] * envs)
+    state = reset(CLOSE, envs, team_sizes, generator, "cpu")
+    slots = state.x.shape[1]
+
+    def flipped(value):
+        return value.flip(1) if value.dim() >= 2 else value
+
+    values = {f.name: getattr(state, f.name) for f in dataclasses.fields(State)}
+    mirror = {name: flipped(value) for name, value in values.items() if name != "constants"}
+    mirror["constants"] = {
+        key: value if key.startswith("field_") else flipped(value) for key, value in state.constants.items()
+    }
+    mirror["team"] = 1 - mirror["team"]
+    other = State(**mirror)
+    finished = torch.zeros(envs, dtype=torch.bool)
+    for _ in range(120):
+        action = random_action(envs, slots, generator)
+        noise = draw_noise(CLOSE, envs, slots, generator, "cpu")
+        state, out = step(CLOSE, state, action, noise)
+        other, mirrored = step(CLOSE, other, action.flip(1), {"spread": noise["spread"].flip(1)})
+        live = ~finished
+        assert (out.done == mirrored.done)[live].all()
+        assert (out.died == mirrored.died.flip(1))[live].all()
+        expected = torch.where(out.result < 2, torch.where(out.result >= 0, 1 - out.result, -1), 2)
+        assert (expected == mirrored.result)[live].all()
+        assert torch.allclose(out.damage_dealt[live], mirrored.damage_dealt.flip(1)[live], atol=1e-4)
+        assert torch.allclose(state.x[live], other.x.flip(1)[live], atol=1e-3)
+        finished = finished | out.done
+    assert finished.any()

@@ -94,7 +94,7 @@ def test_padding_and_permutation_leave_real_ships_unchanged(positionless_rotary)
     live = shuffled.key_mask
     assert torch.allclose(mix_logits[live], pad_logits[:, order][live], atol=1e-5)
     assert torch.allclose(mix_values[live], pad_values[:, order][live], atol=1e-5)
-    assert torch.allclose(mix_carry[:, :, 1:][:, live], pad_carry[:, :, 1:][:, order][:, live], atol=1e-5)
+    assert torch.allclose(mix_carry[:, :, 1:][:, live], pad_carry[:, :, 1:][:, :, order][:, live], atol=1e-5)
     assert torch.allclose(mix_carry[:, :, 0], pad_carry[:, :, 0], atol=1e-5)
 
 
