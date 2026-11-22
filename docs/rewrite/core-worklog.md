@@ -236,3 +236,9 @@ checked, the commit. Numbers are measured unless marked otherwise.
     shield_restored (next item).
   - Lint: lean's files are written at 120 columns against pyproject's 100 (141 long lines
     before, 176 now in learn/model/train): a cleanup to decide (reformat or raise the limit).
+- 03:51 The rewards' gap closed: StepOut carries `hit_damage` (E, N, N) [attacker, target] from
+  real bullets (one scatter_add in the step), `boundary_damage` and `shield_restored`
+  (the step's own values). `rewards.tick_events` reads them, so the ledger is exact (no
+  reconstruction from totals, no copy of the boundary formula). Test: the matrix's rows and
+  columns match the per-ship totals over 200 ticks with hits (test_damage_detail.py).
+  `pytest lean`: 114 passed, 1 xfailed.

@@ -48,6 +48,9 @@ class StepOut:
     result: torch.Tensor
     shot_outcome: torch.Tensor
     shot_tick: torch.Tensor
+    hit_damage: torch.Tensor
+    boundary_damage: torch.Tensor
+    shield_restored: torch.Tensor
 
 
 @dataclass
@@ -107,6 +110,8 @@ def step(config, state, action, noise):
         fired=fired, killer=torch.full_like(state.team, -1), done=done, result=torch.where(done, result, -1),
         shot_outcome=torch.where(ended, bullet_outcome(fired_tick, slot), -1)[..., None],
         shot_tick=fired_tick[..., None],
+        hit_damage=zeros[..., None].expand(-1, -1, zeros.shape[-1]).clone(),
+        boundary_damage=zeros, shield_restored=zeros,
     )
     return replace(state, points=points, tick=tick), out
 

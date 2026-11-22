@@ -67,47 +67,20 @@ class TickEvents:
     present: Tensor
 
 
-def boundary_damage(game_config, state, next_state) -> Tensor:
-    """The boundary's raw damage of the tick, (E, N): lean.game's formula (core.step) on the
-    position after the move, for ships alive at the tick's start."""
-    depth = torch.sqrt(next_state.x**2 + next_state.y**2) - game_config.arena_radius
-    ramp = smootherstep((depth / game_config.boundary_ramp_width).clamp(0.0, 1.0))
-    return torch.where(state.alive, card.BOUNDARY_MAX_DAMAGE * ramp * game_config.tick_length, 0.0)
-
-
 def tick_events(step_out, state, next_state, game_config) -> TickEvents:
-    """v2's events from lean's StepOut and the states around the step (before any re-deal).
-
-    Interim, until the contract's StepOut carries the attacker-by-target damage, the
-    boundary damage and the shield's restoration. Exact here: shield_lost and
-    shield_restored (from the two states), died, done, win_loss. Mirrored from the game:
-    the boundary damage (`boundary_damage`), hence each target's hit damage, damage_taken
-    less the boundary. Reconstructed: the raw matrix, which only its margins identify (each
-    attacker's damage to enemies and to team-mates, each target's hit damage). Each
-    target's hit damage is split over the attackers who could have dealt it in proportion
-    to their damage of that kind (enemy damage for an enemy target, friendly damage for a
-    team-mate). Exact when no attacker hits two targets on one tick or no target is hit
-    by two attackers; otherwise every column total is exact and rows are approximate.
-    """
+    """v2's events from the game's StepOut and the state at the tick's start: the
+    attacker-by-target hit damage, the boundary damage and the shield's restoration come
+    straight from the game (exact); the shield lost is the damage up to the shield the ship
+    had. `next_state` and `game_config` are kept for the call sites; nothing reads them."""
     alive = state.alive
     total = step_out.damage_taken
-    boundary = torch.minimum(boundary_damage(game_config, state, next_state), total)
-    hit = (total - boundary).clamp_min(0.0)
-    enemies = state.team[:, :, None] != state.team[:, None, :]
-    slots = state.team.shape[1]
-    others = ~torch.eye(slots, dtype=torch.bool, device=total.device)
-    weight = torch.where(enemies, step_out.damage_dealt[:, :, None], step_out.friendly_damage[:, :, None]) * others
-    weight_total = weight.sum(1, keepdim=True)
-    raw = torch.where(weight_total > 0.0, weight / torch.where(weight_total > 0.0, weight_total, 1.0), 0.0) * hit[:, None, :]
-
-    hurt = total > 0.0
     lost = torch.where(alive, torch.minimum(state.shield, total), 0.0)
-    restored = torch.where(alive & ~hurt, (next_state.shield - state.shield).clamp_min(0.0), 0.0)
     result = step_out.result
     win_loss = torch.stack([result == 0, result == 1], -1).to(total.dtype)
     return TickEvents(
-        raw=raw, boundary=boundary, shield_lost=lost, shield_restored=restored, died=step_out.died,
-        done=step_out.done, win_loss=win_loss, present=state.exists,
+        raw=step_out.hit_damage, boundary=step_out.boundary_damage, shield_lost=lost,
+        shield_restored=step_out.shield_restored, died=step_out.died, done=step_out.done,
+        win_loss=win_loss, present=state.exists,
     )
 
 

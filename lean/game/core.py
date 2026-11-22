@@ -787,6 +787,11 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
         result=result,
         shot_outcome=shot_outcome,
         shot_tick=bullet_fired_tick,
+        hit_damage=torch.zeros((E, N * N), dtype=bullet_damage.dtype, device=device)
+        .scatter_add(1, owner[None, :].expand(E, -1) * N + target, bullet_damage)
+        .reshape(E, N, N),
+        boundary_damage=boundary,
+        shield_restored=torch.where(alive0, restored, 0.0),
     )
     if config.fog:
         # A shot or a real bullet's hit reveals the ship for this tick (boundary damage does not).

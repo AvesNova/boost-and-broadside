@@ -103,6 +103,10 @@ class StepOut:
     # shot_tick the episode tick that bullet left the gun (the tick the hit head labels).
     shot_outcome: Tensor
     shot_tick: Tensor
+    # Damage detail for the rewards (v2's ledger), each before the shield's clamp:
+    hit_damage: Tensor  # (E, N, N) float32 [attacker, target]: real bullets' damage this tick
+    boundary_damage: Tensor  # (E, N) float32: damage from the arena boundary this tick
+    shield_restored: Tensor  # (E, N) float32: shield recharged this tick
 
 
 @dataclass
