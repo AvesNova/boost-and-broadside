@@ -35,7 +35,8 @@ Model
   one part of the model (position code, temporal block, attention, heads) does not touch
   many places; the choice is made at construction, so the compiled graph holds only the
   chosen module. Position code options: v2's categorical codes, Fourier features
-  on a hexagonal layout, and (later) a grid-cell module.
+  on a hexagonal layout, and a grid-cell module (the author would like grid cells as the
+  default; for now one option among three, 2026-11-22).
 - Fewer rotary dimensions (medium or smaller maps for now; larger maps later, with the
   rotary revisited then). Heading stays in the rotary, with few harmonics.
 - Griffin's initialisation as the paper specifies; v2's is wrong (to be checked against the
@@ -45,7 +46,7 @@ Model
   recurrence).
 - No shot-trajectory head. Instead a hit head: would this tick's bullet hit an enemy, an
   ally, or nothing. The last ticks of a segment go unlabelled.
-- No null key. Gated attention instead (Qiu et al. 2025, the Qwen team; the author,
+- No null key. Gated attention as the default (Qiu et al. 2025, the Qwen team; the author,
   2026-11-22): a sigmoid gate on each head's attention output before the output
   projection, which v2 already has as an option (src/bnb/models/yemong/spatial.py). Which
   variant (element-wise or per head) follows the paper's result, read in
@@ -61,7 +62,8 @@ Learner and league
   bins, and DreamerV3's reason for symlog (one configuration across many games) may not
   apply to one game. Check both papers (docs/rewrite/provenance-check.md).
 - No rating lanes and no lookahead. League weighting (1 - p)^2 with a small uniform floor
-  (2026-11-22); the floor's size open (proposal: 10% uniform, revisit).
+  (2026-11-22): one eighth of league games uniform over the pool.
+- No shaping level (2026-11-22), as in v2: lean's facing and closing terms go.
 - Half self-play (both sides train), half league games (the live side trains); the scripted
   agent is one league member.
 - Reward scaling with team size: as now (additive per ship).
@@ -73,6 +75,10 @@ Tests
   every change during the port, note in advance whether the result should be the same,
   similar (within a stated tolerance) or different, and test that.
 
+Sizes
+- Sizes batch- and GPU-friendly by default (powers of two, fractions such as one eighth)
+  unless there is a reason not to (2026-11-22).
+
 Provenance
 - A provenance table (docs/provenance.md) for every overarching decision (why Griffin, why
   grid cells, why HL-Gauss, and so on): the paper or papers it comes from, or else the
@@ -80,12 +86,6 @@ Provenance
 
 ## Proposals, not decided
 
-- Shaping: drop it, as v2 did (lean's sixth level: facing the nearest enemy and closing
-  speed toward it, v1's terms; not zero-sum, hard to tune, invites reward hacking).
-- Hit-head labels from ghost bullets: every ship puts a bullet in its ring every tick; a
-  flag marks it real or ghost; only real bullets cost energy, damage and stop; a ghost
-  records its first contact (enemy, ally, none) and is removed. The ring (11 slots, one per
-  tick) is already sized for this.
-- Grid-cell position code as a third option; look for papers that used grid cells in RL.
+- Grid cells in RL: look for papers that used them (docs/rewrite/provenance-check.md).
 - A keep, drop or simplify table of Imugi's behaviours with rough costs (operations, lines,
-  time per call, parameters): docs/rewrite/imugi-behaviours.md, in progress.
+  time per call, parameters): docs/rewrite/imugi-behaviours.md, ready for the author.
