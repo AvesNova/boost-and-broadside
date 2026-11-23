@@ -380,6 +380,90 @@ def performance(
     return out
 
 
+def envelope(
+    row: dict[str, float],
+    speeds,
+    sticks,
+    power: int = 0,
+    store_fraction: float | None = None,
+    plain: bool = False,
+    config: core.GameConfig | None = None,
+) -> dict:
+    """The row's quasi-steady turn envelope (game units, the nose settled, no fields, no guns)
+    on a (stick, speed) grid: `speeds` (m/s) and `sticks` (0 to 1) as 1-D sequences, `power`
+    0 coast, 1 dive, 2 climb, at `store_fraction` of the store (default the spawn store).
+    Returns numpy arrays shaped (len(sticks), len(speeds)): rate (rad/s), radius (m), ps
+    (m/s altitude-equivalent total energy rate), speed_rate, store_rate; and per speed the
+    sustained turn (the largest rate with Ps >= 0, nan if none): sustained_rate,
+    sustained_radius; and the key numbers from the full-stick line (corner_*) and, at 100 m/s
+    and above (below it the turn cannot be held in flight), the sustained line
+    (best_sustained_*, tightest_sustained_*), or None when there are none. The charts
+    (docs/rewrite/sections/turns/doghouse.py) and the web tool draw from this."""
+    import numpy as np
+
+    config = config or core.GameConfig()
+    if plain:
+        row = point_mass(row)
+    speeds = torch.as_tensor(speeds, dtype=torch.float32)
+    sticks = torch.as_tensor(sticks, dtype=torch.float32)
+    v = speeds.repeat(len(sticks))
+    s = sticks.repeat_interleave(len(speeds))
+    b = v.shape[0]
+    with torch.no_grad(), _with_row(row) as index:
+        p = core.per_type_constants(config, torch.full((b,), index))
+        energy = (
+            p.spawn_energy.clone()
+            if store_fraction is None
+            else store_fraction * p.max_energy
+        )
+        control = SimpleNamespace(
+            thrust_scale=1.0, stick_size=s, stick_sign=torch.ones(b),
+            commanded=p.commanded_table[:, power], demand=p.demand_table[:, power],
+        )
+        setting = core._setting(p, control, v, energy)
+        lateral, _, _, thrust = setting
+        reach = (lateral.abs() / (v * v) * p.inverse_lift).clamp(0.0, 1.0)
+        angle = p.stall * (1.0 - torch.sqrt(1.0 - reach))
+        lift_coefficient = core._lift_coefficient(p, angle)
+        rate = (lift_coefficient * v * v + thrust * torch.sin(angle)) / v
+        speed_rate, store_rate = core._rates(
+            p, setting, torch.ones(b), v, lift_coefficient, torch.cos(angle), 1.0 / (v * v)
+        )
+    shape = (len(sticks), len(speeds))
+    rate = rate.reshape(shape).numpy()
+    speed_rate = speed_rate.reshape(shape).numpy()
+    store_rate = store_rate.reshape(shape).numpy()
+    speed_axis = speeds.numpy()
+    radius = speed_axis[None, :] / np.maximum(rate, 1e-9)
+    ps = (speed_axis[None, :] * speed_rate + store_rate) / card.GRAVITY
+    held_rate = np.full(len(speeds), np.nan)
+    held_radius = np.full(len(speeds), np.nan)
+    for j in range(len(speeds)):
+        ok = np.where(ps[:, j] >= 0.0)[0]
+        if len(ok):
+            i = ok[np.argmax(rate[ok, j])]
+            held_rate[j], held_radius[j] = rate[i, j], radius[i, j]
+    out = dict(
+        speeds=speed_axis, sticks=sticks.numpy(), rate=rate, radius=radius, ps=ps,
+        speed_rate=speed_rate, store_rate=store_rate,
+        sustained_rate=held_rate, sustained_radius=held_radius,
+    )
+    full = rate[-1]
+    k = int(np.nanargmax(full))
+    out["corner_speed"], out["corner_rate"] = float(speed_axis[k]), float(full[k])
+    usable = np.where(speed_axis >= 100.0, held_rate, np.nan)
+    if np.any(np.isfinite(usable)):
+        k = int(np.nanargmax(usable))
+        out["best_sustained_speed"], out["best_sustained_rate"] = float(speed_axis[k]), float(usable[k])
+        tight = np.where(np.isfinite(usable), held_radius, np.nan)
+        k = int(np.nanargmin(tight))
+        out["tightest_sustained_speed"], out["tightest_sustained_radius"] = float(speed_axis[k]), float(tight[k])
+    else:
+        for name in ("best_sustained_speed", "best_sustained_rate", "tightest_sustained_speed", "tightest_sustained_radius"):
+            out[name] = None
+    return out
+
+
 def _take(c, index):
     """The constants of one row (index) as a namespace of (1,) tensors."""
     return SimpleNamespace(

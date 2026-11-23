@@ -3,7 +3,7 @@ and at 1x real time (speeds, turn rates and Ps halved; radii and loads in g unch
 real aircraft's chart reads against published energy-manoeuvrability diagrams.
 
 For every speed and stick fraction, the quasi-steady turn from the flight code's own
-functions (`core._setting`, `_lift_coefficient`, `_rates`): the nose settled on the stick's
+function (`lean.game.tuning.envelope`, which calls `core._setting`, `_lift_coefficient`, `_rates`): the nose settled on the stick's
 angle of attack, turn rate = (C_L(angle) v^2 + T sin angle) / v, and the rates of change of
 speed and of the energy store. No fields, no guns. Power: coast.
 
@@ -21,7 +21,6 @@ docs/rewrite/.
 import math
 import os
 import sys
-from types import SimpleNamespace
 
 import matplotlib
 
@@ -34,7 +33,7 @@ from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm  # noqa: E40
 sys.path.insert(0, os.path.dirname(__file__))
 from sim import CONFIG, MAX_ENERGY, SPAWN, SUFFIX, THEME, TYPES  # noqa: E402
 
-from lean.game import card, core  # noqa: E402
+from lean.game import card, tuning  # noqa: E402
 
 torch.set_num_threads(1)
 OUT = os.path.join(os.path.dirname(__file__), "..", "..")
@@ -65,47 +64,16 @@ sticks = torch.linspace(0.0, 1.0, 201)
 
 
 def evaluate(ship_type: int, store_fraction, power: int = 0):
-    """(stick, speed) grids: turn rate deg/s, radius m, Ps m/s, speed rate, store rate."""
-    v = speeds.repeat(len(sticks))
-    s = sticks.repeat_interleave(len(speeds))
-    b = v.shape[0]
-    p = core.per_type_constants(CONFIG, torch.full((b,), ship_type))
-    store = SPAWN[ship_type] if store_fraction is None else store_fraction * MAX_ENERGY[ship_type]
-    energy = torch.full((b,), float(store))
-    control = SimpleNamespace(
-        thrust_scale=1.0, stick_size=s, stick_sign=torch.ones(b),
-        commanded=p.commanded_table[:, power], demand=p.demand_table[:, power],
-    )
-    with torch.no_grad():
-        setting = core._setting(p, control, v, energy)
-        lateral, _, _, thrust = setting
-        reach = (lateral.abs() / (v * v) * p.inverse_lift).clamp(0.0, 1.0)
-        angle = p.stall * (1.0 - torch.sqrt(1.0 - reach))
-        lift_coefficient = core._lift_coefficient(p, angle)
-        rate = (lift_coefficient * v * v + thrust * torch.sin(angle)) / v
-        speed_rate, store_rate = core._rates(p, setting, torch.ones(b), v, lift_coefficient, torch.cos(angle), 1.0 / (v * v))
-    shape = (len(sticks), len(speeds))
-    rate = rate.reshape(shape).numpy()
-    return {
-        "rate": rate * DEGREES,
-        "radius": (v.reshape(shape).numpy() / np.maximum(rate, 1e-9)),
-        "ps": ((v * speed_rate + store_rate) / G).reshape(shape).numpy(),
-        "speed_rate": speed_rate.reshape(shape).numpy(),
-        "store_rate": store_rate.reshape(shape).numpy(),
-    }
+    """(stick, speed) grids: turn rate deg/s, radius m, Ps m/s, speed rate, store rate; from
+    lean.game.tuning.envelope, the one place the envelope is computed."""
+    row = tuning.row_of(card.TYPE_NAMES[ship_type])
+    grid = tuning.envelope(row, speeds, sticks, power, store_fraction, plain=False)
+    return {**grid, "rate": grid["rate"] * DEGREES, "sustained_rate": grid["sustained_rate"] * DEGREES}
 
 
 def sustained(grid):
     """Per speed: the largest turn rate with Ps >= 0 (nan if none), and its radius."""
-    rate, ps, radius = grid["rate"], grid["ps"], grid["radius"]
-    best_rate = np.full(rate.shape[1], np.nan)
-    best_radius = np.full(rate.shape[1], np.nan)
-    for j in range(rate.shape[1]):
-        ok = np.where(ps[:, j] >= 0.0)[0]
-        if len(ok):
-            i = ok[np.argmax(rate[ok, j])]
-            best_rate[j], best_radius[j] = rate[i, j], radius[i, j]
-    return best_rate, best_radius
+    return grid["sustained_rate"], grid["sustained_radius"]
 
 
 def style(ax):
@@ -155,6 +123,7 @@ def draw_panel(figure, ax, ship_type: int, label: str, fraction, real: bool, top
     v = game_v / f
     grid = evaluate(ship_type, fraction)
     grid["rate"], grid["ps"] = grid["rate"] / f, grid["ps"] / f
+    grid["sustained_rate"] = grid["sustained_rate"] / f
     style(ax)
     envelope = grid["rate"][-1]
     top = float(np.nanmax(envelope)) * 1.15 if top is None else top
