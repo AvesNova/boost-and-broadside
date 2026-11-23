@@ -113,3 +113,4 @@ Order agreed 2026-11-24 (author, revised): A1 -> V (runner) -> R (review) and fi
 screening, with D alongside -> short CMA-ES -> yardstick choice (author) -> X -> D refresh ->
 BC dry run -> RL dry run -> optional second R. A2, A3 and C tabled as future work.
 - 2026-11-24 ~05:45: screening (GPU) and D (notes, CPU) running in parallel; next a short CMA-ES, then stop for the author's yardstick choice.
+- 2026-11-24 ~09:00 (author): review of the lead turn and yo-yo implementation (timing is critical), and simple per-game style counters in the evaluation runner (one-circle vs two-circle share, store, speed, firing, range at hits), running in parallel. The yardstick choice is still open.
