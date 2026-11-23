@@ -196,3 +196,27 @@ def test_the_runner_keeps_the_callers_random_state():
     assert torch.equal(torch.get_rng_state(), before)
     again = play(GAME, queue_of(8), table, envs=4, segment=8, seed=5)
     assert torch.equal(first.result, again.result) and torch.equal(first.length, again.length)
+
+
+def test_a_network_plays_at_the_precision_it_was_trained_with(tmp_path, monkeypatch):
+    """Review B5: evaluation runs a network under the same precision helper as training
+    (lean.model.agent.precision) with the checkpoint's own bf16 setting, not a fixed bf16."""
+    import lean.model.agent as agent_module
+    from lean.learn import LearnConfig, WeightAverages, save_checkpoint
+
+    torch.manual_seed(0)
+    policy = model.Policy(model.ModelConfig())
+    config = LearnConfig(bf16=False)
+    path = tmp_path / "net.pt"
+    save_checkpoint(path, policy, WeightAverages(policy, config), config)
+    seen = []
+    precision = agent_module.precision
+
+    def recording(device, bf16):
+        seen.append(bf16)
+        return precision(device, bf16)
+
+    monkeypatch.setattr(agent_module, "precision", recording)
+    evaluator = Evaluator(Store(tmp_path / "s.sqlite"), GAME, device="cpu", envs=4, segment=8)
+    evaluator.ensure([(NetworkAgent(str(path), "live"), ScriptedAgent.of(), (1, 1), 4)])
+    assert seen and set(seen) == {False}
