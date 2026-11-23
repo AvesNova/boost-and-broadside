@@ -7,6 +7,13 @@ rate (19.0 deg/s at 166 mph), so the one-circle/two-circle choice is real. Your 
 rate is 8% under the pure physics (32.2 deg/s) because of lift smoothness; matching it needs a
 nominal g limit above 8. Details in docs/rewrite/p51d-model.md.
 
+**Screening of the scripted agent (2026-11-24 ~07:20; docs/rewrite/scripted-screening.md):**
+the yardstick is better than 96% of the parameter box and sits on a broad plateau; rankings
+hold across map sizes, team sizes and spawns (no retuning needed when the map changes). Two
+BFM features hurt at every setting above zero: the lead turn and the yo-yo (both off in the
+yardstick). 22 of the parameters show no measurable effect. Your call: delete the lead turn
+and yo-yo code, and fix the 22 rows (stop sampling them in personas)?
+
 **First, two decisions from step E2 (scripted BFM), merged 2026-11-24:**
 1. The new scripted agent uses the store (mean 0.23 against 0.05) and brawls harder (6.45 kills
    per environment-minute against 5.44), but loses to the old one: 0.413 +- 0.019 over 640
