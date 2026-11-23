@@ -57,6 +57,7 @@ def test_checkpoints_every_period_and_a_resume_gives_the_same_next_updates(monke
     assert middle["updates"] == 2 and middle["steps"] == 128 and middle["adam_steps"] > 0
     assert middle["optimiser"]["state"] and middle["league"]["taken"] == 2
     assert {"generator", "torch"} <= set(middle["random"]) and middle["carry"] is not None
+    assert middle["carry"].next_episodes is None  # redrawn at each segment's start
 
     # The copy's plan writes to its own directory.
     middle["plan"]["out"] = str(resumed)
