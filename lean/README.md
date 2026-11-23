@@ -30,7 +30,7 @@ checked: `docs/rewrite/core-worklog.md`. Questions for the author: `docs/questio
   outcomes, ten fields drawn per environment, fog, the P-51D only. v2's flight and damage
   models are gone (they were checked against v2 first: `docs/rewrite/game-parity.md`).
   Measured: `docs/rewrite/core-flight-measurements.md`, charts `docs/rewrite/*-core.png`.
-- **Sandbox** (`python -m lean.sandbox`): fly the game by keyboard.
+- **Web tool** (`python -m lean.tool`, needs `uv sync --extra tools`): ship tuning charts and the flight sandbox in the browser (`lean/tool/README.md`); the sandbox world is `lean/sandbox`.
 - **Model** (`lean/model`): v2's model maths with the decided changes (Griffin block,
   per-kind encoder, fields as attention memory, gated attention, rotary values, 4x MLP, 64
   linear HL-Gauss bins, swappable position code); 2.0M parameters, 509 operations per step.
@@ -51,7 +51,7 @@ Run from the repository root (`uv run --no-sync` in front of each with the proje
     python -m lean.train --stage bc --out DIR       # BC only: DIR/bc.pt
     python -m lean.train --stage rl --start DIR/bc.pt --out DIR   # RL from the BC hand-off
     python -m lean.eval DIR/rl.pt --weights ema --sizes 4         # the crossover against the scripted agent
-    python -m lean.sandbox                          # fly the game by keyboard
+    python -m lean.tool                             # web tool at http://127.0.0.1:8000/: tuning charts, fly the game
 
 The sections below describe the first cut (2026-11-22) and are kept for the record.
 

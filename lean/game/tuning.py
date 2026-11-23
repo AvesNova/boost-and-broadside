@@ -216,18 +216,29 @@ def direct_fields(
 SOLVED = ("engine_power", "static_thrust", "induced_drag_scale")
 
 
-def _flown(row: dict[str, float]) -> list[float]:
+def _flown(row: dict[str, float], speed_step: float = 0.05) -> list[float]:
     """The three flown handles the flight model keeps: cruise, low-speed acceleration, settled
     full-stick turn rate (game units)."""
-    p = performance(row)
+    p = performance(row, speed_step=speed_step, flown_only=True)
     return [p["top_speed"], p["low_speed_acceleration"], p["settled_turn_rate"]]
 
 
 def handles_row(
-    handles: dict[str, float], base: dict[str, float], iterations: int = 40
+    handles: dict[str, float],
+    base: dict[str, float],
+    iterations: int = 40,
+    speed_step: float = 0.05,
+    fast: bool = False,
 ) -> dict[str, float]:
     """A card row from a design's handles (game units); fields the handles do not set come
-    from `base` (nose frequency, stick levels, the flight terms). See the module docstring."""
+    from `base` (nose frequency, stick levels, the flight terms). `speed_step`: the speed grid of
+    the flown numbers the solve matches (a tool may take a coarser one). `fast` (for an
+    interactive tool; the default solve is unchanged): start from the base's engine power and induced drag, Broyden-update
+    the Jacobian, stop at a residual of 1e-5 (the flown handles to 0.001%).
+    `handles["low_speed_acceleration"]` may be None (or absent): the static thrust is then the
+    base's and the low-speed acceleration is not matched (a power-limited ship such as the P-51D
+    flies the same whatever its static thrust).
+    See the module docstring."""
     if abs(handles["half_lift_drag"] - 0.25) > 1e-9:
         raise ValueError(
             "lean's card has the square polar only (half-lift drag 0.25, bleed exponent 2)"
@@ -238,13 +249,17 @@ def handles_row(
     row["exchange_acceleration"] = trade
     target = [
         handles["cruise_speed"],
-        handles["low_speed_acceleration"],
+        handles.get("low_speed_acceleration"),
         handles["sustained_turn_rate"],
     ]
+    free_static = target[1] is None  # the static thrust kept as the base's: a tool's handles
 
     def residual(logs):
         trial = {**row, **{name: math.exp(x) for name, x in zip(SOLVED, logs)}}
-        return [math.log(f / t) for f, t in zip(_flown(trial), target)]
+        return [
+            0.0 if t is None else math.log(f / t)
+            for f, t in zip(_flown(trial, speed_step), target)
+        ]
 
     # First guess: thrust power to hold cruise against the zero-lift and 1 g induced drag; the
     # static thrust from the low-speed acceleration; the base's induced drag.
@@ -253,25 +268,35 @@ def handles_row(
     power = (row["zero_lift_drag"] * v**2 + k * card.GRAVITY**2 / v**2) * v
     stall = handles["stall_speed"]
     static = (
-        handles["low_speed_acceleration"]
+        (handles["low_speed_acceleration"] if not free_static else 0.0)
         + row["zero_lift_drag"] * stall**2
         + k * card.GRAVITY**2 / stall**2
     )
     logs = [math.log(power), math.log(static), math.log(base["induced_drag_scale"])]
+    if free_static:
+        logs[1] = math.log(base["static_thrust"])
+    if fast:
+        logs[0], logs[2] = math.log(base["engine_power"]), math.log(base["induced_drag_scale"])
+    tolerance = 1e-5 if fast else 1e-7
     step = 1e-5
+    jacobian, last = None, None
     for _ in range(iterations):
         r = residual(logs)
-        if max(abs(x) for x in r) < 1e-7:
+        if max(abs(x) for x in r) < tolerance:
             break
-        jacobian = torch.zeros(3, 3, dtype=torch.float64)
-        for j in range(3):
-            moved = list(logs)
-            moved[j] += step
-            jacobian[:, j] = (
-                torch.tensor(residual(moved), dtype=torch.float64)
-                - torch.tensor(r, dtype=torch.float64)
-            ) / step
-        delta = torch.linalg.solve(jacobian, -torch.tensor(r, dtype=torch.float64)).clamp(-0.5, 0.5)
+        r_tensor = torch.tensor(r, dtype=torch.float64)
+        if fast and jacobian is not None:  # Broyden's rank-one update: no new evaluations
+            moved_by, change = last[0], r_tensor - last[1]
+            jacobian = jacobian + torch.outer(change - jacobian @ moved_by, moved_by) / (moved_by @ moved_by)
+        else:
+            jacobian = torch.zeros(3, 3, dtype=torch.float64)
+            for j in range(3):
+                moved = list(logs)
+                moved[j] += step
+                jacobian[:, j] = (torch.tensor(residual(moved), dtype=torch.float64) - r_tensor) / step
+        # pinv, not solve: a power-limited design (the P-51D) has no static-thrust sensitivity
+        delta = (torch.linalg.pinv(jacobian, rtol=1e-9) @ -r_tensor).clamp(-0.5, 0.5)
+        last = (delta, r_tensor)
         logs = [x + float(d) for x, d in zip(logs, delta)]
     else:
         raise RuntimeError(f"handles_row did not converge: residual {residual(logs)}")
@@ -293,7 +318,7 @@ def _with_row(row: dict[str, float]):
         card.CARD = saved
 
 
-def _bisect(function, low, high, steps=60):
+def _bisect(function, low, high, steps=40):
     """Per element, the root of a function positive at low and negative at high."""
     for _ in range(steps):
         middle = 0.5 * (low + high)
@@ -303,18 +328,24 @@ def _bisect(function, low, high, steps=60):
 
 
 def performance(
-    row: dict[str, float], plain: bool = False, config: core.GameConfig | None = None
+    row: dict[str, float],
+    plain: bool = False,
+    config: core.GameConfig | None = None,
+    speed_step: float = 0.05,
+    flown_only: bool = False,
 ) -> dict[str, float]:
     """The row's quasi-steady numbers in the game's flight model (game units, coasting,
     mid-store): stall (1 g) speed, corner speed and rate, top speed, best climb (Ps, m/s) and
     its speed, best sustained turn (rate, speed, radius), minimum sustained radius and its
     speed, the settled full-stick turn (rate, speed), the low-speed acceleration (straight at
-    the stall speed, empty store). Rates in rad/s."""
+    the stall speed, empty store). Rates in rad/s. `flown_only`: just the three flown handles'
+    numbers (top speed, settled turn rate, low-speed acceleration, with the speeds around them),
+    which handles_row's solve needs, a third of the work."""
     config = config or core.GameConfig()
     if plain:
         row = point_mass(row)
     with torch.no_grad(), _with_row(row) as index:
-        speeds = torch.arange(30.0, 700.0, 0.05, dtype=torch.float64)
+        speeds = torch.arange(30.0, 700.0, speed_step, dtype=torch.float64)
         n = speeds.shape[0]
         constants = core.per_type_constants(config, torch.full((n,), index))
         c = SimpleNamespace(
@@ -341,23 +372,24 @@ def performance(
                 speeds[top + 1 : top + 2],
             )
         )
-        climb = torch.where(above, straight_energy / card.GRAVITY, -math.inf)
-        k = int(torch.argmax(climb))
-        out["best_climb"], out["best_climb_speed"] = float(climb[k]), float(speeds[k])
-        # sustained: per speed the stick where the energy rate is zero (full stick if positive)
-        stick = _bisect(lambda s: core.quasi_steady(c, speeds, s, 0, energy)[2], zero, one)
-        stick = torch.where(core.quasi_steady(c, speeds, one, 0, energy)[2] >= 0.0, one, stick)
-        rate, _, energy_rate = core.quasi_steady(c, speeds, stick, 0, energy)
-        held = above & (energy_rate > -1e-6) & (straight_energy >= 0.0)
-        sustained = torch.where(held, rate, 0.0)
-        k = int(torch.argmax(sustained))
-        out["sustained_rate"], out["sustained_speed"] = float(sustained[k]), float(speeds[k])
-        out["sustained_radius"] = out["sustained_speed"] / out["sustained_rate"]
-        radius = torch.where(
-            held & (sustained > 1e-6), speeds / sustained.clamp_min(1e-9), math.inf
-        )
-        k = int(torch.argmin(radius))
-        out["min_radius"], out["min_radius_speed"] = float(radius[k]), float(speeds[k])
+        if not flown_only:
+            climb = torch.where(above, straight_energy / card.GRAVITY, -math.inf)
+            k = int(torch.argmax(climb))
+            out["best_climb"], out["best_climb_speed"] = float(climb[k]), float(speeds[k])
+            # sustained: per speed the stick where the energy rate is zero (full stick if positive)
+            stick = _bisect(lambda s: core.quasi_steady(c, speeds, s, 0, energy)[2], zero, one)
+            stick = torch.where(core.quasi_steady(c, speeds, one, 0, energy)[2] >= 0.0, one, stick)
+            rate, _, energy_rate = core.quasi_steady(c, speeds, stick, 0, energy)
+            held = above & (energy_rate > -1e-6) & (straight_energy >= 0.0)
+            sustained = torch.where(held, rate, 0.0)
+            k = int(torch.argmax(sustained))
+            out["sustained_rate"], out["sustained_speed"] = float(sustained[k]), float(speeds[k])
+            out["sustained_radius"] = out["sustained_speed"] / out["sustained_rate"]
+            radius = torch.where(
+                held & (sustained > 1e-6), speeds / sustained.clamp_min(1e-9), math.inf
+            )
+            k = int(torch.argmin(radius))
+            out["min_radius"], out["min_radius_speed"] = float(radius[k]), float(speeds[k])
         # the settled full-stick turn: the speed where full stick holds speed
         k = int(torch.nonzero(full_speed_rate > 0.0)[-1])
         settled = float(
@@ -378,6 +410,157 @@ def performance(
             core.quasi_steady(_take(c, 0), stall, zero[:1], 0, zero[:1])[1]
         )
     return out
+
+
+def envelope(
+    row: dict[str, float],
+    speeds,
+    sticks,
+    power: int = 0,
+    store_fraction: float | None = None,
+    plain: bool = False,
+    config: core.GameConfig | None = None,
+    minimum_speed: float = 100.0,
+) -> dict:
+    """The row's quasi-steady turn envelope (game units, the nose settled, no fields, no guns)
+    on a (stick, speed) grid: `speeds` (m/s) and `sticks` (0 to 1) as 1-D sequences, `power`
+    0 coast, 1 dive, 2 climb, at `store_fraction` of the store (default the spawn store).
+    Returns numpy arrays shaped (len(sticks), len(speeds)): rate (rad/s), radius (m), ps
+    (m/s altitude-equivalent total energy rate), speed_rate, store_rate; and per speed the
+    sustained turn (the largest rate with Ps >= 0, nan if none): sustained_rate,
+    sustained_radius; and the key numbers from the full-stick line (corner_*) and, at `minimum_speed`
+    and above (below it the turn cannot be held in flight), the sustained line
+    (best_sustained_*, tightest_sustained_*; `minimum_speed`, game m/s), or None when there are none. The charts
+    (docs/rewrite/sections/turns/doghouse.py) and the web tool draw from this."""
+    import numpy as np
+
+    config = config or core.GameConfig()
+    if plain:
+        row = point_mass(row)
+    speeds = torch.as_tensor(speeds, dtype=torch.float32)
+    sticks = torch.as_tensor(sticks, dtype=torch.float32)
+    v = speeds.repeat(len(sticks))
+    s = sticks.repeat_interleave(len(speeds))
+    b = v.shape[0]
+    with torch.no_grad(), _with_row(row) as index:
+        p = core.per_type_constants(config, torch.full((b,), index))
+        energy = (
+            p.spawn_energy.clone()
+            if store_fraction is None
+            else store_fraction * p.max_energy
+        )
+        control = SimpleNamespace(
+            thrust_scale=1.0, stick_size=s, stick_sign=torch.ones(b),
+            commanded=p.commanded_table[:, power], demand=p.demand_table[:, power],
+        )
+        setting = core._setting(p, control, v, energy)
+        lateral, _, _, thrust = setting
+        reach = (lateral.abs() / (v * v) * p.inverse_lift).clamp(0.0, 1.0)
+        angle = p.stall * (1.0 - torch.sqrt(1.0 - reach))
+        lift_coefficient = core._lift_coefficient(p, angle)
+        rate = (lift_coefficient * v * v + thrust * torch.sin(angle)) / v
+        speed_rate, store_rate = core._rates(
+            p, setting, torch.ones(b), v, lift_coefficient, torch.cos(angle), 1.0 / (v * v)
+        )
+    shape = (len(sticks), len(speeds))
+    rate = rate.reshape(shape).numpy()
+    speed_rate = speed_rate.reshape(shape).numpy()
+    store_rate = store_rate.reshape(shape).numpy()
+    speed_axis = speeds.numpy()
+    radius = speed_axis[None, :] / np.maximum(rate, 1e-9)
+    ps = (speed_axis[None, :] * speed_rate + store_rate) / card.GRAVITY
+    held_rate = np.full(len(speeds), np.nan)
+    held_radius = np.full(len(speeds), np.nan)
+    for j in range(len(speeds)):
+        ok = np.where(ps[:, j] >= 0.0)[0]
+        if len(ok):
+            i = ok[np.argmax(rate[ok, j])]
+            held_rate[j], held_radius[j] = rate[i, j], radius[i, j]
+    out = dict(
+        speeds=speed_axis, sticks=sticks.numpy(), rate=rate, radius=radius, ps=ps,
+        speed_rate=speed_rate, store_rate=store_rate,
+        sustained_rate=held_rate, sustained_radius=held_radius,
+    )
+    full = rate[-1]
+    k = int(np.nanargmax(full))
+    out["corner_speed"], out["corner_rate"] = float(speed_axis[k]), float(full[k])
+    usable = np.where(speed_axis >= minimum_speed, held_rate, np.nan)
+    if np.any(np.isfinite(usable)):
+        k = int(np.nanargmax(usable))
+        out["best_sustained_speed"], out["best_sustained_rate"] = float(speed_axis[k]), float(usable[k])
+        tight = np.where(np.isfinite(usable), held_radius, np.nan)
+        k = int(np.nanargmin(tight))
+        out["tightest_sustained_speed"], out["tightest_sustained_radius"] = float(speed_axis[k]), float(tight[k])
+    else:
+        for name in ("best_sustained_speed", "best_sustained_rate", "tightest_sustained_speed", "tightest_sustained_radius"):
+            out[name] = None
+    return out
+
+
+def ps_over_rate(grid: dict, rate_axis, rate=None, ps=None):
+    """Ps on a regular (rate, speed) grid: per speed, interpolated over the stick sweep of
+    `grid` (envelope's output; `rate` and `ps` override its arrays, e.g. in other units), nan
+    above the full-stick rate. The doghouse's shaded field."""
+    import numpy as np
+
+    rate = grid["rate"] if rate is None else rate
+    ps = grid["ps"] if ps is None else ps
+    field = np.full((len(rate_axis), rate.shape[1]), np.nan)
+    for j in range(rate.shape[1]):
+        order = np.argsort(rate[:, j])
+        inside = rate_axis <= rate[order, j][-1]
+        field[inside, j] = np.interp(rate_axis[inside], rate[order, j], ps[order, j])
+    return field
+
+
+@contextlib.contextmanager
+def flying(row: dict[str, float], factor: float = TIME_FACTOR):
+    """Inside, the card holds `row` (game units at TIME_FACTOR) as its only type, index 0, at
+    `factor` times real time (time_scale): a tool's way of flying or measuring a tuned design.
+    Process-global like time_scale; restored afterwards."""
+    saved = card.CARD
+    card.CARD = {name: (float(row[name]),) for name in saved}
+    try:
+        with time_scale(factor):
+            yield
+    finally:
+        card.CARD = saved
+        core._SHIP_CARDS.clear()
+
+
+def handles_of(row: dict[str, float], gun_range: float = 600.0) -> dict[str, float]:
+    """A row's handles (game units): the inverse of handles_row's direct fields, with the three
+    flown handles (cruise speed, low-speed acceleration, settled full-stick turn rate) as the
+    row flies them, so handles_row(handles_of(row), row) returns the row's flight."""
+    flown = performance(row)
+    return dict(
+        stall_speed=math.sqrt(card.GRAVITY / row["max_lift_coefficient"]),
+        g_limit=row["max_acceleration"] / card.GRAVITY,
+        zero_lift_drag=row["zero_lift_drag"],
+        stall_angle=row["stall_angle_scale"] * card.STALL_ANGLE,
+        vision_range=row["vision_range_scale"] * card.VISION_RANGE,
+        hit_damage=row["hit_damage"],
+        explosive_share=row["explosive_share"],
+        fire_rate=row["fire_rate"],
+        muzzle_speed=row["muzzle_speed"],
+        bullet_spread=row["bullet_spread_scale"] * card.BULLET_SPREAD,
+        bullet_drag=row["bullet_drag_scale"] * card.BULLET_DRAG,
+        gun_range=gun_range,
+        max_shield=row["max_shield"],
+        shield_recharge_rate=row["shield_recharge_rate_scale"] * card.SHIELD_RECHARGE_RATE,
+        shield_recharge_delay=row["shield_recharge_delay_scale"] * card.SHIELD_RECHARGE_DELAY,
+        head_on_fraction=row["head_on_fraction_scale"] * card.HEAD_ON_FRACTION,
+        head_on_angle=row["head_on_angle_scale"] * card.HEAD_ON_ANGLE,
+        head_on_sharpness=row["head_on_sharpness"],
+        hit_radius=row["hit_radius"],
+        core_radius=row["core_radius"],
+        half_lift_drag=0.25,
+        dive_acceleration=row["exchange_acceleration"],
+        zoom_acceleration=-row["exchange_acceleration"],
+        cruise_speed=flown["top_speed"],
+        low_speed_acceleration=flown["low_speed_acceleration"],
+        sustained_turn_rate=flown["settled_turn_rate"],
+    )
 
 
 def _take(c, index):

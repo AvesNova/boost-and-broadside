@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B&amp;B tool</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  body { margin: 0; font: 14px system-ui, sans-serif; background: #fcfcfb; color: #0b0b0b; }
+  nav { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid #e7e6e2; }
+  nav button { padding: 6px 14px; border: 1px solid #c3c2b7; background: #fff; cursor: pointer; }
+  nav button.on { background: #2a78d6; color: #fff; border-color: #2a78d6; }
+  #ships { display: none; grid-template-columns: 330px 1fr; gap: 16px; padding: 12px; }
+  #ships.on { display: grid; }
+  #controls label { display: block; margin-top: 10px; }
+  #controls input[type=range] { width: 100%; }
+  #controls .value { float: right; font-variant-numeric: tabular-nums; color: #52514e; }
+  table { border-collapse: collapse; margin: 8px 0; }
+  td { padding: 2px 12px 2px 0; font-variant-numeric: tabular-nums; }
+  td.name { color: #52514e; }
+  #error { color: #c0392b; min-height: 1.2em; }
+  #sandbox { display: none; position: relative; }
+  #sandbox.on { display: block; }
+  canvas { display: block; width: 100vw; height: calc(100vh - 50px); background: #0d1117; }
+  #hud { position: absolute; left: 10px; top: 10px; color: #d8dee9; font: 12px ui-monospace, monospace;
+         background: #161b22cc; padding: 8px 10px; white-space: pre; pointer-events: none; }
+  #status { position: absolute; left: 10px; bottom: 10px; color: #8b949e; font: 12px ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<nav><button id="tab-ships" class="on">Ships</button><button id="tab-sandbox">Sandbox</button></nav>
+
+<div id="ships" class="on">
+  <div id="controls">
+    <label>Preset <select id="preset"></select></label>
+    <label>Time scale <select id="factor">
+      <option value="1">1x real time</option><option value="1.5">1.5x</option>
+      <option value="2" selected>2x (the game)</option><option value="3">3x</option></select></label>
+    <label>Chart units <select id="units"><option value="game">game</option><option value="real">real time</option></select></label>
+    <div id="sliders"></div>
+    <p><button id="reset">Reset to preset</button></p>
+    <div id="error"></div>
+    <table id="readouts"></table>
+  </div>
+  <div><div id="doghouse" style="height:520px"></div><div id="sustained" style="height:380px"></div></div>
+</div>
+
+<div id="sandbox">
+  <canvas id="view"></canvas>
+  <div id="hud"></div>
+  <div id="status">arrows/WASD turn (shift sustained, ctrl fine) / up dive / down climb / space fire / C opponent / R reset / +- zoom</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const DEG = 180 / Math.PI;
+let presets = null, handles = {}, defaults = {}, last = null, timer = null, sequence = 0;
+
+// ---- tabs
+function show(tab) {
+  for (const t of ["ships", "sandbox"]) { $(t).classList.toggle("on", t === tab); $("tab-" + t).classList.toggle("on", t === tab); }
+  if (tab === "sandbox") startSandbox(); else stopSandbox();
+}
+$("tab-ships").onclick = () => show("ships");
+$("tab-sandbox").onclick = () => show("sandbox");
+
+// ---- ships tab
+async function init() {
+  const data = await (await fetch("/api/presets")).json();
+  presets = data.presets;
+  for (const name of Object.keys(presets)) $("preset").add(new Option(name, name));
+  $("preset").onchange = choosePreset;
+  $("factor").onchange = request;
+  $("units").onchange = () => last && draw();
+  $("reset").onclick = choosePreset;
+  choosePreset();
+}
+function choosePreset() {
+  const preset = presets[$("preset").value];
+  $("sliders").innerHTML = "";
+  handles = {}; defaults = {};
+  for (const s of preset.sliders) {
+    defaults[s.name] = s.value; handles[s.name] = s.value;
+    const label = document.createElement("label");
+    label.innerHTML = `${s.label} (${s.unit}) <span class="value"></span>`;
+    const input = document.createElement("input");
+    Object.assign(input, { type: "range", min: s.low, max: s.high, step: (s.high - s.low) / 400, value: s.value });
+    const out = label.querySelector(".value"); out.textContent = s.value.toPrecision(4);
+    input.oninput = () => { handles[s.name] = +input.value; out.textContent = (+input.value).toPrecision(4); schedule(); };
+    s.input = input; s.out = out;
+    label.appendChild(input); $("sliders").appendChild(label);
+  }
+  request();
+}
+function schedule() { clearTimeout(timer); timer = setTimeout(request, 250); }   // debounced
+async function request() {
+  const mine = ++sequence;
+  const body = { preset: $("preset").value, handles, time_scale: +$("factor").value };
+  const response = await fetch("/api/envelope", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await response.json();
+  if (mine !== sequence) return;                          // a newer request is under way
+  $("error").textContent = response.ok ? "" : "No solution for these handles: " + data.error;
+  if (!response.ok) return;
+  last = data; draw();
+}
+const nums = a => a.map(x => (x === null ? NaN : x));
+function draw() {
+  const k = last.factor, real = $("units").value === "real", f = real ? 1 / k : 1;
+  const speedUnit = real ? "m/s, real" : "m/s", rateUnit = "deg/s";
+  const key = last.design.key, ref = last.reference.key;
+  const rows = [
+    ["corner speed / rate", `${(key.corner_speed * f).toFixed(0)} ${speedUnit} / ${(key.corner_rate * DEG * f).toFixed(1)} ${rateUnit}`, ref.corner_speed * f, ref.corner_rate * DEG * f],
+    ["best sustained rate / at", fmt2(key.best_sustained_rate, key.best_sustained_speed, DEG * f, f), 0, 0],
+    ["tightest sustained radius / at", key.tightest_sustained_radius === null ? "none" : `${key.tightest_sustained_radius.toFixed(0)} m / ${(key.tightest_sustained_speed * f).toFixed(0)} ${speedUnit}`, 0, 0],
+    ["speed gap (tightest - best rate)", key.best_sustained_speed === null ? "-" : `${((key.tightest_sustained_speed - key.best_sustained_speed) * f).toFixed(0)} ${speedUnit}`, 0, 0],
+    ["top speed", `${(key.top_speed * f).toFixed(0)} ${speedUnit}`, 0, 0],
+    ["best climb (Ps) / at", `${(key.best_climb * f).toFixed(1)} m/s / ${(key.best_climb_speed * f).toFixed(0)} ${speedUnit}`, 0, 0],
+    ["stall speed (1 g)", `${(key.stall_speed * f).toFixed(0)} ${speedUnit}`, 0, 0],
+  ];
+  $("readouts").innerHTML = rows.map(r => `<tr><td class="name">${r[0]}</td><td>${r[1]}</td></tr>`).join("");
+
+  const speeds = last.design.speeds.map(v => v * f);
+  const rate = a => nums(a).map(r => r * DEG * f);
+  const line = (name, y, color, dash, width) => ({ x: speeds, y, name, mode: "lines", line: { color, dash, width: width || 2 } });
+  const D = last.design, R = last.reference;
+  const traces = [
+    { type: "contour", x: speeds, y: last.design.rate_axis.map(r => r * DEG * f), z: D.ps.map(row => row.map(p => (p === null ? NaN : p * f))),
+      colorscale: [[0, "#e34948"], [0.5, "#f0efec"], [1, "#2a78d6"]], zmid: 0, ncontours: 20, contours: { coloring: "heatmap" },
+      line: { width: 0 }, colorbar: { title: "Ps m/s", thickness: 12 }, hoverinfo: "skip", showlegend: false },
+    { type: "contour", x: speeds, y: D.rate_axis.map(r => r * DEG * f), z: D.ps.map(row => row.map(p => (p === null ? NaN : p * f))),
+      contours: { start: 0, end: 0, size: 1, coloring: "lines" }, line: { color: "#0b0b0b", width: 2, dash: "dash" },
+      showscale: false, hoverinfo: "skip", showlegend: false },
+    line("full stick", rate(D.full), "#0b0b0b"),
+    line("sustained stick", rate(D.sustained_stick), "#0b0b0b", "solid", 1),
+    line("fine stick", rate(D.fine_stick), "#0b0b0b", "solid", 1),
+    line("full stick, diving", rate(D.dive), "#52514e", "dashdot", 1),
+    line("full stick, climbing", rate(D.climb), "#52514e", "dashdot", 1),
+    { ...line("reference full stick", rate(R.full), "#898781", "dot"), },
+    { x: [key.corner_speed * f], y: [key.corner_rate * DEG * f], mode: "markers", name: "corner", marker: { symbol: "circle", size: 10, color: "#0b0b0b" } },
+  ];
+  if (key.best_sustained_speed !== null)
+    traces.push({ x: [key.best_sustained_speed * f], y: [key.best_sustained_rate * DEG * f], mode: "markers", name: "best sustained", marker: { symbol: "square", size: 10, color: "#0b0b0b" } });
+  const top = Math.max(...rate(D.full).filter(isFinite)) * 1.15;
+  Plotly.react("doghouse", traces, {
+    title: { text: `Doghouse: turn rate against speed, coast${real ? " (real units)" : ""}`, font: { size: 14 } },
+    xaxis: { title: `speed (${speedUnit})` }, yaxis: { title: "turn rate (deg/s)", range: [0, top] },
+    margin: { t: 40, r: 10 }, legend: { orientation: "h", y: -0.2 },
+  }, { responsive: true });
+
+  const held = (S, name, color, dash) => ({ x: speeds, y: rate(S.held_rate), name, mode: "lines", line: { color, dash, width: 2 } });
+  Plotly.react("sustained", [held(D, "this design", "#2a78d6"), held(R, "reference", "#898781", "dot"),
+      { x: speeds, y: nums(D.held_radius), name: "radius, this design (right)", yaxis: "y2", mode: "lines", line: { color: "#eb6834", width: 1 } }], {
+    title: { text: "Sustained turn (Ps = 0) against speed", font: { size: 14 } },
+    xaxis: { title: `speed (${speedUnit})`, range: [Math.min(...speeds) , Math.max(...speeds)] },
+    yaxis: { title: "sustained rate (deg/s)", rangemode: "tozero" },
+    yaxis2: { title: "radius (m)", overlaying: "y", side: "right", range: [0, 2000] },
+    margin: { t: 40, r: 50 }, legend: { orientation: "h", y: -0.25 },
+  }, { responsive: true });
+}
+function fmt2(rate, speed, a, b) { return rate === null ? "none" : `${(rate * a).toFixed(1)} deg/s / ${(speed * b).toFixed(0)} m/s`; }
+
+// ---- sandbox tab
+const canvas = $("view"), g = canvas.getContext("2d");
+let socket = null, setup = null, prev = null, cur = null, curAt = 0, zoom = 0.6, trail = [];
+const keys = new Set();
+function stopSandbox() { if (socket) { socket.close(); socket = null; } }
+function startSandbox() {
+  stopSandbox(); prev = cur = null; trail = [];
+  const ws = new WebSocket(`ws://${location.host}/api/sandbox`);
+  socket = ws;
+  ws.onopen = () => ws.send(JSON.stringify({ preset: $("preset").value, handles, time_scale: +$("factor").value, opponent: true }));
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === "setup") { setup = m; trail = []; }
+    else if (m.type === "error") $("status").textContent = "no solution for these handles: " + m.message;
+    else if (m.type === "frame") { prev = cur; cur = m; curAt = performance.now(); trail.push([m.ships[0].x, m.ships[0].y]); if (trail.length > 150) trail.shift(); }
+  };
+  ws.onclose = () => { if (socket === ws) socket = null; };
+}
+function send(o) { if (socket && socket.readyState === 1) socket.send(JSON.stringify(o)); }
+function controls() {
+  const left = keys.has("ArrowLeft") || keys.has("a"), right = keys.has("ArrowRight") || keys.has("d");
+  const dive = keys.has("ArrowUp") || keys.has("w"), climb = keys.has("ArrowDown") || keys.has("s");
+  return { side: +left - +right, level: keys.has("Control") ? 1 : keys.has("Shift") ? 2 : 3,
+           power: dive && !climb ? 1 : climb && !dive ? 2 : 0, fire: keys.has(" ") };
+}
+let sent = "";
+function sync() { const c = JSON.stringify(controls()); if (c !== sent) { sent = c; send(JSON.parse(c)); } }
+addEventListener("keydown", e => {
+  if ($("sandbox").classList.contains("on")) {
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Tab"].includes(k)) e.preventDefault();
+    if (!keys.has(k)) {
+      keys.add(k);
+      if (k === "c") send({ opponent: !(cur && cur.opponent_on) });
+      if (k === "r") { send({ reset: true }); trail = []; }
+    }
+    if (k === "+" || k === "=") zoom = Math.min(8, zoom * 1.1);
+    if (k === "-") zoom = Math.max(0.02, zoom / 1.1);
+    sync();
+  }
+});
+addEventListener("keyup", e => { keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); sync(); });
+addEventListener("blur", () => { keys.clear(); sync(); });
+canvas.addEventListener("wheel", e => { zoom = Math.min(8, Math.max(0.02, zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); });
+
+function pose(i, alpha) {
+  const b = cur.ships[i], a = prev ? prev.ships[i] : b;
+  let turn = b.heading - a.heading; turn = (turn + Math.PI) % (2 * Math.PI) - Math.PI;
+  return { x: a.x + alpha * (b.x - a.x), y: a.y + alpha * (b.y - a.y), heading: a.heading + alpha * turn, alive: b.alive, angle: b.angle, speed: b.speed };
+}
+function frame() {
+  requestAnimationFrame(frame);
+  if (!$("sandbox").classList.contains("on")) return;
+  const w = canvas.width = canvas.clientWidth, h = canvas.height = canvas.clientHeight;
+  g.clearRect(0, 0, w, h);
+  if (!cur || !setup) return;
+  const alpha = Math.min(1, (performance.now() - curAt) / (1000 * setup.tick));
+  const me = pose(0, alpha), foe = pose(1, alpha);
+  const sx = x => w / 2 + (x - me.x) * zoom, sy = y => h / 2 - (y - me.y) * zoom;
+  // grid
+  const spacing = [25, 50, 100, 250, 500, 1000, 2500].find(s => s * zoom >= 40) || 2500;
+  g.lineWidth = 1;
+  for (let i = Math.floor((me.x - w / 2 / zoom) / spacing); i <= Math.ceil((me.x + w / 2 / zoom) / spacing); i++) { g.strokeStyle = i % 4 ? "#1b2330" : "#2a3546"; g.beginPath(); g.moveTo(sx(i * spacing), 0); g.lineTo(sx(i * spacing), h); g.stroke(); }
+  for (let i = Math.floor((me.y - h / 2 / zoom) / spacing); i <= Math.ceil((me.y + h / 2 / zoom) / spacing); i++) { g.strokeStyle = i % 4 ? "#1b2330" : "#2a3546"; g.beginPath(); g.moveTo(0, sy(i * spacing)); g.lineTo(w, sy(i * spacing)); g.stroke(); }
+  for (const [r, c] of [[setup.arena_radius, "#d29922"], [setup.arena_radius + setup.ramp, "#8b3a3a"]]) { g.strokeStyle = c; g.beginPath(); g.arc(sx(0), sy(0), r * zoom, 0, 7); g.stroke(); }
+  g.strokeStyle = "#4d7cfe55";
+  for (const [fx, fy, r, band] of setup.fields) { for (const rr of [r - band / 2, r + band / 2]) if (rr > 0) { g.beginPath(); g.arc(sx(fx), sy(fy), rr * zoom, 0, 7); g.stroke(); } }
+  g.strokeStyle = "#3b6ea8"; g.lineWidth = 2; g.beginPath(); trail.forEach(([x, y], i) => (i ? g.lineTo(sx(x), sy(y)) : g.moveTo(sx(x), sy(y)))); g.stroke();
+  g.strokeStyle = "#ffd166";
+  for (const [x, y, dx, dy] of cur.bullets) { g.beginPath(); g.moveTo(sx(x - dx), sy(y - dy)); g.lineTo(sx(x), sy(y)); g.stroke(); }
+  for (const [p, color] of [[foe, "#ff6b6b"], [me, "#58a6ff"]]) {
+    if (!p.alive) continue;
+    const size = Math.max(12, 10 / zoom), c = Math.cos(p.heading), s = Math.sin(p.heading);
+    g.fillStyle = color; g.strokeStyle = "#fff"; g.lineWidth = 1; g.beginPath();
+    [[1.6, 0], [-1, 0.8], [-0.5, 0], [-1, -0.8]].forEach(([u, v], i) => { const X = sx(p.x + size * (u * c - v * s)), Y = sy(p.y + size * (u * s + v * c)); i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
+    g.closePath(); g.fill(); g.stroke();
+    const track = p.heading - p.angle; g.strokeStyle = "#7ee787"; g.beginPath(); g.moveTo(sx(p.x), sy(p.y)); g.lineTo(sx(p.x + 0.5 * p.speed * Math.cos(track)), sy(p.y + 0.5 * p.speed * Math.sin(track))); g.stroke();
+  }
+  const r = cur.readout, p = $("preset").value;
+  $("hud").textContent = `ship    ${p} (as tuned in Ships), ${$("factor").value}x real time
+speed   ${r.speed.toFixed(1)} m/s
+turn    ${r.turn_rate_degrees.toFixed(1)} deg/s   radius ${r.turn_radius === null ? "-" : r.turn_radius.toFixed(0) + " m"}
+g       ${r.lateral_g.toFixed(2)} lateral
+AoA     ${r.angle_of_attack_degrees.toFixed(2)} deg (stall ${r.stall_degrees.toFixed(1)})
+store   ${(100 * r.store).toFixed(1)} %   shield ${(100 * r.shield).toFixed(0)} %
+deaths ${cur.deaths}   opponent kills ${cur.kills}   opponent ${cur.opponent_on ? "on" : "off"}`;
+}
+requestAnimationFrame(frame);
+init().then(() => { if (location.hash === "#sandbox") show("sandbox"); });
+</script>
+</body>
+</html>

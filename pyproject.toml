@@ -20,6 +20,9 @@ dependencies = [
 [project.optional-dependencies]
 # Offline tools: `bnb ship-card` writes its charts with matplotlib.
 tools = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "websockets>=13",
     "matplotlib>=3.10",
     "wandb-workspaces>=0.4.13",
 ]

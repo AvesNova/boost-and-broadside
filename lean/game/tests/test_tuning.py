@@ -61,34 +61,7 @@ def test_handles_route_recovers_a_row_from_its_flown_handles():
     so the low-speed acceleration barely depends on it.)"""
     row = tuning.row_of("p51d")
     flown = tuning.performance(row)
-    handles = dict(
-        stall_speed=math.sqrt(card.GRAVITY / row["max_lift_coefficient"]),
-        g_limit=row["max_acceleration"] / card.GRAVITY,
-        zero_lift_drag=row["zero_lift_drag"],
-        stall_angle=row["stall_angle_scale"] * card.STALL_ANGLE,
-        vision_range=row["vision_range_scale"] * card.VISION_RANGE,
-        hit_damage=row["hit_damage"],
-        explosive_share=row["explosive_share"],
-        fire_rate=row["fire_rate"],
-        muzzle_speed=row["muzzle_speed"],
-        bullet_spread=row["bullet_spread_scale"] * card.BULLET_SPREAD,
-        bullet_drag=row["bullet_drag_scale"] * card.BULLET_DRAG,
-        gun_range=600.0,
-        max_shield=row["max_shield"],
-        shield_recharge_rate=row["shield_recharge_rate_scale"] * card.SHIELD_RECHARGE_RATE,
-        shield_recharge_delay=row["shield_recharge_delay_scale"] * card.SHIELD_RECHARGE_DELAY,
-        head_on_fraction=row["head_on_fraction_scale"] * card.HEAD_ON_FRACTION,
-        head_on_angle=row["head_on_angle_scale"] * card.HEAD_ON_ANGLE,
-        head_on_sharpness=row["head_on_sharpness"],
-        hit_radius=row["hit_radius"],
-        core_radius=row["core_radius"],
-        half_lift_drag=0.25,
-        dive_acceleration=row["exchange_acceleration"],
-        zoom_acceleration=-row["exchange_acceleration"],
-        cruise_speed=flown["top_speed"],
-        low_speed_acceleration=flown["low_speed_acceleration"],
-        sustained_turn_rate=flown["settled_turn_rate"],
-    )
+    handles = tuning.handles_of(row)
     base = {**row, "induced_drag_scale": 1.3 * row["induced_drag_scale"]}
     solved = tuning.handles_row(handles, base)
     again = tuning.performance(solved)
