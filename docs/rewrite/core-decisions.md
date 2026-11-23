@@ -288,6 +288,64 @@ Model
   - Values per ship for every level, outcome included; a game-token outcome head only as an
     ablation arm.
 
+## Answers from the author review, follow-ups and sections 7 to 8 (2026-11-23)
+
+Follow-ups on sections 2 to 6
+- Next-state head: HL-Gauss cross-entropy for every column. A table states, for every column,
+  linear or symlog bins and its target form (plain change, or change against an
+  extrapolation); a literature check on the target form for position, velocity and shield.
+- Initialisation, gate, per-ship values (outcome included): as the literature says (above).
+- Rotary bands: ratio between successive bands in 1.65 to 2; the coarsest band above 16.8 km
+  (more later for larger maps); successive bands turned by an irrational fraction of 90
+  degrees. Open: whether the ratio itself should be irrational (to stop harmonics of one band
+  landing on another), and the rotated share of each head (literature varies, and head size
+  matters: lean has 2 heads of 64).
+- Ship features: drop the raw x/R and y/R (the position code and rotary carry position).
+- Training spawns: speed, shield and store each uniform per ship (speed from stall to top);
+  one eighth of training games use the standard spawn (full shield, half store, standard
+  speed).
+- Clock: measure scripted against scripted (4v4 elimination, core game) and set the clock so
+  that roughly 80% of games end before it.
+- Grid cells: Fourier stays the default; grid cells an experiment arm (no paper compares
+  them).
+- Experiment arms should favour ideas with some theory but no test in this domain (grid cells,
+  weight averaging in RL).
+
+Training recipe (section 7), by the literature unless stated
+- 7.1 BC: leaning to a separate BC stage before RL, with distillation (simplest, cleanest);
+  a term inside PPO gated by the measured win rate against the scripted agent is the
+  alternative. To discuss after the literature check.
+- 7.2 Weight averaging wanted (above all for BC). Literature check: who averages weights; does
+  a uniform average from the end of warm-up, at constant learning rate, give the benefit of a
+  learning-rate decay (shown for LLM pre-training) in RL? If untested in RL, an experiment.
+- 7.3 KL early stop if it is standard practice for PPO; otherwise a monitor and a warning.
+- 7.4 Advantage scaling: the literature's best.
+- 7.5 Loss balancing: the gradient-share tuning loop is to go; literature check on how others
+  balance policy, value and auxiliary losses, and on the entropy term (type and amount).
+- 7.6 Lookahead before the bootstrap: literature check.
+- Rollout shape: literature check on the rollout (truncation) length, and on many shorter
+  environments against fewer longer ones (2,048 x 4 segments of 128 against 8,192 x 128
+  against 2,048 x 512), with Griffin's cost per length.
+- 7.7 Optimiser: standard practice (fused Adam where available, epsilon, gradient clip,
+  warm-up length for attention models).
+- 7.8 Precision: bf16 wherever standard practice allows, float32 where it requires
+  (accumulations, norm statistics, optimiser state, losses).
+- 7.9 64 bins; supports calibrated from measured returns, checked by histogram; warnings kept.
+- 7.10 About 1M environment ticks per update; how it is split is open (rollout shape above).
+
+League (section 8)
+- 8.1 (1) The policy starts as the random agent, assumed to lose every game against the
+  scripted agent (the BC gate starts at 0). (3) The live policy's games continue across
+  updates. A replaced opponent's games: to decide after looking at the tools (mixture-of-
+  experts style routing of rows to league members). (4) Environments 0 to E/2 - 1 self-play;
+  the league half to decide with (3). (5) Floor 1/8 of league games, the rest by (1 - p)^2;
+  before the first snapshot every league game is against the scripted agent. (7) Snapshot
+  opponents sample at temperature 1.
+- 8.2 Checkpoints to disk every 10M steps, none deleted. League snapshots on v2's widening
+  schedule (every 5M steps to 50M, then wider), roughly one per 100 points of live rating.
+- 8.3 The weight averages and the cheese agents join the league (cheese agents checked to be
+  reasonable).
+
 ## Proposals, not decided
 
 - Remove v2's flight and damage models from lean/game once the core model is signed off
