@@ -41,7 +41,8 @@ Fields now cost about 170 operations instead of 340, and the core config's step 
 | Operations per game tick, uncompiled | 1,300 | 1,342 (v2 config, no fields); 1,527 (core config, 10 fields; 1,692 before fix 11) | over |
 | Operations per scripted call | 170 | 172 | at |
 | Operations per policy forward | 650 | 509 compute (+294 view) per `step`, new model | under |
-| Traced operations across every compiled graph | 10,000 | pending (GPU) | |
+| Traced operations across every compiled graph | 10,000 | 5,793 (4 graphs, step K; "Compile time" below) | under |
+| Cold start (compile_check.py: process start to the end of its RL update, quiet laptop) | 260 s (budget, step K) | 221.3 s | under |
 
 ## Reading
 
@@ -239,9 +240,93 @@ values and rewards 0.25 GB each, next-state targets 0.18 GB).
 - **v2's floor (about 5,000 steady environment steps per second on the laptop):** met at
   parity with both games (6,124 and 5,586).
 
-## Not yet measured
+## Compile time (step K, 2026-11-24 01:42 to 02:30)
 
-Traced operations across every graph.
+Laptop RTX 4070, profile "performance", load average 0.7 to 3.2 (nothing else running; the
+first attempt, 2026-11-23, ran beside another agent's CPU jobs and its times are not used).
+One fresh process per row, an empty inductor cache each (TORCHINDUCTOR_CACHE_DIR), each
+commit's own docs/rewrite/sections/scoreboard/train_gpu.py at one size: 256 environments, 1
+segment of 128 ticks, 2 updates, 8 minibatches, micro-batches of 64, 8 snapshots, the core
+game at every point (the v2 game went at G1; D5 and streaming ran their `--game core`).
+torch.compile was wrapped to count each Dynamo graph's traced operations (FX call nodes;
+scratch harness, the same counting as compile_check.py). "Cold" is process start to the end
+of the first update; at this size the update's own work is about 10 s, the rest is compile.
+Steady: the second update, steps per second.
+
+| Point | Graphs | Traced operations: act / league / advance / loss = total | Cold | Steady collect / update / loop |
+|---|---|---|---|---|
+| D5 8d1d6603 | 4 | 1,630 / 812 / 2,557 / 983 = 5,982 | 215.3 s | 21,164 / 7,951 / 5,780 |
+| streaming 8231e8a0 | 4 | 1,346 / 812 / 2,139 / 963 = 5,260 | 203.4 s | 23,518 / 5,841 / 4,679 |
+| G1 31358e2a | 4 | 1,317 / 808 / 2,153 / 961 = 5,239 | 201.9 s | 22,893 / 5,629 / 4,518 |
+| G2 585dca98 | 4 | 1,340 / 816 / 2,158 / 967 = 5,281 | 204.0 s | 22,958 / 5,630 / 4,521 |
+| M 49a1f3ee | 4 | 1,411 / 841 / 2,151 / 1,051 = 5,454 | 215.9 s | 22,089 / 5,486 / 4,395 |
+| L1 ab205a41 | 4 | 1,414 / 836 / 2,129 / 1,080 = 5,459 | 215.3 s | 22,681 / 5,485 / 4,417 |
+| L2, vmap routing b69242f6 | 4 | 1,414 / 881 / 2,215 / 1,080 = 5,590 | 219.8 s | 50,094 / 5,684 / 5,105 |
+| L2 as merged (per-slot routing) 484c5d10 | **5** | 1,414 / 746 x 2 / 2,215 / 1,080 = 6,201 | 254.4 s | 13,756 / 5,448 / 3,902 |
+| E2, core 245e537f | **5** | 1,746 / 746 x 2 / 2,220 / 1,081 = 6,539 | 258.3 s | 11,451 / 5,463 / 3,698 |
+| step K fixes on 245e537f | 4 | 1,746 / 746 / 2,220 / 1,081 = 5,793 | 237.2 s | 12,412 / 5,461 / 3,792 |
+| the same, warm cache (second run, same cache) | 4 | | 93.2 s | 13,312 / 5,460 / 3,872 |
+
+The league column is the snapshot move (snapshot_actions, network_actions, then slot_actions).
+At D5 the targets ran with `--targets-once` (that commit's default was every epoch). D5's
+act and advance are larger (waste fixes 6, 7 and 9 came after it).
+
+- **The doubling was not one.** 199 s (D5) was measured at 256 environments, 403 s (M) at
+  parity, 2,048 x 4 x 128, where the first update also trains for about 170 s (the steady
+  update takes 166 s). At one size the cold start moved 215 -> 203 -> 216 s to L1, 254 s at
+  L2 and 258 s at E2.
+- **L2: one recompile, +35 s.** The per-slot routing compiled `slot_actions` twice (and
+  `advance` a second time at the first league network, BC to RL; not in this measurement,
+  which starts with the league full). Guard (TORCH_LOGS=recompiles_verbose): "'NoneType'
+  object has no attribute 'stride'". The scripted rows of the league side were a slice (a
+  view) of the scripted actions; Dynamo guards a view's base, and the next slot's input, a
+  graph's output, has none. Fixed by copying the rows (`rollout.league_rows`); a slow test
+  counts 2 graphs where there were 4. Cold 258.3 -> 237.2 s. Within L2, the vmap form (one
+  graph, 219.8 s) had no recompile; the merged per-slot form had it from the start.
+- **E2 (scripted BFM): +332 traced operations in act** (1,414 -> 1,746, +6% of the total),
+  +3.9 s cold (254.4 -> 258.3 s, within run-to-run noise). Not a regression at this budget.
+- **What is left above L1** (237.2 against 215.3 s): E2's operations, the per-slot routing's
+  first run (ten slots a tick) and the routing graph's own compile.
+- Steady speed at this size is lower from L2 on because the per-slot routing is launch-bound
+  at 256 environments (collect 22,681 at L1, 12,412 now); at parity it is not (below).
+
+Where the operations are (CPU trace of the same graphs, step K, attributed by call stack):
+act = the policy step 647 + the scripted call 394 (E2 since) + two observations 312;
+advance = the game step 1,741 of 2,245, re-deal 180, rewards 175; the loss = the policy's
+sequence 735. The four spatial sublayers trace 292 operations in each policy graph, the two
+temporal ones 215 in a step and 304 in the sequence. Inductor builds take 110 to 145 s of a cold start, Dynamo's tracing 35 to 50 s, the
+autotuner's first runs about 30 s.
+
+Levers tried or weighed (same size, same machine):
+
+| Lever | Cold | Steady loop | Verdict |
+|---|---|---|---|
+| Fix the recompile (done) | 258.3 -> 237.2 s | 3,698 -> 3,792 | kept |
+| Warm cache (the default cache directory survives between runs until /tmp is wiped) | 93.2 s | 3,872 | the default already; tracing (44 s) is what a warm start still pays |
+| Regional compilation (torch.compiler.nested_compile_region on the spatial and temporal sublayers; and on the policy's forward) | fails to trace: "Freevar has no source: item" (PyTorch 2.15, dynamic=True) | | not available here; the most it could save is three of four spatial and one of two temporal sublayers per policy graph, about 330 to 370 operations in each of the three, about 1,000 of 5,793 |
+| One CUDA graph for every league slot's call | not timed cold | parity 6,320 against 6,301; collect at 256 10,700 -> 18,325 | reverted (no gain at parity, +0.28 GiB reserved) |
+| act and slot_actions both trace the policy step | the routing graph costs 17.5 s of inductor build plus its tracing | | merging them means one batched call for the live policy and the league networks (stacked weights): not cheap, not tried |
+| advance partly eager | | | no: the game step is 78% of it and is about ten times slower uncompiled (scoreboard "GPU"); the rest (re-deal, rewards, about 500 operations) eager would add hundreds of launches a tick |
+
+Parity, one short run each (2 updates, 2,048 x 4 x 128; cold times not used: another agent's
+CPU jobs were running): steady collect / update / loop 46,648 / 7,286 / 6,302 before the fix,
+46,328 / 7,293 / 6,301 after.
+
+**Tripwire.** docs/rewrite/sections/scoreboard/compile_check.py runs the two stages in
+miniature (64 environments, one 16-tick segment, a BC update with no league network, two
+snapshots, a segment with the routing, an RL update) from an empty cache, so it also sees
+the BC to RL recompile. Against compile_baseline.json it fails on any graph break, a new
+graph or recompile, a function's traced operations more than 10% over the baseline, or a
+cold time over the budget; it warns when the cold time grows by more than 25%. Time is
+compared only on the baseline's GPU and power profile, and should be taken on a quiet
+machine. Baseline (2026-11-24 01:57, quiet): 4 graphs, act 1,746, advance 2,220,
+minibatch_loss 1,009 (the miniature's BC and RL loss), slot_actions 746 = 5,721 traced
+operations; cold 221.3 s. **Budget: 260 s** (proposed: 18% over today, about where L2's
+recompile put the full measurement). Run it at the end of every step:
+
+    PYTHONPATH=. python docs/rewrite/sections/scoreboard/compile_check.py
+
+## Not yet measured
 
 **After waste fixes 6, 7 and 9 (2026-11-23, one run, compiled, 256 environments, v2 game,
 performance profile):** collect 28,620 (was 25,974), update 6,440 (6,439), loop 5,257 (5,160);

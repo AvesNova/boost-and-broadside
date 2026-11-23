@@ -298,6 +298,14 @@ def slot_actions(config: LearnConfig, template, parameters: dict, buffers: dict,
     return action, torch.where(mine.view(1, -1, 1, 1, 1), new_carry, opponent_carry).contiguous()
 
 
+def league_rows(scripted_action: Tensor, league_envs: int) -> Tensor:
+    """The scripted agent's actions of the league environments (the last `league_envs` rows),
+    as a tensor of their own: a slice is a view, and a compiled graph guards a view's base,
+    so a view here and a graph's output there (no base) would be two graphs (the routing
+    graph's second slot, and `advance` when the league's first network joins)."""
+    return scripted_action[scripted_action.shape[0] - league_envs:].clone()
+
+
 def network_actions(config: LearnConfig, league, views: tuple[Obs, Obs], carry: CollectCarry, scripted_action: Tensor,
                     generator, step=slot_actions):
     """The league side's actions (L, N, 3) and opponent carry: the scripted agent's
@@ -305,9 +313,10 @@ def network_actions(config: LearnConfig, league, views: tuple[Obs, Obs], carry: 
     moves its own environments (`step`: slot_actions or its compiled form), one call per
     slot holding weights."""
     league_envs = carry.member.shape[0]
-    # A copy of the carry to write into: an input that aliases another (carry.opponent)
-    # would be a second compiled graph.
-    action, opponent_carry = scripted_action[scripted_action.shape[0] - league_envs:], carry.opponent.clone()
+    # Copies to write into: an input that aliases another (carry.opponent) would be a second
+    # compiled graph, and a view (the scripted rows) is guarded through its base, so the
+    # next slot's input (a graph output, no base) would recompile the graph.
+    action, opponent_carry = league_rows(scripted_action, league_envs), carry.opponent.clone()
     for slot, parameters, buffers in league.table.slots:
         action, opponent_carry = step(
             config, league.template, parameters, buffers, slot, league.table.positions, views, carry, action,
@@ -325,7 +334,7 @@ def league_actions(config: LearnConfig, opponent: Opponent, views: tuple[Obs, Ob
     league = opponent.league
     league_envs = carry.member.shape[0]
     if league is None or league.table is None or league_envs == 0:
-        return scripted_action[scripted_action.shape[0] - league_envs:], carry.opponent
+        return league_rows(scripted_action, league_envs), carry.opponent
     return network_actions(config, league, views, carry, scripted_action, generator, step)
 
 

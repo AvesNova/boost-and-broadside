@@ -119,8 +119,9 @@ What is, and what is open. History: `docs/rewrite/core-worklog.md` and this file
   outcome +-12, objective levels +-1 (placeholders); range warnings per level.
 - The store keeps positions, PPO numbers float32, other floats (the teacher's 11 probabilities
   included) float16, actions int8; the teacher adds 22 bytes per ship row.
-- Compiled: `dynamic=True`, duck sizing off from the first compiled call; 0 graph breaks and 0
-  recompiles recorded before L1 (scoreboard); not re-counted in L1.
+- Compiled: `dynamic=True`, duck sizing off from the first compiled call. Four graphs (act,
+  slot_actions, advance, minibatch_loss), each compiled once, 0 graph breaks (step K; counted
+  by docs/rewrite/sections/scoreboard/compile_check.py, the compile tripwire).
 
 ## Ran (step L2, 2026-11-23)
 
@@ -148,6 +149,20 @@ its first compile of the routing graph included (and one recompile each of the r
 graph and `advance` at that update, guard "'NoneType' object has no attribute 'stride'",
 cause not found; none after it within the update). A checkpoint at 10.49M steps (2
 snapshots and the EMA in the league) is 249 MB.
+
+## Compile (step K, 2026-11-24)
+
+The recompile of the routing graph (at its second slot) and of `advance` (when the league's
+first network joins, BC to RL) was a view: the scripted rows of the league side were a slice
+of the scripted actions, and Dynamo guards a view's base; the next input (a graph's output)
+has none ("'NoneType' object has no attribute 'stride'"). `rollout.league_rows` copies them;
+test_compiled.py checks 2 graphs where there were 4. Compile table, causes and the tripwire:
+docs/rewrite/scoreboard.md "Compile time". Run the tripwire at the end of every step:
+
+    PYTHONPATH=. python docs/rewrite/sections/scoreboard/compile_check.py
+
+Checks (2026-11-24, on 245e537f plus K): `pytest lean -m "not slow"` 224 passed; slow
+test_compiled.py 4 passed; `python -m lean.train --smoke --device cpu` completes.
 
 ## Tests
 
@@ -189,11 +204,10 @@ was below a fifth of 3e-4. One run each.
 - Step C: the cheese agents as league members of kind "scripted" after the snapshots (no
   slot; their rows need their own scripted call: today every scripted row takes the one
   scripted agent's action). `pool.py`'s docstring says where they go.
-- The routing's cost at small sizes (launch-bound, one compiled call a slot): CUDA graphs
-  for the per-slot call, or a vmap at bucketed K and W, if it matters; at parity the league
-  side is about 15 ms a tick with 11 slots.
-- The one recompile of the routing graph and of `advance` at the first update with league
-  networks (GPU run above): look at the guard with TORCH_LOGS=recompiles_verbose.
+- The routing's cost at small sizes (launch-bound, one compiled call a slot). Step K tried
+  one CUDA graph of every slot's call per network table: collect at 256 environments 10,700
+  -> 18,325 steps/s, at parity nothing (loop 6,320 against 6,301; +0.28 GiB reserved), so it
+  was reverted (commit 992bb7ef and its revert hold it).
 - Steady steps per second with league networks at parity under the per-slot form: not
   measured (the short run had one such update).
 - Checkpoints repeat the games in progress and Adam's moments (backlog P done: snapshots are
