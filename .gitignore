@@ -20,3 +20,7 @@ wandb/
 # The documentation site, built by `mkdocs build`
 site/
 !tests/sections/golden/*.pt
+
+# Local outputs (play replays, review and dry-run material); kept in ../data/, not in git
+/replays/
+/review/
