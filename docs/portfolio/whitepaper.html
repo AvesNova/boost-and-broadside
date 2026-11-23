@@ -89,9 +89,9 @@ is measurably <i>stronger</i> at 8 and 16 ships per side than at the size it tra
 
 <figure>
   <div class="strip s4">
-    <img src="assets/hero_0.png"><img src="assets/hero_1.png"><img src="assets/hero_2.png"><img src="assets/hero_4.png">
+    <img src="assets/hero_0.png"><img src="assets/hero_1.png"><img src="assets/hero_2.png"><img src="assets/hero_3.png">
   </div>
-  <figcaption><b>Figure 1.</b> Frames from one seeded game of four learned ships (blue) against seven scripted ships (red), averaged weights, cropped to the action. Rings are refractive fields that bend the paths of ships and bullets. Reduced to one ship against six, the learned side still wins this game; across 4,096 games at 4-vs-7 it wins 62%.</figcaption>
+  <figcaption><b>Figure 1.</b> Frames from one seeded game of four learned ships (blue) against seven scripted ships (red), averaged weights, each frame cropped to the action and brightened for print. Rings are refractive fields that bend the paths of ships and bullets. Reduced to one ship against six, the learned side still wins this game; across 4,096 games at 4-vs-7 it wins 62%.</figcaption>
 </figure>
 
 <h2><span class="n">1</span>Contributions</h2>
@@ -113,10 +113,10 @@ is measurably <i>stronger</i> at 8 and 16 ships per side than at the size it tra
 <!-- ============================ PAGE 2 ============================ -->
 <div class="break">
 <h2><span class="n">2</span>The environment</h2>
-<p>Two teams of ships manoeuvre and fire projectiles on a 1024×1024 toroidal map at 60&nbsp;Hz
+<p>Two teams of ships maneuver and fire projectiles on a 1024×1024 toroidal map at 60&nbsp;Hz
 until one side is eliminated or a 17.1&nbsp;s cap is reached. Each ship picks a factored action
 (power, turn, shoot) 30 times a second. Flight has lift, drag, stall and a battery that
-thrust draws from; armour is directional, so a head-on hit lands 30% of its damage and a
+thrust draws from; armor is directional, so a head-on hit lands 30% of its damage and a
 broadside nearly all of it.</p>
 <p>Optional <b>refractive fields</b> make the terrain continuous rather than walled. A field
 gives a ship an effective mass <code>m = n²</code>, so one force law produces smooth
@@ -197,6 +197,7 @@ at each symmetric size, with the scripted controller fixed at 1000.</p>
   <tr><td>32</td><td class="r">11,712</td><td class="r">2085 ± 31</td></tr>
   <tr><td>64</td><td class="r">2,928</td><td class="r">1605 ± 45</td></tr>
 </table>
+<p class="small">The 2,110 on page 1 comes from a separate 4-vs-4 calibration tournament (section 7); the two fits use different player pools and agree within about one standard error.</p>
 </div>
 </div>
 <p>The policy is stronger at 8-vs-8 and 16-vs-16 than at the size it trained at, then
@@ -221,7 +222,7 @@ equal numbers at every size.</p>
   <tr><td>32</td><td class="r">46</td><td class="r hi">52.3%</td></tr>
   <tr><td>64</td><td class="r">76</td><td class="r hi">54.9%</td></tr>
 </table>
-<p class="small">Final live checkpoint; 256 games per point (204 at 64 ships), so each boundary carries several points of binomial noise.</p>
+<p class="small">Final live checkpoint. This table is a quick boundary search over integer fleet sizes at 256 games per point (204 at 64 ships), so each boundary carries several points of binomial noise. Figure 4 is the precise measurement: 4,096 games per point (3,072 at 32 ships) on a fixed grid of ratios, interpolated to the 50% point.</p>
 </div>
 <figure>
   <img src="../results/v1-731/crossover_by_size.png">
@@ -292,14 +293,14 @@ tournaments with different player pools rate the final checkpoint 2110 ± 11 and
 <h2><span class="n">8</span>Engineering: a research run on 8 GB</h2>
 <p>The reference run logged 671,846,400 environment steps over 674 PPO updates in 70.3 hours,
 with a 12M-token logical batch per update, on a laptop GPU. Making that fit was its own
-piece of work, organised around a rule: <b>fitting a card must never silently change the
+piece of work, organized around a rule: <b>fitting a card must never silently change the
 experiment.</b> Memory knobs are sorted into tiers by what they promise, and the launcher
 (<code>bnb train --vram</code>) may only move the ones that preserve the objective and the
 logical batch.</p>
 
 <table class="keep">
   <tr><th>Technique</th><th>What it buys</th><th>Measured cost</th></tr>
-  <tr><td><b>Attention-mask dtype fix</b></td><td>An fp32 mask on bf16 queries silently disqualified the fused attention kernels and materialised the full score matrix. Building the mask in the query's dtype restores the fused path.</td><td>None; a latent bug, now pinned by a test</td></tr>
+  <tr><td><b>Attention-mask dtype fix</b></td><td>An fp32 mask on bf16 queries silently disqualified the fused attention kernels and materialized the full score matrix. Building the mask in the query's dtype restores the fused path.</td><td>None; a latent bug, now pinned by a test</td></tr>
   <tr><td><b>Gradient checkpointing</b></td><td>Activation memory cut 54% and made flat in depth; numerically exact</td><td>+20.6% update time</td></tr>
   <tr><td><b>Host-backed rollout shards</b></td><td>Doubles experience per update (6M to 12M tokens) with effectively zero added persistent VRAM; bulk storage in pageable RAM, pinned staging only for the minibatch in flight</td><td>About 4.5% throughput at equal experience (inferred from measured phase times)</td></tr>
   <tr><td><b>Reduced-precision buffer</b></td><td>Roughly halves the rollout buffer: bf16 leaf channels, never fp16 (overflow), positions kept fp32 for sub-pixel Fourier encoding, every accumulator fp32</td><td>About 0.4% rounding on read-once channels</td></tr>
@@ -341,7 +342,7 @@ architecture, token geometry) that invalidates itself when any of those change.<
   of ship count, so 32- and 64-ship ratings rest on far fewer games and carry ±31 and ±45
   Elo.</li>
   <li><b>The run stopped early,</b> at 672M of a planned 1,000M steps, after 2.9 days. The rating had
-  levelled off (within 50 Elo of final from about 457M steps), but what the remainder
+  leveled off (within 50 Elo of final from about 457M steps), but what the remainder
   would have added is unmeasured.</li>
   <li><b>Transfer is shown across the sizes tested,</b> not as a general scale-invariance
   law, nor under changed maps, physics or observations.</li>
