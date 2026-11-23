@@ -5,7 +5,7 @@ streaming the rollout.
     PYTHONPATH=. python docs/rewrite/sections/scoreboard/train_gpu.py \\
         [--compile | --no-compile] [--envs 2048] [--segments 4] [--updates 3] \\
         [--minibatches 32] [--micro 64] [--stream | --no-stream] [--snapshots 8] \\
-        [--targets-every-epoch] [--no-bf16] [--out rows.jsonl] [--label text]
+        [--targets-every-epoch] [--no-bf16] [--no-network-cuda-graph] [--out rows.jsonl] [--label text]
 
 Defaults are LearnConfig's (the update at parity with v2: 2,048 environments x 4 segments
 x 128 ticks, 32 minibatches, micro-batches of 64 views, the rollout streamed to pinned host
@@ -62,6 +62,8 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--targets-every-epoch", action="store_true", help="LearnConfig.targets_every_epoch = True")
     parser.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=True, help="LearnConfig.bf16")
+    parser.add_argument("--network-cuda-graph", action=argparse.BooleanOptionalAction, default=defaults.network_cuda_graph,
+                        help="LearnConfig.network_cuda_graph")
     parser.add_argument("--out", default=None, help="append rows to this JSON-lines file")
     parser.add_argument("--label", default="")
     arguments = parser.parse_args()
@@ -70,7 +72,7 @@ def main() -> None:
     config = dataclasses.replace(
         defaults, minibatches=arguments.minibatches, micro_batch_views=arguments.micro, stream_rollout=arguments.stream,
         segments_per_update=arguments.segments, bf16=arguments.bf16,
-        targets_every_epoch=arguments.targets_every_epoch,
+        targets_every_epoch=arguments.targets_every_epoch, network_cuda_graph=arguments.network_cuda_graph,
     )
     envs, ticks, segments = arguments.envs, config.segment_ticks, config.segments_per_update
     torch.manual_seed(arguments.seed)
@@ -94,7 +96,7 @@ def main() -> None:
         "label": arguments.label, "compile": compiled, "bf16": config.bf16, "envs": envs, "segments": segments, "ticks": ticks,
         "minibatches": config.minibatches, "micro_batch_views": config.micro_batch_views,
         "stream": config.stream_rollout, "targets_every_epoch": config.targets_every_epoch, "epochs": config.epochs,
-        "snapshots": league.snapshots, "torch": torch.__version__, "gpu": torch.cuda.get_device_name(),
+        "snapshots": league.snapshots, "network_cuda_graph": config.network_cuda_graph, "torch": torch.__version__, "gpu": torch.cuda.get_device_name(),
     }
     print(setting, flush=True)
 
