@@ -20,7 +20,7 @@ from lean.scripted import (
     personas,
     renew_memory,
 )
-from lean.scripted.opponent import CLIMB, COAST, DIVE
+from lean.scripted.opponent import CLIMB, COAST, DIVE, explain
 from lean.scripted.parameters import PARAMETERS, SAMPLED
 
 CPU = torch.device("cpu")
@@ -183,9 +183,7 @@ POWER_CASES = [
     ("disengaged and fast, store full", 1.15, 0.0, 6.0, 1.0, COAST),
     ("engaged, below the fight speed", 0.45, 0.0, 1.5, 0.5, DIVE),
     ("engaged, below the fight speed, store empty", 0.45, 0.0, 1.5, 0.0, COAST),
-    ("engaged above the fight speed, no turn needed", 0.7, 0.0, 1.5, 0.8, CLIMB),
-    ("engaged, a shot needing a turn the store buys", 0.7, math.pi / 3, 0.8, 0.8, DIVE),
-    ("the same shot, store nearly empty: no dive", 0.7, math.pi / 3, 0.8, 0.1, CLIMB),
+    ("out of range behind a straight target: the engine closes", 0.7, 0.0, 1.5, 0.8, COAST),
 ]
 
 
@@ -210,9 +208,9 @@ def power_case(speed: float, bearing: float, distance: float, store: float):
 )
 def test_power_tracks_the_speed_target(name, speed, bearing, distance, store, expected):
     """Design B5: climb above the speed target v*, dive below it, coast in the band; v* the
-    merge speed disengaged, the fight speed engaged, corner speed when a shot is near (the
-    turn it needs worth the store and within what it buys); the dive only engaged, each
-    faded at its edge of the store."""
+    merge speed disengaged, the fight speed engaged (moved by the yo-yo: up to corner speed
+    when falling behind out of range); the dive only engaged, each faded at its edge of the
+    store. The tactics' own cases: test_tactics.py."""
     power = power_case(speed, bearing, distance, store)
     assert int(power.argmax()) == expected and float(power[expected]) > 0.6, power.tolist()
 
@@ -269,22 +267,23 @@ def test_head_on_side_is_drawn_once_per_ship_per_match_and_kept():
 def test_the_lead_counts_the_medium():
     """Review finding 9: velocities over the map are proper velocities over the index n, and a
     bullet's time of flight is n (the shooter's) times longer. A crossing target inside a field
-    (n = e^0.5) moves slower over the map, so the shooter outside leads it less: a smaller aim
-    error, so less of the full stick level."""
+    (n = e^0.5) moves slower over the map, so the shooter outside leads it less: a smaller
+    angle to the gun's lead point."""
     base = placed(
         dict(x=0.0, y=0.0, heading=0.0, speed=250.0),
         dict(x=500.0, y=0.0, heading=math.pi / 2, speed=250.0),
     )
-    full_left = []
+    lead = []
     for log_index in (0.0, 0.5):
         fields = torch.tensor(
             [[[500.0], [0.0], [150.0], [50.0], [log_index]]]
         )  # a field at the target
         state = base.replace(fields=fields)
         state.ships[0, core.LOG_INDEX] = torch.tensor([0.0, log_index])
-        full_left.append(float(decide(state).stick[0, 0, 6]))
-    print(f"P(full left) without and with the field: {full_left}")
-    assert full_left[1] < full_left[0] - 0.05
+        memory = {"target": torch.full((1, 2), -1), "side": torch.ones(1, 2)}
+        lead.append(float(explain(ScriptedConfig(), state, 0, None, memory).gun_error[0, 0]))
+    print(f"angle to the lead point without and with the field: {lead}")
+    assert 0.0 < lead[1] < lead[0] - 0.05
 
 
 def test_reads_every_number_from_the_game():

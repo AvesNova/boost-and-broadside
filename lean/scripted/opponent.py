@@ -21,8 +21,8 @@ from torch import Tensor
 from lean.contract import random_keywords
 from lean.game.core import built_once, enemy_view, slot_indices
 
-from .parameters import GATES, ScriptedConfig, value
-from .situation import signed_angle
+from .parameters import GATES, STICK_GATES, Gate, ScriptedConfig, value
+from .situation import Situation, assess, signed_angle
 
 COAST, DIVE, CLIMB = 0, 1, 2
 TINY = 1e-6  # keeps lengths and ratios away from zero
@@ -189,6 +189,26 @@ class Marginals:
     target: Tensor  # (E, N) long, the chosen target's slot
 
 
+TACTICS = ("disengaged", "merge", "offensive", "turning", "defensive")
+
+
+@dataclass
+class Explanation:
+    """One decision with its reasons, (E, N) each: what `marginals` returns and what led to
+    it (for tests, measurements and the sandbox)."""
+
+    marginals: Marginals
+    situation: Situation
+    weights: dict[str, Tensor]  # by TACTICS, sum to 1
+    yo_yo: Tensor  # y: +1 a full high yo-yo (lag, climb) .. -1 a full low one (lead, dive)
+    pursuit_time: Tensor  # tau, seconds: > 0 lead, 0 pure, < 0 lag pursuit
+    gun_weight: Tensor  # the share of the wanted point that is the gun's lead point
+    speed_target: Tensor  # v*, metres per second
+    cap: Tensor  # the share of the full stick level folded into the sustained one
+    stick_error: Tensor  # radians to the wanted direction, positive left
+    gun_error: Tensor  # radians to the gun's lead point, positive left
+
+
 def _per_other(value: Tensor | float) -> Tensor | float:
     """A per-ship value (E, N) laid along the "other ship" axis of (E, own, other) pairs."""
     return value[:, None, :] if isinstance(value, Tensor) else value
@@ -210,6 +230,19 @@ def marginals(
     view: its own team as it is, enemies at their last sighting (`enemy_view`), none never
     seen.
     """
+    return explain(config, state, team, persona, memory).marginals
+
+
+def explain(
+    config: ScriptedConfig,
+    state,
+    team: int | None,
+    persona: dict[str, Tensor] | None,
+    memory: dict[str, Tensor],
+) -> Explanation:
+    """`marginals` with its reasons. The stages (docs/rewrite/scripted-bfm-design.md B1):
+    target, assessment, tactic weights, commands mixed as scalars (pursuit time, speed
+    target, stick cap), control laws (stick, power, gun)."""
     c = state.constants
     enemies = enemy_view(state)
     gun_range = c["gun_range"]
@@ -217,14 +250,11 @@ def marginals(
     def read(name: str) -> Tensor | float:
         return value(config, persona, name)
 
-    centre, sharpness, floor = _gate_tensors(config, persona, state.x.device)
-    lead_gain, margin_factor = read("lead_gain"), read("boundary_margin")
-    weakest_weight = read("weakest_weight")
-
+    # Target.
     fight = engage(
         state,
         team,
-        weakest_weight,
+        read("weakest_weight"),
         memory["target"],
         read("target_keep_factor"),
         clearance=_per_other(read("ally_clearance") * c["hit_radius"]),
@@ -233,72 +263,178 @@ def marginals(
     has_target = fight.has_target
     safe_distance = fight.distance.clamp_min(TINY)
     range_ratio = safe_distance / gun_range
+    situation = assess(state, fight, read("turning_floor"))
 
-    # Lead: where the target is, relative to the shooter, when a bullet fired now arrives.
-    # The bullet inherits the shooter's velocity, so the relative velocity carries it. In a
-    # medium of index n a bullet's map speed is its proper speed over n, so its time of flight
-    # is n times longer (the shooter's index taken for the whole path).
+    # The gun's lead point: where the target is, relative to the shooter, when a bullet fired
+    # now arrives. The bullet inherits the shooter's velocity, so the relative velocity
+    # carries it. In a medium of index n a bullet's map speed is its proper speed over n, so
+    # its time of flight is n times longer (the shooter's index taken for the whole path).
     lead_distance = range_ratio.clamp_max(read("lead_cap"))
     bullet_drag = c["bullet_drag"]
     flight_time = torch.expm1(bullet_drag * gun_range * lead_distance) * (
-        lead_gain / (bullet_drag * c["bullet_launch_speed"])
+        read("lead_gain") / (bullet_drag * c["bullet_launch_speed"])
     )
     if fight.index is not None:
         flight_time = flight_time * fight.index
     aim_x = fight.offset_x + (fight.target_velocity_x - fight.velocity_x) * flight_time
     aim_y = fight.offset_y + (fight.target_velocity_y - fight.velocity_y) * flight_time
-    aim_error = signed_angle(state.heading_cos, state.heading_sin, aim_x, aim_y)
+    gun_error = signed_angle(state.heading_cos, state.heading_sin, aim_x, aim_y)
+    turn_needed = gun_error.abs()
+
+    # The fight's gates in one logistic.
+    target_size = (2.0 * torch.atan(c["hit_radius"] / safe_distance)).clamp(
+        read("target_size_minimum"), read("target_size_maximum")
+    )
+    fight_speed = read("fight_speed") * c["sustained_speed"]
+    gate = _gates(
+        config,
+        persona,
+        GATES,
+        {
+            "engaged": range_ratio,
+            "front": situation.bearing.abs(),
+            "rear": situation.aspect,
+            "defend": range_ratio,
+            "shot_near": turn_needed / (situation.store * c["store_turn"] + TINY),
+            "spend_need": turn_needed,
+            "spend_range": range_ratio,
+            "cash": situation.angles_off,
+            "relax": situation.angles_off,
+            "scissors": safe_distance / c["sustained_radius"],
+            "level_cap": state.speed / c["sustained_stick_speed"],
+            "yo_yo_cap": state.speed / fight_speed,
+            "aligned": turn_needed / target_size,
+            "in_range": range_ratio,
+        },
+    )
+
+    # Tactic weights: engaged or not, then the quadrant by the 3/9 line (he is ahead of me;
+    # I am behind his 3/9 line).
+    engaged = torch.where(has_target, gate["engaged"], 0.0)
+    ahead, astern = engaged * gate["front"], gate["rear"]
+    behind = engaged - ahead
+    weights = {
+        "disengaged": 1.0 - engaged,
+        "merge": ahead * (1.0 - astern),
+        "offensive": ahead * astern,
+        "turning": behind * astern,
+        "defensive": behind * (1.0 - astern),
+    }
+
+    # Yo-yo signal: closure against the closure that reaches the nose-tail distance in the
+    # closing time (corner speeds); > 0 too much closure, < 0 falling behind.
+    wanted_closure = (fight.distance - read("nose_tail") * c["sustained_radius"]) / (
+        read("closing_time") * c["quarter_turn_time"] * c["corner_speed"]
+    )
+    yo_yo = torch.tanh((situation.closure - wanted_closure) / read("yo_yo_scale"))
+    high_yo_yo = yo_yo.clamp_min(0.0)
+
+    # Commands, mixed as scalars. Pursuit time: offensive lags (high yo-yo) or leads (low).
+    pursuit_time = weights["offensive"] * (
+        -yo_yo * (read("yo_yo_time") * c["quarter_turn_time"])
+    )
+    # The wanted point is the gun's lead point while he is ahead within reach, unless a high
+    # yo-yo lags the chase.
+    gun_weight = ahead * gate["in_range"] * (1.0 - astern * high_yo_yo)
+    # Speed target, in log space, and the stick cap (the share of the full level folded into
+    # the sustained one), per tactic:
+    # - disengaged and merge: the merge speed; disengaged, the cap above the sustained stick
+    #   speed (no turn lost there);
+    # - offensive: the fight speed moved by the yo-yo: down (climb, the cap above the fight
+    #   speed) in a high yo-yo; up to corner speed in a low one against a turning target
+    #   (against a straight one the engine closes: no dive, and no climb while behind);
+    # - turning, two-circle (the energy plan, Shaw p. 110): ease to the sustained level and
+    #   bank above the fight speed until his angular advantage reaches the cash angle, then
+    #   full stick at corner speed (cash the store); one-circle: full stick at the fight
+    #   speed, down to the speed floor inside the scissors range (Shaw p. 83);
+    # - defensive (Shaw pp. 132-134): break (full stick, corner speed) while he is inside
+    #   the defend range with more than the relax angle of advantage, else a hard turn
+    #   (sustained level) at the fight speed;
+    # - offensive and turning: corner speed when a shot is near (spend for a purpose).
+    near = gate["shot_near"] * gate["spend_need"] * gate["spend_range"]
+    log_corner = _log(c["corner_speed"])
+    log_fight = _log(fight_speed)
+    log_merge = _log(read("merge_speed") * c["corner_speed"])
+    log_floor = _log(read("speed_floor") * c["stall_speed"])
+    low_yo_yo = (-yo_yo).clamp_min(0.0)
+    turning_target = situation.target_sense.abs()
+    log_yo_yo = log_fight + (
+        low_yo_yo * turning_target - high_yo_yo
+    ) * _log(c["corner_speed"] / c["sustained_speed"])
+    two_circle = 0.5 * (1.0 + situation.flow)
+    cash, break_turn = gate["cash"], gate["defend"] * gate["relax"]
+    log_two_circle = log_fight + cash * (log_corner - log_fight)
+    log_one_circle = log_fight + gate["scissors"] * (log_floor - log_fight)
+    log_turning = log_one_circle + two_circle * (log_two_circle - log_one_circle)
+    log_target = (
+        (weights["disengaged"] + weights["merge"]) * log_merge
+        + weights["offensive"] * (log_yo_yo + near * (log_corner - log_yo_yo))
+        + weights["turning"] * (log_turning + near * (log_corner - log_turning))
+        + weights["defensive"] * (log_fight + break_turn * (log_corner - log_fight))
+    )
+    log_target = log_target.clamp_min(log_floor)
+    cap = (
+        weights["disengaged"] * gate["level_cap"]
+        + weights["offensive"] * high_yo_yo * gate["yo_yo_cap"]
+        + weights["turning"] * two_circle * (1.0 - cash)
+        + weights["defensive"] * (1.0 - break_turn)
+    )
+    # Falling behind a target that is not turning: no banking (the engine closes).
+    no_bank = weights["offensive"] * low_yo_yo * (1.0 - turning_target)
+
+    # The pursuit point: his position tau ahead along his turn (second order), mixed with the
+    # gun's lead point.
+    time_squared_half = 0.5 * pursuit_time * pursuit_time
+    turn_rate = fight.target_nose_rate
+    pursuit_x = (
+        fight.offset_x
+        + fight.target_velocity_x * pursuit_time
+        - turn_rate * fight.target_velocity_y * time_squared_half
+    )
+    pursuit_y = (
+        fight.offset_y
+        + fight.target_velocity_y * pursuit_time
+        + turn_rate * fight.target_velocity_x * time_squared_half
+    )
+    point_x = pursuit_x + gun_weight * (aim_x - pursuit_x)
+    point_y = pursuit_y + gun_weight * (aim_y - pursuit_y)
 
     # Boundary: within a margin of turn radii of the edge and flying outward, blend in a
     # steer toward the centre. Without a target the wanted direction is the centre.
     distance_from_centre = torch.sqrt(state.x * state.x + state.y * state.y).clamp_min(TINY)
     in_corner_speeds = state.speed / c["corner_speed"]
     turn_radius = c["sustained_radius"] * (in_corner_speeds * in_corner_speeds).clamp_min(1.0)
-    margin = margin_factor * turn_radius
+    margin = read("boundary_margin") * turn_radius
     depth = (distance_from_centre - (c["arena_radius"] - margin)) / margin
     ramp_low = read("boundary_ramp_low")
     ramp = (depth - ramp_low) / (read("boundary_ramp_high") - ramp_low)
     outward = state.x * fight.velocity_x + state.y * fight.velocity_y > 0.0
     centre_weight = torch.where(outward & has_target, ramp.clamp(0.0, 1.0), 0.0)
     centre_weight = torch.where(has_target, centre_weight, 1.0)
-    aim_scale = (1.0 - centre_weight) / torch.sqrt(aim_x * aim_x + aim_y * aim_y).clamp_min(TINY)
+    point_length = torch.sqrt(point_x * point_x + point_y * point_y).clamp_min(TINY)
+    point_scale = (1.0 - centre_weight) / point_length
     centre_scale = centre_weight / distance_from_centre
-    wanted_x = aim_scale * aim_x - centre_scale * state.x
-    wanted_y = aim_scale * aim_y - centre_scale * state.y
+    wanted_x = point_scale * point_x - centre_scale * state.x
+    wanted_y = point_scale * point_y - centre_scale * state.y
     stick_error = signed_angle(state.heading_cos, state.heading_sin, wanted_x, wanted_y)
 
-    # Every gate in one logistic: sigmoid(sharpness * (ln quantity - ln centre)).
-    turn_size = stick_error.abs()  # radians
-    target_size = (2.0 * torch.atan(c["hit_radius"] / safe_distance)).clamp(
-        read("target_size_minimum"), read("target_size_maximum")
+    # Stick: P(turn), then the level by two further gates (the cap folding full into
+    # sustained), the side by the error's sign; a wanted direction within the head-on band of
+    # straight behind turns to the kept side.
+    turn_size = stick_error.abs()
+    stick_gate = _gates(
+        config,
+        persona,
+        STICK_GATES,
+        {"turn": turn_size, "level_two": turn_size, "level_three": turn_size},
     )
-    store = state.energy * c["inverse_max_energy"]
-    turn_needed = aim_error.abs()
-    quantities = {
-        "engaged": range_ratio,
-        "shot_near": turn_needed / (store * c["store_turn"] + TINY),
-        "spend_need": turn_needed,
-        "spend_range": range_ratio,
-        "turn": turn_size,
-        "level_two": turn_size,
-        "level_three": turn_size,
-        "aligned": turn_needed / target_size,
-        "in_range": range_ratio,
-    }
-    quantity = torch.stack([quantities[name] for name in GATES], -1)
-    logit = sharpness * torch.log(quantity.clamp_min(TINY) / centre)
-    gate = floor + (1.0 - 2.0 * floor) * torch.sigmoid(logit.clamp(-LOGIT_LIMIT, LOGIT_LIMIT))
-    gate = dict(zip(GATES, gate.unbind(-1), strict=True))
-
-    # Stick: P(turn), then the level by two further gates, the side by the error's sign; a
-    # wanted direction within the head-on band of straight behind turns to the kept side.
-    turn, above_one, above_two = gate["turn"], gate["level_two"], gate["level_three"]
+    turn, above_one = stick_gate["turn"], stick_gate["level_two"]
+    above_two = stick_gate["level_three"]
     turn_above_one = turn * above_one
-    levels = torch.stack(
-        [turn - turn_above_one, turn_above_one * (1.0 - above_two), turn_above_one * above_two], -1
-    )
-    behind = stick_error.abs() > math.pi - read("head_on_band")
-    turn_left = torch.where(behind, memory["side"] > 0.0, stick_error > 0.0)
+    full = turn_above_one * above_two * (1.0 - cap)
+    levels = torch.stack([turn - turn_above_one, turn_above_one - full, full], -1)
+    behind_band = turn_size > math.pi - read("head_on_band")
+    turn_left = torch.where(behind_band, memory["side"] > 0.0, stick_error > 0.0)
     side_floor = read("side_floor")
     left = torch.where(turn_left, 1.0 - side_floor, side_floor)[..., None]
     left_levels = left * levels
@@ -311,19 +447,10 @@ def marginals(
         [(1.0 - turn)[..., None], torch.stack([sides[1], sides[0]], -1).flatten(-2)], -1
     )
 
-    # Power: track a speed target v* (mixed in log space): disengaged the merge speed;
-    # engaged the fight speed, raised to corner speed when a shot is near (the turn it needs is
-    # worth the store and within what the store buys, in range). Climb above v*, dive below
-    # it; the dive only engaged (spend the store only for a purpose). Each fades over the
+    # Power: track the speed target. Climb above v* + band, dive below v* - band, coast
+    # between; the dive only with a purpose (offensive, turning, defensive: not disengaged
+    # nor at the merge, where the engine brings the speed). Each fades over the
     # store's edge band (the bottom for the dive, the top for the climb), as its effect does.
-    engaged = torch.where(has_target, gate["engaged"], 0.0)
-    near = gate["shot_near"] * gate["spend_need"] * gate["spend_range"]
-    log_corner = _log(c["corner_speed"])
-    log_fight = _log(read("fight_speed") * c["sustained_speed"])
-    log_merge = _log(read("merge_speed") * c["corner_speed"])
-    log_engaged = log_fight + near * (log_corner - log_fight)
-    log_target = log_merge + engaged * (log_engaged - log_merge)
-    log_target = log_target.clamp_min(_log(read("speed_floor") * c["stall_speed"]))
     excess = torch.log(state.speed) - log_target
     band = read("speed_band")
     sharpness = 1.0 / (read("power_scale") * read("temperature"))
@@ -332,17 +459,29 @@ def marginals(
     top = c["inverse_fade"] / c["inverse_max_energy"] - bottom
     room = torch.stack([top, bottom], -1).clamp(0.0, 1.0)
     climb, dive = (climb_dive * room).unbind(-1)
-    dive = dive * engaged
+    climb = climb * (1.0 - no_bank)
+    dive = dive * (weights["offensive"] + weights["turning"] + weights["defensive"])
     power_floor = read("power_floor")
     power = power_floor + (1.0 - 3.0 * power_floor) * torch.stack(
         [1.0 - dive - climb, dive, climb], -1
     )
 
-    # Gun: aligned times in range, zero without a target or while the gun cannot fire.
-    # A shot costs no store; never shoot through a team-mate (author 2026-11-23).
+    # Gun: aligned times in range at the lead point, zero without a target or while the gun
+    # cannot fire. A shot costs no store; never shoot through a team-mate (author 2026-11-23).
     ready = (state.cooldown <= 0) & ~fight.ally_in_line
     fire = torch.where(has_target & ready, gate["aligned"] * gate["in_range"], 0.0)
-    return Marginals(stick, power, fire, fight.controlled, fight.target)
+    return Explanation(
+        marginals=Marginals(stick, power, fire, fight.controlled, fight.target),
+        situation=situation,
+        weights=weights,
+        yo_yo=yo_yo,
+        pursuit_time=pursuit_time,
+        gun_weight=gun_weight,
+        speed_target=torch.exp(log_target),
+        cap=cap,
+        stick_error=stick_error,
+        gun_error=gun_error,
+    )
 
 
 def _log(x: Tensor | float) -> Tensor | float:
@@ -355,22 +494,45 @@ def _last(x: Tensor | float) -> Tensor | float:
     return x[..., None] if isinstance(x, Tensor) else x
 
 
+def _gates(
+    config: ScriptedConfig,
+    persona: dict[str, Tensor] | None,
+    gates: dict[str, Gate],
+    quantities: dict[str, Tensor],
+) -> dict[str, Tensor]:
+    """Every gate of `gates` in one logistic, by name: floor + (1 - 2 floor) sigmoid(sharpness
+    ln(quantity / centre)), the quantities stacked in the gates' order."""
+    quantity = torch.stack([quantities[name] for name in gates], -1)
+    centre, sharpness, floor = _gate_tensors(config, persona, gates, quantity.device)
+    logit = sharpness * torch.log(quantity.clamp_min(TINY) / centre)
+    probability = floor + (1.0 - 2.0 * floor) * torch.sigmoid(
+        logit.clamp(-LOGIT_LIMIT, LOGIT_LIMIT)
+    )
+    return dict(zip(gates, probability.unbind(-1), strict=True))
+
+
 def _gate_tensors(
-    config: ScriptedConfig, persona: dict[str, Tensor] | None, device: torch.device
+    config: ScriptedConfig,
+    persona: dict[str, Tensor] | None,
+    gates: dict[str, Gate],
+    device: torch.device,
 ) -> tuple[Tensor, Tensor, Tensor]:
-    """The gates' centres, signed sharpness and floors in `GATES` order: (G,) each for the
-    yardstick, built once; for a persona its centres and sharpness (E, N, G), its temperature
-    dividing the tempered gates' sharpness."""
-    centres = tuple(config.values[gate.centre] for gate in GATES.values())
-    table = _yardstick_gates(centres, config.values["temperature"], device)
+    """The gates' centres, signed sharpness and floors in the order of `gates`: (G,) each for
+    the yardstick, built once; for a persona its centres and sharpness (E, N, G), its
+    temperature dividing the tempered gates' sharpness."""
+    names = tuple(gates)
+    centres = tuple(config.values[gates[name].centre] for name in names)
+    table = _yardstick_gates(names, centres, config.values["temperature"], device)
     if persona is None:
         return table[0], table[1], table[2]
     temperature = value(config, persona, "temperature")
     reference = persona[next(iter(persona))]
     centre = torch.stack(
         [
-            torch.as_tensor(value(config, persona, gate.centre), device=device).expand_as(reference)
-            for gate in GATES.values()
+            torch.as_tensor(value(config, persona, gates[name].centre), device=device).expand_as(
+                reference
+            )
+            for name in names
         ],
         -1,
     )
@@ -383,12 +545,13 @@ def _gate_tensors(
 
 @built_once
 def _yardstick_gates(
-    centres: tuple[float, ...], temperature: float, device: torch.device
+    names: tuple[str, ...], centres: tuple[float, ...], temperature: float, device: torch.device
 ) -> Tensor:
-    """(5, G) float32 in `GATES` order: the centres, the signed sharpness (1 / (scale x
-    temperature), positive rising; the temperature only where the gate is tempered), the
-    floors, the signed sharpness without the temperature, and 1 where the gate is tempered."""
-    gates = GATES.values()
+    """(5, G) float32 for the gates `names` (of GATES or STICK_GATES): the centres, the signed
+    sharpness (1 / (scale x temperature), positive rising; the temperature only where the gate
+    is tempered), the floors, the signed sharpness without the temperature, and 1 where the
+    gate is tempered."""
+    gates = [{**GATES, **STICK_GATES}[name] for name in names]
     rows = [
         list(centres),
         [

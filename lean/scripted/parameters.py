@@ -59,8 +59,26 @@ PARAMETERS: dict[str, Parameter] = {
     # Assessment (lean.scripted.situation).
     "turning_floor": Parameter(0.25, "sustained_rate", LOG, 0.4,
                                "a nose rate this small counts as straight"),
-    # Tactics.
+    # Tactics: engaged or not, and the quadrant by the 3/9 line (merge, offensive, turning,
+    # defensive).
     "engage_range": Parameter(3.0, "gun_range", LOG, 0.4, "beyond it from the target: disengaged"),
+    "three_nine_line": Parameter(math.pi / 2, "radians", LINEAR, 0.2,
+                                 "ahead of me, or behind him, inside this angle"),
+    "defend_range": Parameter(1.0, "gun_range", LOG, 0.3, "defensive: break inside it"),
+    # Angles off (alpha + |lambda|, pi minus Shaw's angular advantage; his advantage is
+    # angles off - pi): the two-circle energy plan cashes its store when his advantage
+    # reaches 90 deg (Shaw p. 110); a break relaxes to a hard turn below 90 deg of his
+    # advantage (Shaw p. 134).
+    "cash_angle": Parameter(1.5 * math.pi, "radians", LINEAR, 0.3, "two-circle: cash beyond it"),
+    "relax_angle": Parameter(1.5 * math.pi, "radians", LINEAR, 0.3, "break beyond it"),
+    "scissors_range": Parameter(1.0, "sustained_radius", LOG, 0.3,
+                                "one-circle inside it: slow to the speed floor"),
+    # Yo-yos: y = tanh((closure - wanted closure) / scale), the wanted closure reaching the
+    # nose-tail distance in the closing time; y > 0 lag and climb, y < 0 lead and dive.
+    "nose_tail": Parameter(0.67, "sustained_radius", LOG, 0.4, "where the chase wants to sit"),
+    "closing_time": Parameter(1.0, "quarter_turn_time", LOG, 0.4, "time to close to it"),
+    "yo_yo_scale": Parameter(0.1, "corner_speed", LOG, 0.4, "closure error for a full yo-yo"),
+    "yo_yo_time": Parameter(0.5, "quarter_turn_time", LOG, 0.4, "lag or lead of a full yo-yo"),
     # Speeds: the power tracks a speed target v*, mixed in log space over the tactics.
     "merge_speed": Parameter(1.0, "corner_speed", LOG, 0.1, "v* disengaged and at the merge"),
     "fight_speed": Parameter(1.0, "sustained_speed", LOG, 0.2, "v* in the rate fight"),
@@ -73,6 +91,10 @@ PARAMETERS: dict[str, Parameter] = {
     "speed_band": Parameter(0.05, "log units", LINEAR, 0.03, "half-width of the coast band"),
     "power_scale": Parameter(0.03, "log units", LOG, 0.4, "the power's sharpness"),
     "power_floor": Parameter(0.02, "probability", meaning="each of coast, dive and climb"),
+    # The stick cap folds the full level into the sustained one (no turn lost above the
+    # sustained stick speed; banking speed in a high yo-yo above the fight speed).
+    "level_cap_speed": Parameter(1.0, "sustained_stick_speed", meaning="cap above it"),
+    "yo_yo_cap_speed": Parameter(1.0, "fight speed", meaning="high yo-yo: cap above it"),
     # Stick: three nested gates on the pointing error, then the side.
     "turn": Parameter(0.002868, "radians", LOG, 0.4, "pointing error: turn at all"),
     "level_two": Parameter(0.02097, "radians", LOG, 0.4, "pointing error: sustained stick"),
@@ -98,16 +120,28 @@ PARAMETERS: dict[str, Parameter] = {
     "temperature": Parameter(1.0, "ratio", LOG, 0.4, "softens every tempered gate"),
 }
 
+# The fight's gates, in one logistic before the stick (assessment, tactics, power, gun).
 GATES: dict[str, Gate] = {
     "engaged": Gate("engage_range", 0.2, False),  # range in gun ranges
+    "front": Gate("three_nine_line", 0.1, False),  # |bearing|, radians: he is ahead
+    "rear": Gate("three_nine_line", 0.1, False),  # aspect, radians: I am behind his 3/9 line
+    "defend": Gate("defend_range", 0.127, False),  # range in gun ranges
+    "cash": Gate("cash_angle", 0.05, True),  # angles off, radians
+    "relax": Gate("relax_angle", 0.05, True),  # angles off, radians
+    "scissors": Gate("scissors_range", 0.2, False),  # range in sustained radii
     "shot_near": Gate("spend_share", 0.2, False),  # turn needed / (store x store_turn)
     "spend_need": Gate("spend_need", 0.2, True),  # turn needed, radians
     "spend_range": Gate("spend_range", 0.127, False),  # range in gun ranges
-    "turn": Gate("turn", 0.172, True, 0.02),  # pointing error, radians
-    "level_two": Gate("level_two", 0.328, True, 0.02),
-    "level_three": Gate("level_three", 0.267, True, 0.02),
+    "level_cap": Gate("level_cap_speed", 0.05, True),  # speed / sustained stick speed
+    "yo_yo_cap": Gate("yo_yo_cap_speed", 0.05, True),  # speed / fight speed
     "aligned": Gate("aligned", 0.243, False),  # aim error in target sizes
     "in_range": Gate("in_range", 0.127, False),  # range in gun ranges
+}
+# The stick's gates, in a second logistic on the error to the wanted direction (radians).
+STICK_GATES: dict[str, Gate] = {
+    "turn": Gate("turn", 0.172, True, 0.02),
+    "level_two": Gate("level_two", 0.328, True, 0.02),
+    "level_three": Gate("level_three", 0.267, True, 0.02),
 }
 # fmt: on
 SAMPLED = tuple(name for name, row in PARAMETERS.items() if row.law != FIXED)

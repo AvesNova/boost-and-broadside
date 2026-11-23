@@ -218,7 +218,9 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
       over rate), and the time to turn 90 degrees at that rate;
     - the corner rate (full stick at corner speed) and the store's turn: the turn a full store
       buys over the best sustained rate when spent holding corner speed at full stick,
-      (corner rate - sustained rate) x full store / |energy rate at corner, full stick|."""
+      (corner rate - sustained rate) x full store / |energy rate at corner, full stick|;
+    - the sustained stick speed: above it the sustained stick level reaches the g limit
+      (corner speed / sqrt(sustained level)), so it turns as hard as the full level."""
     c = SimpleNamespace(**values)
     count = len(c.lift)  # every row of the card
     control = SimpleNamespace(
@@ -258,6 +260,8 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
         "sustained_radius": sustained_speed / sustained_rate,
         "quarter_turn_time": (0.5 * math.pi) / sustained_rate,
         "corner_rate": corner_rate,
+        # the sustained stick level reaches the g limit above this speed
+        "sustained_stick_speed": corner_speed / torch.sqrt(c.stick_table[:, 3].abs()),
         "store_turn": (corner_rate - sustained_rate) * c.max_energy / corner_energy_rate.abs(),
     }
 
