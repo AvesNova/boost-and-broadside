@@ -7,6 +7,15 @@ rate (19.0 deg/s at 166 mph), so the one-circle/two-circle choice is real. Your 
 rate is 8% under the pure physics (32.2 deg/s) because of lift smoothness; matching it needs a
 nominal g limit above 8. Details in docs/rewrite/p51d-model.md.
 
+**Your yardstick choice (stopped here, 2026-11-24 ~08:20):** the CMA-ES candidate
+(docs/rewrite/sections/scripted-screening/cma_candidate.json) scores 0.690 +- 0.005 against the
+current yardstick's 0.608 +- 0.005 on the panel and 18 conditions, is ahead in every condition,
+holds on held-out personas (0.735 against 0.643) and in its neighbourhood (a plateau, not a
+peak). Changes: lead_gain 1.12, fight_speed 1.11, temperature 0.87, in_range 1.28, aligned 0.88,
+closing_time 0.93, plan_threshold -0.25, nose_tail 0.46 (the last two at their box floors, so a
+better region may lie beyond). Options: adopt it as the defaults (yardstick and BC teacher);
+adopt and widen the two edge boxes for one more short search; keep the current defaults.
+
 **Screening of the scripted agent (2026-11-24 ~07:20; docs/rewrite/scripted-screening.md):**
 the yardstick is better than 96% of the parameter box and sits on a broad plateau; rankings
 hold across map sizes, team sizes and spawns (no retuning needed when the map changes). Two
