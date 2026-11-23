@@ -272,6 +272,22 @@ Model
   supports. (10) Fields' rotary heading towards the arena centre, not north (rotational
   symmetry). (11) Two blocks, each temporal, spatial, spatial (the code's order).
 
+- Settled by the literature, as the author asked (2026-11-23,
+  docs/rewrite/literature-model-choices.md):
+  - Next-state head: HL-Gauss cross-entropy per column (sigma 0.75 bin widths, 64 bins);
+    linear bins for bounded changes, symlog-uniform bins for heavy-tailed ones (shield,
+    store); ranges from measured changes. Targets: x and y as the change minus velocity x
+    tick (0 = moved as its velocity said); the other columns as the plain change.
+  - Gate: element-wise, after the values are rotated back, before the output projection (as
+    built).
+  - Initialisation: spatial sublayers take recurrentgemma's rule like the temporal ones
+    (depth scale 2/6 over all six residual blocks); sqrt(1 - a^2) replaced by 1 at a reset
+    and on the tick after a masked row (released recurrentgemma code); last layers orthogonal
+    0.01 for policy, value levels and next state; the hit head 0.01 with biases at the log of
+    measured class frequencies.
+  - Values per ship for every level, outcome included; a game-token outcome head only as an
+    ablation arm.
+
 ## Proposals, not decided
 
 - Remove v2's flight and damage models from lean/game once the core model is signed off
