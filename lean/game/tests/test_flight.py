@@ -194,21 +194,59 @@ def test_at_the_edges_dive_and_climb_act_as_coast_on_the_wing():
     assert abs(rates["climb"] - rates["coast"]) < 1e-3 * abs(rates["coast"])
 
 
-def test_speeds_in_order_minimum_radius_then_best_sustained_rate_then_corner():
-    """The author's requirement (2026-11-23): slowest to fastest, the minimum sustained radius,
-    then the best sustained turn rate, then the corner speed (the peak full-stick rate), for
-    each ship type (quasi-steady, coasting, spawn store: lean.game.tuning.performance, which
-    flies the game's own flight functions)."""
+def test_tightest_turn_clearly_slower_than_best_rate_then_corner():
+    """The author's requirement (2026-11-23, with a margin 2026-11-24): slowest to fastest, the
+    minimum sustained radius at least 10% below the best sustained turn rate's speed, which is
+    below the corner speed (the peak full-stick rate), for each ship type (quasi-steady,
+    coasting, spawn store: lean.game.tuning.performance, which flies the game's own flight
+    functions). So the one-circle (radius) and two-circle (rate) fights ask for different
+    speeds."""
     from lean.game import tuning
 
     for name in card.TYPE_NAMES:
         p = tuning.performance(tuning.row_of(name))
-        assert p["min_radius_speed"] < p["sustained_speed"] < p["corner_speed_flown"], (
-            name,
-            p["min_radius_speed"],
-            p["sustained_speed"],
-            p["corner_speed_flown"],
+        assert p["min_radius_speed"] <= 0.9 * p["sustained_speed"], (
+            name, p["min_radius_speed"], p["sustained_speed"]
         )
+        assert p["sustained_speed"] < p["corner_speed_flown"], (
+            name, p["sustained_speed"], p["corner_speed_flown"]
+        )
+
+
+def test_flaps_raise_the_low_speed_lift_smoothly():
+    """The automatic flaps (core._wing): the maximum lift is the clean one times 1 + flap_lift
+    up to flap_full_speed_ratio x the clean stall speed, the clean one from
+    flap_clear_speed_ratio x it, never rising with speed between, with no kink (the slope is
+    continuous: a smootherstep)."""
+    c = constants()
+    row = {name: values[P51D] for name, values in card.CARD.items()}
+    stall = one_g_speed()
+    full, clear = row["flap_full_speed_ratio"] * stall, row["flap_clear_speed_ratio"] * stall
+    lift, flapped = row["max_lift_coefficient"], row["max_lift_coefficient"] * (1.0 + row["flap_lift"])
+    assert row["flap_lift"] > 0.0
+    speeds = torch.linspace(0.8 * full, 1.2 * clear, 2001, dtype=torch.float64)
+    wing = core._wing(c, speeds.float()).double()
+    assert torch.allclose(wing[speeds <= full], torch.tensor(flapped, dtype=torch.float64), rtol=1e-6)
+    assert torch.allclose(wing[speeds >= clear], torch.tensor(lift, dtype=torch.float64), rtol=1e-6)
+    assert bool((wing[1:] <= wing[:-1] + 1e-12).all())
+    slope = (wing[1:] - wing[:-1]) / (speeds[1:] - speeds[:-1])
+    assert float((slope[1:] - slope[:-1]).abs().max()) < 0.01 * float(slope.abs().max())
+
+
+def test_flaps_cost_drag_only_for_lift_beyond_the_clean_wing():
+    """The flaps' drag is on the lift beyond the clean maximum: straight flight slow (1 g on the
+    clean wing) pays none; full stick slow pays it (with the flaps' drag removed, the same turn
+    bleeds less)."""
+    c = core.per_type_constants(CONFIG, torch.tensor([P51D]))
+    free = SimpleNamespace(**{**vars(c), "flap_drag": torch.zeros(1)})
+    speed = torch.full((1,), 1.25 * one_g_speed())
+
+    def speed_rate(constants_, stick):
+        stick = torch.full((1,), stick)
+        return float(core.quasi_steady(constants_, speed, stick, COAST, c.spawn_energy)[1])
+
+    assert speed_rate(c, 0.0) == speed_rate(free, 0.0)
+    assert speed_rate(c, 1.0) < speed_rate(free, 1.0)
 
 
 def test_the_turn_has_precedence_over_the_climb():

@@ -1,6 +1,7 @@
-"""lean.game.tuning: the card's rows are the tuning's output, the P-51D's conversion reproduces
-the October fit, the handles route recovers a row from its flown handles, and another time scale
-flies the same aircraft (docs/rewrite/p51d-model.md)."""
+"""lean.game.tuning: the card's rows are the tuning's output, the P-51D's point mass flies its
+flight test, its game row (the game terms on) flies its point mass, the handles route recovers a
+row from its flown handles, and another time scale flies the same aircraft
+(docs/rewrite/p51d-model.md)."""
 
 import math
 
@@ -10,47 +11,51 @@ import torch
 from lean.game import card, core, tuning
 
 torch.set_num_threads(1)
-MPH, FEET_PER_MINUTE = 0.44704, 0.00508
-# The October fit's sea-level point mass on the fitted airframe (docs/rewrite/physics-checks/
-# real_fit.py; decisions.md 2026-10-23): the tested 375 mph and 3,600 ft/min, and its best
-# sustained turn 18.6 deg/s at 167 mph, radius 231 m.
-OCTOBER = dict(
-    top_speed=375 * MPH,
-    best_climb=3600 * FEET_PER_MINUTE,
-    sustained_rate=math.radians(18.6),
-    sustained_speed=167 * MPH,
-    sustained_radius=231.0,
-)
 
 
-def test_card_rows_are_the_tuning():
-    """Every card row is exactly what lean.game.tuning makes."""
-    expected = {"p51d": tuning.airframe_row(tuning.P51D, tuning.GAME_FIELDS)}
+@pytest.fixture(scope="module")
+def p51d_row():
+    """The P-51D's game row as the tuning makes it (a solve of a few seconds)."""
+    return tuning.game_row(tuning.P51D, tuning.P51D_TERMS, tuning.GAME_FIELDS)
+
+
+def test_card_rows_are_the_tuning(p51d_row):
+    """Every card row is what lean.game.tuning makes (the solved coefficients to 1e-9)."""
+    expected = {"p51d": p51d_row}
     assert card.TYPE_NAMES == tuple(expected)
     for name, row in expected.items():
         assert set(row) == set(card.CARD), name
         held = tuning.row_of(name)
         for field, value in row.items():
-            assert held[field] == pytest.approx(value, rel=1e-12), (name, field)
+            assert held[field] == pytest.approx(value, rel=1e-9), (name, field)
 
 
-def test_p51d_point_mass_is_the_october_fit():
-    """With the game terms off (drag rise, separation drag, soft minima), the P-51D card flies
-    the October fit's point mass in real units: top speed and climb within 0.5%, the best
-    sustained turn within 1%, its speed and radius within 2% (a 0.05 m/s grid)."""
-    p = tuning.in_real_units(tuning.performance(tuning.row_of("p51d"), plain=True))
-    assert p["top_speed"] == pytest.approx(OCTOBER["top_speed"], rel=0.005)
-    assert p["best_climb"] == pytest.approx(OCTOBER["best_climb"], rel=0.005)
-    assert p["sustained_rate"] == pytest.approx(OCTOBER["sustained_rate"], rel=0.01)
-    assert p["sustained_speed"] == pytest.approx(OCTOBER["sustained_speed"], rel=0.02)
-    assert p["sustained_radius"] == pytest.approx(OCTOBER["sustained_radius"], rel=0.02)
+def test_p51d_point_mass_flies_the_flight_test():
+    """The P-51D's C_D0 and propeller efficiency are the point-mass fit to the flight test at
+    67 in Hg: 375 mph and 3,600 ft/min at sea level (to 1e-6)."""
+    fitted = tuning.fit_point_mass(tuning.P51D, tuning.P51D_TOP_SPEED, tuning.P51D_BEST_CLIMB)
+    for field in ("zero_lift_drag_coefficient", "propeller_efficiency"):
+        assert getattr(fitted, field) == pytest.approx(getattr(tuning.P51D, field), rel=1e-6), field
+    p = tuning.in_real_units(tuning.performance(tuning.airframe_row(tuning.P51D, tuning.GAME_FIELDS)))
+    assert p["top_speed"] == pytest.approx(tuning.P51D_TOP_SPEED, rel=1e-6)
+    assert p["best_climb"] == pytest.approx(tuning.P51D_BEST_CLIMB, rel=1e-6)
 
 
-def test_p51d_flies_its_point_mass_in_the_game():
-    """The P-51D's row has the game terms off (tuning.POINT_MASS_TERMS), so in the game it flies
-    its point mass: the October fit, and the same numbers as plain=True."""
-    row = tuning.row_of("p51d")
-    assert tuning.performance(row) == tuning.performance(row, plain=True)
+def test_p51d_game_row_flies_its_point_mass(p51d_row):
+    """With the game terms on (drag rise, separation drag, soft minima, flaps), the solved row
+    flies its point mass's top speed, best climb and best sustained rate (to 1e-6), the best
+    sustained turn's speed within 1.5% (not solved), and the same stall and corner speeds (the
+    peak full-stick rate within 0.1%)."""
+    game = tuning.performance(p51d_row)
+    point = tuning.performance(tuning.airframe_row(tuning.P51D, tuning.GAME_FIELDS))
+    for name in tuning.GAME_TARGETS:
+        assert game[name] == pytest.approx(point[name], rel=1e-6), name
+    assert game["sustained_speed"] == pytest.approx(point["sustained_speed"], rel=0.015)
+    assert game["stall_speed"] == point["stall_speed"]
+    assert game["corner_speed"] == point["corner_speed"]
+    assert game["corner_speed_flown"] == pytest.approx(point["corner_speed"], rel=1e-3)
+    # the game terms are on, not switched off
+    assert game != tuning.performance(p51d_row, plain=True)
 
 
 def test_handles_route_recovers_a_row_from_its_flown_handles():
@@ -96,7 +101,7 @@ def test_scripted_references_are_the_flown_numbers():
     """The game's derived references for the scripted agent (docs/rewrite/scripted-bfm-design.md
     B2) are what the quasi-steady analysis flies: the best sustained turn's speed within
     tuning.performance's 0.05 m/s grid, its rate and radius within 0.1%, the corner rate; the
-    quarter-turn time and the store's turn follow from them (the P-51D: 2.4 s and 2.5 rad)."""
+    quarter-turn time and the store's turn follow from them (the P-51D: 2.37 s and 2.56 rad)."""
     config = core.GameConfig(lineup=card.TYPE_NAMES)
     game = core.per_type_constants(config, torch.arange(len(card.TYPE_NAMES)))
     for index, name in enumerate(card.TYPE_NAMES):
@@ -120,5 +125,5 @@ def test_scripted_references_are_the_flown_numbers():
         expected = (float(game.corner_rate[index]) - rate) * held
         assert float(game.store_turn[index]) == pytest.approx(expected, rel=1e-4)
     p51d = card.TYPE_NAMES.index("p51d")
-    assert float(game.quarter_turn_time[p51d]) == pytest.approx(2.41, abs=0.01)
-    assert float(game.store_turn[p51d]) == pytest.approx(2.5, abs=0.02)
+    assert float(game.quarter_turn_time[p51d]) == pytest.approx(2.37, abs=0.01)
+    assert float(game.store_turn[p51d]) == pytest.approx(2.56, abs=0.02)
