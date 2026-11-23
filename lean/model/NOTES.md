@@ -11,6 +11,9 @@
 - `position.py`: the position codes (`FourierCode`, `GridCellCode`, `ColourCode`,
   `make_position_code`) and the rotary angles (`Rotary`).
 - `value.py`: `value_bin_centres`, `hl_gauss_targets`, `decode_value`.
+- `agent.py`: how a network acts, shared by lean.learn's rollout and lean.eval's runner:
+  `seat_view`, `precision`, `Network` (a weightless `Stepper` template per architecture plus
+  weights) and `network_step`, `sample_joint`, `reset_carry`.
 
 Shape: width 128, 2 blocks, 2 heads of 64, each block one temporal sublayer then two
 spatial sublayers; map memory width 64; MLPs 4 x width; heads hidden 256. Trunk tokens
