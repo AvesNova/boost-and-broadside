@@ -218,10 +218,10 @@ def compiled_tick():
 def play(
     game_config, queue: Queue, scripted_table: Tensor, policy_a=None, policy_b=None, *,
     envs: int = 4096, segment: int = 32, seconds: float | None = None, compiled: bool = False, seed: int = 0,
-    progress=None,
+    progress=None, slot_games: int = 16, minimum_envs: int = 256,
 ) -> Outcome:
-    """Play the queue's games (see the module's docstring) on min(envs, Q) environments on
-    the table's device. `scripted_table` (S, len(PARAMETERS)) float32 holds the scripted
+    """Play the queue's games (see the module's docstring) on at most `envs` environments on
+    the table's device (fewer for a short queue: Q / `slot_games`, at least `minimum_envs`). `scripted_table` (S, len(PARAMETERS)) float32 holds the scripted
     agents' vectors (one row at least, even when both seats are networks); `policy_a`,
     `policy_b` a lean.model.Policy playing every game's seat A or B, or None for the
     scripted agent of the queue's index. `seconds`: the cutoff in seconds of play, after
@@ -233,7 +233,9 @@ def play(
     torch.manual_seed(seed)
     queue = queue.to(device)
     total = len(queue)
-    envs = min(envs, total)
+    # The drain lasts up to a whole game while slots fall idle, so a short queue takes fewer
+    # slots: at least `slot_games` games per slot, never fewer than `minimum_envs` slots.
+    envs = min(envs, total, max(minimum_envs, -(-total // slot_games)))
     ships = int(queue.team_sizes().sum(-1).max())
     network_a = None if policy_a is None else network(policy_a)
     network_b = None if policy_b is None else network(policy_b)

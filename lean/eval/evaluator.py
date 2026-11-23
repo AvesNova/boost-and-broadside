@@ -110,11 +110,11 @@ class Evaluator:
                  round_games: int | None = None) -> list[dict]:
         """Play rounds until every pairing's standard error (rating.standard_error) is at most
         `target_error` or `budget` new games are spent (at least one of the two). Each round
-        (`round_games`, default 4 x envs) goes where the error is largest (rating.allocate),
+        (`round_games`, default 16 x envs) goes where the error is largest (rating.allocate),
         stored games counted first. Returns `report(pairings)`."""
         if target_error is None and budget is None:
             raise ValueError("give a target standard error, a game budget or both")
-        round_games = round_games or 4 * self.envs
+        round_games = round_games or 16 * self.envs
         spent = 0
         while True:
             rows = self.report(pairings)
