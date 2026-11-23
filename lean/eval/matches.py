@@ -44,7 +44,8 @@ def play_results(
     `team_sizes` (E, 2) gives each environment's ships per team; environments may differ
     (the game pads every one to the largest total). `opponent` plays team 1: anything with
     a `step` method is used as a policy, anything else is taken to be a ScriptedConfig
-    (fixed personas, spread 0). Actions are sampled. Finished environments are re-dealt at
+    (the yardstick, spread 0, its memory carried from tick to tick and renewed for each new
+    game, as in collect). Actions are sampled. Finished environments are re-dealt at
     their own sizes and ignored. Games deal the standard spawn (GameConfig.training_spawn
     is turned off).
     """
@@ -63,6 +64,7 @@ def play_results(
     else:
         scripted = scripted or importlib.import_module("lean.scripted")
         persona = scripted.personas(opponent, games, slots, generator, device, 0.0)
+        memory = scripted.fresh_memory(games, slots, generator, device)
     result = torch.full((games,), -1, dtype=torch.long, device=device)
 
     for tick in range(maximum_ticks):
@@ -72,7 +74,7 @@ def play_results(
             opponent_logits, _, opponent_carry = opponent.step(game.observe(game_config, state, 1), opponent_carry)
             opponent_action = split_joint(sample_joint(opponent_logits, generator))
         else:
-            opponent_action = scripted_actions(scripted, opponent, state, persona, generator)
+            opponent_action, memory = scripted_actions(scripted, opponent, state, persona, memory, generator)
         action = torch.where((state.team == 0)[..., None], action, opponent_action)
         state, step_out = game.step(game_config, state, action, game.draw_noise(game_config, games, slots, generator, device))
         result = torch.where(step_out.done & (result < 0), step_out.result, result)
@@ -80,6 +82,8 @@ def play_results(
         carry = reset_carry(carry, step_out.done)
         if opponent_is_policy:
             opponent_carry = reset_carry(opponent_carry, step_out.done)
+        else:
+            memory = scripted.renew_memory(memory, step_out.done, generator)
         if (tick + 1) % check_every == 0 and bool((result >= 0).all()):
             break
     return result

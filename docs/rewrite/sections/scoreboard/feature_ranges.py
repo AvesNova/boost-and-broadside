@@ -15,7 +15,7 @@ import sys
 import torch
 
 from lean.game import core
-from lean.scripted.opponent import ScriptedConfig, act, draw_uniforms, personas
+from lean.scripted.opponent import ScriptedConfig, act, draw_uniforms, fresh_memory, personas, renew_memory
 
 ENVS, TICKS, EVERY, PER_TEAM = 256, 3000, 3, 4
 
@@ -50,6 +50,7 @@ def main() -> None:
     state = core.reset(config, ENVS, sizes, generator, "cpu")
     slots = state.x.shape[1]
     persona = personas(scripted, ENVS, slots, generator, "cpu", 0.0)
+    memory = fresh_memory(ENVS, slots, generator, "cpu")
     samples: dict[str, list] = {}
     episodes = 0
     with torch.no_grad():
@@ -58,9 +59,10 @@ def main() -> None:
                 living = state.alive
                 for name, value in raw(config, state).items():
                     samples.setdefault(name, []).append(value[..., living].flatten())
-            action = act(scripted, state, None, persona, draw_uniforms(ENVS, slots, generator, "cpu"))
+            action, memory = act(scripted, state, None, persona, draw_uniforms(ENVS, slots, generator, "cpu"), memory)
             state, out = core.step(config, state, action, core.draw_noise(config, ENVS, slots, generator, "cpu"))
             episodes += int(out.done.sum())
+            memory = renew_memory(memory, out.done, generator)
             state = core.reset_done(config, state, out.done, sizes, generator)
             if (tick + 1) % 500 == 0:
                 print(f"tick {tick + 1} of {TICKS}, episodes ended {episodes}", file=sys.stderr, flush=True)

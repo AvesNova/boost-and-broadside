@@ -33,8 +33,8 @@ History (v2 parity, the waste fixes, fog, the flight changes): docs/rewrite/core
     flight settings, lineup and arena. A constant equal for every type of the lineup is a
     Python number; one that differs is a row of a per-slot table (E, C, N) gathered at the
     deal. Derived per type: cruise speed, stall speed, corner speed, bullet launch speed, gun range. The
-    arena radius is a constant too, read by the scripted opponent (its own fallback numbers
-    go in step S).
+    arena radius is a constant too. The scripted opponent reads every number it uses from these
+    constants by name (it holds no ship characteristics of its own).
   - `flight_tick`: half a kick, a drift, half a kick (`_setting`, `_rates`, `_kick`); the
     medium of the fields bends paths, with a no-fields path for F = 0.
   - `step`, in stages: `_fire` (a living ship with the trigger held and the gun ready fires;
@@ -74,7 +74,8 @@ History (v2 parity, the waste fixes, fog, the flight changes): docs/rewrite/core
 - Operations (docs/rewrite/sections/scoreboard/game_ops.py, uncompiled, CPU, one thread,
   E = 256, 5v5; compute + view, 2026-11-23 after G2): step 1,557 + 210 (no fields 1,219 +
   162), observe 102 + 54 (no fields 97 + 53), reset_done 265 + 82 (training spawn 277 + 82,
-  "sides" 289 + 82; no fields 105 + 35), scripted act for both teams 186 + 96.
+  "sides" 289 + 82; no fields 105 + 35), scripted act for both teams 186 + 96 (208 + 101 after
+  step S: memory, head-on side, power rule, the medium in the lead; lean/scripted/NOTES.md).
 
 ## Feature scales
 

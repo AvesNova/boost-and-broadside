@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "simplification
 import regions as R  # noqa: E402
 
 from lean.game import core  # noqa: E402
-from lean.scripted.opponent import ScriptedConfig, act, draw_uniforms, personas  # noqa: E402
+from lean.scripted.opponent import ScriptedConfig, act, draw_uniforms, fresh_memory, personas  # noqa: E402
 
 torch.set_num_threads(1)
 E, PER_TEAM = 256, 5
@@ -68,6 +68,7 @@ if __name__ == "__main__":
     scripted = ScriptedConfig()
     persona = personas(scripted, E, state.x.shape[1], torch.Generator().manual_seed(1), torch.device("cpu"), 0.0)
     uniforms = draw_uniforms(E, state.x.shape[1], torch.Generator().manual_seed(2), "cpu")
+    memory = fresh_memory(E, state.x.shape[1], torch.Generator().manual_seed(3), "cpu")
     with torch.no_grad():
-        measure("scripted act (one team)", lambda: act(scripted, state, 0, persona, uniforms))
-        measure("scripted act (both teams, one call)", lambda: act(scripted, state, None, persona, uniforms))
+        measure("scripted act (one team)", lambda: act(scripted, state, 0, persona, uniforms, memory))
+        measure("scripted act (both teams, one call)", lambda: act(scripted, state, None, persona, uniforms, memory))

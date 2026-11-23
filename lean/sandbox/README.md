@@ -2,10 +2,12 @@
 
 A quick, rough sandbox for flying one ship by keyboard in a top-down view. It flies the game
 (`GameConfig()` with no clock: `lean.game.core.step` and so `flight_tick`), so a setting
-changed with `--set` shows up here without changes. One player ship and an optional chaser
-(`lean/scripted/chaser.py`) run through the full game step at batch size 1 on the CPU, so
-bullets, hits, shields, the boundary and the fog all behave as in the game (the chaser sees
-the player within 1,000 m, or on a tick the player fires or is hit).
+changed with `--set` shows up here without changes. One player ship and an optional opponent
+run through the full game step at batch size 1 on the CPU, so bullets, hits, shields, the
+boundary and the fog all behave as in the game (the opponent sees the player within 1,000 m,
+or on a tick the player fires or is hit). The opponent is the scripted opponent
+(`lean/scripted/opponent.py`, the yardstick with its memory, as in training and evaluation)
+or, with `--opponent chaser`, the chaser (`lean/scripted/chaser.py`).
 
 Drawn with Tkinter from the standard library: nothing to install.
 
@@ -13,7 +15,7 @@ Drawn with Tkinter from the standard library: nothing to install.
 
 ```bash
 PYTHONPATH=.:src uv run --no-sync python -m lean.sandbox
-PYTHONPATH=.:src uv run --no-sync python -m lean.sandbox --no-chaser --set field_count=0
+PYTHONPATH=.:src uv run --no-sync python -m lean.sandbox --no-opponent --set field_count=0
 PYTHONPATH=.:src uv run --no-sync python -m lean.sandbox --time-scale 1
 ```
 
@@ -42,7 +44,7 @@ the readout, for example `--set fog=False`.
 | neither | coast |
 | Space | fire |
 | Tab | next ship type of the card, kept in flight (one type today: the P-51D) |
-| C | chaser on / off |
+| C | opponent on / off |
 | P | pause |
 | + / - or mouse wheel | zoom |
 | R | reset |
@@ -58,15 +60,15 @@ interpolates the ships between ticks.
 - The trail of the last 5 s, a grid (the finest of 25 m to 2500 m that is at least 40 px apart,
   every fourth line brighter), the arena edge (yellow, where boundary damage starts) and the end
   of the damage ramp (red, dashed), and the field bands (ten fields drawn at each reset).
-- The chaser (red), with an edge marker and its distance when off screen. Your bullets
-  are yellow and the chaser's orange.
+- The opponent (red), with an edge marker and its distance when off screen. Your bullets
+  are yellow and the opponent's orange.
 - Readout: speed (m/s over the map), turn rate of the flight path (deg/s), turn radius,
   lateral acceleration in the game's g (39.24 m/s^2), angle of attack against the stall
   angle, store (% of max, with a bar), shield, ship type, stick level and index, power.
 - Strip chart (bottom right): speed and store over the last 10 s.
 
 You cannot die: a lethal hit or the boundary refills the shield and counts a death. A
-killed chaser comes back 2 s later, 1500 m away.
+killed opponent comes back 2 s later, 1500 m away (with a fresh memory, as in a new match).
 
 ## Testing without the keyboard
 

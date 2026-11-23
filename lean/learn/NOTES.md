@@ -92,10 +92,11 @@ superseded by v2's levels, 2026-11-23: see "Reward levels and the hit head" at t
   itself on reset and does not use `Policy.step`'s optional `reset` or `position_offset`.
 - `game.reset` sizes N from the largest total dealt, so `start` forces environment 0 to
   the maximum size; `game.deal` is called at that N.
-- `scripted.act` is called once per tick for both teams (`team=None`), without its
-  optional memory argument and with uniforms (E, N, 3) from `torch.rand`, not
-  `scripted.draw_uniforms`; personas are drawn with the segment's deals (every persona
-  field is assumed to have a leading E).
+- `scripted.act` is called once per tick for both teams (`team=None`) with uniforms from
+  `scripted.draw_uniforms` and its memory (`CollectCarry.scripted_memory`: kept target and
+  head-on side), carried from tick to tick and taken fresh from the segment's deals at a
+  re-deal; personas are drawn with the segment's deals (None at spread 0; every persona
+  field has a leading E).
 - Next-state loss: the target here is the change in `obs.ship`, used only if the head's
   width equals SHIP_FEATURES. lean.model's head predicts scaled changes of State fields
   (`model.next_state_target(config, state, next_state)`), so with the real model the

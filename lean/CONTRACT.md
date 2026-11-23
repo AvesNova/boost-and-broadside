@@ -81,9 +81,12 @@ else a draw). No respawn.
 ```python
 @dataclass
 class ScriptedConfig: ...
-def personas(config, envs, slots, generator, device, spread: float) -> dict[str, Tensor]
-    # per-ship parameters drawn at reset; spread 0 gives the one fixed yardstick setting
-def act(config, state, team: int, persona, uniforms) -> Tensor   # (E, N, 3) long; rows of other teams are 0
+def personas(config, envs, slots, generator, device, spread: float) -> dict[str, Tensor] | None
+    # per-ship parameters drawn per match; spread 0 (the yardstick) gives None
+def fresh_memory(envs, slots, generator, device) -> dict[str, Tensor]   # kept target, head-on side
+def renew_memory(memory, done, generator) -> dict[str, Tensor]          # fresh for re-dealt environments
+def act(config, state, team: int | None, persona, uniforms, memory) -> tuple[Tensor, dict]
+    # (E, N, 3) long, rows of other teams 0 (team None: both teams), and the new memory
 ```
 
 ## `lean/model` (policy)

@@ -1,7 +1,9 @@
-"""The sandbox world, without any drawing: the player (slot 0, team 0) and an optional chaser
-(slot 1, team 1), stepped by lean.game.core.step at batch size 1 on the CPU.
+"""The sandbox world, without any drawing: the player (slot 0, team 0) and an optional opponent
+(slot 1, team 1), stepped by lean.game.core.step at batch size 1 on the CPU. The opponent is
+the scripted opponent (the yardstick, its memory carried from tick to tick as everywhere
+else) or the chaser.
 
-The player never dies: a lethal tick restores its shield and counts a death. A killed chaser
+The player never dies: a lethal tick restores its shield and counts a death. A killed opponent
 comes back two seconds later 1500 m from the player.
 """
 
@@ -11,14 +13,13 @@ from collections import deque
 
 import torch
 
+from lean import scripted
 from lean.game import card, core
-from lean.scripted.chaser import chaser_act
-from lean.scripted.opponent import ScriptedConfig
 
 TRAIL_SECONDS = 5.0
 HISTORY_SECONDS = 10.0
-CHASER_RESPAWN_SECONDS = 2.0
-CHASER_DISTANCE = 1500.0
+OPPONENT_RESPAWN_SECONDS = 2.0
+OPPONENT_DISTANCE = 1500.0
 
 
 def stick_index(side: int, level: int) -> int:
@@ -34,21 +35,25 @@ class World:
         self,
         config: core.GameConfig,
         player_type: int = 0,
-        chaser_type: int = 0,
-        chaser_on: bool = True,
+        opponent_type: int = 0,
+        opponent_on: bool = True,
         seed: int = 0,
+        opponent: str = "scripted",
     ):
+        if opponent not in ("scripted", "chaser"):
+            raise ValueError(f"opponent {opponent!r}: 'scripted' or 'chaser'")
         self.config = config
         self.h = config.tick_length
-        self.player_type, self.chaser_type, self.chaser_on = player_type, chaser_type, chaser_on
+        self.player_type, self.opponent_type, self.opponent_on = player_type, opponent_type, opponent_on
         self.generator = torch.Generator().manual_seed(seed)
-        self.scripted = ScriptedConfig(arena_radius=config.arena_radius)
+        self.opponent = opponent
+        self.scripted = scripted.ScriptedConfig()
         self.reset()
 
     # ------------------------------------------------------------------ setup
 
     def _types(self) -> torch.Tensor:
-        return torch.tensor([[self.player_type, self.chaser_type]])
+        return torch.tensor([[self.player_type, self.opponent_type]])
 
     def _constants(self):
         """Both ships' constants; any type may be flown, so the card is read for every type."""
@@ -75,23 +80,26 @@ class World:
             shield=torch.as_tensor(constants["max_shield"]).expand(1, 2),
             alive=torch.tensor([[True, False]]),
         ))
-        self._place_chaser()
-        self.state.alive[0, 1] = self.chaser_on
+        self._place_opponent()
+        self.state.alive[0, 1] = self.opponent_on
         self.tick = 0
         self.deaths = 0
-        self.chaser_kills = 0
-        self.chaser_respawn = -1
+        self.opponent_kills = 0
+        self.opponent_respawn = -1
         self.trail = deque(maxlen=int(TRAIL_SECONDS / self.h))
         self.history = deque(maxlen=int(HISTORY_SECONDS / self.h))  # (speed, store fraction)
         self.turn_rate = 0.0
         self._last_track = self._track()
         self.previous = self.poses()
 
-    def _place_chaser(self) -> None:
+    def _place_opponent(self) -> None:
+        """A new life for the opponent: placed 1500 m from the player, facing it, with a fresh
+        scripted memory (no kept target, a new head-on side), as at a match's start."""
+        self.memory = scripted.fresh_memory(1, 2, self.generator, "cpu")
         s = self.state
         bearing = 2.0 * math.pi * float(torch.rand((), generator=self.generator))
-        x = float(s.x[0, 0]) + CHASER_DISTANCE * math.cos(bearing)
-        y = float(s.y[0, 0]) + CHASER_DISTANCE * math.sin(bearing)
+        x = float(s.x[0, 0]) + OPPONENT_DISTANCE * math.cos(bearing)
+        y = float(s.y[0, 0]) + OPPONENT_DISTANCE * math.sin(bearing)
         radius = math.hypot(x, y)
         if radius > 0.8 * self.config.arena_radius:  # keep it inside the arena
             x, y = (
@@ -118,14 +126,14 @@ class World:
             shield=torch.minimum(s.shield, torch.as_tensor(s.constants["max_shield"])),
         )
 
-    def toggle_chaser(self) -> None:
-        self.chaser_on = not self.chaser_on
-        if self.chaser_on:
-            self._place_chaser()
+    def toggle_opponent(self) -> None:
+        self.opponent_on = not self.opponent_on
+        if self.opponent_on:
+            self._place_opponent()
         else:
             self.state.alive[0, 1] = False
             self.state.bullet_moves_left[0, 1] = 0
-        self.chaser_respawn = -1
+        self.opponent_respawn = -1
 
     # ------------------------------------------------------------------ stepping
 
@@ -151,7 +159,11 @@ class World:
     def advance(self, stick: int, power: int, fire: bool) -> None:
         """One 30 Hz game tick with the player's action."""
         self.previous = self.poses()
-        action = chaser_act(self.scripted, self.state, team=1)
+        if self.opponent == "scripted":
+            uniforms = scripted.draw_uniforms(1, 2, self.generator, "cpu")
+            action, self.memory = scripted.act(self.scripted, self.state, 1, None, uniforms, self.memory)
+        else:
+            action = scripted.chaser_act(self.scripted, self.state, team=1)
         action[0, 0] = torch.tensor([stick, power, int(fire)])
         noise = core.draw_noise(self.config, 1, 2, self.generator, "cpu")
         self.state, out = core.step(self.config, self.state, action, noise)
@@ -162,10 +174,10 @@ class World:
             s.alive[0, 0] = True
             s.shield[0, 0] = self.constant("max_shield", 0)
         if bool(out.died[0, 1]):
-            self.chaser_kills += 1
-            self.chaser_respawn = self.tick + int(CHASER_RESPAWN_SECONDS / self.h)
-        if self.chaser_on and self.tick == self.chaser_respawn:
-            self._place_chaser()
+            self.opponent_kills += 1
+            self.opponent_respawn = self.tick + int(OPPONENT_RESPAWN_SECONDS / self.h)
+        if self.opponent_on and self.tick == self.opponent_respawn:
+            self._place_opponent()
         track = self._track()
         turned = (track - self._last_track + math.pi) % (2.0 * math.pi) - math.pi
         self._last_track = track

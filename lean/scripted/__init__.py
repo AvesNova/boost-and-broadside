@@ -10,6 +10,7 @@ from .opponent import (
     fresh_memory,
     marginals,
     personas,
+    renew_memory,
     sample,
 )
 
@@ -24,5 +25,6 @@ __all__ = [
     "fresh_memory",
     "marginals",
     "personas",
+    "renew_memory",
     "sample",
 ]
