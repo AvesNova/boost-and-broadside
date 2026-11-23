@@ -181,6 +181,64 @@ with the v2 game (the training default) at 256 environments, 5,160, and at 1,024
 targets once per update from the stored values, as v2 does, would give 6,457 (v2 game); that
 is the author's decision (lean/learn/NOTES.md).
 
+## Update at parity with v2: streaming and micro-batches (2026-11-23 10:32 to 11:14)
+
+Laptop RTX 4070 (8 GB), platform profile "performance", no other GPU job (nvidia-smi showed
+no compute process before the first row), each row inside `systemd-run --user --scope -p
+MemoryMax=8G`. Script: docs/rewrite/sections/scoreboard/train_gpu.py (one fresh process per
+row; the loop is lean/train.py's; the league full with 8 snapshots from the start; compiled,
+bf16). The update is v2's size: 2,048 environments x 4 segments x 128 ticks = 1,048,576
+environment ticks (12,288 views with half self-play), 32 minibatches of 384 views, 4 epochs,
+micro-batches of 64 views; the rollout streamed to pinned host memory (lean.learn.store).
+"Steady" is the mean of the updates after the first (2 updates in the 3-update rows, 1
+otherwise); the first update includes the compile (inductor cache not controlled). Copy
+waits: the host's seconds waiting for copies (the store's `ready` and the staging
+buffers), the host's seconds gathering micro-batches (overlapped with the GPU), and the
+compute stream's seconds waiting for a micro-batch copy (CUDA events), each per update.
+
+| Row | collect steps/s | update steps/s | loop steps/s | compute stall / host wait / host gather per update | peak GiB allocated / reserved | first update collect + update (start to end) |
+|---|---|---|---|---|---|---|
+| v2 game, targets once (default) | 22,032 | 8,482 | **6,124** | 0.002 / 0.004 / 2.0 s (update 124 s) | 5.18 / 5.78 | 124.9 + 183.8 s (310 s) |
+| core game, targets once | 19,736 | 7,791 | **5,586** | 0.003 / 0.004 / 2.1 s | 5.58 / 7.27 | 177.8 + 201.7 s (383 s) |
+| v2 game, targets every epoch | 21,999 | 6,239 | 4,860 | 0.004 / 0.007 / 3.0 s | 5.18 / 5.81 | 87.9 + 191.2 s (281 s) |
+| v2 game, everything on the device | out of memory (7.0 GiB allocated) | | | | | |
+
+Streaming against everything on the device, at a size where both fit (1,024 environments x
+2 segments, 32 minibatches of 96 views, so each minibatch is one micro-batch of 64 and one
+padded to 64; 3 updates each):
+
+| | collect | update | loop | compute stall / host wait / host gather | peak GiB |
+|---|---|---|---|---|---|
+| streamed | 23,356 | 6,356 | 4,997 | 0.003 / 0.001 / 0.51 s | 4.84 / 5.42 |
+| on the device | 23,290 | 6,365 | 4,999 | 0 | 5.33 / 5.92 |
+
+The difference is within run-to-run noise: the copies are hidden. (This update is slower per
+step than the parity one because a quarter of its micro-batch work is padding.)
+
+Bytes per environment tick of the stored rollout (1.5 seats per environment, 4v4, 8 slots;
+the initial carries, 432 bytes, included in every column; CPU, from the arrays' sizes):
+
+| Game | full precision (the old stacked rollout) | compact, fields every tick | compact, fields once per episode (the store) |
+|---|---|---|---|
+| v2 (no fields) | 3,249 | 2,100 | 2,094 |
+| core (10 fields) | 3,564 | 2,325 | 2,097 |
+
+At parity the store holds 2.2 GB of pinned host memory (ship rows 0.73 GB, carries 0.45 GB,
+values and rewards 0.25 GB each, next-state targets 0.18 GB).
+
+- **Against the earlier rows** ("Training on the GPU", 256 environments x 1 segment, 8
+  minibatches, older code): targets once per update gave collect 25,655, update 8,628, loop
+  6,457 there; at parity this code gives 22,032, 8,482 and 6,124. Not a like-for-like
+  comparison (different sizes and code); the collect difference was not investigated.
+- **Memory** follows the micro-batch, not the minibatch: 5.2 GiB allocated at parity. The
+  core game reserves 7.27 GiB at peak (fragmentation; allocated 5.58), the closest to the
+  8 GB limit; expandable segments were not tried.
+- **Compact storage against full precision** (lean/learn/tests/test_store.py, CPU float32,
+  initial weights): the largest change of a sampled action's log-probability 1.9e-6, mean
+  KL 4e-9 to 8e-9; PPO's clip is 0.2.
+- **v2's floor (about 5,000 steady environment steps per second on the laptop):** met at
+  parity with both games (6,124 and 5,586).
+
 ## Not yet measured
 
 Traced operations across every graph.

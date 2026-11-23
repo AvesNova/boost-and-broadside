@@ -76,9 +76,11 @@ superseded by v2's levels, 2026-11-23: see "Reward levels and the hit head" at t
 - Facing uses the nose (`angle_cos/sin`), closing the velocity (`heading_cos/sin * speed`).
 - Scripted win rate for the BC gate: since 2026-11-23 the league's tally against the
   scripted member (see below).
-- Minibatches are whole environments with the full segment; default 4.
-- Advantages and value targets are recomputed from the current critic at the start of
-  every epoch (one extra no-grad pass over the rollout per epoch).
+- Minibatches are random sets of views (one seat's whole segment); 32 per update, run as
+  micro-batches with gradient accumulation (see "Rollout store, streaming and micro-batches").
+- Advantages and value targets once per update from the values stored at collection
+  (`targets_every_epoch=False`, the author's decision); True recomputes them from the current
+  critic at the start of every epoch.
 - `collect`, `update`, `crossover` keep the contract's positional signature and add
   keyword-only options (`shaping`, `game`, `scripted`, `scripted_win_rate`,
   `update_index`, `generator`, `match`). `opponent` is an `Opponent`, `carry` a `CollectCarry`.
@@ -114,8 +116,7 @@ superseded by v2's levels, 2026-11-23: see "Reward levels and the hit head" at t
 1. `python -m lean.train --smoke` with the generator and model on the device (train.py
    builds a CPU generator; device selection is not wired yet).
 2. Steps per second of `collect` alone and of `update` alone at 256 and 2,592 environments.
-3. Peak memory of a 128-tick rollout: observations are stored whole, and the
-   per-epoch target pass holds value logits for a minibatch of environments.
+3. Peak memory of a 128-tick rollout: done (the rollout store, below).
 4. `torch.compile` of `policy.step` and of the tick body; check that the varying
    `faces_scripted` and snapshot branch do not retrace.
 5. The scripted win rate gauge against `head_to_head` on 1,000 games.
@@ -415,12 +416,77 @@ real-game labels with and without ghost bullets).
 - Weight averaging (v2's in-run EMA 0.95 per update and the uniform average, both league
   members and rated).
 - The KL early stop (v2: 0.02 after each epoch but the last).
-- Update size (v2: 2,048 environments x 4 shards x 128 ticks, 32 minibatches; lean 256 x
-  128, 4 minibatches).
+- (Decided 2026-11-23: the update size is v2's, 2,048 environments x 4 segments x 128 ticks,
+  32 minibatches; see "Rollout store, streaming and micro-batches".)
 - Also differing from v2 and untouched here: advantage scaling (v2 a slow EMA of the
   returns' 5-95% gap, floor 1, once per update; lean the advantage std every epoch), the
   policy coefficient (27) against value (0.007 summed), the 128-tick lookahead before the
   bootstrap, the entropy settings, Adam's epsilon.
+
+## Rollout store, streaming and micro-batches (2026-11-23)
+
+The update is at parity with v2 (the author's decision): `LearnConfig.environments` 2,048 x
+`segments_per_update` 4 x `segment_ticks` 128 = 1,048,576 environment ticks, 32 minibatches,
+4 epochs; with half self-play that is 12,288 views (one seat's 128-tick segment each), 384
+per minibatch. Measurements: docs/rewrite/scoreboard.md, "Update at parity with v2".
+
+- **Store** (`store.py`, `RolloutStore`). `lean/train.py` collects the segments of an update
+  into one store (`collect(..., store=, segment=)`), then `update` reads it. Records are
+  (T, V + 1, ...), view v = segment x S + seat; the extra view is an empty spare that pads the
+  last micro-batch of a minibatch so every micro-batch has one shape (nothing owned, no
+  recompiles). Large records (the observation's per-tick fields, actions, old
+  log-probabilities, stored values, rewards, next-state targets) and the initial carries
+  live in pinned host memory; masks and labels (`own`, `done`, `reset`, `next_valid`,
+  `hit_label`, the deal row) stay on the device, as do the bootstrap values, advantages and
+  value targets. `stream_rollout=False` (or the CPU) keeps everything on the device.
+- **Fields once per episode.** The field observations (`field`, `field_pos`, `field_mask`)
+  and the position offset are constant within an episode: `collect` builds a deal table per
+  segment (rows: the environments as the segment starts, then the segment's deals; two
+  `observe` calls per segment) and each tick records only each seat's row. The core game
+  (10 fields) saves 228 bytes per environment tick; the v2 game has no fields.
+- **Compact types** (author's decision): `pos`, `heading`, `field_pos`, the position offset,
+  old log-probabilities, values and rewards float32 (advantages and targets are computed in
+  float32 on the device); `ship`, `globals`, `since_seen` (symlog seconds), `field` and the
+  next-state targets float16; actions, teacher actions and hit labels int8; masks bool; the
+  deal row int32. Cast back (float32, long) on the device after the copy and before the
+  model, so the position code and the rotary angles see float32 positions. Ranges in
+  scripted rollouts of both games: every float16 field within 4.6 in magnitude (ship 1.34,
+  globals 1, field 4, since_seen 2.6, next-state 4.5); none near float16's limit. `heading`
+  is kept float32 because it is a rotary angle (position-like). The ship row's x/R and y/R
+  columns are float16: the first linear layer reads them in bf16 anyway (coarser). The
+  initial carries stay float32 (432 bytes per environment tick, a fifth of the store).
+- **Streaming out.** Each tick the copy stream waits for the compute stream (a stream wait,
+  no host wait) and copies the tick's large records into the pinned arrays;
+  `record_stream` keeps each source alive until its copy ran. Nothing is read back.
+- **Streaming in, double-buffered.** Per micro-batch the host gathers the views from the
+  pinned arrays (CPU index_select into one of two pinned staging buffers) and the copy
+  stream sends it to the device while the compute stream works on the previous one
+  (events: the copy waits for the compute stream to release that slot; compute waits for
+  the copy). The next micro-batch is gathered before the current one is handed over.
+- **Micro-batches** (`micro_batch_views`, default 64 views; 6 per minibatch): every loss
+  term (surrogate, entropy, BC, value, next-state, hit) and every measure is a sum over the
+  micro-batch divided by the whole minibatch's count (own tokens, next-valid tokens,
+  labelled own tokens, from `RolloutStore.counts` once per update), so the accumulated
+  gradient is the minibatch's; one clipped Adam step per minibatch. Checked: the step from
+  micro-batches of 2 views equals one pass of every view within float32 rounding
+  (`test_store.py`). 64 was the first size tried and fits with room (peak 5.2 GiB at
+  parity, v2 game); larger sizes were not measured.
+- **Targets.** `targets_every_epoch=False` (default, decided): one pass over the stored
+  rewards and values (streamed) computes GAE per level (`returns.generalised_advantages`,
+  a doubling scan, no loop over ticks) and the normalisation over the update. True: the
+  critic's values are recomputed per epoch through the same streamed micro-batches.
+- **Host waits that remain:** at the update's start, the wait for the last copies
+  (`ready`) and the read of the epochs' data orders; per micro-batch, the wait for the
+  staging buffer's copy of two micro-batches before (finished by then: 4 to 7 ms over a
+  whole update); the measures once at the end. The "percentile" normaliser reads a count.
+- **Compact against full precision** (`test_store.py`, float32 on the CPU, initial
+  weights, 6 environments, 24 ticks): largest change of a sampled action's
+  log-probability 1.9e-6, mean KL 4e-9 (core game) and 8e-9 (v2), against a clip of 0.2.
+  Not checked on trained weights (there are none yet) or under bf16 (whose own rounding is
+  larger than float16 storage's).
+- **Not measured:** micro-batch sizes other than 64; the store across a league abandon on
+  the GPU (abandon runs between updates, the CPU smoke run covers it); expandable segments
+  for the core game's reserved memory (7.27 GiB reserved at peak).
 
 ## Compiled training on the GPU (2026-11-23)
 
@@ -458,15 +524,10 @@ v2 game: collect 26k, update 6.4k, loop 5,160 environment steps per second (eage
   faster and in two thirds of the memory. The model keeps position phases and the
   recurrence in float32 (lean.model). A choice for the author to confirm: the earlier
   lean runs were float32; v2 trained in bf16.
-- **`minibatches` 8** (was 4): the smallest power of two that fits 8 GB at 256
-  environments (3.7 GiB peak compiled, 5.2 GiB eager; 4 runs out of memory). v2's recipe
-  used 32 minibatches (docs/rewrite/recipe-v2-vs-lean.md); the update size itself is the
-  author's decision. At 1,024 environments 32 minibatches keep the same minibatch size.
-- **`targets_every_epoch`** (default True, unchanged behaviour): False takes advantages
-  and value targets once per update from the values stored at collection, as v2 does.
-  Measured 6,457 steps/s against 5,160 (the target pass is a quarter of the update). Not
-  adopted: the author's call. `Rollout.value_centres` carries the support the values were
-  decoded with.
+- (Superseded by the rollout store below: memory now follows the micro-batch, not the
+  minibatch; 32 minibatches; targets once per update by default.) At the time: 8 minibatches
+  fitted 8 GB at 256 environments, 4 did not; targets once per update measured 6,457 steps/s
+  against 5,160.
 - Host reads: the update's measures stay on the device and are read once per update (were
   eleven `float()` per minibatch); `support_usage` reads its twenty numbers in one go.
   The bootstrap value comes from `act` (one graph fewer to compile).
@@ -496,8 +557,8 @@ v2 game: collect 26k, update 6.4k, loop 5,160 environment steps per second (eage
 6. A snapshot group of one environment specialised a size of 1 (a second policy compile):
    gone with the batched snapshots.
 7. Host syncs in the per-tick loop: the member-count read-back (gone, item above). None
-   left. Per update: one read of the measures, one of the range metrics per epoch, the
-   advantage normaliser's boolean index per epoch, the BC gate's win rate.
+   left. Per update: see "Rollout store, streaming and micro-batches" (host waits); the BC
+   gate's win rate.
 
 lean.learn.compiled no longer patches anything: it sets duck sizing off and compiles. A
 compiled collect on the CPU (6 environments, 2v2 to 3v3, a snapshot in the league, two
