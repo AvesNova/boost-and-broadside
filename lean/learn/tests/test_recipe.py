@@ -156,7 +156,7 @@ def test_the_teacher_term_ends_by_its_decay_alone():
 def test_the_gate_reads_zero_until_a_scripted_game_is_played():
     """The policy is assumed to lose every game at the start: the league's win rate against
     the scripted agent reads 0, not the sampler's 0.5 prior, until a game has ended."""
-    _, _, _, opponent, _, _, _ = small(league_capacity=1)
+    _, _, _, opponent, _, _, _ = small(league=True)
     league = opponent.league
     assert league.scripted_win_rate() == 0.0 and float(league.win_rates()[0]) == 0.5
     league.record(torch.tensor([0]), torch.tensor([True]), torch.tensor([True]), torch.tensor([False]))

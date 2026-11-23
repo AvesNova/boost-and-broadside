@@ -2,12 +2,16 @@
 loss equals the eager one. Slow: every graph compiles."""
 
 import copy
+import dataclasses
 
 import pytest
 import torch
 
 from lean import game, model, scripted
 from lean.learn import League, LearnConfig, Opponent, collect, make_optimiser, start, update
+from lean.learn.pool import EMA, FIRST_SNAPSHOT
+from lean.learn.rollout import act, advance, draw_next_episodes, league_actions, network_actions
+from lean.learn.tests.setting import add_snapshots
 
 pytestmark = pytest.mark.slow
 
@@ -18,10 +22,13 @@ def test_compiled_collect_and_update_run_with_the_real_packages():
     config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1)
     game_config = game.GameConfig(ghost_bullets=True)
     policy = model.Policy(model.ModelConfig())
-    league = League(LearnConfig(snapshot_every=1, snapshot_capacity=2))
-    league.maybe_add(policy, 1)
+    league = League(config)
     opponent = Opponent(scripted.ScriptedConfig(), league)
     state, carry = start(config, game_config, policy, opponent, 8, generator)
+    add_snapshots(league, [policy, model.Policy(model.ModelConfig())])
+    # Every league game plays a network (the EMA or a snapshot), so the routing runs.
+    chosen = torch.tensor([EMA, FIRST_SNAPSHOT, FIRST_SNAPSHOT + 1, FIRST_SNAPSHOT])
+    carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
     for _ in range(2):  # the second rollout reuses the graphs
         rollout = collect(config, game_config, policy, opponent, state, carry, 6, generator, compiled=True)
         assert rollout.action.shape[:2] == (6, 12)  # 8 environments, 4 self-play: 12 seats
@@ -68,3 +75,38 @@ def test_compiled_loss_matches_eager():
             assert compiled_parameter.grad is None or not compiled_parameter.grad.any(), name
             continue
         assert torch.allclose(eager.grad, compiled_parameter.grad, rtol=1e-3, atol=1e-5), name
+
+
+def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
+    """The capacity routing (network_actions) and the tick's second half (advance: the
+    tallies and the capacity draws at re-deal) trace as single graphs: no graph break, so
+    no host read in the tick path."""
+    torch._dynamo.reset()
+    torch.manual_seed(0)
+    config = LearnConfig(team_size_minimum=2, team_size_maximum=2)
+    game_config = game.GameConfig(training_spawn=True, clock_ticks=3)
+    policy = model.Policy(model.ModelConfig())
+    league = League(config)
+    opponent = Opponent(scripted.ScriptedConfig(), league)
+    state, carry = start(config, game_config, policy, opponent, 8, None)
+    add_snapshots(league, [policy, model.Policy(model.ModelConfig())])
+    chosen = torch.tensor([0, EMA, FIRST_SNAPSHOT, FIRST_SNAPSHOT + 1])
+    carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
+    league.prepare(4, carry.slot)
+    slots = state.exists.shape[1]
+    deals = draw_next_episodes(config, game_config, policy, opponent, 8, slots, None, "cpu")
+    carry = dataclasses.replace(carry, next_episodes=deals)
+    routing = torch.compile(network_actions, fullgraph=True, dynamic=True)
+    second_half = torch.compile(advance, fullgraph=True, dynamic=True)
+    hit_label = torch.full((2 * 4 * 8 * slots + 1,), -1, dtype=torch.long)  # rows for 4 ticks
+    for tick in range(4):  # a game ends on the third tick: re-deals draw members within capacity
+        views, observation, _, joint, _, _, scripted_action, teacher, policy_carry, _, memory = act(
+            config, game_config, policy, opponent, state, carry, None
+        )
+        league_action, opponent_carry = league_actions(config, opponent, views, carry, scripted_action, None, routing)
+        state, carry, _ = second_half(
+            config, game_config, policy, opponent, state, carry, observation, joint, teacher, league_action,
+            opponent_carry, policy_carry, memory, torch.tensor(4 + tick), hit_label, None,
+        )
+    rows = torch.bincount(carry.member.clamp(min=0), minlength=league.members)
+    assert (rows <= league.capacity).all()

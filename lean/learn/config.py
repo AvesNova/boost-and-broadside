@@ -127,12 +127,35 @@ class LearnConfig:
     team_size_maximum: int = 4
     equal_teams: bool = True
 
-    # Self-play and the league (lean.learn.pool.League).
+    # Self-play and the league (lean.learn.pool.League). Environments 0 to E/2 - 1 are
+    # self-play, the rest league games.
     self_play_share: float = 0.5  # share of environments where the live policy flies both teams
-    snapshot_every: int = 10  # updates between additions to the league
-    snapshot_capacity: int = 8  # snapshot members; the scripted agent is one more
+    # League snapshots: v2's league schedule (v2 src/bnb/runtime/snapshots.py LEAGUE_SNAPSHOTS,
+    # about 100 to 200 Elo apart on rl-v20's curve): these environment steps, then every
+    # league_snapshot_period (None: the last gap, 30M).
+    league_snapshot_steps: tuple[int, ...] = tuple(
+        step * 1_000_000 for step in (5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 90, 110, 130, 160)
+    )
+    league_snapshot_period: int | None = None
+    # Retention (v2's): the newest recent_snapshots, then the one nearest each age 2^k
+    # snapshots back for k >= snapshot_history_from, at most snapshot_members (the oldest go
+    # past it; on v2's schedule the rule keeps 11 to 500M steps, 12 to about 1.5B).
+    recent_snapshots: int = 8
+    snapshot_history_from: int = 3
+    snapshot_members: int = 12
+    # Slots for dropped snapshots that still play their running games. Retention drops at
+    # most 2 snapshots at one addition, and drops start at the 11th snapshot (75M), from
+    # where additions are at least 15M steps (14 updates at parity) apart while a game lasts
+    # at most clock_ticks + segment_ticks = 5,528 ticks (11 updates): 2 suffice at parity; 4
+    # leave room for smaller updates. With none free, the games of the retiring slot with
+    # the fewest are re-dealt (League.abandoned counts them).
+    retiring_slots: int = 4
+    # Each member's row capacity: ceil(league_capacity_factor * L / members present).
+    league_capacity_factor: float = 1.25
     league_floor: float = 0.125  # share of league draws uniform over the members
     league_decay: float = 0.99  # each game decays its member's win tallies by this first
+    # Checkpoints to disk (lean.train): every this many environment steps, none deleted.
+    checkpoint_every: int = 10_000_000
     persona_spread: float = 0.0
 
 

@@ -17,7 +17,7 @@ from lean.learn import (
 )
 from lean.learn import rollout as rollout_module
 from lean.learn.config import LEVELS, OUTCOME
-from lean.learn.tests.setting import small
+from lean.learn.tests.setting import add_snapshots, small
 
 
 def test_gae_matches_hand_computed_case_and_stops_at_termination():
@@ -72,10 +72,10 @@ CLOCK = 6  # every game ends at the clock on its sixth tick
 def run_updates(updates, snapshot=False):
     config, game_config, policy, opponent, state, carry, generator = small(
         ENVIRONMENTS, game_config=game.GameConfig(training_spawn=True, clock_ticks=CLOCK),
-        league_capacity=2 if snapshot else None, team_size_minimum=1, equal_teams=False, epochs=2,
+        league=snapshot, team_size_minimum=1, equal_teams=False, epochs=2,
     )
     if snapshot:
-        opponent.league.maybe_add(model.Policy(model.ModelConfig()), 0)
+        add_snapshots(opponent.league, [model.Policy(model.ModelConfig())])
     optimiser = make_optimiser(config, policy)
     history, steps = [], 0
     for _ in range(updates):
