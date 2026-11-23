@@ -21,7 +21,7 @@ History (v2 parity, the waste fixes, fog, the flight changes): docs/rewrite/core
     boundary whose heading points outward has it mirrored in the tangent.
   - `training_spawn` (lean.train turns it on; lean.eval forces it off; play and the sandbox
     leave it off): per ship a proper speed uniform from the stall speed (sqrt(g / lift),
-    93 m/s for the P-51D) to the top level speed (`cruise_speed`, 335 m/s), shield and store
+    90.4 m/s for the P-51D: the clean wing's) to the top level speed (`cruise_speed`, 335 m/s), shield and store
     each uniform 0 to full; `standard_spawn_share` (1/8) of environments, drawn per
     environment at the deal, take the standard spawn (full shield, half store, 145.3 m/s over
     the map).
@@ -38,7 +38,13 @@ History (v2 parity, the waste fixes, fog, the flight changes): docs/rewrite/core
     arena radius is a constant too. The scripted opponent reads every number it uses from these
     constants by name (it holds no ship characteristics of its own).
   - `flight_tick`: half a kick, a drift, half a kick (`_setting`, `_rates`, `_kick`); the
-    medium of the fields bends paths, with a no-fields path for F = 0.
+    medium of the fields bends paths, with a no-fields path for F = 0. The wing's maximum lift
+    is a function of speed (`_wing`, the automatic flaps: per type, `flap_lift` below
+    `flap_full_speed_ratio` x the clean stall speed, a smootherstep to clean at
+    `flap_clear_speed_ratio` x it), held through each half-kick at its starting speed; the
+    flaps' drag is on the lift beyond the clean maximum (`flap_drag_scale`). `steady_rates` /
+    `quasi_steady`: the same functions with the nose settled, the one quasi-steady evaluation
+    (the derived characteristics, tuning's performance and envelope, the web tool).
   - `step`, in stages: `_fire` (a living ship with the trigger held and the gun ready fires;
     no store cost; with ghosts every living ship writes a bullet each tick), `_fly`,
     `_move_bullets`, `_hit_test` (swept closest approach, every bullet against every ship,
@@ -56,9 +62,14 @@ History (v2 parity, the waste fixes, fog, the flight changes): docs/rewrite/core
     ship row has no position scalars (Obs.pos carries position, for the position code and
     rotary). `Obs.pending`: own living ships' joint pending action, `NO_PENDING` (42) for
     enemies (not observable; their shot shows as the fired flag), dead and absent rows.
-- `tuning.py` (analysis, not imported by the game): a real airframe (`airframe_row`) or a
-  design's handles (`handles_row`) into a card row; `performance` (quasi-steady numbers);
-  `time_scale` (the card at K times real time, for the sandbox's `--time-scale`).
+- `tuning.py` (analysis, not imported by the game): a real airframe into its point mass
+  (`airframe_row`; `fit_point_mass` sets C_D0 and the propeller efficiency to a tested top
+  speed and climb), or into a game row with its game terms on and the zero-lift drag, thrust
+  power and induced drag solved to fly the point mass's top speed, climb and best sustained
+  rate (`game_row`: the P-51D's row, with `P51D_TERMS`); a design's handles (`handles_row`)
+  into a card row; `performance` and `envelope` (quasi-steady numbers, through
+  `core.steady_rates`); `time_scale` (the card at K times real time, for the sandbox's
+  `--time-scale`). docs/rewrite/p51d-model.md.
 - `StepOut` (contract.py): damage taken, deaths, done and result, each bullet's outcome and
   firing tick (the hit head's labels), the attacker-by-target damage matrix, boundary damage
   and shield restored (the rewards' ledger). The shot flag is `State.fired`.
@@ -67,17 +78,22 @@ History (v2 parity, the waste fixes, fog, the flight changes): docs/rewrite/core
 
 - Tests `lean/game/tests`: flight rules (test_flight.py), damage (head-on term, the damage
   matrix), fields, fog (8 rules), ghost bullets, invariants (finite, inert padding, team
-  swap), the observation in a field, tuning (card rows, the P-51D's October fit, the handles
-  route, time scales).
+  swap), the observation in a field, tuning (card rows, the P-51D's point mass flies its
+  flight test and its game row its point mass, the handles route, time scales). Flight:
+  every type's tightest sustained turn at least 10% slower than its best sustained rate,
+  below the corner (P-51D 0.826); the flaps smooth and their drag only beyond the clean wing.
 - Rules tests (test_rules.py): each clock tie-break case and the wipe, no edge-facing spawn
   under either rule, the "sides" spread and gap, the training spawn's ranges, uniformity and
   one-eighth standard share, the delay (an action takes effect exactly one tick later) and
   the pending action in own rows only.
 - Operations (docs/rewrite/sections/scoreboard/game_ops.py, uncompiled, CPU, one thread,
-  E = 256, 5v5; compute + view, 2026-11-23 after G2): step 1,557 + 210 (no fields 1,219 +
-  162), observe 102 + 54 (no fields 97 + 53), reset_done 265 + 82 (training spawn 277 + 82,
-  "sides" 289 + 82; no fields 105 + 35), scripted act for both teams 186 + 96 (208 + 101 after
-  step S: memory, head-on side, power rule, the medium in the lead; lean/scripted/NOTES.md).
+  E = 256, 5v5; compute + view, 2026-11-23 after G2; the step re-measured 2026-11-24 after
+  A1): step 1,625 + 210 (no fields 1,287 + 162; before A1's flaps 1,557 and 1,219: +68 for
+  the wing's speed dependence and the flaps' drag), observe 102 + 54 (no fields 97 + 53),
+  reset_done 265 + 82 (training spawn 277 + 82, "sides" 289 + 82; no fields 105 + 35),
+  scripted act for both teams 439 + 109 (2026-11-24, after E2's BFM; lean/scripted/NOTES.md).
+  The CPU times beside them vary by about 25% between runs on the laptop; the counts are
+  the measure.
 
 ## Feature scales
 
