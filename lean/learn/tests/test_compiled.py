@@ -125,3 +125,49 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
     views, *_, scripted_action, _, _, _, _ = act(config, game_config, policy, opponent, state, carry, None)
     league_actions(config, opponent, views, carry, scripted_action, None, routing)
     assert torch._dynamo.utils.counters["stats"]["unique_graphs"] == compiles
+
+
+def test_the_first_league_networks_do_not_recompile_the_tick():
+    """Before the league has a network (the BC stage) `advance` takes the scripted rows; after
+    (RL), the routing graph's output. Both are tensors of their own (rollout.league_rows), so
+    neither `advance` nor the routing graph's later slots compile a second graph (a view's
+    base is guarded: 'NoneType' object has no attribute 'stride')."""
+    torch._dynamo.reset()
+    torch.manual_seed(0)
+    config = LearnConfig(team_size_minimum=2, team_size_maximum=2)
+    game_config = game.GameConfig(training_spawn=True)
+    policy = model.Policy(model.ModelConfig())
+    league = League(config)
+    opponent = Opponent(scripted.ScriptedConfig(), league)
+    state, carry = start(config, game_config, policy, opponent, 8, None)
+    slots = state.exists.shape[1]
+    graphs()  # duck sizing off, as in training
+    routing = torch.compile(slot_actions, fullgraph=True, dynamic=True)
+    second_half = torch.compile(advance, fullgraph=True, dynamic=True)
+    hit_label = torch.full((2 * 4 * 8 * slots + 1,), -1, dtype=torch.long)
+
+    def tick(state, carry, row):
+        deals = draw_next_episodes(config, game_config, policy, opponent, 8, slots, None, "cpu")
+        carry = dataclasses.replace(carry, next_episodes=deals)
+        views, observation, _, joint, _, _, scripted_action, teacher, policy_carry, _, memory = act(
+            config, game_config, policy, opponent, state, carry, None
+        )
+        league_action, opponent_carry = league_actions(config, opponent, views, carry, scripted_action, None, routing)
+        state, carry, _ = second_half(
+            config, game_config, policy, opponent, state, carry, observation, joint, teacher, league_action,
+            opponent_carry, policy_carry, memory, torch.tensor(row), hit_label, None,
+        )
+        return state, carry
+
+    league.prepare(4, carry.slot)
+    assert league.table is None
+    state, carry = tick(state, carry, 4)  # no network: the scripted rows
+    add_snapshots(league, [policy, model.Policy(model.ModelConfig())])
+    chosen = torch.tensor([0, EMA, FIRST_SNAPSHOT, FIRST_SNAPSHOT + 1])
+    carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
+    league.prepare(4, carry.slot)
+    assert len(league.table.slots) == 3
+    for row in (5, 6):
+        state, carry = tick(state, carry, row)
+    stats = torch._dynamo.utils.counters["stats"]
+    assert stats["unique_graphs"] == 2, dict(stats)  # advance once, the routing once
