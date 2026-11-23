@@ -173,6 +173,16 @@ Flight physics: agreed direction (author, 2026-11-23), a deliberate change after
 Sizes
 - Sizes batch- and GPU-friendly by default (powers of two, fractions such as one eighth)
   unless there is a reason not to (2026-11-22).
+- Update size at parity with v2 (2026-11-23): 2,048 environments, 32 minibatches. Fitting
+  it on the 8 GB laptop needs rollout streaming to the CPU (pinned memory, asynchronous
+  copies, prefetch) and micro-batches with gradient accumulation, built to cost almost
+  nothing in speed. Speed comparisons with v2 are like for like (same update size).
+
+Learner
+- Advantages and value targets recomputed from the current critic at every epoch
+  (2026-11-23; `targets_every_epoch=True`, the existing default). Andrychowicz et al. 2021,
+  "What Matters in On-Policy RL", recommend recomputing advantages at each pass over the
+  data. Not counted as a speed-up against v2, which could do the same.
 
 Provenance
 - A provenance table (docs/provenance.md) for every overarching decision (why Griffin, why
@@ -180,6 +190,9 @@ Provenance
   reasoning or test behind it. Not per line of code.
 
 ## Proposals, not decided
+
+- Remove v2's flight and damage models from lean/game once the core model is signed off
+  (author 2026-11-23: two flight models in one file go when relevant).
 
 - Grid cells in RL: look for papers that used them (docs/rewrite/provenance-check.md).
 - A keep, drop or simplify table of Imugi's behaviours with rough costs (operations, lines,
