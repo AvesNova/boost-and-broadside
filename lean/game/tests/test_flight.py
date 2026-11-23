@@ -163,7 +163,7 @@ def test_firing_costs_speed_and_no_store():
     before = state.energy.clone()
     action = torch.tensor([[[0, 0, 1], [0, 0, 0]]])
     noise = core.draw_noise(CONFIG, 1, 2, generator, torch.device("cpu"))
-    after, _ = core.step(CONFIG, state, action, noise)
+    after, _ = core.step(CONFIG, state.replace(pending=action), action, noise)  # pending: applied now
     assert bool(after.fired[0, 0])
     assert torch.allclose(after.energy[0, 0], before[0, 0], rtol=1e-6)
 

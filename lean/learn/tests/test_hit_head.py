@@ -75,8 +75,9 @@ def test_the_update_trains_the_hit_head_only_from_labelled_rows():
 @pytest.mark.parametrize("ghost_bullets", [True, False])
 def test_real_game_labels(ghost_bullets):
     """Guards the labels with lean.game: with ghost bullets most own rows are labelled;
-    without them only rows whose action pulled the trigger can be (the mask covers the
-    rest), and every label is one of the three classes."""
+    without them only rows whose applied action (the observation's pending one, chosen on the
+    tick before) pulled the trigger can be (the mask covers the rest), and every label is one
+    of the three classes."""
     game = pytest.importorskip("lean.game")
     scripted = pytest.importorskip("lean.scripted")
     model = pytest.importorskip("lean.model")
@@ -94,5 +95,5 @@ def test_real_game_labels(ghost_bullets):
         # Every living ship emits every tick; a bullet lives up to 11 ticks.
         assert (label[:13][own[:13]] >= 0).float().mean() > 0.9
     else:
-        pulled = rollout.action % 2 == 1
+        pulled = rollout.observation.pending % 2 == 1  # NO_PENDING (42) is even
         assert not (label[own] >= 0)[~pulled[own]].any()

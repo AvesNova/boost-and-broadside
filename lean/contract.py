@@ -17,14 +17,17 @@ JOINT = STICKS * POWERS * FIRES
 BULLET_SLOTS = 11
 SHIP_TYPES = 1  # len(lean.game.card.TYPE_NAMES)
 
-# Per-ship observation row: 20 scaled scalars, 4 flags, then the ship-type one-hot.
-SHIP_SCALARS = 20
+# Per-ship observation row: 18 scaled scalars, 4 flags, then the ship-type one-hot.
+SHIP_SCALARS = 18
 SHIP_FLAGS = 4
 SHIP_FEATURES = SHIP_SCALARS + SHIP_FLAGS + SHIP_TYPES
 GLOBAL_FEATURES = 3
 # Per-field observation row (v2's field inputs, src/bnb/models/yemong/inputs.py): radius over
 # 1000 m, band width over 40 m, level (half-octaves of the refractive index) over 2.
 FIELD_FEATURES = 3
+
+
+NO_PENDING = JOINT  # Obs.pending of a row whose pending action is not observed
 
 
 def split_joint(joint: Tensor) -> Tensor:
@@ -163,6 +166,9 @@ class State:
     # The environment's refractive fields, (E, 5, F) float32 rows [x, y, radius, band width,
     # target ln n]; F may be 0 (no medium).
     fields: Tensor
+    # Each ship's pending action, (E, N, 3) long [stick, power, fire]: the action chosen on the
+    # last tick, which the next tick applies (the one-tick action delay). Neutral at a deal.
+    pending: Tensor
     # Fog (None with fog off). Each ship as its enemy team last saw it: (E, SEEN_COLUMNS, N)
     # float32 raw values in the order of lean.game.core.SEEN_COLUMNS (the last two are "alive"
     # at that sighting, 1 until seen dead, and "known", 1 once ever seen); and the ticks since
@@ -172,8 +178,10 @@ class State:
 
     @classmethod
     def pack(cls, *, constants: Constants, tick: Tensor, fields: Tensor, bullet_real: Tensor,
-             seen: Tensor | None = None, ticks_since_seen: Tensor | None = None, **named: Tensor) -> State:
-        """A state from every named quantity of the *_COLUMNS tuples, each (E, N) or (E, N, K)."""
+             pending: Tensor | None = None, seen: Tensor | None = None, ticks_since_seen: Tensor | None = None,
+             **named: Tensor) -> State:
+        """A state from every named quantity of the *_COLUMNS tuples, each (E, N) or (E, N, K);
+        `pending` defaults to the neutral action for every ship."""
         missing = set(COLUMN) - set(named)
         if missing or len(named) != len(COLUMN):
             raise TypeError(f"State.pack needs every column once; missing {sorted(missing)}")
@@ -183,8 +191,10 @@ class State:
             block: torch.stack([named[name].to(dtypes[block]) for name in names], 1)
             for block, names in BLOCKS.items()
         }
+        if pending is None:
+            pending = torch.zeros(named["x"].shape + (3,), dtype=torch.long, device=named["x"].device)
         return cls(**blocks, constants=constants, tick=tick, fields=fields, bullet_real=bullet_real,
-                   seen=seen, ticks_since_seen=ticks_since_seen)
+                   pending=pending, seen=seen, ticks_since_seen=ticks_since_seen)
 
     def replace(self, **changes) -> State:
         """A copy with named quantities (and any dataclass fields) replaced; a changed block is
@@ -244,3 +254,6 @@ class Obs:
     field_pos: Tensor  # (E, F, 2) float32 metres, the field's centre
     visible: Tensor  # (E, N) bool: the row is seen this tick (own rows always; all with fog off)
     since_seen: Tensor  # (E, N) float32: symlog of the seconds since the row was seen (0 visible)
+    # (E, N) long: the joint pending action (the one the next tick applies) of the view's own
+    # living ships; NO_PENDING for every other row (enemies' pending actions are not observable).
+    pending: Tensor

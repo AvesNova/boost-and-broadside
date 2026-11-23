@@ -159,7 +159,8 @@ def test_firing_and_hits_reveal_for_that_tick_only_and_boundary_damage_does_not(
     state = duel([(0.0, 0.0), (90.0, 0.0)], vision=1.0)  # ship 0 noses at ship 1
     assert (state.seen[:, core.SEEN_KNOWN] == 0).all()
     shoot = torch.tensor([[True, False]])
-    state, out = step(FOG, state, idle(state, shoot), no_noise(state))
+    state = state.replace(pending=idle(state, shoot))  # the trigger pulled on the tick before
+    state, out = step(FOG, state, idle(state), no_noise(state))
     assert state.fired[0].tolist() == [True, False]
     assert state.ticks_since_seen[0, 0] == 0 and state.seen[0, core.SEEN_KNOWN, 0] == 1.0
     hit_tick = None
@@ -208,9 +209,7 @@ def test_last_seen_values_freeze_and_time_since_seen_counts_and_caps():
 def test_never_seen_enemies_are_masked_and_seen_dead_enemies_drop_out():
     """Rules: a never-seen enemy is masked (and its row is zero); a ship dead for good is masked
     once its death is seen; the enemy alive fraction counts only deaths the team has seen."""
-    state = reset(
-        FOG, 2, torch.tensor([[5, 5], [5, 5]]), torch.Generator().manual_seed(4), CPU
-    )  # "sides": far apart
+    state = duel([(-3000.0, 0.0), (-3000.0, 300.0), (3000.0, 0.0), (3000.0, 300.0)])  # far apart
     obs = observe(FOG, state, 0)
     enemy = state.team == 1
     assert (
@@ -218,7 +217,7 @@ def test_never_seen_enemies_are_masked_and_seen_dead_enemies_drop_out():
         and (obs.ship[enemy] == 0).all()
         and not obs.visible[enemy].any()
     )
-    assert torch.equal(obs.globals[:, 2], torch.ones(2))
+    assert torch.equal(obs.globals[:, 2], torch.ones(1))
     # Enemy 1 in sight dies: the sighting records the death, the row leaves the mask.
     state = duel(
         [(0.0, 0.0), (2500.0, 0.0), (-3000.0, 0.0), (3000.0, 0.0)]
