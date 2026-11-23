@@ -396,7 +396,11 @@ League (section 8)
 - Play: start uncompiled and switch to the compiled step once a background build is ready.
   The frame budget to be re-measured with the full game, rendering included (rendering
   later, without v2's bloat).
-- Section 10 code cleanup as the review lists.
+- Section 10 code cleanup as the review lists. Section 11: one short current notes file per
+  package (what is, what is open), history in the worklog, closed one-off prompts deleted;
+  clean and tidy, so agents' context is not polluted by stale text.
+- Engine power, which aircraft to build, and the core flight sign-off wait for the WWII
+  research.
 - 7.3 KL early stop off (not standard practice). 7.4 as the literature (standard deviation
   over the update). 7.5 fixed coefficients on scale-free terms; gradient shares diagnostic
   only. Entropy 0.003.
