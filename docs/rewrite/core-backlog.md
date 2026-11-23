@@ -112,4 +112,4 @@ docs/rewrite/morning-notes.md, briefly.
 Order agreed 2026-11-24 (author, revised): A1 -> V (runner) -> R (review) and fixes ->
 screening, with D alongside -> short CMA-ES -> yardstick choice (author) -> X -> D refresh ->
 BC dry run -> RL dry run -> optional second R. A2, A3 and C tabled as future work.
-
+- 2026-11-24 ~05:45: screening (GPU) and D (notes, CPU) running in parallel; next a short CMA-ES, then stop for the author's yardstick choice.
