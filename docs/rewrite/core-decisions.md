@@ -406,6 +406,10 @@ League (section 8)
 - 7.2 An EMA and a uniform average kept (both in the league).
 - The next-state loss is HL-Gauss cross-entropy on bins; targets computed from the states.
 - BC on the full soft distribution.
+- Shield next-state target (the damage taken in a tick, after the scheduled recharge) in
+  symlog bins (author 2026-11-23): fine near zero for single hits at different angles, and
+  the range for several hits in one tick (a crossfire of up to four ships). Range from
+  measured per-tick damage.
 - Rotary: ratio 2 by default, irrational turns between bands, about 70 to 75% of each head
   rotated.
 - No lookahead by default. Update 2,048 x 4 x 128 by default, returns chained over the full
@@ -416,8 +420,6 @@ League (section 8)
 - Learning-rate schedule in RL: warm-up, constant, then a linear cooldown over the last 10 to
   20% of a run with a fixed budget (warmup-stable-decay; Hagele et al. 2024), with the
   averages kept throughout. Proposed 2026-11-23.
-- Shield next-state target: linear bins over the measured per-tick change (bounded), rather
-  than symlog. Proposed 2026-11-23.
 
 - Remove v2's flight and damage models from lean/game once the core model is signed off
   (author 2026-11-23: two flight models in one file go when relevant).
