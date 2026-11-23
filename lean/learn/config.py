@@ -5,9 +5,9 @@ from dataclasses import dataclass
 
 import torch
 
-# v2's reward levels (src/bnb/contracts/trajectory.py at 4cfd1e86), in v2's order.
-LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outcome")
-LEVELS = len(LEVEL_NAMES)
+from lean.contract import LEVELS
+
+# Indices of v2's reward levels (src/bnb/contracts/trajectory.py at 4cfd1e86), lean.contract's order.
 DAMAGE, KILL_DEATH, OBJECTIVE_PROGRESS, OBJECTIVE, OUTCOME = range(LEVELS)
 
 
@@ -83,18 +83,11 @@ class LearnConfig:
     range_narrow_bins: int = 8
     range_bin_share: float = 0.001
 
-    # Rewards: v2's level weights (v2 src/bnb/learn/rewards.py:74-79, v1's times 10).
-    damage_weight: float = 2.74  # per damage_unit points
-    kill_death_weight: float = 2.83
-    objective_progress_weight: float = 20.0
-    objective_weight: float = 20.0
-    outcome_weight: float = 10.0
+    # Rewards: v2's level weights in LEVEL_NAMES order (v2 src/bnb/learn/rewards.py:74-79,
+    # v1's times 10): damage per damage_unit points, kill_death, objective_progress,
+    # objective, outcome.
+    reward_weights: tuple[float, ...] = (2.74, 2.83, 20.0, 20.0, 10.0)
     damage_unit: float = 100.0  # points, for every ship type
-
-    @property
-    def reward_weights(self) -> tuple[float, ...]:
-        """The level weights in LEVEL_NAMES order."""
-        return tuple(getattr(self, f"{name}_weight") for name in LEVEL_NAMES)
 
     # Scenario draws at reset.
     team_size_minimum: int = 4

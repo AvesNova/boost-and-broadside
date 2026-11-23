@@ -4,7 +4,8 @@ supports' range monitoring."""
 import torch
 from torch import Tensor
 
-from lean.learn.config import LEVEL_NAMES, LearnConfig
+from lean.contract import LEVEL_NAMES
+from lean.learn.config import LearnConfig
 from lean.model.temporal import doubling_scan
 from lean.model.value import value_bin_centres
 

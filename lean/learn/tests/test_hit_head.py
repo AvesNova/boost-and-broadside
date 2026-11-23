@@ -3,38 +3,26 @@
 import pytest
 import torch
 
-from lean.learn import LearnConfig, Opponent, collect, make_optimiser, start, update
-from lean.learn.tests import standins
-from lean.learn.update import hit_loss
+from lean import game
+from lean.learn import collect, make_optimiser, update
+from lean.learn.tests.setting import StepRecorder, small
+from lean.learn.training import hit_loss
 
 
-def stand_in_rollout(ticks=16, envs=4):
-    torch.manual_seed(0)
-    generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1)
-    game_config = standins.GameConfig(length=6, flight=2)
-    policy = standins.TinyPolicy()
-    opponent = Opponent(scripted_config=None)
-    state, carry = start(config, game_config, policy, opponent, envs, generator, game=standins.game, scripted=standins.scripted)
-    rollout = collect(config, game_config, policy, opponent, state, carry, ticks, generator, game=standins.game, scripted=standins.scripted)
-    return config, game_config, policy, rollout, generator
-
-
-def test_a_label_lands_on_the_row_its_bullet_left_the_gun():
-    """Guards the mapping from an ended bullet back to its firing tick: in the stand-in a
-    bullet fired on episode tick s by slot n ends on tick s + 2 with outcome (s + n) % 3,
-    so a label on the ending row instead would read (s + 2 + n) % 3, a different class.
-    Rows whose bullet ends after the segment or after its episode are unlabelled."""
-    _, game_config, _, rollout, _ = stand_in_rollout()
-    ticks, seats, slots = rollout.hit_label.shape
-    row = torch.arange(ticks)[:, None, None]
-    episode_tick = row % game_config.length  # every environment starts at tick 0 and lasts 6 ticks
-    slot = torch.arange(slots)[None, None, :]
-    ends_in_episode = episode_tick + game_config.flight <= game_config.length - 1
-    ends_in_segment = row + game_config.flight < ticks
-    expected = torch.where(ends_in_episode & ends_in_segment, standins.bullet_outcome(episode_tick, slot), -1)
-    assert torch.equal(rollout.hit_label, expected.expand(ticks, seats, slots))
-    assert (rollout.hit_label[-game_config.flight:] == -1).all()  # the segment's last ticks wait for their bullets
+def test_a_label_lands_on_the_row_its_bullet_left_the_gun(monkeypatch):
+    """Guards the mapping from an ended bullet back to its firing tick: every label equals the
+    outcome of the bullet the ship emitted on that row, found by searching the recorded game
+    steps for the row of the bullet's shot tick within its episode (games end inside the
+    rollout); rows whose bullet had not ended by the rollout's end are unlabelled."""
+    recorder = StepRecorder().install(monkeypatch)
+    config, game_config, policy, opponent, state, carry, generator = small(
+        game_config=game.GameConfig(training_spawn=True, clock_ticks=20)
+    )
+    rollout = collect(config, game_config, policy, opponent, state, carry, 40, generator)
+    expected = recorder.hit_labels().index_select(1, rollout.seat_environment)
+    # Ghost bullets: a bullet lives up to 11 ticks and a game 20, so about half the rows have one.
+    assert (expected >= 0).float().mean() > 0.3
+    assert torch.equal(rollout.hit_label, expected)
 
 
 def test_the_hit_loss_reads_only_labelled_own_rows():
@@ -55,21 +43,26 @@ def test_the_hit_loss_reads_only_labelled_own_rows():
     assert empty == 0
 
 
-def test_the_update_trains_the_hit_head_only_from_labelled_rows():
-    """Guards the wiring in update: with every label removed the hit head's parameters get
-    no gradient from the update; with the labels they move."""
-    config, _, policy, rollout, generator = stand_in_rollout()
-    before = [parameter.detach().clone() for parameter in policy.hit.parameters()]
-    rollout.hit_label = torch.full_like(rollout.hit_label, -1)
-    metrics = update(config, policy, make_optimiser(config, policy), rollout, generator=generator)
-    assert metrics["hit"] == 0 and metrics["hit_labelled"] == 0
-    assert all(torch.equal(old, new) for old, new in zip(before, policy.hit.parameters()))
+def hit_head(policy):
+    """The hit head's own parameters (its norm and last layer; the first layer is shared)."""
+    return [*policy.auxiliary_heads.norms[1].parameters(), *policy.auxiliary_heads.lasts[1].parameters()]
 
-    config, _, policy, rollout, generator = stand_in_rollout()
-    before = [parameter.detach().clone() for parameter in policy.hit.parameters()]
+
+@pytest.mark.parametrize("labelled", [False, True])
+def test_the_update_trains_the_hit_head_only_from_labelled_rows(labelled):
+    """Guards the wiring in update: with every label removed the hit head's own parameters get
+    a zero gradient and do not move; with the labels they move."""
+    config, game_config, policy, opponent, state, carry, generator = small()
+    rollout = collect(config, game_config, policy, opponent, state, carry, 16, generator)
+    if not labelled:
+        rollout.hit_label = torch.full_like(rollout.hit_label, -1)
+    before = [parameter.detach().clone() for parameter in hit_head(policy)]
     metrics = update(config, policy, make_optimiser(config, policy), rollout, generator=generator)
-    assert metrics["hit"] > 0 and metrics["hit_labelled"] > 0
-    assert not all(torch.equal(old, new) for old, new in zip(before, policy.hit.parameters()))
+    moved = [not torch.equal(old, new) for old, new in zip(before, hit_head(policy), strict=True)]
+    if labelled:
+        assert metrics["hit"] > 0 and metrics["hit_labelled"] > 0 and all(moved)
+    else:
+        assert metrics["hit"] == 0 and metrics["hit_labelled"] == 0 and not any(moved)
 
 
 @pytest.mark.parametrize("ghost_bullets", [True, False])
@@ -78,16 +71,7 @@ def test_real_game_labels(ghost_bullets):
     without them only rows whose applied action (the observation's pending one, chosen on the
     tick before) pulled the trigger can be (the mask covers the rest), and every label is one
     of the three classes."""
-    game = pytest.importorskip("lean.game")
-    scripted = pytest.importorskip("lean.scripted")
-    model = pytest.importorskip("lean.model")
-    torch.manual_seed(0)
-    generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=2)
-    game_config = game.GameConfig(ghost_bullets=ghost_bullets)
-    policy = model.Policy(model.ModelConfig())
-    opponent = Opponent(scripted_config=scripted.ScriptedConfig())
-    state, carry = start(config, game_config, policy, opponent, 4, generator)
+    config, game_config, policy, opponent, state, carry, generator = small(game_config=game.GameConfig(ghost_bullets=ghost_bullets))
     rollout = collect(config, game_config, policy, opponent, state, carry, 24, generator)
     label, own = rollout.hit_label, rollout.observation.own
     assert ((label >= -1) & (label <= 2)).all()

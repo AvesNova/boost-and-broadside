@@ -1,15 +1,7 @@
 """The learner: rewards, rollout collection, returns and the PPO update."""
 
-from lean.learn.collect import (
-    CollectCarry,
-    Opponent,
-    Rollout,
-    abandon,
-    collect,
-    draw_team_sizes,
-    start,
-)
-from lean.learn.config import LEVEL_NAMES, LEVELS, LearnConfig, bc_weight, learning_rate
+from lean.contract import LEVEL_NAMES, LEVELS
+from lean.learn.config import LearnConfig, bc_weight, learning_rate
 from lean.learn.pool import League
 from lean.learn.returns import (
     generalised_advantages,
@@ -18,8 +10,17 @@ from lean.learn.returns import (
     value_centres,
 )
 from lean.learn.rewards import reward_step, tick_events
+from lean.learn.rollout import (
+    CollectCarry,
+    Opponent,
+    Rollout,
+    abandon,
+    collect,
+    draw_team_sizes,
+    start,
+)
 from lean.learn.store import RolloutStore
-from lean.learn.update import make_optimiser, update
+from lean.learn.training import make_optimiser, update
 
 __all__ = [
     "CollectCarry", "LEVELS", "LEVEL_NAMES", "LearnConfig", "Opponent", "Rollout", "RolloutStore", "League", "abandon", "bc_weight",

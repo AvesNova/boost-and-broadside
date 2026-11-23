@@ -3,9 +3,9 @@ import math
 import pytest
 import torch
 
-from lean.contract import NO_PENDING
+from lean import game, model, scripted
+from lean.contract import NO_PENDING, SHIP_FEATURES
 from lean.learn import (
-    League,
     LearnConfig,
     Opponent,
     bc_weight,
@@ -16,8 +16,9 @@ from lean.learn import (
     start,
     update,
 )
+from lean.learn import rollout as rollout_module
 from lean.learn.config import LEVELS, OUTCOME
-from lean.learn.tests import standins
+from lean.learn.tests.setting import small
 
 
 def test_gae_matches_hand_computed_case_and_stops_at_termination():
@@ -78,62 +79,45 @@ def test_bc_gate_is_full_at_zero_win_rate_and_off_at_the_gate():
     assert 0.0 < bc_weight(config, 0.2) < 2.0
 
 
+ENVIRONMENTS = 8  # 4 self-play: 12 seats
+CLOCK = 6  # every game ends at the clock on its sixth tick
+
+
 def run_updates(updates, snapshot=False):
-    torch.manual_seed(0)
-    generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=1, team_size_maximum=2, equal_teams=False, minibatches=2, epochs=2, warmup_updates=1)
-    game_config = standins.GameConfig()
-    policy = standins.TinyPolicy()
-    league = None
+    config, game_config, policy, opponent, state, carry, generator = small(
+        ENVIRONMENTS, game_config=game.GameConfig(training_spawn=True, clock_ticks=CLOCK),
+        league_capacity=2 if snapshot else None, team_size_minimum=1, equal_teams=False, epochs=2,
+    )
     if snapshot:
-        league = League(every=1, capacity=2)
-        league.maybe_add(standins.TinyPolicy(), 0)
-    opponent = Opponent(scripted_config=None, league=league)
+        opponent.league.maybe_add(model.Policy(model.ModelConfig()), 0)
     optimiser = make_optimiser(config, policy)
-    state, carry = start(config, game_config, policy, opponent, 8, generator, game=standins.game, scripted=standins.scripted)
     history = []
     for index in range(updates):
-        rollout = collect(config, game_config, policy, opponent, state, carry, 16, generator, game=standins.game, scripted=standins.scripted)
+        rollout = collect(config, game_config, policy, opponent, state, carry, 16, generator)
         state, carry = rollout.state, rollout.carry
         history.append(update(config, policy, optimiser, rollout, update_index=index, generator=generator))
     return rollout, history
 
 
 def test_rollout_shapes_and_outcome_reward_reach_both_teams():
-    rollout, _ = run_updates(1, snapshot=True)
-    # 8 environments, 4 of them self-play with two live seats: 12 seats.
+    rollout, history = run_updates(1, snapshot=True)
     assert rollout.reward.shape == (16, 12, 4, LEVELS)
-    assert rollout.observation.ship.shape == (16, 12, 4, 3)
-    assert int(rollout.episodes) == 16  # 8 environments, episodes of 6 ticks, 16 ticks
-    assert rollout.done.sum() == 24  # each self-play episode ends for both of its seats
+    assert rollout.observation.ship.shape == (16, 12, 4, SHIP_FEATURES)
+    # Every game ends at ticks 5 and 11, for both seats of a self-play game.
+    assert rollout.done[[CLOCK - 1, 2 * CLOCK - 1]].all() and rollout.done.sum() == 24
     assert (rollout.value[~rollout.observation.own] == 0).all()
     assert torch.isfinite(rollout.log_probability).all()
     outcome = rollout.reward[..., OUTCOME][rollout.done]  # (ended episodes, N)
     assert (outcome > 0).any() and (outcome < 0).any()  # winners and losers are both paid
     assert rollout.position_offset.shape == (16, 12, 2)
     assert not rollout.next_valid[rollout.done].any()
+    assert all(value == value for value in history[0].values())
 
 
-def test_updates_on_the_stand_in_reduce_the_bc_loss():
+def test_updates_reduce_the_bc_loss():
     _, history = run_updates(6)
     assert all(torch.isfinite(torch.tensor(list(metrics.values()))).all() for metrics in history)
     assert history[-1]["bc"] < history[0]["bc"]
-
-
-def test_real_packages_smoke():
-    game = pytest.importorskip("lean.game")
-    scripted = pytest.importorskip("lean.scripted")
-    model = pytest.importorskip("lean.model")
-    torch.manual_seed(0)
-    generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1)
-    game_config = game.GameConfig()
-    policy = model.Policy(model.ModelConfig())
-    opponent = Opponent(scripted_config=scripted.ScriptedConfig())
-    state, carry = start(config, game_config, policy, opponent, 4, generator)
-    rollout = collect(config, game_config, policy, opponent, state, carry, 8, generator)
-    metrics = update(config, policy, make_optimiser(config, policy), rollout, generator=generator)
-    assert all(value == value for value in metrics.values())
 
 
 def test_collect_pairs_actions_and_log_probabilities_under_the_action_delay():
@@ -141,16 +125,9 @@ def test_collect_pairs_actions_and_log_probabilities_under_the_action_delay():
     policy's sample on that tick's observation (its log-probability recomputed from the
     observations matches), and it is the pending action the next tick's observation shows
     (the action the game applies then), for own ships alive on both ticks within an episode."""
-    game = pytest.importorskip("lean.game")
-    scripted = pytest.importorskip("lean.scripted")
-    model = pytest.importorskip("lean.model")
-    torch.manual_seed(0)
-    generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=2)
-    game_config = game.GameConfig(training_spawn=True, clock_ticks=10)  # an episode ends inside the rollout
-    policy = model.Policy(model.ModelConfig())
-    opponent = Opponent(scripted_config=scripted.ScriptedConfig())
-    state, carry = start(config, game_config, policy, opponent, 4, generator)
+    config, game_config, policy, opponent, state, carry, generator = small(
+        game_config=game.GameConfig(training_spawn=True, clock_ticks=10)  # an episode ends inside the rollout
+    )
     rollout = collect(config, game_config, policy, opponent, state, carry, 16, generator)
     observation, own, action = rollout.observation, rollout.observation.own, rollout.action
     assert rollout.reset[1:].any()
@@ -163,17 +140,9 @@ def test_collect_pairs_actions_and_log_probabilities_under_the_action_delay():
     assert (observation.pending[~own] == NO_PENDING).all()  # enemies, dead and absent rows
 
 
-def test_next_state_loss_is_live_with_the_real_packages():
-    game = pytest.importorskip("lean.game")
-    scripted = pytest.importorskip("lean.scripted")
-    model = pytest.importorskip("lean.model")
-    torch.manual_seed(0)
-    generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1)
-    policy = model.Policy(model.ModelConfig())
-    opponent = Opponent(scripted_config=scripted.ScriptedConfig())
-    state, carry = start(config, game.GameConfig(), policy, opponent, 4, generator)
-    rollout = collect(config, game.GameConfig(), policy, opponent, state, carry, 8, generator)
+def test_next_state_loss_is_live():
+    config, game_config, policy, opponent, state, carry, generator = small()
+    rollout = collect(config, game_config, policy, opponent, state, carry, 8, generator)
     assert rollout.next_state.shape == (8, 6, 4, policy.config.next_state_size)  # 4 environments, 2 self-play: 6 seats
     assert rollout.next_valid.any()
     assert torch.isfinite(rollout.next_state[rollout.next_valid]).all()
@@ -184,13 +153,8 @@ def test_next_state_loss_is_live_with_the_real_packages():
 
 
 def test_a_next_state_width_mismatch_raises():
-    torch.manual_seed(0)
-    generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=1, team_size_maximum=2, minibatches=2, epochs=1)
-    policy = standins.TinyPolicy()
-    opponent = Opponent(scripted_config=None)
-    state, carry = start(config, standins.GameConfig(), policy, opponent, 4, generator, game=standins.game, scripted=standins.scripted)
-    rollout = collect(config, standins.GameConfig(), policy, opponent, state, carry, 8, generator, game=standins.game, scripted=standins.scripted)
+    config, game_config, policy, opponent, state, carry, generator = small()
+    rollout = collect(config, game_config, policy, opponent, state, carry, 4, generator)
     rollout.next_state = rollout.next_state[..., :1]
     with pytest.raises(ValueError):
         update(config, policy, make_optimiser(config, policy), rollout, generator=generator)
@@ -200,21 +164,17 @@ def test_targets_once_per_update_equal_the_first_epochs_fresh_targets():
     """targets_every_epoch=False takes the values stored at collection; before any step they
     equal the critic's recomputed values, so both paths give the same first targets."""
     from lean.learn.store import RolloutStore
-    from lean.learn.update import target_pass
+    from lean.learn.training import target_pass
 
-    torch.manual_seed(0)
-    generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=2, micro_batch_views=4)
-    policy = standins.TinyPolicy()
-    opponent = Opponent(scripted_config=None)
-    state, carry = start(config, standins.GameConfig(), policy, opponent, 4, generator, game=standins.game, scripted=standins.scripted)
-    rollout = collect(config, standins.GameConfig(), policy, opponent, state, carry, 8, generator, game=standins.game, scripted=standins.scripted)
+    config, game_config, policy, opponent, state, carry, generator = small(epochs=2, micro_batch_views=4)
+    rollout = collect(config, game_config, policy, opponent, state, carry, 8, generator)
     store = RolloutStore.of(rollout)
     index, _ = store.batch_index(torch.arange(store.views), 4)
     stored_flags = target_pass(config, policy, store, index, None)
     stored = store.advantage.clone(), store.target.clone()
     fresh_flags = target_pass(config, policy, store, index)
-    assert torch.allclose(stored[0], store.advantage, atol=1e-5) and torch.allclose(stored[1], store.target, atol=1e-5)
+    # The policy's step (stored) and sequence (recomputed) agree within float32 rounding of the model.
+    assert torch.allclose(stored[0], store.advantage, atol=1e-3) and torch.allclose(stored[1], store.target, atol=1e-3)
     assert torch.equal(stored_flags, fresh_flags)
     for every_epoch in (False, True):
         variant = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=2, targets_every_epoch=every_epoch)
@@ -225,27 +185,20 @@ def test_targets_once_per_update_equal_the_first_epochs_fresh_targets():
 def test_finished_environments_take_the_segments_deals_in_order():
     """Agreed fixes 7 and 9: deals (game deal, team sizes, personas, learner team, position
     offset) are drawn once per segment; the k-th environment to finish takes deal k."""
-    import importlib
-
-    from lean import game, model, scripted
-
-    collect_module = importlib.import_module("lean.learn.collect")
     generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=4, equal_teams=False)
+    config = LearnConfig(team_size_minimum=2, team_size_maximum=4, equal_teams=False, persona_spread=1.0)
     game_config = game.GameConfig()
     policy = model.Policy(model.ModelConfig())
-    opponent = Opponent(scripted.ScriptedConfig(), persona_spread=1.0)
+    opponent = Opponent(scripted.ScriptedConfig())
     envs = 4
     state, carry = start(config, game_config, policy, opponent, envs, generator)
-    pool = collect_module.draw_next_episodes(
-        config, game_config, policy, opponent, envs, state.x.shape[1], generator, "cpu", game, scripted
-    )
+    pool = rollout_module.draw_next_episodes(config, game_config, policy, opponent, envs, state.x.shape[1], generator, "cpu")
     carry.next_episodes = pool
     taken_by = {}
     for done in ([False, True, False, True], [True, False, False, False]):
         done = torch.tensor(done)
         before = state
-        state, carry = collect_module.redeal(opponent, state, carry, done, generator, game)
+        state, carry = rollout_module.redeal(opponent, state, carry, done, generator)
         for environment in done.nonzero().flatten().tolist():
             taken_by[environment] = len(taken_by)
             deal = taken_by[environment]
@@ -263,17 +216,15 @@ def test_finished_environments_take_the_segments_deals_in_order():
     assert int(carry.next_episodes.taken) == 3
 
 
-def test_a_segment_counts_deals_used_twice():
-    """More games ending in one segment than there are environments reuse deals, counted."""
-    from lean import game, model, scripted
-
+def test_a_segment_uses_deals_again_only_past_one_per_environment():
+    """More games ending in one segment than there are environments reuse deals (modulo E)."""
     generator = torch.Generator().manual_seed(0)
     config = LearnConfig(team_size_minimum=1, team_size_maximum=1)
     policy = model.Policy(model.ModelConfig())
     opponent = Opponent(scripted.ScriptedConfig())
-    for clock, repeated in ((10, 0), (4, 8)):  # 12 ticks: each of 4 games ends once, or three times
+    for clock in (10, 4):  # 12 ticks: each of 4 games ends once, or three times (8 deals used twice)
         game_config = game.GameConfig(clock_ticks=clock)
         state, carry = start(config, game_config, policy, opponent, 4, generator)
         rollout = collect(config, game_config, policy, opponent, state, carry, 12, generator)
-        assert int(rollout.episodes) == 4 * (12 // clock)
-        assert int(rollout.repeated_deals) == repeated
+        assert int(rollout.done[:, :4].sum()) == 4 * (12 // clock)  # seats 0..3 are the environments
+        assert int(rollout.carry.next_episodes.taken) == 4 * (12 // clock)

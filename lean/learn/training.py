@@ -3,7 +3,6 @@
 import torch
 from torch import Tensor
 
-from lean.learn.collect import Rollout
 from lean.learn.config import LearnConfig, bc_weight, learning_rate, policy_precision
 from lean.learn.returns import (
     generalised_advantages,
@@ -15,6 +14,7 @@ from lean.learn.returns import (
     usage_metrics,
     value_centres,
 )
+from lean.learn.rollout import Rollout
 from lean.learn.store import RolloutStore
 from lean.model.policy import next_state_cross_entropy
 from lean.model.value import decode_value, hl_gauss_targets
@@ -208,9 +208,9 @@ def update(
     """
     store = data if isinstance(data, RolloutStore) else RolloutStore.of(data)
     if compiled:
-        from lean.learn import compiled as graphs
+        from lean.learn.compiled import graphs
 
-        loss_of, values = graphs.minibatch_loss, graphs.minibatch_values
+        loss_of, values = graphs().minibatch_loss, graphs().minibatch_values
     else:
         loss_of, values = minibatch_loss, minibatch_values
     rate = learning_rate(config, update_index)

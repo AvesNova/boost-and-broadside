@@ -69,8 +69,8 @@ def main() -> None:
     scripted_config = scripted.ScriptedConfig()
     policy = model.Policy(model.ModelConfig()).to(device)
     optimiser = make_optimiser(config, policy)
-    league = League(config.snapshot_every, config.snapshot_capacity, device, config.league_floor, config.league_decay)
-    opponent = Opponent(scripted_config, league, config.self_play_share, config.persona_spread)
+    league = League(config, device)
+    opponent = Opponent(scripted_config, league)
     state, carry = start(config, game_config, policy, opponent, envs, generator)
 
     store = RolloutStore(config.segments_per_update, config.stream_rollout)

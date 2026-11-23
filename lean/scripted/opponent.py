@@ -528,9 +528,23 @@ def act(
     team (with a `team`) and rows that are dead or do not exist are 0; a dead or absent row's
     kept target is cleared (-1), the other team's rows keep theirs.
     """
+    action, memory, _ = decide(config, state, team, persona, uniforms, memory)
+    return action, memory
+
+
+def decide(
+    config: ScriptedConfig,
+    state,
+    team: int | None,
+    persona: dict[str, Tensor] | None,
+    uniforms: Tensor,
+    memory: dict[str, Tensor],
+) -> tuple[Tensor, dict[str, Tensor], Marginals]:
+    """`act`, also returning the marginals the actions were drawn from (the behaviour-cloning
+    teacher's full distribution, lean.learn)."""
     parts = marginals(config, state, team, persona, memory)
     action = sample(parts, uniforms)
     target = torch.where(parts.controlled, parts.target, -1)
     if team is not None:  # the other team's rows keep their memory
         target = torch.where(state.team == team, target, memory["target"])
-    return action, {"target": target, "side": memory["side"]}
+    return action, {"target": target, "side": memory["side"]}, parts

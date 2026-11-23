@@ -19,8 +19,6 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from lean.game import card
-from lean.game.core import smootherstep
 from lean.learn.config import LearnConfig
 
 
@@ -67,11 +65,11 @@ class TickEvents:
     present: Tensor
 
 
-def tick_events(step_out, state, next_state, game_config) -> TickEvents:
+def tick_events(step_out, state) -> TickEvents:
     """v2's events from the game's StepOut and the state at the tick's start: the
     attacker-by-target hit damage, the boundary damage and the shield's restoration come
     straight from the game (exact); the shield lost is the damage up to the shield the ship
-    had. `next_state` and `game_config` are kept for the call sites; nothing reads them."""
+    had."""
     alive = state.alive
     total = step_out.damage_taken
     lost = torch.where(alive, torch.minimum(state.shield, total), 0.0)
