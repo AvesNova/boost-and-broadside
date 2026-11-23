@@ -47,7 +47,31 @@ Python: `Evaluator(Store(path), GameConfig())`, then `ensure([(a, b, (4, 4), gam
 ## What compiles
 
 One graph per seat layout (scripted against scripted, a network in seat A, networks in both
-seats). New scripted vectors, other networks of the same architecture, team sizes per game,
-E and the queue's length are data: no new graph. Every GameConfig field (arena radius, spawn
-rule, clock, fog, field count, lineup) is a constant of the graph: a new value compiles anew
-(Dynamo's guard), as does another network architecture.
+seats). Measured with no new graph: new scripted vectors, another network of the same
+architecture, team sizes from 1 to 6 per game in one queue, E and the queue's length, and a
+new arena radius, spawn rule or clock (PyTorch 2.15 traces numbers as symbols:
+`specialize_float` and `specialize_int` are off). Fog off compiles a new graph (a branch on
+a flag). Not measured: field count (0 is a branch), lineup, another architecture.
+
+## Measured (2026-11-24, laptop RTX 4070, performance profile, core game 4v4)
+
+| | games/s | game ticks/s |
+|---|---|---|
+| scripted vs scripted, E 4,096, 16 games per slot | 810 | 1.13M |
+| scripted vs scripted, E 8,192, 16 games per slot | 770 | 1.07M |
+| scripted vs scripted, E 4,096, 4 games per slot | 539 | 0.75M |
+| network (untrained) vs scripted, E 4,096, 16 games per slot, compile included | 107 | 87k |
+| the same, steady (segments 20 to 60) | (122k / 808 ticks a game) | 122k env ticks/s |
+
+The drain is unbiased: the yardstick against itself with fight_speed 1.3, 4v4, scored
+0.4656 +- 0.0019 over a whole queue of 65,536 games and 0.4654 +- 0.0034 over the 22,043
+games started before a 20 s cutoff and drained (z = 0.07; mean lengths 1,396 and 1,402
+ticks). A changed clock (300: longest game 300 ticks) and arena radius (1,200 m: mean
+length 1,115 +- 24 compiled, 1,074 +- 25 eager, 1,024 games each) act through the compiled
+tick.
+
+A run's drain lasts up to its longest game (the clock), with slots falling idle, so a short
+queue wastes most of the GPU: hence at least 16 games per slot. Compile: the scripted tick's
+first call 66 s cold (with 512 games of play), 23 s from a warm cache; the network tick
+about 110 s cold. Calling the network through torch.func.functional_call (so its weights
+are inputs) costs 9% against policy.step directly (122k against 133k env ticks/s).
