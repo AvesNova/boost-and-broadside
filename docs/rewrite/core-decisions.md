@@ -192,6 +192,12 @@ Learner
   speed, with Adam's learning rate scaled by the square root of the size ratio (Hilton, Cobbe
   and Schulman 2022). Watch the clipped fraction and the approximate KL every update.
 
+- Compact rollout storage (2026-11-23): absolute position and the PPO numbers (old
+  log-probabilities, values, rewards, advantages, returns, position offset) float32; other
+  observation floats float16; small integers int8 (signed, -1 sentinels stay); time since
+  seen int16 ticks or float. Checked by the log-probability difference and KL against full
+  precision.
+
 ## Proposals, not decided
 
 - Remove v2's flight and damage models from lean/game once the core model is signed off
