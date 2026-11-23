@@ -2,13 +2,15 @@
 streams of the scripted search.
 
 - agents: id (a short hash of the agent's identity: a scripted agent's full parameter vector
-  with the rows' names; a network's checkpoint file hash and which weights), kind, and the
-  vector or the path as JSON.
+  with the rows' names; a network's checkpoint file hash, which weights and the inference
+  version), kind, and the vector or the path as JSON. The inference version is a hash of the
+  source a network acts through: lean/model (the model and lean.model.agent's step) and
+  lean/eval/runner.py.
 - conditions: id (a short hash of the game config, the seats' team sizes and the game
   version), the version, and the conditions as JSON. The game version is a hash of the
-  source of lean/game (the card and the config's defaults are there), lean/scripted and
-  lean/contract.py: any change there starts new conditions, so old games are kept but not
-  mixed in.
+  source that decides a game: lean/game (the card and the config's defaults are there; not
+  the analysis-only tuning.py), lean/scripted and lean/contract.py. A change in either
+  version starts new agents or conditions, so old games are kept but not mixed in.
 - games: agent A, agent B, the team A played, conditions, result (0 A won, 1 B won, 2 a
   draw), length in ticks. Counts are a view (`counts`); a pairing is read in both
   orientations.
@@ -51,16 +53,41 @@ def short_hash(*parts) -> str:
     return hashlib.sha256(json.dumps(parts, sort_keys=True).encode()).hexdigest()[:12]
 
 
-@functools.cache
-def game_version() -> str:
-    """A hash of the source that decides a game: lean/game, lean/scripted (not their tests)
-    and lean/contract.py."""
+# Analysis tools beside the game's source that no game runs.
+ANALYSIS_ONLY = frozenset({LEAN / "game" / "tuning.py"})
+
+
+def game_files() -> list[Path]:
+    """The source that decides a game: lean/game, lean/scripted (not their tests, not
+    ANALYSIS_ONLY) and lean/contract.py."""
+    files = [*(LEAN / "game").glob("*.py"), *(LEAN / "scripted").glob("*.py"), LEAN / "contract.py"]
+    return sorted(path for path in files if path not in ANALYSIS_ONLY)
+
+
+def inference_files() -> list[Path]:
+    """The source a network agent acts through besides the game: lean/model (not its tests)
+    and the runner."""
+    return sorted([*(LEAN / "model").glob("*.py"), LEAN / "eval" / "runner.py"])
+
+
+def source_hash(files) -> str:
     digest = hashlib.sha256()
-    files = sorted([*(LEAN / "game").glob("*.py"), *(LEAN / "scripted").glob("*.py"), LEAN / "contract.py"])
     for path in files:
-        digest.update(path.name.encode())
+        digest.update(str(path.relative_to(LEAN)).encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()[:12]
+
+
+@functools.cache
+def game_version() -> str:
+    """A hash of game_files()."""
+    return source_hash(game_files())
+
+
+@functools.cache
+def inference_version() -> str:
+    """A hash of inference_files(): part of a network agent's id."""
+    return source_hash(inference_files())
 
 
 @dataclass(frozen=True)
@@ -94,10 +121,11 @@ class NetworkAgent:
 
     @property
     def id(self) -> str:
-        return short_hash("network", file_hash(self.checkpoint), self.weights)
+        return short_hash("network", file_hash(self.checkpoint), self.weights, inference_version())
 
     def description(self) -> dict:
-        return {"checkpoint": str(self.checkpoint), "weights": self.weights, "file_hash": file_hash(self.checkpoint)}
+        return {"checkpoint": str(self.checkpoint), "weights": self.weights, "file_hash": file_hash(self.checkpoint),
+                "inference_version": inference_version()}
 
 
 @functools.cache

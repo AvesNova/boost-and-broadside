@@ -220,3 +220,19 @@ def test_a_network_plays_at_the_precision_it_was_trained_with(tmp_path, monkeypa
     evaluator = Evaluator(Store(tmp_path / "s.sqlite"), GAME, device="cpu", envs=4, segment=8)
     evaluator.ensure([(NetworkAgent(str(path), "live"), ScriptedAgent.of(), (1, 1), 4)])
     assert seen and set(seen) == {False}
+
+
+def test_versions_cover_what_decides_a_game_and_how_a_network_acts(tmp_path, monkeypatch):
+    """Review B3: the game version hashes the game's source but not the analysis-only
+    tuning.py; a network agent's id covers its inference path (lean/model with its agent
+    step, the runner), so a change there starts a new agent."""
+    names = {str(path.relative_to(store_module.LEAN)) for path in store_module.game_files()}
+    assert {"game/core.py", "game/card.py", "scripted/opponent.py", "contract.py"} <= names
+    assert "game/tuning.py" not in names and not any("tests" in name for name in names)
+    inference = {str(path.relative_to(store_module.LEAN)) for path in store_module.inference_files()}
+    assert {"model/policy.py", "model/agent.py", "eval/runner.py"} <= inference
+    path = tmp_path / "a.pt"
+    path.write_bytes(b"one")
+    before = NetworkAgent(str(path), "ema").id
+    monkeypatch.setattr(store_module, "inference_version", lambda: "another")
+    assert NetworkAgent(str(path), "ema").id != before
