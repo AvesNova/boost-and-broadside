@@ -6,22 +6,25 @@ import math
 
 import torch
 
-from lean.game import GameConfig, core, draw_noise, observe, reset, step
+from lean.game import GameConfig, card, core, draw_noise, observe, reset, step
 from lean.scripted import ScriptedConfig, act, chaser_act, draw_uniforms, personas
 from lean.scripted.opponent import engage
 
 torch.set_num_threads(1)
 
-FOG = GameConfig(fog=True)
+FOG = GameConfig(field_count=0)  # the scenes are placed by hand, with no fields unless given
 CPU = torch.device("cpu")
 
 
-def duel(positions, config=FOG, headings=None, vision=None):
+def duel(positions, headings=None, vision=None, fields=None):
     """One environment, one ship per entry of positions [(x, y), ...], the first half team 0,
-    the rest team 1, nobody seen yet, then one perception at these positions."""
+    the rest team 1, nobody seen yet, then one perception at these positions. fields: (1, 5, F)
+    as State.fields, or none."""
     count = len(positions)
     sizes = torch.tensor([[count // 2, count - count // 2]])
-    state = reset(config, 1, sizes, torch.Generator().manual_seed(0), CPU)
+    state = reset(FOG, 1, sizes, torch.Generator().manual_seed(0), CPU)
+    if fields is not None:
+        state = dataclasses.replace(state, fields=fields)
     x = torch.tensor([[p[0] for p in positions]], dtype=torch.float32)
     y = torch.tensor([[p[1] for p in positions]], dtype=torch.float32)
     angle = torch.tensor([headings if headings is not None else [0.0] * count], dtype=torch.float32)
@@ -71,8 +74,8 @@ def test_fog_off_is_full_information_and_leaves_the_game_unchanged():
     generator = torch.Generator().manual_seed(3)
     sizes = torch.tensor([[3, 3]] * 4)
     plain, fogged = (
-        GameConfig(arena_radius=700.0, spawn="mixed"),
-        GameConfig(arena_radius=700.0, spawn="mixed", fog=True),
+        GameConfig(arena_radius=700.0, spawn="mixed", field_count=0, fog=False),
+        GameConfig(arena_radius=700.0, spawn="mixed", field_count=0),
     )
     a = reset(plain, 4, sizes, torch.Generator().manual_seed(1), CPU)
     b = reset(fogged, 4, sizes, torch.Generator().manual_seed(1), CPU)
@@ -117,7 +120,7 @@ def test_sight_range_and_field_cores():
     assert core.sighted_by_enemy(duel([(0.0, 0.0), (999.0, 0.0)], headings=[math.pi, 0.0])).all()
     assert not core.sighted_by_enemy(duel([(0.0, 0.0), (1001.0, 0.0)])).any()
     # One field at the centre: radius 300, band 160, so core 220 and outer disc 380.
-    field = GameConfig(fog=True, fields=((0.0, 0.0, 300.0, 160.0, 2.0),))
+    field = torch.tensor([[[0.0], [0.0], [300.0], [160.0], [2.0 * card.LN_SQRT2]]])
     cases = [
         ([(-450.0, 0.0), (450.0, 0.0)], False),  # the line crosses the core
         ([(-450.0, 400.0), (450.0, 400.0)], True),  # passes outside the core
@@ -128,7 +131,7 @@ def test_sight_range_and_field_cores():
         ([(250.0, 0.0), (-250.0, 0.0)], False),  # band to band across the core
     ]
     for positions, expected in cases:
-        seen = core.sighted_by_enemy(duel(positions, config=field))
+        seen = core.sighted_by_enemy(duel(positions, fields=field))
         assert bool(seen.all()) == expected and bool(seen.any()) == expected, positions
 
 
@@ -157,12 +160,12 @@ def test_firing_and_hits_reveal_for_that_tick_only_and_boundary_damage_does_not(
     assert (state.seen[:, core.SEEN_KNOWN] == 0).all()
     shoot = torch.tensor([[True, False]])
     state, out = step(FOG, state, idle(state, shoot), no_noise(state))
-    assert out.fired[0].tolist() == [True, False]
+    assert state.fired[0].tolist() == [True, False]
     assert state.ticks_since_seen[0, 0] == 0 and state.seen[0, core.SEEN_KNOWN, 0] == 1.0
     hit_tick = None
     for tick in range(1, 6):
         state, out = step(FOG, state, idle(state), no_noise(state))
-        assert not out.fired.any()
+        assert not state.fired.any()
         assert state.ticks_since_seen[0, 0] == tick  # the shooter's reveal lasted one tick
         if out.damage_taken[0, 1] > 0.0 and hit_tick is None:
             hit_tick = tick

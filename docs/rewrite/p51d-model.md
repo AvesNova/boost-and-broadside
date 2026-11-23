@@ -7,7 +7,7 @@ code; and a Vizia with v2's climb modifications reverted.
 Everything here is quasi-steady under `GameConfig.core()` (coasting, mid-store, no fields),
 from the flight code's own functions (`core._setting`, `_lift_coefficient`, `_rates`), as
 the doghouse charts are. Code: `lean/game/tuning.py`; tests: `lean/game/tests/test_tuning.py`;
-charts: `docs/rewrite/sections/turns/doghouse_p51d.py`.
+charts: `docs/rewrite/sections/turns/doghouse.py`.
 
 ## Time scale
 
@@ -208,14 +208,17 @@ Dark variants: `doghouse-p51d-core-dark.png`, `doghouse-p51d-core-real-dark.png`
 `doghouse-vizia-plain-core-dark.png` and `doghouse-vizia-plain-core-real-dark.png`. Vizia's own
 chart is `doghouse-vizia-core.png`.
 
-    for theme in light dark; do FLIGHT_MODEL=core THEME=$theme OMP_NUM_THREADS=1 PYTHONPATH=.:src \
-        python docs/rewrite/sections/turns/doghouse_p51d.py; done
+    for theme in light dark; do THEME=$theme OMP_NUM_THREADS=1 PYTHONPATH=.:src \
+        python docs/rewrite/sections/turns/doghouse.py; done
+
+(The P-51D's charts. The vizia_plain and Vizia rows left the card at the game sign-off (G1,
+2026-11-23); their charts are the records drawn before.)
 
 The P-51D's chart reads "best sustained 76 m/s, 19 deg/s" (real) from its own grid; the tables
 use a 0.05 m/s grid and bisect the stick (169 mph = 75.6 m/s, 18.6 deg/s). P-51D against Vizia
 on shared axes, in game units and at 1x real time (with an mph axis):
-`sections/turns/doghouse-p51d-vizia-core[-real][-dark].png`
-(`sections/turns/doghouse_compare.py`).
+`sections/turns/doghouse-p51d-vizia-core[-real][-dark].png` (drawn by doghouse_compare.py,
+removed with the Vizia row at G1).
 
 ## Tests (`lean/game/tests/test_tuning.py`)
 

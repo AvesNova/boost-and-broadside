@@ -6,7 +6,6 @@ reaches the dispatcher, views and metadata apart) and CPU time, uncompiled, one 
 Operation counts do not depend on the batch size; times are at E = 256, 5v5, CPU, one thread.
 """
 
-import dataclasses
 import os
 import statistics
 import sys
@@ -64,13 +63,11 @@ def game(config, label):
 if __name__ == "__main__":
     print("| call | compute ops | view ops | CPU ms per call (E = 256, 5v5, one thread) |")
     print("|---|---|---|---|")
-    v2 = core.GameConfig()
-    game(v2, "v2 config (no fields)")
-    game(dataclasses.replace(v2, fields=((800.0, 0.0, 600.0, 160.0, 2.0),) * 10), "v2 config, 10 fixed fields")
-    state = game(core.GameConfig.core(), "core config (core flight and damage, ghosts, 10 drawn fields)")
+    game(core.GameConfig(field_count=0), "no fields")
+    state = game(core.GameConfig(), "the game (10 drawn fields, fog)")
     scripted = ScriptedConfig()
     persona = personas(scripted, E, state.x.shape[1], torch.Generator().manual_seed(1), torch.device("cpu"), 0.0)
     uniforms = draw_uniforms(E, state.x.shape[1], torch.Generator().manual_seed(2), "cpu")
     with torch.no_grad():
-        measure("scripted act (one team), core config state", lambda: act(scripted, state, 0, persona, uniforms))
-        measure("scripted act (both teams, one call), core config state", lambda: act(scripted, state, None, persona, uniforms))
+        measure("scripted act (one team)", lambda: act(scripted, state, 0, persona, uniforms))
+        measure("scripted act (both teams, one call)", lambda: act(scripted, state, None, persona, uniforms))

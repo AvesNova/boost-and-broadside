@@ -36,13 +36,12 @@ class State:                             # every field a tensor; shapes (E, N) u
     tick                                 # (E,) long
 
 @dataclass
-class StepOut:
-    damage_dealt, damage_taken           # (E, N) float32, this tick, enemy damage only in dealt
-    friendly_damage                      # (E, N) float32 dealt to team-mates
-    died, fired                          # (E, N) bool
-    killer                               # (E, N) long, slot of the killer or -1
+class StepOut:                           # lean.contract.StepOut has the full list
+    damage_taken                         # (E, N) float32, this tick, bullets and the boundary
+    died                                 # (E, N) bool
     done                                 # (E,) bool
     result                               # (E,) long: 0 or 1 = winning team, 2 = draw, -1 = not done
+    shot_outcome, shot_tick, hit_damage, boundary_damage, shield_restored
 
 @dataclass
 class Obs:                               # one team's view; full information (no fog yet)
@@ -59,7 +58,7 @@ SHIP_FEATURES, GLOBAL_FEATURES           # ints, set by the game package
 
 ```python
 @dataclass
-class GameConfig: ...                    # arena radius, clock, spawn rule ("sides" | "mixed"), fields, ship lineup
+class GameConfig: ...                    # the core game: arena radius, clock, spawn rule ("sides" | "mixed"), fields drawn, ship lineup, fog
 def reset(config, envs, team_sizes, generator, device) -> State
     # team_sizes: (E, 2) long, ships per team in each environment; unused slots have exists = False
 def step(config, state, action, noise) -> tuple[State, StepOut]
@@ -98,7 +97,7 @@ class Policy(nn.Module):
 ```
 
 The model reads from `Obs`: ship, pos, heading, key_mask, globals, field, field_pos,
-field_mask, visible, since_seen (`lean.model.policy.OBS_FIELDS`).
+visible, since_seen (`lean.model.policy.OBS_FIELDS`).
 
 ## `lean/learn` (rollout, PPO) and `lean/eval` (crossover)
 

@@ -43,8 +43,8 @@ def test_finite_and_padding_inert(sizes, ticks):
         observation = observe(CLOSE, state, 0)
         assert torch.isfinite(observation.ship).all() and torch.isfinite(observation.globals).all()
         absent = ~state.exists
-        assert not out.fired[absent].any() and not out.died[absent].any()
-        assert (out.damage_taken[absent] == 0).all() and (out.damage_dealt[absent] == 0).all()
+        assert not state.fired[absent].any() and not out.died[absent].any()
+        assert (out.damage_taken[absent] == 0).all() and (out.hit_damage[absent] == 0).all()
         assert not observation.key_mask[absent].any() and not observation.own[absent].any()
         assert not state.alive[absent].any()
         assert (state.bullet_moves_left[absent] == 0).all()
@@ -64,7 +64,10 @@ def test_swapping_teams_mirrors_the_outcome():
     slots = state.x.shape[1]
 
     # The slot axis of each packed field: 2 in the blocks (E, rows, N[, K]), 1 in (E, N[, K]).
-    slot_axis = {"ships": 2, "flags": 2, "identity": 2, "bullets": 2, "bullet_counts": 2, "bullet_real": 1}
+    slot_axis = {
+        "ships": 2, "flags": 2, "identity": 2, "bullets": 2, "bullet_counts": 2, "bullet_real": 1,
+        "seen": 2, "ticks_since_seen": 1,
+    }
     mirror = {name: getattr(state, name).flip(axis) for name, axis in slot_axis.items()}
     mirror["constants"] = dataclasses.replace(state.constants, table=state.constants.table.flip(2))
     other = dataclasses.replace(state, **mirror).replace(team=1 - state.team.flip(1))
@@ -80,8 +83,8 @@ def test_swapping_teams_mirrors_the_outcome():
         assert (out.died == mirrored.died.flip(1))[live].all()
         expected = torch.where(out.result < 2, torch.where(out.result >= 0, 1 - out.result, -1), 2)
         assert (expected == mirrored.result)[live].all()
-        assert torch.allclose(out.damage_dealt[live], mirrored.damage_dealt.flip(1)[live], atol=1e-4)
+        assert torch.allclose(out.hit_damage[live], mirrored.hit_damage.flip(1, 2)[live], atol=1e-4)
         assert torch.allclose(state.x[live], other.x.flip(1)[live], atol=1e-3)
-        damage += float(out.damage_dealt.sum())
+        damage += float(out.hit_damage.sum())
         finished = finished | out.done
     assert damage > 0.0

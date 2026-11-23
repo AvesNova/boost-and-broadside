@@ -13,7 +13,7 @@ in pinned host memory on a GPU. The masks and labels the update counts and index
 device (`RESIDENT`: own, done, reset, next_valid, hit_label, deal_row), the per-view
 bootstrap values (only the last segment's are read), and the update's advantages and value targets stay on the device. The
 observation fields constant within an episode (`EPISODE_CONSTANT`: the fields, their
-positions and mask) and the position offset are stored once per deal in a table on the
+positions) and the position offset are stored once per deal in a table on the
 device (rows per segment: the environments as the segment starts, then the segment's
 deals); each tick records only the seat's row (`deal_row`).
 
@@ -58,7 +58,7 @@ from torch import Tensor
 # Per-tick records kept on the device: one byte per token, counted and indexed there.
 RESIDENT = ("own", "done", "reset", "next_valid", "hit_label", "deal_row")
 # Observation fields constant within an episode: stored once per deal (with the position offset).
-EPISODE_CONSTANT = ("field", "field_pos", "field_mask")
+EPISODE_CONSTANT = ("field", "field_pos")
 # Floats kept in float32: positions and headings (the position code and the rotary angles
 # read them) and the PPO numbers.
 FLOAT32 = frozenset(("pos", "heading", "field_pos", "position_offset", "log_probability", "value", "reward"))

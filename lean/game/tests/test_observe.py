@@ -4,7 +4,7 @@ import math
 
 import torch
 
-from lean.game import core
+from lean.game import card, core
 
 torch.set_num_threads(1)
 
@@ -12,11 +12,12 @@ torch.set_num_threads(1)
 def test_observed_speed_is_world_speed_inside_a_field():
     """Inside a field the observed speed and velocity are the proper speed over the refractive
     index, so a field that slows a ship shows as a slower ship."""
-    field = (0.0, 0.0, 2000.0, 200.0, 2.0)  # a strong field covering the arena's centre
-    config = core.GameConfig(fields=(field,))
+    config = core.GameConfig()
     generator = torch.Generator().manual_seed(0)
     state = core.reset(config, 1, torch.tensor([[1, 1]]), generator, torch.device("cpu"))
-    state = state.replace(x=torch.zeros_like(state.x), y=torch.zeros_like(state.y))
+    # One strong field over the arena's centre: x, y, radius, band, target ln n (2 half-octaves).
+    field = torch.tensor([[[0.0], [0.0], [2000.0], [200.0], [2.0 * card.LN_SQRT2]]])
+    state = state.replace(fields=field, x=torch.zeros_like(state.x), y=torch.zeros_like(state.y))
     log_index, gradient_x, gradient_y = core.medium(state.fields, state.x, state.y)
     state = state.replace(log_index=log_index, gradient_x=gradient_x, gradient_y=gradient_y)  # moved: refresh
     assert float(log_index[0, 0]) > 0.1  # the ship really is inside the field

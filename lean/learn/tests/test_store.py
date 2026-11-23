@@ -14,10 +14,10 @@ from lean.learn.store import EPISODE_CONSTANT, stored, widened
 ENVIRONMENTS = 6  # 3 self-play: 9 seats
 
 
-def setting(core: bool = True):
+def setting(fields: bool = True):
     torch.manual_seed(0)
     config = LearnConfig(team_size_minimum=2, team_size_maximum=3, equal_teams=False, minibatches=1, epochs=1)
-    game_config = game.GameConfig.core() if core else game.GameConfig(ghost_bullets=True)
+    game_config = game.GameConfig() if fields else game.GameConfig(field_count=0, fog=False)
     policy = model.Policy(model.ModelConfig())
     opponent = Opponent(scripted.ScriptedConfig())
     return config, game_config, policy, opponent
@@ -64,7 +64,7 @@ def test_streamed_segments_equal_the_unstreamed_rollouts():
         if field.name not in EPISODE_CONSTANT:  # the deal table keeps the game's types
             expected = compact(field.name, expected)
         assert torch.equal(getattr(observation, field.name), expected), field.name
-    assert any(getattr(observation, name).numel() for name in EPISODE_CONSTANT)  # the core game has fields
+    assert any(getattr(observation, name).numel() for name in EPISODE_CONSTANT)  # fields drawn
     assert torch.equal(offset, joined(lambda rollout: rollout.position_offset))
     for name in names:
         if name in store.observation_names:
@@ -118,12 +118,12 @@ def policy_outputs(policy, observation, carry, reset, offset):
     return torch.log_softmax(logits.float(), -1), value_logits.float()
 
 
-@pytest.mark.parametrize("core", [True, False])
-def test_compact_storage_moves_the_policy_far_less_than_the_clip(core):
+@pytest.mark.parametrize("fields", [True, False])
+def test_compact_storage_moves_the_policy_far_less_than_the_clip(fields):
     """The policy on the compact stored observation against the full-precision one, float32:
     the largest change of a sampled action's log-probability and the mean KL over the
     trained tokens, far below PPO's clip (0.2) and a typical update's KL (about 0.01)."""
-    config, game_config, policy, opponent = setting(core)
+    config, game_config, policy, opponent = setting(fields)
     (rollout,) = rollouts(config, game_config, policy, opponent, 1, 24)
     store = RolloutStore.of(rollout)
     batch = whole_batch(store, store.observation_names + ("deal_row", "reset", "action"))
@@ -135,15 +135,15 @@ def test_compact_storage_moves_the_policy_far_less_than_the_clip(core):
     action = rollout.action[..., None]
     change = (full.gather(-1, action) - compact.gather(-1, action)).squeeze(-1)[own].abs().max()
     kl = (full.exp() * (full - compact)).sum(-1)[own].mean()
-    print(f"core={core}: largest log-probability change {change:.2e}, mean KL {kl:.2e}, "
+    print(f"fields={fields}: largest log-probability change {change:.2e}, mean KL {kl:.2e}, "
           f"largest value-logit change {(full_value - compact_value)[own].abs().max():.2e}")
     assert change < 1e-2 and kl < 1e-5
 
 
 def test_every_stored_float16_field_is_within_range():
     """Every float16 record of a scripted rollout (both games) is finite after narrowing."""
-    for core in (True, False):
-        config, game_config, policy, opponent = setting(core)
+    for fields in (True, False):
+        config, game_config, policy, opponent = setting(fields)
         (rollout,) = rollouts(config, game_config, policy, opponent, 1, 24)
         records = {field.name: getattr(rollout.observation, field.name) for field in dataclasses.fields(rollout.observation)}
         records["next_state"] = rollout.next_state

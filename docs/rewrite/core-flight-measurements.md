@@ -3,7 +3,9 @@
 Standard manoeuvres flown in both flight models (`GameConfig().flight_model` "v2" and
 `GameConfig.core()`), one ship, no fields, coast unless stated, store at half unless stated.
 Measured 2026-11-23 on the laptop CPU, one thread, by
-`docs/rewrite/sections/turns/measure_core.py` (argument: the card index, 2 Vizia, 3 P-51D).
+`docs/rewrite/sections/turns/measure_core.py` (argument: the card index, 2 Vizia, 3 P-51D in the
+card of that day; since G1 the card holds the P-51D alone, index 0, and the script prints the
+core column only).
 Game units (2x real time).
 
 ## Vizia
@@ -128,8 +130,8 @@ second, not 45).
   redrawn for the turn-over-climb order: the "full stick, climbing" line now lies on the full
   stick line except near the corner.
 
-      for theme in light dark; do THEME=$theme OMP_NUM_THREADS=1 PYTHONPATH=.:src \
-          python docs/rewrite/sections/turns/doghouse_compare.py; done
+  (Drawn by doghouse_compare.py, removed with the Vizia row at G1; `doghouse.py` draws the
+  P-51D's.)
 
 ## Open for the author's flying
 

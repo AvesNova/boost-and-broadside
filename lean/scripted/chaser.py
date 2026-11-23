@@ -41,9 +41,7 @@ def chaser_act(
     )
     turns_to_even = (error > 0.0) == config.left_is_even
     stick = torch.where(level > 0, 2 * level - 1 + turns_to_even.long(), 0)
-    ready = (state.cooldown <= 0) & (
-        state.energy >= characteristic(config, state, "bullet_energy_cost")
-    )
+    ready = state.cooldown <= 0  # a shot costs no store
     in_range = fight.distance <= chaser.fire_range_in_gun_range * characteristic(
         config, state, "gun_range"
     )

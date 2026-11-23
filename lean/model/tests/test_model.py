@@ -39,14 +39,13 @@ def make_obs(
         globals=torch.randn(*lead, GLOBAL_FEATURES, generator=generator),
         field=torch.randn(*lead, fields, FIELD_FEATURES, generator=generator),
         field_pos=(torch.rand(*lead, fields, 2, generator=generator) - 0.5) * 6000.0,
-        field_mask=torch.rand(*lead, fields, generator=generator) < 0.75,
         visible=torch.rand(*lead, slots, generator=generator) < 0.7,
         since_seen=torch.rand(*lead, slots, generator=generator) * 2.0,
     )
 
 
 SHIP_NAMES = ("ship", "pos", "heading", "key_mask", "own", "visible", "since_seen")
-FIELD_NAMES = ("field", "field_pos", "field_mask")
+FIELD_NAMES = ("field", "field_pos")
 
 
 def index_obs(obs, index):
@@ -163,29 +162,23 @@ def test_padding_and_permutation_of_ships_leave_real_ships_unchanged(positionles
 
 
 def test_fields_are_an_unordered_memory_with_no_outputs():
-    """Catches field slots read by index, absent fields that still count, and fields that
-    get outputs or carry: permuting fields or padding them with absent ones changes no ship
-    output; F = 0 runs; the carry has no field rows; present fields are read."""
-    envs, slots, real, padded = 3, 6, 5, 9
+    """Catches field slots read by index and fields that get outputs or carry: permuting fields
+    changes no ship output; F = 0 runs; the carry has no field rows; the fields are read."""
+    envs, slots, count = 3, 6, 5
     policy = make_policy()
-    obs = make_obs((envs,), slots, fields=padded)
-    obs.field_mask[:, :real] = True
-    obs.field_mask[:, real:] = False
-    small = select(obs, FIELD_NAMES, torch.arange(real))
-    order = torch.randperm(padded, generator=torch.Generator().manual_seed(5))
+    obs = make_obs((envs,), slots, fields=count)
+    order = torch.randperm(count, generator=torch.Generator().manual_seed(5))
     shuffled = select(obs, FIELD_NAMES, order)
     none = select(obs, FIELD_NAMES, torch.arange(0))
     carry = torch.randn(policy.initial_carry(envs, slots, "cpu").shape)
     with torch.no_grad():
-        base = policy.step(small, carry)
-        pad = policy.step(obs, carry)
+        base = policy.step(obs, carry)
         mix = policy.step(shuffled, carry)
         empty = policy.step(none, carry)
     live = obs.key_mask
-    for first, second in ((base, pad), (base, mix)):
-        assert torch.allclose(first[0][live], second[0][live], atol=1e-5)
-        assert torch.allclose(first[1][live], second[1][live], atol=1e-5)
-        assert torch.allclose(first[2], second[2], atol=1e-5)
+    assert torch.allclose(base[0][live], mix[0][live], atol=1e-5)
+    assert torch.allclose(base[1][live], mix[1][live], atol=1e-5)
+    assert torch.allclose(base[2], mix[2], atol=1e-5)
     assert base[2].shape == empty[2].shape == carry.shape
     assert torch.isfinite(empty[0]).all() and torch.isfinite(empty[1]).all()
     assert not torch.allclose(base[0][live], empty[0][live], atol=1e-4)
@@ -359,8 +352,6 @@ def training_batch(ticks=8, envs=4, slots=10, fields=5):
     obs = make_obs((ticks, envs), slots, fields=fields)
     obs.key_mask[:, :, -1] = False  # a slot that is never live
     obs.key_mask[:, :, 0] = True
-    obs.field_mask[:, :, 0] = True
-    obs.field_mask[:, :, -1] = False  # a field that is never present
     reset = torch.zeros(ticks, envs, dtype=torch.bool)
     reset[3, 1] = reset[5, envs - 1] = True
     generator = torch.Generator().manual_seed(7)
@@ -392,8 +383,8 @@ def training_loss(policy, obs, reset, targets, carry=None):
 
 
 def test_backward_reaches_every_parameter_and_no_masked_row():
-    """Catches dead parameters, non-finite gradients, and masked ship rows or absent fields
-    leaking into the loss."""
+    """Catches dead parameters, non-finite gradients, and masked ship rows leaking into the
+    loss."""
     policy = make_policy().train()
     obs, reset, targets = training_batch()
     for name in ("ship", "pos", "heading", "globals", "field", "field_pos"):
@@ -414,28 +405,25 @@ def test_backward_reaches_every_parameter_and_no_masked_row():
     ]
     assert not dead, f"parameters with no gradient: {dead}"
     assert not bad, f"parameters with a non-finite gradient: {bad}"
-    for names, mask in (
-        (("ship", "pos", "heading"), obs.key_mask),
-        (("field", "field_pos"), obs.field_mask),
-    ):
-        for name in names:
-            grad = getattr(obs, name).grad
-            assert torch.isfinite(grad).all()
-            assert grad[~mask].abs().max() == 0, f"a masked row's {name} has a gradient"
-            assert grad[mask].abs().sum() > 0
+    for name in ("ship", "pos", "heading"):
+        grad = getattr(obs, name).grad
+        assert torch.isfinite(grad).all()
+        assert grad[~obs.key_mask].abs().max() == 0, f"a masked row's {name} has a gradient"
+        assert grad[obs.key_mask].abs().sum() > 0
+    for name in FIELD_NAMES:
+        grad = getattr(obs, name).grad
+        assert torch.isfinite(grad).all() and grad.abs().sum() > 0
     # The carry (state and buffer) of a row masked at tick 0 is cut by keep = 0.
     assert carry.grad[:, :, 1:][:, ~obs.key_mask[0]].abs().max() == 0
     assert carry.grad[:, :, 1:][:, obs.key_mask[0]].abs().sum() > 0
 
-    # Changing masked rows' and absent fields' inputs leaves the loss unchanged.
+    # Changing masked rows' inputs leaves the loss unchanged.
     with torch.no_grad():
         changed = SimpleNamespace(**{k: v.detach().clone() for k, v in vars(obs).items()})
-        masked, absent = ~obs.key_mask, ~obs.field_mask
+        masked = ~obs.key_mask
         changed.ship[masked] = torch.randn_like(changed.ship[masked]) * 50.0
         changed.pos[masked] = torch.randn_like(changed.pos[masked]) * 5000.0
         changed.heading[masked] = 2.5
-        changed.field[absent] = torch.randn_like(changed.field[absent]) * 50.0
-        changed.field_pos[absent] = torch.randn_like(changed.field_pos[absent]) * 5000.0
         again, _, again_final = training_loss(policy, changed, reset, targets, carry)
     assert torch.allclose(again, loss, atol=1e-5)
     assert torch.allclose(again_final, final, atol=1e-5)

@@ -3,9 +3,9 @@
 Sizes: E environments, N ship slots, K bullet slots per ship, F fields. Bullet o * K + k
 belongs to ship o. Units: metres, seconds, radians, joules; clocks in ticks.
 
-Tick order: fire, flight, bullet motion, swept hit test, damage and shields, boundary,
-deaths, win check and clock, counters. Nothing here resets an environment: the caller
-passes StepOut.done to reset_done.
+Tick order (`step`): fire, flight, bullet motion, the swept hit test, damage, the boundary and
+shields, the end check, the bullets' bookkeeping, then the fog's sighting. Nothing here resets
+an environment: the caller passes StepOut.done to reset_done.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import functools
 import math
 from dataclasses import dataclass
 from types import SimpleNamespace
+from typing import NamedTuple
 
 import torch
 from torch import Tensor
@@ -49,37 +50,29 @@ FIRED_TICK = BULLET_COUNT_COLUMNS.index("bullet_fired_tick")
 
 @dataclass
 class GameConfig:
-    """The rules of one run.
+    """The rules of one run: the core game (docs/rewrite/core-decisions.md).
 
     arena_radius: metres; boundary damage starts beyond it. boundary_ramp_width: metres over
     which boundary damage rises to its maximum. clock_ticks: the episode length. spawn:
     "sides" (each team in a disc on its side of a random axis, noses toward the enemy) or
-    "mixed" (every ship uniform in the arena, uniform heading). fields: fixed refractive
-    fields, each (x, y, radius, band_width, level) with level in half-octaves of the index;
-    empty for no medium. lineup: type names by rank within a team, cycled, the same for both
-    teams. tick_length: seconds.
+    "mixed" (every ship uniform in the arena, uniform heading). lineup: type names
+    (lean.game.card.TYPE_NAMES) by rank within a team, cycled, the same for both teams.
+    tick_length: seconds.
     """
 
     arena_radius: float = 4200.0
     boundary_ramp_width: float = 300.0
     clock_ticks: int = 5400
     spawn: str = "sides"
-    fields: tuple[tuple[float, float, float, float, float], ...] = ()
-    lineup: tuple[str, ...] = ("yongma", "jujak")
+    lineup: tuple[str, ...] = ("p51d",)
     tick_length: float = 1.0 / 30.0
-    # Flight model: "v2" (v2's flight, tested equal to v2) or "core" (the agreed new physics,
-    # docs/rewrite/core-decisions.md "Flight physics"): weight always on the wing, the turn
-    # limited unless diving; the engine drives speed only and never feeds the store; a store of
-    # `store_loops` vertical loops at corner speed; dive and climb equal and opposite; a
-    # smootherstep taper over `store_edge_band` of the store at each end; firing scales thrust
-    # by `fire_thrust_fraction` on the ticks it fires and costs no store.
     # Fields drawn per environment at every reset (v2's random map, src/bnb/game/physics/
     # spawning.py new_map, real-scale elimination's values): `field_count` fields in
     # point-symmetric pairs (and one at the centre for an odd count), centres uniform in
     # `field_disc_fraction` of the arena, radius log-normal (median, sigma) clamped to
     # [min, max], all times the map scale (arena radius / 2,600 m), band `field_band_width`,
-    # level -2, -1, +1 or +2 half-octaves. 0: the fixed `fields` above instead.
-    field_count: int = 0
+    # level -2, -1, +1 or +2 half-octaves. 0: no fields (no medium).
+    field_count: int = 10
     field_disc_fraction: float = 0.85
     field_radius_median: float = 400.0
     field_radius_log_sigma: float = 0.6
@@ -88,33 +81,23 @@ class GameConfig:
     field_band_width: float = 160.0
     field_high_share: float = 0.5
     field_strong_share: float = 0.5
-    # Damage form: "v2" (v2's) or "core" (the agreed cheaper form with the same effects: the
-    # head-on term written in the hit angle's cosine, (1 - c) / (1 - cos theta_0) in place of
-    # (theta / theta_0)^2, which keeps the half-damage angle and differs from v2's curve by at
-    # most 0.024; no atan2 or cross product). The closeness stays v2's: the hit test's own miss
-    # distance (closest approach within the tick) read 6.8% less damage than v2's impact
-    # parameter (the distance to the bullet's line), so it is not the same effect.
     # Ghost bullets (the hit head's labels, author 2026-11-22): every living ship puts a bullet
-    # in its ring every tick; only a real shot costs, damages and kills; a ghost ends at its
-    # first contact like a real bullet. Every bullet's outcome is reported when its flight ends.
-    ghost_bullets: bool = False
-    damage_model: str = "v2"
-    flight_model: str = "v2"
+    # in its ring every tick; only a real shot damages and kills; a ghost ends at its first
+    # contact like a real bullet. Every bullet's outcome is reported when its flight ends.
+    # False (an ablation): real shots only.
+    ghost_bullets: bool = True
+    # Flight (docs/rewrite/core-decisions.md "Flight physics"): weight always on the wing, the
+    # turn limited unless diving; the engine drives speed only and never feeds the store; a
+    # store of `store_loops` vertical loops at corner speed; dive and climb equal and opposite;
+    # a smootherstep taper over `store_edge_band` of the store at each end; firing scales thrust
+    # by `fire_thrust_fraction` on the ticks it fires and costs no store.
     store_loops: float = 2.0
     store_edge_band: float = 0.05
     fire_thrust_fraction: float = 0.0
-    # Fog of war (docs/rewrite/core-decisions.md): an enemy is visible in the team's sight (v2's
-    # sight test: `sighted_by_enemy`) and on the tick it fires or is hit by a bullet; a hidden
-    # enemy is its last-seen row. False: full information, exactly as before.
-    fog: bool = False
-
-    @classmethod
-    def core(cls, **overrides) -> GameConfig:
-        """The core game as decided so far: the new flight model, one ship (Vizia), v2's ten
-        fields drawn per environment, and fog of war."""
-        settings = {"flight_model": "core", "damage_model": "core", "ghost_bullets": True}
-        settings.update(lineup=("vizia",), field_count=10, fog=True)
-        return cls(**{**settings, **overrides})
+    # Fog of war: an enemy is visible in the team's sight (v2's sight test: `sighted_by_enemy`)
+    # and on the tick it fires or is hit by a bullet; a hidden enemy is its last-seen row.
+    # False (an ablation): full information.
+    fog: bool = True
 
 
 def built_once(build):
@@ -141,38 +124,25 @@ ACTION_TABLES = ("stick_table", "commanded_table", "demand_table")
 def _per_type(config: GameConfig) -> dict[str, Tensor]:
     """Every ship constant for every card type: float32 (T,), the action tables (T, width), the
     whole-tick counts long; computed with the game's own float32 arithmetic."""
-    types = torch.arange(len(next(iter(card.CARD.values()))))  # every row of the card
 
     def of(name: str) -> Tensor:
-        return torch.tensor(card.CARD[name], dtype=torch.float32)[types]
+        return torch.tensor(card.CARD[name], dtype=torch.float32)
 
-    lift, acceleration, max_energy = of("max_lift_coefficient"), of("max_acceleration"), of("max_energy")
+    lift, acceleration = of("max_lift_coefficient"), of("max_acceleration")
     stall = card.STALL_ANGLE * of("stall_angle_scale")
-    knee = card.ENGINE_KNEE * of("engine_knee_scale")
-    climb = card.CLIMB_EXCHANGE * of("climb_exchange_scale")
-    dive = card.DIVE_EXCHANGE * of("dive_exchange_scale")
-    bullet_cost = of("bullet_energy_cost")
-    spawn_energy = of("spawn_energy")
-    fade_band = card.STORE_FADE_BAND
-    if config.flight_model == "core":
-        # The store: `store_loops` vertical loops at corner speed. A loop climbs twice the corner
-        # turn radius, whose sideways acceleration is the g limit with 1 g held on the wing.
-        corner_speed_squared = acceleration / lift
-        corner_radius = corner_speed_squared / torch.sqrt(acceleration * acceleration - card.GRAVITY**2)
-        max_energy = config.store_loops * card.GRAVITY * 2.0 * corner_radius
-        spawn_energy = 0.5 * max_energy
-        # Dive and climb equal and opposite: the mean of the card's two rates.
-        dive = climb = 0.5 * (climb + dive)
-        bullet_cost = torch.zeros_like(bullet_cost)
-        fade_band = config.store_edge_band
-    elif config.flight_model != "v2":
-        raise ValueError(f"flight_model {config.flight_model!r}: need 'v2' or 'core'")
+    # The store: `store_loops` vertical loops at corner speed. A loop climbs twice the corner
+    # turn radius, whose sideways acceleration is the g limit with 1 g held on the wing.
+    corner_speed_squared = acceleration / lift
+    corner_radius = corner_speed_squared / torch.sqrt(acceleration * acceleration - card.GRAVITY**2)
+    max_energy = config.store_loops * card.GRAVITY * 2.0 * corner_radius
+    exchange = of("exchange_acceleration")  # dive and climb, equal and opposite
     fine, sustained = of("fine_stick"), of("sustained_stick")
     zeros, ones = torch.zeros_like(fine), torch.ones_like(fine)
     levels = torch.tensor(card.STICK_LEVELS)
     magnitude = torch.stack([zeros, fine, fine, sustained, sustained, ones, ones], -1)
     width = card.GRAVITY / 32.0
-    raw = torch.stack([torch.full_like(climb, card.GRAVITY), card.GRAVITY - dive, card.GRAVITY + climb], -1)
+    gravity = torch.full_like(exchange, card.GRAVITY)
+    raw = torch.stack([gravity, card.GRAVITY - exchange, card.GRAVITY + exchange], -1)
     hit_radius = of("hit_radius")
     head_on_angle = card.HEAD_ON_ANGLE * of("head_on_angle_scale")
     values = {
@@ -183,23 +153,19 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "max_acceleration": acceleration,
         "zero_lift_drag": of("zero_lift_drag"),
         "induced_drag": card.INDUCED_DRAG_FACTOR * of("induced_drag_scale"),
-        "power_full_store": of("engine_power_full_store"),
-        "power_surplus": of("engine_power") - of("engine_power_full_store"),
+        "power": of("engine_power"),
         "static_thrust": of("static_thrust"),
         "max_energy": max_energy,
         "inverse_max_energy": 1.0 / max_energy,
-        "inverse_fade": 1.0 / (fade_band * max_energy),
+        "inverse_fade": 1.0 / (config.store_edge_band * max_energy),
         "stall": stall,
         "inverse_stall": 1.0 / stall,
-        "knee": knee,
-        "inverse_above_knee": 1.0 / (1.0 - knee),
         "nose_frequency": of("corner_nose_frequency") / torch.sqrt(acceleration / lift),
         "stick_table": torch.sign(levels) * magnitude,
-        "commanded_table": torch.stack([zeros, -dive, climb], -1),
+        "commanded_table": torch.stack([zeros, -exchange, exchange], -1),
         "demand_table": 0.5 * (raw + torch.sqrt(raw * raw + width * width)),
         "muzzle_speed": of("muzzle_speed"),
         "spread_speed": card.BULLET_SPREAD * of("bullet_spread_scale"),
-        "bullet_cost": bullet_cost,
         "bullet_drag": card.BULLET_DRAG * of("bullet_drag_scale"),
         "bullet_moves": torch.round(of("bullet_life") / config.tick_length).long(),
         "fire_interval": torch.round(1.0 / (config.tick_length * of("fire_rate"))).long(),
@@ -210,13 +176,12 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "hit_radius_squared": hit_radius * hit_radius,
         "core_radius": of("core_radius"),
         "head_on": card.HEAD_ON_FRACTION * of("head_on_fraction_scale"),
-        "inverse_head_on_angle": 1.0 / (card.HEAD_ON_ANGLE * of("head_on_angle_scale")),
         "head_on_sharpness": of("head_on_sharpness"),
         "inverse_one_minus_cos_head_on": 1.0 / (1.0 - torch.cos(head_on_angle)),
         "max_shield": of("max_shield"),
         "shield_rate": card.SHIELD_RECHARGE_RATE * of("shield_recharge_rate_scale"),
         "shield_delay": card.SHIELD_RECHARGE_DELAY * of("shield_recharge_delay_scale"),
-        "spawn_energy": spawn_energy,
+        "spawn_energy": 0.5 * max_energy,
         "vision_range": card.VISION_RANGE * of("vision_range_scale"),
         "inverse_critical_speed": 1.0 / of("critical_speed"),
         "drag_rise_exponent": of("drag_rise_exponent"),
@@ -239,11 +204,9 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
     c = SimpleNamespace(**values)
     count = len(c.lift)  # every row of the card
     control = SimpleNamespace(
-        model=config.flight_model, thrust_scale=1.0, stick_size=torch.zeros(count),
-        stick_sign=torch.ones(count), commanded=c.commanded_table[:, 0],
-        demand=c.demand_table[:, 0],
+        thrust_scale=1.0, stick_size=torch.zeros(count), stick_sign=torch.ones(count),
+        commanded=c.commanded_table[:, 0], demand=c.demand_table[:, 0],
     )
-    control.inverse_demand = 1.0 / control.demand
     low, high = torch.full((count,), 20.0), torch.full((count,), 1000.0)
     with torch.no_grad():
         for _ in range(60):  # bisection on d speed / dt = 0
@@ -271,22 +234,11 @@ def per_type_constants(config: GameConfig, ship_type: Tensor) -> SimpleNamespace
     return SimpleNamespace(**{name: value[ship_type] for name, value in _per_type(config).items()})
 
 
-@dataclass(frozen=True, eq=False)
-class ShipCard:
-    """The run's per-ship constants before they are dealt to slots: the uniform ones as Python
-    numbers, the rest as a per-type table (C, T) float32 on the CPU whose rows `columns` names."""
-
-    uniform: dict[str, float | int]
-    columns: dict[str, tuple[int, int]]
-    table: Tensor
-
-
-def _build_ship_card(flight_model: str, store_loops: float, store_edge_band: float, tick_length: float,
-                     lineup: tuple[str, ...]) -> ShipCard:
-    config = GameConfig(flight_model=flight_model, store_loops=store_loops, store_edge_band=store_edge_band,
-                        tick_length=tick_length, lineup=lineup)
+def _build_ship_card(config: GameConfig) -> Constants:
+    lineup = tuple(config.lineup)
     used = torch.tensor([card.TYPE_NAMES.index(name) for name in lineup])
-    uniform, columns, rows = {}, {}, []
+    # The arena's size, for the scripted opponent (it reads every number from the game).
+    uniform, columns, rows = {"arena_radius": config.arena_radius}, {}, []
     for name, values in _per_type(config).items():
         chosen = values[used]
         if name not in ACTION_TABLES and bool((chosen == chosen[0]).all()):
@@ -297,25 +249,28 @@ def _build_ship_card(flight_model: str, store_loops: float, store_edge_band: flo
         block = values.reshape(len(card.TYPE_NAMES), -1).T  # (width, T)
         columns[name] = (sum(len(row) for row in rows), block.shape[0])
         rows.append(block)
-    return ShipCard(uniform, columns, torch.cat(rows, 0).contiguous())
+    return Constants(uniform, columns, torch.cat(rows, 0)[None].contiguous())  # the tables at least
 
 
-# Built ship cards by (flight model, store loops, store edge band, tick length, lineup).
-_SHIP_CARDS: dict[tuple, ShipCard] = {}
+# Built ship cards by (store loops, store edge band, tick length, lineup, arena radius).
+_SHIP_CARDS: dict[tuple, Constants] = {}
 
 
-def ship_card(config: GameConfig) -> ShipCard:
-    """The run's ship card, built once per flight settings and lineup. The build reads numbers
-    back to the host (`.item()`), so it runs eagerly: the first deal of a run (`reset`, always
-    before any compiled tick) builds it, and a traced deal only looks it up."""
-    key = (config.flight_model, config.store_loops, config.store_edge_band, config.tick_length, tuple(config.lineup))
+def ship_card(config: GameConfig) -> Constants:
+    """The run's ship card: its constants per ship type, before they are dealt to slots (the
+    table (1, C, T) on the CPU, one column per card type). Built once per flight settings,
+    lineup and arena. The build reads numbers back to the host (`.item()`), so it runs eagerly:
+    the first deal of a run (`reset`, always before any compiled tick) builds it, and a traced
+    deal only looks it up."""
+    key = (config.store_loops, config.store_edge_band, config.tick_length, tuple(config.lineup),
+           config.arena_radius)
     if key not in _SHIP_CARDS:
-        _SHIP_CARDS[key] = _build_ship_card(*key)
+        _SHIP_CARDS[key] = _build_ship_card(config)
     return _SHIP_CARDS[key]
 
 
 @built_once
-def _card_table(ship_card_: ShipCard, device: torch.device) -> Tensor:
+def _card_table(ship_card_: Constants, device: torch.device) -> Tensor:
     return ship_card_.table.to(device)
 
 
@@ -325,8 +280,8 @@ def ship_constants(config: GameConfig, ship_type: Tensor) -> Constants:
     ship_card_ = ship_card(config)
     table = _card_table(ship_card_, ship_type.device)
     envs, slots = ship_type.shape
-    rows = table.shape[0]
-    gathered = table[None].expand(envs, rows, -1).gather(2, ship_type[:, None].expand(envs, rows, slots))
+    rows = table.shape[1]
+    gathered = table.expand(envs, rows, -1).gather(2, ship_type[:, None].expand(envs, rows, slots))
     return Constants(ship_card_.uniform, ship_card_.columns, gathered)
 
 
@@ -443,71 +398,50 @@ def medium(fields: Tensor, x: Tensor, y: Tensor) -> tuple[Tensor, Tensor, Tensor
 
 
 def _setting(p, control, speed, energy):
-    """The controls resolved at a speed and store: signed lateral acceleration, the
-    exchange between speed and store, the vertical acceleration held, thrust and charge."""
-    core = getattr(control, "model", "v2") == "core"
-    t = ((energy * p.inverse_max_energy - p.knee) * p.inverse_above_knee).clamp(0.0, 1.0)
-    fall = t * t * (3.0 - 2.0 * t)
+    """The controls resolved at a speed and store: signed lateral acceleration, the exchange
+    between speed and store, the vertical acceleration held, and thrust.
+
+    Weight always on the wing. The lift budget goes, in order: 1 g held (dive: its lower demand,
+    which frees lift for the turn), then the turn, then a climb's extra demand gets what is left
+    (the turn has precedence over the climb). Smootherstep edges of the store; at an edge, dive
+    or climb fades to coast in its effect on the wing as well as in the trade (no free turn from
+    diving on the deck, no lost turn from climbing at the top). The engine drives speed only
+    (constant power) and never feeds the store; firing scales the thrust on the ticks it fires.
+    """
     reach = p.lift * speed * speed
     q = p.lift_softmin_exponent
     budget = softmin(reach, p.max_acceleration, q).clamp_min(1e-12)
     command = softmin(control.stick_size * reach, p.max_acceleration, q)
-    sink_room = (energy * p.inverse_fade).clamp(0.0, 1.0)
+    sink_room = smootherstep((energy * p.inverse_fade).clamp(0.0, 1.0))
     budget_squared = budget * budget
-    demand, commanded = control.demand, control.commanded
-    if core:
-        # Weight always on the wing. The lift budget goes, in order: 1 g held (dive: its lower
-        # demand, which frees lift for the turn), then the turn, then a climb's extra demand gets
-        # what is left (the turn has precedence over the climb). Smootherstep edges of the
-        # store; at an edge, dive or climb fades to coast in its effect on the wing as well as in
-        # the trade (no free turn from diving on the deck, no lost turn from climbing at the top).
-        sink_room = smootherstep(sink_room)
-        top_room = smootherstep(((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0))
-        climbing = commanded > 0.0
-        room = torch.where(climbing, top_room, torch.where(commanded < 0.0, sink_room, 1.0))
-        demand = card.GRAVITY + (demand - card.GRAVITY) * room
-        commanded = commanded * room
-        first = torch.where(climbing, card.GRAVITY, demand)  # held before the turn
-        held = softmin(first, budget, q)
-    else:
-        held = softmin(demand * (1.0 - sink_room), budget, q)
+    top_room = smootherstep(((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0))
+    climbing = control.commanded > 0.0
+    room = torch.where(climbing, top_room, torch.where(control.commanded < 0.0, sink_room, 1.0))
+    demand = card.GRAVITY + (control.demand - card.GRAVITY) * room
+    commanded = control.commanded * room
+    first = torch.where(climbing, card.GRAVITY, demand)  # held before the turn
+    held = softmin(first, budget, q)
     lateral_size = softmin(command, torch.sqrt((budget_squared - held * held).clamp_min(0.0)), q)
-    if core:
-        # The climb's extra lift, from what the turn left: never more than its demand.
-        left = (torch.sqrt((budget_squared - lateral_size * lateral_size).clamp_min(0.0)) - held).clamp_min(0.0)
-        vertical = held + torch.where(climbing, softmin(demand - first, left, q), 0.0)
-    else:
-        vertical = softmin(control.demand, torch.sqrt((budget_squared - lateral_size * lateral_size).clamp_min(0.0)), q)
-    share = (lateral_size / budget).clamp(0.0, 1.0)
-    headroom = ((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0)
-    if core:
-        # The commanded trade is already faded at the edges. A climb's unmet extra demand is
-        # climb not made; a shortfall below what is held first (the wing cannot hold 1 g, or
-        # the dive's demand) sinks the ship, and that needs store to sink.
-        unmet_climb = torch.where(climbing, minimum((demand - maximum(vertical, first)).clamp_min(0.0), commanded), 0.0)
-        sinking = (first - vertical).clamp_min(0.0)
-        exchange = commanded - unmet_climb - sinking * sink_room
-    else:
-        exchange = commanded - (demand - vertical)
-        exchange = exchange * torch.where(exchange > 0.0, headroom, sink_room)
-    thrust = softmin(p.power_full_store / speed, p.static_thrust, p.thrust_softmin_exponent)
-    if core:
-        # The engine drives speed only (constant power, the card's full-store power) and never
-        # feeds the store; firing scales the thrust on the ticks it fires.
-        charge = None
-        thrust = thrust * getattr(control, "thrust_scale", 1.0)
-    else:
-        charge = (
-            p.power_surplus * (1.0 - fall) * torch.sqrt(1.0 - share * share)
-            * (vertical * control.inverse_demand) * headroom
-        )
-    return control.stick_sign * lateral_size, exchange, vertical, thrust, charge
+    # The climb's extra lift, from what the turn left: never more than its demand.
+    room_left = torch.sqrt((budget_squared - lateral_size * lateral_size).clamp_min(0.0))
+    left = (room_left - held).clamp_min(0.0)
+    vertical = held + torch.where(climbing, softmin(demand - first, left, q), 0.0)
+    # The commanded trade is already faded at the edges. A climb's unmet extra demand is climb
+    # not made; a shortfall below what is held first (the wing cannot hold 1 g, or the dive's
+    # demand) sinks the ship, and that needs store to sink.
+    unmet = minimum((demand - maximum(vertical, first)).clamp_min(0.0), commanded)
+    unmet_climb = torch.where(climbing, unmet, 0.0)
+    sinking = (first - vertical).clamp_min(0.0)
+    exchange = commanded - unmet_climb - sinking * sink_room
+    thrust = softmin(p.power / speed, p.static_thrust, p.thrust_softmin_exponent)
+    thrust = thrust * control.thrust_scale
+    return control.stick_sign * lateral_size, exchange, vertical, thrust
 
 
 def _rates(p, setting, inverse_index, speed, lift, angle_cos, inverse_speed_squared):
     """(d speed / dt, d energy / dt) for a setting, a lift coefficient and an angle of attack.
     inverse_index: 1 / n, or None where there is no medium (n = 1)."""
-    _, exchange, vertical, thrust, charge = setting
+    _, exchange, vertical, thrust = setting
     induced = vertical * inverse_speed_squared
     load = lift * lift + induced * induced
     drag = (
@@ -515,7 +449,7 @@ def _rates(p, setting, inverse_index, speed, lift, angle_cos, inverse_speed_squa
         + p.induced_drag * load
         * (1.0 + p.separation_drag * (load * p.inverse_lift_squared) ** p.half_separation_exponent)
     ) * speed * speed
-    store = speed * exchange if charge is None else speed * exchange + charge  # no charge in the core model
+    store = speed * exchange
     speed_rate = thrust * angle_cos - drag - exchange
     if inverse_index is None:
         return speed_rate, store
@@ -559,7 +493,7 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
     speed_rate0, energy_rate0 = _rates(p, first, inverse_index, speed0, lift0, cos0, 1.0 / (safe0 * safe0))
     speed = (speed0 + 0.5 * duration * speed_rate0).clamp_min(floor)
     current = _setting(p, control, speed, energy + 0.5 * duration * energy_rate0)
-    lateral, _, _, thrust, _ = current
+    lateral, _, _, thrust = current
     speed_squared = speed * speed
     inverse_speed_squared = 1.0 / speed_squared
     if inverse_index is None:
@@ -613,7 +547,6 @@ def flight_tick(
     s: SimpleNamespace,
     stick: Tensor,
     power: Tensor,
-    model: str = "v2",
     thrust_scale: Tensor | float = 1.0,
 ):
     """One tick of flight for every slot (E, N): half a kick, a drift, half a kick.
@@ -622,14 +555,15 @@ def flight_tick(
     energy and the medium at the ship (log_index, gradient_x, gradient_y); it is updated in
     place and returned. fields: (E, 5, F); with none (F = 0) the medium's arithmetic is
     skipped (n = 1, no gradient: the same values). stick, power: (E, N) long action indices.
+    thrust_scale: the thrust's factor (firing cuts it).
     """
     p = constants
-    control = SimpleNamespace(model=model, thrust_scale=thrust_scale)
     signed = p.stick_table.gather(1, stick[:, None])[:, 0]
-    control.stick_size, control.stick_sign = signed.abs(), torch.sign(signed)
-    control.commanded = p.commanded_table.gather(1, power[:, None])[:, 0]
-    control.demand = p.demand_table.gather(1, power[:, None])[:, 0]
-    control.inverse_demand = 1.0 / control.demand
+    control = SimpleNamespace(
+        thrust_scale=thrust_scale, stick_size=signed.abs(), stick_sign=torch.sign(signed),
+        commanded=p.commanded_table.gather(1, power[:, None])[:, 0],
+        demand=p.demand_table.gather(1, power[:, None])[:, 0],
+    )
     h = tick_length
     if fields.shape[-1] == 0:  # no medium (agreed fix 8)
         s = _kick(p, control, s, None, None, None, 0.5 * h)
@@ -734,184 +668,291 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     Slots that are not alive at tick start neither act nor change. The returned state of a
     finished environment (StepOut.done) is the final state of its episode.
     """
-    c = state.constants
-    h = config.tick_length
     E, _, N, K = state.bullets.shape
     device = state.ships.device
     index = slot_indices(N, device)
     stick, power, shoot = action[..., 0], action[..., 1], action[..., 2] == 1
     alive0 = state.alive
 
-    def of_ship(values: Tensor | float) -> Tensor | float:  # a per-ship constant against (E, N, K)
-        return values[..., None] if isinstance(values, Tensor) else values
+    shots = _fire(config, state, shoot, noise["spread"], index)
+    flown = _fly(config, state, stick, power, shots.fired)
+    flying = shots.counts[:, MOVES_LEFT] > 0
+    bullets = _move_bullets(config, state, shots.bullets, flying)
+    contact = _hit_test(state, flown, shots.bullets, bullets, flying, index)
+    real = shots.bullet_real.reshape(E, N * K)
+    bullet_damage = _damage(state, flown, bullets, real, contact)
+    no_damage = filled((E, N), 0.0, bullet_damage.dtype, device)
+    hit_taken = no_damage.scatter_add(1, contact.target, bullet_damage)
+    boundary = _boundary_damage(config, flown, alive0)
+    total = hit_taken + boundary
+    died, shield, restored, wait = _shields(config, state, total, stick, power, shoot)
+    alive = alive0 & ~died
+    recharged = shield + restored
+    tick, done, result = _end_check(config, state, alive, recharged)
+    enemy = state.team[:, index.owner] != _on_target(state.team, contact.target)
+    moves_left, shot_outcome = _bullet_ends(shots.counts, flying, contact.hit, enemy)
 
-    # Fire, from the tick-start state.
-    fired = alive0 & shoot & (state.cooldown == 0) & (state.energy >= c["bullet_cost"])
-    spread = noise["spread"]
+    # Slots not alive at tick start keep their whole row (agreed fix 3: one select, not one per field).
+    ships = torch.where(
+        alive0[:, None],
+        torch.stack(
+            [
+                flown.x, flown.y, flown.heading_cos, flown.heading_sin, flown.speed, flown.angle,
+                flown.angle_cos, flown.angle_sin, flown.nose_rate, flown.energy, recharged, wait,
+                (shots.cooldown - 1).clamp_min(0), flown.log_index, flown.gradient_x,
+                flown.gradient_y,
+                *path_velocity(flown.speed, flown.heading_cos, flown.heading_sin, flown.angle_cos,
+                               flown.angle_sin),
+                shots.next_slot,
+            ],
+            1,
+        ),
+        state.ships,
+    )
+    fired_tick = shots.counts[:, FIRED_TICK]
+    new_state = dataclasses.replace(
+        state,
+        ships=ships,
+        flags=torch.stack([alive, state.exists, shots.fired], 1),
+        bullets=bullets,
+        bullet_counts=torch.stack([moves_left, fired_tick], 1),
+        bullet_real=shots.bullet_real,
+        tick=tick,
+    )
+    out = StepOut(
+        damage_taken=total,
+        died=died,
+        done=done,
+        result=result,
+        shot_outcome=shot_outcome,
+        shot_tick=fired_tick,
+        hit_damage=filled((E, N * N), 0.0, bullet_damage.dtype, device)
+        .scatter_add(1, index.pair + contact.target, bullet_damage)
+        .reshape(E, N, N),
+        boundary_damage=boundary,
+        shield_restored=torch.where(alive0, restored, 0.0),
+    )
+    if config.fog:
+        # A shot or a real bullet's hit reveals the ship for this tick (boundary damage does not).
+        real_hit = (contact.hit & real).to(bullet_damage.dtype)
+        real_hits = no_damage.scatter_add(1, contact.target, real_hit)
+        new_state = perceive(new_state, shots.fired | (real_hits > 0.0))
+    return new_state, out
+
+
+def _per_bullet(values: Tensor | float) -> Tensor | float:
+    """A per-ship constant (E, N) laid against its ship's K bullets (E, N, K); a number as it is."""
+    return values[..., None] if isinstance(values, Tensor) else values
+
+
+def _on_target(values: Tensor | float, target: Tensor) -> Tensor | float:
+    """A per-ship value (E, N) read at each bullet's target (E, N K); a number as it is (a
+    constant equal for every ship needs no gather)."""
+    return values.gather(1, target) if isinstance(values, Tensor) else values
+
+
+class Shots(NamedTuple):
+    """The fire stage's result: who fired a real shot, and the gun and bullet blocks after it."""
+
+    fired: Tensor  # (E, N) bool
+    bullets: Tensor  # (E, BULLET_COLUMNS, N, K) with the new bullets written
+    counts: Tensor  # (E, BULLET_COUNT_COLUMNS, N, K) long
+    bullet_real: Tensor  # (E, N, K) bool
+    cooldown: Tensor  # (E, N), the gun's whole ticks to wait, before this tick's count down
+    next_slot: Tensor  # (E, N)
+
+
+def _fire(
+    config: GameConfig, state: State, shoot: Tensor, spread: Tensor, index: SimpleNamespace
+) -> Shots:
+    """Fire, from the tick-start state. A living ship with the trigger held and the gun ready
+    fires a real shot (a shot costs no store). The new bullet goes into the ship's next slot:
+    with ghost bullets every living ship writes one every tick (a ghost unless it fired), else
+    only real shots. A new bullet starts at its ship with the ship's cached medium, at the
+    ship's velocity plus the muzzle speed along the nose and the spread."""
+    c = state.constants
+    E, _, _, K = state.bullets.shape
+    alive = state.alive
+    fired = alive & shoot & (state.cooldown == 0)
     launch_x = state.velocity_x + c["muzzle_speed"] * state.heading_cos + c["spread_speed"] * spread[..., 0]
     launch_y = state.velocity_y + c["muzzle_speed"] * state.heading_sin + c["spread_speed"] * spread[..., 1]
     launch_speed = torch.sqrt(launch_x * launch_x + launch_y * launch_y)
-    emits = alive0 if config.ghost_bullets else fired  # a ghost every tick, or real shots only
+    emits = alive if config.ghost_bullets else fired
     written = emits[..., None] & (index.bullet_slot == state.next_slot[..., None])
-    # A new bullet starts at its ship, with the ship's cached medium; the others keep theirs.
     launched = torch.cat(
         [state.ships[:, X : Y + 1], torch.stack([launch_x / launch_speed, launch_y / launch_speed, launch_speed], 1),
          state.ships[:, LOG_INDEX : GRADIENT_Y + 1]],
         1,
     )
-    bullets0 = torch.where(written[:, None], launched[..., None], state.bullets)
-    counts0 = torch.where(
-        written[:, None],
-        torch.stack([filled((E,), c["bullet_moves"], torch.long, device), state.tick], 1)[:, :, None, None],
-        state.bullet_counts,
+    moves = filled((E,), c["bullet_moves"], torch.long, state.ships.device)
+    new_counts = torch.stack([moves, state.tick], 1)
+    return Shots(
+        fired=fired,
+        bullets=torch.where(written[:, None], launched[..., None], state.bullets),
+        counts=torch.where(written[:, None], new_counts[:, :, None, None], state.bullet_counts),
+        bullet_real=torch.where(written, fired[..., None], state.bullet_real),
+        cooldown=torch.where(fired, c["fire_interval"], state.cooldown),
+        next_slot=torch.where(emits, (state.next_slot + 1) % K, state.next_slot),
     )
-    bullet_real = torch.where(written, fired[..., None], state.bullet_real)
-    energy = torch.where(fired, state.energy - c["bullet_cost"], state.energy)
-    cooldown = torch.where(fired, c["fire_interval"], state.cooldown)
-    next_slot = torch.where(emits, (state.next_slot + 1) % K, state.next_slot)
 
-    # Flight for every slot; a slot not alive at tick start keeps its row (one select at the end).
-    # In the core model firing cuts thrust.
-    core_model = config.flight_model == "core"
-    firing_thrust = torch.where(fired, config.fire_thrust_fraction, 1.0) if core_model else 1.0
-    flown = flight_tick(
-        c, state.fields, h,
+
+def _fly(
+    config: GameConfig, state: State, stick: Tensor, power: Tensor, fired: Tensor
+) -> SimpleNamespace:
+    """Flight for every slot (a slot not alive at tick start is flown too and its row dropped by
+    the step's one select; a dead ship's flight is never read: it is no target and takes no
+    boundary damage). Firing scales the thrust by fire_thrust_fraction on the tick it fires."""
+    return flight_tick(
+        state.constants, state.fields, config.tick_length,
         SimpleNamespace(
             x=state.x, y=state.y, heading_cos=state.heading_cos, heading_sin=state.heading_sin,
             speed=state.speed, angle=state.angle, angle_cos=state.angle_cos, angle_sin=state.angle_sin,
-            nose_rate=state.nose_rate, energy=energy,
+            nose_rate=state.nose_rate, energy=state.energy,
             log_index=state.log_index, gradient_x=state.gradient_x, gradient_y=state.gradient_y,
         ),
         stick, power,
-        model=config.flight_model,
-        thrust_scale=firing_thrust,
+        thrust_scale=torch.where(fired, config.fire_thrust_fraction, 1.0),
     )
 
-    # A dead ship's flight below is never read: it is no target (the hit test's reach is -1)
-    # and takes no boundary damage.
-    x, y, heading_cos, heading_sin = flown.x, flown.y, flown.heading_cos, flown.heading_sin
 
-    # Bullet motion; inactive bullets are frozen.
-    flying = counts0[:, MOVES_LEFT] > 0
-    x0, y0, direction_x0, direction_y0, speed0 = bullets0[:, :BULLET_LOG_INDEX].unbind(1)
+def _move_bullets(config: GameConfig, state: State, start: Tensor, flying: Tensor) -> Tensor:
+    """Every flying bullet's move (bullet_motion); inactive bullets are frozen. start: the bullet
+    block after the fire stage; returns the block after the move."""
+    x, y, direction_x, direction_y, speed = start[:, :BULLET_LOG_INDEX].unbind(1)
     moved = bullet_motion(
-        state.fields, h, x0, y0, direction_x0, direction_y0, speed0, of_ship(c["bullet_drag"]),
-        bullets0[:, BULLET_LOG_INDEX:].unbind(1),
+        state.fields, config.tick_length, x, y, direction_x, direction_y, speed,
+        _per_bullet(state.constants["bullet_drag"]), start[:, BULLET_LOG_INDEX:].unbind(1),
     )
-    bullets = torch.where(flying[:, None], torch.stack(moved, 1), bullets0)
-    direction_x, direction_y, bullet_speed = bullets[:, BULLET_DIR_X : BULLET_SPEED + 1].unbind(1)
+    return torch.where(flying[:, None], torch.stack(moved, 1), start)
 
-    # The swept test between the two motions, every bullet against every ship: (E, 2, N K, N),
-    # x and y on the second axis.
+
+class Contact(NamedTuple):
+    """The hit test's result, per bullet (E, N K) and per bullet and ship (E, [2,] N K, N)."""
+
+    target: Tensor  # (E, N K) long: the ship of the first contact (slot 0 for a miss)
+    hit: Tensor  # (E, N K) bool
+    start: Tensor  # (E, 2, N K, N): bullet minus ship at tick start, x and y
+    relative: Tensor  # (E, 2, N K, N): the bullet's move minus the ship's
+    relative_squared: Tensor  # (E, N K, N), clamped away from 0
+
+
+def _hit_test(
+    state: State, flown: SimpleNamespace, start_bullets: Tensor, bullets: Tensor, flying: Tensor,
+    index: SimpleNamespace,
+) -> Contact:
+    """The swept test between the two straight motions, every bullet against every ship
+    ((E, 2, N K, N), x and y on the second axis). A contact is a closest approach within the hit
+    radius of a ship alive at tick start (a dead ship is no target) that is not the bullet's
+    owner, by a flying bullet. First contact: the smallest tau, ties within 1e-6 to the closer
+    pass."""
+    E, _, N, K = bullets.shape
     per_bullet = (E, 2, N * K, 1)
-    start = bullets0[:, BULLET_X : BULLET_Y + 1].reshape(per_bullet) - state.ships[:, X : Y + 1, None, :]
-    moved_xy = torch.stack([x, y], 1) - state.ships[:, X : Y + 1]
-    relative = (bullets[:, BULLET_X : BULLET_Y + 1] - bullets0[:, BULLET_X : BULLET_Y + 1]).reshape(per_bullet)
-    relative = relative - moved_xy[:, :, None, :]
+    ships = state.ships[:, X : Y + 1]
+    start_xy = start_bullets[:, BULLET_X : BULLET_Y + 1]
+    start = start_xy.reshape(per_bullet) - ships[:, :, None, :]
+    moved = torch.stack([flown.x, flown.y], 1) - ships
+    relative = (bullets[:, BULLET_X : BULLET_Y + 1] - start_xy).reshape(per_bullet)
+    relative = relative - moved[:, :, None, :]
     relative_squared = (relative * relative).sum(1).clamp_min(1e-12)
     tau = (-(start * relative).sum(1) / relative_squared).clamp(0.0, 1.0)
     miss = start + tau[:, None] * relative
     miss_squared = (miss * miss).sum(1)
-    owner = index.owner
-    reach = torch.where(alive0, c["hit_radius_squared"], -1.0)
+    reach = torch.where(state.alive, state.constants["hit_radius_squared"], -1.0)
     contact = (miss_squared < reach[:, None, :]) & index.other & flying.reshape(E, N * K, 1)
-
-    # First contact: the smallest tau, ties within 1e-6 to the closer pass.
-    infinity = torch.inf
-    contact_tau = torch.where(contact, tau, infinity)
+    contact_tau = torch.where(contact, tau, torch.inf)
     first_tau = contact_tau.min(-1).values
     tied = contact & (contact_tau <= first_tau[..., None] + 1e-6)
-    target = torch.where(tied, miss_squared, infinity).argmin(-1)
-    hit = first_tau < infinity
+    target = torch.where(tied, miss_squared, torch.inf).argmin(-1)
+    return Contact(target, first_tau < torch.inf, start, relative, relative_squared)
 
-    # Damage per bullet on its target (the target is slot 0 and unused for a miss). A constant
-    # equal for every ship is a number and needs no gather.
-    def of_target(values: Tensor | float) -> Tensor | float:
-        return values.gather(1, target) if isinstance(values, Tensor) else values
 
+def _damage(
+    state: State, flown: SimpleNamespace, bullets: Tensor, real: Tensor, contact: Contact
+) -> Tensor:
+    """Each real bullet's damage on its target, (E, N K) (0 for a miss or a ghost): kinetic (the
+    owner's hit damage, the explosive share plus the rest by the squared ratio of the bullet's
+    speed to its reference speed) x closeness (the impact parameter, the distance from the
+    target to the bullet's line, across the band between the core and hit radii) x aspect. The
+    aspect's head-on term is written in the hit angle's cosine c: (1 - c) / (1 - cos theta_0)
+    stands for (theta / theta_0)^2, which keeps v2's half-damage angle and differs from v2's
+    curve by at most 0.024."""
+    c = state.constants
+    E, _, N, K = bullets.shape
+    target = contact.target
     flat = (E, N * K)
+    direction_x, direction_y, bullet_speed = bullets[:, BULLET_DIR_X : BULLET_SPEED + 1].unbind(1)
     flat_direction_x, flat_direction_y = direction_x.reshape(flat), direction_y.reshape(flat)
-    nose_cos, nose_sin = of_target(heading_cos), of_target(heading_sin)
-    core_damage = config.damage_model == "core"
-    if not core_damage:
-        theta = torch.atan2(
-            (flat_direction_x * nose_sin - flat_direction_y * nose_cos).abs(),
-            -(flat_direction_x * nose_cos + flat_direction_y * nose_sin),
-        )
+    nose_cos = _on_target(flown.heading_cos, target)
+    nose_sin = _on_target(flown.heading_sin, target)
     # The owner's constants broadcast over its K bullets.
-    speed_ratio = bullet_speed * of_ship(c["inverse_reference_bullet_speed"])
-    explosive = of_ship(c["explosive_share"])
-    full = (of_ship(c["hit_damage"]) * (explosive + (1.0 - explosive) * speed_ratio * speed_ratio)).reshape(flat)
+    speed_ratio = bullet_speed * _per_bullet(c["inverse_reference_bullet_speed"])
+    explosive = _per_bullet(c["explosive_share"])
+    kinetic = explosive + (1.0 - explosive) * speed_ratio * speed_ratio
+    full = (_per_bullet(c["hit_damage"]) * kinetic).reshape(flat)
     # The swept test's start and relative motion against the target.
     on_target = target[:, None, :, None].expand(E, 2, -1, 1)
-    target_start_x, target_start_y = start.gather(3, on_target)[..., 0].unbind(1)
-    target_relative_x, target_relative_y = relative.gather(3, on_target)[..., 0].unbind(1)
+    target_start_x, target_start_y = contact.start.gather(3, on_target)[..., 0].unbind(1)
+    target_relative_x, target_relative_y = contact.relative.gather(3, on_target)[..., 0].unbind(1)
     cross = target_start_x * target_relative_y - target_start_y * target_relative_x
-    line = cross * cross / relative_squared.gather(2, target[..., None])[..., 0]
+    line = cross * cross / contact.relative_squared.gather(2, target[..., None])[..., 0]
     impact_squared = torch.minimum(line, target_start_x * target_start_x + target_start_y * target_start_y)
-    radius, core = of_target(c["hit_radius"]), of_target(c["core_radius"])
+    radius, core = _on_target(c["hit_radius"], target), _on_target(c["core_radius"], target)
     band_width = (radius - core).clamp_min(1e-6) if isinstance(radius - core, Tensor) else max(radius - core, 1e-6)
     band = ((impact_squared.sqrt() - core) / band_width).clamp(0.0, 1.0)
     closeness = 1.0 - band * band * (3.0 - 2.0 * band)
-    head_on = of_target(c["head_on"])
-    if core_damage:
-        # cos of the hit angle (1 head-on); (1 - c) / (1 - cos theta_0) stands for
-        # (theta / theta_0)^2.
-        hit_cos = -(flat_direction_x * nose_cos + flat_direction_y * nose_sin)
-        inverse = of_target(c["inverse_one_minus_cos_head_on"])
-        squared_ratio = ((1.0 - hit_cos) * inverse).clamp_min(0.0)
-        powered = squared_ratio.pow(0.5 * of_target(c["head_on_sharpness"]))
-    else:
-        ratio = theta * of_target(c["inverse_head_on_angle"])
-        powered = ratio.pow(of_target(c["head_on_sharpness"]))
+    head_on = _on_target(c["head_on"], target)
+    hit_cos = -(flat_direction_x * nose_cos + flat_direction_y * nose_sin)  # 1 head-on
+    inverse = _on_target(c["inverse_one_minus_cos_head_on"], target)
+    squared_ratio = ((1.0 - hit_cos) * inverse).clamp_min(0.0)
+    powered = squared_ratio.pow(0.5 * _on_target(c["head_on_sharpness"], target))
     aspect = 1.0 - (1.0 - head_on) * torch.exp(-card.LN_2 * powered)
-    real = bullet_real.reshape(flat)
-    bullet_damage = torch.where(hit & real, full * closeness * aspect, 0.0)
+    return torch.where(contact.hit & real, full * closeness * aspect, 0.0)
 
-    enemy = state.team[:, owner] != of_target(state.team)
-    hit_taken = filled((E, N), 0.0, bullet_damage.dtype, device).scatter_add(1, target, bullet_damage)
-    damage_dealt = torch.where(enemy, bullet_damage, 0.0).reshape(E, N, K).sum(-1)
-    friendly_damage = torch.where(enemy, 0.0, bullet_damage).reshape(E, N, K).sum(-1)
 
-    # The earliest hit on each ship names its killer: smallest tau, then lowest bullet index.
-    real_hit = hit & real
-    hit_tau = torch.where(real_hit, first_tau, infinity)
-    earliest_tau = filled((E, N), infinity, hit_tau.dtype, device).scatter_reduce(1, target, hit_tau, "amin")
-    earliest = real_hit & (hit_tau <= earliest_tau.gather(1, target))
-    no_bullet = N * K
-    earliest_bullet = filled((E, N), no_bullet, torch.long, device).scatter_reduce(
-        1, target, torch.where(earliest, index.bullet_index, no_bullet), "amin"
-    )
-    first_shooter = torch.where(earliest_bullet < no_bullet, earliest_bullet // K, -1)
+def _boundary_damage(config: GameConfig, flown: SimpleNamespace, alive: Tensor) -> Tensor:
+    """(E, N): damage from the arena boundary after the move, rising by a smootherstep over the
+    ramp width beyond the arena radius to its maximum (per second); none for a dead ship."""
+    depth = torch.sqrt(flown.x * flown.x + flown.y * flown.y) - config.arena_radius
+    ramp = smootherstep((depth / config.boundary_ramp_width).clamp(0.0, 1.0))
+    return torch.where(alive, card.BOUNDARY_MAX_DAMAGE * ramp * config.tick_length, 0.0)
 
-    # Boundary damage after the move, then shields and deaths.
-    depth = torch.sqrt(x * x + y * y) - config.arena_radius
-    boundary = torch.where(
-        alive0,
-        card.BOUNDARY_MAX_DAMAGE * smootherstep((depth / config.boundary_ramp_width).clamp(0.0, 1.0)) * h,
-        0.0,
-    )
-    total = hit_taken + boundary
+
+def _shields(
+    config: GameConfig, state: State, damage: Tensor, stick: Tensor, power: Tensor, shoot: Tensor
+) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    """The tick's damage (E, N) against the shields. A living ship hurt with its shield already
+    at 0 dies; the shield takes the damage down to 0; a ship not hurt and quiet (coast, at most
+    the fine stick, no trigger) recharges once its wait has run out; being hurt or not quiet
+    restarts the wait. Returns died (E, N) bool, the shield after the damage, the recharge
+    (restored) and the wait."""
+    c = state.constants
+    h = config.tick_length
     quiet = (power == 0) & (stick <= card.QUIET_STICK_MAX) & ~shoot
-    hurt = total > 0.0
-    died = alive0 & hurt & (state.shield <= 0.0)
-    shield = (state.shield - total).clamp_min(0.0)
+    hurt = damage > 0.0
+    died = state.alive & hurt & (state.shield <= 0.0)
+    shield = (state.shield - damage).clamp_min(0.0)
     recharge = torch.minimum(c["max_shield"] - shield, c["shield_rate"] * (h - state.shield_wait).clamp(0.0, h))
     restored = torch.where(~hurt & quiet, recharge, 0.0)
     wait = torch.where(hurt | ~quiet, c["shield_delay"], (state.shield_wait - h).clamp_min(0.0))
-    alive = alive0 & ~died
+    return died, shield, restored, wait
 
-    # Win check and clock.
+
+def _end_check(
+    config: GameConfig, state: State, alive: Tensor, shield: Tensor
+) -> tuple[Tensor, Tensor, Tensor]:
+    """The tick count after this tick, done (E,) and result (E,) (0 or 1 the winner, 2 a draw, -1
+    not done). A wipe ends the game: the team with ships left wins, both wiped is a draw. At the
+    clock (v2's clock_result, src/bnb/game/modes/phase.py) the team with more health over its
+    living ships wins, equal health a draw; health is the shield after this tick's recharge
+    (`shield`) over the full shield. A lead within float32 rounding of the sums is a draw: the
+    two sums add their ships in different orders, so an exact tie can differ by a rounding
+    residue."""
     team_one = state.team == 1
     left_zero = (alive & ~team_one).sum(-1)
     left_one = (alive & team_one).sum(-1)
     wiped = (left_zero == 0) | (left_one == 0)
     wipe_result = torch.where(left_zero > 0, 0, torch.where(left_one > 0, 1, 2))
-    # Clock rule (v2's clock_result, src/bnb/game/modes/phase.py): the team with more health over
-    # its living ships wins, equal health a draw; health is the shield after this tick's recharge.
-    # A lead within float32 rounding of the sums is a draw: the two sums add their ships in
-    # different orders, so an exact tie can differ by a rounding residue.
-    health = torch.where(alive, (shield + restored) / c["max_shield"], 0.0)
+    health = torch.where(alive, shield / state.constants["max_shield"], 0.0)
     left_health_zero = torch.where(team_one, 0.0, health).sum(-1)
     left_health_one = torch.where(team_one, health, 0.0).sum(-1)
     lead = left_health_zero - left_health_one
@@ -919,62 +960,22 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
     clock_result = torch.where(tie, 2, torch.where(lead > 0.0, 0, 1))
     tick = state.tick + 1
     done = wiped | (tick >= config.clock_ticks)
-    result = torch.where(done, torch.where(wiped, wipe_result, clock_result), -1)
+    return tick, done, torch.where(done, torch.where(wiped, wipe_result, clock_result), -1)
 
-    # Every bullet whose flight ends this tick: its first contact, or its last move without one.
-    hit_slots = hit.reshape(E, N, K)
-    moves_left0 = counts0[:, MOVES_LEFT]
-    moves_left = torch.where(hit_slots, 0, torch.where(flying, moves_left0 - 1, moves_left0))
-    ended = hit_slots | (flying & (moves_left == 0))
-    outcome = torch.where(hit_slots, torch.where(enemy.reshape(E, N, K), 1, 2), 0)
-    shot_outcome = torch.where(ended, outcome, -1)
-    fired_tick = counts0[:, FIRED_TICK]
 
-    # Slots not alive at tick start keep their whole row (agreed fix 3: one select, not one per field).
-    ships = torch.where(
-        alive0[:, None],
-        torch.stack(
-            [
-                x, y, heading_cos, heading_sin, flown.speed, flown.angle, flown.angle_cos, flown.angle_sin,
-                flown.nose_rate, flown.energy, shield + restored, wait, (cooldown - 1).clamp_min(0),
-                flown.log_index, flown.gradient_x, flown.gradient_y,
-                *path_velocity(flown.speed, heading_cos, heading_sin, flown.angle_cos, flown.angle_sin), next_slot,
-            ],
-            1,
-        ),
-        state.ships,
-    )
-    new_state = dataclasses.replace(
-        state,
-        ships=ships,
-        flags=torch.stack([alive, state.exists, fired], 1),
-        bullets=bullets,
-        bullet_counts=torch.stack([moves_left, fired_tick], 1),
-        bullet_real=bullet_real,
-        tick=tick,
-    )
-    out = StepOut(
-        damage_dealt=damage_dealt,
-        damage_taken=total,
-        friendly_damage=friendly_damage,
-        died=died,
-        fired=fired,
-        killer=torch.where(died, first_shooter, -1),
-        done=done,
-        result=result,
-        shot_outcome=shot_outcome,
-        shot_tick=fired_tick,
-        hit_damage=filled((E, N * N), 0.0, bullet_damage.dtype, device)
-        .scatter_add(1, index.pair + target, bullet_damage)
-        .reshape(E, N, N),
-        boundary_damage=boundary,
-        shield_restored=torch.where(alive0, restored, 0.0),
-    )
-    if config.fog:
-        # A shot or a real bullet's hit reveals the ship for this tick (boundary damage does not).
-        struck = earliest_bullet < no_bullet
-        new_state = perceive(new_state, fired | struck)
-    return new_state, out
+def _bullet_ends(
+    counts: Tensor, flying: Tensor, hit: Tensor, enemy: Tensor
+) -> tuple[Tensor, Tensor]:
+    """Each bullet's moves left after this tick (0 once it hits), and the outcome of every bullet
+    whose flight ends this tick (its first contact, or its last move without one), (E, N, K):
+    -1 none ended, 0 missed, 1 hit an enemy, 2 hit a team-mate. hit, enemy: (E, N K) bool."""
+    shape = flying.shape
+    hit = hit.reshape(shape)
+    moves_left0 = counts[:, MOVES_LEFT]
+    moves_left = torch.where(hit, 0, torch.where(flying, moves_left0 - 1, moves_left0))
+    ended = hit | (flying & (moves_left == 0))
+    outcome = torch.where(hit, torch.where(enemy.reshape(shape), 1, 2), 0)
+    return moves_left, torch.where(ended, outcome, -1)
 
 
 # --------------------------------------------------------------------------- reset
@@ -1029,20 +1030,6 @@ def draw_fields(config: GameConfig, envs: int, generator, device) -> Tensor:
 
 
 @built_once
-def _fixed_fields(fields: tuple[tuple[float, float, float, float, float], ...], device: torch.device) -> Tensor:
-    table = torch.tensor(fields, dtype=torch.float32).reshape(-1, 5).T.contiguous()
-    table[FIELD_TARGET] *= card.LN_SQRT2
-    return table.to(device)
-
-
-def fixed_fields(config: GameConfig, envs: int, device) -> Tensor:
-    """The config's fixed fields as State.fields (E, 5, F) (an expanded view; the level turned
-    into the target ln n)."""
-    table = _fixed_fields(config.fields, torch.device(device))
-    return table.expand(envs, *table.shape)
-
-
-@built_once
 def _lineup_types(lineup: tuple[str, ...], device: torch.device) -> Tensor:
     return torch.tensor([card.TYPE_NAMES.index(name) for name in lineup], device=device)
 
@@ -1080,8 +1067,8 @@ def deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generato
     constants = ship_constants(config, ship_type)
     if config.field_count > 0:
         fields = draw_fields(config, envs, generator, device)
-    else:
-        fields = fixed_fields(config, envs, device)
+    else:  # no medium
+        fields = filled((envs, 5, 0), 0.0, torch.float32, device)
 
     def uniform(*shape):
         return torch.rand(shape, **random_keywords(generator, device))
@@ -1267,29 +1254,13 @@ def perceive(state: State, revealed: Tensor) -> State:
     return dataclasses.replace(state, seen=seen, ticks_since_seen=since)
 
 
-def team_view(state: State, team: int) -> State:
-    """The game as team `team` knows it: its own ships as they are, every enemy as last seen
-    (a never-seen or seen-dead enemy is not alive), and no bullets (bullets are not perceived;
-    the bullet fields are None). With fog off (state.seen is None) the state itself. Fields
-    that are fixed and told at reset (exists, team, type, constants, tick) are shared."""
-    if state.seen is None:
-        return state
-    enemy = (state.team != team)[:, None]
-    known = torch.where(enemy, state.seen, _snapshot(state))
-    alive = (known[:, SEEN_ALIVE] > 0.5) & (known[:, SEEN_KNOWN] > 0.5)
-    return dataclasses.replace(
-        state,
-        ships=known[:, : len(SHIP_COLUMNS)],
-        # A shot reveals its ship on that tick, so the true flag is known.
-        flags=torch.stack([alive, state.exists, state.fired], 1),
-        bullets=None, bullet_counts=None, bullet_real=None, seen=None, ticks_since_seen=None,
-    )
-
-
 def enemy_view(state: State) -> State:
     """Every ship as its enemy team knows it: its last-seen row (a never-seen or seen-dead ship
     not alive), so that one call can read each ship's enemies for both teams at once (each
-    ship has one enemy team). Bullets are not perceived (None). With fog off the state itself."""
+    ship has one enemy team). Bullets are not perceived (the bullet fields are None). A shot
+    reveals its ship on that tick, so the true fired flag is known. Fields that are fixed and
+    told at reset (exists, team, type, constants, tick) are shared. With fog off (state.seen is
+    None) the state itself."""
     if state.seen is None:
         return state
     alive = (state.seen[:, SEEN_ALIVE] > 0.5) & (state.seen[:, SEEN_KNOWN] > 0.5)
@@ -1298,6 +1269,20 @@ def enemy_view(state: State) -> State:
         ships=state.seen[:, : len(SHIP_COLUMNS)],
         flags=torch.stack([alive, state.exists, state.fired], 1),
         bullets=None, bullet_counts=None, bullet_real=None, seen=None, ticks_since_seen=None,
+    )
+
+
+def team_view(state: State, team: int) -> State:
+    """The game as team `team` knows it: its own ships as they are, every enemy as its
+    `enemy_view` row. With fog off the state itself."""
+    if state.seen is None:
+        return state
+    view = enemy_view(state)
+    enemy = (state.team != team)[:, None]
+    return dataclasses.replace(
+        view,
+        ships=torch.where(enemy, view.ships, state.ships),
+        flags=torch.where(enemy, view.flags, state.flags),
     )
 
 
@@ -1437,7 +1422,6 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         globals=globals_,
         field=field,
         field_pos=torch.stack([fields[:, FIELD_X], fields[:, FIELD_Y]], -1),
-        field_mask=torch.ones(field.shape[:2], dtype=torch.bool, device=field.device),  # all present
         visible=visible,
         since_seen=since_seen,
     )

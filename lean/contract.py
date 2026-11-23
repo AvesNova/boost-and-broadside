@@ -15,7 +15,7 @@ from torch import Tensor
 STICKS, POWERS, FIRES = 7, 3, 2
 JOINT = STICKS * POWERS * FIRES
 BULLET_SLOTS = 11
-SHIP_TYPES = 5  # len(lean.game.card.TYPE_NAMES): v2's three, then p51d and vizia_plain
+SHIP_TYPES = 1  # len(lean.game.card.TYPE_NAMES)
 
 # Per-ship observation row: 20 scaled scalars, 4 flags, then the ship-type one-hot.
 SHIP_SCALARS = 20
@@ -51,7 +51,7 @@ def random_keywords(generator: torch.Generator | None, device) -> dict:
     return {"generator": generator, "device": device}
 
 
-@dataclass
+@dataclass(eq=False)  # compared and hashed by identity (built-once caches key on it)
 class Constants:
     """Per-ship constants of one run, read by name: `constants["lift"]` or `constants.lift`.
 
@@ -59,7 +59,8 @@ class Constants:
     rules) is a Python number in `uniform`, compiled into the graph. One that differs by ship
     type is a row of `table` (E, C, N) float32, gathered once per slot at reset; `columns`
     gives its first row and width (width 1 reads as (E, N), a wider one, an action-indexed
-    table, as (E, width, N)). Action-indexed tables are always rows of `table`.
+    table, as (E, width, N)). Action-indexed tables are always rows of `table`. The run's card
+    (lean.game.core.ship_card) is the same with one column per ship type: table (1, C, T).
     """
 
     uniform: dict[str, float | int]
@@ -148,7 +149,7 @@ class State:
     view: `state.x` is `state.ships[:, 0]`, (E, N); `state.bullet_x` is (E, N, K).
 
     Stick index: 0 straight, then (1, 2) fine, (3, 4) sustained, (5, 6) full, odd indices
-    one direction and even the other. Power index: 0 coast, 1 boost, 2 reverse.
+    one direction and even the other. Power index: 0 coast, 1 dive, 2 climb.
     """
 
     ships: Tensor  # (E, SHIP_COLUMNS, N) float32
@@ -213,12 +214,8 @@ for _name, (_block, _index) in COLUMN.items():
 class StepOut:
     """What happened in one tick."""
 
-    damage_dealt: Tensor  # (E, N) float32, damage this ship's bullets did to enemies
     damage_taken: Tensor  # (E, N) float32, all energy and shield lost to bullets and the boundary
-    friendly_damage: Tensor  # (E, N) float32, damage this ship's bullets did to team-mates
     died: Tensor  # (E, N) bool
-    fired: Tensor  # (E, N) bool
-    killer: Tensor  # (E, N) long, slot of the killer or -1
     done: Tensor  # (E,) bool
     result: Tensor  # (E,) long: 0 or 1 = winning team, 2 = draw, -1 = not done
     # Bullets whose flight ended this tick (real and ghost alike), per slot (E, N, K):
@@ -245,6 +242,5 @@ class Obs:
     globals: Tensor  # (E, GLOBAL_FEATURES) float32
     field: Tensor  # (E, F, FIELD_FEATURES) float32; F may be 0
     field_pos: Tensor  # (E, F, 2) float32 metres, the field's centre
-    field_mask: Tensor  # (E, F) bool: the field is present
     visible: Tensor  # (E, N) bool: the row is seen this tick (own rows always; all with fog off)
     since_seen: Tensor  # (E, N) float32: symlog of the seconds since the row was seen (0 visible)

@@ -35,13 +35,13 @@ BASE = core.GameConfig(arena_radius=1500.0, clock_ticks=10**6, spawn="mixed")
 
 def test_ghosts_change_nothing_in_the_game():
     """With the same actions and noise, the game with ghosts equals the game without: ships,
-    shields, deaths and kill credit, exactly."""
-    off_states, off_outs = play(BASE, 400, fire_share=0.7)
-    on_states, on_outs = play(dataclasses.replace(BASE, ghost_bullets=True), 400, fire_share=0.7)
+    shields, shots, deaths and who damaged whom, exactly."""
+    off_states, off_outs = play(dataclasses.replace(BASE, ghost_bullets=False), 400, fire_share=0.7)
+    on_states, on_outs = play(BASE, 400, fire_share=0.7)
     for a, b, oa, ob in zip(off_states, on_states, off_outs, on_outs):
-        for name in ("x", "y", "speed", "energy", "shield", "alive"):
+        for name in ("x", "y", "speed", "energy", "shield", "alive", "fired"):
             assert torch.equal(getattr(a, name), getattr(b, name)), name
-        for name in ("damage_taken", "died", "killer", "fired"):
+        for name in ("damage_taken", "died", "hit_damage"):
             assert torch.equal(getattr(oa, name), getattr(ob, name)), name
     assert sum(int(o.died.sum()) for o in off_outs) > 0  # the comparison includes deaths
 
@@ -49,7 +49,7 @@ def test_ghosts_change_nothing_in_the_game():
 def test_every_living_ship_emits_a_bullet_every_tick():
     """With ghosts, a living ship writes a bullet each tick (stamped with that tick); only real
     shots are marked real."""
-    states, _ = play(dataclasses.replace(BASE, ghost_bullets=True), 15, fire_share=0.0)
+    states, _ = play(BASE, 15, fire_share=0.0)
     before, last = states[-2], states[-1]
     slot = ((last.next_slot.long() - 1) % last.bullet_x.shape[-1])[..., None]
     stamped = last.bullet_fired_tick.gather(-1, slot)[..., 0]
@@ -60,8 +60,7 @@ def test_every_living_ship_emits_a_bullet_every_tick():
 def test_each_bullet_reports_its_outcome_once():
     """Every written bullet ends exactly once, within its life, with outcome 0, 1 or 2 and the
     tick it was fired; ghosts' outcomes include hits."""
-    config = dataclasses.replace(BASE, ghost_bullets=True)
-    states, outs = play(config, 60, fire_share=0.0)
+    states, outs = play(BASE, 60, fire_share=0.0)
     life = states[0].constants["bullet_moves"]
     ended = {}
     for tick, out in enumerate(outs):
@@ -75,5 +74,5 @@ def test_each_bullet_reports_its_outcome_once():
     assert set(ended.values()) <= {0, 1, 2}
     assert any(v == 1 for v in ended.values())  # some ghosts would have hit an enemy
     total_damage = sum(float(o.damage_taken.sum()) for o in outs)
-    boundary_only = all(not bool(o.fired.any()) for o in outs)
+    boundary_only = all(not bool(s.fired.any()) for s in states)
     assert boundary_only and total_damage >= 0.0

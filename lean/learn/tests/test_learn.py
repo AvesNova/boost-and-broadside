@@ -201,7 +201,7 @@ def test_finished_environments_take_the_segments_deals_in_order():
     collect_module = importlib.import_module("lean.learn.collect")
     generator = torch.Generator().manual_seed(0)
     config = LearnConfig(team_size_minimum=2, team_size_maximum=4, equal_teams=False)
-    game_config = game.GameConfig.core()
+    game_config = game.GameConfig()
     policy = model.Policy(model.ModelConfig())
     opponent = Opponent(scripted.ScriptedConfig(), persona_spread=1.0)
     envs = 4
