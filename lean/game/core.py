@@ -477,7 +477,7 @@ def _setting(p, control, speed, energy):
         # The commanded trade is already faded at the edges. A climb's unmet extra demand is
         # climb not made; a shortfall below what is held first (the wing cannot hold 1 g, or
         # the dive's demand) sinks the ship, and that needs store to sink.
-        unmet_climb = (demand - maximum(vertical, first)).clamp_min(0.0)
+        unmet_climb = torch.where(climbing, minimum((demand - maximum(vertical, first)).clamp_min(0.0), commanded), 0.0)
         sinking = (first - vertical).clamp_min(0.0)
         exchange = commanded - unmet_climb - sinking * sink_room
     else:
