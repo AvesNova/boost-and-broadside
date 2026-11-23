@@ -5,10 +5,11 @@ seconds, radians, joules, at the game's time (twice real time: lean.game.tuning)
 coefficients are per metre (mass 1). Rows are made by lean.game.tuning (a test holds each row
 equal to the tuning that makes it):
 
-- "p51d": the P-51D's airframe converted directly (tuning.P51D, tuning.airframe_row): real
-  lift, drag, engine power and propeller, g limit 8, dive and climb at 1 g, the game flight
-  terms off (its point mass, the October fit, docs/rewrite/p51d-model.md); guns, shield, nose
-  and stick levels from tuning.GAME_FIELDS.
+- "p51d": the P-51D (tuning.P51D) with the game terms on (tuning.P51D_TERMS: drag rise,
+  separation drag, soft minima, automatic flaps), its zero-lift drag, thrust power and induced
+  drag solved so it flies its point mass's top speed, best climb and best sustained turn rate
+  (tuning.game_row, docs/rewrite/p51d-model.md); real lift, g limit 8, static thrust, dive and
+  climb at 1 g; guns, shield, nose and stick levels from tuning.GAME_FIELDS.
 """
 
 import math
@@ -16,10 +17,10 @@ import math
 TYPE_NAMES = ("p51d",)
 
 CARD = {
-    "max_lift_coefficient": (0.004530452337926361,),
+    "max_lift_coefficient": (0.004797063474135985,),
     "max_acceleration": (313.92,),
-    "zero_lift_drag": (4.500249322340185e-05,),
-    "engine_power": (1801.134167607861,),  # thrust power per kg
+    "zero_lift_drag": (4.46290716669821e-05,),
+    "engine_power": (1775.303807491058,),  # thrust power per kg
     "static_thrust": (23.890784444835262,),
     "exchange_acceleration": (39.24,),  # dive and climb trade between speed and store
     "corner_nose_frequency": (11.23144817352295,),
@@ -32,7 +33,7 @@ CARD = {
     "bullet_life": (0.36666667461395264,),
     "explosive_share": (0.0,),
     "reference_bullet_speed": (1753.606201171875,),
-    "induced_drag_scale": (0.3405755313049645,),
+    "induced_drag_scale": (0.3051412439216051,),
     "stall_angle_scale": (1.0333333333333334,),
     "bullet_spread_scale": (0.25704020261764526,),
     "bullet_drag_scale": (1.0,),
@@ -45,15 +46,21 @@ CARD = {
     "sustained_stick": (0.7003369927406311,),
     "vision_range_scale": (0.3255208432674408,),
     # The flight terms (FLIGHT_TERMS): the drag rise above critical_speed, the separation drag,
-    # the soft minima of lift against the g limit and of thrust against static thrust, and the
-    # nose damping. The P-51D flies with the game terms off (tuning.POINT_MASS_TERMS).
-    "critical_speed": (math.inf,),
-    "drag_rise_exponent": (12.0,),
-    "separation_drag": (0.0,),
+    # the soft minima of lift against the g limit and of thrust against static thrust, the nose
+    # damping, and the automatic flaps (core._wing: the maximum lift times 1 + flap_lift below
+    # flap_full_speed_ratio x the clean stall speed, clean above flap_clear_speed_ratio x it;
+    # the extra lift's drag flap_drag_scale x INDUCED_DRAG_FACTOR x (Delta lift coefficient)^2).
+    "critical_speed": (524.062,),
+    "drag_rise_exponent": (20.0,),
+    "separation_drag": (0.1,),
     "separation_exponent": (8.0,),
-    "lift_softmin_exponent": (400.0,),
-    "thrust_softmin_exponent": (400.0,),
+    "lift_softmin_exponent": (16.0,),
+    "thrust_softmin_exponent": (8.0,),
     "nose_damping": (0.7,),
+    "flap_lift": (0.15,),
+    "flap_full_speed_ratio": (1.3,),
+    "flap_clear_speed_ratio": (1.6,),
+    "flap_drag_scale": (1.0054180489951219,),
 }
 FLIGHT_TERMS = (
     "critical_speed",
@@ -63,6 +70,10 @@ FLIGHT_TERMS = (
     "lift_softmin_exponent",
     "thrust_softmin_exponent",
     "nose_damping",
+    "flap_lift",
+    "flap_full_speed_ratio",
+    "flap_clear_speed_ratio",
+    "flap_drag_scale",
 )
 
 # Flight constants shared by every type (world constants and numerical floors).

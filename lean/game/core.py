@@ -156,11 +156,17 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
     raw = torch.stack([gravity, card.GRAVITY - exchange, card.GRAVITY + exchange], -1)
     hit_radius = of("hit_radius")
     head_on_angle = card.HEAD_ON_ANGLE * of("head_on_angle_scale")
+    # The automatic flaps (`_wing`): full below flap_full_speed_ratio x the clean stall speed,
+    # none above flap_clear_speed_ratio x it, a smootherstep between.
+    stall_speed = torch.sqrt(card.GRAVITY / lift)
+    flap_full, flap_clear = of("flap_full_speed_ratio"), of("flap_clear_speed_ratio")
     values = {
         "lift": lift,
-        "inverse_lift": 1.0 / lift,
-        "inverse_lift_squared": 1.0 / (lift * lift),
-        "lift_over_stall": lift / stall,
+        "flapped_lift": lift * (1.0 + of("flap_lift")),
+        "flap_lift_fade": lift * of("flap_lift"),
+        "flap_start": flap_full * stall_speed,
+        "inverse_flap_band": 1.0 / ((flap_clear - flap_full) * stall_speed),
+        "flap_drag": card.INDUCED_DRAG_FACTOR * of("flap_drag_scale"),
         "max_acceleration": acceleration,
         "zero_lift_drag": of("zero_lift_drag"),
         "induced_drag": card.INDUCED_DRAG_FACTOR * of("induced_drag_scale"),
@@ -231,14 +237,15 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
     with torch.no_grad():
         for _ in range(60):  # bisection on d speed / dt = 0
             middle = 0.5 * (low + high)
-            setting = _setting(c, control, middle, c.spawn_energy)
+            wing = _wing(c, middle)
+            setting = _setting(c, control, middle, c.spawn_energy, wing)
             one, zero = torch.ones_like(middle), torch.zeros_like(middle)
-            rate, _ = _rates(c, setting, one, middle, zero, one, 1.0 / (middle * middle))
+            rate, _ = _rates(c, setting, one, middle, zero, one, 1.0 / (middle * middle), 1.0 / (wing * wing))
             low, high = torch.where(rate > 0.0, middle, low), torch.where(rate > 0.0, high, middle)
     cruise = 0.5 * (low + high)
     launch = cruise + c.muzzle_speed
     life = c.bullet_moves.float() * config.tick_length
-    stall_speed = torch.sqrt(card.GRAVITY / c.lift)
+    stall_speed = torch.sqrt(card.GRAVITY / c.lift)  # clean: the flaps' reference
     corner_speed = torch.sqrt(c.max_acceleration / c.lift)
     sustained_rate, sustained_speed = _best_sustained_turn(values, stall_speed, cruise)
     # Per row, as (T, 1) columns, for one speed per row.
@@ -266,12 +273,13 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
     }
 
 
-def quasi_steady(p, speed: Tensor, stick: Tensor, power: int, energy: Tensor):
+def steady_rates(p, speed: Tensor, stick: Tensor, power: int, energy: Tensor):
     """A ship flying steadily (no field, the nose's lag settled) at `speed` with stick size
     `stick` (0 to 1) and power index `power` (0 coast, 1 dive, 2 climb) at store `energy`: its
-    turn rate (rad/s), d speed / dt, and total energy rate (speed x d speed / dt + d store / dt).
+    turn rate (rad/s), d speed / dt and d store / dt, from the flight functions the tick uses.
     `p` holds the ship constants broadcastable against `speed` (the action tables with a last
-    axis of width 3)."""
+    axis of width 3). Every quasi-steady analysis (the derived characteristics, lean.game.tuning's
+    performance and envelope) goes through here."""
     control = SimpleNamespace(
         thrust_scale=1.0,
         stick_size=stick,
@@ -279,15 +287,25 @@ def quasi_steady(p, speed: Tensor, stick: Tensor, power: int, energy: Tensor):
         commanded=p.commanded_table[..., power],
         demand=p.demand_table[..., power],
     )
-    setting = _setting(p, control, speed, energy)
+    wing = _wing(p, speed)
+    inverse_wing = 1.0 / wing
+    setting = _setting(p, control, speed, energy, wing)
     lateral, _, _, thrust = setting
-    reach = (lateral.abs() / (speed * speed) * p.inverse_lift).clamp(0.0, 1.0)
+    reach = (lateral.abs() / (speed * speed) * inverse_wing).clamp(0.0, 1.0)
     angle = p.stall * (1.0 - torch.sqrt(1.0 - reach))
-    lift = _lift_coefficient(p, angle)
+    lift = _lift_coefficient(p, angle, wing)
     rate = (lift * speed * speed + thrust * torch.sin(angle)) / speed
     speed_rate, store_rate = _rates(
-        p, setting, torch.ones_like(speed), speed, lift, torch.cos(angle), 1.0 / (speed * speed)
+        p, setting, torch.ones_like(speed), speed, lift, torch.cos(angle), 1.0 / (speed * speed),
+        inverse_wing * inverse_wing,
     )
+    return rate, speed_rate, store_rate
+
+
+def quasi_steady(p, speed: Tensor, stick: Tensor, power: int, energy: Tensor):
+    """`steady_rates` with the store's rate folded into the total energy rate: turn rate (rad/s),
+    d speed / dt, and speed x d speed / dt + d store / dt."""
+    rate, speed_rate, store_rate = steady_rates(p, speed, stick, power, energy)
     return rate, speed_rate, speed * speed_rate + store_rate
 
 
@@ -500,7 +518,18 @@ def medium(fields: Tensor, x: Tensor, y: Tensor) -> tuple[Tensor, Tensor, Tensor
 # --------------------------------------------------------------------------- flight
 
 
-def _setting(p, control, speed, energy):
+def _wing(p, speed: Tensor) -> Tensor:
+    """The wing's maximum lift coefficient (1/m) at a speed, with the automatic flaps: as if
+    the flaps were exactly as far out as useful. Below `flap_start` (flap_full_speed_ratio x
+    the clean stall speed) the maximum is the clean one times 1 + flap_lift; it fades to the
+    clean maximum by a smootherstep in speed (no kink), clean from flap_clear_speed_ratio x the
+    stall speed. No control: part of what full stick means at low speed. The extra lift's drag
+    is in `_rates`."""
+    fade = smootherstep(((speed - p.flap_start) * p.inverse_flap_band).clamp(0.0, 1.0))
+    return p.flapped_lift - p.flap_lift_fade * fade
+
+
+def _setting(p, control, speed, energy, wing):
     """The controls resolved at a speed and store: signed lateral acceleration, the exchange
     between speed and store, the vertical acceleration held, and thrust.
 
@@ -510,8 +539,9 @@ def _setting(p, control, speed, energy):
     or climb fades to coast in its effect on the wing as well as in the trade (no free turn from
     diving on the deck, no lost turn from climbing at the top). The engine drives speed only
     (constant power) and never feeds the store; firing scales the thrust on the ticks it fires.
+    wing: the maximum lift coefficient at this speed (`_wing`).
     """
-    reach = p.lift * speed * speed
+    reach = wing * speed * speed
     q = p.lift_softmin_exponent
     budget = softmin(reach, p.max_acceleration, q).clamp_min(1e-12)
     command = softmin(control.stick_size * reach, p.max_acceleration, q)
@@ -541,16 +571,21 @@ def _setting(p, control, speed, energy):
     return control.stick_sign * lateral_size, exchange, vertical, thrust
 
 
-def _rates(p, setting, inverse_index, speed, lift, angle_cos, inverse_speed_squared):
+def _rates(p, setting, inverse_index, speed, lift, angle_cos, inverse_speed_squared, inverse_wing_squared):
     """(d speed / dt, d energy / dt) for a setting, a lift coefficient and an angle of attack.
-    inverse_index: 1 / n, or None where there is no medium (n = 1)."""
+    inverse_index: 1 / n, or None where there is no medium (n = 1). inverse_wing_squared: 1 over
+    the squared maximum lift coefficient at this speed (`_wing`): the separation drag rises
+    toward the wing's maximum, flaps included. The flaps' drag: flap_drag times the square of
+    the lift coefficient beyond the clean maximum (zero while the clean wing suffices)."""
     _, exchange, vertical, thrust = setting
     induced = vertical * inverse_speed_squared
     load = lift * lift + induced * induced
+    flapped = (torch.sqrt(load) - p.lift).clamp_min(0.0)
     drag = (
         p.zero_lift_drag * (1.0 + (speed * p.inverse_critical_speed) ** p.drag_rise_exponent)
         + p.induced_drag * load
-        * (1.0 + p.separation_drag * (load * p.inverse_lift_squared) ** p.half_separation_exponent)
+        * (1.0 + p.separation_drag * (load * inverse_wing_squared) ** p.half_separation_exponent)
+        + p.flap_drag * flapped * flapped
     ) * speed * speed
     store = speed * exchange
     speed_rate = thrust * angle_cos - drag - exchange
@@ -559,10 +594,11 @@ def _rates(p, setting, inverse_index, speed, lift, angle_cos, inverse_speed_squa
     return speed_rate * inverse_index, store * inverse_index
 
 
-def _lift_coefficient(p, angle):
-    """The lift coefficient at an angle of attack: a parabola peaking at the stall angle."""
+def _lift_coefficient(p, angle, wing):
+    """The lift coefficient at an angle of attack: a parabola peaking at the stall angle at the
+    wing's maximum `wing` (`_wing`)."""
     ratio = (angle * p.inverse_stall).clamp(-2.0, 2.0)
-    return p.lift * (2.0 * ratio - ratio * ratio.abs())
+    return wing * (2.0 * ratio - ratio * ratio.abs())
 
 
 def _matrix_exponential(a11, a12, a21, a22, duration):
@@ -591,11 +627,16 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
     speed0, angle0, cos0, sin0, energy, nose_rate = s.speed, s.angle, s.angle_cos, s.angle_sin, s.energy, s.nose_rate
     floor = card.SPEED_FLOOR
     safe0 = speed0.clamp_min(floor)
-    first = _setting(p, control, safe0, energy)
-    lift0 = _lift_coefficient(p, angle0)
-    speed_rate0, energy_rate0 = _rates(p, first, inverse_index, speed0, lift0, cos0, 1.0 / (safe0 * safe0))
+    wing = _wing(p, safe0)  # the flaps at the kick's starting speed, held through the kick
+    inverse_wing = 1.0 / wing
+    inverse_wing_squared = inverse_wing * inverse_wing
+    first = _setting(p, control, safe0, energy, wing)
+    lift0 = _lift_coefficient(p, angle0, wing)
+    speed_rate0, energy_rate0 = _rates(
+        p, first, inverse_index, speed0, lift0, cos0, 1.0 / (safe0 * safe0), inverse_wing_squared
+    )
     speed = (speed0 + 0.5 * duration * speed_rate0).clamp_min(floor)
-    current = _setting(p, control, speed, energy + 0.5 * duration * energy_rate0)
+    current = _setting(p, control, speed, energy + 0.5 * duration * energy_rate0, wing)
     lateral, _, _, thrust = current
     speed_squared = speed * speed
     inverse_speed_squared = 1.0 / speed_squared
@@ -610,12 +651,12 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
     ratio = (angle0 * p.inverse_stall).abs()
     # The lift coefficient's slope: negative past the stall, zero from twice the stall angle (v2's
     # lift_slope, src/bnb/game/physics/flight.py).
-    slope = torch.where(ratio < 2.0, p.lift_over_stall * (2.0 - 2.0 * ratio), 0.0)
+    slope = torch.where(ratio < 2.0, (wing * p.inverse_stall) * (2.0 - 2.0 * ratio), 0.0)
     kappa = (slope * speed_squared + thrust * cos0) * over
     omega = (p.nose_frequency * speed).clamp_min(card.NOSE_FREQUENCY_FLOOR)
     if inverse_index is not None:
         omega = omega * inverse_index
-    reach = (lateral.abs() * inverse_speed_squared * p.inverse_lift).clamp(0.0, 1.0)
+    reach = (lateral.abs() * inverse_speed_squared * inverse_wing).clamp(0.0, 1.0)
     step_angle = torch.sign(lateral) * p.stall * (1.0 - torch.sqrt(1.0 - reach)) - angle0
     damping = 2.0 * p.nose_damping * omega
     m11, m12, m21, m22 = _matrix_exponential(
@@ -628,11 +669,13 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
     new_rate = path_rate + steady - m21 * step_angle + m22 * offset
     half_cos, half_sin = small_angle_cos_sin(0.5 * turn)
     middle_cos = cos0 * half_cos - sin0 * half_sin
-    middle_lift = _lift_coefficient(p, angle0 + 0.5 * turn)
-    speed_rate1, _ = _rates(p, current, inverse_index, speed0, middle_lift, middle_cos, inverse_speed_squared)
+    middle_lift = _lift_coefficient(p, angle0 + 0.5 * turn, wing)
+    speed_rate1, _ = _rates(
+        p, current, inverse_index, speed0, middle_lift, middle_cos, inverse_speed_squared, inverse_wing_squared
+    )
     speed_rate2, energy_rate2 = _rates(
         p, current, inverse_index, (speed0 + 0.5 * duration * speed_rate1).clamp_min(floor),
-        middle_lift, middle_cos, inverse_speed_squared,
+        middle_lift, middle_cos, inverse_speed_squared, inverse_wing_squared,
     )
     turn_cos, turn_sin = small_angle_cos_sin(turn)
     s.speed = (speed0 + duration * speed_rate2).clamp_min(floor)

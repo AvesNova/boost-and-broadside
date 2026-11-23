@@ -32,29 +32,33 @@ digit, before and after them.
 
 ## P-51D
 
-With its own flight terms (the game terms off: its point mass, the October fit;
-docs/rewrite/p51d-model.md). The "v2" column is the P-51D's card under v2's flight model.
+The card's P-51D since step A1 (2026-11-24): the game terms on (drag rise, separation drag,
+soft minima, automatic flaps) and its zero-lift drag, thrust power and induced drag solved to
+fly its point mass's top speed, climb and best sustained rate (docs/rewrite/p51d-model.md).
+Measured 2026-11-24, laptop CPU, one thread, `measure_core.py 0`. (The earlier table, the
+P-51D's point mass under v2's flight model and the core model, is in git history; v2's flight
+model is gone.)
 
-| p51d, no fields | v2 | core |
-|---|---|---|
-| top level speed, coast (m/s) | 335 | 335 |
-| store after 120 s straight coast (%) | 50.0 | 50.0 |
-| corner speed (m/s, g limit meets lift) | 263 | 263 |
-| full stick from corner, coast: first second (deg) | 60 | 58 |
-| full stick, settled after 30 s: speed (m/s), rate (deg/s), store (%) | 245, 63.8, 14.6 | 151, 37.3, 50.0 |
-| sustained stick from corner, coast: first second (deg) | 40 | 40 |
-| sustained stick, settled after 30 s: speed (m/s), rate (deg/s), store (%) | 181, 33.3, 50.0 | 181, 33.3, 50.0 |
-| fine stick from corner, coast: first second (deg) | 12 | 12 |
-| fine stick, settled after 30 s: speed (m/s), rate (deg/s), store (%) | 290, 15.8, 50.0 | 290, 15.8, 50.0 |
-| full stick and dive from corner: first second (deg) | 58 | 58 |
-| climb from top speed, half store: time to 99% (s), speed then (m/s) | not reached in 60 s (74%) | 1.7, 280 |
-| dive from top speed, half store: time to 1% (s), peak speed (m/s) | 11.8, 684 | 1.4, 381 |
-| speed lost to 1 s of firing at top speed (m/s, against not firing) | 0.0 | 5.3 |
-| speed lost to 1 s of firing at corner speed (m/s, against not firing) | 0.0 | 6.7 |
+| p51d, no fields | core |
+|---|---|
+| top level speed, coast (m/s) | 335 |
+| store after 120 s straight coast (%) | 50.0 |
+| corner speed (m/s, g limit meets lift) | 256 |
+| full stick from corner, coast: first second (deg) | 55 |
+| full stick, settled after 30 s: speed (m/s), rate (deg/s), store (%) | 148, 38.0, 50.0 |
+| sustained stick from corner, coast: first second (deg) | 41 |
+| sustained stick, settled after 30 s: speed (m/s), rate (deg/s), store (%) | 180, 35.1, 50.0 |
+| fine stick from corner, coast: first second (deg) | 12 |
+| fine stick, settled after 30 s: speed (m/s), rate (deg/s), store (%) | 288, 16.7, 50.0 |
+| full stick and dive from corner: first second (deg) | 55 |
+| climb from top speed, half store: time to 99% (s), speed then (m/s) | 1.6, 283 |
+| dive from top speed, half store: time to 1% (s), peak speed (m/s) | 1.3, 379 |
+| speed lost to 1 s of firing at top speed (m/s, against not firing) | 5.2 |
+| speed lost to 1 s of firing at corner speed (m/s, against not firing) | 6.8 |
 
-In real units the core P-51D flies 375 mph, climbs 3,599 ft/min, and holds 18.6 deg/s at
-169 mph (r 233 m) as its best sustained turn: the October fit (`lean/game/tuning.py`
-`performance`, a 0.05 m/s grid).
+In real units it flies 375 mph, climbs 3,600 ft/min, holds 18.99 deg/s at 165.5 mph (r 223 m)
+as its best sustained turn, and its tightest sustained turn is 202 m at 136.7 mph, with the
+flaps (`lean/game/tuning.py` `performance`, a 0.05 m/s grid).
 
 ## The turn has precedence over the climb (author, 2026-11-23)
 
@@ -87,8 +91,9 @@ Reading:
 - At corner speed Vizia still climbs (+253 m in 2 s) and turns 99 deg against 113 coasting.
   At the corner Vizia's soft minimum of lift against the g limit (exponent 16) holds the turn
   below the full budget, and the climb takes that slack (about 1 g); speed then bleeds into
-  the store and the slower ship turns less over the 2 s. The P-51D's minimum is near hard
-  (exponent 400): its turn takes the whole budget and the climb gets nothing.
+  the store and the slower ship turns less over the 2 s. The P-51D's minimum was then near
+  hard (exponent 400): its turn took the whole budget and the climb got nothing. (Since A1,
+  2026-11-24, the P-51D's lift minimum is 16 as well; this table was not re-measured.)
 - A climb's unmet demand is now climb not made; before, it counted as sinking and was paid from
   the store only above the bottom edge.
 - Unchanged: coast and dive (bit for bit), and straight climbs at speed (the Vizia table above).
@@ -97,9 +102,14 @@ Reading:
 
 The terms v2 shared across types are card columns (`lean.game.card.FLIGHT_TERMS`, v2's names):
 `critical_speed` (drag rise), `drag_rise_exponent`, `separation_drag`, `separation_exponent`,
-`lift_softmin_exponent`, `thrust_softmin_exponent`, `nose_damping`. Yongma, Jujak, Vizia and
-vizia_plain keep v2's values (394 m/s, 12, 1, 8, 16, 2, 0.7). The P-51D has the game terms
-off (`tuning.POINT_MASS_TERMS`: no drag rise, no separation drag, soft minima at exponent 400).
+`lift_softmin_exponent`, `thrust_softmin_exponent`, `nose_damping`, and since A1 the automatic
+flaps (`flap_lift`, `flap_full_speed_ratio`, `flap_clear_speed_ratio`, `flap_drag_scale`;
+`core._wing`). v2's values were 394 m/s, 12, 1, 8, 16, 2, 0.7 (Yongma, Jujak, Vizia,
+vizia_plain; they left the card at G1). The P-51D's (`tuning.P51D_TERMS`, since A1): drag rise
+doubling at 524.06 m/s game (Mach 0.77) with exponent 20, separation drag 0.1 (exponent 8),
+lift soft minimum 16, thrust soft minimum 8, nose damping 0.7, flaps +15% below 1.3 x stall,
+clean from 1.6 x stall, flap drag 0.2 (Delta C_L)^2 (before A1: the game terms off,
+`tuning.POINT_MASS_TERMS`).
 Shared still: gravity, the stall angle and induced-drag base constants (each with a per-type
 scale), and the numerical floors (speed floor, nose-frequency floor).
 

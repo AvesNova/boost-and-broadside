@@ -3,7 +3,7 @@ and at 1x real time (speeds, turn rates and Ps halved; radii and loads in g unch
 real aircraft's chart reads against published energy-manoeuvrability diagrams.
 
 For every speed and stick fraction, the quasi-steady turn from the flight code's own
-function (`lean.game.tuning.envelope`, which calls `core._setting`, `_lift_coefficient`, `_rates`): the nose settled on the stick's
+function (`lean.game.tuning.envelope`, which calls `core.steady_rates`): the nose settled on the stick's
 angle of attack, turn rate = (C_L(angle) v^2 + T sin angle) / v, and the rates of change of
 speed and of the energy store. No fields, no guns. Power: coast.
 
@@ -97,8 +97,9 @@ DOGHOUSE_FOOT = (
     "bottom) dive or climb fades to coast, in the trade and in the wing's load; outside it, as drawn."
 )
 TYPE_NOTES = {
-    "p51d": "P-51D: the real airframe at 2x time with the game terms off, its point mass (lean.game.tuning, "
-    "docs/rewrite/p51d-model.md).",
+    "p51d": "P-51D: the real airframe at 2x time with the game terms on (drag rise, separation drag, soft limits,\n"
+    "automatic flaps below 1.6 x stall), solved to fly its point mass's top speed, climb and best sustained\n"
+    "rate (lean.game.tuning.game_row, docs/rewrite/p51d-model.md).",
 }
 
 
@@ -151,7 +152,7 @@ def draw_panel(figure, ax, ship_type: int, label: str, fraction, real: bool, top
         if 0 < j < len(v) - 1:
             ax.text(v[j], line[j], f"{load} g", color=MUTED, fontsize=8, ha="left", va="bottom")
     ax.plot(v, envelope, color=INK, linewidth=2.0)
-    label_at = int(np.searchsorted(game_v, 135.0))
+    label_at = int(np.searchsorted(game_v, 175.0))
     ax.annotate("full stick", (v[label_at], envelope[label_at]), xytext=(-4, 6), textcoords="offset points",
                 color=INK, fontsize=8, ha="right")
     # The game's other stick levels (the card's fine and sustained values for this type).
@@ -179,6 +180,12 @@ def draw_panel(figure, ax, ship_type: int, label: str, fraction, real: bool, top
         ax.plot(best_v, best_rate, "s", color=INK, markersize=8)
         ax.annotate(f"best sustained {best_v:.0f} m/s, {best_rate:.0f} deg/s", (best_v, best_rate),
                     xytext=(8, -14), textcoords="offset points", color=INK, fontsize=9)
+        tight_v = grid["tightest_sustained_speed"] / f
+        tight_rate = tight_v / grid["tightest_sustained_radius"] * DEGREES
+        ax.plot(tight_v, tight_rate, "^", color=INK, markersize=8)
+        ax.annotate(f"tightest sustained {tight_v:.0f} m/s, {grid['tightest_sustained_radius']:.0f} m",
+                    (tight_v, tight_rate), xytext=(14, -56), textcoords="offset points", color=INK,
+                    fontsize=9, ha="left", arrowprops=dict(arrowstyle="-", color=INK, linewidth=0.8))
     ax.set_xlim(v[0], v[-1])
     ax.set_ylim(0, top)
     ax.set_xlabel("speed (m/s, real)" if real else "speed (m/s)", color=INK_2)

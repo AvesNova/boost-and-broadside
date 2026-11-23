@@ -6,14 +6,20 @@ are real metres, game time is real time over 2, so speeds are x2, accelerations 
 39.24 = 4 x 9.81), powers per kg x8 and turn rates x2; turn radii, and the lift and drag
 coefficients per metre, are unchanged. `to_game` and `to_real` convert.
 
-Two routes (docs/rewrite/p51d-model.md):
+Routes (docs/rewrite/p51d-model.md):
 
 - `airframe_row`: an aircraft's physical data (mass, wing area, C_Lmax, C_D0, aspect ratio and
   Oswald e, engine power and propeller) converted directly: no fitting, no gameplay tuning.
   The point-mass conversion of the October fit (docs/rewrite/physics-checks/planes.py
   `from_real`): lift and zero-lift drag per metre rho S C / (2 m), induced drag factor
   k / (rho S / 2 m) with k = 1 / (pi e AR), thrust power P eta / m, static thrust by momentum
-  theory (FM^2 P^2 2 rho A)^(1/3) / m; dive and climb trade at 1 g.
+  theory (FM^2 P^2 2 rho A)^(1/3) / m; dive and climb trade at 1 g. With the game terms off
+  (POINT_MASS_TERMS) the row is the aircraft's point mass. `fit_point_mass` sets C_D0 and the
+  propeller efficiency so the point mass flies a tested top speed and climb.
+- `game_row`: a real aircraft with the game terms on (a type's drag rise, separation drag,
+  soft minima and automatic flaps): the airframe converted, then its zero-lift drag, thrust
+  power and induced drag solved so it still flies its point mass's top speed, best climb and
+  best sustained turn rate (core-decisions.md 2026-11-24). The P-51D's row.
 - `handles_row`: a design's handles (v2's bnb.game.handling.Handles names, in game units): the
   direct ones in v2's closed forms (bnb.game.handling.solver._flight_card, weapons.combat_card),
   and the three flown handles that mean something under the game's flight model solved
@@ -24,9 +30,8 @@ Two routes (docs/rewrite/p51d-model.md):
 The store size, the spawn store and the shot's cost are the game's own (two loops at corner
 speed, half of it, free), so no row carries them. The nose frequency and the stick levels are
 control feel, not physics: they come from the base row (GAME_FIELDS for a new design). The
-flight terms (card.FLIGHT_TERMS) are per type; a real aircraft converted directly flies with
-the game terms off (POINT_MASS_TERMS: the pure point mass of the October fit), and
-`performance(..., plain=True)` turns them off for any row.
+flight terms (card.FLIGHT_TERMS) are per type; `performance(..., plain=True)` turns the game
+terms off for any row (POINT_MASS_TERMS).
 """
 
 from __future__ import annotations
@@ -91,25 +96,31 @@ class Airframe:
         return (FIGURE_OF_MERIT**2 * self.power**2 * 2.0 * AIR_DENSITY * disc) ** (1.0 / 3.0)
 
 
-# The P-51D: the October fit to the author's flight-test data (docs/rewrite/physics-checks/
-# real_fit.py, decisions.md 2026-10-23): 4,427 kg and 1,630 hp (67 in Hg) as tested, 21.83 m^2,
-# AR 5.83, C_Lmax 1.50 from the clean 101-102 mph stall, Oswald e 0.8 (assumed), C_D0 0.0149
-# and propeller efficiency 0.82 fitted to the tested 375 mph and 3,600 ft/min at sea level,
-# Hamilton Standard propeller 3.40 m (11 ft 2 in). From v2's research
-# (bnb.reference.real_planes): the g limit 8, the stall angle 15.5 deg.
+# The P-51D's data (docs/rewrite/aircraft-references.md, p51d-model.md): 4,427 kg and 1,630 hp
+# at 67 in Hg (war emergency rating) as tested (AAF TSCEP5E-1908); wing area 21.67 m^2 (NACA ACR
+# 4K02); AR 5.83; C_Lmax 1.6 (the AAF's power-on value for its turn calculation; stall-derived
+# values span 1.50-1.70); Oswald e 0.8 (assumed); Hamilton Standard propeller 3.40 m (11 ft 2 in);
+# from v2's research (bnb.reference.real_planes) the g limit 8 and the stall angle 15.5 deg. C_D0
+# and the propeller efficiency are not data: fit_point_mass sets them so the point mass flies
+# the tested 375 mph and 3,600 ft/min at sea level (the October procedure, physics-checks/
+# real_fit.py); the values here are that fit (test_p51d_point_mass_flies_the_flight_test).
 P51D = Airframe(
     mass=4427.0,
-    wing_area=21.83,
-    max_lift_coefficient=1.50,
-    zero_lift_drag_coefficient=0.0149,
+    wing_area=21.67,
+    max_lift_coefficient=1.6,
+    zero_lift_drag_coefficient=0.015036438034450334,
     aspect_ratio=5.83,
     oswald=0.8,
     power=1630.0 * HORSEPOWER,
-    propeller_efficiency=0.82,
+    propeller_efficiency=0.8211724151486224,
     propeller_diameter=3.40,
     g_limit=8.0,
     stall_angle=math.radians(15.5),
 )
+MPH, FEET_PER_MINUTE = 0.44704, 0.00508  # m/s
+P51D_TOP_SPEED = 375.0 * MPH  # sea level, 67 in Hg, 4,427 kg (flight test), real m/s
+P51D_BEST_CLIMB = 3600.0 * FEET_PER_MINUTE  # the same test, real m/s
+SPEED_OF_SOUND = 340.3  # m/s, ISA sea level
 
 # A design's fields that are not its airframe: guns, damage, shield, the nose's reversal, the
 # stick levels and vision (v2's Vizia's), and the flight terms the point mass keeps (v2's).
@@ -137,16 +148,46 @@ GAME_FIELDS = dict(
     drag_rise_exponent=12.0,
     separation_exponent=8.0,
     nose_damping=0.7,
+    flap_lift=0.0,
+    flap_full_speed_ratio=1.0,
+    flap_clear_speed_ratio=2.0,
+    flap_drag_scale=0.0,
 )
 
 
 # The game terms switched off: no drag rise, no separation drag, soft minima near hard (exponent
-# 400). A real aircraft flies as its point mass with these (test_p51d_point_mass_is_the_october_fit).
+# 400), no flaps. A real aircraft's data fly as its point mass with these.
 POINT_MASS_TERMS = dict(
     critical_speed=math.inf,
     separation_drag=0.0,
     lift_softmin_exponent=400.0,
     thrust_softmin_exponent=400.0,
+    flap_lift=0.0,
+    flap_drag_scale=0.0,
+)
+
+# The P-51D's game terms (core-decisions.md 2026-11-24: the terms on, the solver compensating).
+# - Drag rise: the zero-lift drag doubles at Mach 0.77, exponent 20: NACA ACR 4K02 Fig. 12 (the
+#   P-51B, propeller off) is flat to about M 0.68, then +40% at M 0.735 and +67% at M 0.755.
+# - Separation drag 0.1 (the induced drag +10% at the wing's maximum lift), exponent 8: larger
+#   values move the best sustained turn's speed off the point mass's (+8% at 0.3, +22% at v2's 1).
+# - Soft minima: lift against the g limit 16 (v2's), thrust against static thrust 8.
+# - Automatic flaps, a game choice (the P-51D had no combat flap setting): the maximum lift
+#   +15% below 1.3 x the clean stall speed, fading to clean at 1.6 x it, below the best
+#   sustained turn's speed, so the flaps change the tightest turn and not the best rate; the
+#   flaps' extra lift costs Delta C_D = 0.2 Delta C_L^2 (P51D_FLAP_DRAG).
+P51D_FLAP_DRAG = 0.2  # Delta C_D per (Delta C_L)^2 of lift beyond the clean maximum
+P51D_TERMS = dict(
+    critical_speed=to_game(0.77 * SPEED_OF_SOUND, -1),
+    drag_rise_exponent=20.0,
+    separation_drag=0.1,
+    separation_exponent=8.0,
+    lift_softmin_exponent=16.0,
+    thrust_softmin_exponent=8.0,
+    flap_lift=0.15,
+    flap_full_speed_ratio=1.3,
+    flap_clear_speed_ratio=1.6,
+    flap_drag_scale=P51D_FLAP_DRAG / (P51D.per_metre * card.INDUCED_DRAG_FACTOR),
 )
 
 
@@ -174,6 +215,60 @@ def airframe_row(
         exchange_acceleration=card.GRAVITY,  # 1 g: a vertical dive or zoom
     )
     return {**base, **flight, **(POINT_MASS_TERMS if terms is None else terms)}
+
+
+def fit_point_mass(airframe: Airframe, top_speed: float, best_climb: float) -> Airframe:
+    """The airframe with C_D0 and the propeller efficiency set so its point mass (the game terms
+    off) flies `top_speed` and `best_climb` (real m/s, sea level); the other data kept (the
+    October procedure: docs/rewrite/physics-checks/real_fit.py)."""
+    targets = (to_game(top_speed, -1), to_game(best_climb, -1))
+
+    def fitted(logs):
+        return dataclasses.replace(
+            airframe,
+            zero_lift_drag_coefficient=math.exp(logs[0]),
+            propeller_efficiency=math.exp(logs[1]),
+        )
+
+    def residual(logs):
+        p = performance(airframe_row(fitted(logs), GAME_FIELDS))
+        return [math.log(p["top_speed"] / targets[0]), math.log(p["best_climb"] / targets[1])]
+
+    start = [math.log(airframe.zero_lift_drag_coefficient), math.log(airframe.propeller_efficiency)]
+    return fitted(_newton(residual, start, 1e-7, name="fit_point_mass"))
+
+
+GAME_TARGETS = ("top_speed", "best_climb", "sustained_rate")
+GAME_SOLVED = ("zero_lift_drag", "engine_power", "induced_drag_scale")
+
+
+def game_row(airframe: Airframe, terms: dict[str, float], base: dict[str, float]) -> dict[str, float]:
+    """A real aircraft's card row with the game terms on (core-decisions.md 2026-11-24): the
+    airframe converted (airframe_row) with `terms`, then the low-level coefficients GAME_SOLVED
+    (zero-lift drag, thrust power, induced drag) solved so the row flies its point mass's top
+    speed, best climb and best sustained turn rate (GAME_TARGETS; Newton, as handles_row). The
+    rest is the airframe's: the lift and the stall speed, the g limit and so the corner speed,
+    the stall angle, the dive and climb trade, and the static thrust (momentum theory; no target
+    sees it). The best sustained turn's speed is not solved: the terms are chosen to keep it
+    near the point mass's (test_p51d_game_row_flies_its_point_mass).
+
+    Solved first without the flaps, then with them from there: the flaps' low-speed part of
+    the sustained turn is lift-limited, so no drag coefficient moves it, and a start whose
+    clean best turn lies below it would see no way to the target."""
+    row = airframe_row(airframe, base, terms)
+    reference = performance(airframe_row(airframe, base))
+    targets = [reference[name] for name in GAME_TARGETS]
+    logs = [math.log(row[name]) for name in GAME_SOLVED]
+    for stage in ({**row, "flap_lift": 0.0}, row):
+
+        def residual(logs, stage=stage):
+            trial = {**stage, **{name: math.exp(x) for name, x in zip(GAME_SOLVED, logs)}}
+            flown = performance(trial)
+            return [math.log(flown[name] / target) for name, target in zip(GAME_TARGETS, targets)]
+
+        logs = _newton(residual, logs, 1e-7, name="game_row")
+    row.update({name: math.exp(x) for name, x in zip(GAME_SOLVED, logs)})
+    return row
 
 
 # --------------------------------------------------------------------------- handles route
@@ -277,31 +372,37 @@ def handles_row(
         logs[1] = math.log(base["static_thrust"])
     if fast:
         logs[0], logs[2] = math.log(base["engine_power"]), math.log(base["induced_drag_scale"])
-    tolerance = 1e-5 if fast else 1e-7
+    logs = _newton(residual, logs, 1e-5 if fast else 1e-7, iterations, fast, "handles_row")
+    row.update({name: math.exp(x) for name, x in zip(SOLVED, logs)})
+    return row
+
+
+def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve"):
+    """Newton in log parameters with a finite-difference Jacobian (v2's solver): `residual(logs)`
+    a list of log ratios flown / target, driven below `tolerance`. `broyden`: after the first
+    Jacobian, rank-one updates with no new evaluations (the interactive tool's fast path). The
+    step is a pseudo-inverse's (a parameter with no sensitivity, such as the static thrust of a
+    power-limited design, stays where it is), clamped to 0.5 in each log."""
     step = 1e-5
     jacobian, last = None, None
     for _ in range(iterations):
         r = residual(logs)
         if max(abs(x) for x in r) < tolerance:
-            break
+            return logs
         r_tensor = torch.tensor(r, dtype=torch.float64)
-        if fast and jacobian is not None:  # Broyden's rank-one update: no new evaluations
+        if broyden and jacobian is not None:
             moved_by, change = last[0], r_tensor - last[1]
             jacobian = jacobian + torch.outer(change - jacobian @ moved_by, moved_by) / (moved_by @ moved_by)
         else:
-            jacobian = torch.zeros(3, 3, dtype=torch.float64)
-            for j in range(3):
+            jacobian = torch.zeros(len(r), len(logs), dtype=torch.float64)
+            for j in range(len(logs)):
                 moved = list(logs)
                 moved[j] += step
                 jacobian[:, j] = (torch.tensor(residual(moved), dtype=torch.float64) - r_tensor) / step
-        # pinv, not solve: a power-limited design (the P-51D) has no static-thrust sensitivity
         delta = (torch.linalg.pinv(jacobian, rtol=1e-9) @ -r_tensor).clamp(-0.5, 0.5)
         last = (delta, r_tensor)
         logs = [x + float(d) for x, d in zip(logs, delta)]
-    else:
-        raise RuntimeError(f"handles_row did not converge: residual {residual(logs)}")
-    row.update({name: math.exp(x) for name, x in zip(SOLVED, logs)})
-    return row
+    raise RuntimeError(f"{name} did not converge: residual {residual(logs)}")
 
 
 # --------------------------------------------------------------------------- quasi-steady checks
@@ -423,7 +524,7 @@ def envelope(
     minimum_speed: float = 100.0,
 ) -> dict:
     """The row's quasi-steady turn envelope (game units, the nose settled, no fields, no guns)
-    on a (stick, speed) grid: `speeds` (m/s) and `sticks` (0 to 1) as 1-D sequences, `power`
+    on a (stick, speed) grid (core.steady_rates): `speeds` (m/s) and `sticks` (0 to 1) as 1-D sequences, `power`
     0 coast, 1 dive, 2 climb, at `store_fraction` of the store (default the spawn store).
     Returns numpy arrays shaped (len(sticks), len(speeds)): rate (rad/s), radius (m), ps
     (m/s altitude-equivalent total energy rate), speed_rate, store_rate; and per speed the
@@ -449,19 +550,7 @@ def envelope(
             if store_fraction is None
             else store_fraction * p.max_energy
         )
-        control = SimpleNamespace(
-            thrust_scale=1.0, stick_size=s, stick_sign=torch.ones(b),
-            commanded=p.commanded_table[:, power], demand=p.demand_table[:, power],
-        )
-        setting = core._setting(p, control, v, energy)
-        lateral, _, _, thrust = setting
-        reach = (lateral.abs() / (v * v) * p.inverse_lift).clamp(0.0, 1.0)
-        angle = p.stall * (1.0 - torch.sqrt(1.0 - reach))
-        lift_coefficient = core._lift_coefficient(p, angle)
-        rate = (lift_coefficient * v * v + thrust * torch.sin(angle)) / v
-        speed_rate, store_rate = core._rates(
-            p, setting, torch.ones(b), v, lift_coefficient, torch.cos(angle), 1.0 / (v * v)
-        )
+        rate, speed_rate, store_rate = core.steady_rates(p, v, s, power, energy)
     shape = (len(sticks), len(speeds))
     rate = rate.reshape(shape).numpy()
     speed_rate = speed_rate.reshape(shape).numpy()
@@ -623,7 +712,8 @@ CARD_TIME_POWERS = dict(
     shield_recharge_delay_scale=0, head_on_fraction_scale=0, head_on_angle_scale=0,
     head_on_sharpness=0, fine_stick=0, sustained_stick=0, vision_range_scale=0,
     critical_speed=-1, drag_rise_exponent=0, separation_drag=0, separation_exponent=0,
-    lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0,
+    lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0, flap_lift=0,
+    flap_full_speed_ratio=0, flap_clear_speed_ratio=0, flap_drag_scale=0,
 )
 # The rule constants (lean.game.card) with time in their units.
 RULE_TIME_POWERS = dict(
