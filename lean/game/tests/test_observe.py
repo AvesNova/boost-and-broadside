@@ -23,9 +23,10 @@ def test_observed_speed_is_world_speed_inside_a_field():
     assert float(log_index[0, 0]) > 0.1  # the ship really is inside the field
     observation = core.observe(config, state, 0)
     world_speed = state.speed * torch.exp(-log_index)
-    observed_speed = observation.ship[..., 2] * core.SPEED_SCALE
+    unscaled = torch.sign(observation.ship) * torch.expm1(observation.ship.abs()) * core.SPEED_SCALE  # symlog's inverse
+    observed_speed = unscaled[..., 2]
     assert torch.allclose(observed_speed[0, 0], world_speed[0, 0], rtol=1e-5)
-    observed_velocity = observation.ship[..., :2] * core.SPEED_SCALE
+    observed_velocity = unscaled[..., :2]
     assert math.isclose(
         float(observed_velocity[0, 0].norm()), float(world_speed[0, 0]), rel_tol=1e-4
     )

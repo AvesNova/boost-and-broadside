@@ -1347,13 +1347,22 @@ def team_view(state: State, team: int) -> State:
 
 # --------------------------------------------------------------------------- observation
 
-SPEED_SCALE = 400.0  # m/s
-NOSE_RATE_SCALE = 3.0  # rad/s
-ANGLE_SCALE = 0.27  # rad, about the stall angle
-SHIELD_WAIT_SCALE = 3.0  # s, the recharge delay
-COOLDOWN_CLIP = 0.5  # s
-BOUNDARY_CLIP = 1000.0  # m
-SHIELD_SCALE = 150.0
+# The ship scalars' fixed scales, the same for every ship type, set from their ranges in scripted
+# play with the training spawn (lean/game/NOTES.md "Feature scales"): symlog(x / scale) where
+# the range is wide, x / scale where it is narrow.
+SPEED_SCALE = 200.0  # m/s, symlog: world speed and velocity
+NOSE_RATE_SCALE = 1.0  # rad/s, symlog
+ANGLE_SCALE = 0.25  # rad, linear: the angle of attack, about the stall angle
+SHIELD_SCALE = 100.0  # shield points, linear
+SHIELD_WAIT_SCALE = 3.0  # s, linear, clipped to [0, 1]: the recharge delay
+BOUNDARY_CLIP = 1000.0  # m, linear, clipped to [-1, 1]
+
+
+def symlog(x: Tensor) -> Tensor:
+    """sign(x) ln(1 + |x|)."""
+    return torch.sign(x) * torch.log1p(x.abs())
+
+
 FIELD_RADIUS_SCALE = 1000.0  # m (v2's inputs.py)
 FIELD_BAND_SCALE = 40.0  # m
 FIELD_LEVEL_SCALE = 2.0  # half-octaves
@@ -1364,15 +1373,19 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     from `team_view` only (enemies as last seen), so nothing in it depends on what the team
     cannot see.
 
-    ship (E, N, SHIP_FEATURES): 20 scalars [velocity x, y and speed over 400 m/s; angle of
-    attack over 0.27 rad, its cos and sin; nose rate over 3 rad/s; energy and shield as
-    fractions of the type's full values; shield over 150; shield wait over 3 s, clipped to
-    1; gun cooldown in seconds clipped to 0.5; distance inside the boundary over 1000 m
-    clipped to [-1, 1]; the outward unit direction x, y; heading cos, sin; position over the
-    arena radius x, y; the share of bullet slots in flight], then flags [same team as the
-    viewer, alive, exists, fired last tick], then the ship-type one-hot. Rows of slots that
-    do not exist are zero. Fired last tick is the step's stored flag; the share of bullet slots
-    in flight counts real bullets only (ghosts are not observed).
+    ship (E, N, SHIP_FEATURES): 18 scalars [symlog of world velocity x, y and world speed over
+    200 m/s and of the nose rate over 1 rad/s; angle of attack over 0.25 rad, its cos and sin;
+    store and shield as fractions of the type's full values; shield over 100; shield wait over
+    3 s, clipped to 1; gun cooldown in whole ticks; distance inside the boundary over 1000 m
+    clipped to [-1, 1]; the outward unit direction x, y; heading cos, sin; the share of bullet
+    slots in flight], then flags [same team as the viewer, alive, exists, fired last tick], then
+    the ship-type one-hot. Rows of slots that do not exist are zero. Fired last tick is the
+    step's stored flag; the share of bullet slots in flight counts real bullets only (ghosts
+    are not observed). Position is not a scalar (Obs.pos carries it, for the position code
+    and the rotary angles).
+
+    pending (E, N) long: the joint pending action (the one the next tick applies) of the
+    team's own living ships, NO_PENDING for every other row.
 
     Fog: an enemy row holds its values at its last sighting, alive is "not seen dead", and
     key_mask leaves out never-seen and seen-dead enemies; never-seen rows are zero. visible is
@@ -1411,19 +1424,19 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     distance = torch.sqrt(view.x * view.x + view.y * view.y)
     inverse_distance = 1.0 / distance.clamp_min(1.0)
     fired_last = state.fired  # stored by the step (agreed fix 12), not inferred from the ring
-    scalars = [
-        velocity_x / SPEED_SCALE,
-        velocity_y / SPEED_SCALE,
-        speed / SPEED_SCALE,
+    wide = symlog(torch.stack(
+        [velocity_x / SPEED_SCALE, velocity_y / SPEED_SCALE, speed / SPEED_SCALE, view.nose_rate / NOSE_RATE_SCALE],
+        -1,
+    ))
+    narrow = [
         view.angle / ANGLE_SCALE,
         view.angle_cos,
         view.angle_sin,
-        view.nose_rate / NOSE_RATE_SCALE,
         view.energy * c["inverse_max_energy"],
         view.shield / c["max_shield"],
         view.shield / SHIELD_SCALE,
         (view.shield_wait / SHIELD_WAIT_SCALE).clamp(0.0, 1.0),
-        (view.cooldown * h).clamp(0.0, COOLDOWN_CLIP),
+        view.cooldown,
         ((config.arena_radius - distance) / BOUNDARY_CLIP).clamp(-1.0, 1.0),
         view.x * inverse_distance,
         view.y * inverse_distance,
@@ -1435,7 +1448,7 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     one_hot = torch.nn.functional.one_hot(state.type, SHIP_TYPES)
     shown = (exists & known) if config.fog else exists
     ship = torch.cat(
-        [torch.stack(scalars, -1), torch.stack(flags, -1).to(torch.float32), one_hot.to(torch.float32)], -1
+        [wide, torch.stack(narrow, -1), torch.stack(flags, -1).to(torch.float32), one_hot.to(torch.float32)], -1
     ) * shown[..., None]
     assert ship.shape[-1] == SHIP_FEATURES
 
