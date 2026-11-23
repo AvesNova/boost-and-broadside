@@ -179,15 +179,12 @@ Sizes
   nothing in speed. Speed comparisons with v2 are like for like (same update size).
 
 Learner
-- Advantages and value targets recomputed from the current critic at every epoch
-  (2026-11-23; `targets_every_epoch=True`, the existing default). Andrychowicz et al. 2021,
-  "What Matters in On-Policy RL", recommend recomputing advantages at each pass over the
-  data. Not counted as a speed-up against v2, which could do the same.
-
-Provenance
-- A provenance table (docs/provenance.md) for every overarching decision (why Griffin, why
-  grid cells, why HL-Gauss, and so on): the paper or papers it comes from, or else the
-  reasoning or test behind it. Not per line of code.
+- Advantages and value targets: follow the best practice in the current literature and the
+  major PPO implementations, weighing its speed cost (author 2026-11-23; literature review in
+  docs/rewrite/literature-ppo-targets-minibatches.md). Until then the setting stays
+  `targets_every_epoch=True`. Not counted as a speed-up against v2, which could do the same.
+- Number of minibatches: 32 for now, for a like-for-like comparison with v2; the same
+  literature review recommends a number (the 32 was arbitrary).
 
 ## Proposals, not decided
 
