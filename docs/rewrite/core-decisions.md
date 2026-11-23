@@ -457,6 +457,17 @@ League (section 8)
   flies out of bounds). The default BC teacher stays the single narrow yardstick (spread 0);
   the persona population is an experiment arm.
 
+## Scripted BFM (2026-11-23 night)
+
+- The author beat the scripted agent in a two-circle fight by banking speed (climb) and
+  cashing it later (dive) to shift the circles and gain angles each pass. A teacher that never
+  uses the store gives BC no prior for those states, so the scripted agent gets basic fighter
+  manoeuvres (E2): circle detection, sustained turns and pursuit choice in two-circle, hard
+  turns in one-circle, yo-yos through dive and climb, climbing when not engaged.
+- Built natively, not bolted on: the scripted agent is first reviewed for cohesion and
+  coupling, and its parameters must stay tunable and independent, because personas sample
+  them.
+
 ## Proposals, not decided
 
 
