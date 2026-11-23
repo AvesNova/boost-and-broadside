@@ -1,5 +1,12 @@
 # Morning notes
 
+**A1 in one paragraph (merged 2026-11-24 ~03:45):** the P-51D is rebuilt through the tuning
+route with the game terms on and automatic flaps; it still flies 375 mph and 3,600 ft/min, and
+its tightest sustained turn (202 m at 137 mph) is now clearly slower than its best sustained
+rate (19.0 deg/s at 166 mph), so the one-circle/two-circle choice is real. Your call: the corner
+rate is 8% under the pure physics (32.2 deg/s) because of lift smoothness; matching it needs a
+nominal g limit above 8. Details in docs/rewrite/p51d-model.md.
+
 **First, two decisions from step E2 (scripted BFM), merged 2026-11-24:**
 1. The new scripted agent uses the store (mean 0.23 against 0.05) and brawls harder (6.45 kills
    per environment-minute against 5.44), but loses to the old one: 0.413 +- 0.019 over 640
