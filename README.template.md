@@ -14,6 +14,7 @@ The reference policy trained exclusively in **4-vs-4** combat, then transferred
 zero-shot to fleets of one to {{crossover_largest_size}} ships. A single recurrent network
 commands the whole fleet, producing an action for every ship on each forward pass.
 
+[Read the white paper (PDF)](docs/portfolio/whitepaper.pdf) ·
 [Explore the results](docs/evaluation.md) · [Watch more replays](docs/replays.md) ·
 [Understand the architecture](docs/architecture.md) · [Get started](docs/getting-started.md) ·
 [Training runs](docs/training-runs.md)
