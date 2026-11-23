@@ -474,6 +474,25 @@ League (section 8)
   coupling, and its parameters must stay tunable and independent, because personas sample
   them.
 
+## Flight model direction and shared code (2026-11-24 night)
+
+- Real aircraft are a grounded starting point for tuning feel and balance, not a simulation
+  target.
+- Rows come from the high-level-to-low-level route: the game terms (drag rise, separation
+  drag, soft lift and thrust limits) stay on, and the solver sets the low-level coefficients
+  so the targets still match, rather than switching terms off.
+- Smoothness wherever it is free (soft limits kept moderate; the solver compensates).
+- Automatic flaps: maximum lift rises at low speed as if flaps were exactly as far out as
+  useful, with a drag cost; no button or slider; per-type parameters. Gives slow ships a real
+  radius advantage.
+- The engine at the aircraft's maximum combat rating (war emergency power): the game has one
+  power setting, so it is set for an all-out fight.
+- One source of truth for physics and setup: every tool (live sliders and doghouse, play,
+  evaluation, training, any future mode) calls the same game code through shared entry
+  points; nothing duplicated without a strong reason.
+- A small local web app for the live doghouse sliders is wanted (Python serving the real
+  physics); not built yet.
+
 ## Proposals, not decided
 
 
