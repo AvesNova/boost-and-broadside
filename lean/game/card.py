@@ -54,6 +54,10 @@ CARD = {
     "lift_softmin_exponent": (400.0,),
     "thrust_softmin_exponent": (400.0,),
     "nose_damping": (0.7,),
+    "flap_lift": (0.0,),
+    "flap_full_speed_ratio": (1.0,),
+    "flap_clear_speed_ratio": (2.0,),
+    "flap_drag_scale": (0.0,),
 }
 FLIGHT_TERMS = (
     "critical_speed",
@@ -63,6 +67,10 @@ FLIGHT_TERMS = (
     "lift_softmin_exponent",
     "thrust_softmin_exponent",
     "nose_damping",
+    "flap_lift",
+    "flap_full_speed_ratio",
+    "flap_clear_speed_ratio",
+    "flap_drag_scale",
 )
 
 # Flight constants shared by every type (world constants and numerical floors).

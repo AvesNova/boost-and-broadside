@@ -114,7 +114,8 @@ def test_dive_and_climb_are_equal_and_opposite():
             commanded=c.commanded_table[:, power],
             demand=c.demand_table[:, power],
         )
-        setting = core._setting(c, control, speed, energy)
+        wing = core._wing(c, speed)
+        setting = core._setting(c, control, speed, energy, wing)
         _, store_rate = core._rates(
             c,
             setting,
@@ -123,6 +124,7 @@ def test_dive_and_climb_are_equal_and_opposite():
             torch.zeros(1, 1),
             torch.ones(1, 1),
             1.0 / (speed * speed),
+            1.0 / (wing * wing),
         )
         rates.append(store_rate.item())
     assert rates[0] < 0.0 < rates[1]
@@ -185,55 +187,27 @@ def test_at_the_edges_dive_and_climb_act_as_coast_on_the_wing():
             commanded=c.commanded_table[:, power],
             demand=c.demand_table[:, power],
         )
-        lateral, *_ = core._setting(c, control, speed, torch.full((1, 1), store * c.max_energy))
+        lateral, *_ = core._setting(
+            c, control, speed, torch.full((1, 1), store * c.max_energy), core._wing(c, speed)
+        )
         rates[name] = lateral.item()
     assert abs(rates["climb"] - rates["coast"]) < 1e-3 * abs(rates["coast"])
 
 
 def test_speeds_in_order_minimum_radius_then_best_sustained_rate_then_corner():
     """The author's requirement (2026-11-23): slowest to fastest, the minimum sustained radius,
-    then the best sustained turn rate, then the corner speed (quasi-steady, coasting, spawn
-    store, each ship type)."""
-    import numpy as np
+    then the best sustained turn rate, then the corner speed (the peak full-stick rate), for
+    each ship type (quasi-steady, coasting, spawn store: lean.game.tuning.performance, which
+    flies the game's own flight functions)."""
+    from lean.game import tuning
 
-    speeds = torch.linspace(100.0, 420.0, 321)
-    sticks = torch.linspace(0.0, 1.0, 101)
-    for ship_type in range(len(card.TYPE_NAMES)):
-        c = constants(ship_type, slots=len(speeds) * len(sticks))
-        v = speeds.repeat(len(sticks))
-        stick = sticks.repeat_interleave(len(speeds))
-        control = SimpleNamespace(
-            thrust_scale=1.0,
-            stick_size=stick,
-            stick_sign=torch.ones_like(v),
-            commanded=c.commanded_table[0, COAST],
-            demand=c.demand_table[0, COAST],
-        )
-        setting = core._setting(c, control, v, torch.full_like(v, c.spawn_energy))
-        lateral, _, _, thrust = setting
-        reach = (lateral.abs() / (v * v) * c.inverse_lift).clamp(0.0, 1.0)
-        angle = c.stall * (1.0 - torch.sqrt(1.0 - reach))
-        lift = core._lift_coefficient(c, angle)
-        rate = (
-            ((lift * v * v + thrust * torch.sin(angle)) / v)
-            .reshape(len(sticks), len(speeds))
-            .numpy()
-        )
-        speed_rate, store_rate = core._rates(
-            c, setting, torch.ones_like(v), v, lift, torch.cos(angle), 1.0 / (v * v)
-        )
-        energy_rate = (v * speed_rate + store_rate).reshape(len(sticks), len(speeds)).numpy()
-        sustained = np.where(energy_rate >= 0.0, rate, 0.0).max(0)  # best held rate per speed
-        held = sustained > 1e-3
-        radius = np.where(held, speeds.numpy() / np.maximum(sustained, 1e-9), np.inf)
-        minimum_radius_speed = float(speeds[int(np.argmin(radius))])
-        best_rate_speed = float(speeds[int(np.argmax(sustained))])
-        corner = float(speeds[int(np.argmax(rate[-1]))])
-        assert minimum_radius_speed < best_rate_speed < corner, (
-            ship_type,
-            minimum_radius_speed,
-            best_rate_speed,
-            corner,
+    for name in card.TYPE_NAMES:
+        p = tuning.performance(tuning.row_of(name))
+        assert p["min_radius_speed"] < p["sustained_speed"] < p["corner_speed_flown"], (
+            name,
+            p["min_radius_speed"],
+            p["sustained_speed"],
+            p["corner_speed_flown"],
         )
 
 
@@ -256,7 +230,8 @@ def test_the_turn_has_precedence_over_the_climb():
                 commanded=c.commanded_table[:, power],
                 demand=c.demand_table[:, power],
             )
-            lateral, exchange, *_ = core._setting(c, control, torch.full((1, 1), speed), energy)
+            at = torch.full((1, 1), speed)
+            lateral, exchange, *_ = core._setting(c, control, at, energy, core._wing(c, at))
             laterals[name], exchanges[name] = lateral.item(), exchange.item()
         assert abs(laterals["climb"] - laterals["coast"]) < 1e-3 * laterals["coast"], ship_type
         assert 0.0 <= exchanges["climb"] < 0.05 * exchanges["straight"], ship_type

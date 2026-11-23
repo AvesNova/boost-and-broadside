@@ -137,6 +137,10 @@ GAME_FIELDS = dict(
     drag_rise_exponent=12.0,
     separation_exponent=8.0,
     nose_damping=0.7,
+    flap_lift=0.0,
+    flap_full_speed_ratio=1.0,
+    flap_clear_speed_ratio=2.0,
+    flap_drag_scale=0.0,
 )
 
 
@@ -277,31 +281,37 @@ def handles_row(
         logs[1] = math.log(base["static_thrust"])
     if fast:
         logs[0], logs[2] = math.log(base["engine_power"]), math.log(base["induced_drag_scale"])
-    tolerance = 1e-5 if fast else 1e-7
+    logs = _newton(residual, logs, 1e-5 if fast else 1e-7, iterations, fast, "handles_row")
+    row.update({name: math.exp(x) for name, x in zip(SOLVED, logs)})
+    return row
+
+
+def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve"):
+    """Newton in log parameters with a finite-difference Jacobian (v2's solver): `residual(logs)`
+    a list of log ratios flown / target, driven below `tolerance`. `broyden`: after the first
+    Jacobian, rank-one updates with no new evaluations (the interactive tool's fast path). The
+    step is a pseudo-inverse's (a parameter with no sensitivity, such as the static thrust of a
+    power-limited design, stays where it is), clamped to 0.5 in each log."""
     step = 1e-5
     jacobian, last = None, None
     for _ in range(iterations):
         r = residual(logs)
         if max(abs(x) for x in r) < tolerance:
-            break
+            return logs
         r_tensor = torch.tensor(r, dtype=torch.float64)
-        if fast and jacobian is not None:  # Broyden's rank-one update: no new evaluations
+        if broyden and jacobian is not None:
             moved_by, change = last[0], r_tensor - last[1]
             jacobian = jacobian + torch.outer(change - jacobian @ moved_by, moved_by) / (moved_by @ moved_by)
         else:
-            jacobian = torch.zeros(3, 3, dtype=torch.float64)
-            for j in range(3):
+            jacobian = torch.zeros(len(r), len(logs), dtype=torch.float64)
+            for j in range(len(logs)):
                 moved = list(logs)
                 moved[j] += step
                 jacobian[:, j] = (torch.tensor(residual(moved), dtype=torch.float64) - r_tensor) / step
-        # pinv, not solve: a power-limited design (the P-51D) has no static-thrust sensitivity
         delta = (torch.linalg.pinv(jacobian, rtol=1e-9) @ -r_tensor).clamp(-0.5, 0.5)
         last = (delta, r_tensor)
         logs = [x + float(d) for x, d in zip(logs, delta)]
-    else:
-        raise RuntimeError(f"handles_row did not converge: residual {residual(logs)}")
-    row.update({name: math.exp(x) for name, x in zip(SOLVED, logs)})
-    return row
+    raise RuntimeError(f"{name} did not converge: residual {residual(logs)}")
 
 
 # --------------------------------------------------------------------------- quasi-steady checks
@@ -423,7 +433,7 @@ def envelope(
     minimum_speed: float = 100.0,
 ) -> dict:
     """The row's quasi-steady turn envelope (game units, the nose settled, no fields, no guns)
-    on a (stick, speed) grid: `speeds` (m/s) and `sticks` (0 to 1) as 1-D sequences, `power`
+    on a (stick, speed) grid (core.steady_rates): `speeds` (m/s) and `sticks` (0 to 1) as 1-D sequences, `power`
     0 coast, 1 dive, 2 climb, at `store_fraction` of the store (default the spawn store).
     Returns numpy arrays shaped (len(sticks), len(speeds)): rate (rad/s), radius (m), ps
     (m/s altitude-equivalent total energy rate), speed_rate, store_rate; and per speed the
@@ -449,19 +459,7 @@ def envelope(
             if store_fraction is None
             else store_fraction * p.max_energy
         )
-        control = SimpleNamespace(
-            thrust_scale=1.0, stick_size=s, stick_sign=torch.ones(b),
-            commanded=p.commanded_table[:, power], demand=p.demand_table[:, power],
-        )
-        setting = core._setting(p, control, v, energy)
-        lateral, _, _, thrust = setting
-        reach = (lateral.abs() / (v * v) * p.inverse_lift).clamp(0.0, 1.0)
-        angle = p.stall * (1.0 - torch.sqrt(1.0 - reach))
-        lift_coefficient = core._lift_coefficient(p, angle)
-        rate = (lift_coefficient * v * v + thrust * torch.sin(angle)) / v
-        speed_rate, store_rate = core._rates(
-            p, setting, torch.ones(b), v, lift_coefficient, torch.cos(angle), 1.0 / (v * v)
-        )
+        rate, speed_rate, store_rate = core.steady_rates(p, v, s, power, energy)
     shape = (len(sticks), len(speeds))
     rate = rate.reshape(shape).numpy()
     speed_rate = speed_rate.reshape(shape).numpy()
@@ -623,7 +621,8 @@ CARD_TIME_POWERS = dict(
     shield_recharge_delay_scale=0, head_on_fraction_scale=0, head_on_angle_scale=0,
     head_on_sharpness=0, fine_stick=0, sustained_stick=0, vision_range_scale=0,
     critical_speed=-1, drag_rise_exponent=0, separation_drag=0, separation_exponent=0,
-    lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0,
+    lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0, flap_lift=0,
+    flap_full_speed_ratio=0, flap_clear_speed_ratio=0, flap_drag_scale=0,
 )
 # The rule constants (lean.game.card) with time in their units.
 RULE_TIME_POWERS = dict(
