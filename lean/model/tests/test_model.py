@@ -327,6 +327,18 @@ def test_position_codes_have_their_defining_symmetries():
     )
 
 
+def test_grid_cells_tell_a_position_from_its_reflection():
+    """With 2 phases per axis every grid feature is even (f(x) = f(-x)), so a ship at p and one
+    at -p got the same code; the default must separate them."""
+    from lean.model.policy import ModelConfig
+
+    points = (torch.rand(200, 2, generator=torch.Generator().manual_seed(1)) - 0.5) * 6000.0
+    config = ModelConfig()
+    grid = GridCellCode(config.position_periods, config.grid_phases)
+    difference = (grid(points) - grid(-points)).abs().amax(-1)
+    assert difference.min() > 0.1
+
+
 def test_hl_gauss_targets_sum_to_one_and_decode_to_the_value():
     """Catches a mis-normalised or shifted value target."""
     centres = value_bin_centres(torch.tensor([-2.0, -10.0]), torch.tensor([2.0, 30.0]), 64)

@@ -65,7 +65,7 @@ class ModelConfig:
     norm_epsilon: float | None = None  # torch's default: the dtype's machine epsilon (v2)
     position_code: str = "fourier"
     position_periods: tuple[float, ...] = _default_position_periods()
-    grid_phases: int = 2
+    grid_phases: int = 3  # 2 cannot tell a position from its point reflection (literature-model-choices.md)
     colour_period: float = 36.0 * 3.0**8
     colour_levels: int = 9
     rotary_finest: float = 64.0
