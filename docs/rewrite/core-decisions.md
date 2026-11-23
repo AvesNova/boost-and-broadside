@@ -415,6 +415,21 @@ League (section 8)
 - No lookahead by default. Update 2,048 x 4 x 128 by default, returns chained over the full
   512 ticks; 512-tick training sequences an arm.
 
+## Flight, after the author flew the core model (2026-11-23)
+
+- The core model feels good. Store size fine; the firing cost fine (if anything weak).
+- Coasting holds altitude: altitude changes only on an explicit dive or climb. When the lift
+  budget is short (slow, full stick and climb together), the turn has precedence over the
+  climb: hold 1 g, then the turn, then the climb gets the remainder.
+- Every flight-model term per ship type (no shared drag rise, soft minimums or separation
+  drag), so a real aircraft's row can match its fit; the high-level to low-level conversion
+  (tuning.py) stays, so rows are set from attributes like corner speed and turn radius.
+- A time-scale setting for flight testing (fly at 1x, 1.5x, 2x, 3x); the game stays at 2x.
+- Doghouses in game units and converted to 1x real time, to compare the P-51D with
+  published charts.
+- Engine power to be brought in line with real WWII aircraft, the P-51D in particular (open:
+  Vizia is 255 W/kg real thrust power, about 1,810 hp at 4,354 kg; the P-51D 225 W/kg).
+
 ## Proposals, not decided
 
 - Learning-rate schedule in RL: warm-up, constant, then a linear cooldown over the last 10 to
