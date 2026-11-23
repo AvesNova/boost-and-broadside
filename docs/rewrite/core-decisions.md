@@ -198,6 +198,80 @@ Learner
   seen int16 ticks or float. Checked by the log-probability difference and KL against full
   precision.
 
+## Answers from the author review, sections 2 to 6 (2026-11-23)
+
+Item numbers are docs/rewrite/author-review.md's. Section 1 (flight) waits for flying.
+
+Damage, boundary, arena, clock
+- 2.1 Boundary ramp fixed at 300 m. Later, with a moving boundary in elimination: the
+  boundary may go negative; once it is at -300 m the damage is the maximum everywhere.
+- 2.2 Arena 4,200 m for deathmatch and elimination; revisit with moving borders.
+- 2.3 Elimination without shrink ends by a wipe or at the clock. The clock is short
+  (deathmatch, with respawns, can have a longer one). At the clock: more living ships wins;
+  equal living ships, more total shield wins; equal on both, a draw.
+- No random cooldown resets (lean has none: cooldowns start at 0).
+
+Fog and observation
+- 3.1 All five fog choices confirmed: no reveal at spawn; deaths known only when seen; wrecks
+  can be sighted (a visible marker of a death, for players and for attention); only real
+  bullets reveal on a hit; time since seen as log(1 + seconds).
+- Sight as v2 (checked in the code, `sighted_by_enemy`): within vision range; a field's core
+  and its band see each other; a line is blocked when one end is in the core and the other
+  outside the field, or when the line crosses the core. The author's example holds: A (left
+  band), B (core), C (right band), D (outside): A-B, B-C, C-D see each other; nothing else.
+- 3.3 Own team: every ally's pending action is an input (42-way). Actions apply with a
+  one-tick delay: the action sampled at tick t is applied at t + 1 (not built: lean applies
+  actions on the tick they are sampled). Enemies: no pending action; only what is
+  observable (whether it is shooting).
+- 3.4 Fixed scales for every ship type, from measured ranges (the flight charts give the
+  speeds); linear where the range is narrow (shield), symlog where wide (speed); inputs of
+  order 1.
+- 3.5 Allies: everything. A visible enemy: everything an ally sees of its own ships
+  (position, velocity, shooting, store, shield). A hidden enemy: its last-seen row and the
+  time since seen.
+
+Modes, spawns, team sizes, lineup
+- 4.1 First runs 4v4, elimination. Spawn rule a setting chosen at launch; default random over
+  the arena ("mixed"), with no ship spawning at the edge facing out. A one-side spawn, when
+  used, spreads over most of the half disc. Keep the "mixed" spawn.
+- 4.2 4v4 only for now; nothing coupled so that unequal sizes (3v5, 3v4) stay easy later.
+- 4.3 One ship type for now; build so that more types stay easy; lineup decided then.
+- 4.4 Standard spawn (evaluation, human play): full shield, half store. Training: shield and
+  store each uniform 0 to 100% per ship. Shield recharge and the core hit stay.
+- 4.5 Elimination first; other modes added later.
+
+Scripted opponent
+- 5.1 Power rule rethought for the core physics and fighting, kept simple: dive when too
+  slow (above all in a turn); climb when too fast or too close; when far from any enemy with
+  a low store, climb a little to regain it. Rule details to propose.
+- 5.2 Every agent, scripted or network, behaves the same everywhere (collect, evaluation,
+  sandbox, play, video). The scripted opponent keeps its target with factor 0.8 everywhere
+  (memory wired in everywhere).
+- 5.3 Personas: to discuss in depth (the author leans towards a varied opponent and a varied
+  BC teacher, as human data would be).
+- 5.4 188 operations signed off (the line-of-fire check stays).
+- 5.5 The symmetric head-on pass: a random side, drawn once per ship per match and kept.
+- 5.6 No exchange-rate measurement against v2's Imugi (different physics).
+- 5.7 No retreat or extend for now; in the backlog.
+- Known weaknesses are fixed without a decision: the game provides the arena radius (and
+  every other number) to the scripted opponent; nothing guesses.
+
+Model
+- 6.1 Rotary bands: to discuss. Criteria: the coarsest band unambiguous on the largest map;
+  the finest fine enough for close fights but without aliasing from one tick's motion; bands
+  close enough in ratio to be read together unambiguously.
+- 6.2 Look for papers using grid cells in RL; charts of the grid-cell nodes and coverage.
+- 6.3 Every output trained in nats with cross-entropy: actions, values, next state, all.
+  So binned next-state targets; literature check on symlog HL-Gauss against symlog two-hot
+  for next-state prediction (HL-Gauss was for values).
+- 6.4 (1) The game token at the arena centre (the centre the boundary defines). (2 to 6)
+  Follow the literature and best practice: gate placement, depth scale, temporal MLP
+  initialisation, sqrt(1 - a^2) at a reset, the heads' last-layer initialisation (v2's zero
+  came from what v2 used to do). (7) No enemy-action head for now; outcome head per ship or on
+  the game token: by the literature. (8) torch's norm epsilon. (9) The learner owns the
+  supports. (10) Fields' rotary heading towards the arena centre, not north (rotational
+  symmetry). (11) Two blocks, each temporal, spatial, spatial (the code's order).
+
 ## Proposals, not decided
 
 - Remove v2's flight and damage models from lean/game once the core model is signed off
