@@ -10,7 +10,7 @@ from torch.func import functional_call, vmap
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from lean import game, scripted
-from lean.contract import Obs, join_action, random_keywords, split_joint
+from lean.contract import POWERS, STICKS, Obs, random_keywords, split_joint
 from lean.learn.config import LearnConfig, policy_precision
 from lean.learn.returns import value_centres
 from lean.learn.rewards import Ledger, blank_ledger, clear_ledger, reward_step, tick_events
@@ -20,6 +20,24 @@ from lean.scripted import ScriptedConfig
 
 # The seat (environment) axis of lean.model's recurrent carry, (blocks, E, 1 + N, 4, width).
 SEAT_AXIS = 1
+# The teacher's distribution as recorded: the stick's 7 probabilities, the power's 3, then
+# the probability of firing (lean.scripted.Marginals; the three are independent).
+TEACHER_WIDTH = STICKS + POWERS + 1
+
+
+def teacher_marginals(parts) -> Tensor:
+    """A lean.scripted.Marginals as one (E, N, TEACHER_WIDTH) float32 record."""
+    return torch.cat([parts.stick, parts.power, parts.fire[..., None]], -1).float()
+
+
+def teacher_joint(marginals: Tensor) -> Tensor:
+    """The teacher's distribution over the 42 joint actions, (..., JOINT), from its
+    recorded marginals (..., TEACHER_WIDTH): the product of the three, indexed as
+    lean.contract.join_action (stick * 6 + power * 2 + fire)."""
+    stick, power, fire = marginals.split((STICKS, POWERS, 1), -1)
+    fire = torch.cat([1.0 - fire, fire], -1)
+    joint = stick[..., :, None, None] * power[..., None, :, None] * fire[..., None, None, :]
+    return joint.flatten(-3)
 
 
 def map_fields(record, function):
@@ -114,7 +132,8 @@ class Rollout:
     the position offset, once per deal (rows r < E: environment r as the segment started;
     E + k: the segment's deal k). A RolloutStore keeps these instead of the per-tick copies.
     action: (T, S, N) long joint actions sampled on that tick's observation. teacher: (T, S,
-    N) long, the scripted agent's choice there. The game delays every action by one tick: the
+    N, TEACHER_WIDTH) the scripted agent's full distribution there (teacher_marginals; the
+    BC target, teacher_joint). The game delays every action by one tick: the
     action of tick t is applied on tick t + 1, and the action applied on tick t is the
     observation's pending one (observation.pending, for own living ships). PPO trains on the
     sampled action with log_probability: (T, S, N), its log-probability under the policy on
@@ -193,13 +212,14 @@ def draw_team_sizes(config: LearnConfig, envs: int, generator, device=None) -> T
     return sizes
 
 
-def scripted_actions(scripted_config: ScriptedConfig, state, persona, memory: dict, generator) -> tuple[Tensor, dict]:
+def scripted_actions(scripted_config: ScriptedConfig, state, persona, memory: dict, generator) -> tuple[Tensor, dict, Tensor]:
     """The scripted agent's action for every ship of both teams, (E, N, 3) long, in one call,
-    and its new memory (the caller carries it to the next tick)."""
+    its new memory (the caller carries it to the next tick) and the distribution the actions
+    were drawn from, (E, N, TEACHER_WIDTH) (teacher_marginals)."""
     envs, slots = state.exists.shape
     uniforms = scripted.draw_uniforms(envs, slots, generator, state.exists.device)
-    action, memory, _ = scripted.decide(scripted_config, state, None, persona, uniforms, memory)
-    return action, memory
+    action, memory, parts = scripted.decide(scripted_config, state, None, persona, uniforms, memory)
+    return action, memory, teacher_marginals(parts)
 
 
 def sample_joint(logits: Tensor, generator) -> Tensor:
@@ -401,10 +421,12 @@ def hit_label_entries(step_out, state, label_row: Tensor | int, slot_index: Tens
 
 def act(config: LearnConfig, game_config, policy, opponent: Opponent, state, carry: CollectCarry, generator):
     """The first half of a tick: both teams' views, the live policy on every seat (its
-    sampled joint action, log-probability and value) and the scripted agent's action for
-    every ship. Returns (views, observation, seat_offset, joint, log_probability, value,
-    teacher, policy_carry, centres, scripted_memory), centres the critic's support
-    (LEVELS, BINS), scripted_memory the scripted agent's memory after this decision."""
+    sampled joint action, log-probability and value) and the scripted agent's action and
+    distribution for every ship. Returns (views, observation, seat_offset, joint,
+    log_probability, value, scripted_action, teacher, policy_carry, centres,
+    scripted_memory), teacher the distribution (E, N, TEACHER_WIDTH), centres the critic's
+    support (LEVELS, BINS), scripted_memory the scripted agent's memory after this
+    decision."""
     envs = state.exists.shape[0]
     self_play = envs - carry.member.shape[0]
     seat_environment, seat_team = seats(carry.learner_team, self_play)
@@ -418,8 +440,13 @@ def act(config: LearnConfig, game_config, policy, opponent: Opponent, state, car
     log_probability = torch.log_softmax(logits, -1).gather(-1, joint[..., None]).squeeze(-1)
     centres = value_centres(config, value_logits.shape[-1], value_logits.device)
     value = decode_value(value_logits, centres) * observation.own[..., None]
-    teacher, scripted_memory = scripted_actions(opponent.scripted_config, state, carry.persona, carry.scripted_memory, generator)
-    return views, observation, seat_offset, joint, log_probability, value, teacher, policy_carry, centres, scripted_memory
+    scripted_action, scripted_memory, teacher = scripted_actions(
+        opponent.scripted_config, state, carry.persona, carry.scripted_memory, generator
+    )
+    return (
+        views, observation, seat_offset, joint, log_probability, value, scripted_action, teacher, policy_carry, centres,
+        scripted_memory,
+    )
 
 
 def advance(
@@ -451,7 +478,7 @@ def advance(
     spare = hit_label.shape[0] - 1
     hit_label.scatter_(0, *hit_label_entries(step_out, state, label_row, slot_index, environment_index, spare))
     records = {
-        "teacher": join_action(teacher).index_select(0, seat_environment),
+        "teacher": teacher.index_select(0, seat_environment),
         "reward": reward.index_select(0, seat_environment),
         "done": seat_done,
         "reset": carry.reset.index_select(0, seat_environment),
@@ -542,11 +569,10 @@ def collect(
     seat_environment, _ = seats(carry.learner_team, self_play)
 
     for index in range(ticks):
-        views, observation, seat_offset, joint, log_probability, value, teacher, policy_carry, _, scripted_memory = act_part(
-            config, game_config, policy, opponent, state, carry, generator
-        )
+        (views, observation, seat_offset, joint, log_probability, value, scripted_action, teacher, policy_carry, _,
+         scripted_memory) = act_part(config, game_config, policy, opponent, state, carry, generator)
         deal_row = carry.deal_row.index_select(0, seat_environment)
-        league_action, opponent_carry = league_actions(config, opponent, views, carry, teacher, generator, snapshots)
+        league_action, opponent_carry = league_actions(config, opponent, views, carry, scripted_action, generator, snapshots)
         state, carry, tick_records = advance_part(
             config, game_config, policy, opponent, state, carry, observation, joint, teacher, league_action,
             opponent_carry, policy_carry, scripted_memory, label_row, hit_label, generator,
@@ -566,7 +592,7 @@ def collect(
     # The value after the last tick from the tick's first half (one graph fewer to compile;
     # its samples and the scripted actions are discarded).
     final = act_part(config, game_config, policy, opponent, state, carry, generator)
-    bootstrap_value, centres = final[5], final[8]
+    bootstrap_value, centres = final[5], final[9]
     # After a reset the final observation belongs to a new episode; GAE never reads the
     # bootstrap there because `done` on the last tick cuts it.
     # A seat is the same environment's same slots in every segment (`seats`), so the

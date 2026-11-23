@@ -6,7 +6,7 @@ import dataclasses
 
 import torch
 
-from lean import game, model
+from lean import game, model, scripted
 from lean.contract import split_joint
 from lean.learn import League, LearnConfig, abandon, collect, make_optimiser, update
 from lean.learn.rollout import SEAT_AXIS, seat_view, snapshot_actions
@@ -45,7 +45,7 @@ def test_self_play_trains_both_teams_and_league_games_only_the_live_side():
     rollout.observation.own = own & (torch.arange(own.shape[1]) >= ENVS)[None, :, None]
     before = [parameter.detach().clone() for parameter in policy.parameters()]
     update(config, policy, make_optimiser(config, policy), rollout, generator=generator)
-    assert any(not torch.equal(old, new) for old, new in zip(before, policy.parameters()))
+    assert any(not torch.equal(old, new) for old, new in zip(before, policy.parameters(), strict=True))
 
 
 def test_both_sides_of_a_self_play_game_are_the_live_policy(monkeypatch):
@@ -53,6 +53,15 @@ def test_both_sides_of_a_self_play_game_are_the_live_policy(monkeypatch):
     the live team of a league game, whose other team plays the scripted agent's action
     (the scripted member, the only one before a snapshot)."""
     recorder = StepRecorder().install(monkeypatch)
+    decided = []
+
+    def decide(*arguments):
+        action, memory, parts = decide_now(*arguments)
+        decided.append(action)
+        return action, memory, parts
+
+    decide_now = scripted.decide
+    monkeypatch.setattr(scripted, "decide", decide)
     config, game_config, policy, opponent, state, carry, generator = small(ENVS, league_capacity=2)
     rollout = collect(config, game_config, policy, opponent, state, carry, 6, generator)
     team = state.team
@@ -63,7 +72,7 @@ def test_both_sides_of_a_self_play_game_are_the_live_policy(monkeypatch):
             if environment < ENVS // 2:
                 other = split_joint(rollout.action[tick, ENVS + environment])
             else:
-                other = split_joint(rollout.teacher[tick, environment])
+                other = decided[tick][environment]  # the scripted agent's decision on that tick
             assert torch.equal(applied[environment][~live], other[~live])
 
 

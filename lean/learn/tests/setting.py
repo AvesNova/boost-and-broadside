@@ -7,7 +7,7 @@ import torch
 from lean import game, model, scripted
 from lean.learn import League, LearnConfig, Opponent, start
 
-SMALL = dict(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1, warmup_updates=1)
+SMALL = dict(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1, warmup_steps=1)
 
 
 def small(envs: int = 4, *, game_config=None, league_capacity: int | None = None, seed: int = 0, **overrides):

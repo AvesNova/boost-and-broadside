@@ -67,7 +67,7 @@ def play_results(
             opponent_logits, _, opponent_carry = opponent.step(game.observe(game_config, state, 1), opponent_carry)
             opponent_action = split_joint(sample_joint(opponent_logits, generator))
         else:
-            opponent_action, memory = scripted_actions(opponent, state, persona, memory, generator)
+            opponent_action, memory, _ = scripted_actions(opponent, state, persona, memory, generator)
         action = torch.where((state.team == 0)[..., None], action, opponent_action)
         state, step_out = game.step(game_config, state, action, game.draw_noise(game_config, games, slots, generator, device))
         result = torch.where(step_out.done & (result < 0), step_out.result, result)

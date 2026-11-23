@@ -99,18 +99,19 @@ def test_micro_batches_give_the_one_pass_gradient(targets_every_epoch):
     steps = []
     for size in (2, store.views):
         variant = dataclasses.replace(
-            config, micro_batch_views=size, learning_rate=1.0, warmup_updates=1, gradient_clip=1e9,
+            config, micro_batch_views=size, learning_rate=1.0, warmup_steps=1, gradient_clip=1e9,
             targets_every_epoch=targets_every_epoch,
         )
         twin = copy.deepcopy(policy)
         before = [parameter.detach().clone() for parameter in twin.parameters()]
-        metrics = update(variant, twin, torch.optim.SGD(twin.parameters(), lr=1.0), store, generator=torch.Generator().manual_seed(2))
+        optimiser = torch.optim.SGD(twin.parameters(), lr=1.0, fused=True)
+        metrics = update(variant, twin, optimiser, store, teacher_weight=1.0, generator=torch.Generator().manual_seed(2))
         steps.append(([after.detach() - start for after, start in zip(twin.parameters(), before, strict=True)], metrics))
     (small, small_metrics), (whole, whole_metrics) = steps
     scale = max(step.abs().max() for step in whole)
     for name, (a, b) in zip(dict(policy.named_parameters()), zip(small, whole, strict=True), strict=True):
         assert torch.allclose(a, b, rtol=1e-4, atol=1e-5 * scale), name
-    for name in ("loss", "surrogate", "value", "entropy", "next_state", "hit", "bc", "approximate_kl"):
+    for name in ("loss", "surrogate", "value", "entropy", "next_state", "hit", "bc", "bc_kl", "approximate_kl"):
         assert small_metrics[name] == pytest.approx(whole_metrics[name], rel=1e-4, abs=1e-6), name
 
 
@@ -178,7 +179,8 @@ def test_pinned_streaming_equals_the_device_store():
     metrics = []
     for store in stores:
         twin = copy.deepcopy(policy)
-        metrics.append(update(variant, twin, torch.optim.SGD(twin.parameters()), store, generator=torch.Generator().manual_seed(4)))
+        optimiser = torch.optim.SGD(twin.parameters(), lr=1e-3, fused=True)
+        metrics.append(update(variant, twin, optimiser, store, generator=torch.Generator().manual_seed(4)))
     for name in metrics[0]:
         assert metrics[0][name] == pytest.approx(metrics[1][name], rel=1e-4, abs=1e-6), name
 
@@ -266,7 +268,7 @@ def test_chained_targets_equal_one_gae_pass_over_the_concatenated_ticks(fresh_va
         return records.reshape((segments, ticks, seats) + rest).transpose(0, 1).reshape((ticks, views) + rest)
 
     expected_target = store_major(target)
-    expected_advantage = normalise_advantages(store_major(advantage.sum(-1)), store.resident["own"][:, :views], config)
+    expected_advantage = normalise_advantages(store_major(advantage.sum(-1)), store.resident["own"][:, :views])
     index = store.chain_index(4 * segments)  # 4 seats a row; 6 seats, so the last row is padded
     assert index.shape == (2, 4 * segments) and seats == 6
     target_pass(config, policy, store, index, minibatch_values if fresh_values else None)

@@ -8,7 +8,6 @@ from lean.contract import NO_PENDING, SHIP_FEATURES
 from lean.learn import (
     LearnConfig,
     Opponent,
-    bc_weight,
     collect,
     generalised_advantages,
     make_optimiser,
@@ -55,28 +54,15 @@ def test_gae_scan_equals_the_tick_by_tick_recursion():
     assert torch.allclose(target, expected + value, rtol=1e-5, atol=1e-5)
 
 
-@pytest.mark.parametrize("normaliser", ["std", "percentile"])
-def test_normalised_advantages_keep_their_mean_and_have_unit_scale(normaliser):
+def test_normalised_advantages_keep_their_mean_and_have_unit_standard_deviation():
     generator = torch.Generator().manual_seed(0)
     advantage = torch.randn(16, 8, 4, 4, generator=generator) + 0.5
     mask = torch.rand(16, 8, 4, generator=generator) < 0.7
-    config = LearnConfig(advantage_normaliser=normaliser)
-    normalised = normalise_advantages(advantage.sum(-1), mask, config)
+    normalised = normalise_advantages(advantage.sum(-1), mask)
     chosen = normalised[mask]
     assert (normalised[~mask] == 0).all()
     assert chosen.mean() > 0.2  # the mean (2.0 before scaling) is not removed
-    if normaliser == "std":
-        assert torch.isclose(chosen.std(), torch.tensor(1.0), atol=1e-4)
-    else:
-        assert torch.isclose(chosen.quantile(0.95) - chosen.quantile(0.05), torch.tensor(1.0), atol=1e-4)
-
-
-def test_bc_gate_is_full_at_zero_win_rate_and_off_at_the_gate():
-    config = LearnConfig(bc_coefficient=2.0, bc_gate=0.45)
-    assert bc_weight(config, 0.0) == 2.0
-    assert bc_weight(config, 0.45) == 0.0
-    assert bc_weight(config, 0.9) == 0.0
-    assert 0.0 < bc_weight(config, 0.2) < 2.0
+    assert torch.isclose(chosen.std(), torch.tensor(1.0), atol=1e-4)
 
 
 ENVIRONMENTS = 8  # 4 self-play: 12 seats
@@ -91,11 +77,12 @@ def run_updates(updates, snapshot=False):
     if snapshot:
         opponent.league.maybe_add(model.Policy(model.ModelConfig()), 0)
     optimiser = make_optimiser(config, policy)
-    history = []
-    for index in range(updates):
+    history, steps = [], 0
+    for _ in range(updates):
         rollout = collect(config, game_config, policy, opponent, state, carry, 16, generator)
         state, carry = rollout.state, rollout.carry
-        history.append(update(config, policy, optimiser, rollout, update_index=index, generator=generator))
+        history.append(update(config, policy, optimiser, rollout, teacher_weight=2.0, step_index=steps, generator=generator))
+        steps += history[-1]["adam_steps"]
     return rollout, history
 
 
@@ -114,7 +101,7 @@ def test_rollout_shapes_and_outcome_reward_reach_both_teams():
     assert all(value == value for value in history[0].values())
 
 
-def test_updates_reduce_the_bc_loss():
+def test_rl_updates_with_the_teacher_term_reduce_its_cross_entropy():
     _, history = run_updates(6)
     assert all(torch.isfinite(torch.tensor(list(metrics.values()))).all() for metrics in history)
     assert history[-1]["bc"] < history[0]["bc"]
@@ -170,12 +157,13 @@ def test_targets_once_per_update_equal_the_first_epochs_fresh_targets():
     rollout = collect(config, game_config, policy, opponent, state, carry, 8, generator)
     store = RolloutStore.of(rollout)
     index, _ = store.batch_index(torch.arange(store.views), 4)
-    stored_flags = target_pass(config, policy, store, index, None)
+    stored_flags, stored_sums = target_pass(config, policy, store, index, None)
     stored = store.advantage.clone(), store.target.clone()
-    fresh_flags = target_pass(config, policy, store, index)
+    fresh_flags, fresh_sums = target_pass(config, policy, store, index)
     # The policy's step (stored) and sequence (recomputed) agree within float32 rounding of the model.
     assert torch.allclose(stored[0], store.advantage, atol=1e-3) and torch.allclose(stored[1], store.target, atol=1e-3)
     assert torch.equal(stored_flags, fresh_flags)
+    assert torch.allclose(stored_sums, fresh_sums, rtol=1e-3, atol=1e-3)
     for every_epoch in (False, True):
         variant = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=2, targets_every_epoch=every_epoch)
         metrics = update(variant, policy, make_optimiser(variant, policy), rollout, generator=generator)

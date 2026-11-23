@@ -52,7 +52,7 @@ def test_compiled_loss_matches_eager():
     arguments = (
         observation, batch["carry"], batch["reset"], offset, batch["action"], batch["log_probability"],
         store.advantage.index_select(1, views), store.target.index_select(1, views), batch["teacher"],
-        batch["next_state"], batch["next_valid"], batch["hit_label"], torch.tensor(1.0),
+        batch["next_state"], batch["next_valid"], batch["hit_label"], torch.tensor([1.0, 0.003, 0.5]),
         store.counts().index_select(0, views).sum(0),
     )
     twin = copy.deepcopy(policy)

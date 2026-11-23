@@ -66,8 +66,8 @@ EPISODE_CONSTANT = ("field", "field_pos")
 # read them) and the PPO numbers.
 FLOAT32 = frozenset(("pos", "heading", "field_pos", "position_offset", "log_probability", "value", "reward"))
 # Small integers stored as int8: joint actions (< 42; the observation's pending action, up to
-# 42 for none) and hit labels (-1 to 2).
-INT8 = frozenset(("action", "teacher", "pending", "hit_label"))
+# 42 for none) and hit labels (-1 to 2). The teacher's distribution is float16.
+INT8 = frozenset(("action", "pending", "hit_label"))
 
 
 def stored(name: str, value: Tensor) -> Tensor:

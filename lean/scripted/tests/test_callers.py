@@ -29,7 +29,7 @@ class MemoryRecorder:
         discards (by index) are left out. Returns the fresh starts seen."""
         calls = [call for index, call in enumerate(self.calls) if index not in discarded]
         fresh = 0
-        for (_, _, before), (tick, given, _) in zip(calls, calls[1:]):
+        for (_, _, before), (tick, given, _) in zip(calls[:-1], calls[1:], strict=True):
             new_game = tick == 0
             assert torch.equal(given["target"][~new_game], before["target"][~new_game])
             assert torch.equal(given["side"][~new_game], before["side"][~new_game])
