@@ -50,12 +50,12 @@ def test_each_environment_has_its_own_fields_and_sees_them():
     assert log_index.abs().max() > 0.1  # each environment sees its own first field at its centre
 
 
-def test_reset_done_redraws_fields_only_where_a_game_ended():
+def test_a_re_deal_redraws_fields_only_where_a_game_ended():
     """A finished environment gets a new map; the others keep theirs."""
     state, generator, sizes = fresh()
     done = torch.zeros(64, dtype=torch.bool)
     done[::2] = True
-    after = core.reset_done(CONFIG, state, done, sizes, generator)
+    after = core.take_deal(state, done, core.deal(CONFIG, 64, state.x.shape[1], sizes, generator, DEVICE))
     before_x, after_x = state.fields[:, core.FIELD_X], after.fields[:, core.FIELD_X]
     assert torch.equal(after_x[1::2], before_x[1::2])
     assert (after_x[::2] != before_x[::2]).any(-1).all()
@@ -79,7 +79,7 @@ def test_the_core_game_runs_with_fields():
         action = torch.randint(0, 3, (8, 4, 3), generator=generator) % torch.tensor([7, 3, 2])
         noise = core.draw_noise(CONFIG, 8, 4, generator, DEVICE)
         state, out = core.step(CONFIG, state, action, noise)
-        state = core.reset_done(CONFIG, state, out.done, sizes, generator)
+        state = core.take_deal(state, out.done, core.deal(CONFIG, 8, 4, sizes, generator, DEVICE))
     for name in ("x", "y", "speed", "energy", "shield"):
         assert torch.isfinite(getattr(state, name)).all(), name
     assert math.isfinite(float(state.energy.max()))

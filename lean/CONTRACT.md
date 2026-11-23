@@ -68,7 +68,8 @@ def step(config, state, action, noise) -> tuple[State, StepOut]
     # previous tick, neutral after a deal) and action becomes the new pending action (the
     # one-tick action delay, for every agent); noise: the tick's random draws, from draw_noise
 def draw_noise(config, envs, slots, generator, device) -> dict[str, Tensor]
-def reset_done(config, state, done, team_sizes, generator) -> State   # re-deal finished environments
+def deal(config, envs, slots, team_sizes, generator, device) -> State  # fresh states at a given N
+def take_deal(state, done, fresh, index=None) -> State  # re-deal finished environments from deals
 def observe(config, state, team: int) -> Obs
 ```
 
@@ -84,7 +85,6 @@ class ScriptedConfig: ...
 def personas(config, envs, slots, generator, device, spread: float) -> dict[str, Tensor] | None
     # per-ship parameters drawn per match; spread 0 (the yardstick) gives None
 def fresh_memory(envs, slots, generator, device) -> dict[str, Tensor]   # kept target, head-on side
-def renew_memory(memory, done, generator) -> dict[str, Tensor]          # fresh for re-dealt environments
 def act(config, state, team: int | None, persona, uniforms, memory) -> tuple[Tensor, dict]
     # (E, N, 3) long, rows of other teams 0 (team None: both teams), and the new memory
 ```

@@ -258,7 +258,7 @@ def update(
     critic at the start of every epoch. Advantages are summed over levels and divided by
     their standard deviation over the update (mean kept); `advantage_share_<level>` is each
     level's share of the summed advantage's variance and `advantage_std` its scale before
-    the division. The targets' range metrics (returns.support_usage) are averaged over the
+    the division. The targets' range metrics (returns.usage_metrics) are averaged over the
     epochs; a warning flag reads above 0 when any epoch raised it. Each epoch's mean
     approximate KL is `approximate_kl_epoch_<k>`; `kl_warning` is 1 when one exceeds
     config.kl_warning (a monitor: nothing stops early). `entropy_fraction` is the entropy

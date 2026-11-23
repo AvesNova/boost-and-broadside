@@ -56,7 +56,8 @@ def game(config, label):
     with torch.no_grad():
         measure(f"step, {label}", lambda: core.step(config, state, action, noise))
         measure(f"observe (one team), {label}", lambda: core.observe(config, state, 0))
-        measure(f"reset_done, {label}", lambda: core.reset_done(config, state, done, sizes, generator))
+        measure(f"deal + take_deal (a re-deal), {label}",
+                lambda: core.take_deal(state, done, core.deal(config, E, n, sizes, generator, "cpu")))
     return state
 
 

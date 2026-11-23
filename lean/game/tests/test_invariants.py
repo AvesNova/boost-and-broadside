@@ -7,7 +7,7 @@ import torch
 
 torch.set_num_threads(1)
 
-from lean.game import GameConfig, draw_noise, observe, reset, reset_done, step
+from lean.game import GameConfig, deal, draw_noise, observe, reset, step, take_deal
 
 CLOSE = GameConfig(arena_radius=700.0, spawn="mixed", clock_ticks=400)
 
@@ -50,7 +50,7 @@ def test_finite_and_padding_inert(sizes, ticks):
         assert (state.bullet_moves_left[absent] == 0).all()
         assert ((out.result >= 0) == out.done).all()
         deaths += int(out.died.sum())
-        state = reset_done(CLOSE, state, out.done, team_sizes, generator)
+        state = take_deal(state, out.done, deal(CLOSE, envs, slots, team_sizes, generator, "cpu"))
     assert deaths > 0
 
 

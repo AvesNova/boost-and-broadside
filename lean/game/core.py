@@ -5,7 +5,8 @@ belongs to ship o. Units: metres, seconds, radians, joules; clocks in ticks.
 
 Tick order (`step`): fire, flight, bullet motion, the swept hit test, damage, the boundary and
 shields, the end check, the bullets' bookkeeping, then the fog's sighting. Nothing here resets
-an environment: the caller passes StepOut.done to reset_done.
+an environment: the caller deals afresh (`deal`) and takes the deals where StepOut.done
+(`take_deal`).
 """
 
 from __future__ import annotations
@@ -1386,14 +1387,6 @@ def take_deal(state: State, done: Tensor, fresh: State, index: Tensor | None = N
         else:
             values[field.name] = select(new, old)
     return State(**values)
-
-
-def reset_done(config: GameConfig, state: State, done: Tensor, team_sizes: Tensor, generator: torch.Generator) -> State:
-    """The state with the environments in done (E,) bool dealt afresh at team_sizes (E, 2),
-    whose totals must fit the state's N. Every environment's draws are made, so nothing
-    reads done on the host (lean.learn instead deals once per segment and uses `take_deal`)."""
-    envs, slots = state.x.shape
-    return take_deal(state, done, deal(config, envs, slots, team_sizes, generator, state.ships.device))
 
 
 # --------------------------------------------------------------------------- fog
