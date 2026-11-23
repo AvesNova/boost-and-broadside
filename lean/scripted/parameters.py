@@ -53,9 +53,9 @@ class Gate:
 # fmt: off
 PARAMETERS: dict[str, Parameter] = {
     # Gate centres (the gates below).
-    "turn": Parameter(0.0106, "stall", LOG, 0.4, "pointing error: turn at all"),
-    "level_two": Parameter(0.0775, "stall", LOG, 0.4, "pointing error: sustained stick"),
-    "level_three": Parameter(0.386, "stall", LOG, 0.4, "pointing error: the full stick"),
+    "turn": Parameter(0.002868, "radians", LOG, 0.4, "pointing error: turn at all"),
+    "level_two": Parameter(0.02097, "radians", LOG, 0.4, "pointing error: sustained stick"),
+    "level_three": Parameter(0.1044, "radians", LOG, 0.4, "pointing error: the full stick"),
     "dive_slow": Parameter(1.8, "stall_speed", LOG, 0.4, "speed: dive because slow"),
     "dive_in_turn": Parameter(0.95, "corner_speed", LOG, 0.4, "speed: dive below it, turning hard"),
     "climb_fast": Parameter(1.2, "corner_speed", LOG, 0.4, "speed: climb because fast"),

@@ -258,7 +258,7 @@ def marginals(
     stick_error = signed_angle(state.heading_cos, state.heading_sin, wanted_x, wanted_y)
 
     # Every gate in one logistic: sigmoid(sharpness * (ln quantity - ln centre)).
-    turn_size = stick_error.abs() / c["stall"]
+    turn_size = stick_error.abs()  # radians
     target_size = (2.0 * torch.atan(c["hit_radius"] / safe_distance)).clamp(
         read("target_size_minimum"), read("target_size_maximum")
     )
