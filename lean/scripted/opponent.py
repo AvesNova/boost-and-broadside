@@ -41,13 +41,21 @@ def fresh_memory(
     envs: int, slots: int, generator: torch.Generator | None, device: torch.device | str
 ) -> dict[str, Tensor]:
     """The opponent's memory at the start of a match, which the caller carries from call to
-    call (every caller: collect, evaluation, the sandbox): "target" (E, N) long, the kept
-    target's slot (-1 for none); "side" (E, N) float32, +1 left or -1 right, the turn side
-    for the symmetric head-on pass, drawn once per ship per match."""
+    call (every caller: collect, evaluation, the sandbox), (E, N) each:
+      "target" long, the kept target's slot (-1 for none);
+      "side" float32, +1 left or -1 right, drawn once per ship per match: the tie-break
+        when the plan's turn sense has no side to go by;
+      "sense" float32, the committed turn sense while he is aft of my 3/9 line: +1 left,
+        -1 right, 0 none;
+      "last_pass" float32, the plan and the angles off at the last commit: plan (+1
+        two-circle, -1 one-circle) x angles off (radians, > 0); 0 before the first."""
     left = torch.rand((envs, slots), **random_keywords(generator, device)) < 0.5
+    zeros = torch.zeros((envs, slots), device=device)
     return {
         "target": torch.full((envs, slots), -1, dtype=torch.long, device=device),
         "side": torch.where(left, 1.0, -1.0),
+        "sense": zeros,
+        "last_pass": zeros.clone(),
     }
 
 
@@ -55,7 +63,8 @@ def renew_memory(
     memory: dict[str, Tensor], done: Tensor, generator: torch.Generator | None
 ) -> dict[str, Tensor]:
     """The memory with the environments in `done` (E,) bool started afresh (a new match):
-    no kept target and a new head-on side. Draws for every environment (no host read)."""
+    no kept target, no sense or pass, a new side. Draws for every environment (no host
+    read)."""
     envs, slots = memory["target"].shape
     fresh = fresh_memory(envs, slots, generator, memory["target"].device)
     return {name: torch.where(done[:, None], fresh[name], memory[name]) for name in memory}
@@ -207,6 +216,9 @@ class Explanation:
     cap: Tensor  # the share of the full stick level folded into the sustained one
     stick_error: Tensor  # radians to the wanted direction, positive left
     gun_error: Tensor  # radians to the gun's lead point, positive left
+    sense: Tensor  # the committed turn sense after this decision (memory "sense")
+    last_pass: Tensor  # memory "last_pass" after this decision
+    overshoot: Tensor  # bool: he overshot (the sense reversed to the short way)
 
 
 def _per_other(value: Tensor | float) -> Tensor | float:
@@ -418,9 +430,60 @@ def explain(
     wanted_y = point_scale * point_y - centre_scale * state.y
     stick_error = signed_angle(state.heading_cos, state.heading_sin, wanted_x, wanted_y)
 
+    # The committed turn sense (design B3, decided: hysteresis by concrete rules):
+    # - release when he comes forward of my 3/9 line (by the release band), or the target
+    #   changes;
+    # - overshoot (Shaw pp. 67, 75-76): he is aft, inside the overshoot range, crossing my six
+    #   from the side I turn to at more than the overshoot rate, with a small track-crossing
+    #   angle, and I am no faster than him: reverse (the sense becomes the short way), level;
+    # - commit when he moves aft with no sense held: the plan's sense. The plan is two-circle
+    #   when my energy advantage is above the plan threshold, else one-circle; at a later pass
+    #   it is the last pass's plan, switched when it gained less than the switch gain in
+    #   angles off (Shaw pp. 112-113: the stalemate breaker inside the fight). Two-circle
+    #   turns his way (toward his side when he is straight), one-circle the other way; the
+    #   drawn side breaks an exact tie.
+    line = read("three_nine_line")
+    bearing_size = situation.bearing.abs()
+    aft = has_target & (bearing_size > line)
+    forward = bearing_size < line - read("release_band")
+    held = memory["sense"]
+    last_pass = memory["last_pass"]
+    keep = has_target & (fight.target == memory["target"]) & ~forward
+    held = torch.where(keep, held, 0.0)
+    last_pass = torch.where(has_target & (fight.target == memory["target"]), last_pass, 0.0)
+    bearing_rate = situation.sight_rate * c["sustained_rate"] - state.nose_rate
+    crossing_cos = (
+        state.heading_cos * fight.target_heading_cos + state.heading_sin * fight.target_heading_sin
+    )
+    overshoot = (
+        aft
+        & (held != 0.0)
+        & (bearing_rate * held > 0.0)
+        & (bearing_rate.abs() > read("overshoot_rate") * c["sustained_rate"])
+        & (fight.distance < read("overshoot_range") * c["sustained_radius"])
+        & (crossing_cos > _cos(read("overshoot_crossing")))
+        & (state.speed <= fight.target_speed)
+    )
+    short_way = torch.where(situation.bearing > 0.0, 1.0, -1.0)
+    held = torch.where(overshoot, short_way, held)
+    commit = aft & (held == 0.0)
+    energy_plan = torch.where(situation.energy_advantage > read("plan_threshold"), 1.0, -1.0)
+    previous_plan = torch.sign(last_pass)
+    gained = last_pass.abs() - situation.angles_off
+    kept_plan = torch.where(gained < read("switch_gain"), -previous_plan, previous_plan)
+    plan = torch.where(last_pass != 0.0, kept_plan, energy_plan)
+    his_turn = torch.where(
+        situation.target_sense.abs() > 0.5, torch.sign(situation.target_sense), 0.0
+    )
+    dead_astern = math.pi - bearing_size < read("tie_band")
+    his_side = torch.where(dead_astern, memory["side"], short_way)
+    two_circle_sense = torch.where(his_turn != 0.0, his_turn, his_side)
+    sense = torch.where(commit, plan * two_circle_sense, held)
+    last_pass = torch.where(commit, plan * situation.angles_off, last_pass)
+
     # Stick: P(turn), then the level by two further gates (the cap folding full into
-    # sustained), the side by the error's sign; a wanted direction within the head-on band of
-    # straight behind turns to the kept side.
+    # sustained), the side by the committed sense while he is aft (unless the boundary steer
+    # dominates), else by the error's sign.
     turn_size = stick_error.abs()
     stick_gate = _gates(
         config,
@@ -433,8 +496,8 @@ def explain(
     turn_above_one = turn * above_one
     full = turn_above_one * above_two * (1.0 - cap)
     levels = torch.stack([turn - turn_above_one, turn_above_one - full, full], -1)
-    behind_band = turn_size > math.pi - read("head_on_band")
-    turn_left = torch.where(behind_band, memory["side"] > 0.0, stick_error > 0.0)
+    holding = aft & (sense != 0.0) & (centre_weight < 0.5)
+    turn_left = torch.where(holding, sense > 0.0, stick_error > 0.0)
     side_floor = read("side_floor")
     left = torch.where(turn_left, 1.0 - side_floor, side_floor)[..., None]
     left_levels = left * levels
@@ -459,7 +522,7 @@ def explain(
     top = c["inverse_fade"] / c["inverse_max_energy"] - bottom
     room = torch.stack([top, bottom], -1).clamp(0.0, 1.0)
     climb, dive = (climb_dive * room).unbind(-1)
-    climb = climb * (1.0 - no_bank)
+    climb = torch.where(overshoot, 0.0, climb * (1.0 - no_bank))
     dive = dive * (weights["offensive"] + weights["turning"] + weights["defensive"])
     power_floor = read("power_floor")
     power = power_floor + (1.0 - 3.0 * power_floor) * torch.stack(
@@ -481,12 +544,20 @@ def explain(
         cap=cap,
         stick_error=stick_error,
         gun_error=gun_error,
+        sense=sense,
+        last_pass=last_pass,
+        overshoot=overshoot,
     )
 
 
 def _log(x: Tensor | float) -> Tensor | float:
     """The natural log of a number or a tensor."""
     return torch.log(x) if isinstance(x, Tensor) else math.log(x)
+
+
+def _cos(x: Tensor | float) -> Tensor | float:
+    """The cosine of a number or a tensor."""
+    return torch.cos(x) if isinstance(x, Tensor) else math.cos(x)
 
 
 def _last(x: Tensor | float) -> Tensor | float:
@@ -607,9 +678,17 @@ def decide(
 ) -> tuple[Tensor, dict[str, Tensor], Marginals]:
     """`act`, also returning the marginals the actions were drawn from (the behaviour-cloning
     teacher's full distribution, lean.learn)."""
-    parts = marginals(config, state, team, persona, memory)
+    reasons = explain(config, state, team, persona, memory)
+    parts = reasons.marginals
     action = sample(parts, uniforms)
-    target = torch.where(parts.controlled, parts.target, -1)
+    controlled = parts.controlled
+    new = {
+        "target": torch.where(controlled, parts.target, -1),
+        "side": memory["side"],
+        "sense": torch.where(controlled, reasons.sense, 0.0),
+        "last_pass": torch.where(controlled, reasons.last_pass, 0.0),
+    }
     if team is not None:  # the other team's rows keep their memory
-        target = torch.where(state.team == team, target, memory["target"])
-    return action, {"target": target, "side": memory["side"]}, parts
+        acting = state.team == team
+        new = {name: torch.where(acting, value, memory[name]) for name, value in new.items()}
+    return action, new, parts

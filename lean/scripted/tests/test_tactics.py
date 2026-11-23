@@ -8,7 +8,7 @@ import torch
 
 from lean.scripted import ScriptedConfig
 from lean.scripted.opponent import CLIMB, DIVE, explain
-from lean.scripted.tests.test_scripted import placed
+from lean.scripted.tests.test_scripted import memory_of, placed
 
 LEFT, RIGHT = [2, 4, 6], [1, 3, 5]  # stick indices (left_is_even)
 FULL_LEFT, FULL_RIGHT = 6, 5
@@ -34,7 +34,7 @@ def decision(own, target, stores=(0.5, 0.5), nose_rates=(0.0, 0.0), memory=None,
         nose_rate=torch.tensor([nose_rates]),
         energy=torch.tensor([stores]) * C["max_energy"],
     )
-    memory = memory or {"target": torch.full((1, 2), -1), "side": torch.ones(1, 2)}
+    memory = memory or memory_of()
     return explain(config or ScriptedConfig(), state, 0, None, memory)
 
 
@@ -163,3 +163,85 @@ def test_defence_is_graded_by_range():
     assert weight(far, "defensive") > 0.8
     assert first(close.cap) < 0.1 and first(far.cap) > 0.8
     assert first(close.speed_target) > 1.3 * first(far.speed_target)
+
+
+def committed(own, target, stores=(0.5, 0.5), nose_rates=(0.0, 0.0), memory=None):
+    """The sense committed by one decision (memory "sense") and P(left) of the stick."""
+    e = decision(own, target, stores, nose_rates, memory)
+    return first(e.sense), float(e.marginals.stick[0, 0, LEFT].sum()), e
+
+
+def test_the_pass_commits_the_plan_sense():
+    """Just after an offset head-on pass (he is aft, on my left, flying straight): with more
+    energy two-circle, toward his side (left); with less one-circle, away from it (right).
+    Turning: two-circle takes his rotation, one-circle the opposite."""
+    passed = ship(-1.0 * RADIUS, 2.0 * RADIUS, heading=math.pi)
+    sense, left, _ = committed(ship(), passed, stores=(0.8, 0.3))
+    assert sense == 1.0 and left > 0.9
+    sense, left, _ = committed(ship(), passed, stores=(0.3, 0.8))
+    assert sense == -1.0 and left < 0.1
+    rate = C["sustained_rate"]
+    for his_rate, stores, expected in ((-rate, (0.8, 0.3), -1.0), (-rate, (0.3, 0.8), 1.0)):
+        sense, _, _ = committed(ship(), passed, stores, nose_rates=(0.0, his_rate))
+        assert sense == expected, (his_rate, stores)
+
+
+def test_the_held_sense_turns_the_long_way_and_releases_when_he_comes_forward():
+    """One-circle held to the right while he is aft on my left: the stick goes right (the long
+    way round); once he is forward of the 3/9 line the sense is released (short way)."""
+    memory = memory_of()
+    memory["target"] = torch.tensor([[1, 0]])
+    memory["sense"] = torch.tensor([[-1.0, 0.0]])
+    memory["last_pass"] = torch.tensor([[-4.0, 0.0]])
+    aft = ship(-1.0 * RADIUS, 1.5 * RADIUS, heading=math.pi)
+    sense, left, _ = committed(ship(), aft, memory=memory)
+    assert sense == -1.0 and left < 0.1
+    ahead = ship(2.0 * RADIUS, 1.0 * RADIUS, heading=math.pi)
+    sense, left, _ = committed(ship(), ahead, memory=memory)
+    assert sense == 0.0 and left > 0.9
+
+
+def test_overshoot_reverses_only_when_close_low_crossing_and_he_is_faster():
+    """He is close behind, crossing my six from my left to my right (I hold a left turn)
+    fast, his track close to mine, and he is faster: he overshoots, so the sense reverses to
+    the short way, flown level (no climb). Slowly crossing, or with me the faster: hold
+    (Shaw p. 76: if in doubt, do not reverse)."""
+    def held_left():
+        memory = memory_of()
+        memory["target"] = torch.tensor([[1, 0]])
+        memory["sense"] = torch.tensor([[1.0, 0.0]])
+        memory["last_pass"] = torch.tensor([[4.0, 0.0]])
+        return memory
+
+    # he is 60 m behind, just across my six to the right, flying my way at an angle across
+    def behind(speed, heading=-0.5):
+        return ship(-60.0, -5.0, heading=heading, speed=speed)
+
+    sense, _, e = committed(ship(speed=0.6), behind(1.0), memory=held_left())
+    assert bool(e.overshoot[0, 0]) and sense == -1.0
+    assert float(e.marginals.power[0, 0, CLIMB]) < 0.05
+    slow = committed(ship(speed=0.6), behind(0.62, heading=-0.02), memory=held_left())
+    assert not bool(slow[2].overshoot[0, 0]) and slow[0] == 1.0
+    faster_me = committed(ship(speed=1.1), behind(1.0), memory=held_left())
+    assert not bool(faster_me[2].overshoot[0, 0]) and faster_me[0] == 1.0
+
+
+def test_a_pass_that_gained_nothing_switches_the_plan():
+    """Shaw pp. 112-113: the last pass was one-circle at 4.0 rad angles off; at this pass he
+    is no better off for me (4.0 rad again): switch to two-circle. Had it gained 0.5 rad,
+    keep one-circle."""
+    passed = ship(-1.0 * RADIUS, 2.0 * RADIUS, heading=math.pi)
+    _, _, probe = committed(ship(), passed, stores=(0.3, 0.8))
+    angles_off = first(probe.situation.angles_off)
+
+    def memory(last):
+        m = memory_of()
+        m["target"] = torch.tensor([[1, 0]])
+        m["last_pass"] = torch.tensor([[last, 0.0]])
+        return m
+
+    stalled, _, _ = committed(ship(), passed, (0.3, 0.8), memory=memory(-angles_off))
+    assert stalled == 1.0  # two-circle: toward his side (left)
+    gaining, _, e = committed(ship(), passed, (0.3, 0.8), memory=memory(-(angles_off + 0.5)))
+    assert gaining == -1.0
+    assert first(e.last_pass) == -angles_off

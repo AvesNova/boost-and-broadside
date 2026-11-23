@@ -73,6 +73,18 @@ PARAMETERS: dict[str, Parameter] = {
     "relax_angle": Parameter(1.5 * math.pi, "radians", LINEAR, 0.3, "break beyond it"),
     "scissors_range": Parameter(1.0, "sustained_radius", LOG, 0.3,
                                 "one-circle inside it: slow to the speed floor"),
+    # The committed turn sense and the plan (one- or two-circle).
+    "tie_band": Parameter(0.1, "radians", meaning="him this near dead astern: the drawn side"),
+    "release_band": Parameter(0.2, "radians", meaning="release this far forward of the 3/9 line"),
+    "plan_threshold": Parameter(0.0, "store fraction", LINEAR, 0.25,
+                                "energy advantage above it: two-circle"),
+    "switch_gain": Parameter(0.17, "radians", LOG, 0.4,
+                             "a pass gaining less angles off than this switches the plan"),
+    "overshoot_range": Parameter(0.67, "sustained_radius", LOG, 0.3, "he overshoots inside it"),
+    "overshoot_rate": Parameter(1.0, "sustained_rate", LOG, 0.3,
+                                "crossing my six faster than this"),
+    "overshoot_crossing": Parameter(1.0, "radians", LOG, 0.3,
+                                    "track-crossing angle below it"),
     # Yo-yos: y = tanh((closure - wanted closure) / scale), the wanted closure reaching the
     # nose-tail distance in the closing time; y > 0 lag and climb, y < 0 lead and dive.
     "nose_tail": Parameter(0.67, "sustained_radius", LOG, 0.4, "where the chase wants to sit"),
@@ -100,7 +112,6 @@ PARAMETERS: dict[str, Parameter] = {
     "level_two": Parameter(0.02097, "radians", LOG, 0.4, "pointing error: sustained stick"),
     "level_three": Parameter(0.1044, "radians", LOG, 0.4, "pointing error: the full stick"),
     "side_floor": Parameter(0.02, "probability", meaning="turning the long way round"),
-    "head_on_band": Parameter(0.1, "radians", meaning="want this near behind: kept side"),
     # The gun. Lead: first-order intercept with the drag law's time of flight in the medium.
     "aligned": Parameter(1.01, "target angular size", LOG, 0.4, "gun aim error: the gun bears"),
     "in_range": Parameter(1.04, "gun_range", LOG, 0.4, "distance: the target is within reach"),
