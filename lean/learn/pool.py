@@ -1,13 +1,15 @@
 """The league: its members, the network slots that play them, PFSP draws within row
 capacities, decaying win-rate tallies, v2's snapshot schedule and retention.
 
-Members (fixed indices, `League.kinds`): the scripted agent (member 0; step C adds the
-cheese agents as more members of kind "scripted"), the EMA and the uniform average of the
-live weights (lean.learn.weights), and up to `snapshot_members` snapshots. A member is
-present (drawable) when it exists: the scripted agent always; the snapshots from their
-step on; the EMA from the first snapshot (before it every league game is against the
-scripted agent, decided 8.1 (5)); the uniform average from the first snapshot once it holds
-an update (its warm-up has ended).
+Members (fixed indices, `League.kinds`): the scripted agent (member 0), the EMA and the
+uniform average of the live weights (lean.learn.weights), and up to `snapshot_members`
+snapshots. A member is present (drawable) when it exists: the scripted agent always; the
+snapshots from their step on; the EMA from the first snapshot (before it every league game
+is against the scripted agent, decided 8.1 (5)); the uniform average from the first
+snapshot once it holds an update (its warm-up has ended). The cheese agents (step C) go
+after the snapshots as more members of kind "scripted": no slot (member_slot -1), a
+capacity and tallies like any member; their rows will need their own scripted call (today
+every scripted row takes the one scripted agent's action).
 
 Draws: each league environment whose game ended draws its next member from the
 probabilities (1 - floor) * (1 - p)^2 / sum + floor / present (AlphaStar's `squared`, floor
@@ -149,15 +151,14 @@ def stepper_weights(policy, parameters: dict[str, Tensor] | None = None) -> dict
 
 @dataclasses.dataclass
 class NetworkTable:
-    """One segment's network table (League.prepare): the K active slots' weights stacked
-    (parameters, buffers: each tensor (K, ...)), `positions` (W,) arange of the rows per slot
-    (W the table's width: its shape carries W into a compiled graph), `active` (slots,) long
-    each slot's index among the K, K for an inactive slot."""
+    """One segment's network table (League.prepare): the K slots holding weights, each as
+    (slot, parameters, buffers) with `slot` a 0-d long tensor (a tensor, so that one compiled
+    graph serves every slot), and `positions` (W,) arange of the rows a slot runs on (W's
+    shape carries it into the compiled graph as a symbolic size: no recompile when it
+    changes)."""
 
-    parameters: dict[str, Tensor]
-    buffers: dict[str, Tensor]
+    slots: list[tuple[Tensor, dict[str, Tensor], dict[str, Tensor]]]
     positions: Tensor
-    active: Tensor
 
 
 class League:
@@ -170,9 +171,7 @@ class League:
     free), `slot_weights`, `retiring`, the snapshots' ordinals and steps.
     """
 
-    def __init__(self, config: LearnConfig, device=None, scripted_members: int = 1):
-        if scripted_members != 1:
-            raise ValueError("one scripted member until the cheese agents come (step C)")
+    def __init__(self, config: LearnConfig, device=None):
         self.device = torch.device(device) if device is not None else torch.device("cpu")
         self.floor = config.league_floor
         self.decay = config.league_decay
@@ -368,17 +367,16 @@ class League:
             self.table = None
             return
         width = max([capacity] + [rows[index] for index in active])
-        names = self.slot_weights[active[0]]
-        stacked = {name: torch.stack([self.slot_weights[index][name] for index in active]) for name in names}
         parameter_names = {name for name, _ in self.template.named_parameters()}
-        lookup = torch.full((self.slot_count,), len(active), dtype=torch.long)
-        lookup[active] = torch.arange(len(active))
-        self.table = NetworkTable(
-            parameters={name: value for name, value in stacked.items() if name in parameter_names},
-            buffers={name: value for name, value in stacked.items() if name not in parameter_names},
-            positions=torch.arange(width, device=self.device),
-            active=lookup.to(self.device),
-        )
+        slots = []
+        for index in active:
+            weights = self.slot_weights[index]
+            slots.append((
+                torch.tensor(index, device=self.device),
+                {name: value for name, value in weights.items() if name in parameter_names},
+                {name: value for name, value in weights.items() if name not in parameter_names},
+            ))
+        self.table = NetworkTable(slots, torch.arange(width, device=self.device))
 
     # ---- checkpoints
 

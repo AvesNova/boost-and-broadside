@@ -1,13 +1,11 @@
 """Rollout collection: the live policy on its seats, the league on the other side."""
 
-import contextlib
 import dataclasses
 from dataclasses import dataclass
 
 import torch
 from torch import Tensor
-from torch.func import functional_call, vmap
-from torch.nn.attention import SDPBackend, sdpa_kernel
+from torch.func import functional_call
 
 from lean import game, scripted
 from lean.contract import POWERS, STICKS, Obs, random_keywords, split_joint
@@ -266,74 +264,69 @@ def draw_members(opponent: Opponent, member: Tensor, done: Tensor, generator) ->
     return opponent.league.draw(member, done, generator)
 
 
-def network_actions(config: LearnConfig, template, parameters: dict, buffers: dict, positions: Tensor, active: Tensor,
-                    views: tuple[Obs, Obs], carry: CollectCarry, scripted_action: Tensor, generator):
-    """The league side's actions (L, N, 3) and opponent carry by capacity routing: each league
-    environment played by a network slot takes a row of that slot's table (the K active
-    slots x W rows of League.prepare's NetworkTable: `active` maps a slot to its group of
-    the table, `positions` is arange(W)); the rows are grouped by slot on the device (an
-    environment's row is its rank among the slot's environments), each slot's weights run
-    once on their own W rows (torch.func.vmap over the K stacked weights and the K row
-    groups, through the weightless `template`), and each environment reads its row back.
-    Padding rows (a slot with fewer than W environments) run on environment 0's input and
-    are never read. Scripted environments take `scripted_action`'s rows and keep their
-    carry. No host read: the shapes are (K, W) from the table, fixed for a segment."""
+def slot_actions(config: LearnConfig, template, parameters: dict, buffers: dict, slot: Tensor, positions: Tensor,
+                 views: tuple[Obs, Obs], carry: CollectCarry, action: Tensor, opponent_carry: Tensor, generator):
+    """One network slot's moves (capacity routing): the league environments it plays
+    (carry.slot == `slot`, a 0-d long) take the rows 0, 1, ... of a W-row batch in order
+    (W = positions.shape[0], League.prepare's table width: never fewer than the slot's
+    environments), the slot's weights (through the weightless `template`) run once on those
+    W rows, and each of its environments reads its row back into `action` (L, N, 3) and
+    `opponent_carry`; the other environments keep theirs. Padding rows (fewer environments
+    than W) run on environment 0's input and are never read. No host read, and one compiled
+    graph for every slot, W and K."""
     league_envs = carry.member.shape[0]
     envs = carry.learner_team.shape[0]
     first = envs - league_envs
     device = carry.member.device
     width = positions.shape[0]
-    slots = next(iter(parameters.values())).shape[0]
-    network = carry.slot >= 0
-    group = torch.where(network, active.index_select(0, carry.slot.clamp(min=0)), slots)
-    one_hot = torch.nn.functional.one_hot(group, slots + 1)
-    rank = one_hot.cumsum(0).gather(1, group[:, None]).squeeze(1) - 1
-    row = torch.where(network, group * width + rank, slots * width)  # the spare row past the table
-    environment = torch.zeros(slots * width + 1, dtype=torch.long, device=device)
+    mine = carry.slot == slot
+    rank = mine.long().cumsum(0) - 1  # each of the slot's environments: its row
+    row = torch.where(mine, rank, width)  # others to a spare row past the batch
+    environment = torch.zeros(width + 1, dtype=torch.long, device=device)
     environment = environment.scatter(0, row, torch.arange(league_envs, device=device))[:-1]
     view = seat_view(views, first + environment, 1 - carry.learner_team.index_select(0, first + environment))
-    # The view as a dict of fields (vmap maps over tensors in dicts, not over dataclasses).
-    view = {field.name: getattr(view, field.name).unflatten(0, (slots, width)) for field in dataclasses.fields(view)}
-    opponent_carry = carry.opponent.index_select(SEAT_AXIS, environment).unflatten(SEAT_AXIS, (slots, width))
-    offset = carry.position_offset[first:].index_select(0, environment).unflatten(0, (slots, width))
-
-    def one_slot(slot_parameters, slot_buffers, slot_view, slot_carry, slot_offset):
-        return functional_call(template, (slot_parameters, slot_buffers), (Obs(**slot_view), slot_carry, slot_offset))
-
-    # Eagerly, vmap hands the fused attention kernels a mask whose batch stride they reject
-    # on the GPU ("attn_bias is not correctly aligned"); the math kernel takes any layout.
-    # Compiled, the attention is decomposed and keeps the fused path.
-    eager_attention = contextlib.nullcontext() if torch.compiler.is_compiling() else sdpa_kernel(SDPBackend.MATH)
-    with policy_precision(config, device), eager_attention:
-        logits, _, new_carry = vmap(one_slot, in_dims=(0, 0, 0, SEAT_AXIS, 0), out_dims=(0, 0, SEAT_AXIS))(
-            parameters, buffers, view, opponent_carry, offset
-        )
-    read = row.clamp(max=slots * width - 1)
-    logits = logits.flatten(0, 1).index_select(0, read)
-    new_carry = new_carry.flatten(SEAT_AXIS, SEAT_AXIS + 1).index_select(SEAT_AXIS, read)
-    sampled = split_joint(sample_joint(logits.float(), generator))
-    action = torch.where(network[:, None, None], sampled, scripted_action[first:])
+    rows_carry = carry.opponent.index_select(SEAT_AXIS, environment)
+    offset = carry.position_offset[first:].index_select(0, environment)
+    with policy_precision(config, device):
+        logits, _, new_carry = functional_call(template, (parameters, buffers), (view, rows_carry, offset))
+    read = rank.clamp(min=0, max=width - 1)
+    sampled = split_joint(sample_joint(logits.float(), generator)).index_select(0, read)
+    action = torch.where(mine[:, None, None], sampled, action)
+    new_carry = new_carry.to(opponent_carry.dtype).index_select(SEAT_AXIS, read)
     # Contiguous, so the carry keeps one layout from tick to tick (a compiled graph is
     # specialised on strides).
-    new_carry = new_carry.to(carry.opponent.dtype)
-    return action, torch.where(network.view(1, -1, 1, 1, 1), new_carry, carry.opponent).contiguous()
+    return action, torch.where(mine.view(1, -1, 1, 1, 1), new_carry, opponent_carry).contiguous()
+
+
+def network_actions(config: LearnConfig, league, views: tuple[Obs, Obs], carry: CollectCarry, scripted_action: Tensor,
+                    generator, step=slot_actions):
+    """The league side's actions (L, N, 3) and opponent carry: the scripted agent's
+    `scripted_action` rows, then each slot of the league's network table (League.prepare)
+    moves its own environments (`step`: slot_actions or its compiled form), one call per
+    slot holding weights."""
+    league_envs = carry.member.shape[0]
+    # A copy of the carry to write into: an input that aliases another (carry.opponent)
+    # would be a second compiled graph.
+    action, opponent_carry = scripted_action[scripted_action.shape[0] - league_envs:], carry.opponent.clone()
+    for slot, parameters, buffers in league.table.slots:
+        action, opponent_carry = step(
+            config, league.template, parameters, buffers, slot, league.table.positions, views, carry, action,
+            opponent_carry, generator,
+        )
+    return action, opponent_carry
 
 
 def league_actions(config: LearnConfig, opponent: Opponent, views: tuple[Obs, Obs], carry: CollectCarry,
-                   scripted_action: Tensor, generator, networks=network_actions):
+                   scripted_action: Tensor, generator, step=slot_actions):
     """Actions of the league side of every league environment, (L, N, 3), and the new
     opponent carry: the scripted agent's (already computed as the BC target) until the
-    league has a network table (League.prepare), then `networks` (network_actions or its
-    compiled form)."""
+    league has a network table (League.prepare), then network_actions (`step` the per-slot
+    function, slot_actions or its compiled form)."""
     league = opponent.league
     league_envs = carry.member.shape[0]
     if league is None or league.table is None or league_envs == 0:
         return scripted_action[scripted_action.shape[0] - league_envs:], carry.opponent
-    table = league.table
-    return networks(
-        config, league.template, table.parameters, table.buffers, table.positions, table.active, views, carry,
-        scripted_action, generator,
-    )
+    return network_actions(config, league, views, carry, scripted_action, generator, step)
 
 
 def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: int, generator):
@@ -575,7 +568,7 @@ def collect(
     if compiled:
         from lean.learn.compiled import graphs
 
-        act_part, advance_part, networks = graphs().act, graphs().advance, graphs().network_actions
+        act_part, advance_part, networks = graphs().act, graphs().advance, graphs().slot_actions
         generator = None
         # A fresh state can hold broadcast (stride 0) tensors where a re-dealt one holds
         # whole ones (even empty ones: fields with F = 0); the graphs are specialised on
@@ -583,7 +576,7 @@ def collect(
         state = map_fields(state, whole)
         state = dataclasses.replace(state, constants=map_fields(state.constants, whole))
     else:
-        act_part, advance_part, networks = act, advance, network_actions
+        act_part, advance_part, networks = act, advance, slot_actions
     if opponent.league is not None:
         opponent.league.prepare(carry.member.shape[0], carry.slot)
     carry = dataclasses.replace(

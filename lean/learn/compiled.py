@@ -21,7 +21,7 @@ from lean.learn import rollout, training
 
 @functools.cache
 def graphs() -> SimpleNamespace:
-    """The compiled functions: act, advance, network_actions (lean.learn.rollout),
+    """The compiled functions: act, advance, slot_actions (lean.learn.rollout),
     minibatch_values and minibatch_loss (lean.learn.training)."""
     fx_config.use_duck_shape = False
 
@@ -31,7 +31,7 @@ def graphs() -> SimpleNamespace:
     return SimpleNamespace(
         act=compiled(rollout.act),
         advance=compiled(rollout.advance),
-        network_actions=compiled(rollout.network_actions),
+        slot_actions=compiled(rollout.slot_actions),
         minibatch_values=compiled(training.minibatch_values),
         minibatch_loss=compiled(training.minibatch_loss),
     )

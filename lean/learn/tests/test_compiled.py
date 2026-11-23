@@ -9,8 +9,9 @@ import torch
 
 from lean import game, model, scripted
 from lean.learn import League, LearnConfig, Opponent, collect, make_optimiser, start, update
+from lean.learn.compiled import graphs
 from lean.learn.pool import EMA, FIRST_SNAPSHOT
-from lean.learn.rollout import act, advance, draw_next_episodes, league_actions, network_actions
+from lean.learn.rollout import act, advance, draw_next_episodes, league_actions, slot_actions
 from lean.learn.tests.setting import add_snapshots
 
 pytestmark = pytest.mark.slow
@@ -78,9 +79,10 @@ def test_compiled_loss_matches_eager():
 
 
 def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
-    """The capacity routing (network_actions) and the tick's second half (advance: the
-    tallies and the capacity draws at re-deal) trace as single graphs: no graph break, so
-    no host read in the tick path."""
+    """The capacity routing (slot_actions, one call per slot) and the tick's second half
+    (advance: the tallies and the capacity draws at re-deal) trace as single graphs: no
+    graph break, so no host read in the tick path; and the one routing graph serves every
+    slot and every table width (no recompile when W or K changes)."""
     torch._dynamo.reset()
     torch.manual_seed(0)
     config = LearnConfig(team_size_minimum=2, team_size_maximum=2)
@@ -96,7 +98,8 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
     slots = state.exists.shape[1]
     deals = draw_next_episodes(config, game_config, policy, opponent, 8, slots, None, "cpu")
     carry = dataclasses.replace(carry, next_episodes=deals)
-    routing = torch.compile(network_actions, fullgraph=True, dynamic=True)
+    graphs()  # duck sizing off, as in training
+    routing = torch.compile(slot_actions, fullgraph=True, dynamic=True)
     second_half = torch.compile(advance, fullgraph=True, dynamic=True)
     hit_label = torch.full((2 * 4 * 8 * slots + 1,), -1, dtype=torch.long)  # rows for 4 ticks
     for tick in range(4):  # a game ends on the third tick: re-deals draw members within capacity
@@ -110,3 +113,15 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
         )
     rows = torch.bincount(carry.member.clamp(min=0), minlength=league.members)
     assert (rows <= league.capacity).all()
+    # A third snapshot playing every league game: one more slot (K) and a wider table (W,
+    # the slot's 4 rows past the capacity); the graph is reused.
+    compiles = torch._dynamo.utils.counters["stats"]["unique_graphs"]
+    width = league.table.positions.shape[0]
+    add_snapshots(league, [model.Policy(model.ModelConfig())])
+    chosen = torch.full((4,), FIRST_SNAPSHOT + 2)
+    carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
+    league.prepare(4, carry.slot)
+    assert len(league.table.slots) == 4 and league.table.positions.shape[0] == 4 != width
+    views, *_, scripted_action, _, _, _, _ = act(config, game_config, policy, opponent, state, carry, None)
+    league_actions(config, opponent, views, carry, scripted_action, None, routing)
+    assert torch._dynamo.utils.counters["stats"]["unique_graphs"] == compiles
