@@ -53,3 +53,4 @@ where to look.
 - L1 Rollout's counters went, `repeated_deals` too (deal reuse shows as `carry.next_episodes.taken` above E).
 - L1 tests on the real model needed tolerances the stand-ins did not: stored (step) against recomputed (sequence) advantages within 1e-3; vmapped snapshots (math attention kernel) against a plain step within 1e-4.
 - L1 `python -m lean.eval` defaults to the EMA weights, sizes [4], 64 games per match (`--games 0` for v1's games_for).
+- KL warning: in the 3-update GPU check it fired every update after the first (0.09 to 0.34). Checked: the measure reads 0.0017 at the first update, so it is real movement of early BC (entropy 3.74 -> 2.62 nats in two updates, clip fraction 0.77), not a bug. Whether RL keeps tripping 0.02 can only be judged in a longer run; the dry runs will show it.
