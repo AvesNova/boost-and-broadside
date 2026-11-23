@@ -34,7 +34,16 @@ PROCESS_START = time.perf_counter()
 import torch  # noqa: E402
 
 from lean import game, model, scripted  # noqa: E402
-from lean.learn import League, LearnConfig, Opponent, RolloutStore, collect, make_optimiser, start, update  # noqa: E402
+from lean.learn import (  # noqa: E402
+    League,
+    LearnConfig,
+    Opponent,
+    RolloutStore,
+    collect,
+    make_optimiser,
+    start,
+    update,
+)
 
 
 def main() -> None:
