@@ -117,3 +117,35 @@ def test_time_scale_is_the_same_flight_faster_or_slower(factor):
         assert torch.allclose(getattr(scaled, name), getattr(game, name) * ratio, rtol=1e-5), name
     with tuning.time_scale(tuning.TIME_FACTOR):
         assert card.CARD is saved
+
+
+def test_scripted_references_are_the_flown_numbers():
+    """The game's derived references for the scripted agent (docs/rewrite/scripted-bfm-design.md
+    B2) are what the quasi-steady analysis flies: the best sustained turn's speed within
+    tuning.performance's 0.05 m/s grid, its rate and radius within 0.1%, the corner rate; the
+    quarter-turn time and the store's turn follow from them (the P-51D: 2.4 s and 2.5 rad)."""
+    config = core.GameConfig(lineup=card.TYPE_NAMES)
+    game = core.per_type_constants(config, torch.arange(len(card.TYPE_NAMES)))
+    for index, name in enumerate(card.TYPE_NAMES):
+        flown = tuning.performance(tuning.row_of(name), config=config)
+        for name, tolerance in (
+            ("sustained_speed", dict(abs=0.06)),
+            ("sustained_rate", dict(rel=1e-3)),
+            ("sustained_radius", dict(rel=1e-3)),
+            ("corner_rate", dict(rel=1e-4)),
+        ):
+            value = float(getattr(game, name)[index])
+            assert value == pytest.approx(flown[name], **tolerance), name
+        rate = float(game.sustained_rate[index])
+        assert float(game.quarter_turn_time[index]) == pytest.approx(0.5 * math.pi / rate, rel=1e-6)
+        # the store's turn: corner rate over sustained rate for as long as a full store holds
+        # corner speed at full stick
+        c = core.per_type_constants(config, torch.tensor([index]))
+        corner = c.corner_speed
+        _, _, energy_rate = core.quasi_steady(c, corner, torch.ones_like(corner), 0, c.spawn_energy)
+        held = float(c.max_energy[0] / energy_rate.abs()[0])
+        expected = (float(game.corner_rate[index]) - rate) * held
+        assert float(game.store_turn[index]) == pytest.approx(expected, rel=1e-4)
+    p51d = card.TYPE_NAMES.index("p51d")
+    assert float(game.quarter_turn_time[p51d]) == pytest.approx(2.41, abs=0.01)
+    assert float(game.store_turn[p51d]) == pytest.approx(2.5, abs=0.02)

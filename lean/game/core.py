@@ -207,12 +207,20 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
 
 
 def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> dict[str, Tensor]:
-    """Per ship type (card order): cruise speed (straight, coasting, thrust equal to drag: the
-    top level speed), stall speed (the wing's lift limit holds 1 g), corner speed (the g limit
-    meets the lift limit), bullet launch speed (cruise plus muzzle)
-    and gun range (how far a bullet fired at cruise travels in its life under drag: v2's
-    `api.gun_range`). Solved with the game's own flight functions, so the scripted opponent is
-    told these, not guessed."""
+    """Per ship type (card order), solved with the game's own flight functions, so the scripted
+    opponent is told these, not guessed (its references, docs/rewrite/scripted-bfm-design.md):
+
+    - cruise speed (straight, coasting, thrust equal to drag: the top level speed), stall speed
+      (the wing's lift limit holds 1 g), corner speed (the g limit meets the lift limit), bullet
+      launch speed (cruise plus muzzle) and gun range (how far a bullet fired at cruise travels
+      in its life under drag: v2's `api.gun_range`);
+    - the best sustained turn (coasting, mid store): its rate, its speed and its radius (speed
+      over rate), and the time to turn 90 degrees at that rate;
+    - the corner rate (full stick at corner speed) and the store's turn: the turn a full store
+      buys over the best sustained rate when spent holding corner speed at full stick,
+      (corner rate - sustained rate) x full store / |energy rate at corner, full stick|;
+    - the sustained stick speed: above it the sustained stick level reaches the g limit
+      (corner speed / sqrt(sustained level)), so it turns as hard as the full level."""
     c = SimpleNamespace(**values)
     count = len(c.lift)  # every row of the card
     control = SimpleNamespace(
@@ -230,13 +238,95 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
     cruise = 0.5 * (low + high)
     launch = cruise + c.muzzle_speed
     life = c.bullet_moves.float() * config.tick_length
+    stall_speed = torch.sqrt(card.GRAVITY / c.lift)
+    corner_speed = torch.sqrt(c.max_acceleration / c.lift)
+    sustained_rate, sustained_speed = _best_sustained_turn(values, stall_speed, cruise)
+    # Per row, as (T, 1) columns, for one speed per row.
+    column = SimpleNamespace(**{name: value[:, None] for name, value in values.items()})
+    with torch.no_grad():
+        corner = corner_speed[:, None]
+        corner_rate, _, corner_energy_rate = quasi_steady(
+            column, corner, torch.ones_like(corner), 0, column.spawn_energy
+        )
+    corner_rate, corner_energy_rate = corner_rate[:, 0], corner_energy_rate[:, 0]
     return {
         "cruise_speed": cruise,
-        "stall_speed": torch.sqrt(card.GRAVITY / c.lift),
-        "corner_speed": torch.sqrt(c.max_acceleration / c.lift),
+        "stall_speed": stall_speed,
+        "corner_speed": corner_speed,
         "bullet_launch_speed": launch,
         "gun_range": torch.log1p(c.bullet_drag * launch * life) / c.bullet_drag,
+        "sustained_speed": sustained_speed,
+        "sustained_rate": sustained_rate,
+        "sustained_radius": sustained_speed / sustained_rate,
+        "quarter_turn_time": (0.5 * math.pi) / sustained_rate,
+        "corner_rate": corner_rate,
+        # the sustained stick level reaches the g limit above this speed
+        "sustained_stick_speed": corner_speed / torch.sqrt(c.stick_table[:, 3].abs()),
+        "store_turn": (corner_rate - sustained_rate) * c.max_energy / corner_energy_rate.abs(),
     }
+
+
+def quasi_steady(p, speed: Tensor, stick: Tensor, power: int, energy: Tensor):
+    """A ship flying steadily (no field, the nose's lag settled) at `speed` with stick size
+    `stick` (0 to 1) and power index `power` (0 coast, 1 dive, 2 climb) at store `energy`: its
+    turn rate (rad/s), d speed / dt, and total energy rate (speed x d speed / dt + d store / dt).
+    `p` holds the ship constants broadcastable against `speed` (the action tables with a last
+    axis of width 3)."""
+    control = SimpleNamespace(
+        thrust_scale=1.0,
+        stick_size=stick,
+        stick_sign=torch.ones_like(speed),
+        commanded=p.commanded_table[..., power],
+        demand=p.demand_table[..., power],
+    )
+    setting = _setting(p, control, speed, energy)
+    lateral, _, _, thrust = setting
+    reach = (lateral.abs() / (speed * speed) * p.inverse_lift).clamp(0.0, 1.0)
+    angle = p.stall * (1.0 - torch.sqrt(1.0 - reach))
+    lift = _lift_coefficient(p, angle)
+    rate = (lift * speed * speed + thrust * torch.sin(angle)) / speed
+    speed_rate, store_rate = _rates(
+        p, setting, torch.ones_like(speed), speed, lift, torch.cos(angle), 1.0 / (speed * speed)
+    )
+    return rate, speed_rate, speed * speed_rate + store_rate
+
+
+SUSTAINED_GRID = 257  # speeds per search pass
+SUSTAINED_STICK_STEPS = 40  # bisection steps on the stick holding energy
+
+
+def _best_sustained_turn(values: dict[str, Tensor], stall_speed: Tensor, cruise: Tensor):
+    """Per row (T,): the best sustained turn rate and its speed, coasting at mid store. At each
+    speed the stick that holds energy (total energy rate zero; full stick when full stick
+    gains), over speeds above stall that hold energy straight; a grid from stall to cruise
+    speed, then a second grid one step either side of the best (resolution about 0.01 m/s)."""
+    column = SimpleNamespace(**{name: value[:, None] for name, value in values.items()})
+    energy = column.spawn_energy
+
+    def sustained(speed: Tensor) -> Tensor:
+        zero, one = torch.zeros_like(speed), torch.ones_like(speed)
+        low, high = zero, one
+        for _ in range(SUSTAINED_STICK_STEPS):
+            middle = 0.5 * (low + high)
+            gains = quasi_steady(column, speed, middle, 0, energy)[2] > 0.0
+            low, high = torch.where(gains, middle, low), torch.where(gains, high, middle)
+        full_gains = quasi_steady(column, speed, one, 0, energy)[2] >= 0.0
+        stick = torch.where(full_gains, one, 0.5 * (low + high))
+        rate = quasi_steady(column, speed, stick, 0, energy)[0]
+        straight = quasi_steady(column, speed, zero, 0, energy)[2]
+        return torch.where((straight >= 0.0) & (speed > stall_speed[:, None]), rate, 0.0)
+
+    fraction = torch.linspace(0.0, 1.0, SUSTAINED_GRID)
+    with torch.no_grad():
+        low, high = stall_speed[:, None], cruise[:, None]
+        for _ in range(2):
+            speeds = low + (high - low) * fraction
+            rates = sustained(speeds)
+            best = rates.argmax(-1, keepdim=True)
+            step = (high - low) / (SUSTAINED_GRID - 1)
+            centre = speeds.gather(-1, best)
+            low, high = centre - step, centre + step
+        return rates.gather(-1, best)[:, 0], centre[:, 0]
 
 
 def per_type_constants(config: GameConfig, ship_type: Tensor) -> SimpleNamespace:

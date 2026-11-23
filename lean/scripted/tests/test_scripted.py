@@ -20,7 +20,8 @@ from lean.scripted import (
     personas,
     renew_memory,
 )
-from lean.scripted.opponent import CLIMB, COAST, DIVE, PERSONA_FIELDS
+from lean.scripted.opponent import CLIMB, COAST, DIVE, explain
+from lean.scripted.parameters import PARAMETERS, SAMPLED
 
 CPU = torch.device("cpu")
 
@@ -81,10 +82,18 @@ def placed(own: dict, target: dict, energy_fraction: float = 0.5, arena_radius: 
     )
 
 
+def memory_of(slots: int = 2, side: float = 1.0, target=None) -> dict:
+    """A fresh memory for one environment: no kept target (or `target`), the drawn side."""
+    memory = fresh_memory(1, slots, None, CPU)
+    memory["side"] = torch.full((1, slots), side)
+    if target is not None:
+        memory["target"] = target
+    return memory
+
+
 def decide(state, memory=None):
     """The yardstick's marginals for team 0 with a fresh memory (side +1, no kept target)."""
-    memory = memory or {"target": torch.full((1, 2), -1), "side": torch.ones(1, 2)}
-    return marginals(ScriptedConfig(), state, 0, None, memory)
+    return marginals(ScriptedConfig(), state, 0, None, memory or memory_of())
 
 
 def test_actions_in_range_and_zero_for_uncontrolled_rows():
@@ -147,9 +156,9 @@ def test_randomness_only_from_sampling():
     fields, and the decision does not depend on the tick, only on the state, the memory and
     the uniforms."""
     config = ScriptedConfig()
-    assert not [name for name in dataclasses.asdict(config) if "hold" in name]
+    assert not [name for name in PARAMETERS if "hold" in name.split("_")]
     persona = personas(config, 8, 10, torch.Generator().manual_seed(1), CPU, 1.0)
-    assert set(persona) == set(PERSONA_FIELDS)
+    assert set(persona) == set(SAMPLED)
     state = random_state(envs=8, slots=10, seed=2)
     uniforms = draw_uniforms(8, 10, torch.Generator().manual_seed(3), CPU)
     memory = fresh_memory(8, 10, torch.Generator().manual_seed(4), CPU)
@@ -170,20 +179,19 @@ def test_turns_toward_a_target_on_its_left():
     assert chaser_act(config, state, 0)[0, 0, 0].item() == left_indices[-1]
 
 
-# The power rule's cases (lean/scripted/NOTES.md "Power"): own ship at the origin heading +x;
-# the target at `bearing` (radians, 0 ahead) and `distance` gun ranges, flying the same way.
-# Speeds in corner speeds, the store as a fraction of full. Expected: the most likely power.
+# The power's cases (lean/scripted/NOTES.md "Power"): own ship at the origin heading +x; the
+# target at `bearing` (radians, 0 ahead) and `distance` gun ranges, flying the same way at the
+# same speed. Speeds in corner speeds (the P-51D's sustained speed is 0.575), the store as a
+# fraction of full. Expected: the most likely power.
 POWER_CASES = [
     # name, speed, bearing, distance, store, expected
-    ("slow, straight, target ahead", 0.55, 0.0, 2.0, 0.5, DIVE),
-    ("below corner in a hard turn", 0.85, math.pi / 2, 1.5, 0.5, DIVE),
-    ("slow in a hard turn, store empty", 0.6, math.pi / 2, 1.5, 0.0, COAST),
-    ("at corner speed, straight", 1.0, 0.0, 1.5, 0.5, COAST),
-    ("just above corner in a hard turn", 1.08, math.pi / 2, 1.5, 0.5, COAST),
-    ("well above corner speed", 1.3, 0.0, 1.5, 0.5, CLIMB),
-    ("very close behind the target", 1.0, 0.0, 0.12, 0.5, CLIMB),
-    ("far, store low", 1.0, 0.0, 6.0, 0.1, CLIMB),
-    ("far, store high", 1.0, 0.0, 6.0, 0.8, COAST),
+    ("disengaged, slow: no dive (nothing to spend for)", 0.6, 0.0, 6.0, 0.5, COAST),
+    ("disengaged at merge speed", 1.0, 0.0, 6.0, 0.5, COAST),
+    ("disengaged and fast: bank the speed", 1.15, 0.0, 6.0, 0.5, CLIMB),
+    ("disengaged and fast, store full", 1.15, 0.0, 6.0, 1.0, COAST),
+    ("engaged, below the fight speed", 0.45, 0.0, 1.5, 0.5, DIVE),
+    ("engaged, below the fight speed, store empty", 0.45, 0.0, 1.5, 0.0, COAST),
+    ("out of range behind a straight target: the engine closes", 0.7, 0.0, 1.5, 0.8, COAST),
 ]
 
 
@@ -206,21 +214,20 @@ def power_case(speed: float, bearing: float, distance: float, store: float):
 @pytest.mark.parametrize(
     "name, speed, bearing, distance, store, expected", POWER_CASES, ids=[c[0] for c in POWER_CASES]
 )
-def test_power_rule(name, speed, bearing, distance, store, expected):
-    """Author 2026-11-23 (5.1): dive when too slow (above all in a turn), climb when too fast or
-    too close, climb a little when far with a low store, otherwise coast."""
+def test_power_tracks_the_speed_target(name, speed, bearing, distance, store, expected):
+    """Design B5: climb above the speed target v*, dive below it, coast in the band; v* the
+    merge speed disengaged, the fight speed engaged (moved by the yo-yo: up to corner speed
+    when falling behind out of range); the dive only engaged, each faded at its edge of the
+    store. The tactics' own cases: test_tactics.py."""
     power = power_case(speed, bearing, distance, store)
-    if name == "far, store low":  # "climb a little": about half the ticks, never a dive
-        assert 0.3 < float(power[CLIMB]) < 0.7 and float(power[DIVE]) < 0.05, power.tolist()
-    else:
-        assert int(power.argmax()) == expected and float(power[expected]) > 0.6, power.tolist()
+    assert int(power.argmax()) == expected and float(power[expected]) > 0.6, power.tolist()
 
 
 def test_kept_target_switches_only_for_a_much_closer_enemy():
     """Decision 5.2: keep the target unless another is closer than 0.8 of its distance."""
     config = core.GameConfig(spawn="mixed", field_count=0, fog=False)
     state = core.reset(config, 1, torch.tensor([[1, 2]]), torch.Generator().manual_seed(0), CPU)
-    memory = {"target": torch.tensor([[1, -1, -1]]), "side": torch.ones(1, 3)}
+    memory = memory_of(3, target=torch.tensor([[1, -1, -1]]))
     for other, expected in ((0.85, 1), (0.75, 2)):
         moved = state.replace(
             x=torch.tensor([[0.0, 1000.0, 1000.0 * other]]), y=torch.tensor([[0.0, 0.0, 1.0]])
@@ -234,16 +241,20 @@ def test_kept_target_switches_only_for_a_much_closer_enemy():
 
 
 def test_head_on_side_is_drawn_once_per_ship_per_match_and_kept():
-    """Decision 5.5: in the symmetric head-on pass (the target straight behind) each ship turns
-    to a side drawn once per ship per match; the side is never changed by `act` and is redrawn
-    only for a new match (`renew_memory`)."""
-    state = placed(
-        dict(x=0.0, y=0.0, heading=0.0, speed=260.0),
-        dict(x=-400.0, y=0.0, heading=math.pi, speed=260.0),
-    )
-    left = decide(state, {"target": torch.full((1, 2), -1), "side": torch.ones(1, 2)}).stick[0, 0]
-    right = decide(state, {"target": torch.full((1, 2), -1), "side": -torch.ones(1, 2)}).stick[0, 0]
-    assert left[[2, 4, 6]].sum() > 0.9 and right[[1, 3, 5]].sum() > 0.9
+    """Decision 5.5: in the symmetric head-on pass (the target straight behind, flying
+    straight) the plan's sense has no side to go by, so each ship turns by a side drawn once
+    per ship per match (two-circle with more energy: to the side; one-circle: away from it);
+    the side is never changed by `act` and is redrawn only for a new match (`renew_memory`)."""
+    for own_store, plan in ((0.8, 1.0), (0.2, -1.0)):
+        state = placed(
+            dict(x=0.0, y=0.0, heading=0.0, speed=260.0),
+            dict(x=-400.0, y=0.0, heading=math.pi, speed=260.0),
+        )
+        store = torch.tensor([[own_store, 0.5]]) * state.constants["max_energy"]
+        state = state.replace(energy=store)
+        left = decide(state, memory_of(side=plan)).stick[0, 0]
+        right = decide(state, memory_of(side=-plan)).stick[0, 0]
+        assert left[[2, 4, 6]].sum() > 0.9 and right[[1, 3, 5]].sum() > 0.9, own_store
 
     generator = torch.Generator().manual_seed(5)
     envs = 64
@@ -268,22 +279,23 @@ def test_head_on_side_is_drawn_once_per_ship_per_match_and_kept():
 def test_the_lead_counts_the_medium():
     """Review finding 9: velocities over the map are proper velocities over the index n, and a
     bullet's time of flight is n (the shooter's) times longer. A crossing target inside a field
-    (n = e^0.5) moves slower over the map, so the shooter outside leads it less: a smaller aim
-    error, so less of the full stick level."""
+    (n = e^0.5) moves slower over the map, so the shooter outside leads it less: a smaller
+    angle to the gun's lead point."""
     base = placed(
         dict(x=0.0, y=0.0, heading=0.0, speed=250.0),
         dict(x=500.0, y=0.0, heading=math.pi / 2, speed=250.0),
     )
-    full_left = []
+    lead = []
     for log_index in (0.0, 0.5):
         fields = torch.tensor(
             [[[500.0], [0.0], [150.0], [50.0], [log_index]]]
         )  # a field at the target
         state = base.replace(fields=fields)
         state.ships[0, core.LOG_INDEX] = torch.tensor([0.0, log_index])
-        full_left.append(float(decide(state).stick[0, 0, 6]))
-    print(f"P(full left) without and with the field: {full_left}")
-    assert full_left[1] < full_left[0] - 0.05
+        memory = memory_of()
+        lead.append(float(explain(ScriptedConfig(), state, 0, None, memory).gun_error[0, 0]))
+    print(f"angle to the lead point without and with the field: {lead}")
+    assert 0.0 < lead[1] < lead[0] - 0.05
 
 
 def test_reads_every_number_from_the_game():
@@ -291,7 +303,7 @@ def test_reads_every_number_from_the_game():
     ship characteristic or arena radius; the opponent steers by the game's arena: near the edge
     of a 1,500 m arena, flying outward at a target further out, it turns back toward the
     centre, where in the 4,200 m arena it flies at the target."""
-    names = {field.name for field in dataclasses.fields(ScriptedConfig)}
+    names = set(PARAMETERS) | {field.name for field in dataclasses.fields(ScriptedConfig)}
     for name in (
         "arena_radius",
         "gun_range",
@@ -319,6 +331,30 @@ def test_reads_every_number_from_the_game():
             decide(placed(own, target, arena_radius=radius)).stick[0, 0, [2, 4, 6]].sum()
         )
     assert left[1500.0] > 0.9 and left[4200.0] < 0.1
+
+
+def test_boundary_margin_is_in_turn_radii_at_the_ship_speed():
+    """Design B5: the edge band is a number of turn radii at the ship's speed, the sustained
+    radius up to corner speed (as speed squared above), not speed^2 / max acceleration (half
+    the real radius when slow). A slow ship 250 m inside the edge, flying outward at a target
+    further out, turns back toward the centre; 1,000 m inside it flies at the target; a fast
+    ship (1.6 corner speeds) turns back from 1,000 m."""
+    heading = math.pi / 2 - 0.3  # the centre is to the left
+    bearing = heading - 0.4  # the target 600 m away, to the right
+
+    def left_share(inside: float, speed_in_corner: float) -> float:
+        probe = placed(dict(x=0.0, y=0.0, heading=0.0, speed=100.0),
+                       dict(x=1.0, y=0.0, heading=0.0, speed=100.0))
+        speed = speed_in_corner * probe.constants["corner_speed"]
+        x = 4200.0 - inside
+        own = dict(x=x, y=0.0, heading=heading, speed=speed)
+        target = dict(x=x + 600.0 * math.cos(bearing), y=600.0 * math.sin(bearing),
+                      heading=heading, speed=speed)
+        return float(decide(placed(own, target)).stick[0, 0, [2, 4, 6]].sum())
+
+    assert left_share(250.0, 0.6) > 0.9
+    assert left_share(1000.0, 0.6) < 0.1
+    assert left_share(1000.0, 1.6) > 0.9
 
 
 def test_never_shoots_through_a_team_mate():
@@ -388,16 +424,19 @@ def test_one_call_for_both_teams_equals_the_two_single_team_calls():
         assert deaths > 0  # the ships fought
 
 
-def play_scripted(envs: int, ticks: int, spread: float, seed: int, chaser_team: int | None = None):
+def play_scripted(envs: int, ticks: int, spread: float, seed: int, chaser_team: int | None = None,
+                  persona=None):
     """Scripted (or scripted against the chaser on `chaser_team`) 4v4 games in the core game,
-    finished games re-dealt with a fresh memory. Returns per-slot tallies over the run."""
+    finished games re-dealt with a fresh memory; `persona` (E, 8) per-slot rows instead of a
+    draw at `spread`. Returns per-slot tallies over the run."""
     generator = torch.Generator().manual_seed(seed)
     config = game.GameConfig()
     sizes = torch.full((envs, 2), 4, dtype=torch.long)
     state = game.reset(config, envs, sizes, generator, CPU)
     slots = state.x.shape[1]
     scripted_config = ScriptedConfig()
-    persona = personas(scripted_config, envs, slots, generator, CPU, spread)
+    if persona is None:
+        persona = personas(scripted_config, envs, slots, generator, CPU, spread)
     memory = fresh_memory(envs, slots, generator, CPU)
     radius = state.constants["arena_radius"]
     farthest = torch.zeros(envs, slots)
@@ -437,15 +476,15 @@ def play_scripted(envs: int, ticks: int, spread: float, seed: int, chaser_team: 
 def test_every_persona_is_competent_at_spread_one():
     """Sign-off 2026-11-23: every persona competent. At spread 1, 32 environments of 4v4 for
     1,800 ticks (finished games re-dealt; each slot keeps its persona): no ship goes past the
-    end of the boundary's damage ramp, and of the ships that lived 20 s at least 49 in 50
-    fired (the yardstick itself has a rare survivor that never gets a firing solution: 1 of
-    236 at this seed)."""
+    end of the boundary's damage ramp, and of the ships that lived 20 s at least 97 in 100
+    fired (with BFM a defender survives longer without a firing solution: at seeds 7, 8, 9
+    0.979, 0.983, 0.988 of them fired; the yardstick at seed 7 0.983)."""
     tallies = play_scripted(envs=32, ticks=1800, spread=1.0, seed=7)
     print(f"farthest {float(tallies['farthest'].max()):.3f} of the arena radius")
     assert float(tallies["farthest"].max()) < 1.0 + 300.0 / 4200.0
     long_lived = tallies["lived"] >= 600
     assert long_lived.sum() > 100
-    assert float(tallies["fired"][long_lived].float().mean()) >= 0.98
+    assert float(tallies["fired"][long_lived].float().mean()) >= 0.97
 
 
 def test_opponent_beats_chaser():
@@ -462,3 +501,35 @@ def test_opponent_beats_chaser():
     print(f"opponent against chaser: {wins} wins, {losses} losses, {ended} ended of 48")
     assert ended >= 24
     assert wins > 0.65 * ended
+
+
+def box_end(name: str, end: int) -> float:
+    """A sampled row's value at one end of its box (spread 1)."""
+    row = PARAMETERS[name]
+    if row.law == "log":
+        return row.default * math.exp(end * row.width)
+    if row.law == "linear":
+        return row.default + end * row.width
+    return row.default + (row.width if end > 0 else 0.0)  # upward
+
+
+def test_every_parameter_alone_at_both_ends_of_its_box_is_competent():
+    """Each parameter is competent alone: every sampled row at each end of its box, the rest
+    at the yardstick, in one batch (two environments of 4v4 per case, 900 ticks): no ship goes
+    past the end of the boundary's damage ramp, and in every case ships fire (at seed 3 the
+    lowest case had 13 of its 16 ships fire, the farthest reached 1.053 arena radii)."""
+    cases = [(name, end) for name in SAMPLED for end in (-1, 1)
+             if not (PARAMETERS[name].law == "upward" and end < 0)]
+    per_case, slots = 2, 8
+    envs = per_case * len(cases)
+    persona = {name: torch.full((envs, slots), PARAMETERS[name].default) for name in SAMPLED}
+    for index, (name, end) in enumerate(cases):
+        persona[name][index * per_case : (index + 1) * per_case] = box_end(name, end)
+    tallies = play_scripted(envs=envs, ticks=900, spread=0.0, seed=3, persona=persona)
+    farthest = tallies["farthest"].reshape(len(cases), -1).amax(-1)
+    fired = tallies["fired"].reshape(len(cases), -1).float().mean(-1)
+    worst = sorted(zip(fired.tolist(), cases))[:3]
+    outermost = sorted(zip(farthest.tolist(), cases))[-3:]
+    print(f"farthest {outermost}; lowest shares of ships that fired {worst}")
+    assert float(farthest.max()) < 1.0 + 300.0 / 4200.0
+    assert float(fired.min()) >= 0.5

@@ -2,21 +2,22 @@
 
 from .chaser import ChaserConfig, chaser_act
 from .opponent import (
-    GATES,
     Marginals,
-    ScriptedConfig,
     act,
     decide,
     draw_uniforms,
     fresh_memory,
     marginals,
-    personas,
     renew_memory,
     sample,
 )
+from .parameters import GATES, PARAMETERS, Gate, Parameter, ScriptedConfig, personas
 
 __all__ = [
     "GATES",
+    "PARAMETERS",
+    "Gate",
+    "Parameter",
     "ChaserConfig",
     "Marginals",
     "ScriptedConfig",

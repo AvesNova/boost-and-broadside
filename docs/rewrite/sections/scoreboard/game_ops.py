@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "simplification
 import regions as R  # noqa: E402
 
 from lean.game import core  # noqa: E402
-from lean.scripted.opponent import ScriptedConfig, act, draw_uniforms, fresh_memory, personas  # noqa: E402
+from lean.scripted import ScriptedConfig, act, draw_uniforms, fresh_memory, personas  # noqa: E402
 
 torch.set_num_threads(1)
 E, PER_TEAM = 256, 5
