@@ -97,6 +97,9 @@ class LearnConfig:
     # The policy's forward passes (rollout and update) under bf16 autocast on a GPU; the
     # model keeps its position phases and recurrence in float32. Ignored on the CPU.
     bf16: bool = True
+    # The league's network moves in a rollout tick replayed as one CUDA graph (compiled, on a
+    # GPU; lean.learn.rollout.NetworkGraph): the per-slot calls are launch-bound otherwise.
+    network_cuda_graph: bool = True
 
     # Categorical critic: the outermost bin centres per level, in return units (LEVEL_NAMES
     # order). Each holds the level's measured returns with margin (lean/learn/NOTES.md,

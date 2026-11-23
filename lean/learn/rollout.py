@@ -325,16 +325,83 @@ def network_actions(config: LearnConfig, league, views: tuple[Obs, Obs], carry: 
     return action, opponent_carry
 
 
+# The CollectCarry fields the league's network moves read (slot_actions).
+NETWORK_CARRY = ("member", "slot", "learner_team", "position_offset", "opponent")
+
+
+class NetworkGraph:
+    """network_actions over every slot of one network table, captured as one CUDA graph and
+    replayed every tick: the per-slot compiled calls are launch-bound (about 1.35 ms a slot
+    at small sizes). Captured again when the league's table changes (League.prepare builds
+    one per segment) or an input's shape, dtype or strides do. Each tick copies the inputs
+    into the graph's own buffers and copies the outputs out (the next replay overwrites
+    them). The slots' weights are read where they live (the averages' slots are updated in
+    place, a new snapshot builds a new table). For the compiled path on a GPU (collect)."""
+
+    def __init__(self):
+        self.table = None
+        self.key = None
+
+    @staticmethod
+    def flat(views: tuple[Obs, Obs], carry: CollectCarry, scripted_action: Tensor) -> list[Tensor]:
+        fields = [getattr(view, field.name) for view in views for field in dataclasses.fields(view)]
+        return fields + [getattr(carry, name) for name in NETWORK_CARRY] + [scripted_action]
+
+    def capture(self, config, league, views, carry, scripted_action, step, inputs) -> None:
+        self.graph = None  # free the previous graph's memory first
+        self.static = [torch.empty_strided(value.shape, value.stride(), dtype=value.dtype, device=value.device)
+                       for value in inputs]
+        for static, value in zip(self.static, inputs, strict=True):
+            static.copy_(value)
+        names = [field.name for field in dataclasses.fields(views[0])]
+        count = 2 * len(names)
+        static_views = tuple(
+            dataclasses.replace(view, **dict(zip(names, self.static[side * len(names):(side + 1) * len(names)], strict=True)))
+            for side, view in enumerate(views)
+        )
+        static_carry = dataclasses.replace(carry, **dict(zip(NETWORK_CARRY, self.static[count:-1], strict=True)))
+        arguments = (config, league, static_views, static_carry, self.static[-1], None, step)
+        side = torch.cuda.Stream()
+        side.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(side):  # warm-up outside the capture (compiles, cuBLAS workspaces)
+            for _ in range(2):
+                network_actions(*arguments)
+        torch.cuda.current_stream().wait_stream(side)
+        self.graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(self.graph):
+            self.outputs = network_actions(*arguments)
+
+    def __call__(self, config, league, views, carry, scripted_action, step) -> tuple[Tensor, Tensor]:
+        inputs = self.flat(views, carry, scripted_action)
+        key = [(value.shape, value.stride(), value.dtype) for value in inputs]
+        if league.table is not self.table or key != self.key:
+            self.capture(config, league, views, carry, scripted_action, step, inputs)
+            self.table, self.key = league.table, key
+        for static, value in zip(self.static, inputs, strict=True):
+            static.copy_(value)
+        self.graph.replay()
+        return tuple(output.clone() for output in self.outputs)
+
+    @staticmethod
+    def usable(views, carry, scripted_action) -> bool:
+        """Every input on a GPU and without internal overlap (a broadcast input cannot be
+        copied into)."""
+        inputs = NetworkGraph.flat(views, carry, scripted_action)
+        return all(value.is_cuda and not torch._debug_has_internal_overlap(value) for value in inputs)
+
+
 def league_actions(config: LearnConfig, opponent: Opponent, views: tuple[Obs, Obs], carry: CollectCarry,
-                   scripted_action: Tensor, generator, step=slot_actions):
+                   scripted_action: Tensor, generator, step=slot_actions, graph: NetworkGraph | None = None):
     """Actions of the league side of every league environment, (L, N, 3), and the new
     opponent carry: the scripted agent's (already computed as the BC target) until the
     league has a network table (League.prepare), then network_actions (`step` the per-slot
-    function, slot_actions or its compiled form)."""
+    function, slot_actions or its compiled form), replayed from `graph` when one is given."""
     league = opponent.league
     league_envs = carry.member.shape[0]
     if league is None or league.table is None or league_envs == 0:
         return league_rows(scripted_action, league_envs), carry.opponent
+    if graph is not None and NetworkGraph.usable(views, carry, scripted_action):
+        return graph(config, league, views, carry, scripted_action, step)
     return network_actions(config, league, views, carry, scripted_action, generator, step)
 
 
@@ -578,6 +645,7 @@ def collect(
         from lean.learn.compiled import graphs
 
         act_part, advance_part, networks = graphs().act, graphs().advance, graphs().slot_actions
+        network_graph = NetworkGraph() if device.type == "cuda" and config.network_cuda_graph else None
         generator = None
         # A fresh state can hold broadcast (stride 0) tensors where a re-dealt one holds
         # whole ones (even empty ones: fields with F = 0); the graphs are specialised on
@@ -586,6 +654,7 @@ def collect(
         state = dataclasses.replace(state, constants=map_fields(state.constants, whole))
     else:
         act_part, advance_part, networks = act, advance, slot_actions
+        network_graph = None
     if opponent.league is not None:
         opponent.league.prepare(carry.member.shape[0], carry.slot)
     carry = dataclasses.replace(
@@ -609,7 +678,9 @@ def collect(
         (views, observation, seat_offset, joint, log_probability, value, scripted_action, teacher, policy_carry, _,
          scripted_memory) = act_part(config, game_config, policy, opponent, state, carry, generator)
         deal_row = carry.deal_row.index_select(0, seat_environment)
-        league_action, opponent_carry = league_actions(config, opponent, views, carry, scripted_action, generator, networks)
+        league_action, opponent_carry = league_actions(
+            config, opponent, views, carry, scripted_action, generator, networks, network_graph
+        )
         state, carry, tick_records = advance_part(
             config, game_config, policy, opponent, state, carry, observation, joint, teacher, league_action,
             opponent_carry, policy_carry, scripted_memory, label_row, hit_label, generator,
