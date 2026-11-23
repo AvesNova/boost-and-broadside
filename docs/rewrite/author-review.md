@@ -6,6 +6,12 @@ what is described here, and the note is listed under "Stale notes" in its sectio
 
 ## How to use this document
 
+- **Status 2026-11-24:** each numbered item below starts with a status line: decided (with where
+  it is recorded, `core-decisions.md`), decided and built, done, or still open. The item bodies
+  are the original 2026-11-23 text and were not rewritten; "Stale notes" lists describe the notes
+  before their 2026-11-24 rewrite. Still open: 1.4, 8.5, 10.1, 10.2, the clock's length (2.3),
+  the cheese agents (8.3) and `core-brief.md` (11.3).
+
 - Each topic section has three parts, always in this order:
   1. **Decisions needed**: numbered items (for example 7.1) you can answer one by one.
   2. **Done or decided, for information**: short. Where something is decided but the code does
@@ -56,6 +62,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 1.1 Sign off the core flight model and make it the default
 
+**Status 2026-11-24: decided and built.** Signed off 2026-11-23; `GameConfig()` is the core game and v2's flight and damage models are gone. core-decisions.md "Sign-off and personas".
+
 - **What it is.** Two flight models (and two damage forms) live side by side in
   `game/core.py`: "v2" (v2's, tested equal to v2) and "core" (the agreed new physics: weight
   on the wing, the engine driving speed only, a two-loop store, firing cutting the engine).
@@ -78,6 +86,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 1.2 Store size, exchange rate and the edge band
 
+**Status 2026-11-24: decided.** Store size and the edge band feel right after flying. core-decisions.md "Flight, after the author flew the core model".
+
 - **What it is.** The store is the ship's altitude, as energy. Dive trades store for speed,
   climb trades speed for store, at a capped rate (the exchange rate). Near the top and bottom
   of the store a taper fades dive and climb out (the edge band).
@@ -98,6 +108,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 1.3 The cost of firing
 
+**Status 2026-11-24: decided.** The firing cost is fine (if anything weak). core-decisions.md "Flight, after the author flew the core model".
+
 - **What it is.** Firing cuts the engine on the ticks the ship fires (bullets no longer cost
   store). The fraction of thrust kept while firing sets how much speed firing costs.
 - **In the code now.** `fire_thrust_fraction = 0.0` (`game/core.py:105`): the engine is fully
@@ -113,6 +125,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 1.4 Engine power
 
+**Status 2026-11-24: open.** Waits for the WWII research (core-decisions.md "Flight, after the author flew the core model").
+
 - **What it is.** Under core the engine always runs at full effort and only drives speed.
   Its power is the card's full-store power; v2's extra 7 to 9 kW/kg "surplus", which only
   charged the store, is gone.
@@ -126,6 +140,8 @@ In priority order. Each line: the item, then what waits on it.
 - **References.** Q10(c); worklog 02:43 ("Engine power choice"); p51d-model.
 
 #### 1.5 The slow full-stick turn, and the "turn wins" switch
+
+**Status 2026-11-24: decided.** Coasting holds altitude and the turn has precedence over the climb; the switch was not built (automatic flaps were added instead). core-decisions.md "Flight, after the author flew..." and "Flight model direction and shared code".
 
 - **What it is.** Because coasting always holds 1 g on the wing, a slow ship at full stick
   turns less; diving frees lift for the turn. You decided "altitude wins", and asked for the
@@ -145,6 +161,8 @@ In priority order. Each line: the item, then what waits on it.
   core-flight-measurements; p51d-model "Vizia's climb modifications" (last paragraph).
 
 #### 1.6 The core model's shared terms and realism
+
+**Status 2026-11-24: decided.** Every flight-model term is per ship type, rows set through the high-level route. core-decisions.md "Flight model direction and shared code".
 
 - **What it is.** Four terms of the core model apply to every ship type: a drag rise above
   394 m/s (game units), separation drag that doubles induced drag at full lift, a soft minimum
@@ -187,6 +205,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 2.1 Boundary ramp
 
+**Status 2026-11-24: decided.** 300 m ramp. core-decisions.md "Answers from the author review, sections 2 to 6", 2.1.
+
 - **What it is.** The distance beyond the arena edge over which boundary damage rises from
   zero to its maximum.
 - **In the code now.** 300 m fixed (`game/core.py:64`), a builder's assumption.
@@ -201,6 +221,8 @@ In priority order. Each line: the item, then what waits on it.
   consistent with v2's code.
 
 #### 2.2 Arena size
+
+**Status 2026-11-24: decided.** 4,200 m. core-decisions.md, 2.2.
 
 - **What it is.** The arena radius sets fight density, the field sizes (scaled by
   arena / 2,600 m) and how far the rotary bands must reach (6.1).
@@ -217,6 +239,8 @@ In priority order. Each line: the item, then what waits on it.
   README "Decisions still with the author".
 
 #### 2.3 How a game ends without a shrinking boundary
+
+**Status 2026-11-24: decided.** A wipe, or at the clock more living ships, then more total shield, else a draw (built). The clock's length is still open: it waits for the scripted wipe-time measurement. core-decisions.md, 2.3.
 
 - **What it is.** With no shrink, a game ends by a wipe or at the clock; at the clock the
   team with more shield over its living ships wins, equal is a draw.
@@ -268,6 +292,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 3.1 Five fog choices
 
+**Status 2026-11-24: decided.** All five confirmed (built). core-decisions.md, 3.1.
+
 - **What it is.** Fog is built to your rule (seen in sight, on a tick of firing, on a tick of
   being hit; not by boundary damage). The builder had to settle five points the rule does not
   state.
@@ -291,6 +317,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 3.2 Absolute position in the ship features
 
+**Status 2026-11-24: decided and built.** Raw x/R and y/R dropped from the ship row; the position code and rotary carry position. core-decisions.md, follow-ups.
+
 - **What it is.** Each ship row carries its position over the arena radius (x/R, y/R), its
   outward direction and its distance inside the boundary, all in the true frame. The model's
   random position offset exists to stop memorised positions, but these features reach the
@@ -310,6 +338,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 3.3 The previous action as an input
 
+**Status 2026-11-24: decided and built.** Own team: every ally's pending action (42-way); the one-tick action delay is built. core-decisions.md, 3.3.
+
 - **What it is.** Whether a ship sees what each ship did last tick.
 - **In the code now.** Only a stored "fired last tick" flag (`game/core.py:1377`).
 - **v1 and v2.** v1 gave every ship's pending action, opponents included (listed as a v1
@@ -321,6 +351,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 3.4 Feature scaling
 
+**Status 2026-11-24: decided and built.** Fixed scales from measured ranges (lean/game/NOTES.md "Numbers"). core-decisions.md, 3.4.
+
 - **What it is.** The 20 ship scalars are linear at fixed scales (speed over 400 m/s, shield
   over 150 and so on, `game/core.py:1291-1375`). The plan said symlog where the range is wide.
 - **Options.** Keep; symlog the wide-range ones.
@@ -329,6 +361,8 @@ In priority order. Each line: the item, then what waits on it.
 - **References.** departure audit Observation row "Per-ship features".
 
 #### 3.5 Can a player see an enemy's store and shield?
+
+**Status 2026-11-24: decided and built.** Allies everything; a visible enemy as an ally; a hidden enemy its last-seen row. core-decisions.md, 3.5.
 
 - **What it is.** The model and the scripted opponent read a seen enemy's store and shield.
   The Imugi report flags this as worth checking against what a human player can see.
@@ -368,6 +402,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 4.1 What the first training run reproduces
 
+**Status 2026-11-24: decided.** 4v4 elimination, "mixed" spawn as a launch setting. core-decisions.md, 4.1.
+
 - **What it is.** The README asks whether stage 1 reproduces v1's conditions (mixed spawns,
   a short clock, a simple opponent, 4v4 only) on v2's game, then v2's conditions. Since then
   core-decisions set the goal as "every v2 feature back", with the recipe leaning towards v2's.
@@ -384,6 +420,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 4.2 Team sizes in training
 
+**Status 2026-11-24: decided.** 4v4 for now, nothing coupled to equal sizes. core-decisions.md, 4.2.
+
 - **In the code now.** 4 to 4, equal teams (`learn/config.py:85-87`).
 - **Others.** v1 4v4 only. v2's release run: 5v5 at 0.5, 4v5 and 3v5 at 0.25 each, the learner
   always the smaller side. The plan: sizes drawn per environment, unequal included
@@ -396,6 +434,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 4.3 Lineup
 
+**Status 2026-11-24: decided.** One ship type (the P-51D) for now, built for more. core-decisions.md, 4.3.
+
 - **In the code now.** v2 game: a fixed cycle by rank, Yongma then Jujak, the same for both
   teams (`game/core.py:68`), so every 4v4 game is the same 2 + 2 lineup. Core game: Vizia only.
 - **Others.** v2 drew Yongma or Jujak per slot per episode; the game audit recommended
@@ -407,6 +447,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 4.4 Spawn state
 
+**Status 2026-11-24: decided and built.** Standard spawn for evaluation and play; training draws speed, shield and store, with an eighth standard. core-decisions.md, 4.4.
+
 - **In the code now.** Full shield; store at the type's spawn value (v2 game) or half the
   store (core).
 - **Others.** v1 drew health and power uniformly in 75% to 100%. v2's spread was not
@@ -416,6 +458,8 @@ In priority order. Each line: the item, then what waits on it.
 - **References.** departure audit Game row "Spawn resources".
 
 #### 4.5 Which mode comes after elimination, and when
+
+**Status 2026-11-24: decided.** Elimination first, other modes later. core-decisions.md, 4.5.
 
 - **What it is.** Only elimination without shrink exists. Shrink, deathmatch (respawn),
   Frontline (zones) are not built.
@@ -447,6 +491,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 5.1 Power actions under the core physics
 
+**Status 2026-11-24: decided and built.** The power rule was rethought and rebuilt as the scripted BFM. core-decisions.md, 5.1 and "Scripted BFM".
+
 - **What it is.** The opponent's power rule is Imugi's: boost when slow, or far with store;
   reverse when very close. Under the core physics power 1 is dive (store into speed) and power
   2 is climb (speed into store). So in the core game it dives when slow or far and climbs when
@@ -462,6 +508,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 5.2 Target memory for the yardstick and the teacher
 
+**Status 2026-11-24: decided and built.** Target memory in every caller, keep factor 0.8. core-decisions.md, 5.2.
+
 - **What it is.** You decided target hysteresis: keep the current target unless another is
   closer than 0.8 of its distance. It lives in an optional memory argument.
 - **In the code now.** `target_keep_factor = 0.8` (`scripted/opponent.py:65`), but collect,
@@ -475,6 +523,8 @@ In priority order. Each line: the item, then what waits on it.
   "Choices the audit left open".
 
 #### 5.3 Persona population and spread
+
+**Status 2026-11-24: decided.** Personas per ship, hidden from the student, every one competent; the default teacher stays the narrow yardstick, the population is an arm. core-decisions.md, "Sign-off and personas".
 
 - **What it is.** Personas are per-ship variations of the opponent (gate centres, temperature,
   stand-off, preference for weak targets, lead gain). Spread 0 is the one fixed yardstick.
@@ -491,6 +541,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 5.4 The scripted operation tripwire
 
+**Status 2026-11-24: decided.** Signed off at the time (188 operations); the tripwire is now a signal to look for bloat, not a limit (the BFM `act` is 439 + 109). core-decisions.md, 5.4.
+
 - **What it is.** The budget for one scripted call is 170 operations. The line-of-fire check
   you asked for costs 21.
 - **In the code now.** One call for both teams: 188 operations (one team 190).
@@ -502,6 +554,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 5.5 The perfectly symmetric head-on pass
 
+**Status 2026-11-24: decided and built.** A random side drawn once per ship per match. core-decisions.md, 5.5.
+
 - **What it is.** Which way to turn when both ships meet exactly head-on.
 - **In the code now.** The side is the sign of the angle error, with a 0.02 floor
   (scripted/NOTES "Imugi behaviours dropped").
@@ -510,6 +564,8 @@ In priority order. Each line: the item, then what waits on it.
 - **References.** core-decisions "Scripted opponent" (open point).
 
 #### 5.6 Measure the exchange rate against v2's Imugi
+
+**Status 2026-11-24: decided.** No exchange rate against v2's Imugi. core-decisions.md, 5.6.
 
 - **What it is.** How strong lean's opponent is against v2's Imugi, so lean's results can be
   compared with v2's (v2's champion figure 1.49 is against Imugi).
@@ -523,6 +579,8 @@ In priority order. Each line: the item, then what waits on it.
   exchange rate".
 
 #### 5.7 Retreat and extend
+
+**Status 2026-11-24: decided.** No retreat or extend for now; in the backlog. core-decisions.md, 5.7.
 
 - **What it is.** Whether the opponent may leave a committed fight.
 - **Decided.** "Only by a carefully designed rule, or not at all"; the game should make a badly
@@ -573,6 +631,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 6.1 Rotary layout: two axes per band, or "x, y and attitude"
 
+**Status 2026-11-24: decided and built.** Ratio 2, irrational turn between bands, 22 of 32 pairs rotated. core-decisions.md, 6.1 and "Settled by the literature".
+
 - **What it is.** Rotary position turns each attention head's dimensions by angles from the
   ships' positions and headings, so attention reads relative position. Your decision says
   "x, y and attitude in each head"; the builder took v2's layout (x and y, two axes per band,
@@ -590,6 +650,8 @@ In priority order. Each line: the item, then what waits on it.
 
 #### 6.2 Default position code
 
+**Status 2026-11-24: decided.** Fourier default, grid cells an experiment arm. core-decisions.md, "Answers ... follow-ups".
+
 - **What it is.** Three swappable position codes: "fourier" (hexagonal Fourier features),
   "grid_cells" (Blair et al. 2007), "v2_codes" (v2's categorical code). You would like grid
   cells as the default.
@@ -604,6 +666,8 @@ In priority order. Each line: the item, then what waits on it.
   choices 11 and 12.
 
 #### 6.3 The next-state head: form, scales and weight
+
+**Status 2026-11-24: decided and built.** HL-Gauss cross-entropy per column, targets from the states, shield in symlog bins. core-decisions.md, 6.3.
 
 - **What it is.** An auxiliary head predicts seven scaled one-tick changes of the ship's state
   (a regression), at loss weight 0.1.
@@ -623,6 +687,8 @@ In priority order. Each line: the item, then what waits on it.
   review 13.
 
 #### 6.4 Builder choices that follow v2 (confirm in bulk)
+
+**Status 2026-11-24: decided and built.** All builder choices settled by the literature or the author. core-decisions.md, 6.4.
 
 Each follows v2 or a recorded source, under the rule "anything not listed follows v2". Listed
 so you can object to any one (model/NOTES "Choices the author should check"):
@@ -680,6 +746,8 @@ so you can object to any one (model/NOTES "Choices the author should check"):
 
 #### 7.1 Behaviour cloning: a stage before RL, or a term inside PPO
 
+**Status 2026-11-24: decided and built.** A BC stage on the teacher's full distribution, then RL with a teacher term that shrinks to zero. core-decisions.md, 7.1 (lean/learn/NOTES.md).
+
 - **What it is.** Behaviour cloning (BC) teaches the policy to copy the scripted opponent.
 - **In the code now.** A term inside PPO: cross-entropy to the scripted agent's **sampled**
   action (`learn/update.py:111`), weight 2.0 × max(0, 1 − w / 0.45)
@@ -704,6 +772,8 @@ so you can object to any one (model/NOTES "Choices the author should check"):
 
 #### 7.2 Weight averaging
 
+**Status 2026-11-24: decided and built.** An EMA and a uniform average, both in the league. core-decisions.md, 7.2.
+
 - **What it is.** Keeping an average of the weights over training, which is often stronger
   than the live weights.
 - **In the code now.** None.
@@ -719,6 +789,8 @@ so you can object to any one (model/NOTES "Choices the author should check"):
   difference 7; departure audit top-10 item 5; review 13; backlog D2.
 
 #### 7.3 KL early stop
+
+**Status 2026-11-24: decided and built.** No KL early stop; a monitor warns above 0.02. core-decisions.md, 7.3.
 
 - **What it is.** Stopping an update's epochs early when the policy has moved too far from the
   one that collected the data.
@@ -736,6 +808,8 @@ so you can object to any one (model/NOTES "Choices the author should check"):
 
 #### 7.4 Advantage scaling
 
+**Status 2026-11-24: decided and built.** Advantages divided by their standard deviation over the update. core-decisions.md, 7.4.
+
 - **What it is.** The summed advantage is divided by a scale before the policy loss.
 - **In the code now.** Divided by its standard deviation over the whole update, mean not
   subtracted (`learn/config.py:27`, `learn/returns.py:45`). A second option, "percentile",
@@ -752,6 +826,8 @@ so you can object to any one (model/NOTES "Choices the author should check"):
   the author"; review 6 and 13; departure audit Learner row "Advantages".
 
 #### 7.5 The balance of the loss terms
+
+**Status 2026-11-24: decided and built.** Fixed coefficients on scale-free terms; entropy 0.003. core-decisions.md, 7.5.
 
 - **What it is.** The weights of the policy, value, entropy, BC, next-state and hit terms.
 - **In the code now** (`learn/config.py:43-48`). Policy 1 (implicit), value 0.05 on the mean
@@ -774,6 +850,8 @@ so you can object to any one (model/NOTES "Choices the author should check"):
 
 #### 7.6 The lookahead before the bootstrap
 
+**Status 2026-11-24: decided.** No lookahead by default. core-decisions.md, 7.6.
+
 - **What it is.** v2 played 128 extra ticks after each rollout, never trained on, so returns
   were not cut at the segment's end. Lean bootstraps from the critic's value at the segment's
   end.
@@ -786,6 +864,8 @@ so you can object to any one (model/NOTES "Choices the author should check"):
   author".
 
 #### 7.7 Optimiser details
+
+**Status 2026-11-24: decided and built.** Fused Adam, no weight decay, epsilon 1e-5, clip 1.0, 2,000-step warm-up. core-decisions.md, 7.7.
 
 - **In the code now.** Adam epsilon 1e-5, not fused (`learn/config.py:41`); warm-up 10
   updates, then constant 3e-4 (`:39-40`); gradient clip 1.0.
@@ -800,6 +880,8 @@ so you can object to any one (model/NOTES "Choices the author should check"):
 
 #### 7.8 bf16 as the default precision
 
+**Status 2026-11-24: decided and built.** bf16 for matrix work, float32 where required. core-decisions.md, 7.8.
+
 - **In the code now.** bf16 autocast for the policy's forward passes on a GPU, losses in
   float32, position phases and recurrence in float32 (`learn/config.py:51`).
 - **Measured.** Compiled at 256 environments: 5,160 steps/s against 2,992 in float32; the
@@ -811,6 +893,8 @@ so you can object to any one (model/NOTES "Choices the author should check"):
   the GPU".
 
 #### 7.9 Value supports and range warnings
+
+**Status 2026-11-24: decided and built.** 64 bins; supports from measured returns, range warnings kept. core-decisions.md, 7.9.
 
 - **What it is.** Each reward level's critic predicts a distribution over 64 bins; the support
   is the range those bins cover. Targets beyond it are clamped. Warnings fire when too many
@@ -829,6 +913,8 @@ so you can object to any one (model/NOTES "Choices the author should check"):
   review 13.
 
 #### 7.10 How the million ticks per update are split
+
+**Status 2026-11-24: decided and built.** 2,048 environments x 4 segments x 128 ticks, returns chained over 512. core-decisions.md, 7.10.
 
 - **What it is.** You decided about 1 million environment ticks per update (2026-11-23), at
   parity with v2: 2,048 environments × 4 segments × 128 ticks = 1,048,576. The streaming
@@ -892,6 +978,8 @@ so you can object to any one (model/NOTES "Choices the author should check"):
 
 #### 8.1 League choices to confirm (in bulk)
 
+**Status 2026-11-24: decided and built.** The league as built in step L2 (lean/learn/NOTES.md "The league"). core-decisions.md, 8.1.
+
 The league is built to your design (half self-play, half league games, the scripted agent a
 member, (1 − p)² with a one-eighth uniform floor, AlphaStar's tallies). Seven points the
 design did not state (learn/NOTES "Choices the author should check"):
@@ -915,6 +1003,8 @@ design did not state (learn/NOTES "Choices the author should check"):
 
 #### 8.2 Snapshot cadence and retention
 
+**Status 2026-11-24: decided and built.** Checkpoints every 10M steps, snapshots on v2's schedule. core-decisions.md, 8.2.
+
 - **In the code now.** A snapshot every 10 updates, 8 slots, the oldest replaced
   (`learn/config.py:91-92`).
 - **v2.** Snapshots every 5M steps to 50M, then at doubling intervals, all kept; 4 network
@@ -929,6 +1019,8 @@ design did not state (learn/NOTES "Choices the author should check"):
 
 #### 8.3 Other league members: averages and cheese agents
 
+**Status 2026-11-24: decided.** Averages are league members (built); the cheese agents are not yet (step C, open in lean/learn/NOTES.md). core-decisions.md, 8.3.
+
 - **What it is.** v2's league also held the two weight averages and six "cheese" agents
   (scripted exploits). Lean holds the scripted agent and up to 8 snapshots.
 - **Options.** Add the averages (with 7.2); add cheese agents; neither.
@@ -937,6 +1029,8 @@ design did not state (learn/NOTES "Choices the author should check"):
   dropped" (cheese agents deferred to after M1).
 
 #### 8.4 In-training evaluation
+
+**Status 2026-11-24: decided.** The crossover is an evaluation measure only, run through `python -m lean.eval`, not in the training loop. core-decisions.md, "Answers ... sections 7 to 10".
 
 - **In the code now.** A crossover at network size 4 only (`train.py:50`), every 50 updates
   (`train.py:34`), 64 games per match (`train.py:35`) although `games_for` (v1's formula)
@@ -951,6 +1045,8 @@ design did not state (learn/NOTES "Choices the author should check"):
   "Position offset in evaluation"; README first-cut table ("`eval` passes no position offset").
 
 #### 8.5 Batched crossover settings
+
+**Status 2026-11-24: open.** The batched crossover's GPU gain over v1's walk is not shown (lean/eval/NOTES.md "Open").
 
 - **What it is.** The crossover now plays every network size at once, in rounds of batched
   matches, each size walking from the previous evaluation's ratio.
@@ -991,6 +1087,8 @@ design did not state (learn/NOTES "Choices the author should check"):
 
 #### 9.1 Training speed at parity (resolved: both games clear the floor)
 
+**Status 2026-11-24: decided.** Resolved; micro-batches as large as fit, streaming always on, position float32. core-decisions.md, "Answers ... sections 7 to 10".
+
 - **Measured (2026-11-23, laptop RTX 4070, compiled, bf16, 2,048 environments × 4 × 128
   ticks, 32 minibatches, targets once per update):** v2 game 6,124 steps/s, peak 5.18 GiB;
   core game 5,586, peak 5.58 GiB allocated, 7.27 GiB reserved (the closest to the 8 GB
@@ -1008,6 +1106,8 @@ design did not state (learn/NOTES "Choices the author should check"):
 
 #### 9.2 Compile start-up
 
+**Status 2026-11-24: decided.** Compile start-up accepted, no recompile at a new team size; it is a budget (the tripwire holds it). core-decisions.md.
+
 - **Measured.** 199 s cold, 72 s warm to the end of the first update (eager 17 s); repaid after
   about 20 updates cold, 6 warm.
 - **In the code now.** `--compile` on by default (`train.py:43`).
@@ -1015,6 +1115,8 @@ design did not state (learn/NOTES "Choices the author should check"):
 - **References.** Q12(d); scoreboard "Start-up".
 
 #### 9.3 The game's operation tripwire
+
+**Status 2026-11-24: decided.** The operation tripwire is a signal to look for bloat, not a hard limit. core-decisions.md.
 
 - **What it is.** A budget of operations per game tick, uncompiled: 1,300.
 - **Now.** v2 config without fields 1,148 (under); core config 1,522 (over), mostly the flight
@@ -1026,6 +1128,8 @@ design did not state (learn/NOTES "Choices the author should check"):
   scoreboard "Against the tripwires".
 
 #### 9.4 Play start-up (gate G2)
+
+**Status 2026-11-24: decided.** Play starts uncompiled and switches to the compiled step once a background build is ready; not built (rendering later). core-decisions.md.
 
 - **Measured (provisional, loaded machine).** Compiled, every size to 50v50 meets the frame
   budget on the CPU; uncompiled to 20v20. A compile takes 31 to 34 s cold, 12 s warm, against
@@ -1073,6 +1177,8 @@ design did not state (learn/NOTES "Choices the author should check"):
 
 #### 10.1 Where analysis tools live
 
+**Status 2026-11-24: open.** `game/tuning.py` is still in `lean/game`; not answered separately.
+
 - **What it is.** `game/tuning.py` (457 lines) is analysis code in the runtime package; it
   patches `card` module globals in place; `per_type_constants` exists only for it; its tests
   check v2's TOML files. The two analysis ship types (p51d, vizia_plain) widen the model's
@@ -1083,6 +1189,8 @@ design did not state (learn/NOTES "Choices the author should check"):
 - **References.** review 6 and 7; p51d-model "Card count".
 
 #### 10.2 Line length
+
+**Status 2026-11-24: open.** Not answered; `ruff check lean` still reports long lines (review 2026-11-24).
 
 - **What it is.** Lean's files are written at 120 columns against the project's 100; `ruff
   check lean` reports 372 long lines.
@@ -1140,6 +1248,8 @@ test lines go or shrink):
 
 #### 11.1 One short current NOTES per package
 
+**Status 2026-11-24: done.** One short NOTES.md per package; history is in core-worklog.md.
+
 - **What it is.** The notes pile up history and contradict the code (learn/NOTES is 662
   lines). The review proposes one short, current NOTES per package, with history moved to the
   worklog.
@@ -1149,12 +1259,16 @@ test lines go or shrink):
 
 #### 11.2 `CONTRACT.md` and `README.md`
 
+**Status 2026-11-24: done.** README and CONTRACT rewritten to the code.
+
 - **What it is.** CONTRACT describes the unpacked `State` and no fog; the README keeps the
   first-cut tables and a "when the laptop is back" list that is done.
 - **Options.** Rewrite both to the code; or fold CONTRACT into the code's docstrings.
 - **References.** review 11.
 
 #### 11.3 `core-brief.md` and `LAPTOP_PROMPT.md`
+
+**Status 2026-11-24: half done.** `LAPTOP_PROMPT.md` deleted; the `core-brief.md` rewrite (backlog F1) is still open.
 
 - **What it is.** `core-brief.md` (the plan) does not match core-decisions (backlog F1, todo).
   `lean/LAPTOP_PROMPT.md` is a closed one-off prompt.
@@ -1163,6 +1277,8 @@ test lines go or shrink):
 - **References.** backlog F1; review 11.
 
 #### 11.4 A time box for the skeleton
+
+**Status 2026-11-24: dropped.** The README line is gone with the rewrite.
 
 - **What it is.** Listed in the README under "Decisions still with the author" with no further
   context in the sources. The backlog now orders the work instead.
