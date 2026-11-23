@@ -94,14 +94,17 @@ def act(config, state, team: int | None, persona, uniforms, memory) -> tuple[Ten
 ```python
 @dataclass
 class ModelConfig: ...                   # width, blocks, heads, levels 5, bins 64, position_code, ...
-class Policy(nn.Module):
+class Policy(nn.Module):                 # Policy(config); inputs are lean.contract's feature counts
     def initial_carry(self, envs, slots, device) -> Tensor   # (blocks, E, 1 + N, 4, width)
+    def next_state_target(self, state, next_state, step_out, tick_length) -> Tensor
+        # (E, N, NEXT_STATE) the next-state head's targets of one game step (collect records them)
     def step(self, obs: Obs, carry, position_offset=None, reset=None) -> tuple[Tensor, Tensor, Tensor]
         # logits (E, N, 42), value_logits (E, N, LEVELS, BINS), new carry
     def sequence(self, obs: Obs, carry, reset, position_offset=None)
         # obs fields carry a leading T; reset (T, E) bool zeroes the carry before that tick
         # returns logits (T, E, N, 42), value_logits (T, E, N, LEVELS, BINS),
-        #         next_state (T, E, N, NEXT_STATE), hit_logits (T, E, N, 3) and the final carry
+        #         next-state logits (T, E, N, NEXT_STATE, BINS), hit_logits (T, E, N, 3) and the
+        #         final carry; the next-state loss is lean.model.policy.next_state_cross_entropy
 ```
 
 The model reads from `Obs`: ship, pos, heading, key_mask, globals, field, field_pos,
