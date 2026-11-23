@@ -25,6 +25,10 @@ tools = [
     "websockets>=13",
     "matplotlib>=3.10",
     "wandb-workspaces>=0.4.13",
+    # The scripted agent's screening (docs/rewrite/scripted-screening.md).
+    "SALib>=1.5",
+    "scikit-learn>=1.6",
+    "shap>=0.47",
 ]
 
 [project.scripts]

@@ -70,12 +70,12 @@ class Evaluator:
         return [self.counts(agent_a, agent_b, sizes) for agent_a, agent_b, sizes, _ in requests]
 
     def _play_group(self, entries) -> None:
-        scripted_agents = []
+        index = {}  # each scripted agent's row of the table, in order of first appearance
         for agent_a, agent_b, _, _ in entries:
             for agent in (agent_a, agent_b):
-                if isinstance(agent, ScriptedAgent) and agent not in scripted_agents:
-                    scripted_agents.append(agent)
-        index = {agent: position for position, agent in enumerate(scripted_agents)}
+                if isinstance(agent, ScriptedAgent) and agent not in index:
+                    index[agent] = len(index)
+        scripted_agents = list(index)
         table = torch.tensor(
             [agent.values for agent in scripted_agents] or [ScriptedAgent.of().values], dtype=torch.float32,
             device=self.device,
@@ -94,16 +94,21 @@ class Evaluator:
             seconds=self.seconds, compiled=self.compiled, seed=seed, progress=self.progress,
             bf16=(seats[0][1], seats[1][1]),
         )
-        played = outcome.result >= 0
-        for number, (agent_a, agent_b, sizes, _) in enumerate(entries):
-            mine = played & (columns[:, 0] == number)
+        # The played games grouped by entry in one sort (not a scan of the queue per entry).
+        played = (outcome.result >= 0).nonzero().squeeze(-1)
+        played = played[torch.argsort(columns[played, 0], stable=True)]
+        counts = torch.bincount(columns[played, 0], minlength=len(entries)).tolist()
+        sides, results = columns[played, 3].tolist(), outcome.result[played].tolist()
+        lengths = outcome.length[played].tolist()
+        start = 0
+        for (agent_a, agent_b, sizes, _), count in zip(entries, counts, strict=True):
             self.store.add_agent(agent_a)
             self.store.add_agent(agent_b)
             conditions = self.store.add_conditions(self.game_config, sizes)
-            self.store.add_games(
-                agent_a.id, agent_b.id, conditions, columns[mine, 3].tolist(), outcome.result[mine].tolist(),
-                outcome.length[mine].tolist(),
-            )
+            end = start + count
+            self.store.add_games(agent_a.id, agent_b.id, conditions, sides[start:end], results[start:end],
+                                 lengths[start:end])
+            start = end
 
     def adaptive(self, pairings: list[tuple], *, target_error: float | None = None, budget: int | None = None,
                  round_games: int | None = None) -> list[dict]:
