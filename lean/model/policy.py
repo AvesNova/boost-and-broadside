@@ -16,6 +16,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from lean import contract
 from lean.model.position import Rotary, make_position_code
 from lean.model.temporal import Temporal
 from lean.model.value import hl_gauss_targets, value_bin_centres
@@ -85,8 +86,6 @@ class ModelConfig:
     map_width: int = 64
     mlp_ratio: int = 4
     head_hidden: int = 256
-    actions: int = 42
-    levels: int = 5
     bins: int = 64
     hit_classes: int = 3  # the hit head: miss, enemy, team-mate
     # Shares of the outcomes of every bullet that ended (ghosts included), 5.53M bullets of
@@ -139,9 +138,11 @@ def draw_position_offset(config: ModelConfig, envs: int, generator: torch.Genera
 
     Uniform over a square one coarsest period wide (config.offset_span), so the phase of
     every scale is uniform and absolute positions cannot be memorised. Draw once per match.
+    Drawn on `device` from `generator` (torch's default generator of the device when None, as
+    inside a compiled graph).
     """
-    uniform = torch.rand(envs, 2, generator=generator, device=generator.device if generator else "cpu")
-    return ((uniform - 0.5) * config.offset_span).to(device)
+    uniform = torch.rand(envs, 2, **contract.random_keywords(generator, device))
+    return (uniform - 0.5) * config.offset_span
 
 
 def next_state_target(config: ModelConfig, state, next_state, step_out, tick_length: float) -> Tensor:
@@ -258,7 +259,7 @@ class Encoder(nn.Module):
 
     def __init__(self, ship_inputs: int, game_inputs: int, field_inputs: int, config: ModelConfig):
         super().__init__()
-        self.ship = KindProjection(ship_inputs, config, categories=config.actions)
+        self.ship = KindProjection(ship_inputs, config, categories=contract.JOINT)
         self.game = KindProjection(game_inputs, config)
         self.field = KindProjection(field_inputs, config)
         self.shared = nn.Linear(2 * config.width, config.width)
@@ -389,8 +390,6 @@ class Policy(nn.Module):
 
     def __init__(self, config: ModelConfig):
         super().__init__()
-        from lean import contract
-
         if config.width % config.heads != 0:
             raise ValueError("width must be a multiple of heads")
         if 2 * config.rotary_pairs > config.width // config.heads:
@@ -404,7 +403,7 @@ class Policy(nn.Module):
             contract.FIELD_FEATURES + code, config,
         )
         self.blocks = nn.ModuleList(Block(config) for _ in range(config.blocks))
-        self.heads = HeadGroup(config.width, config.head_hidden, (config.actions, config.levels * config.bins), config)
+        self.heads = HeadGroup(config.width, config.head_hidden, (contract.JOINT, contract.LEVELS * config.bins), config)
         # The learner's auxiliary heads, one group: next state (a categorical per column) and hit.
         self.auxiliary_heads = HeadGroup(
             config.width, config.head_hidden, (config.next_state_size * config.bins, config.hit_classes), config
@@ -417,10 +416,6 @@ class Policy(nn.Module):
     def initial_carry(self, envs: int, slots: int, device) -> Tensor:
         """The zero recurrent state, (blocks, envs, 1 + slots, 4, width) float32."""
         return torch.zeros(self.config.blocks, envs, 1 + slots, 4, self.config.width, device=device)
-
-    def next_state_target(self, state, next_state, step_out, tick_length: float) -> Tensor:
-        """This model's next-state targets: lean.model.next_state_target with its config."""
-        return next_state_target(self.config, state, next_state, step_out, tick_length)
 
     def step(self, obs, carry: Tensor, position_offset: Tensor | None = None, reset: Tensor | None = None):
         """One tick.
@@ -519,7 +514,7 @@ class Policy(nn.Module):
 
         ships = tokens[:, :, 1:]
         logits, value_logits = self.heads(ships)
-        value_logits = value_logits.view(ticks, envs, slots, self.config.levels, self.config.bins)
+        value_logits = value_logits.view(ticks, envs, slots, contract.LEVELS, self.config.bins)
         next_state = hit_logits = None
         if with_auxiliary:
             next_state, hit_logits = self.auxiliary_heads(ships)

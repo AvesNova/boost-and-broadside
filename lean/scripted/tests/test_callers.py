@@ -1,62 +1,71 @@
 """Decision 5.2: every caller carries the scripted agent's memory from call to call and starts
 it afresh for each match (collect's teacher and league opponent, evaluation, the sandbox)."""
 
-from types import SimpleNamespace
-
 import torch
 
-from lean import game, scripted
+from lean import game, model, scripted
 from lean.eval import play_results
-from lean.learn import LearnConfig
-from lean.learn.collect import Opponent, collect, start
-from lean.learn.tests import standins
+from lean.learn import collect
+from lean.learn.tests.setting import small
 from lean.sandbox.world import World
 
 
-def test_collect_carries_the_memory_and_renews_it_at_each_deal():
-    """The stand-in's memory counts the calls since its match began, so after a segment every
-    environment's count is its episode tick minus one: carried every tick, fresh at a re-deal."""
-    generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=2)
-    policy = standins.TinyPolicy()
-    opponent = Opponent(scripted_config=None)
-    options = dict(game=standins.game, scripted=standins.scripted)
-    state, carry = start(config, standins.GameConfig(), policy, opponent, 8, generator, **options)
-    rollout = collect(
-        config, standins.GameConfig(), policy, opponent, state, carry, 16, generator, **options
+class MemoryRecorder:
+    """Wraps lean.scripted.decide (install with pytest's monkeypatch) and keeps, per call, the
+    state's episode tick, the memory passed in and the memory returned."""
+
+    def __init__(self):
+        self.calls = []
+        self.decide = scripted.decide
+
+    def __call__(self, config, state, team, persona, uniforms, memory):
+        action, new_memory, parts = self.decide(config, state, team, persona, uniforms, memory)
+        self.calls.append((state.tick.clone(), {name: value.clone() for name, value in memory.items()}, new_memory))
+        return action, new_memory, parts
+
+    def check(self, discarded=()) -> int:
+        """Each call's memory is the previous call's, except in environments starting a new
+        game (episode tick 0), whose kept target is fresh (-1). Calls whose result the caller
+        discards (by index) are left out. Returns the fresh starts seen."""
+        calls = [call for index, call in enumerate(self.calls) if index not in discarded]
+        fresh = 0
+        for (_, _, before), (tick, given, _) in zip(calls[:-1], calls[1:], strict=True):
+            new_game = tick == 0
+            assert torch.equal(given["target"][~new_game], before["target"][~new_game])
+            assert torch.equal(given["side"][~new_game], before["side"][~new_game])
+            assert (given["target"][new_game] == -1).all()
+            fresh += int(new_game.sum())
+        return fresh
+
+
+def test_collect_carries_the_memory_and_renews_it_at_each_deal(monkeypatch):
+    """Collect's one scripted call per tick (teacher and league opponent) is handed the memory
+    the previous call returned, and a fresh one in an environment re-dealt for a new game."""
+    recorder = MemoryRecorder()
+    monkeypatch.setattr(scripted, "decide", recorder)
+    config, game_config, policy, opponent, state, carry, generator = small(
+        8, game_config=game.GameConfig(training_spawn=True, clock_ticks=6)
     )
-    assert int(rollout.episodes) > 0  # some environments were re-dealt (6-tick episodes)
-    memory = rollout.carry.scripted_memory["target"]
-    assert torch.equal(memory, (rollout.state.tick[:, None] - 1).expand_as(memory))
+    for _ in range(2):  # the memory runs on across segments
+        rollout = collect(config, game_config, policy, opponent, state, carry, 8, generator)
+        state, carry = rollout.state, rollout.carry
+    # A segment's 9th call (the bootstrap value's first half) discards its scripted actions.
+    assert len(recorder.calls) == 18
+    assert recorder.check(discarded={8, 17}) > 0
+    assert any((memory["target"] >= 0).any() for _, _, memory in recorder.calls)  # targets were kept
 
 
-def test_evaluation_carries_the_memory_and_renews_it_for_each_game():
-    """Each call's memory is the previous call's (renewed for a finished game): the stand-in's
-    count equals the episode tick minus one on every call."""
-    calls = []
-
-    def act(config, state, team, persona, uniforms, memory):
-        calls.append(
-            bool(
-                torch.equal(memory["target"], (state.tick[:, None] - 1).expand_as(memory["target"]))
-            )
-        )
-        return standins.scripted.act(config, state, team, persona, uniforms, memory)
-
-    recording = SimpleNamespace(**{**vars(standins.scripted), "act": act})
-    sizes = torch.full((8, 2), 2, dtype=torch.long)
+def test_evaluation_carries_the_memory_and_renews_it_for_each_game(monkeypatch):
+    """Evaluation's scripted opponent: the same rule over games that end and restart."""
+    recorder = MemoryRecorder()
+    monkeypatch.setattr(scripted, "decide", recorder)
+    torch.manual_seed(0)
     play_results(
-        standins.GameConfig(),
-        standins.TinyPolicy(),
-        None,
-        sizes,
-        torch.Generator().manual_seed(1),
-        maximum_ticks=20,
-        check_every=100,
-        game=standins.game,
-        scripted=recording,
+        game.GameConfig(clock_ticks=6), model.Policy(model.ModelConfig()), scripted.ScriptedConfig(),
+        torch.full((8, 2), 2, dtype=torch.long), torch.Generator().manual_seed(1), maximum_ticks=20, check_every=100,
     )
-    assert len(calls) == 20 and all(calls)
+    assert len(recorder.calls) == 20
+    assert recorder.check() > 0
 
 
 def test_sandbox_flies_the_scripted_opponent_with_its_memory():

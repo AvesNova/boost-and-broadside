@@ -6,21 +6,19 @@ import copy
 import pytest
 import torch
 
+from lean import game, model, scripted
 from lean.learn import League, LearnConfig, Opponent, collect, make_optimiser, start, update
 
 pytestmark = pytest.mark.slow
 
 
 def test_compiled_collect_and_update_run_with_the_real_packages():
-    game = pytest.importorskip("lean.game")
-    scripted = pytest.importorskip("lean.scripted")
-    model = pytest.importorskip("lean.model")
     torch.manual_seed(0)
     generator = torch.Generator().manual_seed(0)
     config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1)
     game_config = game.GameConfig(ghost_bullets=True)
     policy = model.Policy(model.ModelConfig())
-    league = League(1, 2)
+    league = League(LearnConfig(snapshot_every=1, snapshot_capacity=2))
     league.maybe_add(policy, 1)
     opponent = Opponent(scripted.ScriptedConfig(), league)
     state, carry = start(config, game_config, policy, opponent, 8, generator)
@@ -33,11 +31,9 @@ def test_compiled_collect_and_update_run_with_the_real_packages():
 
 
 def test_compiled_loss_matches_eager():
-    game = pytest.importorskip("lean.game")
-    scripted = pytest.importorskip("lean.scripted")
-    model = pytest.importorskip("lean.model")
-    from lean.learn import RolloutStore, compiled
-    from lean.learn.update import LOSS_NAMES, minibatch_loss, target_pass
+    from lean.learn import RolloutStore
+    from lean.learn.compiled import graphs
+    from lean.learn.training import LOSS_NAMES, minibatch_loss, target_pass
 
     torch.manual_seed(0)
     generator = torch.Generator().manual_seed(0)
@@ -56,12 +52,12 @@ def test_compiled_loss_matches_eager():
     arguments = (
         observation, batch["carry"], batch["reset"], offset, batch["action"], batch["log_probability"],
         store.advantage.index_select(1, views), store.target.index_select(1, views), batch["teacher"],
-        batch["next_state"], batch["next_valid"], batch["hit_label"], torch.tensor(1.0),
+        batch["next_state"], batch["next_valid"], batch["hit_label"], torch.tensor([1.0, 0.003, 0.5]),
         store.counts().index_select(0, views).sum(0),
     )
     twin = copy.deepcopy(policy)
     eager_loss, eager_measures = minibatch_loss(config, policy, *arguments)
-    compiled_loss, compiled_measures = compiled.minibatch_loss(config, twin, *arguments)
+    compiled_loss, compiled_measures = graphs().minibatch_loss(config, twin, *arguments)
     assert torch.allclose(eager_loss, compiled_loss, rtol=1e-4, atol=1e-5)
     for name in eager_measures:
         assert torch.allclose(eager_measures[name], compiled_measures[name], rtol=1e-4, atol=1e-5), name

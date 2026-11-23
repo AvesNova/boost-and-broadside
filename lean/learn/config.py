@@ -1,13 +1,13 @@
-"""Settings of the learner: PPO, reward levels, the hit head, team-size draws, self-play
-and the league."""
+"""Settings of the learner: the BC stage, PPO, the optimiser, weight averages, reward
+levels, the hit head, team-size draws, self-play and the league."""
 
 from dataclasses import dataclass
 
 import torch
 
-# v2's reward levels (src/bnb/contracts/trajectory.py at 4cfd1e86), in v2's order.
-LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outcome")
-LEVELS = len(LEVEL_NAMES)
+from lean.contract import LEVELS
+
+# Indices of v2's reward levels (src/bnb/contracts/trajectory.py at 4cfd1e86), lean.contract's order.
 DAMAGE, KILL_DEATH, OBJECTIVE_PROGRESS, OBJECTIVE, OUTCOME = range(LEVELS)
 
 
@@ -24,8 +24,8 @@ class LearnConfig:
     # Returns, per level in LEVEL_NAMES order.
     discounts: tuple[float, ...] = (0.982, 0.990, 0.995, 0.999, 0.9997)
     gae_lambdas: tuple[float, ...] = (0.81, 0.90, 0.95, 0.97, 0.97)
-    advantage_normaliser: str = "std"  # "std" or "percentile"
-    advantage_percentiles: tuple[float, float] = (0.05, 0.95)
+    # Advantages are summed over levels and divided by their standard deviation over the
+    # update, the mean not subtracted (docs/rewrite/literature-recipe-1.md section 4).
 
     # PPO.
     clip: float = 0.2
@@ -51,16 +51,49 @@ class LearnConfig:
     # The rollout's large records in pinned host memory, streamed (lean.learn.store); False
     # keeps everything on the device. Ignored on the CPU.
     stream_rollout: bool = True
+    # Optimiser (docs/rewrite/literature-recipe-2.md section 4): Adam without weight decay,
+    # fused, global gradient clip; a step whose gradient norm is not finite is skipped. The
+    # learning rate rises linearly over `warmup_steps` Adam steps (2 / (1 - beta2) at beta2
+    # 0.999: about 16 updates at 128 steps each), then stays constant (no cooldown yet).
     learning_rate: float = 3e-4
-    warmup_updates: int = 10
+    warmup_steps: int = 2000
     adam_epsilon: float = 1e-5
     gradient_clip: float = 1.0
-    entropy_coefficient: float = 0.003
+    # Loss coefficients, fixed: every term is scale-free (the surrogate on normalised
+    # advantages, every other term a cross-entropy or entropy in nats).
+    entropy_coefficient: float = 0.003  # on the joint 42-way entropy (RL only)
     value_coefficient: float = 0.05
     next_state_coefficient: float = 0.1
-    bc_coefficient: float = 2.0
-    bc_gate: float = 0.45
     hit_coefficient: float = 0.05  # cross-entropy of the hit head, nats per labelled row
+    # A warning when an epoch's mean approximate KL to the collecting policy exceeds this
+    # (a monitor: no early stop, docs/rewrite/literature-recipe-1.md section 3).
+    kl_warning: float = 0.02
+
+    # The BC stage (lean.train --stage bc): the student plays its own games (the same
+    # rollouts as RL, the league holding only the scripted agent) and every head learns:
+    # the policy by the cross-entropy to the scripted teacher's full distribution
+    # (lean.scripted.marginals) with weight bc_coefficient, no surrogate and no entropy
+    # bonus; the critics, next-state and hit heads as in RL. 96 updates at parity
+    # (2,048 x 4 x 128) is 100.7M environment ticks: v2's 100M-tick BC stage, and the
+    # v1/v2 target of BC within 100M.
+    bc_updates: int = 96
+    bc_coefficient: float = 1.0
+    # The averaged weights the BC stage hands to RL: "ema", "uniform" or "live".
+    handoff: str = "ema"
+    # RL's teacher term: the same cross-entropy with weight teacher_coefficient *
+    # teacher_decay ** k at RL update k (a reverse warm-up, as VPT's KL to the cloned
+    # policy), switched off for good once the win rate against the scripted agent (the
+    # league's tally, 0 until a game is played) reaches teacher_gate, or once the weight
+    # falls below teacher_cutoff.
+    teacher_coefficient: float = 0.5
+    teacher_decay: float = 0.95
+    teacher_gate: float = 0.45
+    teacher_cutoff: float = 0.005
+
+    # Weight averages kept beside the live weights, never fed back into training
+    # (lean.learn.weights): an EMA with this decay per update, and a uniform average of
+    # every update's weights from the end of the learning-rate warm-up.
+    ema_decay: float = 0.95
     # The policy's forward passes (rollout and update) under bf16 autocast on a GPU; the
     # model keeps its position phases and recurrence in float32. Ignored on the CPU.
     bf16: bool = True
@@ -83,18 +116,11 @@ class LearnConfig:
     range_narrow_bins: int = 8
     range_bin_share: float = 0.001
 
-    # Rewards: v2's level weights (v2 src/bnb/learn/rewards.py:74-79, v1's times 10).
-    damage_weight: float = 2.74  # per damage_unit points
-    kill_death_weight: float = 2.83
-    objective_progress_weight: float = 20.0
-    objective_weight: float = 20.0
-    outcome_weight: float = 10.0
+    # Rewards: v2's level weights in LEVEL_NAMES order (v2 src/bnb/learn/rewards.py:74-79,
+    # v1's times 10): damage per damage_unit points, kill_death, objective_progress,
+    # objective, outcome.
+    reward_weights: tuple[float, ...] = (2.74, 2.83, 20.0, 20.0, 10.0)
     damage_unit: float = 100.0  # points, for every ship type
-
-    @property
-    def reward_weights(self) -> tuple[float, ...]:
-        """The level weights in LEVEL_NAMES order."""
-        return tuple(getattr(self, f"{name}_weight") for name in LEVEL_NAMES)
 
     # Scenario draws at reset.
     team_size_minimum: int = 4
@@ -109,17 +135,14 @@ class LearnConfig:
     league_decay: float = 0.99  # each game decays its member's win tallies by this first
     persona_spread: float = 0.0
 
+
 def policy_precision(config: LearnConfig, device) -> torch.autocast:
     """The autocast context of the policy's forward passes: bf16 on a GPU when config.bf16."""
     device = torch.device(device)
     return torch.autocast(device.type, dtype=torch.bfloat16, enabled=config.bf16 and device.type == "cuda")
 
 
-def bc_weight(config: LearnConfig, scripted_win_rate: float) -> float:
-    """Coefficient of the BC term: bc_coefficient * max(0, 1 - win_rate / gate)."""
-    return config.bc_coefficient * max(0.0, 1.0 - scripted_win_rate / config.bc_gate)
-
-
-def learning_rate(config: LearnConfig, update_index: int) -> float:
-    """Learning rate of update `update_index` (from 0): linear warm-up, then constant."""
-    return config.learning_rate * min(1.0, (update_index + 1) / max(1, config.warmup_updates))
+def learning_rate(config: LearnConfig, step: int) -> float:
+    """Learning rate of Adam step `step` (from 0, counted from the stage's start): linear
+    warm-up over config.warmup_steps steps, then constant."""
+    return config.learning_rate * min(1.0, (step + 1) / max(1, config.warmup_steps))

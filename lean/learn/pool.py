@@ -18,6 +18,8 @@ import copy
 import torch
 from torch import Tensor, nn
 
+from lean.learn.config import LearnConfig
+
 SCRIPTED = 0
 
 
@@ -44,13 +46,13 @@ class League:
     `present` (members,) bool marks who can be drawn; the scripted agent is always present.
     """
 
-    def __init__(self, every: int, capacity: int, device=None, floor: float = 1.0 / 8.0, decay: float = 0.99):
-        self.every = every
-        self.capacity = capacity
-        self.floor = floor
-        self.decay = decay
+    def __init__(self, config: LearnConfig, device=None):
+        self.every = config.snapshot_every
+        self.capacity = config.snapshot_capacity
+        self.floor = config.league_floor
+        self.decay = config.league_decay
         self.device = torch.device(device) if device is not None else torch.device("cpu")
-        self.members = capacity + 1
+        self.members = self.capacity + 1
         self.weights: tuple[dict, dict] | None = None
         self.template: nn.Module | None = None
         self.present = torch.zeros(self.members, dtype=torch.bool, device=self.device)

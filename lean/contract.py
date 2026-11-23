@@ -29,6 +29,11 @@ FIELD_FEATURES = 3
 
 NO_PENDING = JOINT  # Obs.pending of a row whose pending action is not observed
 
+# The reward levels (v2's, in v2's order): one critic target per level, so the model's value
+# head has LEVELS outputs of BINS each. The learner owns the rewards and their supports.
+LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outcome")
+LEVELS = len(LEVEL_NAMES)
+
 
 def split_joint(joint: Tensor) -> Tensor:
     """Split a joint action index (...,) long in [0, 42) into (..., 3) long [stick, power, fire]."""

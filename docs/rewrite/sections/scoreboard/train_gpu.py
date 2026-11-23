@@ -76,11 +76,11 @@ def main() -> None:
     game_config = game.GameConfig()
     policy = model.Policy(model.ModelConfig()).to(device)
     optimiser = make_optimiser(config, policy)
-    league = League(1, config.snapshot_capacity, device, config.league_floor, config.league_decay)
+    league = League(dataclasses.replace(config, snapshot_every=1), device)
     for index in range(arguments.snapshots):
         league.maybe_add(policy, index + 1)
     league.every = config.snapshot_every
-    opponent = Opponent(scripted.ScriptedConfig(), league, config.self_play_share, config.persona_spread)
+    opponent = Opponent(scripted.ScriptedConfig(), league)
     state, carry = start(config, game_config, policy, opponent, envs, generator)
     store = RolloutStore(segments, config.stream_rollout)
     store.timing = True
@@ -101,6 +101,7 @@ def main() -> None:
     rows = []
     first_update_end = None
     steps = envs * ticks * segments
+    steps_per_update = config.epochs * config.minibatches
     for index in range(arguments.updates):
         torch.cuda.synchronize()
         began = time.perf_counter()
@@ -116,7 +117,7 @@ def main() -> None:
         store.host_wait = store.host_gather = 0.0
         store.stalls()
         update(
-            config, policy, optimiser, store, scripted_win_rate=league.scripted_win_rate(), update_index=index,
+            config, policy, optimiser, store, teacher_weight=config.teacher_coefficient, step_index=index * steps_per_update,
             generator=generator, compiled=compiled,
         )
         if league.maybe_add(policy, index + 1) is not None:

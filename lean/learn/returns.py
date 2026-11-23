@@ -4,7 +4,8 @@ supports' range monitoring."""
 import torch
 from torch import Tensor
 
-from lean.learn.config import LEVEL_NAMES, LearnConfig
+from lean.contract import LEVEL_NAMES
+from lean.learn.config import LearnConfig
 from lean.model.temporal import doubling_scan
 from lean.model.value import value_bin_centres
 
@@ -57,27 +58,53 @@ def split_segments(records: Tensor, segments: int) -> Tensor:
     return records.reshape((segments, ticks, seats) + rest).transpose(0, 1).reshape((ticks, segments * seats) + rest)
 
 
-def normalise_advantages(total: Tensor, mask: Tensor, config: LearnConfig) -> Tensor:
+def normalise_advantages(total: Tensor, mask: Tensor) -> Tensor:
     """Scale the advantages (summed over levels) over the whole update.
 
     total (T, E, N), mask (T, E, N) bool of valued tokens. Returns (T, E, N), zero outside
-    the mask. The mean is not subtracted. "std" divides by the standard deviation over
-    masked tokens, from masked sums (no read-back); "percentile" divides by the range
-    between the two configured quantiles (selecting the masked tokens reads their count
-    back). Fewer than two masked tokens leave the advantages unscaled.
+    the mask: divided by the standard deviation over the masked tokens, the mean not
+    subtracted, from masked sums (no read-back). Fewer than two masked tokens leave the
+    advantages unscaled.
     """
     weight = mask.to(total.dtype)
     count = weight.sum()
-    if config.advantage_normaliser == "percentile":
-        chosen = total[mask]
-        low, high = config.advantage_percentiles
-        quantiles = torch.quantile(chosen, torch.tensor([low, high], device=chosen.device)) if chosen.numel() >= 2 else None
-        scale = quantiles[1] - quantiles[0] if quantiles is not None else torch.ones((), device=total.device)
-    else:
-        mean = (total * weight).sum() / count.clamp(min=1.0)
-        variance = (((total - mean) * weight) ** 2).sum() / (count - 1.0).clamp(min=1.0)
-        scale = torch.where(count >= 2, variance.sqrt(), 1.0)
+    mean = (total * weight).sum() / count.clamp(min=1.0)
+    variance = (((total - mean) * weight) ** 2).sum() / (count - 1.0).clamp(min=1.0)
+    scale = torch.where(count >= 2, variance.sqrt(), 1.0)
     return total / scale.clamp(min=1e-8) * mask
+
+
+def advantage_sums(advantage: Tensor, mask: Tensor) -> Tensor:
+    """The tallies behind advantage_shares for one batch, to be summed over batches:
+    advantage (..., LEVELS) per level, mask (...) bool of valued tokens. Returns (3 + 2
+    LEVELS,) float64: count, sum and sum of squares of the summed advantage, then per level
+    the sum and the sum of its product with the summed advantage."""
+    weight = mask.to(advantage.dtype)
+    total = advantage.sum(-1)
+    weighted = advantage * weight[..., None]
+    per_level = weighted.flatten(0, -2)
+    return torch.cat([
+        torch.stack([weight.sum(), (total * weight).sum(), (total * total * weight).sum()]),
+        per_level.sum(0), (per_level * total.flatten()[:, None]).sum(0),
+    ]).double()
+
+
+def advantage_shares(sums: Tensor) -> tuple[Tensor, Tensor]:
+    """From summed advantage_sums: each level's share of the summed advantage's variance,
+    Cov(A_level, A) / Var(A) (LEVELS,), which add up to 1 (covariances between levels
+    split between them), and the summed advantage's standard deviation before scaling.
+    Zero without at least two valued tokens."""
+    levels = (sums.shape[0] - 3) // 2
+    count, total, squares = sums[0], sums[1], sums[2]
+    level_sum, product = sums[3:3 + levels], sums[3 + levels:]
+    count = count.clamp(min=1.0)
+    mean = total / count
+    variance = squares / count - mean * mean
+    covariance = product / count - level_sum / count * mean
+    valid = (sums[0] >= 2) & (variance > 0)
+    shares = torch.where(valid, covariance / torch.where(valid, variance, 1.0), 0.0)
+    deviation = torch.where(valid, (variance.clamp(min=0.0) * count / (count - 1.0).clamp(min=1.0)).sqrt(), 0.0)
+    return shares.float(), deviation.float()
 
 
 def usage_counts(target: Tensor, mask: Tensor, centres: Tensor) -> Tensor:

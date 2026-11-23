@@ -93,11 +93,9 @@ def act(config, state, team: int | None, persona, uniforms, memory) -> tuple[Ten
 
 ```python
 @dataclass
-class ModelConfig: ...                   # width, blocks, heads, levels 5, bins 64, position_code, ...
+class ModelConfig: ...                   # width, blocks, heads, bins 64, position_code, ... (JOINT, LEVELS from lean.contract)
 class Policy(nn.Module):                 # Policy(config); inputs are lean.contract's feature counts
     def initial_carry(self, envs, slots, device) -> Tensor   # (blocks, E, 1 + N, 4, width)
-    def next_state_target(self, state, next_state, step_out, tick_length) -> Tensor
-        # (E, N, NEXT_STATE) the next-state head's targets of one game step (collect records them)
     def step(self, obs: Obs, carry, position_offset=None, reset=None) -> tuple[Tensor, Tensor, Tensor]
         # logits (E, N, 42), value_logits (E, N, LEVELS, BINS), new carry
     def sequence(self, obs: Obs, carry, reset, position_offset=None)
@@ -105,21 +103,25 @@ class Policy(nn.Module):                 # Policy(config); inputs are lean.contr
         # returns logits (T, E, N, 42), value_logits (T, E, N, LEVELS, BINS),
         #         next-state logits (T, E, N, NEXT_STATE, BINS), hit_logits (T, E, N, 3) and the
         #         final carry; the next-state loss is lean.model.policy.next_state_cross_entropy
+def next_state_target(config, state, next_state, step_out, tick_length) -> Tensor
+    # (E, N, NEXT_STATE) the next-state head's targets of one game step (collect records them)
 ```
 
 The model reads from `Obs`: ship, pos, heading, key_mask, globals, field, field_pos,
 visible, since_seen, pending (`lean.model.policy.OBS_FIELDS`).
 
-## `lean/learn` (rollout, PPO) and `lean/eval` (crossover)
+## `lean/learn` (rollout, the BC stage and RL) and `lean/eval` (crossover)
 
 ```python
-def collect(config, game_config, policy, opponent, state, carry, ticks, generator) -> Rollout
-def update(config, policy, optimiser, rollout) -> dict[str, float]
+def collect(config, game_config, policy, opponent, state, carry, ticks, generator, *, compiled, store, segment) -> Rollout
+def update(config, policy, optimiser, data, *, teacher_weight, cloning, step_index, generator, compiled) -> dict[str, float]
 def crossover(game_config, policy, scripted_config, sizes, games, generator) -> dict
 ```
 
-Reward levels (index into LEVELS), v2's: 0 damage, 1 kill_death, 2 objective_progress,
-3 objective, 4 outcome. Hit classes: 0 missed, 1 enemy, 2 team-mate.
+Reward levels (lean.contract.LEVEL_NAMES, LEVELS), v2's: 0 damage, 1 kill_death,
+2 objective_progress, 3 objective, 4 outcome. Hit classes: 0 missed, 1 enemy, 2 team-mate.
+The BC teacher is lean.scripted.decide's Marginals (stick, power, fire), the product of the
+three over lean.contract.join_action's 42 joint actions.
 
 ## Rules for this first cut
 

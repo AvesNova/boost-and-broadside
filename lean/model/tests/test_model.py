@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from lean.contract import FIELD_FEATURES, GLOBAL_FEATURES, SHIP_FEATURES
+from lean.contract import FIELD_FEATURES, GLOBAL_FEATURES, LEVELS, SHIP_FEATURES
 from lean.model import ModelConfig, Policy, decode_value, hl_gauss_targets, value_bin_centres
 from lean.model.policy import (
     Spatial,
@@ -287,7 +287,7 @@ def test_same_weights_run_at_any_ship_and_field_count():
         with torch.no_grad():
             logits, values, carry = policy.step(obs, policy.initial_carry(2, slots, "cpu"))
         assert logits.shape == (2, slots, 42)
-        assert values.shape == (2, slots, config.levels, 64)
+        assert values.shape == (2, slots, LEVELS, 64)
         assert carry.shape == (config.blocks, 2, 1 + slots, 4, config.width)
         assert torch.isfinite(logits).all() and torch.isfinite(values).all()
 
@@ -411,7 +411,7 @@ def training_batch(ticks=8, envs=4, slots=10, fields=5):
     targets = SimpleNamespace(
         actions=torch.randint(0, 42, (ticks, envs, slots), generator=generator),
         bins=torch.randint(
-            0, config.bins, (ticks, envs, slots, config.levels), generator=generator
+            0, config.bins, (ticks, envs, slots, LEVELS), generator=generator
         ),
         next_state=torch.randn(ticks, envs, slots, config.next_state_size, generator=generator) * 0.1,
         hit=torch.randint(0, config.hit_classes, (ticks, envs, slots), generator=generator),

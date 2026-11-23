@@ -1,19 +1,15 @@
 """Evaluation: batched matches, head-to-head counts and v1's crossover walk."""
 
 import dataclasses
-import importlib
 import math
 
 import torch
 from torch import Tensor
 
-from lean.learn.collect import (
-    generator_device,
-    reset_carry,
-    sample_joint,
-    scripted_actions,
-    split_joint,
-)
+from lean import game, scripted
+from lean.contract import split_joint
+from lean.learn.rollout import generator_device, reset_carry, sample_joint, scripted_actions
+from lean.scripted import ScriptedConfig
 
 
 def wilson_interval(wins: float, games: int, z: float = 1.96) -> tuple[float, float]:
@@ -35,34 +31,31 @@ def games_for(total_ships: int) -> int:
 @torch.no_grad()
 def play_results(
     game_config, policy, opponent, team_sizes: Tensor, generator,
-    *, maximum_ticks: int = 8192, check_every: int = 32, game=None, scripted=None,
+    *, maximum_ticks: int = 8192, check_every: int = 32,
 ) -> Tensor:
     """Play one game per environment at once, `policy` as team 0, and return each
     environment's first result, (E,) long: 0 `policy` won, 1 it lost, 2 a draw, -1 still
     running after `maximum_ticks`.
 
     `team_sizes` (E, 2) gives each environment's ships per team; environments may differ
-    (the game pads every one to the largest total). `opponent` plays team 1: anything with
-    a `step` method is used as a policy, anything else is taken to be a ScriptedConfig
-    (the yardstick, spread 0, its memory carried from tick to tick and renewed for each new
-    game, as in collect). Actions are sampled. Finished environments are re-dealt at
+    (the game pads every one to the largest total). `opponent` plays team 1: a
+    ScriptedConfig (the yardstick, spread 0, its memory carried from tick to tick and renewed
+    for each new game, as in collect) or a policy. Actions are sampled. Finished environments are re-dealt at
     their own sizes and ignored. Games deal the standard spawn (GameConfig.training_spawn
     is turned off).
     """
-    game = game or importlib.import_module("lean.game")
-    if getattr(game_config, "training_spawn", False):  # evaluation always deals the standard spawn
-        game_config = dataclasses.replace(game_config, training_spawn=False)
+    # Evaluation always deals the standard spawn.
+    game_config = dataclasses.replace(game_config, training_spawn=False)
     device = generator_device(generator)
     sizes = team_sizes.to(device=device, dtype=torch.long).contiguous()
     games = sizes.shape[0]
     state = game.reset(game_config, games, sizes, generator, device)
     slots = state.exists.shape[1]
     carry = policy.initial_carry(games, slots, device)
-    opponent_is_policy = hasattr(opponent, "step")
+    opponent_is_policy = not isinstance(opponent, ScriptedConfig)
     if opponent_is_policy:
         opponent_carry = opponent.initial_carry(games, slots, device)
     else:
-        scripted = scripted or importlib.import_module("lean.scripted")
         persona = scripted.personas(opponent, games, slots, generator, device, 0.0)
         memory = scripted.fresh_memory(games, slots, generator, device)
     result = torch.full((games,), -1, dtype=torch.long, device=device)
@@ -74,7 +67,7 @@ def play_results(
             opponent_logits, _, opponent_carry = opponent.step(game.observe(game_config, state, 1), opponent_carry)
             opponent_action = split_joint(sample_joint(opponent_logits, generator))
         else:
-            opponent_action, memory = scripted_actions(scripted, opponent, state, persona, memory, generator)
+            opponent_action, memory, _ = scripted_actions(opponent, state, persona, memory, generator)
         action = torch.where((state.team == 0)[..., None], action, opponent_action)
         state, step_out = game.step(game_config, state, action, game.draw_noise(game_config, games, slots, generator, device))
         result = torch.where(step_out.done & (result < 0), step_out.result, result)

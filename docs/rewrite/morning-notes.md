@@ -38,3 +38,18 @@ where to look.
 - M pending action: `nn.Embedding(43, 256, padding_idx=42)` added inside the ship's first projection (the one-hot's function without the one-hot; rows start as the one-hot columns did).
 - M removed `positionless_rotary` and the Policy's feature-count overrides (only the model tests used them; they now use lean.contract's counts).
 - The cold compile to the end of the first update is now 403 s (was about 200 s; core game plus step M's model). Accepted for now; worth a look in the benchmarking time.
+- L1 Adam is fused on every device, not only CUDA: the fused path skips a non-finite step through `found_inf` with no host read, so the CPU and the GPU share one path (`update` refuses a non-fused optimiser; tests use fused SGD). lean/learn/training.py `make_optimiser`.
+- L1 the warm-up counts Adam steps attempted (skipped ones included) from each stage's start: RL restarts its optimiser and warm-up at the hand-off, as v2 did; each stage's uniform average starts at the end of its own warm-up.
+- L1 the BC stage hands its EMA to RL (`LearnConfig.handoff`, v2's practice); the uniform average (from the warm-up's end, at constant rate) includes the stage's early weights, so it is kept and saved but not the default.
+- L1 BC stage coefficient 1.0 on the teacher cross-entropy (the same weight as RL's surrogate; value 0.05, next-state 0.1, hit 0.05 unchanged), no entropy bonus; the league holds only the scripted agent during BC (no snapshots).
+- L1 RL teacher term 0.5 x 0.95^k at RL update k (0.5 as Wolczyk's kickstarting; 0.95 a half-life of 13.5 updates, as v2's EMA), off at a win rate >= 0.45 or below 0.005 (update 90), so the decay alone ends it. Not measured.
+- L1 the entropy bonus 0.003 stays on during the teacher phase (VPT dropped it there; the decision is a constant 0.003).
+- L1 BC uses RL's 32 minibatches; v2's BC ran 256 (8x the Adam steps per update). A setting to add if BC proves step-limited.
+- L1 the teacher is recorded as its 11 marginals per ship (float16, 22 bytes a row), the 42-way joint built in the loss (`rollout.teacher_joint`); `bc_kl` (cross-entropy less the teacher's entropy) is logged beside `bc`.
+- L1 a level's advantage share is Cov(A_level, A) / Var(A): the shares add up to 1 and can be negative (a level that cancels another); `advantage_std` is the scale before the division.
+- L1 the KL monitor warns on any epoch's mean above 0.02; the overall `approximate_kl` is kept too.
+- L1 checkpoints are written only at a stage's end (`--out DIR`: bc.pt, rl.pt: live weights, both averages, configs, the teacher term's state; no optimiser state); the 10M-step schedule and resuming are L2's.
+- L1 modules renamed (lean.learn.collect -> rollout, update -> training) instead of dropping the re-exports; `LEVEL_NAMES`/`LEVELS` moved to lean.contract so the model's value head and the learner share them; `scripted.decide` added (act is decide without the marginals).
+- L1 Rollout's counters went, `repeated_deals` too (deal reuse shows as `carry.next_episodes.taken` above E).
+- L1 tests on the real model needed tolerances the stand-ins did not: stored (step) against recomputed (sequence) advantages within 1e-3; vmapped snapshots (math attention kernel) against a plain step within 1e-4.
+- L1 `python -m lean.eval` defaults to the EMA weights, sizes [4], 64 games per match (`--games 0` for v1's games_for).

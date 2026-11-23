@@ -4,13 +4,14 @@ the value supports' range monitoring."""
 import pytest
 import torch
 
+from lean import game, scripted
 from lean.learn import LearnConfig, support_usage, value_centres
 from lean.learn.config import DAMAGE, KILL_DEATH, LEVELS, OBJECTIVE, OBJECTIVE_PROGRESS, OUTCOME
 from lean.learn.rewards import TickEvents, blank_ledger, reward_step, tick_events
 
 CONFIG = LearnConfig()
-KILL = CONFIG.kill_death_weight
-DAMAGE_POINT = CONFIG.damage_weight / CONFIG.damage_unit
+KILL = CONFIG.reward_weights[KILL_DEATH]
+DAMAGE_POINT = CONFIG.reward_weights[DAMAGE] / CONFIG.damage_unit
 # 2v2 in one environment: slots 0 and 1 are team 0, slots 2 and 3 team 1.
 TEAM = torch.tensor([[0, 0, 1, 1]])
 
@@ -67,7 +68,7 @@ def test_outcome_pays_every_ship_of_both_teams_on_the_last_tick():
     cancel when the teams are equal."""
     ledger = blank_ledger(1, 4)
     won, _ = reward_step(CONFIG, ledger, events(done=True, result=1, died=(3,)), TEAM)
-    assert torch.equal(won[0, :, OUTCOME], torch.tensor([-1.0, -1.0, 1.0, 1.0]) * CONFIG.outcome_weight)
+    assert torch.equal(won[0, :, OUTCOME], torch.tensor([-1.0, -1.0, 1.0, 1.0]) * CONFIG.reward_weights[OUTCOME])
     assert won[0, :, OUTCOME].sum() == 0
     drawn, _ = reward_step(CONFIG, ledger, events(done=True, result=2), TEAM)
     assert (drawn[..., OUTCOME] == 0).all()
@@ -75,7 +76,7 @@ def test_outcome_pays_every_ship_of_both_teams_on_the_last_tick():
     assert (running[..., OUTCOME] == 0).all()
     absent = torch.tensor([[True, True, True, False]])
     benched, _ = reward_step(CONFIG, ledger, events(done=True, result=0, present=absent), TEAM)
-    assert benched[0, 3, OUTCOME] == 0 and benched[0, 2, OUTCOME] == -CONFIG.outcome_weight
+    assert benched[0, 3, OUTCOME] == 0 and benched[0, 2, OUTCOME] == -CONFIG.reward_weights[OUTCOME]
 
 
 def test_a_kill_is_shared_by_the_final_hit_and_the_outstanding_damage():
@@ -135,8 +136,6 @@ def test_objective_levels_are_kept_and_zero_in_elimination():
 def test_the_real_game_gives_zero_sum_levels():
     """Guards tick_events, the bridge from lean.game's StepOut: with the scripted agent on
     both teams the damage and kill/death levels still cancel over the ships every tick."""
-    game = pytest.importorskip("lean.game")
-    scripted = pytest.importorskip("lean.scripted")
     generator = torch.Generator().manual_seed(2)
     game_config = game.GameConfig(ghost_bullets=True)
     envs = 8
@@ -151,7 +150,7 @@ def test_the_real_game_gives_zero_sum_levels():
         uniforms = scripted.draw_uniforms(envs, slots, generator, "cpu")
         action, memory = scripted.act(scripted_config, state, None, persona, uniforms, memory)
         next_state, step_out = game.step(game_config, state, action, game.draw_noise(game_config, envs, slots, generator, "cpu"))
-        reward, ledger = reward_step(CONFIG, ledger, tick_events(step_out, state, next_state, game_config), state.team)
+        reward, ledger = reward_step(CONFIG, ledger, tick_events(step_out, state), state.team)
         assert reward[..., DAMAGE].sum(-1).abs().max() < 1e-4
         assert reward[..., KILL_DEATH].sum(-1).abs().max() < 1e-4
         paid += reward.abs().sum((0, 1))

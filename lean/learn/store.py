@@ -55,6 +55,9 @@ import time
 import torch
 from torch import Tensor
 
+from lean.contract import Obs
+from lean.learn.rollout import SEAT_AXIS
+
 # Per-tick records kept on the device: one byte per token, counted and indexed there.
 RESIDENT = ("own", "done", "reset", "next_valid", "hit_label", "deal_row")
 # Observation fields constant within an episode: stored once per deal (with the position offset).
@@ -63,8 +66,8 @@ EPISODE_CONSTANT = ("field", "field_pos")
 # read them) and the PPO numbers.
 FLOAT32 = frozenset(("pos", "heading", "field_pos", "position_offset", "log_probability", "value", "reward"))
 # Small integers stored as int8: joint actions (< 42; the observation's pending action, up to
-# 42 for none) and hit labels (-1 to 2).
-INT8 = frozenset(("action", "teacher", "pending", "hit_label"))
+# 42 for none) and hit labels (-1 to 2). The teacher's distribution is float16.
+INT8 = frozenset(("action", "pending", "hit_label"))
 
 
 def stored(name: str, value: Tensor) -> Tensor:
@@ -87,13 +90,6 @@ def widened(value: Tensor) -> Tensor:
     return value
 
 
-def view_axis(carry: Tensor) -> int:
-    """The seat axis of a recurrent carry (lean.learn.collect.carry_axis)."""
-    from lean.learn.collect import carry_axis
-
-    return carry_axis(carry)
-
-
 class RolloutStore:
     """U segments of a rollout (module docstring). `stream`: keep the large records in pinned
     host memory (used only on a GPU). Sized at the first segment; kept across updates."""
@@ -106,8 +102,8 @@ class RolloutStore:
         self.constants: dict[str, Tensor] = {}  # per-deal rows (U x rows, ...), device
         self.carry: Tensor | None = None  # initial carries (V + 1, ...), host or device
         self.ticks = 0
-        self.observation_type = None
-        self.observation_names: tuple[str, ...] = ()
+        # The observation's fields stored per tick (the rest are in the deal table).
+        self.observation_names = tuple(field.name for field in dataclasses.fields(Obs) if field.name not in EPISODE_CONSTANT)
         self._staging: dict = {}
         self.centres: Tensor | None = None  # the critic's support the stored values were decoded with
         # Measurement only (`timing` True): the host's seconds waiting for copies and gathering
@@ -124,11 +120,10 @@ class RolloutStore:
         self.pinned = self.stream and self.device.type == "cuda"
         self.copy_stream = torch.cuda.Stream(self.device) if self.pinned else None
         self.ticks = ticks
-        self.axis = view_axis(initial_carry)
-        self.seats = initial_carry.shape[self.axis]
+        self.seats = initial_carry.shape[SEAT_AXIS]
         self.views = self.segments * self.seats
         self.rows = next(iter(table.values())).shape[0]
-        carry = initial_carry.movedim(self.axis, 0)
+        carry = initial_carry.movedim(SEAT_AXIS, 0)
         self.carry = self._zeros((self.views + 1,) + carry.shape[1:], carry.dtype, self.pinned)
         self.constants = {
             name: torch.zeros((self.segments * self.rows,) + rows.shape[1:], dtype=rows.dtype, device=self.device)
@@ -175,12 +170,12 @@ class RolloutStore:
         (seats on carry_axis) and the segment's deal table {name: (rows, ...)}
         (EPISODE_CONSTANT fields and "position_offset"; row r < E is environment r as the
         segment starts, then the segment's deals)."""
-        if self.carry is None or initial_carry.shape[view_axis(initial_carry)] != self.seats or ticks != self.ticks:
+        if self.carry is None or initial_carry.shape[SEAT_AXIS] != self.seats or ticks != self.ticks:
             self._size(initial_carry, table, ticks)
         rows = slice(segment * self.rows, (segment + 1) * self.rows)
         for name, values in table.items():
             self.constants[name][rows] = values
-        self._copy([(self.carry[self._columns(segment)], initial_carry.movedim(self.axis, 0).contiguous())])
+        self._copy([(self.carry[self._columns(segment)], initial_carry.movedim(SEAT_AXIS, 0).contiguous())])
 
     def write_tick(self, segment: int, tick: int, records: dict) -> None:
         """One tick's records, each (S, ...): "observation" (an Obs), "deal_row" (S,) the
@@ -188,14 +183,7 @@ class RolloutStore:
         (its "position_offset" is not kept: the deal table holds it)."""
         columns = self._columns(segment)
         observation = records["observation"]
-        items = {
-            field.name: getattr(observation, field.name)
-            for field in dataclasses.fields(observation)
-            if isinstance(getattr(observation, field.name), Tensor) and field.name not in EPISODE_CONSTANT
-        }
-        if self.observation_type is None:
-            self.observation_type = type(observation)
-            self.observation_names = tuple(items)
+        items = {name: getattr(observation, name) for name in self.observation_names}
         items.update((name, value) for name, value in records.items() if name not in ("observation", "position_offset"))
         items["deal_row"] = records["deal_row"] + segment * self.rows
         pairs = []
@@ -313,7 +301,7 @@ class RolloutStore:
             for name in small:
                 batch[name] = self.resident[name].index_select(1, views)
             batch = {name: widened(value) for name, value in batch.items()}
-            batch["carry"] = batch["carry"].movedim(0, self.axis).contiguous()
+            batch["carry"] = batch["carry"].movedim(0, SEAT_AXIS).contiguous()
             batch["views"] = views
             return batch
 
@@ -384,7 +372,7 @@ class RolloutStore:
             self._staging[key] = slots
         return self._staging[key]
 
-    def observation(self, batch: dict) -> tuple[object, Tensor]:
+    def observation(self, batch: dict) -> tuple[Obs, Tensor]:
         """The batch's observation (the game's Obs, every field (T, B, ...)) and position
         offset (T, B, 2), the episode-constant fields looked up by deal row."""
         rows = batch["deal_row"]
@@ -394,9 +382,8 @@ class RolloutStore:
             return table.index_select(0, rows.flatten()).view(rows.shape + table.shape[1:])
 
         for name in EPISODE_CONSTANT:
-            if name in self.constants:
-                fields[name] = look_up(self.constants[name])
-        return self.observation_type(**fields), look_up(self.constants["position_offset"])
+            fields[name] = look_up(self.constants[name])
+        return Obs(**fields), look_up(self.constants["position_offset"])
 
     def targets(self, levels: int) -> tuple[Tensor, Tensor]:
         """The update's advantages (T, V + 1, N) and value targets (T, V + 1, N, LEVELS) on the
@@ -408,11 +395,6 @@ class RolloutStore:
         return self.advantage, self.target
 
 
-def _tick(observation, tick: int):
+def _tick(observation: Obs, tick: int) -> Obs:
     """One tick of a stacked observation."""
-    changes = {
-        field.name: getattr(observation, field.name)[tick]
-        for field in dataclasses.fields(observation)
-        if isinstance(getattr(observation, field.name), Tensor)
-    }
-    return dataclasses.replace(observation, **changes)
+    return Obs(**{field.name: getattr(observation, field.name)[tick] for field in dataclasses.fields(Obs)})

@@ -1,11 +1,17 @@
-"""The PPO update, over a RolloutStore in micro-batches."""
+"""The update of both stages over a RolloutStore in micro-batches: PPO with a shrinking
+teacher term (RL), or behaviour cloning of the teacher's full distribution (the BC stage)."""
+
+import math
+from dataclasses import dataclass
 
 import torch
 from torch import Tensor
 
-from lean.learn.collect import Rollout
-from lean.learn.config import LearnConfig, bc_weight, learning_rate, policy_precision
+from lean.contract import JOINT, LEVEL_NAMES
+from lean.learn.config import LearnConfig, learning_rate, policy_precision
 from lean.learn.returns import (
+    advantage_shares,
+    advantage_sums,
     generalised_advantages,
     join_segments,
     normalise_advantages,
@@ -15,6 +21,7 @@ from lean.learn.returns import (
     usage_metrics,
     value_centres,
 )
+from lean.learn.rollout import Rollout, teacher_joint
 from lean.learn.store import RolloutStore
 from lean.model.policy import next_state_cross_entropy
 from lean.model.value import decode_value, hl_gauss_targets
@@ -25,7 +32,9 @@ OBSERVED = ("deal_row", "reset")
 TARGET_NAMES = OBSERVED + ("reward", "done")
 STORED_TARGET_NAMES = ("own", "reward", "done", "value")
 LOSS_NAMES = OBSERVED + ("action", "log_probability", "teacher", "next_state", "next_valid", "hit_label")
-MEASURES = ("loss", "surrogate", "value", "entropy", "next_state", "hit", "bc", "approximate_kl", "clip_fraction")
+MEASURES = (
+    "loss", "surrogate", "value", "entropy", "next_state", "hit", "bc", "bc_kl", "approximate_kl", "clip_fraction",
+)
 
 
 def to_device(tensor: Tensor, device) -> Tensor:
@@ -36,8 +45,29 @@ def to_device(tensor: Tensor, device) -> Tensor:
 
 
 def make_optimiser(config: LearnConfig, policy) -> torch.optim.Optimizer:
-    """Adam with the configured rate and epsilon; `update` sets the warm-up rate itself."""
-    return torch.optim.Adam(policy.parameters(), lr=config.learning_rate, eps=config.adam_epsilon)
+    """Adam without weight decay, the configured epsilon, fused (one kernel per step on the
+    GPU; the fused path also skips a step through `found_inf` without a host read, which
+    `update` uses for non-finite gradients). `update` sets the learning rate per step."""
+    return torch.optim.Adam(policy.parameters(), lr=config.learning_rate, eps=config.adam_epsilon, fused=True)
+
+
+@dataclass
+class TeacherTerm:
+    """RL's teacher term: weight teacher_coefficient * teacher_decay ** k at RL update k (a
+    reverse warm-up), off for good once the win rate against the scripted agent reaches
+    teacher_gate or the weight falls below teacher_cutoff. The win rate reads 0 until a game
+    against the scripted agent has been played (the policy is assumed to lose them all)."""
+
+    updates: int = 0
+    off: bool = False
+
+    def weight(self, config: LearnConfig, scripted_win_rate: float) -> float:
+        """The term's weight for this update; advances the schedule by one update."""
+        weight = config.teacher_coefficient * config.teacher_decay**self.updates
+        if scripted_win_rate >= config.teacher_gate or weight < config.teacher_cutoff:
+            self.off = True
+        self.updates += 1
+        return 0.0 if self.off else weight
 
 
 def masked_sum(values: Tensor, mask: Tensor) -> Tensor:
@@ -57,6 +87,17 @@ def hit_loss(hit_logits: Tensor, label: Tensor, own: Tensor, denominator: Tensor
     return torch.where(labelled, -log_probability, 0.0).sum() / denominator, labelled
 
 
+def teacher_cross_entropy(log_policy: Tensor, teacher: Tensor) -> tuple[Tensor, Tensor]:
+    """Per row, the cross-entropy (nats) of the policy's joint distribution against the
+    teacher's (teacher_joint of the recorded marginals), and the teacher's own entropy (their
+    difference is the KL from the teacher to the policy). log_policy (..., JOINT), teacher
+    (..., TEACHER_WIDTH)."""
+    target = teacher_joint(teacher.float())
+    cross_entropy = -(target * log_policy).sum(-1)
+    entropy = -(target * torch.log(target.clamp(min=1e-30))).sum(-1)
+    return cross_entropy, entropy
+
+
 def minibatch_values(
     config: LearnConfig, policy, observation, carry: Tensor, reset: Tensor, position_offset: Tensor
 ) -> tuple[Tensor, Tensor]:
@@ -72,16 +113,18 @@ def minibatch_values(
 def minibatch_loss(
     config: LearnConfig, policy, observation, carry: Tensor, reset: Tensor, position_offset: Tensor, action: Tensor,
     old_log_probability: Tensor, advantage: Tensor, target: Tensor, teacher: Tensor, next_target: Tensor,
-    next_valid: Tensor, hit_label: Tensor, bc_coefficient: Tensor, denominators: Tensor,
+    next_valid: Tensor, hit_label: Tensor, weights: Tensor, denominators: Tensor,
 ) -> tuple[Tensor, dict[str, Tensor]]:
     """One micro-batch's share of its minibatch's loss (see `update`) and of its measures,
     all 0-d tensors: every term is a sum over this micro-batch's valid tokens divided by
     the whole minibatch's count, `denominators` = (own tokens, next_valid tokens, labelled
     own tokens), so the micro-batches' losses and gradients add up to the minibatch's.
-    bc_coefficient and denominators are tensors so that a compiled graph does not take each
-    new value as a constant."""
+    weights = (surrogate, entropy bonus, teacher cross-entropy) coefficients. weights and
+    denominators are tensors so that a compiled graph does not take each new value as a
+    constant."""
     own = observation.own
     own_count, next_count, labelled_count = denominators.clamp(min=1.0).unbind()
+    surrogate_weight, entropy_weight, teacher_weight = weights.unbind()
     with policy_precision(config, carry.device):
         outputs = policy.sequence(observation, carry, reset, position_offset)
     # The losses in float32.
@@ -93,7 +136,8 @@ def minibatch_loss(
     clipped = ratio.clamp(1.0 - config.clip, 1.0 + config.clip)
     surrogate = masked_sum(-torch.minimum(ratio * advantage, clipped * advantage), own) / own_count
     entropy = masked_sum(-(log_policy.exp() * log_policy).sum(-1), own) / own_count
-    bc = masked_sum(-log_policy.gather(-1, teacher[..., None]).squeeze(-1), own) / own_count
+    teacher_cross, teacher_entropy = teacher_cross_entropy(log_policy, teacher)
+    bc = masked_sum(teacher_cross, own) / own_count
 
     centres = value_centres(config, value_logits.shape[-1], value_logits.device)
     target_distribution = hl_gauss_targets(target, centres, config.value_sigma_ratio)
@@ -110,17 +154,18 @@ def minibatch_loss(
     hit, _ = hit_loss(hit_logits, hit_label, own, labelled_count)
 
     loss = (
-        surrogate
+        surrogate_weight * surrogate
         + config.value_coefficient * value_loss
-        - config.entropy_coefficient * entropy
+        - entropy_weight * entropy
         + config.next_state_coefficient * next_state_loss
         + config.hit_coefficient * hit
-        + bc_coefficient * bc
+        + teacher_weight * bc
     )
     with torch.no_grad():
         measures = {
             "loss": loss, "surrogate": surrogate, "value": value_loss, "entropy": entropy,
             "next_state": next_state_loss, "hit": hit, "bc": bc,
+            "bc_kl": masked_sum(teacher_cross - teacher_entropy, own) / own_count,
             "approximate_kl": masked_sum(ratio - 1.0 - log_ratio, own) / own_count,
             "clip_fraction": masked_sum(((ratio - 1.0).abs() > config.clip).float(), own) / own_count,
         }
@@ -128,7 +173,9 @@ def minibatch_loss(
 
 
 @torch.no_grad()
-def target_pass(config: LearnConfig, policy, store: RolloutStore, index: Tensor, values=minibatch_values) -> Tensor:
+def target_pass(
+    config: LearnConfig, policy, store: RolloutStore, index: Tensor, values=minibatch_values
+) -> tuple[Tensor, Tensor]:
     """Advantages and value targets of every view, into store.targets(): the critic's
     values (`values`, minibatch_values or its compiled form, over the micro-batches of
     `index`, rows of store.chain_index; None takes the values stored at collection), zero
@@ -137,13 +184,14 @@ def target_pass(config: LearnConfig, policy, store: RolloutStore, index: Tensor,
     segments chained in time (returns.join_segments: the value after a segment's last tick
     is the next segment's first value), bootstrapped only after the last segment from the
     value stored at collection; an episode end cuts as anywhere else.
-    Returns the targets' range measures, usage_flags (4, LEVELS), on the device."""
+    Returns, on the device, the targets' range measures, usage_flags (4, LEVELS), and the
+    advantages' tallies before scaling (returns.advantage_sums, for each level's share)."""
     levels = len(config.discounts)
     advantage, target = store.targets(levels)
     discounts = to_device(torch.tensor(config.discounts), store.device)
     lambdas = to_device(torch.tensor(config.gae_lambdas), store.device)
     names = store.observation_names + TARGET_NAMES if values is not None else STORED_TARGET_NAMES
-    counts = paid = None
+    counts = paid = sums = None
     for batch in store.batches(names, index):
         views = batch["views"]
         if values is not None:
@@ -161,64 +209,80 @@ def target_pass(config: LearnConfig, policy, store: RolloutStore, index: Tensor,
         # Padding views all write the spare view, which owns nothing.
         advantage.index_copy_(1, views, advantages.sum(-1))
         target.index_copy_(1, views, targets)
-        tally = usage_counts(targets, batch["own"], centres)
+        tally, part = usage_counts(targets, batch["own"], centres), advantage_sums(advantages, batch["own"])
         pays = (batch["reward"] != 0).flatten(0, -2).any(0)
-        counts, paid = (tally, pays) if counts is None else (counts + tally, paid | pays)
-    advantage.copy_(normalise_advantages(advantage, store.resident["own"], config))
-    return usage_flags(counts, paid, config)
+        if counts is None:
+            counts, paid, sums = tally, pays, part
+        else:
+            counts, paid, sums = counts + tally, paid | pays, sums + part
+    advantage.copy_(normalise_advantages(advantage, store.resident["own"]))
+    return usage_flags(counts, paid, config), sums
 
 
 def update(
     config: LearnConfig, policy, optimiser, data: RolloutStore | Rollout,
-    *, scripted_win_rate: float = 0.0, update_index: int = 0, generator=None, compiled: bool = False,
+    *, teacher_weight: float = 0.0, cloning: bool = False, step_index: int = 0, generator=None, compiled: bool = False,
 ) -> dict[str, float]:
-    """One PPO update on the views of `data` (a RolloutStore, or one collected Rollout).
-    Returns means over all minibatches as floats.
+    """One update on the views of `data` (a RolloutStore, or one collected Rollout). Returns
+    means over all minibatches as floats.
 
-    loss = surrogate + value_coefficient * value - entropy_coefficient * entropy
-           + next_state_coefficient * next_state + hit_coefficient * hit
-           + bc_weight(scripted_win_rate) * bc
+    RL (`cloning` False):
+        loss = surrogate - entropy_coefficient * entropy + teacher_weight * bc
+               + value_coefficient * value + next_state_coefficient * next_state
+               + hit_coefficient * hit
+    The BC stage (`cloning` True): no surrogate and no entropy bonus, the teacher's
+    cross-entropy with weight bc_coefficient, the other terms as in RL (the critics learn
+    the stage's own returns).
 
     Every term is a mean over its valid tokens in the minibatch: the learner's living ships
-    (`own`) for surrogate, entropy, BC and value (value also averaged over levels, so it is
-    nats per softmax group); `next_valid` rows and their columns for the next-state head's
-    HL-Gauss cross-entropy against the target recorded at collection (nats per column,
-    lean.model.policy.next_state_cross_entropy); the hit head's cross-entropy (nats)
-    over the `own` rows that have a hit label (rows without one contribute nothing). A
-    next-state head whose columns differ from the recorded target's raises ValueError.
+    (`own`) for surrogate, entropy, bc and value (value also averaged over levels, so it is
+    nats per softmax group); bc is the cross-entropy of the policy's 42-way distribution
+    against the scripted teacher's full distribution (Rollout.teacher); `next_valid` rows
+    and their columns for the next-state head's HL-Gauss cross-entropy (nats per column,
+    lean.model.policy.next_state_cross_entropy; a head whose columns differ from the
+    recorded target's raises ValueError); the hit head's cross-entropy (nats) over the `own`
+    rows that have a hit label.
 
     A minibatch is a random set of views (one seat's whole segment each), run as
     micro-batches of config.micro_batch_views views through Policy.sequence from the stored
     carry, the last padded with the store's empty spare view; gradients accumulate over a
-    minibatch's micro-batches (each term divided by its whole-minibatch denominator, so the
-    sum is the minibatch's gradient), then one clipped Adam step. Advantages and value
-    targets (target_pass) come once per update from the values stored at collection; with
-    config.targets_every_epoch they are recomputed from the current critic at the start of
-    every epoch (a streamed forward pass over the rollout, in micro-batches of whole seats
-    so that each seat's segments are chained). The targets' range metrics
-    (returns.support_usage) are averaged over the epochs; a warning flag reads above 0 when any epoch raised it. `generator`
-    fixes the order of the data; `update_index` sets the warm-up learning rate. `compiled`
-    runs the loss (forward and backward) and the critic's target pass as
-    lean.learn.compiled's graphs; Adam and the clipping stay eager.
+    minibatch's micro-batches (each term divided by its whole-minibatch denominator), then
+    one Adam step: the global gradient norm clipped to config.gradient_clip, and the step
+    skipped (counted in `skipped_steps`) when that norm is not finite, through the fused
+    optimiser's `found_inf` (no host read). The learning rate of the k-th step of the update
+    is learning_rate(config, step_index + k); `adam_steps` reports the steps attempted.
+
+    Advantages and value targets (target_pass) come once per update from the values stored
+    at collection; with config.targets_every_epoch they are recomputed from the current
+    critic at the start of every epoch. Advantages are summed over levels and divided by
+    their standard deviation over the update (mean kept); `advantage_share_<level>` is each
+    level's share of the summed advantage's variance and `advantage_std` its scale before
+    the division. The targets' range metrics (returns.support_usage) are averaged over the
+    epochs; a warning flag reads above 0 when any epoch raised it. Each epoch's mean
+    approximate KL is `approximate_kl_epoch_<k>`; `kl_warning` is 1 when one exceeds
+    config.kl_warning (a monitor: nothing stops early). `entropy_fraction` is the entropy
+    over ln 42. `generator` fixes the order of the data. `compiled` runs the loss (forward
+    and backward) and the critic's target pass as lean.learn.compiled's graphs.
 
     Host reads and waits: the data order once and the wait for the store's copies (both at
-    the start), the measures once at the end; the "percentile" normaliser reads a count per
-    target pass. Streaming adds a host wait per micro-batch only for a staging buffer's
-    copy of two micro-batches before (RolloutStore.batches).
+    the start), the measures once at the end. Streaming adds a host wait per micro-batch
+    only for a staging buffer's copy of two micro-batches before (RolloutStore.batches).
     """
+    if not optimiser.defaults.get("fused"):
+        raise ValueError("update needs a fused optimiser (it skips non-finite steps through found_inf)")
     store = data if isinstance(data, RolloutStore) else RolloutStore.of(data)
     if compiled:
-        from lean.learn import compiled as graphs
+        from lean.learn.compiled import graphs
 
-        loss_of, values = graphs.minibatch_loss, graphs.minibatch_values
+        loss_of, values = graphs().minibatch_loss, graphs().minibatch_values
     else:
         loss_of, values = minibatch_loss, minibatch_values
-    rate = learning_rate(config, update_index)
-    for group in optimiser.param_groups:
-        group["lr"] = rate
-    bc_coefficient = bc_weight(config, scripted_win_rate)
+    if cloning:
+        weights = (0.0, 0.0, config.bc_coefficient)
+    else:
+        weights = (1.0, config.entropy_coefficient, teacher_weight)
     device = store.device
-    bc_tensor = to_device(torch.tensor(bc_coefficient), device)
+    weights = to_device(torch.tensor(weights), device)
     views = store.views
     size = min(config.micro_batch_views, views)
 
@@ -232,17 +296,25 @@ def update(
     counts = store.counts()
     loss_names = store.observation_names + LOSS_NAMES
 
-    totals = {name: torch.zeros((), device=device) for name in MEASURES + ("gradient_norm", "hit_labelled")}
-    usage = []
+    totals = {name: torch.zeros((), device=device) for name in MEASURES + ("gradient_norm", "skipped_steps", "hit_labelled")}
+    epoch_kl = torch.zeros(config.epochs, device=device)
+    epoch_steps = []
+    usage, shares = [], []
     steps = 0
+    rate = learning_rate(config, step_index)
     for epoch in range(config.epochs):
         if config.targets_every_epoch or epoch == 0:
-            usage.append(target_pass(config, policy, store, target_index, values if config.targets_every_epoch else None))
+            flags, sums = target_pass(config, policy, store, target_index, values if config.targets_every_epoch else None)
+            share, deviation = advantage_shares(sums)
+            usage.append(flags)
+            shares.append(torch.cat([share, deviation[None]]))
         else:
             usage.append(usage[-1])
+            shares.append(shares[-1])
         advantage, target = store.advantage, store.target
         index, owners = store.batch_index(orders[epoch], size, config.minibatches)
         index_device = to_device(index, device)
+        epoch_steps.append(len(set(owners)))
         for row, batch in enumerate(store.batches(loss_names, index)):
             part = owners[row]
             first, last = row == 0 or owners[row - 1] != part, row + 1 == len(owners) or owners[row + 1] != part
@@ -254,23 +326,50 @@ def update(
             loss, measures = loss_of(
                 config, policy, observation, batch["carry"], batch["reset"], offset, batch["action"],
                 batch["log_probability"], advantage.index_select(1, views_now), target.index_select(1, views_now),
-                batch["teacher"], batch["next_state"], batch["next_valid"], batch["hit_label"], bc_tensor, denominators,
+                batch["teacher"], batch["next_state"], batch["next_valid"], batch["hit_label"], weights, denominators,
             )
             loss.backward()
             for name, measure in measures.items():
                 totals[name] += measure
+            epoch_kl[epoch] += measures["approximate_kl"]
             if last:
-                totals["gradient_norm"] += torch.nn.utils.clip_grad_norm_(policy.parameters(), config.gradient_clip).detach()
-                totals["hit_labelled"] += denominators[2] / denominators[0].clamp(min=1.0)
+                rate = learning_rate(config, step_index + steps)
+                for group in optimiser.param_groups:
+                    group["lr"] = rate
+                norm = torch.nn.utils.clip_grad_norm_(policy.parameters(), config.gradient_clip).detach()
+                finite = torch.isfinite(norm)
+                optimiser.found_inf = (~finite).float()
                 optimiser.step()
                 optimiser.zero_grad(set_to_none=True)
+                totals["gradient_norm"] += torch.where(finite, norm, 0.0)
+                totals["skipped_steps"] += (~finite).float()
+                totals["hit_labelled"] += denominators[2] / denominators[0].clamp(min=1.0)
                 steps += 1
+    optimiser.found_inf = None
+
     names = list(totals)
-    read = torch.cat([torch.stack([totals[name] for name in names]), torch.stack(usage).mean(0).flatten()]).tolist()
-    metrics = {name: total / max(1, steps) for name, total in zip(names, read[:len(names)], strict=True)}
     levels = len(config.discounts)
-    rows = [read[len(names) + row * levels:len(names) + (row + 1) * levels] for row in range(4)]
+    read = torch.cat([
+        torch.stack([totals[name] for name in names]), torch.stack(usage).mean(0).flatten(),
+        torch.stack(shares).mean(0), epoch_kl / torch.tensor(epoch_steps, device=device).clamp(min=1),
+    ]).tolist()
+    metrics = {name: total / max(1, steps) for name, total in zip(names, read[:len(names)], strict=True)}
+    metrics["skipped_steps"] = read[names.index("skipped_steps")]
+    metrics["gradient_norm"] = read[names.index("gradient_norm")] / max(1, steps - metrics["skipped_steps"])
+    position = len(names)
+    rows = [read[position + row * levels:position + (row + 1) * levels] for row in range(4)]
     metrics.update(usage_metrics(rows))
-    metrics["bc_weight"] = bc_coefficient
+    position += 4 * levels
+    for level, name in enumerate(LEVEL_NAMES):
+        metrics[f"advantage_share_{name}"] = read[position + level]
+    metrics["advantage_std"] = read[position + levels]
+    position += levels + 1
+    kl = read[position:]
+    for epoch, value in enumerate(kl):
+        metrics[f"approximate_kl_epoch_{epoch}"] = value
+    metrics["kl_warning"] = float(max(kl) > config.kl_warning)
+    metrics["entropy_fraction"] = metrics["entropy"] / math.log(JOINT)
+    metrics["teacher_weight"] = config.bc_coefficient if cloning else teacher_weight
     metrics["learning_rate"] = rate
+    metrics["adam_steps"] = steps
     return metrics

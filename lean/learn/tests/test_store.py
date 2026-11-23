@@ -10,6 +10,7 @@ import torch
 from lean import game, model, scripted
 from lean.learn import LearnConfig, Opponent, RolloutStore, collect, start, update
 from lean.learn.store import EPISODE_CONSTANT, stored, widened
+from lean.learn.tests.setting import StepRecorder, small
 
 ENVIRONMENTS = 6  # 3 self-play: 9 seats
 
@@ -98,18 +99,19 @@ def test_micro_batches_give_the_one_pass_gradient(targets_every_epoch):
     steps = []
     for size in (2, store.views):
         variant = dataclasses.replace(
-            config, micro_batch_views=size, learning_rate=1.0, warmup_updates=1, gradient_clip=1e9,
+            config, micro_batch_views=size, learning_rate=1.0, warmup_steps=1, gradient_clip=1e9,
             targets_every_epoch=targets_every_epoch,
         )
         twin = copy.deepcopy(policy)
         before = [parameter.detach().clone() for parameter in twin.parameters()]
-        metrics = update(variant, twin, torch.optim.SGD(twin.parameters(), lr=1.0), store, generator=torch.Generator().manual_seed(2))
+        optimiser = torch.optim.SGD(twin.parameters(), lr=1.0, fused=True)
+        metrics = update(variant, twin, optimiser, store, teacher_weight=1.0, generator=torch.Generator().manual_seed(2))
         steps.append(([after.detach() - start for after, start in zip(twin.parameters(), before, strict=True)], metrics))
     (small, small_metrics), (whole, whole_metrics) = steps
     scale = max(step.abs().max() for step in whole)
     for name, (a, b) in zip(dict(policy.named_parameters()), zip(small, whole, strict=True), strict=True):
         assert torch.allclose(a, b, rtol=1e-4, atol=1e-5 * scale), name
-    for name in ("loss", "surrogate", "value", "entropy", "next_state", "hit", "bc", "approximate_kl"):
+    for name in ("loss", "surrogate", "value", "entropy", "next_state", "hit", "bc", "bc_kl", "approximate_kl"):
         assert small_metrics[name] == pytest.approx(whole_metrics[name], rel=1e-4, abs=1e-6), name
 
 
@@ -177,7 +179,8 @@ def test_pinned_streaming_equals_the_device_store():
     metrics = []
     for store in stores:
         twin = copy.deepcopy(policy)
-        metrics.append(update(variant, twin, torch.optim.SGD(twin.parameters()), store, generator=torch.Generator().manual_seed(4)))
+        optimiser = torch.optim.SGD(twin.parameters(), lr=1e-3, fused=True)
+        metrics.append(update(variant, twin, optimiser, store, generator=torch.Generator().manual_seed(4)))
     for name in metrics[0]:
         assert metrics[0][name] == pytest.approx(metrics[1][name], rel=1e-4, abs=1e-6), name
 
@@ -199,23 +202,14 @@ def _to(rollout, device):
     })
 
 
-def stand_in_store(segments: int, ticks: int, envs: int = 4, length: int = 6, flight: int = 2):
-    """A store of `segments` consecutive stand-in segments (lean.learn.tests.standins)."""
-    from lean.learn.tests import standins
-
-    torch.manual_seed(0)
-    generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1)
-    game_config = standins.GameConfig(length=length, flight=flight)
-    policy = standins.TinyPolicy()
-    opponent = Opponent(scripted_config=None)
-    games = {"game": standins.game, "scripted": standins.scripted}
-    state, carry = start(config, game_config, policy, opponent, envs, generator, **games)
+def real_store(segments: int, ticks: int, envs: int = 4, clock: int = 10):
+    """A store of `segments` consecutive segments of the real game (games end at `clock`)."""
+    config, game_config, policy, opponent, state, carry, generator = small(
+        envs, game_config=game.GameConfig(training_spawn=True, clock_ticks=clock)
+    )
     store = RolloutStore(segments, stream=False)
     for segment in range(segments):
-        rollout = collect(
-            config, game_config, policy, opponent, state, carry, ticks, generator, **games, store=store, segment=segment,
-        )
+        rollout = collect(config, game_config, policy, opponent, state, carry, ticks, generator, store=store, segment=segment)
         state, carry = rollout.state, rollout.carry
     return config, game_config, policy, store
 
@@ -235,10 +229,10 @@ def test_chained_targets_equal_one_gae_pass_over_the_concatenated_ticks(fresh_va
     a segment's last tick (which must cut the chain there). Both the stored values and the
     critic's recomputed ones (targets_every_epoch)."""
     from lean.learn import generalised_advantages, normalise_advantages
-    from lean.learn.update import minibatch_values, target_pass
+    from lean.learn.training import minibatch_values, target_pass
 
     segments, ticks = 4, 12
-    config, _, policy, store = stand_in_store(segments, ticks)
+    config, _, policy, store = real_store(segments, ticks)
     seats, views = store.seats, store.views
     generator = torch.Generator().manual_seed(5)
     # Rewards on every level and stored values, so every tick's delta matters.
@@ -274,7 +268,7 @@ def test_chained_targets_equal_one_gae_pass_over_the_concatenated_ticks(fresh_va
         return records.reshape((segments, ticks, seats) + rest).transpose(0, 1).reshape((ticks, views) + rest)
 
     expected_target = store_major(target)
-    expected_advantage = normalise_advantages(store_major(advantage.sum(-1)), store.resident["own"][:, :views], config)
+    expected_advantage = normalise_advantages(store_major(advantage.sum(-1)), store.resident["own"][:, :views])
     index = store.chain_index(4 * segments)  # 4 seats a row; 6 seats, so the last row is padded
     assert index.shape == (2, 4 * segments) and seats == 6
     target_pass(config, policy, store, index, minibatch_values if fresh_values else None)
@@ -288,22 +282,19 @@ def test_chained_targets_equal_one_gae_pass_over_the_concatenated_ticks(fresh_va
     assert not torch.allclose(cut[-1], target[ticks - 1, 2:3] - value[ticks - 1, 2:3], atol=1e-3)
 
 
-def test_hit_labels_near_a_segment_boundary_come_from_the_next_segment():
-    """Stand-in bullets fly 2 ticks, episodes last 6: in three consecutive 8-tick segments a
-    segment's last two rows are labelled by bullets that end in the next segment; only the
-    last segment keeps its tail unlabelled (and rows whose bullet outlives the episode)."""
-    from lean.learn.tests import standins
-
-    segments, ticks, length, flight = 3, 8, 6, 2
-    _, _, _, store = stand_in_store(segments, ticks, length=length, flight=flight)
-    seats, slots = store.seats, store.resident["hit_label"].shape[-1]
+def test_hit_labels_near_a_segment_boundary_come_from_the_next_segment(monkeypatch):
+    """Three consecutive 12-tick segments (bullets live up to 11 ticks, games end every 20):
+    every row of the store is labelled with the outcome of the bullet the ship emitted there,
+    found by searching the recorded game steps over all 36 ticks, so a segment's tail is
+    labelled by bullets that end in the next segment; only the last segment keeps an
+    unlabelled tail."""
+    recorder = StepRecorder().install(monkeypatch)
+    segments, ticks = 3, 12
+    _, _, _, store = real_store(segments, ticks, clock=20)
+    seats = store.seats
     labels = seat_major(store.resident["hit_label"], segments, seats).long()  # (U x T, S, N)
-    row = torch.arange(segments * ticks)[:, None, None]
-    episode_tick = row % length
-    ends_in_episode = episode_tick + flight <= length - 1
-    ends_in_update = row + flight < segments * ticks
-    outcome = standins.bullet_outcome(episode_tick, torch.arange(slots))
-    expected = torch.where(ends_in_episode & ends_in_update, outcome, -1)
-    assert torch.equal(labels, expected.expand(-1, seats, -1))
-    assert (labels[ticks - flight: ticks] >= 0).any()  # segment 0's tail is labelled
+    environment = torch.cat([torch.arange(4), torch.arange(2)])  # 4 environments, 2 self-play: the seats
+    expected = recorder.hit_labels().index_select(1, environment)
+    assert torch.equal(labels, expected)
+    assert (labels[ticks - 3: ticks] >= 0).any()  # segment 0's tail is labelled from segment 1
     assert (store.resident["hit_label"][:, store.views] == -1).all()  # the spare view labels nothing
