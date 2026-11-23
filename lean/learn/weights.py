@@ -13,6 +13,7 @@ Buffers are not averaged; a policy loaded with averaged weights keeps its own bu
 """
 
 import dataclasses
+from pathlib import Path
 
 import torch
 from torch import Tensor, nn
@@ -58,11 +59,15 @@ class WeightAverages:
 
 def save_checkpoint(path, policy: nn.Module, averages: WeightAverages, config: LearnConfig, **extra) -> None:
     """The live weights, both averages, the model's and the learner's configs, and `extra`
-    (stage, updates, steps, the teacher term, ...) in one file."""
+    (stage, updates, steps, the teacher term, ...) in one file, written to a temporary file
+    that then replaces `path` (a write that fails part way leaves the previous file whole)."""
+    path = Path(path)
+    temporary = path.with_name(path.name + ".tmp")
     torch.save({
         "model_config": policy.config, "learn_config": dataclasses.asdict(config),
         "live": policy.state_dict(), "averages": averages.state(), **extra,
-    }, path)
+    }, temporary)
+    temporary.replace(path)
 
 
 def load_checkpoint(path, device=None) -> dict:

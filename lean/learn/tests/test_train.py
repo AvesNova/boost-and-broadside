@@ -4,6 +4,7 @@ import re
 import shutil
 import sys
 
+import pytest
 import torch
 
 from lean import model, train
@@ -118,3 +119,38 @@ def test_a_checkpoint_holds_no_snapshot_weights_and_resume_reads_them_from_the_s
     for slot, which in ((0, "ema"), (1, "uniform")):
         for name, value in getattr(averages, which).items():
             assert torch.equal(restored.slot_weights[slot][f"policy.{name}"], value)
+
+
+def test_a_checkpoint_write_that_fails_leaves_the_previous_file_whole(monkeypatch, tmp_path):
+    """Review B4: a checkpoint is written to a temporary file and then replaces the old one
+    (as snapshots are), so a write that dies part way (a full disk, a kill) never leaves a
+    truncated checkpoint behind."""
+    from lean.learn import LearnConfig, WeightAverages, save_checkpoint
+
+    policy = model.Policy(model.ModelConfig())
+    config = LearnConfig()
+    path = tmp_path / "rl.pt"
+    save_checkpoint(path, policy, WeightAverages(policy, config), config, updates=1)
+    save = torch.save
+
+    def dies_part_way(_, file):
+        with open(file, "wb") as handle:
+            handle.write(b"partial")
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(torch, "save", dies_part_way)
+    try:
+        save_checkpoint(path, policy, WeightAverages(policy, config), config, updates=2)
+    except OSError:
+        pass
+    monkeypatch.setattr(torch, "save", save)
+    assert load_checkpoint(path)["updates"] == 1
+
+
+def test_start_without_the_rl_stage_is_refused(monkeypatch, tmp_path):
+    """Review B6: --start names the BC checkpoint RL starts from; with another stage it would
+    be ignored silently, so it is refused."""
+    with pytest.raises(SystemExit):
+        run(monkeypatch, "--stage", "bc", "--start", str(tmp_path / "bc.pt"))
+    with pytest.raises(SystemExit):
+        run(monkeypatch, "--start", str(tmp_path / "bc.pt"))

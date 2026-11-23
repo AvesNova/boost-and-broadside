@@ -263,6 +263,8 @@ def main() -> None:
         help="compile the rollout tick and the update's loss (lean.learn.compiled); --no-compile runs eagerly",
     )
     arguments = parser.parse_args()
+    if arguments.start is not None and arguments.stage != "rl":
+        parser.error("--start is the BC checkpoint RL starts from: it needs --stage rl")
 
     device = torch.device(arguments.device)
     if arguments.threads > 0:
@@ -302,7 +304,7 @@ def main() -> None:
     planned = {"bc": plan["bc_updates"], "rl": plan["updates"]}
     if resumed is not None:
         stages = stages[stages.index(resumed["stage"]):]
-    elif plan["start"] is not None and stages == ("rl",):
+    elif plan["start"] is not None:
         checkpoint = load_checkpoint(Path(plan["start"]), device)
         policy = model.Policy(checkpoint["model_config"]).to(device)
         policy.load_state_dict(policy_weights(checkpoint, config.handoff))
