@@ -33,8 +33,8 @@ class World:
     def __init__(
         self,
         config: core.GameConfig,
-        player_type: int = 1,
-        chaser_type: int = 2,
+        player_type: int = 0,
+        chaser_type: int = 0,
         chaser_on: bool = True,
         seed: int = 0,
     ):

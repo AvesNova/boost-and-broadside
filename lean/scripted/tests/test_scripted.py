@@ -183,20 +183,19 @@ def test_opponent_beats_chaser_five_a_side():
     assert wins > 0.65 * ended
 
 
-def test_the_game_tells_the_opponent_each_types_characteristics():
-    """Tell, do not infer (author 2026-11-22): the game's constants carry each type's gun range,
-    corner speed and launch speed, and the opponent reads those rather than one type's fallback."""
+def test_the_game_tells_the_opponent_its_characteristics_and_the_arena():
+    """Tell, do not infer (author 2026-11-22): the game's constants carry the gun range, corner
+    speed, launch speed and the arena radius, and the opponent reads those rather than its
+    fallbacks (an arena of 1,500 m is read as 1,500 m)."""
     from lean.game import core
     from lean.scripted.opponent import ScriptedConfig, characteristic
 
-    every_type = core.GameConfig(lineup=("yongma", "jujak", "vizia"))
-    constants = core.ship_constants(every_type, torch.tensor([[0, 1, 2]]))
-    for name in ("gun_range", "corner_speed", "bullet_launch_speed"):
-        assert name in constants
-        assert len(set(constants[name][0].tolist())) == 3, name  # differs by type
+    constants = core.ship_constants(core.GameConfig(arena_radius=1500.0), torch.tensor([[0, 0]]))
     state = SimpleNamespace(constants=constants)
-    read = characteristic(ScriptedConfig(), state, "corner_speed")
-    assert torch.equal(read, constants["corner_speed"])
+    for name in ("gun_range", "corner_speed", "bullet_launch_speed", "arena_radius"):
+        assert name in constants, name
+        assert characteristic(ScriptedConfig(), state, name) == constants[name], name
+    assert characteristic(ScriptedConfig(), state, "arena_radius") == 1500.0
 
 
 def test_never_shoots_through_a_team_mate():
@@ -205,7 +204,7 @@ def test_never_shoots_through_a_team_mate():
     with the team-mate 150 m off it."""
     from lean.game import core
 
-    config = core.GameConfig(spawn="mixed")
+    config = core.GameConfig(spawn="mixed", field_count=0, fog=False)  # placed by hand
     state = core.reset(
         config, 1, torch.tensor([[2, 1]]), torch.Generator().manual_seed(0), torch.device("cpu")
     )
@@ -238,8 +237,10 @@ def test_one_call_for_both_teams_equals_the_two_single_team_calls():
 
     generator = torch.Generator().manual_seed(3)
     config = ScriptedConfig()
-    for game_config in (game.GameConfig(arena_radius=1500.0, spawn="mixed"),
-                        game.GameConfig.core(arena_radius=1500.0, spawn="mixed")):
+    for game_config in (
+        game.GameConfig(arena_radius=1500.0, spawn="mixed", field_count=0, fog=False),
+        game.GameConfig(arena_radius=1500.0, spawn="mixed"),
+    ):
         envs = 8
         sizes = torch.randint(3, 6, (envs, 2), generator=generator)
         state = game.reset(game_config, envs, sizes, generator, "cpu")

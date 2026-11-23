@@ -38,12 +38,8 @@ class State:
 
 @dataclass
 class StepOut:
-    damage_dealt: torch.Tensor
     damage_taken: torch.Tensor
-    friendly_damage: torch.Tensor
     died: torch.Tensor
-    fired: torch.Tensor
-    killer: torch.Tensor
     done: torch.Tensor
     result: torch.Tensor
     shot_outcome: torch.Tensor
@@ -106,8 +102,8 @@ def step(config, state, action, noise):
     slot = torch.arange(state.team.shape[1], device=state.team.device).expand_as(state.team)
     ended = fired_tick >= 0
     out = StepOut(
-        damage_dealt=fired.float() * 0.1, damage_taken=zeros, friendly_damage=zeros, died=torch.zeros_like(fired),
-        fired=fired, killer=torch.full_like(state.team, -1), done=done, result=torch.where(done, result, -1),
+        damage_taken=zeros, died=torch.zeros_like(fired), done=done,
+        result=torch.where(done, result, -1),
         shot_outcome=torch.where(ended, bullet_outcome(fired_tick, slot), -1)[..., None],
         shot_tick=fired_tick[..., None],
         hit_damage=zeros[..., None].expand(-1, -1, zeros.shape[-1]).clone(),

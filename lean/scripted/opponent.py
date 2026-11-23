@@ -35,7 +35,7 @@ TURN, LEVEL_TWO, LEVEL_THREE, BOOST_SLOW, BOOST_FAR, REVERSE, ALIGNED, IN_RANGE 
 COAST_POWER, BOOST_POWER, REVERSE_POWER = 0, 1, 2
 TINY = 1e-6  # keeps lengths and ratios away from zero
 # The game's name in `state.constants` where it differs from the characteristic's name here.
-GAME_CONSTANT_NAMES = {"stall_angle": "stall", "bullet_energy_cost": "bullet_cost"}
+GAME_CONSTANT_NAMES = {"stall_angle": "stall"}
 LOGIT_LIMIT = 30.0
 
 
@@ -98,7 +98,6 @@ class ScriptedConfig:
     max_acceleration: float = 353.16  # metres per second squared
     max_energy: float = 497563.0  # joules per kilogram
     hit_radius: float = 12.0  # metres
-    bullet_energy_cost: float = 575.06  # joules per kilogram per shot
 
     # Persona population: standard deviation at spread 1.
     centre_log_spread: float = 0.35  # of ln(gate centre)
@@ -431,10 +430,8 @@ def marginals(
     power = torch.stack([1.0 - boost - reverse, boost, reverse], -1)
 
     # Gun: aligned times in range, zero without a target or while the gun cannot fire.
-    ready = (state.cooldown <= 0) & (
-        state.energy >= characteristic(config, state, "bullet_energy_cost")
-    )
-    ready = ready & ~fight.ally_in_line  # never shoot through a team-mate (author 2026-11-23)
+    # A shot costs no store; never shoot through a team-mate (author 2026-11-23).
+    ready = (state.cooldown <= 0) & ~fight.ally_in_line
     fire = torch.where(has_target & ready, gate[..., ALIGNED] * gate[..., IN_RANGE], 0.0)
     return Marginals(stick, power, fire, fight.controlled, fight.target)
 

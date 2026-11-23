@@ -28,12 +28,10 @@ HELP = (
 )
 
 
-def parse_config(settings: list[str], core_model: bool = False) -> core.GameConfig:
-    """GameConfig with --set name=value overrides (Python literals where they parse); with
-    core_model, the core game (`GameConfig.core()`: the new flight model) underneath."""
+def parse_config(settings: list[str]) -> core.GameConfig:
+    """The game's GameConfig (no clock) with --set name=value overrides (Python literals where
+    they parse)."""
     values = {"clock_ticks": 10**9}
-    if core_model:
-        values.update(flight_model="core", lineup=("vizia",))
     for item in settings:
         name, _, text = item.partition("=")
         try:
@@ -56,7 +54,7 @@ def physics_label(config: core.GameConfig) -> str:
 
 class App:
     def __init__(self, args):
-        self.config = parse_config(args.set, args.core)
+        self.config = parse_config(args.set)
         self.time_scale = args.time_scale
         self.world = World(
             self.config, player_type=card.TYPE_NAMES.index(args.ship), chaser_on=not args.no_chaser
@@ -377,12 +375,7 @@ class App:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--ship", choices=card.TYPE_NAMES, default=None, help="default: jujak, or vizia with --core"
-    )
-    parser.add_argument(
-        "--core", action="store_true", help="the new flight model (GameConfig.core())"
-    )
+    parser.add_argument("--ship", choices=card.TYPE_NAMES, default=card.TYPE_NAMES[0])
     parser.add_argument(
         "--no-chaser", action="store_true", help="start without the chaser (C toggles it)"
     )
@@ -400,7 +393,7 @@ def main():
         action="append",
         default=[],
         metavar="NAME=VALUE",
-        help="override a GameConfig field, e.g. --set 'fields=((800,0,400,200,2),)'",
+        help="override a GameConfig field, e.g. --set field_count=0 (no fields) or --set fog=False",
     )
     parser.add_argument("--seconds", type=float, default=0.0, help="quit after this long (testing)")
     parser.add_argument("--headless", action="store_true", help="hide the window (testing)")
@@ -409,8 +402,6 @@ def main():
     )
     torch.set_num_threads(1)
     arguments = parser.parse_args()
-    if arguments.ship is None:
-        arguments.ship = "vizia" if arguments.core else "jujak"
     if arguments.time_scale <= 0.0:
         parser.error("--time-scale must be positive")
     with tuning.time_scale(arguments.time_scale):

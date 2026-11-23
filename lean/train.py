@@ -41,10 +41,6 @@ def main() -> None:
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--threads", type=int, default=0, help="CPU threads for torch; 0 keeps the default")
     parser.add_argument(
-        "--game", choices=("v2", "core"), default="v2",
-        help="v2: lean.game.GameConfig() with ghost bullets (labels for the hit head); core: GameConfig.core()",
-    )
-    parser.add_argument(
         "--compile", action=argparse.BooleanOptionalAction, default=True,
         help="compile the rollout tick and the update's loss (lean.learn.compiled); --no-compile runs eagerly",
     )
@@ -68,7 +64,7 @@ def main() -> None:
         torch.set_num_threads(arguments.threads)
     torch.manual_seed(arguments.seed)
     generator = torch.Generator(device=device).manual_seed(arguments.seed)
-    game_config = game.GameConfig(ghost_bullets=True) if arguments.game == "v2" else game.GameConfig.core()
+    game_config = game.GameConfig()
     scripted_config = scripted.ScriptedConfig()
     policy = model.Policy(model.ModelConfig()).to(device)
     optimiser = make_optimiser(config, policy)

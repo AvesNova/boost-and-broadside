@@ -1,7 +1,7 @@
-"""The core flight model's design assumptions (docs/rewrite/core-decisions.md, "Flight physics").
+"""The flight model's design assumptions (docs/rewrite/core-decisions.md, "Flight physics").
 
 Each test names the rule it guards. They fly one ship with `flight_tick` (or one game step) in
-`GameConfig.core()`; no fields.
+`GameConfig()`; no fields.
 """
 
 import dataclasses
@@ -12,20 +12,20 @@ import torch
 from lean.game import card, core
 
 torch.set_num_threads(1)
-CONFIG = core.GameConfig.core()
-VIZIA = 2
+CONFIG = core.GameConfig()
+P51D = card.TYPE_NAMES.index("p51d")
 COAST, DIVE, CLIMB = 0, 1, 2
 STRAIGHT, FULL = 0, 6
 NO_FIELDS = torch.zeros(1, 5, 0)
 
 
-def constants(ship_type=VIZIA, slots=1):
+def constants(ship_type=P51D, slots=1):
     """One ship type's constants for (1, slots) slots, in a run of that type alone."""
     config = dataclasses.replace(CONFIG, lineup=(card.TYPE_NAMES[ship_type],))
     return core.ship_constants(config, torch.full((1, slots), ship_type))
 
 
-def fly(speed, store_fraction, stick, power, seconds, thrust_scale=1.0, ship_type=VIZIA):
+def fly(speed, store_fraction, stick, power, seconds, thrust_scale=1.0, ship_type=P51D):
     """Fly one ship; returns per-tick speed and store fraction (lists) and the constants."""
     c = constants(ship_type)
     z = torch.zeros(1, 1)
@@ -50,14 +50,14 @@ def fly(speed, store_fraction, stick, power, seconds, thrust_scale=1.0, ship_typ
     with torch.no_grad():
         for _ in range(round(seconds / CONFIG.tick_length)):
             s = core.flight_tick(
-                c, NO_FIELDS, CONFIG.tick_length, s, stick_t, power_t, model="core", thrust_scale=thrust_scale
+                c, NO_FIELDS, CONFIG.tick_length, s, stick_t, power_t, thrust_scale=thrust_scale
             )
             speeds.append(s.speed.item())
             stores.append((s.energy / c["max_energy"]).item())
     return speeds, stores
 
 
-def one_g_speed(ship_type=VIZIA):
+def one_g_speed(ship_type=P51D):
     """The speed below which the wing cannot carry 1 g flying straight."""
     return (card.GRAVITY / card.CARD["max_lift_coefficient"][ship_type]) ** 0.5
 
@@ -65,7 +65,7 @@ def one_g_speed(ship_type=VIZIA):
 def test_store_is_two_loops_at_corner_speed_and_spawn_is_half():
     """The store holds `store_loops` vertical loops at corner speed; ships spawn at half."""
     c = constants()
-    lift, limit = card.CARD["max_lift_coefficient"][VIZIA], card.CARD["max_acceleration"][VIZIA]
+    lift, limit = card.CARD["max_lift_coefficient"][P51D], card.CARD["max_acceleration"][P51D]
     corner_radius = (limit / lift) / (limit**2 - card.GRAVITY**2) ** 0.5
     expected = CONFIG.store_loops * card.GRAVITY * 2.0 * corner_radius
     assert abs(c["max_energy"] - expected) < 1e-3 * expected
@@ -108,14 +108,12 @@ def test_dive_and_climb_are_equal_and_opposite():
     rates = []
     for power in (DIVE, CLIMB):
         control = SimpleNamespace(
-            model="core",
             thrust_scale=1.0,
             stick_size=torch.zeros(1, 1),
             stick_sign=torch.ones(1, 1),
             commanded=c.commanded_table[:, power],
             demand=c.demand_table[:, power],
         )
-        control.inverse_demand = 1.0 / control.demand
         setting = core._setting(c, control, speed, energy)
         _, store_rate = core._rates(
             c,
@@ -165,8 +163,8 @@ def test_firing_costs_speed_and_no_store():
     before = state.energy.clone()
     action = torch.tensor([[[0, 0, 1], [0, 0, 0]]])
     noise = core.draw_noise(CONFIG, 1, 2, generator, torch.device("cpu"))
-    after, out = core.step(CONFIG, state, action, noise)
-    assert bool(out.fired[0, 0])
+    after, _ = core.step(CONFIG, state, action, noise)
+    assert bool(after.fired[0, 0])
     assert torch.allclose(after.energy[0, 0], before[0, 0], rtol=1e-6)
 
 
@@ -181,14 +179,12 @@ def test_at_the_edges_dive_and_climb_act_as_coast_on_the_wing():
         c = constants()
         speed = torch.full((1, 1), 200.0)
         control = SimpleNamespace(
-            model="core",
             thrust_scale=1.0,
             stick_size=torch.ones(1, 1),
             stick_sign=torch.ones(1, 1),
             commanded=c.commanded_table[:, power],
             demand=c.demand_table[:, power],
         )
-        control.inverse_demand = 1.0 / control.demand
         lateral, *_ = core._setting(c, control, speed, torch.full((1, 1), store * c.max_energy))
         rates[name] = lateral.item()
     assert abs(rates["climb"] - rates["coast"]) < 1e-3 * abs(rates["coast"])
@@ -202,21 +198,19 @@ def test_speeds_in_order_minimum_radius_then_best_sustained_rate_then_corner():
 
     speeds = torch.linspace(100.0, 420.0, 321)
     sticks = torch.linspace(0.0, 1.0, 101)
-    for ship_type in range(3):
+    for ship_type in range(len(card.TYPE_NAMES)):
         c = constants(ship_type, slots=len(speeds) * len(sticks))
         v = speeds.repeat(len(sticks))
         stick = sticks.repeat_interleave(len(speeds))
         control = SimpleNamespace(
-            model="core",
             thrust_scale=1.0,
             stick_size=stick,
             stick_sign=torch.ones_like(v),
             commanded=c.commanded_table[0, COAST],
             demand=c.demand_table[0, COAST],
         )
-        control.inverse_demand = 1.0 / control.demand
         setting = core._setting(c, control, v, torch.full_like(v, c.spawn_energy))
-        lateral, _, _, thrust, _ = setting
+        lateral, _, _, thrust = setting
         reach = (lateral.abs() / (v * v) * c.inverse_lift).clamp(0.0, 1.0)
         angle = c.stall * (1.0 - torch.sqrt(1.0 - reach))
         lift = core._lift_coefficient(c, angle)
@@ -247,7 +241,7 @@ def test_the_turn_has_precedence_over_the_climb():
     """The author's order (2026-11-23): 1 g held, then the turn, then the climb gets what is left.
     Slow, full stick and climb turns as full stick coasting (the climb gains nothing it would take
     from the turn); straight at twice the 1 g speed, the climb trades at its full rate."""
-    for ship_type in (VIZIA, card.TYPE_NAMES.index("p51d")):
+    for ship_type in range(len(card.TYPE_NAMES)):
         c = constants(ship_type)
         slow = 1.3 * one_g_speed(ship_type)
         energy = torch.full((1, 1), 0.5 * c.max_energy)
@@ -256,14 +250,12 @@ def test_the_turn_has_precedence_over_the_climb():
             ("coast", COAST, 1.0, slow), ("climb", CLIMB, 1.0, slow), ("straight", CLIMB, 0.0, 2.0 * slow)
         ):
             control = SimpleNamespace(
-                model="core",
                 thrust_scale=1.0,
                 stick_size=torch.full((1, 1), stick),
                 stick_sign=torch.ones(1, 1),
                 commanded=c.commanded_table[:, power],
                 demand=c.demand_table[:, power],
             )
-            control.inverse_demand = 1.0 / control.demand
             lateral, exchange, *_ = core._setting(c, control, torch.full((1, 1), speed), energy)
             laterals[name], exchanges[name] = lateral.item(), exchange.item()
         assert abs(laterals["climb"] - laterals["coast"]) < 1e-3 * laterals["coast"], ship_type

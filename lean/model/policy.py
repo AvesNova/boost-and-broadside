@@ -384,7 +384,8 @@ class Policy(nn.Module):
         )
 
         live = torch.cat([torch.ones_like(obs["key_mask"][..., :1]), obs["key_mask"]], -1)
-        attendable = torch.cat([live, obs["field_mask"]], -1).flatten(0, 1)[:, None, None, :]
+        every_field = live.new_ones(live.shape[:-1] + (field_pos.shape[-2],))  # always present
+        attendable = torch.cat([live, every_field], -1).flatten(0, 1)[:, None, None, :]
         # Additive, built once: a boolean mask costs a conversion in every sublayer.
         attention_mask = torch.zeros(attendable.shape, device=attendable.device).masked_fill(~attendable, -math.inf)
         keep = live.unsqueeze(-1).float()
@@ -410,6 +411,6 @@ class Policy(nn.Module):
 
 
 OBS_FIELDS = (
-    "ship", "pos", "heading", "key_mask", "globals", "field", "field_pos", "field_mask", "visible", "since_seen",
+    "ship", "pos", "heading", "key_mask", "globals", "field", "field_pos", "visible", "since_seen",
 )
 FOG_FEATURES = 2  # visible, since_seen

@@ -7,7 +7,7 @@ import torch
 from lean.game import card, core
 
 torch.set_num_threads(1)
-CONFIG = core.GameConfig.core()
+CONFIG = core.GameConfig()
 DEVICE = torch.device("cpu")
 
 
@@ -70,7 +70,6 @@ def test_the_observation_carries_the_fields():
     assert torch.allclose(
         observation.field[..., 0] * core.FIELD_RADIUS_SCALE, state.fields[:, core.FIELD_RADIUS]
     )
-    assert observation.field_mask.all()
 
 
 def test_the_core_game_runs_with_fields():

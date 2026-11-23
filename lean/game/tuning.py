@@ -1,5 +1,5 @@
 """Ship tuning: a real aircraft, or a design's handles, into a lean card row (lean.game.card) at
-the game's time scale, under the core flight model (GameConfig.core()).
+the game's time scale, under the game's flight model.
 
 The game plays at TIME_FACTOR (2) times real time (v2's real_scale.EQUIVALENT_FACTOR): lengths
 are real metres, game time is real time over 2, so speeds are x2, accelerations x4 (gravity
@@ -13,36 +13,20 @@ Two routes (docs/rewrite/p51d-model.md):
   The point-mass conversion of the October fit (docs/rewrite/physics-checks/planes.py
   `from_real`): lift and zero-lift drag per metre rho S C / (2 m), induced drag factor
   k / (rho S / 2 m) with k = 1 / (pi e AR), thrust power P eta / m, static thrust by momentum
-  theory (FM^2 P^2 2 rho A)^(1/3) / m.
-- `handles_row`: v2's handles (bnb.game.handling.Handles, in the set's x2 units, as v2's ship
-  files hold them) solved under the core model. The direct handles are v2's closed forms
-  (bnb.game.handling.solver._flight_card, weapons.combat_card). v2 solved its seven flown
-  handles by flying its own flight model; the core model has its own physics, so the three
-  flown handles that still mean something are solved here quasi-steadily under it (cruise
-  speed -> engine power, low-speed acceleration -> static thrust, the settled full-stick
-  turn -> induced drag; Newton in log parameters with finite differences, as v2's solver).
+  theory (FM^2 P^2 2 rho A)^(1/3) / m; dive and climb trade at 1 g.
+- `handles_row`: a design's handles (v2's bnb.game.handling.Handles names, in game units): the
+  direct ones in v2's closed forms (bnb.game.handling.solver._flight_card, weapons.combat_card),
+  and the three flown handles that mean something under the game's flight model solved
+  quasi-steadily (cruise speed -> engine power, low-speed acceleration -> static thrust, the
+  settled full-stick turn -> induced drag; Newton in log parameters with finite differences, as
+  v2's solver). The dive and zoom accelerations at cruise set the trade (their mean).
 
-What depends on v2's flight model and how it maps to the core model:
-
-- v2's engine had two powers: `engine_power_full_store` drives speed and the surplus
-  (`engine_power` minus it) charged the store, fading above the engine knee. The core model
-  drops the charge (its thrust uses the full-store power only), so the climb time handle,
-  the engine surplus, the coast exchange and the knee are inert; a row from here sets
-  engine_power equal to engine_power_full_store (no surplus).
-- v2's dive and climb trades had separate rates; the core model uses their mean. From the
-  airframe both are 1 g (a vertical dive or zoom trades at g); from the handles they are the
-  dive and zoom accelerations at cruise, whose mean is 1 g for every v2 card here.
-- The store size, the spawn store and the bullet cost are the core model's own (two loops at
-  corner speed, half of it, free), whatever the card holds.
-- The nose frequency (v2's nose reversal handle, a placeholder for every type) and the stick
-  levels are control feel, not physics: they come from the base row.
-- The flight terms v2 shared across types are card columns per type (card.FLIGHT_TERMS): the
-  drag rise above `critical_speed` (v2's 394 m/s game, 197 m/s real, exponent 12), the
-  separation drag (induced drag doubles at full lift), the soft minima of lift against the g
-  limit and of thrust against static thrust, and the nose damping. v2's types and the handles
-  route keep v2's values (from the base row; `game_terms`); a real aircraft converted directly
-  flies with them off (POINT_MASS_TERMS: the pure point mass of the October fit), and
-  `performance(..., plain=True)` turns them off for any row.
+The store size, the spawn store and the shot's cost are the game's own (two loops at corner
+speed, half of it, free), so no row carries them. The nose frequency and the stick levels are
+control feel, not physics: they come from the base row (GAME_FIELDS for a new design). The
+flight terms (card.FLIGHT_TERMS) are per type; a real aircraft converted directly flies with
+the game terms off (POINT_MASS_TERMS: the pure point mass of the October fit), and
+`performance(..., plain=True)` turns them off for any row.
 """
 
 from __future__ import annotations
@@ -95,7 +79,6 @@ class Airframe:
     propeller_diameter: float  # m
     g_limit: float
     stall_angle: float  # rad, angle of attack at C_Lmax
-    service_ceiling: float  # m (the v2 store, g h: inert in the core model)
 
     @property
     def per_metre(self) -> float:
@@ -113,7 +96,7 @@ class Airframe:
 # AR 5.83, C_Lmax 1.50 from the clean 101-102 mph stall, Oswald e 0.8 (assumed), C_D0 0.0149
 # and propeller efficiency 0.82 fitted to the tested 375 mph and 3,600 ft/min at sea level,
 # Hamilton Standard propeller 3.40 m (11 ft 2 in). From v2's research
-# (bnb.reference.real_planes): the g limit 8, the stall angle 15.5 deg, the ceiling 12,680 m.
+# (bnb.reference.real_planes): the g limit 8, the stall angle 15.5 deg.
 P51D = Airframe(
     mass=4427.0,
     wing_area=21.83,
@@ -126,7 +109,34 @@ P51D = Airframe(
     propeller_diameter=3.40,
     g_limit=8.0,
     stall_angle=math.radians(15.5),
-    service_ceiling=12680.0,
+)
+
+# A design's fields that are not its airframe: guns, damage, shield, the nose's reversal, the
+# stick levels and vision (v2's Vizia's), and the flight terms the point mass keeps (v2's).
+GAME_FIELDS = dict(
+    corner_nose_frequency=11.23144817352295,
+    max_shield=100.0,
+    hit_radius=12.0,
+    core_radius=5.0,
+    hit_damage=21.0,
+    muzzle_speed=1712.0,
+    fire_rate=30.0,
+    bullet_life=0.36666667461395264,
+    explosive_share=0.0,
+    reference_bullet_speed=1753.606201171875,
+    bullet_spread_scale=0.25704020261764526,
+    bullet_drag_scale=1.0,
+    shield_recharge_rate_scale=2.0,
+    shield_recharge_delay_scale=0.5,
+    head_on_fraction_scale=0.0,
+    head_on_angle_scale=1.0644670724868774,
+    head_on_sharpness=3.0,
+    fine_stick=0.21010109782218933,
+    sustained_stick=0.7003369927406311,
+    vision_range_scale=0.3255208432674408,
+    drag_rise_exponent=12.0,
+    separation_exponent=8.0,
+    nose_damping=0.7,
 )
 
 
@@ -145,25 +155,6 @@ def point_mass(row: dict[str, float]) -> dict[str, float]:
     return {**row, **POINT_MASS_TERMS}
 
 
-def game_terms(row: dict[str, float]) -> dict[str, float]:
-    """A row's flight terms (card.FLIGHT_TERMS), to give another row the same ones."""
-    return {name: row[name] for name in card.FLIGHT_TERMS}
-
-
-def unmodified_climb(row: dict[str, float]) -> dict[str, float]:
-    """A v2 card row with v2's climb modifications reverted to the physical values
-    (docs/rewrite/p51d-model.md, "Vizia's climb modifications"): no engine surplus charging
-    the store (engine_power = engine_power_full_store) and dive and climb trading at 1 g.
-    The store size, the spawn store and the shot's cost are the core model's own."""
-    return {
-        **row,
-        "engine_power": row["engine_power_full_store"],
-        "dive_exchange_scale": card.GRAVITY / card.DIVE_EXCHANGE,
-        "climb_exchange_scale": card.GRAVITY / card.CLIMB_EXCHANGE,
-        "engine_knee_scale": 1.0,
-    }
-
-
 def airframe_row(
     airframe: Airframe, base: dict[str, float], terms: dict[str, float] | None = None
 ) -> dict[str, float]:
@@ -178,13 +169,9 @@ def airframe_row(
         zero_lift_drag=a.per_metre * a.zero_lift_drag_coefficient,
         induced_drag_scale=induced / card.INDUCED_DRAG_FACTOR,
         engine_power=power,
-        engine_power_full_store=power,
         static_thrust=to_game(a.static_thrust() / a.mass, -2),
         stall_angle_scale=a.stall_angle / card.STALL_ANGLE,
-        max_energy=to_game(REAL_GRAVITY * a.service_ceiling, -2),
-        dive_exchange_scale=card.GRAVITY / card.DIVE_EXCHANGE,  # 1 g: a vertical dive
-        climb_exchange_scale=card.GRAVITY / card.CLIMB_EXCHANGE,  # 1 g: a vertical zoom
-        engine_knee_scale=1.0,
+        exchange_acceleration=card.GRAVITY,  # 1 g: a vertical dive or zoom
     )
     return {**base, **flight, **(POINT_MASS_TERMS if terms is None else terms)}
 
@@ -205,7 +192,6 @@ def direct_fields(
         max_lift_coefficient=card.GRAVITY / handles["stall_speed"] ** 2,
         max_acceleration=handles["g_limit"] * card.GRAVITY,
         zero_lift_drag=handles["zero_lift_drag"],
-        max_energy=handles["ceiling"],
         stall_angle_scale=handles["stall_angle"] / card.STALL_ANGLE,
         vision_range_scale=handles["vision_range"] / card.VISION_RANGE,
         hit_damage=handles["hit_damage"],
@@ -216,7 +202,6 @@ def direct_fields(
         muzzle_speed=handles["muzzle_speed"],
         bullet_spread_scale=handles["bullet_spread"] / card.BULLET_SPREAD,
         bullet_drag_scale=drag / card.BULLET_DRAG,
-        bullet_energy_cost=handles["ceiling"] / handles["shots_per_store"],
         max_shield=handles["max_shield"],
         shield_recharge_rate_scale=handles["shield_recharge_rate"] / card.SHIELD_RECHARGE_RATE,
         shield_recharge_delay_scale=handles["shield_recharge_delay"] / card.SHIELD_RECHARGE_DELAY,
@@ -225,15 +210,14 @@ def direct_fields(
         head_on_sharpness=handles["head_on_sharpness"],
         hit_radius=handles["hit_radius"],
         core_radius=handles["core_radius"],
-        spawn_energy=handles["spawn_energy"],
     )
 
 
-SOLVED = ("engine_power_full_store", "static_thrust", "induced_drag_scale")
+SOLVED = ("engine_power", "static_thrust", "induced_drag_scale")
 
 
 def _flown(row: dict[str, float]) -> list[float]:
-    """The three flown handles the core model keeps: cruise, low-speed acceleration, settled
+    """The three flown handles the flight model keeps: cruise, low-speed acceleration, settled
     full-stick turn rate (game units)."""
     p = performance(row)
     return [p["top_speed"], p["low_speed_acceleration"], p["settled_turn_rate"]]
@@ -242,18 +226,16 @@ def _flown(row: dict[str, float]) -> list[float]:
 def handles_row(
     handles: dict[str, float], base: dict[str, float], iterations: int = 40
 ) -> dict[str, float]:
-    """A card row from v2 handles (x2 units) under the core model; fields the handles do not
-    set come from `base` (nose frequency, stick levels). See the module docstring."""
+    """A card row from a design's handles (game units); fields the handles do not set come
+    from `base` (nose frequency, stick levels, the flight terms). See the module docstring."""
     if abs(handles["half_lift_drag"] - 0.25) > 1e-9:
         raise ValueError(
             "lean's card has the square polar only (half-lift drag 0.25, bleed exponent 2)"
         )
     row = {**base, **direct_fields(handles, handles["cruise_speed"])}
-    # dive and zoom at cruise: the core model's commanded trade is the speed's rate change
+    # Dive and zoom at cruise: the commanded trade is the speed's rate change.
     trade = 0.5 * (handles["dive_acceleration"] - handles["zoom_acceleration"])
-    row["dive_exchange_scale"] = trade / card.DIVE_EXCHANGE
-    row["climb_exchange_scale"] = trade / card.CLIMB_EXCHANGE
-    row["engine_knee_scale"] = 1.0
+    row["exchange_acceleration"] = trade
     target = [
         handles["cruise_speed"],
         handles["low_speed_acceleration"],
@@ -294,7 +276,6 @@ def handles_row(
     else:
         raise RuntimeError(f"handles_row did not converge: residual {residual(logs)}")
     row.update({name: math.exp(x) for name, x in zip(SOLVED, logs)})
-    row["engine_power"] = row["engine_power_full_store"]
     return row
 
 
@@ -315,16 +296,14 @@ def _with_row(row: dict[str, float]):
 def _evaluate(c, speed, stick, power, energy):
     """Quasi-steady (doghouse.py's evaluate): turn rate (rad/s), speed rate, total energy rate."""
     control = SimpleNamespace(
-        model="core",
         thrust_scale=1.0,
         stick_size=stick,
         stick_sign=torch.ones_like(speed),
         commanded=c.commanded_table[..., power],
         demand=c.demand_table[..., power],
     )
-    control.inverse_demand = 1.0 / control.demand
     setting = core._setting(c, control, speed, energy)
-    lateral, _, _, thrust, _ = setting
+    lateral, _, _, thrust = setting
     reach = (lateral.abs() / (speed * speed) * c.inverse_lift).clamp(0.0, 1.0)
     angle = c.stall * (1.0 - torch.sqrt(1.0 - reach))
     lift = core._lift_coefficient(c, angle)
@@ -347,12 +326,12 @@ def _bisect(function, low, high, steps=60):
 def performance(
     row: dict[str, float], plain: bool = False, config: core.GameConfig | None = None
 ) -> dict[str, float]:
-    """The row's quasi-steady numbers under the core model (game units, coasting, mid-store):
-    stall (1 g) speed, corner speed and rate, top speed, best climb (Ps, m/s) and its speed,
-    best sustained turn (rate, speed, radius), minimum sustained radius and its speed, the
-    settled full-stick turn (rate, speed), the low-speed acceleration (straight at the stall
-    speed, empty store). Rates in rad/s."""
-    config = config or core.GameConfig.core()
+    """The row's quasi-steady numbers in the game's flight model (game units, coasting,
+    mid-store): stall (1 g) speed, corner speed and rate, top speed, best climb (Ps, m/s) and
+    its speed, best sustained turn (rate, speed, radius), minimum sustained radius and its
+    speed, the settled full-stick turn (rate, speed), the low-speed acceleration (straight at
+    the stall speed, empty store). Rates in rad/s."""
+    config = config or core.GameConfig()
     if plain:
         row = point_mass(row)
     with torch.no_grad(), _with_row(row) as index:
@@ -475,19 +454,18 @@ def row_of(name: str) -> dict[str, float]:
 # damage and the scales of rule constants 0 (the rule constants scale instead: RULE_TIME_POWERS).
 CARD_TIME_POWERS = dict(
     max_lift_coefficient=0, max_acceleration=-2, zero_lift_drag=0, engine_power=-3,
-    engine_power_full_store=-3, static_thrust=-2, max_energy=-2, corner_nose_frequency=-1,
-    max_shield=0, hit_radius=0, core_radius=0, hit_damage=0, muzzle_speed=-1, bullet_energy_cost=-2,
-    fire_rate=-1, bullet_life=1, spawn_energy=-2, explosive_share=0, reference_bullet_speed=-1,
-    induced_drag_scale=0, stall_angle_scale=0, dive_exchange_scale=0, climb_exchange_scale=0,
+    static_thrust=-2, exchange_acceleration=-2, corner_nose_frequency=-1, max_shield=0,
+    hit_radius=0, core_radius=0, hit_damage=0, muzzle_speed=-1, fire_rate=-1, bullet_life=1,
+    explosive_share=0, reference_bullet_speed=-1, induced_drag_scale=0, stall_angle_scale=0,
     bullet_spread_scale=0, bullet_drag_scale=0, shield_recharge_rate_scale=0,
     shield_recharge_delay_scale=0, head_on_fraction_scale=0, head_on_angle_scale=0,
-    head_on_sharpness=0, engine_knee_scale=0, fine_stick=0, sustained_stick=0,
-    vision_range_scale=0, critical_speed=-1, drag_rise_exponent=0, separation_drag=0,
-    separation_exponent=0, lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0,
+    head_on_sharpness=0, fine_stick=0, sustained_stick=0, vision_range_scale=0,
+    critical_speed=-1, drag_rise_exponent=0, separation_drag=0, separation_exponent=0,
+    lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0,
 )
 # The rule constants (lean.game.card) with time in their units.
 RULE_TIME_POWERS = dict(
-    GRAVITY=-2, CLIMB_EXCHANGE=-2, DIVE_EXCHANGE=-2, NOSE_FREQUENCY_FLOOR=-1, SPEED_FLOOR=-1,
+    GRAVITY=-2, NOSE_FREQUENCY_FLOOR=-1, SPEED_FLOOR=-1,
     BULLET_SPREAD=-1, SHIELD_RECHARGE_RATE=-1, SHIELD_RECHARGE_DELAY=1, BOUNDARY_MAX_DAMAGE=-1,
     SPAWN_SPEED=-1,
 )
