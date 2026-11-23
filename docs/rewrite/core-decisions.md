@@ -179,12 +179,18 @@ Sizes
   nothing in speed. Speed comparisons with v2 are like for like (same update size).
 
 Learner
-- Advantages and value targets: follow the best practice in the current literature and the
-  major PPO implementations, weighing its speed cost (author 2026-11-23; literature review in
-  docs/rewrite/literature-ppo-targets-minibatches.md). Until then the setting stays
-  `targets_every_epoch=True`. Not counted as a speed-up against v2, which could do the same.
-- Number of minibatches: 32 for now, for a like-for-like comparison with v2; the same
-  literature review recommends a number (the 32 was arbitrary).
+- Advantages and value targets computed once per update from the values stored at collection
+  (`targets_every_epoch=False`), the PPO default (author 2026-11-23: follow the literature,
+  weighing speed). Literature review: docs/rewrite/literature-ppo-targets-minibatches.md. The
+  evidence for recomputing every epoch is weak (Andrychowicz et al. 2021, small MuJoCo runs;
+  Pleines et al. 2022, recurrent: "likely not worth the cost"); almost every major library
+  computes once per update; the per-epoch pass costs about 25% of loop throughput here.
+  Advantage normalisation stays over the whole update.
+- 32 minibatches (2026-11-23, the same review): inside common practice, no source measured an
+  optimum at this scale. When the update size changes, keep the minibatch size and learning
+  rate and change the count (Beukman et al. 2026); fewer, larger minibatches only for hardware
+  speed, with Adam's learning rate scaled by the square root of the size ratio (Hilton, Cobbe
+  and Schulman 2022). Watch the clipped fraction and the approximate KL every update.
 
 ## Proposals, not decided
 
