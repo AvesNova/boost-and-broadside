@@ -22,6 +22,7 @@ from lean.contract import random_keywords
 from lean.game.core import built_once, enemy_view, slot_indices
 
 from .parameters import GATES, ScriptedConfig, value
+from .situation import signed_angle
 
 COAST, DIVE, CLIMB = 0, 1, 2
 TINY = 1e-6  # keeps lengths and ratios away from zero
@@ -60,11 +61,6 @@ def renew_memory(
     return {name: torch.where(done[:, None], fresh[name], memory[name]) for name in memory}
 
 
-def signed_angle(cos: Tensor, sin: Tensor, x: Tensor, y: Tensor) -> Tensor:
-    """The angle from the nose (cos, sin) to the direction (x, y), positive to the left."""
-    return torch.atan2(cos * y - sin * x, cos * x + sin * y)
-
-
 def map_velocity(state) -> tuple[Tensor, Tensor, Tensor | None]:
     """Each ship's velocity over the map (E, N), metres per second: the stored proper velocity
     over the refractive index n at the ship; and n (E, N), or None without fields (n = 1)."""
@@ -87,6 +83,11 @@ class Engagement:
     distance: Tensor  # metres
     target_velocity_x: Tensor  # metres per second over the map
     target_velocity_y: Tensor
+    target_heading_cos: Tensor  # the target's nose direction
+    target_heading_sin: Tensor
+    target_speed: Tensor  # proper speed, metres per second
+    target_nose_rate: Tensor  # radians per second, positive to the left
+    target_energy: Tensor  # its store
     velocity_x: Tensor  # own velocity over the map
     velocity_y: Tensor
     ally_in_line: Tensor  # bool: a living team-mate is in the line of fire, nearer than the target
@@ -140,11 +141,14 @@ def engage(
         enemy_velocity_x, enemy_velocity_y = velocity_x, velocity_y
     else:
         enemy_velocity_x, enemy_velocity_y, _ = map_velocity(enemies)
-    features = torch.stack(
-        [enemies.x, enemies.y, enemy_velocity_x, enemy_velocity_y], -1
-    )  # (E, N, 4)
-    chosen = torch.gather(features, 1, target[..., None].expand(-1, -1, 4))
-    target_x, target_y, target_velocity_x, target_velocity_y = chosen.unbind(-1)
+    columns = (
+        enemies.x, enemies.y, enemy_velocity_x, enemy_velocity_y, enemies.heading_cos,
+        enemies.heading_sin, enemies.speed, enemies.nose_rate, enemies.energy,
+    )
+    features = torch.stack(columns, -1)  # (E, N, 9)
+    chosen = torch.gather(features, 1, target[..., None].expand(-1, -1, len(columns)))
+    (target_x, target_y, target_velocity_x, target_velocity_y, target_heading_cos,
+     target_heading_sin, target_speed, target_nose_rate, target_energy) = chosen.unbind(-1)
     target_x = target_x - state.x
     target_y = target_y - state.y
     distance = torch.sqrt(target_x * target_x + target_y * target_y)
@@ -161,6 +165,11 @@ def engage(
         distance=distance,
         target_velocity_x=target_velocity_x,
         target_velocity_y=target_velocity_y,
+        target_heading_cos=target_heading_cos,
+        target_heading_sin=target_heading_sin,
+        target_speed=target_speed,
+        target_nose_rate=target_nose_rate,
+        target_energy=target_energy,
         velocity_x=velocity_x,
         velocity_y=velocity_y,
         ally_in_line=blocking.any(-1),

@@ -9,7 +9,9 @@ from torch import Tensor
 
 from lean.game.core import team_view
 
-from .opponent import ScriptedConfig, engage, signed_angle
+from .opponent import engage
+from .parameters import ScriptedConfig
+from .situation import signed_angle
 
 
 @dataclass

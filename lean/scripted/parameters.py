@@ -72,6 +72,9 @@ PARAMETERS: dict[str, Parameter] = {
     "regain_share": Parameter(0.5, "probability", LINEAR, 0.25,
                               "far and low on store: climb at most this share of the ticks"),
     "head_on_band": Parameter(0.1, "radians", meaning="want this near behind: kept side"),
+    # Assessment (lean.scripted.situation).
+    "turning_floor": Parameter(0.25, "sustained_rate", LOG, 0.4,
+                               "a nose rate this small counts as straight"),
     # Target choice.
     "target_keep_factor": Parameter(0.8, "ratio", meaning="switch only to one this much closer"),
     "weakest_weight": Parameter(0.0, "ratio", UPWARD, 1.0,
