@@ -1,135 +1,11 @@
-"""Evaluation: batched matches, head-to-head counts and v1's crossover walk."""
+"""v1's crossover walk, played through the evaluator (lean.eval.evaluator)."""
 
-import dataclasses
-import math
-
-import torch
-from torch import Tensor
-
-from lean import game, scripted
-from lean.contract import split_joint
-from lean.learn.rollout import generator_device, reset_carry, sample_joint, scripted_actions
-from lean.scripted import ScriptedConfig
-
-
-def wilson_interval(wins: float, games: int, z: float = 1.96) -> tuple[float, float]:
-    """Wilson score interval (low, high) for a proportion wins / games; (0, 1) for no games."""
-    if games <= 0:
-        return 0.0, 1.0
-    rate = wins / games
-    denominator = 1.0 + z * z / games
-    centre = (rate + z * z / (2 * games)) / denominator
-    half = z * math.sqrt(rate * (1.0 - rate) / games + z * z / (4 * games * games)) / denominator
-    return max(0.0, centre - half), min(1.0, centre + half)
+from lean.eval.store import ScriptedAgent
 
 
 def games_for(total_ships: int) -> int:
     """v1's games per matchup: max(48, min(256, 4,000,000 // total_ships ** 2))."""
     return max(48, min(256, 4_000_000 // max(1, total_ships) ** 2))
-
-
-@torch.no_grad()
-def play_results(
-    game_config, policy, opponent, team_sizes: Tensor, generator,
-    *, maximum_ticks: int = 8192, check_every: int = 32,
-) -> Tensor:
-    """Play one game per environment at once, `policy` as team 0, and return each
-    environment's first result, (E,) long: 0 `policy` won, 1 it lost, 2 a draw, -1 still
-    running after `maximum_ticks`.
-
-    `team_sizes` (E, 2) gives each environment's ships per team; environments may differ
-    (the game pads every one to the largest total). `opponent` plays team 1: a
-    ScriptedConfig (the yardstick, spread 0, its memory carried from tick to tick and renewed
-    for each new game, as in collect) or a policy. Actions are sampled. Finished environments are re-dealt at
-    their own sizes and ignored. Games deal the standard spawn (GameConfig.training_spawn
-    is turned off).
-    """
-    # Evaluation always deals the standard spawn.
-    game_config = dataclasses.replace(game_config, training_spawn=False)
-    device = generator_device(generator)
-    sizes = team_sizes.to(device=device, dtype=torch.long).contiguous()
-    games = sizes.shape[0]
-    state = game.reset(game_config, games, sizes, generator, device)
-    slots = state.exists.shape[1]
-    carry = policy.initial_carry(games, slots, device)
-    opponent_is_policy = not isinstance(opponent, ScriptedConfig)
-    if opponent_is_policy:
-        opponent_carry = opponent.initial_carry(games, slots, device)
-    else:
-        persona = scripted.personas(opponent, games, slots, generator, device, 0.0)
-        memory = scripted.fresh_memory(games, slots, generator, device)
-    result = torch.full((games,), -1, dtype=torch.long, device=device)
-
-    for tick in range(maximum_ticks):
-        logits, _, carry = policy.step(game.observe(game_config, state, 0), carry)
-        action = split_joint(sample_joint(logits, generator))
-        if opponent_is_policy:
-            opponent_logits, _, opponent_carry = opponent.step(game.observe(game_config, state, 1), opponent_carry)
-            opponent_action = split_joint(sample_joint(opponent_logits, generator))
-        else:
-            opponent_action, memory, _ = scripted_actions(opponent, state, persona, memory, generator)
-        action = torch.where((state.team == 0)[..., None], action, opponent_action)
-        state, step_out = game.step(game_config, state, action, game.draw_noise(game_config, games, slots, generator, device))
-        result = torch.where(step_out.done & (result < 0), step_out.result, result)
-        state = game.reset_done(game_config, state, step_out.done, sizes, generator)
-        carry = reset_carry(carry, step_out.done)
-        if opponent_is_policy:
-            opponent_carry = reset_carry(opponent_carry, step_out.done)
-        else:
-            memory = scripted.renew_memory(memory, step_out.done, generator)
-        if (tick + 1) % check_every == 0 and bool((result >= 0).all()):
-            break
-    return result
-
-
-def play(game_config, policy, opponent, team_sizes: tuple[int, int], games: int, generator, **options) -> dict[str, int]:
-    """Play `games` games at one size, `policy` as team 0 with team_sizes[0] ships against
-    `opponent` with team_sizes[1] (see `play_results`). Returns {"wins", "draws",
-    "losses"} for `policy`; games still running at the tick limit count as draws."""
-    sizes = torch.tensor(team_sizes, dtype=torch.long).expand(games, 2)
-    result = play_results(game_config, policy, opponent, sizes, generator, **options)
-    wins = int((result == 0).sum())
-    losses = int((result == 1).sum())
-    return {"wins": wins, "draws": games - wins - losses, "losses": losses}
-
-
-def play_matches(
-    game_config, policy, opponent, matches: list[tuple[int, int, int]], generator,
-    *, maximum_games: int | None = None, **options,
-) -> list[int]:
-    """Wins of `policy` in each match (team 0 size, team 1 size, games), every match in
-    one batch of environments (in consecutive batches of at most `maximum_games`
-    environments when given; a match is never split)."""
-    batches, batch, batch_games = [], [], 0
-    for match in matches:
-        if batch and maximum_games is not None and batch_games + match[2] > maximum_games:
-            batches.append(batch)
-            batch, batch_games = [], 0
-        batch.append(match)
-        batch_games += match[2]
-    if batch:
-        batches.append(batch)
-    wins = []
-    for batch in batches:
-        counts = torch.tensor([games for _, _, games in batch])
-        sizes = torch.tensor([(first, second) for first, second, _ in batch]).repeat_interleave(counts, dim=0)
-        won = (play_results(game_config, policy, opponent, sizes, generator, **options) == 0).long().cpu()
-        group = torch.arange(len(batch)).repeat_interleave(counts)
-        wins += torch.zeros(len(batch), dtype=torch.long).index_add_(0, group, won).tolist()
-    return wins
-
-
-def head_to_head(game_config, policy_a, policy_b_or_scripted, team_sizes: tuple[int, int], games: int, generator=None, **options) -> dict:
-    """Win, draw and loss counts of `policy_a` (team 0) with a 95% Wilson interval on its
-    win rate (draws count as non-wins) and its score (wins plus half the draws)."""
-    generator = generator or torch.Generator().manual_seed(0)
-    counts = play(game_config, policy_a, policy_b_or_scripted, team_sizes, games, generator, **options)
-    low, high = wilson_interval(counts["wins"], games)
-    return {
-        **counts, "games": games, "win_rate": counts["wins"] / games,
-        "win_rate_low": low, "win_rate_high": high,
-        "score": (counts["wins"] + 0.5 * counts["draws"]) / games,
-    }
 
 
 def walk(start: int, matches: dict, limit: int) -> tuple[int | None, tuple[int, int] | None]:
@@ -161,31 +37,41 @@ def walk(start: int, matches: dict, limit: int) -> tuple[int | None, tuple[int, 
     return count - 1, None
 
 
+def evaluator_round(evaluator, network, opponent=None):
+    """The crossover's `play_round` on an evaluator: `network` (a NetworkAgent) against
+    `opponent` (default the yardstick), every wanted match in one job; stored games count,
+    so a match may hold more games than asked."""
+    opponent = opponent or ScriptedAgent.of()
+
+    def play_round(wanted):
+        counts = evaluator.ensure([(network, opponent, (size, scripted), games) for size, scripted, games in wanted])
+        return [(entry["wins"], entry["games"]) for entry in counts]
+
+    return play_round
+
+
 def crossover(
-    game_config, policy, scripted_config, sizes, games, generator,
-    *, maximum_total_ships: int = 320, start_ratio: float | dict = 1.0, spread: int = 2,
-    maximum_games: int | None = None, match=None, **options,
+    play_round, sizes, games, *, maximum_total_ships: int = 320, start_ratio: float | dict = 1.0, spread: int = 2,
 ) -> dict:
     """v1's size-curve protocol, every network size at once.
 
-    The network is always team 0 and the scripted agent team 1. For each network team
-    size in `sizes` the scripted team's size is walked one ship at a time (`walk`) from
-    round(network_size * start_ratio) (parity by default; `start_ratio` may be a dict by
-    network size, such as the previous evaluation's ratios): upward while the network wins at least half its games, or downward to the
-    first count it does. A tie is a non-win. The walk assumes the win rate falls as
-    scripted ships are added, and stops at `maximum_total_ships`.
+    For each network team size in `sizes` the scripted team's size is walked one ship at a
+    time (`walk`) from round(network_size * start_ratio) (parity by default; `start_ratio`
+    may be a dict by network size, such as the previous evaluation's ratios): upward while
+    the network wins at least half its games, or downward to the first count it does. A tie
+    is a non-win. The walk assumes the win rate falls as scripted ships are added, and stops
+    at `maximum_total_ships`.
 
-    The walks run in rounds. Each round plays, in one batch of environments, the next
+    The walks run in rounds. Each round plays, in one call of `play_round`, the next
     scripted size every unfinished walk needs with its neighbours: `spread` sizes either
     side at the start, then 2 * `spread` further sizes in the walk's direction. A walk
     whose beats_up_to lies in start - spread .. start + spread - 1 finishes in one round.
     Under the walk's assumption the start changes which matches are played, not the
     answer.
-    `maximum_games` caps the environments of one batch (a round then plays in several).
 
     `games` is an int or a function of the total ship count (see `games_for`).
-    `match(network_size, scripted_size, games) -> wins` replaces the batched games when
-    given (used by tests).
+    `play_round([(network_size, scripted_size, games), ...])` returns each match's
+    (wins, games) (evaluator_round, or a stand-in in tests).
 
     Returns {"rounds", "sizes": {network_size: {"beats_up_to", "beats_up_to_win_rate",
     "crossover", "crossover_win_rate" (None if capped), "ratio", "matches":
@@ -216,11 +102,7 @@ def crossover(
         if not wanted:
             break
         rounds += 1
-        if match is None:
-            wins = play_matches(game_config, policy, scripted_config, wanted, generator, maximum_games=maximum_games, **options)
-        else:
-            wins = [match(network_size, size, count) for network_size, size, count in wanted]
-        for (network_size, size, count), won in zip(wanted, wins, strict=True):
+        for (network_size, size, _), (won, count) in zip(wanted, play_round(wanted), strict=True):
             played[network_size][size] = {"wins": won, "games": count, "win_rate": won / count}
 
     report = {}

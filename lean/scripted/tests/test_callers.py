@@ -4,10 +4,11 @@ it afresh for each match (collect's teacher and league opponent, evaluation, the
 import torch
 
 from lean import game, model, scripted
-from lean.eval import play_results
+from lean.eval import Queue, play
 from lean.learn import collect
 from lean.learn.tests.setting import small
 from lean.sandbox.world import World
+from lean.scripted.parameters import vector
 
 
 class MemoryRecorder:
@@ -60,12 +61,15 @@ def test_evaluation_carries_the_memory_and_renews_it_for_each_game(monkeypatch):
     recorder = MemoryRecorder()
     monkeypatch.setattr(scripted, "decide", recorder)
     torch.manual_seed(0)
-    play_results(
-        game.GameConfig(clock_ticks=6), model.Policy(model.ModelConfig()), scripted.ScriptedConfig(),
-        torch.full((8, 2), 2, dtype=torch.long), torch.Generator().manual_seed(1), maximum_ticks=20, check_every=100,
+    games = torch.zeros(24, dtype=torch.long)
+    queue = Queue(games, games, games, games + 2, games + 2)  # 24 games on 8 slots: three each
+    outcome = play(
+        game.GameConfig(clock_ticks=6), queue, torch.tensor([vector(scripted.ScriptedConfig())]),
+        model.Policy(model.ModelConfig()), envs=8, segment=4,
     )
-    assert len(recorder.calls) == 20
-    assert recorder.check() > 0
+    assert (outcome.result >= 0).all()
+    assert len(recorder.calls) >= 18
+    assert recorder.check() >= 16  # every slot's second and third game started fresh
 
 
 def test_sandbox_flies_the_scripted_opponent_with_its_memory():

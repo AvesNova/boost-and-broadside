@@ -212,6 +212,13 @@ def personas(
     if spread == 0.0:
         return None
     unit = torch.rand((envs, slots, len(SAMPLED)), **random_keywords(generator, device))
+    return box_point(config, unit, spread)
+
+
+def box_point(config: ScriptedConfig, unit: Tensor, spread: float = 1.0) -> dict[str, Tensor]:
+    """The sampled rows (`SAMPLED`) at a point `unit` (..., len(SAMPLED)) of the unit cube,
+    each on its box at `spread` around the config's value (`Parameter`'s laws): a persona's
+    draw, or a Sobol point of the box (lean.eval)."""
     drawn = {}
     for column, name in enumerate(SAMPLED):
         row, value, u = PARAMETERS[name], config.values[name], unit[..., column]
@@ -223,6 +230,28 @@ def personas(
         else:  # UPWARD
             drawn[name] = value + reach * u
     return drawn
+
+
+def vector(config: ScriptedConfig) -> tuple[float, ...]:
+    """Every row's value in the table's order (`PARAMETERS`): a scripted agent's identity."""
+    return tuple(float(config.values[name]) for name in PARAMETERS)
+
+
+def from_vector(values) -> ScriptedConfig:
+    """The ScriptedConfig of a full vector in the table's order (`vector`)."""
+    values = [float(item) for item in values]
+    if len(values) != len(PARAMETERS):
+        raise ValueError(f"a scripted vector has {len(PARAMETERS)} rows, not {len(values)}")
+    return ScriptedConfig(dict(zip(PARAMETERS, values, strict=True)))
+
+
+def rows_of(table: Tensor, agent: Tensor) -> dict[str, Tensor]:
+    """Per-ship parameters for every row of the table: `table` (A, len(PARAMETERS)) holds A
+    agents' vectors, `agent` (E, N) long each ship's agent. Every row is a tensor, so a new
+    vector (a candidate, a new yardstick) is new data for a compiled graph, never a new
+    graph; the config passed beside it is then not read."""
+    rows = table.index_select(0, agent.flatten()).view(*agent.shape, table.shape[1])
+    return dict(zip(PARAMETERS, rows.unbind(-1), strict=True))
 
 
 def value(config: ScriptedConfig, persona: dict[str, Tensor] | None, name: str) -> Tensor | float:
