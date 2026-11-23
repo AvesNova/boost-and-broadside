@@ -50,7 +50,7 @@ Run from the repository root (`uv run --no-sync` in front of each with the proje
     python -m lean.train                            # BC (96 updates), then RL (--updates)
     python -m lean.train --stage bc --out DIR       # BC only: DIR/bc.pt
     python -m lean.train --stage rl --start DIR/bc.pt --out DIR   # RL from the BC hand-off
-    python -m lean.eval DIR/rl.pt --weights ema --sizes 4         # the crossover against the scripted agent
+    python -m lean.eval crossover STORE DIR/rl.pt --sizes 4   # the crossover against the scripted agent (lean/eval/NOTES.md)
     python -m lean.tool                             # web tool at http://127.0.0.1:8000/: tuning charts, fly the game
 
 The sections below describe the first cut (2026-11-22) and are kept for the record.
