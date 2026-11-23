@@ -216,18 +216,29 @@ def direct_fields(
 SOLVED = ("engine_power", "static_thrust", "induced_drag_scale")
 
 
-def _flown(row: dict[str, float]) -> list[float]:
+def _flown(row: dict[str, float], speed_step: float = 0.05) -> list[float]:
     """The three flown handles the flight model keeps: cruise, low-speed acceleration, settled
     full-stick turn rate (game units)."""
-    p = performance(row)
+    p = performance(row, speed_step=speed_step, flown_only=True)
     return [p["top_speed"], p["low_speed_acceleration"], p["settled_turn_rate"]]
 
 
 def handles_row(
-    handles: dict[str, float], base: dict[str, float], iterations: int = 40
+    handles: dict[str, float],
+    base: dict[str, float],
+    iterations: int = 40,
+    speed_step: float = 0.05,
+    fast: bool = False,
 ) -> dict[str, float]:
     """A card row from a design's handles (game units); fields the handles do not set come
-    from `base` (nose frequency, stick levels, the flight terms). See the module docstring."""
+    from `base` (nose frequency, stick levels, the flight terms). `speed_step`: the speed grid of
+    the flown numbers the solve matches (a tool may take a coarser one). `fast` (for an
+    interactive tool; the default solve is unchanged): start from the base's engine power and induced drag, Broyden-update
+    the Jacobian, stop at a residual of 1e-5 (the flown handles to 0.001%).
+    `handles["low_speed_acceleration"]` may be None (or absent): the static thrust is then the
+    base's and the low-speed acceleration is not matched (a power-limited ship such as the P-51D
+    flies the same whatever its static thrust).
+    See the module docstring."""
     if abs(handles["half_lift_drag"] - 0.25) > 1e-9:
         raise ValueError(
             "lean's card has the square polar only (half-lift drag 0.25, bleed exponent 2)"
@@ -238,13 +249,17 @@ def handles_row(
     row["exchange_acceleration"] = trade
     target = [
         handles["cruise_speed"],
-        handles["low_speed_acceleration"],
+        handles.get("low_speed_acceleration"),
         handles["sustained_turn_rate"],
     ]
+    free_static = target[1] is None  # the static thrust kept as the base's: a tool's handles
 
     def residual(logs):
         trial = {**row, **{name: math.exp(x) for name, x in zip(SOLVED, logs)}}
-        return [math.log(f / t) for f, t in zip(_flown(trial), target)]
+        return [
+            0.0 if t is None else math.log(f / t)
+            for f, t in zip(_flown(trial, speed_step), target)
+        ]
 
     # First guess: thrust power to hold cruise against the zero-lift and 1 g induced drag; the
     # static thrust from the low-speed acceleration; the base's induced drag.
@@ -253,26 +268,35 @@ def handles_row(
     power = (row["zero_lift_drag"] * v**2 + k * card.GRAVITY**2 / v**2) * v
     stall = handles["stall_speed"]
     static = (
-        handles["low_speed_acceleration"]
+        (handles["low_speed_acceleration"] if not free_static else 0.0)
         + row["zero_lift_drag"] * stall**2
         + k * card.GRAVITY**2 / stall**2
     )
     logs = [math.log(power), math.log(static), math.log(base["induced_drag_scale"])]
+    if free_static:
+        logs[1] = math.log(base["static_thrust"])
+    if fast:
+        logs[0], logs[2] = math.log(base["engine_power"]), math.log(base["induced_drag_scale"])
+    tolerance = 1e-5 if fast else 1e-7
     step = 1e-5
+    jacobian, last = None, None
     for _ in range(iterations):
         r = residual(logs)
-        if max(abs(x) for x in r) < 1e-7:
+        if max(abs(x) for x in r) < tolerance:
             break
-        jacobian = torch.zeros(3, 3, dtype=torch.float64)
-        for j in range(3):
-            moved = list(logs)
-            moved[j] += step
-            jacobian[:, j] = (
-                torch.tensor(residual(moved), dtype=torch.float64)
-                - torch.tensor(r, dtype=torch.float64)
-            ) / step
+        r_tensor = torch.tensor(r, dtype=torch.float64)
+        if fast and jacobian is not None:  # Broyden's rank-one update: no new evaluations
+            moved_by, change = last[0], r_tensor - last[1]
+            jacobian = jacobian + torch.outer(change - jacobian @ moved_by, moved_by) / (moved_by @ moved_by)
+        else:
+            jacobian = torch.zeros(3, 3, dtype=torch.float64)
+            for j in range(3):
+                moved = list(logs)
+                moved[j] += step
+                jacobian[:, j] = (torch.tensor(residual(moved), dtype=torch.float64) - r_tensor) / step
         # pinv, not solve: a power-limited design (the P-51D) has no static-thrust sensitivity
-        delta = (torch.linalg.pinv(jacobian, rtol=1e-9) @ -torch.tensor(r, dtype=torch.float64)).clamp(-0.5, 0.5)
+        delta = (torch.linalg.pinv(jacobian, rtol=1e-9) @ -r_tensor).clamp(-0.5, 0.5)
+        last = (delta, r_tensor)
         logs = [x + float(d) for x, d in zip(logs, delta)]
     else:
         raise RuntimeError(f"handles_row did not converge: residual {residual(logs)}")
@@ -294,7 +318,7 @@ def _with_row(row: dict[str, float]):
         card.CARD = saved
 
 
-def _bisect(function, low, high, steps=60):
+def _bisect(function, low, high, steps=40):
     """Per element, the root of a function positive at low and negative at high."""
     for _ in range(steps):
         middle = 0.5 * (low + high)
@@ -304,18 +328,24 @@ def _bisect(function, low, high, steps=60):
 
 
 def performance(
-    row: dict[str, float], plain: bool = False, config: core.GameConfig | None = None
+    row: dict[str, float],
+    plain: bool = False,
+    config: core.GameConfig | None = None,
+    speed_step: float = 0.05,
+    flown_only: bool = False,
 ) -> dict[str, float]:
     """The row's quasi-steady numbers in the game's flight model (game units, coasting,
     mid-store): stall (1 g) speed, corner speed and rate, top speed, best climb (Ps, m/s) and
     its speed, best sustained turn (rate, speed, radius), minimum sustained radius and its
     speed, the settled full-stick turn (rate, speed), the low-speed acceleration (straight at
-    the stall speed, empty store). Rates in rad/s."""
+    the stall speed, empty store). Rates in rad/s. `flown_only`: just the three flown handles'
+    numbers (top speed, settled turn rate, low-speed acceleration, with the speeds around them),
+    which handles_row's solve needs, a third of the work."""
     config = config or core.GameConfig()
     if plain:
         row = point_mass(row)
     with torch.no_grad(), _with_row(row) as index:
-        speeds = torch.arange(30.0, 700.0, 0.05, dtype=torch.float64)
+        speeds = torch.arange(30.0, 700.0, speed_step, dtype=torch.float64)
         n = speeds.shape[0]
         constants = core.per_type_constants(config, torch.full((n,), index))
         c = SimpleNamespace(
@@ -342,23 +372,24 @@ def performance(
                 speeds[top + 1 : top + 2],
             )
         )
-        climb = torch.where(above, straight_energy / card.GRAVITY, -math.inf)
-        k = int(torch.argmax(climb))
-        out["best_climb"], out["best_climb_speed"] = float(climb[k]), float(speeds[k])
-        # sustained: per speed the stick where the energy rate is zero (full stick if positive)
-        stick = _bisect(lambda s: core.quasi_steady(c, speeds, s, 0, energy)[2], zero, one)
-        stick = torch.where(core.quasi_steady(c, speeds, one, 0, energy)[2] >= 0.0, one, stick)
-        rate, _, energy_rate = core.quasi_steady(c, speeds, stick, 0, energy)
-        held = above & (energy_rate > -1e-6) & (straight_energy >= 0.0)
-        sustained = torch.where(held, rate, 0.0)
-        k = int(torch.argmax(sustained))
-        out["sustained_rate"], out["sustained_speed"] = float(sustained[k]), float(speeds[k])
-        out["sustained_radius"] = out["sustained_speed"] / out["sustained_rate"]
-        radius = torch.where(
-            held & (sustained > 1e-6), speeds / sustained.clamp_min(1e-9), math.inf
-        )
-        k = int(torch.argmin(radius))
-        out["min_radius"], out["min_radius_speed"] = float(radius[k]), float(speeds[k])
+        if not flown_only:
+            climb = torch.where(above, straight_energy / card.GRAVITY, -math.inf)
+            k = int(torch.argmax(climb))
+            out["best_climb"], out["best_climb_speed"] = float(climb[k]), float(speeds[k])
+            # sustained: per speed the stick where the energy rate is zero (full stick if positive)
+            stick = _bisect(lambda s: core.quasi_steady(c, speeds, s, 0, energy)[2], zero, one)
+            stick = torch.where(core.quasi_steady(c, speeds, one, 0, energy)[2] >= 0.0, one, stick)
+            rate, _, energy_rate = core.quasi_steady(c, speeds, stick, 0, energy)
+            held = above & (energy_rate > -1e-6) & (straight_energy >= 0.0)
+            sustained = torch.where(held, rate, 0.0)
+            k = int(torch.argmax(sustained))
+            out["sustained_rate"], out["sustained_speed"] = float(sustained[k]), float(speeds[k])
+            out["sustained_radius"] = out["sustained_speed"] / out["sustained_rate"]
+            radius = torch.where(
+                held & (sustained > 1e-6), speeds / sustained.clamp_min(1e-9), math.inf
+            )
+            k = int(torch.argmin(radius))
+            out["min_radius"], out["min_radius_speed"] = float(radius[k]), float(speeds[k])
         # the settled full-stick turn: the speed where full stick holds speed
         k = int(torch.nonzero(full_speed_rate > 0.0)[-1])
         settled = float(

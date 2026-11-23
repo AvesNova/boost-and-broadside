@@ -8,19 +8,20 @@ import numpy as np
 from lean.game import card, tuning
 
 # The handles the Ships tab moves (game units at the game's time factor; a preset's other
-# handles are kept): name, label, unit, lowest and highest as multiples of the preset's value.
+# handles are kept; the low-speed acceleration is left free, the static thrust staying the
+# preset's): name, label, unit, lowest and highest as multiples of the preset's value.
 SLIDERS = (
     ("cruise_speed", "cruise (top) speed", "m/s", 0.6, 1.4),
     ("stall_speed", "stall speed (1 g)", "m/s", 0.6, 1.5),
     ("g_limit", "g limit", "g", 0.4, 1.6),
     ("sustained_turn_rate", "settled full-stick turn rate", "rad/s", 0.5, 1.6),
-    ("low_speed_acceleration", "low-speed acceleration", "m/s2", 0.4, 2.0),
     ("zero_lift_drag", "zero-lift drag", "1/m", 0.4, 2.5),
     ("stall_angle", "stall angle", "rad", 0.5, 1.6),
     ("dive_acceleration", "dive/zoom trade", "m/s2", 0.3, 1.6),
 )
 SPEEDS = np.linspace(20.0, 470.0, 226)
 STICKS = np.linspace(0.0, 1.0, 101)
+SOLVE_SPEED_STEP = 0.5  # m/s: the handles solve on a coarser speed grid than the default, for speed
 LOCK = threading.RLock()  # the card is process-global (tuning.flying): one computation at a time
 _REFERENCE: dict[tuple[str, float], dict] = {}
 
@@ -50,9 +51,9 @@ def build_row(preset: str, handles: dict[str, float] | None) -> dict[str, float]
     own = tuning.handles_of(base)
     if all(abs(handles[n] - own[n]) <= 1e-9 * abs(own[n]) for n in handles):
         return base
-    new = {**own, **handles}
+    new = {**own, **handles, "low_speed_acceleration": None}
     new["zoom_acceleration"] = -new["dive_acceleration"]
-    return tuning.handles_row(new, base)
+    return tuning.handles_row(new, base, speed_step=SOLVE_SPEED_STEP, fast=True)
 
 
 def _numbers(factor: float) -> dict:
