@@ -496,6 +496,20 @@ League (section 8)
 - Compile time is a budget, not an afterthought (author 2026-11-24: cold starts near 10 min
   are concerning; they must not snowball back to half an hour).
 
+## Evaluation runner and scripted search (2026-11-24 night)
+
+- Order: A1 (physics) -> evaluation runner -> screening of the scripted agent's parameter space
+  (Morris about 5 min, then 4,000 Sobol-sequence samples about 25 min with a surrogate;
+  extendable) -> a short CMA-ES search -> choose the yardstick. Active subspaces, MAP-Elites,
+  ship-space and joint searches are later.
+- The scripted agent should not need retuning when the game changes (e.g. the map radius):
+  CMA-ES gets a small budget and aims for a robust region, not a sharp peak for one test;
+  the screening is there to understand the space.
+- The runner keeps results reusable: games gathered for one purpose (screening, Elo ladder,
+  win rates, crossover) serve the others where they are valid, stored compactly: per agent
+  pair and per match conditions (team sizes, map, spawn rule, clock, game version), wins,
+  losses and draws; Sobol sampling continues where it stopped.
+
 ## Proposals, not decided
 
 
