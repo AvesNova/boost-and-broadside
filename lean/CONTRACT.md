@@ -34,6 +34,7 @@ class State:                             # every field a tensor; shapes (E, N) u
     bullet_x, bullet_y, bullet_dir_x, bullet_dir_y, bullet_speed   # (E, N, K) float32
     bullet_moves_left                    # (E, N, K) long; 0 is inactive
     tick                                 # (E,) long
+    pending                              # (E, N, 3) long: the action the next tick applies
 
 @dataclass
 class StepOut:                           # lean.contract.StepOut has the full list
@@ -51,6 +52,7 @@ class Obs:                               # one team's view; full information (no
     key_mask                             # (E, N) bool: this row may be attended (exists and alive)
     own                                  # (E, N) bool: rows this view controls (own team, alive)
     globals                              # (E, GLOBAL_FEATURES) float32
+    pending                              # (E, N) long: own living ships' joint pending action, else NO_PENDING (42)
 SHIP_FEATURES, GLOBAL_FEATURES           # ints, set by the game package
 ```
 
@@ -58,18 +60,21 @@ SHIP_FEATURES, GLOBAL_FEATURES           # ints, set by the game package
 
 ```python
 @dataclass
-class GameConfig: ...                    # the core game: arena radius, clock, spawn rule ("sides" | "mixed"), fields drawn, ship lineup, fog
+class GameConfig: ...                    # the core game: arena radius, clock, spawn rule ("mixed" | "sides"), training_spawn, fields drawn, ship lineup, fog
 def reset(config, envs, team_sizes, generator, device) -> State
     # team_sizes: (E, 2) long, ships per team in each environment; unused slots have exists = False
 def step(config, state, action, noise) -> tuple[State, StepOut]
-    # action (E, N, 3) long; noise: dict of the random draws the tick needs, from draw_noise
+    # action (E, N, 3) long, chosen on this tick; the tick applies state.pending (chosen on the
+    # previous tick, neutral after a deal) and action becomes the new pending action (the
+    # one-tick action delay, for every agent); noise: the tick's random draws, from draw_noise
 def draw_noise(config, envs, slots, generator, device) -> dict[str, Tensor]
 def reset_done(config, state, done, team_sizes, generator) -> State   # re-deal finished environments
 def observe(config, state, team: int) -> Obs
 ```
 
-Elimination with no shrink on one fixed map: flight, fire and bullets, the swept hit test,
-damage, shields, the boundary, death as a mask, a win check and a clock. No respawn.
+Elimination with no shrink: flight, fire and bullets, the swept hit test, damage, shields,
+the boundary, death as a mask, a wipe or the clock (more living ships, then more total shield,
+else a draw). No respawn.
 
 ## `lean/scripted` (scripted opponent)
 
@@ -97,7 +102,7 @@ class Policy(nn.Module):
 ```
 
 The model reads from `Obs`: ship, pos, heading, key_mask, globals, field, field_pos,
-visible, since_seen (`lean.model.policy.OBS_FIELDS`).
+visible, since_seen, pending (`lean.model.policy.OBS_FIELDS`).
 
 ## `lean/learn` (rollout, PPO) and `lean/eval` (crossover)
 

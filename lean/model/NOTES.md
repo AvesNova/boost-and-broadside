@@ -27,7 +27,8 @@ convolution's taps and the scan.
 - **Encoder** (v2 `network.py` `Encoder`, `KindProjection`): per kind (ship, game, field)
   `gelu(norm(Linear(inputs -> 2 width)))`, then one shared `Linear(2 width -> width)` and
   norm. Fields then go through `Linear(width -> 64, no bias)` and a norm (v2's map memory).
-  Inputs: ship = `Obs.ship` + position code of `pos + offset`; game = `Obs.globals` +
+  Inputs: ship = `Obs.ship` + the fog pair + the pending action as a 42-way one-hot (all
+  zero for rows without one: enemies, dead and absent slots) + position code of `pos + offset`; game = `Obs.globals` +
   position code of `offset` (the arena centre in the shifted frame, as v2's global token);
   field = `Obs.field` + position code of `field_pos + offset`.
 - **Spatial** (v2 `spatial.py` `SpatialBlock`): pre-norm attention of the M trunk tokens
