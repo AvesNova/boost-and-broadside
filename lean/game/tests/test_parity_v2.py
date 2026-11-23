@@ -545,22 +545,22 @@ def test_card_and_rules_match_v2():
     # v2's types lead the card; lean's own (p51d, vizia_plain: lean.game.tuning) follow.
     v2_count = len(api.type_names(game.ship_set))
     assert tuple(name.lower() for name in api.type_names(game.ship_set)) == card.TYPE_NAMES[:v2_count]
+    flight = rules.flight
     for name, values in card.CARD.items():
+        if name in card.FLIGHT_TERMS:  # v2's shared flight terms, per type in lean
+            assert all(value == getattr(flight, name) for value in values[:v2_count]), name
+            continue
         assert torch.equal(torch.tensor(values[:v2_count], dtype=torch.float32), getattr(types, name)), name
     # Left out of lean: inert at these values (bleed 2 is the plain square; arming 0 is off;
     # the coast exchange is unused with direct charge); vision belongs to fog.
     assert (types.bleed_exponent == 2.0).all() and (types.arming_distance == 0.0).all()
     assert rules.flight.direct_charge and rules.flight.vertical_exchange and rules.flight.mass == 1.0
-    flight = rules.flight
     shared = [  # (lean, v2) pairs: a list, as several values are equal
         (card.GRAVITY, flight.gravity), (card.STALL_ANGLE, flight.stall_angle),
         (card.INDUCED_DRAG_FACTOR, flight.induced_drag_factor), (card.ENGINE_KNEE, flight.engine_knee),
         (card.STORE_FADE_BAND, flight.store_fade_band), (card.CLIMB_EXCHANGE, flight.climb_exchange),
-        (card.DIVE_EXCHANGE, flight.dive_exchange), (card.LIFT_SOFTMIN_EXPONENT, flight.lift_softmin_exponent),
-        (card.THRUST_SOFTMIN_EXPONENT, flight.thrust_softmin_exponent), (card.NOSE_DAMPING, flight.nose_damping),
+        (card.DIVE_EXCHANGE, flight.dive_exchange),
         (card.NOSE_FREQUENCY_FLOOR, flight.nose_frequency_floor), (card.SPEED_FLOOR, flight.speed_floor),
-        (card.CRITICAL_SPEED, flight.critical_speed), (card.DRAG_RISE_EXPONENT, flight.drag_rise_exponent),
-        (card.SEPARATION_DRAG, flight.separation_drag), (card.SEPARATION_EXPONENT, flight.separation_exponent),
         (card.BULLET_DRAG, rules.bullet_drag), (card.BULLET_SPREAD, rules.bullet_spread),
         (card.HEAD_ON_FRACTION, rules.head_on_fraction), (card.HEAD_ON_ANGLE, rules.head_on_angle),
         (card.SHIELD_RECHARGE_DELAY, rules.shield_recharge_delay),
@@ -569,7 +569,7 @@ def test_card_and_rules_match_v2():
         (card.SPAWN_OFFSET, rules.spawn_offset), (card.SPAWN_TURN_DISTANCE, rules.spawn_turn_distance),
         (card.SIDE_AREA_FRACTION, mode.side_area_fraction), (card.SIDE_HEADING_JITTER, mode.side_heading_jitter),
     ]
-    assert len(shared) == 28
+    assert len(shared) == 21  # and the 7 card.FLIGHT_TERMS above
     for ours, theirs in shared:
         assert ours == theirs, (ours, theirs)
     from bnb.game.rules import POWER_MODES, QUIET_STICKS, STICK_LEVELS

@@ -36,11 +36,13 @@ What depends on v2's flight model and how it maps to the core model:
   corner speed, half of it, free), whatever the card holds.
 - The nose frequency (v2's nose reversal handle, a placeholder for every type) and the stick
   levels are control feel, not physics: they come from the base row.
-- The core model's shared terms apply to every type: the drag rise above CRITICAL_SPEED
-  (394 m/s game, 197 m/s real), the separation drag (induced drag doubles at full lift) and
-  the soft minima of lift against the g limit and of thrust against static thrust. A real
-  aircraft converted directly flies with them; `performance(..., plain=True)` turns them off
-  to show the pure point mass.
+- The flight terms v2 shared across types are card columns per type (card.FLIGHT_TERMS): the
+  drag rise above `critical_speed` (v2's 394 m/s game, 197 m/s real, exponent 12), the
+  separation drag (induced drag doubles at full lift), the soft minima of lift against the g
+  limit and of thrust against static thrust, and the nose damping. v2's types and the handles
+  route keep v2's values (from the base row; `game_terms`); a real aircraft converted directly
+  flies with them off (POINT_MASS_TERMS: the pure point mass of the October fit), and
+  `performance(..., plain=True)` turns them off for any row.
 """
 
 from __future__ import annotations
@@ -128,6 +130,26 @@ P51D = Airframe(
 )
 
 
+# The game terms switched off: no drag rise, no separation drag, soft minima near hard (exponent
+# 400). A real aircraft flies as its point mass with these (test_p51d_point_mass_is_the_october_fit).
+POINT_MASS_TERMS = dict(
+    critical_speed=math.inf,
+    separation_drag=0.0,
+    lift_softmin_exponent=400.0,
+    thrust_softmin_exponent=400.0,
+)
+
+
+def point_mass(row: dict[str, float]) -> dict[str, float]:
+    """A row with the game terms off (POINT_MASS_TERMS); the other flight terms kept."""
+    return {**row, **POINT_MASS_TERMS}
+
+
+def game_terms(row: dict[str, float]) -> dict[str, float]:
+    """A row's flight terms (card.FLIGHT_TERMS), to give another row the same ones."""
+    return {name: row[name] for name in card.FLIGHT_TERMS}
+
+
 def unmodified_climb(row: dict[str, float]) -> dict[str, float]:
     """A v2 card row with v2's climb modifications reverted to the physical values
     (docs/rewrite/p51d-model.md, "Vizia's climb modifications"): no engine surplus charging
@@ -142,8 +164,11 @@ def unmodified_climb(row: dict[str, float]) -> dict[str, float]:
     }
 
 
-def airframe_row(airframe: Airframe, base: dict[str, float]) -> dict[str, float]:
-    """A card row: the flight fields from the airframe, everything else from `base`."""
+def airframe_row(
+    airframe: Airframe, base: dict[str, float], terms: dict[str, float] | None = None
+) -> dict[str, float]:
+    """A card row: the flight fields from the airframe, the flight terms `terms` over the base's
+    (default POINT_MASS_TERMS: the real aircraft's point mass), everything else from `base`."""
     a = airframe
     induced = 1.0 / (math.pi * a.oswald * a.aspect_ratio) / a.per_metre  # m
     power = to_game(a.power * a.propeller_efficiency / a.mass, -3)
@@ -161,7 +186,7 @@ def airframe_row(airframe: Airframe, base: dict[str, float]) -> dict[str, float]
         climb_exchange_scale=card.GRAVITY / card.CLIMB_EXCHANGE,  # 1 g: a vertical zoom
         engine_knee_scale=1.0,
     )
-    return {**base, **flight}
+    return {**base, **flight, **(POINT_MASS_TERMS if terms is None else terms)}
 
 
 # --------------------------------------------------------------------------- handles route
@@ -277,30 +302,14 @@ def handles_row(
 
 
 @contextlib.contextmanager
-def _with_row(row: dict[str, float], plain: bool):
-    """The card with `row` appended as a last type (and, plain, the shared drag rise,
-    separation drag and soft minima off), restored afterwards."""
-    saved = (
-        card.CARD,
-        card.CRITICAL_SPEED,
-        card.SEPARATION_DRAG,
-        card.THRUST_SOFTMIN_EXPONENT,
-        card.LIFT_SOFTMIN_EXPONENT,
-    )
-    card.CARD = {name: (*values, float(row[name])) for name, values in saved[0].items()}
-    if plain:
-        card.CRITICAL_SPEED, card.SEPARATION_DRAG = math.inf, 0.0
-        card.THRUST_SOFTMIN_EXPONENT = card.LIFT_SOFTMIN_EXPONENT = 400.0
+def _with_row(row: dict[str, float]):
+    """The card with `row` appended as a last type, restored afterwards."""
+    saved = card.CARD
+    card.CARD = {name: (*values, float(row[name])) for name, values in saved.items()}
     try:
-        yield len(next(iter(saved[0].values())))
+        yield len(next(iter(saved.values())))
     finally:
-        (
-            card.CARD,
-            card.CRITICAL_SPEED,
-            card.SEPARATION_DRAG,
-            card.THRUST_SOFTMIN_EXPONENT,
-            card.LIFT_SOFTMIN_EXPONENT,
-        ) = saved
+        card.CARD = saved
 
 
 def _evaluate(c, speed, stick, power, energy):
@@ -344,7 +353,9 @@ def performance(
     settled full-stick turn (rate, speed), the low-speed acceleration (straight at the stall
     speed, empty store). Rates in rad/s."""
     config = config or core.GameConfig.core()
-    with torch.no_grad(), _with_row(row, plain) as index:
+    if plain:
+        row = point_mass(row)
+    with torch.no_grad(), _with_row(row) as index:
         speeds = torch.arange(30.0, 700.0, 0.05, dtype=torch.float64)
         n = speeds.shape[0]
         constants = core.per_type_constants(config, torch.full((n,), index))
@@ -455,3 +466,74 @@ def row_of(name: str) -> dict[str, float]:
     """A card type's row by name."""
     index = card.TYPE_NAMES.index(name)
     return {field: values[index] for field, values in card.CARD.items()}
+
+
+# --------------------------------------------------------------------------- other time scales
+
+# Each card column's power of time in its units (to_game): speeds -1, accelerations and J/kg -2,
+# powers per kg -3, rates -1, durations +1; lengths, per-metre coefficients, fractions, angles,
+# damage and the scales of rule constants 0 (the rule constants scale instead: RULE_TIME_POWERS).
+CARD_TIME_POWERS = dict(
+    max_lift_coefficient=0, max_acceleration=-2, zero_lift_drag=0, engine_power=-3,
+    engine_power_full_store=-3, static_thrust=-2, max_energy=-2, corner_nose_frequency=-1,
+    max_shield=0, hit_radius=0, core_radius=0, hit_damage=0, muzzle_speed=-1, bullet_energy_cost=-2,
+    fire_rate=-1, bullet_life=1, spawn_energy=-2, explosive_share=0, reference_bullet_speed=-1,
+    induced_drag_scale=0, stall_angle_scale=0, dive_exchange_scale=0, climb_exchange_scale=0,
+    bullet_spread_scale=0, bullet_drag_scale=0, shield_recharge_rate_scale=0,
+    shield_recharge_delay_scale=0, head_on_fraction_scale=0, head_on_angle_scale=0,
+    head_on_sharpness=0, engine_knee_scale=0, fine_stick=0, sustained_stick=0,
+    vision_range_scale=0, critical_speed=-1, drag_rise_exponent=0, separation_drag=0,
+    separation_exponent=0, lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0,
+)
+# The rule constants (lean.game.card) with time in their units.
+RULE_TIME_POWERS = dict(
+    GRAVITY=-2, CLIMB_EXCHANGE=-2, DIVE_EXCHANGE=-2, NOSE_FREQUENCY_FLOOR=-1, SPEED_FLOOR=-1,
+    BULLET_SPREAD=-1, SHIELD_RECHARGE_RATE=-1, SHIELD_RECHARGE_DELAY=1, BOUNDARY_MAX_DAMAGE=-1,
+    SPAWN_SPEED=-1,
+)
+assert set(CARD_TIME_POWERS) == set(card.CARD)
+
+
+def time_scaled(factor: float, tick_length: float = 1.0 / 30.0):
+    """The card and the rule constants at `factor` times real time (the game's are TIME_FACTOR):
+    each value converted to real time and back at the new factor, so gravity is factor^2 x 9.81.
+    The tick stays tick_length of game time. Guns too; a bullet's life is capped at what
+    contract.BULLET_SLOTS holds at the fire interval (whole ticks): at 1.5x it is 11 ticks, not
+    15. Returns (card dict, {rule constant: value})."""
+    from lean.contract import BULLET_SLOTS
+
+    ratio = TIME_FACTOR / factor
+
+    def scaled(value, time_power):
+        return value * ratio**time_power
+
+    table = {name: tuple(scaled(v, CARD_TIME_POWERS[name]) for v in values) for name, values in card.CARD.items()}
+    lives = []
+    for rate, life in zip(table["fire_rate"], table["bullet_life"]):
+        interval = max(1, round(1.0 / (tick_length * rate)))
+        lives.append(min(life, BULLET_SLOTS * interval * tick_length))
+    table["bullet_life"] = tuple(lives)
+    rules = {name: scaled(getattr(card, name), power) for name, power in RULE_TIME_POWERS.items()}
+    return table, rules
+
+
+@contextlib.contextmanager
+def time_scale(factor: float):
+    """Inside, lean.game.card holds the card and rules at `factor` times real time (time_scaled),
+    restored afterwards; the core's built ship cards are dropped on entry and exit. For flight
+    testing tools (the sandbox's --time-scale); training never enters it. At TIME_FACTOR the
+    card is the game's."""
+    saved = card.CARD, {name: getattr(card, name) for name in RULE_TIME_POWERS}
+    if factor != TIME_FACTOR:
+        table, rules = time_scaled(factor)
+        card.CARD = table
+        for name, value in rules.items():
+            setattr(card, name, value)
+    core._SHIP_CARDS.clear()
+    try:
+        yield
+    finally:
+        card.CARD = saved[0]
+        for name, value in saved[1].items():
+            setattr(card, name, value)
+        core._SHIP_CARDS.clear()

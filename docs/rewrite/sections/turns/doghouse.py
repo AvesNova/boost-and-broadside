@@ -133,8 +133,8 @@ DOGHOUSE_FOOT = {
     "quasi-steady maths only; hard turns there cannot be held in flight.",
     "core": "Core model: 1 g of weight always on the wing, the turn gets the rest of the lift and g limit;\n"
     "the engine drives speed only. Thick: full stick. Thin: the game's sustained and fine stick.\n"
-    "Dash-dot: full stick while diving or climbing (diving lowers the weight on the wing, climbing\n"
-    "raises it). " + ("White" if THEME == "dark" else "Black") + " dashed: Ps = 0 (sustained). Grey dotted: turn radius. Grey dashed: load in\n"
+    "Dash-dot: full stick while diving or climbing (diving lowers the weight on the wing; climbing gets\n"
+    "only the lift the turn leaves). " + ("White" if THEME == "dark" else "Black") + " dashed: Ps = 0 (sustained). Grey dotted: turn radius. Grey dashed: load in\n"
     "game g (39.24 m/s^2). Shaded below 100 m/s: quasi-steady maths only, no best-sustained mark there.\n"
     "Coasting, turn rate and Ps do not depend on the store. Inside an edge band (the outer 5% at the top and\n"
     "bottom) dive or climb fades to coast, in the trade and in the wing's load; outside it, as drawn.\n"
@@ -148,7 +148,7 @@ def foot(ship_type: int, real: bool) -> str:
     if ship_type >= 3:
         text = text.replace(
             "The core game currently flies Vizia only; Yongma and Jujak are the card's other types under core physics.",
-            {3: "P-51D: the real airframe at 2x time (lean.game.tuning, docs/rewrite/p51d-model.md).",
+            {3: "P-51D: the real airframe at 2x time with the game terms off, its point mass (lean.game.tuning, docs/rewrite/p51d-model.md).",
              4: "Vizia with v2's climb modifications reverted (lean.game.tuning, docs/rewrite/p51d-model.md)."}[ship_type],
         )
     if real:
@@ -157,93 +157,104 @@ def foot(ship_type: int, real: bool) -> str:
     return text
 
 
+def draw_panel(figure, ax, ship_type: int, label: str, fraction, real: bool, top=None, limit=None):
+    """One doghouse panel on ax: Ps shading, Ps = 0, the stick levels, dive and climb, corner and
+    best sustained. top (deg/s) and limit (the Ps colour range) default to the panel's own;
+    returns both, so panels can share them."""
+    f = TIME_FACTOR if real else 1.0
+    game_v = speeds.numpy()
+    v = game_v / f
+    grid = evaluate(ship_type, fraction)
+    grid["rate"], grid["ps"] = grid["rate"] / f, grid["ps"] / f
+    style(ax)
+    envelope = grid["rate"][-1]
+    top = float(np.nanmax(envelope)) * 1.15 if top is None else top
+    rate_axis = np.linspace(0.0, top, 300)
+    # Ps on a regular (speed, rate) grid: for each speed, interpolate over the stick sweep.
+    ps_field = np.full((len(rate_axis), len(v)), np.nan)
+    for j in range(len(v)):
+        column_rate, column_ps = grid["rate"][:, j], grid["ps"][:, j]
+        order = np.argsort(column_rate)
+        inside = rate_axis <= column_rate[order][-1]
+        ps_field[inside, j] = np.interp(rate_axis[inside], column_rate[order], column_ps[order])
+    shared = limit is not None  # a given range: fixed levels, so panels' colours match
+    limit = np.nanpercentile(np.abs(ps_field), 98) if limit is None else limit
+    norm = TwoSlopeNorm(vmin=-limit, vcenter=0.0, vmax=limit)
+    levels = np.linspace(-limit, limit, 21) if shared else 21
+    filled = ax.contourf(v, rate_axis, ps_field, levels=levels, cmap=DIVERGING, norm=norm,
+                         extend="both" if shared else "neither")
+    ax.contour(v, rate_axis, ps_field, levels=[0.0], colors=INK, linewidths=2.0, linestyles=[(0, (6, 3))])
+    # Radius and load lines: geometry only.
+    for radius in (150, 200, 300, 500, 1000, 2000):
+        line = v / radius * DEGREES
+        ax.plot(v, line, color=MUTED, linewidth=0.7, linestyle=":")
+        j = np.searchsorted(line, top * 0.92)
+        if 0 < j < len(v):
+            ax.text(v[j], line[j], f"{radius} m", color=MUTED, fontsize=8, ha="right", va="bottom")
+    for load in (2, 4, 6, 8, 9):
+        line = load * G / game_v * DEGREES / f
+        ax.plot(v, line, color=MUTED, linewidth=0.7, linestyle="--")
+        j = np.searchsorted(-line, -top * 0.95)
+        if 0 < j < len(v) - 1:
+            ax.text(v[j], line[j], f"{load} g", color=MUTED, fontsize=8, ha="left", va="bottom")
+    ax.plot(v, envelope, color=INK, linewidth=2.0)
+    label_at = int(np.searchsorted(game_v, 135.0))
+    ax.annotate("full stick", (v[label_at], envelope[label_at]), xytext=(-4, 6), textcoords="offset points",
+                color=INK, fontsize=8, ha="right")
+    # The game's other stick levels (the card's fine and sustained values for this type).
+    for name, key in (("sustained stick", "sustained_stick"), ("fine stick", "fine_stick")):
+        row = int(round(card.CARD[key][ship_type] * (len(sticks) - 1)))
+        level = grid["rate"][row]
+        ax.plot(v, level, color=INK, linewidth=1.1)
+        if MODEL == "core":  # right of the steep low-speed part of the full-stick line
+            at = int(np.searchsorted(game_v, 215.0))
+            ax.annotate(name, (v[at], level[at]), xytext=(4, -12), textcoords="offset points",
+                        color=INK, fontsize=8, ha="left")
+        else:
+            ax.annotate(name, (v[label_at], level[label_at]), xytext=(-4, 4), textcoords="offset points",
+                        color=INK, fontsize=8, ha="right")
+    # Full stick while diving and while climbing (power 1 and 2), same store.
+    offsets = ((4, 7), (4, -24)) if MODEL == "core" else ((4, 4), (4, -12))
+    for (power, name), offset in zip(((1, "full stick, diving"), (2, "full stick, climbing")), offsets):
+        moved = evaluate(ship_type, fraction, power)["rate"][-1] / f
+        ax.plot(v, moved, color=INK_2, linewidth=1.1, linestyle="-.")
+        here = int(np.searchsorted(game_v, 380.0))
+        ax.annotate(name, (v[here], moved[here]), xytext=offset, textcoords="offset points",
+                    color=INK_2, fontsize=8)
+    corner = int(np.nanargmax(envelope))
+    ax.plot(v[corner], envelope[corner], "o", color=INK, markersize=8)
+    ax.annotate(f"corner {v[corner]:.0f} m/s, {envelope[corner]:.0f} deg/s",
+                (v[corner], envelope[corner]), xytext=(8, 6), textcoords="offset points",
+                color=INK, fontsize=9)
+    best, _ = sustained(grid)
+    best = np.where(game_v >= 100.0, best, np.nan)  # below 100 m/s the turn cannot be held in flight
+    if np.any(np.isfinite(best)):
+        k = int(np.nanargmax(best))
+        ax.plot(v[k], best[k], "s", color=INK, markersize=8)
+        ax.annotate(f"best sustained {v[k]:.0f} m/s, {best[k]:.0f} deg/s", (v[k], best[k]),
+                    xytext=(8, -14), textcoords="offset points", color=INK, fontsize=9)
+    ax.set_xlim(v[0], v[-1])
+    ax.set_ylim(0, top)
+    ax.set_xlabel("speed (m/s, real)" if real else "speed (m/s)", color=INK_2)
+    ax.set_ylabel("turn rate (deg/s)", color=INK_2)
+    ax.axvspan(v[0], 100.0 / f, color=GRID, alpha=0.5, linewidth=0)
+    ax.set_title(f"{NAMES[ship_type]}, coast" + (", core model" if MODEL == "core" else "")
+                 + (", real units" if real else "") + f"\n{label}",
+                 color=INK, fontsize=10, loc="left")
+    bar = figure.colorbar(filled, ax=ax, fraction=0.04, pad=0.02)
+    bar.set_label("energy rate Ps, m/s altitude-equivalent (blue gain, red loss)", color=INK_2, fontsize=8)
+    bar.ax.tick_params(labelsize=8, colors=INK_2)
+    return top, limit
+
+
 def doghouse(ship_type: int, real: bool = False):
     """real: in real units at the game's 2x time (speeds, turn rates and Ps halved; radii and
     loads unchanged)."""
-    f = TIME_FACTOR if real else 1.0
     panels = len(STORES)
     figure, axes = plt.subplots(panels, 1, figsize=(7.5, 5.4 * panels + 2.0), facecolor=SURFACE, squeeze=False)
     axes = axes[:, 0]
-    game_v = speeds.numpy()
-    v = game_v / f
     for ax, (label, fraction) in zip(axes, STORES):
-        grid = evaluate(ship_type, fraction)
-        grid["rate"], grid["ps"] = grid["rate"] / f, grid["ps"] / f
-        style(ax)
-        envelope = grid["rate"][-1]
-        top = float(np.nanmax(envelope)) * 1.15
-        rate_axis = np.linspace(0.0, top, 300)
-        # Ps on a regular (speed, rate) grid: for each speed, interpolate over the stick sweep.
-        ps_field = np.full((len(rate_axis), len(v)), np.nan)
-        for j in range(len(v)):
-            column_rate, column_ps = grid["rate"][:, j], grid["ps"][:, j]
-            order = np.argsort(column_rate)
-            inside = rate_axis <= column_rate[order][-1]
-            ps_field[inside, j] = np.interp(rate_axis[inside], column_rate[order], column_ps[order])
-        limit = np.nanpercentile(np.abs(ps_field), 98)
-        norm = TwoSlopeNorm(vmin=-limit, vcenter=0.0, vmax=limit)
-        filled = ax.contourf(v, rate_axis, ps_field, levels=21, cmap=DIVERGING, norm=norm)
-        ax.contour(v, rate_axis, ps_field, levels=[0.0], colors=INK, linewidths=2.0, linestyles=[(0, (6, 3))])
-        # Radius and load lines: geometry only.
-        for radius in (150, 200, 300, 500, 1000, 2000):
-            line = v / radius * DEGREES
-            ax.plot(v, line, color=MUTED, linewidth=0.7, linestyle=":")
-            j = np.searchsorted(line, top * 0.92)
-            if 0 < j < len(v):
-                ax.text(v[j], line[j], f"{radius} m", color=MUTED, fontsize=8, ha="right", va="bottom")
-        for load in (2, 4, 6, 8, 9):
-            line = load * G / game_v * DEGREES / f
-            ax.plot(v, line, color=MUTED, linewidth=0.7, linestyle="--")
-            j = np.searchsorted(-line, -top * 0.95)
-            if 0 < j < len(v) - 1:
-                ax.text(v[j], line[j], f"{load} g", color=MUTED, fontsize=8, ha="left", va="bottom")
-        ax.plot(v, envelope, color=INK, linewidth=2.0)
-        label_at = int(np.searchsorted(game_v, 135.0))
-        ax.annotate("full stick", (v[label_at], envelope[label_at]), xytext=(-4, 6), textcoords="offset points",
-                    color=INK, fontsize=8, ha="right")
-        # The game's other stick levels (the card's fine and sustained values for this type).
-        for name, key in (("sustained stick", "sustained_stick"), ("fine stick", "fine_stick")):
-            row = int(round(card.CARD[key][ship_type] * (len(sticks) - 1)))
-            level = grid["rate"][row]
-            ax.plot(v, level, color=INK, linewidth=1.1)
-            if MODEL == "core":  # right of the steep low-speed part of the full-stick line
-                at = int(np.searchsorted(game_v, 215.0))
-                ax.annotate(name, (v[at], level[at]), xytext=(4, -12), textcoords="offset points",
-                            color=INK, fontsize=8, ha="left")
-            else:
-                ax.annotate(name, (v[label_at], level[label_at]), xytext=(-4, 4), textcoords="offset points",
-                            color=INK, fontsize=8, ha="right")
-        # Full stick while diving and while climbing (power 1 and 2), same store.
-        offsets = ((4, 7), (4, -24)) if MODEL == "core" else ((4, 4), (4, -12))
-        for (power, name), offset in zip(((1, "full stick, diving"), (2, "full stick, climbing")), offsets):
-            moved = evaluate(ship_type, fraction, power)["rate"][-1] / f
-            ax.plot(v, moved, color=INK_2, linewidth=1.1, linestyle="-.")
-            here = int(np.searchsorted(game_v, 380.0))
-            ax.annotate(name, (v[here], moved[here]), xytext=offset, textcoords="offset points",
-                        color=INK_2, fontsize=8)
-        corner = int(np.nanargmax(envelope))
-        ax.plot(v[corner], envelope[corner], "o", color=INK, markersize=8)
-        ax.annotate(f"corner {v[corner]:.0f} m/s, {envelope[corner]:.0f} deg/s",
-                    (v[corner], envelope[corner]), xytext=(8, 6), textcoords="offset points",
-                    color=INK, fontsize=9)
-        best, _ = sustained(grid)
-        best = np.where(game_v >= 100.0, best, np.nan)  # below 100 m/s the turn cannot be held in flight
-        if np.any(np.isfinite(best)):
-            k = int(np.nanargmax(best))
-            ax.plot(v[k], best[k], "s", color=INK, markersize=8)
-            ax.annotate(f"best sustained {v[k]:.0f} m/s, {best[k]:.0f} deg/s", (v[k], best[k]),
-                        xytext=(8, -14), textcoords="offset points", color=INK, fontsize=9)
-        ax.set_xlim(v[0], v[-1])
-        ax.set_ylim(0, top)
-        ax.set_xlabel("speed (m/s, real)" if real else "speed (m/s)", color=INK_2)
-        ax.set_ylabel("turn rate (deg/s)", color=INK_2)
-        ax.axvspan(v[0], 100.0 / f, color=GRID, alpha=0.5, linewidth=0)
-        ax.set_title(f"{NAMES[ship_type]}, coast" + (", core model" if MODEL == "core" else "")
-                     + (", real units" if real else "") + f"\n{label}",
-                     color=INK, fontsize=10, loc="left")
-        bar = figure.colorbar(filled, ax=ax, fraction=0.04, pad=0.02)
-        bar.set_label("energy rate Ps, m/s altitude-equivalent (blue gain, red loss)", color=INK_2, fontsize=8)
-        bar.ax.tick_params(labelsize=8, colors=INK_2)
+        draw_panel(figure, ax, ship_type, label, fraction, real)
     figure.text(0.01, 0.004, foot(ship_type, real), color=INK_2, fontsize=8)
     figure.tight_layout(rect=(0, 0.055 if MODEL == "v2" else 0.21, 1, 1))
     suffix = ("-core" if MODEL == "core" else "") + ("-real" if real else "") + ("-dark" if THEME == "dark" else "")

@@ -218,6 +218,13 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "shield_delay": card.SHIELD_RECHARGE_DELAY * of("shield_recharge_delay_scale"),
         "spawn_energy": spawn_energy,
         "vision_range": card.VISION_RANGE * of("vision_range_scale"),
+        "inverse_critical_speed": 1.0 / of("critical_speed"),
+        "drag_rise_exponent": of("drag_rise_exponent"),
+        "separation_drag": of("separation_drag"),
+        "half_separation_exponent": 0.5 * of("separation_exponent"),
+        "lift_softmin_exponent": of("lift_softmin_exponent"),
+        "thrust_softmin_exponent": of("thrust_softmin_exponent"),
+        "nose_damping": of("nose_damping"),
     }
     values.update(_derived_characteristics(config, values))
     return values
@@ -369,7 +376,7 @@ def maximum(a: Tensor, b: Tensor | float) -> Tensor:
     return torch.maximum(a, b) if isinstance(b, Tensor) else a.clamp_min(b)
 
 
-def softmin(a: Tensor, b: Tensor | float, exponent: float) -> Tensor:
+def softmin(a: Tensor, b: Tensor | float, exponent: Tensor | float) -> Tensor:
     """low (1 + (low / high)^q)^(-1/q) for a, b >= 0: a smooth minimum."""
     low, high = minimum(a, b), maximum(a, b)
     return low * (1.0 + (low / high.clamp_min(1e-30)) ** exponent) ** (-1.0 / exponent)
@@ -442,40 +449,48 @@ def _setting(p, control, speed, energy):
     t = ((energy * p.inverse_max_energy - p.knee) * p.inverse_above_knee).clamp(0.0, 1.0)
     fall = t * t * (3.0 - 2.0 * t)
     reach = p.lift * speed * speed
-    q = card.LIFT_SOFTMIN_EXPONENT
+    q = p.lift_softmin_exponent
     budget = softmin(reach, p.max_acceleration, q).clamp_min(1e-12)
     command = softmin(control.stick_size * reach, p.max_acceleration, q)
     sink_room = (energy * p.inverse_fade).clamp(0.0, 1.0)
     budget_squared = budget * budget
     demand, commanded = control.demand, control.commanded
     if core:
-        # Weight always on the wing: the vertical demand is held first and the turn gets the rest
-        # (dive lowers the demand and frees lift for the turn). Smootherstep edges of the store;
-        # at an edge, dive or climb fades to coast in its effect on the wing as well as in the
-        # trade (no free turn from diving on the deck, no lost turn from climbing at the top).
+        # Weight always on the wing. The lift budget goes, in order: 1 g held (dive: its lower
+        # demand, which frees lift for the turn), then the turn, then a climb's extra demand gets
+        # what is left (the turn has precedence over the climb). Smootherstep edges of the
+        # store; at an edge, dive or climb fades to coast in its effect on the wing as well as in
+        # the trade (no free turn from diving on the deck, no lost turn from climbing at the top).
         sink_room = smootherstep(sink_room)
         top_room = smootherstep(((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0))
-        room = torch.where(commanded > 0.0, top_room, torch.where(commanded < 0.0, sink_room, 1.0))
+        climbing = commanded > 0.0
+        room = torch.where(climbing, top_room, torch.where(commanded < 0.0, sink_room, 1.0))
         demand = card.GRAVITY + (demand - card.GRAVITY) * room
         commanded = commanded * room
-        held = softmin(demand, budget, q)
+        first = torch.where(climbing, card.GRAVITY, demand)  # held before the turn
+        held = softmin(first, budget, q)
     else:
         held = softmin(demand * (1.0 - sink_room), budget, q)
     lateral_size = softmin(command, torch.sqrt((budget_squared - held * held).clamp_min(0.0)), q)
     if core:
-        vertical = held  # held first; the turn took only what was left
+        # The climb's extra lift, from what the turn left: never more than its demand.
+        left = (torch.sqrt((budget_squared - lateral_size * lateral_size).clamp_min(0.0)) - held).clamp_min(0.0)
+        vertical = held + torch.where(climbing, softmin(demand - first, left, q), 0.0)
     else:
         vertical = softmin(control.demand, torch.sqrt((budget_squared - lateral_size * lateral_size).clamp_min(0.0)), q)
     share = (lateral_size / budget).clamp(0.0, 1.0)
     headroom = ((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0)
     if core:
-        # The commanded trade is already faded at the edges; a shortfall in the vertical (the
-        # wing cannot hold the demand) sinks the ship, and that needs store to sink.
-        exchange = commanded - (demand - vertical).clamp_min(0.0) * sink_room
+        # The commanded trade is already faded at the edges. A climb's unmet extra demand is
+        # climb not made; a shortfall below what is held first (the wing cannot hold 1 g, or
+        # the dive's demand) sinks the ship, and that needs store to sink.
+        unmet_climb = torch.where(climbing, minimum((demand - maximum(vertical, first)).clamp_min(0.0), commanded), 0.0)
+        sinking = (first - vertical).clamp_min(0.0)
+        exchange = commanded - unmet_climb - sinking * sink_room
     else:
         exchange = commanded - (demand - vertical)
         exchange = exchange * torch.where(exchange > 0.0, headroom, sink_room)
-    thrust = softmin(p.power_full_store / speed, p.static_thrust, card.THRUST_SOFTMIN_EXPONENT)
+    thrust = softmin(p.power_full_store / speed, p.static_thrust, p.thrust_softmin_exponent)
     if core:
         # The engine drives speed only (constant power, the card's full-store power) and never
         # feeds the store; firing scales the thrust on the ticks it fires.
@@ -496,9 +511,9 @@ def _rates(p, setting, inverse_index, speed, lift, angle_cos, inverse_speed_squa
     induced = vertical * inverse_speed_squared
     load = lift * lift + induced * induced
     drag = (
-        p.zero_lift_drag * (1.0 + (speed * (1.0 / card.CRITICAL_SPEED)) ** card.DRAG_RISE_EXPONENT)
+        p.zero_lift_drag * (1.0 + (speed * p.inverse_critical_speed) ** p.drag_rise_exponent)
         + p.induced_drag * load
-        * (1.0 + card.SEPARATION_DRAG * (load * p.inverse_lift_squared) ** (0.5 * card.SEPARATION_EXPONENT))
+        * (1.0 + p.separation_drag * (load * p.inverse_lift_squared) ** p.half_separation_exponent)
     ) * speed * speed
     store = speed * exchange if charge is None else speed * exchange + charge  # no charge in the core model
     speed_rate = thrust * angle_cos - drag - exchange
@@ -565,7 +580,7 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
         omega = omega * inverse_index
     reach = (lateral.abs() * inverse_speed_squared * p.inverse_lift).clamp(0.0, 1.0)
     step_angle = torch.sign(lateral) * p.stall * (1.0 - torch.sqrt(1.0 - reach)) - angle0
-    damping = 2.0 * card.NOSE_DAMPING * omega
+    damping = 2.0 * p.nose_damping * omega
     m11, m12, m21, m22 = _matrix_exponential(
         -kappa, filled((), 1.0, kappa.dtype, kappa.device).expand_as(kappa), damping * kappa - omega * omega,
         -damping, duration
