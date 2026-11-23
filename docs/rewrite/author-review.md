@@ -45,6 +45,8 @@ In priority order. Each line: the item, then what waits on it.
    Waits: any measurement against the yardstick, and the BC teacher in the core game.
 8. **3.1 The five fog choices.** Waits: training in the core game (fog on).
 9. **7.8 bf16 as the default.** Already on; waits only your confirmation.
+10. **9.1 Check the compact-storage judgement calls** (ship x/R, y/R in float16; time since
+    seen as float16). Training at parity is built and clears the floor on both games.
 
 ---
 
@@ -852,16 +854,11 @@ so you can object to any one (model/NOTES "Choices the author should check"):
   outcome as one HL-Gauss level; 64 linear bins, sigma 0.75 bin widths; five levels rather
   than v2's ten offence and defence parts (their sum is the level); the hit head with ghost
   bullet labels; clip 0.2 and 4 epochs (as v2).
-- **Decided, not built:**
-  - Advantages and value targets once per update (`targets_every_epoch=False`); the code
-    still defaults to True (`learn/config.py:36`).
-  - 32 minibatches; the code has 8 (`learn/config.py:37`).
-  - 2,048 environments; `train.py --envs` defaults to 256 (`train.py:32`).
-  - Rollout streaming to the CPU (pinned memory, asynchronous copies, prefetch) and
-    micro-batches with gradient accumulation.
-  - Compact rollout storage (float32 for absolute position and the PPO numbers, float16 for
-    other observation floats, int8 for small integers, int16 ticks for time since seen),
-    checked by log-probability difference and KL against full precision.
+- **Decided and built (2026-11-23 11:19, merge after this document was written):** targets
+  once per update (`targets_every_epoch=False`); 32 minibatches; 2,048 environments × 4
+  segments × 128 ticks; rollout streaming to pinned CPU memory with prefetch; micro-batches
+  of 64 views with gradient accumulation; compact storage. Measured and checked in section 9
+  and learn/NOTES "Rollout store, streaming and micro-batches".
 - Hit head facts: in scripted play about 90% of bullets miss; at 4v4 7% hit an enemy and 3% a
   team-mate; at 8v8 team-mate hits outnumber enemy hits (ghost bullets aimed through a crowd).
   `train.py` plays ghost bullets by default, so the hit head always trains (learn/NOTES reward
@@ -992,17 +989,22 @@ design did not state (learn/NOTES "Choices the author should check"):
 
 ### Decisions needed
 
-#### 9.1 The core game below the 5,000 steps/s floor
+#### 9.1 Training speed at parity (resolved: both games clear the floor)
 
-- **Measured.** Compiled, bf16, laptop RTX 4070, league full: v2 game 5,160 (256
-  environments) and 5,057 (1,024); core game 4,640 and 4,589. The update dominates (5.1 of
-  6.3 s at 256).
-- **Levers** (all yours, learn/NOTES "Open"): targets once per update (now decided; 6,457 on
-  the v2 game, not measured on the core game); fewer epochs; a smaller update.
-- **Options.** Re-measure the core game after targets-once; accept a lower core floor; one of
-  the other levers.
-- **Recommendation.** None beyond re-measuring with the decided settings.
-- **References.** Q12; scoreboard "Training on the GPU"; learn/NOTES "Open".
+- **Measured (2026-11-23, laptop RTX 4070, compiled, bf16, 2,048 environments × 4 × 128
+  ticks, 32 minibatches, targets once per update):** v2 game 6,124 steps/s, peak 5.18 GiB;
+  core game 5,586, peak 5.58 GiB allocated, 7.27 GiB reserved (the closest to the 8 GB
+  limit). Targets every epoch: 4,860 (v2 game). The copies are hidden: streamed and
+  all-on-GPU run at the same speed where both fit (1,024 × 2: 4,997 against 4,999).
+- **Judgement calls by the builder, for you to check:** heading float32 (a rotary angle);
+  the ship row's x/R and y/R float16 (the first layer reads them in bf16 anyway; say if
+  "position in float32" was meant to cover them); time since seen as float16 symlog seconds
+  rather than int16 ticks; next-state targets float16. Compact against full precision at
+  initial weights: largest log-probability change 1.9e-6, mean KL below 1e-8.
+- **Open:** micro-batch size other than 64 not measured; the core game's 7.27 GiB reserved;
+  compact-against-full not yet checked with trained weights or bf16.
+- **References.** scoreboard "Update at parity with v2"; learn/NOTES "Rollout store,
+  streaming and micro-batches".
 
 #### 9.2 Compile start-up
 
@@ -1032,15 +1034,6 @@ design did not state (learn/NOTES "Choices the author should check"):
   compiled step (as v2's play shell did); ship the compiled artefact prebuilt.
 - **Recommendation.** None; re-measure on a quiet machine first (backlog F4).
 - **References.** scoreboard "Play latency"; backlog F4.
-
-#### 9.5 Fields stored every tick in the rollout
-
-- **What it is.** Field rows are constant for an episode but stored every tick: about a sixth
-  of observation floats at 4v4 with 10 fields (by shape arithmetic). This matters for the
-  decided streaming.
-- **Options.** Store once per episode; keep.
-- **Recommendation.** None.
-- **References.** review 9.
 
 ### Done or decided, for information
 
