@@ -490,8 +490,11 @@ League (section 8)
 - One source of truth for physics and setup: every tool (live sliders and doghouse, play,
   evaluation, training, any future mode) calls the same game code through shared entry
   points; nothing duplicated without a strong reason.
-- A small local web app for the live doghouse sliders is wanted (Python serving the real
-  physics); not built yet.
+- A small local web app for the dev tools now (sliders, charts, a plain sandbox), kept simple
+  (author 2026-11-24): no styling effort except the charts. An ONNX export spike later, before
+  choosing the game client (web or an engine such as Godot).
+- Compile time is a budget, not an afterthought (author 2026-11-24: cold starts near 10 min
+  are concerning; they must not snowball back to half an hour).
 
 ## Proposals, not decided
 
