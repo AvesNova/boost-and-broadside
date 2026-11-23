@@ -29,6 +29,28 @@ def test_gae_matches_hand_computed_case_and_stops_at_termination():
     assert torch.allclose(target.flatten(), torch.tensor([1.75, 2.0, 5.0]))
 
 
+def test_gae_scan_equals_the_tick_by_tick_recursion():
+    """The reverse doubling scan against the plain backward loop, per level, with episode ends."""
+    generator = torch.Generator().manual_seed(0)
+    ticks, envs, slots = 128, 6, 3
+    reward = torch.randn(ticks, envs, slots, LEVELS, generator=generator)
+    value = torch.randn(ticks, envs, slots, LEVELS, generator=generator)
+    bootstrap = torch.randn(envs, slots, LEVELS, generator=generator)
+    done = torch.rand(ticks, envs, generator=generator) < 0.02
+    config = LearnConfig()
+    discounts, lambdas = torch.tensor(config.discounts), torch.tensor(config.gae_lambdas)
+    expected = torch.zeros_like(reward)
+    running, next_value = torch.zeros_like(bootstrap), bootstrap
+    for tick in range(ticks - 1, -1, -1):
+        alive = (~done[tick]).float()[:, None, None]
+        delta = reward[tick] + discounts * next_value * alive - value[tick]
+        running = delta + discounts * lambdas * alive * running
+        expected[tick], next_value = running, value[tick]
+    advantage, target = generalised_advantages(reward, value, bootstrap, done, discounts, lambdas)
+    assert torch.allclose(advantage, expected, rtol=1e-5, atol=1e-5)
+    assert torch.allclose(target, expected + value, rtol=1e-5, atol=1e-5)
+
+
 @pytest.mark.parametrize("normaliser", ["std", "percentile"])
 def test_normalised_advantages_keep_their_mean_and_have_unit_scale(normaliser):
     generator = torch.Generator().manual_seed(0)

@@ -5,6 +5,7 @@ import torch
 from torch import Tensor
 
 from lean.learn.config import LEVEL_NAMES, LearnConfig
+from lean.model.temporal import doubling_scan
 from lean.model.value import value_bin_centres
 
 
@@ -28,17 +29,17 @@ def generalised_advantages(
     still reach its earlier ticks through the lambda-return.
 
     Returns (advantage, value target), both (T, E, N, LEVELS).
+
+    A_t = delta_t + discount * lambda * (1 - done_t) * A_(t+1) runs backwards in time as
+    lean.model's doubling scan over the reversed ticks (log2 T whole-tensor rounds, no
+    Python loop over T); equal to the tick-by-tick recursion within float32 rounding.
     """
-    ticks = reward.shape[0]
-    advantage = torch.zeros_like(reward)
-    running = torch.zeros_like(bootstrap)
-    next_value = bootstrap
-    for tick in range(ticks - 1, -1, -1):
-        alive = (~done[tick]).to(reward.dtype)[:, None, None]
-        delta = reward[tick] + discounts * next_value * alive - value[tick]
-        running = delta + discounts * gae_lambda * alive * running
-        advantage[tick] = running
-        next_value = value[tick]
+    alive = (~done).to(reward.dtype)[:, :, None, None]
+    next_value = torch.cat([value[1:], bootstrap[None]])
+    delta = reward + discounts * next_value * alive - value
+    decay = discounts * gae_lambda * alive  # (T, E, 1, LEVELS)
+    reversed_advantage, _ = doubling_scan(decay.flip(0), delta.flip(0), torch.zeros_like(bootstrap))
+    advantage = reversed_advantage.flip(0)
     return advantage, advantage + value
 
 
