@@ -1,0 +1,17 @@
+{
+ "screen": {
+  "count": 4000,
+  "seed": 0,
+  "spread": 1.0
+ },
+ "local25": {
+  "count": 256,
+  "seed": 0,
+  "spread": 0.25
+ },
+ "local50": {
+  "count": 256,
+  "seed": 0,
+  "spread": 0.5
+ }
+}

@@ -180,6 +180,21 @@ def local(skills: dict) -> dict:
     return out
 
 
+def sweep(skills: dict) -> dict:
+    """The measured one-at-a-time sweeps through the yardstick: per row, (unit level, the
+    row's value, skill, error)."""
+    out = {}
+    for entry in skills.get("sweep") or []:
+        column, level = entry["unit"]
+        name = NAMES[int(column)]
+        row = PARAMETERS[name]
+        u = 2.0 * level - 1.0
+        value = (row.default * math.exp(row.width * u) if row.law == "log" else
+                 row.default + row.width * u if row.law == "linear" else row.default + row.width * level)
+        out.setdefault(name, []).append((level, value, entry["skill"], entry["error"]))
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--quick", action="store_true")
@@ -191,6 +206,7 @@ def main() -> None:
     if skills.get("screen"):
         out["surrogate"] = surrogate(skills, arguments.quick)
     out["local"] = local(skills)
+    out["sweep"] = sweep(skills)
     (HERE / "analysis.json").write_text(json.dumps(out, indent=1) + "\n")
     report(out)
 
@@ -222,6 +238,8 @@ def report(out: dict) -> None:
         print(f"  conditions: {json.dumps(s['condition_factors'], indent=1)}")
     for name, entry in out["local"].items():
         print(f"{name}: {entry}")
+    for name, points in out["sweep"].items():
+        print(f"sweep {name}: " + "  ".join(f"{value:.3g}: {skill:.3f}+-{error:.3f}" for _, value, skill, error in points))
 
 
 if __name__ == "__main__":
