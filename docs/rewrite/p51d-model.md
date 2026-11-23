@@ -40,7 +40,7 @@ Two routes to a card row. Neither changes `core.py`.
   - the settled full-stick coasting turn sets the induced drag.
 - `performance(row, plain=False)` gives a row's quasi-steady numbers: stall, corner, top
   speed, best climb (Ps), best sustained turn, minimum sustained radius, settled full-stick
-  turn and low-speed acceleration. `plain=True` switches off the core model's shared terms,
+  turn and low-speed acceleration. `plain=True` switches off the game terms (any row),
   which leaves a pure point mass.
 
 How v2's flight model maps to the core model:
@@ -53,8 +53,11 @@ How v2's flight model maps to the core model:
 | Nose reversal (a placeholder for every v2 type), stick levels | Control feel, not physics. Both come from the base row (Vizia). |
 | Weight paid from the store above 2% | Weight always on the wing. With the same card, v2's handles no longer fly under core: Vizia's settled turn falls from 19.3 to 12.5 deg/s. |
 
-The core model's shared terms apply to every type. Each one costs a directly converted aircraft
-some of its real performance (next section):
+The flight terms v2 shared across types are per-type card columns (`card.FLIGHT_TERMS`, since
+2026-11-23). v2's types keep v2's values; the P-51D's row has the four game terms below off
+(`tuning.POINT_MASS_TERMS`), so under the core model it flies its point mass, the October fit.
+With Vizia's values each term would cost the airframe some of its real performance (next
+section; "with Vizia's terms" there):
 - the drag rise above 394 m/s game (197 m/s real), exponent 12;
 - the separation drag, which doubles the induced drag at full lift;
 - the soft minimum of thrust against static thrust (exponent 2);
@@ -95,10 +98,12 @@ in game units, a corner-turn radius of 222 m.
 
 ## Comparison with real figures (real units)
 
-"Core": the type under `GameConfig.core()`. "Point mass": the same P-51D card with the shared
-terms off (`performance(plain=True)`). Sustained figures are coasting, total energy rate >= 0.
+"Core": the type under `GameConfig.core()`. The P-51D's own row is now its point mass (the
+game terms off), so "P-51D, with Vizia's terms" is the same airframe given Vizia's drag rise,
+separation drag and soft minima (as the P-51D row was before 2026-11-23), and "P-51D, core"
+is the point-mass column. Sustained figures are coasting, total energy rate >= 0.
 
-| Quantity | Published figure (source) | P-51D, core | P-51D, point mass | Vizia, core | vizia_plain, core |
+| Quantity | Published figure (source) | P-51D, with Vizia's terms | P-51D, core (point mass) | Vizia, core | vizia_plain, core |
 |---|---|---|---|---|---|
 | Stall speed, clean, 1 g | 100 mph at ~10,100 lb (Loftin, NASA SP-468; v2 research, medium); 101-102 mph at 9,000-9,500 lb (author's data set 1) | 104 mph (46.5 m/s) at 9,760 lb | 104 mph | 100 mph | 100 mph |
 | Top speed, sea level | 375 mph at 67 in Hg, 4,427 kg (flight test, author's set 1); 364 mph at military power (wwiiaircraftperformance.org test report; v2 research, good) | 361 mph (161.2 m/s) | 375 mph | 364 mph | 364 mph |
@@ -112,12 +117,12 @@ terms off (`performance(plain=True)`). Sustained figures are coasting, total ene
 
 The point mass is the October fit, to the tests' tolerances: 375 mph, 3,599 ft/min, and
 18.6 deg/s at 169 mph with r 233 m (`test_p51d_point_mass_is_the_october_fit`). The conversion
-is therefore exact, and every gap between the point-mass and core columns comes from the core
-model's shared terms. Each term was switched off alone, P-51D, core:
+is therefore exact, and every gap between the two P-51D columns comes from Vizia's game terms. Each
+term was switched off alone, P-51D with Vizia's terms:
 
-| Shared term switched off | Top speed | Best climb | Best sustained turn | Turn at corner |
+| Term switched off | Top speed | Best climb | Best sustained turn | Turn at corner |
 |---|---|---|---|---|
-| none (core) | 361 mph | 3,079 ft/min | 15.4 deg/s at 187 mph | 31.3 deg/s |
+| none (Vizia's terms) | 361 mph | 3,079 ft/min | 15.4 deg/s at 187 mph | 31.3 deg/s |
 | drag rise | 372 mph | 3,079 | 15.4 | 31.3 |
 | separation drag | 361 | 3,080 | 17.6 at 164 mph | 31.3 |
 | thrust soft minimum | 363 | 3,595 | 16.1 at 188 mph | 31.3 |
@@ -132,11 +137,12 @@ Effect of each term:
   lift, plus the thrust's soft minimum.
 - **Corner rate (-8%)**: the lift's soft minimum against the g limit.
 
-The core P-51D's 15.4 deg/s happens to sit beside the simulator figure, 15.7 deg/s.
+With Vizia's terms the P-51D's 15.4 deg/s happens to sit beside the simulator figure, 15.7 deg/s.
 
 ### Vizia against the P-51D
 
-In real units, Vizia flies close to the P-51D on paper:
+Against the P-51D airframe with Vizia's terms (the P-51D's own row now flies the point mass:
+375 mph, 3,599 ft/min, 18.6 deg/s), in real units Vizia flies close to the P-51D on paper:
 - top speed 364 against 361 mph;
 - best climb 3,683 against 3,079 ft/min;
 - best sustained turn 16.0 against 15.4 deg/s;
@@ -189,7 +195,7 @@ drag scale of 0.155, an e AR near 10: not physical.
 
 ## Charts
 
-The core model's doghouse for the P-51D and for vizia_plain, coasting at three stores; the same
+The core model's doghouse for the P-51D (its own row: the point mass) and for vizia_plain; the same
 layout as `sections/turns/doghouse.py`. In real units, speeds, turn rates and Ps are halved;
 radii and loads are unchanged.
 
@@ -205,8 +211,11 @@ chart is `doghouse-vizia-core.png`.
     for theme in light dark; do FLIGHT_MODEL=core THEME=$theme OMP_NUM_THREADS=1 PYTHONPATH=.:src \
         python docs/rewrite/sections/turns/doghouse_p51d.py; done
 
-The charts' "best sustained" point is read from the chart's own grid (81 m/s real, 15 deg/s).
-The tables use a 0.05 m/s grid and bisect the stick (83 m/s, 15.4 deg/s).
+The P-51D's chart reads "best sustained 76 m/s, 19 deg/s" (real) from its own grid; the tables
+use a 0.05 m/s grid and bisect the stick (169 mph = 75.6 m/s, 18.6 deg/s). P-51D against Vizia
+on shared axes, in game units and at 1x real time (with an mph axis):
+`sections/turns/doghouse-p51d-vizia-core[-real][-dark].png`
+(`sections/turns/doghouse_compare.py`).
 
 ## Tests (`lean/game/tests/test_tuning.py`)
 
@@ -219,8 +228,10 @@ The tables use a 0.05 m/s grid and bisect the stick (83 m/s, 15.4 deg/s).
   - top speed and climb within 0.5%;
   - turn rate within 1%;
   - turn speed and radius within 2%.
-- Under the core model the P-51D sits below the October fit by the measured costs, each held
-  within 1.5 points:
+- Under the core model the P-51D's own row flies its point mass (the same numbers as
+  `plain=True`).
+- With Vizia's game terms the P-51D airframe sits below the October fit by the measured costs,
+  each held within 1.5 points:
   - top speed -3.7%;
   - climb -14.5%;
   - sustained turn -17.3%.

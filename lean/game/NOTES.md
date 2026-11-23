@@ -355,8 +355,35 @@ plain dict, built by the first (eager) deal and only looked up in a trace; `take
 iterates the instance's fields. lean.learn.compiled's runtime patches of lean.game are gone.
 Same draws and values as before (the keyword is passed whenever there is a generator).
 
-**Outside lean/game and lean/scripted:** `lean/sandbox/world.py` builds and edits a state by
-hand with the old fields (`dataclasses.replace(state, x=...)`, a constants dict with field_
-keys, `state.medium`) and no longer runs; not edited (outside this task's scope). A patch
-that makes it run on the packed state (World with both configs, a type switch, the chaser
-toggle, 250 ticks) was written and checked but not applied.
+**Outside lean/game and lean/scripted:** `lean/sandbox` runs on the packed state (World with
+both configs, a type switch, the chaser toggle; `python -m lean.sandbox --core --headless --demo
+--seconds 5` checks it).
+
+## Core flight after the author's first flight (2026-11-23)
+
+The author flew the core model: it feels good. Three changes (docs/rewrite/core-flight-measurements.md
+has the numbers):
+
+1. **The turn has precedence over the climb** (`core._setting`). The lift budget goes to 1 g
+   held, then the turn, then a climb's extra demand gets the remainder; an unmet climb is climb
+   not made (never negative, never paid from the store). Coast and dive are bit-identical.
+   Slow, full stick and climb now turns as full stick and coast (it flew nearly straight
+   before). Test: `test_the_turn_has_precedence_over_the_climb`.
+2. **Every flight term per ship type.** v2's shared flight constants are card columns
+   (`card.FLIGHT_TERMS`, v2's names: critical_speed, drag_rise_exponent, separation_drag,
+   separation_exponent, lift_softmin_exponent, thrust_softmin_exponent, nose_damping); the
+   module constants are gone. v2's types keep v2's values (the parity test checks each column
+   against v2's rules); the P-51D's row has the game terms off (`tuning.POINT_MASS_TERMS`), so
+   it flies the October fit under the core model. `tuning.airframe_row(airframe, base, terms)`
+   takes the terms (default off); `tuning.game_terms(row)` copies a row's. Vizia's flight is
+   bit-identical in its own lineup, within 1.2e-6 relative in a mixed one; measure_core.py's
+   Vizia table is identical.
+3. **A time scale for flight testing.** `tuning.time_scale(K)` (a context manager) rebuilds the
+   card and the time-dimensioned rule constants at K times real time from their real-time
+   values (gravity K^2 x 9.81); the sandbox's `--time-scale K` (default 2, the game's) enters it
+   for its process and shows K on the readout. Training code never calls it. Guns scale in whole
+   ticks: the bullet life is capped at what the 11 slots hold (1.5x: 11 ticks, not 15) and the
+   fire interval rounds (3x: 30 shots a second, not 45).
+
+Charts: `docs/rewrite/sections/turns/doghouse_compare.py` (P-51D against Vizia, game units and
+1x real time); the core doghouses were redrawn.

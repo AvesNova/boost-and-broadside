@@ -6,7 +6,8 @@ seconds, radians, joules; lift and drag coefficients are per metre (mass 1).
 The first three types are v2's. Two are lean's own, made by lean.game.tuning for the core flight
 model (docs/rewrite/p51d-model.md; a test holds each row equal to the tuning that makes it):
 - "p51d": the P-51D's airframe converted directly at the game's 2x time (tuning.P51D,
-  tuning.airframe_row): real lift, drag, engine power and propeller, g limit 8; guns, shield,
+  tuning.airframe_row): real lift, drag, engine power and propeller, g limit 8, the game flight
+  terms off (its point mass, the October fit); guns, shield,
   nose and stick levels are Vizia's.
 - "vizia_plain": Vizia with v2's climb modifications reverted (tuning.unmodified_climb): no
   engine surplus charging the store, dive and climb at 1 g.
