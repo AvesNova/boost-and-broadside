@@ -358,16 +358,20 @@ def explain(
     # turn worth starting early is theta = arccos(1 - min(d / R_st, 2)), taking theta /
     # sustained rate; the two-circle plan leads his position by that time (or the time left
     # to the pass, if less); one-circle passes pure.
-    relative_x = fight.target_velocity_x - fight.velocity_x
-    relative_y = fight.target_velocity_y - fight.velocity_y
-    relative_squared = (relative_x * relative_x + relative_y * relative_y).clamp_min(TINY)
-    to_pass = (-(fight.offset_x * relative_x + fight.offset_y * relative_y) / relative_squared)
-    miss = (fight.offset_x * relative_y - fight.offset_y * relative_x).abs() * torch.rsqrt(
-        relative_squared
-    )
-    lead_angle = torch.acos(1.0 - (miss / c["sustained_radius"]).clamp(0.0, 2.0))
-    lead_time = read("lead_turn_scale") * lead_angle / c["sustained_rate"]
-    merge_time = two_circle_plan * torch.minimum(to_pass.clamp_min(0.0), lead_time)
+    # (Not computed when the scale is the number 0, as for the yardstick.)
+    lead_turn_scale = read("lead_turn_scale")
+    merge_time = 0.0
+    if not (isinstance(lead_turn_scale, float) and lead_turn_scale == 0.0):
+        relative_x = fight.target_velocity_x - fight.velocity_x
+        relative_y = fight.target_velocity_y - fight.velocity_y
+        relative_squared = (relative_x * relative_x + relative_y * relative_y).clamp_min(TINY)
+        to_pass = -(fight.offset_x * relative_x + fight.offset_y * relative_y) / relative_squared
+        miss = (fight.offset_x * relative_y - fight.offset_y * relative_x).abs() * torch.rsqrt(
+            relative_squared
+        )
+        lead_angle = torch.acos(1.0 - (miss / c["sustained_radius"]).clamp(0.0, 2.0))
+        lead_time = lead_turn_scale * lead_angle / c["sustained_rate"]
+        merge_time = two_circle_plan * torch.minimum(to_pass.clamp_min(0.0), lead_time)
 
     # Commands, mixed as scalars. Pursuit time: offensive lags (high yo-yo) or leads (low);
     # the merge leads by the lead turn.
