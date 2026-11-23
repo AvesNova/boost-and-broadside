@@ -15,7 +15,7 @@ Shaw's rules against it: docs/rewrite/shaw-bfm-notes.md. Decisions: docs/rewrite
   radians, a store fraction, a probability, a ratio. Adding a parameter is one row.
 - `situation.py`: `assess`: bearing, aspect, angles off (alpha + |lambda|), closure, line of
   sight rate, each ship's turn sense, the flow, the energy advantage, the store.
-- `opponent.py`: `engage` (target), `explain` (one decision with its reasons), `marginals`,
+- `opponent.py`: `engage` (target), `explain` (one decision with its reasons: the marginals),
   `sample`, `act`, `decide`, the memory.
 - `chaser.py`: the deterministic memoryless floor (`--opponent chaser` in the sandbox).
 
@@ -40,7 +40,7 @@ branch (a few Python branches on whether a row is the number 0 for the yardstick
    in range at the lead point, never through a team-mate).
 8. Sample: one uniform per head (the only randomness).
 
-Memory (every caller carries it; `fresh_memory`, `renew_memory`): `target`, `side` (drawn
+Memory (every caller carries it; `fresh_memory`, a fresh one per match): `target`, `side` (drawn
 once per match; the dead-astern tie-break), `sense` (+1 left, -1 right, 0 none), `last_pass`
 (plan x angles off at the last commit; a pass that gained under 10 deg switches the plan).
 

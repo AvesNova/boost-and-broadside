@@ -53,7 +53,7 @@ History (v2 parity, the waste fixes, fog, the flight changes): docs/rewrite/core
     stick, no trigger), `_end_check` (a wipe; at the clock more living ships, then more
     total shield over the living ships, else a draw), `_bullet_ends` (moves left, each
     bullet's outcome), then the fog's `perceive`.
-  - `deal` / `reset` / `take_deal` / `reset_done`: fresh states; lean.learn draws deals once
+  - `deal` / `reset` / `take_deal`: fresh states; lean.learn draws deals once
     per segment and takes them as environments finish.
   - Fog: `perceive` (sight by v2's rule, or a shot or a real bullet's hit that tick),
     `enemy_view` (every ship as its enemy team last saw it), `team_view` (own ships live,

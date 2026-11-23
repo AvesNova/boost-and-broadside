@@ -8,8 +8,9 @@ import pytest
 import torch
 
 from lean import game, model, scripted
+from lean.contract import EPISODE_CONSTANT
 from lean.learn import LearnConfig, Opponent, RolloutStore, collect, start, update
-from lean.learn.store import EPISODE_CONSTANT, stored, widened
+from lean.learn.store import stored, widened
 from lean.learn.tests.setting import StepRecorder, small
 
 ENVIRONMENTS = 6  # 3 self-play: 9 seats

@@ -170,3 +170,69 @@ def test_bradley_terry_recovers_a_known_gap():
     assert ratings[0] == 1000.0 and errors[0] == 0.0
     assert abs((ratings[0] - ratings[1]) - 200.0) < 5.0
     assert ratings[2] < ratings[1] and math.isfinite(ratings[2])
+
+
+def test_adaptive_allocation_spreads_over_pairings_without_games(tmp_path, monkeypatch):
+    """Review B2: a pairing with no games has no score rate (NaN); its allocation must come
+    from its wins and draws, not the rate times the games. Five new pairings share a round
+    evenly."""
+    evaluator = Evaluator(Store(tmp_path / "s.sqlite"), GAME, device="cpu", envs=8)
+    agents = [ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.0 + 0.1 * index)) for index in range(6)]
+    pairings = [(agents[0], agent, (2, 2)) for agent in agents[1:]]
+    asked = []
+    monkeypatch.setattr(evaluator, "ensure", lambda requests: asked.extend(requests))
+    evaluator.adaptive(pairings, budget=100, round_games=100)
+    assert sorted(games for _, _, _, games in asked) == [20] * 5
+
+
+def test_the_runner_keeps_the_callers_random_state():
+    """runner.play seeds torch's default generators for its own draws (a compiled tick cannot
+    take a generator) inside a fork: the caller's random state is as it was, and a seed
+    replays the same games."""
+    table = torch.tensor([vector(scripted.ScriptedConfig())] * 2)
+    torch.manual_seed(3)
+    before = torch.get_rng_state()
+    first = play(GAME, queue_of(8), table, envs=4, segment=8, seed=5)
+    assert torch.equal(torch.get_rng_state(), before)
+    again = play(GAME, queue_of(8), table, envs=4, segment=8, seed=5)
+    assert torch.equal(first.result, again.result) and torch.equal(first.length, again.length)
+
+
+def test_a_network_plays_at_the_precision_it_was_trained_with(tmp_path, monkeypatch):
+    """Review B5: evaluation runs a network under the same precision helper as training
+    (lean.model.agent.precision) with the checkpoint's own bf16 setting, not a fixed bf16."""
+    import lean.model.agent as agent_module
+    from lean.learn import LearnConfig, WeightAverages, save_checkpoint
+
+    torch.manual_seed(0)
+    policy = model.Policy(model.ModelConfig())
+    config = LearnConfig(bf16=False)
+    path = tmp_path / "net.pt"
+    save_checkpoint(path, policy, WeightAverages(policy, config), config)
+    seen = []
+    precision = agent_module.precision
+
+    def recording(device, bf16):
+        seen.append(bf16)
+        return precision(device, bf16)
+
+    monkeypatch.setattr(agent_module, "precision", recording)
+    evaluator = Evaluator(Store(tmp_path / "s.sqlite"), GAME, device="cpu", envs=4, segment=8)
+    evaluator.ensure([(NetworkAgent(str(path), "live"), ScriptedAgent.of(), (1, 1), 4)])
+    assert seen and set(seen) == {False}
+
+
+def test_versions_cover_what_decides_a_game_and_how_a_network_acts(tmp_path, monkeypatch):
+    """Review B3: the game version hashes the game's source but not the analysis-only
+    tuning.py; a network agent's id covers its inference path (lean/model with its agent
+    step, the runner), so a change there starts a new agent."""
+    names = {str(path.relative_to(store_module.LEAN)) for path in store_module.game_files()}
+    assert {"game/core.py", "game/card.py", "scripted/opponent.py", "contract.py"} <= names
+    assert "game/tuning.py" not in names and not any("tests" in name for name in names)
+    inference = {str(path.relative_to(store_module.LEAN)) for path in store_module.inference_files()}
+    assert {"model/policy.py", "model/agent.py", "eval/runner.py"} <= inference
+    path = tmp_path / "a.pt"
+    path.write_bytes(b"one")
+    before = NetworkAgent(str(path), "ema").id
+    monkeypatch.setattr(store_module, "inference_version", lambda: "another")
+    assert NetworkAgent(str(path), "ema").id != before

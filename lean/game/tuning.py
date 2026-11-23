@@ -410,13 +410,16 @@ def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve
 
 @contextlib.contextmanager
 def _with_row(row: dict[str, float]):
-    """The card with `row` appended as a last type, restored afterwards."""
+    """The card with `row` appended as a last type, restored afterwards; the core's built
+    ship cards are dropped on entry and exit (as in time_scale)."""
     saved = card.CARD
     card.CARD = {name: (*values, float(row[name])) for name, values in saved.items()}
+    core._SHIP_CARDS.clear()
     try:
         yield len(next(iter(saved.values())))
     finally:
         card.CARD = saved
+        core._SHIP_CARDS.clear()
 
 
 def _bisect(function, low, high, steps=40):

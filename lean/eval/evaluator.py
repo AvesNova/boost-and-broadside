@@ -35,12 +35,13 @@ class Evaluator:
         self.compiled = self.device.type == "cuda" if compiled is None else compiled
         self.policies = {}
 
-    def policy(self, agent: NetworkAgent):
+    def policy(self, agent: NetworkAgent) -> tuple:
+        """(the agent's lean.model.Policy, its precision: the bf16 setting it was trained with)."""
         if agent.id not in self.policies:
             checkpoint = load_checkpoint(agent.checkpoint, self.device)
             policy = model.Policy(checkpoint["model_config"]).to(self.device)
             policy.load_state_dict(policy_weights(checkpoint, agent.weights))
-            self.policies[agent.id] = policy.eval()
+            self.policies[agent.id] = (policy.eval(), checkpoint["learn_config"]["bf16"])
         return self.policies[agent.id]
 
     def counts(self, agent_a, agent_b, sizes) -> dict[str, int]:
@@ -87,13 +88,11 @@ class Evaluator:
         random.Random(seed).shuffle(games)
         columns = torch.tensor(games, dtype=torch.long)
         queue = runner.Queue(*columns[:, 1:].unbind(-1))
-        first, second = entries[0][0], entries[0][1]
+        seats = [self.policy(agent) if isinstance(agent, NetworkAgent) else (None, True) for agent in entries[0][:2]]
         outcome = runner.play(
-            self.game_config, queue, table,
-            self.policy(first) if isinstance(first, NetworkAgent) else None,
-            self.policy(second) if isinstance(second, NetworkAgent) else None,
-            envs=self.envs, segment=self.segment, seconds=self.seconds, compiled=self.compiled, seed=seed,
-            progress=self.progress,
+            self.game_config, queue, table, seats[0][0], seats[1][0], envs=self.envs, segment=self.segment,
+            seconds=self.seconds, compiled=self.compiled, seed=seed, progress=self.progress,
+            bf16=(seats[0][1], seats[1][1]),
         )
         played = outcome.result >= 0
         for number, (agent_a, agent_b, sizes, _) in enumerate(entries):
@@ -123,16 +122,17 @@ class Evaluator:
             if budget is not None and spent >= budget:
                 return rows
             lot = round_games if budget is None else min(round_games, budget - spent)
+            # (wins plus half the draws, games): a pairing without games has no score rate.
+            stats = [(row["wins"] + 0.5 * row["draws"], row["games"]) for row in rows]
             if target_error is not None:
                 # No pairing already within the target takes games.
-                stats = [(row["score"] * row["games"], row["games"]) for row in rows]
                 open_rows = [index for index, row in enumerate(rows) if row["error"] > target_error]
                 added_open = allocate([stats[index] for index in open_rows], lot)
                 added = [0] * len(rows)
                 for index, extra in zip(open_rows, added_open, strict=True):
                     added[index] = extra
             else:
-                added = allocate([(row["score"] * row["games"], row["games"]) for row in rows], lot)
+                added = allocate(stats, lot)
             if sum(added) == 0:
                 return rows
             self.ensure([(a, b, sizes, row["games"] + extra)

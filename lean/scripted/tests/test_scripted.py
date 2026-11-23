@@ -16,9 +16,7 @@ from lean.scripted import (
     chaser_act,
     draw_uniforms,
     fresh_memory,
-    marginals,
     personas,
-    renew_memory,
 )
 from lean.scripted.opponent import CLIMB, COAST, DIVE, explain
 from lean.scripted.parameters import PARAMETERS, SAMPLED
@@ -93,7 +91,7 @@ def memory_of(slots: int = 2, side: float = 1.0, target=None) -> dict:
 
 def decide(state, memory=None):
     """The yardstick's marginals for team 0 with a fresh memory (side +1, no kept target)."""
-    return marginals(ScriptedConfig(), state, 0, None, memory or memory_of())
+    return explain(ScriptedConfig(), state, 0, None, memory or memory_of()).marginals
 
 
 def test_actions_in_range_and_zero_for_uncontrolled_rows():
@@ -123,7 +121,7 @@ def test_marginals_are_distributions():
     state = random_state(envs=32, slots=10, seed=3)
     for spread in (0.0, 1.0):
         persona = personas(config, 32, 10, torch.Generator().manual_seed(4), CPU, spread)
-        parts = marginals(config, state, 0, persona, fresh_memory(32, 10, None, CPU))
+        parts = explain(config, state, 0, persona, fresh_memory(32, 10, None, CPU)).marginals
         rows = parts.controlled
         for head in (parts.stick[rows], parts.power[rows]):
             assert torch.isfinite(head).all() and (head >= 0).all()
@@ -232,11 +230,11 @@ def test_kept_target_switches_only_for_a_much_closer_enemy():
         moved = state.replace(
             x=torch.tensor([[0.0, 1000.0, 1000.0 * other]]), y=torch.tensor([[0.0, 0.0, 1.0]])
         )
-        parts = marginals(ScriptedConfig(), moved, 0, None, memory)
+        parts = explain(ScriptedConfig(), moved, 0, None, memory).marginals
         assert int(parts.target[0, 0]) == expected, other
-        fresh = marginals(
+        fresh = explain(
             ScriptedConfig(), moved, 0, None, {**memory, "target": torch.full((1, 3), -1)}
-        )
+        ).marginals
         assert int(fresh.target[0, 0]) == 2  # without memory the nearest
 
 
@@ -244,7 +242,7 @@ def test_head_on_side_is_drawn_once_per_ship_per_match_and_kept():
     """Decision 5.5: in the symmetric head-on pass (the target straight behind, flying
     straight) the plan's sense has no side to go by, so each ship turns by a side drawn once
     per ship per match (two-circle with more energy: to the side; one-circle: away from it);
-    the side is never changed by `act` and is redrawn only for a new match (`renew_memory`)."""
+    the side is never changed by `act` (a new match takes a fresh memory, `fresh_memory`)."""
     for own_store, plan in ((0.8, 1.0), (0.2, -1.0)):
         state = placed(
             dict(x=0.0, y=0.0, heading=0.0, speed=260.0),
@@ -269,11 +267,6 @@ def test_head_on_side_is_drawn_once_per_ship_per_match_and_kept():
         )
         match, _ = game.step(play, match, action, game.draw_noise(play, envs, 2, generator, CPU))
         assert torch.equal(memory["side"], side)
-    done = torch.arange(envs) < envs // 2
-    renewed = renew_memory(memory, done, generator)
-    assert torch.equal(renewed["side"][~done], side[~done])
-    assert (renewed["target"][done] == -1).all()
-    assert not torch.equal(renewed["side"][done], side[done])  # 64 fresh coins differ
 
 
 def test_the_lead_counts_the_medium():
@@ -381,7 +374,7 @@ def test_never_shoots_through_a_team_mate():
         moved = base.replace(
             x=torch.tensor([[0.0, 200.0, 400.0]]), y=torch.tensor([[0.0, ally_y, 0.0]])
         )
-        fire[name] = float(marginals(ScriptedConfig(), moved, 0, None, memory).fire[0, 0])
+        fire[name] = float(explain(ScriptedConfig(), moved, 0, None, memory).marginals.fire[0, 0])
     assert fire["blocked"] == 0.0
     assert fire["clear"] > 0.1
 
@@ -405,9 +398,9 @@ def test_one_call_for_both_teams_equals_the_two_single_team_calls():
         deaths = 0
         for _ in range(120):
             uniforms = draw_uniforms(envs, slots, generator, CPU)
-            both = marginals(config, state, None, persona, memory)
+            both = explain(config, state, None, persona, memory).marginals
             for team in (0, 1):
-                single = marginals(config, state, team, persona, memory)
+                single = explain(config, state, team, persona, memory).marginals
                 rows = single.controlled
                 assert torch.equal(rows, both.controlled & (state.team == team))
                 for name in ("stick", "power", "fire", "target"):
@@ -465,9 +458,11 @@ def play_scripted(envs: int, ticks: int, spread: float, seed: int, chaser_team: 
                 config, state, action, game.draw_noise(config, envs, slots, generator, CPU)
             )
             result = torch.where((result < 0) & out.done, out.result, result)
-            memory = renew_memory(memory, out.done, generator)
+            # A finished game starts afresh, as lean.learn re-deals: a fresh memory and a deal.
+            fresh = fresh_memory(envs, slots, generator, CPU)
+            memory = {name: torch.where(out.done[:, None], fresh[name], memory[name]) for name in memory}
             if chaser_team is None:
-                state = game.reset_done(config, state, out.done, sizes, generator)
+                state = game.take_deal(state, out.done, game.deal(config, envs, slots, sizes, generator, CPU))
             elif bool((result >= 0).all()):
                 break
     return dict(farthest=farthest / radius, fired=fired, lived=lived, result=result)

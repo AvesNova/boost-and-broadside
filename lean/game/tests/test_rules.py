@@ -179,3 +179,23 @@ def test_the_observation_shows_own_pending_actions_only(fog):
     fresh = core.deal(config, 1, 4, torch.tensor([[1, 1]]), torch.Generator().manual_seed(6), CPU)
     padded = core.take_deal(state, torch.ones(1, dtype=torch.bool), fresh)
     assert observe(config, padded, 0).pending[0].tolist() == [0, NO_PENDING, NO_PENDING, NO_PENDING]
+
+
+def test_a_placed_ship_spawns_by_the_deals_rule():
+    """Review B7: a caller that places ships itself (the sandbox) spawns them through
+    core.spawn, the deal's rule: the standard speed over the map at the place (the medium
+    counted), half the store, a full shield, no angle of attack, alive; other ships as
+    they were."""
+    config = GameConfig()  # fields on: the medium matters
+    generator = torch.Generator().manual_seed(4)
+    state = reset(config, 16, torch.tensor([[2, 2]]).expand(16, 2), generator, CPU)
+    chosen = torch.zeros(16, 4, dtype=torch.bool)
+    chosen[:, 1] = True
+    place = torch.rand(16, 4, generator=generator) * 2000.0 - 1000.0
+    spawned = core.spawn(config, state, chosen, place, place.flip(0), torch.ones(16, 4), torch.zeros(16, 4), generator)
+    assert torch.equal(spawned.x[:, 1], place[:, 1]) and torch.equal(spawned.y[:, 1], place.flip(0)[:, 1])
+    assert standard_rows(config, spawned)[:, 1].all() and spawned.alive[:, 1].all()
+    assert (spawned.log_index[:, 1].abs() > 1e-3).any()  # some places in a field
+    assert (spawned.angle[:, 1] == 0.0).all() and torch.equal(spawned.velocity_x[:, 1], spawned.speed[:, 1])
+    others = ~chosen
+    assert torch.equal(spawned.ships.transpose(1, 2)[others], state.ships.transpose(1, 2)[others])

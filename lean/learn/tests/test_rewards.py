@@ -5,8 +5,9 @@ import pytest
 import torch
 
 from lean import game, scripted
-from lean.learn import LearnConfig, support_usage, value_centres
+from lean.learn import LearnConfig, value_centres
 from lean.learn.config import DAMAGE, KILL_DEATH, LEVELS, OBJECTIVE, OBJECTIVE_PROGRESS, OUTCOME
+from lean.learn.returns import usage_counts, usage_flags, usage_metrics
 from lean.learn.rewards import TickEvents, blank_ledger, reward_step, tick_events
 
 CONFIG = LearnConfig()
@@ -154,7 +155,8 @@ def test_the_real_game_gives_zero_sum_levels():
         assert reward[..., DAMAGE].sum(-1).abs().max() < 1e-4
         assert reward[..., KILL_DEATH].sum(-1).abs().max() < 1e-4
         paid += reward.abs().sum((0, 1))
-        state = game.reset_done(game_config, next_state, step_out.done, torch.full((envs, 2), 2), generator)
+        fresh = game.deal(game_config, envs, slots, torch.full((envs, 2), 2), generator, "cpu")
+        state = game.take_deal(next_state, step_out.done, fresh)
     assert paid[DAMAGE] > 0  # the scripted agents fought
 
 
@@ -176,7 +178,8 @@ def test_range_monitoring_flags_clamped_and_narrow_targets():
     target[0, 0, 0, KILL_DEATH] = 10 * config.value_high[KILL_DEATH]  # one far outside: 1 in 48
     target[..., OUTCOME] = 0.01 * spread  # all in the middle bin or two
     target[..., OBJECTIVE] = 0.01 * spread  # narrow, but the level paid nothing
-    usage = support_usage(target, reward, mask, centres, config)
+    paid = (reward != 0).flatten(0, -2).any(0)  # as the update reads it from the rollout
+    usage = usage_metrics(usage_flags(usage_counts(target, mask, centres), paid, config).tolist())
     assert usage["range_clamped_kill_death"] == pytest.approx(1 / 48)
     assert usage["range_warning_clamped_kill_death"] == 1.0
     assert usage["range_clamped_damage"] == 0.0 and usage["range_warning_clamped_damage"] == 0.0

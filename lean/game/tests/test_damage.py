@@ -46,5 +46,5 @@ def test_hit_damage_matrix_matches_the_totals():
         assert float(torch.diagonal(matrix, dim1=-2, dim2=-1).abs().max()) == 0.0
         assert (out.shield_restored >= 0.0).all()
         seen_hits += int((matrix > 0).sum())
-        state = core.reset_done(config, state, out.done, sizes, generator)
+        state = core.take_deal(state, out.done, core.deal(config, 32, n, sizes, generator, "cpu"))
     assert seen_hits > 0

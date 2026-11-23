@@ -66,22 +66,11 @@ class World:
 
     def reset(self) -> None:
         state = core.reset(self.config, 1, torch.tensor([[1, 1]]), self.generator, "cpu")
-        constants = self._constants()
-        log_index, _, _ = core.medium(state.fields, torch.zeros(1, 2), torch.zeros(1, 2))
-        self.state = core.with_velocity(state.replace(
-            type=self._types(),
-            constants=constants,
-            x=torch.zeros(1, 2),
-            y=torch.zeros(1, 2),
-            heading_cos=torch.tensor([[0.0, 0.0]]),
-            heading_sin=torch.tensor([[1.0, 1.0]]),
-            speed=card.SPAWN_SPEED * torch.exp(log_index),
-            energy=torch.as_tensor(constants["spawn_energy"]).expand(1, 2),
-            shield=torch.as_tensor(constants["max_shield"]).expand(1, 2),
-            alive=torch.tensor([[True, False]]),
-        ))
+        state = state.replace(type=self._types(), constants=self._constants(), alive=torch.tensor([[False, False]]))
+        # The player at the centre, nose north, by the game's spawn rule.
+        self.state = self._spawned(state, 0, 0.0, 0.0, math.pi / 2)
         self._place_opponent()
-        self.state.alive[0, 1] = self.opponent_on
+        self.state = self.state.replace(alive=torch.tensor([[True, self.opponent_on]]))
         self.tick = 0
         self.deaths = 0
         self.opponent_kills = 0
@@ -91,6 +80,14 @@ class World:
         self.turn_rate = 0.0
         self._last_track = self._track()
         self.previous = self.poses()
+
+    def _spawned(self, state, slot: int, x: float, y: float, heading: float):
+        """`state` with ship `slot` spawned at (x, y) heading `heading` (radians) through the
+        game's spawn (lean.game.core.spawn: speed, store, shield and medium as at a deal)."""
+        chosen = torch.zeros(1, 2, dtype=torch.bool)
+        chosen[0, slot] = True
+        x, y, heading_cos, heading_sin = (torch.full((1, 2), value) for value in (x, y, math.cos(heading), math.sin(heading)))
+        return core.spawn(self.config, state, chosen, x, y, heading_cos, heading_sin, self.generator)
 
     def _place_opponent(self) -> None:
         """A new life for the opponent: placed 1500 m from the player, facing it, with a fresh
@@ -107,14 +104,7 @@ class World:
                 y * 0.8 * self.config.arena_radius / radius,
             )
         toward = math.atan2(float(s.y[0, 0]) - y, float(s.x[0, 0]) - x)
-        s.x[0, 1], s.y[0, 1] = x, y
-        s.heading_cos[0, 1], s.heading_sin[0, 1] = math.cos(toward), math.sin(toward)
-        s.speed[0, 1] = card.SPAWN_SPEED
-        s.angle[0, 1], s.angle_cos[0, 1], s.angle_sin[0, 1], s.nose_rate[0, 1] = 0.0, 1.0, 0.0, 0.0
-        s.energy[0, 1] = self.constant("spawn_energy", 1)
-        s.shield[0, 1] = self.constant("max_shield", 1)
-        s.alive[0, 1] = True
-        refresh_medium(s)
+        self.state = self._spawned(s, 1, x, y, toward)
 
     def set_player_type(self, ship_type: int) -> None:
         """Swap the player's ship card in flight; position, speed and store are kept."""
@@ -219,13 +209,3 @@ def field_list(state) -> list[tuple[float, float, float, float, float]]:
         (float(x), float(y), float(r), float(b), float(t) / card.LN_SQRT2)
         for x, y, r, b, t in zip(*columns)
     ]
-
-
-def refresh_medium(state) -> None:
-    """Recompute, in place, the cached medium at every ship and the stored velocity (after
-    placing ships by hand)."""
-    for name, value in zip(("log_index", "gradient_x", "gradient_y"), core.medium(state.fields, state.x, state.y)):
-        getattr(state, name).copy_(value)
-    velocity = core.path_velocity(state.speed, state.heading_cos, state.heading_sin, state.angle_cos, state.angle_sin)
-    state.velocity_x.copy_(velocity[0])
-    state.velocity_y.copy_(velocity[1])

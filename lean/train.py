@@ -106,7 +106,8 @@ def save_run(path: Path, stage: Stage, policy, config: LearnConfig, generator, p
         path, policy, stage.averages, config, stage=stage.name, updates=stage.index, steps=stage.steps,
         adam_steps=stage.adam_steps, teacher=dataclasses.asdict(stage.teacher), planned=stage.updates,
         optimiser=stage.optimiser.state_dict(), league=stage.league.state(), game_state=stage.state,
-        carry=stage.carry, random=random_states(generator, device), plan=plan,
+        # The next segment's deals are drawn afresh when it starts (collect), so they are not kept.
+        carry=dataclasses.replace(stage.carry, next_episodes=None), random=random_states(generator, device), plan=plan,
     )
 
 
@@ -241,7 +242,7 @@ def smoke_config() -> LearnConfig:
     a snapshot after every update and a checkpoint every second one."""
     return LearnConfig(
         team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1, segments_per_update=2, segment_ticks=8,
-        micro_batch_views=4, warmup_steps=2, bc_updates=2, league_snapshot_steps=(64,), checkpoint_every=128,
+        micro_batch_views=4, warmup_steps=2, bc_updates=2, rl_updates=2, league_snapshot_steps=(64,), checkpoint_every=128,
     )
 
 
@@ -252,7 +253,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--envs", type=int, default=None, help="default: LearnConfig.environments")
     parser.add_argument("--bc-updates", type=int, default=None, help="default: LearnConfig.bc_updates")
-    parser.add_argument("--updates", type=int, default=None, help="RL updates (default 1000; on --resume, the run's)")
+    parser.add_argument("--updates", type=int, default=None, help="RL updates (default LearnConfig.rl_updates; on --resume, the run's)")
     parser.add_argument("--start", type=Path, default=None, help="RL: start from this BC checkpoint's hand-off weights")
     parser.add_argument("--out", type=Path, default=None, help="directory for the stages' checkpoints")
     parser.add_argument("--resume", type=Path, default=None, help="a checkpoint, or a run directory (its latest)")
@@ -263,6 +264,8 @@ def main() -> None:
         help="compile the rollout tick and the update's loss (lean.learn.compiled); --no-compile runs eagerly",
     )
     arguments = parser.parse_args()
+    if arguments.start is not None and arguments.stage != "rl":
+        parser.error("--start is the BC checkpoint RL starts from: it needs --stage rl")
 
     device = torch.device(arguments.device)
     if arguments.threads > 0:
@@ -284,7 +287,7 @@ def main() -> None:
     else:
         config = smoke_config() if arguments.smoke else LearnConfig()
         envs = arguments.envs or (4 if arguments.smoke else config.environments)
-        updates = arguments.updates if arguments.updates is not None else (2 if arguments.smoke else 1000)
+        updates = config.rl_updates if arguments.updates is None else arguments.updates
         bc_updates = config.bc_updates if arguments.bc_updates is None else arguments.bc_updates
         plan = dict(
             stage=arguments.stage, envs=envs, updates=updates, bc_updates=bc_updates, seed=arguments.seed,
@@ -302,7 +305,7 @@ def main() -> None:
     planned = {"bc": plan["bc_updates"], "rl": plan["updates"]}
     if resumed is not None:
         stages = stages[stages.index(resumed["stage"]):]
-    elif plan["start"] is not None and stages == ("rl",):
+    elif plan["start"] is not None:
         checkpoint = load_checkpoint(Path(plan["start"]), device)
         policy = model.Policy(checkpoint["model_config"]).to(device)
         policy.load_state_dict(policy_weights(checkpoint, config.handoff))

@@ -15,7 +15,7 @@ import sys
 import torch
 
 from lean.game import core
-from lean.scripted import ScriptedConfig, act, draw_uniforms, fresh_memory, personas, renew_memory
+from lean.scripted import ScriptedConfig, act, draw_uniforms, fresh_memory, personas
 
 ENVS, TICKS, EVERY, PER_TEAM = 256, 3000, 3, 4
 
@@ -62,8 +62,9 @@ def main() -> None:
             action, memory = act(scripted, state, None, persona, draw_uniforms(ENVS, slots, generator, "cpu"), memory)
             state, out = core.step(config, state, action, core.draw_noise(config, ENVS, slots, generator, "cpu"))
             episodes += int(out.done.sum())
-            memory = renew_memory(memory, out.done, generator)
-            state = core.reset_done(config, state, out.done, sizes, generator)
+            fresh = fresh_memory(ENVS, slots, generator, "cpu")
+            memory = {name: torch.where(out.done[:, None], fresh[name], memory[name]) for name in memory}
+            state = core.take_deal(state, out.done, core.deal(config, ENVS, slots, sizes, generator, "cpu"))
             if (tick + 1) % 500 == 0:
                 print(f"tick {tick + 1} of {TICKS}, episodes ended {episodes}", file=sys.stderr, flush=True)
     print(f"{ENVS} environments x {TICKS} ticks, {PER_TEAM}v{PER_TEAM}, every {EVERY}th tick, {episodes} episodes ended")

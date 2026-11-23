@@ -7,7 +7,6 @@ from lean.learn.pool import League
 from lean.learn.returns import (
     generalised_advantages,
     normalise_advantages,
-    support_usage,
     value_centres,
 )
 from lean.learn.rewards import reward_step, tick_events
@@ -28,5 +27,5 @@ __all__ = [
     "CollectCarry", "LEVELS", "LEVEL_NAMES", "LearnConfig", "League", "Opponent", "Rollout", "RolloutStore",
     "TeacherTerm", "WeightAverages", "abandon", "collect", "draw_team_sizes", "generalised_advantages",
     "learning_rate", "load_checkpoint", "make_optimiser", "normalise_advantages", "policy_weights", "reward_step",
-    "save_checkpoint", "start", "support_usage", "tick_events", "update", "value_centres",
+    "save_checkpoint", "start", "tick_events", "update", "value_centres",
 ]

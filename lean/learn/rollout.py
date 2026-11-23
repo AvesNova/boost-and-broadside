@@ -5,19 +5,34 @@ from dataclasses import dataclass
 
 import torch
 from torch import Tensor
-from torch.func import functional_call
 
 from lean import game, scripted
-from lean.contract import POWERS, STICKS, Obs, random_keywords, split_joint
-from lean.learn.config import LearnConfig, policy_precision
+from lean.contract import (
+    EPISODE_CONSTANT,
+    POWERS,
+    SEAT_AXIS,
+    STICKS,
+    Obs,
+    random_keywords,
+    split_joint,
+    whole_state,
+)
+from lean.learn.config import LearnConfig
 from lean.learn.returns import value_centres
 from lean.learn.rewards import Ledger, blank_ledger, clear_ledger, reward_step, tick_events
 from lean.model import draw_position_offset, next_state_target
+from lean.model.agent import (
+    Network,
+    network_step,
+    precision,
+    reset_carry,
+    sample_joint,
+    seat_view,
+    select_environments,
+)
 from lean.model.value import decode_value
 from lean.scripted import ScriptedConfig
 
-# The seat (environment) axis of lean.model's recurrent carry, (blocks, E, 1 + N, 4, width).
-SEAT_AXIS = 1
 # The teacher's distribution as recorded: the stick's 7 probabilities, the power's 3, then
 # the probability of firing (lean.scripted.Marginals; the three are independent).
 TEACHER_WIDTH = STICKS + POWERS + 1
@@ -36,26 +51,6 @@ def teacher_joint(marginals: Tensor) -> Tensor:
     fire = torch.cat([1.0 - fire, fire], -1)
     joint = stick[..., :, None, None] * power[..., None, :, None] * fire[..., None, None, :]
     return joint.flatten(-3)
-
-
-def map_fields(record, function):
-    """A copy of a dataclass with `function` applied to every tensor field."""
-    changes = {
-        field.name: function(getattr(record, field.name))
-        for field in dataclasses.fields(record)
-        if isinstance(getattr(record, field.name), Tensor)
-    }
-    return dataclasses.replace(record, **changes)
-
-
-def whole(tensor: Tensor) -> Tensor:
-    """`tensor` with contiguous strides (a copy only when some stride is 0, a broadcast)."""
-    return tensor.clone(memory_format=torch.contiguous_format) if 0 in tensor.stride() else tensor
-
-
-def select_environments(chosen: Tensor, when_chosen: Tensor, otherwise: Tensor) -> Tensor:
-    """Per-environment choice between two tensors with a leading E; `chosen` is (E,) bool."""
-    return torch.where(chosen.view(-1, *[1] * (otherwise.dim() - 1)), when_chosen, otherwise)
 
 
 @dataclass
@@ -129,7 +124,7 @@ class Rollout:
     observation: each seat's view, every field (T, S, ...); `own` marks the valued and
     trained rows (that seat's living ships), `key_mask` the attendable ones.
     deal_row: (T, S) long, the seat's row in `deal_table`, {name: (2E, ...)}: the
-    observation fields constant within an episode (lean.learn.store.EPISODE_CONSTANT) and
+    observation fields constant within an episode (lean.contract.EPISODE_CONSTANT) and
     the position offset, once per deal (rows r < E: environment r as the segment started;
     E + k: the segment's deal k). A RolloutStore keeps these instead of the per-tick copies.
     action: (T, S, N) long joint actions sampled on that tick's observation. teacher: (T, S,
@@ -191,11 +186,6 @@ class Rollout:
     )
 
 
-def reset_carry(carry: Tensor, done: Tensor) -> Tensor:
-    """Zero lean.model's carry of the environments (seats) in `done` (E,) bool."""
-    return carry * (~done).view(1, -1, 1, 1, 1)
-
-
 def generator_device(generator):
     """The device a generator draws on; the CPU when there is none."""
     return generator.device if generator is not None else torch.device("cpu")
@@ -223,12 +213,6 @@ def scripted_actions(scripted_config: ScriptedConfig, state, persona, memory: di
     return action, memory, teacher_marginals(parts)
 
 
-def sample_joint(logits: Tensor, generator) -> Tensor:
-    """One sample per row from categorical logits (..., JOINT), by the Gumbel-max trick."""
-    uniform = torch.rand(logits.shape, **random_keywords(generator, logits.device)).clamp(1e-10, 1.0 - 1e-7)
-    return (logits - torch.log(-torch.log(uniform))).argmax(-1)
-
-
 def self_play_count(config: LearnConfig, envs: int) -> int:
     """E_s, the number of self-play environments (the first E_s indices)."""
     return round(config.self_play_share * envs)
@@ -243,25 +227,13 @@ def seats(learner_team: Tensor, self_play: int) -> tuple[Tensor, Tensor]:
     return environment, team
 
 
-def seat_view(views: tuple[Obs, Obs], environment: Tensor, team: Tensor) -> Obs:
-    """The view of team `team[s]` in environment `environment[s]`, merged from the two
-    fixed-team views `views` = (team 0's, team 1's), each with a leading E."""
-    first, second = views
-    chosen = team == 0
-    return Obs(**{
-        field.name: select_environments(
-            chosen, getattr(first, field.name).index_select(0, environment), getattr(second, field.name).index_select(0, environment)
-        )
-        for field in dataclasses.fields(first)
-    })
-
-
-def draw_members(opponent: Opponent, member: Tensor, done: Tensor, generator) -> tuple[Tensor, Tensor]:
-    """(member, slot) of the league environments, new draws where `done` (L,) bool (League.draw);
-    without a league every one plays the scripted agent (member 0, slot -1)."""
+def draw_members(opponent: Opponent, member: Tensor, slot: Tensor, done: Tensor, generator) -> tuple[Tensor, Tensor]:
+    """(member, slot) of the league environments, new draws where `done` (L,) bool, the
+    others keeping `member` and `slot` (League.draw); without a league every one plays the
+    scripted agent (member 0, slot -1)."""
     if opponent.league is None or member.shape[0] == 0:
         return torch.zeros_like(member), torch.full_like(member, -1)
-    return opponent.league.draw(member, done, generator)
+    return opponent.league.draw(member, slot, done, generator)
 
 
 def slot_actions(config: LearnConfig, template, parameters: dict, buffers: dict, slot: Tensor, positions: Tensor,
@@ -287,12 +259,11 @@ def slot_actions(config: LearnConfig, template, parameters: dict, buffers: dict,
     view = seat_view(views, first + environment, 1 - carry.learner_team.index_select(0, first + environment))
     rows_carry = carry.opponent.index_select(SEAT_AXIS, environment)
     offset = carry.position_offset[first:].index_select(0, environment)
-    with policy_precision(config, device):
-        logits, _, new_carry = functional_call(template, (parameters, buffers), (view, rows_carry, offset))
+    joint, new_carry = network_step(Network(template, parameters, buffers, config.bf16), view, rows_carry, offset, generator)
     read = rank.clamp(min=0, max=width - 1)
-    sampled = split_joint(sample_joint(logits.float(), generator)).index_select(0, read)
+    sampled = split_joint(joint).index_select(0, read)
     action = torch.where(mine[:, None, None], sampled, action)
-    new_carry = new_carry.to(opponent_carry.dtype).index_select(SEAT_AXIS, read)
+    new_carry = new_carry.index_select(SEAT_AXIS, read)
     # Contiguous, so the carry keeps one layout from tick to tick (a compiled graph is
     # specialised on strides).
     return action, torch.where(mine.view(1, -1, 1, 1, 1), new_carry, opponent_carry).contiguous()
@@ -351,7 +322,7 @@ def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: in
     unset = torch.zeros(league_envs, dtype=torch.long, device=device)
     if opponent.league is not None:
         opponent.league.prepare(league_envs, unset - 1)
-    member, slot = draw_members(opponent, unset, torch.ones_like(unset, dtype=torch.bool), generator)
+    member, slot = draw_members(opponent, unset, unset - 1, torch.ones_like(unset, dtype=torch.bool), generator)
     carry = CollectCarry(
         policy=policy.initial_carry(envs + self_play, slots, device),
         opponent=policy.initial_carry(league_envs, slots, device),
@@ -400,7 +371,7 @@ def redeal(opponent: Opponent, state, carry: CollectCarry, done: Tensor, generat
 
     seat_environment, _ = seats(carry.learner_team, self_play)
     league_done = done[self_play:]
-    member, slot = draw_members(opponent, carry.member, league_done, generator)
+    member, slot = draw_members(opponent, carry.member, carry.slot, league_done, generator)
     carry = CollectCarry(
         policy=reset_carry(carry.policy, done.index_select(0, seat_environment)),
         opponent=reset_carry(carry.opponent, league_done),
@@ -467,7 +438,7 @@ def act(config: LearnConfig, game_config, policy, opponent: Opponent, state, car
     views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
     observation = seat_view(views, seat_environment, seat_team)
     seat_offset = carry.position_offset.index_select(0, seat_environment)
-    with policy_precision(config, seat_offset.device):
+    with precision(seat_offset.device, config.bf16):
         logits, value_logits, policy_carry = policy.step(observation, carry.policy, seat_offset)
     logits, value_logits = logits.float(), value_logits.float()
     joint = sample_joint(logits, generator)
@@ -536,8 +507,6 @@ def deal_table(game_config, state, carry: CollectCarry) -> dict[str, Tensor]:
     """The segment's deal table (Rollout.deal_table): the episode-constant observation fields
     and the position offset, for the environments as the segment starts and then for
     carry.next_episodes' deals. Two observe calls per segment, eagerly."""
-    from lean.learn.store import EPISODE_CONSTANT
-
     pool = carry.next_episodes
     now, dealt = game.observe(game_config, state, 0), game.observe(game_config, pool.state, 0)
     table = {name: torch.cat([getattr(now, name), getattr(dealt, name)]) for name in EPISODE_CONSTANT}
@@ -580,10 +549,8 @@ def collect(
         act_part, advance_part, networks = graphs().act, graphs().advance, graphs().slot_actions
         generator = None
         # A fresh state can hold broadcast (stride 0) tensors where a re-dealt one holds
-        # whole ones (even empty ones: fields with F = 0); the graphs are specialised on
-        # strides, so start from whole tensors.
-        state = map_fields(state, whole)
-        state = dataclasses.replace(state, constants=map_fields(state.constants, whole))
+        # whole ones (even empty ones: fields with F = 0).
+        state = whole_state(state)
     else:
         act_part, advance_part, networks = act, advance, slot_actions
     if opponent.league is not None:

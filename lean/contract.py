@@ -48,6 +48,54 @@ def join_action(action: Tensor) -> Tensor:
     return action[..., 0] * (POWERS * FIRES) + action[..., 1] * FIRES + action[..., 2]
 
 
+# The seat (environment) axis of lean.model's recurrent carry, (blocks, E, 1 + N, 4, width).
+SEAT_AXIS = 1
+# The observation fields constant within an episode (the fields drawn at the deal): a rollout
+# store keeps them once per deal, not per tick (lean.learn.store).
+EPISODE_CONSTANT = ("field", "field_pos")
+
+
+def symlog(x: Tensor) -> Tensor:
+    """sign(x) ln(1 + |x|) (DreamerV3's): the game's observation scales, the model's
+    next-state bins."""
+    return torch.sign(x) * torch.log1p(x.abs())
+
+
+def map_fields(record, function):
+    """A copy of a dataclass with `function` applied to every tensor field."""
+    changes = {
+        field.name: function(getattr(record, field.name))
+        for field in dataclasses.fields(record)
+        if isinstance(getattr(record, field.name), Tensor)
+    }
+    return dataclasses.replace(record, **changes)
+
+
+def whole(tensor: Tensor) -> Tensor:
+    """`tensor` with contiguous strides (a copy only when some stride is 0, a broadcast)."""
+    return tensor.clone(memory_format=torch.contiguous_format) if 0 in tensor.stride() else tensor
+
+
+def whole_state(state):
+    """A game state (State) with every tensor whole, its constants too: a compiled graph is
+    specialised on strides, and a fresh deal holds broadcast rows where a re-dealt state holds
+    whole ones."""
+    state = map_fields(state, whole)
+    return dataclasses.replace(state, constants=map_fields(state.constants, whole))
+
+
+def compile_dynamic(function):
+    """`function` under torch.compile with dynamic sizes, duck sizing turned off for the
+    process (the one place it is set): with it on, two sizes equal at the first call (ship
+    slots and field slots at 5v5) are tied and a new team size recompiles; off, each graph
+    compiles once for every team size, environment count and batch size
+    (docs/rewrite/scoreboard.md)."""
+    import torch.fx.experimental._config as fx_config
+
+    fx_config.use_duck_shape = False
+    return torch.compile(function, dynamic=True)
+
+
 def random_keywords(generator: torch.Generator | None, device) -> dict:
     """Keywords for a random factory (torch.rand, randn, randint) drawing on `device` from
     `generator`, or from torch's default generator of the device when it is None. The

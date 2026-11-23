@@ -108,7 +108,8 @@ def advantage_shares(sums: Tensor) -> tuple[Tensor, Tensor]:
 
 
 def usage_counts(target: Tensor, mask: Tensor, centres: Tensor) -> Tensor:
-    """The tallies behind support_usage for one batch of targets, to be summed over batches:
+    """How the value targets sit on each level's support, for one batch of targets, to be
+    summed over batches (the update does; usage_flags and usage_metrics then read the sums):
     (LEVELS, BINS + 2), per level the count of valued targets nearest each bin centre, then
     the count beyond the outermost centres, then the count of valued targets. target
     (..., LEVELS) in return units, mask (...) bool, centres (LEVELS, BINS)."""
@@ -126,8 +127,12 @@ def usage_counts(target: Tensor, mask: Tensor, centres: Tensor) -> Tensor:
 
 def usage_flags(counts: Tensor, paid: Tensor, config: LearnConfig) -> Tensor:
     """From summed usage_counts (LEVELS, BINS + 2) and `paid` (LEVELS,) bool (the level paid
-    a reward somewhere in the rollout): (4, LEVELS), the rows of support_usage's measures
-    (clamped share, occupied bins, the clamped warning, the narrow warning) as a tensor."""
+    a reward somewhere in the rollout): (4, LEVELS), the clamped share (targets beyond the
+    outermost centres, which HL-Gauss clamps), the occupied bins (holding at least
+    config.range_bin_share of the targets, nearest centre), the clamped warning (the share
+    above config.range_clamped_warning) and the narrow warning (fewer than
+    config.range_narrow_bins bins, unless the level paid no reward anywhere in the rollout:
+    an objective level in elimination, whose targets are only the critic's own values)."""
     total = counts[:, -1].clamp(min=1.0)
     clamped = counts[:, -2] / total
     occupied = (counts[:, :-2] / total[:, None] >= config.range_bin_share).sum(1).float()
@@ -138,7 +143,9 @@ def usage_flags(counts: Tensor, paid: Tensor, config: LearnConfig) -> Tensor:
 
 
 def usage_metrics(rows: list[list[float]]) -> dict[str, float]:
-    """usage_flags read back (a list of 4 rows of LEVELS numbers) as named metrics."""
+    """usage_flags read back (a list of 4 rows of LEVELS numbers) as named metrics, per level:
+    `range_clamped_<level>`, `range_bins_<level>`, `range_warning_clamped_<level>` and
+    `range_warning_narrow_<level>` (the warnings 1.0 or 0.0)."""
     metrics: dict[str, float] = {}
     for level, name in enumerate(LEVEL_NAMES):
         metrics[f"range_clamped_{name}"] = rows[0][level]
@@ -146,23 +153,3 @@ def usage_metrics(rows: list[list[float]]) -> dict[str, float]:
         metrics[f"range_warning_clamped_{name}"] = rows[2][level]
         metrics[f"range_warning_narrow_{name}"] = rows[3][level]
     return metrics
-
-
-def support_usage(target: Tensor, reward: Tensor, mask: Tensor, centres: Tensor, config: LearnConfig) -> dict[str, float]:
-    """How each level's value targets sit on its support, as metrics.
-
-    target (T, E, N, LEVELS) in return units; reward (T, E, N, LEVELS) the rollout's; mask
-    (T, E, N) bool of valued tokens; centres (LEVELS, bins). Per level: `range_clamped_<level>`,
-    the share of targets beyond the outermost centres (HL-Gauss clamps them);
-    `range_bins_<level>`, the bins holding at least config.range_bin_share of the targets
-    (nearest centre); and two warning flags, 1.0 or 0.0: `range_warning_clamped_<level>` when
-    the clamped share exceeds config.range_clamped_warning, `range_warning_narrow_<level>`
-    when fewer than config.range_narrow_bins bins are occupied, unless the level paid no
-    reward anywhere in the rollout (an objective level in elimination: its targets are only
-    the critic's own values). No valued token gives no metrics. The update sums
-    usage_counts over its batches instead; this is the same on whole tensors.
-    """
-    if not mask.any():
-        return {}
-    paid = (reward != 0).flatten(0, -2).any(0)
-    return usage_metrics(usage_flags(usage_counts(target, mask, centres), paid, config).tolist())

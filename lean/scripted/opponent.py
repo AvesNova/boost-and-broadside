@@ -59,17 +59,6 @@ def fresh_memory(
     }
 
 
-def renew_memory(
-    memory: dict[str, Tensor], done: Tensor, generator: torch.Generator | None
-) -> dict[str, Tensor]:
-    """The memory with the environments in `done` (E,) bool started afresh (a new match):
-    no kept target, no sense or pass, a new side. Draws for every environment (no host
-    read)."""
-    envs, slots = memory["target"].shape
-    fresh = fresh_memory(envs, slots, generator, memory["target"].device)
-    return {name: torch.where(done[:, None], fresh[name], memory[name]) for name in memory}
-
-
 def map_velocity(state) -> tuple[Tensor, Tensor, Tensor | None]:
     """Each ship's velocity over the map (E, N), metres per second: the stored proper velocity
     over the refractive index n at the ship; and n (E, N), or None without fields (n = 1)."""
@@ -203,8 +192,8 @@ TACTICS = ("disengaged", "merge", "offensive", "turning", "defensive")
 
 @dataclass
 class Explanation:
-    """One decision with its reasons, (E, N) each: what `marginals` returns and what led to
-    it (for tests, measurements and the sandbox)."""
+    """One decision with its reasons, (E, N) each: the marginals and what led to them (for
+    tests, measurements and the sandbox)."""
 
     marginals: Marginals
     situation: Situation
@@ -226,25 +215,6 @@ def _per_other(value: Tensor | float) -> Tensor | float:
     return value[:, None, :] if isinstance(value, Tensor) else value
 
 
-def marginals(
-    config: ScriptedConfig,
-    state,
-    team: int | None,
-    persona: dict[str, Tensor] | None,
-    memory: dict[str, Tensor],
-) -> Marginals:
-    """The opponent's action distributions for the rows of `team`, or of every ship of both
-    teams when `team` is None (one call for both: each ship decides exactly as in its own
-    team's call).
-
-    state: `lean.contract.State`; persona: from `personas` (None: the yardstick); memory:
-    from `fresh_memory`, as `act` last returned it. Under fog each ship reads only its team's
-    view: its own team as it is, enemies at their last sighting (`enemy_view`), none never
-    seen.
-    """
-    return explain(config, state, team, persona, memory).marginals
-
-
 def explain(
     config: ScriptedConfig,
     state,
@@ -252,7 +222,14 @@ def explain(
     persona: dict[str, Tensor] | None,
     memory: dict[str, Tensor],
 ) -> Explanation:
-    """`marginals` with its reasons. The stages (docs/rewrite/scripted-bfm-design.md B1):
+    """The opponent's action distributions (`marginals`) for the rows of `team`, or of every
+    ship of both teams when `team` is None (one call for both: each ship decides exactly as
+    in its own team's call), with their reasons.
+
+    state: `lean.contract.State`; persona: from `personas` (None: the yardstick); memory:
+    from `fresh_memory`, as `act` last returned it. Under fog each ship reads only its team's
+    view: its own team as it is, enemies at their last sighting (`enemy_view`), none never
+    seen. The stages (docs/rewrite/scripted-bfm-design.md B1):
     target, assessment, tactic weights, commands mixed as scalars (pursuit time, speed
     target, stick cap), control laws (stick, power, gun)."""
     c = state.constants
@@ -698,8 +675,8 @@ def act(
     `team` is None (one call; the same actions as the two single-team calls added).
 
     state: `lean.contract.State`; persona: from `personas` (None: the yardstick); uniforms:
-    (E, N, 3) float32 on [0, 1) from `draw_uniforms`; memory: from `fresh_memory` (renewed
-    for a new match by `renew_memory`), as the previous call returned it.
+    (E, N, 3) float32 on [0, 1) from `draw_uniforms`; memory: from `fresh_memory` (a fresh
+    one for a new match), as the previous call returned it.
 
     Returns ((E, N, 3) long [stick, power, fire], the new memory). Action rows of the other
     team (with a `team`) and rows that are dead or do not exist are 0; a dead or absent row's

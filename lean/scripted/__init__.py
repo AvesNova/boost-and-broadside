@@ -7,8 +7,6 @@ from .opponent import (
     decide,
     draw_uniforms,
     fresh_memory,
-    marginals,
-    renew_memory,
     sample,
 )
 from .parameters import GATES, PARAMETERS, Gate, Parameter, ScriptedConfig, personas
@@ -26,8 +24,6 @@ __all__ = [
     "decide",
     "draw_uniforms",
     "fresh_memory",
-    "marginals",
     "personas",
-    "renew_memory",
     "sample",
 ]
