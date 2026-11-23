@@ -133,6 +133,7 @@ def test_the_first_league_networks_do_not_recompile_the_tick():
     neither `advance` nor the routing graph's later slots compile a second graph (a view's
     base is guarded: 'NoneType' object has no attribute 'stride')."""
     torch._dynamo.reset()
+    torch._dynamo.utils.counters.clear()  # earlier tests' graphs
     torch.manual_seed(0)
     config = LearnConfig(team_size_minimum=2, team_size_maximum=2)
     game_config = game.GameConfig(training_spawn=True)
