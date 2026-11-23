@@ -107,7 +107,7 @@ Vizia's flight is bit-identical in its own lineup (630 manoeuvres of 90 ticks: e
 power, six speeds, five stores) and within 1.2e-6 relative when the lineup also holds the
 P-51D (the terms become per-slot tensors there).
 
-## Time scale (sandbox `--time-scale K`)
+## Time scale (the web tool's time-scale selector, `tuning.time_scale`)
 
 The game is the real aircraft at 2x real time. `lean.game.tuning.time_scale(K)` rebuilds the
 card and the time-dimensioned rule constants at K times real time from their real-time values

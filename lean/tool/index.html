@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>B&amp;B tool</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <style>
   body { margin: 0; font: 14px system-ui, sans-serif; background: #fcfcfb; color: #0b0b0b; }
   nav { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid #e7e6e2; }
@@ -247,7 +247,7 @@ store   ${(100 * r.store).toFixed(1)} %   shield ${(100 * r.shield).toFixed(0)} 
 deaths ${cur.deaths}   opponent kills ${cur.kills}   opponent ${cur.opponent_on ? "on" : "off"}`;
 }
 requestAnimationFrame(frame);
-init();
+init().then(() => { if (location.hash === "#sandbox") show("sandbox"); });
 </script>
 </body>
 </html>
