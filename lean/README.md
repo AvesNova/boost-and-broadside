@@ -34,10 +34,24 @@ checked: `docs/rewrite/core-worklog.md`. Questions for the author: `docs/questio
 - **Model** (`lean/model`): v2's model maths with the decided changes (Griffin block,
   per-kind encoder, fields as attention memory, gated attention, rotary values, 4x MLP, 64
   linear HL-Gauss bins, swappable position code); 2.0M parameters, 509 operations per step.
-- **Learner** (`lean/learn`): the league is being rebuilt to the author's design (half
-  self-play, half league with the scripted agent as a member); v2's recipe compared in
-  `docs/rewrite/recipe-v2-vs-lean.md`.
+- **Learner** (`lean/learn`, `lean/learn/NOTES.md`): a BC stage cloning the scripted
+  teacher's full distribution (every head and the critics), then RL from its EMA with a
+  teacher term that shrinks every update until it switches off; an EMA and a uniform average
+  beside the live weights; fused Adam with a 2,000-step warm-up; half self-play, half league
+  (the league's routing and schedule are step L2).
 - **Scoreboard**: `docs/rewrite/scoreboard.md`.
+
+## Commands
+
+Run from the repository root (`uv run --no-sync` in front of each with the project's venv).
+
+    pytest lean -m "not slow" -q                    # the fast tests (CPU); -m slow: the compiled ones
+    python -m lean.train --smoke --device cpu       # BC then RL, a few tiny eager updates
+    python -m lean.train                            # BC (96 updates), then RL (--updates)
+    python -m lean.train --stage bc --out DIR       # BC only: DIR/bc.pt
+    python -m lean.train --stage rl --start DIR/bc.pt --out DIR   # RL from the BC hand-off
+    python -m lean.eval DIR/rl.pt --weights ema --sizes 4         # the crossover against the scripted agent
+    python -m lean.sandbox                          # fly the game by keyboard
 
 The sections below describe the first cut (2026-11-22) and are kept for the record.
 
