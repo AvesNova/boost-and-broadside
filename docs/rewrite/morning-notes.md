@@ -37,3 +37,4 @@ where to look.
 - M collect asks the policy for its next-state targets (`Policy.next_state_target`, wrapping `lean.model.next_state_target`), so the stand-in policy keeps working with its own; for L: once the stand-ins go, collect can call the module function directly and `carry_axis`'s 3-D case (TinyPolicy's carry) can go.
 - M pending action: `nn.Embedding(43, 256, padding_idx=42)` added inside the ship's first projection (the one-hot's function without the one-hot; rows start as the one-hot columns did).
 - M removed `positionless_rotary` and the Policy's feature-count overrides (only the model tests used them; they now use lean.contract's counts).
+- The cold compile to the end of the first update is now 403 s (was about 200 s; core game plus step M's model). Accepted for now; worth a look in the benchmarking time.
