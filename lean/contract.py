@@ -7,6 +7,7 @@ Layout: batch first, features last. Units: metres, radians, seconds, ticks where
 from __future__ import annotations
 
 import dataclasses
+import os
 from dataclasses import dataclass
 
 import torch
@@ -89,9 +90,15 @@ def compile_dynamic(function):
     process (the one place it is set): with it on, two sizes equal at the first call (ship
     slots and field slots at 5v5) are tied and a new team size recompiles; off, each graph
     compiles once for every team size, environment count and batch size
-    (docs/rewrite/scoreboard.md)."""
+    (docs/rewrite/scoreboard.md). The inductor and triton caches default to
+    ~/.cache/bnb-inductor when TORCHINDUCTOR_CACHE_DIR is not set."""
     import torch.fx.experimental._config as fx_config
 
+    # /tmp is wiped at reboot, which loses the warm compile cache (93 s against about 230 s
+    # cold): default it to the home cache unless the caller (a test, a box) set its own.
+    if "TORCHINDUCTOR_CACHE_DIR" not in os.environ:
+        os.environ["TORCHINDUCTOR_CACHE_DIR"] = os.path.expanduser("~/.cache/bnb-inductor")
+        os.environ.setdefault("TRITON_CACHE_DIR", os.path.join(os.environ["TORCHINDUCTOR_CACHE_DIR"], "triton"))
     fx_config.use_duck_shape = False
     return torch.compile(function, dynamic=True)
 

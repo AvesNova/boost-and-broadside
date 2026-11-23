@@ -103,6 +103,8 @@ routing, retiring slots, schedule and retention), `test_learn.py`, `test_hit_hea
 `test_rewards.py`, `test_store.py`; slow, `test_compiled.py` (compiled collect and update, loss
 equal to eager, the routing graph fullgraph and reused at a new K and W).
 
+- The inductor and triton caches default to ~/.cache/bnb-inductor (lean.contract.compile_dynamic, when TORCHINDUCTOR_CACHE_DIR is unset): /tmp is wiped at reboot and the warm cache saves about 140 s.
+
 ## Open
 
 - Step C: the cheese agents as league members of kind "scripted" after the snapshots (their rows

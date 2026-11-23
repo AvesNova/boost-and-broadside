@@ -202,6 +202,7 @@ compute stream's seconds waiting for a micro-batch copy (CUDA events), each per 
 | v2 game, targets once (default) | 22,032 | 8,482 | **6,124** | 0.002 / 0.004 / 2.0 s (update 124 s) | 5.18 / 5.78 | 124.9 + 183.8 s (310 s) |
 | core game, targets once | 19,736 | 7,791 | **5,586** | 0.003 / 0.004 / 2.1 s | 5.58 / 7.27 | 177.8 + 201.7 s (383 s) |
 | v2 game, targets every epoch | 21,999 | 6,239 | 4,860 | 0.004 / 0.007 / 3.0 s | 5.18 / 5.81 | 87.9 + 191.2 s (281 s) |
+| core game, today's tree (2026-11-24 08:01 to 08:12; cache not controlled, now ~/.cache/bnb-inductor, cold) | 49,796 | 7,554 | **6,559** | 0.003 / 0.005 / 2.1 s | 5.76 / 6.40 | 169.9 + 208.9 s (380 s) |
 | v2 game, everything on the device | out of memory (7.0 GiB allocated) | | | | | |
 
 Streaming against everything on the device, at a size where both fit (1,024 environments x
@@ -226,6 +227,13 @@ the initial carries, 432 bytes, included in every column; CPU, from the arrays' 
 
 At parity the store holds 2.2 GB of pinned host memory (ship rows 0.73 GB, carries 0.45 GB,
 values and rewards 0.25 GB each, next-state targets 0.18 GB).
+
+The 2026-11-24 row (core game, 3 updates, steady = updates 1 and 2, RL loop of train_gpu.py with the league full with 8
+snapshots; BC is not a mode of that script) is the same size as the rows above. Changed since 2026-11-23: the core game only,
+the P-51D with flaps, the BFM scripted agent at 439 operations, the model update and the league routing. Collect is 2.5x the
+earlier core-game row (49,796 against 19,736); the cause was not isolated here. Update steps/s is within 3% of that row
+(7,554 against 7,791); loop 6,559 against 5,586. Memory is higher (5.76 against 5.58 GiB allocated). The compile tripwire
+(compile_check.py) passed: 4 graphs, 5,771 traced operations, 0 graph breaks, cold 228.2 s.
 
 - **Against the earlier rows** ("Training on the GPU", 256 environments x 1 segment, 8
   minibatches, older code): targets once per update gave collect 25,655, update 8,628, loop
