@@ -24,13 +24,13 @@ What `lean` is for and every deliberate change to v2: `docs/rewrite/core-decisio
 Planned work and status: `docs/rewrite/core-backlog.md`. What was done, when and how it was
 checked: `docs/rewrite/core-worklog.md`. Questions for the author: `docs/questions.md`.
 
-- **Game** (`lean/game`): v2's game, checked against v2 including fields, games that end and
-  the clock (`docs/rewrite/game-parity.md`; three bugs fixed). `GameConfig.core()` is the core
-  game: the new flight model (weight on the wing, the engine driving speed only, a two-loop
-  store, firing cutting the engine), the cheaper head-on damage term, ghost bullets with
-  per-bullet outcomes, ten fields drawn per environment, Vizia only. `GameConfig()` stays v2.
+- **Game** (`lean/game`): `GameConfig()` is the core game (signed off 2026-11-23): the core
+  flight model (weight on the wing, the engine driving speed only, a two-loop store, firing
+  cutting the engine), the cheaper head-on damage term, ghost bullets with per-bullet
+  outcomes, ten fields drawn per environment, fog, the P-51D only. v2's flight and damage
+  models are gone (they were checked against v2 first: `docs/rewrite/game-parity.md`).
   Measured: `docs/rewrite/core-flight-measurements.md`, charts `docs/rewrite/*-core.png`.
-- **Sandbox** (`python -m lean.sandbox --core`): fly the core physics by keyboard.
+- **Sandbox** (`python -m lean.sandbox`): fly the game by keyboard.
 - **Model** (`lean/model`): v2's model maths with the decided changes (Griffin block,
   per-kind encoder, fields as attention memory, gated attention, rotary values, 4x MLP, 64
   linear HL-Gauss bins, swappable position code); 2.0M parameters, 509 operations per step.

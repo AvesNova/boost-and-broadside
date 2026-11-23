@@ -328,8 +328,8 @@ level, a scale per level); no shaping level. Source: v2's release commit 4cfd1e8
   (fewer than 8 of 64 bins occupied, unless the level paid no reward in the rollout, which
   keeps the objective levels quiet in elimination). Averaged over the epochs in `update`'s
   metrics; `lean/train.py` prints a `WARNING value support:` line naming each raised flag.
-- `lean/train.py`: `--game v2` (default: `GameConfig(ghost_bullets=True)`, so the hit head
-  has labels) or `--game core` (`GameConfig.core()`).
+- `lean/train.py` trains on `GameConfig()` (the core game, ghost bullets on, so the hit head
+  has labels).
 
 ### Supports, from measured returns
 
