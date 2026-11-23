@@ -427,14 +427,17 @@ League (section 8)
 - A time-scale setting for flight testing (fly at 1x, 1.5x, 2x, 3x); the game stays at 2x.
 - Doghouses in game units and converted to 1x real time, to compare the P-51D with
   published charts.
+- Learning-rate schedule (author 2026-11-23): warm-up (length from the literature: 2,000 Adam
+  steps), then constant. A cooldown is added later, once training curves show what is needed
+  (a plateau, a collapse).
+- Ship candidates: famous WWII fighters built in the flight model from the most reliable
+  data found, compared with published charts; keep the ones that match and feel best, or that
+  are best documented. The author found the P-51D feels a bit better than Vizia.
 - Engine power to be brought in line with real WWII aircraft, the P-51D in particular (open:
   Vizia is 255 W/kg real thrust power, about 1,810 hp at 4,354 kg; the P-51D 225 W/kg).
 
 ## Proposals, not decided
 
-- Learning-rate schedule in RL: warm-up, constant, then a linear cooldown over the last 10 to
-  20% of a run with a fixed budget (warmup-stable-decay; Hagele et al. 2024), with the
-  averages kept throughout. Proposed 2026-11-23.
 
 - Remove v2's flight and damage models from lean/game once the core model is signed off
   (author 2026-11-23: two flight models in one file go when relevant).
