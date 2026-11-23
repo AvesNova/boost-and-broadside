@@ -784,3 +784,15 @@ bullet outlives its episode or the update). The streamed-store test now checks t
 store agrees with the unstreamed rollouts on every row those label, and that it labels
 the first segment's tail in addition.
 
+
+### GPU check (2026-11-23 15:54 to 16:04)
+
+Laptop RTX 4070, platform profile "performance", no compute process on `nvidia-smi`
+before the row, inside `systemd-run --user --scope -p MemoryMax=8G`. One row of
+docs/rewrite/sections/scoreboard/train_gpu.py at parity (v2 game, compiled, bf16, 2,048 x
+4 x 128, 3 updates, steady = mean of updates 1 and 2): collect 21,593, update 8,313, loop
+6,002 steps/s (scoreboard before the change: 22,032, 8,482, 6,124); peak 5.18 GiB
+allocated, 5.75 reserved (5.18 / 5.78 before); compute stall 0.002 s, host gather 2.1 s
+per update. All three rates are about 2% lower, collect included, whose only change is
+a hit-label buffer twice as long; one row each side does not separate the change from
+run-to-run variation.
