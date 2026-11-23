@@ -271,7 +271,8 @@ def handles_row(
                 torch.tensor(residual(moved), dtype=torch.float64)
                 - torch.tensor(r, dtype=torch.float64)
             ) / step
-        delta = torch.linalg.solve(jacobian, -torch.tensor(r, dtype=torch.float64)).clamp(-0.5, 0.5)
+        # pinv, not solve: a power-limited design (the P-51D) has no static-thrust sensitivity
+        delta = (torch.linalg.pinv(jacobian, rtol=1e-9) @ -torch.tensor(r, dtype=torch.float64)).clamp(-0.5, 0.5)
         logs = [x + float(d) for x, d in zip(logs, delta)]
     else:
         raise RuntimeError(f"handles_row did not converge: residual {residual(logs)}")
