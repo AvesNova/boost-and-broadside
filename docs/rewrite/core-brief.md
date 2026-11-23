@@ -11,8 +11,7 @@ on a CPU-only machine: the game step (checked against v2 to float32 rounding), a
 simplified scripted opponent, the model and the learner, with 36 CPU tests passing and a
 smoke run completing. Nothing has run on a GPU, gates G1 to G3 are not closed (G1 has a
 partial laptop result, G3's numbers are proposed in `sections/yardstick.md`), and no
-training run has been made. `lean/README.md` has the state and the order of work;
-`lean/LAPTOP_PROMPT.md` has a prompt for the next agent.
+training run has been made. `lean/README.md` has the current state (this paragraph is the 2026-11-22 one).
 
 ## 1. Purpose
 
