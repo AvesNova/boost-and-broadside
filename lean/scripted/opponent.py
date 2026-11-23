@@ -243,8 +243,9 @@ def marginals(
     # Boundary: within a margin of turn radii of the edge and flying outward, blend in a
     # steer toward the centre. Without a target the wanted direction is the centre.
     distance_from_centre = torch.sqrt(state.x * state.x + state.y * state.y).clamp_min(TINY)
-    turn_radius = state.speed * state.speed / c["max_acceleration"]
-    margin = (margin_factor * turn_radius).clamp_min(1.0)
+    in_corner_speeds = state.speed / c["corner_speed"]
+    turn_radius = c["sustained_radius"] * (in_corner_speeds * in_corner_speeds).clamp_min(1.0)
+    margin = margin_factor * turn_radius
     depth = (distance_from_centre - (c["arena_radius"] - margin)) / margin
     ramp_low = read("boundary_ramp_low")
     ramp = (depth - ramp_low) / (read("boundary_ramp_high") - ramp_low)
@@ -262,7 +263,6 @@ def marginals(
     target_size = (2.0 * torch.atan(c["hit_radius"] / safe_distance)).clamp(
         read("target_size_minimum"), read("target_size_maximum")
     )
-    in_corner_speeds = state.speed / c["corner_speed"]
     quantities = {
         "turn": turn_size,
         "level_two": turn_size,

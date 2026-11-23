@@ -81,8 +81,9 @@ PARAMETERS: dict[str, Parameter] = {
     "lead_gain": Parameter(1.0, "ratio", LINEAR, 0.2, "share of the computed lead applied"),
     # Boundary steer: inside the margin of the edge and flying outward, a steer to the centre
     # blended in, its weight ramping from 0 to 1 between two depths (0 at the margin's inner
-    # edge, 1 at the arena edge).
-    "boundary_margin": Parameter(2.28, "speed^2 / max_acceleration", LOG, 0.3,
+    # edge, 1 at the arena edge). The margin is in turn radii at the ship's speed: the
+    # sustained radius up to corner speed, growing as speed squared above it.
+    "boundary_margin": Parameter(2.2, "turn radius", LOG, 0.3,
                                  "depth of the edge band"),
     "boundary_ramp_low": Parameter(0.0554, "margin fraction", meaning="the steer starts"),
     "boundary_ramp_high": Parameter(0.52, "margin fraction", meaning="the steer is whole"),
