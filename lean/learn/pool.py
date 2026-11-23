@@ -239,15 +239,16 @@ class League:
 
     # ---- draws and tallies (in the tick: no host reads)
 
-    def draw(self, member: Tensor, done: Tensor, generator) -> tuple[Tensor, Tensor]:
+    def draw(self, member: Tensor, slot: Tensor, done: Tensor, generator) -> tuple[Tensor, Tensor]:
         """New members for the league environments in `done` (L,) bool, the rest keeping
-        `member` (L,) long; returns (member, slot), slot the network slot playing it (-1 for
-        the scripted agent). The capacity rule is in the module's docstring."""
+        `member` and `slot` (L,) long; returns (member, slot), slot the network slot playing
+        it (-1 for the scripted agent). A game that did not end keeps its slot: a RETIRED
+        game plays on in its retiring slot. The capacity rule is in the module's docstring."""
         drawn = capacity_draws(
             self.probabilities(), self.present, self.capacity, member, done, generator, self.members
         )
         member = torch.where(done, drawn, member)
-        return member, self.member_slot.index_select(0, member.clamp(min=0))
+        return member, torch.where(done, self.member_slot.index_select(0, member.clamp(min=0)), slot)
 
     def record(self, member: Tensor, finished: Tensor, won: Tensor, drawn: Tensor) -> None:
         """Add the league games that ended: member, finished, won, drawn are (L,) over the

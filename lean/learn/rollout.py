@@ -256,12 +256,13 @@ def seat_view(views: tuple[Obs, Obs], environment: Tensor, team: Tensor) -> Obs:
     })
 
 
-def draw_members(opponent: Opponent, member: Tensor, done: Tensor, generator) -> tuple[Tensor, Tensor]:
-    """(member, slot) of the league environments, new draws where `done` (L,) bool (League.draw);
-    without a league every one plays the scripted agent (member 0, slot -1)."""
+def draw_members(opponent: Opponent, member: Tensor, slot: Tensor, done: Tensor, generator) -> tuple[Tensor, Tensor]:
+    """(member, slot) of the league environments, new draws where `done` (L,) bool, the
+    others keeping `member` and `slot` (League.draw); without a league every one plays the
+    scripted agent (member 0, slot -1)."""
     if opponent.league is None or member.shape[0] == 0:
         return torch.zeros_like(member), torch.full_like(member, -1)
-    return opponent.league.draw(member, done, generator)
+    return opponent.league.draw(member, slot, done, generator)
 
 
 def slot_actions(config: LearnConfig, template, parameters: dict, buffers: dict, slot: Tensor, positions: Tensor,
@@ -351,7 +352,7 @@ def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: in
     unset = torch.zeros(league_envs, dtype=torch.long, device=device)
     if opponent.league is not None:
         opponent.league.prepare(league_envs, unset - 1)
-    member, slot = draw_members(opponent, unset, torch.ones_like(unset, dtype=torch.bool), generator)
+    member, slot = draw_members(opponent, unset, unset - 1, torch.ones_like(unset, dtype=torch.bool), generator)
     carry = CollectCarry(
         policy=policy.initial_carry(envs + self_play, slots, device),
         opponent=policy.initial_carry(league_envs, slots, device),
@@ -400,7 +401,7 @@ def redeal(opponent: Opponent, state, carry: CollectCarry, done: Tensor, generat
 
     seat_environment, _ = seats(carry.learner_team, self_play)
     league_done = done[self_play:]
-    member, slot = draw_members(opponent, carry.member, league_done, generator)
+    member, slot = draw_members(opponent, carry.member, carry.slot, league_done, generator)
     carry = CollectCarry(
         policy=reset_carry(carry.policy, done.index_select(0, seat_environment)),
         opponent=reset_carry(carry.opponent, league_done),

@@ -318,11 +318,23 @@ def test_a_dropped_snapshot_finishes_its_running_games_with_its_old_weights():
     assert not rollout.done[:, 4:8][:, playing].any()
     state, carry = rollout.state, rollout.carry
     assert (state.tick[4:][playing] == ticks + 4).all()
+    # Review B1: after collected ticks the games still sit in the retiring slot (the scripted
+    # agent did not take over) and are still RETIRED.
+    assert (carry.slot[playing] == old_slot).all() and (carry.member[playing] == RETIRED).all()
     games = league.games.clone()
-    rollout = collect(config, game_config, policy, opponent, state, carry, 6, generator)
-    assert rollout.done[:, 4:8][:, playing].any(0).all()
-    assert (rollout.carry.slot != old_slot).all()
-    league.prepare(4, rollout.carry.slot)
+    # Tick by tick to the end: until its game ends, each keeps the old slot, and the old
+    # slot keeps its weights (it is not freed while a game plays in it).
+    running = playing.clone()
+    for _ in range(6):
+        rollout = collect(config, game_config, policy, opponent, state, carry, 1, generator)
+        state, carry = rollout.state, rollout.carry
+        running = running & ~rollout.done[0, 4:8]
+        assert (carry.slot[running] == old_slot).all()
+        if running.any():
+            assert old_slot in league.retiring and league.slot_weights[old_slot] is not None
+    assert not running.any()  # both games ended within the clock
+    assert (carry.slot != old_slot).all()
+    league.prepare(4, carry.slot)
     assert league.retiring == set() and league.slot_weights[old_slot] is None
     assert league.games.sum() >= games.sum()  # only the other members' games were tallied
     assert league.abandoned == 0
