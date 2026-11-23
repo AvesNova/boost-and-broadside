@@ -1256,6 +1256,52 @@ def _per_slot(value: Tensor | float, like: Tensor) -> Tensor:
     return value if isinstance(value, Tensor) else filled(like.shape, value, like.dtype, like.device)
 
 
+def _uniform_draws(generator, device):
+    """uniform(*shape): uniform draws on [0, 1) from `generator` on `device`."""
+
+    def uniform(*shape):
+        return torch.rand(shape, **random_keywords(generator, device))
+
+    return uniform
+
+
+def _spawned(config: GameConfig, constants: Constants, fields: Tensor, x: Tensor, y: Tensor, heading_cos: Tensor,
+             heading_sin: Tensor, uniform) -> dict[str, Tensor]:
+    """Every SHIP_COLUMNS row (E, N) of ships spawned at (x, y) with the heading, by the spawn
+    rule (_spawn_motion: speed, store and shield): zero angle of attack and nose rate, no
+    shield wait or cooldown, the medium at the place cached, the velocity along the nose."""
+    envs, slots = x.shape
+    zeros = filled((envs, slots), 0.0, torch.float32, x.device)
+    ones = filled((envs, slots), 1.0, torch.float32, x.device)
+    if fields.shape[-1] == 0:  # no medium: n = 1 everywhere
+        log_index = gradient_x = gradient_y = zeros
+    else:
+        log_index, gradient_x, gradient_y = medium(fields, x, y)
+    speed, energy, shield = _spawn_motion(config, constants, log_index, uniform)
+    named = {
+        "x": x, "y": y, "heading_cos": heading_cos, "heading_sin": heading_sin,
+        "speed": speed, "angle": zeros, "angle_cos": ones, "angle_sin": zeros,
+        "nose_rate": zeros, "energy": energy, "shield": shield, "shield_wait": zeros, "cooldown": zeros,
+        "log_index": log_index, "gradient_x": gradient_x, "gradient_y": gradient_y, "next_slot": zeros,
+    }
+    # At zero angle of attack the flight path is the nose.
+    named["velocity_x"], named["velocity_y"] = speed * heading_cos, speed * heading_sin
+    return named
+
+
+def spawn(config: GameConfig, state: State, chosen: Tensor, x: Tensor, y: Tensor, heading_cos: Tensor,
+          heading_sin: Tensor, generator) -> State:
+    """The state with the ships in `chosen` (E, N) bool spawned alive at (x, y) (E, N) with the
+    heading, by the deal's spawn rule (_spawned); the other ships as they were. For a caller
+    that places ships itself (the sandbox): a deal draws its own places."""
+    uniform = _uniform_draws(generator, state.ships.device)
+    named = _spawned(config, state.constants, state.fields, x, y, heading_cos, heading_sin, uniform)
+    ships = torch.stack([named[name] for name in SHIP_COLUMNS], 1)
+    return state.replace(
+        ships=torch.where(chosen[:, None], ships, state.ships), alive=state.alive | chosen,
+    )
+
+
 def deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generator, device) -> State:
     """A fresh state of (E, N): team 0 in the first team_sizes[:, 0] slots, team 1 in the
     next team_sizes[:, 1], the rest not existing (parked at the centre at spawn speed). The rows
@@ -1279,28 +1325,12 @@ def deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generato
     else:  # no medium
         fields = filled((envs, 5, 0), 0.0, torch.float32, device)
 
-    def uniform(*shape):
-        return torch.rand(shape, **random_keywords(generator, device))
-
+    uniform = _uniform_draws(generator, device)
     x, y, angle = _spawn_places(config, team, uniform)
     heading_cos, heading_sin = _edge_safe(config, x, y, angle)
     x, y = torch.where(exists, x, 0.0), torch.where(exists, y, 0.0)
     heading_cos, heading_sin = torch.where(exists, heading_cos, 1.0), torch.where(exists, heading_sin, 0.0)
-    zeros = filled((envs, slots), 0.0, torch.float32, device)
-    ones = filled((envs, slots), 1.0, torch.float32, device)
-    if fields.shape[-1] == 0:  # no medium: n = 1 everywhere
-        log_index = gradient_x = gradient_y = zeros
-    else:
-        log_index, gradient_x, gradient_y = medium(fields, x, y)
-    speed, energy, shield = _spawn_motion(config, constants, log_index, uniform)
-    named = {
-        "x": x, "y": y, "heading_cos": heading_cos, "heading_sin": heading_sin,
-        "speed": speed, "angle": zeros, "angle_cos": ones, "angle_sin": zeros,
-        "nose_rate": zeros, "energy": energy, "shield": shield, "shield_wait": zeros, "cooldown": zeros,
-        "log_index": log_index, "gradient_x": gradient_x, "gradient_y": gradient_y, "next_slot": zeros,
-    }
-    # At zero angle of attack the flight path is the nose.
-    named["velocity_x"], named["velocity_y"] = named["speed"] * heading_cos, named["speed"] * heading_sin
+    named = _spawned(config, constants, fields, x, y, heading_cos, heading_sin, uniform)
     bullet_shape = (envs, slots, BULLET_SLOTS)
     state = State(
         ships=torch.stack([named[name] for name in SHIP_COLUMNS], 1),

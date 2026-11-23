@@ -100,3 +100,22 @@ def test_session_applies_controls():
     assert len(frames) == 30
     assert abs(frames[-1]["ships"][0]["heading"] - math.pi / 2) > 0.05  # left of its start heading
     assert card.CARD is not None
+
+
+def test_the_sandbox_opponent_spawns_by_the_games_rule():
+    """Review B7: the sandbox places its ships through the game's spawn (core.spawn), so a
+    respawned opponent has the standard speed over the map wherever it is (it had the
+    proper speed of empty space, too slow or fast inside a field)."""
+    from lean.sandbox.world import World
+
+    for seed in range(20):
+        world = World(core.GameConfig(), seed=seed)
+        log_index = float(world.state.log_index[0, 1])
+        if abs(log_index) > 1e-3:  # the opponent inside a field
+            break
+    else:
+        pytest.fail("no seed placed the opponent in a field")
+    s = world.state
+    assert float(s.speed[0, 1]) == pytest.approx(card.SPAWN_SPEED * math.exp(log_index), rel=1e-6)
+    assert float(s.energy[0, 1]) == pytest.approx(world.constant("spawn_energy", 1))
+    assert bool(s.alive[0, 0]) and bool(s.alive[0, 1])
