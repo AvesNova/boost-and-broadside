@@ -19,9 +19,9 @@ from lean import game, model, scripted
 from lean.eval import crossover
 from lean.learn import (
     League,
-    RolloutStore,
     LearnConfig,
     Opponent,
+    RolloutStore,
     abandon,
     collect,
     make_optimiser,

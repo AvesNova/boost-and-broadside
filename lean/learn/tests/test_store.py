@@ -1,0 +1,193 @@
+"""The rollout store (lean.learn.store): streamed segments equal the unstreamed rollouts,
+micro-batches give the one-pass gradient, and compact storage barely moves the policy."""
+
+import copy
+import dataclasses
+
+import pytest
+import torch
+
+from lean import game, model, scripted
+from lean.learn import LearnConfig, Opponent, RolloutStore, collect, start, update
+from lean.learn.store import EPISODE_CONSTANT, stored, widened
+
+ENVIRONMENTS = 6  # 3 self-play: 9 seats
+
+
+def setting(core: bool = True):
+    torch.manual_seed(0)
+    config = LearnConfig(team_size_minimum=2, team_size_maximum=3, equal_teams=False, minibatches=1, epochs=1)
+    game_config = game.GameConfig.core() if core else game.GameConfig(ghost_bullets=True)
+    policy = model.Policy(model.ModelConfig())
+    opponent = Opponent(scripted.ScriptedConfig())
+    return config, game_config, policy, opponent
+
+
+def rollouts(config, game_config, policy, opponent, segments: int, ticks: int, store=None):
+    generator = torch.Generator().manual_seed(1)
+    state, carry = start(config, game_config, policy, opponent, ENVIRONMENTS, generator)
+    collected = []
+    for segment in range(segments):
+        rollout = collect(config, game_config, policy, opponent, state, carry, ticks, generator, store=store, segment=segment)
+        state, carry = rollout.state, rollout.carry
+        collected.append(rollout)
+    return collected
+
+
+def whole_batch(store: RolloutStore, names) -> dict:
+    index, _ = store.batch_index(torch.arange(store.views), store.views)
+    (batch,) = list(store.batches(names, index))
+    return batch
+
+
+def test_streamed_segments_equal_the_unstreamed_rollouts():
+    """Two segments written tick by tick into a store hold what the stacked rollouts hold,
+    in the storage types: the episode-constant fields and the position offset through the
+    deal table, the carries, the bootstrap values."""
+    config, game_config, policy, opponent = setting()
+    store = RolloutStore(2)
+    rollouts(config, game_config, policy, opponent, 2, 12, store)
+    reference = rollouts(config, game_config, policy, opponent, 2, 12)
+    seats = reference[0].done.shape[1]
+    names = store.observation_names + tuple(name for name in reference[0].TICK_FIELDS if name != "position_offset") + ("hit_label",)
+    batch = whole_batch(store, names)
+    observation, offset = store.observation(batch)
+
+    def joined(get):
+        return torch.cat([get(rollout) for rollout in reference], 1)
+
+    def compact(name, value):
+        return widened(stored(name, value))
+
+    for field in dataclasses.fields(observation):
+        expected = joined(lambda rollout, name=field.name: getattr(rollout.observation, name))
+        if field.name not in EPISODE_CONSTANT:  # the deal table keeps the game's types
+            expected = compact(field.name, expected)
+        assert torch.equal(getattr(observation, field.name), expected), field.name
+    assert any(getattr(observation, name).numel() for name in EPISODE_CONSTANT)  # the core game has fields
+    assert torch.equal(offset, joined(lambda rollout: rollout.position_offset))
+    for name in names:
+        if name in store.observation_names:
+            continue
+        expected = joined(lambda rollout, name=name: getattr(rollout, name))
+        if name == "deal_row":
+            continue  # rows of each segment's own table; checked through the lookups above
+        assert torch.equal(batch[name], compact(name, expected)), name
+    carry = torch.cat([rollout.initial_carry for rollout in reference], 1)
+    assert torch.equal(batch["carry"], carry)
+    bootstrap = torch.cat([rollout.bootstrap_value for rollout in reference])
+    assert torch.equal(store.bootstrap[: 2 * seats], bootstrap)
+
+
+@pytest.mark.parametrize("targets_every_epoch", [False, True])
+def test_micro_batches_give_the_one_pass_gradient(targets_every_epoch):
+    """One minibatch run as micro-batches of 2 views (the last padded with the empty spare
+    view) and as one pass of every view: the same gradient within float32 rounding. Plain
+    SGD at rate 1 with no clipping, so the step is minus the gradient."""
+    config, game_config, policy, opponent = setting()
+    store = RolloutStore(1)
+    rollouts(config, game_config, policy, opponent, 1, 16, store)
+    assert store.views % 2 == 1  # so the last micro-batch is padded
+    steps = []
+    for size in (2, store.views):
+        variant = dataclasses.replace(
+            config, micro_batch_views=size, learning_rate=1.0, warmup_updates=1, gradient_clip=1e9,
+            targets_every_epoch=targets_every_epoch,
+        )
+        twin = copy.deepcopy(policy)
+        before = [parameter.detach().clone() for parameter in twin.parameters()]
+        metrics = update(variant, twin, torch.optim.SGD(twin.parameters(), lr=1.0), store, generator=torch.Generator().manual_seed(2))
+        steps.append(([after.detach() - start for after, start in zip(twin.parameters(), before, strict=True)], metrics))
+    (small, small_metrics), (whole, whole_metrics) = steps
+    scale = max(step.abs().max() for step in whole)
+    for name, (a, b) in zip(dict(policy.named_parameters()), zip(small, whole, strict=True), strict=True):
+        assert torch.allclose(a, b, rtol=1e-4, atol=1e-5 * scale), name
+    for name in ("loss", "surrogate", "value", "entropy", "next_state", "hit", "bc", "approximate_kl"):
+        assert small_metrics[name] == pytest.approx(whole_metrics[name], rel=1e-4, abs=1e-6), name
+
+
+def policy_outputs(policy, observation, carry, reset, offset):
+    logits, value_logits, *_ = policy.sequence(observation, carry, reset, offset)
+    return torch.log_softmax(logits.float(), -1), value_logits.float()
+
+
+@pytest.mark.parametrize("core", [True, False])
+def test_compact_storage_moves_the_policy_far_less_than_the_clip(core):
+    """The policy on the compact stored observation against the full-precision one, float32:
+    the largest change of a sampled action's log-probability and the mean KL over the
+    trained tokens, far below PPO's clip (0.2) and a typical update's KL (about 0.01)."""
+    config, game_config, policy, opponent = setting(core)
+    (rollout,) = rollouts(config, game_config, policy, opponent, 1, 24)
+    store = RolloutStore.of(rollout)
+    batch = whole_batch(store, store.observation_names + ("deal_row", "reset", "action"))
+    observation, offset = store.observation(batch)
+    with torch.no_grad():
+        full, full_value = policy_outputs(policy, rollout.observation, rollout.initial_carry, rollout.reset, rollout.position_offset)
+        compact, compact_value = policy_outputs(policy, observation, batch["carry"], batch["reset"], offset)
+    own = rollout.observation.own
+    action = rollout.action[..., None]
+    change = (full.gather(-1, action) - compact.gather(-1, action)).squeeze(-1)[own].abs().max()
+    kl = (full.exp() * (full - compact)).sum(-1)[own].mean()
+    print(f"core={core}: largest log-probability change {change:.2e}, mean KL {kl:.2e}, "
+          f"largest value-logit change {(full_value - compact_value)[own].abs().max():.2e}")
+    assert change < 1e-2 and kl < 1e-5
+
+
+def test_every_stored_float16_field_is_within_range():
+    """Every float16 record of a scripted rollout (both games) is finite after narrowing."""
+    for core in (True, False):
+        config, game_config, policy, opponent = setting(core)
+        (rollout,) = rollouts(config, game_config, policy, opponent, 1, 24)
+        records = {field.name: getattr(rollout.observation, field.name) for field in dataclasses.fields(rollout.observation)}
+        records["next_state"] = rollout.next_state
+        for name, value in records.items():
+            narrow = stored(name, value)
+            if narrow.dtype == torch.float16 and value.numel():
+                assert torch.isfinite(narrow).all(), name
+                assert value.abs().max() < 1e4, name
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="pinned memory and the copy stream need a GPU")
+def test_pinned_streaming_equals_the_device_store():
+    """On a GPU: a store in pinned host memory (asynchronous copies, prefetched micro-batches)
+    gives the same batches, targets and update as the same store kept on the device."""
+    config, game_config, policy, opponent = setting()
+    policy = policy.cuda()
+    (rollout,) = rollouts(config, game_config, policy, opponent, 1, 16)
+    rollout = _to(rollout, "cuda")
+    stores = [RolloutStore.of(rollout, stream) for stream in (True, False)]
+    assert stores[0].pinned and not stores[1].pinned
+    names = stores[0].observation_names + ("deal_row", "reset", "action", "log_probability", "value", "reward", "next_state")
+    results = []
+    for store in stores:
+        store.ready()
+        index, _ = store.batch_index(torch.randperm(store.views, generator=torch.Generator().manual_seed(3)), 4)
+        results.append([{name: value.clone() for name, value in batch.items()} for batch in store.batches(names, index)])
+    for first, second in zip(*results, strict=True):
+        for name in first:
+            assert torch.equal(first[name], second[name]), name
+    variant = dataclasses.replace(config, micro_batch_views=4, minibatches=2, epochs=2)
+    metrics = []
+    for store in stores:
+        twin = copy.deepcopy(policy)
+        metrics.append(update(variant, twin, torch.optim.SGD(twin.parameters()), store, generator=torch.Generator().manual_seed(4)))
+    for name in metrics[0]:
+        assert metrics[0][name] == pytest.approx(metrics[1][name], rel=1e-4, abs=1e-6), name
+
+
+def _to(rollout, device):
+    """A rollout with every tensor on `device` (the collect above ran on the CPU)."""
+    def move(value):
+        if isinstance(value, torch.Tensor):
+            return value.to(device)
+        if isinstance(value, dict):
+            return {name: move(item) for name, item in value.items()}
+        if dataclasses.is_dataclass(value) and not isinstance(value, type):
+            return dataclasses.replace(value, **{field.name: move(getattr(value, field.name)) for field in dataclasses.fields(value)})
+        return value
+
+    return dataclasses.replace(rollout, **{
+        name: move(getattr(rollout, name))
+        for name in ("observation", *rollout.TICK_FIELDS, "hit_label", "deal_table", "bootstrap_value", "value_centres", "initial_carry")
+    })

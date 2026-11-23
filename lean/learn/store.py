@@ -53,7 +53,7 @@ RESIDENT = ("own", "done", "reset", "next_valid", "hit_label", "deal_row")
 EPISODE_CONSTANT = ("field", "field_pos", "field_mask")
 # Floats kept in float32: positions and headings (the position code and the rotary angles
 # read them) and the PPO numbers.
-FLOAT32 = frozenset(("pos", "heading", "log_probability", "value", "reward"))
+FLOAT32 = frozenset(("pos", "heading", "field_pos", "position_offset", "log_probability", "value", "reward"))
 # Small integers stored as int8: joint actions (< 42) and hit labels (-1 to 2).
 INT8 = frozenset(("action", "teacher", "hit_label"))
 
@@ -214,7 +214,7 @@ class RolloutStore:
         self.resident["hit_label"][:, columns] = stored("hit_label", hit_label)
 
     @classmethod
-    def of(cls, rollout, stream: bool = False) -> "RolloutStore":
+    def of(cls, rollout, stream: bool = False) -> RolloutStore:
         """A one-segment store holding a collected (unstreamed) Rollout."""
         store = cls(1, stream)
         ticks = rollout.done.shape[0]
