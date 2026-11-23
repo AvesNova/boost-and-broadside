@@ -26,6 +26,12 @@ Ops per eager `step` (E = 4, N = 8, F = 10, no_grad, regions.py's Counter): **53
 on the path (not counted per region): the fields' heading (atan2), the temporal "starts
 from zero" test in each block, the embedding in place of the one-hot.
 
+GPU (RTX 4070 laptop, power profile "performance", 2026-11-23 19:30), scoreboard
+`train_gpu.py --compile --updates 3` (2,048 x 4 x 128, bf16, streamed): steady **5,260
+steps/s** loop (collect 18,718, update 7,316), peak allocated **5.73 GiB** (reserved 6.36);
+first update 403 s (cold compile). The last row before (6,002 steps/s, 5.18 GiB) was on
+the old v2 game, so the difference mixes the core game and this step's model changes.
+
 ## The pieces
 
 - **Encoder** (v2): per kind (ship, game, field) `gelu(norm(Linear(inputs -> 2 width)))`,
