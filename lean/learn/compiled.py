@@ -1,5 +1,5 @@
 """The learner's hot paths under torch.compile: the two halves of a rollout tick, the league
-snapshots' moves, the critic's target pass and the minibatch loss (forward and backward).
+networks' moves, the critic's target pass and the minibatch loss (forward and backward).
 Adam and the gradient clipping stay eager (the framework spike found nothing to gain there).
 
 `graphs()` builds them once, on the first compiled collect or update, and turns duck sizing
@@ -21,7 +21,7 @@ from lean.learn import rollout, training
 
 @functools.cache
 def graphs() -> SimpleNamespace:
-    """The compiled functions: act, advance, snapshot_actions (lean.learn.rollout),
+    """The compiled functions: act, advance, slot_actions (lean.learn.rollout),
     minibatch_values and minibatch_loss (lean.learn.training)."""
     fx_config.use_duck_shape = False
 
@@ -31,7 +31,7 @@ def graphs() -> SimpleNamespace:
     return SimpleNamespace(
         act=compiled(rollout.act),
         advance=compiled(rollout.advance),
-        snapshot_actions=compiled(rollout.snapshot_actions),
+        slot_actions=compiled(rollout.slot_actions),
         minibatch_values=compiled(training.minibatch_values),
         minibatch_loss=compiled(training.minibatch_loss),
     )
