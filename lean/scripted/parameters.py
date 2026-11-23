@@ -129,7 +129,8 @@ PARAMETERS: dict[str, Parameter] = {
     "boundary_margin": Parameter(2.2, "turn radius", LOG, 0.3, "depth of the edge band"),
     "boundary_ramp_low": Parameter(0.0554, "margin fraction", meaning="the steer starts"),
     "boundary_ramp_high": Parameter(0.52, "margin fraction", meaning="the steer is whole"),
-    # Decisiveness: divides the sharpness of every tempered gate and of the power law.
+    # Decisiveness: divides the sharpness of every tempered gate (all but the gun's: aim is
+    # its own skill, author 2026-11-23) and of the power law.
     "temperature": Parameter(1.0, "ratio", LOG, 0.4, "softens every tempered gate"),
 }
 
@@ -147,8 +148,8 @@ GATES: dict[str, Gate] = {
     "spend_range": Gate("spend_range", 0.127, False),  # range in gun ranges
     "level_cap": Gate("level_cap_speed", 0.05, True),  # speed / sustained stick speed
     "yo_yo_cap": Gate("yo_yo_cap_speed", 0.05, True),  # speed / fight speed
-    "aligned": Gate("aligned", 0.243, False),  # aim error in target sizes
-    "in_range": Gate("in_range", 0.127, False),  # range in gun ranges
+    "aligned": Gate("aligned", 0.243, False, tempered=False),  # aim error in target sizes
+    "in_range": Gate("in_range", 0.127, False, tempered=False),  # range in gun ranges
 }
 # The stick's gates, in a second logistic on the error to the wanted direction (radians).
 STICK_GATES: dict[str, Gate] = {

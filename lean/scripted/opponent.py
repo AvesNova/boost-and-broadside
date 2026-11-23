@@ -519,7 +519,7 @@ def explain(
     turn_above_one = turn * above_one
     full = turn_above_one * above_two * (1.0 - cap)
     levels = torch.stack([turn - turn_above_one, turn_above_one - full, full], -1)
-    holding = aft & (sense != 0.0) & (centre_weight < 0.5)
+    holding = aft & (sense != 0.0) & (centre_weight <= 0.0)
     turn_left = torch.where(holding, sense > 0.0, stick_error > 0.0)
     side_floor = read("side_floor")
     left = torch.where(turn_left, 1.0 - side_floor, side_floor)[..., None]

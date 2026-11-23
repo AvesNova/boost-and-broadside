@@ -424,16 +424,19 @@ def test_one_call_for_both_teams_equals_the_two_single_team_calls():
         assert deaths > 0  # the ships fought
 
 
-def play_scripted(envs: int, ticks: int, spread: float, seed: int, chaser_team: int | None = None):
+def play_scripted(envs: int, ticks: int, spread: float, seed: int, chaser_team: int | None = None,
+                  persona=None):
     """Scripted (or scripted against the chaser on `chaser_team`) 4v4 games in the core game,
-    finished games re-dealt with a fresh memory. Returns per-slot tallies over the run."""
+    finished games re-dealt with a fresh memory; `persona` (E, 8) per-slot rows instead of a
+    draw at `spread`. Returns per-slot tallies over the run."""
     generator = torch.Generator().manual_seed(seed)
     config = game.GameConfig()
     sizes = torch.full((envs, 2), 4, dtype=torch.long)
     state = game.reset(config, envs, sizes, generator, CPU)
     slots = state.x.shape[1]
     scripted_config = ScriptedConfig()
-    persona = personas(scripted_config, envs, slots, generator, CPU, spread)
+    if persona is None:
+        persona = personas(scripted_config, envs, slots, generator, CPU, spread)
     memory = fresh_memory(envs, slots, generator, CPU)
     radius = state.constants["arena_radius"]
     farthest = torch.zeros(envs, slots)
@@ -498,3 +501,35 @@ def test_opponent_beats_chaser():
     print(f"opponent against chaser: {wins} wins, {losses} losses, {ended} ended of 48")
     assert ended >= 24
     assert wins > 0.65 * ended
+
+
+def box_end(name: str, end: int) -> float:
+    """A sampled row's value at one end of its box (spread 1)."""
+    row = PARAMETERS[name]
+    if row.law == "log":
+        return row.default * math.exp(end * row.width)
+    if row.law == "linear":
+        return row.default + end * row.width
+    return row.default + (row.width if end > 0 else 0.0)  # upward
+
+
+def test_every_parameter_alone_at_both_ends_of_its_box_is_competent():
+    """Each parameter is competent alone: every sampled row at each end of its box, the rest
+    at the yardstick, in one batch (two environments of 4v4 per case, 900 ticks): no ship goes
+    past the end of the boundary's damage ramp, and in every case ships fire (at seed 3 the
+    lowest case had 13 of its 16 ships fire, the farthest reached 1.053 arena radii)."""
+    cases = [(name, end) for name in SAMPLED for end in (-1, 1)
+             if not (PARAMETERS[name].law == "upward" and end < 0)]
+    per_case, slots = 2, 8
+    envs = per_case * len(cases)
+    persona = {name: torch.full((envs, slots), PARAMETERS[name].default) for name in SAMPLED}
+    for index, (name, end) in enumerate(cases):
+        persona[name][index * per_case : (index + 1) * per_case] = box_end(name, end)
+    tallies = play_scripted(envs=envs, ticks=900, spread=0.0, seed=3, persona=persona)
+    farthest = tallies["farthest"].reshape(len(cases), -1).amax(-1)
+    fired = tallies["fired"].reshape(len(cases), -1).float().mean(-1)
+    worst = sorted(zip(fired.tolist(), cases))[:3]
+    outermost = sorted(zip(farthest.tolist(), cases))[-3:]
+    print(f"farthest {outermost}; lowest shares of ships that fired {worst}")
+    assert float(farthest.max()) < 1.0 + 300.0 / 4200.0
+    assert float(fired.min()) >= 0.5
