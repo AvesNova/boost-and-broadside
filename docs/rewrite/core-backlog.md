@@ -76,3 +76,21 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | F2 | Provenance table docs/provenance.md from provenance-check.md drafts | first version done (worklog 03:19) |
 | F3 | Step 3 scoreboard numbers (operations, compiled against uncompiled, compile time, new team size) | game side done (worklog 03:07); policy and GPU parts after C |
 | F4 | Gate G2 (where play runs) from the real game's latency | provisional numbers in scoreboard.md (re-measure on a quiet machine) |
+
+## Build batch 2026-11-23 (author's go, overnight; agents run one at a time)
+
+Each step is one agent in its own worktree; I merge, run `pytest lean -m "not slow"` and the
+smoke run, record it in the worklog and push. Decisions: core-decisions.md sections from
+"Answers from the author review" on.
+
+| Step | Scope | Status |
+|---|---|---|
+| G1 | Game sign-off cleanup: v2 flight and damage models removed, core the only game, P-51D lineup, fixed fields and transition tests removed, analysis type vizia_plain removed, `core.step` split, dead StepOut outputs, field_mask, team_view/enemy_view merged, every number the scripted opponent needs in the game's constants | todo |
+| G2 | Game rules: clock tie-break (ships alive, then shield, then draw); spawn rule a setting, default random over the arena without edge-facing spawns, one-side spread over the half disc; training spawns uniform speed, shield, store per ship with one eighth standard; one-tick action delay with allies' pending actions observed; x/R, y/R dropped; feature scales from measured ranges (linear or symlog per feature) | todo |
+| S | Scripted: power rule for the core physics (dive when slow, climb when fast or close, regain the store when far); target memory 0.8 everywhere; head-on side drawn per ship per match; persona fields per ship (temperature included) on a dense competent distribution, spread 0 default; action hold deleted; no retreat; all numbers from the game; review fixes | todo |
+| M | Model: rotary ratio 2 above 16.8 km, irrational turns, 70-75% rotated; fields' rotary heading to the centre; game token at the arena centre; initialisations from the literature, 1 at a reset; next-state head HL-Gauss per column (agreed table); pending-action inputs; dead options removed | todo |
+| L | Learner: BC stage on the full distribution (all heads and critics), RL from its average with a shrinking teacher term; EMA and uniform averages in the league; capacity routing with retiring slots; v2's snapshot schedule; checkpoints every 10M; KL monitor; percentile option removed; fixed coefficients; entropy logging; fused Adam, 2,000-step warm-up, non-finite steps skipped; crossover only in evaluation; test stand-ins removed; duplicates | todo |
+| C | Cheese agents ported from v2, checked to be reasonable, in the league | todo |
+| D | Notes hygiene: one short current notes file per package, CONTRACT and README current, LAPTOP_PROMPT deleted, author-review.md updated | todo |
+| X | Measurements: GPU parity row on the new tree; scripted against scripted wipe times and the clock set at about 80% of games ending | todo |
+

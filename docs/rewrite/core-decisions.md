@@ -440,6 +440,21 @@ League (section 8)
 - Engine power to be brought in line with real WWII aircraft, the P-51D in particular (open:
   Vizia is 255 W/kg real thrust power, about 1,810 hp at 4,354 kg; the P-51D 225 W/kg).
 
+## Sign-off and personas (2026-11-23 evening)
+
+- The core flight model is signed off (the author flew Vizia and the P-51D at 2x; the
+  scripted opponent reversed a forced two-circle fight into a one-circle). v2's flight and
+  damage models go.
+- The P-51D (its real point mass, lean.game.tuning) is the frontline ship: the core game's
+  lineup.
+- Green light for every change agreed in the author review and after (docs/rewrite/
+  core-backlog.md "Build batch 2026-11-23").
+- Personas: everything per ship, temperature included (as different humans differ in skill
+  and decisiveness); hidden from the student (no persona inputs); drawn from a dense
+  continuous distribution over the parameter space, every persona competent (no persona that
+  flies out of bounds). The default BC teacher stays the single narrow yardstick (spread 0);
+  the persona population is an experiment arm.
+
 ## Proposals, not decided
 
 
