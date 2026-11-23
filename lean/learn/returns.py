@@ -43,6 +43,20 @@ def generalised_advantages(
     return advantage, advantage + value
 
 
+def join_segments(records: Tensor, segments: int) -> Tensor:
+    """A target-pass micro-batch's records (T, U x k, ...), segment-major
+    (RolloutStore.chain_index), as each seat's consecutive ticks (U x T, k, ...)."""
+    ticks, views = records.shape[:2]
+    seats, rest = views // segments, records.shape[2:]
+    return records.reshape((ticks, segments, seats) + rest).transpose(0, 1).reshape((segments * ticks, seats) + rest)
+
+
+def split_segments(records: Tensor, segments: int) -> Tensor:
+    """join_segments undone: (U x T, k, ...) back to (T, U x k, ...)."""
+    ticks, seats, rest = records.shape[0] // segments, records.shape[1], records.shape[2:]
+    return records.reshape((segments, ticks, seats) + rest).transpose(0, 1).reshape((ticks, segments * seats) + rest)
+
+
 def normalise_advantages(total: Tensor, mask: Tensor, config: LearnConfig) -> Tensor:
     """Scale the advantages (summed over levels) over the whole update.
 

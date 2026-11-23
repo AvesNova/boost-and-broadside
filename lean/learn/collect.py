@@ -130,7 +130,9 @@ class Rollout:
     hit_label: (T, S, N) long, the outcome of the bullet the ship emitted on that tick
     (0 missed, 1 hit an enemy, 2 hit a team-mate; -1 unlabelled: no bullet, or it had not
     ended by the segment's end). Labels every slot of the seat's environment; the loss
-    takes the `own` rows.
+    takes the `own` rows. Streamed into a store, the bullets fired in the previous segment
+    that end in this one label that segment's rows (RolloutStore.end_segment); only the
+    update's last segment keeps an unlabelled tail.
     bootstrap_value: (S, N, LEVELS) value after the last tick, zero outside `own`.
     value_centres: (LEVELS, BINS) the critic's support the values were decoded with.
     seat_environment, seat_team: (S,) the environment of each seat and its team at the
@@ -423,17 +425,18 @@ def abandon(config: LearnConfig, game_config, policy, opponent: Opponent, state,
     return state, dataclasses.replace(fresh, reset=carry.reset | chosen)
 
 
-def hit_label_entries(step_out, state, tick: Tensor | int, slot_index: Tensor, environment_index: Tensor, spare: int):
+def hit_label_entries(step_out, state, label_row: Tensor | int, slot_index: Tensor, environment_index: Tensor, spare: int):
     """(index, outcome) for scattering this tick's ended bullets into the flat hit labels
-    (tick, environment, slot) of `collect`.
+    (row, environment, slot) of `collect`.
 
-    A bullet that ended on segment tick `tick` left the gun on episode tick
-    step_out.shot_tick; the rollout row of that tick is tick - (state.tick - shot_tick),
-    since episode ticks and rollout rows advance together within an episode. A bullet
-    fired before the segment (a negative row) goes to the spare last entry `spare`.
+    `label_row` is this tick's row in the labels. A bullet that ended on this tick left the
+    gun on episode tick step_out.shot_tick; its row is label_row - (state.tick - shot_tick),
+    since episode ticks and rows advance together within an episode (a bullet of the
+    current episode can never reach a row before the episode's first). A bullet whose row
+    would be negative goes to the spare last entry `spare`.
     """
     envs, slots = state.exists.shape
-    row = tick - (state.tick[:, None, None] - step_out.shot_tick)
+    row = label_row - (state.tick[:, None, None] - step_out.shot_tick)
     landed = (step_out.shot_outcome >= 0) & (row >= 0)
     index = (row * envs + environment_index) * slots + slot_index
     index = torch.where(landed, index, spare)
@@ -465,12 +468,13 @@ def act(config: LearnConfig, game_config, policy, opponent: Opponent, state, car
 def advance(
     config: LearnConfig, game_config, policy, opponent: Opponent, state, carry: CollectCarry, observation,
     joint: Tensor, teacher: Tensor, league_action: Tensor, opponent_carry: Tensor, policy_carry: Tensor,
-    tick: Tensor, hit_label: Tensor, counters: dict, generator, game, scripted,
+    label_row: Tensor, hit_label: Tensor, counters: dict, generator, game, scripted,
 ):
     """The second half of a tick: every ship's action, the game step, rewards, hit labels
-    (written into `hit_label` in place), the counters and league tallies, then the re-deal
-    of finished environments. `tick` is the segment tick, a 0-d long tensor (an int would
-    be a new constant for a compiled graph every tick). Returns (state, carry, this tick's
+    (written into `hit_label` in place, `label_row` this tick's row there, see
+    hit_label_entries), the counters and league tallies, then the re-deal of finished
+    environments. `label_row` is a 0-d long tensor (an int would be a new constant for a
+    compiled graph every tick). Returns (state, carry, this tick's
     records by Rollout field name, counters)."""
     envs, slots = state.exists.shape
     device = state.exists.device
@@ -489,7 +493,7 @@ def advance(
     slot_index = torch.arange(slots, device=device)[None, :, None]
     environment_index = torch.arange(envs, device=device)[:, None, None]
     spare = hit_label.shape[0] - 1
-    hit_label.scatter_(0, *hit_label_entries(step_out, state, tick, slot_index, environment_index, spare))
+    hit_label.scatter_(0, *hit_label_entries(step_out, state, label_row, slot_index, environment_index, spare))
     records = {
         "teacher": join_action(teacher).index_select(0, seat_environment),
         "reward": reward.index_select(0, seat_environment),
@@ -585,10 +589,11 @@ def collect(
         store.begin_segment(segment, ticks, initial_carry, table)
     records = {}
     counters = {name: torch.zeros((), dtype=torch.long, device=device) for name in ("league_games", "league_wins", "scripted_games", "scripted_wins", "episodes")}
-    # Hit labels over (tick, environment, slot), flat, with one spare entry at the end that
-    # takes every bullet without a row in this segment.
-    hit_label = torch.full((ticks * envs * slots + 1,), -1, dtype=torch.long, device=device)
-    tick = torch.zeros((), dtype=torch.long, device=device)
+    # Hit labels over (row, environment, slot), flat: rows 0 to T - 1 are the previous
+    # segment's ticks (its bullets that end in this segment), rows T to 2T - 1 this
+    # segment's; one spare entry at the end takes every bullet fired earlier.
+    hit_label = torch.full((2 * ticks * envs * slots + 1,), -1, dtype=torch.long, device=device)
+    label_row = torch.full((), ticks, dtype=torch.long, device=device)
     seat_environment, _ = seats(carry.learner_team, self_play)
 
     for index in range(ticks):
@@ -599,7 +604,7 @@ def collect(
         league_action, opponent_carry = league_actions(config, opponent, views, carry, teacher, generator, snapshots)
         state, carry, tick_records, counters = advance_part(
             config, game_config, policy, opponent, state, carry, observation, joint, teacher, league_action,
-            opponent_carry, policy_carry, tick, hit_label, counters, generator, game, scripted,
+            opponent_carry, policy_carry, label_row, hit_label, counters, generator, game, scripted,
         )
         tick_records = {
             "observation": observation, "action": joint, "log_probability": log_probability, "value": value,
@@ -610,7 +615,7 @@ def collect(
         else:
             for name, item in tick_records.items():
                 records.setdefault(name, []).append(item)
-        tick = tick + 1
+        label_row = label_row + 1
 
     seat_environment, seat_team = seats(carry.learner_team, self_play)
     # The value after the last tick from the tick's first half (one graph fewer to compile;
@@ -619,10 +624,13 @@ def collect(
     bootstrap_value, centres = final[5], final[8]
     # After a reset the final observation belongs to a new episode; GAE never reads the
     # bootstrap there because `done` on the last tick cuts it.
-    seat_hit_label = hit_label[:-1].view(ticks, envs, slots).index_select(1, seat_environment)
+    # A seat is the same environment's same slots in every segment (`seats`), so the
+    # previous segment's rows go to the same seats there.
+    previous_hit_label, seat_hit_label = hit_label[:-1].view(2, ticks, envs, slots).index_select(2, seat_environment).unbind()
 
     if store is not None:
-        store.end_segment(segment, seat_hit_label, bootstrap_value, centres)
+        # The first segment's earlier rows belong to the previous update (already trained on).
+        store.end_segment(segment, seat_hit_label, bootstrap_value, centres, previous_hit_label if segment > 0 else None)
         observation, stacked, seat_hit_label = None, dict.fromkeys(Rollout.TICK_FIELDS), None
     else:
         first = records["observation"][0]

@@ -11,7 +11,7 @@ Where. The large records (the observation's per-tick fields, actions, old
 log-probabilities, stored values, rewards, next-state targets) and the initial carries are
 in pinned host memory on a GPU. The masks and labels the update counts and indexes on the
 device (`RESIDENT`: own, done, reset, next_valid, hit_label, deal_row), the per-view
-bootstrap values, and the update's advantages and value targets stay on the device. The
+bootstrap values (only the last segment's are read), and the update's advantages and value targets stay on the device. The
 observation fields constant within an episode (`EPISODE_CONSTANT`: the fields, their
 positions and mask) and the position offset are stored once per deal in a table on the
 device (rows per segment: the environments as the segment starts, then the segment's
@@ -29,6 +29,13 @@ compute stream (a stream wait, no host wait), copies the large records into the 
 arrays asynchronously, and `record_stream` keeps each source alive until its copy has run;
 the next tick is computed while this one is copied. The resident records are written on
 the compute stream.
+
+Chained returns. The U segments of one seat are consecutive in time (a seat is the same
+environment's same team in every segment, and the carry runs on across segments), so the
+target pass chains them: `chain_index` puts a seat's U views in one micro-batch and GAE runs
+over its U x T ticks, bootstrapped only from the last segment's stored bootstrap value
+(episode ends still cut). The hit labels of a segment's last ticks come from the next
+segment (`end_segment`'s `previous_hit_label`). Training sequences stay one view each.
 
 Reading. `ready` makes the host wait once per update for the copies written so far (the
 host reads the pinned arrays itself). `batches` gathers each micro-batch's views on the
@@ -208,9 +215,14 @@ class RolloutStore:
         empty = torch.zeros((self.ticks, self.views + 1) + tuple(shape), dtype=dtype, device=self.device)
         return empty.fill_(-1) if name == "hit_label" else empty
 
-    def end_segment(self, segment: int, hit_label: Tensor, bootstrap: Tensor, centres: Tensor) -> None:
+    def end_segment(
+        self, segment: int, hit_label: Tensor, bootstrap: Tensor, centres: Tensor, previous_hit_label: Tensor | None = None
+    ) -> None:
         """Close segment `segment`: its hit labels (T, S, N) (known only once the bullets have
-        ended), the bootstrap values (S, N, LEVELS) and the critic's support (LEVELS, BINS)."""
+        ended), the bootstrap values (S, N, LEVELS) and the critic's support (LEVELS, BINS).
+        `previous_hit_label` (T, S, N): the labels of segment - 1's rows from bullets that
+        ended in this segment, merged into that segment's (a row's bullet ends once, so at
+        most one of the two labels a row; the other is -1)."""
         columns = self._columns(segment)
         if self.bootstrap is None or self.bootstrap.shape[1:] != bootstrap.shape[1:]:
             self.bootstrap = torch.zeros((self.views + 1,) + bootstrap.shape[1:], device=self.device)
@@ -219,6 +231,9 @@ class RolloutStore:
         if "hit_label" not in self.resident:
             self.resident["hit_label"] = self._resident("hit_label", hit_label.shape[2:], torch.int8)
         self.resident["hit_label"][:, columns] = stored("hit_label", hit_label)
+        if previous_hit_label is not None and segment > 0:
+            earlier = self.resident["hit_label"][:, self._columns(segment - 1)]
+            earlier.copy_(torch.maximum(earlier, stored("hit_label", previous_hit_label)))
 
     @classmethod
     def of(cls, rollout, stream: bool = False) -> RolloutStore:
@@ -267,6 +282,21 @@ class RolloutStore:
                 rows.append(torch.cat([chunk, chunk.new_full((size - chunk.numel(),), self.views)]))
                 owners.append(part)
         return torch.stack(rows), owners
+
+    def chain_index(self, size: int) -> Tensor:
+        """Micro-batches of whole seats for the target pass: (M, U x k) long on the host, k =
+        max(1, size // U) seats per row, segment-major (column u x k + j is segment u of the
+        row's j-th seat, view u x S + seat), the last row padded with spare views. With this
+        order a row's (T, U x k) records read as each seat's U x T consecutive ticks
+        (returns.join_segments)."""
+        per_row = max(1, size // self.segments)
+        rows = []
+        for start in range(0, self.seats, per_row):
+            chosen = torch.arange(start, min(start + per_row, self.seats))
+            columns = torch.arange(self.segments)[:, None] * self.seats + chosen[None, :]
+            padding = torch.full((self.segments, per_row - chosen.numel()), self.views, dtype=torch.long)
+            rows.append(torch.cat([columns, padding], 1).flatten())
+        return torch.stack(rows)
 
     def batches(self, names: tuple[str, ...], index: Tensor):
         """Yield one dict per row of `index` (M, B) (host, long): each name of `names` as
