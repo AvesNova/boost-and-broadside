@@ -125,3 +125,24 @@ def test_handles_solve_meets_the_handles_under_the_core_model():
     assert row["max_lift_coefficient"] == pytest.approx(
         load(V2_P51D)["card"]["max_lift_coefficient"], rel=1e-6
     )
+
+
+@pytest.mark.parametrize("factor", [1.0, 1.5, 3.0])
+def test_time_scale_is_the_same_flight_faster_or_slower(factor):
+    """At another time factor the card flies the same real aircraft: gravity factor^2 x 9.81,
+    and cruise and corner speed (game units) scaled by factor / 2; the card is restored after."""
+    from lean.game import core
+
+    config = core.GameConfig.core(lineup=card.TYPE_NAMES)
+    types = torch.arange(len(card.TYPE_NAMES))
+    game = core.per_type_constants(config, types)
+    saved = card.CARD
+    with tuning.time_scale(factor):
+        assert card.GRAVITY == pytest.approx(9.81 * factor**2, rel=1e-12)
+        scaled = core.per_type_constants(config, types)
+    assert card.CARD is saved and card.GRAVITY == 39.24
+    ratio = factor / tuning.TIME_FACTOR
+    for name in ("cruise_speed", "corner_speed"):
+        assert torch.allclose(getattr(scaled, name), getattr(game, name) * ratio, rtol=1e-5), name
+    with tuning.time_scale(tuning.TIME_FACTOR):
+        assert card.CARD is saved

@@ -14,11 +14,21 @@ Drawn with Tkinter from the standard library: nothing to install.
 PYTHONPATH=.:src uv run --no-sync python -m lean.sandbox
 PYTHONPATH=.:src uv run --no-sync python -m lean.sandbox --ship yongma --no-chaser
 PYTHONPATH=.:src uv run --no-sync python -m lean.sandbox --set 'fields=((800.0,0.0,400.0,200.0,2.0),)'
+PYTHONPATH=.:src uv run --no-sync python -m lean.sandbox --core --ship p51d --time-scale 1
 ```
+
+`--core` flies the core flight model (Vizia by default). `--time-scale K` flies at K times real
+time (default 2, the game's): lengths stay real, speeds and turn rates are x K, accelerations
+and gravity x K^2, power per kg x K^3; the card is rebuilt from its real-time values by
+`lean.game.tuning.time_scale` for this process only (training never uses it). At K = 1 the
+readout's speeds and turn rates are real ones. Guns scale too; a bullet's life is capped at
+what the 11 bullet slots hold at the fire interval (at 1.5x: 11 ticks, not 15), and the fire
+interval is whole ticks (at 3x: one shot a tick, 30 a second, not 45). The `time` line of the
+readout shows K.
 
 `--set NAME=VALUE` overrides any `GameConfig` field (repeatable; the value is read as a
 Python literal when it parses). Every non-default field is listed on the `physics` line of
-the readout, so a future flight switch, for example `--set flight_model=new`, is visible there.
+the readout, for example `--set flight_model=core`.
 
 ## Controls
 
@@ -31,7 +41,7 @@ the readout, so a future flight switch, for example `--set flight_model=new`, is
 | Down (or S) | climb: power 2, "reverse", speed into store |
 | neither | coast |
 | Space | fire |
-| Tab | next ship type (Yongma, Jujak, Vizia), kept in flight |
+| Tab | next ship type (Yongma, Jujak, Vizia, P-51D, Vizia plain), kept in flight |
 | C | chaser on / off |
 | P | pause |
 | + / - or mouse wheel | zoom |

@@ -13,7 +13,7 @@ import tkinter as tk
 
 import torch
 
-from lean.game import card, core
+from lean.game import card, core, tuning
 
 from .world import World, field_list, stick_index
 
@@ -57,6 +57,7 @@ def physics_label(config: core.GameConfig) -> str:
 class App:
     def __init__(self, args):
         self.config = parse_config(args.set, args.core)
+        self.time_scale = args.time_scale
         self.world = World(
             self.config, player_type=card.TYPE_NAMES.index(args.ship), chaser_on=not args.no_chaser
         )
@@ -162,7 +163,7 @@ class App:
         self.frames += 1
         if self.seconds and now - self.start > self.seconds:
             print(
-                f"ran {now - self.start:.1f} s: {self.world.tick} ticks, {self.frames} frames, "
+                f"ran {now - self.start:.1f} s at {self.time_scale:g}x real time: {self.world.tick} ticks, {self.frames} frames, "
                 f"readout {self.world.readout()}"
             )
             self.root.destroy()
@@ -306,6 +307,7 @@ class App:
         lines = [
             f"ship   {card.TYPE_NAMES[w.player_type]}  (tab)",
             f"physics {physics_label(self.config)}",
+            f"time   {self.time_scale:g}x real (game {tuning.TIME_FACTOR:g}x)",
             f"stick  {stick}",
             f"power  {POWER_NAMES[power]}{'   FIRE' if fire else ''}",
             "",
@@ -326,7 +328,7 @@ class App:
             self.canvas.create_text(
                 14, 12 + 17 * row, text=line, anchor="nw", fill=TEXT, font=("TkFixedFont", 10)
             )
-        top = 14 + 17 * 9  # the store bar beside the store line
+        top = 14 + 17 * 10  # the store bar beside the store line
         self.canvas.create_rectangle(250, top, 420, top + 12, outline="#8b949e")
         self.canvas.create_rectangle(
             250, top, 250 + 170 * min(r["store"], 1.0), top + 12, fill="#e3b341", outline=""
@@ -384,6 +386,14 @@ def main():
     parser.add_argument(
         "--no-chaser", action="store_true", help="start without the chaser (C toggles it)"
     )
+    parser.add_argument(
+        "--time-scale",
+        type=float,
+        default=tuning.TIME_FACTOR,
+        metavar="K",
+        help="fly at K times real time (lengths real; speeds and turn rates xK, accelerations and "
+        "gravity xK^2); default the game's 2",
+    )
     parser.add_argument("--zoom", type=float, default=0.6, help="pixels per metre")
     parser.add_argument(
         "--set",
@@ -401,7 +411,10 @@ def main():
     arguments = parser.parse_args()
     if arguments.ship is None:
         arguments.ship = "vizia" if arguments.core else "jujak"
-    App(arguments).run()
+    if arguments.time_scale <= 0.0:
+        parser.error("--time-scale must be positive")
+    with tuning.time_scale(arguments.time_scale):
+        App(arguments).run()
 
 
 if __name__ == "__main__":
