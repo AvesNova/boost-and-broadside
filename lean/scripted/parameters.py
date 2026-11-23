@@ -52,62 +52,62 @@ class Gate:
 
 # fmt: off
 PARAMETERS: dict[str, Parameter] = {
-    # Gate centres (the gates below).
-    "turn": Parameter(0.002868, "radians", LOG, 0.4, "pointing error: turn at all"),
-    "level_two": Parameter(0.02097, "radians", LOG, 0.4, "pointing error: sustained stick"),
-    "level_three": Parameter(0.1044, "radians", LOG, 0.4, "pointing error: the full stick"),
-    "dive_slow": Parameter(1.8, "stall_speed", LOG, 0.4, "speed: dive because slow"),
-    "dive_in_turn": Parameter(0.95, "corner_speed", LOG, 0.4, "speed: dive below it, turning hard"),
-    "climb_fast": Parameter(1.2, "corner_speed", LOG, 0.4, "speed: climb because fast"),
-    "climb_close": Parameter(0.21, "gun_range", LOG, 0.4, "distance: climb because very close"),
-    "regain_far": Parameter(3.0, "gun_range", LOG, 0.4, "distance: far from every known enemy"),
-    "regain_low": Parameter(0.3, "store fraction", LOG, 0.4, "store: low"),
-    "aligned": Parameter(1.01, "target angular size", LOG, 0.4, "gun aim error: the gun bears"),
-    "in_range": Parameter(1.04, "gun_range", LOG, 0.4, "distance: the target is within reach"),
-    # Decisiveness: divides every tempered gate's sharpness.
-    "temperature": Parameter(1.0, "ratio", LOG, 0.4, "softens every tempered gate"),
-    # Probability floors.
-    "side_floor": Parameter(0.02, "probability", meaning="turning the long way round"),
-    "power_floor": Parameter(0.02, "probability", meaning="each of coast, dive and climb"),
-    "regain_share": Parameter(0.5, "probability", LINEAR, 0.25,
-                              "far and low on store: climb at most this share of the ticks"),
-    "head_on_band": Parameter(0.1, "radians", meaning="want this near behind: kept side"),
-    # Assessment (lean.scripted.situation).
-    "turning_floor": Parameter(0.25, "sustained_rate", LOG, 0.4,
-                               "a nose rate this small counts as straight"),
     # Target choice.
     "target_keep_factor": Parameter(0.8, "ratio", meaning="switch only to one this much closer"),
     "weakest_weight": Parameter(0.0, "ratio", UPWARD, 1.0,
                                 "0 the nearest enemy; larger prefers enemies with less store"),
-    # Lead: first-order intercept with the drag law's time of flight in the medium.
+    # Assessment (lean.scripted.situation).
+    "turning_floor": Parameter(0.25, "sustained_rate", LOG, 0.4,
+                               "a nose rate this small counts as straight"),
+    # Tactics.
+    "engage_range": Parameter(3.0, "gun_range", LOG, 0.4, "beyond it from the target: disengaged"),
+    # Speeds: the power tracks a speed target v*, mixed in log space over the tactics.
+    "merge_speed": Parameter(1.0, "corner_speed", LOG, 0.1, "v* disengaged and at the merge"),
+    "fight_speed": Parameter(1.0, "sustained_speed", LOG, 0.2, "v* in the rate fight"),
+    "speed_floor": Parameter(1.3, "stall_speed", LOG, 0.1, "v* never below it"),
+    "spend_share": Parameter(1.0, "store x store_turn", LOG, 0.4,
+                             "a shot is near when the turn it needs is within this"),
+    "spend_need": Parameter(0.1, "radians", LOG, 0.4, "a turn this large is worth the store"),
+    "spend_range": Parameter(1.0, "gun_range", LOG, 0.3, "a shot is near within this range"),
+    # The power law: x = ln(v / v*); climb above the band, dive below it.
+    "speed_band": Parameter(0.05, "log units", LINEAR, 0.03, "half-width of the coast band"),
+    "power_scale": Parameter(0.03, "log units", LOG, 0.4, "the power's sharpness"),
+    "power_floor": Parameter(0.02, "probability", meaning="each of coast, dive and climb"),
+    # Stick: three nested gates on the pointing error, then the side.
+    "turn": Parameter(0.002868, "radians", LOG, 0.4, "pointing error: turn at all"),
+    "level_two": Parameter(0.02097, "radians", LOG, 0.4, "pointing error: sustained stick"),
+    "level_three": Parameter(0.1044, "radians", LOG, 0.4, "pointing error: the full stick"),
+    "side_floor": Parameter(0.02, "probability", meaning="turning the long way round"),
+    "head_on_band": Parameter(0.1, "radians", meaning="want this near behind: kept side"),
+    # The gun. Lead: first-order intercept with the drag law's time of flight in the medium.
+    "aligned": Parameter(1.01, "target angular size", LOG, 0.4, "gun aim error: the gun bears"),
+    "in_range": Parameter(1.04, "gun_range", LOG, 0.4, "distance: the target is within reach"),
     "lead_cap": Parameter(4.78, "gun_range", meaning="the lead's distance is capped here"),
     "lead_gain": Parameter(1.0, "ratio", LINEAR, 0.2, "share of the computed lead applied"),
+    "target_size_minimum": Parameter(math.radians(1.0), "radians", meaning="target size clamp"),
+    "target_size_maximum": Parameter(math.radians(45.0), "radians", meaning="target size clamp"),
+    "ally_clearance": Parameter(2.0, "hit_radius", meaning="a team-mate this near the line blocks"),
     # Boundary steer: inside the margin of the edge and flying outward, a steer to the centre
     # blended in, its weight ramping from 0 to 1 between two depths (0 at the margin's inner
     # edge, 1 at the arena edge). The margin is in turn radii at the ship's speed: the
     # sustained radius up to corner speed, growing as speed squared above it.
-    "boundary_margin": Parameter(2.2, "turn radius", LOG, 0.3,
-                                 "depth of the edge band"),
+    "boundary_margin": Parameter(2.2, "turn radius", LOG, 0.3, "depth of the edge band"),
     "boundary_ramp_low": Parameter(0.0554, "margin fraction", meaning="the steer starts"),
     "boundary_ramp_high": Parameter(0.52, "margin fraction", meaning="the steer is whole"),
-    # The gun.
-    "target_size_minimum": Parameter(math.radians(1.0), "radians", meaning="target size clamp"),
-    "target_size_maximum": Parameter(math.radians(45.0), "radians", meaning="target size clamp"),
-    "ally_clearance": Parameter(2.0, "hit_radius", meaning="a team-mate this near the line blocks"),
+    # Decisiveness: divides the sharpness of every tempered gate and of the power law.
+    "temperature": Parameter(1.0, "ratio", LOG, 0.4, "softens every tempered gate"),
 }
 
 GATES: dict[str, Gate] = {
-    "turn": Gate("turn", 0.172, True, 0.02),
+    "engaged": Gate("engage_range", 0.2, False),  # range in gun ranges
+    "shot_near": Gate("spend_share", 0.2, False),  # turn needed / (store x store_turn)
+    "spend_need": Gate("spend_need", 0.2, True),  # turn needed, radians
+    "spend_range": Gate("spend_range", 0.127, False),  # range in gun ranges
+    "turn": Gate("turn", 0.172, True, 0.02),  # pointing error, radians
     "level_two": Gate("level_two", 0.328, True, 0.02),
     "level_three": Gate("level_three", 0.267, True, 0.02),
-    "dive_slow": Gate("dive_slow", 0.05, False),
-    "dive_in_turn": Gate("dive_in_turn", 0.05, False),
-    "climb_fast": Gate("climb_fast", 0.05, True),
-    "climb_close": Gate("climb_close", 0.16, False),
-    "regain_far": Gate("regain_far", 0.2, True),
-    "regain_low": Gate("regain_low", 0.2, False),
-    "aligned": Gate("aligned", 0.243, False),
-    "in_range": Gate("in_range", 0.127, False),
+    "aligned": Gate("aligned", 0.243, False),  # aim error in target sizes
+    "in_range": Gate("in_range", 0.127, False),  # range in gun ranges
 }
 # fmt: on
 SAMPLED = tuple(name for name, row in PARAMETERS.items() if row.law != FIXED)

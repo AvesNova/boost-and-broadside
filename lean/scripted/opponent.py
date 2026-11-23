@@ -219,7 +219,7 @@ def marginals(
 
     centre, sharpness, floor = _gate_tensors(config, persona, state.x.device)
     lead_gain, margin_factor = read("lead_gain"), read("boundary_margin")
-    weakest_weight, regain_share = read("weakest_weight"), read("regain_share")
+    weakest_weight = read("weakest_weight")
 
     fight = engage(
         state,
@@ -272,17 +272,17 @@ def marginals(
     target_size = (2.0 * torch.atan(c["hit_radius"] / safe_distance)).clamp(
         read("target_size_minimum"), read("target_size_maximum")
     )
+    store = state.energy * c["inverse_max_energy"]
+    turn_needed = aim_error.abs()
     quantities = {
+        "engaged": range_ratio,
+        "shot_near": turn_needed / (store * c["store_turn"] + TINY),
+        "spend_need": turn_needed,
+        "spend_range": range_ratio,
         "turn": turn_size,
         "level_two": turn_size,
         "level_three": turn_size,
-        "dive_slow": state.speed / c["stall_speed"],
-        "dive_in_turn": in_corner_speeds,
-        "climb_fast": in_corner_speeds,
-        "climb_close": range_ratio,
-        "regain_far": range_ratio,
-        "regain_low": state.energy * c["inverse_max_energy"],
-        "aligned": aim_error.abs() / target_size,
+        "aligned": turn_needed / target_size,
         "in_range": range_ratio,
     }
     quantity = torch.stack([quantities[name] for name in GATES], -1)
@@ -311,18 +311,28 @@ def marginals(
         [(1.0 - turn)[..., None], torch.stack([sides[1], sides[0]], -1).flatten(-2)], -1
     )
 
-    # Power, for the core flight model (dive: store into speed and the 1 g held freed for the
-    # turn; climb: speed into store). Dive when slow, or below corner speed in a hard turn.
-    # Otherwise climb when well above corner speed, or very close to the target, or (a share
-    # of the ticks) when far from every known enemy with a low store. Otherwise coast. A slow
-    # ship never climbs; it dives only with store to spend (the dive fades over the game's
-    # edge band of the store, as the dive itself does), else it coasts.
-    slow = 1.0 - (1.0 - gate["dive_slow"]) * (1.0 - gate["dive_in_turn"] * turn_above_one)
-    dive = slow * (state.energy * c["inverse_fade"]).clamp(0.0, 1.0)
-    far = torch.where(has_target, gate["regain_far"], 1.0)
-    close = torch.where(has_target, gate["climb_close"], 0.0)
-    regain = regain_share * far * gate["regain_low"]
-    climb = (1.0 - slow) * (1.0 - (1.0 - gate["climb_fast"]) * (1.0 - close) * (1.0 - regain))
+    # Power: track a speed target v* (mixed in log space): disengaged the merge speed;
+    # engaged the fight speed, raised to corner speed when a shot is near (the turn it needs is
+    # worth the store and within what the store buys, in range). Climb above v*, dive below
+    # it; the dive only engaged (spend the store only for a purpose). Each fades over the
+    # store's edge band (the bottom for the dive, the top for the climb), as its effect does.
+    engaged = torch.where(has_target, gate["engaged"], 0.0)
+    near = gate["shot_near"] * gate["spend_need"] * gate["spend_range"]
+    log_corner = _log(c["corner_speed"])
+    log_fight = _log(read("fight_speed") * c["sustained_speed"])
+    log_merge = _log(read("merge_speed") * c["corner_speed"])
+    log_engaged = log_fight + near * (log_corner - log_fight)
+    log_target = log_merge + engaged * (log_engaged - log_merge)
+    log_target = log_target.clamp_min(_log(read("speed_floor") * c["stall_speed"]))
+    excess = torch.log(state.speed) - log_target
+    band = read("speed_band")
+    sharpness = 1.0 / (read("power_scale") * read("temperature"))
+    climb_dive = torch.sigmoid(torch.stack([excess - band, -excess - band], -1) * _last(sharpness))
+    bottom = state.energy * c["inverse_fade"]
+    top = c["inverse_fade"] / c["inverse_max_energy"] - bottom
+    room = torch.stack([top, bottom], -1).clamp(0.0, 1.0)
+    climb, dive = (climb_dive * room).unbind(-1)
+    dive = dive * engaged
     power_floor = read("power_floor")
     power = power_floor + (1.0 - 3.0 * power_floor) * torch.stack(
         [1.0 - dive - climb, dive, climb], -1
@@ -333,6 +343,16 @@ def marginals(
     ready = (state.cooldown <= 0) & ~fight.ally_in_line
     fire = torch.where(has_target & ready, gate["aligned"] * gate["in_range"], 0.0)
     return Marginals(stick, power, fire, fight.controlled, fight.target)
+
+
+def _log(x: Tensor | float) -> Tensor | float:
+    """The natural log of a number or a tensor."""
+    return torch.log(x) if isinstance(x, Tensor) else math.log(x)
+
+
+def _last(x: Tensor | float) -> Tensor | float:
+    """A per-ship value (E, N) laid along a last axis (a number as it is)."""
+    return x[..., None] if isinstance(x, Tensor) else x
 
 
 def _gate_tensors(

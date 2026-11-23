@@ -171,20 +171,21 @@ def test_turns_toward_a_target_on_its_left():
     assert chaser_act(config, state, 0)[0, 0, 0].item() == left_indices[-1]
 
 
-# The power rule's cases (lean/scripted/NOTES.md "Power"): own ship at the origin heading +x;
-# the target at `bearing` (radians, 0 ahead) and `distance` gun ranges, flying the same way.
-# Speeds in corner speeds, the store as a fraction of full. Expected: the most likely power.
+# The power's cases (lean/scripted/NOTES.md "Power"): own ship at the origin heading +x; the
+# target at `bearing` (radians, 0 ahead) and `distance` gun ranges, flying the same way at the
+# same speed. Speeds in corner speeds (the P-51D's sustained speed is 0.575), the store as a
+# fraction of full. Expected: the most likely power.
 POWER_CASES = [
     # name, speed, bearing, distance, store, expected
-    ("slow, straight, target ahead", 0.55, 0.0, 2.0, 0.5, DIVE),
-    ("below corner in a hard turn", 0.85, math.pi / 2, 1.5, 0.5, DIVE),
-    ("slow in a hard turn, store empty", 0.6, math.pi / 2, 1.5, 0.0, COAST),
-    ("at corner speed, straight", 1.0, 0.0, 1.5, 0.5, COAST),
-    ("just above corner in a hard turn", 1.08, math.pi / 2, 1.5, 0.5, COAST),
-    ("well above corner speed", 1.3, 0.0, 1.5, 0.5, CLIMB),
-    ("very close behind the target", 1.0, 0.0, 0.12, 0.5, CLIMB),
-    ("far, store low", 1.0, 0.0, 6.0, 0.1, CLIMB),
-    ("far, store high", 1.0, 0.0, 6.0, 0.8, COAST),
+    ("disengaged, slow: no dive (nothing to spend for)", 0.6, 0.0, 6.0, 0.5, COAST),
+    ("disengaged at merge speed", 1.0, 0.0, 6.0, 0.5, COAST),
+    ("disengaged and fast: bank the speed", 1.15, 0.0, 6.0, 0.5, CLIMB),
+    ("disengaged and fast, store full", 1.15, 0.0, 6.0, 1.0, COAST),
+    ("engaged, below the fight speed", 0.45, 0.0, 1.5, 0.5, DIVE),
+    ("engaged, below the fight speed, store empty", 0.45, 0.0, 1.5, 0.0, COAST),
+    ("engaged above the fight speed, no turn needed", 0.7, 0.0, 1.5, 0.8, CLIMB),
+    ("engaged, a shot needing a turn the store buys", 0.7, math.pi / 3, 0.8, 0.8, DIVE),
+    ("the same shot, store nearly empty: no dive", 0.7, math.pi / 3, 0.8, 0.1, CLIMB),
 ]
 
 
@@ -207,14 +208,13 @@ def power_case(speed: float, bearing: float, distance: float, store: float):
 @pytest.mark.parametrize(
     "name, speed, bearing, distance, store, expected", POWER_CASES, ids=[c[0] for c in POWER_CASES]
 )
-def test_power_rule(name, speed, bearing, distance, store, expected):
-    """Author 2026-11-23 (5.1): dive when too slow (above all in a turn), climb when too fast or
-    too close, climb a little when far with a low store, otherwise coast."""
+def test_power_tracks_the_speed_target(name, speed, bearing, distance, store, expected):
+    """Design B5: climb above the speed target v*, dive below it, coast in the band; v* the
+    merge speed disengaged, the fight speed engaged, corner speed when a shot is near (the
+    turn it needs worth the store and within what it buys); the dive only engaged, each
+    faded at its edge of the store."""
     power = power_case(speed, bearing, distance, store)
-    if name == "far, store low":  # "climb a little": about half the ticks, never a dive
-        assert 0.3 < float(power[CLIMB]) < 0.7 and float(power[DIVE]) < 0.05, power.tolist()
-    else:
-        assert int(power.argmax()) == expected and float(power[expected]) > 0.6, power.tolist()
+    assert int(power.argmax()) == expected and float(power[expected]) > 0.6, power.tolist()
 
 
 def test_kept_target_switches_only_for_a_much_closer_enemy():
