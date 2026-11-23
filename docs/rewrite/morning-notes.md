@@ -127,7 +127,7 @@ where to look.
 - K the per-slot league call as one CUDA graph was kept out: +71% collect at 256 environments, nothing at parity (loop 6,320 against 6,301), +0.28 GiB reserved; the commit and its revert are on the branch.
 - K regional compilation (nested_compile_region on the sublayers) does not trace with PyTorch 2.15 and dynamic=True; not pursued. At most about 1,000 of the 5,793 traced operations.
 - K docs/rewrite/sections/scoreboard/train_gpu.py now fills the league through League.after_update (L2's API; it no longer ran): the EMA, the uniform average and 8 snapshots, so 10 network slots play instead of the old 8 snapshots.
-- The warm compile cache sits under /tmp, which is wiped at a real reboot (tmpfs), so the first run after a reboot pays the full cold start (237 s against 93 s warm). Moving TORCHINDUCTOR_CACHE_DIR to ~/.cache/bnb-inductor (already exists) would keep it; small change, not yet made.
+- Done 2026-11-24: the compile cache defaults to ~/.cache/bnb-inductor, so it survives a reboot.
 - The committed doghouse PNGs no longer match what core renders (they predate later flight changes); re-render them when convenient. The web tool loads Plotly from cdn.plot.ly, so its charts need a network connection.
 - A1 P-51D data: wing area 21.67 m^2 (NACA), C_Lmax 1.6 (the AAF's power-on turn value), AR kept 5.83, Oswald e 0.8 assumed; C_D0 0.01504 and propeller efficiency 0.821 refitted to 375 mph and 3,600 ft/min (fit_point_mass).
 - A1 the sustained-turn target is the referenced airframe's own point mass (18.99 deg/s at 163.3 mph, r 220 m), not the October fit's 18.6 at 167 mph (made with 21.83 m^2 and C_Lmax 1.50) nor set 2's 19.8 deg/s.
