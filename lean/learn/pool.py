@@ -49,6 +49,7 @@ snapshots at one addition.
 import copy
 import dataclasses
 import math
+from pathlib import Path
 
 import torch
 from torch import Tensor, nn
@@ -191,6 +192,8 @@ class League:
         self.capacity = torch.zeros((), dtype=torch.long, device=self.device)
         self.slot_member: list[int | None] = [None] * self.slot_count
         self.slot_weights: list[dict[str, Tensor] | None] = [None] * self.slot_count
+        self.slot_snapshot: list[int | None] = [None] * self.slot_count  # the snapshot (its steps) a slot holds
+        self.snapshot_directory: Path | None = None  # where each snapshot's weights are written once
         self.retiring: set[int] = set()
         self.ordinal: dict[int, int] = {}  # snapshot member -> its ordinal (0 the first snapshot)
         self.snapshot_step: dict[int, int] = {}  # snapshot member -> its environment steps
@@ -334,6 +337,9 @@ class League:
                 abandon = new
             index = next(m for m in range(FIRST_SNAPSHOT, self.members) if m not in self.ordinal)
             self._place(index, new, stepper_weights(policy))
+            self.slot_snapshot[new] = steps_after
+            if self.snapshot_directory is not None:
+                save_snapshot(self.snapshot_directory, steps_after, self.slot_weights[new])
             self.ordinal[index] = self.taken
             self.snapshot_step[index] = steps_after
             self.taken += 1
@@ -381,26 +387,75 @@ class League:
     # ---- checkpoints
 
     def state(self) -> dict:
+        """The league's checkpoint state. The weights of a snapshot written to
+        `snapshot_directory` are not in it (the slot's entry is None, its snapshot id in
+        `slot_snapshot`); nor are the averages' slots (entry None, rebuilt from the averages on
+        load: a checkpoint follows after_update, which sets them from the averages); any
+        snapshot not on disk is."""
         names = ("present", "games", "wins", "draws", "member_slot", "capacity")
+        on_disk = [
+            self.snapshot_directory is not None and slot >= 2 and weights is not None and self.slot_snapshot[slot] is not None
+            for slot, weights in enumerate(self.slot_weights)
+        ]
+        rebuilt = [slot < 2 for slot in range(self.slot_count)]
         return {
             **{name: getattr(self, name) for name in names},
-            "slot_member": list(self.slot_member), "slot_weights": list(self.slot_weights),
+            "slot_member": list(self.slot_member),
+            "slot_weights": [
+                None if disk or derived else weights
+                for weights, disk, derived in zip(self.slot_weights, on_disk, rebuilt)
+            ],
+            "slot_from_averages": [slot < 2 and weights is not None for slot, weights in enumerate(self.slot_weights)],
+            "slot_snapshot": [snapshot if disk else None for snapshot, disk in zip(self.slot_snapshot, on_disk)],
             "retiring": sorted(self.retiring), "ordinal": dict(self.ordinal), "snapshot_step": dict(self.snapshot_step),
             "taken": self.taken, "abandoned": self.abandoned,
         }
 
-    def load(self, state: dict, policy) -> None:
+    def load(self, state: dict, policy, averages, directory: Path | None = None) -> None:
+        """Restore a state(); the snapshots it references are read from `directory`, and
+        written to `snapshot_directory` when that lacks them (a resume into another run directory).
+        `averages` (already loaded) give the averages' slots back."""
         for name in ("present", "games", "wins", "draws", "member_slot", "capacity"):
             setattr(self, name, state[name].to(self.device).clone())
         self.slot_member = list(state["slot_member"])
-        self.slot_weights = [
-            None if weights is None else {name: value.to(self.device) for name, value in weights.items()}
-            for weights in state["slot_weights"]
-        ]
+        referenced = state.get("slot_snapshot", [None] * self.slot_count)
+        self.slot_snapshot = list(referenced)
+        self.slot_weights = []
+        derived = state.get("slot_from_averages", [False] * self.slot_count)
+        for slot, (weights, snapshot) in enumerate(zip(state["slot_weights"], referenced)):
+            if derived[slot]:
+                weights = stepper_weights(policy, getattr(averages, "ema" if slot == EMA - 1 else "uniform"))
+            if weights is None and snapshot is not None:
+                weights = load_snapshot(directory, snapshot, self.device)
+                if self.snapshot_directory is not None and not snapshot_path(self.snapshot_directory, snapshot).exists():
+                    save_snapshot(self.snapshot_directory, snapshot, weights)
+            self.slot_weights.append(None if weights is None else {name: value.to(self.device) for name, value in weights.items()})
         self.retiring = set(state["retiring"])
         self.ordinal, self.snapshot_step = dict(state["ordinal"]), dict(state["snapshot_step"])
         self.taken, self.abandoned = state["taken"], state["abandoned"]
         self.template = copy.deepcopy(Stepper(policy)).to("meta").eval()
+
+
+SNAPSHOTS = "snapshots"
+
+
+def snapshot_path(directory: Path, steps: int) -> Path:
+    return Path(directory) / f"{steps:012d}.pt"
+
+
+def save_snapshot(directory: Path, steps: int, weights: dict[str, Tensor]) -> None:
+    """A snapshot's weights (a slot's, in their training dtype), written once, atomically."""
+    path = snapshot_path(directory, steps)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    torch.save(weights, temporary)
+    temporary.replace(path)
+
+
+def load_snapshot(directory: Path | None, steps: int, device) -> dict[str, Tensor]:
+    if directory is None:
+        raise FileNotFoundError(f"snapshot {steps} is not in the checkpoint and no snapshot directory is given")
+    return torch.load(snapshot_path(directory, steps), map_location=device, weights_only=True)
 
 
 def pfsp(win_rate: Tensor, present: Tensor, floor: float) -> Tensor:

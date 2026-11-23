@@ -96,9 +96,16 @@ What is, and what is open. History: `docs/rewrite/core-worklog.md` and this file
   most 12 (the oldest go past it): 11 kept to 500M steps, 12 to about 1.5B.
 - Checkpoints (`lean.train`): every 10M environment steps of a stage,
   DIR/checkpoints/<stage>_<steps>.pt, none deleted: live weights, averages, optimiser state,
-  league (tallies, slots and their weights), teacher term, step counters, the games in
-  progress (game state, carry) and the generators' states. `--resume` continues with the
-  checkpoint's settings and plan.
+  league (tallies, which snapshot each slot holds; no slot weights), teacher term, step counters, the games in
+  progress (game state, carry) and the generators' states. Each league snapshot's weights are
+  written once, when taken, to DIR/snapshots/<steps>.pt (training dtype); a checkpoint names
+  them (`slot_snapshot`) and a resume reads them back (a retiring snapshot is still a file),
+  copying them into the new run's directory when that differs. The averages' two slots are
+  rebuilt from the averages on load. A checkpoint is then live + both averages + Adam's two
+  moments (about 5 snapshots' worth, 43 MB at smoke size, constant as the league fills; it was
+  60 to 113 MB there with 3 to 6 snapshots) plus the games. `--resume` continues with the
+  checkpoint's settings and plan; a checkpoint copied elsewhere needs the snapshots directory beside its
+  checkpoints directory.
 
 ## Rollouts and the update (as built before L1, unchanged)
 
@@ -189,9 +196,8 @@ was below a fifth of 3e-4. One run each.
   networks (GPU run above): look at the guard with TORCH_LOGS=recompiles_verbose.
 - Steady steps per second with league networks at parity under the per-slot form: not
   measured (the short run had one such update).
-- Checkpoints repeat every slot's weights (each snapshot in every later checkpoint) and the
-  games in progress; size in "Ran (step L2)". Writing each snapshot once beside the
-  checkpoints would shrink them, if disk matters on the rented box.
+- Checkpoints repeat the games in progress and Adam's moments (backlog P done: snapshots are
+  written once, see Checkpoints above; the 249 MB figure in "Ran (step L2)" is the old form).
 - The teacher term's numbers (0.5, 0.95 per update, cut-off 0.005) and the BC length are
   defaults with reasons, not measured here; v2's BC ran 256 minibatches (8x the Adam steps per
   update); lean's BC uses the RL minibatches (32).

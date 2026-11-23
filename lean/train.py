@@ -17,7 +17,8 @@ live weights in DIR/<stage>.pt at the stage's end. Evaluation (the crossover) is
 command: python -m lean.eval.
 
 Checkpoints: with `--out`, every LearnConfig.checkpoint_every environment steps of a stage
-DIR/checkpoints/<stage>_<steps>.pt holds everything a resume needs (none is deleted): the
+DIR/checkpoints/<stage>_<steps>.pt holds everything a resume needs (none is deleted; each
+league snapshot's weights are written once to DIR/snapshots/<steps>.pt, and a checkpoint names them): the
 live weights, both averages, the optimiser's state, the league, the teacher term, the step
 counters, the games in progress (game state and carry) and the random generators' states.
 `--resume` (a checkpoint, or a directory: its latest) continues the run with its own
@@ -55,7 +56,7 @@ from lean.learn import (
     start,
     update,
 )
-from lean.learn.pool import SnapshotSchedule
+from lean.learn.pool import SNAPSHOTS, SnapshotSchedule
 
 # Shown on each update's line, in this order (the rest of the metrics are not printed).
 SHOWN = (
@@ -120,8 +121,11 @@ def new_stage(name: str, updates: int, config: LearnConfig, game_config, policy,
     )
 
 
-def restored_stage(checkpoint: dict, config: LearnConfig, policy, generator, updates: int) -> Stage:
-    """The stage a checkpoint holds, the policy loaded with its live weights."""
+def restored_stage(
+    checkpoint: dict, config: LearnConfig, policy, generator, updates: int, source: Path, out: Path | None
+) -> Stage:
+    """The stage a checkpoint holds, the policy loaded with its live weights; the league's
+    snapshots are read from the `source` directory (copied into out/snapshots if missing)."""
     device = next(policy.parameters()).device
     policy.load_state_dict(checkpoint["live"])
     optimiser = make_optimiser(config, policy)
@@ -129,7 +133,9 @@ def restored_stage(checkpoint: dict, config: LearnConfig, policy, generator, upd
     averages = WeightAverages(policy, config)
     averages.load({key: value for key, value in checkpoint["averages"].items()})
     league = League(config, device)
-    league.load(checkpoint["league"], policy)
+    if out is not None:
+        league.snapshot_directory = out / SNAPSHOTS
+    league.load(checkpoint["league"], policy, averages, source)
     set_random_states(checkpoint["random"], generator, device)
     return Stage(
         checkpoint["stage"], updates, checkpoint["updates"], checkpoint["steps"], checkpoint["adam_steps"], optimiser,
@@ -147,6 +153,8 @@ def run_stage(stage: Stage, config: LearnConfig, game_config, policy, generator,
     league = stage.league
     store = RolloutStore(config.segments_per_update, config.stream_rollout)
     checkpoints = SnapshotSchedule((config.checkpoint_every,))
+    if out is not None:
+        league.snapshot_directory = out / SNAPSHOTS
     envs = stage.state.exists.shape[0]
     while stage.index < stage.updates:
         index = stage.index
@@ -267,6 +275,7 @@ def main() -> None:
     if arguments.resume is not None:
         path = latest_checkpoint(arguments.resume)
         resumed = load_checkpoint(path, device)
+        snapshots = path.parent.parent / SNAPSHOTS  # a checkpoint's snapshots sit beside its directory
         config = LearnConfig(**resumed["learn_config"])
         plan = dict(resumed["plan"])
         if arguments.updates is not None:
@@ -300,7 +309,7 @@ def main() -> None:
 
     for name in stages:
         if resumed is not None and name == resumed["stage"]:
-            stage = restored_stage(resumed, config, policy, generator, planned[name])
+            stage = restored_stage(resumed, config, policy, generator, planned[name], snapshots, out)
         else:
             stage = new_stage(name, planned[name], config, game_config, policy, plan["envs"], generator)
         averages = run_stage(stage, config, game_config, policy, generator, compiled, out, plan)

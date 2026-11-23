@@ -1,6 +1,7 @@
 """lean.train end to end at smoke size: the BC stage hands its averaged weights to RL."""
 
 import re
+import shutil
 import sys
 
 import torch
@@ -60,6 +61,7 @@ def test_checkpoints_every_period_and_a_resume_gives_the_same_next_updates(monke
     middle["plan"]["out"] = str(resumed)
     (resumed / "checkpoints").mkdir(parents=True)
     torch.save(middle, resumed / "checkpoints" / names[0])
+    shutil.copytree(straight / "snapshots", resumed / "snapshots")  # the checkpoint names its snapshots
     monkeypatch.setattr(sys, "argv", ["lean.train", "--device", "cpu", "--resume", str(resumed)])
     train.main()
     second = capsys.readouterr().out.splitlines()
@@ -77,3 +79,42 @@ def test_checkpoints_every_period_and_a_resume_gives_the_same_next_updates(monke
     assert torch.equal(end_a["carry"].member, end_b["carry"].member)
     assert torch.allclose(end_a["league"]["games"], end_b["league"]["games"])
     assert torch.allclose(end_a["game_state"].ships, end_b["game_state"].ships, rtol=1e-5, atol=1e-4)
+
+
+def test_a_checkpoint_holds_no_snapshot_weights_and_resume_reads_them_from_the_snapshot_files(
+    monkeypatch, tmp_path, capsys
+):
+    """Each snapshot is written once to DIR/snapshots/<steps>.pt; a checkpoint names the
+    snapshots its league holds and carries no slot weights for them or for the averages'
+    slots, and a resume gives the league slots back from the files and the averages."""
+    run(monkeypatch, "--stage", "rl", "--updates", "4", "--out", str(tmp_path))
+    files = sorted((tmp_path / "snapshots").iterdir())
+    assert [file.name for file in files] == [f"{steps:012d}.pt" for steps in (64, 128, 192, 256)]
+    checkpoint = load_checkpoint(tmp_path / "checkpoints" / "rl_000000000256.pt")
+    league = checkpoint["league"]
+    held = [snapshot for snapshot in league["slot_snapshot"] if snapshot is not None]
+    assert sorted(held) == [64, 128, 192, 256]
+    assert all(weights is None for weights in league["slot_weights"])
+    size = (tmp_path / "checkpoints" / "rl_000000000256.pt").stat().st_size
+    # live weights, two averages (float32) and Adam's two moments: about five snapshots, not the four snapshots and two slots again
+    assert size < 5.5 * files[0].stat().st_size
+    saved = torch.load(files[0], weights_only=True)
+    assert all(tensor.dtype == checkpoint["live"][name.removeprefix("policy.")].dtype for name, tensor in saved.items()
+               if name.removeprefix("policy.") in checkpoint["live"])
+
+    from lean.learn import League, LearnConfig, WeightAverages
+
+    config = LearnConfig(**checkpoint["learn_config"])
+    policy = model.Policy(checkpoint["model_config"])
+    policy.load_state_dict(checkpoint["live"])
+    averages = WeightAverages(policy, config)
+    averages.load(checkpoint["averages"])
+    restored = League(config)
+    restored.load(league, policy, averages, tmp_path / "snapshots")
+    for slot, snapshot in enumerate(league["slot_snapshot"]):
+        if snapshot is not None:
+            for name, value in torch.load(tmp_path / "snapshots" / f"{snapshot:012d}.pt", weights_only=True).items():
+                assert torch.equal(restored.slot_weights[slot][name], value)
+    for slot, which in ((0, "ema"), (1, "uniform")):
+        for name, value in getattr(averages, which).items():
+            assert torch.equal(restored.slot_weights[slot][f"policy.{name}"], value)
