@@ -1,0 +1,61 @@
+{
+ "cold_s": 221.3,
+ "graphs": 4,
+ "graph_breaks": 0,
+ "operations": 5721,
+ "functions": {
+  "act": {
+   "graphs": 1,
+   "operations": 1746,
+   "aot": [
+    [
+     "forward",
+     2523
+    ]
+   ],
+   "backend_s": 32.7
+  },
+  "advance": {
+   "graphs": 1,
+   "operations": 2220,
+   "aot": [
+    [
+     "forward",
+     2596
+    ]
+   ],
+   "backend_s": 28.2
+  },
+  "minibatch_loss": {
+   "graphs": 1,
+   "operations": 1009,
+   "aot": [
+    [
+     "forward",
+     1455
+    ],
+    [
+     "backward",
+     1933
+    ]
+   ],
+   "backend_s": 42.7
+  },
+  "slot_actions": {
+   "graphs": 1,
+   "operations": 746,
+   "aot": [
+    [
+     "forward",
+     1173
+    ]
+   ],
+   "backend_s": 17.5
+  }
+ },
+ "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU",
+ "power_profile": "performance",
+ "torch": "2.15.0+cu132",
+ "budget_s": 260,
+ "note": "Recorded on the laptop (quiet, load below 4) for core 245e537f plus step K's fixes; budget 260 s proposed in step K (2026-11-24)."
+}
