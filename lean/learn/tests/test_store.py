@@ -153,9 +153,8 @@ def test_pinned_streaming_equals_the_device_store():
     """On a GPU: a store in pinned host memory (asynchronous copies, prefetched micro-batches)
     gives the same batches, targets and update as the same store kept on the device."""
     config, game_config, policy, opponent = setting()
-    policy = policy.cuda()
     (rollout,) = rollouts(config, game_config, policy, opponent, 1, 16)
-    rollout = _to(rollout, "cuda")
+    policy, rollout = policy.cuda(), _to(rollout, "cuda")
     stores = [RolloutStore.of(rollout, stream) for stream in (True, False)]
     assert stores[0].pinned and not stores[1].pinned
     names = stores[0].observation_names + ("deal_row", "reset", "action", "log_probability", "value", "reward", "next_state")

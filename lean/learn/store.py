@@ -43,6 +43,7 @@ indexes them directly (the same types, no copies).
 """
 
 import dataclasses
+import time
 
 import torch
 from torch import Tensor
@@ -101,6 +102,12 @@ class RolloutStore:
         self.observation_names: tuple[str, ...] = ()
         self._staging: dict = {}
         self.centres: Tensor | None = None  # the critic's support the stored values were decoded with
+        # Measurement only (`timing` True): the host's seconds waiting for copies and gathering
+        # micro-batches, and per micro-batch a pair of CUDA events around the compute stream's
+        # wait for its copy (read by `stalls`).
+        self.timing = False
+        self.host_wait = self.host_gather = 0.0
+        self._stall_events: list = []
 
     # ------------------------------------------------------------------ sizes
 
@@ -231,7 +238,17 @@ class RolloutStore:
     def ready(self) -> None:
         """The host waits for every copy written so far (once per update, before reading)."""
         if self.copy_stream is not None:
+            began = time.perf_counter()
             self.copy_stream.synchronize()
+            self.host_wait += time.perf_counter() - began
+
+    def stalls(self) -> float:
+        """Seconds the compute stream waited for micro-batch copies since the last call
+        (measurement only: needs `timing`; synchronises)."""
+        torch.cuda.synchronize(self.device)
+        seconds = sum(before.elapsed_time(after) for before, after in self._stall_events) / 1000
+        self._stall_events = []
+        return seconds
 
     def counts(self) -> Tensor:
         """(V + 1, 3) float per view: own tokens, next_valid tokens, labelled own tokens."""
@@ -282,11 +299,15 @@ class RolloutStore:
 
         def issue(row: int) -> None:
             slot = slots[row % 2]
+            began = time.perf_counter()
             slot["copied"].synchronize()  # the staging buffer's previous copy has finished
+            waited = time.perf_counter()
             views = index[row]
             for name in large:
                 torch.index_select(self.data[name], 1, views, out=slot["staging"][name])
             torch.index_select(self.carry, 0, views, out=slot["staging"]["carry"])
+            self.host_wait += waited - began
+            self.host_gather += time.perf_counter() - waited
             with torch.cuda.stream(self.copy_stream):
                 self.copy_stream.wait_event(slot["released"])
                 for name, staged in slot["staging"].items():
@@ -296,7 +317,13 @@ class RolloutStore:
         issue(0)
         for row in range(index.shape[0]):
             slot = slots[row % 2]
+            if self.timing:
+                before, after = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+                before.record(compute)
             compute.wait_event(slot["copied"])
+            if self.timing:
+                after.record(compute)
+                self._stall_events.append((before, after))
             if row + 1 < index.shape[0]:
                 issue(row + 1)  # gathered on the host while the device works on this one
             yield finish(dict(slot["device"]), index_device[row])

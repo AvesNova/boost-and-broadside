@@ -1,23 +1,31 @@
 """Scoreboard, training on the GPU: collect alone, update alone and the whole loop, eager
-against compiled, with peak memory and the first update's time (the compile).
+against compiled, with peak memory, the first update's time (the compile) and the cost of
+streaming the rollout.
 
-    PYTHONPATH=.:src python docs/rewrite/sections/scoreboard/train_gpu.py \
-        [--compile | --no-compile] [--envs 256] [--updates 3] [--game v2|core] \
-        [--minibatches 8] [--snapshots 8] [--targets-once] [--no-bf16]
+    PYTHONPATH=. python docs/rewrite/sections/scoreboard/train_gpu.py \\
+        [--compile | --no-compile] [--envs 2048] [--segments 4] [--updates 3] [--game v2|core] \\
+        [--minibatches 32] [--micro 64] [--stream | --no-stream] [--snapshots 8] \\
+        [--targets-every-epoch] [--no-bf16] [--out rows.jsonl] [--label text]
 
-The loop is lean/train.py's (collect, update, league addition and abandon) with the
-league filled with `--snapshots` copies of the initial weights before the first rollout,
-so every league member is present as in a run's steady state (snapshot_every is set
-beyond the run, so nothing is added or abandoned during it).
+Defaults are LearnConfig's (the update at parity with v2: 2,048 environments x 4 segments
+x 128 ticks, 32 minibatches, micro-batches of 64 views, the rollout streamed to pinned host
+memory, targets once per update). The loop is lean/train.py's (segments into one
+RolloutStore, update, league addition) with the league filled with `--snapshots` copies of
+the initial weights before the first rollout, so every league member is present as in a
+run's steady state (snapshot_every is set beyond the run, so nothing is added or abandoned).
 
-Prints one line per update (collect s, update s, loop s, environment steps per second of
-each) and a summary: the first update (the compile, cold or warm by the inductor cache
-in TORCHINDUCTOR_CACHE_DIR), the steady mean over the later updates, peak memory
-allocated and reserved, and the seconds from process start to the end of the first update.
+Per update: collect s, update s, loop s and environment steps per second of each; the
+host's seconds waiting for copies (RolloutStore.ready and the staging buffers) and
+gathering micro-batches; the compute stream's seconds waiting for micro-batch copies (CUDA
+events). Summary: the first update (the compile, cold or warm by the inductor cache in
+TORCHINDUCTOR_CACHE_DIR), the steady mean over the later updates, peak memory allocated
+and reserved, and the store's bytes per environment tick. With `--out` each update's row
+and the summary are appended to a JSON-lines file as they complete.
 """
 
 import argparse
 import dataclasses
+import json
 import statistics
 import time
 
@@ -26,30 +34,35 @@ PROCESS_START = time.perf_counter()
 import torch  # noqa: E402
 
 from lean import game, model, scripted  # noqa: E402
-from lean.learn import League, LearnConfig, Opponent, collect, make_optimiser, start, update  # noqa: E402
+from lean.learn import League, LearnConfig, Opponent, RolloutStore, collect, make_optimiser, start, update  # noqa: E402
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    defaults = LearnConfig()
     parser.add_argument("--compile", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--envs", type=int, default=256)
+    parser.add_argument("--envs", type=int, default=defaults.environments)
+    parser.add_argument("--segments", type=int, default=defaults.segments_per_update)
     parser.add_argument("--updates", type=int, default=3)
     parser.add_argument("--game", choices=("v2", "core"), default="v2")
-    parser.add_argument("--minibatches", type=int, default=None, help="default: LearnConfig's")
+    parser.add_argument("--minibatches", type=int, default=defaults.minibatches)
+    parser.add_argument("--micro", type=int, default=defaults.micro_batch_views, help="LearnConfig.micro_batch_views")
+    parser.add_argument("--stream", action=argparse.BooleanOptionalAction, default=defaults.stream_rollout)
     parser.add_argument("--snapshots", type=int, default=8)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--targets-once", action="store_true", help="LearnConfig.targets_every_epoch = False")
+    parser.add_argument("--targets-every-epoch", action="store_true", help="LearnConfig.targets_every_epoch = True")
     parser.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=True, help="LearnConfig.bf16")
+    parser.add_argument("--out", default=None, help="append rows to this JSON-lines file")
+    parser.add_argument("--label", default="")
     arguments = parser.parse_args()
 
     device = torch.device("cuda")
-    config = LearnConfig()
-    if arguments.minibatches is not None:
-        config = dataclasses.replace(config, minibatches=arguments.minibatches)
     config = dataclasses.replace(
-        config, snapshot_every=10**9, bf16=arguments.bf16, targets_every_epoch=not arguments.targets_once
+        defaults, minibatches=arguments.minibatches, micro_batch_views=arguments.micro, stream_rollout=arguments.stream,
+        segments_per_update=arguments.segments, snapshot_every=10**9, bf16=arguments.bf16,
+        targets_every_epoch=arguments.targets_every_epoch,
     )
-    envs, ticks = arguments.envs, config.segment_ticks
+    envs, ticks, segments = arguments.envs, config.segment_ticks, config.segments_per_update
     torch.manual_seed(arguments.seed)
     generator = torch.Generator(device=device).manual_seed(arguments.seed)
     game_config = game.GameConfig(ghost_bullets=True) if arguments.game == "v2" else game.GameConfig.core()
@@ -61,53 +74,87 @@ def main() -> None:
     league.every = config.snapshot_every
     opponent = Opponent(scripted.ScriptedConfig(), league, config.self_play_share, config.persona_spread)
     state, carry = start(config, game_config, policy, opponent, envs, generator)
+    store = RolloutStore(segments, config.stream_rollout)
+    store.timing = True
     compiled = arguments.compile
-    print(
-        f"compile={compiled} bf16={config.bf16} envs={envs} ticks={ticks} game={arguments.game} minibatches={config.minibatches} "
-        f"epochs={config.epochs} snapshots={league.snapshots} "
-        f"torch {torch.__version__} {torch.cuda.get_device_name()}",
-        flush=True,
-    )
+    setting = {
+        "label": arguments.label, "compile": compiled, "bf16": config.bf16, "envs": envs, "segments": segments, "ticks": ticks,
+        "game": arguments.game, "minibatches": config.minibatches, "micro_batch_views": config.micro_batch_views,
+        "stream": config.stream_rollout, "targets_every_epoch": config.targets_every_epoch, "epochs": config.epochs,
+        "snapshots": league.snapshots, "torch": torch.__version__, "gpu": torch.cuda.get_device_name(),
+    }
+    print(setting, flush=True)
+
+    def persist(row: dict) -> None:
+        if arguments.out:
+            with open(arguments.out, "a") as file:
+                file.write(json.dumps({**setting, **row}) + "\n")
 
     rows = []
     first_update_end = None
+    steps = envs * ticks * segments
     for index in range(arguments.updates):
         torch.cuda.synchronize()
         began = time.perf_counter()
-        rollout = collect(config, game_config, policy, opponent, state, carry, ticks, generator, compiled=compiled)
-        state, carry = rollout.state, rollout.carry
-        torch.cuda.synchronize()
-        collected = time.perf_counter()
-        update(
-            config, policy, optimiser, rollout, scripted_win_rate=league.scripted_win_rate(), update_index=index,
-            generator=generator, compiled=compiled,
-        )
-        replaced = league.maybe_add(policy, index + 1)
-        if replaced is not None:
-            raise RuntimeError("the league should not change during the measurement")
+        for segment in range(segments):
+            rollout = collect(
+                config, game_config, policy, opponent, state, carry, ticks, generator, compiled=compiled, store=store,
+                segment=segment,
+            )
+            state, carry = rollout.state, rollout.carry
         del rollout
         torch.cuda.synchronize()
+        collected = time.perf_counter()
+        store.host_wait = store.host_gather = 0.0
+        store.stalls()
+        update(
+            config, policy, optimiser, store, scripted_win_rate=league.scripted_win_rate(), update_index=index,
+            generator=generator, compiled=compiled,
+        )
+        if league.maybe_add(policy, index + 1) is not None:
+            raise RuntimeError("the league should not change during the measurement")
+        torch.cuda.synchronize()
         ended = time.perf_counter()
+        stall = store.stalls() if store.pinned else 0.0
         if first_update_end is None:
             first_update_end = ended
-        steps = envs * ticks
-        row = (collected - began, ended - collected, ended - began)
+        row = {
+            "update": index, "collect_s": collected - began, "update_s": ended - collected, "loop_s": ended - began,
+            "host_wait_s": store.host_wait, "host_gather_s": store.host_gather, "compute_stall_s": stall,
+        }
         rows.append(row)
+        persist(row)
         print(
-            f"update {index}: collect {row[0]:.2f} s ({steps / row[0]:.0f}/s) update {row[1]:.2f} s ({steps / row[1]:.0f}/s) "
-            f"loop {row[2]:.2f} s ({steps / row[2]:.0f}/s)",
+            f"update {index}: collect {row['collect_s']:.2f} s ({steps / row['collect_s']:.0f}/s) "
+            f"update {row['update_s']:.2f} s ({steps / row['update_s']:.0f}/s) loop {row['loop_s']:.2f} s "
+            f"({steps / row['loop_s']:.0f}/s) | host wait {store.host_wait:.3f} s gather {store.host_gather:.2f} s "
+            f"compute stall {stall:.3f} s",
             flush=True,
         )
     steady = rows[1:] or rows
-    mean = [statistics.mean(row[k] for row in steady) for k in range(3)]
-    steps = envs * ticks
+    mean = {name: statistics.mean(row[name] for row in steady) for name in rows[0] if name != "update"}
+    sizes = store.nbytes()
+    summary = {
+        "summary": True,
+        "first_collect_s": rows[0]["collect_s"], "first_update_s": rows[0]["update_s"],
+        "collect_per_s": steps / mean["collect_s"], "update_per_s": steps / mean["update_s"], "loop_per_s": steps / mean["loop_s"],
+        "steady_host_wait_s": mean["host_wait_s"], "steady_host_gather_s": mean["host_gather_s"],
+        "steady_compute_stall_s": mean["compute_stall_s"],
+        "peak_allocated_gib": torch.cuda.max_memory_allocated() / 2**30,
+        "peak_reserved_gib": torch.cuda.max_memory_reserved() / 2**30,
+        "start_to_first_update_end_s": first_update_end - PROCESS_START,
+        "store_bytes_per_environment_tick": sum(sizes.values()) / steps,
+        "store_bytes": sizes,
+    }
+    persist(summary)
     print(
-        f"SUMMARY compile={compiled} bf16={config.bf16} targets_every_epoch={config.targets_every_epoch} envs={envs} game={arguments.game} minibatches={config.minibatches} "
-        f"| first update: collect {rows[0][0]:.1f} s update {rows[0][1]:.1f} s "
-        f"| steady steps/s: collect {steps / mean[0]:.0f} update {steps / mean[1]:.0f} loop {steps / mean[2]:.0f} "
-        f"| peak allocated {torch.cuda.max_memory_allocated() / 2**30:.2f} GiB reserved "
-        f"{torch.cuda.max_memory_reserved() / 2**30:.2f} GiB | start to first update end "
-        f"{first_update_end - PROCESS_START:.1f} s",
+        f"SUMMARY {setting} | first update: collect {rows[0]['collect_s']:.1f} s update {rows[0]['update_s']:.1f} s "
+        f"| steady steps/s: collect {summary['collect_per_s']:.0f} update {summary['update_per_s']:.0f} "
+        f"loop {summary['loop_per_s']:.0f} | host wait {mean['host_wait_s']:.3f} s gather {mean['host_gather_s']:.2f} s "
+        f"compute stall {mean['compute_stall_s']:.3f} s per update | peak allocated "
+        f"{summary['peak_allocated_gib']:.2f} GiB reserved {summary['peak_reserved_gib']:.2f} GiB | start to first "
+        f"update end {summary['start_to_first_update_end_s']:.1f} s | store {summary['store_bytes_per_environment_tick']:.0f} "
+        f"bytes per environment tick",
         flush=True,
     )
 
