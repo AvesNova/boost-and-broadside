@@ -19,8 +19,8 @@ deals); each tick records only the seat's row (`deal_row`).
 
 Compact types (author 2026-11-23). `stored` narrows a record as it is written: positions,
 headings and the PPO numbers (`FLOAT32`) stay float32; every other float is float16; joint
-actions and hit labels are int8 (signed: the -1 sentinel stays); the deal row int32; masks
-stay bool. `widened` casts back on the device after the copy (floats to float32, integers
+actions (the observation's pending actions too) and hit labels are int8 (signed: the -1
+sentinel stays); the deal row int32; masks stay bool. `widened` casts back on the device after the copy (floats to float32, integers
 to long), before anything reaches the model, so the position code and the rotary angles are
 computed from float32 positions. The deal table keeps the game's float32 (it is small).
 
@@ -62,8 +62,9 @@ EPISODE_CONSTANT = ("field", "field_pos")
 # Floats kept in float32: positions and headings (the position code and the rotary angles
 # read them) and the PPO numbers.
 FLOAT32 = frozenset(("pos", "heading", "field_pos", "position_offset", "log_probability", "value", "reward"))
-# Small integers stored as int8: joint actions (< 42) and hit labels (-1 to 2).
-INT8 = frozenset(("action", "teacher", "hit_label"))
+# Small integers stored as int8: joint actions (< 42; the observation's pending action, up to
+# 42 for none) and hit labels (-1 to 2).
+INT8 = frozenset(("action", "teacher", "pending", "hit_label"))
 
 
 def stored(name: str, value: Tensor) -> Tensor:

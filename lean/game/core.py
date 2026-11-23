@@ -26,6 +26,7 @@ from lean.contract import (
     BULLET_SLOTS,
     FIELD_FEATURES,
     GLOBAL_FEATURES,
+    NO_PENDING,
     SHIP_COLUMNS,
     SHIP_FEATURES,
     SHIP_TYPES,
@@ -33,6 +34,7 @@ from lean.contract import (
     Obs,
     State,
     StepOut,
+    join_action,
     random_keywords,
 )
 
@@ -53,19 +55,28 @@ class GameConfig:
     """The rules of one run: the core game (docs/rewrite/core-decisions.md).
 
     arena_radius: metres; boundary damage starts beyond it. boundary_ramp_width: metres over
-    which boundary damage rises to its maximum. clock_ticks: the episode length. spawn:
-    "sides" (each team in a disc on its side of a random axis, noses toward the enemy) or
-    "mixed" (every ship uniform in the arena, uniform heading). lineup: type names
-    (lean.game.card.TYPE_NAMES) by rank within a team, cycled, the same for both teams.
-    tick_length: seconds.
+    which boundary damage rises to its maximum. clock_ticks: the episode length. spawn, the
+    rule chosen at launch (`deal`): "mixed" (every ship uniform over the spawn disc, uniform
+    heading) or "sides" (each team uniform over a half disc on its side of a random axis,
+    noses toward the other side); under both, no ship starts near the edge facing outward.
+    lineup: type names (lean.game.card.TYPE_NAMES) by rank within a team, cycled, the same for
+    both teams. tick_length: seconds.
+
+    training_spawn (on in training, off for evaluation, play and the sandbox): each ship of an
+    environment starts at a proper speed uniform from its stall speed to its top level speed,
+    a shield uniform from 0 to full and a store uniform from 0 to full, except that a share
+    `standard_spawn_share` of environments (drawn per environment at the deal) takes the
+    standard spawn (full shield, half store, the spawn speed). Off: the standard spawn for all.
     """
 
     arena_radius: float = 4200.0
     boundary_ramp_width: float = 300.0
     clock_ticks: int = 5400
-    spawn: str = "sides"
+    spawn: str = "mixed"
     lineup: tuple[str, ...] = ("p51d",)
     tick_length: float = 1.0 / 30.0
+    training_spawn: bool = False
+    standard_spawn_share: float = 0.125
     # Fields drawn per environment at every reset (v2's random map, src/bnb/game/physics/
     # spawning.py new_map, real-scale elimination's values): `field_count` fields in
     # point-symmetric pairs (and one at the centre for an odd count), centres uniform in
@@ -196,8 +207,9 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
 
 
 def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> dict[str, Tensor]:
-    """Per ship type (card order): cruise speed (straight, coasting, thrust equal to drag),
-    corner speed (the g limit meets the lift limit), bullet launch speed (cruise plus muzzle)
+    """Per ship type (card order): cruise speed (straight, coasting, thrust equal to drag: the
+    top level speed), stall speed (the wing's lift limit holds 1 g), corner speed (the g limit
+    meets the lift limit), bullet launch speed (cruise plus muzzle)
     and gun range (how far a bullet fired at cruise travels in its life under drag: v2's
     `api.gun_range`). Solved with the game's own flight functions, so the scripted opponent is
     told these, not guessed."""
@@ -220,6 +232,7 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
     life = c.bullet_moves.float() * config.tick_length
     return {
         "cruise_speed": cruise,
+        "stall_speed": torch.sqrt(card.GRAVITY / c.lift),
         "corner_speed": torch.sqrt(c.max_acceleration / c.lift),
         "bullet_launch_speed": launch,
         "gun_range": torch.log1p(c.bullet_drag * launch * life) / c.bullet_drag,
@@ -663,15 +676,20 @@ def draw_noise(config: GameConfig, envs: int, slots: int, generator: torch.Gener
 
 
 def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tensor]) -> tuple[State, StepOut]:
-    """One tick. action: (E, N, 3) long [stick, power, fire]; noise from draw_noise.
+    """One tick. action: (E, N, 3) long [stick, power, fire], every ship's action chosen on
+    this tick; noise from draw_noise.
 
-    Slots that are not alive at tick start neither act nor change. The returned state of a
+    The one-tick action delay: the tick applies each ship's pending action (state.pending,
+    chosen on the previous tick; neutral after a deal) and `action` becomes the new pending
+    action, applied by the next tick. Slots that are not alive at tick start neither act nor
+    change (their pending action is kept as given, never applied). The returned state of a
     finished environment (StepOut.done) is the final state of its episode.
     """
     E, _, N, K = state.bullets.shape
     device = state.ships.device
     index = slot_indices(N, device)
-    stick, power, shoot = action[..., 0], action[..., 1], action[..., 2] == 1
+    applied = state.pending
+    stick, power, shoot = applied[..., 0], applied[..., 1], applied[..., 2] == 1
     alive0 = state.alive
 
     shots = _fire(config, state, shoot, noise["spread"], index)
@@ -718,6 +736,7 @@ def step(config: GameConfig, state: State, action: Tensor, noise: dict[str, Tens
         bullet_counts=torch.stack([moves_left, fired_tick], 1),
         bullet_real=shots.bullet_real,
         tick=tick,
+        pending=action,
     )
     out = StepOut(
         damage_taken=total,
@@ -942,22 +961,22 @@ def _end_check(
 ) -> tuple[Tensor, Tensor, Tensor]:
     """The tick count after this tick, done (E,) and result (E,) (0 or 1 the winner, 2 a draw, -1
     not done). A wipe ends the game: the team with ships left wins, both wiped is a draw. At the
-    clock (v2's clock_result, src/bnb/game/modes/phase.py) the team with more health over its
-    living ships wins, equal health a draw; health is the shield after this tick's recharge
-    (`shield`) over the full shield. A lead within float32 rounding of the sums is a draw: the
-    two sums add their ships in different orders, so an exact tie can differ by a rounding
-    residue."""
+    clock: more living ships wins; equal living ships, more total shield over the living ships
+    wins (the shield after this tick's recharge, `shield`); equal on both, a draw. A shield lead
+    within float32 rounding of the sums is equal: the two sums add their ships in different
+    orders, so an exact tie can differ by a rounding residue."""
     team_one = state.team == 1
     left_zero = (alive & ~team_one).sum(-1)
     left_one = (alive & team_one).sum(-1)
     wiped = (left_zero == 0) | (left_one == 0)
     wipe_result = torch.where(left_zero > 0, 0, torch.where(left_one > 0, 1, 2))
-    health = torch.where(alive, shield / state.constants["max_shield"], 0.0)
-    left_health_zero = torch.where(team_one, 0.0, health).sum(-1)
-    left_health_one = torch.where(team_one, health, 0.0).sum(-1)
-    lead = left_health_zero - left_health_one
-    tie = lead.abs() <= 1e-5 * (left_health_zero + left_health_one).clamp_min(1.0)
-    clock_result = torch.where(tie, 2, torch.where(lead > 0.0, 0, 1))
+    living_shield = torch.where(alive, shield, 0.0)
+    shield_zero = torch.where(team_one, 0.0, living_shield).sum(-1)
+    shield_one = torch.where(team_one, living_shield, 0.0).sum(-1)
+    lead = shield_zero - shield_one
+    level = lead.abs() <= 1e-5 * (shield_zero + shield_one).clamp_min(1.0)
+    by_shield = torch.where(level, 2, torch.where(lead > 0.0, 0, 1))
+    clock_result = torch.where(left_zero == left_one, by_shield, torch.where(left_zero > left_one, 0, 1))
     tick = state.tick + 1
     done = wiped | (tick >= config.clock_ticks)
     return tick, done, torch.where(done, torch.where(wiped, wipe_result, clock_result), -1)
@@ -982,16 +1001,72 @@ def _bullet_ends(
 
 
 def _edge_safe(config: GameConfig, x: Tensor, y: Tensor, angle: Tensor) -> tuple[Tensor, Tensor]:
-    """(cos, sin) of a heading angle turned the least that leaves room to turn away from
-    the boundary: within the spawn turn distance D of the edge, its angle off the outward
-    normal is at least acos(d / D)."""
+    """(cos, sin) of a spawn heading angle with the edge rule: a ship within card.SPAWN_EDGE_BAND
+    of the boundary whose heading points outward (a positive component along the outward
+    normal) has it mirrored in the tangent, so it points inward by as much as it pointed out.
+    Elsewhere the heading is unchanged."""
+    heading_cos, heading_sin = torch.cos(angle), torch.sin(angle)
     distance = torch.sqrt(x * x + y * y)
-    room = (config.arena_radius - distance) / card.SPAWN_TURN_DISTANCE
-    least = torch.acos(room.clamp(0.0, 1.0))
-    normal = torch.atan2(y, x)
-    off_normal = torch.remainder(angle - normal + math.pi, 2.0 * math.pi) - math.pi
-    off_normal = torch.copysign(torch.maximum(off_normal.abs(), least), off_normal)
-    return torch.cos(normal + off_normal), torch.sin(normal + off_normal)
+    inverse = 1.0 / distance.clamp_min(1e-6)
+    normal_x, normal_y = x * inverse, y * inverse
+    outward = heading_cos * normal_x + heading_sin * normal_y
+    turned = (distance > config.arena_radius - card.SPAWN_EDGE_BAND) & (outward > 0.0)
+    mirror = torch.where(turned, 2.0 * outward, 0.0)
+    return heading_cos - mirror * normal_x, heading_sin - mirror * normal_y
+
+
+def _spawn_places(config: GameConfig, team: Tensor, uniform) -> tuple[Tensor, Tensor, Tensor]:
+    """Spawn positions x, y and heading angles (E, N) by config.spawn (GameConfig), before the
+    edge rule. The spawn disc has radius card.SPAWN_AREA_FRACTION x the arena radius.
+
+    "mixed": every ship uniform over the spawn disc, heading uniform. "sides": a random axis
+    per environment; each team uniform over a half disc on its own side whose flat edge lies
+    card.SIDE_GAP_FRACTION x the arena radius from the dividing line and whose radius is the
+    spawn disc's less that gap (so it stays inside the spawn disc), noses along the axis
+    toward the other side within card.SIDE_HEADING_JITTER."""
+    envs, slots = team.shape
+    radius_draw, polar_draw, heading_draw = uniform(envs, slots), uniform(envs, slots), uniform(envs, slots)
+    polar = 2.0 * math.pi * polar_draw
+    disc = card.SPAWN_AREA_FRACTION * config.arena_radius
+    if config.spawn == "mixed":
+        spread = disc * torch.sqrt(radius_draw)
+        return spread * torch.cos(polar), spread * torch.sin(polar), 2.0 * math.pi * heading_draw
+    if config.spawn != "sides":
+        raise ValueError(f"spawn rule {config.spawn!r}: need 'sides' or 'mixed'")
+    axis = 2.0 * math.pi * uniform(envs, 1)
+    axis_cos, axis_sin = torch.cos(axis), torch.sin(axis)
+    gap = card.SIDE_GAP_FRACTION * config.arena_radius
+    spread = (disc - gap) * torch.sqrt(radius_draw)
+    side = (2 * team - 1).to(torch.float32)  # team 0 on the axis's negative side
+    along = side * (gap + (spread * torch.cos(polar)).abs())
+    across = spread * torch.sin(polar)
+    x, y = along * axis_cos - across * axis_sin, along * axis_sin + across * axis_cos
+    toward = axis + torch.where(team == 1, math.pi, 0.0)
+    return x, y, toward + card.SIDE_HEADING_JITTER * (2.0 * heading_draw - 1.0)
+
+
+def _spawn_motion(config: GameConfig, constants: Constants, log_index: Tensor, uniform) -> tuple[Tensor, Tensor, Tensor]:
+    """Proper speed, store and shield (E, N) at a deal. Standard: the spawn speed over the map
+    (card.SPAWN_SPEED times the refractive index), half the store, a full shield. With
+    config.training_spawn, every environment not drawn standard (a share
+    config.standard_spawn_share) draws per ship a proper speed uniform from the stall speed to
+    the top level speed (cruise_speed), a store and a shield each uniform from 0 to full."""
+    zeros = torch.zeros_like(log_index)
+    speed = card.SPAWN_SPEED * torch.exp(log_index)
+    energy = _per_slot(constants["spawn_energy"], zeros)
+    shield = _per_slot(constants["max_shield"], zeros)
+    if not config.training_spawn:
+        return speed, energy, shield
+    envs, slots = log_index.shape
+    standard = uniform(envs, 1) < config.standard_spawn_share
+    speed_draw, energy_draw, shield_draw = uniform(envs, slots), uniform(envs, slots), uniform(envs, slots)
+    stall = constants["stall_speed"]
+    drawn_speed = stall + (constants["cruise_speed"] - stall) * speed_draw
+    return (
+        torch.where(standard, speed, drawn_speed),
+        torch.where(standard, energy, constants["max_energy"] * energy_draw),
+        torch.where(standard, shield, constants["max_shield"] * shield_draw),
+    )
 
 
 MAP_SCALE_RADIUS = 2600.0  # m: the arena radius of map scale 1 (v2's rules.py)
@@ -1073,23 +1148,7 @@ def deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generato
     def uniform(*shape):
         return torch.rand(shape, **random_keywords(generator, device))
 
-    radius_draw, angle_draw, heading_draw = uniform(envs, slots), uniform(envs, slots), uniform(envs, slots)
-    axis = 2.0 * math.pi * uniform(envs, 1)
-    polar = 2.0 * math.pi * angle_draw
-    if config.spawn == "sides":
-        side = (2 * team - 1).to(torch.float32)
-        offset = card.SPAWN_OFFSET * config.arena_radius
-        centre_x, centre_y = side * offset * torch.cos(axis), side * offset * torch.sin(axis)
-        spread = card.SIDE_AREA_FRACTION * config.arena_radius * torch.sqrt(radius_draw)
-        x, y = centre_x + spread * torch.cos(polar), centre_y + spread * torch.sin(polar)
-        toward = torch.atan2(-centre_y - y, -centre_x - x)
-        angle = toward + card.SIDE_HEADING_JITTER * (2.0 * heading_draw - 1.0)
-    elif config.spawn == "mixed":
-        spread = card.MIXED_AREA_FRACTION * config.arena_radius * torch.sqrt(radius_draw)
-        x, y = spread * torch.cos(polar), spread * torch.sin(polar)
-        angle = 2.0 * math.pi * heading_draw
-    else:
-        raise ValueError(f"spawn rule {config.spawn!r}: need 'sides' or 'mixed'")
+    x, y, angle = _spawn_places(config, team, uniform)
     heading_cos, heading_sin = _edge_safe(config, x, y, angle)
     x, y = torch.where(exists, x, 0.0), torch.where(exists, y, 0.0)
     heading_cos, heading_sin = torch.where(exists, heading_cos, 1.0), torch.where(exists, heading_sin, 0.0)
@@ -1097,15 +1156,13 @@ def deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generato
     ones = filled((envs, slots), 1.0, torch.float32, device)
     if fields.shape[-1] == 0:  # no medium: n = 1 everywhere
         log_index = gradient_x = gradient_y = zeros
-        speed = filled((envs, slots), card.SPAWN_SPEED, torch.float32, device)
     else:
         log_index, gradient_x, gradient_y = medium(fields, x, y)
-        speed = card.SPAWN_SPEED * torch.exp(log_index)
+    speed, energy, shield = _spawn_motion(config, constants, log_index, uniform)
     named = {
         "x": x, "y": y, "heading_cos": heading_cos, "heading_sin": heading_sin,
         "speed": speed, "angle": zeros, "angle_cos": ones, "angle_sin": zeros,
-        "nose_rate": zeros, "energy": _per_slot(constants["spawn_energy"], zeros),
-        "shield": _per_slot(constants["max_shield"], zeros), "shield_wait": zeros, "cooldown": zeros,
+        "nose_rate": zeros, "energy": energy, "shield": shield, "shield_wait": zeros, "cooldown": zeros,
         "log_index": log_index, "gradient_x": gradient_x, "gradient_y": gradient_y, "next_slot": zeros,
     }
     # At zero angle of attack the flight path is the nose.
@@ -1122,6 +1179,8 @@ def deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generato
         bullet_real=filled(bullet_shape, False, torch.bool, device),
         tick=filled((envs,), 0, torch.long, device),
         fields=fields,
+        # The neutral action (straight, coast, no fire) is every ship's first pending action.
+        pending=filled((envs, slots, 3), 0, torch.long, device),
     )
     if not config.fog:
         return state
@@ -1139,7 +1198,7 @@ def reset(config: GameConfig, envs: int, team_sizes: Tensor, generator: torch.Ge
     slots = int(team_sizes.sum(-1).max())
     state = deal(config, envs, slots, team_sizes, generator, device)
     # The state is the caller's: its own copies of the deal's shared fixed rows.
-    shared = ("bullets", "bullet_counts", "bullet_real", "tick")
+    shared = ("bullets", "bullet_counts", "bullet_real", "tick", "pending")
     return dataclasses.replace(state, **{name: getattr(state, name).clone() for name in shared})
 
 
@@ -1288,13 +1347,22 @@ def team_view(state: State, team: int) -> State:
 
 # --------------------------------------------------------------------------- observation
 
-SPEED_SCALE = 400.0  # m/s
-NOSE_RATE_SCALE = 3.0  # rad/s
-ANGLE_SCALE = 0.27  # rad, about the stall angle
-SHIELD_WAIT_SCALE = 3.0  # s, the recharge delay
-COOLDOWN_CLIP = 0.5  # s
-BOUNDARY_CLIP = 1000.0  # m
-SHIELD_SCALE = 150.0
+# The ship scalars' fixed scales, the same for every ship type, set from their ranges in scripted
+# play with the training spawn (lean/game/NOTES.md "Feature scales"): symlog(x / scale) where
+# the range is wide, x / scale where it is narrow.
+SPEED_SCALE = 200.0  # m/s, symlog: world speed and velocity
+NOSE_RATE_SCALE = 1.0  # rad/s, symlog
+ANGLE_SCALE = 0.25  # rad, linear: the angle of attack, about the stall angle
+SHIELD_SCALE = 100.0  # shield points, linear
+SHIELD_WAIT_SCALE = 3.0  # s, linear, clipped to [0, 1]: the recharge delay
+BOUNDARY_CLIP = 1000.0  # m, linear, clipped to [-1, 1]
+
+
+def symlog(x: Tensor) -> Tensor:
+    """sign(x) ln(1 + |x|)."""
+    return torch.sign(x) * torch.log1p(x.abs())
+
+
 FIELD_RADIUS_SCALE = 1000.0  # m (v2's inputs.py)
 FIELD_BAND_SCALE = 40.0  # m
 FIELD_LEVEL_SCALE = 2.0  # half-octaves
@@ -1305,15 +1373,19 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     from `team_view` only (enemies as last seen), so nothing in it depends on what the team
     cannot see.
 
-    ship (E, N, SHIP_FEATURES): 20 scalars [velocity x, y and speed over 400 m/s; angle of
-    attack over 0.27 rad, its cos and sin; nose rate over 3 rad/s; energy and shield as
-    fractions of the type's full values; shield over 150; shield wait over 3 s, clipped to
-    1; gun cooldown in seconds clipped to 0.5; distance inside the boundary over 1000 m
-    clipped to [-1, 1]; the outward unit direction x, y; heading cos, sin; position over the
-    arena radius x, y; the share of bullet slots in flight], then flags [same team as the
-    viewer, alive, exists, fired last tick], then the ship-type one-hot. Rows of slots that
-    do not exist are zero. Fired last tick is the step's stored flag; the share of bullet slots
-    in flight counts real bullets only (ghosts are not observed).
+    ship (E, N, SHIP_FEATURES): 18 scalars [symlog of world velocity x, y and world speed over
+    200 m/s and of the nose rate over 1 rad/s; angle of attack over 0.25 rad, its cos and sin;
+    store and shield as fractions of the type's full values; shield over 100; shield wait over
+    3 s, clipped to 1; gun cooldown in whole ticks; distance inside the boundary over 1000 m
+    clipped to [-1, 1]; the outward unit direction x, y; heading cos, sin; the share of bullet
+    slots in flight], then flags [same team as the viewer, alive, exists, fired last tick], then
+    the ship-type one-hot. Rows of slots that do not exist are zero. Fired last tick is the
+    step's stored flag; the share of bullet slots in flight counts real bullets only (ghosts
+    are not observed). Position is not a scalar (Obs.pos carries it, for the position code
+    and the rotary angles).
+
+    pending (E, N) long: the joint pending action (the one the next tick applies) of the
+    team's own living ships, NO_PENDING for every other row.
 
     Fog: an enemy row holds its values at its last sighting, alive is "not seen dead", and
     key_mask leaves out never-seen and seen-dead enemies; never-seen rows are zero. visible is
@@ -1352,33 +1424,31 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     distance = torch.sqrt(view.x * view.x + view.y * view.y)
     inverse_distance = 1.0 / distance.clamp_min(1.0)
     fired_last = state.fired  # stored by the step (agreed fix 12), not inferred from the ring
-    scalars = [
-        velocity_x / SPEED_SCALE,
-        velocity_y / SPEED_SCALE,
-        speed / SPEED_SCALE,
+    wide = symlog(torch.stack(
+        [velocity_x / SPEED_SCALE, velocity_y / SPEED_SCALE, speed / SPEED_SCALE, view.nose_rate / NOSE_RATE_SCALE],
+        -1,
+    ))
+    narrow = [
         view.angle / ANGLE_SCALE,
         view.angle_cos,
         view.angle_sin,
-        view.nose_rate / NOSE_RATE_SCALE,
         view.energy * c["inverse_max_energy"],
         view.shield / c["max_shield"],
         view.shield / SHIELD_SCALE,
         (view.shield_wait / SHIELD_WAIT_SCALE).clamp(0.0, 1.0),
-        (view.cooldown * h).clamp(0.0, COOLDOWN_CLIP),
+        view.cooldown,
         ((config.arena_radius - distance) / BOUNDARY_CLIP).clamp(-1.0, 1.0),
         view.x * inverse_distance,
         view.y * inverse_distance,
         view.heading_cos,
         view.heading_sin,
-        view.x / config.arena_radius,
-        view.y / config.arena_radius,
         bullet_share,
     ]
     flags = [same_team, alive, exists, fired_last & alive]
     one_hot = torch.nn.functional.one_hot(state.type, SHIP_TYPES)
     shown = (exists & known) if config.fog else exists
     ship = torch.cat(
-        [torch.stack(scalars, -1), torch.stack(flags, -1).to(torch.float32), one_hot.to(torch.float32)], -1
+        [wide, torch.stack(narrow, -1), torch.stack(flags, -1).to(torch.float32), one_hot.to(torch.float32)], -1
     ) * shown[..., None]
     assert ship.shape[-1] == SHIP_FEATURES
 
@@ -1424,4 +1494,5 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         field_pos=torch.stack([fields[:, FIELD_X], fields[:, FIELD_Y]], -1),
         visible=visible,
         since_seen=since_seen,
+        pending=torch.where(same_team & alive, join_action(state.pending), NO_PENDING),
     )

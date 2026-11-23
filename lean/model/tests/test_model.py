@@ -41,10 +41,11 @@ def make_obs(
         field_pos=(torch.rand(*lead, fields, 2, generator=generator) - 0.5) * 6000.0,
         visible=torch.rand(*lead, slots, generator=generator) < 0.7,
         since_seen=torch.rand(*lead, slots, generator=generator) * 2.0,
+        pending=torch.where(key_mask, torch.randint(0, 42, (*lead, slots), generator=generator), 42),
     )
 
 
-SHIP_NAMES = ("ship", "pos", "heading", "key_mask", "own", "visible", "since_seen")
+SHIP_NAMES = ("ship", "pos", "heading", "key_mask", "own", "visible", "since_seen", "pending")
 FIELD_NAMES = ("field", "field_pos")
 
 

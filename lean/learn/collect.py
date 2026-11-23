@@ -119,8 +119,11 @@ class Rollout:
     the game's Obs has) and the position offset, once per deal (rows r < E: environment r as
     the segment started; E + k: the segment's deal k). A RolloutStore keeps these instead of
     the per-tick copies.
-    action, teacher: (T, S, N) long joint actions (sampled; the scripted agent's choice).
-    log_probability: (T, S, N). value: (T, S, N, LEVELS), zero outside `own`.
+    action, teacher: (T, S, N) long joint actions (sampled; the scripted agent's choice) on
+    that tick's observation. The game delays every action by one tick: the action of tick t
+    is applied on tick t + 1, and the action applied on tick t is the observation's pending
+    one (observation.pending, for own living ships). PPO trains on the sampled action with
+    log_probability: (T, S, N), its log-probability under the policy on tick t's observation. value: (T, S, N, LEVELS), zero outside `own`.
     reward: (T, S, N, LEVELS). done: (T, S) the seat's episode ended on this tick.
     reset: (T, S) the seat's environment was re-dealt just before this tick.
     position_offset: (T, S, 2).

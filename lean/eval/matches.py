@@ -1,12 +1,19 @@
 """Evaluation: batched matches, head-to-head counts and v1's crossover walk."""
 
+import dataclasses
 import importlib
 import math
 
 import torch
 from torch import Tensor
 
-from lean.learn.collect import generator_device, reset_carry, sample_joint, scripted_actions, split_joint
+from lean.learn.collect import (
+    generator_device,
+    reset_carry,
+    sample_joint,
+    scripted_actions,
+    split_joint,
+)
 
 
 def wilson_interval(wins: float, games: int, z: float = 1.96) -> tuple[float, float]:
@@ -38,9 +45,12 @@ def play_results(
     (the game pads every one to the largest total). `opponent` plays team 1: anything with
     a `step` method is used as a policy, anything else is taken to be a ScriptedConfig
     (fixed personas, spread 0). Actions are sampled. Finished environments are re-dealt at
-    their own sizes and ignored.
+    their own sizes and ignored. Games deal the standard spawn (GameConfig.training_spawn
+    is turned off).
     """
     game = game or importlib.import_module("lean.game")
+    if getattr(game_config, "training_spawn", False):  # evaluation always deals the standard spawn
+        game_config = dataclasses.replace(game_config, training_spawn=False)
     device = generator_device(generator)
     sizes = team_sizes.to(device=device, dtype=torch.long).contiguous()
     games = sizes.shape[0]

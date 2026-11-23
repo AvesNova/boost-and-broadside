@@ -296,7 +296,7 @@ class Policy(nn.Module):
         self.position_code = make_position_code(config)
         self.rotary = Rotary(config)
         code = self.position_code.features
-        ship_inputs = ship_features + FOG_FEATURES + code
+        ship_inputs = ship_features + FOG_FEATURES + config.actions + code
         self.encoder = Encoder(ship_inputs, global_features + code, field_features + code, config)
         self.blocks = nn.ModuleList(Block(config) for _ in range(config.blocks))
         self.heads = HeadGroup(config.width, config.head_hidden, (config.actions, config.levels * config.bins), config)
@@ -358,7 +358,10 @@ class Policy(nn.Module):
         # seconds); with fog off every row is visible and current.
         dtype = obs["ship"].dtype
         seen = [obs["visible"].to(dtype)[..., None], obs["since_seen"].to(dtype)[..., None]]
-        ship_in = torch.cat([obs["ship"], *seen, code(pos + offset).to(obs["ship"].dtype)], -1)
+        # The pending action (the one the next tick applies) as a one-hot; rows without one
+        # (enemies, dead and absent slots: index `actions`) are all zero.
+        pending = F.one_hot(obs["pending"], self.config.actions + 1)[..., : self.config.actions].to(dtype)
+        ship_in = torch.cat([obs["ship"], *seen, pending, code(pos + offset).to(obs["ship"].dtype)], -1)
         game_in = torch.cat([obs["globals"].unsqueeze(-2), code(offset).to(obs["globals"].dtype)], -1)
         field_in = torch.cat([obs["field"], code(field_pos + offset).to(obs["field"].dtype)], -1)
         tokens, memory = self.encoder(ship_in, game_in, field_in)
@@ -411,6 +414,6 @@ class Policy(nn.Module):
 
 
 OBS_FIELDS = (
-    "ship", "pos", "heading", "key_mask", "globals", "field", "field_pos", "visible", "since_seen",
+    "ship", "pos", "heading", "key_mask", "globals", "field", "field_pos", "visible", "since_seen", "pending",
 )
 FOG_FEATURES = 2  # visible, since_seen

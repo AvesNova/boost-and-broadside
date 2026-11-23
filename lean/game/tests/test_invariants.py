@@ -66,7 +66,7 @@ def test_swapping_teams_mirrors_the_outcome():
     # The slot axis of each packed field: 2 in the blocks (E, rows, N[, K]), 1 in (E, N[, K]).
     slot_axis = {
         "ships": 2, "flags": 2, "identity": 2, "bullets": 2, "bullet_counts": 2, "bullet_real": 1,
-        "seen": 2, "ticks_since_seen": 1,
+        "seen": 2, "ticks_since_seen": 1, "pending": 1,
     }
     mirror = {name: getattr(state, name).flip(axis) for name, axis in slot_axis.items()}
     mirror["constants"] = dataclasses.replace(state.constants, table=state.constants.table.flip(2))

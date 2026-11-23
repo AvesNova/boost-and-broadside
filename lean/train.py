@@ -64,7 +64,8 @@ def main() -> None:
         torch.set_num_threads(arguments.threads)
     torch.manual_seed(arguments.seed)
     generator = torch.Generator(device=device).manual_seed(arguments.seed)
-    game_config = game.GameConfig()
+    # Training deals use the training spawn; the crossover (lean.eval) plays the standard one.
+    game_config = game.GameConfig(training_spawn=True)
     scripted_config = scripted.ScriptedConfig()
     policy = model.Policy(model.ModelConfig()).to(device)
     optimiser = make_optimiser(config, policy)

@@ -452,13 +452,13 @@ per minibatch. Measurements: docs/rewrite/scoreboard.md, "Update at parity with 
 - **Compact types** (author's decision): `pos`, `heading`, `field_pos`, the position offset,
   old log-probabilities, values and rewards float32 (advantages and targets are computed in
   float32 on the device); `ship`, `globals`, `since_seen` (symlog seconds), `field` and the
-  next-state targets float16; actions, teacher actions and hit labels int8; masks bool; the
+  next-state targets float16; actions, teacher actions, the observation's pending actions and
+  hit labels int8; masks bool; the
   deal row int32. Cast back (float32, long) on the device after the copy and before the
   model, so the position code and the rotary angles see float32 positions. Ranges in
   scripted rollouts of both games: every float16 field within 4.6 in magnitude (ship 1.34,
   globals 1, field 4, since_seen 2.6, next-state 4.5); none near float16's limit. `heading`
-  is kept float32 because it is a rotary angle (position-like). The ship row's x/R and y/R
-  columns are float16: the first linear layer reads them in bf16 anyway (coarser). The
+  is kept float32 because it is a rotary angle (position-like). The
   initial carries stay float32 (432 bytes per environment tick, a fifth of the store).
 - **Streaming out.** Each tick the copy stream waits for the compute stream (a stream wait,
   no host wait) and copies the tick's large records into the pinned arrays;

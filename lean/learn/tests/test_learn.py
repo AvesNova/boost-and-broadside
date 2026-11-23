@@ -1,6 +1,7 @@
 import pytest
 import torch
 
+from lean.contract import NO_PENDING
 from lean.learn import (
     League,
     LearnConfig,
@@ -131,6 +132,33 @@ def test_real_packages_smoke():
     rollout = collect(config, game_config, policy, opponent, state, carry, 8, generator)
     metrics = update(config, policy, make_optimiser(config, policy), rollout, generator=generator)
     assert all(value == value for value in metrics.values())
+
+
+def test_collect_pairs_actions_and_log_probabilities_under_the_action_delay():
+    """Guards the one-tick action delay in the rollout: each seat's recorded action is the
+    policy's sample on that tick's observation (its log-probability recomputed from the
+    observations matches), and it is the pending action the next tick's observation shows
+    (the action the game applies then), for own ships alive on both ticks within an episode."""
+    game = pytest.importorskip("lean.game")
+    scripted = pytest.importorskip("lean.scripted")
+    model = pytest.importorskip("lean.model")
+    torch.manual_seed(0)
+    generator = torch.Generator().manual_seed(0)
+    config = LearnConfig(team_size_minimum=2, team_size_maximum=2)
+    game_config = game.GameConfig(training_spawn=True, clock_ticks=10)  # an episode ends inside the rollout
+    policy = model.Policy(model.ModelConfig())
+    opponent = Opponent(scripted_config=scripted.ScriptedConfig())
+    state, carry = start(config, game_config, policy, opponent, 4, generator)
+    rollout = collect(config, game_config, policy, opponent, state, carry, 16, generator)
+    observation, own, action = rollout.observation, rollout.observation.own, rollout.action
+    assert rollout.reset[1:].any()
+    logits, *_ = policy.sequence(observation, rollout.initial_carry, rollout.reset, rollout.position_offset)
+    recomputed = torch.log_softmax(logits.float(), -1).gather(-1, action[..., None])[..., 0]
+    assert torch.allclose(recomputed[own], rollout.log_probability[own], atol=1e-4)
+    carried = own[:-1] & own[1:] & ~rollout.reset[1:, :, None]
+    assert carried.sum() > 50
+    assert torch.equal(observation.pending[1:][carried], action[:-1][carried])
+    assert (observation.pending[~own] == NO_PENDING).all()  # enemies, dead and absent rows
 
 
 def test_next_state_loss_is_live_with_the_real_packages():
