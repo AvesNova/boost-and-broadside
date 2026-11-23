@@ -123,16 +123,17 @@ class Evaluator:
             if budget is not None and spent >= budget:
                 return rows
             lot = round_games if budget is None else min(round_games, budget - spent)
+            # (wins plus half the draws, games): a pairing without games has no score rate.
+            stats = [(row["wins"] + 0.5 * row["draws"], row["games"]) for row in rows]
             if target_error is not None:
                 # No pairing already within the target takes games.
-                stats = [(row["score"] * row["games"], row["games"]) for row in rows]
                 open_rows = [index for index, row in enumerate(rows) if row["error"] > target_error]
                 added_open = allocate([stats[index] for index in open_rows], lot)
                 added = [0] * len(rows)
                 for index, extra in zip(open_rows, added_open, strict=True):
                     added[index] = extra
             else:
-                added = allocate([(row["score"] * row["games"], row["games"]) for row in rows], lot)
+                added = allocate(stats, lot)
             if sum(added) == 0:
                 return rows
             self.ensure([(a, b, sizes, row["games"] + extra)
