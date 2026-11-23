@@ -1,5 +1,20 @@
 # Morning notes
 
+**First, two decisions from step E2 (scripted BFM), merged 2026-11-24:**
+1. The new scripted agent uses the store (mean 0.23 against 0.05) and brawls harder (6.45 kills
+   per environment-minute against 5.44), but loses to the old one: 0.413 +- 0.019 over 640
+   games. In 1v1 equal-store starts the old agent, which dives its store away at once, beats
+   the banker; the agent found that spending early beats banking in this game (and passes gain
+   almost no angles). So: which agent is the yardstick and the BC teacher (old behaviour is not
+   kept as a setting), and is "spending early wins" a game-balance issue to look at (store
+   size, exchange rate, the 4-12% round-trip loss)?
+2. The scripted call is now 439 operations (208 before, design estimate 270), and the scripted
+   agent runs inside the compiled tick, so it also costs compile time. Worth trimming before
+   training.
+Also: the overshoot rule reverses only when the ship is no faster than its opponent (Shaw p. 76);
+the brief had it backwards, the agent followed Shaw.
+
+
 Judgement calls made overnight for the author to review, newest last. One line each, with
 where to look.
 
