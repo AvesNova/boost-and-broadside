@@ -52,7 +52,8 @@ def bradley_terry(
     0). A Gaussian prior of standard deviation `prior_elo` about the anchor keeps unbeaten or
     unconnected agents finite. Newton's method on the log-likelihood."""
     rating = torch.zeros(agents, dtype=torch.float64)
-    if not results:
+    results = [row for row in results if row[0] != row[1]]  # self-play carries no rating information
+    if not results or agents < 2:
         return [anchor_elo] * agents, [0.0] * agents
     first = torch.tensor([row[0] for row in results])
     second = torch.tensor([row[1] for row in results])

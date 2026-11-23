@@ -236,3 +236,13 @@ def test_versions_cover_what_decides_a_game_and_how_a_network_acts(tmp_path, mon
     before = NetworkAgent(str(path), "ema").id
     monkeypatch.setattr(store_module, "inference_version", lambda: "another")
     assert NetworkAgent(str(path), "ema").id != before
+
+
+def test_bradley_terry_with_only_self_play_returns_the_anchor():
+    """An agent against itself has no rating information; the fit must not crash."""
+    from lean.eval.rating import bradley_terry
+
+    ratings, errors = bradley_terry([(0, 0, 10, 5.0)], agents=1)
+    assert ratings == [1000.0] and errors == [0.0]
+    ratings, errors = bradley_terry([(0, 0, 10, 5.0), (1, 1, 4, 2.0)], agents=2)
+    assert ratings == [1000.0, 1000.0]
