@@ -57,7 +57,7 @@ def test_normalised_advantages_keep_their_mean_and_have_unit_scale(normaliser):
     advantage = torch.randn(16, 8, 4, 4, generator=generator) + 0.5
     mask = torch.rand(16, 8, 4, generator=generator) < 0.7
     config = LearnConfig(advantage_normaliser=normaliser)
-    normalised = normalise_advantages(advantage, mask, config)
+    normalised = normalise_advantages(advantage.sum(-1), mask, config)
     chosen = normalised[mask]
     assert (normalised[~mask] == 0).all()
     assert chosen.mean() > 0.2  # the mean (2.0 before scaling) is not removed

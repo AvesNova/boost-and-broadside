@@ -43,61 +43,85 @@ def generalised_advantages(
     return advantage, advantage + value
 
 
-def normalise_advantages(advantage: Tensor, mask: Tensor, config: LearnConfig) -> Tensor:
-    """Sum advantages over levels and scale them over the whole update.
+def normalise_advantages(total: Tensor, mask: Tensor, config: LearnConfig) -> Tensor:
+    """Scale the advantages (summed over levels) over the whole update.
 
-    advantage (T, E, N, LEVELS), mask (T, E, N) bool of valued tokens. Returns (T, E, N),
-    zero outside the mask. The mean is not subtracted. "std" divides by the standard
-    deviation over masked tokens; "percentile" divides by the range between the two
-    configured quantiles.
+    total (T, E, N), mask (T, E, N) bool of valued tokens. Returns (T, E, N), zero outside
+    the mask. The mean is not subtracted. "std" divides by the standard deviation over
+    masked tokens, from masked sums (no read-back); "percentile" divides by the range
+    between the two configured quantiles (selecting the masked tokens reads their count
+    back). Fewer than two masked tokens leave the advantages unscaled.
     """
-    total = advantage.sum(-1)
-    chosen = total[mask]
-    if chosen.numel() < 2:
-        return total * mask
+    weight = mask.to(total.dtype)
+    count = weight.sum()
     if config.advantage_normaliser == "percentile":
+        chosen = total[mask]
         low, high = config.advantage_percentiles
-        quantiles = torch.quantile(chosen, torch.tensor([low, high], device=chosen.device))
-        scale = quantiles[1] - quantiles[0]
+        quantiles = torch.quantile(chosen, torch.tensor([low, high], device=chosen.device)) if chosen.numel() >= 2 else None
+        scale = quantiles[1] - quantiles[0] if quantiles is not None else torch.ones((), device=total.device)
     else:
-        scale = chosen.std()
+        mean = (total * weight).sum() / count.clamp(min=1.0)
+        variance = (((total - mean) * weight) ** 2).sum() / (count - 1.0).clamp(min=1.0)
+        scale = torch.where(count >= 2, variance.sqrt(), 1.0)
     return total / scale.clamp(min=1e-8) * mask
 
 
-def support_usage(target: Tensor, reward: Tensor, mask: Tensor, centres: Tensor, config: LearnConfig) -> dict[str, float]:
-    """How each level's value targets sit on its support, as metrics.
-
-    target (T, E, N, LEVELS) in return units; reward (T, E, N, LEVELS) the rollout's; mask
-    (T, E, N) bool of valued tokens; centres (LEVELS, bins). Per level: `range_clamped_<level>`, the share of targets beyond the
-    outermost centres (HL-Gauss clamps them); `range_bins_<level>`, the bins holding at
-    least config.range_bin_share of the targets (nearest centre); and two warning flags,
-    1.0 or 0.0: `range_warning_clamped_<level>` when the clamped share exceeds
-    config.range_clamped_warning, `range_warning_narrow_<level>` when fewer than
-    config.range_narrow_bins bins are occupied, unless the level paid no reward anywhere in
-    the rollout (an objective level in elimination: its targets are only the critic's
-    own values).
-    """
-    chosen = target[mask].float()  # (count, LEVELS)
-    metrics: dict[str, float] = {}
-    if chosen.shape[0] == 0:
-        return metrics
+def usage_counts(target: Tensor, mask: Tensor, centres: Tensor) -> Tensor:
+    """The tallies behind support_usage for one batch of targets, to be summed over batches:
+    (LEVELS, BINS + 2), per level the count of valued targets nearest each bin centre, then
+    the count beyond the outermost centres, then the count of valued targets. target
+    (..., LEVELS) in return units, mask (...) bool, centres (LEVELS, BINS)."""
+    levels, bins = centres.shape
+    chosen = target.float().reshape(-1, levels)
+    weight = mask.reshape(-1).float()
     centres = centres.to(chosen.device).float()
-    bins = centres.shape[-1]
     width = centres[:, 1] - centres[:, 0]
-    clamped = ((chosen < centres[:, 0]) | (chosen > centres[:, -1])).float().mean(0)
+    clamped = (((chosen < centres[:, 0]) | (chosen > centres[:, -1])).float() * weight[:, None]).sum(0)
     nearest = ((chosen - centres[:, 0]) / width).round().clamp(0, bins - 1).long()
-    counts = torch.zeros(len(LEVEL_NAMES), bins, device=chosen.device)
-    counts.scatter_add_(1, nearest.T, torch.ones_like(nearest.T, dtype=counts.dtype))
-    occupied = (counts / chosen.shape[0] >= config.range_bin_share).sum(1)
-    silent = (reward == 0).flatten(0, -2).all(0)
-    # One read-back for every level's four measures.
-    rows = torch.stack([
-        clamped, occupied.float(), (clamped > config.range_clamped_warning).float(),
-        ((occupied < config.range_narrow_bins) & ~silent).float(),
-    ]).tolist()
+    counts = torch.zeros(levels, bins, device=chosen.device)
+    counts.scatter_add_(1, nearest.T, weight.expand(levels, -1).contiguous())
+    return torch.cat([counts, clamped[:, None], weight.sum().expand(levels, 1)], 1)
+
+
+def usage_flags(counts: Tensor, paid: Tensor, config: LearnConfig) -> Tensor:
+    """From summed usage_counts (LEVELS, BINS + 2) and `paid` (LEVELS,) bool (the level paid
+    a reward somewhere in the rollout): (4, LEVELS), the rows of support_usage's measures
+    (clamped share, occupied bins, the clamped warning, the narrow warning) as a tensor."""
+    total = counts[:, -1].clamp(min=1.0)
+    clamped = counts[:, -2] / total
+    occupied = (counts[:, :-2] / total[:, None] >= config.range_bin_share).sum(1).float()
+    return torch.stack([
+        clamped, occupied, (clamped > config.range_clamped_warning).float(),
+        ((occupied < config.range_narrow_bins) & paid).float(),
+    ])
+
+
+def usage_metrics(rows: list[list[float]]) -> dict[str, float]:
+    """usage_flags read back (a list of 4 rows of LEVELS numbers) as named metrics."""
+    metrics: dict[str, float] = {}
     for level, name in enumerate(LEVEL_NAMES):
         metrics[f"range_clamped_{name}"] = rows[0][level]
         metrics[f"range_bins_{name}"] = rows[1][level]
         metrics[f"range_warning_clamped_{name}"] = rows[2][level]
         metrics[f"range_warning_narrow_{name}"] = rows[3][level]
     return metrics
+
+
+def support_usage(target: Tensor, reward: Tensor, mask: Tensor, centres: Tensor, config: LearnConfig) -> dict[str, float]:
+    """How each level's value targets sit on its support, as metrics.
+
+    target (T, E, N, LEVELS) in return units; reward (T, E, N, LEVELS) the rollout's; mask
+    (T, E, N) bool of valued tokens; centres (LEVELS, bins). Per level: `range_clamped_<level>`,
+    the share of targets beyond the outermost centres (HL-Gauss clamps them);
+    `range_bins_<level>`, the bins holding at least config.range_bin_share of the targets
+    (nearest centre); and two warning flags, 1.0 or 0.0: `range_warning_clamped_<level>` when
+    the clamped share exceeds config.range_clamped_warning, `range_warning_narrow_<level>`
+    when fewer than config.range_narrow_bins bins are occupied, unless the level paid no
+    reward anywhere in the rollout (an objective level in elimination: its targets are only
+    the critic's own values). No valued token gives no metrics. The update sums
+    usage_counts over its batches instead; this is the same on whole tensors.
+    """
+    if not mask.any():
+        return {}
+    paid = (reward != 0).flatten(0, -2).any(0)
+    return usage_metrics(usage_flags(usage_counts(target, mask, centres), paid, config).tolist())
