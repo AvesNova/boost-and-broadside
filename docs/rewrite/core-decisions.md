@@ -464,6 +464,12 @@ League (section 8)
   uses the store gives BC no prior for those states, so the scripted agent gets basic fighter
   manoeuvres (E2): circle detection, sustained turns and pursuit choice in two-circle, hard
   turns in one-circle, yo-yos through dive and climb, climbing when not engaged.
+- Every scripted parameter is dimensionless: a multiple of one named reference of the ship's
+  own performance (speeds by corner speed or stall speed; shooting distances by gun range;
+  manoeuvre distances by the sustained turn radius; times by the time to turn 90 degrees at
+  the best sustained rate; rates by the best sustained rate; energy as a store fraction;
+  angles as they are). So a persona transfers across aircraft and time scales and samples
+  around 1. Game rules (arena radius) are inputs, not parameters (author 2026-11-23).
 - Built natively, not bolted on: the scripted agent is first reviewed for cohesion and
   coupling, and its parameters must stay tunable and independent, because personas sample
   them.
