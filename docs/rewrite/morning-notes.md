@@ -25,3 +25,6 @@ where to look.
 - S lead in a field: map velocities are proper velocities over n, and the time of flight is the shooter's n times longer; the gun's shorter reach inside a field is not modelled (NOTES "Open").
 - S operations 186 -> 208 per scripted call for both teams, over the 188 signed off: the kept target (the old optional memory with its hold was 196), the medium in the lead (7), the power rule and the head-on side.
 - S docs/rewrite/sections/imugi/measure_lean.py left on the old API (it records the 2026-11-22 measurement); game_ops.py and feature_ranges.py moved to the new one.
+- The scripted call is now 208 operations for both teams (signed off at 188): +7 for the lead in a field, the rest the power rule and the head-on side. Accepted as features, not bloat.
+- Finding: in scripted 4v4 brawls ships fly slow (mean 0.70 corner speeds, two thirds of the time below 0.75) with a nearly empty store (mean 0.05), before and after the new power rule. The store is regained only by climbing, which costs the speed they lack. Worth a look when tuning the flight numbers.
+- The sandbox now flies the scripted opponent by default (`--opponent chaser` for the old chaser; `--no-opponent`).
