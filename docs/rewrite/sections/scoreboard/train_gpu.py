@@ -10,9 +10,10 @@ streaming the rollout.
 Defaults are LearnConfig's (the update at parity with v2: 2,048 environments x 4 segments
 x 128 ticks, 32 minibatches, micro-batches of 64 views, the rollout streamed to pinned host
 memory, targets once per update). The loop is lean/train.py's (segments into one
-RolloutStore, update, league addition) with the league filled with `--snapshots` copies of
-the initial weights before the first rollout, so every league member is present as in a
-run's steady state (snapshot_every is set beyond the run, so nothing is added or abandoned).
+RolloutStore, update) with the league filled before the first rollout with `--snapshots`
+snapshots of the initial weights (League.after_update, so the EMA and the uniform average
+join too), so every network slot plays as in a run's steady state; nothing is added during
+the measurement.
 
 Per update: collect s, update s, loop s and environment steps per second of each; the
 host's seconds waiting for copies (RolloutStore.ready and the staging buffers) and
@@ -39,6 +40,7 @@ from lean.learn import (  # noqa: E402
     LearnConfig,
     Opponent,
     RolloutStore,
+    WeightAverages,
     collect,
     make_optimiser,
     start,
@@ -67,7 +69,7 @@ def main() -> None:
     device = torch.device("cuda")
     config = dataclasses.replace(
         defaults, minibatches=arguments.minibatches, micro_batch_views=arguments.micro, stream_rollout=arguments.stream,
-        segments_per_update=arguments.segments, snapshot_every=10**9, bf16=arguments.bf16,
+        segments_per_update=arguments.segments, bf16=arguments.bf16,
         targets_every_epoch=arguments.targets_every_epoch,
     )
     envs, ticks, segments = arguments.envs, config.segment_ticks, config.segments_per_update
@@ -76,10 +78,13 @@ def main() -> None:
     game_config = game.GameConfig()
     policy = model.Policy(model.ModelConfig()).to(device)
     optimiser = make_optimiser(config, policy)
-    league = League(dataclasses.replace(config, snapshot_every=1), device)
+    league = League(config, device)
+    averages = WeightAverages(policy, config)
+    averages.update(policy, 10**9)  # past the warm-up: the uniform average holds an update
+    nobody = torch.zeros(0, dtype=torch.long, device=device)
     for index in range(arguments.snapshots):
-        league.maybe_add(policy, index + 1)
-    league.every = config.snapshot_every
+        step = league.schedule.points(10**12)[index]
+        league.after_update(policy, averages, step - 1, step, nobody, nobody)
     opponent = Opponent(scripted.ScriptedConfig(), league)
     state, carry = start(config, game_config, policy, opponent, envs, generator)
     store = RolloutStore(segments, config.stream_rollout)
@@ -120,8 +125,6 @@ def main() -> None:
             config, policy, optimiser, store, teacher_weight=config.teacher_coefficient, step_index=index * steps_per_update,
             generator=generator, compiled=compiled,
         )
-        if league.maybe_add(policy, index + 1) is not None:
-            raise RuntimeError("the league should not change during the measurement")
         torch.cuda.synchronize()
         ended = time.perf_counter()
         stall = store.stalls() if store.pinned else 0.0
