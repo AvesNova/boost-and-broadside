@@ -71,12 +71,12 @@
 <div class="eyebrow">Project white paper · v1 results · reinforcement learning</div>
 <h1>Boost and Broadside</h1>
 <p class="sub">Zero-shot fleet coordination from a policy trained only at 4-vs-4</p>
-<p class="byline"><b>Julian Kizanis</b> &nbsp;·&nbsp; <a href="https://github.com/AvesNova/boost-and-broadside">github.com/AvesNova/boost-and-broadside</a> &nbsp;·&nbsp; MIT licensed &nbsp;·&nbsp; November 2026</p>
+<p class="byline"><b>Julian Kizanis</b> &nbsp;·&nbsp; <a href="mailto:julianzia@gmail.com">julianzia@gmail.com</a> &nbsp;·&nbsp; <a href="https://github.com/AvesNova/boost-and-broadside">github.com/AvesNova/boost-and-broadside</a> &nbsp;·&nbsp; November 2026</p>
 
 <p class="lede">Boost and Broadside is a GPU-tensorized 2D dogfighting simulator and a reinforcement
 learning system I built on top of it to ask one question: <b>can a policy trained with a small
 team command much larger fleets without retraining?</b> A single recurrent network, trained
-only in 4-vs-4 combat on one 8&nbsp;GB laptop GPU, was then run unchanged on fleets of 1 to 64
+only in 4-vs-4 combat on a single 8&nbsp;GB laptop GPU, was then run unchanged on fleets of 1 to 64
 ships. It beats a hand-built scripted controller at every size, wins while outnumbered, and
 is measurably <i>stronger</i> at 8 and 16 ships per side than at the size it trained at.</p>
 
@@ -84,7 +84,7 @@ is measurably <i>stronger</i> at 8 and 16 ships per side than at the size it tra
   <div class="tile"><div class="v">4 → 64</div><div class="l">ships per team commanded zero-shot, sixteen times the training width</div></div>
   <div class="tile"><div class="v">2,110 Elo</div><div class="l">calibrated rating, scripted controller fixed at 1000 (400 points = 10:1 odds)</div></div>
   <div class="tile"><div class="v">1.89×</div><div class="l">its own number of scripted ships held to an even fight at 4 ships (averaged weights)</div></div>
-  <div class="tile"><div class="v">2.9 days</div><div class="l">of training, 672M environment steps, on a single RTX 4070 Laptop GPU</div></div>
+  <div class="tile"><div class="v">93%</div><div class="l">of equal fights still won at 64-vs-64, a fleet size the policy never trained at</div></div>
 </div>
 
 <figure>
@@ -94,22 +94,19 @@ is measurably <i>stronger</i> at 8 and 16 ships per side than at the size it tra
   <figcaption><b>Figure 1.</b> Frames from one seeded game of four learned ships (blue) against seven scripted ships (red), averaged weights, cropped to the action. Rings are refractive fields that bend the paths of ships and bullets. Reduced to one ship against six, the learned side still wins this game; across 4,096 games at 4-vs-7 it wins 62%.</figcaption>
 </figure>
 
-<h2><span class="n">1</span>What this project demonstrates</h2>
+<h2><span class="n">1</span>Contributions</h2>
 <div class="two">
 <ul>
-  <li><b>Research design.</b> A transfer question posed so it can be falsified, an architecture
-  chosen to make the answer possible, and an evaluation built to measure it rather than
-  illustrate it.</li>
-  <li><b>Systems engineering.</b> A batched physics engine with no Python loops over
-  environments or ships, and a recurrent PPO trainer fitted onto 8&nbsp;GB of VRAM without
-  changing the experiment.</li>
+  <li><b>A transfer result.</b> One 4-vs-4 checkpoint, run unchanged from 1 to 64 ships per
+  side, rated at every size and tested against larger scripted fleets.</li>
+  <li><b>A simulator.</b> A batched 2D combat engine with continuous refractive terrain and
+  no Python loops over environments or ships.</li>
 </ul>
 <ul>
-  <li><b>Measurement discipline.</b> Bradley-Terry Elo with adaptive tournaments and stated
-  standard errors, confidence bands on every win rate, and two independent measurements
-  that agree on where transfer breaks down.</li>
-  <li><b>Reproducibility.</b> Every published number is a named value generated from stored
-  artifacts; each artifact records its command, seeds, checkpoint hashes and commit.</li>
+  <li><b>An evaluation method.</b> Post-hoc Bradley-Terry Elo with adaptive tournaments and
+  stated errors, used once the scripted benchmark saturates.</li>
+  <li><b>A training system that fits 8&nbsp;GB.</b> Recurrent PPO with league play, and memory
+  techniques that are measured and do not change the experiment.</li>
 </ul>
 </div>
 
@@ -264,7 +261,7 @@ measures both.</p>
   <div class="strip s4">
     <img src="assets/large_0.png"><img src="assets/large_1.png"><img src="assets/large_2.png"><img src="assets/large_3.png">
   </div>
-  <figcaption><b>Figure 8.</b> Frames from one seeded game of 32 learned ships (blue) against 50 scripted ships (red), averaged weights: eight times the training width, outnumbered 1.56 to 1, won by the learned side.</figcaption>
+  <figcaption><b>Figure 8.</b> Frames from one seeded game of 32 learned ships (blue) against 50 scripted ships (red), averaged weights: eight times the training width and just past its measured break-even odds. The battle comes down to one blue ship, which clears the last eight.</figcaption>
 </figure>
 </div>
 <div class="break">
@@ -283,7 +280,7 @@ stationary players runs until every rating reaches a target uncertainty (114,688
 ±12), then each historical policy is refit from its recorded games against those calibrated
 opponents. Interpolated "semi-random" controllers bridge the gap between random and
 scripted play, where direct matches are near-certain and carry almost no information. Two
-tournaments with different fields rate the final checkpoint 2110 ± 11 and 2128 ± 10 at
+tournaments with different player pools rate the final checkpoint 2110 ± 11 and 2128 ± 10 at
 4-vs-4, about one combined standard error apart.</p>
 </div>
 </div>
@@ -310,7 +307,8 @@ logical batch.</p>
   <tr><td><b><code>torch.compile</code></b></td><td>About 6% faster rollout and update</td><td>About 360 MB of reserved workspace</td></tr>
 </table>
 
-<p>Each row was measured one factor at a time in fresh processes. The launcher can also
+<p>The checkpointing, minibatch and compile rows come from a one-factor-at-a-time sweep, one
+configuration per process. The launcher can also
 probe the machine it is on: each candidate configuration runs one full PPO update in its
 own interpreter, so an out-of-memory failure cannot fragment the allocator for the next
 attempt, and the result is cached against a readable identity (GPU, library versions,
@@ -322,8 +320,8 @@ architecture, token geometry) that invalidates itself when any of those change.<
   checkpoint hashes and commit that produced it; each chart records the digest of the
   measurement it was drawn from.</li>
   <li>The documentation is rendered from templates. Every run-specific number is a named
-  value built from those artifacts, and a check fails the build on an unknown name or a
-  stale page, so prose cannot drift from data.</li>
+  value built from those artifacts, and a check fails on an unknown name or a stale
+  page, so prose cannot drift from data.</li>
   <li>Calibrations store full win/tie matrices and can be refit without a GPU or replaying
   a game.</li>
   <li>About 33k lines of Python source and 19k lines of tests, covering energy conservation
@@ -332,7 +330,6 @@ architecture, token geometry) that invalidates itself when any of those change.<
 </ul>
 
 <h2><span class="n">9</span>Limitations</h2>
-<p>I would rather a reader hear these from me than find them.</p>
 <ul>
   <li><b>One run, one opponent family.</b> There is no multi-seed study, and every
   outnumbered result is against a single scripted controller.</li>
@@ -343,7 +340,7 @@ architecture, token geometry) that invalidates itself when any of those change.<
   <li><b>The largest fleets are measured least.</b> Collision memory grows with the square
   of ship count, so 32- and 64-ship ratings rest on far fewer games and carry ±31 and ±45
   Elo.</li>
-  <li><b>The run stopped early,</b> at 672M of a planned 1,000M steps. The rating had
+  <li><b>The run stopped early,</b> at 672M of a planned 1,000M steps, after 2.9 days. The rating had
   levelled off (within 50 Elo of final from about 457M steps), but what the remainder
   would have added is unmeasured.</li>
   <li><b>Transfer is shown across the sizes tested,</b> not as a general scale-invariance
@@ -353,31 +350,38 @@ architecture, token geometry) that invalidates itself when any of those change.<
 
 <!-- ============================ PAGE 6 ============================ -->
 <div>
-<h2><span class="n">10</span>What I would do next</h2>
+<h2><span class="n">10</span>Next steps</h2>
+<h3>A hypothesis for the fall past 16 ships, and how to test it</h3>
+<p>Softmax attention over bullets tells a ship <i>which</i> bullets matter but not <i>how
+many</i> there are, so incoming fire far denser than anything seen at 4-vs-4 may look no
+more dangerous than a light exchange. Three tests, cheapest first:</p>
 <ul>
-  <li><b>Explain the fall past 16 ships.</b> The leading hypothesis from the architecture:
-  softmax attention conveys which threats matter but not how many, so threat intensity is
-  invisible at densities far above training. A saturating count and lethality ratio from
-  the environment would be a transfer-safe fix to test.</li>
-  <li><b>Ablate.</b> Short matched runs removing recurrence, the auxiliary head and the
-  league in turn, now that seeding covers every RNG the trainer draws from.</li>
-  <li><b>Broaden the opponent pool and seeds,</b> so the outnumbered results do not rest on
-  one scripted controller and one run.</li>
-  <li><b>Look inside.</b> Projections of ship-token embeddings by role and situation, to see
-  whether the coordination the win rates imply is visible in the representation.</li>
+  <li><b>Diagnostic, no retraining.</b> In recorded 4-vs-4 and 64-vs-64 games, compare how
+  often a ship takes evasive action against the number of live enemy bullets near it. The
+  hypothesis predicts the response flattens as the count rises past the training range,
+  while deaths keep rising.</li>
+  <li><b>Control.</b> Break down damage taken by source at each fleet size. If friendly fire
+  or field damage, not enemy fire, grows fastest with size, crowding is the cause and the
+  hypothesis is wrong.</li>
+  <li><b>Intervention.</b> Add a saturating bullet count and a lethality ratio to each ship's
+  observation, retrain at 4-vs-4, and rate again at every size. The hypothesis predicts
+  little change at 4-vs-4 and a gain concentrated at 32 and 64.</li>
+</ul>
+<h3>Beyond that</h3>
+<ul>
+  <li><b>Ablations:</b> short matched runs without recurrence, the auxiliary head and the
+  league in turn.</li>
+  <li><b>More opponents and seeds,</b> so the outnumbered results do not rest on one scripted
+  controller and one run.</li>
 </ul>
 
-<h2><span class="n">11</span>Reference</h2>
-<table>
-  <tr><th>Reference run</th><th></th></tr>
-  <tr><td>Run</td><td><code>wild-universe-731</code>, 4-vs-4 with 4 refractive fields</td></tr>
-  <tr><td>Hardware and duration</td><td>One RTX 4070 Laptop GPU (8 GB), 70.3 hours</td></tr>
-  <tr><td>Experience</td><td>671.8M environment steps, 674 updates; 2,592 environments × 3 rollouts of 128 steps per update</td></tr>
-  <tr><td>Throughput</td><td>21,239 ship-tokens/s end to end, with full gradient diagnostics enabled</td></tr>
+<h2><span class="n">11</span>Reference run</h2>
+<table class="keep">
+  <tr><td>Run</td><td><code>wild-universe-731</code>: 4-vs-4 with 4 refractive fields, one RTX 4070 Laptop GPU (8 GB), 70.3 hours</td></tr>
+  <tr><td>Experience</td><td>671.8M environment steps over 674 updates; 2,592 environments × 3 rollouts of 128 steps per update</td></tr>
   <tr><td>Model</td><td>Width 128, 4 heads, 2 blocks of (2 spatial + 1 temporal) layers; 12 action logits per ship</td></tr>
   <tr><td>Algorithm</td><td>Recurrent PPO, GAE, 32 minibatches, peak learning rate 4.5e-4, decisions at 30 Hz</td></tr>
-  <tr><td>Final rating</td><td>Live 2110 ± 11 Elo; best averaged checkpoint 2052 ± 11; scripted 1000; random 86</td></tr>
-  <tr><td>Auxiliary dynamics error</td><td>Normalised position-x error 4.19 to 0.0027 over training; velocity-x 10.12 to 0.070</td></tr>
+  <tr><td>Rating</td><td>Final live 2110 ± 11 Elo; best averaged checkpoint 2052 ± 11; scripted 1000; random 86</td></tr>
 </table>
 
 <p class="small"><b style="color:var(--ink)">Where to look in the repository.</b> Results, sample sizes and caveats: <code>docs/evaluation.md</code>.
