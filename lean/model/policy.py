@@ -181,18 +181,13 @@ def next_state_target(config: ModelConfig, state, next_state, step_out, tick_len
     return torch.stack([columns[column.name] for column in config.next_state_columns], -1).float()
 
 
-def symlog(values: Tensor) -> Tensor:
-    """sign(x) log(1 + |x|) (DreamerV3)."""
-    return torch.sign(values) * torch.log1p(values.abs())
-
-
 def next_state_centres(config: ModelConfig, device=None) -> Tensor:
     """The next-state bins' centres, (NEXT_STATE, BINS) float32, in each column's bin space
     (symlog of target units for a symlog column)."""
     low = torch.tensor([column.low for column in config.next_state_columns], dtype=torch.float32)
     high = torch.tensor([column.high for column in config.next_state_columns], dtype=torch.float32)
     is_symlog = torch.tensor([column.symlog for column in config.next_state_columns])
-    low, high = torch.where(is_symlog, symlog(low), low), torch.where(is_symlog, symlog(high), high)
+    low, high = torch.where(is_symlog, contract.symlog(low), low), torch.where(is_symlog, contract.symlog(high), high)
     return value_bin_centres(low, high, config.bins).to(device)
 
 
@@ -200,7 +195,7 @@ def next_state_distribution(config: ModelConfig, target: Tensor) -> Tensor:
     """HL-Gauss target probabilities of next_state_target's columns: target (..., NEXT_STATE)
     in target units to (..., NEXT_STATE, BINS), each column in its own bin space."""
     is_symlog = torch.tensor([column.symlog for column in config.next_state_columns], device=target.device)
-    target = torch.where(is_symlog, symlog(target.float()), target.float())
+    target = torch.where(is_symlog, contract.symlog(target.float()), target.float())
     return hl_gauss_targets(target, next_state_centres(config, target.device), config.next_state_sigma)
 
 

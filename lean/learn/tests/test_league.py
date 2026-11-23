@@ -12,7 +12,7 @@ import pytest
 import torch
 
 from lean import game, model, scripted
-from lean.contract import split_joint
+from lean.contract import SEAT_AXIS, split_joint
 from lean.learn import League, LearnConfig, WeightAverages, abandon, collect, make_optimiser, update
 from lean.learn.pool import (
     EMA,
@@ -25,8 +25,9 @@ from lean.learn.pool import (
     pfsp,
     retained,
 )
-from lean.learn.rollout import SEAT_AXIS, network_actions, seat_view
+from lean.learn.rollout import network_actions
 from lean.learn.tests.setting import StepRecorder, add_snapshots, small
+from lean.model.agent import seat_view
 
 ENVS = 8  # 4 self-play, 4 league
 MILLION = 1_000_000

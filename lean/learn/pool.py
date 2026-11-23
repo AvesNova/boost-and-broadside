@@ -46,17 +46,17 @@ most 11 snapshots to 500M steps (25 taken) and 12 to about 1.5B; it drops at mos
 snapshots at one addition.
 """
 
-import copy
 import dataclasses
 import math
 from pathlib import Path
 
 import torch
-from torch import Tensor, nn
+from torch import Tensor
 from torch.nn import functional
 
 from lean.contract import random_keywords
 from lean.learn.config import LearnConfig
+from lean.model.agent import Stepper, split_weights, stepper_weights, template
 
 SCRIPTED = 0
 EMA = 1
@@ -126,30 +126,6 @@ def retained(ordinals, recent: int, history_from: int, cap: int) -> set[int]:
     return set(sorted(keep)[-cap:])
 
 
-class Stepper(nn.Module):
-    """A policy whose forward is its `step`, so that torch.func.functional_call can run
-    the step with a slot's weights."""
-
-    def __init__(self, policy):
-        super().__init__()
-        self.policy = policy
-
-    def forward(self, obs, carry, position_offset):
-        return self.policy.step(obs, carry, position_offset)
-
-
-def stepper_weights(policy, parameters: dict[str, Tensor] | None = None) -> dict[str, Tensor]:
-    """A slot's weights: the policy's parameters (or `parameters`, by the policy's own names)
-    and buffers, named as Stepper's, detached copies."""
-    weights = {}
-    for name, tensor in policy.named_parameters():
-        source = tensor if parameters is None else parameters[name].to(tensor.dtype)
-        weights[f"policy.{name}"] = source.detach().clone()
-    for name, tensor in policy.named_buffers():
-        weights[f"policy.{name}"] = tensor.detach().clone()
-    return weights
-
-
 @dataclasses.dataclass
 class NetworkTable:
     """One segment's network table (League.prepare): the K slots holding weights, each as
@@ -199,7 +175,7 @@ class League:
         self.snapshot_step: dict[int, int] = {}  # snapshot member -> its environment steps
         self.taken = 0  # snapshots taken so far
         self.abandoned = 0  # games re-dealt because no slot was free (should stay 0)
-        self.template: nn.Module | None = None
+        self.template: Stepper | None = None
         self.table: NetworkTable | None = None
 
     # ---- members
@@ -313,7 +289,7 @@ class League:
         and the slot (or None) whose games the caller must re-deal (lean.learn.rollout.
         abandon) because no slot was free for the new snapshot (counted in `abandoned`)."""
         if self.template is None:
-            self.template = copy.deepcopy(Stepper(policy)).to("meta").eval()
+            self.template = template(policy)
         abandon = None
         if self.schedule.due(steps_before, steps_after):
             rows = self.free_retired(slot)
@@ -374,15 +350,10 @@ class League:
             self.table = None
             return
         width = max([capacity] + [rows[index] for index in active])
-        parameter_names = {name for name, _ in self.template.named_parameters()}
-        slots = []
-        for index in active:
-            weights = self.slot_weights[index]
-            slots.append((
-                torch.tensor(index, device=self.device),
-                {name: value for name, value in weights.items() if name in parameter_names},
-                {name: value for name, value in weights.items() if name not in parameter_names},
-            ))
+        slots = [
+            (torch.tensor(index, device=self.device), *split_weights(self.template, self.slot_weights[index]))
+            for index in active
+        ]
         self.table = NetworkTable(slots, torch.arange(width, device=self.device))
 
     # ---- checkpoints
@@ -434,7 +405,7 @@ class League:
         self.retiring = set(state["retiring"])
         self.ordinal, self.snapshot_step = dict(state["ordinal"]), dict(state["snapshot_step"])
         self.taken, self.abandoned = state["taken"], state["abandoned"]
-        self.template = copy.deepcopy(Stepper(policy)).to("meta").eval()
+        self.template = template(policy)
 
 
 SNAPSHOTS = "snapshots"

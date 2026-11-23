@@ -183,3 +183,16 @@ def test_adaptive_allocation_spreads_over_pairings_without_games(tmp_path, monke
     monkeypatch.setattr(evaluator, "ensure", lambda requests: asked.extend(requests))
     evaluator.adaptive(pairings, budget=100, round_games=100)
     assert sorted(games for _, _, _, games in asked) == [20] * 5
+
+
+def test_the_runner_keeps_the_callers_random_state():
+    """runner.play seeds torch's default generators for its own draws (a compiled tick cannot
+    take a generator) inside a fork: the caller's random state is as it was, and a seed
+    replays the same games."""
+    table = torch.tensor([vector(scripted.ScriptedConfig())] * 2)
+    torch.manual_seed(3)
+    before = torch.get_rng_state()
+    first = play(GAME, queue_of(8), table, envs=4, segment=8, seed=5)
+    assert torch.equal(torch.get_rng_state(), before)
+    again = play(GAME, queue_of(8), table, envs=4, segment=8, seed=5)
+    assert torch.equal(first.result, again.result) and torch.equal(first.length, again.length)

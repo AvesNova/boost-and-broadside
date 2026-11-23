@@ -2,20 +2,16 @@
 networks' moves, the critic's target pass and the minibatch loss (forward and backward).
 Adam and the gradient clipping stay eager (the framework spike found nothing to gain there).
 
-`graphs()` builds them once, on the first compiled collect or update, and turns duck sizing
-off for the process then (`torch.fx.experimental._config.use_duck_shape = False`): with it
-on, two sizes that happen to be equal at the first call (ship slots and field slots at 5v5)
-are tied, and a new team size recompiles. With it off and `dynamic=True` each graph compiles
-once and every team size, environment count and minibatch size after costs nothing
-(docs/rewrite/scoreboard.md). Importing this module changes nothing.
+`graphs()` builds them once, on the first compiled collect or update, through
+lean.contract.compile_dynamic (dynamic sizes, duck sizing off for the process: each graph
+compiles once for every team size, environment count and minibatch size). Importing this
+module changes nothing.
 """
 
 import functools
 from types import SimpleNamespace
 
-import torch
-import torch.fx.experimental._config as fx_config
-
+from lean.contract import compile_dynamic
 from lean.learn import rollout, training
 
 
@@ -23,15 +19,10 @@ from lean.learn import rollout, training
 def graphs() -> SimpleNamespace:
     """The compiled functions: act, advance, slot_actions (lean.learn.rollout),
     minibatch_values and minibatch_loss (lean.learn.training)."""
-    fx_config.use_duck_shape = False
-
-    def compiled(function):
-        return torch.compile(function, dynamic=True)
-
     return SimpleNamespace(
-        act=compiled(rollout.act),
-        advance=compiled(rollout.advance),
-        slot_actions=compiled(rollout.slot_actions),
-        minibatch_values=compiled(training.minibatch_values),
-        minibatch_loss=compiled(training.minibatch_loss),
+        act=compile_dynamic(rollout.act),
+        advance=compile_dynamic(rollout.advance),
+        slot_actions=compile_dynamic(rollout.slot_actions),
+        minibatch_values=compile_dynamic(training.minibatch_values),
+        minibatch_loss=compile_dynamic(training.minibatch_loss),
     )

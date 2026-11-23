@@ -36,6 +36,7 @@ from lean.contract import (
     StepOut,
     join_action,
     random_keywords,
+    symlog,
 )
 
 from . import card
@@ -1489,11 +1490,6 @@ ANGLE_SCALE = 0.25  # rad, linear: the angle of attack, about the stall angle
 SHIELD_SCALE = 100.0  # shield points, linear
 SHIELD_WAIT_SCALE = 3.0  # s, linear, clipped to [0, 1]: the recharge delay
 BOUNDARY_CLIP = 1000.0  # m, linear, clipped to [-1, 1]
-
-
-def symlog(x: Tensor) -> Tensor:
-    """sign(x) ln(1 + |x|)."""
-    return torch.sign(x) * torch.log1p(x.abs())
 
 
 FIELD_RADIUS_SCALE = 1000.0  # m (v2's inputs.py)

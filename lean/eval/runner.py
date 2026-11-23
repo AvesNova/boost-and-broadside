@@ -10,30 +10,27 @@ Seats: in one call, seat A is either one network for every game or a scripted ag
 (an index into `scripted`, a table of full parameter vectors, lean.scripted.parameters.vector),
 and seat B the same. The scripted agent runs once per tick for every ship with every
 parameter row as a per-ship tensor (rows_of), so new vectors never compile a new graph. A
-network runs on all E environments from its seat's team view (lean.learn.pool.Stepper
-through torch.func.functional_call: the weights are inputs, so another network of the same
-architecture is new data too); each game draws its own position offset (as in training).
+network runs on all E environments from its seat's team view as in training
+(lean.model.agent.network_step: the weights are inputs, so another network of the same
+architecture is new data too, and the precision is the network's own); each game draws its
+own position offset (as in training).
 
 Deals are drawn once per segment (`segment` ticks) for the next E games of the queue, and
 the host reads two numbers per segment (games taken, slots busy); nothing is read in a tick.
 """
 
-import copy
 import dataclasses
 import functools
 import time
 from dataclasses import dataclass
 
 import torch
-import torch.fx.experimental._config as fx_config
 from torch import Tensor
-from torch.func import functional_call
 
 from lean import game, scripted
-from lean.contract import split_joint
-from lean.learn.pool import Stepper, stepper_weights
-from lean.learn.rollout import map_fields, reset_carry, sample_joint, seat_view, whole
+from lean.contract import compile_dynamic, split_joint, whole_state
 from lean.model import draw_position_offset
+from lean.model.agent import Network, network, network_step, reset_carry, seat_view
 from lean.scripted import ScriptedConfig
 from lean.scripted.parameters import rows_of
 
@@ -116,15 +113,13 @@ def draw_deals(game_config, queue: Queue, first: int, count: int, slots: int, mo
     return Deals(state, scripted.fresh_memory(count, slots, None, device), *offsets, first_tensor)
 
 
-def network_moves(network, seat_team: Tensor, views, carry: Tensor, offset: Tensor) -> tuple[Tensor, Tensor]:
+def network_moves(network_: Network, seat_team: Tensor, views, carry: Tensor, offset: Tensor) -> tuple[Tensor, Tensor]:
     """A network's sampled actions (E, N, 3) from team `seat_team[e]`'s view of every
-    environment, and its new carry. `network` is (template, parameters, buffers)."""
-    template, parameters, buffers = network
+    environment, and its new carry."""
     envs = seat_team.shape[0]
     view = seat_view(views, torch.arange(envs, device=seat_team.device), seat_team)
-    with torch.autocast(seat_team.device.type, dtype=torch.bfloat16, enabled=seat_team.device.type == "cuda"):
-        logits, _, carry_out = functional_call(template, (parameters, buffers), (view, carry, offset))
-    return split_joint(sample_joint(logits.float(), None)), carry_out.to(carry.dtype)
+    joint, carry = network_step(network_, view, carry, offset, None)
+    return split_joint(joint), carry
 
 
 def tick(game_config, state, slots: Slots, queue: Queue, table: Tensor, network_a, network_b, deals: Deals,
@@ -187,58 +182,50 @@ def tick(game_config, state, slots: Slots, queue: Queue, table: Tensor, network_
     return state, slots, taken + start.sum()
 
 
-_TEMPLATES = {}
-
-
-def network(policy) -> tuple:
-    """A policy as the runner's network: (template, parameters, buffers), the template one
-    weightless copy per architecture (a compiled graph guards on the module, so every network
-    of one architecture shares it)."""
-    key = repr(policy.config)
-    if key not in _TEMPLATES:
-        _TEMPLATES[key] = copy.deepcopy(Stepper(policy)).to("meta").eval()
-    template = _TEMPLATES[key]
-    weights = stepper_weights(policy)
-    names = {name for name, _ in template.named_parameters()}
-    return (
-        template,
-        {name: value for name, value in weights.items() if name in names},
-        {name: value for name, value in weights.items() if name not in names},
-    )
-
-
 @functools.cache
 def compiled_tick():
-    """`tick` under torch.compile (dynamic sizes, duck sizing off, as lean.learn.compiled)."""
-    fx_config.use_duck_shape = False
-    return torch.compile(tick, dynamic=True)
+    """`tick` under torch.compile (lean.contract.compile_dynamic, as lean.learn.compiled)."""
+    return compile_dynamic(tick)
 
 
 @torch.no_grad()
 def play(
     game_config, queue: Queue, scripted_table: Tensor, policy_a=None, policy_b=None, *,
     envs: int = 4096, segment: int = 32, seconds: float | None = None, compiled: bool = False, seed: int = 0,
-    progress=None, slot_games: int = 16, minimum_envs: int = 256,
+    progress=None, slot_games: int = 16, minimum_envs: int = 256, bf16: tuple[bool, bool] = (True, True),
 ) -> Outcome:
     """Play the queue's games (see the module's docstring) on at most `envs` environments on
     the table's device (fewer for a short queue: Q / `slot_games`, at least `minimum_envs`). `scripted_table` (S, len(PARAMETERS)) float32 holds the scripted
     agents' vectors (one row at least, even when both seats are networks); `policy_a`,
     `policy_b` a lean.model.Policy playing every game's seat A or B, or None for the
-    scripted agent of the queue's index. `seconds`: the cutoff in seconds of play, after
-    which no game starts (None: the queue's end). Every draw comes from torch's default
-    generators, seeded by `seed`. `progress(games_started, busy_slots, seconds)` is called
-    after each segment.
+    scripted agent of the queue's index; `bf16` each seat's network precision, the setting
+    it was trained with (lean.learn.LearnConfig.bf16). `seconds`: the cutoff in seconds of
+    play, after which no game starts (None: the queue's end). Every draw comes from torch's
+    default generators (a compiled graph cannot take a generator object), seeded by `seed`
+    inside a fork of their states: the caller's are restored on return.
+    `progress(games_started, busy_slots, seconds)` is called after each segment.
     """
+    devices = list(range(torch.cuda.device_count())) if scripted_table.device.type == "cuda" else []
+    with torch.random.fork_rng(devices=devices):
+        torch.random.default_generator.manual_seed(seed)
+        if devices:
+            torch.cuda.manual_seed_all(seed)
+        return _play(game_config, queue, scripted_table, policy_a, policy_b, envs, segment, seconds, compiled, progress,
+                     slot_games, minimum_envs, bf16)
+
+
+def _play(game_config, queue: Queue, scripted_table: Tensor, policy_a, policy_b, envs: int, segment: int,
+          seconds: float | None, compiled: bool, progress, slot_games: int, minimum_envs: int,
+          bf16: tuple[bool, bool]) -> Outcome:
     device = scripted_table.device
-    torch.manual_seed(seed)
     queue = queue.to(device)
     total = len(queue)
     # The drain lasts up to a whole game while slots fall idle, so a short queue takes fewer
     # slots: at least `slot_games` games per slot, never fewer than `minimum_envs` slots.
     envs = min(envs, total, max(minimum_envs, -(-total // slot_games)))
     ships = int(queue.team_sizes().sum(-1).max())
-    network_a = None if policy_a is None else network(policy_a)
-    network_b = None if policy_b is None else network(policy_b)
+    network_a = None if policy_a is None else network(policy_a, bf16[0])
+    network_b = None if policy_b is None else network(policy_b, bf16[1])
     configs = [None if policy is None else policy.config for policy in (policy_a, policy_b)]
     function = compiled_tick() if compiled else tick
 
@@ -250,8 +237,7 @@ def play(
     # whole (a compiled graph is specialised on strides).
     shared = ("bullets", "bullet_counts", "bullet_real", "tick", "pending")
     state = dataclasses.replace(opening.state, **{name: getattr(opening.state, name).clone() for name in shared})
-    state = map_fields(state, whole)
-    state = dataclasses.replace(state, constants=map_fields(state.constants, whole))
+    state = whole_state(state)
     carries = [None if policy is None else policy.initial_carry(envs, ships, device) for policy in (policy_a, policy_b)]
     slots = Slots(torch.arange(envs, device=device), opening.memory, *carries, opening.offset_a, opening.offset_b)
     result = torch.full((total + 1,), NOT_PLAYED, dtype=torch.long, device=device)

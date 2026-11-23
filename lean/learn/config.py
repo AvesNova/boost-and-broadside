@@ -3,8 +3,6 @@ levels, the hit head, team-size draws, self-play and the league."""
 
 from dataclasses import dataclass
 
-import torch
-
 from lean.contract import LEVELS
 
 # Indices of v2's reward levels (src/bnb/contracts/trajectory.py at 4cfd1e86), lean.contract's order.
@@ -94,8 +92,9 @@ class LearnConfig:
     # (lean.learn.weights): an EMA with this decay per update, and a uniform average of
     # every update's weights from the end of the learning-rate warm-up.
     ema_decay: float = 0.95
-    # The policy's forward passes (rollout and update) under bf16 autocast on a GPU; the
-    # model keeps its position phases and recurrence in float32. Ignored on the CPU.
+    # The policy's forward passes (rollout, update, and evaluation of its checkpoints) under
+    # bf16 autocast on a GPU (lean.model.agent.precision); the model keeps its position phases
+    # and recurrence in float32. Ignored on the CPU.
     bf16: bool = True
 
     # Categorical critic: the outermost bin centres per level, in return units (LEVEL_NAMES
@@ -157,12 +156,6 @@ class LearnConfig:
     # Checkpoints to disk (lean.train): every this many environment steps, none deleted.
     checkpoint_every: int = 10_000_000
     persona_spread: float = 0.0
-
-
-def policy_precision(config: LearnConfig, device) -> torch.autocast:
-    """The autocast context of the policy's forward passes: bf16 on a GPU when config.bf16."""
-    device = torch.device(device)
-    return torch.autocast(device.type, dtype=torch.bfloat16, enabled=config.bf16 and device.type == "cuda")
 
 
 def learning_rate(config: LearnConfig, step: int) -> float:

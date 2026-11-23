@@ -8,7 +8,7 @@ import torch
 from torch import Tensor
 
 from lean.contract import JOINT, LEVEL_NAMES
-from lean.learn.config import LearnConfig, learning_rate, policy_precision
+from lean.learn.config import LearnConfig, learning_rate
 from lean.learn.returns import (
     advantage_shares,
     advantage_sums,
@@ -23,6 +23,7 @@ from lean.learn.returns import (
 )
 from lean.learn.rollout import Rollout, teacher_joint
 from lean.learn.store import RolloutStore
+from lean.model.agent import precision
 from lean.model.policy import next_state_cross_entropy
 from lean.model.value import decode_value, hl_gauss_targets
 
@@ -103,7 +104,7 @@ def minibatch_values(
 ) -> tuple[Tensor, Tensor]:
     """The critic's decoded values (T, B, N, LEVELS) of one batch of views, zero outside
     `own`, and the support's centres (LEVELS, BINS)."""
-    with policy_precision(config, carry.device):
+    with precision(carry.device, config.bf16):
         _, value_logits, _, _, _ = policy.sequence(observation, carry, reset, position_offset)
     value_logits = value_logits.float()
     centres = value_centres(config, value_logits.shape[-1], value_logits.device)
@@ -125,7 +126,7 @@ def minibatch_loss(
     own = observation.own
     own_count, next_count, labelled_count = denominators.clamp(min=1.0).unbind()
     surrogate_weight, entropy_weight, teacher_weight = weights.unbind()
-    with policy_precision(config, carry.device):
+    with precision(carry.device, config.bf16):
         outputs = policy.sequence(observation, carry, reset, position_offset)
     # The losses in float32.
     logits, value_logits, next_state, hit_logits = (output.float() for output in outputs[:4])

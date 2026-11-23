@@ -55,13 +55,10 @@ import time
 import torch
 from torch import Tensor
 
-from lean.contract import Obs
-from lean.learn.rollout import SEAT_AXIS
+from lean.contract import EPISODE_CONSTANT, SEAT_AXIS, Obs
 
 # Per-tick records kept on the device: one byte per token, counted and indexed there.
 RESIDENT = ("own", "done", "reset", "next_valid", "hit_label", "deal_row")
-# Observation fields constant within an episode: stored once per deal (with the position offset).
-EPISODE_CONSTANT = ("field", "field_pos")
 # Floats kept in float32: positions and headings (the position code and the rotary angles
 # read them) and the PPO numbers.
 FLOAT32 = frozenset(("pos", "heading", "field_pos", "position_offset", "log_probability", "value", "reward"))
