@@ -97,10 +97,6 @@ superseded by v2's levels, 2026-11-23: see "Reward levels and the hit head" at t
   head-on side), carried from tick to tick and taken fresh from the segment's deals at a
   re-deal; personas are drawn with the segment's deals (None at spread 0; every persona
   field has a leading E).
-- Next-state loss: the target here is the change in `obs.ship`, used only if the head's
-  width equals SHIP_FEATURES. lean.model's head predicts scaled changes of State fields
-  (`model.next_state_target(config, state, next_state)`), so with the real model the
-  next-state loss is currently ZERO. To fix: record that target in `collect`.
 - The value helpers are local copies; lean.model has `hl_gauss_targets` and its own
   centres, which may differ from `value_centres` here. Unify before trusting values.
 - Stepping continues after `done` only through `take_deal` (collect) or `reset_done` (eval).
@@ -126,10 +122,13 @@ superseded by v2's levels, 2026-11-23: see "Reward levels and the hit head" at t
 
 Changed:
 
-- Next-state loss is live. `collect` records `lean.model.next_state_target(policy.config,
-  state, next_state)` around each game step (before the re-deal) as `Rollout.next_state`,
-  with `next_valid = own & next_state.alive & ~done`. `update` regresses the head on it
-  and raises ValueError when the head and the target differ in shape; there is no skip.
+- Next-state loss is live. `collect` records `policy.next_state_target(state, next_state,
+  step_out, tick_length)` around each game step (before the re-deal) as
+  `Rollout.next_state`, with `next_valid = own & next_state.alive & ~done`. `update` takes
+  the head's HL-Gauss cross-entropy against it (`lean.model.policy.next_state_cross_entropy`,
+  nats per column) and raises ValueError when the head's columns and the target's
+  differ; there is no skip. The stand-in policy (tests/standins.py) has its own
+  `next_state_target` (change of x and speed) and two 8-bin columns.
 - Value helpers come from `lean.model.value`. The support is `LearnConfig.value_low` and
   `value_high` (outermost bin centres per level): outcome +-1.5, kill +-2, damage +-2,
   shaping +-4. With 77 bins three bins are 0.12, 0.16, 0.16 and 0.32. Bounds used:
@@ -182,11 +181,8 @@ per-call overhead at this batch size (game step, then model step). `game.reset_d
 costs a third of a game step on every tick, though almost no tick ends a game; skipping
 it would need a read-back of `done` in the loop or a cheaper path inside lean.game.
 
-Found on the way, not in these files: the energy column of the next-state target has a
-mean square of about 1470 in the smoke rollout (the other columns 0.001 to 0.14, shield
-0), because energy changes by hundreds of units in a tick against the model's scale of
-10. The loss reads 209.8 and, at coefficient 0.1, outweighs every other term until the
-scale in `ModelConfig.next_state_fields` is set from measured changes.
+The next-state loss is a cross-entropy in nats per column (4.157 = ln 64 at the start of the
+smoke run), so no column outweighs the others by its units.
 
 ## The league: the author's design (2026-11-22)
 

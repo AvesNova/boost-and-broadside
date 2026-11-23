@@ -10,9 +10,10 @@ v2's TemporalBlock, src/bnb/models/yemong/temporal.py), then a gated MLP.
 Time is the leading axis. The carry of a token is (4, width): row 0 the RG-LRU state, rows
 1..3 the last three projected inputs, oldest first (the convolution's buffer). Before a
 tick with `fresh` 0 (an episode start) the whole carry is zeroed; after a tick with `keep`
-0 (a row that may not be attended) it is zeroed too. `sequence` (T ticks) and `step`
-(T = 1) are the same code: the convolution reads its taps through the same cuts, and the
-recurrence is a doubling scan.
+0 (a row that may not be attended) it is zeroed too; a state starting from zero takes its
+first input unscaled (no sqrt(1 - a^2)). `sequence` (T ticks) and `step` (T = 1) are the
+same code: the convolution reads its taps through the same cuts, and the recurrence is a
+doubling scan.
 """
 
 import math
@@ -117,7 +118,14 @@ class Temporal(nn.Module):
         recurrence, input_gate = torch.sigmoid(self.gates(convolved).float()).chunk(2, -1)
         log_retention = self.exponent * recurrence * F.logsigmoid(self.decay.float())
         retention = torch.exp(log_retention)
-        scale = torch.sqrt(torch.clamp_min(-torch.expm1(2.0 * log_retention), CONTRIBUTION_FLOOR))
+        # sqrt(1 - a_t^2) normalises an input against a state already at its stationary
+        # scale; a state starting from zero (a reset, the tick after a masked one, or a zero
+        # carry before tick 0) takes its first input at 1 instead (the released recurrentgemma
+        # code's rule at a segment's first position).
+        carried = (carry[:, :, 0] != 0).any(-1, keepdim=True).float()  # (E, M, 1)
+        continuing = fresh * torch.cat([carried[None], keep[:-1]])  # (T, E, M, 1)
+        normalised = torch.sqrt(torch.clamp_min(-torch.expm1(2.0 * log_retention), CONTRIBUTION_FLOOR))
+        scale = torch.where(continuing > 0.0, normalised, 1.0)
         states, state = doubling_scan(retention * fresh * keep, scale * input_gate * convolved * keep, carry[:, :, 0])
 
         mixed = states.to(tokens.dtype) * F.gelu(self.gate_branch(normed))

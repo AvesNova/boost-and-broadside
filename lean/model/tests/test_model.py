@@ -5,19 +5,26 @@ from types import SimpleNamespace
 
 import pytest
 import torch
-from torch import nn
 
+from lean.contract import FIELD_FEATURES, GLOBAL_FEATURES, SHIP_FEATURES
 from lean.model import ModelConfig, Policy, decode_value, hl_gauss_targets, value_bin_centres
-from lean.model.position import ColourCode, FourierCode, GridCellCode, make_position_code
-from lean.model.temporal import doubling_scan
+from lean.model.policy import (
+    Spatial,
+    field_heading,
+    next_state_centres,
+    next_state_cross_entropy,
+    next_state_distribution,
+    next_state_target,
+)
+from lean.model.position import ColourCode, FourierCode, GridCellCode, Rotary, make_position_code
+from lean.model.temporal import Temporal, doubling_scan
 
-SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES = 27, 3, 3
 ARENA_RADIUS = 4200.0  # lean.game.GameConfig's
 
 
 def make_policy(**overrides) -> Policy:
     torch.manual_seed(0)
-    policy = Policy(ModelConfig(**overrides), SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES)
+    policy = Policy(ModelConfig(**overrides))
     # The heads' last layers start near zero; enlarge them so the tests see the trunk's output.
     with torch.no_grad():
         for last in (*policy.heads.lasts, *policy.auxiliary_heads.lasts):
@@ -88,7 +95,7 @@ def test_sequence_equals_repeated_steps(rotate_values):
         assert torch.allclose(step_logits[live], logits[tick][live], atol=1e-4)
         assert torch.allclose(step_values[live], values[tick][live], atol=1e-4)
     assert torch.allclose(stepped, final, atol=1e-5)
-    assert next_state.shape == (ticks, envs, slots, policy.config.next_state_size)
+    assert next_state.shape == (ticks, envs, slots, policy.config.next_state_size, policy.config.bins)
     assert hit.shape == (ticks, envs, slots, policy.config.hit_classes)
 
 
@@ -128,11 +135,10 @@ def test_masked_rows_keep_a_zero_carry():
         assert (ships[:, obs.key_mask][:, :, row] != 0).any()
 
 
-@pytest.mark.parametrize("positionless_rotary", ["centre", "zero"])
-def test_padding_and_permutation_of_ships_leave_real_ships_unchanged(positionless_rotary):
+def test_padding_and_permutation_of_ships_leave_real_ships_unchanged():
     """Catches any dependence on slot index, slot count or the content of masked rows."""
     envs, real, padded = 3, 7, 12
-    policy = make_policy(positionless_rotary=positionless_rotary)
+    policy = make_policy()
     obs = make_obs((envs,), padded, live_fraction=2.0)
     obs.key_mask[:, real:] = False
     small = select(obs, SHIP_NAMES, torch.arange(real))
@@ -185,36 +191,91 @@ def test_fields_are_an_unordered_memory_with_no_outputs():
     assert not torch.allclose(base[0][live], empty[0][live], atol=1e-4)
 
 
-class ConstantCode(nn.Module):
-    """A position code that reads nothing: holds every token's inputs fixed."""
-
-    def __init__(self, features: int):
-        super().__init__()
-        self.features = features
-
-    def forward(self, positions):
-        return positions.new_zeros(positions.shape[:-1] + (self.features,))
-
-
 def test_attention_reads_only_relative_positions():
-    """Catches absolute position entering attention through the rotary terms: with the token
-    position code held fixed and the game token positionless ("zero"), translating every
-    ship and field together changes no ship output. (With "centre", v2's choice, the game
-    token is the arena centre, an absolute place, on purpose.)"""
-    envs, slots = 2, 6
-    policy = make_policy(positionless_rotary="zero")
-    policy.position_code = ConstantCode(policy.position_code.features)
-    obs = make_obs((envs,), slots)
-    shift = torch.tensor([1234.5, -876.5])
-    moved = SimpleNamespace(
-        **{**vars(obs), "pos": obs.pos + shift, "field_pos": obs.field_pos + shift}
-    )
-    carry = policy.initial_carry(envs, slots, "cpu")
-    with torch.no_grad():
-        base_logits, _, _ = policy.step(obs, carry)
-        moved_logits, _, _ = policy.step(moved, carry)
-    live = obs.key_mask
-    assert torch.allclose(base_logits[live], moved_logits[live], atol=2e-3)
+    """Catches absolute position entering attention through the rotary terms: translating
+    every ship and field together (each keeping its heading) changes no output of a spatial
+    sublayer. In the policy the game token sits at the arena centre and a field heads towards
+    it, both absolute on purpose (test_fields_head_towards_the_arena_centre)."""
+    torch.manual_seed(0)
+    config = ModelConfig()
+    spatial, rotary = Spatial(config, residual_layers=6).eval(), Rotary(config)
+    batch, ships, fields = 3, 6, 4
+    generator = torch.Generator().manual_seed(2)
+    tokens = torch.randn(batch, ships, config.width, generator=generator)
+    memory = torch.randn(batch, fields, config.map_width, generator=generator)
+    ship_pos = (torch.rand(batch, ships, 2, generator=generator) - 0.5) * 8000.0
+    field_pos = (torch.rand(batch, fields, 2, generator=generator) - 0.5) * 8000.0
+    ship_heading = (torch.rand(batch, ships, generator=generator) - 0.5) * 6.28
+    heading = field_heading(field_pos)
+    mask = torch.zeros(batch, 1, 1, ships + fields)
+
+    def outputs(shift):
+        ship_angles = rotary.angles(ship_pos + shift, ship_heading)
+        field_angles = rotary.angles(field_pos + shift, heading)
+        parts = (ship_angles.cos(), ship_angles.sin(), field_angles.cos(), field_angles.sin())
+        with torch.no_grad():
+            return spatial(tokens, memory, mask, tuple(part[:, :, None, None, :] for part in parts))
+
+    # float32 phases of positions of thousands of metres over a 64 m band
+    assert torch.allclose(outputs(torch.zeros(2)), outputs(torch.tensor([1234.5, -876.5])), atol=2e-3)
+
+
+def test_fields_head_towards_the_arena_centre():
+    """Catches a field heading of 0 (north) coming back: a field's rotary heading points from
+    its centre to the arena centre, so turning the whole map about the centre turns every
+    field's heading with it."""
+    angle = torch.tensor([0.3, 2.0, -2.5])
+    field_pos = 900.0 * torch.stack([angle.cos(), angle.sin()], -1)
+    heading = field_heading(field_pos)
+    assert torch.allclose(torch.stack([heading.cos(), heading.sin()], -1), -field_pos / 900.0, atol=1e-6)
+
+
+def test_rotary_bands():
+    """Catches a band ladder off the decision (2026-11-23): ratio 2 from 64 m, the coarsest
+    above 16.8 km (twice the 8.4 km arena diameter), the finest above the per-tick aliasing
+    limit, each band's axes turned by the golden section of 90 degrees and no two bands'
+    axes within 3 degrees of each other, heading harmonics 1 and 2, about 70 % of a 64-wide
+    head rotated; the input position code's coarsest period above the diameter."""
+    from lean.game import core
+
+    config = ModelConfig()
+    periods = torch.tensor(config.rotary_periods, dtype=torch.float64)
+    assert periods[0] == 64.0 and torch.allclose(periods[1:] / periods[:-1], torch.tensor(2.0, dtype=torch.float64))
+    assert periods[-2] <= 16800.0 < periods[-1]
+    assert len(periods) == 10 and periods[-1] == 32768.0
+    # Two ships closing head-on move 2 v h closer in a tick; a band aliases that motion
+    # unless its period exceeds twice it (Nyquist). v: the top level speed and 10 % for
+    # dives (335.4 m/s; 336.6 m/s was the fastest in 5.55M rows of scripted play).
+    game_config = core.GameConfig()
+    top = 1.1 * core.per_type_constants(game_config, torch.tensor([0])).cruise_speed.max().item()
+    assert 2.0 * (2.0 * top * game_config.tick_length) < periods[0]
+    assert abs(config.rotary_turn / 90.0 - (math.sqrt(5.0) - 1.0) / 2.0) < 1e-12
+    turns = torch.arange(len(periods), dtype=torch.float64) * config.rotary_turn % 90.0
+    gaps = (turns[:, None] - turns[None, :]).abs()
+    gaps = torch.minimum(gaps, 90.0 - gaps) + 1000.0 * torch.eye(len(periods), dtype=torch.float64)
+    assert gaps.min() > 3.0
+    assert config.heading_harmonics == (1.0, 2.0)
+    head = config.width // config.heads
+    assert config.rotary_pairs == 22 and 0.65 < 2 * config.rotary_pairs / head <= 0.75
+    assert config.offset_span > 2.0 * ARENA_RADIUS
+
+
+def test_the_coarsest_band_alone_tells_apart_every_separation_on_the_map():
+    """Catches a coarsest band that wraps inside the arena: every separation up to the 8.4 km
+    diameter (in every direction, a 16.8 km span of offsets) is recovered from the coarsest
+    band's two phases alone."""
+    config = ModelConfig()
+    rotary = Rotary(config)
+    generator = torch.Generator().manual_seed(4)
+    direction = torch.rand(4000, generator=generator) * 2.0 * math.pi
+    distance = torch.rand(4000, generator=generator) * 2.0 * ARENA_RADIUS
+    separation = distance[:, None] * torch.stack([direction.cos(), direction.sin()], -1)
+    bands = len(config.rotary_periods)
+    angles = rotary.angles(separation, torch.zeros(4000))[:, 2 * (bands - 1) : 2 * bands]
+    phase = torch.atan2(angles.sin(), angles.cos()).double()  # wrapped to (-pi, pi]
+    waves = rotary.waves[2 * (bands - 1) : 2 * bands].double()
+    recovered = torch.linalg.solve(waves, phase.T).T
+    assert (recovered - separation.double()).abs().max() < 0.1  # metres
 
 
 def test_same_weights_run_at_any_ship_and_field_count():
@@ -274,16 +335,6 @@ def test_attention_gate_starts_near_one_half():
     )
     assert abs(gate.mean().item() - 0.5) < 0.03
     assert 0.05 < gate.std().item() < 0.25
-
-
-def test_rotary_bands_stop_a_little_above_the_arena():
-    """Catches rotary bands far larger than the map (decided 2026-11-22: drop them) and a
-    ladder too short to tell apart positions across the arena."""
-    config = ModelConfig()
-    periods = config.rotary_periods
-    assert abs(periods[0] - 64.0) < 1e-6
-    assert 2.0 * ARENA_RADIUS < periods[-1] < 1.5 * 2.0 * ARENA_RADIUS
-    assert 2 * config.rotary_pairs <= config.width // config.heads
 
 
 @pytest.mark.parametrize("name", ["fourier", "grid_cells", "v2_codes"])
@@ -362,7 +413,7 @@ def training_batch(ticks=8, envs=4, slots=10, fields=5):
         bins=torch.randint(
             0, config.bins, (ticks, envs, slots, config.levels), generator=generator
         ),
-        next_state=torch.randn(ticks, envs, slots, config.next_state_size, generator=generator),
+        next_state=torch.randn(ticks, envs, slots, config.next_state_size, generator=generator) * 0.1,
         hit=torch.randint(0, config.hit_classes, (ticks, envs, slots), generator=generator),
     )
     return obs, reset, targets
@@ -378,7 +429,7 @@ def training_loss(policy, obs, reset, targets, carry=None):
     value_loss = torch.nn.functional.cross_entropy(
         values[live].flatten(0, 1), targets.bins[live].flatten()
     )
-    next_loss = (next_state[live] - targets.next_state[live]).square().mean()
+    next_loss = next_state_cross_entropy(policy.config, next_state[live], targets.next_state[live]).mean()
     hit_loss = torch.nn.functional.cross_entropy(hit[live], targets.hit[live])
     return policy_loss + value_loss + next_loss + hit_loss, policy_loss, final
 
@@ -434,7 +485,7 @@ def test_gradient_without_perturbed_heads_or_loss_on_carry():
     """The same with the real initialisation and the loss alone: lists what a fresh model's
     first step actually trains."""
     torch.manual_seed(0)
-    policy = Policy(ModelConfig(), SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES)
+    policy = Policy(ModelConfig())
     obs, reset, targets = training_batch()
     loss, _, _ = training_loss(policy, obs, reset, targets)
     loss.backward()
@@ -450,7 +501,7 @@ def test_gradient_without_perturbed_heads_or_loss_on_carry():
 def test_adam_fits_a_tiny_fixed_batch():
     """Catches a model that cannot fit: policy cross-entropy to fixed random actions."""
     torch.manual_seed(0)
-    policy = Policy(ModelConfig(), SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES)
+    policy = Policy(ModelConfig())
     obs, reset, targets = training_batch(ticks=8, envs=2, slots=6)
     optimiser = torch.optim.Adam(policy.parameters(), lr=1e-3)
     losses = []
@@ -515,3 +566,143 @@ def test_the_model_reads_fog():
         )
         changed, _, _ = policy.step(stale, carry)
     assert (base - changed).abs().max() > 1e-4
+
+
+def test_spatial_initialisation_is_recurrentgemmas_like_the_temporal():
+    """Catches the spatial sublayers falling back to PyTorch's default (a third of the input
+    variance): every input projection N(0, 1/fan_in), the output and MLP down projections
+    N(0, s/fan_in) with s = 2/6, the same numbers as the temporal sublayer's."""
+    torch.manual_seed(0)
+    policy = Policy(ModelConfig())
+    width, hidden, scale = 128, 512, 2.0 / 6.0
+    for block in policy.blocks:
+        assert abs(block.temporal.output.weight.std().item() / math.sqrt(scale / width) - 1.0) < 0.05
+        for spatial in block.spatial:
+            expected = (
+                (spatial.query_key_value_gate.weight, 1.0 / width),
+                (spatial.map_key_value.weight, 1.0 / 64),
+                (spatial.mlp_input.weight, 1.0 / width),
+                (spatial.output.weight, scale / width),
+                (spatial.mlp_output.weight, scale / hidden),
+            )
+            for weight, variance in expected:
+                assert abs(weight.std().item() / math.sqrt(variance) - 1.0) < 0.05
+                assert abs(weight.mean().item()) < 0.1 * math.sqrt(variance)
+
+
+def test_heads_start_near_uniform_and_the_hit_head_at_the_measured_shares():
+    """Catches a head's last layer off orthogonal 0.01 (policy, value levels, next state) and
+    a hit head starting at ln 3 instead of the measured class shares (log-share biases)."""
+    torch.manual_seed(0)
+    policy = Policy(ModelConfig())
+    for last in (*policy.heads.lasts, policy.auxiliary_heads.lasts[0]):
+        singular = torch.linalg.svdvals(last.weight)
+        assert torch.allclose(singular, torch.full_like(singular, 0.01), atol=1e-5)
+        assert (last.bias == 0).all()
+    shares = torch.tensor(policy.config.hit_class_frequencies)
+    shares = shares / shares.sum()
+    assert torch.allclose(policy.auxiliary_heads.lasts[1].bias, torch.log(shares))
+    obs = make_obs((2, 3), 6, live_fraction=2.0)
+    with torch.no_grad():
+        logits, values, next_state, hit, _ = policy.sequence(
+            obs, policy.initial_carry(3, 6, "cpu"), torch.zeros(2, 3, dtype=torch.bool)
+        )
+    assert torch.allclose(torch.softmax(hit, -1), shares, atol=0.01)
+    for output, count in ((logits, 42), (values, 64), (next_state, 64)):
+        log_probability = torch.log_softmax(output, -1)
+        entropy = -(log_probability.exp() * log_probability).sum(-1)
+        assert (entropy > math.log(count) - 0.01).all()
+
+
+def test_a_state_starting_from_zero_takes_its_first_input_unscaled():
+    """Catches sqrt(1 - a^2) applied at a reset, after a masked tick or from a zero carry
+    (the released recurrentgemma code uses 1 there), or 1 applied to a running state."""
+    torch.manual_seed(0)
+    config = ModelConfig()
+    temporal = Temporal(config, residual_layers=6)
+    ticks, envs, rows = 3, 2, 3
+    tokens = torch.randn(ticks, envs, rows, config.width)
+    carry = torch.randn(envs, rows, 4, config.width)
+    carry[1, 2] = 0.0  # a row whose carry is zero before tick 0
+    fresh = torch.ones(ticks, envs, 1, 1)
+    fresh[1, 0] = 0.0  # environment 0 is reset before tick 1
+    keep = torch.ones(ticks, envs, rows, 1)
+    keep[0, 1, 1] = 0.0  # row 1 of environment 1 is masked on tick 0
+    states, running = [], carry
+    with torch.no_grad():
+        for tick in range(ticks):
+            _, running = temporal(tokens[tick : tick + 1], running, fresh[tick : tick + 1], keep[tick : tick + 1])
+            states.append(running[..., 0, :])
+        _, whole = temporal(tokens, carry, fresh, keep)
+
+        def bare_input(tick, environment, row):
+            """input_gate * convolved at a tick with no taps before it (its state starts from zero)."""
+            projected = temporal.recurrent_input(temporal.input_norm(tokens[tick, environment, row]))
+            convolved = temporal.convolution_weight[0] * projected + temporal.convolution_bias
+            _, input_gate = torch.sigmoid(temporal.gates(convolved)).chunk(2, -1)
+            return input_gate * convolved
+
+        assert torch.allclose(states[1][0, 0], bare_input(1, 0, 0), atol=1e-6)  # after the reset
+        assert torch.allclose(states[0][1, 2], bare_input(0, 1, 2), atol=1e-6)  # from a zero carry
+        assert torch.allclose(states[1][1, 1], bare_input(1, 1, 1), atol=1e-6)  # after the masked tick
+        assert not torch.allclose(states[0][0, 0], bare_input(0, 0, 0), atol=1e-3)  # a running state
+    assert torch.allclose(whole, running, atol=1e-5)  # the 3-tick call reads the same starts
+
+
+def hand_made_pair():
+    """Two ships flying north at 200 m/s over the map (300 m/s proper speed at n = 1.5), each
+    ending 0.123 m further north and 0.15 m further west than dead reckoning, turning 0.03 rad
+    left against 0.02 rad of nose rate, speeding up 1.5 m/s and spending 100 of store; ship 0
+    recharges 0.4 unhurt, ship 1 takes a hit of 21."""
+    tick = 1.0 / 30.0
+
+    def pair(first, second=None):
+        return torch.tensor([[first, first if second is None else second]])
+
+    state = SimpleNamespace(
+        x=pair(1000.0), y=pair(-500.0), heading_cos=pair(0.0), heading_sin=pair(1.0),
+        velocity_x=pair(0.0), velocity_y=pair(300.0), log_index=pair(math.log(1.5)),
+        nose_rate=pair(0.6), speed=pair(250.0), energy=pair(1000.0), shield=pair(50.0),
+    )
+    turned = math.pi / 2.0 + 0.03
+    next_state = SimpleNamespace(
+        x=pair(1000.0 - 0.15), y=pair(-500.0 + 200.0 * tick + 0.123),
+        heading_cos=pair(math.cos(turned)), heading_sin=pair(math.sin(turned)),
+        speed=pair(251.5), energy=pair(900.0), shield=pair(50.4, 29.0),
+    )
+    step_out = SimpleNamespace(shield_restored=pair(0.4, 0.0))
+    return state, next_state, step_out, tick
+
+
+def test_next_state_targets_per_column_on_a_hand_made_pair():
+    """Catches a wrong frame, extrapolation or bin space in any column: the targets equal the
+    hand-made pair's residuals and land in the bins worked out by hand."""
+    config = ModelConfig()
+    names = [column.name for column in config.next_state_columns]
+    assert names == ["along", "across", "heading", "speed", "energy", "shield"]
+    target = next_state_target(config, *hand_made_pair())[0]
+    expected = torch.tensor([[0.123, 0.15, 0.01, 1.5, -100.0, 0.0], [0.123, 0.15, 0.01, 1.5, -100.0, -21.0]])
+    assert torch.allclose(target, expected, atol=1e-3)
+    # By hand: linear bins (value - low) / (high - low) * 63, rounded: along 42.6, across
+    # 39.4, heading 37.8, speed 47.3, energy 27.0; the shield in symlog space over
+    # [-ln 91, ln 1.3]: 0 -> 59.5 (60), -21 -> 18.7 (19).
+    bins = next_state_distribution(config, target).argmax(-1)
+    assert bins.tolist() == [[43, 39, 38, 47, 27, 60], [43, 39, 38, 47, 27, 19]]
+
+
+def test_next_state_loss_is_in_nats_per_column():
+    """Catches a next-state loss not in nats: uniform logits cost ln 64 per column, whatever
+    the column's units; logits at the target's log-distribution cost its entropy (the
+    floor), and a shifted prediction costs more."""
+    config = ModelConfig()
+    target = next_state_target(config, *hand_made_pair())
+    uniform = next_state_cross_entropy(config, torch.zeros(1, 2, 6, 64), target)
+    assert uniform.shape == (1, 2, 6)
+    assert torch.allclose(uniform, torch.full_like(uniform, math.log(64)), atol=1e-5)
+    distribution = next_state_distribution(config, target)
+    best = next_state_cross_entropy(config, distribution.clamp_min(1e-30).log(), target)
+    entropy = -(distribution * distribution.clamp_min(1e-30).log()).sum(-1)
+    assert torch.allclose(best, entropy, atol=1e-5)
+    shifted = next_state_cross_entropy(config, distribution.roll(3, -1).clamp_min(1e-30).log(), target)
+    assert (shifted > best + 1.0).all()
+    assert next_state_centres(config).shape == (6, 64)

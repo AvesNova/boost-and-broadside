@@ -122,8 +122,9 @@ def make_position_code(config) -> nn.Module:
 
 
 class Rotary(nn.Module):
-    """Rotary angles: per band two axes (v2's layout: x and y turned band * turn degrees),
-    then the heading harmonics. angles(positions (..., 2), heading (...)) -> (..., pairs)."""
+    """Rotary angles: per band two perpendicular axes (v2's layout), band k's turned k *
+    rotary_turn degrees, at rate 2 pi / period; then the heading harmonics.
+    angles(positions (..., 2), heading (...)) -> (..., pairs)."""
 
     def __init__(self, config):
         super().__init__()
@@ -139,7 +140,3 @@ class Rotary(nn.Module):
     def angles(self, positions: Tensor, heading: Tensor) -> Tensor:
         with torch.autocast(positions.device.type, enabled=False):
             return torch.cat([positions.float() @ self.waves.T, heading.float()[..., None] * self.harmonics], -1)
-
-    def position_angles(self, positions: Tensor) -> Tensor:
-        """Angles of a token with a position and heading 0 (the heading pairs unrotated)."""
-        return self.angles(positions, positions.new_zeros(positions.shape[:-1]))

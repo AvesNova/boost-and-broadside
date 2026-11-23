@@ -14,7 +14,7 @@ from lean.contract import random_keywords
 from lean.learn.config import LearnConfig, policy_precision
 from lean.learn.returns import value_centres
 from lean.learn.rewards import Ledger, blank_ledger, clear_ledger, reward_step, tick_events
-from lean.model import draw_position_offset, next_state_target
+from lean.model import draw_position_offset
 from lean.model.value import decode_value
 
 POWERS_TIMES_FIRES, FIRES = 6, 2
@@ -131,7 +131,7 @@ class Rollout:
     reward: (T, S, N, LEVELS). done: (T, S) the seat's episode ended on this tick.
     reset: (T, S) the seat's environment was re-dealt just before this tick.
     position_offset: (T, S, 2).
-    next_state: (T, S, N, NEXT_STATE) lean.model.next_state_target of the game step;
+    next_state: (T, S, N, NEXT_STATE) the policy's next_state_target of the game step;
     next_valid: (T, S, N) that row is a target (own now, alive after the step, and the
     episode did not end on the tick).
     hit_label: (T, S, N) long, the outcome of the bullet the ship emitted on that tick
@@ -507,7 +507,9 @@ def advance(
         "reward": reward.index_select(0, seat_environment),
         "done": seat_done,
         "reset": carry.reset.index_select(0, seat_environment),
-        "next_state": next_state_target(policy.config, state, next_state).index_select(0, seat_environment),
+        "next_state": policy.next_state_target(state, next_state, step_out, game_config.tick_length).index_select(
+            0, seat_environment
+        ),
         "next_valid": observation.own & next_state.alive.index_select(0, seat_environment) & ~seat_done[:, None],
     }
 

@@ -14,9 +14,16 @@ import torch
 from torch import nn
 
 from lean.learn.config import LEVELS
+from lean.model.policy import NextStateColumn
 
 SHIP_FEATURES = 3
-MODEL_CONFIG = SimpleNamespace(offset_span=100.0, next_state_fields=(("x", 1.0), ("speed", 1.0)))
+# What the learner reads of a model's config: the offset range and the next-state head's bins.
+MODEL_CONFIG = SimpleNamespace(
+    offset_span=100.0,
+    next_state_columns=(NextStateColumn("x", False, -2.0, 2.0), NextStateColumn("speed", False, -2.0, 2.0)),
+    bins=8,
+    next_state_sigma=0.75,
+)
 
 
 @dataclass
@@ -177,11 +184,15 @@ class TinyPolicy(nn.Module):
         self.remember = nn.Linear(SHIP_FEATURES, width)
         self.action = nn.Linear(width, 42)
         self.value = nn.Linear(width, levels * bins)
-        self.next_state = nn.Linear(width, len(MODEL_CONFIG.next_state_fields))
+        self.next_state = nn.Linear(width, len(MODEL_CONFIG.next_state_columns) * MODEL_CONFIG.bins)
         self.hit = nn.Linear(width, 3)
 
     def initial_carry(self, envs, slots, device):
         return torch.zeros(envs, slots, self.width, device=device)
+
+    def next_state_target(self, state, next_state, step_out, tick_length):
+        """The stand-in's next-state targets: the change of x and of speed."""
+        return torch.stack([next_state.x - state.x, next_state.speed - state.speed], -1).float()
 
     def step(self, obs, carry, position_offset=None):
         carry = 0.5 * carry + 0.5 * torch.tanh(self.remember(obs.ship))
@@ -196,6 +207,6 @@ class TinyPolicy(nn.Module):
             hidden = self.body(torch.cat([obs.ship[tick], carry], -1))
             logits.append(self.action(hidden))
             values.append(self.value(hidden).unflatten(-1, (self.levels, self.bins)))
-            nexts.append(self.next_state(hidden))
+            nexts.append(self.next_state(hidden).unflatten(-1, (-1, MODEL_CONFIG.bins)))
             hits.append(self.hit(hidden))
         return torch.stack(logits), torch.stack(values), torch.stack(nexts), torch.stack(hits), carry

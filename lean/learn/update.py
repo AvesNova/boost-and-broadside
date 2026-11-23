@@ -16,6 +16,7 @@ from lean.learn.returns import (
     value_centres,
 )
 from lean.learn.store import RolloutStore
+from lean.model.policy import next_state_cross_entropy
 from lean.model.value import decode_value, hl_gauss_targets
 
 # What each pass reads from the store besides the carry and the observation's per-tick fields
@@ -99,12 +100,12 @@ def minibatch_loss(
     cross_entropy = -(target_distribution * torch.log_softmax(value_logits, -1)).sum(-1)
     value_loss = masked_sum(cross_entropy, own) / (own_count * cross_entropy.shape[-1])
 
-    if next_state.shape != next_target.shape:
+    if next_state.shape[:-1] != next_target.shape:
         raise ValueError(
             f"next-state head gives {tuple(next_state.shape)}, the recorded target is {tuple(next_target.shape)}"
         )
-    squared = (next_state.float() - next_target) ** 2
-    next_state_loss = masked_sum(squared, next_valid) / (next_count * squared.shape[-1])
+    next_cross_entropy = next_state_cross_entropy(policy.config, next_state, next_target)
+    next_state_loss = masked_sum(next_cross_entropy, next_valid) / (next_count * next_cross_entropy.shape[-1])
 
     hit, _ = hit_loss(hit_logits, hit_label, own, labelled_count)
 
@@ -180,10 +181,11 @@ def update(
 
     Every term is a mean over its valid tokens in the minibatch: the learner's living ships
     (`own`) for surrogate, entropy, BC and value (value also averaged over levels, so it is
-    nats per softmax group); `next_valid` rows and their columns for the next-state squared
-    error against the target recorded at collection; the hit head's cross-entropy (nats)
+    nats per softmax group); `next_valid` rows and their columns for the next-state head's
+    HL-Gauss cross-entropy against the target recorded at collection (nats per column,
+    lean.model.policy.next_state_cross_entropy); the hit head's cross-entropy (nats)
     over the `own` rows that have a hit label (rows without one contribute nothing). A
-    next-state head whose width differs from the recorded target raises ValueError.
+    next-state head whose columns differ from the recorded target's raises ValueError.
 
     A minibatch is a random set of views (one seat's whole segment each), run as
     micro-batches of config.micro_batch_views views through Policy.sequence from the stored

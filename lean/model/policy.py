@@ -18,10 +18,39 @@ from torch import Tensor, nn
 
 from lean.model.position import Rotary, make_position_code
 from lean.model.temporal import Temporal
+from lean.model.value import hl_gauss_targets, value_bin_centres
 
 
 def _default_position_periods() -> tuple[float, ...]:
     return tuple(float(period) for period in torch.logspace(math.log10(64.0), math.log10(20000.0), 6))
+
+
+@dataclass(frozen=True)
+class NextStateColumn:
+    """One column of the next-state head: a categorical over `bins` bins whose centres are
+    uniform from `low` to `high` (target units, the outermost centres), in symlog space when
+    `symlog` (lean/model/NOTES.md has the table and the measurements behind the ranges)."""
+
+    name: str
+    symlog: bool
+    low: float
+    high: float
+
+
+# The next-state columns (next_state_target). Ranges from the per-tick changes of living ships
+# in scripted 4v4 elimination under the training spawn (5.55M rows, 2026-11-23; lean/model/
+# NOTES.md has the percentiles): each linear range is symmetric, just outside the 0.1st and
+# 99.9th percentiles (the rarer tails fall in the outermost bins); the shield's low end is
+# four hits of about 21 in one tick (a crossfire of four ships; the largest measured was 44),
+# its high end three bins above 0.
+NEXT_STATE_COLUMNS = (
+    NextStateColumn("along", False, -0.35, 0.35),  # metres
+    NextStateColumn("across", False, -0.6, 0.6),  # metres
+    NextStateColumn("heading", False, -0.05, 0.05),  # radians
+    NextStateColumn("speed", False, -3.0, 3.0),  # metres per second
+    NextStateColumn("energy", False, -700.0, 700.0),  # store units
+    NextStateColumn("shield", True, -90.0, 0.3),  # shield points
+)
 
 
 @dataclass
@@ -33,19 +62,20 @@ class ModelConfig:
     (metres; the coarsest sets the position offset's range). grid_phases: grid-cell phases
     per lattice axis (phases^2 cells per spacing). colour_period, colour_levels: v2's
     categorical code (a new v2 run's: 236,196 m, 9 levels, finest colour 12 m).
-    rotary_*: the rotary bands, v2's layout (two axes per band, each band's axes turned
-    rotary_turn degrees from the coarser one's, periods rotary_finest * rotary_ratio^k),
-    keeping only the bands up to a little above the arena's diameter (8.4 km).
+    rotary_*: the rotary bands, two axes per band (v2's layout), periods rotary_finest *
+    rotary_ratio^k up to the first period above rotary_reach (metres: twice the largest
+    separation one band alone must tell apart, the 8.4 km arena diameter), each band's axes
+    turned rotary_turn degrees from the finer band's (an irrational fraction of 90 degrees,
+    the golden section, so no band's axes repeat another's).
     heading_harmonics: multiples of the heading angle used as rotary angles.
     rotate_values: also rotate the attention values by the key's angles and the attended sum
     back by the query's.
-    positionless_rotary: the game token's rotary angles. "centre" (v2): the arena centre
-    (the origin) with heading 0, the identity rotation. "zero": cos = sin = 0, which removes
-    the rotated dimensions from every score and value involving the game token.
-    next_state_fields: the State fields whose one-tick change the next-state head predicts,
-    each with the divisor that brings the change to order one.
+    next_state_columns: the next-state head's columns (NextStateColumn, next_state_target's
+    names), each a categorical over `bins` bins; next_state_sigma: the HL-Gauss targets'
+    standard deviation in bin widths.
     hit_classes: the hit head's outcomes for the bullet a ship emits on a tick, in
-    lean.contract's StepOut.shot_outcome order (0 missed, 1 hit an enemy, 2 hit a team-mate).
+    lean.contract's StepOut.shot_outcome order (0 missed, 1 hit an enemy, 2 hit a team-mate);
+    hit_class_frequencies: their measured shares, the hit head's initial biases (log).
     """
 
     width: int = 128
@@ -59,6 +89,9 @@ class ModelConfig:
     levels: int = 5
     bins: int = 64
     hit_classes: int = 3  # the hit head: miss, enemy, team-mate
+    # Shares of the outcomes of every bullet that ended (ghosts included), 5.53M bullets of
+    # scripted 4v4 elimination under the training spawn (2026-11-23; lean/model/NOTES.md).
+    hit_class_frequencies: tuple[float, ...] = (0.9457, 0.0444, 0.0099)
     recurrence_exponent: float = 8.0
     retention_low: float = 0.9
     retention_high: float = 0.999
@@ -69,31 +102,26 @@ class ModelConfig:
     colour_period: float = 36.0 * 3.0**8
     colour_levels: int = 9
     rotary_finest: float = 64.0
-    rotary_ratio: float = 3.405
-    rotary_bands: int = 5
-    rotary_turn: float = 35.0
+    rotary_ratio: float = 2.0
+    rotary_reach: float = 16800.0
+    rotary_turn: float = 90.0 * (math.sqrt(5.0) - 1.0) / 2.0
     heading_harmonics: tuple[float, ...] = (1.0, 2.0)
     rotate_values: bool = True
-    positionless_rotary: str = "centre"
-    next_state_fields: tuple[tuple[str, float], ...] = (
-        ("x", 10.0),
-        ("y", 10.0),
-        ("heading_cos", 0.1),
-        ("heading_sin", 0.1),
-        ("speed", 5.0),
-        ("energy", 400.0),
-        ("shield", 10.0),
-    )
+    next_state_columns: tuple[NextStateColumn, ...] = NEXT_STATE_COLUMNS
+    next_state_sigma: float = 0.75
 
     @property
     def rotary_periods(self) -> tuple[float, ...]:
-        """The rotary bands' periods in metres, finest first."""
-        return tuple(self.rotary_finest * self.rotary_ratio**band for band in range(self.rotary_bands))
+        """The rotary bands' periods in metres, finest first: up to the first above rotary_reach."""
+        periods = [self.rotary_finest]
+        while periods[-1] <= self.rotary_reach:
+            periods.append(periods[-1] * self.rotary_ratio)
+        return tuple(periods)
 
     @property
     def rotary_pairs(self) -> int:
         """Rotated dimension pairs in each attention head: two axes per band, then heading."""
-        return 2 * self.rotary_bands + len(self.heading_harmonics)
+        return 2 * len(self.rotary_periods) + len(self.heading_harmonics)
 
     @property
     def offset_span(self) -> float:
@@ -102,8 +130,8 @@ class ModelConfig:
 
     @property
     def next_state_size(self) -> int:
-        """NEXT_STATE in the contract: the width of the next-state head's output."""
-        return len(self.next_state_fields)
+        """NEXT_STATE in the contract: the next-state head's columns."""
+        return len(self.next_state_columns)
 
 
 def draw_position_offset(config: ModelConfig, envs: int, generator: torch.Generator | None, device) -> Tensor:
@@ -116,19 +144,69 @@ def draw_position_offset(config: ModelConfig, envs: int, generator: torch.Genera
     return ((uniform - 0.5) * config.offset_span).to(device)
 
 
-def next_state_target(config: ModelConfig, state, next_state) -> Tensor:
-    """The regression target of the next-state head, (..., N, NEXT_STATE) float32.
+def next_state_target(config: ModelConfig, state, next_state, step_out, tick_length: float) -> Tensor:
+    """The next-state head's targets, (E, N, NEXT_STATE) float32 in the columns' units.
 
-    `state` and `next_state` are consecutive lean.contract.State objects (or anything with
-    the same field names). Each column is the change of one field over the tick divided
-    by its scale in config.next_state_fields. Rows that are dead or absent in either
-    state, and ticks where the environment was re-dealt, must be masked by the caller.
+    `state` and `next_state` are consecutive lean.contract.State objects, `step_out` the
+    StepOut of the step between them, `tick_length` the game's tick in seconds. Columns, by
+    name (config.next_state_columns picks and orders them):
+    along, across: the move against dead reckoning (the move minus the world velocity times
+    the tick), in the ship's frame at the tick's start (along the nose, then to its left).
+    heading: the heading's change against constant turn (minus the nose rate times the tick).
+    speed, energy: the plain change of the proper speed and of the store.
+    shield: the change less the scheduled recharge (StepOut.shield_restored, which the game
+    gives only on an unhurt quiet tick): minus the damage the shield took, 0 on a tick
+    without damage.
+    Rows that are dead or absent in either state, and ticks where the episode ended, must
+    be masked by the caller.
     """
-    columns = [
-        (getattr(next_state, name) - getattr(state, name)) / scale
-        for name, scale in config.next_state_fields
-    ]
-    return torch.stack(columns, dim=-1).float()
+    h = tick_length
+    cos, sin = state.heading_cos, state.heading_sin
+    inverse_index = torch.exp(-state.log_index)  # the world velocity is the stored one over n
+    drift_x = next_state.x - state.x - state.velocity_x * inverse_index * h
+    drift_y = next_state.y - state.y - state.velocity_y * inverse_index * h
+    turned = torch.atan2(
+        cos * next_state.heading_sin - sin * next_state.heading_cos,
+        cos * next_state.heading_cos + sin * next_state.heading_sin,
+    )
+    columns = {
+        "along": cos * drift_x + sin * drift_y,
+        "across": cos * drift_y - sin * drift_x,
+        "heading": turned - state.nose_rate * h,
+        "speed": next_state.speed - state.speed,
+        "energy": next_state.energy - state.energy,
+        "shield": next_state.shield - state.shield - step_out.shield_restored,
+    }
+    return torch.stack([columns[column.name] for column in config.next_state_columns], -1).float()
+
+
+def symlog(values: Tensor) -> Tensor:
+    """sign(x) log(1 + |x|) (DreamerV3)."""
+    return torch.sign(values) * torch.log1p(values.abs())
+
+
+def next_state_centres(config: ModelConfig, device=None) -> Tensor:
+    """The next-state bins' centres, (NEXT_STATE, BINS) float32, in each column's bin space
+    (symlog of target units for a symlog column)."""
+    low = torch.tensor([column.low for column in config.next_state_columns], dtype=torch.float32)
+    high = torch.tensor([column.high for column in config.next_state_columns], dtype=torch.float32)
+    is_symlog = torch.tensor([column.symlog for column in config.next_state_columns])
+    low, high = torch.where(is_symlog, symlog(low), low), torch.where(is_symlog, symlog(high), high)
+    return value_bin_centres(low, high, config.bins).to(device)
+
+
+def next_state_distribution(config: ModelConfig, target: Tensor) -> Tensor:
+    """HL-Gauss target probabilities of next_state_target's columns: target (..., NEXT_STATE)
+    in target units to (..., NEXT_STATE, BINS), each column in its own bin space."""
+    is_symlog = torch.tensor([column.symlog for column in config.next_state_columns], device=target.device)
+    target = torch.where(is_symlog, symlog(target.float()), target.float())
+    return hl_gauss_targets(target, next_state_centres(config, target.device), config.next_state_sigma)
+
+
+def next_state_cross_entropy(config: ModelConfig, logits: Tensor, target: Tensor) -> Tensor:
+    """The next-state head's cross-entropy in nats per column, (..., NEXT_STATE): logits
+    (..., NEXT_STATE, BINS) against the HL-Gauss distribution of target (..., NEXT_STATE)."""
+    return -(next_state_distribution(config, target) * torch.log_softmax(logits.float(), -1)).sum(-1)
 
 
 def rotate(tensor: Tensor, cos: Tensor, sin: Tensor) -> Tensor:
@@ -143,15 +221,34 @@ def rotate(tensor: Tensor, cos: Tensor, sin: Tensor) -> Tensor:
 
 
 class KindProjection(nn.Module):
-    """One token kind's first projection: gelu(norm(W x + b)), to 2 * width (v2)."""
+    """One token kind's first projection: gelu(norm(W x + b)), to 2 * width (v2).
 
-    def __init__(self, inputs: int, config: ModelConfig):
+    With `categories` > 0 the token also reads one category index (the ship's pending
+    action): a learned row per category added to W x + b. This is a one-hot input's
+    function (the row is that input's column of W) without building the one-hot: one gather
+    in place of a 42-wide one-hot and 42 more input columns. The index `categories` means
+    none (enemies, dead and absent slots): a zero row never trained (padding_idx), as an
+    all-zero one-hot. The rows start as the one-hot columns of the Linear would (uniform
+    within 1/sqrt(fan_in), the fan-in counting the categories).
+    """
+
+    def __init__(self, inputs: int, config: ModelConfig, categories: int = 0):
         super().__init__()
         self.first = nn.Linear(inputs, 2 * config.width)
         self.norm = nn.RMSNorm(2 * config.width, eps=config.norm_epsilon)
+        self.category = None
+        if categories:
+            self.category = nn.Embedding(categories + 1, 2 * config.width, padding_idx=categories)
+            bound = 1.0 / math.sqrt(inputs + categories)
+            with torch.no_grad():
+                self.category.weight.uniform_(-bound, bound)
+                self.category.weight[categories].zero_()
 
-    def forward(self, tokens: Tensor) -> Tensor:
-        return F.gelu(self.norm(self.first(tokens)))
+    def forward(self, tokens: Tensor, category: Tensor | None = None) -> Tensor:
+        projected = self.first(tokens)
+        if self.category is not None:
+            projected = projected + self.category(category).to(projected.dtype)
+        return F.gelu(self.norm(projected))
 
 
 class Encoder(nn.Module):
@@ -161,7 +258,7 @@ class Encoder(nn.Module):
 
     def __init__(self, ship_inputs: int, game_inputs: int, field_inputs: int, config: ModelConfig):
         super().__init__()
-        self.ship = KindProjection(ship_inputs, config)
+        self.ship = KindProjection(ship_inputs, config, categories=config.actions)
         self.game = KindProjection(game_inputs, config)
         self.field = KindProjection(field_inputs, config)
         self.shared = nn.Linear(2 * config.width, config.width)
@@ -169,11 +266,11 @@ class Encoder(nn.Module):
         self.map_memory = nn.Linear(config.width, config.map_width, bias=False)
         self.map_memory_norm = nn.RMSNorm(config.map_width, eps=config.norm_epsilon)
 
-    def forward(self, ship: Tensor, game: Tensor, field: Tensor) -> tuple[Tensor, Tensor]:
-        """ship (..., N, ship_inputs), game (..., 1, game_inputs), field (..., F, field_inputs)
-        to the trunk tokens (..., 1 + N, width), game first, and the map memory (..., F,
-        map_width)."""
-        tokens = self.shared_norm(self.shared(torch.cat([self.game(game), self.ship(ship)], -2)))
+    def forward(self, ship: Tensor, pending: Tensor, game: Tensor, field: Tensor) -> tuple[Tensor, Tensor]:
+        """ship (..., N, ship_inputs), pending (..., N) long (0 .. actions, `actions` for none),
+        game (..., 1, game_inputs), field (..., F, field_inputs) to the trunk tokens (..., 1 +
+        N, width), game first, and the map memory (..., F, map_width)."""
+        tokens = self.shared_norm(self.shared(torch.cat([self.game(game), self.ship(ship, pending)], -2)))
         memory = self.map_memory_norm(self.map_memory(self.shared_norm(self.shared(self.field(field)))))
         return tokens, memory
 
@@ -188,9 +285,15 @@ class Spatial(nn.Module):
     columns of the query projection with no bias, so it starts as the query projection does
     (centred on 0.5), as the released code does (docs/rewrite/rotary-and-gate-check.md).
     The map memory has its own norm and key/value projection; it is never a query.
+
+    Initialisation: recurrentgemma's rule, as the temporal sublayer's
+    (docs/rewrite/literature-model-choices.md section 3): the input projections (query,
+    key, value and gate; the map's key and value; the MLP's gate and up rows) N(0,
+    1/fan_in); the output projection and the MLP's down projection N(0, s/fan_in), s = 2 /
+    residual_layers.
     """
 
-    def __init__(self, config: ModelConfig):
+    def __init__(self, config: ModelConfig, residual_layers: int):
         super().__init__()
         width, hidden = config.width, config.mlp_ratio * config.width
         self.heads = config.heads
@@ -203,6 +306,13 @@ class Spatial(nn.Module):
         self.mlp_norm = nn.RMSNorm(width, eps=config.norm_epsilon)
         self.mlp_input = nn.Linear(width, 2 * hidden, bias=False)  # gate rows, then up rows
         self.mlp_output = nn.Linear(hidden, width, bias=False)
+
+        final_scale = 2.0 / residual_layers
+        with torch.no_grad():
+            for layer in (self.query_key_value_gate, self.map_key_value, self.mlp_input):
+                layer.weight.normal_(0.0, math.sqrt(1.0 / layer.in_features))
+            self.output.weight.normal_(0.0, math.sqrt(final_scale / width))
+            self.mlp_output.weight.normal_(0.0, math.sqrt(final_scale / hidden))
 
     def forward(self, tokens: Tensor, memory: Tensor, key_mask: Tensor, rotary: tuple[Tensor, ...]) -> Tensor:
         """tokens (B, M, width); memory (B, F, map_width); key_mask (B, 1, 1, M + F) float,
@@ -233,8 +343,10 @@ class Spatial(nn.Module):
 
 class HeadGroup(nn.Module):
     """v2's HeadGroup: MLP heads reading the same token, each last(gelu(norm(first x))), the
-    first projections one matrix. Initialisation (v2 spec 7): each head's block of `first`
-    orthogonal with gain sqrt 2, each `last` orthogonal with gain 0.01, biases zero."""
+    first projections one matrix. Initialisation: each head's block of `first` orthogonal with
+    gain sqrt 2 (v2), each `last` orthogonal with gain 0.01 (near-uniform categoricals:
+    docs/rewrite/literature-model-choices.md section 3), biases zero (the caller may set a
+    last layer's bias)."""
 
     def __init__(self, inputs: int, hidden: int, outputs: tuple[int, ...], config: ModelConfig):
         super().__init__()
@@ -256,58 +368,59 @@ class HeadGroup(nn.Module):
 
 
 class Block(nn.Module):
-    """One temporal sublayer, then `spatial_per_block` spatial sublayers (v2's temporal_first)."""
+    """One temporal sublayer, then `spatial_per_block` spatial sublayers (v2's temporal_first).
+    Every sublayer is one residual block of recurrentgemma's depth scale."""
 
     def __init__(self, config: ModelConfig):
         super().__init__()
-        self.temporal = Temporal(config, residual_layers=config.blocks * (1 + config.spatial_per_block))
-        self.spatial = nn.ModuleList(Spatial(config) for _ in range(config.spatial_per_block))
+        residual_layers = config.blocks * (1 + config.spatial_per_block)
+        self.temporal = Temporal(config, residual_layers)
+        self.spatial = nn.ModuleList(Spatial(config, residual_layers) for _ in range(config.spatial_per_block))
 
 
 class Policy(nn.Module):
     """The policy and critic for one team's view (lean/CONTRACT.md).
 
-    ship_features, global_features and field_features default to lean.contract's. The carry
+    Inputs are lean.contract's (SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES). The carry
     is (blocks, E, 1 + N, 4, width) float32: token 0 is the game token, token 1 + n ship
     slot n; per token row 0 is the RG-LRU state and rows 1..3 the convolution's last three
     inputs, oldest first. Field slots have no carry.
     """
 
-    def __init__(
-        self,
-        config: ModelConfig,
-        ship_features: int | None = None,
-        global_features: int | None = None,
-        field_features: int | None = None,
-    ):
+    def __init__(self, config: ModelConfig):
         super().__init__()
         from lean import contract
 
-        ship_features = contract.SHIP_FEATURES if ship_features is None else ship_features
-        global_features = contract.GLOBAL_FEATURES if global_features is None else global_features
-        field_features = contract.FIELD_FEATURES if field_features is None else field_features
         if config.width % config.heads != 0:
             raise ValueError("width must be a multiple of heads")
         if 2 * config.rotary_pairs > config.width // config.heads:
             raise ValueError("the rotary pairs do not fit in one attention head")
-        if config.positionless_rotary not in ("centre", "zero"):
-            raise ValueError("positionless_rotary must be 'centre' or 'zero'")
         self.config = config
         self.position_code = make_position_code(config)
         self.rotary = Rotary(config)
         code = self.position_code.features
-        ship_inputs = ship_features + FOG_FEATURES + config.actions + code
-        self.encoder = Encoder(ship_inputs, global_features + code, field_features + code, config)
+        self.encoder = Encoder(
+            contract.SHIP_FEATURES + FOG_FEATURES + code, contract.GLOBAL_FEATURES + code,
+            contract.FIELD_FEATURES + code, config,
+        )
         self.blocks = nn.ModuleList(Block(config) for _ in range(config.blocks))
         self.heads = HeadGroup(config.width, config.head_hidden, (config.actions, config.levels * config.bins), config)
-        # The learner's auxiliary heads, one group: next state and hit.
+        # The learner's auxiliary heads, one group: next state (a categorical per column) and hit.
         self.auxiliary_heads = HeadGroup(
-            config.width, config.head_hidden, (config.next_state_size, config.hit_classes), config
+            config.width, config.head_hidden, (config.next_state_size * config.bins, config.hit_classes), config
         )
+        # The hit head starts at the measured class shares (Lin et al.'s prior bias).
+        frequencies = torch.tensor(config.hit_class_frequencies, dtype=torch.float32)
+        with torch.no_grad():
+            self.auxiliary_heads.lasts[1].bias.copy_(torch.log(frequencies / frequencies.sum()))
 
     def initial_carry(self, envs: int, slots: int, device) -> Tensor:
         """The zero recurrent state, (blocks, envs, 1 + slots, 4, width) float32."""
         return torch.zeros(self.config.blocks, envs, 1 + slots, 4, self.config.width, device=device)
+
+    def next_state_target(self, state, next_state, step_out, tick_length: float) -> Tensor:
+        """This model's next-state targets: lean.model.next_state_target with its config."""
+        return next_state_target(self.config, state, next_state, step_out, tick_length)
 
     def step(self, obs, carry: Tensor, position_offset: Tensor | None = None, reset: Tensor | None = None):
         """One tick.
@@ -335,9 +448,10 @@ class Policy(nn.Module):
         0. reset: (T, E) bool, zero the carry before that tick. position_offset: optional
         (E, 2) or (T, E, 2) metres.
         Returns policy logits (T, E, N, 42), value logits (T, E, N, LEVELS, BINS),
-        next_state (T, E, N, NEXT_STATE) (the predicted scaled change of
-        config.next_state_fields to the next tick), hit logits (T, E, N, HIT_CLASSES) (the
-        outcome of the bullet each ship emits on that tick) and the carry after the last tick.
+        next-state logits (T, E, N, NEXT_STATE, BINS) (a categorical per column of
+        next_state_target, over the bins of next_state_centres), hit logits (T, E, N,
+        HIT_CLASSES) (the outcome of the bullet each ship emits on that tick) and the carry
+        after the last tick.
         """
         if position_offset is not None and position_offset.dim() == 2:
             position_offset = position_offset[None]
@@ -352,30 +466,27 @@ class Policy(nn.Module):
         offset = offset.unsqueeze(-2)
 
         # Token inputs: the features and the position code of the offset positions; the game
-        # token reads the arena centre's code (v2's inputs.py).
+        # token reads the arena centre's code (the origin, offset like any token; v2's inputs.py).
         code = self.position_code
         # Fog (C10): whether the row is seen this tick and how long since it was (symlog
         # seconds); with fog off every row is visible and current.
         dtype = obs["ship"].dtype
         seen = [obs["visible"].to(dtype)[..., None], obs["since_seen"].to(dtype)[..., None]]
-        # The pending action (the one the next tick applies) as a one-hot; rows without one
-        # (enemies, dead and absent slots: index `actions`) are all zero.
-        pending = F.one_hot(obs["pending"], self.config.actions + 1)[..., : self.config.actions].to(dtype)
-        ship_in = torch.cat([obs["ship"], *seen, pending, code(pos + offset).to(obs["ship"].dtype)], -1)
+        ship_in = torch.cat([obs["ship"], *seen, code(pos + offset).to(dtype)], -1)
         game_in = torch.cat([obs["globals"].unsqueeze(-2), code(offset).to(obs["globals"].dtype)], -1)
         field_in = torch.cat([obs["field"], code(field_pos + offset).to(obs["field"].dtype)], -1)
-        tokens, memory = self.encoder(ship_in, game_in, field_in)
+        tokens, memory = self.encoder(ship_in, obs["pending"], game_in, field_in)
         memory = memory.flatten(0, 1)
 
-        # Rotary uses the true positions: only differences enter a ship-ship score, and the
-        # game token sits at the arena centre (the origin) or nowhere ("zero"). Fields take
-        # their centre and heading 0.
+        # Rotary uses the true positions, in which the arena centre (the boundary's) is the
+        # origin: only differences enter a ship-ship score. The game token sits at the centre
+        # with heading 0 (the identity rotation); a field at its centre, heading towards the
+        # arena centre (so the field's terms keep the arena's rotational symmetry).
         ship_angles = self.rotary.angles(pos, obs["heading"])
         pairs = ship_angles.shape[-1]
-        centre = 1.0 if self.config.positionless_rotary == "centre" else 0.0
-        game_cos = ship_angles.new_full((ticks, envs, 1, pairs), centre)
+        game_cos = ship_angles.new_ones((ticks, envs, 1, pairs))
         game_sin = ship_angles.new_zeros((ticks, envs, 1, pairs))
-        field_angles = self.rotary.position_angles(field_pos)
+        field_angles = self.rotary.angles(field_pos, field_heading(field_pos))
         rotary = tuple(
             part.flatten(0, 1)[:, :, None, None, :]
             for part in (
@@ -409,8 +520,17 @@ class Policy(nn.Module):
         ships = tokens[:, :, 1:]
         logits, value_logits = self.heads(ships)
         value_logits = value_logits.view(ticks, envs, slots, self.config.levels, self.config.bins)
-        next_state, hit_logits = self.auxiliary_heads(ships) if with_auxiliary else (None, None)
+        next_state = hit_logits = None
+        if with_auxiliary:
+            next_state, hit_logits = self.auxiliary_heads(ships)
+            next_state = next_state.view(ticks, envs, slots, self.config.next_state_size, self.config.bins)
         return logits, value_logits, next_state, hit_logits, torch.stack(new_carry)
+
+
+def field_heading(field_pos: Tensor) -> Tensor:
+    """A field's rotary heading, (..., F) radians: from its centre towards the arena centre
+    (the origin; atan2 gives -pi for a field at the origin, where every heading is as good)."""
+    return torch.atan2(-field_pos[..., 1], -field_pos[..., 0])
 
 
 OBS_FIELDS = (
