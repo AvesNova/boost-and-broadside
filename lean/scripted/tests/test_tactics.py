@@ -245,3 +245,20 @@ def test_a_pass_that_gained_nothing_switches_the_plan():
     gaining, _, e = committed(ship(), passed, (0.3, 0.8), memory=memory(-(angles_off + 0.5)))
     assert gaining == -1.0
     assert first(e.last_pass) == -angles_off
+
+
+def test_lead_turn_at_an_offset_merge():
+    """Head-on with a lateral offset of two sustained radii (Shaw Fig 2-9): with more energy
+    (two-circle plan) the ship starts its turn toward his track before the pass, the lead
+    turn; with less (one-circle) it flies at him (pure pursuit or the gun)."""
+    him = ship(6.0 * RADIUS, 2.0 * RADIUS, heading=math.pi)
+    two = decision(ship(), him, stores=(0.8, 0.3))
+    one = decision(ship(), him, stores=(0.3, 0.8))
+    bearing = first(two.situation.bearing)
+    assert weight(two, "merge") > 0.75
+    assert first(two.pursuit_time) > 1.0 and abs(first(one.pursuit_time)) < 0.05
+    assert first(two.stick_error) > bearing + 0.15
+    assert abs(first(one.stick_error) - bearing) < 0.15
+    # no offset, no lead turn
+    straight = decision(ship(), ship(6.0 * RADIUS, 0.0, heading=math.pi), stores=(0.8, 0.3))
+    assert abs(first(straight.pursuit_time)) < 0.1

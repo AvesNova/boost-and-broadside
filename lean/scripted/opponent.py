@@ -341,13 +341,44 @@ def explain(
     yo_yo = torch.tanh((situation.closure - wanted_closure) / read("yo_yo_scale"))
     high_yo_yo = yo_yo.clamp_min(0.0)
 
-    # Commands, mixed as scalars. Pursuit time: offensive lags (high yo-yo) or leads (low).
+    # The plan for this pass: two-circle (+1) when my energy advantage is above the plan
+    # threshold, else one-circle (-1); after a pass, the last pass's plan, switched when that
+    # pass gained less than the switch gain in angles off (Shaw pp. 112-113: the stalemate
+    # breaker inside the fight). The kept target's last pass only.
+    same_target = has_target & (fight.target == memory["target"])
+    last_pass = torch.where(same_target, memory["last_pass"], 0.0)
+    energy_plan = torch.where(situation.energy_advantage > read("plan_threshold"), 1.0, -1.0)
+    previous_plan = torch.sign(last_pass)
+    gained = last_pass.abs() - situation.angles_off
+    kept_plan = torch.where(gained < read("switch_gain"), -previous_plan, previous_plan)
+    plan = torch.where(last_pass != 0.0, kept_plan, energy_plan)
+    two_circle_plan = (plan > 0.0).float()
+
+    # Lead turn (Shaw pp. 76-77, Fig 2-9): with a lateral miss distance d at the pass, the
+    # turn worth starting early is theta = arccos(1 - min(d / R_st, 2)), taking theta /
+    # sustained rate; the two-circle plan leads his position by that time (or the time left
+    # to the pass, if less); one-circle passes pure.
+    relative_x = fight.target_velocity_x - fight.velocity_x
+    relative_y = fight.target_velocity_y - fight.velocity_y
+    relative_squared = (relative_x * relative_x + relative_y * relative_y).clamp_min(TINY)
+    to_pass = (-(fight.offset_x * relative_x + fight.offset_y * relative_y) / relative_squared)
+    miss = (fight.offset_x * relative_y - fight.offset_y * relative_x).abs() * torch.rsqrt(
+        relative_squared
+    )
+    lead_angle = torch.acos(1.0 - (miss / c["sustained_radius"]).clamp(0.0, 2.0))
+    lead_time = read("lead_turn_scale") * lead_angle / c["sustained_rate"]
+    merge_time = two_circle_plan * torch.minimum(to_pass.clamp_min(0.0), lead_time)
+
+    # Commands, mixed as scalars. Pursuit time: offensive lags (high yo-yo) or leads (low);
+    # the merge leads by the lead turn.
     pursuit_time = weights["offensive"] * (
         -yo_yo * (read("yo_yo_time") * c["quarter_turn_time"])
+    ) + weights["merge"] * merge_time
+    # The wanted point is the gun's lead point while he is ahead within reach: offensive
+    # unless a high yo-yo lags the chase, at the merge unless the plan lead-turns.
+    gun_weight = gate["in_range"] * (
+        weights["offensive"] * (1.0 - high_yo_yo) + weights["merge"] * (1.0 - two_circle_plan)
     )
-    # The wanted point is the gun's lead point while he is ahead within reach, unless a high
-    # yo-yo lags the chase.
-    gun_weight = ahead * gate["in_range"] * (1.0 - astern * high_yo_yo)
     # Speed target, in log space, and the stick cap (the share of the full level folded into
     # the sustained one), per tactic:
     # - disengaged and merge: the merge speed; disengaged, the cap above the sustained stick
@@ -447,10 +478,7 @@ def explain(
     aft = has_target & (bearing_size > line)
     forward = bearing_size < line - read("release_band")
     held = memory["sense"]
-    last_pass = memory["last_pass"]
-    keep = has_target & (fight.target == memory["target"]) & ~forward
-    held = torch.where(keep, held, 0.0)
-    last_pass = torch.where(has_target & (fight.target == memory["target"]), last_pass, 0.0)
+    held = torch.where(same_target & ~forward, held, 0.0)
     bearing_rate = situation.sight_rate * c["sustained_rate"] - state.nose_rate
     crossing_cos = (
         state.heading_cos * fight.target_heading_cos + state.heading_sin * fight.target_heading_sin
@@ -467,11 +495,6 @@ def explain(
     short_way = torch.where(situation.bearing > 0.0, 1.0, -1.0)
     held = torch.where(overshoot, short_way, held)
     commit = aft & (held == 0.0)
-    energy_plan = torch.where(situation.energy_advantage > read("plan_threshold"), 1.0, -1.0)
-    previous_plan = torch.sign(last_pass)
-    gained = last_pass.abs() - situation.angles_off
-    kept_plan = torch.where(gained < read("switch_gain"), -previous_plan, previous_plan)
-    plan = torch.where(last_pass != 0.0, kept_plan, energy_plan)
     his_turn = torch.where(
         situation.target_sense.abs() > 0.5, torch.sign(situation.target_sense), 0.0
     )

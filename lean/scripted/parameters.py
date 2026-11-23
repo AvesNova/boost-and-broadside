@@ -78,6 +78,8 @@ PARAMETERS: dict[str, Parameter] = {
     "release_band": Parameter(0.2, "radians", meaning="release this far forward of the 3/9 line"),
     "plan_threshold": Parameter(0.0, "store fraction", LINEAR, 0.25,
                                 "energy advantage above it: two-circle"),
+    "lead_turn_scale": Parameter(1.0, "ratio", LOG, 0.4,
+                                 "the lead turn's time, of its geometric value"),
     "switch_gain": Parameter(0.17, "radians", LOG, 0.4,
                              "a pass gaining less angles off than this switches the plan"),
     "overshoot_range": Parameter(0.67, "sustained_radius", LOG, 0.3, "he overshoots inside it"),
