@@ -1,3 +1,5 @@
+import math
+
 import pytest
 import torch
 
@@ -177,7 +179,8 @@ def test_next_state_loss_is_live_with_the_real_packages():
     assert torch.isfinite(rollout.next_state[rollout.next_valid]).all()
     assert rollout.next_state[rollout.next_valid].abs().sum() > 0
     metrics = update(config, policy, make_optimiser(config, policy), rollout, generator=generator)
-    assert metrics["next_state"] > 0 and metrics["next_state"] == metrics["next_state"] and metrics["next_state"] < float("inf")
+    # nats per column: a fresh head (last layer orthogonal 0.01) is near uniform over 64 bins
+    assert abs(metrics["next_state"] - math.log(64)) < 0.05
 
 
 def test_a_next_state_width_mismatch_raises():
