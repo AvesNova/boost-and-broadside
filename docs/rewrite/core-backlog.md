@@ -109,6 +109,7 @@ After the batch: use idle GPU time for speed benchmarks and dry runs (BC first, 
 check everything works together; then training runs. Judgement calls made overnight go in
 docs/rewrite/morning-notes.md, briefly.
 
-Order agreed 2026-11-24 (author): A1 -> V (runner) -> screening -> short CMA-ES -> yardstick
-choice -> X -> D -> R -> BC dry run -> RL dry run. A2, A3 and C tabled as future work.
+Order agreed 2026-11-24 (author, revised): A1 -> V (runner) -> R (review) and fixes ->
+screening, with D alongside -> short CMA-ES -> yardstick choice (author) -> X -> D refresh ->
+BC dry run -> RL dry run -> optional second R. A2, A3 and C tabled as future work.
 
