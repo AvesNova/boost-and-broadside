@@ -1,11 +1,11 @@
-# Web tool
+# lean/tool
 
 A small local tool for the author: ship tuning charts and the flight sandbox in the browser.
 It computes nothing itself: the server calls the game's own code (`lean.game.tuning`,
 `lean.game.core`, `lean.sandbox.world.World`); the page only draws.
 
 ```bash
-uv sync --extra tools        # fastapi, uvicorn, websockets (and the other tools)
+uv sync --extra tools        # fastapi, uvicorn, websockets 
 PYTHONPATH=.:src uv run --no-sync python -m lean.tool [--port 8000]
 ```
 
@@ -25,7 +25,7 @@ connection for the charts).
   radius and its speed, the gap between those speeds, top speed, best climb, stall speed.
   The same `tuning.envelope` draws the PNGs in `docs/rewrite/sections/turns/doghouse.py`.
 - **Sandbox tab.** Flies the design tuned in the Ships tab at its time scale against the
-  scripted opponent; controls in `lean/sandbox/README.md`. Each tab visit starts a new
+  scripted opponent; controls in `lean/sandbox/NOTES.md`. Each tab visit starts a new
   session: the server starts a child process that ticks the real `World` at 30 Hz and sends a
   frame per tick over `/api/sandbox`; the browser interpolates between frames.
 

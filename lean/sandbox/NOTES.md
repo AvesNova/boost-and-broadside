@@ -1,4 +1,6 @@
-# Flight sandbox
+# lean/sandbox
+
+The flight sandbox's world, without drawing. You fly it in the browser (`lean/tool/NOTES.md`).
 
 `World` (`lean/sandbox/world.py`) is the game at batch size 1 on the CPU: the player (slot 0)
 and an optional opponent (slot 1), stepped by `lean.game.core.step`, so bullets, hits,
@@ -7,10 +9,10 @@ shields, the boundary and the fog behave as in the game (the opponent sees the p
 (`lean/scripted/opponent.py`, the yardstick with its memory) or the chaser
 (`lean/scripted/chaser.py`, `World(opponent="chaser")`).
 
-You fly it in the web tool's Sandbox tab: `python -m lean.tool`, see `lean/tool/README.md`.
 The tool ticks `World` at 30 Hz in a child process (`lean/tool/session.py`) at the time scale
 and with the ship tuned in the Ships tab (`lean.game.tuning.flying`); the browser draws it.
-The Tk window this folder used to hold is gone.
+The web tool always flies against the scripted opponent; the chaser is `World(opponent="chaser")`
+in Python only.
 
 ## Controls (in the browser)
 
@@ -40,5 +42,7 @@ The Tk window this folder used to hold is gone.
 You cannot die: a lethal hit or the boundary refills the shield and counts a death. A killed
 opponent comes back 2 s later, 1500 m away (with a fresh memory, as in a new match).
 
-Not carried over from the Tk sandbox: `--set` overrides of `GameConfig`, the chaser option, the
-pause key, the speed and store strip chart, and the off-screen opponent marker.
+## Open
+
+- Not in the browser sandbox: `GameConfig` overrides, a pause key, a speed and store strip chart,
+  an off-screen opponent marker.

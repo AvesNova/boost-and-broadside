@@ -1,135 +1,130 @@
 # Lean core: interfaces
 
-First cut of the lean core, written on the CPU before the framework gate (G1) closed.
-PyTorch 2.15, plain eager code that also compiles. Nothing here has run on a GPU. The
-plan is `docs/rewrite/core-brief.md`; the reasons behind the model are in
-`docs/rewrite/model-audit.md`, the game in `docs/rewrite/sections/game-audit.md`, v1's
-recipe in `docs/rewrite/sections/yardstick.md`.
+The shared types and the calls between the packages, as the code has them. The types live in
+`lean/contract.py`; each package's notes (`NOTES.md`) say what is behind its calls. PyTorch 2.15,
+plain code that also compiles. A change to a name or a shape here is a change to every package.
 
-Four packages are written in parallel against this file. Names and shapes here are fixed;
-anything a package needs beyond them goes in that package and is recorded in its
-`NOTES.md`.
+Sizes: `E` environments, `N` ship slots (both teams together, the largest total dealt), `K = 11`
+bullet slots per ship, `F` fields, `T` ticks. Layout: batch first, features last, contiguous.
+Units: metres, radians, seconds, ticks where stated.
 
-Sizes: `E` environments, `N` ship slots (both teams together, the maximum for the run),
-`K = 11` bullet slots per ship, `T` ticks. House layout: batch first, features last,
-contiguous.
-
-## `lean/contract.py` (owned by the game package)
+## `lean/contract.py`
 
 ```python
-STICKS, POWERS, FIRES = 7, 3, 2          # joint action = stick * 6 + power * 2 + fire, 42 values
-JOINT = 42
+STICKS, POWERS, FIRES = 7, 3, 2          # joint action = stick * 6 + power * 2 + fire; JOINT = 42
 def split_joint(joint): ...              # (...,) long -> (..., 3) long [stick, power, fire]
 def join_action(action): ...             # (..., 3) long -> (...,) long
-
-@dataclass
-class State:                             # every field a tensor; shapes (E, N) unless noted
-    x, y, heading_cos, heading_sin, speed, angle, angle_cos, angle_sin, nose_rate, energy,
-    shield, shield_wait                  # float32; metres, radians, seconds
-    cooldown, next_slot                  # long
-    alive, exists                        # bool; exists is fixed for an episode
-    team                                 # long, 0 or 1, any assignment of slots
-    type                                 # long, index into the ship card
-    constants                            # dict[str, Tensor], per-ship constants gathered at reset
-    bullet_x, bullet_y, bullet_dir_x, bullet_dir_y, bullet_speed   # (E, N, K) float32
-    bullet_moves_left                    # (E, N, K) long; 0 is inactive
-    tick                                 # (E,) long
-    pending                              # (E, N, 3) long: the action the next tick applies
-
-@dataclass
-class StepOut:                           # lean.contract.StepOut has the full list
-    damage_taken                         # (E, N) float32, this tick, bullets and the boundary
-    died                                 # (E, N) bool
-    done                                 # (E,) bool
-    result                               # (E,) long: 0 or 1 = winning team, 2 = draw, -1 = not done
-    shot_outcome, shot_tick, hit_damage, boundary_damage, shield_restored
-
-@dataclass
-class Obs:                               # one team's view; full information (no fog yet)
-    ship                                 # (E, N, SHIP_FEATURES) float32, scaled scalars and flags
-    pos                                  # (E, N, 2) float32 metres, arena centre at 0
-    heading                              # (E, N) float32 radians
-    key_mask                             # (E, N) bool: this row may be attended (exists and alive)
-    own                                  # (E, N) bool: rows this view controls (own team, alive)
-    globals                              # (E, GLOBAL_FEATURES) float32
-    pending                              # (E, N) long: own living ships' joint pending action, else NO_PENDING (42)
-SHIP_FEATURES, GLOBAL_FEATURES           # ints, set by the game package
+NO_PENDING = JOINT                       # Obs.pending of a row whose pending action is not observed
+LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outcome"); LEVELS = 5
+SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES   # 18 scalars + 4 flags + type one-hot; 3; 3
+BULLET_SLOTS = 11
 ```
 
-## `lean/game` (game package)
+Also here: `symlog`, `map_fields`, `whole_state`, `compile_dynamic` (the one place duck sizing is
+turned off), `random_keywords` (a factory's generator keywords; compiled graphs draw from torch's
+default generator).
+
+Stick: 0 straight, then (1, 2) fine, (3, 4) sustained, (5, 6) full, one direction odd and the
+other even. Power: 0 coast, 1 dive, 2 climb. Fire: 0 or 1.
+
+**`Constants`**: per-ship constants of one run, read by name (`constants["lift"]` or
+`constants.lift`). A value equal for the whole lineup is a Python number; one that differs by
+ship type is a row of a table `(E, C, N)` gathered at the deal. `lean.game.core.ship_constants`
+builds it.
+
+**`State`**: the whole game state, packed by block so per-field work is one operation per block.
+Every quantity named in the `*_COLUMNS` tuples reads by name as a view, `state.x` being `(E, N)`
+and `state.bullet_x` `(E, N, K)`; `state.replace(name=...)` replaces one.
+
+| Block | Shape | Holds |
+|---|---|---|
+| `ships` | `(E, columns, N)` float32 | x, y, heading cos and sin, speed, angle of attack (and cos, sin), nose rate, energy (the store), shield, shield wait, cooldown, the cached medium (log index, gradient), velocity, next bullet slot |
+| `flags` | `(E, 3, N)` bool | alive, exists (fixed for an episode), fired (a real bullet last tick) |
+| `identity` | `(E, 2, N)` long | team (0 or 1), type (index into the ship card) |
+| `bullets`, `bullet_counts` | `(E, columns, N, K)` | position, direction, speed, the medium; moves left (0 is inactive) and the tick fired |
+| `bullet_real` | `(E, N, K)` bool | real bullet, or a ghost (no damage; labels the hit head) |
+
+Beside the blocks: `constants`, `tick (E,)`, `fields (E, 5, F)` (x, y, radius, band width, target
+ln n), `pending (E, N, 3)` long (the action the next tick applies), and with fog on `seen
+(E, SEEN_COLUMNS, N)` (each ship as its enemy team last saw it) and `ticks_since_seen (E, N)`.
+
+**`StepOut`** (one tick): `damage_taken (E, N)`, `died (E, N)`, `done (E,)`, `result (E,)` (0 or 1
+the winning team, 2 a draw, -1 not done), `shot_outcome (E, N, K)` (-1 none ended, 0 missed, 1
+hit an enemy, 2 hit a team-mate) and `shot_tick`, `hit_damage (E, N, N)` [attacker, target],
+`boundary_damage (E, N)`, `shield_restored (E, N)`.
+
+**`Obs`**: one team's view; under fog an enemy row is its last-seen values.
+
+| Field | Shape | |
+|---|---|---|
+| `ship` | `(E, N, SHIP_FEATURES)` | scaled scalars and flags (no position) |
+| `pos`, `heading` | `(E, N, 2)`, `(E, N)` | metres, arena centre at 0; radians |
+| `key_mask`, `own` | `(E, N)` bool | row may be attended (exists, alive); rows this view controls |
+| `globals` | `(E, GLOBAL_FEATURES)` | |
+| `field`, `field_pos` | `(E, F, FIELD_FEATURES)`, `(E, F, 2)` | F may be 0 |
+| `visible`, `since_seen` | `(E, N)` | seen this tick; symlog seconds since seen |
+| `pending` | `(E, N)` long | own living ships' joint pending action, else `NO_PENDING` |
+
+## `lean/game`
 
 ```python
-@dataclass
-class GameConfig: ...                    # the core game: arena radius, clock, spawn rule ("mixed" | "sides"), training_spawn, fields drawn, ship lineup, fog
-def reset(config, envs, team_sizes, generator, device) -> State
-    # team_sizes: (E, 2) long, ships per team in each environment; unused slots have exists = False
-def step(config, state, action, noise) -> tuple[State, StepOut]
-    # action (E, N, 3) long, chosen on this tick; the tick applies state.pending (chosen on the
-    # previous tick, neutral after a deal) and action becomes the new pending action (the
-    # one-tick action delay, for every agent); noise: the tick's random draws, from draw_noise
-def draw_noise(config, envs, slots, generator, device) -> dict[str, Tensor]
-def deal(config, envs, slots, team_sizes, generator, device) -> State  # fresh states at a given N
-def take_deal(state, done, fresh, index=None) -> State  # re-deal finished environments from deals
-def observe(config, state, team: int) -> Obs
+GameConfig(...)                          # the core game by default (see lean/game/NOTES.md)
+reset(config, envs, team_sizes, generator, device) -> State   # team_sizes (E, 2) long, each >= 1
+deal(config, envs, slots, team_sizes, generator, device) -> State   # fresh states at a given N
+take_deal(state, done, fresh, index=None) -> State   # re-deal the finished environments
+draw_noise(config, envs, slots, generator, device) -> dict[str, Tensor]
+step(config, state, action, noise) -> tuple[State, StepOut]
+    # action (E, N, 3) long chosen this tick; the tick applies state.pending and stores action
+    # as the new pending one (the one-tick delay, for every agent)
+observe(config, state, team) -> Obs
 ```
 
-Elimination with no shrink: flight, fire and bullets, the swept hit test, damage, shields,
-the boundary, death as a mask, a wipe or the clock (more living ships, then more total shield,
-else a draw). No respawn.
-
-## `lean/scripted` (scripted opponent)
+## `lean/scripted`
 
 ```python
-@dataclass
-class ScriptedConfig: ...
-def personas(config, envs, slots, generator, device, spread: float) -> dict[str, Tensor] | None
-    # per-ship parameters drawn per match; spread 0 (the yardstick) gives None
-def fresh_memory(envs, slots, generator, device) -> dict[str, Tensor]   # kept target, head-on side
-def act(config, state, team: int | None, persona, uniforms, memory) -> tuple[Tensor, dict]
-    # (E, N, 3) long, rows of other teams 0 (team None: both teams), and the new memory
+ScriptedConfig()                         # the yardstick's values; .replace(name=value)
+personas(config, envs, slots, generator, device, spread) -> dict | None   # None at spread 0
+fresh_memory(envs, slots, generator, device) -> dict[str, Tensor]   # carried by every caller
+draw_uniforms(envs, slots, generator, device) -> Tensor              # (E, N, 3), one per head
+act(config, state, team, persona, uniforms, memory) -> tuple[Tensor, dict]
+    # (E, N, 3) long, rows of other teams 0 (team None: both teams in one call), new memory
+decide(...)                              # act, plus the Marginals (the BC teacher's distribution)
+chaser_act(...)                          # the memoryless floor
 ```
 
-## `lean/model` (policy)
+## `lean/model`
 
 ```python
-@dataclass
-class ModelConfig: ...                   # width, blocks, heads, bins 64, position_code, ... (JOINT, LEVELS from lean.contract)
-class Policy(nn.Module):                 # Policy(config); inputs are lean.contract's feature counts
-    def initial_carry(self, envs, slots, device) -> Tensor   # (blocks, E, 1 + N, 4, width)
-    def step(self, obs: Obs, carry, position_offset=None, reset=None) -> tuple[Tensor, Tensor, Tensor]
-        # logits (E, N, 42), value_logits (E, N, LEVELS, BINS), new carry
-    def sequence(self, obs: Obs, carry, reset, position_offset=None)
-        # obs fields carry a leading T; reset (T, E) bool zeroes the carry before that tick
-        # returns logits (T, E, N, 42), value_logits (T, E, N, LEVELS, BINS),
-        #         next-state logits (T, E, N, NEXT_STATE, BINS), hit_logits (T, E, N, 3) and the
-        #         final carry; the next-state loss is lean.model.policy.next_state_cross_entropy
-def next_state_target(config, state, next_state, step_out, tick_length) -> Tensor
-    # (E, N, NEXT_STATE) the next-state head's targets of one game step (collect records them)
+ModelConfig(); Policy(config)
+Policy.initial_carry(envs, slots, device) -> Tensor        # (blocks, E, 1 + N, 4, width)
+Policy.step(obs, carry, position_offset=None, reset=None) -> (logits, value_logits, carry)
+    # logits (E, N, 42), value_logits (E, N, LEVELS, BINS)
+Policy.sequence(obs, carry, reset, position_offset=None)
+    # obs fields have a leading T, reset (T, E) bool; returns logits, value_logits, next-state
+    # logits (T, E, N, 6, BINS), hit logits (T, E, N, 3) and the final carry
+next_state_target(config, state, next_state, step_out, tick_length) -> Tensor   # (E, N, 6)
 ```
 
-The model reads from `Obs`: ship, pos, heading, key_mask, globals, field, field_pos,
-visible, since_seen, pending (`lean.model.policy.OBS_FIELDS`).
+How a network acts (shared by the learner and the evaluator), `lean/model/agent.py`:
+`network(policy) -> Network` (a weightless template plus weights), `network_step(network, view,
+carry, offset, generator) -> (joint actions, carry)`, `seat_view`, `sample_joint`, `reset_carry`,
+`precision`. The model reads these `Obs` fields: `lean.model.policy.OBS_FIELDS`.
 
-## `lean/learn` (rollout, the BC stage and RL) and `lean/eval` (crossover)
+## `lean/learn`, `lean/train.py`, `lean/eval`
 
 ```python
-def collect(config, game_config, policy, opponent, state, carry, ticks, generator, *, compiled, store, segment) -> Rollout
-def update(config, policy, optimiser, data, *, teacher_weight, cloning, step_index, generator, compiled) -> dict[str, float]
-def crossover(game_config, policy, scripted_config, sizes, games, generator) -> dict
+collect(config, game_config, policy, opponent, state, carry, ticks, generator, *, compiled, store, segment) -> Rollout
+update(config, policy, optimiser, data, *, teacher_weight, cloning, step_index, generator, compiled) -> dict[str, float]
+Evaluator(Store(path), GameConfig())     # ensure / adaptive / report / elo (lean/eval/NOTES.md)
 ```
 
-Reward levels (lean.contract.LEVEL_NAMES, LEVELS), v2's: 0 damage, 1 kill_death,
-2 objective_progress, 3 objective, 4 outcome. Hit classes: 0 missed, 1 enemy, 2 team-mate.
-The BC teacher is lean.scripted.decide's Marginals (stick, power, fire), the product of the
-three over lean.contract.join_action's 42 joint actions.
+The reward levels are `lean.contract.LEVEL_NAMES`; hit classes 0 missed, 1 enemy, 2 team-mate. The
+BC teacher is `lean.scripted.decide`'s `Marginals` (stick, power, fire), the product of the three
+over the 42 joint actions.
 
-## Rules for this first cut
+## Rules
 
-- Read the plan's sections 3, 4 and 9 before writing: full-word names, docstrings that
-  state the contract, comments only for a non-obvious reason, no history or opinion.
-- No Python loops over ships, bullets or components. No per-row branches computed and
-  then selected where a mask or a slice does it.
-- Tests are few and name the failure they catch: invariants and one or two behaviours.
-  They run on the CPU in seconds.
-- Each package keeps a `NOTES.md`: what is implemented, what is untested, every choice
-  made that the plan or the audits did not settle, and what to check first on the GPU.
+Full-word names; docstrings that state the contract; comments only for a non-obvious reason. No
+Python loops over ships, bullets or components. Tests name the failure they catch and run on the
+CPU in seconds. Each package keeps a short `NOTES.md`: what it is, its entry points, its key
+numbers, what is open.
