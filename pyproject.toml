@@ -29,6 +29,8 @@ tools = [
     "SALib>=1.5",
     "scikit-learn>=1.6",
     "shap>=0.47",
+    # The short CMA-ES search of the yardstick (docs/rewrite/scripted-screening.md).
+    "cma>=4.0",
 ]
 
 [project.scripts]

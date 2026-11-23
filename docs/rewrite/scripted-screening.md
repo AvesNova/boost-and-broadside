@@ -248,3 +248,90 @@ collecting them would mean per-tick accumulators in the compiled tick in lean/ev
   4000 --batch 2000 --games 2 | local --spread 0.25 --count 256 | local --spread 0.5 --count
   256 | sweep --games 8 --rows ... | skills`, then `analyse.py`. Both run with the
   repository root on PYTHONPATH and the tools extra (SALib, scikit-learn, shap) installed.
+
+## CMA-ES search (2026-11-24 morning)
+
+A short search for a better yardstick (`search.py`; record `search.jsonl`; result
+`cma_candidate.json`). The code's defaults are unchanged: the candidate is a file for the
+author to choose from.
+
+**Result.** The search's final mean scores 0.690 +- 0.005 against the yardstick's 0.608 +-
+0.005 (9,216 games each, the measure above). The gain holds at a quarter-box spread, across
+every condition, and against personas outside the panel.
+
+### Set-up
+
+- pycma, ten rows: the nine that matter plus temperature. Each is in the table's units (log
+  rows in log space) and scaled by its box width. It starts at the yardstick with step 0.3
+  box half-widths. Every other row stays at its default.
+- Bounds are the screening's boxes, with two widened upward to three half-widths: lead_gain
+  to 0.8-1.6 (was 0.8-1.2) and fight_speed to 0.82-1.82 (was 0.82-1.22).
+- Population 24 and 6 games a cell (864 games a candidate, error about 0.017). A generation
+  took 130-155 s. Step floor 0.1 half-widths (pycma `minstd`).
+- Stop: no rise of the population's mean skill beyond its error over 4 generations (minimum
+  8), or 42 minutes. The rule stopped it after generation 12 (26.7 min). The best population
+  mean, 0.648 +- 0.009, came at generation 8; generation 12 gave 0.654.
+- The step did not shrink toward the floor. The overall step rose from 0.30 to 0.36, and the
+  per-row steps at the end were 0.17 to 0.44 half-widths. So the search ended in a broad
+  region rather than converging, and the plateau evidence is the local spread below.
+
+### The candidate
+
+| row | default | candidate | box |
+|---|---|---|---|
+| lead_turn_scale | 0 | 0.0013 | 0-1 |
+| lead_gain | 1.0 | 1.124 | 0.8-1.6 |
+| yo_yo_time | 0 | 0.0008 | 0-0.5 |
+| fight_speed | 1.0 | 1.114 | 0.82-1.82 |
+| closing_time | 1.0 | 0.930 | 0.67-1.49 |
+| plan_threshold | 0 | -0.250 | -0.25-0.25 |
+| in_range | 1.04 | 1.276 | 0.70-1.55 |
+| nose_tail | 0.67 | 0.459 | 0.45-1.0 |
+| aligned | 1.01 | 0.876 | 0.68-1.51 |
+| temperature | 1.0 | 0.865 | 0.67-1.49 |
+
+- lead_turn_scale and yo_yo_time stayed at their floor of 0.
+- plan_threshold ended on the bottom of its box and nose_tail just above its bottom. The
+  best region may lie beyond those edges; the boxes were not widened there.
+
+### Skill
+
+| | candidate | yardstick |
+|---|---|---|
+| skill (9,216 games) | 0.690 +- 0.005 | 0.608 +- 0.005 |
+| local25 mean | 0.676 | 0.607 |
+| local25 sd | 0.037 | 0.041 |
+| local25 5% quantile | 0.614 | 0.538 |
+| held-out personas | 0.735 +- 0.006 | 0.643 +- 0.007 |
+
+- **local25** is the screening's quarter-spread: the same 256 Sobol points (stream
+  `local25`), all 34 sampled rows, centred on each, 288 games a point (noise sd about 0.027).
+  The candidate's neighbourhood scores 0.070 +- 0.003 above the yardstick's, paired by point.
+  It falls 0.014 from its centre, against 0.002 for the yardstick. That is a slightly rounder
+  top, but still a plateau: 96% of the candidate's neighbours score above the yardstick.
+- **Held-out personas** are 8 drawn from the full boxes (seed 20261125), none of them in the
+  panel, 32 games a cell (2,304 games each). The gain is not the panel's.
+- Head to head (the yardstick as a panel member, 1,152 games), the candidate scores 0.589.
+
+### By condition
+
+| level | candidate | yardstick |
+|---|---|---|
+| 3,000 m | 0.682 | 0.591 |
+| 4,200 m | 0.695 | 0.614 |
+| 6,000 m | 0.693 | 0.619 |
+| 3v3 | 0.666 | 0.590 |
+| 4v4 | 0.698 | 0.603 |
+| 5v5 | 0.706 | 0.632 |
+| mixed | 0.689 | 0.602 |
+| sides | 0.691 | 0.615 |
+
+The candidate is ahead in all 18 conditions, by 0.029 to 0.136.
+
+### GPU time
+
+Laptop RTX 4070, performance profile: search 26.7 min, confirmation 4.8 min, held-out 1.5
+min, about 33 minutes in all. 345,024 new games, 248,832 of them the search's.
+
+Reproduce: `search.py STORE search`, then `confirm`, then `held-out` (needs pycma, in the
+tools extra).
