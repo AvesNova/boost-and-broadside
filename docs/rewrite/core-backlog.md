@@ -92,7 +92,7 @@ smoke run, record it in the worklog and push. Decisions: core-decisions.md secti
 | L | Learner: BC stage on the full distribution (all heads and critics), RL from its average with a shrinking teacher term; EMA and uniform averages in the league; capacity routing with retiring slots; v2's snapshot schedule; checkpoints every 10M; KL monitor; percentile option removed; fixed coefficients; entropy logging; fused Adam, 2,000-step warm-up, non-finite steps skipped; crossover only in evaluation; test stand-ins removed; duplicates | todo |
 | C | Cheese agents ported from v2, checked to be reasonable, in the league | todo |
 | D | Notes hygiene: one short current notes file per package, CONTRACT and README current, LAPTOP_PROMPT deleted, author-review.md updated | todo |
-| A1 | P-51D refined from the references: wing area 21.67 m^2 (NACA), CLmax about 1.6 (AAF turn calculation), g limit kept at 8 for now (judgement: the author signed off its feel; 6.5 g from the tested weight is the alternative, noted for the morning) | todo |
+| A1 | P-51D refined from the references: wing area 21.67 m^2 (NACA), CLmax about 1.6 (AAF turn calculation), g limit 8 (author 2026-11-23, against 6.5 g from the tested weight) | todo |
 | A2 | Fw 190 A-8 and Bf 109 G-6 built by the tuning route and checked against their data (drag table; the 109's 360-degree times) | todo |
 | A3 | Spitfire IX; then a check of every type's turning against the relative data ("A out-turns B") | todo |
 | X | Measurements: GPU parity row on the new tree; scripted against scripted wipe times and the clock set at about 80% of games ending | todo |

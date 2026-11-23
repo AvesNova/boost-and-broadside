@@ -449,6 +449,8 @@ League (section 8)
   lineup.
 - Green light for every change agreed in the author review and after (docs/rewrite/
   core-backlog.md "Build batch 2026-11-23").
+- P-51D g limit stays 8 (author 2026-11-23; the references put it nearer 6.5 g at the tested
+  weight).
 - Personas: everything per ship, temperature included (as different humans differ in skill
   and decisiveness); hidden from the student (no persona inputs); drawn from a dense
   continuous distribution over the parameter space, every persona competent (no persona that
