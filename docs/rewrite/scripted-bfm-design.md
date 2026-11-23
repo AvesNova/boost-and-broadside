@@ -4,6 +4,43 @@ Step E2, part 1 (2026-11-23 night). A review of the scripted opponent as it is o
 (273e85e1) and a design for basic fighter manoeuvres (BFM) built into it. No code is
 changed here. The author checks the design before it is built (core-backlog E2).
 
+**Status (2026-11-24): built** on branch worktree-agent-aff8a23dae8e7f1b6 (E2 part 2), in the
+order of B8, with Shaw's notes folded in (docs/rewrite/shaw-bfm-notes.md: the two-circle
+energy plan, the mid-fight plan switch, the overshoot conditions, the lead turn's geometry,
+the graded defence). What it is now: lean/scripted/NOTES.md. Departures from this design,
+each a line in docs/rewrite/morning-notes.md ("E2b"): the pursuit point is the gun's lead
+point moved tau along his turn (not his position), and the yardstick's yo-yo lag/lead and
+lead turn are 0 and its defence breaks whenever defensive (personas draw the design's values)
+because, measured against the old agent, each of them lost about 0.1 to 0.2 of the score;
+the dive only with a purpose; a `last_pass` memory field for the plan switch; a
+`sustained_stick_speed` reference. Operations 439 per call for both teams (estimate 270).
+Measured: new against old 0.413 +- 0.019 (640 games, 4v4); the brawl's store 0.05 -> 0.23;
+in 1v1 the old agent, spending its store at once, wins nearly every equal start.
+
+### Flying list (sandbox, 2x; `--opponent scripted`)
+
+- Two-circle, the fight you won: pass him with an offset and turn his way. Expect it to turn
+  your way too when it has more energy (store plus speed), ease to the sustained level and
+  climb (its store rises) while you are not gaining, then go full stick and dive when you
+  get within about 90 deg of its tail. Bank more than it does and cash it: you should still
+  win the angles.
+- One-circle: pass and turn away from it. With less energy it turns nose to nose; inside one
+  turn radius it slows toward 1.3 stall speeds (climb) and its scissors are reversals.
+- Equal energy, repeated neutral passes: it switches between one- and two-circle at each
+  pass that gained it less than 10 deg (it alternates; tell me if that looks erratic).
+- Being chased: sit on its six inside about 3 gun ranges. It breaks into you at full stick
+  and corner speed (dives with store) and holds that turn; overshoot it fast and close and it
+  reverses (level); overshoot slowly or while it is the faster and it keeps turning.
+- Chasing it out of range: it flies its gun's lead point; against your turn it dives toward
+  corner speed (low yo-yo), against straight flight it coasts and lets the engine close.
+- Leaving and coming back: fly away beyond 3 gun ranges. It does not dive to chase; above
+  corner speed it climbs (store fills, the stick capped to the sustained level), so it
+  returns with store.
+- Head-on: it takes the head-on shot (no lead turn in the yardstick); a persona with lead
+  turn starts turning toward your track about theta / rate before the pass.
+- 2v2 is not flyable: the sandbox is 1v1 (team-mate and target-switch rules are covered by
+  tests and the brawl numbers).
+
 Sources: `lean/scripted/opponent.py` (line numbers below), `lean/scripted/NOTES.md`,
 `lean/game/core.py`, `lean/game/tuning.py`, docs/rewrite/bfm-doctrine.md (the doctrine
 notes, keys P-1289, P-1210, P-821, AAS, P-825 as there), and the Navy P-1210 yo-yo pages
