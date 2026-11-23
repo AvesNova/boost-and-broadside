@@ -425,17 +425,18 @@ def explain(
     # Falling behind a target that is not turning: no banking (the engine closes).
     no_bank = weights["offensive"] * low_yo_yo * (1.0 - turning_target)
 
-    # The pursuit point: his position tau ahead along his turn (second order), mixed with the
-    # gun's lead point.
+    # The pursuit point: the gun's lead point moved tau along his turn (second order: tau > 0
+    # lead, < 0 lag; 0 the gun's solution), mixed with the lead point itself by the gun
+    # weight (inside gun range the gun decides).
     time_squared_half = 0.5 * pursuit_time * pursuit_time
     turn_rate = fight.target_nose_rate
     pursuit_x = (
-        fight.offset_x
+        aim_x
         + fight.target_velocity_x * pursuit_time
         - turn_rate * fight.target_velocity_y * time_squared_half
     )
     pursuit_y = (
-        fight.offset_y
+        aim_y
         + fight.target_velocity_y * pursuit_time
         + turn_rate * fight.target_velocity_x * time_squared_half
     )

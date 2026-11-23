@@ -21,6 +21,12 @@ def constants():
 
 C = constants()
 CORNER, GUN, RADIUS = C["corner_speed"], C["gun_range"], C["sustained_radius"]
+# A persona with the design's B6 values for the rows the yardstick leaves at 0 or widens
+# (yo-yo time, lead turn) and Shaw's graded defence (break inside one gun range, relax at 90
+# deg of his advantage).
+BFM = ScriptedConfig().replace(
+    yo_yo_time=0.5, lead_turn_scale=1.0, relax_angle=1.5 * math.pi, defend_range=1.0
+)
 
 
 def ship(x=0.0, y=0.0, heading=0.0, speed=1.0):
@@ -71,7 +77,7 @@ def test_disengaged_coasts_at_merge_speed_and_banks_speed_with_the_level_capped(
 def test_tail_chase_closing_fast_inside_the_control_zone_lags_and_climbs():
     """He is 300 m ahead flying away at 0.6 corner speeds, I close at 0.3 corner speeds: too
     much closure for the nose-tail distance (a high yo-yo): lag pursuit, climb."""
-    e = decision(ship(speed=0.9), ship(300.0, speed=0.6))
+    e = decision(ship(speed=0.9), ship(300.0, speed=0.6), config=BFM)
     assert weight(e, "offensive") > 0.9
     assert first(e.yo_yo) > 0.3
     assert first(e.pursuit_time) < 0.0
@@ -82,13 +88,13 @@ def test_tail_chase_falling_behind_out_of_range_leads_and_dives():
     """He is 1.6 gun ranges ahead and faster, turning: a low yo-yo, lead pursuit, dive to
     corner. Flying straight: the engine closes (coast: no dive, no banking)."""
     rate = C["sustained_rate"]
-    e = decision(ship(speed=0.6), ship(1.6 * GUN, speed=0.8), nose_rates=(0.0, rate))
+    e = decision(ship(speed=0.6), ship(1.6 * GUN, speed=0.8), nose_rates=(0.0, rate), config=BFM)
     assert weight(e, "offensive") > 0.9
     assert first(e.yo_yo) < -0.9
     assert first(e.pursuit_time) > 0.0
     assert abs(first(e.speed_target) / CORNER - 1.0) < 0.05
     assert int(e.marginals.power[0, 0].argmax()) == DIVE
-    straight = decision(ship(speed=0.6), ship(1.6 * GUN, speed=0.8))
+    straight = decision(ship(speed=0.6), ship(1.6 * GUN, speed=0.8), config=BFM)
     assert int(straight.marginals.power[0, 0].argmax()) == 0
 
 
@@ -97,8 +103,8 @@ def test_lag_and_lead_aim_behind_and_ahead_of_a_crossing_target():
     (aim right of him), closing fast in range I lag (aim left of him); pure pursuit would
     point at him."""
     heading = -math.pi / 2 + 0.6
-    lead = decision(ship(speed=0.5), ship(1.5 * GUN, heading=heading, speed=0.8))
-    lag = decision(ship(speed=1.2), ship(0.8 * GUN, heading=heading, speed=0.8))
+    lead = decision(ship(speed=0.5), ship(1.5 * GUN, heading=heading, speed=0.8), config=BFM)
+    lag = decision(ship(speed=1.2), ship(0.8 * GUN, heading=heading, speed=0.8), config=BFM)
     assert first(lead.pursuit_time) > 0.0 > first(lag.pursuit_time)
     assert first(lead.stick_error) < first(lead.situation.bearing)
     assert first(lag.stick_error) > first(lag.situation.bearing)
@@ -158,8 +164,8 @@ def test_one_circle_inside_a_radius_slows_to_the_floor():
 def test_defence_is_graded_by_range():
     """He is on my six nose on: inside the defend range a break (full stick, corner speed);
     two gun ranges out a hard turn at the sustained level (Shaw p. 132)."""
-    close = decision(ship(speed=0.6), ship(-0.5 * GUN, 20.0, speed=0.9))
-    far = decision(ship(speed=0.6), ship(-2.0 * GUN, 20.0, speed=0.9))
+    close = decision(ship(speed=0.6), ship(-0.5 * GUN, 20.0, speed=0.9), config=BFM)
+    far = decision(ship(speed=0.6), ship(-2.0 * GUN, 20.0, speed=0.9), config=BFM)
     assert weight(far, "defensive") > 0.8
     assert first(close.cap) < 0.1 and first(far.cap) > 0.8
     assert first(close.speed_target) > 1.3 * first(far.speed_target)
@@ -252,13 +258,14 @@ def test_lead_turn_at_an_offset_merge():
     (two-circle plan) the ship starts its turn toward his track before the pass, the lead
     turn; with less (one-circle) it flies at him (pure pursuit or the gun)."""
     him = ship(6.0 * RADIUS, 2.0 * RADIUS, heading=math.pi)
-    two = decision(ship(), him, stores=(0.8, 0.3))
-    one = decision(ship(), him, stores=(0.3, 0.8))
-    bearing = first(two.situation.bearing)
+    two = decision(ship(), him, stores=(0.8, 0.3), config=BFM)
+    one = decision(ship(), him, stores=(0.3, 0.8), config=BFM)
+    gun = first(two.gun_error)
     assert weight(two, "merge") > 0.75
     assert first(two.pursuit_time) > 1.0 and abs(first(one.pursuit_time)) < 0.05
-    assert first(two.stick_error) > bearing + 0.15
-    assert abs(first(one.stick_error) - bearing) < 0.15
+    assert first(two.stick_error) > gun + 0.15
+    assert abs(first(one.stick_error) - first(one.gun_error)) < 0.05
     # no offset, no lead turn
-    straight = decision(ship(), ship(6.0 * RADIUS, 0.0, heading=math.pi), stores=(0.8, 0.3))
+    head_on = ship(6.0 * RADIUS, 0.0, heading=math.pi)
+    straight = decision(ship(), head_on, stores=(0.8, 0.3), config=BFM)
     assert abs(first(straight.pursuit_time)) < 0.1

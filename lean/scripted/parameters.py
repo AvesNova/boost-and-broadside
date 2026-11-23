@@ -64,13 +64,14 @@ PARAMETERS: dict[str, Parameter] = {
     "engage_range": Parameter(3.0, "gun_range", LOG, 0.4, "beyond it from the target: disengaged"),
     "three_nine_line": Parameter(math.pi / 2, "radians", LINEAR, 0.2,
                                  "ahead of me, or behind him, inside this angle"),
-    "defend_range": Parameter(1.0, "gun_range", LOG, 0.3, "defensive: break inside it"),
+    "defend_range": Parameter(3.0, "gun_range", LOG, 0.3, "defensive: break inside it"),
     # Angles off (alpha + |lambda|, pi minus Shaw's angular advantage; his advantage is
     # angles off - pi): the two-circle energy plan cashes its store when his advantage
-    # reaches 90 deg (Shaw p. 110); a break relaxes to a hard turn below 90 deg of his
-    # advantage (Shaw p. 134).
+    # reaches 90 deg (Shaw p. 110); a break relaxes to a hard turn below the relax angle
+    # (Shaw p. 134: about 90 deg of his advantage, 1.5 pi; the yardstick breaks whenever
+    # defensive within three gun ranges: graded defence lost to the old agent, measured).
     "cash_angle": Parameter(1.5 * math.pi, "radians", LINEAR, 0.3, "two-circle: cash beyond it"),
-    "relax_angle": Parameter(1.5 * math.pi, "radians", LINEAR, 0.3, "break beyond it"),
+    "relax_angle": Parameter(math.pi, "radians", LINEAR, 0.3, "break beyond it"),
     "scissors_range": Parameter(1.0, "sustained_radius", LOG, 0.3,
                                 "one-circle inside it: slow to the speed floor"),
     # The committed turn sense and the plan (one- or two-circle).
@@ -78,7 +79,7 @@ PARAMETERS: dict[str, Parameter] = {
     "release_band": Parameter(0.2, "radians", meaning="release this far forward of the 3/9 line"),
     "plan_threshold": Parameter(0.0, "store fraction", LINEAR, 0.25,
                                 "energy advantage above it: two-circle"),
-    "lead_turn_scale": Parameter(1.0, "ratio", LOG, 0.4,
+    "lead_turn_scale": Parameter(0.0, "ratio", UPWARD, 1.0,
                                  "the lead turn's time, of its geometric value"),
     "switch_gain": Parameter(0.17, "radians", LOG, 0.4,
                              "a pass gaining less angles off than this switches the plan"),
@@ -88,11 +89,15 @@ PARAMETERS: dict[str, Parameter] = {
     "overshoot_crossing": Parameter(1.0, "radians", LOG, 0.3,
                                     "track-crossing angle below it"),
     # Yo-yos: y = tanh((closure - wanted closure) / scale), the wanted closure reaching the
-    # nose-tail distance in the closing time; y > 0 lag and climb, y < 0 lead and dive.
+    # nose-tail distance in the closing time; y > 0 climb (and lag by the yo-yo time), y < 0
+    # dive (and lead). The yardstick flies the gun's solution (yo-yo time and lead turn 0:
+    # either lost about 0.2 of the score against the old agent, measured); personas sample
+    # them upward.
     "nose_tail": Parameter(0.67, "sustained_radius", LOG, 0.4, "where the chase wants to sit"),
     "closing_time": Parameter(1.0, "quarter_turn_time", LOG, 0.4, "time to close to it"),
     "yo_yo_scale": Parameter(0.1, "corner_speed", LOG, 0.4, "closure error for a full yo-yo"),
-    "yo_yo_time": Parameter(0.5, "quarter_turn_time", LOG, 0.4, "lag or lead of a full yo-yo"),
+    "yo_yo_time": Parameter(0.0, "quarter_turn_time", UPWARD, 0.5,
+                            "lag or lead of a full yo-yo"),
     # Speeds: the power tracks a speed target v*, mixed in log space over the tactics.
     "merge_speed": Parameter(1.0, "corner_speed", LOG, 0.1, "v* disengaged and at the merge"),
     "fight_speed": Parameter(1.0, "sustained_speed", LOG, 0.2, "v* in the rate fight"),
