@@ -105,3 +105,4 @@ where to look.
 - K regional compilation (nested_compile_region on the sublayers) does not trace with PyTorch 2.15 and dynamic=True; not pursued. At most about 1,000 of the 5,793 traced operations.
 - K docs/rewrite/sections/scoreboard/train_gpu.py now fills the league through League.after_update (L2's API; it no longer ran): the EMA, the uniform average and 8 snapshots, so 10 network slots play instead of the old 8 snapshots.
 - The warm compile cache sits under /tmp, which is wiped at a real reboot (tmpfs), so the first run after a reboot pays the full cold start (237 s against 93 s warm). Moving TORCHINDUCTOR_CACHE_DIR to ~/.cache/bnb-inductor (already exists) would keep it; small change, not yet made.
+- The committed doghouse PNGs no longer match what core renders (they predate later flight changes); re-render them when convenient. The web tool loads Plotly from cdn.plot.ly, so its charts need a network connection.
