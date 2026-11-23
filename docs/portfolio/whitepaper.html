@@ -78,13 +78,14 @@ learning system I built on top of it to ask one question: <b>can a policy traine
 team command much larger fleets without retraining?</b> A single recurrent network, trained
 only in 4-vs-4 combat on a single 8&nbsp;GB laptop GPU, was then run unchanged on fleets of 1 to 64
 ships. It beats a hand-built scripted controller at every size, wins while outnumbered, and
-is measurably <i>stronger</i> at 8 and 16 ships per side than at the size it trained at.</p>
+is <i>stronger</i> at 8 and 16 ships per side than at 4. The final product is the running
+average of the training weights; the sweeps out to 64 ships rate the live weights.</p>
 
 <div class="tiles">
-  <div class="tile"><div class="v">4 → 64</div><div class="l">ships per team commanded zero-shot, sixteen times the training width</div></div>
-  <div class="tile"><div class="v">2,110 Elo</div><div class="l">calibrated rating, scripted controller fixed at 1000 (400 points = 10:1 odds)</div></div>
-  <div class="tile"><div class="v">1.89×</div><div class="l">its own number of scripted ships held to an even fight at 4 ships (averaged weights)</div></div>
-  <div class="tile"><div class="v">93%</div><div class="l">of equal fights still won at 64-vs-64, a fleet size the policy never trained at</div></div>
+  <div class="tile"><div class="v">4 → 64</div><div class="l">ships per team, zero-shot: sixteen times the training width</div></div>
+  <div class="tile"><div class="v">83%</div><div class="l">of games won outnumbered 4 vs 6 (averaged policy, 4,096 games)</div></div>
+  <div class="tile"><div class="v">2,050 Elo</div><div class="l">averaged policy; scripted fixed at 1000, and 400 points = 10:1 odds</div></div>
+  <div class="tile"><div class="v">93%</div><div class="l">of equal fights won at 64-vs-64 (live weights)</div></div>
 </div>
 
 <figure>
@@ -178,8 +179,9 @@ event twice what it charges the side suffering it.</p>
 <div class="break">
 <h2><span class="n">5</span>Results: one checkpoint, seven fleet sizes</h2>
 <p>All results are from one run, <code>wild-universe-731</code>, trained at 4-vs-4 with four
-fields. The final checkpoint was loaded once and rated in a separate stationary tournament
-at each symmetric size, with the scripted controller fixed at 1000.</p>
+fields. The final live weights were loaded once and rated in a separate stationary
+tournament at each symmetric size, with the scripted controller fixed at 1000; the averaged
+policy was not entered in these tournaments.</p>
 
 <div class="two">
 <figure>
@@ -197,7 +199,7 @@ at each symmetric size, with the scripted controller fixed at 1000.</p>
   <tr><td>32</td><td class="r">11,712</td><td class="r">2085 ± 31</td></tr>
   <tr><td>64</td><td class="r">2,928</td><td class="r">1605 ± 45</td></tr>
 </table>
-<p class="small">The 2,110 on page 1 comes from a separate 4-vs-4 calibration tournament (section 7); the two fits use different player pools and agree within about one standard error.</p>
+<p class="small">Live weights. The separate calibration tournament (section 7) rates them 2,110 ± 11 at 4-vs-4 and the averaged policy about 2,050.</p>
 </div>
 </div>
 <p>The policy is stronger at 8-vs-8 and 16-vs-16 than at the size it trained at, then
@@ -244,15 +246,15 @@ equal numbers at every size.</p>
   <figcaption><b>Figure 6.</b> The same study at 16 learned ships against 16 to 32, four times the training width, with no retraining.</figcaption>
 </figure>
 </div>
-<p>Outnumbered performance emerges in order: equal fights are won first, then each harder
-ratio in turn, and the live curves stop improving after about 250M steps. The same ordering
-appears at 16 ships, a size the policy never trained at.</p>
+<p>Equal fights are won first, then each harder ratio in turn, at 16 ships as at 4; the live
+curves stop improving after about 250M steps.</p>
 
 <h3>Weight averaging helps most where it is hardest</h3>
 <p>Every run keeps a running average of its weights beside the live ones. The averaged
 policy rates 58 Elo <i>lower</i> in the symmetric 4-vs-4 tournament, yet wins more at every
-ratio above equal numbers. Against seven scripted ships, four averaged ships win 61.6% of
-4,096 games where the live weights win 55.0%; against eight, 40.9% against 35.3%.
+ratio above equal numbers. Against six scripted ships, four averaged ships win 83.3% of
+4,096 games where the live weights win 78.2%; against seven, 61.6% against 55.0%; against
+eight, 40.9% against 35.3%.
 Interpolated, the averaged weights hold an even fight against 1.89× their number at 4 ships
 (95% interval 1.88 to 1.90), 1.82× at 8, 1.71× at 16 and 1.55× at 32. A single symmetric
 rating would have picked the wrong checkpoint to ship, which is why the evaluation
@@ -280,9 +282,10 @@ steps to about 2,001 at 250M.</p>
 stationary players runs until every rating reaches a target uncertainty (114,688 games,
 ±12), then each historical policy is refit from its recorded games against those calibrated
 opponents. Interpolated "semi-random" controllers bridge the gap between random and
-scripted play, where direct matches are near-certain and carry almost no information. Two
-tournaments with different player pools rate the final checkpoint 2110 ± 11 and 2128 ± 10 at
-4-vs-4, about one combined standard error apart.</p>
+scripted play, where direct matches are near-certain and carry almost no information.</p>
+<p>Here the averaged policy rates about 2,050 (best averaged checkpoint 2,052 ± 11; final
+averaged weights refit to 2,057 ± 22) and the live weights 2,110 ± 11, about one standard
+error from the fleet-size tournament's 2,128 ± 10.</p>
 </div>
 </div>
 
@@ -308,8 +311,7 @@ logical batch.</p>
   <tr><td><b><code>torch.compile</code></b></td><td>About 6% faster rollout and update</td><td>About 360 MB of reserved workspace</td></tr>
 </table>
 
-<p>The checkpointing, minibatch and compile rows come from a one-factor-at-a-time sweep, one
-configuration per process. The launcher can also
+<p>The checkpointing, minibatch and compile rows come from a one-factor-at-a-time sweep. The launcher can also
 probe the machine it is on: each candidate configuration runs one full PPO update in its
 own interpreter, so an out-of-memory failure cannot fragment the allocator for the next
 attempt, and the result is cached against a readable identity (GPU, library versions,
@@ -344,6 +346,7 @@ architecture, token geometry) that invalidates itself when any of those change.<
   <li><b>The run stopped early,</b> at 672M of a planned 1,000M steps, after 2.9 days. The rating had
   leveled off (within 50 Elo of final from about 457M steps), but what the remainder
   would have added is unmeasured.</li>
+  <li><b>The averaged policy</b> is measured up to 32 ships per side, not 64.</li>
   <li><b>Transfer is shown across the sizes tested,</b> not as a general scale-invariance
   law, nor under changed maps, physics or observations.</li>
 </ul>
@@ -370,19 +373,16 @@ more dangerous than a light exchange. Three tests, cheapest first:</p>
 </ul>
 <h3>Beyond that</h3>
 <ul>
-  <li><b>Ablations:</b> short matched runs without recurrence, the auxiliary head and the
-  league in turn.</li>
-  <li><b>More opponents and seeds,</b> so the outnumbered results do not rest on one scripted
-  controller and one run.</li>
+  <li><b>Ablations</b> without recurrence, the auxiliary head and the league in turn; more
+  opponents and seeds; the averaged policy rated out to 64 ships.</li>
 </ul>
 
 <h2><span class="n">11</span>Reference run</h2>
 <table class="keep">
   <tr><td>Run</td><td><code>wild-universe-731</code>: 4-vs-4 with 4 refractive fields, one RTX 4070 Laptop GPU (8 GB), 70.3 hours</td></tr>
   <tr><td>Experience</td><td>671.8M environment steps over 674 updates; 2,592 environments × 3 rollouts of 128 steps per update</td></tr>
-  <tr><td>Model</td><td>Width 128, 4 heads, 2 blocks of (2 spatial + 1 temporal) layers; 12 action logits per ship</td></tr>
-  <tr><td>Algorithm</td><td>Recurrent PPO, GAE, 32 minibatches, peak learning rate 4.5e-4, decisions at 30 Hz</td></tr>
-  <tr><td>Rating</td><td>Final live 2110 ± 11 Elo; best averaged checkpoint 2052 ± 11; scripted 1000; random 86</td></tr>
+  <tr><td>Model</td><td>Width 128, 4 heads, 2 blocks of (2 spatial + 1 temporal); recurrent PPO, 32 minibatches, peak LR 4.5e-4, 30 Hz decisions</td></tr>
+  <tr><td>Rating</td><td>Averaged policy about 2,050 Elo (best averaged checkpoint 2052 ± 11; final averaged refit 2057 ± 22); final live 2110 ± 11; scripted 1000; random 86</td></tr>
 </table>
 
 <p class="small"><b style="color:var(--ink)">Where to look in the repository.</b> Results, sample sizes and caveats: <code>docs/evaluation.md</code>.
