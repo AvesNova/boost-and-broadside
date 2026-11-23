@@ -161,6 +161,9 @@ docs/rewrite/scoreboard.md "Compile time". Run the tripwire at the end of every 
 
     PYTHONPATH=. python docs/rewrite/sections/scoreboard/compile_check.py
 
+Checks (2026-11-24, on 245e537f plus K): `pytest lean -m "not slow"` 224 passed; slow
+test_compiled.py 4 passed; `python -m lean.train --smoke --device cpu` completes.
+
 ## Tests
 
 All learner, evaluation and caller tests run the real game, scripted agent and model at tiny
