@@ -32,7 +32,9 @@ History (v2 parity, the waste fixes, fog, the flight changes): docs/rewrite/core
   - `ship_card` / `ship_constants`: the run's constants (`contract.Constants`), built once per
     flight settings, lineup and arena. A constant equal for every type of the lineup is a
     Python number; one that differs is a row of a per-slot table (E, C, N) gathered at the
-    deal. Derived per type: cruise speed, stall speed, corner speed, bullet launch speed, gun range. The
+    deal. Derived per type: cruise speed, stall speed, corner speed, bullet launch speed, gun range,
+    and the scripted agent's references (the best sustained turn's rate, speed and radius, the
+    time to turn 90 degrees at it, the corner rate, the store's turn; `quasi_steady`). The
     arena radius is a constant too. The scripted opponent reads every number it uses from these
     constants by name (it holds no ship characteristics of its own).
   - `flight_tick`: half a kick, a drift, half a kick (`_setting`, `_rates`, `_kick`); the

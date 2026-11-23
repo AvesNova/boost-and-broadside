@@ -293,27 +293,6 @@ def _with_row(row: dict[str, float]):
         card.CARD = saved
 
 
-def _evaluate(c, speed, stick, power, energy):
-    """Quasi-steady (doghouse.py's evaluate): turn rate (rad/s), speed rate, total energy rate."""
-    control = SimpleNamespace(
-        thrust_scale=1.0,
-        stick_size=stick,
-        stick_sign=torch.ones_like(speed),
-        commanded=c.commanded_table[..., power],
-        demand=c.demand_table[..., power],
-    )
-    setting = core._setting(c, control, speed, energy)
-    lateral, _, _, thrust = setting
-    reach = (lateral.abs() / (speed * speed) * c.inverse_lift).clamp(0.0, 1.0)
-    angle = c.stall * (1.0 - torch.sqrt(1.0 - reach))
-    lift = core._lift_coefficient(c, angle)
-    rate = (lift * speed * speed + thrust * torch.sin(angle)) / speed
-    speed_rate, store_rate = core._rates(
-        c, setting, torch.ones_like(speed), speed, lift, torch.cos(angle), 1.0 / (speed * speed)
-    )
-    return rate, speed_rate, speed * speed_rate + store_rate
-
-
 def _bisect(function, low, high, steps=60):
     """Per element, the root of a function positive at low and negative at high."""
     for _ in range(steps):
@@ -349,15 +328,15 @@ def performance(
         out = {}
         out["stall_speed"] = math.sqrt(card.GRAVITY / row["max_lift_coefficient"])
         out["corner_speed"] = math.sqrt(row["max_acceleration"] / row["max_lift_coefficient"])
-        full_rate, full_speed_rate, _ = _evaluate(c, speeds, one, 0, energy)
+        full_rate, full_speed_rate, _ = core.quasi_steady(c, speeds, one, 0, energy)
         k = int(torch.argmax(full_rate))
         out["corner_rate"], out["corner_speed_flown"] = float(full_rate[k]), float(speeds[k])
-        _, straight, straight_energy = _evaluate(c, speeds, zero, 0, energy)
+        _, straight, straight_energy = core.quasi_steady(c, speeds, zero, 0, energy)
         above = speeds > out["stall_speed"]
         top = int(torch.nonzero(above & (straight > 0.0))[-1])
         out["top_speed"] = float(
             _bisect(
-                lambda v: _evaluate(_take(c, top), v, zero[:1], 0, energy[:1])[1],
+                lambda v: core.quasi_steady(_take(c, top), v, zero[:1], 0, energy[:1])[1],
                 speeds[top : top + 1],
                 speeds[top + 1 : top + 2],
             )
@@ -366,9 +345,9 @@ def performance(
         k = int(torch.argmax(climb))
         out["best_climb"], out["best_climb_speed"] = float(climb[k]), float(speeds[k])
         # sustained: per speed the stick where the energy rate is zero (full stick if positive)
-        stick = _bisect(lambda s: _evaluate(c, speeds, s, 0, energy)[2], zero, one)
-        stick = torch.where(_evaluate(c, speeds, one, 0, energy)[2] >= 0.0, one, stick)
-        rate, _, energy_rate = _evaluate(c, speeds, stick, 0, energy)
+        stick = _bisect(lambda s: core.quasi_steady(c, speeds, s, 0, energy)[2], zero, one)
+        stick = torch.where(core.quasi_steady(c, speeds, one, 0, energy)[2] >= 0.0, one, stick)
+        rate, _, energy_rate = core.quasi_steady(c, speeds, stick, 0, energy)
         held = above & (energy_rate > -1e-6) & (straight_energy >= 0.0)
         sustained = torch.where(held, rate, 0.0)
         k = int(torch.argmax(sustained))
@@ -383,20 +362,20 @@ def performance(
         k = int(torch.nonzero(full_speed_rate > 0.0)[-1])
         settled = float(
             _bisect(
-                lambda v: _evaluate(_take(c, k), v, one[:1], 0, energy[:1])[1],
+                lambda v: core.quasi_steady(_take(c, k), v, one[:1], 0, energy[:1])[1],
                 speeds[k : k + 1],
                 speeds[k + 1 : k + 2],
             )
         )
         out["settled_speed"] = settled
         out["settled_turn_rate"] = float(
-            _evaluate(
+            core.quasi_steady(
                 _take(c, k), torch.tensor([settled], dtype=torch.float64), one[:1], 0, energy[:1]
             )[0]
         )
         stall = torch.tensor([out["stall_speed"]], dtype=torch.float64)
         out["low_speed_acceleration"] = float(
-            _evaluate(_take(c, 0), stall, zero[:1], 0, zero[:1])[1]
+            core.quasi_steady(_take(c, 0), stall, zero[:1], 0, zero[:1])[1]
         )
     return out
 
