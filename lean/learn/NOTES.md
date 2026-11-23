@@ -88,7 +88,16 @@ monitor, the advantage shares. `test_train.py`: `lean.train` BC then RL from the
 loss equals eager). `python -m lean.train --smoke --device cpu` with `--stage bc`, `--stage rl
 --start`, and the default (both). `python -m lean.eval` on the smoke checkpoint.
 
-GPU: see "GPU check" below.
+GPU check (laptop RTX 4070, profile "performance", nothing else on the GPU; unit
+bnb-l1-gpu, 20:27 to 20:46): `python -m lean.train --stage all --bc-updates 3 --updates 3
+--device cuda` at parity (2,048 x 4 x 128, compiled, bf16, core game). Both stages ran and saved
+their checkpoints; no step skipped. Loop steps per second (collect plus update): BC 3,368
+(update 0, with the cold compile), 6,669, 6,668; RL (same process, graphs reused) 6,667, 6,669,
+6,671. Peak allocated 5.68 GiB (BC), 5.70 GiB (RL). BC's teacher cross-entropy 3.65, 2.91,
+2.23 nats (bc_kl 2.69, 1.87, 1.14); RL from the 3-update EMA started at 3.50 (the EMA is
+still near the initial weights after 3 updates). The KL monitor fired from update 1 in both
+stages: epoch means up to 0.34 (BC) and 0.18 (RL) in the fourth epoch, while the warm-up's rate
+was below a fifth of 3e-4. One run each.
 
 ## Open
 
@@ -98,6 +107,9 @@ GPU: see "GPU check" below.
 - The teacher term's numbers (0.5, 0.95 per update, cut-off 0.005) and the BC length are
   defaults with reasons, not measured here; v2's BC ran 256 minibatches (8x the Adam steps per
   update); lean's BC uses the RL minibatches (32).
+- The KL warning fired on every update after the first in the GPU check (fourth-epoch means
+  0.14 to 0.34, early in the warm-up). The literature's rule: if it fires routinely, make 0.02
+  a stop checked after each epoch. For the author once a longer run shows whether it persists.
 - Entropy stays on during the teacher phase (VPT dropped it there); the decision is a constant 0.003.
 - The uniform average in BC starts after the warm-up and includes the stage's early weights;
   the hand-off uses the EMA.
