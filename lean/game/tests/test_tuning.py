@@ -127,3 +127,16 @@ def test_scripted_references_are_the_flown_numbers():
     p51d = card.TYPE_NAMES.index("p51d")
     assert float(game.quarter_turn_time[p51d]) == pytest.approx(2.37, abs=0.01)
     assert float(game.store_turn[p51d]) == pytest.approx(2.56, abs=0.02)
+
+
+def test_a_card_built_inside_with_row_does_not_outlive_it():
+    """Review: like `flying` and `time_scale`, `_with_row` drops the core's built ship cards
+    on entry and exit, so a card built from the changed table is never served after it."""
+    config = core.GameConfig(arena_radius=4321.0)  # a key no other test builds
+    row = {name: 2.0 * values[0] for name, values in card.CARD.items()}
+    with tuning._with_row(row):
+        core.ship_card(config)  # built from the card with the extra row
+    after = core.ship_card(config)
+    core._SHIP_CARDS.clear()
+    fresh = core.ship_card(config)
+    assert after.uniform == fresh.uniform and torch.equal(after.table, fresh.table)
