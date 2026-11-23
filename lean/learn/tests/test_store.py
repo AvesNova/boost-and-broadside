@@ -72,6 +72,13 @@ def test_streamed_segments_equal_the_unstreamed_rollouts():
         expected = joined(lambda rollout, name=name: getattr(rollout, name))
         if name == "deal_row":
             continue  # rows of each segment's own table; checked through the lookups above
+        if name == "hit_label":
+            # The store also labels segment 0's tail from segment 1 (checked in
+            # test_hit_labels_near_a_segment_boundary_come_from_the_next_segment).
+            labelled = expected >= 0
+            assert torch.equal(batch[name][labelled], expected[labelled])
+            assert torch.equal(batch[name][:, seats:], expected[:, seats:])
+            continue
         assert torch.equal(batch[name], compact(name, expected)), name
     carry = torch.cat([rollout.initial_carry for rollout in reference], 1)
     assert torch.equal(batch["carry"], carry)
@@ -190,3 +197,113 @@ def _to(rollout, device):
         name: move(getattr(rollout, name))
         for name in ("observation", *rollout.TICK_FIELDS, "hit_label", "deal_table", "bootstrap_value", "value_centres", "initial_carry")
     })
+
+
+def stand_in_store(segments: int, ticks: int, envs: int = 4, length: int = 6, flight: int = 2):
+    """A store of `segments` consecutive stand-in segments (lean.learn.tests.standins)."""
+    from lean.learn.tests import standins
+
+    torch.manual_seed(0)
+    generator = torch.Generator().manual_seed(0)
+    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1)
+    game_config = standins.GameConfig(length=length, flight=flight)
+    policy = standins.TinyPolicy()
+    opponent = Opponent(scripted_config=None)
+    games = {"game": standins.game, "scripted": standins.scripted}
+    state, carry = start(config, game_config, policy, opponent, envs, generator, **games)
+    store = RolloutStore(segments, stream=False)
+    for segment in range(segments):
+        rollout = collect(
+            config, game_config, policy, opponent, state, carry, ticks, generator, **games, store=store, segment=segment,
+        )
+        state, carry = rollout.state, rollout.carry
+    return config, game_config, policy, store
+
+
+def seat_major(records: torch.Tensor, segments: int, seats: int) -> torch.Tensor:
+    """Store records (T, V + 1, ...) as each seat's segments in time order (U x T, S, ...)."""
+    from lean.learn.returns import join_segments
+
+    return join_segments(records[:, : segments * seats], segments)
+
+
+@pytest.mark.parametrize("fresh_values", [False, True])
+def test_chained_targets_equal_one_gae_pass_over_the_concatenated_ticks(fresh_values):
+    """Four 12-tick segments: the target pass (micro-batches of whole seats) gives what one
+    GAE pass over each seat's 48 consecutive ticks gives, bootstrapped from the last
+    segment only, within float32 rounding; with an episode end inside a segment and one on
+    a segment's last tick (which must cut the chain there). Both the stored values and the
+    critic's recomputed ones (targets_every_epoch)."""
+    from lean.learn import generalised_advantages, normalise_advantages
+    from lean.learn.update import minibatch_values, target_pass
+
+    segments, ticks = 4, 12
+    config, _, policy, store = stand_in_store(segments, ticks)
+    seats, views = store.seats, store.views
+    generator = torch.Generator().manual_seed(5)
+    # Rewards on every level and stored values, so every tick's delta matters.
+    own = store.resident["own"][..., None]
+    store.data["reward"].copy_(torch.randn(store.data["reward"].shape, generator=generator) * own)
+    store.data["value"].copy_(torch.randn(store.data["value"].shape, generator=generator) * own)
+    store.data["reward"][:, views] = 0
+    store.data["value"][:, views] = 0
+    done = torch.zeros_like(store.resident["done"])
+    done[5, 2 * seats + 1] = True  # inside segment 2 of seat 1
+    done[ticks - 1, 1 * seats + 0] = True  # the last tick of segment 1 of seat 0
+    store.resident["done"].copy_(done)
+    store.bootstrap.copy_(torch.randn(store.bootstrap.shape, generator=generator))
+    store.bootstrap[views] = 0
+
+    if fresh_values:
+        index, _ = store.batch_index(torch.arange(views), views)
+        (batch,) = list(store.batches(store.observation_names + ("deal_row", "reset"), index))
+        observation, offset = store.observation(batch)
+        value, _ = minibatch_values(config, policy, observation, batch["carry"], batch["reset"], offset)
+        value = torch.cat([value, torch.zeros_like(value[:, :1])], 1)
+    else:
+        value = store.data["value"]
+    discounts, lambdas = torch.tensor(config.discounts), torch.tensor(config.gae_lambdas)
+    advantage, target = generalised_advantages(
+        seat_major(store.data["reward"], segments, seats), seat_major(value, segments, seats),
+        store.bootstrap[(segments - 1) * seats: views], seat_major(store.resident["done"], segments, seats),
+        discounts, lambdas,
+    )
+
+    def store_major(records):  # (U x T, S, ...) back to (T, V, ...), by hand
+        rest = records.shape[2:]
+        return records.reshape((segments, ticks, seats) + rest).transpose(0, 1).reshape((ticks, views) + rest)
+
+    expected_target = store_major(target)
+    expected_advantage = normalise_advantages(store_major(advantage.sum(-1)), store.resident["own"][:, :views], config)
+    index = store.chain_index(4 * segments)  # 4 seats a row; 6 seats, so the last row is padded
+    assert index.shape == (2, 4 * segments) and seats == 6
+    target_pass(config, policy, store, index, minibatch_values if fresh_values else None)
+    assert torch.allclose(store.target[:, :views], expected_target, rtol=1e-5, atol=1e-5)
+    assert torch.allclose(store.advantage[:, :views], expected_advantage, rtol=1e-5, atol=1e-5)
+    # The chain really reaches across a boundary: seat 2's segment 0 sees segment 1's rewards.
+    cut, _ = generalised_advantages(
+        store.data["reward"][:, 2:3], value[:, 2:3], store.bootstrap[2:3], store.resident["done"][:, 2:3],
+        discounts, lambdas,
+    )
+    assert not torch.allclose(cut[-1], target[ticks - 1, 2:3] - value[ticks - 1, 2:3], atol=1e-3)
+
+
+def test_hit_labels_near_a_segment_boundary_come_from_the_next_segment():
+    """Stand-in bullets fly 2 ticks, episodes last 6: in three consecutive 8-tick segments a
+    segment's last two rows are labelled by bullets that end in the next segment; only the
+    last segment keeps its tail unlabelled (and rows whose bullet outlives the episode)."""
+    from lean.learn.tests import standins
+
+    segments, ticks, length, flight = 3, 8, 6, 2
+    _, _, _, store = stand_in_store(segments, ticks, length=length, flight=flight)
+    seats, slots = store.seats, store.resident["hit_label"].shape[-1]
+    labels = seat_major(store.resident["hit_label"], segments, seats).long()  # (U x T, S, N)
+    row = torch.arange(segments * ticks)[:, None, None]
+    episode_tick = row % length
+    ends_in_episode = episode_tick + flight <= length - 1
+    ends_in_update = row + flight < segments * ticks
+    outcome = standins.bullet_outcome(episode_tick, torch.arange(slots))
+    expected = torch.where(ends_in_episode & ends_in_update, outcome, -1)
+    assert torch.equal(labels, expected.expand(-1, seats, -1))
+    assert (labels[ticks - flight: ticks] >= 0).any()  # segment 0's tail is labelled
+    assert (store.resident["hit_label"][:, store.views] == -1).all()  # the spare view labels nothing

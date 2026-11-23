@@ -310,10 +310,13 @@ level, a scale per level); no shaping level. Source: v2's release commit 4cfd1e8
   `redeal` clears re-dealt environments (so `abandon` does too).
 - **Hit labels** (`collect.py`): `Rollout.hit_label` (T, S, N) long. Each tick, every
   bullet that ended (`StepOut.shot_outcome` >= 0) writes its outcome to row
-  `tick - (state.tick - shot_tick)` (episode ticks and rows advance together within an
-  episode); a bullet fired before the segment goes to a spare entry; rows whose bullet has
-  not ended by the segment's end stay -1. One scatter per tick, nothing read back. With
-  ghost bullets every living ship's every row is labelled except the segment's tail.
+  `label_row - (state.tick - shot_tick)` (episode ticks and rows advance together within
+  an episode). The labels hold 2T rows: the previous segment's T ticks, then this
+  segment's; in a store, the first half is merged into the previous segment's labels
+  (below, "Chained returns and hit labels across segments"). A bullet fired earlier goes
+  to a spare entry; rows whose bullet has not ended by the update's last tick stay -1. One
+  scatter per tick, nothing read back. With ghost bullets every living ship's every row is
+  labelled except the update's last segment's tail.
 - **Hit loss** (`update.py`): `hit_loss` is the cross-entropy in nats over the rows that
   are `own` and labelled; other rows add nothing to the loss or the gradient (a `where`,
   not a multiply, so a meaningless masked logit cannot leak a NaN). `hit_coefficient`
@@ -357,8 +360,10 @@ real game).
 
 CPU, OMP_NUM_THREADS=1: `pytest lean/learn lean/model -q`, 56 passed; `pytest lean/eval
 -q`, 3 passed; `python -m lean.train --smoke --device cpu` completed. In the smoke run
-`hit_labelled` is 0: its 8-tick segments are shorter than a bullet's 11-tick life, so
-only same-segment hits label a row and none occurred. The value-support flags were quiet
+`hit_labelled` was 0: its 8-tick segments are shorter than a bullet's 11-tick life, so
+only same-segment hits labelled a row and none occurred (since the labels chain across
+segments, 2026-11-23, the smoke run's first segment is labelled from its second:
+`hit_labelled` 0.375). The value-support flags were quiet
 there (no level paid a reward in 8 ticks); with 128-tick segments early training is
 expected to raise the narrow flag on damage and kill/death until ships fight.
 
@@ -473,8 +478,10 @@ per minibatch. Measurements: docs/rewrite/scoreboard.md, "Update at parity with 
   parity, v2 game); larger sizes were not measured.
 - **Targets.** `targets_every_epoch=False` (default, decided): one pass over the stored
   rewards and values (streamed) computes GAE per level (`returns.generalised_advantages`,
-  a doubling scan, no loop over ticks) and the normalisation over the update. True: the
-  critic's values are recomputed per epoch through the same streamed micro-batches.
+  a doubling scan, no loop over ticks) over each seat's segments chained in time, and the
+  normalisation over the update. True: the critic's values are recomputed per epoch
+  through the same streamed micro-batches. (Until 2026-11-23 GAE ran per segment, a bug;
+  see "Chained returns and hit labels across segments".)
 - **Host waits that remain:** at the update's start, the wait for the last copies
   (`ready`) and the read of the epochs' data orders; per micro-batch, the wait for the
   staging buffer's copy of two micro-batches before (finished by then: 4 to 7 ms over a
@@ -721,3 +728,71 @@ and 135.7 s in one batch. The GPU check covered the parity start only.
 - `spread` 2 is a guess: smaller means fewer wasted matches and more rounds.
 - Mixing team sizes pads every environment to the largest total; grouping sizes by
   total into separate batches would cut that at the price of more passes.
+
+## Chained returns and hit labels across segments (2026-11-23)
+
+The bug (docs/rewrite/literature-recipe-2.md, section 1): an update stores 4 consecutive
+128-tick segments per environment, but GAE ran per segment and bootstrapped from the
+critic at every segment's end, so returns were cut at ticks 128, 256 and 384 although
+the rewards after each cut were in the store; and a segment's last ticks (a bullet's
+life) had no hit label. v2 chained the returns over the whole update and bootstrapped only
+at its end (`src/bnb/learn/ppo.py:6-8, 1015-1029`). Lean now does the same (without v2's
+lookahead).
+
+### What changed
+
+- **Chained GAE** (`update.target_pass`, `RolloutStore.chain_index`,
+  `returns.join_segments` / `split_segments`). A seat is the same environment's same team
+  in every segment (`collect.seats`: seat s < E is environment s's learner team, E + e the
+  other team of self-play environment e; the team changes only on a re-deal, after an
+  episode end, which cuts anyway), and its carry runs on across segments, so seat s's
+  segments are views s, S + s, ..., (U - 1) S + s. The target pass's micro-batches are
+  whole seats: k = micro_batch_views // U seats per row (16 at parity, so 64 views as
+  before), segment-major, the last row padded with the spare view. A row's (T, U k)
+  records are reshaped to (U T, k), GAE runs once over the 512 ticks (the same reverse
+  doubling scan, log2 512 = 9 rounds instead of 7), and the results are reshaped back. The
+  value after a segment's last tick is the next segment's first stored (or recomputed)
+  value; only the last segment's stored bootstrap is read. `done` cuts as before,
+  including on a segment's last tick. All five levels, both `targets_every_epoch` modes
+  (recomputed values come per view from each view's stored carry, as before). Self-play
+  and league seats chain alike (each seat its own column).
+- **Reading the pinned store.** The chained pass uses the same `RolloutStore.batches`
+  double-buffered stream: each row is one host index_select of U k views from the pinned
+  arrays into a staging buffer, copied asynchronously while the device computes the
+  previous row; every view is read once per pass, nothing is read back, and the micro-batch
+  shape is unchanged at parity (64 views), so the compiled critic graph is too.
+- **Hit labels.** `collect`'s flat labels have 2T rows: a bullet that ends in segment u
+  but left the gun in segment u - 1 lands in the first T rows, and
+  `RolloutStore.end_segment(..., previous_hit_label)` merges them into segment u - 1's
+  labels (elementwise max: a row's bullet ends once, so the other label is -1). Segment
+  0's earlier rows belong to the previous update and are dropped. A Rollout collected
+  without a store keeps only its own rows (unchanged). `advance` takes the tick's label
+  row (`label_row`, starting at T) instead of the segment tick.
+- Training sequences are unchanged: one view (one seat's 128-tick segment) from its stored
+  carry; minibatches and micro-batches as before.
+
+### Tests (CPU)
+
+`test_store.py`: `test_chained_targets_equal_one_gae_pass_over_the_concatenated_ticks`
+(4 segments of 12 ticks, stand-in game, random rewards and values on every level, an
+episode end inside segment 2 of one seat and one on segment 1's last tick of another;
+the target pass equals one GAE pass over each seat's 48 concatenated ticks within float32
+rounding, stored and recomputed values; fails with the per-segment pass);
+`test_hit_labels_near_a_segment_boundary_come_from_the_next_segment` (three 8-tick
+segments, 2-tick bullets: every row labelled as its bullet's outcome except those whose
+bullet outlives its episode or the update). The streamed-store test now checks that the
+store agrees with the unstreamed rollouts on every row those label, and that it labels
+the first segment's tail in addition.
+
+
+### GPU check (2026-11-23 15:54 to 16:04)
+
+Laptop RTX 4070, platform profile "performance", no compute process on `nvidia-smi`
+before the row, inside `systemd-run --user --scope -p MemoryMax=8G`. One row of
+docs/rewrite/sections/scoreboard/train_gpu.py at parity (v2 game, compiled, bf16, 2,048 x
+4 x 128, 3 updates, steady = mean of updates 1 and 2): collect 21,593, update 8,313, loop
+6,002 steps/s (scoreboard before the change: 22,032, 8,482, 6,124); peak 5.18 GiB
+allocated, 5.75 reserved (5.18 / 5.78 before); compute stall 0.002 s, host gather 2.1 s
+per update. All three rates are about 2% lower, collect included, whose only change is
+a hit-label buffer twice as long; one row each side does not separate the change from
+run-to-run variation.

@@ -7,7 +7,9 @@ from lean.learn.collect import Rollout
 from lean.learn.config import LearnConfig, bc_weight, learning_rate, policy_precision
 from lean.learn.returns import (
     generalised_advantages,
+    join_segments,
     normalise_advantages,
+    split_segments,
     usage_counts,
     usage_flags,
     usage_metrics,
@@ -128,9 +130,12 @@ def minibatch_loss(
 def target_pass(config: LearnConfig, policy, store: RolloutStore, index: Tensor, values=minibatch_values) -> Tensor:
     """Advantages and value targets of every view, into store.targets(): the critic's
     values (`values`, minibatch_values or its compiled form, over the micro-batches of
-    `index`; None takes the values stored at collection), zero outside `own`, run through
-    GAE per level (each level its own discount and lambda), summed over levels and
-    normalised over the whole rollout. The bootstrap value is the one stored at collection.
+    `index`, rows of store.chain_index; None takes the values stored at collection), zero
+    outside `own`, run through GAE per level (each level its own discount and lambda),
+    summed over levels and normalised over the whole rollout. GAE runs over each seat's
+    segments chained in time (returns.join_segments: the value after a segment's last tick
+    is the next segment's first value), bootstrapped only after the last segment from the
+    value stored at collection; an episode end cuts as anywhere else.
     Returns the targets' range measures, usage_flags (4, LEVELS), on the device."""
     levels = len(config.discounts)
     advantage, target = store.targets(levels)
@@ -145,9 +150,13 @@ def target_pass(config: LearnConfig, policy, store: RolloutStore, index: Tensor,
             value, centres = values(config, policy, observation, batch["carry"], batch["reset"], offset)
         else:
             value, centres = batch["value"], store.centres
+        segments = store.segments
+        last = views[views.numel() - views.numel() // segments:]  # each seat's last segment
         advantages, targets = generalised_advantages(
-            batch["reward"], value, store.bootstrap.index_select(0, views), batch["done"], discounts, lambdas
+            join_segments(batch["reward"], segments), join_segments(value, segments),
+            store.bootstrap.index_select(0, last), join_segments(batch["done"], segments), discounts, lambdas,
         )
+        advantages, targets = split_segments(advantages, segments), split_segments(targets, segments)
         # Padding views all write the spare view, which owns nothing.
         advantage.index_copy_(1, views, advantages.sum(-1))
         target.index_copy_(1, views, targets)
@@ -183,8 +192,9 @@ def update(
     sum is the minibatch's gradient), then one clipped Adam step. Advantages and value
     targets (target_pass) come once per update from the values stored at collection; with
     config.targets_every_epoch they are recomputed from the current critic at the start of
-    every epoch (a streamed forward pass over the rollout). The targets' range metrics (returns.support_usage) are averaged
-    over the epochs; a warning flag reads above 0 when any epoch raised it. `generator`
+    every epoch (a streamed forward pass over the rollout, in micro-batches of whole seats
+    so that each seat's segments are chained). The targets' range metrics
+    (returns.support_usage) are averaged over the epochs; a warning flag reads above 0 when any epoch raised it. `generator`
     fixes the order of the data; `update_index` sets the warm-up learning rate. `compiled`
     runs the loss (forward and backward) and the critic's target pass as
     lean.learn.compiled's graphs; Adam and the clipping stay eager.
@@ -216,7 +226,7 @@ def update(
     orders = torch.stack([torch.randperm(views, generator=generator, device=draw_device) for _ in range(config.epochs)])
     store.ready()
     orders = orders.cpu()
-    target_index, _ = store.batch_index(torch.arange(views), size)
+    target_index = store.chain_index(size)
     counts = store.counts()
     loss_names = store.observation_names + LOSS_NAMES
 
