@@ -20,7 +20,8 @@ from lean.scripted import (
     personas,
     renew_memory,
 )
-from lean.scripted.opponent import CLIMB, COAST, DIVE, PERSONA_FIELDS
+from lean.scripted.opponent import CLIMB, COAST, DIVE
+from lean.scripted.parameters import PARAMETERS, SAMPLED
 
 CPU = torch.device("cpu")
 
@@ -147,9 +148,9 @@ def test_randomness_only_from_sampling():
     fields, and the decision does not depend on the tick, only on the state, the memory and
     the uniforms."""
     config = ScriptedConfig()
-    assert not [name for name in dataclasses.asdict(config) if "hold" in name]
+    assert not [name for name in PARAMETERS if "hold" in name]
     persona = personas(config, 8, 10, torch.Generator().manual_seed(1), CPU, 1.0)
-    assert set(persona) == set(PERSONA_FIELDS)
+    assert set(persona) == set(SAMPLED)
     state = random_state(envs=8, slots=10, seed=2)
     uniforms = draw_uniforms(8, 10, torch.Generator().manual_seed(3), CPU)
     memory = fresh_memory(8, 10, torch.Generator().manual_seed(4), CPU)
@@ -291,7 +292,7 @@ def test_reads_every_number_from_the_game():
     ship characteristic or arena radius; the opponent steers by the game's arena: near the edge
     of a 1,500 m arena, flying outward at a target further out, it turns back toward the
     centre, where in the 4,200 m arena it flies at the target."""
-    names = {field.name for field in dataclasses.fields(ScriptedConfig)}
+    names = set(PARAMETERS) | {field.name for field in dataclasses.fields(ScriptedConfig)}
     for name in (
         "arena_radius",
         "gun_range",

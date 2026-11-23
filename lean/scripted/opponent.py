@@ -21,164 +21,11 @@ from torch import Tensor
 from lean.contract import random_keywords
 from lean.game.core import built_once, enemy_view, slot_indices
 
-# The logistic gates, in the order of the gate columns (config and persona). Each maps a
-# positive, dimensionless quantity to a probability.
-GATES = (
-    "turn",  # angle error in stall angles: turn at all
-    "level_two",  # same error: at least the sustained stick level, given a turn
-    "level_three",  # same error: the full stick level, given at least sustained
-    "dive_slow",  # speed in stall speeds: dive because slow
-    "dive_in_turn",  # speed in corner speeds: dive because below corner speed in a hard turn
-    "climb_fast",  # speed in corner speeds: climb because well above corner speed
-    "climb_close",  # distance in gun ranges: climb because very close to the target
-    "regain_far",  # distance in gun ranges: far from every known enemy
-    "regain_low",  # store fraction: the store is low
-    "aligned",  # aim error in target angular sizes: the gun bears
-    "in_range",  # distance in gun ranges: the target is within reach
-)
-(
-    TURN,
-    LEVEL_TWO,
-    LEVEL_THREE,
-    DIVE_SLOW,
-    DIVE_IN_TURN,
-    CLIMB_FAST,
-    CLIMB_CLOSE,
-    REGAIN_FAR,
-    REGAIN_LOW,
-    ALIGNED,
-    IN_RANGE,
-) = range(len(GATES))
+from .parameters import GATES, ScriptedConfig, value
+
 COAST, DIVE, CLIMB = 0, 1, 2
 TINY = 1e-6  # keeps lengths and ratios away from zero
 LOGIT_LIMIT = 30.0
-
-
-@dataclass
-class ScriptedConfig:
-    """The yardstick's parameters, each stated in a ship characteristic the game provides
-    (stall angle, stall speed, corner speed, gun range, store, turn radius).
-
-    Gate centres are in the unit named in `GATES`; gate scales are in natural-log units of the
-    gate's quantity (the 10 to 90 percent transition spans a factor exp(4.39 * scale)). A rising
-    gate's probability grows with its quantity. The stick, gun and close gates are v2 Imugi's
-    `real_scale_elimination` set; the power gates were set for the core flight model.
-    """
-
-    # Gate centres, scales and directions, in `GATES` order (stick: turn, level two, level
-    # three; dive: slow, in a turn; climb: fast, close; regain: far, low store; gun).
-    # fmt: off
-    gate_centre: tuple[float, ...] = (0.0106, 0.0775, 0.386, 1.8, 0.95, 1.2, 0.21, 3.0, 0.3,
-                                      1.01, 1.04)
-    gate_scale: tuple[float, ...] = (0.172, 0.328, 0.267, 0.05, 0.05, 0.05, 0.16, 0.2, 0.2,
-                                     0.243, 0.127)
-    gate_rising: tuple[bool, ...] = (True, True, True, False, False, True, False, True, False,
-                                     False, False)
-    # fmt: on
-    # Each stick gate's probability is squeezed into [floor, 1 - floor]; the power and gun
-    # gates are not (power has its own floor below).
-    gate_floor: tuple[float, ...] = (0.02, 0.02, 0.02, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-    side_floor: float = 0.02  # probability of turning the long way round
-    power_floor: float = 0.02  # each of coast, dive and climb keeps at least this probability
-    regain_share: float = 0.5  # far and low on store: climb at most this share of the ticks
-    # The symmetric head-on pass: a wanted direction within this many radians of straight
-    # behind turns to the ship's side kept for the match (memory "side").
-    head_on_band: float = 0.1
-
-    # Target choice.
-    target_keep_factor: float = 0.8  # switch only to an enemy closer than this times the kept one
-    weakest_weight: float = 0.0  # 0 nearest enemy; larger prefers enemies with less store
-
-    # Lead: first-order intercept with the drag law's time of flight in the medium.
-    lead_cap_in_gun_range: float = 4.78  # the distance the time of flight is computed for is capped
-    lead_gain: float = 1.0  # fraction of the computed lead applied
-
-    # Boundary steer: inside `margin` turn radii of the edge and flying outward, blend a
-    # steer to the centre with a weight that ramps from 0 to 1 between the two depths
-    # (depth 0 at the margin's inner edge, 1 at the arena edge).
-    boundary_margin_in_turn_radius: float = 2.28
-    boundary_ramp_low: float = 0.0554
-    boundary_ramp_high: float = 0.52
-
-    # Target angular size clamp, radians.
-    target_size_minimum: float = math.radians(1.0)
-    target_size_maximum: float = math.radians(45.0)
-
-    # Stick layout: True when even stick indices turn left (counter-clockwise).
-    left_is_even: bool = True
-    # A team-mate within this many of its own hit radii of the line of fire blocks the shot.
-    ally_clearance_in_hit_radii: float = 2.0
-
-    # Persona population: at spread s each parameter is uniform on a box around the
-    # yardstick's value, the half-widths below times s (0 <= s <= 1). Log half-widths are of
-    # the natural log (0.4: a factor 0.67 to 1.49).
-    centre_log_width: float = 0.4  # every gate centre
-    temperature_log_width: float = 0.4  # divides every gate's sharpness
-    boundary_margin_log_width: float = 0.3
-    lead_gain_width: float = 0.2
-    weakest_weight_width: float = 1.0  # one-sided: 0 to this
-    regain_share_width: float = 0.25
-
-
-PERSONA_FIELDS = (
-    "gate_centre",
-    "gate_sharpness",
-    "lead_gain",
-    "boundary_margin",
-    "weakest_weight",
-    "regain_share",
-)
-
-
-def personas(
-    config: ScriptedConfig,
-    envs: int,
-    slots: int,
-    generator: torch.Generator | None,
-    device: torch.device | str,
-    spread: float,
-) -> dict[str, Tensor] | None:
-    """Per-ship parameters, drawn once per match.
-
-    spread = 0 is the yardstick: returns None and uses no draw (`marginals` reads the
-    config's numbers, no per-ship tensors). 0 < spread <= 1 draws every parameter of every
-    ship independently and uniformly on a bounded box around the yardstick (log-uniform for
-    the gate centres, the temperature and the boundary margin), half-widths `*_width` times
-    the spread: a dense population whose every member stays competent at spread 1.
-
-    Returns, all on `device` (G = len(GATES)):
-      gate_centre     (E, N, G) float32, in each gate's unit
-      gate_sharpness  (E, N, G) float32, signed 1 / (scale * temperature); positive rises
-      lead_gain, boundary_margin (turn radii), weakest_weight, regain_share: (E, N) float32
-    """
-    if not 0.0 <= spread <= 1.0:
-        raise ValueError(f"persona spread {spread} outside [0, 1]")
-    if spread == 0.0:
-        return None
-    gates = len(GATES)
-    yardstick = _gate_tensors(
-        config.gate_centre,
-        config.gate_scale,
-        config.gate_rising,
-        config.gate_floor,
-        torch.device(device),
-    )
-    # One draw of 2 G + 5 uniforms per ship, mapped to [-1, 1] (the last to [0, 1]).
-    unit = torch.rand((envs, slots, 2 * gates + 5), **random_keywords(generator, device))
-    signed = 2.0 * unit - 1.0
-    temperature = torch.exp(spread * config.temperature_log_width * signed[..., gates : 2 * gates])
-    return {
-        "gate_centre": yardstick[0]
-        * torch.exp(spread * config.centre_log_width * signed[..., :gates]),
-        "gate_sharpness": yardstick[1] / temperature,
-        "lead_gain": config.lead_gain + spread * config.lead_gain_width * signed[..., 2 * gates],
-        "boundary_margin": config.boundary_margin_in_turn_radius
-        * torch.exp(spread * config.boundary_margin_log_width * signed[..., 2 * gates + 1]),
-        "weakest_weight": config.weakest_weight
-        + spread * config.weakest_weight_width * unit[..., 2 * gates + 2],
-        "regain_share": config.regain_share
-        + spread * config.regain_share_width * signed[..., 2 * gates + 3],
-    }
 
 
 def draw_uniforms(
@@ -357,25 +204,21 @@ def marginals(
     c = state.constants
     enemies = enemy_view(state)
     gun_range = c["gun_range"]
-    gates = _gate_tensors(
-        config.gate_centre, config.gate_scale, config.gate_rising, config.gate_floor, state.x.device
-    )
-    if persona is None:  # the yardstick: the config's numbers, no per-ship tensors
-        centre, sharpness = gates[0], gates[1]
-        lead_gain, margin_factor = config.lead_gain, config.boundary_margin_in_turn_radius
-        weakest_weight, regain_share = config.weakest_weight, config.regain_share
-    else:
-        centre, sharpness = persona["gate_centre"], persona["gate_sharpness"]
-        lead_gain, margin_factor = persona["lead_gain"], persona["boundary_margin"]
-        weakest_weight, regain_share = persona["weakest_weight"], persona["regain_share"]
+
+    def read(name: str) -> Tensor | float:
+        return value(config, persona, name)
+
+    centre, sharpness, floor = _gate_tensors(config, persona, state.x.device)
+    lead_gain, margin_factor = read("lead_gain"), read("boundary_margin")
+    weakest_weight, regain_share = read("weakest_weight"), read("regain_share")
 
     fight = engage(
         state,
         team,
         weakest_weight,
         memory["target"],
-        config.target_keep_factor,
-        clearance=_per_other(config.ally_clearance_in_hit_radii * c["hit_radius"]),
+        read("target_keep_factor"),
+        clearance=_per_other(read("ally_clearance") * c["hit_radius"]),
         enemies=enemies,
     )
     has_target = fight.has_target
@@ -386,7 +229,7 @@ def marginals(
     # The bullet inherits the shooter's velocity, so the relative velocity carries it. In a
     # medium of index n a bullet's map speed is its proper speed over n, so its time of flight
     # is n times longer (the shooter's index taken for the whole path).
-    lead_distance = range_ratio.clamp_max(config.lead_cap_in_gun_range)
+    lead_distance = range_ratio.clamp_max(read("lead_cap"))
     bullet_drag = c["bullet_drag"]
     flight_time = torch.expm1(bullet_drag * gun_range * lead_distance) * (
         lead_gain / (bullet_drag * c["bullet_launch_speed"])
@@ -403,9 +246,8 @@ def marginals(
     turn_radius = state.speed * state.speed / c["max_acceleration"]
     margin = (margin_factor * turn_radius).clamp_min(1.0)
     depth = (distance_from_centre - (c["arena_radius"] - margin)) / margin
-    ramp = (depth - config.boundary_ramp_low) / (
-        config.boundary_ramp_high - config.boundary_ramp_low
-    )
+    ramp_low = read("boundary_ramp_low")
+    ramp = (depth - ramp_low) / (read("boundary_ramp_high") - ramp_low)
     outward = state.x * fight.velocity_x + state.y * fight.velocity_y > 0.0
     centre_weight = torch.where(outward & has_target, ramp.clamp(0.0, 1.0), 0.0)
     centre_weight = torch.where(has_target, centre_weight, 1.0)
@@ -418,39 +260,38 @@ def marginals(
     # Every gate in one logistic: sigmoid(sharpness * (ln quantity - ln centre)).
     turn_size = stick_error.abs() / c["stall"]
     target_size = (2.0 * torch.atan(c["hit_radius"] / safe_distance)).clamp(
-        config.target_size_minimum, config.target_size_maximum
+        read("target_size_minimum"), read("target_size_maximum")
     )
     in_corner_speeds = state.speed / c["corner_speed"]
-    quantity = torch.stack(
-        [
-            turn_size,
-            turn_size,
-            turn_size,
-            state.speed / c["stall_speed"],
-            in_corner_speeds,
-            in_corner_speeds,
-            range_ratio,
-            range_ratio,
-            state.energy * c["inverse_max_energy"],
-            aim_error.abs() / target_size,
-            range_ratio,
-        ],
-        -1,
-    )
+    quantities = {
+        "turn": turn_size,
+        "level_two": turn_size,
+        "level_three": turn_size,
+        "dive_slow": state.speed / c["stall_speed"],
+        "dive_in_turn": in_corner_speeds,
+        "climb_fast": in_corner_speeds,
+        "climb_close": range_ratio,
+        "regain_far": range_ratio,
+        "regain_low": state.energy * c["inverse_max_energy"],
+        "aligned": aim_error.abs() / target_size,
+        "in_range": range_ratio,
+    }
+    quantity = torch.stack([quantities[name] for name in GATES], -1)
     logit = sharpness * torch.log(quantity.clamp_min(TINY) / centre)
-    floor = gates[2]
     gate = floor + (1.0 - 2.0 * floor) * torch.sigmoid(logit.clamp(-LOGIT_LIMIT, LOGIT_LIMIT))
+    gate = dict(zip(GATES, gate.unbind(-1), strict=True))
 
     # Stick: P(turn), then the level by two further gates, the side by the error's sign; a
     # wanted direction within the head-on band of straight behind turns to the kept side.
-    turn, above_one, above_two = gate[..., TURN], gate[..., LEVEL_TWO], gate[..., LEVEL_THREE]
+    turn, above_one, above_two = gate["turn"], gate["level_two"], gate["level_three"]
     turn_above_one = turn * above_one
     levels = torch.stack(
         [turn - turn_above_one, turn_above_one * (1.0 - above_two), turn_above_one * above_two], -1
     )
-    behind = stick_error.abs() > math.pi - config.head_on_band
+    behind = stick_error.abs() > math.pi - read("head_on_band")
     turn_left = torch.where(behind, memory["side"] > 0.0, stick_error > 0.0)
-    left = torch.where(turn_left, 1.0 - config.side_floor, config.side_floor)[..., None]
+    side_floor = read("side_floor")
+    left = torch.where(turn_left, 1.0 - side_floor, side_floor)[..., None]
     left_levels = left * levels
     sides = (
         (left_levels, levels - left_levels)
@@ -467,13 +308,13 @@ def marginals(
     # of the ticks) when far from every known enemy with a low store. Otherwise coast. A slow
     # ship never climbs; it dives only with store to spend (the dive fades over the game's
     # edge band of the store, as the dive itself does), else it coasts.
-    slow = 1.0 - (1.0 - gate[..., DIVE_SLOW]) * (1.0 - gate[..., DIVE_IN_TURN] * turn_above_one)
+    slow = 1.0 - (1.0 - gate["dive_slow"]) * (1.0 - gate["dive_in_turn"] * turn_above_one)
     dive = slow * (state.energy * c["inverse_fade"]).clamp(0.0, 1.0)
-    far = torch.where(has_target, gate[..., REGAIN_FAR], 1.0)
-    close = torch.where(has_target, gate[..., CLIMB_CLOSE], 0.0)
-    regain = regain_share * far * gate[..., REGAIN_LOW]
-    climb = (1.0 - slow) * (1.0 - (1.0 - gate[..., CLIMB_FAST]) * (1.0 - close) * (1.0 - regain))
-    power_floor = config.power_floor
+    far = torch.where(has_target, gate["regain_far"], 1.0)
+    close = torch.where(has_target, gate["climb_close"], 0.0)
+    regain = regain_share * far * gate["regain_low"]
+    climb = (1.0 - slow) * (1.0 - (1.0 - gate["climb_fast"]) * (1.0 - close) * (1.0 - regain))
+    power_floor = read("power_floor")
     power = power_floor + (1.0 - 3.0 * power_floor) * torch.stack(
         [1.0 - dive - climb, dive, climb], -1
     )
@@ -481,22 +322,54 @@ def marginals(
     # Gun: aligned times in range, zero without a target or while the gun cannot fire.
     # A shot costs no store; never shoot through a team-mate (author 2026-11-23).
     ready = (state.cooldown <= 0) & ~fight.ally_in_line
-    fire = torch.where(has_target & ready, gate[..., ALIGNED] * gate[..., IN_RANGE], 0.0)
+    fire = torch.where(has_target & ready, gate["aligned"] * gate["in_range"], 0.0)
     return Marginals(stick, power, fire, fight.controlled, fight.target)
 
 
-@built_once
 def _gate_tensors(
-    centre: tuple[float, ...],
-    scale: tuple[float, ...],
-    rising: tuple[bool, ...],
-    floor: tuple[float, ...],
-    device: torch.device,
+    config: ScriptedConfig, persona: dict[str, Tensor] | None, device: torch.device
+) -> tuple[Tensor, Tensor, Tensor]:
+    """The gates' centres, signed sharpness and floors in `GATES` order: (G,) each for the
+    yardstick, built once; for a persona its centres and sharpness (E, N, G), its temperature
+    dividing the tempered gates' sharpness."""
+    centres = tuple(config.values[gate.centre] for gate in GATES.values())
+    table = _yardstick_gates(centres, config.values["temperature"], device)
+    if persona is None:
+        return table[0], table[1], table[2]
+    temperature = value(config, persona, "temperature")
+    reference = persona[next(iter(persona))]
+    centre = torch.stack(
+        [
+            torch.as_tensor(value(config, persona, gate.centre), device=device).expand_as(reference)
+            for gate in GATES.values()
+        ],
+        -1,
+    )
+    if isinstance(temperature, Tensor):
+        sharpness = torch.where(table[4] > 0.5, table[3] / temperature[..., None], table[3])
+    else:
+        sharpness = table[1].expand_as(centre)
+    return centre, sharpness, table[2]
+
+
+@built_once
+def _yardstick_gates(
+    centres: tuple[float, ...], temperature: float, device: torch.device
 ) -> Tensor:
-    """(3, G) float32: the gates' centres, signed sharpness (1 / scale, positive rising) and
-    floors."""
-    sign = [1.0 if up else -1.0 for up in rising]
-    rows = [list(centre), [s / width for s, width in zip(sign, scale)], list(floor)]
+    """(5, G) float32 in `GATES` order: the centres, the signed sharpness (1 / (scale x
+    temperature), positive rising; the temperature only where the gate is tempered), the
+    floors, the signed sharpness without the temperature, and 1 where the gate is tempered."""
+    gates = GATES.values()
+    rows = [
+        list(centres),
+        [
+            (1.0 if gate.rising else -1.0) / (gate.scale * (temperature if gate.tempered else 1.0))
+            for gate in gates
+        ],
+        [gate.floor for gate in gates],
+        [(1.0 if gate.rising else -1.0) / gate.scale for gate in gates],
+        [1.0 if gate.tempered else 0.0 for gate in gates],
+    ]
     return torch.tensor(rows, dtype=torch.float32, device=device)
 
 

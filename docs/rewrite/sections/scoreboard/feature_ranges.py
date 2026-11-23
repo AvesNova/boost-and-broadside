@@ -15,7 +15,7 @@ import sys
 import torch
 
 from lean.game import core
-from lean.scripted.opponent import ScriptedConfig, act, draw_uniforms, fresh_memory, personas, renew_memory
+from lean.scripted import ScriptedConfig, act, draw_uniforms, fresh_memory, personas, renew_memory
 
 ENVS, TICKS, EVERY, PER_TEAM = 256, 3000, 3, 4
 
