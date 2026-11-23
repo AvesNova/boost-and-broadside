@@ -168,21 +168,27 @@ def test_a_next_state_width_mismatch_raises():
 def test_targets_once_per_update_equal_the_first_epochs_fresh_targets():
     """targets_every_epoch=False takes the values stored at collection; before any step they
     equal the critic's recomputed values, so both paths give the same first targets."""
-    from lean.learn.update import fresh_targets, targets_from
+    from lean.learn.store import RolloutStore
+    from lean.learn.update import target_pass
 
     torch.manual_seed(0)
     generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=2)
+    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=2, micro_batch_views=4)
     policy = standins.TinyPolicy()
     opponent = Opponent(scripted_config=None)
     state, carry = start(config, standins.GameConfig(), policy, opponent, 4, generator, game=standins.game, scripted=standins.scripted)
     rollout = collect(config, standins.GameConfig(), policy, opponent, state, carry, 8, generator, game=standins.game, scripted=standins.scripted)
-    stored = targets_from(config, rollout, rollout.value, rollout.value_centres)
-    fresh = fresh_targets(config, policy, rollout, [torch.arange(rollout.done.shape[1])])
-    assert torch.allclose(stored[0], fresh[0], atol=1e-5) and torch.allclose(stored[1], fresh[1], atol=1e-5)
-    once = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=2, targets_every_epoch=False)
-    metrics = update(once, policy, make_optimiser(once, policy), rollout, generator=generator)
-    assert all(value == value for value in metrics.values())
+    store = RolloutStore.of(rollout)
+    index, _ = store.batch_index(torch.arange(store.views), 4)
+    stored_flags = target_pass(config, policy, store, index, None)
+    stored = store.advantage.clone(), store.target.clone()
+    fresh_flags = target_pass(config, policy, store, index)
+    assert torch.allclose(stored[0], store.advantage, atol=1e-5) and torch.allclose(stored[1], store.target, atol=1e-5)
+    assert torch.equal(stored_flags, fresh_flags)
+    for every_epoch in (False, True):
+        variant = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=2, targets_every_epoch=every_epoch)
+        metrics = update(variant, policy, make_optimiser(variant, policy), rollout, generator=generator)
+        assert all(value == value for value in metrics.values())
 
 
 def test_finished_environments_take_the_segments_deals_in_order():

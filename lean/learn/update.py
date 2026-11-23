@@ -16,8 +16,9 @@ from lean.learn.returns import (
 from lean.learn.store import RolloutStore
 from lean.model.value import decode_value, hl_gauss_targets
 
-# What each pass reads from the store, besides the carry.
-OBSERVED = ("own", "deal_row", "reset")
+# What each pass reads from the store besides the carry and the observation's per-tick fields
+# (the stored-target pass reads no observation).
+OBSERVED = ("deal_row", "reset")
 TARGET_NAMES = OBSERVED + ("reward", "done")
 STORED_TARGET_NAMES = ("own", "reward", "done", "value")
 LOSS_NAMES = OBSERVED + ("action", "log_probability", "teacher", "next_state", "next_valid", "hit_label")
@@ -135,8 +136,9 @@ def target_pass(config: LearnConfig, policy, store: RolloutStore, index: Tensor,
     advantage, target = store.targets(levels)
     discounts = to_device(torch.tensor(config.discounts), store.device)
     lambdas = to_device(torch.tensor(config.gae_lambdas), store.device)
-    counts = None
-    for batch in store.batches(TARGET_NAMES if values is not None else STORED_TARGET_NAMES, index):
+    names = store.observation_names + TARGET_NAMES if values is not None else STORED_TARGET_NAMES
+    counts = paid = None
+    for batch in store.batches(names, index):
         views = batch["views"]
         if values is not None:
             observation, offset = store.observation(batch)
@@ -150,9 +152,10 @@ def target_pass(config: LearnConfig, policy, store: RolloutStore, index: Tensor,
         advantage.index_copy_(1, views, advantages.sum(-1))
         target.index_copy_(1, views, targets)
         tally = usage_counts(targets, batch["own"], centres)
-        counts = tally if counts is None else counts + tally
+        pays = (batch["reward"] != 0).flatten(0, -2).any(0)
+        counts, paid = (tally, pays) if counts is None else (counts + tally, paid | pays)
     advantage.copy_(normalise_advantages(advantage, store.resident["own"], config))
-    return usage_flags(counts, store.paid, config)
+    return usage_flags(counts, paid, config)
 
 
 def update(
@@ -178,16 +181,18 @@ def update(
     carry, the last padded with the store's empty spare view; gradients accumulate over a
     minibatch's micro-batches (each term divided by its whole-minibatch denominator, so the
     sum is the minibatch's gradient), then one clipped Adam step. Advantages and value
-    targets are recomputed from the current weights at the start of every epoch
-    (target_pass); with config.targets_every_epoch False they come once from the values
-    stored at collection. The targets' range metrics (returns.support_usage) are averaged
+    targets (target_pass) come once per update from the values stored at collection; with
+    config.targets_every_epoch they are recomputed from the current critic at the start of
+    every epoch (a streamed forward pass over the rollout). The targets' range metrics (returns.support_usage) are averaged
     over the epochs; a warning flag reads above 0 when any epoch raised it. `generator`
     fixes the order of the data; `update_index` sets the warm-up learning rate. `compiled`
     runs the loss (forward and backward) and the critic's target pass as
     lean.learn.compiled's graphs; Adam and the clipping stay eager.
 
-    Host reads: the data order once (with the wait for the store's copies), the measures
-    once at the end; the "percentile" normaliser reads a count per epoch.
+    Host reads and waits: the data order once and the wait for the store's copies (both at
+    the start), the measures once at the end; the "percentile" normaliser reads a count per
+    target pass. Streaming adds a host wait per micro-batch only for a staging buffer's
+    copy of two micro-batches before (RolloutStore.batches).
     """
     store = data if isinstance(data, RolloutStore) else RolloutStore.of(data)
     if compiled:
@@ -212,6 +217,8 @@ def update(
     store.ready()
     orders = orders.cpu()
     target_index, _ = store.batch_index(torch.arange(views), size)
+    counts = store.counts()
+    loss_names = store.observation_names + LOSS_NAMES
 
     totals = {name: torch.zeros((), device=device) for name in MEASURES + ("gradient_norm", "hit_labelled")}
     usage = []
@@ -224,12 +231,12 @@ def update(
         advantage, target = store.advantage, store.target
         index, owners = store.batch_index(orders[epoch], size, config.minibatches)
         index_device = to_device(index, device)
-        for row, batch in enumerate(store.batches(LOSS_NAMES, index)):
+        for row, batch in enumerate(store.batches(loss_names, index)):
             part = owners[row]
             first, last = row == 0 or owners[row - 1] != part, row + 1 == len(owners) or owners[row + 1] != part
             if first:
                 members = index_device[row:row + owners.count(part)].flatten()  # a minibatch's rows are consecutive
-                denominators = store.counts.index_select(0, members).sum(0)
+                denominators = counts.index_select(0, members).sum(0)
             views_now = batch["views"]
             observation, offset = store.observation(batch)
             loss, measures = loss_of(

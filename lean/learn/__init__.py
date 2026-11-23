@@ -18,10 +18,11 @@ from lean.learn.returns import (
     value_centres,
 )
 from lean.learn.rewards import reward_step, tick_events
+from lean.learn.store import RolloutStore
 from lean.learn.update import make_optimiser, update
 
 __all__ = [
-    "CollectCarry", "LEVELS", "LEVEL_NAMES", "LearnConfig", "Opponent", "Rollout", "League", "abandon", "bc_weight",
+    "CollectCarry", "LEVELS", "LEVEL_NAMES", "LearnConfig", "Opponent", "Rollout", "RolloutStore", "League", "abandon", "bc_weight",
     "collect", "draw_team_sizes", "generalised_advantages", "learning_rate", "make_optimiser",
     "normalise_advantages", "reward_step", "start", "support_usage", "tick_events", "update", "value_centres",
 ]
