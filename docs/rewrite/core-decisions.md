@@ -361,6 +361,25 @@ League (section 8)
   - BC trains on the teacher's full distribution (`scripted.marginals`), not its sampled
     action; a BC stage trains the critics too.
 
+- Settled by the literature (2026-11-23, docs/rewrite/literature-recipe-2.md):
+  - Optimiser: Adam without weight decay, epsilon 1e-5, fused on CUDA, global gradient clip
+    1.0, non-finite steps skipped; warm-up 2 / (1 - beta2) = 2,000 Adam steps (about 16
+    updates); constant learning rate after, with weight averaging.
+  - Precision: lean's current split (bf16 matrix work; float32 norm statistics, softmax,
+    losses, optimiser state, master weights, the scan state).
+  - Next-state targets (all HL-Gauss cross-entropy): x, y in the ship's frame (along, across)
+    as change minus velocity x tick, linear bins; heading one column as change minus
+    nose rate x tick, linear; speed plain change, linear; store plain change, linear; shield
+    change minus the scheduled recharge (the damage taken), symlog (needs the one-tick action
+    delay). Ranges from measured changes.
+  - Rotary: ratio between bands about 2 (irrational optional; the irrational turn between
+    bands already separates harmonics in 2D); coarsest band above 16.8 km; about 70 to 75% of
+    each 64-wide head rotated (22 to 24 of 32 pairs).
+- Bug found by the same review: returns cut at every 128-tick segment (GAE and hit labels per
+  segment, bootstrapped at each cut) although an update's four segments per environment are
+  consecutive; v2 chained them. To fix: chain across the update's segments, bootstrap only at
+  the end.
+
 ## Proposals, not decided
 
 - Remove v2's flight and damage models from lean/game once the core model is signed off
