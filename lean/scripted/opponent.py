@@ -108,7 +108,7 @@ def engage(
     team: int | None,
     weakest_weight: Tensor | float = 0.0,
     kept_target: Tensor | None = None,
-    keep_factor: float = 1.0,
+    keep_factor: float | Tensor = 1.0,
     clearance: Tensor | float = 24.0,
     enemies=None,
 ) -> Engagement:
@@ -143,7 +143,7 @@ def engage(
         score = score * preference * preference
     slots = slot_indices(state.x.shape[1], state.x.device).ship
     if kept_target is not None:
-        score = torch.where(slots == kept_target[..., None], score * keep_factor**2, score)
+        score = torch.where(slots == kept_target[..., None], score * _last(keep_factor) ** 2, score)
     score = torch.where(enemy, score, math.inf)
     target = score.argmin(-1)
     if enemies is state:
@@ -552,7 +552,7 @@ def explain(
     climb, dive = (climb_dive * room).unbind(-1)
     climb = torch.where(overshoot, 0.0, climb * (1.0 - no_bank))
     dive = dive * (weights["offensive"] + weights["turning"] + weights["defensive"])
-    power_floor = read("power_floor")
+    power_floor = _last(read("power_floor"))
     power = power_floor + (1.0 - 3.0 * power_floor) * torch.stack(
         [1.0 - dive - climb, dive, climb], -1
     )
@@ -618,12 +618,14 @@ def _gate_tensors(
 ) -> tuple[Tensor, Tensor, Tensor]:
     """The gates' centres, signed sharpness and floors in the order of `gates`: (G,) each for
     the yardstick, built once; for a persona its centres and sharpness (E, N, G), its
-    temperature dividing the tempered gates' sharpness."""
+    temperature dividing the tempered gates' sharpness. A persona's tables read no number of
+    the config that the persona holds, so a compiled graph is not specialised on them."""
     names = tuple(gates)
-    centres = tuple(config.values[gates[name].centre] for name in names)
-    table = _yardstick_gates(names, centres, config.values["temperature"], device)
     if persona is None:
+        centres = tuple(config.values[gates[name].centre] for name in names)
+        table = _yardstick_gates(names, centres, config.values["temperature"], device)
         return table[0], table[1], table[2]
+    floor, plain, tempered = _gate_structure(names, device)
     temperature = value(config, persona, "temperature")
     reference = persona[next(iter(persona))]
     centre = torch.stack(
@@ -636,20 +638,19 @@ def _gate_tensors(
         -1,
     )
     if isinstance(temperature, Tensor):
-        sharpness = torch.where(table[4] > 0.5, table[3] / temperature[..., None], table[3])
+        sharpness = torch.where(tempered > 0.5, plain / temperature[..., None], plain)
     else:
-        sharpness = table[1].expand_as(centre)
-    return centre, sharpness, table[2]
+        sharpness = torch.where(tempered > 0.5, plain / temperature, plain).expand_as(centre)
+    return centre, sharpness, floor
 
 
 @built_once
 def _yardstick_gates(
     names: tuple[str, ...], centres: tuple[float, ...], temperature: float, device: torch.device
 ) -> Tensor:
-    """(5, G) float32 for the gates `names` (of GATES or STICK_GATES): the centres, the signed
+    """(3, G) float32 for the gates `names` (of GATES or STICK_GATES): the centres, the signed
     sharpness (1 / (scale x temperature), positive rising; the temperature only where the gate
-    is tempered), the floors, the signed sharpness without the temperature, and 1 where the
-    gate is tempered."""
+    is tempered) and the floors."""
     gates = [{**GATES, **STICK_GATES}[name] for name in names]
     rows = [
         list(centres),
@@ -657,6 +658,18 @@ def _yardstick_gates(
             (1.0 if gate.rising else -1.0) / (gate.scale * (temperature if gate.tempered else 1.0))
             for gate in gates
         ],
+        [gate.floor for gate in gates],
+    ]
+    return torch.tensor(rows, dtype=torch.float32, device=device)
+
+
+@built_once
+def _gate_structure(names: tuple[str, ...], device: torch.device) -> Tensor:
+    """(3, G) float32 for the gates `names`, from the gates alone: the floors, the signed
+    sharpness without the temperature (1 / scale, positive rising) and 1 where the gate is
+    tempered."""
+    gates = [{**GATES, **STICK_GATES}[name] for name in names]
+    rows = [
         [gate.floor for gate in gates],
         [(1.0 if gate.rising else -1.0) / gate.scale for gate in gates],
         [1.0 if gate.tempered else 0.0 for gate in gates],

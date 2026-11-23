@@ -18,8 +18,8 @@ What is, and what is open. History: `docs/rewrite/core-worklog.md` and this file
   `SnapshotSchedule`, `retained`.
 - `rewards.py`: v2's five reward levels and the damage ledger.
 - `compiled.py`: `graphs()`, the compiled tick halves, the league routing, target pass and loss.
-- `lean/train.py`: the stages, checkpoints, `--resume`. `lean/eval`: matches, `crossover`;
-  `python -m lean.eval`.
+- `lean/train.py`: the stages, checkpoints, `--resume`. `lean/eval`: the runner, the result store,
+  Elo, `crossover` (lean/eval/NOTES.md); `python -m lean.eval`.
 
 ## Commands
 
@@ -28,7 +28,7 @@ What is, and what is open. History: `docs/rewrite/core-worklog.md` and this file
     python -m lean.train --stage rl --start DIR/bc.pt --out DIR   # RL from the BC hand-off: DIR/rl.pt
     python -m lean.train --resume DIR [--updates N]        # from DIR's latest checkpoint (or a file)
     python -m lean.train --smoke --device cpu [--stage bc|rl]     # tiny, eager
-    python -m lean.eval DIR/rl.pt [--weights ema|uniform|live] [--sizes 4 8] [--games 64]
+    python -m lean.eval crossover STORE DIR/rl.pt [--weights ema|uniform|live] [--sizes 4 8] [--games 64]
 
 ## The recipe (decided 2026-11-23)
 
