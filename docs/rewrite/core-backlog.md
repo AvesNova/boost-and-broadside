@@ -97,6 +97,8 @@ smoke run, record it in the worklog and push. Decisions: core-decisions.md secti
 | A1 | P-51D refined from the references: wing area 21.67 m^2 (NACA), CLmax about 1.6 (AAF turn calculation), g limit 8 (author 2026-11-23, against 6.5 g from the tested weight) | todo |
 | A2 | Fw 190 A-8 and Bf 109 G-6 built by the tuning route and checked against their data (drag table; the 109's 360-degree times) | todo |
 | A3 | Spitfire IX; then a check of every type's turning against the relative data ("A out-turns B") | todo |
+| K | Compile time: the cold compile to the end of the first update doubled (about 200 s to 403 s) between the D5 measurement and step M. Find what grew (graphs, traced operations, recompiles, shapes) by bisecting the batch's merges, fix it, and add a tripwire so a jump is caught when it happens (author 2026-11-23: very concerning if it keeps happening) | todo |
+| R | Independent review after the batch, by an agent that did not build it: bloat, overly coupled code, bugs and mistakes; a ranked report, no changes | todo |
 | X | Measurements: GPU parity row on the new tree; scripted against scripted wipe times and the clock set at about 80% of games ending | todo |
 
 After the batch: use idle GPU time for speed benchmarks and dry runs (BC first, then RL) to
