@@ -93,11 +93,11 @@ smoke run, record it in the worklog and push. Decisions: core-decisions.md secti
 | L1 | Learner recipe and cleanup: BC stage (full distribution, all heads and critics) then a shrinking teacher term gated at 0.45; EMA and uniform averages; Adam settings, 2,000-step warm-up, non-finite skip; KL monitor; advantage scaling; fixed coefficients and entropy logging; crossover only in evaluation; test stand-ins and duplicates removed | done (20:49) |
 | L2 | League: capacity routing with retiring slots; v2's snapshot schedule; checkpoints every 10M; the averages in the league | done (22:30) |
 | E2 | Scripted BFM, built natively (author 2026-11-23). First an architecture review of lean/scripted (cohesion, coupling between parameters, how easy it is to change or add a behaviour, how tunable when parameters are sampled per persona) and a short design: situation (engaged or not, one or two circle, closure, angle-off), tactic, and control laws for stick, power and fire, each parameter in physical units and independent of the others. I check the design before it is built. Then: circle detection; one-circle hard turning as now; two-circle at the sustained stick with lead, pure or lag pursuit by geometry; high and low yo-yos through climb and dive; climb to regain the store when not engaged; thresholds from BFM doctrine (Shaw and similar). Measured: store use and speed in scripted brawls, new against old, hand-built two-circle cases, operations per call | built (E2b, unmerged; defaults set against the old agent: morning notes) |
-| C | Cheese agents ported from v2, checked to be reasonable, in the league | todo |
+| C | Cheese agents ported from v2, checked to be reasonable, in the league | future work (tabled 2026-11-24, author) |
 | D | Notes hygiene: one short current notes file per package, CONTRACT and README current, LAPTOP_PROMPT deleted, author-review.md updated | todo |
 | A1 | (running; scope widened 2026-11-24: tuning route with the game terms on, automatic flaps, separation test with a 10% margin) P-51D refined from the references: wing area 21.67 m^2 (NACA), CLmax about 1.6 (AAF turn calculation), g limit 8 (author 2026-11-23, against 6.5 g from the tested weight) | todo |
-| A2 | Fw 190 A-8 and Bf 109 G-6 built by the tuning route and checked against their data (drag table; the 109's 360-degree times) | todo |
-| A3 | Spitfire IX; then a check of every type's turning against the relative data ("A out-turns B") | todo |
+| A2 | Fw 190 A-8 and Bf 109 G-6 built by the tuning route and checked against their data (drag table; the 109's 360-degree times) | future work (tabled 2026-11-24, author) |
+| A3 | Spitfire IX; then a check of every type's turning against the relative data ("A out-turns B") | future work (tabled 2026-11-24, author) |
 | P | Checkpoint disk use: every snapshot is repeated in every checkpoint (250 to 350 MB each, every 10M steps; about 15 GB per 500M steps against 32 GB free). Write each snapshot once beside the checkpoints and reference it. Before any long run | done (22:37) |
 | V | Evaluation runner: rolling games with a drain (unbiased), adaptive allocation to a target error, every agent's and ship's parameters as tensors (no recompile per candidate), a compact reusable result store (per agent pair and conditions key; per-game rows small), resumable Sobol sampling. Then screening, then a short robust CMA-ES | todo (after A1) |
 | W | Small local web dev tool (after the batch): one Python server (FastAPI or Starlette) importing the real game and tuning code; tabs: sliders for the high-level attributes, the doghouse and other charts (computed in Python by the same functions the PNG scripts call; drawn with Plotly.js), a plain sandbox (canvas plus WebSocket, the server ticks the real World); the Tk sandbox deleted once the tab matches it. Keep it simple: no styling work, minimal tokens; only the charts need to look good | done (03:09) |
@@ -108,4 +108,7 @@ smoke run, record it in the worklog and push. Decisions: core-decisions.md secti
 After the batch: use idle GPU time for speed benchmarks and dry runs (BC first, then RL) to
 check everything works together; then training runs. Judgement calls made overnight go in
 docs/rewrite/morning-notes.md, briefly.
+
+Order agreed 2026-11-24 (author): A1 -> V (runner) -> screening -> short CMA-ES -> yardstick
+choice -> X -> D -> R -> BC dry run -> RL dry run. A2, A3 and C tabled as future work.
 
