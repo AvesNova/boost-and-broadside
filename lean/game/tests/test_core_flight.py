@@ -241,3 +241,31 @@ def test_speeds_in_order_minimum_radius_then_best_sustained_rate_then_corner():
             best_rate_speed,
             corner,
         )
+
+
+def test_the_turn_has_precedence_over_the_climb():
+    """The author's order (2026-11-23): 1 g held, then the turn, then the climb gets what is left.
+    Slow, full stick and climb turns as full stick coasting (the climb gains nothing it would take
+    from the turn); straight at twice the 1 g speed, the climb trades at its full rate."""
+    for ship_type in (VIZIA, card.TYPE_NAMES.index("p51d")):
+        c = constants(ship_type)
+        slow = 1.3 * one_g_speed(ship_type)
+        energy = torch.full((1, 1), 0.5 * c.max_energy)
+        laterals, exchanges = {}, {}
+        for name, power, stick, speed in (
+            ("coast", COAST, 1.0, slow), ("climb", CLIMB, 1.0, slow), ("straight", CLIMB, 0.0, 2.0 * slow)
+        ):
+            control = SimpleNamespace(
+                model="core",
+                thrust_scale=1.0,
+                stick_size=torch.full((1, 1), stick),
+                stick_sign=torch.ones(1, 1),
+                commanded=c.commanded_table[:, power],
+                demand=c.demand_table[:, power],
+            )
+            control.inverse_demand = 1.0 / control.demand
+            lateral, exchange, *_ = core._setting(c, control, torch.full((1, 1), speed), energy)
+            laterals[name], exchanges[name] = lateral.item(), exchange.item()
+        assert abs(laterals["climb"] - laterals["coast"]) < 1e-3 * laterals["coast"], ship_type
+        assert 0.0 <= exchanges["climb"] < 0.05 * exchanges["straight"], ship_type
+        assert exchanges["straight"] > 0.9 * float(c.commanded_table[0, CLIMB])

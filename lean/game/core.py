@@ -449,29 +449,37 @@ def _setting(p, control, speed, energy):
     budget_squared = budget * budget
     demand, commanded = control.demand, control.commanded
     if core:
-        # Weight always on the wing: the vertical demand is held first and the turn gets the rest
-        # (dive lowers the demand and frees lift for the turn). Smootherstep edges of the store;
-        # at an edge, dive or climb fades to coast in its effect on the wing as well as in the
-        # trade (no free turn from diving on the deck, no lost turn from climbing at the top).
+        # Weight always on the wing. The lift budget goes, in order: 1 g held (dive: its lower
+        # demand, which frees lift for the turn), then the turn, then a climb's extra demand gets
+        # what is left (the turn has precedence over the climb). Smootherstep edges of the
+        # store; at an edge, dive or climb fades to coast in its effect on the wing as well as in
+        # the trade (no free turn from diving on the deck, no lost turn from climbing at the top).
         sink_room = smootherstep(sink_room)
         top_room = smootherstep(((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0))
-        room = torch.where(commanded > 0.0, top_room, torch.where(commanded < 0.0, sink_room, 1.0))
+        climbing = commanded > 0.0
+        room = torch.where(climbing, top_room, torch.where(commanded < 0.0, sink_room, 1.0))
         demand = card.GRAVITY + (demand - card.GRAVITY) * room
         commanded = commanded * room
-        held = softmin(demand, budget, q)
+        first = torch.where(climbing, card.GRAVITY, demand)  # held before the turn
+        held = softmin(first, budget, q)
     else:
         held = softmin(demand * (1.0 - sink_room), budget, q)
     lateral_size = softmin(command, torch.sqrt((budget_squared - held * held).clamp_min(0.0)), q)
     if core:
-        vertical = held  # held first; the turn took only what was left
+        # The climb's extra lift, from what the turn left: never more than its demand.
+        left = (torch.sqrt((budget_squared - lateral_size * lateral_size).clamp_min(0.0)) - held).clamp_min(0.0)
+        vertical = held + torch.where(climbing, softmin(demand - first, left, q), 0.0)
     else:
         vertical = softmin(control.demand, torch.sqrt((budget_squared - lateral_size * lateral_size).clamp_min(0.0)), q)
     share = (lateral_size / budget).clamp(0.0, 1.0)
     headroom = ((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0)
     if core:
-        # The commanded trade is already faded at the edges; a shortfall in the vertical (the
-        # wing cannot hold the demand) sinks the ship, and that needs store to sink.
-        exchange = commanded - (demand - vertical).clamp_min(0.0) * sink_room
+        # The commanded trade is already faded at the edges. A climb's unmet extra demand is
+        # climb not made; a shortfall below what is held first (the wing cannot hold 1 g, or
+        # the dive's demand) sinks the ship, and that needs store to sink.
+        unmet_climb = (demand - maximum(vertical, first)).clamp_min(0.0)
+        sinking = (first - vertical).clamp_min(0.0)
+        exchange = commanded - unmet_climb - sinking * sink_room
     else:
         exchange = commanded - (demand - vertical)
         exchange = exchange * torch.where(exchange > 0.0, headroom, sink_room)
