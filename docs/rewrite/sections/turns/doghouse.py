@@ -129,12 +129,7 @@ def draw_panel(figure, ax, ship_type: int, label: str, fraction, real: bool, top
     top = float(np.nanmax(envelope)) * 1.15 if top is None else top
     rate_axis = np.linspace(0.0, top, 300)
     # Ps on a regular (speed, rate) grid: for each speed, interpolate over the stick sweep.
-    ps_field = np.full((len(rate_axis), len(v)), np.nan)
-    for j in range(len(v)):
-        column_rate, column_ps = grid["rate"][:, j], grid["ps"][:, j]
-        order = np.argsort(column_rate)
-        inside = rate_axis <= column_rate[order][-1]
-        ps_field[inside, j] = np.interp(rate_axis[inside], column_rate[order], column_ps[order])
+    ps_field = tuning.ps_over_rate(grid, rate_axis)
     shared = limit is not None  # a given range: fixed levels, so panels' colours match
     limit = np.nanpercentile(np.abs(ps_field), 98) if limit is None else limit
     norm = TwoSlopeNorm(vmin=-limit, vcenter=0.0, vmax=limit)
@@ -175,17 +170,14 @@ def draw_panel(figure, ax, ship_type: int, label: str, fraction, real: bool, top
         here = int(np.searchsorted(game_v, 380.0))
         ax.annotate(name, (v[here], moved[here]), xytext=offset, textcoords="offset points",
                     color=INK_2, fontsize=8)
-    corner = int(np.nanargmax(envelope))
-    ax.plot(v[corner], envelope[corner], "o", color=INK, markersize=8)
-    ax.annotate(f"corner {v[corner]:.0f} m/s, {envelope[corner]:.0f} deg/s",
-                (v[corner], envelope[corner]), xytext=(8, 6), textcoords="offset points",
-                color=INK, fontsize=9)
-    best, _ = sustained(grid)
-    best = np.where(game_v >= 100.0, best, np.nan)  # below 100 m/s the turn cannot be held in flight
-    if np.any(np.isfinite(best)):
-        k = int(np.nanargmax(best))
-        ax.plot(v[k], best[k], "s", color=INK, markersize=8)
-        ax.annotate(f"best sustained {v[k]:.0f} m/s, {best[k]:.0f} deg/s", (v[k], best[k]),
+    corner_v, corner_rate = grid["corner_speed"] / f, grid["corner_rate"] * DEGREES / f
+    ax.plot(corner_v, corner_rate, "o", color=INK, markersize=8)
+    ax.annotate(f"corner {corner_v:.0f} m/s, {corner_rate:.0f} deg/s", (corner_v, corner_rate),
+                xytext=(8, 6), textcoords="offset points", color=INK, fontsize=9)
+    if grid["best_sustained_speed"] is not None:  # from 100 m/s (game) up: below it the turn cannot be held
+        best_v, best_rate = grid["best_sustained_speed"] / f, grid["best_sustained_rate"] * DEGREES / f
+        ax.plot(best_v, best_rate, "s", color=INK, markersize=8)
+        ax.annotate(f"best sustained {best_v:.0f} m/s, {best_rate:.0f} deg/s", (best_v, best_rate),
                     xytext=(8, -14), textcoords="offset points", color=INK, fontsize=9)
     ax.set_xlim(v[0], v[-1])
     ax.set_ylim(0, top)

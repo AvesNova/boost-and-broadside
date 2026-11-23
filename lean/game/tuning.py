@@ -388,6 +388,7 @@ def envelope(
     store_fraction: float | None = None,
     plain: bool = False,
     config: core.GameConfig | None = None,
+    minimum_speed: float = 100.0,
 ) -> dict:
     """The row's quasi-steady turn envelope (game units, the nose settled, no fields, no guns)
     on a (stick, speed) grid: `speeds` (m/s) and `sticks` (0 to 1) as 1-D sequences, `power`
@@ -395,9 +396,9 @@ def envelope(
     Returns numpy arrays shaped (len(sticks), len(speeds)): rate (rad/s), radius (m), ps
     (m/s altitude-equivalent total energy rate), speed_rate, store_rate; and per speed the
     sustained turn (the largest rate with Ps >= 0, nan if none): sustained_rate,
-    sustained_radius; and the key numbers from the full-stick line (corner_*) and, at 100 m/s
+    sustained_radius; and the key numbers from the full-stick line (corner_*) and, at `minimum_speed`
     and above (below it the turn cannot be held in flight), the sustained line
-    (best_sustained_*, tightest_sustained_*), or None when there are none. The charts
+    (best_sustained_*, tightest_sustained_*; `minimum_speed`, game m/s), or None when there are none. The charts
     (docs/rewrite/sections/turns/doghouse.py) and the web tool draw from this."""
     import numpy as np
 
@@ -451,7 +452,7 @@ def envelope(
     full = rate[-1]
     k = int(np.nanargmax(full))
     out["corner_speed"], out["corner_rate"] = float(speed_axis[k]), float(full[k])
-    usable = np.where(speed_axis >= 100.0, held_rate, np.nan)
+    usable = np.where(speed_axis >= minimum_speed, held_rate, np.nan)
     if np.any(np.isfinite(usable)):
         k = int(np.nanargmax(usable))
         out["best_sustained_speed"], out["best_sustained_rate"] = float(speed_axis[k]), float(usable[k])
@@ -462,6 +463,72 @@ def envelope(
         for name in ("best_sustained_speed", "best_sustained_rate", "tightest_sustained_speed", "tightest_sustained_radius"):
             out[name] = None
     return out
+
+
+def ps_over_rate(grid: dict, rate_axis, rate=None, ps=None):
+    """Ps on a regular (rate, speed) grid: per speed, interpolated over the stick sweep of
+    `grid` (envelope's output; `rate` and `ps` override its arrays, e.g. in other units), nan
+    above the full-stick rate. The doghouse's shaded field."""
+    import numpy as np
+
+    rate = grid["rate"] if rate is None else rate
+    ps = grid["ps"] if ps is None else ps
+    field = np.full((len(rate_axis), rate.shape[1]), np.nan)
+    for j in range(rate.shape[1]):
+        order = np.argsort(rate[:, j])
+        inside = rate_axis <= rate[order, j][-1]
+        field[inside, j] = np.interp(rate_axis[inside], rate[order, j], ps[order, j])
+    return field
+
+
+@contextlib.contextmanager
+def flying(row: dict[str, float], factor: float = TIME_FACTOR):
+    """Inside, the card holds `row` (game units at TIME_FACTOR) as its only type, index 0, at
+    `factor` times real time (time_scale): a tool's way of flying or measuring a tuned design.
+    Process-global like time_scale; restored afterwards."""
+    saved = card.CARD
+    card.CARD = {name: (float(row[name]),) for name in saved}
+    try:
+        with time_scale(factor):
+            yield
+    finally:
+        card.CARD = saved
+        core._SHIP_CARDS.clear()
+
+
+def handles_of(row: dict[str, float], gun_range: float = 600.0) -> dict[str, float]:
+    """A row's handles (game units): the inverse of handles_row's direct fields, with the three
+    flown handles (cruise speed, low-speed acceleration, settled full-stick turn rate) as the
+    row flies them, so handles_row(handles_of(row), row) returns the row's flight."""
+    flown = performance(row)
+    return dict(
+        stall_speed=math.sqrt(card.GRAVITY / row["max_lift_coefficient"]),
+        g_limit=row["max_acceleration"] / card.GRAVITY,
+        zero_lift_drag=row["zero_lift_drag"],
+        stall_angle=row["stall_angle_scale"] * card.STALL_ANGLE,
+        vision_range=row["vision_range_scale"] * card.VISION_RANGE,
+        hit_damage=row["hit_damage"],
+        explosive_share=row["explosive_share"],
+        fire_rate=row["fire_rate"],
+        muzzle_speed=row["muzzle_speed"],
+        bullet_spread=row["bullet_spread_scale"] * card.BULLET_SPREAD,
+        bullet_drag=row["bullet_drag_scale"] * card.BULLET_DRAG,
+        gun_range=gun_range,
+        max_shield=row["max_shield"],
+        shield_recharge_rate=row["shield_recharge_rate_scale"] * card.SHIELD_RECHARGE_RATE,
+        shield_recharge_delay=row["shield_recharge_delay_scale"] * card.SHIELD_RECHARGE_DELAY,
+        head_on_fraction=row["head_on_fraction_scale"] * card.HEAD_ON_FRACTION,
+        head_on_angle=row["head_on_angle_scale"] * card.HEAD_ON_ANGLE,
+        head_on_sharpness=row["head_on_sharpness"],
+        hit_radius=row["hit_radius"],
+        core_radius=row["core_radius"],
+        half_lift_drag=0.25,
+        dive_acceleration=row["exchange_acceleration"],
+        zoom_acceleration=-row["exchange_acceleration"],
+        cruise_speed=flown["top_speed"],
+        low_speed_acceleration=flown["low_speed_acceleration"],
+        sustained_turn_rate=flown["settled_turn_rate"],
+    )
 
 
 def _take(c, index):
