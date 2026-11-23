@@ -332,3 +332,23 @@ recompile put the full measurement). Run it at the end of every step:
 performance profile):** collect 28,620 (was 25,974), update 6,440 (6,439), loop 5,257 (5,160);
 peak 3.68 / 4.35 GiB. Operations per tick (eager CPU, 5v5): v2 game 2,618 -> 2,345, core game
 3,273 -> 2,791. The core game was not re-run on the GPU.
+
+## Evaluation games (2026-11-24 02:51-02:58, rough, one run each)
+
+Laptop RTX 4070, performance profile, 4v4 core game, standard spawn, compiled (dynamic), no
+rollout storage. Scripted vs scripted: game length mean 1,326 ticks (std 744); network
+(untrained) vs scripted: 778 (std 299); both biased short (censored at the run's end).
+
+| E | scripted vs scripted ticks/s, games/s, memory | network vs scripted ticks/s, games/s, memory |
+|---|---|---|
+| 1,024 | 430k, ~324, 0.08 GB | 122k, ~157, 0.81 GB |
+| 4,096 | 881k, ~665, 0.16 GB | 125k, ~161, 1.34 GB |
+| 16,384 | 993k, ~749, 0.60 GB | 116k, ~149, 3.58 GB |
+| 32,768 | 990k, ~747, 1.24 GB | out of memory |
+| 65,536 | 984k, ~742, 2.50 GB | not run |
+
+First call 72 s cold (scripted tick), 54 s more for the network tick; warm 33 s and 31 s; new E
+values 0.01-0.15 s. Scripted parameters as persona tensors: no recompile on new values. One
+yardstick float equal to 1.0 is baked into the graph (rollout.py:221 resume) and recompiles
+when changed. The benchmark's own wrapper had graph breaks (28 graphs; core.built_once's get
+hit the recompile limit and ran eager), so the scripted numbers may be low.
