@@ -59,6 +59,7 @@ def test_card_rows_are_the_tuning():
         held = tuning.row_of(name)
         for field, value in row.items():
             assert held[field] == pytest.approx(value, rel=1e-12), (name, field)
+    assert set(row) == set(card.CARD)
 
 
 def test_p51d_point_mass_is_the_october_fit():
@@ -73,12 +74,20 @@ def test_p51d_point_mass_is_the_october_fit():
     assert p["sustained_radius"] == pytest.approx(OCTOBER["sustained_radius"], rel=0.02)
 
 
-def test_p51d_under_the_core_model_against_the_october_fit():
-    """Under the core model (its shared terms on) the P-51D flies below the October fit, by the
-    measured costs (docs/rewrite/p51d-model.md): top speed -3.7% (the drag rise), climb -14%
-    (the thrust's soft minimum), best sustained turn -17% (the separation drag), the stall and
-    corner speeds exact. Tolerance: those, each within 1.5 points."""
-    p = tuning.in_real_units(tuning.performance(tuning.row_of("p51d")))
+def test_p51d_flies_its_point_mass_under_the_core_model():
+    """The P-51D's row has the game terms off (tuning.POINT_MASS_TERMS), so under the core model
+    it flies its point mass: the October fit, and the same numbers as plain=True."""
+    row = tuning.row_of("p51d")
+    assert tuning.performance(row) == tuning.performance(row, plain=True)
+
+
+def test_p51d_airframe_with_vizia_terms_against_the_october_fit():
+    """With Vizia's game terms (v2's shared values) the P-51D airframe flies below the October
+    fit by the measured costs (docs/rewrite/p51d-model.md): top speed -3.7% (the drag rise), climb
+    -14% (the thrust's soft minimum), best sustained turn -17% (the separation drag), the stall
+    and corner speeds exact. Tolerance: those, each within 1.5 points."""
+    row = tuning.airframe_row(tuning.P51D, tuning.row_of("vizia"), tuning.game_terms(tuning.row_of("vizia")))
+    p = tuning.in_real_units(tuning.performance(row))
     assert p["top_speed"] / OCTOBER["top_speed"] - 1 == pytest.approx(-0.037, abs=0.015)
     assert p["best_climb"] / OCTOBER["best_climb"] - 1 == pytest.approx(-0.145, abs=0.015)
     assert p["sustained_rate"] / OCTOBER["sustained_rate"] - 1 == pytest.approx(-0.173, abs=0.015)

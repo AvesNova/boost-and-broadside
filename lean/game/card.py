@@ -51,9 +51,30 @@ CARD = {
     "fine_stick": (0.1964104026556015, 0.2223183661699295, 0.21010109782218933, 0.21010109782218933, 0.21010109782218933),
     "sustained_stick": (0.654701292514801, 0.7410612106323242, 0.7003369927406311, 0.7003369927406311, 0.7003369927406311),
     "vision_range_scale": (0.3255208432674408, 0.3255208432674408, 0.3255208432674408, 0.3255208432674408, 0.3255208432674408),
+    # v2's shared flight terms (rules.toml [flight]), per type in lean (FLIGHT_TERMS). The P-51D
+    # flies with the game terms off (tuning.POINT_MASS_TERMS): no drag rise, no separation drag,
+    # near-hard minima.
+    "critical_speed": (394.0, 394.0, 394.0, math.inf, 394.0),
+    "drag_rise_exponent": (12.0, 12.0, 12.0, 12.0, 12.0),
+    "separation_drag": (1.0, 1.0, 1.0, 0.0, 1.0),
+    "separation_exponent": (8.0, 8.0, 8.0, 8.0, 8.0),
+    "lift_softmin_exponent": (16.0, 16.0, 16.0, 400.0, 16.0),
+    "thrust_softmin_exponent": (2.0, 2.0, 2.0, 400.0, 2.0),
+    "nose_damping": (0.7, 0.7, 0.7, 0.7, 0.7),
 }
+# The card's columns that are v2's shared flight terms, per type here (v2's names).
+FLIGHT_TERMS = (
+    "critical_speed",
+    "drag_rise_exponent",
+    "separation_drag",
+    "separation_exponent",
+    "lift_softmin_exponent",
+    "thrust_softmin_exponent",
+    "nose_damping",
+)
 
-# Flight constants shared by every type.
+# Flight constants shared by every type (world constants and numerical floors; the flight terms
+# are per type: FLIGHT_TERMS).
 GRAVITY = 39.24
 STALL_ANGLE = 0.2617993877991494
 INDUCED_DRAG_FACTOR = 66.348
@@ -61,15 +82,8 @@ ENGINE_KNEE = 0.5
 STORE_FADE_BAND = 0.02
 CLIMB_EXCHANGE = 9.810000000000002
 DIVE_EXCHANGE = 9.810000000000002
-LIFT_SOFTMIN_EXPONENT = 16.0
-THRUST_SOFTMIN_EXPONENT = 2.0
-NOSE_DAMPING = 0.7
 NOSE_FREQUENCY_FLOOR = 0.4997135491028137
 SPEED_FLOOR = 1.454166427889188e-06
-CRITICAL_SPEED = 394.0
-DRAG_RISE_EXPONENT = 12.0
-SEPARATION_DRAG = 1.0
-SEPARATION_EXPONENT = 8.0
 
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005

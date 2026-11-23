@@ -36,11 +36,13 @@ What depends on v2's flight model and how it maps to the core model:
   corner speed, half of it, free), whatever the card holds.
 - The nose frequency (v2's nose reversal handle, a placeholder for every type) and the stick
   levels are control feel, not physics: they come from the base row.
-- The core model's shared terms apply to every type: the drag rise above CRITICAL_SPEED
-  (394 m/s game, 197 m/s real), the separation drag (induced drag doubles at full lift) and
-  the soft minima of lift against the g limit and of thrust against static thrust. A real
-  aircraft converted directly flies with them; `performance(..., plain=True)` turns them off
-  to show the pure point mass.
+- The flight terms v2 shared across types are card columns per type (card.FLIGHT_TERMS): the
+  drag rise above `critical_speed` (v2's 394 m/s game, 197 m/s real, exponent 12), the
+  separation drag (induced drag doubles at full lift), the soft minima of lift against the g
+  limit and of thrust against static thrust, and the nose damping. v2's types and the handles
+  route keep v2's values (from the base row; `game_terms`); a real aircraft converted directly
+  flies with them off (POINT_MASS_TERMS: the pure point mass of the October fit), and
+  `performance(..., plain=True)` turns them off for any row.
 """
 
 from __future__ import annotations
@@ -128,6 +130,26 @@ P51D = Airframe(
 )
 
 
+# The game terms switched off: no drag rise, no separation drag, soft minima near hard (exponent
+# 400). A real aircraft flies as its point mass with these (test_p51d_point_mass_is_the_october_fit).
+POINT_MASS_TERMS = dict(
+    critical_speed=math.inf,
+    separation_drag=0.0,
+    lift_softmin_exponent=400.0,
+    thrust_softmin_exponent=400.0,
+)
+
+
+def point_mass(row: dict[str, float]) -> dict[str, float]:
+    """A row with the game terms off (POINT_MASS_TERMS); the other flight terms kept."""
+    return {**row, **POINT_MASS_TERMS}
+
+
+def game_terms(row: dict[str, float]) -> dict[str, float]:
+    """A row's flight terms (card.FLIGHT_TERMS), to give another row the same ones."""
+    return {name: row[name] for name in card.FLIGHT_TERMS}
+
+
 def unmodified_climb(row: dict[str, float]) -> dict[str, float]:
     """A v2 card row with v2's climb modifications reverted to the physical values
     (docs/rewrite/p51d-model.md, "Vizia's climb modifications"): no engine surplus charging
@@ -142,8 +164,11 @@ def unmodified_climb(row: dict[str, float]) -> dict[str, float]:
     }
 
 
-def airframe_row(airframe: Airframe, base: dict[str, float]) -> dict[str, float]:
-    """A card row: the flight fields from the airframe, everything else from `base`."""
+def airframe_row(
+    airframe: Airframe, base: dict[str, float], terms: dict[str, float] | None = None
+) -> dict[str, float]:
+    """A card row: the flight fields from the airframe, the flight terms `terms` over the base's
+    (default POINT_MASS_TERMS: the real aircraft's point mass), everything else from `base`."""
     a = airframe
     induced = 1.0 / (math.pi * a.oswald * a.aspect_ratio) / a.per_metre  # m
     power = to_game(a.power * a.propeller_efficiency / a.mass, -3)
@@ -161,7 +186,7 @@ def airframe_row(airframe: Airframe, base: dict[str, float]) -> dict[str, float]
         climb_exchange_scale=card.GRAVITY / card.CLIMB_EXCHANGE,  # 1 g: a vertical zoom
         engine_knee_scale=1.0,
     )
-    return {**base, **flight}
+    return {**base, **flight, **(POINT_MASS_TERMS if terms is None else terms)}
 
 
 # --------------------------------------------------------------------------- handles route
@@ -277,30 +302,14 @@ def handles_row(
 
 
 @contextlib.contextmanager
-def _with_row(row: dict[str, float], plain: bool):
-    """The card with `row` appended as a last type (and, plain, the shared drag rise,
-    separation drag and soft minima off), restored afterwards."""
-    saved = (
-        card.CARD,
-        card.CRITICAL_SPEED,
-        card.SEPARATION_DRAG,
-        card.THRUST_SOFTMIN_EXPONENT,
-        card.LIFT_SOFTMIN_EXPONENT,
-    )
-    card.CARD = {name: (*values, float(row[name])) for name, values in saved[0].items()}
-    if plain:
-        card.CRITICAL_SPEED, card.SEPARATION_DRAG = math.inf, 0.0
-        card.THRUST_SOFTMIN_EXPONENT = card.LIFT_SOFTMIN_EXPONENT = 400.0
+def _with_row(row: dict[str, float]):
+    """The card with `row` appended as a last type, restored afterwards."""
+    saved = card.CARD
+    card.CARD = {name: (*values, float(row[name])) for name, values in saved.items()}
     try:
-        yield len(next(iter(saved[0].values())))
+        yield len(next(iter(saved.values())))
     finally:
-        (
-            card.CARD,
-            card.CRITICAL_SPEED,
-            card.SEPARATION_DRAG,
-            card.THRUST_SOFTMIN_EXPONENT,
-            card.LIFT_SOFTMIN_EXPONENT,
-        ) = saved
+        card.CARD = saved
 
 
 def _evaluate(c, speed, stick, power, energy):
@@ -344,7 +353,9 @@ def performance(
     settled full-stick turn (rate, speed), the low-speed acceleration (straight at the stall
     speed, empty store). Rates in rad/s."""
     config = config or core.GameConfig.core()
-    with torch.no_grad(), _with_row(row, plain) as index:
+    if plain:
+        row = point_mass(row)
+    with torch.no_grad(), _with_row(row) as index:
         speeds = torch.arange(30.0, 700.0, 0.05, dtype=torch.float64)
         n = speeds.shape[0]
         constants = core.per_type_constants(config, torch.full((n,), index))
