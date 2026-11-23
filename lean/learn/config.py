@@ -30,12 +30,27 @@ class LearnConfig:
     # PPO.
     clip: float = 0.2
     epochs: int = 4
-    # True: advantages and value targets recomputed from the current critic at every epoch
-    # (a target pass over the rollout per epoch). False: once per update from the values
-    # stored at collection, as v2 (ppo.py). Not decided; scoreboard.md measures both.
-    targets_every_epoch: bool = True
-    minibatches: int = 8  # the smallest power of two that fits 8 GB at 256 environments (scoreboard.md)
+    # False (author 2026-11-23, after the literature review,
+    # docs/rewrite/literature-ppo-targets-minibatches.md): advantages and value targets once
+    # per update from the values stored at collection, as v2 (ppo.py). True: recomputed from
+    # the current critic at every epoch (a streamed target pass over the rollout per epoch).
+    targets_every_epoch: bool = False
+    # The update's size, at parity with v2 (author 2026-11-23): `environments` x
+    # `segments_per_update` x `segment_ticks` environment ticks (2,048 x 4 x 128 = 1,048,576).
+    # A view is one seat's segment (1.5 seats per environment with half self-play: 12,288
+    # views); `minibatches` split the views, one optimizer step each.
+    environments: int = 2048
+    segments_per_update: int = 4
     segment_ticks: int = 128
+    minibatches: int = 32
+    # Views per micro-batch: memory follows this, not the minibatch (gradients accumulate
+    # over a minibatch's micro-batches; every loss term is divided by its whole-minibatch
+    # denominator). Also the batch of the critic's target pass. Sized for an 8 GB GPU
+    # (docs/rewrite/scoreboard.md, "Streaming and micro-batches").
+    micro_batch_views: int = 64
+    # The rollout's large records in pinned host memory, streamed (lean.learn.store); False
+    # keeps everything on the device. Ignored on the CPU.
+    stream_rollout: bool = True
     learning_rate: float = 3e-4
     warmup_updates: int = 10
     adam_epsilon: float = 1e-5

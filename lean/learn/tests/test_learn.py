@@ -29,13 +29,35 @@ def test_gae_matches_hand_computed_case_and_stops_at_termination():
     assert torch.allclose(target.flatten(), torch.tensor([1.75, 2.0, 5.0]))
 
 
+def test_gae_scan_equals_the_tick_by_tick_recursion():
+    """The reverse doubling scan against the plain backward loop, per level, with episode ends."""
+    generator = torch.Generator().manual_seed(0)
+    ticks, envs, slots = 128, 6, 3
+    reward = torch.randn(ticks, envs, slots, LEVELS, generator=generator)
+    value = torch.randn(ticks, envs, slots, LEVELS, generator=generator)
+    bootstrap = torch.randn(envs, slots, LEVELS, generator=generator)
+    done = torch.rand(ticks, envs, generator=generator) < 0.02
+    config = LearnConfig()
+    discounts, lambdas = torch.tensor(config.discounts), torch.tensor(config.gae_lambdas)
+    expected = torch.zeros_like(reward)
+    running, next_value = torch.zeros_like(bootstrap), bootstrap
+    for tick in range(ticks - 1, -1, -1):
+        alive = (~done[tick]).float()[:, None, None]
+        delta = reward[tick] + discounts * next_value * alive - value[tick]
+        running = delta + discounts * lambdas * alive * running
+        expected[tick], next_value = running, value[tick]
+    advantage, target = generalised_advantages(reward, value, bootstrap, done, discounts, lambdas)
+    assert torch.allclose(advantage, expected, rtol=1e-5, atol=1e-5)
+    assert torch.allclose(target, expected + value, rtol=1e-5, atol=1e-5)
+
+
 @pytest.mark.parametrize("normaliser", ["std", "percentile"])
 def test_normalised_advantages_keep_their_mean_and_have_unit_scale(normaliser):
     generator = torch.Generator().manual_seed(0)
     advantage = torch.randn(16, 8, 4, 4, generator=generator) + 0.5
     mask = torch.rand(16, 8, 4, generator=generator) < 0.7
     config = LearnConfig(advantage_normaliser=normaliser)
-    normalised = normalise_advantages(advantage, mask, config)
+    normalised = normalise_advantages(advantage.sum(-1), mask, config)
     chosen = normalised[mask]
     assert (normalised[~mask] == 0).all()
     assert chosen.mean() > 0.2  # the mean (2.0 before scaling) is not removed
@@ -146,21 +168,27 @@ def test_a_next_state_width_mismatch_raises():
 def test_targets_once_per_update_equal_the_first_epochs_fresh_targets():
     """targets_every_epoch=False takes the values stored at collection; before any step they
     equal the critic's recomputed values, so both paths give the same first targets."""
-    from lean.learn.update import fresh_targets, targets_from
+    from lean.learn.store import RolloutStore
+    from lean.learn.update import target_pass
 
     torch.manual_seed(0)
     generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=2)
+    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=2, micro_batch_views=4)
     policy = standins.TinyPolicy()
     opponent = Opponent(scripted_config=None)
     state, carry = start(config, standins.GameConfig(), policy, opponent, 4, generator, game=standins.game, scripted=standins.scripted)
     rollout = collect(config, standins.GameConfig(), policy, opponent, state, carry, 8, generator, game=standins.game, scripted=standins.scripted)
-    stored = targets_from(config, rollout, rollout.value, rollout.value_centres)
-    fresh = fresh_targets(config, policy, rollout, [torch.arange(rollout.done.shape[1])])
-    assert torch.allclose(stored[0], fresh[0], atol=1e-5) and torch.allclose(stored[1], fresh[1], atol=1e-5)
-    once = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=2, targets_every_epoch=False)
-    metrics = update(once, policy, make_optimiser(once, policy), rollout, generator=generator)
-    assert all(value == value for value in metrics.values())
+    store = RolloutStore.of(rollout)
+    index, _ = store.batch_index(torch.arange(store.views), 4)
+    stored_flags = target_pass(config, policy, store, index, None)
+    stored = store.advantage.clone(), store.target.clone()
+    fresh_flags = target_pass(config, policy, store, index)
+    assert torch.allclose(stored[0], store.advantage, atol=1e-5) and torch.allclose(stored[1], store.target, atol=1e-5)
+    assert torch.equal(stored_flags, fresh_flags)
+    for every_epoch in (False, True):
+        variant = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=2, targets_every_epoch=every_epoch)
+        metrics = update(variant, policy, make_optimiser(variant, policy), rollout, generator=generator)
+        assert all(value == value for value in metrics.values())
 
 
 def test_finished_environments_take_the_segments_deals_in_order():

@@ -7,7 +7,6 @@ import pytest
 import torch
 
 from lean.learn import League, LearnConfig, Opponent, collect, make_optimiser, start, update
-from lean.learn.collect import index_carry, map_fields
 
 pytestmark = pytest.mark.slow
 
@@ -27,18 +26,18 @@ def test_compiled_collect_and_update_run_with_the_real_packages():
     state, carry = start(config, game_config, policy, opponent, 8, generator)
     for _ in range(2):  # the second rollout reuses the graphs
         rollout = collect(config, game_config, policy, opponent, state, carry, 6, generator, compiled=True)
+        assert rollout.action.shape[:2] == (6, 12)  # 8 environments, 4 self-play: 12 seats
         state, carry = rollout.state, rollout.carry
         metrics = update(config, policy, make_optimiser(config, policy), rollout, generator=generator, compiled=True)
         assert all(value == value for value in metrics.values())
-    assert rollout.action.shape[:2] == (6, 12)  # 8 environments, 4 self-play: 12 seats
 
 
 def test_compiled_loss_matches_eager():
     game = pytest.importorskip("lean.game")
     scripted = pytest.importorskip("lean.scripted")
     model = pytest.importorskip("lean.model")
-    from lean.learn import compiled
-    from lean.learn.update import fresh_targets, minibatch_loss
+    from lean.learn import RolloutStore, compiled
+    from lean.learn.update import LOSS_NAMES, minibatch_loss, target_pass
 
     torch.manual_seed(0)
     generator = torch.Generator().manual_seed(0)
@@ -48,12 +47,17 @@ def test_compiled_loss_matches_eager():
     opponent = Opponent(scripted.ScriptedConfig())
     state, carry = start(config, game_config, policy, opponent, 4, generator)
     rollout = collect(config, game_config, policy, opponent, state, carry, 6, generator)
-    index = torch.arange(rollout.done.shape[1])
-    advantage, target, _ = fresh_targets(config, policy, rollout, [index])
+    store = RolloutStore.of(rollout)
+    index, _ = store.batch_index(torch.arange(store.views), store.views)
+    target_pass(config, policy, store, index, None)
+    (batch,) = list(store.batches(store.observation_names + LOSS_NAMES, index))
+    views = batch["views"]
+    observation, offset = store.observation(batch)
     arguments = (
-        map_fields(rollout.observation, lambda tensor: tensor[:, index]), index_carry(rollout.initial_carry, index),
-        rollout.reset, rollout.position_offset, rollout.action, rollout.log_probability, advantage, target,
-        rollout.teacher, rollout.next_state, rollout.next_valid, rollout.hit_label, torch.tensor(1.0),
+        observation, batch["carry"], batch["reset"], offset, batch["action"], batch["log_probability"],
+        store.advantage.index_select(1, views), store.target.index_select(1, views), batch["teacher"],
+        batch["next_state"], batch["next_valid"], batch["hit_label"], torch.tensor(1.0),
+        store.counts().index_select(0, views).sum(0),
     )
     twin = copy.deepcopy(policy)
     eager_loss, eager_measures = minibatch_loss(config, policy, *arguments)

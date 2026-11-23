@@ -4,6 +4,10 @@ Wires the game, the scripted opponent, the model, collect, update and a periodic
 crossover. `--seed` fixes the initial weights, the scenario draws and the data order
 (compiled, the rollout's draws come from torch's default generator, seeded by `--seed`
 too). `--compile` (the default) compiles the rollout tick and the update's loss.
+
+An update collects LearnConfig.segments_per_update segments of segment_ticks ticks over
+`--envs` environments into one RolloutStore (streamed to pinned host memory on a GPU, see
+lean.learn.store), then learns from all of them.
 """
 
 import argparse
@@ -17,6 +21,7 @@ from lean.learn import (
     League,
     LearnConfig,
     Opponent,
+    RolloutStore,
     abandon,
     collect,
     make_optimiser,
@@ -29,7 +34,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--smoke", action="store_true", help="a few tiny updates on the CPU")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--envs", type=int, default=256)
+    parser.add_argument("--envs", type=int, default=None, help="default: LearnConfig.environments")
     parser.add_argument("--updates", type=int, default=1000)
     parser.add_argument("--crossover-every", type=int, default=50)
     parser.add_argument("--crossover-games", type=int, default=64)
@@ -46,11 +51,14 @@ def main() -> None:
     arguments = parser.parse_args()
 
     config = LearnConfig()
-    envs, updates, ticks = arguments.envs, arguments.updates, config.segment_ticks
+    envs, updates, ticks = arguments.envs or config.environments, arguments.updates, config.segment_ticks
     crossover_every, crossover_games, crossover_sizes = arguments.crossover_every, arguments.crossover_games, [4]
     if arguments.smoke:
-        config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1, snapshot_every=1)
-        envs, updates, ticks = 4, 2, 8
+        config = LearnConfig(
+            team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1, snapshot_every=1, segments_per_update=2,
+            micro_batch_views=4,
+        )
+        envs, updates, ticks = arguments.envs or 4, 2, 8
         crossover_every, crossover_games, crossover_sizes = 2, 2, [1]
 
     device = torch.device(arguments.device)
@@ -68,23 +76,30 @@ def main() -> None:
     opponent = Opponent(scripted_config, league, config.self_play_share, config.persona_spread)
     state, carry = start(config, game_config, policy, opponent, envs, generator)
 
+    store = RolloutStore(config.segments_per_update, config.stream_rollout)
     steps = 0
     # Each crossover walks from the previous one's ratios (parity the first time).
     crossover_ratios = {}
     for index in range(updates):
         began = time.perf_counter()
-        rollout = collect(config, game_config, policy, opponent, state, carry, ticks, generator, compiled=compiled)
-        state, carry = rollout.state, rollout.carry
-        steps += envs * ticks
+        for segment in range(config.segments_per_update):
+            rollout = collect(
+                config, game_config, policy, opponent, state, carry, ticks, generator, compiled=compiled, store=store,
+                segment=segment,
+            )
+            state, carry = rollout.state, rollout.carry
+        del rollout
+        update_steps = envs * ticks * config.segments_per_update
+        steps += update_steps
         win_rate = league.scripted_win_rate()
         metrics = update(
-            config, policy, optimiser, rollout, scripted_win_rate=win_rate, update_index=index, generator=generator,
+            config, policy, optimiser, store, scripted_win_rate=win_rate, update_index=index, generator=generator,
             compiled=compiled,
         )
         replaced = league.maybe_add(policy, index + 1)
         if replaced is not None:
             state, carry = abandon(config, game_config, policy, opponent, state, carry, replaced, generator)
-        rate = envs * ticks / (time.perf_counter() - began)
+        rate = update_steps / (time.perf_counter() - began)
         warnings = [name.removeprefix("range_warning_") for name, value in metrics.items() if name.startswith("range_warning_") and value > 0]
         shown = " ".join(f"{name}={value:.4g}" for name, value in metrics.items() if not name.startswith("range_warning_"))
         rates = " ".join(f"{value:.2f}" for value in league.win_rates()[league.present].tolist())

@@ -1,17 +1,35 @@
-"""The PPO update."""
+"""The PPO update, over a RolloutStore in micro-batches."""
 
 import torch
 from torch import Tensor
 
-from lean.learn.collect import Rollout, index_carry, map_fields
+from lean.learn.collect import Rollout
 from lean.learn.config import LearnConfig, bc_weight, learning_rate, policy_precision
 from lean.learn.returns import (
     generalised_advantages,
     normalise_advantages,
-    support_usage,
+    usage_counts,
+    usage_flags,
+    usage_metrics,
     value_centres,
 )
+from lean.learn.store import RolloutStore
 from lean.model.value import decode_value, hl_gauss_targets
+
+# What each pass reads from the store besides the carry and the observation's per-tick fields
+# (the stored-target pass reads no observation).
+OBSERVED = ("deal_row", "reset")
+TARGET_NAMES = OBSERVED + ("reward", "done")
+STORED_TARGET_NAMES = ("own", "reward", "done", "value")
+LOSS_NAMES = OBSERVED + ("action", "log_probability", "teacher", "next_state", "next_valid", "hit_label")
+MEASURES = ("loss", "surrogate", "value", "entropy", "next_state", "hit", "bc", "approximate_kl", "clip_fraction")
+
+
+def to_device(tensor: Tensor, device) -> Tensor:
+    """A small host tensor on `device` without a host wait (through pinned memory on a GPU;
+    a plain copy from pageable memory waits for the stream)."""
+    device = torch.device(device)
+    return tensor.pin_memory().to(device, non_blocking=True) if device.type == "cuda" else tensor.to(device)
 
 
 def make_optimiser(config: LearnConfig, policy) -> torch.optim.Optimizer:
@@ -19,34 +37,28 @@ def make_optimiser(config: LearnConfig, policy) -> torch.optim.Optimizer:
     return torch.optim.Adam(policy.parameters(), lr=config.learning_rate, eps=config.adam_epsilon)
 
 
-def masked_mean(values: Tensor, mask: Tensor) -> Tensor:
-    """Mean of `values` over the tokens where `mask` (broadcast from the left) is set."""
-    weight = mask.reshape(mask.shape + (1,) * (values.dim() - mask.dim())).to(values.dtype).expand_as(values)
-    return (values * weight).sum() / weight.sum().clamp(min=1.0)
+def masked_sum(values: Tensor, mask: Tensor) -> Tensor:
+    """Sum of `values` over the tokens where `mask` (broadcast from the left) is set."""
+    weight = mask.reshape(mask.shape + (1,) * (values.dim() - mask.dim())).to(values.dtype)
+    return (values * weight).sum()
 
 
-def hit_loss(hit_logits: Tensor, label: Tensor, own: Tensor) -> tuple[Tensor, Tensor]:
-    """Cross-entropy (nats) of the hit head over the rows that are `own` and labelled
-    (label >= 0), and that mask. hit_logits (..., HIT_CLASSES), label and own (...). Other
-    rows contribute nothing, to the loss or to the gradient; no labelled row gives 0."""
+def hit_loss(hit_logits: Tensor, label: Tensor, own: Tensor, denominator: Tensor | None = None) -> tuple[Tensor, Tensor]:
+    """Cross-entropy (nats) of the hit head summed over the rows that are `own` and labelled
+    (label >= 0), divided by `denominator` (default: their count, so a mean), and that mask.
+    hit_logits (..., HIT_CLASSES), label and own (...). Other rows contribute nothing, to
+    the loss or to the gradient; no labelled row gives 0."""
     labelled = own & (label >= 0)
     log_probability = torch.log_softmax(hit_logits.float(), -1).gather(-1, label.clamp_min(0)[..., None]).squeeze(-1)
-    loss = torch.where(labelled, -log_probability, 0.0).sum() / labelled.sum().clamp(min=1)
-    return loss, labelled
-
-
-def environment_batches(envs: int, minibatches: int, generator) -> list[Tensor]:
-    """A random split of the environments into min(minibatches, E) index sets."""
-    device = generator.device if generator is not None else "cpu"
-    order = torch.randperm(envs, generator=generator, device=device)
-    return [part for part in torch.tensor_split(order, min(minibatches, envs)) if part.numel() > 0]
+    denominator = labelled.sum().clamp(min=1) if denominator is None else denominator
+    return torch.where(labelled, -log_probability, 0.0).sum() / denominator, labelled
 
 
 def minibatch_values(
     config: LearnConfig, policy, observation, carry: Tensor, reset: Tensor, position_offset: Tensor
 ) -> tuple[Tensor, Tensor]:
-    """The critic's decoded values (T, B, N, LEVELS) of one minibatch, zero outside `own`,
-    and the support's centres (LEVELS, BINS)."""
+    """The critic's decoded values (T, B, N, LEVELS) of one batch of views, zero outside
+    `own`, and the support's centres (LEVELS, BINS)."""
     with policy_precision(config, carry.device):
         _, value_logits, _, _, _ = policy.sequence(observation, carry, reset, position_offset)
     value_logits = value_logits.float()
@@ -54,49 +66,19 @@ def minibatch_values(
     return decode_value(value_logits, centres) * observation.own[..., None], centres
 
 
-@torch.no_grad()
-def fresh_targets(config: LearnConfig, policy, rollout: Rollout, batches: list[Tensor], values=minibatch_values) -> tuple[Tensor, Tensor, dict]:
-    """Advantages (T, E, N), value targets (T, E, N, LEVELS) from the current critic, and
-    the targets' range metrics (returns.support_usage).
-
-    Values are recomputed with Policy.sequence (`values` is minibatch_values or its
-    compiled form), zeroed outside `own`, run through GAE per level (each level its own
-    discount and lambda) and the advantages normalised over the whole rollout. The
-    bootstrap value is the one stored at collection.
-    """
-    own = rollout.observation.own
-    value = torch.zeros_like(rollout.reward)
-    for index in batches:
-        index = index.to(own.device)
-        observation = map_fields(rollout.observation, lambda tensor: tensor[:, index])
-        value[:, index], centres = values(
-            config, policy, observation, index_carry(rollout.initial_carry, index), rollout.reset[:, index],
-            rollout.position_offset[:, index],
-        )
-    return targets_from(config, rollout, value, centres)
-
-
-@torch.no_grad()
-def targets_from(config: LearnConfig, rollout: Rollout, value: Tensor, centres: Tensor) -> tuple[Tensor, Tensor, dict]:
-    """Normalised advantages, value targets and range metrics (see fresh_targets) from
-    the values `value` (T, E, N, LEVELS), zero outside `own`."""
-    own = rollout.observation.own
-    discounts = torch.tensor(config.discounts, dtype=value.dtype, device=value.device)
-    lambdas = torch.tensor(config.gae_lambdas, dtype=value.dtype, device=value.device)
-    advantage, target = generalised_advantages(rollout.reward, value, rollout.bootstrap_value, rollout.done, discounts, lambdas)
-    usage = support_usage(target, rollout.reward, own, centres, config)
-    return normalise_advantages(advantage, own, config), target, usage
-
-
 def minibatch_loss(
     config: LearnConfig, policy, observation, carry: Tensor, reset: Tensor, position_offset: Tensor, action: Tensor,
     old_log_probability: Tensor, advantage: Tensor, target: Tensor, teacher: Tensor, next_target: Tensor,
-    next_valid: Tensor, hit_label: Tensor, bc_coefficient: Tensor,
+    next_valid: Tensor, hit_label: Tensor, bc_coefficient: Tensor, denominators: Tensor,
 ) -> tuple[Tensor, dict[str, Tensor]]:
-    """The loss of one minibatch (see `update`) and its measures, all 0-d tensors.
-    bc_coefficient is a 0-d tensor so that a compiled graph does not take each new value
-    as a constant."""
+    """One micro-batch's share of its minibatch's loss (see `update`) and of its measures,
+    all 0-d tensors: every term is a sum over this micro-batch's valid tokens divided by
+    the whole minibatch's count, `denominators` = (own tokens, next_valid tokens, labelled
+    own tokens), so the micro-batches' losses and gradients add up to the minibatch's.
+    bc_coefficient and denominators are tensors so that a compiled graph does not take each
+    new value as a constant."""
     own = observation.own
+    own_count, next_count, labelled_count = denominators.clamp(min=1.0).unbind()
     with policy_precision(config, carry.device):
         outputs = policy.sequence(observation, carry, reset, position_offset)
     # The losses in float32.
@@ -106,21 +88,23 @@ def minibatch_loss(
     log_ratio = log_probability - old_log_probability
     ratio = log_ratio.exp()
     clipped = ratio.clamp(1.0 - config.clip, 1.0 + config.clip)
-    surrogate = masked_mean(-torch.minimum(ratio * advantage, clipped * advantage), own)
-    entropy = masked_mean(-(log_policy.exp() * log_policy).sum(-1), own)
-    bc = masked_mean(-log_policy.gather(-1, teacher[..., None]).squeeze(-1), own)
+    surrogate = masked_sum(-torch.minimum(ratio * advantage, clipped * advantage), own) / own_count
+    entropy = masked_sum(-(log_policy.exp() * log_policy).sum(-1), own) / own_count
+    bc = masked_sum(-log_policy.gather(-1, teacher[..., None]).squeeze(-1), own) / own_count
 
     centres = value_centres(config, value_logits.shape[-1], value_logits.device)
     target_distribution = hl_gauss_targets(target, centres, config.value_sigma_ratio)
-    value_loss = masked_mean(-(target_distribution * torch.log_softmax(value_logits, -1)).sum(-1), own)
+    cross_entropy = -(target_distribution * torch.log_softmax(value_logits, -1)).sum(-1)
+    value_loss = masked_sum(cross_entropy, own) / (own_count * cross_entropy.shape[-1])
 
     if next_state.shape != next_target.shape:
         raise ValueError(
             f"next-state head gives {tuple(next_state.shape)}, the recorded target is {tuple(next_target.shape)}"
         )
-    next_state_loss = masked_mean((next_state.float() - next_target) ** 2, next_valid)
+    squared = (next_state.float() - next_target) ** 2
+    next_state_loss = masked_sum(squared, next_valid) / (next_count * squared.shape[-1])
 
-    hit, labelled = hit_loss(hit_logits, hit_label, own)
+    hit, _ = hit_loss(hit_logits, hit_label, own, labelled_count)
 
     loss = (
         surrogate
@@ -133,42 +117,84 @@ def minibatch_loss(
     with torch.no_grad():
         measures = {
             "loss": loss, "surrogate": surrogate, "value": value_loss, "entropy": entropy,
-            "next_state": next_state_loss, "hit": hit,
-            "hit_labelled": labelled.float().sum() / own.float().sum().clamp(min=1.0), "bc": bc,
-            "approximate_kl": masked_mean(ratio - 1.0 - log_ratio, own),
-            "clip_fraction": masked_mean(((ratio - 1.0).abs() > config.clip).float(), own),
+            "next_state": next_state_loss, "hit": hit, "bc": bc,
+            "approximate_kl": masked_sum(ratio - 1.0 - log_ratio, own) / own_count,
+            "clip_fraction": masked_sum(((ratio - 1.0).abs() > config.clip).float(), own) / own_count,
         }
     return loss, {name: measure.detach() for name, measure in measures.items()}
 
 
+@torch.no_grad()
+def target_pass(config: LearnConfig, policy, store: RolloutStore, index: Tensor, values=minibatch_values) -> Tensor:
+    """Advantages and value targets of every view, into store.targets(): the critic's
+    values (`values`, minibatch_values or its compiled form, over the micro-batches of
+    `index`; None takes the values stored at collection), zero outside `own`, run through
+    GAE per level (each level its own discount and lambda), summed over levels and
+    normalised over the whole rollout. The bootstrap value is the one stored at collection.
+    Returns the targets' range measures, usage_flags (4, LEVELS), on the device."""
+    levels = len(config.discounts)
+    advantage, target = store.targets(levels)
+    discounts = to_device(torch.tensor(config.discounts), store.device)
+    lambdas = to_device(torch.tensor(config.gae_lambdas), store.device)
+    names = store.observation_names + TARGET_NAMES if values is not None else STORED_TARGET_NAMES
+    counts = paid = None
+    for batch in store.batches(names, index):
+        views = batch["views"]
+        if values is not None:
+            observation, offset = store.observation(batch)
+            value, centres = values(config, policy, observation, batch["carry"], batch["reset"], offset)
+        else:
+            value, centres = batch["value"], store.centres
+        advantages, targets = generalised_advantages(
+            batch["reward"], value, store.bootstrap.index_select(0, views), batch["done"], discounts, lambdas
+        )
+        # Padding views all write the spare view, which owns nothing.
+        advantage.index_copy_(1, views, advantages.sum(-1))
+        target.index_copy_(1, views, targets)
+        tally = usage_counts(targets, batch["own"], centres)
+        pays = (batch["reward"] != 0).flatten(0, -2).any(0)
+        counts, paid = (tally, pays) if counts is None else (counts + tally, paid | pays)
+    advantage.copy_(normalise_advantages(advantage, store.resident["own"], config))
+    return usage_flags(counts, paid, config)
+
+
 def update(
-    config: LearnConfig, policy, optimiser, rollout: Rollout,
+    config: LearnConfig, policy, optimiser, data: RolloutStore | Rollout,
     *, scripted_win_rate: float = 0.0, update_index: int = 0, generator=None, compiled: bool = False,
 ) -> dict[str, float]:
-    """One PPO update on one rollout. Returns means over all minibatches as floats.
+    """One PPO update on the views of `data` (a RolloutStore, or one collected Rollout).
+    Returns means over all minibatches as floats.
 
     loss = surrogate + value_coefficient * value - entropy_coefficient * entropy
            + next_state_coefficient * next_state + hit_coefficient * hit
            + bc_weight(scripted_win_rate) * bc
 
-    Every term is a mean over its valid tokens: the learner's living ships (`own`) for
-    surrogate, entropy, BC and value (value also averaged over levels, so it is nats per
-    softmax group); `next_valid` rows and their columns for the next-state squared error
-    against the target recorded at collection; the hit head's cross-entropy (nats) over
-    the `own` rows that have a hit label (rows without one contribute nothing). A
+    Every term is a mean over its valid tokens in the minibatch: the learner's living ships
+    (`own`) for surrogate, entropy, BC and value (value also averaged over levels, so it is
+    nats per softmax group); `next_valid` rows and their columns for the next-state squared
+    error against the target recorded at collection; the hit head's cross-entropy (nats)
+    over the `own` rows that have a hit label (rows without one contribute nothing). A
     next-state head whose width differs from the recorded target raises ValueError.
-    The value targets' range metrics (returns.support_usage) are averaged over the epochs;
-    a warning flag reads above 0 when any epoch raised it.
-    A minibatch is a set of whole environments with the full segment, run through
-    Policy.sequence from the stored carry. Advantages and value targets are recomputed
-    from the current weights at the start of every epoch. `generator` fixes the order of
-    the data; `update_index` sets the warm-up learning rate. With
-    config.targets_every_epoch False they come once from the values stored at collection.
-    `compiled` runs the loss
-    (forward and backward) and the critic's target pass as lean.learn.compiled's graphs;
-    Adam and the clipping stay eager. The measures stay on the device until the end: one
-    read-back per update.
+
+    A minibatch is a random set of views (one seat's whole segment each), run as
+    micro-batches of config.micro_batch_views views through Policy.sequence from the stored
+    carry, the last padded with the store's empty spare view; gradients accumulate over a
+    minibatch's micro-batches (each term divided by its whole-minibatch denominator, so the
+    sum is the minibatch's gradient), then one clipped Adam step. Advantages and value
+    targets (target_pass) come once per update from the values stored at collection; with
+    config.targets_every_epoch they are recomputed from the current critic at the start of
+    every epoch (a streamed forward pass over the rollout). The targets' range metrics (returns.support_usage) are averaged
+    over the epochs; a warning flag reads above 0 when any epoch raised it. `generator`
+    fixes the order of the data; `update_index` sets the warm-up learning rate. `compiled`
+    runs the loss (forward and backward) and the critic's target pass as
+    lean.learn.compiled's graphs; Adam and the clipping stay eager.
+
+    Host reads and waits: the data order once and the wait for the store's copies (both at
+    the start), the measures once at the end; the "percentile" normaliser reads a count per
+    target pass. Streaming adds a host wait per micro-batch only for a staging buffer's
+    copy of two micro-batches before (RolloutStore.batches).
     """
+    store = data if isinstance(data, RolloutStore) else RolloutStore.of(data)
     if compiled:
         from lean.learn import compiled as graphs
 
@@ -179,41 +205,60 @@ def update(
     for group in optimiser.param_groups:
         group["lr"] = rate
     bc_coefficient = bc_weight(config, scripted_win_rate)
-    device = rollout.done.device
-    bc_tensor = torch.tensor(bc_coefficient, device=device)
-    envs = rollout.done.shape[1]
-    totals: dict[str, Tensor] = {}
-    range_totals: dict[str, float] = {}
+    device = store.device
+    bc_tensor = to_device(torch.tensor(bc_coefficient), device)
+    views = store.views
+    size = min(config.micro_batch_views, views)
+
+    # Every epoch's data order, drawn on the generator's device and read in one go, with the
+    # host's wait for the store's copies.
+    draw_device = generator.device if generator is not None else torch.device("cpu")
+    orders = torch.stack([torch.randperm(views, generator=generator, device=draw_device) for _ in range(config.epochs)])
+    store.ready()
+    orders = orders.cpu()
+    target_index, _ = store.batch_index(torch.arange(views), size)
+    counts = store.counts()
+    loss_names = store.observation_names + LOSS_NAMES
+
+    totals = {name: torch.zeros((), device=device) for name in MEASURES + ("gradient_norm", "hit_labelled")}
+    usage = []
     steps = 0
-    stored = None
-    for _ in range(config.epochs):
-        batches = environment_batches(envs, config.minibatches, generator)
-        if config.targets_every_epoch:
-            advantage, target, usage = fresh_targets(config, policy, rollout, batches, values)
-        elif stored is None:
-            stored = advantage, target, usage = targets_from(config, rollout, rollout.value, rollout.value_centres)
-        for name, measure in usage.items():
-            range_totals[name] = range_totals.get(name, 0.0) + measure
-        for index in batches:
-            index = index.to(device)
+    for epoch in range(config.epochs):
+        if config.targets_every_epoch or epoch == 0:
+            usage.append(target_pass(config, policy, store, target_index, values if config.targets_every_epoch else None))
+        else:
+            usage.append(usage[-1])
+        advantage, target = store.advantage, store.target
+        index, owners = store.batch_index(orders[epoch], size, config.minibatches)
+        index_device = to_device(index, device)
+        for row, batch in enumerate(store.batches(loss_names, index)):
+            part = owners[row]
+            first, last = row == 0 or owners[row - 1] != part, row + 1 == len(owners) or owners[row + 1] != part
+            if first:
+                members = index_device[row:row + owners.count(part)].flatten()  # a minibatch's rows are consecutive
+                denominators = counts.index_select(0, members).sum(0)
+            views_now = batch["views"]
+            observation, offset = store.observation(batch)
             loss, measures = loss_of(
-                config, policy, map_fields(rollout.observation, lambda tensor: tensor[:, index]),
-                index_carry(rollout.initial_carry, index), rollout.reset[:, index], rollout.position_offset[:, index],
-                rollout.action[:, index], rollout.log_probability[:, index], advantage[:, index], target[:, index],
-                rollout.teacher[:, index], rollout.next_state[:, index], rollout.next_valid[:, index],
-                rollout.hit_label[:, index], bc_tensor,
+                config, policy, observation, batch["carry"], batch["reset"], offset, batch["action"],
+                batch["log_probability"], advantage.index_select(1, views_now), target.index_select(1, views_now),
+                batch["teacher"], batch["next_state"], batch["next_valid"], batch["hit_label"], bc_tensor, denominators,
             )
-            optimiser.zero_grad(set_to_none=True)
             loss.backward()
-            measures["gradient_norm"] = torch.nn.utils.clip_grad_norm_(policy.parameters(), config.gradient_clip).detach()
-            optimiser.step()
             for name, measure in measures.items():
-                totals[name] = totals[name] + measure if name in totals else measure
-            steps += 1
+                totals[name] += measure
+            if last:
+                totals["gradient_norm"] += torch.nn.utils.clip_grad_norm_(policy.parameters(), config.gradient_clip).detach()
+                totals["hit_labelled"] += denominators[2] / denominators[0].clamp(min=1.0)
+                optimiser.step()
+                optimiser.zero_grad(set_to_none=True)
+                steps += 1
     names = list(totals)
-    values_read = torch.stack([totals[name].float() for name in names]).tolist() if names else []
-    metrics = {name: total / max(1, steps) for name, total in zip(names, values_read, strict=True)}
-    metrics.update({name: total / config.epochs for name, total in range_totals.items()})
+    read = torch.cat([torch.stack([totals[name] for name in names]), torch.stack(usage).mean(0).flatten()]).tolist()
+    metrics = {name: total / max(1, steps) for name, total in zip(names, read[:len(names)], strict=True)}
+    levels = len(config.discounts)
+    rows = [read[len(names) + row * levels:len(names) + (row + 1) * levels] for row in range(4)]
+    metrics.update(usage_metrics(rows))
     metrics["bc_weight"] = bc_coefficient
     metrics["learning_rate"] = rate
     return metrics

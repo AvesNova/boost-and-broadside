@@ -101,6 +101,9 @@ class CollectCarry:
     reset: Tensor  # (E,) bool, the environment was re-dealt before the next tick
     position_offset: Tensor  # (E, 2) the model's position offset of the current match
     ledger: Ledger  # the rewards' outstanding damage per environment (lean.learn.rewards)
+    # (E,) long, each environment's row in the segment's deal table (Rollout.deal_table):
+    # r < E the environment r as the segment started, E + k the segment's deal k.
+    deal_row: Tensor
     next_episodes: NextEpisodes | None = None  # drawn by collect at each segment's start
 
 
@@ -111,6 +114,11 @@ class Rollout:
 
     observation: each seat's view, every field (T, S, ...); `own` marks the valued and
     trained rows (that seat's living ships), `key_mask` the attendable ones.
+    deal_row: (T, S) long, the seat's row in `deal_table`, {name: (2E, ...)}: the
+    observation fields constant within an episode (lean.learn.store.EPISODE_CONSTANT, those
+    the game's Obs has) and the position offset, once per deal (rows r < E: environment r as
+    the segment started; E + k: the segment's deal k). A RolloutStore keeps these instead of
+    the per-tick copies.
     action, teacher: (T, S, N) long joint actions (sampled; the scripted agent's choice).
     log_probability: (T, S, N). value: (T, S, N, LEVELS), zero outside `own`.
     reward: (T, S, N, LEVELS). done: (T, S) the seat's episode ended on this tick.
@@ -129,6 +137,8 @@ class Rollout:
     last tick. self_play: (S,) bool, the seat's environment is a self-play one.
     initial_carry: the live policy's carry before the first tick.
     state, carry: where to continue collecting.
+    Streamed into a RolloutStore (collect's `store`), the per-tick fields (observation to
+    hit_label, deal_row) are None: the store holds them.
     league_games, league_wins, scripted_games, scripted_wins, episodes: 0-d tensors
     counted over this rollout (episodes over environments; a win is the live team
     winning a league game). repeated_deals: 0-d, episodes of this segment that started
@@ -136,17 +146,19 @@ class Rollout:
     """
 
     observation: object
-    action: Tensor
-    teacher: Tensor
-    log_probability: Tensor
-    value: Tensor
-    reward: Tensor
-    done: Tensor
-    reset: Tensor
-    position_offset: Tensor
-    next_state: Tensor
-    next_valid: Tensor
-    hit_label: Tensor
+    action: Tensor | None
+    teacher: Tensor | None
+    log_probability: Tensor | None
+    value: Tensor | None
+    reward: Tensor | None
+    done: Tensor | None
+    reset: Tensor | None
+    position_offset: Tensor | None
+    next_state: Tensor | None
+    next_valid: Tensor | None
+    hit_label: Tensor | None
+    deal_row: Tensor | None
+    deal_table: dict
     bootstrap_value: Tensor
     value_centres: Tensor
     seat_environment: Tensor
@@ -161,6 +173,12 @@ class Rollout:
     scripted_wins: Tensor
     episodes: Tensor
     repeated_deals: Tensor
+
+    # The per-tick fields stacked from each tick's records (all but observation and hit_label).
+    TICK_FIELDS = (
+        "action", "teacher", "log_probability", "value", "reward", "done", "reset", "position_offset", "next_state",
+        "next_valid", "deal_row",
+    )
 
 
 def carry_axis(carry: Tensor) -> int:
@@ -337,6 +355,7 @@ def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: in
         reset=torch.ones(envs, dtype=torch.bool, device=device),
         position_offset=draw_position_offset(policy.config, envs, generator, device),
         ledger=blank_ledger(envs, slots, device),
+        deal_row=torch.arange(envs, device=device),
     )
     return state, carry
 
@@ -381,6 +400,7 @@ def redeal(opponent: Opponent, state, carry: CollectCarry, done: Tensor, generat
         reset=done,
         position_offset=take(pool.position_offset, carry.position_offset),
         ledger=clear_ledger(carry.ledger, done),
+        deal_row=torch.where(done, envs + index, carry.deal_row),
         next_episodes=dataclasses.replace(pool, taken=pool.taken + done.sum()),
     )
     return state, carry
@@ -498,10 +518,23 @@ def advance(
     return state, carry, records, counters
 
 
+def deal_table(game_config, state, carry: CollectCarry, game) -> dict[str, Tensor]:
+    """The segment's deal table (Rollout.deal_table): the episode-constant observation fields
+    the game's Obs has and the position offset, for the environments as the segment starts
+    and then for carry.next_episodes' deals. Two observe calls per segment, eagerly."""
+    from lean.learn.store import EPISODE_CONSTANT
+
+    pool = carry.next_episodes
+    now, dealt = game.observe(game_config, state, 0), game.observe(game_config, pool.state, 0)
+    table = {name: torch.cat([getattr(now, name), getattr(dealt, name)]) for name in EPISODE_CONSTANT if hasattr(now, name)}
+    table["position_offset"] = torch.cat([carry.position_offset, pool.position_offset])
+    return table
+
+
 @torch.no_grad()
 def collect(
     config: LearnConfig, game_config, policy, opponent: Opponent, state, carry: CollectCarry, ticks: int, generator,
-    *, game=None, scripted=None, compiled: bool = False,
+    *, game=None, scripted=None, compiled: bool = False, store=None, segment: int = 0,
 ) -> Rollout:
     """Step E environments for `ticks` ticks and record every seat the live policy plays.
 
@@ -513,6 +546,10 @@ def collect(
     game's deal, personas, learner team, position offset) with a league member drawn as they
     finish, and the carries are zeroed there; league games that end are added to the
     league's tallies.
+
+    `store` (a lean.learn.store.RolloutStore): each tick's records are streamed into its
+    segment `segment` as they are made (asynchronous copies to pinned memory on a GPU) and
+    the returned Rollout holds no per-tick fields. Without it they are stacked on the device.
 
     All random draws come from `generator`; with `compiled` (a tick's two halves, the
     snapshots' moves run as lean.learn.compiled's graphs) they come from
@@ -540,29 +577,39 @@ def collect(
     carry = dataclasses.replace(
         carry,
         next_episodes=draw_next_episodes(config, game_config, policy, opponent, envs, slots, generator, device, game, scripted),
+        deal_row=torch.arange(envs, device=device),
     )
+    table = deal_table(game_config, state, carry, game)
     initial_carry = carry.policy
-    records = {name: [] for name in ("observation", "action", "teacher", "log_probability", "value", "reward", "done", "reset", "position_offset", "next_state", "next_valid")}
+    if store is not None:
+        store.begin_segment(segment, ticks, initial_carry, table)
+    records = {}
     counters = {name: torch.zeros((), dtype=torch.long, device=device) for name in ("league_games", "league_wins", "scripted_games", "scripted_wins", "episodes")}
     # Hit labels over (tick, environment, slot), flat, with one spare entry at the end that
     # takes every bullet without a row in this segment.
     hit_label = torch.full((ticks * envs * slots + 1,), -1, dtype=torch.long, device=device)
     tick = torch.zeros((), dtype=torch.long, device=device)
+    seat_environment, _ = seats(carry.learner_team, self_play)
 
-    for _ in range(ticks):
+    for index in range(ticks):
         views, observation, seat_offset, joint, log_probability, value, teacher, policy_carry, _ = act_part(
             config, game_config, policy, opponent, state, carry, generator, game, scripted
         )
+        deal_row = carry.deal_row.index_select(0, seat_environment)
         league_action, opponent_carry = league_actions(config, opponent, views, carry, teacher, generator, snapshots)
         state, carry, tick_records, counters = advance_part(
             config, game_config, policy, opponent, state, carry, observation, joint, teacher, league_action,
             opponent_carry, policy_carry, tick, hit_label, counters, generator, game, scripted,
         )
-        for name, item in (
-            ("observation", observation), ("action", joint), ("log_probability", log_probability), ("value", value),
-            ("position_offset", seat_offset), *tick_records.items(),
-        ):
-            records[name].append(item)
+        tick_records = {
+            "observation": observation, "action": joint, "log_probability": log_probability, "value": value,
+            "position_offset": seat_offset, "deal_row": deal_row, **tick_records,
+        }
+        if store is not None:
+            store.write_tick(segment, index, tick_records)
+        else:
+            for name, item in tick_records.items():
+                records.setdefault(name, []).append(item)
         tick = tick + 1
 
     seat_environment, seat_team = seats(carry.learner_team, self_play)
@@ -572,18 +619,24 @@ def collect(
     bootstrap_value, centres = final[5], final[8]
     # After a reset the final observation belongs to a new episode; GAE never reads the
     # bootstrap there because `done` on the last tick cuts it.
+    seat_hit_label = hit_label[:-1].view(ticks, envs, slots).index_select(1, seat_environment)
 
-    first = records["observation"][0]
-    stacked = {
-        field.name: torch.stack([getattr(item, field.name) for item in records["observation"]])
-        for field in dataclasses.fields(first)
-        if isinstance(getattr(first, field.name), Tensor)
-    }
-    observation = dataclasses.replace(first, **stacked)
+    if store is not None:
+        store.end_segment(segment, seat_hit_label, bootstrap_value, centres)
+        observation, stacked, seat_hit_label = None, dict.fromkeys(Rollout.TICK_FIELDS), None
+    else:
+        first = records["observation"][0]
+        observation = dataclasses.replace(first, **{
+            field.name: torch.stack([getattr(item, field.name) for item in records["observation"]])
+            for field in dataclasses.fields(first)
+            if isinstance(getattr(first, field.name), Tensor)
+        })
+        stacked = {name: torch.stack(records[name]) for name in Rollout.TICK_FIELDS}
     return Rollout(
         observation=observation,
-        **{name: torch.stack(records[name]) for name in records if name != "observation"},
-        hit_label=hit_label[:-1].view(ticks, envs, slots).index_select(1, seat_environment),
+        **stacked,
+        hit_label=seat_hit_label,
+        deal_table=table,
         bootstrap_value=bootstrap_value,
         value_centres=centres,
         seat_environment=seat_environment,
