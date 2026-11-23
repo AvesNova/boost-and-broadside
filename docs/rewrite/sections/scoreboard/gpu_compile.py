@@ -49,7 +49,7 @@ def timed(run):
 
 
 def game_runner(per_team):
-    config = core.GameConfig.core()
+    config = core.GameConfig()
     generator = torch.Generator(device=DEVICE).manual_seed(0)
     sizes = torch.tensor([[per_team, per_team]], device=DEVICE).expand(E, 2)
     state = core.reset(config, E, sizes, generator, DEVICE)
@@ -72,7 +72,7 @@ def game_runner(per_team):
 def policy_runner(per_team):
     from lean import model
 
-    config = core.GameConfig.core()
+    config = core.GameConfig()
     generator = torch.Generator(device=DEVICE).manual_seed(0)
     sizes = torch.tensor([[per_team, per_team]], device=DEVICE).expand(E, 2)
     state = core.reset(config, E, sizes, generator, DEVICE)

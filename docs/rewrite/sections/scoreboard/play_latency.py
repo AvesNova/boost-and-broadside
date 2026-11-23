@@ -22,7 +22,7 @@ VARIANT, PER_TEAM = sys.argv[1], int(sys.argv[2])
 TICKS = int(sys.argv[3]) if len(sys.argv) > 3 else 1000
 DEVICE = torch.device("cpu")
 
-config = core.GameConfig.core(clock_ticks=10**9)
+config = core.GameConfig(clock_ticks=10**9)
 generator = torch.Generator().manual_seed(0)
 sizes = torch.tensor([[PER_TEAM, PER_TEAM]])
 state = core.reset(config, 1, sizes, generator, DEVICE)

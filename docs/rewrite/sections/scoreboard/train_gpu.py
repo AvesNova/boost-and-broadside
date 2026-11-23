@@ -3,7 +3,7 @@ against compiled, with peak memory, the first update's time (the compile) and th
 streaming the rollout.
 
     PYTHONPATH=. python docs/rewrite/sections/scoreboard/train_gpu.py \\
-        [--compile | --no-compile] [--envs 2048] [--segments 4] [--updates 3] [--game v2|core] \\
+        [--compile | --no-compile] [--envs 2048] [--segments 4] [--updates 3] \\
         [--minibatches 32] [--micro 64] [--stream | --no-stream] [--snapshots 8] \\
         [--targets-every-epoch] [--no-bf16] [--out rows.jsonl] [--label text]
 
@@ -53,7 +53,6 @@ def main() -> None:
     parser.add_argument("--envs", type=int, default=defaults.environments)
     parser.add_argument("--segments", type=int, default=defaults.segments_per_update)
     parser.add_argument("--updates", type=int, default=3)
-    parser.add_argument("--game", choices=("v2", "core"), default="v2")
     parser.add_argument("--minibatches", type=int, default=defaults.minibatches)
     parser.add_argument("--micro", type=int, default=defaults.micro_batch_views, help="LearnConfig.micro_batch_views")
     parser.add_argument("--stream", action=argparse.BooleanOptionalAction, default=defaults.stream_rollout)
@@ -74,7 +73,7 @@ def main() -> None:
     envs, ticks, segments = arguments.envs, config.segment_ticks, config.segments_per_update
     torch.manual_seed(arguments.seed)
     generator = torch.Generator(device=device).manual_seed(arguments.seed)
-    game_config = game.GameConfig(ghost_bullets=True) if arguments.game == "v2" else game.GameConfig.core()
+    game_config = game.GameConfig()
     policy = model.Policy(model.ModelConfig()).to(device)
     optimiser = make_optimiser(config, policy)
     league = League(1, config.snapshot_capacity, device, config.league_floor, config.league_decay)
@@ -88,7 +87,7 @@ def main() -> None:
     compiled = arguments.compile
     setting = {
         "label": arguments.label, "compile": compiled, "bf16": config.bf16, "envs": envs, "segments": segments, "ticks": ticks,
-        "game": arguments.game, "minibatches": config.minibatches, "micro_batch_views": config.micro_batch_views,
+        "minibatches": config.minibatches, "micro_batch_views": config.micro_batch_views,
         "stream": config.stream_rollout, "targets_every_epoch": config.targets_every_epoch, "epochs": config.epochs,
         "snapshots": league.snapshots, "torch": torch.__version__, "gpu": torch.cuda.get_device_name(),
     }
