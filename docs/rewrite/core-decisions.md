@@ -346,6 +346,21 @@ League (section 8)
 - 8.3 The weight averages and the cheese agents join the league (cheese agents checked to be
   reasonable).
 
+- Settled by the literature (2026-11-23, docs/rewrite/literature-recipe-1.md):
+  - 7.3 No KL early stop (off by default in SB3, CleanRL, Sample Factory); monitor and warn
+    when an epoch's mean approximate KL exceeds 0.02; a stop only if the warning fires
+    routinely.
+  - 7.4 Advantages divided by their standard deviation over the update, mean not subtracted;
+    the half-ported "percentile" option deleted; each level's share of the advantage variance
+    logged. Normalising each level before summing: an experiment arm.
+  - 7.5 Fixed coefficients on terms that do not depend on reward units (normalised
+    advantages; every other term a cross-entropy in nats); no retuning loop; gradient shares
+    and cosines kept as diagnostics only; a doubtful term gets an on/off arm.
+  - Entropy: a constant 0.003 bonus on the joint 42-way entropy; entropy logged as a fraction
+    of ln 42; an adaptive target-entropy coefficient only if entropy collapses.
+  - BC trains on the teacher's full distribution (`scripted.marginals`), not its sampled
+    action; a BC stage trains the critics too.
+
 ## Proposals, not decided
 
 - Remove v2's flight and damage models from lean/game once the core model is signed off
