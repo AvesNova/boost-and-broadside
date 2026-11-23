@@ -380,7 +380,44 @@ League (section 8)
   consecutive; v2 chained them. To fix: chain across the update's segments, bootstrap only at
   the end.
 
+## Answers from the author review, sections 7 to 10 and follow-ups (2026-11-23)
+
+- Crossover is an evaluation measure only, not run during training (for now).
+- League routing: each opponent gets a fixed row capacity (about 1.25 times an even share);
+  draws respect the capacities; rows sorted by opponent on the GPU each tick; a replaced
+  snapshot keeps playing its running games in a retiring slot until they end (no abandoned
+  games).
+- Clock measurement once everything else is settled.
+- Micro-batches: as large as fits the GPU's memory, all the same size (the size divides the
+  minibatch exactly). Streaming always on when micro-batching.
+- Position float32 in the rollout store.
+- Compile start-up (about 200 s cold) accepted; no recompile at a new team size.
+- The operation tripwire is a signal to look for bloat, not a hard limit.
+- Play: start uncompiled and switch to the compiled step once a background build is ready.
+  The frame budget to be re-measured with the full game, rendering included (rendering
+  later, without v2's bloat).
+- Section 10 code cleanup as the review lists.
+- 7.3 KL early stop off (not standard practice). 7.4 as the literature (standard deviation
+  over the update). 7.5 fixed coefficients on scale-free terms; gradient shares diagnostic
+  only. Entropy 0.003.
+- 7.1 BC: a BC stage cloning the teacher's full distribution on the student's own games, all
+  heads and critics trained; RL starts from the stage's averaged weights with a teacher term
+  that shrinks every update until it switches off (a reverse warm-up).
+- 7.2 An EMA and a uniform average kept (both in the league).
+- The next-state loss is HL-Gauss cross-entropy on bins; targets computed from the states.
+- BC on the full soft distribution.
+- Rotary: ratio 2 by default, irrational turns between bands, about 70 to 75% of each head
+  rotated.
+- No lookahead by default. Update 2,048 x 4 x 128 by default, returns chained over the full
+  512 ticks; 512-tick training sequences an arm.
+
 ## Proposals, not decided
+
+- Learning-rate schedule in RL: warm-up, constant, then a linear cooldown over the last 10 to
+  20% of a run with a fixed budget (warmup-stable-decay; Hagele et al. 2024), with the
+  averages kept throughout. Proposed 2026-11-23.
+- Shield next-state target: linear bins over the measured per-tick change (bounded), rather
+  than symlog. Proposed 2026-11-23.
 
 - Remove v2's flight and damage models from lean/game once the core model is signed off
   (author 2026-11-23: two flight models in one file go when relevant).
