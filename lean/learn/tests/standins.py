@@ -142,14 +142,28 @@ def personas(config, envs, slots, generator, device, spread):
     return {"aggression": torch.ones(envs, slots, device=device)}
 
 
-def act(config, state, team, persona, uniforms):
+def fresh_memory(envs, slots, generator, device):
+    return {"target": torch.full((envs, slots), -1, dtype=torch.long, device=device)}
+
+
+def renew_memory(memory, done, generator):
+    return {"target": torch.where(done[:, None], -1, memory["target"])}
+
+
+def draw_uniforms(envs, slots, generator, device):
+    return torch.zeros(envs, slots, 3, device=device)
+
+
+def act(config, state, team, persona, uniforms, memory):
     action = torch.zeros(*state.team.shape, 3, dtype=torch.long, device=state.team.device)
     action[..., 2] = 1 if team is None else (state.team == team).long()
-    return action
+    return action, {"target": memory["target"] + 1}  # counts the calls since the match began
 
 
 game = SimpleNamespace(reset=reset, step=step, draw_noise=draw_noise, deal=deal, take_deal=take_deal, reset_done=reset_done, observe=observe)
-scripted = SimpleNamespace(personas=personas, act=act)
+scripted = SimpleNamespace(
+    personas=personas, act=act, fresh_memory=fresh_memory, renew_memory=renew_memory, draw_uniforms=draw_uniforms
+)
 
 
 class TinyPolicy(nn.Module):

@@ -21,10 +21,10 @@ LEVEL_NAMES = {1: "fine", 2: "sustained", 3: "full"}
 POWER_NAMES = {0: "coast", 1: "dive (boost)", 2: "climb (reverse)"}
 GRID_SPACINGS = (25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0)
 BACKGROUND, GRID, GRID_MAJOR, TEXT = "#0d1117", "#1b2330", "#2a3546", "#d8dee9"
-PLAYER, CHASER, TRAIL, VELOCITY = "#58a6ff", "#ff6b6b", "#3b6ea8", "#7ee787"
+PLAYER, OPPONENT, TRAIL, VELOCITY = "#58a6ff", "#ff6b6b", "#3b6ea8", "#7ee787"
 HELP = (
     "arrows/A D turn (shift sustained, ctrl fine)   up/W dive   down/S climb   space fire   "
-    "tab ship   C chaser   P pause   +/- wheel zoom   R reset   esc quit"
+    "tab ship   C opponent   P pause   +/- wheel zoom   R reset   esc quit"
 )
 
 
@@ -57,7 +57,8 @@ class App:
         self.config = parse_config(args.set)
         self.time_scale = args.time_scale
         self.world = World(
-            self.config, player_type=card.TYPE_NAMES.index(args.ship), chaser_on=not args.no_chaser
+            self.config, player_type=card.TYPE_NAMES.index(args.ship), opponent_on=not args.no_opponent,
+            opponent=args.opponent,
         )
         self.zoom = args.zoom  # pixels per metre
         self.seconds, self.demo = args.seconds, args.demo
@@ -105,7 +106,7 @@ class App:
             elif k == "r":
                 self.world.reset()
             elif k == "c":
-                self.world.toggle_chaser()
+                self.world.toggle_opponent()
             elif k == "p":
                 self.paused = not self.paused
         if k in ("plus", "equal", "KP_Add"):
@@ -243,7 +244,7 @@ class App:
                     )
                     c.create_line(*screen(*tail), *screen(bx, by), fill=colour, width=2)
 
-        for ship, colour in ((1, CHASER), (0, PLAYER)):
+        for ship, colour in ((1, OPPONENT), (0, PLAYER)):
             if not bool(s.alive[0, ship]):
                 continue
             x, y, heading = poses[ship]
@@ -256,7 +257,7 @@ class App:
                 fill=VELOCITY,
             )
             if ship == 1:
-                self.chaser_marker(
+                self.opponent_marker(
                     screen(x, y), width, height, math.hypot(x - camera_x, y - camera_y)
                 )
 
@@ -280,16 +281,16 @@ class App:
         cx, cy = screen(x, y)
         self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r, outline="#30363d")
 
-    def chaser_marker(self, point, width, height, distance):
+    def opponent_marker(self, point, width, height, distance):
         px, py = point
         if 0 <= px <= width and 0 <= py <= height:
             return
         dx, dy = px - width / 2, py - height / 2
         scale = min((width / 2 - 30) / max(abs(dx), 1e-6), (height / 2 - 30) / max(abs(dy), 1e-6))
         ex, ey = width / 2 + dx * scale, height / 2 + dy * scale
-        self.canvas.create_oval(ex - 6, ey - 6, ex + 6, ey + 6, fill=CHASER)
+        self.canvas.create_oval(ex - 6, ey - 6, ex + 6, ey + 6, fill=OPPONENT)
         self.canvas.create_text(
-            ex, ey - 14, text=f"{distance:.0f} m", fill=CHASER, font=("TkFixedFont", 9)
+            ex, ey - 14, text=f"{distance:.0f} m", fill=OPPONENT, font=("TkFixedFont", 9)
         )
 
     def draw_readout(self):
@@ -316,8 +317,8 @@ class App:
             f"store  {100 * r['store']:6.1f} %",
             "",
             f"shield {100 * r['shield']:5.0f} %   deaths {w.deaths}"
-            f"   chaser kills {w.chaser_kills}",
-            f"chaser {'on' if w.chaser_on else 'off'}  (c)" + ("   PAUSED" if self.paused else ""),
+            f"   opponent kills {w.opponent_kills}",
+            f"opponent {'on' if w.opponent_on else 'off'}  (c)" + ("   PAUSED" if self.paused else ""),
         ]
         self.canvas.create_rectangle(
             6, 6, 430, 20 + 17 * len(lines), fill="#161b22", outline="#30363d"
@@ -377,7 +378,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ship", choices=card.TYPE_NAMES, default=card.TYPE_NAMES[0])
     parser.add_argument(
-        "--no-chaser", action="store_true", help="start without the chaser (C toggles it)"
+        "--no-opponent", action="store_true", help="start without the opponent (C toggles it)"
+    )
+    parser.add_argument(
+        "--opponent",
+        choices=("scripted", "chaser"),
+        default="scripted",
+        help="the scripted opponent (the yardstick, as in training and evaluation) or the chaser",
     )
     parser.add_argument(
         "--time-scale",

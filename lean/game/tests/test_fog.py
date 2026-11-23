@@ -7,7 +7,7 @@ import math
 import torch
 
 from lean.game import GameConfig, card, core, draw_noise, observe, reset, step
-from lean.scripted import ScriptedConfig, act, chaser_act, draw_uniforms, personas
+from lean.scripted import ScriptedConfig, act, chaser_act, draw_uniforms, fresh_memory, personas
 from lean.scripted.opponent import engage
 
 torch.set_num_threads(1)
@@ -315,9 +315,11 @@ def test_scripted_opponent_does_not_cheat():
     slots = state.x.shape[1]
     persona = personas(config, 1, slots, torch.Generator().manual_seed(1), CPU, 1.0)
     uniforms = draw_uniforms(1, slots, torch.Generator().manual_seed(2), CPU)
-    assert torch.equal(
-        act(config, state, 0, persona, uniforms), act(config, other, 0, persona, uniforms)
-    )
+    memory = fresh_memory(1, slots, torch.Generator().manual_seed(3), CPU)
+    first, first_memory = act(config, state, 0, persona, uniforms, memory)
+    second, second_memory = act(config, other, 0, persona, uniforms, memory)
+    assert torch.equal(first, second)
+    assert torch.equal(first_memory["target"], second_memory["target"])
     assert torch.equal(chaser_act(config, state, 0), chaser_act(config, other, 0))
     # With the other seen enemies seen dead, the hidden ship 7 at its last-seen place is every
     # ship's target, though it is truly elsewhere; never-seen ship 9 is not a target.
