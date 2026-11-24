@@ -46,6 +46,8 @@ copied from the docs named beside them; none are new.
 
 **S1. BFM-CMA2 as the yardstick and BC teacher (confirm after flying)**
 
+**Status (2026-11-25):** decided — stays provisional; re-checked on today's game (9,216 games each, panel of 8): CMA2 0.632, CMA1 0.599, default 0.515, CMA2 ahead in all 18 conditions, so no CMA round (morning-notes.md, step 3). Your confirmation after flying is still open.
+
 - **What.** Provisional since about 12:30, pending your flying and the caveats below. It is
   the code default since 12:28 (BFM-default kept as `BFM_DEFAULT_2026_11_24`). Its numbers
   below predate tonight's stick levels (see F3).
@@ -80,6 +82,8 @@ copied from the docs named beside them; none are new.
 
 **S2. The lead turn and the yo-yo: delete or keep**
 
+**Status (2026-11-25):** done — both deleted (your call 2026-11-24 night; merged, core-decisions.md "Scripted BFM").
+
 - **What.** The screening found both lowering skill at every setting above 0. The review
   found both built wrong in the same way: inside gun range they took the nose off the gun.
   The high yo-yo also had no aspect condition, so it lagged at the beam. Both are fixed: the
@@ -104,6 +108,8 @@ copied from the docs named beside them; none are new.
 
 **S3. The yo-yo's closure signal saturates**
 
+**Status (2026-11-25):** done — the yo-yo is gone; the signal is frozen at its saturated value -1, so the energy half (the chase speed) stays and nothing else (morning-notes.md, step 2).
+
 - **What.** The wanted closure is about 0.8 v_c at gun range against a scale of 0.1 v_c, so
   the yo-yo signal y sits near -1 almost everywhere (mean -0.97 over the low yo-yo's ticks
   in brawls; yo-yo review Y3). y also sets the yardstick's speed target and stick cap: the
@@ -116,6 +122,8 @@ copied from the docs named beside them; none are new.
 - **Blocks.** Nothing now.
 
 **S4. Freeze the rows that change neither skill nor behaviour**
+
+**Status (2026-11-25):** partly done — the reach check (scripted-reach.md) deleted 9 rows and 6 gates and froze turning_floor and boundary_margin (merged; your confirmation of the trim is open). The remaining flat rows are untouched.
 
 - **What.** 22 of the 34 sampled rows show no skill effect (screening). Measured by behaviour
   as well (divergence), 16 are flat in both: turn, yo_yo_scale, power_scale, turning_floor,
@@ -133,6 +141,8 @@ copied from the docs named beside them; none are new.
 
 **S5. The overshoot rule almost never fires**
 
+**Status (2026-11-25):** done — the widened gate changed little (fires on 0.006% of states), so the rule is deleted (morning-notes.md, step 4).
+
 - **What.** It acts on 5 of 98,014 stored ship-states. Its track-crossing gate (under 1 rad)
   passes on 0.005% of states (divergence). Shaw gives no number for that gate (notes, E2b).
   The rule is the reversal in the design's flying list ("overshoot it fast and close and it
@@ -143,6 +153,8 @@ copied from the docs named beside them; none are new.
 - **Blocks.** Nothing.
 
 **S6. Trim the scripted call (ablate whole flat mechanisms)**
+
+**Status (2026-11-25):** done — reach check, then trim merged: scripted call 470 -> 343 operations; skill 0.632 -> 0.631 (-0.001 +- 0.007) (morning-notes.md, step 4).
 
 - **What.** The call is 433 operations for both teams after the fix (yo-yo review). It was
   208 before E2, the design estimated about 270, and the sign-off was 188. Compile cost
@@ -270,6 +282,8 @@ design", "Design profiles", "Simpler flight and design"). Merged at df4b8138.
 
 **F1. Fly the simplified P-51D**
 
+**Status (2026-11-25):** decided — good enough (your answer 2026-11-24 night). Since then: gradual stick on left Alt (not Ctrl), and the card is the airframe with a 2,200 hp engine (416 mph, 4,882 ft/min) under the "airframe and engine" profile; the numbers in the table below are the earlier card's.
+
 - **What.** Tonight's model, being merged now:
   - Design inputs: stall speed, g limit, top level speed, best climb, span efficiency e 0.85,
     separation drag 0.3 at exponent 8 (a gentle rise near max lift, not a wall). Only the
@@ -311,6 +325,8 @@ design", "Design profiles", "Simpler flight and design"). Merged at df4b8138.
 - **Blocks.** Nothing.
 
 **F3. The scripted agents under the new stick levels**
+
+**Status (2026-11-25):** done — the re-check on today's game kept BFM-CMA2 as the yardstick; no CMA round (morning-notes.md, step 3).
 
 - **What.** BFM-CMA2 (the provisional yardstick) and the other BFM vectors were tuned when
   "sustained" was derived through the best sustained point. Their turn levels and the speed
@@ -396,6 +412,8 @@ Game rules (G2, notes):
 ### Decisions for you
 
 **L1. Re-measure the measured ranges before the BC dry run**
+
+**Status (2026-11-25):** in progress (another branch).
 
 - **What.** Three sets of numbers were measured on 2026-11-23, before A1 changed the P-51D
   (flaps, solved terms) and before E2 and BFM-CMA2 changed the teacher:
@@ -538,6 +556,8 @@ Model (M, notes):
 
 **V3. Two numbers to explain before quoting them**
 
+**Status (2026-11-25):** done — the 2.5x collect is real: since L2's league routing each slot runs only its own rows (about 1,170 against 8,192 a tick); the 11-23 row reproduced exactly (19,736) (morning-notes.md, step 7; scoreboard.md "Why collect was 2.5x").
+
 - **Collect 2.5x faster.** At parity, collect went from the 2026-11-23 core-game row to
   49,796 steps/s, loop +17%. The cause was not isolated (scoreboard, 2026-11-24 row). A jump
   that size can hide skipped work.
@@ -615,6 +635,8 @@ Web tool (W):
 
 **C2. Line length** (carried from review 1, item 10.2)
 
+**Status (2026-11-25):** decided — the modern standard, applied by the formatter and run often (project line length 100).
+
 - **What.** lean is written at 120 columns against the project's 100. `ruff check lean`
   gives 532 findings, 529 of them line length (`lean-review-2026-11-24.md`).
 - **Options.** Reformat to 100; give lean/ its own 120 setting.
@@ -629,12 +651,16 @@ Web tool (W):
 
 **C4. `core-brief.md`** (carried, 11.3; backlog F1)
 
+**Status (2026-11-25):** done — rewritten as goals and standards (about 1,200 words); its last section lists 9 points for you to confirm (morning-notes.md, step 6).
+
 - **What.** The plan document no longer matches core-decisions.
 - **Options.** Rewrite it; mark it superseded by core-decisions.
 - **Recommendation.** Mark it superseded (one line). core-decisions and the backlog already
   hold the plan.
 
 **C5. Review 1's leftovers**
+
+**Status (2026-11-25):** done — one agent step (`lean.model.agent.agent_step`) and one game tick (`lean.game.tick`); `advance` 16 -> 10 parameters, `slot_actions` 11 -> 7; `act` returns a named `Decision` (morning-notes.md, step 5).
 
 - **What.** Two items were not done (worklog 05:55):
   - one tick written three times (training's act keeps its direct policy call);

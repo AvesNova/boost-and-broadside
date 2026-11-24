@@ -27,7 +27,9 @@ then `ensure([(a, b, (4, 4), games)])`, `adaptive(pairings, target_error=0.02)`,
   (the queue's end, or `seconds`) no game starts and every started game plays to its end (the
   drain), so the results are a prefix of the queue with each game whole. A seat is one network
   for every game, or a scripted agent per game. Deals are drawn once per 32-tick segment; each
-  network match draws its own position offset, as in training.
+  network match draws its own position offset, as in training. A network acts through `lean.model.agent.network_step` (the agent step training's
+  live policy and the league share) and the game steps through `lean.game.tick` (shared with
+  the rollout and the sandbox).
 - `store.py`: the store (agents, conditions, games, a `counts` view, a `styles` view, Sobol
   streams), `ScriptedAgent`, `NetworkAgent`, `game_version`.
 - `style.py`: style counters, summed per slot and seat inside the compiled tick (no host read),
@@ -62,7 +64,7 @@ graph for: new scripted vectors, another network of the same architecture, team 
 one queue, E and the queue length, a new arena radius, spawn rule or clock. Fog off compiles a
 new graph. Not measured: field count, lineup, another architecture.
 
-## Numbers (2026-11-24, laptop RTX 4070, performance profile, core game 4v4)
+## Numbers (2026-11-24, laptop RTX 4070, performance profile, core game 4v4, then a 5,400-tick clock)
 
 | | games/s | game ticks/s |
 |---|---|---|

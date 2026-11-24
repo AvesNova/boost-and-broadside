@@ -63,14 +63,13 @@ experiment arm.
 
 ## Numbers (2026-11-24, core game, 4v4, laptop CPU/GPU)
 
-- New yardstick against the old one (4v4, seats alternated, 640 games): scores 0.413 +- 0.019.
-  The old agent dives its store away in the first seconds and wins equal starts; the new one
-  banks it. Against itself the side with more energy wins nearly every offset head-on start.
-- Brawl, both teams the yardstick, 256 environments x 5,400 ticks: 6.45 kills per
+- Against the agent it replaced (code removed; 4v4, seats alternated, 640 games): 0.413 +- 0.019.
+  Against itself the side with more energy wins nearly every offset head-on start.
+- Brawl, both teams the yardstick, 256 environments x 5,400 ticks (the clock then; it is 1,800 now): 6.45 kills per
   environment-minute, mean speed 0.72 corner speeds, mean store 0.23, firing 10% of ship-ticks,
   874 games ended, mean length 1,314 ticks, 0.03% of ship-ticks beyond the arena radius.
-- Operations, `act` for both teams, E = 256, 5v5: 387 compute + 108 view (2026-11-25, after
-  the lead turn and the yo-yos went; 470 + 109 before with BFM-CMA2's nonzero rows)
+- Operations, `act` for both teams, E = 256, 5v5: 343 operations (2026-11-25, after the
+  lead turn, the yo-yos and the no-effect mechanisms went; 470 before)
   (`docs/rewrite/sections/scoreboard/game_ops.py`).
 
 ## Tests
@@ -88,9 +87,10 @@ holds the references equal to the quasi-steady analysis.
   merge speed by plan; no banking close to a higher-energy opponent.
 - Removed (author 2026-11-25): the lead turn and the yo-yos
   (`docs/rewrite/lead-turn-yo-yo-review.md`; `docs/rewrite/author-review-2.md`, "Later
-  experiments"). The yo-yo signal sat at its saturated value (y ≈ -1), so it was frozen
-  there: what survives is the chase speed above and `no_bank` against a straight target.
+  experiments") and, after the reach check, the overshoot reversal, the spend terms, the
+  two-circle cash, the break relaxation and the defend gate. What survives of the yo-yo is the
+  chase speed above and `no_bank` against a straight target.
 - The plan alternates at every neutral pass (Shaw switches after one or two turns).
 - The in-range gate uses the gun range without fields. No retreat or extend (decision 5.7).
-- The yardstick is still the weaker of the two agents; the screening and search that choose it
-  are the next step (`docs/rewrite/core-backlog.md`).
+- BFM-CMA2 stays the yardstick, no further search round (morning-notes.md, step 3). The search
+  script `scripted-screening/search.py` no longer imports; a round needs new search rows.
