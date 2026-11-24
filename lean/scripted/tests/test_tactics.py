@@ -99,15 +99,30 @@ def test_tail_chase_falling_behind_out_of_range_leads_and_dives():
 
 
 def test_lag_and_lead_aim_behind_and_ahead_of_a_crossing_target():
-    """He crosses left to right ahead of me, nose away: falling behind out of gun range I lead
-    (aim right of him), closing fast in range I lag (aim left of him); pure pursuit would
-    point at him."""
+    """He crosses left to right ahead of me, nose away (aspect 56 deg): falling behind out of
+    gun range I lead (aim right of him), closing fast out of gun range I lag (aim left of him);
+    pure pursuit would point at him. Closing fast inside gun range the lag is still asked for,
+    but the gun owns the nose (docs/rewrite/lead-turn-yo-yo-review.md)."""
     heading = -math.pi / 2 + 0.6
     lead = decision(ship(speed=0.5), ship(1.5 * GUN, heading=heading, speed=0.8), config=BFM)
-    lag = decision(ship(speed=1.2), ship(0.8 * GUN, heading=heading, speed=0.8), config=BFM)
+    lag = decision(ship(speed=1.8), ship(1.2 * GUN, heading=heading, speed=0.3), config=BFM)
+    assert first(lag.situation.aspect) < math.pi / 3
     assert first(lead.pursuit_time) > 0.0 > first(lag.pursuit_time)
     assert first(lead.stick_error) < first(lead.situation.bearing)
     assert first(lag.stick_error) > first(lag.situation.bearing)
+    in_range = decision(ship(speed=1.2), ship(0.8 * GUN, heading=heading, speed=0.8), config=BFM)
+    assert first(in_range.pursuit_time) < 0.0
+    assert abs(first(in_range.stick_error) - first(in_range.gun_error)) < 0.05
+
+
+def test_no_high_yo_yo_lag_at_the_beam():
+    """Closing fast with him crossing at the beam (aspect 90 deg, the 3/9 line): the high
+    yo-yo's lag needs him in my rear quarter (Shaw p. 71), so no lag pursuit."""
+    yo_yo_only = BFM.replace(lead_turn_scale=0.0)
+    crossing = ship(1.2 * GUN, heading=-math.pi / 2, speed=0.5)
+    beam = decision(ship(speed=1.2), crossing, config=yo_yo_only)
+    assert first(beam.yo_yo) > 0.0
+    assert abs(first(beam.pursuit_time)) < 0.05
 
 
 def test_defensive_breaks_into_him_and_spends_the_store():
