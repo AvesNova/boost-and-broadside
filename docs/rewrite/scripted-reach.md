@@ -112,3 +112,39 @@ either sense differs from the sign by over 0.05.
 re-flown. The states are those of the current agent, so a mechanism that would lead the fight
 elsewhere if removed is not seen. Small counts: the overshoot (6 and 65 states) and the commit
 tick of the switch (54).
+
+## Trim (2026-11-25)
+
+Agent's call after the reach check (author to confirm). Branch scripted-trim, from core at
+7e115a79.
+
+**Deleted** (code, rows, gates, tests): the overshoot rule (overshoot_range, overshoot_rate,
+overshoot_crossing; `Explanation.overshoot`); the spend term with its gates (spend_need,
+spend_range, spend_share); the two-circle cash (cash_angle: two-circle now holds the middle
+level at the fight speed); the break relaxation and the defend range (relax_angle,
+defend_range: a defensive ship always breaks, full stick at corner speed); the speed-floor
+clamp (speed_floor stays as the scissors' target). Nine rows and six gates fewer.
+**Frozen**: turning_floor and boundary_margin are fixed rows (law "fixed"), so personas no
+longer sample them. Kept: switch_gain, scissors_range, the boundary steer, weakest_weight.
+
+**Re-check** (`sections/scripted-reach/trim_recheck.py`, `trim_recheck.json`; GPU unit
+bnb-trim-recheck, 18 min). Panel skill: the recheck protocol (panel of 8, 18 conditions, 64
+games a cell, label "recheck"), fresh store data/scripted-screening/trim-2026-11-25.sqlite.
+The untrimmed figure is recheck.json's BFM-CMA2 (the same protocol on core before the trim;
+lean/ unchanged between). Each side's panel runs on its own code, so the comparison is not
+paired; the difference's error adds the two in quadrature. Head to head: the trimmed default
+against a frozen copy of the untrimmed code (`untrimmed/`) in the same games, 64 a condition,
+seats alternating, each team with its own code and memory.
+
+| measure | untrimmed (BFM-CMA2) | trimmed | difference |
+|---|---|---|---|
+| panel skill (9,216 games each) | 0.6319 +- 0.0050 | 0.6311 +- 0.0047 | -0.0008 +- 0.0068 |
+| by radius 3,000 / 4,200 / 6,000 m | 0.621 / 0.631 / 0.644 | 0.629 / 0.634 / 0.630 | |
+| by size 3v3 / 4v4 / 5v5 | 0.614 / 0.636 / 0.645 | 0.610 / 0.640 / 0.643 | |
+| head to head, trimmed score (1,152 games) | | 0.495 +- 0.015 | |
+
+The trimmed skill is 0.1 standard errors below the untrimmed one, within the 2-error bar, and
+the head to head is even: **the trim is accepted**; nothing was restored.
+
+**Operations** (scoreboard/game_ops.py, uncompiled, one thread): the scripted call for both
+teams 387 -> 343 compute operations (one team 394 -> 350); view operations 108 -> 104.

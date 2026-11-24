@@ -220,7 +220,6 @@ class Explanation:
     gun_error: Tensor  # radians to the gun's lead point, positive left
     sense: Tensor  # the committed turn sense after this decision (memory "sense")
     last_pass: Tensor  # memory "last_pass" after this decision
-    overshoot: Tensor  # bool: he overshot (the sense reversed to the short way)
 
 
 def _per_other(value: Tensor | float) -> Tensor | float:
@@ -296,12 +295,6 @@ def explain(
             "engaged": range_ratio,
             "front": situation.bearing.abs(),
             "rear": situation.aspect,
-            "defend": range_ratio,
-            "shot_near": turn_needed / (situation.store * c["store_turn"] + TINY),
-            "spend_need": turn_needed,
-            "spend_range": range_ratio,
-            "cash": situation.angles_off,
-            "relax": situation.angles_off,
             "scissors": safe_distance / c["sustained_radius"],
             "level_cap": state.speed / c["middle_stick_speed"],
             "aligned": turn_needed / target_size,
@@ -341,15 +334,12 @@ def explain(
     # - offensive: the chase speed, the fight speed raised against a turning target by the
     #   ratio of corner to sustained speed (against a straight one the engine closes: no
     #   climb, `no_bank`);
-    # - turning, two-circle (the energy plan, Shaw p. 110): ease to the middle level and
-    #   bank above the fight speed until his angular advantage reaches the cash angle, then
-    #   full stick at corner speed (cash the store); one-circle: full stick at the fight
-    #   speed, down to the speed floor inside the scissors range (Shaw p. 83);
-    # - defensive (Shaw pp. 132-134): break (full stick, corner speed) while he is inside
-    #   the defend range with more than the relax angle of advantage, else a hard turn
-    #   (middle level) at the fight speed;
-    # - offensive and turning: corner speed when a shot is near (spend for a purpose).
-    near = gate["shot_near"] * gate["spend_need"] * gate["spend_range"]
+    # - turning, two-circle (the energy plan, Shaw p. 110): the middle level at the fight
+    #   speed; one-circle: full stick at the fight speed, down to the speed floor inside the
+    #   scissors range (Shaw p. 83);
+    # - defensive (Shaw pp. 132-134): break (full stick, corner speed).
+    # (The spend for a near shot, the two-circle cash and the graded defence were removed
+    # after the reach check: rarely reached, small effect there, scripted-reach.md.)
     log_corner = _log(c["corner_speed"])
     log_fight = _log(fight_speed)
     log_merge = _log(read("merge_speed") * c["corner_speed"])
@@ -357,22 +347,15 @@ def explain(
     turning_target = situation.target_sense.abs()
     log_chase_speed = log_fight + turning_target * _log(c["corner_speed"] / c["sustained_speed"])
     two_circle = 0.5 * (1.0 + situation.flow)
-    cash, break_turn = gate["cash"], gate["defend"] * gate["relax"]
-    log_two_circle = log_fight + cash * (log_corner - log_fight)
     log_one_circle = log_fight + gate["scissors"] * (log_floor - log_fight)
-    log_turning = log_one_circle + two_circle * (log_two_circle - log_one_circle)
+    log_turning = log_one_circle + two_circle * (log_fight - log_one_circle)
     log_target = (
         (weights["disengaged"] + weights["merge"]) * log_merge
-        + weights["offensive"] * (log_chase_speed + near * (log_corner - log_chase_speed))
-        + weights["turning"] * (log_turning + near * (log_corner - log_turning))
-        + weights["defensive"] * (log_fight + break_turn * (log_corner - log_fight))
+        + weights["offensive"] * log_chase_speed
+        + weights["turning"] * log_turning
+        + weights["defensive"] * log_corner
     )
-    log_target = log_target.clamp_min(log_floor)
-    cap = (
-        weights["disengaged"] * gate["level_cap"]
-        + weights["turning"] * two_circle * (1.0 - cash)
-        + weights["defensive"] * (1.0 - break_turn)
-    )
+    cap = weights["disengaged"] * gate["level_cap"] + weights["turning"] * two_circle
     # Chasing a target that is not turning: no banking (the engine closes).
     no_bank = weights["offensive"] * (1.0 - turning_target)
 
@@ -398,9 +381,6 @@ def explain(
     # The committed turn sense (design B3, decided: hysteresis by concrete rules):
     # - release when he comes forward of my 3/9 line (by the release band), or the target
     #   changes;
-    # - overshoot (Shaw pp. 67, 75-76): he is aft, inside the overshoot range, crossing my six
-    #   from the side I turn to at more than the overshoot rate, with a small track-crossing
-    #   angle, and I am no faster than him: reverse (the sense becomes the short way), level;
     # - commit when he moves aft with no sense held: the plan's sense. The plan is two-circle
     #   when my energy advantage is above the plan threshold, else one-circle; at a later pass
     #   it is the last pass's plan, switched when it gained less than the switch gain in
@@ -413,21 +393,7 @@ def explain(
     forward = bearing_size < line - read("release_band")
     held = memory["sense"]
     held = torch.where(same_target & ~forward, held, 0.0)
-    bearing_rate = situation.sight_rate * c["sustained_rate"] - state.nose_rate
-    crossing_cos = (
-        state.heading_cos * fight.target_heading_cos + state.heading_sin * fight.target_heading_sin
-    )
-    overshoot = (
-        aft
-        & (held != 0.0)
-        & (bearing_rate * held > 0.0)
-        & (bearing_rate.abs() > read("overshoot_rate") * c["sustained_rate"])
-        & (fight.distance < read("overshoot_range") * c["sustained_radius"])
-        & (crossing_cos > _cos(read("overshoot_crossing")))
-        & (state.speed <= fight.target_speed)
-    )
     short_way = torch.where(situation.bearing > 0.0, 1.0, -1.0)
-    held = torch.where(overshoot, short_way, held)
     commit = aft & (held == 0.0)
     his_turn = torch.where(
         situation.target_sense.abs() > 0.5, torch.sign(situation.target_sense), 0.0
@@ -479,7 +445,7 @@ def explain(
     top = c["inverse_fade"] / c["inverse_max_energy"] - bottom
     room = torch.stack([top, bottom], -1).clamp(0.0, 1.0)
     climb, dive = (climb_dive * room).unbind(-1)
-    climb = torch.where(overshoot, 0.0, climb * (1.0 - no_bank))
+    climb = climb * (1.0 - no_bank)
     dive = dive * (weights["offensive"] + weights["turning"] + weights["defensive"])
     power_floor = _last(read("power_floor"))
     power = power_floor + (1.0 - 3.0 * power_floor) * torch.stack(
@@ -500,18 +466,12 @@ def explain(
         gun_error=gun_error,
         sense=sense,
         last_pass=last_pass,
-        overshoot=overshoot,
     )
 
 
 def _log(x: Tensor | float) -> Tensor | float:
     """The natural log of a number or a tensor."""
     return torch.log(x) if isinstance(x, Tensor) else math.log(x)
-
-
-def _cos(x: Tensor | float) -> Tensor | float:
-    """The cosine of a number or a tensor."""
-    return torch.cos(x) if isinstance(x, Tensor) else math.cos(x)
 
 
 def _last(x: Tensor | float) -> Tensor | float:

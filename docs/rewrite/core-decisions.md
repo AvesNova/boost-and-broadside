@@ -476,6 +476,11 @@ League (section 8)
 - The lead turn and the yo-yos are deleted (author 2026-11-25, review S2/S3; on the "Later
   experiments" list): the saturated yo-yo signal is frozen at -1, leaving the chase speed
   (fight speed raised by corner over sustained speed against a turning target).
+- Trimmed after the reach check (2026-11-25; agent's call, after the reach check; author to
+  confirm): the overshoot rule, the spend term and its three gates, the two-circle cash, the
+  break relaxation and the defend range (a defensive ship always breaks) and the speed-floor
+  clamp are deleted; turning_floor and boundary_margin are no longer sampled
+  (scripted-reach.md "Trim").
 
 ## Flight model direction and shared code (2026-11-24 night)
 

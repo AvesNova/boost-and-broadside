@@ -32,14 +32,22 @@ from pathlib import Path
 
 import torch
 
-from lean import game, scripted
+from lean import game
 from lean.contract import State
 from lean.learn.rollout import teacher_joint
-from lean.scripted import ScriptedConfig
-from lean.scripted.parameters import PARAMETERS, SAMPLED, box_point, rows_of, vector
 
+# The agent measured is the untrimmed one (before scripted-reach.md "Trim"): its frozen copy.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import probe  # noqa: E402
+import untrimmed.opponent as scripted  # noqa: E402
+from untrimmed.parameters import (  # noqa: E402
+    PARAMETERS,
+    SAMPLED,
+    ScriptedConfig,
+    box_point,
+    rows_of,
+    vector,
+)
 
 HERE = Path(__file__).resolve().parent
 SLOTS = 8

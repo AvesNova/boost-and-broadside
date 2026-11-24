@@ -30,12 +30,16 @@ Decisions: `docs/rewrite/core-decisions.md` ("Scripted opponent", "Scripted BFM"
 2. `assess`, and the gun's lead point (drag-law flight time in the medium): the stick's
    wanted point, unless the boundary steer blends in.
 3. The fight's gates in one logistic: engaged (3 gun ranges), front and rear on the 3/9 line,
-   defend, shot near, cash, relax, scissors, the stick caps, the gun.
+   scissors, the stick caps, the gun. (The spend for a near shot, the two-circle cash, the
+   graded defence and the overshoot reversal were removed after the reach check,
+   docs/rewrite/scripted-reach.md "Trim".)
 4. Tactic weights (sum 1): disengaged, merge, offensive, turning, defensive.
 5. Commands mixed as scalars: speed target v* (log space), stick cap. Offensive, v* is the
    chase speed: the fight speed, raised by corner over sustained speed against a turning target.
+   Turning: two-circle the middle level at the fight speed; one-circle full stick, down to the
+   speed floor inside the scissors range. Defensive: a break (full stick, corner speed).
 6. The committed turn sense (memory): commit at the pass by the plan, hold while he is aft,
-   release when he comes forward or the target changes, reverse on his overshoot.
+   release when he comes forward or the target changes.
 7. Control laws: stick (nested gates, the cap, the side by the sense or the short way, the
    boundary steer), power (climb above v* + band, dive below v* - band, each faded at its store
    edge), fire (aligned, in range at the lead point, never through a team-mate).

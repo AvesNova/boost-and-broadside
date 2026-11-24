@@ -23,14 +23,8 @@ def constants():
 
 C = constants()
 CORNER, GUN, RADIUS = C["corner_speed"], C["gun_range"], C["sustained_radius"]
-# A persona with Shaw's graded defence (break inside one gun range, relax at 90 deg of his
-# advantage). It stands on the previous defaults, not on BFM-CMA2: the persona does not move
-# with the yardstick.
-BFM = (
-    ScriptedConfig()
-    .replace(**BFM_DEFAULT_2026_11_24)
-    .replace(relax_angle=1.5 * math.pi, defend_range=1.0)
-)
+# The previous defaults (fight speed 1), not BFM-CMA2: the chase test is set against them.
+BFM = ScriptedConfig().replace(**BFM_DEFAULT_2026_11_24)
 
 
 def sustained_speeds(multiple):
@@ -125,11 +119,10 @@ def test_merge_and_turning_quadrants():
     assert abs(first(turning.speed_target) / fight - 1.0) < 0.05
 
 
-def test_two_circle_banks_at_the_sustained_level_then_cashes():
+def test_two_circle_banks_at_the_middle_level():
     """Turning (both behind each other's 3/9 line), both turning left (two-circle): the energy
-    plan eases to the middle level and banks above the fight speed (Shaw p. 110); as his
-    angular advantage grows toward 90 deg it cashes (less cap, a faster speed target). I fly
-    1.44 sustained speeds (0.8 corner speeds on the flight before 2026-11-24's)."""
+    plan eases to the middle level at the fight speed (Shaw p. 110), so above it, climb. I fly
+    1.44 sustained speeds."""
     rate = C["sustained_rate"]
     own = sustained_speeds(1.44)
     neutral = decision(
@@ -138,13 +131,6 @@ def test_two_circle_banks_at_the_sustained_level_then_cashes():
     assert weight(neutral, "turning") > 0.9 and first(neutral.situation.flow) > 0.9
     assert first(neutral.cap) > 0.9
     assert int(neutral.marginals.power[0, 0].argmax()) == CLIMB
-    # he has turned toward me: his advantage near 90 deg (angles off about 1.45 pi)
-    late = decision(
-        ship(speed=own), ship(-3.0 * RADIUS, 0.0, heading=0.47 * math.pi), nose_rates=(rate, rate)
-    )
-    assert first(late.situation.angles_off) > 1.4 * math.pi
-    assert first(late.cap) < first(neutral.cap) - 0.2
-    assert first(late.speed_target) > first(neutral.speed_target) * 1.1
 
 
 def test_one_circle_inside_a_radius_slows_to_the_floor():
@@ -162,14 +148,14 @@ def test_one_circle_inside_a_radius_slows_to_the_floor():
     assert int(e.marginals.power[0, 0].argmax()) == CLIMB
 
 
-def test_defence_is_graded_by_range():
-    """He is on my six nose on: inside the defend range a break (full stick, corner speed);
-    two gun ranges out a hard turn at the middle level (Shaw p. 132)."""
-    close = decision(ship(speed=0.6), ship(-0.5 * GUN, 20.0, speed=0.9), config=BFM)
-    far = decision(ship(speed=0.6), ship(-2.0 * GUN, 20.0, speed=0.9), config=BFM)
+def test_defence_breaks_at_any_range():
+    """He is on my six nose on: a break (full stick, corner speed) close in and two gun ranges
+    out alike (the graded defence was removed after the reach check)."""
+    close = decision(ship(speed=0.6), ship(-0.5 * GUN, 20.0, speed=0.9))
+    far = decision(ship(speed=0.6), ship(-2.0 * GUN, 20.0, speed=0.9))
     assert weight(far, "defensive") > 0.8
-    assert first(close.cap) < 0.1 and first(far.cap) > 0.8
-    assert first(close.speed_target) > 1.3 * first(far.speed_target)
+    assert first(close.cap) < 0.1 and first(far.cap) < 0.1
+    assert abs(first(far.speed_target) / CORNER - 1.0) < 0.02
 
 
 def committed(own, target, stores=(0.5, 0.5), nose_rates=(0.0, 0.0), memory=None):
@@ -206,32 +192,6 @@ def test_the_held_sense_turns_the_long_way_and_releases_when_he_comes_forward():
     ahead = ship(2.0 * RADIUS, 1.0 * RADIUS, heading=math.pi)
     sense, left, _ = committed(ship(), ahead, memory=memory)
     assert sense == 0.0 and left > 0.9
-
-
-def test_overshoot_reverses_only_when_close_low_crossing_and_he_is_faster():
-    """He is close behind, crossing my six from my left to my right (I hold a left turn)
-    fast, his track close to mine, and he is faster: he overshoots, so the sense reverses to
-    the short way, flown level (no climb). Slowly crossing, or with me the faster: hold
-    (Shaw p. 76: if in doubt, do not reverse)."""
-
-    def held_left():
-        memory = memory_of()
-        memory["target"] = torch.tensor([[1, 0]])
-        memory["sense"] = torch.tensor([[1.0, 0.0]])
-        memory["last_pass"] = torch.tensor([[4.0, 0.0]])
-        return memory
-
-    # he is 60 m behind, just across my six to the right, flying my way at an angle across
-    def behind(speed, heading=-0.5):
-        return ship(-60.0, -5.0, heading=heading, speed=speed)
-
-    sense, _, e = committed(ship(speed=0.6), behind(1.0), memory=held_left())
-    assert bool(e.overshoot[0, 0]) and sense == -1.0
-    assert float(e.marginals.power[0, 0, CLIMB]) < 0.05
-    slow = committed(ship(speed=0.6), behind(0.62, heading=-0.02), memory=held_left())
-    assert not bool(slow[2].overshoot[0, 0]) and slow[0] == 1.0
-    faster_me = committed(ship(speed=1.1), behind(1.0), memory=held_left())
-    assert not bool(faster_me[2].overshoot[0, 0]) and faster_me[0] == 1.0
 
 
 def test_a_pass_that_gained_nothing_switches_the_plan():
