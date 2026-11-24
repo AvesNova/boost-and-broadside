@@ -17,7 +17,9 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - `config.py`: `LearnConfig` (every number, with its reason), `learning_rate`.
 - `rollout.py`: `start`, `collect`, `abandon`, `Opponent`, `CollectCarry`, `Rollout`; seats, the
   league side (`slot_actions`, capacity routing, `league_rows`), hit labels, the teacher's
-  distribution.
+  distribution. A tick is `act` (returns a `Decision`: views, the live policy's sample through
+  lean.model.agent.agent_step, value, the scripted `ScriptedMove`), `league_actions` (a
+  `LeagueMove`) and `advance` (takes both and the `HitLabels`; the game half is lean.game.tick).
 - `store.py`: `RolloutStore`, an update's segments, compact, streamed to pinned host memory on a GPU.
 - `returns.py`: GAE per level, chaining across segments, advantage scaling and shares, the value
   supports' range monitoring.
