@@ -1,5 +1,14 @@
 # Morning notes
 
+## Steps 1-10, night of 2026-11-25 (for your review)
+
+Choices I made for you while working through the to-do list. Newest last; each says where to
+undo it.
+
+- Step 2 (lead turn and yo-yo deleted): the closure signal is frozen at its saturated value -1
+  (it read -0.97 on average), so every agent keeps the old low yo-yo's energy half (a faster
+  speed target against a turning target) and nothing else of the yo-yo.
+
 Names (2026-11-24): Old (pre-BFM) = the agent before E2 (code gone); BFM-default = today's
 defaults (the current yardstick); BFM-design = the design's original values; BFM-CMA1 and
 BFM-CMA2 = CMA-ES rounds 1 and 2. Earlier notes below say "yardstick" for BFM-default,
