@@ -510,6 +510,10 @@ League (section 8)
   pair and per match conditions (team sizes, map, spawn rule, clock, game version), wins,
   losses and draws; Sobol sampling continues where it stopped.
 
+- Behavioural variety of scripted configurations is measured as the Jensen-Shannon divergence
+  of their action distributions on a fixed set of stored states (author 2026-11-24), beside
+  per-game style counters; skill alone does not decide which parameters to freeze.
+
 ## Proposals, not decided
 
 
