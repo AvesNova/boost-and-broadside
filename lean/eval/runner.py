@@ -17,6 +17,9 @@ own position offset (as in training).
 
 Deals are drawn once per segment (`segment` ticks) for the next E games of the queue, and
 the host reads two numbers per segment (games taken, slots busy); nothing is read in a tick.
+
+Each slot sums its game's style counters (lean.eval.style) per seat inside the tick; a finished
+game's sums go to its record and the slot's sums start at zero with the next deal.
 """
 
 import dataclasses
@@ -29,6 +32,7 @@ from torch import Tensor
 
 from lean import game, scripted
 from lean.contract import compile_dynamic, split_joint, whole_state
+from lean.eval import style as style_counters
 from lean.model import draw_position_offset
 from lean.model.agent import Network, network, network_step, reset_carry, seat_view
 from lean.scripted import ScriptedConfig
@@ -67,10 +71,12 @@ class Queue:
 @dataclass
 class Outcome:
     """Per game of the queue, (Q,) long: `result` (A_WON, B_WON, DRAW, NOT_PLAYED: past the
-    cutoff) and `length` in ticks (0 when not played)."""
+    cutoff) and `length` in ticks (0 when not played); `style` (Q, 2, len(style.SUMS))
+    float32 the style counters' sums of seat A and seat B (zero when not played)."""
 
     result: Tensor
     length: Tensor
+    style: Tensor
 
 
 @dataclass
@@ -90,7 +96,7 @@ class Deals:
 class Slots:
     """The E environments: `game` (E,) long, the queue index each plays (-1 idle), the
     scripted memory, both seats' network carries and position offsets (None without a
-    network there)."""
+    network there), and `style` (E, 2, len(style.SUMS)) the game's style sums so far."""
 
     game: Tensor
     memory: dict
@@ -98,6 +104,7 @@ class Slots:
     carry_b: Tensor | None
     offset_a: Tensor
     offset_b: Tensor
+    style: Tensor
 
 
 def draw_deals(game_config, queue: Queue, first: int, count: int, slots: int, model_configs, device) -> Deals:
@@ -123,11 +130,11 @@ def network_moves(network_: Network, seat_team: Tensor, views, carry: Tensor, of
 
 
 def tick(game_config, state, slots: Slots, queue: Queue, table: Tensor, network_a, network_b, deals: Deals,
-         taken: Tensor, limit: Tensor, result: Tensor, length: Tensor):
+         taken: Tensor, limit: Tensor, result: Tensor, length: Tensor, style: Tensor):
     """One tick of every environment, then the starts. `taken` (0-d long) counts the rows of
     `deals` used, `limit` (0-d long) is the first queue index that may not start; `result`
-    and `length` (Q + 1,) take each finished game's record in place (entry Q is spare).
-    Returns (state, slots, taken)."""
+    and `length` (Q + 1,) and `style` (Q + 1, 2, len(style.SUMS)) take each finished game's
+    record in place (entry Q is spare). Returns (state, slots, taken)."""
     envs, ships = state.exists.shape
     device = state.exists.device
     playing = slots.game >= 0
@@ -151,12 +158,17 @@ def tick(game_config, state, slots: Slots, queue: Queue, table: Tensor, network_
             action = torch.where(seat_a[..., None], action, moves)
 
     noise = game.draw_noise(game_config, envs, ships, None, device)
+    start_state = state
     state, out = game.step(game_config, state, action, noise)
+    sums = slots.style + style_counters.tick_sums(
+        start_state, seat_a, playing, start_state.pending[..., 1], state.fired, out.hit_damage
+    )
     finished = out.done & playing
     record = torch.where(finished, slots.game, result.shape[0] - 1)
     seat_result = torch.where(out.result == 2, DRAW, torch.where(out.result == side, A_WON, B_WON))
     result.scatter_(0, record, seat_result)
     length.scatter_(0, record, state.tick)
+    style.index_copy_(0, record, sums)
 
     # Starts: every slot whose game ended or that is idle takes the next deal, in slot order,
     # while the segment's deals and the queue up to the limit last.
@@ -178,6 +190,7 @@ def tick(game_config, state, slots: Slots, queue: Queue, table: Tensor, network_
         carry_b=None if carry_b is None else reset_carry(carry_b, start),
         offset_a=take(deals.offset_a, slots.offset_a),
         offset_b=take(deals.offset_b, slots.offset_b),
+        style=torch.where(want[:, None, None], 0.0, sums),
     )
     return state, slots, taken + start.sum()
 
@@ -239,9 +252,12 @@ def _play(game_config, queue: Queue, scripted_table: Tensor, policy_a, policy_b,
     state = dataclasses.replace(opening.state, **{name: getattr(opening.state, name).clone() for name in shared})
     state = whole_state(state)
     carries = [None if policy is None else policy.initial_carry(envs, ships, device) for policy in (policy_a, policy_b)]
-    slots = Slots(torch.arange(envs, device=device), opening.memory, *carries, opening.offset_a, opening.offset_b)
+    width = len(style_counters.SUMS)
+    slots = Slots(torch.arange(envs, device=device), opening.memory, *carries, opening.offset_a, opening.offset_b,
+                  torch.zeros(envs, 2, width, device=device))
     result = torch.full((total + 1,), NOT_PLAYED, dtype=torch.long, device=device)
     length = torch.zeros(total + 1, dtype=torch.long, device=device)
+    style = torch.zeros(total + 1, 2, width, device=device)
     first, limit = envs, total
     deals = deals_from(first)
     taken = torch.zeros((), dtype=torch.long, device=device)
@@ -251,7 +267,7 @@ def _play(game_config, queue: Queue, scripted_table: Tensor, policy_a, policy_b,
         for _ in range(segment):
             state, slots, taken = function(
                 game_config, state, slots, queue, scripted_table, network_a, network_b, deals, taken, limit_tensor,
-                result, length,
+                result, length, style,
             )
         used, busy = torch.stack([taken, (slots.game >= 0).sum()]).tolist()
         first += used
@@ -269,4 +285,4 @@ def _play(game_config, queue: Queue, scripted_table: Tensor, policy_a, policy_b,
         else:
             deals = dataclasses.replace(deals, first=torch.tensor(first, device=device))
         taken = torch.zeros((), dtype=torch.long, device=device)
-    return Outcome(result[:total].cpu(), length[:total].cpu())
+    return Outcome(result[:total].cpu(), length[:total].cpu(), style[:total].cpu())
