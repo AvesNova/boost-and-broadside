@@ -16,6 +16,15 @@ closing_time 0.93, plan_threshold -0.25, nose_tail 0.46 (the last two at their b
 better region may lie beyond). Options: adopt it as the defaults (yardstick and BC teacher);
 adopt and widen the two edge boxes for one more short search; keep the current defaults.
 
+**Lead turn and yo-yo (review merged 2026-11-24 ~11:20; docs/rewrite/lead-turn-yo-yo-review.md):**
+both were buggy in the same way (they dropped the gun inside gun range); fixed. After the fix the
+yo-yo is neutral and the lead turn near neutral; neither gains. The reviewer recommends keeping
+both off and deleting the lead turn unless rebuilt with a pre-merge offset. Also open: the
+yo-yo's closure target is miscalibrated (the signal sits near -1 almost everywhere), and the same
+signal drives the yardstick's speed target and stick cap: worth fixing, but it changes the
+yardstick. The divergence work adds: the overshoot rule fires on 5 of 98,014 states (dead in
+practice), and 16 rows are flat in both skill and behaviour (freeze candidates).
+
 **Screening of the scripted agent (2026-11-24 ~07:20; docs/rewrite/scripted-screening.md):**
 the yardstick is better than 96% of the parameter box and sits on a broad plateau; rankings
 hold across map sizes, team sizes and spawns (no retuning needed when the map changes). Two
