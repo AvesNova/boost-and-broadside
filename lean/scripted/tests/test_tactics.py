@@ -7,6 +7,7 @@ import math
 import torch
 
 from lean.scripted import ScriptedConfig
+from lean.scripted.parameters import BFM_DEFAULT_2026_11_24
 from lean.scripted.opponent import CLIMB, DIVE, explain
 from lean.scripted.tests.test_scripted import memory_of, placed
 
@@ -24,7 +25,8 @@ CORNER, GUN, RADIUS = C["corner_speed"], C["gun_range"], C["sustained_radius"]
 # A persona with the design's B6 values for the rows the yardstick leaves at 0 or widens
 # (yo-yo time, lead turn) and Shaw's graded defence (break inside one gun range, relax at 90
 # deg of his advantage).
-BFM = ScriptedConfig().replace(
+# It stands on the previous defaults, not on BFM-CMA2: the persona does not move with the yardstick.
+BFM = ScriptedConfig().replace(**BFM_DEFAULT_2026_11_24).replace(
     yo_yo_time=0.5, lead_turn_scale=1.0, relax_angle=1.5 * math.pi, defend_range=1.0
 )
 
