@@ -166,7 +166,7 @@ def _solved(preset: str, profile: str, changed: dict, progress=None, cancel=None
             solved = None
     if solved is None:
         solved = tuning.design_row(
-            reference, changed, start=PRESET_ROWS[preset], fast=True, **watch
+            reference, changed, start=reference.start_row or PRESET_ROWS[preset], fast=True, **watch
         )
     if solved.jacobian is not None:
         _WARM[(preset, profile)] = solved

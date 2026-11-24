@@ -259,20 +259,26 @@ def scaled(name, label, group, sets=None, scale=lambda: 1.0, **rest) -> DesignIn
     )
 
 
+def _launch_speed() -> float:
+    """The ship's speed a gun range is defined at: the P-51D's documented top speed (375 mph,
+    game units), the same for every design, so a faster design keeps its bullet life
+    (author's review, 2026-11-25 night: the bullet life must fit contract.BULLET_SLOTS)."""
+    return P51D_VALUES["top_speed"]
+
+
 def _bullet_life(gun_range: float, design: dict, tick_length: float = 1.0 / 30.0) -> float:
-    """The bullet's life in whole ticks: long enough to fly the gun range when fired at the top
-    speed against the bullet drag (v2's weapons.combat_card). A table without a top-speed input
-    (top speed a readout) uses the P-51D's documented one."""
+    """The bullet's life in whole ticks: long enough to fly the gun range when fired at the
+    launch speed (_launch_speed) against the bullet drag (v2's weapons.combat_card)."""
     drag = design["bullet_drag"]
-    top_speed = design.get("top_speed", P51D_VALUES["top_speed"])
-    flight = math.expm1(drag * gun_range) / (drag * (top_speed + design["muzzle_speed"]))
+    flight = math.expm1(drag * gun_range) / (drag * (_launch_speed() + design["muzzle_speed"]))
     return math.ceil(flight / tick_length - LIFE_TOLERANCE) * tick_length
 
 
 def _gun_range(row: dict, numbers: dict) -> float:
-    """The range of a bullet's whole life, fired at the top speed (at least the designed range)."""
+    """The range of a bullet's whole life, fired at the launch speed (at least the designed
+    range)."""
     drag = row["bullet_drag_scale"] * card.BULLET_DRAG
-    launch = numbers["top_speed"] + row["muzzle_speed"]
+    launch = _launch_speed() + row["muzzle_speed"]
     return math.log1p(drag * launch * row["bullet_life"]) / drag
 
 
@@ -469,7 +475,7 @@ DESIGN_INPUTS = (
     ),
     DesignInput(
         "gun_range",
-        "gun range (from top speed)",
+        "gun range (fired at 375 mph)",
         G,
         "bullet_life",
         _gun_range,
@@ -1182,10 +1188,19 @@ def load_card() -> dict[str, tuple[float, ...]]:
             rows = [cached_real_row(name) for name in card.TYPE_NAMES]
         finally:
             _DERIVING.active = False
+        from lean.contract import BULLET_SLOTS
+
         for name, row in zip(card.TYPE_NAMES, rows):
             if set(row) != set(card.CARD_FIELDS):
                 off = sorted(set(row) ^ set(card.CARD_FIELDS))
                 raise ValueError(f"{name}'s derived row differs from the card's fields: {off}")
+            interval = max(1, round(30.0 / row["fire_rate"]))  # ticks between shots
+            slots = math.ceil(row["bullet_life"] * 30.0 / interval - LIFE_TOLERANCE)
+            if slots > BULLET_SLOTS:
+                raise ValueError(
+                    f"{name}'s bullet life needs {slots} bullet slots; the contract has "
+                    f"{BULLET_SLOTS}"
+                )
         card.CARD = {field: tuple(float(row[field]) for row in rows) for field in card.CARD_FIELDS}
         return card.CARD
 
