@@ -63,6 +63,15 @@ undo it.
   under 60 s (50-57 s). About 15% of default games will be decided by the clock rule (ships
   alive, then shield). A 3x shorter episode changes the value ranges, so step 9 re-measures
   after it.
+- Step 9 (L1, merged): re-measured on today's game (2,048 environments x 3,600 ticks of the
+  scripted yardstick, 6,592 episodes). Next-state ranges: along +-0.37, across +-0.6, heading
+  +-0.043, speed +-2.8, energy +-640, shield -90..0 (symlog). Hit shares 93.74 / 5.47 / 0.80%.
+  Buffer rule in code (`BUFFER_COLUMNS = 3`, lean/model/value.py): 3 columns of the same width
+  at each end; bins 64 -> 70 for the value and next-state heads; parameters 2,155,565 ->
+  2,172,527. Tripwire 4 graphs, 206 s. **Choice for you:** value supports from the measured
+  extremes, as on 11-23 (damage +-5.4, kill_death +-7.5, outcome +-10); the 0.1/99.9
+  percentiles would be about 3x narrower (+-2.2, +-3.7) and clamp rare large swings and a
+  stronger learner's returns.
 - Step 10 (merged): package notes refreshed (tool, scripted, eval); the P-51D doghouse charts
   re-rendered at 2,200 hp; one-line status heads on the review's items. Left as records, not
   re-rendered: the vizia, jujak, yongma and vizia-plain doghouse PNGs (types no longer in the
