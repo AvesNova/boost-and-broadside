@@ -28,9 +28,10 @@ def test_card_rows_meet_their_targets():
     """Every card row, derived from its targets when the card is first used (tuning.load_card,
     from the disk cache when its key is there), flies them with the game terms on: the flight
     test's top speed and best climb and its point mass's best sustained rate (to 1e-6); the best
-    sustained turn's speed within 5% of the point mass's (not solved: the flaps, scheduled by
-    demand, act in the sustained turn and move it lower), and the same stall and corner speeds
-    (the peak full-stick rate within 0.1%). The game terms are on, not switched off."""
+    sustained turn's speed within 12% of the point mass's (not solved: the separation drag that
+    sets the tightest turn apart moves it up, P-51D +9.7%), and the same stall and corner speeds
+    (the peak full-stick rate within 0.1%); the solved coefficients physically plausible (Oswald
+    e at most 1, propeller efficiency 0.7 to 0.9). The game terms are on, not switched off."""
     assert set(card.CARD) == set(card.CARD_FIELDS)
     for name in card.TYPE_NAMES:
         row = tuning.row_of(name)
@@ -42,7 +43,12 @@ def test_card_rows_meet_their_targets():
         assert real["top_speed"] == pytest.approx(aircraft.top_speed, rel=1e-6), name
         assert real["best_climb"] == pytest.approx(aircraft.best_climb, rel=1e-6), name
         assert game["sustained_rate"] == pytest.approx(point["sustained_rate"], rel=1e-6), name
-        assert game["sustained_speed"] == pytest.approx(point["sustained_speed"], rel=0.05), name
+        assert game["sustained_speed"] == pytest.approx(point["sustained_speed"], rel=0.12), name
+        a = aircraft.airframe
+        induced = card.INDUCED_DRAG_FACTOR * row["induced_drag_scale"]
+        oswald = 1.0 / (math.pi * a.aspect_ratio * a.per_metre * induced)
+        efficiency = tuning.to_real(row["engine_power"], -3) * a.mass / a.power
+        assert 0.5 < oswald <= 1.0 and 0.7 <= efficiency <= 0.9, (name, oswald, efficiency)
         assert game["stall_speed"] == point["stall_speed"]
         assert game["corner_speed"] == point["corner_speed"]
         assert game["corner_speed_flown"] == pytest.approx(point["corner_speed"], rel=1e-3)
@@ -116,7 +122,7 @@ def test_scripted_references_are_the_flown_numbers():
     """The game's derived references for the scripted agent (docs/rewrite/scripted-bfm-design.md
     B2) are what the quasi-steady analysis flies: the best sustained turn's speed within
     tuning.performance's 0.05 m/s grid, its rate and radius within 0.1%, the corner rate; the
-    quarter-turn time and the store's turn follow from them (the P-51D: 2.37 s and 2.30 rad)."""
+    quarter-turn time and the store's turn follow from them (the P-51D: 2.37 s and 2.40 rad)."""
     config = core.GameConfig(lineup=card.TYPE_NAMES)
     game = core.per_type_constants(config, torch.arange(len(card.TYPE_NAMES)))
     for index, name in enumerate(card.TYPE_NAMES):
@@ -141,7 +147,7 @@ def test_scripted_references_are_the_flown_numbers():
         assert float(game.store_turn[index]) == pytest.approx(expected, rel=1e-4)
     p51d = card.TYPE_NAMES.index("p51d")
     assert float(game.quarter_turn_time[p51d]) == pytest.approx(2.37, abs=0.01)
-    assert float(game.store_turn[p51d]) == pytest.approx(2.30, abs=0.02)
+    assert float(game.store_turn[p51d]) == pytest.approx(2.40, abs=0.02)
 
 
 def test_a_card_built_inside_with_row_does_not_outlive_it():

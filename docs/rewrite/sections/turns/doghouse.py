@@ -184,10 +184,11 @@ def draw_panel(
     field = tuning.ps_over_rate(grid, rate_axis, rate=rate, ps=ps)
     # Shade only up to the largest stick flown at each speed: the stick levels' lowest speeds,
     # linear between them, none below the fine stick's.
+    stick = tuning.stick_levels(row)
     levels = sorted(
         (
-            (row["fine_stick"], lowest["fine"]),
-            (row["sustained_stick"], lowest["sustained"]),
+            (stick["fine"], lowest["fine"]),
+            (stick["sustained"], lowest["sustained"]),
             (1.0, lowest["full"]),
         )
     )
@@ -246,11 +247,9 @@ def draw_panel(
             )
     ax.plot(v, full, gid="full", **FULL_STYLE)
     span = v[-1] - v[0]
-    for name, key in (("sustained stick", "sustained_stick"), ("fine stick", "fine_stick")):
-        level = _from(
-            rate[int(round(row[key] * (len(STICKS) - 1)))], game_v, lowest[key.split("_")[0]]
-        )
-        ax.plot(v, level, gid=key.split("_")[0], **STICK_STYLE)
+    for name, key in (("sustained stick", "sustained"), ("fine stick", "fine")):
+        level = _from(rate[int(round(stick[key] * (len(STICKS) - 1)))], game_v, lowest[key])
+        ax.plot(v, level, gid=key, **STICK_STYLE)
         at = int(np.searchsorted(v, v[0] + 0.33 * span))
         ax.annotate(
             name,

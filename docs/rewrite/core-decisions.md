@@ -545,17 +545,22 @@ League (section 8)
   the F-16's), turn rate never decreasing with speed below corner (a test); real aircraft rows
   derived automatically from their targets (no stored copies to regenerate).
 
-## Stick levels and flaps (author 2026-11-24 afternoon)
+## Stick levels (author 2026-11-24)
 
-- Full stick = the most turn the ship can give at that speed (the doghouse's top line, no
-  blending tax); only the true corner (lift against the g limit) is softened.
-- Every other stick level is a fraction of that same maximum (same shape). The sustained
-  stick's fraction is derived so its line passes through the best sustained point; the fine
-  stick is a further fraction (default half of the sustained).
-- Flaps off by default (machinery kept, switchable per ship).
-- Separation drag is too small: raise it so the best sustained point leaves the max-lift line,
-  keeping the solved coefficients physically plausible; the P-51D's zero-lift drag is being
-  re-derived from the flight test (correct power at each point).
+- Full stick is the most turn the ship can give at that speed: exactly the envelope's top
+  line, no blending tax. Smoothness only where it belongs: the true corner (the wing's lift
+  against the g limit) stays a soft minimum; a command is not soft-minimised against its own
+  limit.
+- Every other level is a fraction of that same maximum lateral acceleration at the current
+  speed (the same shape as full stick).
+- The sustained level's fraction is derived so the sustained level passes exactly through the
+  best sustained point, per type, with no stored copy.
+- The fine level: a per-type fraction, default half the sustained level (the rule may change).
+- Flaps off by default (P-51D `flap_lift` 0); the machinery and its tests stay, switchable per
+  ship.
+- The separation drag was too small: swept with the solver keeping the targets
+  (docs/rewrite/p51d-model.md "Separation drag"); the default (0.5 at exponent 24) is a
+  judgement for the author to confirm.
 
 ## Proposals, not decided
 

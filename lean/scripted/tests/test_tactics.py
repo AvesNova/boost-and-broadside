@@ -31,6 +31,14 @@ BFM = ScriptedConfig().replace(**BFM_DEFAULT_2026_11_24).replace(
 )
 
 
+def sustained_speeds(multiple):
+    """A speed in corner speeds (as `ship` takes it) that is `multiple` sustained speeds: for a
+    situation set against the fight speed (a multiple of the sustained speed), which moves
+    against the corner when the flight model changes (2026-11-24, the stick levels and the
+    separation drag: 0.555 to 0.626 corner speeds)."""
+    return multiple * C["sustained_speed"] / CORNER
+
+
 def ship(x=0.0, y=0.0, heading=0.0, speed=1.0):
     """A ship at (x, y) metres, heading in radians, speed in corner speeds."""
     return dict(x=x, y=y, heading=heading, speed=speed * CORNER)
@@ -88,15 +96,17 @@ def test_tail_chase_closing_fast_inside_the_control_zone_lags_and_climbs():
 
 def test_tail_chase_falling_behind_out_of_range_leads_and_dives():
     """He is 1.6 gun ranges ahead and faster, turning: a low yo-yo, lead pursuit, dive to
-    corner. Flying straight: the engine closes (coast: no dive, no banking)."""
+    corner. Flying straight: the engine closes (coast: no dive, no banking). I fly 1.08
+    sustained speeds (0.6 corner speeds on the flight before 2026-11-24's), he 0.8 corner."""
     rate = C["sustained_rate"]
-    e = decision(ship(speed=0.6), ship(1.6 * GUN, speed=0.8), nose_rates=(0.0, rate), config=BFM)
+    own = sustained_speeds(1.08)
+    e = decision(ship(speed=own), ship(1.6 * GUN, speed=0.8), nose_rates=(0.0, rate), config=BFM)
     assert weight(e, "offensive") > 0.9
     assert first(e.yo_yo) < -0.9
     assert first(e.pursuit_time) > 0.0
     assert abs(first(e.speed_target) / CORNER - 1.0) < 0.05
     assert int(e.marginals.power[0, 0].argmax()) == DIVE
-    straight = decision(ship(speed=0.6), ship(1.6 * GUN, speed=0.8), config=BFM)
+    straight = decision(ship(speed=own), ship(1.6 * GUN, speed=0.8), config=BFM)
     assert int(straight.marginals.power[0, 0].argmax()) == 0
 
 
@@ -151,15 +161,17 @@ def test_merge_and_turning_quadrants():
 def test_two_circle_banks_at_the_sustained_level_then_cashes():
     """Turning (both behind each other's 3/9 line), both turning left (two-circle): the energy
     plan eases to the sustained level and banks above the fight speed (Shaw p. 110); as his
-    angular advantage grows toward 90 deg it cashes (less cap, a faster speed target)."""
+    angular advantage grows toward 90 deg it cashes (less cap, a faster speed target). I fly
+    1.44 sustained speeds (0.8 corner speeds on the flight before 2026-11-24's)."""
     rate = C["sustained_rate"]
-    neutral = decision(ship(speed=0.8), ship(-3.0 * RADIUS, 0.5 * RADIUS, heading=math.pi),
+    own = sustained_speeds(1.44)
+    neutral = decision(ship(speed=own), ship(-3.0 * RADIUS, 0.5 * RADIUS, heading=math.pi),
                        nose_rates=(rate, rate))
     assert weight(neutral, "turning") > 0.9 and first(neutral.situation.flow) > 0.9
     assert first(neutral.cap) > 0.9
     assert int(neutral.marginals.power[0, 0].argmax()) == CLIMB
     # he has turned toward me: his advantage near 90 deg (angles off about 1.45 pi)
-    late = decision(ship(speed=0.8), ship(-3.0 * RADIUS, 0.0, heading=0.47 * math.pi),
+    late = decision(ship(speed=own), ship(-3.0 * RADIUS, 0.0, heading=0.47 * math.pi),
                     nose_rates=(rate, rate))
     assert first(late.situation.angles_off) > 1.4 * math.pi
     assert first(late.cap) < first(neutral.cap) - 0.2

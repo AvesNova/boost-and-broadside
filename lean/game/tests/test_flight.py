@@ -212,20 +212,46 @@ def test_tightest_turn_clearly_slower_than_best_rate_then_corner():
         )
 
 
-def double_constants(ship_type=P51D):
-    """One type's per-type constants (core.per_type_constants) in float64, shape (1,)."""
-    c = core.per_type_constants(CONFIG, torch.tensor([ship_type]))
+def double_constants(ship_type=P51D, row=None):
+    """One type's per-type constants (core.per_type_constants) in float64, shape (1,); or those
+    of `row` (a card row) when given."""
+    if row is None:
+        c = core.per_type_constants(CONFIG, torch.tensor([ship_type]))
+    else:
+        with tuning._with_row(row) as index:
+            c = core.per_type_constants(CONFIG, torch.tensor([index]))
     return SimpleNamespace(**{k: v.double() if v.is_floating_point() else v for k, v in vars(c).items()})
+
+
+TEST_FLAP_LIFT = 0.15  # the flaps' tests: a type's own bonus, or this one where its flaps are off
+
+
+def flapped_row(name):
+    """A card type's row with its flaps on (the machinery is per type and off for the P-51D,
+    author 2026-11-24; its tests fly the type with the bonus TEST_FLAP_LIFT then)."""
+    row = tuning.row_of(name)
+    return row if row["flap_lift"] > 0.0 else {**row, "flap_lift": TEST_FLAP_LIFT}
+
+
+def flapped_constants(name, double=True):
+    row = flapped_row(name)
+    c = double_constants(row=row)
+    if double:
+        return c
+    return SimpleNamespace(
+        **{k: v.float() if v.is_floating_point() else v for k, v in vars(c).items()}
+    )
 
 
 def test_flaps_deploy_by_demand_and_blow_back_at_speed():
     """The automatic flaps (core._wing), scheduled by demand: flying straight above the 1 g
     speed the wing is clean; full stick has the clean maximum times 1 + flap_lift up to the
     blow-back band, the clean one from the blow-back speed (flap_blowback_ratio x the clean
-    corner speed); the full-stick coefficient never rises with speed."""
+    corner speed); the full-stick coefficient never rises with speed. Each type flies with its
+    flaps on (flapped_row)."""
     for ship_type, name in enumerate(card.TYPE_NAMES):
-        c = double_constants(ship_type)
-        row = tuning.row_of(name)
+        c = flapped_constants(name)
+        row = flapped_row(name)
         lift, bonus = row["max_lift_coefficient"], row["flap_lift"]
         blowback = row["flap_blowback_ratio"] * (row["max_acceleration"] / lift) ** 0.5
         start = (1.0 - card.FLAP_BLOWBACK_BAND) * blowback
@@ -278,8 +304,8 @@ def test_flaps_are_smooth_in_speed_and_in_demand():
     """The author's rule (2026-11-24): the flaps are C2 (value, slope and curvature continuous)
     in speed and in the stick's demand (assert_c2), through the blow-back band and the
     deployment band (straight and slow, the 1 g alone deploys them); likewise the flaps' drag
-    through the start of the extra lift."""
-    c = double_constants()
+    through the start of the extra lift. The P-51D with its flaps on (flapped_row)."""
+    c = flapped_constants("p51d")
     stall, corner = one_g_speed(), float(c.corner_speed[0])
     for stick in (0.0, 0.5, 0.9, 1.0):
         for which in (0, 1):
@@ -306,26 +332,33 @@ def test_flaps_are_smooth_in_speed_and_in_demand():
 
 
 def test_turn_rate_never_falls_with_speed_below_corner():
-    """The author's rule (2026-11-24): below corner speed (the peak full-stick rate,
-    tuning.performance's corner_speed_flown) the turn rate never decreases as speed rises, at
-    full stick and at the sustained stick, for every card type (quasi-steady, coasting, the
-    spawn store, float64, from half the 1 g speed). The speed-scheduled flaps of before made a
-    shelf between 1.3 and 1.6 x the stall speed."""
+    """The author's rule (2026-11-24): below corner speed (the peak full-stick rate) the turn
+    rate never decreases as speed rises, at full stick and at the sustained stick, for every
+    card type and for each with its flaps on (flapped_row) (quasi-steady, coasting, the spawn
+    store, float64, from half the 1 g speed). The peak is found on the dense grid itself, up to
+    one step of tuning.performance's grid past its corner_speed_flown. The speed-scheduled flaps
+    of before made a shelf between 1.3 and 1.6 x the stall speed."""
     for ship_type, name in enumerate(card.TYPE_NAMES):
-        c = double_constants(ship_type)
-        corner = tuning.performance(tuning.row_of(name))["corner_speed_flown"]
-        speeds = torch.linspace(0.5 * one_g_speed(ship_type), corner, 8001, dtype=torch.float64)
-        for stick in (1.0, float(c.stick_table[0, 3].abs())):
-            rate = core.quasi_steady(c, speeds, torch.full_like(speeds, stick), COAST, c.spawn_energy)[0]
-            fall = rate[:-1] - rate[1:]
-            assert float(fall.max()) <= 1e-12 * float(rate.max()), (name, stick, float(speeds[int(fall.argmax())]))
+        for row in (tuning.row_of(name), flapped_row(name)):
+            c = double_constants(row=row)
+            corner = tuning.performance(row)["corner_speed_flown"] + 0.05
+            speeds = torch.linspace(0.5 * one_g_speed(ship_type), corner, 8001, dtype=torch.float64)
+            full = core.quasi_steady(c, speeds, torch.ones_like(speeds), COAST, c.spawn_energy)[0]
+            peak = int(full.argmax()) + 1
+            for stick in (1.0, float(c.stick_table[0, 3].abs())):
+                sticks = torch.full_like(speeds, stick)
+                rate = core.quasi_steady(c, speeds, sticks, COAST, c.spawn_energy)[0][:peak]
+                fall = rate[:-1] - rate[1:]
+                assert float(fall.max()) <= 1e-12 * float(rate.max()), (
+                    name, row["flap_lift"], stick, float(speeds[int(fall.argmax())])
+                )
 
 
 def test_flaps_cost_drag_only_for_lift_beyond_the_clean_wing():
     """The flaps' drag is on the lift beyond the clean maximum: straight flight slow (1 g on the
     clean wing) pays none; full stick slow pays it (with the flaps' drag removed, the same turn
-    bleeds less)."""
-    c = core.per_type_constants(CONFIG, torch.tensor([P51D]))
+    bleeds less). The P-51D with its flaps on (flapped_row)."""
+    c = flapped_constants("p51d", double=False)
     free = SimpleNamespace(**{**vars(c), "flap_drag": torch.zeros(1)})
     speed = torch.full((1,), 1.25 * one_g_speed())
 
@@ -337,10 +370,98 @@ def test_flaps_cost_drag_only_for_lift_beyond_the_clean_wing():
     assert speed_rate(c, 1.0) < speed_rate(free, 1.0)
 
 
+def full_stick_lateral(c, speeds, stick=None):
+    """The lateral acceleration `_setting` gives coasting at the spawn store (float64)."""
+    stick = torch.ones_like(speeds) if stick is None else stick
+    control = SimpleNamespace(
+        thrust_scale=1.0, stick_size=stick, stick_sign=torch.ones_like(speeds),
+        commanded=c.commanded_table[..., COAST], demand=c.demand_table[..., COAST],
+    )
+    wing, full = core._wing(c, speeds, stick)
+    return core._setting(c, control, speeds, c.spawn_energy, wing, full)[0]
+
+
+def test_full_stick_is_the_envelopes_maximum():
+    """The author's design (2026-11-24): full stick is the most turn the ship can give at that
+    speed, with no blending tax: away from the corner (whose rounding, the wing's lift against
+    the g limit, is the one soft minimum kept) the full-stick lateral acceleration is the whole
+    of what is left after 1 g: sqrt(a_max^2 - g^2) above corner, sqrt((C v^2)^2 - g^2) below
+    (C the full-stick wing's maximum), to 0.1% (the old softmin of the command against its own
+    limit gave 2^(-1/16) = 0.958 of it along both lines). And every stick level turns less than
+    full stick at every speed (quasi-steady turn rate)."""
+    for ship_type, name in enumerate(card.TYPE_NAMES):
+        c = double_constants(ship_type)
+        g, limit = card.GRAVITY, float(c.max_acceleration[0])
+        corner = float(c.corner_speed[0])
+        above = torch.linspace(1.25 * corner, 2.0 * corner, 200, dtype=torch.float64)
+        ratio = full_stick_lateral(c, above) / (limit * limit - g * g) ** 0.5
+        assert float((ratio - 1.0).abs().max()) < 1e-3, (name, float(ratio.min()))
+        below = torch.linspace(1.6 * one_g_speed(ship_type), 0.7 * corner, 200, dtype=torch.float64)
+        _, full = core._wing(c, below, torch.ones_like(below))
+        lift = full * below * below
+        ratio = full_stick_lateral(c, below) / torch.sqrt(lift * lift - g * g)
+        assert float((ratio - 1.0).abs().max()) < 1e-3, (name, float(ratio.min()))
+        low = 1.1 * one_g_speed(ship_type)
+        speeds = torch.linspace(low, 2.0 * corner, 400, dtype=torch.float64)
+        top = core.quasi_steady(c, speeds, torch.ones_like(speeds), COAST, c.spawn_energy)[0]
+        for stick in (0.1, 0.3, 0.5, 0.7, 0.9, 0.99):
+            sticks = torch.full_like(speeds, stick)
+            rate = core.quasi_steady(c, speeds, sticks, COAST, c.spawn_energy)[0]
+            assert bool((rate <= top + 1e-12).all()), (name, stick)
+
+
+def test_stick_levels_are_fractions_of_the_maximum():
+    """A stick level is its fraction of the full-stick lateral acceleration at every speed (the
+    same shape: lift-limited below corner, g-limited above, the same rounded corner)."""
+    for ship_type, name in enumerate(card.TYPE_NAMES):
+        c = double_constants(ship_type)
+        low, high = 1.1 * one_g_speed(ship_type), 2.0 * float(c.corner_speed[0])
+        speeds = torch.linspace(low, high, 300, dtype=torch.float64)
+        full = full_stick_lateral(c, speeds)
+        for index in (1, 3):
+            level = float(c.stick_table[0, index + 1])
+            part = full_stick_lateral(c, speeds, torch.full_like(speeds, level))
+            assert torch.allclose(part, level * full, rtol=1e-12), (name, index)
+
+
+def test_sustained_level_passes_through_the_best_sustained_point():
+    """The author's design (2026-11-24): the sustained stick level is derived (no stored copy)
+    so it holds energy exactly at the best sustained turn: at the best sustained speed
+    (tuning.performance, its own 0.05 m/s grid in float64) the sustained level turns at the best
+    sustained rate (0.1%) with the total energy rate about zero."""
+    for ship_type, name in enumerate(card.TYPE_NAMES):
+        c = double_constants(ship_type)
+        p = tuning.performance(tuning.row_of(name))
+        level = float(c.stick_table[0, 4])
+        assert 0.0 < level <= 1.0, name
+        speed = torch.tensor([p["sustained_speed"]], dtype=torch.float64)
+        stick = torch.tensor([level], dtype=torch.float64)
+        rate, _, energy_rate = core.quasi_steady(c, speed, stick, COAST, c.spawn_energy)
+        assert float(rate[0]) == pytest.approx(p["sustained_rate"], rel=1e-3), name
+        # the energy rate: within what 0.1% of the stick moves it
+        nudged = core.quasi_steady(c, speed, 0.999 * stick, COAST, c.spawn_energy)[2]
+        assert abs(float(energy_rate[0])) <= abs(float(nudged[0] - energy_rate[0])) + 1e-6, name
+
+
+def test_fine_level_is_its_fraction_of_the_sustained_level():
+    """The fine stick is the type's fine_stick_fraction (default one half, GAME_FIELDS) of the
+    sustained level; straight is 0 and full 1; odd indices right (negative), even left."""
+    for ship_type, name in enumerate(card.TYPE_NAMES):
+        table = core.per_type_constants(CONFIG, torch.tensor([ship_type])).stick_table[0]
+        fraction = card.CARD["fine_stick_fraction"][ship_type]
+        sustained = float(table[4])
+        fine = fraction * sustained
+        expected = [0.0, -fine, fine, -sustained, sustained, -1.0, 1.0]
+        assert table.tolist() == pytest.approx(expected, rel=1e-6), name
+    assert tuning.GAME_FIELDS["fine_stick_fraction"] == 0.5
+
+
 def test_the_turn_has_precedence_over_the_climb():
     """The author's order (2026-11-23): 1 g held, then the turn, then the climb gets what is left.
     Slow, full stick and climb turns as full stick coasting (the climb gains nothing it would take
-    from the turn); straight at twice the 1 g speed, the climb trades at its full rate."""
+    from the turn: full stick takes all the lift left after 1 g, so the climb's trade is nil, at
+    most the 1 g's own soft minimum against the budget below zero); straight at twice the 1 g
+    speed, the climb trades at its full rate."""
     for ship_type in range(len(card.TYPE_NAMES)):
         c = constants(ship_type)
         slow = 1.3 * one_g_speed(ship_type)
@@ -360,5 +481,6 @@ def test_the_turn_has_precedence_over_the_climb():
             lateral, exchange, *_ = core._setting(c, control, at, energy, *core._wing(c, at, control.stick_size))
             laterals[name], exchanges[name] = lateral.item(), exchange.item()
         assert abs(laterals["climb"] - laterals["coast"]) < 1e-3 * laterals["coast"], ship_type
-        assert 0.0 <= exchanges["climb"] < 0.05 * exchanges["straight"], ship_type
+        straight = exchanges["straight"]
+        assert -1e-4 * straight <= exchanges["climb"] < 0.05 * straight, ship_type
         assert exchanges["straight"] > 0.9 * float(c.commanded_table[0, CLIMB])

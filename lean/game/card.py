@@ -13,7 +13,12 @@ the flight model's source, so a physics change re-solves the rows by itself:
   minima, automatic flaps) with its zero-lift drag, thrust power and induced drag solved so it
   flies its point mass's top speed, best climb and best sustained turn rate (tuning.game_row,
   docs/rewrite/p51d-model.md); real lift, g limit 8, static thrust, dive and climb at 1 g;
-  guns, shield, nose and stick levels from tuning.GAME_FIELDS.
+  guns, shield, nose and the fine stick's fraction from tuning.GAME_FIELDS.
+
+The stick levels are not stored either (core._derived_characteristics, core.stick_table): each
+level is a fraction of the most lateral acceleration the ship can give at its speed; full stick
+is 1, the sustained level the stick that holds energy at the best sustained turn (so it passes
+through the best sustained point), the fine level fine_stick_fraction of the sustained one.
 """
 
 import math
@@ -66,8 +71,7 @@ CARD_FIELDS = (
     "head_on_fraction_scale",
     "head_on_angle_scale",
     "head_on_sharpness",
-    "fine_stick",
-    "sustained_stick",
+    "fine_stick_fraction",
     "vision_range_scale",
     *FLIGHT_TERMS,
 )
