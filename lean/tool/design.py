@@ -20,7 +20,7 @@ import numpy as np
 
 from lean.game import card, tuning
 
-from . import flown
+from . import flown, units
 
 SOLVE_SPEED_STEP = 0.5  # m/s: the handles solve on a coarser speed grid than the default, for speed
 LOCK = threading.RLock()  # the card is process-global (tuning.flying): one computation at a time
@@ -44,7 +44,7 @@ GROUPS = (
 # name: (label, unit, group, low, high, relative): the range as multiples of the preset's value
 # (relative) or in the input's units.
 INFO = {
-    "cruise_speed": ("cruise (top) speed", "m/s", "Performance targets", 0.6, 1.4, True),
+    "cruise_speed": ("top level speed", "m/s", "Performance targets", 0.6, 1.4, True),
     "sustained_turn_rate": (
         "settled full-stick turn rate",
         "rad/s",
@@ -197,6 +197,7 @@ def inputs(preset: str) -> list[dict]:
             name=name,
             label=label,
             unit=unit,
+            kind=units.UNIT_KINDS.get(unit),
             group=group,
             value=value,
             low=min(low, value),
@@ -382,9 +383,9 @@ def _png(figure) -> bytes:
     return buffer.getvalue()
 
 
-def doghouse_png(preset: str, values, off, factor: float, real: bool) -> bytes:
-    """The doghouse of the tuned design as a PNG, drawn by the committed charts' code. real:
-    divide speeds, rates and Ps by the time factor (1x real time; at 1x the units are real)."""
+def doghouse_png(preset: str, values, off, factor: float, system: str = "game") -> bytes:
+    """The doghouse of the tuned design as a PNG, drawn by the committed charts' code, in the
+    units system (lean.tool.units: game, real_metric, real_imperial)."""
     chart = _chart()
     with LOCK:
         _preset_checks(preset)
@@ -393,12 +394,12 @@ def doghouse_png(preset: str, values, off, factor: float, real: bool) -> bytes:
         with tuning.flying(row, factor):
             lowest, source, points = _lowest(preset, row, factor)
             figure = chart.doghouse_figure(
-                title, lowest, real and factor != 1.0, factor, points, source
+                title, lowest, False, factor, points, source, system=units.system_of(system)
             )
             return _png(figure)
 
 
-def sustained_png(preset: str, values, off, factor: float, real: bool) -> bytes:
+def sustained_png(preset: str, values, off, factor: float, system: str = "game") -> bytes:
     """The sustained turn (rate and radius against speed) of the tuned design and of the preset
     (dotted), as a PNG in the doghouse's style."""
     chart = _chart()
@@ -422,9 +423,9 @@ def sustained_png(preset: str, values, off, factor: float, real: bool) -> bytes:
                 (f"{preset} (preset)", PRESET_ROWS[preset], True),
             )
         ]
-        units = "Real units" if real and factor != 1.0 else "Game units"
+        system = units.system_of(system)
         note = (
-            f"Coast, spawn store. {units} at {factor:g}x time."
+            f"Coast, spawn store. {units.describe(system, factor)}"
             " Each line from the lowest speed the game flies full stick."
         )
-        return _png(chart.sustained_figure(curves, real and factor != 1.0, factor, note))
+        return _png(chart.sustained_figure(curves, False, factor, note, system=system))

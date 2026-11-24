@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from lean.game import tuning
 
-from . import design, session
+from . import design, session, units
 
 PAGE = Path(__file__).with_name("index.html")
 # What an unsolvable design raises in the tuning's solve (no solution, no top speed on the grid,
@@ -45,7 +45,7 @@ class DesignRequest(BaseModel):
     values: dict[str, float] | None = None
     off: list[str] | None = None
     time_scale: float = tuning.TIME_FACTOR
-    units: str = "game"
+    units: str = "game"  # lean.tool.units.SYSTEMS (the old "real" is real_metric)
 
 
 @app.get("/")
@@ -103,11 +103,21 @@ def saved_delete(name: str):
 
 @app.get("/api/presets")
 def presets():
-    return dict(presets=design.presets(), time_factor=tuning.TIME_FACTOR)
+    return dict(
+        presets=design.presets(),
+        time_factor=tuning.TIME_FACTOR,
+        units=dict(
+            systems=units.descriptors(),
+            names=units.NAMES,
+            kinds=list(units.KINDS),
+            order=units.SYSTEMS,
+        ),
+    )
 
 
 def _answer(compute, request: DesignRequest, png: bool):
     try:
+        units.system_of(request.units)
         if png:
             return Response(
                 compute(
@@ -115,7 +125,7 @@ def _answer(compute, request: DesignRequest, png: bool):
                     request.values,
                     request.off,
                     request.time_scale,
-                    request.units == "real",
+                    request.units,
                 ),
                 media_type="image/png",
             )
