@@ -26,8 +26,16 @@ server draws with matplotlib (author 2026-11-24: matplotlib is the one charting 
     tag, how it sets the card (closed or solved, and the field) and the reference value; a
     warning badge (!) marks an input a plausibility warning points at. Only moved inputs are
     sent; each change, 250 ms after the last, goes to the server, which solves the row through
-    `tuning.design_row` (fast path: Broyden from the preset's row, to 1e-5; about 1.1-1.2 s
-    for a moved performance input, measured 2026-11-24 on the laptop CPU). A solve that does
+    `tuning.design_row` (fast path: Broyden to 1e-5), warm from the preset's last solve
+    (`design._WARM`: its row and Jacobian; cold from the preset's row the first time, or when
+    the warm solve does not converge; warm and cold agree within the tolerance, tested). A
+    flight evaluation (`tuning.performance`) costs about 0.12 s and is overhead-bound (its ~10
+    bisections, not its speed grid: a 2 m/s grid saves 2%, so there is no coarse drafting
+    solve); a cold solve takes 7-17 of them (0.9-2.0 s), a warm one 2-3 (0.25-0.4 s). The last
+    16 rows' numbers are kept, so the panels and readouts reuse the solve's last evaluation.
+    Laptop CPU, 4 threads, 2026-11-24: a whole slider change (solve, panels, readouts, both
+    charts) 0.8-1.0 s warm (was about 2.0 s), of which the two charts about 0.55 s
+    (matplotlib's drawing about 0.45 s, the rest the per-type constants). A solve that does
     not converge is shown as an error and the charts keep the last good design.
   - **Warnings, implied physical, solved coefficients** (`POST /api/ship`, `design.ship`):
     the warnings one line each (`tuning.warnings`: "limit" beyond a physical limit, "range"
@@ -49,8 +57,7 @@ server draws with matplotlib (author 2026-11-24: matplotlib is the one charting 
     `POST /api/sustained.png`; the readouts from `POST /api/envelope` (corner, best and
     tightest sustained turn, top speed, best climb, stall speed, and the flown values once
     flown).
-  - **Redraw:** the solve dominates a new design (above); the charts and readouts about
-    0.6 s more (2026-11-24, laptop CPU, 4 threads, before the design system).
+  - **Redraw:** above (the slider path's timings).
 - **Only what the game flies is drawn.** Each doghouse line (full, sustained and fine stick
   coasting; full stick diving and climbing) starts at the lowest speed at which a ship flown
   in the game actually flies it (`flown.achievable_speeds`): the game's flight tick

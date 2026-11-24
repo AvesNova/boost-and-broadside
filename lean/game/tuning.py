@@ -470,13 +470,16 @@ def reference(name: str) -> Reference:
 
 @dataclasses.dataclass(frozen=True)
 class Solved:
-    """A design's row and its solve: the largest |log(flown / target)|, the Newton iterations
-    and the condition number of the last log-log Jacobian (None if none was needed)."""
+    """A design's row and its solve: the largest |log(flown / target)|, the Newton iterations,
+    the condition number of the last log-log Jacobian (None if none was needed) and that
+    Jacobian (the solved inputs' log residuals in the logs of their fields, table order; None if
+    none was needed): a warm start for the next solve near this one (design_row's `jacobian`)."""
 
     row: dict
     residual: float
     iterations: int
     condition: float | None
+    jacobian: torch.Tensor | None = None
 
 
 def design_row(
@@ -484,6 +487,7 @@ def design_row(
     design: dict[str, float] | None = None,
     start: dict[str, float] | None = None,
     fast: bool = False,
+    jacobian: torch.Tensor | None = None,
 ) -> Solved:
     """The card row of the reference with the design inputs `design` changed (its table's
     names, game units). The closed inputs first; then every solved input met by Newton in the
@@ -492,8 +496,14 @@ def design_row(
     to 1e-7 in log (`fast`: Broyden updates after the first Jacobian, to 1e-5: the web tool's
     path). A design with flaps is solved clean first, then with them from there: the flaps'
     low-speed part of the sustained turn is lift-limited, so no drag coefficient moves it, and a
-    start whose clean best turn lies below it sees no way to the target. Raises ValueError for
-    an unknown input, RuntimeError when the solve does not converge."""
+    start whose clean best turn lies below it sees no way to the target.
+
+    The warm start (the web tool's slider path): `start` a previous solve's row and `jacobian`
+    its Solved.jacobian, with `fast`. Broyden goes on from that Jacobian (finite differences
+    again only when a step does not reduce the residual) and the clean stage is skipped (the
+    start already flies a design near this one, flaps and all); a Jacobian of another shape is
+    ignored. Raises ValueError for an unknown input, RuntimeError when the solve does not
+    converge."""
     inputs = reference.inputs
     values = {**reference.design, **(design or {})}
     unknown = set(values) - {spec.name for spec in inputs}
@@ -511,8 +521,13 @@ def design_row(
 
     logs = [math.log(first(spec)) for spec in solved]
     targets = [values[spec.name] for spec in solved]
-    stages = [{**row, "flap_lift": 0.0}, row] if row["flap_lift"] > 0.0 else [row]
-    solve = SimpleNamespace(logs=logs, residual=0.0, iterations=0, condition=None)
+    warm = fast and start is not None and jacobian is not None
+    if not warm or tuple(jacobian.shape) != (len(solved), len(solved)):
+        jacobian = None
+    clean = row["flap_lift"] > 0.0 and jacobian is None
+    stages = [{**row, "flap_lift": 0.0}, row] if clean else [row]
+    solve = SimpleNamespace(logs=logs, residual=0.0, iterations=0, condition=None,
+                            jacobian=jacobian)
     for stage in stages:
 
         def residual(logs, stage=stage):
@@ -522,9 +537,10 @@ def design_row(
 
         if solved:
             tolerance = 1e-5 if fast else 1e-7
-            solve = _newton(residual, solve.logs, tolerance, broyden=fast, name="design_row")
+            solve = _newton(residual, solve.logs, tolerance, broyden=fast, name="design_row",
+                            jacobian=jacobian if stage is stages[-1] else None)
     row.update({spec.sets: math.exp(x) for spec, x in zip(solved, solve.logs)})
-    return Solved(row, solve.residual, solve.iterations, solve.condition)
+    return Solved(row, solve.residual, solve.iterations, solve.condition, solve.jacobian)
 
 
 def design_of(row: dict[str, float], inputs: tuple = DESIGN_INPUTS) -> dict[str, float]:
@@ -723,25 +739,33 @@ def load_card() -> dict[str, tuple[float, ...]]:
 # --------------------------------------------------------------------------- Newton
 
 
-def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve"):
+def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve",
+            jacobian=None):
     """Newton in log parameters with a finite-difference Jacobian (v2's solver): `residual(logs)`
     a list of log ratios flown / target, driven below `tolerance`. `broyden`: after the first
-    Jacobian, rank-one updates with no new evaluations (the web tool's fast path). The step is a
-    pseudo-inverse's (a parameter with no sensitivity stays where it is), clamped to 0.5 in each
-    log. Returns logs, residual (the largest |r|), iterations and condition (of the last
-    Jacobian, None if none was needed)."""
+    Jacobian, rank-one updates with no new evaluations (the web tool's fast path), finite
+    differences again after a step that does not reduce the largest |r|; `jacobian` (Broyden
+    only) a first Jacobian to start from, a warm start. The step is a pseudo-inverse's (a
+    parameter with no sensitivity stays where it is), clamped to 0.5 in each log. Returns logs,
+    residual (the largest |r|), iterations, and the last Jacobian and its condition (None if
+    none was needed)."""
     step = 1e-5
-    jacobian, last = None, None
+    jacobian = jacobian if broyden else None
+    last = None
     for iteration in range(iterations):
         r = residual(logs)
-        if max(abs(x) for x in r) < tolerance:
+        worst = max(abs(x) for x in r)
+        if worst < tolerance:
             condition = None if jacobian is None else float(torch.linalg.cond(jacobian))
-            return SimpleNamespace(logs=logs, residual=max(abs(x) for x in r),
-                                   iterations=iteration, condition=condition)
+            return SimpleNamespace(logs=logs, residual=worst, iterations=iteration,
+                                   condition=condition, jacobian=jacobian)
         r_tensor = torch.tensor(r, dtype=torch.float64)
-        if broyden and jacobian is not None:
+        stalled = last is not None and worst >= last[2]
+        if broyden and jacobian is not None and last is not None and not stalled:
             moved_by, change = last[0], r_tensor - last[1]
             jacobian = jacobian + torch.outer(change - jacobian @ moved_by, moved_by) / (moved_by @ moved_by)
+        elif broyden and jacobian is not None and last is None:
+            pass  # the warm start's Jacobian, as given
         else:
             jacobian = torch.zeros(len(r), len(logs), dtype=torch.float64)
             for j in range(len(logs)):
@@ -749,7 +773,7 @@ def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve
                 moved[j] += step
                 jacobian[:, j] = (torch.tensor(residual(moved), dtype=torch.float64) - r_tensor) / step
         delta = (torch.linalg.pinv(jacobian, rtol=1e-9) @ -r_tensor).clamp(-0.5, 0.5)
-        last = (delta, r_tensor)
+        last = (delta, r_tensor, worst)
         logs = [x + float(d) for x, d in zip(logs, delta)]
     raise RuntimeError(f"{name} did not converge: residual {residual(logs)}")
 
@@ -823,8 +847,27 @@ def performance(
     turn (rate, speed), the low-speed acceleration (straight at the stall speed, empty store),
     and full_stick_fall (the most the full-stick rate falls with rising speed below corner,
     rad/s; 0 when it never does). Rates in rad/s. Each extremum is refined below the
-    `speed_step` grid (`_extremum`), so the numbers are smooth in the row's coefficients."""
-    config = config or core.GameConfig()
+    `speed_step` grid (`_extremum`), so the numbers are smooth in the row's coefficients.
+    With the default config the last _PERFORMANCE_KEPT rows' numbers are kept (per row, the
+    rule constants and the grid): a solve's last evaluation is its row's, which the web tool
+    then reads several times."""
+    if config is not None:
+        return _performance(row, plain, config, speed_step)
+    key = (tuple(sorted(row.items())), plain, speed_step, REFINE_POINTS,
+           tuple(getattr(card, name) for name in RULE_TIME_POWERS))
+    with _CARD_LOCK:
+        if key not in _PERFORMANCE:
+            while len(_PERFORMANCE) >= _PERFORMANCE_KEPT:
+                del _PERFORMANCE[next(iter(_PERFORMANCE))]
+            _PERFORMANCE[key] = _performance(row, plain, core.GameConfig(), speed_step)
+        return dict(_PERFORMANCE[key])
+
+
+_PERFORMANCE: dict[tuple, dict[str, float]] = {}  # oldest first
+_PERFORMANCE_KEPT = 16
+
+
+def _performance(row, plain, config, speed_step):
     if plain:
         row = point_mass(row)
     with torch.no_grad(), _with_row(row) as index:
@@ -897,8 +940,9 @@ def performance(
             departure = _bisect(
                 lambda v: flown(v, 1.0)[2], turning[k : k + 1], turning[k + 1 : k + 2]
             )
-            if float(tightness(departure)[0]) > tight:
-                speed, tight = float(departure[0]), float(tightness(departure)[0])
+            at_departure = float(tightness(departure)[0])
+            if at_departure > tight:
+                speed, tight = float(departure[0]), at_departure
         out["min_radius_speed"], out["min_radius"] = speed, -tight
         out["gap"] = out["min_radius_speed"] / out["sustained_speed"]
         # the settled full-stick turn: the speed where full stick holds speed
