@@ -507,3 +507,30 @@ has 0.168 and 0.148.
 Laptop RTX 4070, performance profile: search 25.4 min; confirmation, plateau, held-out,
 styles and divergence 8.8 min; about 34 minutes in all. The store holds 396,288 games, of
 which 207,360 are the search's.
+
+## Re-check after the stick, engine and S2 changes (2026-11-25)
+
+Since round 2 the stick levels are fixed thirds, flaps are gone, the P-51D card has the 2,200 hp
+engine, and the lead turn and yo-yos are deleted with their rows. Every agent id changed, so the
+games are in a fresh store: data/scripted-screening/recheck-2026-11-25.sqlite. The panel is round
+2's 8 members on today's rows (values by row name, the deleted rows dropped). BFM-CMA1 is
+`cma_candidate.json` without the deleted rows. Same skill measure, 64 games a cell (9,216 games
+each). Record: `recheck.json` (`recheck.py STORE`). Laptop RTX 4070: 3.2 min.
+
+| | default | CMA1 | CMA2 |
+|---|---|---|---|
+| skill | 0.515 | 0.599 | 0.632 |
+| error | 0.005 | 0.005 | 0.005 |
+| head to head v default | (self) | 0.607 | 0.634 |
+| head to head error | | 0.014 | 0.014 |
+
+- **The order holds.** BFM-CMA2 is 0.033 above BFM-CMA1 (about 4.6 combined errors) and 0.117
+  above BFM-default. Against BFM-default alone it scores 0.634 +- 0.014 (1,152 games).
+- **By condition,** BFM-CMA2 is above BFM-default in all 18, by 0.041 to 0.168, and above
+  BFM-CMA1 in 14 of the 18, by -0.053 to +0.077. BFM-CMA1's best radius is now 3,000 m (0.625,
+  level with BFM-CMA2's 0.621); BFM-CMA2 leads it at 4,200 m and 6,000 m.
+- All three are lower than in round 2 (0.649, 0.623, 0.529), but these are different games;
+  compare only within this section.
+
+**Decision (rule fixed in advance).** BFM-CMA2's skill is above both others, not merely within
+2 standard errors of them, so it stays the default. No CMA-ES round was run.

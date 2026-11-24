@@ -42,8 +42,9 @@ PANEL_SEED = 20261124
 MORRIS_SEED = 20261124
 MORRIS_TRAJECTORIES = 10
 MORRIS_LEVELS = 4
-# The tests' design-value BFM persona (lean/scripted/tests/test_tactics.py).
-BFM = ScriptedConfig().replace(yo_yo_time=0.5, lead_turn_scale=1.0, relax_angle=1.5 * math.pi, defend_range=1.0)
+# The tests' design-value BFM persona (lean/scripted/tests/test_tactics.py). Its lead-turn and
+# yo-yo rows went with those mechanisms (author 2026-11-25).
+BFM = ScriptedConfig().replace(relax_angle=1.5 * math.pi, defend_range=1.0)
 
 
 def game_configs():
@@ -98,8 +99,14 @@ def make_panel() -> None:
 
 
 def panel() -> list[ScriptedAgent]:
+    """The panel's members on today's row table: each member's values by row name, rows no
+    longer in the table dropped (the lead-turn and yo-yo rows, author 2026-11-25)."""
     record = json.loads(panel_path().read_text())
-    return [ScriptedAgent(tuple(member["values"])) for member in record["members"]]
+    members = []
+    for member in record["members"]:
+        named = dict(zip(record["rows"], member["values"], strict=True))
+        members.append(ScriptedAgent.of(ScriptedConfig({name: named[name] for name in PARAMETERS})))
+    return members
 
 
 def log(text: str) -> None:
