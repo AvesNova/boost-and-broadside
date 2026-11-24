@@ -223,12 +223,12 @@ def test_a_network_plays_at_the_precision_it_was_trained_with(tmp_path, monkeypa
 
 
 def test_versions_cover_what_decides_a_game_and_how_a_network_acts(tmp_path, monkeypatch):
-    """Review B3: the game version hashes the game's source but not the analysis-only
-    tuning.py; a network agent's id covers its inference path (lean/model with its agent
-    step, the runner), so a change there starts a new agent."""
+    """Review B3: the game version hashes the game's source, with tuning.py since it derives
+    the card (2026-11-24); a network agent's id covers its inference path (lean/model with its
+    agent step, the runner), so a change there starts a new agent."""
     names = {str(path.relative_to(store_module.LEAN)) for path in store_module.game_files()}
     assert {"game/core.py", "game/card.py", "scripted/opponent.py", "contract.py"} <= names
-    assert "game/tuning.py" not in names and not any("tests" in name for name in names)
+    assert "game/tuning.py" in names and not any("tests" in name for name in names)
     inference = {str(path.relative_to(store_module.LEAN)) for path in store_module.inference_files()}
     assert {"model/policy.py", "model/agent.py", "eval/runner.py"} <= inference
     path = tmp_path / "a.pt"

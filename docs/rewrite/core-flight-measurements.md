@@ -103,13 +103,14 @@ Reading:
 The terms v2 shared across types are card columns (`lean.game.card.FLIGHT_TERMS`, v2's names):
 `critical_speed` (drag rise), `drag_rise_exponent`, `separation_drag`, `separation_exponent`,
 `lift_softmin_exponent`, `thrust_softmin_exponent`, `nose_damping`, and since A1 the automatic
-flaps (`flap_lift`, `flap_full_speed_ratio`, `flap_clear_speed_ratio`, `flap_drag_scale`;
-`core._wing`). v2's values were 394 m/s, 12, 1, 8, 16, 2, 0.7 (Yongma, Jujak, Vizia,
+flaps (`flap_lift`, `flap_blowback_ratio`, `flap_drag_scale`; `core._wing`; until 2026-11-24
+`flap_full_speed_ratio` and `flap_clear_speed_ratio`, speed-scheduled). v2's values were 394 m/s, 12, 1, 8, 16, 2, 0.7 (Yongma, Jujak, Vizia,
 vizia_plain; they left the card at G1). The P-51D's (`tuning.P51D_TERMS`, since A1): drag rise
 doubling at 524.06 m/s game (Mach 0.77) with exponent 20, separation drag 0.1 (exponent 8),
-lift soft minimum 16, thrust soft minimum 8, nose damping 0.7, flaps +15% below 1.3 x stall,
-clean from 1.6 x stall, flap drag 0.2 (Delta C_L)^2 (before A1: the game terms off,
-`tuning.POINT_MASS_TERMS`).
+lift soft minimum 16, thrust soft minimum 8, nose damping 0.7, flaps +15% by stick demand,
+blown back by the clean corner speed, flap drag 1.5 (Delta C_L)^2 with the flaps fully used
+(2026-11-24; at A1 +15% below 1.3 x stall, clean from 1.6 x stall, 0.2 (Delta C_L)^2; before
+A1: the game terms off, `tuning.POINT_MASS_TERMS`).
 Shared still: gravity, the stall angle and induced-drag base constants (each with a per-type
 scale), and the numerical floors (speed floor, nose-frequency floor).
 

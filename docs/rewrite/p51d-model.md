@@ -5,7 +5,8 @@ The P-51D is the core game's ship. Its row is built from real data through the t
 so it still flies the real aircraft's headline numbers (core-decisions.md, "Flight model
 direction and shared code", 2026-11-24). History: the author's request of 2026-11-23 (a P-51D at
 the game's 2x time, comparable with real charts) first produced its pure point mass, the
-game terms off; step A1 (2026-11-24) rebuilt it as described here.
+game terms off; step A1 (2026-11-24) rebuilt it with the game terms on; later on 2026-11-24
+the flaps became demand-scheduled and the row derived at load (author, "Charts").
 
 Everything here is quasi-steady under `GameConfig()` (coasting, mid-store, no fields), from the
 flight code's own functions (`core.steady_rates`: `_wing`, `_setting`, `_lift_coefficient`,
@@ -24,6 +25,19 @@ converted back: speeds, turn rates and Ps halved.
 ## What the tuning code does (`lean/game/tuning.py`)
 
 Routes to a card row. None changes `core.py`.
+
+**The card is derived, not stored.** `lean/game/card.py` holds no numbers for a real
+aircraft: on first use of `card.CARD`, `tuning.load_card` makes every type's row from its
+targets (`REAL_AIRCRAFT`: the data, the flight test, the game terms) through `real_row`:
+`fit_point_mass`, then `game_row`. The row is cached in memory and on disk
+(`~/.cache/bnb-card/<type>-<key>.json`, or `$BNB_CARD_CACHE`), keyed by a hash of the targets,
+the base fields and the flight model's source (`core.py`, `card.py`, `tuning.py`,
+`contract.py`), so a physics change re-solves by itself and no stored copy goes stale. A solve
+takes about 7.6 s on the laptop (once per source change and machine); a cached load about
+1 ms. Every reader (the game, the web tool's presets, the charts, the evaluation store) reads
+`card.CARD`; the evaluation store's game version now hashes `tuning.py` too, since it decides
+the card.
+
 
 - **Airframe** (`airframe_row`): a direct conversion with no fitting. Lift and zero-lift drag
   per metre are rho S C / (2 m); the induced-drag factor is k / (rho S / 2 m) with
@@ -45,8 +59,8 @@ Routes to a card row. None changes `core.py`.
   it sees no way to the target. Kept as the airframe's: the lift and stall speed, the g limit
   and so the corner speed, the stall angle, the dive and climb trade, and the static thrust
   (no target sees it). The best sustained turn's speed is not solved; the terms are chosen to
-  keep it near the point mass's. The P-51D's card row is `game_row(P51D, P51D_TERMS,
-  GAME_FIELDS)`; a test holds the card equal to it.
+  keep it near the point mass's. The P-51D's card row is `real_row(REAL_AIRCRAFT["p51d"])`;
+  a test holds it to its targets.
 - **Handles** (`handles_row`): v2's handles, as v2's ship files hold them (x2 units). The
   direct fields use v2's closed forms (`solver._flight_card`'s direct ones and
   `weapons.combat_card`). C_max = g / stall^2; a_max = g_limit g; the bullet life is whole
@@ -87,7 +101,7 @@ How v2's flight model maps to the core model:
 | Propeller | Hamilton Standard, 3.40 m | the test report |
 | g limit | 8 (decided) | v2's research (forum figure, at 8,000 lb) |
 | Stall angle | 15.5 deg | v2's research |
-| C_D0, propeller efficiency | 0.01504, 0.821 | `fit_point_mass` to 375 mph and 3,600 ft/min at sea level (A) |
+| C_D0, propeller efficiency | 0.01504, 0.821 | `fit_point_mass` to 375 mph and 3,600 ft/min at sea level (A), run when the card is derived (`P51D` holds its start) |
 
 The point mass: stall 101.2 mph, corner speed 286 mph (stall x sqrt 8), and, as a model, a best
 sustained turn of 18.99 deg/s at 163.3 mph with radius 220 m.
@@ -100,64 +114,83 @@ sustained turn of 18.99 deg/s at 163.3 mph with radius 220 m.
 | Separation drag | 0.1, exponent 8 (the induced drag +10% at the wing's maximum lift) | larger values move the best sustained turn's speed off the point mass's: with the flaps off, +4% at 0.2, +8% at 0.3, +22% at v2's 1.0, which also needs e 1.28 |
 | Soft minimum, lift against the g limit | exponent 16 | v2's |
 | Soft minimum, thrust against static thrust | exponent 8 | much less soft than v2's 2 (which took 10% of the thrust near the best-climb speed) |
-| Automatic flaps | +15% maximum lift below 1.3 x stall, fading to clean at 1.6 x stall; flap drag 0.2 (Delta C_L)^2 | next section |
+| Automatic flaps | +15% maximum lift when the stick asks for more than the clean wing gives, blown back by the clean corner speed; flap drag 1.5 (Delta C_L)^2 with the flaps fully used | next section |
 | Nose damping | 0.7 | v2's, kept |
 
 Solved (`GAME_SOLVED`), as airframe equivalents:
 
 | | point mass | game row |
 |---|---|---|
-| C_D0 | 0.01504 | 0.01489 |
-| propeller efficiency | 0.821 | 0.808 |
-| Oswald e | 0.8 | 0.900 |
+| C_D0 | 0.01504 | 0.01503 |
+| propeller efficiency | 0.821 | 0.820 |
+| Oswald e | 0.8 | 0.819 |
 
-The soft minimum of lift and the separation drag both lower the turn near the lift limit (the
-soft minimum alone takes 1.8% of the full-stick rate at 150 m/s game, 0.04% at 110 and 3.4% at
-200), so the induced drag falls (e 0.900) to hold the best sustained rate. The other two move
-by 1 to 2%.
+The soft minimum of lift and the separation drag lower the turn near the lift limit, and the
+flaps raise it at low speed (they now act in the best sustained turn: with them off the same
+row's best sustained rate is 18.42 deg/s, not 18.99); the induced drag settles at e 0.819 to
+hold the best sustained rate. (With the speed-scheduled flaps of before, which did not reach
+the best sustained turn, it was e 0.900.)
 
 ## Automatic flaps (`core._wing`)
 
-The wing's maximum lift coefficient rises at low speed as if the flaps were exactly as far out
-as useful. No control: it is part of what full stick means at low speed.
+Scheduled by stick demand, as an F-16's automatic flaps are: the flaps come out when the stick
+asks for more lift than the clean wing gives, at any speed up to the blow-back speed. No
+control: they are part of what the stick means. Author's rules (core-decisions.md, "Charts"):
+smooth to the curvature (C2) in speed and in demand, and the turn rate never falls with speed
+below corner (the speed-scheduled flaps of before, which retracted between 1.3 and 1.6 x stall,
+made a shelf there in the doghouse).
 
-- **Lift.** The maximum lift coefficient is the clean one times 1 + `flap_lift` below
-  `flap_full_speed_ratio` x the clean stall speed, fading by a smootherstep in speed (no kink:
-  the slope is continuous) to the clean one at `flap_clear_speed_ratio` x the stall speed.
-  Everything that reads the wing's maximum reads it at the speed: the lift budget, the lift
-  curve (its peak at the stall angle), the nose's lift slope, and the separation drag (which
-  rises toward the flapped maximum).
-- **Drag.** The flaps' drag is `flap_drag_scale` x the induced-drag factor times the square of
-  the lift coefficient beyond the clean maximum. It is zero while the clean wing suffices
-  (straight flight, gentle turns), so the flaps cost only when their lift is used.
-- **Cost in the step.** One smootherstep of speed per half-kick (the flaps are held through
-  the half-kick at its starting speed), a reciprocal, and in each drag evaluation a square
-  root, a subtraction, a clamp and a square: the step's operations below.
-- **Per type.** `flap_lift`, `flap_full_speed_ratio`, `flap_clear_speed_ratio` (multiples of
-  the clean stall speed, so they carry across time scales and the web tool's stall slider),
-  `flap_drag_scale`. Off: `flap_lift` 0.
+- **The bonus and its blow-back.** The full-flap maximum is the clean maximum times
+  1 + `flap_lift` up to (1 - `card.FLAP_BLOWBACK_BAND`) x the blow-back speed, falling by a
+  smootherstep in speed to the clean maximum at the blow-back speed itself,
+  `flap_blowback_ratio` x the clean corner speed. The band is 40% (shared): the bonus's fall,
+  steeper with a narrower band, must not turn the full-stick rate down.
+- **The stick.** A stick level is a fraction of the full-flap maximum at that speed (full stick
+  asks for all of it), as before.
+- **Deployment.** The demanded lift coefficient: 1 g held (whatever the power) and the stick's
+  fraction of the full-flap maximum across it, sqrt((g / v^2)^2 + (stick x full)^2). The flaps
+  deploy by a smootherstep from `1 - card.FLAP_DEMAND_BAND` (90%) of the clean maximum to all of
+  it, so a demand the clean wing gives flies clean (straight above the stall speed, gentle and
+  sustained turns at speed) and one it cannot give has the flaps out as far as the speed allows.
+  Everything that reads the wing's maximum reads this one: the lift budget, the lift curve (its
+  peak at the stall angle), the nose's lift slope and the separation drag. Straight and slow,
+  the 1 g alone deploys them: the 1 g stall with the flaps out is the clean one over
+  sqrt(1.15).
+- **Drag.** `flap_drag_scale` x the induced-drag factor x (extra lift)^3 / (the full bonus),
+  on the lift coefficient beyond the clean maximum: zero while the clean wing suffices, equal
+  to the old square law with the flaps fully used, and the cube keeps the curvature continuous
+  where it starts.
+- **Smoothness.** Smootherstep in speed and in demand (value, slope and curvature continuous);
+  the cube in the drag. Tested by refinement (`test_flaps_are_smooth_in_speed_and_in_demand`):
+  on a grid four times finer the largest neighbour-to-neighbour change of the finite-difference
+  slope and curvature shrinks about fourfold, which a kink or a curvature step would not do.
+- **Cost in the step.** Per half-kick (the flaps held through it at its starting speed and
+  stick): one smootherstep of speed, a square root of the demand and one smootherstep of it, a
+  few multiplies; in each drag evaluation a square root, a clamp and a cube.
+- **Per type.** `flap_lift`, `flap_blowback_ratio` (a multiple of the clean corner speed, so it
+  carries across time scales and the web tool's sliders), `flap_drag_scale`. Off:
+  `flap_lift` 0. Shared: the two bands. A large bonus with the 40% band could turn the
+  full-stick rate down in the blow-back (the test holds every card type).
 
-**The P-51D's values are a game choice:** the P-51D had no combat flap setting. They are kept
-modest: +15% (Delta C_L 0.24, about what 10-15 degrees of a plain flap gives) below 1.3 x stall
-(131.5 mph), fading to clean by 1.6 x stall (161.9 mph), with Delta C_D = 0.2 (Delta C_L)^2
-(0.0115 at the full bonus). The fade ends below the best sustained turn's speed, so the flaps
-change the tightest turn and not the best rate. The 1 g stall with the flaps out is 94.3 mph
+**The P-51D's values are a game choice:** the P-51D had no combat flap setting. +15%
+(Delta C_L 0.24), blown back by the clean corner speed (fully out to 0.6 x corner, 172 mph), so
+the corner and the corner rate are the airframe's; Delta C_D = 1.5 (Delta C_L)^2 with the flaps
+fully used (0.086 at the full bonus). The drag is set so the tightest sustained turn stays
+clearly slower than the best sustained rate (the author's 10% margin): a sweep of the drag
+(2026-11-24, the row re-solved each time) gave the tightest turn's speed over the best rate's
+as 0.958 at 0.2 (the old value, which fails the margin), 0.921 at 0.5, 0.882 at 1.0, 0.852 at
+1.5 and 0.865 at 2.0; +25% with 1.0 gave 0.815. The 1 g stall with the flaps out is 94.3 mph
 (clean 101.2).
 
 What they do to the P-51D (the same solved row, flaps off against on):
-- tightest sustained turn 202 m at 136.7 mph, against 223 m at the best rate's speed (165.5
-  mph) without them: 9.5% tighter at a speed 17% lower;
-- the best sustained rate and its speed do not change;
-- the maximum instantaneous rate is nearly flat from 1.4 to 1.5 x stall as the flaps retract
-  (17.76 deg/s at 128 m/s game, 17.66 at 136, rising again from 138);
-- the flap drag costs speed in a slow full-stick turn (at 1.35 x stall, d speed / dt 3.33
-  against 3.76 m/s^2 game without it) but not the sustained radius: the P-51D has power to
-  spare there, so its slow sustained turn is lift-limited.
-
-Gentler fades fail the separation: with +15% fading from 1.0 to 1.6 x stall the radius is flat
-(224 m at 115 and at 145 m/s game) with no clear minimum; +10% fading from 1.3 to 1.6 gives a
-radius 4.6% tighter. A fade ending above the best rate's speed (1.8 x stall) moves the best
-rate itself onto the flaps' hump.
+- tightest sustained turn 202 m at 135.0 mph, against 224 m at 161.2 mph without them: 10%
+  tighter at a speed 16% lower;
+- the best sustained rate rises from 18.42 to 18.99 deg/s (the solve's target) and its speed
+  falls from 161.3 to 158.4 mph: the flaps reach the sustained turn now;
+- the full-stick rate rises with speed all the way to the corner (14.3 deg/s at 1.2 x stall,
+  18.3 at 1.4, 21.6 at 1.6, 26.9 at 2.0, 32.2 at 2.8; no shelf);
+- the flap drag costs speed in a slow full-stick turn (at 1.35 x stall, d speed / dt -0.49
+  against 2.89 m/s^2 game without it).
 
 ## Comparison with real figures (real units)
 
@@ -170,28 +203,33 @@ the stall speed use each row's own clean stall speed (sustained; full stick wher
 |---|---|---|---|---|
 | Stall speed, clean, 1 g | 100 mph at ~10,100 lb (Loftin); 101-102 mph at 9,000-9,500 lb (author's set 1); about 100.5 mph IAS at 9,800 lb (AN 01-60JE-1) | 104.1 mph | 101.2 mph | 101.2 mph (94.3 with the flaps) |
 | Top speed, sea level | 375 mph at 67 in Hg, 4,427 kg (flight test) | 375.1 mph | 375.0 | 375.0 |
-| Best climb, sea level | 3,600 ft/min at 67 in Hg (flight test); 3,410 (NAA calculation) | 3,599 ft/min at 142 mph | 3,600 at 142 | 3,600 at 142 |
-| Corner speed | none published; stall x sqrt(g limit) (derived) | 294.4 mph | 286.1 | 286.1 (the flown peak at 286) |
+| Best climb, sea level | 3,600 ft/min at 67 in Hg (flight test); 3,410 (NAA calculation) | 3,599 ft/min at 142 mph | 3,600 at 142 | 3,600 at 144 |
+| Corner speed | none published; stall x sqrt(g limit) (derived) | 294.4 mph | 286.1 | 286.1 (the flown peak at 285.9) |
 | Turn rate at corner | derived only | 34.0 deg/s | 35.0 | 32.2 |
-| Best sustained turn | no test value. Models: the October fit's 18.6 deg/s at 167 mph, r 231 m; author's set 2 (E-M derived) 360 in 18.2 s, r 215 m (19.8 deg/s); simulator compilations 15.7 deg/s | 18.63 deg/s at 169.4 mph, r 233 m | 18.99 at 163.3, r 220 | 18.99 at 165.5, r 223 |
-| Tightest sustained turn | none found | 233 m at 169.3 mph | 220 m at 163.2 | 202 m at 136.7 |
-| Tightest / best-rate speed | | 0.998 | 0.998 | 0.826 |
+| Best sustained turn | no test value. Models: the October fit's 18.6 deg/s at 167 mph, r 231 m; author's set 2 (E-M derived) 360 in 18.2 s, r 215 m (19.8 deg/s); simulator compilations 15.7 deg/s | 18.63 deg/s at 169.4 mph, r 233 m | 18.99 at 163.3, r 220 | 18.99 at 158.4, r 214 |
+| Tightest sustained turn | none found | 233 m at 169.3 mph | 220 m at 163.2 | 202 m at 135.0 |
+| Tightest / best-rate speed | | 0.998 | 0.998 | 0.852 |
 | Radius at 1.2 x stall | | 292 m (125 mph) | 276 m (121 mph) | 218 m (121 mph) |
-| Radius at 1.5 x stall | | 239 m (156 mph) | 226 m (152 mph) | 220 m (152 mph) |
-| Radius at 2 x stall | AAF calculation: 883 ft (269 m) at 4 g, 10,000 ft, P-51B (not comparable at sea level) | 331 m sustained, 225 m full stick (208 mph) | 316 m, 212 m (202 mph) | 300 m, 219 m (202 mph) |
-| Level acceleration at the stall speed | 2.73 m/s^2 (v2 research, estimated) | 3.74 m/s^2 | 3.83 | 3.73 |
+| Radius at 1.5 x stall | | 239 m (156 mph) | 226 m (152 mph) | 207 m sustained, 194 m full stick (152 mph) |
+| Radius at 2 x stall | AAF calculation: 883 ft (269 m) at 4 g, 10,000 ft, P-51B (not comparable at sea level) | 331 m sustained, 225 m full stick (208 mph) | 316 m, 212 m (202 mph) | 312 m, 193 m (202 mph) |
+| Level acceleration at the stall speed | 2.73 m/s^2 (v2 research, estimated) | 3.74 m/s^2 | 3.83 | 3.69 |
+
+The game row with the speed-scheduled flaps (A1, earlier on 2026-11-24): best sustained 18.99
+deg/s at 165.5 mph, r 223 m; tightest sustained 202 m at 136.7 mph (ratio 0.826); corner
+32.2 deg/s at 286 mph.
 
 Reading:
-- Top speed, climb and best sustained rate are the solve's targets and match the point mass
-  to 1e-6. The best sustained speed is 1.3% above the point mass's (not solved), between it
-  and the October and set-2 models' 166-167 mph.
-- The corner speed is exact (closed form from C_Lmax and the g limit). The corner rate is 8%
-  below the point mass's: the soft minimum of lift against the g limit (16) holds the full
-  stick below the hard limit near the corner. Matching it would need a nominal g limit above
-  8 (the soft minimum reaches the nominal value at high speed), so it is left (morning notes).
+- Top speed, climb and best sustained rate are the solve's targets and match the flight test
+  and the point mass to 1e-6. The best sustained speed is 3.0% below the point mass's (not
+  solved; the flaps now reach the sustained turn), between the point mass and the speed of
+  the tightest turn.
+- The corner speed is exact (closed form from C_Lmax and the g limit), and the flaps are blown
+  back there, so the corner rate is the clean wing's: 8% below the point mass's, as before
+  (the soft minimum of lift against the g limit, exponent 16, holds the full stick below the
+  hard limit near the corner).
 - With the flaps, the radius at 1.2 x stall is 21% tighter than the point mass's, and the
-  tightest sustained turn sits 17% slower than the best rate: a one-circle fight now asks for
-  a different speed than a two-circle fight.
+  tightest sustained turn sits 15% slower than the best rate: a one-circle fight asks for a
+  different speed than a two-circle fight.
 
 ## Charts
 
@@ -217,27 +255,29 @@ when Vizia left the card; they show the P-51D's earlier point mass.
 ## Tests
 
 `lean/game/tests/test_tuning.py`:
-- the card's row is `game_row(P51D, P51D_TERMS, GAME_FIELDS)` (the solved coefficients to 1e-9);
-- the point mass flies the flight test (375 mph and 3,600 ft/min to 1e-6), and `fit_point_mass`
-  returns P51D's C_D0 and propeller efficiency;
-- the game row flies its point mass's top speed, best climb and best sustained rate (1e-6), its
-  best sustained speed within 1.5%, the same stall and corner speeds (the flown peak within
-  0.1%), and differs from its plain version (the terms are on);
+- the point mass, fitted when the card is derived, flies the flight test (375 mph and 3,600
+  ft/min to 1e-6);
+- every card row meets its targets: the flight test's top speed and climb and the point
+  mass's best sustained rate (1e-6), its best sustained speed within 5% of the point mass's,
+  the same stall and corner speeds (the flown peak within 0.1%), the terms on;
+- derived rows are cached by their targets and the source (a second load reads the disk
+  without solving; another target or another source is another key);
 - the handles route recovers the row from its flown handles; another time scale flies the
   same aircraft; the scripted agent's references are the flown numbers (P-51D: quarter turn
-  2.37 s, store turn 2.56 rad).
+  2.37 s, store turn 2.30 rad).
 
 `lean/game/tests/test_flight.py`:
 - every card type's tightest sustained turn is at least 10% slower than its best sustained rate,
-  which is below its corner (P-51D: 122.25, 147.95 and 255.7 m/s game, ratio 0.826);
-- the flaps: the flapped maximum below the full speed, clean above the clear speed, never
-  rising with speed between, with a continuous slope;
-- the flaps' drag only for lift beyond the clean wing (straight flight slow pays none; full
-  stick slow bleeds more with it than without).
+  which is below its corner (P-51D: 120.70, 141.65 and 255.65 m/s game, ratio 0.852);
+- the turn rate never falls with speed from half the stall speed to the corner, at full stick
+  and at the sustained stick, for every card type;
+- the flaps deploy by demand (clean flying straight above the stall speed, the full bonus at
+  full stick below the blow-back band, clean from the blow-back speed, out below the 1 g speed
+  flying straight), are C2 in speed and in the stick (by refinement, a check that itself fails
+  the old square law's curvature step), and cost drag only for lift beyond the clean wing.
 
 The web tool (`lean/tool`) reads the same functions (`tuning.envelope`, `performance`,
-`handles_row`); its tests pass, and a live server answered a stall-speed change (80 m/s) in
-1.2 s with the flaps following the stall speed.
+`handles_row`) and its presets read the derived card (`tuning.row_of`).
 
 ## Record: Vizia's climb modifications (2026-11-23)
 

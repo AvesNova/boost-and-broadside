@@ -38,7 +38,12 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import hashlib
+import json
 import math
+import os
+import threading
+from pathlib import Path
 from types import SimpleNamespace
 
 import torch
@@ -103,7 +108,7 @@ class Airframe:
 # from v2's research (bnb.reference.real_planes) the g limit 8 and the stall angle 15.5 deg. C_D0
 # and the propeller efficiency are not data: fit_point_mass sets them so the point mass flies
 # the tested 375 mph and 3,600 ft/min at sea level (the October procedure, physics-checks/
-# real_fit.py); the values here are that fit (test_p51d_point_mass_flies_the_flight_test).
+# real_fit.py), every time the card is derived (real_row); the values here are its start.
 P51D = Airframe(
     mass=4427.0,
     wing_area=21.67,
@@ -149,8 +154,7 @@ GAME_FIELDS = dict(
     separation_exponent=8.0,
     nose_damping=0.7,
     flap_lift=0.0,
-    flap_full_speed_ratio=1.0,
-    flap_clear_speed_ratio=2.0,
+    flap_blowback_ratio=1.0,
     flap_drag_scale=0.0,
 )
 
@@ -172,11 +176,15 @@ POINT_MASS_TERMS = dict(
 # - Separation drag 0.1 (the induced drag +10% at the wing's maximum lift), exponent 8: larger
 #   values move the best sustained turn's speed off the point mass's (+8% at 0.3, +22% at v2's 1).
 # - Soft minima: lift against the g limit 16 (v2's), thrust against static thrust 8.
-# - Automatic flaps, a game choice (the P-51D had no combat flap setting): the maximum lift
-#   +15% below 1.3 x the clean stall speed, fading to clean at 1.6 x it, below the best
-#   sustained turn's speed, so the flaps change the tightest turn and not the best rate; the
-#   flaps' extra lift costs Delta C_D = 0.2 Delta C_L^2 (P51D_FLAP_DRAG).
-P51D_FLAP_DRAG = 0.2  # Delta C_D per (Delta C_L)^2 of lift beyond the clean maximum
+# - Automatic flaps, a game choice (the P-51D had no combat flap setting), scheduled by demand
+#   (core._wing): the maximum lift +15% when the stick asks for more than the clean wing gives,
+#   blown back by the clean corner speed (over its last 40%, card.FLAP_BLOWBACK_BAND), so the
+#   corner and its rate are the airframe's; the flaps' extra lift costs Delta C_D = 1.5
+#   Delta C_L^2 with the flaps fully used (P51D_FLAP_DRAG; cubic in the extra lift below that).
+#   The drag is set so the tightest sustained turn stays clearly slower than the best
+#   sustained rate (2026-11-24 sweep: the tightest turn's speed over the best rate's 0.96 at
+#   0.2, 0.85 at 1.5; docs/rewrite/p51d-model.md).
+P51D_FLAP_DRAG = 1.5  # Delta C_D per (Delta C_L)^2 of lift beyond the clean maximum, flaps fully used
 P51D_TERMS = dict(
     critical_speed=to_game(0.77 * SPEED_OF_SOUND, -1),
     drag_rise_exponent=20.0,
@@ -185,8 +193,7 @@ P51D_TERMS = dict(
     lift_softmin_exponent=16.0,
     thrust_softmin_exponent=8.0,
     flap_lift=0.15,
-    flap_full_speed_ratio=1.3,
-    flap_clear_speed_ratio=1.6,
+    flap_blowback_ratio=1.0,
     flap_drag_scale=P51D_FLAP_DRAG / (P51D.per_metre * card.INDUCED_DRAG_FACTOR),
 )
 
@@ -269,6 +276,97 @@ def game_row(airframe: Airframe, terms: dict[str, float], base: dict[str, float]
         logs = _newton(residual, logs, 1e-7, name="game_row")
     row.update({name: math.exp(x) for name, x in zip(GAME_SOLVED, logs)})
     return row
+
+
+# --------------------------------------------------------------------------- the derived card
+
+
+@dataclasses.dataclass(frozen=True)
+class RealAircraft:
+    """A real aircraft's targets: its data (C_D0 and the propeller efficiency only a start),
+    its flight test (real m/s, sea level) and its game terms."""
+
+    airframe: Airframe
+    top_speed: float
+    best_climb: float
+    terms: dict
+
+
+# The card's real aircraft by type name (card.TYPE_NAMES).
+REAL_AIRCRAFT = {"p51d": RealAircraft(P51D, P51D_TOP_SPEED, P51D_BEST_CLIMB, P51D_TERMS)}
+# The source the derived rows depend on: the flight model, the card's constants, this route.
+FLIGHT_SOURCES = tuple(
+    Path(__file__).parent / name for name in ("core.py", "card.py", "tuning.py")
+) + (Path(__file__).parent.parent / "contract.py",)
+
+
+def real_row(aircraft: RealAircraft) -> dict[str, float]:
+    """A real aircraft's card row from its targets: the point mass fitted to the flight test
+    (fit_point_mass), then the game terms on with the low-level coefficients solved (game_row)."""
+    fitted = fit_point_mass(aircraft.airframe, aircraft.top_speed, aircraft.best_climb)
+    return game_row(fitted, aircraft.terms, GAME_FIELDS)
+
+
+def row_key(aircraft: RealAircraft) -> str:
+    """16 hex digits of the SHA-256 of the aircraft's targets, the base fields and FLIGHT_SOURCES:
+    a derived row's cache key (any change to the flight model's source re-solves)."""
+    digest = hashlib.sha256()
+    targets = [dataclasses.asdict(aircraft.airframe), aircraft.top_speed, aircraft.best_climb,
+               aircraft.terms, GAME_FIELDS]
+    digest.update(json.dumps(targets, sort_keys=True).encode())
+    for path in FLIGHT_SOURCES:
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:16]
+
+
+def cache_directory() -> Path:
+    """Where derived rows are kept: $BNB_CARD_CACHE, default ~/.cache/bnb-card."""
+    return Path(os.environ.get("BNB_CARD_CACHE", "~/.cache/bnb-card")).expanduser()
+
+
+def cached_real_row(name: str) -> dict[str, float]:
+    """REAL_AIRCRAFT[name]'s row: from the disk cache when its key is there, else solved
+    (real_row, a few seconds) and written (atomically; an unwritable cache is skipped)."""
+    aircraft = REAL_AIRCRAFT[name]
+    path = cache_directory() / f"{name}-{row_key(aircraft)}.json"
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        pass
+    row = real_row(aircraft)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        partial = path.with_suffix(f".{os.getpid()}.partial")
+        partial.write_text(json.dumps(row, sort_keys=True))
+        os.replace(partial, path)
+    except OSError:
+        pass
+    return row
+
+
+_CARD_LOCK = threading.RLock()
+_DERIVING = threading.local()
+
+
+def load_card() -> dict[str, tuple[float, ...]]:
+    """card.CARD, derived once per process (card.__getattr__ calls this on first use): every
+    type's row (cached_real_row) as {field: one value per type in TYPE_NAMES' order}."""
+    with _CARD_LOCK:
+        if "CARD" in vars(card):
+            return card.CARD
+        if getattr(_DERIVING, "active", False):
+            raise RuntimeError("card.CARD read while it is being derived")
+        _DERIVING.active = True
+        try:
+            rows = [cached_real_row(name) for name in card.TYPE_NAMES]
+        finally:
+            _DERIVING.active = False
+        for name, row in zip(card.TYPE_NAMES, rows):
+            if set(row) != set(card.CARD_FIELDS):
+                off = sorted(set(row) ^ set(card.CARD_FIELDS))
+                raise ValueError(f"{name}'s derived row differs from the card's fields: {off}")
+        card.CARD = {field: tuple(float(row[field]) for row in rows) for field in card.CARD_FIELDS}
+        return card.CARD
 
 
 # --------------------------------------------------------------------------- handles route
@@ -411,14 +509,19 @@ def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve
 @contextlib.contextmanager
 def _with_row(row: dict[str, float]):
     """The card with `row` appended as a last type, restored afterwards; the core's built
-    ship cards are dropped on entry and exit (as in time_scale)."""
-    saved = card.CARD
-    card.CARD = {name: (*values, float(row[name])) for name, values in saved.items()}
+    ship cards are dropped on entry and exit (as in time_scale). While the card is itself being
+    derived (load_card) the row is its only type."""
+    saved = None if getattr(_DERIVING, "active", False) else card.CARD
+    base = saved if saved is not None else {name: () for name in card.CARD_FIELDS}
+    card.CARD = {name: (*values, float(row[name])) for name, values in base.items()}
     core._SHIP_CARDS.clear()
     try:
-        yield len(next(iter(saved.values())))
+        yield len(next(iter(base.values())))
     finally:
-        card.CARD = saved
+        if saved is None:
+            del card.CARD
+        else:
+            card.CARD = saved
         core._SHIP_CARDS.clear()
 
 
@@ -716,7 +819,7 @@ CARD_TIME_POWERS = dict(
     head_on_sharpness=0, fine_stick=0, sustained_stick=0, vision_range_scale=0,
     critical_speed=-1, drag_rise_exponent=0, separation_drag=0, separation_exponent=0,
     lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0, flap_lift=0,
-    flap_full_speed_ratio=0, flap_clear_speed_ratio=0, flap_drag_scale=0,
+    flap_blowback_ratio=0, flap_drag_scale=0,
 )
 # The rule constants (lean.game.card) with time in their units.
 RULE_TIME_POWERS = dict(
@@ -724,7 +827,7 @@ RULE_TIME_POWERS = dict(
     BULLET_SPREAD=-1, SHIELD_RECHARGE_RATE=-1, SHIELD_RECHARGE_DELAY=1, BOUNDARY_MAX_DAMAGE=-1,
     SPAWN_SPEED=-1,
 )
-assert set(CARD_TIME_POWERS) == set(card.CARD)
+assert set(CARD_TIME_POWERS) == set(card.CARD_FIELDS)
 
 
 def time_scaled(factor: float, tick_length: float = 1.0 / 30.0):
