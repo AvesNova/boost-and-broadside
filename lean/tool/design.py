@@ -6,7 +6,7 @@ and the key numbers, and the flown checks (lean.tool.flown). No physics lives he
 The sliders are generated from tuning.DESIGN_INPUTS (`inputs`: name, label, unit, group, how it
 sets the card, the slider's range), each starting at the preset's reference value
 (tuning.reference) with its provenance tag. Only moved inputs are sent; the server solves the
-row in the fast path (Broyden from the preset's own row).
+row in the fast path (Broyden), warm from the preset's last solve (its row and Jacobian).
 """
 
 import io
@@ -51,8 +51,8 @@ def presets() -> dict:
 
 
 def solve(preset: str, values: dict | None = None, fixed: dict | None = None) -> tuning.Solved:
-    """The preset's design with the inputs `values` moved, solved (tuning.design_row, fast path
-    from the preset's row); the preset's own row, unsolved, when nothing moves; `fixed` (a saved
+    """The preset's design with the inputs `values` moved, solved (tuning.design_row, fast path,
+    warm: `_solved`); the preset's own row, unsolved, when nothing moves; `fixed` (a saved
     card row) as it is. Unknown names raise ValueError; a solve that does not converge raises
     RuntimeError."""
     if fixed is not None:
@@ -72,14 +72,31 @@ def solve(preset: str, values: dict | None = None, fixed: dict | None = None) ->
     if key not in _SOLVED:
         if len(_SOLVED) > 64:
             _SOLVED.clear()
-        _SOLVED[key] = (
-            tuning.design_row(
-                tuning.reference(preset), changed, start=PRESET_ROWS[preset], fast=True
-            )
-            if changed
-            else tuning.Solved(PRESET_ROWS[preset], 0.0, 0, None)
-        )
+        _SOLVED[key] = _solved(preset, changed) if changed else tuning.Solved(
+            PRESET_ROWS[preset], 0.0, 0, None)
     return _SOLVED[key]
+
+
+_WARM: dict[str, tuning.Solved] = {}  # preset -> its last solve (row and Jacobian)
+
+
+def _solved(preset: str, changed: dict) -> tuning.Solved:
+    """The fast solve, warm from the preset's last solve (its row and Jacobian: a slider drag
+    moves a little each time), else, or when that does not converge, from the preset's row."""
+    reference = tuning.reference(preset)
+    last = _WARM.get(preset)
+    solved = None
+    if last is not None:
+        try:
+            solved = tuning.design_row(reference, changed, start=last.row, fast=True,
+                                       jacobian=last.jacobian)
+        except (RuntimeError, ValueError, IndexError, ArithmeticError):  # app.UNSOLVABLE
+            solved = None
+    if solved is None:
+        solved = tuning.design_row(reference, changed, start=PRESET_ROWS[preset], fast=True)
+    if solved.jacobian is not None:
+        _WARM[preset] = solved
+    return solved
 
 
 def build_row(preset: str, values: dict | None = None, fixed: dict | None = None) -> dict:

@@ -100,6 +100,41 @@ def test_moved_designs_fly_their_inputs(p51d, change):
     assert_flies(fast.row, {**p51d.design, **design}, 1e-4, "fast")
 
 
+@pytest.mark.parametrize(
+    "before, after",
+    [
+        (dict(top_speed=1.03), dict(top_speed=1.05)),
+        (dict(gap=0.84, sustained_rate=1.02), dict(gap=0.82, sustained_rate=1.04, top_speed=0.98)),
+        (dict(flap_lift=0.1), dict(flap_lift=0.15, best_climb=1.05)),
+    ],
+    ids=["one-input", "several", "flaps"],
+)
+def test_a_warm_start_agrees_with_a_cold_solve(p51d, before, after, monkeypatch):
+    """The web tool's warm start (design_row from the last solve's row and Jacobian) reaches the
+    cold solve's row (both from the fast path, to its 1e-5) with fewer flight evaluations."""
+    def design(change):
+        return {name: value if name in ("gap", "flap_lift") else value * p51d.design[name]
+                for name, value in change.items()}
+
+    row = tuning.row_of("p51d")
+    last = tuning.design_row(p51d, design(before), start=row, fast=True)
+    assert last.jacobian is not None
+    evaluations = []
+    performance = tuning.performance
+    monkeypatch.setattr(tuning, "performance", lambda *a, **k: evaluations.append(1) or
+                        performance(*a, **k))
+    warm = tuning.design_row(p51d, design(after), start=last.row, fast=True,
+                             jacobian=last.jacobian)
+    warm_evaluations = len(evaluations)
+    cold = tuning.design_row(p51d, design(after), start=row, fast=True)
+    assert warm_evaluations < len(evaluations) - warm_evaluations
+    monkeypatch.undo()
+    assert warm.residual < 1e-5 and cold.residual < 1e-5
+    assert_flies(warm.row, {**p51d.design, **design(after)}, 2e-5, "warm")
+    for name, value in cold.row.items():
+        assert warm.row[name] == pytest.approx(value, rel=1e-3), name
+
+
 def test_a_design_from_the_point_mass_guess_flies_its_inputs(p51d):
     """With no start row the solve starts from the reference's point mass (and the table's first
     guesses) and still flies every input."""

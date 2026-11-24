@@ -204,6 +204,23 @@ def test_the_ship_panels_show_implied_physics_warnings_and_the_solved_row():
     assert bad.status_code == 422
 
 
+def test_a_slider_drag_solves_warm_and_agrees_with_a_cold_solve(monkeypatch):
+    """Successive slider values solve warm from the preset's last solve (design._WARM: its row
+    and Jacobian) and fly the same design as a cold solve from the preset's row."""
+    monkeypatch.setattr(design, "_SOLVED", {})
+    monkeypatch.setattr(design, "_WARM", {})
+    reference = tuning.reference("p51d")
+    for factor in (1.02, 1.03, 1.04):
+        values = {"best_climb": factor * reference.design["best_climb"]}
+        warm = design.solve("p51d", values)
+        assert design._WARM["p51d"] is warm
+    cold = tuning.design_row(reference, values, start=design.PRESET_ROWS["p51d"], fast=True)
+    for name, value in cold.row.items():
+        assert warm.row[name] == pytest.approx(value, rel=1e-3), name
+    assert tuning.design_of(warm.row)["best_climb"] == pytest.approx(values["best_climb"],
+                                                                     rel=2e-5)
+
+
 def test_saved_presets_store_their_row_and_load_editable_or_fixed(tmp_path, monkeypatch):
     """A saved preset stores its inputs, the design-input table's version and its solved row.
     Under today's table it loads editable; under another it is a fixed ship (its stored row,

@@ -76,9 +76,11 @@ takes about 5 s on the laptop; a cached load about 1 ms.
      (`_newton`: a finite-difference Jacobian, pseudo-inverse steps clamped to 0.5, to 1e-7
      in log). The solve starts from `start` (a row), or from the reference's point mass with
      the table's first guesses where the point mass has no usable value.
-- The web tool's fast path starts from the preset's row and uses Broyden updates, to 1e-5.
+- The web tool's fast path uses Broyden updates, to 1e-5, warm from the preset's last solve
+  (its row and Jacobian, `Solved.jacobian`; the clean stage then skipped), else from the
+  preset's row; finite differences again after a step that does not reduce the residual.
 - A design with flaps is solved clean first, then with them.
-- `design_row` returns the row with the solve's residual, iterations and condition number
+- `design_row` returns the row with the solve's residual, iterations, condition number and Jacobian
   (`Solved`). A solve that does not converge raises: that is the one refusal.
 - `design_of(row)` is the inverse: every input's measure.
 
