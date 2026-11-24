@@ -5,6 +5,8 @@ process)."""
 
 import asyncio
 import contextlib
+import datetime
+import json
 import multiprocessing
 import threading
 from pathlib import Path
@@ -49,6 +51,54 @@ class DesignRequest(BaseModel):
 @app.get("/")
 def index():
     return FileResponse(PAGE)
+
+
+SAVED = Path("/home/vizia/avesnova/boost-and-broadside/data/tool-presets")
+
+
+class SavedPreset(BaseModel):
+    """A named state of the Ships tab: the base preset, the inputs moved, the switches off and the
+    time scale."""
+
+    name: str
+    state: dict
+
+
+def _safe(name: str) -> str:
+    return "".join(c if c.isalnum() or c in "-_." else "_" for c in name.strip()).strip(".")[:80]
+
+
+@app.get("/api/saved")
+def saved_list():
+    """The saved presets (each record: name, saved_at, base_preset, state)."""
+    SAVED.mkdir(parents=True, exist_ok=True)
+    return dict(saved=[json.loads(p.read_text()) for p in sorted(SAVED.glob("*.json"))])
+
+
+@app.post("/api/saved")
+def saved_save(request: SavedPreset):
+    """Write the state to <name>.json (overwrites; the page confirms first)."""
+    name = _safe(request.name)
+    if not name:
+        return JSONResponse({"error": "empty name"}, status_code=422)
+    SAVED.mkdir(parents=True, exist_ok=True)
+    record = dict(
+        name=name,
+        saved_at=datetime.datetime.now().isoformat(timespec="seconds"),
+        base_preset=request.state.get("preset"),
+        state=request.state,
+    )
+    (SAVED / f"{name}.json").write_text(json.dumps(record, indent=2))
+    return dict(name=name)
+
+
+@app.delete("/api/saved/{name}")
+def saved_delete(name: str):
+    path = SAVED / f"{_safe(name)}.json"
+    if not path.is_file():
+        return JSONResponse({"error": "no such preset"}, status_code=404)
+    path.unlink()
+    return dict(deleted=_safe(name))
 
 
 @app.get("/api/presets")
