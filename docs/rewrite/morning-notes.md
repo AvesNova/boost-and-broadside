@@ -38,6 +38,12 @@ undo it.
   scripted agent), keep the rest, and accept the trim only if a paired skill re-check shows no
   loss beyond 2 standard errors. Result below when it lands. The classes' cut-offs (JS 0.02
   nats or 10% action change when reached) are the agent's choice.
+  **Result (merged):** 9 rows and 6 gates gone (overshoot and its 3 rows; spend_need,
+  spend_range, spend_share; cash_angle, so two-circle holds the middle level at the fight
+  speed; relax_angle and defend_range, so a defensive ship always breaks; the speed-floor
+  clamp). turning_floor and boundary_margin frozen (personas no longer sample them). Skill
+  0.632 -> 0.631 (difference -0.001 +- 0.007, unpaired); head to head trimmed vs untrimmed
+  0.495 +- 0.015. Scripted call 387 -> 343 operations.
 - Step 7 (V3, merged): the 2.5x collect is real, not skipped work. Before L2's league routing
   every snapshot ran on every league environment (8,192 opponent rows a tick); since L2 each
   slot runs only its own rows (about 1,170). The 11-23 row reproduced exactly (19,736); every
