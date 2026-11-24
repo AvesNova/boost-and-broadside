@@ -7,13 +7,14 @@ from torch import Tensor
 from lean.contract import LEVEL_NAMES
 from lean.learn.config import LearnConfig
 from lean.model.temporal import doubling_scan
-from lean.model.value import value_bin_centres
+from lean.model.value import buffered_centres
 
 
 def value_centres(config: LearnConfig, bins: int, device=None) -> Tensor:
-    """Bin centres of the categorical critic, (LEVELS, bins), evenly spaced from
-    config.value_low to config.value_high of each level."""
-    return value_bin_centres(
+    """Bin centres of the categorical critic, (LEVELS, bins), evenly spaced: config.value_low
+    to config.value_high of each level (the measured range) plus the buffer columns
+    (lean.model.value.buffered_centres)."""
+    return buffered_centres(
         torch.tensor(config.value_low), torch.tensor(config.value_high), bins
     ).to(device)
 

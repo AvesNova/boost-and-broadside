@@ -101,15 +101,17 @@ class LearnConfig:
     # and recurrence in float32. Ignored on the CPU.
     bf16: bool = True
 
-    # Categorical critic: the outermost bin centres per level, in return units (LEVEL_NAMES
-    # order). Each holds the level's measured returns with margin (lean/learn/NOTES.md,
-    # "Reward levels"). The learner owns the support.
-    # Measured 2026-11-23 (scripted against scripted, whole episodes, 4v4 to 8v8, v2 and
-    # core games; and the learner's first rollouts): damage -4.9 to 5.9, kill_death -5.7 to
-    # 7.9, outcome +-10 (its bound). Symmetric, so an untrained critic (uniform softmax)
-    # reads 0. Objective levels: placeholders, no mode pays them yet.
-    value_low: tuple[float, ...] = (-7.0, -8.0, -1.0, -1.0, -12.0)
-    value_high: tuple[float, ...] = (7.0, 8.0, 1.0, 1.0, 12.0)
+    # Categorical critic: the measured range of each level's returns, in return units
+    # (LEVEL_NAMES order); the support adds the buffer columns beyond both ends
+    # (lean.model.value.buffered_centres). The learner owns the support.
+    # Measured 2026-11-25 (scripted against scripted, the training game, 4v4, 35.5M living
+    # ship-ticks of finished episodes; docs/rewrite/sections/scoreboard/target_ranges.py):
+    # extremes damage -3.9 to 5.4, kill_death -6.5 to 7.5, outcome +-10 (its bound); the
+    # 0.1st to 99.9th percentiles -2.1 to 2.1, -2.8 to 3.7 and +-10. Symmetric, so an
+    # untrained critic (uniform softmax) reads 0. Objective levels: placeholders, no mode
+    # pays them yet.
+    value_low: tuple[float, ...] = (-5.4, -7.5, -1.0, -1.0, -10.0)
+    value_high: tuple[float, ...] = (5.4, 7.5, 1.0, 1.0, 10.0)
     value_sigma_ratio: float = 0.75  # Gaussian width of a target, in bin widths
     # Range monitoring (per level, per epoch's targets): a warning when more than this share
     # of the valued targets lies beyond the outermost centres (clamped), and when the

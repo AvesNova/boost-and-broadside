@@ -9,6 +9,24 @@ import math
 import torch
 from torch import Tensor
 
+# Every categorical support (the critics' and the next-state columns') spans its measured
+# range with MEASURED_COLUMNS columns (the outermost centres at the measured ends, so the range
+# sets the column width), then BUFFER_COLUMNS more of that width at each end: room for the
+# HL-Gauss target near the measured ends and for outliers (author 2026-11-24).
+MEASURED_COLUMNS = 64
+BUFFER_COLUMNS = 3
+COLUMNS = MEASURED_COLUMNS + 2 * BUFFER_COLUMNS
+
+
+def buffered_centres(low: Tensor | float, high: Tensor | float, bins: int = COLUMNS) -> Tensor:
+    """Bin centres of a support measured from `low` to `high` (numbers or tensors of one
+    shape (...)): (..., bins) float32, uniform, the column width (high - low) /
+    (bins - 2 BUFFER_COLUMNS - 1), with BUFFER_COLUMNS columns beyond each measured end."""
+    low = torch.as_tensor(low, dtype=torch.float32)
+    high = torch.as_tensor(high, dtype=torch.float32)
+    width = (high - low) / (bins - 2 * BUFFER_COLUMNS - 1)
+    return value_bin_centres(low - BUFFER_COLUMNS * width, high + BUFFER_COLUMNS * width, bins)
+
 
 def value_bin_centres(low: Tensor | float, high: Tensor | float, bins: int) -> Tensor:
     """Uniformly spaced bin centres from `low` to `high` inclusive, in value units.

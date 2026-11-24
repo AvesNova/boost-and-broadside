@@ -19,7 +19,7 @@ from torch import Tensor, nn
 from lean import contract
 from lean.model.position import Rotary, make_position_code
 from lean.model.temporal import Temporal
-from lean.model.value import hl_gauss_targets, value_bin_centres
+from lean.model.value import COLUMNS, buffered_centres, hl_gauss_targets
 
 
 def _default_position_periods() -> tuple[float, ...]:
@@ -31,8 +31,9 @@ def _default_position_periods() -> tuple[float, ...]:
 @dataclass(frozen=True)
 class NextStateColumn:
     """One column of the next-state head: a categorical over `bins` bins whose centres are
-    uniform from `low` to `high` (target units, the outermost centres), in symlog space when
-    `symlog` (lean/model/NOTES.md has the table and the measurements behind the ranges)."""
+    uniform, `low` to `high` the measured range (target units; in symlog space when `symlog`)
+    plus the buffer columns beyond each end (next_state_centres; lean/model/NOTES.md has the
+    table and the measurements behind the ranges)."""
 
     name: str
     symlog: bool
@@ -40,19 +41,19 @@ class NextStateColumn:
     high: float
 
 
-# The next-state columns (next_state_target). Ranges from the per-tick changes of living ships
-# in scripted 4v4 elimination under the training spawn (5.55M rows, 2026-11-23; lean/model/
-# NOTES.md has the percentiles): each linear range is symmetric, just outside the 0.1st and
-# 99.9th percentiles (the rarer tails fall in the outermost bins); the shield's low end is
-# four hits of about 21 in one tick (a crossfire of four ships; the largest measured was 44),
-# its high end three bins above 0.
+# The next-state columns (next_state_target). Measured ranges from the per-tick changes of
+# living ships, scripted against scripted under the training game (42.7M rows, 2026-11-25;
+# lean/model/NOTES.md has the percentiles; docs/rewrite/sections/scoreboard/target_ranges.py):
+# each linear range is symmetric, just outside the 0.1st and 99.9th percentiles; the shield's
+# low end is four hits of about 21 in one tick (a crossfire of four ships; the largest
+# measured was 61), its high end 0. The buffer columns lie beyond both ends.
 NEXT_STATE_COLUMNS = (
-    NextStateColumn("along", False, -0.35, 0.35),  # metres
+    NextStateColumn("along", False, -0.37, 0.37),  # metres
     NextStateColumn("across", False, -0.6, 0.6),  # metres
-    NextStateColumn("heading", False, -0.05, 0.05),  # radians
-    NextStateColumn("speed", False, -3.0, 3.0),  # metres per second
-    NextStateColumn("energy", False, -700.0, 700.0),  # store units
-    NextStateColumn("shield", True, -90.0, 0.3),  # shield points
+    NextStateColumn("heading", False, -0.043, 0.043),  # radians
+    NextStateColumn("speed", False, -2.8, 2.8),  # metres per second
+    NextStateColumn("energy", False, -640.0, 640.0),  # store units
+    NextStateColumn("shield", True, -90.0, 0.0),  # shield points
 )
 
 
@@ -88,11 +89,11 @@ class ModelConfig:
     map_width: int = 64
     mlp_ratio: int = 4
     head_hidden: int = 256
-    bins: int = 64
+    bins: int = COLUMNS  # 64 across the measured range, 3 buffer columns each end
     hit_classes: int = 3  # the hit head: miss, enemy, team-mate
-    # Shares of the outcomes of every bullet that ended (ghosts included), 5.53M bullets of
-    # scripted 4v4 elimination under the training spawn (2026-11-23; lean/model/NOTES.md).
-    hit_class_frequencies: tuple[float, ...] = (0.9457, 0.0444, 0.0099)
+    # Shares of the outcomes of every bullet that ended (ghosts included), 42.5M bullets of
+    # scripted 4v4 elimination under the training game (2026-11-25; lean/model/NOTES.md).
+    hit_class_frequencies: tuple[float, ...] = (0.9374, 0.0547, 0.0080)
     recurrence_exponent: float = 8.0
     retention_low: float = 0.9
     retention_high: float = 0.999
@@ -193,7 +194,8 @@ def next_state_target(
 
 def next_state_centres(config: ModelConfig, device=None) -> Tensor:
     """The next-state bins' centres, (NEXT_STATE, BINS) float32, in each column's bin space
-    (symlog of target units for a symlog column)."""
+    (symlog of target units for a symlog column): the column's measured range plus the
+    buffer columns at each end, in that space (lean.model.value.buffered_centres)."""
     low = torch.tensor([column.low for column in config.next_state_columns], dtype=torch.float32)
     high = torch.tensor([column.high for column in config.next_state_columns], dtype=torch.float32)
     is_symlog = torch.tensor([column.symlog for column in config.next_state_columns])
@@ -201,7 +203,7 @@ def next_state_centres(config: ModelConfig, device=None) -> Tensor:
         torch.where(is_symlog, contract.symlog(low), low),
         torch.where(is_symlog, contract.symlog(high), high),
     )
-    return value_bin_centres(low, high, config.bins).to(device)
+    return buffered_centres(low, high, config.bins).to(device)
 
 
 def next_state_distribution(config: ModelConfig, target: Tensor) -> Tensor:
