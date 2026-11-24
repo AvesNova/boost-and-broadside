@@ -168,22 +168,49 @@ def test_a_design_change_moves_the_design_and_the_reference_stays():
 
 
 def test_the_sliders_are_the_design_inputs():
-    """The page's sliders are tuning.DESIGN_INPUTS, in order, each starting at the preset's
-    reference value with its provenance and inside its range; the page keeps no list of its own
-    and no Plotly."""
+    """Per profile (tuning.PROFILES), the page's sliders are its table, in order, each starting
+    at the preset's reference value under it with its provenance and inside its range; the
+    preset names its own profile (the documents); the page keeps no list of its own, no profile's
+    names and no Plotly."""
     from pathlib import Path
 
-    entries = design.presets()["p51d"]["inputs"]
-    assert [e["name"] for e in entries] == [spec.name for spec in tuning.DESIGN_INPUTS]
-    reference = tuning.reference("p51d")
-    for e in entries:
-        assert e["value"] == pytest.approx(reference.design[e["name"]])
-        assert e["low"] <= e["value"] <= e["high"] and e["group"] in tuning.GROUPS
-        assert e["source"] and e["method"] in ("closed", "solved", "short circuit")
-    assert {e["kind"] for e in entries} - {None} <= set(units.KINDS)
+    preset = design.presets()["p51d"]
+    assert preset["profile"] == tuning.DEFAULT_PROFILE
+    assert set(preset["profiles"]) == set(tuning.PROFILES) == set(design.profiles())
     page = Path(design.__file__).with_name("index.html").read_text()
     assert "plotly" not in page.lower()
-    assert not any(f'"{e["name"]}"' in page or f"'{e['name']}'" in page for e in entries)
+    for profile, entries in preset["profiles"].items():
+        assert [e["name"] for e in entries] == [s.name for s in tuning.PROFILES[profile].inputs]
+        reference = tuning.reference("p51d", profile)
+        for e in entries:
+            assert e["value"] == pytest.approx(reference.design[e["name"]])
+            assert e["low"] <= e["value"] <= e["high"] and e["group"] in tuning.GROUPS
+            assert e["source"] and e["method"] in ("closed", "solved", "short circuit")
+        assert {e["kind"] for e in entries} - {None} <= set(units.KINDS)
+        assert not any(f'"{e["name"]}"' in page or f"'{e['name']}'" in page for e in entries)
+        assert f'"{profile}"' not in page
+
+
+def test_a_profile_is_chosen_per_request(monkeypatch):
+    """A request names its profile: its inputs are that table's (a moved best sustained speed
+    under the performance points is solved and flown; under the documents it is refused), the
+    warnings point at its inputs, and an unknown profile is refused."""
+    monkeypatch.setattr(design, "_SOLVED", {})
+    client = TestClient(app)
+    points = tuning.reference("p51d", "performance_points")
+    speed = 0.98 * points.design["sustained_speed"]
+    request = {"preset": "p51d", "profile": "performance_points",
+               "values": {"sustained_speed": speed}}
+    moved = client.post("/api/ship", json=request).json()
+    assert moved["flies"]["sustained_speed"] == pytest.approx(speed, rel=1e-4)
+    assert moved["solve"]["condition"] < 20.0
+    assert {w["input"] for w in moved["warnings"]} == {"g_limit"}  # the structure; e now in range
+    refused = client.post("/api/ship", json={**request, "profile": None})
+    assert refused.status_code == 422
+    unknown = client.post("/api/ship", json={**request, "profile": "nonesuch"})
+    assert unknown.status_code == 422
+    png = client.post("/api/doghouse.png", json=request)
+    assert png.status_code == 200
 
 
 def test_the_ship_panels_show_implied_physics_warnings_and_the_solved_row():
@@ -213,7 +240,7 @@ def test_a_slider_drag_solves_warm_and_agrees_with_a_cold_solve(monkeypatch):
     for factor in (1.02, 1.03, 1.04):
         values = {"best_climb": factor * reference.design["best_climb"]}
         warm = design.solve("p51d", values)
-        assert design._WARM["p51d"] is warm
+        assert design._WARM[("p51d", tuning.DEFAULT_PROFILE)] is warm
     cold = tuning.design_row(reference, values, start=design.PRESET_ROWS["p51d"], fast=True)
     for name, value in cold.row.items():
         assert warm.row[name] == pytest.approx(value, rel=1e-3), name
@@ -236,6 +263,7 @@ def test_saved_presets_store_their_row_and_load_editable_or_fixed(tmp_path, monk
     assert client.post("/api/saved", json={"name": "seven", "state": state}).status_code == 200
     record = json.loads((tmp_path / "seven.json").read_text())
     assert record["inputs_version"] == tuning.inputs_version()
+    assert record["profile"] == tuning.DEFAULT_PROFILE
     assert record["row"]["max_acceleration"] == pytest.approx(7.0 * card.GRAVITY)
     record["inputs_version"] = "another"
     (tmp_path / "old-table.json").write_text(json.dumps({**record, "name": "old-table"}))
@@ -250,6 +278,14 @@ def test_saved_presets_store_their_row_and_load_editable_or_fixed(tmp_path, monk
     assert reply["row"] == pytest.approx(fixed) and reply["solve"]["iterations"] == 0
     png = client.post("/api/doghouse.png", json={"preset": "p51d", "fixed": fixed})
     assert png.status_code == 200
+    points = {**state, "profile": "performance_points", "values": {"best_climb": 40.0}}
+    assert client.post("/api/saved", json={"name": "climb", "state": points}).status_code == 200
+    record = json.loads((tmp_path / "climb.json").read_text())
+    assert record["profile"] == "performance_points"
+    assert record["inputs_version"] == tuning.inputs_version(
+        tuning.PROFILES["performance_points"].inputs)
+    listed = {r["name"]: r for r in client.get("/api/saved").json()["saved"]}
+    assert listed["climb"]["editable"] and listed["climb"]["profile"] == "performance_points"
 
 
 @pytest.fixture(scope="module")

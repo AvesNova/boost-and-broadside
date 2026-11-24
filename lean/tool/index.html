@@ -42,6 +42,7 @@
 <div id="ships" class="on">
   <div id="controls">
     <label>Preset <select id="preset"></select></label>
+    <label>Design inputs <select id="profile"></select></label>
     <label>Time scale <select id="factor">
       <option value="1">1x real time</option><option value="1.5">1.5x</option>
       <option value="2" selected>2x (the game)</option><option value="3">3x</option></select></label>
@@ -80,17 +81,20 @@ function show(tab) {
 $("tab-ships").onclick = () => show("ships");
 $("tab-sandbox").onclick = () => show("sandbox");
 
-// ---- ships tab: the inputs come from the server (lean.tool.design.inputs: tuning.DESIGN_INPUTS)
+// ---- ships tab: the inputs come from the server (lean.tool.design.inputs: the chosen profile's
+// table, tuning.PROFILES); the page knows no profile's inputs
 async function init() {
   const data = await (await fetch("/api/presets")).json();
   presets = data.presets; unitInfo = data.units;
+  for (const [name, label] of Object.entries(data.profiles)) $("profile").add(new Option(label, name));
   for (const name of unitInfo.order) $("units").add(new Option(unitInfo.names[name], name));
   await loadSaved();
   $("preset").onchange = () => choosePreset();
+  $("profile").onchange = () => choosePreset(true);
   $("save").onclick = saveState;
   $("delete").onclick = deleteSaved;
   $("factor").onchange = $("units").onchange = () => { refreshAll(); request(); };
-  $("reset").onclick = () => choosePreset();
+  $("reset").onclick = () => choosePreset(true);
   $("fly").onclick = flyChecks;
   choosePreset();
 }
@@ -136,14 +140,16 @@ async function deleteSaved() {
   await fetch("/api/saved/" + encodeURIComponent(name), { method: "DELETE" });
   await loadSaved(); choosePreset();
 }
-function choosePreset() {
+function choosePreset(keepProfile = false) {
   const v = $("preset").value, record = v.startsWith("saved:") ? saved[v.slice(6)] : null, state = record ? record.state : null;
-  const inputs = presets[base()].inputs;
+  if (!keepProfile)                                       // a saved preset's profile, else the preset's own
+    $("profile").value = record ? record.profile : presets[base()].profile;
+  const inputs = presets[base()].profiles[$("profile").value];
   controlsByName = {};
   $("sliders").innerHTML = "";
   values = {};                                            // only moved inputs are sent
   const groups = {};
-  for (const s of inputs) {                               // one slider per tuning.DESIGN_INPUTS entry
+  for (const s of inputs) {                               // one slider per entry of the profile's table
     if (!groups[s.group]) {
       const box = document.createElement("details");
       box.open = Object.keys(groups).length < 1;
@@ -187,7 +193,7 @@ function choosePreset() {
 }
 function schedule() { clearTimeout(timer); timer = setTimeout(request, 250); }   // debounced
 function body() {
-  return JSON.stringify({ preset: base(), values: fixedRow ? {} : values, fixed: fixedRow, time_scale: +$("factor").value,
+  return JSON.stringify({ preset: base(), profile: $("profile").value, values: fixedRow ? {} : values, fixed: fixedRow, time_scale: +$("factor").value,
                           units: $("units").value });
 }
 function post(url, payload) { return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload }); }
@@ -269,7 +275,7 @@ function startSandbox() {
   stopSandbox(); prev = cur = null; trail = [];
   const ws = new WebSocket(`ws://${location.host}/api/sandbox`);
   socket = ws;
-  ws.onopen = () => ws.send(JSON.stringify({ preset: base(), values, fixed: fixedRow, time_scale: +$("factor").value, opponent: true }));
+  ws.onopen = () => ws.send(JSON.stringify({ preset: base(), profile: $("profile").value, values, fixed: fixedRow, time_scale: +$("factor").value, opponent: true }));
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
     if (m.type === "setup") { setup = m; trail = []; }

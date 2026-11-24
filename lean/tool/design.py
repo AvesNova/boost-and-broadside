@@ -3,9 +3,10 @@ row from its design inputs (tuning.design_row), what it implies physically and i
 charts (drawn by the committed charts' matplotlib code, docs/rewrite/sections/turns/doghouse.py)
 and the key numbers, and the flown checks (lean.tool.flown). No physics lives here.
 
-The sliders are generated from tuning.DESIGN_INPUTS (`inputs`: name, label, unit, group, how it
-sets the card, the slider's range), each starting at the preset's reference value
-(tuning.reference) with its provenance tag. Only moved inputs are sent; the server solves the
+The sliders are generated from the chosen profile's design-input table (tuning.PROFILES:
+`inputs`: name, label, unit, group, how it sets the card, the slider's range), each starting at
+the preset's reference value under that profile (tuning.reference) with its provenance tag; no
+code here knows any profile's inputs. Only moved inputs are sent; the server solves the
 row in the fast path (Broyden), warm from the preset's last solve (its row and Jacobian).
 """
 
@@ -28,12 +29,13 @@ _CHECKS: dict[
 ] = {}  # (factor, row) -> (lowest speeds, flown points), game units
 _PRESET_STALL: dict[str, float] = {}  # preset -> its stall speed at the game's time factor
 
-def inputs(preset: str) -> list[dict]:
-    """The page's sliders, in DESIGN_INPUTS order: name, label, unit, kind, group, method (how
-    it sets the card), source (provenance), value and reference (the preset's), low, high."""
-    reference = tuning.reference(preset)
+def inputs(preset: str, profile: str | None = None) -> list[dict]:
+    """The page's sliders, in the profile's table order (default the preset's own profile):
+    name, label, unit, kind, group, method (how it sets the card), source (provenance), value
+    and reference (the preset's), low, high."""
+    reference = tuning.reference(preset, profile)
     out = []
-    for spec in tuning.DESIGN_INPUTS:
+    for spec in reference.inputs:
         value = reference.design[spec.name]
         scale = value if spec.relative else 1.0
         low, high = spec.low * scale, spec.high * scale
@@ -46,12 +48,31 @@ def inputs(preset: str) -> list[dict]:
 
 
 def presets() -> dict:
-    """Per card type: its inputs."""
-    return _plain({name: dict(inputs=inputs(name)) for name in card.TYPE_NAMES})
+    """Per card type: its own profile and, per profile (tuning.PROFILES), its inputs."""
+    return _plain({
+        name: dict(profile=tuning.REAL_AIRCRAFT[name].profile,
+                   profiles={profile: inputs(name, profile) for profile in tuning.PROFILES})
+        for name in card.TYPE_NAMES
+    })
 
 
-def solve(preset: str, values: dict | None = None, fixed: dict | None = None) -> tuning.Solved:
-    """The preset's design with the inputs `values` moved, solved (tuning.design_row, fast path,
+def profiles() -> dict:
+    """The profiles' names and labels, in tuning.PROFILES order."""
+    return {name: profile.label for name, profile in tuning.PROFILES.items()}
+
+
+def _profile(preset: str, profile: str | None) -> str:
+    """The profile's name (default the preset's own); ValueError for an unknown one."""
+    profile = profile or tuning.REAL_AIRCRAFT[preset].profile
+    if profile not in tuning.PROFILES:
+        raise ValueError(f"not a design-input profile: {profile}")
+    return profile
+
+
+def solve(preset: str, values: dict | None = None, fixed: dict | None = None,
+          profile: str | None = None) -> tuning.Solved:
+    """The preset's design under the profile (default its own) with the inputs `values` moved,
+    solved (tuning.design_row, fast path,
     warm: `_solved`); the preset's own row, unsolved, when nothing moves; `fixed` (a saved
     card row) as it is. Unknown names raise ValueError; a solve that does not converge raises
     RuntimeError."""
@@ -59,32 +80,33 @@ def solve(preset: str, values: dict | None = None, fixed: dict | None = None) ->
         if set(fixed) != set(card.CARD_FIELDS):
             raise ValueError("a fixed ship's row must have the card's fields")
         return tuning.Solved({name: float(fixed[name]) for name in card.CARD_FIELDS}, 0.0, 0, None)
-    unknown = set(values or {}) - set(tuning.DESIGN)
+    profile = _profile(preset, profile)
+    reference = tuning.reference(preset, profile).design
+    unknown = set(values or {}) - set(reference)
     if unknown:
         raise ValueError(f"not design inputs: {sorted(unknown)}")
-    reference = tuning.reference(preset).design
     changed = {
         n: float(v)
         for n, v in (values or {}).items()
         if abs(float(v) - reference[n]) > 1e-9 * abs(reference[n])
     }
-    key = (preset, tuple(sorted(changed.items())))
+    key = (preset, profile, tuple(sorted(changed.items())))
     if key not in _SOLVED:
         if len(_SOLVED) > 64:
             _SOLVED.clear()
-        _SOLVED[key] = _solved(preset, changed) if changed else tuning.Solved(
+        _SOLVED[key] = _solved(preset, profile, changed) if changed else tuning.Solved(
             PRESET_ROWS[preset], 0.0, 0, None)
     return _SOLVED[key]
 
 
-_WARM: dict[str, tuning.Solved] = {}  # preset -> its last solve (row and Jacobian)
+_WARM: dict[tuple, tuning.Solved] = {}  # (preset, profile) -> its last solve (row, Jacobian)
 
 
-def _solved(preset: str, changed: dict) -> tuning.Solved:
+def _solved(preset: str, profile: str, changed: dict) -> tuning.Solved:
     """The fast solve, warm from the preset's last solve (its row and Jacobian: a slider drag
     moves a little each time), else, or when that does not converge, from the preset's row."""
-    reference = tuning.reference(preset)
-    last = _WARM.get(preset)
+    reference = tuning.reference(preset, profile)
+    last = _WARM.get((preset, profile))
     solved = None
     if last is not None:
         try:
@@ -95,45 +117,57 @@ def _solved(preset: str, changed: dict) -> tuning.Solved:
     if solved is None:
         solved = tuning.design_row(reference, changed, start=PRESET_ROWS[preset], fast=True)
     if solved.jacobian is not None:
-        _WARM[preset] = solved
+        _WARM[(preset, profile)] = solved
     return solved
 
 
-def build_row(preset: str, values: dict | None = None, fixed: dict | None = None) -> dict:
-    return solve(preset, values, fixed).row
+def build_row(preset: str, values: dict | None = None, fixed: dict | None = None,
+              profile: str | None = None) -> dict:
+    return solve(preset, values, fixed, profile).row
 
 
 def saved_record(name: str, state: dict, saved_at: str) -> dict:
-    """What a saved preset stores: its state (preset, the inputs moved, time scale, units), the
-    design-input table's version, and the solved card row, so it flies as saved even after the
-    table changes. A fixed ship saved again keeps its row and stays fixed."""
+    """What a saved preset stores: its state (preset, profile, the inputs moved, time scale,
+    units), the profile and its design-input table's version, and the solved card row, so it
+    flies as saved even after the table changes. A fixed ship saved again keeps its row and
+    stays fixed."""
     fixed = state.get("fixed")
-    return dict(name=name, saved_at=saved_at, base_preset=state.get("preset"), state=state,
-                inputs_version=None if fixed else tuning.inputs_version(),
-                row=build_row(state.get("preset", "p51d"), state.get("values"), fixed))
+    preset = state.get("preset", "p51d")
+    profile = _profile(preset, state.get("profile"))
+    version = None if fixed else tuning.inputs_version(tuning.PROFILES[profile].inputs)
+    return dict(name=name, saved_at=saved_at, base_preset=preset, state=state, profile=profile,
+                inputs_version=version,
+                row=build_row(preset, state.get("values"), fixed, profile))
 
 
 def loaded_record(record: dict) -> dict | None:
-    """A saved preset as the page loads it: editable sliders when its table version is today's;
-    otherwise a fixed ship from its stored row, with the inputs measured from that row
-    (tuning.design_of). None for a record without a row (an old format: not listed)."""
+    """A saved preset as the page loads it: editable sliders when its profile's table version is
+    today's (a record without a profile was saved under the documents table); otherwise a fixed
+    ship from its stored row, with the inputs of its profile (or, if gone, the default's)
+    measured from that row (tuning.design_of). None for a record without a row (an old format:
+    not listed)."""
     if not isinstance(record.get("row"), dict) or set(record["row"]) != set(card.CARD_FIELDS):
         return None
-    editable = record.get("inputs_version") == tuning.inputs_version()
-    out = dict(record, editable=editable)
+    profile = record.get("profile") or tuning.DEFAULT_PROFILE
+    known = tuning.PROFILES.get(profile)
+    editable = known is not None and record.get("inputs_version") == tuning.inputs_version(
+        known.inputs)
+    out = dict(record, profile=profile if known else tuning.DEFAULT_PROFILE, editable=editable)
     if not editable:
+        table = (known or tuning.PROFILES[tuning.DEFAULT_PROFILE]).inputs
         with LOCK:
-            out["measured"] = _plain(tuning.design_of(record["row"]))
+            out["measured"] = _plain(tuning.design_of(record["row"], table))
     return out
 
 
-def ship(preset: str, values: dict[str, float] | None = None, fixed: dict | None = None) -> dict:
+def ship(preset: str, values: dict[str, float] | None = None, fixed: dict | None = None,
+         profile: str | None = None) -> dict:
     """The design's implied physical quantities (tuning.implied, real units), its warnings
     (tuning.warnings), its solved card row with the solve's residual, iterations and condition
     number, and what it flies (tuning.design_of, game units)."""
     with LOCK:
-        solved = solve(preset, values, fixed)
-        reference = tuning.reference(preset)
+        solved = solve(preset, values, fixed, profile)
+        reference = tuning.reference(preset, _profile(preset, profile))
         numbers = tuning.performance(solved.row)
         return _plain(dict(
             implied=tuning.implied(solved.row, reference.airframe),
@@ -141,7 +175,7 @@ def ship(preset: str, values: dict[str, float] | None = None, fixed: dict | None
             row=solved.row,
             solve=dict(residual=solved.residual, iterations=solved.iterations,
                        condition=solved.condition),
-            flies=tuning.design_of(solved.row),
+            flies=tuning.design_of(solved.row, reference.inputs),
         ))
 
 
@@ -206,13 +240,14 @@ def warm(preset: str = "p51d") -> None:
         _preset_checks(preset)
 
 
-def fly_checks(preset: str, values, factor: float, fixed: dict | None = None) -> dict:
+def fly_checks(preset: str, values, factor: float, fixed: dict | None = None,
+               profile: str | None = None) -> dict:
     """Fly the design's checks (lean.tool.flown: the lowest speed of each line and the key
     points), cache them for its charts, and return them with the quasi-steady points (game
     units at `factor`)."""
     with LOCK:
         _preset_checks(preset)
-        row = build_row(preset, values, fixed)
+        row = build_row(preset, values, fixed, profile)
         chart = _chart()
         with tuning.flying(row, factor):
             key = _key(row, factor)
@@ -267,12 +302,13 @@ def _numbers(lowest, source, points) -> dict:
     return dict(key=key, lowest=lowest, lowest_source=source, flown=points)
 
 
-def envelope(preset: str, values, factor: float, fixed: dict | None = None) -> dict:
+def envelope(preset: str, values, factor: float, fixed: dict | None = None,
+             profile: str | None = None) -> dict:
     """JSON-ready: the key numbers for the tuned design and for the preset as it stands (the
     reference), in game units at `factor` times real time."""
     with LOCK:
         _preset_checks(preset)
-        row = build_row(preset, values, fixed)
+        row = build_row(preset, values, fixed, profile)
         design = _cached("numbers", preset, row, factor, _numbers)
         reference = _cached("numbers", preset, PRESET_ROWS[preset], factor, _numbers)
     return _plain(dict(factor=factor, design=design, reference=reference))
@@ -285,13 +321,14 @@ def _png(figure) -> bytes:
     return buffer.getvalue()
 
 
-def doghouse_png(preset, values, factor: float, system: str = "game", fixed=None) -> bytes:
+def doghouse_png(preset, values, factor: float, system: str = "game", fixed=None,
+                 profile=None) -> bytes:
     """The doghouse of the tuned design as a PNG, drawn by the committed charts' code, in the
     units system (lean.tool.units: game, real_metric, real_imperial)."""
     chart = _chart()
     with LOCK:
         _preset_checks(preset)
-        row = build_row(preset, values, fixed)
+        row = build_row(preset, values, fixed, profile)
         title = f"{preset}, " + ("the preset" if row == PRESET_ROWS[preset] else "this design")
         with tuning.flying(row, factor):
             lowest, source, points = _lowest(preset, row, factor)
@@ -301,13 +338,14 @@ def doghouse_png(preset, values, factor: float, system: str = "game", fixed=None
             return _png(figure)
 
 
-def sustained_png(preset, values, factor: float, system: str = "game", fixed=None) -> bytes:
+def sustained_png(preset, values, factor: float, system: str = "game", fixed=None,
+                  profile=None) -> bytes:
     """The sustained turn (rate and radius against speed) of the tuned design and of the preset
     (dotted), as a PNG in the doghouse's style."""
     chart = _chart()
     with LOCK:
         _preset_checks(preset)
-        row = build_row(preset, values, fixed)
+        row = build_row(preset, values, fixed, profile)
         curves = [
             (
                 label,

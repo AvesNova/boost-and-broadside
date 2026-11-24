@@ -317,3 +317,94 @@ def test_an_input_is_swapped_by_editing_the_table_only():
     assert flown["top_speed"] == pytest.approx(reference.design["top_speed"], rel=1e-6)
     with pytest.raises(ValueError, match="each card field once"):
         tuning.check_inputs(inputs[1:])
+
+
+# --------------------------------------------------------------------------- profiles
+
+POINTS = "performance_points"
+
+
+@pytest.fixture(scope="module")
+def points():
+    return tuning.reference("p51d", POINTS)
+
+
+def test_profiles_are_named_tables():
+    """Each profile (tuning.PROFILES) is a design-input table that sets every card field once;
+    the card's default is the documents (DESIGN_INPUTS) and the P-51D is solved under it; the
+    performance points solve the top speed, best climb, best sustained speed and the gap."""
+    for profile in tuning.PROFILES.values():
+        tuning.check_inputs(profile.inputs)
+        assert profile.base is None or profile.base in tuning.PROFILES
+    assert tuning.PROFILES[tuning.DEFAULT_PROFILE].inputs is tuning.DESIGN_INPUTS
+    assert tuning.REAL_AIRCRAFT["p51d"].profile == tuning.DEFAULT_PROFILE == "documents"
+    solved = [spec.name for spec in tuning.PROFILES[POINTS].inputs if spec.method == "solved"]
+    assert solved == ["top_speed", "best_climb", "sustained_speed", "gap"]
+    versions = {tuning.inputs_version(profile.inputs) for profile in tuning.PROFILES.values()}
+    assert len(versions) == len(tuning.PROFILES)
+
+
+def test_performance_points_start_from_the_documents_row(p51d, points):
+    """The P-51D under the performance points: its reference values are what the documents row
+    flies under that table (design_of), so its own design is that row with no solve; solved
+    from its point mass's guesses instead (no start) it is that row again (1e-5); the same
+    reference made without the card (reference_in) agrees."""
+    row = tuning.row_of("p51d")
+    assert points.profile == POINTS and points.airframe == p51d.airframe
+    assert points.design == tuning.design_of(row, points.inputs)
+    own = tuning.design_row(points, start=points.start_row)
+    assert own.iterations == 0 and own.row == row
+    cold = tuning.design_row(points)
+    for name, value in row.items():
+        assert cold.row[name] == pytest.approx(value, rel=1e-5), name
+    fresh = tuning.reference_in(tuning.REAL_AIRCRAFT["p51d"], POINTS)
+    for name, value in points.design.items():
+        assert fresh.design[name] == pytest.approx(value, rel=1e-6), name
+
+
+@pytest.mark.parametrize(
+    "change",
+    [dict(corner_speed=0.97), dict(g_limit=1.03, sustained_speed=0.97),
+     dict(top_speed=1.03, best_climb=0.97, gap=1.03)],
+    ids=["corner", "turner", "fast-low-climb"],
+)
+def test_moved_performance_points_fly_their_inputs(points, change):
+    """Moved designs under the performance points (multiples of the reference's values) fly
+    every input after the solve from the P-51D's row (1e-6), with a condition number near the
+    profile's 9 at the P-51D, and in the fast path (1e-4)."""
+    design = {name: factor * points.design[name] for name, factor in change.items()}
+    row = tuning.row_of("p51d")
+    solved = tuning.design_row(points, design, start=row)
+    assert solved.residual < 1e-7 and solved.condition < 20.0
+    flown = tuning.design_of(solved.row, points.inputs)
+    for name, value in {**points.design, **design}.items():
+        if name != "gun_range":
+            assert flown[name] == pytest.approx(value, rel=1e-6, abs=1e-12), name
+    fast = tuning.design_row(points, design, start=row, fast=True)
+    flown = tuning.design_of(fast.row, points.inputs)
+    for name, value in design.items():
+        assert flown[name] == pytest.approx(value, rel=1e-4), name
+
+
+def test_a_preset_records_its_profile(tmp_path, monkeypatch):
+    """A preset solved under another profile (RealAircraft.profile) is another cache key, and
+    its row is the documents row again when that profile starts from it (1e-6)."""
+    monkeypatch.setenv("BNB_CARD_CACHE", str(tmp_path))
+    aircraft = tuning.REAL_AIRCRAFT["p51d"]
+    other = dataclasses.replace(aircraft, profile=POINTS)
+    assert tuning.row_key(other) != tuning.row_key(aircraft)
+    row, documents = tuning.real_row(other), tuning.row_of("p51d")
+    for name, value in documents.items():
+        assert row[name] == pytest.approx(value, rel=1e-6), name
+
+
+def test_warnings_point_at_the_profiles_input(p51d, points):
+    """A plausibility check names a card field; its warning points at the input that sets that
+    field in the reference's table: Oswald e at the best sustained rate under the documents and
+    at the best sustained speed under the performance points."""
+    row = tuning.row_of("p51d")
+    for reference, expected in ((p51d, "sustained_rate"), (points, "sustained_speed")):
+        found = {w["quantity"]: w for w in tuning.warnings(row, reference)}
+        assert found["oswald"]["field"] == "induced_drag_scale"
+        assert found["oswald"]["input"] == expected
+        assert found["structural_load"]["input"] == "g_limit"
