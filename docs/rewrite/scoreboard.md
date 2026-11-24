@@ -231,7 +231,7 @@ values and rewards 0.25 GB each, next-state targets 0.18 GB).
 The 2026-11-24 row (core game, 3 updates, steady = updates 1 and 2, RL loop of train_gpu.py with the league full with 8
 snapshots; BC is not a mode of that script) is the same size as the rows above. Changed since 2026-11-23: the core game only,
 the P-51D with flaps, the BFM scripted agent at 439 operations, the model update and the league routing. Collect is 2.5x the
-earlier core-game row (49,796 against 19,736); the cause was not isolated here. Update steps/s is within 3% of that row
+earlier core-game row (49,796 against 19,736); the cause is below ("Why collect was 2.5x"). Update steps/s is within 3% of that row
 (7,554 against 7,791); loop 6,559 against 5,586. Memory is higher (5.76 against 5.58 GiB allocated). The compile tripwire
 (compile_check.py) passed: 4 graphs, 5,771 traced operations, 0 graph breaks, cold 228.2 s.
 
@@ -247,6 +247,46 @@ earlier core-game row (49,796 against 19,736); the cause was not isolated here. 
   KL 4e-9 to 8e-9; PPO's clip is 0.2.
 - **v2's floor (about 5,000 steady environment steps per second on the laptop):** met at
   parity with both games (6,124 and 5,586).
+
+### Why collect was 2.5x (2026-11-25)
+
+**Cause: the league routing (L2, 97a66aab, 2026-11-23 22:25), not skipped work.** Both rows
+had the league full with 8 snapshots (the 11-23 script filled it through League.maybe_add,
+the 11-24 one through League.after_update). Before L2, collect ran every snapshot slot on
+every league environment (a vmap over the slots: 8 x 1,024 = 8,192 opponent rows a tick) and
+kept each environment's own member's output. Since L2 each network slot runs only on its own
+rows, padded to the capacity ceil(1.25 x 1,024 / 11 members) = 117: 10 slots (8 snapshots,
+the EMA, the uniform average) x 117 = 1,170 rows a tick. The live policy (3,072 seats a tick)
+and the scripted agent (every ship of every environment, as the BC target) are the same work in both.
+
+Laptop 4070, "performance", rough, one run each, steady collect steps/s at parity. Today's
+tree (1b78a55b): collect alone, collect_probe.py (2 warm + 8 timed segments). The 11-23 tree
+(ddd8186e): its own train_gpu.py `--game core --updates 2`, steady = update 1.
+
+| Tree | league full, 8 snapshots | league empty (every league game scripted) |
+|---|---|---|
+| ddd8186e (vmap over all slots) | 19,736 | 80,384 |
+| 1b78a55b (one call per slot on its rows) | 6 of 8 segments 49,897 to 50,444 (2 at 34,456 and 36,315, not investigated; mean 45,492) | 77,164 |
+
+The 11-23 row reproduces (19,736). Per tick, the network opponents took 78 ms before L2 (103.8
+against 25.5 ms) and 14 ms after (40.6 against 26.5 ms); without them collect is 4% slower
+today than on 11-23 (the other changes between the trees; not split). No recompile in either: the old
+row's first update (the compile) is outside its steady figure, and today's segments after the
+first run at full speed.
+
+**Work skipped: no.** One counted segment of today's 8-snapshot run (counters around the
+compiled tick halves, the store's writes and each slot's call, summed on the device): 128 x
+2,048 = 262,144 environment ticks stepped and 128 ticks written; 3,072 live-policy seats each
+tick; each of the 131,072 league-environment ticks moved by exactly one source (116,296 by a
+network slot, 14,776 = 11.3% by the scripted agent); no slot past its 117 rows; every
+scripted row's action the scripted agent's. That each routed row gets its own slot's move is
+lean/learn/tests/test_league.py::test_routing_gives_each_environment_its_own_members_step.
+
+**The figure a run will see.** Until the first snapshot (5M steps, about 5 updates) every
+league game is scripted: about 77,000. From then on the scripted agent's share is capped at
+its capacity (11% with 11 members) and the network slots set the cost: about 50,000 with 8
+snapshots, the figure for most of a run. More scripted games never cost more, since the
+scripted agent runs on every ship anyway. With 12 snapshots (14 slots): not measured.
 
 ## Compile time (step K, 2026-11-24 01:42 to 02:30)
 
