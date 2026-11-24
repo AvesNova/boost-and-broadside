@@ -149,10 +149,7 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
     corner_radius = corner_speed_squared / torch.sqrt(acceleration * acceleration - card.GRAVITY**2)
     max_energy = config.store_loops * card.GRAVITY * 2.0 * corner_radius
     exchange = of("exchange_acceleration")  # dive and climb, equal and opposite
-    fine, sustained = of("fine_stick"), of("sustained_stick")
-    zeros, ones = torch.zeros_like(fine), torch.ones_like(fine)
-    levels = torch.tensor(card.STICK_LEVELS)
-    magnitude = torch.stack([zeros, fine, fine, sustained, sustained, ones, ones], -1)
+    zeros = torch.zeros_like(exchange)
     width = card.GRAVITY / 32.0
     gravity = torch.full_like(exchange, card.GRAVITY)
     raw = torch.stack([gravity, card.GRAVITY - exchange, card.GRAVITY + exchange], -1)
@@ -184,7 +181,6 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "stall": stall,
         "inverse_stall": 1.0 / stall,
         "nose_frequency": of("corner_nose_frequency") / torch.sqrt(acceleration / lift),
-        "stick_table": torch.sign(levels) * magnitude,
         "commanded_table": torch.stack([zeros, -exchange, exchange], -1),
         "demand_table": 0.5 * (raw + torch.sqrt(raw * raw + width * width)),
         "muzzle_speed": of("muzzle_speed"),
@@ -213,9 +209,20 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "lift_softmin_exponent": of("lift_softmin_exponent"),
         "thrust_softmin_exponent": of("thrust_softmin_exponent"),
         "nose_damping": of("nose_damping"),
+        "fine_stick_fraction": of("fine_stick_fraction"),
     }
     values.update(_derived_characteristics(config, values))
     return values
+
+
+def stick_table(sustained: Tensor, fine_fraction: Tensor) -> Tensor:
+    """(T, 7) signed stick levels by stick index (card.STICK_LEVELS' layout): straight, the fine
+    level `fine_fraction` x the sustained one, the sustained level, full stick (1). Each level is
+    that fraction of the most lateral acceleration the ship can give at its speed (`_setting`)."""
+    fine = fine_fraction * sustained
+    zeros, ones = torch.zeros_like(sustained), torch.ones_like(sustained)
+    magnitude = torch.stack([zeros, fine, fine, sustained, sustained, ones, ones], -1)
+    return torch.sign(torch.tensor(card.STICK_LEVELS)) * magnitude
 
 
 def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -231,8 +238,13 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
     - the corner rate (full stick at corner speed) and the store's turn: the turn a full store
       buys over the best sustained rate when spent holding corner speed at full stick,
       (corner rate - sustained rate) x full store / |energy rate at corner, full stick|;
-    - the sustained stick speed: above it the sustained stick level reaches the g limit
-      (corner speed / sqrt(sustained level)), so it turns as hard as the full level."""
+    - the stick levels (`stick_table`): the sustained level is the stick that holds energy at
+      the best sustained turn's speed, so the sustained level passes through the best
+      sustained point; the fine level is fine_stick_fraction of it;
+    - the sustained stick speed, corner speed / sqrt(sustained level): the scripted agent's
+      reference for its level cap (the speed where the sustained fraction of the lift-limited
+      line would reach the g limit; the levels are fractions of the top line, so the sustained
+      level turns at its fraction of full stick at every speed)."""
     c = SimpleNamespace(**values)
     count = len(c.lift)  # every row of the card
     control = SimpleNamespace(
@@ -253,7 +265,10 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
     life = c.bullet_moves.float() * config.tick_length
     stall_speed = torch.sqrt(card.GRAVITY / c.lift)  # clean
     corner_speed = torch.sqrt(c.max_acceleration / c.lift)
-    sustained_rate, sustained_speed = _best_sustained_turn(values, stall_speed, cruise)
+    sustained_rate, sustained_speed, sustained_stick = _best_sustained_turn(
+        values, stall_speed, cruise
+    )
+    table = stick_table(sustained_stick, c.fine_stick_fraction)
     # Per row, as (T, 1) columns, for one speed per row.
     column = SimpleNamespace(**{name: value[:, None] for name, value in values.items()})
     with torch.no_grad():
@@ -274,7 +289,10 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
         "quarter_turn_time": (0.5 * math.pi) / sustained_rate,
         "corner_rate": corner_rate,
         # the sustained stick level reaches the g limit above this speed
-        "sustained_stick_speed": corner_speed / torch.sqrt(c.stick_table[:, 3].abs()),
+        "sustained_stick_speed": corner_speed / torch.sqrt(sustained_stick),
+        "sustained_stick": sustained_stick,
+        "fine_stick": table[:, 2],
+        "stick_table": table,
         "store_turn": (corner_rate - sustained_rate) * c.max_energy / corner_energy_rate.abs(),
     }
 
@@ -320,10 +338,11 @@ SUSTAINED_STICK_STEPS = 40  # bisection steps on the stick holding energy
 
 
 def _best_sustained_turn(values: dict[str, Tensor], stall_speed: Tensor, cruise: Tensor):
-    """Per row (T,): the best sustained turn rate and its speed, coasting at mid store. At each
-    speed the stick that holds energy (total energy rate zero; full stick when full stick
-    gains), over speeds above stall that hold energy straight; a grid from stall to cruise
-    speed, then a second grid one step either side of the best (resolution about 0.01 m/s)."""
+    """Per row (T,): the best sustained turn rate, its speed and its stick, coasting at mid
+    store. At each speed the stick that holds energy (total energy rate zero; full stick when
+    full stick gains), over speeds above stall that hold energy straight; a grid from stall to
+    cruise speed, then a second grid one step either side of the best (resolution about
+    0.01 m/s)."""
     column = SimpleNamespace(**{name: value[:, None] for name, value in values.items()})
     energy = column.spawn_energy
 
@@ -338,19 +357,19 @@ def _best_sustained_turn(values: dict[str, Tensor], stall_speed: Tensor, cruise:
         stick = torch.where(full_gains, one, 0.5 * (low + high))
         rate = quasi_steady(column, speed, stick, 0, energy)[0]
         straight = quasi_steady(column, speed, zero, 0, energy)[2]
-        return torch.where((straight >= 0.0) & (speed > stall_speed[:, None]), rate, 0.0)
+        return torch.where((straight >= 0.0) & (speed > stall_speed[:, None]), rate, 0.0), stick
 
     fraction = torch.linspace(0.0, 1.0, SUSTAINED_GRID)
     with torch.no_grad():
         low, high = stall_speed[:, None], cruise[:, None]
         for _ in range(2):
             speeds = low + (high - low) * fraction
-            rates = sustained(speeds)
+            rates, sticks = sustained(speeds)
             best = rates.argmax(-1, keepdim=True)
             step = (high - low) / (SUSTAINED_GRID - 1)
             centre = speeds.gather(-1, best)
             low, high = centre - step, centre + step
-        return rates.gather(-1, best)[:, 0], centre[:, 0]
+        return rates.gather(-1, best)[:, 0], centre[:, 0], sticks.gather(-1, best)[:, 0]
 
 
 def per_type_constants(config: GameConfig, ship_type: Tensor) -> SimpleNamespace:
@@ -562,12 +581,18 @@ def _setting(p, control, speed, energy, wing, full):
     diving on the deck, no lost turn from climbing at the top). The engine drives speed only
     (constant power) and never feeds the store; firing scales the thrust on the ticks it fires.
     wing, full: the maximum lift coefficient at this speed and stick, and the full-stick
-    coefficient the stick is a fraction of (`_wing`).
+    coefficient (`_wing`).
+
+    The stick (author 2026-11-24): a stick level is a fraction of the most lateral acceleration
+    the ship can give at its speed, sqrt(top^2 - held^2) with top the full-stick wing's lift
+    against the g limit (one soft minimum: the true corner); full stick is all of it, the
+    envelope's top line, with no soft minimum of the command against its own limit.
     """
     speed_squared = speed * speed
     q = p.lift_softmin_exponent
+    # The corner, smooth: the wing's lift against the g limit (the only soft minimum of the turn).
     budget = softmin(wing * speed_squared, p.max_acceleration, q).clamp_min(1e-12)
-    command = softmin(control.stick_size * full * speed_squared, p.max_acceleration, q)
+    top = softmin(full * speed_squared, p.max_acceleration, q)  # the same at full stick
     sink_room = smootherstep((energy * p.inverse_fade).clamp(0.0, 1.0))
     budget_squared = budget * budget
     top_room = smootherstep(((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0))
@@ -577,7 +602,10 @@ def _setting(p, control, speed, energy, wing, full):
     commanded = control.commanded * room
     first = torch.where(climbing, card.GRAVITY, demand)  # held before the turn
     held = softmin(first, budget, q)
-    lateral_size = softmin(command, torch.sqrt((budget_squared - held * held).clamp_min(0.0)), q)
+    # The stick: its fraction of the most lateral acceleration the ship can give at this speed
+    # (full stick: all of it, the envelope's top line; lift-limited below corner, g-limited
+    # above): the full-stick wing's budget with what is held taken first.
+    lateral_size = control.stick_size * torch.sqrt((top * top - held * held).clamp_min(0.0))
     # The climb's extra lift, from what the turn left: never more than its demand.
     room_left = torch.sqrt((budget_squared - lateral_size * lateral_size).clamp_min(0.0))
     left = (room_left - held).clamp_min(0.0)
@@ -598,17 +626,20 @@ def _rates(p, setting, inverse_index, speed, lift, angle_cos, inverse_speed_squa
     """(d speed / dt, d energy / dt) for a setting, a lift coefficient and an angle of attack.
     inverse_index: 1 / n, or None where there is no medium (n = 1). inverse_wing_squared: 1 over
     the squared maximum lift coefficient at this speed and stick (`_wing`): the separation drag
-    rises toward the wing's maximum, flaps included. The flaps' drag: flap_drag times the cube
-    of the lift coefficient beyond the clean maximum (zero while the clean wing suffices; the
-    cube keeps the curvature continuous where it starts)."""
+    rises toward the wing's maximum, flaps included, and stops there (flying steadily the load
+    never passes the maximum; in a transient the nose's lagging lift and the held vertical
+    together can ask for up to twice it, which a steep exponent made 2^(exponent / 2) times the
+    separation drag: 2026-11-24, exponent 24, a ship stopped dead in one tick). The flaps'
+    drag: flap_drag times the cube of the lift coefficient beyond the clean maximum (zero
+    while the clean wing suffices; the cube keeps the curvature continuous where it starts)."""
     _, exchange, vertical, thrust = setting
     induced = vertical * inverse_speed_squared
     load = lift * lift + induced * induced
     extra = (torch.sqrt(load) - p.lift).clamp_min(0.0)
+    near = (load * inverse_wing_squared).clamp_max(1.0)  # of the wing's maximum, squared
     drag = (
         p.zero_lift_drag * (1.0 + (speed * p.inverse_critical_speed) ** p.drag_rise_exponent)
-        + p.induced_drag * load
-        * (1.0 + p.separation_drag * (load * inverse_wing_squared) ** p.half_separation_exponent)
+        + p.induced_drag * load * (1.0 + p.separation_drag * near**p.half_separation_exponent)
         + p.flap_drag * extra * extra * extra
     ) * speed * speed
     store = speed * exchange

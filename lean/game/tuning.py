@@ -28,8 +28,10 @@ Routes (docs/rewrite/p51d-model.md):
   v2's solver). The dive and zoom accelerations at cruise set the trade (their mean).
 
 The store size, the spawn store and the shot's cost are the game's own (two loops at corner
-speed, half of it, free), so no row carries them. The nose frequency and the stick levels are
-control feel, not physics: they come from the base row (GAME_FIELDS for a new design). The
+speed, half of it, free), so no row carries them. The nose frequency and the fine stick's
+fraction are control feel, not physics: they come from the base row (GAME_FIELDS for a new
+design); the stick levels themselves are derived from the flight (core.stick_table,
+`stick_levels`). The
 flight terms (card.FLIGHT_TERMS) are per type; `performance(..., plain=True)` turns the game
 terms off for any row (POINT_MASS_TERMS).
 """
@@ -127,8 +129,10 @@ P51D_TOP_SPEED = 375.0 * MPH  # sea level, 67 in Hg, 4,427 kg (flight test), rea
 P51D_BEST_CLIMB = 3600.0 * FEET_PER_MINUTE  # the same test, real m/s
 SPEED_OF_SOUND = 340.3  # m/s, ISA sea level
 
-# A design's fields that are not its airframe: guns, damage, shield, the nose's reversal, the
-# stick levels and vision (v2's Vizia's), and the flight terms the point mass keeps (v2's).
+# A design's fields that are not its airframe: guns, damage, shield, the nose's reversal and
+# vision (v2's Vizia's), the fine stick's fraction of the sustained level (author 2026-11-24:
+# half; the sustained level is derived, core.stick_table), and the flight terms the point mass
+# keeps (v2's).
 GAME_FIELDS = dict(
     corner_nose_frequency=11.23144817352295,
     max_shield=100.0,
@@ -147,8 +151,7 @@ GAME_FIELDS = dict(
     head_on_fraction_scale=0.0,
     head_on_angle_scale=1.0644670724868774,
     head_on_sharpness=3.0,
-    fine_stick=0.21010109782218933,
-    sustained_stick=0.7003369927406311,
+    fine_stick_fraction=0.5,  # the fine level over the sustained one (the levels: core.stick_table)
     vision_range_scale=0.3255208432674408,
     drag_rise_exponent=12.0,
     separation_exponent=8.0,
@@ -173,26 +176,26 @@ POINT_MASS_TERMS = dict(
 # The P-51D's game terms (core-decisions.md 2026-11-24: the terms on, the solver compensating).
 # - Drag rise: the zero-lift drag doubles at Mach 0.77, exponent 20: NACA ACR 4K02 Fig. 12 (the
 #   P-51B, propeller off) is flat to about M 0.68, then +40% at M 0.735 and +67% at M 0.755.
-# - Separation drag 0.1 (the induced drag +10% at the wing's maximum lift), exponent 8: larger
-#   values move the best sustained turn's speed off the point mass's (+8% at 0.3, +22% at v2's 1).
+# - Separation drag 0.5, exponent 24 (the induced drag x 1.5 at the wing's maximum lift, +4.4%
+#   at 0.9 of it): it bends the sustained turn's line away from the lift limit, so the tightest
+#   sustained turn sits clearly slower than the best sustained rate (speed ratio 0.848). The
+#   2026-11-24 sweep (docs/rewrite/p51d-model.md): at exponent 8 no coefficient gives both a
+#   10% gap and Oswald e <= 1 (0.35: 0.897 with e 1.07); at 24, 0.5 gives e 0.952.
 # - Soft minima: lift against the g limit 16 (v2's), thrust against static thrust 8.
-# - Automatic flaps, a game choice (the P-51D had no combat flap setting), scheduled by demand
-#   (core._wing): the maximum lift +15% when the stick asks for more than the clean wing gives,
-#   blown back by the clean corner speed (over its last 40%, card.FLAP_BLOWBACK_BAND), so the
-#   corner and its rate are the airframe's; the flaps' extra lift costs Delta C_D = 1.5
-#   Delta C_L^2 with the flaps fully used (P51D_FLAP_DRAG; cubic in the extra lift below that).
-#   The drag is set so the tightest sustained turn stays clearly slower than the best
-#   sustained rate (2026-11-24 sweep: the tightest turn's speed over the best rate's 0.96 at
-#   0.2, 0.85 at 1.5; docs/rewrite/p51d-model.md).
+# - Automatic flaps (core._wing): off (flap_lift 0, author 2026-11-24); the machinery stays,
+#   switchable per type. A game choice when on (the P-51D had no combat flap setting): flap_lift
+#   x the maximum lift when the stick asks for more than the clean wing gives, blown back by the
+#   clean corner speed (over its last 40%, card.FLAP_BLOWBACK_BAND); the extra lift costs
+#   Delta C_D = 1.5 Delta C_L^2 with the flaps fully used (P51D_FLAP_DRAG; cubic below that).
 P51D_FLAP_DRAG = 1.5  # Delta C_D per (Delta C_L)^2 of lift beyond the clean maximum, flaps fully used
 P51D_TERMS = dict(
     critical_speed=to_game(0.77 * SPEED_OF_SOUND, -1),
     drag_rise_exponent=20.0,
-    separation_drag=0.1,
-    separation_exponent=8.0,
+    separation_drag=0.5,
+    separation_exponent=24.0,
     lift_softmin_exponent=16.0,
     thrust_softmin_exponent=8.0,
-    flap_lift=0.15,
+    flap_lift=0.0,
     flap_blowback_ratio=1.0,
     flap_drag_scale=P51D_FLAP_DRAG / (P51D.per_metre * card.INDUCED_DRAG_FACTOR),
 )
@@ -424,8 +427,8 @@ def handles_row(
     fast: bool = False,
 ) -> dict[str, float]:
     """A card row from a design's handles (game units); fields the handles do not set come
-    from `base` (nose frequency, stick levels, the flight terms). `speed_step`: the speed grid of
-    the flown numbers the solve matches (a tool may take a coarser one). `fast` (for an
+    from `base` (nose frequency, the fine stick's fraction, the flight terms). `speed_step`:
+    the speed grid of the flown numbers the solve matches (a tool may take a coarser one). `fast` (for an
     interactive tool; the default solve is unchanged): start from the base's engine power and induced drag, Broyden-update
     the Jacobian, stop at a residual of 1e-5 (the flown handles to 0.001%).
     `handles["low_speed_acceleration"]` may be None (or absent): the static thrust is then the
@@ -692,6 +695,15 @@ def envelope(
     return out
 
 
+def stick_levels(row: dict[str, float], config: core.GameConfig | None = None) -> dict[str, float]:
+    """The row's stick levels as fractions of the most lateral acceleration at each speed
+    (core.stick_table, derived from its flight: the sustained level holds energy at the best
+    sustained turn, the fine one is fine_stick_fraction of it): {"fine", "sustained", "full"}."""
+    with torch.no_grad(), _with_row(row) as index:
+        p = core.per_type_constants(config or core.GameConfig(), torch.tensor([index]))
+    return dict(fine=float(p.fine_stick[0]), sustained=float(p.sustained_stick[0]), full=1.0)
+
+
 def ps_over_rate(grid: dict, rate_axis, rate=None, ps=None):
     """Ps on a regular (rate, speed) grid: per speed, interpolated over the stick sweep of
     `grid` (envelope's output; `rate` and `ps` override its arrays, e.g. in other units), nan
@@ -816,7 +828,7 @@ CARD_TIME_POWERS = dict(
     explosive_share=0, reference_bullet_speed=-1, induced_drag_scale=0, stall_angle_scale=0,
     bullet_spread_scale=0, bullet_drag_scale=0, shield_recharge_rate_scale=0,
     shield_recharge_delay_scale=0, head_on_fraction_scale=0, head_on_angle_scale=0,
-    head_on_sharpness=0, fine_stick=0, sustained_stick=0, vision_range_scale=0,
+    head_on_sharpness=0, fine_stick_fraction=0, vision_range_scale=0,
     critical_speed=-1, drag_rise_exponent=0, separation_drag=0, separation_exponent=0,
     lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0, flap_lift=0,
     flap_blowback_ratio=0, flap_drag_scale=0,
