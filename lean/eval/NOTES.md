@@ -75,7 +75,7 @@ The style counters' cost (2026-11-24, same laptop and profile, scripted vs scrip
 4,096, 65,536 games, compile excluded; one clean pair only, later runs overlapped another GPU
 job): before 793 and 782 games/s, after 775 games/s, about 1-2% slower.
 
-The drain is unbiased: the yardstick against itself scored 0.4656 +- 0.0019 over a whole queue
+The drain is unbiased: the yardstick against a variant with fight_speed 1.3 scored 0.4656 +- 0.0019 over a whole queue
 of 65,536 games and 0.4654 +- 0.0034 over the 22,043 started before a 20 s cutoff. A drain lasts
 up to the longest game, so use at least 16 games per slot. Compile: the scripted tick 66 s cold,
 23 s warm; the network tick about 110 s cold. `functional_call` costs 9% against calling the

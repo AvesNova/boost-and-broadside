@@ -27,8 +27,8 @@ are new.
 3. **L1** Re-measure value supports, next-state ranges and hit shares on today's game.
    Blocks: the BC dry run.
 4. **L2** The teacher term's schedule and its 0.45 gate. Blocks: reading the RL dry run.
-5. **V3** Two numbers to explain before quoting them (collect 2.5x faster; self-play
-   0.4656). Blocks: the dry runs' speed and score headlines.
+5. **V3** One number to explain before quoting it (collect 2.5x faster at parity). Blocks:
+   the dry runs' speed headline.
 6. **S4** Freeze the 16 rows flat in skill and behaviour. Blocks: the persona arm, the next
    search.
 7. **V1** Confirm the compile budget. Blocks: the tripwire as a hard check.
@@ -487,13 +487,10 @@ Model (M, notes):
 - **Collect 2.5x faster.** At parity, collect went from the 2026-11-23 core-game row to
   49,796 steps/s, loop +17%. The cause was not isolated (scoreboard, 2026-11-24 row). A jump
   that size can hide skipped work.
-- **Self-play at 0.4656.** BFM-default against itself scored 0.4656 +- 0.0019 over 65,536
-  games (`eval/NOTES.md`, the drain check), 18 standard errors below 0.5.
-  - If ties count as non-wins there, this is just the draw rate.
-  - If draws count half, it is a seat asymmetry (the project had one before).
-  - The note does not say which. The screening's self-play score, with draws as half, was
-    0.517 over 576 games, consistent with 0.5.
-- **Recommendation.** Isolate both before the dry runs. Both checks are cheap.
+- **(Corrected 2026-11-24: the 0.4656 in the drain check was BFM-default against a variant with
+  fight_speed 1.3, not against itself; the evaluation notes said "itself" by mistake. No seat
+  asymmetry is indicated; the screening's self-play score was 0.517 over 576 games.)**
+- **Recommendation.** Isolate the collect jump before the dry runs. It is a cheap check.
 - **Blocks.** The dry runs' speed and score headlines.
 
 ### Judgement calls made for you
