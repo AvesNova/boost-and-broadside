@@ -207,6 +207,7 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "half_separation_exponent": 0.5 * of("separation_exponent"),
         "lift_softmin_exponent": of("lift_softmin_exponent"),
         "thrust_softmin_exponent": of("thrust_softmin_exponent"),
+        "thrust_speed_exponent": 1.0 - of("thrust_lapse"),
         "nose_damping": of("nose_damping"),
         "fine_stick_fraction": of("fine_stick_fraction"),
     }
@@ -619,7 +620,8 @@ def _setting(p, control, speed, energy, wing, full):
     unmet_climb = torch.where(climbing, unmet, 0.0)
     sinking = (first - vertical).clamp_min(0.0)
     exchange = commanded - unmet_climb - sinking * sink_room
-    thrust = softmin(p.power / speed, p.static_thrust, p.thrust_softmin_exponent)
+    lapsed = p.power / speed * (speed * (1.0 / card.THRUST_REFERENCE_SPEED)) ** p.thrust_speed_exponent
+    thrust = softmin(lapsed, p.static_thrust, p.thrust_softmin_exponent)
     thrust = thrust * control.thrust_scale
     return control.stick_sign * lateral_size, exchange, vertical, thrust
 

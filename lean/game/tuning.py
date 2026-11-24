@@ -305,6 +305,8 @@ DESIGN_INPUTS = (
            low=2.0, high=40.0, relative=False),
     scaled("separation_exponent", "separation drag: exponent", T,
            source="design (author 2026-11-24)", low=4.0, high=32.0, relative=False),
+    scaled("thrust_lapse", "thrust lapse (1 propeller, 0 jet)", T,
+           source="design: propeller", low=0.0, high=1.2, relative=False),
     scaled("lift_softmin_exponent", "lift softness: exponent (low = soft)", T,
            source="design: v2's 16", low=2.0, high=64.0, relative=False),
     scaled("flap_lift", "extra lift", F, unit="of clean", source="design: off", low=0.0,
@@ -488,6 +490,7 @@ P51D_VALUES = dict(
     drag_rise_exponent=20.0,
     separation_exponent=16.0,
     lift_softmin_exponent=16.0,
+    thrust_lapse=1.0,
     flap_lift=0.0,
     flap_blowback_ratio=1.0,
     flap_drag_scale=P51D_FLAP_DRAG / (P51D.per_metre * card.INDUCED_DRAG_FACTOR),
@@ -1368,7 +1371,7 @@ CARD_TIME_POWERS = dict(
     shield_recharge_delay_scale=0, head_on_fraction_scale=0, head_on_angle_scale=0,
     head_on_sharpness=0, fine_stick_fraction=0, vision_range_scale=0,
     critical_speed=-1, drag_rise_exponent=0, separation_drag=0, separation_exponent=0,
-    lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0, flap_lift=0,
+    lift_softmin_exponent=0, thrust_softmin_exponent=0, thrust_lapse=0, nose_damping=0, flap_lift=0,
     flap_blowback_ratio=0, flap_drag_scale=0,
 )
 # The rule constants (lean.game.card) with time in their units.

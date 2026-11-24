@@ -38,6 +38,7 @@ FLIGHT_TERMS = (
     "separation_exponent",
     "lift_softmin_exponent",
     "thrust_softmin_exponent",
+    "thrust_lapse",
     "nose_damping",
     "flap_lift",
     "flap_blowback_ratio",
@@ -89,6 +90,9 @@ def __getattr__(name: str):
 GRAVITY = 39.24
 STALL_ANGLE = 0.2617993877991494
 INDUCED_DRAG_FACTOR = 66.348
+# Thrust power over speed x (speed / THRUST_REFERENCE_SPEED)^(1 - thrust_lapse): lapse 1 a
+# propeller (constant power), 0 a jet (constant thrust); equal at this speed (165 mph, game units).
+THRUST_REFERENCE_SPEED = 147.5232
 NOSE_FREQUENCY_FLOOR = 0.4997135491028137
 SPEED_FLOOR = 1.454166427889188e-06
 # The automatic flaps (core._wing), shared: they deploy as the demanded lift coefficient goes
