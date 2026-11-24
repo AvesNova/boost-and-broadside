@@ -1,17 +1,24 @@
-"""Turn-performance (doghouse) charts of lean's flight model, for every card type, in game units
-and at 1x real time (speeds, turn rates and Ps halved; radii and loads in g unchanged), so a
-real aircraft's chart reads against published energy-manoeuvrability diagrams.
+"""Turn-performance (doghouse) charts of lean's flight model, in game units and at 1x real time
+(speeds, turn rates and Ps divided by the time factor; radii and loads in g unchanged), so a real
+aircraft's chart reads against published energy-manoeuvrability diagrams. The web tool
+(lean/tool) draws its charts with this module's functions: one drawing, matplotlib.
 
-For every speed and stick fraction, the quasi-steady turn from the flight code's own
-function (`lean.game.tuning.envelope`, which calls `core.steady_rates`): the nose settled on the stick's
+For every speed and stick fraction, the quasi-steady turn from the flight code's own function
+(`lean.game.tuning.envelope`, which calls `core.steady_rates`): the nose settled on the stick's
 angle of attack, turn rate = (C_L(angle) v^2 + T sin angle) / v, and the rates of change of
-speed and of the energy store. No fields, no guns. Power: coast.
+speed and of the energy store. No fields, no guns. Coast unless the line says dive or climb.
+
+Only what the game flies is drawn: each line starts at the lowest speed at which a ship flown
+in the game (lean.tool.flown.achievable_speeds: the game's flight tick from the spawn state)
+actually flies that condition, its turn within 5% of the line. The Ps shading stops where no
+stick level is flown. The corner, best sustained and tightest sustained points are flown too
+(lean.tool.flown.critical_points) and drawn as small hollow markers beside the quasi-steady ones.
 
 Energy rate (Ps) is the total specific energy rate, d(v^2/2 + store)/dt, shown as an
-altitude-equivalent rate in m/s at the game's gravity (39.24 m/s^2), as energy-manoeuvrability
-diagrams show Ps. Positive = gaining energy.
+altitude-equivalent rate in m/s at the game's gravity, as energy-manoeuvrability diagrams show
+Ps. Positive = gaining energy.
 
-    for theme in light dark; do THEME=$theme OMP_NUM_THREADS=1 PYTHONPATH=.:src \
+    for theme in light dark; do THEME=$theme OMP_NUM_THREADS=4 PYTHONPATH=.:src \
         uv run --no-sync python docs/rewrite/sections/turns/doghouse.py; done
 
 Writes doghouse-<type>-core[-real][-dark].png and doghouse-comparison-core[-dark].png into
@@ -29,18 +36,23 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
 from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(__file__))
-from sim import CONFIG, MAX_ENERGY, SPAWN, SUFFIX, THEME, TYPES  # noqa: E402
+from sim import THEME  # noqa: E402
 
 from lean.game import card, tuning  # noqa: E402
+from lean.tool import flown  # noqa: E402
 
-torch.set_num_threads(1)
+torch.set_num_threads(4)
 OUT = os.path.join(os.path.dirname(__file__), "..", "..")
 DEGREES = 180.0 / math.pi
-G = card.GRAVITY
-NAMES = tuple({"p51d": "P-51D"}.get(name, name) for name in card.TYPE_NAMES)
-TIME_FACTOR = 2.0  # the game against real time (lean.game.tuning.TIME_FACTOR)
+TIME_FACTOR = tuning.TIME_FACTOR  # the game against real time
+DISPLAY_NAMES = {"p51d": "P-51D"}
+SPEED_TOP = (
+    470.0  # game m/s at the game's time factor: the charts' right edge, scaled with the factor
+)
+SPEED_POINTS, STICKS = 226, np.linspace(0.0, 1.0, 201)
 # Reference palette (dataviz skill, references/palette.md): categorical slots 1-3, diverging
 # blue <-> red through a grey midpoint, chart surface and inks.
 if THEME == "dark":  # the reference palette's dark steps (validated against the dark surface)
@@ -51,29 +63,71 @@ else:
     SERIES = ("#2a78d6", "#eb6834", "#1baf7a")
     SURFACE, INK, INK_2, MUTED, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e7e6e2"
     DIVERGING = LinearSegmentedColormap.from_list("ps", ["#e34948", "#f0efec", "#2a78d6"])
-matplotlib.rcParams.update({"text.color": INK, "axes.labelcolor": INK_2, "axes.edgecolor": MUTED,
-                            "xtick.color": INK_2, "ytick.color": INK_2, "legend.facecolor": SURFACE,
-                            "legend.edgecolor": GRID, "figure.facecolor": SURFACE, "axes.facecolor": SURFACE})
-SPAWN_PERCENT = 100.0 * SPAWN[0] / MAX_ENERGY[0]
-# One panel: coasting does not depend on the store; only dive and climb fade inside the outer
-# 5% at each edge (the footnote says so).
-STORES = ((f"any store outside the edge bands (shown at {SPAWN_PERCENT:.0f}%)", None),)
+FLOWN = SERIES[1]  # the flown checks' markers
+matplotlib.rcParams.update(
+    {
+        "text.color": INK,
+        "axes.labelcolor": INK_2,
+        "axes.edgecolor": MUTED,
+        "xtick.color": INK_2,
+        "ytick.color": INK_2,
+        "legend.facecolor": SURFACE,
+        "legend.edgecolor": GRID,
+        "figure.facecolor": SURFACE,
+        "axes.facecolor": SURFACE,
+    }
+)
+# Line styles, shared by the lines and the legend's samples.
+FULL_STYLE = dict(color=INK, linewidth=2.2)
+STICK_STYLE = dict(color=INK, linewidth=1.0)
+TRADE_STYLE = dict(color=INK_2, linewidth=1.1, linestyle="-.")
+PS_ZERO_STYLE = dict(color=INK, linewidth=1.8, linestyle=(0, (6, 3)))
+RADIUS_STYLE = dict(color=MUTED, linewidth=0.7, linestyle=":")
+LOAD_STYLE = dict(color=MUTED, linewidth=0.7, linestyle="--")
+MARKERS = {"corner": "o", "best_sustained": "s", "tightest_sustained": "^"}
 
-speeds = torch.linspace(20.0, 470.0, 226)
-sticks = torch.linspace(0.0, 1.0, 201)
+
+def _row() -> dict[str, float]:
+    """The card's type 0 (the design inside lean.game.tuning.flying)."""
+    return {name: values[0] for name, values in card.CARD.items()}
 
 
-def evaluate(ship_type: int, store_fraction, power: int = 0):
-    """(stick, speed) grids: turn rate deg/s, radius m, Ps m/s, speed rate, store rate; from
-    lean.game.tuning.envelope, the one place the envelope is computed."""
-    row = tuning.row_of(card.TYPE_NAMES[ship_type])
-    grid = tuning.envelope(row, speeds, sticks, power, store_fraction, plain=False)
-    return {**grid, "rate": grid["rate"] * DEGREES, "sustained_rate": grid["sustained_rate"] * DEGREES}
+def speed_axis(lowest: dict[str, float], factor: float = TIME_FACTOR) -> np.ndarray:
+    """Game speeds from the lowest flown speed of any line to the chart's right edge."""
+    return np.linspace(min(lowest.values()), SPEED_TOP * factor / TIME_FACTOR, SPEED_POINTS)
 
 
-def sustained(grid):
-    """Per speed: the largest turn rate with Ps >= 0 (nan if none), and its radius."""
-    return grid["sustained_rate"], grid["sustained_radius"]
+def lowest_speeds() -> dict[str, float]:
+    """Per line (lean.tool.flown.CONDITIONS), the lowest speed the game flies it (game m/s), for
+    the card's type 0. Flies about a thousand ticks: cache it."""
+    return flown.achievable_speeds()
+
+
+def key_points(lowest: dict[str, float], fraction=None) -> dict:
+    """The quasi-steady corner, best sustained and tightest sustained points (game units; the
+    sustained ones from the lowest full-stick speed up), from tuning.envelope."""
+    grid = tuning.envelope(
+        _row(), speed_axis(lowest), STICKS, 0, fraction, minimum_speed=lowest["full"]
+    )
+    return {
+        name: grid[name]
+        for name in (
+            "corner_speed",
+            "corner_rate",
+            "best_sustained_speed",
+            "best_sustained_rate",
+            "tightest_sustained_speed",
+            "tightest_sustained_radius",
+        )
+    }
+
+
+def flown_points(lowest: dict[str, float]) -> dict:
+    """The key points flown in the game (lean.tool.flown.critical_points), game units."""
+    key = key_points(lowest)
+    return flown.critical_points(
+        key["corner_speed"], key["best_sustained_speed"], key["tightest_sustained_speed"]
+    )
 
 
 def style(ax):
@@ -87,128 +141,340 @@ def style(ax):
     ax.set_axisbelow(True)
 
 
-DOGHOUSE_FOOT = (
-    "1 g of weight always on the wing, the turn gets the rest of the lift and g limit; the engine drives\n"
-    "speed only. Thick: full stick. Thin: the game's sustained and fine stick. Dash-dot: full stick while\n"
-    "diving or climbing (diving lowers the weight on the wing; climbing gets only the lift the turn leaves).\n"
-    + ("White" if THEME == "dark" else "Black") + " dashed: Ps = 0 (sustained). Grey dotted: turn radius. Grey dashed: load in\n"
-    "game g (39.24 m/s^2). Shaded below 100 m/s: quasi-steady maths only, no best-sustained mark there.\n"
-    "Coasting, turn rate and Ps do not depend on the store. Inside an edge band (the outer 5% at the top and\n"
-    "bottom) dive or climb fades to coast, in the trade and in the wing's load; outside it, as drawn."
-)
-TYPE_NOTES = {
-    "p51d": "P-51D: the real airframe at 2x time with the game terms on (drag rise, separation drag, soft limits,\n"
-    "automatic flaps below 1.6 x stall), solved to fly its point mass's top speed, climb and best sustained\n"
-    "rate (lean.game.tuning.game_row, docs/rewrite/p51d-model.md).",
-}
+def _from(values: np.ndarray, speeds: np.ndarray, lowest: float) -> np.ndarray:
+    """values with nan below the lowest flown speed: no line where the game does not fly it."""
+    return np.where(speeds >= lowest, values, np.nan)
 
 
-def foot(ship_type: int, real: bool) -> str:
-    """The footnote, with the type's note and real units where drawn."""
-    text = DOGHOUSE_FOOT
-    note = TYPE_NOTES.get(card.TYPE_NAMES[ship_type])
-    if note:
-        text += "\n" + note
-    if real:
-        text = text.replace("load in\ngame g (39.24 m/s^2)", "load in\ng (9.81 m/s^2)").replace("below 100 m/s", "below 50 m/s")
-        text += "\nReal units: the game at 2x time shown at real time (speeds, turn rates and Ps halved; radii unchanged)."
-    return text
-
-
-def draw_panel(figure, ax, ship_type: int, label: str, fraction, real: bool, top=None, limit=None):
-    """One doghouse panel on ax: Ps shading, Ps = 0, the stick levels, dive and climb, corner and
-    best sustained. top (deg/s) and limit (the Ps colour range) default to the panel's own;
-    returns both, so panels can share them."""
-    f = TIME_FACTOR if real else 1.0
-    game_v = speeds.numpy()
+def draw_panel(
+    figure,
+    ax,
+    title: str,
+    lowest: dict[str, float],
+    real: bool = False,
+    factor: float = TIME_FACTOR,
+    flown_points: dict | None = None,
+    fraction=None,
+    top=None,
+    limit=None,
+):
+    """One doghouse panel on ax for the card's type 0 at `factor` times real time (inside
+    lean.game.tuning.flying): Ps shading where some stick level is flown, Ps = 0, the stick
+    levels, dive and climb, the corner, best sustained and tightest sustained points, and the
+    flown points (game units, as flown.critical_points returns them) if given. `lowest`: game
+    m/s per line (lowest_speeds). real: divide speeds, rates and Ps by `factor` (1x real time).
+    top (deg/s) and limit (the Ps colour range) default to the panel's own; returns both."""
+    f = factor if real else 1.0
+    row = _row()
+    game_v = speed_axis(lowest, factor)
     v = game_v / f
-    grid = evaluate(ship_type, fraction)
-    grid["rate"], grid["ps"] = grid["rate"] / f, grid["ps"] / f
-    grid["sustained_rate"] = grid["sustained_rate"] / f
+    grid = tuning.envelope(row, game_v, STICKS, 0, fraction, minimum_speed=lowest["full"])
+    rate, ps = grid["rate"] * DEGREES / f, grid["ps"] / f
     style(ax)
-    envelope = grid["rate"][-1]
-    top = float(np.nanmax(envelope)) * 1.15 if top is None else top
+    full = _from(rate[-1], game_v, lowest["full"])
+    top = float(np.nanmax(full)) * 1.15 if top is None else top
     rate_axis = np.linspace(0.0, top, 300)
-    # Ps on a regular (speed, rate) grid: for each speed, interpolate over the stick sweep.
-    ps_field = tuning.ps_over_rate(grid, rate_axis)
+    field = tuning.ps_over_rate(grid, rate_axis, rate=rate, ps=ps)
+    # Shade only up to the largest stick flown at each speed: the stick levels' lowest speeds,
+    # linear between them, none below the fine stick's.
+    levels = sorted(
+        (
+            (row["fine_stick"], lowest["fine"]),
+            (row["sustained_stick"], lowest["sustained"]),
+            (1.0, lowest["full"]),
+        )
+    )
+    level_sticks = [stick for stick, _ in levels]
+    level_speeds = np.maximum.accumulate([speed for _, speed in levels])
+    reach = np.interp(game_v, level_speeds, level_sticks, left=np.nan)
+    reach_rate = np.array(
+        [np.interp(s, STICKS, rate[:, j]) if np.isfinite(s) else -1.0 for j, s in enumerate(reach)]
+    )
+    field[rate_axis[:, None] > reach_rate[None, :]] = np.nan
     shared = limit is not None  # a given range: fixed levels, so panels' colours match
-    limit = np.nanpercentile(np.abs(ps_field), 98) if limit is None else limit
+    limit = float(np.nanpercentile(np.abs(field), 98)) if limit is None else limit
     norm = TwoSlopeNorm(vmin=-limit, vcenter=0.0, vmax=limit)
-    levels = np.linspace(-limit, limit, 21) if shared else 21
-    filled = ax.contourf(v, rate_axis, ps_field, levels=levels, cmap=DIVERGING, norm=norm,
-                         extend="both" if shared else "neither")
-    ax.contour(v, rate_axis, ps_field, levels=[0.0], colors=INK, linewidths=2.0, linestyles=[(0, (6, 3))])
-    # Radius and load lines: geometry only.
+    filled = ax.contourf(
+        v,
+        rate_axis,
+        field,
+        levels=np.linspace(-limit, limit, 21) if shared else 21,
+        cmap=DIVERGING,
+        norm=norm,
+        extend="both" if shared else "neither",
+    )
+    ax.contour(
+        v,
+        rate_axis,
+        field,
+        levels=[0.0],
+        colors=PS_ZERO_STYLE["color"],
+        linewidths=PS_ZERO_STYLE["linewidth"],
+        linestyles=[PS_ZERO_STYLE["linestyle"]],
+    )
+    # Radius and load guides: geometry only, across the axes.
+    left = math.floor(0.8 * min(lowest.values()) / f / 10.0) * 10.0
+    guide_v = np.linspace(max(left, 1.0), v[-1], 200)
     for radius in (150, 200, 300, 500, 1000, 2000):
-        line = v / radius * DEGREES
-        ax.plot(v, line, color=MUTED, linewidth=0.7, linestyle=":")
+        line = guide_v / radius * DEGREES
+        ax.plot(guide_v, line, **RADIUS_STYLE)
         j = np.searchsorted(line, top * 0.92)
-        if 0 < j < len(v):
-            ax.text(v[j], line[j], f"{radius} m", color=MUTED, fontsize=8, ha="right", va="bottom")
+        if 0 < j < len(guide_v):
+            ax.text(
+                guide_v[j], line[j], f"{radius} m", color=MUTED, fontsize=8, ha="right", va="bottom"
+            )
     for load in (2, 4, 6, 8, 9):
-        line = load * G / game_v * DEGREES / f
-        ax.plot(v, line, color=MUTED, linewidth=0.7, linestyle="--")
+        line = load * card.GRAVITY / (guide_v * f) * DEGREES / f
+        ax.plot(guide_v, line, **LOAD_STYLE)
         j = np.searchsorted(-line, -top * 0.95)
-        if 0 < j < len(v) - 1:
-            ax.text(v[j], line[j], f"{load} g", color=MUTED, fontsize=8, ha="left", va="bottom")
-    ax.plot(v, envelope, color=INK, linewidth=2.0)
-    label_at = int(np.searchsorted(game_v, 175.0))
-    ax.annotate("full stick", (v[label_at], envelope[label_at]), xytext=(-4, 6), textcoords="offset points",
-                color=INK, fontsize=8, ha="right")
-    # The game's other stick levels (the card's fine and sustained values for this type).
+        if 0 < j < len(guide_v) - 1:
+            ax.text(
+                guide_v[j], line[j], f"{load} g", color=MUTED, fontsize=8, ha="left", va="bottom"
+            )
+    ax.plot(v, full, gid="full", **FULL_STYLE)
+    span = v[-1] - v[0]
     for name, key in (("sustained stick", "sustained_stick"), ("fine stick", "fine_stick")):
-        row = int(round(card.CARD[key][ship_type] * (len(sticks) - 1)))
-        level = grid["rate"][row]
-        ax.plot(v, level, color=INK, linewidth=1.1)
-        at = int(np.searchsorted(game_v, 215.0))  # right of the steep low-speed part of the full-stick line
-        ax.annotate(name, (v[at], level[at]), xytext=(4, -12), textcoords="offset points",
-                    color=INK, fontsize=8, ha="left")
-    # Full stick while diving and while climbing (power 1 and 2), same store.
-    offsets = ((4, 7), (4, -24))
-    for (power, name), offset in zip(((1, "full stick, diving"), (2, "full stick, climbing")), offsets):
-        moved = evaluate(ship_type, fraction, power)["rate"][-1] / f
-        ax.plot(v, moved, color=INK_2, linewidth=1.1, linestyle="-.")
-        here = int(np.searchsorted(game_v, 380.0))
-        ax.annotate(name, (v[here], moved[here]), xytext=offset, textcoords="offset points",
-                    color=INK_2, fontsize=8)
-    corner_v, corner_rate = grid["corner_speed"] / f, grid["corner_rate"] * DEGREES / f
-    ax.plot(corner_v, corner_rate, "o", color=INK, markersize=8)
-    ax.annotate(f"corner {corner_v:.0f} m/s, {corner_rate:.0f} deg/s", (corner_v, corner_rate),
-                xytext=(8, 6), textcoords="offset points", color=INK, fontsize=9)
-    if grid["best_sustained_speed"] is not None:  # from 100 m/s (game) up: below it the turn cannot be held
-        best_v, best_rate = grid["best_sustained_speed"] / f, grid["best_sustained_rate"] * DEGREES / f
-        ax.plot(best_v, best_rate, "s", color=INK, markersize=8)
-        ax.annotate(f"best sustained {best_v:.0f} m/s, {best_rate:.0f} deg/s", (best_v, best_rate),
-                    xytext=(8, -14), textcoords="offset points", color=INK, fontsize=9)
-        tight_v = grid["tightest_sustained_speed"] / f
-        tight_rate = tight_v / grid["tightest_sustained_radius"] * DEGREES
-        ax.plot(tight_v, tight_rate, "^", color=INK, markersize=8)
-        ax.annotate(f"tightest sustained {tight_v:.0f} m/s, {grid['tightest_sustained_radius']:.0f} m",
-                    (tight_v, tight_rate), xytext=(14, -56), textcoords="offset points", color=INK,
-                    fontsize=9, ha="left", arrowprops=dict(arrowstyle="-", color=INK, linewidth=0.8))
-    ax.set_xlim(v[0], v[-1])
+        level = _from(
+            rate[int(round(row[key] * (len(STICKS) - 1)))], game_v, lowest[key.split("_")[0]]
+        )
+        ax.plot(v, level, gid=key.split("_")[0], **STICK_STYLE)
+        at = int(np.searchsorted(v, v[0] + 0.33 * span))
+        ax.annotate(
+            name,
+            (v[at], level[at]),
+            xytext=(4, -12),
+            textcoords="offset points",
+            color=INK,
+            fontsize=8,
+        )
+    for power, name, offset in ((1, "dive", (-4, 2)), (2, "climb", (-4, -10))):
+        moved = (
+            tuning.envelope(row, game_v, np.array([1.0]), power, fraction)["rate"][-1] * DEGREES / f
+        )
+        moved = _from(moved, game_v, lowest[name])
+        ax.plot(v, moved, gid=name, **TRADE_STYLE)
+        start = int(
+            np.argmax(np.isfinite(moved))
+        )  # labelled where it starts (they meet the full stick higher up)
+        ax.annotate(
+            name,
+            (v[start], moved[start]),
+            xytext=offset,
+            textcoords="offset points",
+            color=INK_2,
+            fontsize=8,
+            ha="right",
+        )
+    # The key points, quasi-steady (filled) and flown (hollow, beside them).
+    points = {"corner": (grid["corner_speed"], grid["corner_rate"])}
+    if grid["best_sustained_speed"] is not None:
+        points["best_sustained"] = (grid["best_sustained_speed"], grid["best_sustained_rate"])
+        tight = grid["tightest_sustained_speed"]
+        points["tightest_sustained"] = (tight, tight / grid["tightest_sustained_radius"])
+    offsets = {"corner": (8, 6), "best_sustained": (8, -14), "tightest_sustained": (14, -50)}
+    for name, (speed, turn) in points.items():
+        x, y = speed / f, turn * DEGREES / f
+        ax.plot(x, y, MARKERS[name], color=INK, markersize=7)
+        if name == "tightest_sustained":
+            text = f"tightest sustained {x:.0f} m/s, {speed / turn:.0f} m"
+        else:
+            text = f"{name.replace('_', ' ')} {x:.0f} m/s, {y:.0f} deg/s"
+        check = (flown_points or {}).get(name)
+        if check is not None:
+            fx, fy = check["speed"] / f, check["rate"] * DEGREES / f
+            ax.plot(
+                fx,
+                fy,
+                MARKERS[name],
+                markerfacecolor="none",
+                markeredgecolor=FLOWN,
+                markersize=5,
+                markeredgewidth=1.3,
+            )
+            text += (
+                f" (flown {fx:.0f}, {check['radius']:.0f} m)"
+                if name == "tightest_sustained"
+                else f" (flown {fx:.0f}, {fy:.0f})"
+            )
+        arrow = (
+            dict(arrowstyle="-", color=INK, linewidth=0.8) if name == "tightest_sustained" else None
+        )
+        ax.annotate(
+            text,
+            (x, y),
+            xytext=offsets[name],
+            textcoords="offset points",
+            color=INK,
+            fontsize=8.5,
+            arrowprops=arrow,
+        )
+    ax.set_xlim(left, v[-1])
     ax.set_ylim(0, top)
     ax.set_xlabel("speed (m/s, real)" if real else "speed (m/s)", color=INK_2)
     ax.set_ylabel("turn rate (deg/s)", color=INK_2)
-    ax.axvspan(v[0], 100.0 / f, color=GRID, alpha=0.5, linewidth=0)
-    ax.set_title(f"{NAMES[ship_type]}, coast" + (", real units" if real else "") + f"\n{label}",
-                 color=INK, fontsize=10, loc="left")
-    bar = figure.colorbar(filled, ax=ax, fraction=0.04, pad=0.02)
-    bar.set_label("energy rate Ps, m/s altitude-equivalent (blue gain, red loss)", color=INK_2, fontsize=8)
+    ax.set_title(title, color=INK, fontsize=10.5, loc="left")
+    bar = figure.colorbar(filled, ax=ax, location="bottom", fraction=0.04, pad=0.0, aspect=40)
+    bar.set_label("Ps, m/s altitude-equivalent (blue gain, red loss)", color=INK_2, fontsize=8)
     bar.ax.tick_params(labelsize=8, colors=INK_2)
     return top, limit
 
 
-def doghouse(ship_type: int, real: bool = False):
-    """real: in real units at the game's 2x time (speeds, turn rates and Ps halved; radii and
-    loads unchanged)."""
-    panels = len(STORES)
-    figure, axes = plt.subplots(panels, 1, figsize=(7.5, 5.4 * panels + 2.0), facecolor=SURFACE, squeeze=False)
-    axes = axes[:, 0]
-    for ax, (label, fraction) in zip(axes, STORES):
-        draw_panel(figure, ax, ship_type, label, fraction, real)
-    figure.text(0.01, 0.004, foot(ship_type, real), color=INK_2, fontsize=8)
-    figure.tight_layout(rect=(0, 0.21, 1, 1))
+def legend(figure, note: str, flown_shown: bool):
+    """The legend below the plot: each line's own style, the markers, and a short note."""
+
+    def sample(label, **style):
+        return Line2D([], [], label=label, **style)
+
+    def point(label, marker, **style):
+        return Line2D([], [], linestyle="none", marker=marker, label=label, markersize=6, **style)
+
+    handles = [
+        sample("full stick", **FULL_STYLE),
+        sample("sustained and fine stick", **STICK_STYLE),
+        sample("full stick, diving and climbing", **TRADE_STYLE),
+        sample("Ps = 0 (sustained)", **PS_ZERO_STYLE),
+        sample("turn radius (m)", **RADIUS_STYLE),
+        sample("load (g)", **LOAD_STYLE),
+        point("corner", "o", color=INK),
+        point("best sustained (rate)", "s", color=INK),
+        point("tightest sustained (radius)", "^", color=INK),
+    ]
+    if flown_shown:
+        handles.append(
+            point(
+                "flown in the game",
+                "o",
+                markerfacecolor="none",
+                markeredgecolor=FLOWN,
+                markeredgewidth=1.3,
+            )
+        )
+    figure.legend(
+        handles=handles,
+        loc="outside lower center",
+        ncol=2,
+        fontsize=8,
+        frameon=False,
+        title=note,
+        title_fontsize=8,
+        alignment="left",
+        labelcolor=INK_2,
+        handlelength=3.2,
+        columnspacing=1.2,
+    )
+
+
+def note(real: bool, factor: float, lowest_source: str = "flown") -> str:
+    units = (
+        f"Real units: the game at {factor:g}x shown at 1x (speeds, rates, Ps / {factor:g})."
+        if real
+        else f"Game units at {factor:g}x real time."
+    )
+    source = {
+        "flown": "Lines start at the lowest speed the game flies them.",
+        "estimate": "Lines start at the preset's flown lowest speeds x the stall speed ratio.",
+    }[lowest_source]
+    return (
+        f"Coast, spawn store, no fields. Ps: total energy rate as a climb rate.\n{units}\n{source}"
+    )
+
+
+def doghouse_figure(
+    title: str,
+    lowest: dict[str, float],
+    real: bool = False,
+    factor: float = TIME_FACTOR,
+    flown_points: dict | None = None,
+    lowest_source: str = "flown",
+):
+    """The doghouse of the card's type 0 (inside tuning.flying) as a figure: the panel, the
+    legend and the note."""
+    figure = plt.figure(figsize=(6.4, 8.4), layout="constrained", facecolor=SURFACE)
+    ax = figure.add_subplot()
+    draw_panel(figure, ax, title, lowest, real, factor, flown_points)
+    legend(figure, note(real, factor, lowest_source), flown_points is not None)
+    return figure
+
+
+def sustained_curve(lowest: dict[str, float], factor: float = TIME_FACTOR) -> dict:
+    """The card's type 0's sustained turn (Ps >= 0, the largest turn) against speed, from the
+    lowest flown full-stick speed (game units, rad/s, m): {speeds, rate, radius}."""
+    game_v = speed_axis(lowest, factor)
+    grid = tuning.envelope(_row(), game_v, STICKS, 0, None, minimum_speed=lowest["full"])
+    # Per speed, the turn where Ps crosses zero along the stick sweep, interpolated between the
+    # grid's sticks (the grid's largest held rate alone steps with the stick grid).
+    rate = np.full(len(game_v), np.nan)
+    for j in range(len(game_v)):
+        ps, turn = grid["ps"][:, j], grid["rate"][:, j]
+        if ps[-1] >= 0.0:
+            rate[j] = turn[-1]
+            continue
+        held = np.nonzero(ps >= 0.0)[0]
+        if len(held):
+            i = held[-1]
+            share = ps[i] / (ps[i] - ps[i + 1])
+            rate[j] = turn[i] + share * (turn[i + 1] - turn[i])
+    rate = np.where(game_v >= lowest["full"], rate, np.nan)
+    return dict(speeds=game_v, rate=rate, radius=game_v / rate)
+
+
+def sustained_figure(curves, real: bool = False, factor: float = TIME_FACTOR, note_text: str = ""):
+    """The sustained turn: rate and radius against speed, one line per curve. curves: a list of
+    (label, sustained_curve(...), reference: bool); the reference dotted and muted."""
+    f = factor if real else 1.0
+    figure, axes = plt.subplots(
+        2, 1, figsize=(6.4, 6.0), sharex=True, layout="constrained", facecolor=SURFACE
+    )
+    for ax, (key, unit) in zip(
+        axes, (("rate", "sustained turn rate (deg/s)"), ("radius", "sustained radius (m)"))
+    ):
+        style(ax)
+        for label, curve, reference in curves:
+            values = curve[key] * DEGREES / f if key == "rate" else curve[key]
+            ax.plot(
+                curve["speeds"] / f,
+                values,
+                label=label,
+                **(
+                    dict(color=MUTED, linewidth=1.4, linestyle=":")
+                    if reference
+                    else dict(color=SERIES[0], linewidth=2.0)
+                ),
+            )
+        ax.set_ylabel(unit, color=INK_2)
+        ax.set_ylim(bottom=0)
+    axes[1].set_ylim(
+        0, min(2000.0, float(np.nanmax([np.nanmax(c["radius"]) for _, c, _ in curves])) * 1.05)
+    )
+    axes[1].set_xlabel("speed (m/s, real)" if real else "speed (m/s)", color=INK_2)
+    axes[0].set_title(
+        "Sustained turn (Ps = 0, the largest turn held) against speed",
+        color=INK,
+        fontsize=10.5,
+        loc="left",
+    )
+    figure.legend(
+        *axes[0].get_legend_handles_labels(),
+        loc="outside lower center",
+        ncol=2,
+        fontsize=8,
+        frameon=False,
+        labelcolor=INK_2,
+        title=note_text,
+        title_fontsize=8,
+        alignment="left",
+    )
+    return figure
+
+
+def _name(index: int) -> str:
+    return DISPLAY_NAMES.get(card.TYPE_NAMES[index], card.TYPE_NAMES[index])
+
+
+def doghouse(ship_type: int, lowest, checks, real: bool = False):
+    """The committed chart of a card type (inside tuning.flying of its row)."""
+    title = f"{_name(ship_type)}, doghouse" + (", real units" if real else "")
+    figure = doghouse_figure(title, lowest, real, TIME_FACTOR, checks)
     suffix = "-core" + ("-real" if real else "") + ("-dark" if THEME == "dark" else "")
     path = os.path.join(OUT, f"doghouse-{card.TYPE_NAMES[ship_type].replace('_', '-')}{suffix}.png")
     figure.savefig(path, dpi=130, facecolor=SURFACE)
@@ -216,54 +482,83 @@ def doghouse(ship_type: int, real: bool = False):
     return path
 
 
-def comparison():
-    v = speeds.numpy()
-    grids = [evaluate(t, None) for t in TYPES]
-    keep = v >= 100.0
-    figure, axes = plt.subplots(3, 1, figsize=(7.5, 13), facecolor=SURFACE)
+def comparison(curves):
+    """Every type's full-stick and sustained turn against speed (from each line's lowest flown
+    speed). curves: per type (name, speeds, full-stick rate, sustained curve)."""
+    figure, axes = plt.subplots(3, 1, figsize=(6.4, 11), layout="constrained", facecolor=SURFACE)
     panels = (
-        ("turn rate, full stick and sustained (deg/s)", lambda g: (g["rate"][-1], sustained(g)[0])),
-        ("turn radius, full stick and sustained (m)", lambda g: (g["radius"][-1], sustained(g)[1])),
-        ("time for a sustained 360 (s)", lambda g: (None, 360.0 / sustained(g)[0])),
+        (
+            "turn rate, full stick and sustained (deg/s)",
+            lambda c: (c["full_rate"] * DEGREES, c["held"]["rate"] * DEGREES),
+        ),
+        (
+            "turn radius, full stick and sustained (m)",
+            lambda c: (c["speeds"] / c["full_rate"], c["held"]["radius"]),
+        ),
+        ("time for a sustained 360 (s)", lambda c: (None, 2 * math.pi / c["held"]["rate"])),
     )
     for ax, (title, pick) in zip(axes, panels):
         style(ax)
-        for t, grid in enumerate(grids):
-            full, held = pick(grid)
+        for t, c in enumerate(curves):
+            full, held = pick(c)
             if full is not None:
-                ax.plot(v[keep], full[keep], color=SERIES[t], linewidth=2.0, label=f"{NAMES[t]} full stick")
-            ax.plot(v[keep], held[keep], color=SERIES[t], linewidth=2.0, linestyle="--" if full is not None else "-",
-                    label=f"{NAMES[t]} sustained")
-            series = np.where(keep, held if full is None else full, np.nan)
-            # The curves converge past their peaks: label inside the gaps.
-            if "rate" in title:
-                j, offset, align = int(np.searchsorted(v, 200.0)), (6, -14), "left"
-            elif "radius" in title:
-                j, offset, align = int(np.searchsorted(v, 200.0)), (0, -14 if t % 2 else 4), "left"
-            else:
-                j, offset, align = int(np.nanargmin(series)), (0, -16), "center"
-            ax.annotate(NAMES[t], (v[j], series[j]), xytext=offset, textcoords="offset points", color=INK,
-                        fontsize=9, ha=align)
+                ax.plot(
+                    c["speeds"],
+                    full,
+                    color=SERIES[t],
+                    linewidth=2.0,
+                    label=f"{c['name']} full stick",
+                )
+            ax.plot(
+                c["speeds"],
+                held,
+                color=SERIES[t],
+                linewidth=2.0,
+                linestyle="--" if full is not None else "-",
+                label=f"{c['name']} sustained",
+            )
         if "radius" in title:
             ax.set_ylim(0, 800)
         if "360" in title:
             ax.set_ylim(0, 20)
-        ax.set_xlim(100.0, v[-1])
         ax.set_xlabel("speed (m/s)", color=INK_2)
-        ax.set_title(title + ", coast, spawn store", color=INK, fontsize=11, loc="left")
+        ax.set_xlim(min(c["speeds"][0] for c in curves), max(c["speeds"][-1] for c in curves))
+        ax.set_title(title + ", coast, spawn store", color=INK, fontsize=10.5, loc="left")
         ax.legend(fontsize=8, frameon=False, labelcolor=INK_2, ncol=2)
-    foot = ("Solid: full stick (instantaneous). Dashed: sustained (Ps >= 0, total energy; the engine never\n"
-            f"feeds the store, so at coast this is speed held). Spawn store = {SPAWN_PERCENT:.0f}% of each ship's store.")
-    figure.text(0.01, 0.005, foot, color=INK_2, fontsize=8)
-    figure.tight_layout(rect=(0, 0.03, 1, 1))
-    path = os.path.join(OUT, f"doghouse-comparison{SUFFIX}.png")
+    figure.supxlabel(
+        "Solid: full stick (instantaneous). Dashed: sustained (Ps >= 0). From each line's lowest\n"
+        "speed flown in the game.",
+        color=INK_2,
+        fontsize=8,
+        x=0.02,
+        ha="left",
+    )
+    path = os.path.join(OUT, f"doghouse-comparison-core{'-dark' if THEME == 'dark' else ''}.png")
     figure.savefig(path, dpi=130, facecolor=SURFACE)
     plt.close(figure)
     return path
 
 
 if __name__ == "__main__":
-    for ship_type in TYPES:
-        for real in (False, True):
-            print(doghouse(ship_type, real=real))
-    print(comparison())
+    curves = []
+    for ship_type, name in enumerate(card.TYPE_NAMES):
+        with tuning.flying(tuning.row_of(name)):
+            lowest = lowest_speeds()
+            checks = flown_points(lowest)
+            print(
+                name, "lowest flown speeds (game m/s):", {k: round(v, 1) for k, v in lowest.items()}
+            )
+            print(name, "flown points:", checks)
+            for real in (False, True):
+                print(doghouse(ship_type, lowest, checks, real=real))
+            speeds = speed_axis(lowest)
+            full = tuning.envelope(_row(), speeds, np.array([1.0]))["rate"][-1]
+            curves.append(
+                dict(
+                    name=_name(ship_type),
+                    speeds=speeds,
+                    full_rate=_from(full, speeds, lowest["full"]),
+                    held=sustained_curve(lowest),
+                )
+            )
+    print(comparison(curves))
