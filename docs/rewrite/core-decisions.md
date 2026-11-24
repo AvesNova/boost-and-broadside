@@ -525,6 +525,15 @@ League (section 8)
 - Analysis jobs (screening, divergence, reviews, searches) take no speed measurement; agents
   may run in parallel except during the rare careful measurements.
 
+## Names for scripted agents (author 2026-11-24)
+
+- **Old (pre-BFM)**: the scripted agent before step E2; its code no longer exists.
+- The **BFM agent** is the only scripted agent in the code; parameter sets are named:
+  **BFM-default** (today's defaults in lean/scripted/parameters.py, set by E2's ablations),
+  **BFM-design** (the design document's original values; the tests' `BFM` persona),
+  **BFM-CMA1** and **BFM-CMA2** (CMA-ES rounds 1 and 2).
+- "Yardstick" (and "BC teacher") is a role: whichever parameter set is chosen; today BFM-default.
+
 ## Proposals, not decided
 
 

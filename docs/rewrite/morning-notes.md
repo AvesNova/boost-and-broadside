@@ -1,5 +1,10 @@
 # Morning notes
 
+Names (2026-11-24): Old (pre-BFM) = the agent before E2 (code gone); BFM-default = today's
+defaults (the current yardstick); BFM-design = the design's original values; BFM-CMA1 and
+BFM-CMA2 = CMA-ES rounds 1 and 2. Earlier notes below say "yardstick" for BFM-default,
+"candidate" for BFM-CMA1 and "BFM persona" for BFM-design.
+
 **A1 in one paragraph (merged 2026-11-24 ~03:45):** the P-51D is rebuilt through the tuning
 route with the game terms on and automatic flaps; it still flies 375 mph and 3,600 ft/min, and
 its tightest sustained turn (202 m at 137 mph) is now clearly slower than its best sustained
