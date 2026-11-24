@@ -24,6 +24,9 @@ Two layers (docs/rewrite/p51d-model.md, "Design inputs"):
   zero-lift drag, thrust power, thrust softness, induced drag and separation drag: a
   point-mass first guess, then Newton in logs (Broyden in the web tool's fast path).
   `design_of(row)` is its inverse: the design a row flies.
+- **Profiles** (`PROFILES`): named design-input tables, `DESIGN_INPUTS` (the documents, the
+  card's default) and `PERFORMANCE_POINTS`. Each card type is solved under its own
+  (`RealAircraft.profile`); a profile with a base starts from the base's solved row.
 
 `implied(row, airframe)` reads a row back as the airframe's physical quantities (mass, wing
 area, aspect ratio, shaft power and propeller diameter held): C_Lmax, C_D0, Oswald e, propeller
@@ -353,6 +356,56 @@ def check_inputs(inputs: tuple[DesignInput, ...]) -> None:
 
 check_inputs(DESIGN_INPUTS)
 
+_BY_NAME = {spec.name: spec for spec in DESIGN_INPUTS}
+# The author's performance points (2026-11-24): the corner from the g limit and the corner speed
+# (closed: the lift C = n g / v_corner^2), then four flown targets solved for the zero-lift drag,
+# thrust power, induced drag and separation drag: top level speed, best climb, the best
+# sustained turn's speed and the gap. The best sustained rate, the tightest sustained speed, the
+# corner rate and the best-climb speed are readouts; the thrust softness passes through. Not the
+# author's first set: top speed, best sustained speed and best sustained rate see the same two
+# ratios in a point mass (scaling the power and every drag together moves none of them), so
+# without a climb the power's level was nearly free (condition 335; 1% of sustained rate doubled
+# the power). This set: condition 9 at the P-51D (lean/game/NOTES.md, "Profiles").
+PERFORMANCE_POINTS = (
+    _BY_NAME["g_limit"],
+    DesignInput("corner_speed", "corner speed (at the g limit)", "Performance",
+                "max_lift_coefficient", lambda row, numbers: numbers["corner_speed"],
+                lambda value, design: design["g_limit"] * card.GRAVITY / value**2,
+                source="the documents row (C_Lmax 1.6, 8 g)", kind="speed", low=0.6, high=1.5),
+    _BY_NAME["top_speed"],
+    _BY_NAME["best_climb"],
+    flown("sustained_speed", "best sustained turn speed", "Performance", "induced_drag_scale",
+          source="the documents row", kind="speed", low=0.7, high=1.4),
+    _BY_NAME["gap"],
+    *(spec for spec in DESIGN_INPUTS if spec.group != "Performance"),
+    scaled("thrust_softmin_exponent", "thrust softness: exponent (low = soft)", "Flight terms",
+           source="the documents row (solved there for the 165 mph best-climb speed)", low=1.0,
+           high=64.0, relative=False),
+)
+check_inputs(PERFORMANCE_POINTS)
+
+
+@dataclasses.dataclass(frozen=True)
+class Profile:
+    """A named design-input table. `base`: None when its reference values come from the
+    aircraft's documents (reference_of); else the profile whose solved row gives them (each
+    input's measure on that row, design_of), so the same ship starts under either table."""
+
+    name: str
+    label: str
+    inputs: tuple
+    base: str | None = None
+
+
+PROFILES = {
+    profile.name: profile
+    for profile in (
+        Profile("documents", "documents", DESIGN_INPUTS),
+        Profile("performance_points", "performance points", PERFORMANCE_POINTS, "documents"),
+    )
+}
+DEFAULT_PROFILE = "documents"
+
 
 def inputs_version(inputs: tuple[DesignInput, ...] = DESIGN_INPUTS) -> str:
     """12 hex digits naming a table's inputs (names, what each sets, how): a saved design's
@@ -374,12 +427,14 @@ class RealAircraft:
     """A real aircraft: its data (C_D0 and the propeller efficiency only a start), its flight
     test (real m/s, sea level: top speed and best climb, which fit the point mass) and its
     documented design values (game units, design-input names: the flight test's, the gap, the
-    flight terms, guns, shield...). An input with no documented value takes its point mass's."""
+    flight terms, guns, shield...). An input with no documented value takes its point mass's.
+    `profile`: the design-input table (PROFILES) its card row is solved under."""
 
     airframe: Airframe
     top_speed: float
     best_climb: float
     values: dict
+    profile: str = DEFAULT_PROFILE
 
 
 # The P-51D's values (design units, game time). The flight test: 375 mph, 3,600 ft/min at
@@ -432,13 +487,16 @@ REAL_AIRCRAFT = {"p51d": RealAircraft(P51D, P51D_TOP_SPEED, P51D_BEST_CLIMB, P51
 class Reference:
     """A reference ship: its design-input table, the fitted airframe, its point mass (a card
     row, the game terms off) and that row's performance, and every input's reference value
-    (game units)."""
+    (game units); `profile` the table's name, and `start_row` the row a solve of it starts from
+    when given none (its base profile's solved row; None: the point mass's guesses)."""
 
     inputs: tuple
     airframe: Airframe
     point_mass_row: dict
     point_mass: dict
     design: dict
+    profile: str = DEFAULT_PROFILE
+    start_row: dict | None = None
 
 
 def reference_of(aircraft: RealAircraft, inputs: tuple = DESIGN_INPUTS) -> Reference:
@@ -459,10 +517,34 @@ def reference_of(aircraft: RealAircraft, inputs: tuple = DESIGN_INPUTS) -> Refer
     return Reference(inputs, fitted, row, numbers, design)
 
 
+def reference_in(aircraft: RealAircraft, profile: str | None = None) -> Reference:
+    """The aircraft's reference under the profile (PROFILES; default the aircraft's own): from
+    its documents (reference_of) for a profile with no base; else its base profile's reference,
+    solved (design_row), with every input of this table measured on that row (design_of) and
+    that row the solve's start."""
+    chosen = PROFILES[profile or aircraft.profile]
+    if chosen.base is None:
+        return dataclasses.replace(reference_of(aircraft, chosen.inputs), profile=chosen.name)
+    base = reference_in(aircraft, chosen.base)
+    row = design_row(base, start=base.start_row).row
+    return dataclasses.replace(base, inputs=chosen.inputs, design=design_of(row, chosen.inputs),
+                               profile=chosen.name, start_row=row)
+
+
 @functools.cache
-def reference(name: str) -> Reference:
-    """REAL_AIRCRAFT[name]'s reference (reference_of), once per process."""
-    return reference_of(REAL_AIRCRAFT[name])
+def reference(name: str, profile: str | None = None) -> Reference:
+    """REAL_AIRCRAFT[name]'s reference under the profile (reference_in; default the aircraft's
+    own), once per process. When the profile's base is the aircraft's own profile, the base row
+    is the card's (row_of: the derived and cached row, no second solve)."""
+    aircraft = REAL_AIRCRAFT[name]
+    chosen = PROFILES[profile or aircraft.profile]
+    if chosen.base is not None and chosen.base == aircraft.profile:
+        base = reference(name, chosen.base)
+        row = row_of(name)
+        return dataclasses.replace(base, inputs=chosen.inputs,
+                                   design=design_of(row, chosen.inputs), profile=chosen.name,
+                                   start_row=row)
+    return reference_in(aircraft, chosen.name)
 
 
 # --------------------------------------------------------------------------- the solve
@@ -584,44 +666,46 @@ def implied(row: dict[str, float], airframe: Airframe) -> dict[str, float]:
 class Check:
     """A plausibility check: `quantity` (implied's, or a flown one) outside `low` to `high`
     (None: unbounded) warns, with `reason`. `severity` "limit" for a physical limit, "range"
-    for outside the documented aircraft; `input` the design input it points at."""
+    for outside the documented aircraft; `field` the card field it points at (the design input
+    is whichever input sets that field in the profile's table, so a check needs no profile)."""
 
     quantity: str
     low: float | None
     high: float | None
     severity: str
     reason: str
-    input: str
+    field: str
 
 
 # docs/rewrite/ship-design-proposal.md section 7, as data.
 PLAUSIBILITY = (
-    Check("oswald", None, 1.0, "limit", "above the elliptic wing's 1.0", "sustained_rate"),
+    Check("oswald", None, 1.0, "limit", "above the elliptic wing's 1.0", "induced_drag_scale"),
     Check("oswald", 0.78, 0.93, "range",
           "outside 0.78-0.93 (Fw 190 0.78-0.84, Bf 109 0.93; NACA P-51B 0.88-0.91)",
-          "sustained_rate"),
+          "induced_drag_scale"),
     Check("propeller_efficiency", None, 1.0, "limit", "more thrust power than shaft power",
-          "best_climb"),
+          "engine_power"),
     Check("propeller_efficiency", 0.7, 0.9, "range", "outside 0.7-0.9 (P-47D measured 0.78-0.80)",
-          "best_climb"),
-    Check("zero_lift_drag_coefficient", 0.0, None, "limit", "no drag", "top_speed"),
+          "engine_power"),
+    Check("zero_lift_drag_coefficient", 0.0, None, "limit", "no drag", "zero_lift_drag"),
     Check("zero_lift_drag_coefficient", 0.0148, 0.034, "range",
           "outside 0.0148-0.034 (P-51D powered fit 0.0148-0.0163; Fw 190 A-8 0.0265-0.034)",
-          "top_speed"),
+          "zero_lift_drag"),
     Check("max_lift_coefficient", None, 1.7, "range",
-          "above the P-51D's stall-derived 1.50-1.70", "stall_speed"),
+          "above the P-51D's stall-derived 1.50-1.70", "max_lift_coefficient"),
     Check("figure_of_merit", None, 1.0, "limit", "beyond momentum theory", "static_thrust"),
     Check("structural_load", None, 1.0, "range",
           "above the structure's limit at this mass (P-51D: 8 g at 8,000 lb, 6.6 g at 9,760 lb)",
-          "g_limit"),
-    Check("gap", None, 0.9, "range", "less than the 10% gap the flight test asks", "gap"),
+          "max_acceleration"),
+    Check("gap", None, 0.9, "range", "less than the 10% gap the flight test asks",
+          "separation_drag"),
     Check("sustained_speed_change", -0.12, 0.12, "range",
-          "best sustained speed over 12% from the point mass's", "sustained_rate"),
+          "best sustained speed over 12% from the point mass's", "induced_drag_scale"),
     Check("full_stick_fall", None, 1e-6, "range",
           "the full-stick rate falls with speed below corner", "flap_lift"),
     Check("thrust_loss", None, 0.1, "range",
           "the soft thrust limit takes over a tenth of the thrust at the best-climb speed"
-          " (v2's softness 2 did)", "best_climb_speed"),
+          " (v2's softness 2 did)", "thrust_softmin_exponent"),
 )
 
 
@@ -635,8 +719,9 @@ def _thrust_loss(row: dict[str, float], speed: float) -> float:
 
 
 def warnings(row: dict[str, float], reference: Reference, flown: dict | None = None) -> list[dict]:
-    """The checks of PLAUSIBILITY the row fails, each as {quantity, value, severity, input,
-    message}. `flown`: the row's performance, if already computed."""
+    """The checks of PLAUSIBILITY the row fails, each as {quantity, value, severity, field,
+    input, message}: `input` the reference's table's input that sets the check's field.
+    `flown`: the row's performance, if already computed."""
     flown = flown or performance(row)
     values = dict(
         implied(row, reference.airframe),
@@ -647,6 +732,7 @@ def warnings(row: dict[str, float], reference: Reference, flown: dict | None = N
         full_stick_fall=flown["full_stick_fall"],
         thrust_loss=_thrust_loss(row, flown["best_climb_speed"]),
     )
+    setter = {spec.sets: spec.name for spec in reference.inputs}
     out = []
     for check in PLAUSIBILITY:
         value = values[check.quantity]
@@ -654,7 +740,7 @@ def warnings(row: dict[str, float], reference: Reference, flown: dict | None = N
         if below or (check.high is not None and value > check.high):
             message = f"{check.quantity} {value:.4g}: {check.reason}"
             out.append(dict(quantity=check.quantity, value=value, severity=check.severity,
-                            input=check.input, message=message))
+                            field=check.field, input=setter[check.field], message=message))
     return out
 
 
@@ -667,17 +753,19 @@ FLIGHT_SOURCES = tuple(
 
 
 def real_row(aircraft: RealAircraft) -> dict[str, float]:
-    """A real aircraft's card row: its reference's design, unchanged (design_row)."""
-    return design_row(reference_of(aircraft)).row
+    """A real aircraft's card row: its reference's design under its profile, unchanged
+    (design_row)."""
+    reference = reference_in(aircraft)
+    return design_row(reference, start=reference.start_row).row
 
 
 def row_key(aircraft: RealAircraft) -> str:
-    """16 hex digits of the SHA-256 of the aircraft (data, flight test, values) and
+    """16 hex digits of the SHA-256 of the aircraft (data, flight test, values, profile) and
     FLIGHT_SOURCES: a derived row's cache key (any change to the flight model's source
     re-solves)."""
     digest = hashlib.sha256()
     targets = [dataclasses.asdict(aircraft.airframe), aircraft.top_speed, aircraft.best_climb,
-               aircraft.values]
+               aircraft.values, aircraft.profile]
     digest.update(json.dumps(targets, sort_keys=True).encode())
     for path in FLIGHT_SOURCES:
         digest.update(path.read_bytes())

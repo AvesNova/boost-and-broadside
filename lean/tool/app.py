@@ -38,10 +38,12 @@ app = FastAPI(title="B&B tool", lifespan=lifespan)
 
 
 class DesignRequest(BaseModel):
-    """A design: the preset, the design inputs moved (tuning.DESIGN_INPUTS names, game units),
-    or a saved fixed ship's card row (`fixed`), the time scale and the chart units."""
+    """A design: the preset, its design-input profile (tuning.PROFILES; default the preset's
+    own), the inputs moved (that profile's names, game units), or a saved fixed ship's card row
+    (`fixed`), the time scale and the chart units."""
 
     preset: str = "p51d"
+    profile: str | None = None
     values: dict[str, float] | None = None
     time_scale: float = tuning.TIME_FACTOR
     units: str = "game"
@@ -115,6 +117,7 @@ def saved_delete(name: str):
 def presets():
     return dict(
         presets=design.presets(),
+        profiles=design.profiles(),
         time_factor=tuning.TIME_FACTOR,
         units=dict(
             systems=units.descriptors(),
@@ -136,10 +139,12 @@ def _answer(compute, request: DesignRequest, png: bool):
                     request.time_scale,
                     request.units,
                     fixed=request.fixed,
+                    profile=request.profile,
                 ),
                 media_type="image/png",
             )
-        return compute(request.preset, request.values, request.time_scale, fixed=request.fixed)
+        return compute(request.preset, request.values, request.time_scale, fixed=request.fixed,
+                       profile=request.profile)
     except UNSOLVABLE as error:  # the inputs have no solution
         return JSONResponse({"error": str(error)}, status_code=422)
 
@@ -154,7 +159,7 @@ def envelope(request: DesignRequest):
 def ship(request: DesignRequest):
     """The design's implied physical quantities, warnings and solved card row (JSON)."""
     try:
-        return design.ship(request.preset, request.values, request.fixed)
+        return design.ship(request.preset, request.values, request.fixed, request.profile)
     except UNSOLVABLE as error:
         return JSONResponse({"error": str(error)}, status_code=422)
 
@@ -188,10 +193,9 @@ def _receive(connection, process):
 
 @app.websocket("/api/sandbox")
 async def sandbox(websocket: WebSocket):
-    """The first message {preset, values, fixed?, time_scale, opponent, ticks?} starts a session;
-    then
-    {side, level, power, fire} (the held controls), {reset: true} and {opponent: bool} go to the
-    World, and every tick comes back as a frame (lean.tool.session.frame)."""
+    """The first message {preset, profile?, values, fixed?, time_scale, opponent, ticks?} starts
+    a session; then {side, level, power, fire} (the held controls), {reset: true} and
+    {opponent: bool} go to the World, and every tick comes back as a frame (lean.tool.session.frame)."""
     await websocket.accept()
     process = None
     try:
@@ -202,6 +206,7 @@ async def sandbox(websocket: WebSocket):
                 start.get("preset", "p51d"),
                 start.get("values"),
                 start.get("fixed"),
+                start.get("profile"),
             )
         except UNSOLVABLE as error:
             await websocket.send_json({"type": "error", "message": str(error)})

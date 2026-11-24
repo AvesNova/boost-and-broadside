@@ -35,6 +35,27 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   source, so a physics change or a table change re-solves by itself (about 3-5 s once; a
   cached load about 1 ms). Adding, removing or swapping a design input is an edit of
   `DESIGN_INPUTS` only.
+- **Profiles** (`tuning.PROFILES`): named design-input tables. Each card type names its own
+  (`RealAircraft.profile`, in its cache key); the default is `"documents"` (`DESIGN_INPUTS`),
+  and the P-51D uses it. A profile with a `base` takes its reference values from that
+  profile's solved row (`design_of` under its own table; `reference(name, profile)`,
+  `reference_in`), so the same ship starts under either table. Warnings name a card field
+  (`Check.field`) and point at whichever input sets it in the reference's table. The solve,
+  the card and the tool have no code for any one profile.
+  - `"performance_points"` (author 2026-11-24): g limit and corner speed (closed: the lift is
+    n g / v_corner^2), then top level speed, best climb, best sustained speed and the gap,
+    solved for zero-lift drag, power, induced drag and separation drag. The best sustained
+    rate, tightest speed, corner rate and best-climb speed are readouts; the thrust softness
+    passes through. At the P-51D the condition number is 9. Moving any input by 1% or 3%
+    (corner speed -3% included) converges in 3 Newton iterations (1.8 s), or 2-3 fast
+    iterations (0.1-0.2 s), with condition numbers 8.0-10.0. A cold solve from the point mass
+    also lands back on the documents row.
+  - Why not the author's first set (corner speed, corner rate, best sustained speed and rate,
+    tightest speed, top speed, g)? A point mass is homogeneous: scale the power and every
+    drag together and neither the top speed nor the sustained line moves. Without a climb
+    input the power's level is nearly free: condition 335, and 1% of best sustained rate
+    doubled the solved power and raised the climb 64%. The corner rate is set by corner speed
+    and g, apart from the lift softness: 1% of corner rate needs 22% of softness.
 
 ## Rules that matter
 
