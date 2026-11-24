@@ -61,7 +61,6 @@ CARD_FIELDS = (
     "fire_rate",
     "bullet_life",
     "explosive_share",
-    "reference_bullet_speed",
     "induced_drag_scale",
     "stall_angle_scale",
     "bullet_spread_scale",
@@ -102,6 +101,7 @@ FLAP_BLOWBACK_BAND = 0.4
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005
 BULLET_SPREAD = 12.0
+DAMAGE_REFERENCE_DISTANCE = 300.0  # m: a bullet fired at cruise has the damage reference speed here (v2 rules.toml)
 HEAD_ON_FRACTION = 0.3
 HEAD_ON_ANGLE = 0.737832313317803
 SHIELD_RECHARGE_DELAY = 6.0

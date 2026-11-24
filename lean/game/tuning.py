@@ -1,45 +1,46 @@
-"""Ship tuning: a real aircraft, or a design's handles, into a lean card row (lean.game.card) at
-the game's time scale, under the game's flight model.
+"""Ship design: a real aircraft's data and a design's inputs into a lean card row
+(lean.game.card) at the game's time scale, under the game's flight model
+(docs/rewrite/ship-design-proposal.md, option C; core-decisions.md "Ship design").
 
 The game plays at TIME_FACTOR (2) times real time (v2's real_scale.EQUIVALENT_FACTOR): lengths
 are real metres, game time is real time over 2, so speeds are x2, accelerations x4 (gravity
 39.24 = 4 x 9.81), powers per kg x8 and turn rates x2; turn radii, and the lift and drag
 coefficients per metre, are unchanged. `to_game` and `to_real` convert.
 
-Routes (docs/rewrite/p51d-model.md):
+Two layers (docs/rewrite/p51d-model.md, "Design inputs"):
 
-- `airframe_row`: an aircraft's physical data (mass, wing area, C_Lmax, C_D0, aspect ratio and
-  Oswald e, engine power and propeller) converted directly: no fitting, no gameplay tuning.
-  The point-mass conversion of the October fit (docs/rewrite/physics-checks/planes.py
-  `from_real`): lift and zero-lift drag per metre rho S C / (2 m), induced drag factor
-  k / (rho S / 2 m) with k = 1 / (pi e AR), thrust power P eta / m, static thrust by momentum
-  theory (FM^2 P^2 2 rho A)^(1/3) / m; dive and climb trade at 1 g. With the game terms off
-  (POINT_MASS_TERMS) the row is the aircraft's point mass. `fit_point_mass` sets C_D0 and the
-  propeller efficiency so the point mass flies a tested top speed and climb.
-- `game_row`: a real aircraft with the game terms on (a type's drag rise, separation drag,
-  soft minima and automatic flaps): the airframe converted, then its zero-lift drag, thrust
-  power and induced drag solved so it still flies its point mass's top speed, best climb and
-  best sustained turn rate (core-decisions.md 2026-11-24). The P-51D's row.
-- `handles_row`: a design's handles (v2's bnb.game.handling.Handles names, in game units): the
-  direct ones in v2's closed forms (bnb.game.handling.solver._flight_card, weapons.combat_card),
-  and the three flown handles that mean something under the game's flight model solved
-  quasi-steadily (cruise speed -> engine power, low-speed acceleration -> static thrust, the
-  settled full-stick turn -> induced drag; Newton in log parameters with finite differences, as
-  v2's solver). The dive and zoom accelerations at cruise set the trade (their mean).
+- **The reference** (`reference`): an aircraft's documents and best guesses. Its physical data
+  (`Airframe`) go through `fit_point_mass` (C_D0 and the propeller efficiency set so the point
+  mass flies the flight test's top speed and climb) into its point mass (`airframe_row`, the
+  game terms off). The reference's design values are the data's (stall speed, g limit, static
+  thrust, stall angle), the flight test's (top speed, best climb and its speed), the point
+  mass's (the best sustained turn rate) and the aircraft's choices (the gap, the game terms, the
+  guns...).
+- **The design** (`DESIGN_INPUTS`, one ordered table: name, label, unit, the card field it sets,
+  how): the sliders, which start at the reference's values. `design_row(reference, design)`
+  turns them into the card row: closed forms first (the stall speed sets the lift, the g limit
+  the maximum acceleration, every other input its own field), then the five flown targets
+  (top speed, best climb, best-climb speed, best sustained rate, the gap) solved for the
+  zero-lift drag, thrust power, thrust softness, induced drag and separation drag: a
+  point-mass first guess, then Newton in logs (Broyden in the web tool's fast path).
+  `design_of(row)` is its inverse: the design a row flies.
+
+`implied(row, airframe)` reads a row back as the airframe's physical quantities (mass, wing
+area, aspect ratio, shaft power and propeller diameter held): C_Lmax, C_D0, Oswald e, propeller
+efficiency, static figure of merit; `warnings` checks them against `PLAUSIBILITY` (warnings,
+never refusals; a solve that does not converge is the one refusal).
 
 The store size, the spawn store and the shot's cost are the game's own (two loops at corner
-speed, half of it, free), so no row carries them. The nose frequency and the fine stick's
-fraction are control feel, not physics: they come from the base row (GAME_FIELDS for a new
-design); the stick levels themselves are derived from the flight (core.stick_table,
-`stick_levels`). The
-flight terms (card.FLIGHT_TERMS) are per type; `performance(..., plain=True)` turns the game
-terms off for any row (POINT_MASS_TERMS).
+speed, half of it, free), and the stick levels and the bullet's damage reference speed are
+derived by the game (core._derived_characteristics), so no row carries them.
+`performance(..., plain=True)` turns the game terms off for any row (POINT_MASS_TERMS).
 """
 
 from __future__ import annotations
 
 import contextlib
 import dataclasses
+import functools
 import hashlib
 import json
 import math
@@ -48,6 +49,7 @@ import threading
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import torch
 
 from . import card, core
@@ -57,8 +59,9 @@ REAL_GRAVITY = 9.81
 AIR_DENSITY = 1.225  # kg/m^3, sea level
 HORSEPOWER = 745.7  # W
 FIGURE_OF_MERIT = 0.75  # a propeller's static figure of merit (planes.py)
-DAMAGE_REFERENCE_DISTANCE = 300.0  # m, the set's rule (v2 ships/real-scale/rules.toml)
+SPEED_OF_SOUND = 340.3  # m/s, ISA sea level
 LIFE_TOLERANCE = 1e-4  # v2 weapons.LIFE_TOLERANCE
+MPH, FEET_PER_MINUTE, POUND = 0.44704, 0.00508, 0.45359237  # m/s, m/s, kg
 assert abs(card.GRAVITY - REAL_GRAVITY * TIME_FACTOR**2) < 1e-9
 
 
@@ -72,13 +75,14 @@ def to_real(value: float, time_power: int) -> float:
     return value * TIME_FACTOR**time_power
 
 
-# --------------------------------------------------------------------------- airframe route
+# --------------------------------------------------------------------------- the airframe
 
 
 @dataclasses.dataclass(frozen=True)
 class Airframe:
     """An aircraft's physical data, SI, real time. power is the shaft power (W) at the rating
-    the drag data were fitted at; propeller_efficiency turns it into thrust power."""
+    the drag data were fitted at; propeller_efficiency turns it into thrust power; g_limit is
+    rated at g_limit_mass (the structure's limit at another mass scales as 1 / mass)."""
 
     mass: float  # kg
     wing_area: float  # m^2
@@ -90,6 +94,7 @@ class Airframe:
     propeller_efficiency: float
     propeller_diameter: float  # m
     g_limit: float
+    g_limit_mass: float  # kg
     stall_angle: float  # rad, angle of attack at C_Lmax
 
     @property
@@ -97,20 +102,24 @@ class Airframe:
         """rho S / (2 m): a coefficient's acceleration per v^2, 1/m."""
         return AIR_DENSITY * self.wing_area / (2.0 * self.mass)
 
+    @property
+    def propeller_disc(self) -> float:
+        return math.pi * self.propeller_diameter**2 / 4.0
+
     def static_thrust(self) -> float:
         """Static thrust (N) by momentum theory: FM P = T^1.5 / sqrt(2 rho A)."""
-        disc = math.pi * self.propeller_diameter**2 / 4.0
-        return (FIGURE_OF_MERIT**2 * self.power**2 * 2.0 * AIR_DENSITY * disc) ** (1.0 / 3.0)
+        return (FIGURE_OF_MERIT**2 * self.power**2 * 2.0 * AIR_DENSITY * self.propeller_disc) ** (1.0 / 3.0)
 
 
-# The P-51D's data (docs/rewrite/aircraft-references.md, p51d-model.md): 4,427 kg and 1,630 hp
-# at 67 in Hg (war emergency rating) as tested (AAF TSCEP5E-1908); wing area 21.67 m^2 (NACA ACR
-# 4K02); AR 5.83; C_Lmax 1.6 (the AAF's power-on value for its turn calculation; stall-derived
-# values span 1.50-1.70); Oswald e 0.8 (assumed); Hamilton Standard propeller 3.40 m (11 ft 2 in);
-# from v2's research (bnb.reference.real_planes) the g limit 8 and the stall angle 15.5 deg. C_D0
-# and the propeller efficiency are not data: fit_point_mass sets them so the point mass flies
-# the tested 375 mph and 3,600 ft/min at sea level (the October procedure, physics-checks/
-# real_fit.py), every time the card is derived (real_row); the values here are its start.
+# The P-51D's data (docs/rewrite/aircraft-references.md, p51d-inputs-sources.md): 4,427 kg and
+# 1,630 hp at 67 in Hg (war emergency rating) as tested (AAF TSCEP5E-1908); wing area 21.67 m^2
+# (NACA ACR 4K02); AR 5.83; C_Lmax 1.6 (the AAF's power-on value for its turn calculation;
+# stall-derived values span 1.50-1.70); Oswald e 0.8 (assumed); Hamilton Standard propeller
+# 3.40 m (11 ft 2 in); the g limit 8 at the 8,000 lb design weight (forum, F; 6.6 g at the
+# tested 9,760 lb) and the stall angle 15.5 deg, from v2's research (bnb.reference.real_planes).
+# C_D0 and the propeller efficiency are not data: fit_point_mass sets them so the point mass
+# flies the tested 375 mph and 3,600 ft/min at sea level (the October procedure,
+# physics-checks/real_fit.py), every time the card is derived; the values here are its start.
 P51D = Airframe(
     mass=4427.0,
     wing_area=21.67,
@@ -122,45 +131,9 @@ P51D = Airframe(
     propeller_efficiency=0.8211724151486224,
     propeller_diameter=3.40,
     g_limit=8.0,
+    g_limit_mass=8000.0 * POUND,
     stall_angle=math.radians(15.5),
 )
-MPH, FEET_PER_MINUTE = 0.44704, 0.00508  # m/s
-P51D_TOP_SPEED = 375.0 * MPH  # sea level, 67 in Hg, 4,427 kg (flight test), real m/s
-P51D_BEST_CLIMB = 3600.0 * FEET_PER_MINUTE  # the same test, real m/s
-SPEED_OF_SOUND = 340.3  # m/s, ISA sea level
-
-# A design's fields that are not its airframe: guns, damage, shield, the nose's reversal and
-# vision (v2's Vizia's), the fine stick's fraction of the sustained level (author 2026-11-24:
-# half; the sustained level is derived, core.stick_table), and the flight terms the point mass
-# keeps (v2's).
-GAME_FIELDS = dict(
-    corner_nose_frequency=11.23144817352295,
-    max_shield=100.0,
-    hit_radius=12.0,
-    core_radius=5.0,
-    hit_damage=21.0,
-    muzzle_speed=1712.0,
-    fire_rate=30.0,
-    bullet_life=0.36666667461395264,
-    explosive_share=0.0,
-    reference_bullet_speed=1753.606201171875,
-    bullet_spread_scale=0.25704020261764526,
-    bullet_drag_scale=1.0,
-    shield_recharge_rate_scale=2.0,
-    shield_recharge_delay_scale=0.5,
-    head_on_fraction_scale=0.0,
-    head_on_angle_scale=1.0644670724868774,
-    head_on_sharpness=3.0,
-    fine_stick_fraction=0.5,  # the fine level over the sustained one (the levels: core.stick_table)
-    vision_range_scale=0.3255208432674408,
-    drag_rise_exponent=12.0,
-    separation_exponent=8.0,
-    nose_damping=0.7,
-    flap_lift=0.0,
-    flap_blowback_ratio=1.0,
-    flap_drag_scale=0.0,
-)
-
 
 # The game terms switched off: no drag rise, no separation drag, soft minima near hard (exponent
 # 400), no flaps. A real aircraft's data fly as its point mass with these.
@@ -173,64 +146,40 @@ POINT_MASS_TERMS = dict(
     flap_drag_scale=0.0,
 )
 
-# The P-51D's game terms (core-decisions.md 2026-11-24: the terms on, the solver compensating).
-# - Drag rise: the zero-lift drag doubles at Mach 0.77, exponent 20: NACA ACR 4K02 Fig. 12 (the
-#   P-51B, propeller off) is flat to about M 0.68, then +40% at M 0.735 and +67% at M 0.755.
-# - Separation drag 0.5, exponent 24 (the induced drag x 1.5 at the wing's maximum lift, +4.0%
-#   at 0.9 of it): it bends the sustained turn's line away from the lift limit, so the tightest
-#   sustained turn sits clearly slower than the best sustained rate (speed ratio 0.848). The
-#   2026-11-24 sweep (docs/rewrite/p51d-model.md): at exponent 8 no coefficient gives both a
-#   10% gap and Oswald e <= 1 (0.35: 0.897 with e 1.07); at 24, 0.5 gives e 0.952.
-# - Soft minima: lift against the g limit 16 (v2's), thrust against static thrust 8.
-# - Automatic flaps (core._wing): off (flap_lift 0, author 2026-11-24); the machinery stays,
-#   switchable per type. A game choice when on (the P-51D had no combat flap setting): flap_lift
-#   x the maximum lift when the stick asks for more than the clean wing gives, blown back by the
-#   clean corner speed (over its last 40%, card.FLAP_BLOWBACK_BAND); the extra lift costs
-#   Delta C_D = 1.5 Delta C_L^2 with the flaps fully used (P51D_FLAP_DRAG; cubic below that).
-P51D_FLAP_DRAG = 1.5  # Delta C_D per (Delta C_L)^2 of lift beyond the clean maximum, flaps fully used
-P51D_TERMS = dict(
-    critical_speed=to_game(0.77 * SPEED_OF_SOUND, -1),
-    drag_rise_exponent=20.0,
-    separation_drag=0.5,
-    separation_exponent=24.0,
-    lift_softmin_exponent=16.0,
-    thrust_softmin_exponent=8.0,
-    flap_lift=0.0,
-    flap_blowback_ratio=1.0,
-    flap_drag_scale=P51D_FLAP_DRAG / (P51D.per_metre * card.INDUCED_DRAG_FACTOR),
-)
-
 
 def point_mass(row: dict[str, float]) -> dict[str, float]:
     """A row with the game terms off (POINT_MASS_TERMS); the other flight terms kept."""
     return {**row, **POINT_MASS_TERMS}
 
 
-def airframe_row(
-    airframe: Airframe, base: dict[str, float], terms: dict[str, float] | None = None
-) -> dict[str, float]:
-    """A card row: the flight fields from the airframe, the flight terms `terms` over the base's
-    (default POINT_MASS_TERMS: the real aircraft's point mass), everything else from `base`."""
+def airframe_row(airframe: Airframe, base: dict[str, float]) -> dict[str, float]:
+    """The aircraft's point mass as a card row: the flight fields from the airframe, the game
+    terms off (POINT_MASS_TERMS), everything else from `base`. The point-mass conversion of the
+    October fit (docs/rewrite/physics-checks/planes.py `from_real`): lift and zero-lift drag per
+    metre rho S C / (2 m), induced drag factor k / (rho S / 2 m) with k = 1 / (pi e AR), thrust
+    power P eta / m, static thrust by momentum theory (Airframe.static_thrust); dive and climb
+    trade at 1 g."""
     a = airframe
     induced = 1.0 / (math.pi * a.oswald * a.aspect_ratio) / a.per_metre  # m
-    power = to_game(a.power * a.propeller_efficiency / a.mass, -3)
     flight = dict(
         max_lift_coefficient=a.per_metre * a.max_lift_coefficient,
         max_acceleration=a.g_limit * card.GRAVITY,
         zero_lift_drag=a.per_metre * a.zero_lift_drag_coefficient,
         induced_drag_scale=induced / card.INDUCED_DRAG_FACTOR,
-        engine_power=power,
+        engine_power=to_game(a.power * a.propeller_efficiency / a.mass, -3),
         static_thrust=to_game(a.static_thrust() / a.mass, -2),
         stall_angle_scale=a.stall_angle / card.STALL_ANGLE,
         exchange_acceleration=card.GRAVITY,  # 1 g: a vertical dive or zoom
     )
-    return {**base, **flight, **(POINT_MASS_TERMS if terms is None else terms)}
+    return {**base, **flight, **POINT_MASS_TERMS}
 
 
-def fit_point_mass(airframe: Airframe, top_speed: float, best_climb: float) -> Airframe:
-    """The airframe with C_D0 and the propeller efficiency set so its point mass (the game terms
-    off) flies `top_speed` and `best_climb` (real m/s, sea level); the other data kept (the
-    October procedure: docs/rewrite/physics-checks/real_fit.py)."""
+def fit_point_mass(
+    airframe: Airframe, top_speed: float, best_climb: float, base: dict[str, float]
+) -> Airframe:
+    """The airframe with C_D0 and the propeller efficiency set so its point mass flies
+    `top_speed` and `best_climb` (real m/s, sea level); the other data kept (the October
+    procedure: docs/rewrite/physics-checks/real_fit.py). `base`: the row's other fields."""
     targets = (to_game(top_speed, -1), to_game(best_climb, -1))
 
     def fitted(logs):
@@ -241,62 +190,484 @@ def fit_point_mass(airframe: Airframe, top_speed: float, best_climb: float) -> A
         )
 
     def residual(logs):
-        p = performance(airframe_row(fitted(logs), GAME_FIELDS))
+        p = performance(airframe_row(fitted(logs), base))
         return [math.log(p["top_speed"] / targets[0]), math.log(p["best_climb"] / targets[1])]
 
     start = [math.log(airframe.zero_lift_drag_coefficient), math.log(airframe.propeller_efficiency)]
-    return fitted(_newton(residual, start, 1e-7, name="fit_point_mass"))
+    return fitted(_newton(residual, start, 1e-7, name="fit_point_mass").logs)
 
 
-GAME_TARGETS = ("top_speed", "best_climb", "sustained_rate")
-GAME_SOLVED = ("zero_lift_drag", "engine_power", "induced_drag_scale")
+# --------------------------------------------------------------------------- the design inputs
 
 
-def game_row(airframe: Airframe, terms: dict[str, float], base: dict[str, float]) -> dict[str, float]:
-    """A real aircraft's card row with the game terms on (core-decisions.md 2026-11-24): the
-    airframe converted (airframe_row) with `terms`, then the low-level coefficients GAME_SOLVED
-    (zero-lift drag, thrust power, induced drag) solved so the row flies its point mass's top
-    speed, best climb and best sustained turn rate (GAME_TARGETS; Newton, as handles_row). The
-    rest is the airframe's: the lift and the stall speed, the g limit and so the corner speed,
-    the stall angle, the dive and climb trade, and the static thrust (momentum theory; no target
-    sees it). The best sustained turn's speed is not solved: the terms are chosen to keep it
-    near the point mass's (test_p51d_game_row_flies_its_point_mass).
+@dataclasses.dataclass(frozen=True)
+class DesignInput:
+    """One design input: what it sets and how, and its slider.
 
-    Solved first without the flaps, then with them from there: the flaps' low-speed part of
-    the sustained turn is lift-limited, so no drag coefficient moves it, and a start whose
-    clean best turn lies below it would see no way to the target."""
-    row = airframe_row(airframe, base, terms)
-    reference = performance(airframe_row(airframe, base))
-    targets = [reference[name] for name in GAME_TARGETS]
-    logs = [math.log(row[name]) for name in GAME_SOLVED]
-    for stage in ({**row, "flap_lift": 0.0}, row):
+    - `sets`: the card field it decides; `method`: "closed" (a closed form: the field is the
+      value times `scale`, or its own formula for the stall speed and the gun range),
+      "solved" (a flown target, met by solving `sets`) or "short circuit" (the field itself).
+    - `scale`: a lean.game.card constant name (or "SPEED_OF_SOUND", the game's), "1/" before
+      it to divide; "" for 1.
+    - `kind`: the quantity's kind in the web tool's units (lean.tool.units.KINDS; game units
+      here), None for a number shown as it is with `unit`.
+    - the slider: `low` to `high`, multiples of the reference's value if `relative`."""
 
-        def residual(logs, stage=stage):
-            trial = {**stage, **{name: math.exp(x) for name, x in zip(GAME_SOLVED, logs)}}
-            flown = performance(trial)
-            return [math.log(flown[name] / target) for name, target in zip(GAME_TARGETS, targets)]
+    name: str
+    label: str
+    group: str
+    sets: str
+    method: str
+    kind: str | None = None
+    unit: str = ""
+    scale: str = ""
+    low: float = 0.5
+    high: float = 2.0
+    relative: bool = True
 
-        logs = _newton(residual, logs, 1e-7, name="game_row")
-    row.update({name: math.exp(x) for name, x in zip(GAME_SOLVED, logs)})
+
+GROUPS = ("Performance", "Airframe", "Flight terms", "Flaps", "Stick and nose", "Guns",
+          "Shield, head-on and vision")
+_I = DesignInput
+DESIGN_INPUTS = (
+    _I("stall_speed", "stall speed (1 g)", "Performance", "max_lift_coefficient", "closed",
+       "speed", low=0.6, high=1.5),
+    _I("g_limit", "g limit", "Performance", "max_acceleration", "closed", unit="g",
+       scale="GRAVITY", low=0.4, high=1.6),
+    _I("top_speed", "top level speed", "Performance", "zero_lift_drag", "solved", "speed",
+       low=0.6, high=1.4),
+    _I("best_climb", "best climb rate", "Performance", "engine_power", "solved", "climb",
+       low=0.4, high=2.0),
+    _I("best_climb_speed", "best-climb speed", "Performance", "thrust_softmin_exponent",
+       "solved", "speed", low=0.85, high=1.3),
+    _I("sustained_rate", "best sustained turn rate", "Performance", "induced_drag_scale",
+       "solved", "angular_rate", low=0.6, high=1.5),
+    _I("gap", "the gap: tightest over best-rate sustained speed", "Performance",
+       "separation_drag", "solved", low=0.7, high=0.99, relative=False),
+    _I("static_thrust", "static thrust / weight", "Airframe", "static_thrust", "closed",
+       scale="GRAVITY", low=0.3, high=2.0),
+    _I("stall_angle", "stall angle", "Airframe", "stall_angle_scale", "closed", unit="rad",
+       scale="1/STALL_ANGLE", low=0.5, high=1.6),
+    _I("exchange", "dive and zoom trade", "Airframe", "exchange_acceleration", "closed",
+       unit="g", scale="GRAVITY", low=0.3, high=1.6),
+    _I("critical_mach", "drag rise: critical Mach", "Flight terms", "critical_speed", "closed",
+       unit="Mach", scale="SPEED_OF_SOUND", low=0.5, high=1.5, relative=False),
+    _I("drag_rise_exponent", "drag rise: exponent", "Flight terms", "drag_rise_exponent",
+       "short circuit", low=2.0, high=40.0, relative=False),
+    _I("separation_exponent", "separation drag: exponent", "Flight terms",
+       "separation_exponent", "short circuit", low=4.0, high=32.0, relative=False),
+    _I("lift_softmin_exponent", "lift softness: exponent (low = soft)", "Flight terms",
+       "lift_softmin_exponent", "short circuit", low=2.0, high=64.0, relative=False),
+    _I("flap_lift", "extra lift", "Flaps", "flap_lift", "short circuit", unit="of clean",
+       low=0.0, high=0.5, relative=False),
+    _I("flap_blowback_ratio", "blown back at", "Flaps", "flap_blowback_ratio", "short circuit",
+       unit="x clean corner speed", low=0.3, high=2.0, relative=False),
+    _I("flap_drag_scale", "drag of the extra lift", "Flaps", "flap_drag_scale",
+       "short circuit", low=0.0, high=3.0),
+    _I("nose_damping", "nose damping", "Stick and nose", "nose_damping", "short circuit",
+       low=0.2, high=1.5, relative=False),
+    _I("corner_nose_frequency", "nose frequency at corner speed", "Stick and nose",
+       "corner_nose_frequency", "short circuit", "angular_rate", low=0.3, high=2.0),
+    _I("fine_stick_fraction", "fine stick", "Stick and nose", "fine_stick_fraction",
+       "short circuit", unit="of sustained", low=0.05, high=1.0, relative=False),
+    _I("hit_damage", "hit damage", "Guns", "hit_damage", "short circuit", low=0.3, high=3.0),
+    _I("explosive_share", "explosive share", "Guns", "explosive_share", "short circuit",
+       low=0.0, high=1.0, relative=False),
+    _I("fire_rate", "fire rate", "Guns", "fire_rate", "short circuit", "frequency", low=0.3),
+    _I("muzzle_speed", "muzzle speed", "Guns", "muzzle_speed", "short circuit", "speed"),
+    _I("bullet_spread", "bullet spread", "Guns", "bullet_spread_scale", "closed", "speed",
+       scale="1/BULLET_SPREAD", low=0.0, high=3.0),
+    _I("bullet_drag", "bullet drag", "Guns", "bullet_drag_scale", "closed", "inverse_length",
+       scale="1/BULLET_DRAG", low=0.0, high=4.0),
+    _I("gun_range", "gun range (from cruise)", "Guns", "bullet_life", "closed", "length",
+       low=0.3, high=2.5),
+    _I("hit_radius", "hit radius", "Guns", "hit_radius", "short circuit", "length", low=0.3,
+       high=3.0),
+    _I("core_radius", "core radius", "Guns", "core_radius", "short circuit", "length", low=0.3,
+       high=3.0),
+    _I("max_shield", "shield", "Shield, head-on and vision", "max_shield", "short circuit",
+       low=0.3, high=3.0),
+    _I("shield_recharge_rate", "shield recharge rate", "Shield, head-on and vision",
+       "shield_recharge_rate_scale", "closed", "frequency", scale="1/SHIELD_RECHARGE_RATE",
+       low=0.2, high=4.0),
+    _I("shield_recharge_delay", "shield recharge wait", "Shield, head-on and vision",
+       "shield_recharge_delay_scale", "closed", "time", scale="1/SHIELD_RECHARGE_DELAY",
+       low=0.2, high=4.0),
+    _I("head_on_fraction", "head-on damage share", "Shield, head-on and vision",
+       "head_on_fraction_scale", "closed", scale="1/HEAD_ON_FRACTION", low=0.0, high=1.0,
+       relative=False),
+    _I("head_on_angle", "head-on angle", "Shield, head-on and vision", "head_on_angle_scale",
+       "closed", unit="rad", scale="1/HEAD_ON_ANGLE", low=0.1, high=1.57, relative=False),
+    _I("head_on_sharpness", "head-on sharpness", "Shield, head-on and vision",
+       "head_on_sharpness", "short circuit", low=0.3, high=3.0),
+    _I("vision_range", "vision range", "Shield, head-on and vision", "vision_range_scale",
+       "closed", "length", scale="1/VISION_RANGE", low=0.3, high=3.0),
+)
+del _I
+DESIGN = {spec.name: spec for spec in DESIGN_INPUTS}
+SOLVED = tuple(spec for spec in DESIGN_INPUTS if spec.method == "solved")
+assert {spec.sets for spec in DESIGN_INPUTS} == set(card.CARD_FIELDS)
+assert all(spec.group in GROUPS for spec in DESIGN_INPUTS)
+
+
+def _scale(spec: DesignInput) -> float:
+    """The factor from the input's value to its field's (DesignInput.scale)."""
+    name = spec.scale.removeprefix("1/")
+    if not name:
+        return 1.0
+    value = to_game(SPEED_OF_SOUND, -1) if name == "SPEED_OF_SOUND" else getattr(card, name)
+    return 1.0 / value if spec.scale.startswith("1/") else value
+
+
+def _bullet_life(design: dict[str, float], tick_length: float = 1.0 / 30.0) -> float:
+    """The bullet's life in whole ticks: long enough to fly the gun range when fired at the top
+    speed against the bullet drag (v2's weapons.combat_card)."""
+    drag = design["bullet_drag"]
+    flight = math.expm1(drag * design["gun_range"]) / (drag * (design["top_speed"] + design["muzzle_speed"]))
+    return math.ceil(flight / tick_length - LIFE_TOLERANCE) * tick_length
+
+
+def _closed_row(design: dict[str, float]) -> dict[str, float]:
+    """Every card field a closed form or a short circuit sets (all but the solved ones)."""
+    row = {spec.sets: design[spec.name] * _scale(spec) for spec in DESIGN_INPUTS if spec.method != "solved"}
+    row["max_lift_coefficient"] = card.GRAVITY / design["stall_speed"] ** 2
+    row["bullet_life"] = _bullet_life(design)
     return row
 
 
-# --------------------------------------------------------------------------- the derived card
+# --------------------------------------------------------------------------- the reference
 
 
 @dataclasses.dataclass(frozen=True)
 class RealAircraft:
-    """A real aircraft's targets: its data (C_D0 and the propeller efficiency only a start),
-    its flight test (real m/s, sea level) and its game terms."""
+    """A real aircraft: its data (C_D0 and the propeller efficiency only a start), its flight
+    test (real m/s, sea level: top speed, best climb and the speed it was flown at), its design
+    choices (DESIGN_INPUTS names: the gap, the flight terms, guns, shield...) and each input's
+    provenance (a short tag; "game choice" when absent)."""
 
     airframe: Airframe
     top_speed: float
     best_climb: float
-    terms: dict
+    best_climb_speed: float
+    choices: dict
+    sources: dict
 
 
-# The card's real aircraft by type name (card.TYPE_NAMES).
-REAL_AIRCRAFT = {"p51d": RealAircraft(P51D, P51D_TOP_SPEED, P51D_BEST_CLIMB, P51D_TERMS)}
+# The P-51D's choices (design units, game time). The gap (core-decisions.md 2026-11-24): the
+# tightest sustained turn 15% slower than the best sustained rate, with the separation exponent
+# 16 (where its coefficient still moves the gap, docs/rewrite/ship-design-proposal.md 5). The
+# drag rise doubles the zero-lift drag at Mach 0.77, exponent 20 (NACA ACR 4K02 Fig. 12, the
+# P-51B propeller off: flat to about M 0.68, then +40% at M 0.735 and +67% at M 0.755). The lift
+# softness 16 (v2's). The flaps off (author 2026-11-24; the machinery stays, switchable per type;
+# on, the extra lift costs Delta C_D = 1.5 Delta C_L^2 with the flaps fully used). Guns, damage,
+# shield, the nose and vision are v2's Vizia's; the fine stick is half the sustained level
+# (author 2026-11-24).
+P51D_FLAP_DRAG = 1.5  # Delta C_D per (Delta C_L)^2 of lift beyond the clean maximum, flaps fully used
+P51D_CHOICES = dict(
+    gap=0.85,
+    exchange=1.0,
+    critical_mach=0.77,
+    drag_rise_exponent=20.0,
+    separation_exponent=16.0,
+    lift_softmin_exponent=16.0,
+    flap_lift=0.0,
+    flap_blowback_ratio=1.0,
+    flap_drag_scale=P51D_FLAP_DRAG / (P51D.per_metre * card.INDUCED_DRAG_FACTOR),
+    nose_damping=0.7,
+    corner_nose_frequency=11.23144817352295,
+    fine_stick_fraction=0.5,
+    hit_damage=21.0,
+    explosive_share=0.0,
+    fire_rate=30.0,
+    muzzle_speed=1712.0,
+    bullet_spread=3.084482431411743,
+    bullet_drag=0.0005,
+    gun_range=600.0,
+    hit_radius=12.0,
+    core_radius=5.0,
+    max_shield=100.0,
+    shield_recharge_rate=24.0,
+    shield_recharge_delay=3.0,
+    head_on_fraction=0.0,
+    head_on_angle=math.pi / 4.0,
+    head_on_sharpness=3.0,
+    vision_range=1000.0,
+)
+P51D_SOURCES = dict(
+    stall_speed="B: C_Lmax 1.6, AAF turn calculation",
+    g_limit="F: forum 8 g (author's choice)",
+    top_speed="A: flight test, 375 mph",
+    best_climb="A: flight test, 3,600 ft/min",
+    best_climb_speed="A: flight test, 165 mph",
+    sustained_rate="model: the point mass (e 0.8 assumed)",
+    gap="design (author 2026-11-24)",
+    static_thrust="momentum theory, FM 0.75",
+    stall_angle="guess: v2's 15.5 deg",
+    exchange="design: 1 g",
+    critical_mach="A: NACA ACR 4K02 Fig. 12",
+    drag_rise_exponent="A: NACA ACR 4K02 Fig. 12",
+    separation_exponent="design (author 2026-11-24)",
+    lift_softmin_exponent="design: v2's 16",
+    flap_lift="design: off",
+)
+REAL_AIRCRAFT = {
+    "p51d": RealAircraft(
+        P51D, 375.0 * MPH, 3600.0 * FEET_PER_MINUTE, 165.0 * MPH, P51D_CHOICES, P51D_SOURCES
+    )
+}
+
+
+@dataclasses.dataclass(frozen=True)
+class Reference:
+    """A reference ship: the fitted airframe, every design input's reference value (game
+    units), its point mass's performance and each input's provenance."""
+
+    airframe: Airframe
+    design: dict
+    point_mass: dict
+    sources: dict
+
+
+def reference_of(aircraft: RealAircraft) -> Reference:
+    """The reference from the aircraft's documents: the point mass fitted to the flight test
+    (fit_point_mass), its best sustained rate the turn's target; the stall speed, g limit,
+    static thrust and stall angle the airframe's; the rest the flight test's and the choices."""
+    a = aircraft.airframe
+    design = dict(
+        aircraft.choices,
+        stall_speed=to_game(math.sqrt(REAL_GRAVITY / (a.per_metre * a.max_lift_coefficient)), -1),
+        g_limit=a.g_limit,
+        static_thrust=a.static_thrust() / (a.mass * REAL_GRAVITY),
+        stall_angle=a.stall_angle,
+        top_speed=to_game(aircraft.top_speed, -1),
+        best_climb=to_game(aircraft.best_climb, -1),
+        best_climb_speed=to_game(aircraft.best_climb_speed, -1),
+    )
+    base = _closed_row(design)
+    fitted = fit_point_mass(a, aircraft.top_speed, aircraft.best_climb, base)
+    flown = performance(airframe_row(fitted, base))
+    design["sustained_rate"] = flown["sustained_rate"]
+    assert set(design) == set(DESIGN), sorted(set(design) ^ set(DESIGN))
+    sources = {name: aircraft.sources.get(name, "game choice") for name in DESIGN}
+    return Reference(fitted, design, flown, sources)
+
+
+@functools.cache
+def reference(name: str) -> Reference:
+    """REAL_AIRCRAFT[name]'s reference (reference_of), once per process."""
+    return reference_of(REAL_AIRCRAFT[name])
+
+
+# --------------------------------------------------------------------------- the solve
+
+
+@dataclasses.dataclass(frozen=True)
+class Solved:
+    """A design's row and its solve: the largest |log(flown / target)|, the Newton iterations
+    and the condition number of the last log-log Jacobian (None if none was needed)."""
+
+    row: dict
+    residual: float
+    iterations: int
+    condition: float | None
+
+
+SEPARATION_START, SOFTNESS_START = 0.4, 4.0  # first guesses where no start row is given
+
+
+def design_row(
+    reference: Reference,
+    design: dict[str, float] | None = None,
+    start: dict[str, float] | None = None,
+    fast: bool = False,
+) -> Solved:
+    """The card row of the reference with the design inputs `design` changed (DESIGN_INPUTS
+    names, game units). Closed forms first; then the solved fields (SOLVED) from `start` (a row,
+    e.g. the reference's own) or a point-mass first guess (`_point_mass_guess`), by Newton in
+    logs until every flown target is met to 1e-7 (`fast`: Broyden updates after the first
+    Jacobian, to 1e-5, for the web tool). A design with flaps is solved clean first, then with
+    them from there: the flaps' low-speed part of the sustained turn is lift-limited, so no drag
+    coefficient moves it, and a start whose clean best turn lies below it sees no way to the
+    target. Raises RuntimeError when it does not converge."""
+    values = {**reference.design, **(design or {})}
+    unknown = set(values) - set(DESIGN)
+    if unknown:
+        raise ValueError(f"not design inputs: {sorted(unknown)}")
+    row = _closed_row(values)
+    if start is None:
+        start = dict(_point_mass_guess(row, values, reference.airframe),
+                     separation_drag=SEPARATION_START, thrust_softmin_exponent=SOFTNESS_START)
+    logs = [math.log(start[spec.sets]) for spec in SOLVED]
+    targets = [values[spec.name] for spec in SOLVED]
+    stages = [{**row, "flap_lift": 0.0}, row] if row["flap_lift"] > 0.0 else [row]
+    for stage in stages:
+
+        def residual(logs, stage=stage):
+            trial = {**stage, **{spec.sets: math.exp(x) for spec, x in zip(SOLVED, logs)}}
+            flown = performance(trial)
+            return [math.log(flown[spec.name] / t) for spec, t in zip(SOLVED, targets)]
+
+        solve = _newton(residual, logs, 1e-5 if fast else 1e-7, broyden=fast, name="design_row")
+        logs = solve.logs
+    row.update({spec.sets: math.exp(x) for spec, x in zip(SOLVED, logs)})
+    return Solved(row, solve.residual, solve.iterations, solve.condition)
+
+
+def _point_mass_guess(row: dict[str, float], design: dict[str, float], airframe: Airframe) -> dict:
+    """Zero-lift drag D0, induced drag k and thrust power P from the point mass with hard limits
+    (no game terms, thrust P / v), solved by a 3x3 Newton on closed forms from the airframe's
+    point mass: the top speed V holds P = D0 V^3 + k g^2 / V; the best climb is the maximum of
+    (P - D0 v^3 - k g^2 / v) / g; the best sustained rate the maximum of g sqrt(n^2 - 1) / v with
+    k (n g)^2 / v^2 = P / v - D0 v^2, capped by the lift limit (the crossing found exactly)."""
+    g, lift, limit = card.GRAVITY, row["max_lift_coefficient"], design["g_limit"]
+    top, climb, rate = design["top_speed"], design["best_climb"], design["sustained_rate"]
+    v = np.linspace(1.01 * design["stall_speed"], top, 4000)
+
+    def residual(x):
+        zero_lift, induced, power = np.exp(x)
+        ps = ((power - zero_lift * v**3 - induced * g * g / v) / g).max()
+        energy_load = np.clip((power / v - zero_lift * v * v) * v * v / (induced * g * g), 1.0, None)
+        lift_load = np.minimum((lift * v * v / g) ** 2, limit**2)
+        gap = energy_load - lift_load  # energy above the lift limit: lift-limited
+        best = np.where(gap < 0.0, g * np.sqrt(energy_load - 1.0) / v, -np.inf).max()
+        for j in np.nonzero((gap[:-1] > 0.0) & (gap[1:] <= 0.0))[0]:
+            t = gap[j] / (gap[j] - gap[j + 1])
+            load = lift_load[j] + t * (lift_load[j + 1] - lift_load[j])
+            best = max(best, g * math.sqrt(max(load - 1.0, 0.0)) / (v[j] + t * (v[j + 1] - v[j])))
+        top_power = zero_lift * top**3 + induced * g * g / top
+        return np.array([math.log(top_power / power), math.log(ps / climb), math.log(best / rate)])
+
+    point = airframe_row(airframe, row)
+    x = np.log([point["zero_lift_drag"], card.INDUCED_DRAG_FACTOR * point["induced_drag_scale"],
+                point["engine_power"]])
+    for _ in range(30):
+        r = residual(x)
+        if np.abs(r).max() < 1e-10:
+            break
+        jacobian = np.array([(residual(x + 1e-6 * e) - r) / 1e-6 for e in np.eye(3)]).T
+        x = x - np.clip(np.linalg.lstsq(jacobian, r, rcond=None)[0], -0.5, 0.5)
+    zero_lift, induced, power = np.exp(x)
+    return dict(zero_lift_drag=float(zero_lift), engine_power=float(power),
+                induced_drag_scale=float(induced) / card.INDUCED_DRAG_FACTOR)
+
+
+def design_of(row: dict[str, float]) -> dict[str, float]:
+    """The design a row flies (game units): its flown targets (performance) and every closed
+    input read back; the gun range the whole bullet life's (at least the designed range).
+    design_row(reference, design_of(row)) is the row again, within the solve's tolerance."""
+    flown = performance(row)
+    design = {spec.name: flown[spec.name] for spec in SOLVED}
+    for spec in DESIGN_INPUTS:
+        if spec.method != "solved":
+            design[spec.name] = row[spec.sets] / _scale(spec)
+    design["stall_speed"] = math.sqrt(card.GRAVITY / row["max_lift_coefficient"])
+    drag = design["bullet_drag"]
+    launch = design["top_speed"] + design["muzzle_speed"]
+    design["gun_range"] = math.log1p(drag * launch * row["bullet_life"]) / drag
+    return design
+
+
+# --------------------------------------------------------------------------- plausibility
+
+
+def implied(row: dict[str, float], airframe: Airframe) -> dict[str, float]:
+    """The row read back as the airframe's physical quantities (real units), holding its mass,
+    wing area, aspect ratio, shaft power and propeller diameter: C_Lmax, C_D0, Oswald e,
+    propeller efficiency (thrust power over shaft power), static figure of merit (momentum
+    theory), static thrust over weight, the g limit over the structure's at this mass, and the
+    held wing loading (kg/m^2) and shaft power loading (W/kg)."""
+    a = airframe
+    induced = card.INDUCED_DRAG_FACTOR * row["induced_drag_scale"] * a.per_metre
+    thrust = to_real(row["static_thrust"], -2) * a.mass  # N
+    return dict(
+        max_lift_coefficient=row["max_lift_coefficient"] / a.per_metre,
+        zero_lift_drag_coefficient=row["zero_lift_drag"] / a.per_metre,
+        oswald=1.0 / (math.pi * a.aspect_ratio * induced),
+        propeller_efficiency=to_real(row["engine_power"], -3) * a.mass / a.power,
+        figure_of_merit=math.sqrt(thrust**3 / (2.0 * AIR_DENSITY * a.propeller_disc)) / a.power,
+        static_thrust_over_weight=row["static_thrust"] / card.GRAVITY,
+        structural_load=row["max_acceleration"] / card.GRAVITY / (a.g_limit * a.g_limit_mass / a.mass),
+        wing_loading=a.mass / a.wing_area,
+        power_loading=a.power / a.mass,
+    )
+
+
+@dataclasses.dataclass(frozen=True)
+class Check:
+    """A plausibility check: `quantity` (implied's, or a flown one) outside `low` to `high`
+    (None: unbounded) warns, with `reason`. `severity` "limit" for a physical limit, "range"
+    for outside the documented aircraft; `input` the design input it points at."""
+
+    quantity: str
+    low: float | None
+    high: float | None
+    severity: str
+    reason: str
+    input: str
+
+
+# docs/rewrite/ship-design-proposal.md section 7, as data.
+PLAUSIBILITY = (
+    Check("oswald", None, 1.0, "limit", "above the elliptic wing's 1.0", "sustained_rate"),
+    Check("oswald", 0.78, 0.93, "range",
+          "outside 0.78-0.93 (Fw 190 0.78-0.84, Bf 109 0.93; NACA P-51B 0.88-0.91)",
+          "sustained_rate"),
+    Check("propeller_efficiency", None, 1.0, "limit", "more thrust power than shaft power",
+          "best_climb"),
+    Check("propeller_efficiency", 0.7, 0.9, "range", "outside 0.7-0.9 (P-47D measured 0.78-0.80)",
+          "best_climb"),
+    Check("zero_lift_drag_coefficient", 0.0, None, "limit", "no drag", "top_speed"),
+    Check("zero_lift_drag_coefficient", 0.0148, 0.034, "range",
+          "outside 0.0148-0.034 (P-51D powered fit 0.0148-0.0163; Fw 190 A-8 0.0265-0.034)",
+          "top_speed"),
+    Check("max_lift_coefficient", None, 1.7, "range",
+          "above the P-51D's stall-derived 1.50-1.70", "stall_speed"),
+    Check("figure_of_merit", None, 1.0, "limit", "beyond momentum theory", "static_thrust"),
+    Check("structural_load", None, 1.0, "range",
+          "above the structure's limit at this mass (P-51D: 8 g at 8,000 lb, 6.6 g at 9,760 lb)",
+          "g_limit"),
+    Check("gap", None, 0.9, "range", "less than the 10% gap the flight test asks", "gap"),
+    Check("sustained_speed_change", -0.12, 0.12, "range",
+          "best sustained speed over 12% from the point mass's", "sustained_rate"),
+    Check("full_stick_fall", None, 1e-6, "range",
+          "the full-stick rate falls with speed below corner", "flap_lift"),
+    Check("thrust_loss", None, 0.1, "range",
+          "the soft thrust limit takes over a tenth of the thrust at the best-climb speed"
+          " (v2's softness 2 did)", "best_climb_speed"),
+)
+
+
+def _thrust_loss(row: dict[str, float], speed: float) -> float:
+    """The share of the thrust power's thrust P / v the soft static-thrust limit takes at
+    `speed` (core.softmin, as the flight tick)."""
+    free = row["engine_power"] / speed
+    thrust = core.softmin(*(torch.tensor(x, dtype=torch.float64) for x in (
+        free, row["static_thrust"], row["thrust_softmin_exponent"])))
+    return 1.0 - float(thrust) / free
+
+
+def warnings(row: dict[str, float], reference: Reference, flown: dict | None = None) -> list[dict]:
+    """The checks of PLAUSIBILITY the row fails, each as {quantity, value, severity, input,
+    message}. `flown`: the row's performance, if already computed."""
+    flown = flown or performance(row)
+    values = dict(
+        implied(row, reference.airframe),
+        gap=flown["gap"],
+        sustained_speed_change=flown["sustained_speed"] / reference.point_mass["sustained_speed"] - 1.0,
+        full_stick_fall=flown["full_stick_fall"],
+        thrust_loss=_thrust_loss(row, flown["best_climb_speed"]),
+    )
+    out = []
+    for check in PLAUSIBILITY:
+        value = values[check.quantity]
+        if (check.low is not None and value < check.low) or (check.high is not None and value > check.high):
+            out.append(dict(quantity=check.quantity, value=value, severity=check.severity,
+                            input=check.input, message=f"{check.quantity} {value:.4g}: {check.reason}"))
+    return out
+
+
+# --------------------------------------------------------------------------- the derived card
+
 # The source the derived rows depend on: the flight model, the card's constants, this route.
 FLIGHT_SOURCES = tuple(
     Path(__file__).parent / name for name in ("core.py", "card.py", "tuning.py")
@@ -304,18 +675,17 @@ FLIGHT_SOURCES = tuple(
 
 
 def real_row(aircraft: RealAircraft) -> dict[str, float]:
-    """A real aircraft's card row from its targets: the point mass fitted to the flight test
-    (fit_point_mass), then the game terms on with the low-level coefficients solved (game_row)."""
-    fitted = fit_point_mass(aircraft.airframe, aircraft.top_speed, aircraft.best_climb)
-    return game_row(fitted, aircraft.terms, GAME_FIELDS)
+    """A real aircraft's card row: its reference's design, unchanged (design_row)."""
+    return design_row(reference_of(aircraft)).row
 
 
 def row_key(aircraft: RealAircraft) -> str:
-    """16 hex digits of the SHA-256 of the aircraft's targets, the base fields and FLIGHT_SOURCES:
-    a derived row's cache key (any change to the flight model's source re-solves)."""
+    """16 hex digits of the SHA-256 of the aircraft (data, flight test, choices) and
+    FLIGHT_SOURCES: a derived row's cache key (any change to the flight model's source
+    re-solves)."""
     digest = hashlib.sha256()
     targets = [dataclasses.asdict(aircraft.airframe), aircraft.top_speed, aircraft.best_climb,
-               aircraft.terms, GAME_FIELDS]
+               aircraft.best_climb_speed, aircraft.choices]
     digest.update(json.dumps(targets, sort_keys=True).encode())
     for path in FLIGHT_SOURCES:
         digest.update(path.read_bytes())
@@ -372,124 +742,26 @@ def load_card() -> dict[str, tuple[float, ...]]:
         return card.CARD
 
 
-# --------------------------------------------------------------------------- handles route
 
 
-def direct_fields(
-    handles: dict[str, float], cruise_speed: float, tick_length: float = 1.0 / 30.0
-) -> dict[str, float]:
-    """The card fields v2 sets in closed form from the handles (solver._flight_card's direct
-    ones and weapons.combat_card); cruise_speed is the flown cruise (the bullet's launch)."""
-    launch = cruise_speed + handles["muzzle_speed"]
-    drag = handles["bullet_drag"]
-    flight = math.expm1(drag * handles["gun_range"]) / (drag * launch)
-    life = math.ceil(flight / tick_length - LIFE_TOLERANCE) * tick_length
-    return dict(
-        max_lift_coefficient=card.GRAVITY / handles["stall_speed"] ** 2,
-        max_acceleration=handles["g_limit"] * card.GRAVITY,
-        zero_lift_drag=handles["zero_lift_drag"],
-        stall_angle_scale=handles["stall_angle"] / card.STALL_ANGLE,
-        vision_range_scale=handles["vision_range"] / card.VISION_RANGE,
-        hit_damage=handles["hit_damage"],
-        explosive_share=handles["explosive_share"],
-        reference_bullet_speed=launch * math.exp(-drag * DAMAGE_REFERENCE_DISTANCE),
-        fire_rate=handles["fire_rate"],
-        bullet_life=life,
-        muzzle_speed=handles["muzzle_speed"],
-        bullet_spread_scale=handles["bullet_spread"] / card.BULLET_SPREAD,
-        bullet_drag_scale=drag / card.BULLET_DRAG,
-        max_shield=handles["max_shield"],
-        shield_recharge_rate_scale=handles["shield_recharge_rate"] / card.SHIELD_RECHARGE_RATE,
-        shield_recharge_delay_scale=handles["shield_recharge_delay"] / card.SHIELD_RECHARGE_DELAY,
-        head_on_fraction_scale=handles["head_on_fraction"] / card.HEAD_ON_FRACTION,
-        head_on_angle_scale=handles["head_on_angle"] / card.HEAD_ON_ANGLE,
-        head_on_sharpness=handles["head_on_sharpness"],
-        hit_radius=handles["hit_radius"],
-        core_radius=handles["core_radius"],
-    )
+# --------------------------------------------------------------------------- Newton
 
 
-SOLVED = ("engine_power", "static_thrust", "induced_drag_scale")
-
-
-def _flown(row: dict[str, float], speed_step: float = 0.05) -> list[float]:
-    """The three flown handles the flight model keeps: cruise, low-speed acceleration, settled
-    full-stick turn rate (game units)."""
-    p = performance(row, speed_step=speed_step, flown_only=True)
-    return [p["top_speed"], p["low_speed_acceleration"], p["settled_turn_rate"]]
-
-
-def handles_row(
-    handles: dict[str, float],
-    base: dict[str, float],
-    iterations: int = 40,
-    speed_step: float = 0.05,
-    fast: bool = False,
-) -> dict[str, float]:
-    """A card row from a design's handles (game units); fields the handles do not set come
-    from `base` (nose frequency, the fine stick's fraction, the flight terms). `speed_step`:
-    the speed grid of the flown numbers the solve matches (a tool may take a coarser one). `fast` (for an
-    interactive tool; the default solve is unchanged): start from the base's engine power and induced drag, Broyden-update
-    the Jacobian, stop at a residual of 1e-5 (the flown handles to 0.001%).
-    `handles["low_speed_acceleration"]` may be None (or absent): the static thrust is then the
-    base's and the low-speed acceleration is not matched (a power-limited ship such as the P-51D
-    flies the same whatever its static thrust).
-    See the module docstring."""
-    if abs(handles["half_lift_drag"] - 0.25) > 1e-9:
-        raise ValueError(
-            "lean's card has the square polar only (half-lift drag 0.25, bleed exponent 2)"
-        )
-    row = {**base, **direct_fields(handles, handles["cruise_speed"])}
-    # Dive and zoom at cruise: the commanded trade is the speed's rate change.
-    trade = 0.5 * (handles["dive_acceleration"] - handles["zoom_acceleration"])
-    row["exchange_acceleration"] = trade
-    target = [
-        handles["cruise_speed"],
-        handles.get("low_speed_acceleration"),
-        handles["sustained_turn_rate"],
-    ]
-    free_static = target[1] is None  # the static thrust kept as the base's: a tool's handles
-
-    def residual(logs):
-        trial = {**row, **{name: math.exp(x) for name, x in zip(SOLVED, logs)}}
-        return [
-            0.0 if t is None else math.log(f / t)
-            for f, t in zip(_flown(trial, speed_step), target)
-        ]
-
-    # First guess: thrust power to hold cruise against the zero-lift and 1 g induced drag; the
-    # static thrust from the low-speed acceleration; the base's induced drag.
-    k = card.INDUCED_DRAG_FACTOR * base["induced_drag_scale"]
-    v = handles["cruise_speed"]
-    power = (row["zero_lift_drag"] * v**2 + k * card.GRAVITY**2 / v**2) * v
-    stall = handles["stall_speed"]
-    static = (
-        (handles["low_speed_acceleration"] if not free_static else 0.0)
-        + row["zero_lift_drag"] * stall**2
-        + k * card.GRAVITY**2 / stall**2
-    )
-    logs = [math.log(power), math.log(static), math.log(base["induced_drag_scale"])]
-    if free_static:
-        logs[1] = math.log(base["static_thrust"])
-    if fast:
-        logs[0], logs[2] = math.log(base["engine_power"]), math.log(base["induced_drag_scale"])
-    logs = _newton(residual, logs, 1e-5 if fast else 1e-7, iterations, fast, "handles_row")
-    row.update({name: math.exp(x) for name, x in zip(SOLVED, logs)})
-    return row
-
-
-def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve"):
+def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve") -> SimpleNamespace:
     """Newton in log parameters with a finite-difference Jacobian (v2's solver): `residual(logs)`
     a list of log ratios flown / target, driven below `tolerance`. `broyden`: after the first
-    Jacobian, rank-one updates with no new evaluations (the interactive tool's fast path). The
-    step is a pseudo-inverse's (a parameter with no sensitivity, such as the static thrust of a
-    power-limited design, stays where it is), clamped to 0.5 in each log."""
+    Jacobian, rank-one updates with no new evaluations (the web tool's fast path). The step is a
+    pseudo-inverse's (a parameter with no sensitivity stays where it is), clamped to 0.5 in each
+    log. Returns logs, residual (the largest |r|), iterations and condition (of the last
+    Jacobian, None if none was needed)."""
     step = 1e-5
     jacobian, last = None, None
-    for _ in range(iterations):
+    for iteration in range(iterations):
         r = residual(logs)
         if max(abs(x) for x in r) < tolerance:
-            return logs
+            condition = None if jacobian is None else float(torch.linalg.cond(jacobian))
+            return SimpleNamespace(logs=logs, residual=max(abs(x) for x in r),
+                                   iterations=iteration, condition=condition)
         r_tensor = torch.tensor(r, dtype=torch.float64)
         if broyden and jacobian is not None:
             moved_by, change = last[0], r_tensor - last[1]
@@ -537,27 +809,50 @@ def _bisect(function, low, high, steps=40):
     return 0.5 * (low + high)
 
 
+
+REFINE_POINTS = 33  # a local grid across the two grid steps around an extremum
+
+
+def _extremum(function, speeds: torch.Tensor, values: torch.Tensor):
+    """The speed and value of the maximum of `function` (speeds -> values, -inf where it does
+    not hold), from its values on the grid `speeds`: a local grid of REFINE_POINTS between the
+    best grid point's neighbours, then a parabola through the best three, the value flown at its
+    vertex. Smooth in the row's coefficients to far below the grid (the solve's finite
+    differences need it; the grid's argmax alone moves in steps)."""
+    k = int(torch.argmax(values))
+    low, high = speeds[max(k - 1, 0)], speeds[min(k + 1, len(speeds) - 1)]
+    local = torch.linspace(float(low), float(high), REFINE_POINTS, dtype=torch.float64)
+    y = function(local)
+    j = int(torch.argmax(y))
+    if 0 < j < REFINE_POINTS - 1 and bool(torch.isfinite(y[j - 1 : j + 2]).all()):
+        y0, y1, y2 = (float(x) for x in y[j - 1 : j + 2])
+        curvature = y0 - 2.0 * y1 + y2
+        if curvature < 0.0:
+            vertex = float(local[j]) + 0.5 * (y0 - y2) / curvature * float(local[1] - local[0])
+            speed = torch.tensor([vertex], dtype=torch.float64)
+            return vertex, float(function(speed)[0])
+    return float(local[j]), float(y[j])
+
+
 def performance(
     row: dict[str, float],
     plain: bool = False,
     config: core.GameConfig | None = None,
-    speed_step: float = 0.05,
-    flown_only: bool = False,
+    speed_step: float = 0.5,
 ) -> dict[str, float]:
     """The row's quasi-steady numbers in the game's flight model (game units, coasting,
     mid-store): stall (1 g) speed, corner speed and rate, top speed, best climb (Ps, m/s) and
-    its speed, best sustained turn (rate, speed, radius), minimum sustained radius and its
-    speed, the settled full-stick turn (rate, speed), the low-speed acceleration (straight at
-    the stall speed, empty store). Rates in rad/s. `flown_only`: just the three flown handles'
-    numbers (top speed, settled turn rate, low-speed acceleration, with the speeds around them),
-    which handles_row's solve needs, a third of the work."""
+    its speed, best sustained turn (rate, speed, radius), the tightest sustained turn (min_radius
+    and its speed), the gap (that speed over the best sustained rate's), the settled full-stick
+    turn (rate, speed), the low-speed acceleration (straight at the stall speed, empty store),
+    and full_stick_fall (the most the full-stick rate falls with rising speed below corner,
+    rad/s; 0 when it never does). Rates in rad/s. Each extremum is refined below the
+    `speed_step` grid (`_extremum`), so the numbers are smooth in the row's coefficients."""
     config = config or core.GameConfig()
     if plain:
         row = point_mass(row)
     with torch.no_grad(), _with_row(row) as index:
-        speeds = torch.arange(30.0, 700.0, speed_step, dtype=torch.float64)
-        n = speeds.shape[0]
-        constants = core.per_type_constants(config, torch.full((n,), index))
+        constants = core.per_type_constants(config, torch.tensor([index]))
         c = SimpleNamespace(
             **{
                 k: (v.double() if torch.is_tensor(v) and v.is_floating_point() else v)
@@ -565,60 +860,74 @@ def performance(
             }
         )
         energy = 0.5 * c.max_energy
-        zero, one = torch.zeros_like(speeds), torch.ones_like(speeds)
-        out = {}
-        out["stall_speed"] = math.sqrt(card.GRAVITY / row["max_lift_coefficient"])
-        out["corner_speed"] = math.sqrt(row["max_acceleration"] / row["max_lift_coefficient"])
-        full_rate, full_speed_rate, _ = core.quasi_steady(c, speeds, one, 0, energy)
-        k = int(torch.argmax(full_rate))
-        out["corner_rate"], out["corner_speed_flown"] = float(full_rate[k]), float(speeds[k])
-        _, straight, straight_energy = core.quasi_steady(c, speeds, zero, 0, energy)
-        above = speeds > out["stall_speed"]
-        top = int(torch.nonzero(above & (straight > 0.0))[-1])
-        out["top_speed"] = float(
-            _bisect(
-                lambda v: core.quasi_steady(_take(c, top), v, zero[:1], 0, energy[:1])[1],
-                speeds[top : top + 1],
-                speeds[top + 1 : top + 2],
-            )
-        )
-        if not flown_only:
-            climb = torch.where(above, straight_energy / card.GRAVITY, -math.inf)
-            k = int(torch.argmax(climb))
-            out["best_climb"], out["best_climb_speed"] = float(climb[k]), float(speeds[k])
-            # sustained: per speed the stick where the energy rate is zero (full stick if positive)
+        stall = math.sqrt(card.GRAVITY / row["max_lift_coefficient"])
+
+        def flown(speeds, stick, store=energy):
+            return core.quasi_steady(c, speeds, torch.full_like(speeds, stick), 0, store)
+
+        def full_rate(speeds):
+            return flown(speeds, 1.0)[0]
+
+        def climb(speeds):
+            return torch.where(speeds > stall, flown(speeds, 0.0)[2] / card.GRAVITY, -math.inf)
+
+        def sustained(speeds):
+            """Per speed the stick where the energy rate is zero (full stick if it gains), and
+            whether the turn holds (above stall, energy held, straight flight holds energy)."""
+            zero, one = torch.zeros_like(speeds), torch.ones_like(speeds)
             stick = _bisect(lambda s: core.quasi_steady(c, speeds, s, 0, energy)[2], zero, one)
-            stick = torch.where(core.quasi_steady(c, speeds, one, 0, energy)[2] >= 0.0, one, stick)
+            stick = torch.where(flown(speeds, 1.0)[2] >= 0.0, one, stick)
             rate, _, energy_rate = core.quasi_steady(c, speeds, stick, 0, energy)
-            held = above & (energy_rate > -1e-6) & (straight_energy >= 0.0)
-            sustained = torch.where(held, rate, 0.0)
-            k = int(torch.argmax(sustained))
-            out["sustained_rate"], out["sustained_speed"] = float(sustained[k]), float(speeds[k])
-            out["sustained_radius"] = out["sustained_speed"] / out["sustained_rate"]
-            radius = torch.where(
-                held & (sustained > 1e-6), speeds / sustained.clamp_min(1e-9), math.inf
-            )
-            k = int(torch.argmin(radius))
-            out["min_radius"], out["min_radius_speed"] = float(radius[k]), float(speeds[k])
+            held = (speeds > stall) & (energy_rate > -1e-6) & (flown(speeds, 0.0)[2] >= 0.0) & (rate > 1e-6)
+            return rate, held
+
+        def sustained_rate(speeds):
+            rate, held = sustained(speeds)
+            return torch.where(held, rate, -math.inf)
+
+        def tightness(speeds):  # minus the sustained radius
+            rate, held = sustained(speeds)
+            return torch.where(held, -speeds / rate.clamp_min(1e-9), -math.inf)
+
+        speeds = torch.arange(30.0, 700.0, speed_step, dtype=torch.float64)
+        out = {"stall_speed": stall}
+        out["corner_speed"] = math.sqrt(row["max_acceleration"] / row["max_lift_coefficient"])
+        full = full_rate(speeds)
+        out["corner_speed_flown"], out["corner_rate"] = _extremum(full_rate, speeds, full)
+        below = full[speeds < out["corner_speed_flown"]]
+        out["full_stick_fall"] = float((torch.cummax(below, 0).values - below).max()) if len(below) else 0.0
+        straight = flown(speeds, 0.0)[1]
+        top = int(torch.nonzero((speeds > stall) & (straight > 0.0))[-1])
+        out["top_speed"] = float(
+            _bisect(lambda v: flown(v, 0.0)[1], speeds[top : top + 1], speeds[top + 1 : top + 2])
+        )
+        out["best_climb_speed"], out["best_climb"] = _extremum(climb, speeds, climb(speeds))
+        turning = speeds[(speeds > stall - speed_step) & (speeds < out["top_speed"] + speed_step)]
+        rate, held = sustained(turning)  # held only between stall and top speed
+        out["sustained_speed"], out["sustained_rate"] = _extremum(
+            sustained_rate, turning, torch.where(held, rate, -math.inf)
+        )
+        out["sustained_radius"] = out["sustained_speed"] / out["sustained_rate"]
+        speed, tight = _extremum(
+            tightness, turning, torch.where(held, -turning / rate.clamp_min(1e-9), -math.inf)
+        )
+        # The radius has a kink where the sustained turn leaves full stick (above it full stick
+        # loses energy): the tightest turn may sit on it, which no parabola finds.
+        gains = torch.nonzero(flown(turning, 1.0)[2] >= 0.0)
+        if len(gains) and int(gains[-1]) + 1 < len(turning):
+            k = int(gains[-1])
+            departure = _bisect(lambda v: flown(v, 1.0)[2], turning[k : k + 1], turning[k + 1 : k + 2])
+            if float(tightness(departure)[0]) > tight:
+                speed, tight = float(departure[0]), float(tightness(departure)[0])
+        out["min_radius_speed"], out["min_radius"] = speed, -tight
+        out["gap"] = out["min_radius_speed"] / out["sustained_speed"]
         # the settled full-stick turn: the speed where full stick holds speed
-        k = int(torch.nonzero(full_speed_rate > 0.0)[-1])
-        settled = float(
-            _bisect(
-                lambda v: core.quasi_steady(_take(c, k), v, one[:1], 0, energy[:1])[1],
-                speeds[k : k + 1],
-                speeds[k + 1 : k + 2],
-            )
-        )
-        out["settled_speed"] = settled
-        out["settled_turn_rate"] = float(
-            core.quasi_steady(
-                _take(c, k), torch.tensor([settled], dtype=torch.float64), one[:1], 0, energy[:1]
-            )[0]
-        )
-        stall = torch.tensor([out["stall_speed"]], dtype=torch.float64)
-        out["low_speed_acceleration"] = float(
-            core.quasi_steady(_take(c, 0), stall, zero[:1], 0, zero[:1])[1]
-        )
+        k = int(torch.nonzero(flown(speeds, 1.0)[1] > 0.0)[-1])
+        settled = _bisect(lambda v: flown(v, 1.0)[1], speeds[k : k + 1], speeds[k + 1 : k + 2])
+        out["settled_speed"] = float(settled)
+        out["settled_turn_rate"] = float(full_rate(settled)[0])
+        stall_speed = torch.tensor([stall], dtype=torch.float64)
+        out["low_speed_acceleration"] = float(flown(stall_speed, 0.0, torch.zeros_like(energy))[1][0])
     return out
 
 
@@ -735,55 +1044,6 @@ def flying(row: dict[str, float], factor: float = TIME_FACTOR):
         core._SHIP_CARDS.clear()
 
 
-def handles_of(row: dict[str, float], gun_range: float = 600.0) -> dict[str, float]:
-    """A row's handles (game units): the inverse of handles_row's direct fields, with the three
-    flown handles (cruise speed, low-speed acceleration, settled full-stick turn rate) as the
-    row flies them, so handles_row(handles_of(row), row) returns the row's flight."""
-    flown = performance(row)
-    return dict(
-        stall_speed=math.sqrt(card.GRAVITY / row["max_lift_coefficient"]),
-        g_limit=row["max_acceleration"] / card.GRAVITY,
-        zero_lift_drag=row["zero_lift_drag"],
-        stall_angle=row["stall_angle_scale"] * card.STALL_ANGLE,
-        vision_range=row["vision_range_scale"] * card.VISION_RANGE,
-        hit_damage=row["hit_damage"],
-        explosive_share=row["explosive_share"],
-        fire_rate=row["fire_rate"],
-        muzzle_speed=row["muzzle_speed"],
-        bullet_spread=row["bullet_spread_scale"] * card.BULLET_SPREAD,
-        bullet_drag=row["bullet_drag_scale"] * card.BULLET_DRAG,
-        gun_range=gun_range,
-        max_shield=row["max_shield"],
-        shield_recharge_rate=row["shield_recharge_rate_scale"] * card.SHIELD_RECHARGE_RATE,
-        shield_recharge_delay=row["shield_recharge_delay_scale"] * card.SHIELD_RECHARGE_DELAY,
-        head_on_fraction=row["head_on_fraction_scale"] * card.HEAD_ON_FRACTION,
-        head_on_angle=row["head_on_angle_scale"] * card.HEAD_ON_ANGLE,
-        head_on_sharpness=row["head_on_sharpness"],
-        hit_radius=row["hit_radius"],
-        core_radius=row["core_radius"],
-        half_lift_drag=0.25,
-        dive_acceleration=row["exchange_acceleration"],
-        zoom_acceleration=-row["exchange_acceleration"],
-        cruise_speed=flown["top_speed"],
-        low_speed_acceleration=flown["low_speed_acceleration"],
-        sustained_turn_rate=flown["settled_turn_rate"],
-    )
-
-
-def _take(c, index):
-    """The constants of one row (index) as a namespace of (1,) tensors."""
-    return SimpleNamespace(
-        **{
-            k: (
-                v[index : index + 1]
-                if torch.is_tensor(v) and v.dim() > 0 and v.shape[0] > index
-                else v
-            )
-            for k, v in vars(c).items()
-        }
-    )
-
-
 # Each performance number's power of time (for to_real); radii, coefficients 0.
 TIME_POWERS = dict(
     stall_speed=-1,
@@ -801,6 +1061,8 @@ TIME_POWERS = dict(
     settled_speed=-1,
     settled_turn_rate=-1,
     low_speed_acceleration=-2,
+    gap=0,
+    full_stick_fall=-1,
 )
 
 
@@ -825,7 +1087,7 @@ CARD_TIME_POWERS = dict(
     max_lift_coefficient=0, max_acceleration=-2, zero_lift_drag=0, engine_power=-3,
     static_thrust=-2, exchange_acceleration=-2, corner_nose_frequency=-1, max_shield=0,
     hit_radius=0, core_radius=0, hit_damage=0, muzzle_speed=-1, fire_rate=-1, bullet_life=1,
-    explosive_share=0, reference_bullet_speed=-1, induced_drag_scale=0, stall_angle_scale=0,
+    explosive_share=0, induced_drag_scale=0, stall_angle_scale=0,
     bullet_spread_scale=0, bullet_drag_scale=0, shield_recharge_rate_scale=0,
     shield_recharge_delay_scale=0, head_on_fraction_scale=0, head_on_angle_scale=0,
     head_on_sharpness=0, fine_stick_fraction=0, vision_range_scale=0,
