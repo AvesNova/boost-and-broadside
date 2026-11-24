@@ -332,25 +332,28 @@ def test_reads_every_number_from_the_game():
 def test_boundary_margin_is_in_turn_radii_at_the_ship_speed():
     """Design B5: the edge band is a number of turn radii at the ship's speed, the sustained
     radius up to corner speed (as speed squared above), not speed^2 / max acceleration (half
-    the real radius when slow). A slow ship 250 m inside the edge, flying outward at a target
-    further out, turns back toward the centre; 1,000 m inside it flies at the target; a fast
-    ship (1.6 corner speeds) turns back from 1,000 m."""
+    the real radius when slow). A slow ship 1.12 sustained radii inside the edge (250 m with
+    the P-51D of 2026-11-24 A1), flying outward at a target further out, turns back toward the
+    centre; 4.48 radii (1,000 m) inside it flies at the target; a fast ship (1.6 corner speeds)
+    turns back from 4.48 radii. In sustained radii, so a flight change that moves the radius
+    does not move the test (the speed-scheduled flaps' 223 m became 214 m with the
+    demand-scheduled ones, 2026-11-24)."""
     heading = math.pi / 2 - 0.3  # the centre is to the left
     bearing = heading - 0.4  # the target 600 m away, to the right
 
-    def left_share(inside: float, speed_in_corner: float) -> float:
+    def left_share(inside_in_radii: float, speed_in_corner: float) -> float:
         probe = placed(dict(x=0.0, y=0.0, heading=0.0, speed=100.0),
                        dict(x=1.0, y=0.0, heading=0.0, speed=100.0))
         speed = speed_in_corner * probe.constants["corner_speed"]
-        x = 4200.0 - inside
+        x = 4200.0 - inside_in_radii * probe.constants["sustained_radius"]
         own = dict(x=x, y=0.0, heading=heading, speed=speed)
         target = dict(x=x + 600.0 * math.cos(bearing), y=600.0 * math.sin(bearing),
                       heading=heading, speed=speed)
         return float(decide(placed(own, target)).stick[0, 0, [2, 4, 6]].sum())
 
-    assert left_share(250.0, 0.6) > 0.9
-    assert left_share(1000.0, 0.6) < 0.1
-    assert left_share(1000.0, 1.6) > 0.9
+    assert left_share(1.12, 0.6) > 0.9
+    assert left_share(4.48, 0.6) < 0.1
+    assert left_share(4.48, 1.6) > 0.9
 
 
 def test_never_shoots_through_a_team_mate():

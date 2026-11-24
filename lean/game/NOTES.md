@@ -22,9 +22,14 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   approach, first contact), `_damage`, `_boundary_damage`, `_shields`, `_end_check`,
   `_bullet_ends`, then the fog's `perceive`.
 - `observe(config, state, team)`: that team's `Obs`, built under fog from `team_view` only.
-- `card.py` (the ship card, one row per type; today the P-51D) and `tuning.py` (analysis, not
-  imported by the step: an airframe into a point mass, a design's handles into a card row,
-  `performance`, `envelope`, `time_scale`; `docs/rewrite/p51d-model.md`).
+- `card.py` (the ship card, one row per type; today the P-51D) and `tuning.py` (not imported
+  by the step: an airframe into a point mass, a design's handles into a card row,
+  `performance`, `envelope`, `time_scale`; `docs/rewrite/p51d-model.md`). The card holds no
+  stored numbers for a real aircraft: `card.CARD` is derived on first use by
+  `tuning.load_card` from each type's targets (`tuning.REAL_AIRCRAFT`: data, flight test, game
+  terms), cached on disk (`~/.cache/bnb-card`, `$BNB_CARD_CACHE`) by a hash of the targets and
+  the flight model's source, so a physics change re-solves by itself (about 7.6 s once; a cached
+  load about 1 ms).
 
 ## Rules that matter
 
@@ -36,7 +41,10 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   speed to the top level speed, shield and store uniform 0 to full; an eighth of environments
   (`standard_spawn_share`) take the standard spawn (full shield, half store, 145.3 m/s).
 - **Flight:** weight always on the wing, the engine drives speed only, dive and climb trade
-  store for speed; automatic flaps raise the maximum lift at low speed (with drag); fields bend
+  store for speed; automatic flaps, scheduled by stick demand and blown back by the corner
+  speed, raise the maximum lift when the stick asks for more than the clean wing gives (C2 in
+  speed and demand; drag on the extra lift only; the turn rate never falls with speed below
+  corner); fields bend
   paths (a no-fields path for F = 0). `steady_rates` / `quasi_steady` evaluate the same
   functions with the nose settled; they give the derived constants, `tuning`, and the web tool.
 - **Constants:** `ship_card` / `ship_constants` build a run's `contract.Constants` once; a
@@ -75,7 +83,10 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 
 `lean/game/tests`: flight rules, damage, fields, fog, ghost bullets, invariants (finite, inert
 padding, team swap), the clock and wipe, both spawn rules, the training spawn, the one-tick delay,
-and tuning (the P-51D's point mass flies its flight test, its game row its point mass).
+the flaps (deployment by demand, C2 by refinement, the turn rate rising with speed to the
+corner, the tightest sustained turn 10% slower than the best rate), and tuning (the derived
+card meets its targets: the flight test and its point mass's best sustained rate; the cache's
+key).
 
 ## Open
 

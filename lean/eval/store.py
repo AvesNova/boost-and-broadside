@@ -8,8 +8,8 @@ streams of the scripted search.
   lean/eval/runner.py.
 - conditions: id (a short hash of the game config, the seats' team sizes and the game
   version), the version, and the conditions as JSON. The game version is a hash of the
-  source that decides a game: lean/game (the card and the config's defaults are there; not
-  the analysis-only tuning.py), lean/scripted and lean/contract.py. A change in either
+  source that decides a game: lean/game (the card, derived by tuning.py, and the config's
+  defaults are there), lean/scripted and lean/contract.py. A change in either
   version starts new agents or conditions, so old games are kept but not mixed in.
 - games: agent A, agent B, the team A played, conditions, result (0 A won, 1 B won, 2 a
   draw), length in ticks, and each seat's style (lean.eval.style.MEASURES, columns `a_...`
@@ -82,15 +82,10 @@ def short_hash(*parts) -> str:
     return hashlib.sha256(json.dumps(parts, sort_keys=True).encode()).hexdigest()[:12]
 
 
-# Analysis tools beside the game's source that no game runs.
-ANALYSIS_ONLY = frozenset({LEAN / "game" / "tuning.py"})
-
-
 def game_files() -> list[Path]:
-    """The source that decides a game: lean/game, lean/scripted (not their tests, not
-    ANALYSIS_ONLY) and lean/contract.py."""
-    files = [*(LEAN / "game").glob("*.py"), *(LEAN / "scripted").glob("*.py"), LEAN / "contract.py"]
-    return sorted(path for path in files if path not in ANALYSIS_ONLY)
+    """The source that decides a game: lean/game (with tuning.py, which derives the card),
+    lean/scripted (not their tests) and lean/contract.py."""
+    return sorted([*(LEAN / "game").glob("*.py"), *(LEAN / "scripted").glob("*.py"), LEAN / "contract.py"])
 
 
 def inference_files() -> list[Path]:

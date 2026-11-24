@@ -1,8 +1,9 @@
-"""lean.game.tuning: the card's rows are the tuning's output, the P-51D's point mass flies its
-flight test, its game row (the game terms on) flies its point mass, the handles route recovers a
-row from its flown handles, and another time scale flies the same aircraft
-(docs/rewrite/p51d-model.md)."""
+"""lean.game.tuning: the card's rows are derived from their targets (cached by a hash of the
+targets and the flight model's source), the P-51D's point mass flies its flight test, its game
+row (the game terms on) flies its point mass, the handles route recovers a row from its flown
+handles, and another time scale flies the same aircraft (docs/rewrite/p51d-model.md)."""
 
+import dataclasses
 import math
 
 import pytest
@@ -13,49 +14,63 @@ from lean.game import card, core, tuning
 torch.set_num_threads(1)
 
 
-@pytest.fixture(scope="module")
-def p51d_row():
-    """The P-51D's game row as the tuning makes it (a solve of a few seconds)."""
-    return tuning.game_row(tuning.P51D, tuning.P51D_TERMS, tuning.GAME_FIELDS)
-
-
-def test_card_rows_are_the_tuning(p51d_row):
-    """Every card row is what lean.game.tuning makes (the solved coefficients to 1e-9)."""
-    expected = {"p51d": p51d_row}
-    assert card.TYPE_NAMES == tuple(expected)
-    for name, row in expected.items():
-        assert set(row) == set(card.CARD), name
-        held = tuning.row_of(name)
-        for field, value in row.items():
-            assert held[field] == pytest.approx(value, rel=1e-9), (name, field)
-
-
 def test_p51d_point_mass_flies_the_flight_test():
-    """The P-51D's C_D0 and propeller efficiency are the point-mass fit to the flight test at
-    67 in Hg: 375 mph and 3,600 ft/min at sea level (to 1e-6)."""
-    fitted = tuning.fit_point_mass(tuning.P51D, tuning.P51D_TOP_SPEED, tuning.P51D_BEST_CLIMB)
-    for field in ("zero_lift_drag_coefficient", "propeller_efficiency"):
-        assert getattr(fitted, field) == pytest.approx(getattr(tuning.P51D, field), rel=1e-6), field
-    p = tuning.in_real_units(tuning.performance(tuning.airframe_row(tuning.P51D, tuning.GAME_FIELDS)))
+    """The P-51D's point mass, fitted when the card is derived (real_row's first step), flies
+    the flight test at 67 in Hg: 375 mph and 3,600 ft/min at sea level (to 1e-6)."""
+    aircraft = tuning.REAL_AIRCRAFT["p51d"]
+    fitted = tuning.fit_point_mass(aircraft.airframe, aircraft.top_speed, aircraft.best_climb)
+    p = tuning.in_real_units(tuning.performance(tuning.airframe_row(fitted, tuning.GAME_FIELDS)))
     assert p["top_speed"] == pytest.approx(tuning.P51D_TOP_SPEED, rel=1e-6)
     assert p["best_climb"] == pytest.approx(tuning.P51D_BEST_CLIMB, rel=1e-6)
 
 
-def test_p51d_game_row_flies_its_point_mass(p51d_row):
-    """With the game terms on (drag rise, separation drag, soft minima, flaps), the solved row
-    flies its point mass's top speed, best climb and best sustained rate (to 1e-6), the best
-    sustained turn's speed within 1.5% (not solved), and the same stall and corner speeds (the
-    peak full-stick rate within 0.1%)."""
-    game = tuning.performance(p51d_row)
-    point = tuning.performance(tuning.airframe_row(tuning.P51D, tuning.GAME_FIELDS))
-    for name in tuning.GAME_TARGETS:
-        assert game[name] == pytest.approx(point[name], rel=1e-6), name
-    assert game["sustained_speed"] == pytest.approx(point["sustained_speed"], rel=0.015)
-    assert game["stall_speed"] == point["stall_speed"]
-    assert game["corner_speed"] == point["corner_speed"]
-    assert game["corner_speed_flown"] == pytest.approx(point["corner_speed"], rel=1e-3)
-    # the game terms are on, not switched off
-    assert game != tuning.performance(p51d_row, plain=True)
+def test_card_rows_meet_their_targets():
+    """Every card row, derived from its targets when the card is first used (tuning.load_card,
+    from the disk cache when its key is there), flies them with the game terms on: the flight
+    test's top speed and best climb and its point mass's best sustained rate (to 1e-6); the best
+    sustained turn's speed within 5% of the point mass's (not solved: the flaps, scheduled by
+    demand, act in the sustained turn and move it lower), and the same stall and corner speeds
+    (the peak full-stick rate within 0.1%). The game terms are on, not switched off."""
+    assert set(card.CARD) == set(card.CARD_FIELDS)
+    for name in card.TYPE_NAMES:
+        row = tuning.row_of(name)
+        aircraft = tuning.REAL_AIRCRAFT[name]
+        fitted = tuning.fit_point_mass(aircraft.airframe, aircraft.top_speed, aircraft.best_climb)
+        game = tuning.performance(row)
+        point = tuning.performance(tuning.airframe_row(fitted, tuning.GAME_FIELDS))
+        real = tuning.in_real_units(game)
+        assert real["top_speed"] == pytest.approx(aircraft.top_speed, rel=1e-6), name
+        assert real["best_climb"] == pytest.approx(aircraft.best_climb, rel=1e-6), name
+        assert game["sustained_rate"] == pytest.approx(point["sustained_rate"], rel=1e-6), name
+        assert game["sustained_speed"] == pytest.approx(point["sustained_speed"], rel=0.05), name
+        assert game["stall_speed"] == point["stall_speed"]
+        assert game["corner_speed"] == point["corner_speed"]
+        assert game["corner_speed_flown"] == pytest.approx(point["corner_speed"], rel=1e-3)
+        assert game != tuning.performance(row, plain=True)
+        for field, value in aircraft.terms.items():
+            assert row[field] == value, (name, field)
+
+
+def test_derived_rows_are_cached_by_their_targets_and_the_source(tmp_path, monkeypatch):
+    """A derived row is kept on disk under a key of its targets and the flight model's source
+    (tuning.row_key): a second load reads it without solving; another target or another source
+    is another key, so a physics change re-solves by itself."""
+    monkeypatch.setenv("BNB_CARD_CACHE", str(tmp_path))
+    solved = []
+    monkeypatch.setattr(tuning, "real_row", lambda aircraft: solved.append(aircraft) or {"x": 1.0})
+    assert tuning.cached_real_row("p51d") == {"x": 1.0} and len(solved) == 1
+    assert tuning.cached_real_row("p51d") == {"x": 1.0} and len(solved) == 1  # from the disk
+    assert len(list(tmp_path.glob("p51d-*.json"))) == 1
+    aircraft = tuning.REAL_AIRCRAFT["p51d"]
+    key = tuning.row_key(aircraft)
+    other = dataclasses.replace(aircraft, top_speed=aircraft.top_speed + 1.0)
+    assert tuning.row_key(other) != key
+    source = tmp_path / "source.py"
+    source.write_text("a = 1\n")
+    monkeypatch.setattr(tuning, "FLIGHT_SOURCES", (*tuning.FLIGHT_SOURCES, source))
+    with_source = tuning.row_key(aircraft)
+    source.write_text("a = 2\n")
+    assert tuning.row_key(aircraft) != with_source
 
 
 def test_handles_route_recovers_a_row_from_its_flown_handles():
@@ -101,7 +116,7 @@ def test_scripted_references_are_the_flown_numbers():
     """The game's derived references for the scripted agent (docs/rewrite/scripted-bfm-design.md
     B2) are what the quasi-steady analysis flies: the best sustained turn's speed within
     tuning.performance's 0.05 m/s grid, its rate and radius within 0.1%, the corner rate; the
-    quarter-turn time and the store's turn follow from them (the P-51D: 2.37 s and 2.56 rad)."""
+    quarter-turn time and the store's turn follow from them (the P-51D: 2.37 s and 2.30 rad)."""
     config = core.GameConfig(lineup=card.TYPE_NAMES)
     game = core.per_type_constants(config, torch.arange(len(card.TYPE_NAMES)))
     for index, name in enumerate(card.TYPE_NAMES):
@@ -126,7 +141,7 @@ def test_scripted_references_are_the_flown_numbers():
         assert float(game.store_turn[index]) == pytest.approx(expected, rel=1e-4)
     p51d = card.TYPE_NAMES.index("p51d")
     assert float(game.quarter_turn_time[p51d]) == pytest.approx(2.37, abs=0.01)
-    assert float(game.store_turn[p51d]) == pytest.approx(2.56, abs=0.02)
+    assert float(game.store_turn[p51d]) == pytest.approx(2.30, abs=0.02)
 
 
 def test_a_card_built_inside_with_row_does_not_outlive_it():
