@@ -11,12 +11,17 @@ Units: metres, radians, seconds, ticks where stated.
 ## `lean/contract.py`
 
 ```python
-STICKS, POWERS, FIRES = 7, 3, 2          # joint action = stick * 6 + power * 2 + fire; JOINT = 42
-def split_joint(joint): ...              # (...,) long -> (..., 3) long [stick, power, fire]
-def join_action(action): ...             # (..., 3) long -> (...,) long
-NO_PENDING = JOINT                       # Obs.pending of a row whose pending action is not observed
-LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outcome"); LEVELS = 5
-SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES   # 18 scalars + 4 flags + type one-hot; 3; 3
+STICKS, POWERS, FIRES = 7, 3, 2  # joint action = stick * 6 + power * 2 + fire; JOINT = 42
+
+
+def split_joint(joint): ...  # (...,) long -> (..., 3) long [stick, power, fire]
+def join_action(action): ...  # (..., 3) long -> (...,) long
+
+
+NO_PENDING = JOINT  # Obs.pending of a row whose pending action is not observed
+LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outcome")
+LEVELS = 5
+SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES  # 18 scalars + 4 flags + type one-hot; 3; 3
 BULLET_SLOTS = 11
 ```
 

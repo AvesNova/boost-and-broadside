@@ -98,7 +98,9 @@ def compile_dynamic(function):
     # cold): default it to the home cache unless the caller (a test, a box) set its own.
     if "TORCHINDUCTOR_CACHE_DIR" not in os.environ:
         os.environ["TORCHINDUCTOR_CACHE_DIR"] = os.path.expanduser("~/.cache/bnb-inductor")
-        os.environ.setdefault("TRITON_CACHE_DIR", os.path.join(os.environ["TORCHINDUCTOR_CACHE_DIR"], "triton"))
+        os.environ.setdefault(
+            "TRITON_CACHE_DIR", os.path.join(os.environ["TORCHINDUCTOR_CACHE_DIR"], "triton")
+        )
     fx_config.use_duck_shape = False
     return torch.compile(function, dynamic=True)
 
@@ -202,7 +204,9 @@ BLOCKS = {
     "bullets": BULLET_COLUMNS,
     "bullet_counts": BULLET_COUNT_COLUMNS,
 }
-COLUMN = {name: (block, index) for block, names in BLOCKS.items() for index, name in enumerate(names)}
+COLUMN = {
+    name: (block, index) for block, names in BLOCKS.items() for index, name in enumerate(names)
+}
 
 
 @dataclass
@@ -237,24 +241,48 @@ class State:
     ticks_since_seen: Tensor | None = None
 
     @classmethod
-    def pack(cls, *, constants: Constants, tick: Tensor, fields: Tensor, bullet_real: Tensor,
-             pending: Tensor | None = None, seen: Tensor | None = None, ticks_since_seen: Tensor | None = None,
-             **named: Tensor) -> State:
+    def pack(
+        cls,
+        *,
+        constants: Constants,
+        tick: Tensor,
+        fields: Tensor,
+        bullet_real: Tensor,
+        pending: Tensor | None = None,
+        seen: Tensor | None = None,
+        ticks_since_seen: Tensor | None = None,
+        **named: Tensor,
+    ) -> State:
         """A state from every named quantity of the *_COLUMNS tuples, each (E, N) or (E, N, K);
         `pending` defaults to the neutral action for every ship."""
         missing = set(COLUMN) - set(named)
         if missing or len(named) != len(COLUMN):
             raise TypeError(f"State.pack needs every column once; missing {sorted(missing)}")
-        dtypes = {"ships": torch.float32, "flags": torch.bool, "identity": torch.long,
-                  "bullets": torch.float32, "bullet_counts": torch.long}
+        dtypes = {
+            "ships": torch.float32,
+            "flags": torch.bool,
+            "identity": torch.long,
+            "bullets": torch.float32,
+            "bullet_counts": torch.long,
+        }
         blocks = {
             block: torch.stack([named[name].to(dtypes[block]) for name in names], 1)
             for block, names in BLOCKS.items()
         }
         if pending is None:
-            pending = torch.zeros(named["x"].shape + (3,), dtype=torch.long, device=named["x"].device)
-        return cls(**blocks, constants=constants, tick=tick, fields=fields, bullet_real=bullet_real,
-                   pending=pending, seen=seen, ticks_since_seen=ticks_since_seen)
+            pending = torch.zeros(
+                named["x"].shape + (3,), dtype=torch.long, device=named["x"].device
+            )
+        return cls(
+            **blocks,
+            constants=constants,
+            tick=tick,
+            fields=fields,
+            bullet_real=bullet_real,
+            pending=pending,
+            seen=seen,
+            ticks_since_seen=ticks_since_seen,
+        )
 
     def replace(self, **changes) -> State:
         """A copy with named quantities (and any dataclass fields) replaced; a changed block is

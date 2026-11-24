@@ -84,7 +84,8 @@ VALUES = ("g_limit", "oswald", "separation_drag", "thrust_softmin_exponent")  # 
 )
 def test_moved_designs_fly_their_inputs(p51d, change):
     """Moved designs (speeds and rates as multiples of the reference's; the g limit, e, the
-    separation drag and the thrust softness as values) fly every design input after the solve: from the P-51D's row to 1e-6,
+    separation drag and the thrust softness as values) fly every design input after the solve: from
+    the P-51D's row to 1e-6,
     and in the web tool's fast path (Broyden) to 1e-4."""
     design = {
         name: value if name in VALUES else value * p51d.design[name]
@@ -109,19 +110,22 @@ def test_moved_designs_fly_their_inputs(p51d, change):
 def test_a_warm_start_agrees_with_a_cold_solve(p51d, before, after, monkeypatch):
     """The web tool's warm start (design_row from the last solve's row and Jacobian) reaches the
     cold solve's row (both from the fast path, to its 1e-5) with fewer flight evaluations."""
+
     def design(change):
-        return {name: value if name in VALUES else value * p51d.design[name]
-                for name, value in change.items()}
+        return {
+            name: value if name in VALUES else value * p51d.design[name]
+            for name, value in change.items()
+        }
 
     row = tuning.row_of("p51d")
     last = tuning.design_row(p51d, design(before), start=row, fast=True)
     assert last.jacobian is not None
     evaluations = []
     performance = tuning.performance
-    monkeypatch.setattr(tuning, "performance", lambda *a, **k: evaluations.append(1) or
-                        performance(*a, **k))
-    warm = tuning.design_row(p51d, design(after), start=last.row, fast=True,
-                             jacobian=last.jacobian)
+    monkeypatch.setattr(
+        tuning, "performance", lambda *a, **k: evaluations.append(1) or performance(*a, **k)
+    )
+    warm = tuning.design_row(p51d, design(after), start=last.row, fast=True, jacobian=last.jacobian)
     warm_evaluations = len(evaluations)
     cold = tuning.design_row(p51d, design(after), start=row, fast=True)
     assert warm_evaluations < len(evaluations) - warm_evaluations
@@ -227,7 +231,6 @@ def test_the_damage_reference_speed_is_derived():
     assert torch.allclose(1.0 / c.inverse_reference_bullet_speed, expected, rtol=1e-6)
 
 
-
 @pytest.mark.parametrize("factor", [1.0, 1.5, 3.0])
 def test_time_scale_is_the_same_flight_faster_or_slower(factor):
     """At another time factor the card flies the same real aircraft: gravity factor^2 x 9.81,
@@ -297,8 +300,9 @@ def test_an_input_is_swapped_by_editing_the_table_only():
     corner speed (solved for the maximum acceleration) in place of the g limit gives a reference
     whose corner speed is the point mass's, and a moved corner speed is met by the same generic
     solve; nothing else is told about the change."""
-    corner = tuning.flown("corner_speed", "corner speed", "Performance", "max_acceleration",
-                          kind="speed")
+    corner = tuning.flown(
+        "corner_speed", "corner speed", "Performance", "max_acceleration", kind="speed"
+    )
     inputs = tuple(corner if spec.name == "g_limit" else spec for spec in tuning.DESIGN_INPUTS)
     reference = tuning.reference_of(tuning.REAL_AIRCRAFT["p51d"], inputs)
     assert "g_limit" not in reference.design

@@ -13,11 +13,18 @@ from lean.model.value import value_bin_centres
 def value_centres(config: LearnConfig, bins: int, device=None) -> Tensor:
     """Bin centres of the categorical critic, (LEVELS, bins), evenly spaced from
     config.value_low to config.value_high of each level."""
-    return value_bin_centres(torch.tensor(config.value_low), torch.tensor(config.value_high), bins).to(device)
+    return value_bin_centres(
+        torch.tensor(config.value_low), torch.tensor(config.value_high), bins
+    ).to(device)
 
 
 def generalised_advantages(
-    reward: Tensor, value: Tensor, bootstrap: Tensor, done: Tensor, discounts: Tensor, gae_lambda: Tensor | float
+    reward: Tensor,
+    value: Tensor,
+    bootstrap: Tensor,
+    done: Tensor,
+    discounts: Tensor,
+    gae_lambda: Tensor | float,
 ) -> tuple[Tensor, Tensor]:
     """GAE per reward level.
 
@@ -49,13 +56,21 @@ def join_segments(records: Tensor, segments: int) -> Tensor:
     (RolloutStore.chain_index), as each seat's consecutive ticks (U x T, k, ...)."""
     ticks, views = records.shape[:2]
     seats, rest = views // segments, records.shape[2:]
-    return records.reshape((ticks, segments, seats) + rest).transpose(0, 1).reshape((segments * ticks, seats) + rest)
+    return (
+        records.reshape((ticks, segments, seats) + rest)
+        .transpose(0, 1)
+        .reshape((segments * ticks, seats) + rest)
+    )
 
 
 def split_segments(records: Tensor, segments: int) -> Tensor:
     """join_segments undone: (U x T, k, ...) back to (T, U x k, ...)."""
     ticks, seats, rest = records.shape[0] // segments, records.shape[1], records.shape[2:]
-    return records.reshape((segments, ticks, seats) + rest).transpose(0, 1).reshape((ticks, segments * seats) + rest)
+    return (
+        records.reshape((segments, ticks, seats) + rest)
+        .transpose(0, 1)
+        .reshape((ticks, segments * seats) + rest)
+    )
 
 
 def normalise_advantages(total: Tensor, mask: Tensor) -> Tensor:
@@ -83,10 +98,13 @@ def advantage_sums(advantage: Tensor, mask: Tensor) -> Tensor:
     total = advantage.sum(-1)
     weighted = advantage * weight[..., None]
     per_level = weighted.flatten(0, -2)
-    return torch.cat([
-        torch.stack([weight.sum(), (total * weight).sum(), (total * total * weight).sum()]),
-        per_level.sum(0), (per_level * total.flatten()[:, None]).sum(0),
-    ]).double()
+    return torch.cat(
+        [
+            torch.stack([weight.sum(), (total * weight).sum(), (total * total * weight).sum()]),
+            per_level.sum(0),
+            (per_level * total.flatten()[:, None]).sum(0),
+        ]
+    ).double()
 
 
 def advantage_shares(sums: Tensor) -> tuple[Tensor, Tensor]:
@@ -96,14 +114,16 @@ def advantage_shares(sums: Tensor) -> tuple[Tensor, Tensor]:
     Zero without at least two valued tokens."""
     levels = (sums.shape[0] - 3) // 2
     count, total, squares = sums[0], sums[1], sums[2]
-    level_sum, product = sums[3:3 + levels], sums[3 + levels:]
+    level_sum, product = sums[3 : 3 + levels], sums[3 + levels :]
     count = count.clamp(min=1.0)
     mean = total / count
     variance = squares / count - mean * mean
     covariance = product / count - level_sum / count * mean
     valid = (sums[0] >= 2) & (variance > 0)
     shares = torch.where(valid, covariance / torch.where(valid, variance, 1.0), 0.0)
-    deviation = torch.where(valid, (variance.clamp(min=0.0) * count / (count - 1.0).clamp(min=1.0)).sqrt(), 0.0)
+    deviation = torch.where(
+        valid, (variance.clamp(min=0.0) * count / (count - 1.0).clamp(min=1.0)).sqrt(), 0.0
+    )
     return shares.float(), deviation.float()
 
 
@@ -118,7 +138,9 @@ def usage_counts(target: Tensor, mask: Tensor, centres: Tensor) -> Tensor:
     weight = mask.reshape(-1).float()
     centres = centres.to(chosen.device).float()
     width = centres[:, 1] - centres[:, 0]
-    clamped = (((chosen < centres[:, 0]) | (chosen > centres[:, -1])).float() * weight[:, None]).sum(0)
+    clamped = (
+        ((chosen < centres[:, 0]) | (chosen > centres[:, -1])).float() * weight[:, None]
+    ).sum(0)
     nearest = ((chosen - centres[:, 0]) / width).round().clamp(0, bins - 1).long()
     counts = torch.zeros(levels, bins, device=chosen.device)
     counts.scatter_add_(1, nearest.T, weight.expand(levels, -1).contiguous())
@@ -136,10 +158,14 @@ def usage_flags(counts: Tensor, paid: Tensor, config: LearnConfig) -> Tensor:
     total = counts[:, -1].clamp(min=1.0)
     clamped = counts[:, -2] / total
     occupied = (counts[:, :-2] / total[:, None] >= config.range_bin_share).sum(1).float()
-    return torch.stack([
-        clamped, occupied, (clamped > config.range_clamped_warning).float(),
-        ((occupied < config.range_narrow_bins) & paid).float(),
-    ])
+    return torch.stack(
+        [
+            clamped,
+            occupied,
+            (clamped > config.range_clamped_warning).float(),
+            ((occupied < config.range_narrow_bins) & paid).float(),
+        ]
+    )
 
 
 def usage_metrics(rows: list[list[float]]) -> dict[str, float]:

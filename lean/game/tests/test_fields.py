@@ -55,7 +55,9 @@ def test_a_re_deal_redraws_fields_only_where_a_game_ended():
     state, generator, sizes = fresh()
     done = torch.zeros(64, dtype=torch.bool)
     done[::2] = True
-    after = core.take_deal(state, done, core.deal(CONFIG, 64, state.x.shape[1], sizes, generator, DEVICE))
+    after = core.take_deal(
+        state, done, core.deal(CONFIG, 64, state.x.shape[1], sizes, generator, DEVICE)
+    )
     before_x, after_x = state.fields[:, core.FIELD_X], after.fields[:, core.FIELD_X]
     assert torch.equal(after_x[1::2], before_x[1::2])
     assert (after_x[::2] != before_x[::2]).any(-1).all()

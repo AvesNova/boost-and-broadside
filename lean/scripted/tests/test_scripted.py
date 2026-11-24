@@ -341,13 +341,19 @@ def test_boundary_margin_is_in_turn_radii_at_the_ship_speed():
     bearing = heading - 0.4  # the target 600 m away, to the right
 
     def left_share(inside_in_radii: float, speed_in_corner: float) -> float:
-        probe = placed(dict(x=0.0, y=0.0, heading=0.0, speed=100.0),
-                       dict(x=1.0, y=0.0, heading=0.0, speed=100.0))
+        probe = placed(
+            dict(x=0.0, y=0.0, heading=0.0, speed=100.0),
+            dict(x=1.0, y=0.0, heading=0.0, speed=100.0),
+        )
         speed = speed_in_corner * probe.constants["corner_speed"]
         x = 4200.0 - inside_in_radii * probe.constants["sustained_radius"]
         own = dict(x=x, y=0.0, heading=heading, speed=speed)
-        target = dict(x=x + 600.0 * math.cos(bearing), y=600.0 * math.sin(bearing),
-                      heading=heading, speed=speed)
+        target = dict(
+            x=x + 600.0 * math.cos(bearing),
+            y=600.0 * math.sin(bearing),
+            heading=heading,
+            speed=speed,
+        )
         return float(decide(placed(own, target)).stick[0, 0, [2, 4, 6]].sum())
 
     assert left_share(1.12, 0.6) > 0.9
@@ -422,8 +428,9 @@ def test_one_call_for_both_teams_equals_the_two_single_team_calls():
         assert deaths > 0  # the ships fought
 
 
-def play_scripted(envs: int, ticks: int, spread: float, seed: int, chaser_team: int | None = None,
-                  persona=None):
+def play_scripted(
+    envs: int, ticks: int, spread: float, seed: int, chaser_team: int | None = None, persona=None
+):
     """Scripted (or scripted against the chaser on `chaser_team`) 4v4 games in the core game,
     finished games re-dealt with a fresh memory; `persona` (E, 8) per-slot rows instead of a
     draw at `spread`. Returns per-slot tallies over the run."""
@@ -465,9 +472,13 @@ def play_scripted(envs: int, ticks: int, spread: float, seed: int, chaser_team: 
             result = torch.where((result < 0) & out.done, out.result, result)
             # A finished game starts afresh, as lean.learn re-deals: a fresh memory and a deal.
             fresh = fresh_memory(envs, slots, generator, CPU)
-            memory = {name: torch.where(out.done[:, None], fresh[name], memory[name]) for name in memory}
+            memory = {
+                name: torch.where(out.done[:, None], fresh[name], memory[name]) for name in memory
+            }
             if chaser_team is None:
-                state = game.take_deal(state, out.done, game.deal(config, envs, slots, sizes, generator, CPU))
+                state = game.take_deal(
+                    state, out.done, game.deal(config, envs, slots, sizes, generator, CPU)
+                )
             elif bool((result >= 0).all()):
                 break
     return dict(farthest=farthest / radius, fired=fired, lived=lived, result=result)
@@ -518,8 +529,12 @@ def test_every_parameter_alone_at_both_ends_of_its_box_is_competent():
     at the yardstick, in one batch (two environments of 4v4 per case, 900 ticks): no ship goes
     past the end of the boundary's damage ramp, and in every case ships fire (at seed 3 the
     lowest case had 13 of its 16 ships fire, the farthest reached 1.053 arena radii)."""
-    cases = [(name, end) for name in SAMPLED for end in (-1, 1)
-             if not (PARAMETERS[name].law == "upward" and end < 0)]
+    cases = [
+        (name, end)
+        for name in SAMPLED
+        for end in (-1, 1)
+        if not (PARAMETERS[name].law == "upward" and end < 0)
+    ]
     per_case, slots = 2, 8
     envs = per_case * len(cases)
     persona = {name: torch.full((envs, slots), PARAMETERS[name].default) for name in SAMPLED}

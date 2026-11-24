@@ -23,7 +23,9 @@ from lean.model.value import hl_gauss_targets, value_bin_centres
 
 
 def _default_position_periods() -> tuple[float, ...]:
-    return tuple(float(period) for period in torch.logspace(math.log10(64.0), math.log10(20000.0), 6))
+    return tuple(
+        float(period) for period in torch.logspace(math.log10(64.0), math.log10(20000.0), 6)
+    )
 
 
 @dataclass(frozen=True)
@@ -97,7 +99,9 @@ class ModelConfig:
     norm_epsilon: float | None = None  # torch's default: the dtype's machine epsilon (v2)
     position_code: str = "fourier"
     position_periods: tuple[float, ...] = _default_position_periods()
-    grid_phases: int = 3  # 2 cannot tell a position from its point reflection (literature-model-choices.md)
+    grid_phases: int = (
+        3  # 2 cannot tell a position from its point reflection (literature-model-choices.md)
+    )
     colour_period: float = 36.0 * 3.0**8
     colour_levels: int = 9
     rotary_finest: float = 64.0
@@ -125,7 +129,9 @@ class ModelConfig:
     @property
     def offset_span(self) -> float:
         """The position offset's range in metres: the position code's coarsest period."""
-        return self.colour_period if self.position_code == "v2_codes" else max(self.position_periods)
+        return (
+            self.colour_period if self.position_code == "v2_codes" else max(self.position_periods)
+        )
 
     @property
     def next_state_size(self) -> int:
@@ -133,7 +139,9 @@ class ModelConfig:
         return len(self.next_state_columns)
 
 
-def draw_position_offset(config: ModelConfig, envs: int, generator: torch.Generator | None, device) -> Tensor:
+def draw_position_offset(
+    config: ModelConfig, envs: int, generator: torch.Generator | None, device
+) -> Tensor:
     """A random translation per environment for the token position code, (E, 2) float32 metres.
 
     Uniform over a square one coarsest period wide (config.offset_span), so the phase of
@@ -145,7 +153,9 @@ def draw_position_offset(config: ModelConfig, envs: int, generator: torch.Genera
     return (uniform - 0.5) * config.offset_span
 
 
-def next_state_target(config: ModelConfig, state, next_state, step_out, tick_length: float) -> Tensor:
+def next_state_target(
+    config: ModelConfig, state, next_state, step_out, tick_length: float
+) -> Tensor:
     """The next-state head's targets, (E, N, NEXT_STATE) float32 in the columns' units.
 
     `state` and `next_state` are consecutive lean.contract.State objects, `step_out` the
@@ -187,22 +197,31 @@ def next_state_centres(config: ModelConfig, device=None) -> Tensor:
     low = torch.tensor([column.low for column in config.next_state_columns], dtype=torch.float32)
     high = torch.tensor([column.high for column in config.next_state_columns], dtype=torch.float32)
     is_symlog = torch.tensor([column.symlog for column in config.next_state_columns])
-    low, high = torch.where(is_symlog, contract.symlog(low), low), torch.where(is_symlog, contract.symlog(high), high)
+    low, high = (
+        torch.where(is_symlog, contract.symlog(low), low),
+        torch.where(is_symlog, contract.symlog(high), high),
+    )
     return value_bin_centres(low, high, config.bins).to(device)
 
 
 def next_state_distribution(config: ModelConfig, target: Tensor) -> Tensor:
     """HL-Gauss target probabilities of next_state_target's columns: target (..., NEXT_STATE)
     in target units to (..., NEXT_STATE, BINS), each column in its own bin space."""
-    is_symlog = torch.tensor([column.symlog for column in config.next_state_columns], device=target.device)
+    is_symlog = torch.tensor(
+        [column.symlog for column in config.next_state_columns], device=target.device
+    )
     target = torch.where(is_symlog, contract.symlog(target.float()), target.float())
-    return hl_gauss_targets(target, next_state_centres(config, target.device), config.next_state_sigma)
+    return hl_gauss_targets(
+        target, next_state_centres(config, target.device), config.next_state_sigma
+    )
 
 
 def next_state_cross_entropy(config: ModelConfig, logits: Tensor, target: Tensor) -> Tensor:
     """The next-state head's cross-entropy in nats per column, (..., NEXT_STATE): logits
     (..., NEXT_STATE, BINS) against the HL-Gauss distribution of target (..., NEXT_STATE)."""
-    return -(next_state_distribution(config, target) * torch.log_softmax(logits.float(), -1)).sum(-1)
+    return -(next_state_distribution(config, target) * torch.log_softmax(logits.float(), -1)).sum(
+        -1
+    )
 
 
 def rotate(tensor: Tensor, cos: Tensor, sin: Tensor) -> Tensor:
@@ -212,7 +231,11 @@ def rotate(tensor: Tensor, cos: Tensor, sin: Tensor) -> Tensor:
     leading axes. Dimensions past 2 * pairs pass through unchanged.
     """
     pairs = cos.shape[-1]
-    first, second, rest = tensor[..., :pairs], tensor[..., pairs : 2 * pairs], tensor[..., 2 * pairs :]
+    first, second, rest = (
+        tensor[..., :pairs],
+        tensor[..., pairs : 2 * pairs],
+        tensor[..., 2 * pairs :],
+    )
     return torch.cat([first * cos - second * sin, first * sin + second * cos, rest], dim=-1)
 
 
@@ -262,12 +285,18 @@ class Encoder(nn.Module):
         self.map_memory = nn.Linear(config.width, config.map_width, bias=False)
         self.map_memory_norm = nn.RMSNorm(config.map_width, eps=config.norm_epsilon)
 
-    def forward(self, ship: Tensor, pending: Tensor, game: Tensor, field: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(
+        self, ship: Tensor, pending: Tensor, game: Tensor, field: Tensor
+    ) -> tuple[Tensor, Tensor]:
         """ship (..., N, ship_inputs), pending (..., N) long (0 .. actions, `actions` for none),
         game (..., 1, game_inputs), field (..., F, field_inputs) to the trunk tokens (..., 1 +
         N, width), game first, and the map memory (..., F, map_width)."""
-        tokens = self.shared_norm(self.shared(torch.cat([self.game(game), self.ship(ship, pending)], -2)))
-        memory = self.map_memory_norm(self.map_memory(self.shared_norm(self.shared(self.field(field)))))
+        tokens = self.shared_norm(
+            self.shared(torch.cat([self.game(game), self.ship(ship, pending)], -2))
+        )
+        memory = self.map_memory_norm(
+            self.map_memory(self.shared_norm(self.shared(self.field(field))))
+        )
         return tokens, memory
 
 
@@ -310,25 +339,38 @@ class Spatial(nn.Module):
             self.output.weight.normal_(0.0, math.sqrt(final_scale / width))
             self.mlp_output.weight.normal_(0.0, math.sqrt(final_scale / hidden))
 
-    def forward(self, tokens: Tensor, memory: Tensor, key_mask: Tensor, rotary: tuple[Tensor, ...]) -> Tensor:
+    def forward(
+        self, tokens: Tensor, memory: Tensor, key_mask: Tensor, rotary: tuple[Tensor, ...]
+    ) -> Tensor:
         """tokens (B, M, width); memory (B, F, map_width); key_mask (B, 1, 1, M + F) float,
-        0 where a key may be attended and -inf elsewhere; rotary: cos and sin of the tokens (B, M, 1, 1,
+        0 where a key may be attended and -inf elsewhere; rotary: cos and sin of the tokens (B, M,
+        1, 1,
         pairs) and of the memory (B, F, 1, 1, pairs). Returns (B, M, width)."""
         token_cos, token_sin, memory_cos, memory_sin = rotary
         batch, count, width = tokens.shape
         head_width = width // self.heads
         # (B, M, [query, key, value, gate], heads, head_width): one rotation for every part
         # that takes the token's angles, one for the memory's keys (and values).
-        projected = self.query_key_value_gate(self.attention_norm(tokens)).view(batch, count, 4, self.heads, head_width)
-        memory = self.map_key_value(self.map_norm(memory)).view(batch, memory.shape[1], 2, self.heads, head_width)
+        projected = self.query_key_value_gate(self.attention_norm(tokens)).view(
+            batch, count, 4, self.heads, head_width
+        )
+        memory = self.map_key_value(self.map_norm(memory)).view(
+            batch, memory.shape[1], 2, self.heads, head_width
+        )
         rotated = 3 if self.rotate_values else 2
-        projected = torch.cat([rotate(projected[:, :, :rotated], token_cos, token_sin), projected[:, :, rotated:]], 2)
+        projected = torch.cat(
+            [rotate(projected[:, :, :rotated], token_cos, token_sin), projected[:, :, rotated:]], 2
+        )
         kept = rotated - 1  # the memory's key, and its value with rotate_values
-        memory = torch.cat([rotate(memory[:, :, :kept], memory_cos, memory_sin), memory[:, :, kept:]], 2)
+        memory = torch.cat(
+            [rotate(memory[:, :, :kept], memory_cos, memory_sin), memory[:, :, kept:]], 2
+        )
         query, key, value, gate = projected.unbind(2)
         key = torch.cat([key, memory[:, :, 0]], 1).transpose(1, 2)
         value = torch.cat([value, memory[:, :, 1]], 1).transpose(1, 2)
-        attended = F.scaled_dot_product_attention(query.transpose(1, 2), key, value, attn_mask=key_mask).transpose(1, 2)
+        attended = F.scaled_dot_product_attention(
+            query.transpose(1, 2), key, value, attn_mask=key_mask
+        ).transpose(1, 2)
         if self.rotate_values:  # back from the keys' frames to the query's
             attended = rotate(attended, token_cos[:, :, 0], -token_sin[:, :, 0])
         attended = attended * torch.sigmoid(gate)
@@ -360,7 +402,10 @@ class HeadGroup(nn.Module):
 
     def forward(self, inputs: Tensor) -> list[Tensor]:
         parts = self.first(inputs).split(self.hidden, -1)
-        return [last(F.gelu(norm(part))) for part, norm, last in zip(parts, self.norms, self.lasts, strict=True)]
+        return [
+            last(F.gelu(norm(part)))
+            for part, norm, last in zip(parts, self.norms, self.lasts, strict=True)
+        ]
 
 
 class Block(nn.Module):
@@ -371,7 +416,9 @@ class Block(nn.Module):
         super().__init__()
         residual_layers = config.blocks * (1 + config.spatial_per_block)
         self.temporal = Temporal(config, residual_layers)
-        self.spatial = nn.ModuleList(Spatial(config, residual_layers) for _ in range(config.spatial_per_block))
+        self.spatial = nn.ModuleList(
+            Spatial(config, residual_layers) for _ in range(config.spatial_per_block)
+        )
 
 
 class Policy(nn.Module):
@@ -394,14 +441,24 @@ class Policy(nn.Module):
         self.rotary = Rotary(config)
         code = self.position_code.features
         self.encoder = Encoder(
-            contract.SHIP_FEATURES + FOG_FEATURES + code, contract.GLOBAL_FEATURES + code,
-            contract.FIELD_FEATURES + code, config,
+            contract.SHIP_FEATURES + FOG_FEATURES + code,
+            contract.GLOBAL_FEATURES + code,
+            contract.FIELD_FEATURES + code,
+            config,
         )
         self.blocks = nn.ModuleList(Block(config) for _ in range(config.blocks))
-        self.heads = HeadGroup(config.width, config.head_hidden, (contract.JOINT, contract.LEVELS * config.bins), config)
+        self.heads = HeadGroup(
+            config.width,
+            config.head_hidden,
+            (contract.JOINT, contract.LEVELS * config.bins),
+            config,
+        )
         # The learner's auxiliary heads, one group: next state (a categorical per column) and hit.
         self.auxiliary_heads = HeadGroup(
-            config.width, config.head_hidden, (config.next_state_size * config.bins, config.hit_classes), config
+            config.width,
+            config.head_hidden,
+            (config.next_state_size * config.bins, config.hit_classes),
+            config,
         )
         # The hit head starts at the measured class shares (Lin et al.'s prior bias).
         frequencies = torch.tensor(config.hit_class_frequencies, dtype=torch.float32)
@@ -412,7 +469,9 @@ class Policy(nn.Module):
         """The zero recurrent state, (blocks, envs, 1 + slots, 4, width) float32."""
         return torch.zeros(self.config.blocks, envs, 1 + slots, 4, self.config.width, device=device)
 
-    def step(self, obs, carry: Tensor, position_offset: Tensor | None = None, reset: Tensor | None = None):
+    def step(
+        self, obs, carry: Tensor, position_offset: Tensor | None = None, reset: Tensor | None = None
+    ):
         """One tick.
 
         obs: lean.contract.Obs with fields shaped (E, ...). carry: from initial_carry or a
@@ -446,13 +505,21 @@ class Policy(nn.Module):
         if position_offset is not None and position_offset.dim() == 2:
             position_offset = position_offset[None]
         return self._forward(
-            {name: getattr(obs, name) for name in OBS_FIELDS}, carry, reset, position_offset, with_auxiliary=True
+            {name: getattr(obs, name) for name in OBS_FIELDS},
+            carry,
+            reset,
+            position_offset,
+            with_auxiliary=True,
         )
 
     def _forward(self, obs: dict, carry, reset, position_offset, with_auxiliary):
         ticks, envs, slots = obs["key_mask"].shape
         pos, field_pos = obs["pos"], obs["field_pos"]
-        offset = pos.new_zeros(ticks, envs, 2) if position_offset is None else position_offset.expand(ticks, envs, 2)
+        offset = (
+            pos.new_zeros(ticks, envs, 2)
+            if position_offset is None
+            else position_offset.expand(ticks, envs, 2)
+        )
         offset = offset.unsqueeze(-2)
 
         # Token inputs: the features and the position code of the offset positions; the game
@@ -463,7 +530,9 @@ class Policy(nn.Module):
         dtype = obs["ship"].dtype
         seen = [obs["visible"].to(dtype)[..., None], obs["since_seen"].to(dtype)[..., None]]
         ship_in = torch.cat([obs["ship"], *seen, code(pos + offset).to(dtype)], -1)
-        game_in = torch.cat([obs["globals"].unsqueeze(-2), code(offset).to(obs["globals"].dtype)], -1)
+        game_in = torch.cat(
+            [obs["globals"].unsqueeze(-2), code(offset).to(obs["globals"].dtype)], -1
+        )
         field_in = torch.cat([obs["field"], code(field_pos + offset).to(obs["field"].dtype)], -1)
         tokens, memory = self.encoder(ship_in, obs["pending"], game_in, field_in)
         memory = memory.flatten(0, 1)
@@ -491,7 +560,9 @@ class Policy(nn.Module):
         every_field = live.new_ones(live.shape[:-1] + (field_pos.shape[-2],))  # always present
         attendable = torch.cat([live, every_field], -1).flatten(0, 1)[:, None, None, :]
         # Additive, built once: a boolean mask costs a conversion in every sublayer.
-        attention_mask = torch.zeros(attendable.shape, device=attendable.device).masked_fill(~attendable, -math.inf)
+        attention_mask = torch.zeros(attendable.shape, device=attendable.device).masked_fill(
+            ~attendable, -math.inf
+        )
         keep = live.unsqueeze(-1).float()
         if reset is None:
             fresh = keep.new_ones((ticks, envs, 1, 1))
@@ -513,7 +584,9 @@ class Policy(nn.Module):
         next_state = hit_logits = None
         if with_auxiliary:
             next_state, hit_logits = self.auxiliary_heads(ships)
-            next_state = next_state.view(ticks, envs, slots, self.config.next_state_size, self.config.bins)
+            next_state = next_state.view(
+                ticks, envs, slots, self.config.next_state_size, self.config.bins
+            )
         return logits, value_logits, next_state, hit_logits, torch.stack(new_carry)
 
 
@@ -524,6 +597,15 @@ def field_heading(field_pos: Tensor) -> Tensor:
 
 
 OBS_FIELDS = (
-    "ship", "pos", "heading", "key_mask", "globals", "field", "field_pos", "visible", "since_seen", "pending",
+    "ship",
+    "pos",
+    "heading",
+    "key_mask",
+    "globals",
+    "field",
+    "field_pos",
+    "visible",
+    "since_seen",
+    "pending",
 )
 FOG_FEATURES = 2  # visible, since_seen

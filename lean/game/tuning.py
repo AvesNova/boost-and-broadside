@@ -248,8 +248,15 @@ def scaled(name, label, group, sets=None, scale=lambda: 1.0, **rest) -> DesignIn
     """A closed input: its field is the value times `scale()` (a callable, so it reads the card's
     constants when used); `sets` defaults to the name (a short circuit)."""
     sets = sets or name
-    return DesignInput(name, label, group, sets, lambda row, numbers: row[sets] / scale(),
-                       lambda value, design: value * scale(), **rest)
+    return DesignInput(
+        name,
+        label,
+        group,
+        sets,
+        lambda row, numbers: row[sets] / scale(),
+        lambda value, design: value * scale(),
+        **rest,
+    )
 
 
 def _bullet_life(gun_range: float, design: dict, tick_length: float = 1.0 / 30.0) -> float:
@@ -267,8 +274,7 @@ def _gun_range(row: dict, numbers: dict) -> float:
     return math.log1p(drag * launch * row["bullet_life"]) / drag
 
 
-GROUPS = ("Performance", "Airframe", "Flight terms", "Nose", "Guns",
-          "Shield, head-on and vision")
+GROUPS = ("Performance", "Airframe", "Flight terms", "Nose", "Guns", "Shield, head-on and vision")
 _GRAVITY = lambda: card.GRAVITY  # noqa: E731
 
 
@@ -283,69 +289,248 @@ P, A, T, N, G, H = GROUPS
 # The design inputs, in the tool's order. To add, remove or swap one, edit this table only (see
 # docs/rewrite/p51d-model.md, "Design inputs"); every card field must be set exactly once.
 DESIGN_INPUTS = (
-    DesignInput("stall_speed", "stall speed (1 g)", P, "max_lift_coefficient",
-                lambda row, numbers: numbers["stall_speed"],
-                lambda value, design: card.GRAVITY / value**2,
-                source="B: C_Lmax 1.6, AAF turn calculation", kind="speed", low=0.6, high=1.5),
-    scaled("g_limit", "g limit", P, "max_acceleration", _GRAVITY, unit="g",
-           source="F: forum 8 g (author's choice)", low=0.4, high=1.6),
-    flown("top_speed", "top level speed", P, "zero_lift_drag",
-          source="A: flight test, 375 mph", kind="speed", low=0.6, high=1.4),
-    flown("best_climb", "best climb rate", P, "engine_power",
-          source="A: flight test, 3,600 ft/min", kind="climb", low=0.4, high=2.0),
-    DesignInput("oswald", "span efficiency e", P, "induced_drag_scale",
-                lambda row, numbers: _oswald_scale(1.0) / row["induced_drag_scale"],
-                lambda value, design: _oswald_scale(value),
-                source="design: 0.85 (author 2026-11-24; typical 0.78-0.93)", low=0.6, high=1.0,
-                relative=False),
-    scaled("static_thrust", "static thrust / weight", A, scale=_GRAVITY,
-           source="momentum theory, FM 0.75", low=0.3, high=2.0),
-    scaled("stall_angle", "stall angle", A, "stall_angle_scale", lambda: 1.0 / card.STALL_ANGLE,
-           unit="rad", source="guess: v2's 15.5 deg", low=0.5, high=1.6),
-    scaled("exchange", "dive and zoom trade", A, "exchange_acceleration", _GRAVITY, unit="g",
-           source="design: 1 g", low=0.3, high=1.6),
-    scaled("critical_mach", "drag rise: critical Mach", T, "critical_speed",
-           lambda: to_game(SPEED_OF_SOUND, -1), unit="Mach", source="A: NACA ACR 4K02 Fig. 12",
-           low=0.5, high=1.5, relative=False),
-    scaled("drag_rise_exponent", "drag rise: exponent", T, source="A: NACA ACR 4K02 Fig. 12",
-           low=2.0, high=40.0, relative=False),
-    scaled("separation_drag", "separation drag: strength", T,
-           source="design: 0.3, a little (author 2026-11-24)", low=0.0, high=1.0,
-           relative=False),
-    scaled("separation_exponent", "separation drag: exponent", T,
-           source="design: 8 (author 2026-11-24)", low=4.0, high=32.0, relative=False),
-    scaled("lift_softmin_exponent", "lift softness: exponent (low = soft)", T,
-           source="design: v2's 16", low=2.0, high=64.0, relative=False),
-    scaled("thrust_softmin_exponent", "thrust softness: exponent (low = soft)", T,
-           source="design: the value that gave the 165 mph best-climb speed", low=1.0,
-           high=64.0, relative=False),
+    DesignInput(
+        "stall_speed",
+        "stall speed (1 g)",
+        P,
+        "max_lift_coefficient",
+        lambda row, numbers: numbers["stall_speed"],
+        lambda value, design: card.GRAVITY / value**2,
+        source="B: C_Lmax 1.6, AAF turn calculation",
+        kind="speed",
+        low=0.6,
+        high=1.5,
+    ),
+    scaled(
+        "g_limit",
+        "g limit",
+        P,
+        "max_acceleration",
+        _GRAVITY,
+        unit="g",
+        source="F: forum 8 g (author's choice)",
+        low=0.4,
+        high=1.6,
+    ),
+    flown(
+        "top_speed",
+        "top level speed",
+        P,
+        "zero_lift_drag",
+        source="A: flight test, 375 mph",
+        kind="speed",
+        low=0.6,
+        high=1.4,
+    ),
+    flown(
+        "best_climb",
+        "best climb rate",
+        P,
+        "engine_power",
+        source="A: flight test, 3,600 ft/min",
+        kind="climb",
+        low=0.4,
+        high=2.0,
+    ),
+    DesignInput(
+        "oswald",
+        "span efficiency e",
+        P,
+        "induced_drag_scale",
+        lambda row, numbers: _oswald_scale(1.0) / row["induced_drag_scale"],
+        lambda value, design: _oswald_scale(value),
+        source="design: 0.85 (author 2026-11-24; typical 0.78-0.93)",
+        low=0.6,
+        high=1.0,
+        relative=False,
+    ),
+    scaled(
+        "static_thrust",
+        "static thrust / weight",
+        A,
+        scale=_GRAVITY,
+        source="momentum theory, FM 0.75",
+        low=0.3,
+        high=2.0,
+    ),
+    scaled(
+        "stall_angle",
+        "stall angle",
+        A,
+        "stall_angle_scale",
+        lambda: 1.0 / card.STALL_ANGLE,
+        unit="rad",
+        source="guess: v2's 15.5 deg",
+        low=0.5,
+        high=1.6,
+    ),
+    scaled(
+        "exchange",
+        "dive and zoom trade",
+        A,
+        "exchange_acceleration",
+        _GRAVITY,
+        unit="g",
+        source="design: 1 g",
+        low=0.3,
+        high=1.6,
+    ),
+    scaled(
+        "critical_mach",
+        "drag rise: critical Mach",
+        T,
+        "critical_speed",
+        lambda: to_game(SPEED_OF_SOUND, -1),
+        unit="Mach",
+        source="A: NACA ACR 4K02 Fig. 12",
+        low=0.5,
+        high=1.5,
+        relative=False,
+    ),
+    scaled(
+        "drag_rise_exponent",
+        "drag rise: exponent",
+        T,
+        source="A: NACA ACR 4K02 Fig. 12",
+        low=2.0,
+        high=40.0,
+        relative=False,
+    ),
+    scaled(
+        "separation_drag",
+        "separation drag: strength",
+        T,
+        source="design: 0.3, a little (author 2026-11-24)",
+        low=0.0,
+        high=1.0,
+        relative=False,
+    ),
+    scaled(
+        "separation_exponent",
+        "separation drag: exponent",
+        T,
+        source="design: 8 (author 2026-11-24)",
+        low=4.0,
+        high=32.0,
+        relative=False,
+    ),
+    scaled(
+        "lift_softmin_exponent",
+        "lift softness: exponent (low = soft)",
+        T,
+        source="design: v2's 16",
+        low=2.0,
+        high=64.0,
+        relative=False,
+    ),
+    scaled(
+        "thrust_softmin_exponent",
+        "thrust softness: exponent (low = soft)",
+        T,
+        source="design: the value that gave the 165 mph best-climb speed",
+        low=1.0,
+        high=64.0,
+        relative=False,
+    ),
     scaled("nose_damping", "nose damping", N, low=0.2, high=1.5, relative=False),
-    scaled("corner_nose_frequency", "nose frequency at corner speed", N, kind="angular_rate",
-           low=0.3, high=2.0),
+    scaled(
+        "corner_nose_frequency",
+        "nose frequency at corner speed",
+        N,
+        kind="angular_rate",
+        low=0.3,
+        high=2.0,
+    ),
     scaled("hit_damage", "hit damage", G, low=0.3, high=3.0),
     scaled("explosive_share", "explosive share", G, low=0.0, high=1.0, relative=False),
     scaled("fire_rate", "fire rate", G, kind="frequency", low=0.3),
     scaled("muzzle_speed", "muzzle speed", G, kind="speed"),
-    scaled("bullet_spread", "bullet spread", G, "bullet_spread_scale",
-           lambda: 1.0 / card.BULLET_SPREAD, kind="speed", low=0.0, high=3.0),
-    scaled("bullet_drag", "bullet drag", G, "bullet_drag_scale", lambda: 1.0 / card.BULLET_DRAG,
-           kind="inverse_length", low=0.0, high=4.0),
-    DesignInput("gun_range", "gun range (from top speed)", G, "bullet_life", _gun_range,
-                _bullet_life, kind="length", low=0.3, high=2.5),
+    scaled(
+        "bullet_spread",
+        "bullet spread",
+        G,
+        "bullet_spread_scale",
+        lambda: 1.0 / card.BULLET_SPREAD,
+        kind="speed",
+        low=0.0,
+        high=3.0,
+    ),
+    scaled(
+        "bullet_drag",
+        "bullet drag",
+        G,
+        "bullet_drag_scale",
+        lambda: 1.0 / card.BULLET_DRAG,
+        kind="inverse_length",
+        low=0.0,
+        high=4.0,
+    ),
+    DesignInput(
+        "gun_range",
+        "gun range (from top speed)",
+        G,
+        "bullet_life",
+        _gun_range,
+        _bullet_life,
+        kind="length",
+        low=0.3,
+        high=2.5,
+    ),
     scaled("hit_radius", "hit radius", G, kind="length", low=0.3, high=3.0),
     scaled("core_radius", "core radius", G, kind="length", low=0.3, high=3.0),
     scaled("max_shield", "shield", H, low=0.3, high=3.0),
-    scaled("shield_recharge_rate", "shield recharge rate", H, "shield_recharge_rate_scale",
-           lambda: 1.0 / card.SHIELD_RECHARGE_RATE, kind="frequency", low=0.2, high=4.0),
-    scaled("shield_recharge_delay", "shield recharge wait", H, "shield_recharge_delay_scale",
-           lambda: 1.0 / card.SHIELD_RECHARGE_DELAY, kind="time", low=0.2, high=4.0),
-    scaled("head_on_fraction", "head-on damage share", H, "head_on_fraction_scale",
-           lambda: 1.0 / card.HEAD_ON_FRACTION, low=0.0, high=1.0, relative=False),
-    scaled("head_on_angle", "head-on angle", H, "head_on_angle_scale",
-           lambda: 1.0 / card.HEAD_ON_ANGLE, unit="rad", low=0.1, high=1.57, relative=False),
+    scaled(
+        "shield_recharge_rate",
+        "shield recharge rate",
+        H,
+        "shield_recharge_rate_scale",
+        lambda: 1.0 / card.SHIELD_RECHARGE_RATE,
+        kind="frequency",
+        low=0.2,
+        high=4.0,
+    ),
+    scaled(
+        "shield_recharge_delay",
+        "shield recharge wait",
+        H,
+        "shield_recharge_delay_scale",
+        lambda: 1.0 / card.SHIELD_RECHARGE_DELAY,
+        kind="time",
+        low=0.2,
+        high=4.0,
+    ),
+    scaled(
+        "head_on_fraction",
+        "head-on damage share",
+        H,
+        "head_on_fraction_scale",
+        lambda: 1.0 / card.HEAD_ON_FRACTION,
+        low=0.0,
+        high=1.0,
+        relative=False,
+    ),
+    scaled(
+        "head_on_angle",
+        "head-on angle",
+        H,
+        "head_on_angle_scale",
+        lambda: 1.0 / card.HEAD_ON_ANGLE,
+        unit="rad",
+        low=0.1,
+        high=1.57,
+        relative=False,
+    ),
     scaled("head_on_sharpness", "head-on sharpness", H, low=0.3, high=3.0),
-    scaled("vision_range", "vision range", H, "vision_range_scale",
-           lambda: 1.0 / card.VISION_RANGE, kind="length", low=0.3, high=3.0),
+    scaled(
+        "vision_range",
+        "vision range",
+        H,
+        "vision_range_scale",
+        lambda: 1.0 / card.VISION_RANGE,
+        kind="length",
+        low=0.3,
+        high=3.0,
+    ),
 )
 del P, A, T, N, G, H
 
@@ -362,6 +547,7 @@ def check_inputs(inputs: tuple[DesignInput, ...]) -> None:
 
 check_inputs(DESIGN_INPUTS)
 
+
 @dataclasses.dataclass(frozen=True)
 class Profile:
     """A named design-input table. `base`: None when its reference values come from the
@@ -375,10 +561,7 @@ class Profile:
 
 
 PROFILES = {
-    profile.name: profile
-    for profile in (
-        Profile("documents", "documents", DESIGN_INPUTS),
-    )
+    profile.name: profile for profile in (Profile("documents", "documents", DESIGN_INPUTS),)
 }
 DEFAULT_PROFILE = "documents"
 
@@ -478,8 +661,11 @@ def reference_of(aircraft: RealAircraft, inputs: tuple = DESIGN_INPUTS) -> Refer
     check_inputs(inputs)
     names = {spec.name for spec in inputs}
     values = {name: value for name, value in aircraft.values.items() if name in names}
-    base = {spec.sets: spec.apply(values[spec.name], values)
-            for spec in inputs if spec.apply and spec.name in values}
+    base = {
+        spec.sets: spec.apply(values[spec.name], values)
+        for spec in inputs
+        if spec.apply and spec.name in values
+    }
     base = {name: base.get(name, 1.0) for name in card.CARD_FIELDS}  # what the airframe sets
     fitted = fit_point_mass(aircraft.airframe, aircraft.top_speed, aircraft.best_climb, base)
     row = airframe_row(fitted, base)
@@ -499,8 +685,12 @@ def reference_in(aircraft: RealAircraft, profile: str | None = None) -> Referenc
     base = reference_in(aircraft, chosen.base)
     row = design_row(base, start=base.start_row).row
     return dataclasses.replace(
-        base, inputs=chosen.inputs, design=design_of(row, chosen.inputs), profile=chosen.name,
-        start_row=row)
+        base,
+        inputs=chosen.inputs,
+        design=design_of(row, chosen.inputs),
+        profile=chosen.name,
+        start_row=row,
+    )
 
 
 @functools.cache
@@ -514,8 +704,12 @@ def reference(name: str, profile: str | None = None) -> Reference:
         base = reference(name, chosen.base)
         row = row_of(name)
         return dataclasses.replace(
-            base, inputs=chosen.inputs, design=design_of(row, chosen.inputs),
-            profile=chosen.name, start_row=row)
+            base,
+            inputs=chosen.inputs,
+            design=design_of(row, chosen.inputs),
+            profile=chosen.name,
+            start_row=row,
+        )
     return reference_in(aircraft, chosen.name)
 
 
@@ -542,7 +736,7 @@ def design_row(
     start: dict[str, float] | None = None,
     fast: bool = False,
     jacobian: torch.Tensor | None = None,
-    progress: Callable[["SolveStep"], None] | None = None,
+    progress: Callable[[SolveStep], None] | None = None,
     patience: int | None = None,
     deadline: float | None = None,
     cancel: threading.Event | None = None,
@@ -566,7 +760,8 @@ def design_row(
     growing), `deadline` (a time.monotonic() value) when time is up, and a design whose inputs
     or flown numbers are impossible (a target or coefficient not positive, no flyable speed)
     fails at once. `cancel` (an Event): set from another thread, the solve raises SolveCancelled
-    at its next evaluation (about 0.1 s). SolveFailed (a RuntimeError) names the inputs not met and carries the nearest
+    at its next evaluation (about 0.1 s). SolveFailed (a RuntimeError) names the inputs not met and
+    carries the nearest
     row found (its `best`)."""
     watched = progress is not None or patience is not None or deadline is not None
     if cancel is not None and cancel.is_set():
@@ -593,8 +788,9 @@ def design_row(
     warm = fast and start is not None and jacobian is not None
     if not warm or tuple(jacobian.shape) != (len(solved), len(solved)):
         jacobian = None
-    solve = SimpleNamespace(logs=logs, residual=0.0, iterations=0, condition=None,
-                            jacobian=jacobian)
+    solve = SimpleNamespace(
+        logs=logs, residual=0.0, iterations=0, condition=None, jacobian=jacobian
+    )
 
     def residual(logs):
         trial = {**row, **{spec.sets: math.exp(x) for spec, x in zip(solved, logs)}}
@@ -602,22 +798,36 @@ def design_row(
             raise SolveCancelled()
         try:
             numbers = performance(trial)
-            return [math.log(spec.measure(trial, numbers) / t)
-                    for spec, t in zip(solved, targets)]
+            return [math.log(spec.measure(trial, numbers) / t) for spec, t in zip(solved, targets)]
         except (IndexError, ValueError, ZeroDivisionError, OverflowError) as error:
             if not watched:
                 raise
             raise SolveFailed(
-                "impossible", [spec.name for spec in solved], [], [], [], list(logs), 0,
+                "impossible",
+                [spec.name for spec in solved],
+                [],
+                [],
+                [],
+                list(logs),
+                0,
                 "no flyable speed or no positive value for this design (the inputs together"
-                " leave no speed the ship can hold)") from error
+                " leave no speed the ship can hold)",
+            ) from error
 
     if solved:
         tolerance = 1e-5 if fast else 1e-7
         try:
-            solve = _newton(residual, solve.logs, tolerance, broyden=fast, name="design_row",
-                            jacobian=jacobian, progress=_named(progress, solved, tolerance),
-                            patience=patience, deadline=deadline)
+            solve = _newton(
+                residual,
+                solve.logs,
+                tolerance,
+                broyden=fast,
+                name="design_row",
+                jacobian=jacobian,
+                progress=_named(progress, solved, tolerance),
+                patience=patience,
+                deadline=deadline,
+            )
         except SolveFailed as failed:
             failed.rows = {spec.sets: math.exp(x) for spec, x in zip(solved, failed.best)}
             failed.row = {**row, **failed.rows}
@@ -683,32 +893,84 @@ class Check:
 # docs/rewrite/ship-design-proposal.md section 7, as data.
 PLAUSIBILITY = (
     Check("oswald", None, 1.0, "limit", "above the elliptic wing's 1.0", "induced_drag_scale"),
-    Check("oswald", 0.78, 0.93, "range",
-          "outside 0.78-0.93 (Fw 190 0.78-0.84, Bf 109 0.93; NACA P-51B 0.88-0.91)",
-          "induced_drag_scale"),
-    Check("propeller_efficiency", None, 1.0, "limit", "more thrust power than shaft power",
-          "engine_power"),
-    Check("propeller_efficiency", 0.7, 0.9, "range", "outside 0.7-0.9 (P-47D measured 0.78-0.80)",
-          "engine_power"),
+    Check(
+        "oswald",
+        0.78,
+        0.93,
+        "range",
+        "outside 0.78-0.93 (Fw 190 0.78-0.84, Bf 109 0.93; NACA P-51B 0.88-0.91)",
+        "induced_drag_scale",
+    ),
+    Check(
+        "propeller_efficiency",
+        None,
+        1.0,
+        "limit",
+        "more thrust power than shaft power",
+        "engine_power",
+    ),
+    Check(
+        "propeller_efficiency",
+        0.7,
+        0.9,
+        "range",
+        "outside 0.7-0.9 (P-47D measured 0.78-0.80)",
+        "engine_power",
+    ),
     Check("zero_lift_drag_coefficient", 0.0, None, "limit", "no drag", "zero_lift_drag"),
-    Check("zero_lift_drag_coefficient", 0.0148, 0.034, "range",
-          "outside 0.0148-0.034 (P-51D powered fit 0.0148-0.0163; Fw 190 A-8 0.0265-0.034)",
-          "zero_lift_drag"),
-    Check("max_lift_coefficient", None, 1.7, "range",
-          "above the P-51D's stall-derived 1.50-1.70", "max_lift_coefficient"),
+    Check(
+        "zero_lift_drag_coefficient",
+        0.0148,
+        0.034,
+        "range",
+        "outside 0.0148-0.034 (P-51D powered fit 0.0148-0.0163; Fw 190 A-8 0.0265-0.034)",
+        "zero_lift_drag",
+    ),
+    Check(
+        "max_lift_coefficient",
+        None,
+        1.7,
+        "range",
+        "above the P-51D's stall-derived 1.50-1.70",
+        "max_lift_coefficient",
+    ),
     Check("figure_of_merit", None, 1.0, "limit", "beyond momentum theory", "static_thrust"),
-    Check("structural_load", None, 1.0, "range",
-          "above the structure's limit at this mass (P-51D: 8 g at 8,000 lb, 6.6 g at 9,760 lb)",
-          "max_acceleration"),
-    Check("gap", None, 0.9, "range", "less than the 10% gap the flight test asks",
-          "separation_drag"),
-    Check("sustained_speed_change", -0.12, 0.12, "range",
-          "best sustained speed over 12% from the point mass's", "induced_drag_scale"),
-    Check("full_stick_fall", None, 1e-6, "range",
-          "the full-stick rate falls with speed below corner", "max_lift_coefficient"),
-    Check("thrust_loss", None, 0.1, "range",
-          "the soft thrust limit takes over a tenth of the thrust at the best-climb speed"
-          " (v2's softness 2 did)", "thrust_softmin_exponent"),
+    Check(
+        "structural_load",
+        None,
+        1.0,
+        "range",
+        "above the structure's limit at this mass (P-51D: 8 g at 8,000 lb, 6.6 g at 9,760 lb)",
+        "max_acceleration",
+    ),
+    Check(
+        "gap", None, 0.9, "range", "less than the 10% gap the flight test asks", "separation_drag"
+    ),
+    Check(
+        "sustained_speed_change",
+        -0.12,
+        0.12,
+        "range",
+        "best sustained speed over 12% from the point mass's",
+        "induced_drag_scale",
+    ),
+    Check(
+        "full_stick_fall",
+        None,
+        1e-6,
+        "range",
+        "the full-stick rate falls with speed below corner",
+        "max_lift_coefficient",
+    ),
+    Check(
+        "thrust_loss",
+        None,
+        0.1,
+        "range",
+        "the soft thrust limit takes over a tenth of the thrust at the best-climb speed"
+        " (v2's softness 2 did)",
+        "thrust_softmin_exponent",
+    ),
 )
 
 
@@ -716,8 +978,12 @@ def _thrust_loss(row: dict[str, float], speed: float) -> float:
     """The share of the thrust power's thrust P / v the soft static-thrust limit takes at
     `speed` (core.softmin, as the flight tick)."""
     free = row["engine_power"] / speed
-    thrust = core.softmin(*(torch.tensor(x, dtype=torch.float64) for x in (
-        free, row["static_thrust"], row["thrust_softmin_exponent"])))
+    thrust = core.softmin(
+        *(
+            torch.tensor(x, dtype=torch.float64)
+            for x in (free, row["static_thrust"], row["thrust_softmin_exponent"])
+        )
+    )
     return 1.0 - float(thrust) / free
 
 
@@ -742,8 +1008,16 @@ def warnings(row: dict[str, float], reference: Reference, flown: dict | None = N
         below = check.low is not None and value < check.low
         if below or (check.high is not None and value > check.high):
             message = f"{check.quantity} {value:.4g}: {check.reason}"
-            out.append(dict(quantity=check.quantity, value=value, severity=check.severity,
-                            field=check.field, input=setter[check.field], message=message))
+            out.append(
+                dict(
+                    quantity=check.quantity,
+                    value=value,
+                    severity=check.severity,
+                    field=check.field,
+                    input=setter[check.field],
+                    message=message,
+                )
+            )
     return out
 
 
@@ -767,8 +1041,13 @@ def row_key(aircraft: RealAircraft) -> str:
     FLIGHT_SOURCES: a derived row's cache key (any change to the flight model's source
     re-solves)."""
     digest = hashlib.sha256()
-    targets = [dataclasses.asdict(aircraft.airframe), aircraft.top_speed, aircraft.best_climb,
-               aircraft.values, aircraft.profile]
+    targets = [
+        dataclasses.asdict(aircraft.airframe),
+        aircraft.top_speed,
+        aircraft.best_climb,
+        aircraft.values,
+        aircraft.profile,
+    ]
     digest.update(json.dumps(targets, sort_keys=True).encode())
     for path in FLIGHT_SOURCES:
         digest.update(path.read_bytes())
@@ -787,7 +1066,7 @@ def cached_real_row(name: str) -> dict[str, float]:
     path = cache_directory() / f"{name}-{row_key(aircraft)}.json"
     try:
         return json.loads(path.read_text())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         pass
     row = real_row(aircraft)
     try:
@@ -823,8 +1102,6 @@ def load_card() -> dict[str, tuple[float, ...]]:
                 raise ValueError(f"{name}'s derived row differs from the card's fields: {off}")
         card.CARD = {field: tuple(float(row[field]) for row in rows) for field in card.CARD_FIELDS}
         return card.CARD
-
-
 
 
 # --------------------------------------------------------------------------- Newton
@@ -884,13 +1161,31 @@ def _check_possible(inputs, values, row, solved):
     bad = [spec.name for spec in solved if not values[spec.name] > 0.0]
     bad += [setter[field] for field, x in row.items() if not x >= 0.0 and field in setter]
     if bad:
-        raise SolveFailed("impossible", bad, [], [], [], [], 0,
-                          f"{', '.join(bad)}: a target or the coefficient it implies is"
-                          " negative or zero (negative drag or power is impossible)")
+        raise SolveFailed(
+            "impossible",
+            bad,
+            [],
+            [],
+            [],
+            [],
+            0,
+            f"{', '.join(bad)}: a target or the coefficient it implies is"
+            " negative or zero (negative drag or power is impossible)",
+        )
 
 
-def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve",
-            jacobian=None, progress=None, patience=None, deadline=None):
+def _newton(
+    residual,
+    logs,
+    tolerance,
+    iterations=40,
+    broyden=False,
+    name="solve",
+    jacobian=None,
+    progress=None,
+    patience=None,
+    deadline=None,
+):
     """Newton in log parameters with a finite-difference Jacobian (v2's solver): `residual(logs)`
     a list of log ratios flown / target, driven below `tolerance`. `broyden`: after the first
     Jacobian, rank-one updates with no new evaluations (the web tool's fast path), finite
@@ -916,24 +1211,46 @@ def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve
                 improved = iteration
             best = (worst, r, list(logs), iteration)
         if progress is not None:
-            progress(SolveStep(iteration, [], r, worst,
-                               None if last is None else float(last[0].abs().max()),
-                               time.monotonic() - began, tolerance))
+            progress(
+                SolveStep(
+                    iteration,
+                    [],
+                    r,
+                    worst,
+                    None if last is None else float(last[0].abs().max()),
+                    time.monotonic() - began,
+                    tolerance,
+                )
+            )
         if worst >= tolerance and (patience is not None or deadline is not None):
             late = deadline is not None and time.monotonic() > deadline
             if late or (patience is not None and iteration - improved >= patience):
                 raise SolveFailed(
-                    "time" if late else "stalled", [], [], best[1], [], best[2], iteration,
-                    "out of time" if late else "the error stopped falling")
+                    "time" if late else "stalled",
+                    [],
+                    [],
+                    best[1],
+                    [],
+                    best[2],
+                    iteration,
+                    "out of time" if late else "the error stopped falling",
+                )
         if worst < tolerance:
             condition = None if jacobian is None else float(torch.linalg.cond(jacobian))
-            return SimpleNamespace(logs=logs, residual=worst, iterations=iteration,
-                                   condition=condition, jacobian=jacobian)
+            return SimpleNamespace(
+                logs=logs,
+                residual=worst,
+                iterations=iteration,
+                condition=condition,
+                jacobian=jacobian,
+            )
         r_tensor = torch.tensor(r, dtype=torch.float64)
         stalled = last is not None and worst >= last[2]
         if broyden and jacobian is not None and last is not None and not stalled:
             moved_by, change = last[0], r_tensor - last[1]
-            jacobian = jacobian + torch.outer(change - jacobian @ moved_by, moved_by) / (moved_by @ moved_by)
+            jacobian = jacobian + torch.outer(change - jacobian @ moved_by, moved_by) / (
+                moved_by @ moved_by
+            )
         elif broyden and jacobian is not None and last is None:
             pass  # the warm start's Jacobian, as given
         else:
@@ -941,13 +1258,23 @@ def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve
             for j in range(len(logs)):
                 moved = list(logs)
                 moved[j] += step
-                jacobian[:, j] = (torch.tensor(residual(moved), dtype=torch.float64) - r_tensor) / step
+                jacobian[:, j] = (
+                    torch.tensor(residual(moved), dtype=torch.float64) - r_tensor
+                ) / step
         delta = (torch.linalg.pinv(jacobian, rtol=1e-9) @ -r_tensor).clamp(-0.5, 0.5)
         last = (delta, r_tensor, worst)
         logs = [x + float(d) for x, d in zip(logs, delta)]
     if progress is not None or patience is not None or deadline is not None:
-        raise SolveFailed("stalled", [], [], best[1], [], best[2], iterations,
-                          f"no convergence in {iterations} iterations")
+        raise SolveFailed(
+            "stalled",
+            [],
+            [],
+            best[1],
+            [],
+            best[2],
+            iterations,
+            f"no convergence in {iterations} iterations",
+        )
     raise RuntimeError(f"{name} did not converge: residual {residual(logs)}")
 
 
@@ -980,7 +1307,6 @@ def _bisect(function, low, high, steps=40):
         positive = function(middle) > 0.0
         low, high = torch.where(positive, middle, low), torch.where(positive, high, middle)
     return 0.5 * (low + high)
-
 
 
 REFINE_POINTS = 33  # a local grid across the two grid steps around an extremum
@@ -1026,8 +1352,13 @@ def performance(
     then reads several times."""
     if config is not None:
         return _performance(row, plain, config, speed_step)
-    key = (tuple(sorted(row.items())), plain, speed_step, REFINE_POINTS,
-           tuple(getattr(card, name) for name in RULE_TIME_POWERS))
+    key = (
+        tuple(sorted(row.items())),
+        plain,
+        speed_step,
+        REFINE_POINTS,
+        tuple(getattr(card, name) for name in RULE_TIME_POWERS),
+    )
     with _CARD_LOCK:
         if key not in _PERFORMANCE:
             while len(_PERFORMANCE) >= _PERFORMANCE_KEPT:
@@ -1140,14 +1471,17 @@ def envelope(
     minimum_speed: float = 100.0,
 ) -> dict:
     """The row's quasi-steady turn envelope (game units, the nose settled, no fields, no guns)
-    on a (stick, speed) grid (core.steady_rates): `speeds` (m/s) and `sticks` (0 to 1) as 1-D sequences, `power`
+    on a (stick, speed) grid (core.steady_rates): `speeds` (m/s) and `sticks` (0 to 1) as 1-D
+    sequences, `power`
     0 coast, 1 dive, 2 climb, at `store_fraction` of the store (default the spawn store).
     Returns numpy arrays shaped (len(sticks), len(speeds)): rate (rad/s), radius (m), ps
     (m/s altitude-equivalent total energy rate), speed_rate, store_rate; and per speed the
     sustained turn (the largest rate with Ps >= 0, nan if none): sustained_rate,
-    sustained_radius; and the key numbers from the full-stick line (corner_*) and, at `minimum_speed`
+    sustained_radius; and the key numbers from the full-stick line (corner_*) and, at
+    `minimum_speed`
     and above (below it the turn cannot be held in flight), the sustained line
-    (best_sustained_*, tightest_sustained_*; `minimum_speed`, game m/s), or None when there are none. The charts
+    (best_sustained_*, tightest_sustained_*; `minimum_speed`, game m/s), or None when there are
+    none. The charts
     (docs/rewrite/sections/turns/doghouse.py) and the web tool draw from this."""
     import numpy as np
 
@@ -1161,11 +1495,7 @@ def envelope(
     b = v.shape[0]
     with torch.no_grad(), _with_row(row) as index:
         p = core.per_type_constants(config, torch.full((b,), index))
-        energy = (
-            p.spawn_energy.clone()
-            if store_fraction is None
-            else store_fraction * p.max_energy
-        )
+        energy = p.spawn_energy.clone() if store_fraction is None else store_fraction * p.max_energy
         rate, speed_rate, store_rate = core.steady_rates(p, v, s, power, energy)
     shape = (len(sticks), len(speeds))
     rate = rate.reshape(shape).numpy()
@@ -1182,9 +1512,15 @@ def envelope(
             i = ok[np.argmax(rate[ok, j])]
             held_rate[j], held_radius[j] = rate[i, j], radius[i, j]
     out = dict(
-        speeds=speed_axis, sticks=sticks.numpy(), rate=rate, radius=radius, ps=ps,
-        speed_rate=speed_rate, store_rate=store_rate,
-        sustained_rate=held_rate, sustained_radius=held_radius,
+        speeds=speed_axis,
+        sticks=sticks.numpy(),
+        rate=rate,
+        radius=radius,
+        ps=ps,
+        speed_rate=speed_rate,
+        store_rate=store_rate,
+        sustained_rate=held_rate,
+        sustained_radius=held_radius,
     )
     full = rate[-1]
     k = int(np.nanargmax(full))
@@ -1192,12 +1528,23 @@ def envelope(
     usable = np.where(speed_axis >= minimum_speed, held_rate, np.nan)
     if np.any(np.isfinite(usable)):
         k = int(np.nanargmax(usable))
-        out["best_sustained_speed"], out["best_sustained_rate"] = float(speed_axis[k]), float(usable[k])
+        out["best_sustained_speed"], out["best_sustained_rate"] = (
+            float(speed_axis[k]),
+            float(usable[k]),
+        )
         tight = np.where(np.isfinite(usable), held_radius, np.nan)
         k = int(np.nanargmin(tight))
-        out["tightest_sustained_speed"], out["tightest_sustained_radius"] = float(speed_axis[k]), float(tight[k])
+        out["tightest_sustained_speed"], out["tightest_sustained_radius"] = (
+            float(speed_axis[k]),
+            float(tight[k]),
+        )
     else:
-        for name in ("best_sustained_speed", "best_sustained_rate", "tightest_sustained_speed", "tightest_sustained_radius"):
+        for name in (
+            "best_sustained_speed",
+            "best_sustained_rate",
+            "tightest_sustained_speed",
+            "tightest_sustained_radius",
+        ):
             out[name] = None
     return out
 
@@ -1279,20 +1626,48 @@ def row_of(name: str) -> dict[str, float]:
 # powers per kg -3, rates -1, durations +1; lengths, per-metre coefficients, fractions, angles,
 # damage and the scales of rule constants 0 (the rule constants scale instead: RULE_TIME_POWERS).
 CARD_TIME_POWERS = dict(
-    max_lift_coefficient=0, max_acceleration=-2, zero_lift_drag=0, engine_power=-3,
-    static_thrust=-2, exchange_acceleration=-2, corner_nose_frequency=-1, max_shield=0,
-    hit_radius=0, core_radius=0, hit_damage=0, muzzle_speed=-1, fire_rate=-1, bullet_life=1,
-    explosive_share=0, induced_drag_scale=0, stall_angle_scale=0,
-    bullet_spread_scale=0, bullet_drag_scale=0, shield_recharge_rate_scale=0,
-    shield_recharge_delay_scale=0, head_on_fraction_scale=0, head_on_angle_scale=0,
-    head_on_sharpness=0, vision_range_scale=0,
-    critical_speed=-1, drag_rise_exponent=0, separation_drag=0, separation_exponent=0,
-    lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0,
+    max_lift_coefficient=0,
+    max_acceleration=-2,
+    zero_lift_drag=0,
+    engine_power=-3,
+    static_thrust=-2,
+    exchange_acceleration=-2,
+    corner_nose_frequency=-1,
+    max_shield=0,
+    hit_radius=0,
+    core_radius=0,
+    hit_damage=0,
+    muzzle_speed=-1,
+    fire_rate=-1,
+    bullet_life=1,
+    explosive_share=0,
+    induced_drag_scale=0,
+    stall_angle_scale=0,
+    bullet_spread_scale=0,
+    bullet_drag_scale=0,
+    shield_recharge_rate_scale=0,
+    shield_recharge_delay_scale=0,
+    head_on_fraction_scale=0,
+    head_on_angle_scale=0,
+    head_on_sharpness=0,
+    vision_range_scale=0,
+    critical_speed=-1,
+    drag_rise_exponent=0,
+    separation_drag=0,
+    separation_exponent=0,
+    lift_softmin_exponent=0,
+    thrust_softmin_exponent=0,
+    nose_damping=0,
 )
 # The rule constants (lean.game.card) with time in their units.
 RULE_TIME_POWERS = dict(
-    GRAVITY=-2, NOSE_FREQUENCY_FLOOR=-1, SPEED_FLOOR=-1,
-    BULLET_SPREAD=-1, SHIELD_RECHARGE_RATE=-1, SHIELD_RECHARGE_DELAY=1, BOUNDARY_MAX_DAMAGE=-1,
+    GRAVITY=-2,
+    NOSE_FREQUENCY_FLOOR=-1,
+    SPEED_FLOOR=-1,
+    BULLET_SPREAD=-1,
+    SHIELD_RECHARGE_RATE=-1,
+    SHIELD_RECHARGE_DELAY=1,
+    BOUNDARY_MAX_DAMAGE=-1,
     SPAWN_SPEED=-1,
 )
 assert set(CARD_TIME_POWERS) == set(card.CARD_FIELDS)
@@ -1311,7 +1686,10 @@ def time_scaled(factor: float, tick_length: float = 1.0 / 30.0):
     def scaled(value, time_power):
         return value * ratio**time_power
 
-    table = {name: tuple(scaled(v, CARD_TIME_POWERS[name]) for v in values) for name, values in card.CARD.items()}
+    table = {
+        name: tuple(scaled(v, CARD_TIME_POWERS[name]) for v in values)
+        for name, values in card.CARD.items()
+    }
     lives = []
     for rate, life in zip(table["fire_rate"], table["bullet_life"]):
         interval = max(1, round(1.0 / (tick_length * rate)))

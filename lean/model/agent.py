@@ -35,12 +35,16 @@ def seat_view(views: tuple[Obs, Obs], environment: Tensor, team: Tensor) -> Obs:
     fixed-team views `views` = (team 0's, team 1's), each with a leading E."""
     first, second = views
     chosen = team == 0
-    return Obs(**{
-        field.name: select_environments(
-            chosen, getattr(first, field.name).index_select(0, environment), getattr(second, field.name).index_select(0, environment)
-        )
-        for field in dataclasses.fields(first)
-    })
+    return Obs(
+        **{
+            field.name: select_environments(
+                chosen,
+                getattr(first, field.name).index_select(0, environment),
+                getattr(second, field.name).index_select(0, environment),
+            )
+            for field in dataclasses.fields(first)
+        }
+    )
 
 
 def reset_carry(carry: Tensor, done: Tensor) -> Tensor:
@@ -51,7 +55,9 @@ def reset_carry(carry: Tensor, done: Tensor) -> Tensor:
 
 def sample_joint(logits: Tensor, generator) -> Tensor:
     """One sample per row from categorical logits (..., JOINT), by the Gumbel-max trick."""
-    uniform = torch.rand(logits.shape, **random_keywords(generator, logits.device)).clamp(1e-10, 1.0 - 1e-7)
+    uniform = torch.rand(logits.shape, **random_keywords(generator, logits.device)).clamp(
+        1e-10, 1.0 - 1e-7
+    )
     return (logits - torch.log(-torch.log(uniform))).argmax(-1)
 
 
@@ -92,7 +98,9 @@ def stepper_weights(policy, parameters: dict[str, Tensor] | None = None) -> dict
     return weights
 
 
-def split_weights(template_: Stepper, weights: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
+def split_weights(
+    template_: Stepper, weights: dict[str, Tensor]
+) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
     """`weights` (stepper_weights) as (parameters, buffers) by the template's names, as
     functional_call takes them."""
     names = {name for name, _ in template_.named_parameters()}
@@ -119,9 +127,13 @@ def network(policy, bf16: bool = True) -> Network:
     return Network(template_, *split_weights(template_, stepper_weights(policy)), bf16)
 
 
-def network_step(network_: Network, view: Obs, carry: Tensor, offset: Tensor, generator) -> tuple[Tensor, Tensor]:
+def network_step(
+    network_: Network, view: Obs, carry: Tensor, offset: Tensor, generator
+) -> tuple[Tensor, Tensor]:
     """One tick of a network on `view` (rows E): its sampled joint actions (E, N) long and its
     new carry, in the carry's dtype."""
     with precision(offset.device, network_.bf16):
-        logits, _, new_carry = functional_call(network_.template, (network_.parameters, network_.buffers), (view, carry, offset))
+        logits, _, new_carry = functional_call(
+            network_.template, (network_.parameters, network_.buffers), (view, carry, offset)
+        )
     return sample_joint(logits.float(), generator), new_carry.to(carry.dtype)

@@ -244,8 +244,7 @@ def test_a_slider_drag_solves_warm_and_agrees_with_a_cold_solve(monkeypatch):
     cold = tuning.design_row(reference, values, start=design.PRESET_ROWS["p51d"], fast=True)
     for name, value in cold.row.items():
         assert warm.row[name] == pytest.approx(value, rel=1e-3), name
-    assert tuning.design_of(warm.row)["best_climb"] == pytest.approx(values["best_climb"],
-                                                                     rel=2e-5)
+    assert tuning.design_of(warm.row)["best_climb"] == pytest.approx(values["best_climb"], rel=2e-5)
 
 
 def test_saved_presets_store_their_row_and_load_editable_or_fixed(tmp_path, monkeypatch):
@@ -300,7 +299,8 @@ def test_the_p51d_lines_start_where_the_game_flies_them(p51d_flown):
     and the corner speed, and an independent random search of control sequences
     (flown.random_search) flies no line more than 5 m/s below its measured start, so the
     search the charts use finds the lowest states near enough (3 m/s before 2026-11-24; with
-    the stick levels as fractions of the top line the then-derived 0.88 level's start was 3.9 m/s above
+    the stick levels as fractions of the top line the then-derived 0.88 level's start was 3.9 m/s
+    above
     the random search's best)."""
     from lean.tool import flown
 
@@ -350,7 +350,7 @@ def test_no_line_is_drawn_below_its_lowest_flown_speed(p51d_flown):
         chart.plt.close(figure)
 
 
-# --------------------------------------------------------------------------- progress, failing fast, cancelling
+# --------------------------------------------------------------------------- progress, failing fast
 
 
 def test_the_solve_reports_progress_and_the_result_is_the_same_without_watching():
@@ -358,8 +358,15 @@ def test_the_solve_reports_progress_and_the_result_is_the_same_without_watching(
     values = {"best_climb": 1.05 * reference.design["best_climb"]}
     start = design.PRESET_ROWS["p51d"]
     steps = []
-    watched = tuning.design_row(reference, values, start=start, fast=True, progress=steps.append,
-                                patience=6, deadline=time.monotonic() + 30)
+    watched = tuning.design_row(
+        reference,
+        values,
+        start=start,
+        fast=True,
+        progress=steps.append,
+        patience=6,
+        deadline=time.monotonic() + 30,
+    )
     plain = tuning.design_row(reference, values, start=start, fast=True)
     assert steps and [s.iteration for s in steps] == list(range(len(steps)))
     first = steps[0]
@@ -385,7 +392,8 @@ def test_an_impossible_design_fails_fast_naming_the_input(monkeypatch):
     assert worst["name"] == "best_climb" and worst["unit"] == "ft/min"
     assert worst["achieved"] < worst["target"] and worst["error"] < -0.5
     assert worst["target"] == pytest.approx(
-        20.0 * climb * units.factor("climb", "real_imperial", 2.0))
+        20.0 * climb * units.factor("climb", "real_imperial", 2.0)
+    )
     assert worst["label"] in report["message"]
 
 
@@ -397,9 +405,15 @@ def test_a_negative_or_flyless_design_is_impossible_at_once():
         design.solve("p51d", {"stall_speed": 400.0})
     assert time.monotonic() - began < 1.0
     assert negative.value.reason == flyless.value.reason == "impossible"
-    assert "best_climb" in design.failure_report(negative.value, "p51d", None, "game", 2.0)["message"]
-    assert "stall_speed" in design.failure_report(
-        flyless.value, "p51d", None, "game", 2.0, ["stall_speed"])["message"]
+    assert (
+        "best_climb" in design.failure_report(negative.value, "p51d", None, "game", 2.0)["message"]
+    )
+    assert (
+        "stall_speed"
+        in design.failure_report(flyless.value, "p51d", None, "game", 2.0, ["stall_speed"])[
+            "message"
+        ]
+    )
 
 
 def test_the_failure_reaches_the_page_as_json_and_a_socket_message(monkeypatch):
@@ -437,7 +451,9 @@ def test_a_cancelled_solve_stops_within_an_evaluation_and_keeps_the_warm_start(m
     monkeypatch.setattr(design, "_SOLVED", {})
     monkeypatch.setattr(design, "_WARM", {})
     monkeypatch.setattr(design, "TIME_LIMIT", 60.0)
-    warm = design.solve("p51d", {"best_climb": 1.03 * tuning.reference("p51d").design["best_climb"]})
+    warm = design.solve(
+        "p51d", {"best_climb": 1.03 * tuning.reference("p51d").design["best_climb"]}
+    )
     kept = dict(design._WARM)
     cancel, outcome = threading.Event(), {}
     top = tuning.reference("p51d").design["top_speed"]

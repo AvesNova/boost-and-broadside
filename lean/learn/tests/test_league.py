@@ -56,7 +56,9 @@ def test_self_play_trains_both_teams_and_league_games_only_the_live_side():
     rollout.observation.own = own & (torch.arange(own.shape[1]) >= ENVS)[None, :, None]
     before = [parameter.detach().clone() for parameter in policy.parameters()]
     update(config, policy, make_optimiser(config, policy), rollout, generator=generator)
-    assert any(not torch.equal(old, new) for old, new in zip(before, policy.parameters(), strict=True))
+    assert any(
+        not torch.equal(old, new) for old, new in zip(before, policy.parameters(), strict=True)
+    )
 
 
 def test_both_sides_of_a_self_play_game_are_the_live_policy(monkeypatch):
@@ -79,7 +81,9 @@ def test_both_sides_of_a_self_play_game_are_the_live_policy(monkeypatch):
     for tick, applied in enumerate(recorder.actions):
         for environment in range(ENVS):
             live = team[environment] == rollout.carry.learner_team[environment]  # no game ended
-            assert torch.equal(applied[environment][live], split_joint(rollout.action[tick, environment])[live])
+            assert torch.equal(
+                applied[environment][live], split_joint(rollout.action[tick, environment])[live]
+            )
             if environment < ENVS // 2:
                 other = split_joint(rollout.action[tick, ENVS + environment])
             else:
@@ -144,7 +148,9 @@ def test_a_full_members_draws_go_to_the_members_with_room():
     member = torch.tensor([1] * 400 + [2] * 400 + [0] * 400)
     done = torch.zeros(member.shape[0], dtype=torch.bool)
     done[800:] = True
-    drawn = capacity_draws(probability, present, torch.tensor(400), member, done, generator, 4)[800:]
+    drawn = capacity_draws(probability, present, torch.tensor(400), member, done, generator, 4)[
+        800:
+    ]
     assert set(drawn.tolist()) <= {0, 3}
     share = (drawn == 0).float().mean()
     expected = probability[0] / (probability[0] + probability[3])
@@ -195,8 +201,10 @@ def test_tallies_decay_by_0_99_per_game_and_unplayed_reads_one_half():
     # Two games ending on one tick equal the two orders averaged; a RETIRED game counts nowhere.
     together = League(LearnConfig())
     together.record(
-        torch.tensor([1, 1, 0, RETIRED]), torch.tensor([True, True, False, True]),
-        torch.tensor([True, False, True, True]), torch.tensor([False, False, False, False]),
+        torch.tensor([1, 1, 0, RETIRED]),
+        torch.tensor([True, True, False, True]),
+        torch.tensor([True, False, True, True]),
+        torch.tensor([False, False, False, False]),
     )
     assert torch.isclose(together.games[1], torch.tensor(1.99))
     assert torch.isclose(together.wins[1], torch.tensor((1.0 + 0.99) / 2))
@@ -235,10 +243,23 @@ def test_routing_gives_each_environment_its_own_members_step():
     add_snapshots(league, members)  # the EMA joins with the first, its weights the last policy's
     by_member = {FIRST_SNAPSHOT + index: member for index, member in enumerate(members)}
     by_member[EMA] = members[-1]
-    chosen = torch.tensor([0, FIRST_SNAPSHOT, FIRST_SNAPSHOT + 1, FIRST_SNAPSHOT + 2, FIRST_SNAPSHOT, EMA, 0,
-                           FIRST_SNAPSHOT + 2])
+    chosen = torch.tensor(
+        [
+            0,
+            FIRST_SNAPSHOT,
+            FIRST_SNAPSHOT + 1,
+            FIRST_SNAPSHOT + 2,
+            FIRST_SNAPSHOT,
+            EMA,
+            0,
+            FIRST_SNAPSHOT + 2,
+        ]
+    )
     carry = dataclasses.replace(
-        carry, member=chosen, slot=league.member_slot[chosen], opponent=torch.randn_like(carry.opponent)
+        carry,
+        member=chosen,
+        slot=league.member_slot[chosen],
+        opponent=torch.randn_like(carry.opponent),
     )
     league.prepare(8, carry.slot)
     table = league.table
@@ -252,11 +273,15 @@ def test_routing_gives_each_environment_its_own_members_step():
     for row, member in enumerate(chosen.tolist()):
         if member == SCRIPTED:
             assert (action[row] == 1).all()
-            assert torch.equal(new_carry.select(SEAT_AXIS, row), carry.opponent.select(SEAT_AXIS, row))
+            assert torch.equal(
+                new_carry.select(SEAT_AXIS, row), carry.opponent.select(SEAT_AXIS, row)
+            )
             continue
         _, _, expected = by_member[member].step(view, carry.opponent, carry.position_offset[first:])
         # vmap runs the math attention kernel, the plain step the fused one: float32 rounding apart.
-        assert torch.allclose(new_carry.select(SEAT_AXIS, row), expected.select(SEAT_AXIS, row), atol=1e-4)
+        assert torch.allclose(
+            new_carry.select(SEAT_AXIS, row), expected.select(SEAT_AXIS, row), atol=1e-4
+        )
 
 
 def test_snapshot_members_run_in_collect_and_update():
@@ -283,8 +308,11 @@ def test_a_dropped_snapshot_finishes_its_running_games_with_its_old_weights():
     torch.manual_seed(1)
     old, new = model.Policy(model.ModelConfig()), model.Policy(model.ModelConfig())
     config, game_config, policy, opponent, state, carry, generator = small(
-        8, game_config=game.GameConfig(training_spawn=True, clock_ticks=12), league=True,
-        snapshot_members=1, recent_snapshots=1,
+        8,
+        game_config=game.GameConfig(training_spawn=True, clock_ticks=12),
+        league=True,
+        snapshot_members=1,
+        recent_snapshots=1,
     )
     league = opponent.league
     add_snapshots(league, [old])
@@ -311,7 +339,9 @@ def test_a_dropped_snapshot_finishes_its_running_games_with_its_old_weights():
     view = seat_view(views, torch.arange(4, 8), 1 - carry.learner_team[4:])
     _, _, expected = old.step(view, carry.opponent, carry.position_offset[4:])
     for row in (0, 2):
-        assert torch.allclose(new_carry.select(SEAT_AXIS, row), expected.select(SEAT_AXIS, row), atol=1e-4)
+        assert torch.allclose(
+            new_carry.select(SEAT_AXIS, row), expected.select(SEAT_AXIS, row), atol=1e-4
+        )
     # Not re-dealt: the games run on to the clock and end; then the slot is free.
     ticks = state.tick[4:][playing].clone()
     assert (ticks > 0).all()
@@ -344,14 +374,20 @@ def test_a_dropped_snapshot_finishes_its_running_games_with_its_old_weights():
 def test_without_a_free_slot_the_retiring_games_are_re_dealt():
     torch.manual_seed(2)
     config, game_config, policy, opponent, state, carry, generator = small(
-        8, league=True, snapshot_members=1, recent_snapshots=1, retiring_slots=0,
+        8,
+        league=True,
+        snapshot_members=1,
+        recent_snapshots=1,
+        retiring_slots=0,
     )
     league = opponent.league
     add_snapshots(league, [policy])
     chosen = torch.full((4,), FIRST_SNAPSHOT)
     carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
     step = league.schedule.steps[1]
-    member, lost = league.after_update(policy, WeightAverages(policy, config), step - 1, step, carry.member, carry.slot)
+    member, lost = league.after_update(
+        policy, WeightAverages(policy, config), step - 1, step, carry.member, carry.slot
+    )
     assert lost is not None and league.abandoned == 4
     carry = dataclasses.replace(carry, member=member)
     state, carry = abandon(config, game_config, policy, opponent, state, carry, lost, generator)
@@ -366,23 +402,37 @@ def test_the_averages_join_with_the_first_snapshot_and_follow_their_weights():
     policy = model.Policy(model.ModelConfig())
     averages = WeightAverages(policy, config)
     league = League(config)
-    league.after_update(policy, averages, 0, 1, torch.zeros(0, dtype=torch.long), torch.zeros(0, dtype=torch.long))
-    assert league.present.tolist()[:4] == [True, False, False, False]  # before the first snapshot: scripted only
+    league.after_update(
+        policy, averages, 0, 1, torch.zeros(0, dtype=torch.long), torch.zeros(0, dtype=torch.long)
+    )
+    assert league.present.tolist()[:4] == [
+        True,
+        False,
+        False,
+        False,
+    ]  # before the first snapshot: scripted only
     with torch.no_grad():
         for parameter in policy.parameters():
             parameter.add_(1.0)
     averages.update(policy, adam_steps=1)  # the uniform average now holds an update
     add_snapshots(league, [policy], averages=averages)
-    assert league.present[[SCRIPTED, EMA, UNIFORM, FIRST_SNAPSHOT]].all() and league.present_count() == 4
+    assert (
+        league.present[[SCRIPTED, EMA, UNIFORM, FIRST_SNAPSHOT]].all()
+        and league.present_count() == 4
+    )
     name, _ = next(iter(policy.named_parameters()))
     for member, which in ((EMA, "ema"), (UNIFORM, "uniform")):
         slot = int(league.member_slot[member])
-        assert torch.equal(league.slot_weights[slot][f"policy.{name}"], getattr(averages, which)[name])
+        assert torch.equal(
+            league.slot_weights[slot][f"policy.{name}"], getattr(averages, which)[name]
+        )
     with torch.no_grad():
         for parameter in policy.parameters():
             parameter.add_(1.0)
     averages.update(policy, adam_steps=2)
-    league.after_update(policy, averages, 1, 2, torch.zeros(0, dtype=torch.long), torch.zeros(0, dtype=torch.long))
+    league.after_update(
+        policy, averages, 1, 2, torch.zeros(0, dtype=torch.long), torch.zeros(0, dtype=torch.long)
+    )
     slot = int(league.member_slot[EMA])
     assert torch.equal(league.slot_weights[slot][f"policy.{name}"], averages.ema[name])
     assert league.snapshots == 1  # no snapshot was due
@@ -394,7 +444,9 @@ def test_the_averages_join_with_the_first_snapshot_and_follow_their_weights():
 def test_snapshot_steps_are_v2s_league_schedule():
     """v2's LEAGUE_SNAPSHOTS (src/bnb/runtime/snapshots.py): 5, 10, 15, 20, 25, 30, 40, 50, 60,
     75, 90, 110, 130 and 160M, then the last gap (30M)."""
-    schedule = SnapshotSchedule(LearnConfig().league_snapshot_steps, LearnConfig().league_snapshot_period)
+    schedule = SnapshotSchedule(
+        LearnConfig().league_snapshot_steps, LearnConfig().league_snapshot_period
+    )
     expected = [5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 90, 110, 130, 160, 190, 220, 250]
     assert schedule.points(250 * MILLION) == [step * MILLION for step in expected]
     # A league run at parity (1,048,576 steps an update) snapshots at the first update past each.
@@ -412,12 +464,15 @@ def test_snapshot_steps_are_v2s_league_schedule():
     assert league.snapshots == 10  # retention from the 11th (75M)
 
 
-@pytest.mark.parametrize(("taken", "ages"), [
-    (10, list(range(10))),
-    (11, list(range(9)) + [10]),
-    (26, list(range(9)) + [10, 25]),
-    (40, list(range(10)) + [39]),
-])
+@pytest.mark.parametrize(
+    ("taken", "ages"),
+    [
+        (10, list(range(10))),
+        (11, list(range(9)) + [10]),
+        (26, list(range(9)) + [10, 25]),
+        (40, list(range(10)) + [39]),
+    ],
+)
 def test_retention_is_v2s(taken, ages):
     """v2's bnb.league.pool.retained applied after each snapshot (ages from the newest; kept
     sets recorded from v2's function on 2026-11-23)."""

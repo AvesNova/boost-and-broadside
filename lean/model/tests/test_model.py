@@ -48,7 +48,9 @@ def make_obs(
         field_pos=(torch.rand(*lead, fields, 2, generator=generator) - 0.5) * 6000.0,
         visible=torch.rand(*lead, slots, generator=generator) < 0.7,
         since_seen=torch.rand(*lead, slots, generator=generator) * 2.0,
-        pending=torch.where(key_mask, torch.randint(0, 42, (*lead, slots), generator=generator), 42),
+        pending=torch.where(
+            key_mask, torch.randint(0, 42, (*lead, slots), generator=generator), 42
+        ),
     )
 
 
@@ -95,7 +97,13 @@ def test_sequence_equals_repeated_steps(rotate_values):
         assert torch.allclose(step_logits[live], logits[tick][live], atol=1e-4)
         assert torch.allclose(step_values[live], values[tick][live], atol=1e-4)
     assert torch.allclose(stepped, final, atol=1e-5)
-    assert next_state.shape == (ticks, envs, slots, policy.config.next_state_size, policy.config.bins)
+    assert next_state.shape == (
+        ticks,
+        envs,
+        slots,
+        policy.config.next_state_size,
+        policy.config.bins,
+    )
     assert hit.shape == (ticks, envs, slots, policy.config.hit_classes)
 
 
@@ -217,7 +225,9 @@ def test_attention_reads_only_relative_positions():
             return spatial(tokens, memory, mask, tuple(part[:, :, None, None, :] for part in parts))
 
     # float32 phases of positions of thousands of metres over a 64 m band
-    assert torch.allclose(outputs(torch.zeros(2)), outputs(torch.tensor([1234.5, -876.5])), atol=2e-3)
+    assert torch.allclose(
+        outputs(torch.zeros(2)), outputs(torch.tensor([1234.5, -876.5])), atol=2e-3
+    )
 
 
 def test_fields_head_towards_the_arena_centre():
@@ -227,7 +237,9 @@ def test_fields_head_towards_the_arena_centre():
     angle = torch.tensor([0.3, 2.0, -2.5])
     field_pos = 900.0 * torch.stack([angle.cos(), angle.sin()], -1)
     heading = field_heading(field_pos)
-    assert torch.allclose(torch.stack([heading.cos(), heading.sin()], -1), -field_pos / 900.0, atol=1e-6)
+    assert torch.allclose(
+        torch.stack([heading.cos(), heading.sin()], -1), -field_pos / 900.0, atol=1e-6
+    )
 
 
 def test_rotary_bands():
@@ -240,7 +252,9 @@ def test_rotary_bands():
 
     config = ModelConfig()
     periods = torch.tensor(config.rotary_periods, dtype=torch.float64)
-    assert periods[0] == 64.0 and torch.allclose(periods[1:] / periods[:-1], torch.tensor(2.0, dtype=torch.float64))
+    assert periods[0] == 64.0 and torch.allclose(
+        periods[1:] / periods[:-1], torch.tensor(2.0, dtype=torch.float64)
+    )
     assert periods[-2] <= 16800.0 < periods[-1]
     assert len(periods) == 10 and periods[-1] == 32768.0
     # Two ships closing head-on move 2 v h closer in a tick; a band aliases that motion
@@ -410,10 +424,9 @@ def training_batch(ticks=8, envs=4, slots=10, fields=5):
     config = ModelConfig()
     targets = SimpleNamespace(
         actions=torch.randint(0, 42, (ticks, envs, slots), generator=generator),
-        bins=torch.randint(
-            0, config.bins, (ticks, envs, slots, LEVELS), generator=generator
-        ),
-        next_state=torch.randn(ticks, envs, slots, config.next_state_size, generator=generator) * 0.1,
+        bins=torch.randint(0, config.bins, (ticks, envs, slots, LEVELS), generator=generator),
+        next_state=torch.randn(ticks, envs, slots, config.next_state_size, generator=generator)
+        * 0.1,
         hit=torch.randint(0, config.hit_classes, (ticks, envs, slots), generator=generator),
     )
     return obs, reset, targets
@@ -429,7 +442,9 @@ def training_loss(policy, obs, reset, targets, carry=None):
     value_loss = torch.nn.functional.cross_entropy(
         values[live].flatten(0, 1), targets.bins[live].flatten()
     )
-    next_loss = next_state_cross_entropy(policy.config, next_state[live], targets.next_state[live]).mean()
+    next_loss = next_state_cross_entropy(
+        policy.config, next_state[live], targets.next_state[live]
+    ).mean()
     hit_loss = torch.nn.functional.cross_entropy(hit[live], targets.hit[live])
     return policy_loss + value_loss + next_loss + hit_loss, policy_loss, final
 
@@ -576,7 +591,9 @@ def test_spatial_initialisation_is_recurrentgemmas_like_the_temporal():
     policy = Policy(ModelConfig())
     width, hidden, scale = 128, 512, 2.0 / 6.0
     for block in policy.blocks:
-        assert abs(block.temporal.output.weight.std().item() / math.sqrt(scale / width) - 1.0) < 0.05
+        assert (
+            abs(block.temporal.output.weight.std().item() / math.sqrt(scale / width) - 1.0) < 0.05
+        )
         for spatial in block.spatial:
             expected = (
                 (spatial.query_key_value_gate.weight, 1.0 / width),
@@ -631,21 +648,30 @@ def test_a_state_starting_from_zero_takes_its_first_input_unscaled():
     states, running = [], carry
     with torch.no_grad():
         for tick in range(ticks):
-            _, running = temporal(tokens[tick : tick + 1], running, fresh[tick : tick + 1], keep[tick : tick + 1])
+            _, running = temporal(
+                tokens[tick : tick + 1], running, fresh[tick : tick + 1], keep[tick : tick + 1]
+            )
             states.append(running[..., 0, :])
         _, whole = temporal(tokens, carry, fresh, keep)
 
         def bare_input(tick, environment, row):
-            """input_gate * convolved at a tick with no taps before it (its state starts from zero)."""
-            projected = temporal.recurrent_input(temporal.input_norm(tokens[tick, environment, row]))
+            """input_gate * convolved at a tick with no taps before it (its state starts from "
+            "zero)."""
+            projected = temporal.recurrent_input(
+                temporal.input_norm(tokens[tick, environment, row])
+            )
             convolved = temporal.convolution_weight[0] * projected + temporal.convolution_bias
             _, input_gate = torch.sigmoid(temporal.gates(convolved)).chunk(2, -1)
             return input_gate * convolved
 
         assert torch.allclose(states[1][0, 0], bare_input(1, 0, 0), atol=1e-6)  # after the reset
         assert torch.allclose(states[0][1, 2], bare_input(0, 1, 2), atol=1e-6)  # from a zero carry
-        assert torch.allclose(states[1][1, 1], bare_input(1, 1, 1), atol=1e-6)  # after the masked tick
-        assert not torch.allclose(states[0][0, 0], bare_input(0, 0, 0), atol=1e-3)  # a running state
+        assert torch.allclose(
+            states[1][1, 1], bare_input(1, 1, 1), atol=1e-6
+        )  # after the masked tick
+        assert not torch.allclose(
+            states[0][0, 0], bare_input(0, 0, 0), atol=1e-3
+        )  # a running state
     assert torch.allclose(whole, running, atol=1e-5)  # the 3-tick call reads the same starts
 
 
@@ -660,15 +686,27 @@ def hand_made_pair():
         return torch.tensor([[first, first if second is None else second]])
 
     state = SimpleNamespace(
-        x=pair(1000.0), y=pair(-500.0), heading_cos=pair(0.0), heading_sin=pair(1.0),
-        velocity_x=pair(0.0), velocity_y=pair(300.0), log_index=pair(math.log(1.5)),
-        nose_rate=pair(0.6), speed=pair(250.0), energy=pair(1000.0), shield=pair(50.0),
+        x=pair(1000.0),
+        y=pair(-500.0),
+        heading_cos=pair(0.0),
+        heading_sin=pair(1.0),
+        velocity_x=pair(0.0),
+        velocity_y=pair(300.0),
+        log_index=pair(math.log(1.5)),
+        nose_rate=pair(0.6),
+        speed=pair(250.0),
+        energy=pair(1000.0),
+        shield=pair(50.0),
     )
     turned = math.pi / 2.0 + 0.03
     next_state = SimpleNamespace(
-        x=pair(1000.0 - 0.15), y=pair(-500.0 + 200.0 * tick + 0.123),
-        heading_cos=pair(math.cos(turned)), heading_sin=pair(math.sin(turned)),
-        speed=pair(251.5), energy=pair(900.0), shield=pair(50.4, 29.0),
+        x=pair(1000.0 - 0.15),
+        y=pair(-500.0 + 200.0 * tick + 0.123),
+        heading_cos=pair(math.cos(turned)),
+        heading_sin=pair(math.sin(turned)),
+        speed=pair(251.5),
+        energy=pair(900.0),
+        shield=pair(50.4, 29.0),
     )
     step_out = SimpleNamespace(shield_restored=pair(0.4, 0.0))
     return state, next_state, step_out, tick
@@ -681,7 +719,9 @@ def test_next_state_targets_per_column_on_a_hand_made_pair():
     names = [column.name for column in config.next_state_columns]
     assert names == ["along", "across", "heading", "speed", "energy", "shield"]
     target = next_state_target(config, *hand_made_pair())[0]
-    expected = torch.tensor([[0.123, 0.15, 0.01, 1.5, -100.0, 0.0], [0.123, 0.15, 0.01, 1.5, -100.0, -21.0]])
+    expected = torch.tensor(
+        [[0.123, 0.15, 0.01, 1.5, -100.0, 0.0], [0.123, 0.15, 0.01, 1.5, -100.0, -21.0]]
+    )
     assert torch.allclose(target, expected, atol=1e-3)
     # By hand: linear bins (value - low) / (high - low) * 63, rounded: along 42.6, across
     # 39.4, heading 37.8, speed 47.3, energy 27.0; the shield in symlog space over
@@ -703,6 +743,8 @@ def test_next_state_loss_is_in_nats_per_column():
     best = next_state_cross_entropy(config, distribution.clamp_min(1e-30).log(), target)
     entropy = -(distribution * distribution.clamp_min(1e-30).log()).sum(-1)
     assert torch.allclose(best, entropy, atol=1e-5)
-    shifted = next_state_cross_entropy(config, distribution.roll(3, -1).clamp_min(1e-30).log(), target)
+    shifted = next_state_cross_entropy(
+        config, distribution.roll(3, -1).clamp_min(1e-30).log(), target
+    )
     assert (shifted > best + 1.0).all()
     assert next_state_centres(config).shape == (6, 64)

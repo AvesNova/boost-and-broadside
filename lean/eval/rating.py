@@ -43,8 +43,12 @@ def allocate(pairings: list[tuple[float, int]], games: int, step: int = 2) -> li
 
 
 def bradley_terry(
-    results: list[tuple[int, int, int, float]], agents: int, anchor: int = 0, anchor_elo: float = 1000.0,
-    prior_elo: float = 1000.0, iterations: int = 50,
+    results: list[tuple[int, int, int, float]],
+    agents: int,
+    anchor: int = 0,
+    anchor_elo: float = 1000.0,
+    prior_elo: float = 1000.0,
+    iterations: int = 50,
 ) -> tuple[list[float], list[float]]:
     """Elo ratings and their standard errors from pairings `results`: (agent A, agent B,
     games, A's score), agents numbered 0 .. agents - 1. P(A beats B) = sigmoid((r_A - r_B) /
@@ -52,7 +56,9 @@ def bradley_terry(
     0). A Gaussian prior of standard deviation `prior_elo` about the anchor keeps unbeaten or
     unconnected agents finite. Newton's method on the log-likelihood."""
     rating = torch.zeros(agents, dtype=torch.float64)
-    results = [row for row in results if row[0] != row[1]]  # self-play carries no rating information
+    results = [
+        row for row in results if row[0] != row[1]
+    ]  # self-play carries no rating information
     if not results or agents < 2:
         return [anchor_elo] * agents, [0.0] * agents
     first = torch.tensor([row[0] for row in results])
@@ -65,7 +71,11 @@ def bradley_terry(
     for _ in range(iterations):
         expected = torch.sigmoid(rating[first] - rating[second])
         residual = score - games * expected
-        gradient = torch.zeros(agents, dtype=torch.float64).index_add_(0, first, residual).index_add_(0, second, -residual)
+        gradient = (
+            torch.zeros(agents, dtype=torch.float64)
+            .index_add_(0, first, residual)
+            .index_add_(0, second, -residual)
+        )
         gradient -= precision * rating
         weight = games * expected * (1.0 - expected)
         hessian = torch.zeros(agents, agents, dtype=torch.float64)

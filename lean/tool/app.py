@@ -86,7 +86,7 @@ def saved_list():
     for path in sorted(SAVED.glob("*.json")):
         try:
             record = design.loaded_record(json.loads(path.read_text()))
-        except (OSError, ValueError, AttributeError):
+        except OSError, ValueError, AttributeError:
             continue
         if record is not None:
             saved.append(record)
@@ -136,12 +136,18 @@ def presets():
 
 
 def _error(error: Exception, request: DesignRequest) -> JSONResponse:
-    """422 with the message; for a solve that stopped early also `failure` (design.failure_report)."""
+    """422 with the message; for a solve that stopped early also `failure` "
+    "(design.failure_report)."""
     body = {"error": str(error)}
     if isinstance(error, tuning.SolveFailed):
         body["failure"] = design.failure_report(
-            error, request.preset, request.profile, units.system_of(request.units),
-            request.time_scale, sorted(request.values or {}))
+            error,
+            request.preset,
+            request.profile,
+            units.system_of(request.units),
+            request.time_scale,
+            sorted(request.values or {}),
+        )
         body["error"] = body["failure"]["message"]
     return JSONResponse(body, status_code=422)
 
@@ -161,8 +167,13 @@ def _answer(compute, request: DesignRequest, png: bool):
                 ),
                 media_type="image/png",
             )
-        return compute(request.preset, request.values, request.time_scale, fixed=request.fixed,
-                       profile=request.profile)
+        return compute(
+            request.preset,
+            request.values,
+            request.time_scale,
+            fixed=request.fixed,
+            profile=request.profile,
+        )
     except UNSOLVABLE as error:  # the inputs have no solution
         return _error(error, request)
 
@@ -204,15 +215,29 @@ async def solve(websocket: WebSocket):
         return
 
     def progress(step):
-        loop.call_soon_threadsafe(queue.put_nowait, dict(
-            type="progress", iteration=step.iteration, error=step.worst,
-            residuals=dict(zip(step.names, step.residuals)), step=step.step,
-            elapsed=step.elapsed, tolerance=step.tolerance))
+        loop.call_soon_threadsafe(
+            queue.put_nowait,
+            dict(
+                type="progress",
+                iteration=step.iteration,
+                error=step.worst,
+                residuals=dict(zip(step.names, step.residuals)),
+                step=step.step,
+                elapsed=step.elapsed,
+                tolerance=step.tolerance,
+            ),
+        )
 
     def work():
         try:
-            return design.solve(request.preset, request.values, request.fixed, request.profile,
-                                progress=progress, cancel=cancel)
+            return design.solve(
+                request.preset,
+                request.values,
+                request.fixed,
+                request.profile,
+                progress=progress,
+                cancel=cancel,
+            )
         except tuning.SolveCancelled:
             return None
         except UNSOLVABLE as error:
@@ -241,8 +266,13 @@ async def solve(websocket: WebSocket):
                 message = _error(result, request)
                 await websocket.send_json({"type": "failed", **json.loads(message.body)})
             else:
-                await websocket.send_json(dict(type="done", elapsed=loop.time() - began,
-                                               iterations=0 if result is None else result.iterations))
+                await websocket.send_json(
+                    dict(
+                        type="done",
+                        elapsed=loop.time() - began,
+                        iterations=0 if result is None else result.iterations,
+                    )
+                )
             return
     except WebSocketDisconnect:
         cancel.set()
@@ -284,7 +314,8 @@ def _receive(connection, process):
 async def sandbox(websocket: WebSocket):
     """The first message {preset, profile?, values, fixed?, time_scale, opponent, ticks?} starts
     a session; then {side, level, power, fire} (the held controls), {reset: true} and
-    {opponent: bool} go to the World, and every tick comes back as a frame (lean.tool.session.frame)."""
+    {opponent: bool} go to the World, and every tick comes back as a frame
+    (lean.tool.session.frame)."""
     await websocket.accept()
     process = None
     try:

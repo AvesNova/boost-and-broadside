@@ -34,7 +34,10 @@ class Ledger:
 
 def blank_ledger(envs: int, slots: int, device=None) -> Ledger:
     """No outstanding damage."""
-    return Ledger(ships=torch.zeros(envs, slots, slots, device=device), boundary=torch.zeros(envs, slots, device=device))
+    return Ledger(
+        ships=torch.zeros(envs, slots, slots, device=device),
+        boundary=torch.zeros(envs, slots, device=device),
+    )
 
 
 def clear_ledger(ledger: Ledger, chosen: Tensor) -> Ledger:
@@ -76,9 +79,14 @@ def tick_events(step_out, state) -> TickEvents:
     result = step_out.result
     win_loss = torch.stack([result == 0, result == 1], -1).to(total.dtype)
     return TickEvents(
-        raw=step_out.hit_damage, boundary=step_out.boundary_damage, shield_lost=lost,
-        shield_restored=step_out.shield_restored, died=step_out.died, done=step_out.done,
-        win_loss=win_loss, present=state.exists,
+        raw=step_out.hit_damage,
+        boundary=step_out.boundary_damage,
+        shield_lost=lost,
+        shield_restored=step_out.shield_restored,
+        died=step_out.died,
+        done=step_out.done,
+        win_loss=win_loss,
+        present=state.exists,
     )
 
 
@@ -98,12 +106,16 @@ def _enemies(team: Tensor) -> Tensor:
     return team[..., :, None] != team[..., None, :]
 
 
-def attribute_recharge(ledger: Tensor, recharge: Tensor, deficit: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+def attribute_recharge(
+    ledger: Tensor, recharge: Tensor, deficit: Tensor
+) -> tuple[Tensor, Tensor, Tensor]:
     """Recharge (..., N) attributed pro rata over the ledger's rows (..., rows, N), with the
     fraction min(recharge / deficit, 1). Returns (attributed (..., rows, N), unattributed
     (..., N), the ledger less the attributed)."""
     positive = deficit > 0.0
-    fraction = torch.where(positive, (recharge / torch.where(positive, deficit, 1.0)).clamp_max(1.0), 0.0)
+    fraction = torch.where(
+        positive, (recharge / torch.where(positive, deficit, 1.0)).clamp_max(1.0), 0.0
+    )
     attributed = ledger * fraction[..., None, :]
     return attributed, recharge - _column_total(attributed)[..., 0, :], ledger - attributed
 
@@ -147,7 +159,16 @@ def kill_death_reward(team, combat_death, boundary_death, raw, ledger, present) 
     return kill - death - ally_share.sum(-1) + unforced
 
 
-def damage_reward(team, combat_applied, boundary_applied, raw, recharge, recharge_attributed, unattributed, present) -> Tensor:
+def damage_reward(
+    team,
+    combat_applied,
+    boundary_applied,
+    raw,
+    recharge,
+    recharge_attributed,
+    unattributed,
+    present,
+) -> Tensor:
     """(..., N) in damage points: v2's taken, dealt, friendly fire, recharge, charge-back,
     refund and unforced events summed.
 
@@ -174,7 +195,9 @@ def damage_reward(team, combat_applied, boundary_applied, raw, recharge, recharg
     )
 
 
-def reward_step(config: LearnConfig, ledger: Ledger, events: TickEvents, team: Tensor) -> tuple[Tensor, Ledger]:
+def reward_step(
+    config: LearnConfig, ledger: Ledger, events: TickEvents, team: Tensor
+) -> tuple[Tensor, Ledger]:
     """Rewards of one tick, (E, N, LEVELS) float32 for every ship of both teams, weighted
     (damage per `damage_unit` points), and the ledger after the tick (v2's reward_step).
     A slot out of the match is rewarded nothing."""
@@ -195,16 +218,28 @@ def reward_step(config: LearnConfig, ledger: Ledger, events: TickEvents, team: T
     deficit = (_column_total(ships) + boundary_row)[..., 0, :]
     ship_attributed, unattributed, ships = attribute_recharge(ships, restored, deficit)
     _, _, boundary_row = attribute_recharge(boundary_row, restored, deficit)
-    damage = damage_reward(team, combat_applied, boundary_applied, raw, restored, ship_attributed, unattributed, present)
+    damage = damage_reward(
+        team,
+        combat_applied,
+        boundary_applied,
+        raw,
+        restored,
+        ship_attributed,
+        unattributed,
+        present,
+    )
     outcome = outcome_reward(team, events.win_loss, events.done)
 
     zero = torch.zeros_like(outcome)
     levels = (damage / config.damage_unit, kill_death, zero, zero, outcome)
-    reward = torch.stack([weight * level for weight, level in zip(config.reward_weights, levels, strict=True)], -1)
+    reward = torch.stack(
+        [weight * level for weight, level in zip(config.reward_weights, levels, strict=True)], -1
+    )
     reward = torch.where(present[..., None], reward, 0.0)
     # A death makes the damage done to the ship stick; a finished match starts afresh. A
     # ship's row (its claims on others) survives its own death.
     clear = died[..., None, :] | events.done[..., None, None]
     return reward, Ledger(
-        ships=torch.where(clear, 0.0, ships), boundary=torch.where(clear[..., 0, :], 0.0, boundary_row[..., 0, :])
+        ships=torch.where(clear, 0.0, ships),
+        boundary=torch.where(clear[..., 0, :], 0.0, boundary_row[..., 0, :]),
     )

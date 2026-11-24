@@ -36,19 +36,23 @@ from lean.scripted.parameters import from_vector, vector
 
 LEAN = Path(__file__).resolve().parent.parent
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, kind TEXT NOT NULL, description TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS conditions (id TEXT PRIMARY KEY, version TEXT NOT NULL, description TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, kind TEXT NOT NULL, description TEXT NOT
+NULL);
+CREATE TABLE IF NOT EXISTS conditions (id TEXT PRIMARY KEY, version TEXT NOT NULL, description TEXT
+NOT NULL);
 CREATE TABLE IF NOT EXISTS games (
     agent_a TEXT NOT NULL, agent_b TEXT NOT NULL, side INTEGER NOT NULL, conditions TEXT NOT NULL,
     result INTEGER NOT NULL, length INTEGER NOT NULL, {style_columns}
 );
 CREATE INDEX IF NOT EXISTS games_by_pairing ON games (conditions, agent_a, agent_b);
 CREATE VIEW IF NOT EXISTS counts AS
-    SELECT conditions, agent_a, agent_b, COUNT(*) AS games, SUM(result = 0) AS wins, SUM(result = 2) AS draws,
+    SELECT conditions, agent_a, agent_b, COUNT(*) AS games, SUM(result = 0) AS wins, SUM(result = 2)
+    AS draws,
            SUM(result = 1) AS losses, SUM(side = 0) AS as_team_zero, AVG(length) AS mean_length
     FROM games GROUP BY conditions, agent_a, agent_b;
 {style_view}
-CREATE TABLE IF NOT EXISTS sobol (name TEXT PRIMARY KEY, dimension INTEGER NOT NULL, seed INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS sobol (name TEXT PRIMARY KEY, dimension INTEGER NOT NULL, seed INTEGER
+NOT NULL,
                                   used INTEGER NOT NULL);
 """
 
@@ -58,23 +62,30 @@ STYLE_COLUMNS = tuple(f"{seat}_{name}" for seat in "ab" for name in MEASURES)
 def _style_view() -> str:
     """The `styles` view: per conditions and agent, the agent's games from both seats."""
     seats = " UNION ALL ".join(
-        f"SELECT conditions, agent_{seat} AS agent, " + ", ".join(f"{seat}_{name} AS {name}" for name in MEASURES)
+        f"SELECT conditions, agent_{seat} AS agent, "
+        + ", ".join(f"{seat}_{name} AS {name}" for name in MEASURES)
         + f" FROM games WHERE {seat}_minutes IS NOT NULL"
         for seat in "ab"
     )
-    weighted = ", ".join(f"SUM({name} * minutes) / SUM(minutes) AS {name}"
-                         for name in MEASURES if name not in ("minutes", "two_circle", "hits", "hit_range"))
+    weighted = ", ".join(
+        f"SUM({name} * minutes) / SUM(minutes) AS {name}"
+        for name in MEASURES
+        if name not in ("minutes", "two_circle", "hits", "hit_range")
+    )
     return (
         "CREATE VIEW IF NOT EXISTS styles AS SELECT conditions, agent, COUNT(*) AS games, "
         "SUM(minutes) AS minutes, " + weighted + ", "
-        "SUM(two_circle * turning * minutes) / SUM(CASE WHEN two_circle IS NOT NULL THEN turning * minutes END) "
-        "AS two_circle, SUM(hits) AS hits, SUM(hit_range * hits) / SUM(CASE WHEN hit_range IS NOT NULL THEN hits END) "
+        "SUM(two_circle * turning * minutes) / SUM(CASE WHEN two_circle IS NOT NULL THEN turning * "
+        "minutes END) "
+        "AS two_circle, SUM(hits) AS hits, SUM(hit_range * hits) / SUM(CASE WHEN hit_range IS NOT "
+        "NULL THEN hits END) "
         f"AS hit_range FROM ({seats}) GROUP BY conditions, agent;"
     )
 
 
-SCHEMA = SCHEMA.format(style_columns=", ".join(f"{column} REAL" for column in STYLE_COLUMNS),
-                       style_view=_style_view())
+SCHEMA = SCHEMA.format(
+    style_columns=", ".join(f"{column} REAL" for column in STYLE_COLUMNS), style_view=_style_view()
+)
 
 
 def short_hash(*parts) -> str:
@@ -85,7 +96,9 @@ def short_hash(*parts) -> str:
 def game_files() -> list[Path]:
     """The source that decides a game: lean/game (with tuning.py, which derives the card),
     lean/scripted (not their tests) and lean/contract.py."""
-    return sorted([*(LEAN / "game").glob("*.py"), *(LEAN / "scripted").glob("*.py"), LEAN / "contract.py"])
+    return sorted(
+        [*(LEAN / "game").glob("*.py"), *(LEAN / "scripted").glob("*.py"), LEAN / "contract.py"]
+    )
 
 
 def inference_files() -> list[Path]:
@@ -148,8 +161,12 @@ class NetworkAgent:
         return short_hash("network", file_hash(self.checkpoint), self.weights, inference_version())
 
     def description(self) -> dict:
-        return {"checkpoint": str(self.checkpoint), "weights": self.weights, "file_hash": file_hash(self.checkpoint),
-                "inference_version": inference_version()}
+        return {
+            "checkpoint": str(self.checkpoint),
+            "weights": self.weights,
+            "file_hash": file_hash(self.checkpoint),
+            "inference_version": inference_version(),
+        }
 
 
 @functools.cache
@@ -187,13 +204,16 @@ class Store:
         kind = "scripted" if isinstance(agent, ScriptedAgent) else "network"
         with self.connection:
             self.connection.execute(
-                "INSERT OR IGNORE INTO agents VALUES (?, ?, ?)", (agent.id, kind, json.dumps(agent.description()))
+                "INSERT OR IGNORE INTO agents VALUES (?, ?, ?)",
+                (agent.id, kind, json.dumps(agent.description())),
             )
         return agent.id
 
     def agent(self, agent_id: str):
         """The agent of an id (a ScriptedAgent or NetworkAgent), or None."""
-        row = self.connection.execute("SELECT kind, description FROM agents WHERE id = ?", (agent_id,)).fetchone()
+        row = self.connection.execute(
+            "SELECT kind, description FROM agents WHERE id = ?", (agent_id,)
+        ).fetchone()
         if row is None:
             return None
         description = json.loads(row[1])
@@ -205,20 +225,26 @@ class Store:
         identity, description = conditions_of(game_config, sizes)
         with self.connection:
             self.connection.execute(
-                "INSERT OR IGNORE INTO conditions VALUES (?, ?, ?)", (identity, game_version(), json.dumps(description))
+                "INSERT OR IGNORE INTO conditions VALUES (?, ?, ?)",
+                (identity, game_version(), json.dumps(description)),
             )
         return identity
 
-    def add_games(self, agent_a: str, agent_b: str, conditions: str, sides, results, lengths, styles=None) -> None:
+    def add_games(
+        self, agent_a: str, agent_b: str, conditions: str, sides, results, lengths, styles=None
+    ) -> None:
         """`styles`: per game a tuple of STYLE_COLUMNS' values (lean.eval.style.measures), or
         None (NULL style)."""
         styles = styles if styles is not None else [(None,) * len(STYLE_COLUMNS)] * len(sides)
-        rows = [(agent_a, agent_b, int(side), conditions, int(result), int(length), *style)
-                for side, result, length, style in zip(sides, results, lengths, styles, strict=True)]
+        rows = [
+            (agent_a, agent_b, int(side), conditions, int(result), int(length), *style)
+            for side, result, length, style in zip(sides, results, lengths, styles, strict=True)
+        ]
         names = ("agent_a", "agent_b", "side", "conditions", "result", "length", *STYLE_COLUMNS)
         with self.connection:
             self.connection.executemany(
-                f"INSERT INTO games ({', '.join(names)}) VALUES ({', '.join('?' * len(names))})", rows
+                f"INSERT INTO games ({', '.join(names)}) VALUES ({', '.join('?' * len(names))})",
+                rows,
             )
 
     def styles(self, conditions: str, agents=None) -> list[dict]:
@@ -233,8 +259,10 @@ class Store:
         """A's games against B under the conditions, from both orientations: games, wins,
         draws, losses (A's) and A's games as team 0."""
         total = {"games": 0, "wins": 0, "draws": 0, "losses": 0, "as_team_zero": 0}
-        query = ("SELECT games, wins, draws, losses, as_team_zero FROM counts "
-                 "WHERE conditions = ? AND agent_a = ? AND agent_b = ?")
+        query = (
+            "SELECT games, wins, draws, losses, as_team_zero FROM counts "
+            "WHERE conditions = ? AND agent_a = ? AND agent_b = ?"
+        )
         row = self.connection.execute(query, (conditions, agent_a, agent_b)).fetchone()
         if row is not None:
             for key, value in zip(total, row, strict=True):
@@ -254,7 +282,8 @@ class Store:
         """(agent A, agent B, games, A's score: wins plus half the draws) of every stored
         orientation under the conditions."""
         return self.connection.execute(
-            "SELECT agent_a, agent_b, games, wins + 0.5 * draws FROM counts WHERE conditions = ?", (conditions,)
+            "SELECT agent_a, agent_b, games, wins + 0.5 * draws FROM counts WHERE conditions = ?",
+            (conditions,),
         ).fetchall()
 
     def total_games(self) -> int:
@@ -268,7 +297,9 @@ class SobolStream:
 
     def __init__(self, store: Store, name: str, dimension: int, seed: int = 0):
         connection = store.connection
-        row = connection.execute("SELECT dimension, seed FROM sobol WHERE name = ?", (name,)).fetchone()
+        row = connection.execute(
+            "SELECT dimension, seed FROM sobol WHERE name = ?", (name,)
+        ).fetchone()
         if row is None:
             with connection:
                 connection.execute("INSERT INTO sobol VALUES (?, ?, ?, 0)", (name, dimension, seed))
@@ -280,7 +311,9 @@ class SobolStream:
 
     @property
     def used(self) -> int:
-        return self.store.connection.execute("SELECT used FROM sobol WHERE name = ?", (self.name,)).fetchone()[0]
+        return self.store.connection.execute(
+            "SELECT used FROM sobol WHERE name = ?", (self.name,)
+        ).fetchone()[0]
 
     def next(self, count: int) -> torch.Tensor:
         """The next `count` points, (count, dimension) float64 in [0, 1)."""
@@ -289,5 +322,7 @@ class SobolStream:
         engine.fast_forward(used)
         points = engine.draw(count, dtype=torch.float64)
         with self.store.connection:
-            self.store.connection.execute("UPDATE sobol SET used = ? WHERE name = ?", (used + count, self.name))
+            self.store.connection.execute(
+                "UPDATE sobol SET used = ? WHERE name = ?", (used + count, self.name)
+            )
         return points

@@ -37,8 +37,12 @@ QUADRANTS = [
     ("head-on: merge", ship(400.0, heading=math.pi), True, False),
     ("he is on my six: defensive", ship(-400.0), False, False),
     ("flying apart after the pass: turning", ship(-400.0, heading=math.pi), False, True),
-    ("beam, he crosses ahead left to right, nose away: offensive",
-     ship(300.0, 200.0, heading=0.3), True, True),
+    (
+        "beam, he crosses ahead left to right, nose away: offensive",
+        ship(300.0, 200.0, heading=0.3),
+        True,
+        True,
+    ),
 ]
 
 

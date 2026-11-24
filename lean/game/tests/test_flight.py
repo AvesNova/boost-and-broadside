@@ -165,7 +165,9 @@ def test_firing_costs_speed_and_no_store():
     before = state.energy.clone()
     action = torch.tensor([[[0, 0, 1], [0, 0, 0]]])
     noise = core.draw_noise(CONFIG, 1, 2, generator, torch.device("cpu"))
-    after, _ = core.step(CONFIG, state.replace(pending=action), action, noise)  # pending: applied now
+    after, _ = core.step(
+        CONFIG, state.replace(pending=action), action, noise
+    )  # pending: applied now
     assert bool(after.fired[0, 0])
     assert torch.allclose(after.energy[0, 0], before[0, 0], rtol=1e-6)
 
@@ -202,10 +204,14 @@ def test_tightest_turn_clearly_slower_than_best_rate_then_corner():
     for name in card.TYPE_NAMES:
         p = tuning.performance(tuning.row_of(name))
         assert p["min_radius_speed"] <= 0.9 * p["sustained_speed"], (
-            name, p["min_radius_speed"], p["sustained_speed"]
+            name,
+            p["min_radius_speed"],
+            p["sustained_speed"],
         )
         assert p["sustained_speed"] < p["corner_speed_flown"], (
-            name, p["sustained_speed"], p["corner_speed_flown"]
+            name,
+            p["sustained_speed"],
+            p["corner_speed_flown"],
         )
 
 
@@ -217,7 +223,9 @@ def double_constants(ship_type=P51D, row=None):
     else:
         with tuning._with_row(row) as index:
             c = core.per_type_constants(CONFIG, torch.tensor([index]))
-    return SimpleNamespace(**{k: v.double() if v.is_floating_point() else v for k, v in vars(c).items()})
+    return SimpleNamespace(
+        **{k: v.double() if v.is_floating_point() else v for k, v in vars(c).items()}
+    )
 
 
 def test_turn_rate_never_falls_with_speed_below_corner():
@@ -238,7 +246,9 @@ def test_turn_rate_never_falls_with_speed_below_corner():
             rate = core.quasi_steady(c, speeds, sticks, COAST, c.spawn_energy)[0][:peak]
             fall = rate[:-1] - rate[1:]
             assert float(fall.max()) <= 1e-12 * float(rate.max()), (
-                name, stick, float(speeds[int(fall.argmax())])
+                name,
+                stick,
+                float(speeds[int(fall.argmax())]),
             )
 
 
@@ -246,8 +256,11 @@ def full_stick_lateral(c, speeds, stick=None):
     """The lateral acceleration `_setting` gives coasting at the spawn store (float64)."""
     stick = torch.ones_like(speeds) if stick is None else stick
     control = SimpleNamespace(
-        thrust_scale=1.0, stick_size=stick, stick_sign=torch.ones_like(speeds),
-        commanded=c.commanded_table[..., COAST], demand=c.demand_table[..., COAST],
+        thrust_scale=1.0,
+        stick_size=stick,
+        stick_sign=torch.ones_like(speeds),
+        commanded=c.commanded_table[..., COAST],
+        demand=c.demand_table[..., COAST],
     )
     return core._setting(c, control, speeds, c.spawn_energy)[0]
 
@@ -318,7 +331,9 @@ def test_the_turn_has_precedence_over_the_climb():
         energy = torch.full((1, 1), 0.5 * c.max_energy)
         laterals, exchanges = {}, {}
         for name, power, stick, speed in (
-            ("coast", COAST, 1.0, slow), ("climb", CLIMB, 1.0, slow), ("straight", CLIMB, 0.0, 2.0 * slow)
+            ("coast", COAST, 1.0, slow),
+            ("climb", CLIMB, 1.0, slow),
+            ("straight", CLIMB, 0.0, 2.0 * slow),
         ):
             control = SimpleNamespace(
                 thrust_scale=1.0,

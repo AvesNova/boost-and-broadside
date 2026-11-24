@@ -11,7 +11,8 @@ Where. The large records (the observation's per-tick fields, actions, old
 log-probabilities, stored values, rewards, next-state targets) and the initial carries are
 in pinned host memory on a GPU. The masks and labels the update counts and indexes on the
 device (`RESIDENT`: own, done, reset, next_valid, hit_label, deal_row), the per-view
-bootstrap values (only the last segment's are read), and the update's advantages and value targets stay on the device. The
+bootstrap values (only the last segment's are read), and the update's advantages and value targets
+stay on the device. The
 observation fields constant within an episode (`EPISODE_CONSTANT`: the fields, their
 positions) and the position offset are stored once per deal in a table on the
 device (rows per segment: the environments as the segment starts, then the segment's
@@ -20,7 +21,8 @@ deals); each tick records only the seat's row (`deal_row`).
 Compact types (author 2026-11-23). `stored` narrows a record as it is written: positions,
 headings and the PPO numbers (`FLOAT32`) stay float32; every other float is float16; joint
 actions (the observation's pending actions too) and hit labels are int8 (signed: the -1
-sentinel stays); the deal row int32; masks stay bool. `widened` casts back on the device after the copy (floats to float32, integers
+sentinel stays); the deal row int32; masks stay bool. `widened` casts back on the device after the
+copy (floats to float32, integers
 to long), before anything reaches the model, so the position code and the rotary angles are
 computed from float32 positions. The deal table keeps the game's float32 (it is small).
 
@@ -61,7 +63,9 @@ from lean.contract import EPISODE_CONSTANT, SEAT_AXIS, Obs
 RESIDENT = ("own", "done", "reset", "next_valid", "hit_label", "deal_row")
 # Floats kept in float32: positions and headings (the position code and the rotary angles
 # read them) and the PPO numbers.
-FLOAT32 = frozenset(("pos", "heading", "field_pos", "position_offset", "log_probability", "value", "reward"))
+FLOAT32 = frozenset(
+    ("pos", "heading", "field_pos", "position_offset", "log_probability", "value", "reward")
+)
 # Small integers stored as int8: joint actions (< 42; the observation's pending action, up to
 # 42 for none) and hit labels (-1 to 2). The teacher's distribution is float16.
 INT8 = frozenset(("action", "pending", "hit_label"))
@@ -100,9 +104,13 @@ class RolloutStore:
         self.carry: Tensor | None = None  # initial carries (V + 1, ...), host or device
         self.ticks = 0
         # The observation's fields stored per tick (the rest are in the deal table).
-        self.observation_names = tuple(field.name for field in dataclasses.fields(Obs) if field.name not in EPISODE_CONSTANT)
+        self.observation_names = tuple(
+            field.name for field in dataclasses.fields(Obs) if field.name not in EPISODE_CONSTANT
+        )
         self._staging: dict = {}
-        self.centres: Tensor | None = None  # the critic's support the stored values were decoded with
+        self.centres: Tensor | None = (
+            None  # the critic's support the stored values were decoded with
+        )
         # Measurement only (`timing` True): the host's seconds waiting for copies and gathering
         # micro-batches, and per micro-batch a pair of CUDA events around the compute stream's
         # wait for its copy (read by `stalls`).
@@ -123,7 +131,9 @@ class RolloutStore:
         carry = initial_carry.movedim(SEAT_AXIS, 0)
         self.carry = self._zeros((self.views + 1,) + carry.shape[1:], carry.dtype, self.pinned)
         self.constants = {
-            name: torch.zeros((self.segments * self.rows,) + rows.shape[1:], dtype=rows.dtype, device=self.device)
+            name: torch.zeros(
+                (self.segments * self.rows,) + rows.shape[1:], dtype=rows.dtype, device=self.device
+            )
             for name, rows in table.items()
         }
         self.data, self.resident, self._staging = {}, {}, {}
@@ -162,17 +172,25 @@ class RolloutStore:
                 destination.copy_(source, non_blocking=True)
                 source.record_stream(self.copy_stream)
 
-    def begin_segment(self, segment: int, ticks: int, initial_carry: Tensor, table: dict[str, Tensor]) -> None:
+    def begin_segment(
+        self, segment: int, ticks: int, initial_carry: Tensor, table: dict[str, Tensor]
+    ) -> None:
         """Start segment `segment` (from 0): the live policy's carry before its first tick
         (seats on carry_axis) and the segment's deal table {name: (rows, ...)}
         (EPISODE_CONSTANT fields and "position_offset"; row r < E is environment r as the
         segment starts, then the segment's deals)."""
-        if self.carry is None or initial_carry.shape[SEAT_AXIS] != self.seats or ticks != self.ticks:
+        if (
+            self.carry is None
+            or initial_carry.shape[SEAT_AXIS] != self.seats
+            or ticks != self.ticks
+        ):
             self._size(initial_carry, table, ticks)
         rows = slice(segment * self.rows, (segment + 1) * self.rows)
         for name, values in table.items():
             self.constants[name][rows] = values
-        self._copy([(self.carry[self._columns(segment)], initial_carry.movedim(SEAT_AXIS, 0).contiguous())])
+        self._copy(
+            [(self.carry[self._columns(segment)], initial_carry.movedim(SEAT_AXIS, 0).contiguous())]
+        )
 
     def write_tick(self, segment: int, tick: int, records: dict) -> None:
         """One tick's records, each (S, ...): "observation" (an Obs), "deal_row" (S,) the
@@ -181,7 +199,11 @@ class RolloutStore:
         columns = self._columns(segment)
         observation = records["observation"]
         items = {name: getattr(observation, name) for name in self.observation_names}
-        items.update((name, value) for name, value in records.items() if name not in ("observation", "position_offset"))
+        items.update(
+            (name, value)
+            for name, value in records.items()
+            if name not in ("observation", "position_offset")
+        )
         items["deal_row"] = records["deal_row"] + segment * self.rows
         pairs = []
         for name, value in items.items():
@@ -192,17 +214,27 @@ class RolloutStore:
                 self.resident[name][tick, columns] = value
                 continue
             if name not in self.data:
-                self.data[name] = self._zeros((self.ticks, self.views + 1) + value.shape[1:], value.dtype, self.pinned)
+                self.data[name] = self._zeros(
+                    (self.ticks, self.views + 1) + value.shape[1:], value.dtype, self.pinned
+                )
             pairs.append((self.data[name][tick, columns], value))
         self._copy(pairs)
 
     def _resident(self, name: str, shape: tuple, dtype) -> Tensor:
-        """A RESIDENT record, filled so that the spare view owns, ends, resets and labels nothing."""
-        empty = torch.zeros((self.ticks, self.views + 1) + tuple(shape), dtype=dtype, device=self.device)
+        """A RESIDENT record, filled so that the spare view owns, ends, resets and labels "
+        "nothing."""
+        empty = torch.zeros(
+            (self.ticks, self.views + 1) + tuple(shape), dtype=dtype, device=self.device
+        )
         return empty.fill_(-1) if name == "hit_label" else empty
 
     def end_segment(
-        self, segment: int, hit_label: Tensor, bootstrap: Tensor, centres: Tensor, previous_hit_label: Tensor | None = None
+        self,
+        segment: int,
+        hit_label: Tensor,
+        bootstrap: Tensor,
+        centres: Tensor,
+        previous_hit_label: Tensor | None = None,
     ) -> None:
         """Close segment `segment`: its hit labels (T, S, N) (known only once the bullets have
         ended), the bootstrap values (S, N, LEVELS) and the critic's support (LEVELS, BINS).
@@ -211,11 +243,15 @@ class RolloutStore:
         most one of the two labels a row; the other is -1)."""
         columns = self._columns(segment)
         if self.bootstrap is None or self.bootstrap.shape[1:] != bootstrap.shape[1:]:
-            self.bootstrap = torch.zeros((self.views + 1,) + bootstrap.shape[1:], device=self.device)
+            self.bootstrap = torch.zeros(
+                (self.views + 1,) + bootstrap.shape[1:], device=self.device
+            )
         self.bootstrap[columns] = bootstrap
         self.centres = centres
         if "hit_label" not in self.resident:
-            self.resident["hit_label"] = self._resident("hit_label", hit_label.shape[2:], torch.int8)
+            self.resident["hit_label"] = self._resident(
+                "hit_label", hit_label.shape[2:], torch.int8
+            )
         self.resident["hit_label"][:, columns] = stored("hit_label", hit_label)
         if previous_hit_label is not None and segment > 0:
             earlier = self.resident["hit_label"][:, self._columns(segment - 1)]
@@ -255,16 +291,20 @@ class RolloutStore:
         """(V + 1, 3) float per view: own tokens, next_valid tokens, labelled own tokens."""
         own = self.resident["own"]
         labelled = own & (self.resident["hit_label"] >= 0)
-        return torch.stack([own.sum((0, 2)), self.resident["next_valid"].sum((0, 2)), labelled.sum((0, 2))], 1).float()
+        return torch.stack(
+            [own.sum((0, 2)), self.resident["next_valid"].sum((0, 2)), labelled.sum((0, 2))], 1
+        ).float()
 
-    def batch_index(self, order: Tensor, size: int, minibatches: int = 1) -> tuple[Tensor, list[int]]:
+    def batch_index(
+        self, order: Tensor, size: int, minibatches: int = 1
+    ) -> tuple[Tensor, list[int]]:
         """Micro-batches of views: `order` (V,) split into `minibatches` near-equal parts, each
         into micro-batches of `size` views with the last padded by the spare view. Returns
         the index (M, size) long on the host and each micro-batch's minibatch."""
         rows, owners = [], []
         for part, views in enumerate(torch.tensor_split(order, min(minibatches, order.numel()))):
             for start in range(0, views.numel(), size):
-                chunk = views[start:start + size]
+                chunk = views[start : start + size]
                 rows.append(torch.cat([chunk, chunk.new_full((size - chunk.numel(),), self.views)]))
                 owners.append(part)
         return torch.stack(rows), owners
@@ -280,7 +320,9 @@ class RolloutStore:
         for start in range(0, self.seats, per_row):
             chosen = torch.arange(start, min(start + per_row, self.seats))
             columns = torch.arange(self.segments)[:, None] * self.seats + chosen[None, :]
-            padding = torch.full((self.segments, per_row - chosen.numel()), self.views, dtype=torch.long)
+            padding = torch.full(
+                (self.segments, per_row - chosen.numel()), self.views, dtype=torch.long
+            )
             rows.append(torch.cat([columns, padding], 1).flatten())
         return torch.stack(rows)
 
@@ -290,7 +332,11 @@ class RolloutStore:
         has it) and "views" (B,). A yielded dict is valid until the next one is asked for.
         From pinned memory the next micro-batch is gathered and copied while the caller
         computes on this one."""
-        index_device = index.pin_memory().to(self.device, non_blocking=True) if self.device.type == "cuda" else index
+        index_device = (
+            index.pin_memory().to(self.device, non_blocking=True)
+            if self.device.type == "cuda"
+            else index
+        )
         large = tuple(name for name in names if name in self.data)
         small = tuple(name for name in names if name in self.resident)
 
@@ -334,7 +380,10 @@ class RolloutStore:
         for row in range(index.shape[0]):
             slot = slots[row % 2]
             if self.timing:
-                before, after = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+                before, after = (
+                    torch.cuda.Event(enable_timing=True),
+                    torch.cuda.Event(enable_timing=True),
+                )
                 before.record(compute)
             compute.wait_event(slot["copied"])
             if self.timing:
@@ -353,13 +402,19 @@ class RolloutStore:
             sources = {name: (self.data[name], 1) for name in names} | {"carry": (self.carry, 0)}
 
             def shape(stored: Tensor, axis: int) -> tuple:
-                return stored.shape[:axis] + (size,) + stored.shape[axis + 1:]
+                return stored.shape[:axis] + (size,) + stored.shape[axis + 1 :]
 
             slots = []
             for _ in range(2):
                 slot = {
-                    "staging": {name: torch.empty(shape(t, axis), dtype=t.dtype, pin_memory=True) for name, (t, axis) in sources.items()},
-                    "device": {name: torch.empty(shape(t, axis), dtype=t.dtype, device=self.device) for name, (t, axis) in sources.items()},
+                    "staging": {
+                        name: torch.empty(shape(t, axis), dtype=t.dtype, pin_memory=True)
+                        for name, (t, axis) in sources.items()
+                    },
+                    "device": {
+                        name: torch.empty(shape(t, axis), dtype=t.dtype, device=self.device)
+                        for name, (t, axis) in sources.items()
+                    },
                     "copied": torch.cuda.Event(),
                     "released": torch.cuda.Event(),
                 }
@@ -386,7 +441,11 @@ class RolloutStore:
         """The update's advantages (T, V + 1, N) and value targets (T, V + 1, N, LEVELS) on the
         device, allocated once."""
         own = self.resident["own"]
-        if self.advantage is None or self.advantage.shape != own.shape or self.target.shape[-1] != levels:
+        if (
+            self.advantage is None
+            or self.advantage.shape != own.shape
+            or self.target.shape[-1] != levels
+        ):
             self.advantage = torch.zeros(own.shape, device=self.device)
             self.target = torch.zeros(own.shape + (levels,), device=self.device)
         return self.advantage, self.target
@@ -394,4 +453,6 @@ class RolloutStore:
 
 def _tick(observation: Obs, tick: int) -> Obs:
     """One tick of a stacked observation."""
-    return Obs(**{field.name: getattr(observation, field.name)[tick] for field in dataclasses.fields(Obs)})
+    return Obs(
+        **{field.name: getattr(observation, field.name)[tick] for field in dataclasses.fields(Obs)}
+    )

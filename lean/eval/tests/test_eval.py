@@ -56,7 +56,9 @@ def test_crossover_plays_every_size_in_rounds_of_batched_matches():
     ratios = {n: entry["ratio"] for n, entry in report["sizes"].items()}
     again = crossover(far, [2, 4, 8], 10, start_ratio=ratios)
     assert again["rounds"] == 1
-    assert [again["sizes"][n]["beats_up_to"] for n in (2, 4, 8)] == [report["sizes"][n]["beats_up_to"] for n in (2, 4, 8)]
+    assert [again["sizes"][n]["beats_up_to"] for n in (2, 4, 8)] == [
+        report["sizes"][n]["beats_up_to"] for n in (2, 4, 8)
+    ]
     losing = crossover(stand_in(lambda n, s, g: 0), [4], 10, start_ratio={4: 0.0})
     assert losing["rounds"] == 1 and losing["sizes"][4]["beats_up_to"] == 0
 
@@ -72,10 +74,14 @@ def test_full_rows_at_the_defaults_decide_as_the_yardstick():
     agent = torch.zeros(state.exists.shape, dtype=torch.long)
     rows = rows_of(table, agent)
     assert set(rows) == set(PARAMETERS)
-    _, _, yardstick = scripted.decide(scripted.ScriptedConfig(), state, None, None, uniforms, memory)
+    _, _, yardstick = scripted.decide(
+        scripted.ScriptedConfig(), state, None, None, uniforms, memory
+    )
     _, _, full = scripted.decide(scripted.ScriptedConfig(), state, None, rows, uniforms, memory)
     for name in ("stick", "power", "fire"):
-        torch.testing.assert_close(getattr(full, name), getattr(yardstick, name), atol=1e-5, rtol=1e-5)
+        torch.testing.assert_close(
+            getattr(full, name), getattr(yardstick, name), atol=1e-5, rtol=1e-5
+        )
 
 
 def queue_of(games: int, size: int = 2) -> Queue:
@@ -84,7 +90,12 @@ def queue_of(games: int, size: int = 2) -> Queue:
 
 
 def test_runner_rolls_through_the_queue_and_plays_every_game_whole():
-    table = torch.tensor([vector(scripted.ScriptedConfig()), vector(scripted.ScriptedConfig().replace(fight_speed=1.3))])
+    table = torch.tensor(
+        [
+            vector(scripted.ScriptedConfig()),
+            vector(scripted.ScriptedConfig().replace(fight_speed=1.3)),
+        ]
+    )
     outcome = play(GAME, queue_of(24), table, envs=8, segment=8)
     assert (outcome.result >= 0).all()  # 24 games on 8 slots: every slot took several
     assert ((outcome.length > 0) & (outcome.length <= 20)).all()
@@ -93,8 +104,14 @@ def test_runner_rolls_through_the_queue_and_plays_every_game_whole():
 def test_the_drain_counts_every_started_game_and_none_after_the_cutoff():
     # A cutoff at the first segment's end: the played games are a prefix of the queue, each
     # finished (a length), and the rest are not played.
-    outcome = play(GAME, queue_of(40), torch.tensor([vector(scripted.ScriptedConfig())] * 2), envs=8, segment=8,
-                   seconds=0.0)
+    outcome = play(
+        GAME,
+        queue_of(40),
+        torch.tensor([vector(scripted.ScriptedConfig())] * 2),
+        envs=8,
+        segment=8,
+        seconds=0.0,
+    )
     played = outcome.result != NOT_PLAYED
     count = int(played.sum())
     assert 8 <= count < 40
@@ -105,14 +122,24 @@ def test_the_drain_counts_every_started_game_and_none_after_the_cutoff():
 def test_runner_seats_a_network():
     torch.manual_seed(0)
     policy = model.Policy(model.ModelConfig()).eval()
-    outcome = play(GAME, queue_of(6, 1), torch.tensor([vector(scripted.ScriptedConfig())] * 2), policy, envs=4, segment=8)
+    outcome = play(
+        GAME,
+        queue_of(6, 1),
+        torch.tensor([vector(scripted.ScriptedConfig())] * 2),
+        policy,
+        envs=4,
+        segment=8,
+    )
     assert set(outcome.result.tolist()) <= {A_WON, 1, DRAW}
 
 
 def test_store_reuses_games_and_keeps_conditions_apart(tmp_path, monkeypatch):
     store = Store(tmp_path / "games.sqlite")
     evaluator = Evaluator(store, GAME, device="cpu", envs=8, segment=8)
-    yardstick, other = ScriptedAgent.of(), ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.3))
+    yardstick, other = (
+        ScriptedAgent.of(),
+        ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.3)),
+    )
     first = evaluator.ensure([(yardstick, other, (2, 2), 10)])[0]
     assert first["games"] == 10 and first["wins"] + first["draws"] + first["losses"] == 10
     assert first["as_team_zero"] == 5  # sides alternated
@@ -123,10 +150,18 @@ def test_store_reuses_games_and_keeps_conditions_apart(tmp_path, monkeypatch):
     flipped = evaluator.counts(other, yardstick, (2, 2))
     assert (flipped["wins"], flipped["losses"]) == (first["losses"], first["wins"])
     # More games: only the missing ones.
-    assert evaluator.ensure([(yardstick, other, (2, 2), 14)])[0]["games"] == 14 and store.total_games() == total + 4
+    assert (
+        evaluator.ensure([(yardstick, other, (2, 2), 14)])[0]["games"] == 14
+        and store.total_games() == total + 4
+    )
     # Other sizes, another game config or another game version: other conditions.
     assert evaluator.counts(yardstick, other, (2, 3))["games"] == 0
-    assert Evaluator(store, game.GameConfig(clock_ticks=21), device="cpu").counts(yardstick, other, (2, 2))["games"] == 0
+    assert (
+        Evaluator(store, game.GameConfig(clock_ticks=21), device="cpu").counts(
+            yardstick, other, (2, 2)
+        )["games"]
+        == 0
+    )
     identity, _ = conditions_of(GAME, (2, 2))
     monkeypatch.setattr(store_module, "game_version", lambda: "another")
     assert conditions_of(GAME, (2, 2))[0] != identity
@@ -138,7 +173,9 @@ def test_store_reuses_games_and_keeps_conditions_apart(tmp_path, monkeypatch):
 
 def test_agent_ids(tmp_path):
     assert ScriptedAgent.of().id == ScriptedAgent.of(scripted.ScriptedConfig()).id
-    assert ScriptedAgent.of().id != ScriptedAgent.of(scripted.ScriptedConfig().replace(turn=0.003)).id
+    assert (
+        ScriptedAgent.of().id != ScriptedAgent.of(scripted.ScriptedConfig().replace(turn=0.003)).id
+    )
     path = tmp_path / "a.pt"
     path.write_bytes(b"one")
     assert NetworkAgent(str(path), "ema").id != NetworkAgent(str(path), "live").id
@@ -177,7 +214,10 @@ def test_adaptive_allocation_spreads_over_pairings_without_games(tmp_path, monke
     from its wins and draws, not the rate times the games. Five new pairings share a round
     evenly."""
     evaluator = Evaluator(Store(tmp_path / "s.sqlite"), GAME, device="cpu", envs=8)
-    agents = [ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.0 + 0.1 * index)) for index in range(6)]
+    agents = [
+        ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.0 + 0.1 * index))
+        for index in range(6)
+    ]
     pairings = [(agents[0], agent, (2, 2)) for agent in agents[1:]]
     asked = []
     monkeypatch.setattr(evaluator, "ensure", lambda requests: asked.extend(requests))
@@ -229,7 +269,9 @@ def test_versions_cover_what_decides_a_game_and_how_a_network_acts(tmp_path, mon
     names = {str(path.relative_to(store_module.LEAN)) for path in store_module.game_files()}
     assert {"game/core.py", "game/card.py", "scripted/opponent.py", "contract.py"} <= names
     assert "game/tuning.py" in names and not any("tests" in name for name in names)
-    inference = {str(path.relative_to(store_module.LEAN)) for path in store_module.inference_files()}
+    inference = {
+        str(path.relative_to(store_module.LEAN)) for path in store_module.inference_files()
+    }
     assert {"model/policy.py", "model/agent.py", "eval/runner.py"} <= inference
     path = tmp_path / "a.pt"
     path.write_bytes(b"one")

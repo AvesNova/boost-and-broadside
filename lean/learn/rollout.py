@@ -80,8 +80,12 @@ class NextEpisodes:
     """
 
     state: object  # a game deal of P environments at the state's N (lean.game.deal)
-    persona: dict | None  # the scripted agent's per-ship parameters, leading P (None: the yardstick)
-    scripted_memory: dict  # the scripted agent's memory at a match's start (lean.scripted.fresh_memory)
+    persona: (
+        dict | None
+    )  # the scripted agent's per-ship parameters, leading P (None: the yardstick)
+    scripted_memory: (
+        dict  # the scripted agent's memory at a match's start (lean.scripted.fresh_memory)
+    )
     learner_team: Tensor  # (P,) long
     position_offset: Tensor  # (P, 2)
     taken: Tensor  # () long
@@ -101,9 +105,12 @@ class CollectCarry:
     # (L,) long, the league member each league environment plays this episode (pool.RETIRED:
     # one that has left the league, its game finishing in a retiring slot, not tallied).
     member: Tensor
-    slot: Tensor  # (L,) long, the network slot playing it (League.slot_weights), -1 the scripted agent
+    # (L,) long, the network slot playing it (League.slot_weights), -1 the scripted agent
+    slot: Tensor
     learner_team: Tensor  # (E,) long
-    persona: dict | None  # the scripted agent's per-ship parameters, leading E (None: the yardstick)
+    persona: (
+        dict | None
+    )  # the scripted agent's per-ship parameters, leading E (None: the yardstick)
     # The scripted agent's memory (kept target, head-on side), leading E: one memory for every
     # ship, as the one scripted call decides for both teams (teacher and league opponent).
     scripted_memory: dict
@@ -181,8 +188,17 @@ class Rollout:
 
     # The per-tick fields stacked from each tick's records (all but observation and hit_label).
     TICK_FIELDS = (
-        "action", "teacher", "log_probability", "value", "reward", "done", "reset", "position_offset", "next_state",
-        "next_valid", "deal_row",
+        "action",
+        "teacher",
+        "log_probability",
+        "value",
+        "reward",
+        "done",
+        "reset",
+        "position_offset",
+        "next_state",
+        "next_valid",
+        "deal_row",
     )
 
 
@@ -197,13 +213,17 @@ def draw_team_sizes(config: LearnConfig, envs: int, generator, device=None) -> T
     defaults to the generator's."""
     span = config.team_size_maximum - config.team_size_minimum + 1
     device = generator_device(generator) if device is None else device
-    sizes = config.team_size_minimum + torch.randint(0, span, (envs, 2), **random_keywords(generator, device))
+    sizes = config.team_size_minimum + torch.randint(
+        0, span, (envs, 2), **random_keywords(generator, device)
+    )
     if config.equal_teams:
         sizes[:, 1] = sizes[:, 0]
     return sizes
 
 
-def scripted_actions(scripted_config: ScriptedConfig, state, persona, memory: dict, generator) -> tuple[Tensor, dict, Tensor]:
+def scripted_actions(
+    scripted_config: ScriptedConfig, state, persona, memory: dict, generator
+) -> tuple[Tensor, dict, Tensor]:
     """The scripted agent's action for every ship of both teams, (E, N, 3) long, in one call,
     its new memory (the caller carries it to the next tick) and the distribution the actions
     were drawn from, (E, N, TEACHER_WIDTH) (teacher_marginals)."""
@@ -222,12 +242,19 @@ def seats(learner_team: Tensor, self_play: int) -> tuple[Tensor, Tensor]:
     """(seat_environment, seat_team), each (S,) long: every environment's learner team,
     then the other team of the first `self_play` environments."""
     envs = learner_team.shape[0]
-    environment = torch.cat([torch.arange(envs, device=learner_team.device), torch.arange(self_play, device=learner_team.device)])
+    environment = torch.cat(
+        [
+            torch.arange(envs, device=learner_team.device),
+            torch.arange(self_play, device=learner_team.device),
+        ]
+    )
     team = torch.cat([learner_team, 1 - learner_team[:self_play]])
     return environment, team
 
 
-def draw_members(opponent: Opponent, member: Tensor, slot: Tensor, done: Tensor, generator) -> tuple[Tensor, Tensor]:
+def draw_members(
+    opponent: Opponent, member: Tensor, slot: Tensor, done: Tensor, generator
+) -> tuple[Tensor, Tensor]:
     """(member, slot) of the league environments, new draws where `done` (L,) bool, the
     others keeping `member` and `slot` (League.draw); without a league every one plays the
     scripted agent (member 0, slot -1)."""
@@ -236,8 +263,19 @@ def draw_members(opponent: Opponent, member: Tensor, slot: Tensor, done: Tensor,
     return opponent.league.draw(member, slot, done, generator)
 
 
-def slot_actions(config: LearnConfig, template, parameters: dict, buffers: dict, slot: Tensor, positions: Tensor,
-                 views: tuple[Obs, Obs], carry: CollectCarry, action: Tensor, opponent_carry: Tensor, generator):
+def slot_actions(
+    config: LearnConfig,
+    template,
+    parameters: dict,
+    buffers: dict,
+    slot: Tensor,
+    positions: Tensor,
+    views: tuple[Obs, Obs],
+    carry: CollectCarry,
+    action: Tensor,
+    opponent_carry: Tensor,
+    generator,
+):
     """One network slot's moves (capacity routing): the league environments it plays
     (carry.slot == `slot`, a 0-d long) take the rows 0, 1, ... of a W-row batch in order
     (W = positions.shape[0], League.prepare's table width: never fewer than the slot's
@@ -256,10 +294,14 @@ def slot_actions(config: LearnConfig, template, parameters: dict, buffers: dict,
     row = torch.where(mine, rank, width)  # others to a spare row past the batch
     environment = torch.zeros(width + 1, dtype=torch.long, device=device)
     environment = environment.scatter(0, row, torch.arange(league_envs, device=device))[:-1]
-    view = seat_view(views, first + environment, 1 - carry.learner_team.index_select(0, first + environment))
+    view = seat_view(
+        views, first + environment, 1 - carry.learner_team.index_select(0, first + environment)
+    )
     rows_carry = carry.opponent.index_select(SEAT_AXIS, environment)
     offset = carry.position_offset[first:].index_select(0, environment)
-    joint, new_carry = network_step(Network(template, parameters, buffers, config.bf16), view, rows_carry, offset, generator)
+    joint, new_carry = network_step(
+        Network(template, parameters, buffers, config.bf16), view, rows_carry, offset, generator
+    )
     read = rank.clamp(min=0, max=width - 1)
     sampled = split_joint(joint).index_select(0, read)
     action = torch.where(mine[:, None, None], sampled, action)
@@ -274,11 +316,18 @@ def league_rows(scripted_action: Tensor, league_envs: int) -> Tensor:
     as a tensor of their own: a slice is a view, and a compiled graph guards a view's base,
     so a view here and a graph's output there (no base) would be two graphs (the routing
     graph's second slot, and `advance` when the league's first network joins)."""
-    return scripted_action[scripted_action.shape[0] - league_envs:].clone()
+    return scripted_action[scripted_action.shape[0] - league_envs :].clone()
 
 
-def network_actions(config: LearnConfig, league, views: tuple[Obs, Obs], carry: CollectCarry, scripted_action: Tensor,
-                    generator, step=slot_actions):
+def network_actions(
+    config: LearnConfig,
+    league,
+    views: tuple[Obs, Obs],
+    carry: CollectCarry,
+    scripted_action: Tensor,
+    generator,
+    step=slot_actions,
+):
     """The league side's actions (L, N, 3) and opponent carry: the scripted agent's
     `scripted_action` rows, then each slot of the league's network table (League.prepare)
     moves its own environments (`step`: slot_actions or its compiled form), one call per
@@ -290,14 +339,30 @@ def network_actions(config: LearnConfig, league, views: tuple[Obs, Obs], carry: 
     action, opponent_carry = league_rows(scripted_action, league_envs), carry.opponent.clone()
     for slot, parameters, buffers in league.table.slots:
         action, opponent_carry = step(
-            config, league.template, parameters, buffers, slot, league.table.positions, views, carry, action,
-            opponent_carry, generator,
+            config,
+            league.template,
+            parameters,
+            buffers,
+            slot,
+            league.table.positions,
+            views,
+            carry,
+            action,
+            opponent_carry,
+            generator,
         )
     return action, opponent_carry
 
 
-def league_actions(config: LearnConfig, opponent: Opponent, views: tuple[Obs, Obs], carry: CollectCarry,
-                   scripted_action: Tensor, generator, step=slot_actions):
+def league_actions(
+    config: LearnConfig,
+    opponent: Opponent,
+    views: tuple[Obs, Obs],
+    carry: CollectCarry,
+    scripted_action: Tensor,
+    generator,
+    step=slot_actions,
+):
     """Actions of the league side of every league environment, (L, N, 3), and the new
     opponent carry: the scripted agent's (already computed as the BC target) until the
     league has a network table (League.prepare), then network_actions (`step` the per-slot
@@ -322,14 +387,18 @@ def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: in
     unset = torch.zeros(league_envs, dtype=torch.long, device=device)
     if opponent.league is not None:
         opponent.league.prepare(league_envs, unset - 1)
-    member, slot = draw_members(opponent, unset, unset - 1, torch.ones_like(unset, dtype=torch.bool), generator)
+    member, slot = draw_members(
+        opponent, unset, unset - 1, torch.ones_like(unset, dtype=torch.bool), generator
+    )
     carry = CollectCarry(
         policy=policy.initial_carry(envs + self_play, slots, device),
         opponent=policy.initial_carry(league_envs, slots, device),
         member=member,
         slot=slot,
         learner_team=torch.randint(0, 2, (envs,), **random_keywords(generator, device)),
-        persona=scripted.personas(opponent.scripted_config, envs, slots, generator, device, config.persona_spread),
+        persona=scripted.personas(
+            opponent.scripted_config, envs, slots, generator, device, config.persona_spread
+        ),
         scripted_memory=scripted.fresh_memory(envs, slots, generator, device),
         reset=torch.ones(envs, dtype=torch.bool, device=device),
         position_offset=draw_position_offset(policy.config, envs, generator, device),
@@ -339,13 +408,23 @@ def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: in
     return state, carry
 
 
-def draw_next_episodes(config: LearnConfig, game_config, policy, opponent: Opponent, envs: int, slots: int,
-                       generator, device) -> NextEpisodes:
+def draw_next_episodes(
+    config: LearnConfig,
+    game_config,
+    policy,
+    opponent: Opponent,
+    envs: int,
+    slots: int,
+    generator,
+    device,
+) -> NextEpisodes:
     """E deals for the episodes that start during the next segment (NextEpisodes)."""
     sizes = draw_team_sizes(config, envs, generator, device)
     return NextEpisodes(
         state=game.deal(game_config, envs, slots, sizes, generator, device),
-        persona=scripted.personas(opponent.scripted_config, envs, slots, generator, device, config.persona_spread),
+        persona=scripted.personas(
+            opponent.scripted_config, envs, slots, generator, device, config.persona_spread
+        ),
         scripted_memory=scripted.fresh_memory(envs, slots, generator, device),
         learner_team=torch.randint(0, 2, (envs,), **random_keywords(generator, device)),
         position_offset=draw_position_offset(policy.config, envs, generator, device),
@@ -378,8 +457,13 @@ def redeal(opponent: Opponent, state, carry: CollectCarry, done: Tensor, generat
         member=member,
         slot=slot,
         learner_team=take(pool.learner_team, carry.learner_team),
-        persona=None if carry.persona is None else {name: take(pool.persona[name], carry.persona[name]) for name in carry.persona},
-        scripted_memory={name: take(pool.scripted_memory[name], carry.scripted_memory[name]) for name in carry.scripted_memory},
+        persona=None
+        if carry.persona is None
+        else {name: take(pool.persona[name], carry.persona[name]) for name in carry.persona},
+        scripted_memory={
+            name: take(pool.scripted_memory[name], carry.scripted_memory[name])
+            for name in carry.scripted_memory
+        },
         reset=done,
         position_offset=take(pool.position_offset, carry.position_offset),
         ledger=clear_ledger(carry.ledger, done),
@@ -389,8 +473,16 @@ def redeal(opponent: Opponent, state, carry: CollectCarry, done: Tensor, generat
     return state, carry
 
 
-def abandon(config: LearnConfig, game_config, policy, opponent: Opponent, state, carry: CollectCarry, slot: int,
-            generator):
+def abandon(
+    config: LearnConfig,
+    game_config,
+    policy,
+    opponent: Opponent,
+    state,
+    carry: CollectCarry,
+    slot: int,
+    generator,
+):
     """Re-deal the league environments played by network slot `slot` and draw them new
     opponents: only when the league had no slot free for a new snapshot (League.after_update;
     normally a dropped snapshot's games finish in its retiring slot). Their unfinished games
@@ -399,14 +491,25 @@ def abandon(config: LearnConfig, game_config, policy, opponent: Opponent, state,
     envs, slots = state.exists.shape
     self_play = envs - carry.member.shape[0]
     device = carry.member.device
-    chosen = torch.cat([torch.zeros(self_play, dtype=torch.bool, device=device), carry.slot == slot])
+    chosen = torch.cat(
+        [torch.zeros(self_play, dtype=torch.bool, device=device), carry.slot == slot]
+    )
     # Its own deals (rare, between segments); the next segment draws afresh.
     pool = draw_next_episodes(config, game_config, policy, opponent, envs, slots, generator, device)
-    state, fresh = redeal(opponent, state, dataclasses.replace(carry, next_episodes=pool), chosen, generator)
+    state, fresh = redeal(
+        opponent, state, dataclasses.replace(carry, next_episodes=pool), chosen, generator
+    )
     return state, dataclasses.replace(fresh, reset=carry.reset | chosen)
 
 
-def hit_label_entries(step_out, state, label_row: Tensor | int, slot_index: Tensor, environment_index: Tensor, spare: int):
+def hit_label_entries(
+    step_out,
+    state,
+    label_row: Tensor | int,
+    slot_index: Tensor,
+    environment_index: Tensor,
+    spare: int,
+):
     """(index, outcome) for scattering this tick's ended bullets into the flat hit labels
     (row, environment, slot) of `collect`.
 
@@ -424,7 +527,15 @@ def hit_label_entries(step_out, state, label_row: Tensor | int, slot_index: Tens
     return index.flatten(), step_out.shot_outcome.flatten()
 
 
-def act(config: LearnConfig, game_config, policy, opponent: Opponent, state, carry: CollectCarry, generator):
+def act(
+    config: LearnConfig,
+    game_config,
+    policy,
+    opponent: Opponent,
+    state,
+    carry: CollectCarry,
+    generator,
+):
     """The first half of a tick: both teams' views, the live policy on every seat (its
     sampled joint action, log-probability and value) and the scripted agent's action and
     distribution for every ship. Returns (views, observation, seat_offset, joint,
@@ -449,15 +560,37 @@ def act(config: LearnConfig, game_config, policy, opponent: Opponent, state, car
         opponent.scripted_config, state, carry.persona, carry.scripted_memory, generator
     )
     return (
-        views, observation, seat_offset, joint, log_probability, value, scripted_action, teacher, policy_carry, centres,
+        views,
+        observation,
+        seat_offset,
+        joint,
+        log_probability,
+        value,
+        scripted_action,
+        teacher,
+        policy_carry,
+        centres,
         scripted_memory,
     )
 
 
 def advance(
-    config: LearnConfig, game_config, policy, opponent: Opponent, state, carry: CollectCarry, observation: Obs,
-    joint: Tensor, teacher: Tensor, league_action: Tensor, opponent_carry: Tensor, policy_carry: Tensor,
-    scripted_memory: dict, label_row: Tensor, hit_label: Tensor, generator,
+    config: LearnConfig,
+    game_config,
+    policy,
+    opponent: Opponent,
+    state,
+    carry: CollectCarry,
+    observation: Obs,
+    joint: Tensor,
+    teacher: Tensor,
+    league_action: Tensor,
+    opponent_carry: Tensor,
+    policy_carry: Tensor,
+    scripted_memory: dict,
+    label_row: Tensor,
+    hit_label: Tensor,
+    generator,
 ):
     """The second half of a tick: every ship's action, the game step, rewards, hit labels
     (written into `hit_label` in place, `label_row` this tick's row there, see
@@ -481,23 +614,33 @@ def advance(
     slot_index = torch.arange(slots, device=device)[None, :, None]
     environment_index = torch.arange(envs, device=device)[:, None, None]
     spare = hit_label.shape[0] - 1
-    hit_label.scatter_(0, *hit_label_entries(step_out, state, label_row, slot_index, environment_index, spare))
+    hit_label.scatter_(
+        0, *hit_label_entries(step_out, state, label_row, slot_index, environment_index, spare)
+    )
     records = {
         "teacher": teacher.index_select(0, seat_environment),
         "reward": reward.index_select(0, seat_environment),
         "done": seat_done,
         "reset": carry.reset.index_select(0, seat_environment),
-        "next_state": next_state_target(policy.config, state, next_state, step_out, game_config.tick_length).index_select(
-            0, seat_environment
-        ),
-        "next_valid": observation.own & next_state.alive.index_select(0, seat_environment) & ~seat_done[:, None],
+        "next_state": next_state_target(
+            policy.config, state, next_state, step_out, game_config.tick_length
+        ).index_select(0, seat_environment),
+        "next_valid": observation.own
+        & next_state.alive.index_select(0, seat_environment)
+        & ~seat_done[:, None],
     }
     if opponent.league is not None:
         result = step_out.result[self_play:]
-        opponent.league.record(carry.member, done[self_play:], result == carry.learner_team[self_play:], result == 2)
+        opponent.league.record(
+            carry.member, done[self_play:], result == carry.learner_team[self_play:], result == 2
+        )
 
     carry = dataclasses.replace(
-        carry, policy=policy_carry, opponent=opponent_carry, scripted_memory=scripted_memory, ledger=ledger
+        carry,
+        policy=policy_carry,
+        opponent=opponent_carry,
+        scripted_memory=scripted_memory,
+        ledger=ledger,
     )
     state, carry = redeal(opponent, next_state, carry, done, generator)
     return state, carry, records
@@ -509,22 +652,35 @@ def deal_table(game_config, state, carry: CollectCarry) -> dict[str, Tensor]:
     carry.next_episodes' deals. Two observe calls per segment, eagerly."""
     pool = carry.next_episodes
     now, dealt = game.observe(game_config, state, 0), game.observe(game_config, pool.state, 0)
-    table = {name: torch.cat([getattr(now, name), getattr(dealt, name)]) for name in EPISODE_CONSTANT}
+    table = {
+        name: torch.cat([getattr(now, name), getattr(dealt, name)]) for name in EPISODE_CONSTANT
+    }
     table["position_offset"] = torch.cat([carry.position_offset, pool.position_offset])
     return table
 
 
 @torch.no_grad()
 def collect(
-    config: LearnConfig, game_config, policy, opponent: Opponent, state, carry: CollectCarry, ticks: int, generator,
-    *, compiled: bool = False, store=None, segment: int = 0,
+    config: LearnConfig,
+    game_config,
+    policy,
+    opponent: Opponent,
+    state,
+    carry: CollectCarry,
+    ticks: int,
+    generator,
+    *,
+    compiled: bool = False,
+    store=None,
+    segment: int = 0,
 ) -> Rollout:
     """Step E environments for `ticks` ticks and record every seat the live policy plays.
 
     Self-play environments (the first E_s) have two live seats, league environments one;
     the league side plays the member `carry.member` (the scripted agent, an average or a
     snapshot) through its slot `carry.slot` (network_actions; League.prepare builds the
-    segment's network table first, with one host read before the loop). The scripted agent's action is computed for every ship every tick: it is
+    segment's network table first, with one host read before the loop). The scripted agent's action
+    is computed for every ship every tick: it is
     the BC target and the scripted member's move. Finished environments are re-dealt at
     once from deals drawn together at the segment's start (NextEpisodes: team sizes, the
     game's deal, personas, learner team, position offset) with a league member drawn as they
@@ -557,7 +713,9 @@ def collect(
         opponent.league.prepare(carry.member.shape[0], carry.slot)
     carry = dataclasses.replace(
         carry,
-        next_episodes=draw_next_episodes(config, game_config, policy, opponent, envs, slots, generator, device),
+        next_episodes=draw_next_episodes(
+            config, game_config, policy, opponent, envs, slots, generator, device
+        ),
         deal_row=torch.arange(envs, device=device),
     )
     table = deal_table(game_config, state, carry)
@@ -573,17 +731,49 @@ def collect(
     seat_environment, _ = seats(carry.learner_team, self_play)
 
     for index in range(ticks):
-        (views, observation, seat_offset, joint, log_probability, value, scripted_action, teacher, policy_carry, _,
-         scripted_memory) = act_part(config, game_config, policy, opponent, state, carry, generator)
+        (
+            views,
+            observation,
+            seat_offset,
+            joint,
+            log_probability,
+            value,
+            scripted_action,
+            teacher,
+            policy_carry,
+            _,
+            scripted_memory,
+        ) = act_part(config, game_config, policy, opponent, state, carry, generator)
         deal_row = carry.deal_row.index_select(0, seat_environment)
-        league_action, opponent_carry = league_actions(config, opponent, views, carry, scripted_action, generator, networks)
+        league_action, opponent_carry = league_actions(
+            config, opponent, views, carry, scripted_action, generator, networks
+        )
         state, carry, tick_records = advance_part(
-            config, game_config, policy, opponent, state, carry, observation, joint, teacher, league_action,
-            opponent_carry, policy_carry, scripted_memory, label_row, hit_label, generator,
+            config,
+            game_config,
+            policy,
+            opponent,
+            state,
+            carry,
+            observation,
+            joint,
+            teacher,
+            league_action,
+            opponent_carry,
+            policy_carry,
+            scripted_memory,
+            label_row,
+            hit_label,
+            generator,
         )
         tick_records = {
-            "observation": observation, "action": joint, "log_probability": log_probability, "value": value,
-            "position_offset": seat_offset, "deal_row": deal_row, **tick_records,
+            "observation": observation,
+            "action": joint,
+            "log_probability": log_probability,
+            "value": value,
+            "position_offset": seat_offset,
+            "deal_row": deal_row,
+            **tick_records,
         }
         if store is not None:
             store.write_tick(segment, index, tick_records)
@@ -601,17 +791,29 @@ def collect(
     # bootstrap there because `done` on the last tick cuts it.
     # A seat is the same environment's same slots in every segment (`seats`), so the
     # previous segment's rows go to the same seats there.
-    previous_hit_label, seat_hit_label = hit_label[:-1].view(2, ticks, envs, slots).index_select(2, seat_environment).unbind()
+    previous_hit_label, seat_hit_label = (
+        hit_label[:-1].view(2, ticks, envs, slots).index_select(2, seat_environment).unbind()
+    )
 
     if store is not None:
         # The first segment's earlier rows belong to the previous update (already trained on).
-        store.end_segment(segment, seat_hit_label, bootstrap_value, centres, previous_hit_label if segment > 0 else None)
+        store.end_segment(
+            segment,
+            seat_hit_label,
+            bootstrap_value,
+            centres,
+            previous_hit_label if segment > 0 else None,
+        )
         observation, stacked, seat_hit_label = None, dict.fromkeys(Rollout.TICK_FIELDS), None
     else:
-        observation = Obs(**{
-            field.name: torch.stack([getattr(item, field.name) for item in records["observation"]])
-            for field in dataclasses.fields(Obs)
-        })
+        observation = Obs(
+            **{
+                field.name: torch.stack(
+                    [getattr(item, field.name) for item in records["observation"]]
+                )
+                for field in dataclasses.fields(Obs)
+            }
+        )
         stacked = {name: torch.stack(records[name]) for name in Rollout.TICK_FIELDS}
     return Rollout(
         observation=observation,

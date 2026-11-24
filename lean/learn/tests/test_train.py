@@ -25,7 +25,9 @@ def test_bc_then_rl_from_the_bc_checkpoint(monkeypatch, tmp_path, capsys):
     assert rl["stage"] == "rl" and rl["teacher"] == {"updates": 2, "off": False}
     lines = capsys.readouterr().out.splitlines()
     assert sum(line.startswith("bc update") and "teacher_weight=1 " in line for line in lines) == 2
-    assert sum(line.startswith("rl update 0") and "teacher_weight=0.5 " in line for line in lines) == 1
+    assert (
+        sum(line.startswith("rl update 0") and "teacher_weight=0.5 " in line for line in lines) == 1
+    )
     # RL started from the BC stage's EMA (the hand-off): its EMA began there.
     start = model.Policy(bc["model_config"])
     start.load_state_dict(policy_weights(bc, "ema"))
@@ -39,11 +41,14 @@ def without_timing(lines: list[str], numbers) -> list[str]:
     """The update lines of RL updates `numbers`, without the wall-clock rate."""
     return [
         re.sub(r" steps_per_second \d+", "", line)
-        for line in lines if any(line.startswith(f"rl update {number} ") for number in numbers)
+        for line in lines
+        if any(line.startswith(f"rl update {number} ") for number in numbers)
     ]
 
 
-def test_checkpoints_every_period_and_a_resume_gives_the_same_next_updates(monkeypatch, tmp_path, capsys):
+def test_checkpoints_every_period_and_a_resume_gives_the_same_next_updates(
+    monkeypatch, tmp_path, capsys
+):
     """RL at smoke size (64 steps an update, a checkpoint every 128 steps, none deleted):
     resuming from the checkpoint after update 1 gives the same updates 2 and 3 as the run that
     never stopped: the same metrics, live weights, averages, league tallies and games (eagerly
@@ -63,7 +68,9 @@ def test_checkpoints_every_period_and_a_resume_gives_the_same_next_updates(monke
     middle["plan"]["out"] = str(resumed)
     (resumed / "checkpoints").mkdir(parents=True)
     torch.save(middle, resumed / "checkpoints" / names[0])
-    shutil.copytree(straight / "snapshots", resumed / "snapshots")  # the checkpoint names its snapshots
+    shutil.copytree(
+        straight / "snapshots", resumed / "snapshots"
+    )  # the checkpoint names its snapshots
     monkeypatch.setattr(sys, "argv", ["lean.train", "--device", "cpu", "--resume", str(resumed)])
     train.main()
     second = capsys.readouterr().out.splitlines()
@@ -80,7 +87,9 @@ def test_checkpoints_every_period_and_a_resume_gives_the_same_next_updates(monke
     end_b = load_checkpoint(resumed / "checkpoints" / names[1])
     assert torch.equal(end_a["carry"].member, end_b["carry"].member)
     assert torch.allclose(end_a["league"]["games"], end_b["league"]["games"])
-    assert torch.allclose(end_a["game_state"].ships, end_b["game_state"].ships, rtol=1e-5, atol=1e-4)
+    assert torch.allclose(
+        end_a["game_state"].ships, end_b["game_state"].ships, rtol=1e-5, atol=1e-4
+    )
 
 
 def test_a_checkpoint_holds_no_snapshot_weights_and_resume_reads_them_from_the_snapshot_files(
@@ -98,11 +107,15 @@ def test_a_checkpoint_holds_no_snapshot_weights_and_resume_reads_them_from_the_s
     assert sorted(held) == [64, 128, 192, 256]
     assert all(weights is None for weights in league["slot_weights"])
     size = (tmp_path / "checkpoints" / "rl_000000000256.pt").stat().st_size
-    # live weights, two averages (float32) and Adam's two moments: about five snapshots, not the four snapshots and two slots again
+    # live weights, two averages (float32) and Adam's two moments: about five snapshots, not the
+    # four snapshots and two slots again
     assert size < 5.5 * files[0].stat().st_size
     saved = torch.load(files[0], weights_only=True)
-    assert all(tensor.dtype == checkpoint["live"][name.removeprefix("policy.")].dtype for name, tensor in saved.items()
-               if name.removeprefix("policy.") in checkpoint["live"])
+    assert all(
+        tensor.dtype == checkpoint["live"][name.removeprefix("policy.")].dtype
+        for name, tensor in saved.items()
+        if name.removeprefix("policy.") in checkpoint["live"]
+    )
 
     from lean.learn import League, LearnConfig, WeightAverages
 
@@ -115,7 +128,9 @@ def test_a_checkpoint_holds_no_snapshot_weights_and_resume_reads_them_from_the_s
     restored.load(league, policy, averages, tmp_path / "snapshots")
     for slot, snapshot in enumerate(league["slot_snapshot"]):
         if snapshot is not None:
-            for name, value in torch.load(tmp_path / "snapshots" / f"{snapshot:012d}.pt", weights_only=True).items():
+            for name, value in torch.load(
+                tmp_path / "snapshots" / f"{snapshot:012d}.pt", weights_only=True
+            ).items():
                 assert torch.equal(restored.slot_weights[slot][name], value)
     for slot, which in ((0, "ema"), (1, "uniform")):
         for name, value in getattr(averages, which).items():

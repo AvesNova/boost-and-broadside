@@ -27,11 +27,28 @@ class Evaluator:
     (default on a GPU), `seed` the base of every call's seed (offset by the games stored, so
     no two calls replay the same draws)."""
 
-    def __init__(self, store: Store, game_config, *, device=None, envs: int = 4096, compiled: bool | None = None,
-                 segment: int = 32, seed: int = 0, seconds: float | None = None, progress=None):
+    def __init__(
+        self,
+        store: Store,
+        game_config,
+        *,
+        device=None,
+        envs: int = 4096,
+        compiled: bool | None = None,
+        segment: int = 32,
+        seed: int = 0,
+        seconds: float | None = None,
+        progress=None,
+    ):
         self.store, self.game_config = store, game_config
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
-        self.envs, self.segment, self.seed, self.seconds, self.progress = envs, segment, seed, seconds, progress
+        self.envs, self.segment, self.seed, self.seconds, self.progress = (
+            envs,
+            segment,
+            seed,
+            seconds,
+            progress,
+        )
         self.compiled = self.device.type == "cuda" if compiled is None else compiled
         self.policies = {}
 
@@ -58,12 +75,22 @@ class Evaluator:
             if missing <= 0:
                 continue
             # Sides: A's games as team 0 brought as near half of the total as the new games allow.
-            team_zero = min(missing, max(0, math.ceil((have["games"] + missing) / 2) - have["as_team_zero"]))
+            team_zero = min(
+                missing, max(0, math.ceil((have["games"] + missing) / 2) - have["as_team_zero"])
+            )
             sides = [0] * team_zero + [1] * (missing - team_zero)
             if isinstance(agent_b, NetworkAgent) and not isinstance(agent_a, NetworkAgent):
                 # A network against a scripted agent sits in seat A: the pairing turned round.
-                agent_a, agent_b, sizes, sides = agent_b, agent_a, (sizes[1], sizes[0]), [1 - side for side in sides]
-            key = tuple(agent.id if isinstance(agent, NetworkAgent) else None for agent in (agent_a, agent_b))
+                agent_a, agent_b, sizes, sides = (
+                    agent_b,
+                    agent_a,
+                    (sizes[1], sizes[0]),
+                    [1 - side for side in sides],
+                )
+            key = tuple(
+                agent.id if isinstance(agent, NetworkAgent) else None
+                for agent in (agent_a, agent_b)
+            )
             groups.setdefault(key, []).append((agent_a, agent_b, tuple(sizes), sides))
         for entries in groups.values():
             self._play_group(entries)
@@ -77,21 +104,36 @@ class Evaluator:
                     index[agent] = len(index)
         scripted_agents = list(index)
         table = torch.tensor(
-            [agent.values for agent in scripted_agents] or [ScriptedAgent.of().values], dtype=torch.float32,
+            [agent.values for agent in scripted_agents] or [ScriptedAgent.of().values],
+            dtype=torch.float32,
             device=self.device,
         )
         games = []  # (entry, a, b, side, size_a, size_b)
         for number, (agent_a, agent_b, sizes, sides) in enumerate(entries):
             for side in sides:
-                games.append((number, index.get(agent_a, 0), index.get(agent_b, 0), side, sizes[0], sizes[1]))
+                games.append(
+                    (number, index.get(agent_a, 0), index.get(agent_b, 0), side, sizes[0], sizes[1])
+                )
         seed = self.seed + self.store.total_games()
         random.Random(seed).shuffle(games)
         columns = torch.tensor(games, dtype=torch.long)
         queue = runner.Queue(*columns[:, 1:].unbind(-1))
-        seats = [self.policy(agent) if isinstance(agent, NetworkAgent) else (None, True) for agent in entries[0][:2]]
+        seats = [
+            self.policy(agent) if isinstance(agent, NetworkAgent) else (None, True)
+            for agent in entries[0][:2]
+        ]
         outcome = runner.play(
-            self.game_config, queue, table, seats[0][0], seats[1][0], envs=self.envs, segment=self.segment,
-            seconds=self.seconds, compiled=self.compiled, seed=seed, progress=self.progress,
+            self.game_config,
+            queue,
+            table,
+            seats[0][0],
+            seats[1][0],
+            envs=self.envs,
+            segment=self.segment,
+            seconds=self.seconds,
+            compiled=self.compiled,
+            seed=seed,
+            progress=self.progress,
             bf16=(seats[0][1], seats[1][1]),
         )
         # The played games grouped by entry in one sort (not a scan of the queue per entry).
@@ -107,12 +149,25 @@ class Evaluator:
             self.store.add_agent(agent_b)
             conditions = self.store.add_conditions(self.game_config, sizes)
             end = start + count
-            self.store.add_games(agent_a.id, agent_b.id, conditions, sides[start:end], results[start:end],
-                                 lengths[start:end], styles[start:end])
+            self.store.add_games(
+                agent_a.id,
+                agent_b.id,
+                conditions,
+                sides[start:end],
+                results[start:end],
+                lengths[start:end],
+                styles[start:end],
+            )
             start = end
 
-    def adaptive(self, pairings: list[tuple], *, target_error: float | None = None, budget: int | None = None,
-                 round_games: int | None = None) -> list[dict]:
+    def adaptive(
+        self,
+        pairings: list[tuple],
+        *,
+        target_error: float | None = None,
+        budget: int | None = None,
+        round_games: int | None = None,
+    ) -> list[dict]:
         """Play rounds until every pairing's standard error (rating.standard_error) is at most
         `target_error` or `budget` new games are spent (at least one of the two). Each round
         (`round_games`, default 16 x envs) goes where the error is largest (rating.allocate),
@@ -141,8 +196,13 @@ class Evaluator:
                 added = allocate(stats, lot)
             if sum(added) == 0:
                 return rows
-            self.ensure([(a, b, sizes, row["games"] + extra)
-                         for (a, b, sizes), row, extra in zip(pairings, rows, added, strict=True) if extra > 0])
+            self.ensure(
+                [
+                    (a, b, sizes, row["games"] + extra)
+                    for (a, b, sizes), row, extra in zip(pairings, rows, added, strict=True)
+                    if extra > 0
+                ]
+            )
             spent += sum(added)
 
     def report(self, pairings: list[tuple]) -> list[dict]:
@@ -153,8 +213,13 @@ class Evaluator:
             counts = self.counts(agent_a, agent_b, sizes)
             score = counts["wins"] + 0.5 * counts["draws"]
             games = counts["games"]
-            rows.append({**counts, "score": score / games if games else math.nan,
-                         "error": standard_error(score, games)})
+            rows.append(
+                {
+                    **counts,
+                    "score": score / games if games else math.nan,
+                    "error": standard_error(score, games),
+                }
+            )
         return rows
 
     def elo(self, sizes, anchor=None, agents=None) -> list[tuple[str, float, float]]:
@@ -164,7 +229,9 @@ class Evaluator:
         conditions = self.store.add_conditions(self.game_config, sizes)
         totals = self.store.pairing_totals(conditions)
         wanted = None if agents is None else {agent.id for agent in agents}
-        totals = [row for row in totals if wanted is None or (row[0] in wanted and row[1] in wanted)]
+        totals = [
+            row for row in totals if wanted is None or (row[0] in wanted and row[1] in wanted)
+        ]
         ids = sorted({row[0] for row in totals} | {row[1] for row in totals})
         if not ids:
             return []
@@ -176,8 +243,14 @@ class Evaluator:
         ratings, errors = bradley_terry(results, len(ids), anchor=number[anchor_id])
         return sorted(zip(ids, ratings, errors, strict=True), key=lambda row: -row[1])
 
-    def sobol_candidates(self, name: str, count: int, seed: int = 0, centre: ScriptedConfig | None = None,
-                         spread: float = 1.0) -> list[ScriptedAgent]:
+    def sobol_candidates(
+        self,
+        name: str,
+        count: int,
+        seed: int = 0,
+        centre: ScriptedConfig | None = None,
+        spread: float = 1.0,
+    ) -> list[ScriptedAgent]:
         """The next `count` points of the Sobol stream `name` as scripted agents: each
         sampled row (lean.scripted.parameters.SAMPLED) on its persona box at `spread` around
         `centre` (default the yardstick), the fixed rows at the centre's values."""

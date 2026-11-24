@@ -145,13 +145,29 @@ def engage(
     else:
         enemy_velocity_x, enemy_velocity_y, _ = map_velocity(enemies)
     columns = (
-        enemies.x, enemies.y, enemy_velocity_x, enemy_velocity_y, enemies.heading_cos,
-        enemies.heading_sin, enemies.speed, enemies.nose_rate, enemies.energy,
+        enemies.x,
+        enemies.y,
+        enemy_velocity_x,
+        enemy_velocity_y,
+        enemies.heading_cos,
+        enemies.heading_sin,
+        enemies.speed,
+        enemies.nose_rate,
+        enemies.energy,
     )
     features = torch.stack(columns, -1)  # (E, N, 9)
     chosen = torch.gather(features, 1, target[..., None].expand(-1, -1, len(columns)))
-    (target_x, target_y, target_velocity_x, target_velocity_y, target_heading_cos,
-     target_heading_sin, target_speed, target_nose_rate, target_energy) = chosen.unbind(-1)
+    (
+        target_x,
+        target_y,
+        target_velocity_x,
+        target_velocity_y,
+        target_heading_cos,
+        target_heading_sin,
+        target_speed,
+        target_nose_rate,
+        target_energy,
+    ) = chosen.unbind(-1)
     target_x = target_x - state.x
     target_y = target_y - state.y
     distance = torch.sqrt(target_x * target_x + target_y * target_y)
@@ -396,9 +412,9 @@ def explain(
     log_floor = _log(read("speed_floor") * c["stall_speed"])
     low_yo_yo = (-yo_yo).clamp_min(0.0)
     turning_target = situation.target_sense.abs()
-    log_yo_yo = log_fight + (
-        low_yo_yo * turning_target - high_yo_yo
-    ) * _log(c["corner_speed"] / c["sustained_speed"])
+    log_yo_yo = log_fight + (low_yo_yo * turning_target - high_yo_yo) * _log(
+        c["corner_speed"] / c["sustained_speed"]
+    )
     two_circle = 0.5 * (1.0 + situation.flow)
     cash, break_turn = gate["cash"], gate["defend"] * gate["relax"]
     log_two_circle = log_fight + cash * (log_corner - log_fight)

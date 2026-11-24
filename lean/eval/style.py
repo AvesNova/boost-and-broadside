@@ -31,12 +31,36 @@ from torch import Tensor
 # yardstick's turning_floor, lean.scripted.parameters).
 TURNING_FLOOR = 0.25
 # The sums per seat, in this order.
-SUMS = ("ticks", "turning", "two_circle", "store", "speed", "shots", "hits", "hit_range", "climb", "dive")
-MEASURES = ("minutes", "turning", "two_circle", "store", "speed", "shots", "hits", "hit_range", "climb", "dive")
+SUMS = (
+    "ticks",
+    "turning",
+    "two_circle",
+    "store",
+    "speed",
+    "shots",
+    "hits",
+    "hit_range",
+    "climb",
+    "dive",
+)
+MEASURES = (
+    "minutes",
+    "turning",
+    "two_circle",
+    "store",
+    "speed",
+    "shots",
+    "hits",
+    "hit_range",
+    "climb",
+    "dive",
+)
 COAST, DIVE, CLIMB = 0, 1, 2  # power indices (lean.game.card)
 
 
-def turn_sense(nose_rate: Tensor, sustained_rate: Tensor | float, floor: float = TURNING_FLOOR) -> Tensor:
+def turn_sense(
+    nose_rate: Tensor, sustained_rate: Tensor | float, floor: float = TURNING_FLOOR
+) -> Tensor:
     """-1 turning right, +1 left, 0 straight (|nose rate| under `floor` sustained rates); the
     sign of situation.py's tanh sense, where it passes +-tanh(1)."""
     turning = nose_rate.abs() >= floor * sustained_rate
@@ -72,23 +96,27 @@ def per_ship(state, applied_power: Tensor, fired: Tensor, hit_damage: Tensor) ->
     hit_range = (hit * distance).sum(-1) / c["gun_range"]
     alive = state.alive
     one = torch.ones_like(state.speed)
-    rows = torch.stack([
-        one,
-        (flow != 0.0).float(),
-        (flow > 0.0).float(),
-        state.energy * c["inverse_max_energy"],
-        state.speed / c["corner_speed"],
-        fired.float(),
-        hit.sum(-1).float(),
-        hit_range,
-        (applied_power == CLIMB).float(),
-        (applied_power == DIVE).float(),
-    ], -1)
+    rows = torch.stack(
+        [
+            one,
+            (flow != 0.0).float(),
+            (flow > 0.0).float(),
+            state.energy * c["inverse_max_energy"],
+            state.speed / c["corner_speed"],
+            fired.float(),
+            hit.sum(-1).float(),
+            hit_range,
+            (applied_power == CLIMB).float(),
+            (applied_power == DIVE).float(),
+        ],
+        -1,
+    )
     return torch.where(alive[..., None], rows, 0.0)
 
 
-def tick_sums(state, seat_a: Tensor, playing: Tensor, applied_power: Tensor, fired: Tensor,
-              hit_damage: Tensor) -> Tensor:
+def tick_sums(
+    state, seat_a: Tensor, playing: Tensor, applied_power: Tensor, fired: Tensor, hit_damage: Tensor
+) -> Tensor:
     """(E, 2, len(SUMS)): one tick's sums for seat A (row 0) and seat B (row 1) of each
     environment, zero where `playing` (E,) is false. `seat_a` (E, N) the ship plays for seat A."""
     rows = per_ship(state, applied_power, fired, hit_damage) * playing[:, None, None]

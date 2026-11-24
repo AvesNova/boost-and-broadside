@@ -7,6 +7,19 @@ from lean.eval.runner import Outcome, Queue, play
 from lean.eval.store import NetworkAgent, ScriptedAgent, SobolStream, Store
 
 __all__ = [
-    "Evaluator", "NetworkAgent", "Outcome", "Queue", "ScriptedAgent", "SobolStream", "Store", "allocate",
-    "bradley_terry", "crossover", "evaluator_round", "games_for", "play", "standard_error", "walk",
+    "Evaluator",
+    "NetworkAgent",
+    "Outcome",
+    "Queue",
+    "ScriptedAgent",
+    "SobolStream",
+    "Store",
+    "allocate",
+    "bradley_terry",
+    "crossover",
+    "evaluator_round",
+    "games_for",
+    "play",
+    "standard_error",
+    "walk",
 ]

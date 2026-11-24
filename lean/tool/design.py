@@ -40,6 +40,7 @@ _CHECKS: dict[
 ] = {}  # (factor, row) -> (lowest speeds, flown points), game units
 _PRESET_STALL: dict[str, float] = {}  # preset -> its stall speed at the game's time factor
 
+
 def inputs(preset: str, profile: str | None = None) -> list[dict]:
     """The page's sliders, in the profile's table order (default the preset's own profile):
     name, label, unit, kind, group, method (how it sets the card), source (provenance), value
@@ -50,21 +51,36 @@ def inputs(preset: str, profile: str | None = None) -> list[dict]:
         value = reference.design[spec.name]
         scale = value if spec.relative else 1.0
         low, high = spec.low * scale, spec.high * scale
-        out.append(dict(
-            name=spec.name, label=spec.label, unit=spec.unit, kind=spec.kind, group=spec.group,
-            method=spec.method, sets=spec.sets, source=spec.source,
-            value=value, reference=value, low=min(low, value), high=max(high, value),
-        ))
+        out.append(
+            dict(
+                name=spec.name,
+                label=spec.label,
+                unit=spec.unit,
+                kind=spec.kind,
+                group=spec.group,
+                method=spec.method,
+                sets=spec.sets,
+                source=spec.source,
+                value=value,
+                reference=value,
+                low=min(low, value),
+                high=max(high, value),
+            )
+        )
     return out
 
 
 def presets() -> dict:
     """Per card type: its own profile and, per profile (tuning.PROFILES), its inputs."""
-    return _plain({
-        name: dict(profile=tuning.REAL_AIRCRAFT[name].profile,
-                   profiles={profile: inputs(name, profile) for profile in tuning.PROFILES})
-        for name in card.TYPE_NAMES
-    })
+    return _plain(
+        {
+            name: dict(
+                profile=tuning.REAL_AIRCRAFT[name].profile,
+                profiles={profile: inputs(name, profile) for profile in tuning.PROFILES},
+            )
+            for name in card.TYPE_NAMES
+        }
+    )
 
 
 def profiles() -> dict:
@@ -80,8 +96,14 @@ def _profile(preset: str, profile: str | None) -> str:
     return profile
 
 
-def solve(preset: str, values: dict | None = None, fixed: dict | None = None,
-          profile: str | None = None, progress=None, cancel=None) -> tuning.Solved:
+def solve(
+    preset: str,
+    values: dict | None = None,
+    fixed: dict | None = None,
+    profile: str | None = None,
+    progress=None,
+    cancel=None,
+) -> tuning.Solved:
     """The preset's design under the profile (default its own) with the inputs `values` moved,
     solved (tuning.design_row, fast path,
     warm: `_solved`); the preset's own row, unsolved, when nothing moves; `fixed` (a saved
@@ -107,8 +129,13 @@ def solve(preset: str, values: dict | None = None, fixed: dict | None = None,
     if key not in _SOLVED:
         if len(_SOLVED) > 64:
             _SOLVED.clear()
-        _SOLVED[key] = _solved(preset, profile, changed, progress, cancel) if changed else tuning.Solved(
-            tuning.reference(preset, profile).start_row or PRESET_ROWS[preset], 0.0, 0, None)
+        _SOLVED[key] = (
+            _solved(preset, profile, changed, progress, cancel)
+            if changed
+            else tuning.Solved(
+                tuning.reference(preset, profile).start_row or PRESET_ROWS[preset], 0.0, 0, None
+            )
+        )
     return _SOLVED[key]
 
 
@@ -121,20 +148,26 @@ def _solved(preset: str, profile: str, changed: dict, progress=None, cancel=None
     reference = tuning.reference(preset, profile)
     last = _WARM.get((preset, profile))
     solved = None
-    watch = dict(progress=progress, cancel=_Cancel(cancel), patience=PATIENCE,
-                 deadline=time.monotonic() + TIME_LIMIT)
+    watch = dict(
+        progress=progress,
+        cancel=_Cancel(cancel),
+        patience=PATIENCE,
+        deadline=time.monotonic() + TIME_LIMIT,
+    )
     if last is not None:
         try:
-            solved = tuning.design_row(reference, changed, start=last.row, fast=True,
-                                       jacobian=last.jacobian, **watch)
+            solved = tuning.design_row(
+                reference, changed, start=last.row, fast=True, jacobian=last.jacobian, **watch
+            )
         except tuning.SolveFailed as failed:
             if failed.reason != "stalled":  # out of time, or no design at all: no retry
                 raise
-        except (RuntimeError, ValueError, IndexError, ArithmeticError):  # app.UNSOLVABLE
+        except RuntimeError, ValueError, IndexError, ArithmeticError:  # app.UNSOLVABLE
             solved = None
     if solved is None:
-        solved = tuning.design_row(reference, changed, start=PRESET_ROWS[preset], fast=True,
-                                   **watch)
+        solved = tuning.design_row(
+            reference, changed, start=PRESET_ROWS[preset], fast=True, **watch
+        )
     if solved.jacobian is not None:
         _WARM[(preset, profile)] = solved
     return solved
@@ -150,8 +183,14 @@ class _Cancel:
         return SHUTDOWN.is_set() or (self.token is not None and self.token.is_set())
 
 
-def failure_report(error: tuning.SolveFailed, preset: str, profile: str | None,
-                   system: str, factor: float, moved: list[str] | None = None) -> dict:
+def failure_report(
+    error: tuning.SolveFailed,
+    preset: str,
+    profile: str | None,
+    system: str,
+    factor: float,
+    moved: list[str] | None = None,
+) -> dict:
     """What the page shows for a solve that stopped early: the reason, a sentence, and the
     inputs not met (relative error above UNMET, largest first) as {name, label, unit, target,
     achieved, error}: the nearest values found, in the units `system` at time scale `factor`
@@ -166,8 +205,16 @@ def failure_report(error: tuning.SolveFailed, preset: str, profile: str | None,
         spec = table[name]
         if abs(r) > UNMET:
             unit = units.label(spec.kind, system) if spec.kind else spec.unit
-            unmet.append(dict(name=name, label=spec.label, unit=unit, target=shown(spec, target),
-                              achieved=shown(spec, target * math.exp(r)), error=math.expm1(r)))
+            unmet.append(
+                dict(
+                    name=name,
+                    label=spec.label,
+                    unit=unit,
+                    target=shown(spec, target),
+                    achieved=shown(spec, target * math.exp(r)),
+                    error=math.expm1(r),
+                )
+            )
     unmet.sort(key=lambda u: -abs(u["error"]))
     if error.reason == "impossible":
         text = error.message
@@ -175,16 +222,24 @@ def failure_report(error: tuning.SolveFailed, preset: str, profile: str | None,
             text += f"; inputs moved: {', '.join(moved)}"
     else:
         worst = max((abs(u["error"]) for u in unmet), default=0.0)
-        names = (", ".join(u["label"] for u in unmet if abs(u["error"]) >= 0.25 * worst)
-                 or "the inputs together")
-        why = (f"no solution in {TIME_LIMIT:g} s" if error.reason == "time"
-               else "the error stopped falling")
+        names = (
+            ", ".join(u["label"] for u in unmet if abs(u["error"]) >= 0.25 * worst)
+            or "the inputs together"
+        )
+        why = (
+            f"no solution in {TIME_LIMIT:g} s"
+            if error.reason == "time"
+            else "the error stopped falling"
+        )
         text = f"Cannot meet {names}: {why}, nearest found is {worst:.1%} off"
-    return dict(reason=error.reason, message=text, unmet=unmet, nearest=error.reason != "impossible")
+    return dict(
+        reason=error.reason, message=text, unmet=unmet, nearest=error.reason != "impossible"
+    )
 
 
-def build_row(preset: str, values: dict | None = None, fixed: dict | None = None,
-              profile: str | None = None) -> dict:
+def build_row(
+    preset: str, values: dict | None = None, fixed: dict | None = None, profile: str | None = None
+) -> dict:
     return solve(preset, values, fixed, profile).row
 
 
@@ -197,9 +252,15 @@ def saved_record(name: str, state: dict, saved_at: str) -> dict:
     preset = state.get("preset", "p51d")
     profile = _profile(preset, state.get("profile"))
     version = None if fixed else tuning.inputs_version(tuning.PROFILES[profile].inputs)
-    return dict(name=name, saved_at=saved_at, base_preset=preset, state=state, profile=profile,
-                inputs_version=version,
-                row=build_row(preset, state.get("values"), fixed, profile))
+    return dict(
+        name=name,
+        saved_at=saved_at,
+        base_preset=preset,
+        state=state,
+        profile=profile,
+        inputs_version=version,
+        row=build_row(preset, state.get("values"), fixed, profile),
+    )
 
 
 def loaded_record(record: dict) -> dict | None:
@@ -213,7 +274,8 @@ def loaded_record(record: dict) -> dict | None:
     profile = record.get("profile") or tuning.DEFAULT_PROFILE
     known = tuning.PROFILES.get(profile)
     editable = known is not None and record.get("inputs_version") == tuning.inputs_version(
-        known.inputs)
+        known.inputs
+    )
     out = dict(record, profile=profile if known else tuning.DEFAULT_PROFILE, editable=editable)
     if not editable:
         table = (known or tuning.PROFILES[tuning.DEFAULT_PROFILE]).inputs
@@ -222,8 +284,12 @@ def loaded_record(record: dict) -> dict | None:
     return out
 
 
-def ship(preset: str, values: dict[str, float] | None = None, fixed: dict | None = None,
-         profile: str | None = None) -> dict:
+def ship(
+    preset: str,
+    values: dict[str, float] | None = None,
+    fixed: dict | None = None,
+    profile: str | None = None,
+) -> dict:
     """The design's implied physical quantities (tuning.implied, real units), its warnings
     (tuning.warnings), its solved card row with the solve's residual, iterations and condition
     number, and what it flies (tuning.design_of, game units)."""
@@ -231,14 +297,19 @@ def ship(preset: str, values: dict[str, float] | None = None, fixed: dict | None
         solved = solve(preset, values, fixed, profile)
         reference = tuning.reference(preset, _profile(preset, profile))
         numbers = tuning.performance(solved.row)
-        return _plain(dict(
-            implied=tuning.implied(solved.row, reference.airframe),
-            warnings=tuning.warnings(solved.row, reference, numbers),
-            row=solved.row,
-            solve=dict(residual=solved.residual, iterations=solved.iterations,
-                       condition=solved.condition),
-            flies=tuning.design_of(solved.row, reference.inputs),
-        ))
+        return _plain(
+            dict(
+                implied=tuning.implied(solved.row, reference.airframe),
+                warnings=tuning.warnings(solved.row, reference, numbers),
+                row=solved.row,
+                solve=dict(
+                    residual=solved.residual,
+                    iterations=solved.iterations,
+                    condition=solved.condition,
+                ),
+                flies=tuning.design_of(solved.row, reference.inputs),
+            )
+        )
 
 
 def _chart():
@@ -302,8 +373,9 @@ def warm(preset: str = "p51d") -> None:
         _preset_checks(preset)
 
 
-def fly_checks(preset: str, values, factor: float, fixed: dict | None = None,
-               profile: str | None = None) -> dict:
+def fly_checks(
+    preset: str, values, factor: float, fixed: dict | None = None, profile: str | None = None
+) -> dict:
     """Fly the design's checks (lean.tool.flown: the lowest speed of each line and the key
     points), cache them for its charts, and return them with the quasi-steady points (game
     units at `factor`)."""
@@ -364,8 +436,9 @@ def _numbers(lowest, source, points) -> dict:
     return dict(key=key, lowest=lowest, lowest_source=source, flown=points)
 
 
-def envelope(preset: str, values, factor: float, fixed: dict | None = None,
-             profile: str | None = None) -> dict:
+def envelope(
+    preset: str, values, factor: float, fixed: dict | None = None, profile: str | None = None
+) -> dict:
     """JSON-ready: the key numbers for the tuned design and for the preset as it stands (the
     reference), in game units at `factor` times real time."""
     with LOCK:
@@ -383,8 +456,9 @@ def _png(figure) -> bytes:
     return buffer.getvalue()
 
 
-def doghouse_png(preset, values, factor: float, system: str = "game", fixed=None,
-                 profile=None) -> bytes:
+def doghouse_png(
+    preset, values, factor: float, system: str = "game", fixed=None, profile=None
+) -> bytes:
     """The doghouse of the tuned design as a PNG, drawn by the committed charts' code, in the
     units system (lean.tool.units: game, real_metric, real_imperial)."""
     chart = _chart()
@@ -400,8 +474,9 @@ def doghouse_png(preset, values, factor: float, system: str = "game", fixed=None
             return _png(figure)
 
 
-def sustained_png(preset, values, factor: float, system: str = "game", fixed=None,
-                  profile=None) -> bytes:
+def sustained_png(
+    preset, values, factor: float, system: str = "game", fixed=None, profile=None
+) -> bytes:
     """The sustained turn (rate and radius against speed) of the tuned design and of the preset
     (dotted), as a PNG in the doghouse's style."""
     chart = _chart()

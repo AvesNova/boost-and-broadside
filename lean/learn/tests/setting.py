@@ -33,7 +33,9 @@ def add_snapshots(league: League, policies, member=None, slot=None, averages=Non
     member = torch.zeros(0, dtype=torch.long) if member is None else member
     slot = torch.full_like(member, -1) if slot is None else slot
     for policy in policies:
-        step = league.schedule.points(league.schedule.steps[-1] + league.taken * league.schedule.period)[league.taken]
+        step = league.schedule.points(
+            league.schedule.steps[-1] + league.taken * league.schedule.period
+        )[league.taken]
         member, lost = league.after_update(
             policy, averages or WeightAverages(policy, LearnConfig()), step - 1, step, member, slot
         )
@@ -58,7 +60,7 @@ class StepRecorder:
         self.done.append(step_out.done.clone())
         return next_state, step_out
 
-    def install(self, monkeypatch) -> "StepRecorder":
+    def install(self, monkeypatch) -> StepRecorder:
         monkeypatch.setattr(game, "step", self)
         return self
 
@@ -81,7 +83,9 @@ class StepRecorder:
                         row = end
                         while row >= 0:
                             if row < end and bool(self.done[row][environment]):
-                                row = -1  # an earlier episode: the bullet left before the recorded ticks
+                                row = (
+                                    -1
+                                )  # an earlier episode: the bullet left before the recorded ticks
                                 break
                             if int(self.ticks[row][environment]) == shot:
                                 break

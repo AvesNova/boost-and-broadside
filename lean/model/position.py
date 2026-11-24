@@ -100,9 +100,9 @@ class ColourCode(nn.Module):
             colour = torch.remainder(lower, self.COLOURS)
             colours = torch.arange(self.COLOURS, device=positions.device, dtype=torch.float32)
             above = torch.remainder(colour + 1.0, self.COLOURS)
-            code = (1.0 - fraction)[..., None] * (colour[..., None] == colours) + fraction[..., None] * (
-                above[..., None] == colours
-            )  # (..., 2, levels, 3)
+            code = (1.0 - fraction)[..., None] * (colour[..., None] == colours) + fraction[
+                ..., None
+            ] * (above[..., None] == colours)  # (..., 2, levels, 3)
             x, y = code.unbind(-3)
             return (x[..., :, None] * y[..., None, :]).flatten(-3)
 
@@ -133,10 +133,19 @@ class Rotary(nn.Module):
             turn = math.radians(index * config.rotary_turn)
             axes += [(math.cos(turn), math.sin(turn)), (-math.sin(turn), math.cos(turn))]
             rates += [2.0 * math.pi / period] * 2
-        waves = torch.tensor(axes, dtype=torch.float64) * torch.tensor(rates, dtype=torch.float64)[:, None]
+        waves = (
+            torch.tensor(axes, dtype=torch.float64)
+            * torch.tensor(rates, dtype=torch.float64)[:, None]
+        )
         self.register_buffer("waves", waves.float(), persistent=False)
-        self.register_buffer("harmonics", torch.tensor(config.heading_harmonics, dtype=torch.float32), persistent=False)
+        self.register_buffer(
+            "harmonics",
+            torch.tensor(config.heading_harmonics, dtype=torch.float32),
+            persistent=False,
+        )
 
     def angles(self, positions: Tensor, heading: Tensor) -> Tensor:
         with torch.autocast(positions.device.type, enabled=False):
-            return torch.cat([positions.float() @ self.waves.T, heading.float()[..., None] * self.harmonics], -1)
+            return torch.cat(
+                [positions.float() @ self.waves.T, heading.float()[..., None] * self.harmonics], -1
+            )

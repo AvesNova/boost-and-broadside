@@ -45,7 +45,10 @@ def test_the_hit_loss_reads_only_labelled_own_rows():
 
 def hit_head(policy):
     """The hit head's own parameters (its norm and last layer; the first layer is shared)."""
-    return [*policy.auxiliary_heads.norms[1].parameters(), *policy.auxiliary_heads.lasts[1].parameters()]
+    return [
+        *policy.auxiliary_heads.norms[1].parameters(),
+        *policy.auxiliary_heads.lasts[1].parameters(),
+    ]
 
 
 @pytest.mark.parametrize("labelled", [False, True])
@@ -71,7 +74,9 @@ def test_real_game_labels(ghost_bullets):
     without them only rows whose applied action (the observation's pending one, chosen on the
     tick before) pulled the trigger can be (the mask covers the rest), and every label is one
     of the three classes."""
-    config, game_config, policy, opponent, state, carry, generator = small(game_config=game.GameConfig(ghost_bullets=ghost_bullets))
+    config, game_config, policy, opponent, state, carry, generator = small(
+        game_config=game.GameConfig(ghost_bullets=ghost_bullets)
+    )
     rollout = collect(config, game_config, policy, opponent, state, carry, 24, generator)
     label, own = rollout.hit_label, rollout.observation.own
     assert ((label >= -1) & (label <= 2)).all()
