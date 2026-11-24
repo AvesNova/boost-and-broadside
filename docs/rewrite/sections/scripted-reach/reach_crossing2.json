@@ -1,0 +1,324 @@
+{
+ "results": {
+  "overshoot": {
+   "states": 34582,
+   "reached": 44,
+   "reach": 0.0012723382106298075,
+   "reached_yardstick_flown": 19,
+   "js_reached": 0.017061123894729458,
+   "change_reached": 0.045454545454545456,
+   "js_all": 2.1707519847553426e-05,
+   "change_all": 5.783355502862761e-05,
+   "head_js_reached": [
+    0.0,
+    0.017061140468523917,
+    0.0
+   ]
+  },
+  "overshoot (held sense)": {
+   "states": 34582,
+   "reached": 33,
+   "reach": 0.0009542536579723556,
+   "reached_yardstick_flown": 17,
+   "js_reached": 0.4417509310173266,
+   "change_reached": 0.7575757575757576,
+   "js_all": 0.0004215424556245716,
+   "change_all": 0.0007229194378578451,
+   "head_js_reached": [
+    0.4241497444384026,
+    0.01760115756127743,
+    0.0
+   ]
+  },
+  "overshoot_x2": {
+   "states": 34582,
+   "reached": 52,
+   "reach": 0.0015036724307443178,
+   "reached_yardstick_flown": 30,
+   "js_reached": 0.03713952932023928,
+   "change_reached": 0.11538461538461539,
+   "js_all": 5.584568632971666e-05,
+   "change_all": 0.00017350066508588284,
+   "head_js_reached": [
+    0.0,
+    0.03713953951193197,
+    0.0
+   ]
+  },
+  "overshoot_x3": {
+   "states": 34582,
+   "reached": 2,
+   "reach": 5.783355502862761e-05,
+   "reached_yardstick_flown": 0,
+   "js_reached": 3.334624807393993e-07,
+   "change_reached": 0.0,
+   "js_all": 1.9285320729824726e-11,
+   "change_all": 0.0,
+   "head_js_reached": [
+    0.0,
+    3.491884399409173e-07,
+    0.0
+   ]
+  },
+  "spend (all three gates)": {
+   "states": 34582,
+   "reached": 426,
+   "reach": 0.012318547221097681,
+   "reached_yardstick_flown": 137,
+   "js_reached": 0.013570711366447484,
+   "change_reached": 0.09859154929577464,
+   "js_all": 0.00017163505797430017,
+   "change_all": 0.0015904227632872593,
+   "head_js_reached": [
+    0.0,
+    0.013570709687443406,
+    0.0
+   ]
+  },
+  "spend_need": {
+   "states": 34582,
+   "reached": 1779,
+   "reach": 0.05144294719796426,
+   "reached_yardstick_flown": 770,
+   "js_reached": 0.022039598263402276,
+   "change_reached": 0.08431703204047218,
+   "js_all": 0.0011364971327675504,
+   "change_all": 0.004511017292232954,
+   "head_js_reached": [
+    0.0,
+    0.022039600273676973,
+    0.0
+   ]
+  },
+  "spend_range": {
+   "states": 34582,
+   "reached": 976,
+   "reach": 0.028222774853970272,
+   "reached_yardstick_flown": 374,
+   "js_reached": 0.012477814693187103,
+   "change_reached": 0.0860655737704918,
+   "js_all": 0.00035556464254956076,
+   "change_all": 0.002631426753802556,
+   "head_js_reached": [
+    0.0,
+    0.012477814754257436,
+    0.0
+   ]
+  },
+  "spend_share": {
+   "states": 34582,
+   "reached": 9537,
+   "reach": 0.2757793071540108,
+   "reached_yardstick_flown": 4421,
+   "js_reached": 0.07593566376145211,
+   "change_reached": 0.2025794274929223,
+   "js_all": 0.02094484606870762,
+   "change_all": 0.05618529871031172,
+   "head_js_reached": [
+    0.0,
+    0.07593566376145211,
+    0.0
+   ]
+  },
+  "weakest_weight": {
+   "states": 34582,
+   "reached": 55,
+   "reach": 0.0015904227632872593,
+   "reached_yardstick_flown": 0,
+   "js_reached": 0.5030587759884921,
+   "change_reached": 0.8363636363636363,
+   "js_all": 0.0008000760665548509,
+   "change_all": 0.001330171765658435,
+   "head_js_reached": [
+    0.4730835654518821,
+    0.08683628168973055,
+    0.05695149790156971
+   ]
+  },
+  "switch_gain": {
+   "states": 34582,
+   "reached": 18,
+   "reach": 0.0005205019952576485,
+   "reached_yardstick_flown": 12,
+   "js_reached": 0.5832059118482802,
+   "change_reached": 1.0,
+   "js_all": 0.0003035598545516801,
+   "change_all": 0.0005205019952576485,
+   "head_js_reached": [
+    0.5832059250937568,
+    0.0,
+    0.0
+   ]
+  },
+  "switch_gain (held sense)": {
+   "states": 34582,
+   "reached": 1812,
+   "reach": 0.05239720085593661,
+   "reached_yardstick_flown": 867,
+   "js_reached": 0.5250688936010365,
+   "change_reached": 0.9006622516556292,
+   "js_all": 0.02751214028121792,
+   "change_all": 0.04719218090336013,
+   "head_js_reached": [
+    0.5243060046737031,
+    0.0007629098667042067,
+    0.0
+   ]
+  },
+  "scissors_range": {
+   "states": 34582,
+   "reached": 1523,
+   "reach": 0.04404025215429992,
+   "reached_yardstick_flown": 698,
+   "js_reached": 0.19688239194653337,
+   "change_reached": 0.4694681549573211,
+   "js_all": 0.008708226040275423,
+   "change_all": 0.0215719160256781,
+   "head_js_reached": [
+    0.0,
+    0.19688240196543622,
+    0.0
+   ]
+  },
+  "cash_angle": {
+   "states": 34582,
+   "reached": 264,
+   "reach": 0.007634029263778845,
+   "reached_yardstick_flown": 87,
+   "js_reached": 0.014839566115177038,
+   "change_reached": 0.14015151515151514,
+   "js_all": 0.00013995105786869852,
+   "change_all": 0.0015904227632872593,
+   "head_js_reached": [
+    0.012477755095019485,
+    0.00248713701060324,
+    0.0
+   ]
+  },
+  "relax_angle": {
+   "states": 34582,
+   "reached": 536,
+   "reach": 0.0154993927476722,
+   "reached_yardstick_flown": 292,
+   "js_reached": 0.009028898691063497,
+   "change_reached": 0.054104477611940295,
+   "js_all": 0.0001963377895159978,
+   "change_all": 0.001330171765658435,
+   "head_js_reached": [
+    0.008842598591277848,
+    0.00018890178414867885,
+    0.0
+   ]
+  },
+  "defend_range": {
+   "states": 34582,
+   "reached": 399,
+   "reach": 0.011537794228211207,
+   "reached_yardstick_flown": 166,
+   "js_reached": 0.0319608697915137,
+   "change_reached": 0.015037593984962405,
+   "js_all": 0.00039181221311208615,
+   "change_all": 0.00017350066508588284,
+   "head_js_reached": [
+    0.030981185740994333,
+    0.001071545638536152,
+    0.0
+   ]
+  },
+  "boundary_margin (the steer)": {
+   "states": 34582,
+   "reached": 158,
+   "reach": 0.004568850847261581,
+   "reached_yardstick_flown": 103,
+   "js_reached": 0.23607588116126724,
+   "change_reached": 0.4050632911392405,
+   "js_all": 0.001078595462084492,
+   "change_all": 0.0018506737609160836,
+   "head_js_reached": [
+    0.23607589021513734,
+    0.0,
+    0.0
+   ]
+  },
+  "speed_floor": {
+   "states": 34582,
+   "reached": 0,
+   "reach": 0.0,
+   "reached_yardstick_flown": 0,
+   "js_reached": null,
+   "change_reached": null,
+   "js_all": 0.0,
+   "change_all": 0.0,
+   "head_js_reached": null
+  },
+  "turning_floor": {
+   "states": 34582,
+   "reached": 13455,
+   "reach": 0.38907524145509226,
+   "reached_yardstick_flown": 6124,
+   "js_reached": 0.007986392925238353,
+   "change_reached": 0.02556670382757339,
+   "js_all": 0.0031620880196668254,
+   "change_all": 0.010467873460181597,
+   "head_js_reached": [
+    0.0028501809019884712,
+    0.0053130454974562565,
+    0.0
+   ]
+  }
+ },
+ "overshoot_conditions": {
+  "overshoot": {
+   "aft_held": 9258,
+   "from_my_side_alone": 1666,
+   "then_from_my_side": 1622,
+   "rate_alone": 9681,
+   "then_rate": 465,
+   "range_alone": 2497,
+   "then_range": 288,
+   "crossing_alone": 19534,
+   "then_crossing": 73,
+   "slower_alone": 15164,
+   "then_slower": 44
+  },
+  "overshoot_x2": {
+   "aft_held": 9258,
+   "from_my_side_alone": 1666,
+   "then_from_my_side": 1622,
+   "rate_alone": 9681,
+   "then_rate": 465,
+   "range_alone": 2497,
+   "then_range": 288,
+   "crossing_alone": 22231,
+   "then_crossing": 99,
+   "slower_alone": 15164,
+   "then_slower": 52
+  },
+  "overshoot_x3": {
+   "aft_held": 9258,
+   "from_my_side_alone": 1666,
+   "then_from_my_side": 1622,
+   "rate_alone": 9681,
+   "then_rate": 465,
+   "range_alone": 2497,
+   "then_range": 288,
+   "crossing_alone": 4756,
+   "then_crossing": 3,
+   "slower_alone": 15164,
+   "then_slower": 2
+  }
+ },
+ "yardstick_flown_states": 17153,
+ "collect_counts": {
+  "ship_ticks": 2110905,
+  "overshoot_events": 30,
+  "under_overshoot": 1762,
+  "switch_commits": 1158,
+  "under_switch": 107745,
+  "commits": 7383
+ },
+ "games": 300,
+ "snapshots": 6384,
+ "eps": 0.05,
+ "ln2": 0.6931471805599453
+}
