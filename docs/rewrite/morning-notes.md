@@ -2,8 +2,10 @@
 
 ## Steps 1-10, night of 2026-11-25 (for your review)
 
-Choices I made for you while working through the to-do list. Newest last; each says where to
-undo it.
+All ten steps are done and merged on core (06:24). The three choices that most need your
+eye are in bold: the gun range at 375 mph (step 1), the trim of the scripted agent (step 4)
+and the value supports from the measured extremes (step 9); also the 60 s clock (step 8) and
+the brief's 9 questions (step 6). Notes in the order they were written.
 
 - Step 2 (lead turn and yo-yo deleted): the closure signal is frozen at its saturated value -1
   (it read -0.97 on average), so every agent keeps the old low yo-yo's energy half (a faster
@@ -36,7 +38,7 @@ undo it.
   scissors, boundary steer and weakest-target (persona) clearly matter. **My call:** delete the
   never-reached and no-effect mechanisms now (removal only; you wanted to stop changing the
   scripted agent), keep the rest, and accept the trim only if a paired skill re-check shows no
-  loss beyond 2 standard errors. Result below when it lands. The classes' cut-offs (JS 0.02
+  loss beyond 2 standard errors. The classes' cut-offs (JS 0.02
   nats or 10% action change when reached) are the agent's choice.
   **Result (merged):** 9 rows and 6 gates gone (overshoot and its 3 rows; spend_need,
   spend_range, spend_share; cash_angle, so two-circle holds the middle level at the fight
