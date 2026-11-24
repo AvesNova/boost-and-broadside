@@ -104,3 +104,44 @@ def envelope(preset: str, handles: dict[str, float] | None, factor: float) -> di
         with tuning.flying(build_row(preset, handles), factor):
             design = _numbers(factor)
     return _plain(dict(factor=factor, design=design, reference=_REFERENCE[preset, factor]))
+
+
+_DOGHOUSE = None
+
+
+def _doghouse_module():
+    """The PNG charts' own drawing code (docs/rewrite/sections/turns/doghouse.py), loaded once,
+    so the tool draws exactly what the committed charts draw (one drawing, matplotlib)."""
+    global _DOGHOUSE
+    if _DOGHOUSE is None:
+        import importlib.util
+        import sys
+        from pathlib import Path
+
+        folder = Path(__file__).resolve().parents[2] / "docs" / "rewrite" / "sections" / "turns"
+        sys.path.insert(0, str(folder))
+        spec = importlib.util.spec_from_file_location("doghouse_chart", folder / "doghouse.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _DOGHOUSE = module
+    return _DOGHOUSE
+
+
+def doghouse_png(preset: str, handles: dict[str, float] | None, factor: float, real: bool) -> bytes:
+    """The doghouse of the tuned design as a PNG, drawn by the same matplotlib code as the
+    committed charts. real: halve speeds, rates and Ps for the 1x-real view (only at the game's
+    2x; at 1x the game units are already real)."""
+    import io
+
+    chart = _doghouse_module()
+    plt = chart.plt
+    with LOCK:
+        with tuning.flying(build_row(preset, handles), factor):
+            figure, ax = plt.subplots(figsize=(7.5, 7.4), facecolor=chart.SURFACE)
+            chart.draw_panel(figure, ax, 0, "tuned design", None, real and factor != 1.0)
+            figure.text(0.01, 0.004, chart.foot(0, real and factor != 1.0), color=chart.INK_2, fontsize=7)
+            figure.tight_layout(rect=(0, 0.25, 1, 1))
+            buffer = io.BytesIO()
+            figure.savefig(buffer, format="png", dpi=110, facecolor=chart.SURFACE)
+            plt.close(figure)
+    return buffer.getvalue()

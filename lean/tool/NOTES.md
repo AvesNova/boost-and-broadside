@@ -31,3 +31,5 @@ connection for the charts).
 
 The card is process-global (`tuning.flying`), which is why the sandbox runs in a child
 process and why envelope requests are serialised. Tests: `lean/tool/tests`.
+
+- The doghouse is a PNG drawn by the committed charts' matplotlib code (docs/rewrite/sections/turns/doghouse.py, `draw_panel`) through `POST /api/doghouse.png` (about 0.4-0.6 s); matplotlib is the one charting system (author 2026-11-24). The sustained-turn chart is still Plotly, to move over.

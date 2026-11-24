@@ -42,7 +42,7 @@
     <div id="error"></div>
     <table id="readouts"></table>
   </div>
-  <div><div id="doghouse" style="height:520px"></div><div id="sustained" style="height:380px"></div></div>
+  <div><img id="doghouse" alt="doghouse (drawing...)" style="max-width:100%;display:block"><div id="sustained" style="height:380px"></div></div>
 </div>
 
 <div id="sandbox">
@@ -121,31 +121,8 @@ function draw() {
 
   const speeds = last.design.speeds.map(v => v * f);
   const rate = a => nums(a).map(r => r * DEG * f);
-  const line = (name, y, color, dash, width) => ({ x: speeds, y, name, mode: "lines", line: { color, dash, width: width || 2 } });
   const D = last.design, R = last.reference;
-  const traces = [
-    { type: "contour", x: speeds, y: last.design.rate_axis.map(r => r * DEG * f), z: D.ps.map(row => row.map(p => (p === null ? NaN : p * f))),
-      colorscale: [[0, "#e34948"], [0.5, "#f0efec"], [1, "#2a78d6"]], zmid: 0, ncontours: 20, contours: { coloring: "heatmap" },
-      line: { width: 0 }, colorbar: { title: "Ps m/s", thickness: 12 }, hoverinfo: "skip", showlegend: false },
-    { type: "contour", x: speeds, y: D.rate_axis.map(r => r * DEG * f), z: D.ps.map(row => row.map(p => (p === null ? NaN : p * f))),
-      contours: { start: 0, end: 0, size: 1, coloring: "lines" }, line: { color: "#0b0b0b", width: 2, dash: "dash" },
-      showscale: false, hoverinfo: "skip", showlegend: false },
-    line("full stick", rate(D.full), "#0b0b0b"),
-    line("sustained stick", rate(D.sustained_stick), "#0b0b0b", "solid", 1),
-    line("fine stick", rate(D.fine_stick), "#0b0b0b", "solid", 1),
-    line("full stick, diving", rate(D.dive), "#52514e", "dashdot", 1),
-    line("full stick, climbing", rate(D.climb), "#52514e", "dashdot", 1),
-    { ...line("reference full stick", rate(R.full), "#898781", "dot"), },
-    { x: [key.corner_speed * f], y: [key.corner_rate * DEG * f], mode: "markers", name: "corner", marker: { symbol: "circle", size: 10, color: "#0b0b0b" } },
-  ];
-  if (key.best_sustained_speed !== null)
-    traces.push({ x: [key.best_sustained_speed * f], y: [key.best_sustained_rate * DEG * f], mode: "markers", name: "best sustained", marker: { symbol: "square", size: 10, color: "#0b0b0b" } });
-  const top = Math.max(...rate(D.full).filter(isFinite)) * 1.15;
-  Plotly.react("doghouse", traces, {
-    title: { text: `Doghouse: turn rate against speed, coast${real ? " (real units)" : ""}`, font: { size: 14 } },
-    xaxis: { title: `speed (${speedUnit})` }, yaxis: { title: "turn rate (deg/s)", range: [0, top] },
-    margin: { t: 40, r: 10 }, legend: { orientation: "h", y: -0.2 },
-  }, { responsive: true });
+  drawDoghouse();
 
   const held = (S, name, color, dash) => ({ x: speeds, y: rate(S.held_rate), name, mode: "lines", line: { color, dash, width: 2 } });
   Plotly.react("sustained", [held(D, "this design", "#2a78d6"), held(R, "reference", "#898781", "dot"),
@@ -156,6 +133,16 @@ function draw() {
     yaxis2: { title: "radius (m)", overlaying: "y", side: "right", range: [0, 2000] },
     margin: { t: 40, r: 50 }, legend: { orientation: "h", y: -0.25 },
   }, { responsive: true });
+}
+let pngSequence = 0, pngUrl = null;
+async function drawDoghouse() {   // the committed charts' matplotlib drawing, rendered by the server
+  const mine = ++pngSequence;
+  const body = { preset: $("preset").value, handles, time_scale: +$("factor").value, units: $("units").value };
+  const response = await fetch("/api/doghouse.png", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (mine !== pngSequence || !response.ok) return;
+  const url = URL.createObjectURL(await response.blob());
+  if (pngUrl) URL.revokeObjectURL(pngUrl);
+  pngUrl = url; $("doghouse").src = url;
 }
 function fmt2(rate, speed, a, b) { return rate === null ? "none" : `${(rate * a).toFixed(1)} deg/s / ${(speed * b).toFixed(0)} m/s`; }
 

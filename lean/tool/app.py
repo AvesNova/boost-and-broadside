@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from lean.game import tuning
@@ -40,6 +40,20 @@ def envelope(request: EnvelopeRequest):
         return design.envelope(request.preset, request.handles, request.time_scale)
     except (RuntimeError, ValueError) as error:  # the handles have no solution
         return JSONResponse({"error": str(error)}, status_code=422)
+
+
+class DoghouseRequest(EnvelopeRequest):
+    units: str = "game"
+
+
+@app.post("/api/doghouse.png")
+def doghouse(request: DoghouseRequest):
+    """The tuned design's doghouse drawn by the committed charts' matplotlib code."""
+    try:
+        png = design.doghouse_png(request.preset, request.handles, request.time_scale, request.units == "real")
+    except (RuntimeError, ValueError) as error:
+        return JSONResponse({"error": str(error)}, status_code=422)
+    return Response(png, media_type="image/png")
 
 
 def _receive(connection, process):

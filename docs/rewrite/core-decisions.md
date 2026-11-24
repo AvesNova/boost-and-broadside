@@ -536,6 +536,15 @@ League (section 8)
 - BFM-CMA2 is the provisional yardstick and BC teacher (author 2026-11-24 ~12:30), pending the
   author's own flying and review of open caveats.
 
+## Charts (author 2026-11-24)
+
+- Matplotlib is the one charting system: the web tool shows static images rendered by the same
+  drawing code as the committed charts (a 1-2 s redraw is acceptable; hover and zoom not
+  needed).
+- Automatic flaps: smooth in speed and in its derivative (C2), scheduled by stick demand (as
+  the F-16's), turn rate never decreasing with speed below corner (a test); real aircraft rows
+  derived automatically from their targets (no stored copies to regenerate).
+
 ## Proposals, not decided
 
 

@@ -119,3 +119,15 @@ def test_the_sandbox_opponent_spawns_by_the_games_rule():
     assert float(s.speed[0, 1]) == pytest.approx(card.SPAWN_SPEED * math.exp(log_index), rel=1e-6)
     assert float(s.energy[0, 1]) == pytest.approx(world.constant("spawn_energy", 1))
     assert bool(s.alive[0, 0]) and bool(s.alive[0, 1])
+
+
+def test_the_doghouse_endpoint_returns_the_committed_charts_png():
+    """The tool's doghouse is drawn by the committed charts' matplotlib code, as a PNG."""
+    from fastapi.testclient import TestClient
+
+    from lean.tool.app import app
+
+    response = TestClient(app).post("/api/doghouse.png", json={"preset": "p51d", "time_scale": 2.0, "units": "real"})
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content[:8] == b"\x89PNG\r\n\x1a\n"
