@@ -5,6 +5,7 @@ import math
 import pytest
 from fastapi.testclient import TestClient
 
+from lean.game import tuning
 from lean.tool import design, units
 from lean.tool.app import app
 
@@ -49,11 +50,15 @@ def test_slider_values_shown_convert_back_to_the_same_handle(system):
 
 
 def test_every_input_has_a_kind_or_a_plain_unit():
-    """An input with a kind converts in every system; one without shows its own unit."""
-    for entry in design.inputs("p51d"):
-        assert entry["kind"] in units.KINDS or (entry["kind"] is None), entry["name"]
-        assert entry["kind"] is None or not entry["unit"], entry["name"]
-    assert "top level speed" in [e["label"] for e in design.inputs("p51d")]
+    """An input with a kind converts in every system; one without shows its own unit (none for
+    a plain number or a coefficient such as C_D0), in every profile; the documents' sliders
+    include the top level speed, the airframe and engine's the engine power."""
+    for profile in tuning.PROFILES:
+        for entry in design.inputs("p51d", profile):
+            assert entry["kind"] in units.KINDS or (entry["kind"] is None), entry["name"]
+            assert entry["kind"] is None or not entry["unit"], entry["name"]
+    assert "top level speed" in [e["label"] for e in design.inputs("p51d", "documents")]
+    assert "engine power" in [e["label"] for e in design.inputs("p51d", "airframe_and_engine")]
 
 
 def test_presets_carry_the_units():

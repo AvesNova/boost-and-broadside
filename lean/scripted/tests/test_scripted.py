@@ -179,7 +179,7 @@ def test_turns_toward_a_target_on_its_left():
 
 # The power's cases (lean/scripted/NOTES.md "Power"): own ship at the origin heading +x; the
 # target at `bearing` (radians, 0 ahead) and `distance` gun ranges, flying the same way at the
-# same speed. Speeds in corner speeds (the P-51D's sustained speed is 0.575), the store as a
+# same speed. Speeds in corner speeds (the P-51D's sustained speed is 0.656), the store as a
 # fraction of full. Expected: the most likely power.
 POWER_CASES = [
     # name, speed, bearing, distance, store, expected
@@ -189,9 +189,10 @@ POWER_CASES = [
     ("disengaged and fast, store full", 1.15, 0.0, 6.0, 1.0, COAST),
     ("engaged, below the fight speed", 0.45, 0.0, 1.5, 0.5, DIVE),
     ("engaged, below the fight speed, store empty", 0.45, 0.0, 1.5, 0.0, COAST),
-    # 0.8 is inside the coast band of the fight speed (BFM-CMA2: 1.29 sustained speeds; 0.7 sat
-    # in the band of the earlier fight speed of 1.0 and now dives).
-    ("out of range behind a straight target: the engine closes", 0.8, 0.0, 1.5, 0.8, COAST),
+    # 0.92 is above the coast band of the fight speed (BFM-CMA2: 1.29 sustained speeds, 0.85
+    # corner speeds), where the climb is what a straight target holds off. (0.7 sat in the band
+    # of the earlier fight speed of 1.0; 0.8 dives under the 2,200 hp card's, 2026-11-24.)
+    ("out of range behind a straight target: the engine closes", 0.92, 0.0, 1.5, 0.8, COAST),
 ]
 
 

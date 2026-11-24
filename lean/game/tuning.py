@@ -259,20 +259,26 @@ def scaled(name, label, group, sets=None, scale=lambda: 1.0, **rest) -> DesignIn
     )
 
 
+def _launch_speed() -> float:
+    """The ship's speed a gun range is defined at: the P-51D's documented top speed (375 mph,
+    game units), the same for every design, so a faster design keeps its bullet life
+    (author's review, 2026-11-25 night: the bullet life must fit contract.BULLET_SLOTS)."""
+    return P51D_VALUES["top_speed"]
+
+
 def _bullet_life(gun_range: float, design: dict, tick_length: float = 1.0 / 30.0) -> float:
-    """The bullet's life in whole ticks: long enough to fly the gun range when fired at the top
-    speed against the bullet drag (v2's weapons.combat_card). A table without a top-speed input
-    (top speed a readout) uses the P-51D's documented one."""
+    """The bullet's life in whole ticks: long enough to fly the gun range when fired at the
+    launch speed (_launch_speed) against the bullet drag (v2's weapons.combat_card)."""
     drag = design["bullet_drag"]
-    top_speed = design.get("top_speed", P51D_VALUES["top_speed"])
-    flight = math.expm1(drag * gun_range) / (drag * (top_speed + design["muzzle_speed"]))
+    flight = math.expm1(drag * gun_range) / (drag * (_launch_speed() + design["muzzle_speed"]))
     return math.ceil(flight / tick_length - LIFE_TOLERANCE) * tick_length
 
 
 def _gun_range(row: dict, numbers: dict) -> float:
-    """The range of a bullet's whole life, fired at the top speed (at least the designed range)."""
+    """The range of a bullet's whole life, fired at the launch speed (at least the designed
+    range)."""
     drag = row["bullet_drag_scale"] * card.BULLET_DRAG
-    launch = numbers["top_speed"] + row["muzzle_speed"]
+    launch = _launch_speed() + row["muzzle_speed"]
     return math.log1p(drag * launch * row["bullet_life"]) / drag
 
 
@@ -469,7 +475,7 @@ DESIGN_INPUTS = (
     ),
     DesignInput(
         "gun_range",
-        "gun range (from top speed)",
+        "gun range (fired at 375 mph)",
         G,
         "bullet_life",
         _gun_range,
@@ -564,9 +570,10 @@ class Profile:
 
 @functools.cache
 def _documented_thrust_power() -> float:
-    """The card's P-51D engine_power (thrust power per kg): the power input holds its
-    propeller efficiency, so the airframe's documented shaft power maps to it."""
-    return row_of("p51d")["engine_power"]
+    """The P-51D's engine_power (thrust power per kg) under its documents (the flight test at
+    the documented 1,630 hp): the power input holds that propeller efficiency, so a shaft power
+    maps to thrust power in proportion."""
+    return reference("p51d", "documents").start_row["engine_power"]
 
 
 def _shaft_power(row: dict) -> float:
@@ -663,7 +670,9 @@ class RealAircraft:
 # M 0.755). The lift softness 16 (v2's). Guns, damage, shield, the nose and vision are v2's
 # Vizia's.
 P51D_TOP_SPEED, P51D_BEST_CLIMB = 375.0 * MPH, 3600.0 * FEET_PER_MINUTE  # real m/s
+P51D_SHAFT_POWER = 2200.0 * HORSEPOWER  # W: the game's engine (author 2026-11-24 night)
 P51D_VALUES = dict(
+    shaft_power=to_game(P51D_SHAFT_POWER, -3),
     top_speed=to_game(P51D_TOP_SPEED, -1),
     best_climb=to_game(P51D_BEST_CLIMB, -1),
     oswald=0.85,
@@ -692,7 +701,14 @@ P51D_VALUES = dict(
     head_on_sharpness=3.0,
     vision_range=1000.0,
 )
-REAL_AIRCRAFT = {"p51d": RealAircraft(P51D, P51D_TOP_SPEED, P51D_BEST_CLIMB, P51D_VALUES)}
+# The P-51D airframe with a 2,200 hp engine (author 2026-11-24 night: late-war and post-war
+# engines, P-51H about 2,200 hp): the documents fit the airframe to the flight test at 1,630
+# hp; the card is that airframe under "airframe and engine" at P51D_SHAFT_POWER.
+REAL_AIRCRAFT = {
+    "p51d": RealAircraft(
+        P51D, P51D_TOP_SPEED, P51D_BEST_CLIMB, P51D_VALUES, profile="airframe_and_engine"
+    )
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -741,13 +757,24 @@ def reference_in(aircraft: RealAircraft, profile: str | None = None) -> Referenc
         return dataclasses.replace(reference_of(aircraft, chosen.inputs), profile=chosen.name)
     base = reference_in(aircraft, chosen.base)
     row = design_row(base, start=base.start_row).row
-    return dataclasses.replace(
+    reference = dataclasses.replace(
         base,
         inputs=chosen.inputs,
         design=design_of(row, chosen.inputs),
         profile=chosen.name,
         start_row=row,
     )
+    # the aircraft's own values for inputs its base table does not have (e.g. its engine power)
+    base_names = {spec.name for spec in PROFILES[chosen.base].inputs}
+    own = {
+        spec.name: aircraft.values[spec.name]
+        for spec in chosen.inputs
+        if spec.name in aircraft.values and spec.name not in base_names
+    }
+    if not own:
+        return reference
+    row = design_row(reference, own, start=row).row
+    return dataclasses.replace(reference, design=design_of(row, chosen.inputs), start_row=row)
 
 
 @functools.cache
@@ -757,6 +784,9 @@ def reference(name: str, profile: str | None = None) -> Reference:
     is the card's (row_of: the derived and cached row, no second solve)."""
     aircraft = REAL_AIRCRAFT[name]
     chosen = PROFILES[profile or aircraft.profile]
+    if chosen.base is None and chosen.name != aircraft.profile:  # not the card: solve its row
+        own = reference_in(aircraft, chosen.name)
+        return dataclasses.replace(own, start_row=design_row(own).row)
     if chosen.base is not None and chosen.base == aircraft.profile:
         base = reference(name, chosen.base)
         row = row_of(name)
@@ -1158,10 +1188,19 @@ def load_card() -> dict[str, tuple[float, ...]]:
             rows = [cached_real_row(name) for name in card.TYPE_NAMES]
         finally:
             _DERIVING.active = False
+        from lean.contract import BULLET_SLOTS
+
         for name, row in zip(card.TYPE_NAMES, rows):
             if set(row) != set(card.CARD_FIELDS):
                 off = sorted(set(row) ^ set(card.CARD_FIELDS))
                 raise ValueError(f"{name}'s derived row differs from the card's fields: {off}")
+            interval = max(1, round(30.0 / row["fire_rate"]))  # ticks between shots
+            slots = math.ceil(row["bullet_life"] * 30.0 / interval - LIFE_TOLERANCE)
+            if slots > BULLET_SLOTS:
+                raise ValueError(
+                    f"{name}'s bullet life needs {slots} bullet slots; the contract has "
+                    f"{BULLET_SLOTS}"
+                )
         card.CARD = {field: tuple(float(row[field]) for row in rows) for field in card.CARD_FIELDS}
         return card.CARD
 

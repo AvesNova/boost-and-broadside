@@ -38,7 +38,8 @@ step.
 **The card is derived, not stored.** `lean/game/card.py` holds no numbers for a real
 aircraft. On first use of `card.CARD`, `tuning.load_card` makes every type's row from its
 aircraft (`REAL_AIRCRAFT`: the data, the flight test and the documented design values) through
-`real_row`: `design_row(reference_of(aircraft))`. The row is cached in memory and on disk
+`real_row`: `design_row` of its reference under its profile (`reference_in`; the P-51D's is
+"airframe and engine", below). The row is cached in memory and on disk
 (`~/.cache/bnb-card/<type>-<key>.json`, or `$BNB_CARD_CACHE`). The key is a hash of the
 aircraft and of the flight model's source (`core.py`, `card.py`, `tuning.py`, `contract.py`),
 so a physics change or a change to the design-input table re-solves by itself. A cold solve
@@ -153,6 +154,25 @@ How v2's flight model maps to the core model:
 
 The point mass: stall 101.2 mph, corner speed 286 mph (stall x sqrt 8), and, as a model, a best
 sustained turn of 18.99 deg/s at 163.3 mph with radius 220 m.
+
+## The card: the airframe with a 2,200 hp engine (author 2026-11-24 night)
+
+The P-51D's card is the documented airframe with a 2,200 hp engine (late-war and post-war
+engines; the P-51H had about 2,200 hp), under the "airframe and engine" profile (C_D0 and the
+shaft power closed inputs, nothing solved; `P51D_VALUES["shaft_power"]`). Its reference is the
+documents' row (the airframe fitted to the 1,630 hp flight test below: C_D0 0.0160), then the
+aircraft's own shaft power; the propeller efficiency is held at the documents' (0.875). The
+documents profile and its solve are unchanged and stay the base. Measured on the card (real
+units):
+
+| | documents (1,630 hp) | card (2,200 hp) |
+|---|---|---|
+| top speed | 375 mph | 416 mph |
+| best climb | 3,600 ft/min at 168 mph | 4,882 ft/min at 191 mph |
+| best sustained | 17.85 deg/s at 173 mph | 19.97 deg/s at 188 mph |
+| corner | 286 mph, 33.5 deg/s | 286 mph, 33.6 deg/s |
+
+The one warning on the card is the structure (the 8 g limit, 1.22 x its 6.6 g at 9,760 lb).
 
 ## Design inputs (`tuning.DESIGN_INPUTS`, the P-51D's `P51D_VALUES`)
 
@@ -449,9 +469,11 @@ when Vizia left the card; they show the P-51D's earlier point mass.
 `lean/game/tests/test_tuning.py`:
 - the point mass, fitted when the card is derived, flies the flight test (375 mph and 3,600
   ft/min to 1e-6);
-- every card row flies its reference design (every input to 1e-6: 375 mph, 3,600 ft/min at
-  165 mph, the point mass's best sustained rate, the gap 0.85), its best sustained speed
-  within 12% of the point mass's, the same stall and corner speeds, the terms on;
+- every card row flies its reference design under its profile (every input to 1e-6: the
+  documented airframe's C_D0 and 2,200 hp), its best sustained speed within 12% of its own
+  point mass's, the same stall and corner speeds, the terms on; the solver's tests (moved
+  designs, warm starts, the point-mass guess, the hand-made implausible row) use the
+  documents profile;
 - derived rows are cached by their aircraft and the source (a second load reads the disk
   without solving; another target or another source is another key);
 - the design-input table sets every card field once; moved designs (faster, slow turner,
@@ -461,7 +483,7 @@ when Vizia left the card; they show the P-51D's earlier point mass.
   e, propeller efficiency, C_D0, C_Lmax and the thrust loss, and the P-51D on e and the
   structure; the damage reference speed is derived; another time scale flies the same
   aircraft; the scripted agent's references are the flown numbers (P-51D: quarter turn
-  2.37 s, store turn 2.40 rad).
+  2.25 s, store turn 2.09 rad).
 
 `lean/game/tests/test_flight.py`:
 - every card type's tightest sustained turn is at least 10% slower than its best sustained rate,
