@@ -532,7 +532,9 @@ League (section 8)
   **BFM-default** (today's defaults in lean/scripted/parameters.py, set by E2's ablations),
   **BFM-design** (the design document's original values; the tests' `BFM` persona),
   **BFM-CMA1** and **BFM-CMA2** (CMA-ES rounds 1 and 2).
-- "Yardstick" (and "BC teacher") is a role: whichever parameter set is chosen; today BFM-default.
+- "Yardstick" (and "BC teacher") is a role: whichever parameter set is chosen.
+- BFM-CMA2 is the provisional yardstick and BC teacher (author 2026-11-24 ~12:30), pending the
+  author's own flying and review of open caveats.
 
 ## Proposals, not decided
 
