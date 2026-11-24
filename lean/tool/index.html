@@ -43,6 +43,7 @@
       <option value="1">1x real time</option><option value="1.5">1.5x</option>
       <option value="2" selected>2x (the game)</option><option value="3">3x</option></select></label>
     <label>Chart units <select id="units"><option value="game">game</option><option value="real">real time</option></select></label>
+    <p><input id="savename" placeholder="name" size="14"> <button id="save">Save</button> <button id="delete">Delete</button></p>
     <p><button id="reset">Reset to preset</button> <button id="fly">Fly checks</button></p>
     <div id="drawn"></div>
     <div id="error"></div>
@@ -61,7 +62,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const DEG = 180 / Math.PI;
-let presets = null, values = {}, off = new Set(), last = null, timer = null, sequence = 0;
+let saved = {}, controlsByName = {}, presets = null, values = {}, off = new Set(), last = null, timer = null, sequence = 0;
 
 // ---- tabs
 function show(tab) {
@@ -75,16 +76,48 @@ $("tab-sandbox").onclick = () => show("sandbox");
 async function init() {
   const data = await (await fetch("/api/presets")).json();
   presets = data.presets;
-  for (const name of Object.keys(presets)) $("preset").add(new Option(name, name));
-  $("preset").onchange = choosePreset;
+  await loadSaved();
+  $("preset").onchange = () => choosePreset();
+  $("save").onclick = saveState;
+  $("delete").onclick = deleteSaved;
   $("factor").onchange = request;
   $("units").onchange = request;
-  $("reset").onclick = choosePreset;
+  $("reset").onclick = () => choosePreset();
   $("fly").onclick = flyChecks;
   choosePreset();
 }
+const base = () => { const v = $("preset").value; return v.startsWith("saved:") ? saved[v.slice(6)].state.preset : v; };
+async function loadSaved(select) {
+  saved = {};
+  for (const r of (await (await fetch("/api/saved")).json()).saved) saved[r.name] = r;
+  $("preset").innerHTML = "";
+  for (const name of Object.keys(presets)) $("preset").add(new Option(name, name));
+  for (const name of Object.keys(saved)) $("preset").add(new Option("saved: " + name, "saved:" + name));
+  if (select) $("preset").value = select;
+}
+async function saveState() {
+  const name = $("savename").value.trim();
+  if (!name) { $("error").textContent = "type a name first"; return; }
+  const safe = name.replace(/[^A-Za-z0-9._-]/g, "_");
+  if (saved[safe] && !confirm(`A saved preset "${safe}" exists. Overwrite?`)) return;
+  const state = JSON.parse(body());
+  const response = await post("/api/saved", JSON.stringify({ name, state }));
+  if (!response.ok) { $("error").textContent = "save failed: " + (await response.json()).error; return; }
+  await loadSaved("saved:" + (await response.json()).name);
+  $("error").textContent = "";
+}
+async function deleteSaved() {
+  const v = $("preset").value;
+  if (!v.startsWith("saved:")) { $("error").textContent = "choose a saved preset to delete"; return; }
+  const name = v.slice(6);
+  if (!confirm(`Delete saved preset "${name}"?`)) return;
+  await fetch("/api/saved/" + encodeURIComponent(name), { method: "DELETE" });
+  await loadSaved(); choosePreset();
+}
 function choosePreset() {
-  const inputs = presets[$("preset").value].inputs;
+  const v = $("preset").value, state = v.startsWith("saved:") ? saved[v.slice(6)].state : null;
+  const inputs = presets[base()].inputs;
+  controlsByName = {};
   $("sliders").innerHTML = "";
   values = {}; off = new Set();                           // only moved inputs are sent
   const groups = {};
@@ -113,13 +146,24 @@ function choosePreset() {
       apply();
       label.prepend(box);
     }
+    controlsByName[s.name] = { input, out, box: s.switch ? label.querySelector(".switch") : null };
     label.appendChild(input); groups[s.group].appendChild(label);
+  }
+  if (state) {                                             // restore a saved state
+    $("factor").value = String(state.time_scale); $("units").value = state.units || "game";
+    for (const [n, x] of Object.entries(state.values || {})) {
+      const c = controlsByName[n]; if (!c) continue;
+      c.input.value = x; c.out.textContent = (+x).toPrecision(4); values[n] = +x;
+    }
+    for (const n of state.off || []) {
+      const c = controlsByName[n]; if (c && c.box) { c.box.checked = false; c.box.onchange(); }
+    }
   }
   request();
 }
 function schedule() { clearTimeout(timer); timer = setTimeout(request, 250); }   // debounced
 function body() {
-  return JSON.stringify({ preset: $("preset").value, values, off: [...off], time_scale: +$("factor").value,
+  return JSON.stringify({ preset: base(), values, off: [...off], time_scale: +$("factor").value,
                           units: $("units").value });
 }
 function post(url, payload) { return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload }); }
@@ -188,7 +232,7 @@ function startSandbox() {
   stopSandbox(); prev = cur = null; trail = [];
   const ws = new WebSocket(`ws://${location.host}/api/sandbox`);
   socket = ws;
-  ws.onopen = () => ws.send(JSON.stringify({ preset: $("preset").value, values, off: [...off], time_scale: +$("factor").value, opponent: true }));
+  ws.onopen = () => ws.send(JSON.stringify({ preset: base(), values, off: [...off], time_scale: +$("factor").value, opponent: true }));
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
     if (m.type === "setup") { setup = m; trail = []; }
@@ -257,7 +301,7 @@ function frame() {
     g.closePath(); g.fill(); g.stroke();
     const track = p.heading - p.angle; g.strokeStyle = "#7ee787"; g.beginPath(); g.moveTo(sx(p.x), sy(p.y)); g.lineTo(sx(p.x + 0.5 * p.speed * Math.cos(track)), sy(p.y + 0.5 * p.speed * Math.sin(track))); g.stroke();
   }
-  const r = cur.readout, p = $("preset").value;
+  const r = cur.readout, p = $("preset").value.replace(/^saved:/, "");
   $("hud").textContent = `ship    ${p} (as tuned in Ships), ${$("factor").value}x real time
 speed   ${r.speed.toFixed(1)} m/s
 turn    ${r.turn_rate_degrees.toFixed(1)} deg/s   radius ${r.turn_radius === null ? "-" : r.turn_radius.toFixed(0) + " m"}
