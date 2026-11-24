@@ -108,7 +108,7 @@ def solve(preset: str, values: dict | None = None, fixed: dict | None = None,
         if len(_SOLVED) > 64:
             _SOLVED.clear()
         _SOLVED[key] = _solved(preset, profile, changed, progress, cancel) if changed else tuning.Solved(
-            PRESET_ROWS[preset], 0.0, 0, None)
+            tuning.reference(preset, profile).start_row or PRESET_ROWS[preset], 0.0, 0, None)
     return _SOLVED[key]
 
 

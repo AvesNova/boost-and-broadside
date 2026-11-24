@@ -386,6 +386,33 @@ PERFORMANCE_POINTS = (
 check_inputs(PERFORMANCE_POINTS)
 
 
+def _oswald_scale(oswald: float) -> float:
+    """The P-51D airframe's induced_drag_scale at span efficiency `oswald` (airframe_row's k =
+    1 / (pi e AR))."""
+    a = P51D
+    return 1.0 / (math.pi * oswald * a.aspect_ratio * a.per_metre * card.INDUCED_DRAG_FACTOR)
+
+
+# Trial (author 2026-11-24, rough first): stall speed, g limit, top speed, best climb and e as
+# inputs, separation off; only the zero-lift drag and power solved. Best-climb speed and the
+# sustained turn are readouts. e is the P-51D airframe's (its aspect ratio and wing).
+FLIGHT_TEST = (
+    _BY_NAME["stall_speed"],
+    _BY_NAME["g_limit"],
+    _BY_NAME["top_speed"],
+    _BY_NAME["best_climb"],
+    DesignInput("oswald", "span efficiency e", "Performance", "induced_drag_scale",
+                lambda row, numbers: _oswald_scale(1.0) / row["induced_drag_scale"],
+                lambda value, design: _oswald_scale(value),
+                source="design: 0.85 (typical 0.78-0.93)", low=0.6, high=1.0, relative=False),
+    scaled("separation_drag", "separation drag: strength", "Flight terms", source="design: off",
+           low=0.0, high=1.0, relative=False),
+    *(spec for spec in DESIGN_INPUTS if spec.group != "Performance"),
+    PERFORMANCE_POINTS[-1],  # the thrust softness, passed through from the documents row
+)
+check_inputs(FLIGHT_TEST)
+
+
 @dataclasses.dataclass(frozen=True)
 class Profile:
     """A named design-input table. `base`: None when its reference values come from the
@@ -396,6 +423,7 @@ class Profile:
     label: str
     inputs: tuple
     base: str | None = None
+    values: dict = dataclasses.field(default_factory=dict)  # set over the base's measures
 
 
 PROFILES = {
@@ -403,6 +431,8 @@ PROFILES = {
     for profile in (
         Profile("documents", "documents", DESIGN_INPUTS),
         Profile("performance_points", "performance points", PERFORMANCE_POINTS, "documents"),
+        Profile("flight_test", "stall, e and flight test (trial)", FLIGHT_TEST, "documents",
+                dict(oswald=0.85, separation_drag=0.0)),
     )
 }
 DEFAULT_PROFILE = "documents"
@@ -528,8 +558,17 @@ def reference_in(aircraft: RealAircraft, profile: str | None = None) -> Referenc
         return dataclasses.replace(reference_of(aircraft, chosen.inputs), profile=chosen.name)
     base = reference_in(aircraft, chosen.base)
     row = design_row(base, start=base.start_row).row
-    return dataclasses.replace(base, inputs=chosen.inputs, design=design_of(row, chosen.inputs),
-                               profile=chosen.name, start_row=row)
+    return _with_values(dataclasses.replace(
+        base, inputs=chosen.inputs, design=design_of(row, chosen.inputs), profile=chosen.name,
+        start_row=row), chosen)
+
+
+def _with_values(reference: "Reference", chosen: Profile) -> "Reference":
+    """The reference with the profile's own values set over its base's, solved from its row."""
+    if not chosen.values:
+        return reference
+    row = design_row(reference, chosen.values, start=reference.start_row).row
+    return dataclasses.replace(reference, design=design_of(row, reference.inputs), start_row=row)
 
 
 @functools.cache
@@ -542,9 +581,9 @@ def reference(name: str, profile: str | None = None) -> Reference:
     if chosen.base is not None and chosen.base == aircraft.profile:
         base = reference(name, chosen.base)
         row = row_of(name)
-        return dataclasses.replace(base, inputs=chosen.inputs,
-                                   design=design_of(row, chosen.inputs), profile=chosen.name,
-                                   start_row=row)
+        return _with_values(dataclasses.replace(
+            base, inputs=chosen.inputs, design=design_of(row, chosen.inputs),
+            profile=chosen.name, start_row=row), chosen)
     return reference_in(aircraft, chosen.name)
 
 
