@@ -44,6 +44,12 @@ undo it.
   tick was stepped by exactly one source (counted on the device). A real run sees about 77,000
   collect steps/s before the first snapshot and about 50,000 with 8. Two of 8 segments in one
   run were slower (34-36k), not investigated. Details: scoreboard.md "Why collect was 2.5x".
+- Step 5 (C5, merged): one agent step (`lean.model.agent.agent_step`) used by training's live
+  policy, the league slots and the eval runner; one game tick (`lean.game.tick`) used by the
+  rollout, the eval runner and the sandbox (it has no network, so it shares only the game
+  half). `act` returns a named `Decision`; `advance` 16 -> 10 parameters, `slot_actions` 11 ->
+  7. Tripwire 4 graphs, 5,582 -> 5,586 traced operations, cold 206 s; parity speed unchanged
+  (loop 6,560 -> 6,572 steps/s, one rough pair).
 - Step 6 (C4): `core-brief.md` is rewritten as goals and standards (about 1,200 words). Its
   last section lists 9 points for you to confirm (training targets against the new yardstick,
   size generalisation, a speed floor, parallel work, rented GPUs, tests per merge, one place
