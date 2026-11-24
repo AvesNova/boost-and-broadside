@@ -27,11 +27,6 @@ from .situation import Situation, assess, signed_angle
 COAST, DIVE, CLIMB = 0, 1, 2
 TINY = 1e-6  # keeps lengths and ratios away from zero
 LOGIT_LIMIT = 30.0
-# The high yo-yo's aspect bound (Shaw p. 71: 30-60 deg) and its gate's scale (log units, the
-# quadrant gates' scale). Constants, not table rows: a new row would change every agent's
-# vector and identity.
-HIGH_YO_YO_ASPECT = math.pi / 3
-QUADRANT_SCALE = 0.1
 
 
 def draw_uniforms(
@@ -219,9 +214,6 @@ class Explanation:
     marginals: Marginals
     situation: Situation
     weights: dict[str, Tensor]  # by TACTICS, sum to 1
-    yo_yo: Tensor  # y: +1 a full high yo-yo (lag, climb) .. -1 a full low one (lead, dive)
-    pursuit_time: Tensor  # tau, seconds: > 0 lead, 0 pure, < 0 lag pursuit
-    gun_weight: Tensor  # the share of the wanted point that is the gun's lead point
     speed_target: Tensor  # v*, metres per second
     cap: Tensor  # the share of the full stick level folded into the middle one
     stick_error: Tensor  # radians to the wanted direction, positive left
@@ -251,8 +243,8 @@ def explain(
     from `fresh_memory`, as `act` last returned it. Under fog each ship reads only its team's
     view: its own team as it is, enemies at their last sighting (`enemy_view`), none never
     seen. The stages (docs/rewrite/scripted-bfm-design.md B1):
-    target, assessment, tactic weights, commands mixed as scalars (pursuit time, speed
-    target, stick cap), control laws (stick, power, gun)."""
+    target, assessment, tactic weights, commands mixed as scalars (speed target, stick cap),
+    control laws (stick, power, gun)."""
     c = state.constants
     enemies = enemy_view(state)
     gun_range = c["gun_range"]
@@ -312,7 +304,6 @@ def explain(
             "relax": situation.angles_off,
             "scissors": safe_distance / c["sustained_radius"],
             "level_cap": state.speed / c["middle_stick_speed"],
-            "yo_yo_cap": state.speed / fight_speed,
             "aligned": turn_needed / target_size,
             "in_range": range_ratio,
         },
@@ -331,13 +322,6 @@ def explain(
         "defensive": behind * (1.0 - astern),
     }
 
-    # Yo-yo signal: closure against the closure that reaches the nose-tail distance in the
-    # closing time (corner speeds); > 0 too much closure, < 0 falling behind.
-    wanted_closure = (fight.distance - read("nose_tail") * c["sustained_radius"]) / (
-        read("closing_time") * c["quarter_turn_time"] * c["corner_speed"]
-    )
-    yo_yo = torch.tanh((situation.closure - wanted_closure) / read("yo_yo_scale"))
-    high_yo_yo = yo_yo.clamp_min(0.0)
     # The plan for this pass: two-circle (+1) when my energy advantage is above the plan
     # threshold, else one-circle (-1); after a pass, the last pass's plan, switched when that
     # pass gained less than the switch gain in angles off (Shaw pp. 112-113: the stalemate
@@ -349,54 +333,14 @@ def explain(
     gained = last_pass.abs() - situation.angles_off
     kept_plan = torch.where(gained < read("switch_gain"), -previous_plan, previous_plan)
     plan = torch.where(last_pass != 0.0, kept_plan, energy_plan)
-    two_circle_plan = (plan > 0.0).float()
 
-    # Lead turn (Shaw pp. 76-77, Fig 2-9): with a lateral miss distance d at the pass, the
-    # turn worth starting early is theta = arccos(1 - min(d / R_st, 2)), taking theta /
-    # sustained rate; the two-circle plan leads his position by that time (or the time left
-    # to the pass, if less); one-circle passes pure.
-    # (Not computed when the scale is the number 0, as for the yardstick.)
-    lead_turn_scale = read("lead_turn_scale")
-    merge_time = 0.0
-    if not (isinstance(lead_turn_scale, float) and lead_turn_scale == 0.0):
-        relative_x = fight.target_velocity_x - fight.velocity_x
-        relative_y = fight.target_velocity_y - fight.velocity_y
-        relative_squared = (relative_x * relative_x + relative_y * relative_y).clamp_min(TINY)
-        to_pass = -(fight.offset_x * relative_x + fight.offset_y * relative_y) / relative_squared
-        miss = (fight.offset_x * relative_y - fight.offset_y * relative_x).abs() * torch.rsqrt(
-            relative_squared
-        )
-        lead_angle = torch.acos(1.0 - (miss / c["sustained_radius"]).clamp(0.0, 2.0))
-        lead_time = lead_turn_scale * lead_angle / c["sustained_rate"]
-        merge_time = two_circle_plan * torch.minimum(to_pass.clamp_min(0.0), lead_time)
-
-    # Commands, mixed as scalars. Pursuit time: offensive lags (high yo-yo, in his rear
-    # quarter) or leads (low); the merge leads by the lead turn.
-    # The high yo-yo's lag only with him in my rear quarter (Shaw p. 71: aspect about 30-60
-    # deg, in pure pursuit from behind). Without it the lag fired at the 3/9 line, in beam
-    # and crossing passes inside gun range (docs/rewrite/lead-turn-yo-yo-review.md).
-    # (Not computed when the yo-yo time is the number 0, as for the yardstick.)
-    yo_yo_time = read("yo_yo_time")
-    yo_yo_lead = 0.0
-    if not (isinstance(yo_yo_time, float) and yo_yo_time == 0.0):
-        rear_quarter = torch.sigmoid(
-            torch.log(HIGH_YO_YO_ASPECT / situation.aspect.clamp_min(TINY))
-            / (QUADRANT_SCALE * read("temperature"))
-        )
-        yo_yo_pursuit = yo_yo.clamp_max(0.0) + high_yo_yo * rear_quarter
-        yo_yo_lead = -yo_yo_pursuit * (yo_yo_time * c["quarter_turn_time"])
-    pursuit_time = weights["offensive"] * yo_yo_lead + weights["merge"] * merge_time
-    # The wanted point is the gun's lead point while he is ahead within reach: inside gun
-    # range the gun owns the nose, and the yo-yo's lag or lead and the lead turn act beyond
-    # it. (Measured: dropping the gun there was the whole of either feature's cost.)
-    gun_weight = gate["in_range"] * (weights["offensive"] + weights["merge"])
     # Speed target, in log space, and the stick cap (the share of the full level folded into
     # the middle one), per tactic:
     # - disengaged and merge: the merge speed; disengaged, the cap above the middle stick
     #   speed (no turn lost there);
-    # - offensive: the fight speed moved by the yo-yo: down (climb, the cap above the fight
-    #   speed) in a high yo-yo; up to corner speed in a low one against a turning target
-    #   (against a straight one the engine closes: no dive, and no climb while behind);
+    # - offensive: the chase speed, the fight speed raised against a turning target by the
+    #   ratio of corner to sustained speed (against a straight one the engine closes: no
+    #   climb, `no_bank`);
     # - turning, two-circle (the energy plan, Shaw p. 110): ease to the middle level and
     #   bank above the fight speed until his angular advantage reaches the cash angle, then
     #   full stick at corner speed (cash the store); one-circle: full stick at the fight
@@ -410,11 +354,8 @@ def explain(
     log_fight = _log(fight_speed)
     log_merge = _log(read("merge_speed") * c["corner_speed"])
     log_floor = _log(read("speed_floor") * c["stall_speed"])
-    low_yo_yo = (-yo_yo).clamp_min(0.0)
     turning_target = situation.target_sense.abs()
-    log_yo_yo = log_fight + (low_yo_yo * turning_target - high_yo_yo) * _log(
-        c["corner_speed"] / c["sustained_speed"]
-    )
+    log_chase_speed = log_fight + turning_target * _log(c["corner_speed"] / c["sustained_speed"])
     two_circle = 0.5 * (1.0 + situation.flow)
     cash, break_turn = gate["cash"], gate["defend"] * gate["relax"]
     log_two_circle = log_fight + cash * (log_corner - log_fight)
@@ -422,37 +363,18 @@ def explain(
     log_turning = log_one_circle + two_circle * (log_two_circle - log_one_circle)
     log_target = (
         (weights["disengaged"] + weights["merge"]) * log_merge
-        + weights["offensive"] * (log_yo_yo + near * (log_corner - log_yo_yo))
+        + weights["offensive"] * (log_chase_speed + near * (log_corner - log_chase_speed))
         + weights["turning"] * (log_turning + near * (log_corner - log_turning))
         + weights["defensive"] * (log_fight + break_turn * (log_corner - log_fight))
     )
     log_target = log_target.clamp_min(log_floor)
     cap = (
         weights["disengaged"] * gate["level_cap"]
-        + weights["offensive"] * high_yo_yo * gate["yo_yo_cap"]
         + weights["turning"] * two_circle * (1.0 - cash)
         + weights["defensive"] * (1.0 - break_turn)
     )
-    # Falling behind a target that is not turning: no banking (the engine closes).
-    no_bank = weights["offensive"] * low_yo_yo * (1.0 - turning_target)
-
-    # The pursuit point: the gun's lead point moved tau along his turn (second order: tau > 0
-    # lead, < 0 lag; 0 the gun's solution), mixed with the lead point itself by the gun
-    # weight (inside gun range the gun decides).
-    time_squared_half = 0.5 * pursuit_time * pursuit_time
-    turn_rate = fight.target_nose_rate
-    pursuit_x = (
-        aim_x
-        + fight.target_velocity_x * pursuit_time
-        - turn_rate * fight.target_velocity_y * time_squared_half
-    )
-    pursuit_y = (
-        aim_y
-        + fight.target_velocity_y * pursuit_time
-        + turn_rate * fight.target_velocity_x * time_squared_half
-    )
-    point_x = pursuit_x + gun_weight * (aim_x - pursuit_x)
-    point_y = pursuit_y + gun_weight * (aim_y - pursuit_y)
+    # Chasing a target that is not turning: no banking (the engine closes).
+    no_bank = weights["offensive"] * (1.0 - turning_target)
 
     # Boundary: within a margin of turn radii of the edge and flying outward, blend in a
     # steer toward the centre. Without a target the wanted direction is the centre.
@@ -466,11 +388,11 @@ def explain(
     outward = state.x * fight.velocity_x + state.y * fight.velocity_y > 0.0
     centre_weight = torch.where(outward & has_target, ramp.clamp(0.0, 1.0), 0.0)
     centre_weight = torch.where(has_target, centre_weight, 1.0)
-    point_length = torch.sqrt(point_x * point_x + point_y * point_y).clamp_min(TINY)
+    point_length = torch.sqrt(aim_x * aim_x + aim_y * aim_y).clamp_min(TINY)
     point_scale = (1.0 - centre_weight) / point_length
     centre_scale = centre_weight / distance_from_centre
-    wanted_x = point_scale * point_x - centre_scale * state.x
-    wanted_y = point_scale * point_y - centre_scale * state.y
+    wanted_x = point_scale * aim_x - centre_scale * state.x
+    wanted_y = point_scale * aim_y - centre_scale * state.y
     stick_error = signed_angle(state.heading_cos, state.heading_sin, wanted_x, wanted_y)
 
     # The committed turn sense (design B3, decided: hysteresis by concrete rules):
@@ -572,9 +494,6 @@ def explain(
         marginals=Marginals(stick, power, fire, fight.controlled, fight.target),
         situation=situation,
         weights=weights,
-        yo_yo=yo_yo,
-        pursuit_time=pursuit_time,
-        gun_weight=gun_weight,
         speed_target=torch.exp(log_target),
         cap=cap,
         stick_error=stick_error,

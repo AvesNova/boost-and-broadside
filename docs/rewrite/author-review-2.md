@@ -676,11 +676,14 @@ Web tool (W):
 ## Later experiments (tabled or arms)
 
 - Persona population arm. The divergence's rows to vary: fight_speed, lead_gain, in_range,
-  closing_time, nose_tail, plan_threshold. The style knobs at little skill cost:
+  plan_threshold (closing_time and nose_tail went with the yo-yos, 2026-11-25). The style knobs at little skill cost:
   engage_range, three_nine_line, temperature.
-- Lead turn rebuilt with the pre-merge offset by plan. Shaw's other unbuilt items (S2, done
-  list above).
-- The yo-yo closure fix (S3) and the mechanism ablations (S6), with the next search.
+- The lead turn (deleted 2026-11-25, S2): if ever, it comes back together with a pre-merge
+  offset by plan. Shaw's other unbuilt items (S2, done list above).
+- The yo-yos (deleted 2026-11-25, S2 and S3; the signal was frozen at its saturated value,
+  leaving the chase speed against a turning target): a rebuild needs a closure signal that
+  does not saturate.
+- The mechanism ablations (S6), with the next search.
 - Energy-balance study (S7): store size, exchange rate, round-trip loss.
 - Active subspaces, MAP-Elites, ship-space and joint searches.
 - More aircraft: Fw 190 A-8, Bf 109 G-6, Spitfire IX, and a relative turning check.

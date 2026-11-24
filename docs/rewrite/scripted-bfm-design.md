@@ -17,6 +17,14 @@ the dive only with a purpose; a `last_pass` memory field for the plan switch; a
 Measured: new against old 0.413 +- 0.019 (640 games, 4v4); the brawl's store 0.05 -> 0.23;
 in 1v1 the old agent, spending its store at once, wins nearly every equal start.
 
+**Removed (author 2026-11-25, review items S2 and S3):** the lead turn and the yo-yos
+(the pursuit time τ, the yo-yo signal y and their rows; B4's merge and offensive τ, the
+high yo-yo's cap). y sat near -1 almost everywhere, so it was frozen there: the offensive v*
+is now the *chase speed*, the fight speed x v_c / v_st against a turning target (the low
+yo-yo's energy half), and the stick points at the gun lead point. Both are on the "Later
+experiments" list in docs/rewrite/author-review-2.md; a lead turn comes back, if ever,
+with a pre-merge offset by plan. The design text below is the record as designed.
+
 ### Flying list (sandbox, 2x; `--opponent scripted`)
 
 - Two-circle, the fight you won: pass him with an offset and turn his way. Expect it to turn
@@ -32,12 +40,11 @@ in 1v1 the old agent, spending its store at once, wins nearly every equal start.
   and corner speed (dives with store) and holds that turn; overshoot it fast and close and it
   reverses (level); overshoot slowly or while it is the faster and it keeps turning.
 - Chasing it out of range: it flies its gun's lead point; against your turn it dives toward
-  corner speed (low yo-yo), against straight flight it coasts and lets the engine close.
+  corner speed (the chase speed), against straight flight it coasts and lets the engine close.
 - Leaving and coming back: fly away beyond 3 gun ranges. It does not dive to chase; above
   corner speed it climbs (store fills, the stick capped to the sustained level), so it
   returns with store.
-- Head-on: it takes the head-on shot (no lead turn in the yardstick); a persona with lead
-  turn starts turning toward your track about theta / rate before the pass.
+- Head-on: it takes the head-on shot (no lead turn).
 - 2v2 is not flyable: the sandbox is 1v1 (team-mate and target-switch rules are covered by
   tests and the brawl numbers).
 

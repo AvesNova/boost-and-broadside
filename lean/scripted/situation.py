@@ -23,7 +23,6 @@ class Situation:
     aspect: Tensor  # alpha: the angle off his tail to me, 0 (I am dead astern) to pi
     angles_off: Tensor  # alpha + |lambda|, 0 (I am on his tail, nose on) to 2 pi (he is on
     # mine): pi minus Shaw's angular advantage, so his advantage is angles_off - pi
-    closure: Tensor  # -d range / dt, in corner speeds
     sight_rate: Tensor  # the line of sight's turn rate, in sustained rates, positive to the left
     own_sense: Tensor  # my turn sense: -1 right .. +1 left (tanh of the nose rate over the floor)
     target_sense: Tensor  # his
@@ -47,7 +46,6 @@ def assess(state, fight, turning_floor: Tensor | float) -> Situation:
     relative_x = fight.target_velocity_x - fight.velocity_x
     relative_y = fight.target_velocity_y - fight.velocity_y
     inverse_distance = 1.0 / distance
-    closure = -(fight.offset_x * relative_x + fight.offset_y * relative_y) * inverse_distance
     sight_rate = (fight.offset_x * relative_y - fight.offset_y * relative_x) * (
         inverse_distance * inverse_distance
     )
@@ -60,7 +58,6 @@ def assess(state, fight, turning_floor: Tensor | float) -> Situation:
         bearing=bearing,
         aspect=aspect,
         angles_off=aspect + bearing.abs(),
-        closure=closure / c["corner_speed"],
         sight_rate=sight_rate / sustained_rate,
         own_sense=own_sense,
         target_sense=target_sense,

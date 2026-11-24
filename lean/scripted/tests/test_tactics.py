@@ -1,6 +1,6 @@
 """The scripted agent's tactics (docs/rewrite/scripted-bfm-design.md B3 to B5, tests B9):
-hand-built situations, one per tactic, read through `explain` (the weights, the pursuit time,
-the speed target, the stick cap) and the marginals."""
+hand-built situations, one per tactic, read through `explain` (the weights, the speed target,
+the stick cap) and the marginals."""
 
 import math
 
@@ -23,14 +23,13 @@ def constants():
 
 C = constants()
 CORNER, GUN, RADIUS = C["corner_speed"], C["gun_range"], C["sustained_radius"]
-# A persona with the design's B6 values for the rows the yardstick leaves at 0 or widens
-# (yo-yo time, lead turn) and Shaw's graded defence (break inside one gun range, relax at 90
-# deg of his advantage).
-# It stands on the previous defaults, not on BFM-CMA2: the persona does not move with the yardstick.
+# A persona with Shaw's graded defence (break inside one gun range, relax at 90 deg of his
+# advantage). It stands on the previous defaults, not on BFM-CMA2: the persona does not move
+# with the yardstick.
 BFM = (
     ScriptedConfig()
     .replace(**BFM_DEFAULT_2026_11_24)
-    .replace(yo_yo_time=0.5, lead_turn_scale=1.0, relax_angle=1.5 * math.pi, defend_range=1.0)
+    .replace(relax_angle=1.5 * math.pi, defend_range=1.0)
 )
 
 
@@ -87,57 +86,22 @@ def test_disengaged_coasts_at_merge_speed_and_banks_speed_with_the_level_capped(
     assert float(turning.marginals.stick[0, 0, FULL_LEFT]) < 0.25
 
 
-def test_tail_chase_closing_fast_inside_the_control_zone_lags_and_climbs():
-    """He is 300 m ahead flying away at 0.6 corner speeds, I close at 0.3 corner speeds: too
-    much closure for the nose-tail distance (a high yo-yo): lag pursuit, climb."""
-    e = decision(ship(speed=0.9), ship(300.0, speed=0.6), config=BFM)
-    assert weight(e, "offensive") > 0.9
-    assert first(e.yo_yo) > 0.3
-    assert first(e.pursuit_time) < 0.0
-    assert int(e.marginals.power[0, 0].argmax()) == CLIMB
-
-
-def test_tail_chase_falling_behind_out_of_range_leads_and_dives():
-    """He is 1.6 gun ranges ahead and faster, turning: a low yo-yo, lead pursuit, dive to
-    corner. Flying straight: the engine closes (coast: no dive, no banking). I fly 1.08
-    sustained speeds (0.6 corner speeds on the flight before 2026-11-24's), he 0.8 corner."""
+def test_the_chase_speed_rises_against_a_turning_target():
+    """He is 1.6 gun ranges ahead and faster. Turning: the chase speed is the fight speed
+    raised by corner over sustained speed (corner speed at fight speed 1), so dive. Flying
+    straight: the fight speed, and the engine closes (coast: no dive, no banking). Either
+    way the stick points at the gun's lead point. I fly 1.08 sustained speeds, he 0.8
+    corner."""
     rate = C["sustained_rate"]
     own = sustained_speeds(1.08)
     e = decision(ship(speed=own), ship(1.6 * GUN, speed=0.8), nose_rates=(0.0, rate), config=BFM)
     assert weight(e, "offensive") > 0.9
-    assert first(e.yo_yo) < -0.9
-    assert first(e.pursuit_time) > 0.0
     assert abs(first(e.speed_target) / CORNER - 1.0) < 0.05
     assert int(e.marginals.power[0, 0].argmax()) == DIVE
+    assert abs(first(e.stick_error) - first(e.gun_error)) < 1e-4
     straight = decision(ship(speed=own), ship(1.6 * GUN, speed=0.8), config=BFM)
+    assert abs(first(straight.speed_target) / C["sustained_speed"] - 1.0) < 0.05
     assert int(straight.marginals.power[0, 0].argmax()) == 0
-
-
-def test_lag_and_lead_aim_behind_and_ahead_of_a_crossing_target():
-    """He crosses left to right ahead of me, nose away (aspect 56 deg): falling behind out of
-    gun range I lead (aim right of him), closing fast out of gun range I lag (aim left of him);
-    pure pursuit would point at him. Closing fast inside gun range the lag is still asked for,
-    but the gun owns the nose (docs/rewrite/lead-turn-yo-yo-review.md)."""
-    heading = -math.pi / 2 + 0.6
-    lead = decision(ship(speed=0.5), ship(1.5 * GUN, heading=heading, speed=0.8), config=BFM)
-    lag = decision(ship(speed=1.8), ship(1.2 * GUN, heading=heading, speed=0.3), config=BFM)
-    assert first(lag.situation.aspect) < math.pi / 3
-    assert first(lead.pursuit_time) > 0.0 > first(lag.pursuit_time)
-    assert first(lead.stick_error) < first(lead.situation.bearing)
-    assert first(lag.stick_error) > first(lag.situation.bearing)
-    in_range = decision(ship(speed=1.2), ship(0.8 * GUN, heading=heading, speed=0.8), config=BFM)
-    assert first(in_range.pursuit_time) < 0.0
-    assert abs(first(in_range.stick_error) - first(in_range.gun_error)) < 0.05
-
-
-def test_no_high_yo_yo_lag_at_the_beam():
-    """Closing fast with him crossing at the beam (aspect 90 deg, the 3/9 line): the high
-    yo-yo's lag needs him in my rear quarter (Shaw p. 71), so no lag pursuit."""
-    yo_yo_only = BFM.replace(lead_turn_scale=0.0)
-    crossing = ship(1.2 * GUN, heading=-math.pi / 2, speed=0.5)
-    beam = decision(ship(speed=1.2), crossing, config=yo_yo_only)
-    assert first(beam.yo_yo) > 0.0
-    assert abs(first(beam.pursuit_time)) < 0.05
 
 
 def test_defensive_breaks_into_him_and_spends_the_store():
@@ -289,21 +253,3 @@ def test_a_pass_that_gained_nothing_switches_the_plan():
     gaining, _, e = committed(ship(), passed, (0.3, 0.8), memory=memory(-(angles_off + 0.5)))
     assert gaining == -1.0
     assert first(e.last_pass) == -angles_off
-
-
-def test_lead_turn_at_an_offset_merge():
-    """Head-on with a lateral offset of two sustained radii (Shaw Fig 2-9): with more energy
-    (two-circle plan) the ship starts its turn toward his track before the pass, the lead
-    turn; with less (one-circle) it flies at him (pure pursuit or the gun)."""
-    him = ship(6.0 * RADIUS, 2.0 * RADIUS, heading=math.pi)
-    two = decision(ship(), him, stores=(0.8, 0.3), config=BFM)
-    one = decision(ship(), him, stores=(0.3, 0.8), config=BFM)
-    gun = first(two.gun_error)
-    assert weight(two, "merge") > 0.7  # 0.74 with the design-system P-51D (0.75 before)
-    assert first(two.pursuit_time) > 1.0 and abs(first(one.pursuit_time)) < 0.05
-    assert first(two.stick_error) > gun + 0.15
-    assert abs(first(one.stick_error) - first(one.gun_error)) < 0.05
-    # no offset, no lead turn
-    head_on = ship(6.0 * RADIUS, 0.0, heading=math.pi)
-    straight = decision(ship(), head_on, stores=(0.8, 0.3), config=BFM)
-    assert abs(first(straight.pursuit_time)) < 0.1

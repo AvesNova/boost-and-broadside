@@ -82,8 +82,6 @@ PARAMETERS: dict[str, Parameter] = {
     "release_band": Parameter(0.2, "radians", meaning="release this far forward of the 3/9 line"),
     "plan_threshold": Parameter(-0.33279597121084487, "store fraction", LINEAR, 0.25,
                                 "energy advantage above it: two-circle"),
-    "lead_turn_scale": Parameter(0.042853310306349236, "ratio", UPWARD, 1.0,
-                                 "the lead turn's time, of its geometric value"),
     "switch_gain": Parameter(0.17, "radians", LOG, 0.4,
                              "a pass gaining less angles off than this switches the plan"),
     "overshoot_range": Parameter(0.67, "sustained_radius", LOG, 0.3, "he overshoots inside it"),
@@ -91,18 +89,6 @@ PARAMETERS: dict[str, Parameter] = {
                                 "crossing my six faster than this"),
     "overshoot_crossing": Parameter(1.0, "radians", LOG, 0.3,
                                     "track-crossing angle below it"),
-    # Yo-yos: y = tanh((closure - wanted closure) / scale), the wanted closure reaching the
-    # nose-tail distance in the closing time; y > 0 climb (and lag by the yo-yo time), y < 0
-    # dive (and lead). The yardstick flies the gun's solution (yo-yo time and lead turn 0:
-    # either lost about 0.2 of the score against the old agent, measured); personas sample
-    # them upward.
-    "nose_tail": Parameter(0.46550273408948645, "sustained_radius", LOG, 0.4,
-                           "where the chase wants to sit"),
-    "closing_time": Parameter(0.9124776658863046, "quarter_turn_time", LOG, 0.4,
-                              "time to close to it"),
-    "yo_yo_scale": Parameter(0.1, "corner_speed", LOG, 0.4, "closure error for a full yo-yo"),
-    "yo_yo_time": Parameter(0.19070978159535185, "quarter_turn_time", UPWARD, 0.5,
-                            "lag or lead of a full yo-yo"),
     # Speeds: the power tracks a speed target v*, mixed in log space over the tactics.
     "merge_speed": Parameter(1.0, "corner_speed", LOG, 0.1, "v* disengaged and at the merge"),
     "fight_speed": Parameter(1.2943094805067583, "sustained_speed", LOG, 0.2,
@@ -117,9 +103,8 @@ PARAMETERS: dict[str, Parameter] = {
     "power_scale": Parameter(0.03, "log units", LOG, 0.4, "the power's sharpness"),
     "power_floor": Parameter(0.02, "probability", meaning="each of coast, dive and climb"),
     # The stick cap folds the full level into the sustained one (no turn lost above the
-    # middle stick speed; banking speed in a high yo-yo above the fight speed).
+    # middle stick speed).
     "level_cap_speed": Parameter(1.0, "middle_stick_speed", meaning="cap above it"),
-    "yo_yo_cap_speed": Parameter(1.0, "fight speed", meaning="high yo-yo: cap above it"),
     # Stick: three nested gates on the pointing error, then the side.
     "turn": Parameter(0.002868, "radians", LOG, 0.4, "pointing error: turn at all"),
     "level_two": Parameter(0.02097, "radians", LOG, 0.4, "pointing error: middle stick"),
@@ -161,7 +146,6 @@ GATES: dict[str, Gate] = {
     "spend_need": Gate("spend_need", 0.2, True),  # turn needed, radians
     "spend_range": Gate("spend_range", 0.127, False),  # range in gun ranges
     "level_cap": Gate("level_cap_speed", 0.05, True),  # speed / middle stick speed
-    "yo_yo_cap": Gate("yo_yo_cap_speed", 0.05, True),  # speed / fight speed
     "aligned": Gate("aligned", 0.243, False, tempered=False),  # aim error in target sizes
     "in_range": Gate("in_range", 0.127, False, tempered=False),  # range in gun ranges
 }
@@ -173,13 +157,10 @@ STICK_GATES: dict[str, Gate] = {
 }
 # fmt: on
 # The previous defaults (before BFM-CMA2), as the rows that differ: for comparison,
-# `ScriptedConfig().replace(**BFM_DEFAULT_2026_11_24)`.
+# `ScriptedConfig().replace(**BFM_DEFAULT_2026_11_24)`. (Its lead-turn and yo-yo rows went
+# with those mechanisms, author 2026-11-25.)
 BFM_DEFAULT_2026_11_24: dict[str, float] = {
     "plan_threshold": 0.0,
-    "lead_turn_scale": 0.0,
-    "nose_tail": 0.67,
-    "closing_time": 1.0,
-    "yo_yo_time": 0.0,
     "fight_speed": 1.0,
     "aligned": 1.01,
     "in_range": 1.04,
