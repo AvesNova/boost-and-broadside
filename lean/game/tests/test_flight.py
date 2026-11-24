@@ -115,8 +115,7 @@ def test_dive_and_climb_are_equal_and_opposite():
             commanded=c.commanded_table[:, power],
             demand=c.demand_table[:, power],
         )
-        wing, full = core._wing(c, speed, control.stick_size)
-        setting = core._setting(c, control, speed, energy, wing, full)
+        setting = core._setting(c, control, speed, energy)
         _, store_rate = core._rates(
             c,
             setting,
@@ -125,7 +124,7 @@ def test_dive_and_climb_are_equal_and_opposite():
             torch.zeros(1, 1),
             torch.ones(1, 1),
             1.0 / (speed * speed),
-            1.0 / (wing * wing),
+            1.0 / (c.lift * c.lift),
         )
         rates.append(store_rate.item())
     assert rates[0] < 0.0 < rates[1]
@@ -188,9 +187,7 @@ def test_at_the_edges_dive_and_climb_act_as_coast_on_the_wing():
             commanded=c.commanded_table[:, power],
             demand=c.demand_table[:, power],
         )
-        lateral, *_ = core._setting(
-            c, control, speed, torch.full((1, 1), store * c.max_energy), *core._wing(c, speed, control.stick_size)
-        )
+        lateral, *_ = core._setting(c, control, speed, torch.full((1, 1), store * c.max_energy))
         rates[name] = lateral.item()
     assert abs(rates["climb"] - rates["coast"]) < 1e-3 * abs(rates["coast"])
 
@@ -223,151 +220,26 @@ def double_constants(ship_type=P51D, row=None):
     return SimpleNamespace(**{k: v.double() if v.is_floating_point() else v for k, v in vars(c).items()})
 
 
-TEST_FLAP_LIFT = 0.15  # the flaps' tests: a type's own bonus, or this one where its flaps are off
-
-
-def flapped_row(name):
-    """A card type's row with its flaps on (the machinery is per type and off for the P-51D,
-    author 2026-11-24; its tests fly the type with the bonus TEST_FLAP_LIFT then)."""
-    row = tuning.row_of(name)
-    return row if row["flap_lift"] > 0.0 else {**row, "flap_lift": TEST_FLAP_LIFT}
-
-
-def flapped_constants(name, double=True):
-    row = flapped_row(name)
-    c = double_constants(row=row)
-    if double:
-        return c
-    return SimpleNamespace(
-        **{k: v.float() if v.is_floating_point() else v for k, v in vars(c).items()}
-    )
-
-
-def test_flaps_deploy_by_demand_and_blow_back_at_speed():
-    """The automatic flaps (core._wing), scheduled by demand: flying straight above the 1 g
-    speed the wing is clean; full stick has the clean maximum times 1 + flap_lift up to the
-    blow-back band, the clean one from the blow-back speed (flap_blowback_ratio x the clean
-    corner speed); the full-stick coefficient never rises with speed. Each type flies with its
-    flaps on (flapped_row)."""
-    for ship_type, name in enumerate(card.TYPE_NAMES):
-        c = flapped_constants(name)
-        row = flapped_row(name)
-        lift, bonus = row["max_lift_coefficient"], row["flap_lift"]
-        blowback = row["flap_blowback_ratio"] * (row["max_acceleration"] / lift) ** 0.5
-        start = (1.0 - card.FLAP_BLOWBACK_BAND) * blowback
-        assert bonus > 0.0, name
-        speeds = torch.linspace(1.2 * one_g_speed(ship_type), 1.2 * blowback, 4001, dtype=torch.float64)
-        zero, one = torch.zeros_like(speeds), torch.ones_like(speeds)
-        straight, _ = core._wing(c, speeds, zero)
-        assert torch.allclose(straight, torch.full_like(speeds, lift), rtol=1e-12), name
-        wing, full = core._wing(c, speeds, one)
-        assert torch.allclose(wing, full, rtol=1e-12), name
-        flapped = lift * (1.0 + bonus)
-        assert torch.allclose(wing[speeds <= start], torch.full_like(speeds[speeds <= start], flapped), rtol=1e-12)
-        assert torch.allclose(wing[speeds >= blowback], torch.full_like(speeds[speeds >= blowback], lift), rtol=1e-12)
-        assert bool((full[1:] <= full[:-1] + 1e-15).all()), name
-        # below the 1 g speed flying straight the flaps come out to hold it
-        slow, _ = core._wing(c, torch.tensor([0.97 * one_g_speed(ship_type)], dtype=torch.float64), zero[:1])
-        assert float(slow[0]) > lift, name
-
-
-def jumps(function, low, high, count):
-    """The largest change between neighbours of the finite-difference slope and curvature of
-    `function` on `count` points from low to high (float64)."""
-    x = torch.linspace(low, high, count, dtype=torch.float64)
-    step = (high - low) / (count - 1)
-    values = function(x)
-    slope = (values[1:] - values[:-1]) / step
-    curvature = (slope[1:] - slope[:-1]) / step
-    return float((slope[1:] - slope[:-1]).abs().max()), float((curvature[1:] - curvature[:-1]).abs().max())
-
-
-def assert_c2(function, low, high, name):
-    """C2 by refinement: on a grid four times finer the largest neighbour-to-neighbour change of
-    the slope and of the curvature shrink about fourfold (a kink keeps a slope jump, a curvature
-    step keeps a curvature jump, whatever the grid); and they change somewhere (not flat)."""
-    coarse = jumps(function, low, high, 4001)
-    fine = jumps(function, low, high, 16001)
-    for kind, before, after in zip(("slope", "curvature"), coarse, fine):
-        assert before > 0.0 and after < 0.3 * before, (name, kind, before, after)
-
-
-def test_the_c2_check_sees_a_curvature_step():
-    """The check above fails a function whose curvature steps (the squared positive part, the
-    flaps' drag of before) and passes the cubic."""
-    with pytest.raises(AssertionError):
-        assert_c2(lambda x: x.clamp_min(0.0) ** 2, -1.0, 1.0, "square")
-    assert_c2(lambda x: x.clamp_min(0.0) ** 3, -1.0, 1.0, "cube")
-
-
-def test_flaps_are_smooth_in_speed_and_in_demand():
-    """The author's rule (2026-11-24): the flaps are C2 (value, slope and curvature continuous)
-    in speed and in the stick's demand (assert_c2), through the blow-back band and the
-    deployment band (straight and slow, the 1 g alone deploys them); likewise the flaps' drag
-    through the start of the extra lift. The P-51D with its flaps on (flapped_row)."""
-    c = flapped_constants("p51d")
-    stall, corner = one_g_speed(), float(c.corner_speed[0])
-    for stick in (0.0, 0.5, 0.9, 1.0):
-        for which in (0, 1):
-            assert_c2(
-                lambda v: core._wing(c, v, torch.full_like(v, stick))[which], 0.8 * stall, 1.1 * corner,
-                ("speed", stick, which),
-            )
-    for speed in (1.2 * stall, 2.0 * stall, 0.9 * corner):
-        assert_c2(lambda s: core._wing(c, torch.full_like(s, speed), s)[0], 0.0, 1.0, ("stick", speed))
-
-    def flap_drag(lift):
-        speed = torch.full_like(lift, 1.5 * stall)
-        one, zero = torch.ones_like(lift), torch.zeros_like(lift)
-        inverse_wing_squared = 1.0 / (float(c.lift[0]) * 1.3) ** 2
-        setting = (zero, zero, zero, zero)
-        with_flaps = core._rates(c, setting, one, speed, lift, one, 1.0 / speed**2, inverse_wing_squared)[0]
-        free = SimpleNamespace(**{**vars(c), "flap_drag": torch.zeros(1, dtype=torch.float64)})
-        return core._rates(free, setting, one, speed, lift, one, 1.0 / speed**2, inverse_wing_squared)[0] - with_flaps
-
-    lift = float(c.lift[0])
-    assert float(flap_drag(torch.tensor([0.999 * lift], dtype=torch.float64))) == 0.0
-    assert float(flap_drag(torch.tensor([1.1 * lift], dtype=torch.float64))) > 0.0
-    assert_c2(flap_drag, 0.9 * lift, 1.15 * lift, "flap drag")
-
-
 def test_turn_rate_never_falls_with_speed_below_corner():
     """The author's rule (2026-11-24): below corner speed (the peak full-stick rate) the turn
     rate never decreases as speed rises, at full stick and at the sustained stick, for every
-    card type and for each with its flaps on (flapped_row) (quasi-steady, coasting, the spawn
-    store, float64, from half the 1 g speed). The peak is found on the dense grid itself, up to
-    one step of tuning.performance's grid past its corner_speed_flown. The speed-scheduled flaps
-    of before made a shelf between 1.3 and 1.6 x the stall speed."""
+    card type (quasi-steady, coasting, the spawn store, float64, from half the 1 g speed). The
+    peak is found on the dense grid itself, up to one step of tuning.performance's grid past
+    its corner_speed_flown."""
     for ship_type, name in enumerate(card.TYPE_NAMES):
-        for row in (tuning.row_of(name), flapped_row(name)):
-            c = double_constants(row=row)
-            corner = tuning.performance(row)["corner_speed_flown"] + 0.05
-            speeds = torch.linspace(0.5 * one_g_speed(ship_type), corner, 8001, dtype=torch.float64)
-            full = core.quasi_steady(c, speeds, torch.ones_like(speeds), COAST, c.spawn_energy)[0]
-            peak = int(full.argmax()) + 1
-            for stick in (1.0, float(c.stick_table[0, 3].abs())):
-                sticks = torch.full_like(speeds, stick)
-                rate = core.quasi_steady(c, speeds, sticks, COAST, c.spawn_energy)[0][:peak]
-                fall = rate[:-1] - rate[1:]
-                assert float(fall.max()) <= 1e-12 * float(rate.max()), (
-                    name, row["flap_lift"], stick, float(speeds[int(fall.argmax())])
-                )
-
-
-def test_flaps_cost_drag_only_for_lift_beyond_the_clean_wing():
-    """The flaps' drag is on the lift beyond the clean maximum: straight flight slow (1 g on the
-    clean wing) pays none; full stick slow pays it (with the flaps' drag removed, the same turn
-    bleeds less). The P-51D with its flaps on (flapped_row)."""
-    c = flapped_constants("p51d", double=False)
-    free = SimpleNamespace(**{**vars(c), "flap_drag": torch.zeros(1)})
-    speed = torch.full((1,), 1.25 * one_g_speed())
-
-    def speed_rate(constants_, stick):
-        stick = torch.full((1,), stick)
-        return float(core.quasi_steady(constants_, speed, stick, COAST, c.spawn_energy)[1])
-
-    assert speed_rate(c, 0.0) == speed_rate(free, 0.0)
-    assert speed_rate(c, 1.0) < speed_rate(free, 1.0)
+        row = tuning.row_of(name)
+        c = double_constants(row=row)
+        corner = tuning.performance(row)["corner_speed_flown"] + 0.05
+        speeds = torch.linspace(0.5 * one_g_speed(ship_type), corner, 8001, dtype=torch.float64)
+        full = core.quasi_steady(c, speeds, torch.ones_like(speeds), COAST, c.spawn_energy)[0]
+        peak = int(full.argmax()) + 1
+        for stick in (1.0, float(c.stick_table[0, 3].abs())):
+            sticks = torch.full_like(speeds, stick)
+            rate = core.quasi_steady(c, speeds, sticks, COAST, c.spawn_energy)[0][:peak]
+            fall = rate[:-1] - rate[1:]
+            assert float(fall.max()) <= 1e-12 * float(rate.max()), (
+                name, stick, float(speeds[int(fall.argmax())])
+            )
 
 
 def full_stick_lateral(c, speeds, stick=None):
@@ -377,8 +249,7 @@ def full_stick_lateral(c, speeds, stick=None):
         thrust_scale=1.0, stick_size=stick, stick_sign=torch.ones_like(speeds),
         commanded=c.commanded_table[..., COAST], demand=c.demand_table[..., COAST],
     )
-    wing, full = core._wing(c, speeds, stick)
-    return core._setting(c, control, speeds, c.spawn_energy, wing, full)[0]
+    return core._setting(c, control, speeds, c.spawn_energy)[0]
 
 
 def test_full_stick_is_the_envelopes_maximum():
@@ -386,7 +257,7 @@ def test_full_stick_is_the_envelopes_maximum():
     speed, with no blending tax: away from the corner (whose rounding, the wing's lift against
     the g limit, is the one soft minimum kept) the full-stick lateral acceleration is the whole
     of what is left after 1 g: sqrt(a_max^2 - g^2) above corner, sqrt((C v^2)^2 - g^2) below
-    (C the full-stick wing's maximum), to 0.1% (the old softmin of the command against its own
+    (C the wing's maximum lift coefficient), to 0.1% (the old softmin of the command against its own
     limit gave 2^(-1/16) = 0.958 of it along both lines). And every stick level turns less than
     full stick at every speed (quasi-steady turn rate)."""
     for ship_type, name in enumerate(card.TYPE_NAMES):
@@ -397,8 +268,7 @@ def test_full_stick_is_the_envelopes_maximum():
         ratio = full_stick_lateral(c, above) / (limit * limit - g * g) ** 0.5
         assert float((ratio - 1.0).abs().max()) < 1e-3, (name, float(ratio.min()))
         below = torch.linspace(1.6 * one_g_speed(ship_type), 0.7 * corner, 200, dtype=torch.float64)
-        _, full = core._wing(c, below, torch.ones_like(below))
-        lift = full * below * below
+        lift = c.lift * below * below
         ratio = full_stick_lateral(c, below) / torch.sqrt(lift * lift - g * g)
         assert float((ratio - 1.0).abs().max()) < 1e-3, (name, float(ratio.min()))
         low = 1.1 * one_g_speed(ship_type)
@@ -478,7 +348,7 @@ def test_the_turn_has_precedence_over_the_climb():
                 demand=c.demand_table[:, power],
             )
             at = torch.full((1, 1), speed)
-            lateral, exchange, *_ = core._setting(c, control, at, energy, *core._wing(c, at, control.stick_size))
+            lateral, exchange, *_ = core._setting(c, control, at, energy)
             laterals[name], exchanges[name] = lateral.item(), exchange.item()
         assert abs(laterals["climb"] - laterals["coast"]) < 1e-3 * laterals["coast"], ship_type
         straight = exchanges["straight"]

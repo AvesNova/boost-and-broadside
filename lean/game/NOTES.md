@@ -74,10 +74,6 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   no tax); the sustained level is derived in `_derived_characteristics` (`stick_table`: the
   stick that holds energy at the best sustained turn, so it passes through that point); the
   fine level is the card's `fine_stick_fraction` (0.5) of it. P-51D: 0.440, 0.881, 1.
-- **Automatic flaps** (off for the P-51D, `flap_lift` 0; switchable per type): scheduled by
-  stick demand and blown back by the corner speed, they raise the maximum lift when the stick
-  asks for more than the clean wing gives (C2 in speed and demand; drag on the extra lift only;
-  the turn rate never falls with speed below corner).
 - **Separation drag** rises toward the wing's maximum lift and stops there (a transient can
   ask for twice it; P-51D 0.41 at exponent 16, solved by the gap 0.85, docs/rewrite/p51d-model.md
   "Design inputs"). `steady_rates` / `quasi_steady` evaluate the same
@@ -119,9 +115,8 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 `lean/game/tests`: flight rules, damage, fields, fog, ghost bullets, invariants (finite, inert
 padding, team swap), the clock and wipe, both spawn rules, the training spawn, the one-tick delay,
 the stick (full stick the envelope's maximum to 0.1%, every level its fraction of it, the
-sustained level through the best sustained point, the fine level its fraction), the flaps on a
-flapped test row (deployment by demand, C2 by refinement), the turn rate rising with speed to
-the corner (flaps off and on), the tightest sustained turn 10% slower than the best rate, and
+sustained level through the best sustained point, the fine level its fraction), the turn rate
+rising with speed to the corner, the tightest sustained turn 10% slower than the best rate, and
 tuning (the derived card meets its targets: the flight test and its point mass's best
 sustained rate; plausible solved coefficients; the cache's key).
 

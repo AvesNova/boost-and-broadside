@@ -91,9 +91,9 @@ server draws with matplotlib (author 2026-11-24: matplotlib is the one charting 
   edge bands. The lowest states come from a climb (it fills the store and slows the ship to
   near its stall speed); then the nose must settle while the thrust accelerates the ship, so
   the large stick levels start higher. A random search (8192 ships, 60 s of random 0.2-12 s
-  segments) found the same limits to 1.6 m/s on the flapped row (`flown.random_search`; the test runs a smaller one
+  segments) found the same limits to 1.6 m/s (`flown.random_search`; the test runs a smaller one
   against the measurement it makes, so no stored numbers go stale).
-  P-51D with the stick levels as fractions of the top line, flaps off (2026-11-24), game m/s
+  P-51D with the stick levels as fractions of the top line (2026-11-24), game m/s
   at 2x (real: half): full stick 115.5, sustained stick 115.3, fine stick 103.4, dive 131.2
   (the store must be below 95%, which needs less total energy), climb 115.5; the stall speed
   is 90.4. The test's random search (1,024 ships, 40 s) now flies the sustained stick at

@@ -80,16 +80,15 @@ def test_card_rows_fly_their_reference_design(p51d):
              gap=0.86),
         dict(stall_speed=0.9, g_limit=7.0, top_speed=0.93, sustained_rate=1.10, gap=0.87),
         dict(best_climb_speed=1.05, gap=0.83, muzzle_speed=1.2),
-        dict(flap_lift=0.15),
     ],
-    ids=["faster", "slow-turner", "late-climber", "flaps"],
+    ids=["faster", "slow-turner", "late-climber"],
 )
 def test_moved_designs_fly_their_inputs(p51d, change):
-    """Moved designs (speeds and rates as multiples of the reference's; the g limit, gap and
-    flaps as values) fly every design input after the solve: from the P-51D's row to 1e-6,
+    """Moved designs (speeds and rates as multiples of the reference's; the g limit and gap as
+    values) fly every design input after the solve: from the P-51D's row to 1e-6,
     and in the web tool's fast path (Broyden) to 1e-4."""
     design = {
-        name: value if name in ("g_limit", "gap", "flap_lift") else value * p51d.design[name]
+        name: value if name in ("g_limit", "gap") else value * p51d.design[name]
         for name, value in change.items()
     }
     row = tuning.row_of("p51d")
@@ -105,15 +104,14 @@ def test_moved_designs_fly_their_inputs(p51d, change):
     [
         (dict(top_speed=1.03), dict(top_speed=1.05)),
         (dict(gap=0.84, sustained_rate=1.02), dict(gap=0.82, sustained_rate=1.04, top_speed=0.98)),
-        (dict(flap_lift=0.1), dict(flap_lift=0.15, best_climb=1.05)),
     ],
-    ids=["one-input", "several", "flaps"],
+    ids=["one-input", "several"],
 )
 def test_a_warm_start_agrees_with_a_cold_solve(p51d, before, after, monkeypatch):
     """The web tool's warm start (design_row from the last solve's row and Jacobian) reaches the
     cold solve's row (both from the fast path, to its 1e-5) with fewer flight evaluations."""
     def design(change):
-        return {name: value if name in ("gap", "flap_lift") else value * p51d.design[name]
+        return {name: value if name == "gap" else value * p51d.design[name]
                 for name, value in change.items()}
 
     row = tuning.row_of("p51d")

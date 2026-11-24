@@ -26,11 +26,7 @@ import math
 TYPE_NAMES = ("p51d",)
 
 # The flight terms: the drag rise above critical_speed, the separation drag, the soft minima of
-# lift against the g limit and of thrust against static thrust, the nose damping, and the
-# automatic flaps (core._wing): the bonus flap_lift x the clean maximum lift, deployed by the
-# demanded lift coefficient, blown back by flap_blowback_ratio x the clean corner speed; the
-# extra lift's drag flap_drag_scale x INDUCED_DRAG_FACTOR x (Delta lift coefficient)^2 with the
-# flaps fully used (core._rates).
+# lift against the g limit and of thrust against static thrust, and the nose damping.
 FLIGHT_TERMS = (
     "critical_speed",
     "drag_rise_exponent",
@@ -39,9 +35,6 @@ FLIGHT_TERMS = (
     "lift_softmin_exponent",
     "thrust_softmin_exponent",
     "nose_damping",
-    "flap_lift",
-    "flap_blowback_ratio",
-    "flap_drag_scale",
 )
 # The card's columns, in order. engine_power is thrust power per kg; exchange_acceleration the
 # dive and climb trade between speed and store.
@@ -91,12 +84,6 @@ STALL_ANGLE = 0.2617993877991494
 INDUCED_DRAG_FACTOR = 66.348
 NOSE_FREQUENCY_FLOOR = 0.4997135491028137
 SPEED_FLOOR = 1.454166427889188e-06
-# The automatic flaps (core._wing), shared: they deploy as the demanded lift coefficient goes
-# from 1 - FLAP_DEMAND_BAND of the clean maximum to all of it, and blow back over the last
-# FLAP_BLOWBACK_BAND of the blow-back speed.
-FLAP_DEMAND_BAND = 0.1
-FLAP_DEPLOY_OFFSET = (1.0 - FLAP_DEMAND_BAND) / FLAP_DEMAND_BAND
-FLAP_BLOWBACK_BAND = 0.4
 
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005

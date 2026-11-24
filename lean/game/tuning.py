@@ -90,7 +90,7 @@ class Airframe:
 
     mass: float  # kg
     wing_area: float  # m^2
-    max_lift_coefficient: float  # clean C_Lmax
+    max_lift_coefficient: float  # C_Lmax
     zero_lift_drag_coefficient: float  # C_D0
     aspect_ratio: float
     oswald: float  # span efficiency e
@@ -141,14 +141,12 @@ P51D = Airframe(
 )
 
 # The game terms switched off: no drag rise, no separation drag, soft minima near hard (exponent
-# 400), no flaps. A real aircraft's data fly as its point mass with these.
+# 400). A real aircraft's data fly as its point mass with these.
 POINT_MASS_TERMS = dict(
     critical_speed=math.inf,
     separation_drag=0.0,
     lift_softmin_exponent=400.0,
     thrust_softmin_exponent=400.0,
-    flap_lift=0.0,
-    flap_drag_scale=0.0,
 )
 
 
@@ -268,10 +266,10 @@ def _gun_range(row: dict, numbers: dict) -> float:
     return math.log1p(drag * launch * row["bullet_life"]) / drag
 
 
-GROUPS = ("Performance", "Airframe", "Flight terms", "Flaps", "Stick and nose", "Guns",
+GROUPS = ("Performance", "Airframe", "Flight terms", "Stick and nose", "Guns",
           "Shield, head-on and vision")
 _GRAVITY = lambda: card.GRAVITY  # noqa: E731
-P, A, T, F, S, G, H = GROUPS
+P, A, T, S, G, H = GROUPS
 # The design inputs, in the tool's order. To add, remove or swap one, edit this table only (see
 # docs/rewrite/p51d-model.md, "Design inputs"); every card field must be set exactly once.
 DESIGN_INPUTS = (
@@ -307,11 +305,6 @@ DESIGN_INPUTS = (
            source="design (author 2026-11-24)", low=4.0, high=32.0, relative=False),
     scaled("lift_softmin_exponent", "lift softness: exponent (low = soft)", T,
            source="design: v2's 16", low=2.0, high=64.0, relative=False),
-    scaled("flap_lift", "extra lift", F, unit="of clean", source="design: off", low=0.0,
-           high=0.5, relative=False),
-    scaled("flap_blowback_ratio", "blown back at", F, unit="x clean corner speed", low=0.3,
-           high=2.0, relative=False),
-    scaled("flap_drag_scale", "drag of the extra lift", F, low=0.0, high=3.0),
     scaled("nose_damping", "nose damping", S, low=0.2, high=1.5, relative=False),
     scaled("corner_nose_frequency", "nose frequency at corner speed", S, kind="angular_rate",
            low=0.3, high=2.0),
@@ -342,7 +335,7 @@ DESIGN_INPUTS = (
     scaled("vision_range", "vision range", H, "vision_range_scale",
            lambda: 1.0 / card.VISION_RANGE, kind="length", low=0.3, high=3.0),
 )
-del P, A, T, F, S, G, H
+del P, A, T, S, G, H
 
 
 def check_inputs(inputs: tuple[DesignInput, ...]) -> None:
@@ -474,11 +467,9 @@ class RealAircraft:
 # coefficient still moves the gap, docs/rewrite/ship-design-proposal.md 5). The drag rise doubles
 # the zero-lift drag at Mach 0.77, exponent 20 (NACA ACR 4K02 Fig. 12, the P-51B propeller off:
 # flat to about M 0.68, then +40% at M 0.735 and +67% at M 0.755). The lift softness 16 (v2's).
-# The flaps off (author 2026-11-24; switchable per type; on, the extra lift costs Delta C_D =
-# 1.5 Delta C_L^2 with the flaps fully used). Guns, damage, shield, the nose and vision are v2's
+# Guns, damage, shield, the nose and vision are v2's
 # Vizia's; the fine stick is half the sustained level (author 2026-11-24).
 P51D_TOP_SPEED, P51D_BEST_CLIMB = 375.0 * MPH, 3600.0 * FEET_PER_MINUTE  # real m/s
-P51D_FLAP_DRAG = 1.5  # Delta C_D per (Delta C_L)^2 beyond the clean maximum, flaps fully used
 P51D_VALUES = dict(
     top_speed=to_game(P51D_TOP_SPEED, -1),
     best_climb=to_game(P51D_BEST_CLIMB, -1),
@@ -488,9 +479,6 @@ P51D_VALUES = dict(
     drag_rise_exponent=20.0,
     separation_exponent=16.0,
     lift_softmin_exponent=16.0,
-    flap_lift=0.0,
-    flap_blowback_ratio=1.0,
-    flap_drag_scale=P51D_FLAP_DRAG / (P51D.per_metre * card.INDUCED_DRAG_FACTOR),
     nose_damping=0.7,
     corner_nose_frequency=11.23144817352295,
     fine_stick_fraction=0.5,
@@ -620,14 +608,11 @@ def design_row(
     logs of the fields they set, from `start` (a row, e.g. the reference's own), else from the
     point mass's value (an input's first_guess where the point mass has none to take a log of),
     to 1e-7 in log (`fast`: Broyden updates after the first Jacobian, to 1e-5: the web tool's
-    path). A design with flaps is solved clean first, then with them from there: the flaps'
-    low-speed part of the sustained turn is lift-limited, so no drag coefficient moves it, and a
-    start whose clean best turn lies below it sees no way to the target.
+    path).
 
     The warm start (the web tool's slider path): `start` a previous solve's row and `jacobian`
     its Solved.jacobian, with `fast`. Broyden goes on from that Jacobian (finite differences
-    again only when a step does not reduce the residual) and the clean stage is skipped (the
-    start already flies a design near this one, flaps and all); a Jacobian of another shape is
+    again only when a step does not reduce the residual); a Jacobian of another shape is
     ignored. Raises ValueError for an unknown input, RuntimeError when the solve does not
     converge.
 
@@ -664,42 +649,37 @@ def design_row(
     warm = fast and start is not None and jacobian is not None
     if not warm or tuple(jacobian.shape) != (len(solved), len(solved)):
         jacobian = None
-    clean = row["flap_lift"] > 0.0 and jacobian is None
-    stages = [{**row, "flap_lift": 0.0}, row] if clean else [row]
     solve = SimpleNamespace(logs=logs, residual=0.0, iterations=0, condition=None,
                             jacobian=jacobian)
-    counted = _counted
-    for stage in stages:
 
-        def residual(logs, stage=stage):
-            trial = {**stage, **{spec.sets: math.exp(x) for spec, x in zip(solved, logs)}}
-            if cancel is not None and cancel.is_set():
-                raise SolveCancelled()
-            try:
-                numbers = performance(trial)
-                return [math.log(spec.measure(trial, numbers) / t)
-                        for spec, t in zip(solved, targets)]
-            except (IndexError, ValueError, ZeroDivisionError, OverflowError) as error:
-                if not watched:
-                    raise
-                raise SolveFailed(
-                    "impossible", [spec.name for spec in solved], [], [], [], list(logs), 0,
-                    "no flyable speed or no positive value for this design (the inputs together"
-                    " leave no speed the ship can hold)") from error
-
-        if solved:
-            tolerance = 1e-5 if fast else 1e-7
-            try:
-                solve = _newton(residual, solve.logs, tolerance, broyden=fast, name="design_row",
-                                jacobian=jacobian if stage is stages[-1] else None,
-                                progress=counted(progress, solved, targets, tolerance),
-                                patience=patience, deadline=deadline)
-            except SolveFailed as failed:
-                failed.rows = {spec.sets: math.exp(x) for spec, x in zip(solved, failed.best)}
-                failed.row = {**stage, **failed.rows}
-                failed.targets = list(targets)
-                failed.names = [spec.name for spec in solved]
+    def residual(logs):
+        trial = {**row, **{spec.sets: math.exp(x) for spec, x in zip(solved, logs)}}
+        if cancel is not None and cancel.is_set():
+            raise SolveCancelled()
+        try:
+            numbers = performance(trial)
+            return [math.log(spec.measure(trial, numbers) / t)
+                    for spec, t in zip(solved, targets)]
+        except (IndexError, ValueError, ZeroDivisionError, OverflowError) as error:
+            if not watched:
                 raise
+            raise SolveFailed(
+                "impossible", [spec.name for spec in solved], [], [], [], list(logs), 0,
+                "no flyable speed or no positive value for this design (the inputs together"
+                " leave no speed the ship can hold)") from error
+
+    if solved:
+        tolerance = 1e-5 if fast else 1e-7
+        try:
+            solve = _newton(residual, solve.logs, tolerance, broyden=fast, name="design_row",
+                            jacobian=jacobian, progress=_named(progress, solved, tolerance),
+                            patience=patience, deadline=deadline)
+        except SolveFailed as failed:
+            failed.rows = {spec.sets: math.exp(x) for spec, x in zip(solved, failed.best)}
+            failed.row = {**row, **failed.rows}
+            failed.targets = list(targets)
+            failed.names = [spec.name for spec in solved]
+            raise
     row.update({spec.sets: math.exp(x) for spec, x in zip(solved, solve.logs)})
     return Solved(row, solve.residual, solve.iterations, solve.condition, solve.jacobian)
 
@@ -781,7 +761,7 @@ PLAUSIBILITY = (
     Check("sustained_speed_change", -0.12, 0.12, "range",
           "best sustained speed over 12% from the point mass's", "induced_drag_scale"),
     Check("full_stick_fall", None, 1e-6, "range",
-          "the full-stick rate falls with speed below corner", "flap_lift"),
+          "the full-stick rate falls with speed below corner", "max_lift_coefficient"),
     Check("thrust_loss", None, 0.1, "range",
           "the soft thrust limit takes over a tenth of the thrust at the best-climb speed"
           " (v2's softness 2 did)", "thrust_softmin_exponent"),
@@ -909,7 +889,7 @@ def load_card() -> dict[str, tuple[float, ...]]:
 @dataclasses.dataclass
 class SolveStep:
     """One Newton iteration as the progress callback sees it: the iteration (counted over the
-    whole solve), `residuals` (log of flown over target, per solved input, `names`' order),
+    solve), `residuals` (log of flown over target, per solved input, `names`' order),
     `worst` (their largest |.|, the relative error), `step` (the last step's largest |log|
     change, None at the first), `elapsed` (seconds since the solve began) and `tolerance`."""
 
@@ -940,16 +920,14 @@ class SolveCancelled(Exception):
     """Raised by a progress callback to abandon a solve (not a RuntimeError: no fallback)."""
 
 
-def _counted(progress, solved, targets, tolerance):
-    """`progress` for _newton: the iterations counted over the stages, the names added."""
+def _named(progress, solved, tolerance):
+    """`progress` for _newton, with the solved inputs' names and the tolerance added."""
     if progress is None:
         return None
-    state = SimpleNamespace(count=0)
     names = [spec.name for spec in solved]
 
     def call(step):
-        step.names, step.tolerance, step.iteration = names, tolerance, state.count
-        state.count += 1
+        step.names, step.tolerance = names, tolerance
         progress(step)
 
     return call
@@ -1368,8 +1346,7 @@ CARD_TIME_POWERS = dict(
     shield_recharge_delay_scale=0, head_on_fraction_scale=0, head_on_angle_scale=0,
     head_on_sharpness=0, fine_stick_fraction=0, vision_range_scale=0,
     critical_speed=-1, drag_rise_exponent=0, separation_drag=0, separation_exponent=0,
-    lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0, flap_lift=0,
-    flap_blowback_ratio=0, flap_drag_scale=0,
+    lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0,
 )
 # The rule constants (lean.game.card) with time in their units.
 RULE_TIME_POWERS = dict(
