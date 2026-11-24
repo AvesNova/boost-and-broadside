@@ -650,3 +650,7 @@ These replace the flap, profile and stick-level points above where they disagree
   propeller efficiency is held at the card's. Power shows in hp in real imperial units, kW in
   metric.
 - The P-51D card: the airframe with a 2,200 hp engine (author 2026-11-24 night)
+- Supports with buffer columns (author 2026-11-24 night, built 2026-11-25): every value support
+  and next-state column spans its measured range with 64 columns and adds
+  `BUFFER_COLUMNS` = 3 of the same width beyond each end (70 bins; the shield's in symlog
+  space), in code (`lean.model.value.buffered_centres`), not by hand.

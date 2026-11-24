@@ -301,7 +301,7 @@ def test_same_weights_run_at_any_ship_and_field_count():
         with torch.no_grad():
             logits, values, carry = policy.step(obs, policy.initial_carry(2, slots, "cpu"))
         assert logits.shape == (2, slots, 42)
-        assert values.shape == (2, slots, LEVELS, 64)
+        assert values.shape == (2, slots, LEVELS, config.bins)
         assert carry.shape == (config.blocks, 2, 1 + slots, 4, config.width)
         assert torch.isfinite(logits).all() and torch.isfinite(values).all()
 
@@ -625,7 +625,11 @@ def test_heads_start_near_uniform_and_the_hit_head_at_the_measured_shares():
             obs, policy.initial_carry(3, 6, "cpu"), torch.zeros(2, 3, dtype=torch.bool)
         )
     assert torch.allclose(torch.softmax(hit, -1), shares, atol=0.01)
-    for output, count in ((logits, 42), (values, 64), (next_state, 64)):
+    for output, count in (
+        (logits, 42),
+        (values, policy.config.bins),
+        (next_state, policy.config.bins),
+    ):
         log_probability = torch.log_softmax(output, -1)
         entropy = -(log_probability.exp() * log_probability).sum(-1)
         assert (entropy > math.log(count) - 0.01).all()
@@ -723,22 +727,22 @@ def test_next_state_targets_per_column_on_a_hand_made_pair():
         [[0.123, 0.15, 0.01, 1.5, -100.0, 0.0], [0.123, 0.15, 0.01, 1.5, -100.0, -21.0]]
     )
     assert torch.allclose(target, expected, atol=1e-3)
-    # By hand: linear bins (value - low) / (high - low) * 63, rounded: along 42.6, across
-    # 39.4, heading 37.8, speed 47.3, energy 27.0; the shield in symlog space over
-    # [-ln 91, ln 1.3]: 0 -> 59.5 (60), -21 -> 18.7 (19).
+    # By hand: linear bins 3 + (value - low) / (high - low) * 63 (3 buffer columns below the
+    # measured low), rounded: along 45.0, across 42.4, heading 41.8, speed 51.4, energy 29.6;
+    # the shield in symlog space over [-ln 91, 0]: 0 -> 66.0, -21 -> 22.8 (23).
     bins = next_state_distribution(config, target).argmax(-1)
-    assert bins.tolist() == [[43, 39, 38, 47, 27, 60], [43, 39, 38, 47, 27, 19]]
+    assert bins.tolist() == [[45, 42, 42, 51, 30, 66], [45, 42, 42, 51, 30, 23]]
 
 
 def test_next_state_loss_is_in_nats_per_column():
-    """Catches a next-state loss not in nats: uniform logits cost ln 64 per column, whatever
-    the column's units; logits at the target's log-distribution cost its entropy (the
-    floor), and a shifted prediction costs more."""
+    """Catches a next-state loss not in nats: uniform logits cost ln(bins) per column,
+    whatever the column's units; logits at the target's log-distribution cost its entropy
+    (the floor), and a shifted prediction costs more."""
     config = ModelConfig()
     target = next_state_target(config, *hand_made_pair())
-    uniform = next_state_cross_entropy(config, torch.zeros(1, 2, 6, 64), target)
+    uniform = next_state_cross_entropy(config, torch.zeros(1, 2, 6, config.bins), target)
     assert uniform.shape == (1, 2, 6)
-    assert torch.allclose(uniform, torch.full_like(uniform, math.log(64)), atol=1e-5)
+    assert torch.allclose(uniform, torch.full_like(uniform, math.log(config.bins)), atol=1e-5)
     distribution = next_state_distribution(config, target)
     best = next_state_cross_entropy(config, distribution.clamp_min(1e-30).log(), target)
     entropy = -(distribution * distribution.clamp_min(1e-30).log()).sum(-1)
@@ -747,4 +751,35 @@ def test_next_state_loss_is_in_nats_per_column():
         config, distribution.roll(3, -1).clamp_min(1e-30).log(), target
     )
     assert (shifted > best + 1.0).all()
-    assert next_state_centres(config).shape == (6, 64)
+    assert next_state_centres(config).shape == (6, config.bins)
+
+
+def test_supports_have_three_buffer_columns_of_the_measured_width():
+    """Catches a support without the buffer rule (author 2026-11-24): every value support and
+    next-state column spans its measured range with 64 columns (the outermost measured
+    centres at the measured ends) and 3 more columns of that width beyond each end, the
+    shield's in symlog space."""
+    from lean.learn import LearnConfig, value_centres
+    from lean.model.value import BUFFER_COLUMNS, MEASURED_COLUMNS
+
+    assert BUFFER_COLUMNS == 3
+    config = ModelConfig()
+    assert config.bins == MEASURED_COLUMNS + 2 * BUFFER_COLUMNS == 70
+    learn = LearnConfig()
+    columns = config.next_state_columns
+    low = torch.tensor(
+        [*learn.value_low]
+        + [math.copysign(math.log1p(abs(c.low)), c.low) if c.symlog else c.low for c in columns]
+    )
+    high = torch.tensor(
+        [*learn.value_high]
+        + [math.copysign(math.log1p(abs(c.high)), c.high) if c.symlog else c.high for c in columns]
+    )
+    centres = torch.cat([value_centres(learn, config.bins), next_state_centres(config)])
+    width = (high - low) / (MEASURED_COLUMNS - 1)
+    steps = centres.diff(dim=-1)
+    assert torch.allclose(steps, width[:, None].expand_as(steps), rtol=1e-4)
+    assert torch.allclose(centres[:, BUFFER_COLUMNS], low, atol=1e-5)
+    assert torch.allclose(centres[:, -1 - BUFFER_COLUMNS], high, atol=1e-5)
+    assert torch.allclose(centres[:, 0], low - BUFFER_COLUMNS * width, atol=1e-5)
+    assert torch.allclose(centres[:, -1], high + BUFFER_COLUMNS * width, atol=1e-5)
