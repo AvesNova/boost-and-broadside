@@ -17,12 +17,21 @@ torch.set_num_threads(1)
 
 @pytest.fixture(scope="module")
 def p51d():
+    """The card's reference (the airframe with its 2,200 hp engine, "airframe_and_engine")."""
     return tuning.reference("p51d")
 
 
-def assert_flies(row, design, rel, label):
-    """The row flies every design input (design_of) to `rel`; the gun range at least."""
-    flown = tuning.design_of(row)
+@pytest.fixture(scope="module")
+def documents():
+    """The P-51D under its documents (top speed and climb solved for the 1,630 hp flight test):
+    the design system's solve; its start_row is the documents row."""
+    return tuning.reference("p51d", "documents")
+
+
+def assert_flies(row, design, rel, label, inputs=tuning.DESIGN_INPUTS):
+    """The row flies every design input (design_of under `inputs`) to `rel`; the gun range at
+    least."""
+    flown = tuning.design_of(row, inputs)
     for name, value in design.items():
         if name == "gun_range":
             assert flown[name] >= value - 1e-9, label
@@ -51,16 +60,17 @@ def test_p51d_point_mass_flies_the_flight_test(p51d):
 
 def test_card_rows_fly_their_reference_design(p51d):
     """Every card row, derived when the card is first used (tuning.load_card, from the disk
-    cache when its key is there), flies its reference's design inputs (to 1e-6): the flight
-    test's top speed and best climb, and the closed inputs (e 0.85, the separation drag 0.3 at
-    exponent 8, the thrust softness); the same stall and corner speeds as the point mass; the
-    best sustained turn's speed within 12% of the point mass's. The game terms are on."""
+    cache when its key is there), flies its reference's design inputs under its profile (to
+    1e-6): the P-51D's documented airframe's C_D0 and the 2,200 hp shaft power, and the closed
+    inputs (e 0.85, the separation drag 0.3 at exponent 8, the thrust softness); the same stall
+    and corner speeds as its own point mass; the best sustained turn's speed within 12% of the
+    point mass's. The game terms are on."""
     assert set(card.CARD) == set(card.CARD_FIELDS)
     for name in card.TYPE_NAMES:
         reference = tuning.reference(name)
         row = tuning.row_of(name)
-        assert_flies(row, reference.design, 1e-6, name)
-        game, point = tuning.performance(row), reference.point_mass
+        assert_flies(row, reference.design, 1e-6, name, reference.inputs)
+        game, point = tuning.performance(row), tuning.performance(tuning.point_mass(row))
         assert game["stall_speed"] == pytest.approx(point["stall_speed"], rel=1e-12)
         assert game["corner_speed"] == pytest.approx(point["corner_speed"], rel=1e-12)
         assert game["sustained_speed"] == pytest.approx(point["sustained_speed"], rel=0.12)
@@ -82,21 +92,21 @@ VALUES = ("g_limit", "oswald", "separation_drag", "thrust_softmin_exponent")  # 
     ],
     ids=["faster", "slow-turner", "late-climber"],
 )
-def test_moved_designs_fly_their_inputs(p51d, change):
+def test_moved_designs_fly_their_inputs(documents, change):
     """Moved designs (speeds and rates as multiples of the reference's; the g limit, e, the
     separation drag and the thrust softness as values) fly every design input after the solve: from
     the P-51D's row to 1e-6,
     and in the web tool's fast path (Broyden) to 1e-4."""
     design = {
-        name: value if name in VALUES else value * p51d.design[name]
+        name: value if name in VALUES else value * documents.design[name]
         for name, value in change.items()
     }
-    row = tuning.row_of("p51d")
-    solved = tuning.design_row(p51d, design, start=row)
+    row = documents.start_row
+    solved = tuning.design_row(documents, design, start=row)
     assert solved.residual < 1e-7 and solved.condition < 100.0
-    assert_flies(solved.row, {**p51d.design, **design}, 1e-6, "solved")
-    fast = tuning.design_row(p51d, design, start=row, fast=True)
-    assert_flies(fast.row, {**p51d.design, **design}, 1e-4, "fast")
+    assert_flies(solved.row, {**documents.design, **design}, 1e-6, "solved")
+    fast = tuning.design_row(documents, design, start=row, fast=True)
+    assert_flies(fast.row, {**documents.design, **design}, 1e-4, "fast")
 
 
 @pytest.mark.parametrize(
@@ -107,40 +117,44 @@ def test_moved_designs_fly_their_inputs(p51d, change):
     ],
     ids=["one-input", "several"],
 )
-def test_a_warm_start_agrees_with_a_cold_solve(p51d, before, after, monkeypatch):
+def test_a_warm_start_agrees_with_a_cold_solve(documents, before, after, monkeypatch):
     """The web tool's warm start (design_row from the last solve's row and Jacobian) reaches the
     cold solve's row (both from the fast path, to its 1e-5) with fewer flight evaluations."""
 
     def design(change):
         return {
-            name: value if name in VALUES else value * p51d.design[name]
+            name: value if name in VALUES else value * documents.design[name]
             for name, value in change.items()
         }
 
-    row = tuning.row_of("p51d")
-    last = tuning.design_row(p51d, design(before), start=row, fast=True)
+    row = documents.start_row
+    last = tuning.design_row(documents, design(before), start=row, fast=True)
     assert last.jacobian is not None
     evaluations = []
     performance = tuning.performance
     monkeypatch.setattr(
         tuning, "performance", lambda *a, **k: evaluations.append(1) or performance(*a, **k)
     )
-    warm = tuning.design_row(p51d, design(after), start=last.row, fast=True, jacobian=last.jacobian)
+    warm = tuning.design_row(
+        documents, design(after), start=last.row, fast=True, jacobian=last.jacobian
+    )
     warm_evaluations = len(evaluations)
-    cold = tuning.design_row(p51d, design(after), start=row, fast=True)
+    cold = tuning.design_row(documents, design(after), start=row, fast=True)
     assert warm_evaluations < len(evaluations) - warm_evaluations
     monkeypatch.undo()
     assert warm.residual < 1e-5 and cold.residual < 1e-5
-    assert_flies(warm.row, {**p51d.design, **design(after)}, 2e-5, "warm")
+    assert_flies(warm.row, {**documents.design, **design(after)}, 2e-5, "warm")
     for name, value in cold.row.items():
         assert warm.row[name] == pytest.approx(value, rel=1e-3), name
 
 
-def test_a_design_from_the_point_mass_guess_flies_its_inputs(p51d):
+def test_a_design_from_the_point_mass_guess_flies_its_inputs(documents):
     """With no start row the solve starts from the reference's point mass (and the table's first
     guesses) and still flies every input."""
-    design = dict(top_speed=1.05 * p51d.design["top_speed"], g_limit=6.5)
-    assert_flies(tuning.design_row(p51d, design).row, {**p51d.design, **design}, 1e-6, "cold")
+    design = dict(top_speed=1.05 * documents.design["top_speed"], g_limit=6.5)
+    assert_flies(
+        tuning.design_row(documents, design).row, {**documents.design, **design}, 1e-6, "cold"
+    )
 
 
 def test_an_unknown_design_input_is_refused(p51d):
@@ -168,14 +182,17 @@ def test_the_measures_are_smooth_and_grid_free():
     assert slopes[0] == pytest.approx(slopes[1], rel=0.02) and slopes[0] < 0.0
 
 
-def test_implausible_designs_warn(p51d):
-    """The plausibility checks (PLAUSIBILITY) warn, never refuse: a hand-made row with too
-    little induced drag (Oswald e above 1), more thrust power than shaft power, too little
-    zero-lift drag, too much lift and a softer thrust warns on each. The P-51D's own row warns
-    on one: the 8 g limit above the structure's 6.6 g at the tested weight."""
-    row = tuning.row_of("p51d")
-    own = {(w["quantity"], w["severity"]) for w in tuning.warnings(row, p51d)}
+def test_implausible_designs_warn(p51d, documents):
+    """The plausibility checks (PLAUSIBILITY) warn, never refuse: a hand-made row under the
+    documents (the shaft power held at the documented 1,630 hp) with too little induced drag
+    (Oswald e above 1), more thrust power than shaft power, too little zero-lift drag, too much
+    lift and a softer thrust warns on each. The P-51D's documents row and its card row (2,200
+    hp) each warn on one: the 8 g limit above the structure's 6.6 g at the tested weight."""
+    row = documents.start_row
+    own = {(w["quantity"], w["severity"]) for w in tuning.warnings(row, documents)}
     assert own == {("structural_load", "range")}
+    card_row = tuning.row_of("p51d")
+    assert {(w["quantity"], w["severity"]) for w in tuning.warnings(card_row, p51d)} == own
     bad = {
         **row,
         "induced_drag_scale": 0.7 * row["induced_drag_scale"],
@@ -184,7 +201,7 @@ def test_implausible_designs_warn(p51d):
         "max_lift_coefficient": 1.3 * row["max_lift_coefficient"],
         "thrust_softmin_exponent": 1.5,
     }
-    found = {(w["quantity"], w["severity"]) for w in tuning.warnings(bad, p51d)}
+    found = {(w["quantity"], w["severity"]) for w in tuning.warnings(bad, documents)}
     for expected in [
         ("oswald", "limit"),
         ("propeller_efficiency", "limit"),
@@ -193,7 +210,7 @@ def test_implausible_designs_warn(p51d):
         ("thrust_loss", "range"),
     ]:
         assert expected in found, (expected, found)
-    implied = tuning.implied(row, p51d.airframe)
+    implied = tuning.implied(row, documents.airframe)
     assert implied["figure_of_merit"] == pytest.approx(tuning.FIGURE_OF_MERIT, rel=1e-9)
     assert implied["max_lift_coefficient"] == pytest.approx(1.6, rel=1e-9)
 
@@ -254,7 +271,7 @@ def test_scripted_references_are_the_flown_numbers():
     """The game's derived references for the scripted agent (docs/rewrite/scripted-bfm-design.md
     B2) are what the quasi-steady analysis flies: the best sustained turn's speed within
     tuning.performance's 0.05 m/s grid, its rate and radius within 0.1%, the corner rate; the
-    quarter-turn time and the store's turn follow from them (the P-51D: 2.52 s and 2.23 rad)."""
+    quarter-turn time and the store's turn follow from them (the P-51D: 2.25 s and 2.09 rad)."""
     config = core.GameConfig(lineup=card.TYPE_NAMES)
     game = core.per_type_constants(config, torch.arange(len(card.TYPE_NAMES)))
     for index, name in enumerate(card.TYPE_NAMES):
@@ -278,8 +295,8 @@ def test_scripted_references_are_the_flown_numbers():
         expected = (float(game.corner_rate[index]) - rate) * held
         assert float(game.store_turn[index]) == pytest.approx(expected, rel=1e-4)
     p51d = card.TYPE_NAMES.index("p51d")
-    assert float(game.quarter_turn_time[p51d]) == pytest.approx(2.52, abs=0.01)
-    assert float(game.store_turn[p51d]) == pytest.approx(2.23, abs=0.02)
+    assert float(game.quarter_turn_time[p51d]) == pytest.approx(2.25, abs=0.01)
+    assert float(game.store_turn[p51d]) == pytest.approx(2.09, abs=0.02)
 
 
 def test_a_card_built_inside_with_row_does_not_outlive_it():
@@ -324,14 +341,16 @@ def test_an_input_is_swapped_by_editing_the_table_only():
 
 def test_profiles_are_named_tables():
     """Each profile (tuning.PROFILES) is a design-input table that sets every card field once;
-    the documents (DESIGN_INPUTS) are the card's default, and the P-51D is solved under them."""
+    the documents (DESIGN_INPUTS) are the default table and the base of "airframe and engine",
+    and the P-51D's card is its airframe and engine (the 2,200 hp engine)."""
     for profile in tuning.PROFILES.values():
         tuning.check_inputs(profile.inputs)
         assert profile.base is None or profile.base in tuning.PROFILES
     assert list(tuning.PROFILES) == ["documents", "airframe_and_engine"]
     assert tuning.DEFAULT_PROFILE == "documents"
     assert tuning.PROFILES[tuning.DEFAULT_PROFILE].inputs is tuning.DESIGN_INPUTS
-    assert tuning.REAL_AIRCRAFT["p51d"].profile == tuning.DEFAULT_PROFILE
+    assert tuning.PROFILES["airframe_and_engine"].base == "documents"
+    assert tuning.REAL_AIRCRAFT["p51d"].profile == "airframe_and_engine"
 
 
 def test_a_profile_with_a_base_starts_from_the_base_row(tmp_path, monkeypatch):
@@ -341,7 +360,7 @@ def test_a_profile_with_a_base_starts_from_the_base_row(tmp_path, monkeypatch):
     monkeypatch.setenv("BNB_CARD_CACHE", str(tmp_path))
     copy = tuning.Profile("copy", "copy", tuning.DESIGN_INPUTS, "documents")
     monkeypatch.setitem(tuning.PROFILES, "copy", copy)
-    documents = tuning.row_of("p51d")
+    documents = tuning.reference("p51d", "documents").start_row
     reference = tuning.reference_in(tuning.REAL_AIRCRAFT["p51d"], "copy")
     assert reference.profile == "copy"
     own = tuning.design_row(reference, start=reference.start_row)
@@ -355,10 +374,18 @@ def test_a_profile_with_a_base_starts_from_the_base_row(tmp_path, monkeypatch):
 
 
 def test_airframe_and_engine_is_closed_and_more_power_flies_faster():
-    """Under "airframe and engine" nothing is solved: the reference is the documents row (1e-6),
-    a design solves in no iterations, and more shaft power raises top speed and climb."""
+    """Under "airframe and engine" nothing is solved: the documents row reads back as its
+    documented 1,630 hp and the airframe's C_D0; the card's reference is that airframe with the
+    aircraft's own 2,200 hp, and its row is the card's (1e-6); a design solves in no iterations,
+    and more shaft power raises top speed and climb."""
     reference = tuning.reference("p51d", "airframe_and_engine")
     assert all(spec.apply is not None for spec in reference.inputs)
+    documents = tuning.design_of(tuning.reference("p51d", "documents").start_row, reference.inputs)
+    horsepower = tuning.to_game(tuning.HORSEPOWER, -3)
+    assert documents["shaft_power"] == pytest.approx(1630.0 * horsepower, rel=1e-6)
+    assert reference.design["shaft_power"] == pytest.approx(2200.0 * horsepower, rel=1e-12)
+    for name in ("zero_lift_drag_coefficient", "stall_speed", "g_limit", "oswald"):
+        assert reference.design[name] == pytest.approx(documents[name], rel=1e-6), name
     for name, value in tuning.row_of("p51d").items():
         assert reference.start_row[name] == pytest.approx(value, rel=1e-6), name
     power = reference.design["shaft_power"]

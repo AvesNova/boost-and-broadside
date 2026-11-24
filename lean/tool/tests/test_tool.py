@@ -1,6 +1,8 @@
 """The web tool: the envelope function matches the game's quasi-steady maths, the server answers
 the envelope and ship endpoints and a design change, the sliders are the design inputs, saved
-presets keep their row, and the sandbox socket advances a World."""
+presets keep their row, and the sandbox socket advances a World. The tests of the solve (a moved
+top speed or climb, warm starts, progress, failing fast, cancelling) use the documents profile:
+under the card's (airframe and engine) nothing is solved."""
 
 import math
 import threading
@@ -161,23 +163,25 @@ def test_the_sustained_endpoint_returns_a_png_and_an_unsolvable_design_an_error(
 
 
 def test_a_design_change_moves_the_design_and_the_reference_stays():
+    """A moved g limit (the card's profile) turns harder; the reference is still the card's
+    (its top speed is what the card's row flies: a readout under airframe and engine)."""
     reference = tuning.reference("p51d").design
     result = design.envelope("p51d", {"g_limit": 1.3 * reference["g_limit"]}, tuning.TIME_FACTOR)
     assert result["design"]["key"]["corner_rate"] > result["reference"]["key"]["corner_rate"]
     assert result["reference"]["key"]["top_speed"] == pytest.approx(
-        reference["top_speed"], rel=1e-6
+        tuning.performance(tuning.row_of("p51d"))["top_speed"], rel=1e-6
     )
 
 
 def test_the_sliders_are_the_design_inputs():
     """Per profile (tuning.PROFILES), the page's sliders are its table, in order, each starting
     at the preset's reference value under it with its provenance and inside its range; the
-    preset names its own profile (the documents); the page keeps no list of its own, no profile's
-    names and no Plotly."""
+    preset names its own profile (the card's: airframe and engine); the page keeps no list of its
+    own, no profile's names and no Plotly."""
     from pathlib import Path
 
     preset = design.presets()["p51d"]
-    assert preset["profile"] == tuning.DEFAULT_PROFILE
+    assert preset["profile"] == tuning.REAL_AIRCRAFT["p51d"].profile == "airframe_and_engine"
     assert set(preset["profiles"]) == set(tuning.PROFILES) == set(design.profiles())
     page = Path(design.__file__).with_name("index.html").read_text()
     assert "plotly" not in page.lower()
@@ -199,7 +203,7 @@ def test_a_profile_is_chosen_per_request(monkeypatch):
     point at its inputs, and an unknown profile is refused."""
     monkeypatch.setattr(design, "_SOLVED", {})
     client = TestClient(app)
-    speed = 0.98 * tuning.reference("p51d").design["top_speed"]
+    speed = 0.98 * tuning.reference("p51d", "documents").design["top_speed"]
     request = {"preset": "p51d", "profile": "documents", "values": {"top_speed": speed}}
     moved = client.post("/api/ship", json=request).json()
     assert moved["flies"]["top_speed"] == pytest.approx(speed, rel=1e-4)
@@ -215,16 +219,17 @@ def test_a_profile_is_chosen_per_request(monkeypatch):
 
 def test_the_ship_panels_show_implied_physics_warnings_and_the_solved_row():
     """POST /api/ship: the implied physical quantities, the warnings (the P-51D's own: the
-    structure), the solved card row with the solve's numbers; a moved design is solved and flies
-    its input; an unknown input is refused."""
+    structure), the solved card row with the solve's numbers; a moved design (a top speed, under
+    the documents) is solved and flies its input; an unknown input is refused."""
     client = TestClient(app)
     own = client.post("/api/ship", json={"preset": "p51d"}).json()
     assert set(own["row"]) == set(card.CARD_FIELDS)
     assert own["implied"]["max_lift_coefficient"] == pytest.approx(1.6)
     assert {w["quantity"] for w in own["warnings"]} == {"structural_load"}
     assert own["solve"]["iterations"] == 0
-    top = 1.05 * tuning.reference("p51d").design["top_speed"]
-    moved = client.post("/api/ship", json={"preset": "p51d", "values": {"top_speed": top}}).json()
+    top = 1.05 * tuning.reference("p51d", "documents").design["top_speed"]
+    request = {"preset": "p51d", "profile": "documents", "values": {"top_speed": top}}
+    moved = client.post("/api/ship", json=request).json()
     assert moved["flies"]["top_speed"] == pytest.approx(top, rel=1e-4)
     assert moved["solve"]["iterations"] > 0 and moved["solve"]["condition"] > 0.0
     bad = client.post("/api/ship", json={"preset": "p51d", "values": {"cruise_speed": 300.0}})
@@ -236,11 +241,11 @@ def test_a_slider_drag_solves_warm_and_agrees_with_a_cold_solve(monkeypatch):
     and Jacobian) and fly the same design as a cold solve from the preset's row."""
     monkeypatch.setattr(design, "_SOLVED", {})
     monkeypatch.setattr(design, "_WARM", {})
-    reference = tuning.reference("p51d")
+    reference = tuning.reference("p51d", "documents")
     for factor in (1.02, 1.03, 1.04):
         values = {"best_climb": factor * reference.design["best_climb"]}
-        warm = design.solve("p51d", values)
-        assert design._WARM[("p51d", tuning.DEFAULT_PROFILE)] is warm
+        warm = design.solve("p51d", values, profile="documents")
+        assert design._WARM[("p51d", "documents")] is warm
     cold = tuning.design_row(reference, values, start=design.PRESET_ROWS["p51d"], fast=True)
     for name, value in cold.row.items():
         assert warm.row[name] == pytest.approx(value, rel=1e-3), name
@@ -261,8 +266,9 @@ def test_saved_presets_store_their_row_and_load_editable_or_fixed(tmp_path, monk
     state = {"preset": "p51d", "values": {"g_limit": 7.0}, "time_scale": 2.0, "units": "game"}
     assert client.post("/api/saved", json={"name": "seven", "state": state}).status_code == 200
     record = json.loads((tmp_path / "seven.json").read_text())
-    assert record["inputs_version"] == tuning.inputs_version()
-    assert record["profile"] == tuning.DEFAULT_PROFILE
+    profile = tuning.REAL_AIRCRAFT["p51d"].profile  # the preset's own
+    assert record["inputs_version"] == tuning.inputs_version(tuning.PROFILES[profile].inputs)
+    assert record["profile"] == profile
     assert record["row"]["max_acceleration"] == pytest.approx(7.0 * card.GRAVITY)
     record["inputs_version"] = "another"
     (tmp_path / "old-table.json").write_text(json.dumps({**record, "name": "old-table"}))
@@ -354,7 +360,7 @@ def test_no_line_is_drawn_below_its_lowest_flown_speed(p51d_flown):
 
 
 def test_the_solve_reports_progress_and_the_result_is_the_same_without_watching():
-    reference = tuning.reference("p51d")
+    reference = tuning.reference("p51d", "documents")
     values = {"best_climb": 1.05 * reference.design["best_climb"]}
     start = design.PRESET_ROWS["p51d"]
     steps = []
@@ -381,12 +387,12 @@ def test_an_impossible_design_fails_fast_naming_the_input(monkeypatch):
     monkeypatch.setattr(design, "TIME_LIMIT", 3.0)
     monkeypatch.setattr(design, "_SOLVED", {})
     monkeypatch.setattr(design, "_WARM", {})
-    climb = tuning.reference("p51d").design["best_climb"]
+    climb = tuning.reference("p51d", "documents").design["best_climb"]
     began = time.monotonic()
     with pytest.raises(tuning.SolveFailed) as raised:
-        design.solve("p51d", {"best_climb": 20.0 * climb})
+        design.solve("p51d", {"best_climb": 20.0 * climb}, profile="documents")
     assert time.monotonic() - began < design.TIME_LIMIT + 1.5
-    report = design.failure_report(raised.value, "p51d", None, "real_imperial", 2.0)
+    report = design.failure_report(raised.value, "p51d", "documents", "real_imperial", 2.0)
     assert report["reason"] in ("time", "stalled") and report["nearest"]
     worst = report["unmet"][0]  # the largest miss first, in the chosen units
     assert worst["name"] == "best_climb" and worst["unit"] == "ft/min"
@@ -400,17 +406,18 @@ def test_an_impossible_design_fails_fast_naming_the_input(monkeypatch):
 def test_a_negative_or_flyless_design_is_impossible_at_once():
     began = time.monotonic()
     with pytest.raises(tuning.SolveFailed) as negative:
-        design.solve("p51d", {"best_climb": -3.0})
+        design.solve("p51d", {"best_climb": -3.0}, profile="documents")
     with pytest.raises(tuning.SolveFailed) as flyless:
-        design.solve("p51d", {"stall_speed": 400.0})
+        design.solve("p51d", {"stall_speed": 400.0}, profile="documents")
     assert time.monotonic() - began < 1.0
     assert negative.value.reason == flyless.value.reason == "impossible"
     assert (
-        "best_climb" in design.failure_report(negative.value, "p51d", None, "game", 2.0)["message"]
+        "best_climb"
+        in design.failure_report(negative.value, "p51d", "documents", "game", 2.0)["message"]
     )
     assert (
         "stall_speed"
-        in design.failure_report(flyless.value, "p51d", None, "game", 2.0, ["stall_speed"])[
+        in design.failure_report(flyless.value, "p51d", "documents", "game", 2.0, ["stall_speed"])[
             "message"
         ]
     )
@@ -419,7 +426,12 @@ def test_a_negative_or_flyless_design_is_impossible_at_once():
 def test_the_failure_reaches_the_page_as_json_and_a_socket_message(monkeypatch):
     monkeypatch.setattr(design, "TIME_LIMIT", 2.0)
     client = TestClient(app)
-    request = {"preset": "p51d", "values": {"best_climb": -3.0}, "units": "real_metric"}
+    request = {
+        "preset": "p51d",
+        "profile": "documents",
+        "values": {"best_climb": -3.0},
+        "units": "real_metric",
+    }
     bad = client.post("/api/ship", json=request)
     assert bad.status_code == 422 and bad.json()["failure"]["reason"] == "impossible"
     with client.websocket_connect("/api/solve") as socket:
@@ -432,9 +444,10 @@ def test_the_socket_streams_progress_then_done_and_a_reset_answers_at_once(monke
     monkeypatch.setattr(design, "_SOLVED", {})
     monkeypatch.setattr(design, "_WARM", {})
     client = TestClient(app)
-    climb = tuning.reference("p51d").design["best_climb"]
+    climb = tuning.reference("p51d", "documents").design["best_climb"]
     with client.websocket_connect("/api/solve") as socket:
-        socket.send_json({"preset": "p51d", "values": {"best_climb": 1.04 * climb}})
+        moved = {"best_climb": 1.04 * climb}
+        socket.send_json({"preset": "p51d", "profile": "documents", "values": moved})
         kinds = []
         while (message := socket.receive_json())["type"] == "progress":
             kinds.append(message)
@@ -451,16 +464,15 @@ def test_a_cancelled_solve_stops_within_an_evaluation_and_keeps_the_warm_start(m
     monkeypatch.setattr(design, "_SOLVED", {})
     monkeypatch.setattr(design, "_WARM", {})
     monkeypatch.setattr(design, "TIME_LIMIT", 60.0)
-    warm = design.solve(
-        "p51d", {"best_climb": 1.03 * tuning.reference("p51d").design["best_climb"]}
-    )
+    documents = tuning.reference("p51d", "documents").design
+    warm = design.solve("p51d", {"best_climb": 1.03 * documents["best_climb"]}, profile="documents")
     kept = dict(design._WARM)
     cancel, outcome = threading.Event(), {}
-    top = tuning.reference("p51d").design["top_speed"]
+    top = documents["top_speed"]
 
     def work():
         try:
-            design.solve("p51d", {"top_speed": 5.0 * top}, cancel=cancel)
+            design.solve("p51d", {"top_speed": 5.0 * top}, profile="documents", cancel=cancel)
         except tuning.SolveCancelled:
             outcome["at"] = time.monotonic()
 
@@ -471,14 +483,14 @@ def test_a_cancelled_solve_stops_within_an_evaluation_and_keeps_the_warm_start(m
     cancel.set()
     thread.join(5.0)
     assert not thread.is_alive() and outcome["at"] - asked < 0.5
-    assert design._WARM == kept and design._WARM[("p51d", tuning.DEFAULT_PROFILE)] is warm
+    assert design._WARM == kept and design._WARM[("p51d", "documents")] is warm
 
 
 def test_a_new_message_on_the_solve_socket_cancels_the_solve(monkeypatch):
     monkeypatch.setattr(design, "_SOLVED", {})
     monkeypatch.setattr(design, "_WARM", {})
     monkeypatch.setattr(design, "TIME_LIMIT", 60.0)
-    top = tuning.reference("p51d").design["top_speed"]
+    top = tuning.reference("p51d", "documents").design["top_speed"]
     seen = []
     original = tuning.design_row
 
@@ -488,7 +500,8 @@ def test_a_new_message_on_the_solve_socket_cancels_the_solve(monkeypatch):
 
     monkeypatch.setattr(tuning, "design_row", spy)
     with TestClient(app).websocket_connect("/api/solve") as socket:
-        socket.send_json({"preset": "p51d", "values": {"top_speed": 5.0 * top}})
+        moved = {"top_speed": 5.0 * top}
+        socket.send_json({"preset": "p51d", "profile": "documents", "values": moved})
         assert socket.receive_json()["type"] == "progress"
         socket.send_text("next")  # the page's newer request
         asked = time.monotonic()
