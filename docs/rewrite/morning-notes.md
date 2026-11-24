@@ -56,6 +56,13 @@ undo it.
   half). `act` returns a named `Decision`; `advance` 16 -> 10 parameters, `slot_actions` 11 ->
   7. Tripwire 4 graphs, 5,582 -> 5,586 traced operations, cold 206 s; parity speed unchanged
   (loop 6,560 -> 6,572 steps/s, one rough pair).
+- Step 8 (clock, merged): **the clock is now 1,800 ticks (60 s), down from 5,400 (180 s).**
+  BFM-CMA2 4v4 at 4,200 m, 2,048 games, clock off: p50 35.2 s, p80 54.0 s (bootstrap 95%
+  52-56 s), p90 70.2 s, p95 92.8 s; the agreed rule (80% of games end before it) rounded up to
+  a multiple of 10 s gives 60 s; 84.8% end before it. Every other size and arena has its p80
+  under 60 s (50-57 s). About 15% of default games will be decided by the clock rule (ships
+  alive, then shield). A 3x shorter episode changes the value ranges, so step 9 re-measures
+  after it.
 - Step 6 (C4): `core-brief.md` is rewritten as goals and standards (about 1,200 words). Its
   last section lists 9 points for you to confirm (training targets against the new yardstick,
   size generalisation, a speed floor, parallel work, rented GPUs, tests per merge, one place
