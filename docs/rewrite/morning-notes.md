@@ -29,6 +29,15 @@ undo it.
   +- 0.005); CMA2 beats default in all 18 conditions. The panel's stored vectors were mapped
   by row name onto today's rows (deleted rows dropped). The CMA search script
   (scripted-screening/search.py) no longer imports: a future round needs new search rows.
+- Step 4 (reach and effect, merged: scripted-reach.md). The overshoot rule fires on 0.006%
+  of states (a 2x or 3x wider gate changes little) and the speed-floor clamp never; the spend
+  term, the two-circle cash, the break relaxation and the defend gate are reached on 1-5% of
+  states but barely change the action (JS over all states under 0.0005). The plan switch,
+  scissors, boundary steer and weakest-target (persona) clearly matter. **My call:** delete the
+  never-reached and no-effect mechanisms now (removal only; you wanted to stop changing the
+  scripted agent), keep the rest, and accept the trim only if a paired skill re-check shows no
+  loss beyond 2 standard errors. Result below when it lands. The classes' cut-offs (JS 0.02
+  nats or 10% action change when reached) are the agent's choice.
 - Step 7 (V3, merged): the 2.5x collect is real, not skipped work. Before L2's league routing
   every snapshot ran on every league environment (8,192 opponent rows a tick); since L2 each
   slot runs only its own rows (about 1,170). The 11-23 row reproduced exactly (19,736); every
