@@ -32,16 +32,6 @@ KINDS = {
     "inverse_length": (0, "1/m", "1/ft", 1.0, 1.0 / FEET),
     "climb": (1, "m/s", "ft/min", 1.0, FEET_PER_MINUTE),
 }
-# the game unit string of an input -> its kind (anything else shows as it is)
-UNIT_KINDS = {
-    "m": "length",
-    "m/s": "speed",
-    "m/s2": "acceleration",
-    "rad/s": "angular_rate",
-    "1/s": "frequency",
-    "s": "time",
-    "1/m": "inverse_length",
-}
 # radius guides on the doghouse, round numbers in the system's own length
 RADIUS_GUIDES = {
     "game": (150, 200, 300, 500, 1000, 2000),

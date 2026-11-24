@@ -38,14 +38,14 @@ app = FastAPI(title="B&B tool", lifespan=lifespan)
 
 
 class DesignRequest(BaseModel):
-    """A design: the preset, the inputs changed (design.inputs names), the switches off (None:
-    the preset's), the time scale and the chart units."""
+    """A design: the preset, the design inputs moved (tuning.DESIGN_INPUTS names, game units),
+    or a saved fixed ship's card row (`fixed`), the time scale and the chart units."""
 
     preset: str = "p51d"
     values: dict[str, float] | None = None
-    off: list[str] | None = None
     time_scale: float = tuning.TIME_FACTOR
-    units: str = "game"  # lean.tool.units.SYSTEMS (the old "real" is real_metric)
+    units: str = "game"
+    fixed: dict[str, float] | None = None  # lean.tool.units.SYSTEMS (the old "real" is real_metric)
 
 
 @app.get("/")
@@ -57,8 +57,7 @@ SAVED = Path("/home/vizia/avesnova/boost-and-broadside/data/tool-presets")
 
 
 class SavedPreset(BaseModel):
-    """A named state of the Ships tab: the base preset, the inputs moved, the switches off and the
-    time scale."""
+    """A named state of the Ships tab: the base preset, the inputs moved, the time scale and units."""
 
     name: str
     state: dict
@@ -70,24 +69,34 @@ def _safe(name: str) -> str:
 
 @app.get("/api/saved")
 def saved_list():
-    """The saved presets (each record: name, saved_at, base_preset, state)."""
+    """The saved presets (design.loaded_record: editable, or fixed ships from their stored rows);
+    files it cannot read, or without a stored row, are skipped."""
     SAVED.mkdir(parents=True, exist_ok=True)
-    return dict(saved=[json.loads(p.read_text()) for p in sorted(SAVED.glob("*.json"))])
+    saved = []
+    for path in sorted(SAVED.glob("*.json")):
+        try:
+            record = design.loaded_record(json.loads(path.read_text()))
+        except (OSError, ValueError, AttributeError):
+            continue
+        if record is not None:
+            saved.append(record)
+    return dict(saved=saved)
 
 
 @app.post("/api/saved")
 def saved_save(request: SavedPreset):
-    """Write the state to <name>.json (overwrites; the page confirms first)."""
+    """Write the state, the table's version and the solved row to <name>.json (overwrites; the
+    page confirms first)."""
     name = _safe(request.name)
     if not name:
         return JSONResponse({"error": "empty name"}, status_code=422)
     SAVED.mkdir(parents=True, exist_ok=True)
-    record = dict(
-        name=name,
-        saved_at=datetime.datetime.now().isoformat(timespec="seconds"),
-        base_preset=request.state.get("preset"),
-        state=request.state,
-    )
+    try:
+        record = design.saved_record(
+            name, request.state, datetime.datetime.now().isoformat(timespec="seconds")
+        )
+    except UNSOLVABLE as error:
+        return JSONResponse({"error": str(error)}, status_code=422)
     (SAVED / f"{name}.json").write_text(json.dumps(record, indent=2))
     return dict(name=name)
 
@@ -123,13 +132,13 @@ def _answer(compute, request: DesignRequest, png: bool):
                 compute(
                     request.preset,
                     request.values,
-                    request.off,
                     request.time_scale,
                     request.units,
+                    fixed=request.fixed,
                 ),
                 media_type="image/png",
             )
-        return compute(request.preset, request.values, request.off, request.time_scale)
+        return compute(request.preset, request.values, request.time_scale, fixed=request.fixed)
     except UNSOLVABLE as error:  # the inputs have no solution
         return JSONResponse({"error": str(error)}, status_code=422)
 
@@ -138,6 +147,15 @@ def _answer(compute, request: DesignRequest, png: bool):
 def envelope(request: DesignRequest):
     """The key numbers of the design and of the preset (JSON)."""
     return _answer(design.envelope, request, png=False)
+
+
+@app.post("/api/ship")
+def ship(request: DesignRequest):
+    """The design's implied physical quantities, warnings and solved card row (JSON)."""
+    try:
+        return design.ship(request.preset, request.values, request.fixed)
+    except UNSOLVABLE as error:
+        return JSONResponse({"error": str(error)}, status_code=422)
 
 
 @app.post("/api/doghouse.png")
@@ -169,7 +187,7 @@ def _receive(connection, process):
 
 @app.websocket("/api/sandbox")
 async def sandbox(websocket: WebSocket):
-    """The first message {preset, values, off, time_scale, opponent, ticks?} starts a session; then
+    """The first message {preset, values, fixed?, time_scale, opponent, ticks?} starts a session; then
     {side, level, power, fire} (the held controls), {reset: true} and {opponent: bool} go to the
     World, and every tick comes back as a frame (lean.tool.session.frame)."""
     await websocket.accept()
@@ -178,7 +196,7 @@ async def sandbox(websocket: WebSocket):
         start = await websocket.receive_json()
         try:
             row = await run_in_threadpool(
-                design.build_row, start.get("preset", "p51d"), start.get("values"), start.get("off")
+                design.build_row, start.get("preset", "p51d"), start.get("values"), start.get("fixed")
             )
         except UNSOLVABLE as error:
             await websocket.send_json({"type": "error", "message": str(error)})

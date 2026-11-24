@@ -1,5 +1,5 @@
 """The web tool: the envelope function matches the game's quasi-steady maths, the server answers
-the envelope endpoint and a handles change, and the sandbox socket advances a World."""
+the envelope and ship endpoints and a design change, the sliders are the design inputs, and the sandbox socket advances a World."""
 
 import math
 
@@ -8,7 +8,7 @@ import pytest
 import torch
 
 from lean.game import card, core, tuning
-from lean.tool import design, session
+from lean.tool import design, session, units
 
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
@@ -47,17 +47,6 @@ def test_envelope_key_numbers_agree_with_performance():
     assert (
         grid["tightest_sustained_radius"]
         <= grid["best_sustained_speed"] / grid["best_sustained_rate"] + 1e-6
-    )
-
-
-def test_handles_change_moves_the_design_and_the_reference_stays():
-    handles = tuning.handles_of(tuning.row_of("p51d"))
-    result = design.envelope(
-        "p51d", {"g_limit": 1.3 * handles["g_limit"]}, None, tuning.TIME_FACTOR
-    )
-    assert result["design"]["key"]["corner_rate"] > result["reference"]["key"]["corner_rate"]
-    assert result["reference"]["key"]["top_speed"] == pytest.approx(
-        handles["cruise_speed"], rel=1e-4
     )
 
 
@@ -168,46 +157,81 @@ def test_the_sustained_endpoint_returns_a_png_and_an_unsolvable_design_an_error(
     assert bad.status_code == 422 and bad.json()["error"]
 
 
-def test_the_inputs_are_the_tunings_own():
-    """The page's inputs are generated from the tuning route: every handle tuning.handles_of
-    returns (but the fixed ones) and every card field handles_row takes from its base row rather
-    than from the handles; every game term with an off value (tuning.POINT_MASS_TERMS) has a
-    switch; the page keeps no list of its own and no Plotly."""
+def test_a_design_change_moves_the_design_and_the_reference_stays():
+    reference = tuning.reference("p51d").design
+    result = design.envelope("p51d", {"g_limit": 1.3 * reference["g_limit"]}, tuning.TIME_FACTOR)
+    assert result["design"]["key"]["corner_rate"] > result["reference"]["key"]["corner_rate"]
+    assert result["reference"]["key"]["top_speed"] == pytest.approx(
+        reference["top_speed"], rel=1e-6
+    )
+
+
+def test_the_sliders_are_the_design_inputs():
+    """The page's sliders are tuning.DESIGN_INPUTS, in order, each starting at the preset's
+    reference value with its provenance and inside its range; the page keeps no list of its own
+    and no Plotly."""
     from pathlib import Path
 
-    row = tuning.row_of("p51d")
-    handles = tuning.handles_of(row)
-    set_by_handles = set(tuning.direct_fields(handles, handles["cruise_speed"])) | set(
-        tuning.SOLVED
-    )
-    expected = (set(handles) - set(design.FIXED_HANDLES)) | (
-        set(row) - set_by_handles - set(handles) - {"exchange_acceleration"}
-    )
     entries = design.presets()["p51d"]["inputs"]
-    names = [e["name"] for e in entries]
-    assert sorted(names) == sorted(expected)
-    assert set(card.FLIGHT_TERMS) <= set(names)
-    assert {e["name"] for e in entries if "switch" in e} == (
-        set(tuning.POINT_MASS_TERMS) & set(names)
-    ) | {design.MATCH}
+    assert [e["name"] for e in entries] == [spec.name for spec in tuning.DESIGN_INPUTS]
+    reference = tuning.reference("p51d")
     for e in entries:
-        assert e["low"] <= e["value"] <= e["high"] and e["group"] in design.GROUPS
+        assert e["value"] == pytest.approx(reference.design[e["name"]])
+        assert e["low"] <= e["value"] <= e["high"] and e["group"] in tuning.GROUPS
+        assert e["source"] and e["method"] in ("closed", "solved", "short circuit")
+    assert {e["kind"] for e in entries} - {None} <= set(units.KINDS)
     page = Path(design.__file__).with_name("index.html").read_text()
     assert "plotly" not in page.lower()
-    assert not any(f'"{name}"' in page or f"'{name}'" in page for name in names)
+    assert not any(f'"{e["name"]}"' in page or f"'{e['name']}'" in page for e in entries)
 
 
-def test_inputs_and_switches_reach_the_row():
-    """A base-row input and a switch change the solved row; the handles still fly."""
-    row = design.build_row(
-        "p51d", {"fine_stick_fraction": 0.3}, ["low_speed_acceleration", "separation_drag"]
-    )
-    assert row["fine_stick_fraction"] == pytest.approx(0.3)
-    assert row["separation_drag"] == tuning.POINT_MASS_TERMS["separation_drag"]
-    assert tuning.performance(row)["top_speed"] == pytest.approx(
-        tuning.performance(tuning.row_of("p51d"))["top_speed"], rel=1e-3
-    )
-    assert design.build_row("p51d", {}, None) == tuning.row_of("p51d")
+def test_the_ship_panels_show_implied_physics_warnings_and_the_solved_row():
+    """POST /api/ship: the implied physical quantities, the warnings (the P-51D's own: e and the
+    structure), the solved card row with the solve's numbers; a moved design is solved and flies
+    its input; an unknown input is refused."""
+    client = TestClient(app)
+    own = client.post("/api/ship", json={"preset": "p51d"}).json()
+    assert set(own["row"]) == set(card.CARD_FIELDS)
+    assert own["implied"]["max_lift_coefficient"] == pytest.approx(1.6)
+    assert {w["quantity"] for w in own["warnings"]} == {"oswald", "structural_load"}
+    assert own["solve"]["iterations"] == 0
+    top = 1.05 * tuning.reference("p51d").design["top_speed"]
+    moved = client.post("/api/ship", json={"preset": "p51d", "values": {"top_speed": top}}).json()
+    assert moved["flies"]["top_speed"] == pytest.approx(top, rel=1e-4)
+    assert moved["solve"]["iterations"] > 0 and moved["solve"]["condition"] > 0.0
+    bad = client.post("/api/ship", json={"preset": "p51d", "values": {"cruise_speed": 300.0}})
+    assert bad.status_code == 422
+
+
+def test_saved_presets_store_their_row_and_load_editable_or_fixed(tmp_path, monkeypatch):
+    """A saved preset stores its inputs, the design-input table's version and its solved row.
+    Under today's table it loads editable; under another it is a fixed ship (its stored row,
+    the inputs measured from it) that the charts and the ship panel take as it is; a file in an
+    old format (no row) or unreadable is not listed."""
+    import json
+
+    from lean.tool import app as server
+
+    monkeypatch.setattr(server, "SAVED", tmp_path)
+    client = TestClient(app)
+    state = {"preset": "p51d", "values": {"g_limit": 7.0}, "time_scale": 2.0, "units": "game"}
+    assert client.post("/api/saved", json={"name": "seven", "state": state}).status_code == 200
+    record = json.loads((tmp_path / "seven.json").read_text())
+    assert record["inputs_version"] == tuning.inputs_version()
+    assert record["row"]["max_acceleration"] == pytest.approx(7.0 * card.GRAVITY)
+    record["inputs_version"] = "another"
+    (tmp_path / "old-table.json").write_text(json.dumps({**record, "name": "old-table"}))
+    (tmp_path / "old-format.json").write_text(json.dumps({"name": "x", "state": state}))
+    (tmp_path / "broken.json").write_text("{")
+    listed = {r["name"]: r for r in client.get("/api/saved").json()["saved"]}
+    assert set(listed) == {"seven", "old-table"}
+    assert listed["seven"]["editable"] and not listed["old-table"]["editable"]
+    assert listed["old-table"]["measured"]["g_limit"] == pytest.approx(7.0)
+    fixed = {**record["row"], "hit_damage": 30.0}  # a row no solve would give from the inputs
+    reply = client.post("/api/ship", json={"preset": "p51d", "fixed": fixed}).json()
+    assert reply["row"] == pytest.approx(fixed) and reply["solve"]["iterations"] == 0
+    png = client.post("/api/doghouse.png", json={"preset": "p51d", "fixed": fixed})
+    assert png.status_code == 200
 
 
 @pytest.fixture(scope="module")

@@ -48,9 +48,11 @@ def test_slider_values_shown_convert_back_to_the_same_handle(system):
         assert shown / scale == pytest.approx(entry["value"], rel=1e-9)
 
 
-def test_every_unit_string_of_the_inputs_has_a_kind_or_is_plain():
+def test_every_input_has_a_kind_or_a_plain_unit():
+    """An input with a kind converts in every system; one without shows its own unit."""
     for entry in design.inputs("p51d"):
-        assert (entry["kind"] is None) == (entry["unit"] not in units.UNIT_KINDS)
+        assert entry["kind"] in units.KINDS or (entry["kind"] is None), entry["name"]
+        assert entry["kind"] is None or not entry["unit"], entry["name"]
     assert "top level speed" in [e["label"] for e in design.inputs("p51d")]
 
 

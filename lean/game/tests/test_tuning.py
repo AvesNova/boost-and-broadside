@@ -100,8 +100,8 @@ def test_moved_designs_fly_their_inputs(p51d, change):
 
 
 def test_a_design_from_the_point_mass_guess_flies_its_inputs(p51d):
-    """With no start row the solve starts from the point-mass first guess (hard limits, closed
-    forms) and still flies every input."""
+    """With no start row the solve starts from the reference's point mass (and the table's first
+    guesses) and still flies every input."""
     design = dict(top_speed=1.05 * p51d.design["top_speed"], g_limit=6.5)
     assert_flies(tuning.design_row(p51d, design).row, {**p51d.design, **design}, 1e-6, "cold")
 
@@ -172,8 +172,8 @@ def test_derived_rows_are_cached_by_their_aircraft_and_the_source(tmp_path, monk
     assert len(list(tmp_path.glob("p51d-*.json"))) == 1
     aircraft = tuning.REAL_AIRCRAFT["p51d"]
     key = tuning.row_key(aircraft)
-    assert tuning.row_key(dataclasses.replace(aircraft, best_climb_speed=70.0)) != key
-    other = dataclasses.replace(aircraft, choices={**aircraft.choices, "gap": 0.8})
+    assert tuning.row_key(dataclasses.replace(aircraft, best_climb=aircraft.best_climb + 1.0)) != key
+    other = dataclasses.replace(aircraft, values={**aircraft.values, "gap": 0.8})
     assert tuning.row_key(other) != key
     source = tmp_path / "source.py"
     source.write_text("a = 1\n")
@@ -255,3 +255,26 @@ def test_a_card_built_inside_with_row_does_not_outlive_it():
     core._SHIP_CARDS.clear()
     fresh = core.ship_card(config)
     assert after.uniform == fresh.uniform and torch.equal(after.table, fresh.table)
+
+
+def test_an_input_is_swapped_by_editing_the_table_only():
+    """Changing the design inputs is an edit of the table: a copy of DESIGN_INPUTS with the
+    corner speed (solved for the maximum acceleration) in place of the g limit gives a reference
+    whose corner speed is the point mass's, and a moved corner speed is met by the same generic
+    solve; nothing else is told about the change."""
+    corner = tuning.flown("corner_speed", "corner speed", "Performance", "max_acceleration",
+                          kind="speed")
+    inputs = tuple(corner if spec.name == "g_limit" else spec for spec in tuning.DESIGN_INPUTS)
+    reference = tuning.reference_of(tuning.REAL_AIRCRAFT["p51d"], inputs)
+    assert "g_limit" not in reference.design
+    assert reference.design["corner_speed"] == pytest.approx(
+        reference.point_mass["corner_speed"], rel=1e-12
+    )
+    assert tuning.inputs_version(inputs) != tuning.inputs_version()
+    target = 0.95 * reference.design["corner_speed"]
+    solved = tuning.design_row(reference, {"corner_speed": target}, start=tuning.row_of("p51d"))
+    flown = tuning.design_of(solved.row, inputs)
+    assert flown["corner_speed"] == pytest.approx(target, rel=1e-6)
+    assert flown["top_speed"] == pytest.approx(reference.design["top_speed"], rel=1e-6)
+    with pytest.raises(ValueError, match="each card field once"):
+        tuning.check_inputs(inputs[1:])

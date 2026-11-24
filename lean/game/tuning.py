@@ -47,9 +47,9 @@ import math
 import os
 import threading
 from pathlib import Path
+from collections.abc import Callable
 from types import SimpleNamespace
 
-import numpy as np
 import torch
 
 from . import card, core
@@ -202,13 +202,15 @@ def fit_point_mass(
 
 @dataclasses.dataclass(frozen=True)
 class DesignInput:
-    """One design input: what it sets and how, and its slider.
+    """One design input, the whole of what the solve, the reference and the web tool know of it.
 
-    - `sets`: the card field it decides; `method`: "closed" (a closed form: the field is the
-      value times `scale`, or its own formula for the stall speed and the gun range),
-      "solved" (a flown target, met by solving `sets`) or "short circuit" (the field itself).
-    - `scale`: a lean.game.card constant name (or "SPEED_OF_SOUND", the game's), "1/" before
-      it to divide; "" for 1.
+    - `sets`: the card field it mainly decides.
+    - `measure(row, flown)`: the value a row has or flies (`flown`: performance(row)).
+    - `apply(value, design)`: for a closed input, the field's value in closed form (it may read
+      the other design values); None for a solved input, which design_row meets by Newton on
+      its `sets` (in logs, from `first_guess` when there is no start row and the point mass
+      has no usable value).
+    - `source`: the reference's provenance (the P-51D's).
     - `kind`: the quantity's kind in the web tool's units (lean.tool.units.KINDS; game units
       here), None for a number shown as it is with `unit`.
     - the slider: `low` to `high`, multiples of the reference's value if `relative`."""
@@ -217,122 +219,149 @@ class DesignInput:
     label: str
     group: str
     sets: str
-    method: str
+    measure: Callable[[dict, dict], float]
+    apply: Callable[[float, dict], float] | None = None
+    first_guess: float | None = None
+    source: str = "game choice"
     kind: str | None = None
     unit: str = ""
-    scale: str = ""
     low: float = 0.5
     high: float = 2.0
     relative: bool = True
 
-
-GROUPS = ("Performance", "Airframe", "Flight terms", "Flaps", "Stick and nose", "Guns",
-          "Shield, head-on and vision")
-_I = DesignInput
-DESIGN_INPUTS = (
-    _I("stall_speed", "stall speed (1 g)", "Performance", "max_lift_coefficient", "closed",
-       "speed", low=0.6, high=1.5),
-    _I("g_limit", "g limit", "Performance", "max_acceleration", "closed", unit="g",
-       scale="GRAVITY", low=0.4, high=1.6),
-    _I("top_speed", "top level speed", "Performance", "zero_lift_drag", "solved", "speed",
-       low=0.6, high=1.4),
-    _I("best_climb", "best climb rate", "Performance", "engine_power", "solved", "climb",
-       low=0.4, high=2.0),
-    _I("best_climb_speed", "best-climb speed", "Performance", "thrust_softmin_exponent",
-       "solved", "speed", low=0.85, high=1.3),
-    _I("sustained_rate", "best sustained turn rate", "Performance", "induced_drag_scale",
-       "solved", "angular_rate", low=0.6, high=1.5),
-    _I("gap", "the gap: tightest over best-rate sustained speed", "Performance",
-       "separation_drag", "solved", low=0.7, high=0.99, relative=False),
-    _I("static_thrust", "static thrust / weight", "Airframe", "static_thrust", "closed",
-       scale="GRAVITY", low=0.3, high=2.0),
-    _I("stall_angle", "stall angle", "Airframe", "stall_angle_scale", "closed", unit="rad",
-       scale="1/STALL_ANGLE", low=0.5, high=1.6),
-    _I("exchange", "dive and zoom trade", "Airframe", "exchange_acceleration", "closed",
-       unit="g", scale="GRAVITY", low=0.3, high=1.6),
-    _I("critical_mach", "drag rise: critical Mach", "Flight terms", "critical_speed", "closed",
-       unit="Mach", scale="SPEED_OF_SOUND", low=0.5, high=1.5, relative=False),
-    _I("drag_rise_exponent", "drag rise: exponent", "Flight terms", "drag_rise_exponent",
-       "short circuit", low=2.0, high=40.0, relative=False),
-    _I("separation_exponent", "separation drag: exponent", "Flight terms",
-       "separation_exponent", "short circuit", low=4.0, high=32.0, relative=False),
-    _I("lift_softmin_exponent", "lift softness: exponent (low = soft)", "Flight terms",
-       "lift_softmin_exponent", "short circuit", low=2.0, high=64.0, relative=False),
-    _I("flap_lift", "extra lift", "Flaps", "flap_lift", "short circuit", unit="of clean",
-       low=0.0, high=0.5, relative=False),
-    _I("flap_blowback_ratio", "blown back at", "Flaps", "flap_blowback_ratio", "short circuit",
-       unit="x clean corner speed", low=0.3, high=2.0, relative=False),
-    _I("flap_drag_scale", "drag of the extra lift", "Flaps", "flap_drag_scale",
-       "short circuit", low=0.0, high=3.0),
-    _I("nose_damping", "nose damping", "Stick and nose", "nose_damping", "short circuit",
-       low=0.2, high=1.5, relative=False),
-    _I("corner_nose_frequency", "nose frequency at corner speed", "Stick and nose",
-       "corner_nose_frequency", "short circuit", "angular_rate", low=0.3, high=2.0),
-    _I("fine_stick_fraction", "fine stick", "Stick and nose", "fine_stick_fraction",
-       "short circuit", unit="of sustained", low=0.05, high=1.0, relative=False),
-    _I("hit_damage", "hit damage", "Guns", "hit_damage", "short circuit", low=0.3, high=3.0),
-    _I("explosive_share", "explosive share", "Guns", "explosive_share", "short circuit",
-       low=0.0, high=1.0, relative=False),
-    _I("fire_rate", "fire rate", "Guns", "fire_rate", "short circuit", "frequency", low=0.3),
-    _I("muzzle_speed", "muzzle speed", "Guns", "muzzle_speed", "short circuit", "speed"),
-    _I("bullet_spread", "bullet spread", "Guns", "bullet_spread_scale", "closed", "speed",
-       scale="1/BULLET_SPREAD", low=0.0, high=3.0),
-    _I("bullet_drag", "bullet drag", "Guns", "bullet_drag_scale", "closed", "inverse_length",
-       scale="1/BULLET_DRAG", low=0.0, high=4.0),
-    _I("gun_range", "gun range (from cruise)", "Guns", "bullet_life", "closed", "length",
-       low=0.3, high=2.5),
-    _I("hit_radius", "hit radius", "Guns", "hit_radius", "short circuit", "length", low=0.3,
-       high=3.0),
-    _I("core_radius", "core radius", "Guns", "core_radius", "short circuit", "length", low=0.3,
-       high=3.0),
-    _I("max_shield", "shield", "Shield, head-on and vision", "max_shield", "short circuit",
-       low=0.3, high=3.0),
-    _I("shield_recharge_rate", "shield recharge rate", "Shield, head-on and vision",
-       "shield_recharge_rate_scale", "closed", "frequency", scale="1/SHIELD_RECHARGE_RATE",
-       low=0.2, high=4.0),
-    _I("shield_recharge_delay", "shield recharge wait", "Shield, head-on and vision",
-       "shield_recharge_delay_scale", "closed", "time", scale="1/SHIELD_RECHARGE_DELAY",
-       low=0.2, high=4.0),
-    _I("head_on_fraction", "head-on damage share", "Shield, head-on and vision",
-       "head_on_fraction_scale", "closed", scale="1/HEAD_ON_FRACTION", low=0.0, high=1.0,
-       relative=False),
-    _I("head_on_angle", "head-on angle", "Shield, head-on and vision", "head_on_angle_scale",
-       "closed", unit="rad", scale="1/HEAD_ON_ANGLE", low=0.1, high=1.57, relative=False),
-    _I("head_on_sharpness", "head-on sharpness", "Shield, head-on and vision",
-       "head_on_sharpness", "short circuit", low=0.3, high=3.0),
-    _I("vision_range", "vision range", "Shield, head-on and vision", "vision_range_scale",
-       "closed", "length", scale="1/VISION_RANGE", low=0.3, high=3.0),
-)
-del _I
-DESIGN = {spec.name: spec for spec in DESIGN_INPUTS}
-SOLVED = tuple(spec for spec in DESIGN_INPUTS if spec.method == "solved")
-assert {spec.sets for spec in DESIGN_INPUTS} == set(card.CARD_FIELDS)
-assert all(spec.group in GROUPS for spec in DESIGN_INPUTS)
+    @property
+    def method(self) -> str:
+        return "solved" if self.apply is None else "closed"
 
 
-def _scale(spec: DesignInput) -> float:
-    """The factor from the input's value to its field's (DesignInput.scale)."""
-    name = spec.scale.removeprefix("1/")
-    if not name:
-        return 1.0
-    value = to_game(SPEED_OF_SOUND, -1) if name == "SPEED_OF_SOUND" else getattr(card, name)
-    return 1.0 / value if spec.scale.startswith("1/") else value
+def flown(name, label, group, sets, key=None, **rest) -> DesignInput:
+    """A solved input: what performance() reports under `key` (default its name)."""
+    key = key or name
+    return DesignInput(name, label, group, sets, lambda row, numbers: numbers[key], **rest)
 
 
-def _bullet_life(design: dict[str, float], tick_length: float = 1.0 / 30.0) -> float:
+def scaled(name, label, group, sets=None, scale=lambda: 1.0, **rest) -> DesignInput:
+    """A closed input: its field is the value times `scale()` (a callable, so it reads the card's
+    constants when used); `sets` defaults to the name (a short circuit)."""
+    sets = sets or name
+    return DesignInput(name, label, group, sets, lambda row, numbers: row[sets] / scale(),
+                       lambda value, design: value * scale(), **rest)
+
+
+def _bullet_life(gun_range: float, design: dict[str, float], tick_length: float = 1.0 / 30.0) -> float:
     """The bullet's life in whole ticks: long enough to fly the gun range when fired at the top
     speed against the bullet drag (v2's weapons.combat_card)."""
     drag = design["bullet_drag"]
-    flight = math.expm1(drag * design["gun_range"]) / (drag * (design["top_speed"] + design["muzzle_speed"]))
+    flight = math.expm1(drag * gun_range) / (drag * (design["top_speed"] + design["muzzle_speed"]))
     return math.ceil(flight / tick_length - LIFE_TOLERANCE) * tick_length
 
 
-def _closed_row(design: dict[str, float]) -> dict[str, float]:
-    """Every card field a closed form or a short circuit sets (all but the solved ones)."""
-    row = {spec.sets: design[spec.name] * _scale(spec) for spec in DESIGN_INPUTS if spec.method != "solved"}
-    row["max_lift_coefficient"] = card.GRAVITY / design["stall_speed"] ** 2
-    row["bullet_life"] = _bullet_life(design)
-    return row
+def _gun_range(row: dict, numbers: dict) -> float:
+    """The range of a bullet's whole life, fired at the top speed (at least the designed range)."""
+    drag = row["bullet_drag_scale"] * card.BULLET_DRAG
+    launch = numbers["top_speed"] + row["muzzle_speed"]
+    return math.log1p(drag * launch * row["bullet_life"]) / drag
+
+
+GROUPS = ("Performance", "Airframe", "Flight terms", "Flaps", "Stick and nose", "Guns",
+          "Shield, head-on and vision")
+_GRAVITY = lambda: card.GRAVITY  # noqa: E731
+P, A, T, F, S, G, H = GROUPS
+# The design inputs, in the tool's order. To add, remove or swap one, edit this table only (see
+# docs/rewrite/p51d-model.md, "Design inputs"); every card field must be set exactly once.
+DESIGN_INPUTS = (
+    DesignInput("stall_speed", "stall speed (1 g)", P, "max_lift_coefficient",
+                lambda row, numbers: numbers["stall_speed"],
+                lambda value, design: card.GRAVITY / value**2,
+                source="B: C_Lmax 1.6, AAF turn calculation", kind="speed", low=0.6, high=1.5),
+    scaled("g_limit", "g limit", P, "max_acceleration", _GRAVITY, unit="g",
+           source="F: forum 8 g (author's choice)", low=0.4, high=1.6),
+    flown("top_speed", "top level speed", P, "zero_lift_drag",
+          source="A: flight test, 375 mph", kind="speed", low=0.6, high=1.4),
+    flown("best_climb", "best climb rate", P, "engine_power",
+          source="A: flight test, 3,600 ft/min", kind="climb", low=0.4, high=2.0),
+    flown("best_climb_speed", "best-climb speed", P, "thrust_softmin_exponent", first_guess=4.0,
+          source="A: flight test, 165 mph", kind="speed", low=0.85, high=1.3),
+    flown("sustained_rate", "best sustained turn rate", P, "induced_drag_scale",
+          source="model: the point mass (e 0.8 assumed)", kind="angular_rate", low=0.6, high=1.5),
+    flown("gap", "the gap: tightest over best-rate sustained speed", P, "separation_drag",
+          first_guess=0.4, source="design (author 2026-11-24)", low=0.7, high=0.99,
+          relative=False),
+    scaled("static_thrust", "static thrust / weight", A, scale=_GRAVITY,
+           source="momentum theory, FM 0.75", low=0.3, high=2.0),
+    scaled("stall_angle", "stall angle", A, "stall_angle_scale", lambda: 1.0 / card.STALL_ANGLE,
+           unit="rad", source="guess: v2's 15.5 deg", low=0.5, high=1.6),
+    scaled("exchange", "dive and zoom trade", A, "exchange_acceleration", _GRAVITY, unit="g",
+           source="design: 1 g", low=0.3, high=1.6),
+    scaled("critical_mach", "drag rise: critical Mach", T, "critical_speed",
+           lambda: to_game(SPEED_OF_SOUND, -1), unit="Mach", source="A: NACA ACR 4K02 Fig. 12",
+           low=0.5, high=1.5, relative=False),
+    scaled("drag_rise_exponent", "drag rise: exponent", T, source="A: NACA ACR 4K02 Fig. 12",
+           low=2.0, high=40.0, relative=False),
+    scaled("separation_exponent", "separation drag: exponent", T,
+           source="design (author 2026-11-24)", low=4.0, high=32.0, relative=False),
+    scaled("lift_softmin_exponent", "lift softness: exponent (low = soft)", T,
+           source="design: v2's 16", low=2.0, high=64.0, relative=False),
+    scaled("flap_lift", "extra lift", F, unit="of clean", source="design: off", low=0.0,
+           high=0.5, relative=False),
+    scaled("flap_blowback_ratio", "blown back at", F, unit="x clean corner speed", low=0.3,
+           high=2.0, relative=False),
+    scaled("flap_drag_scale", "drag of the extra lift", F, low=0.0, high=3.0),
+    scaled("nose_damping", "nose damping", S, low=0.2, high=1.5, relative=False),
+    scaled("corner_nose_frequency", "nose frequency at corner speed", S, kind="angular_rate",
+           low=0.3, high=2.0),
+    scaled("fine_stick_fraction", "fine stick", S, unit="of sustained",
+           source="design: half (author 2026-11-24)", low=0.05, high=1.0, relative=False),
+    scaled("hit_damage", "hit damage", G, low=0.3, high=3.0),
+    scaled("explosive_share", "explosive share", G, low=0.0, high=1.0, relative=False),
+    scaled("fire_rate", "fire rate", G, kind="frequency", low=0.3),
+    scaled("muzzle_speed", "muzzle speed", G, kind="speed"),
+    scaled("bullet_spread", "bullet spread", G, "bullet_spread_scale",
+           lambda: 1.0 / card.BULLET_SPREAD, kind="speed", low=0.0, high=3.0),
+    scaled("bullet_drag", "bullet drag", G, "bullet_drag_scale", lambda: 1.0 / card.BULLET_DRAG,
+           kind="inverse_length", low=0.0, high=4.0),
+    DesignInput("gun_range", "gun range (from top speed)", G, "bullet_life", _gun_range,
+                _bullet_life, kind="length", low=0.3, high=2.5),
+    scaled("hit_radius", "hit radius", G, kind="length", low=0.3, high=3.0),
+    scaled("core_radius", "core radius", G, kind="length", low=0.3, high=3.0),
+    scaled("max_shield", "shield", H, low=0.3, high=3.0),
+    scaled("shield_recharge_rate", "shield recharge rate", H, "shield_recharge_rate_scale",
+           lambda: 1.0 / card.SHIELD_RECHARGE_RATE, kind="frequency", low=0.2, high=4.0),
+    scaled("shield_recharge_delay", "shield recharge wait", H, "shield_recharge_delay_scale",
+           lambda: 1.0 / card.SHIELD_RECHARGE_DELAY, kind="time", low=0.2, high=4.0),
+    scaled("head_on_fraction", "head-on damage share", H, "head_on_fraction_scale",
+           lambda: 1.0 / card.HEAD_ON_FRACTION, low=0.0, high=1.0, relative=False),
+    scaled("head_on_angle", "head-on angle", H, "head_on_angle_scale",
+           lambda: 1.0 / card.HEAD_ON_ANGLE, unit="rad", low=0.1, high=1.57, relative=False),
+    scaled("head_on_sharpness", "head-on sharpness", H, low=0.3, high=3.0),
+    scaled("vision_range", "vision range", H, "vision_range_scale",
+           lambda: 1.0 / card.VISION_RANGE, kind="length", low=0.3, high=3.0),
+)
+del P, A, T, F, S, G, H
+
+
+def check_inputs(inputs: tuple[DesignInput, ...]) -> None:
+    """A design-input table must set every card field exactly once, with unique names."""
+    fields = sorted(spec.sets for spec in inputs)
+    if fields != sorted(card.CARD_FIELDS):
+        raise ValueError(f"the inputs do not set each card field once: {sorted(set(fields) ^ set(card.CARD_FIELDS))}")
+    if len({spec.name for spec in inputs}) != len(inputs):
+        raise ValueError("design input names repeat")
+
+
+check_inputs(DESIGN_INPUTS)
+
+
+def inputs_version(inputs: tuple[DesignInput, ...] = DESIGN_INPUTS) -> str:
+    """12 hex digits naming a table's inputs (names, what each sets, how): a saved design's
+    values mean the same only under the same version."""
+    text = json.dumps([(spec.name, spec.sets, spec.method) for spec in inputs])
+    return hashlib.sha256(text.encode()).hexdigest()[:12]
+
+
+def _closed_row(inputs, design: dict[str, float]) -> dict[str, float]:
+    """Every card field a closed input sets."""
+    return {spec.sets: spec.apply(design[spec.name], design) for spec in inputs if spec.apply}
 
 
 # --------------------------------------------------------------------------- the reference
@@ -341,31 +370,32 @@ def _closed_row(design: dict[str, float]) -> dict[str, float]:
 @dataclasses.dataclass(frozen=True)
 class RealAircraft:
     """A real aircraft: its data (C_D0 and the propeller efficiency only a start), its flight
-    test (real m/s, sea level: top speed, best climb and the speed it was flown at), its design
-    choices (DESIGN_INPUTS names: the gap, the flight terms, guns, shield...) and each input's
-    provenance (a short tag; "game choice" when absent)."""
+    test (real m/s, sea level: top speed and best climb, which fit the point mass) and its
+    documented design values (game units, design-input names: the flight test's, the gap, the
+    flight terms, guns, shield...). An input with no documented value takes its point mass's."""
 
     airframe: Airframe
     top_speed: float
     best_climb: float
-    best_climb_speed: float
-    choices: dict
-    sources: dict
+    values: dict
 
 
-# The P-51D's choices (design units, game time). The gap (core-decisions.md 2026-11-24): the
-# tightest sustained turn 15% slower than the best sustained rate, with the separation exponent
-# 16 (where its coefficient still moves the gap, docs/rewrite/ship-design-proposal.md 5). The
-# drag rise doubles the zero-lift drag at Mach 0.77, exponent 20 (NACA ACR 4K02 Fig. 12, the
-# P-51B propeller off: flat to about M 0.68, then +40% at M 0.735 and +67% at M 0.755). The lift
-# softness 16 (v2's). The flaps off (author 2026-11-24; the machinery stays, switchable per type;
-# on, the extra lift costs Delta C_D = 1.5 Delta C_L^2 with the flaps fully used). Guns, damage,
-# shield, the nose and vision are v2's Vizia's; the fine stick is half the sustained level
-# (author 2026-11-24).
+# The P-51D's values (design units, game time). The flight test: 375 mph, 3,600 ft/min at
+# 165 mph (AAF TSCEP5E-1908). The gap (core-decisions.md 2026-11-24): the tightest sustained turn
+# 15% slower than the best sustained rate, with the separation exponent 16 (where its
+# coefficient still moves the gap, docs/rewrite/ship-design-proposal.md 5). The drag rise doubles
+# the zero-lift drag at Mach 0.77, exponent 20 (NACA ACR 4K02 Fig. 12, the P-51B propeller off:
+# flat to about M 0.68, then +40% at M 0.735 and +67% at M 0.755). The lift softness 16 (v2's).
+# The flaps off (author 2026-11-24; switchable per type; on, the extra lift costs Delta C_D =
+# 1.5 Delta C_L^2 with the flaps fully used). Guns, damage, shield, the nose and vision are v2's
+# Vizia's; the fine stick is half the sustained level (author 2026-11-24).
+P51D_TOP_SPEED, P51D_BEST_CLIMB = 375.0 * MPH, 3600.0 * FEET_PER_MINUTE  # real m/s
 P51D_FLAP_DRAG = 1.5  # Delta C_D per (Delta C_L)^2 of lift beyond the clean maximum, flaps fully used
-P51D_CHOICES = dict(
+P51D_VALUES = dict(
+    top_speed=to_game(P51D_TOP_SPEED, -1),
+    best_climb=to_game(P51D_BEST_CLIMB, -1),
+    best_climb_speed=to_game(165.0 * MPH, -1),
     gap=0.85,
-    exchange=1.0,
     critical_mach=0.77,
     drag_rise_exponent=20.0,
     separation_exponent=16.0,
@@ -393,63 +423,37 @@ P51D_CHOICES = dict(
     head_on_sharpness=3.0,
     vision_range=1000.0,
 )
-P51D_SOURCES = dict(
-    stall_speed="B: C_Lmax 1.6, AAF turn calculation",
-    g_limit="F: forum 8 g (author's choice)",
-    top_speed="A: flight test, 375 mph",
-    best_climb="A: flight test, 3,600 ft/min",
-    best_climb_speed="A: flight test, 165 mph",
-    sustained_rate="model: the point mass (e 0.8 assumed)",
-    gap="design (author 2026-11-24)",
-    static_thrust="momentum theory, FM 0.75",
-    stall_angle="guess: v2's 15.5 deg",
-    exchange="design: 1 g",
-    critical_mach="A: NACA ACR 4K02 Fig. 12",
-    drag_rise_exponent="A: NACA ACR 4K02 Fig. 12",
-    separation_exponent="design (author 2026-11-24)",
-    lift_softmin_exponent="design: v2's 16",
-    flap_lift="design: off",
-)
-REAL_AIRCRAFT = {
-    "p51d": RealAircraft(
-        P51D, 375.0 * MPH, 3600.0 * FEET_PER_MINUTE, 165.0 * MPH, P51D_CHOICES, P51D_SOURCES
-    )
-}
+REAL_AIRCRAFT = {"p51d": RealAircraft(P51D, P51D_TOP_SPEED, P51D_BEST_CLIMB, P51D_VALUES)}
 
 
 @dataclasses.dataclass(frozen=True)
 class Reference:
-    """A reference ship: the fitted airframe, every design input's reference value (game
-    units), its point mass's performance and each input's provenance."""
+    """A reference ship: its design-input table, the fitted airframe, its point mass (a card
+    row, the game terms off) and that row's performance, and every input's reference value
+    (game units)."""
 
+    inputs: tuple
     airframe: Airframe
-    design: dict
+    point_mass_row: dict
     point_mass: dict
-    sources: dict
+    design: dict
 
 
-def reference_of(aircraft: RealAircraft) -> Reference:
+def reference_of(aircraft: RealAircraft, inputs: tuple = DESIGN_INPUTS) -> Reference:
     """The reference from the aircraft's documents: the point mass fitted to the flight test
-    (fit_point_mass), its best sustained rate the turn's target; the stall speed, g limit,
-    static thrust and stall angle the airframe's; the rest the flight test's and the choices."""
-    a = aircraft.airframe
-    design = dict(
-        aircraft.choices,
-        stall_speed=to_game(math.sqrt(REAL_GRAVITY / (a.per_metre * a.max_lift_coefficient)), -1),
-        g_limit=a.g_limit,
-        static_thrust=a.static_thrust() / (a.mass * REAL_GRAVITY),
-        stall_angle=a.stall_angle,
-        top_speed=to_game(aircraft.top_speed, -1),
-        best_climb=to_game(aircraft.best_climb, -1),
-        best_climb_speed=to_game(aircraft.best_climb_speed, -1),
-    )
-    base = _closed_row(design)
-    fitted = fit_point_mass(a, aircraft.top_speed, aircraft.best_climb, base)
-    flown = performance(airframe_row(fitted, base))
-    design["sustained_rate"] = flown["sustained_rate"]
-    assert set(design) == set(DESIGN), sorted(set(design) ^ set(DESIGN))
-    sources = {name: aircraft.sources.get(name, "game choice") for name in DESIGN}
-    return Reference(fitted, design, flown, sources)
+    (fit_point_mass); each input's reference value its documented one, else what the point
+    mass has or flies (its measure: e.g. the stall speed, g limit, static thrust and the best
+    sustained rate)."""
+    check_inputs(inputs)
+    values = {name: value for name, value in aircraft.values.items() if name in {s.name for s in inputs}}
+    base = {spec.sets: spec.apply(values[spec.name], values)
+            for spec in inputs if spec.apply and spec.name in values}
+    base = {name: base.get(name, 1.0) for name in card.CARD_FIELDS}  # what the airframe sets
+    fitted = fit_point_mass(aircraft.airframe, aircraft.top_speed, aircraft.best_climb, base)
+    row = airframe_row(fitted, base)
+    numbers = performance(row)
+    design = {spec.name: values.get(spec.name, spec.measure(row, numbers)) for spec in inputs}
+    return Reference(inputs, fitted, row, numbers, design)
 
 
 @functools.cache
@@ -472,99 +476,62 @@ class Solved:
     condition: float | None
 
 
-SEPARATION_START, SOFTNESS_START = 0.4, 4.0  # first guesses where no start row is given
-
-
 def design_row(
     reference: Reference,
     design: dict[str, float] | None = None,
     start: dict[str, float] | None = None,
     fast: bool = False,
 ) -> Solved:
-    """The card row of the reference with the design inputs `design` changed (DESIGN_INPUTS
-    names, game units). Closed forms first; then the solved fields (SOLVED) from `start` (a row,
-    e.g. the reference's own) or a point-mass first guess (`_point_mass_guess`), by Newton in
-    logs until every flown target is met to 1e-7 (`fast`: Broyden updates after the first
-    Jacobian, to 1e-5, for the web tool). A design with flaps is solved clean first, then with
-    them from there: the flaps' low-speed part of the sustained turn is lift-limited, so no drag
-    coefficient moves it, and a start whose clean best turn lies below it sees no way to the
-    target. Raises RuntimeError when it does not converge."""
+    """The card row of the reference with the design inputs `design` changed (its table's
+    names, game units). The closed inputs first; then every solved input met by Newton in the
+    logs of the fields they set, from `start` (a row, e.g. the reference's own), else from the
+    point mass's value (an input's first_guess where the point mass has none to take a log of),
+    to 1e-7 in log (`fast`: Broyden updates after the first Jacobian, to 1e-5: the web tool's
+    path). A design with flaps is solved clean first, then with them from there: the flaps'
+    low-speed part of the sustained turn is lift-limited, so no drag coefficient moves it, and a
+    start whose clean best turn lies below it sees no way to the target. Raises ValueError for
+    an unknown input, RuntimeError when the solve does not converge."""
+    inputs = reference.inputs
     values = {**reference.design, **(design or {})}
-    unknown = set(values) - set(DESIGN)
+    unknown = set(values) - {spec.name for spec in inputs}
     if unknown:
         raise ValueError(f"not design inputs: {sorted(unknown)}")
-    row = _closed_row(values)
-    if start is None:
-        start = dict(_point_mass_guess(row, values, reference.airframe),
-                     separation_drag=SEPARATION_START, thrust_softmin_exponent=SOFTNESS_START)
-    logs = [math.log(start[spec.sets]) for spec in SOLVED]
-    targets = [values[spec.name] for spec in SOLVED]
+    row = _closed_row(inputs, values)
+    solved = [spec for spec in inputs if spec.apply is None]
+    point = reference.point_mass_row
+
+    def first(spec):
+        if start is not None:
+            return start[spec.sets]
+        usable = 0.0 < point[spec.sets] < math.inf and spec.sets not in POINT_MASS_TERMS
+        return point[spec.sets] if usable or spec.first_guess is None else spec.first_guess
+
+    logs = [math.log(first(spec)) for spec in solved]
+    targets = [values[spec.name] for spec in solved]
     stages = [{**row, "flap_lift": 0.0}, row] if row["flap_lift"] > 0.0 else [row]
+    solve = SimpleNamespace(logs=logs, residual=0.0, iterations=0, condition=None)
     for stage in stages:
 
         def residual(logs, stage=stage):
-            trial = {**stage, **{spec.sets: math.exp(x) for spec, x in zip(SOLVED, logs)}}
-            flown = performance(trial)
-            return [math.log(flown[spec.name] / t) for spec, t in zip(SOLVED, targets)]
+            trial = {**stage, **{spec.sets: math.exp(x) for spec, x in zip(solved, logs)}}
+            numbers = performance(trial)
+            return [math.log(spec.measure(trial, numbers) / t) for spec, t in zip(solved, targets)]
 
-        solve = _newton(residual, logs, 1e-5 if fast else 1e-7, broyden=fast, name="design_row")
-        logs = solve.logs
-    row.update({spec.sets: math.exp(x) for spec, x in zip(SOLVED, logs)})
+        if solved:
+            solve = _newton(residual, solve.logs, 1e-5 if fast else 1e-7, broyden=fast, name="design_row")
+    row.update({spec.sets: math.exp(x) for spec, x in zip(solved, solve.logs)})
     return Solved(row, solve.residual, solve.iterations, solve.condition)
 
 
-def _point_mass_guess(row: dict[str, float], design: dict[str, float], airframe: Airframe) -> dict:
-    """Zero-lift drag D0, induced drag k and thrust power P from the point mass with hard limits
-    (no game terms, thrust P / v), solved by a 3x3 Newton on closed forms from the airframe's
-    point mass: the top speed V holds P = D0 V^3 + k g^2 / V; the best climb is the maximum of
-    (P - D0 v^3 - k g^2 / v) / g; the best sustained rate the maximum of g sqrt(n^2 - 1) / v with
-    k (n g)^2 / v^2 = P / v - D0 v^2, capped by the lift limit (the crossing found exactly)."""
-    g, lift, limit = card.GRAVITY, row["max_lift_coefficient"], design["g_limit"]
-    top, climb, rate = design["top_speed"], design["best_climb"], design["sustained_rate"]
-    v = np.linspace(1.01 * design["stall_speed"], top, 4000)
-
-    def residual(x):
-        zero_lift, induced, power = np.exp(x)
-        ps = ((power - zero_lift * v**3 - induced * g * g / v) / g).max()
-        energy_load = np.clip((power / v - zero_lift * v * v) * v * v / (induced * g * g), 1.0, None)
-        lift_load = np.minimum((lift * v * v / g) ** 2, limit**2)
-        gap = energy_load - lift_load  # energy above the lift limit: lift-limited
-        best = np.where(gap < 0.0, g * np.sqrt(energy_load - 1.0) / v, -np.inf).max()
-        for j in np.nonzero((gap[:-1] > 0.0) & (gap[1:] <= 0.0))[0]:
-            t = gap[j] / (gap[j] - gap[j + 1])
-            load = lift_load[j] + t * (lift_load[j + 1] - lift_load[j])
-            best = max(best, g * math.sqrt(max(load - 1.0, 0.0)) / (v[j] + t * (v[j + 1] - v[j])))
-        top_power = zero_lift * top**3 + induced * g * g / top
-        return np.array([math.log(top_power / power), math.log(ps / climb), math.log(best / rate)])
-
-    point = airframe_row(airframe, row)
-    x = np.log([point["zero_lift_drag"], card.INDUCED_DRAG_FACTOR * point["induced_drag_scale"],
-                point["engine_power"]])
-    for _ in range(30):
-        r = residual(x)
-        if np.abs(r).max() < 1e-10:
-            break
-        jacobian = np.array([(residual(x + 1e-6 * e) - r) / 1e-6 for e in np.eye(3)]).T
-        x = x - np.clip(np.linalg.lstsq(jacobian, r, rcond=None)[0], -0.5, 0.5)
-    zero_lift, induced, power = np.exp(x)
-    return dict(zero_lift_drag=float(zero_lift), engine_power=float(power),
-                induced_drag_scale=float(induced) / card.INDUCED_DRAG_FACTOR)
-
-
-def design_of(row: dict[str, float]) -> dict[str, float]:
-    """The design a row flies (game units): its flown targets (performance) and every closed
-    input read back; the gun range the whole bullet life's (at least the designed range).
+def design_of(row: dict[str, float], inputs: tuple = DESIGN_INPUTS) -> dict[str, float]:
+    """The design a row has and flies (game units): every input's measure.
     design_row(reference, design_of(row)) is the row again, within the solve's tolerance."""
-    flown = performance(row)
-    design = {spec.name: flown[spec.name] for spec in SOLVED}
-    for spec in DESIGN_INPUTS:
-        if spec.method != "solved":
-            design[spec.name] = row[spec.sets] / _scale(spec)
-    design["stall_speed"] = math.sqrt(card.GRAVITY / row["max_lift_coefficient"])
-    drag = design["bullet_drag"]
-    launch = design["top_speed"] + design["muzzle_speed"]
-    design["gun_range"] = math.log1p(drag * launch * row["bullet_life"]) / drag
-    return design
+    numbers = performance(row)
+    return {spec.name: spec.measure(row, numbers) for spec in inputs}
+
+
+DESIGN = {spec.name: spec for spec in DESIGN_INPUTS}  # the game's table by name
+SOLVED = tuple(spec for spec in DESIGN_INPUTS if spec.apply is None)
 
 
 # --------------------------------------------------------------------------- plausibility
@@ -680,12 +647,12 @@ def real_row(aircraft: RealAircraft) -> dict[str, float]:
 
 
 def row_key(aircraft: RealAircraft) -> str:
-    """16 hex digits of the SHA-256 of the aircraft (data, flight test, choices) and
+    """16 hex digits of the SHA-256 of the aircraft (data, flight test, values) and
     FLIGHT_SOURCES: a derived row's cache key (any change to the flight model's source
     re-solves)."""
     digest = hashlib.sha256()
     targets = [dataclasses.asdict(aircraft.airframe), aircraft.top_speed, aircraft.best_climb,
-               aircraft.best_climb_speed, aircraft.choices]
+               aircraft.values]
     digest.update(json.dumps(targets, sort_keys=True).encode())
     for path in FLIGHT_SOURCES:
         digest.update(path.read_bytes())

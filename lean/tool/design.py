@@ -1,15 +1,12 @@
 """What the web tool computes, through the game's own entry points (lean.game.tuning): a ship's
-row from its inputs, the charts (drawn by the committed charts' matplotlib code,
-docs/rewrite/sections/turns/doghouse.py) and the key numbers, and the flown checks
-(lean.tool.flown). No physics lives here.
+row from its design inputs (tuning.design_row), what it implies physically and its warnings, the
+charts (drawn by the committed charts' matplotlib code, docs/rewrite/sections/turns/doghouse.py)
+and the key numbers, and the flown checks (lean.tool.flown). No physics lives here.
 
-The inputs are generated from the tuning route itself (`inputs`): the handles `tuning.handles_of`
-returns (the performance targets and the numbers v2's closed forms take), and every card field
-`tuning.handles_row` takes from its base row rather than from the handles (the flight terms,
-the stick levels, the nose; and anything a later card adds). A field the tuning starts to take
-appears in the page with no change here; `INFO` only gives known inputs a label, a unit, a group
-and a range. Switches: each game term `tuning.POINT_MASS_TERMS` can turn off (its off value),
-and matching the low-speed acceleration (off: the preset's static thrust stays, as before).
+The sliders are generated from tuning.DESIGN_INPUTS (`inputs`: name, label, unit, group, how it
+sets the card, the slider's range), each starting at the preset's reference value
+(tuning.reference) with its provenance tag. Only moved inputs are sent; the server solves the
+row in the fast path (Broyden from the preset's own row).
 """
 
 import io
@@ -22,190 +19,29 @@ from lean.game import card, tuning
 
 from . import flown, units
 
-SOLVE_SPEED_STEP = 0.5  # m/s: the handles solve on a coarser speed grid than the default, for speed
 LOCK = threading.RLock()  # the card is process-global (tuning.flying): one computation at a time
 
-# Handles the page does not offer: the square polar only (handles_row raises otherwise), and the
-# zoom acceleration, which follows the dive's (one trade).
-FIXED_HANDLES = ("half_lift_drag", "zoom_acceleration")
-# The switch of the low-speed acceleration: matched (on) or the preset's static thrust (off).
-MATCH = "low_speed_acceleration"
-
-GROUPS = (
-    "Performance targets",
-    "Airframe",
-    "Game terms",
-    "Flaps",
-    "Stick and nose",
-    "Guns",
-    "Shield, head-on and vision",
-    "Other",
-)
-# name: (label, unit, group, low, high, relative): the range as multiples of the preset's value
-# (relative) or in the input's units.
-INFO = {
-    "cruise_speed": ("top level speed", "m/s", "Performance targets", 0.6, 1.4, True),
-    "sustained_turn_rate": (
-        "settled full-stick turn rate",
-        "rad/s",
-        "Performance targets",
-        0.5,
-        1.6,
-        True,
-    ),
-    "low_speed_acceleration": (
-        "low-speed acceleration (matched when on)",
-        "m/s2",
-        "Performance targets",
-        0.3,
-        2.5,
-        True,
-    ),
-    "dive_acceleration": ("dive and zoom trade", "m/s2", "Performance targets", 0.3, 1.6, True),
-    "stall_speed": ("stall speed (1 g)", "m/s", "Airframe", 0.6, 1.5, True),
-    "g_limit": ("g limit", "g", "Airframe", 0.4, 1.6, True),
-    "zero_lift_drag": ("zero-lift drag", "1/m", "Airframe", 0.4, 2.5, True),
-    "stall_angle": ("stall angle", "rad", "Airframe", 0.5, 1.6, True),
-    "critical_speed": ("drag rise: critical speed", "m/s", "Game terms", 250.0, 1000.0, False),
-    "drag_rise_exponent": ("drag rise: exponent", "", "Game terms", 2.0, 40.0, False),
-    "separation_drag": ("separation drag (at maximum lift)", "", "Game terms", 0.0, 1.0, False),
-    "separation_exponent": ("separation drag: exponent", "", "Game terms", 2.0, 16.0, False),
-    "lift_softmin_exponent": (
-        "lift softness: exponent (low = soft)",
-        "",
-        "Game terms",
-        2.0,
-        64.0,
-        False,
-    ),
-    "thrust_softmin_exponent": (
-        "thrust softness: exponent (low = soft)",
-        "",
-        "Game terms",
-        2.0,
-        64.0,
-        False,
-    ),
-    "nose_damping": ("nose damping", "", "Stick and nose", 0.2, 1.5, False),
-    "corner_nose_frequency": (
-        "nose frequency at corner speed",
-        "rad/s",
-        "Stick and nose",
-        0.3,
-        2.0,
-        True,
-    ),
-    "fine_stick_fraction": ("fine stick", "of sustained", "Stick and nose", 0.05, 1.0, False),
-    "flap_lift": ("extra lift", "of clean", "Flaps", 0.0, 0.5, False),
-    "flap_blowback_ratio": ("blown back at", "x clean corner speed", "Flaps", 0.3, 2.0, False),
-    "flap_drag_scale": ("drag of the extra lift", "", "Flaps", 0.0, 3.0, True),
-    "hit_damage": ("hit damage", "", "Guns", 0.3, 3.0, True),
-    "explosive_share": ("explosive share", "", "Guns", 0.0, 1.0, False),
-    "fire_rate": ("fire rate", "1/s", "Guns", 0.3, 2.0, True),
-    "muzzle_speed": ("muzzle speed", "m/s", "Guns", 0.5, 2.0, True),
-    "bullet_spread": ("bullet spread", "m/s", "Guns", 0.0, 3.0, True),
-    "bullet_drag": ("bullet drag", "1/m", "Guns", 0.0, 4.0, True),
-    "gun_range": ("gun range", "m", "Guns", 0.3, 2.5, True),
-    "hit_radius": ("hit radius", "m", "Guns", 0.3, 3.0, True),
-    "core_radius": ("core radius", "m", "Guns", 0.3, 3.0, True),
-    "max_shield": ("shield", "", "Shield, head-on and vision", 0.3, 3.0, True),
-    "shield_recharge_rate": (
-        "shield recharge rate",
-        "1/s",
-        "Shield, head-on and vision",
-        0.2,
-        4.0,
-        True,
-    ),
-    "shield_recharge_delay": (
-        "shield recharge wait",
-        "s",
-        "Shield, head-on and vision",
-        0.2,
-        4.0,
-        True,
-    ),
-    "head_on_fraction": ("head-on damage share", "", "Shield, head-on and vision", 0.0, 1.0, False),
-    "head_on_angle": ("head-on angle", "rad", "Shield, head-on and vision", 0.1, 1.57, False),
-    "head_on_sharpness": ("head-on sharpness", "", "Shield, head-on and vision", 0.3, 3.0, True),
-    "vision_range": ("vision range", "m", "Shield, head-on and vision", 0.3, 3.0, True),
-}
-
 PRESET_ROWS = {name: tuning.row_of(name) for name in card.TYPE_NAMES}  # as imported
-_HANDLES: dict[str, dict] = {}
-_ROWS: dict[tuple, dict] = {}
+_SOLVED: dict[tuple, tuning.Solved] = {}
 _CHECKS: dict[
     tuple, tuple[dict, dict]
 ] = {}  # (factor, row) -> (lowest speeds, flown points), game units
 _PRESET_STALL: dict[str, float] = {}  # preset -> its stall speed at the game's time factor
 
-
-def _handles(preset: str) -> dict[str, float]:
-    if preset not in _HANDLES:
-        _HANDLES[preset] = tuning.handles_of(PRESET_ROWS[preset])
-    return _HANDLES[preset]
-
-
-def input_names(preset: str) -> list[str]:
-    """Every input of the tuning route for the preset: its handles, then the card fields
-    handles_row takes from the base row (not set by the handles' closed forms, not solved)."""
-    row, handles = PRESET_ROWS[preset], _handles(preset)
-    computed = (
-        set(tuning.direct_fields(handles, handles["cruise_speed"]))
-        | set(tuning.SOLVED)
-        | {"exchange_acceleration"}
-    )
-    return [n for n in handles if n not in FIXED_HANDLES] + [
-        n for n in row if n not in computed and n not in handles
-    ]
-
-
-def _defaults(preset: str) -> tuple[dict[str, float], frozenset]:
-    """The preset's input values and the switches it has off."""
-    row, handles = PRESET_ROWS[preset], _handles(preset)
-    values = {n: handles[n] if n in handles else row[n] for n in input_names(preset)}
-    off = {n for n, value in tuning.POINT_MASS_TERMS.items() if n in values and values[n] == value}
-    return values, frozenset(off | {MATCH})
-
-
 def inputs(preset: str) -> list[dict]:
-    """The page's inputs, in group order: name, label, unit, group, value, low, high, and
-    `switch` (on: bool) where the input can be turned off."""
-    values, off = _defaults(preset)
+    """The page's sliders, in DESIGN_INPUTS order: name, label, unit, kind, group, method (how
+    it sets the card), source (provenance), value and reference (the preset's), low, high."""
+    reference = tuning.reference(preset)
     out = []
-    for name in input_names(preset):
-        value = values[name]
-        label, unit, group, low, high, relative = INFO.get(
-            name, (name.replace("_", " "), "", None, 0.5, 2.0, True)
-        )
-        if group is None:
-            group = (
-                "Flaps"
-                if name.startswith("flap_")
-                else "Game terms"
-                if name in card.FLIGHT_TERMS
-                else "Other"
-            )
-        if not math.isfinite(
-            value
-        ):  # a term off in the preset (critical speed inf): the slider's top
-            value = high if not relative else 1.0
-        if relative:
-            low, high = (low * value, high * value) if value else (0.0, 1.0)
-        entry = dict(
-            name=name,
-            label=label,
-            unit=unit,
-            kind=units.UNIT_KINDS.get(unit),
-            group=group,
-            value=value,
-            low=min(low, value),
-            high=max(high, value),
-        )
-        if name in tuning.POINT_MASS_TERMS or name == MATCH:
-            entry["switch"] = dict(on=name not in off, label="match" if name == MATCH else "on")
-        out.append(entry)
-    return sorted(out, key=lambda e: GROUPS.index(e["group"]))
+    for spec in tuning.DESIGN_INPUTS:
+        value = reference.design[spec.name]
+        low, high = (spec.low * value, spec.high * value) if spec.relative else (spec.low, spec.high)
+        out.append(dict(
+            name=spec.name, label=spec.label, unit=spec.unit, kind=spec.kind, group=spec.group,
+            method=spec.method, sets=spec.sets, source=spec.source,
+            value=value, reference=value, low=min(low, value), high=max(high, value),
+        ))
+    return out
 
 
 def presets() -> dict:
@@ -213,33 +49,80 @@ def presets() -> dict:
     return _plain({name: dict(inputs=inputs(name)) for name in card.TYPE_NAMES})
 
 
-def build_row(preset: str, values: dict[str, float] | None = None, off=None) -> dict[str, float]:
-    """The preset's row with the inputs `values` changed and the switches `off` off (None: the
-    preset's), through tuning.handles_row; the preset's own row when nothing changes."""
-    defaults, default_off = _defaults(preset)
+def solve(preset: str, values: dict[str, float] | None = None, fixed: dict | None = None) -> tuning.Solved:
+    """The preset's design with the inputs `values` moved, solved (tuning.design_row, fast path
+    from the preset's row); the preset's own row, unsolved, when nothing moves; `fixed` (a saved
+    card row) as it is. Unknown names raise ValueError; a solve that does not converge raises
+    RuntimeError."""
+    if fixed is not None:
+        if set(fixed) != set(card.CARD_FIELDS):
+            raise ValueError("a fixed ship's row must have the card's fields")
+        return tuning.Solved({name: float(fixed[name]) for name in card.CARD_FIELDS}, 0.0, 0, None)
+    unknown = set(values or {}) - set(tuning.DESIGN)
+    if unknown:
+        raise ValueError(f"not design inputs: {sorted(unknown)}")
+    reference = tuning.reference(preset).design
     changed = {
         n: float(v)
         for n, v in (values or {}).items()
-        if n in defaults and abs(float(v) - defaults[n]) > 1e-9 * abs(defaults[n])
+        if abs(float(v) - reference[n]) > 1e-9 * abs(reference[n])
     }
-    off = default_off if off is None else frozenset(off)
-    base = PRESET_ROWS[preset]
-    if not changed and off == default_off:
-        return base
-    key = (preset, tuple(sorted(changed.items())), tuple(sorted(off)))
-    if key not in _ROWS:
-        own = _handles(preset)
-        merged = {**defaults, **changed}
-        handles = {**own, **{n: merged[n] for n in own if n in merged}}
-        handles["zoom_acceleration"] = -handles["dive_acceleration"]
-        if MATCH in off:
-            handles[MATCH] = None
-        new_base = {**base, **{n: merged[n] for n in base if n in merged and n not in own}}
-        new_base.update({n: v for n, v in tuning.POINT_MASS_TERMS.items() if n in off})
-        if len(_ROWS) > 64:
-            _ROWS.clear()
-        _ROWS[key] = tuning.handles_row(handles, new_base, speed_step=SOLVE_SPEED_STEP, fast=True)
-    return _ROWS[key]
+    key = (preset, tuple(sorted(changed.items())))
+    if key not in _SOLVED:
+        if len(_SOLVED) > 64:
+            _SOLVED.clear()
+        _SOLVED[key] = (
+            tuning.design_row(tuning.reference(preset), changed, start=PRESET_ROWS[preset], fast=True)
+            if changed
+            else tuning.Solved(PRESET_ROWS[preset], 0.0, 0, None)
+        )
+    return _SOLVED[key]
+
+
+def build_row(preset: str, values: dict[str, float] | None = None, fixed: dict | None = None) -> dict[str, float]:
+    return solve(preset, values, fixed).row
+
+
+def saved_record(name: str, state: dict, saved_at: str) -> dict:
+    """What a saved preset stores: its state (preset, the inputs moved, time scale, units), the
+    design-input table's version, and the solved card row, so it flies as saved even after the
+    table changes. A fixed ship saved again keeps its row and stays fixed."""
+    fixed = state.get("fixed")
+    return dict(name=name, saved_at=saved_at, base_preset=state.get("preset"), state=state,
+                inputs_version=None if fixed else tuning.inputs_version(),
+                row=build_row(state.get("preset", "p51d"), state.get("values"), fixed))
+
+
+def loaded_record(record: dict) -> dict | None:
+    """A saved preset as the page loads it: editable sliders when its table version is today's;
+    otherwise a fixed ship from its stored row, with the inputs measured from that row
+    (tuning.design_of). None for a record without a row (an old format: not listed)."""
+    if not isinstance(record.get("row"), dict) or set(record["row"]) != set(card.CARD_FIELDS):
+        return None
+    editable = record.get("inputs_version") == tuning.inputs_version()
+    out = dict(record, editable=editable)
+    if not editable:
+        with LOCK:
+            out["measured"] = _plain(tuning.design_of(record["row"]))
+    return out
+
+
+def ship(preset: str, values: dict[str, float] | None = None, fixed: dict | None = None) -> dict:
+    """The design's implied physical quantities (tuning.implied, real units), its warnings
+    (tuning.warnings), its solved card row with the solve's residual, iterations and condition
+    number, and what it flies (tuning.design_of, game units)."""
+    with LOCK:
+        solved = solve(preset, values, fixed)
+        reference = tuning.reference(preset)
+        numbers = tuning.performance(solved.row)
+        return _plain(dict(
+            implied=tuning.implied(solved.row, reference.airframe),
+            warnings=tuning.warnings(solved.row, reference, numbers),
+            row=solved.row,
+            solve=dict(residual=solved.residual, iterations=solved.iterations,
+                       condition=solved.condition),
+            flies=tuning.design_of(solved.row),
+        ))
 
 
 def _chart():
@@ -303,13 +186,13 @@ def warm(preset: str = "p51d") -> None:
         _preset_checks(preset)
 
 
-def fly_checks(preset: str, values, off, factor: float) -> dict:
+def fly_checks(preset: str, values, factor: float, fixed: dict | None = None) -> dict:
     """Fly the design's checks (lean.tool.flown: the lowest speed of each line and the key
     points), cache them for its charts, and return them with the quasi-steady points (game
     units at `factor`)."""
     with LOCK:
         _preset_checks(preset)
-        row = build_row(preset, values, off)
+        row = build_row(preset, values, fixed)
         chart = _chart()
         with tuning.flying(row, factor):
             key = _key(row, factor)
@@ -364,12 +247,12 @@ def _numbers(lowest, source, points) -> dict:
     return dict(key=key, lowest=lowest, lowest_source=source, flown=points)
 
 
-def envelope(preset: str, values, off, factor: float) -> dict:
+def envelope(preset: str, values, factor: float, fixed: dict | None = None) -> dict:
     """JSON-ready: the key numbers for the tuned design and for the preset as it stands (the
     reference), in game units at `factor` times real time."""
     with LOCK:
         _preset_checks(preset)
-        row = build_row(preset, values, off)
+        row = build_row(preset, values, fixed)
         design = _cached("numbers", preset, row, factor, _numbers)
         reference = _cached("numbers", preset, PRESET_ROWS[preset], factor, _numbers)
     return _plain(dict(factor=factor, design=design, reference=reference))
@@ -382,13 +265,13 @@ def _png(figure) -> bytes:
     return buffer.getvalue()
 
 
-def doghouse_png(preset: str, values, off, factor: float, system: str = "game") -> bytes:
+def doghouse_png(preset: str, values, factor: float, system: str = "game", fixed: dict | None = None) -> bytes:
     """The doghouse of the tuned design as a PNG, drawn by the committed charts' code, in the
     units system (lean.tool.units: game, real_metric, real_imperial)."""
     chart = _chart()
     with LOCK:
         _preset_checks(preset)
-        row = build_row(preset, values, off)
+        row = build_row(preset, values, fixed)
         title = f"{preset}, " + ("the preset" if row == PRESET_ROWS[preset] else "this design")
         with tuning.flying(row, factor):
             lowest, source, points = _lowest(preset, row, factor)
@@ -398,13 +281,13 @@ def doghouse_png(preset: str, values, off, factor: float, system: str = "game") 
             return _png(figure)
 
 
-def sustained_png(preset: str, values, off, factor: float, system: str = "game") -> bytes:
+def sustained_png(preset: str, values, factor: float, system: str = "game", fixed: dict | None = None) -> bytes:
     """The sustained turn (rate and radius against speed) of the tuned design and of the preset
     (dotted), as a PNG in the doghouse's style."""
     chart = _chart()
     with LOCK:
         _preset_checks(preset)
-        row = build_row(preset, values, off)
+        row = build_row(preset, values, fixed)
         curves = [
             (
                 label,
