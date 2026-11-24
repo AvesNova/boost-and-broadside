@@ -24,6 +24,13 @@
   h3 { margin: 12px 0 4px; font-size: 14px; }
   #charts img { width: 100%; max-width: 720px; display: block; margin-bottom: 12px; }
   #drawn { color: #52514e; min-height: 1.2em; }
+  #progress { color: #2a78d6; min-height: 1.2em; font-variant-numeric: tabular-nums; }
+  #charts { position: relative; }
+  #charts.stale img { opacity: 0.4; }
+  #previous { display: none; position: sticky; top: 8px; z-index: 2; width: fit-content; margin-bottom: 6px;
+              padding: 3px 10px; background: #9a6700; color: #fff; font-weight: 600; border-radius: 3px; }
+  #charts.stale #previous { display: block; }
+  #warnings li.failure { color: #c0392b; font-weight: 600; } #warnings li.nearest { color: #52514e; }
   table { border-collapse: collapse; margin: 8px 0; }
   td { padding: 2px 12px 2px 0; font-variant-numeric: tabular-nums; }
   td.name { color: #52514e; }
@@ -49,6 +56,7 @@
     <label>Units <select id="units"></select></label>
     <p><input id="savename" placeholder="name" size="14"> <button id="save">Save</button> <button id="delete">Delete</button></p>
     <p><button id="reset">Reset to preset</button> <button id="fly">Fly checks</button></p>
+    <div id="progress"></div>
     <div id="drawn"></div>
     <div id="error"></div>
     <div id="fixed"></div>
@@ -59,7 +67,7 @@
     <h3>Implied physical (mass, wing area, AR, shaft power, propeller held)</h3><table id="implied"></table>
     <h3>Solved coefficients (the card row, game units)</h3><div id="solve"></div><table id="coefficients"></table>
   </div>
-  <div id="charts"><img id="doghouse" alt="doghouse (drawing...)"><img id="sustained" alt="sustained turn (drawing...)"></div>
+  <div id="charts"><div id="previous">previous design</div><img id="doghouse" alt="doghouse (drawing...)"><img id="sustained" alt="sustained turn (drawing...)"></div>
 </div>
 
 <div id="sandbox">
@@ -203,9 +211,64 @@ async function showPng(id, response) {
   if (pngUrls[id]) URL.revokeObjectURL(pngUrls[id]);
   pngUrls[id] = url; $(id).src = url;
 }
+let solveSocket = null;
+function solveWithProgress(payload, mine) {                // true when solved; false when it failed (shown) or was replaced
+  return new Promise(resolve => {
+    const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/solve`), history = [];
+    solveSocket = ws;
+    const finish = ok => { if (solveSocket === ws) solveSocket = null; resolve(ok); };
+    ws.onopen = () => ws.send(payload);
+    ws.onerror = () => { $("progress").textContent = ""; finish(false); };
+    ws.onclose = () => finish(false);                      // closed by a newer request, or the server went
+    ws.onmessage = event => {
+      const m = JSON.parse(event.data);
+      if (mine !== sequence) { ws.close(); return; }
+      if (m.type === "progress") {
+        if (m.iteration === 0) history.length = 0;
+        history.push([m.elapsed, m.error]);
+        $("progress").textContent = progressLine(history, m);
+      } else if (m.type === "done") {
+        $("progress").textContent = ""; ws.onclose = null; ws.close(); finish(true);
+      } else if (m.type === "failed") {
+        $("progress").textContent = ""; ws.onclose = null; ws.close();
+        showFailure(m); finish(false);
+      }
+    };
+  });
+}
+function progressLine(history, m) {                        // iteration, remaining error, falling or not, time left
+  const w = m.error, best = Math.min(...history.slice(0, -1).map(h => h[1]), Infinity);
+  const falling = history.length < 2 ? "starting" : (w < best ? "falling" : "not falling");
+  let left = "";
+  const recent = history.slice(-4);
+  if (recent.length >= 2 && w > m.tolerance) {
+    const [t0, w0] = recent[0], [t1, w1] = recent[recent.length - 1];
+    const rate = Math.log(w0 / w1) / Math.max(t1 - t0, 1e-6);  // e-folds of error per second
+    if (rate > 0) left = `, about ${Math.max(0.1, Math.log(w / m.tolerance) / rate).toFixed(1)} s left`;
+  }
+  return `solving: iteration ${m.iteration + 1}, error ${(100 * w).toFixed(w < 0.01 ? 2 : 1)}% (${falling})${left}`;
+}
+function showFailure(m) {                                  // the warnings area: why, which inputs, how close
+  const f = m.failure;
+  $("error").textContent = "";
+  $("drawn").textContent = "No solution; the charts below are the previous design.";
+  const items = [`<li class="failure">${m.error}</li>`];
+  if (f) {
+    for (const u of f.unmet)
+      items.push(`<li class="nearest">${u.label}: asked ${fmt(u.target)} ${u.unit}, nearest found ${fmt(u.achieved)} ${u.unit} (${(100 * u.error).toFixed(1)}%)</li>`);
+    if (f.nearest) items.push(`<li class="nearest">The nearest found (least squares) does not meet every input.</li>`);
+  }
+  $("warnings").innerHTML = items.join("");
+  $("charts").classList.add("stale");
+}
+function fmt(x) { return Math.abs(x) >= 100 ? x.toFixed(0) : x.toPrecision(3); }
 async function request() {
   const mine = ++sequence, payload = body(), began = performance.now();
+  if (solveSocket) { solveSocket.close(); solveSocket = null; }   // the latest request wins; the server cancels
   $("drawn").textContent = "drawing...";
+  $("charts").classList.add("stale");                      // the charts shown are the previous design until this one is drawn
+  if (!await solveWithProgress(payload, mine)) return;     // a failure is already shown; a replaced request is the newer one's
+  if (mine !== sequence) return;
   const [numbers, dog, held, shipped] = await Promise.all([post("/api/envelope", payload), post("/api/doghouse.png", payload),
                                                   post("/api/sustained.png", payload), post("/api/ship", payload)]);
   if (mine !== sequence) return;                          // a newer request is under way
@@ -218,6 +281,7 @@ async function request() {
   last = await numbers.json();
   if (dog.ok) await showPng("doghouse", dog);
   if (held.ok) await showPng("sustained", held);
+  $("charts").classList.remove("stale");
   readouts();
   if (shipped.ok) panels(await shipped.json());
   $("drawn").textContent = `drawn in ${((performance.now() - began) / 1000).toFixed(2)} s; lowest speeds ` +

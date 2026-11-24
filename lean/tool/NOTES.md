@@ -41,8 +41,23 @@ server draws with matplotlib (author 2026-11-24: matplotlib is the one charting 
     16 rows' numbers are kept, so the panels and readouts reuse the solve's last evaluation.
     Laptop CPU, 4 threads, 2026-11-24: a whole slider change (solve, panels, readouts, both
     charts) 0.8-1.0 s warm (was about 2.0 s), of which the two charts about 0.55 s
-    (matplotlib's drawing about 0.45 s, the rest the per-type constants). A solve that does
-    not converge is shown as an error and the charts keep the last good design.
+    (matplotlib's drawing about 0.45 s, the rest the per-type constants).
+    **Progress, failing fast, cancelling.** The page solves first on the WebSocket
+    `/api/solve` (the design is then cached, so its other requests answer at once): one
+    "solving: iteration 7, error 3.2% (falling), about 2 s left" line (the time left from the
+    error's rate of fall over the last iterations; `tuning.design_row`'s `progress` callback,
+    one `SolveStep` per iteration). The solve stops with `tuning.SolveFailed` when the error has
+    not fallen by 1% in 6 iterations (`design.PATIENCE`), after 4 s in all (the warm try and
+    the cold retry share it; `BNB_SOLVE_TIME_LIMIT`), or at once when a target or coefficient is
+    not positive or no speed is flyable ("impossible"). The warnings area then names the inputs
+    not met (error above 0.1%, largest first) with the target and the nearest value found in
+    the chosen units, and says that nearest point (the Newton step is the least-squares one)
+    does not meet every input; the charts stay, dimmed and marked "previous design", until a
+    design solves. Without the three options the solve and its result are unchanged. Every new
+    request (slider, reset, preset, profile) closes the old socket, which sets the solve's
+    cancel token: it ends within one flight evaluation (about 0.12 s) and leaves the warm start
+    as it was; Reset to preset moves nothing, so it answers at once. Stopping the server sets
+    `design.SHUTDOWN`, which ends every running solve the same way.
   - **Warnings, implied physical, solved coefficients** (`POST /api/ship`, `design.ship`):
     the warnings one line each (`tuning.warnings`: "limit" beyond a physical limit, "range"
     outside the documented aircraft); the row read back as the airframe (`tuning.implied`:

@@ -49,6 +49,7 @@ import json
 import math
 import os
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -570,6 +571,10 @@ def design_row(
     start: dict[str, float] | None = None,
     fast: bool = False,
     jacobian: torch.Tensor | None = None,
+    progress: Callable[["SolveStep"], None] | None = None,
+    patience: int | None = None,
+    deadline: float | None = None,
+    cancel: threading.Event | None = None,
 ) -> Solved:
     """The card row of the reference with the design inputs `design` changed (its table's
     names, game units). The closed inputs first; then every solved input met by Newton in the
@@ -585,7 +590,19 @@ def design_row(
     again only when a step does not reduce the residual) and the clean stage is skipped (the
     start already flies a design near this one, flaps and all); a Jacobian of another shape is
     ignored. Raises ValueError for an unknown input, RuntimeError when the solve does not
-    converge."""
+    converge.
+
+    Watching and failing fast (all optional; the result is the same without them): `progress`
+    is called once per iteration with a SolveStep; `patience` stops the solve with a SolveFailed
+    when the largest residual has not fallen by 1% in that many iterations (or steps keep
+    growing), `deadline` (a time.monotonic() value) when time is up, and a design whose inputs
+    or flown numbers are impossible (a target or coefficient not positive, no flyable speed)
+    fails at once. `cancel` (an Event): set from another thread, the solve raises SolveCancelled
+    at its next evaluation (about 0.1 s). SolveFailed (a RuntimeError) names the inputs not met and carries the nearest
+    row found (its `best`)."""
+    watched = progress is not None or patience is not None or deadline is not None
+    if cancel is not None and cancel.is_set():
+        raise SolveCancelled()
     inputs = reference.inputs
     values = {**reference.design, **(design or {})}
     unknown = set(values) - {spec.name for spec in inputs}
@@ -603,6 +620,8 @@ def design_row(
 
     logs = [math.log(first(spec)) for spec in solved]
     targets = [values[spec.name] for spec in solved]
+    if watched:
+        _check_possible(inputs, values, row, solved)
     warm = fast and start is not None and jacobian is not None
     if not warm or tuple(jacobian.shape) != (len(solved), len(solved)):
         jacobian = None
@@ -610,17 +629,38 @@ def design_row(
     stages = [{**row, "flap_lift": 0.0}, row] if clean else [row]
     solve = SimpleNamespace(logs=logs, residual=0.0, iterations=0, condition=None,
                             jacobian=jacobian)
+    counted = _counted
     for stage in stages:
 
         def residual(logs, stage=stage):
             trial = {**stage, **{spec.sets: math.exp(x) for spec, x in zip(solved, logs)}}
-            numbers = performance(trial)
-            return [math.log(spec.measure(trial, numbers) / t) for spec, t in zip(solved, targets)]
+            if cancel is not None and cancel.is_set():
+                raise SolveCancelled()
+            try:
+                numbers = performance(trial)
+                return [math.log(spec.measure(trial, numbers) / t)
+                        for spec, t in zip(solved, targets)]
+            except (IndexError, ValueError, ZeroDivisionError, OverflowError) as error:
+                if not watched:
+                    raise
+                raise SolveFailed(
+                    "impossible", [spec.name for spec in solved], [], [], [], list(logs), 0,
+                    "no flyable speed or no positive value for this design (the inputs together"
+                    " leave no speed the ship can hold)") from error
 
         if solved:
             tolerance = 1e-5 if fast else 1e-7
-            solve = _newton(residual, solve.logs, tolerance, broyden=fast, name="design_row",
-                            jacobian=jacobian if stage is stages[-1] else None)
+            try:
+                solve = _newton(residual, solve.logs, tolerance, broyden=fast, name="design_row",
+                                jacobian=jacobian if stage is stages[-1] else None,
+                                progress=counted(progress, solved, targets, tolerance),
+                                patience=patience, deadline=deadline)
+            except SolveFailed as failed:
+                failed.rows = {spec.sets: math.exp(x) for spec, x in zip(solved, failed.best)}
+                failed.row = {**stage, **failed.rows}
+                failed.targets = list(targets)
+                failed.names = [spec.name for spec in solved]
+                raise
     row.update({spec.sets: math.exp(x) for spec, x in zip(solved, solve.logs)})
     return Solved(row, solve.residual, solve.iterations, solve.condition, solve.jacobian)
 
@@ -827,8 +867,69 @@ def load_card() -> dict[str, tuple[float, ...]]:
 # --------------------------------------------------------------------------- Newton
 
 
+@dataclasses.dataclass
+class SolveStep:
+    """One Newton iteration as the progress callback sees it: the iteration (counted over the
+    whole solve), `residuals` (log of flown over target, per solved input, `names`' order),
+    `worst` (their largest |.|, the relative error), `step` (the last step's largest |log|
+    change, None at the first), `elapsed` (seconds since the solve began) and `tolerance`."""
+
+    iteration: int
+    names: list[str]
+    residuals: list[float]
+    worst: float
+    step: float | None
+    elapsed: float
+    tolerance: float
+
+
+class SolveFailed(RuntimeError):
+    """A solve stopped early (design_row's patience / deadline) or cannot work: `reason` one of
+    "stalled" (the residual stopped falling), "time" (the deadline) or "impossible"; `names` the
+    solved inputs, `targets` theirs, `residuals` their log residuals at the nearest point found
+    (so achieved = target * exp(residual)), `best` that point's logs, `row` its card row (not
+    meeting every input), `iteration`, `message`."""
+
+    def __init__(self, reason, names, targets, residuals, rows, best, iteration, message):
+        super().__init__(message)
+        self.reason, self.names, self.targets, self.residuals = reason, names, targets, residuals
+        self.rows, self.best, self.iteration, self.message = rows, best, iteration, message
+        self.row = None
+
+
+class SolveCancelled(Exception):
+    """Raised by a progress callback to abandon a solve (not a RuntimeError: no fallback)."""
+
+
+def _counted(progress, solved, targets, tolerance):
+    """`progress` for _newton: the iterations counted over the stages, the names added."""
+    if progress is None:
+        return None
+    state = SimpleNamespace(count=0)
+    names = [spec.name for spec in solved]
+
+    def call(step):
+        step.names, step.tolerance, step.iteration = names, tolerance, state.count
+        state.count += 1
+        progress(step)
+
+    return call
+
+
+def _check_possible(inputs, values, row, solved):
+    """Raise SolveFailed("impossible") for a solved target that is not positive or a closed
+    coefficient that came out negative: no solve can meet those."""
+    setter = {spec.sets: spec.name for spec in inputs}
+    bad = [spec.name for spec in solved if not values[spec.name] > 0.0]
+    bad += [setter[field] for field, x in row.items() if not x >= 0.0 and field in setter]
+    if bad:
+        raise SolveFailed("impossible", bad, [], [], [], [], 0,
+                          f"{', '.join(bad)}: a target or the coefficient it implies is"
+                          " negative or zero (negative drag or power is impossible)")
+
+
 def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve",
-            jacobian=None):
+            jacobian=None, progress=None, patience=None, deadline=None):
     """Newton in log parameters with a finite-difference Jacobian (v2's solver): `residual(logs)`
     a list of log ratios flown / target, driven below `tolerance`. `broyden`: after the first
     Jacobian, rank-one updates with no new evaluations (the web tool's fast path), finite
@@ -836,13 +937,33 @@ def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve
     only) a first Jacobian to start from, a warm start. The step is a pseudo-inverse's (a
     parameter with no sensitivity stays where it is), clamped to 0.5 in each log. Returns logs,
     residual (the largest |r|), iterations, and the last Jacobian and its condition (None if
-    none was needed)."""
+    none was needed).
+
+    Watching (no effect on the result while none of it fires): `progress(SolveStep)` each
+    iteration; `patience` raises SolveFailed("stalled") when the best largest |r| has not fallen
+    by 1% in that many iterations; `deadline` (time.monotonic()) raises SolveFailed("time")."""
     step = 1e-5
     jacobian = jacobian if broyden else None
     last = None
+    began = time.monotonic()
+    best, improved = None, 0  # best: (worst, residuals, logs, iteration of it)
     for iteration in range(iterations):
         r = residual(logs)
         worst = max(abs(x) for x in r)
+        if best is None or worst < best[0]:
+            if best is None or worst < 0.99 * best[0]:
+                improved = iteration
+            best = (worst, r, list(logs), iteration)
+        if progress is not None:
+            progress(SolveStep(iteration, [], r, worst,
+                               None if last is None else float(last[0].abs().max()),
+                               time.monotonic() - began, tolerance))
+        if worst >= tolerance and (patience is not None or deadline is not None):
+            late = deadline is not None and time.monotonic() > deadline
+            if late or (patience is not None and iteration - improved >= patience):
+                raise SolveFailed(
+                    "time" if late else "stalled", [], [], best[1], [], best[2], iteration,
+                    "out of time" if late else "the error stopped falling")
         if worst < tolerance:
             condition = None if jacobian is None else float(torch.linalg.cond(jacobian))
             return SimpleNamespace(logs=logs, residual=worst, iterations=iteration,
@@ -863,6 +984,9 @@ def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve
         delta = (torch.linalg.pinv(jacobian, rtol=1e-9) @ -r_tensor).clamp(-0.5, 0.5)
         last = (delta, r_tensor, worst)
         logs = [x + float(d) for x, d in zip(logs, delta)]
+    if progress is not None or patience is not None or deadline is not None:
+        raise SolveFailed("stalled", [], [], best[1], [], best[2], iterations,
+                          f"no convergence in {iterations} iterations")
     raise RuntimeError(f"{name} did not converge: residual {residual(logs)}")
 
 

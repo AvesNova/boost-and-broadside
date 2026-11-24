@@ -32,6 +32,7 @@ async def lifespan(_):
     for them."""
     threading.Thread(target=design.warm, daemon=True).start()
     yield
+    design.SHUTDOWN.set()  # a solve under way ends within one evaluation
 
 
 app = FastAPI(title="B&B tool", lifespan=lifespan)
@@ -48,6 +49,12 @@ class DesignRequest(BaseModel):
     time_scale: float = tuning.TIME_FACTOR
     units: str = "game"
     fixed: dict[str, float] | None = None  # lean.tool.units.SYSTEMS (the old "real" is real_metric)
+
+
+@app.exception_handler(tuning.SolveCancelled)
+async def cancelled(_request, _error):
+    """The server is stopping under a solve: a quiet 503."""
+    return JSONResponse({"error": "cancelled"}, status_code=503)
 
 
 @app.get("/")
@@ -128,6 +135,17 @@ def presets():
     )
 
 
+def _error(error: Exception, request: DesignRequest) -> JSONResponse:
+    """422 with the message; for a solve that stopped early also `failure` (design.failure_report)."""
+    body = {"error": str(error)}
+    if isinstance(error, tuning.SolveFailed):
+        body["failure"] = design.failure_report(
+            error, request.preset, request.profile, units.system_of(request.units),
+            request.time_scale, sorted(request.values or {}))
+        body["error"] = body["failure"]["message"]
+    return JSONResponse(body, status_code=422)
+
+
 def _answer(compute, request: DesignRequest, png: bool):
     try:
         units.system_of(request.units)
@@ -146,7 +164,7 @@ def _answer(compute, request: DesignRequest, png: bool):
         return compute(request.preset, request.values, request.time_scale, fixed=request.fixed,
                        profile=request.profile)
     except UNSOLVABLE as error:  # the inputs have no solution
-        return JSONResponse({"error": str(error)}, status_code=422)
+        return _error(error, request)
 
 
 @app.post("/api/envelope")
@@ -161,7 +179,78 @@ def ship(request: DesignRequest):
     try:
         return design.ship(request.preset, request.values, request.fixed, request.profile)
     except UNSOLVABLE as error:
-        return JSONResponse({"error": str(error)}, status_code=422)
+        return _error(error, request)
+
+
+@app.websocket("/api/solve")
+async def solve(websocket: WebSocket):
+    """The page's solve with its progress: one DesignRequest as the first message, then
+    {type: "progress", iteration, error, residuals {input: log ratio}, step, elapsed,
+    tolerance} per iteration, then {type: "done", iterations, elapsed} (the design is then
+    cached: the page's other requests answer at once) or {type: "failed", error, failure}.
+    Closing the socket, or sending anything, cancels the solve (the latest request wins)."""
+    await websocket.accept()
+    loop = asyncio.get_running_loop()
+    cancel = threading.Event()
+    queue: asyncio.Queue = asyncio.Queue()
+    try:
+        request = DesignRequest(**await websocket.receive_json())
+        units.system_of(request.units)
+    except WebSocketDisconnect:
+        return
+    except (ValueError, TypeError) as error:
+        await websocket.send_json({"type": "failed", "error": str(error), "failure": None})
+        await websocket.close()
+        return
+
+    def progress(step):
+        loop.call_soon_threadsafe(queue.put_nowait, dict(
+            type="progress", iteration=step.iteration, error=step.worst,
+            residuals=dict(zip(step.names, step.residuals)), step=step.step,
+            elapsed=step.elapsed, tolerance=step.tolerance))
+
+    def work():
+        try:
+            return design.solve(request.preset, request.values, request.fixed, request.profile,
+                                progress=progress, cancel=cancel)
+        except tuning.SolveCancelled:
+            return None
+        except UNSOLVABLE as error:
+            return error
+
+    began = loop.time()
+    solving = asyncio.ensure_future(run_in_threadpool(work))
+    listening = asyncio.ensure_future(websocket.receive_text())
+    try:
+        while True:
+            getting = asyncio.ensure_future(queue.get())
+            await asyncio.wait({getting, solving, listening}, return_when=asyncio.FIRST_COMPLETED)
+            if listening.done():  # a new message or the page went: this solve is no longer wanted
+                cancel.set()
+                getting.cancel()
+                await asyncio.wait({solving})
+                return
+            if getting.done():
+                await websocket.send_json(getting.result())
+                continue
+            getting.cancel()
+            while not queue.empty():
+                await websocket.send_json(queue.get_nowait())
+            result = solving.result()
+            if isinstance(result, Exception):
+                message = _error(result, request)
+                await websocket.send_json({"type": "failed", **json.loads(message.body)})
+            else:
+                await websocket.send_json(dict(type="done", elapsed=loop.time() - began,
+                                               iterations=0 if result is None else result.iterations))
+            return
+    except WebSocketDisconnect:
+        cancel.set()
+    finally:
+        cancel.set()
+        listening.cancel()
+        with contextlib.suppress(RuntimeError):
+            await websocket.close()
 
 
 @app.post("/api/doghouse.png")

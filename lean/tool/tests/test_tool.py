@@ -3,6 +3,8 @@ the envelope and ship endpoints and a design change, the sliders are the design 
 presets keep their row, and the sandbox socket advances a World."""
 
 import math
+import threading
+import time
 
 import numpy as np
 import pytest
@@ -356,3 +358,133 @@ def test_no_line_is_drawn_below_its_lowest_flown_speed(p51d_flown):
                 name
             )
         chart.plt.close(figure)
+
+
+# --------------------------------------------------------------------------- progress, failing fast, cancelling
+
+
+def test_the_solve_reports_progress_and_the_result_is_the_same_without_watching():
+    reference = tuning.reference("p51d")
+    values = {"best_climb": 1.05 * reference.design["best_climb"]}
+    start = design.PRESET_ROWS["p51d"]
+    steps = []
+    watched = tuning.design_row(reference, values, start=start, fast=True, progress=steps.append,
+                                patience=6, deadline=time.monotonic() + 30)
+    plain = tuning.design_row(reference, values, start=start, fast=True)
+    assert steps and [s.iteration for s in steps] == list(range(len(steps)))
+    first = steps[0]
+    assert first.names and set(first.names) <= {spec.name for spec in tuning.SOLVED}
+    assert len(first.residuals) == len(first.names) and first.step is None
+    assert first.worst == max(abs(x) for x in first.residuals) and first.tolerance == 1e-5
+    assert steps[-1].worst < steps[0].worst and steps[1].step is not None
+    assert watched.row == plain.row and watched.iterations == plain.iterations
+
+
+def test_an_impossible_design_fails_fast_naming_the_input(monkeypatch):
+    monkeypatch.setattr(design, "TIME_LIMIT", 3.0)
+    monkeypatch.setattr(design, "_SOLVED", {})
+    monkeypatch.setattr(design, "_WARM", {})
+    top = tuning.reference("p51d").design["top_speed"]
+    began = time.monotonic()
+    with pytest.raises(tuning.SolveFailed) as raised:
+        design.solve("p51d", {"top_speed": 5.0 * top})
+    assert time.monotonic() - began < design.TIME_LIMIT + 1.5
+    report = design.failure_report(raised.value, "p51d", None, "real_imperial", 2.0)
+    assert report["reason"] in ("time", "stalled") and report["nearest"]
+    worst = report["unmet"][0]  # the largest miss first, in the chosen units
+    assert worst["name"] == "top_speed" and worst["unit"] == "mph"
+    assert worst["achieved"] < worst["target"] and worst["error"] < -0.5
+    assert worst["target"] == pytest.approx(5.0 * top * units.factor("speed", "real_imperial", 2.0))
+    assert "Top speed" in report["message"] or worst["label"] in report["message"]
+
+
+def test_a_negative_or_flyless_design_is_impossible_at_once():
+    began = time.monotonic()
+    with pytest.raises(tuning.SolveFailed) as negative:
+        design.solve("p51d", {"best_climb": -3.0})
+    with pytest.raises(tuning.SolveFailed) as flyless:
+        design.solve("p51d", {"stall_speed": 400.0})
+    assert time.monotonic() - began < 1.0
+    assert negative.value.reason == flyless.value.reason == "impossible"
+    assert "best_climb" in design.failure_report(negative.value, "p51d", None, "game", 2.0)["message"]
+    assert "stall_speed" in design.failure_report(
+        flyless.value, "p51d", None, "game", 2.0, ["stall_speed"])["message"]
+
+
+def test_the_failure_reaches_the_page_as_json_and_a_socket_message(monkeypatch):
+    monkeypatch.setattr(design, "TIME_LIMIT", 2.0)
+    client = TestClient(app)
+    request = {"preset": "p51d", "values": {"best_climb": -3.0}, "units": "real_metric"}
+    bad = client.post("/api/ship", json=request)
+    assert bad.status_code == 422 and bad.json()["failure"]["reason"] == "impossible"
+    with client.websocket_connect("/api/solve") as socket:
+        socket.send_json(request)
+        message = socket.receive_json()
+    assert message["type"] == "failed" and "best_climb" in message["error"]
+
+
+def test_the_socket_streams_progress_then_done_and_a_reset_answers_at_once(monkeypatch):
+    monkeypatch.setattr(design, "_SOLVED", {})
+    monkeypatch.setattr(design, "_WARM", {})
+    client = TestClient(app)
+    climb = tuning.reference("p51d").design["best_climb"]
+    with client.websocket_connect("/api/solve") as socket:
+        socket.send_json({"preset": "p51d", "values": {"best_climb": 1.04 * climb}})
+        kinds = []
+        while (message := socket.receive_json())["type"] == "progress":
+            kinds.append(message)
+        assert message["type"] == "done" and kinds
+        assert {"iteration", "error", "residuals", "elapsed", "tolerance"} <= set(kinds[0])
+    began = time.monotonic()
+    with client.websocket_connect("/api/solve") as socket:  # Reset to preset: nothing moved
+        socket.send_json({"preset": "p51d", "values": {}})
+        assert socket.receive_json()["type"] == "done"
+    assert time.monotonic() - began < 0.5
+
+
+def test_a_cancelled_solve_stops_within_an_evaluation_and_keeps_the_warm_start(monkeypatch):
+    monkeypatch.setattr(design, "_SOLVED", {})
+    monkeypatch.setattr(design, "_WARM", {})
+    monkeypatch.setattr(design, "TIME_LIMIT", 60.0)
+    warm = design.solve("p51d", {"best_climb": 1.03 * tuning.reference("p51d").design["best_climb"]})
+    kept = dict(design._WARM)
+    cancel, outcome = threading.Event(), {}
+    top = tuning.reference("p51d").design["top_speed"]
+
+    def work():
+        try:
+            design.solve("p51d", {"top_speed": 5.0 * top}, cancel=cancel)
+        except tuning.SolveCancelled:
+            outcome["at"] = time.monotonic()
+
+    thread = threading.Thread(target=work)
+    thread.start()
+    time.sleep(0.6)
+    asked = time.monotonic()
+    cancel.set()
+    thread.join(5.0)
+    assert not thread.is_alive() and outcome["at"] - asked < 0.5
+    assert design._WARM == kept and design._WARM[("p51d", tuning.DEFAULT_PROFILE)] is warm
+
+
+def test_a_new_message_on_the_solve_socket_cancels_the_solve(monkeypatch):
+    monkeypatch.setattr(design, "_SOLVED", {})
+    monkeypatch.setattr(design, "_WARM", {})
+    monkeypatch.setattr(design, "TIME_LIMIT", 60.0)
+    top = tuning.reference("p51d").design["top_speed"]
+    seen = []
+    original = tuning.design_row
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs["cancel"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(tuning, "design_row", spy)
+    with TestClient(app).websocket_connect("/api/solve") as socket:
+        socket.send_json({"preset": "p51d", "values": {"top_speed": 5.0 * top}})
+        assert socket.receive_json()["type"] == "progress"
+        socket.send_text("next")  # the page's newer request
+        asked = time.monotonic()
+        while not seen[0].is_set() and time.monotonic() - asked < 2.0:
+            time.sleep(0.01)
+        assert seen[0].is_set() and time.monotonic() - asked < 0.5

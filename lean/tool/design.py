@@ -12,13 +12,24 @@ row in the fast path (Broyden), warm from the preset's last solve (its row and J
 
 import io
 import math
+import os
 import threading
+import time
 
 import numpy as np
 
 from lean.game import card, tuning
 
 from . import flown, units
+
+# The solve fails fast (tuning.design_row): after PATIENCE iterations without the error falling
+# by 1%, or after TIME_LIMIT seconds (BNB_SOLVE_TIME_LIMIT; the warm try and the cold retry
+# share it).
+PATIENCE = 6
+TIME_LIMIT = float(os.environ.get("BNB_SOLVE_TIME_LIMIT", "4"))
+UNMET = 1e-3  # an input whose solved value is off its target by more than this (relative) is unmet
+
+SHUTDOWN = threading.Event()  # set when the server stops: every running solve ends at once
 
 LOCK = threading.RLock()  # the card is process-global (tuning.flying): one computation at a time
 
@@ -70,12 +81,14 @@ def _profile(preset: str, profile: str | None) -> str:
 
 
 def solve(preset: str, values: dict | None = None, fixed: dict | None = None,
-          profile: str | None = None) -> tuning.Solved:
+          profile: str | None = None, progress=None, cancel=None) -> tuning.Solved:
     """The preset's design under the profile (default its own) with the inputs `values` moved,
     solved (tuning.design_row, fast path,
     warm: `_solved`); the preset's own row, unsolved, when nothing moves; `fixed` (a saved
     card row) as it is. Unknown names raise ValueError; a solve that does not converge raises
-    RuntimeError."""
+    RuntimeError (tuning.SolveFailed when it stopped early: stalled, out of time, impossible).
+    `progress` (tuning.SolveStep each iteration) and `cancel` (a threading.Event: set, the solve
+    raises tuning.SolveCancelled within one evaluation and changes nothing) are for the page."""
     if fixed is not None:
         if set(fixed) != set(card.CARD_FIELDS):
             raise ValueError("a fixed ship's row must have the card's fields")
@@ -94,7 +107,7 @@ def solve(preset: str, values: dict | None = None, fixed: dict | None = None,
     if key not in _SOLVED:
         if len(_SOLVED) > 64:
             _SOLVED.clear()
-        _SOLVED[key] = _solved(preset, profile, changed) if changed else tuning.Solved(
+        _SOLVED[key] = _solved(preset, profile, changed, progress, cancel) if changed else tuning.Solved(
             PRESET_ROWS[preset], 0.0, 0, None)
     return _SOLVED[key]
 
@@ -102,23 +115,72 @@ def solve(preset: str, values: dict | None = None, fixed: dict | None = None,
 _WARM: dict[tuple, tuning.Solved] = {}  # (preset, profile) -> its last solve (row, Jacobian)
 
 
-def _solved(preset: str, profile: str, changed: dict) -> tuning.Solved:
+def _solved(preset: str, profile: str, changed: dict, progress=None, cancel=None) -> tuning.Solved:
     """The fast solve, warm from the preset's last solve (its row and Jacobian: a slider drag
     moves a little each time), else, or when that does not converge, from the preset's row."""
     reference = tuning.reference(preset, profile)
     last = _WARM.get((preset, profile))
     solved = None
+    watch = dict(progress=progress, cancel=_Cancel(cancel), patience=PATIENCE,
+                 deadline=time.monotonic() + TIME_LIMIT)
     if last is not None:
         try:
             solved = tuning.design_row(reference, changed, start=last.row, fast=True,
-                                       jacobian=last.jacobian)
+                                       jacobian=last.jacobian, **watch)
+        except tuning.SolveFailed as failed:
+            if failed.reason != "stalled":  # out of time, or no design at all: no retry
+                raise
         except (RuntimeError, ValueError, IndexError, ArithmeticError):  # app.UNSOLVABLE
             solved = None
     if solved is None:
-        solved = tuning.design_row(reference, changed, start=PRESET_ROWS[preset], fast=True)
+        solved = tuning.design_row(reference, changed, start=PRESET_ROWS[preset], fast=True,
+                                   **watch)
     if solved.jacobian is not None:
         _WARM[(preset, profile)] = solved
     return solved
+
+
+class _Cancel:
+    """The solve's cancel token: the request's own, or the server stopping."""
+
+    def __init__(self, token):
+        self.token = token
+
+    def is_set(self) -> bool:
+        return SHUTDOWN.is_set() or (self.token is not None and self.token.is_set())
+
+
+def failure_report(error: tuning.SolveFailed, preset: str, profile: str | None,
+                   system: str, factor: float, moved: list[str] | None = None) -> dict:
+    """What the page shows for a solve that stopped early: the reason, a sentence, and the
+    inputs not met (relative error above UNMET, largest first) as {name, label, unit, target,
+    achieved, error}: the nearest values found, in the units `system` at time scale `factor`
+    (error a fraction). `nearest` marks them as a compromise that does not meet every input."""
+    table = {spec.name: spec for spec in tuning.reference(preset, _profile(preset, profile)).inputs}
+
+    def shown(spec, value):
+        return units.to_display(spec.kind, value, system, factor) if spec.kind else value
+
+    unmet = []
+    for name, target, r in zip(error.names, error.targets, error.residuals):
+        spec = table[name]
+        if abs(r) > UNMET:
+            unit = units.label(spec.kind, system) if spec.kind else spec.unit
+            unmet.append(dict(name=name, label=spec.label, unit=unit, target=shown(spec, target),
+                              achieved=shown(spec, target * math.exp(r)), error=math.expm1(r)))
+    unmet.sort(key=lambda u: -abs(u["error"]))
+    if error.reason == "impossible":
+        text = error.message
+        if moved and not any(name in text for name in moved):
+            text += f"; inputs moved: {', '.join(moved)}"
+    else:
+        worst = max((abs(u["error"]) for u in unmet), default=0.0)
+        names = (", ".join(u["label"] for u in unmet if abs(u["error"]) >= 0.25 * worst)
+                 or "the inputs together")
+        why = (f"no solution in {TIME_LIMIT:g} s" if error.reason == "time"
+               else "the error stopped falling")
+        text = f"Cannot meet {names}: {why}, nearest found is {worst:.1%} off"
+    return dict(reason=error.reason, message=text, unmet=unmet, nearest=error.reason != "impossible")
 
 
 def build_row(preset: str, values: dict | None = None, fixed: dict | None = None,
