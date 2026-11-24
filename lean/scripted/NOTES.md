@@ -45,11 +45,15 @@ commit; a pass that gained under 10 degrees switches the plan).
 
 ## The yardstick's defaults
 
-The design's values (the test persona `BFM` in `tests/test_tactics.py`) scored 0.18 against the
-old agent, so the yardstick flies the gun's solution: pursuit point = the lead point, and breaks
-whenever defensive within 3 gun ranges. Personas draw yo-yo time up to 0.5 t90, lead-turn scale
-up to 1.0, relax angle pi +- 0.3, defend range x e^+-0.3. The default BC teacher is the single
-narrow yardstick (spread 0); the persona population is an experiment arm.
+The defaults are BFM-CMA2 (author 2026-11-24, provisional): the values in
+`docs/rewrite/sections/scripted-screening/cma_candidate_round2.json`, a CMA search around the
+earlier defaults. Ten rows differ from those (plan threshold, lead turn scale, nose-tail
+distance, closing time, yo-yo time, fight speed, aligned, in range, lead gain, temperature);
+`BFM_DEFAULT_2026_11_24` in `parameters.py` holds the earlier values of exactly those rows
+(`ScriptedConfig().replace(**BFM_DEFAULT_2026_11_24)`). The test persona `BFM` in
+`tests/test_tactics.py` (the design's values) stands on the earlier defaults and does not move.
+The default BC teacher is the single narrow yardstick (spread 0); the persona population is an
+experiment arm.
 
 ## Numbers (2026-11-24, core game, 4v4, laptop CPU/GPU)
 

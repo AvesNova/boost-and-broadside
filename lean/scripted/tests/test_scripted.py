@@ -189,7 +189,9 @@ POWER_CASES = [
     ("disengaged and fast, store full", 1.15, 0.0, 6.0, 1.0, COAST),
     ("engaged, below the fight speed", 0.45, 0.0, 1.5, 0.5, DIVE),
     ("engaged, below the fight speed, store empty", 0.45, 0.0, 1.5, 0.0, COAST),
-    ("out of range behind a straight target: the engine closes", 0.7, 0.0, 1.5, 0.8, COAST),
+    # 0.8 is inside the coast band of the fight speed (BFM-CMA2: 1.29 sustained speeds; 0.7 sat
+    # in the band of the earlier fight speed of 1.0 and now dives).
+    ("out of range behind a straight target: the engine closes", 0.8, 0.0, 1.5, 0.8, COAST),
 ]
 
 
@@ -243,7 +245,8 @@ def test_head_on_side_is_drawn_once_per_ship_per_match_and_kept():
     straight) the plan's sense has no side to go by, so each ship turns by a side drawn once
     per ship per match (two-circle with more energy: to the side; one-circle: away from it);
     the side is never changed by `act` (a new match takes a fresh memory, `fresh_memory`)."""
-    for own_store, plan in ((0.8, 1.0), (0.2, -1.0)):
+    # Stores either side of the plan threshold (BFM-CMA2: -0.33, so 0.2 against 0.5 is two-circle).
+    for own_store, plan in ((0.8, 1.0), (0.1, -1.0)):
         state = placed(
             dict(x=0.0, y=0.0, heading=0.0, speed=260.0),
             dict(x=-400.0, y=0.0, heading=math.pi, speed=260.0),
