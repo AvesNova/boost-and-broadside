@@ -114,12 +114,12 @@ PARAMETERS: dict[str, Parameter] = {
     "power_scale": Parameter(0.03, "log units", LOG, 0.4, "the power's sharpness"),
     "power_floor": Parameter(0.02, "probability", meaning="each of coast, dive and climb"),
     # The stick cap folds the full level into the sustained one (no turn lost above the
-    # sustained stick speed; banking speed in a high yo-yo above the fight speed).
-    "level_cap_speed": Parameter(1.0, "sustained_stick_speed", meaning="cap above it"),
+    # middle stick speed; banking speed in a high yo-yo above the fight speed).
+    "level_cap_speed": Parameter(1.0, "middle_stick_speed", meaning="cap above it"),
     "yo_yo_cap_speed": Parameter(1.0, "fight speed", meaning="high yo-yo: cap above it"),
     # Stick: three nested gates on the pointing error, then the side.
     "turn": Parameter(0.002868, "radians", LOG, 0.4, "pointing error: turn at all"),
-    "level_two": Parameter(0.02097, "radians", LOG, 0.4, "pointing error: sustained stick"),
+    "level_two": Parameter(0.02097, "radians", LOG, 0.4, "pointing error: middle stick"),
     "level_three": Parameter(0.1044, "radians", LOG, 0.4, "pointing error: the full stick"),
     "side_floor": Parameter(0.02, "probability", meaning="turning the long way round"),
     # The gun. Lead: first-order intercept with the drag law's time of flight in the medium.
@@ -154,7 +154,7 @@ GATES: dict[str, Gate] = {
     "shot_near": Gate("spend_share", 0.2, False),  # turn needed / (store x store_turn)
     "spend_need": Gate("spend_need", 0.2, True),  # turn needed, radians
     "spend_range": Gate("spend_range", 0.127, False),  # range in gun ranges
-    "level_cap": Gate("level_cap_speed", 0.05, True),  # speed / sustained stick speed
+    "level_cap": Gate("level_cap_speed", 0.05, True),  # speed / middle stick speed
     "yo_yo_cap": Gate("yo_yo_cap_speed", 0.05, True),  # speed / fight speed
     "aligned": Gate("aligned", 0.243, False, tempered=False),  # aim error in target sizes
     "in_range": Gate("in_range", 0.127, False, tempered=False),  # range in gun ranges

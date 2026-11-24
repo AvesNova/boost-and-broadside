@@ -36,26 +36,20 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   cached load about 1 ms). Adding, removing or swapping a design input is an edit of
   `DESIGN_INPUTS` only.
 - **Profiles** (`tuning.PROFILES`): named design-input tables. Each card type names its own
-  (`RealAircraft.profile`, in its cache key); the default is `"documents"` (`DESIGN_INPUTS`),
-  and the P-51D uses it. A profile with a `base` takes its reference values from that
-  profile's solved row (`design_of` under its own table; `reference(name, profile)`,
-  `reference_in`), so the same ship starts under either table. Warnings name a card field
-  (`Check.field`) and point at whichever input sets it in the reference's table. The solve,
-  the card and the tool have no code for any one profile.
-  - `"performance_points"` (author 2026-11-24): g limit and corner speed (closed: the lift is
-    n g / v_corner^2), then top level speed, best climb, best sustained speed and the gap,
-    solved for zero-lift drag, power, induced drag and separation drag. The best sustained
-    rate, tightest speed, corner rate and best-climb speed are readouts; the thrust softness
-    passes through. At the P-51D the condition number is 9. Moving any input by 1% or 3%
-    (corner speed -3% included) converges in 3 Newton iterations (1.8 s), or 2-3 fast
-    iterations (0.1-0.2 s), with condition numbers 8.0-10.0. A cold solve from the point mass
-    also lands back on the documents row.
-  - Why not the author's first set (corner speed, corner rate, best sustained speed and rate,
-    tightest speed, top speed, g)? A point mass is homogeneous: scale the power and every
-    drag together and neither the top speed nor the sustained line moves. Without a climb
-    input the power's level is nearly free: condition 335, and 1% of best sustained rate
-    doubled the solved power and raised the climb 64%. The corner rate is set by corner speed
-    and g, apart from the lift softness: 1% of corner rate needs 22% of softness.
+  (`RealAircraft.profile`, in its cache key); today there is one, `"documents"`
+  (`DESIGN_INPUTS`, the default), and the P-51D uses it. A profile with a `base` would take its
+  reference values from that profile's solved row (`design_of` under its own table;
+  `reference(name, profile)`, `reference_in`). Warnings name a card field (`Check.field`) and
+  point at whichever input sets it in the reference's table. The solve, the card and the tool
+  have no code for any one profile.
+- **The documents' inputs** (author 2026-11-24): stall speed, g limit, top level speed and
+  best climb (the last two solved for the zero-lift drag and the power, nothing else solved);
+  span efficiency e (0.85), the separation drag's strength (0.3) and exponent (8) and the
+  thrust softness (2.83, what the old solve gave for the 165 mph best-climb speed), closed;
+  every other input as before. The best-climb speed, the best sustained turn, the corner and
+  the gap are readouts. Tried and dropped the same day: the "performance points" profile (g
+  limit, corner speed, top speed, best climb, best sustained speed and gap solved for drag,
+  power, induced and separation drag) and solving e, the best-climb speed and the gap.
 
 ## Rules that matter
 
@@ -71,16 +65,12 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 - **Stick** (author 2026-11-24): a level is a fraction of the most lateral acceleration the
   ship can give at its speed, sqrt(budget^2 - held^2) with the budget the wing's lift against
   the g limit (one soft minimum: the corner). Full stick is all of it (the envelope's top line,
-  no tax); the sustained level is derived in `_derived_characteristics` (`stick_table`: the
-  stick that holds energy at the best sustained turn, so it passes through that point); the
-  fine level is the card's `fine_stick_fraction` (0.5) of it. P-51D: 0.440, 0.881, 1.
-- **Automatic flaps** (off for the P-51D, `flap_lift` 0; switchable per type): scheduled by
-  stick demand and blown back by the corner speed, they raise the maximum lift when the stick
-  asks for more than the clean wing gives (C2 in speed and demand; drag on the extra lift only;
-  the turn rate never falls with speed below corner).
+  no tax). The three levels are fixed thirds of it for every type (author 2026-11-24,
+  `card.GRADUAL_STICK`, `MIDDLE_STICK`, `FULL_STICK`; `stick_table`): gradual 1/3, middle 2/3,
+  full 1.
 - **Separation drag** rises toward the wing's maximum lift and stops there (a transient can
-  ask for twice it; P-51D 0.41 at exponent 16, solved by the gap 0.85, docs/rewrite/p51d-model.md
-  "Design inputs"). `steady_rates` / `quasi_steady` evaluate the same
+  ask for twice it; P-51D 0.3 at exponent 8, a design input: about +30% lift-dependent drag at
+  the maximum lift, starting near 0.8 of it). `steady_rates` / `quasi_steady` evaluate the same
   functions with the nose settled; they give the derived constants, `tuning`, and the web tool.
 - **Constants:** `ship_card` / `ship_constants` build a run's `contract.Constants` once; a
   value equal for the whole lineup is a Python number, one that differs is a per-slot row. The
@@ -89,7 +79,7 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   `enemy_view`, `team_view`. `Obs.pending` holds own living ships' joint action, `NO_PENDING`
   (42) elsewhere. The ship row has no position scalars; `Obs.pos` carries position for the
   model's position code and rotary.
-- **Shields:** recharge after a quiet spell (coast, at most the fine stick, no trigger).
+- **Shields:** recharge after a quiet spell (coast, at most the gradual stick, no trigger).
 - `StepOut` carries what the learner needs: damage, deaths, done and result, each bullet's
   outcome and firing tick (the hit head's labels), the attacker-by-target damage matrix,
   boundary damage and shield restored (the rewards' ledger).
@@ -119,11 +109,10 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 `lean/game/tests`: flight rules, damage, fields, fog, ghost bullets, invariants (finite, inert
 padding, team swap), the clock and wipe, both spawn rules, the training spawn, the one-tick delay,
 the stick (full stick the envelope's maximum to 0.1%, every level its fraction of it, the
-sustained level through the best sustained point, the fine level its fraction), the flaps on a
-flapped test row (deployment by demand, C2 by refinement), the turn rate rising with speed to
-the corner (flaps off and on), the tightest sustained turn 10% slower than the best rate, and
-tuning (the derived card meets its targets: the flight test and its point mass's best
-sustained rate; plausible solved coefficients; the cache's key).
+levels the fixed thirds), the turn rate
+rising with speed to the corner, the tightest sustained turn 10% slower than the best rate, and
+tuning (the derived card meets its targets: the flight test and the closed inputs; plausible
+solved coefficients; the cache's key).
 
 ## Open
 

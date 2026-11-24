@@ -9,16 +9,14 @@ lean.game.tuning (`load_card`), cached in memory and on disk by a hash of the ta
 the flight model's source, so a physics change re-solves the rows by itself:
 
 - "p51d": the P-51D (tuning.REAL_AIRCRAFT): its reference (the point mass fitted to the flight
-  test, tuning.reference_of), then its design inputs (tuning.DESIGN_INPUTS: closed forms, and
-  the top speed, best climb and its speed, best sustained rate and the gap solved for the
-  zero-lift drag, thrust power, thrust softness, induced drag and separation drag;
-  tuning.design_row, docs/rewrite/p51d-model.md "Design inputs").
+  test, tuning.reference_of), then its design inputs (tuning.DESIGN_INPUTS: closed forms, e
+  and the separation drag and thrust softness among them, and the top speed and best climb
+  solved for the zero-lift drag and thrust power; tuning.design_row,
+  docs/rewrite/p51d-model.md "Design inputs").
 
-The stick levels and the bullet's damage reference speed are not stored either
-(core._derived_characteristics, core.stick_table): each
-level is a fraction of the most lateral acceleration the ship can give at its speed; full stick
-is 1, the sustained level the stick that holds energy at the best sustained turn (so it passes
-through the best sustained point), the fine level fine_stick_fraction of the sustained one.
+The bullet's damage reference speed is not stored either (core._derived_characteristics).
+The stick levels are shared constants (GRADUAL_STICK, MIDDLE_STICK, FULL_STICK; core.stick_table):
+each is that fraction of the most lateral acceleration the ship can give at its speed.
 """
 
 import math
@@ -26,11 +24,7 @@ import math
 TYPE_NAMES = ("p51d",)
 
 # The flight terms: the drag rise above critical_speed, the separation drag, the soft minima of
-# lift against the g limit and of thrust against static thrust, the nose damping, and the
-# automatic flaps (core._wing): the bonus flap_lift x the clean maximum lift, deployed by the
-# demanded lift coefficient, blown back by flap_blowback_ratio x the clean corner speed; the
-# extra lift's drag flap_drag_scale x INDUCED_DRAG_FACTOR x (Delta lift coefficient)^2 with the
-# flaps fully used (core._rates).
+# lift against the g limit and of thrust against static thrust, and the nose damping.
 FLIGHT_TERMS = (
     "critical_speed",
     "drag_rise_exponent",
@@ -39,9 +33,6 @@ FLIGHT_TERMS = (
     "lift_softmin_exponent",
     "thrust_softmin_exponent",
     "nose_damping",
-    "flap_lift",
-    "flap_blowback_ratio",
-    "flap_drag_scale",
 )
 # The card's columns, in order. engine_power is thrust power per kg; exchange_acceleration the
 # dive and climb trade between speed and store.
@@ -70,7 +61,6 @@ CARD_FIELDS = (
     "head_on_fraction_scale",
     "head_on_angle_scale",
     "head_on_sharpness",
-    "fine_stick_fraction",
     "vision_range_scale",
     *FLIGHT_TERMS,
 )
@@ -91,12 +81,6 @@ STALL_ANGLE = 0.2617993877991494
 INDUCED_DRAG_FACTOR = 66.348
 NOSE_FREQUENCY_FLOOR = 0.4997135491028137
 SPEED_FLOOR = 1.454166427889188e-06
-# The automatic flaps (core._wing), shared: they deploy as the demanded lift coefficient goes
-# from 1 - FLAP_DEMAND_BAND of the clean maximum to all of it, and blow back over the last
-# FLAP_BLOWBACK_BAND of the blow-back speed.
-FLAP_DEMAND_BAND = 0.1
-FLAP_DEPLOY_OFFSET = (1.0 - FLAP_DEMAND_BAND) / FLAP_DEMAND_BAND
-FLAP_BLOWBACK_BAND = 0.4
 
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005
@@ -118,4 +102,9 @@ LN_2 = math.log(2.0)
 
 # Stick index to signed level; power index 0 coast, 1 dive, 2 climb.
 STICK_LEVELS = (0.0, -1.0, 1.0, -2.0, 2.0, -3.0, 3.0)
-QUIET_STICK_MAX = 2  # stick indices 0..2 (straight and the fine turns) keep the shield quiet
+QUIET_STICK_MAX = 2  # stick indices 0..2 (straight and the gradual turns) keep the shield quiet
+# The stick levels 1, 2, 3 (author 2026-11-24): fixed thirds of full stick, the most lateral
+# acceleration the ship can give at its speed (core._setting), for every type.
+GRADUAL_STICK = 1.0 / 3.0
+MIDDLE_STICK = 2.0 / 3.0
+FULL_STICK = 1.0

@@ -336,8 +336,7 @@ def test_boundary_margin_is_in_turn_radii_at_the_ship_speed():
     the P-51D of 2026-11-24 A1), flying outward at a target further out, turns back toward the
     centre; 4.48 radii (1,000 m) inside it flies at the target; a fast ship (1.6 corner speeds)
     turns back from 4.48 radii. In sustained radii, so a flight change that moves the radius
-    does not move the test (the speed-scheduled flaps' 223 m became 214 m with the
-    demand-scheduled ones, 2026-11-24)."""
+    does not move the test."""
     heading = math.pi / 2 - 0.3  # the centre is to the left
     bearing = heading - 0.4  # the target 600 m away, to the right
 

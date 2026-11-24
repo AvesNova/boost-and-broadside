@@ -183,12 +183,12 @@ def draw_panel(
     rate_axis = np.linspace(0.0, top, 300)
     field = tuning.ps_over_rate(grid, rate_axis, rate=rate, ps=ps)
     # Shade only up to the largest stick flown at each speed: the stick levels' lowest speeds,
-    # linear between them, none below the fine stick's.
-    stick = tuning.stick_levels(row)
+    # linear between them, none below the gradual stick's.
+    stick = tuning.stick_levels()
     levels = sorted(
         (
-            (stick["fine"], lowest["fine"]),
-            (stick["sustained"], lowest["sustained"]),
+            (stick["gradual"], lowest["gradual"]),
+            (stick["middle"], lowest["middle"]),
             (1.0, lowest["full"]),
         )
     )
@@ -247,7 +247,7 @@ def draw_panel(
             )
     ax.plot(v, full, gid="full", **FULL_STYLE)
     span = v[-1] - v[0]
-    for name, key in (("sustained stick", "sustained"), ("fine stick", "fine")):
+    for name, key in (("middle stick", "middle"), ("gradual stick", "gradual")):
         level = _from(rate[int(round(stick[key] * (len(STICKS) - 1)))], game_v, lowest[key])
         ax.plot(v, level, gid=key, **STICK_STYLE)
         at = int(np.searchsorted(v, v[0] + 0.33 * span))
@@ -344,7 +344,7 @@ def legend(figure, note: str, flown_shown: bool, length_unit: str = "m"):
 
     handles = [
         sample("full stick", **FULL_STYLE),
-        sample("sustained and fine stick", **STICK_STYLE),
+        sample("middle and gradual stick", **STICK_STYLE),
         sample("full stick, diving and climbing", **TRADE_STYLE),
         sample("Ps = 0 (sustained)", **PS_ZERO_STYLE),
         sample(f"turn radius ({length_unit})", **RADIUS_STYLE),

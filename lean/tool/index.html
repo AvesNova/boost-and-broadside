@@ -73,7 +73,7 @@
 <div id="sandbox">
   <canvas id="view"></canvas>
   <div id="hud"></div>
-  <div id="status">arrows/WASD turn (shift sustained, ctrl fine) / up dive / down climb / space fire / C opponent / R reset / +- zoom</div>
+  <div id="status">arrows/WASD turn (middle; shift full, ctrl gradual) / up dive / down climb / space fire / C opponent / R reset / +- zoom</div>
 </div>
 
 <script>
@@ -352,7 +352,8 @@ function send(o) { if (socket && socket.readyState === 1) socket.send(JSON.strin
 function controls() {
   const left = keys.has("ArrowLeft") || keys.has("a"), right = keys.has("ArrowRight") || keys.has("d");
   const dive = keys.has("ArrowUp") || keys.has("w"), climb = keys.has("ArrowDown") || keys.has("s");
-  return { side: +left - +right, level: keys.has("Control") ? 1 : keys.has("Shift") ? 2 : 3,
+  // the turn's level: alone the middle level, with Shift full, with Ctrl gradual (Shift wins)
+  return { side: +left - +right, level: keys.has("Shift") ? 3 : keys.has("Control") ? 1 : 2,
            power: dive && !climb ? 1 : climb && !dive ? 2 : 0, fire: keys.has(" ") };
 }
 let sent = "";
@@ -361,6 +362,7 @@ addEventListener("keydown", e => {
   if ($("sandbox").classList.contains("on")) {
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Tab"].includes(k)) e.preventDefault();
+    if (e.ctrlKey && ["a", "d", "s"].includes(k)) e.preventDefault();  // no select-all, bookmark or save
     if (!keys.has(k)) {
       keys.add(k);
       if (k === "c") send({ opponent: !(cur && cur.opponent_on) });

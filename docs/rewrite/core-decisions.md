@@ -586,6 +586,23 @@ League (section 8)
   (335): speeds and sustained turns depend only on power-to-drag ratios, so a climb input is
   needed to set the level.
 
+## Simpler flight and design (author 2026-11-24 night)
+
+These replace the flap, profile and stick-level points above where they disagree.
+- Flaps removed entirely (the P-51D flew with them off): no flap card fields, constants,
+  drag term or solve stages; the wing is the clean wing.
+- One design profile, "documents": stall speed, g limit, top level speed and best climb
+  (the last two solved for the zero-lift drag and power, nothing else solved); span
+  efficiency e 0.85, separation drag 0.3 at exponent 8 ("a little, physically realistic")
+  and thrust softness 2.83 (what the old solve gave for 165 mph best climb), all closed.
+  Best-climb speed, best sustained turn, corner and gap are readouts. Performance points
+  and the trial profile are gone.
+- Stick levels are fixed thirds of full stick for every type: gradual 1/3, middle 2/3, full 1
+  (renamed from fine and sustained; the action space is unchanged). Play shell: A or D
+  alone middle, Shift full, Ctrl gradual.
+- Tried and removed the same evening: a thrust lapse (thrust = power / speed x
+  (speed / 165 mph)^(1 - lapse), 1 a propeller, 0 a jet), b71ef433, reverted in 0ec71cd8.
+
 ## Proposals, not decided
 
 

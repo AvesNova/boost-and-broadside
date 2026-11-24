@@ -7,8 +7,8 @@ and gun gates, a steer toward the centre near the arena edge, and one ordinary u
 per action head. Every ship characteristic is read from the game's constants
 (`state.constants`) by its name. Everything is (E, N): E environments, N ship slots.
 
-Action indices follow `lean.contract.State`: stick 0 straight, then (1, 2) fine, (3, 4)
-sustained, (5, 6) full; power 0 coast, 1 dive (store into speed), 2 climb (speed into
+Action indices follow `lean.contract.State`: stick 0 straight, then (1, 2) gradual, (3, 4)
+middle, (5, 6) full; power 0 coast, 1 dive (store into speed), 2 climb (speed into
 store); fire 0 or 1.
 """
 
@@ -207,7 +207,7 @@ class Explanation:
     pursuit_time: Tensor  # tau, seconds: > 0 lead, 0 pure, < 0 lag pursuit
     gun_weight: Tensor  # the share of the wanted point that is the gun's lead point
     speed_target: Tensor  # v*, metres per second
-    cap: Tensor  # the share of the full stick level folded into the sustained one
+    cap: Tensor  # the share of the full stick level folded into the middle one
     stick_error: Tensor  # radians to the wanted direction, positive left
     gun_error: Tensor  # radians to the gun's lead point, positive left
     sense: Tensor  # the committed turn sense after this decision (memory "sense")
@@ -295,7 +295,7 @@ def explain(
             "cash": situation.angles_off,
             "relax": situation.angles_off,
             "scissors": safe_distance / c["sustained_radius"],
-            "level_cap": state.speed / c["sustained_stick_speed"],
+            "level_cap": state.speed / c["middle_stick_speed"],
             "yo_yo_cap": state.speed / fight_speed,
             "aligned": turn_needed / target_size,
             "in_range": range_ratio,
@@ -375,19 +375,19 @@ def explain(
     # it. (Measured: dropping the gun there was the whole of either feature's cost.)
     gun_weight = gate["in_range"] * (weights["offensive"] + weights["merge"])
     # Speed target, in log space, and the stick cap (the share of the full level folded into
-    # the sustained one), per tactic:
-    # - disengaged and merge: the merge speed; disengaged, the cap above the sustained stick
+    # the middle one), per tactic:
+    # - disengaged and merge: the merge speed; disengaged, the cap above the middle stick
     #   speed (no turn lost there);
     # - offensive: the fight speed moved by the yo-yo: down (climb, the cap above the fight
     #   speed) in a high yo-yo; up to corner speed in a low one against a turning target
     #   (against a straight one the engine closes: no dive, and no climb while behind);
-    # - turning, two-circle (the energy plan, Shaw p. 110): ease to the sustained level and
+    # - turning, two-circle (the energy plan, Shaw p. 110): ease to the middle level and
     #   bank above the fight speed until his angular advantage reaches the cash angle, then
     #   full stick at corner speed (cash the store); one-circle: full stick at the fight
     #   speed, down to the speed floor inside the scissors range (Shaw p. 83);
     # - defensive (Shaw pp. 132-134): break (full stick, corner speed) while he is inside
     #   the defend range with more than the relax angle of advantage, else a hard turn
-    #   (sustained level) at the fight speed;
+    #   (middle level) at the fight speed;
     # - offensive and turning: corner speed when a shot is near (spend for a purpose).
     near = gate["shot_near"] * gate["spend_need"] * gate["spend_range"]
     log_corner = _log(c["corner_speed"])
@@ -501,7 +501,7 @@ def explain(
     last_pass = torch.where(commit, plan * situation.angles_off, last_pass)
 
     # Stick: P(turn), then the level by two further gates (the cap folding full into
-    # sustained), the side by the committed sense while he is aft (unless the boundary steer
+    # middle), the side by the committed sense while he is aft (unless the boundary steer
     # dominates), else by the error's sign.
     turn_size = stick_error.abs()
     stick_gate = _gates(
