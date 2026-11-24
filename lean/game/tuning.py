@@ -24,8 +24,9 @@ Two layers (docs/rewrite/p51d-model.md, "Design inputs"):
   point-mass first guess, then Newton in logs (Broyden in the web tool's fast path).
   `design_of(row)` is its inverse: the design a row flies. The best-climb speed, the best
   sustained turn, the corner and the gap are readouts (`performance`).
-- **Profiles** (`PROFILES`): named design-input tables; today one, `"documents"`
-  (`DESIGN_INPUTS`, the card's default). Each card type is solved under its own
+- **Profiles** (`PROFILES`): named design-input tables: `"documents"` (`DESIGN_INPUTS`, the
+  flight test fitted to the airframe) and `"airframe_and_engine"` (C_D0 and shaft power,
+  closed form; the P-51D's card at 2,200 hp). Each card type is solved under its own
   (`RealAircraft.profile`); a profile with a base starts from the base's solved row.
 
 `implied(row, airframe)` reads a row back as the airframe's physical quantities (mass, wing
