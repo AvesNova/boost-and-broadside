@@ -194,21 +194,19 @@ def test_the_sliders_are_the_design_inputs():
 
 
 def test_a_profile_is_chosen_per_request(monkeypatch):
-    """A request names its profile: its inputs are that table's (a moved best sustained speed
-    under the performance points is solved and flown; under the documents it is refused), the
-    warnings point at its inputs, and an unknown profile is refused."""
+    """A request names its profile: its inputs are that table's (a moved top speed under the
+    documents is solved and flown; a readout is not an input and is refused), the warnings
+    point at its inputs, and an unknown profile is refused."""
     monkeypatch.setattr(design, "_SOLVED", {})
     client = TestClient(app)
-    points = tuning.reference("p51d", "performance_points")
-    speed = 0.98 * points.design["sustained_speed"]
-    request = {"preset": "p51d", "profile": "performance_points",
-               "values": {"sustained_speed": speed}}
+    speed = 0.98 * tuning.reference("p51d").design["top_speed"]
+    request = {"preset": "p51d", "profile": "documents", "values": {"top_speed": speed}}
     moved = client.post("/api/ship", json=request).json()
-    assert moved["flies"]["sustained_speed"] == pytest.approx(speed, rel=1e-4)
+    assert moved["flies"]["top_speed"] == pytest.approx(speed, rel=1e-4)
     assert moved["solve"]["condition"] < 20.0
-    assert {w["input"] for w in moved["warnings"]} == {"g_limit"}  # the structure; e now in range
-    refused = client.post("/api/ship", json={**request, "profile": None})
-    assert refused.status_code == 422
+    assert {w["input"] for w in moved["warnings"]} == {"g_limit"}  # the structure
+    not_an_input = {**request, "values": {"sustained_speed": 100.0}}  # a readout, not an input
+    assert client.post("/api/ship", json=not_an_input).status_code == 422
     unknown = client.post("/api/ship", json={**request, "profile": "nonesuch"})
     assert unknown.status_code == 422
     png = client.post("/api/doghouse.png", json=request)
@@ -216,14 +214,14 @@ def test_a_profile_is_chosen_per_request(monkeypatch):
 
 
 def test_the_ship_panels_show_implied_physics_warnings_and_the_solved_row():
-    """POST /api/ship: the implied physical quantities, the warnings (the P-51D's own: e and the
+    """POST /api/ship: the implied physical quantities, the warnings (the P-51D's own: the
     structure), the solved card row with the solve's numbers; a moved design is solved and flies
     its input; an unknown input is refused."""
     client = TestClient(app)
     own = client.post("/api/ship", json={"preset": "p51d"}).json()
     assert set(own["row"]) == set(card.CARD_FIELDS)
     assert own["implied"]["max_lift_coefficient"] == pytest.approx(1.6)
-    assert {w["quantity"] for w in own["warnings"]} == {"oswald", "structural_load"}
+    assert {w["quantity"] for w in own["warnings"]} == {"structural_load"}
     assert own["solve"]["iterations"] == 0
     top = 1.05 * tuning.reference("p51d").design["top_speed"]
     moved = client.post("/api/ship", json={"preset": "p51d", "values": {"top_speed": top}}).json()
@@ -280,14 +278,6 @@ def test_saved_presets_store_their_row_and_load_editable_or_fixed(tmp_path, monk
     assert reply["row"] == pytest.approx(fixed) and reply["solve"]["iterations"] == 0
     png = client.post("/api/doghouse.png", json={"preset": "p51d", "fixed": fixed})
     assert png.status_code == 200
-    points = {**state, "profile": "performance_points", "values": {"best_climb": 40.0}}
-    assert client.post("/api/saved", json={"name": "climb", "state": points}).status_code == 200
-    record = json.loads((tmp_path / "climb.json").read_text())
-    assert record["profile"] == "performance_points"
-    assert record["inputs_version"] == tuning.inputs_version(
-        tuning.PROFILES["performance_points"].inputs)
-    listed = {r["name"]: r for r in client.get("/api/saved").json()["saved"]}
-    assert listed["climb"]["editable"] and listed["climb"]["profile"] == "performance_points"
 
 
 @pytest.fixture(scope="module")
@@ -384,18 +374,19 @@ def test_an_impossible_design_fails_fast_naming_the_input(monkeypatch):
     monkeypatch.setattr(design, "TIME_LIMIT", 3.0)
     monkeypatch.setattr(design, "_SOLVED", {})
     monkeypatch.setattr(design, "_WARM", {})
-    top = tuning.reference("p51d").design["top_speed"]
+    climb = tuning.reference("p51d").design["best_climb"]
     began = time.monotonic()
     with pytest.raises(tuning.SolveFailed) as raised:
-        design.solve("p51d", {"top_speed": 5.0 * top})
+        design.solve("p51d", {"best_climb": 20.0 * climb})
     assert time.monotonic() - began < design.TIME_LIMIT + 1.5
     report = design.failure_report(raised.value, "p51d", None, "real_imperial", 2.0)
     assert report["reason"] in ("time", "stalled") and report["nearest"]
     worst = report["unmet"][0]  # the largest miss first, in the chosen units
-    assert worst["name"] == "top_speed" and worst["unit"] == "mph"
+    assert worst["name"] == "best_climb" and worst["unit"] == "ft/min"
     assert worst["achieved"] < worst["target"] and worst["error"] < -0.5
-    assert worst["target"] == pytest.approx(5.0 * top * units.factor("speed", "real_imperial", 2.0))
-    assert "Top speed" in report["message"] or worst["label"] in report["message"]
+    assert worst["target"] == pytest.approx(
+        20.0 * climb * units.factor("climb", "real_imperial", 2.0))
+    assert worst["label"] in report["message"]
 
 
 def test_a_negative_or_flyless_design_is_impossible_at_once():

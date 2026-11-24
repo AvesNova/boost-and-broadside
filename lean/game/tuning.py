@@ -13,19 +13,19 @@ Two layers (docs/rewrite/p51d-model.md, "Design inputs"):
   (`Airframe`) go through `fit_point_mass` (C_D0 and the propeller efficiency set so the point
   mass flies the flight test's top speed and climb) into its point mass (`airframe_row`, the
   game terms off). The reference's design values are the data's (stall speed, g limit, static
-  thrust, stall angle), the flight test's (top speed, best climb and its speed), the point
-  mass's (the best sustained turn rate) and the aircraft's choices (the gap, the game terms, the
+  thrust, stall angle), the flight test's (top speed, best climb) and the aircraft's choices
+  (span efficiency e, the separation drag, the thrust softness, the other game terms, the
   guns...).
 - **The design** (`DESIGN_INPUTS`, one ordered table: name, label, unit, the card field it sets,
   how): the sliders, which start at the reference's values. `design_row(reference, design)`
   turns them into the card row: closed forms first (the stall speed sets the lift, the g limit
-  the maximum acceleration, every other input its own field), then the five flown targets
-  (top speed, best climb, best-climb speed, best sustained rate, the gap) solved for the
-  zero-lift drag, thrust power, thrust softness, induced drag and separation drag: a
+  the maximum acceleration, e the induced drag, every other input its own field), then the two
+  flown targets (top speed, best climb) solved for the zero-lift drag and thrust power: a
   point-mass first guess, then Newton in logs (Broyden in the web tool's fast path).
-  `design_of(row)` is its inverse: the design a row flies.
-- **Profiles** (`PROFILES`): named design-input tables, `DESIGN_INPUTS` (the documents, the
-  card's default) and `PERFORMANCE_POINTS`. Each card type is solved under its own
+  `design_of(row)` is its inverse: the design a row flies. The best-climb speed, the best
+  sustained turn, the corner and the gap are readouts (`performance`).
+- **Profiles** (`PROFILES`): named design-input tables; today one, `"documents"`
+  (`DESIGN_INPUTS`, the card's default). Each card type is solved under its own
   (`RealAircraft.profile`); a profile with a base starts from the base's solved row.
 
 `implied(row, airframe)` reads a row back as the airframe's physical quantities (mass, wing
@@ -119,7 +119,8 @@ class Airframe:
 # The P-51D's data (docs/rewrite/aircraft-references.md, p51d-inputs-sources.md): 4,427 kg and
 # 1,630 hp at 67 in Hg (war emergency rating) as tested (AAF TSCEP5E-1908); wing area 21.67 m^2
 # (NACA ACR 4K02); AR 5.83; C_Lmax 1.6 (the AAF's power-on value for its turn calculation;
-# stall-derived values span 1.50-1.70); Oswald e 0.8 (assumed); Hamilton Standard propeller
+# stall-derived values span 1.50-1.70); Oswald e 0.85 (author 2026-11-24; WWII fighters
+# 0.78-0.93, the design input `oswald`); Hamilton Standard propeller
 # 3.40 m (11 ft 2 in); the g limit 8 at the 8,000 lb design weight (forum, F; 6.6 g at the
 # tested 9,760 lb) and the stall angle 15.5 deg, from v2's research (bnb.reference.real_planes).
 # C_D0 and the propeller efficiency are not data: fit_point_mass sets them so the point mass
@@ -131,7 +132,7 @@ P51D = Airframe(
     max_lift_coefficient=1.6,
     zero_lift_drag_coefficient=0.015036438034450334,
     aspect_ratio=5.83,
-    oswald=0.8,
+    oswald=0.85,
     power=1630.0 * HORSEPOWER,
     propeller_efficiency=0.8211724151486224,
     propeller_diameter=3.40,
@@ -269,6 +270,15 @@ def _gun_range(row: dict, numbers: dict) -> float:
 GROUPS = ("Performance", "Airframe", "Flight terms", "Stick and nose", "Guns",
           "Shield, head-on and vision")
 _GRAVITY = lambda: card.GRAVITY  # noqa: E731
+
+
+def _oswald_scale(oswald: float) -> float:
+    """The P-51D airframe's induced_drag_scale at span efficiency `oswald` (airframe_row's k =
+    1 / (pi e AR))."""
+    a = P51D
+    return 1.0 / (math.pi * oswald * a.aspect_ratio * a.per_metre * card.INDUCED_DRAG_FACTOR)
+
+
 P, A, T, S, G, H = GROUPS
 # The design inputs, in the tool's order. To add, remove or swap one, edit this table only (see
 # docs/rewrite/p51d-model.md, "Design inputs"); every card field must be set exactly once.
@@ -283,13 +293,11 @@ DESIGN_INPUTS = (
           source="A: flight test, 375 mph", kind="speed", low=0.6, high=1.4),
     flown("best_climb", "best climb rate", P, "engine_power",
           source="A: flight test, 3,600 ft/min", kind="climb", low=0.4, high=2.0),
-    flown("best_climb_speed", "best-climb speed", P, "thrust_softmin_exponent", first_guess=4.0,
-          source="A: flight test, 165 mph", kind="speed", low=0.85, high=1.3),
-    flown("sustained_rate", "best sustained turn rate", P, "induced_drag_scale",
-          source="model: the point mass (e 0.8 assumed)", kind="angular_rate", low=0.6, high=1.5),
-    flown("gap", "the gap: tightest over best-rate sustained speed", P, "separation_drag",
-          first_guess=0.4, source="design (author 2026-11-24)", low=0.7, high=0.99,
-          relative=False),
+    DesignInput("oswald", "span efficiency e", P, "induced_drag_scale",
+                lambda row, numbers: _oswald_scale(1.0) / row["induced_drag_scale"],
+                lambda value, design: _oswald_scale(value),
+                source="design: 0.85 (author 2026-11-24; typical 0.78-0.93)", low=0.6, high=1.0,
+                relative=False),
     scaled("static_thrust", "static thrust / weight", A, scale=_GRAVITY,
            source="momentum theory, FM 0.75", low=0.3, high=2.0),
     scaled("stall_angle", "stall angle", A, "stall_angle_scale", lambda: 1.0 / card.STALL_ANGLE,
@@ -301,10 +309,16 @@ DESIGN_INPUTS = (
            low=0.5, high=1.5, relative=False),
     scaled("drag_rise_exponent", "drag rise: exponent", T, source="A: NACA ACR 4K02 Fig. 12",
            low=2.0, high=40.0, relative=False),
+    scaled("separation_drag", "separation drag: strength", T,
+           source="design: 0.3, a little (author 2026-11-24)", low=0.0, high=1.0,
+           relative=False),
     scaled("separation_exponent", "separation drag: exponent", T,
-           source="design (author 2026-11-24)", low=4.0, high=32.0, relative=False),
+           source="design: 8 (author 2026-11-24)", low=4.0, high=32.0, relative=False),
     scaled("lift_softmin_exponent", "lift softness: exponent (low = soft)", T,
            source="design: v2's 16", low=2.0, high=64.0, relative=False),
+    scaled("thrust_softmin_exponent", "thrust softness: exponent (low = soft)", T,
+           source="design: the value that gave the 165 mph best-climb speed", low=1.0,
+           high=64.0, relative=False),
     scaled("nose_damping", "nose damping", S, low=0.2, high=1.5, relative=False),
     scaled("corner_nose_frequency", "nose frequency at corner speed", S, kind="angular_rate",
            low=0.3, high=2.0),
@@ -350,62 +364,6 @@ def check_inputs(inputs: tuple[DesignInput, ...]) -> None:
 
 check_inputs(DESIGN_INPUTS)
 
-_BY_NAME = {spec.name: spec for spec in DESIGN_INPUTS}
-# The author's performance points (2026-11-24): the corner from the g limit and the corner speed
-# (closed: the lift C = n g / v_corner^2), then four flown targets solved for the zero-lift drag,
-# thrust power, induced drag and separation drag: top level speed, best climb, the best
-# sustained turn's speed and the gap. The best sustained rate, the tightest sustained speed, the
-# corner rate and the best-climb speed are readouts; the thrust softness passes through. Not the
-# author's first set: top speed, best sustained speed and best sustained rate see the same two
-# ratios in a point mass (scaling the power and every drag together moves none of them), so
-# without a climb the power's level was nearly free (condition 335; 1% of sustained rate doubled
-# the power). This set: condition 9 at the P-51D (lean/game/NOTES.md, "Profiles").
-PERFORMANCE_POINTS = (
-    _BY_NAME["g_limit"],
-    DesignInput("corner_speed", "corner speed (at the g limit)", "Performance",
-                "max_lift_coefficient", lambda row, numbers: numbers["corner_speed"],
-                lambda value, design: design["g_limit"] * card.GRAVITY / value**2,
-                source="the documents row (C_Lmax 1.6, 8 g)", kind="speed", low=0.6, high=1.5),
-    _BY_NAME["top_speed"],
-    _BY_NAME["best_climb"],
-    flown("sustained_speed", "best sustained turn speed", "Performance", "induced_drag_scale",
-          source="the documents row", kind="speed", low=0.7, high=1.4),
-    _BY_NAME["gap"],
-    *(spec for spec in DESIGN_INPUTS if spec.group != "Performance"),
-    scaled("thrust_softmin_exponent", "thrust softness: exponent (low = soft)", "Flight terms",
-           source="the documents row (solved there for the 165 mph best-climb speed)", low=1.0,
-           high=64.0, relative=False),
-)
-check_inputs(PERFORMANCE_POINTS)
-
-
-def _oswald_scale(oswald: float) -> float:
-    """The P-51D airframe's induced_drag_scale at span efficiency `oswald` (airframe_row's k =
-    1 / (pi e AR))."""
-    a = P51D
-    return 1.0 / (math.pi * oswald * a.aspect_ratio * a.per_metre * card.INDUCED_DRAG_FACTOR)
-
-
-# Trial (author 2026-11-24, rough first): stall speed, g limit, top speed, best climb and e as
-# inputs, separation off; only the zero-lift drag and power solved. Best-climb speed and the
-# sustained turn are readouts. e is the P-51D airframe's (its aspect ratio and wing).
-FLIGHT_TEST = (
-    _BY_NAME["stall_speed"],
-    _BY_NAME["g_limit"],
-    _BY_NAME["top_speed"],
-    _BY_NAME["best_climb"],
-    DesignInput("oswald", "span efficiency e", "Performance", "induced_drag_scale",
-                lambda row, numbers: _oswald_scale(1.0) / row["induced_drag_scale"],
-                lambda value, design: _oswald_scale(value),
-                source="design: 0.85 (typical 0.78-0.93)", low=0.6, high=1.0, relative=False),
-    scaled("separation_drag", "separation drag: strength", "Flight terms", source="design: off",
-           low=0.0, high=1.0, relative=False),
-    *(spec for spec in DESIGN_INPUTS if spec.group != "Performance"),
-    PERFORMANCE_POINTS[-1],  # the thrust softness, passed through from the documents row
-)
-check_inputs(FLIGHT_TEST)
-
-
 @dataclasses.dataclass(frozen=True)
 class Profile:
     """A named design-input table. `base`: None when its reference values come from the
@@ -416,16 +374,12 @@ class Profile:
     label: str
     inputs: tuple
     base: str | None = None
-    values: dict = dataclasses.field(default_factory=dict)  # set over the base's measures
 
 
 PROFILES = {
     profile.name: profile
     for profile in (
         Profile("documents", "documents", DESIGN_INPUTS),
-        Profile("performance_points", "performance points", PERFORMANCE_POINTS, "documents"),
-        Profile("flight_test", "stall, e and flight test (trial)", FLIGHT_TEST, "documents",
-                dict(oswald=0.85, separation_drag=0.0)),
     )
 }
 DEFAULT_PROFILE = "documents"
@@ -450,7 +404,7 @@ def _closed_row(inputs, design: dict[str, float]) -> dict[str, float]:
 class RealAircraft:
     """A real aircraft: its data (C_D0 and the propeller efficiency only a start), its flight
     test (real m/s, sea level: top speed and best climb, which fit the point mass) and its
-    documented design values (game units, design-input names: the flight test's, the gap, the
+    documented design values (game units, design-input names: the flight test's, e, the
     flight terms, guns, shield...). An input with no documented value takes its point mass's.
     `profile`: the design-input table (PROFILES) its card row is solved under."""
 
@@ -461,24 +415,26 @@ class RealAircraft:
     profile: str = DEFAULT_PROFILE
 
 
-# The P-51D's values (design units, game time). The flight test: 375 mph, 3,600 ft/min at
-# 165 mph (AAF TSCEP5E-1908). The gap (core-decisions.md 2026-11-24): the tightest sustained turn
-# 15% slower than the best sustained rate, with the separation exponent 16 (where its
-# coefficient still moves the gap, docs/rewrite/ship-design-proposal.md 5). The drag rise doubles
-# the zero-lift drag at Mach 0.77, exponent 20 (NACA ACR 4K02 Fig. 12, the P-51B propeller off:
-# flat to about M 0.68, then +40% at M 0.735 and +67% at M 0.755). The lift softness 16 (v2's).
-# Guns, damage, shield, the nose and vision are v2's
+# The P-51D's values (design units, game time). The flight test: 375 mph, 3,600 ft/min
+# (AAF TSCEP5E-1908). Span efficiency e 0.85 (author 2026-11-24; WWII fighters 0.78-0.93). The
+# separation drag 0.3 at exponent 8 (author 2026-11-24: a little, physically realistic): about
+# +30% lift-dependent drag at the maximum lift, starting near 0.8 of it. The thrust softness
+# 2.83: the value the solve gave for the flight test's 165 mph best-climb speed when that speed
+# was an input. The drag rise doubles the zero-lift drag at Mach 0.77, exponent 20 (NACA ACR
+# 4K02 Fig. 12, the P-51B propeller off: flat to about M 0.68, then +40% at M 0.735 and +67% at
+# M 0.755). The lift softness 16 (v2's). Guns, damage, shield, the nose and vision are v2's
 # Vizia's; the fine stick is half the sustained level (author 2026-11-24).
 P51D_TOP_SPEED, P51D_BEST_CLIMB = 375.0 * MPH, 3600.0 * FEET_PER_MINUTE  # real m/s
 P51D_VALUES = dict(
     top_speed=to_game(P51D_TOP_SPEED, -1),
     best_climb=to_game(P51D_BEST_CLIMB, -1),
-    best_climb_speed=to_game(165.0 * MPH, -1),
-    gap=0.85,
+    oswald=0.85,
     critical_mach=0.77,
     drag_rise_exponent=20.0,
-    separation_exponent=16.0,
+    separation_drag=0.3,
+    separation_exponent=8.0,
     lift_softmin_exponent=16.0,
+    thrust_softmin_exponent=2.8304440028908533,
     nose_damping=0.7,
     corner_nose_frequency=11.23144817352295,
     fine_stick_fraction=0.5,
@@ -521,8 +477,7 @@ class Reference:
 def reference_of(aircraft: RealAircraft, inputs: tuple = DESIGN_INPUTS) -> Reference:
     """The reference from the aircraft's documents: the point mass fitted to the flight test
     (fit_point_mass); each input's reference value its documented one, else what the point
-    mass has or flies (its measure: e.g. the stall speed, g limit, static thrust and the best
-    sustained rate)."""
+    mass has or flies (its measure: e.g. the stall speed, g limit and static thrust)."""
     check_inputs(inputs)
     names = {spec.name for spec in inputs}
     values = {name: value for name, value in aircraft.values.items() if name in names}
@@ -546,17 +501,9 @@ def reference_in(aircraft: RealAircraft, profile: str | None = None) -> Referenc
         return dataclasses.replace(reference_of(aircraft, chosen.inputs), profile=chosen.name)
     base = reference_in(aircraft, chosen.base)
     row = design_row(base, start=base.start_row).row
-    return _with_values(dataclasses.replace(
+    return dataclasses.replace(
         base, inputs=chosen.inputs, design=design_of(row, chosen.inputs), profile=chosen.name,
-        start_row=row), chosen)
-
-
-def _with_values(reference: "Reference", chosen: Profile) -> "Reference":
-    """The reference with the profile's own values set over its base's, solved from its row."""
-    if not chosen.values:
-        return reference
-    row = design_row(reference, chosen.values, start=reference.start_row).row
-    return dataclasses.replace(reference, design=design_of(row, reference.inputs), start_row=row)
+        start_row=row)
 
 
 @functools.cache
@@ -569,9 +516,9 @@ def reference(name: str, profile: str | None = None) -> Reference:
     if chosen.base is not None and chosen.base == aircraft.profile:
         base = reference(name, chosen.base)
         row = row_of(name)
-        return _with_values(dataclasses.replace(
+        return dataclasses.replace(
             base, inputs=chosen.inputs, design=design_of(row, chosen.inputs),
-            profile=chosen.name, start_row=row), chosen)
+            profile=chosen.name, start_row=row)
     return reference_in(aircraft, chosen.name)
 
 

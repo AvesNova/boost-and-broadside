@@ -9,10 +9,10 @@ lean.game.tuning (`load_card`), cached in memory and on disk by a hash of the ta
 the flight model's source, so a physics change re-solves the rows by itself:
 
 - "p51d": the P-51D (tuning.REAL_AIRCRAFT): its reference (the point mass fitted to the flight
-  test, tuning.reference_of), then its design inputs (tuning.DESIGN_INPUTS: closed forms, and
-  the top speed, best climb and its speed, best sustained rate and the gap solved for the
-  zero-lift drag, thrust power, thrust softness, induced drag and separation drag;
-  tuning.design_row, docs/rewrite/p51d-model.md "Design inputs").
+  test, tuning.reference_of), then its design inputs (tuning.DESIGN_INPUTS: closed forms, e
+  and the separation drag and thrust softness among them, and the top speed and best climb
+  solved for the zero-lift drag and thrust power; tuning.design_row,
+  docs/rewrite/p51d-model.md "Design inputs").
 
 The stick levels and the bullet's damage reference speed are not stored either
 (core._derived_characteristics, core.stick_table): each
