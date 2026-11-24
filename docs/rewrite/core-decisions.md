@@ -562,6 +562,20 @@ League (section 8)
   (docs/rewrite/p51d-model.md "Separation drag"); the default (0.5 at exponent 24) is a
   judgement for the author to confirm.
 
+## Ship design (author 2026-11-24, docs/rewrite/ship-design-proposal.md option C)
+
+- Two layers: the documents and best guesses give a reference ship (physical); the design
+  sliders start at the reference's values; one `design_row` turns the design inputs into the
+  sim's coefficients for both the card and the tool.
+- Design inputs: stall speed and g limit (closed form); top speed, best climb (and best-climb
+  speed, solving the thrust softness), best sustained rate and the gap (tightest-turn speed
+  over best-rate speed, solving the separation drag at exponent 16, P-51D 0.85) by Newton;
+  the rest passed straight through. Corner speed, radii, corner rate and the settled
+  full-stick turn are readouts. Static thrust stays physical (from the propeller). The
+  bullet's reference speed is computed where used, not stored.
+- Physical-plausibility warnings (implied e, C_D0, CLmax, propeller efficiency, ...) shown,
+  not enforced; the tool lists the implied physical quantities and the solved coefficients.
+
 ## Proposals, not decided
 
 
