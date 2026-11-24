@@ -545,6 +545,18 @@ League (section 8)
   the F-16's), turn rate never decreasing with speed below corner (a test); real aircraft rows
   derived automatically from their targets (no stored copies to regenerate).
 
+## Stick levels and flaps (author 2026-11-24 afternoon)
+
+- Full stick = the most turn the ship can give at that speed (the doghouse's top line, no
+  blending tax); only the true corner (lift against the g limit) is softened.
+- Every other stick level is a fraction of that same maximum (same shape). The sustained
+  stick's fraction is derived so its line passes through the best sustained point; the fine
+  stick is a further fraction (default half of the sustained).
+- Flaps off by default (machinery kept, switchable per ship).
+- Separation drag is too small: raise it so the best sustained point leaves the max-lift line,
+  keeping the solved coefficients physically plausible; the P-51D's zero-lift drag is being
+  re-derived from the flight test (correct power at each point).
+
 ## Proposals, not decided
 
 
