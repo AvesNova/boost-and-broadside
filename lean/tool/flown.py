@@ -135,6 +135,66 @@ def achievable_speeds(tolerance: float = TOLERANCE) -> dict[str, float]:
     return {name: float(v) for name, v in zip(names, lowest)}
 
 
+def random_search(
+    ships: int = 1024, seconds: float = 40.0, seed: int = 0, tolerance: float = TOLERANCE
+) -> dict[str, float]:
+    """The cross-check of achievable_speeds: from the spawn state, random sequences of the 12
+    (stick, power) pairs held 0.2 to 12 s each (40% of segments a climb, the bleed); per
+    condition the lowest speed at which it is flown by the same criterion. Never meaningfully
+    below achievable_speeds if that search is complete (lean/tool/NOTES.md)."""
+    generator = torch.Generator().manual_seed(seed)
+    pairs = torch.tensor(
+        [
+            (stick, power)
+            for stick in (STRAIGHT, FINE, SUSTAINED, FULL)
+            for power in (COAST, DIVE, CLIMB)
+        ]
+    )
+    climbs = torch.nonzero(pairs[:, 1] == CLIMB)[:, 0]
+
+    def draw(k):
+        any_pair = torch.randint(len(pairs), (k,), generator=generator)
+        climb = climbs[torch.randint(len(climbs), (k,), generator=generator)]
+        return torch.where(torch.rand(k, generator=generator) < 0.4, climb, any_pair)
+
+    def duration(k):
+        return 0.2 + 11.8 * torch.rand(k, generator=generator)
+
+    config, constants, p = _ships(ships)
+    h = config.tick_length
+    max_energy = float(p.max_energy[0])
+    band = config.store_edge_band
+    s = _fresh(ships, card.SPAWN_SPEED, float(p.spawn_energy[0]))
+    chosen, left = draw(ships), duration(ships)
+    lowest = {name: math.inf for name in CONDITIONS}
+    fields = torch.zeros(ships, 5, 0)
+    with torch.no_grad():
+        for _ in range(round(seconds / h)):
+            control = pairs[chosen]
+            before = _direction(s)
+            s = core.flight_tick(constants, fields, h, s, control[:, :1], control[:, 1:])
+            measured = _turn_rate(before, s, h)
+            speed, energy = s.speed[:, 0], s.energy[:, 0]
+            store = energy / max_energy
+            level = p.stick_table.gather(1, control[:, :1])[:, 0].abs()
+            for name, (stick, power) in CONDITIONS.items():
+                mask = (control[:, 0] == stick) & (control[:, 1] == power)
+                if power != COAST:
+                    mask &= (store > band) & (store < 1.0 - band)
+                if not mask.any():
+                    continue
+                quasi = core.steady_rates(p, speed, level, power, energy)[0]
+                mask &= (measured - quasi).abs().le(tolerance * quasi.abs() + math.radians(0.2))
+                if mask.any():
+                    lowest[name] = min(lowest[name], float(speed[mask].min()))
+            left -= h
+            change = left <= 0.0
+            if change.any():
+                k = int(change.sum())
+                chosen[change], left[change] = draw(k), duration(k)
+    return lowest
+
+
 def _holding_stick(p, speed: float, energy: float) -> float:
     """The stick (0 to 1) whose quasi-steady turn holds energy (Ps = 0) at `speed`, coasting; 1 if
     full stick gains."""

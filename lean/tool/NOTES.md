@@ -49,19 +49,21 @@ server draws with matplotlib (author 2026-11-24: matplotlib is the one charting 
   edge bands. The lowest states come from a climb (it fills the store and slows the ship to
   near its stall speed); then the nose must settle while the thrust accelerates the ship, so
   the large stick levels start higher. A random search (8192 ships, 60 s of random 0.2-12 s
-  segments, two seeds) found the same limits to 2 m/s (sustained 106.4 against 108.6).
-  P-51D, game m/s at 2x (real: half): full stick 110.7, sustained stick 108.6, fine stick 97.0,
-  dive 132.0 (the store must be below 95%, which needs less total energy), climb 110.5; the
+  segments) found the same limits to 1.6 m/s (`flown.random_search`; the test runs a smaller one
+  against the measurement it makes, so no stored numbers go stale).
+  P-51D on the demand-scheduled flaps (2026-11-24), game m/s at 2x (real: half): full stick
+  109.9, sustained stick 105.8, fine stick 104.0, dive 132.0 (the store must be below 95%,
+  which needs less total energy), climb 109.8; the
   stall speed is 90.4. The Ps shading stops above the largest stick flown at each speed.
 - **Flown checks.** `flown.critical_points` flies the corner (full stick from above the corner
   speed, the peak once the nose has settled), the best sustained turn (held by the stick that
   holds energy there, with a feedback on the speed) and the tightest sustained turn. The
-  P-51D's tightest sustained turn lies where full stick gains energy (Ps > 0): coasting, the
-  speed cannot be held there (full stick accelerates the ship to its settled 148 m/s), so it
-  is flown as a pass (the smallest radius passed through). P-51D, game units: corner 256.0 m/s
-  64.5 deg/s quasi-steady, flown 252.5 m/s 63.8 deg/s; best sustained 148.4 m/s 37.92 deg/s,
-  flown 148.4 m/s 37.97 deg/s; tightest sustained 121.9 m/s 202.0 m, flown 123.1 m/s 203.2 m
-  (test: corner and tightest within 2%, best within 1%; the best turn held at a fixed stick settles at 148.5 m/s). Drawn as small hollow markers beside
+  P-51D's tightest sustained turn lies where full stick gains energy (Ps > 0), just below the
+  speed full stick settles at (120.6 m/s): coasting, the speed cannot be held there, so it is
+  flown as a pass (the smallest radius passed through). P-51D, game units: corner 255.3 m/s 64.5 deg/s quasi-steady, flown 252.1 m/s 63.7 deg/s; best sustained 141.4 m/s
+  37.98 deg/s, flown 141.4 m/s 37.98 deg/s (held; a fixed stick settles at 141.5 m/s);
+  tightest sustained 120.3 m/s 202.1 m, flown 121.8 m/s 200.8 m (test: corner and tightest
+  within 2%, best within 1%). Drawn as small hollow markers beside
   the quasi-steady points, with the flown numbers in the labels.
 - **No flying in the slider path.** The flown checks take about 6 s (achievable speeds 5 s,
   points 1 s). The server flies the preset's once at start (in the background) and caches
