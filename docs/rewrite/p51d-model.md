@@ -235,7 +235,11 @@ Reading:
 
 The P-51D's doghouse, its card row (game terms on, flaps), drawn from `tuning.envelope`. In real
 units speeds, turn rates and Ps are halved; radii and loads are unchanged. Marks: the corner
-(circle), the best sustained turn (square), the tightest sustained turn (triangle).
+(circle), the best sustained turn (square), the tightest sustained turn (triangle), each with a
+small hollow marker where the game flies it (`lean.tool.flown`). Each line starts at the
+lowest speed the game flies it (game m/s: full stick 110.7, sustained 108.6, fine 97.0, dive
+132.0, climb 110.5; the stall speed is 90.4), nothing below; how they were found:
+`lean/tool/NOTES.md`.
 
 | Real units (1x) | Game units (2x) |
 |---|---|
@@ -245,7 +249,7 @@ Dark variants: `doghouse-p51d-core-dark.png`, `doghouse-p51d-core-real-dark.png`
 comparison panels (rate, radius, sustained 360 time against speed):
 `doghouse-comparison-core[-dark].png`.
 
-    for theme in light dark; do THEME=$theme OMP_NUM_THREADS=1 PYTHONPATH=.:src \
+    for theme in light dark; do THEME=$theme OMP_NUM_THREADS=4 PYTHONPATH=.:src \
         uv run --no-sync python docs/rewrite/sections/turns/doghouse.py; done
 
 The vizia_plain and Vizia charts (`doghouse-vizia-plain-core*.png`, `doghouse-vizia-core*.png`)
