@@ -18,9 +18,9 @@ in Python only.
 
 | Key | Action |
 | --- | --- |
-| Left / Right (or A / D) | turn left / right at the full stick level |
-| + Shift | middle level |
-| + Ctrl | gradual level |
+| Left / Right (or A / D) | turn left / right at the middle stick level |
+| + Shift | full stick (Shift wins when Ctrl is held too) |
+| + Ctrl | gradual level (the page keeps Ctrl+A, D and S from the browser; Ctrl+W closes the tab in most browsers, so dive with Up while Ctrl is held) |
 | Up (or W) | dive: power 1, store into speed |
 | Down (or S) | climb: power 2, speed into store |
 | neither | coast |
