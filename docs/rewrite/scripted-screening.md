@@ -213,6 +213,8 @@ collecting them would mean per-tick accumulators in the compiled tick in lean/ev
   switch_gain, overshoot_range, overshoot_rate, overshoot_crossing, yo_yo_scale,
   merge_speed, speed_floor, spend_share, spend_need, spend_range, speed_band, power_scale,
   turn, level_three, boundary_margin. level_two is borderline (ST 0.003).
+  Behaviour (scripted-divergence.md) narrows this: engage_range changes behaviour clearly and
+  five more a little; only 16 of the 22 are flat in both.
 - **Delete the logic too?** Being flat in its box shows that a threshold does not matter
   between its bounds. It does not show that the mechanism is useless. Whole mechanisms whose
   every row is flat are the candidates to remove from the 439-operation call: the overshoot
