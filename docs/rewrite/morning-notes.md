@@ -63,6 +63,12 @@ undo it.
   under 60 s (50-57 s). About 15% of default games will be decided by the clock rule (ships
   alive, then shield). A 3x shorter episode changes the value ranges, so step 9 re-measures
   after it.
+- Step 10 (merged): package notes refreshed (tool, scripted, eval); the P-51D doghouse charts
+  re-rendered at 2,200 hp; one-line status heads on the review's items. Left as records, not
+  re-rendered: the vizia, jujak, yongma and vizia-plain doghouse PNGs (types no longer in the
+  card; referenced by dated docs) and the unreferenced chart-*-core PNGs (acceleration, bleed,
+  circles, dive-climb, who-wins), which predate tonight's model. The F1 tables in the review
+  still show the earlier card.
 - Step 6 (C4): `core-brief.md` is rewritten as goals and standards (about 1,200 words). Its
   last section lists 9 points for you to confirm (training targets against the new yardstick,
   size generalisation, a speed floor, parallel work, rented GPUs, tests per merge, one place
