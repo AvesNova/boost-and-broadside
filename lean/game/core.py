@@ -195,20 +195,20 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "lift_softmin_exponent": of("lift_softmin_exponent"),
         "thrust_softmin_exponent": of("thrust_softmin_exponent"),
         "nose_damping": of("nose_damping"),
-        "fine_stick_fraction": of("fine_stick_fraction"),
     }
     values.update(_derived_characteristics(config, values))
     return values
 
 
-def stick_table(sustained: Tensor, fine_fraction: Tensor) -> Tensor:
-    """(T, 7) signed stick levels by stick index (card.STICK_LEVELS' layout): straight, the fine
-    level `fine_fraction` x the sustained one, the sustained level, full stick (1). Each level is
-    that fraction of the most lateral acceleration the ship can give at its speed (`_setting`)."""
-    fine = fine_fraction * sustained
-    zeros, ones = torch.zeros_like(sustained), torch.ones_like(sustained)
-    magnitude = torch.stack([zeros, fine, fine, sustained, sustained, ones, ones], -1)
-    return torch.sign(torch.tensor(card.STICK_LEVELS)) * magnitude
+def stick_table(count: int) -> Tensor:
+    """(count, 7) signed stick levels by stick index (card.STICK_LEVELS' layout): straight, the
+    gradual level, the middle level, full stick (card.GRADUAL_STICK, MIDDLE_STICK, FULL_STICK).
+    Each level is that fraction of the most lateral acceleration the ship can give at its speed
+    (`_setting`)."""
+    magnitude = torch.tensor([0.0, card.GRADUAL_STICK, card.GRADUAL_STICK, card.MIDDLE_STICK,
+                              card.MIDDLE_STICK, card.FULL_STICK, card.FULL_STICK])
+    row = torch.sign(torch.tensor(card.STICK_LEVELS)) * magnitude
+    return row.expand(count, -1).clone()
 
 
 def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -225,12 +225,11 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
     - the corner rate (full stick at corner speed) and the store's turn: the turn a full store
       buys over the best sustained rate when spent holding corner speed at full stick,
       (corner rate - sustained rate) x full store / |energy rate at corner, full stick|;
-    - the stick levels (`stick_table`): the sustained level is the stick that holds energy at
-      the best sustained turn's speed, so the sustained level passes through the best
-      sustained point; the fine level is fine_stick_fraction of it;
-    - the sustained stick speed, corner speed / sqrt(sustained level): the scripted agent's
-      reference for its level cap (the speed where the sustained fraction of the lift-limited
-      line would reach the g limit; the levels are fractions of the top line, so the sustained
+    - the stick levels (`stick_table`: the shared thirds of full stick, card.GRADUAL_STICK,
+      MIDDLE_STICK, FULL_STICK);
+    - the middle stick speed, corner speed / sqrt(middle level): the scripted agent's
+      reference for its level cap (the speed where the middle fraction of the lift-limited
+      line would reach the g limit; the levels are fractions of the top line, so the middle
       level turns at its fraction of full stick at every speed)."""
     c = SimpleNamespace(**values)
     count = len(c.lift)  # every row of the card
@@ -251,10 +250,7 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
     life = c.bullet_moves.float() * config.tick_length
     stall_speed = torch.sqrt(card.GRAVITY / c.lift)
     corner_speed = torch.sqrt(c.max_acceleration / c.lift)
-    sustained_rate, sustained_speed, sustained_stick = _best_sustained_turn(
-        values, stall_speed, cruise
-    )
-    table = stick_table(sustained_stick, c.fine_stick_fraction)
+    sustained_rate, sustained_speed = _best_sustained_turn(values, stall_speed, cruise)
     # Per row, as (T, 1) columns, for one speed per row.
     column = SimpleNamespace(**{name: value[:, None] for name, value in values.items()})
     with torch.no_grad():
@@ -276,11 +272,9 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
         "sustained_radius": sustained_speed / sustained_rate,
         "quarter_turn_time": (0.5 * math.pi) / sustained_rate,
         "corner_rate": corner_rate,
-        # the sustained stick level reaches the g limit above this speed
-        "sustained_stick_speed": corner_speed / torch.sqrt(sustained_stick),
-        "sustained_stick": sustained_stick,
-        "fine_stick": table[:, 2],
-        "stick_table": table,
+        # the middle stick level reaches the g limit above this speed
+        "middle_stick_speed": corner_speed / math.sqrt(card.MIDDLE_STICK),
+        "stick_table": stick_table(count),
         "store_turn": (corner_rate - sustained_rate) * c.max_energy / corner_energy_rate.abs(),
     }
 
@@ -325,8 +319,7 @@ SUSTAINED_STICK_STEPS = 40  # bisection steps on the stick holding energy
 
 
 def _best_sustained_turn(values: dict[str, Tensor], stall_speed: Tensor, cruise: Tensor):
-    """Per row (T,): the best sustained turn rate, its speed and its stick, coasting at mid
-    store. At each speed the stick that holds energy (total energy rate zero; full stick when
+    """Per row (T,): the best sustained turn rate and its speed, coasting at mid store. At each speed the stick that holds energy (total energy rate zero; full stick when
     full stick gains), over speeds above stall that hold energy straight; a grid from stall to
     cruise speed, then a second grid one step either side of the best (resolution about
     0.01 m/s)."""
@@ -344,19 +337,19 @@ def _best_sustained_turn(values: dict[str, Tensor], stall_speed: Tensor, cruise:
         stick = torch.where(full_gains, one, 0.5 * (low + high))
         rate = quasi_steady(column, speed, stick, 0, energy)[0]
         straight = quasi_steady(column, speed, zero, 0, energy)[2]
-        return torch.where((straight >= 0.0) & (speed > stall_speed[:, None]), rate, 0.0), stick
+        return torch.where((straight >= 0.0) & (speed > stall_speed[:, None]), rate, 0.0)
 
     fraction = torch.linspace(0.0, 1.0, SUSTAINED_GRID)
     with torch.no_grad():
         low, high = stall_speed[:, None], cruise[:, None]
         for _ in range(2):
             speeds = low + (high - low) * fraction
-            rates, sticks = sustained(speeds)
+            rates = sustained(speeds)
             best = rates.argmax(-1, keepdim=True)
             step = (high - low) / (SUSTAINED_GRID - 1)
             centre = speeds.gather(-1, best)
             low, high = centre - step, centre + step
-        return rates.gather(-1, best)[:, 0], centre[:, 0], sticks.gather(-1, best)[:, 0]
+        return rates.gather(-1, best)[:, 0], centre[:, 0]
 
 
 def per_type_constants(config: GameConfig, ship_type: Tensor) -> SimpleNamespace:
@@ -1081,7 +1074,7 @@ def _shields(
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     """The tick's damage (E, N) against the shields. A living ship hurt with its shield already
     at 0 dies; the shield takes the damage down to 0; a ship not hurt and quiet (coast, at most
-    the fine stick, no trigger) recharges once its wait has run out; being hurt or not quiet
+    the gradual stick, no trigger) recharges once its wait has run out; being hurt or not quiet
     restarts the wait. Returns died (E, N) bool, the shield after the damage, the recharge
     (restored) and the wait."""
     c = state.constants

@@ -17,7 +17,7 @@ from lean.game import card, core
 torch.set_num_threads(1)
 DEGREES = 180.0 / math.pi
 COAST, DIVE, CLIMB = 0, 1, 2
-FULL, SUSTAINED, FINE, STRAIGHT = 6, 4, 2, 0
+FULL, MIDDLE, GRADUAL, STRAIGHT = 6, 4, 2, 0
 LINEUP = tuple(card.TYPE_NAMES)  # every type, so a ship is flown by its card index
 CONFIG = core.GameConfig(lineup=LINEUP)
 
@@ -77,7 +77,7 @@ def measure(ship_type=0):
     rows["store after 120 s straight coast (%)"] = f"{100 * top.store:.1f}"
     corner = corner_speed(ship_type)
     rows["corner speed (m/s, g limit meets lift)"] = f"{corner:.0f}"
-    for name, stick in (("full", FULL), ("sustained", SUSTAINED), ("fine", FINE)):
+    for name, stick in (("full", FULL), ("middle", MIDDLE), ("gradual", GRADUAL)):
         ship = Ship(ship_type, corner, 0.5)
         first = ship.fly(stick, COAST, 1.0)
         ship.fly(stick, COAST, 29.0)

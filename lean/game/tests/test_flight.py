@@ -222,7 +222,7 @@ def double_constants(ship_type=P51D, row=None):
 
 def test_turn_rate_never_falls_with_speed_below_corner():
     """The author's rule (2026-11-24): below corner speed (the peak full-stick rate) the turn
-    rate never decreases as speed rises, at full stick and at the sustained stick, for every
+    rate never decreases as speed rises, at full stick and at the middle stick, for every
     card type (quasi-steady, coasting, the spawn store, float64, from half the 1 g speed). The
     peak is found on the dense grid itself, up to one step of tuning.performance's grid past
     its corner_speed_flown."""
@@ -294,36 +294,16 @@ def test_stick_levels_are_fractions_of_the_maximum():
             assert torch.allclose(part, level * full, rtol=1e-12), (name, index)
 
 
-def test_sustained_level_passes_through_the_best_sustained_point():
-    """The author's design (2026-11-24): the sustained stick level is derived (no stored copy)
-    so it holds energy exactly at the best sustained turn: at the best sustained speed
-    (tuning.performance, its own 0.05 m/s grid in float64) the sustained level turns at the best
-    sustained rate (0.1%) with the total energy rate about zero."""
-    for ship_type, name in enumerate(card.TYPE_NAMES):
-        c = double_constants(ship_type)
-        p = tuning.performance(tuning.row_of(name))
-        level = float(c.stick_table[0, 4])
-        assert 0.0 < level <= 1.0, name
-        speed = torch.tensor([p["sustained_speed"]], dtype=torch.float64)
-        stick = torch.tensor([level], dtype=torch.float64)
-        rate, _, energy_rate = core.quasi_steady(c, speed, stick, COAST, c.spawn_energy)
-        assert float(rate[0]) == pytest.approx(p["sustained_rate"], rel=1e-3), name
-        # the energy rate: within what 0.1% of the stick moves it
-        nudged = core.quasi_steady(c, speed, 0.999 * stick, COAST, c.spawn_energy)[2]
-        assert abs(float(energy_rate[0])) <= abs(float(nudged[0] - energy_rate[0])) + 1e-6, name
-
-
-def test_fine_level_is_its_fraction_of_the_sustained_level():
-    """The fine stick is the type's fine_stick_fraction (the P-51D's one half, P51D_VALUES) of the
-    sustained level; straight is 0 and full 1; odd indices right (negative), even left."""
+def test_stick_levels_are_fixed_thirds():
+    """The author's design (2026-11-24): the stick levels are fixed thirds of full stick for every
+    type (card.GRADUAL_STICK, MIDDLE_STICK, FULL_STICK): straight 0, gradual 1/3, middle 2/3,
+    full 1; odd indices right (negative), even left (card.STICK_LEVELS' layout)."""
+    third = 1.0 / 3.0
+    expected = [0.0, -third, third, -2.0 * third, 2.0 * third, -1.0, 1.0]
     for ship_type, name in enumerate(card.TYPE_NAMES):
         table = core.per_type_constants(CONFIG, torch.tensor([ship_type])).stick_table[0]
-        fraction = card.CARD["fine_stick_fraction"][ship_type]
-        sustained = float(table[4])
-        fine = fraction * sustained
-        expected = [0.0, -fine, fine, -sustained, sustained, -1.0, 1.0]
         assert table.tolist() == pytest.approx(expected, rel=1e-6), name
-    assert tuning.P51D_VALUES["fine_stick_fraction"] == 0.5
+    assert tuning.stick_levels() == dict(gradual=third, middle=2.0 * third, full=1.0)
 
 
 def test_the_turn_has_precedence_over_the_climb():

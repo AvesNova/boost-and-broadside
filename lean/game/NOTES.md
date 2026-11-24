@@ -65,9 +65,9 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 - **Stick** (author 2026-11-24): a level is a fraction of the most lateral acceleration the
   ship can give at its speed, sqrt(budget^2 - held^2) with the budget the wing's lift against
   the g limit (one soft minimum: the corner). Full stick is all of it (the envelope's top line,
-  no tax); the sustained level is derived in `_derived_characteristics` (`stick_table`: the
-  stick that holds energy at the best sustained turn, so it passes through that point); the
-  fine level is the card's `fine_stick_fraction` (0.5) of it. P-51D: 0.440, 0.881, 1.
+  no tax). The three levels are fixed thirds of it for every type (author 2026-11-24,
+  `card.GRADUAL_STICK`, `MIDDLE_STICK`, `FULL_STICK`; `stick_table`): gradual 1/3, middle 2/3,
+  full 1.
 - **Separation drag** rises toward the wing's maximum lift and stops there (a transient can
   ask for twice it; P-51D 0.3 at exponent 8, a design input: about +30% lift-dependent drag at
   the maximum lift, starting near 0.8 of it). `steady_rates` / `quasi_steady` evaluate the same
@@ -79,7 +79,7 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   `enemy_view`, `team_view`. `Obs.pending` holds own living ships' joint action, `NO_PENDING`
   (42) elsewhere. The ship row has no position scalars; `Obs.pos` carries position for the
   model's position code and rotary.
-- **Shields:** recharge after a quiet spell (coast, at most the fine stick, no trigger).
+- **Shields:** recharge after a quiet spell (coast, at most the gradual stick, no trigger).
 - `StepOut` carries what the learner needs: damage, deaths, done and result, each bullet's
   outcome and firing tick (the hit head's labels), the attacker-by-target damage matrix,
   boundary damage and shield restored (the rewards' ledger).
@@ -109,7 +109,7 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 `lean/game/tests`: flight rules, damage, fields, fog, ghost bullets, invariants (finite, inert
 padding, team swap), the clock and wipe, both spawn rules, the training spawn, the one-tick delay,
 the stick (full stick the envelope's maximum to 0.1%, every level its fraction of it, the
-sustained level through the best sustained point, the fine level its fraction), the turn rate
+levels the fixed thirds), the turn rate
 rising with speed to the corner, the tightest sustained turn 10% slower than the best rate, and
 tuning (the derived card meets its targets: the flight test and the closed inputs; plausible
 solved coefficients; the cache's key).

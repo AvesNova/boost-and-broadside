@@ -14,11 +14,9 @@ the flight model's source, so a physics change re-solves the rows by itself:
   solved for the zero-lift drag and thrust power; tuning.design_row,
   docs/rewrite/p51d-model.md "Design inputs").
 
-The stick levels and the bullet's damage reference speed are not stored either
-(core._derived_characteristics, core.stick_table): each
-level is a fraction of the most lateral acceleration the ship can give at its speed; full stick
-is 1, the sustained level the stick that holds energy at the best sustained turn (so it passes
-through the best sustained point), the fine level fine_stick_fraction of the sustained one.
+The bullet's damage reference speed is not stored either (core._derived_characteristics).
+The stick levels are shared constants (GRADUAL_STICK, MIDDLE_STICK, FULL_STICK; core.stick_table):
+each is that fraction of the most lateral acceleration the ship can give at its speed.
 """
 
 import math
@@ -63,7 +61,6 @@ CARD_FIELDS = (
     "head_on_fraction_scale",
     "head_on_angle_scale",
     "head_on_sharpness",
-    "fine_stick_fraction",
     "vision_range_scale",
     *FLIGHT_TERMS,
 )
@@ -105,4 +102,9 @@ LN_2 = math.log(2.0)
 
 # Stick index to signed level; power index 0 coast, 1 dive, 2 climb.
 STICK_LEVELS = (0.0, -1.0, 1.0, -2.0, 2.0, -3.0, 3.0)
-QUIET_STICK_MAX = 2  # stick indices 0..2 (straight and the fine turns) keep the shield quiet
+QUIET_STICK_MAX = 2  # stick indices 0..2 (straight and the gradual turns) keep the shield quiet
+# The stick levels 1, 2, 3 (author 2026-11-24): fixed thirds of full stick, the most lateral
+# acceleration the ship can give at its speed (core._setting), for every type.
+GRADUAL_STICK = 1.0 / 3.0
+MIDDLE_STICK = 2.0 / 3.0
+FULL_STICK = 1.0

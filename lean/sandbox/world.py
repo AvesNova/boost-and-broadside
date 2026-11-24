@@ -23,7 +23,7 @@ OPPONENT_DISTANCE = 1500.0
 
 
 def stick_index(side: int, level: int) -> int:
-    """side +1 left (counter-clockwise), -1 right, 0 straight; level 1 fine, 2 sustained,
+    """side +1 left (counter-clockwise), -1 right, 0 straight; level 1 gradual, 2 middle,
     3 full. Even indices turn left (card.STICK_LEVELS: positive level = left)."""
     if side == 0 or level == 0:
         return 0

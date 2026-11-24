@@ -24,7 +24,7 @@ Also here: `symlog`, `map_fields`, `whole_state`, `compile_dynamic` (the one pla
 turned off), `random_keywords` (a factory's generator keywords; compiled graphs draw from torch's
 default generator).
 
-Stick: 0 straight, then (1, 2) fine, (3, 4) sustained, (5, 6) full, one direction odd and the
+Stick: 0 straight, then (1, 2) gradual, (3, 4) middle, (5, 6) full, one direction odd and the
 other even. Power: 0 coast, 1 dive, 2 climb. Fire: 0 or 1.
 
 **`Constants`**: per-ship constants of one run, read by name (`constants["lift"]` or

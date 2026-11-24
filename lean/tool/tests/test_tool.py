@@ -300,7 +300,7 @@ def test_the_p51d_lines_start_where_the_game_flies_them(p51d_flown):
     and the corner speed, and an independent random search of control sequences
     (flown.random_search) flies no line more than 5 m/s below its measured start, so the
     search the charts use finds the lowest states near enough (3 m/s before 2026-11-24; with
-    the stick levels as fractions of the top line the sustained stick's start is 3.9 m/s above
+    the stick levels as fractions of the top line the then-derived 0.88 level's start was 3.9 m/s above
     the random search's best)."""
     from lean.tool import flown
 

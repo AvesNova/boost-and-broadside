@@ -18,8 +18,8 @@ from .situation import signed_angle
 class ChaserConfig:
     """The chaser's thresholds."""
 
-    fine_error: float = 0.02  # radians: below this fly straight
-    sustained_error: float = 0.15  # radians: above this use the sustained stick level
+    gradual_error: float = 0.02  # radians: below this fly straight
+    middle_error: float = 0.15  # radians: above this use the middle stick level
     full_error: float = 0.5  # radians: above this use the full stick level
     fire_error: float = 0.05  # radians: fire when the nose is within this of the target
     fire_range_in_gun_range: float = 1.0
@@ -37,8 +37,8 @@ def chaser_act(
     error = signed_angle(state.heading_cos, state.heading_sin, fight.offset_x, fight.offset_y)
     size = error.abs()
     level = (
-        (size > chaser.fine_error).long()
-        + (size > chaser.sustained_error).long()
+        (size > chaser.gradual_error).long()
+        + (size > chaser.middle_error).long()
         + (size > chaser.full_error).long()
     )
     turns_to_even = (error > 0.0) == config.left_is_even

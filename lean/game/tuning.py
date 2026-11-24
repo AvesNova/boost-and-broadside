@@ -267,7 +267,7 @@ def _gun_range(row: dict, numbers: dict) -> float:
     return math.log1p(drag * launch * row["bullet_life"]) / drag
 
 
-GROUPS = ("Performance", "Airframe", "Flight terms", "Stick and nose", "Guns",
+GROUPS = ("Performance", "Airframe", "Flight terms", "Nose", "Guns",
           "Shield, head-on and vision")
 _GRAVITY = lambda: card.GRAVITY  # noqa: E731
 
@@ -279,7 +279,7 @@ def _oswald_scale(oswald: float) -> float:
     return 1.0 / (math.pi * oswald * a.aspect_ratio * a.per_metre * card.INDUCED_DRAG_FACTOR)
 
 
-P, A, T, S, G, H = GROUPS
+P, A, T, N, G, H = GROUPS
 # The design inputs, in the tool's order. To add, remove or swap one, edit this table only (see
 # docs/rewrite/p51d-model.md, "Design inputs"); every card field must be set exactly once.
 DESIGN_INPUTS = (
@@ -319,11 +319,9 @@ DESIGN_INPUTS = (
     scaled("thrust_softmin_exponent", "thrust softness: exponent (low = soft)", T,
            source="design: the value that gave the 165 mph best-climb speed", low=1.0,
            high=64.0, relative=False),
-    scaled("nose_damping", "nose damping", S, low=0.2, high=1.5, relative=False),
-    scaled("corner_nose_frequency", "nose frequency at corner speed", S, kind="angular_rate",
+    scaled("nose_damping", "nose damping", N, low=0.2, high=1.5, relative=False),
+    scaled("corner_nose_frequency", "nose frequency at corner speed", N, kind="angular_rate",
            low=0.3, high=2.0),
-    scaled("fine_stick_fraction", "fine stick", S, unit="of sustained",
-           source="design: half (author 2026-11-24)", low=0.05, high=1.0, relative=False),
     scaled("hit_damage", "hit damage", G, low=0.3, high=3.0),
     scaled("explosive_share", "explosive share", G, low=0.0, high=1.0, relative=False),
     scaled("fire_rate", "fire rate", G, kind="frequency", low=0.3),
@@ -349,7 +347,7 @@ DESIGN_INPUTS = (
     scaled("vision_range", "vision range", H, "vision_range_scale",
            lambda: 1.0 / card.VISION_RANGE, kind="length", low=0.3, high=3.0),
 )
-del P, A, T, S, G, H
+del P, A, T, N, G, H
 
 
 def check_inputs(inputs: tuple[DesignInput, ...]) -> None:
@@ -423,7 +421,7 @@ class RealAircraft:
 # was an input. The drag rise doubles the zero-lift drag at Mach 0.77, exponent 20 (NACA ACR
 # 4K02 Fig. 12, the P-51B propeller off: flat to about M 0.68, then +40% at M 0.735 and +67% at
 # M 0.755). The lift softness 16 (v2's). Guns, damage, shield, the nose and vision are v2's
-# Vizia's; the fine stick is half the sustained level (author 2026-11-24).
+# Vizia's.
 P51D_TOP_SPEED, P51D_BEST_CLIMB = 375.0 * MPH, 3600.0 * FEET_PER_MINUTE  # real m/s
 P51D_VALUES = dict(
     top_speed=to_game(P51D_TOP_SPEED, -1),
@@ -437,7 +435,6 @@ P51D_VALUES = dict(
     thrust_softmin_exponent=2.8304440028908533,
     nose_damping=0.7,
     corner_nose_frequency=11.23144817352295,
-    fine_stick_fraction=0.5,
     hit_damage=21.0,
     explosive_share=0.0,
     fire_rate=30.0,
@@ -1205,13 +1202,10 @@ def envelope(
     return out
 
 
-def stick_levels(row: dict[str, float], config: core.GameConfig | None = None) -> dict[str, float]:
-    """The row's stick levels as fractions of the most lateral acceleration at each speed
-    (core.stick_table, derived from its flight: the sustained level holds energy at the best
-    sustained turn, the fine one is fine_stick_fraction of it): {"fine", "sustained", "full"}."""
-    with torch.no_grad(), _with_row(row) as index:
-        p = core.per_type_constants(config or core.GameConfig(), torch.tensor([index]))
-    return dict(fine=float(p.fine_stick[0]), sustained=float(p.sustained_stick[0]), full=1.0)
+def stick_levels() -> dict[str, float]:
+    """The stick levels as fractions of the most lateral acceleration at each speed (the shared
+    thirds, card.GRADUAL_STICK, MIDDLE_STICK, FULL_STICK): {"gradual", "middle", "full"}."""
+    return dict(gradual=card.GRADUAL_STICK, middle=card.MIDDLE_STICK, full=card.FULL_STICK)
 
 
 def ps_over_rate(grid: dict, rate_axis, rate=None, ps=None):
@@ -1291,7 +1285,7 @@ CARD_TIME_POWERS = dict(
     explosive_share=0, induced_drag_scale=0, stall_angle_scale=0,
     bullet_spread_scale=0, bullet_drag_scale=0, shield_recharge_rate_scale=0,
     shield_recharge_delay_scale=0, head_on_fraction_scale=0, head_on_angle_scale=0,
-    head_on_sharpness=0, fine_stick_fraction=0, vision_range_scale=0,
+    head_on_sharpness=0, vision_range_scale=0,
     critical_speed=-1, drag_rise_exponent=0, separation_drag=0, separation_exponent=0,
     lift_softmin_exponent=0, thrust_softmin_exponent=0, nose_damping=0,
 )

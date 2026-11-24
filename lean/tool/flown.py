@@ -2,7 +2,7 @@
 part of core.step), one ship per slot, no fields, for the design the card holds as type 0
 (inside lean.game.tuning.flying, or the card as it stands). Game units at the card's time scale.
 
-- `achievable_speeds`: per flight condition the doghouse draws (full, sustained and fine stick
+- `achievable_speeds`: per flight condition the doghouse draws (full, middle and gradual stick
   coasting; full stick diving and climbing), the lowest speed at which a ship flown from the
   spawn state actually flies it: the turn it makes (the velocity's direction change per tick)
   within `tolerance` of the quasi-steady rate at that speed and store (the line's value), and
@@ -28,12 +28,12 @@ import torch
 from lean.game import card, core
 
 COAST, DIVE, CLIMB = 0, 1, 2
-STRAIGHT, FINE, SUSTAINED, FULL = 0, 2, 4, 6  # stick indices (card.STICK_LEVELS), one side
+STRAIGHT, GRADUAL, MIDDLE, FULL = 0, 2, 4, 6  # stick indices (card.STICK_LEVELS), one side
 # The doghouse's lines: name -> (stick index, power index).
 CONDITIONS = {
     "full": (FULL, COAST),
-    "sustained": (SUSTAINED, COAST),
-    "fine": (FINE, COAST),
+    "middle": (MIDDLE, COAST),
+    "gradual": (GRADUAL, COAST),
     "dive": (FULL, DIVE),
     "climb": (FULL, CLIMB),
 }
@@ -88,7 +88,7 @@ def achievable_speeds(tolerance: float = TOLERANCE) -> dict[str, float]:
     docstring); inf if never."""
     pairs = [
         (stick, power)
-        for stick in (STRAIGHT, FINE, SUSTAINED, FULL)
+        for stick in (STRAIGHT, GRADUAL, MIDDLE, FULL)
         for power in (COAST, DIVE, CLIMB)
     ]
     bleeds = np.arange(0.0, BLEED_SECONDS + 1e-9, BLEED_STEP)
@@ -146,7 +146,7 @@ def random_search(
     pairs = torch.tensor(
         [
             (stick, power)
-            for stick in (STRAIGHT, FINE, SUSTAINED, FULL)
+            for stick in (STRAIGHT, GRADUAL, MIDDLE, FULL)
             for power in (COAST, DIVE, CLIMB)
         ]
     )
@@ -230,7 +230,7 @@ def critical_points(
       smallest radius (tightest) passed through.
 
     Each point: {speed, rate, radius, mode, stick, fixed_stick_speed}; None where the quasi-steady
-    point is None. A held stick is the game's sustained-stick entry set per ship each tick (a
+    point is None. A held stick is the game's middle-stick entry set per ship each tick (a
     continuous stick; the agent's actions have three levels)."""
     _, _, p = _ships(1)
     energy = float(p.spawn_energy[0])
@@ -262,9 +262,9 @@ def critical_points(
     config, constants, _ = _ships(n)
     h = config.tick_length
     s = _fresh(n, torch.tensor(starts), energy)
-    control = torch.full((n, 1), SUSTAINED)
+    control = torch.full((n, 1), MIDDLE)
     power = torch.full((n, 1), COAST)
-    column = constants.columns["stick_table"][0] + SUSTAINED
+    column = constants.columns["stick_table"][0] + MIDDLE
     base, target, gain = torch.tensor(sticks), torch.tensor(targets), torch.tensor(gains)
     fields = torch.zeros(n, 5, 0)
     speeds, rates = [], []

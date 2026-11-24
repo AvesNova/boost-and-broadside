@@ -19,8 +19,8 @@ in Python only.
 | Key | Action |
 | --- | --- |
 | Left / Right (or A / D) | turn left / right at the full stick level |
-| + Shift | sustained level |
-| + Ctrl | fine level |
+| + Shift | middle level |
+| + Ctrl | gradual level |
 | Up (or W) | dive: power 1, store into speed |
 | Down (or S) | climb: power 2, speed into store |
 | neither | coast |

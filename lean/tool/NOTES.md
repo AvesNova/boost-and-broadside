@@ -79,7 +79,7 @@ server draws with matplotlib (author 2026-11-24: matplotlib is the one charting 
     tightest sustained turn, top speed, best climb, stall speed, and the flown values once
     flown).
   - **Redraw:** above (the slider path's timings).
-- **Only what the game flies is drawn.** Each doghouse line (full, sustained and fine stick
+- **Only what the game flies is drawn.** Each doghouse line (full, middle and gradual stick
   coasting; full stick diving and climbing) starts at the lowest speed at which a ship flown
   in the game actually flies it (`flown.achievable_speeds`): the game's flight tick
   (`core.flight_tick`, the flight of `core.step`), one ship, no fields, from the spawn state
@@ -92,10 +92,11 @@ server draws with matplotlib (author 2026-11-24: matplotlib is the one charting 
   the large stick levels start higher. A random search (8192 ships, 60 s of random 0.2-12 s
   segments) found the same limits to 1.6 m/s (`flown.random_search`; the test runs a smaller one
   against the measurement it makes, so no stored numbers go stale).
-  P-51D with the stick levels as fractions of the top line (2026-11-24), game m/s
-  at 2x (real: half): full stick 115.5, sustained stick 115.3, fine stick 103.4, dive 131.2
+  P-51D with the stick levels as fractions of the top line (2026-11-24, before the fixed thirds:
+  the then-derived levels 0.88 and 0.44 of full, flaps and the old design profile), game m/s
+  at 2x (real: half): full stick 115.5, 0.88 stick 115.3, 0.44 stick 103.4, dive 131.2
   (the store must be below 95%, which needs less total energy), climb 115.5; the stall speed
-  is 90.4. The test's random search (1,024 ships, 40 s) now flies the sustained stick at
+  is 90.4. The test's random search (1,024 ships, 40 s) then flew the 0.88 stick at
   111.4 m/s, 3.9 below this search's start, so its margin is 5 m/s (was 3). The Ps shading stops above the largest stick flown at each speed.
 - **Flown checks.** `flown.critical_points` flies the corner (full stick from above the corner
   speed, the peak once the nose has settled), the best sustained turn (held by the stick that

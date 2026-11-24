@@ -69,7 +69,7 @@ def test_weights_sum_to_one():
 
 def test_disengaged_coasts_at_merge_speed_and_banks_speed_with_the_level_capped():
     """Disengaged (6 gun ranges): at corner speed coast; at 1.3 corner speeds climb, the full
-    stick level folded into the sustained one (above the sustained stick speed no turn is
+    stick level folded into the middle one (above the middle stick speed no turn is
     lost, and a climb at full stick banks nothing)."""
     target = ship(6.0 * GUN, 0.0)
     at_corner = decision(ship(), target)
@@ -160,7 +160,7 @@ def test_merge_and_turning_quadrants():
 
 def test_two_circle_banks_at_the_sustained_level_then_cashes():
     """Turning (both behind each other's 3/9 line), both turning left (two-circle): the energy
-    plan eases to the sustained level and banks above the fight speed (Shaw p. 110); as his
+    plan eases to the middle level and banks above the fight speed (Shaw p. 110); as his
     angular advantage grows toward 90 deg it cashes (less cap, a faster speed target). I fly
     1.44 sustained speeds (0.8 corner speeds on the flight before 2026-11-24's)."""
     rate = C["sustained_rate"]
@@ -192,7 +192,7 @@ def test_one_circle_inside_a_radius_slows_to_the_floor():
 
 def test_defence_is_graded_by_range():
     """He is on my six nose on: inside the defend range a break (full stick, corner speed);
-    two gun ranges out a hard turn at the sustained level (Shaw p. 132)."""
+    two gun ranges out a hard turn at the middle level (Shaw p. 132)."""
     close = decision(ship(speed=0.6), ship(-0.5 * GUN, 20.0, speed=0.9), config=BFM)
     far = decision(ship(speed=0.6), ship(-2.0 * GUN, 20.0, speed=0.9), config=BFM)
     assert weight(far, "defensive") > 0.8
