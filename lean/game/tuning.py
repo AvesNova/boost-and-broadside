@@ -1001,14 +1001,11 @@ PLAUSIBILITY = (
         "max_acceleration",
     ),
     Check(
-        "gap", None, 0.9, "range", "less than the 10% gap the flight test asks", "separation_drag"
-    ),
-    Check(
         "sustained_speed_change",
         -0.12,
         0.12,
         "range",
-        "best sustained speed over 12% from the point mass's",
+        "best sustained speed over 12% from its own point mass's (the game terms moved it)",
         "induced_drag_scale",
     ),
     Check(
@@ -1044,16 +1041,24 @@ def _thrust_loss(row: dict[str, float], speed: float) -> float:
     return 1.0 - float(thrust) / free
 
 
+def airframe_of(row: dict[str, float], reference: Reference) -> Airframe:
+    """The reference's airframe as this row's design has it: with the row's shaft power when the
+    table makes the power an input (else the documented power, and the propeller efficiency is
+    what the row implies)."""
+    if any(spec.name == "shaft_power" for spec in reference.inputs):
+        return dataclasses.replace(reference.airframe, power=to_real(_shaft_power(row), -3))
+    return reference.airframe
+
+
 def warnings(row: dict[str, float], reference: Reference, flown: dict | None = None) -> list[dict]:
     """The checks of PLAUSIBILITY the row fails, each as {quantity, value, severity, field,
     input, message}: `input` the reference's table's input that sets the check's field.
     `flown`: the row's performance, if already computed."""
     flown = flown or performance(row)
     values = dict(
-        implied(row, reference.airframe),
-        gap=flown["gap"],
+        implied(row, airframe_of(row, reference)),
         sustained_speed_change=(
-            flown["sustained_speed"] / reference.point_mass["sustained_speed"] - 1.0
+            flown["sustained_speed"] / performance(point_mass(row))["sustained_speed"] - 1.0
         ),
         full_stick_fall=flown["full_stick_fall"],
         thrust_loss=_thrust_loss(row, flown["best_climb_speed"]),

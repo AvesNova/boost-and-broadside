@@ -299,7 +299,7 @@ def ship(
         numbers = tuning.performance(solved.row)
         return _plain(
             dict(
-                implied=tuning.implied(solved.row, reference.airframe),
+                implied=tuning.implied(solved.row, tuning.airframe_of(solved.row, reference)),
                 warnings=tuning.warnings(solved.row, reference, numbers),
                 row=solved.row,
                 solve=dict(
