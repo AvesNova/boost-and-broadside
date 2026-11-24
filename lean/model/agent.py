@@ -2,8 +2,8 @@
 view, the policy's precision, one step of a network held as a weightless template plus
 weights, the joint action's sample and the carry's reset at an episode start.
 
-lean.learn's rollout (the live policy and the league's networks) and lean.eval's runner both
-act through these; nothing here depends on the learner.
+lean.learn's rollout (the live policy and the league's networks) and lean.eval's runner all
+act through one agent tick (agent_step); nothing here depends on the learner.
 """
 
 import copy
@@ -127,13 +127,46 @@ def network(policy, bf16: bool = True) -> Network:
     return Network(template_, *split_weights(template_, stepper_weights(policy)), bf16)
 
 
-def network_step(
-    network_: Network, view: Obs, carry: Tensor, offset: Tensor, generator
-) -> tuple[Tensor, Tensor]:
-    """One tick of a network on `view` (rows E): its sampled joint actions (E, N) long and its
-    new carry, in the carry's dtype."""
-    with precision(offset.device, network_.bf16):
-        logits, _, new_carry = functional_call(
+class AgentStep(NamedTuple):
+    """One tick of a network agent (agent_step): `joint` the sampled joint actions (E, N) long,
+    `logits` their float32 logits (E, N, JOINT), `value_logits` the critic's logits as the
+    forward returned them, and `carry` the new recurrent carry, in the old carry's dtype."""
+
+    joint: Tensor
+    logits: Tensor
+    value_logits: Tensor
+    carry: Tensor
+
+
+def agent_step(
+    forward, bf16: bool, view: Obs, carry: Tensor, offset: Tensor, generator
+) -> AgentStep:
+    """The one agent tick every caller shares (training's live policy, the league's networks,
+    the evaluation runner's seats): `forward(view, carry, offset)` -> (logits, value_logits,
+    carry), a Policy.step or network_forward, run in the network's precision (`bf16`), then
+    the joint action sampled from the logits."""
+    with precision(offset.device, bf16):
+        logits, value_logits, new_carry = forward(view, carry, offset)
+    logits = logits.float()
+    return AgentStep(
+        sample_joint(logits, generator), logits, value_logits, new_carry.to(carry.dtype)
+    )
+
+
+def network_forward(network_: Network):
+    """The Network's step as a function of (view, carry, offset): its template run with its
+    weights (torch.func.functional_call)."""
+
+    def forward(view: Obs, carry: Tensor, offset: Tensor):
+        return functional_call(
             network_.template, (network_.parameters, network_.buffers), (view, carry, offset)
         )
-    return sample_joint(logits.float(), generator), new_carry.to(carry.dtype)
+
+    return forward
+
+
+def network_step(
+    network_: Network, view: Obs, carry: Tensor, offset: Tensor, generator
+) -> AgentStep:
+    """One tick of a Network on `view` (rows E): agent_step with its weights and precision."""
+    return agent_step(network_forward(network_), network_.bf16, view, carry, offset, generator)

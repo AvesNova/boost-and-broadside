@@ -11,7 +11,14 @@ from lean import game, model, scripted
 from lean.learn import League, LearnConfig, Opponent, collect, make_optimiser, start, update
 from lean.learn.compiled import graphs
 from lean.learn.pool import EMA, FIRST_SNAPSHOT
-from lean.learn.rollout import act, advance, draw_next_episodes, league_actions, slot_actions
+from lean.learn.rollout import (
+    HitLabels,
+    act,
+    advance,
+    draw_next_episodes,
+    league_actions,
+    slot_actions,
+)
 from lean.learn.tests.setting import add_snapshots
 
 pytestmark = pytest.mark.slow
@@ -126,11 +133,9 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
     second_half = torch.compile(advance, fullgraph=True, dynamic=True)
     hit_label = torch.full((2 * 4 * 8 * slots + 1,), -1, dtype=torch.long)  # rows for 4 ticks
     for tick in range(4):  # a game ends on the third tick: re-deals draw members within capacity
-        views, observation, _, joint, _, _, scripted_action, teacher, policy_carry, _, memory = act(
-            config, game_config, policy, opponent, state, carry, None
-        )
-        league_action, opponent_carry = league_actions(
-            config, opponent, views, carry, scripted_action, None, routing
+        decision = act(config, game_config, policy, opponent, state, carry, None)
+        league_move = league_actions(
+            config, opponent, decision.views, carry, decision.scripted.action, None, routing
         )
         state, carry, _ = second_half(
             config,
@@ -139,15 +144,9 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
             opponent,
             state,
             carry,
-            observation,
-            joint,
-            teacher,
-            league_action,
-            opponent_carry,
-            policy_carry,
-            memory,
-            torch.tensor(4 + tick),
-            hit_label,
+            decision,
+            league_move,
+            HitLabels(hit_label, torch.tensor(4 + tick)),
             None,
         )
     rows = torch.bincount(carry.member.clamp(min=0), minlength=league.members)
@@ -161,10 +160,8 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
     carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
     league.prepare(4, carry.slot)
     assert len(league.table.slots) == 4 and league.table.positions.shape[0] == 4 != width
-    views, *_, scripted_action, _, _, _, _ = act(
-        config, game_config, policy, opponent, state, carry, None
-    )
-    league_actions(config, opponent, views, carry, scripted_action, None, routing)
+    decision = act(config, game_config, policy, opponent, state, carry, None)
+    league_actions(config, opponent, decision.views, carry, decision.scripted.action, None, routing)
     assert torch._dynamo.utils.counters["stats"]["unique_graphs"] == compiles
 
 
@@ -191,11 +188,9 @@ def test_the_first_league_networks_do_not_recompile_the_tick():
     def tick(state, carry, row):
         deals = draw_next_episodes(config, game_config, policy, opponent, 8, slots, None, "cpu")
         carry = dataclasses.replace(carry, next_episodes=deals)
-        views, observation, _, joint, _, _, scripted_action, teacher, policy_carry, _, memory = act(
-            config, game_config, policy, opponent, state, carry, None
-        )
-        league_action, opponent_carry = league_actions(
-            config, opponent, views, carry, scripted_action, None, routing
+        decision = act(config, game_config, policy, opponent, state, carry, None)
+        league_move = league_actions(
+            config, opponent, decision.views, carry, decision.scripted.action, None, routing
         )
         state, carry, _ = second_half(
             config,
@@ -204,15 +199,9 @@ def test_the_first_league_networks_do_not_recompile_the_tick():
             opponent,
             state,
             carry,
-            observation,
-            joint,
-            teacher,
-            league_action,
-            opponent_carry,
-            policy_carry,
-            memory,
-            torch.tensor(row),
-            hit_label,
+            decision,
+            league_move,
+            HitLabels(hit_label, torch.tensor(row)),
             None,
         )
         return state, carry

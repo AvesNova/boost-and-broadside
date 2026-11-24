@@ -1,5 +1,5 @@
 """The sandbox world, without any drawing: the player (slot 0, team 0) and an optional opponent
-(slot 1, team 1), stepped by lean.game.core.step at batch size 1 on the CPU. The opponent is
+(slot 1, team 1), stepped by lean.game.core.tick at batch size 1 on the CPU. The opponent is
 the scripted opponent (the yardstick, its memory carried from tick to tick as everywhere
 else) or the chaser.
 
@@ -167,8 +167,7 @@ class World:
         else:
             action = scripted.chaser_act(self.scripted, self.state, team=1)
         action[0, 0] = torch.tensor([stick, power, int(fire)])
-        noise = core.draw_noise(self.config, 1, 2, self.generator, "cpu")
-        self.state, out = core.step(self.config, self.state, action, noise)
+        self.state, out = core.tick(self.config, self.state, action, self.generator)
         s = self.state
         self.tick += 1
         if bool(out.died[0, 0]):

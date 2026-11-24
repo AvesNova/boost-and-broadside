@@ -10,10 +10,11 @@ Seats: in one call, seat A is either one network for every game or a scripted ag
 (an index into `scripted`, a table of full parameter vectors, lean.scripted.parameters.vector),
 and seat B the same. The scripted agent runs once per tick for every ship with every
 parameter row as a per-ship tensor (rows_of), so new vectors never compile a new graph. A
-network runs on all E environments from its seat's team view as in training
-(lean.model.agent.network_step: the weights are inputs, so another network of the same
+network runs on all E environments from its seat's team view through the agent tick training
+uses (lean.model.agent.network_step: the weights are inputs, so another network of the same
 architecture is new data too, and the precision is the network's own); each game draws its
-own position offset (as in training).
+own position offset (as in training). The game half of the tick is lean.game.tick, also
+training's and the sandbox's.
 
 Deals are drawn once per segment (`segment` ticks) for the next E games of the queue, and
 the host reads two numbers per segment (games taken, slots busy); nothing is read in a tick.
@@ -133,8 +134,8 @@ def network_moves(
     environment, and its new carry."""
     envs = seat_team.shape[0]
     view = seat_view(views, torch.arange(envs, device=seat_team.device), seat_team)
-    joint, carry = network_step(network_, view, carry, offset, None)
-    return split_joint(joint), carry
+    step = network_step(network_, view, carry, offset, None)
+    return split_joint(step.joint), step.carry
 
 
 def tick(
@@ -184,9 +185,8 @@ def tick(
             moves, carry_b = network_moves(network_b, 1 - side, views, carry_b, slots.offset_b)
             action = torch.where(seat_a[..., None], action, moves)
 
-    noise = game.draw_noise(game_config, envs, ships, None, device)
     start_state = state
-    state, out = game.step(game_config, state, action, noise)
+    state, out = game.tick(game_config, state, action, None)
     sums = slots.style + style_counters.tick_sums(
         start_state, seat_a, playing, start_state.pending[..., 1], state.fired, out.hit_damage
     )
