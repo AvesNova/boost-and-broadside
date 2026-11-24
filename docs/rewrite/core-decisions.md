@@ -576,6 +576,16 @@ League (section 8)
 - Physical-plausibility warnings (implied e, C_D0, CLmax, propeller efficiency, ...) shown,
   not enforced; the tool lists the implied physical quantities and the solved coefficients.
 
+## Design profiles (author 2026-11-24 evening)
+
+- Design-input sets are named profiles (tables); "documents" stays the card's default.
+- "Performance points" profile: g limit, corner speed, top level speed, best climb, best
+  sustained speed, and the gap (tightest sustained speed / best sustained speed); best
+  sustained rate and tightest speed are readouts. Corner rate dropped (fixed by g limit and
+  corner speed). The original six (with best sustained rate, no climb) were ill-conditioned
+  (335): speeds and sustained turns depend only on power-to-drag ratios, so a climb input is
+  needed to set the level.
+
 ## Proposals, not decided
 
 
