@@ -225,14 +225,21 @@ def p51d_flown():
 
 
 def test_the_p51d_lines_start_where_the_game_flies_them(p51d_flown):
-    """The lowest speeds the game flies each line (flown.achievable_speeds, game m/s at 2x),
-    above the stall speed; recorded in lean/tool/NOTES.md."""
-    lowest = p51d_flown[0]
-    for name, speed in dict(
-        full=110.7, sustained=108.6, fine=97.0, dive=132.0, climb=110.5
-    ).items():
-        assert lowest[name] == pytest.approx(speed, abs=1.5), name
-    assert min(lowest.values()) > tuning.performance(tuning.row_of("p51d"))["stall_speed"]
+    """The lowest speeds the game flies each line (flown.achievable_speeds, measured here on the
+    card as it stands, no stored numbers): every line is flown somewhere between the stall speed
+    and the corner speed, and an independent random search of control sequences
+    (flown.random_search) flies no line more than 3 m/s below its measured start, so the
+    search the charts use finds the lowest states."""
+    from lean.tool import flown
+
+    lowest, key, _ = p51d_flown
+    stall = tuning.performance(tuning.row_of("p51d"))["stall_speed"]
+    for name, speed in lowest.items():
+        assert stall < speed < key["corner_speed"], name
+    with tuning.flying(tuning.row_of("p51d")):
+        searched = flown.random_search(ships=1024, seconds=40.0, seed=1)
+    for name, speed in searched.items():
+        assert speed >= lowest[name] - 3.0, (name, speed, lowest[name])
 
 
 def test_the_flown_points_agree_with_the_quasi_steady_ones(p51d_flown):

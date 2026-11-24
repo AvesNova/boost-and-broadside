@@ -237,8 +237,8 @@ The P-51D's doghouse, its card row (game terms on, flaps), drawn from `tuning.en
 units speeds, turn rates and Ps are halved; radii and loads are unchanged. Marks: the corner
 (circle), the best sustained turn (square), the tightest sustained turn (triangle), each with a
 small hollow marker where the game flies it (`lean.tool.flown`). Each line starts at the
-lowest speed the game flies it (game m/s: full stick 110.7, sustained 108.6, fine 97.0, dive
-132.0, climb 110.5; the stall speed is 90.4), nothing below; how they were found:
+lowest speed the game flies it (game m/s: full stick 109.9, sustained 105.8, fine 104.0, dive
+132.0, climb 109.8; the stall speed is 90.4), nothing below; how they were found:
 `lean/tool/NOTES.md`.
 
 | Real units (1x) | Game units (2x) |
