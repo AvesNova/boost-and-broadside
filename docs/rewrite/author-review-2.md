@@ -2,8 +2,9 @@
 
 Everything since the first review (`author-review.md`, gone through on the evening of
 2026-11-23) that needs your check: decisions, the judgement calls made for you, and what was
-done. Written from `core` at 45415027. Numbers are copied from the docs named beside them; none
-are new.
+done. Written from `core` at 45415027; updated on the evening of 2026-11-24 (section 2
+rewritten for the day's flight and design work, S1's status, the order below). Numbers are
+copied from the docs named beside them; none are new.
 
 ## How to use it
 
@@ -21,18 +22,20 @@ are new.
 
 ## The decisions that matter most, in order
 
-1. **S1** Confirm BFM-CMA2 as yardstick and teacher after flying it. Blocks: the clock
-   measurement, the BC dry run.
-2. **S2** Lead turn and yo-yo: delete or keep. Blocks: BFM-CMA2's final vector.
-3. **L1** Re-measure value supports, next-state ranges and hit shares on today's game.
+1. **F1** Fly the simplified P-51D (tonight's model and stick levels). Blocks: F3, L1, the
+   clock measurement.
+2. **S1** Confirm BFM-CMA2 as yardstick and teacher after flying it, with **F3** (a short
+   re-check under the new stick levels). Blocks: the clock measurement, the BC dry run.
+3. **S2** Lead turn and yo-yo: delete or keep. Blocks: BFM-CMA2's final vector.
+4. **L1** Re-measure value supports, next-state ranges and hit shares on today's game.
    Blocks: the BC dry run.
-4. **L2** The teacher term's schedule and its 0.45 gate. Blocks: reading the RL dry run.
-5. **V3** One number to explain before quoting it (collect 2.5x faster at parity). Blocks:
+5. **L2** The teacher term's schedule and its 0.45 gate. Blocks: reading the RL dry run.
+6. **V3** One number to explain before quoting it (collect 2.5x faster at parity). Blocks:
    the dry runs' speed headline.
-6. **S4** Freeze the 16 rows flat in skill and behaviour. Blocks: the persona arm, the next
+7. **S4** Freeze the 16 rows flat in skill and behaviour. Blocks: the persona arm, the next
    search.
-7. **V1** Confirm the compile budget. Blocks: the tripwire as a hard check.
-8. **S7** "Spending early wins": a balance question or the game's character? Blocks: nothing
+8. **V1** Confirm the compile budget. Blocks: the tripwire as a hard check.
+9. **S7** "Spending early wins": a balance question or the game's character? Blocks: nothing
    now; it shapes what BC learns.
 
 ---
@@ -44,8 +47,8 @@ are new.
 **S1. BFM-CMA2 as the yardstick and BC teacher (confirm after flying)**
 
 - **What.** Provisional since about 12:30, pending your flying and the caveats below. It is
-  being made the code default in parallel (today `lean/scripted/parameters.py` still holds
-  BFM-default).
+  the code default since 12:28 (BFM-default kept as `BFM_DEFAULT_2026_11_24`). Its numbers
+  below predate tonight's stick levels (see F3).
 - **Evidence** (screening, "CMA-ES round 2"; same code, fresh store, 9,216 games each):
   - Skill: BFM-CMA2 0.649, BFM-CMA1 0.623, BFM-default 0.529 (each +- 0.005).
   - Head to head against BFM-default: 0.625 (CMA1 0.591).
@@ -259,81 +262,116 @@ Power rule and memory (step S, notes):
 
 ## 2. Game, flight and aircraft
 
+Rewritten on the evening of 2026-11-24. Since the first version, the flight model and the ship
+design system were reworked with you during the day (`core-decisions.md`: "Stick levels", "Ship
+design", "Design profiles", and tonight's entry). The P-51D figures for the new model come from
+the simplification merge (in progress, ETA about 21:45) and are added to F1 when it lands.
+
 ### Decisions for you
 
-**F1. The P-51D's corner rate is 8% under its pure physics**
+**F1. Fly the simplified P-51D**
 
-- **What.** The corner speed is exact (286.1 mph). The corner rate is 32.2 deg/s against
-  the point mass's 35.0, because the soft minimum of lift against the g limit (exponent 16)
-  keeps full stick below the hard limit near the corner (`p51d-model.md`).
-- **Options.**
-  - (a) Accept.
-  - (b) A nominal g limit above 8. The soft minimum then reaches above 8 g at high speed.
-  - (c) A harder soft minimum (less smooth).
-- **Recommendation.** (a). You set the g limit at 8, and smoothness wherever it is free was
-  decided. The best sustained rate (18.99 deg/s), top speed (375 mph) and climb (3,600
-  ft/min) are matched exactly.
-- **Blocks.** Nothing. Settle it before L1's re-measurement, which reads the final row.
+- **What.** Tonight's model, being merged now:
+  - Design inputs: stall speed, g limit, top level speed, best climb, span efficiency e 0.85,
+    separation drag 0.3 at exponent 8 (a gentle rise near max lift, not a wall). Only the
+    zero-lift drag and the power are solved.
+  - Readouts: best-climb speed, best sustained turn, corner, gap. There is no gap target and
+    no hidden sustained-rate target any more.
+  - Flaps removed. Thrust lapse tried and removed.
+  - Stick levels gradual 1/3, middle 2/3, full 1. Keys: A or D middle, Shift full, Ctrl
+    gradual.
+- **Evidence.** The trial version (separation off, 20:03) flew 19.45 deg/s at 166 mph, with a
+  best-climb speed of 168 mph as a readout. Your reference chart (forum reconstruction) shows
+  about 19.7 deg/s over 165-190 mph. The doghouse-shape investigation (19:25) explains why a
+  propeller aircraft's best sustained turn sits on the lift line.
+- **Blocks.** F3, L1 (reads the final row), the clock measurement.
 
-Also to check by flying (no decision unless it feels wrong): the automatic flaps. The tightest
-sustained turn is 202 m at 136.7 mph against the best rate's 165.5 mph, a ratio of 0.826 (the
-test's limit is 0.90). The flap values are listed below.
+**F2. The 8 g limit is above the structure's 6.6 g at this mass**
+
+- **What.** A plausibility warning fires at the default: the forum rule (64,000 lb-g at
+  9,760 lb) gives 6.6 g. You set 8 g as a game choice.
+- **Options.** (a) Keep 8 g and the warning. (b) Lower it towards 6.6 g.
+- **Recommendation.** (a): it is a game choice, and the warning only reports it.
+- **Blocks.** Nothing.
+
+**F3. The scripted agents under the new stick levels**
+
+- **What.** BFM-CMA2 (the provisional yardstick) and the other BFM vectors were tuned when
+  "sustained" was derived through the best sustained point. Their turn levels and the speed
+  that caps them (`middle_stick_speed`) move with the thirds.
+- **Options.** (a) One short confirmation run after the merge: BFM-CMA2 against BFM-default
+  and the personas under the new levels (round 1's took 4.8 min of GPU). (b) Re-run CMA-ES.
+  (c) Nothing until the clock measurement.
+- **Recommendation.** (a). (b) only if the ranking changes.
+- **Blocks.** S1's confirmation, the clock measurement.
+
+**F4. The corner rate under the soft corner**
+
+- **What.** The soft minimum of lift against the g limit (exponent 16) keeps full stick a few
+  percent below the hard limit near the corner (8% at the old model: 32.2 against 35.0
+  deg/s). It will be re-measured on the new row.
+- **Options.** (a) Accept. (b) A harder soft minimum (less smooth).
+- **Recommendation.** (a).
+- **Blocks.** Nothing.
 
 ### Judgement calls made for you
 
-P-51D (A1, notes):
-- Wing 21.67 m^2 (NACA), C_Lmax 1.6 (AAF power-on turn value), AR 5.83, **Oswald e 0.8
-  assumed**. C_D0 and propeller efficiency refitted to 375 mph and 3,600 ft/min.
-- The sustained-turn target is the referenced airframe's own point mass (18.99 deg/s at
-  163.3 mph), not October's 18.6 nor set 2's 19.8.
-- The solver solves three coefficients on three targets. The best sustained speed is checked,
-  not solved: 165.5 against 163.3 mph (+1.3%).
-- **Separation drag 0.1, not v2's 1.0.** At 1.0 the best sustained speed moves +22% and the
-  solve needs e 1.28.
+P-51D:
+- Wing 21.67 m^2 (NACA), C_Lmax 1.6 (AAF power-on turn value), AR 5.83.
+- **Separation 0.3 at exponent 8**: about +30% lift-dependent drag at max lift, rising from
+  about 0.8 of max lift. "A little, physically realistic" was your brief; the number is mine.
+  It is a slider.
+- Thrust softness 2.83, the value that gave the flight test's 165 mph best-climb speed before
+  that speed became a readout.
 - Drag rise: doubling at M 0.77 with exponent 20 (fitted by eye to NACA ACR 4K02); invisible
-  at game speeds. Thrust softness 8.
-- **Flaps (a game choice; the P-51D had no combat flaps):** +15% maximum lift below 1.3 x
-  stall, clean by 1.6 x stall, drag 0.2 (Delta C_L)^2 beyond the clean maximum. Gentler
-  fades gave no clear radius minimum; ending at 1.8 x stall moved the best rate onto the
-  flaps.
-- Accepted with the flaps: the maximum instantaneous rate is nearly flat (a 0.6% dip) from
-  1.4 to 1.5 x stall while they retract.
-- stall_speed (spawns, scripted references, flap reference) stays the clean wing's: 90.4 m/s
-  game. With the flaps out it is 84.3 m/s.
-- The P-51D's guns, shield and nose values are Vizia's (`tuning.GAME_FIELDS`). G1 removed
-  Vizia, Yongma and Jujak. Vizia can return as a tuning-route row if you want a reference.
+  at game speeds.
+- The drag check's proposals are superseded. C_D0 and the propeller efficiency are now solved
+  from the top speed and climb, and e is your 0.85. Still open in `p51d-drag-check.md`, not
+  acted on: sea-level climb power 1,660-1,780 hp (1,730 best supported), and a
+  speed-dependent propeller efficiency.
+- The guns, shield and nose values are Vizia's (`tuning.GAME_FIELDS`).
 
 Game rules (G2, notes):
 - **Spawn edge rule:** within 1,000 m of the boundary, an outward spawn heading is mirrored
   in the tangent. Both spawn rules use it.
 - "Mixed" keeps v2's 0.85 R disc. "Sides" is a half disc of 0.80 R per team, its flat edge
   0.05 R (210 m) from the dividing line, noses within 15 deg of the axis.
-- **Training spawn speed** runs from the stall speed to the top level speed (93 and 335 m/s
-  at G2; the code reads the derived stall speed, 90.4 m/s since A1). The one-eighth
+- **Training spawn speed** runs from the stall speed to the top level speed. The one-eighth
   standard spawn is a per-environment coin (one eighth in expectation, not exact).
 - Clock tie-break compares total shield in points; a lead within 1e-5 counts as equal.
-- Pending action: a 42-way index (42 = none), read by the model as a one-hot (an embedding
-  since M).
+- Pending action: a 42-way index (42 = none), read by the model as an embedding.
 - Evaluation forces the training spawn off.
 - Feature scales: speed and velocity symlog over 200 m/s, nose rate symlog over 1 rad/s,
-  shield over 100. The angle of attack's cos and sin are kept although they repeat the angle.
-- The sandbox flies the real game, fog and fields included: the opponent sees you only within
-  1,000 m (or when you fire or are hit). For pure flight: `--set fog=False --set
-  field_count=0`.
-- The sandbox's opponent is the scripted agent by default (`--opponent chaser` for the old
-  chaser, which stays memoryless as a test floor).
+  shield over 100.
+- The sandbox flies the real game, fog and fields included (`--set fog=False --set
+  field_count=0` for pure flight). Its opponent is the scripted agent by default.
 
 ### Done, for information
 
-- G1: the core game is the only game; v2's flight and damage models removed; P-51D the only
-  row.
-- G2: clock tie-break, spawn rules, training spawn, one-tick action delay, x/R and y/R
-  dropped, measured scales.
-- A1: the P-51D through the tuning route with the game terms on, plus automatic flaps.
-  Step 1,557 to 1,625 operations.
-- Engine at war emergency power and the P-51D as the only ship (decided). The Fw 190, Bf 109
-  and Spitfire are tabled. `aircraft-references.md` holds their data.
-- The committed doghouse PNGs predate later flight changes: re-render when convenient.
+- G1, G2: the core game is the only game; P-51D the only row; clock tie-break, spawn rules,
+  training spawn, one-tick action delay.
+- Full stick is exactly the envelope's top line (no blending tax); only the true corner is
+  soft.
+- Ship design (option C): one `design_row` gives the card and the tool. The card row is
+  derived at load from the design inputs and cached. Plausibility warnings, implied physics
+  and solved coefficients are shown in the tool.
+- Design profiles were tried (documents, performance points), then reduced to one table
+  tonight. The table makes an input swap a few lines.
+- Doghouse-shape investigation (`doghouse-shape-investigation.md`): the old separation wall
+  made the Ps contours run along the lift line. With a parabolic polar, a propeller cannot
+  produce a gap. A jet-like thrust lapse only opens a gap with a draggy, low-e wing (measured
+  tonight, then removed).
+- Web tool:
+  - matplotlib charts drawn by the server;
+  - a legend with line samples;
+  - lines only where the game flies them;
+  - flown checks of the critical points;
+  - three unit systems;
+  - presets (save, load, delete; they store the solved row);
+  - a warm-started solve (0.1-0.4 s);
+  - a progress line, fail-fast with the unmet inputs named, and cancellation (sliders,
+    reset, Ctrl-C).
+- The committed doghouse PNGs predate tonight's model: re-render after the merge.
 
 ---
 
@@ -603,8 +641,7 @@ Web tool (W):
 
 ## What is next, after your decisions
 
-1. BFM-CMA2 (or your choice) as the code default, with S2's change. In progress in
-   parallel.
+1. S2's change to BFM-CMA2 (or your choice), then F3's re-check under the new stick levels.
 2. **Clock measurement (X).** Scripted against scripted wipe times in 4v4 elimination; set
    the clock so about 80% of games end before it. Context: the skill games averaged 1,252
    to 1,344 ticks against today's 5,400-tick clock (screening, "Style").
@@ -614,7 +651,7 @@ Web tool (W):
    - `scripted/NOTES.md` says "the yardstick is still the weaker of the two agents" (Old is
      gone);
    - morning-notes' older entries use the old names;
-   - the doghouse PNGs.
+   - the doghouse PNGs (after tonight's merge).
 6. BC dry run.
 7. RL dry run. Then decide L2 (the teacher gate) and whether the KL warning should become a
    stop (if it fires routinely).
