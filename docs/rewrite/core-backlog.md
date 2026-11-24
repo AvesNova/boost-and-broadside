@@ -114,3 +114,4 @@ screening, with D alongside -> short CMA-ES -> yardstick choice (author) -> X ->
 BC dry run -> RL dry run -> optional second R. A2, A3 and C tabled as future work.
 - 2026-11-24 ~05:45: screening (GPU) and D (notes, CPU) running in parallel; next a short CMA-ES, then stop for the author's yardstick choice.
 - 2026-11-24 ~09:00 (author): review of the lead turn and yo-yo implementation (timing is critical), and simple per-game style counters in the evaluation runner (one-circle vs two-circle share, store, speed, firing, range at hits), running in parallel. The yardstick choice is still open.
+- Queued after the lead-turn/yo-yo review (author 2026-11-24): CMA-ES round 2 from the round-1 candidate, all ten rows, plan_threshold widened down to about -0.75 and nose_tail down to about 0.25 R_st (not below a usable gun pass), smaller initial step, same robustness checks, about 30-45 min GPU; then the author chooses among the current yardstick, round 1 and round 2.
