@@ -1,4 +1,4 @@
-"""The tool's units: one conversion module, round trips, the endpoints, the sliders' handles."""
+"""The tool's units: one conversion module, round trips, the endpoints, the sliders' kinds."""
 
 import math
 

@@ -1,5 +1,6 @@
 """The web tool: the envelope function matches the game's quasi-steady maths, the server answers
-the envelope and ship endpoints and a design change, the sliders are the design inputs, and the sandbox socket advances a World."""
+the envelope and ship endpoints and a design change, the sliders are the design inputs, saved
+presets keep their row, and the sandbox socket advances a World."""
 
 import math
 

@@ -238,8 +238,8 @@ function readouts() {
     ["tightest sustained radius / at", key.tightest_sustained_radius === null ? "none"
       : `${shown("length", key.tightest_sustained_radius)} / ${speed(key.tightest_sustained_speed)}` +
         (tight ? ` (flown ${shown("length", tight.radius)} / ${speed(tight.speed)})` : "")],
-    ["speed gap (tightest - best rate)", key.best_sustained_speed === null ? "-"
-      : speed(key.tightest_sustained_speed - key.best_sustained_speed)],
+    ["the gap (tightest / best-rate speed)", key.best_sustained_speed === null ? "-"
+      : (key.tightest_sustained_speed / key.best_sustained_speed).toFixed(3)],
     ["top speed", speed(key.top_speed)],
     ["best climb (Ps) / at", `${shown("climb", key.best_climb, $("units").value === "real_imperial" ? 0 : 1)} / ${speed(key.best_climb_speed)}`],
     ["stall speed (1 g)", speed(key.stall_speed)],

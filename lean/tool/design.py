@@ -35,7 +35,8 @@ def inputs(preset: str) -> list[dict]:
     out = []
     for spec in tuning.DESIGN_INPUTS:
         value = reference.design[spec.name]
-        low, high = (spec.low * value, spec.high * value) if spec.relative else (spec.low, spec.high)
+        scale = value if spec.relative else 1.0
+        low, high = spec.low * scale, spec.high * scale
         out.append(dict(
             name=spec.name, label=spec.label, unit=spec.unit, kind=spec.kind, group=spec.group,
             method=spec.method, sets=spec.sets, source=spec.source,
@@ -49,7 +50,7 @@ def presets() -> dict:
     return _plain({name: dict(inputs=inputs(name)) for name in card.TYPE_NAMES})
 
 
-def solve(preset: str, values: dict[str, float] | None = None, fixed: dict | None = None) -> tuning.Solved:
+def solve(preset: str, values: dict | None = None, fixed: dict | None = None) -> tuning.Solved:
     """The preset's design with the inputs `values` moved, solved (tuning.design_row, fast path
     from the preset's row); the preset's own row, unsolved, when nothing moves; `fixed` (a saved
     card row) as it is. Unknown names raise ValueError; a solve that does not converge raises
@@ -72,14 +73,16 @@ def solve(preset: str, values: dict[str, float] | None = None, fixed: dict | Non
         if len(_SOLVED) > 64:
             _SOLVED.clear()
         _SOLVED[key] = (
-            tuning.design_row(tuning.reference(preset), changed, start=PRESET_ROWS[preset], fast=True)
+            tuning.design_row(
+                tuning.reference(preset), changed, start=PRESET_ROWS[preset], fast=True
+            )
             if changed
             else tuning.Solved(PRESET_ROWS[preset], 0.0, 0, None)
         )
     return _SOLVED[key]
 
 
-def build_row(preset: str, values: dict[str, float] | None = None, fixed: dict | None = None) -> dict[str, float]:
+def build_row(preset: str, values: dict | None = None, fixed: dict | None = None) -> dict:
     return solve(preset, values, fixed).row
 
 
@@ -265,7 +268,7 @@ def _png(figure) -> bytes:
     return buffer.getvalue()
 
 
-def doghouse_png(preset: str, values, factor: float, system: str = "game", fixed: dict | None = None) -> bytes:
+def doghouse_png(preset, values, factor: float, system: str = "game", fixed=None) -> bytes:
     """The doghouse of the tuned design as a PNG, drawn by the committed charts' code, in the
     units system (lean.tool.units: game, real_metric, real_imperial)."""
     chart = _chart()
@@ -281,7 +284,7 @@ def doghouse_png(preset: str, values, factor: float, system: str = "game", fixed
             return _png(figure)
 
 
-def sustained_png(preset: str, values, factor: float, system: str = "game", fixed: dict | None = None) -> bytes:
+def sustained_png(preset, values, factor: float, system: str = "game", fixed=None) -> bytes:
     """The sustained turn (rate and radius against speed) of the tuned design and of the preset
     (dotted), as a PNG in the doghouse's style."""
     chart = _chart()

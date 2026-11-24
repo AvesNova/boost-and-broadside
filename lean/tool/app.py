@@ -57,7 +57,8 @@ SAVED = Path("/home/vizia/avesnova/boost-and-broadside/data/tool-presets")
 
 
 class SavedPreset(BaseModel):
-    """A named state of the Ships tab: the base preset, the inputs moved, the time scale and units."""
+    """A named state of the Ships tab: the base preset, the inputs moved, the time scale and
+    the units."""
 
     name: str
     state: dict
@@ -187,7 +188,8 @@ def _receive(connection, process):
 
 @app.websocket("/api/sandbox")
 async def sandbox(websocket: WebSocket):
-    """The first message {preset, values, fixed?, time_scale, opponent, ticks?} starts a session; then
+    """The first message {preset, values, fixed?, time_scale, opponent, ticks?} starts a session;
+    then
     {side, level, power, fire} (the held controls), {reset: true} and {opponent: bool} go to the
     World, and every tick comes back as a frame (lean.tool.session.frame)."""
     await websocket.accept()
@@ -196,7 +198,10 @@ async def sandbox(websocket: WebSocket):
         start = await websocket.receive_json()
         try:
             row = await run_in_threadpool(
-                design.build_row, start.get("preset", "p51d"), start.get("values"), start.get("fixed")
+                design.build_row,
+                start.get("preset", "p51d"),
+                start.get("values"),
+                start.get("fixed"),
             )
         except UNSOLVABLE as error:
             await websocket.send_json({"type": "error", "message": str(error)})

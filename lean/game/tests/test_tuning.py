@@ -76,7 +76,8 @@ def test_card_rows_fly_their_reference_design(p51d):
 @pytest.mark.parametrize(
     "change",
     [
-        dict(stall_speed=0.97, g_limit=7.5, top_speed=1.03, best_climb=1.05, sustained_rate=1.05, gap=0.86),
+        dict(stall_speed=0.97, g_limit=7.5, top_speed=1.03, best_climb=1.05, sustained_rate=1.05,
+             gap=0.86),
         dict(stall_speed=0.9, g_limit=7.0, top_speed=0.93, sustained_rate=1.10, gap=0.87),
         dict(best_climb_speed=1.05, gap=0.83, muzzle_speed=1.2),
         dict(flap_lift=0.15),
@@ -122,7 +123,9 @@ def test_the_measures_are_smooth_and_grid_free():
     slopes = []
     for step in (1e-5, 1e-3):
         moved = [
-            tuning.performance({**row, "separation_drag": row["separation_drag"] * math.exp(sign * step)})
+            tuning.performance(
+                {**row, "separation_drag": row["separation_drag"] * math.exp(sign * step)}
+            )
             for sign in (1.0, -1.0)
         ]
         slopes.append(math.log(moved[0]["gap"] / moved[1]["gap"]) / (2.0 * step))
@@ -172,7 +175,8 @@ def test_derived_rows_are_cached_by_their_aircraft_and_the_source(tmp_path, monk
     assert len(list(tmp_path.glob("p51d-*.json"))) == 1
     aircraft = tuning.REAL_AIRCRAFT["p51d"]
     key = tuning.row_key(aircraft)
-    assert tuning.row_key(dataclasses.replace(aircraft, best_climb=aircraft.best_climb + 1.0)) != key
+    climbs = dataclasses.replace(aircraft, best_climb=aircraft.best_climb + 1.0)
+    assert tuning.row_key(climbs) != key
     other = dataclasses.replace(aircraft, values={**aircraft.values, "gap": 0.8})
     assert tuning.row_key(other) != key
     source = tmp_path / "source.py"

@@ -46,8 +46,8 @@ import json
 import math
 import os
 import threading
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 from types import SimpleNamespace
 
 import torch
@@ -108,7 +108,8 @@ class Airframe:
 
     def static_thrust(self) -> float:
         """Static thrust (N) by momentum theory: FM P = T^1.5 / sqrt(2 rho A)."""
-        return (FIGURE_OF_MERIT**2 * self.power**2 * 2.0 * AIR_DENSITY * self.propeller_disc) ** (1.0 / 3.0)
+        momentum = FIGURE_OF_MERIT**2 * self.power**2 * 2.0 * AIR_DENSITY * self.propeller_disc
+        return momentum ** (1.0 / 3.0)
 
 
 # The P-51D's data (docs/rewrite/aircraft-references.md, p51d-inputs-sources.md): 4,427 kg and
@@ -248,7 +249,7 @@ def scaled(name, label, group, sets=None, scale=lambda: 1.0, **rest) -> DesignIn
                        lambda value, design: value * scale(), **rest)
 
 
-def _bullet_life(gun_range: float, design: dict[str, float], tick_length: float = 1.0 / 30.0) -> float:
+def _bullet_life(gun_range: float, design: dict, tick_length: float = 1.0 / 30.0) -> float:
     """The bullet's life in whole ticks: long enough to fly the gun range when fired at the top
     speed against the bullet drag (v2's weapons.combat_card)."""
     drag = design["bullet_drag"]
@@ -344,7 +345,8 @@ def check_inputs(inputs: tuple[DesignInput, ...]) -> None:
     """A design-input table must set every card field exactly once, with unique names."""
     fields = sorted(spec.sets for spec in inputs)
     if fields != sorted(card.CARD_FIELDS):
-        raise ValueError(f"the inputs do not set each card field once: {sorted(set(fields) ^ set(card.CARD_FIELDS))}")
+        off = sorted(set(fields) ^ set(card.CARD_FIELDS))
+        raise ValueError(f"the inputs do not set each card field once: {off}")
     if len({spec.name for spec in inputs}) != len(inputs):
         raise ValueError("design input names repeat")
 
@@ -390,7 +392,7 @@ class RealAircraft:
 # 1.5 Delta C_L^2 with the flaps fully used). Guns, damage, shield, the nose and vision are v2's
 # Vizia's; the fine stick is half the sustained level (author 2026-11-24).
 P51D_TOP_SPEED, P51D_BEST_CLIMB = 375.0 * MPH, 3600.0 * FEET_PER_MINUTE  # real m/s
-P51D_FLAP_DRAG = 1.5  # Delta C_D per (Delta C_L)^2 of lift beyond the clean maximum, flaps fully used
+P51D_FLAP_DRAG = 1.5  # Delta C_D per (Delta C_L)^2 beyond the clean maximum, flaps fully used
 P51D_VALUES = dict(
     top_speed=to_game(P51D_TOP_SPEED, -1),
     best_climb=to_game(P51D_BEST_CLIMB, -1),
@@ -445,7 +447,8 @@ def reference_of(aircraft: RealAircraft, inputs: tuple = DESIGN_INPUTS) -> Refer
     mass has or flies (its measure: e.g. the stall speed, g limit, static thrust and the best
     sustained rate)."""
     check_inputs(inputs)
-    values = {name: value for name, value in aircraft.values.items() if name in {s.name for s in inputs}}
+    names = {spec.name for spec in inputs}
+    values = {name: value for name, value in aircraft.values.items() if name in names}
     base = {spec.sets: spec.apply(values[spec.name], values)
             for spec in inputs if spec.apply and spec.name in values}
     base = {name: base.get(name, 1.0) for name in card.CARD_FIELDS}  # what the airframe sets
@@ -518,7 +521,8 @@ def design_row(
             return [math.log(spec.measure(trial, numbers) / t) for spec, t in zip(solved, targets)]
 
         if solved:
-            solve = _newton(residual, solve.logs, 1e-5 if fast else 1e-7, broyden=fast, name="design_row")
+            tolerance = 1e-5 if fast else 1e-7
+            solve = _newton(residual, solve.logs, tolerance, broyden=fast, name="design_row")
     row.update({spec.sets: math.exp(x) for spec, x in zip(solved, solve.logs)})
     return Solved(row, solve.residual, solve.iterations, solve.condition)
 
@@ -546,6 +550,7 @@ def implied(row: dict[str, float], airframe: Airframe) -> dict[str, float]:
     a = airframe
     induced = card.INDUCED_DRAG_FACTOR * row["induced_drag_scale"] * a.per_metre
     thrust = to_real(row["static_thrust"], -2) * a.mass  # N
+    structure = a.g_limit * a.g_limit_mass / a.mass  # the structure's g limit at this mass
     return dict(
         max_lift_coefficient=row["max_lift_coefficient"] / a.per_metre,
         zero_lift_drag_coefficient=row["zero_lift_drag"] / a.per_metre,
@@ -553,7 +558,7 @@ def implied(row: dict[str, float], airframe: Airframe) -> dict[str, float]:
         propeller_efficiency=to_real(row["engine_power"], -3) * a.mass / a.power,
         figure_of_merit=math.sqrt(thrust**3 / (2.0 * AIR_DENSITY * a.propeller_disc)) / a.power,
         static_thrust_over_weight=row["static_thrust"] / card.GRAVITY,
-        structural_load=row["max_acceleration"] / card.GRAVITY / (a.g_limit * a.g_limit_mass / a.mass),
+        structural_load=row["max_acceleration"] / card.GRAVITY / structure,
         wing_loading=a.mass / a.wing_area,
         power_loading=a.power / a.mass,
     )
@@ -620,16 +625,20 @@ def warnings(row: dict[str, float], reference: Reference, flown: dict | None = N
     values = dict(
         implied(row, reference.airframe),
         gap=flown["gap"],
-        sustained_speed_change=flown["sustained_speed"] / reference.point_mass["sustained_speed"] - 1.0,
+        sustained_speed_change=(
+            flown["sustained_speed"] / reference.point_mass["sustained_speed"] - 1.0
+        ),
         full_stick_fall=flown["full_stick_fall"],
         thrust_loss=_thrust_loss(row, flown["best_climb_speed"]),
     )
     out = []
     for check in PLAUSIBILITY:
         value = values[check.quantity]
-        if (check.low is not None and value < check.low) or (check.high is not None and value > check.high):
+        below = check.low is not None and value < check.low
+        if below or (check.high is not None and value > check.high):
+            message = f"{check.quantity} {value:.4g}: {check.reason}"
             out.append(dict(quantity=check.quantity, value=value, severity=check.severity,
-                            input=check.input, message=f"{check.quantity} {value:.4g}: {check.reason}"))
+                            input=check.input, message=message))
     return out
 
 
@@ -714,7 +723,7 @@ def load_card() -> dict[str, tuple[float, ...]]:
 # --------------------------------------------------------------------------- Newton
 
 
-def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve") -> SimpleNamespace:
+def _newton(residual, logs, tolerance, iterations=40, broyden=False, name="solve"):
     """Newton in log parameters with a finite-difference Jacobian (v2's solver): `residual(logs)`
     a list of log ratios flown / target, driven below `tolerance`. `broyden`: after the first
     Jacobian, rank-one updates with no new evaluations (the web tool's fast path). The step is a
@@ -845,7 +854,8 @@ def performance(
             stick = _bisect(lambda s: core.quasi_steady(c, speeds, s, 0, energy)[2], zero, one)
             stick = torch.where(flown(speeds, 1.0)[2] >= 0.0, one, stick)
             rate, _, energy_rate = core.quasi_steady(c, speeds, stick, 0, energy)
-            held = (speeds > stall) & (energy_rate > -1e-6) & (flown(speeds, 0.0)[2] >= 0.0) & (rate > 1e-6)
+            straight = flown(speeds, 0.0)[2]
+            held = (speeds > stall) & (energy_rate > -1e-6) & (straight >= 0.0) & (rate > 1e-6)
             return rate, held
 
         def sustained_rate(speeds):
@@ -862,7 +872,8 @@ def performance(
         full = full_rate(speeds)
         out["corner_speed_flown"], out["corner_rate"] = _extremum(full_rate, speeds, full)
         below = full[speeds < out["corner_speed_flown"]]
-        out["full_stick_fall"] = float((torch.cummax(below, 0).values - below).max()) if len(below) else 0.0
+        fall = torch.cummax(below, 0).values - below
+        out["full_stick_fall"] = float(fall.max()) if len(below) else 0.0
         straight = flown(speeds, 0.0)[1]
         top = int(torch.nonzero((speeds > stall) & (straight > 0.0))[-1])
         out["top_speed"] = float(
@@ -883,7 +894,9 @@ def performance(
         gains = torch.nonzero(flown(turning, 1.0)[2] >= 0.0)
         if len(gains) and int(gains[-1]) + 1 < len(turning):
             k = int(gains[-1])
-            departure = _bisect(lambda v: flown(v, 1.0)[2], turning[k : k + 1], turning[k + 1 : k + 2])
+            departure = _bisect(
+                lambda v: flown(v, 1.0)[2], turning[k : k + 1], turning[k + 1 : k + 2]
+            )
             if float(tightness(departure)[0]) > tight:
                 speed, tight = float(departure[0]), float(tightness(departure)[0])
         out["min_radius_speed"], out["min_radius"] = speed, -tight
@@ -894,7 +907,8 @@ def performance(
         out["settled_speed"] = float(settled)
         out["settled_turn_rate"] = float(full_rate(settled)[0])
         stall_speed = torch.tensor([stall], dtype=torch.float64)
-        out["low_speed_acceleration"] = float(flown(stall_speed, 0.0, torch.zeros_like(energy))[1][0])
+        empty = torch.zeros_like(energy)
+        out["low_speed_acceleration"] = float(flown(stall_speed, 0.0, empty)[1][0])
     return out
 
 

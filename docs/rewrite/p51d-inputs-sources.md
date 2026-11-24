@@ -1,55 +1,74 @@
-# P-51D: where each web-tool input comes from
+# P-51D: where each design input comes from
 
-Reference for the web tool's Ships tab (`lean/tool/design.py`), preset `p51d`, as of
-2026-11-24 (branch `core`). One entry per input, in the tool's groups and order. 36 inputs.
+Reference for the ship design inputs (`lean/game/tuning.py` `DESIGN_INPUTS`, the web tool's
+Ships tab), preset `p51d`, as of 2026-11-24 (branch `core`, the design system of
+core-decisions.md "Ship design"). One entry per input, in the table's groups and order: 36
+inputs, one per card field. The tool shows each input's short provenance tag (`source`) beside
+its slider. Each slider starts at the reference value given here.
 
 Units: "game" is the game's 2x time (speeds and rates x2, accelerations x4); "real" is 1x.
 Lengths, per-metre coefficients, angles and loads in g are the same in both.
 
-The game's conditions, for every entry: ISA sea level only (rho 1.225, no altitude, no
-thinner air), the engine always at war emergency power (67 in Hg, 3,000 rpm), one weight
-(4,427 kg / 9,760 lb, no fuel burn), clean, 2x time.
+The game's conditions, for every entry:
+- ISA sea level only (rho 1.225, no altitude, no thinner air);
+- the engine always at war emergency power (67 in Hg, 3,000 rpm);
+- one weight (4,427 kg / 9,760 lb, no fuel burn);
+- clean, at 2x time.
 
-Sources named by short name; full list at the end. "(A)" to "(F)" are the grades of
+Sources are named by short name; the full list is at the end. "(A)" to "(F)" are the grades of
 `aircraft-references.md` (A flight test ... F forum).
 
 ## Summary
 
-**From a reference (1).** Top speed 375 mph (the "cruise" slider): AAF flight test of
-P-51D 44-15342 (A), sea level, 67 in Hg, 9,760 lb, true airspeed.
+How each input is set (`p51d-model.md`, "Design inputs"):
+- **Closed:** the field is given by a closed form.
+- **Solved:** a flown target; `design_row` solves the field it mainly moves so that the row
+  flies it.
+- **Short circuit:** the field itself.
 
-**Derived from references (6).** Stall speed, zero-lift drag, the settled turn rate, the
-low-speed acceleration, and the drag rise (critical speed and exponent). Each is arithmetic
-or a fit on referenced data plus at least one assumption (C_Lmax basis, Oswald e 0.8,
-propeller figure of merit 0.75).
+**From a reference (5).**
+- Top speed 375 mph, best climb 3,600 ft/min and the best-climb speed 165 mph: AAF flight
+  test of P-51D 44-15342 (A), sea level, 67 in Hg, 9,760 lb.
+- Critical Mach and the drag-rise exponent: NACA ACR 4K02 Fig. 12 (A).
 
-**Game choices (7).** g limit 8 (author 2026-11-23); the 1 g dive and zoom trade; the
-separation drag 0.1; thrust softness 8; all three flap inputs.
+**Derived from references (3).** Stall speed (C_Lmax 1.6), static thrust (momentum theory,
+FM 0.75 assumed) and the best sustained turn rate (the point mass, Oswald e 0.8 assumed).
 
-**Copied (20).** Two flight terms from v2's rules, the four stick and nose inputs, eight of
-the gun inputs, all seven shield, head-on and vision inputs: from v2's Vizia via
-`tuning.GAME_FIELDS`. A few of those trace back to P-51D or M2 gun research (muzzle speed,
-fire rate, spread, bullet drag). The rest are v2 game choices or placeholders.
+**Game choices (6).** g limit 8 (author 2026-11-23), the gap 0.85 and the separation exponent
+16 (author 2026-11-24), the 1 g dive and zoom trade, and the three flap inputs (off).
+
+**Copied (20).** The lift softness (v2's 16), the three stick and nose inputs, and eight gun
+inputs. All seven shield, head-on and vision inputs too. They come from v2's Vizia, now in
+design units (`tuning.P51D_VALUES`). A few trace back to P-51D or M2 gun research (muzzle speed,
+fire rate, spread, bullet drag); the rest are v2 game choices or placeholders.
 
 **Guess or builder's default (2).** Stall angle 15.5 deg (v2's estimate; not found in any
-document). Gun range 600 m (the default argument of `tuning.handles_of`).
+document). Gun range 600 m (v2's handles default).
+
+Not inputs, solved or read out:
+- **Solved fields:** zero-lift drag, thrust power, induced drag, separation drag and thrust
+  softness.
+- **Readouts:** the corner speed and rate, every radius, the settled full-stick turn and the
+  low-speed acceleration.
+- **Derived by the game:** the stick levels and the bullet's damage reference speed.
 
 Most important caveats:
-- C_D0 (0.0150) and propeller efficiency (0.82) were fitted together to two test points.
-  Neither number means anything alone.
+- C_D0 (0.0158) and the propeller efficiency (0.859) are fitted, as equivalents, to the flight
+  test's top speed, climb and climb speed with the game terms on. Neither number means
+  anything alone.
 - The test's climb used 1,780 hp, but the model uses the level-flight 1,630 hp for both
   points. The fit absorbs the difference.
-- The "settled full-stick turn rate" and the best sustained turn behind it have no test
-  value. They come from the model.
+- The best sustained turn rate has no test value. It comes from the model.
 - The 8 g limit is a forum figure, tied to an 8,000 lb design weight. At the tested
-  9,760 lb the forum rule gives about 6.6 g.
-- The +15% flaps are a game invention. The manual's stall chart gives about +9% for 20 deg
-  and about +12% for 40 deg of real flap (gear down, IAS).
+  9,760 lb the forum rule gives about 6.6 g. The tool warns about this at the default.
 
-## Behind the sliders (not inputs)
+## Behind the inputs: the reference airframe (`tuning.P51D`)
 
-The tool does not show the airframe data. They set the preset's row: the tool's
-"Performance targets" and "Airframe" values are that row's numbers.
+The tool does not show the airframe data. They make the reference (`tuning.reference_of`): the
+point mass is fitted to the flight test, and the inputs without a documented value take its
+numbers. The tool's implied-physics panel holds the mass, wing area, aspect ratio, shaft power
+and propeller diameter, and reads every row back as C_Lmax, C_D0, e, propeller efficiency and
+figure of merit.
 
 - Mass 4,427 kg (9,760 lb). AAF memo report TSCEP5E-1908 (A). "Combat take-off weight":
   full ammunition, 21 gal oil, 184 gal wing fuel, 25 of 85 gal fuselage fuel. The "clean"
@@ -61,98 +80,25 @@ The tool does not show the airframe data. They set the preset's row: the tool's
 - Aspect ratio 5.83. The October fit's value. NACA gives 5.815 (P-51B) and Loftin 5.86
   (P-51D).
 - C_Lmax, clean: 1.6. Back-solved from an AAF turn calculation (see "stall speed").
-- Oswald e: 0.8. Assumed. The game row's solve moves it to 0.819 equivalent.
+- Oswald e: 0.8. Assumed for the point mass. The game row's solve moves it to 0.965
+  equivalent.
 - Propeller: Hamilton Standard Hydromatic, four blades, Dwg K6523A-24 (the report). The
   3.40 m (11 ft 2 in) diameter is the October fit's figure. It is not in the downloaded
   pages.
 - Static figure of merit 0.75: assumed (`planes.py`).
-- C_D0 and propeller efficiency: fitted (see "zero-lift drag").
+- g limit rated at 8,000 lb (`g_limit_mass`), for the structure's warning.
+- C_D0 and propeller efficiency: fitted (see "top speed").
 
-There is no climb slider. The best climb, 3,600 ft/min (A), is a target of the preset's
-solve. Moving the tool's sliders does not hold it.
-
-## Performance targets
-
-### Cruise (top) speed
-- Game 335.28 m/s; real 167.64 m/s = 375.0 mph.
-- Origin: **reference.** AAF 44-15342, Fig. 3 "Level flight data" and the summary (A).
-  The preset flies it exactly: `fit_point_mass` makes the point mass fly it, and
-  `game_row` holds it with the game terms on.
-- Reference conditions: sea level, true airspeed, 67 in Hg at 3,000 rpm (war emergency),
-  9,760 lb.
-  - "Clean" includes two wing bomb racks.
-  - Oil and coolant flaps on thermostats (coolant 107 C, oil 70 C).
-- Against the game: the same power and weight, at sea level. The game is always at sea
-  level, so the altitude speeds (417 mph at 10,000 ft, 442 mph at 26,000 ft) have no
-  counterpart.
-- Caveats:
-  - The label says "cruise", but the value is the top level speed at full power.
-  - A published cruise speed is at reduced power and usually at altitude. The report's
-    Appendix B gives 323 mph TAS at sea level at 2,700 rpm / 46 in (normal rated), and
-    lower figures at 2,150-2,500 rpm. None of these compares with this slider.
-  - Other sea-level figures: 363-364 mph at military power (A); 368 mph at war emergency
-    from NAA's calculation NA-46-130 at 9,611 lb (B).
-  - The report says its speeds differ from the Tech Order data by about 3% on average.
-  - In the tool this slider sets the engine power (the handles route solves the thrust
-    power to fly it).
-
-### Settled full-stick turn rate
-- Game 0.5972 rad/s (34.2 deg/s); real 0.2986 rad/s = 17.11 deg/s.
-- It settles at game 120.6 m/s (real 60.3 m/s, 134.8 mph). That is coasting, the store
-  half full, flaps out.
-- Origin: **derived.** It is not a target: it is what the preset's row flies
-  (`handles_of`: `performance`'s `settled_turn_rate`).
-- The row was solved to a different turn number: the point mass's best sustained turn,
-  18.99 deg/s at 163 mph, radius 220 m. That is the model's output from the airframe data.
-  No measured value exists.
-- Reference conditions: none. No measured P-51D turn rate, radius or 360-degree time was
-  found (`aircraft-references.md`).
-  - Relative: TAIC 38 says a Zeke 52 gained on the P-51D within one 360 (A, relative).
-  - Simulator: about 15 deg/s at 150 mph IAS, war emergency, 500 ft (Hong 1998, E).
-  - v2's research: 15.7 deg/s (low; simulator and community compilations).
-- Caveats:
-  - This is the settled full-stick turn, not the best sustained turn.
-  - It depends on C_Lmax, e, the game terms and the flaps.
-  - In the tool it sets the induced drag.
-
-### Low-speed acceleration (match switch off by default)
-- Game 14.76 m/s^2; real 3.69 m/s^2 (0.38 g). Straight and level at the stall speed,
-  empty store.
-- Origin: **derived.**
-  - The flown result of the static thrust: momentum theory, (FM^2 P^2 2 rho A)^(1/3),
-    with 1,630 hp, a 3.40 m disc and an assumed FM of 0.75.
-  - That gives 26.4 kN (5.97 m/s^2 real, per kg); the drag at the stall speed takes the
-    rest.
-  - With the switch off (the default) the static thrust stays the preset's and this value
-    is not matched.
-- Reference conditions: none measured.
-  - v2's research estimated 2.73 m/s^2: a point mass at 1.1 x stall at military power,
-    x 0.88 for propeller efficiency.
-  - That is at a different power and speed from this one.
-- Caveats:
-  - A power-limited ship flies the same whatever its static thrust (`handles_row`
-    docstring), so this value barely changes the flight.
-  - FM 0.75 is assumed.
-
-### Dive and zoom trade
-- Game 39.24 m/s^2; real 9.81 m/s^2 (1 g).
-- Origin: **game choice.** The core model trades speed and store at 1 g, "a vertical dive
-  or zoom" (`airframe_row`). v2's Vizia had 0.983 g (placeholders scaled from v2's standard
-  fighter).
-- Reference conditions: not applicable. A real dive or zoom gains or loses speed at
-  g sin(angle) plus thrust minus drag.
-- Caveat: the tool sets the zoom to minus the dive (one trade).
-
-## Airframe
+## Performance
 
 ### Stall speed (1 g)
-- Game 90.44 m/s; real 45.22 m/s = 101.2 mph.
-- With the flaps out the game's 1 g stall is 94.3 mph.
+- Game 90.44 m/s; real 45.22 m/s = 101.2 mph. Closed: the maximum lift coefficient is
+  g / stall^2.
 - Origin: **derived:** sqrt(2 m g / (rho S C_Lmax)), with 4,427 kg, 21.67 m^2,
   rho 1.225 and C_Lmax 1.6.
-- Where C_Lmax 1.6 comes from: back-solved from the AAF "Performance Data on Fighter
+- Where C_Lmax 1.6 comes from: it is back-solved from the AAF "Performance Data on Fighter
   Aircraft" (26 Jul 1944, B/C). That gives a radius of 883 ft at 4 g, 10,000 ft density
-  altitude, P-51B at 9,000 lb, at its "estimated maximum power-on lift coefficient".
+  altitude, for a P-51B at 9,000 lb, at its "estimated maximum power-on lift coefficient".
 - Reference stall figures and their conditions:
   - Pilot's manual AN 01-60JE-1, Fig. 24, p.25 (B): about 88 mph IAS at 7,400 lb, rising
     to about 100.5 mph IAS at 9,800 lb (read off chart). Flaps 0, gear up, no external
@@ -161,76 +107,126 @@ solve. Moving the tool's sliders does not hold it.
       P-51 airplanes due to a change in the airspeed system".
   - Loftin, NASA SP-468 (D): 100 mph at 10,100 lb.
   - NA-46-130 (B): 95.4 mph at 9,071 lb, probably flaps and gear down.
-- Against the game: the game's 101.2 mph is true airspeed at sea level, where IAS is close
-  to TAS apart from the instrument's position error.
+- Against the game: the game's 101.2 mph is true airspeed at sea level. There IAS is close
+  to TAS, apart from the instrument's position error.
 - Caveats:
   - C_Lmax depends on the stall-speed basis. Stall-derived values span 1.50-1.70 with the
-    weight and the IAS error. The preset was 1.50 until 2026-11-24.
-  - A power-on 1 g stall includes slipstream lift. NACA's F6F tests found that the
-    accelerated (turning) value is lower than the power-on 1 g value. The value used here
-    is the AAF's power-on estimate.
-  - In the tool this slider sets the maximum lift coefficient (`g / stall^2`).
+    weight and the IAS error. The tool warns above 1.7.
+  - A power-on 1 g stall includes slipstream lift. NACA's F6F tests found the accelerated
+    (turning) value lower than the power-on 1 g value. The value used here is the AAF's
+    power-on estimate.
 
 ### g limit
-- 8 g, the same in game and real (game 313.92 m/s^2 maximum acceleration).
+- 8 g, the same in game and real (game 313.92 m/s^2 maximum acceleration). Closed: n g.
 - Origin: **game choice** (author, 2026-11-23, core-decisions.md: "P-51D g limit stays 8").
   v2's research had it as "recalled standard figure, not re-checked".
 - Reference conditions:
   - Forum only (F): +8 / -4 g limit, 12 g ultimate, at an 8,000 lb design gross weight.
   - Above 8,000 lb the limit reportedly falls as 64,000 / weight: about 6.6 g at the
-    tested 9,760 lb, about 6.4 g at 10,000 lb.
-  - Sources: ww2aircraft.net thread "P-51B/C/D/K G Limit at 8000lbs"; a DCS forum post
-    quoting a manual.
+    tested 9,760 lb, and about 6.4 g at 10,000 lb.
+  - Sources: the ww2aircraft.net thread "P-51B/C/D/K G Limit at 8000lbs", and a DCS forum
+    post quoting a manual.
   - No primary document was found. The downloaded manual's limitations (Fig. 23) give no
     g limit.
-- Against the game: the game holds 8 g at 9,760 lb, about 20% above the forum's
-  weight-scaled limit.
-- Caveat: the corner speed follows from it: stall x sqrt(8) = 286 mph.
+- Against the game: the game holds 8 g at 9,760 lb, 22% above the forum's weight-scaled
+  limit. The tool shows this as a warning at the default.
+- Caveat: the corner speed follows from it: stall x sqrt(8) = 286 mph (a readout).
 
-### Zero-lift drag
-- 4.506e-5 per metre (game and real): rho S C_D0 / (2 m). C_D0 equivalent 0.01503
-  (game row); the point mass's 0.01504.
-- Origin: **derived (a fit).**
-  - `fit_point_mass` sets C_D0 and propeller efficiency (0.821) so the point mass flies
-    375 mph and 3,600 ft/min at sea level (A).
-  - `game_row` then re-solves zero-lift drag, thrust power and induced drag so the row
-    with the game terms on still flies them (efficiency 0.820 equivalent, e 0.819).
-  - It is re-fitted every time the card is derived.
-- Reference conditions: two test points, both at sea level, war emergency, 9,760 lb.
-  - Top speed: 375 mph true, 1,630 hp.
-  - Climb: 3,600 ft/min at 165 mph IAS (corrected for instrument error), and the climb
-    table gives 1,780 hp.
-  - The model uses 1,630 hp for both.
-- Comparison values:
-  - Loftin: C_D0 0.0163 (D). That is a fit too: from 437 mph at 25,000 ft and 1,490 hp,
-    with an assumed efficiency and e.
-  - NACA ACR 4K02, Figs. 12-13 (A): about 0.021-0.022 measured with the propeller off.
-    P-51B, dives from 25,000-30,000 ft, dusty surface, no Meredith thrust.
+### Top level speed
+- Game 335.28 m/s; real 167.64 m/s = 375.0 mph. Solved, mainly by the zero-lift drag.
+- Origin: **reference.** AAF 44-15342, Fig. 3 "Level flight data" and the summary (A).
+- Reference conditions: sea level, true airspeed, 67 in Hg at 3,000 rpm (war emergency),
+  9,760 lb.
+  - "Clean" includes two wing bomb racks.
+  - The oil and coolant flaps are on thermostats (coolant 107 C, oil 70 C).
+- Against the game: the same power and weight, at sea level. The game is always at sea
+  level, so the altitude speeds (417 mph at 10,000 ft, 442 mph at 26,000 ft) have no
+  counterpart.
+- Other sea-level figures:
+  - 363-364 mph at military power (A);
+  - 368 mph at war emergency, from NAA's calculation NA-46-130 at 9,611 lb (B).
+- The report says its speeds differ from the Tech Order data by about 3% on average.
+- The zero-lift drag: C_D0 0.0158 equivalent (P-51D powered fit 0.0148-0.0163,
+  `p51d-drag-check.md`). Loftin's 0.0163 (D) is a fit too. NACA ACR 4K02 Figs. 12-13 (A)
+  measured about 0.021-0.022 with the propeller off (dusty surface, no Meredith thrust).
+
+### Best climb rate
+- Game 36.58 m/s; real 18.29 m/s = 3,600 ft/min (Ps at 1 g). Solved, mainly by the thrust
+  power.
+- Origin: **reference.** The same test (A): 3,600 ft/min at 165 mph IAS at sea level, with
+  1,780 hp in the climb table (the model uses 1,630 hp).
+- Thrust power: a propeller efficiency of 0.859 equivalent at 1,630 hp. The drag check's
+  efficiency at top speed is 0.85 (0.82-0.885).
+
+### Best-climb speed
+- Game 147.52 m/s; real 73.76 m/s = 165 mph. Solved, mainly by the thrust softness (the
+  soft minimum of thrust against the static thrust).
+- Origin: **reference:** the test's climb speed, 165 mph IAS corrected for instrument
+  error (A; `p51d-drag-check.md` section 1). Test schedules are normally flown near the best
+  speed.
+- The solve gives a softness of 2.83. The soft limit then takes 5.4% of P / v at 165 mph.
+  The tool warns when it takes more than 10%: v2's softness of 2 took about 12%. With the
+  old fixed softness of 8 the climb peaked at 140 mph.
+
+### Best sustained turn rate
+- Game 0.6630 rad/s; real 18.99 deg/s, at 181.6 mph (r 245 m) in the game row. Solved,
+  mainly by the induced drag.
+- Origin: **derived:** the point mass's best sustained turn (18.99 deg/s at 163 mph, r 220 m)
+  from the airframe data, with e 0.8 assumed. No measured value exists.
+- Reference conditions: no measured P-51D turn rate, radius or 360-degree time was found
+  (`aircraft-references.md`).
+  - Relative: TAIC 38 says a Zeke 52 gained on the P-51D within one 360 (A, relative).
+  - Simulator: about 15 deg/s at 150 mph IAS, war emergency, 500 ft (Hong 1998, E).
+  - v2's research: 15.7 deg/s (low; simulator and community compilations).
 - Caveats:
-  - C_D0 and propeller efficiency are only meaningful together.
-  - The fit absorbs cooling drag, exhaust thrust, the Meredith effect and the 150 hp gap
-    between the climb and level power.
-  - The model's best-climb speed is 144 mph TAS, against the test's 165 mph IAS.
-  - The report's Fig. 8 drag curves and Fig. 4 power required (5,000 and 25,000 ft) could
-    separate C_D0 from e given a propeller efficiency. They are not used.
+  - The solve pays for the separation drag with less induced drag: e 0.965 equivalent,
+    which is outside WWII fighters' 0.78-0.93 (a warning at the default).
+  - The best sustained speed is 11% above the point mass's. The tool warns above 12%.
+
+### The gap
+- 0.85: the tightest sustained turn's speed over the best sustained rate's. Solved, mainly by
+  the separation drag, at the separation exponent 16 (coefficient 0.41).
+- Origin: **game choice** (author 2026-11-24): the one-circle and two-circle fights ask for
+  clearly different speeds. The flight test asks for at least a 10% gap (`test_flight.py`),
+  and the tool warns above 0.9.
+- Reference: none. The point mass has no gap (0.998).
+
+## Airframe
+
+### Static thrust / weight
+- 0.609 (26.4 kN at 4,427 kg). Closed: the static thrust per kg is the ratio times g.
+- Origin: **derived:** momentum theory, (FM^2 P^2 2 rho A)^(1/3), with 1,630 hp, a 3.40 m
+  disc and an assumed FM of 0.75 (author 2026-11-24: static thrust stays physical, not
+  a low-speed acceleration target).
+- The low-speed acceleration it gives (straight at the stall speed, empty store) is a readout:
+  3.26 m/s^2 real. v2's research estimated 2.73 m/s^2, at military power and 1.1 x stall.
+- The tool warns if the implied figure of merit reaches 1.
 
 ### Stall angle
-- 0.2705 rad = 15.5 deg (game and real).
+- 0.2705 rad = 15.5 deg (game and real). Closed: over the card's standard 15 deg.
 - Origin: **guess.** v2's research estimated it: "NACA 45-100 laminar section, clean CLmax
   ~1.4; typical fuselage-reference stall angle 15-17 deg".
 - Reference conditions: not found for any type (`aircraft-references.md`: "the stall angle
   of attack was not found").
 - Caveat: it shapes the lift curve's peak and the nose's response, not the 1 g stall speed.
 
-## Game terms
+### Dive and zoom trade
+- 1 g (game 39.24 m/s^2; real 9.81 m/s^2). Closed: times g.
+- Origin: **game choice.** The core model trades speed and store at 1 g, "a vertical dive
+  or zoom" (`airframe_row`). v2's Vizia had 0.983 g (placeholders scaled from v2's standard
+  fighter).
+- Reference conditions: not applicable. A real dive or zoom gains or loses speed at
+  g sin(angle) plus thrust minus drag.
 
-### Drag rise: critical speed (switch on)
-- Game 524.06 m/s; real 262.03 m/s (586 mph) = Mach 0.77 at the sea-level speed of sound,
+## Flight terms
+
+### Drag rise: critical Mach
+- 0.77: game 524.06 m/s, real 262.03 m/s (586 mph) at the sea-level speed of sound of
   340.3 m/s.
 - Origin: **derived** from NACA ACR 4K02 Fig. 12 (A), as read in `p51d-model.md` (not
   re-read for this table).
   - P-51B with the propeller off: C_D flat at about 0.0215 to M 0.68, about 0.030 at
-    M 0.735, about 0.036 at M 0.755.
+    M 0.735, and about 0.036 at M 0.755.
   - The game's zero-lift drag doubles at M 0.77.
 - Reference conditions: dives from 25,000-30,000 ft. The Mach number there is at altitude
   temperature.
@@ -248,64 +244,54 @@ solve. Moving the tool's sliders does not hold it.
   0.755.
 - v2's 12 would add 13% at M 0.65, where the figure is flat.
 
-### Separation drag at maximum lift (switch on)
-- 0.1: the induced drag +10% at the wing's maximum lift.
-- Origin: **game choice**, step A1, 2026-11-24.
-  - It is the largest value tried that keeps the best sustained turn's speed near the
-    point mass's (+8% at 0.3, +22% at v2's 1.0).
-  - The author decided to keep the terms on, with the solver compensating. The 0.1 itself
-    is not recorded as an author decision.
-- Reference: none. It is a game term, not physics data.
-
 ### Separation drag: exponent
-- 8.
-- Origin: **copied** from v2 (`rules.toml` `separation_exponent` 8; `GAME_FIELDS`).
+- 16. The separation drag is the induced drag times 1 + coefficient x (lift fraction)^16.
+  Its coefficient is solved by the gap (0.41 at the P-51D).
+- Origin: **game choice** (author 2026-11-24): at 16 the coefficient still moves the gap
+  (`ship-design-proposal.md` section 5). At the previous 24 it had saturated, and the gap
+  stayed at about 0.845 whatever the coefficient.
 
-### Lift softness: exponent (switch on)
+### Lift softness: exponent
 - 16. The soft minimum of the wing's lift against the g limit.
 - Origin: **copied** from v2 (`rules.toml` `lift_softmin_exponent` 16).
-- Caveat: it holds full stick below the hard limit near the corner. The corner rate is 8%
-  below the point mass's (32.2 against 35.0 deg/s real).
-
-### Thrust softness: exponent (switch on)
-- 8. The soft minimum of the thrust against the static thrust.
-- Origin: **game choice**, A1, 2026-11-24. v2 had 2, which took 10% of the thrust near the
-  best-climb speed.
+- Caveat: it rounds the corner. The corner rate is 4% below the point mass's (33.55 against
+  35.0 deg/s real).
 
 ## Flaps
 
-The P-51D had no combat flap setting: all three values are a **game choice** (the author's
-2026-11-24 decision for automatic flaps, scheduled by demand; values set in A1 and
-"Charts").
+The P-51D had no combat flap setting. All three values are a **game choice**, and the flaps
+are off (author 2026-11-24). The machinery stays, switchable per type. The tool warns if the
+flaps make the full-stick rate fall with speed below corner.
 
 Reference conditions for comparison: the manual (AN 01-60JE-1, B).
-- Stall chart (Fig. 24): about +9-10% maximum lift with 20 deg of flap and about +12% with
+- Stall chart (Fig. 24): about +9-10% maximum lift with 20 deg of flap, and about +12% with
   40 deg, both with the gear down. Read off the chart, IAS. My reading, from the ratio of
   the stall speeds squared.
 - Flap limits (Fig. 23): 10 deg up to 400 mph IAS, 20 deg to 275, 30 deg to 225, 40 deg to
   180, 50 deg to 165.
 
-### Extra lift (switch on)
-- 0.15 of the clean maximum (Delta C_L 0.24).
-- Caveat: more than the manual's 40-degree landing flap gives (above). The game's flaps are
-  "as far out as useful", not a real flap setting.
+### Extra lift
+- 0 (off). When on, a fraction of the clean maximum: the tests fly 0.15 (Delta C_L 0.24),
+  which is more than the manual's 40-degree landing flap gives.
 
 ### Blown back at
-- 1.0 x the clean corner speed. Fully out to 0.6 x corner (172 mph real); clean from
-  286 mph.
-- It is chosen so that the corner and the corner rate stay the clean airframe's.
+- 1.0 x the clean corner speed: fully out to 0.6 x corner, and clean from the corner. This
+  keeps the corner and the corner rate the clean airframe's.
 
-### Drag of the extra lift (switch on)
+### Drag of the extra lift
 - 7.54 in the card's units. That is Delta C_D = 1.5 (Delta C_L)^2 with the flaps fully
-  used (0.086 at the full bonus): 1.5 / (rho S / 2m x 66.348).
-- How it was set: a sweep on 2026-11-24 so the tightest sustained turn is at least 10%
-  slower than the best sustained rate (the author's margin). The ratio came out at 0.852.
-- Reference: none.
+  used: 1.5 / (rho S / 2m x 66.348). It was set by a sweep on 2026-11-24, when the flaps
+  were on.
 
 ## Stick and nose
 
-All four are control feel, not physics. Each is **copied** from v2's Vizia (`GAME_FIELDS`)
-and not re-derived for the P-51D under the core model.
+These are control feel, not physics. The stick levels themselves are derived by the game
+(`core.stick_table`): full stick is the envelope's top line, and the sustained level holds
+energy at the best sustained turn (P-51D 0.881).
+
+### Nose damping
+- 0.7.
+- Origin: v2's rule value (`rules.toml` `nose_damping`), kept.
 
 ### Nose frequency at corner speed
 - Game 11.23 rad/s; real 5.62 rad/s.
@@ -314,22 +300,12 @@ and not re-derived for the P-51D under the core model.
 - Reference: not found (no pitch-response data was gathered).
 
 ### Fine stick
-- 0.210 of full.
-- Origin: v2's rule `fine_stick_share` 0.3 x the sustained stick (`solver.stick_levels`).
-
-### Sustained stick
-- 0.700 of full.
-- Origin: Vizia's best sustained turn's lift fraction under v2's flight model
-  (`solver.stick_levels`).
-- Caveat: not the P-51D's own best sustained turn under the core model.
-
-### Nose damping
-- 0.7.
-- Origin: v2's rule value (`rules.toml` `nose_damping`), kept.
+- 0.5 of the sustained level (0.440 of full).
+- Origin: **game choice** (author 2026-11-24).
 
 ## Guns
 
-All **copied** from Vizia (`GAME_FIELDS`, via v2's `vizia.toml` notes and
+All **copied** from Vizia (`P51D_VALUES`, via v2's `vizia.toml` notes and
 `bnb/reference/real_planes.py`), except the gun range. Vizia's guns were the P-51D's six
 Browning AN/M2 .50 cal in the wings, represented as one stream of shots.
 
@@ -377,10 +353,10 @@ Browning AN/M2 .50 cal in the wings, represented as one stream of shots.
 
 ### Gun range
 - 600 m.
-- Origin: **builder's default.** `tuning.handles_of(row, gun_range=600.0)`; Vizia had
-  586.9 m.
-- With cruise and muzzle speed it gives a bullet life of 11 ticks: 0.367 s game, 0.733 s
-  real. That is the preset's own (`GAME_FIELDS`), so 600 m changes nothing.
+- Origin: **builder's default** (v2's handles default); Vizia had 586.9 m. Closed: the
+  bullet life in whole ticks to fly it when fired at the top speed.
+- With the top and muzzle speeds it gives a bullet life of 11 ticks: 0.367 s game, 0.733 s
+  real, as before. The tool reads a row's gun range back as the whole life's (637 m).
 - Real: not referenced. P-51D gun harmonisation distances were not gathered.
 
 ### Hit radius
@@ -396,7 +372,7 @@ Browning AN/M2 .50 cal in the wings, represented as one stream of shots.
 
 ## Shield, head-on and vision
 
-All **copied** from Vizia (`GAME_FIELDS`), all game rules. None has a real counterpart.
+All **copied** from Vizia (`P51D_VALUES`), all game rules. None has a real counterpart.
 
 ### Vision range
 - 1,000 m (game and real).
@@ -446,7 +422,7 @@ Downloaded (`~/avesnova/boost-and-broadside/data/aircraft-references/p51d/`, URL
   from `aircraft-references.md` and `p51d-model.md`; not re-read here.
 - NAA NA-46-130 (B), the V-1650-7 low-blower power chart (B), the 44-14134 dive report (A).
 
-Repository: `lean/game/tuning.py` (`P51D`, `P51D_TERMS`, `GAME_FIELDS`),
+Repository: `lean/game/tuning.py` (`P51D`, `P51D_VALUES`, `DESIGN_INPUTS`),
 `docs/rewrite/p51d-model.md`, `docs/rewrite/aircraft-references.md`,
 `docs/rewrite/core-decisions.md`, `src/bnb/game/ships/real-scale/vizia.toml` [notes],
 `src/bnb/game/ships/real-scale/rules.toml`, `src/bnb/reference/real_planes.py`,
