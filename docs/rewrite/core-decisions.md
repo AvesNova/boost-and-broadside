@@ -473,6 +473,9 @@ League (section 8)
 - Built natively, not bolted on: the scripted agent is first reviewed for cohesion and
   coupling, and its parameters must stay tunable and independent, because personas sample
   them.
+- The lead turn and the yo-yos are deleted (author 2026-11-25, review S2/S3; on the "Later
+  experiments" list): the saturated yo-yo signal is frozen at -1, leaving the chase speed
+  (fight speed raised by corner over sustained speed against a turning target).
 
 ## Flight model direction and shared code (2026-11-24 night)
 
