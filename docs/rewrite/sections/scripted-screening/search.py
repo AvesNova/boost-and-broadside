@@ -8,7 +8,8 @@ conditions, equal weight per cell), played into the screening's store. A floor o
 size keeps the population a spread of about a quarter box, so the distribution's mean is
 pushed toward a plateau rather than a peak; the result is that mean, not the best candidate.
 
-    search.py STORE search [--population 24 --games 6 --minutes 42]
+    search.py STORE search [--population 24 --games 6 --minutes 42] [--round 2]
+    round2.py STORE ...                       # round 2's confirmation, styles and divergence
     search.py STORE confirm [--confirm-games 64]      # the mean and the yardstick, many games; local25 around both
     search.py STORE held-out                  # both against 8 personas outside the panel, 32 games a cell
 
@@ -50,6 +51,23 @@ SEED = 20261124
 PATIENCE = 4  # generations without the best population mean rising beyond its error
 MINIMUM_GENERATIONS = 8
 RECORD = HERE / "search.jsonl"
+OUTPUT = HERE / "cma_candidate.json"
+
+# Round 2 (author 2026-11-24, core-backlog.md): a refinement from round 1's result, the same
+# ten rows, a smaller initial step and the same step floor. Two bounds are widened downward,
+# where round 1 ended on (plan_threshold) or near (nose_tail) the bottom of its box:
+# - plan_threshold to -0.75 store fractions (-3 half-widths of 0.25);
+# - nose_tail to 0.25 R_st (ln(0.25 / 0.67) / 0.4 = -2.465 half-widths): 56 m, 0.088 gun
+#   ranges. The game has no ship collisions or debris (Shaw's 500 ft gun minimum, 0.48 R_st
+#   here, is a debris and collision figure). The gun's own short limit is the target-size
+#   clamp: 2 atan(hit radius / range) reaches its 45 deg maximum inside 29 m (0.13 R_st). A
+#   bullet's flight time at 56 m is 0.027 s, so a pass at the floor is still a shot.
+BOUNDS_ROUND2 = dict(BOUNDS)
+BOUNDS_ROUND2["plan_threshold"] = (-3.0, 1.0)
+BOUNDS_ROUND2["nose_tail"] = (math.log(0.25 / 0.67) / 0.4, 1.0)
+SIGMA0_ROUND2 = 0.15  # box half-widths: half of round 1's
+RECORD_ROUND2 = HERE / "search_round2.jsonl"
+OUTPUT_ROUND2 = HERE / "cma_candidate_round2.json"
 
 
 def value_of(name: str, coordinate: float) -> float:
@@ -87,15 +105,22 @@ def skill(store: Store, agent: ScriptedAgent) -> tuple[float, float, list[float]
     return float(np.mean(scores)), math.sqrt(variance) / len(scores), per_condition, games
 
 
-def search(store: Store, population: int, games: int, minutes: float) -> None:
+def search(store: Store, population: int, games: int, minutes: float, round_: int = 1) -> None:
     started = time.perf_counter()
-    lower, upper = zip(*(BOUNDS[name] for name in ROWS), strict=True)
+    if round_ == 1:
+        bounds, sigma0, record, output, label = BOUNDS, SIGMA0, RECORD, OUTPUT, "cma"
+        start = [0.0] * len(ROWS)
+    else:
+        first = json.loads(OUTPUT.read_text())["coordinates"]
+        bounds, sigma0, record, output, label = BOUNDS_ROUND2, SIGMA0_ROUND2, RECORD_ROUND2, OUTPUT_ROUND2, "cma2-"
+        start = [first[name] for name in ROWS]
+    lower, upper = zip(*(bounds[name] for name in ROWS), strict=True)
     options = {"popsize": population, "seed": SEED, "bounds": [list(lower), list(upper)],
                "minstd": MINIMUM_STEP, "verbose": -9, "CMA_mirrors": 0}
-    es = cma.CMAEvolutionStrategy([0.0] * len(ROWS), SIGMA0, options)
+    es = cma.CMAEvolutionStrategy(start, sigma0, options)
     done = {}
-    if RECORD.exists():
-        for line in RECORD.read_text().splitlines():
+    if record.exists():
+        for line in record.read_text().splitlines():
             entry = json.loads(line)
             done[entry["generation"]] = entry
     best, best_error, best_generation = -math.inf, 0.0, 0
@@ -108,7 +133,7 @@ def search(store: Store, population: int, games: int, minutes: float) -> None:
         solutions = es.ask()
         agents = [ScriptedAgent.of(config_of(x)) for x in solutions]
         gen_started = time.perf_counter()
-        screen.play(store, list(dict.fromkeys(agents)), games, f"cma{generation}")
+        screen.play(store, list(dict.fromkeys(agents)), games, f"{label}{generation}")
         results = [skill(store, agent) for agent in agents]
         fitness = np.array([item[0] for item in results])
         es.tell(solutions, [-item for item in fitness])
@@ -128,7 +153,7 @@ def search(store: Store, population: int, games: int, minutes: float) -> None:
             "solutions": [[float(item) for item in x] for x in solutions], "skills": fitness.tolist(),
         }
         if generation not in done:
-            with RECORD.open("a") as file:
+            with record.open("a") as file:
                 file.write(json.dumps(entry) + "\n")
         screen.log(f"generation {generation}: population mean {mean_fitness:.4f} +- {mean_error:.4f}, best "
                    f"candidate {fitness.max():.4f}, sigma {es.sigma:.3f}, {entry['seconds']:.0f} s, "
@@ -140,13 +165,14 @@ def search(store: Store, population: int, games: int, minutes: float) -> None:
     final = es.result.xfavorite
     candidate = {
         "generations": generation,
-        "minimum_step": MINIMUM_STEP, "bounds": BOUNDS,
+        "round": round_, "start": {name: float(x) for name, x in zip(ROWS, start, strict=True)},
+        "initial_step": sigma0, "minimum_step": MINIMUM_STEP, "bounds": bounds,
         "coordinates": {name: float(x) for name, x in zip(ROWS, final, strict=True)},
         "searched": {name: value_of(name, x) for name, x in zip(ROWS, final, strict=True)},
         "values": config_of(final).values,
     }
-    (HERE / "cma_candidate.json").write_text(json.dumps(candidate, indent=1) + "\n")
-    screen.log(f"wrote {HERE / 'cma_candidate.json'}")
+    output.write_text(json.dumps(candidate, indent=1) + "\n")
+    screen.log(f"wrote {output}")
 
 
 def marginals(per_condition: list[float]) -> dict:
@@ -248,11 +274,12 @@ def main() -> None:
     parser.add_argument("--population", type=int, default=24)
     parser.add_argument("--games", type=int, default=6, help="games per (panel member, condition) cell")
     parser.add_argument("--minutes", type=float, default=42.0, help="no new generation after this")
+    parser.add_argument("--round", type=int, choices=(1, 2), default=1, help="search: round 2 starts at round 1's result")
     parser.add_argument("--confirm-games", type=int, default=64, help="confirm: games per cell")
     arguments = parser.parse_args()
     store = Store(arguments.store)
     if arguments.command == "search":
-        search(store, arguments.population, arguments.games, arguments.minutes)
+        search(store, arguments.population, arguments.games, arguments.minutes, arguments.round)
     elif arguments.command == "confirm":
         confirm(store, arguments.confirm_games)
     else:
