@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 from lean.contract import LEVELS
 
-# Indices of v2's reward levels (src/bnb/contracts/trajectory.py at 4cfd1e86), lean.contract's order.
+# Indices of v2's reward levels (src/bnb/contracts/trajectory.py at 4cfd1e86), lean.contract's
+# order.
 DAMAGE, KILL_DEATH, OBJECTIVE_PROGRESS, OBJECTIVE, OUTCOME = range(LEVELS)
 
 
@@ -70,7 +71,8 @@ class LearnConfig:
     # The BC stage (lean.train --stage bc): the student plays its own games (the same
     # rollouts as RL, the league holding only the scripted agent) and every head learns:
     # the policy by the cross-entropy to the scripted teacher's full distribution
-    # (the marginals of lean.scripted.decide) with weight bc_coefficient, no surrogate and no entropy
+    # (the marginals of lean.scripted.decide) with weight bc_coefficient, no surrogate and no
+    # entropy
     # bonus; the critics, next-state and hit heads as in RL. 96 updates at parity
     # (2,048 x 4 x 128) is 100.7M environment ticks: v2's 100M-tick BC stage, and the
     # v1/v2 target of BC within 100M.

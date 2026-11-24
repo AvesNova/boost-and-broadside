@@ -80,7 +80,9 @@ def test_fog_off_is_full_information_and_leaves_the_game_unchanged():
     a = reset(plain, 4, sizes, torch.Generator().manual_seed(1), CPU)
     b = reset(fogged, 4, sizes, torch.Generator().manual_seed(1), CPU)
     assert a.seen is None and a.ticks_since_seen is None and b.seen is not None
-    b = core.perceive(dataclasses.replace(b, constants=with_vision(b.constants, 1e5)), torch.zeros_like(b.exists))
+    b = core.perceive(
+        dataclasses.replace(b, constants=with_vision(b.constants, 1e5)), torch.zeros_like(b.exists)
+    )
     compared = 0
     for _ in range(40):
         action = torch.stack(
@@ -116,7 +118,10 @@ def test_sight_range_and_field_cores():
     """Rule: "in sight" is v2's sight test: within the observer's vision range (1,000 m),
     all round, blocked only by a field's core (core to band sees, core to outside does not,
     a line through a core is blocked, both in one core see each other)."""
-    assert abs(reset(FOG, 1, torch.tensor([[1, 1]]), None, CPU).constants["vision_range"] - 1000.0) < 1e-3
+    assert (
+        abs(reset(FOG, 1, torch.tensor([[1, 1]]), None, CPU).constants["vision_range"] - 1000.0)
+        < 1e-3
+    )
     assert core.sighted_by_enemy(duel([(0.0, 0.0), (999.0, 0.0)], headings=[math.pi, 0.0])).all()
     assert not core.sighted_by_enemy(duel([(0.0, 0.0), (1001.0, 0.0)])).any()
     # One field at the centre: radius 300, band 160, so core 220 and outer disc 380.
@@ -266,24 +271,26 @@ def perturb_hidden(state, slots):
         return torch.where(change, value + by, value)
 
     bullets = change[..., None].expand_as(state.bullet_moves_left)
-    return core.with_velocity(state.replace(
-        x=bump(state.x, 123.0),
-        y=bump(state.y, -77.0),
-        speed=bump(state.speed, 40.0),
-        heading_cos=torch.where(change, -state.heading_cos, state.heading_cos),
-        heading_sin=torch.where(change, -state.heading_sin, state.heading_sin),
-        nose_rate=bump(state.nose_rate, 0.3),
-        energy=bump(state.energy, -1000.0),
-        shield=bump(state.shield, -20.0),
-        shield_wait=bump(state.shield_wait, 1.0),
-        cooldown=torch.where(change, 1.0, state.cooldown),
-        alive=torch.where(change, False, state.alive),
-        log_index=torch.where(change, 0.1, state.log_index),
-        gradient_x=torch.where(change, 0.1, state.gradient_x),
-        gradient_y=torch.where(change, 0.1, state.gradient_y),
-        bullet_moves_left=torch.where(bullets, 5, state.bullet_moves_left),
-        bullet_real=torch.where(bullets, True, state.bullet_real),
-    ))
+    return core.with_velocity(
+        state.replace(
+            x=bump(state.x, 123.0),
+            y=bump(state.y, -77.0),
+            speed=bump(state.speed, 40.0),
+            heading_cos=torch.where(change, -state.heading_cos, state.heading_cos),
+            heading_sin=torch.where(change, -state.heading_sin, state.heading_sin),
+            nose_rate=bump(state.nose_rate, 0.3),
+            energy=bump(state.energy, -1000.0),
+            shield=bump(state.shield, -20.0),
+            shield_wait=bump(state.shield_wait, 1.0),
+            cooldown=torch.where(change, 1.0, state.cooldown),
+            alive=torch.where(change, False, state.alive),
+            log_index=torch.where(change, 0.1, state.log_index),
+            gradient_x=torch.where(change, 0.1, state.gradient_x),
+            gradient_y=torch.where(change, 0.1, state.gradient_y),
+            bullet_moves_left=torch.where(bullets, 5, state.bullet_moves_left),
+            bullet_real=torch.where(bullets, True, state.bullet_real),
+        )
+    )
 
 
 def test_no_hidden_information_reaches_the_observation():

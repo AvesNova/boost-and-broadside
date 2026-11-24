@@ -76,8 +76,12 @@ class SnapshotSchedule:
     every: int | None = None
 
     def __post_init__(self) -> None:
-        if not self.steps or any(step < 1 for step in self.steps) or any(
-            later <= earlier for earlier, later in zip(self.steps, self.steps[1:], strict=False)
+        if (
+            not self.steps
+            or any(step < 1 for step in self.steps)
+            or any(
+                later <= earlier for earlier, later in zip(self.steps, self.steps[1:], strict=False)
+            )
         ):
             raise ValueError(f"snapshot steps {list(self.steps)} must be positive and ascending")
 
@@ -153,10 +157,14 @@ class League:
         self.floor = config.league_floor
         self.decay = config.league_decay
         self.capacity_factor = config.league_capacity_factor
-        self.schedule = SnapshotSchedule(config.league_snapshot_steps, config.league_snapshot_period)
+        self.schedule = SnapshotSchedule(
+            config.league_snapshot_steps, config.league_snapshot_period
+        )
         self.recent, self.history_from = config.recent_snapshots, config.snapshot_history_from
         self.snapshot_members = config.snapshot_members
-        self.kinds = [SCRIPTED_KIND, EMA_KIND, UNIFORM_KIND] + [SNAPSHOT_KIND] * config.snapshot_members
+        self.kinds = [SCRIPTED_KIND, EMA_KIND, UNIFORM_KIND] + [
+            SNAPSHOT_KIND
+        ] * config.snapshot_members
         self.members = len(self.kinds)
         self.slot_count = 2 + config.snapshot_members + config.retiring_slots
         self.present = torch.zeros(self.members, dtype=torch.bool, device=self.device)
@@ -168,8 +176,12 @@ class League:
         self.capacity = torch.zeros((), dtype=torch.long, device=self.device)
         self.slot_member: list[int | None] = [None] * self.slot_count
         self.slot_weights: list[dict[str, Tensor] | None] = [None] * self.slot_count
-        self.slot_snapshot: list[int | None] = [None] * self.slot_count  # the snapshot (its steps) a slot holds
-        self.snapshot_directory: Path | None = None  # where each snapshot's weights are written once
+        self.slot_snapshot: list[int | None] = [
+            None
+        ] * self.slot_count  # the snapshot (its steps) a slot holds
+        self.snapshot_directory: Path | None = (
+            None  # where each snapshot's weights are written once
+        )
         self.retiring: set[int] = set()
         self.ordinal: dict[int, int] = {}  # snapshot member -> its ordinal (0 the first snapshot)
         self.snapshot_step: dict[int, int] = {}  # snapshot member -> its environment steps
@@ -191,7 +203,12 @@ class League:
         return sum(weights is not None for weights in self.slot_weights)
 
     def present_count(self) -> int:
-        return 1 + self.snapshots + (self.slot_member[0] is not None) + (self.slot_member[1] is not None)
+        return (
+            1
+            + self.snapshots
+            + (self.slot_member[0] is not None)
+            + (self.slot_member[1] is not None)
+        )
 
     def win_rates(self) -> Tensor:
         """(members,) the live policy's win rate against each member, draws as half,
@@ -224,7 +241,9 @@ class League:
             self.probabilities(), self.present, self.capacity, member, done, generator, self.members
         )
         member = torch.where(done, drawn, member)
-        return member, torch.where(done, self.member_slot.index_select(0, member.clamp(min=0)), slot)
+        return member, torch.where(
+            done, self.member_slot.index_select(0, member.clamp(min=0)), slot
+        )
 
     def record(self, member: Tensor, finished: Tensor, won: Tensor, drawn: Tensor) -> None:
         """Add the league games that ended: member, finished, won, drawn are (L,) over the
@@ -280,7 +299,9 @@ class League:
                 self.slot_weights[retiring] = None
         return rows
 
-    def after_update(self, policy, averages, steps_before: int, steps_after: int, member: Tensor, slot: Tensor):
+    def after_update(
+        self, policy, averages, steps_before: int, steps_after: int, member: Tensor, slot: Tensor
+    ):
         """After an RL update that took the run from `steps_before` to `steps_after`
         environment steps: a snapshot of the live weights when the schedule has one due, with
         retention; the averages' slots take their new weights (the EMA from the first
@@ -322,7 +343,10 @@ class League:
             self.taken += 1
             self._start_member(index)
         if self.taken > 0:
-            for which, index, ready in (("ema", EMA, True), ("uniform", UNIFORM, averages.count > 0)):
+            for which, index, ready in (
+                ("ema", EMA, True),
+                ("uniform", UNIFORM, averages.count > 0),
+            ):
                 if not ready:
                     continue
                 weights = stepper_weights(policy, getattr(averages, which))
@@ -343,7 +367,11 @@ class League:
         retiring slot), since new draws never take a member past its capacity. One host
         read (the rows per slot)."""
         rows = self.free_retired(slot)
-        capacity = math.ceil(self.capacity_factor * league_envs / self.present_count()) if league_envs else 0
+        capacity = (
+            math.ceil(self.capacity_factor * league_envs / self.present_count())
+            if league_envs
+            else 0
+        )
         self.capacity.fill_(capacity)
         active = [index for index, weights in enumerate(self.slot_weights) if weights is not None]
         if not active:
@@ -351,7 +379,10 @@ class League:
             return
         width = max([capacity] + [rows[index] for index in active])
         slots = [
-            (torch.tensor(index, device=self.device), *split_weights(self.template, self.slot_weights[index]))
+            (
+                torch.tensor(index, device=self.device),
+                *split_weights(self.template, self.slot_weights[index]),
+            )
             for index in active
         ]
         self.table = NetworkTable(slots, torch.arange(width, device=self.device))
@@ -366,7 +397,10 @@ class League:
         snapshot not on disk is."""
         names = ("present", "games", "wins", "draws", "member_slot", "capacity")
         on_disk = [
-            self.snapshot_directory is not None and slot >= 2 and weights is not None and self.slot_snapshot[slot] is not None
+            self.snapshot_directory is not None
+            and slot >= 2
+            and weights is not None
+            and self.slot_snapshot[slot] is not None
             for slot, weights in enumerate(self.slot_weights)
         ]
         rebuilt = [slot < 2 for slot in range(self.slot_count)]
@@ -377,10 +411,17 @@ class League:
                 None if disk or derived else weights
                 for weights, disk, derived in zip(self.slot_weights, on_disk, rebuilt)
             ],
-            "slot_from_averages": [slot < 2 and weights is not None for slot, weights in enumerate(self.slot_weights)],
-            "slot_snapshot": [snapshot if disk else None for snapshot, disk in zip(self.slot_snapshot, on_disk)],
-            "retiring": sorted(self.retiring), "ordinal": dict(self.ordinal), "snapshot_step": dict(self.snapshot_step),
-            "taken": self.taken, "abandoned": self.abandoned,
+            "slot_from_averages": [
+                slot < 2 and weights is not None for slot, weights in enumerate(self.slot_weights)
+            ],
+            "slot_snapshot": [
+                snapshot if disk else None for snapshot, disk in zip(self.slot_snapshot, on_disk)
+            ],
+            "retiring": sorted(self.retiring),
+            "ordinal": dict(self.ordinal),
+            "snapshot_step": dict(self.snapshot_step),
+            "taken": self.taken,
+            "abandoned": self.abandoned,
         }
 
     def load(self, state: dict, policy, averages, directory: Path | None = None) -> None:
@@ -396,12 +437,21 @@ class League:
         derived = state.get("slot_from_averages", [False] * self.slot_count)
         for slot, (weights, snapshot) in enumerate(zip(state["slot_weights"], referenced)):
             if derived[slot]:
-                weights = stepper_weights(policy, getattr(averages, "ema" if slot == EMA - 1 else "uniform"))
+                weights = stepper_weights(
+                    policy, getattr(averages, "ema" if slot == EMA - 1 else "uniform")
+                )
             if weights is None and snapshot is not None:
                 weights = load_snapshot(directory, snapshot, self.device)
-                if self.snapshot_directory is not None and not snapshot_path(self.snapshot_directory, snapshot).exists():
+                if (
+                    self.snapshot_directory is not None
+                    and not snapshot_path(self.snapshot_directory, snapshot).exists()
+                ):
                     save_snapshot(self.snapshot_directory, snapshot, weights)
-            self.slot_weights.append(None if weights is None else {name: value.to(self.device) for name, value in weights.items()})
+            self.slot_weights.append(
+                None
+                if weights is None
+                else {name: value.to(self.device) for name, value in weights.items()}
+            )
         self.retiring = set(state["retiring"])
         self.ordinal, self.snapshot_step = dict(state["ordinal"]), dict(state["snapshot_step"])
         self.taken, self.abandoned = state["taken"], state["abandoned"]
@@ -426,7 +476,9 @@ def save_snapshot(directory: Path, steps: int, weights: dict[str, Tensor]) -> No
 
 def load_snapshot(directory: Path | None, steps: int, device) -> dict[str, Tensor]:
     if directory is None:
-        raise FileNotFoundError(f"snapshot {steps} is not in the checkpoint and no snapshot directory is given")
+        raise FileNotFoundError(
+            f"snapshot {steps} is not in the checkpoint and no snapshot directory is given"
+        )
     return torch.load(snapshot_path(directory, steps), map_location=device, weights_only=True)
 
 
@@ -460,15 +512,22 @@ def accept(draw: Tensor, wanted: Tensor, free: Tensor, members: int) -> tuple[Te
     return accepted, taken
 
 
-def capacity_draws(probability: Tensor, present: Tensor, capacity: Tensor, member: Tensor, done: Tensor, generator,
-                   members: int) -> Tensor:
+def capacity_draws(
+    probability: Tensor,
+    present: Tensor,
+    capacity: Tensor,
+    member: Tensor,
+    done: Tensor,
+    generator,
+    members: int,
+) -> Tensor:
     """(L,) a member for every league environment (meaningful where `done`) by the capacity
     rule (module docstring): PFSP `probability` over the members with a free row, the
     overflow drawn once more over those still free, then the free rows in member order. The
     rows held are the environments not `done` (RETIRED ones belong to no member)."""
     holding = ~done & (member >= 0)
     held = (functional.one_hot(member.clamp(min=0), members) * holding[:, None].long()).sum(0)
-    free = ((capacity - held).clamp(min=0) * present.long())
+    free = (capacity - held).clamp(min=0) * present.long()
     count = member.shape[0]
     chosen = torch.zeros_like(member)
     wanted = done

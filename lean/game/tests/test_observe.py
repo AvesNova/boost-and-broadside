@@ -19,11 +19,15 @@ def test_observed_speed_is_world_speed_inside_a_field():
     field = torch.tensor([[[0.0], [0.0], [2000.0], [200.0], [2.0 * card.LN_SQRT2]]])
     state = state.replace(fields=field, x=torch.zeros_like(state.x), y=torch.zeros_like(state.y))
     log_index, gradient_x, gradient_y = core.medium(state.fields, state.x, state.y)
-    state = state.replace(log_index=log_index, gradient_x=gradient_x, gradient_y=gradient_y)  # moved: refresh
+    state = state.replace(
+        log_index=log_index, gradient_x=gradient_x, gradient_y=gradient_y
+    )  # moved: refresh
     assert float(log_index[0, 0]) > 0.1  # the ship really is inside the field
     observation = core.observe(config, state, 0)
     world_speed = state.speed * torch.exp(-log_index)
-    unscaled = torch.sign(observation.ship) * torch.expm1(observation.ship.abs()) * core.SPEED_SCALE  # symlog's inverse
+    unscaled = (
+        torch.sign(observation.ship) * torch.expm1(observation.ship.abs()) * core.SPEED_SCALE
+    )  # symlog's inverse
     observed_speed = unscaled[..., 2]
     assert torch.allclose(observed_speed[0, 0], world_speed[0, 0], rtol=1e-5)
     observed_velocity = unscaled[..., :2]

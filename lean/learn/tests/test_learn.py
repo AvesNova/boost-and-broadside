@@ -26,8 +26,11 @@ def test_gae_matches_hand_computed_case_and_stops_at_termination():
     value = torch.tensor([0.5, 1.0, 2.0]).view(3, 1, 1, 1)
     bootstrap = torch.tensor([4.0]).view(1, 1, 1)
     done = torch.tensor([False, True, False]).view(3, 1)
-    advantage, target = generalised_advantages(reward, value, bootstrap, done, torch.tensor([0.5]), 0.5)
-    # tick 2: 3 + 0.5 * 4 - 2 = 3; tick 1 (terminal): 2 - 1 = 1; tick 0: (1 + 0.5 * 1 - 0.5) + 0.25 * 1 = 1.25
+    advantage, target = generalised_advantages(
+        reward, value, bootstrap, done, torch.tensor([0.5]), 0.5
+    )
+    # tick 2: 3 + 0.5 * 4 - 2 = 3; tick 1 (terminal): 2 - 1 = 1; tick 0: (1 + 0.5 * 1 - 0.5) + 0.25
+    # * 1 = 1.25
     assert torch.allclose(advantage.flatten(), torch.tensor([1.25, 1.0, 3.0]))
     assert torch.allclose(target.flatten(), torch.tensor([1.75, 2.0, 5.0]))
 
@@ -71,8 +74,12 @@ CLOCK = 6  # every game ends at the clock on its sixth tick
 
 def run_updates(updates, snapshot=False):
     config, game_config, policy, opponent, state, carry, generator = small(
-        ENVIRONMENTS, game_config=game.GameConfig(training_spawn=True, clock_ticks=CLOCK),
-        league=snapshot, team_size_minimum=1, equal_teams=False, epochs=2,
+        ENVIRONMENTS,
+        game_config=game.GameConfig(training_spawn=True, clock_ticks=CLOCK),
+        league=snapshot,
+        team_size_minimum=1,
+        equal_teams=False,
+        epochs=2,
     )
     if snapshot:
         add_snapshots(opponent.league, [model.Policy(model.ModelConfig())])
@@ -81,7 +88,17 @@ def run_updates(updates, snapshot=False):
     for _ in range(updates):
         rollout = collect(config, game_config, policy, opponent, state, carry, 16, generator)
         state, carry = rollout.state, rollout.carry
-        history.append(update(config, policy, optimiser, rollout, teacher_weight=2.0, step_index=steps, generator=generator))
+        history.append(
+            update(
+                config,
+                policy,
+                optimiser,
+                rollout,
+                teacher_weight=2.0,
+                step_index=steps,
+                generator=generator,
+            )
+        )
         steps += history[-1]["adam_steps"]
     return rollout, history
 
@@ -113,12 +130,16 @@ def test_collect_pairs_actions_and_log_probabilities_under_the_action_delay():
     observations matches), and it is the pending action the next tick's observation shows
     (the action the game applies then), for own ships alive on both ticks within an episode."""
     config, game_config, policy, opponent, state, carry, generator = small(
-        game_config=game.GameConfig(training_spawn=True, clock_ticks=10)  # an episode ends inside the rollout
+        game_config=game.GameConfig(
+            training_spawn=True, clock_ticks=10
+        )  # an episode ends inside the rollout
     )
     rollout = collect(config, game_config, policy, opponent, state, carry, 16, generator)
     observation, own, action = rollout.observation, rollout.observation.own, rollout.action
     assert rollout.reset[1:].any()
-    logits, *_ = policy.sequence(observation, rollout.initial_carry, rollout.reset, rollout.position_offset)
+    logits, *_ = policy.sequence(
+        observation, rollout.initial_carry, rollout.reset, rollout.position_offset
+    )
     recomputed = torch.log_softmax(logits.float(), -1).gather(-1, action[..., None])[..., 0]
     assert torch.allclose(recomputed[own], rollout.log_probability[own], atol=1e-4)
     carried = own[:-1] & own[1:] & ~rollout.reset[1:, :, None]
@@ -130,7 +151,12 @@ def test_collect_pairs_actions_and_log_probabilities_under_the_action_delay():
 def test_next_state_loss_is_live():
     config, game_config, policy, opponent, state, carry, generator = small()
     rollout = collect(config, game_config, policy, opponent, state, carry, 8, generator)
-    assert rollout.next_state.shape == (8, 6, 4, policy.config.next_state_size)  # 4 environments, 2 self-play: 6 seats
+    assert rollout.next_state.shape == (
+        8,
+        6,
+        4,
+        policy.config.next_state_size,
+    )  # 4 environments, 2 self-play: 6 seats
     assert rollout.next_valid.any()
     assert torch.isfinite(rollout.next_state[rollout.next_valid]).all()
     assert rollout.next_state[rollout.next_valid].abs().sum() > 0
@@ -153,20 +179,33 @@ def test_targets_once_per_update_equal_the_first_epochs_fresh_targets():
     from lean.learn.store import RolloutStore
     from lean.learn.training import target_pass
 
-    config, game_config, policy, opponent, state, carry, generator = small(epochs=2, micro_batch_views=4)
+    config, game_config, policy, opponent, state, carry, generator = small(
+        epochs=2, micro_batch_views=4
+    )
     rollout = collect(config, game_config, policy, opponent, state, carry, 8, generator)
     store = RolloutStore.of(rollout)
     index, _ = store.batch_index(torch.arange(store.views), 4)
     stored_flags, stored_sums = target_pass(config, policy, store, index, None)
     stored = store.advantage.clone(), store.target.clone()
     fresh_flags, fresh_sums = target_pass(config, policy, store, index)
-    # The policy's step (stored) and sequence (recomputed) agree within float32 rounding of the model.
-    assert torch.allclose(stored[0], store.advantage, atol=1e-3) and torch.allclose(stored[1], store.target, atol=1e-3)
+    # The policy's step (stored) and sequence (recomputed) agree within float32 rounding of the
+    # model.
+    assert torch.allclose(stored[0], store.advantage, atol=1e-3) and torch.allclose(
+        stored[1], store.target, atol=1e-3
+    )
     assert torch.equal(stored_flags, fresh_flags)
     assert torch.allclose(stored_sums, fresh_sums, rtol=1e-3, atol=1e-3)
     for every_epoch in (False, True):
-        variant = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=2, targets_every_epoch=every_epoch)
-        metrics = update(variant, policy, make_optimiser(variant, policy), rollout, generator=generator)
+        variant = LearnConfig(
+            team_size_minimum=2,
+            team_size_maximum=2,
+            minibatches=2,
+            epochs=2,
+            targets_every_epoch=every_epoch,
+        )
+        metrics = update(
+            variant, policy, make_optimiser(variant, policy), rollout, generator=generator
+        )
         assert all(value == value for value in metrics.values())
 
 
@@ -174,13 +213,17 @@ def test_finished_environments_take_the_segments_deals_in_order():
     """Agreed fixes 7 and 9: deals (game deal, team sizes, personas, learner team, position
     offset) are drawn once per segment; the k-th environment to finish takes deal k."""
     generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=4, equal_teams=False, persona_spread=1.0)
+    config = LearnConfig(
+        team_size_minimum=2, team_size_maximum=4, equal_teams=False, persona_spread=1.0
+    )
     game_config = game.GameConfig()
     policy = model.Policy(model.ModelConfig())
     opponent = Opponent(scripted.ScriptedConfig())
     envs = 4
     state, carry = start(config, game_config, policy, opponent, envs, generator)
-    pool = rollout_module.draw_next_episodes(config, game_config, policy, opponent, envs, state.x.shape[1], generator, "cpu")
+    pool = rollout_module.draw_next_episodes(
+        config, game_config, policy, opponent, envs, state.x.shape[1], generator, "cpu"
+    )
     carry.next_episodes = pool
     taken_by = {}
     for done in ([False, True, False, True], [True, False, False, False]):
@@ -210,9 +253,14 @@ def test_a_segment_uses_deals_again_only_past_one_per_environment():
     config = LearnConfig(team_size_minimum=1, team_size_maximum=1)
     policy = model.Policy(model.ModelConfig())
     opponent = Opponent(scripted.ScriptedConfig())
-    for clock in (10, 4):  # 12 ticks: each of 4 games ends once, or three times (8 deals used twice)
+    for clock in (
+        10,
+        4,
+    ):  # 12 ticks: each of 4 games ends once, or three times (8 deals used twice)
         game_config = game.GameConfig(clock_ticks=clock)
         state, carry = start(config, game_config, policy, opponent, 4, generator)
         rollout = collect(config, game_config, policy, opponent, state, carry, 12, generator)
-        assert int(rollout.done[:, :4].sum()) == 4 * (12 // clock)  # seats 0..3 are the environments
+        assert int(rollout.done[:, :4].sum()) == 4 * (
+            12 // clock
+        )  # seats 0..3 are the environments
         assert int(rollout.carry.next_episodes.taken) == 4 * (12 // clock)

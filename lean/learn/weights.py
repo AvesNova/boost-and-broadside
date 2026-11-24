@@ -27,7 +27,10 @@ class WeightAverages:
     def __init__(self, policy: nn.Module, config: LearnConfig):
         self.decay = config.ema_decay
         self.warmup_steps = config.warmup_steps
-        self.ema = {name: parameter.detach().float().clone() for name, parameter in policy.named_parameters()}
+        self.ema = {
+            name: parameter.detach().float().clone()
+            for name, parameter in policy.named_parameters()
+        }
         self.uniform = {name: torch.zeros_like(value) for name, value in self.ema.items()}
         self.count = 0  # updates in the uniform average
 
@@ -46,7 +49,10 @@ class WeightAverages:
         """A state dict for `policy`: its own ("live"), or with the "ema" or "uniform"
         parameters in place (the uniform falls back to the live weights while empty)."""
         checkpoint = {"live": policy.state_dict(), "averages": self.state()}
-        return {name: value.detach().clone() for name, value in policy_weights(checkpoint, which).items()}
+        return {
+            name: value.detach().clone()
+            for name, value in policy_weights(checkpoint, which).items()
+        }
 
     def state(self) -> dict:
         return {"ema": self.ema, "uniform": self.uniform, "count": self.count}
@@ -57,16 +63,24 @@ class WeightAverages:
         self.count = state["count"]
 
 
-def save_checkpoint(path, policy: nn.Module, averages: WeightAverages, config: LearnConfig, **extra) -> None:
+def save_checkpoint(
+    path, policy: nn.Module, averages: WeightAverages, config: LearnConfig, **extra
+) -> None:
     """The live weights, both averages, the model's and the learner's configs, and `extra`
     (stage, updates, steps, the teacher term, ...) in one file, written to a temporary file
     that then replaces `path` (a write that fails part way leaves the previous file whole)."""
     path = Path(path)
     temporary = path.with_name(path.name + ".tmp")
-    torch.save({
-        "model_config": policy.config, "learn_config": dataclasses.asdict(config),
-        "live": policy.state_dict(), "averages": averages.state(), **extra,
-    }, temporary)
+    torch.save(
+        {
+            "model_config": policy.config,
+            "learn_config": dataclasses.asdict(config),
+            "live": policy.state_dict(),
+            "averages": averages.state(),
+            **extra,
+        },
+        temporary,
+    )
     temporary.replace(path)
 
 

@@ -31,10 +31,19 @@ def test_compiled_collect_and_update_run_with_the_real_packages():
     chosen = torch.tensor([EMA, FIRST_SNAPSHOT, FIRST_SNAPSHOT + 1, FIRST_SNAPSHOT])
     carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
     for _ in range(2):  # the second rollout reuses the graphs
-        rollout = collect(config, game_config, policy, opponent, state, carry, 6, generator, compiled=True)
+        rollout = collect(
+            config, game_config, policy, opponent, state, carry, 6, generator, compiled=True
+        )
         assert rollout.action.shape[:2] == (6, 12)  # 8 environments, 4 self-play: 12 seats
         state, carry = rollout.state, rollout.carry
-        metrics = update(config, policy, make_optimiser(config, policy), rollout, generator=generator, compiled=True)
+        metrics = update(
+            config,
+            policy,
+            make_optimiser(config, policy),
+            rollout,
+            generator=generator,
+            compiled=True,
+        )
         assert all(value == value for value in metrics.values())
 
 
@@ -58,9 +67,19 @@ def test_compiled_loss_matches_eager():
     views = batch["views"]
     observation, offset = store.observation(batch)
     arguments = (
-        observation, batch["carry"], batch["reset"], offset, batch["action"], batch["log_probability"],
-        store.advantage.index_select(1, views), store.target.index_select(1, views), batch["teacher"],
-        batch["next_state"], batch["next_valid"], batch["hit_label"], torch.tensor([1.0, 0.003, 0.5]),
+        observation,
+        batch["carry"],
+        batch["reset"],
+        offset,
+        batch["action"],
+        batch["log_probability"],
+        store.advantage.index_select(1, views),
+        store.target.index_select(1, views),
+        batch["teacher"],
+        batch["next_state"],
+        batch["next_valid"],
+        batch["hit_label"],
+        torch.tensor([1.0, 0.003, 0.5]),
         store.counts().index_select(0, views).sum(0),
     )
     twin = copy.deepcopy(policy)
@@ -68,10 +87,14 @@ def test_compiled_loss_matches_eager():
     compiled_loss, compiled_measures = graphs().minibatch_loss(config, twin, *arguments)
     assert torch.allclose(eager_loss, compiled_loss, rtol=1e-4, atol=1e-5)
     for name in eager_measures:
-        assert torch.allclose(eager_measures[name], compiled_measures[name], rtol=1e-4, atol=1e-5), name
+        assert torch.allclose(
+            eager_measures[name], compiled_measures[name], rtol=1e-4, atol=1e-5
+        ), name
     eager_loss.backward()
     compiled_loss.backward()
-    for (name, eager), compiled_parameter in zip(policy.named_parameters(), twin.parameters(), strict=True):
+    for (name, eager), compiled_parameter in zip(
+        policy.named_parameters(), twin.parameters(), strict=True
+    ):
         if eager.grad is None:
             assert compiled_parameter.grad is None or not compiled_parameter.grad.any(), name
             continue
@@ -106,10 +129,26 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
         views, observation, _, joint, _, _, scripted_action, teacher, policy_carry, _, memory = act(
             config, game_config, policy, opponent, state, carry, None
         )
-        league_action, opponent_carry = league_actions(config, opponent, views, carry, scripted_action, None, routing)
+        league_action, opponent_carry = league_actions(
+            config, opponent, views, carry, scripted_action, None, routing
+        )
         state, carry, _ = second_half(
-            config, game_config, policy, opponent, state, carry, observation, joint, teacher, league_action,
-            opponent_carry, policy_carry, memory, torch.tensor(4 + tick), hit_label, None,
+            config,
+            game_config,
+            policy,
+            opponent,
+            state,
+            carry,
+            observation,
+            joint,
+            teacher,
+            league_action,
+            opponent_carry,
+            policy_carry,
+            memory,
+            torch.tensor(4 + tick),
+            hit_label,
+            None,
         )
     rows = torch.bincount(carry.member.clamp(min=0), minlength=league.members)
     assert (rows <= league.capacity).all()
@@ -122,7 +161,9 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
     carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
     league.prepare(4, carry.slot)
     assert len(league.table.slots) == 4 and league.table.positions.shape[0] == 4 != width
-    views, *_, scripted_action, _, _, _, _ = act(config, game_config, policy, opponent, state, carry, None)
+    views, *_, scripted_action, _, _, _, _ = act(
+        config, game_config, policy, opponent, state, carry, None
+    )
     league_actions(config, opponent, views, carry, scripted_action, None, routing)
     assert torch._dynamo.utils.counters["stats"]["unique_graphs"] == compiles
 
@@ -153,10 +194,26 @@ def test_the_first_league_networks_do_not_recompile_the_tick():
         views, observation, _, joint, _, _, scripted_action, teacher, policy_carry, _, memory = act(
             config, game_config, policy, opponent, state, carry, None
         )
-        league_action, opponent_carry = league_actions(config, opponent, views, carry, scripted_action, None, routing)
+        league_action, opponent_carry = league_actions(
+            config, opponent, views, carry, scripted_action, None, routing
+        )
         state, carry, _ = second_half(
-            config, game_config, policy, opponent, state, carry, observation, joint, teacher, league_action,
-            opponent_carry, policy_carry, memory, torch.tensor(row), hit_label, None,
+            config,
+            game_config,
+            policy,
+            opponent,
+            state,
+            carry,
+            observation,
+            joint,
+            teacher,
+            league_action,
+            opponent_carry,
+            policy_carry,
+            memory,
+            torch.tensor(row),
+            hit_label,
+            None,
         )
         return state, carry
 

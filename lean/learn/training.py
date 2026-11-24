@@ -32,9 +32,25 @@ from lean.model.value import decode_value, hl_gauss_targets
 OBSERVED = ("deal_row", "reset")
 TARGET_NAMES = OBSERVED + ("reward", "done")
 STORED_TARGET_NAMES = ("own", "reward", "done", "value")
-LOSS_NAMES = OBSERVED + ("action", "log_probability", "teacher", "next_state", "next_valid", "hit_label")
+LOSS_NAMES = OBSERVED + (
+    "action",
+    "log_probability",
+    "teacher",
+    "next_state",
+    "next_valid",
+    "hit_label",
+)
 MEASURES = (
-    "loss", "surrogate", "value", "entropy", "next_state", "hit", "bc", "bc_kl", "approximate_kl", "clip_fraction",
+    "loss",
+    "surrogate",
+    "value",
+    "entropy",
+    "next_state",
+    "hit",
+    "bc",
+    "bc_kl",
+    "approximate_kl",
+    "clip_fraction",
 )
 
 
@@ -42,14 +58,20 @@ def to_device(tensor: Tensor, device) -> Tensor:
     """A small host tensor on `device` without a host wait (through pinned memory on a GPU;
     a plain copy from pageable memory waits for the stream)."""
     device = torch.device(device)
-    return tensor.pin_memory().to(device, non_blocking=True) if device.type == "cuda" else tensor.to(device)
+    return (
+        tensor.pin_memory().to(device, non_blocking=True)
+        if device.type == "cuda"
+        else tensor.to(device)
+    )
 
 
 def make_optimiser(config: LearnConfig, policy) -> torch.optim.Optimizer:
     """Adam without weight decay, the configured epsilon, fused (one kernel per step on the
     GPU; the fused path also skips a step through `found_inf` without a host read, which
     `update` uses for non-finite gradients). `update` sets the learning rate per step."""
-    return torch.optim.Adam(policy.parameters(), lr=config.learning_rate, eps=config.adam_epsilon, fused=True)
+    return torch.optim.Adam(
+        policy.parameters(), lr=config.learning_rate, eps=config.adam_epsilon, fused=True
+    )
 
 
 @dataclass
@@ -77,13 +99,19 @@ def masked_sum(values: Tensor, mask: Tensor) -> Tensor:
     return (values * weight).sum()
 
 
-def hit_loss(hit_logits: Tensor, label: Tensor, own: Tensor, denominator: Tensor | None = None) -> tuple[Tensor, Tensor]:
+def hit_loss(
+    hit_logits: Tensor, label: Tensor, own: Tensor, denominator: Tensor | None = None
+) -> tuple[Tensor, Tensor]:
     """Cross-entropy (nats) of the hit head summed over the rows that are `own` and labelled
     (label >= 0), divided by `denominator` (default: their count, so a mean), and that mask.
     hit_logits (..., HIT_CLASSES), label and own (...). Other rows contribute nothing, to
     the loss or to the gradient; no labelled row gives 0."""
     labelled = own & (label >= 0)
-    log_probability = torch.log_softmax(hit_logits.float(), -1).gather(-1, label.clamp_min(0)[..., None]).squeeze(-1)
+    log_probability = (
+        torch.log_softmax(hit_logits.float(), -1)
+        .gather(-1, label.clamp_min(0)[..., None])
+        .squeeze(-1)
+    )
     denominator = labelled.sum().clamp(min=1) if denominator is None else denominator
     return torch.where(labelled, -log_probability, 0.0).sum() / denominator, labelled
 
@@ -112,9 +140,22 @@ def minibatch_values(
 
 
 def minibatch_loss(
-    config: LearnConfig, policy, observation, carry: Tensor, reset: Tensor, position_offset: Tensor, action: Tensor,
-    old_log_probability: Tensor, advantage: Tensor, target: Tensor, teacher: Tensor, next_target: Tensor,
-    next_valid: Tensor, hit_label: Tensor, weights: Tensor, denominators: Tensor,
+    config: LearnConfig,
+    policy,
+    observation,
+    carry: Tensor,
+    reset: Tensor,
+    position_offset: Tensor,
+    action: Tensor,
+    old_log_probability: Tensor,
+    advantage: Tensor,
+    target: Tensor,
+    teacher: Tensor,
+    next_target: Tensor,
+    next_valid: Tensor,
+    hit_label: Tensor,
+    weights: Tensor,
+    denominators: Tensor,
 ) -> tuple[Tensor, dict[str, Tensor]]:
     """One micro-batch's share of its minibatch's loss (see `update`) and of its measures,
     all 0-d tensors: every term is a sum over this micro-batch's valid tokens divided by
@@ -147,10 +188,13 @@ def minibatch_loss(
 
     if next_state.shape[:-1] != next_target.shape:
         raise ValueError(
-            f"next-state head gives {tuple(next_state.shape)}, the recorded target is {tuple(next_target.shape)}"
+            f"next-state head gives {tuple(next_state.shape)}, the recorded target is "
+            f"{tuple(next_target.shape)}"
         )
     next_cross_entropy = next_state_cross_entropy(policy.config, next_state, next_target)
-    next_state_loss = masked_sum(next_cross_entropy, next_valid) / (next_count * next_cross_entropy.shape[-1])
+    next_state_loss = masked_sum(next_cross_entropy, next_valid) / (
+        next_count * next_cross_entropy.shape[-1]
+    )
 
     hit, _ = hit_loss(hit_logits, hit_label, own, labelled_count)
 
@@ -164,11 +208,17 @@ def minibatch_loss(
     )
     with torch.no_grad():
         measures = {
-            "loss": loss, "surrogate": surrogate, "value": value_loss, "entropy": entropy,
-            "next_state": next_state_loss, "hit": hit, "bc": bc,
+            "loss": loss,
+            "surrogate": surrogate,
+            "value": value_loss,
+            "entropy": entropy,
+            "next_state": next_state_loss,
+            "hit": hit,
+            "bc": bc,
             "bc_kl": masked_sum(teacher_cross - teacher_entropy, own) / own_count,
             "approximate_kl": masked_sum(ratio - 1.0 - log_ratio, own) / own_count,
-            "clip_fraction": masked_sum(((ratio - 1.0).abs() > config.clip).float(), own) / own_count,
+            "clip_fraction": masked_sum(((ratio - 1.0).abs() > config.clip).float(), own)
+            / own_count,
         }
     return loss, {name: measure.detach() for name, measure in measures.items()}
 
@@ -197,20 +247,32 @@ def target_pass(
         views = batch["views"]
         if values is not None:
             observation, offset = store.observation(batch)
-            value, centres = values(config, policy, observation, batch["carry"], batch["reset"], offset)
+            value, centres = values(
+                config, policy, observation, batch["carry"], batch["reset"], offset
+            )
         else:
             value, centres = batch["value"], store.centres
         segments = store.segments
-        last = views[views.numel() - views.numel() // segments:]  # each seat's last segment
+        last = views[views.numel() - views.numel() // segments :]  # each seat's last segment
         advantages, targets = generalised_advantages(
-            join_segments(batch["reward"], segments), join_segments(value, segments),
-            store.bootstrap.index_select(0, last), join_segments(batch["done"], segments), discounts, lambdas,
+            join_segments(batch["reward"], segments),
+            join_segments(value, segments),
+            store.bootstrap.index_select(0, last),
+            join_segments(batch["done"], segments),
+            discounts,
+            lambdas,
         )
-        advantages, targets = split_segments(advantages, segments), split_segments(targets, segments)
+        advantages, targets = (
+            split_segments(advantages, segments),
+            split_segments(targets, segments),
+        )
         # Padding views all write the spare view, which owns nothing.
         advantage.index_copy_(1, views, advantages.sum(-1))
         target.index_copy_(1, views, targets)
-        tally, part = usage_counts(targets, batch["own"], centres), advantage_sums(advantages, batch["own"])
+        tally, part = (
+            usage_counts(targets, batch["own"], centres),
+            advantage_sums(advantages, batch["own"]),
+        )
         pays = (batch["reward"] != 0).flatten(0, -2).any(0)
         if counts is None:
             counts, paid, sums = tally, pays, part
@@ -221,8 +283,16 @@ def target_pass(
 
 
 def update(
-    config: LearnConfig, policy, optimiser, data: RolloutStore | Rollout,
-    *, teacher_weight: float = 0.0, cloning: bool = False, step_index: int = 0, generator=None, compiled: bool = False,
+    config: LearnConfig,
+    policy,
+    optimiser,
+    data: RolloutStore | Rollout,
+    *,
+    teacher_weight: float = 0.0,
+    cloning: bool = False,
+    step_index: int = 0,
+    generator=None,
+    compiled: bool = False,
 ) -> dict[str, float]:
     """One update on the views of `data` (a RolloutStore, or one collected Rollout). Returns
     means over all minibatches as floats.
@@ -270,7 +340,9 @@ def update(
     only for a staging buffer's copy of two micro-batches before (RolloutStore.batches).
     """
     if not optimiser.defaults.get("fused"):
-        raise ValueError("update needs a fused optimiser (it skips non-finite steps through found_inf)")
+        raise ValueError(
+            "update needs a fused optimiser (it skips non-finite steps through found_inf)"
+        )
     store = data if isinstance(data, RolloutStore) else RolloutStore.of(data)
     if compiled:
         from lean.learn.compiled import graphs
@@ -290,14 +362,22 @@ def update(
     # Every epoch's data order, drawn on the generator's device and read in one go, with the
     # host's wait for the store's copies.
     draw_device = generator.device if generator is not None else torch.device("cpu")
-    orders = torch.stack([torch.randperm(views, generator=generator, device=draw_device) for _ in range(config.epochs)])
+    orders = torch.stack(
+        [
+            torch.randperm(views, generator=generator, device=draw_device)
+            for _ in range(config.epochs)
+        ]
+    )
     store.ready()
     orders = orders.cpu()
     target_index = store.chain_index(size)
     counts = store.counts()
     loss_names = store.observation_names + LOSS_NAMES
 
-    totals = {name: torch.zeros((), device=device) for name in MEASURES + ("gradient_norm", "skipped_steps", "hit_labelled")}
+    totals = {
+        name: torch.zeros((), device=device)
+        for name in MEASURES + ("gradient_norm", "skipped_steps", "hit_labelled")
+    }
     epoch_kl = torch.zeros(config.epochs, device=device)
     epoch_steps = []
     usage, shares = [], []
@@ -305,7 +385,9 @@ def update(
     rate = learning_rate(config, step_index)
     for epoch in range(config.epochs):
         if config.targets_every_epoch or epoch == 0:
-            flags, sums = target_pass(config, policy, store, target_index, values if config.targets_every_epoch else None)
+            flags, sums = target_pass(
+                config, policy, store, target_index, values if config.targets_every_epoch else None
+            )
             share, deviation = advantage_shares(sums)
             usage.append(flags)
             shares.append(torch.cat([share, deviation[None]]))
@@ -318,16 +400,34 @@ def update(
         epoch_steps.append(len(set(owners)))
         for row, batch in enumerate(store.batches(loss_names, index)):
             part = owners[row]
-            first, last = row == 0 or owners[row - 1] != part, row + 1 == len(owners) or owners[row + 1] != part
+            first, last = (
+                row == 0 or owners[row - 1] != part,
+                row + 1 == len(owners) or owners[row + 1] != part,
+            )
             if first:
-                members = index_device[row:row + owners.count(part)].flatten()  # a minibatch's rows are consecutive
+                members = index_device[
+                    row : row + owners.count(part)
+                ].flatten()  # a minibatch's rows are consecutive
                 denominators = counts.index_select(0, members).sum(0)
             views_now = batch["views"]
             observation, offset = store.observation(batch)
             loss, measures = loss_of(
-                config, policy, observation, batch["carry"], batch["reset"], offset, batch["action"],
-                batch["log_probability"], advantage.index_select(1, views_now), target.index_select(1, views_now),
-                batch["teacher"], batch["next_state"], batch["next_valid"], batch["hit_label"], weights, denominators,
+                config,
+                policy,
+                observation,
+                batch["carry"],
+                batch["reset"],
+                offset,
+                batch["action"],
+                batch["log_probability"],
+                advantage.index_select(1, views_now),
+                target.index_select(1, views_now),
+                batch["teacher"],
+                batch["next_state"],
+                batch["next_valid"],
+                batch["hit_label"],
+                weights,
+                denominators,
             )
             loss.backward()
             for name, measure in measures.items():
@@ -337,7 +437,9 @@ def update(
                 rate = learning_rate(config, step_index + steps)
                 for group in optimiser.param_groups:
                     group["lr"] = rate
-                norm = torch.nn.utils.clip_grad_norm_(policy.parameters(), config.gradient_clip).detach()
+                norm = torch.nn.utils.clip_grad_norm_(
+                    policy.parameters(), config.gradient_clip
+                ).detach()
                 finite = torch.isfinite(norm)
                 optimiser.found_inf = (~finite).float()
                 optimiser.step()
@@ -350,15 +452,23 @@ def update(
 
     names = list(totals)
     levels = len(config.discounts)
-    read = torch.cat([
-        torch.stack([totals[name] for name in names]), torch.stack(usage).mean(0).flatten(),
-        torch.stack(shares).mean(0), epoch_kl / torch.tensor(epoch_steps, device=device).clamp(min=1),
-    ]).tolist()
-    metrics = {name: total / max(1, steps) for name, total in zip(names, read[:len(names)], strict=True)}
+    read = torch.cat(
+        [
+            torch.stack([totals[name] for name in names]),
+            torch.stack(usage).mean(0).flatten(),
+            torch.stack(shares).mean(0),
+            epoch_kl / torch.tensor(epoch_steps, device=device).clamp(min=1),
+        ]
+    ).tolist()
+    metrics = {
+        name: total / max(1, steps) for name, total in zip(names, read[: len(names)], strict=True)
+    }
     metrics["skipped_steps"] = read[names.index("skipped_steps")]
-    metrics["gradient_norm"] = read[names.index("gradient_norm")] / max(1, steps - metrics["skipped_steps"])
+    metrics["gradient_norm"] = read[names.index("gradient_norm")] / max(
+        1, steps - metrics["skipped_steps"]
+    )
     position = len(names)
-    rows = [read[position + row * levels:position + (row + 1) * levels] for row in range(4)]
+    rows = [read[position + row * levels : position + (row + 1) * levels] for row in range(4)]
     metrics.update(usage_metrics(rows))
     position += 4 * levels
     for level, name in enumerate(LEVEL_NAMES):

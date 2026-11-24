@@ -22,7 +22,9 @@ COLUMN = {name: index for index, name in enumerate(style.SUMS)}
 
 def pair(nose_rates):
     """A 1v1 at 600 m, both heading +x; nose rates in sustained rates."""
-    state = placed(dict(x=0.0, y=0.0, heading=0.0, speed=200.0), dict(x=600.0, y=0.0, heading=0.0, speed=200.0))
+    state = placed(
+        dict(x=0.0, y=0.0, heading=0.0, speed=200.0), dict(x=600.0, y=0.0, heading=0.0, speed=200.0)
+    )
     sustained = state.constants["sustained_rate"]
     return state.replace(nose_rate=torch.tensor([nose_rates]) * sustained)
 
@@ -37,14 +39,25 @@ def rows_of(state, power=None, fired=None, hit_damage=None):
     )
 
 
-@pytest.mark.parametrize("rates, turning, two_circle", [
-    ((0.6, 0.6), 1.0, 1.0),  # both turning left: the same rotation, two-circle
-    ((-0.8, -0.5), 1.0, 1.0),  # both right
-    ((0.6, -0.6), 1.0, 0.0),  # opposite senses: one-circle
-    ((0.6, 0.0), 0.0, 0.0),  # the target flies straight: neither
-    ((0.6, 0.1), 0.0, 0.0),  # under the floor counts as straight
-    ((0.0, 0.0), 0.0, 0.0),
-], ids=["two-circle left", "two-circle right", "one-circle", "straight", "under the floor", "both straight"])
+@pytest.mark.parametrize(
+    "rates, turning, two_circle",
+    [
+        ((0.6, 0.6), 1.0, 1.0),  # both turning left: the same rotation, two-circle
+        ((-0.8, -0.5), 1.0, 1.0),  # both right
+        ((0.6, -0.6), 1.0, 0.0),  # opposite senses: one-circle
+        ((0.6, 0.0), 0.0, 0.0),  # the target flies straight: neither
+        ((0.6, 0.1), 0.0, 0.0),  # under the floor counts as straight
+        ((0.0, 0.0), 0.0, 0.0),
+    ],
+    ids=[
+        "two-circle left",
+        "two-circle right",
+        "one-circle",
+        "straight",
+        "under the floor",
+        "both straight",
+    ],
+)
 def test_turning_fight_classification(rates, turning, two_circle):
     state = pair(rates)
     rows = rows_of(state)
@@ -60,27 +73,52 @@ def test_turning_fight_classification(rates, turning, two_circle):
 def test_the_other_measures_read_the_state():
     state = pair((0.0, 0.0))
     c = state.constants
-    state = state.replace(energy=torch.tensor([[0.25, 0.75]]) * c["max_energy"],
-                          speed=torch.tensor([[0.5, 2.0]]) * c["corner_speed"])
+    state = state.replace(
+        energy=torch.tensor([[0.25, 0.75]]) * c["max_energy"],
+        speed=torch.tensor([[0.5, 2.0]]) * c["corner_speed"],
+    )
     power = torch.tensor([[style.CLIMB, style.DIVE]])
     hit_damage = torch.zeros(1, 2, 2)
     hit_damage[0, 0, 1] = 3.0  # ship 0 hits ship 1
     rows = rows_of(state, power, torch.tensor([[True, False]]), hit_damage)
     expected = {
-        "ticks": (1, 1), "store": (0.25, 0.75), "speed": (0.5, 2.0), "shots": (1, 0), "hits": (1, 0),
-        "hit_range": (600.0 / float(c["gun_range"]), 0.0), "climb": (1, 0), "dive": (0, 1),
+        "ticks": (1, 1),
+        "store": (0.25, 0.75),
+        "speed": (0.5, 2.0),
+        "shots": (1, 0),
+        "hits": (1, 0),
+        "hit_range": (600.0 / float(c["gun_range"]), 0.0),
+        "climb": (1, 0),
+        "dive": (0, 1),
     }
     for name, values in expected.items():
-        torch.testing.assert_close(rows[0, :, COLUMN[name]], torch.tensor(values, dtype=torch.float32))
+        torch.testing.assert_close(
+            rows[0, :, COLUMN[name]], torch.tensor(values, dtype=torch.float32)
+        )
     # A ship not alive at tick start counts nothing.
     dead = state.replace(alive=torch.tensor([[True, False]]))
     assert float(rows_of(dead)[0, 1].abs().sum()) == 0.0
     # Seats: the tick's sums per seat, nothing for an environment not playing.
     seat_a = torch.tensor([[True, False]])
-    sums = style.tick_sums(state, seat_a, torch.tensor([True]), power, torch.tensor([[True, False]]), hit_damage)
+    sums = style.tick_sums(
+        state, seat_a, torch.tensor([True]), power, torch.tensor([[True, False]]), hit_damage
+    )
     torch.testing.assert_close(sums[0], rows[0])
-    assert float(style.tick_sums(state, seat_a, torch.tensor([False]), power, torch.tensor([[True, False]]),
-                                 hit_damage).abs().sum()) == 0.0
+    assert (
+        float(
+            style.tick_sums(
+                state,
+                seat_a,
+                torch.tensor([False]),
+                power,
+                torch.tensor([[True, False]]),
+                hit_damage,
+            )
+            .abs()
+            .sum()
+        )
+        == 0.0
+    )
 
 
 def test_measures_from_sums():
@@ -93,8 +131,15 @@ def test_measures_from_sums():
     sums[0, 0, COLUMN["hit_range"]] = 1.0
     sums[0, 1, COLUMN["ticks"]] = 1800
     (row,) = style.measures(sums, 1.0 / 30.0)
-    a, b = dict(zip(style.MEASURES, row[:10], strict=True)), dict(zip(style.MEASURES, row[10:], strict=True))
-    assert a["minutes"] == pytest.approx(1.0) and a["turning"] == 0.5 and a["two_circle"] == pytest.approx(1 / 3)
+    a, b = (
+        dict(zip(style.MEASURES, row[:10], strict=True)),
+        dict(zip(style.MEASURES, row[10:], strict=True)),
+    )
+    assert (
+        a["minutes"] == pytest.approx(1.0)
+        and a["turning"] == 0.5
+        and a["two_circle"] == pytest.approx(1 / 3)
+    )
     assert a["shots"] == pytest.approx(12.0) and a["hits"] == 2 and a["hit_range"] == 0.5
     assert b["two_circle"] is None and b["hit_range"] is None and b["hits"] == 0
 
@@ -114,9 +159,14 @@ def test_the_runner_starts_each_game_afresh():
 def test_the_store_keeps_styles_per_game(tmp_path):
     store = Store(tmp_path / "games.sqlite")
     evaluator = Evaluator(store, GAME, device="cpu", envs=8, segment=8)
-    yardstick, other = ScriptedAgent.of(), ScriptedAgent.of(ScriptedConfig().replace(fight_speed=1.3))
+    yardstick, other = (
+        ScriptedAgent.of(),
+        ScriptedAgent.of(ScriptedConfig().replace(fight_speed=1.3)),
+    )
     evaluator.ensure([(yardstick, other, (2, 2), 10)])
-    rows = store.connection.execute("SELECT length, a_minutes, b_minutes, a_store FROM games").fetchall()
+    rows = store.connection.execute(
+        "SELECT length, a_minutes, b_minutes, a_store FROM games"
+    ).fetchall()
     assert len(rows) == 10
     for length, a_minutes, b_minutes, a_store in rows:
         assert a_minutes == pytest.approx(2 * length * GAME.tick_length / 60.0) == b_minutes
@@ -130,8 +180,10 @@ def test_the_store_keeps_styles_per_game(tmp_path):
 def test_an_older_store_takes_the_style_columns(tmp_path):
     path = tmp_path / "old.sqlite"
     connection = sqlite3.connect(path)
-    connection.execute("CREATE TABLE games (agent_a TEXT NOT NULL, agent_b TEXT NOT NULL, side INTEGER NOT NULL, "
-                       "conditions TEXT NOT NULL, result INTEGER NOT NULL, length INTEGER NOT NULL)")
+    connection.execute(
+        "CREATE TABLE games (agent_a TEXT NOT NULL, agent_b TEXT NOT NULL, side INTEGER NOT NULL, "
+        "conditions TEXT NOT NULL, result INTEGER NOT NULL, length INTEGER NOT NULL)"
+    )
     connection.execute("INSERT INTO games VALUES ('a', 'b', 0, 'c', 0, 100)")
     connection.commit()
     connection.close()

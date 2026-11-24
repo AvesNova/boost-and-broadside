@@ -68,10 +68,14 @@ def test_the_bc_loss_is_the_cross_entropy_on_the_soft_targets():
     """teacher_cross_entropy is -sum p_teacher log q over the 42 joint actions; its minimum
     over the policy is the teacher's entropy (KL zero), reached at the teacher itself."""
     generator = torch.Generator().manual_seed(1)
-    marginals = torch.cat([
-        torch.softmax(torch.randn(6, 7, generator=generator), -1), torch.softmax(torch.randn(6, 3, generator=generator), -1),
-        torch.rand(6, 1, generator=generator),
-    ], -1)
+    marginals = torch.cat(
+        [
+            torch.softmax(torch.randn(6, 7, generator=generator), -1),
+            torch.softmax(torch.randn(6, 3, generator=generator), -1),
+            torch.rand(6, 1, generator=generator),
+        ],
+        -1,
+    )
     target = teacher_joint(marginals)
     log_policy = torch.log_softmax(torch.randn(6, JOINT, generator=generator), -1)
     cross, entropy = teacher_cross_entropy(log_policy, marginals)
@@ -87,7 +91,8 @@ def test_the_bc_loss_is_the_cross_entropy_on_the_soft_targets():
 def heads(policy) -> dict[str, list[torch.Tensor]]:
     """Each head's own last layer: policy and value (the head group), next state and hit."""
     return {
-        "policy": list(policy.heads.lasts[0].parameters()), "value": list(policy.heads.lasts[1].parameters()),
+        "policy": list(policy.heads.lasts[0].parameters()),
+        "value": list(policy.heads.lasts[1].parameters()),
         "next_state": list(policy.auxiliary_heads.lasts[0].parameters()),
         "hit": list(policy.auxiliary_heads.lasts[1].parameters()),
     }
@@ -104,13 +109,27 @@ def test_the_bc_stage_trains_every_head_and_ignores_the_advantages(cloning, monk
     normalise = training.normalise_advantages
     steps = []
     for scale in (1.0, 100.0):
-        monkeypatch.setattr(training, "normalise_advantages", lambda total, mask, scale=scale: scale * normalise(total, mask))
-        twin = copy.deepcopy(policy)
-        before = {name: [p.detach().clone() for p in params] for name, params in heads(twin).items()}
-        metrics = update(
-            config, twin, make_optimiser(config, twin), rollout, cloning=cloning, generator=torch.Generator().manual_seed(3)
+        monkeypatch.setattr(
+            training,
+            "normalise_advantages",
+            lambda total, mask, scale=scale: scale * normalise(total, mask),
         )
-        moved = {name: any(not torch.equal(a, b) for a, b in zip(before[name], params, strict=True)) for name, params in heads(twin).items()}
+        twin = copy.deepcopy(policy)
+        before = {
+            name: [p.detach().clone() for p in params] for name, params in heads(twin).items()
+        }
+        metrics = update(
+            config,
+            twin,
+            make_optimiser(config, twin),
+            rollout,
+            cloning=cloning,
+            generator=torch.Generator().manual_seed(3),
+        )
+        moved = {
+            name: any(not torch.equal(a, b) for a, b in zip(before[name], params, strict=True))
+            for name, params in heads(twin).items()
+        }
         assert all(moved.values()), moved
         steps.append([p.detach() for p in twin.parameters()])
     same = all(torch.equal(first, second) for first, second in zip(*steps, strict=True))
@@ -120,13 +139,25 @@ def test_the_bc_stage_trains_every_head_and_ignores_the_advantages(cloning, monk
 
 
 def test_cloning_updates_reduce_the_kl_to_the_teacher_and_the_value_loss():
-    config, game_config, policy, opponent, state, carry, generator = small(epochs=2, learning_rate=1e-3)
+    config, game_config, policy, opponent, state, carry, generator = small(
+        epochs=2, learning_rate=1e-3
+    )
     optimiser = make_optimiser(config, policy)
     history, steps = [], 0
     for _ in range(6):
         rollout = collect(config, game_config, policy, opponent, state, carry, 16, generator)
         state, carry = rollout.state, rollout.carry
-        history.append(update(config, policy, optimiser, rollout, cloning=True, step_index=steps, generator=generator))
+        history.append(
+            update(
+                config,
+                policy,
+                optimiser,
+                rollout,
+                cloning=True,
+                step_index=steps,
+                generator=generator,
+            )
+        )
         steps += history[-1]["adam_steps"]
     assert history[-1]["bc_kl"] < history[0]["bc_kl"]
     assert history[-1]["value"] < history[0]["value"]
@@ -137,13 +168,17 @@ def test_cloning_updates_reduce_the_kl_to_the_teacher_and_the_value_loss():
 
 
 def test_the_teacher_term_shrinks_every_update_and_switches_off_at_the_gate_for_good():
-    config = LearnConfig(teacher_coefficient=0.5, teacher_decay=0.9, teacher_gate=0.45, teacher_cutoff=0.001)
+    config = LearnConfig(
+        teacher_coefficient=0.5, teacher_decay=0.9, teacher_gate=0.45, teacher_cutoff=0.001
+    )
     term = TeacherTerm()
     weights = [term.weight(config, 0.0) for _ in range(3)]
     assert weights == pytest.approx([0.5, 0.45, 0.405])
     assert term.weight(config, 0.44) == pytest.approx(0.5 * 0.9**3)  # below the gate: still on
     assert term.weight(config, 0.45) == 0.0  # the gate reached
-    assert term.off and term.weight(config, 0.0) == 0.0  # and off for good, whatever the win rate after
+    assert (
+        term.off and term.weight(config, 0.0) == 0.0
+    )  # and off for good, whatever the win rate after
 
 
 def test_the_teacher_term_ends_by_its_decay_alone():
@@ -159,16 +194,27 @@ def test_the_gate_reads_zero_until_a_scripted_game_is_played():
     _, _, _, opponent, _, _, _ = small(league=True)
     league = opponent.league
     assert league.scripted_win_rate() == 0.0 and float(league.win_rates()[0]) == 0.5
-    league.record(torch.tensor([0]), torch.tensor([True]), torch.tensor([True]), torch.tensor([False]))
+    league.record(
+        torch.tensor([0]), torch.tensor([True]), torch.tensor([True]), torch.tensor([False])
+    )
     assert league.scripted_win_rate() == 1.0
 
 
 def test_an_rl_update_weighs_the_teacher_term_as_given():
-    config, policy, rollout, _ = rollout_of(minibatches=1)  # one step: its loss is measured before it
+    config, policy, rollout, _ = rollout_of(
+        minibatches=1
+    )  # one step: its loss is measured before it
     results = []
     for weight in (0.0, 1.0):
         twin = copy.deepcopy(policy)
-        metrics = update(config, twin, make_optimiser(config, twin), rollout, teacher_weight=weight, generator=torch.Generator().manual_seed(4))
+        metrics = update(
+            config,
+            twin,
+            make_optimiser(config, twin),
+            rollout,
+            teacher_weight=weight,
+            generator=torch.Generator().manual_seed(4),
+        )
         results.append(metrics)
     assert results[0]["teacher_weight"] == 0.0 and results[1]["teacher_weight"] == 1.0
     assert results[1]["loss"] == pytest.approx(results[0]["loss"] + results[1]["bc"], rel=1e-4)
@@ -211,7 +257,9 @@ def test_averages_are_never_fed_back_into_training():
         generator = torch.Generator().manual_seed(5)
         steps = 0
         for _ in range(2):
-            steps += update(config, twin, optimiser, rollout, step_index=steps, generator=generator)["adam_steps"]
+            steps += update(
+                config, twin, optimiser, rollout, step_index=steps, generator=generator
+            )["adam_steps"]
             if keep:
                 averages.update(twin, steps)
         lives.append([p.detach().clone() for p in twin.parameters()])
@@ -233,14 +281,20 @@ def test_a_checkpoint_holds_the_live_weights_and_both_averages(tmp_path):
     averages.update(policy, adam_steps=1)
     save_checkpoint(tmp_path / "bc.pt", policy, averages, config, stage="bc")
     checkpoint = load_checkpoint(tmp_path / "bc.pt")
-    assert checkpoint["stage"] == "bc" and checkpoint["learn_config"]["ema_decay"] == config.ema_decay
+    assert (
+        checkpoint["stage"] == "bc" and checkpoint["learn_config"]["ema_decay"] == config.ema_decay
+    )
     for which in ("live", "ema", "uniform"):
         restored = model.Policy(checkpoint["model_config"])
         restored.load_state_dict(policy_weights(checkpoint, which))
         expected = averages.weights(which, policy)
-        assert all(torch.equal(value, expected[name]) for name, value in restored.state_dict().items()), which
+        assert all(
+            torch.equal(value, expected[name]) for name, value in restored.state_dict().items()
+        ), which
     name = next(iter(averages.ema))
-    assert not torch.equal(policy_weights(checkpoint, "ema")[name], policy_weights(checkpoint, "live")[name])
+    assert not torch.equal(
+        policy_weights(checkpoint, "ema")[name], policy_weights(checkpoint, "live")[name]
+    )
 
 
 # ------------------------------------------------------------------ the optimiser
@@ -290,7 +344,12 @@ def test_the_learning_rate_warms_up_over_2000_adam_steps_then_stays_constant():
     assert config.warmup_steps == 2000
     assert learning_rate(config, 0) == pytest.approx(3e-4 / 2000)
     assert learning_rate(config, 999) == pytest.approx(3e-4 / 2)
-    assert learning_rate(config, 1999) == learning_rate(config, 2000) == learning_rate(config, 10**7) == 3e-4
+    assert (
+        learning_rate(config, 1999)
+        == learning_rate(config, 2000)
+        == learning_rate(config, 10**7)
+        == 3e-4
+    )
 
 
 def test_an_update_sets_the_rate_of_each_adam_step():
@@ -298,23 +357,33 @@ def test_an_update_sets_the_rate_of_each_adam_step():
     optimiser = make_optimiser(config, policy)
     metrics = update(config, policy, optimiser, rollout, step_index=10, generator=generator)
     assert metrics["adam_steps"] == 4  # 2 epochs x 2 minibatches
-    assert optimiser.param_groups[0]["lr"] == metrics["learning_rate"] == pytest.approx(learning_rate(config, 13))
+    assert (
+        optimiser.param_groups[0]["lr"]
+        == metrics["learning_rate"]
+        == pytest.approx(learning_rate(config, 13))
+    )
 
 
-# ------------------------------------------------------------------ the KL monitor and the advantages
+# ------------------------------------------------------------------ the KL monitor and the advantag
 
 
 def test_the_kl_monitor_logs_each_epoch_and_warns_without_stopping():
     """Old log-probabilities shifted by 1 nat put every epoch's approximate KL near e - 2: the
     warning is raised and every epoch still runs all its steps (no early stop)."""
     config, policy, rollout, generator = rollout_of(epochs=3)
-    calm = update(config, copy.deepcopy(policy), make_optimiser(config, policy), rollout, generator=generator)
-    assert [name for name in calm if name.startswith("approximate_kl_epoch_")] == [f"approximate_kl_epoch_{k}" for k in range(3)]
+    calm = update(
+        config, copy.deepcopy(policy), make_optimiser(config, policy), rollout, generator=generator
+    )
+    assert [name for name in calm if name.startswith("approximate_kl_epoch_")] == [
+        f"approximate_kl_epoch_{k}" for k in range(3)
+    ]
     assert calm["approximate_kl_epoch_0"] < 1e-6 and calm["kl_warning"] == 0.0
     rollout.log_probability = rollout.log_probability - 1.0
     shifted = update(config, policy, make_optimiser(config, policy), rollout, generator=generator)
     assert shifted["approximate_kl_epoch_0"] == pytest.approx(math.e - 2.0, rel=0.05)
-    assert shifted["kl_warning"] == 1.0 and shifted["adam_steps"] == config.epochs * config.minibatches
+    assert (
+        shifted["kl_warning"] == 1.0 and shifted["adam_steps"] == config.epochs * config.minibatches
+    )
 
 
 def test_each_levels_share_of_the_advantage_variance_adds_up_to_one():
@@ -327,7 +396,9 @@ def test_each_levels_share_of_the_advantage_variance_adds_up_to_one():
     chosen, total = advantage[mask], advantage.sum(-1)[mask]
     centred = total - total.mean()
     expected = ((chosen - chosen.mean(0)) * centred[:, None]).mean(0) / centred.pow(2).mean()
-    assert torch.allclose(shares, expected, atol=1e-4) and shares.sum() == pytest.approx(1.0, abs=1e-5)
+    assert torch.allclose(shares, expected, atol=1e-4) and shares.sum() == pytest.approx(
+        1.0, abs=1e-5
+    )
     assert deviation == pytest.approx(float(total.std()), rel=1e-4)
 
 

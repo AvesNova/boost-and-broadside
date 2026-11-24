@@ -107,20 +107,28 @@ class Slots:
     style: Tensor
 
 
-def draw_deals(game_config, queue: Queue, first: int, count: int, slots: int, model_configs, device) -> Deals:
+def draw_deals(
+    game_config, queue: Queue, first: int, count: int, slots: int, model_configs, device
+) -> Deals:
     """Deals for the queue's games first .. first + count - 1 (rows past the queue's end
     repeat its last game; they are never started). `model_configs`: seat A's and seat B's
     network configs (None for a scripted seat: a zero offset)."""
     index = (first + torch.arange(count, device=device)).clamp(max=len(queue) - 1)
     sizes = queue.team_sizes().index_select(0, index)
     state = game.deal(game_config, count, slots, sizes, None, device)
-    offsets = [draw_position_offset(config, count, None, device) if config is not None
-               else torch.zeros(count, 2, device=device) for config in model_configs]
+    offsets = [
+        draw_position_offset(config, count, None, device)
+        if config is not None
+        else torch.zeros(count, 2, device=device)
+        for config in model_configs
+    ]
     first_tensor = torch.tensor(first, dtype=torch.long, device=device)
     return Deals(state, scripted.fresh_memory(count, slots, None, device), *offsets, first_tensor)
 
 
-def network_moves(network_: Network, seat_team: Tensor, views, carry: Tensor, offset: Tensor) -> tuple[Tensor, Tensor]:
+def network_moves(
+    network_: Network, seat_team: Tensor, views, carry: Tensor, offset: Tensor
+) -> tuple[Tensor, Tensor]:
     """A network's sampled actions (E, N, 3) from team `seat_team[e]`'s view of every
     environment, and its new carry."""
     envs = seat_team.shape[0]
@@ -129,8 +137,21 @@ def network_moves(network_: Network, seat_team: Tensor, views, carry: Tensor, of
     return split_joint(joint), carry
 
 
-def tick(game_config, state, slots: Slots, queue: Queue, table: Tensor, network_a, network_b, deals: Deals,
-         taken: Tensor, limit: Tensor, result: Tensor, length: Tensor, style: Tensor):
+def tick(
+    game_config,
+    state,
+    slots: Slots,
+    queue: Queue,
+    table: Tensor,
+    network_a,
+    network_b,
+    deals: Deals,
+    taken: Tensor,
+    limit: Tensor,
+    result: Tensor,
+    length: Tensor,
+    style: Tensor,
+):
     """One tick of every environment, then the starts. `taken` (0-d long) counts the rows of
     `deals` used, `limit` (0-d long) is the first queue index that may not start; `result`
     and `length` (Q + 1,) and `style` (Q + 1, 2, len(style.SUMS)) take each finished game's
@@ -139,14 +160,20 @@ def tick(game_config, state, slots: Slots, queue: Queue, table: Tensor, network_
     device = state.exists.device
     playing = slots.game >= 0
     current = slots.game.clamp(min=0)
-    a, b, side = queue.a.index_select(0, current), queue.b.index_select(0, current), queue.side.index_select(0, current)
+    a, b, side = (
+        queue.a.index_select(0, current),
+        queue.b.index_select(0, current),
+        queue.side.index_select(0, current),
+    )
     seat_a = state.team == side[:, None]  # (E, N) the ship plays for seat A
     action = torch.zeros((envs, ships, 3), dtype=torch.long, device=device)
     memory = slots.memory
     if network_a is None or network_b is None:
         agent = torch.where(seat_a, a[:, None], b[:, None])
         uniforms = scripted.draw_uniforms(envs, ships, None, device)
-        action, memory, _ = scripted.decide(FIXED_CONFIG, state, None, rows_of(table, agent), uniforms, memory)
+        action, memory, _ = scripted.decide(
+            FIXED_CONFIG, state, None, rows_of(table, agent), uniforms, memory
+        )
     carry_a, carry_b = slots.carry_a, slots.carry_b
     if network_a is not None or network_b is not None:
         views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
@@ -203,12 +230,25 @@ def compiled_tick():
 
 @torch.no_grad()
 def play(
-    game_config, queue: Queue, scripted_table: Tensor, policy_a=None, policy_b=None, *,
-    envs: int = 4096, segment: int = 32, seconds: float | None = None, compiled: bool = False, seed: int = 0,
-    progress=None, slot_games: int = 16, minimum_envs: int = 256, bf16: tuple[bool, bool] = (True, True),
+    game_config,
+    queue: Queue,
+    scripted_table: Tensor,
+    policy_a=None,
+    policy_b=None,
+    *,
+    envs: int = 4096,
+    segment: int = 32,
+    seconds: float | None = None,
+    compiled: bool = False,
+    seed: int = 0,
+    progress=None,
+    slot_games: int = 16,
+    minimum_envs: int = 256,
+    bf16: tuple[bool, bool] = (True, True),
 ) -> Outcome:
     """Play the queue's games (see the module's docstring) on at most `envs` environments on
-    the table's device (fewer for a short queue: Q / `slot_games`, at least `minimum_envs`). `scripted_table` (S, len(PARAMETERS)) float32 holds the scripted
+    the table's device (fewer for a short queue: Q / `slot_games`, at least `minimum_envs`).
+    `scripted_table` (S, len(PARAMETERS)) float32 holds the scripted
     agents' vectors (one row at least, even when both seats are networks); `policy_a`,
     `policy_b` a lean.model.Policy playing every game's seat A or B, or None for the
     scripted agent of the queue's index; `bf16` each seat's network precision, the setting
@@ -223,13 +263,38 @@ def play(
         torch.random.default_generator.manual_seed(seed)
         if devices:
             torch.cuda.manual_seed_all(seed)
-        return _play(game_config, queue, scripted_table, policy_a, policy_b, envs, segment, seconds, compiled, progress,
-                     slot_games, minimum_envs, bf16)
+        return _play(
+            game_config,
+            queue,
+            scripted_table,
+            policy_a,
+            policy_b,
+            envs,
+            segment,
+            seconds,
+            compiled,
+            progress,
+            slot_games,
+            minimum_envs,
+            bf16,
+        )
 
 
-def _play(game_config, queue: Queue, scripted_table: Tensor, policy_a, policy_b, envs: int, segment: int,
-          seconds: float | None, compiled: bool, progress, slot_games: int, minimum_envs: int,
-          bf16: tuple[bool, bool]) -> Outcome:
+def _play(
+    game_config,
+    queue: Queue,
+    scripted_table: Tensor,
+    policy_a,
+    policy_b,
+    envs: int,
+    segment: int,
+    seconds: float | None,
+    compiled: bool,
+    progress,
+    slot_games: int,
+    minimum_envs: int,
+    bf16: tuple[bool, bool],
+) -> Outcome:
     device = scripted_table.device
     queue = queue.to(device)
     total = len(queue)
@@ -249,12 +314,23 @@ def _play(game_config, queue: Queue, scripted_table: Tensor, policy_a, policy_b,
     # The state is the runner's: its own copies of the deal's shared fixed rows, every tensor
     # whole (a compiled graph is specialised on strides).
     shared = ("bullets", "bullet_counts", "bullet_real", "tick", "pending")
-    state = dataclasses.replace(opening.state, **{name: getattr(opening.state, name).clone() for name in shared})
+    state = dataclasses.replace(
+        opening.state, **{name: getattr(opening.state, name).clone() for name in shared}
+    )
     state = whole_state(state)
-    carries = [None if policy is None else policy.initial_carry(envs, ships, device) for policy in (policy_a, policy_b)]
+    carries = [
+        None if policy is None else policy.initial_carry(envs, ships, device)
+        for policy in (policy_a, policy_b)
+    ]
     width = len(style_counters.SUMS)
-    slots = Slots(torch.arange(envs, device=device), opening.memory, *carries, opening.offset_a, opening.offset_b,
-                  torch.zeros(envs, 2, width, device=device))
+    slots = Slots(
+        torch.arange(envs, device=device),
+        opening.memory,
+        *carries,
+        opening.offset_a,
+        opening.offset_b,
+        torch.zeros(envs, 2, width, device=device),
+    )
     result = torch.full((total + 1,), NOT_PLAYED, dtype=torch.long, device=device)
     length = torch.zeros(total + 1, dtype=torch.long, device=device)
     style = torch.zeros(total + 1, 2, width, device=device)
@@ -266,8 +342,19 @@ def _play(game_config, queue: Queue, scripted_table: Tensor, policy_a, policy_b,
     while True:
         for _ in range(segment):
             state, slots, taken = function(
-                game_config, state, slots, queue, scripted_table, network_a, network_b, deals, taken, limit_tensor,
-                result, length, style,
+                game_config,
+                state,
+                slots,
+                queue,
+                scripted_table,
+                network_a,
+                network_b,
+                deals,
+                taken,
+                limit_tensor,
+                result,
+                length,
+                style,
             )
         used, busy = torch.stack([taken, (slots.game >= 0).sum()]).tolist()
         first += used

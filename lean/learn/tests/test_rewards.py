@@ -17,22 +17,31 @@ DAMAGE_POINT = CONFIG.reward_weights[DAMAGE] / CONFIG.damage_unit
 TEAM = torch.tensor([[0, 0, 1, 1]])
 
 
-def events(raw=None, boundary=None, lost=None, restored=None, died=(), done=False, result=-1, present=None):
+def events(
+    raw=None, boundary=None, lost=None, restored=None, died=(), done=False, result=-1, present=None
+):
     """One tick's events of the 2v2 environment; raw as {(attacker, target): damage}."""
     matrix = torch.zeros(1, 4, 4)
     for (attacker, target), amount in (raw or {}).items():
         matrix[0, attacker, target] = amount
+
     def per_ship(values):
         tensor = torch.zeros(1, 4)
         for slot, amount in (values or {}).items():
             tensor[0, slot] = amount
         return tensor
+
     dead = torch.zeros(1, 4, dtype=torch.bool)
     dead[0, list(died)] = True
     win_loss = torch.tensor([[float(result == 0), float(result == 1)]])
     return TickEvents(
-        raw=matrix, boundary=per_ship(boundary), shield_lost=per_ship(lost), shield_restored=per_ship(restored),
-        died=dead, done=torch.tensor([done]), win_loss=win_loss,
+        raw=matrix,
+        boundary=per_ship(boundary),
+        shield_lost=per_ship(lost),
+        shield_restored=per_ship(restored),
+        died=dead,
+        done=torch.tensor([done]),
+        win_loss=win_loss,
         present=torch.ones(1, 4, dtype=torch.bool) if present is None else present,
     )
 
@@ -48,15 +57,30 @@ def test_damage_and_kill_death_are_zero_sum_with_the_ledger_and_unequal_teams():
     present = torch.tensor([True, True, True, True, True, False]).expand(envs, slots)
     ledger = blank_ledger(envs, slots)
     for _ in range(20):
-        raw = torch.rand(envs, slots, slots, generator=generator) * (torch.rand(envs, slots, slots, generator=generator) < 0.2)
+        raw = torch.rand(envs, slots, slots, generator=generator) * (
+            torch.rand(envs, slots, slots, generator=generator) < 0.2
+        )
         raw = raw * ~torch.eye(slots, dtype=torch.bool) * present[:, :, None] * present[:, None, :]
-        boundary = torch.rand(envs, slots, generator=generator) * (torch.rand(envs, slots, generator=generator) < 0.2) * present
+        boundary = (
+            torch.rand(envs, slots, generator=generator)
+            * (torch.rand(envs, slots, generator=generator) < 0.2)
+            * present
+        )
         total = raw.sum(1) + boundary
         lost = total * torch.rand(envs, slots, generator=generator)
         restored = torch.rand(envs, slots, generator=generator) * (total == 0) * present
         died = (torch.rand(envs, slots, generator=generator) < 0.05) & present
         done = torch.rand(envs, generator=generator) < 0.05
-        tick = TickEvents(raw * 50, boundary * 50, lost * 50, restored * 20, died, done, torch.zeros(envs, 2), present)
+        tick = TickEvents(
+            raw * 50,
+            boundary * 50,
+            lost * 50,
+            restored * 20,
+            died,
+            done,
+            torch.zeros(envs, 2),
+            present,
+        )
         reward, ledger = reward_step(CONFIG, ledger, tick, team)
         for level in (DAMAGE, KILL_DEATH):
             assert reward[..., level].sum(-1).abs().max() < 1e-4
@@ -69,7 +93,9 @@ def test_outcome_pays_every_ship_of_both_teams_on_the_last_tick():
     cancel when the teams are equal."""
     ledger = blank_ledger(1, 4)
     won, _ = reward_step(CONFIG, ledger, events(done=True, result=1, died=(3,)), TEAM)
-    assert torch.equal(won[0, :, OUTCOME], torch.tensor([-1.0, -1.0, 1.0, 1.0]) * CONFIG.reward_weights[OUTCOME])
+    assert torch.equal(
+        won[0, :, OUTCOME], torch.tensor([-1.0, -1.0, 1.0, 1.0]) * CONFIG.reward_weights[OUTCOME]
+    )
     assert won[0, :, OUTCOME].sum() == 0
     drawn, _ = reward_step(CONFIG, ledger, events(done=True, result=2), TEAM)
     assert (drawn[..., OUTCOME] == 0).all()
@@ -124,12 +150,16 @@ def test_recharge_refunds_the_target_and_charges_back_the_attacker():
 def test_friendly_fire_blames_the_shooter_and_pays_the_other_team_twice():
     ledger = blank_ledger(1, 4)
     hit, _ = reward_step(CONFIG, ledger, events(raw={(0, 1): 20.0}, lost={1: 20.0}), TEAM)
-    assert torch.allclose(hit[0, :, DAMAGE], torch.tensor([-20.0, -20.0, 20.0, 20.0]) * DAMAGE_POINT)
+    assert torch.allclose(
+        hit[0, :, DAMAGE], torch.tensor([-20.0, -20.0, 20.0, 20.0]) * DAMAGE_POINT
+    )
 
 
 def test_objective_levels_are_kept_and_zero_in_elimination():
     ledger = blank_ledger(1, 4)
-    reward, _ = reward_step(CONFIG, ledger, events(raw={(0, 2): 50.0}, lost={2: 50.0}, done=True, result=0), TEAM)
+    reward, _ = reward_step(
+        CONFIG, ledger, events(raw={(0, 2): 50.0}, lost={2: 50.0}, done=True, result=0), TEAM
+    )
     assert reward.shape[-1] == LEVELS
     assert (reward[..., OBJECTIVE_PROGRESS] == 0).all() and (reward[..., OBJECTIVE] == 0).all()
 
@@ -150,7 +180,9 @@ def test_the_real_game_gives_zero_sum_levels():
     for _ in range(300):
         uniforms = scripted.draw_uniforms(envs, slots, generator, "cpu")
         action, memory = scripted.act(scripted_config, state, None, persona, uniforms, memory)
-        next_state, step_out = game.step(game_config, state, action, game.draw_noise(game_config, envs, slots, generator, "cpu"))
+        next_state, step_out = game.step(
+            game_config, state, action, game.draw_noise(game_config, envs, slots, generator, "cpu")
+        )
         reward, ledger = reward_step(CONFIG, ledger, tick_events(step_out, state), state.team)
         assert reward[..., DAMAGE].sum(-1).abs().max() < 1e-4
         assert reward[..., KILL_DEATH].sum(-1).abs().max() < 1e-4
@@ -174,7 +206,9 @@ def test_range_monitoring_flags_clamped_and_narrow_targets():
     spread = torch.linspace(0.0, 1.0, 48).view(8, 2, 3)
     target = torch.zeros(8, 2, 3, LEVELS)
     for level in (DAMAGE, KILL_DEATH):  # spread over the support, inside it
-        target[..., level] = config.value_low[level] + spread * (config.value_high[level] - config.value_low[level])
+        target[..., level] = config.value_low[level] + spread * (
+            config.value_high[level] - config.value_low[level]
+        )
     target[0, 0, 0, KILL_DEATH] = 10 * config.value_high[KILL_DEATH]  # one far outside: 1 in 48
     target[..., OUTCOME] = 0.01 * spread  # all in the middle bin or two
     target[..., OBJECTIVE] = 0.01 * spread  # narrow, but the level paid nothing

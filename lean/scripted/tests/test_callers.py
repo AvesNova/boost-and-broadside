@@ -21,7 +21,13 @@ class MemoryRecorder:
 
     def __call__(self, config, state, team, persona, uniforms, memory):
         action, new_memory, parts = self.decide(config, state, team, persona, uniforms, memory)
-        self.calls.append((state.tick.clone(), {name: value.clone() for name, value in memory.items()}, new_memory))
+        self.calls.append(
+            (
+                state.tick.clone(),
+                {name: value.clone() for name, value in memory.items()},
+                new_memory,
+            )
+        )
         return action, new_memory, parts
 
     def check(self, discarded=()) -> int:
@@ -53,7 +59,9 @@ def test_collect_carries_the_memory_and_renews_it_at_each_deal(monkeypatch):
     # A segment's 9th call (the bootstrap value's first half) discards its scripted actions.
     assert len(recorder.calls) == 18
     assert recorder.check(discarded={8, 17}) > 0
-    assert any((memory["target"] >= 0).any() for _, _, memory in recorder.calls)  # targets were kept
+    assert any(
+        (memory["target"] >= 0).any() for _, _, memory in recorder.calls
+    )  # targets were kept
 
 
 def test_evaluation_carries_the_memory_and_renews_it_for_each_game(monkeypatch):
@@ -64,8 +72,12 @@ def test_evaluation_carries_the_memory_and_renews_it_for_each_game(monkeypatch):
     games = torch.zeros(24, dtype=torch.long)
     queue = Queue(games, games, games, games + 2, games + 2)  # 24 games on 8 slots: three each
     outcome = play(
-        game.GameConfig(clock_ticks=6), queue, torch.tensor([vector(scripted.ScriptedConfig())]),
-        model.Policy(model.ModelConfig()), envs=8, segment=4,
+        game.GameConfig(clock_ticks=6),
+        queue,
+        torch.tensor([vector(scripted.ScriptedConfig())]),
+        model.Policy(model.ModelConfig()),
+        envs=8,
+        segment=4,
     )
     assert (outcome.result >= 0).all()
     assert len(recorder.calls) >= 18

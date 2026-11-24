@@ -7,7 +7,7 @@ import torch
 
 torch.set_num_threads(1)
 
-from lean.game import GameConfig, deal, draw_noise, observe, reset, step, take_deal
+from lean.game import GameConfig, deal, draw_noise, observe, reset, step, take_deal  # noqa: E402
 
 CLOSE = GameConfig(arena_radius=700.0, spawn="mixed", clock_ticks=400)
 
@@ -65,8 +65,15 @@ def test_swapping_teams_mirrors_the_outcome():
 
     # The slot axis of each packed field: 2 in the blocks (E, rows, N[, K]), 1 in (E, N[, K]).
     slot_axis = {
-        "ships": 2, "flags": 2, "identity": 2, "bullets": 2, "bullet_counts": 2, "bullet_real": 1,
-        "seen": 2, "ticks_since_seen": 1, "pending": 1,
+        "ships": 2,
+        "flags": 2,
+        "identity": 2,
+        "bullets": 2,
+        "bullet_counts": 2,
+        "bullet_real": 1,
+        "seen": 2,
+        "ticks_since_seen": 1,
+        "pending": 1,
     }
     mirror = {name: getattr(state, name).flip(axis) for name, axis in slot_axis.items()}
     mirror["constants"] = dataclasses.replace(state.constants, table=state.constants.table.flip(2))

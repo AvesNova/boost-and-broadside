@@ -16,21 +16,40 @@ def frame(world: World) -> dict:
     s = world.state
     ships = []
     for i, (x, y, heading) in enumerate(world.poses()):
-        ships.append(dict(
-            x=x, y=y, heading=heading, alive=bool(s.alive[0, i]),
-            angle=float(s.angle[0, i]), speed=float(s.speed[0, i]),
-        ))
+        ships.append(
+            dict(
+                x=x,
+                y=y,
+                heading=heading,
+                alive=bool(s.alive[0, i]),
+                angle=float(s.angle[0, i]),
+                speed=float(s.speed[0, i]),
+            )
+        )
     bullets = []
     for ship in range(2):
         for k in range(s.bullet_x.shape[2]):
             if int(s.bullet_moves_left[0, ship, k]) > 0 and bool(s.bullet_real[0, ship, k]):
                 step = float(s.bullet_speed[0, ship, k]) * world.h
                 bx, by = float(s.bullet_x[0, ship, k]), float(s.bullet_y[0, ship, k])
-                bullets.append([bx, by, float(s.bullet_dir_x[0, ship, k]) * step,
-                                float(s.bullet_dir_y[0, ship, k]) * step, ship])
+                bullets.append(
+                    [
+                        bx,
+                        by,
+                        float(s.bullet_dir_x[0, ship, k]) * step,
+                        float(s.bullet_dir_y[0, ship, k]) * step,
+                        ship,
+                    ]
+                )
     return dict(
-        type="frame", tick=world.tick, ships=ships, bullets=bullets, readout=_finite(world.readout()),
-        deaths=world.deaths, kills=world.opponent_kills, opponent_on=world.opponent_on,
+        type="frame",
+        tick=world.tick,
+        ships=ships,
+        bullets=bullets,
+        readout=_finite(world.readout()),
+        deaths=world.deaths,
+        kills=world.opponent_kills,
+        opponent_on=world.opponent_on,
     )
 
 
@@ -40,13 +59,23 @@ def _finite(values: dict) -> dict:
 
 def setup(world: World, config: core.GameConfig) -> dict:
     return dict(
-        type="setup", arena_radius=config.arena_radius, ramp=config.boundary_ramp_width,
-        tick=world.h, gravity=card.GRAVITY, fields=field_list(world.state),
+        type="setup",
+        arena_radius=config.arena_radius,
+        ramp=config.boundary_ramp_width,
+        tick=world.h,
+        gravity=card.GRAVITY,
+        fields=field_list(world.state),
     )
 
 
-def run(connection, row: dict, factor: float, opponent: bool = True, realtime: bool = True,
-        max_ticks: int | None = None) -> None:
+def run(
+    connection,
+    row: dict,
+    factor: float,
+    opponent: bool = True,
+    realtime: bool = True,
+    max_ticks: int | None = None,
+) -> None:
     """The child's loop: apply the controls the parent sent, tick, send a frame; stop on
     {"stop": true} (or after max_ticks, for tests). Messages: {"side", "level", "power",
     "fire"} sets the held controls; {"reset": true}; {"opponent": bool}."""
@@ -70,8 +99,11 @@ def run(connection, row: dict, factor: float, opponent: bool = True, realtime: b
                 if "opponent" in message and bool(message["opponent"]) != world.opponent_on:
                     world.toggle_opponent()
                 control.update({k: message[k] for k in control if k in message})
-            world.advance(stick_index(int(control["side"]), int(control["level"])),
-                          int(control["power"]), bool(control["fire"]))
+            world.advance(
+                stick_index(int(control["side"]), int(control["level"])),
+                int(control["power"]),
+                bool(control["fire"]),
+            )
             connection.send(frame(world))
             if realtime:
                 due += world.h

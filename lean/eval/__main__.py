@@ -27,7 +27,15 @@ import time
 import torch
 
 from lean import game
-from lean.eval import Evaluator, NetworkAgent, ScriptedAgent, Store, crossover, evaluator_round, games_for
+from lean.eval import (
+    Evaluator,
+    NetworkAgent,
+    ScriptedAgent,
+    Store,
+    crossover,
+    evaluator_round,
+    games_for,
+)
 from lean.scripted import ScriptedConfig
 
 
@@ -53,14 +61,29 @@ def name_of(agent) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("command", choices=("play", "report", "elo", "styles", "crossover"))
     parser.add_argument("store")
     parser.add_argument("agents", nargs="*")
-    parser.add_argument("--sizes", type=int, nargs="+", default=None,
-                        help="seat A's and seat B's ships (play, report, elo; default 4 4); network sizes (crossover; default 4)")
+    parser.add_argument(
+        "--sizes",
+        type=int,
+        nargs="+",
+        default=None,
+        help=(
+            "seat A's and seat B's ships (play, report, elo; default 4 4); "
+            "network sizes (crossover; default 4)"
+        ),
+    )
     parser.add_argument("--against-first", action="store_true")
-    parser.add_argument("--games", type=int, default=None, help="games per pairing (crossover: per match, 0 for v1's)")
+    parser.add_argument(
+        "--games",
+        type=int,
+        default=None,
+        help="games per pairing (crossover: per match, 0 for v1's)",
+    )
     parser.add_argument("--target-error", type=float, default=None)
     parser.add_argument("--budget", type=int, default=None)
     parser.add_argument("--sobol", default=None)
@@ -68,7 +91,12 @@ def main() -> None:
     parser.add_argument("--anchor", default=None)
     parser.add_argument("--weights", choices=("ema", "uniform", "live"), default="ema")
     parser.add_argument("--envs", type=int, default=4096)
-    parser.add_argument("--seconds", type=float, default=None, help="cutoff per runner call: no game starts after it")
+    parser.add_argument(
+        "--seconds",
+        type=float,
+        default=None,
+        help="cutoff per runner call: no game starts after it",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--clock-ticks", type=int, default=None)
@@ -78,9 +106,16 @@ def main() -> None:
     parser.add_argument("--no-fog", action="store_true")
     arguments = parser.parse_args()
 
-    changes = {name: value for name, value in (
-        ("clock_ticks", arguments.clock_ticks), ("arena_radius", arguments.arena_radius),
-        ("spawn", arguments.spawn), ("field_count", arguments.fields)) if value is not None}
+    changes = {
+        name: value
+        for name, value in (
+            ("clock_ticks", arguments.clock_ticks),
+            ("arena_radius", arguments.arena_radius),
+            ("spawn", arguments.spawn),
+            ("field_count", arguments.fields),
+        )
+        if value is not None
+    }
     if arguments.no_fog:
         changes["fog"] = False
     game_config = dataclasses.replace(game.GameConfig(), **changes)
@@ -88,19 +123,33 @@ def main() -> None:
     started = time.perf_counter()
 
     def progress(games, busy, seconds):
-        print(f"  {games} games started, {busy} playing, {seconds:.0f} s", file=sys.stderr, flush=True)
+        print(
+            f"  {games} games started, {busy} playing, {seconds:.0f} s", file=sys.stderr, flush=True
+        )
 
-    evaluator = Evaluator(store, game_config, device=arguments.device, envs=arguments.envs, seed=arguments.seed,
-                          seconds=arguments.seconds, progress=progress)
+    evaluator = Evaluator(
+        store,
+        game_config,
+        device=arguments.device,
+        envs=arguments.envs,
+        seed=arguments.seed,
+        seconds=arguments.seconds,
+        progress=progress,
+    )
 
     if arguments.command == "crossover":
         network = NetworkAgent(arguments.agents[0], arguments.weights)
         games = games_for if arguments.games == 0 else (arguments.games or 64)
         report = crossover(evaluator_round(evaluator, network), arguments.sizes or [4], games)
         for size, entry in report["sizes"].items():
-            matches = " ".join(f"{scripted}:{match['wins']}/{match['games']}" for scripted, match in entry["matches"].items())
-            print(f"crossover {size}: beats_up_to {entry['beats_up_to']} ratio {entry['ratio']:.2f} "
-                  f"(rounds {report['rounds']}; wins by scripted size {matches})")
+            matches = " ".join(
+                f"{scripted}:{match['wins']}/{match['games']}"
+                for scripted, match in entry["matches"].items()
+            )
+            print(
+                f"crossover {size}: beats_up_to {entry['beats_up_to']} ratio {entry['ratio']:.2f} "
+                f"(rounds {report['rounds']}; wins by scripted size {matches})"
+            )
         return
 
     sizes = tuple(arguments.sizes or (4, 4))
@@ -114,28 +163,50 @@ def main() -> None:
     if arguments.command == "styles":
         conditions = store.add_conditions(game_config, sizes)
         rows = store.styles(conditions, [agent.id for agent in agents] if agents else None)
-        print("games  ship-min  turning  two-circle  store  speed  shots/min  hits  hit-range  climb  dive  agent")
+        print(
+            "games  ship-min  turning  two-circle  store  speed  shots/min  hits  hit-range  climb "
+            " dive  agent"
+        )
         for row in rows:
+
             def number(name, digits=3):
                 return "-" if row[name] is None else f"{row[name]:.{digits}f}"
-            print(f"{row['games']:5d}  {row['minutes']:8.0f}  {number('turning'):>7}  {number('two_circle'):>10}  "
-                  f"{number('store'):>5}  {number('speed'):>5}  {number('shots', 2):>9}  {row['hits'] or 0:4.0f}  "
-                  f"{number('hit_range'):>9}  {number('climb'):>5}  {number('dive'):>5}  "
-                  f"{name_of(store.agent(row['agent']))}")
+
+            print(
+                f"{row['games']:5d}  {row['minutes']:8.0f}  {number('turning'):>7}  "
+                f"{number('two_circle'):>10}  "
+                f"{number('store'):>5}  {number('speed'):>5}  {number('shots', 2):>9}  "
+                f"{row['hits'] or 0:4.0f}  "
+                f"{number('hit_range'):>9}  {number('climb'):>5}  {number('dive'):>5}  "
+                f"{name_of(store.agent(row['agent']))}"
+            )
         return
-    pairs = [(agents[0], agent) for agent in agents[1:]] if arguments.against_first else list(itertools.combinations(agents, 2))
+    pairs = (
+        [(agents[0], agent) for agent in agents[1:]]
+        if arguments.against_first
+        else list(itertools.combinations(agents, 2))
+    )
     if arguments.sobol:
-        candidates = evaluator.sobol_candidates(arguments.sobol, arguments.count, seed=arguments.seed)
-        pairs += [(agents[0] if agents else ScriptedAgent.of(), candidate) for candidate in candidates]
+        candidates = evaluator.sobol_candidates(
+            arguments.sobol, arguments.count, seed=arguments.seed
+        )
+        pairs += [
+            (agents[0] if agents else ScriptedAgent.of(), candidate) for candidate in candidates
+        ]
     pairings = [(a, b, sizes) for a, b in pairs]
     if arguments.command == "play":
         if arguments.games is not None:
             evaluator.ensure([(a, b, sizes, arguments.games) for a, b, sizes in pairings])
         else:
-            evaluator.adaptive(pairings, target_error=arguments.target_error, budget=arguments.budget)
+            evaluator.adaptive(
+                pairings, target_error=arguments.target_error, budget=arguments.budget
+            )
     for (a, b, _), row in zip(pairings, evaluator.report(pairings), strict=True):
-        print(f"{row['score']:.3f} +- {row['error']:.3f} ({row['wins']}-{row['draws']}-{row['losses']} of "
-              f"{row['games']})  {name_of(a)}  vs  {name_of(b)}")
+        print(
+            f"{row['score']:.3f} +- {row['error']:.3f} "
+            f"({row['wins']}-{row['draws']}-{row['losses']} of "
+            f"{row['games']})  {name_of(a)}  vs  {name_of(b)}"
+        )
     if arguments.command == "play":
         print(f"{time.perf_counter() - started:.1f} s", file=sys.stderr)
 

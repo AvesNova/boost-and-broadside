@@ -44,7 +44,11 @@ class World:
             raise ValueError(f"opponent {opponent!r}: 'scripted' or 'chaser'")
         self.config = config
         self.h = config.tick_length
-        self.player_type, self.opponent_type, self.opponent_on = player_type, opponent_type, opponent_on
+        self.player_type, self.opponent_type, self.opponent_on = (
+            player_type,
+            opponent_type,
+            opponent_on,
+        )
         self.generator = torch.Generator().manual_seed(seed)
         self.opponent = opponent
         self.scripted = scripted.ScriptedConfig()
@@ -66,7 +70,9 @@ class World:
 
     def reset(self) -> None:
         state = core.reset(self.config, 1, torch.tensor([[1, 1]]), self.generator, "cpu")
-        state = state.replace(type=self._types(), constants=self._constants(), alive=torch.tensor([[False, False]]))
+        state = state.replace(
+            type=self._types(), constants=self._constants(), alive=torch.tensor([[False, False]])
+        )
         # The player at the centre, nose north, by the game's spawn rule.
         self.state = self._spawned(state, 0, 0.0, 0.0, math.pi / 2)
         self._place_opponent()
@@ -86,8 +92,12 @@ class World:
         game's spawn (lean.game.core.spawn: speed, store, shield and medium as at a deal)."""
         chosen = torch.zeros(1, 2, dtype=torch.bool)
         chosen[0, slot] = True
-        x, y, heading_cos, heading_sin = (torch.full((1, 2), value) for value in (x, y, math.cos(heading), math.sin(heading)))
-        return core.spawn(self.config, state, chosen, x, y, heading_cos, heading_sin, self.generator)
+        x, y, heading_cos, heading_sin = (
+            torch.full((1, 2), value) for value in (x, y, math.cos(heading), math.sin(heading))
+        )
+        return core.spawn(
+            self.config, state, chosen, x, y, heading_cos, heading_sin, self.generator
+        )
 
     def _place_opponent(self) -> None:
         """A new life for the opponent: placed 1500 m from the player, facing it, with a fresh
@@ -151,7 +161,9 @@ class World:
         self.previous = self.poses()
         if self.opponent == "scripted":
             uniforms = scripted.draw_uniforms(1, 2, self.generator, "cpu")
-            action, self.memory = scripted.act(self.scripted, self.state, 1, None, uniforms, self.memory)
+            action, self.memory = scripted.act(
+                self.scripted, self.state, 1, None, uniforms, self.memory
+            )
         else:
             action = scripted.chaser_act(self.scripted, self.state, team=1)
         action[0, 0] = torch.tensor([stick, power, int(fire)])

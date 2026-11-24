@@ -96,14 +96,17 @@ PARAMETERS: dict[str, Parameter] = {
     # dive (and lead). The yardstick flies the gun's solution (yo-yo time and lead turn 0:
     # either lost about 0.2 of the score against the old agent, measured); personas sample
     # them upward.
-    "nose_tail": Parameter(0.46550273408948645, "sustained_radius", LOG, 0.4, "where the chase wants to sit"),
-    "closing_time": Parameter(0.9124776658863046, "quarter_turn_time", LOG, 0.4, "time to close to it"),
+    "nose_tail": Parameter(0.46550273408948645, "sustained_radius", LOG, 0.4,
+                           "where the chase wants to sit"),
+    "closing_time": Parameter(0.9124776658863046, "quarter_turn_time", LOG, 0.4,
+                              "time to close to it"),
     "yo_yo_scale": Parameter(0.1, "corner_speed", LOG, 0.4, "closure error for a full yo-yo"),
     "yo_yo_time": Parameter(0.19070978159535185, "quarter_turn_time", UPWARD, 0.5,
                             "lag or lead of a full yo-yo"),
     # Speeds: the power tracks a speed target v*, mixed in log space over the tactics.
     "merge_speed": Parameter(1.0, "corner_speed", LOG, 0.1, "v* disengaged and at the merge"),
-    "fight_speed": Parameter(1.2943094805067583, "sustained_speed", LOG, 0.2, "v* in the rate fight"),
+    "fight_speed": Parameter(1.2943094805067583, "sustained_speed", LOG, 0.2,
+                             "v* in the rate fight"),
     "speed_floor": Parameter(1.3, "stall_speed", LOG, 0.1, "v* never below it"),
     "spend_share": Parameter(1.0, "store x store_turn", LOG, 0.4,
                              "a shot is near when the turn it needs is within this"),
@@ -123,10 +126,13 @@ PARAMETERS: dict[str, Parameter] = {
     "level_three": Parameter(0.1044, "radians", LOG, 0.4, "pointing error: the full stick"),
     "side_floor": Parameter(0.02, "probability", meaning="turning the long way round"),
     # The gun. Lead: first-order intercept with the drag law's time of flight in the medium.
-    "aligned": Parameter(0.9769193740967238, "target angular size", LOG, 0.4, "gun aim error: the gun bears"),
-    "in_range": Parameter(1.1319620031840072, "gun_range", LOG, 0.4, "distance: the target is within reach"),
+    "aligned": Parameter(0.9769193740967238, "target angular size", LOG, 0.4,
+                         "gun aim error: the gun bears"),
+    "in_range": Parameter(1.1319620031840072, "gun_range", LOG, 0.4,
+                          "distance: the target is within reach"),
     "lead_cap": Parameter(4.78, "gun_range", meaning="the lead's distance is capped here"),
-    "lead_gain": Parameter(1.2209131619484321, "ratio", LINEAR, 0.2, "share of the computed lead applied"),
+    "lead_gain": Parameter(1.2209131619484321, "ratio", LINEAR, 0.2,
+                           "share of the computed lead applied"),
     "target_size_minimum": Parameter(math.radians(1.0), "radians", meaning="target size clamp"),
     "target_size_maximum": Parameter(math.radians(45.0), "radians", meaning="target size clamp"),
     "ally_clearance": Parameter(2.0, "hit_radius", meaning="a team-mate this near the line blocks"),
@@ -169,8 +175,15 @@ STICK_GATES: dict[str, Gate] = {
 # The previous defaults (before BFM-CMA2), as the rows that differ: for comparison,
 # `ScriptedConfig().replace(**BFM_DEFAULT_2026_11_24)`.
 BFM_DEFAULT_2026_11_24: dict[str, float] = {
-    "plan_threshold": 0.0, "lead_turn_scale": 0.0, "nose_tail": 0.67, "closing_time": 1.0,
-    "yo_yo_time": 0.0, "fight_speed": 1.0, "aligned": 1.01, "in_range": 1.04, "lead_gain": 1.0,
+    "plan_threshold": 0.0,
+    "lead_turn_scale": 0.0,
+    "nose_tail": 0.67,
+    "closing_time": 1.0,
+    "yo_yo_time": 0.0,
+    "fight_speed": 1.0,
+    "aligned": 1.01,
+    "in_range": 1.04,
+    "lead_gain": 1.0,
     "temperature": 1.0,
 }
 SAMPLED = tuple(name for name, row in PARAMETERS.items() if row.law != FIXED)

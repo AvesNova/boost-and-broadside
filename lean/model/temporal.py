@@ -35,7 +35,9 @@ def doubling_scan(decay: Tensor, update: Tensor, initial: Tensor) -> tuple[Tenso
     update = torch.cat([decay[:1] * initial + update[:1], update[1:]])
     distance = 1
     while distance < steps:
-        update = torch.cat([update[:distance], update[distance:] + decay[distance:] * update[:-distance]])
+        update = torch.cat(
+            [update[:distance], update[distance:] + decay[distance:] * update[:-distance]]
+        )
         if 2 * distance < steps:
             decay = torch.cat([decay[:distance], decay[distance:] * decay[:-distance]])
         distance *= 2
@@ -61,7 +63,9 @@ class Temporal(nn.Module):
         self.input_norm = nn.RMSNorm(width, eps=config.norm_epsilon)
         self.recurrent_input = nn.Linear(width, width, bias=False)
         self.gate_branch = nn.Linear(width, width, bias=False)
-        self.convolution_weight = nn.Parameter(torch.empty(TAPS, width))  # row k: the input k ticks back
+        self.convolution_weight = nn.Parameter(
+            torch.empty(TAPS, width)
+        )  # row k: the input k ticks back
         self.convolution_bias = nn.Parameter(torch.zeros(width))
         self.gates = nn.Linear(width, 2 * width)  # recurrence gate rows, then input gate rows
         self.decay = nn.Parameter(torch.empty(width))
@@ -86,7 +90,9 @@ class Temporal(nn.Module):
         """a^c per channel, (width,): the per-tick retention when the recurrence gate is 1."""
         return torch.sigmoid(self.decay) ** self.exponent
 
-    def forward(self, tokens: Tensor, carry: Tensor, fresh: Tensor, keep: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(
+        self, tokens: Tensor, carry: Tensor, fresh: Tensor, keep: Tensor
+    ) -> tuple[Tensor, Tensor]:
         """tokens (T, E, M, width); carry (E, M, 4, width) float32, before tick 0; fresh
         (T, E, 1, 1) float32, 0 where the carry is zeroed before that tick; keep (T, E, M, 1)
         float32, 0 for rows whose carry is zeroed after that tick. Returns the tokens
@@ -96,12 +102,17 @@ class Temporal(nn.Module):
         # The convolution and the recurrence run in float32 even under bf16 autocast:
         # 1 - a_t^2 with a_t near 1 has no precision left in bf16.
         projected = self.recurrent_input(normed).float()
-        inputs = torch.cat([carry[:, :, 1:].movedim(2, 0), projected])  # (T + 3, ...): j = -3 .. T-1
+        inputs = torch.cat(
+            [carry[:, :, 1:].movedim(2, 0), projected]
+        )  # (T + 3, ...): j = -3 .. T-1
         # link_j: the input at tick j survives into tick j + 1 (kept after j, no reset at
         # j + 1). A virtual tick T with no reset gives the buffer that leaves the segment.
         history = TAPS - 1
         keep_all = torch.cat([keep.new_ones((history,) + keep.shape[1:]), keep])
-        before, after = fresh.new_ones((history - 1,) + fresh.shape[1:]), fresh.new_ones((1,) + fresh.shape[1:])
+        before, after = (
+            fresh.new_ones((history - 1,) + fresh.shape[1:]),
+            fresh.new_ones((1,) + fresh.shape[1:]),
+        )
         fresh_all = torch.cat([before, fresh, after])
         link = keep_all * fresh_all  # (T + 3, E, M, 1)
         weight = self.convolution_weight.float()
@@ -124,9 +135,13 @@ class Temporal(nn.Module):
         # code's rule at a segment's first position).
         carried = (carry[:, :, 0] != 0).any(-1, keepdim=True).float()  # (E, M, 1)
         continuing = fresh * torch.cat([carried[None], keep[:-1]])  # (T, E, M, 1)
-        normalised = torch.sqrt(torch.clamp_min(-torch.expm1(2.0 * log_retention), CONTRIBUTION_FLOOR))
+        normalised = torch.sqrt(
+            torch.clamp_min(-torch.expm1(2.0 * log_retention), CONTRIBUTION_FLOOR)
+        )
         scale = torch.where(continuing > 0.0, normalised, 1.0)
-        states, state = doubling_scan(retention * fresh * keep, scale * input_gate * convolved * keep, carry[:, :, 0])
+        states, state = doubling_scan(
+            retention * fresh * keep, scale * input_gate * convolved * keep, carry[:, :, 0]
+        )
 
         mixed = states.to(tokens.dtype) * F.gelu(self.gate_branch(normed))
         tokens = tokens + self.output(mixed)

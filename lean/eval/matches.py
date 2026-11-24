@@ -44,14 +44,22 @@ def evaluator_round(evaluator, network, opponent=None):
     opponent = opponent or ScriptedAgent.of()
 
     def play_round(wanted):
-        counts = evaluator.ensure([(network, opponent, (size, scripted), games) for size, scripted, games in wanted])
+        counts = evaluator.ensure(
+            [(network, opponent, (size, scripted), games) for size, scripted, games in wanted]
+        )
         return [(entry["wins"], entry["games"]) for entry in counts]
 
     return play_round
 
 
 def crossover(
-    play_round, sizes, games, *, maximum_total_ships: int = 320, start_ratio: float | dict = 1.0, spread: int = 2,
+    play_round,
+    sizes,
+    games,
+    *,
+    maximum_total_ships: int = 320,
+    start_ratio: float | dict = 1.0,
+    spread: int = 2,
 ) -> dict:
     """v1's size-curve protocol, every network size at once.
 
@@ -79,6 +87,7 @@ def crossover(
     the break-even ratio; beats_up_to is 0 when even one scripted ship is not beaten.
     "matches" holds every match played, the neighbours included.
     """
+
     def count_for(network_size, scripted_size):
         return games(network_size + scripted_size) if callable(games) else games
 
@@ -89,7 +98,9 @@ def crossover(
         wanted = []
         for network_size in sorted(played):
             limit = maximum_total_ships - network_size
-            ratio = start_ratio.get(network_size, 1.0) if isinstance(start_ratio, dict) else start_ratio
+            ratio = (
+                start_ratio.get(network_size, 1.0) if isinstance(start_ratio, dict) else start_ratio
+            )
             beats_up_to, need = walk(round(network_size * ratio), played[network_size], limit)
             if need is None:
                 beaten[network_size] = beats_up_to
@@ -112,9 +123,13 @@ def crossover(
         first_lost = beats_up_to + 1 if beats_up_to + 1 in matches else None
         report[network_size] = {
             "beats_up_to": beats_up_to,
-            "beats_up_to_win_rate": matches[beats_up_to]["win_rate"] if beats_up_to in matches else None,
+            "beats_up_to_win_rate": matches[beats_up_to]["win_rate"]
+            if beats_up_to in matches
+            else None,
             "crossover": first_lost,
-            "crossover_win_rate": matches[first_lost]["win_rate"] if first_lost is not None else None,
+            "crossover_win_rate": matches[first_lost]["win_rate"]
+            if first_lost is not None
+            else None,
             "ratio": beats_up_to / network_size,
             "matches": dict(sorted(matches.items())),
         }

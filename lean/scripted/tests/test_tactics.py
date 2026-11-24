@@ -7,8 +7,8 @@ import math
 import torch
 
 from lean.scripted import ScriptedConfig
-from lean.scripted.parameters import BFM_DEFAULT_2026_11_24
 from lean.scripted.opponent import CLIMB, DIVE, explain
+from lean.scripted.parameters import BFM_DEFAULT_2026_11_24
 from lean.scripted.tests.test_scripted import memory_of, placed
 
 LEFT, RIGHT = [2, 4, 6], [1, 3, 5]  # stick indices (left_is_even)
@@ -16,8 +16,9 @@ FULL_LEFT, FULL_RIGHT = 6, 5
 
 
 def constants():
-    return placed(dict(x=0.0, y=0.0, heading=0.0, speed=100.0),
-                  dict(x=1.0, y=0.0, heading=0.0, speed=100.0)).constants
+    return placed(
+        dict(x=0.0, y=0.0, heading=0.0, speed=100.0), dict(x=1.0, y=0.0, heading=0.0, speed=100.0)
+    ).constants
 
 
 C = constants()
@@ -26,8 +27,10 @@ CORNER, GUN, RADIUS = C["corner_speed"], C["gun_range"], C["sustained_radius"]
 # (yo-yo time, lead turn) and Shaw's graded defence (break inside one gun range, relax at 90
 # deg of his advantage).
 # It stands on the previous defaults, not on BFM-CMA2: the persona does not move with the yardstick.
-BFM = ScriptedConfig().replace(**BFM_DEFAULT_2026_11_24).replace(
-    yo_yo_time=0.5, lead_turn_scale=1.0, relax_angle=1.5 * math.pi, defend_range=1.0
+BFM = (
+    ScriptedConfig()
+    .replace(**BFM_DEFAULT_2026_11_24)
+    .replace(yo_yo_time=0.5, lead_turn_scale=1.0, relax_angle=1.5 * math.pi, defend_range=1.0)
 )
 
 
@@ -165,14 +168,16 @@ def test_two_circle_banks_at_the_sustained_level_then_cashes():
     1.44 sustained speeds (0.8 corner speeds on the flight before 2026-11-24's)."""
     rate = C["sustained_rate"]
     own = sustained_speeds(1.44)
-    neutral = decision(ship(speed=own), ship(-3.0 * RADIUS, 0.5 * RADIUS, heading=math.pi),
-                       nose_rates=(rate, rate))
+    neutral = decision(
+        ship(speed=own), ship(-3.0 * RADIUS, 0.5 * RADIUS, heading=math.pi), nose_rates=(rate, rate)
+    )
     assert weight(neutral, "turning") > 0.9 and first(neutral.situation.flow) > 0.9
     assert first(neutral.cap) > 0.9
     assert int(neutral.marginals.power[0, 0].argmax()) == CLIMB
     # he has turned toward me: his advantage near 90 deg (angles off about 1.45 pi)
-    late = decision(ship(speed=own), ship(-3.0 * RADIUS, 0.0, heading=0.47 * math.pi),
-                    nose_rates=(rate, rate))
+    late = decision(
+        ship(speed=own), ship(-3.0 * RADIUS, 0.0, heading=0.47 * math.pi), nose_rates=(rate, rate)
+    )
     assert first(late.situation.angles_off) > 1.4 * math.pi
     assert first(late.cap) < first(neutral.cap) - 0.2
     assert first(late.speed_target) > first(neutral.speed_target) * 1.1
@@ -182,8 +187,11 @@ def test_one_circle_inside_a_radius_slows_to_the_floor():
     """One-circle (opposite senses) inside one sustained radius: the scissors, slow to the
     speed floor (Shaw p. 83)."""
     rate = C["sustained_rate"]
-    e = decision(ship(speed=0.7), ship(-0.5 * RADIUS, 0.3 * RADIUS, heading=math.pi),
-                 nose_rates=(rate, -rate))
+    e = decision(
+        ship(speed=0.7),
+        ship(-0.5 * RADIUS, 0.3 * RADIUS, heading=math.pi),
+        nose_rates=(rate, -rate),
+    )
     assert weight(e, "turning") > 0.8 and first(e.situation.flow) < -0.9
     floor = ScriptedConfig().values["speed_floor"] * C["stall_speed"]
     assert first(e.speed_target) < 1.1 * floor
@@ -241,6 +249,7 @@ def test_overshoot_reverses_only_when_close_low_crossing_and_he_is_faster():
     fast, his track close to mine, and he is faster: he overshoots, so the sense reverses to
     the short way, flown level (no climb). Slowly crossing, or with me the faster: hold
     (Shaw p. 76: if in doubt, do not reverse)."""
+
     def held_left():
         memory = memory_of()
         memory["target"] = torch.tensor([[1, 0]])

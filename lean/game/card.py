@@ -85,7 +85,9 @@ SPEED_FLOOR = 1.454166427889188e-06
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005
 BULLET_SPREAD = 12.0
-DAMAGE_REFERENCE_DISTANCE = 300.0  # m: a bullet fired at cruise has the damage reference speed here (v2 rules.toml)
+DAMAGE_REFERENCE_DISTANCE = (
+    300.0  # m: a bullet fired at cruise has the damage reference speed here (v2 rules.toml)
+)
 HEAD_ON_FRACTION = 0.3
 HEAD_ON_ANGLE = 0.737832313317803
 SHIELD_RECHARGE_DELAY = 6.0
@@ -94,7 +96,9 @@ BOUNDARY_MAX_DAMAGE = 40.0
 SPAWN_SPEED = 145.288  # m/s over the map: the standard spawn
 SPAWN_AREA_FRACTION = 0.85  # the spawn disc's radius over the arena radius (both rules)
 SPAWN_EDGE_BAND = 1000.0  # m inside the boundary: no spawn heading there points outward
-SIDE_GAP_FRACTION = 0.05  # "sides": each team's half disc this far (over the arena radius) from the dividing line
+SIDE_GAP_FRACTION = (
+    0.05  # "sides": each team's half disc this far (over the arena radius) from the dividing line
+)
 SIDE_HEADING_JITTER = 0.2617993877991494  # "sides": noses within 15 degrees of the axis
 VISION_RANGE = 3072.0  # m; times the type's vision_range_scale: 1,000 m for every type
 LN_SQRT2 = 0.5 * math.log(2.0)
