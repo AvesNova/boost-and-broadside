@@ -42,7 +42,7 @@
     <label>Time scale <select id="factor">
       <option value="1">1x real time</option><option value="1.5">1.5x</option>
       <option value="2" selected>2x (the game)</option><option value="3">3x</option></select></label>
-    <label>Chart units <select id="units"><option value="game">game</option><option value="real">real time</option></select></label>
+    <label>Units <select id="units"></select></label>
     <p><input id="savename" placeholder="name" size="14"> <button id="save">Save</button> <button id="delete">Delete</button></p>
     <p><button id="reset">Reset to preset</button> <button id="fly">Fly checks</button></p>
     <div id="drawn"></div>
@@ -62,7 +62,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const DEG = 180 / Math.PI;
-let saved = {}, controlsByName = {}, presets = null, values = {}, off = new Set(), last = null, timer = null, sequence = 0;
+let unitInfo = null, saved = {}, controlsByName = {}, presets = null, values = {}, off = new Set(), last = null, timer = null, sequence = 0;
 
 // ---- tabs
 function show(tab) {
@@ -75,17 +75,30 @@ $("tab-sandbox").onclick = () => show("sandbox");
 // ---- ships tab: the inputs come from the server (lean.tool.design.inputs: the tuning's own list)
 async function init() {
   const data = await (await fetch("/api/presets")).json();
-  presets = data.presets;
+  presets = data.presets; unitInfo = data.units;
+  for (const name of unitInfo.order) $("units").add(new Option(unitInfo.names[name], name));
   await loadSaved();
   $("preset").onchange = () => choosePreset();
   $("save").onclick = saveState;
   $("delete").onclick = deleteSaved;
-  $("factor").onchange = request;
-  $("units").onchange = request;
+  $("factor").onchange = $("units").onchange = () => { refreshAll(); request(); };
   $("reset").onclick = () => choosePreset();
   $("fly").onclick = flyChecks;
   choosePreset();
 }
+// ---- units (the factors come from the server's lean.tool.units): the solve and the saved presets
+// stay in game units; sliders, readouts and the HUD convert for display and back
+const scaleOf = kind => { const d = unitInfo.systems[$("units").value][kind]; return d.scale * Math.pow(+$("factor").value, -d.time_power); };
+const unitLabel = kind => unitInfo.systems[$("units").value][kind].label;
+const shown = (kind, game, digits = 0) => `${(game * scaleOf(kind)).toFixed(digits)} ${unitLabel(kind)}`;
+function refreshControl(c) {                             // the slider and its label in the shown units
+  const s = c.spec, k = s.kind ? scaleOf(s.kind) : 1;
+  c.input.min = s.low * k; c.input.max = s.high * k; c.input.step = (s.high - s.low) * k / 400; c.input.value = c.game * k;
+  c.out.textContent = (c.game * k).toPrecision(4);
+  const unit = s.kind ? unitLabel(s.kind) : s.unit;
+  c.name.textContent = s.label + (unit ? ` (${unit})` : "");
+}
+function refreshAll() { for (const c of Object.values(controlsByName)) refreshControl(c); }
 const base = () => { const v = $("preset").value; return v.startsWith("saved:") ? saved[v.slice(6)].state.preset : v; };
 async function loadSaved(select) {
   saved = {};
@@ -132,9 +145,12 @@ function choosePreset() {
     const input = document.createElement("input");
     Object.assign(input, { type: "range", min: s.low, max: s.high, step: (s.high - s.low) / 400, value: s.value });
     label.innerHTML = `<span class="name"></span> <span class="value"></span>`;
-    label.querySelector(".name").textContent = s.label + (s.unit ? ` (${s.unit})` : "");
-    const out = label.querySelector(".value"); out.textContent = (+s.value).toPrecision(4);
-    input.oninput = () => { values[s.name] = +input.value; out.textContent = (+input.value).toPrecision(4); schedule(); };
+    const out = label.querySelector(".value");
+    const control = { spec: s, input, out, name: label.querySelector(".name"), game: s.value, box: null };
+    input.oninput = () => {                               // shown units back to the game's
+      control.game = +input.value / (s.kind ? scaleOf(s.kind) : 1);
+      values[s.name] = control.game; out.textContent = (+input.value).toPrecision(4); schedule();
+    };
     if (s.switch) {                                        // a term that can be turned off
       const box = document.createElement("input");
       Object.assign(box, { type: "checkbox", checked: s.switch.on, className: "switch", title: s.switch.label });
@@ -146,19 +162,22 @@ function choosePreset() {
       apply();
       label.prepend(box);
     }
-    controlsByName[s.name] = { input, out, box: s.switch ? label.querySelector(".switch") : null };
+    control.box = s.switch ? label.querySelector(".switch") : null;
+    controlsByName[s.name] = control;
     label.appendChild(input); groups[s.group].appendChild(label);
   }
-  if (state) {                                             // restore a saved state
-    $("factor").value = String(state.time_scale); $("units").value = state.units || "game";
+  if (state) {                                             // restore a saved state (game units)
+    $("factor").value = String(state.time_scale);
+    $("units").value = state.units === "real" ? "real_metric" : (state.units || "game");
     for (const [n, x] of Object.entries(state.values || {})) {
       const c = controlsByName[n]; if (!c) continue;
-      c.input.value = x; c.out.textContent = (+x).toPrecision(4); values[n] = +x;
+      c.game = +x; values[n] = +x;
     }
     for (const n of state.off || []) {
       const c = controlsByName[n]; if (c && c.box) { c.box.checked = false; c.box.onchange(); }
     }
   }
+  refreshAll();
   request();
 }
 function schedule() { clearTimeout(timer); timer = setTimeout(request, 250); }   // debounced
@@ -201,10 +220,9 @@ async function flyChecks() {
   await request();
 }
 function readouts() {
-  const k = last.factor, real = $("units").value === "real", f = real ? 1 / k : 1;
-  const speedUnit = real ? "m/s, real" : "m/s";
   const key = last.design.key, check = last.design.flown;
-  const pair = (v, r) => `${(v * f).toFixed(0)} ${speedUnit} / ${(r * DEG * f).toFixed(1)} deg/s`;
+  const speed = v => shown("speed", v), rate = r => `${(r * scaleOf("angular_rate")).toFixed(1)} deg/s`;
+  const pair = (v, r) => `${speed(v)} / ${rate(r)}`;
   const flownPair = name => (check && check[name] ? ` (flown ${pair(check[name].speed, check[name].rate)})` : "");
   const tight = check && check.tightest_sustained;
   const rows = [
@@ -212,13 +230,13 @@ function readouts() {
     ["best sustained speed / rate", key.best_sustained_speed === null ? "none"
       : pair(key.best_sustained_speed, key.best_sustained_rate) + flownPair("best_sustained")],
     ["tightest sustained radius / at", key.tightest_sustained_radius === null ? "none"
-      : `${key.tightest_sustained_radius.toFixed(0)} m / ${(key.tightest_sustained_speed * f).toFixed(0)} ${speedUnit}` +
-        (tight ? ` (flown ${tight.radius.toFixed(0)} m / ${(tight.speed * f).toFixed(0)})` : "")],
+      : `${shown("length", key.tightest_sustained_radius)} / ${speed(key.tightest_sustained_speed)}` +
+        (tight ? ` (flown ${shown("length", tight.radius)} / ${speed(tight.speed)})` : "")],
     ["speed gap (tightest - best rate)", key.best_sustained_speed === null ? "-"
-      : `${((key.tightest_sustained_speed - key.best_sustained_speed) * f).toFixed(0)} ${speedUnit}`],
-    ["top speed", `${(key.top_speed * f).toFixed(0)} ${speedUnit}`],
-    ["best climb (Ps) / at", `${(key.best_climb * f).toFixed(1)} m/s / ${(key.best_climb_speed * f).toFixed(0)} ${speedUnit}`],
-    ["stall speed (1 g)", `${(key.stall_speed * f).toFixed(0)} ${speedUnit}`],
+      : speed(key.tightest_sustained_speed - key.best_sustained_speed)],
+    ["top speed", speed(key.top_speed)],
+    ["best climb (Ps) / at", `${shown("climb", key.best_climb, $("units").value === "real_imperial" ? 0 : 1)} / ${speed(key.best_climb_speed)}`],
+    ["stall speed (1 g)", speed(key.stall_speed)],
   ];
   $("readouts").innerHTML = rows.map(r => `<tr><td class="name">${r[0]}</td><td>${r[1]}</td></tr>`).join("");
 }
@@ -303,8 +321,8 @@ function frame() {
   }
   const r = cur.readout, p = $("preset").value.replace(/^saved:/, "");
   $("hud").textContent = `ship    ${p} (as tuned in Ships), ${$("factor").value}x real time
-speed   ${r.speed.toFixed(1)} m/s
-turn    ${r.turn_rate_degrees.toFixed(1)} deg/s   radius ${r.turn_radius === null ? "-" : r.turn_radius.toFixed(0) + " m"}
+speed   ${shown("speed", r.speed, 1)}
+turn    ${(r.turn_rate_degrees * scaleOf("angular_rate") / DEG).toFixed(1)} deg/s   radius ${r.turn_radius === null ? "-" : shown("length", r.turn_radius)}
 g       ${r.lateral_g.toFixed(2)} lateral
 AoA     ${r.angle_of_attack_degrees.toFixed(2)} deg (stall ${r.stall_degrees.toFixed(1)})
 store   ${(100 * r.store).toFixed(1)} %   shield ${(100 * r.shield).toFixed(0)} %

@@ -42,7 +42,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from sim import THEME  # noqa: E402
 
 from lean.game import card, tuning  # noqa: E402
-from lean.tool import flown  # noqa: E402
+from lean.tool import flown, units  # noqa: E402
 
 torch.set_num_threads(4)
 OUT = os.path.join(os.path.dirname(__file__), "..", "..")
@@ -157,19 +157,26 @@ def draw_panel(
     fraction=None,
     top=None,
     limit=None,
+    system: str | None = None,
 ):
     """One doghouse panel on ax for the card's type 0 at `factor` times real time (inside
     lean.game.tuning.flying): Ps shading where some stick level is flown, Ps = 0, the stick
     levels, dive and climb, the corner, best sustained and tightest sustained points, and the
     flown points (game units, as flown.critical_points returns them) if given. `lowest`: game
-    m/s per line (lowest_speeds). real: divide speeds, rates and Ps by `factor` (1x real time).
+    m/s per line (lowest_speeds). real: divide speeds, rates and Ps by `factor` (1x real time);
+    system (lean.tool.units: game, real_metric, real_imperial) overrides it and sets every axis,
+    label and guide in that system's units.
     top (deg/s) and limit (the Ps colour range) default to the panel's own; returns both."""
-    f = factor if real else 1.0
+    system = _system(real, system)
+    sv, sr, sl, sc = (
+        units.factor(kind, system, factor) for kind in ("speed", "angular_rate", "length", "climb")
+    )  # game values times these are displayed
+    speed_unit, length_unit = units.label("speed", system), units.label("length", system)
     row = _row()
     game_v = speed_axis(lowest, factor)
-    v = game_v / f
+    v = game_v * sv
     grid = tuning.envelope(row, game_v, STICKS, 0, fraction, minimum_speed=lowest["full"])
-    rate, ps = grid["rate"] * DEGREES / f, grid["ps"] / f
+    rate, ps = grid["rate"] * sr, grid["ps"] * sc
     style(ax)
     full = _from(rate[-1], game_v, lowest["full"])
     top = float(np.nanmax(full)) * 1.15 if top is None else top
@@ -213,18 +220,24 @@ def draw_panel(
         linestyles=[PS_ZERO_STYLE["linestyle"]],
     )
     # Radius and load guides: geometry only, across the axes.
-    left = math.floor(0.8 * min(lowest.values()) / f / 10.0) * 10.0
+    left = math.floor(0.8 * min(lowest.values()) * sv / 10.0) * 10.0
     guide_v = np.linspace(max(left, 1.0), v[-1], 200)
-    for radius in (150, 200, 300, 500, 1000, 2000):
-        line = guide_v / radius * DEGREES
+    for radius in units.RADIUS_GUIDES[system]:
+        line = guide_v / sv / (radius / sl) * sr
         ax.plot(guide_v, line, **RADIUS_STYLE)
         j = np.searchsorted(line, top * 0.92)
         if 0 < j < len(guide_v):
             ax.text(
-                guide_v[j], line[j], f"{radius} m", color=MUTED, fontsize=8, ha="right", va="bottom"
+                guide_v[j],
+                line[j],
+                f"{radius} {length_unit}",
+                color=MUTED,
+                fontsize=8,
+                ha="right",
+                va="bottom",
             )
     for load in (2, 4, 6, 8, 9):
-        line = load * card.GRAVITY / (guide_v * f) * DEGREES / f
+        line = load * card.GRAVITY * sv / guide_v * sr
         ax.plot(guide_v, line, **LOAD_STYLE)
         j = np.searchsorted(-line, -top * 0.95)
         if 0 < j < len(guide_v) - 1:
@@ -248,9 +261,7 @@ def draw_panel(
             fontsize=8,
         )
     for power, name, offset in ((1, "dive", (-4, 2)), (2, "climb", (-4, -10))):
-        moved = (
-            tuning.envelope(row, game_v, np.array([1.0]), power, fraction)["rate"][-1] * DEGREES / f
-        )
+        moved = tuning.envelope(row, game_v, np.array([1.0]), power, fraction)["rate"][-1] * sr
         moved = _from(moved, game_v, lowest[name])
         ax.plot(v, moved, gid=name, **TRADE_STYLE)
         start = int(
@@ -273,15 +284,15 @@ def draw_panel(
         points["tightest_sustained"] = (tight, tight / grid["tightest_sustained_radius"])
     offsets = {"corner": (8, 6), "best_sustained": (8, -14), "tightest_sustained": (14, -50)}
     for name, (speed, turn) in points.items():
-        x, y = speed / f, turn * DEGREES / f
+        x, y = speed * sv, turn * sr
         ax.plot(x, y, MARKERS[name], color=INK, markersize=7)
         if name == "tightest_sustained":
-            text = f"tightest sustained {x:.0f} m/s, {speed / turn:.0f} m"
+            text = f"tightest sustained {x:.0f} {speed_unit}, {speed / turn * sl:.0f} {length_unit}"
         else:
-            text = f"{name.replace('_', ' ')} {x:.0f} m/s, {y:.0f} deg/s"
+            text = f"{name.replace('_', ' ')} {x:.0f} {speed_unit}, {y:.0f} deg/s"
         check = (flown_points or {}).get(name)
         if check is not None:
-            fx, fy = check["speed"] / f, check["rate"] * DEGREES / f
+            fx, fy = check["speed"] * sv, check["rate"] * sr
             ax.plot(
                 fx,
                 fy,
@@ -292,7 +303,7 @@ def draw_panel(
                 markeredgewidth=1.3,
             )
             text += (
-                f" (flown {fx:.0f}, {check['radius']:.0f} m)"
+                f" (flown {fx:.0f}, {check['radius'] * sl:.0f} {length_unit})"
                 if name == "tightest_sustained"
                 else f" (flown {fx:.0f}, {fy:.0f})"
             )
@@ -310,16 +321,20 @@ def draw_panel(
         )
     ax.set_xlim(left, v[-1])
     ax.set_ylim(0, top)
-    ax.set_xlabel("speed (m/s, real)" if real else "speed (m/s)", color=INK_2)
+    ax.set_xlabel(f"speed ({speed_unit}{_real_suffix(system)})", color=INK_2)
     ax.set_ylabel("turn rate (deg/s)", color=INK_2)
     ax.set_title(title, color=INK, fontsize=10.5, loc="left")
     bar = figure.colorbar(filled, ax=ax, location="bottom", fraction=0.04, pad=0.0, aspect=40)
-    bar.set_label("Ps, m/s altitude-equivalent (blue gain, red loss)", color=INK_2, fontsize=8)
+    bar.set_label(
+        f"Ps, {units.label('climb', system)} altitude-equivalent (blue gain, red loss)",
+        color=INK_2,
+        fontsize=8,
+    )
     bar.ax.tick_params(labelsize=8, colors=INK_2)
     return top, limit
 
 
-def legend(figure, note: str, flown_shown: bool):
+def legend(figure, note: str, flown_shown: bool, length_unit: str = "m"):
     """The legend below the plot: each line's own style, the markers, and a short note."""
 
     def sample(label, **style):
@@ -333,7 +348,7 @@ def legend(figure, note: str, flown_shown: bool):
         sample("sustained and fine stick", **STICK_STYLE),
         sample("full stick, diving and climbing", **TRADE_STYLE),
         sample("Ps = 0 (sustained)", **PS_ZERO_STYLE),
-        sample("turn radius (m)", **RADIUS_STYLE),
+        sample(f"turn radius ({length_unit})", **RADIUS_STYLE),
         sample("load (g)", **LOAD_STYLE),
         point("corner", "o", color=INK),
         point("best sustained (rate)", "s", color=INK),
@@ -364,19 +379,23 @@ def legend(figure, note: str, flown_shown: bool):
     )
 
 
-def note(real: bool, factor: float, lowest_source: str = "flown") -> str:
-    units = (
-        f"Real units: the game at {factor:g}x shown at 1x (speeds, rates, Ps / {factor:g})."
-        if real
-        else f"Game units at {factor:g}x real time."
-    )
+def _system(real: bool, system: str | None) -> str:
+    """The units system: `system` if given, else real_metric for real, else game."""
+    return units.system_of(system if system is not None else ("real_metric" if real else "game"))
+
+
+def _real_suffix(system: str) -> str:
+    return ", real" if system == "real_metric" else ""
+
+
+def note(real: bool, factor: float, lowest_source: str = "flown", system: str | None = None) -> str:
+    unit_note = units.describe(_system(real, system), factor)
     source = {
         "flown": "Lines start at the lowest speed the game flies them.",
         "estimate": "Lines start at the preset's flown lowest speeds x the stall speed ratio.",
     }[lowest_source]
-    return (
-        f"Coast, spawn store, no fields. Ps: total energy rate as a climb rate.\n{units}\n{source}"
-    )
+    head = "Coast, spawn store, no fields. Ps: total energy rate as a climb rate."
+    return f"{head}\n{unit_note}\n{source}"
 
 
 def doghouse_figure(
@@ -386,13 +405,19 @@ def doghouse_figure(
     factor: float = TIME_FACTOR,
     flown_points: dict | None = None,
     lowest_source: str = "flown",
+    system: str | None = None,
 ):
     """The doghouse of the card's type 0 (inside tuning.flying) as a figure: the panel, the
-    legend and the note."""
+    legend and the note (units: real, or `system`)."""
     figure = plt.figure(figsize=(6.4, 8.4), layout="constrained", facecolor=SURFACE)
     ax = figure.add_subplot()
-    draw_panel(figure, ax, title, lowest, real, factor, flown_points)
-    legend(figure, note(real, factor, lowest_source), flown_points is not None)
+    draw_panel(figure, ax, title, lowest, real, factor, flown_points, system=system)
+    legend(
+        figure,
+        note(real, factor, lowest_source, system),
+        flown_points is not None,
+        units.label("length", _system(real, system)),
+    )
     return figure
 
 
@@ -418,21 +443,30 @@ def sustained_curve(lowest: dict[str, float], factor: float = TIME_FACTOR) -> di
     return dict(speeds=game_v, rate=rate, radius=game_v / rate)
 
 
-def sustained_figure(curves, real: bool = False, factor: float = TIME_FACTOR, note_text: str = ""):
+def sustained_figure(
+    curves,
+    real: bool = False,
+    factor: float = TIME_FACTOR,
+    note_text: str = "",
+    system: str | None = None,
+):
     """The sustained turn: rate and radius against speed, one line per curve. curves: a list of
     (label, sustained_curve(...), reference: bool); the reference dotted and muted."""
-    f = factor if real else 1.0
+    system = _system(real, system)
+    sv, sr, sl = (units.factor(k, system, factor) for k in ("speed", "angular_rate", "length"))
+    speed_unit, length_unit = units.label("speed", system), units.label("length", system)
     figure, axes = plt.subplots(
         2, 1, figsize=(6.4, 6.0), sharex=True, layout="constrained", facecolor=SURFACE
     )
     for ax, (key, unit) in zip(
-        axes, (("rate", "sustained turn rate (deg/s)"), ("radius", "sustained radius (m)"))
+        axes,
+        (("rate", "sustained turn rate (deg/s)"), ("radius", f"sustained radius ({length_unit})")),
     ):
         style(ax)
         for label, curve, reference in curves:
-            values = curve[key] * DEGREES / f if key == "rate" else curve[key]
+            values = curve[key] * (sr if key == "rate" else sl)
             ax.plot(
-                curve["speeds"] / f,
+                curve["speeds"] * sv,
                 values,
                 label=label,
                 **(
@@ -444,9 +478,10 @@ def sustained_figure(curves, real: bool = False, factor: float = TIME_FACTOR, no
         ax.set_ylabel(unit, color=INK_2)
         ax.set_ylim(bottom=0)
     axes[1].set_ylim(
-        0, min(2000.0, float(np.nanmax([np.nanmax(c["radius"]) for _, c, _ in curves])) * 1.05)
+        0,
+        min(2000.0, float(np.nanmax([np.nanmax(c["radius"]) for _, c, _ in curves])) * 1.05) * sl,
     )
-    axes[1].set_xlabel("speed (m/s, real)" if real else "speed (m/s)", color=INK_2)
+    axes[1].set_xlabel(f"speed ({speed_unit}{_real_suffix(system)})", color=INK_2)
     axes[0].set_title(
         "Sustained turn (Ps = 0, the largest turn held) against speed",
         color=INK,
