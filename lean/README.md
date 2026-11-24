@@ -28,6 +28,7 @@ Where things are written down:
 Run from the repository root, each with `uv run --no-sync` in front and `PYTHONPATH=.:src`.
 
     pytest lean -m "not slow" -q                    # the fast tests, CPU; -m slow adds the compiled ones
+    ruff format lean && ruff check lean             # format and lint at the project line length (100); run often
     python -m lean.train --smoke --device cpu       # BC then RL, a few tiny eager updates
     python -m lean.train --out DIR                  # BC (96 updates), then RL (1,000 updates)
     python -m lean.train --stage bc --out DIR       # BC only: DIR/bc.pt
