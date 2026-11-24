@@ -514,6 +514,17 @@ League (section 8)
   of their action distributions on a fixed set of stored states (author 2026-11-24), beside
   per-game style counters; skill alone does not decide which parameters to freeze.
 
+## How much to measure (author 2026-11-24)
+
+- Every merge: the quick test suite.
+- Only when a change touches the hot path (game step, policy, the learner's compiled graphs,
+  the evaluation runner's tick): the compile tripwire and one rough speed run (noise
+  acknowledged; no waiting for a quiet machine, no repeats).
+- A careful quiet-machine measurement only when a decision depends on the number (choosing an
+  implementation, a budget, a milestone such as before a dry run).
+- Analysis jobs (screening, divergence, reviews, searches) take no speed measurement; agents
+  may run in parallel except during the rare careful measurements.
+
 ## Proposals, not decided
 
 
