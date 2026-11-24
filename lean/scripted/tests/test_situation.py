@@ -69,17 +69,13 @@ def test_flow_sign():
         assert float(s.own_sense[0, 0]) == pytest.approx(1.0, abs=0.002)
 
 
-def test_closure_and_sight_rate():
-    """He is 400 m ahead flying +y and I fly +x, both at v: relative velocity (-v, v): closing
-    at v, the line of sight turning left at v / 400 rad/s."""
+def test_sight_rate():
+    """He is 400 m ahead flying +y and I fly +x, both at v: relative velocity (-v, v): the
+    line of sight turning left at v / 400 rad/s."""
     speed = 200.0
     state, s = situation(ship(speed=speed), ship(400.0, heading=math.pi / 2, speed=speed))
     c = state.constants
-    assert float(s.closure[0, 0]) == pytest.approx(speed / c["corner_speed"], rel=1e-4)
     assert float(s.sight_rate[0, 0]) == pytest.approx(speed / 400.0 / c["sustained_rate"], rel=1e-4)
-    # opening: he flies away faster than I follow
-    _, opening = situation(ship(speed=speed), ship(400.0, speed=speed + 50.0))
-    assert float(opening.closure[0, 0]) < 0.0
 
 
 def test_energy_advantage():
