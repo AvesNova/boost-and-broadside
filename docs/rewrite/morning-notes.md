@@ -24,6 +24,11 @@ undo it.
   surviving energy half) applies in every offensive situation, including closing fast, which
   used to be the high yo-yo. Scripted call 470 -> 387 operations; tripwire 5,582 operations,
   241 s cold.
+- Step 3 (merged): BFM-CMA2 stays the yardstick, no CMA round. Re-check on today's game
+  (9,216 games each, panel of 8, 18 conditions): CMA2 0.632, CMA1 0.599, default 0.515 (each
+  +- 0.005); CMA2 beats default in all 18 conditions. The panel's stored vectors were mapped
+  by row name onto today's rows (deleted rows dropped). The CMA search script
+  (scripted-screening/search.py) no longer imports: a future round needs new search rows.
 - Step 7 (V3, merged): the 2.5x collect is real, not skipped work. Before L2's league routing
   every snapshot ran on every league environment (8,192 opponent rows a tick); since L2 each
   slot runs only its own rows (about 1,170). The 11-23 row reproduced exactly (19,736); every
