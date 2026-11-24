@@ -79,7 +79,8 @@ class GameConfig:
 
     arena_radius: float = 4200.0
     boundary_ramp_width: float = 300.0
-    clock_ticks: int = 5400
+    # 60 s: about 85% of scripted 4v4 games end before it (docs/rewrite/clock-measurement.md).
+    clock_ticks: int = 1800
     spawn: str = "mixed"
     lineup: tuple[str, ...] = ("p51d",)
     tick_length: float = 1.0 / 30.0

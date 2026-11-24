@@ -152,7 +152,7 @@ class LearnConfig:
     # Slots for dropped snapshots that still play their running games. Retention drops at
     # most 2 snapshots at one addition, and drops start at the 11th snapshot (75M), from
     # where additions are at least 15M steps (14 updates at parity) apart while a game lasts
-    # at most clock_ticks + segment_ticks = 5,528 ticks (11 updates): 2 suffice at parity; 4
+    # at most clock_ticks + segment_ticks = 1,928 ticks (4 updates): 2 suffice at parity; 4
     # leave room for smaller updates. With none free, the games of the retiring slot with
     # the fewest are re-dealt (League.abandoned counts them).
     retiring_slots: int = 4

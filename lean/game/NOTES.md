@@ -10,7 +10,7 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 `from lean.game import GameConfig, reset, deal, take_deal, step, draw_noise, tick, observe`
 (`lean/game/core.py`).
 
-- `GameConfig()` is the core game: arena 4,200 m, boundary ramp 300 m, clock 5,400 ticks (30 Hz),
+- `GameConfig()` is the core game: arena 4,200 m, boundary ramp 300 m, clock 1,800 ticks (60 s at 30 Hz),
   "mixed" spawn, lineup `("p51d",)`, ten fields drawn per environment at each deal, ghost bullets,
   fog, a store of two loops at corner speed with 5% edge bands, firing cuts thrust to
   `fire_thrust_fraction` (0). `field_count=0`, `ghost_bullets=False`, `fog=False` are ablations.
@@ -128,6 +128,6 @@ documents' solve meets the flight test; plausible solved coefficients; the cache
 - Inputs that carry little: the angle of attack's cos and sin repeat the angle, the gun cooldown
   is always 0 at one shot a tick, the shield wait sits at its 3 s maximum. Kept for other types;
   a model step may drop them.
-- The clock (5,400 ticks) waits for the scripted wipe-time measurement (backlog, step X).
+- The clock (1,800 ticks, 60 s) is set from scripted wipe times: docs/rewrite/clock-measurement.md.
 - Engine power and the ship roster wait for the WWII research (core-decisions.md).
 - On the GPU: the dense (E, N K, N) hit test's memory at large team sizes.

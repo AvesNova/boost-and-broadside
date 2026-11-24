@@ -306,6 +306,8 @@ Follow-ups on sections 2 to 6
   speed).
 - Clock: measure scripted against scripted (4v4 elimination, core game) and set the clock so
   that roughly 80% of games end before it.
+  Set 2026-11-25: 1,800 ticks (60 s), the 80th percentile of BFM-CMA2's 4v4 wipe times (54.0 s)
+  rounded up to 10 s (docs/rewrite/clock-measurement.md).
 - Grid cells: Fourier stays the default; grid cells an experiment arm (no paper compares
   them).
 - Experiment arms should favour ideas with some theory but no test in this domain (grid cells,
