@@ -264,8 +264,7 @@ Power rule and memory (step S, notes):
 
 Rewritten on the evening of 2026-11-24. Since the first version, the flight model and the ship
 design system were reworked with you during the day (`core-decisions.md`: "Stick levels", "Ship
-design", "Design profiles", and tonight's entry). The P-51D figures for the new model come from
-the simplification merge (in progress, ETA about 21:45) and are added to F1 when it lands.
+design", "Design profiles", "Simpler flight and design"). Merged at df4b8138.
 
 ### Decisions for you
 
@@ -280,10 +279,27 @@ the simplification merge (in progress, ETA about 21:45) and are added to F1 when
   - Flaps removed. Thrust lapse tried and removed.
   - Stick levels gradual 1/3, middle 2/3, full 1. Keys: A or D middle, Shift full, Ctrl
     gradual.
-- **Evidence.** The trial version (separation off, 20:03) flew 19.45 deg/s at 166 mph, with a
-  best-climb speed of 168 mph as a readout. Your reference chart (forum reconstruction) shows
-  about 19.7 deg/s over 165-190 mph. The doghouse-shape investigation (19:25) explains why a
-  propeller aircraft's best sustained turn sits on the lift line.
+- **Measured** (tuning.performance and implied; before = the documents row at 0ec71cd8):
+
+  | | before | now |
+  |---|---|---|
+  | top speed, best climb | 375 mph, 3,600 ft/min | same |
+  | best-climb speed | 165.0 mph (input) | 167.75 mph (readout) |
+  | corner speed and rate | 286.1 mph, 33.55 deg/s | same |
+  | best sustained turn | 18.99 deg/s at 181.6 mph | 17.85 deg/s at 172.6 mph |
+  | tightest sustained speed, gap | 154.4 mph, 0.850 | 152.9 mph, 0.886 |
+  | e, propeller efficiency, C_D0 | 0.965, 0.859, 0.0158 | 0.850, 0.875, 0.0160 |
+  | stick gradual / middle / full | 0.44 / 0.88 / 1 | 1/3 / 2/3 / 1 |
+  | speed where middle reaches the g limit | 305 mph | 350 mph |
+
+- **The trade-off to judge by flying.** With no separation the trial flew 19.45 deg/s at 166
+  mph; separation 0.3 at exponent 8 takes it to 17.85. Your reference chart (forum
+  reconstruction) shows about 19.7 deg/s over 165-190 mph. Lower separation (a slider) moves
+  it back up; the doghouse-shape investigation explains why a propeller aircraft's best
+  sustained turn otherwise sits on the lift line.
+- **Ctrl and W.** Ctrl + W closes the browser tab and a page cannot block it, so a gradual
+  turn while diving with W closes the tab. The sandbox notes say to dive with Up instead;
+  another modifier for gradual is the alternative.
 - **Blocks.** F3, L1 (reads the final row), the clock measurement.
 
 **F2. The 8 g limit is above the structure's 6.6 g at this mass**
