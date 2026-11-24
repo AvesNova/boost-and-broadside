@@ -73,7 +73,7 @@
 <div id="sandbox">
   <canvas id="view"></canvas>
   <div id="hud"></div>
-  <div id="status">arrows/WASD turn (middle; shift full, ctrl gradual) / up dive / down climb / space fire / C opponent / R reset / +- zoom</div>
+  <div id="status">arrows/WASD turn (middle; shift full, left alt gradual) / up dive / down climb / space fire / C opponent / R reset / +- zoom</div>
 </div>
 
 <script>
@@ -352,17 +352,16 @@ function send(o) { if (socket && socket.readyState === 1) socket.send(JSON.strin
 function controls() {
   const left = keys.has("ArrowLeft") || keys.has("a"), right = keys.has("ArrowRight") || keys.has("d");
   const dive = keys.has("ArrowUp") || keys.has("w"), climb = keys.has("ArrowDown") || keys.has("s");
-  // the turn's level: alone the middle level, with Shift full, with Ctrl gradual (Shift wins)
-  return { side: +left - +right, level: keys.has("Shift") ? 3 : keys.has("Control") ? 1 : 2,
+  // the turn's level: alone the middle level, with Shift full, with left Alt gradual (Shift wins)
+  return { side: +left - +right, level: keys.has("Shift") ? 3 : keys.has("AltLeft") ? 1 : 2,
            power: dive && !climb ? 1 : climb && !dive ? 2 : 0, fire: keys.has(" ") };
 }
 let sent = "";
 function sync() { const c = JSON.stringify(controls()); if (c !== sent) { sent = c; send(JSON.parse(c)); } }
 addEventListener("keydown", e => {
   if ($("sandbox").classList.contains("on")) {
-    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Tab"].includes(k)) e.preventDefault();
-    if (e.ctrlKey && ["a", "d", "s"].includes(k)) e.preventDefault();  // no select-all, bookmark or save
+    const k = keyName(e);
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Tab", "AltLeft"].includes(k) || e.altKey) e.preventDefault();  // no menu bar
     if (!keys.has(k)) {
       keys.add(k);
       if (k === "c") send({ opponent: !(cur && cur.opponent_on) });
@@ -373,7 +372,12 @@ addEventListener("keydown", e => {
     sync();
   }
 });
-addEventListener("keyup", e => { keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); sync(); });
+// left Alt by its position (right Alt is AltGr on some layouts); other keys by what they type
+function keyName(e) { return e.code === "AltLeft" ? "AltLeft" : e.key.length === 1 ? e.key.toLowerCase() : e.key; }
+addEventListener("keyup", e => {
+  if (e.code === "AltLeft") e.preventDefault();  // Alt released alone would focus the menu bar
+  keys.delete(keyName(e)); sync();
+});
 addEventListener("blur", () => { keys.clear(); sync(); });
 canvas.addEventListener("wheel", e => { zoom = Math.min(8, Math.max(0.02, zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); });
 

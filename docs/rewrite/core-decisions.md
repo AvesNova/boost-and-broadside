@@ -599,7 +599,7 @@ These replace the flap, profile and stick-level points above where they disagree
   and the trial profile are gone.
 - Stick levels are fixed thirds of full stick for every type: gradual 1/3, middle 2/3, full 1
   (renamed from fine and sustained; the action space is unchanged). Play shell: A or D
-  alone middle, Shift full, Ctrl gradual.
+  alone middle, Shift full, left Alt gradual (Ctrl replaced: Ctrl+W closes the tab).
 - Tried and removed the same evening: a thrust lapse (thrust = power / speed x
   (speed / 165 mph)^(1 - lapse), 1 a propeller, 0 a jet), b71ef433, reverted in 0ec71cd8.
 
@@ -612,3 +612,23 @@ These replace the flap, profile and stick-level points above where they disagree
 - Grid cells in RL: look for papers that used them (docs/rewrite/provenance-check.md).
 - A keep, drop or simplify table of Imugi's behaviours with rough costs (operations, lines,
   time per call, parameters): docs/rewrite/imugi-behaviours.md, ready for the author.
+
+## Answers to author review 2, first pass (author 2026-11-24 night)
+
+- S1: BFM-CMA2 stays provisional; after the stick change and S2, re-check it, and run one or
+  two small CMA rounds only if the re-check shows it needs them.
+- S2: delete both the lead turn and the yo-yo; both go to the future-ideas list (a lead turn
+  belongs with a pre-merge offset by plan, if ever).
+- S5: one widened overshoot gate in the S6 pass.
+- S4, S6: first check whether the flat mechanisms are reached at all and how much they change
+  the action when reached (proposal pending).
+- S7: accepted as the game's character (energy matters, as in real fights); no balance work.
+  The author wants to stop changing the scripted agent and the ship soon.
+- F1: the simplified P-51D is good enough.
+- L1: re-measure the ranges when the time comes. L2: as built for the dry runs.
+- V1: compile budget confirmed (about 225 s cold is acceptable). V2: keep the strict hash of
+  the game files only.
+- C1: later. C2: the modern standard, applied automatically by the formatter, run often.
+  C3: keep tuning.py in lean/game. C4: rewrite the brief as a short document of goals and
+  standards for the author to review.
+- Sandbox: the gradual turn on left Alt, not Ctrl (Ctrl+W closes the tab).
