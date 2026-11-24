@@ -190,7 +190,6 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "fire_interval": torch.round(1.0 / (config.tick_length * of("fire_rate"))).long(),
         "hit_damage": of("hit_damage"),
         "explosive_share": of("explosive_share"),
-        "inverse_reference_bullet_speed": 1.0 / of("reference_bullet_speed"),
         "hit_radius": hit_radius,
         "hit_radius_squared": hit_radius * hit_radius,
         "core_radius": of("core_radius"),
@@ -231,8 +230,9 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
 
     - cruise speed (straight, coasting, thrust equal to drag: the top level speed), stall speed
       (the wing's lift limit holds 1 g), corner speed (the g limit meets the lift limit), bullet
-      launch speed (cruise plus muzzle) and gun range (how far a bullet fired at cruise travels
-      in its life under drag: v2's `api.gun_range`);
+      launch speed (cruise plus muzzle), gun range (how far a bullet fired at cruise travels
+      in its life under drag: v2's `api.gun_range`) and the damage's reference speed (that
+      bullet's speed card.DAMAGE_REFERENCE_DISTANCE out: v2's rule, ships/real-scale);
     - the best sustained turn (coasting, mid store): its rate, its speed and its radius (speed
       over rate), and the time to turn 90 degrees at that rate;
     - the corner rate (full stick at corner speed) and the store's turn: the turn a full store
@@ -282,6 +282,8 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
         "stall_speed": stall_speed,
         "corner_speed": corner_speed,
         "bullet_launch_speed": launch,
+        # the damage's reference speed: a bullet fired at cruise, DAMAGE_REFERENCE_DISTANCE out
+        "inverse_reference_bullet_speed": torch.exp(c.bullet_drag * card.DAMAGE_REFERENCE_DISTANCE) / launch,
         "gun_range": torch.log1p(c.bullet_drag * launch * life) / c.bullet_drag,
         "sustained_speed": sustained_speed,
         "sustained_rate": sustained_rate,

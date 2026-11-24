@@ -9,6 +9,9 @@ game terms off; step A1 (2026-11-24) rebuilt it with the game terms on; later on
 the flaps became demand-scheduled and the row derived at load (author, "Charts"); last on
 2026-11-24 the stick levels became fractions of the most turn the ship can give, the flaps
 were switched off and the separation drag raised (author; "The stick", "Separation drag").
+The ship design system (option C, core-decisions.md "Ship design") then made the row a
+reference ship plus design inputs, with the best-climb speed and the gap among the solved
+targets (section "Design inputs").
 
 Everything here is quasi-steady under `GameConfig()` (coasting, mid-store, no fields), from the
 flight code's own functions (`core.steady_rates`: `_wing`, `_setting`, `_lift_coefficient`,
@@ -26,69 +29,110 @@ converted back: speeds, turn rates and Ps halved.
 
 ## What the tuning code does (`lean/game/tuning.py`)
 
-Routes to a card row. None changes `core.py`.
+Ship design follows option C of `ship-design-proposal.md` (core-decisions.md, "Ship design",
+2026-11-24). There are two layers: a reference ship built from the documents, then design
+inputs that start at the reference's values. One function, `design_row`, turns the design
+inputs into the card row, for the card and for the web tool. None of it changes `core.py`'s
+step.
 
 **The card is derived, not stored.** `lean/game/card.py` holds no numbers for a real
-aircraft: on first use of `card.CARD`, `tuning.load_card` makes every type's row from its
-targets (`REAL_AIRCRAFT`: the data, the flight test, the game terms) through `real_row`:
-`fit_point_mass`, then `game_row`. The row is cached in memory and on disk
-(`~/.cache/bnb-card/<type>-<key>.json`, or `$BNB_CARD_CACHE`), keyed by a hash of the targets,
-the base fields and the flight model's source (`core.py`, `card.py`, `tuning.py`,
-`contract.py`), so a physics change re-solves by itself and no stored copy goes stale. A solve
-takes about 7.6 s on the laptop (once per source change and machine); a cached load about
-1 ms. Every reader (the game, the web tool's presets, the charts, the evaluation store) reads
-`card.CARD`; the evaluation store's game version now hashes `tuning.py` too, since it decides
-the card.
+aircraft. On first use of `card.CARD`, `tuning.load_card` makes every type's row from its
+aircraft (`REAL_AIRCRAFT`: the data, the flight test and the documented design values) through
+`real_row`: `design_row(reference_of(aircraft))`. The row is cached in memory and on disk
+(`~/.cache/bnb-card/<type>-<key>.json`, or `$BNB_CARD_CACHE`). The key is a hash of the
+aircraft and of the flight model's source (`core.py`, `card.py`, `tuning.py`, `contract.py`),
+so a physics change or a change to the design-input table re-solves by itself. A cold solve
+takes about 5 s on the laptop; a cached load about 1 ms.
 
+**Layer 1, the reference** (`reference_of`, `reference(name)`):
+- `airframe_row`: an aircraft's point mass, a direct conversion with no fitting. Lift and
+  zero-lift drag per metre are rho S C / (2 m). The induced-drag factor is k / (rho S / 2 m)
+  with k = 1 / (pi e AR). Thrust power is shaft power x propeller efficiency / m. Static
+  thrust comes from momentum theory, (FM^2 P^2 2 rho A)^(1/3) / m with FM 0.75. The g limit
+  is times 39.24, and dive and climb trade at 1 g. The game terms are off (`POINT_MASS_TERMS`).
+  This is the October fit's conversion (`physics-checks/planes.py` `from_real`), at 2x time.
+- `fit_point_mass`: C_D0 and the propeller efficiency are set so that the point mass flies
+  the tested top speed and best climb (the October procedure, `physics-checks/real_fit.py`).
+  Neither number is measured data. The fit absorbs cooling drag, exhaust thrust and the
+  Meredith effect into the two (aircraft-references.md, "CD0").
+- Each design input's reference value is its documented one (`RealAircraft.values`: the
+  flight test's numbers, the gap, the flight terms, the game choices). Any other input takes
+  what the point mass has or flies (its `measure`): the stall speed, the g limit, the static
+  thrust, the stall angle, the trade and the best sustained rate.
 
-- **Airframe** (`airframe_row`): a direct conversion with no fitting. Lift and zero-lift drag
-  per metre are rho S C / (2 m); the induced-drag factor is k / (rho S / 2 m) with
-  k = 1 / (pi e AR); thrust power is shaft power x propeller efficiency / m; static thrust
-  comes from momentum theory, (FM^2 P^2 2 rho A)^(1/3) / m with FM 0.75; the g limit times
-  39.24; dive and climb trade at 1 g (a vertical dive or zoom). This is the October fit's
-  conversion (`physics-checks/planes.py` `from_real`), at 2x time. With the game terms off
-  (`POINT_MASS_TERMS`) the row is the aircraft's **point mass**.
-- **Point-mass fit** (`fit_point_mass`): C_D0 and the propeller efficiency set so the point
-  mass flies a tested top speed and best climb (the October procedure,
-  `physics-checks/real_fit.py`). Neither is measured data: a fit absorbs cooling drag, exhaust
-  thrust and the Meredith effect into the two (aircraft-references.md, "CD0").
-- **Game row** (`game_row`): the airframe converted with a type's game terms on, then its
-  zero-lift drag, thrust power and induced drag (`GAME_SOLVED`) solved so it flies its point
-  mass's top speed, best climb and best sustained turn rate (`GAME_TARGETS`). Newton in log
-  parameters with finite differences (`_newton`, shared with the handles route), first with
-  the flaps off and then with them from there: the flaps' part of the sustained turn is
-  lift-limited, so no drag coefficient moves it, and a start whose clean best turn lies below
-  it sees no way to the target. Kept as the airframe's: the lift and stall speed, the g limit
-  and so the corner speed, the stall angle, the dive and climb trade, and the static thrust
-  (no target sees it). The best sustained turn's speed is not solved; the terms are chosen to
-  keep it near the point mass's. The P-51D's card row is `real_row(REAL_AIRCRAFT["p51d"])`;
-  a test holds it to its targets.
-- **Handles** (`handles_row`): v2's handles, as v2's ship files hold them (x2 units). The
-  direct fields use v2's closed forms (`solver._flight_card`'s direct ones and
-  `weapons.combat_card`). C_max = g / stall^2; a_max = g_limit g; the bullet life is whole
-  ticks over the gun range; the reference bullet speed, the spread, drag, shield and armour
-  scales, and the shot's cost are also closed form. Three flown handles still mean something
-  under the core model and are solved quasi-steadily: cruise speed sets the engine power;
-  low-speed acceleration (straight, at the stall speed, empty store) sets the static thrust;
-  the settled full-stick coasting turn sets the induced drag. The web tool's sliders go
-  through this route (with its fast path: Broyden updates, a coarser speed grid); the base
-  row's flight terms, flaps included, are kept.
-- `performance(row, plain=False)` gives a row's quasi-steady numbers: stall, corner (closed
-  form, and flown: the peak full-stick rate), top speed, best climb (Ps), best sustained
-  turn, minimum sustained radius, settled full-stick turn and low-speed acceleration.
-  `plain=True` switches off the game terms (any row). `envelope` gives the (stick, speed)
-  grid the doghouse and the web tool draw.
+**Layer 2, the design** (`DESIGN_INPUTS`, `design_row`, `design_of`):
+- `DESIGN_INPUTS` is one ordered table, and everything else is generated from it. Each entry
+  holds:
+  - the input's name, label and group;
+  - the card field it mainly sets;
+  - `measure(row, performance)`: the value a row has or flies;
+  - `apply(value, design)`: the closed form for a closed input, or None for a solved one;
+  - a `first_guess`, the reference's provenance (`source`), the unit kind and the slider
+    range.
+- Every card field is set exactly once (`check_inputs`).
+- `design_row(reference, design, start=None, fast=False)` works in this order:
+  1. the closed inputs, each by its `apply`;
+  2. every solved input, met by one Newton solve in the logs of the fields they set
+     (`_newton`: a finite-difference Jacobian, pseudo-inverse steps clamped to 0.5, to 1e-7
+     in log). The solve starts from `start` (a row), or from the reference's point mass with
+     the table's first guesses where the point mass has no usable value.
+- The web tool's fast path starts from the preset's row and uses Broyden updates, to 1e-5.
+- A design with flaps is solved clean first, then with them.
+- `design_row` returns the row with the solve's residual, iterations and condition number
+  (`Solved`). A solve that does not converge raises: that is the one refusal.
+- `design_of(row)` is the inverse: every input's measure.
+
+**The flown measures** (`performance(row, plain=False)`) are the row's quasi-steady numbers:
+- stall;
+- corner (closed form, and flown: the peak full-stick rate);
+- top speed;
+- best climb and its speed;
+- best sustained turn;
+- tightest sustained turn and the gap;
+- settled full-stick turn;
+- low-speed acceleration;
+- how far the full-stick rate falls below corner.
+
+Every extremum is refined below the speed grid: a 33-point local grid, then a parabola, with
+the value flown at its vertex. The tightest turn is also checked exactly at the kink where the
+sustained turn leaves full stick. So the numbers agree between a 0.05 and a 1 m/s grid to
+1e-6, and the solve's finite differences see slopes, not grid steps. `plain=True` switches off
+the game terms (any row). `envelope` gives the (stick, speed) grid that the doghouse and the
+web tool draw.
+
+**Plausibility** (`implied`, `PLAUSIBILITY`, `warnings`): the row is read back as the
+reference airframe's physical quantities. Mass, wing area, aspect ratio, shaft power and
+propeller diameter are held. That gives C_Lmax, C_D0, Oswald e, the propeller efficiency, the
+static figure of merit, static thrust / weight, the g limit over the structure's at this mass,
+and the held wing and power loadings. Each check is data (quantity, bounds, "limit" or
+"range", reason, the input it points at), from section 7 of the proposal. Warnings never
+refuse.
+
+### Changing the design inputs
+
+To add, remove or swap an input, edit `DESIGN_INPUTS` only:
+- a closed input gives `apply`; a solved input gives a `measure` that `performance()` reports
+  or that can be computed from the row, and the field it mainly moves;
+- every card field must still be set once.
+
+`design_row`, the reference, the card and the tool's sliders follow from the table. A
+documented reference value goes in the aircraft's `values`; without one, the input takes its
+point mass's measure. The table's version (`inputs_version`) changes with it, so saved tool
+presets from another table load as fixed ships. `test_an_input_is_swapped_by_editing_the_table_only`
+puts the corner speed (solved for the maximum acceleration) in place of the g limit on a copy
+of the table, and the solve meets it.
 
 How v2's flight model maps to the core model:
 
 | v2 | core model |
 |---|---|
 | Two engine powers: `engine_power_full_store` drives speed, and the surplus (`engine_power` minus it) charges the store, fading above the engine knee | No charge. Thrust uses the full-store power only. The climb time, engine surplus, coast exchange and knee are inert. |
-| Separate dive and climb exchange rates | Their mean. 1 g from an airframe. |
+| Separate dive and climb exchange rates | One trade, 1 g from an airframe. |
 | Store = g x ceiling; spawn at 40%; shots cost store | Two vertical loops at corner speed; spawn at half; shots are free. |
-| Nose reversal, stick levels | Nose frequency: control feel, from `GAME_FIELDS` (v2's Vizia's); nose damping 0.7 (v2's) kept. Stick levels: derived from the flight (section "The stick"); only the fine level's fraction of the sustained one is a field (`fine_stick_fraction`, 0.5). |
+| Nose reversal, stick levels | Nose frequency: control feel, v2's Vizia's; nose damping 0.7 (v2's) kept. Stick levels: derived from the flight (section "The stick"); only the fine level's fraction of the sustained one is a field (`fine_stick_fraction`, 0.5). |
 | Weight paid from the store above 2% | Weight always on the wing. |
 | Flight terms shared across types | Per-type card columns (`card.FLIGHT_TERMS`), flaps included. |
+| A stored reference bullet speed | Derived by the game (`core._derived_characteristics`): a bullet fired at cruise, 300 m out. |
 
 ## The P-51D's data (`tuning.P51D`)
 
@@ -101,35 +145,69 @@ How v2's flight model maps to the core model:
 | C_Lmax, clean | 1.6 | the AAF's power-on value behind its turn calculation; stall-derived values span 1.50-1.70 (aircraft-references.md); was 1.50 |
 | Oswald e | 0.8 | assumed (two test points cannot separate e from propeller efficiency) |
 | Propeller | Hamilton Standard, 3.40 m | the test report |
-| g limit | 8 (decided) | v2's research (forum figure, at 8,000 lb) |
+| g limit | 8 (decided), rated at 8,000 lb: 6.6 g at the tested weight | v2's research (forum figure, F) |
 | Stall angle | 15.5 deg | v2's research |
-| C_D0, propeller efficiency | 0.01504, 0.821 | `fit_point_mass` to 375 mph and 3,600 ft/min at sea level (A), run when the card is derived (`P51D` holds its start) |
+| C_D0, propeller efficiency | 0.01504, 0.821 | `fit_point_mass` to 375 mph and 3,600 ft/min at sea level (A), run when the reference is made (`P51D` holds its start) |
 
 The point mass: stall 101.2 mph, corner speed 286 mph (stall x sqrt 8), and, as a model, a best
 sustained turn of 18.99 deg/s at 163.3 mph with radius 220 m.
 
-## The game terms and the solve (`tuning.P51D_TERMS`)
+## Design inputs (`tuning.DESIGN_INPUTS`, the P-51D's `P51D_VALUES`)
 
-| Term | P-51D | Why |
+Performance inputs. All are game units in the code; the real values are listed here.
+
+| Input | Sets | How | P-51D | Source |
+|---|---|---|---|---|
+| stall speed (1 g) | `max_lift_coefficient` | closed, g / v^2 | 101.2 mph | the airframe, C_Lmax 1.6 (B) |
+| g limit | `max_acceleration` | closed, n g | 8 | forum (F); the author's choice |
+| top level speed | `zero_lift_drag` | solved | 375 mph | flight test (A) |
+| best climb rate | `engine_power` | solved | 3,600 ft/min | flight test (A) |
+| best-climb speed | `thrust_softmin_exponent` | solved | 165 mph | flight test (A), `p51d-drag-check.md` |
+| best sustained turn rate | `induced_drag_scale` | solved | 18.99 deg/s | the point mass (model, e 0.8 assumed) |
+| the gap: tightest over best-rate sustained speed | `separation_drag` (at exponent 16) | solved | 0.85 | design (author 2026-11-24) |
+
+The other inputs are closed forms or short circuits:
+- **airframe:** static thrust / weight 0.609 (momentum theory, FM 0.75); stall angle
+  15.5 deg; the dive and zoom trade, 1 g;
+- **flight terms:** critical Mach 0.77 and drag-rise exponent 20 (NACA ACR 4K02 Fig. 12);
+  separation exponent 16; lift softness 16 (v2's);
+- **flaps:** off (extra lift 0, blown back at 1 x the clean corner speed, drag 1.5
+  (Delta C_L)^2 when on);
+- **stick and nose:** v2's Vizia's, with the fine stick at half of the sustained level;
+- **guns, shield, head-on, vision:** v2's Vizia's, in design units (gun range 600 m from the
+  top speed, vision 1,000 m, shield recharge 24 /s after 3 s, head-on angle 45 deg).
+
+Not inputs, read out:
+- corner speed and rate, and all radii;
+- the best sustained speed and the settled full-stick turn;
+- the low-speed acceleration (the static thrust stays physical);
+- the stick levels and the store.
+
+The solve at the P-51D, before (the row until 2026-11-24's design system: separation drag
+0.5 at exponent 24, thrust softness 8, three targets) and after, real units. Measured with
+today's `performance`. Coefficients as airframe equivalents (`implied`):
+
+| | before | after |
 |---|---|---|
-| Drag rise | the zero-lift drag doubles at Mach 0.77 (262 m/s real, `critical_speed` 524.06 game), exponent 20 | NACA ACR 4K02 Fig. 12 (P-51B, propeller off): C_D flat at about 0.0215 to M 0.68, then about 0.030 at M 0.735 and 0.036 at M 0.755 (read off the chart); 1 + (M / 0.77)^20 gives +15% at 0.70, +39% at 0.735, +68% at 0.755 (v2's exponent 12 at the same point would add 13% at M 0.65, where the figure is flat). At the game's speeds it is negligible: +0.013% at the sea-level top speed (M 0.49) |
-| Separation drag | 0.5, exponent 24 (the induced drag x 1.5 at the wing's maximum lift, +4.0% at 0.9 of it, +0.24% at 0.8) | sets the tightest sustained turn clearly apart from the best sustained rate with plausible solved coefficients (section "Separation drag"); was 0.1 at exponent 8, which with the flaps off left the two the same point |
-| Soft minimum, lift against the g limit | exponent 16 | v2's |
-| Soft minimum, thrust against static thrust | exponent 8 | much less soft than v2's 2 (which took 10% of the thrust near the best-climb speed) |
-| Automatic flaps | off (`flap_lift` 0, author 2026-11-24); when on, the bonus when the stick asks for more than the clean wing gives, blown back by the clean corner speed; flap drag 1.5 (Delta C_L)^2 with the flaps fully used | section "Automatic flaps" |
-| Nose damping | 0.7 | v2's, kept |
+| top speed | 375.0 mph | 375.0 mph |
+| best climb, at | 3,600 ft/min at 139.9 mph | 3,600 ft/min at 165.0 mph |
+| corner | 286.0 mph, 33.54 deg/s | 286.0 mph, 33.55 deg/s |
+| best sustained | 18.99 deg/s at 179.1 mph, r 241.5 m | 18.99 deg/s at 181.6 mph, r 244.9 m |
+| tightest sustained | 226.5 m at 151.8 mph | 224.4 m at 154.4 mph |
+| the gap | 0.848 | 0.850 |
+| settled full-stick turn | 17.06 deg/s | 17.62 deg/s |
+| low-speed acceleration | 3.70 m/s^2 | 3.26 m/s^2 |
+| C_D0 | 0.0148 | 0.0158 |
+| propeller efficiency | 0.802 | 0.859 |
+| Oswald e | 0.952 | 0.965 |
+| thrust softness | 8 | 2.83 |
+| separation drag | 0.5 at exponent 24 | 0.41 at exponent 16 |
 
-Solved (`GAME_SOLVED`), as airframe equivalents:
-
-| | point mass | game row |
-|---|---|---|
-| C_D0 | 0.01504 | 0.01480 |
-| propeller efficiency | 0.821 | 0.802 |
-| Oswald e | 0.8 | 0.952 |
-
-The separation drag lowers the sustained turn near the lift limit; the induced drag settles
-at e 0.952 to hold the best sustained rate. (With the flaps on and the separation drag 0.1 at
-exponent 8, before 2026-11-24's stick change, it was e 0.819.)
+At 2.83 the soft thrust limit takes 5.4% of P / v at the best-climb speed. The drag check's
+3.7 gave 160 mph against the test's 165. Two warnings fire at the default, the same two as
+before:
+- Oswald e 0.965, outside 0.78-0.93;
+- the 8 g limit, 1.22 x the structure's 6.6 g at 9,760 lb.
 
 ## The stick (`core._setting`, `core.stick_table`)
 
@@ -226,8 +304,8 @@ Reading:
 - A steeper exponent concentrates the drag near the maximum lift, where the tightest turn
   flies, and leaves the best-rate turn (at 0.9 of the lift) nearly alone: at 24, 0.5 gives a
   ratio of 0.848 with e 0.952; at 16 and 32 the margins are smaller.
-- **Default: 0.5 at exponent 24** (judgement; the exponent is a second change the author did
-  not ask for). Cost: the best sustained speed moves 9.7% above the point mass's (179.1
+- **Then: 0.5 at exponent 24** (judgement; superseded by the design system, section "Design
+  inputs": the gap is now an input that solves the coefficient at exponent 16). Cost: the best sustained speed moves 9.7% above the point mass's (179.1
   against 163.3 mph), so `test_card_rows_meet_their_targets` now allows 12% (was 5%) and
   holds e <= 1 and the propeller efficiency in 0.7-0.9.
 - For comparison, the flaps on (+15%) with 0.1 at exponent 8 under the new stick: ratio 0.852
@@ -300,6 +378,9 @@ What they do to the P-51D (the same solved row, flaps off against on):
 
 ## Comparison with real figures (real units)
 
+This comparison predates the design system; its "Game row" is the "before" column of
+section "Design inputs", which gives the current row's numbers.
+
 "Before": the card row until 2026-11-24 (the October point mass: 21.83 m^2, C_Lmax 1.50, the
 game terms off). "Point mass": the referenced airframe above, game terms off. "Game row": the
 card now (the stick as fractions of the top line, flaps off, separation drag 0.5 at exponent
@@ -366,14 +447,18 @@ when Vizia left the card; they show the P-51D's earlier point mass.
 `lean/game/tests/test_tuning.py`:
 - the point mass, fitted when the card is derived, flies the flight test (375 mph and 3,600
   ft/min to 1e-6);
-- every card row meets its targets: the flight test's top speed and climb and the point
-  mass's best sustained rate (1e-6), its best sustained speed within 12% of the point mass's,
-  the same stall and corner speeds (the flown peak within 0.1%), the terms on, and the solved
-  coefficients plausible (Oswald e at most 1, propeller efficiency 0.7 to 0.9);
-- derived rows are cached by their targets and the source (a second load reads the disk
+- every card row flies its reference design (every input to 1e-6: 375 mph, 3,600 ft/min at
+  165 mph, the point mass's best sustained rate, the gap 0.85), its best sustained speed
+  within 12% of the point mass's, the same stall and corner speeds, the terms on;
+- derived rows are cached by their aircraft and the source (a second load reads the disk
   without solving; another target or another source is another key);
-- the handles route recovers the row from its flown handles; another time scale flies the
-  same aircraft; the scripted agent's references are the flown numbers (P-51D: quarter turn
+- the design-input table sets every card field once; moved designs (faster, slow turner,
+  late climber, flaps) and a cold start fly every input after the solve (1e-6; the fast
+  path 1e-4); an input swapped by editing a copy of the table is met; the measures agree
+  across grids and their finite differences are smooth; a hand-made implausible row warns on
+  e, propeller efficiency, C_D0, C_Lmax and the thrust loss, and the P-51D on e and the
+  structure; the damage reference speed is derived; another time scale flies the same
+  aircraft; the scripted agent's references are the flown numbers (P-51D: quarter turn
   2.37 s, store turn 2.40 rad).
 
 `lean/game/tests/test_flight.py`:
@@ -392,7 +477,7 @@ when Vizia left the card; they show the P-51D's earlier point mass.
   the old square law's curvature step), and cost drag only for lift beyond the clean wing.
 
 The web tool (`lean/tool`) reads the same functions (`tuning.envelope`, `performance`,
-`handles_row`) and its presets read the derived card (`tuning.row_of`).
+`design_row`, `implied`, `warnings`) and its presets read the derived card (`tuning.row_of`).
 
 ## Record: Vizia's climb modifications (2026-11-23)
 

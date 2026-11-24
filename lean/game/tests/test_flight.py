@@ -444,7 +444,7 @@ def test_sustained_level_passes_through_the_best_sustained_point():
 
 
 def test_fine_level_is_its_fraction_of_the_sustained_level():
-    """The fine stick is the type's fine_stick_fraction (default one half, GAME_FIELDS) of the
+    """The fine stick is the type's fine_stick_fraction (the P-51D's one half, P51D_VALUES) of the
     sustained level; straight is 0 and full 1; odd indices right (negative), even left."""
     for ship_type, name in enumerate(card.TYPE_NAMES):
         table = core.per_type_constants(CONFIG, torch.tensor([ship_type])).stick_table[0]
@@ -453,7 +453,7 @@ def test_fine_level_is_its_fraction_of_the_sustained_level():
         fine = fraction * sustained
         expected = [0.0, -fine, fine, -sustained, sustained, -1.0, 1.0]
         assert table.tolist() == pytest.approx(expected, rel=1e-6), name
-    assert tuning.GAME_FIELDS["fine_stick_fraction"] == 0.5
+    assert tuning.P51D_VALUES["fine_stick_fraction"] == 0.5
 
 
 def test_the_turn_has_precedence_over_the_climb():

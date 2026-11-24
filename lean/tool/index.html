@@ -15,10 +15,13 @@
   #controls label { display: block; margin-top: 8px; }
   #controls input[type=range] { width: 100%; }
   #controls .value { float: right; font-variant-numeric: tabular-nums; color: #52514e; }
-  #controls .off { color: #898781; }
   #controls details { border-top: 1px solid #e7e6e2; padding: 4px 0; }
   #controls summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
-  #controls .switch { margin-right: 6px; vertical-align: -2px; }
+  #controls .source { display: block; font-size: 11px; color: #898781; }
+  #controls .badge { color: #b8860b; font-weight: 600; }
+  #warnings li.limit { color: #c0392b; } #warnings li.range { color: #9a6700; }
+  #warnings { margin: 4px 0; padding-left: 18px; }
+  h3 { margin: 12px 0 4px; font-size: 14px; }
   #charts img { width: 100%; max-width: 720px; display: block; margin-bottom: 12px; }
   #drawn { color: #52514e; min-height: 1.2em; }
   table { border-collapse: collapse; margin: 8px 0; }
@@ -47,8 +50,13 @@
     <p><button id="reset">Reset to preset</button> <button id="fly">Fly checks</button></p>
     <div id="drawn"></div>
     <div id="error"></div>
-    <table id="readouts"></table>
+    <div id="fixed"></div>
+    <h3>Warnings</h3><ul id="warnings"></ul>
+    <h3>Design</h3>
     <div id="sliders"></div>
+    <h3>Flown</h3><table id="readouts"></table>
+    <h3>Implied physical (mass, wing area, AR, shaft power, propeller held)</h3><table id="implied"></table>
+    <h3>Solved coefficients (the card row, game units)</h3><div id="solve"></div><table id="coefficients"></table>
   </div>
   <div id="charts"><img id="doghouse" alt="doghouse (drawing...)"><img id="sustained" alt="sustained turn (drawing...)"></div>
 </div>
@@ -62,7 +70,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const DEG = 180 / Math.PI;
-let unitInfo = null, saved = {}, controlsByName = {}, presets = null, values = {}, off = new Set(), last = null, timer = null, sequence = 0;
+let unitInfo = null, saved = {}, controlsByName = {}, presets = null, values = {}, fixedRow = null, last = null, timer = null, sequence = 0;
 
 // ---- tabs
 function show(tab) {
@@ -72,7 +80,7 @@ function show(tab) {
 $("tab-ships").onclick = () => show("ships");
 $("tab-sandbox").onclick = () => show("sandbox");
 
-// ---- ships tab: the inputs come from the server (lean.tool.design.inputs: the tuning's own list)
+// ---- ships tab: the inputs come from the server (lean.tool.design.inputs: tuning.DESIGN_INPUTS)
 async function init() {
   const data = await (await fetch("/api/presets")).json();
   presets = data.presets; unitInfo = data.units;
@@ -97,6 +105,7 @@ function refreshControl(c) {                             // the slider and its l
   c.out.textContent = (c.game * k).toPrecision(4);
   const unit = s.kind ? unitLabel(s.kind) : s.unit;
   c.name.textContent = s.label + (unit ? ` (${unit})` : "");
+  c.source.textContent = `${s.source}; ${s.method} -> ${s.sets}; reference ${(s.reference * k).toPrecision(4)}`;
 }
 function refreshAll() { for (const c of Object.values(controlsByName)) refreshControl(c); }
 const base = () => { const v = $("preset").value; return v.startsWith("saved:") ? saved[v.slice(6)].state.preset : v; };
@@ -128,53 +137,49 @@ async function deleteSaved() {
   await loadSaved(); choosePreset();
 }
 function choosePreset() {
-  const v = $("preset").value, state = v.startsWith("saved:") ? saved[v.slice(6)].state : null;
+  const v = $("preset").value, record = v.startsWith("saved:") ? saved[v.slice(6)] : null, state = record ? record.state : null;
   const inputs = presets[base()].inputs;
   controlsByName = {};
   $("sliders").innerHTML = "";
-  values = {}; off = new Set();                           // only moved inputs are sent
+  values = {};                                            // only moved inputs are sent
   const groups = {};
-  for (const s of inputs) {
+  for (const s of inputs) {                               // one slider per tuning.DESIGN_INPUTS entry
     if (!groups[s.group]) {
       const box = document.createElement("details");
-      box.open = Object.keys(groups).length < 2;
+      box.open = Object.keys(groups).length < 1;
       box.innerHTML = `<summary>${s.group}</summary>`;
       $("sliders").appendChild(box); groups[s.group] = box;
     }
     const label = document.createElement("label");
     const input = document.createElement("input");
     Object.assign(input, { type: "range", min: s.low, max: s.high, step: (s.high - s.low) / 400, value: s.value });
-    label.innerHTML = `<span class="name"></span> <span class="value"></span>`;
+    label.innerHTML = `<span class="name"></span> <span class="badge"></span><span class="value"></span>` +
+      `<span class="source"></span>`;
     const out = label.querySelector(".value");
-    const control = { spec: s, input, out, name: label.querySelector(".name"), game: s.value, box: null };
+    const control = { spec: s, input, out, name: label.querySelector(".name"), badge: label.querySelector(".badge"),
+                      source: label.querySelector(".source"), game: s.value };
     input.oninput = () => {                               // shown units back to the game's
       control.game = +input.value / (s.kind ? scaleOf(s.kind) : 1);
       values[s.name] = control.game; out.textContent = (+input.value).toPrecision(4); schedule();
     };
-    if (s.switch) {                                        // a term that can be turned off
-      const box = document.createElement("input");
-      Object.assign(box, { type: "checkbox", checked: s.switch.on, className: "switch", title: s.switch.label });
-      const apply = () => {
-        if (box.checked) off.delete(s.name); else off.add(s.name);
-        input.disabled = !box.checked; label.classList.toggle("off", !box.checked);
-      };
-      box.onchange = () => { apply(); schedule(); };
-      apply();
-      label.prepend(box);
-    }
-    control.box = s.switch ? label.querySelector(".switch") : null;
     controlsByName[s.name] = control;
     label.appendChild(input); groups[s.group].appendChild(label);
   }
-  if (state) {                                             // restore a saved state (game units)
+  fixedRow = record && !record.editable ? record.row : null;
+  $("fixed").textContent = fixedRow ? "A fixed ship: saved under another design-input table, so it flies its stored row;" +
+    " the sliders show what that row measures and cannot move." : "";
+  if (fixedRow) {
+    for (const c of Object.values(controlsByName)) {
+      c.input.disabled = true;
+      if (c.spec.name in record.measured) c.game = record.measured[c.spec.name];
+    }
+    $("factor").value = String(state.time_scale);
+  } else if (state) {                                      // restore a saved state (game units)
     $("factor").value = String(state.time_scale);
     $("units").value = state.units === "real" ? "real_metric" : (state.units || "game");
     for (const [n, x] of Object.entries(state.values || {})) {
       const c = controlsByName[n]; if (!c) continue;
       c.game = +x; values[n] = +x;
-    }
-    for (const n of state.off || []) {
-      const c = controlsByName[n]; if (c && c.box) { c.box.checked = false; c.box.onchange(); }
     }
   }
   refreshAll();
@@ -182,7 +187,7 @@ function choosePreset() {
 }
 function schedule() { clearTimeout(timer); timer = setTimeout(request, 250); }   // debounced
 function body() {
-  return JSON.stringify({ preset: base(), values, off: [...off], time_scale: +$("factor").value,
+  return JSON.stringify({ preset: base(), values: fixedRow ? {} : values, fixed: fixedRow, time_scale: +$("factor").value,
                           units: $("units").value });
 }
 function post(url, payload) { return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload }); }
@@ -195,8 +200,8 @@ async function showPng(id, response) {
 async function request() {
   const mine = ++sequence, payload = body(), began = performance.now();
   $("drawn").textContent = "drawing...";
-  const [numbers, dog, held] = await Promise.all([post("/api/envelope", payload), post("/api/doghouse.png", payload),
-                                                  post("/api/sustained.png", payload)]);
+  const [numbers, dog, held, shipped] = await Promise.all([post("/api/envelope", payload), post("/api/doghouse.png", payload),
+                                                  post("/api/sustained.png", payload), post("/api/ship", payload)]);
   if (mine !== sequence) return;                          // a newer request is under way
   if (!numbers.ok) {
     $("error").textContent = "No solution for these inputs: " + (await numbers.json()).error;
@@ -208,6 +213,7 @@ async function request() {
   if (dog.ok) await showPng("doghouse", dog);
   if (held.ok) await showPng("sustained", held);
   readouts();
+  if (shipped.ok) panels(await shipped.json());
   $("drawn").textContent = `drawn in ${((performance.now() - began) / 1000).toFixed(2)} s; lowest speeds ` +
     (last.design.lowest_source === "flown" ? "flown for this design" : "estimated (Fly checks flies this design)");
 }
@@ -232,13 +238,26 @@ function readouts() {
     ["tightest sustained radius / at", key.tightest_sustained_radius === null ? "none"
       : `${shown("length", key.tightest_sustained_radius)} / ${speed(key.tightest_sustained_speed)}` +
         (tight ? ` (flown ${shown("length", tight.radius)} / ${speed(tight.speed)})` : "")],
-    ["speed gap (tightest - best rate)", key.best_sustained_speed === null ? "-"
-      : speed(key.tightest_sustained_speed - key.best_sustained_speed)],
+    ["the gap (tightest / best-rate speed)", key.best_sustained_speed === null ? "-"
+      : (key.tightest_sustained_speed / key.best_sustained_speed).toFixed(3)],
     ["top speed", speed(key.top_speed)],
     ["best climb (Ps) / at", `${shown("climb", key.best_climb, $("units").value === "real_imperial" ? 0 : 1)} / ${speed(key.best_climb_speed)}`],
     ["stall speed (1 g)", speed(key.stall_speed)],
   ];
   $("readouts").innerHTML = rows.map(r => `<tr><td class="name">${r[0]}</td><td>${r[1]}</td></tr>`).join("");
+}
+
+function panels(ship) {                                   // warnings, implied physics, solved row
+  const fmt = x => x === null ? "-" : Math.abs(x) >= 1e4 || (Math.abs(x) < 1e-3 && x !== 0) ? x.toExponential(4) : x.toPrecision(5);
+  $("warnings").innerHTML = ship.warnings.length ? ship.warnings.map(w => `<li class="${w.severity}">${w.severity}: ${w.message} (input: ${w.input})</li>`).join("") : "<li>none</li>";
+  for (const c of Object.values(controlsByName)) c.badge.textContent = ship.warnings.some(w => w.input === c.spec.name) ? "! " : "";
+  const names = { max_lift_coefficient: "C_Lmax", zero_lift_drag_coefficient: "C_D0", oswald: "Oswald e",
+    propeller_efficiency: "propeller efficiency", figure_of_merit: "static figure of merit", static_thrust_over_weight: "static thrust / weight",
+    structural_load: "g limit / structure's at this mass", wing_loading: "wing loading (kg/m2, held)", power_loading: "shaft power loading (W/kg, held)" };
+  $("implied").innerHTML = Object.entries(ship.implied).map(([k, x]) => `<tr><td class="name">${names[k] || k}</td><td>${fmt(x)}</td></tr>`).join("");
+  const s = ship.solve;
+  $("solve").textContent = s.iterations ? `residual ${s.residual.toExponential(1)}, ${s.iterations} iterations, condition ${s.condition === null ? "-" : s.condition.toFixed(1)}` : "the preset's own row (no solve)";
+  $("coefficients").innerHTML = Object.entries(ship.row).map(([k, x]) => `<tr><td class="name">${k}</td><td>${fmt(x)}</td></tr>`).join("");
 }
 
 // ---- sandbox tab
@@ -250,7 +269,7 @@ function startSandbox() {
   stopSandbox(); prev = cur = null; trail = [];
   const ws = new WebSocket(`ws://${location.host}/api/sandbox`);
   socket = ws;
-  ws.onopen = () => ws.send(JSON.stringify({ preset: base(), values, off: [...off], time_scale: +$("factor").value, opponent: true }));
+  ws.onopen = () => ws.send(JSON.stringify({ preset: base(), values, fixed: fixedRow, time_scale: +$("factor").value, opponent: true }));
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
     if (m.type === "setup") { setup = m; trail = []; }

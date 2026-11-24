@@ -23,13 +23,18 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   `_bullet_ends`, then the fog's `perceive`.
 - `observe(config, state, team)`: that team's `Obs`, built under fog from `team_view` only.
 - `card.py` (the ship card, one row per type; today the P-51D) and `tuning.py` (not imported
-  by the step: an airframe into a point mass, a design's handles into a card row,
-  `performance`, `envelope`, `time_scale`; `docs/rewrite/p51d-model.md`). The card holds no
+  by the step): ship design, option C (`docs/rewrite/p51d-model.md`, "Design inputs"). A
+  reference ship from the documents (`reference`: the airframe's point mass fitted to the
+  flight test), then the design inputs (`DESIGN_INPUTS`, one table: what each sets, its
+  measure, closed form or solved, provenance, slider) turned into a row by `design_row`
+  (closed forms, then Newton on the solved targets); `design_of`, `implied`, `warnings`
+  (plausibility, never refusals), `performance`, `envelope`, `time_scale`. The card holds no
   stored numbers for a real aircraft: `card.CARD` is derived on first use by
-  `tuning.load_card` from each type's targets (`tuning.REAL_AIRCRAFT`: data, flight test, game
-  terms), cached on disk (`~/.cache/bnb-card`, `$BNB_CARD_CACHE`) by a hash of the targets and
-  the flight model's source, so a physics change re-solves by itself (about 7.6 s once; a cached
-  load about 1 ms).
+  `tuning.load_card` (`design_row` of each type's reference), cached on disk
+  (`~/.cache/bnb-card`, `$BNB_CARD_CACHE`) by a hash of the aircraft and the flight model's
+  source, so a physics change or a table change re-solves by itself (about 3-5 s once; a
+  cached load about 1 ms). Adding, removing or swapping a design input is an edit of
+  `DESIGN_INPUTS` only.
 
 ## Rules that matter
 
@@ -47,13 +52,14 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   the g limit (one soft minimum: the corner). Full stick is all of it (the envelope's top line,
   no tax); the sustained level is derived in `_derived_characteristics` (`stick_table`: the
   stick that holds energy at the best sustained turn, so it passes through that point); the
-  fine level is the card's `fine_stick_fraction` (0.5) of it. P-51D: 0.448, 0.895, 1.
+  fine level is the card's `fine_stick_fraction` (0.5) of it. P-51D: 0.440, 0.881, 1.
 - **Automatic flaps** (off for the P-51D, `flap_lift` 0; switchable per type): scheduled by
   stick demand and blown back by the corner speed, they raise the maximum lift when the stick
   asks for more than the clean wing gives (C2 in speed and demand; drag on the extra lift only;
   the turn rate never falls with speed below corner).
 - **Separation drag** rises toward the wing's maximum lift and stops there (a transient can
-  ask for twice it; P-51D 0.5 at exponent 24, docs/rewrite/p51d-model.md "Separation drag"). `steady_rates` / `quasi_steady` evaluate the same
+  ask for twice it; P-51D 0.41 at exponent 16, solved by the gap 0.85, docs/rewrite/p51d-model.md
+  "Design inputs"). `steady_rates` / `quasi_steady` evaluate the same
   functions with the nose settled; they give the derived constants, `tuning`, and the web tool.
 - **Constants:** `ship_card` / `ship_constants` build a run's `contract.Constants` once; a
   value equal for the whole lineup is a Python number, one that differs is a per-slot row. The

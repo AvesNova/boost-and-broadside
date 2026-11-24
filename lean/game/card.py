@@ -8,14 +8,14 @@ CARD is derived, not stored: on first use every row is made from its targets by
 lean.game.tuning (`load_card`), cached in memory and on disk by a hash of the targets and of
 the flight model's source, so a physics change re-solves the rows by itself:
 
-- "p51d": the P-51D (tuning.REAL_AIRCRAFT): its point mass fitted to the flight test (top speed
-  and best climb), then the game terms on (tuning.P51D_TERMS: drag rise, separation drag, soft
-  minima, automatic flaps) with its zero-lift drag, thrust power and induced drag solved so it
-  flies its point mass's top speed, best climb and best sustained turn rate (tuning.game_row,
-  docs/rewrite/p51d-model.md); real lift, g limit 8, static thrust, dive and climb at 1 g;
-  guns, shield, nose and the fine stick's fraction from tuning.GAME_FIELDS.
+- "p51d": the P-51D (tuning.REAL_AIRCRAFT): its reference (the point mass fitted to the flight
+  test, tuning.reference_of), then its design inputs (tuning.DESIGN_INPUTS: closed forms, and
+  the top speed, best climb and its speed, best sustained rate and the gap solved for the
+  zero-lift drag, thrust power, thrust softness, induced drag and separation drag;
+  tuning.design_row, docs/rewrite/p51d-model.md "Design inputs").
 
-The stick levels are not stored either (core._derived_characteristics, core.stick_table): each
+The stick levels and the bullet's damage reference speed are not stored either
+(core._derived_characteristics, core.stick_table): each
 level is a fraction of the most lateral acceleration the ship can give at its speed; full stick
 is 1, the sustained level the stick that holds energy at the best sustained turn (so it passes
 through the best sustained point), the fine level fine_stick_fraction of the sustained one.
@@ -61,7 +61,6 @@ CARD_FIELDS = (
     "fire_rate",
     "bullet_life",
     "explosive_share",
-    "reference_bullet_speed",
     "induced_drag_scale",
     "stall_angle_scale",
     "bullet_spread_scale",
@@ -102,6 +101,7 @@ FLAP_BLOWBACK_BAND = 0.4
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005
 BULLET_SPREAD = 12.0
+DAMAGE_REFERENCE_DISTANCE = 300.0  # m: a bullet fired at cruise has the damage reference speed here (v2 rules.toml)
 HEAD_ON_FRACTION = 0.3
 HEAD_ON_ANGLE = 0.737832313317803
 SHIELD_RECHARGE_DELAY = 6.0
