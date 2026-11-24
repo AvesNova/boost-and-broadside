@@ -24,6 +24,12 @@ undo it.
   surviving energy half) applies in every offensive situation, including closing fast, which
   used to be the high yo-yo. Scripted call 470 -> 387 operations; tripwire 5,582 operations,
   241 s cold.
+- Step 7 (V3, merged): the 2.5x collect is real, not skipped work. Before L2's league routing
+  every snapshot ran on every league environment (8,192 opponent rows a tick); since L2 each
+  slot runs only its own rows (about 1,170). The 11-23 row reproduced exactly (19,736); every
+  tick was stepped by exactly one source (counted on the device). A real run sees about 77,000
+  collect steps/s before the first snapshot and about 50,000 with 8. Two of 8 segments in one
+  run were slower (34-36k), not investigated. Details: scoreboard.md "Why collect was 2.5x".
 - Step 6 (C4): `core-brief.md` is rewritten as goals and standards (about 1,200 words). Its
   last section lists 9 points for you to confirm (training targets against the new yardstick,
   size generalisation, a speed floor, parallel work, rented GPUs, tests per merge, one place
