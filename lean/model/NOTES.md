@@ -13,7 +13,9 @@ Reasons: `docs/rewrite/model-audit.md`, `docs/rewrite/literature-model-choices.m
   (6 x 64) and the hit logits (3).
 - `agent.py`: how a network acts, shared by `lean.learn`'s rollout and `lean.eval`'s runner:
   `Network` (a weightless `Stepper` template per architecture plus weights; new weights are new
-  data, so no recompile), `network_step`, `sample_joint`, `seat_view`, `precision`, `reset_carry`.
+  data, so no recompile), `agent_step` (the one agent tick: precision, forward, the joint
+  action's sample; returns an `AgentStep`) for training's live policy (`Policy.step`) and every
+  `Network` (`network_step`), `sample_joint`, `seat_view`, `precision`, `reset_carry`.
 - `temporal.py` (`Temporal`, `doubling_scan`), `position.py` (position codes, `Rotary`),
   `value.py` (`hl_gauss_targets`, `decode_value`, `value_bin_centres`).
 - `next_state_target(config, state, next_state, step_out, tick_length)` makes the next-state

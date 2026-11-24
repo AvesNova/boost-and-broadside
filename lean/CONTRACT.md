@@ -81,6 +81,7 @@ draw_noise(config, envs, slots, generator, device) -> dict[str, Tensor]
 step(config, state, action, noise) -> tuple[State, StepOut]
     # action (E, N, 3) long chosen this tick; the tick applies state.pending and stores action
     # as the new pending one (the one-tick delay, for every agent)
+tick(config, state, action, generator) -> tuple[State, StepOut]   # draw_noise, then step
 observe(config, state, team) -> Obs
 ```
 
@@ -111,9 +112,11 @@ next_state_target(config, state, next_state, step_out, tick_length) -> Tensor   
 ```
 
 How a network acts (shared by the learner and the evaluator), `lean/model/agent.py`:
-`network(policy) -> Network` (a weightless template plus weights), `network_step(network, view,
-carry, offset, generator) -> (joint actions, carry)`, `seat_view`, `sample_joint`, `reset_carry`,
-`precision`. The model reads these `Obs` fields: `lean.model.policy.OBS_FIELDS`.
+`agent_step(forward, bf16, view, carry, offset, generator) -> AgentStep` (joint, logits,
+value_logits, carry: the one agent tick of training's live policy, the league's networks and the
+evaluation runner), `network(policy) -> Network` (a weightless template plus weights),
+`network_step(network, view, carry, offset, generator) -> AgentStep` (agent_step with its
+weights), `seat_view`, `sample_joint`, `reset_carry`, `precision`. The model reads these `Obs` fields: `lean.model.policy.OBS_FIELDS`.
 
 ## `lean/learn`, `lean/train.py`, `lean/eval`
 

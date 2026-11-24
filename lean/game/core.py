@@ -896,6 +896,15 @@ def draw_noise(
     return {"spread": torch.randn((envs, slots, 2), **random_keywords(generator, device))}
 
 
+def tick(config: GameConfig, state: State, action: Tensor, generator) -> tuple[State, StepOut]:
+    """One tick with its noise drawn (draw_noise from `generator`, torch's default generator of
+    the state's device when None), then step: the game half of every caller's tick (training's
+    rollout, the evaluation runner, the sandbox)."""
+    envs, slots = state.exists.shape
+    noise = draw_noise(config, envs, slots, generator, state.exists.device)
+    return step(config, state, action, noise)
+
+
 def step(
     config: GameConfig, state: State, action: Tensor, noise: dict[str, Tensor]
 ) -> tuple[State, StepOut]:

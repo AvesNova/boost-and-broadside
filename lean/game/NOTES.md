@@ -7,7 +7,7 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 
 ## Entry points
 
-`from lean.game import GameConfig, reset, deal, take_deal, step, draw_noise, observe`
+`from lean.game import GameConfig, reset, deal, take_deal, step, draw_noise, tick, observe`
 (`lean/game/core.py`).
 
 - `GameConfig()` is the core game: arena 4,200 m, boundary ramp 300 m, clock 5,400 ticks (30 Hz),
@@ -20,7 +20,8 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   tick's action, neutral after a deal) and stores `action` as the new pending one: the one-tick
   delay, for every agent. Stages: `_fire`, `_fly`, `_move_bullets`, `_hit_test` (swept closest
   approach, first contact), `_damage`, `_boundary_damage`, `_shields`, `_end_check`,
-  `_bullet_ends`, then the fog's `perceive`.
+  `_bullet_ends`, then the fog's `perceive`. `tick(config, state, action, generator)` draws the
+  noise and steps: the game half of the rollout's, the evaluation runner's and the sandbox's tick.
 - `observe(config, state, team)`: that team's `Obs`, built under fog from `team_view` only.
 - `card.py` (the ship card, one row per type; today the P-51D) and `tuning.py` (not imported
   by the step): ship design, option C (`docs/rewrite/p51d-model.md`, "Design inputs"). A

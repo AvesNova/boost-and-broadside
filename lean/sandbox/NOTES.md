@@ -3,7 +3,7 @@
 The flight sandbox's world, without drawing. You fly it in the browser (`lean/tool/NOTES.md`).
 
 `World` (`lean/sandbox/world.py`) is the game at batch size 1 on the CPU: the player (slot 0)
-and an optional opponent (slot 1), stepped by `lean.game.core.step`, so bullets, hits,
+and an optional opponent (slot 1), stepped by `lean.game.core.tick`, so bullets, hits,
 shields, the boundary and the fog behave as in the game (the opponent sees the player within
 1,000 m, or on a tick the player fires or is hit). The opponent is the scripted opponent
 (`lean/scripted/opponent.py`, the yardstick with its memory) or the chaser

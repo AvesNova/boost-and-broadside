@@ -44,12 +44,13 @@ def add_snapshots(league: League, policies, member=None, slot=None, averages=Non
 
 
 class StepRecorder:
-    """Wraps lean.game.step (install with pytest's monkeypatch) and keeps, per call, the
-    state's episode tick, the action applied and the step's bullet outcomes and done."""
+    """Wraps lean.game.core.step, the step lean.game.tick calls (install with pytest's
+    monkeypatch), and keeps, per call, the state's episode tick, the action applied and the
+    step's bullet outcomes and done."""
 
     def __init__(self):
         self.ticks, self.actions, self.outcomes, self.shot_ticks, self.done = [], [], [], [], []
-        self.step = game.step
+        self.step = game.core.step
 
     def __call__(self, game_config, state, action, noise):
         next_state, step_out = self.step(game_config, state, action, noise)
@@ -61,7 +62,7 @@ class StepRecorder:
         return next_state, step_out
 
     def install(self, monkeypatch) -> StepRecorder:
-        monkeypatch.setattr(game, "step", self)
+        monkeypatch.setattr(game.core, "step", self)
         return self
 
     def hit_labels(self) -> torch.Tensor:
