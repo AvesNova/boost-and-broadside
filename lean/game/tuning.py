@@ -564,9 +564,10 @@ class Profile:
 
 @functools.cache
 def _documented_thrust_power() -> float:
-    """The card's P-51D engine_power (thrust power per kg): the power input holds its
-    propeller efficiency, so the airframe's documented shaft power maps to it."""
-    return row_of("p51d")["engine_power"]
+    """The P-51D's engine_power (thrust power per kg) under its documents (the flight test at
+    the documented 1,630 hp): the power input holds that propeller efficiency, so a shaft power
+    maps to thrust power in proportion."""
+    return reference("p51d", "documents").start_row["engine_power"]
 
 
 def _shaft_power(row: dict) -> float:
@@ -663,7 +664,9 @@ class RealAircraft:
 # M 0.755). The lift softness 16 (v2's). Guns, damage, shield, the nose and vision are v2's
 # Vizia's.
 P51D_TOP_SPEED, P51D_BEST_CLIMB = 375.0 * MPH, 3600.0 * FEET_PER_MINUTE  # real m/s
+P51D_SHAFT_POWER = 2200.0 * HORSEPOWER  # W: the game's engine (author 2026-11-24 night)
 P51D_VALUES = dict(
+    shaft_power=to_game(P51D_SHAFT_POWER, -3),
     top_speed=to_game(P51D_TOP_SPEED, -1),
     best_climb=to_game(P51D_BEST_CLIMB, -1),
     oswald=0.85,
@@ -692,7 +695,14 @@ P51D_VALUES = dict(
     head_on_sharpness=3.0,
     vision_range=1000.0,
 )
-REAL_AIRCRAFT = {"p51d": RealAircraft(P51D, P51D_TOP_SPEED, P51D_BEST_CLIMB, P51D_VALUES)}
+# The P-51D airframe with a 2,200 hp engine (author 2026-11-24 night: late-war and post-war
+# engines, P-51H about 2,200 hp): the documents fit the airframe to the flight test at 1,630
+# hp; the card is that airframe under "airframe and engine" at P51D_SHAFT_POWER.
+REAL_AIRCRAFT = {
+    "p51d": RealAircraft(
+        P51D, P51D_TOP_SPEED, P51D_BEST_CLIMB, P51D_VALUES, profile="airframe_and_engine"
+    )
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -741,13 +751,24 @@ def reference_in(aircraft: RealAircraft, profile: str | None = None) -> Referenc
         return dataclasses.replace(reference_of(aircraft, chosen.inputs), profile=chosen.name)
     base = reference_in(aircraft, chosen.base)
     row = design_row(base, start=base.start_row).row
-    return dataclasses.replace(
+    reference = dataclasses.replace(
         base,
         inputs=chosen.inputs,
         design=design_of(row, chosen.inputs),
         profile=chosen.name,
         start_row=row,
     )
+    # the aircraft's own values for inputs its base table does not have (e.g. its engine power)
+    base_names = {spec.name for spec in PROFILES[chosen.base].inputs}
+    own = {
+        spec.name: aircraft.values[spec.name]
+        for spec in chosen.inputs
+        if spec.name in aircraft.values and spec.name not in base_names
+    }
+    if not own:
+        return reference
+    row = design_row(reference, own, start=row).row
+    return dataclasses.replace(reference, design=design_of(row, chosen.inputs), start_row=row)
 
 
 @functools.cache
@@ -757,6 +778,9 @@ def reference(name: str, profile: str | None = None) -> Reference:
     is the card's (row_of: the derived and cached row, no second solve)."""
     aircraft = REAL_AIRCRAFT[name]
     chosen = PROFILES[profile or aircraft.profile]
+    if chosen.base is None and chosen.name != aircraft.profile:  # not the card: solve its row
+        own = reference_in(aircraft, chosen.name)
+        return dataclasses.replace(own, start_row=design_row(own).row)
     if chosen.base is not None and chosen.base == aircraft.profile:
         base = reference(name, chosen.base)
         row = row_of(name)
