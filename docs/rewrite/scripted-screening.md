@@ -337,3 +337,173 @@ min, about 33 minutes in all. 345,024 new games, 248,832 of them the search's.
 
 Reproduce: `search.py STORE search`, then `confirm`, then `held-out` (needs pycma, in the
 tools extra).
+
+## CMA-ES round 2 (2026-11-24 midday)
+
+A refinement from round 1's result (author's decision, core-backlog.md). Names
+(core-decisions.md): BFM-default is today's defaults, BFM-design the tests' design-value
+persona, BFM-CMA1 round 1's result, BFM-CMA2 this round's. The code's defaults are unchanged.
+Record: `search_round2.jsonl`; result and every check: `cma_candidate_round2.json`
+(`search.py STORE search --round 2`, then `round2.py STORE all --data DIR`).
+
+**Result.** BFM-CMA2 scores 0.649 +- 0.005 against BFM-CMA1's 0.623 +- 0.005 and
+BFM-default's 0.529 +- 0.005 (9,216 games each). It also leads round 1 on a quarter-box
+neighbourhood (paired +0.039 +- 0.002) and against the held-out personas (+0.044).
+
+### Set-up
+
+- All games are on the current code (the gun owns the nose in range, lead-turn-yo-yo-review.md),
+  in a fresh store: data/scripted-screening/cma2.sqlite. The panel's BFM-design member and
+  personas fly differently since that fix, so every skill here is lower than round 1's
+  numbers for the same parameters. Compare only within this section.
+- Same ten rows, fitness, population (24), games (6 a cell), step floor (0.1 half-widths) and
+  stop rule as round 1. The start is BFM-CMA1, with an initial step of 0.15 half-widths
+  (round 1: 0.3).
+- Bounds as round 1, with two widened downward:
+  - plan_threshold to -0.75 store fractions;
+  - nose_tail to 0.25 R_st (56 m, 0.088 gun ranges).
+- Why 0.25 R_st is the floor for nose_tail:
+  - The game has no ship collisions or debris. Shaw's 500 ft gun minimum (0.48 R_st here)
+    is a debris and collision figure, so it does not apply.
+  - The gun's own short limit is the target-size clamp: the target fills the 45 deg
+    maximum inside 29 m (0.13 R_st).
+  - A bullet takes 0.027 s to fly 56 m, so a pass at 0.25 R_st is still a shot.
+- The stop rule ended the search after generation 10 (25.4 min). The best population mean,
+  0.640 +- 0.003, came at generation 6; generation 10 gave 0.641 +- 0.004.
+- The step did not shrink. It rose from 0.15 to 0.26, and the per-row steps at the end
+  were 0.23 to 0.32 half-widths. The search did not converge. As in round 1, the plateau
+  evidence is the neighbourhood below.
+
+### The values
+
+| row | default | CMA1 | CMA2 |
+|---|---|---|---|
+| lead_turn_scale | 0 | 0.001 | 0.043 |
+| lead_gain | 1.0 | 1.124 | 1.221 |
+| yo_yo_time | 0 | 0.001 | 0.191 |
+| fight_speed | 1.0 | 1.114 | 1.294 |
+| closing_time | 1.0 | 0.930 | 0.912 |
+| plan_threshold | 0 | -0.250 | -0.333 |
+| in_range | 1.04 | 1.276 | 1.132 |
+| nose_tail | 0.67 | 0.459 | 0.466 |
+| aligned | 1.01 | 0.876 | 0.977 |
+| temperature | 1.0 | 0.865 | 0.975 |
+
+- **plan_threshold used the widened box.** It went past round 1's floor of -0.25, to
+  -0.333. The new floor is -0.75.
+- **nose_tail did not use it.** It stayed at 0.47 R_st, well above the new 0.25 floor.
+- **yo_yo_time moved off 0, to 0.19.** Since the fix, the yo-yo's pursuit half is neutral
+  (the review's sweep), so this is most likely drift on a flat row, not a gain. That was
+  not isolated here. lead_turn_scale stayed near 0 (0.04).
+- lead_gain and fight_speed both rose further. They are still inside the widened boxes,
+  whose tops are 1.6 and 1.82.
+
+### Skill
+
+| | default | CMA1 | CMA2 |
+|---|---|---|---|
+| skill | 0.529 | 0.623 | 0.649 |
+| error | 0.005 | 0.005 | 0.005 |
+| head to head v default | 0.492 | 0.591 | 0.625 |
+| held-out personas | 0.529 | 0.618 | 0.662 |
+| held-out error | 0.007 | 0.007 | 0.007 |
+
+- **Skill** has 64 games a cell (9,216 games each). Head to head means each set against
+  BFM-default as a panel member (1,152 games, +- 0.014). For BFM-default that is
+  self-play.
+- **Held-out personas** are round 1's 8 (seed 20261125), 32 games a cell (2,304 games
+  each). BFM-CMA2 is ahead of BFM-CMA1 against every one of the 8: 0.611 to 0.719 against
+  0.550 to 0.682.
+
+### Plateau (local25)
+
+The screening's 256 quarter-spread points (stream `local25`, all 34 sampled rows), centred
+on each set, 288 games a point (median noise 0.028).
+
+| | CMA1 | CMA2 |
+|---|---|---|
+| mean | 0.612 | 0.651 |
+| sd | 0.028 | 0.028 |
+| 5% quantile | 0.569 | 0.604 |
+| centre minus mean | 0.011 | -0.002 |
+| share above default | 1.00 | 1.00 |
+| share above CMA1 | 0.33 | 0.86 |
+
+- **BFM-CMA2 sits on a plateau.** Its neighbourhood scores the same as its centre, and the
+  neighbourhood's spread equals the noise.
+- **BFM-CMA1 drops 0.011 from its centre.**
+- **Paired by point, BFM-CMA2's neighbourhood is 0.039 +- 0.002 above BFM-CMA1's.**
+
+### By condition
+
+| level | default | CMA1 | CMA2 |
+|---|---|---|---|
+| 3,000 m | 0.535 | 0.621 | 0.651 |
+| 4,200 m | 0.525 | 0.635 | 0.655 |
+| 6,000 m | 0.528 | 0.613 | 0.641 |
+| 3v3 | 0.535 | 0.613 | 0.641 |
+| 4v4 | 0.533 | 0.615 | 0.634 |
+| 5v5 | 0.520 | 0.641 | 0.671 |
+| mixed | 0.542 | 0.619 | 0.648 |
+| sides | 0.516 | 0.626 | 0.649 |
+
+- **BFM-CMA2 is above BFM-default in all 18 conditions,** by 0.057 to 0.195.
+- **It is above BFM-CMA1 in 14 of the 18,** by -0.013 to +0.092. Each condition's error is
+  about 0.02. The four below are all within 0.013: 4,200 m mixed 3v3 and 4v4, 6,000 m
+  mixed 4v4, and 6,000 m sides 5v5.
+
+### Style
+
+These are lean.eval styles over each set's games against the panel (the skill games), mean
+over the 18 conditions. Length is in ticks, store is a fraction of full, speed is in corner
+speeds, and hit range is in gun ranges.
+
+| measure | default | CMA1 | CMA2 |
+|---|---|---|---|
+| game length | 1,344 | 1,272 | 1,252 |
+| turning | 0.715 | 0.711 | 0.714 |
+| two-circle | 0.551 | 0.574 | 0.578 |
+| store | 0.296 | 0.267 | 0.236 |
+| speed | 0.733 | 0.742 | 0.750 |
+| shots/min | 186 | 196 | 188 |
+| hit range | 0.321 | 0.327 | 0.323 |
+| climb | 0.128 | 0.094 | 0.071 |
+| dive | 0.166 | 0.162 | 0.166 |
+
+BFM-CMA2 continues round 1's direction:
+- it climbs less and so holds less store;
+- it flies a little faster;
+- it ends games sooner.
+
+Firing and hit range barely move.
+
+### Divergence from BFM-default
+
+Jensen-Shannon divergence in nats on the state set (data/scripted-screening/states.pt:
+98,014 ship-states from 17,705 snapshots; divergence.py).
+
+| | CMA1 | CMA2 | design |
+|---|---|---|---|
+| joint | 0.066 | 0.131 | 0.102 |
+| joint error | 0.001 | 0.001 | 0.001 |
+| stick | 0.036 | 0.072 | 0.088 |
+| power | 0.029 | 0.062 | 0.023 |
+| fire | 0.003 | 0.002 | 0.000 |
+| dive share | 0.219 | 0.275 | 0.140 |
+| climb share | 0.091 | 0.061 | 0.189 |
+
+The dive and climb shares come from the action distributions on the state set: BFM-default
+has 0.168 and 0.148.
+
+- **BFM-CMA2's behaviour is twice as far from BFM-default as BFM-CMA1's.** It is also
+  further than BFM-design's (0.131 against 0.102).
+- Most of the extra distance is in the power head: more dive and less climb. The stick
+  distance also doubles.
+- If the yardstick is meant to stay close to today's behaviour, this counts against
+  BFM-CMA2. If only skill counts, it does not.
+
+### GPU time
+
+Laptop RTX 4070, performance profile: search 25.4 min; confirmation, plateau, held-out,
+styles and divergence 8.8 min; about 34 minutes in all. The store holds 396,288 games, of
+which 207,360 are the search's.
