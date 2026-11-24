@@ -28,8 +28,18 @@ then `ensure([(a, b, (4, 4), games)])`, `adaptive(pairings, target_error=0.02)`,
   drain), so the results are a prefix of the queue with each game whole. A seat is one network
   for every game, or a scripted agent per game. Deals are drawn once per 32-tick segment; each
   network match draws its own position offset, as in training.
-- `store.py`: the store (agents, conditions, games, a `counts` view, Sobol streams),
-  `ScriptedAgent`, `NetworkAgent`, `game_version`.
+- `store.py`: the store (agents, conditions, games, a `counts` view, a `styles` view, Sobol
+  streams), `ScriptedAgent`, `NetworkAgent`, `game_version`.
+- `style.py`: style counters, summed per slot and seat inside the compiled tick (no host read),
+  zeroed at each deal, written to the game's record. Per game and seat (columns `a_...`, `b_...`
+  of `games`): ship-minutes; share of time in a turning fight (the ship and its nearest living
+  enemy both turning at least 0.25 sustained rates) and the share of that in two-circle flow
+  (same turn sense; the rest one-circle), the flow of lean/scripted/situation.py with a hard
+  floor; mean store fraction; mean speed in corner speeds; real shots per ship-minute; hits and
+  mean range at hits (shooter to target at the hit tick's start, gun ranges); share of time
+  climbing and diving (power applied). `python -m lean.eval styles STORE [AGENT ...]` prints the
+  view: per agent and conditions, means weighted by ship-minutes (two-circle by turning-fight
+  time, hit range by hits). Games stored before the counters have NULL style.
 - `rating.py`: `standard_error`, `allocate`, `bradley_terry` (Newton, a 1000-Elo Gaussian prior
   about the anchor). `evaluator.py`: `Evaluator` (`ensure` plays only the missing games with
   sides balanced; `adaptive` rounds to a target error or a budget; `sobol_candidates`).

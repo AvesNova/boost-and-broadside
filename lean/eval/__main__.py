@@ -4,6 +4,7 @@
         (--games N | --target-error 0.02 [--budget N]) [--sobol NAME --count N]
     python -m lean.eval report STORE AGENT AGENT [...] [--sizes 4 4] [--against-first]
     python -m lean.eval elo STORE [--sizes 4 4] [--anchor AGENT]
+    python -m lean.eval styles STORE [AGENT ...] [--sizes 4 4]
     python -m lean.eval crossover STORE DIR/rl.pt [--weights ema] [--sizes 4 8] [--games 64]
 
 AGENT: `yardstick` (the scripted agent's defaults), `scripted:FILE.json` (a JSON object of
@@ -12,7 +13,8 @@ default), or an agent id already in the store. Pairings: every pair of the agent
 robin), or each against the first (`--against-first`). `--sobol NAME --count N` adds the next
 N points of the Sobol stream NAME (the persona box around the yardstick) as agents, each
 against the first. Games are the core game (`GameConfig()`, the standard spawn) unless
-changed by the game options; the stored games of the same conditions are reused.
+changed by the game options; the stored games of the same conditions are reused. `styles`
+prints each agent's style over its stored games (lean.eval.style; the store's `styles` view).
 """
 
 import argparse
@@ -52,7 +54,7 @@ def name_of(agent) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("play", "report", "elo", "crossover"))
+    parser.add_argument("command", choices=("play", "report", "elo", "styles", "crossover"))
     parser.add_argument("store")
     parser.add_argument("agents", nargs="*")
     parser.add_argument("--sizes", type=int, nargs="+", default=None,
@@ -109,6 +111,18 @@ def main() -> None:
         return
 
     agents = [parse_agent(text, store) for text in arguments.agents]
+    if arguments.command == "styles":
+        conditions = store.add_conditions(game_config, sizes)
+        rows = store.styles(conditions, [agent.id for agent in agents] if agents else None)
+        print("games  ship-min  turning  two-circle  store  speed  shots/min  hits  hit-range  climb  dive  agent")
+        for row in rows:
+            def number(name, digits=3):
+                return "-" if row[name] is None else f"{row[name]:.{digits}f}"
+            print(f"{row['games']:5d}  {row['minutes']:8.0f}  {number('turning'):>7}  {number('two_circle'):>10}  "
+                  f"{number('store'):>5}  {number('speed'):>5}  {number('shots', 2):>9}  {row['hits'] or 0:4.0f}  "
+                  f"{number('hit_range'):>9}  {number('climb'):>5}  {number('dive'):>5}  "
+                  f"{name_of(store.agent(row['agent']))}")
+        return
     pairs = [(agents[0], agent) for agent in agents[1:]] if arguments.against_first else list(itertools.combinations(agents, 2))
     if arguments.sobol:
         candidates = evaluator.sobol_candidates(arguments.sobol, arguments.count, seed=arguments.seed)

@@ -12,8 +12,11 @@ streams of the scripted search.
   the analysis-only tuning.py), lean/scripted and lean/contract.py. A change in either
   version starts new agents or conditions, so old games are kept but not mixed in.
 - games: agent A, agent B, the team A played, conditions, result (0 A won, 1 B won, 2 a
-  draw), length in ticks. Counts are a view (`counts`); a pairing is read in both
-  orientations.
+  draw), length in ticks, and each seat's style (lean.eval.style.MEASURES, columns `a_...`
+  and `b_...`; NULL for games stored before the style counters or where undefined). Counts
+  are a view (`counts`); a pairing is read in both orientations. `styles` is a view of each
+  agent's style per conditions over all its games (either seat): means weighted by
+  ship-minutes, two_circle by turning-fight time, hit_range by hits.
 - sobol: a scrambled Sobol sequence per name: dimension, seed, points used.
 """
 
@@ -27,6 +30,7 @@ from pathlib import Path
 
 import torch
 
+from lean.eval.style import MEASURES
 from lean.scripted import PARAMETERS, ScriptedConfig
 from lean.scripted.parameters import from_vector, vector
 
@@ -36,16 +40,41 @@ CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, kind TEXT NOT NULL, desc
 CREATE TABLE IF NOT EXISTS conditions (id TEXT PRIMARY KEY, version TEXT NOT NULL, description TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS games (
     agent_a TEXT NOT NULL, agent_b TEXT NOT NULL, side INTEGER NOT NULL, conditions TEXT NOT NULL,
-    result INTEGER NOT NULL, length INTEGER NOT NULL
+    result INTEGER NOT NULL, length INTEGER NOT NULL, {style_columns}
 );
 CREATE INDEX IF NOT EXISTS games_by_pairing ON games (conditions, agent_a, agent_b);
 CREATE VIEW IF NOT EXISTS counts AS
     SELECT conditions, agent_a, agent_b, COUNT(*) AS games, SUM(result = 0) AS wins, SUM(result = 2) AS draws,
            SUM(result = 1) AS losses, SUM(side = 0) AS as_team_zero, AVG(length) AS mean_length
     FROM games GROUP BY conditions, agent_a, agent_b;
+{style_view}
 CREATE TABLE IF NOT EXISTS sobol (name TEXT PRIMARY KEY, dimension INTEGER NOT NULL, seed INTEGER NOT NULL,
                                   used INTEGER NOT NULL);
 """
+
+STYLE_COLUMNS = tuple(f"{seat}_{name}" for seat in "ab" for name in MEASURES)
+
+
+def _style_view() -> str:
+    """The `styles` view: per conditions and agent, the agent's games from both seats."""
+    seats = " UNION ALL ".join(
+        f"SELECT conditions, agent_{seat} AS agent, " + ", ".join(f"{seat}_{name} AS {name}" for name in MEASURES)
+        + f" FROM games WHERE {seat}_minutes IS NOT NULL"
+        for seat in "ab"
+    )
+    weighted = ", ".join(f"SUM({name} * minutes) / SUM(minutes) AS {name}"
+                         for name in MEASURES if name not in ("minutes", "two_circle", "hits", "hit_range"))
+    return (
+        "CREATE VIEW IF NOT EXISTS styles AS SELECT conditions, agent, COUNT(*) AS games, "
+        "SUM(minutes) AS minutes, " + weighted + ", "
+        "SUM(two_circle * turning * minutes) / SUM(CASE WHEN two_circle IS NOT NULL THEN turning * minutes END) "
+        "AS two_circle, SUM(hits) AS hits, SUM(hit_range * hits) / SUM(CASE WHEN hit_range IS NOT NULL THEN hits END) "
+        f"AS hit_range FROM ({seats}) GROUP BY conditions, agent;"
+    )
+
+
+SCHEMA = SCHEMA.format(style_columns=", ".join(f"{column} REAL" for column in STYLE_COLUMNS),
+                       style_view=_style_view())
 
 
 def short_hash(*parts) -> str:
@@ -151,6 +180,12 @@ class Store:
         # 0.03 ms a commit). A power cut may lose the last commits, never the file.
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA synchronous=NORMAL")
+        # Stores from before the style counters: their games take the style columns as NULL.
+        columns = {row[1] for row in self.connection.execute("PRAGMA table_info(games)")}
+        if columns and "a_minutes" not in columns:
+            with self.connection:
+                for column in STYLE_COLUMNS:
+                    self.connection.execute(f"ALTER TABLE games ADD COLUMN {column} REAL")
         self.connection.executescript(SCHEMA)
 
     def add_agent(self, agent) -> str:
@@ -179,11 +214,25 @@ class Store:
             )
         return identity
 
-    def add_games(self, agent_a: str, agent_b: str, conditions: str, sides, results, lengths) -> None:
-        rows = [(agent_a, agent_b, int(side), conditions, int(result), int(length))
-                for side, result, length in zip(sides, results, lengths, strict=True)]
+    def add_games(self, agent_a: str, agent_b: str, conditions: str, sides, results, lengths, styles=None) -> None:
+        """`styles`: per game a tuple of STYLE_COLUMNS' values (lean.eval.style.measures), or
+        None (NULL style)."""
+        styles = styles if styles is not None else [(None,) * len(STYLE_COLUMNS)] * len(sides)
+        rows = [(agent_a, agent_b, int(side), conditions, int(result), int(length), *style)
+                for side, result, length, style in zip(sides, results, lengths, styles, strict=True)]
+        names = ("agent_a", "agent_b", "side", "conditions", "result", "length", *STYLE_COLUMNS)
         with self.connection:
-            self.connection.executemany("INSERT INTO games VALUES (?, ?, ?, ?, ?, ?)", rows)
+            self.connection.executemany(
+                f"INSERT INTO games ({', '.join(names)}) VALUES ({', '.join('?' * len(names))})", rows
+            )
+
+    def styles(self, conditions: str, agents=None) -> list[dict]:
+        """The `styles` view's rows under the conditions (of `agents`' ids only, if given), as
+        dicts: agent, games, minutes and lean.eval.style.MEASURES."""
+        cursor = self.connection.execute("SELECT * FROM styles WHERE conditions = ?", (conditions,))
+        names = [column[0] for column in cursor.description]
+        rows = [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+        return [row for row in rows if agents is None or row["agent"] in set(agents)]
 
     def counts(self, agent_a: str, agent_b: str, conditions: str) -> dict[str, int]:
         """A's games against B under the conditions, from both orientations: games, wins,

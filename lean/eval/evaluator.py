@@ -13,7 +13,7 @@ import random
 import torch
 
 from lean import model
-from lean.eval import runner
+from lean.eval import runner, style
 from lean.eval.rating import allocate, bradley_terry, standard_error
 from lean.eval.store import NetworkAgent, ScriptedAgent, SobolStream, Store
 from lean.learn import load_checkpoint, policy_weights
@@ -100,6 +100,7 @@ class Evaluator:
         counts = torch.bincount(columns[played, 0], minlength=len(entries)).tolist()
         sides, results = columns[played, 3].tolist(), outcome.result[played].tolist()
         lengths = outcome.length[played].tolist()
+        styles = style.measures(outcome.style[played], self.game_config.tick_length)
         start = 0
         for (agent_a, agent_b, sizes, _), count in zip(entries, counts, strict=True):
             self.store.add_agent(agent_a)
@@ -107,7 +108,7 @@ class Evaluator:
             conditions = self.store.add_conditions(self.game_config, sizes)
             end = start + count
             self.store.add_games(agent_a.id, agent_b.id, conditions, sides[start:end], results[start:end],
-                                 lengths[start:end])
+                                 lengths[start:end], styles[start:end])
             start = end
 
     def adaptive(self, pairings: list[tuple], *, target_error: float | None = None, budget: int | None = None,
