@@ -8,6 +8,22 @@ undo it.
 - Step 2 (lead turn and yo-yo deleted): the closure signal is frozen at its saturated value -1
   (it read -0.97 on average), so every agent keeps the old low yo-yo's energy half (a faster
   speed target against a turning target) and nothing else of the yo-yo.
+- Step 1 (2,200 hp card, merged cab79227): a real bug surfaced and is fixed. The gun range was
+  measured at the flown top speed but applied at the documented one, so the faster card's
+  bullet life grew to 12 ticks, more than the 11 bullet slots (ghost bullets overwrote live
+  ones; the hit head lost its miss labels). **My choice:** the gun range is now defined for
+  every design at the documented 375 mph launch speed (slider label "gun range (fired at 375
+  mph)"), so the bullet life stays 11 ticks; the card load now refuses a life that needs more
+  slots. The alternative, measuring at the flown speed, needs a 12th bullet slot. Undo in
+  lean/game/tuning.py `_launch_speed`.
+- Step 1: the scripted test "the engine closes" moved from 0.8 to 0.92 corner speeds (the
+  faster card's fight speed is 0.85 corner speeds); the pinned quarter turn is now 2.25 s and
+  the store turn 2.09 rad.
+- Step 2 (merged): the pursuit point is gone. With no lead turn and no yo-yo lag the pursuit
+  time was always 0, so the stick aims straight at the gun's lead point. The chase speed (the
+  surviving energy half) applies in every offensive situation, including closing fast, which
+  used to be the high yo-yo. Scripted call 470 -> 387 operations; tripwire 5,582 operations,
+  241 s cold.
 - Step 6 (C4): `core-brief.md` is rewritten as goals and standards (about 1,200 words). Its
   last section lists 9 points for you to confirm (training targets against the new yardstick,
   size generalisation, a speed floor, parallel work, rented GPUs, tests per merge, one place
