@@ -632,3 +632,10 @@ These replace the flap, profile and stick-level points above where they disagree
   C3: keep tuning.py in lean/game. C4: rewrite the brief as a short document of goals and
   standards for the author to review.
 - Sandbox: the gradual turn on left Alt, not Ctrl (Ctrl+W closes the tab).
+- Entropy bonus 0.003 on for the whole run, teacher phase included; no A/B
+  (docs/rewrite/literature-entropy-teacher.md: VPT and Wolczyk drop it, kickstarting keeps it,
+  none ablates).
+- A second design profile, "airframe and engine": zero-lift drag C_D0 and the engine's shaft
+  power are inputs (closed form, nothing solved); top speed and climb are readouts. The
+  propeller efficiency is held at the card's. Power shows in hp in real imperial units, kW in
+  metric.

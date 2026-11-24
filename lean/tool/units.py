@@ -18,6 +18,7 @@ NAMES = {
     "real_imperial": "Real, imperial",
 }
 FEET, MILES_PER_HOUR, FEET_PER_MINUTE = 3.280839895, 2.236936292, 196.8503937
+HORSEPOWER = 745.7  # W
 DEGREES = 180.0 / math.pi
 
 # kind: (time power, metric label, imperial label, metric scale, imperial scale); the game system
@@ -31,6 +32,7 @@ KINDS = {
     "time": (-1, "s", "s", 1.0, 1.0),
     "inverse_length": (0, "1/m", "1/ft", 1.0, 1.0 / FEET),
     "climb": (1, "m/s", "ft/min", 1.0, FEET_PER_MINUTE),
+    "power": (3, "kW", "hp", 1e-3, 1.0 / HORSEPOWER),
 }
 # radius guides on the doghouse, round numbers in the system's own length
 RADIUS_GUIDES = {

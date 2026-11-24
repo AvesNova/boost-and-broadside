@@ -261,9 +261,11 @@ def scaled(name, label, group, sets=None, scale=lambda: 1.0, **rest) -> DesignIn
 
 def _bullet_life(gun_range: float, design: dict, tick_length: float = 1.0 / 30.0) -> float:
     """The bullet's life in whole ticks: long enough to fly the gun range when fired at the top
-    speed against the bullet drag (v2's weapons.combat_card)."""
+    speed against the bullet drag (v2's weapons.combat_card). A table without a top-speed input
+    (top speed a readout) uses the P-51D's documented one."""
     drag = design["bullet_drag"]
-    flight = math.expm1(drag * gun_range) / (drag * (design["top_speed"] + design["muzzle_speed"]))
+    top_speed = design.get("top_speed", P51D_VALUES["top_speed"])
+    flight = math.expm1(drag * gun_range) / (drag * (top_speed + design["muzzle_speed"]))
     return math.ceil(flight / tick_length - LIFE_TOLERANCE) * tick_length
 
 
@@ -560,8 +562,63 @@ class Profile:
     base: str | None = None
 
 
+@functools.cache
+def _documented_thrust_power() -> float:
+    """The card's P-51D engine_power (thrust power per kg): the power input holds its
+    propeller efficiency, so the airframe's documented shaft power maps to it."""
+    return row_of("p51d")["engine_power"]
+
+
+def _shaft_power(row: dict) -> float:
+    """The shaft power (game units, W at game time) a row's engine_power means at the P-51D's
+    mass and its card's propeller efficiency."""
+    return to_game(P51D.power, -3) * row["engine_power"] / _documented_thrust_power()
+
+
+# Airframe and engine (author 2026-11-24 night): the same wing as the documents, but the zero-lift
+# drag and the engine's shaft power are inputs, so top speed and climb are readouts and nothing is
+# solved (closed form). The propeller efficiency is held at the card's.
+_DOCUMENTS = {spec.name: spec for spec in DESIGN_INPUTS}
+AIRFRAME_AND_ENGINE = (
+    _DOCUMENTS["stall_speed"],
+    _DOCUMENTS["g_limit"],
+    DesignInput(
+        "zero_lift_drag_coefficient",
+        "zero-lift drag coefficient C_D0",
+        "Performance",
+        "zero_lift_drag",
+        lambda row, numbers: row["zero_lift_drag"] / P51D.per_metre,
+        lambda value, design: value * P51D.per_metre,
+        source="the documents row (solved there for 375 mph)",
+        low=0.5,
+        high=2.0,
+    ),
+    DesignInput(
+        "shaft_power",
+        "engine power",
+        "Performance",
+        "engine_power",
+        lambda row, numbers: _shaft_power(row),
+        lambda value, design: _documented_thrust_power() * value / to_game(P51D.power, -3),
+        source="A: 1,630 hp (V-1650-7); propeller efficiency held at the card's",
+        kind="power",
+        low=0.5,
+        high=2.0,
+    ),
+    *(
+        spec
+        for spec in DESIGN_INPUTS
+        if spec.name not in ("stall_speed", "g_limit", "top_speed", "best_climb")
+    ),
+)
+check_inputs(AIRFRAME_AND_ENGINE)
+
 PROFILES = {
-    profile.name: profile for profile in (Profile("documents", "documents", DESIGN_INPUTS),)
+    profile.name: profile
+    for profile in (
+        Profile("documents", "documents", DESIGN_INPUTS),
+        Profile("airframe_and_engine", "airframe and engine", AIRFRAME_AND_ENGINE, "documents"),
+    )
 }
 DEFAULT_PROFILE = "documents"
 

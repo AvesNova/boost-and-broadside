@@ -324,12 +324,12 @@ def test_an_input_is_swapped_by_editing_the_table_only():
 
 def test_profiles_are_named_tables():
     """Each profile (tuning.PROFILES) is a design-input table that sets every card field once;
-    today the one profile is the documents (DESIGN_INPUTS), the card's default, and the P-51D
-    is solved under it."""
+    the documents (DESIGN_INPUTS) are the card's default, and the P-51D is solved under them."""
     for profile in tuning.PROFILES.values():
         tuning.check_inputs(profile.inputs)
         assert profile.base is None or profile.base in tuning.PROFILES
-    assert list(tuning.PROFILES) == [tuning.DEFAULT_PROFILE] == ["documents"]
+    assert list(tuning.PROFILES) == ["documents", "airframe_and_engine"]
+    assert tuning.DEFAULT_PROFILE == "documents"
     assert tuning.PROFILES[tuning.DEFAULT_PROFILE].inputs is tuning.DESIGN_INPUTS
     assert tuning.REAL_AIRCRAFT["p51d"].profile == tuning.DEFAULT_PROFILE
 
@@ -352,6 +352,21 @@ def test_a_profile_with_a_base_starts_from_the_base_row(tmp_path, monkeypatch):
     row = tuning.real_row(other)
     for name, value in documents.items():
         assert row[name] == pytest.approx(value, rel=1e-6), name
+
+
+def test_airframe_and_engine_is_closed_and_more_power_flies_faster():
+    """Under "airframe and engine" nothing is solved: the reference is the documents row (1e-6),
+    a design solves in no iterations, and more shaft power raises top speed and climb."""
+    reference = tuning.reference("p51d", "airframe_and_engine")
+    assert all(spec.apply is not None for spec in reference.inputs)
+    for name, value in tuning.row_of("p51d").items():
+        assert reference.start_row[name] == pytest.approx(value, rel=1e-6), name
+    power = reference.design["shaft_power"]
+    stronger = tuning.design_row(reference, dict(shaft_power=1.5 * power))
+    assert stronger.iterations == 0
+    before, after = tuning.performance(reference.start_row), tuning.performance(stronger.row)
+    assert after["top_speed"] > before["top_speed"]
+    assert after["best_climb"] > before["best_climb"]
 
 
 def test_warnings_point_at_the_profiles_input(p51d):
