@@ -36,10 +36,18 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   cached load about 1 ms). Adding, removing or swapping a design input is an edit of
   `DESIGN_INPUTS` only.
 - **Profiles** (`tuning.PROFILES`): named design-input tables. Each card type names its own
-  (`RealAircraft.profile`, in its cache key); today there is one, `"documents"`
-  (`DESIGN_INPUTS`, the default), and the P-51D uses it. A profile with a `base` would take its
-  reference values from that profile's solved row (`design_of` under its own table;
-  `reference(name, profile)`, `reference_in`). Warnings name a card field (`Check.field`) and
+  (`RealAircraft.profile`, in its cache key). Two today: `"documents"` (`DESIGN_INPUTS`, the
+  default table: top speed and climb solved for the flight test) and `"airframe_and_engine"`
+  (base the documents: C_D0 and the shaft power closed inputs, nothing solved, top speed and
+  climb readouts). A profile with a `base` takes its reference values from that profile's
+  solved row (`design_of` under its own table; `reference(name, profile)`, `reference_in`),
+  then the aircraft's own values for inputs the base has not (the P-51D's shaft power).
+- **The P-51D's card** (author 2026-11-24 night): the airframe with a 2,200 hp engine (late-war
+  and post-war engines; the P-51H had about 2,200 hp), under `"airframe_and_engine"`. The
+  documents still fit the airframe to the 1,630 hp flight test (375 mph, 3,600 ft/min; C_D0
+  0.0160); the card keeps that airframe and its propeller efficiency (0.875) at 2,200 hp:
+  416 mph, 4,882 ft/min at 191 mph, best sustained 19.97 deg/s at 188 mph, corner 286 mph
+  at 33.6 deg/s. The one warning is the structure (the 8 g limit, 1.22 x its 6.6 g). Warnings name a card field (`Check.field`) and
   point at whichever input sets it in the reference's table. The solve, the card and the tool
   have no code for any one profile.
 - **The documents' inputs** (author 2026-11-24): stall speed, g limit, top level speed and
@@ -111,8 +119,8 @@ padding, team swap), the clock and wipe, both spawn rules, the training spawn, t
 the stick (full stick the envelope's maximum to 0.1%, every level its fraction of it, the
 levels the fixed thirds), the turn rate
 rising with speed to the corner, the tightest sustained turn 10% slower than the best rate, and
-tuning (the derived card meets its targets: the flight test and the closed inputs; plausible
-solved coefficients; the cache's key).
+tuning (the derived card meets its targets: its airframe and engine and the closed inputs; the
+documents' solve meets the flight test; plausible solved coefficients; the cache's key).
 
 ## Open
 

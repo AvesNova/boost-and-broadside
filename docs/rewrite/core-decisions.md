@@ -639,3 +639,4 @@ These replace the flap, profile and stick-level points above where they disagree
   power are inputs (closed form, nothing solved); top speed and climb are readouts. The
   propeller efficiency is held at the card's. Power shows in hp in real imperial units, kW in
   metric.
+- The P-51D card: the airframe with a 2,200 hp engine (author 2026-11-24 night)
