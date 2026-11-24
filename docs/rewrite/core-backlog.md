@@ -73,7 +73,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 
 | # | Item | Status |
 |---|---|---|
-| F1 | Rewrite core-brief.md to match core-decisions.md | todo |
+| F1 | Rewrite core-brief.md as a short goals-and-standards document (review item C4) | done, for the author to review (branch docs-brief) |
 | F2 | Provenance table docs/provenance.md from provenance-check.md drafts | first version done (worklog 03:19) |
 | F3 | Step 3 scoreboard numbers (operations, compiled against uncompiled, compile time, new team size) | game side done (worklog 03:07); policy and GPU parts after C |
 | F4 | Gate G2 (where play runs) from the real game's latency | provisional numbers in scoreboard.md (re-measure on a quiet machine) |
