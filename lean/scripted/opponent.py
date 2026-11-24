@@ -27,6 +27,11 @@ from .situation import Situation, assess, signed_angle
 COAST, DIVE, CLIMB = 0, 1, 2
 TINY = 1e-6  # keeps lengths and ratios away from zero
 LOGIT_LIMIT = 30.0
+# The high yo-yo's aspect bound (Shaw p. 71: 30-60 deg) and its gate's scale (log units, the
+# quadrant gates' scale). Constants, not table rows: a new row would change every agent's
+# vector and identity.
+HIGH_YO_YO_ASPECT = math.pi / 3
+QUADRANT_SCALE = 0.1
 
 
 def draw_uniforms(
@@ -317,7 +322,6 @@ def explain(
     )
     yo_yo = torch.tanh((situation.closure - wanted_closure) / read("yo_yo_scale"))
     high_yo_yo = yo_yo.clamp_min(0.0)
-
     # The plan for this pass: two-circle (+1) when my energy advantage is above the plan
     # threshold, else one-circle (-1); after a pass, the last pass's plan, switched when that
     # pass gained less than the switch gain in angles off (Shaw pp. 112-113: the stalemate
@@ -350,16 +354,26 @@ def explain(
         lead_time = lead_turn_scale * lead_angle / c["sustained_rate"]
         merge_time = two_circle_plan * torch.minimum(to_pass.clamp_min(0.0), lead_time)
 
-    # Commands, mixed as scalars. Pursuit time: offensive lags (high yo-yo) or leads (low);
-    # the merge leads by the lead turn.
-    pursuit_time = weights["offensive"] * (
-        -yo_yo * (read("yo_yo_time") * c["quarter_turn_time"])
-    ) + weights["merge"] * merge_time
-    # The wanted point is the gun's lead point while he is ahead within reach: offensive
-    # unless a high yo-yo lags the chase, at the merge unless the plan lead-turns.
-    gun_weight = gate["in_range"] * (
-        weights["offensive"] * (1.0 - high_yo_yo) + weights["merge"] * (1.0 - two_circle_plan)
-    )
+    # Commands, mixed as scalars. Pursuit time: offensive lags (high yo-yo, in his rear
+    # quarter) or leads (low); the merge leads by the lead turn.
+    # The high yo-yo's lag only with him in my rear quarter (Shaw p. 71: aspect about 30-60
+    # deg, in pure pursuit from behind). Without it the lag fired at the 3/9 line, in beam
+    # and crossing passes inside gun range (docs/rewrite/lead-turn-yo-yo-review.md).
+    # (Not computed when the yo-yo time is the number 0, as for the yardstick.)
+    yo_yo_time = read("yo_yo_time")
+    yo_yo_lead = 0.0
+    if not (isinstance(yo_yo_time, float) and yo_yo_time == 0.0):
+        rear_quarter = torch.sigmoid(
+            torch.log(HIGH_YO_YO_ASPECT / situation.aspect.clamp_min(TINY))
+            / (QUADRANT_SCALE * read("temperature"))
+        )
+        yo_yo_pursuit = yo_yo.clamp_max(0.0) + high_yo_yo * rear_quarter
+        yo_yo_lead = -yo_yo_pursuit * (yo_yo_time * c["quarter_turn_time"])
+    pursuit_time = weights["offensive"] * yo_yo_lead + weights["merge"] * merge_time
+    # The wanted point is the gun's lead point while he is ahead within reach: inside gun
+    # range the gun owns the nose, and the yo-yo's lag or lead and the lead turn act beyond
+    # it. (Measured: dropping the gun there was the whole of either feature's cost.)
+    gun_weight = gate["in_range"] * (weights["offensive"] + weights["merge"])
     # Speed target, in log space, and the stick cap (the share of the full level folded into
     # the sustained one), per tactic:
     # - disengaged and merge: the merge speed; disengaged, the cap above the sustained stick

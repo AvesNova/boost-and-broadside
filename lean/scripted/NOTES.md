@@ -76,6 +76,12 @@ holds the references equal to the quasi-steady analysis.
 - Not built (Shaw notes): jinks; the high yo-yo's AOT condition; keeping two-circle after a big
   bite; the pre-merge offset and merge speed by plan; no banking close to a higher-energy
   opponent; a lead turn with little offset for the slower ship.
+- The lead turn and the yo-yo's pursuit half (`docs/rewrite/lead-turn-yo-yo-review.md`):
+  since 2026-11-24 the gun owns the nose inside gun range, and the high yo-yo lags only in
+  his rear quarter. The yo-yo's pursuit half is then neutral. The lead turn still costs skill
+  in sides spawns (it is lead pursuit to his pass point, not a timed turn). Neither gains;
+  both stay off in the yardstick. The yo-yo signal's wanted closure saturates (y ≈ -1 at
+  most ranges), which the yardstick's speed target also reads.
 - The plan alternates at every neutral pass (Shaw switches after one or two turns).
 - The in-range gate uses the gun range without fields. No retreat or extend (decision 5.7).
 - The yardstick is still the weaker of the two agents; the screening and search that choose it
