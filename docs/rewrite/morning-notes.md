@@ -8,6 +8,10 @@ undo it.
 - Step 2 (lead turn and yo-yo deleted): the closure signal is frozen at its saturated value -1
   (it read -0.97 on average), so every agent keeps the old low yo-yo's energy half (a faster
   speed target against a turning target) and nothing else of the yo-yo.
+- Step 6 (C4): `core-brief.md` is rewritten as goals and standards (about 1,200 words). Its
+  last section lists 9 points for you to confirm (training targets against the new yardstick,
+  size generalisation, a speed floor, parallel work, rented GPUs, tests per merge, one place
+  for open items, records, whether it becomes CLAUDE.md).
 
 Names (2026-11-24): Old (pre-BFM) = the agent before E2 (code gone); BFM-default = today's
 defaults (the current yardstick); BFM-design = the design's original values; BFM-CMA1 and
