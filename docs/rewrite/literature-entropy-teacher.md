@@ -1,0 +1,23 @@
+# Literature check: entropy bonus while a teacher / KL-to-prior term is active
+
+Checked 2026-11-24 from the arXiv PDFs (text-extracted and grepped for "entropy"). "Silent" means the full text has no statement.
+
+| Source | Entropy bonus | Detail | Ablated? |
+|---|---|---|---|
+| VPT, Baker et al. 2022 (arXiv 2206.11795), Appendix on RL fine-tuning, p. 27-28 | Dropped (replaced by KL) | "In the fine-tuning experiments, this KL divergence loss replaces the common entropy maximization loss". Reasoning: in states where the agent is indifferent it should "mimic the action-distribution of the pretrained policy instead of a uniform-random action distribution". Entropy 0.01 only in from-scratch runs: "when running RL from a randomly initialized policy there is no KL divergence loss or KL divergence decay, but instead we use an entropy bonus of 0.01". Table 6: KL coefficient rho 0.2, decay 0.9995 (per iteration). | No. They ablate the KL (rho = 0 needed a lower learning rate, 3e-6), never entropy-on vs entropy-off with the KL present. The argument is verbal. |
+| Wolczyk et al. 2024, "Fine-tuning RL models is secretly a forgetting mitigation problem" (2402.02868), Appendix C, NetHack | Dropped | "Additionally, we turn off entropy when employing knowledge retention methods in similar fashion to (Baker et al., 2022)." Kickstarting: loss scaled 0.5, exponential decay 0.99998 per train step, on online-policy data. BC loss: factor 2.0, no decay. Baseline entropy_cost 0.001 (APPO). | No. It is copied from VPT with no ablation. Not independent evidence. |
+| Kickstarting, Schmitt et al. 2018 (1803.03835), Sec 2.2, 4.2, 5.1.1 | Kept | The loss is written as the A3C/IMPALA loss (policy gradient + "entropy regularisation (a term to encourage exploration)") plus the cross-entropy to the teacher. "Note that the A3C term contains an entropy cost, which encourages the student to explore beyond the teacher's suggestions." Sec 2.2 argues the two are analogous: entropy regularisation pulls towards uniform, kickstarting towards the teacher, and neither is meant to converge to its target. Sec 4.2/5.1.1: even with hand-made lambda schedules "PBT still controls other hyperparameters (learning rate and entropy cost)", so the entropy cost was tuned per run. The lambda schedule decays to almost nothing by about 2B frames. | No. The entropy value is never reported separately and never ablated. The lambda schedules are compared, not the entropy. |
+| AlphaStar, Vinyals et al. 2019 (Nature) | Reportedly kept, plus a KL to the supervised policy | I could not open the Nature text (paywall redirect). Secondary sources only: the RL loss includes an entropy term next to V-trace/UPGO, and the KL to the supervised policy is meant "to aid in exploration and to preserve strategic diversity" (quoted via arXiv 2112.07544). Coefficients not verified. | Not verified. Treat as unconfirmed. Re-check the Methods and Extended Data before citing. |
+| Policy Distillation, Rusu et al. 2015 (1511.06295) | Not applicable | Pure supervised distillation, no RL term. No mention of entropy. | n/a |
+| DQfD, Hester et al. 2017 (1704.03732) | Not applicable | Q-learning with a large-margin loss, no entropy bonus exists. The only "entropy" hits are cross-entropy in baselines. | n/a |
+| Jump-Start RL, Uchendu et al. 2022 (2204.02372) | Silent | Guide policy rolls in, then the exploration policy takes over. No entropy-bonus statement in the text. Not a loss-term method. | No |
+| Direct ablation of entropy with a teacher/KL-to-prior term | None found | A quick search found nothing. Not an exhaustive search (20-30 minute budget). | n/a |
+
+## Notes
+- The two papers that drop entropy are one decision: Wolczyk et al. say they follow VPT. VPT's rationale is specific to sparse reward and a huge action space (diamond pickaxe). Neither tested it.
+- Kickstarting kept entropy, with the same kind of decaying teacher term as ours (cross-entropy, weight decaying), but did not isolate its effect. Its framing says entropy and teacher terms pull in different directions. Its 0.5 x decay shape matches ours.
+- The VPT argument is also about a KL term that is strong and persistent (rho 0.2, slow decay 0.9995). Our term starts at 0.5 and decays at 0.95 per update, so it vanishes within about 100 updates (0.95^90 is about 0.01). Entropy would then only matter for the short window of overlap.
+
+## Summary
+Evidence is split and weak: VPT and Wolczyk (one lineage) dropped entropy while the teacher term was on, kickstarting kept it, and nobody ablated it.
+For our case this is no real evidence either way (low strength, precedent only); an own A/B of 0.003 vs 0 during the teacher window is the only way to settle it.
