@@ -176,7 +176,7 @@ POINT_MASS_TERMS = dict(
 # The P-51D's game terms (core-decisions.md 2026-11-24: the terms on, the solver compensating).
 # - Drag rise: the zero-lift drag doubles at Mach 0.77, exponent 20: NACA ACR 4K02 Fig. 12 (the
 #   P-51B, propeller off) is flat to about M 0.68, then +40% at M 0.735 and +67% at M 0.755.
-# - Separation drag 0.5, exponent 24 (the induced drag x 1.5 at the wing's maximum lift, +4.4%
+# - Separation drag 0.5, exponent 24 (the induced drag x 1.5 at the wing's maximum lift, +4.0%
 #   at 0.9 of it): it bends the sustained turn's line away from the lift limit, so the tightest
 #   sustained turn sits clearly slower than the best sustained rate (speed ratio 0.848). The
 #   2026-11-24 sweep (docs/rewrite/p51d-model.md): at exponent 8 no coefficient gives both a
