@@ -43,8 +43,11 @@ MORRIS_SEED = 20261124
 MORRIS_TRAJECTORIES = 10
 MORRIS_LEVELS = 4
 # The tests' design-value BFM persona (lean/scripted/tests/test_tactics.py). Its lead-turn and
-# yo-yo rows went with those mechanisms (author 2026-11-25).
-BFM = ScriptedConfig().replace(relax_angle=1.5 * math.pi, defend_range=1.0)
+# yo-yo rows went with those mechanisms (author 2026-11-25); its graded-defence rows went with
+# the trim (scripted-reach.md "Trim"), so on today's table it is the yardstick (the panel
+# member itself is read from panel.json).
+BFM_ROWS = {"relax_angle": 1.5 * math.pi, "defend_range": 1.0}
+BFM = ScriptedConfig().replace(**{k: v for k, v in BFM_ROWS.items() if k in PARAMETERS})
 
 
 def game_configs():

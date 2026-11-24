@@ -60,21 +60,16 @@ PARAMETERS: dict[str, Parameter] = {
     "weakest_weight": Parameter(0.0, "ratio", UPWARD, 1.0,
                                 "0 the nearest enemy; larger prefers enemies with less store"),
     # Assessment (lean.scripted.situation).
-    "turning_floor": Parameter(0.25, "sustained_rate", LOG, 0.4,
-                               "a nose rate this small counts as straight"),
+    "turning_floor": Parameter(0.25, "sustained_rate",
+                               meaning="a nose rate this small counts as straight"),
     # Tactics: engaged or not, and the quadrant by the 3/9 line (merge, offensive, turning,
     # defensive).
     "engage_range": Parameter(3.0, "gun_range", LOG, 0.4, "beyond it from the target: disengaged"),
     "three_nine_line": Parameter(math.pi / 2, "radians", LINEAR, 0.2,
                                  "ahead of me, or behind him, inside this angle"),
-    "defend_range": Parameter(3.0, "gun_range", LOG, 0.3, "defensive: break inside it"),
-    # Angles off (alpha + |lambda|, pi minus Shaw's angular advantage; his advantage is
-    # angles off - pi): the two-circle energy plan cashes its store when his advantage
-    # reaches 90 deg (Shaw p. 110); a break relaxes to a hard turn below the relax angle
-    # (Shaw p. 134: about 90 deg of his advantage, 1.5 pi; the yardstick breaks whenever
-    # defensive within three gun ranges: graded defence lost to the old agent, measured).
-    "cash_angle": Parameter(1.5 * math.pi, "radians", LINEAR, 0.3, "two-circle: cash beyond it"),
-    "relax_angle": Parameter(math.pi, "radians", LINEAR, 0.3, "break beyond it"),
+    # Defensive: a break (full stick, corner speed), Shaw pp. 132-134 (graded defence lost to
+    # the old agent, measured; the defend range and the relaxation were never decisive,
+    # scripted-reach.md).
     "scissors_range": Parameter(1.0, "sustained_radius", LOG, 0.3,
                                 "one-circle inside it: slow to the speed floor"),
     # The committed turn sense and the plan (one- or two-circle).
@@ -84,20 +79,11 @@ PARAMETERS: dict[str, Parameter] = {
                                 "energy advantage above it: two-circle"),
     "switch_gain": Parameter(0.17, "radians", LOG, 0.4,
                              "a pass gaining less angles off than this switches the plan"),
-    "overshoot_range": Parameter(0.67, "sustained_radius", LOG, 0.3, "he overshoots inside it"),
-    "overshoot_rate": Parameter(1.0, "sustained_rate", LOG, 0.3,
-                                "crossing my six faster than this"),
-    "overshoot_crossing": Parameter(1.0, "radians", LOG, 0.3,
-                                    "track-crossing angle below it"),
     # Speeds: the power tracks a speed target v*, mixed in log space over the tactics.
     "merge_speed": Parameter(1.0, "corner_speed", LOG, 0.1, "v* disengaged and at the merge"),
     "fight_speed": Parameter(1.2943094805067583, "sustained_speed", LOG, 0.2,
                              "v* in the rate fight"),
-    "speed_floor": Parameter(1.3, "stall_speed", LOG, 0.1, "v* never below it"),
-    "spend_share": Parameter(1.0, "store x store_turn", LOG, 0.4,
-                             "a shot is near when the turn it needs is within this"),
-    "spend_need": Parameter(0.1, "radians", LOG, 0.4, "a turn this large is worth the store"),
-    "spend_range": Parameter(1.0, "gun_range", LOG, 0.3, "a shot is near within this range"),
+    "speed_floor": Parameter(1.3, "stall_speed", LOG, 0.1, "v* in the scissors"),
     # The power law: x = ln(v / v*); climb above the band, dive below it.
     "speed_band": Parameter(0.05, "log units", LINEAR, 0.03, "half-width of the coast band"),
     "power_scale": Parameter(0.03, "log units", LOG, 0.4, "the power's sharpness"),
@@ -125,7 +111,7 @@ PARAMETERS: dict[str, Parameter] = {
     # blended in, its weight ramping from 0 to 1 between two depths (0 at the margin's inner
     # edge, 1 at the arena edge). The margin is in turn radii at the ship's speed: the
     # sustained radius up to corner speed, growing as speed squared above it.
-    "boundary_margin": Parameter(2.2, "turn radius", LOG, 0.3, "depth of the edge band"),
+    "boundary_margin": Parameter(2.2, "turn radius", meaning="depth of the edge band"),
     "boundary_ramp_low": Parameter(0.0554, "margin fraction", meaning="the steer starts"),
     "boundary_ramp_high": Parameter(0.52, "margin fraction", meaning="the steer is whole"),
     # Decisiveness: divides the sharpness of every tempered gate (all but the gun's: aim is
@@ -138,13 +124,7 @@ GATES: dict[str, Gate] = {
     "engaged": Gate("engage_range", 0.2, False),  # range in gun ranges
     "front": Gate("three_nine_line", 0.1, False),  # |bearing|, radians: he is ahead
     "rear": Gate("three_nine_line", 0.1, False),  # aspect, radians: I am behind his 3/9 line
-    "defend": Gate("defend_range", 0.127, False),  # range in gun ranges
-    "cash": Gate("cash_angle", 0.05, True),  # angles off, radians
-    "relax": Gate("relax_angle", 0.05, True),  # angles off, radians
     "scissors": Gate("scissors_range", 0.2, False),  # range in sustained radii
-    "shot_near": Gate("spend_share", 0.2, False),  # turn needed / (store x store_turn)
-    "spend_need": Gate("spend_need", 0.2, True),  # turn needed, radians
-    "spend_range": Gate("spend_range", 0.127, False),  # range in gun ranges
     "level_cap": Gate("level_cap_speed", 0.05, True),  # speed / middle stick speed
     "aligned": Gate("aligned", 0.243, False, tempered=False),  # aim error in target sizes
     "in_range": Gate("in_range", 0.127, False, tempered=False),  # range in gun ranges

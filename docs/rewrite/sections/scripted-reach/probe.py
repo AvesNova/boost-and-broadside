@@ -4,7 +4,8 @@
 mechanism names whose term is forced to its neutral value, and the intermediate quantities
 returned in `probe` (gate values, tactic weights, the overshoot conditions). With `off` empty
 it gives the opponent's marginals (`reach.py check` compares them). The hot path in lean/ is
-not touched.
+not touched. Since the trim (scripted-reach.md "Trim") it reads the frozen copy of the
+untrimmed agent in `untrimmed/`, the agent this page measured.
 
 Mechanisms (`OFF`), each switched off as stated:
   overshoot       the overshoot rule never fires
@@ -26,9 +27,7 @@ row overrides in `reach.py`, not names here.
 import math
 
 import torch
-
-from lean.game.core import enemy_view
-from lean.scripted.opponent import (
+from untrimmed.opponent import (
     TINY,
     Marginals,
     _cos,
@@ -38,8 +37,10 @@ from lean.scripted.opponent import (
     _per_other,
     engage,
 )
-from lean.scripted.parameters import GATES, STICK_GATES, ScriptedConfig, value
-from lean.scripted.situation import assess, signed_angle
+from untrimmed.parameters import GATES, STICK_GATES, ScriptedConfig, value
+from untrimmed.situation import assess, signed_angle
+
+from lean.game.core import enemy_view
 
 OFF = (
     "overshoot",
