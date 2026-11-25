@@ -279,6 +279,21 @@ def test_rotary_bands():
     assert config.offset_span > 2.0 * ARENA_RADIUS
 
 
+def test_rotary_reach_follows_the_arena():
+    """Catches the rotary reach coming loose from the arena (author 2026-11-25: a constant
+    ratio of the arena radius): a config built for an arena has the reach the ratio times its
+    radius, so changing the radius changes the reach by the ratio; the bare default is the
+    default game's."""
+    from lean.model.policy import ROTARY_REACH_ARENA_RADII
+
+    small, large = ModelConfig.for_arena(ARENA_RADIUS), ModelConfig.for_arena(1.5 * ARENA_RADIUS)
+    assert small.rotary_reach == pytest.approx(ROTARY_REACH_ARENA_RADII * ARENA_RADIUS)
+    assert large.rotary_reach - small.rotary_reach == pytest.approx(
+        ROTARY_REACH_ARENA_RADII * 0.5 * ARENA_RADIUS
+    )
+    assert ModelConfig().rotary_reach == pytest.approx(small.rotary_reach)
+
+
 def test_the_coarsest_band_alone_tells_apart_every_separation_on_the_map():
     """Catches a coarsest band that wraps inside the arena: every separation up to the 8.4 km
     diameter (in every direction, a 16.8 km span of offsets) is recovered from the coarsest

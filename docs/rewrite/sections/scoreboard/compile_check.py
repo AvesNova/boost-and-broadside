@@ -96,7 +96,7 @@ def run() -> float:
     torch.manual_seed(0)
     config = dataclasses.replace(LearnConfig(), segments_per_update=1, segment_ticks=16, minibatches=2, epochs=1)
     game_config = game.GameConfig(training_spawn=True)
-    policy = model.Policy(model.ModelConfig()).to(device)
+    policy = model.Policy(model.ModelConfig.for_arena(game_config.arena_radius)).to(device)
     league = League(config, device)
     opponent = Opponent(scripted.ScriptedConfig(), league)
     generator = torch.Generator(device=device).manual_seed(0)

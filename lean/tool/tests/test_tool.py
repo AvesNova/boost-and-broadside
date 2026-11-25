@@ -198,10 +198,20 @@ def test_the_sliders_are_the_design_inputs():
         assert f'"{profile}"' not in page
 
 
+STRUCTURE = next(c for c in tuning.PLAUSIBILITY if c.quantity == "structural_load")
+
+
+def g_limit_at(reply: dict, factor: float) -> float:
+    """A g limit `factor` times the structural check's bound, from a /api/ship reply's design
+    (its g limit and implied structural load; the load is proportional to the g limit)."""
+    return reply["flies"]["g_limit"] * factor * STRUCTURE.high / reply["implied"]["structural_load"]
+
+
 def test_a_profile_is_chosen_per_request(monkeypatch):
     """A request names its profile: its inputs are that table's (a moved top speed under the
     documents is solved and flown; a readout is not an input and is refused), the warnings
-    point at its inputs, and an unknown profile is refused."""
+    point at its inputs (a g limit a tenth above the structure's warns on the g limit, a
+    tenth below does not), and an unknown profile is refused."""
     monkeypatch.setattr(design, "_SOLVED", {})
     client = TestClient(app)
     speed = 0.98 * tuning.reference("p51d", "documents").design["top_speed"]
@@ -209,7 +219,13 @@ def test_a_profile_is_chosen_per_request(monkeypatch):
     moved = client.post("/api/ship", json=request).json()
     assert moved["flies"]["top_speed"] == pytest.approx(speed, rel=1e-4)
     assert moved["solve"]["condition"] < 20.0
-    assert {w["input"] for w in moved["warnings"]} == {"g_limit"}  # the structure
+    inputs = {spec.name for spec in tuning.PROFILES["documents"].inputs}
+    assert {w["input"] for w in moved["warnings"]} <= inputs
+    for factor, warns in ((1.1, True), (0.9, False)):
+        values = {"top_speed": speed, "g_limit": g_limit_at(moved, factor)}
+        reply = client.post("/api/ship", json={**request, "values": values}).json()
+        assert {w["input"] for w in reply["warnings"]} <= inputs
+        assert ("g_limit" in {w["input"] for w in reply["warnings"]}) == warns, factor
     not_an_input = {**request, "values": {"sustained_speed": 100.0}}  # a readout, not an input
     assert client.post("/api/ship", json=not_an_input).status_code == 422
     unknown = client.post("/api/ship", json={**request, "profile": "nonesuch"})
@@ -219,14 +235,19 @@ def test_a_profile_is_chosen_per_request(monkeypatch):
 
 
 def test_the_ship_panels_show_implied_physics_warnings_and_the_solved_row():
-    """POST /api/ship: the implied physical quantities, the warnings (the P-51D's own: the
-    structure), the solved card row with the solve's numbers; a moved design (a top speed, under
-    the documents) is solved and flies its input; an unknown input is refused."""
+    """POST /api/ship: the implied physical quantities, the warnings (the structure's exactly
+    when the implied load is above the check's bound: the P-51D's own and a g limit a tenth
+    above the structure's), the solved card row with the solve's numbers; a moved design (a top
+    speed, under the documents) is solved and flies its input; an unknown input is refused."""
     client = TestClient(app)
     own = client.post("/api/ship", json={"preset": "p51d"}).json()
     assert set(own["row"]) == set(card.CARD_FIELDS)
     assert own["implied"]["max_lift_coefficient"] == pytest.approx(tuning.P51D.max_lift_coefficient)
-    assert {w["quantity"] for w in own["warnings"]} == {"structural_load"}
+    over = own["implied"]["structural_load"] > STRUCTURE.high
+    assert ("structural_load" in {w["quantity"] for w in own["warnings"]}) == over
+    beyond = {"preset": "p51d", "values": {"g_limit": g_limit_at(own, 1.1)}}
+    strained = client.post("/api/ship", json=beyond).json()
+    assert "structural_load" in {w["quantity"] for w in strained["warnings"]}
     assert own["solve"]["iterations"] == 0
     top = 1.05 * tuning.reference("p51d", "documents").design["top_speed"]
     request = {"preset": "p51d", "profile": "documents", "values": {"top_speed": top}}

@@ -9,10 +9,9 @@ import torch
 from lean.scripted import ScriptedConfig
 from lean.scripted.opponent import CLIMB, DIVE, explain
 from lean.scripted.parameters import BFM_DEFAULT_2026_11_24
-from lean.scripted.tests.test_scripted import memory_of, placed
+from lean.scripted.tests.test_scripted import LEFT, RIGHT, memory_of, placed
 
-LEFT, RIGHT = [2, 4, 6], [1, 3, 5]  # stick indices (left_is_even)
-FULL_LEFT, FULL_RIGHT = 6, 5
+FULL_LEFT, FULL_RIGHT = LEFT[-1], RIGHT[-1]  # the most lateral stick each way
 
 
 def constants():
