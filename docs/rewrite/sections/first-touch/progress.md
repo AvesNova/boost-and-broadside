@@ -10,3 +10,4 @@ worktree ../v2-first-touch.
   `collisions` (contact = start gap >= R and segment distance < R; b from the unclamped line),
   tests, then sanity before/after (CPU), compile check (unit bnb-first-touch), docs.
   ETA code + tests 07:40, sanity 08:30, compile check 09:00 (worst 09:30).
+- 07:05 sanity before (core 17e6cf3b, scratchpad worktree) and after launched on CPU, 4 threads each, MemoryMax 8G scopes; records persist per (size, fields) to first-touch/sanity-{before,after}.json. ETA 07:15 (worst 07:30).

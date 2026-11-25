@@ -9,12 +9,16 @@ them; every game runs to its end (no re-deal). Runs against whichever tree is on
 before the change has no collisions: its contacts are the passes that would be collisions).
 
 Per pair and tick, the swept test (straight moves; a pass is the tick holding its closest
-approach): a contact is a pass inside the two hit radii (the once-per-pass check: each run of
-ticks in which a pair is scored or ends the tick inside the two radii should hold one contact;
-runs cut by a death or the game's end are counted apart); a head-on pass is a pass inside
-HEAD_ON_PASS metres with the noses at least HEAD_ON_NOSES apart. Per real bullet that hit an
-enemy (shot_outcome 1): the hit angle, the bullet's direction against the nose of the enemy
-nearest its last move (mid-tick positions), and whether that bullet's pair took bullet damage.
+approach). A contact is what the tree's `core.collisions` scores (core 17e6cf3b: a pass inside
+the two hit radii; from 2026-11-26: the first touch); a tree without it uses the pass rule. The
+once-per-pass check: each run of ticks in which a pair is scored or ends the tick inside the two
+radii (an overlap episode) should hold one contact. Runs cut by a death or the game's end are
+counted apart, and so are runs that began inside the radii (spawned overlapping: never scored
+from 2026-11-26); a fast episode is one closing faster than FAST_PASS in any of its ticks. A
+head-on pass is a pass inside HEAD_ON_PASS metres with the noses at least HEAD_ON_NOSES apart.
+Per real bullet that hit an enemy (shot_outcome 1): the hit angle, the bullet's direction
+against the nose of the enemy nearest its last move (mid-tick positions), and whether that
+bullet's pair took bullet damage.
 Writes one record per (size, fields) to OUT.
 """
 
@@ -32,6 +36,7 @@ from lean.game import core
 HEAD_ON_PASS = 100.0  # m
 HEAD_ON_NOSES = math.radians(150.0)
 NOSE_CONE = math.radians(30.0)
+FAST_PASS = 100.0  # m/s
 
 
 @torch.no_grad()
@@ -67,6 +72,11 @@ def measure(size: int, fields: bool, envs: int, seed: int) -> dict:
         episodes_cut=0,
         episodes_unscored=0,
         episodes_scored_twice=0,
+        episodes_began_inside=0,
+        episodes_began_inside_scored=0,
+        fast_episodes=0,
+        fast_episodes_unscored=0,
+        fast_episodes_scored_twice=0,
         damaging_hits_in_cone=0,
         bullet_damage=0.0,
     )
@@ -75,6 +85,8 @@ def measure(size: int, fields: bool, envs: int, seed: int) -> dict:
     # ends the tick inside the two hit radii; each should hold exactly one contact.
     in_episode = torch.zeros(envs, slots, slots, dtype=torch.bool)
     episode_contacts = torch.zeros(envs, slots, slots, dtype=torch.long)
+    episode_inside = torch.zeros(envs, slots, slots, dtype=torch.bool)  # began inside the radii
+    episode_fast = torch.zeros(envs, slots, slots, dtype=torch.bool)
     started = time.time()
     for tick in range(config.clock_ticks):
         uniforms = scripted.draw_uniforms(envs, slots, generator, "cpu")
@@ -96,7 +108,11 @@ def measure(size: int, fields: bool, envs: int, seed: int) -> dict:
             new.heading_cos[:, :, None] * new.heading_cos[:, None, :]
             + new.heading_sin[:, :, None] * new.heading_sin[:, None, :]
         )
-        contact = in_tick & (miss < reach)
+        if rule is not None:
+            scored = rule(state, alive0, h, new.x, new.y, new.heading_cos, new.heading_sin)
+            contact = scored.contact & upper
+        else:
+            contact = in_tick & (miss < reach)
         head_on = in_tick & (miss < HEAD_ON_PASS) & (noses < math.cos(HEAD_ON_NOSES))
         end_gap = torch.hypot(
             new.x[:, None, :] - new.x[:, :, None], new.y[:, None, :] - new.y[:, :, None]
@@ -107,9 +123,24 @@ def measure(size: int, fields: bool, envs: int, seed: int) -> dict:
         # before its closest approach is no pass).
         closed = in_episode & ~touching & alive_pair
         tally["episodes_cut"] += int((in_episode & ~alive_pair).sum())
-        tally["episodes"] += int(closed.sum())
-        tally["episodes_unscored"] += int((closed & (episode_contacts == 0)).sum())
-        tally["episodes_scored_twice"] += int((closed & (episode_contacts > 1)).sum())
+        inside = closed & episode_inside
+        outside = closed & ~episode_inside
+        fast = outside & episode_fast
+        tally["episodes_began_inside"] += int(inside.sum())
+        tally["episodes_began_inside_scored"] += int((inside & (episode_contacts > 0)).sum())
+        tally["episodes"] += int(outside.sum())
+        tally["episodes_unscored"] += int((outside & (episode_contacts == 0)).sum())
+        tally["episodes_scored_twice"] += int((outside & (episode_contacts > 1)).sum())
+        tally["fast_episodes"] += int(fast.sum())
+        tally["fast_episodes_unscored"] += int((fast & (episode_contacts == 0)).sum())
+        tally["fast_episodes_scored_twice"] += int((fast & (episode_contacts > 1)).sum())
+        begins = touching & ~in_episode
+        start_gap = torch.hypot(gap_x, gap_y)
+        episode_inside = torch.where(begins, start_gap < reach, episode_inside & touching)
+        closing_speed = move_squared.sqrt() / h
+        episode_fast = torch.where(
+            touching, (episode_fast & ~begins) | (closing_speed > FAST_PASS), False
+        )
         episode_contacts = torch.where(touching, episode_contacts + contact.long(), 0)
         in_episode = touching
         tally["contacts"] += int(contact.sum())
