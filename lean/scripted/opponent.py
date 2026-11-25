@@ -491,9 +491,8 @@ def explain(
     )
     hit = _at_target(c["hit_damage"], fight.target) * aspect_factor(
         hit_cos,
-        _at_target(c["head_on"], fight.target),
-        _at_target(c["inverse_one_minus_cos_head_on"], fight.target),
-        _at_target(c["head_on_sharpness"], fight.target),
+        _at_target(c["nose_inner_cos"], fight.target),
+        _at_target(c["inverse_nose_width"], fight.target),
     )
     worth = read("fire_worth") * c["shield_rate"] * c["tick_length"]
     worthwhile = (hit >= worth) | (hit >= fight.target_shield)
