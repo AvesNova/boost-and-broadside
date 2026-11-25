@@ -54,8 +54,13 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - **Loss coefficients** (fixed, on scale-free terms): value 0.05, next-state 0.1, hit 0.05, entropy
   0.003 on the joint 42-way entropy in RL.
 - **Rewards:** v2's five levels; value supports from measured returns (2026-11-25): damage
-  +-5.4, kill_death +-7.5, outcome +-10, objective levels +-1 (placeholders), each with 3
-  buffer columns of the same width beyond both ends (70 bins; lean/model/NOTES.md).
+  +-5.4, kill_death +-7.5, outcome +-10, objective levels +-1 (placeholders), each 57 bins
+  across the range plus 3 buffer columns of the same width beyond both ends (63 bins;
+  lean/model/NOTES.md). Damage and kill_death are symlog (`value_knee`, the event rule: one
+  event x e^-3, 0.0286 and 0.141; innermost bins 0.0056 and 0.021, outermost 1.79 and 1.67,
+  outermost centres +-9.5 and +-11.6); outcome (bimodal) and the objectives linear (bins
+  0.357 and 0.0357). The range monitoring counts bins in bin space (`usage_counts` takes the
+  knees); its thresholds (`range_narrow_bins` 8, `range_bin_share`) are unchanged.
 - **Store:** positions and PPO numbers float32, other floats float16, actions int8.
 
 ## The league

@@ -660,3 +660,19 @@ These replace the flap, profile and stick-level points above where they disagree
   `contract.BULLET_SLOTS` is 12. Gun range stays defined at 375 mph for every design (so the
   design tool round-trips). Quick suite 311 passed; compile check within the baseline (4 graphs,
   5,542 operations, cold 210.6 s).
+
+- **2026-11-25 (author): flat 63 bins, symlog with principled knees.** Every categorical head
+  (the five value levels and the six next-state columns) has 63 bins in total: 57 across the
+  measured range plus 3 buffer columns at each end, so 0 is a bin centre of a symmetric range.
+  No zero class. Bins are uniform in s(x) = sign(x) knee ln(1 + |x| / knee) (one helper,
+  `lean.model.value.symlog`, knee 0 = linear); HL-Gauss targets are the Gaussian (sigma 0.75
+  bin widths) in that space, and the decode is the expectation over the centres mapped back to
+  target units. Knees: the event rule for the value levels (one event x e^-3: damage 0.0286,
+  kill_death 0.141; outcome +-10 and the objective placeholders +-1 linear); the flat-core data
+  rule for the next-state columns (along 2.4e-3, across 0.0244, heading 7.7e-5, speed 0.156,
+  energy 21.8; docs/rewrite/sections/scoreboard/symlog-preview.md). Ranges are the measured
+  extremes, symmetric (+-1.89 m, +-1.82 m, +-0.100 rad, +-5.39 m/s, +-976). The shield keeps
+  -90 to 0, knee 1, pending its bug check. Parameters 2,172,527 -> 2,152,738. Range
+  monitoring thresholds unchanged (counted in bin space). Quick tier lean/model + lean/learn 118
+  passed; compile check within the baseline (4 graphs, 5,633 operations, cold 211.9 s). Branch
+  bins63.
