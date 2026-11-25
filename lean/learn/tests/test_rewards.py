@@ -9,6 +9,7 @@ from lean.learn import LearnConfig, value_centres, value_knees
 from lean.learn.config import DAMAGE, KILL_DEATH, LEVELS, OBJECTIVE, OBJECTIVE_PROGRESS, OUTCOME
 from lean.learn.returns import usage_counts, usage_flags, usage_metrics
 from lean.learn.rewards import TickEvents, blank_ledger, reward_step, tick_events
+from lean.model import ModelConfig
 
 CONFIG = LearnConfig()
 KILL = CONFIG.reward_weights[KILL_DEATH]
@@ -197,7 +198,7 @@ def test_range_monitoring_flags_clamped_and_narrow_targets():
     clamped and raises the warning; targets in a few middle bins raise the narrow one,
     except on a level that paid no reward."""
     config = LearnConfig()
-    centres = value_centres(config, 63)
+    centres = value_centres(config, ModelConfig().bins)
     mask = torch.ones(8, 2, 3, dtype=torch.bool)
     reward = torch.zeros(8, 2, 3, LEVELS)
     reward[..., DAMAGE] = 1.0

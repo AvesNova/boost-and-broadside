@@ -1,7 +1,7 @@
 """The league design (author, 2026-11-22 and 2026-11-23): half self-play with both sides
 training, half league games with only the live side training; the scripted agent, the two
-weight averages and snapshots are members; PFSP (1 - p)^2 with a 1/8 uniform floor within
-row capacities of 1.25 even shares; AlphaStar's decaying tallies; redraws only at reset;
+weight averages and snapshots are members; PFSP (1 - p)^2 with a uniform floor within
+row capacities of a factor of even shares; AlphaStar's decaying tallies; redraws only at reset;
 capacity routing (each slot's network once, on its own rows); a dropped snapshot finishes
 its games in a retiring slot; v2's snapshot schedule and retention."""
 
@@ -170,8 +170,9 @@ def test_the_draws_compile_fullgraph_so_they_never_read_the_host():
 # ---- PFSP weights and tallies
 
 
-def test_sampling_weights_are_squared_loss_rate_with_an_eighth_uniform():
+def test_sampling_weights_are_squared_loss_rate_with_a_uniform_floor():
     league = League(LearnConfig())
+    floor = LearnConfig().league_floor
     league.present[:4] = True
     # Fixed tallies: win rates 0.2, 0.5 (draws count half), 0.9, and member 3 unplayed (0.5).
     league.games[:4] = torch.tensor([10.0, 4.0, 10.0, 0.0])
@@ -179,24 +180,25 @@ def test_sampling_weights_are_squared_loss_rate_with_an_eighth_uniform():
     league.draws[:4] = torch.tensor([0.0, 2.0, 0.0, 0.0])
     assert torch.allclose(league.win_rates()[:4], torch.tensor([0.2, 0.5, 0.9, 0.5]))
     weight = torch.tensor([0.64, 0.25, 0.01, 0.25])
-    expected = 7 / 8 * weight / weight.sum() + 1 / 8 * 0.25
+    expected = (1.0 - floor) * weight / weight.sum() + floor * 0.25
     assert torch.allclose(league.probabilities()[:4], expected)
     assert (league.probabilities()[4:] == 0).all()  # absent members are never drawn
     # The floor keeps a member beaten every time in play.
     league.wins[2] = 10.0
-    assert league.probabilities()[2] >= 1 / 8 / 4 - 1e-6
+    assert league.probabilities()[2] >= floor / 4 - 1e-6
 
 
-def test_tallies_decay_by_0_99_per_game_and_unplayed_reads_one_half():
+def test_tallies_decay_per_game_and_unplayed_reads_one_half():
     league = League(LearnConfig())
+    decay = LearnConfig().league_decay
     assert torch.allclose(league.win_rates(), torch.full((league.members,), 0.5))
     member = torch.tensor([FIRST_SNAPSHOT])
     league.record(member, torch.tensor([True]), torch.tensor([True]), torch.tensor([False]))
     assert torch.isclose(league.games[FIRST_SNAPSHOT], torch.tensor(1.0))
     assert torch.isclose(league.win_rates()[FIRST_SNAPSHOT], torch.tensor(1.0))
     league.record(member, torch.tensor([True]), torch.tensor([False]), torch.tensor([False]))
-    assert torch.isclose(league.games[FIRST_SNAPSHOT], torch.tensor(1.99))
-    assert torch.isclose(league.wins[FIRST_SNAPSHOT], torch.tensor(0.99))
+    assert torch.isclose(league.games[FIRST_SNAPSHOT], torch.tensor(1.0 + decay))
+    assert torch.isclose(league.wins[FIRST_SNAPSHOT], torch.tensor(decay))
     assert torch.isclose(league.win_rates()[SCRIPTED], torch.tensor(0.5))  # unplayed
     # Two games ending on one tick equal the two orders averaged; a RETIRED game counts nowhere.
     together = League(LearnConfig())
@@ -206,8 +208,8 @@ def test_tallies_decay_by_0_99_per_game_and_unplayed_reads_one_half():
         torch.tensor([True, False, True, True]),
         torch.tensor([False, False, False, False]),
     )
-    assert torch.isclose(together.games[1], torch.tensor(1.99))
-    assert torch.isclose(together.wins[1], torch.tensor((1.0 + 0.99) / 2))
+    assert torch.isclose(together.games[1], torch.tensor(1.0 + decay))
+    assert torch.isclose(together.wins[1], torch.tensor((1.0 + decay) / 2))
     assert together.games[0] == 0 and together.games.sum() == together.games[1]
 
 
@@ -263,7 +265,8 @@ def test_routing_gives_each_environment_its_own_members_step():
     )
     league.prepare(8, carry.slot)
     table = league.table
-    assert table.positions.shape[0] == math.ceil(1.25 * 8 / 5)  # 5 members present
+    capacity = math.ceil(config.league_capacity_factor * 8 / 5)  # 5 members present
+    assert table.positions.shape[0] == capacity
     assert len(table.slots) == 4  # the EMA's slot and 3 snapshots'
     views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
     scripted_action = torch.full((16, state.exists.shape[1], 3), 1)
@@ -453,7 +456,9 @@ def test_snapshot_steps_are_v2s_league_schedule():
     league = League(LearnConfig())
     policy = model.Policy(model.ModelConfig())
     averages = WeightAverages(policy, LearnConfig())
-    per_update, taken_at = 2048 * 4 * 128, []
+    parity = LearnConfig()
+    per_update = parity.environments * parity.segments_per_update * parity.segment_ticks
+    taken_at = []
     empty = torch.zeros(0, dtype=torch.long)
     for update_index in range(240):
         before, after = update_index * per_update, (update_index + 1) * per_update

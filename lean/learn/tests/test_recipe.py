@@ -339,16 +339,17 @@ def test_update_refuses_an_optimiser_that_cannot_skip_without_a_host_read():
         update(config, policy, torch.optim.Adam(policy.parameters()), rollout, generator=generator)
 
 
-def test_the_learning_rate_warms_up_over_2000_adam_steps_then_stays_constant():
+def test_the_learning_rate_warms_up_over_its_adam_steps_then_stays_constant():
     config = LearnConfig()
-    assert config.warmup_steps == 2000
-    assert learning_rate(config, 0) == pytest.approx(3e-4 / 2000)
-    assert learning_rate(config, 999) == pytest.approx(3e-4 / 2)
+    warmup, peak = config.warmup_steps, config.learning_rate
+    assert warmup % 2 == 0  # the half-way step below
+    assert learning_rate(config, 0) == pytest.approx(peak / warmup)
+    assert learning_rate(config, warmup // 2 - 1) == pytest.approx(peak / 2)
     assert (
-        learning_rate(config, 1999)
-        == learning_rate(config, 2000)
+        learning_rate(config, warmup - 1)
+        == learning_rate(config, warmup)
         == learning_rate(config, 10**7)
-        == 3e-4
+        == peak
     )
 
 

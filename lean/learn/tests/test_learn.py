@@ -17,7 +17,7 @@ from lean.learn import (
 )
 from lean.learn import rollout as rollout_module
 from lean.learn.config import LEVELS, OUTCOME
-from lean.learn.tests.setting import add_snapshots, small
+from lean.learn.tests.setting import SMALL, add_snapshots, small
 
 
 def test_gae_matches_hand_computed_case_and_stops_at_termination():
@@ -68,7 +68,8 @@ def test_normalised_advantages_keep_their_mean_and_have_unit_standard_deviation(
     assert torch.isclose(chosen.std(), torch.tensor(1.0), atol=1e-4)
 
 
-ENVIRONMENTS = 8  # 4 self-play: 12 seats
+ENVIRONMENTS = 8  # half self-play (the tests' layout, setting.SMALL): 12 seats
+SEATS = ENVIRONMENTS + round(SMALL["self_play_share"] * ENVIRONMENTS)
 CLOCK = 6  # every game ends at the clock on its sixth tick
 
 
@@ -105,15 +106,15 @@ def run_updates(updates, snapshot=False):
 
 def test_rollout_shapes_and_outcome_reward_reach_both_teams():
     rollout, history = run_updates(1, snapshot=True)
-    assert rollout.reward.shape == (16, 12, 4, LEVELS)
-    assert rollout.observation.ship.shape == (16, 12, 4, SHIP_FEATURES)
+    assert rollout.reward.shape == (16, SEATS, 4, LEVELS)
+    assert rollout.observation.ship.shape == (16, SEATS, 4, SHIP_FEATURES)
     # Every game ends at ticks 5 and 11, for both seats of a self-play game.
-    assert rollout.done[[CLOCK - 1, 2 * CLOCK - 1]].all() and rollout.done.sum() == 24
+    assert rollout.done[[CLOCK - 1, 2 * CLOCK - 1]].all() and rollout.done.sum() == 2 * SEATS
     assert (rollout.value[~rollout.observation.own] == 0).all()
     assert torch.isfinite(rollout.log_probability).all()
     outcome = rollout.reward[..., OUTCOME][rollout.done]  # (ended episodes, N)
     assert (outcome > 0).any() and (outcome < 0).any()  # winners and losers are both paid
-    assert rollout.position_offset.shape == (16, 12, 2)
+    assert rollout.position_offset.shape == (16, SEATS, 2)
     assert not rollout.next_valid[rollout.done].any()
     assert all(value == value for value in history[0].values())
 
