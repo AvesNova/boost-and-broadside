@@ -15,11 +15,13 @@ physics, model, recipe, numbers) is in `core-decisions.md`, and the plan is in
 - **The project's three aims:** a game people enjoy playing against trained agents in
   real time on an ordinary computer; experiments that answer questions cleanly, possibly
   a paper; training that is cheap in GPU hours.
-- **Training targets, v1 parity:** BC reaches 0.40 against the scripted agent in under
-  100M steps; RL then takes the averaged agent to about 1500 Elo (scripted = 1000) in
-  under 50M steps. A run that misses a target at its cap stops, and the cause is
-  investigated. A publication run of about 500M steps follows on a rented GPU, so
-  nothing is tuned to one GPU.
+- **Training targets (author 2026-11-25):** BC reaches 0.40 against the scripted agent
+  within 100M steps; RL then takes the averaged agent to 2000 Elo within 100M more. The
+  scripted agent is whatever it is at the time and is the 1000 Elo anchor. Training is at
+  4v4; the agent is evaluated, and must keep its skill, up to 32v32, with a 99% win rate
+  there against the scripted agent. A run that misses a target at its cap stops, and the
+  cause is investigated. A publication run follows on a rented GPU, so nothing is tuned
+  to one GPU.
 - **The averaged agent is the product.** The EMA and uniform weight averages are what
   ships and what is rated, in BC as in RL. The live policy is a training artefact.
 - **Shipped so far:** v1 (`main`: run 731, the documentation and the white paper). The
@@ -105,13 +107,9 @@ Tabled (built so they stay easy to add):
 
 ## For the author to confirm
 
-1. **Training targets.** The v1-parity targets were set for v2 (2026-11-02) and are not
-   restated for lean in core-decisions. The yardstick is now BFM-CMA2, so "0.40 against
-   the scripted agent" and the 1000 anchor refer to a different opponent from v1's. Do
-   they stand for lean as written?
-2. **Size generalisation.** The old brief's central claim (a model trained at 4v4 or 5v5
-   plays up to 50v50, 20v20 as fallback, in two stages) is not in core-decisions, which
-   says 4v4 only for now. Is it still the headline goal?
+1. **Training targets.** Answered 2026-11-25 (above).
+2. **Size generalisation.** Answered 2026-11-25: train at 4v4, keep skill up to 32v32 (99%
+   win rate against the scripted agent).
 3. **Speed floor.** The old brief kept v2's steady training speed as a floor; the core
    game measured below it (question 12, open). Is there a speed requirement?
 4. **Parallel work.** "One GPU job at a time" against "agents may run in parallel except
