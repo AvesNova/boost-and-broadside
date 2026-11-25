@@ -682,3 +682,28 @@ These replace the flap, profile and stick-level points above where they disagree
   competence test (every parameter at its box ends) now has one game at level_three -1 reaching
   1.095 arena radii, past the boundary ramp's end (1.071); the same case over 32 other games
   stays within 0.944. Handed to the scripted-ghosts branch, which changes target choice.
+
+## Landed 2026-11-25 (author 2026-11-25, branch land-nov25)
+
+- **45-degree exchange.** The card's dive and zoom trade is g x sin 45 deg (0.707 g, 27.75 game
+  m/s^2), not 1 g: `exchange_acceleration = card.GRAVITY * sin(EXCHANGE_ANGLE)` in
+  `lean/game/tuning.py` `airframe_row`. The coupled physics stays (the climb gets only the lift
+  the turn leaves). Evidence: docs/rewrite/sections/energy-duel/exchange45.md.
+- **Decoupled climb dropped, records kept.** `GameConfig.decoupled_exchange` (branch
+  energy-duel-decoupled) was tested and is not in the game. Its pages (energy-duel/decoupled.md,
+  exchange45.md) and `bench/energy_duel.py --exchange-angle` / `--steady-only` are kept; the
+  bench has no decoupled option.
+- **Rotary reach at a constant ratio of the arena.** `rotary_reach` = `ROTARY_REACH_ARENA_RADII`
+  (4) x the arena radius, set by `ModelConfig.for_arena(game_config.arena_radius)` where the
+  model is built from the game (lean/train.py; the model package does not import the game).
+  The bare default is the default game's (a test checks it). Revisit if the map gets too large.
+- **Tests check rules, not today's data.** The structural-load warning tests move a design's g
+  limit a tenth above and below the check's bound (read from `PLAUSIBILITY`) instead of
+  asserting the P-51D's own 8 g against 6.6 g; the hit-head label test checks that labelled and
+  unlabelled rows both occur and labels cross a game's end, not a labelled share.
+- **Scripted ships may be lost to fields.** Field-aware steering only matters as a better prior
+  for RL, not now. The per-parameter competence test (every sampled parameter at its box ends)
+  plays without fields, its boundary threshold read from that config.
+- Checks for this batch: quick tier on lean 318 passed (no failure; the per-parameter
+  competence test passes without fields); compile check within the baseline (4 graphs, 5,703
+  operations, cold 239.0 s, performance profile).
