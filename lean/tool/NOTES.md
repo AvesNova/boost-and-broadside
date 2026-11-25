@@ -116,7 +116,11 @@ server draws with matplotlib (author 2026-11-24: matplotlib is the one charting 
 - **Sandbox tab.** Flies the design tuned in the Ships tab at its time scale against the
   scripted opponent; controls in `lean/sandbox/NOTES.md`. Each tab visit starts a new
   session: the server starts a child process that ticks the real `World` at 30 Hz and sends a
-  frame per tick over `/api/sandbox`; the browser interpolates between frames.
+  frame per tick over `/api/sandbox`; the browser interpolates between frames. Each ship's
+  sight outline is drawn faintly (the "vision eccentricity" slider in "Shield, head-on and
+  vision" sets the ellipse, lean/game/NOTES.md "Fog"; the opponent's ship takes the player's
+  tuned card too); a ship hidden from the other is drawn hollow, and the HUD's `sight` line
+  says who is seen.
 
 The card is process-global (`tuning.flying`), which is why the sandbox runs in a child
 process and why chart requests are serialised; `design.PRESET_ROWS` holds the presets as

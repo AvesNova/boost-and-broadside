@@ -85,7 +85,16 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   value equal for the whole lineup is a Python number, one that differs is a per-slot row. The
   scripted agent reads every number it uses from these by name.
 - **Fog:** `perceive` (sight by v2's rule, or a shot or a real bullet's hit that tick),
-  `enemy_view`, `team_view`. `Obs.pending` holds own living ships' joint action, `NO_PENDING`
+  `enemy_view`, `team_view`. Sight (`sight_pairs`, per target and observer; `sighted_by_enemy`,
+  any observer) is an ellipse with the observer at one focus, stretched along its nose:
+  |d| - e (d . nose) <= p, d the offset to the target, p the card's vision range (the side
+  reach) and e its `vision_eccentricity` (0 <= e < 1, a card column and design input, default
+  0 = the old circle, until the author has tested it; author 2026-11-25). Reach p / (1 - e)
+  ahead, p to the side, p / (1 + e) behind: with p = 1,500 m, e 0.2 gives 1,875 / 1,250 m,
+  e 0.5 gives 3,000 / 1,000 m, e 0.6 gives 3,750 / 938 m. From a wanted forward reach F:
+  e = 1 - p / F (the rear reach is then p F / (2F - p)). Tested without a square root as
+  |d|^2 <= (p + e d . nose)^2, which at e = 0 is the old d^2 <= p^2 exactly; one dot product
+  more per pair. Fields' cores block lines as before; a team sees what any of its ships sees. `Obs.pending` holds own living ships' joint action, `NO_PENDING`
   (42) elsewhere. The ship row has no position scalars; `Obs.pos` carries position for the
   model's position code and rotary.
 - **Shields:** recharge after a quiet spell (coast, at most the gradual stick, no trigger).
