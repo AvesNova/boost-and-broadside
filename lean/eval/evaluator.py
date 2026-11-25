@@ -23,12 +23,19 @@ from lean.learn import load_checkpoint, policy_weights
 from lean.scripted import ScriptedConfig
 from lean.scripted.parameters import SAMPLED, box_point
 
+# The fewest environments a runner call takes when its queue has the games (laptop 4070: a
+# 7-agent ladder of 128 games per pairing ran in about half the time at 2,048 as at 256;
+# lean/eval/NOTES.md, "Numbers").
+MINIMUM_ENVS = 2048
+
 
 class Evaluator:
     """Jobs on one store under one game config (a new config is new conditions and a new
-    compiled graph). `envs` environments per runner call, `compiled` torch.compile's tick
-    (default on a GPU), `seed` the base of every call's seed (offset by the games stored, so
-    no two calls replay the same draws)."""
+    compiled graph). `envs` environments per runner call at most, `minimum_envs` at least
+    (fewer only for a shorter queue; the runner's minimum_envs: below the GPU's saturation
+    more environments cost little, so a short job takes this many rather than 16 games per
+    slot), `compiled` torch.compile's tick (default on a GPU), `seed` the base of every
+    call's seed (offset by the games stored, so no two calls replay the same draws)."""
 
     def __init__(
         self,
@@ -37,6 +44,7 @@ class Evaluator:
         *,
         device=None,
         envs: int = 4096,
+        minimum_envs: int = MINIMUM_ENVS,
         compiled: bool | None = None,
         segment: int = 32,
         seed: int = 0,
@@ -53,6 +61,7 @@ class Evaluator:
             progress,
         )
         self.compiled = self.device.type == "cuda" if compiled is None else compiled
+        self.minimum_envs = minimum_envs
         self.policies = {}
 
     def policy(self, agent: NetworkAgent) -> tuple:
@@ -152,6 +161,7 @@ class Evaluator:
             compiled=self.compiled,
             seed=seed,
             progress=self.progress,
+            minimum_envs=self.minimum_envs,
         )
         # The played games grouped by entry in one sort (not a scan of the queue per entry).
         played = (outcome.result >= 0).nonzero().squeeze(-1)
