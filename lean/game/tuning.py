@@ -67,6 +67,10 @@ FIGURE_OF_MERIT = 0.75  # a propeller's static figure of merit (planes.py)
 SPEED_OF_SOUND = 340.3  # m/s, ISA sea level
 LIFE_TOLERANCE = 1e-4  # v2 weapons.LIFE_TOLERANCE
 MPH, FEET_PER_MINUTE, POUND = 0.44704, 0.00508, 0.45359237  # m/s, m/s, kg
+# The dive and zoom trade's flight-path angle: the exchange is gravity's along-path share on a
+# 45 deg dive or zoom, g sin(45 deg), not a vertical one (author 2026-11-25; the comparison:
+# docs/rewrite/sections/energy-duel/exchange45.md).
+EXCHANGE_ANGLE = math.radians(45.0)
 assert abs(card.GRAVITY - REAL_GRAVITY * TIME_FACTOR**2) < 1e-9
 
 
@@ -163,7 +167,7 @@ def airframe_row(airframe: Airframe, base: dict[str, float]) -> dict[str, float]
     October fit (docs/rewrite/physics-checks/planes.py `from_real`): lift and zero-lift drag per
     metre rho S C / (2 m), induced drag factor k / (rho S / 2 m) with k = 1 / (pi e AR), thrust
     power P eta / m, static thrust by momentum theory (Airframe.static_thrust); dive and climb
-    trade at 1 g."""
+    trade at g sin(EXCHANGE_ANGLE)."""
     a = airframe
     induced = 1.0 / (math.pi * a.oswald * a.aspect_ratio) / a.per_metre  # m
     flight = dict(
@@ -174,7 +178,7 @@ def airframe_row(airframe: Airframe, base: dict[str, float]) -> dict[str, float]
         engine_power=to_game(a.power * a.propeller_efficiency / a.mass, -3),
         static_thrust=to_game(a.static_thrust() / a.mass, -2),
         stall_angle_scale=a.stall_angle / card.STALL_ANGLE,
-        exchange_acceleration=card.GRAVITY,  # 1 g: a vertical dive or zoom
+        exchange_acceleration=card.GRAVITY * math.sin(EXCHANGE_ANGLE),  # a 45 deg dive or zoom
     )
     return {**base, **flight, **POINT_MASS_TERMS}
 
@@ -380,7 +384,7 @@ DESIGN_INPUTS = (
         "exchange_acceleration",
         _GRAVITY,
         unit="g",
-        source="design: 1 g",
+        source="design: g sin(45 deg)",
         low=0.3,
         high=1.6,
     ),

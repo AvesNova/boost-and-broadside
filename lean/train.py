@@ -460,9 +460,8 @@ def main() -> None:
     compiled = plan["compiled"]
 
     torch.manual_seed(plan["seed"])
-    policy = model.Policy(model.ModelConfig() if resumed is None else resumed["model_config"]).to(
-        device
-    )
+    fresh = model.ModelConfig.for_arena(game_config.arena_radius)
+    policy = model.Policy(fresh if resumed is None else resumed["model_config"]).to(device)
     stages = {"all": ("bc", "rl"), "bc": ("bc",), "rl": ("rl",)}[plan["stage"]]
     planned = {"bc": plan["bc_updates"], "rl": plan["updates"]}
     if resumed is not None:

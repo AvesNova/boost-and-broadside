@@ -1,0 +1,77 @@
+{
+ "exchange_acceleration": 27.746870040893555,
+ "exchange_in_g": 0.7071067798392853,
+ "gravity": 39.24,
+ "max_store": 32978.6796875,
+ "store_edge_band": 0.05,
+ "corner": {
+  "speed": 255.81251525878906,
+  "coast_coupled": {
+   "turn_deg": 67.21195060294438,
+   "speed_rate": -29.38020896911621,
+   "store_rate": 0.0
+  },
+  "coast_decoupled": {
+   "turn_deg": 67.21195060294438,
+   "speed_rate": -29.38020896911621,
+   "store_rate": 0.0
+  },
+  "dive_coupled": {
+   "turn_deg": 67.7489127547341,
+   "speed_rate": -1.643045425415039,
+   "store_rate": -7097.99658203125
+  },
+  "dive_decoupled": {
+   "turn_deg": 67.7489127547341,
+   "speed_rate": -1.643045425415039,
+   "store_rate": -7097.99658203125
+  },
+  "climb_coupled": {
+   "turn_deg": 67.2122443010787,
+   "speed_rate": -29.38021469116211,
+   "store_rate": 0.0
+  },
+  "climb_decoupled": {
+   "turn_deg": 67.2122443010787,
+   "speed_rate": -57.12708282470703,
+   "store_rate": 7097.99658203125
+  }
+ },
+ "sustained": {
+  "speed": 167.7202911376953,
+  "coast_coupled": {
+   "turn_deg": 45.131383356018866,
+   "speed_rate": -5.575987815856934,
+   "store_rate": 0.0
+  },
+  "coast_decoupled": {
+   "turn_deg": 45.131383356018866,
+   "speed_rate": -5.575987815856934,
+   "store_rate": 0.0
+  },
+  "dive_coupled": {
+   "turn_deg": 47.14328046284324,
+   "speed_rate": 22.040058135986328,
+   "store_rate": -4653.712890625
+  },
+  "dive_decoupled": {
+   "turn_deg": 47.14328046284324,
+   "speed_rate": 22.040058135986328,
+   "store_rate": -4653.712890625
+  },
+  "climb_coupled": {
+   "turn_deg": 45.1324454504348,
+   "speed_rate": -5.576035499572754,
+   "store_rate": 0.0
+  },
+  "climb_decoupled": {
+   "turn_deg": 45.1324454504348,
+   "speed_rate": -33.322906494140625,
+   "store_rate": 4653.712890625
+  }
+ },
+ "corner_dive_half_store_s": 2.3230977435933347,
+ "corner_dive_full_store_s": 4.646195487186669,
+ "card_exchange_acceleration": 39.24,
+ "exchange_angle_deg": 45.0
+}

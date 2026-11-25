@@ -2,6 +2,7 @@
 side, the persona population, and matches in the game."""
 
 import dataclasses
+import functools
 import math
 
 import pytest
@@ -21,10 +22,26 @@ from lean.scripted import (
 from lean.scripted.opponent import CLIMB, COAST, DIVE, explain
 from lean.scripted.parameters import PARAMETERS, SAMPLED
 
-# The end of the boundary's damage ramp, in arena radii, read from the game's own config.
-BOUNDARY_RAMP_END = 1.0 + game.GameConfig().boundary_ramp_width / game.GameConfig().arena_radius
+
+def ramp_end(config: game.GameConfig) -> float:
+    """The end of the boundary's damage ramp, in arena radii, read from the game's config."""
+    return 1.0 + config.boundary_ramp_width / config.arena_radius
+
+
+ARENA_RADIUS = game.GameConfig().arena_radius
+BOUNDARY_RAMP_END = ramp_end(game.GameConfig())
+# The left- and right-turning stick indices (lean.contract's STICKS; ScriptedConfig.left_is_even
+# says which parity turns left; index 0 is straight).
+LEFT = [i for i in range(1, STICKS) if (i % 2 == 0) == ScriptedConfig().left_is_even]
+RIGHT = [i for i in range(1, STICKS) if (i % 2 == 0) != ScriptedConfig().left_is_even]
 
 CPU = torch.device("cpu")
+
+
+@functools.cache
+def card() -> dict:
+    """The default game's ship card (its speeds, radii and ranges; core.ship_card)."""
+    return core.ship_card(core.GameConfig()).uniform
 
 
 def random_state(envs: int, slots: int, seed: int):
@@ -46,7 +63,8 @@ def random_state(envs: int, slots: int, seed: int):
             y=uniform(-1500.0, 1500.0),
             heading_cos=heading.cos(),
             heading_sin=heading.sin(),
-            speed=uniform(100.0, 440.0),
+            # From just above the stall speed to a fifth above the top level speed (a dive).
+            speed=uniform(1.1 * card()["stall_speed"], 1.2 * card()["cruise_speed"]),
             angle=angle,
             angle_cos=angle.cos(),
             angle_sin=angle.sin(),
@@ -58,7 +76,9 @@ def random_state(envs: int, slots: int, seed: int):
     )
 
 
-def placed(own: dict, target: dict, energy_fraction: float = 0.5, arena_radius: float = 4200.0):
+def placed(
+    own: dict, target: dict, energy_fraction: float = 0.5, arena_radius: float = ARENA_RADIUS
+):
     """A 1v1 state with no fog or fields: the own ship (slot 0) and its target (slot 1),
     each given by x, y, heading (radians) and speed (m/s); straight flight, gun ready."""
     config = core.GameConfig(arena_radius=arena_radius, spawn="mixed", field_count=0, fog=False)
@@ -172,18 +192,18 @@ def test_randomness_only_from_sampling():
 def test_turns_toward_a_target_on_its_left():
     """Catches a flipped side: a target at +90 degrees must get the left-turning stick."""
     config = ScriptedConfig()
+    speed = card()["corner_speed"]
     state = placed(
-        dict(x=0.0, y=0.0, heading=0.0, speed=260.0), dict(x=0.0, y=400.0, heading=0.0, speed=260.0)
+        dict(x=0.0, y=0.0, heading=0.0, speed=speed), dict(x=0.0, y=400.0, heading=0.0, speed=speed)
     )
-    left_indices = [2, 4, 6] if config.left_is_even else [1, 3, 5]
-    assert decide(state).stick[0, 0, left_indices].sum() > 0.9
-    assert chaser_act(config, state, 0)[0, 0, 0].item() == left_indices[-1]
+    assert decide(state).stick[0, 0, LEFT].sum() > 0.9
+    assert chaser_act(config, state, 0)[0, 0, 0].item() == LEFT[-1]  # full stick left
 
 
 # The power's cases (lean/scripted/NOTES.md "Power"): own ship at the origin heading +x; the
 # target at `bearing` (radians, 0 ahead) and `distance` gun ranges, flying the same way at the
-# same speed. Speeds in corner speeds (the P-51D's sustained speed is 0.656), the store as a
-# fraction of full. Expected: the most likely power.
+# same speed. Speeds in corner speeds (the sustained speed is below corner speed), the store as
+# a fraction of full. Expected: the most likely power.
 POWER_CASES = [
     # name, speed, bearing, distance, store, expected
     ("disengaged, slow: no dive (nothing to spend for)", 0.6, 0.0, 6.0, 0.5, COAST),
@@ -251,15 +271,16 @@ def test_head_on_side_is_drawn_once_per_ship_per_match_and_kept():
     the side is never changed by `act` (a new match takes a fresh memory, `fresh_memory`)."""
     # Stores either side of the plan threshold (BFM-CMA2: -0.33, so 0.2 against 0.5 is two-circle).
     for own_store, plan in ((0.8, 1.0), (0.1, -1.0)):
+        speed = card()["corner_speed"]
         state = placed(
-            dict(x=0.0, y=0.0, heading=0.0, speed=260.0),
-            dict(x=-400.0, y=0.0, heading=math.pi, speed=260.0),
+            dict(x=0.0, y=0.0, heading=0.0, speed=speed),
+            dict(x=-400.0, y=0.0, heading=math.pi, speed=speed),
         )
         store = torch.tensor([[own_store, 0.5]]) * state.constants["max_energy"]
         state = state.replace(energy=store)
         left = decide(state, memory_of(side=plan)).stick[0, 0]
         right = decide(state, memory_of(side=-plan)).stick[0, 0]
-        assert left[[2, 4, 6]].sum() > 0.9 and right[[1, 3, 5]].sum() > 0.9, own_store
+        assert left[LEFT].sum() > 0.9 and right[RIGHT].sum() > 0.9, own_store
 
     generator = torch.Generator().manual_seed(5)
     envs = 64
@@ -281,9 +302,10 @@ def test_the_lead_counts_the_medium():
     bullet's time of flight is n (the shooter's) times longer. A crossing target inside a field
     (n = e^0.5) moves slower over the map, so the shooter outside leads it less: a smaller
     angle to the gun's lead point."""
+    speed = card()["corner_speed"]
     base = placed(
-        dict(x=0.0, y=0.0, heading=0.0, speed=250.0),
-        dict(x=500.0, y=0.0, heading=math.pi / 2, speed=250.0),
+        dict(x=0.0, y=0.0, heading=0.0, speed=speed),
+        dict(x=500.0, y=0.0, heading=math.pi / 2, speed=speed),
     )
     lead = []
     for log_index in (0.0, 0.5):
@@ -300,9 +322,11 @@ def test_the_lead_counts_the_medium():
 
 def test_reads_every_number_from_the_game():
     """Decision 5 (known weaknesses): the game provides every number. ScriptedConfig holds no
-    ship characteristic or arena radius; the opponent steers by the game's arena: near the edge
-    of a 1,500 m arena, flying outward at a target further out, it turns back toward the
-    centre, where in the 4,200 m arena it flies at the target."""
+    ship characteristic or arena radius; the opponent steers by the game's arena: two gun
+    ranges from the centre, flying outward at a target further out at corner speed, it turns
+    back toward the centre in an arena whose edge is 0.6 sustained radii further out, and in
+    the default arena (more than the boundary margin test's 4.48 sustained radii further out)
+    flies at the target."""
     names = set(PARAMETERS) | {field.name for field in dataclasses.fields(ScriptedConfig)}
     for name in (
         "arena_radius",
@@ -316,29 +340,33 @@ def test_reads_every_number_from_the_game():
         "max_acceleration",
     ):
         assert name not in names, name
-    heading = math.pi / 2 - 0.3  # north-east-ish at x = 1,350 m: the centre is to the left
+    c = card()
+    x = 2.0 * c["gun_range"]
+    small, default = x + 0.6 * c["sustained_radius"], ARENA_RADIUS
+    assert default - x > 4.48 * c["sustained_radius"]  # far from the default arena's edge
+    heading = math.pi / 2 - 0.3  # north-east-ish on the +x axis: the centre is to the left
     bearing = heading - 0.4  # the target 600 m away, to the right
-    own = dict(x=1350.0, y=0.0, heading=heading, speed=260.0)
+    own = dict(x=x, y=0.0, heading=heading, speed=c["corner_speed"])
     target = dict(
-        x=1350.0 + 600.0 * math.cos(bearing),
+        x=x + 600.0 * math.cos(bearing),
         y=600.0 * math.sin(bearing),
         heading=heading,
-        speed=260.0,
+        speed=c["corner_speed"],
     )
     left = {}
-    for radius in (1500.0, 4200.0):
+    for radius in (small, default):
         left[radius] = float(
-            decide(placed(own, target, arena_radius=radius)).stick[0, 0, [2, 4, 6]].sum()
+            decide(placed(own, target, arena_radius=radius)).stick[0, 0, LEFT].sum()
         )
-    assert left[1500.0] > 0.9 and left[4200.0] < 0.1
+    assert left[small] > 0.9 and left[default] < 0.1
 
 
 def test_boundary_margin_is_in_turn_radii_at_the_ship_speed():
     """Design B5: the edge band is a number of turn radii at the ship's speed, the sustained
     radius up to corner speed (as speed squared above), not speed^2 / max acceleration (half
-    the real radius when slow). A slow ship 1.12 sustained radii inside the edge (250 m with
-    the P-51D of 2026-11-24 A1), flying outward at a target further out, turns back toward the
-    centre; 4.48 radii (1,000 m) inside it flies at the target; a fast ship (1.6 corner speeds)
+    the real radius when slow). A slow ship 1.12 sustained radii inside the edge, flying
+    outward at a target further out, turns back toward the centre; 4.48 radii inside it flies
+    at the target; a fast ship (1.6 corner speeds)
     turns back from 4.48 radii. In sustained radii, so a flight change that moves the radius
     does not move the test."""
     heading = math.pi / 2 - 0.3  # the centre is to the left
@@ -350,7 +378,7 @@ def test_boundary_margin_is_in_turn_radii_at_the_ship_speed():
             dict(x=1.0, y=0.0, heading=0.0, speed=100.0),
         )
         speed = speed_in_corner * probe.constants["corner_speed"]
-        x = 4200.0 - inside_in_radii * probe.constants["sustained_radius"]
+        x = ARENA_RADIUS - inside_in_radii * probe.constants["sustained_radius"]
         own = dict(x=x, y=0.0, heading=heading, speed=speed)
         target = dict(
             x=x + 600.0 * math.cos(bearing),
@@ -358,7 +386,7 @@ def test_boundary_margin_is_in_turn_radii_at_the_ship_speed():
             heading=heading,
             speed=speed,
         )
-        return float(decide(placed(own, target)).stick[0, 0, [2, 4, 6]].sum())
+        return float(decide(placed(own, target)).stick[0, 0, LEFT].sum())
 
     assert left_share(1.12, 0.6) > 0.9
     assert left_share(4.48, 0.6) < 0.1
@@ -376,7 +404,7 @@ def test_never_shoots_through_a_team_mate():
         state.replace(
             heading_cos=torch.ones_like(state.x),
             heading_sin=zeros,
-            speed=torch.full_like(state.x, 250.0),
+            speed=torch.full_like(state.x, card()["corner_speed"]),
             angle=zeros,
             angle_cos=torch.ones_like(state.x),
             angle_sin=zeros,
@@ -433,13 +461,20 @@ def test_one_call_for_both_teams_equals_the_two_single_team_calls():
 
 
 def play_scripted(
-    envs: int, ticks: int, spread: float, seed: int, chaser_team: int | None = None, persona=None
+    envs: int,
+    ticks: int,
+    spread: float,
+    seed: int,
+    chaser_team: int | None = None,
+    persona=None,
+    config: game.GameConfig | None = None,
 ):
-    """Scripted (or scripted against the chaser on `chaser_team`) 4v4 games in the core game,
-    finished games re-dealt with a fresh memory; `persona` (E, 8) per-slot rows instead of a
-    draw at `spread`. Returns per-slot tallies over the run."""
+    """Scripted (or scripted against the chaser on `chaser_team`) 4v4 games in the core game
+    (`config`, default the default game), finished games re-dealt with a fresh memory;
+    `persona` (E, 8) per-slot rows instead of a draw at `spread`. Returns per-slot tallies over
+    the run."""
     generator = torch.Generator().manual_seed(seed)
-    config = game.GameConfig()
+    config = config or game.GameConfig()
     sizes = torch.full((envs, 2), 4, dtype=torch.long)
     state = game.reset(config, envs, sizes, generator, CPU)
     slots = state.x.shape[1]
@@ -492,12 +527,11 @@ def test_every_persona_is_competent_at_spread_one():
     """Sign-off 2026-11-23: every persona competent. At spread 1, 32 environments of 4v4 for
     1,800 ticks (finished games re-dealt; each slot keeps its persona): no ship goes past the
     end of the boundary's damage ramp, and of the ships that lived 20 s at least 97 in 100
-    fired (with BFM a defender survives longer without a firing solution: at seeds 7, 8, 9
-    0.979, 0.983, 0.988 of them fired; the yardstick at seed 7 0.983)."""
+    fired (not all: with BFM a defender survives longer without a firing solution)."""
     tallies = play_scripted(envs=32, ticks=1800, spread=1.0, seed=7)
     print(f"farthest {float(tallies['farthest'].max()):.3f} of the arena radius")
     assert float(tallies["farthest"].max()) < BOUNDARY_RAMP_END
-    long_lived = tallies["lived"] >= 600
+    long_lived = tallies["lived"] >= round(20.0 / game.GameConfig().tick_length)  # 20 s
     assert long_lived.sum() > 100
     assert float(tallies["fired"][long_lived].float().mean()) >= 0.97
 
@@ -531,8 +565,10 @@ def box_end(name: str, end: int) -> float:
 def test_every_parameter_alone_at_both_ends_of_its_box_is_competent():
     """Each parameter is competent alone: every sampled row at each end of its box, the rest
     at the yardstick, in one batch (two environments of 4v4 per case, 900 ticks): no ship goes
-    past the end of the boundary's damage ramp, and in every case ships fire (at seed 3 the
-    lowest case had 13 of its 16 ships fire, the farthest reached 1.053 arena radii)."""
+    past the end of the boundary's damage ramp, and in every case at least half the ships
+    fire. Fields are excluded on purpose (author decision 2026-11-25: scripted ships may be
+    lost to fields; field-aware steering is not a competence asked of them): a field at the
+    arena edge pushed a defending ship past the ramp."""
     cases = [
         (name, end)
         for name in SAMPLED
@@ -544,13 +580,16 @@ def test_every_parameter_alone_at_both_ends_of_its_box_is_competent():
     persona = {name: torch.full((envs, slots), PARAMETERS[name].default) for name in SAMPLED}
     for index, (name, end) in enumerate(cases):
         persona[name][index * per_case : (index + 1) * per_case] = box_end(name, end)
-    tallies = play_scripted(envs=envs, ticks=900, spread=0.0, seed=3, persona=persona)
+    config = game.GameConfig(field_count=0)
+    tallies = play_scripted(
+        envs=envs, ticks=900, spread=0.0, seed=3, persona=persona, config=config
+    )
     farthest = tallies["farthest"].reshape(len(cases), -1).amax(-1)
     fired = tallies["fired"].reshape(len(cases), -1).float().mean(-1)
     worst = sorted(zip(fired.tolist(), cases))[:3]
     outermost = sorted(zip(farthest.tolist(), cases))[-3:]
     print(f"farthest {outermost}; lowest shares of ships that fired {worst}")
-    assert float(farthest.max()) < BOUNDARY_RAMP_END
+    assert float(farthest.max()) < ramp_end(config)
     assert float(fired.min()) >= 0.5
 
 
@@ -568,7 +607,7 @@ def ghost_state(distances: tuple[float, ...], seconds: tuple[float, ...]):
             y=zeros,
             heading_cos=torch.ones_like(state.x),
             heading_sin=zeros,
-            speed=torch.full_like(state.x, 200.0),
+            speed=torch.full_like(state.x, state.constants["sustained_speed"]),
             angle=zeros,
             angle_cos=torch.ones_like(state.x),
             angle_sin=zeros,
@@ -608,10 +647,10 @@ def test_no_shot_in_a_pure_head_on_unless_it_empties_the_shield():
     """Author 2026-11-25: dead ahead the aspect factor gives (nearly) no damage, so the gun
     holds fire nose to nose; it fires at the same target from astern, and nose to nose at a
     target whose shield the hit would empty (0 here: any damage kills)."""
-    own = dict(x=0.0, y=0.0, heading=0.0, speed=250.0)
+    own = dict(x=0.0, y=0.0, heading=0.0, speed=card()["corner_speed"])
 
     def fire(target_heading: float, shield: float | None = None) -> float:
-        target = dict(x=450.0, y=0.0, heading=target_heading, speed=250.0)
+        target = dict(x=450.0, y=0.0, heading=target_heading, speed=card()["corner_speed"])
         state = placed(own, target)
         if shield is not None:
             state = state.replace(shield=torch.tensor([[state.constants["max_shield"], shield]]))

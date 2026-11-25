@@ -188,18 +188,30 @@ def test_the_measures_are_smooth_and_grid_free():
     assert slopes[0] == pytest.approx(slopes[1], rel=0.02) and slopes[0] < 0.0
 
 
+def structural_check() -> tuning.Check:
+    """PLAUSIBILITY's structural-load check (the g limit over the structure's at this mass)."""
+    return next(c for c in tuning.PLAUSIBILITY if c.quantity == "structural_load")
+
+
 def test_implausible_designs_warn(p51d, documents):
     """The plausibility checks (PLAUSIBILITY) warn, never refuse: a hand-made row under the
     documents (the shaft power held at the flight test's) with too little induced drag
     (Oswald e above 1), more thrust power than shaft power, too little zero-lift drag, too much
-    lift and a softer thrust warns on each. The P-51D's documents row and its card row (the
-    game's engine) each warn on one: the 8 g limit above the structure's 6.6 g at the tested
-    weight."""
+    lift and a softer thrust warns on each. The structural check follows the rule, not today's
+    numbers: the P-51D's documents row and its card row (the game's engine) warn on the
+    structure exactly when their g limit is above the structure's at the tested weight, and
+    each, its g limit moved to a tenth above or below the check's bound, warns or does not."""
+    check = structural_check()
+    for reference, row in ((documents, documents.start_row), (p51d, tuning.row_of("p51d"))):
+        load = tuning.implied(row, tuning.airframe_of(row, reference))["structural_load"]
+        warned = {w["quantity"] for w in tuning.warnings(row, reference)}
+        assert ("structural_load" in warned) == (load > check.high)
+        for factor, warns in ((1.1, True), (0.9, False)):
+            scale = factor * check.high / load
+            moved = {**row, "max_acceleration": row["max_acceleration"] * scale}
+            warned = {w["quantity"] for w in tuning.warnings(moved, reference)}
+            assert ("structural_load" in warned) == warns, (reference.profile, factor)
     row = documents.start_row
-    own = {(w["quantity"], w["severity"]) for w in tuning.warnings(row, documents)}
-    assert own == {("structural_load", "range")}
-    card_row = tuning.row_of("p51d")
-    assert {(w["quantity"], w["severity"]) for w in tuning.warnings(card_row, p51d)} == own
     bad = {
         **row,
         "induced_drag_scale": 0.7 * row["induced_drag_scale"],

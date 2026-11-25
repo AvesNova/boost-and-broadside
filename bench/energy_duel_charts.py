@@ -89,9 +89,11 @@ def main(folder: str):
             ax.set_aspect("equal", adjustable="datalim")
             ax.grid(color=GRID, linewidth=0.6)
             ax.tick_params(colors=MUTED)
+    angle = results["setup"].get("exchange_angle_deg")
+    tag = f" (exchange {angle:g} deg)" if angle is not None else ""
     fig.suptitle(
-        "Paths, one seed per condition (km). Blue = mode, Red = coasts.\n"
-        "Squares: start. Dots: damaging hits (at the victim, shooter's colour).",
+        f"Paths, one seed per condition (km). Blue = mode{tag}.\n"
+        "Red = coasts. Squares: start. Dots: damaging hits (at the victim, shooter's colour).",
         x=0.02,
         ha="left",
         fontsize=16,
@@ -130,12 +132,12 @@ def main(folder: str):
         axes[0, 1].legend(loc="upper right", frameon=False)
         title = "Speed" if key == "speed" else "Store"
         fig.suptitle(
-            f"{title} over time, one seed per condition (a line stops at a kill)",
+            f"{title} over time, one seed per condition (a line stops at a kill)\n{tag.strip()}",
             x=0.02,
             ha="left",
             fontsize=16,
         )
-        fig.tight_layout(rect=(0, 0, 1, 0.985))
+        fig.tight_layout(rect=(0, 0, 1, 0.975 if tag else 0.985))
         fig.savefig(f"{folder}/{out}.png")
         plt.close(fig)
 
@@ -163,7 +165,7 @@ def main(folder: str):
     ax.set_xlabel("mean damage dealt in 60 s (shield 100; a full hit 21)")
     ax.grid(axis="x", color=GRID, linewidth=0.6)
     ax.legend(loc="upper right", frameon=False)
-    ax.set_title("Damage each way, 64 seeds per condition", loc="left", fontsize=16)
+    ax.set_title(f"Damage each way, 64 seeds per condition\n{tag.strip()}", loc="left", fontsize=16)
     fig.tight_layout()
     fig.savefig(f"{folder}/damage.png")
     plt.close(fig)

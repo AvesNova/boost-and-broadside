@@ -59,6 +59,11 @@ NEXT_STATE_COLUMNS = (
 )
 
 
+# The rotary reach in arena radii: twice the arena diameter (author 2026-11-25: held at a constant
+# ratio of the arena; revisit if the map gets too large).
+ROTARY_REACH_ARENA_RADII = 4.0
+
+
 @dataclass
 class ModelConfig:
     """Sizes and constants of the policy (v2's defaults where v2 has one).
@@ -69,8 +74,9 @@ class ModelConfig:
     per lattice axis (phases^2 cells per spacing). colour_period, colour_levels: v2's
     categorical code (a new v2 run's: 236,196 m, 9 levels, finest colour 12 m).
     rotary_*: the rotary bands, two axes per band (v2's layout), periods rotary_finest *
-    rotary_ratio^k up to the first period above rotary_reach (metres: twice the largest
-    separation one band alone must tell apart, the 8.4 km arena diameter), each band's axes
+    rotary_ratio^k up to the first period above rotary_reach (metres: ROTARY_REACH_ARENA_RADII
+    arena radii, twice the largest separation one band alone must tell apart, the arena
+    diameter; `for_arena` sets it from the game's arena radius), each band's axes
     turned rotary_turn degrees from the finer band's (an irrational fraction of 90 degrees,
     the golden section, so no band's axes repeat another's).
     heading_harmonics: multiples of the heading angle used as rotary angles.
@@ -109,12 +115,20 @@ class ModelConfig:
     colour_levels: int = 9
     rotary_finest: float = 64.0
     rotary_ratio: float = 2.0
-    rotary_reach: float = 16800.0
+    # The default game's (lean.game.GameConfig.arena_radius 4,200 m) reach; a run builds its
+    # config with `for_arena` (lean/model/tests checks this default matches the game's).
+    rotary_reach: float = ROTARY_REACH_ARENA_RADII * 4200.0
     rotary_turn: float = 90.0 * (math.sqrt(5.0) - 1.0) / 2.0
     heading_harmonics: tuple[float, ...] = (1.0, 2.0)
     rotate_values: bool = True
     next_state_columns: tuple[NextStateColumn, ...] = NEXT_STATE_COLUMNS
     next_state_sigma: float = 0.75
+
+    @classmethod
+    def for_arena(cls, arena_radius: float, **fields) -> ModelConfig:
+        """The config for a game with this arena radius (metres): rotary_reach
+        ROTARY_REACH_ARENA_RADII x arena_radius; the other fields their defaults or `fields`."""
+        return cls(rotary_reach=ROTARY_REACH_ARENA_RADII * arena_radius, **fields)
 
     @property
     def rotary_periods(self) -> tuple[float, ...]:
