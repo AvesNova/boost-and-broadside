@@ -408,14 +408,14 @@ def test_chained_targets_equal_one_gae_pass_over_the_concatenated_ticks(fresh_va
 
 
 def test_hit_labels_near_a_segment_boundary_come_from_the_next_segment(monkeypatch):
-    """Three consecutive 12-tick segments (bullets live up to 11 ticks, games end every 20):
+    """Three consecutive 12-tick segments (bullets live up to 12 ticks, games end every 24):
     every row of the store is labelled with the outcome of the bullet the ship emitted there,
     found by searching the recorded game steps over all 36 ticks, so a segment's tail is
     labelled by bullets that end in the next segment; only the last segment keeps an
     unlabelled tail."""
     recorder = StepRecorder().install(monkeypatch)
     segments, ticks = 3, 12
-    _, _, _, store = real_store(segments, ticks, clock=20)
+    _, _, _, store = real_store(segments, ticks, clock=24)
     seats = store.seats
     labels = seat_major(store.resident["hit_label"], segments, seats).long()  # (U x T, S, N)
     environment = torch.cat(

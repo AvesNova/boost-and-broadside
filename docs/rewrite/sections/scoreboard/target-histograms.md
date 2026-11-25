@@ -133,3 +133,32 @@ edges, linear supports only).
   no wider, but that is not measured here.
 - Not measured: symlog spacings for the next-state columns (only the critic was asked for),
   the PPO advantages, the objective levels.
+
+## The shape (2026-11-25, from the saved fine histograms)
+
+Damage and kill_death: a spike at 0 with density close to 1/|x| from about 0.01 to 0.25
+(log-log slope -0.9 to -1.0 for damage, R^2 0.99; -0.6 to -0.8 for kill_death, noisier
+because kills are discrete), then a faster fall (damage about e^(-2.6|x|)) and a hard edge
+(the most damage a ship can take or deal within the discount's reach). Mechanism: a row's
+return is mostly R x discount^k, where k is the ticks to the next burst of reward and R its
+size. With k spread fairly evenly over the gaps between fights (much longer than the
+horizons: 55 ticks for damage at 0.982, 100 for kill_death at 0.990), log|x| is spread
+evenly, which is density 1/|x|: a log-uniform core. The tail is the size distribution of
+the bursts. Symlog bins are uniform in log|x| above the knee, so each bin there holds
+about the same share and corresponds to a fixed number of ticks to the next event.
+
+A knee from that reading: one event's size times e^(-3), i.e. the value of an event three
+horizons ahead; below it the critic stops resolving when the event comes. One hit is
+21 points = 0.575 damage-level units (weight 2.74 per 100 points), giving about 0.03;
+one kill is 2.83, giving about 0.14. Both sit in the even-occupancy region measured below
+(damage knee 0.03: 19 effective bins; kill_death 0.03-0.1: 30-36).
+
+Next-state along and heading: the same 1/|x| core near 0 (manoeuvre intensity varies over
+orders of magnitude between rows: straight flight is almost perfectly dead-reckoned) with a
+power-law tail of slope about -3 to -3.5 (Student-t-like, about 2 degrees of freedom).
+
+Outcome: a win or loss is +-10 at the game's end and a draw 0 (both teams wiped on the same
+tick, or equal ships and equal shield at the clock; none in 6,592 games). Discounted at
+0.9997 over at most 1,800 ticks a return keeps |x| >= 10 x 0.9997^1800 = 5.8, so the middle
+is empty for Monte Carlo returns. The learner's lambda-returns (0.97) bootstrap from the
+critic's mean, which lies between the modes, so the middle bins will be used in training.

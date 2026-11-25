@@ -654,3 +654,9 @@ These replace the flap, profile and stick-level points above where they disagree
   and next-state column spans its measured range with 64 columns and adds
   `BUFFER_COLUMNS` = 3 of the same width beyond each end (70 bins; the shield's in symlog
   space), in code (`lean.model.value.buffered_centres`), not by hand.
+
+- **2026-11-25 (author): 12-tick bullets.** The P-51D's gun range is 686 m, the full range of a
+  12-tick bullet fired at the documented 375 mph (it was 600 m, an 11-tick life), and
+  `contract.BULLET_SLOTS` is 12. Gun range stays defined at 375 mph for every design (so the
+  design tool round-trips). Quick suite 311 passed; compile check within the baseline (4 graphs,
+  5,542 operations, cold 210.6 s).

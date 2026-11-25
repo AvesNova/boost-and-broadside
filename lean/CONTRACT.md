@@ -4,7 +4,7 @@ The shared types and the calls between the packages, as the code has them. The t
 `lean/contract.py`; each package's notes (`NOTES.md`) say what is behind its calls. PyTorch 2.15,
 plain code that also compiles. A change to a name or a shape here is a change to every package.
 
-Sizes: `E` environments, `N` ship slots (both teams together, the largest total dealt), `K = 11`
+Sizes: `E` environments, `N` ship slots (both teams together, the largest total dealt), `K = 12`
 bullet slots per ship, `F` fields, `T` ticks. Layout: batch first, features last, contiguous.
 Units: metres, radians, seconds, ticks where stated.
 
@@ -22,7 +22,7 @@ NO_PENDING = JOINT  # Obs.pending of a row whose pending action is not observed
 LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outcome")
 LEVELS = 5
 SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES  # 18 scalars + 4 flags + type one-hot; 3; 3
-BULLET_SLOTS = 11
+BULLET_SLOTS = 12
 ```
 
 Also here: `symlog`, `map_fields`, `whole_state`, `compile_dynamic` (the one place duck sizing is

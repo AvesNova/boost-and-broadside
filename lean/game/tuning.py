@@ -691,7 +691,7 @@ P51D_VALUES = dict(
     muzzle_speed=1712.0,
     bullet_spread=3.084482431411743,
     bullet_drag=0.0005,
-    gun_range=600.0,
+    gun_range=686.0,  # the full range of a 12-tick bullet fired at 375 mph (author 2026-11-25)
     hit_radius=12.0,
     core_radius=5.0,
     max_shield=100.0,
@@ -1779,7 +1779,7 @@ def time_scaled(factor: float, tick_length: float = 1.0 / 30.0):
     """The card and the rule constants at `factor` times real time (the game's are TIME_FACTOR):
     each value converted to real time and back at the new factor, so gravity is factor^2 x 9.81.
     The tick stays tick_length of game time. Guns too; a bullet's life is capped at what
-    contract.BULLET_SLOTS holds at the fire interval (whole ticks): at 1.5x it is 11 ticks, not
+    contract.BULLET_SLOTS holds at the fire interval (whole ticks): at 1.5x it is 12 ticks, not
     15. Returns (card dict, {rule constant: value})."""
     from lean.contract import BULLET_SLOTS
 
