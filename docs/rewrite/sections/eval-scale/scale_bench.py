@@ -63,7 +63,7 @@ def main() -> None:
     device = "cuda"
     table = torch.tensor([vector(scripted.ScriptedConfig())], device=device)
     torch.manual_seed(0)
-    policies = [model.Policy(model.ModelConfig()).to(device).eval()]
+    policies = [model.Policy(model.ModelConfig.for_arena(config.arena_radius)).to(device).eval()]
     network = arguments.mode == "network"
     profile = subprocess.run(["powerprofilesctl", "get"], capture_output=True, text=True).stdout
     out = open(arguments.out, "a")
