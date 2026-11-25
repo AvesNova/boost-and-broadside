@@ -386,3 +386,51 @@ def test_bradley_terry_with_only_self_play_returns_the_anchor():
     assert ratings == [1000.0] and errors == [0.0]
     ratings, errors = bradley_terry([(0, 0, 10, 5.0), (1, 1, 4, 2.0)], agents=2)
     assert ratings == [1000.0, 1000.0]
+
+
+def test_unequal_sizes_are_shared_in_both_orientations(tmp_path):
+    """A against B with A on 1 ship and B on 2 is B against A with B on 2: counts, Elo and
+    styles read the games stored either way round (the mirrored conditions)."""
+    store = Store(tmp_path / "s.sqlite")
+    evaluator = Evaluator(store, GAME, device="cpu")
+    yardstick = ScriptedAgent.of()
+    other = ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.3))
+    for agent in (yardstick, other):
+        store.add_agent(agent)
+    forward, mirrored = evaluator.conditions((1, 2))
+    assert forward != mirrored and evaluator.conditions((2, 1)) == (mirrored, forward)
+    # Yardstick (1 ship) against other (2 ships): 3 wins, 1 loss; then stored the other way.
+    store.add_games(yardstick.id, other.id, forward, [0, 1, 0, 1], [0, 0, 0, 1], [5] * 4)
+    store.add_games(other.id, yardstick.id, mirrored, [0, 1], [1, 1], [5] * 2)
+    counts = evaluator.counts(yardstick, other, (1, 2))
+    assert (counts["games"], counts["wins"], counts["losses"]) == (6, 5, 1)
+    assert counts["as_team_zero"] == 2 + 1
+    turned = evaluator.counts(other, yardstick, (2, 1))
+    assert (turned["games"], turned["wins"], turned["losses"]) == (6, 1, 5)
+    # Equal sizes elsewhere see none of them.
+    assert evaluator.counts(yardstick, other, (1, 1))["games"] == 0
+    ratings = dict((identity, rating) for identity, rating, _ in evaluator.elo((1, 2)))
+    assert ratings[yardstick.id] == 1000.0 and ratings[other.id] < 1000.0
+    assert [row[:2] for row in store.pairing_totals(forward, mirrored)] == [
+        (yardstick.id, other.id),
+        (yardstick.id, other.id),
+    ]
+
+
+def test_styles_with_unequal_sizes_keep_each_agent_on_its_own_ships(tmp_path):
+    store = Store(tmp_path / "s.sqlite")
+    evaluator = Evaluator(store, GAME, device="cpu")
+    yardstick = ScriptedAgent.of()
+    other = ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.3))
+    forward, mirrored = evaluator.conditions((1, 2))
+    width = len(store_module.MEASURES)
+
+    def style(a_minutes, b_minutes):
+        return (a_minutes,) + (0.5,) * (width - 1) + (b_minutes,) + (0.5,) * (width - 1)
+
+    store.add_games(yardstick.id, other.id, forward, [0], [0], [5], [style(1.0, 2.0)])
+    store.add_games(other.id, yardstick.id, mirrored, [0], [0], [5], [style(4.0, 8.0)])
+    rows = {row["agent"]: row for row in store.styles(forward, None, mirrored)}
+    # On 1 ship: the yardstick's seat A game (1 minute) and its seat B game (8 minutes).
+    assert rows[yardstick.id]["games"] == 2 and rows[yardstick.id]["minutes"] == 9.0
+    assert other.id not in rows

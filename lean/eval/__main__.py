@@ -161,8 +161,10 @@ def main() -> None:
 
     agents = [parse_agent(text, store) for text in arguments.agents]
     if arguments.command == "styles":
-        conditions = store.add_conditions(game_config, sizes)
-        rows = store.styles(conditions, [agent.id for agent in agents] if agents else None)
+        conditions, mirrored = evaluator.conditions(sizes)
+        rows = store.styles(
+            conditions, [agent.id for agent in agents] if agents else None, mirrored
+        )
         print(
             "games  ship-min  turning  two-circle  store  speed  shots/min  hits  hit-range  climb "
             " dive  agent"

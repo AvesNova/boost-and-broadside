@@ -59,13 +59,14 @@ NOT NULL,
 STYLE_COLUMNS = tuple(f"{seat}_{name}" for seat in "ab" for name in MEASURES)
 
 
-def _style_view() -> str:
-    """The `styles` view: per conditions and agent, the agent's games from both seats."""
+def _style_select(where: tuple[str, str] = ("", "")) -> str:
+    """Per conditions and agent, the agent's style over its games from both seats; `where`
+    an extra condition on seat A's and seat B's rows (such as "AND conditions = ?")."""
     seats = " UNION ALL ".join(
         f"SELECT conditions, agent_{seat} AS agent, "
         + ", ".join(f"{seat}_{name} AS {name}" for name in MEASURES)
-        + f" FROM games WHERE {seat}_minutes IS NOT NULL"
-        for seat in "ab"
+        + f" FROM games WHERE {seat}_minutes IS NOT NULL {extra}"
+        for seat, extra in zip("ab", where, strict=True)
     )
     weighted = ", ".join(
         f"SUM({name} * minutes) / SUM(minutes) AS {name}"
@@ -73,14 +74,19 @@ def _style_view() -> str:
         if name not in ("minutes", "two_circle", "hits", "hit_range")
     )
     return (
-        "CREATE VIEW IF NOT EXISTS styles AS SELECT conditions, agent, COUNT(*) AS games, "
+        "SELECT conditions, agent, COUNT(*) AS games, "
         "SUM(minutes) AS minutes, " + weighted + ", "
         "SUM(two_circle * turning * minutes) / SUM(CASE WHEN two_circle IS NOT NULL THEN turning * "
         "minutes END) "
         "AS two_circle, SUM(hits) AS hits, SUM(hit_range * hits) / SUM(CASE WHEN hit_range IS NOT "
         "NULL THEN hits END) "
-        f"AS hit_range FROM ({seats}) GROUP BY conditions, agent;"
+        f"AS hit_range FROM ({seats}) GROUP BY {'agent' if where[0] else 'conditions, agent'}"
     )
+
+
+def _style_view() -> str:
+    """The `styles` view: per conditions and agent, the agent's games from both seats."""
+    return "CREATE VIEW IF NOT EXISTS styles AS " + _style_select() + ";"
 
 
 SCHEMA = SCHEMA.format(
@@ -247,17 +253,31 @@ class Store:
                 rows,
             )
 
-    def styles(self, conditions: str, agents=None) -> list[dict]:
+    def styles(self, conditions: str, agents=None, mirrored: str | None = None) -> list[dict]:
         """The `styles` view's rows under the conditions (of `agents`' ids only, if given), as
-        dicts: agent, games, minutes and lean.eval.style.MEASURES."""
-        cursor = self.connection.execute("SELECT * FROM styles WHERE conditions = ?", (conditions,))
+        dicts: agent, games, minutes and lean.eval.style.MEASURES. With `mirrored` (the seats'
+        team sizes swapped, for unequal sizes): each agent's games with seat A's ships only,
+        from seat A under the conditions and seat B under the mirrored ones."""
+        if mirrored is None or mirrored == conditions:
+            cursor = self.connection.execute(
+                "SELECT * FROM styles WHERE conditions = ?", (conditions,)
+            )
+        else:
+            cursor = self.connection.execute(
+                _style_select(("AND conditions = ?", "AND conditions = ?")), (conditions, mirrored)
+            )
         names = [column[0] for column in cursor.description]
         rows = [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
         return [row for row in rows if agents is None or row["agent"] in set(agents)]
 
-    def counts(self, agent_a: str, agent_b: str, conditions: str) -> dict[str, int]:
+    def counts(
+        self, agent_a: str, agent_b: str, conditions: str, mirrored: str | None = None
+    ) -> dict[str, int]:
         """A's games against B under the conditions, from both orientations: games, wins,
-        draws, losses (A's) and A's games as team 0."""
+        draws, losses (A's) and A's games as team 0. `mirrored`: the conditions with the seats'
+        team sizes swapped, where B-against-A games are stored (default `conditions`: equal
+        sizes)."""
+        mirrored = mirrored or conditions
         total = {"games": 0, "wins": 0, "draws": 0, "losses": 0, "as_team_zero": 0}
         query = (
             "SELECT games, wins, draws, losses, as_team_zero FROM counts "
@@ -267,8 +287,8 @@ class Store:
         if row is not None:
             for key, value in zip(total, row, strict=True):
                 total[key] += value
-        if agent_a != agent_b:
-            row = self.connection.execute(query, (conditions, agent_b, agent_a)).fetchone()
+        if agent_a != agent_b or mirrored != conditions:
+            row = self.connection.execute(query, (mirrored, agent_b, agent_a)).fetchone()
             if row is not None:
                 games, wins, draws, losses, as_team_zero = row
                 total["games"] += games
@@ -278,13 +298,22 @@ class Store:
                 total["as_team_zero"] += games - as_team_zero
         return total
 
-    def pairing_totals(self, conditions: str) -> list[tuple[str, str, int, float]]:
+    def pairing_totals(
+        self, conditions: str, mirrored: str | None = None
+    ) -> list[tuple[str, str, int, float]]:
         """(agent A, agent B, games, A's score: wins plus half the draws) of every stored
-        orientation under the conditions."""
-        return self.connection.execute(
-            "SELECT agent_a, agent_b, games, wins + 0.5 * draws FROM counts WHERE conditions = ?",
-            (conditions,),
-        ).fetchall()
+        orientation under the conditions, and the games under `mirrored` (the seats' team
+        sizes swapped) turned round, so that agent A is always the side with seat A's ships."""
+        query = (
+            "SELECT agent_a, agent_b, games, wins + 0.5 * draws FROM counts WHERE conditions = ?"
+        )
+        rows = self.connection.execute(query, (conditions,)).fetchall()
+        if mirrored is not None and mirrored != conditions:
+            rows += [
+                (b, a, games, games - score)
+                for a, b, games, score in self.connection.execute(query, (mirrored,)).fetchall()
+            ]
+        return rows
 
     def total_games(self) -> int:
         return self.connection.execute("SELECT COUNT(*) FROM games").fetchone()[0]
