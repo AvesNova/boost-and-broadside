@@ -236,12 +236,17 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--sizes", type=int, nargs="+", default=[1, 4], help="ships per team")
+    parser.add_argument(
+        "--fields", choices=("both", "none", "on"), default="both", help="which field conditions"
+    )
     arguments = parser.parse_args()
     torch.set_num_threads(arguments.threads)
     arguments.out.mkdir(parents=True, exist_ok=True)
     set_vision_eccentricity(arguments.eccentricity)
-    for size in (1, 4):
-        for fields in (False, True):
+    field_choices = {"both": (False, True), "none": (False,), "on": (True,)}[arguments.fields]
+    for size in arguments.sizes:
+        for fields in field_choices:
             config = core.GameConfig()
             if not fields:
                 config = core.GameConfig(field_count=0)

@@ -22,7 +22,7 @@ sighting after the deal (ships not in sight at the deal). Angles in degrees, 0 =
 | e0 4v4 no fields | 514/737/1068 (91% at the deal) | 1494/1496/1498 | 29/53/88 | 6/10/31 | 165/178/179 | 2.6/4.9/20 | none | 35.2 | 238/271/3, 469 |
 | e0.5 4v4 no fields | 514/737/1082 (97% at the deal) | 1867/2402/2769 | 23/40/66 | 9/16/56 | 164/178/179 | 2.4/4.7/22 | 54% (26) | 37.1 | 239/269/4, 449 |
 | e0 4v4 fields | 476/773/1140 (78% at the deal) | 863/1364/1496 | 26/57/96 | 5/12/45 | 143/177/179 | 3.3/6.3/89 | none | 38.7 | 282/227/3, 436 |
-| e0.5 4v4 fields | NOT RUN (paused) | | | | | | | | |
+| e0.5 4v4 fields | 488/797/1214 (82% at the deal) | 894/1426/2110 | 24/49/81 | 6/16/59 | 145/177/179 | 3.0/6.1/77 | 54% (91) | 39.7 | 272/238/2, 421 |
 
 Merge share: 98% (1v1 no fields), 89% (1v1 fields), 100% (4v4), equal at e 0 and 0.5.
 
@@ -33,7 +33,9 @@ Merge share: 98% (1v1 no fields), 89% (1v1 fields), 100% (4v4), equal at e 0 and
   first merge is the same: head-on (noses ~178 deg) with a miss of a few metres at e 0 and 0.5.
   The yardstick does not use earlier sight to set up a different pass; game length and results
   barely move.
-- First spotter: 44% of decisive 1v1 games without fields (n 284), 60% with fields (n 173).
+- First spotter: 44% of decisive 1v1 games without fields (n 284), 60% with fields (n 173),
+  54% in 4v4 (n 26 without fields, 91 with). No consistent first-spotter advantage for the
+  yardstick.
 - 4v4: most first sightings happen at the deal (ships spawn in sight), so "later" is the useful
   column there.
 
@@ -44,3 +46,8 @@ Merge share: 98% (1v1 no fields), 89% (1v1 fields), 100% (4v4), equal at e 0 and
   bnb-vision-ellipse (game_ops CPU count already: step +6 compute ops), the quick tier on the
   final tree (it passed, 326, on the first commit; fog and tool tests pass on the final one),
   `git merge core` if it moved (it had not at 22:59), the core-decisions entry's check line.
+
+- 00:56 RESUMED (CPU only). tried: e 0.5 4v4 fields measurement (nice 10), quick tier
+  on the final tree, merge core. worked: measurement done (table above complete); quick tier
+  326 passed; ruff clean; core had not moved (nothing to merge). next: the compile check as
+  unit bnb-vision-ellipse once the coordinator says the GPU is free.
