@@ -1,0 +1,17 @@
+{
+ "lean": "/tmp/claude-1000/-home-vizia-avesnova-boost-and-broadside-v2/37fb8c6c-e7e2-4827-af78-10c9ab60c021/scratchpad/ghosts/base/lean/__init__.py",
+ "envs": 256,
+ "ticks": 1800,
+ "fields": false,
+ "hits": 220920,
+ "hits_within_25_deg_of_nose": 0.877996563911438,
+ "damage": 208985.90625,
+ "nominal_damage": 3606616.25,
+ "share_of_nominal_dealt": 0.05794514715671539,
+ "damage_per_hit": 0.9459800124168396,
+ "shots": 332379,
+ "hits_per_shot": 0.6646629299684998,
+ "kills": 2679,
+ "games_ended": 424,
+ "kills_per_env_minute": 10.46484375
+}

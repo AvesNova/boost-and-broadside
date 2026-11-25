@@ -103,12 +103,13 @@ def make_panel() -> None:
 
 def panel() -> list[ScriptedAgent]:
     """The panel's members on today's row table: each member's values by row name, rows no
-    longer in the table dropped (the lead-turn and yo-yo rows, author 2026-11-25)."""
+    longer in the table dropped (the lead-turn and yo-yo rows, author 2026-11-25), rows added
+    since at the table's default (ghost_cutoff, fire_worth: scripted-ghosts)."""
     record = json.loads(panel_path().read_text())
     members = []
     for member in record["members"]:
         named = dict(zip(record["rows"], member["values"], strict=True))
-        members.append(ScriptedAgent.of(ScriptedConfig({name: named[name] for name in PARAMETERS})))
+        members.append(ScriptedAgent.of(ScriptedConfig({name: named.get(name, PARAMETERS[name].default) for name in PARAMETERS})))
     return members
 
 

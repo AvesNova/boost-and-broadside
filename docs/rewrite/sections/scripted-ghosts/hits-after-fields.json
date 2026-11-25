@@ -1,0 +1,17 @@
+{
+ "lean": "/home/vizia/avesnova/boost-and-broadside/v2-ghosts/lean/__init__.py",
+ "envs": 256,
+ "ticks": 1800,
+ "fields": true,
+ "hits": 29948,
+ "hits_within_25_deg_of_nose": 0.2561773657798767,
+ "damage": 182703.9375,
+ "nominal_damage": 380520.4375,
+ "share_of_nominal_dealt": 0.4801422357559204,
+ "damage_per_hit": 6.100705623626709,
+ "shots": 141653,
+ "hits_per_shot": 0.2114180426817646,
+ "kills": 2341,
+ "games_ended": 361,
+ "kills_per_env_minute": 9.14453125
+}
