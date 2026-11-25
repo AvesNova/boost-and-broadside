@@ -124,6 +124,26 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   2026-11-24): step 1,625 compute + 210 view (no fields 1,287 + 162); observe 102 + 54;
   `reset_done` 265 + 82; scripted `act` for both teams 439 + 109. Counts are the measure; CPU
   times vary by about 25% between runs. The tripwire is a signal to look for bloat, not a limit.
+- Nose cone and collisions (2026-11-26, `docs/rewrite/sections/nose-cone/sanity.py`, the yardstick
+  on both teams, `GameConfig()`, 256 games each, seed 0; before = core eba3e474). Collisions per
+  game are passes inside the two hit radii (before: passes through, no damage); a head-on pass
+  is one inside 100 m with the noses at least 150 deg apart. Game step +82 operations (1,243
+  no fields, 1,581 with fields).
+
+| | 1v1 | 1v1 fields | 4v4 | 4v4 fields |
+|---|---|---|---|---|
+| draws, before / after | 93 / 41 | 43 / 13 | 1 / 3 | 2 / 4 |
+| mean game length, s | 58.2 / 32.1 | 50.2 / 30.5 | 34.1 / 27.1 | 40.5 / 33.6 |
+| deaths in all | 10 / 227 | 85 / 235 | 1,268 / 1,395 | 1,259 / 1,380 |
+| contacts per game | 6.74 / 0.97 | 4.32 / 0.81 | 8.49 / 3.07 | 7.32 / 2.88 |
+| head-on passes per game | 6.74 / 2.08 | 4.43 / 1.32 | 8.62 / 3.63 | 7.77 / 3.16 |
+| contacts per head-on pass | 0.999 / 0.004 | 0.969 / 0.018 | 0.935 / 0.046 | 0.856 / 0.072 |
+| deaths on a collision tick (after) | 24 | 24 | 101 | 112 |
+| real hits within 30 deg of the nose | 84.6% / 0.7% | 48.4% / 2.6% | 30.8% / 3.5% | 32.8% / 3.3% |
+| of those that did damage (after) | 0 | 0 | 8 | 5 |
+
+  The few damaging "inside 30 deg" hits in 4v4 are most likely the bench's target guess (the
+  enemy nearest the bullet's last move), not the rule (the step test: 29 deg does 0).
 - Ship feature scales, fixed for every type, from scripted 4v4 play with the training spawn
   (`.../scoreboard/feature_ranges.py`, 256 environments x 3,000 ticks, 2026-11-23). Raw 1st / 99th
   percentiles in brackets.

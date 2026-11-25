@@ -748,4 +748,16 @@ These replace the flap, profile and stick-level points above where they disagree
   `merge_miss_range` (1.25 sustained radii, 301 m): closing faster than its own speed on a pass
   nearer than the offset, with any ship (enemy or team-mate), the stick aims the offset beside
   that ship's centre; the gun is unchanged. The gun's worth gate reads the new aspect, so it
-  holds fire within 30 deg.
+  holds fire within 30 deg; its kill case needs a hit worth more than 0 (a fix: it fired nose to
+  nose at an empty shield).
+- Checks (2026-11-26): quick tier on lean passed; compile check 5,703 operations on core to
+  5,918 (act +115, advance +100: the collision test and the miss offset), cold 234.3 to 252.3 s,
+  within the baseline (5,721, budget 260 s) and its 10% tolerance; a baseline update to the new
+  count is proposed, not made. Sanity (256 scripted games each, before / after): 1v1 draws 93 /
+  41, mean length 58.2 / 32.1 s, contacts per head-on pass 0.999 / 0.004; 4v4 contacts per game
+  8.49 / 3.07, 4v4 deaths on a collision tick 101 of 1,395; real hits within 30 deg of the nose
+  31-85% / 0.7-3.5%. Table: lean/game/NOTES.md "Numbers".
+- Open (for the author): with both ships turning, the closest approach of the per-tick straight
+  moves can fall in two ticks or none; fast passes (over 100 m/s) were scored twice 1-4 times
+  and missed 1-2 times per 256 4v4 games (nose-cone/progress.md). Scoring on the tick of first
+  touch instead would be once per overlap by construction.

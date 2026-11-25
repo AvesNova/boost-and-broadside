@@ -78,7 +78,8 @@ experiment arm.
 - Brawl, both teams the yardstick, 256 environments x 5,400 ticks (the clock then; it is 1,800 now): 6.45 kills per
   environment-minute, mean speed 0.72 corner speeds, mean store 0.23, firing 10% of ship-ticks,
   874 games ended, mean length 1,314 ticks, 0.03% of ship-ticks beyond the arena radius.
-- Operations, `act` for both teams, E = 256, 5v5: 386 operations (2026-11-25, with the ghost
+- Operations, `act` for both teams, E = 256, 5v5: 459 operations (2026-11-26, with the merge miss
+  offset: +73); 386 (2026-11-25, with the ghost
   roam and the head-on gun gate; 343 before them, 470 before the lead turn, the yo-yos and the
   no-effect mechanisms went)
   (`docs/rewrite/sections/scoreboard/game_ops.py`).
