@@ -17,6 +17,8 @@ the tick.
 
 `--still` also saves those ticks as PNGs. `--vision-range M` sets every type's vision range to M m
 for that render only (in-process card, nothing on disk changes; files `scripted4v4_visionM_seedN.mp4`).
+`--no-fields` plays that render with `field_count = 0` (no fields on the map, so sight is
+range only, plus the reveal on firing or being hit; files `scripted4v4_nofields_..._seedN.mp4`).
 Needs matplotlib's Pillow (the `tools` extra) and
 /usr/bin/ffmpeg. About 5-7 s to simulate and 20-35 s in all per game (laptop CPU, 4 threads).
 
