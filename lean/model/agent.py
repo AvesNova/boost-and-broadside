@@ -174,6 +174,19 @@ def network_step(
     return agent_step(network_forward(network_), network_.bf16, view, carry, offset, generator)
 
 
+def route_rows(mine: Tensor, width: int) -> tuple[Tensor, Tensor]:
+    """Capacity routing's rows: the rows where `mine` (R,) bool, in order, as the first rows
+    of a `width`-row batch. Returns (source (width,) long: the R-row each batch row reads,
+    row 0 for padding rows; rank (R,) long: each of the network's rows' batch row, not
+    meaningful for the others)."""
+    rows = mine.shape[0]
+    rank = mine.long().cumsum(0) - 1  # each of the network's rows: its row in the batch
+    slot = torch.where(mine, rank, width)  # others to a spare row past the batch
+    source = torch.zeros(width + 1, dtype=torch.long, device=mine.device)
+    source = source.scatter(0, slot, torch.arange(rows, device=mine.device))[:-1]
+    return source, rank
+
+
 def routed_step(
     network_: Network,
     mine: Tensor,
@@ -195,12 +208,8 @@ def routed_step(
     and are never read. No host read, and one compiled graph for every network, W and R.
     Returns (action, carry_out), the carry contiguous (a compiled graph is specialised on
     strides, so the carry keeps one layout from tick to tick)."""
-    rows = mine.shape[0]
+    source, rank = route_rows(mine, positions.shape[0])
     width = positions.shape[0]
-    rank = mine.long().cumsum(0) - 1  # each of the network's rows: its row in the batch
-    slot = torch.where(mine, rank, width)  # others to a spare row past the batch
-    source = torch.zeros(width + 1, dtype=torch.long, device=mine.device)
-    source = source.scatter(0, slot, torch.arange(rows, device=mine.device))[:-1]
     view = view_of(source)
     rows_carry = carry.index_select(SEAT_AXIS, source)
     step = network_step(network_, view, rows_carry, offset.index_select(0, source), generator)

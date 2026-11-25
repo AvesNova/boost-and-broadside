@@ -1,3 +1,4 @@
+import dataclasses
 import math
 
 import torch
@@ -159,39 +160,43 @@ def test_each_seat_gets_its_own_networks_step():
         torch.tensor([0, 1, SCRIPTED, 1]),
         torch.tensor([1, SCRIPTED, 0, 1]),
     )
-    carry = torch.randn_like(policies[0].initial_carry(2 * envs, ships, "cpu"))
+    # Environment 1's game starts at this tick (its seats' carry is zeroed), the others run.
+    state = dataclasses.replace(state, tick=torch.tensor([5, 0, 5, 5]))
+    carry = torch.randn_like(policies[0].initial_carry(2 * envs + 1, ships, "cpu"))
+    before = carry.clone()
+    seat_action = torch.full((2 * envs + 1, ships, 3), 7)
     slots = runner.Slots(
         torch.tensor([0, 1, 2, -1]),  # the last slot idle
         scripted.fresh_memory(envs, ships, None, "cpu"),
         carry,
+        seat_action,
         torch.randn(2 * envs, 2),
         torch.zeros(envs, 2, len(runner.style_counters.SUMS)),
     )
     table = torch.tensor([vector(scripted.ScriptedConfig())])
     decision = runner.decide(GAME, state, slots, queue, table, True)
-    seat_action, carry_out = decision.seat_action, decision.carry_out
     for index, policy in enumerate(policies):
-        seat_action, carry_out = runner.seat_moves(
+        runner.seat_moves(
             as_network(policy, False), torch.tensor(index), torch.arange(3), decision, carry,
-            slots.offset, seat_action, carry_out,
+            slots.offset, seat_action,
         )  # fmt: skip
     expected_net = [0, 1, SCRIPTED, SCRIPTED, 1, SCRIPTED, 0, SCRIPTED]
     assert decision.seat_net.tolist() == expected_net
     from lean.model.agent import seat_view
 
     for seat, net in enumerate(expected_net):
-        if net == SCRIPTED:
-            assert torch.equal(carry_out[:, seat], carry[:, seat])
-            assert (seat_action[seat] == 0).all()
+        if net == SCRIPTED:  # never read nor written
+            assert torch.equal(carry[:, seat], before[:, seat])
+            assert (seat_action[seat] == 7).all()
             continue
         view = seat_view(
             decision.views, decision.seat_environment[seat : seat + 1],
             decision.seat_team[seat : seat + 1],
         )  # fmt: skip
-        _, _, own = policies[net].step(
-            view, carry[:, seat : seat + 1], slots.offset[seat : seat + 1]
-        )
-        assert torch.allclose(carry_out[:, seat], own[:, 0], atol=1e-4)
+        old = before[:, seat : seat + 1] * (0.0 if seat % envs == 1 else 1.0)
+        _, _, own = policies[net].step(view, old, slots.offset[seat : seat + 1])
+        assert torch.allclose(carry[:, seat], own[:, 0], atol=1e-4)
+        assert ((seat_action[seat] >= 0) & (seat_action[seat] < 7)).all()
 
 
 def test_one_job_is_one_runner_call_and_keeps_the_stored_orientation(tmp_path, monkeypatch):
