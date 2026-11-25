@@ -168,7 +168,8 @@ def next_state_target(
     speed, energy: the plain change of the proper speed and of the store.
     shield: the change less the scheduled recharge (StepOut.shield_restored, which the game
     gives only on an unhurt quiet tick): minus the damage the shield took, 0 on a tick
-    without damage.
+    without damage. A recharging tick is set to 0 outright: subtracting the recharge back
+    out of (shield + recharge) - shield leaves float32 residues of up to a few 1e-6.
     Rows that are dead or absent in either state, and ticks where the episode ended, must
     be masked by the caller.
     """
@@ -187,7 +188,9 @@ def next_state_target(
         "heading": turned - state.nose_rate * h,
         "speed": next_state.speed - state.speed,
         "energy": next_state.energy - state.energy,
-        "shield": next_state.shield - state.shield - step_out.shield_restored,
+        "shield": torch.where(
+            step_out.shield_restored > 0.0, 0.0, next_state.shield - state.shield
+        ),
     }
     return torch.stack([columns[column.name] for column in config.next_state_columns], -1).float()
 
