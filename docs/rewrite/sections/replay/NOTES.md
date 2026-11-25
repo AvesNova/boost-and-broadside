@@ -15,7 +15,9 @@ the tick.
         docs/rewrite/sections/replay/replay.py --seeds 0 1 2 \
         --out ../data/replays-2026-11-25 [--still 150 450 ...]
 
-`--still` also saves those ticks as PNGs. Needs matplotlib's Pillow (the `tools` extra) and
+`--still` also saves those ticks as PNGs. `--vision-range M` sets every type's vision range to M m
+for that render only (in-process card, nothing on disk changes; files `scripted4v4_visionM_seedN.mp4`).
+Needs matplotlib's Pillow (the `tools` extra) and
 /usr/bin/ffmpeg. About 5-7 s to simulate and 20-35 s in all per game (laptop CPU, 4 threads).
 
 ## What is drawn
