@@ -108,34 +108,79 @@ round shares the GPU.
 
 ## What compiles
 
-One graph per seat layout (scripted vs scripted, a network in seat A, networks in both). No new
-graph for: new scripted vectors, another network of the same architecture, team sizes 1 to 6 in
-one queue, E and the queue length, a new arena radius, spawn rule or clock. Fog off compiles a
-new graph. Not measured: field count, lineup, another architecture.
+Without networks one graph (`tick`); with networks three (`decide` for a call's first tick,
+`seat_moves`, `advance_decide`), whatever the pairings: any number of networks of one
+architecture (each is new data for `seat_moves`) and scripted vectors in one queue. Team
+sizes are dynamic (lean.contract.compile_dynamic, duck sizing off): 4v4, 8v8, 16v16, 32v32
+and 4 against 8, one after another in one process and all five in one queue, compiled once
+with no recompile (TORCH_LOGS=recompiles silent, Dynamo's graph count unchanged; 2026-11-25).
+No new graph either for E, the queue length, W, a new arena radius, spawn rule or clock. Fog
+off compiles a new graph. Another architecture compiles `seat_moves` again (not measured).
+A queue's games are padded to its largest ship count, so `ensure` splits calls by ship
+bucket (a power of two); the graph is the same.
 
-## Numbers (2026-11-24, laptop RTX 4070, performance profile, core game 4v4, then a 5,400-tick clock)
+## Numbers
 
-| | games/s | game ticks/s |
-|---|---|---|
-| scripted vs scripted, E 4,096, 16 games per slot | 810 | 1.13M |
-| scripted vs scripted, E 4,096, 4 games per slot | 539 | 0.75M |
-| untrained network vs scripted, E 4,096, 16 games per slot, compile included | 107 | 87k |
-| the same, steady | | 122k env ticks/s |
+Laptop RTX 4070 (8 GB), performance profile, the core game (5,400-tick clock), untrained
+network (initial weights) in seat A against the yardstick, or the yardstick against itself;
+2026-11-25, tree a37d37a9 (core 9d8b2300). games/s over a call of 30 s of starts and its
+drain; env ticks/s = E x ticks while starting; memory = peak while playing.
+docs/rewrite/sections/eval-scale/sizes/.
 
-The style counters' cost (2026-11-24, same laptop and profile, scripted vs scripted 4v4, E
-4,096, 65,536 games, compile excluded; one clean pair only, later runs overlapped another GPU
-job): before 793 and 782 games/s, after 775 games/s, about 1-2% slower.
+| sizes | network, E 2,048: games/s | env ticks/s | peak GiB (alloc / reserved) | scripted, E 4,096: games/s | env ticks/s | peak GiB |
+|---|---|---|---|---|---|---|
+| 4v4 | 146.6 | 115,751 | 0.46 / 0.57 | 875.0 | 1,158,307 | 0.19 / 0.22 |
+| 8v8 | 75.1 | 63,092 | 0.84 / 1.01 | 311.8 | 523,412 | 0.43 / 0.56 |
+| 16v16 | 33.8 | 31,297 | 1.59 / 1.80 | 95.6 | 210,935 | 1.14 / 1.76 |
+| 32v32 | 16.5 | 14,874 | 3.09 / 4.52 | 39.4 | 72,034 | 3.62 / 6.53 |
+| 4 against 8 | 138.7 | 81,633 | 0.82 | 738.8 | 704,355 | 0.63 |
+| all five in one queue | 16.8 | 14,880 | 3.11 | 31.9 | 72,087 | 3.67 |
 
-The drain is unbiased: the yardstick against a variant with fight_speed 1.3 scored 0.4656 +- 0.0019 over a whole queue
-of 65,536 games and 0.4654 +- 0.0034 over the 22,043 started before a 20 s cutoff. A drain lasts
-up to the longest game, so use at least 16 games per slot. Compile: the scripted tick 66 s cold,
-23 s warm; the network tick about 110 s cold. `functional_call` costs 9% against calling the
-policy directly.
+Compile (first call, which also plays a 64-game warm-up): network 127.0 s cold, 57.2 s warm;
+scripted 58.2 s cold. A later size's first call: 1.5 to 4.8 s (no compile).
+
+Largest E at 32v32 (a 300-tick clock; memory does not depend on the clock): the network fits
+at 4,096 (6.16 GiB allocated, 7.23 reserved) and not at 5,120; 3,072 took 4.54 allocated.
+About 1.6 GiB per 1,024 environments, so roughly 14,000 environments on a 24 GB GPU and
+50,000 on 80 GB (extrapolated, not measured). Speed does not grow past E 2,048 here (14,868
+and 14,788 env ticks/s at 3,072 and 4,096): the laptop is saturated, so a rented GPU's gain is
+its throughput, not E. Scripted 32v32 fits at 6,144 (5.2 allocated) and not at 8,192 (tried
+after the 6,144 call in the same process). Per size, network cost grows about as the ships
+(env ticks/s halve per doubling).
+
+Routing against pairing-by-pairing (docs/rewrite/sections/eval-scale/ladder/): a 4v4 ladder of
+7 agents (3 untrained networks, the yardstick and 3 variants), every pair, `ensure` in one
+job; the old tree c85503d9 (one call per network pairing group, 7 calls) against the routed
+tree 7f05d4cf (all network games in one call, scripted-only in another), same game code:
+
+| games per pairing (total) | old, its defaults | old, minimum E 2,048 | routed, minimum E 256 | routed, minimum E 2,048 |
+|---|---|---|---|---|
+| 128 (2,688) | 41.3 s | 38.5 s | 44.0 s | 21.6 s |
+| 512 (10,752) | 113.0 s | 131.0 s | 101.9 s | 78.8 s |
+| 2,048 (43,008) | 289.7 s | | 300.6 s | |
+
+So 1.78x at 128 games per pairing and 1.43x at 512 against the old tree's best, parity at
+2,048 (where each old call already fills the GPU). Ratings agree within their errors in each
+row (e.g. 2,048: fight_speed 0.8 at 935.0 and 932.3 +- 5.5, turn 0.003 at 1006.1 and 1004.7).
+Per tick, one pairing (E 2,688, 4v4): network against scripted 125,905 env ticks/s old,
+116,322 routed; network against network 66,712 and 62,255: the routing's gathers and the
+split graphs cost 7-8%. The first routed version (a carry for all 2E seats, cloned per tick,
+a `where` per network) ran 95,392 and lost the ladder (407.3 s).
+
+Earlier numbers (2026-11-24, before the routing, same laptop): scripted 4v4 at E 4,096 and 16
+games per slot 810 games/s (4 games per slot 539); the network tick about 110 s cold; the
+style counters cost about 1-2%; `functional_call` 9% against calling the policy directly.
+
+The drain is unbiased: the yardstick against a variant with fight_speed 1.3 scored 0.4656 +-
+0.0019 over a whole queue of 65,536 games and 0.4654 +- 0.0034 over the 22,043 started before
+a 20 s cutoff (2026-11-24). A drain lasts up to the longest game.
 
 ## Tests
 
 `lean/eval/tests`: the rolling queue, the drain, store reuse and identity, Bradley-Terry and
-allocation, the crossover walk.
+allocation, the crossover walk; many networks and scripted agents in one queue, each seat
+getting its own network's step (the routing), one call per job and ship bucket, unequal
+sizes read in both orientations (counts, Elo, styles).
 
 ## Open
 

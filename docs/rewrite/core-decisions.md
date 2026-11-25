@@ -524,6 +524,19 @@ League (section 8)
   of their action distributions on a fixed set of stored states (author 2026-11-24), beside
   per-game style counters; skill alone does not decide which parameters to freeze.
 
+- **2026-11-25 (branch eval-scale-routing, for the author): evaluation to 32v32, the league's
+  routing in evaluation.** The runner routes each seat to its agent with the training league's
+  routing (`lean.model.agent.route_rows`, shared with `routed_step`), so one call holds every
+  network pairing of a job (networks of one architecture and scripted vectors); writes go in
+  place to the network's own seats. Scripted-only games keep their own call, calls split by
+  ship bucket (a queue pads to its largest game), and `minimum_envs` 2,048 lets a short job
+  fill the GPU. Against the old pairing-by-pairing play on a 7-agent 4v4 ladder: 1.78x at 128
+  games per pairing, 1.43x at 512, parity at 2,048; ratings agree within errors. Sizes 4v4 to
+  32v32 and unequal sizes compile once (3 graphs with networks, 1 without, no recompile).
+  32v32 on the laptop: the network fits E 4,096 (6.2 GiB) and is saturated from 2,048 (about
+  15k env ticks/s, 16.5 games/s untrained against the yardstick). Unequal sizes are now read
+  in both orientations (counts, Elo, styles). Numbers: lean/eval/NOTES.md.
+
 ## How much to measure (author 2026-11-24)
 
 - Every merge: the quick test suite.
