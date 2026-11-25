@@ -19,7 +19,7 @@ from lean.contract import (
     whole_state,
 )
 from lean.learn.config import LearnConfig
-from lean.learn.returns import value_centres
+from lean.learn.returns import value_centres, value_knees
 from lean.learn.rewards import Ledger, blank_ledger, clear_ledger, reward_step, tick_events
 from lean.model import draw_position_offset, next_state_target
 from lean.model.agent import (
@@ -577,7 +577,8 @@ def act(
     log_probability = torch.log_softmax(step.logits, -1).gather(-1, step.joint[..., None])
     value_logits = step.value_logits.float()
     centres = value_centres(config, value_logits.shape[-1], value_logits.device)
-    value = decode_value(value_logits, centres) * observation.own[..., None]
+    knee = value_knees(config, value_logits.device)
+    value = decode_value(value_logits, centres, knee) * observation.own[..., None]
     move = scripted_actions(
         opponent.scripted_config, state, carry.persona, carry.scripted_memory, generator
     )

@@ -129,7 +129,7 @@ def main() -> None:
         values = targets[:, column]
         q = quantiles(values)
         print(f"| {spec.name} | {values.numel()} | " + " | ".join(f"{v:.4g}" for v in q) + " |")
-        if not spec.symlog:
+        if spec.name != "shield":
             half = max(abs(q[1]), abs(q[5]))
             outside = float((values.abs() > half).float().mean())
             print(

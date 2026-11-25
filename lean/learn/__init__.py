@@ -8,6 +8,7 @@ from lean.learn.returns import (
     generalised_advantages,
     normalise_advantages,
     value_centres,
+    value_knees,
 )
 from lean.learn.rewards import reward_step, tick_events
 from lean.learn.rollout import (
@@ -49,4 +50,5 @@ __all__ = [
     "tick_events",
     "update",
     "value_centres",
+    "value_knees",
 ]

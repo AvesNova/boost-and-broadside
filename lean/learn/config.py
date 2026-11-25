@@ -103,7 +103,8 @@ class LearnConfig:
 
     # Categorical critic: the measured range of each level's returns, in return units
     # (LEVEL_NAMES order); the support adds the buffer columns beyond both ends
-    # (lean.model.value.buffered_centres). The learner owns the support.
+    # (lean.model.value.buffered_centres), 63 bins uniform in each level's bin space
+    # (lean.model.value.symlog with value_knee; 0 linear). The learner owns the support.
     # Measured 2026-11-25 (scripted against scripted, the training game, 4v4, 35.5M living
     # ship-ticks of finished episodes; docs/rewrite/sections/scoreboard/target_ranges.py):
     # extremes damage -3.9 to 5.4, kill_death -6.5 to 7.5, outcome +-10 (its bound); the
@@ -112,6 +113,11 @@ class LearnConfig:
     # pays them yet.
     value_low: tuple[float, ...] = (-5.4, -7.5, -1.0, -1.0, -10.0)
     value_high: tuple[float, ...] = (5.4, 7.5, 1.0, 1.0, 10.0)
+    # Symlog knees by the event rule (author 2026-11-25): one reward event's size x e^-3 (the
+    # event three discount horizons ahead). A hit: 21 points / damage_unit x 2.74 = 0.575
+    # damage units, so 0.0286; a kill or a death: 2.83 units, so 0.141. The objective
+    # placeholders and the outcome (bimodal at its bounds) stay linear.
+    value_knee: tuple[float, ...] = (0.0286, 0.141, 0.0, 0.0, 0.0)
     value_sigma_ratio: float = 0.75  # Gaussian width of a target, in bin widths
     # Range monitoring (per level, per epoch's targets): a warning when more than this share
     # of the valued targets lies beyond the outermost centres (clamped), and when the

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
+from lean import contract
 from lean.contract import FIELD_FEATURES, GLOBAL_FEATURES, LEVELS, SHIP_FEATURES
 from lean.model import ModelConfig, Policy, decode_value, hl_gauss_targets, value_bin_centres
 from lean.model.policy import (
@@ -14,10 +15,12 @@ from lean.model.policy import (
     next_state_centres,
     next_state_cross_entropy,
     next_state_distribution,
+    next_state_knees,
     next_state_target,
 )
 from lean.model.position import ColourCode, FourierCode, GridCellCode, Rotary, make_position_code
 from lean.model.temporal import Temporal, doubling_scan
+from lean.model.value import symlog
 
 ARENA_RADIUS = 4200.0  # lean.game.GameConfig's
 
@@ -727,11 +730,12 @@ def test_next_state_targets_per_column_on_a_hand_made_pair():
         [[0.123, 0.15, 0.01, 1.5, -100.0, 0.0], [0.123, 0.15, 0.01, 1.5, -100.0, -21.0]]
     )
     assert torch.allclose(target, expected, atol=1e-3)
-    # By hand: linear bins 3 + (value - low) / (high - low) * 63 (3 buffer columns below the
-    # measured low), rounded: along 45.0, across 42.4, heading 41.8, speed 51.4, energy 29.6;
-    # the shield in symlog space over [-ln 91, 0]: 0 -> 66.0, -21 -> 22.8 (23).
+    # By hand: bins 3 + (s(value) - s(low)) / (s(high) - s(low)) * 56 (3 buffer columns below
+    # the measured low), s(x) = sign(x) knee ln(1 + |x| / knee), rounded: along 47.6, across
+    # 43.7, heading 50.0, speed 49.5, energy 18.4; the shield (knee 1, over [-ln 91, 0]):
+    # 0 -> 59, -21 -> 20.6 (21).
     bins = next_state_distribution(config, target).argmax(-1)
-    assert bins.tolist() == [[45, 42, 42, 51, 30, 66], [45, 42, 42, 51, 30, 23]]
+    assert bins.tolist() == [[48, 44, 50, 50, 18, 59], [48, 44, 50, 50, 18, 21]]
 
 
 def test_next_state_shield_is_exactly_zero_on_a_recharging_tick():
@@ -774,32 +778,69 @@ def test_next_state_loss_is_in_nats_per_column():
     assert next_state_centres(config).shape == (6, config.bins)
 
 
-def test_supports_have_three_buffer_columns_of_the_measured_width():
-    """Catches a support without the buffer rule (author 2026-11-24): every value support and
-    next-state column spans its measured range with 64 columns (the outermost measured
-    centres at the measured ends) and 3 more columns of that width beyond each end, the
-    shield's in symlog space."""
-    from lean.learn import LearnConfig, value_centres
-    from lean.model.value import BUFFER_COLUMNS, MEASURED_COLUMNS
+def all_supports():
+    """Every categorical support: (low, high, knee) in target units, (HEADS,) each, and the
+    bin-space centres (HEADS, BINS): the critic's levels, then the next-state columns."""
+    from lean.learn import LearnConfig, value_centres, value_knees
 
-    assert BUFFER_COLUMNS == 3
-    config = ModelConfig()
-    assert config.bins == MEASURED_COLUMNS + 2 * BUFFER_COLUMNS == 70
-    learn = LearnConfig()
+    config, learn = ModelConfig(), LearnConfig()
     columns = config.next_state_columns
-    low = torch.tensor(
-        [*learn.value_low]
-        + [math.copysign(math.log1p(abs(c.low)), c.low) if c.symlog else c.low for c in columns]
-    )
-    high = torch.tensor(
-        [*learn.value_high]
-        + [math.copysign(math.log1p(abs(c.high)), c.high) if c.symlog else c.high for c in columns]
-    )
+    low = torch.tensor([*learn.value_low] + [c.low for c in columns])
+    high = torch.tensor([*learn.value_high] + [c.high for c in columns])
+    knee = torch.cat([value_knees(learn), next_state_knees(config)])
     centres = torch.cat([value_centres(learn, config.bins), next_state_centres(config)])
-    width = (high - low) / (MEASURED_COLUMNS - 1)
+    return low, high, knee, centres
+
+
+def test_supports_have_63_bins_and_three_buffer_columns_of_the_measured_width():
+    """Catches a support without the layout rule (author 2026-11-25): every value level and
+    next-state column has 63 bins, 57 uniform in bin space across its measured range (the
+    outermost measured centres at the measured ends) and 3 more of that width beyond each
+    end; a symmetric range has 0 on a bin centre."""
+    from lean.model.value import BUFFER_COLUMNS, COLUMNS, MEASURED_COLUMNS
+
+    assert (BUFFER_COLUMNS, MEASURED_COLUMNS, COLUMNS) == (3, 57, 63)
+    assert ModelConfig().bins == 63
+    low, high, knee, centres = all_supports()
+    assert centres.shape == (low.numel(), 63)
+    s_low, s_high = symlog(low, knee), symlog(high, knee)
+    width = (s_high - s_low) / (MEASURED_COLUMNS - 1)
     steps = centres.diff(dim=-1)
     assert torch.allclose(steps, width[:, None].expand_as(steps), rtol=1e-4)
-    assert torch.allclose(centres[:, BUFFER_COLUMNS], low, atol=1e-5)
-    assert torch.allclose(centres[:, -1 - BUFFER_COLUMNS], high, atol=1e-5)
-    assert torch.allclose(centres[:, 0], low - BUFFER_COLUMNS * width, atol=1e-5)
-    assert torch.allclose(centres[:, -1], high + BUFFER_COLUMNS * width, atol=1e-5)
+    assert torch.allclose(centres[:, BUFFER_COLUMNS], s_low, atol=1e-5)
+    assert torch.allclose(centres[:, -1 - BUFFER_COLUMNS], s_high, atol=1e-5)
+    assert torch.allclose(centres[:, 0], s_low - BUFFER_COLUMNS * width, atol=1e-5)
+    assert torch.allclose(centres[:, -1], s_high + BUFFER_COLUMNS * width, atol=1e-5)
+    symmetric = low == -high
+    assert symmetric.sum() == low.numel() - 1  # all but the shield
+    assert (centres[symmetric, 31].abs() < 1e-6 * width[symmetric]).all()
+
+
+def test_symlog_round_trips_and_is_linear_at_knee_zero():
+    """Catches a symlog whose inverse is not symexp, or a linear support transformed."""
+    from lean.model.value import symexp
+
+    _, _, knee, _ = all_supports()
+    scales = torch.tensor([1e-6, 1e-3, 1.0, 1e3])
+    x = (torch.linspace(-1.0, 1.0, 201)[:, None] * scales).reshape(-1, 1) * torch.ones_like(knee)
+    assert torch.allclose(symexp(symlog(x, knee), knee), x, rtol=1e-4, atol=1e-9)
+    assert torch.equal(symlog(x, 0.0), x)
+    assert torch.allclose(symlog(torch.tensor(3.0), 1.0), contract.symlog(torch.tensor(3.0)))
+
+
+def test_hl_gauss_decodes_to_the_target_within_a_bin_on_every_support():
+    """Catches a target or decode in the wrong space: on every head's support the HL-Gauss
+    target of a value inside the measured range decodes (centres mapped back to target
+    units) to that value within the width of the bin it falls in."""
+    from lean.model.value import symexp
+
+    low, high, knee, centres = all_supports()
+    fraction = torch.rand(2000, low.numel(), generator=torch.Generator().manual_seed(0))
+    values = low + fraction * (high - low)
+    targets = hl_gauss_targets(values, centres, knee)
+    assert torch.allclose(targets.sum(-1), torch.ones_like(values), atol=1e-5)
+    decoded = decode_value(targets.clamp_min(1e-30).log(), centres, knee)
+    s_width = centres[:, 1] - centres[:, 0]
+    s = symlog(values, knee)
+    bin_width = symexp(s + 0.5 * s_width, knee) - symexp(s - 0.5 * s_width, knee)
+    assert ((decoded - values).abs() < bin_width).all()

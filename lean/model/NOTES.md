@@ -17,7 +17,8 @@ Reasons: `docs/rewrite/model-audit.md`, `docs/rewrite/literature-model-choices.m
   action's sample; returns an `AgentStep`) for training's live policy (`Policy.step`) and every
   `Network` (`network_step`), `sample_joint`, `seat_view`, `precision`, `reset_carry`.
 - `temporal.py` (`Temporal`, `doubling_scan`), `position.py` (position codes, `Rotary`),
-  `value.py` (`hl_gauss_targets`, `decode_value`, `value_bin_centres`).
+  `value.py` (`symlog`, `symexp`, `buffered_centres`, `hl_gauss_targets`, `decode_value`,
+  `value_bin_centres`).
 - `next_state_target(config, state, next_state, step_out, tick_length)` makes the next-state
   head's targets of one game step (collect records them); `next_state_cross_entropy` is the loss.
 
@@ -61,22 +62,30 @@ The speed of the whole loop is in `lean/learn/NOTES.md`.
 
 ## Next-state head
 
-70 bins per column, HL-Gauss cross-entropy (sigma 0.75 bin widths), nats per column: ln 70 =
-4.248 at a uniform prediction. Every categorical support (these columns and the critic's
-levels) spans its measured range with 64 columns, the outermost centres at the measured ends,
-then `BUFFER_COLUMNS` = 3 more of the same width beyond each end (`lean.model.value`,
-`buffered_centres`; the shield's in symlog space). Ranges from 42.7M rows (scripted yardstick
-against itself, 4v4, training game: spawn, fields, fog, the 1,800-tick clock, 2026-11-25;
-`docs/rewrite/sections/scoreboard/target_ranges.py`); linear ranges are symmetric, just
-outside the 0.1st and 99.9th percentiles.
+63 bins per column, HL-Gauss cross-entropy (sigma 0.75 bin widths in bin space), nats per
+column: ln 63 = 4.143 at a uniform prediction. Every categorical support (these columns and the
+critic's levels, author 2026-11-25) has 63 bins, uniform in its bin space s(x) = sign(x) knee
+ln(1 + |x| / knee) (`lean.model.value.symlog`; knee 0 = linear): 57 across the measured range,
+the outermost centres at the measured ends, then `BUFFER_COLUMNS` = 3 more of the same width
+beyond each end (`buffered_centres`). A symmetric range has 0 on the middle centre; there is no
+zero class. HL-Gauss targets are the Gaussian over the bins in bin space; the decode is the
+expectation over the centres mapped back to target units (`decode_value`). Ranges from 42.7M
+rows (scripted yardstick against itself, 4v4, training game: spawn, fields, fog, the
+1,800-tick clock, 2026-11-25; `docs/rewrite/sections/scoreboard/target_ranges.py`): each
+symmetric range is +-the larger measured extreme (the table below); knees from the flat-core
+data rule (`docs/rewrite/sections/scoreboard/symlog-preview.md`). The shield keeps -90 to 0 and
+knee 1 (= `contract.symlog`) pending its bug check.
 
-| Column | Target | Bins | Measured range | Outermost centres |
-|---|---|---|---|---|
-| along, across (m) | move minus world velocity x tick, in the nose frame | linear | +-0.37, +-0.6 | +-0.405, +-0.657 |
-| heading (rad) | wrapped heading change minus nose rate x tick | linear | +-0.043 | +-0.047 |
-| speed (m/s) | change of proper speed | linear | +-2.8 | +-3.07 |
-| energy (store) | change | linear | +-640 | +-701 |
-| shield (points) | change minus the recharge given | symlog | -90 to 0 | -112 to 0.24 |
+Bin widths in target units: innermost (the narrowest) and outermost (the widest, a buffer column).
+
+| Column | Target | Measured range | Knee | Innermost, outermost bin | Outermost centres |
+|---|---|---|---|---|---|
+| along (m) | move minus world velocity x tick, in the nose frame | +-1.89 | 2.4e-3 | 6.1e-4, 0.92 | +-3.87 |
+| across (m) | the same, across the nose | +-1.82 | 0.0244 | 3.9e-3, 0.45 | +-2.91 |
+| heading (rad) | wrapped heading change minus nose rate x tick | +-0.100 | 7.7e-5 | 2.1e-5, 0.055 | +-0.216 |
+| speed (m/s) | change of proper speed | +-5.39 | 0.156 | 0.0205, 1.04 | +-7.98 |
+| energy (store) | change | +-976 | 21.8 | 3.08, 205 | +-1,481 |
+| shield (points) | change minus the recharge given | -90 to 0 | 1 | 0.082, 9.34 | -115 to 0.27 |
 
 The hit head's shares, from 42.5M bullets that ended (ghosts included): 93.74% missed, 5.47%
 an enemy, 0.80% a team-mate (`hit_class_frequencies`).
@@ -122,16 +131,18 @@ Hit shares (42.5M bullets; 2026-11-23: 5.52M): missed 94.57% -> 93.74%, an enemy
 5.47%, a team-mate 0.99% -> 0.80%.
 
 Columns: 64 -> 70 per value level and per next-state column (64 across the measured range, 3
-buffer columns at each end).
+buffer columns at each end); 70 -> 63 on 2026-11-25 (57 + 3 + 3, symlog, ranges the extremes;
+above). Parameters 2,172,527 -> 2,152,738.
 
 ## Tests
 
-`tests/test_model.py` (28): `sequence` equals repeated steps (resets, masks, fields, rotated
+`tests/test_model.py` (31): `sequence` equals repeated steps (resets, masks, fields, rotated
 values on and off); a reset forgets state; padding and permutation leave real ships unchanged;
 fields are an unordered memory; attention reads only relative positions; the rotary band ladder
 and the coarsest band's recovery of separations to 0.1 m; one set of weights at any N and F;
 initialisation and the heads at their starting values; a state from zero takes its first input
-unscaled; next-state targets, bins and loss; the position codes; HL-Gauss targets; backward
+unscaled; next-state targets, bins and loss; the position codes; HL-Gauss targets; every support's 63-bin layout (0 a centre of a
+symmetric range), the symlog round trip and HL-Gauss decoding within a bin on every support; backward
 reaches every parameter and no masked row; Adam fits a tiny batch; bf16 is close to float32;
 compiled `step` matches eager; the model reads fog.
 

@@ -32,13 +32,13 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from lean import contract, game, scripted
+from lean import game, scripted
 from lean.contract import LEVEL_NAMES
 from lean.learn.config import LearnConfig
 from lean.learn.rewards import blank_ledger, clear_ledger, reward_step, tick_events
 from lean.learn.rollout import draw_team_sizes, scripted_actions, teacher_joint
 from lean.model.policy import ModelConfig, next_state_target
-from lean.model.value import BUFFER_COLUMNS, buffered_centres
+from lean.model.value import BUFFER_COLUMNS, buffered_centres, symlog
 
 FINE_BINS = 2000
 PERCENTILES = (0.001, 0.01, 0.05, 0.5, 0.95, 0.99, 0.999)
@@ -223,18 +223,18 @@ def collect(out: Path, envs: int, ticks: int) -> None:
         }
         arrays: dict = {}
 
-        def add(key: str, values: torch.Tensor, family: str, support=None, space=None):
+        def add(key: str, values: torch.Tensor, family: str, support=None, knee=0.0):
             entry = {"family": family, **summary(values)}
             arrays[f"hist_{key}"] = fine_histogram(values, entry["min"], entry["max"])
             arrays[f"range_{key}"] = np.array([entry["min"], entry["max"]])
             if support is not None:
                 low, high = support
-                centres = buffered_centres(low, high).to(values.device)
-                transformed = values.float() if space is None else space(values.float())
+                centres = buffered_centres(low, high, knee).to(values.device)
+                transformed = symlog(values.float(), knee)
                 entry["support"] = {
                     "measured_low": low,
                     "measured_high": high,
-                    "space": "linear" if space is None else "symlog",
+                    "space": "linear" if not knee else f"symlog knee {knee:g}",
                     "outermost_centres": [float(centres[0]), float(centres[-1])],
                     "column_width": float(centres[1] - centres[0]),
                     "occupancy": occupancy(transformed, centres),
@@ -248,7 +248,7 @@ def collect(out: Path, envs: int, ticks: int) -> None:
                 continue
             values = value_rows[:, level].contiguous()
             low, high = learn.value_low[level], learn.value_high[level]
-            add(f"value_{name}", values, "value", (low, high))
+            add(f"value_{name}", values, "value", (low, high), learn.value_knee[level])
             entry = stats["targets"][f"value_{name}"]
             knees = {f"{k:g}": k for k in FIXED_KNEES}
             for share, quantile in entry["abs_percentiles"].items():
@@ -278,13 +278,8 @@ def collect(out: Path, envs: int, ticks: int) -> None:
                 f"next_{spec.name}",
                 values,
                 "next_state",
-                (spec.low, spec.high)
-                if not spec.symlog
-                else (
-                    float(contract.symlog(torch.tensor(spec.low))),
-                    float(contract.symlog(torch.tensor(spec.high))),
-                ),
-                contract.symlog if spec.symlog else None,
+                (spec.low, spec.high),
+                spec.knee,
             )
         add("teacher_entropy", teacher_entropy, "policy")
         total = int(outcomes.sum())

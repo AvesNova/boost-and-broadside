@@ -344,7 +344,7 @@ def analyse(data: Path, stats_path: Path) -> None:
         else:
             column = columns[name]
             low, high = column.low, column.high
-            current_symlog_knee = 1.0 if column.symlog else None
+            current_symlog_knee = 1.0 if column.name == "shield" else None
         zero = float(np.mean(values == 0))
         entry = {
             "rows": int(values.size),
