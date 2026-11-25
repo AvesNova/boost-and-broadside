@@ -21,7 +21,7 @@ import torch
 from PIL import Image, ImageDraw, ImageFont
 
 from lean import game, scripted
-from lean.game import core
+from lean.game import card, core, tuning
 from lean.scripted.opponent import TACTICS, explain
 
 SIZE = 1080  # output frame, square
@@ -454,6 +454,15 @@ def encode(record: dict, title: str, path: Path) -> None:
         raise RuntimeError(f"ffmpeg failed for {path}")
 
 
+def set_vision_range(metres: float) -> None:
+    """Every type's vision range set to `metres` in this process's card (card.CARD, derived
+    or read from the cache first), before the first deal builds the ship card. Nothing on disk
+    changes."""
+    rows = tuning.load_card()
+    scale = metres / card.VISION_RANGE
+    card.CARD = {**rows, "vision_range_scale": tuple(scale for _ in rows["vision_range_scale"])}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
@@ -465,10 +474,21 @@ def main() -> None:
         default=[],
         help="also save these frames (ticks) as PNG, for checking",
     )
+    parser.add_argument(
+        "--vision-range",
+        type=float,
+        default=None,
+        help="vision range in metres for every type, this render only (default: the card's)",
+    )
     arguments = parser.parse_args()
     torch.set_num_threads(4)
     arguments.out.mkdir(parents=True, exist_ok=True)
     config = core.GameConfig()  # the core game: map, fields, fog, 1,800-tick clock, P-51D
+    stem = "scripted4v4"
+    if arguments.vision_range is not None:
+        set_vision_range(arguments.vision_range)
+        stem += f"_vision{arguments.vision_range:g}"
+    print(f"vision range: {core.ship_card(config).uniform['vision_range']:.1f} m", flush=True)
     for number, seed in enumerate(arguments.seeds, 1):
         started = time.perf_counter()
         record = simulate(config, seed)
@@ -483,7 +503,7 @@ def main() -> None:
         for t in arguments.still:
             if t < len(record["x"]):
                 painter.frame(t).save(arguments.out / f"seed{seed}_t{t:04d}.png")
-        path = arguments.out / f"scripted4v4_seed{seed}.mp4"
+        path = arguments.out / f"{stem}_seed{seed}.mp4"
         encode(record, title, path)
         print(f"  wrote {path} in {time.perf_counter() - started:.0f} s", flush=True)
 
