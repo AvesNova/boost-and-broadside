@@ -128,3 +128,9 @@ So in these physics the store breaks the stalemate only as a one-off spend in a 
 fight, and it buys position, not a kill within the minute. A net-zero dive/climb cycle cannot
 be flown at full stick, and paying for it with turn is fatal against a ship that keeps full
 stick.
+
+The same experiment with the climb and dive independent of the turn's lift (an experiment-only
+switch): [decoupled.md](decoupled.md).
+
+The same experiment with the trade at a 45 deg flight path (0.707 g) in both physics:
+[exchange45.md](exchange45.md).
