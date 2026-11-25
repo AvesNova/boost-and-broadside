@@ -774,3 +774,21 @@ These replace the flap, profile and stick-level points above where they disagree
   moves can fall in two ticks or none; fast passes (over 100 m/s) were scored twice 1-4 times
   and missed 1-2 times per 256 4v4 games (nose-cone/progress.md). Scoring on the tick of first
   touch instead would be once per overlap by construction.
+
+## Tracking circle (author 2026-11-26, branch tracking-circle)
+
+- **Seen ships are tracked in a circle.** An enemy visible on the tick before, by any means
+  (sight, its shot, a hit, a collision), stays visible while some living observer of the other
+  team has it within the circle of the observer's forward reach p / (1 - e) with a clear line
+  (field cores block it exactly as they block sight); when no observer holds it and nothing
+  reveals it, it is hidden and needs the ellipse or a reveal again. No new state: tracked =
+  ticks since seen 0 and known (`core.tracked_by_enemy`; the deal's rows are unknown, so a
+  never-seen ship is not tracked). Per pair the reach is the circle for a tracked target, else
+  the ellipse, square-root free. `GameConfig.fog_tracking` (on; off for ablations), a rule
+  switch like `fog`, not a card column (the circle's radius comes from the card's p and e). At
+  e = 0 the circle is the ellipse: today's default (e 0) is unchanged, tested.
+- Measurements (256 yardstick games per condition, e 0.5, p 1500 and 850, off / on):
+  docs/rewrite/sections/tracking-circle/progress.md. Without fields 1v1 contact losses fall to
+  0 (from 0.25 and 5.65 per game), 4v4 by 75% and 85%; with fields by 4-41% (most losses there
+  are field cores cutting the line). First sightings, draws, length and kills per minute stay
+  within paired noise for the yardstick.

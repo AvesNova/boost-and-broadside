@@ -94,7 +94,21 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   e 0.5 gives 3,000 / 1,000 m, e 0.6 gives 3,750 / 938 m. From a wanted forward reach F:
   e = 1 - p / F (the rear reach is then p F / (2F - p)). Tested without a square root as
   |d|^2 <= (p + e d . nose)^2, which at e = 0 is the old d^2 <= p^2 exactly; one dot product
-  more per pair. Fields' cores block lines as before; a team sees what any of its ships sees. `Obs.pending` holds own living ships' joint action, `NO_PENDING`
+  more per pair. Fields' cores block lines as before; a team sees what any of its ships sees.
+  **Tracking circle** (author 2026-11-26, `GameConfig.fog_tracking`, on): a ship visible to the
+  enemy team on the tick before, by any means (sight, its shot, a hit, a collision), stays
+  visible while some living enemy observer has it within the circle of that observer's forward
+  reach p / (1 - e), with a clear line (the same field-core test); once no observer holds it
+  (and nothing reveals it) it is hidden and needs the ellipse or a reveal again. "Visible the
+  tick before" is read from the state, no new field: `tracked_by_enemy` = ticks since seen 0 and
+  known (the deal starts every row at ticks since seen 0 but unknown, so a never-seen ship is not
+  tracked; the deal's own perception sees by the ellipse alone). Per pair the reach is
+  `torch.where(tracked, p / (1 - e), p + e d . nose)`, still squared against |d|^2. The circle
+  contains the ellipse (|d| <= p + e |d| gives |d| <= p / (1 - e)) and equals it at e = 0, so
+  today's default is unchanged (tested). The switch is a GameConfig rule like `fog` and
+  `ghost_bullets`, not a card column: it is one on/off rule for every type, and the circle's
+  radius comes from the card's p and e, so the card gains no number. `Obs.pending` holds own
+  living ships' joint action, `NO_PENDING`
   (42) elsewhere. The ship row has no position scalars; `Obs.pos` carries position for the
   model's position code and rotary.
 - **Bullet damage** (`_damage`): the owner's hit damage x kinetic (the explosive share plus

@@ -21,6 +21,10 @@ for that render only (in-process card, nothing on disk changes; files `scripted4
 the vision range to the side, range / (1 - E) ahead, range / (1 + E) behind) for that render only
 and draws each living ship's sight outline faintly in its team colour (files `..._ellipseE_seedN.mp4`);
 `--draw-vision` draws the outlines without changing the card (circles at the default e = 0).
+`--tracking on|off` sets the tracking circle (`GameConfig.fog_tracking`, on by default) for that
+render (files `..._trackoff_...` when off); with the outlines drawn, each living ship's tracking
+circle, range / (1 - E), is drawn fainter while its team holds an enemy seen on the tick before
+(not at e = 0, where it is the outline). The two vision options combine (each keeps the other's).
 `--ships-per-team N` plays N v N instead of 4v4 (the standard spawn; files `scriptedNvN_...`).
 `--no-fields` plays that render with `field_count = 0` (no fields on the map, so sight is
 range only, plus the reveal on firing or being hit; files `scripted4v4_nofields_..._seedN.mp4`).
