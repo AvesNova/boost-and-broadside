@@ -2,12 +2,15 @@
 and first merges happen, whether the first spotter wins, game length and results.
 
     CUDA_VISIBLE_DEVICES="" PYTHONPATH=.:src uv run --no-sync python \
-        docs/rewrite/sections/vision-ellipse/measure.py --eccentricity 0.5 --games 256 --out DIR
+        docs/rewrite/sections/vision-ellipse/measure.py --eccentricity 0.5 --games 256 --out DIR \
+        [--vision-range 850] [--tracking off]
 
 Every ship is the yardstick (ScriptedConfig()), both teams in one call; the core game
 (GameConfig(): its spawn, fog and clock) with fields or none (field_count 0), 1v1 and 4v4. The
-same seed per condition at every eccentricity, so the deals are paired. Each condition's games
-are written to DIR/e{E}_{N}v{N}_{fields|nofields}.json when it finishes.
+same seed per condition at every eccentricity, vision range and tracking setting, so the deals
+are paired. --tracking on|off sets GameConfig.fog_tracking (the tracking circle, default on);
+--vision-range p sets every type's vision range (default the card's). Each condition's games are
+written to DIR/[p{P}_]e{E}[_track{on|off}]_{N}v{N}_{fields|nofields}.json when it finishes.
 
 - First sighting, per team: the first tick (the deal counts as tick 0) any of its ships has an
   enemy in sight (lean.game.core.sight_pairs; reveals by shots and hits are not sightings). Of
@@ -21,6 +24,13 @@ are written to DIR/e{E}_{N}v{N}_{fields|nofields}.json when it finishes.
   (closing, then opening): the angle between the two noses then (180 head-on, 0 same way) and
   the distance (the lateral miss, at tick resolution).
 - First spotter: the team whose first sighting is strictly earlier; its result.
+- Visibility (the game's own: an enemy is visible when its ticks since seen is 0, by sight,
+  tracking or a reveal), per ship from the deal to the game's end: a contact starts when the
+  ship turns visible (or is visible at the deal); a contact loss is a visible ship turning hidden
+  while it and some ship of the other team are alive; a hidden spell runs from a loss to the
+  next tick the ship is visible (spells cut by the ship's death or the game's end are counted
+  apart, not in the mean).
+- Kills per minute: deaths over all games' minutes.
 """
 
 import argparse
@@ -35,12 +45,13 @@ from lean import game, scripted
 from lean.game import card, core, tuning
 
 
-def set_vision_eccentricity(eccentricity: float) -> None:
+def set_vision(eccentricity: float, vision_range: float | None) -> None:
     rows = tuning.load_card()
-    card.CARD = {
-        **rows,
-        "vision_eccentricity": tuple(eccentricity for _ in rows["vision_eccentricity"]),
-    }
+    changed = {"vision_eccentricity": tuple(eccentricity for _ in rows["vision_eccentricity"])}
+    if vision_range is not None:
+        scale = vision_range / card.VISION_RANGE
+        changed["vision_range_scale"] = tuple(scale for _ in rows["vision_range_scale"])
+    card.CARD = {**rows, **changed}
 
 
 def angle_off(heading_cos, heading_sin, line_x, line_y):
@@ -67,6 +78,11 @@ def play(config: core.GameConfig, size: int, games: int, seed: int) -> list[dict
             "later": [],
             "merge": None,
             "result": None,
+            "contacts": 0,
+            "losses": 0,
+            "hidden_spells": [],
+            "hidden_cut": 0,
+            "deaths": 0,
         }
         for _ in range(games)
     ]
@@ -78,6 +94,11 @@ def play(config: core.GameConfig, size: int, games: int, seed: int) -> list[dict
     distance_before = distance_last = None
     heading_last = None
     tick = 0
+    visible_last = state.ticks_since_seen == 0  # the deal's sightings (tick 0)
+    visible_last &= state.exists
+    for e, count in enumerate((visible_last.sum(-1)).tolist()):
+        rows[e]["contacts"] += count
+    hidden_from = torch.full((games, slots), -1, dtype=torch.long)  # the tick of the loss
     while True:
         # Sightings on this state (the deal is tick 0).
         pairs = core.sight_pairs(state)
@@ -159,6 +180,30 @@ def play(config: core.GameConfig, size: int, games: int, seed: int) -> list[dict
         action, memory, _ = scripted.decide(agent, state, None, None, uniforms, memory)
         state, out = game.tick(config, state, action, generator)
         tick += 1
+        # Visibility on this tick, for the games that ran it.
+        visible = (state.ticks_since_seen == 0) & state.exists
+        live = running[:, None] & state.exists
+        team_alive = torch.stack([(state.alive & (team == k)).any(-1) for k in (0, 1)], -1)
+        enemy_alive = torch.where(team == 0, team_alive[:, 1:2], team_alive[:, 0:1])
+        started = visible & ~visible_last & live
+        lost = visible_last & ~visible & live & state.alive & enemy_alive
+        found = visible & (hidden_from >= 0) & live
+        ended = (hidden_from >= 0) & live & ~visible & ~state.alive
+        for e, n in torch.nonzero(found).tolist():
+            rows[e]["hidden_spells"].append(tick - int(hidden_from[e, n]))
+        for e, count in enumerate((started.sum(-1)).tolist()):
+            rows[e]["contacts"] += count
+        for e, count in enumerate((lost.sum(-1)).tolist()):
+            rows[e]["losses"] += count
+        for e, count in enumerate(((out.died & live).sum(-1)).tolist()):
+            rows[e]["deaths"] += count
+        hidden_from = torch.where(found | ended, -1, hidden_from)
+        hidden_from = torch.where(lost, tick, hidden_from)
+        for e in torch.nonzero(out.done & running).flatten().tolist():
+            rows[e]["hidden_cut"] += int((hidden_from[e] >= 0).sum())
+        for e, count in enumerate((ended.sum(-1)).tolist()):
+            rows[e]["hidden_cut"] += count
+        visible_last = visible
         for e in torch.nonzero(out.done & running).flatten().tolist():
             alive = state.alive[e] & state.exists[e]
             left = [int((alive & (team[e] == k)).sum()) for k in (0, 1)]
@@ -222,6 +267,20 @@ def summary(rows: list[dict], tick_length: float) -> dict:
             else None
         ),
         "seconds_mean": sum(r["ticks"] for r in rows) / games * tick_length,
+        "contacts_per_game": sum(r["contacts"] for r in rows) / games,
+        "contact_losses_per_game": sum(r["losses"] for r in rows) / games,
+        "contact_losses_per_contact": sum(r["losses"] for r in rows)
+        / max(1, sum(r["contacts"] for r in rows)),
+        "hidden_spells": sum(len(r["hidden_spells"]) for r in rows),
+        "hidden_seconds_mean": (
+            sum(t for r in rows for t in r["hidden_spells"])
+            / max(1, sum(len(r["hidden_spells"]) for r in rows))
+            * tick_length
+        ),
+        "hidden_seconds": quartiles([t * tick_length for r in rows for t in r["hidden_spells"]]),
+        "hidden_spells_cut": sum(r["hidden_cut"] for r in rows),
+        "kills_per_minute": sum(r["deaths"] for r in rows)
+        / (sum(r["ticks"] for r in rows) * tick_length / 60.0),
         "team0_wins": sum(r["result"] == 0 for r in rows),
         "team1_wins": sum(r["result"] == 1 for r in rows),
         "draws": sum(r["result"] == 2 for r in rows),
@@ -232,6 +291,8 @@ def summary(rows: list[dict], tick_length: float) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--eccentricity", type=float, required=True)
+    parser.add_argument("--vision-range", type=float, default=None, help="metres, every type")
+    parser.add_argument("--tracking", choices=("on", "off"), default="on")
     parser.add_argument("--games", type=int, default=256)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--threads", type=int, default=4)
@@ -243,14 +304,19 @@ def main() -> None:
     arguments = parser.parse_args()
     torch.set_num_threads(arguments.threads)
     arguments.out.mkdir(parents=True, exist_ok=True)
-    set_vision_eccentricity(arguments.eccentricity)
+    set_vision(arguments.eccentricity, arguments.vision_range)
+    tracking = arguments.tracking == "on"
     field_choices = {"both": (False, True), "none": (False,), "on": (True,)}[arguments.fields]
     for size in arguments.sizes:
         for fields in field_choices:
-            config = core.GameConfig()
+            config = core.GameConfig(fog_tracking=tracking)
             if not fields:
-                config = core.GameConfig(field_count=0)
-            name = f"e{arguments.eccentricity:g}_{size}v{size}_{'fields' if fields else 'nofields'}"
+                config = core.GameConfig(field_count=0, fog_tracking=tracking)
+            prefix = "" if arguments.vision_range is None else f"p{arguments.vision_range:g}_"
+            name = (
+                f"{prefix}e{arguments.eccentricity:g}_track{arguments.tracking}"
+                f"_{size}v{size}_{'fields' if fields else 'nofields'}"
+            )
             started = time.perf_counter()
             rows = play(config, size, arguments.games, arguments.seed + 1000 * size + fields)
             result = summary(rows, config.tick_length)

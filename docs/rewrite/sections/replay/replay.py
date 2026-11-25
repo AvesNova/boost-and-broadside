@@ -22,7 +22,7 @@ import torch
 from PIL import Image, ImageDraw, ImageFont
 
 from lean import game, scripted
-from lean.game import card, core, tuning
+from lean.game import card, core
 from lean.scripted.opponent import TACTICS, explain
 
 SIZE = 1080  # output frame, square
@@ -150,6 +150,7 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4)) -> dict:
         "fields": state.fields[0].numpy(),  # rows x, y, radius, band, target ln n
         "vision_range": per_slot("vision_range"),
         "vision_eccentricity": per_slot("vision_eccentricity"),
+        "tracking": config.fog and config.fog_tracking,
         "deaths": deaths,
         "collisions": collisions,
         "result": result,
@@ -297,6 +298,21 @@ class Painter:
                     outline=_fade(TEAM_COLOURS[team[i]], 0.75),
                     width=s,
                 )
+            # The tracking circle (core.sight_pairs), p / (1 - e) about each observer, while its
+            # team holds an enemy visible on the frame before (a tracked target).
+            if r["tracking"] and r["seen"] is not None and t > 0:
+                held = r["seen"][t - 1] & r["exists"]
+                for i in np.nonzero(alive)[0]:
+                    if not (held & (team != team[i])).any():
+                        continue
+                    reach = r["vision_range"][i] / (1.0 - r["vision_eccentricity"][i])
+                    if reach <= r["vision_range"][i]:
+                        continue  # e = 0: the circle is the outline already drawn
+                    ox, oy = to_pixels(xs[t, i] - reach, ys[t, i] + reach)
+                    ex, ey = to_pixels(xs[t, i] + reach, ys[t, i] - reach)
+                    draw.ellipse(
+                        (ox, oy, ex, ey), outline=_fade(TEAM_COLOURS[team[i]], 0.88), width=s
+                    )
         # Trails.
         for i in np.nonzero(r["exists"])[0]:
             start = max(0, t - TRAIL_TICKS)
@@ -523,7 +539,7 @@ def set_vision_range(metres: float) -> None:
     """Every type's vision range set to `metres` in this process's card (card.CARD, derived
     or read from the cache first), before the first deal builds the ship card. Nothing on disk
     changes."""
-    rows = tuning.load_card()
+    rows = card.CARD  # the process's card so far (an eccentricity set first is kept)
     scale = metres / card.VISION_RANGE
     card.CARD = {**rows, "vision_range_scale": tuple(scale for _ in rows["vision_range_scale"])}
 
@@ -533,7 +549,7 @@ def set_vision_eccentricity(eccentricity: float) -> None:
     `eccentricity` in this process's card, as set_vision_range."""
     if not 0.0 <= eccentricity < 1.0:
         raise ValueError(f"vision eccentricity {eccentricity}: 0 <= e < 1")
-    rows = tuning.load_card()
+    rows = card.CARD  # the process's card so far (a vision range set first is kept)
     card.CARD = {
         **rows,
         "vision_eccentricity": tuple(eccentricity for _ in rows["vision_eccentricity"]),
@@ -571,6 +587,13 @@ def main() -> None:
         help="draw each ship's sight outline faintly (on by itself with --vision-eccentricity)",
     )
     parser.add_argument(
+        "--tracking",
+        choices=("on", "off"),
+        default="on",
+        help="the tracking circle (GameConfig.fog_tracking), this render only (default: on, the "
+        "game's); --draw-vision draws each observer's circle while its team tracks an enemy",
+    )
+    parser.add_argument(
         "--no-fields",
         action="store_true",
         help="no fields on the map (field_count 0), this render only (default: the game's)",
@@ -590,6 +613,9 @@ def main() -> None:
     if arguments.no_fields:
         config = dataclasses.replace(config, field_count=0)
         stem += "_nofields"
+    if arguments.tracking == "off":
+        config = dataclasses.replace(config, fog_tracking=False)
+        stem += "_trackoff"
     if arguments.vision_range is not None:
         set_vision_range(arguments.vision_range)
         stem += f"_vision{arguments.vision_range:g}"
@@ -613,6 +639,9 @@ def main() -> None:
             title += ", no fields"
         if arguments.vision_eccentricity is not None:
             title += f", sight ellipse e {arguments.vision_eccentricity:g}"
+        if arguments.vision_range is not None:
+            title += f", vision {arguments.vision_range:g} m"
+        title += ", tracking " + arguments.tracking
         painter = Painter(record, title, draw_vision)
         print(
             f"seed {seed}: {record['ticks']} ticks, {painter.result_text()!r}, "
