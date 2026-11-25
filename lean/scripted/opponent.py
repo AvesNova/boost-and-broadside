@@ -1,7 +1,9 @@
 """The scripted opponent: Imugi's combat core without doctrines, memory layers or Frontline.
 
 One decision per living ship per call, read from its team's view of the game (fog on: enemies
-as last seen, `lean.game.core.enemy_view`): the nearest remembered enemy kept with a factor,
+as last seen, `lean.game.core.enemy_view`): the nearest remembered enemy kept with a factor (a
+remembered enemy's distance grows with the time since it was seen, and it is dropped once it
+could have flown out of sight),
 a drag-law lead in the medium, a logistic stick choice toward the lead point, logistic power
 and gun gates, a steer toward the centre near the arena edge, and one ordinary uniform draw
 per action head. Every ship characteristic is read from the game's constants
@@ -19,7 +21,7 @@ import torch
 from torch import Tensor
 
 from lean.contract import random_keywords
-from lean.game.core import built_once, enemy_view, slot_indices
+from lean.game.core import aspect_factor, built_once, enemy_view, slot_indices
 
 from .parameters import GATES, STICK_GATES, Gate, ScriptedConfig, value
 from .situation import Situation, assess, signed_angle
@@ -86,6 +88,7 @@ class Engagement:
     target_speed: Tensor  # proper speed, metres per second
     target_nose_rate: Tensor  # radians per second, positive to the left
     target_energy: Tensor  # its store
+    target_shield: Tensor  # its shield
     velocity_x: Tensor  # own velocity over the map
     velocity_y: Tensor
     ally_in_line: Tensor  # bool: a living team-mate is in the line of fire, nearer than the target
@@ -100,13 +103,21 @@ def engage(
     keep_factor: float | Tensor = 1.0,
     clearance: Tensor | float = 24.0,
     enemies=None,
+    ghost_cutoff: Tensor | float = 1.0,
 ) -> Engagement:
-    """Choose each ship's target: the living enemy with the smallest score, where the
-    score is the distance times (1 + weakest_weight * the enemy's store fraction; skipped
-    when the weight is the number 0). An enemy equal to `kept_target` has its score
+    """Choose each ship's target: the candidate enemy with the smallest score, where the
+    score is the effective distance times (1 + weakest_weight * the enemy's store fraction;
+    skipped when the weight is the number 0). An enemy equal to `kept_target` has its score
     multiplied by `keep_factor` (below 1), so it is kept unless another scores better by that
     factor. A team-mate blocks the shot when it is ahead along the nose, nearer than the
     target, and within `clearance` metres of the line of fire.
+
+    Under fog a remembered enemy is a ghost: its effective distance is the distance to where
+    it was last seen plus how far it could have flown since, the seconds since seen times its
+    sustained speed (the speed of the turning fight, where the yardstick spends its time; the
+    "roam"). A living enemy is a candidate while its roam is at most `ghost_cutoff` times the
+    observer's vision range: beyond that, flying to its last spot no longer finds it, so it is
+    dropped (seen again, it is a candidate again at once). Without fog, no roam.
 
     team: the team whose rows act, or None for every ship of both teams (each against the
     other team). Own ships and team-mates are read from `state`; enemies from `enemies`, the
@@ -117,6 +128,7 @@ def engage(
     controlled = present if team is None else present & (state.team == team)
     same_team = state.team[:, :, None] == state.team[:, None, :]  # (E, own, other)
     enemy = (enemies.exists & enemies.alive)[:, None, :] & ~same_team
+    c = state.constants
     velocity_x, velocity_y, index = map_velocity(state)
     enemy_x = enemies.x[:, None, :] - state.x[:, :, None]  # (E, own, other)
     enemy_y = enemies.y[:, None, :] - state.y[:, :, None]
@@ -125,14 +137,18 @@ def engage(
     else:
         offset_x = state.x[:, None, :] - state.x[:, :, None]
         offset_y = state.y[:, None, :] - state.y[:, :, None]
-    score = enemy_x * enemy_x + enemy_y * enemy_y
+    score = torch.sqrt(enemy_x * enemy_x + enemy_y * enemy_y)
+    if state.ticks_since_seen is not None and enemies is not state:
+        seconds = state.ticks_since_seen.to(score.dtype) * c["tick_length"]
+        roam = (seconds * c["sustained_speed"])[:, None, :]  # (E, 1, other)
+        enemy = enemy & (roam <= _last(ghost_cutoff * c["vision_range"]))
+        score = score + roam
     if not (isinstance(weakest_weight, float) and weakest_weight == 0.0):
         store = (enemies.energy * enemies.constants["inverse_max_energy"])[:, None, :]
-        preference = 1.0 + weakest_weight[..., None] * store
-        score = score * preference * preference
+        score = score * (1.0 + weakest_weight[..., None] * store)
     slots = slot_indices(state.x.shape[1], state.x.device).ship
     if kept_target is not None:
-        score = torch.where(slots == kept_target[..., None], score * _last(keep_factor) ** 2, score)
+        score = torch.where(slots == kept_target[..., None], score * _last(keep_factor), score)
     score = torch.where(enemy, score, math.inf)
     target = score.argmin(-1)
     if enemies is state:
@@ -149,8 +165,9 @@ def engage(
         enemies.speed,
         enemies.nose_rate,
         enemies.energy,
+        enemies.shield,
     )
-    features = torch.stack(columns, -1)  # (E, N, 9)
+    features = torch.stack(columns, -1)  # (E, N, 10)
     chosen = torch.gather(features, 1, target[..., None].expand(-1, -1, len(columns)))
     (
         target_x,
@@ -162,6 +179,7 @@ def engage(
         target_speed,
         target_nose_rate,
         target_energy,
+        target_shield,
     ) = chosen.unbind(-1)
     target_x = target_x - state.x
     target_y = target_y - state.y
@@ -184,6 +202,7 @@ def engage(
         target_speed=target_speed,
         target_nose_rate=target_nose_rate,
         target_energy=target_energy,
+        target_shield=target_shield,
         velocity_x=velocity_x,
         velocity_y=velocity_y,
         ally_in_line=blocking.any(-1),
@@ -260,6 +279,7 @@ def explain(
         read("target_keep_factor"),
         clearance=_per_other(read("ally_clearance") * c["hit_radius"]),
         enemies=enemies,
+        ghost_cutoff=read("ghost_cutoff"),
     )
     has_target = fight.has_target
     safe_distance = fight.distance.clamp_min(TINY)
@@ -454,7 +474,30 @@ def explain(
 
     # Gun: aligned times in range at the lead point, zero without a target or while the gun
     # cannot fire. A shot costs no store; never shoot through a team-mate (author 2026-11-23).
-    ready = (state.cooldown <= 0) & ~fight.ally_in_line
+    # Worth it (author 2026-11-25: no shot in a pure head-on): the hit's damage at the
+    # predicted aspect (the game's aspect factor x hit damage) is at least the shooter's
+    # shield recharge for `fire_worth` ticks (a shot makes the tick not quiet, so it forgoes
+    # at least that), or at least the target's shield (the hit empties it, or kills at 0). The
+    # bullet's direction is the launch's (own velocity plus the muzzle speed along the nose);
+    # the target's nose turns at its nose rate over the flight time.
+    launch_x = state.velocity_x + c["muzzle_speed"] * state.heading_cos
+    launch_y = state.velocity_y + c["muzzle_speed"] * state.heading_sin
+    turned = fight.target_nose_rate * flight_time
+    turned_cos, turned_sin = torch.cos(turned), torch.sin(turned)
+    nose_x = fight.target_heading_cos * turned_cos - fight.target_heading_sin * turned_sin
+    nose_y = fight.target_heading_sin * turned_cos + fight.target_heading_cos * turned_sin
+    hit_cos = -(launch_x * nose_x + launch_y * nose_y) * torch.rsqrt(
+        (launch_x * launch_x + launch_y * launch_y).clamp_min(TINY)
+    )
+    hit = _at_target(c["hit_damage"], fight.target) * aspect_factor(
+        hit_cos,
+        _at_target(c["head_on"], fight.target),
+        _at_target(c["inverse_one_minus_cos_head_on"], fight.target),
+        _at_target(c["head_on_sharpness"], fight.target),
+    )
+    worth = read("fire_worth") * c["shield_rate"] * c["tick_length"]
+    worthwhile = (hit >= worth) | (hit >= fight.target_shield)
+    ready = (state.cooldown <= 0) & ~fight.ally_in_line & worthwhile
     fire = torch.where(has_target & ready, gate["aligned"] * gate["in_range"], 0.0)
     return Explanation(
         marginals=Marginals(stick, power, fire, fight.controlled, fight.target),
@@ -472,6 +515,11 @@ def explain(
 def _log(x: Tensor | float) -> Tensor | float:
     """The natural log of a number or a tensor."""
     return torch.log(x) if isinstance(x, Tensor) else math.log(x)
+
+
+def _at_target(value: Tensor | float, target: Tensor) -> Tensor | float:
+    """A per-ship constant (E, N) read at each ship's target (E, N); a number as it is."""
+    return value.gather(1, target) if isinstance(value, Tensor) else value
 
 
 def _last(x: Tensor | float) -> Tensor | float:

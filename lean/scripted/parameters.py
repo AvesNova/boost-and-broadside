@@ -59,6 +59,9 @@ PARAMETERS: dict[str, Parameter] = {
     "target_keep_factor": Parameter(0.8, "ratio", meaning="switch only to one this much closer"),
     "weakest_weight": Parameter(0.0, "ratio", UPWARD, 1.0,
                                 "0 the nearest enemy; larger prefers enemies with less store"),
+    # A remembered enemy's roam (seconds since seen x its sustained speed) adds to its
+    # distance; beyond this it is dropped (author 2026-11-25: a ghost costs distance).
+    "ghost_cutoff": Parameter(1.0, "vision_range", meaning="roam beyond it: no longer a target"),
     # Assessment (lean.scripted.situation).
     "turning_floor": Parameter(0.25, "sustained_rate",
                                meaning="a nose rate this small counts as straight"),
@@ -107,6 +110,10 @@ PARAMETERS: dict[str, Parameter] = {
     "target_size_minimum": Parameter(math.radians(1.0), "radians", meaning="target size clamp"),
     "target_size_maximum": Parameter(math.radians(45.0), "radians", meaning="target size clamp"),
     "ally_clearance": Parameter(2.0, "hit_radius", meaning="a team-mate this near the line blocks"),
+    # No shot in a pure head-on (author 2026-11-25): the hit at the predicted aspect must take
+    # at least this many ticks of the shooter's shield recharge (or the target's whole shield).
+    "fire_worth": Parameter(1.0, "ticks of shield recharge",
+                            meaning="a hit worth less than this is not fired"),
     # Boundary steer: inside the margin of the edge and flying outward, a steer to the centre
     # blended in, its weight ramping from 0 to 1 between two depths (0 at the margin's inner
     # edge, 1 at the arena edge). The margin is in turn radii at the ship's speed: the

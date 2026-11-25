@@ -392,8 +392,10 @@ def per_type_constants(config: GameConfig, ship_type: Tensor) -> SimpleNamespace
 def _build_ship_card(config: GameConfig) -> Constants:
     lineup = tuple(config.lineup)
     used = torch.tensor([card.TYPE_NAMES.index(name) for name in lineup])
-    # The arena's size, for the scripted opponent (it reads every number from the game).
-    uniform, columns, rows = {"arena_radius": config.arena_radius}, {}, []
+    # The arena's size and the tick's length, for the scripted opponent (it reads every number
+    # from the game).
+    uniform = {"arena_radius": config.arena_radius, "tick_length": config.tick_length}
+    columns, rows = {}, []
     for name, values in _per_type(config).items():
         chosen = values[used]
         if name not in ACTION_TABLES and bool((chosen == chosen[0]).all()):
@@ -1210,13 +1212,29 @@ def _damage(
     )
     band = ((impact_squared.sqrt() - core) / band_width).clamp(0.0, 1.0)
     closeness = 1.0 - band * band * (3.0 - 2.0 * band)
-    head_on = _on_target(c["head_on"], target)
     hit_cos = -(flat_direction_x * nose_cos + flat_direction_y * nose_sin)  # 1 head-on
-    inverse = _on_target(c["inverse_one_minus_cos_head_on"], target)
-    squared_ratio = ((1.0 - hit_cos) * inverse).clamp_min(0.0)
-    powered = squared_ratio.pow(0.5 * _on_target(c["head_on_sharpness"], target))
-    aspect = 1.0 - (1.0 - head_on) * torch.exp(-card.LN_2 * powered)
+    aspect = aspect_factor(
+        hit_cos,
+        _on_target(c["head_on"], target),
+        _on_target(c["inverse_one_minus_cos_head_on"], target),
+        _on_target(c["head_on_sharpness"], target),
+    )
     return torch.where(contact.hit & real, full * closeness * aspect, 0.0)
+
+
+def aspect_factor(
+    hit_cos: Tensor,
+    head_on: Tensor | float,
+    inverse_one_minus_cos_head_on: Tensor | float,
+    sharpness: Tensor | float,
+) -> Tensor:
+    """The damage's aspect factor (`_damage`) at the hit angle's cosine `hit_cos` (1 when the
+    bullet strikes the target's nose head-on, -1 from dead astern), with the target's
+    constants of those names: the head-on fraction dead ahead, rising to 1 away from the
+    nose, half-way at the head-on angle. Shared with the scripted opponent's gun."""
+    squared_ratio = ((1.0 - hit_cos) * inverse_one_minus_cos_head_on).clamp_min(0.0)
+    powered = squared_ratio.pow(0.5 * sharpness)
+    return 1.0 - (1.0 - head_on) * torch.exp(-card.LN_2 * powered)
 
 
 def _boundary_damage(config: GameConfig, flown: SimpleNamespace, alive: Tensor) -> Tensor:
