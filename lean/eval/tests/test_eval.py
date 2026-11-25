@@ -200,8 +200,8 @@ def test_each_seat_gets_its_own_networks_step():
 
 
 def test_one_job_is_one_runner_call_and_keeps_the_stored_orientation(tmp_path, monkeypatch):
-    """A job's pairings, networks and scripted agents alike, share one queue; a scripted
-    agent in seat A against a network stays in seat A."""
+    """A job's pairings with networks share one queue (the scripted-only ones are a call of
+    their own); a scripted agent in seat A against a network stays in seat A."""
     from lean.learn import LearnConfig, WeightAverages, save_checkpoint
 
     torch.manual_seed(0)
@@ -229,7 +229,7 @@ def test_one_job_is_one_runner_call_and_keeps_the_stored_orientation(tmp_path, m
         (yardstick, other, (1, 1), 4),
     ]
     counts = evaluator.ensure(requests)
-    assert calls == [12] and [entry["games"] for entry in counts] == [4, 4, 4]
+    assert sorted(calls) == [4, 8] and [entry["games"] for entry in counts] == [4, 4, 4]
     rows = store.connection.execute(
         "SELECT agent_a, agent_b, COUNT(*) FROM games GROUP BY agent_a, agent_b"
     ).fetchall()

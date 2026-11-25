@@ -2,11 +2,12 @@
 
 A pairing is (agent A, agent B, (A's ships, B's ships)) under the evaluator's game config.
 A job reads what the store holds for its pairings and plays only the missing games, sides
-alternated so that each agent plays both teams equally. Every game of a job is one shuffled
-queue and one runner call (the runner routes each seat to its agent, as the training league
-routes its environments to its members), whatever the pairings: scripted against scripted,
-networks against scripted agents and against each other. Networks of different
-architectures go to separate calls (one call takes one architecture).
+alternated so that each agent plays both teams equally. Every game with a network is one
+shuffled queue and one runner call (the runner routes each seat to its agent, as the
+training league routes its environments to its members), whatever the pairings: networks
+against scripted agents and against each other. Scripted-only games are a call of their own
+(the runner's fused scripted tick: in a network call they would pay the network tick's
+per-environment costs), and networks of different architectures go to separate calls.
 """
 
 import math
@@ -98,10 +99,6 @@ class Evaluator:
                 raise ValueError("a pairing of two network architectures cannot share a call")
             key = next(iter(architectures), None)
             groups.setdefault(key, []).append((agent_a, agent_b, tuple(sizes), sides))
-        if None in groups and len(groups) > 1:
-            # Scripted-only games ride along with the first networks' call.
-            scripted_only = groups.pop(None)
-            groups[next(iter(groups))].extend(scripted_only)
         for entries in groups.values():
             self._play_group(entries)
         return [self.counts(agent_a, agent_b, sizes) for agent_a, agent_b, sizes, _ in requests]
