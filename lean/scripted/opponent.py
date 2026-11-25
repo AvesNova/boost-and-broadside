@@ -54,7 +54,9 @@ def fresh_memory(
         -1 right, 0 none;
       "plan" float32, the engagement's plan and the angles off when it was chosen or last
         switched: plan (+1 two-circle, -1 one-circle) x angles off (radians, > 0); 0 with no
-        plan (before the first pass, or once the target changes)."""
+        plan (before the first pass, or once the target changes);
+      "plan_passes" float32, the passes (commits of the turn sense) flown under that plan,
+        counting the one that chose it; 0 with no plan."""
     keywords = random_keywords(generator, device)
     left = torch.rand((envs, slots), **keywords) < 0.5
     lean = 2.0 * torch.rand((envs, slots), **keywords) - 1.0
@@ -65,6 +67,7 @@ def fresh_memory(
         "plan_lean": lean,
         "sense": zeros,
         "plan": zeros.clone(),
+        "plan_passes": zeros.clone(),
     }
 
 
@@ -246,6 +249,7 @@ class Explanation:
     gun_error: Tensor  # radians to the gun's lead point, positive left
     sense: Tensor  # the committed turn sense after this decision (memory "sense")
     plan: Tensor  # memory "plan" after this decision
+    plan_passes: Tensor  # memory "plan_passes" after this decision
 
 
 def _per_other(value: Tensor | float) -> Tensor | float:
@@ -346,15 +350,21 @@ def explain(
     # unless it is obviously wrong). Chosen at the first pass against this target: two-circle
     # (+1) when my energy advantage plus my lean (memory, drawn per match) is above the plan
     # threshold, else one-circle (-1). Held for the engagement (while the target is kept);
-    # switched at a pass only when it is clearly losing: my angles off have grown by more than
-    # the switch loss since the plan was chosen (he gained that much angle on me under it).
+    # switched at a pass only when it is clearly wrong: losing, my angles off have grown by
+    # more than the switch loss since the plan was chosen (he gained that much angle on me
+    # under it); or stalled, the plan has flown `stall_passes` passes and gained less than
+    # the switch gain in angles off since it was chosen (a neutral stalemate: equal ships in
+    # the same plan meet head-on again after every turn).
     same_target = has_target & (fight.target == memory["target"])
     held_plan = torch.where(same_target, memory["plan"], 0.0)
+    held_passes = torch.where(same_target, memory["plan_passes"], 0.0)
     leaning = situation.energy_advantage + memory["plan_lean"] * read("plan_lean")
     energy_plan = torch.where(leaning > read("plan_threshold"), 1.0, -1.0)
     previous_plan = torch.sign(held_plan)
-    losing = situation.angles_off - held_plan.abs() > read("switch_loss")
-    kept_plan = torch.where(losing, -previous_plan, previous_plan)
+    grown = situation.angles_off - held_plan.abs()
+    stalled = (held_passes >= read("stall_passes")) & (grown > -read("switch_gain"))
+    wrong = (grown > read("switch_loss")) | stalled
+    kept_plan = torch.where(wrong, -previous_plan, previous_plan)
     plan = torch.where(held_plan != 0.0, kept_plan, energy_plan)
 
     # Speed target, in log space, and the stick cap (the share of the full level folded into
@@ -443,6 +453,7 @@ def explain(
     sense = torch.where(commit, plan * two_circle_sense, held)
     switched = plan != previous_plan
     plan_memory = torch.where(commit & switched, plan * situation.angles_off, held_plan)
+    plan_passes = torch.where(commit, torch.where(switched, 1.0, held_passes + 1.0), held_passes)
 
     # Stick: P(turn), then the level by two further gates (the cap folding full into
     # middle), the side by the committed sense while he is aft (unless the boundary steer
@@ -530,6 +541,7 @@ def explain(
         gun_error=gun_error,
         sense=sense,
         plan=plan_memory,
+        plan_passes=plan_passes,
     )
 
 
@@ -747,6 +759,7 @@ def decide(
         "plan_lean": memory["plan_lean"],
         "sense": torch.where(controlled, reasons.sense, 0.0),
         "plan": torch.where(controlled, reasons.plan, 0.0),
+        "plan_passes": torch.where(controlled, reasons.plan_passes, 0.0),
     }
     if team is not None:  # the other team's rows keep their memory
         acting = state.team == team

@@ -89,6 +89,10 @@ PARAMETERS: dict[str, Parameter] = {
                            meaning="half-width of the per-match lean added to the advantage"),
     "switch_loss": Parameter(math.pi / 4, "radians", LOG, 0.3,
                              "angles off grown this much since the plan: switch it"),
+    "stall_passes": Parameter(3.0, "passes",
+                              meaning="this many passes under a plan without a gain: switch"),
+    "switch_gain": Parameter(0.17, "radians", LOG, 0.4,
+                             "the gain in angles off since the plan that is not a stall"),
     # Speeds: the power tracks a speed target v*, mixed in log space over the tactics.
     "merge_speed": Parameter(1.0, "corner_speed", LOG, 0.1, "v* disengaged and at the merge"),
     "fight_speed": Parameter(1.2943094805067583, "sustained_speed", LOG, 0.2,

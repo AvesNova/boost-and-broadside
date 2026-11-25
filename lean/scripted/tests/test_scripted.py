@@ -724,17 +724,19 @@ def test_the_merge_miss_offset_also_avoids_a_team_mate():
     assert float(offsetting.stick_error[0, 0]) < float(plain.stick_error[0, 0])  # turns right
 
 
-def test_in_play_the_plan_is_held_across_passes_and_switches_only_when_losing():
+def test_in_play_the_plan_is_held_across_passes_and_switches_only_when_wrong():
     """Author 2026-11-26: in played 1v1 games (no fog, no fields), a ship's plan (memory
     "plan") is chosen once per engagement and outlives its passes (several commits of the turn
-    sense under one plan); it turns to the other plan only when the angles off at that pass
-    exceed those at its choice by the switch loss."""
+    sense under one plan); it turns to the other plan only when it is clearly wrong: the angles
+    off at that pass exceed those at its choice by the switch loss, or it has flown the stall
+    passes without gaining the switch gain."""
     envs = 32
     generator = torch.Generator().manual_seed(11)
     config = game.GameConfig(field_count=0, fog=False)
     state = game.reset(config, envs, torch.ones(envs, 2, dtype=torch.long), generator, CPU)
     agent = ScriptedConfig()
-    loss = agent.values["switch_loss"]
+    loss, gain = agent.values["switch_loss"], agent.values["switch_gain"]
+    stall = agent.values["stall_passes"]
     memory = fresh_memory(envs, 2, generator, CPU)
     commits_under_one_plan = 0
     with torch.no_grad():
@@ -747,7 +749,8 @@ def test_in_play_the_plan_is_held_across_passes_and_switches_only_when_losing():
             before, after = memory["plan"], new["plan"]
             flipped = living & (before * after < 0.0)
             grown = reasons.situation.angles_off - before.abs()
-            assert bool((grown[flipped] > loss).all())
+            stalled = (memory["plan_passes"] >= stall) & (grown > -gain)
+            assert bool(((grown > loss) | stalled)[flipped].all())
             commit = living & (memory["sense"] == 0.0) & (new["sense"] != 0.0)
             commits_under_one_plan += int((commit & (before != 0.0) & (before == after)).sum())
             memory = new

@@ -211,11 +211,13 @@ def test_the_held_sense_turns_the_long_way_and_releases_when_he_comes_forward():
     assert sense == 0.0 and left > 0.9
 
 
-def plan_memory(plan, sense=0.0):
-    """A memory with the target kept and a held plan (plan x angles off at its choice)."""
+def plan_memory(plan, sense=0.0, passes=1.0):
+    """A memory with the target kept and a held plan (plan x angles off at its choice), flown
+    for `passes` passes."""
     m = memory_of()
     m["target"] = torch.tensor([[1, 0]])
     m["plan"] = torch.tensor([[plan, 0.0]])
+    m["plan_passes"] = torch.tensor([[passes, 0.0]])
     m["sense"] = torch.tensor([[sense, 0.0]])
     return m
 
@@ -284,3 +286,22 @@ def test_the_lean_and_the_personas_keep_a_mix_of_plans():
         shares.append(two_circle / draws)
     assert 0.1 < shares[0] < 0.9, shares
     assert shares[1] > shares[0], shares
+
+
+def test_a_plan_that_stalls_for_the_stall_passes_switches():
+    """The stall: the plan has flown the stall passes and its angles off are no better than at
+    its choice by the switch gain (a neutral stalemate): switch at this pass, counted afresh.
+    One pass fewer, or a gain of more than the switch gain: keep, and count the pass."""
+    passed = ship(-1.0 * RADIUS, 2.0 * RADIUS, heading=math.pi)
+    _, _, probe = committed(ship(), passed, stores=(0.3, 0.8))
+    angles_off = first(probe.situation.angles_off)
+    values = ScriptedConfig().values
+    stall, gain = values["stall_passes"], values["switch_gain"]
+    sense, _, e = committed(ship(), passed, (0.3, 0.8), memory=plan_memory(-angles_off, 0.0, stall))
+    assert sense == 1.0 and first(e.plan_passes) == 1.0
+    fewer = plan_memory(-angles_off, 0.0, stall - 1.0)
+    sense, _, e = committed(ship(), passed, (0.3, 0.8), memory=fewer)
+    assert sense == -1.0 and first(e.plan_passes) == stall
+    gaining = plan_memory(-(angles_off + 1.5 * gain), 0.0, stall)
+    sense, _, e = committed(ship(), passed, (0.3, 0.8), memory=gaining)
+    assert sense == -1.0 and first(e.plan_passes) == stall + 1.0
