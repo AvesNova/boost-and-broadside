@@ -23,6 +23,8 @@ class FogPass:
         self.apply_array = context.vertex_array(self.apply, [])
         self.size = None
         self.observers = self.cores = None
+        # lean: the sight ellipse's eccentricity (one for every type; the adaption layer sets it)
+        self.eccentricity = 0.0
 
     def _resize(self, width: int, height: int) -> None:
         size = (max(int(width * MASK_SCALE), 1), max(int(height * MASK_SCALE), 1))
@@ -56,7 +58,7 @@ class FogPass:
 
     def draw_mask(self, camera: dict, observers: np.ndarray, cores: np.ndarray) -> None:
         """Draw the mask into its own framebuffer (the caller binds its target again).
-        observers (O, 4): x, y, vision range, unused; cores (M, 4): x, y, core radius
+        observers (O, 4): x, y, vision range, heading (lean); cores (M, 4): x, y, core radius
         squared, outer radius squared (the band's two edges)."""
         width, height = (int(value) for value in camera["viewport"])
         self._resize(width, height)
@@ -71,6 +73,7 @@ class FogPass:
             self.sight,
             **{**camera, "viewport": mask_viewport},
             observers=0,
+            eccentricity=self.eccentricity,
             observer_count=len(observers),
             cores=1,
             core_count=len(cores),

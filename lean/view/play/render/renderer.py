@@ -165,7 +165,7 @@ class Renderer:
                         ships.x[team],
                         ships.y[team],
                         ships.vision_range[team],
-                        np.zeros(int(team.sum()), np.float32),
+                        ships.heading[team],  # lean: the sight ellipse's nose
                     ],
                     -1,
                 )

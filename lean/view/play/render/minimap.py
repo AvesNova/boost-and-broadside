@@ -84,7 +84,7 @@ class MinimapPass:
         if fogged:
             team = ships.alive & (ships.team == view)
             observers = np.stack(
-                [ships.x[team], ships.y[team], ships.vision_range[team], np.zeros(int(team.sum()))],
+                [ships.x[team], ships.y[team], ships.vision_range[team], ships.heading[team]],  # lean: heading
                 -1,
             ).astype(np.float32)
             self.fog.draw_mask(uniforms, observers, cores)

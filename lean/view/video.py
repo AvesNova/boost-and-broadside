@@ -99,6 +99,8 @@ class VideoRenderer:
         self.interface = Interface(self.fonts, SCALE)
         self.renderer = Renderer(self.context, WIDTH, HEIGHT)
         self.renderer.set_map(self.v2_frames[0], grid, values)
+        eccentricity = float(frames[0].ships.vision_eccentricity[0])  # one for every type
+        self.renderer.fog.eccentricity = self.renderer.minimap.fog.eccentricity = eccentricity
         self.colour = self.context.texture((WIDTH, HEIGHT), 4)
         self.target = self.context.framebuffer(color_attachments=[self.colour])
         self.theme = themes.load(theme)

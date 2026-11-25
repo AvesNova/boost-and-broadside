@@ -10,6 +10,8 @@ uniform sampler2D observers;  // (O, 1): x, y, vision range
 uniform int observer_count;
 uniform sampler2D cores;  // (M, 1): x, y, core radius squared, outer radius squared
 uniform int core_count;
+// lean: observers' fourth value is the heading; the sight ellipse |d|^2 <= (p + e d.n)^2
+uniform float eccentricity;
 
 out float seen;
 
@@ -40,9 +42,11 @@ void main() {
     vec2 target = world_of(gl_FragCoord.xy);
     seen = 0.0;
     for (int index = 0; index < observer_count; ++index) {
-        vec3 observer = texelFetch(observers, ivec2(index, 0), 0).xyz;
+        vec4 observer = texelFetch(observers, ivec2(index, 0), 0);
         vec2 line = target - observer.xy;
-        if (dot(line, line) > observer.z * observer.z) continue;
+        vec2 nose = vec2(cos(observer.w), sin(observer.w));
+        float reach = observer.z + eccentricity * dot(line, nose);
+        if (reach <= 0.0 || dot(line, line) > reach * reach) continue;
         if (clear_line(observer.xy, target)) {
             seen = 1.0;
             break;
