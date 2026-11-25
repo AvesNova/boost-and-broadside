@@ -100,7 +100,7 @@ SIDE_GAP_FRACTION = (
     0.05  # "sides": each team's half disc this far (over the arena radius) from the dividing line
 )
 SIDE_HEADING_JITTER = 0.2617993877991494  # "sides": noses within 15 degrees of the axis
-VISION_RANGE = 3072.0  # m; times the type's vision_range_scale: 1,000 m for every type
+VISION_RANGE = 3072.0  # m; times the type's vision_range_scale: 1,500 m for every type
 LN_SQRT2 = 0.5 * math.log(2.0)
 LN_2 = math.log(2.0)
 
