@@ -687,3 +687,6 @@ These replace the flap, profile and stick-level points above where they disagree
   steps; RL to 2000 Elo within 100M more; the scripted agent is whatever it is and is the
   1000 Elo anchor. Train at 4v4; evaluate and keep skill up to 32v32, at least a 99% win
   rate there against the scripted agent.
+  Training stays 4v4 only (author: v1 trained only at 4v4 and won 99%+ at 32v32); no
+  team-size mixing. The evaluation needs a size ladder up to 32v32 and a 32v32 memory and
+  speed check.
