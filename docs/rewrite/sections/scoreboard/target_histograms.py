@@ -353,6 +353,8 @@ def render(out: Path, figures: Path) -> None:
             )
         else:
             note = "no categorical support"
+        if entry["share_exactly_zero"] > 0.01:
+            note += f"\n{entry['share_exactly_zero']:.1%} of rows exactly 0 (one bar at 0)"
         axis.set_title(
             f"{key}  ({entry['count'] / 1e6:.1f}M rows, excess kurtosis "
             f"{entry['excess_kurtosis']:.1f})",
@@ -360,7 +362,7 @@ def render(out: Path, figures: Path) -> None:
             color=ink,
             loc="left",
         )
-        axis.text(0.0, -0.2, note, transform=axis.transAxes, fontsize=8, color=ink)
+        axis.text(0.0, -0.26, note, transform=axis.transAxes, fontsize=8, color=ink)
         axis.set_ylabel("count (log)", fontsize=9)
         axis.tick_params(labelsize=8)
         for side in ("top", "right"):
@@ -370,6 +372,47 @@ def render(out: Path, figures: Path) -> None:
         figure.savefig(figures / f"{key}.png")
         plt.close(figure)
         print(f"wrote {figures / f'{key}.png'}")
+    occupancy_figure(stats, figures, plt)
+
+
+def occupancy_figure(stats: dict, figures: Path, plt) -> None:
+    """Small multiples: each critic level's share of targets per bin (70 bins, log y) on the
+    current linear support and on symlog supports at knees 0.25 and 1."""
+    levels = [key for key in stats["targets"] if key.startswith("value_")]
+    figure, axes = plt.subplots(len(levels), 1, figsize=(6.4, 2.6 * len(levels)), dpi=150)
+    styles = (("linear", "#2f6db5", "-"), ("0.25", "#c0392b", "--"), ("1", "#1f2328", ":"))
+    for axis, key in zip(axes, levels):
+        entry = stats["targets"][key]
+        for label, colour, style in styles:
+            if label == "linear":
+                occ = entry["support"]["occupancy"]
+                name = "linear (current)"
+            else:
+                occ = entry["symlog_alternatives"][label]
+                name = f"symlog knee {label}"
+            shares = np.maximum(np.array(occ["shares"]), 1e-9)
+            axis.step(
+                np.arange(len(shares)),
+                shares,
+                where="mid",
+                color=colour,
+                linestyle=style,
+                linewidth=1.4,
+                label=f"{name}: {occ['perplexity']:.1f} effective bins",
+            )
+        axis.set_yscale("log")
+        axis.set_ylim(1e-7, 1.5)
+        axis.set_title(key, fontsize=10, loc="left")
+        axis.set_ylabel("share of targets", fontsize=8)
+        axis.tick_params(labelsize=8)
+        for side in ("top", "right"):
+            axis.spines[side].set_visible(False)
+        axis.legend(fontsize=7, frameon=False, loc="lower center")
+    axes[-1].set_xlabel("bin (0 to 69; 3 buffer bins at each end)", fontsize=8)
+    figure.tight_layout()
+    figure.savefig(figures / "value_occupancy.png")
+    plt.close(figure)
+    print(f"wrote {figures / 'value_occupancy.png'}")
 
 
 if __name__ == "__main__":
