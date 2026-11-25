@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from lean import game
+from lean.game.tests.values import game_value
 from lean.learn import collect, make_optimiser, update
 from lean.learn.tests.setting import StepRecorder, small
 from lean.learn.training import hit_loss
@@ -20,7 +21,8 @@ def test_a_label_lands_on_the_row_its_bullet_left_the_gun(monkeypatch):
     )
     rollout = collect(config, game_config, policy, opponent, state, carry, 40, generator)
     expected = recorder.hit_labels().index_select(1, rollout.seat_environment)
-    # Ghost bullets: a bullet lives up to 11 ticks and a game 20, so about half the rows have one.
+    # Ghost bullets: a bullet lives up to its bullet_moves ticks (about half a game of 20 ticks)
+    # so about half the rows have one.
     assert (expected >= 0).float().mean() > 0.3
     assert torch.equal(rollout.hit_label, expected)
 
@@ -81,8 +83,11 @@ def test_real_game_labels(ghost_bullets):
     label, own = rollout.hit_label, rollout.observation.own
     assert ((label >= -1) & (label <= 2)).all()
     if ghost_bullets:
-        # Every living ship emits every tick; a bullet lives up to 11 ticks.
-        assert (label[:13][own[:13]] >= 0).float().mean() > 0.9
+        # Every living ship emits every tick; a bullet lives up to its bullet_moves ticks, so
+        # every row that many ticks before the rollout's end has ended its bullet.
+        ended = label.shape[0] - int(game_value("bullet_moves", game_config))
+        assert ended > 0
+        assert (label[:ended][own[:ended]] >= 0).float().mean() > 0.9
     else:
         pulled = rollout.observation.pending % 2 == 1  # NO_PENDING (42) is even
         assert not (label[own] >= 0)[~pulled[own]].any()

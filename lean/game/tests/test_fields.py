@@ -4,6 +4,7 @@ import math
 
 import torch
 
+from lean.contract import FIRES, POWERS, STICKS
 from lean.game import card, core
 
 torch.set_num_threads(1)
@@ -78,7 +79,9 @@ def test_the_core_game_runs_with_fields():
     """Smoke: the core game steps with per-environment fields and stays finite."""
     state, generator, sizes = fresh(envs=8)
     for _ in range(60):
-        action = torch.randint(0, 3, (8, 4, 3), generator=generator) % torch.tensor([7, 3, 2])
+        action = torch.randint(0, 3, (8, 4, 3), generator=generator) % torch.tensor(
+            [STICKS, POWERS, FIRES]
+        )
         noise = core.draw_noise(CONFIG, 8, 4, generator, DEVICE)
         state, out = core.step(CONFIG, state, action, noise)
         state = core.take_deal(state, out.done, core.deal(CONFIG, 8, 4, sizes, generator, DEVICE))

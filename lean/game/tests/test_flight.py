@@ -5,18 +5,23 @@ Each test names the rule it guards. They fly one ship with `flight_tick` (or one
 """
 
 import dataclasses
+import math
 from types import SimpleNamespace
 
 import pytest
 import torch
 
 from lean.game import card, core, tuning
+from lean.game.tests.values import game_value
 
 torch.set_num_threads(1)
 CONFIG = core.GameConfig()
 P51D = card.TYPE_NAMES.index("p51d")
-COAST, DIVE, CLIMB = 0, 1, 2
-STRAIGHT, FULL = 0, 6
+COAST, DIVE, CLIMB = 0, 1, 2  # the power indices (lean.game.card: 0 coast, 1 dive, 2 climb)
+STRAIGHT, FULL = card.STICK_LEVELS.index(0.0), card.STICK_LEVELS.index(max(card.STICK_LEVELS))
+# The flights' start speeds, as shares of the game's top level speed and corner speed.
+TOP = game_value("cruise_speed", CONFIG)
+CORNER = game_value("corner_speed", CONFIG)
 NO_FIELDS = torch.zeros(1, 5, 0)
 
 
@@ -75,14 +80,14 @@ def test_store_is_two_loops_at_corner_speed_and_spawn_is_half():
 
 def test_coasting_straight_holds_altitude():
     """Coast holds altitude: flying straight above the 1 g speed, the store does not change."""
-    _, stores = fly(200.0, 0.5, STRAIGHT, COAST, 30.0)
+    _, stores = fly(0.54 * TOP, 0.5, STRAIGHT, COAST, 30.0)
     assert max(abs(x - 0.5) for x in stores) < 1e-4
 
 
 def test_coasting_at_full_stick_holds_altitude_above_the_one_g_speed():
     """Altitude wins over the turn: at full stick, coasting, above the 1 g speed, the store holds
     (the turn is limited instead)."""
-    speeds, stores = fly(268.0, 0.5, FULL, COAST, 10.0)
+    speeds, stores = fly(1.05 * CORNER, 0.5, FULL, COAST, 10.0)
     assert min(speeds) > 1.2 * one_g_speed()
     assert max(abs(x - 0.5) for x in stores) < 2e-3
 
@@ -90,7 +95,7 @@ def test_coasting_at_full_stick_holds_altitude_above_the_one_g_speed():
 def test_engine_never_raises_the_store():
     """The engine drives speed only: coasting at any stick, the store never rises."""
     for stick in (STRAIGHT, 2, 4, FULL):
-        _, stores = fly(150.0, 0.3, stick, COAST, 10.0)
+        _, stores = fly(0.4 * TOP, 0.3, stick, COAST, 10.0)
         assert max(stores) <= 0.3 + 1e-6, stick
 
 
@@ -104,7 +109,7 @@ def test_below_the_one_g_speed_the_ship_sinks():
 def test_dive_and_climb_are_equal_and_opposite():
     """Dive and climb trade at the same rate: straight, mid-band, the store's rates are opposite."""
     c = constants()
-    speed = torch.full((1, 1), 250.0)
+    speed = torch.full((1, 1), 0.67 * TOP)
     energy = torch.full((1, 1), 0.5 * c.max_energy)
     rates = []
     for power in (DIVE, CLIMB):
@@ -133,9 +138,9 @@ def test_dive_and_climb_are_equal_and_opposite():
 
 def test_dive_at_an_empty_store_and_climb_at_a_full_store_do_nothing():
     """The band's edges: no dive below empty, no climb above full."""
-    _, stores = fly(300.0, 0.0, STRAIGHT, DIVE, 5.0)
+    _, stores = fly(0.8 * TOP, 0.0, STRAIGHT, DIVE, 5.0)
     assert max(stores) < 1e-6 and min(stores) >= 0.0
-    _, stores = fly(250.0, 1.0, STRAIGHT, CLIMB, 5.0)
+    _, stores = fly(0.67 * TOP, 1.0, STRAIGHT, CLIMB, 5.0)
     assert max(stores) <= 1.0 + 1e-6
 
 
@@ -143,7 +148,7 @@ def test_the_edges_taper_smoothly():
     """Smootherstep edges: climbing into the top band, the trade's rate falls continuously to zero
     and never reverses or overshoots the top. (At full climb rate the 5% band is crossed in a few
     ticks with today's numbers: a tuning question, docs/rewrite/core-worklog.md.)"""
-    _, stores = fly(300.0, 0.9, STRAIGHT, CLIMB, 4.0)
+    _, stores = fly(0.8 * TOP, 0.9, STRAIGHT, CLIMB, 4.0)
     steps = [b - a for a, b in zip(stores, stores[1:])]
     assert all(x >= -1e-7 for x in steps)
     inside = [x for x, level in zip(steps, stores[1:]) if level > 1.0 - CONFIG.store_edge_band]
@@ -155,9 +160,9 @@ def test_firing_costs_speed_and_no_store():
     """Firing cuts the engine: firing costs speed, and the store pays nothing (one game step per
     tick with the gun held, against the same flight without firing)."""
     speeds_firing, _ = fly(
-        300.0, 0.5, STRAIGHT, COAST, 5.0, thrust_scale=CONFIG.fire_thrust_fraction
+        0.8 * TOP, 0.5, STRAIGHT, COAST, 5.0, thrust_scale=CONFIG.fire_thrust_fraction
     )
-    speeds_quiet, _ = fly(300.0, 0.5, STRAIGHT, COAST, 5.0)
+    speeds_quiet, _ = fly(0.8 * TOP, 0.5, STRAIGHT, COAST, 5.0)
     assert speeds_firing[-1] < speeds_quiet[-1] - 5.0
 
     generator = torch.Generator().manual_seed(0)
@@ -175,13 +180,13 @@ def test_firing_costs_speed_and_no_store():
 def test_at_the_edges_dive_and_climb_act_as_coast_on_the_wing():
     """At the band's edges dive or climb acts as coast: diving on an empty store frees no lift
     for the turn, and climbing at a full store takes none from it."""
-    coast_empty, _ = fly(150.0, 0.0, FULL, COAST, 2.0)
-    dive_empty, _ = fly(150.0, 0.0, FULL, DIVE, 2.0)
+    coast_empty, _ = fly(0.4 * TOP, 0.0, FULL, COAST, 2.0)
+    dive_empty, _ = fly(0.4 * TOP, 0.0, FULL, DIVE, 2.0)
     assert abs(dive_empty[-1] - coast_empty[-1]) < 0.5
     rates = {}
     for name, power, store in (("coast", COAST, 1.0), ("climb", CLIMB, 1.0)):
         c = constants()
-        speed = torch.full((1, 1), 200.0)
+        speed = torch.full((1, 1), 0.54 * TOP)
         control = SimpleNamespace(
             thrust_scale=1.0,
             stick_size=torch.ones(1, 1),
@@ -307,16 +312,19 @@ def test_stick_levels_are_fractions_of_the_maximum():
             assert torch.allclose(part, level * full, rtol=1e-12), (name, index)
 
 
-def test_stick_levels_are_fixed_thirds():
-    """The author's design (2026-11-24): the stick levels are fixed thirds of full stick for every
-    type (card.GRADUAL_STICK, MIDDLE_STICK, FULL_STICK): straight 0, gradual 1/3, middle 2/3,
-    full 1; odd indices right (negative), even left (card.STICK_LEVELS' layout)."""
-    third = 1.0 / 3.0
-    expected = [0.0, -third, third, -2.0 * third, 2.0 * third, -1.0, 1.0]
+def test_stick_levels_are_fixed_fractions():
+    """The author's design (2026-11-24): the stick levels are fixed fractions of full stick, the
+    same for every type (card.GRADUAL_STICK, MIDDLE_STICK, FULL_STICK): straight 0, then gradual,
+    middle and full; odd indices right (negative), even left (card.STICK_LEVELS' layout)."""
+    share = {0.0: 0.0, 1.0: card.GRADUAL_STICK, 2.0: card.MIDDLE_STICK, 3.0: card.FULL_STICK}
+    expected = [math.copysign(share[abs(level)], level) for level in card.STICK_LEVELS]
+    assert expected[1] < 0.0 < expected[2]  # odd right, even left
     for ship_type, name in enumerate(card.TYPE_NAMES):
         table = core.per_type_constants(CONFIG, torch.tensor([ship_type])).stick_table[0]
         assert table.tolist() == pytest.approx(expected, rel=1e-6), name
-    assert tuning.stick_levels() == dict(gradual=third, middle=2.0 * third, full=1.0)
+    assert tuning.stick_levels() == dict(
+        gradual=card.GRADUAL_STICK, middle=card.MIDDLE_STICK, full=card.FULL_STICK
+    )
 
 
 def test_the_turn_has_precedence_over_the_climb():

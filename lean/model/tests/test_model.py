@@ -7,7 +7,8 @@ import pytest
 import torch
 
 from lean import contract
-from lean.contract import FIELD_FEATURES, GLOBAL_FEATURES, LEVELS, SHIP_FEATURES
+from lean.contract import FIELD_FEATURES, GLOBAL_FEATURES, JOINT, LEVELS, SHIP_FEATURES
+from lean.game import GameConfig
 from lean.model import ModelConfig, Policy, decode_value, hl_gauss_targets, value_bin_centres
 from lean.model.policy import (
     Spatial,
@@ -22,7 +23,7 @@ from lean.model.position import ColourCode, FourierCode, GridCellCode, Rotary, m
 from lean.model.temporal import Temporal, doubling_scan
 from lean.model.value import symlog
 
-ARENA_RADIUS = 4200.0  # lean.game.GameConfig's
+ARENA_RADIUS = GameConfig().arena_radius
 
 
 def make_policy(**overrides) -> Policy:
@@ -52,7 +53,7 @@ def make_obs(
         visible=torch.rand(*lead, slots, generator=generator) < 0.7,
         since_seen=torch.rand(*lead, slots, generator=generator) * 2.0,
         pending=torch.where(
-            key_mask, torch.randint(0, 42, (*lead, slots), generator=generator), 42
+            key_mask, torch.randint(0, JOINT, (*lead, slots), generator=generator), JOINT
         ),
     )
 
@@ -246,20 +247,21 @@ def test_fields_head_towards_the_arena_centre():
 
 
 def test_rotary_bands():
-    """Catches a band ladder off the decision (2026-11-23): ratio 2 from 64 m, the coarsest
-    above 16.8 km (twice the 8.4 km arena diameter), the finest above the per-tick aliasing
-    limit, each band's axes turned by the golden section of 90 degrees and no two bands'
-    axes within 3 degrees of each other, heading harmonics 1 and 2, about 70 % of a 64-wide
-    head rotated; the input position code's coarsest period above the diameter."""
+    """Catches a band ladder off the decision (2026-11-23): a fixed ratio (2) from the finest
+    band, the coarsest the first above the reach and the reach at least twice the arena's
+    diameter (the game's arena), the finest above the per-tick aliasing limit, each band's axes
+    turned by the golden section of 90 degrees and no two bands' axes within 3 degrees of each
+    other, heading harmonics 1 and 2, about 70 % of a head rotated; the input position code's
+    coarsest period above the diameter."""
     from lean.game import core
 
     config = ModelConfig()
     periods = torch.tensor(config.rotary_periods, dtype=torch.float64)
-    assert periods[0] == 64.0 and torch.allclose(
-        periods[1:] / periods[:-1], torch.tensor(2.0, dtype=torch.float64)
+    assert periods[0] == config.rotary_finest and torch.allclose(
+        periods[1:] / periods[:-1], torch.tensor(config.rotary_ratio, dtype=torch.float64)
     )
-    assert periods[-2] <= 16800.0 < periods[-1]
-    assert len(periods) == 10 and periods[-1] == 32768.0
+    assert periods[-2] <= config.rotary_reach < periods[-1]
+    assert config.rotary_reach >= 4.0 * ARENA_RADIUS  # twice the diameter
     # Two ships closing head-on move 2 v h closer in a tick; a band aliases that motion
     # unless its period exceeds twice it (Nyquist). v: the top level speed and 10 % for
     # dives (335.4 m/s; 336.6 m/s was the fastest in 5.55M rows of scripted play).
@@ -273,7 +275,7 @@ def test_rotary_bands():
     assert gaps.min() > 3.0
     assert config.heading_harmonics == (1.0, 2.0)
     head = config.width // config.heads
-    assert config.rotary_pairs == 22 and 0.65 < 2 * config.rotary_pairs / head <= 0.75
+    assert 0.65 < 2 * config.rotary_pairs / head <= 0.75
     assert config.offset_span > 2.0 * ARENA_RADIUS
 
 
@@ -303,7 +305,7 @@ def test_same_weights_run_at_any_ship_and_field_count():
         obs = make_obs((2,), slots, fields=fields)
         with torch.no_grad():
             logits, values, carry = policy.step(obs, policy.initial_carry(2, slots, "cpu"))
-        assert logits.shape == (2, slots, 42)
+        assert logits.shape == (2, slots, JOINT)
         assert values.shape == (2, slots, LEVELS, config.bins)
         assert carry.shape == (config.blocks, 2, 1 + slots, 4, config.width)
         assert torch.isfinite(logits).all() and torch.isfinite(values).all()
@@ -426,7 +428,7 @@ def training_batch(ticks=8, envs=4, slots=10, fields=5):
     generator = torch.Generator().manual_seed(7)
     config = ModelConfig()
     targets = SimpleNamespace(
-        actions=torch.randint(0, 42, (ticks, envs, slots), generator=generator),
+        actions=torch.randint(0, JOINT, (ticks, envs, slots), generator=generator),
         bins=torch.randint(0, config.bins, (ticks, envs, slots, LEVELS), generator=generator),
         next_state=torch.randn(ticks, envs, slots, config.next_state_size, generator=generator)
         * 0.1,
@@ -592,7 +594,8 @@ def test_spatial_initialisation_is_recurrentgemmas_like_the_temporal():
     N(0, s/fan_in) with s = 2/6, the same numbers as the temporal sublayer's."""
     torch.manual_seed(0)
     policy = Policy(ModelConfig())
-    width, hidden, scale = 128, 512, 2.0 / 6.0
+    config = policy.config
+    width, hidden, scale = config.width, config.width * config.mlp_ratio, 2.0 / 6.0
     for block in policy.blocks:
         assert (
             abs(block.temporal.output.weight.std().item() / math.sqrt(scale / width) - 1.0) < 0.05
@@ -600,7 +603,7 @@ def test_spatial_initialisation_is_recurrentgemmas_like_the_temporal():
         for spatial in block.spatial:
             expected = (
                 (spatial.query_key_value_gate.weight, 1.0 / width),
-                (spatial.map_key_value.weight, 1.0 / 64),
+                (spatial.map_key_value.weight, 1.0 / config.map_width),
                 (spatial.mlp_input.weight, 1.0 / width),
                 (spatial.output.weight, scale / width),
                 (spatial.mlp_output.weight, scale / hidden),
@@ -629,7 +632,7 @@ def test_heads_start_near_uniform_and_the_hit_head_at_the_measured_shares():
         )
     assert torch.allclose(torch.softmax(hit, -1), shares, atol=0.01)
     for output, count in (
-        (logits, 42),
+        (logits, JOINT),
         (values, policy.config.bins),
         (next_state, policy.config.bins),
     ):

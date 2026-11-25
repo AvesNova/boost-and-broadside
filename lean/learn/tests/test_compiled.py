@@ -17,6 +17,7 @@ from lean.learn.rollout import (
     advance,
     draw_next_episodes,
     league_actions,
+    self_play_count,
     slot_actions,
 )
 from lean.learn.tests.setting import add_snapshots
@@ -41,7 +42,8 @@ def test_compiled_collect_and_update_run_with_the_real_packages():
         rollout = collect(
             config, game_config, policy, opponent, state, carry, 6, generator, compiled=True
         )
-        assert rollout.action.shape[:2] == (6, 12)  # 8 environments, 4 self-play: 12 seats
+        seats = 8 + self_play_count(config, 8)  # 8 environments and their self-play seats
+        assert rollout.action.shape[:2] == (6, seats)
         state, carry = rollout.state, rollout.carry
         metrics = update(
             config,

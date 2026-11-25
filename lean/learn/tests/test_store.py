@@ -11,7 +11,7 @@ from lean import game, model, scripted
 from lean.contract import EPISODE_CONSTANT
 from lean.learn import LearnConfig, Opponent, RolloutStore, collect, start, update
 from lean.learn.store import stored, widened
-from lean.learn.tests.setting import StepRecorder, small
+from lean.learn.tests.setting import SMALL, StepRecorder, small
 
 ENVIRONMENTS = 6  # 3 self-play: 9 seats
 
@@ -19,7 +19,12 @@ ENVIRONMENTS = 6  # 3 self-play: 9 seats
 def setting(fields: bool = True):
     torch.manual_seed(0)
     config = LearnConfig(
-        team_size_minimum=2, team_size_maximum=3, equal_teams=False, minibatches=1, epochs=1
+        team_size_minimum=2,
+        team_size_maximum=3,
+        equal_teams=False,
+        minibatches=1,
+        epochs=1,
+        self_play_share=SMALL["self_play_share"],  # the tests' seat layout
     )
     game_config = game.GameConfig() if fields else game.GameConfig(field_count=0, fog=False)
     policy = model.Policy(model.ModelConfig())

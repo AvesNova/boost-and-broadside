@@ -42,8 +42,9 @@ def test_envelope_key_numbers_agree_with_performance():
     """The corner is the full-stick peak: the settled-flight corner of tuning.performance, to
     the grid's resolution; the best sustained turn is held (Ps >= 0) and at most the corner's."""
     row = tuning.row_of("p51d")
-    grid = tuning.envelope(row, np.linspace(20.0, 470.0, 226), np.linspace(0.0, 1.0, 101))
     flown = tuning.performance(row)
+    top = 1.25 * flown["top_speed"]  # the grid reaches past the top level speed, 2 m/s steps
+    grid = tuning.envelope(row, np.arange(20.0, top, 2.0), np.linspace(0.0, 1.0, 101))
     assert grid["corner_speed"] == pytest.approx(flown["corner_speed_flown"], abs=2.5)
     assert grid["corner_rate"] == pytest.approx(
         flown["corner_rate"], rel=1e-2
@@ -67,10 +68,10 @@ def test_server_answers_the_envelope_endpoint():
     assert (
         data["design"]["lowest"]["full"] > data["design"]["key"]["stall_speed"]
     )  # lines start above stall
-    # the same design at 1x real time has half the speeds and rates (to_real)
+    # the same design at 1x real time has the speeds and rates over the game's time factor
     at_game = client.post("/api/envelope", json={"preset": "p51d"}).json()
     assert data["design"]["key"]["top_speed"] == pytest.approx(
-        at_game["design"]["key"]["top_speed"] / 2.0, rel=1e-3
+        at_game["design"]["key"]["top_speed"] / tuning.TIME_FACTOR, rel=1e-3
     )
 
 
@@ -224,7 +225,7 @@ def test_the_ship_panels_show_implied_physics_warnings_and_the_solved_row():
     client = TestClient(app)
     own = client.post("/api/ship", json={"preset": "p51d"}).json()
     assert set(own["row"]) == set(card.CARD_FIELDS)
-    assert own["implied"]["max_lift_coefficient"] == pytest.approx(1.6)
+    assert own["implied"]["max_lift_coefficient"] == pytest.approx(tuning.P51D.max_lift_coefficient)
     assert {w["quantity"] for w in own["warnings"]} == {"structural_load"}
     assert own["solve"]["iterations"] == 0
     top = 1.05 * tuning.reference("p51d", "documents").design["top_speed"]

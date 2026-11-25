@@ -7,6 +7,7 @@ import torch
 
 torch.set_num_threads(1)
 
+from lean.contract import FIRES, POWERS, STICKS  # noqa: E402
 from lean.game import GameConfig, deal, draw_noise, observe, reset, step, take_deal  # noqa: E402
 
 CLOSE = GameConfig(arena_radius=700.0, spawn="mixed", clock_ticks=400)
@@ -14,7 +15,8 @@ CLOSE = GameConfig(arena_radius=700.0, spawn="mixed", clock_ticks=400)
 
 def random_action(envs, slots, generator):
     return torch.stack(
-        [torch.randint(0, n, (envs, slots), generator=generator) for n in (7, 3, 2)], -1
+        [torch.randint(0, n, (envs, slots), generator=generator) for n in (STICKS, POWERS, FIRES)],
+        -1,
     )
 
 

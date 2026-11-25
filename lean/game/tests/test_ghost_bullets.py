@@ -5,6 +5,7 @@ import dataclasses
 
 import torch
 
+from lean.contract import POWERS, STICKS
 from lean.game import core
 
 torch.set_num_threads(1)
@@ -20,8 +21,8 @@ def play(config, ticks, seed=5, envs=32, per_team=3, fire_share=0.3):
     states, outs = [], []
     for _ in range(ticks):
         n = state.x.shape[1]
-        stick = torch.randint(0, 7, (envs, n), generator=actions)
-        power = torch.randint(0, 3, (envs, n), generator=actions)
+        stick = torch.randint(0, STICKS, (envs, n), generator=actions)
+        power = torch.randint(0, POWERS, (envs, n), generator=actions)
         fire = (torch.rand((envs, n), generator=actions) < fire_share).long()
         noise = core.draw_noise(config, envs, n, actions, DEVICE)
         state, out = core.step(config, state, torch.stack([stick, power, fire], -1), noise)

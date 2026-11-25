@@ -4,6 +4,7 @@ import math
 
 import torch
 
+from lean.contract import POWERS, STICKS
 from lean.game import card, core
 
 torch.set_num_threads(1)
@@ -33,8 +34,8 @@ def test_hit_damage_matrix_matches_the_totals():
         n = state.x.shape[1]
         action = torch.stack(
             [
-                torch.randint(0, 7, (32, n), generator=generator),
-                torch.randint(0, 3, (32, n), generator=generator),
+                torch.randint(0, STICKS, (32, n), generator=generator),
+                torch.randint(0, POWERS, (32, n), generator=generator),
                 torch.ones((32, n), dtype=torch.long),
             ],
             -1,

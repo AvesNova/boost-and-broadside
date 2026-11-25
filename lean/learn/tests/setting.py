@@ -7,7 +7,16 @@ import torch
 from lean import game, model, scripted
 from lean.learn import League, LearnConfig, Opponent, WeightAverages, start
 
-SMALL = dict(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1, warmup_steps=1)
+# The tests' scale, and their seat layout: half the environments self-play (the tests index
+# seats by it), whatever the default share.
+SMALL = dict(
+    team_size_minimum=2,
+    team_size_maximum=2,
+    minibatches=2,
+    epochs=1,
+    warmup_steps=1,
+    self_play_share=0.5,
+)
 
 
 def small(envs: int = 4, *, game_config=None, league: bool = False, seed: int = 0, **overrides):
