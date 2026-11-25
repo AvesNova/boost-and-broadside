@@ -734,6 +734,26 @@ def test_next_state_targets_per_column_on_a_hand_made_pair():
     assert bins.tolist() == [[45, 42, 42, 51, 30, 66], [45, 42, 42, 51, 30, 23]]
 
 
+def test_next_state_shield_is_exactly_zero_on_a_recharging_tick():
+    """Catches float32 residue in the shield column: (shield + recharge) - shield - recharge
+    is not 0 in float32 (here about -8e-7 and -1.5e-6), and the residues filled the bins
+    next to 0 (2026-11-25: 3.8% of the nonzero shield rows). An unhurt recharging tick's
+    target is exactly 0; a hurt tick's is still the plain change."""
+    config = ModelConfig()
+    state, next_state, step_out, tick = hand_made_pair()
+    shield = torch.tensor([[37.3, 99.9]])
+    restored = torch.tensor([[0.8, 0.1]])
+    assert ((shield + restored) - shield - restored != 0.0).all()
+    state.shield, step_out.shield_restored = shield, restored
+    next_state.shield = shield + restored
+    target = next_state_target(config, state, next_state, step_out, tick)[0, :, -1]
+    assert target.tolist() == [0.0, 0.0]
+    state.shield, step_out.shield_restored = shield, torch.zeros_like(restored)
+    next_state.shield = (shield - 21.0).clamp_min(0.0)
+    target = next_state_target(config, state, next_state, step_out, tick)[0, :, -1]
+    assert target.tolist() == (next_state.shield - shield)[0].tolist()
+
+
 def test_next_state_loss_is_in_nats_per_column():
     """Catches a next-state loss not in nats: uniform logits cost ln(bins) per column,
     whatever the column's units; logits at the target's log-distribution cost its entropy
