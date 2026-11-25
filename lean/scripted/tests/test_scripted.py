@@ -552,3 +552,71 @@ def test_every_parameter_alone_at_both_ends_of_its_box_is_competent():
     print(f"farthest {outermost}; lowest shares of ships that fired {worst}")
     assert float(farthest.max()) < BOUNDARY_RAMP_END
     assert float(fired.min()) >= 0.5
+
+
+def ghost_state(distances: tuple[float, ...], seconds: tuple[float, ...]):
+    """A fog-on state, no fields: the own ship (slot 0, team 0) at the centre heading +x, and
+    one enemy per distance on the +x axis, each last seen `seconds` ago at that spot (its
+    sighting recorded there, its ticks since seen set from the game's tick length)."""
+    config = core.GameConfig(spawn="mixed", field_count=0, fog=True)
+    sizes = torch.tensor([[1, len(distances)]])
+    state = core.reset(config, 1, sizes, torch.Generator().manual_seed(0), CPU)
+    zeros = torch.zeros_like(state.x)
+    state = core.with_velocity(
+        state.replace(
+            x=torch.tensor([[0.0, *distances]]),
+            y=zeros,
+            heading_cos=torch.ones_like(state.x),
+            heading_sin=zeros,
+            speed=torch.full_like(state.x, 200.0),
+            angle=zeros,
+            angle_cos=torch.ones_like(state.x),
+            angle_sin=zeros,
+        )
+    )
+    state = core.perceive(state, torch.ones_like(state.alive))  # every row seen where it is
+    ticks = [round(value / state.constants["tick_length"]) for value in (0.0, *seconds)]
+    return state.replace(ticks_since_seen=torch.tensor([ticks]))
+
+
+def test_a_ghost_costs_its_roam_in_distance():
+    """Author 2026-11-25: a remembered enemy's distance grows by the seconds since it was seen
+    times its sustained speed. An enemy last seen 600 m away is chosen over one seen now at
+    900 m while it is fresh, and not once its roam takes it past 900 m."""
+    c = ghost_state((600.0, 900.0), (0.0, 0.0)).constants
+    late = (900.0 - 600.0) / c["sustained_speed"]  # seconds at which the ghost is as far
+    for seconds, expected in ((0.0, 1), (0.5 * late, 1), (1.5 * late, 2)):
+        state = ghost_state((600.0, 900.0), (seconds, 0.0))
+        parts = explain(ScriptedConfig(), state, 0, None, memory_of(3)).marginals
+        assert int(parts.target[0, 0]) == expected, seconds
+
+
+def test_a_ghost_that_could_be_anywhere_in_the_arena_is_dropped():
+    """A remembered enemy stays a target while its roam is within the arena radius
+    (ghost_cutoff 1), and is dropped beyond it: with no other enemy the ship then has no
+    target (it flies toward the centre and does not fire)."""
+    c = ghost_state((600.0,), (0.0,)).constants
+    limit = ScriptedConfig().values["ghost_cutoff"] * c["arena_radius"] / c["sustained_speed"]
+    for seconds, has_target in ((0.9 * limit, True), (1.1 * limit, False)):
+        reasons = explain(ScriptedConfig(), ghost_state((600.0,), (seconds,)), 0, None, memory_of())
+        assert bool(reasons.weights["disengaged"][0, 0] < 1.0) == has_target, seconds
+        if not has_target:
+            assert float(reasons.marginals.fire[0, 0]) == 0.0
+
+
+def test_no_shot_in_a_pure_head_on_unless_it_empties_the_shield():
+    """Author 2026-11-25: dead ahead the aspect factor gives (nearly) no damage, so the gun
+    holds fire nose to nose; it fires at the same target from astern, and nose to nose at a
+    target whose shield the hit would empty (0 here: any damage kills)."""
+    own = dict(x=0.0, y=0.0, heading=0.0, speed=250.0)
+
+    def fire(target_heading: float, shield: float | None = None) -> float:
+        target = dict(x=450.0, y=0.0, heading=target_heading, speed=250.0)
+        state = placed(own, target)
+        if shield is not None:
+            state = state.replace(shield=torch.tensor([[state.constants["max_shield"], shield]]))
+        return float(decide(state).fire[0, 0])
+
+    assert fire(math.pi) == 0.0  # nose to nose
+    assert fire(0.0) > 0.5  # from astern
+    assert fire(math.pi, shield=0.0) > 0.5  # nose to nose, the hit kills

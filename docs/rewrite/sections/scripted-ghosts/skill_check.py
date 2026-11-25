@@ -136,8 +136,10 @@ def main() -> None:
     }
     arguments.out.write_text(json.dumps(out, indent=1) + "\n")
     if arguments.head_to_head is not None:
-        out["head_to_head"] = head_to_head(arguments.head_to_head.resolve(), arguments.games)
-        log(f"head to head: {out['head_to_head']['score']:.4f} +- {out['head_to_head']['error']:.4f}")
+        out["head_to_head"] = match = head_to_head(
+            arguments.head_to_head.resolve(), arguments.games
+        )
+        log(f"head to head: {match['score']:.4f} +- {match['error']:.4f}")
     out["seconds"] = time.perf_counter() - started
     arguments.out.write_text(json.dumps(out, indent=1) + "\n")
     log(f"wrote {arguments.out}")
