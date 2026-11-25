@@ -200,8 +200,8 @@ def test_each_seat_gets_its_own_networks_step():
 
 
 def test_one_job_is_one_runner_call_and_keeps_the_stored_orientation(tmp_path, monkeypatch):
-    """A job's pairings with networks share one queue (the scripted-only ones are a call of
-    their own); a scripted agent in seat A against a network stays in seat A."""
+    """A job's pairings with networks share one queue per ship bucket (the scripted-only ones
+    are a call of their own); a scripted agent in seat A against a network stays in seat A."""
     from lean.learn import LearnConfig, WeightAverages, save_checkpoint
 
     torch.manual_seed(0)
@@ -225,11 +225,12 @@ def test_one_job_is_one_runner_call_and_keeps_the_stored_orientation(tmp_path, m
     other = ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.3))
     requests = [
         (yardstick, nets[0], (1, 2), 4),
-        (nets[0], nets[1], (1, 1), 4),
+        (nets[0], nets[1], (2, 1), 4),
         (yardstick, other, (1, 1), 4),
+        (nets[1], yardstick, (3, 2), 2),  # 5 ships: the next ship bucket
     ]
     counts = evaluator.ensure(requests)
-    assert sorted(calls) == [4, 8] and [entry["games"] for entry in counts] == [4, 4, 4]
+    assert sorted(calls) == [2, 4, 8] and [entry["games"] for entry in counts] == [4, 4, 4, 2]
     rows = store.connection.execute(
         "SELECT agent_a, agent_b, COUNT(*) FROM games GROUP BY agent_a, agent_b"
     ).fetchall()
@@ -439,3 +440,13 @@ def test_styles_with_unequal_sizes_keep_each_agent_on_its_own_ships(tmp_path):
     # On 1 ship: the yardstick's seat A game (1 minute) and its seat B game (8 minutes).
     assert rows[yardstick.id]["games"] == 2 and rows[yardstick.id]["minutes"] == 9.0
     assert other.id not in rows
+
+
+def test_calls_split_by_ship_bucket():
+    """A call pads every game to its largest ship count: totals up to the same power of two
+    share a call, larger ones go to the next."""
+    from lean.eval.evaluator import ship_bucket
+
+    assert [ship_bucket(ships) for ships in (2, 3, 4, 5, 8, 9, 12, 64, 66)] == [
+        2, 4, 4, 8, 8, 16, 16, 64, 128,
+    ]  # fmt: skip

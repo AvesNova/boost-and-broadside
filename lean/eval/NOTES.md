@@ -22,14 +22,17 @@ then `ensure([(a, b, (4, 4), games)])`, `adaptive(pairings, target_error=0.02)`,
 
 ## Files
 
-- `runner.py`: `play(game_config, queue, scripted_table, policy_a, policy_b)`. E environments
+- `runner.py`: `play(game_config, queue, scripted_table, policies, bf16=...)`. E environments
   are slots; a slot whose game ends takes the next game of the `Queue` at once. At the cutoff
   (the queue's end, or `seconds`) no game starts and every started game plays to its end (the
-  drain), so the results are a prefix of the queue with each game whole. A seat is one network
-  for every game, or a scripted agent per game. Deals are drawn once per 32-tick segment; each
-  network match draws its own position offset, as in training. A network acts through `lean.model.agent.network_step` (the agent step training's
-  live policy and the league share) and the game steps through `lean.game.tick` (shared with
-  the rollout and the sandbox).
+  drain), so the results are a prefix of the queue with each game whole. Each game's seat A
+  and seat B is a scripted vector (`a`, `b`) or a network (`net_a`, `net_b`, an index into
+  `policies`, all one architecture), so one queue holds many pairings. Deals are drawn once
+  per 32-tick segment (at most ceil(E / 8) games start in a segment); each seat draws its own
+  position offset per game, as in training. A network acts through
+  `lean.model.agent.network_step` (the agent step training's live policy and the league
+  share) and the game steps through `lean.game.tick` (shared with the rollout and the
+  sandbox). See "Routing".
 - `store.py`: the store (agents, conditions, games, a `counts` view, a `styles` view, Sobol
   streams), `ScriptedAgent`, `NetworkAgent`, `game_version`.
 - `style.py`: style counters, summed per slot and seat inside the compiled tick (no host read),
@@ -56,6 +59,52 @@ then `ensure([(a, b, (4, 4), games)])`, `adaptive(pairings, target_error=0.02)`,
   lean/game, lean/scripted and lean/contract.py). An edit there starts new conditions; old games
   stay in the file. The model's code is not in the version.
 - A pairing is read in both orientations; A's games as team 0 are kept at half of the total.
+  With unequal sizes the other orientation is stored under the mirrored conditions (A on 4
+  ships against B on 8 is B on 8 against A on 4): `counts`, `elo` (`pairing_totals`) and
+  `styles` read both conditions ids (2026-11-25; before, the reverse orientation was looked
+  up under the same id, and the old rule that seated a network in seat A stored a
+  scripted-first unequal pairing where `ensure` could not find it, so it replayed every call).
+
+## Shared game counts
+
+Every command reads and writes the same rows: a game is (agent A, agent B, side, conditions),
+the conditions being the game config, the seats' sizes and the game version. `play` and
+`adaptive` (through `ensure`) write; `report` and `crossover` (through `ensure`, which plays
+only what is missing) read the `counts` view; `elo` reads every pairing under the conditions;
+`styles` reads each agent's games from both seats. So a crossover match (network on 8 against
+the yardstick on 6) is the `elo --sizes 8 6` pairing and the `report yardstick net:... --sizes
+6 8` pairing turned round, and its games' styles are the agent's `styles --sizes 8 6`. A Sobol
+screen against the yardstick and a ladder share their yardstick games likewise. A network's id
+covers its inference code (lean/model, lean/eval/runner.py): a runner edit starts new network
+ids, so network games from before it are not reused (scripted games are).
+
+## Routing
+
+The training league routes its environments to its members (L2, "mixture-of-experts style"):
+`lean.model.agent.route_rows` gives each network the rows it plays, in order, padded to a
+width W; `routed_step` (the league's `slot_actions`) runs the network once on its W rows and
+writes back with a `where` over all rows. The runner routes the 2E seats (seat A of every
+environment, then seat B) the same way, with `route_rows` and `network_step`, but writes in
+place: each network gathers its seats' view, carry and offset, runs on W rows, and scatters
+its moves and carry back to its own seats only (`index_copy_`, padding rows to a spare row
+2E); a seat's carry is zeroed when its game is at tick 0. W per network and segment is its
+seats in play plus those of the games the segment may start, at most E per seat side it
+plays (host arithmetic on the queue and one read per segment; nothing is read in a tick).
+Per tick: one `seat_moves` call per network with seats, then `advance_decide` (the game tick,
+the starts, and the next tick's scripted moves and views in one graph). Without networks the
+fused `tick` runs (scripted moves and the game in one graph).
+
+`Evaluator.ensure` puts every game with a network into one shuffled queue (one runner call per
+architecture), and the scripted-only games into a call of their own: inside a network call
+they would pay the network tick's per-environment costs (views, routing). `minimum_envs`
+(default 2,048) lets a short job fill the GPU rather than keep 16 games per slot.
+
+Why the gain is smaller than training's 2.5x: before L2 the league ran every member on every
+environment (a vmap over the slots); the old runner never ran a network on rows it did not
+play. What one batch saves here is calls: E is bounded by a call's games, and each call pays a
+drain, so many small pairings (adaptive rounds) ran at a small E. With one call the whole
+round shares the GPU.
+
 
 ## What compiles
 

@@ -7,7 +7,10 @@ shuffled queue and one runner call (the runner routes each seat to its agent, as
 training league routes its environments to its members), whatever the pairings: networks
 against scripted agents and against each other. Scripted-only games are a call of their own
 (the runner's fused scripted tick: in a network call they would pay the network tick's
-per-environment costs), and networks of different architectures go to separate calls.
+per-environment costs), and networks of different architectures go to separate calls. A
+call's games are padded to its largest ship count, so calls are also split by ship bucket
+(`ship_bucket`: a game's total ships up to the next power of two, so no game is padded to
+more than twice its ships; one compiled graph covers every bucket).
 """
 
 import math
@@ -27,6 +30,12 @@ from lean.scripted.parameters import SAMPLED, box_point
 # 7-agent ladder of 128 games per pairing ran in about half the time at 2,048 as at 256;
 # lean/eval/NOTES.md, "Numbers").
 MINIMUM_ENVS = 2048
+
+
+def ship_bucket(ships: int) -> int:
+    """The smallest power of two at least `ships`: a game of N ships shares a runner call
+    with games of up to that many (padded to the call's largest)."""
+    return 1 << max(0, ships - 1).bit_length()
 
 
 class Evaluator:
@@ -88,7 +97,7 @@ class Evaluator:
     def ensure(self, requests: list[tuple]) -> list[dict[str, int]]:
         """Play until each request (agent A, agent B, sizes, games) has at least `games` games
         in the store; returns each pairing's counts (as `counts`)."""
-        groups = {}  # by the networks' architecture (None: scripted only)
+        groups = {}  # by the networks' architecture (None: scripted only) and ship bucket
         for agent_a, agent_b, sizes, games in requests:
             have = self.counts(agent_a, agent_b, sizes)
             missing = games - have["games"]
@@ -106,7 +115,7 @@ class Evaluator:
             }
             if len(architectures) > 1:
                 raise ValueError("a pairing of two network architectures cannot share a call")
-            key = next(iter(architectures), None)
+            key = (next(iter(architectures), None), ship_bucket(sizes[0] + sizes[1]))
             groups.setdefault(key, []).append((agent_a, agent_b, tuple(sizes), sides))
         for entries in groups.values():
             self._play_group(entries)
