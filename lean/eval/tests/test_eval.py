@@ -15,9 +15,10 @@ from lean.eval import (
     bradley_terry,
     crossover,
     play,
+    runner,
     standard_error,
 )
-from lean.eval.runner import A_WON, DRAW, NOT_PLAYED
+from lean.eval.runner import A_WON, DRAW, NOT_PLAYED, SCRIPTED
 from lean.eval.store import conditions_of
 from lean.scripted.parameters import PARAMETERS, rows_of, vector
 
@@ -119,18 +120,115 @@ def test_the_drain_counts_every_started_game_and_none_after_the_cutoff():
     assert (outcome.length[:count] > 0).all() and (outcome.length[count:] == 0).all()
 
 
-def test_runner_seats_a_network():
+def test_runner_seats_many_networks_and_scripted_agents_in_one_queue():
+    """One call holds games of several pairings (network against scripted, network against
+    network, scripted against scripted) and unequal team sizes: every game played whole."""
     torch.manual_seed(0)
-    policy = model.Policy(model.ModelConfig()).eval()
+    policies = [model.Policy(model.ModelConfig()).eval() for _ in range(2)]
+    games = 12
+    pairing = torch.arange(games) % 3  # 0: net 0 v scripted, 1: net 1 v net 0, 2: scripted
+    net_a = torch.tensor([0, 1, SCRIPTED])[pairing]
+    net_b = torch.tensor([SCRIPTED, 0, SCRIPTED])[pairing]
+    zeros = torch.zeros(games, dtype=torch.long)
+    queue = Queue(zeros, zeros + 1, torch.arange(games) % 2, zeros + 1, zeros + 2, net_a, net_b)
     outcome = play(
-        GAME,
-        queue_of(6, 1),
-        torch.tensor([vector(scripted.ScriptedConfig())] * 2),
-        policy,
-        envs=4,
-        segment=8,
-    )
+        GAME, queue, torch.tensor([vector(scripted.ScriptedConfig())] * 2), policies, envs=4,
+        segment=8, minimum_envs=4,
+    )  # fmt: skip
     assert set(outcome.result.tolist()) <= {A_WON, 1, DRAW}
+    assert ((outcome.length > 0) & (outcome.length <= GAME.clock_ticks)).all()
+
+
+def test_each_seat_gets_its_own_networks_step():
+    """The runner's routing (lean.model.agent.routed_step, the league's): each seat a network
+    plays gets the carry that network's own step gives on the seat's view; scripted and idle
+    seats keep theirs."""
+    from lean.model.agent import network as as_network
+
+    torch.manual_seed(0)
+    policies = [model.Policy(model.ModelConfig()).eval() for _ in range(2)]
+    envs = 4
+    state = game.reset(GAME, envs, torch.tensor([[2, 1]] * envs), None, "cpu")
+    ships = state.exists.shape[1]
+    queue = Queue(
+        torch.zeros(4, dtype=torch.long),
+        torch.zeros(4, dtype=torch.long),
+        torch.tensor([0, 1, 1, 0]),
+        torch.tensor([2, 1, 2, 1]),
+        torch.tensor([1, 2, 1, 2]),
+        torch.tensor([0, 1, SCRIPTED, 1]),
+        torch.tensor([1, SCRIPTED, 0, 1]),
+    )
+    carry = torch.randn_like(policies[0].initial_carry(2 * envs, ships, "cpu"))
+    slots = runner.Slots(
+        torch.tensor([0, 1, 2, -1]),  # the last slot idle
+        scripted.fresh_memory(envs, ships, None, "cpu"),
+        carry,
+        torch.randn(2 * envs, 2),
+        torch.zeros(envs, 2, len(runner.style_counters.SUMS)),
+    )
+    table = torch.tensor([vector(scripted.ScriptedConfig())])
+    decision = runner.decide(GAME, state, slots, queue, table, True)
+    seat_action, carry_out = decision.seat_action, decision.carry_out
+    for index, policy in enumerate(policies):
+        seat_action, carry_out = runner.seat_moves(
+            as_network(policy, False), torch.tensor(index), torch.arange(3), decision, carry,
+            slots.offset, seat_action, carry_out,
+        )  # fmt: skip
+    expected_net = [0, 1, SCRIPTED, SCRIPTED, 1, SCRIPTED, 0, SCRIPTED]
+    assert decision.seat_net.tolist() == expected_net
+    from lean.model.agent import seat_view
+
+    for seat, net in enumerate(expected_net):
+        if net == SCRIPTED:
+            assert torch.equal(carry_out[:, seat], carry[:, seat])
+            assert (seat_action[seat] == 0).all()
+            continue
+        view = seat_view(
+            decision.views, decision.seat_environment[seat : seat + 1],
+            decision.seat_team[seat : seat + 1],
+        )  # fmt: skip
+        _, _, own = policies[net].step(
+            view, carry[:, seat : seat + 1], slots.offset[seat : seat + 1]
+        )
+        assert torch.allclose(carry_out[:, seat], own[:, 0], atol=1e-4)
+
+
+def test_one_job_is_one_runner_call_and_keeps_the_stored_orientation(tmp_path, monkeypatch):
+    """A job's pairings, networks and scripted agents alike, share one queue; a scripted
+    agent in seat A against a network stays in seat A."""
+    from lean.learn import LearnConfig, WeightAverages, save_checkpoint
+
+    torch.manual_seed(0)
+    nets = []
+    for index in range(2):
+        policy = model.Policy(model.ModelConfig())
+        path = tmp_path / f"net{index}.pt"
+        save_checkpoint(path, policy, WeightAverages(policy, LearnConfig()), LearnConfig())
+        nets.append(NetworkAgent(str(path), "live"))
+    calls = []
+    real = runner.play
+
+    def counting(*arguments, **keywords):
+        calls.append(len(arguments[1]))
+        return real(*arguments, **keywords)
+
+    monkeypatch.setattr(runner, "play", counting)
+    store = Store(tmp_path / "s.sqlite")
+    evaluator = Evaluator(store, GAME, device="cpu", envs=4, segment=8)
+    yardstick = ScriptedAgent.of()
+    other = ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.3))
+    requests = [
+        (yardstick, nets[0], (1, 2), 4),
+        (nets[0], nets[1], (1, 1), 4),
+        (yardstick, other, (1, 1), 4),
+    ]
+    counts = evaluator.ensure(requests)
+    assert calls == [12] and [entry["games"] for entry in counts] == [4, 4, 4]
+    rows = store.connection.execute(
+        "SELECT agent_a, agent_b, COUNT(*) FROM games GROUP BY agent_a, agent_b"
+    ).fetchall()
+    assert (yardstick.id, nets[0].id, 4) in rows
 
 
 def test_store_reuses_games_and_keeps_conditions_apart(tmp_path, monkeypatch):
