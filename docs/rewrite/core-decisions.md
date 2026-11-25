@@ -727,3 +727,12 @@ These replace the flap, profile and stick-level points above where they disagree
 - Checks for this batch: quick tier on lean 318 passed (no failure; the per-parameter
   competence test passes without fields); compile check within the baseline (4 graphs, 5,703
   operations, cold 239.0 s, performance profile).
+
+## Sight ellipse (author 2026-11-25, branch vision-ellipse)
+
+- **Ellipse vision added, configurable, default off.** Sight is an ellipse with the observer at
+  one focus along its nose: |d| - e (d . nose) <= p, p the card's vision range (the side reach),
+  e the card column `vision_eccentricity` (a design input, 0 <= e < 1). Reach p / (1 - e) ahead,
+  p / (1 + e) behind; e = 1 - p / (forward reach). Default e = 0, exactly the old circle, until
+  the author has tested it (replay `--vision-eccentricity E`, the sandbox tool's slider).
+  Fields' cores and team sharing unchanged. Measurements: docs/rewrite/sections/vision-ellipse/progress.md.
