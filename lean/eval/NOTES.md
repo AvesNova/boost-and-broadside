@@ -182,7 +182,22 @@ allocation, the crossover walk; many networks and scripted agents in one queue, 
 getting its own network's step (the routing), one call per job and ship bucket, unequal
 sizes read in both orientations (counts, Elo, styles).
 
+## Crossover with a network (2026-11-25)
+
+`crossover STORE untrained.pt --weights live --sizes 4 8 16 32 --games 64` (an untrained
+network: no BC or RL checkpoint of the lean core exists yet), tree 9bb1f597,
+docs/rewrite/sections/eval-scale/crossover/: 7 rounds, 4,352 games, 249.8 s. Every walk went
+down from parity to beats_up_to 0 (32 ships won 21 of 64 against one scripted ship, 16 won 11,
+8 won 2, 4 none). Run again on the same store: 1.1 s, no game played, the same walks. Elo at
+8 against 6 and at 6 against 8, `styles --sizes 8 6` and `report yardstick net:... --sizes 6 8`
+all read the crossover's games (the last turned round, 64-0-0). The upward walk is covered by
+the stand-in tests only, until a trained network exists.
+
 ## Open
 
-- Unequal team sizes with a network are untested in a full run.
+- The upward crossover walk with a real network (needs a trained checkpoint).
 - The batched crossover's GPU gain over v1's walk is not shown.
+- A call pads to its largest game, at most twice a game's ships within a bucket; a finer
+  split (more calls, more drains) is not measured.
+- Network against network games run the scripted agent on every ship when the queue also has
+  scripted seats (its moves unused there); not measured separately.
