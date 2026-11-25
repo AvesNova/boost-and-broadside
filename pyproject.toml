@@ -33,6 +33,16 @@ tools = [
     "cma>=4.0",
 ]
 
+# The lean view (lean/view: offscreen replay videos and the live window in v2's look). Also
+# core dependencies today (v2's play shell); listed so the view's needs stay named when the
+# core sheds them. MP4s are encoded with the ffmpeg command line tool.
+view = [
+    "glfw>=2.11.0",
+    "imgui-bundle>=1.93.0",
+    "moderngl>=5.13.0",
+    "pillow>=11.0",
+]
+
 [project.scripts]
 bnb = "bnb.cli:main"
 
