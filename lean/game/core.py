@@ -118,6 +118,11 @@ class GameConfig:
     # and on the tick it fires or is hit by a bullet; a hidden enemy is its last-seen row.
     # False (an ablation): full information.
     fog: bool = True
+    # The tracking circle (author 2026-11-26; `sight_pairs`): an enemy visible on the tick before
+    # (by sight or a reveal) stays visible while an observer has it within the circle of the
+    # observer's forward reach p / (1 - e), with a clear line. False (an ablation): the ellipse
+    # every tick. At e = 0 the circle is the ellipse, so the switch changes nothing there.
+    fog_tracking: bool = True
 
 
 def built_once(build):
@@ -1023,7 +1028,8 @@ def step(
         # damage does not).
         real_hit = (contact.hit & real).to(bullet_damage.dtype)
         real_hits = no_damage.scatter_add(1, contact.target, real_hit)
-        new_state = perceive(new_state, shots.fired | (real_hits > 0.0) | (crash_taken > 0.0))
+        revealed = shots.fired | (real_hits > 0.0) | (crash_taken > 0.0)
+        new_state = perceive(new_state, revealed, config.fog_tracking)
     return new_state, out
 
 
@@ -1684,7 +1690,7 @@ def deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generato
     state = dataclasses.replace(
         state, seen=seen, ticks_since_seen=filled((envs, slots), 0, torch.long, device)
     )
-    return perceive(state, torch.zeros_like(exists))
+    return perceive(state, torch.zeros_like(exists), config.fog_tracking)
 
 
 def reset(
@@ -1733,12 +1739,19 @@ SEEN_KNOWN = SEEN_COLUMNS.index("known")
 TICKS_SINCE_SEEN_CAP = 1 << 30  # v2's cap (src/bnb/game/perception/observe.py)
 
 
-def sighted_by_enemy(state: State) -> Tensor:
+def sighted_by_enemy(state: State, tracked: Tensor | None = None) -> Tensor:
     """(E, N) bool: some living ship of the other team sees the ship (`sight_pairs`)."""
-    return sight_pairs(state).any(-1)
+    return sight_pairs(state, tracked).any(-1)
 
 
-def sight_pairs(state: State) -> Tensor:
+def tracked_by_enemy(state: State) -> Tensor:
+    """(E, N) bool: the ship was visible to its enemy team on the tick before (by sight or a
+    reveal: ticks since seen 0 and seen at least once; the deal's "nothing seen yet" rows have
+    ticks since seen 0 but are not known), so its enemies hold it with the tracking circle."""
+    return (state.ticks_since_seen == 0) & (state.seen[:, SEEN_KNOWN] > 0.5)
+
+
+def sight_pairs(state: State, tracked: Tensor | None = None) -> Tensor:
     """(E, target, observer) bool: the observer, a living ship of the target's other team, sees the
     target (v2's sight test, src/bnb/game/perception/sight.py `sighted`, game spec 10.1, with the
     sight ellipse, author 2026-11-25). The observer sees inside an ellipse with itself at one focus,
@@ -1747,7 +1760,11 @@ def sight_pairs(state: State) -> Tensor:
     vision_eccentricity (0 <= e < 1): p / (1 - e) dead ahead, p / (1 + e) dead behind; e = 0 is the
     circle |d| <= p. Tested without a square root as |d|^2 <= (p + e (d . n))^2 (for p > 0 and e < 1
     a negative p + e (d . n) cannot pass: |d| <= -(p + e d . n) <= -p + e |d| has no solution),
-    which at e = 0 is exactly the circle's d^2 <= p^2. Sight is blocked only by fields' cores: field
+    which at e = 0 is exactly the circle's d^2 <= p^2. A target in `tracked` (E, N) bool (visible
+    to this team on the tick before, `tracked_by_enemy`; author 2026-11-26) is held inside the
+    tracking circle instead, |d|^2 <= (p / (1 - e))^2: the ellipse's forward reach all round, a
+    superset of the ellipse (|d| <= p + e |d| gives |d| <= p / (1 - e)), equal to it at e = 0.
+    None: the ellipse for every target. Sight is blocked only by fields' cores: field
     i, with core radius max(r - w / 2, 0) and outer radius r + w / 2, blocks the line when exactly
     one end is strictly inside its core and the two ends are not both inside its outer disc (core
     and band see each other), or when neither end is inside its core and the segment passes strictly
@@ -1763,7 +1780,10 @@ def sight_pairs(state: State) -> Tensor:
         return value[:, None, :] if isinstance(value, Tensor) else value
 
     along_nose = line_x * state.heading_cos[:, None, :] + line_y * state.heading_sin[:, None, :]
-    reach = per_observer(c["vision_range"]) + per_observer(c["vision_eccentricity"]) * along_nose
+    side, eccentricity = per_observer(c["vision_range"]), per_observer(c["vision_eccentricity"])
+    reach = side + eccentricity * along_nose
+    if tracked is not None:
+        reach = torch.where(tracked[:, :, None], side / (1.0 - eccentricity), reach)
     clear = (
         (length_squared <= reach * reach)
         & state.alive[:, None, :]
@@ -1809,12 +1829,15 @@ def _snapshot(state: State) -> Tensor:
     )
 
 
-def perceive(state: State, revealed: Tensor) -> State:
+def perceive(state: State, revealed: Tensor, tracking: bool = True) -> State:
     """The state with each ship's sighting by its enemy team brought up to date: a ship in the
     enemy's sight or `revealed` (E, N) bool (it fired or was hit this tick) is recorded as it is
     now and its ticks since seen set to 0; any other ship keeps its last-seen row and counts up
-    to the cap. Each ship has one enemy team, so one row per ship serves."""
-    visible = (sighted_by_enemy(state) | revealed) & state.exists
+    to the cap. Each ship has one enemy team, so one row per ship serves. tracking
+    (GameConfig.fog_tracking): a ship visible on the tick before is held by the tracking circle
+    (`sight_pairs`), read from the rows before this update."""
+    tracked = tracked_by_enemy(state) if tracking else None
+    visible = (sighted_by_enemy(state, tracked) | revealed) & state.exists
     seen = torch.where(visible[:, None], _snapshot(state), state.seen)
     since = torch.where(visible, 0, (state.ticks_since_seen + 1).clamp_max(TICKS_SINCE_SEEN_CAP))
     return dataclasses.replace(state, seen=seen, ticks_since_seen=since)

@@ -14,7 +14,8 @@ CONFIG_SETTINGS = {"clock_ticks": 10**9}  # no clock: the game without its time 
 def frame(world: World) -> dict:
     """What the browser draws: poses, bullets and the player's readouts; per ship its sight
     (vision range p to the side, eccentricity e: core.sight_pairs) and whether the other ship
-    knows it this tick: in its sight, or revealed by a shot or a hit (fog off: always)."""
+    knows it this tick: in its sight (or held by its tracking circle), or revealed by a shot or a
+    hit (fog off: always)."""
     s = world.state
     seen = [True, True] if s.ticks_since_seen is None else (s.ticks_since_seen[0] == 0).tolist()
     ships = []
