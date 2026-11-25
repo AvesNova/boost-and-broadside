@@ -1,5 +1,6 @@
-"""The adaption layer's index texture (filled into v2's IndexGrid by the caller): ln n on a square grid over the map, from the game's own medium
-(lean.game.core.medium), for the fields' topographic fill and contours.
+"""The adaption layer's index texture (filled into v2's IndexGrid by the caller): ln n on a
+square grid over the map, from the game's own medium (lean.game.core.medium), for the fields'
+topographic fill and contours.
 
 Fields are fixed within an episode, so the grid is built once per deal. Only tiles that touch
 a field's outer disc (radius plus half the band) are evaluated: beyond it a field adds
@@ -39,8 +40,11 @@ class IndexGrid:
 def _grid_size(fields: Fields, arena_radius: float, texel: float) -> int:
     reach = max(
         arena_radius,
-        float(np.max(np.maximum(np.abs(fields.x), np.abs(fields.y)) + fields.outer_radius,
-                     initial=0.0)),
+        float(
+            np.max(
+                np.maximum(np.abs(fields.x), np.abs(fields.y)) + fields.outer_radius, initial=0.0
+            )
+        ),
     )
     return math.ceil(2.0 * reach / (texel * TILE)) * TILE
 
@@ -63,12 +67,12 @@ def build(fields: Fields, arena_radius: float, texel: float = TEXEL_METRES) -> I
         )
 
     gap_x, gap_y = gap(fields.x), gap(fields.y)
-    touches = gap_y[:, :, None] ** 2 + gap_x[:, None, :] ** 2 < fields.outer_radius[:, None, None] ** 2
+    touches = (
+        gap_y[:, :, None] ** 2 + gap_x[:, None, :] ** 2 < fields.outer_radius[:, None, None] ** 2
+    )
     touched = np.flatnonzero(touches.any(0).reshape(-1))  # tile = row * tiles + column
     rows = torch.tensor(
-        np.stack(
-            [fields.x, fields.y, fields.radius, fields.band_width, fields.log_index]
-        ),
+        np.stack([fields.x, fields.y, fields.radius, fields.band_width, fields.log_index]),
         dtype=torch.float32,
     )[None]  # (1, 5, F) as State.fields
     offsets = (np.arange(TILE) + 0.5) * texel

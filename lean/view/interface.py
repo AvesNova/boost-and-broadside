@@ -18,8 +18,8 @@ from imgui_bundle import imgui
 
 from .marks import Mark, fade
 from .play.camera import Camera
-from .snapshot import SPECTATOR, Snapshot
 from .play.themes import Colour, Theme
+from .snapshot import SPECTATOR, Snapshot
 
 FONTS = pathlib.Path(imgui_bundle.__file__).parent / "assets" / "fonts" / "Roboto"
 FONT_SIZE = 15.0  # pixels at interface scale 1
@@ -295,8 +295,11 @@ class Interface:
             (f"{counts[1]}", theme.team[1], self.fonts.bold),
             ("    ships left", mix(theme.text, theme.panel_line, 0.5), self.fonts.regular),
             ("        " + clock(frame.clock), theme.text, self.fonts.bold),
-            (f"  / {clock(frame.episode_length)}", mix(theme.text, theme.panel_line, 0.5),
-             self.fonts.regular),
+            (
+                f"  / {clock(frame.episode_length)}",
+                mix(theme.text, theme.panel_line, 0.5),
+                self.fonts.regular,
+            ),
         ]
         total = 0.0
         for text, _, font in parts:
@@ -317,8 +320,10 @@ class Interface:
                 f"x{speed:g}" for speed in SPEEDS
             ]
             spacing = 2.0 * scale
-            widths = [imgui.calc_text_size(label).x + 2 * imgui.get_style().frame_padding.x
-                      for label in labels]
+            widths = [
+                imgui.calc_text_size(label).x + 2 * imgui.get_style().frame_padding.x
+                for label in labels
+            ]
             x = width - sum(widths) - spacing * (len(labels) - 1) - 10.0 * scale
             imgui.same_line(0.0, 0.0)
             imgui.set_cursor_pos(imgui.ImVec2(x, top))
@@ -414,7 +419,8 @@ class Interface:
         (left, top), (right, low) = (minimap.pixel(*corner) for corner in corners)
         draw_list = imgui.get_window_draw_list()
         draw_list.push_clip_rect(
-            imgui.ImVec2(x + padding, y + padding), imgui.ImVec2(x + padding + side, y + padding + side)
+            imgui.ImVec2(x + padding, y + padding),
+            imgui.ImVec2(x + padding + side, y + padding + side),
         )
         draw_list.add_rect(
             imgui.ImVec2(x + padding + left, y + padding + top),
@@ -431,7 +437,9 @@ class Interface:
         bar = SCRUBBER * scale
         self._window("###scrubber", 0.0, height - bar, width, bar, square=True)
         imgui.get_window_draw_list().add_line(
-            imgui.ImVec2(0.0, height - bar), imgui.ImVec2(width, height - bar), u32(theme.panel_line)
+            imgui.ImVec2(0.0, height - bar),
+            imgui.ImVec2(width, height - bar),
+            u32(theme.panel_line),
         )
         frame = shown.frames[shown.index]
         imgui.set_cursor_pos(imgui.ImVec2(10.0 * scale, 0.5 * (bar - imgui.get_frame_height())))
@@ -460,8 +468,9 @@ class Interface:
             for victim in np.flatnonzero(recorded.events.died):
                 mx = low.x + (high.x - low.x) * k / span
                 colour = theme.team[int(recorded.ships.team[victim])]
-                draw_list.add_line(imgui.ImVec2(mx, low.y), imgui.ImVec2(mx, high.y), u32(colour),
-                                   2.0 * scale)
+                draw_list.add_line(
+                    imgui.ImVec2(mx, low.y), imgui.ImVec2(mx, high.y), u32(colour), 2.0 * scale
+                )
         imgui.end()
 
     def _result(self, shown: Shown, width: float, height: float) -> None:

@@ -76,8 +76,9 @@ class Bullets:
 @dataclasses.dataclass(frozen=True)
 class Fields:
     """(F,) the environment's fields: centre, radius and band width (m), level (half-octaves of
-    the refractive index, signed: + thick air) and log_index (its target ln n), and the band's two edges where the sight test
-    changes, the core radius max(r - w / 2, 0) and the outer radius r + w / 2 (m)."""
+    the refractive index, signed: + thick air) and log_index (its target ln n), and the band's
+    two edges where the sight test changes, the core radius max(r - w / 2, 0) and the outer
+    radius r + w / 2 (m)."""
 
     x: np.ndarray
     y: np.ndarray
@@ -158,8 +159,8 @@ def _ships(config: core.GameConfig, state: State, environment: int, exists: torc
     else:
         enemy_sees = (state.ticks_since_seen == 0) & (state.seen[:, core.SEEN_KNOWN] > 0.5)
         in_sight = core.sighted_by_enemy(state)
-        tracked = core.tracked_by_enemy(state) if config.fog_tracking else torch.zeros_like(
-            state.alive
+        tracked = (
+            core.tracked_by_enemy(state) if config.fog_tracking else torch.zeros_like(state.alive)
         )
     # (E, 2, N): row T is team T's view; a team always sees its own ships.
     own = team[:, None, :] == torch.arange(2, device=team.device)[None, :, None]

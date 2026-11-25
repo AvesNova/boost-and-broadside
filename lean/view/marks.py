@@ -146,8 +146,16 @@ def collision_table(theme: Theme, marks: list[Mark], now: float, pixel: float) -
     return table
 
 
-def draw(renderer, camera, theme: Theme, frame: Snapshot, marks: list[Mark], view: int,
-         draw_vision: bool, target) -> None:
+def draw(
+    renderer,
+    camera,
+    theme: Theme,
+    frame: Snapshot,
+    marks: list[Mark],
+    view: int,
+    draw_vision: bool,
+    target,
+) -> None:
     """Draw lean's extras over the frame v2's renderer resolved onto `target` (the bound
     framebuffer, no multisampling)."""
     uniforms, pixel = camera.uniforms(), camera.metres_per_pixel

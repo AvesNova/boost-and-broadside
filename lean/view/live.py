@@ -23,15 +23,14 @@ import torch
 import tyro
 
 from bnb.game import api
+from lean.game import card
 
 from . import marks as lean_marks
 from .match import Match, MatchSettings
-from lean.game import card
-
 from .play import app
+from .play import window as window_module
 from .play.interface import fleets, top_bar
 from .play.interface import text as interface_text
-from .play import window as window_module
 from .play.loop import MatchEvent, MatchLoop
 from .play.tuning import base_rules
 from .play.window import Window

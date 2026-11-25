@@ -62,7 +62,11 @@ def camera_path(frames: list[Snapshot], arena: float, aspect: float) -> np.ndarr
         live = ships.alive if ships.alive.any() else np.ones_like(ships.alive)
         x, y = ships.x[live], ships.y[live]
         half = max((x.max() - x.min()) / aspect, y.max() - y.min()) / 2 + MARGIN
-        raw[t] = ((x.min() + x.max()) / 2, (y.min() + y.max()) / 2, min(max(half, SMALLEST_HALF), whole))
+        raw[t] = (
+            (x.min() + x.max()) / 2,
+            (y.min() + y.max()) / 2,
+            min(max(half, SMALLEST_HALF), whole),
+        )
 
     def smooth(values: np.ndarray, seconds: float) -> np.ndarray:
         keep = math.exp(-1.0 / (seconds * FPS))
@@ -90,8 +94,16 @@ def camera_path(frames: list[Snapshot], arena: float, aspect: float) -> np.ndarr
 class VideoRenderer:
     """v2's renderer, the interface and lean's extras, offscreen at WIDTH x HEIGHT."""
 
-    def __init__(self, frames: list[Snapshot], grid: IndexGrid, values: np.ndarray, view: int,
-                 theme: str, title: str, draw_vision: bool) -> None:
+    def __init__(
+        self,
+        frames: list[Snapshot],
+        grid: IndexGrid,
+        values: np.ndarray,
+        view: int,
+        theme: str,
+        title: str,
+        draw_vision: bool,
+    ) -> None:
         self.frames, self.view, self.title, self.draw_vision = frames, view, title, draw_vision
         self.v2_frames = [to_v2(frame) for frame in frames]
         self.context = context()
@@ -120,8 +132,9 @@ class VideoRenderer:
             self.trails = Trails(len(frame.ships.x), frame.stall_angle)
             self.recorded = -1
         for k in range(max(self.recorded + 1, t - 60), t + 1):
-            self.trails.record(self.v2_frames[k], self.frames[k].clock,
-                               np.zeros(len(frame.ships.x), bool))
+            self.trails.record(
+                self.v2_frames[k], self.frames[k].clock, np.zeros(len(frame.ships.x), bool)
+            )
         self.recorded = t
         centre_x, centre_y, half = self.path[t]
         self.camera.follow(centre_x, centre_y)
@@ -129,11 +142,26 @@ class VideoRenderer:
         theme = self.theme
         marks = lean_marks.marks_at(self.frames, t)
         self.renderer.draw(
-            v2_frame, self.view, self.camera, theme, self.trails, frame.clock, self.target,
-            grid=theme.grid_pattern, contours=theme.contour_shapes,
+            v2_frame,
+            self.view,
+            self.camera,
+            theme,
+            self.trails,
+            frame.clock,
+            self.target,
+            grid=theme.grid_pattern,
+            contours=theme.contour_shapes,
         )
-        lean_marks.draw(self.renderer, self.camera, theme, frame, marks, self.view,
-                        self.draw_vision, self.target)
+        lean_marks.draw(
+            self.renderer,
+            self.camera,
+            theme,
+            frame,
+            marks,
+            self.view,
+            self.draw_vision,
+            self.target,
+        )
         shown = v2_frame.ships.alive & (
             v2_frame.ships.visible[self.view] if self.view != SPECTATOR else True
         )
@@ -170,9 +198,30 @@ class VideoRenderer:
 
 def encode(video: VideoRenderer, path: Path) -> None:
     command = [
-        "/usr/bin/ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-        "-s", f"{WIDTH}x{HEIGHT}", "-r", str(FPS), "-i", "-", "-c:v", "libx264",
-        "-preset", "medium", "-crf", "22", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        "/usr/bin/ffmpeg",
+        "-y",
+        "-loglevel",
+        "error",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-s",
+        f"{WIDTH}x{HEIGHT}",
+        "-r",
+        str(FPS),
+        "-i",
+        "-",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "22",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
         str(path),
     ]
     process = subprocess.Popen(command, stdin=subprocess.PIPE)
@@ -203,11 +252,19 @@ def main() -> None:
     parser.add_argument("--vision-range", type=float, default=None)
     parser.add_argument("--vision-eccentricity", type=float, default=None)
     parser.add_argument("--tracking", choices=("on", "off"), default="on")
-    parser.add_argument("--draw-vision", action="store_true",
-                        help="each ship's sight ellipse and tracking circle (on with an eccentricity)")
+    parser.add_argument(
+        "--draw-vision",
+        action="store_true",
+        help="each ship's sight ellipse and tracking circle (on with an eccentricity)",
+    )
     parser.add_argument("--theme", default=themes.DEFAULT, choices=themes.shipped_names())
-    parser.add_argument("--stills", type=float, nargs="*", default=[0.25, 0.5, 1.0],
-                        help="also save PNG stills at these fractions of the game")
+    parser.add_argument(
+        "--stills",
+        type=float,
+        nargs="*",
+        default=[0.25, 0.5, 1.0],
+        help="also save PNG stills at these fractions of the game",
+    )
     arguments = parser.parse_args()
     arguments.out.mkdir(parents=True, exist_ok=True)
     view = SPECTATOR if arguments.view == "spectator" else int(arguments.view)
@@ -233,8 +290,11 @@ def main() -> None:
             ", no fields" if arguments.no_fields else ""
         )
         video = VideoRenderer(frames, grid, index.values, view, arguments.theme, title, draw_vision)
-        print(f"seed {seed}: {len(frames)} frames, simulated in "
-              f"{time.perf_counter() - started:.0f} s", flush=True)
+        print(
+            f"seed {seed}: {len(frames)} frames, simulated in "
+            f"{time.perf_counter() - started:.0f} s",
+            flush=True,
+        )
         for fraction in arguments.stills:
             t = min(int(fraction * (len(frames) - 1)), len(frames) - 1)
             save_png(video.frame(t, final=fraction >= 1.0), arguments.out / f"{stem}_t{t:04d}.png")
