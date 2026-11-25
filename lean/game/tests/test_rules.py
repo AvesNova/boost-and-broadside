@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from lean.contract import NO_PENDING, join_action
-from lean.game import GameConfig, card, core, draw_noise, observe, reset, step
+from lean.game import GameConfig, card, core, draw_noise, observe, reset, step, tuning
 
 torch.set_num_threads(1)
 
@@ -28,7 +28,7 @@ def at_the_clock(alive, shield):
     state = reset(PLAIN, 1, torch.tensor([[2, 2]]), torch.Generator().manual_seed(0), CPU)
     return core.with_velocity(
         state.replace(
-            x=torch.tensor([[-2000.0, -2000.0, 2000.0, 2000.0]]),
+            x=0.5 * PLAIN.arena_radius * torch.tensor([[-1.0, -1.0, 1.0, 1.0]]),
             y=torch.tensor([[-500.0, 500.0, -500.0, 500.0]]),
             heading_cos=torch.ones(1, 4),
             heading_sin=torch.zeros(1, 4),
@@ -137,11 +137,11 @@ def standard_rows(config, state):
     )
 
 
-def test_the_training_spawn_draws_speed_shield_and_store_with_one_eighth_standard():
+def test_the_training_spawn_draws_speed_shield_and_store_with_a_share_standard():
     """Rule (4.4 and its follow-up): with the training spawn each ship's proper speed is uniform
     from its stall speed to its top level speed and its shield and store uniform from 0 to full;
-    one eighth of the environments (drawn per environment) deal the standard spawn. Off, every
-    ship has the standard spawn."""
+    a share `standard_spawn_share` of the environments (drawn per environment) deal the standard
+    spawn. Off, every ship has the standard spawn."""
     envs = 4096
     sizes = torch.tensor([[2, 2]]).expand(envs, 2)
     config = GameConfig(field_count=0, fog=False, training_spawn=True)
@@ -150,7 +150,8 @@ def test_the_training_spawn_draws_speed_shield_and_store_with_one_eighth_standar
     whole = standard.all(-1)
     assert torch.equal(standard.any(-1), whole)  # standard per environment, not per ship
     share = whole.float().mean()
-    assert abs(float(share) - 1.0 / 8.0) < 0.02  # 4 standard errors at 4,096 environments
+    expected = config.standard_spawn_share
+    assert abs(float(share) - expected) < 4.0 * (expected * (1.0 - expected) / envs) ** 0.5
     c = state.constants
     drawn = ~whole
     for value, low, high in (
@@ -162,7 +163,9 @@ def test_the_training_spawn_draws_speed_shield_and_store_with_one_eighth_standar
         assert (fraction >= 0.0).all() and (fraction <= 1.0 + 1e-6).all()
         assert abs(float(fraction.mean()) - 0.5) < 0.02
         assert abs(float((fraction < 0.25).float().mean()) - 0.25) < 0.02
-    assert 80.0 < c["stall_speed"] < c["cruise_speed"]
+    flown = tuning.performance(tuning.row_of(card.TYPE_NAMES[0]))
+    assert abs(float(c["stall_speed"]) / flown["stall_speed"] - 1.0) < 1e-5
+    assert 0.0 < c["stall_speed"] < c["cruise_speed"]
     plain = reset(
         GameConfig(field_count=0, fog=False), envs, sizes, torch.Generator().manual_seed(3), CPU
     )

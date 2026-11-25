@@ -17,13 +17,14 @@ torch.set_num_threads(1)
 
 @pytest.fixture(scope="module")
 def p51d():
-    """The card's reference (the airframe with its 2,200 hp engine, "airframe_and_engine")."""
+    """The card's reference (the airframe with the game's engine, tuning.P51D_SHAFT_POWER,
+    "airframe_and_engine")."""
     return tuning.reference("p51d")
 
 
 @pytest.fixture(scope="module")
 def documents():
-    """The P-51D under its documents (top speed and climb solved for the 1,630 hp flight test):
+    """The P-51D under its documents (top speed and climb solved for the flight test's engine):
     the design system's solve; its start_row is the documents row."""
     return tuning.reference("p51d", "documents")
 
@@ -50,7 +51,7 @@ def test_design_inputs_set_every_card_field_once():
 
 def test_p51d_point_mass_flies_the_flight_test(p51d):
     """The P-51D's point mass, fitted when its reference is made (reference_of), flies the
-    flight test at 67 in Hg: 375 mph and 3,600 ft/min at sea level (to 1e-6)."""
+    flight test at 67 in Hg (tuning.P51D_TOP_SPEED and P51D_BEST_CLIMB) at sea level (to 1e-6)."""
     aircraft = tuning.REAL_AIRCRAFT["p51d"]
     point = tuning.airframe_row(p51d.airframe, tuning.row_of("p51d"))
     p = tuning.in_real_units(tuning.performance(point))
@@ -61,10 +62,10 @@ def test_p51d_point_mass_flies_the_flight_test(p51d):
 def test_card_rows_fly_their_reference_design(p51d):
     """Every card row, derived when the card is first used (tuning.load_card, from the disk
     cache when its key is there), flies its reference's design inputs under its profile (to
-    1e-6): the P-51D's documented airframe's C_D0 and the 2,200 hp shaft power, and the closed
-    inputs (e 0.85, the separation drag 0.3 at exponent 8, the thrust softness); the same stall
-    and corner speeds as its own point mass; the best sustained turn's speed within 12% of the
-    point mass's. The game terms are on."""
+    1e-6): the P-51D's documented airframe's C_D0 and the card's shaft power, and the closed
+    inputs (tuning.P51D_VALUES: e, the separation drag and exponent, the thrust softness); the
+    same stall and corner speeds as its own point mass; the best sustained turn's speed within
+    12% of the point mass's. The game terms are on."""
     assert set(card.CARD) == set(card.CARD_FIELDS)
     for name in card.TYPE_NAMES:
         reference = tuning.reference(name)
@@ -75,9 +76,14 @@ def test_card_rows_fly_their_reference_design(p51d):
         assert game["corner_speed"] == pytest.approx(point["corner_speed"], rel=1e-12)
         assert game["sustained_speed"] == pytest.approx(point["sustained_speed"], rel=0.12)
         assert game != tuning.performance(row, plain=True)
-    row = tuning.row_of("p51d")
-    assert tuning.implied(row, p51d.airframe)["oswald"] == pytest.approx(0.85, rel=1e-12)
-    assert (row["separation_drag"], row["separation_exponent"]) == (0.3, 8.0)
+    row, values = tuning.row_of("p51d"), tuning.P51D_VALUES
+    assert tuning.implied(row, p51d.airframe)["oswald"] == pytest.approx(
+        values["oswald"], rel=1e-12
+    )
+    assert (row["separation_drag"], row["separation_exponent"]) == (
+        values["separation_drag"],
+        values["separation_exponent"],
+    )
 
 
 VALUES = ("g_limit", "oswald", "separation_drag", "thrust_softmin_exponent")  # not multiples
@@ -184,10 +190,11 @@ def test_the_measures_are_smooth_and_grid_free():
 
 def test_implausible_designs_warn(p51d, documents):
     """The plausibility checks (PLAUSIBILITY) warn, never refuse: a hand-made row under the
-    documents (the shaft power held at the documented 1,630 hp) with too little induced drag
+    documents (the shaft power held at the flight test's) with too little induced drag
     (Oswald e above 1), more thrust power than shaft power, too little zero-lift drag, too much
-    lift and a softer thrust warns on each. The P-51D's documents row and its card row (2,200
-    hp) each warn on one: the 8 g limit above the structure's 6.6 g at the tested weight."""
+    lift and a softer thrust warns on each. The P-51D's documents row and its card row (the
+    game's engine) each warn on one: the 8 g limit above the structure's 6.6 g at the tested
+    weight."""
     row = documents.start_row
     own = {(w["quantity"], w["severity"]) for w in tuning.warnings(row, documents)}
     assert own == {("structural_load", "range")}
@@ -212,7 +219,9 @@ def test_implausible_designs_warn(p51d, documents):
         assert expected in found, (expected, found)
     implied = tuning.implied(row, documents.airframe)
     assert implied["figure_of_merit"] == pytest.approx(tuning.FIGURE_OF_MERIT, rel=1e-9)
-    assert implied["max_lift_coefficient"] == pytest.approx(1.6, rel=1e-9)
+    assert implied["max_lift_coefficient"] == pytest.approx(
+        tuning.P51D.max_lift_coefficient, rel=1e-9
+    )
 
 
 def test_derived_rows_are_cached_by_their_aircraft_and_the_source(tmp_path, monkeypatch):
@@ -250,16 +259,16 @@ def test_the_damage_reference_speed_is_derived():
 
 @pytest.mark.parametrize("factor", [1.0, 1.5, 3.0])
 def test_time_scale_is_the_same_flight_faster_or_slower(factor):
-    """At another time factor the card flies the same real aircraft: gravity factor^2 x 9.81,
+    """At another time factor the card flies the same real aircraft: gravity factor^2 x g,
     and cruise and corner speed (game units) scaled by factor / 2; the card is restored after."""
     config = core.GameConfig(lineup=card.TYPE_NAMES)
     types = torch.arange(len(card.TYPE_NAMES))
     game = core.per_type_constants(config, types)
-    saved = card.CARD
+    saved, gravity = card.CARD, card.GRAVITY
     with tuning.time_scale(factor):
-        assert card.GRAVITY == pytest.approx(9.81 * factor**2, rel=1e-12)
+        assert card.GRAVITY == pytest.approx(tuning.REAL_GRAVITY * factor**2, rel=1e-12)
         scaled = core.per_type_constants(config, types)
-    assert card.CARD is saved and card.GRAVITY == 39.24
+    assert card.CARD is saved and card.GRAVITY == gravity
     ratio = factor / tuning.TIME_FACTOR
     for name in ("cruise_speed", "corner_speed"):
         assert torch.allclose(getattr(scaled, name), getattr(game, name) * ratio, rtol=1e-5), name
@@ -271,7 +280,7 @@ def test_scripted_references_are_the_flown_numbers():
     """The game's derived references for the scripted agent (docs/rewrite/scripted-bfm-design.md
     B2) are what the quasi-steady analysis flies: the best sustained turn's speed within
     tuning.performance's 0.05 m/s grid, its rate and radius within 0.1%, the corner rate; the
-    quarter-turn time and the store's turn follow from them (the P-51D: 2.25 s and 2.09 rad)."""
+    quarter-turn time and the store's turn follow from them."""
     config = core.GameConfig(lineup=card.TYPE_NAMES)
     game = core.per_type_constants(config, torch.arange(len(card.TYPE_NAMES)))
     for index, name in enumerate(card.TYPE_NAMES):
@@ -294,9 +303,6 @@ def test_scripted_references_are_the_flown_numbers():
         held = float(c.max_energy[0] / energy_rate.abs()[0])
         expected = (float(game.corner_rate[index]) - rate) * held
         assert float(game.store_turn[index]) == pytest.approx(expected, rel=1e-4)
-    p51d = card.TYPE_NAMES.index("p51d")
-    assert float(game.quarter_turn_time[p51d]) == pytest.approx(2.25, abs=0.01)
-    assert float(game.store_turn[p51d]) == pytest.approx(2.09, abs=0.02)
 
 
 def test_a_card_built_inside_with_row_does_not_outlive_it():
@@ -342,7 +348,7 @@ def test_an_input_is_swapped_by_editing_the_table_only():
 def test_profiles_are_named_tables():
     """Each profile (tuning.PROFILES) is a design-input table that sets every card field once;
     the documents (DESIGN_INPUTS) are the default table and the base of "airframe and engine",
-    and the P-51D's card is its airframe and engine (the 2,200 hp engine)."""
+    and the P-51D's card is its airframe and engine (the game's engine)."""
     for profile in tuning.PROFILES.values():
         tuning.check_inputs(profile.inputs)
         assert profile.base is None or profile.base in tuning.PROFILES
@@ -375,15 +381,16 @@ def test_a_profile_with_a_base_starts_from_the_base_row(tmp_path, monkeypatch):
 
 def test_airframe_and_engine_is_closed_and_more_power_flies_faster():
     """Under "airframe and engine" nothing is solved: the documents row reads back as its
-    documented 1,630 hp and the airframe's C_D0; the card's reference is that airframe with the
-    aircraft's own 2,200 hp, and its row is the card's (1e-6); a design solves in no iterations,
+    documented shaft power (tuning.P51D.power) and the airframe's C_D0; the card's reference is
+    that airframe with the game's engine (P51D_SHAFT_POWER), and its row is the card's (1e-6); a
+    design solves in no iterations,
     and more shaft power raises top speed and climb."""
     reference = tuning.reference("p51d", "airframe_and_engine")
     assert all(spec.apply is not None for spec in reference.inputs)
     documents = tuning.design_of(tuning.reference("p51d", "documents").start_row, reference.inputs)
-    horsepower = tuning.to_game(tuning.HORSEPOWER, -3)
-    assert documents["shaft_power"] == pytest.approx(1630.0 * horsepower, rel=1e-6)
-    assert reference.design["shaft_power"] == pytest.approx(2200.0 * horsepower, rel=1e-12)
+    documented, engine = tuning.P51D.power, tuning.P51D_SHAFT_POWER
+    assert documents["shaft_power"] == pytest.approx(tuning.to_game(documented, -3), rel=1e-6)
+    assert reference.design["shaft_power"] == pytest.approx(tuning.to_game(engine, -3), rel=1e-12)
     for name in ("zero_lift_drag_coefficient", "stall_speed", "g_limit", "oswald"):
         assert reference.design[name] == pytest.approx(documents[name], rel=1e-6), name
     for name, value in tuning.row_of("p51d").items():

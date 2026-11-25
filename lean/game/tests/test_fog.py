@@ -6,7 +6,9 @@ import math
 
 import torch
 
+from lean.contract import FIRES, POWERS, STICKS
 from lean.game import GameConfig, card, core, draw_noise, observe, reset, step
+from lean.game.tests.values import game_value
 from lean.scripted import ScriptedConfig, act, chaser_act, draw_uniforms, fresh_memory, personas
 from lean.scripted.opponent import engage
 
@@ -14,6 +16,9 @@ torch.set_num_threads(1)
 
 FOG = GameConfig(field_count=0)  # the scenes are placed by hand, with no fields unless given
 CPU = torch.device("cpu")
+# The scenes' distances are set from the game's vision and gun ranges (lean.game.tests.values).
+VISION = game_value("vision_range", FOG)
+GUN = game_value("gun_range", FOG)
 
 
 def duel(positions, headings=None, vision=None, fields=None):
@@ -86,7 +91,8 @@ def test_fog_off_is_full_information_and_leaves_the_game_unchanged():
     compared = 0
     for _ in range(40):
         action = torch.stack(
-            [torch.randint(0, n, a.x.shape, generator=generator) for n in (7, 3, 2)], -1
+            [torch.randint(0, n, a.x.shape, generator=generator) for n in (STICKS, POWERS, FIRES)],
+            -1,
         )
         noise = draw_noise(plain, 4, a.x.shape[1], generator, CPU)
         a, out_a = step(plain, a, action, noise)
@@ -142,9 +148,8 @@ def test_sight_range_and_field_cores():
 
 def test_own_team_always_visible_and_dead_observers_see_nothing():
     """Rules: every ship is always visible to its own team; only living ships observe."""
-    state = duel(
-        [(0.0, 0.0), (3000.0, 0.0), (500.0, 0.0), (-3000.0, 0.0)]
-    )  # team 0: 0, 1; team 1: 2, 3
+    near, far = VISION / 3.0, 2.0 * VISION
+    state = duel([(0.0, 0.0), (far, 0.0), (near, 0.0), (-far, 0.0)])  # team 0: 0, 1; team 1: 2, 3
     for team in (0, 1):
         obs = observe(FOG, state, team)
         own = state.team[0] == team
@@ -161,7 +166,7 @@ def test_own_team_always_visible_and_dead_observers_see_nothing():
 def test_firing_and_hits_reveal_for_that_tick_only_and_boundary_damage_does_not():
     """Rules: a ship is revealed on the tick it fires and on the tick a bullet hits it, for that
     tick only; boundary damage does not reveal. Vision is cut to 1 m so sight reveals nothing."""
-    state = duel([(0.0, 0.0), (90.0, 0.0)], vision=1.0)  # ship 0 noses at ship 1
+    state = duel([(0.0, 0.0), (GUN / 8.0, 0.0)], vision=1.0)  # ship 0 noses at ship 1, in range
     assert (state.seen[:, core.SEEN_KNOWN] == 0).all()
     shoot = torch.tensor([[True, False]])
     state = state.replace(pending=idle(state, shoot))  # the trigger pulled on the tick before
@@ -190,12 +195,13 @@ def test_firing_and_hits_reveal_for_that_tick_only_and_boundary_damage_does_not(
 def test_last_seen_values_freeze_and_time_since_seen_counts_and_caps():
     """Rules: a hidden enemy that has been seen is its last-seen row; the ticks since seen count
     up from the sighting and stop at v2's cap; since_seen is symlog of the seconds."""
-    state = duel([(0.0, 0.0), (900.0, 0.0)], headings=[0.0, 0.0])  # in sight, flying apart
+    away = VISION  # moved this far, ship 1 is out of sight
+    state = duel([(0.0, 0.0), (0.6 * VISION, 0.0)], headings=[0.0, 0.0])  # in sight, flying apart
     last_x = float(state.x[0, 1])
     for tick in range(1, 4):
         # Move ship 1 out of sight by hand, then step: its row stays at the sighting.
         if tick == 1:
-            state = state.replace(x=state.x + torch.tensor([[0.0, 2000.0]]))
+            state = state.replace(x=state.x + torch.tensor([[0.0, away]]))
         state, _ = step(FOG, state, idle(state), no_noise(state))
         obs = observe(FOG, state, 0)
         assert state.ticks_since_seen[0, 1] == tick
@@ -203,7 +209,7 @@ def test_last_seen_values_freeze_and_time_since_seen_counts_and_caps():
         assert math.isclose(
             float(obs.since_seen[0, 1]), math.log1p(tick * FOG.tick_length), rel_tol=1e-6
         )
-        assert float(state.x[0, 1]) > last_x + 2000.0  # the true ship has moved on
+        assert float(state.x[0, 1]) > last_x + away  # the true ship has moved on
     capped = dataclasses.replace(
         state, ticks_since_seen=torch.full_like(state.ticks_since_seen, core.TICKS_SINCE_SEEN_CAP)
     )
@@ -214,7 +220,7 @@ def test_last_seen_values_freeze_and_time_since_seen_counts_and_caps():
 def test_never_seen_enemies_are_masked_and_seen_dead_enemies_drop_out():
     """Rules: a never-seen enemy is masked (and its row is zero); a ship dead for good is masked
     once its death is seen; the enemy alive fraction counts only deaths the team has seen."""
-    state = duel([(-3000.0, 0.0), (-3000.0, 300.0), (3000.0, 0.0), (3000.0, 300.0)])  # far apart
+    state = duel([(-VISION, 0.0), (-VISION, 300.0), (VISION, 0.0), (VISION, 300.0)])  # far apart
     obs = observe(FOG, state, 0)
     enemy = state.team == 1
     assert (
@@ -224,9 +230,8 @@ def test_never_seen_enemies_are_masked_and_seen_dead_enemies_drop_out():
     )
     assert torch.equal(obs.globals[:, 2], torch.ones(1))
     # Enemy 1 in sight dies: the sighting records the death, the row leaves the mask.
-    state = duel(
-        [(0.0, 0.0), (2500.0, 0.0), (-3000.0, 0.0), (3000.0, 0.0)]
-    )  # team 0: 0, 1; team 1: 2, 3
+    far = 2.0 * VISION  # ship 1 is a third of the vision range from ship 3, ship 0 out of sight
+    state = duel([(0.0, 0.0), (far - VISION / 3.0, 0.0), (-far, 0.0), (far, 0.0)])
     assert state.seen[0, core.SEEN_KNOWN, :2].tolist() == [0.0, 1.0]
     state = state.replace(alive=torch.tensor([[True, False, True, True]]))
     state = core.perceive(state, torch.zeros_like(state.exists))
@@ -250,10 +255,11 @@ def hidden_enemy_scene():
         (650.0, 300.0),
         (900.0, -200.0),
         (600.0, -400.0),
-        (3500.0, 0.0),
+        (VISION + 2000.0, 0.0),  # never in sight
     ]
     state = duel(positions, headings=[0.0] * 5 + [math.pi] * 5)
-    state = state.replace(x=state.x + torch.tensor([[0.0] * 7 + [2500.0, 0.0, 0.0]]))
+    away = VISION + 1000.0  # ship 7, seen at 900 m, moved out of sight
+    state = state.replace(x=state.x + torch.tensor([[0.0] * 7 + [away, 0.0, 0.0]]))
     for _ in range(3):
         state, _ = step(FOG, state, idle(state), no_noise(state))
     assert state.seen[0, core.SEEN_KNOWN, 7] == 1.0 and state.ticks_since_seen[0, 7] == 3
