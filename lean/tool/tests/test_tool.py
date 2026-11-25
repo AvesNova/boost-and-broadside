@@ -84,6 +84,9 @@ def test_sandbox_socket_advances_a_world():
         frames = [socket.receive_json() for _ in range(5)]
     assert [f["tick"] for f in frames] == [1, 2, 3, 4, 5]
     assert frames[-1]["readout"]["speed"] > 0
+    ship = frames[-1]["ships"][0]
+    assert ship["vision_range"] > 0 and 0 <= ship["vision_eccentricity"] < 1
+    assert isinstance(ship["seen"], bool)
 
 
 def test_session_applies_controls():
