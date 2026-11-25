@@ -118,23 +118,26 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   path is within the card's inner angle (30 deg) of the target's nose, full from the outer
   angle (45 deg) round to dead astern, a smootherstep in the cosine between (t = (cos 30 - c) /
   (cos 30 - cos 45), no acos; the card stores the angles, the constants their cosines).
-- **Collisions** (`collisions`, author 2026-11-25; in the step after the move, with the bullet
-  hits and the boundary damage, before `_shields`): every pair of ships alive at tick start,
-  any teams. The bullets' swept test on the two straight moves: p the gap, w the relative move,
-  tau = -p.w / |w|^2, b the closest approach; a pass is scored on the tick holding its closest
-  approach (0 <= tau < 1 unclamped, so once; a closest approach on a tick boundary belongs to
-  the later tick) when b is under the two hit radii R. Each ship's blame is 1 - aspect / 2 at
-  the cosine between its nose (after the move) and the line of centres at first touch, n = m /
-  R - sqrt(max(0, 1 - b^2 / R^2)) w / |w|: 1 within 30 deg, 0.5 beyond 45 deg (the bullets'
-  zone). Damage = max shield x (|w| / tick) / (2 x cruise speed) x graze(b; the two core radii,
-  R) x blame: linear in the closing speed, a full shield head-on at cruise. Zero sum: each
-  ship's collision damage is in `hit_damage` as dealt by the other (rewards, kill credit and
-  scoring treat it as a hit; team-mates included, like friendly fire), in `damage_taken`, and
-  reveals both ships under fog. The shield rule is the bullets': the damage empties the shield
-  (clamped at 0), and a ship whose shield was already 0 at tick start dies. A pass while turning
-  is scored on straight moves per tick, so a pass whose closest approach falls right at a
-  boundary of two ticks with different relative velocities can in principle be scored on
-  neither or both (measured below).
+- **Collisions** (`collisions`, author 2026-11-25, first touch 2026-11-26; in the step after
+  the move, with the bullet hits and the boundary damage, before `_shields`): every pair of
+  ships alive at tick start, any teams, on the two straight moves: p the gap, w the relative
+  move, R the two hit radii. A pair is scored once per overlap, on the tick of first touch: the
+  gap is at least R at tick start and the swept move p + s w (0 <= s <= 1) comes within R. Ships
+  that start a tick inside R are never scored; they must start a tick at or beyond R again
+  first. State-free (the start and end positions decide it) and once per overlap by
+  construction, also with both ships turning. b = |m|, m = p + tau w, tau = -p.w / |w|^2
+  unclamped: the closest distance of the tick's relative line extended past the tick (the
+  pass's predicted closest approach). Each ship's blame is 1 - aspect / 2 at the cosine between
+  its nose (after the move) and the line of centres at first touch, n = m / R - sqrt(max(0, 1 -
+  b^2 / R^2)) w / |w|: 1 within 30 deg, 0.5 beyond 45 deg (the bullets' zone). Damage = max
+  shield x (|w| / tick) / (2 x cruise speed) x graze(b; the two core radii, R) x blame: linear
+  in the closing speed, a full shield head-on at cruise; full when the cores would meet, a
+  partial graze when only the hit radii do. Zero sum: each ship's collision damage is in
+  `hit_damage` as dealt by the other (rewards, kill credit and scoring treat it as a hit;
+  team-mates included, like friendly fire), in `damage_taken`, and reveals both ships under
+  fog. The shield rule is the bullets': the damage empties the shield (clamped at 0), and a ship
+  whose shield was already 0 at tick start dies. (Until 2026-11-26 a pass was scored on the tick
+  holding its closest approach; with both ships turning that fell in two ticks or none.)
 - **Shields:** recharge after a quiet spell (coast, at most the gradual stick, no trigger).
 - `StepOut` carries what the learner needs: damage, deaths, done and result, each bullet's
   outcome and firing tick (the hit head's labels), the attacker-by-target damage matrix (real
@@ -166,6 +169,30 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 
   The few damaging "inside 30 deg" hits in 4v4 are most likely the bench's target guess (the
   enemy nearest the bullet's last move), not the rule (the step test: 29 deg does 0).
+- Collisions at first touch (2026-11-26, the same sanity.py, which now counts the tree's own
+  `core.collisions` contacts; before = core 17e6cf3b, the closest-approach rule;
+  `docs/rewrite/sections/first-touch/`). An overlap episode is a run of ticks a pair is scored
+  or ends inside the two hit radii; "closed" episodes end with both ships alive, "cut" ones in a
+  death or the game's end. Compile check: 5,939 operations (core 5,930, +9), cold 222.9 s (222.4).
+
+| | 1v1 | 1v1 fields | 4v4 | 4v4 fields |
+|---|---|---|---|---|
+| contacts, before / after | 248 / 290 | 207 / 243 | 787 / 883 | 737 / 826 |
+| closed episodes scored 0 times | 0 / 0 | 1 / 0 | 3 / 0 | 5 / 0 |
+| closed episodes scored twice | 0 / 0 | 1 / 0 | 4 / 0 | 5 / 0 |
+| of those, fast (over 100 m/s): 0 / twice | 0, 0 / 0, 0 | 1, 1 / 0, 0 | 1, 1 / 0, 0 | 2, 4 / 0, 0 |
+| deaths on a collision tick | 24 / 72 | 24 / 40 | 101 / 115 | 112 / 97 |
+| deaths in all | 227 / 237 | 235 / 256 | 1,395 / 1,424 | 1,380 / 1,390 |
+| draws | 41 / 49 | 13 / 30 | 3 / 3 | 4 / 3 |
+| mean game length, s | 32.1 / 30.7 | 30.5 / 29.1 | 27.1 / 26.7 | 33.6 / 33.0 |
+
+  On the same play (`first-touch/episodes.py`, both rules on the before tree's moves) every
+  overlap episode holds exactly one first touch (2 spawned overlapping in 4v4 hold none). The
+  extra contacts are cut episodes: a death (mostly a bullet in the same merge) or the game's end
+  between first touch and the closest-approach tick, never scored by the old rule (1v1 68 of 316
+  episodes, 1v1 fields 45 of 252, 4v4 103 of 886, 4v4 fields 120 of 853). That is also most of
+  the rise in deaths on a collision tick: a ship at 0 shield now dies at the touch.
+
 - Ship feature scales, fixed for every type, from scripted 4v4 play with the training spawn
   (`.../scoreboard/feature_ranges.py`, 256 environments x 3,000 ticks, 2026-11-23). Raw 1st / 99th
   percentiles in brackets.
@@ -184,8 +211,11 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 
 `lean/game/tests`: flight rules, damage (the nose cone: 29 deg no damage, 46 deg full, both
 sides), collisions (the 90-degree crossing at equal speeds 0.5 blame each and closing sqrt 2 v,
-the T-bone, head-on at cruise a full shield each, one score per pass across a tick boundary,
-the credit to the other ship including a team-mate, no contact for a wide, later or dead pass),
+the T-bone, head-on at cruise a full shield each, one score per straight pass whatever its
+phase, one score for a fast pass with both ships turning that the closest-approach rule scored
+twice or missed, none while overlapping and again only after separating, full closeness when
+the cores would meet and a graze between, the credit to the other ship including a team-mate
+and zero sum, no contact for a wide, later or dead pass),
 fields, fog, ghost bullets, invariants (finite, inert
 padding, team swap), the clock and wipe, both spawn rules, the training spawn, the one-tick delay,
 the stick (full stick the envelope's maximum to 0.1%, every level its fraction of it, the

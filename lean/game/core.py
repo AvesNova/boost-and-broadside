@@ -1260,9 +1260,9 @@ def aspect_factor(
 class Collisions(NamedTuple):
     """The collision test per ordered pair (E, me, other)."""
 
-    contact: Tensor  # bool: the pair's closest approach is in this tick, both alive (symmetric)
+    contact: Tensor  # bool: the pair first touches in this tick, both alive (symmetric)
     closing: Tensor  # m/s: |w|, the relative speed
-    miss: Tensor  # m: b, the closest approach
+    miss: Tensor  # m: b, the closest distance of the tick's relative line, extended
     nose_cos: Tensor  # cos(my nose, the line of centres at first touch, me to the other)
     blame: Tensor  # 1 - aspect / 2: 1 inside my nose cone's inner angle, 0.5 beyond the outer
     damage: Tensor  # the damage I take (0 without a contact)
@@ -1283,16 +1283,18 @@ def collisions(
     nose_sin: Tensor,
 ) -> Collisions:
     """Every pair of living ships (any teams), on straight moves from the tick-start positions
-    to (end_x, end_y) (E, N), the noses (nose_cos, nose_sin) after the move (author
-    2026-11-25). The swept test of the bullets: p the gap (other minus me), w the relative
-    move over the tick, tau = -p.w / |w|^2, m = p + clamp(tau, 0, 1) w, b = |m|. A pass is
-    scored on the tick that holds its closest approach, 0 <= tau < 1 unclamped: so once
-    (a closest approach on a tick boundary belongs to the later tick). R the two hit radii,
-    R_core the two core radii; the line of centres at first touch n = m / R - sqrt(max(0, 1 -
-    b^2 / R^2)) u, u = w / |w|; my blame 1 - aspect(nose . n) / 2 (aspect_factor: 1 inside the
-    nose cone's inner angle, 0.5 beyond the outer). I take max shield x (|w| / tick) / (2 x
-    cruise) x graze(b; R_core, R - R_core) x blame: linear in the closing speed, a full
-    shield's worth head-on at cruise with full blame."""
+    to (end_x, end_y) (E, N), the noses (nose_cos, nose_sin) after the move. p the gap (other
+    minus me), w the relative move over the tick, R the two hit radii, R_core the two core
+    radii. A pair is scored once per overlap, on the tick of first touch (author 2026-11-26):
+    |p| >= R at tick start and the swept move p + s w, 0 <= s <= 1, comes within R. A pair
+    that starts a tick inside R is not scored; it must start a tick at or beyond R again
+    first. b = |m|, m = p + tau w, tau = -p.w / |w|^2 unclamped: the closest distance of the
+    tick's relative line, extended past the tick (the pass's predicted closest approach). The
+    line of centres at first touch n = m / R - sqrt(max(0, 1 - b^2 / R^2)) u, u = w / |w|; my
+    blame 1 - aspect(nose . n) / 2 (aspect_factor: 1 inside the nose cone's inner angle, 0.5
+    beyond the outer). I take max shield x (|w| / tick) / (2 x cruise) x graze(b; R_core, R)
+    x blame: linear in the closing speed, a full shield's worth head-on at cruise with full
+    blame; full closeness when the cores would meet, a graze when only the hit radii do."""
     c = state.constants
     N = end_x.shape[1]
     x, y = state.x, state.y
@@ -1303,12 +1305,17 @@ def collisions(
     relative_y = move_y[:, None, :] - move_y[:, :, None]
     relative_squared = (relative_x * relative_x + relative_y * relative_y).clamp_min(1e-12)
     tau = -(gap_x * relative_x + gap_y * relative_y) / relative_squared
-    clamped = tau.clamp(0.0, 1.0)
-    miss_x, miss_y = gap_x + clamped * relative_x, gap_y + clamped * relative_y
+    # |tau w| <= |p|: the line's closest point stays bounded as w goes to 0.
+    miss_x, miss_y = gap_x + tau * relative_x, gap_y + tau * relative_y
     miss_squared = miss_x * miss_x + miss_y * miss_y
+    clamped = tau.clamp(0.0, 1.0)
+    swept_x, swept_y = gap_x + clamped * relative_x, gap_y + clamped * relative_y
+    swept_squared = swept_x * swept_x + swept_y * swept_y
+    start_squared = gap_x * gap_x + gap_y * gap_y
     radius, core = c["hit_radius"], c["core_radius"]
     reach = _pair_sum(radius)
     core_reach = _pair_sum(core)
+    reach_squared = reach * reach
     inverse_reach = 1.0 / reach
     inverse_relative = torch.rsqrt(relative_squared)
     inside = (1.0 - miss_squared * inverse_reach * inverse_reach).clamp_min(0.0).sqrt()
@@ -1322,9 +1329,8 @@ def collisions(
     miss = miss_squared.sqrt()
     closing = relative_squared * inverse_relative / tick_length
     contact = (
-        (tau >= 0.0)
-        & (tau < 1.0)
-        & (miss < reach)
+        (start_squared >= reach_squared)
+        & (swept_squared < reach_squared)
         & alive[:, :, None]
         & alive[:, None, :]
         & _not_self(N, end_x.device)

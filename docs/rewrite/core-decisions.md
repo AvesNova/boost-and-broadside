@@ -770,10 +770,10 @@ These replace the flap, profile and stick-level points above where they disagree
   41, mean length 58.2 / 32.1 s, contacts per head-on pass 0.999 / 0.004; 4v4 contacts per game
   8.49 / 3.07, 4v4 deaths on a collision tick 101 of 1,395; real hits within 30 deg of the nose
   31-85% / 0.7-3.5%. Table: lean/game/NOTES.md "Numbers".
-- Open (for the author): with both ships turning, the closest approach of the per-tick straight
-  moves can fall in two ticks or none; fast passes (over 100 m/s) were scored twice 1-4 times
-  and missed 1-2 times per 256 4v4 games (nose-cone/progress.md). Scoring on the tick of first
-  touch instead would be once per overlap by construction.
+- Resolved 2026-11-26 (author): with both ships turning, the closest approach of the per-tick
+  straight moves could fall in two ticks or none (fast passes scored twice 1-4 times and missed
+  1-2 times per 256 4v4 games). Now scored at first touch, below.
+
 
 ## Tracking circle (author 2026-11-26, branch tracking-circle)
 
@@ -792,3 +792,27 @@ These replace the flap, profile and stick-level points above where they disagree
   0 (from 0.25 and 5.65 per game), 4v4 by 75% and 85%; with fields by 4-41% (most losses there
   are field cores cutting the line). First sightings, draws, length and kills per minute stay
   within paired noise for the yardstick.
+
+## Collisions at first touch (author 2026-11-26, branch collision-first-touch)
+
+- **Once per overlap, on the tick of first touch.** A pair is scored on the tick its gap first
+  comes within the two hit radii R: at least R at tick start and the swept straight relative
+  move inside R during the tick. Ships that start a tick inside R are never scored; they must
+  start a tick at or beyond R again first. State-free (start and end positions), branch-free.
+- **b is the pass's predicted closest approach**: the closest distance of that tick's straight
+  relative line, extended past the tick end; graze(b; summed core radii, R) as before (cores
+  would meet: full; only the hit radii: a partial graze). Blame at first touch unchanged; damage
+  formula, zero sum, credit through hit_damage, fog reveal, the 0-shield rule and the step order
+  unchanged. Bullets unchanged.
+- Checks (2026-11-26): collision tests (a fast pass with both ships turning that the old rule
+  scored twice or missed: once; none while overlapping; again only after separating; core touch
+  full, graze partial; blame; zero sum); quick tier on lean/game and lean/scripted 141 passed;
+  compile check 5,939 operations (core 5,930, +9), cold 222.9 s (core 222.4 s), within the
+  baseline. Sanity (256 scripted games each, before / after): closed overlap episodes scored 0
+  or 2+ times 0-10 / 0 in every condition; contacts up 12-17% (1v1 248 / 290, 4v4 787 / 883):
+  on the same play every overlap episode holds exactly one first touch, and the extra contacts
+  are passes cut by a death or the game's end between first touch and the closest-approach
+  tick, which the old rule never scored (1v1 68 of 316 episodes, 4v4 103-120 of 853-886).
+  Deaths on a collision tick 1v1 24 / 72, 4v4 101 / 115 (fields 112 / 97); mean game length
+  1-5% shorter; draws 1v1 41 / 49, 1v1 fields 13 / 30, 4v4 3-4 / 3. Table: lean/game/NOTES.md "Numbers".
+
