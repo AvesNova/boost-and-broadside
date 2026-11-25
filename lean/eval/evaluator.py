@@ -2,9 +2,15 @@
 
 A pairing is (agent A, agent B, (A's ships, B's ships)) under the evaluator's game config.
 A job reads what the store holds for its pairings and plays only the missing games, sides
-alternated so that each agent plays both teams equally. The games of a job are grouped by
-the networks in them (a runner call takes at most one network per seat: a network against a
-scripted agent always sits in seat A) and each group is one shuffled queue.
+alternated so that each agent plays both teams equally. Every game with a network is one
+shuffled queue and one runner call (the runner routes each seat to its agent, as the
+training league routes its environments to its members), whatever the pairings: networks
+against scripted agents and against each other. Scripted-only games are a call of their own
+(the runner's fused scripted tick: in a network call they would pay the network tick's
+per-environment costs), and networks of different architectures go to separate calls. A
+call's games are padded to its largest ship count, so calls are also split by ship bucket
+(`ship_bucket`: a game's total ships up to the next power of two, so no game is padded to
+more than twice its ships; one compiled graph covers every bucket).
 """
 
 import math
@@ -20,12 +26,25 @@ from lean.learn import load_checkpoint, policy_weights
 from lean.scripted import ScriptedConfig
 from lean.scripted.parameters import SAMPLED, box_point
 
+# The fewest environments a runner call takes when its queue has the games (laptop 4070: a
+# 7-agent ladder of 128 games per pairing ran in about half the time at 2,048 as at 256;
+# lean/eval/NOTES.md, "Numbers").
+MINIMUM_ENVS = 2048
+
+
+def ship_bucket(ships: int) -> int:
+    """The smallest power of two at least `ships`: a game of N ships shares a runner call
+    with games of up to that many (padded to the call's largest)."""
+    return 1 << max(0, ships - 1).bit_length()
+
 
 class Evaluator:
     """Jobs on one store under one game config (a new config is new conditions and a new
-    compiled graph). `envs` environments per runner call, `compiled` torch.compile's tick
-    (default on a GPU), `seed` the base of every call's seed (offset by the games stored, so
-    no two calls replay the same draws)."""
+    compiled graph). `envs` environments per runner call at most, `minimum_envs` at least
+    (fewer only for a shorter queue; the runner's minimum_envs: below the GPU's saturation
+    more environments cost little, so a short job takes this many rather than 16 games per
+    slot), `compiled` torch.compile's tick (default on a GPU), `seed` the base of every
+    call's seed (offset by the games stored, so no two calls replay the same draws)."""
 
     def __init__(
         self,
@@ -34,6 +53,7 @@ class Evaluator:
         *,
         device=None,
         envs: int = 4096,
+        minimum_envs: int = MINIMUM_ENVS,
         compiled: bool | None = None,
         segment: int = 32,
         seed: int = 0,
@@ -50,6 +70,7 @@ class Evaluator:
             progress,
         )
         self.compiled = self.device.type == "cuda" if compiled is None else compiled
+        self.minimum_envs = minimum_envs
         self.policies = {}
 
     def policy(self, agent: NetworkAgent) -> tuple:
@@ -61,14 +82,22 @@ class Evaluator:
             self.policies[agent.id] = (policy.eval(), checkpoint["learn_config"]["bf16"])
         return self.policies[agent.id]
 
+    def conditions(self, sizes) -> tuple[str, str]:
+        """(the conditions of `sizes`, the mirrored ones: the seats' team sizes swapped)."""
+        return (
+            self.store.add_conditions(self.game_config, sizes),
+            self.store.add_conditions(self.game_config, (sizes[1], sizes[0])),
+        )
+
     def counts(self, agent_a, agent_b, sizes) -> dict[str, int]:
-        conditions = self.store.add_conditions(self.game_config, sizes)
-        return self.store.counts(agent_a.id, agent_b.id, conditions)
+        """A's games against B with A on `sizes[0]` ships, from both orientations (B's games
+        against A are stored under the mirrored sizes)."""
+        return self.store.counts(agent_a.id, agent_b.id, *self.conditions(sizes))
 
     def ensure(self, requests: list[tuple]) -> list[dict[str, int]]:
         """Play until each request (agent A, agent B, sizes, games) has at least `games` games
         in the store; returns each pairing's counts (as `counts`)."""
-        groups = {}
+        groups = {}  # by the networks' architecture (None: scripted only) and ship bucket
         for agent_a, agent_b, sizes, games in requests:
             have = self.counts(agent_a, agent_b, sizes)
             missing = games - have["games"]
@@ -79,18 +108,14 @@ class Evaluator:
                 missing, max(0, math.ceil((have["games"] + missing) / 2) - have["as_team_zero"])
             )
             sides = [0] * team_zero + [1] * (missing - team_zero)
-            if isinstance(agent_b, NetworkAgent) and not isinstance(agent_a, NetworkAgent):
-                # A network against a scripted agent sits in seat A: the pairing turned round.
-                agent_a, agent_b, sizes, sides = (
-                    agent_b,
-                    agent_a,
-                    (sizes[1], sizes[0]),
-                    [1 - side for side in sides],
-                )
-            key = tuple(
-                agent.id if isinstance(agent, NetworkAgent) else None
+            architectures = {
+                repr(self.policy(agent)[0].config)
                 for agent in (agent_a, agent_b)
-            )
+                if isinstance(agent, NetworkAgent)
+            }
+            if len(architectures) > 1:
+                raise ValueError("a pairing of two network architectures cannot share a call")
+            key = (next(iter(architectures), None), ship_bucket(sizes[0] + sizes[1]))
             groups.setdefault(key, []).append((agent_a, agent_b, tuple(sizes), sides))
         for entries in groups.values():
             self._play_group(entries)
@@ -98,43 +123,54 @@ class Evaluator:
 
     def _play_group(self, entries) -> None:
         index = {}  # each scripted agent's row of the table, in order of first appearance
+        nets = {}  # each network's index in the call, likewise
         for agent_a, agent_b, _, _ in entries:
             for agent in (agent_a, agent_b):
-                if isinstance(agent, ScriptedAgent) and agent not in index:
-                    index[agent] = len(index)
-        scripted_agents = list(index)
+                table = nets if isinstance(agent, NetworkAgent) else index
+                if agent not in table:
+                    table[agent] = len(table)
         table = torch.tensor(
-            [agent.values for agent in scripted_agents] or [ScriptedAgent.of().values],
+            [agent.values for agent in index] or [ScriptedAgent.of().values],
             dtype=torch.float32,
             device=self.device,
         )
-        games = []  # (entry, a, b, side, size_a, size_b)
+        games = []  # (entry, a, b, side, size_a, size_b, net_a, net_b)
         for number, (agent_a, agent_b, sizes, sides) in enumerate(entries):
+            seats = [
+                (index.get(agent, 0), nets.get(agent, runner.SCRIPTED))
+                for agent in (agent_a, agent_b)
+            ]
             for side in sides:
                 games.append(
-                    (number, index.get(agent_a, 0), index.get(agent_b, 0), side, sizes[0], sizes[1])
+                    (
+                        number,
+                        seats[0][0],
+                        seats[1][0],
+                        side,
+                        sizes[0],
+                        sizes[1],
+                        seats[0][1],
+                        seats[1][1],
+                    )
                 )
         seed = self.seed + self.store.total_games()
         random.Random(seed).shuffle(games)
         columns = torch.tensor(games, dtype=torch.long)
         queue = runner.Queue(*columns[:, 1:].unbind(-1))
-        seats = [
-            self.policy(agent) if isinstance(agent, NetworkAgent) else (None, True)
-            for agent in entries[0][:2]
-        ]
+        loaded = [self.policy(agent) for agent in nets]
         outcome = runner.play(
             self.game_config,
             queue,
             table,
-            seats[0][0],
-            seats[1][0],
+            [policy for policy, _ in loaded],
+            bf16=[precision for _, precision in loaded],
             envs=self.envs,
             segment=self.segment,
             seconds=self.seconds,
             compiled=self.compiled,
             seed=seed,
             progress=self.progress,
-            bf16=(seats[0][1], seats[1][1]),
+            minimum_envs=self.minimum_envs,
         )
         # The played games grouped by entry in one sort (not a scan of the queue per entry).
         played = (outcome.result >= 0).nonzero().squeeze(-1)
@@ -223,11 +259,11 @@ class Evaluator:
         return rows
 
     def elo(self, sizes, anchor=None, agents=None) -> list[tuple[str, float, float]]:
-        """Bradley-Terry Elo of every agent with games under (the game config, `sizes`), or of
-        `agents` only: (id, Elo, standard error), `anchor` (default the yardstick when it
-        played, else the first agent) at 1000."""
-        conditions = self.store.add_conditions(self.game_config, sizes)
-        totals = self.store.pairing_totals(conditions)
+        """Bradley-Terry Elo of every agent with games under (the game config, `sizes`; games
+        stored under the mirrored sizes count turned round), or of `agents` only: (id, Elo,
+        standard error), `anchor` (default the yardstick when it played, else the first agent)
+        at 1000."""
+        totals = self.store.pairing_totals(*self.conditions(sizes))
         wanted = None if agents is None else {agent.id for agent in agents}
         totals = [
             row for row in totals if wanted is None or (row[0] in wanted and row[1] in wanted)

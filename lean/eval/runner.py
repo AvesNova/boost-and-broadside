@@ -6,18 +6,24 @@ it takes the next game of the queue at once (rolling). At the cutoff (the queue'
 `seconds` of play) no game starts and every started game plays to its end (the drain), so
 the results are those of a prefix of the queue, each game played whole.
 
-Seats: in one call, seat A is either one network for every game or a scripted agent per game
-(an index into `scripted`, a table of full parameter vectors, lean.scripted.parameters.vector),
-and seat B the same. The scripted agent runs once per tick for every ship with every
-parameter row as a per-ship tensor (rows_of), so new vectors never compile a new graph. A
-network runs on all E environments from its seat's team view through the agent tick training
-uses (lean.model.agent.network_step: the weights are inputs, so another network of the same
-architecture is new data too, and the precision is the network's own); each game draws its
-own position offset (as in training). The game half of the tick is lean.game.tick, also
-training's and the sandbox's.
+Seats: each game's seat A and seat B is either a scripted agent (an index into `scripted`, a
+table of full parameter vectors, lean.scripted.parameters.vector) or a network (an index
+into the call's networks, all of one architecture). One queue may hold games of many
+pairings: scripted against scripted, networks against scripted agents and against each
+other. The scripted agent runs once per tick for every ship with every parameter row as a
+per-ship tensor (rows_of), so new vectors never compile a new graph. The 2E seats (seat A of
+every environment, then seat B) are routed to their networks as the training league routes
+its environments to its members (lean.model.agent.routed_step, mixture-of-experts style):
+each network runs once per tick on its own seats only, padded to a width W the host sets per
+segment (the network's seats in play plus those of the games the segment may start), from
+the seat's team view through the agent tick training uses (lean.model.agent.network_step:
+the weights are inputs, so another network of the same architecture is new data, and the
+precision is the network's own). Each seat draws its own position offset per game (as in
+training). The game half of the tick is lean.game.tick, also training's and the sandbox's.
 
-Deals are drawn once per segment (`segment` ticks) for the next E games of the queue, and
-the host reads two numbers per segment (games taken, slots busy); nothing is read in a tick.
+Deals are drawn once per segment (`segment` ticks) for the next games of the queue (at most
+`deal_rows` start in a segment), and the host reads 2 + K numbers per segment (games taken,
+slots busy, each network's seats in play); nothing is read in a tick.
 
 Each slot sums its game's style counters (lean.eval.style) per seat inside the tick; a finished
 game's sums go to its record and the slot's sums start at zero with the next deal.
@@ -25,37 +31,59 @@ game's sums go to its record and the slot's sums start at zero with the next dea
 
 import dataclasses
 import functools
+import math
 import time
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import torch
 from torch import Tensor
 
 from lean import game, scripted
-from lean.contract import compile_dynamic, split_joint, whole_state
+from lean.contract import SEAT_AXIS, Obs, compile_dynamic, split_joint, whole_state
 from lean.eval import style as style_counters
 from lean.model import draw_position_offset
-from lean.model.agent import Network, network, network_step, reset_carry, seat_view
+from lean.model.agent import (
+    Network,
+    network,
+    network_step,
+    reset_carry,
+    route_rows,
+    seat_view,
+)
 from lean.scripted import ScriptedConfig
 from lean.scripted.parameters import rows_of
 
 # A game's result from seat A's side.
 A_WON, B_WON, DRAW, NOT_PLAYED = 0, 1, 2, -1
+# A seat the scripted agent plays (Queue.net_a, net_b).
+SCRIPTED = -1
 # The scripted agent's config beside full per-ship rows: never read for a value.
 FIXED_CONFIG = ScriptedConfig()
+# The smallest batch width a network runs on: a compiled graph specialises sizes 0 and 1.
+MINIMUM_WIDTH = 2
 
 
 @dataclass
 class Queue:
     """Q games in order, (Q,) long each: `a`, `b` the scripted index of seats A and B (into
     the call's table; ignored for a seat a network plays), `side` the team seat A plays (0 or
-    1), `size_a`, `size_b` the seats' ships."""
+    1), `size_a`, `size_b` the seats' ships, `net_a`, `net_b` the network index of seats A
+    and B (into the call's networks; SCRIPTED, the default, for a scripted seat)."""
 
     a: Tensor
     b: Tensor
     side: Tensor
     size_a: Tensor
     size_b: Tensor
+    net_a: Tensor | None = None
+    net_b: Tensor | None = None
+
+    def __post_init__(self):
+        if self.net_a is None:
+            self.net_a = torch.full_like(self.a, SCRIPTED)
+        if self.net_b is None:
+            self.net_b = torch.full_like(self.b, SCRIPTED)
 
     def __len__(self) -> int:
         return self.a.shape[0]
@@ -96,56 +124,134 @@ class Deals:
 @dataclass
 class Slots:
     """The E environments: `game` (E,) long, the queue index each plays (-1 idle), the
-    scripted memory, both seats' network carries and position offsets (None without a
-    network there), and `style` (E, 2, len(style.SUMS)) the game's style sums so far."""
+    scripted memory, and `style` (E, 2, len(style.SUMS)) the game's style sums so far. With
+    networks, per seat (seat A of every environment, then seat B, then one spare row that
+    padding rows write to): `carry` (blocks, 2E + 1, ...) the networks' recurrent carry and
+    `seat_action` (2E + 1, N, 3) their last moves, both written in place by seat_moves only
+    at the network's own seats (None without networks); and `offset` (2E, 2) the seats'
+    position offsets."""
 
     game: Tensor
     memory: dict
-    carry_a: Tensor | None
-    carry_b: Tensor | None
-    offset_a: Tensor
-    offset_b: Tensor
+    carry: Tensor | None
+    seat_action: Tensor | None
+    offset: Tensor
     style: Tensor
 
 
-def draw_deals(
-    game_config, queue: Queue, first: int, count: int, slots: int, model_configs, device
-) -> Deals:
+class Decision(NamedTuple):
+    """One tick's scripted half and the seats' routing (decide): `action` (E, N, 3) the
+    scripted agent's moves (zero without a scripted seat), its new `memory`, `side` (E,) the
+    team seat A plays, `seat_a` (E, N) the ship plays for seat A, `playing` (E,); with
+    networks, the two fixed-team `views` and per seat (2E,) its network (`seat_net`,
+    SCRIPTED for a scripted or idle seat), environment, team and whether its game starts at
+    this tick (`seat_fresh`: the carry is zeroed)."""
+
+    action: Tensor
+    memory: dict
+    side: Tensor
+    seat_a: Tensor
+    playing: Tensor
+    views: tuple[Obs, Obs] | None
+    seat_net: Tensor | None
+    seat_environment: Tensor | None
+    seat_team: Tensor | None
+    seat_fresh: Tensor | None
+
+
+def draw_deals(game_config, queue: Queue, first: int, count: int, slots: int, model_config, device):
     """Deals for the queue's games first .. first + count - 1 (rows past the queue's end
-    repeat its last game; they are never started). `model_configs`: seat A's and seat B's
-    network configs (None for a scripted seat: a zero offset)."""
+    repeat its last game; they are never started). `model_config`: the networks' config (None
+    without networks: zero offsets)."""
     index = (first + torch.arange(count, device=device)).clamp(max=len(queue) - 1)
     sizes = queue.team_sizes().index_select(0, index)
     state = game.deal(game_config, count, slots, sizes, None, device)
     offsets = [
-        draw_position_offset(config, count, None, device)
-        if config is not None
+        draw_position_offset(model_config, count, None, device)
+        if model_config is not None
         else torch.zeros(count, 2, device=device)
-        for config in model_configs
+        for _ in range(2)
     ]
     first_tensor = torch.tensor(first, dtype=torch.long, device=device)
     return Deals(state, scripted.fresh_memory(count, slots, None, device), *offsets, first_tensor)
 
 
-def network_moves(
-    network_: Network, seat_team: Tensor, views, carry: Tensor, offset: Tensor
-) -> tuple[Tensor, Tensor]:
-    """A network's sampled actions (E, N, 3) from team `seat_team[e]`'s view of every
-    environment, and its new carry."""
-    envs = seat_team.shape[0]
-    view = seat_view(views, torch.arange(envs, device=seat_team.device), seat_team)
-    step = network_step(network_, view, carry, offset, None)
-    return split_joint(step.joint), step.carry
+def decide(game_config, state, slots: Slots, queue: Queue, table: Tensor, scripted_seats: bool):
+    """The scripted agent's moves for every ship (when the queue has a scripted seat) and,
+    with networks (slots.carry), the views and each seat's network. Returns a Decision."""
+    envs, ships = state.exists.shape
+    device = state.exists.device
+    playing = slots.game >= 0
+    current = slots.game.clamp(min=0)
+    side = queue.side.index_select(0, current)
+    seat_a = state.team == side[:, None]  # (E, N) the ship plays for seat A
+    action = torch.zeros((envs, ships, 3), dtype=torch.long, device=device)
+    memory = slots.memory
+    if scripted_seats:
+        a, b = queue.a.index_select(0, current), queue.b.index_select(0, current)
+        agent = torch.where(seat_a, a[:, None], b[:, None])
+        uniforms = scripted.draw_uniforms(envs, ships, None, device)
+        action, memory, _ = scripted.decide(
+            FIXED_CONFIG, state, None, rows_of(table, agent), uniforms, memory
+        )
+    if slots.carry is None:
+        return Decision(action, memory, side, seat_a, playing, *[None] * 5)
+    views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
+    nets = torch.cat([queue.net_a.index_select(0, current), queue.net_b.index_select(0, current)])
+    seat_net = torch.where(torch.cat([playing, playing]), nets, SCRIPTED)
+    environments = torch.arange(envs, device=device)
+    fresh = state.tick == 0
+    return Decision(
+        action,
+        memory,
+        side,
+        seat_a,
+        playing,
+        views,
+        seat_net,
+        torch.cat([environments, environments]),
+        torch.cat([side, 1 - side]),
+        torch.cat([fresh, fresh]),
+    )
 
 
-def tick(
+def seat_moves(
+    network_: Network,
+    net: Tensor,
+    positions: Tensor,
+    decision: Decision,
+    carry: Tensor,
+    offset: Tensor,
+    seat_action: Tensor,
+) -> None:
+    """One network's moves on the seats it plays (decision.seat_net == `net`, a 0-d long),
+    routed as the league routes its environments (lean.model.agent.route_rows, W =
+    positions.shape[0]): the network runs once on its W rows (padding past its seats) from
+    each seat's team view, its carry zeroed where the seat's game starts, and writes its
+    seats' moves and carry into `seat_action` and `carry` in place (padding rows to the spare
+    row 2E). Only the network's own rows are read and written."""
+    mine = decision.seat_net == net
+    source, _ = route_rows(mine, positions.shape[0])
+    view = seat_view(
+        decision.views,
+        decision.seat_environment.index_select(0, source),
+        decision.seat_team.index_select(0, source),
+    )
+    rows_carry = reset_carry(
+        carry.index_select(SEAT_AXIS, source), decision.seat_fresh.index_select(0, source)
+    )
+    step = network_step(network_, view, rows_carry, offset.index_select(0, source), None)
+    spare = mine.shape[0]
+    target = torch.where(positions < mine.sum(), source, spare)
+    seat_action.index_copy_(0, target, split_joint(step.joint))
+    carry.index_copy_(SEAT_AXIS, target, step.carry)
+
+
+def advance(
     game_config,
     state,
     slots: Slots,
-    queue: Queue,
-    table: Tensor,
-    network_a,
-    network_b,
+    decision: Decision,
     deals: Deals,
     taken: Tensor,
     limit: Tensor,
@@ -153,43 +259,26 @@ def tick(
     length: Tensor,
     style: Tensor,
 ):
-    """One tick of every environment, then the starts. `taken` (0-d long) counts the rows of
-    `deals` used, `limit` (0-d long) is the first queue index that may not start; `result`
-    and `length` (Q + 1,) and `style` (Q + 1, 2, len(style.SUMS)) take each finished game's
-    record in place (entry Q is spare). Returns (state, slots, taken)."""
-    envs, ships = state.exists.shape
-    device = state.exists.device
-    playing = slots.game >= 0
-    current = slots.game.clamp(min=0)
-    a, b, side = (
-        queue.a.index_select(0, current),
-        queue.b.index_select(0, current),
-        queue.side.index_select(0, current),
-    )
-    seat_a = state.team == side[:, None]  # (E, N) the ship plays for seat A
-    action = torch.zeros((envs, ships, 3), dtype=torch.long, device=device)
-    memory = slots.memory
-    if network_a is None or network_b is None:
-        agent = torch.where(seat_a, a[:, None], b[:, None])
-        uniforms = scripted.draw_uniforms(envs, ships, None, device)
-        action, memory, _ = scripted.decide(
-            FIXED_CONFIG, state, None, rows_of(table, agent), uniforms, memory
-        )
-    carry_a, carry_b = slots.carry_a, slots.carry_b
-    if network_a is not None or network_b is not None:
-        views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
-        if network_a is not None:
-            moves, carry_a = network_moves(network_a, side, views, carry_a, slots.offset_a)
-            action = torch.where(seat_a[..., None], moves, action)
-        if network_b is not None:
-            moves, carry_b = network_moves(network_b, 1 - side, views, carry_b, slots.offset_b)
-            action = torch.where(seat_a[..., None], action, moves)
+    """The tick's game half and the starts, from the scripted moves and the networks' seat
+    moves (slots.seat_action). `taken` (0-d long) counts the rows of `deals` used, `limit`
+    (0-d long) is the first queue index that may not start; `result` and `length` (Q + 1,)
+    and `style` (Q + 1, 2, len(style.SUMS)) take each finished game's record in place (entry
+    Q is spare). Returns (state, slots, taken)."""
+    envs = state.exists.shape[0]
+    seat_a, playing = decision.seat_a, decision.playing
+    action = decision.action
+    if slots.seat_action is not None:
+        network_a = (decision.seat_net[:envs] >= 0)[:, None] & seat_a
+        network_b = (decision.seat_net[envs:] >= 0)[:, None] & ~seat_a
+        action = torch.where(network_a[..., None], slots.seat_action[:envs], action)
+        action = torch.where(network_b[..., None], slots.seat_action[envs : 2 * envs], action)
 
     start_state = state
     state, out = game.tick(game_config, state, action, None)
     sums = slots.style + style_counters.tick_sums(
         start_state, seat_a, playing, start_state.pending[..., 1], state.fired, out.hit_damage
     )
+    side = decision.side
     finished = out.done & playing
     record = torch.where(finished, slots.game, result.shape[0] - 1)
     seat_result = torch.where(out.result == 2, DRAW, torch.where(out.result == side, A_WON, B_WON))
@@ -210,22 +299,81 @@ def tick(
     def take(fresh: Tensor, old: Tensor) -> Tensor:
         return torch.where(start.view(-1, *[1] * (old.dim() - 1)), fresh.index_select(0, pick), old)
 
+    seats_start = torch.cat([start, start])
+    fresh_offset = torch.cat(
+        [deals.offset_a.index_select(0, pick), deals.offset_b.index_select(0, pick)]
+    )
     slots = Slots(
         game=torch.where(start, next_game, torch.where(want, -1, slots.game)),
-        memory={name: take(deals.memory[name], memory[name]) for name in memory},
-        carry_a=None if carry_a is None else reset_carry(carry_a, start),
-        carry_b=None if carry_b is None else reset_carry(carry_b, start),
-        offset_a=take(deals.offset_a, slots.offset_a),
-        offset_b=take(deals.offset_b, slots.offset_b),
+        memory={name: take(deals.memory[name], decision.memory[name]) for name in decision.memory},
+        carry=slots.carry,
+        seat_action=slots.seat_action,
+        offset=torch.where(seats_start[:, None], fresh_offset, slots.offset),
         style=torch.where(want[:, None, None], 0.0, sums),
     )
     return state, slots, taken + start.sum()
 
 
+def tick(game_config, state, slots: Slots, queue: Queue, table: Tensor, *rest):
+    """One tick without networks (every seat scripted): decide and advance in one graph.
+    `rest`: advance's deals, taken, limit, result, length, style."""
+    decision = decide(game_config, state, slots, queue, table, True)
+    return advance(game_config, state, slots, decision, *rest)
+
+
+def advance_decide(game_config, state, slots: Slots, decision: Decision, *rest):
+    """With networks: advance, then the next tick's decide, in one graph. `rest`: advance's
+    deals, taken, limit, result, length, style, then decide's queue, table, scripted_seats.
+    Returns (state, slots, taken, the next Decision)."""
+    state, slots, taken = advance(game_config, state, slots, decision, *rest[:6])
+    return state, slots, taken, decide(game_config, state, slots, *rest[6:])
+
+
 @functools.cache
-def compiled_tick():
-    """`tick` under torch.compile (lean.contract.compile_dynamic, as lean.learn.compiled)."""
-    return compile_dynamic(tick)
+def compiled():
+    """The runner's functions under torch.compile (lean.contract.compile_dynamic, as
+    lean.learn.compiled): tick (no networks), and with them decide (the first tick only),
+    seat_moves (once per network and tick) and advance_decide."""
+    return {
+        name: compile_dynamic(function)
+        for name, function in (
+            ("tick", tick),
+            ("decide", decide),
+            ("seat_moves", seat_moves),
+            ("advance_decide", advance_decide),
+        )
+    }
+
+
+def eager() -> dict:
+    return {
+        "tick": tick,
+        "decide": decide,
+        "seat_moves": seat_moves,
+        "advance_decide": advance_decide,
+    }
+
+
+def seat_counts(queue: Queue, networks: int) -> Tensor:
+    """(Q + 1, K) the cumulative seats of each network over the queue's games (row i: games
+    0 .. i - 1), on the host."""
+    seats = torch.zeros(len(queue), networks + 1, dtype=torch.long)
+    for nets in (queue.net_a.cpu(), queue.net_b.cpu()):
+        seats.scatter_add_(1, (nets + 1)[:, None], torch.ones(len(queue), 1, dtype=torch.long))
+    return torch.cat([torch.zeros(1, networks, dtype=torch.long), seats[:, 1:].cumsum(0)])
+
+
+def seats_in_play(slots: Slots, queue: Queue, networks: int) -> Tensor:
+    """(K,) each network's seats in play (busy slots only)."""
+    current = slots.game.clamp(min=0)
+    busy = slots.game >= 0
+    nets = torch.cat(
+        [
+            torch.where(busy, queue.net_a.index_select(0, current), SCRIPTED),
+            torch.where(busy, queue.net_b.index_select(0, current), SCRIPTED),
+        ]
+    )
+    return torch.bincount(nets + 1, minlength=networks + 1)[1:]
 
 
 @torch.no_grad()
@@ -233,31 +381,36 @@ def play(
     game_config,
     queue: Queue,
     scripted_table: Tensor,
-    policy_a=None,
-    policy_b=None,
+    policies=(),
     *,
+    bf16=None,
     envs: int = 4096,
     segment: int = 32,
+    deal_share: float = 0.125,
     seconds: float | None = None,
     compiled: bool = False,
     seed: int = 0,
     progress=None,
     slot_games: int = 16,
     minimum_envs: int = 256,
-    bf16: tuple[bool, bool] = (True, True),
 ) -> Outcome:
     """Play the queue's games (see the module's docstring) on at most `envs` environments on
     the table's device (fewer for a short queue: Q / `slot_games`, at least `minimum_envs`).
-    `scripted_table` (S, len(PARAMETERS)) float32 holds the scripted
-    agents' vectors (one row at least, even when both seats are networks); `policy_a`,
-    `policy_b` a lean.model.Policy playing every game's seat A or B, or None for the
-    scripted agent of the queue's index; `bf16` each seat's network precision, the setting
-    it was trained with (lean.learn.LearnConfig.bf16). `seconds`: the cutoff in seconds of
-    play, after which no game starts (None: the queue's end). Every draw comes from torch's
-    default generators (a compiled graph cannot take a generator object), seeded by `seed`
-    inside a fork of their states: the caller's are restored on return.
-    `progress(games_started, busy_slots, seconds)` is called after each segment.
+    `scripted_table` (S, len(PARAMETERS)) float32 holds the scripted agents' vectors (one row
+    at least, even when every seat is a network); `policies` the lean.model.Policy objects
+    the queue's network indices name (one architecture), `bf16` each one's precision, the
+    setting it was trained with (lean.learn.LearnConfig.bf16; default True for each). At most
+    ceil(`deal_share` x E) games start in a segment (the networks' batch width follows it).
+    `seconds`: the cutoff in seconds of play, after which no game starts (None: the queue's
+    end). Every draw comes from torch's default generators (a compiled graph cannot take a
+    generator object), seeded by `seed` inside a fork of their states: the caller's are
+    restored on return. `progress(games_started, busy_slots, seconds)` is called after each
+    segment.
     """
+    policies = list(policies)
+    bf16 = [True] * len(policies) if bf16 is None else list(bf16)
+    if len({repr(policy.config) for policy in policies}) > 1:
+        raise ValueError("one runner call takes networks of one architecture")
     devices = list(range(torch.cuda.device_count())) if scripted_table.device.type == "cuda" else []
     with torch.random.fork_rng(devices=devices):
         torch.random.default_generator.manual_seed(seed)
@@ -267,16 +420,16 @@ def play(
             game_config,
             queue,
             scripted_table,
-            policy_a,
-            policy_b,
+            policies,
+            bf16,
             envs,
             segment,
+            deal_share,
             seconds,
             compiled,
             progress,
             slot_games,
             minimum_envs,
-            bf16,
         )
 
 
@@ -284,16 +437,16 @@ def _play(
     game_config,
     queue: Queue,
     scripted_table: Tensor,
-    policy_a,
-    policy_b,
+    policies: list,
+    bf16: list,
     envs: int,
     segment: int,
+    deal_share: float,
     seconds: float | None,
-    compiled: bool,
+    compiled_: bool,
     progress,
     slot_games: int,
     minimum_envs: int,
-    bf16: tuple[bool, bool],
 ) -> Outcome:
     device = scripted_table.device
     queue = queue.to(device)
@@ -301,16 +454,27 @@ def _play(
     # The drain lasts up to a whole game while slots fall idle, so a short queue takes fewer
     # slots: at least `slot_games` games per slot, never fewer than `minimum_envs` slots.
     envs = min(envs, total, max(minimum_envs, -(-total // slot_games)))
+    deal_rows = max(1, math.ceil(deal_share * envs))
     ships = int(queue.team_sizes().sum(-1).max())
-    network_a = None if policy_a is None else network(policy_a, bf16[0])
-    network_b = None if policy_b is None else network(policy_b, bf16[1])
-    configs = [None if policy is None else policy.config for policy in (policy_a, policy_b)]
-    function = compiled_tick() if compiled else tick
+    count = len(policies)
+    networks = [
+        (network(policy, precision), torch.tensor(index, device=device))
+        for index, (policy, precision) in enumerate(zip(policies, bf16, strict=True))
+    ]
+    scripted_seats = bool(((queue.net_a < 0) | (queue.net_b < 0)).any())
+    cumulative = seat_counts(queue, count)
+    # The most seats a network can hold: E for each seat (A, B) it plays in the queue.
+    ceiling = [
+        envs * (int((queue.net_a == index).any()) + int((queue.net_b == index).any()))
+        for index in range(count)
+    ]
+    functions = compiled() if compiled_ else eager()
+    model_config = policies[0].config if policies else None
 
-    def deals_from(first: int) -> Deals:
-        return draw_deals(game_config, queue, first, envs, ships, configs, device)
+    def deals_from(first: int, rows: int) -> Deals:
+        return draw_deals(game_config, queue, first, rows, ships, model_config, device)
 
-    opening = deals_from(0)
+    opening = deals_from(0, envs)
     # The state is the runner's: its own copies of the deal's shared fixed rows, every tensor
     # whole (a compiled graph is specialised on strides).
     shared = ("bullets", "bullet_counts", "bullet_real", "tick", "pending")
@@ -318,45 +482,64 @@ def _play(
         opening.state, **{name: getattr(opening.state, name).clone() for name in shared}
     )
     state = whole_state(state)
-    carries = [
-        None if policy is None else policy.initial_carry(envs, ships, device)
-        for policy in (policy_a, policy_b)
-    ]
     width = len(style_counters.SUMS)
     slots = Slots(
         torch.arange(envs, device=device),
         opening.memory,
-        *carries,
-        opening.offset_a,
-        opening.offset_b,
+        # The seats' carry and moves, one spare row past the 2E seats (seat_moves).
+        policies[0].initial_carry(2 * envs + 1, ships, device) if policies else None,
+        torch.zeros((2 * envs + 1, ships, 3), dtype=torch.long, device=device)
+        if policies
+        else None,
+        torch.cat([opening.offset_a, opening.offset_b]),
         torch.zeros(envs, 2, width, device=device),
     )
     result = torch.full((total + 1,), NOT_PLAYED, dtype=torch.long, device=device)
     length = torch.zeros(total + 1, dtype=torch.long, device=device)
     style = torch.zeros(total + 1, 2, width, device=device)
     first, limit = envs, total
-    deals = deals_from(first)
+    deals = deals_from(first, deal_rows)
     taken = torch.zeros((), dtype=torch.long, device=device)
     limit_tensor = torch.tensor(limit, device=device)
+    in_play = seats_in_play(slots, queue, count).tolist() if count else []
+    if networks:
+        decision = functions["decide"](
+            game_config, state, slots, queue, scripted_table, scripted_seats
+        )
     started = time.perf_counter()
     while True:
+        # Each network's batch width this segment: its seats in play and those of the games
+        # the segment may start, at most its ceiling (a bound: no row past it is routed).
+        end = min(first + deal_rows, limit)
+        upcoming = (cumulative[max(end, first)] - cumulative[first]).tolist()
+        positions = [
+            torch.arange(max(MINIMUM_WIDTH, min(held + new, most)), device=device)
+            for held, new, most in zip(in_play, upcoming, ceiling, strict=True)
+        ]
+        active = [index for index in range(count) if in_play[index] + upcoming[index] > 0]
         for _ in range(segment):
-            state, slots, taken = function(
-                game_config,
-                state,
-                slots,
-                queue,
-                scripted_table,
-                network_a,
-                network_b,
-                deals,
-                taken,
-                limit_tensor,
-                result,
-                length,
-                style,
-            )
-        used, busy = torch.stack([taken, (slots.game >= 0).sum()]).tolist()
+            if not networks:
+                state, slots, taken = functions["tick"](
+                    game_config, state, slots, queue, scripted_table,
+                    deals, taken, limit_tensor, result, length, style,
+                )  # fmt: skip
+                continue
+            for index in active:
+                network_, net = networks[index]
+                functions["seat_moves"](
+                    network_, net, positions[index], decision, slots.carry, slots.offset,
+                    slots.seat_action,
+                )  # fmt: skip
+            state, slots, taken, decision = functions["advance_decide"](
+                game_config, state, slots, decision,
+                deals, taken, limit_tensor, result, length, style,
+                queue, scripted_table, scripted_seats,
+            )  # fmt: skip
+        read = [taken, (slots.game >= 0).sum()]
+        if count:
+            read.append(seats_in_play(slots, queue, count))
+        values = torch.cat([value.reshape(-1) for value in read]).tolist()
+        used, busy, in_play = values[0], values[1], values[2:]
         first += used
         elapsed = time.perf_counter() - started
         if progress is not None:
@@ -368,7 +551,7 @@ def _play(
             break
         # The drain needs no deals: a row's queue index past the limit never starts.
         if first < limit:
-            deals = deals_from(first)
+            deals = deals_from(first, deal_rows)
         else:
             deals = dataclasses.replace(deals, first=torch.tensor(first, device=device))
         taken = torch.zeros((), dtype=torch.long, device=device)

@@ -92,6 +92,12 @@ def main() -> None:
     parser.add_argument("--weights", choices=("ema", "uniform", "live"), default="ema")
     parser.add_argument("--envs", type=int, default=4096)
     parser.add_argument(
+        "--minimum-envs",
+        type=int,
+        default=None,
+        help="fewest environments a runner call takes (default Evaluator's)",
+    )
+    parser.add_argument(
         "--seconds",
         type=float,
         default=None,
@@ -132,6 +138,7 @@ def main() -> None:
         game_config,
         device=arguments.device,
         envs=arguments.envs,
+        **({} if arguments.minimum_envs is None else {"minimum_envs": arguments.minimum_envs}),
         seed=arguments.seed,
         seconds=arguments.seconds,
         progress=progress,
@@ -161,8 +168,10 @@ def main() -> None:
 
     agents = [parse_agent(text, store) for text in arguments.agents]
     if arguments.command == "styles":
-        conditions = store.add_conditions(game_config, sizes)
-        rows = store.styles(conditions, [agent.id for agent in agents] if agents else None)
+        conditions, mirrored = evaluator.conditions(sizes)
+        rows = store.styles(
+            conditions, [agent.id for agent in agents] if agents else None, mirrored
+        )
         print(
             "games  ship-min  turning  two-circle  store  speed  shots/min  hits  hit-range  climb "
             " dive  agent"

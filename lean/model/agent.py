@@ -3,7 +3,9 @@ view, the policy's precision, one step of a network held as a weightless templat
 weights, the joint action's sample and the carry's reset at an episode start.
 
 lean.learn's rollout (the live policy and the league's networks) and lean.eval's runner all
-act through one agent tick (agent_step); nothing here depends on the learner.
+act through one agent tick (agent_step); the league's networks and the runner's seats share
+the per-network routing (routed_step: each network runs only on its own rows). Nothing here
+depends on the learner.
 """
 
 import copy
@@ -14,7 +16,7 @@ import torch
 from torch import Tensor, nn
 from torch.func import functional_call
 
-from lean.contract import Obs, random_keywords
+from lean.contract import SEAT_AXIS, Obs, random_keywords, split_joint
 
 
 def precision(device, bf16: bool) -> torch.autocast:
@@ -170,3 +172,50 @@ def network_step(
 ) -> AgentStep:
     """One tick of a Network on `view` (rows E): agent_step with its weights and precision."""
     return agent_step(network_forward(network_), network_.bf16, view, carry, offset, generator)
+
+
+def route_rows(mine: Tensor, width: int) -> tuple[Tensor, Tensor]:
+    """Capacity routing's rows: the rows where `mine` (R,) bool, in order, as the first rows
+    of a `width`-row batch. Returns (source (width,) long: the R-row each batch row reads,
+    row 0 for padding rows; rank (R,) long: each of the network's rows' batch row, not
+    meaningful for the others)."""
+    rows = mine.shape[0]
+    rank = mine.long().cumsum(0) - 1  # each of the network's rows: its row in the batch
+    slot = torch.where(mine, rank, width)  # others to a spare row past the batch
+    source = torch.zeros(width + 1, dtype=torch.long, device=mine.device)
+    source = source.scatter(0, slot, torch.arange(rows, device=mine.device))[:-1]
+    return source, rank
+
+
+def routed_step(
+    network_: Network,
+    mine: Tensor,
+    positions: Tensor,
+    view_of,
+    carry: Tensor,
+    offset: Tensor,
+    generator,
+    action: Tensor,
+    carry_out: Tensor,
+) -> tuple[Tensor, Tensor]:
+    """One network's moves on its own rows of R (capacity routing, mixture-of-experts style):
+    the rows where `mine` (R,) bool take the rows 0, 1, ... of a W-row batch in order (W =
+    positions.shape[0], never fewer than the network's rows), the network runs once on those
+    W rows (`view_of(rows)` the view of the R-rows `rows` (W,), `carry` (blocks, R, ...) and
+    `offset` (R, 2) read at them), and each of its rows reads its sampled action (N, 3) and
+    new carry back into `action` (R, N, 3) and `carry_out` (the carry's shape); the other
+    rows keep theirs. Padding rows (fewer of the network's rows than W) run on row 0's input
+    and are never read. No host read, and one compiled graph for every network, W and R.
+    Returns (action, carry_out), the carry contiguous (a compiled graph is specialised on
+    strides, so the carry keeps one layout from tick to tick)."""
+    source, rank = route_rows(mine, positions.shape[0])
+    width = positions.shape[0]
+    view = view_of(source)
+    rows_carry = carry.index_select(SEAT_AXIS, source)
+    step = network_step(network_, view, rows_carry, offset.index_select(0, source), generator)
+    read = rank.clamp(min=0, max=width - 1)
+    sampled = split_joint(step.joint).index_select(0, read)
+    new_action = torch.where(mine[:, None, None], sampled, action)
+    new_carry = step.carry.index_select(SEAT_AXIS, read)
+    chosen = mine.view(*[1] * SEAT_AXIS, -1, *[1] * (carry_out.dim() - SEAT_AXIS - 1))
+    return new_action, torch.where(chosen, new_carry, carry_out).contiguous()

@@ -11,7 +11,6 @@ from lean import game, scripted
 from lean.contract import (
     EPISODE_CONSTANT,
     POWERS,
-    SEAT_AXIS,
     STICKS,
     Obs,
     random_keywords,
@@ -25,8 +24,8 @@ from lean.model import draw_position_offset, next_state_target
 from lean.model.agent import (
     Network,
     agent_step,
-    network_step,
     reset_carry,
+    routed_step,
     seat_view,
     select_environments,
 )
@@ -315,40 +314,33 @@ def slot_actions(
     league_move: LeagueMove,
     generator,
 ) -> LeagueMove:
-    """One network slot's moves (capacity routing): the league environments it plays
-    (carry.slot == `slot`, a 0-d long) take the rows 0, 1, ... of a W-row batch in order
-    (W = positions.shape[0], League.prepare's table width: never fewer than the slot's
-    environments), the slot's network (`network_`, its weights through the weightless
-    template) runs once on those W rows, and each of its environments reads its row back into
-    `league_move`; the other environments keep theirs. Padding rows (fewer environments than
-    W) run on environment 0's input and are never read. No host read, and one compiled graph
-    for every slot, W and K."""
+    """One network slot's moves (lean.model.agent.routed_step, the routing the evaluation
+    runner shares): the league environments it plays (carry.slot == `slot`, a 0-d long) run
+    on a W-row batch (W = positions.shape[0], League.prepare's table width: never fewer than
+    the slot's environments) from their league side's view, and read their actions and carry
+    back into `league_move`; the other environments keep theirs. No host read, and one
+    compiled graph for every slot, W and K."""
     league_envs = carry.member.shape[0]
     envs = carry.learner_team.shape[0]
     first = envs - league_envs
-    device = carry.member.device
-    width = positions.shape[0]
-    mine = carry.slot == slot
-    rank = mine.long().cumsum(0) - 1  # each of the slot's environments: its row
-    row = torch.where(mine, rank, width)  # others to a spare row past the batch
-    environment = torch.zeros(width + 1, dtype=torch.long, device=device)
-    environment = environment.scatter(0, row, torch.arange(league_envs, device=device))[:-1]
-    view = seat_view(
-        views, first + environment, 1 - carry.learner_team.index_select(0, first + environment)
+
+    def view_of(environment: Tensor) -> Obs:
+        return seat_view(
+            views, first + environment, 1 - carry.learner_team.index_select(0, first + environment)
+        )
+
+    action, new_carry = routed_step(
+        network_,
+        carry.slot == slot,
+        positions,
+        view_of,
+        carry.opponent,
+        carry.position_offset[first:],
+        generator,
+        league_move.action,
+        league_move.carry,
     )
-    rows_carry = carry.opponent.index_select(SEAT_AXIS, environment)
-    offset = carry.position_offset[first:].index_select(0, environment)
-    step = network_step(network_, view, rows_carry, offset, generator)
-    read = rank.clamp(min=0, max=width - 1)
-    sampled = split_joint(step.joint).index_select(0, read)
-    action = torch.where(mine[:, None, None], sampled, league_move.action)
-    new_carry = step.carry.index_select(SEAT_AXIS, read)
-    # Contiguous, so the carry keeps one layout from tick to tick (a compiled graph is
-    # specialised on strides).
-    return LeagueMove(
-        action,
-        torch.where(mine.view(1, -1, 1, 1, 1), new_carry, league_move.carry).contiguous(),
-    )
+    return LeagueMove(action, new_carry)
 
 
 def league_rows(scripted_action: Tensor, league_envs: int) -> Tensor:
