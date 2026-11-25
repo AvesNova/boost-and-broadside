@@ -31,29 +31,31 @@ def _default_position_periods() -> tuple[float, ...]:
 @dataclass(frozen=True)
 class NextStateColumn:
     """One column of the next-state head: a categorical over `bins` bins whose centres are
-    uniform, `low` to `high` the measured range (target units; in symlog space when `symlog`)
-    plus the buffer columns beyond each end (next_state_centres; lean/model/NOTES.md has the
-    table and the measurements behind the ranges)."""
+    uniform in the column's bin space (lean.model.value.symlog with `knee`, target units; 0
+    linear) from `low` to `high`, the measured range, plus the buffer columns beyond each end
+    (next_state_centres; lean/model/NOTES.md has the table and the measurements behind the
+    ranges and knees)."""
 
     name: str
-    symlog: bool
+    knee: float
     low: float
     high: float
 
 
-# The next-state columns (next_state_target). Measured ranges from the per-tick changes of
-# living ships, scripted against scripted under the training game (42.7M rows, 2026-11-25;
-# lean/model/NOTES.md has the percentiles; docs/rewrite/sections/scoreboard/target_ranges.py):
-# each linear range is symmetric, just outside the 0.1st and 99.9th percentiles; the shield's
-# low end is four hits of about 21 in one tick (a crossfire of four ships; the largest
-# measured was 61), its high end 0. The buffer columns lie beyond both ends.
+# The next-state columns (next_state_target). Measured from the per-tick changes of living
+# ships, scripted against scripted under the training game (42.7M rows, 2026-11-25;
+# lean/model/NOTES.md; docs/rewrite/sections/scoreboard/target_ranges.py): each range is
+# symmetric, +-the larger measured extreme; each knee from the flat-core data rule
+# (docs/rewrite/sections/scoreboard/symlog-preview.md). The shield's low end is four hits of
+# about 21 in one tick (a crossfire of four ships; the largest measured was 61), its high end
+# 0, knee 1 (pending its bug check). The buffer columns lie beyond both ends.
 NEXT_STATE_COLUMNS = (
-    NextStateColumn("along", False, -0.37, 0.37),  # metres
-    NextStateColumn("across", False, -0.6, 0.6),  # metres
-    NextStateColumn("heading", False, -0.043, 0.043),  # radians
-    NextStateColumn("speed", False, -2.8, 2.8),  # metres per second
-    NextStateColumn("energy", False, -640.0, 640.0),  # store units
-    NextStateColumn("shield", True, -90.0, 0.0),  # shield points
+    NextStateColumn("along", 2.4e-3, -1.89, 1.89),  # metres
+    NextStateColumn("across", 0.0244, -1.82, 1.82),  # metres
+    NextStateColumn("heading", 7.7e-5, -0.100, 0.100),  # radians
+    NextStateColumn("speed", 0.156, -5.39, 5.39),  # metres per second
+    NextStateColumn("energy", 21.8, -976.0, 976.0),  # store units
+    NextStateColumn("shield", 1.0, -90.0, 0.0),  # shield points
 )
 
 
@@ -89,7 +91,7 @@ class ModelConfig:
     map_width: int = 64
     mlp_ratio: int = 4
     head_hidden: int = 256
-    bins: int = COLUMNS  # 64 across the measured range, 3 buffer columns each end
+    bins: int = COLUMNS  # 57 across the measured range, 3 buffer columns each end
     hit_classes: int = 3  # the hit head: miss, enemy, team-mate
     # Shares of the outcomes of every bullet that ended (ghosts included), 42.5M bullets of
     # scripted 4v4 elimination under the training game (2026-11-25; lean/model/NOTES.md).
@@ -192,29 +194,30 @@ def next_state_target(
     return torch.stack([columns[column.name] for column in config.next_state_columns], -1).float()
 
 
+def next_state_knees(config: ModelConfig, device=None) -> Tensor:
+    """The next-state columns' knees, (NEXT_STATE,) float32 in target units (0 linear)."""
+    return torch.tensor(
+        [column.knee for column in config.next_state_columns], dtype=torch.float32, device=device
+    )
+
+
 def next_state_centres(config: ModelConfig, device=None) -> Tensor:
-    """The next-state bins' centres, (NEXT_STATE, BINS) float32, in each column's bin space
-    (symlog of target units for a symlog column): the column's measured range plus the
-    buffer columns at each end, in that space (lean.model.value.buffered_centres)."""
+    """The next-state bins' centres, (NEXT_STATE, BINS) float32, in each column's bin space:
+    the column's measured range plus the buffer columns at each end
+    (lean.model.value.buffered_centres)."""
     low = torch.tensor([column.low for column in config.next_state_columns], dtype=torch.float32)
     high = torch.tensor([column.high for column in config.next_state_columns], dtype=torch.float32)
-    is_symlog = torch.tensor([column.symlog for column in config.next_state_columns])
-    low, high = (
-        torch.where(is_symlog, contract.symlog(low), low),
-        torch.where(is_symlog, contract.symlog(high), high),
-    )
-    return buffered_centres(low, high, config.bins).to(device)
+    return buffered_centres(low, high, next_state_knees(config), config.bins).to(device)
 
 
 def next_state_distribution(config: ModelConfig, target: Tensor) -> Tensor:
     """HL-Gauss target probabilities of next_state_target's columns: target (..., NEXT_STATE)
     in target units to (..., NEXT_STATE, BINS), each column in its own bin space."""
-    is_symlog = torch.tensor(
-        [column.symlog for column in config.next_state_columns], device=target.device
-    )
-    target = torch.where(is_symlog, contract.symlog(target.float()), target.float())
     return hl_gauss_targets(
-        target, next_state_centres(config, target.device), config.next_state_sigma
+        target,
+        next_state_centres(config, target.device),
+        next_state_knees(config, target.device),
+        config.next_state_sigma,
     )
 
 

@@ -20,6 +20,7 @@ from lean.learn.returns import (
     usage_flags,
     usage_metrics,
     value_centres,
+    value_knees,
 )
 from lean.learn.rollout import Rollout, teacher_joint
 from lean.learn.store import RolloutStore
@@ -136,7 +137,8 @@ def minibatch_values(
         _, value_logits, _, _, _ = policy.sequence(observation, carry, reset, position_offset)
     value_logits = value_logits.float()
     centres = value_centres(config, value_logits.shape[-1], value_logits.device)
-    return decode_value(value_logits, centres) * observation.own[..., None], centres
+    knee = value_knees(config, value_logits.device)
+    return decode_value(value_logits, centres, knee) * observation.own[..., None], centres
 
 
 def minibatch_loss(
@@ -182,7 +184,9 @@ def minibatch_loss(
     bc = masked_sum(teacher_cross, own) / own_count
 
     centres = value_centres(config, value_logits.shape[-1], value_logits.device)
-    target_distribution = hl_gauss_targets(target, centres, config.value_sigma_ratio)
+    target_distribution = hl_gauss_targets(
+        target, centres, value_knees(config, value_logits.device), config.value_sigma_ratio
+    )
     cross_entropy = -(target_distribution * torch.log_softmax(value_logits, -1)).sum(-1)
     value_loss = masked_sum(cross_entropy, own) / (own_count * cross_entropy.shape[-1])
 
@@ -270,7 +274,7 @@ def target_pass(
         advantage.index_copy_(1, views, advantages.sum(-1))
         target.index_copy_(1, views, targets)
         tally, part = (
-            usage_counts(targets, batch["own"], centres),
+            usage_counts(targets, batch["own"], centres, value_knees(config, store.device)),
             advantage_sums(advantages, batch["own"]),
         )
         pays = (batch["reward"] != 0).flatten(0, -2).any(0)

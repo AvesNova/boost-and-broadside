@@ -7,15 +7,20 @@ from torch import Tensor
 from lean.contract import LEVEL_NAMES
 from lean.learn.config import LearnConfig
 from lean.model.temporal import doubling_scan
-from lean.model.value import buffered_centres
+from lean.model.value import buffered_centres, symlog
+
+
+def value_knees(config: LearnConfig, device=None) -> Tensor:
+    """The critic levels' symlog knees, (LEVELS,) float32 in return units (0 linear)."""
+    return torch.tensor(config.value_knee, dtype=torch.float32, device=device)
 
 
 def value_centres(config: LearnConfig, bins: int, device=None) -> Tensor:
-    """Bin centres of the categorical critic, (LEVELS, bins), evenly spaced: config.value_low
-    to config.value_high of each level (the measured range) plus the buffer columns
-    (lean.model.value.buffered_centres)."""
+    """Bin centres of the categorical critic, (LEVELS, bins), in each level's bin space
+    (value_knees): config.value_low to config.value_high of each level (the measured range)
+    plus the buffer columns (lean.model.value.buffered_centres)."""
     return buffered_centres(
-        torch.tensor(config.value_low), torch.tensor(config.value_high), bins
+        torch.tensor(config.value_low), torch.tensor(config.value_high), value_knees(config), bins
     ).to(device)
 
 
@@ -128,14 +133,15 @@ def advantage_shares(sums: Tensor) -> tuple[Tensor, Tensor]:
     return shares.float(), deviation.float()
 
 
-def usage_counts(target: Tensor, mask: Tensor, centres: Tensor) -> Tensor:
+def usage_counts(target: Tensor, mask: Tensor, centres: Tensor, knee: Tensor) -> Tensor:
     """How the value targets sit on each level's support, for one batch of targets, to be
     summed over batches (the update does; usage_flags and usage_metrics then read the sums):
     (LEVELS, BINS + 2), per level the count of valued targets nearest each bin centre, then
     the count beyond the outermost centres, then the count of valued targets. target
-    (..., LEVELS) in return units, mask (...) bool, centres (LEVELS, BINS)."""
+    (..., LEVELS) in return units, mask (...) bool, centres (LEVELS, BINS) in bin space,
+    knee (LEVELS,) (value_knees)."""
     levels, bins = centres.shape
-    chosen = target.float().reshape(-1, levels)
+    chosen = symlog(target.float().reshape(-1, levels), knee.to(target.device))
     weight = mask.reshape(-1).float()
     centres = centres.to(chosen.device).float()
     width = centres[:, 1] - centres[:, 0]
