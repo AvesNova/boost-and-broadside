@@ -115,15 +115,15 @@ def test_fog_off_is_full_information_and_leaves_the_game_unchanged():
 
 
 def test_sight_range_and_field_cores():
-    """Rule: "in sight" is v2's sight test: within the observer's vision range (1,000 m),
+    """Rule: "in sight" is v2's sight test: within the observer's vision range (1,500 m),
     all round, blocked only by a field's core (core to band sees, core to outside does not,
     a line through a core is blocked, both in one core see each other)."""
     assert (
-        abs(reset(FOG, 1, torch.tensor([[1, 1]]), None, CPU).constants["vision_range"] - 1000.0)
+        abs(reset(FOG, 1, torch.tensor([[1, 1]]), None, CPU).constants["vision_range"] - 1500.0)
         < 1e-3
     )
-    assert core.sighted_by_enemy(duel([(0.0, 0.0), (999.0, 0.0)], headings=[math.pi, 0.0])).all()
-    assert not core.sighted_by_enemy(duel([(0.0, 0.0), (1001.0, 0.0)])).any()
+    assert core.sighted_by_enemy(duel([(0.0, 0.0), (1499.0, 0.0)], headings=[math.pi, 0.0])).all()
+    assert not core.sighted_by_enemy(duel([(0.0, 0.0), (1501.0, 0.0)])).any()
     # One field at the centre: radius 300, band 160, so core 220 and outer disc 380.
     field = torch.tensor([[[0.0], [0.0], [300.0], [160.0], [2.0 * card.LN_SQRT2]]])
     cases = [

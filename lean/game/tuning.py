@@ -700,7 +700,7 @@ P51D_VALUES = dict(
     head_on_fraction=0.0,
     head_on_angle=math.pi / 4.0,
     head_on_sharpness=3.0,
-    vision_range=1000.0,
+    vision_range=1500.0,  # author 2026-11-25: two-circle fights reach ~1,260 m apart
 )
 # The P-51D airframe with a 2,200 hp engine (author 2026-11-24 night: late-war and post-war
 # engines, P-51H about 2,200 hp): the documents fit the airframe to the flight test at 1,630

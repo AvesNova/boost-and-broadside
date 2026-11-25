@@ -676,3 +676,9 @@ These replace the flap, profile and stick-level points above where they disagree
   monitoring thresholds unchanged (counted in bin space). Quick tier lean/model + lean/learn 118
   passed; compile check within the baseline (4 graphs, 5,633 operations, cold 211.9 s). Branch
   bins63.
+
+- **2026-11-25 (author): vision 1,500 m** for every type (was 1,000 m). Two-circle fights reach
+  about 1,260 m apart (docs/rewrite/sections/vision/vision.md). Known open item: the scripted
+  competence test (every parameter at its box ends) now has one game at level_three -1 reaching
+  1.095 arena radii, past the boundary ramp's end (1.071); the same case over 32 other games
+  stays within 0.944. Handed to the scripted-ghosts branch, which changes target choice.
