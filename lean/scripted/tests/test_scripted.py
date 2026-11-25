@@ -21,6 +21,9 @@ from lean.scripted import (
 from lean.scripted.opponent import CLIMB, COAST, DIVE, explain
 from lean.scripted.parameters import PARAMETERS, SAMPLED
 
+# The end of the boundary's damage ramp, in arena radii, read from the game's own config.
+BOUNDARY_RAMP_END = 1.0 + game.GameConfig().boundary_ramp_width / game.GameConfig().arena_radius
+
 CPU = torch.device("cpu")
 
 
@@ -493,7 +496,7 @@ def test_every_persona_is_competent_at_spread_one():
     0.979, 0.983, 0.988 of them fired; the yardstick at seed 7 0.983)."""
     tallies = play_scripted(envs=32, ticks=1800, spread=1.0, seed=7)
     print(f"farthest {float(tallies['farthest'].max()):.3f} of the arena radius")
-    assert float(tallies["farthest"].max()) < 1.0 + 300.0 / 4200.0
+    assert float(tallies["farthest"].max()) < BOUNDARY_RAMP_END
     long_lived = tallies["lived"] >= 600
     assert long_lived.sum() > 100
     assert float(tallies["fired"][long_lived].float().mean()) >= 0.97
@@ -547,5 +550,5 @@ def test_every_parameter_alone_at_both_ends_of_its_box_is_competent():
     worst = sorted(zip(fired.tolist(), cases))[:3]
     outermost = sorted(zip(farthest.tolist(), cases))[-3:]
     print(f"farthest {outermost}; lowest shares of ships that fired {worst}")
-    assert float(farthest.max()) < 1.0 + 300.0 / 4200.0
+    assert float(farthest.max()) < BOUNDARY_RAMP_END
     assert float(fired.min()) >= 0.5
