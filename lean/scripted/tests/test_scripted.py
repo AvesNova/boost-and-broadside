@@ -643,10 +643,10 @@ def test_a_ghost_that_could_be_anywhere_in_the_arena_is_dropped():
             assert float(reasons.marginals.fire[0, 0]) == 0.0
 
 
-def test_no_shot_in_a_pure_head_on_unless_it_empties_the_shield():
-    """Author 2026-11-25: dead ahead the aspect factor gives (nearly) no damage, so the gun
-    holds fire nose to nose; it fires at the same target from astern, and nose to nose at a
-    target whose shield the hit would empty (0 here: any damage kills)."""
+def test_no_shot_inside_the_nose_cone_even_at_an_empty_shield():
+    """Author 2026-11-25: inside the nose cone a hit does no damage, so the gun holds fire nose
+    to nose, even at a target with no shield left (only damage kills); it fires at the same
+    target from astern, shield or none."""
     own = dict(x=0.0, y=0.0, heading=0.0, speed=card()["corner_speed"])
 
     def fire(target_heading: float, shield: float | None = None) -> float:
@@ -658,7 +658,8 @@ def test_no_shot_in_a_pure_head_on_unless_it_empties_the_shield():
 
     assert fire(math.pi) == 0.0  # nose to nose
     assert fire(0.0) > 0.5  # from astern
-    assert fire(math.pi, shield=0.0) > 0.5  # nose to nose, the hit kills
+    assert fire(math.pi, shield=0.0) == 0.0  # nose to nose: no damage, so no kill
+    assert fire(0.0, shield=0.0) > 0.5  # from astern the hit kills
 
 
 def test_the_merge_miss_offset_moves_only_the_stick_and_only_inside_its_range():

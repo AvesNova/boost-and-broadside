@@ -486,7 +486,8 @@ def explain(
     # Worth it (author 2026-11-25: no shot in a pure head-on): the hit's damage at the
     # predicted aspect (the game's aspect factor x hit damage) is at least the shooter's
     # shield recharge for `fire_worth` ticks (a shot makes the tick not quiet, so it forgoes
-    # at least that), or at least the target's shield (the hit empties it, or kills at 0). The
+    # at least that), or at least the target's shield and more than 0 (the hit empties it, or
+    # kills at 0; inside the nose cone it does nothing). The
     # bullet's direction is the launch's (own velocity plus the muzzle speed along the nose);
     # the target's nose turns at its nose rate over the flight time.
     launch_x = state.velocity_x + c["muzzle_speed"] * state.heading_cos
@@ -504,7 +505,8 @@ def explain(
         _at_target(c["inverse_nose_width"], fight.target),
     )
     worth = read("fire_worth") * c["shield_rate"] * c["tick_length"]
-    worthwhile = (hit >= worth) | (hit >= fight.target_shield)
+    # (A hit inside the nose cone does no damage, and a ship at 0 shield dies only of damage.)
+    worthwhile = (hit >= worth) | ((hit >= fight.target_shield) & (hit > 0.0))
     ready = (state.cooldown <= 0) & ~fight.ally_in_line & worthwhile
     fire = torch.where(has_target & ready, gate["aligned"] * gate["in_range"], 0.0)
     return Explanation(

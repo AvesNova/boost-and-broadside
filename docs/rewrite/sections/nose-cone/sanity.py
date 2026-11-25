@@ -9,7 +9,9 @@ them; every game runs to its end (no re-deal). Runs against whichever tree is on
 before the change has no collisions: its contacts are the passes that would be collisions).
 
 Per pair and tick, the swept test (straight moves; a pass is the tick holding its closest
-approach): a contact is a pass inside the two hit radii; a head-on pass is a pass inside
+approach): a contact is a pass inside the two hit radii (the once-per-pass check: each run of
+ticks in which a pair is scored or ends the tick inside the two radii should hold one contact;
+runs cut by a death or the game's end are counted apart); a head-on pass is a pass inside
 HEAD_ON_PASS metres with the noses at least HEAD_ON_NOSES apart. Per real bullet that hit an
 enemy (shot_outcome 1): the hit angle, the bullet's direction against the nose of the enemy
 nearest its last move (mid-tick positions), and whether that bullet's pair took bullet damage.
@@ -61,10 +63,18 @@ def measure(size: int, fields: bool, envs: int, seed: int) -> dict:
         deaths=0,
         hits=0,
         hits_in_cone=0,
+        episodes=0,
+        episodes_cut=0,
+        episodes_unscored=0,
+        episodes_scored_twice=0,
         damaging_hits_in_cone=0,
         bullet_damage=0.0,
     )
     rule = getattr(core, "collisions", None)
+    # Overlap episodes, for the once-per-pass check: runs of ticks in which a pair is scored or
+    # ends the tick inside the two hit radii; each should hold exactly one contact.
+    in_episode = torch.zeros(envs, slots, slots, dtype=torch.bool)
+    episode_contacts = torch.zeros(envs, slots, slots, dtype=torch.long)
     started = time.time()
     for tick in range(config.clock_ticks):
         uniforms = scripted.draw_uniforms(envs, slots, generator, "cpu")
@@ -88,6 +98,20 @@ def measure(size: int, fields: bool, envs: int, seed: int) -> dict:
         )
         contact = in_tick & (miss < reach)
         head_on = in_tick & (miss < HEAD_ON_PASS) & (noses < math.cos(HEAD_ON_NOSES))
+        end_gap = torch.hypot(
+            new.x[:, None, :] - new.x[:, :, None], new.y[:, None, :] - new.y[:, :, None]
+        )
+        alive_pair = alive0[:, :, None] & alive0[:, None, :] & upper
+        touching = alive_pair & ((end_gap < reach) | contact)
+        # An episode ends with both ships still alive (one cut by a death or the game's end
+        # before its closest approach is no pass).
+        closed = in_episode & ~touching & alive_pair
+        tally["episodes_cut"] += int((in_episode & ~alive_pair).sum())
+        tally["episodes"] += int(closed.sum())
+        tally["episodes_unscored"] += int((closed & (episode_contacts == 0)).sum())
+        tally["episodes_scored_twice"] += int((closed & (episode_contacts > 1)).sum())
+        episode_contacts = torch.where(touching, episode_contacts + contact.long(), 0)
+        in_episode = touching
         tally["contacts"] += int(contact.sum())
         tally["enemy_contacts"] += int((contact & enemy_pair).sum())
         tally["head_on_passes"] += int(head_on.sum())
