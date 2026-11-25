@@ -42,3 +42,8 @@
 - Replays: data/replays-2026-11-25-nose/scripted1v1_nofields_seed0.mp4 (one collision, tick
   601, 46 / 49 damage) and scripted4v4_seed0.mp4 (three: tick 80, 0.03 each, team-mates; tick
   205, 40 / 45; tick 589, 54 / 54).
+- 2026-11-26 (author): collisions are now scored at first touch, once per overlap
+  (docs/rewrite/sections/first-touch/progress.md, branch collision-first-touch). sanity.py now
+  counts the tree's own `core.collisions` contacts and keeps overlap episodes that began inside
+  the radii, and fast ones, apart; this folder's sanity-before/after.json are the closest-approach
+  rule's and stay as they were.

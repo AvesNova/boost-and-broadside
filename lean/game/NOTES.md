@@ -155,6 +155,30 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 
   The few damaging "inside 30 deg" hits in 4v4 are most likely the bench's target guess (the
   enemy nearest the bullet's last move), not the rule (the step test: 29 deg does 0).
+- Collisions at first touch (2026-11-26, the same sanity.py, which now counts the tree's own
+  `core.collisions` contacts; before = core 17e6cf3b, the closest-approach rule;
+  `docs/rewrite/sections/first-touch/`). An overlap episode is a run of ticks a pair is scored
+  or ends inside the two hit radii; "closed" episodes end with both ships alive, "cut" ones in a
+  death or the game's end. Compile check: 5,939 operations (core 5,930, +9), cold 222.9 s (222.4).
+
+| | 1v1 | 1v1 fields | 4v4 | 4v4 fields |
+|---|---|---|---|---|
+| contacts, before / after | 248 / 290 | 207 / 243 | 787 / 883 | 737 / 826 |
+| closed episodes scored 0 times | 0 / 0 | 1 / 0 | 3 / 0 | 5 / 0 |
+| closed episodes scored twice | 0 / 0 | 1 / 0 | 4 / 0 | 5 / 0 |
+| of those, fast (over 100 m/s): 0 / twice | 0, 0 / 0, 0 | 1, 1 / 0, 0 | 1, 1 / 0, 0 | 2, 4 / 0, 0 |
+| deaths on a collision tick | 24 / 72 | 24 / 40 | 101 / 115 | 112 / 97 |
+| deaths in all | 227 / 237 | 235 / 256 | 1,395 / 1,424 | 1,380 / 1,390 |
+| draws | 41 / 49 | 13 / 30 | 3 / 3 | 4 / 3 |
+| mean game length, s | 32.1 / 30.7 | 30.5 / 29.1 | 27.1 / 26.7 | 33.6 / 33.0 |
+
+  On the same play (`first-touch/episodes.py`, both rules on the before tree's moves) every
+  overlap episode holds exactly one first touch (2 spawned overlapping in 4v4 hold none). The
+  extra contacts are cut episodes: a death (mostly a bullet in the same merge) or the game's end
+  between first touch and the closest-approach tick, never scored by the old rule (1v1 68 of 316
+  episodes, 1v1 fields 45 of 252, 4v4 103 of 886, 4v4 fields 120 of 853). That is also most of
+  the rise in deaths on a collision tick: a ship at 0 shield now dies at the touch.
+
 - Ship feature scales, fixed for every type, from scripted 4v4 play with the training spawn
   (`.../scoreboard/feature_ranges.py`, 256 environments x 3,000 ticks, 2026-11-23). Raw 1st / 99th
   percentiles in brackets.

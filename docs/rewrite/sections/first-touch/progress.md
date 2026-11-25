@@ -23,3 +23,11 @@ worktree ../v2-first-touch.
   closest-approach tick, which the old rule never scored (1v1 68 of 316, 4v4 103-120 of
   880-850). The old once-per-pass check left cut episodes out, so this miss did not show.
   Next: compile check (unit bnb-first-touch, running), docs.
+- 07:20 Compile check (unit bnb-first-touch, RTX 4070 laptop, performance profile): 4 graphs,
+  5,939 operations (act 1,821, advance 2,292, minibatch_loss 1,080, slot_actions 746), 0
+  breaks, cold 222.9 s; core today 5,930, cold 222.4 s; "within the baseline". episodes.py
+  re-run after the renames: identical counts. Docs: NOTES (rule, tests, Numbers table),
+  core-decisions (new entry, the nose-cone open item resolved), nose-cone/progress.md.
+- Done. Not merged to core (as briefed). Open for the author: the rise in collision deaths
+  (1v1 24 -> 72), most of it passes the old rule never scored because a ship died between
+  first touch and the closest-approach tick.
