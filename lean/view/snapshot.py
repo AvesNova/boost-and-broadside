@@ -55,15 +55,19 @@ class Ships:
 
 @dataclasses.dataclass(frozen=True)
 class Bullets:
-    """(B,) the real bullets in flight (ghost bullets do no damage and are not drawn):
-    position, unit direction, speed (m/s), the shooter (ship index) and its team, and age, the
-    seconds since it was fired."""
+    """(N K,) every bullet slot of the ships that exist, by owner then slot (v2's layout, so
+    the play shell's interpolation pairs slots across ticks): position, unit direction, speed
+    (m/s), active (a real bullet in flight: ghost bullets do no damage and are not drawn),
+    moves_left, the shooter (ship index) and its team, and age, the seconds since it was fired
+    (0 for an idle slot)."""
 
     x: np.ndarray
     y: np.ndarray
     direction_x: np.ndarray
     direction_y: np.ndarray
     speed: np.ndarray
+    active: np.ndarray
+    moves_left: np.ndarray
     owner: np.ndarray
     team: np.ndarray
     age: np.ndarray
@@ -188,24 +192,29 @@ def _ships(config: core.GameConfig, state: State, environment: int, exists: torc
     )
 
 
-def _bullets(config: core.GameConfig, state: State, environment: int) -> Bullets:
-    active = (state.bullet_moves_left[environment] > 0) & state.bullet_real[environment]  # (N, K)
-    owner = torch.arange(active.shape[0], device=active.device)[:, None].expand_as(active)
-    fired = state.bullet_fired_tick[environment]
+def _bullets(
+    config: core.GameConfig, state: State, environment: int, exists: torch.Tensor
+) -> Bullets:
+    moves = state.bullet_moves_left[environment][exists]  # (N, K)
+    active = (moves > 0) & state.bullet_real[environment][exists]
+    index = torch.arange(active.shape[0], device=active.device)[:, None].expand_as(active)
+    fired = state.bullet_fired_tick[environment][exists]
     age = (state.tick[environment] - fired).to(torch.float32) * config.tick_length
 
     def take(value: torch.Tensor) -> np.ndarray:
-        return numpy(value[active])
+        return numpy(value[environment][exists].reshape(-1))
 
     return Bullets(
-        x=take(state.bullet_x[environment]),
-        y=take(state.bullet_y[environment]),
-        direction_x=take(state.bullet_dir_x[environment]),
-        direction_y=take(state.bullet_dir_y[environment]),
-        speed=take(state.bullet_speed[environment]),
-        owner=take(owner),
-        team=take(state.team[environment][:, None].expand_as(active)),
-        age=take(age),
+        x=take(state.bullet_x),
+        y=take(state.bullet_y),
+        direction_x=take(state.bullet_dir_x),
+        direction_y=take(state.bullet_dir_y),
+        speed=take(state.bullet_speed),
+        active=numpy(active.reshape(-1)),
+        moves_left=numpy(moves.reshape(-1)),
+        owner=numpy(index.reshape(-1)),
+        team=numpy(state.team[environment][exists][:, None].expand_as(active).reshape(-1)),
+        age=numpy(torch.where(active, age, 0.0).reshape(-1)),
     )
 
 
@@ -301,7 +310,7 @@ def snapshot(
     tick = int(state.tick[environment])
     return Snapshot(
         ships=ships,
-        bullets=_bullets(config, state, environment),
+        bullets=_bullets(config, state, environment, exists),
         fields=fields_of(state, environment) if fields is None else fields,
         events=events,
         arena_radius=config.arena_radius,
@@ -321,7 +330,7 @@ def snapshot(
 
 def to_v2(frame: Snapshot):
     """v2's play-shell snapshot (lean.view.play.snapshot.Snapshot) of a lean frame: elimination
-    with no shrink, no zones, no respawns; bullets are the real ones in flight."""
+    with no shrink, no zones, no respawns; a ghost bullet's slot is idle."""
     from .play import snapshot as v2
 
     ships, bullets, fields = frame.ships, frame.bullets, frame.fields
@@ -352,8 +361,8 @@ def to_v2(frame: Snapshot):
             y=bullets.y,
             direction_x=bullets.direction_x,
             direction_y=bullets.direction_y,
-            active=np.ones(len(bullets.x), bool),
-            moves_left=np.ones(len(bullets.x), np.int64),
+            active=bullets.active,
+            moves_left=bullets.moves_left,
             owner=bullets.owner,
             team=bullets.team,
             age=bullets.age,
