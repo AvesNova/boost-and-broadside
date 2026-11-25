@@ -75,7 +75,7 @@ def test_evaluation_carries_the_memory_and_renews_it_for_each_game(monkeypatch):
         game.GameConfig(clock_ticks=6),
         queue,
         torch.tensor([vector(scripted.ScriptedConfig())]),
-        model.Policy(model.ModelConfig()),
+        (model.Policy(model.ModelConfig()),),
         envs=8,
         segment=4,
     )
