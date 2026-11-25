@@ -19,7 +19,7 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 - `step(config, state, action, noise)`: one tick. The tick applies `state.pending` (the previous
   tick's action, neutral after a deal) and stores `action` as the new pending one: the one-tick
   delay, for every agent. Stages: `_fire`, `_fly`, `_move_bullets`, `_hit_test` (swept closest
-  approach, first contact), `_damage`, `_boundary_damage`, `_shields`, `_end_check`,
+  approach, first contact), `_damage`, `_boundary_damage`, `collisions`, `_shields`, `_end_check`,
   `_bullet_ends`, then the fog's `perceive`. `tick(config, state, action, generator)` draws the
   noise and steps: the game half of the rollout's, the evaluation runner's and the sandbox's tick.
 - `observe(config, state, team)`: that team's `Obs`, built under fog from `team_view` only.
@@ -84,14 +84,39 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 - **Constants:** `ship_card` / `ship_constants` build a run's `contract.Constants` once; a
   value equal for the whole lineup is a Python number, one that differs is a per-slot row. The
   scripted agent reads every number it uses from these by name.
-- **Fog:** `perceive` (sight by v2's rule, or a shot or a real bullet's hit that tick),
+- **Fog:** `perceive` (sight by v2's rule, or a shot, a real bullet's hit or a collision that
+  tick),
   `enemy_view`, `team_view`. `Obs.pending` holds own living ships' joint action, `NO_PENDING`
   (42) elsewhere. The ship row has no position scalars; `Obs.pos` carries position for the
   model's position code and rotary.
+- **Bullet damage** (`_damage`): the owner's hit damage x kinetic (the explosive share plus
+  the rest by the squared ratio of the bullet's speed to its reference speed) x closeness
+  (`graze`: full inside the core radius, a smoothstep to 0 at the hit radius, on the impact
+  parameter) x the nose cone (`aspect_factor`, author 2026-11-25): no damage when the bullet's
+  path is within the card's inner angle (30 deg) of the target's nose, full from the outer
+  angle (45 deg) round to dead astern, a smootherstep in the cosine between (t = (cos 30 - c) /
+  (cos 30 - cos 45), no acos; the card stores the angles, the constants their cosines).
+- **Collisions** (`collisions`, author 2026-11-25; in the step after the move, with the bullet
+  hits and the boundary damage, before `_shields`): every pair of ships alive at tick start,
+  any teams. The bullets' swept test on the two straight moves: p the gap, w the relative move,
+  tau = -p.w / |w|^2, b the closest approach; a pass is scored on the tick holding its closest
+  approach (0 <= tau < 1 unclamped, so once; a closest approach on a tick boundary belongs to
+  the later tick) when b is under the two hit radii R. Each ship's blame is 1 - aspect / 2 at
+  the cosine between its nose (after the move) and the line of centres at first touch, n = m /
+  R - sqrt(max(0, 1 - b^2 / R^2)) w / |w|: 1 within 30 deg, 0.5 beyond 45 deg (the bullets'
+  zone). Damage = max shield x (|w| / tick) / (2 x cruise speed) x graze(b; the two core radii,
+  R) x blame: linear in the closing speed, a full shield head-on at cruise. Zero sum: each
+  ship's collision damage is in `hit_damage` as dealt by the other (rewards, kill credit and
+  scoring treat it as a hit; team-mates included, like friendly fire), in `damage_taken`, and
+  reveals both ships under fog. The shield rule is the bullets': the damage empties the shield
+  (clamped at 0), and a ship whose shield was already 0 at tick start dies. A pass while turning
+  is scored on straight moves per tick, so a pass whose closest approach falls right at a
+  boundary of two ticks with different relative velocities can in principle be scored on
+  neither or both (measured below).
 - **Shields:** recharge after a quiet spell (coast, at most the gradual stick, no trigger).
 - `StepOut` carries what the learner needs: damage, deaths, done and result, each bullet's
-  outcome and firing tick (the hit head's labels), the attacker-by-target damage matrix,
-  boundary damage and shield restored (the rewards' ledger).
+  outcome and firing tick (the hit head's labels), the attacker-by-target damage matrix (real
+  bullets and collisions), boundary damage and shield restored (the rewards' ledger).
 
 ## Numbers
 
@@ -115,7 +140,11 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 
 ## Tests
 
-`lean/game/tests`: flight rules, damage, fields, fog, ghost bullets, invariants (finite, inert
+`lean/game/tests`: flight rules, damage (the nose cone: 29 deg no damage, 46 deg full, both
+sides), collisions (the 90-degree crossing at equal speeds 0.5 blame each and closing sqrt 2 v,
+the T-bone, head-on at cruise a full shield each, one score per pass across a tick boundary,
+the credit to the other ship including a team-mate, no contact for a wide, later or dead pass),
+fields, fog, ghost bullets, invariants (finite, inert
 padding, team swap), the clock and wipe, both spawn rules, the training spawn, the one-tick delay,
 the stick (full stick the envelope's maximum to 0.1%, every level its fraction of it, the
 levels the fixed thirds), the turn rate

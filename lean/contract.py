@@ -312,7 +312,7 @@ for _name, (_block, _index) in COLUMN.items():
 class StepOut:
     """What happened in one tick."""
 
-    damage_taken: Tensor  # (E, N) float32, all energy and shield lost to bullets and the boundary
+    damage_taken: Tensor  # (E, N) float32, all damage: bullets, the boundary, collisions
     died: Tensor  # (E, N) bool
     done: Tensor  # (E,) bool
     result: Tensor  # (E,) long: 0 or 1 = winning team, 2 = draw, -1 = not done
@@ -322,7 +322,9 @@ class StepOut:
     shot_outcome: Tensor
     shot_tick: Tensor
     # Damage detail for the rewards (v2's ledger), each before the shield's clamp:
-    hit_damage: Tensor  # (E, N, N) float32 [attacker, target]: real bullets' damage this tick
+    # (E, N, N) float32 [attacker, target]: real bullets' damage this tick, and collisions' (each
+    # ship's collision damage credited to the other ship of the pair)
+    hit_damage: Tensor
     boundary_damage: Tensor  # (E, N) float32: damage from the arena boundary this tick
     shield_restored: Tensor  # (E, N) float32: shield recharged this tick
 

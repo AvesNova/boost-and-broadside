@@ -727,3 +727,25 @@ These replace the flap, profile and stick-level points above where they disagree
 - Checks for this batch: quick tier on lean 318 passed (no failure; the per-parameter
   competence test passes without fields); compile check within the baseline (4 graphs, 5,703
   operations, cold 239.0 s, performance profile).
+
+## Nose cone and collisions (author 2026-11-25, branch nose-cone-collisions)
+
+- **Nose cone, one zone for bullets and collision blame.** No bullet damage when the hit angle
+  (the bullet's path against the target's nose) is within 30 deg; full from 45 deg to 180 deg; a
+  smootherstep in the cosine between, t = (cos 30 - c) / (cos 30 - cos 45) (no acos). The card's
+  `nose_inner_angle` / `nose_outer_angle` (stored as angles, used as cosines) replace
+  head_on_fraction_scale, head_on_angle_scale and head_on_sharpness (removed). Kinetic term and
+  graze closeness unchanged. `core.aspect_factor(hit_cos, nose_inner_cos, inverse_nose_width)`.
+- **Collisions are the game** (no switch): every pair of living ships, any teams, scored once
+  per pass on the tick holding the swept closest approach. Blame 0.5 + 0.5 smootherstep on the
+  same 30-45 zone at first touch (= 1 - aspect / 2). Damage = max shield x |w| / (2 x cruise) x
+  graze(b; summed core radii, summed hit radii) x blame: linear in the closing speed, a full
+  shield each head-on at cruise. Zero sum: credited to the other ship in `hit_damage` (rewards,
+  kill credit, scoring as a hit; team-mates included); both ships revealed under fog; shield
+  rule as for bullets. In the step after the move, with bullet hits and boundary, before the
+  shields (`core.collisions`).
+- **Scripted miss offset.** `merge_miss_offset` (10/3 hit radii, 40 m) inside
+  `merge_miss_range` (1.25 sustained radii, 301 m): closing faster than its own speed on a pass
+  nearer than the offset, with any ship (enemy or team-mate), the stick aims the offset beside
+  that ship's centre; the gun is unchanged. The gun's worth gate reads the new aspect, so it
+  holds fire within 30 deg.
