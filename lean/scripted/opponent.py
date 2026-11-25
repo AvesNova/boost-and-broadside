@@ -116,8 +116,8 @@ def engage(
     it was last seen plus how far it could have flown since, the seconds since seen times its
     sustained speed (the speed of the turning fight, where the yardstick spends its time; the
     "roam"). A living enemy is a candidate while its roam is at most `ghost_cutoff` times the
-    observer's vision range: beyond that, flying to its last spot no longer finds it, so it is
-    dropped (seen again, it is a candidate again at once). Without fog, no roam.
+    arena radius: beyond that it could be anywhere in the arena, so its last spot says nothing
+    and it is dropped (seen again, it is a candidate again at once). Without fog, no roam.
 
     team: the team whose rows act, or None for every ship of both teams (each against the
     other team). Own ships and team-mates are read from `state`; enemies from `enemies`, the
@@ -141,7 +141,7 @@ def engage(
     if state.ticks_since_seen is not None and enemies is not state:
         seconds = state.ticks_since_seen.to(score.dtype) * c["tick_length"]
         roam = (seconds * c["sustained_speed"])[:, None, :]  # (E, 1, other)
-        enemy = enemy & (roam <= _last(ghost_cutoff * c["vision_range"]))
+        enemy = enemy & (roam <= _last(ghost_cutoff) * c["arena_radius"])
         score = score + roam
     if not (isinstance(weakest_weight, float) and weakest_weight == 0.0):
         store = (enemies.energy * enemies.constants["inverse_max_energy"])[:, None, :]

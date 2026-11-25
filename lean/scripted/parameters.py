@@ -60,8 +60,9 @@ PARAMETERS: dict[str, Parameter] = {
     "weakest_weight": Parameter(0.0, "ratio", UPWARD, 1.0,
                                 "0 the nearest enemy; larger prefers enemies with less store"),
     # A remembered enemy's roam (seconds since seen x its sustained speed) adds to its
-    # distance; beyond this it is dropped (author 2026-11-25: a ghost costs distance).
-    "ghost_cutoff": Parameter(1.0, "vision_range", meaning="roam beyond it: no longer a target"),
+    # distance; beyond this it is dropped (author 2026-11-25: a ghost costs distance, and one
+    # that could be anywhere in the arena is dropped).
+    "ghost_cutoff": Parameter(1.0, "arena_radius", meaning="roam beyond it: no longer a target"),
     # Assessment (lean.scripted.situation).
     "turning_floor": Parameter(0.25, "sustained_rate",
                                meaning="a nose rate this small counts as straight"),
