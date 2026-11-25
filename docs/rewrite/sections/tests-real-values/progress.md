@@ -20,4 +20,7 @@ classes: `lean/README.md`, "Tests read the code's values".
   longer covers the map. It now reads GameConfig and fails there, as it should.
 - Not edited (another agent's branch): `lean/scripted/tests/`; its cases are listed in the
   final report.
-- Next: the perturbation runs on this branch (numbers below), commits per package.
+- Measured on this branch (quick tier, CPU, 2026-11-25 15:05-15:12): unperturbed 1 failure (the
+  known scripted one); A 1 (the same); B 2 (the same, and test_rotary_bands, which now catches the
+  rotary reach no longer covering a 4,800 m arena: a real coupling, `ModelConfig.rotary_reach`
+  should follow the arena, an author decision). Core: A 3, B 19.
