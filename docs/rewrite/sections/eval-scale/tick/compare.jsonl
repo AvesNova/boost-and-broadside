@@ -1,0 +1,10 @@
+{"routed": false, "layout": "net-scripted", "envs": 2688, "profile": "performance", "warm_up_s": 93.6, "env_ticks_per_s": 125905}
+{"routed": true, "layout": "net-scripted", "envs": 2688, "profile": "performance", "warm_up_s": 80.3, "env_ticks_per_s": 95392}
+{"routed": false, "layout": "net-net", "envs": 2688, "profile": "performance", "warm_up_s": 55.8, "env_ticks_per_s": 66712}
+{"routed": true, "layout": "net-net", "envs": 2688, "profile": "performance", "warm_up_s": 102.3, "env_ticks_per_s": 55736}
+EXIT 0
+{"routed": true, "layout": "net-scripted", "envs": 2688, "profile": "performance", "warm_up_s": 105.2, "env_ticks_per_s": 104828, "tree": "inplace-fused"}
+{"routed": true, "layout": "net-net", "envs": 2688, "profile": "performance", "warm_up_s": 45.1, "env_ticks_per_s": 62255, "tree": "inplace-fused"}
+EXIT2
+{"routed": true, "layout": "net-scripted", "envs": 2688, "profile": "performance", "warm_up_s": 57.7, "env_ticks_per_s": 116322, "tree": "200155ef"}
+EXIT3
