@@ -62,6 +62,7 @@ CARD_FIELDS = (
     "head_on_angle_scale",
     "head_on_sharpness",
     "vision_range_scale",
+    "vision_eccentricity",
     *FLIGHT_TERMS,
 )
 
@@ -101,6 +102,9 @@ SIDE_GAP_FRACTION = (
 )
 SIDE_HEADING_JITTER = 0.2617993877991494  # "sides": noses within 15 degrees of the axis
 VISION_RANGE = 3072.0  # m; times the type's vision_range_scale: 1,500 m for every type
+# The sight ellipse (core.sighted_by_enemy): the card's vision_eccentricity e, 0 <= e < 1, stretches
+# the vision range p along the observer's nose: p / (1 - e) ahead, p to the side, p / (1 + e)
+# behind. e = 0 is the circle.
 LN_SQRT2 = 0.5 * math.log(2.0)
 LN_2 = math.log(2.0)
 

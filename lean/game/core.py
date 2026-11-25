@@ -195,6 +195,7 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "shield_delay": card.SHIELD_RECHARGE_DELAY * of("shield_recharge_delay_scale"),
         "spawn_energy": 0.5 * max_energy,
         "vision_range": card.VISION_RANGE * of("vision_range_scale"),
+        "vision_eccentricity": of("vision_eccentricity"),
         "inverse_critical_speed": 1.0 / of("critical_speed"),
         "drag_rise_exponent": of("drag_rise_exponent"),
         "separation_drag": of("separation_drag"),
@@ -1633,8 +1634,15 @@ TICKS_SINCE_SEEN_CAP = 1 << 30  # v2's cap (src/bnb/game/perception/observe.py)
 
 def sighted_by_enemy(state: State) -> Tensor:
     """(E, N) bool: some living ship of the other team sees the ship (v2's sight test,
-    src/bnb/game/perception/sight.py `sighted`, game spec 10.1). Sight is all round, out to the
-    observer's vision range (d^2 <= V^2), and blocked only by fields' cores: field i, with core
+    src/bnb/game/perception/sight.py `sighted`, game spec 10.1, with the sight ellipse, author
+    2026-11-25). The observer sees inside an ellipse with itself at one focus, stretched along
+    its nose: with d the offset target - observer and n the observer's unit nose,
+    |d| - e (d . n) <= p, p the observer's vision range (the side reach) and e its
+    vision_eccentricity (0 <= e < 1): p / (1 - e) dead ahead, p / (1 + e) dead behind; e = 0 is
+    the circle |d| <= p. Tested without a square root as |d|^2 <= (p + e (d . n))^2 (for p > 0
+    and e < 1 a negative p + e (d . n) cannot pass: |d| <= -(p + e d . n) <= -p + e |d| has
+    no solution), which at e = 0 is exactly the circle's d^2 <= p^2. Sight is blocked only by
+    fields' cores: field i, with core
     radius max(r - w / 2, 0) and outer radius r + w / 2, blocks the line when exactly one end is
     strictly inside its core and the two ends are not both inside its outer disc (core and band
     see each other), or when neither end is inside its core and the segment passes strictly
@@ -1645,13 +1653,14 @@ def sighted_by_enemy(state: State) -> Tensor:
     line_x = x[:, :, None] - x[:, None, :]  # (E, target, observer): target minus observer, d
     line_y = y[:, :, None] - y[:, None, :]
     length_squared = line_x * line_x + line_y * line_y
-    vision = c["vision_range"]
-    vision_squared = vision * vision
+
+    def per_observer(value):  # a uniform number, or (E, N) per slot as (E, 1, observer)
+        return value[:, None, :] if isinstance(value, Tensor) else value
+
+    along_nose = line_x * state.heading_cos[:, None, :] + line_y * state.heading_sin[:, None, :]
+    reach = per_observer(c["vision_range"]) + per_observer(c["vision_eccentricity"]) * along_nose
     clear = (
-        (
-            length_squared
-            <= (vision_squared[:, None, :] if isinstance(vision, Tensor) else vision_squared)
-        )
+        (length_squared <= reach * reach)
         & state.alive[:, None, :]
         & (state.team[:, :, None] != state.team[:, None, :])
     )

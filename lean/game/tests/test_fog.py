@@ -21,10 +21,10 @@ VISION = game_value("vision_range", FOG)
 GUN = game_value("gun_range", FOG)
 
 
-def duel(positions, headings=None, vision=None, fields=None):
+def duel(positions, headings=None, vision=None, fields=None, eccentricity=None):
     """One environment, one ship per entry of positions [(x, y), ...], the first half team 0,
     the rest team 1, nobody seen yet, then one perception at these positions. fields: (1, 5, F)
-    as State.fields, or none."""
+    as State.fields, or none; eccentricity: every ship's vision eccentricity, or the card's."""
     count = len(positions)
     sizes = torch.tensor([[count // 2, count - count // 2]])
     state = reset(FOG, 1, sizes, torch.Generator().manual_seed(0), CPU)
@@ -36,6 +36,8 @@ def duel(positions, headings=None, vision=None, fields=None):
     constants = state.constants
     if vision is not None:
         constants = with_vision(constants, vision)
+    if eccentricity is not None:
+        constants = with_eccentricity(constants, eccentricity)
     log_index, gradient_x, gradient_y = core.medium(state.fields, x, y)
     seen = torch.zeros_like(state.seen)
     seen[:, core.SEEN_ALIVE] = 1.0
@@ -57,6 +59,12 @@ def duel(positions, headings=None, vision=None, fields=None):
 def with_vision(constants, vision):
     """The constants with every ship's vision range set to `vision` metres."""
     return dataclasses.replace(constants, uniform={**constants.uniform, "vision_range": vision})
+
+
+def with_eccentricity(constants, eccentricity):
+    """The constants with every ship's vision eccentricity set to `eccentricity`."""
+    uniform = {**constants.uniform, "vision_eccentricity": eccentricity}
+    return dataclasses.replace(constants, uniform=uniform)
 
 
 def idle(state, fire=None):
@@ -144,6 +152,67 @@ def test_sight_range_and_field_cores():
     for positions, expected in cases:
         seen = core.sighted_by_enemy(duel(positions, fields=field))
         assert bool(seen.all()) == expected and bool(seen.any()) == expected, positions
+
+
+def test_sight_ellipse_at_zero_eccentricity_is_the_circle():
+    """Rule: with vision eccentricity 0 the sight ellipse is exactly the old circle d^2 <= p^2
+    (p the card's vision range), on random scenes of 3v3 with random headings."""
+    generator = torch.Generator().manual_seed(5)
+    for _ in range(20):
+        positions = (torch.rand(6, 2, generator=generator) * 2.0 - 1.0) * 1.5 * VISION
+        headings = (torch.rand(6, generator=generator) * 2.0 * math.pi).tolist()
+        state = duel(positions.tolist(), headings=headings, eccentricity=0.0)
+        x, y = state.x[0], state.y[0]
+        squared = (x[:, None] - x[None]) ** 2 + (y[:, None] - y[None]) ** 2  # (target, observer)
+        enemy = state.team[0][:, None] != state.team[0][None]
+        expected = ((squared <= VISION * VISION) & enemy).any(-1)
+        assert torch.equal(core.sighted_by_enemy(state)[0], expected)
+
+
+def test_sight_ellipse_reach_ahead_beside_and_behind():
+    """Rule: the observer at one focus of an ellipse along its nose, |d| - e (d . nose) <= p:
+    reach p / (1 - e) dead ahead, p to the side, p / (1 + e) behind (p the card's vision
+    range), in any heading. The target faces away, so only the observer's nose matters."""
+    eccentricity = 0.5
+    reaches = {
+        0.0: VISION / (1.0 - eccentricity),
+        0.5 * math.pi: VISION,
+        -0.5 * math.pi: VISION,
+        math.pi: VISION / (1.0 + eccentricity),
+    }
+    for heading in (0.0, 1.0, -2.5):
+        for bearing, reach in reaches.items():
+            for distance, expected in ((reach - 1.0, True), (reach + 1.0, False)):
+                angle = heading + bearing
+                target = (distance * math.cos(angle), distance * math.sin(angle))
+                state = duel(
+                    [(0.0, 0.0), target], headings=[heading, angle], eccentricity=eccentricity
+                )
+                assert bool(core.sighted_by_enemy(state)[0, 1]) == expected, (heading, bearing)
+
+
+def test_sight_ellipse_keeps_field_cores_and_team_sharing():
+    """Rules: the ellipse changes only the reach: a field's core still blocks a line well
+    inside it, and a team sees what any of its ships sees (a wingman facing away does not see
+    an enemy that its leader, nosed at it, does)."""
+    eccentricity = 0.5
+    ahead = 0.9 * VISION / (1.0 - eccentricity)  # beyond the circle, inside the ellipse ahead
+    assert ahead > VISION
+    open_line = duel([(0.0, 0.0), (ahead, 0.0)], headings=[0.0, 0.0], eccentricity=eccentricity)
+    assert bool(core.sighted_by_enemy(open_line)[0, 1])
+    field = torch.tensor([[[0.5 * ahead], [0.0], [300.0], [160.0], [2.0 * card.LN_SQRT2]]])
+    blocked = duel(
+        [(0.0, 0.0), (ahead, 0.0)], headings=[0.0, 0.0], fields=field, eccentricity=eccentricity
+    )
+    assert not bool(core.sighted_by_enemy(blocked)[0, 1])
+    # Team 0: the leader at the origin nosed at the enemy, the wingman beside it facing away.
+    # Team 1: the enemy ahead, and a far ship nobody sees.
+    positions = [(0.0, 0.0), (0.0, 100.0), (ahead, 0.0), (-3.0 * VISION, 0.0)]
+    for leader_heading, seen in ((0.0, True), (math.pi, False)):
+        state = duel(
+            positions, headings=[leader_heading, math.pi, 0.0, 0.0], eccentricity=eccentricity
+        )
+        assert core.sighted_by_enemy(state)[0, 2:].tolist() == [seen, False]
 
 
 def test_own_team_always_visible_and_dead_observers_see_nothing():

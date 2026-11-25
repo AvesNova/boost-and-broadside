@@ -544,6 +544,16 @@ DESIGN_INPUTS = (
         low=0.3,
         high=3.0,
     ),
+    # The sight ellipse (author 2026-11-25; core.sighted_by_enemy): the vision range is the side
+    # reach; ahead it is vision range / (1 - e), behind vision range / (1 + e). 0 is the circle.
+    scaled(
+        "vision_eccentricity",
+        "vision eccentricity (0 circle; reach ahead p/(1-e), behind p/(1+e))",
+        H,
+        low=0.0,
+        high=0.9,
+        relative=False,
+    ),
 )
 del P, A, T, N, G, H
 
@@ -705,6 +715,7 @@ P51D_VALUES = dict(
     head_on_angle=math.pi / 4.0,
     head_on_sharpness=3.0,
     vision_range=1500.0,  # author 2026-11-25: two-circle fights reach ~1,260 m apart
+    vision_eccentricity=0.0,  # the circle until the author has tested the ellipse (2026-11-25)
 )
 # The P-51D airframe with a 2,200 hp engine (author 2026-11-24 night: late-war and post-war
 # engines, P-51H about 2,200 hp): the documents fit the airframe to the flight test at 1,630
@@ -1757,6 +1768,7 @@ CARD_TIME_POWERS = dict(
     head_on_angle_scale=0,
     head_on_sharpness=0,
     vision_range_scale=0,
+    vision_eccentricity=0,
     critical_speed=-1,
     drag_rise_exponent=0,
     separation_drag=0,
