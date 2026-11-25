@@ -1,0 +1,52 @@
+{
+ "label": "routed-7f05d4cf",
+ "per_pairing": 128,
+ "profile": "performance",
+ "warm_up_s": 180.2,
+ "seconds": 44.0,
+ "games": 2688,
+ "games_per_s": 61.1,
+ "runner_calls": [
+  1920,
+  768
+ ],
+ "peak_reserved_gib": 0.39,
+ "elo": [
+  [
+   "fight_speed_1.3",
+   1012.7,
+   21.9
+  ],
+  [
+   "yardstick",
+   1000.0,
+   0.0
+  ],
+  [
+   "turn_0.003",
+   991.4,
+   21.8
+  ],
+  [
+   "fight_speed_0.8",
+   921.7,
+   22.1
+  ],
+  [
+   "untrained0",
+   -339.6,
+   195.4
+  ],
+  [
+   "untrained1",
+   -354.1,
+   195.4
+  ],
+  [
+   "untrained2",
+   -379.4,
+   195.5
+  ]
+ ],
+ "finished": "19:29:01"
+}

@@ -2,7 +2,7 @@
 before it (pairing-by-pairing calls).
 
     PYTHONPATH=TREE uv run --no-sync python docs/rewrite/sections/eval-scale/ladder_bench.py
-        OUT_DIR LABEL [--games 2048 [128 ...]] [--envs 4096] [--networks 3]
+        OUT_DIR LABEL [--games 2048 [128 ...]] [--envs 4096] [--networks 3] [--minimum-envs N]
 
 Agents: `--networks` untrained networks (initial weights, seeds 0, 1, ...; saved as
 checkpoints in OUT_DIR) and four scripted agents (the yardstick and three variants). Every
@@ -42,6 +42,9 @@ def main() -> None:
     parser.add_argument("--games", type=int, nargs="+", default=[2048])
     parser.add_argument("--envs", type=int, default=4096)
     parser.add_argument("--networks", type=int, default=3)
+    parser.add_argument(
+        "--minimum-envs", type=int, default=None, help="the runner's minimum_envs (default its own)"
+    )
     arguments = parser.parse_args()
     out = Path(arguments.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -67,6 +70,8 @@ def main() -> None:
 
     def counting(*positional, **keywords):
         calls.append(len(positional[1]))
+        if arguments.minimum_envs is not None:
+            keywords["minimum_envs"] = arguments.minimum_envs
         return real(*positional, **keywords)
 
     runner_module.play = counting
@@ -84,7 +89,10 @@ def main() -> None:
 
     for per_pairing in arguments.games:
         calls.clear()
-        path = out / f"{arguments.label}-{per_pairing}.sqlite"
+        name = f"{arguments.label}-{per_pairing}" + (
+            f"-min{arguments.minimum_envs}" if arguments.minimum_envs else ""
+        )
+        path = out / f"{name}.sqlite"
         path.unlink(missing_ok=True)
         store = Store(path)
         evaluator = Evaluator(store, config, envs=arguments.envs)
@@ -108,6 +116,7 @@ def main() -> None:
         report = {
             "label": arguments.label,
             "per_pairing": per_pairing,
+            "minimum_envs": arguments.minimum_envs,
             "profile": profile.strip(),
             "warm_up_s": round(warm, 1),
             "seconds": round(seconds, 1),
@@ -118,7 +127,7 @@ def main() -> None:
             "elo": ratings,
             "finished": time.strftime("%H:%M:%S"),
         }
-        (out / f"{arguments.label}-{per_pairing}.json").write_text(json.dumps(report, indent=1))
+        (out / f"{name}.json").write_text(json.dumps(report, indent=1))
         print(json.dumps(report), flush=True)
 
 

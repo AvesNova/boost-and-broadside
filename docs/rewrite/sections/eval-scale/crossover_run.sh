@@ -2,10 +2,23 @@
 # The crossover end to end with a network over several sizes, run twice on one store: the
 # second run must play nothing (every match read back from the store) and print the same
 # walk. Then Elo and styles at one unequal size read the crossover's games.
-#   bash docs/rewrite/sections/eval-scale/crossover_run.sh OUT_DIR CHECKPOINT
+#   bash docs/rewrite/sections/eval-scale/crossover_run.sh OUT_DIR [CHECKPOINT]
+# Without CHECKPOINT: an untrained network (initial weights, seed 0, the core arena's config)
+# saved as OUT_DIR/untrained.pt.
 set -euo pipefail
 out=$1
-checkpoint=$2
+checkpoint=${2:-$out/untrained.pt}
+mkdir -p "$out"
+if [ ! -f "$checkpoint" ]; then
+  uv run --no-sync python -c "
+import sys, torch
+from lean import game, model
+from lean.learn import LearnConfig, WeightAverages, save_checkpoint
+torch.manual_seed(0)
+policy = model.Policy(model.ModelConfig.for_arena(game.GameConfig().arena_radius))
+save_checkpoint(sys.argv[1], policy, WeightAverages(policy, LearnConfig()), LearnConfig())
+" "$checkpoint"
+fi
 store=$out/crossover.sqlite
 games() { uv run --no-sync python -c "import sqlite3,sys; print(sqlite3.connect(sys.argv[1]).execute('SELECT COUNT(*) FROM games').fetchone()[0])" "$store"; }
 rm -f "$store"*
