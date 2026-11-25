@@ -736,3 +736,7 @@ These replace the flap, profile and stick-level points above where they disagree
   p / (1 + e) behind; e = 1 - p / (forward reach). Default e = 0, exactly the old circle, until
   the author has tested it (replay `--vision-eccentricity E`, the sandbox tool's slider).
   Fields' cores and team sharing unchanged. Measurements: docs/rewrite/sections/vision-ellipse/progress.md.
+- Checks: quick tier on lean 326 passed; compile check 4 graphs, 5,712 traced operations (core
+  5,703: +9), 0 graph breaks, cold 235.7 s (core 234.3 s; performance profile). A first run read
+  278.4 s and failed the 260 s budget with the machine busy (load ~6, a video player on the GPU);
+  the re-run on a quieter machine passed with the same operation counts.

@@ -51,3 +51,7 @@ Merge share: 98% (1v1 no fields), 89% (1v1 fields), 100% (4v4), equal at e 0 and
   on the final tree, merge core. worked: measurement done (table above complete); quick tier
   326 passed; ruff clean; core had not moved (nothing to merge). next: the compile check as
   unit bnb-vision-ellipse once the coordinator says the GPU is free.
+
+- 01:06 compile check (unit bnb-vision-ellipse): 4 graphs, 5,712 traced operations
+  (core 5,703), 0 graph breaks; cold 235.7 s (core 234.3 s), EXIT 0. First run 278.4 s, FAIL
+  over the 260 s budget, load average ~6 and a video player on the GPU; same operations. Done.
