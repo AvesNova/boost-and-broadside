@@ -11,6 +11,7 @@ See NOTES.md beside this file.
 """
 
 import argparse
+import dataclasses
 import math
 import subprocess
 import time
@@ -480,11 +481,19 @@ def main() -> None:
         default=None,
         help="vision range in metres for every type, this render only (default: the card's)",
     )
+    parser.add_argument(
+        "--no-fields",
+        action="store_true",
+        help="no fields on the map (field_count 0), this render only (default: the game's)",
+    )
     arguments = parser.parse_args()
     torch.set_num_threads(4)
     arguments.out.mkdir(parents=True, exist_ok=True)
     config = core.GameConfig()  # the core game: map, fields, fog, 1,800-tick clock, P-51D
     stem = "scripted4v4"
+    if arguments.no_fields:
+        config = dataclasses.replace(config, field_count=0)
+        stem += "_nofields"
     if arguments.vision_range is not None:
         set_vision_range(arguments.vision_range)
         stem += f"_vision{arguments.vision_range:g}"
@@ -494,6 +503,8 @@ def main() -> None:
         record = simulate(config, seed)
         simulated = time.perf_counter() - started
         title = f"game {number} of {len(arguments.seeds)}, seed {seed}, scripted 4v4"
+        if arguments.no_fields:
+            title += ", no fields"
         painter = Painter(record, title)
         print(
             f"seed {seed}: {record['ticks']} ticks, {painter.result_text()!r}, "
