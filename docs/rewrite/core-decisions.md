@@ -794,6 +794,6 @@ These replace the flap, profile and stick-level points above where they disagree
   on the same play every overlap episode holds exactly one first touch, and the extra contacts
   are passes cut by a death or the game's end between first touch and the closest-approach
   tick, which the old rule never scored (1v1 68 of 316 episodes, 4v4 103-120 of 853-886).
-  Deaths on a collision tick 1v1 24 / 72, 4v4 101 / 115 (fields 112 / 97); mean game length 1-5% shorter; draws
-  1v1 41 / 49, 1v1 fields 13 / 30, 4v4 3-4 / 3. Table: lean/game/NOTES.md "Numbers".
+  Deaths on a collision tick 1v1 24 / 72, 4v4 101 / 115 (fields 112 / 97); mean game length
+  1-5% shorter; draws 1v1 41 / 49, 1v1 fields 13 / 30, 4v4 3-4 / 3. Table: lean/game/NOTES.md "Numbers".
 
