@@ -1633,21 +1633,25 @@ TICKS_SINCE_SEEN_CAP = 1 << 30  # v2's cap (src/bnb/game/perception/observe.py)
 
 
 def sighted_by_enemy(state: State) -> Tensor:
-    """(E, N) bool: some living ship of the other team sees the ship (v2's sight test,
-    src/bnb/game/perception/sight.py `sighted`, game spec 10.1, with the sight ellipse, author
-    2026-11-25). The observer sees inside an ellipse with itself at one focus, stretched along
-    its nose: with d the offset target - observer and n the observer's unit nose,
+    """(E, N) bool: some living ship of the other team sees the ship (`sight_pairs`)."""
+    return sight_pairs(state).any(-1)
+
+
+def sight_pairs(state: State) -> Tensor:
+    """(E, target, observer) bool: the observer, a living ship of the target's other team, sees the
+    target (v2's sight test, src/bnb/game/perception/sight.py `sighted`, game spec 10.1, with the
+    sight ellipse, author 2026-11-25). The observer sees inside an ellipse with itself at one focus,
+    stretched along its nose: with d the offset target - observer and n the observer's unit nose,
     |d| - e (d . n) <= p, p the observer's vision range (the side reach) and e its
-    vision_eccentricity (0 <= e < 1): p / (1 - e) dead ahead, p / (1 + e) dead behind; e = 0 is
-    the circle |d| <= p. Tested without a square root as |d|^2 <= (p + e (d . n))^2 (for p > 0
-    and e < 1 a negative p + e (d . n) cannot pass: |d| <= -(p + e d . n) <= -p + e |d| has
-    no solution), which at e = 0 is exactly the circle's d^2 <= p^2. Sight is blocked only by
-    fields' cores: field i, with core
-    radius max(r - w / 2, 0) and outer radius r + w / 2, blocks the line when exactly one end is
-    strictly inside its core and the two ends are not both inside its outer disc (core and band
-    see each other), or when neither end is inside its core and the segment passes strictly
-    within the core radius of the centre. Dead targets are tested like living ones (a wreck in
-    sight is seen); dead observers see nothing. Bullets are not perceived."""
+    vision_eccentricity (0 <= e < 1): p / (1 - e) dead ahead, p / (1 + e) dead behind; e = 0 is the
+    circle |d| <= p. Tested without a square root as |d|^2 <= (p + e (d . n))^2 (for p > 0 and e < 1
+    a negative p + e (d . n) cannot pass: |d| <= -(p + e d . n) <= -p + e |d| has no solution),
+    which at e = 0 is exactly the circle's d^2 <= p^2. Sight is blocked only by fields' cores: field
+    i, with core radius max(r - w / 2, 0) and outer radius r + w / 2, blocks the line when exactly
+    one end is strictly inside its core and the two ends are not both inside its outer disc (core
+    and band see each other), or when neither end is inside its core and the segment passes strictly
+    within the core radius of the centre. Dead targets are tested like living ones (a wreck in sight
+    is seen); dead observers see nothing. Bullets are not perceived."""
     c = state.constants
     x, y = state.x, state.y
     line_x = x[:, :, None] - x[:, None, :]  # (E, target, observer): target minus observer, d
@@ -1690,7 +1694,7 @@ def sighted_by_enemy(state: State) -> Tensor:
             & (along < length)
         )
         clear = clear & ~(ends | passes).any(-1)
-    return clear.any(-1)
+    return clear
 
 
 def _snapshot(state: State) -> Tensor:

@@ -97,6 +97,10 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4)) -> dict:
             result = int(out.result[0])
     team = state.team[0].numpy()
     exists = state.exists[0].numpy()
+
+    def per_slot(name):  # a constant per slot (a uniform number or the slot's type's row)
+        return torch.as_tensor(state.constants[name]).expand(1, slots)[0].numpy().copy()
+
     stacked = {
         name: torch.stack([f[name] for f in frames]).numpy()
         for name in (
@@ -124,6 +128,8 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4)) -> dict:
         "team": team,
         "exists": exists,
         "fields": state.fields[0].numpy(),  # rows x, y, radius, band, target ln n
+        "vision_range": per_slot("vision_range"),
+        "vision_eccentricity": per_slot("vision_eccentricity"),
         "deaths": deaths,
         "result": result,
         "wiped": wiped,
@@ -194,10 +200,19 @@ def _fade(colour, amount):
     return tuple(int(c + (b - c) * amount) for c, b in zip(colour, BACKGROUND))
 
 
+def sight_outline(x, y, heading, vision_range, eccentricity, points=72) -> list:
+    """The sight ellipse's outline in metres (core.sighted_by_enemy): the observer at the focus,
+    reach vision_range / (1 - e cos a) at angle a off the nose."""
+    angles = np.linspace(0.0, 2.0 * math.pi, points, endpoint=False)
+    reach = vision_range / (1.0 - eccentricity * np.cos(angles))
+    return list(zip(x + reach * np.cos(heading + angles), y + reach * np.sin(heading + angles)))
+
+
 class Painter:
-    def __init__(self, record: dict, title: str):
+    def __init__(self, record: dict, title: str, draw_vision: bool = False):
         self.r = record
         self.title = title
+        self.draw_vision = draw_vision
         self.cam = camera(record)
         s = SUPER
         self.font = ImageFont.truetype(BOLD_PATH, 15 * s)
@@ -245,6 +260,21 @@ class Painter:
 
         team, alive = r["team"], r["alive"][t] & r["exists"]
         xs, ys = r["x"], r["y"]
+        # Sight ellipses, faint (fields' cores still block lines inside them).
+        if self.draw_vision:
+            for i in np.nonzero(alive)[0]:
+                outline = sight_outline(
+                    xs[t, i],
+                    ys[t, i],
+                    r["heading"][t, i],
+                    r["vision_range"][i],
+                    r["vision_eccentricity"][i],
+                )
+                draw.polygon(
+                    [to_pixels(px, py) for px, py in outline],
+                    outline=_fade(TEAM_COLOURS[team[i]], 0.75),
+                    width=s,
+                )
         # Trails.
         for i in np.nonzero(r["exists"])[0]:
             start = max(0, t - TRAIL_TICKS)
@@ -414,8 +444,8 @@ class Painter:
         return f"{head}\n{how}"
 
 
-def encode(record: dict, title: str, path: Path) -> None:
-    painter = Painter(record, title)
+def encode(record: dict, title: str, path: Path, draw_vision: bool = False) -> None:
+    painter = Painter(record, title, draw_vision)
     frames = len(record["x"])
     command = [
         "/usr/bin/ffmpeg",
@@ -464,6 +494,18 @@ def set_vision_range(metres: float) -> None:
     card.CARD = {**rows, "vision_range_scale": tuple(scale for _ in rows["vision_range_scale"])}
 
 
+def set_vision_eccentricity(eccentricity: float) -> None:
+    """Every type's vision eccentricity (the sight ellipse, core.sighted_by_enemy) set to
+    `eccentricity` in this process's card, as set_vision_range."""
+    if not 0.0 <= eccentricity < 1.0:
+        raise ValueError(f"vision eccentricity {eccentricity}: 0 <= e < 1")
+    rows = tuning.load_card()
+    card.CARD = {
+        **rows,
+        "vision_eccentricity": tuple(eccentricity for _ in rows["vision_eccentricity"]),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
@@ -480,6 +522,19 @@ def main() -> None:
         type=float,
         default=None,
         help="vision range in metres for every type, this render only (default: the card's)",
+    )
+    parser.add_argument(
+        "--vision-eccentricity",
+        type=float,
+        default=None,
+        help="the sight ellipse's eccentricity e (0 <= e < 1) for every type, this render only "
+        "(default: the card's): vision range p to the side, p/(1-e) ahead, p/(1+e) behind; "
+        "draws each ship's sight ellipse",
+    )
+    parser.add_argument(
+        "--draw-vision",
+        action="store_true",
+        help="draw each ship's sight outline faintly (on by itself with --vision-eccentricity)",
     )
     parser.add_argument(
         "--no-fields",
@@ -504,7 +559,17 @@ def main() -> None:
     if arguments.vision_range is not None:
         set_vision_range(arguments.vision_range)
         stem += f"_vision{arguments.vision_range:g}"
-    print(f"vision range: {core.ship_card(config).uniform['vision_range']:.1f} m", flush=True)
+    if arguments.vision_eccentricity is not None:
+        set_vision_eccentricity(arguments.vision_eccentricity)
+        stem += f"_ellipse{arguments.vision_eccentricity:g}"
+    draw_vision = arguments.draw_vision or arguments.vision_eccentricity is not None
+    uniform = core.ship_card(config).uniform
+    side, eccentricity = uniform["vision_range"], uniform["vision_eccentricity"]
+    print(
+        f"vision range: {side:.1f} m to the side, {side / (1.0 - eccentricity):.1f} m ahead, "
+        f"{side / (1.0 + eccentricity):.1f} m behind (eccentricity {eccentricity:g})",
+        flush=True,
+    )
     for number, seed in enumerate(arguments.seeds, 1):
         started = time.perf_counter()
         record = simulate(config, seed, (size, size))
@@ -512,7 +577,9 @@ def main() -> None:
         title = f"game {number} of {len(arguments.seeds)}, seed {seed}, scripted {size}v{size}"
         if arguments.no_fields:
             title += ", no fields"
-        painter = Painter(record, title)
+        if arguments.vision_eccentricity is not None:
+            title += f", sight ellipse e {arguments.vision_eccentricity:g}"
+        painter = Painter(record, title, draw_vision)
         print(
             f"seed {seed}: {record['ticks']} ticks, {painter.result_text()!r}, "
             f"simulated in {simulated:.0f} s",
@@ -522,7 +589,7 @@ def main() -> None:
             if t < len(record["x"]):
                 painter.frame(t).save(arguments.out / f"seed{seed}_t{t:04d}.png")
         path = arguments.out / f"{stem}_seed{seed}.mp4"
-        encode(record, title, path)
+        encode(record, title, path, draw_vision)
         print(f"  wrote {path} in {time.perf_counter() - started:.0f} s", flush=True)
 
 
