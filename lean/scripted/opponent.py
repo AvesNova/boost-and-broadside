@@ -391,11 +391,20 @@ def explain(
     outward = state.x * fight.velocity_x + state.y * fight.velocity_y > 0.0
     centre_weight = torch.where(outward & has_target, ramp.clamp(0.0, 1.0), 0.0)
     centre_weight = torch.where(has_target, centre_weight, 1.0)
-    point_length = torch.sqrt(aim_x * aim_x + aim_y * aim_y).clamp_min(TINY)
+    steer_x, steer_y = merge_miss(
+        state,
+        enemies,
+        fight,
+        aim_x,
+        aim_y,
+        read("merge_miss_offset") * c["hit_radius"],
+        read("merge_miss_range") * c["sustained_radius"],
+    )
+    point_length = torch.sqrt(steer_x * steer_x + steer_y * steer_y).clamp_min(TINY)
     point_scale = (1.0 - centre_weight) / point_length
     centre_scale = centre_weight / distance_from_centre
-    wanted_x = point_scale * aim_x - centre_scale * state.x
-    wanted_y = point_scale * aim_y - centre_scale * state.y
+    wanted_x = point_scale * steer_x - centre_scale * state.x
+    wanted_y = point_scale * steer_y - centre_scale * state.y
     stick_error = signed_angle(state.heading_cos, state.heading_sin, wanted_x, wanted_y)
 
     # The committed turn sense (design B3, decided: hysteresis by concrete rules):
@@ -509,6 +518,69 @@ def explain(
         sense=sense,
         last_pass=last_pass,
     )
+
+
+def merge_miss(
+    state,
+    enemies,
+    fight: Engagement,
+    aim_x: Tensor,
+    aim_y: Tensor,
+    offset: Tensor | float,
+    reach: Tensor | float,
+) -> tuple[Tensor, Tensor]:
+    """The stick's aim point (relative to the ship, (E, N)) with the merge's miss offset: of
+    the other ships (team-mates as they are, enemies as the team knows them) closing on me
+    faster than my own speed (head-on or crossing, not a chase) within `reach` metres, whose
+    straight-line pass would come nearer than `offset` metres, the nearest; the stick aims
+    `offset` metres beside its centre, on the side it is already on (him on my left: I aim to
+    his right, so he passes on my left; two ships that see each other on the left both
+    turn away). Otherwise the aim point as it is."""
+    same_team = state.team[:, :, None] == state.team[:, None, :]
+    present = torch.where(
+        same_team,
+        (state.exists & state.alive)[:, None, :],
+        (enemies.exists & enemies.alive)[:, None, :],
+    )
+    slots = slot_indices(state.x.shape[1], state.x.device).ship
+    present = present & (slots[:, None] != slots[None, :])
+    enemy_velocity_x, enemy_velocity_y, _ = map_velocity(enemies)
+    other_x = torch.where(same_team, state.x[:, None, :], enemies.x[:, None, :])
+    other_y = torch.where(same_team, state.y[:, None, :], enemies.y[:, None, :])
+    other_velocity_x = torch.where(
+        same_team, fight.velocity_x[:, None, :], enemy_velocity_x[:, None, :]
+    )
+    other_velocity_y = torch.where(
+        same_team, fight.velocity_y[:, None, :], enemy_velocity_y[:, None, :]
+    )
+    r_x, r_y = other_x - state.x[..., None], other_y - state.y[..., None]
+    w_x = other_velocity_x - fight.velocity_x[..., None]
+    w_y = other_velocity_y - fight.velocity_y[..., None]
+    distance = torch.sqrt(r_x * r_x + r_y * r_y).clamp_min(TINY)
+    approach = -(r_x * w_x + r_y * w_y)  # closing rate x distance
+    w_squared = (w_x * w_x + w_y * w_y).clamp_min(TINY)
+    cross = r_x * w_y - r_y * w_x  # the predicted miss distance x |w|
+    own_speed = torch.sqrt(
+        fight.velocity_x * fight.velocity_x + fight.velocity_y * fight.velocity_y
+    )
+    offset_pair = offset[..., None] if isinstance(offset, Tensor) else offset
+    reach_pair = reach[..., None] if isinstance(reach, Tensor) else reach
+    near = (
+        present
+        & (distance < reach_pair)
+        & (approach > own_speed[..., None] * distance)
+        & (cross * cross < offset_pair * offset_pair * w_squared)
+    )
+    nearest = torch.where(near, distance, math.inf).min(-1)
+    active = torch.isfinite(nearest.values)
+    pick = nearest.indices[..., None]
+    picked_x, picked_y = r_x.gather(-1, pick)[..., 0], r_y.gather(-1, pick)[..., 0]
+    picked_distance = nearest.values.clamp_max(1e30)
+    left = state.heading_cos * picked_y - state.heading_sin * picked_x >= 0.0
+    shift = torch.where(left, offset, -offset) / picked_distance.clamp_min(TINY)
+    point_x = picked_x + shift * picked_y  # beside his centre, across the line of sight
+    point_y = picked_y - shift * picked_x
+    return torch.where(active, point_x, aim_x), torch.where(active, point_y, aim_y)
 
 
 def _log(x: Tensor | float) -> Tensor | float:

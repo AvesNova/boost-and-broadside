@@ -659,3 +659,63 @@ def test_no_shot_in_a_pure_head_on_unless_it_empties_the_shield():
     assert fire(math.pi) == 0.0  # nose to nose
     assert fire(0.0) > 0.5  # from astern
     assert fire(math.pi, shield=0.0) > 0.5  # nose to nose, the hit kills
+
+
+def test_the_merge_miss_offset_moves_only_the_stick_and_only_inside_its_range():
+    """Author 2026-11-25 (collisions): closing head-on on a collision course inside the miss
+    range, the stick aims the miss offset beside the target's centre, away from the side he is
+    on (him a little to my left: I turn right); the gun's aim is unchanged; beyond the range,
+    off a collision course, or with the offset 0, nothing changes."""
+    base = ScriptedConfig()
+    off = base.replace(merge_miss_offset=0.0)
+    hit_radius, radius = card()["hit_radius"], card()["sustained_radius"]
+    offset = base.values["merge_miss_offset"] * hit_radius
+    reach = base.values["merge_miss_range"] * radius
+    speed = card()["corner_speed"]
+    for distance, lateral, moved in (
+        (0.8 * reach, 1.0, True),
+        (0.8 * reach, -1.0, True),
+        (1.2 * reach, 1.0, False),
+        (0.8 * reach, 2.0 * offset, False),
+    ):
+        state = placed(
+            dict(x=0.0, y=0.0, heading=0.0, speed=speed),
+            dict(x=distance, y=lateral, heading=math.pi, speed=speed),
+        )
+        plain = explain(off, state, 0, None, memory_of())
+        offsetting = explain(base, state, 0, None, memory_of())
+        assert torch.equal(plain.gun_error, offsetting.gun_error)
+        shift = float(offsetting.stick_error[0, 0] - plain.stick_error[0, 0])
+        if moved:
+            # He is on the side of `lateral`: I aim to his other side, by about offset / distance.
+            assert math.copysign(1.0, shift) == -math.copysign(1.0, lateral)
+            assert 0.5 * offset / distance < abs(shift) < 1.5 * offset / distance
+        else:
+            assert shift == 0.0
+
+
+def test_the_merge_miss_offset_also_avoids_a_team_mate():
+    """A team-mate closing head-on on a collision course (the enemy far off to the side): the
+    stick turns away from him; with the offset 0 it does not."""
+    config = core.GameConfig(spawn="mixed", field_count=0, fog=False)
+    state = core.reset(config, 1, torch.tensor([[2, 1]]), torch.Generator().manual_seed(0), CPU)
+    speed = card()["corner_speed"]
+    heading = torch.tensor([[0.0, math.pi, 0.5 * math.pi]])
+    state = core.with_velocity(
+        state.replace(
+            x=torch.tensor([[0.0, 150.0, 0.0]]),
+            y=torch.tensor([[0.0, 1.0, 2500.0]]),
+            heading_cos=heading.cos(),
+            heading_sin=heading.sin(),
+            speed=torch.full((1, 3), speed),
+            angle=torch.zeros(1, 3),
+            angle_cos=torch.ones(1, 3),
+            angle_sin=torch.zeros(1, 3),
+            nose_rate=torch.zeros(1, 3),
+        )
+    )
+    assert int(state.team[0, 0]) == int(state.team[0, 1]) != int(state.team[0, 2])
+    memory = memory_of(slots=3)
+    plain = explain(ScriptedConfig().replace(merge_miss_offset=0.0), state, 0, None, memory)
+    offsetting = explain(ScriptedConfig(), state, 0, None, memory)
+    assert float(offsetting.stick_error[0, 0]) < float(plain.stick_error[0, 0])  # turns right
