@@ -79,10 +79,16 @@ PARAMETERS: dict[str, Parameter] = {
     # The committed turn sense and the plan (one- or two-circle).
     "tie_band": Parameter(0.1, "radians", meaning="him this near dead astern: the drawn side"),
     "release_band": Parameter(0.2, "radians", meaning="release this far forward of the 3/9 line"),
+    # The plan is chosen once per engagement and held (author 2026-11-26): energy advantage
+    # plus the ship's lean (memory "plan_lean", uniform on [-1, 1) drawn per match, times
+    # `plan_lean`) above the threshold: two-circle. At equal energy a quarter of the ships
+    # choose one-circle at these defaults.
     "plan_threshold": Parameter(-0.33279597121084487, "store fraction", LINEAR, 0.25,
-                                "energy advantage above it: two-circle"),
-    "switch_gain": Parameter(0.17, "radians", LOG, 0.4,
-                             "a pass gaining less angles off than this switches the plan"),
+                                "energy advantage plus lean above it: two-circle"),
+    "plan_lean": Parameter(2.0 / 3.0, "store fraction",
+                           meaning="half-width of the per-match lean added to the advantage"),
+    "switch_loss": Parameter(math.pi / 4, "radians", LOG, 0.3,
+                             "angles off grown this much since the plan: switch it"),
     # Speeds: the power tracks a speed target v*, mixed in log space over the tactics.
     "merge_speed": Parameter(1.0, "corner_speed", LOG, 0.1, "v* disengaged and at the merge"),
     "fight_speed": Parameter(1.2943094805067583, "sustained_speed", LOG, 0.2,

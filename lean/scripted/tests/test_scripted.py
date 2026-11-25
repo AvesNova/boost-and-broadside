@@ -103,10 +103,12 @@ def placed(
     )
 
 
-def memory_of(slots: int = 2, side: float = 1.0, target=None) -> dict:
-    """A fresh memory for one environment: no kept target (or `target`), the drawn side."""
+def memory_of(slots: int = 2, side: float = 1.0, target=None, lean: float = 0.0) -> dict:
+    """A fresh memory for one environment: no kept target (or `target`), the drawn side, the
+    plan lean (0: the plan by the energy advantage alone)."""
     memory = fresh_memory(1, slots, None, CPU)
     memory["side"] = torch.full((1, slots), side)
+    memory["plan_lean"] = torch.full((1, slots), lean)
     if target is not None:
         memory["target"] = target
     return memory
@@ -720,3 +722,38 @@ def test_the_merge_miss_offset_also_avoids_a_team_mate():
     plain = explain(ScriptedConfig().replace(merge_miss_offset=0.0), state, 0, None, memory)
     offsetting = explain(ScriptedConfig(), state, 0, None, memory)
     assert float(offsetting.stick_error[0, 0]) < float(plain.stick_error[0, 0])  # turns right
+
+
+def test_in_play_the_plan_is_held_across_passes_and_switches_only_when_losing():
+    """Author 2026-11-26: in played 1v1 games (no fog, no fields), a ship's plan (memory
+    "plan") is chosen once per engagement and outlives its passes (several commits of the turn
+    sense under one plan); it turns to the other plan only when the angles off at that pass
+    exceed those at its choice by the switch loss."""
+    envs = 32
+    generator = torch.Generator().manual_seed(11)
+    config = game.GameConfig(field_count=0, fog=False)
+    state = game.reset(config, envs, torch.ones(envs, 2, dtype=torch.long), generator, CPU)
+    agent = ScriptedConfig()
+    loss = agent.values["switch_loss"]
+    memory = fresh_memory(envs, 2, generator, CPU)
+    commits_under_one_plan = 0
+    with torch.no_grad():
+        for _ in range(900):
+            reasons = explain(agent, state, None, None, memory)
+            action, new = act(
+                agent, state, None, None, draw_uniforms(envs, 2, generator, CPU), memory
+            )
+            living = state.alive & state.exists
+            before, after = memory["plan"], new["plan"]
+            flipped = living & (before * after < 0.0)
+            grown = reasons.situation.angles_off - before.abs()
+            assert bool((grown[flipped] > loss).all())
+            commit = living & (memory["sense"] == 0.0) & (new["sense"] != 0.0)
+            commits_under_one_plan += int((commit & (before != 0.0) & (before == after)).sum())
+            memory = new
+            state, out = game.step(
+                config, state, action, game.draw_noise(config, envs, 2, generator, CPU)
+            )
+            if bool(out.done.all()):
+                break
+    assert commits_under_one_plan > 0

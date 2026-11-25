@@ -118,18 +118,36 @@ def test_merge_and_turning_quadrants():
     assert abs(first(turning.speed_target) / fight - 1.0) < 0.05
 
 
-def test_two_circle_banks_at_the_middle_level():
-    """Turning (both behind each other's 3/9 line), both turning left (two-circle): the energy
-    plan eases to the middle level at the fight speed (Shaw p. 110), so above it, climb. I fly
-    1.44 sustained speeds."""
+def test_the_turn_after_the_pass_is_full_stick_in_either_geometry():
+    """Author 2026-11-26: once he passes abeam the ship turns at full stick at once, no wide
+    circles. Turning (both behind each other's 3/9 line) with the same rotation (two-circle)
+    or opposite rotations (one-circle): no cap, the full level carries the turn. Above the
+    fight speed (1.44 sustained speeds) the power still climbs."""
     rate = C["sustained_rate"]
     own = sustained_speeds(1.44)
-    neutral = decision(
-        ship(speed=own), ship(-3.0 * RADIUS, 0.5 * RADIUS, heading=math.pi), nose_rates=(rate, rate)
-    )
-    assert weight(neutral, "turning") > 0.9 and first(neutral.situation.flow) > 0.9
-    assert first(neutral.cap) > 0.9
-    assert int(neutral.marginals.power[0, 0].argmax()) == CLIMB
+    for his_rate in (rate, -rate):
+        e = decision(
+            ship(speed=own),
+            ship(-3.0 * RADIUS, 0.5 * RADIUS, heading=math.pi),
+            nose_rates=(rate, his_rate),
+        )
+        assert weight(e, "turning") > 0.9
+        assert first(e.cap) < 0.01
+        stick = e.marginals.stick[0, 0]
+        assert float(stick[FULL_LEFT] + stick[FULL_RIGHT]) > 0.9, his_rate
+        assert int(e.marginals.power[0, 0].argmax()) == CLIMB
+
+
+def test_the_pass_commits_a_full_stick_turn_at_once():
+    """The first tick he is aft of my 3/9 line (an offset head-on pass, both straight): the
+    sense is committed and the stick is the full level in that sense, for either plan."""
+    passed = ship(-0.2 * RADIUS, 0.5 * RADIUS, heading=math.pi)
+    for stores, expected in (((0.8, 0.3), 1.0), ((0.1, 0.8), -1.0)):
+        sense, _, e = committed(ship(), passed, stores)
+        assert sense == expected
+        stick = e.marginals.stick[0, 0]
+        full = FULL_LEFT if expected > 0 else FULL_RIGHT
+        assert float(stick[full]) > 0.9, stores
 
 
 def test_one_circle_inside_a_radius_slows_to_the_floor():
@@ -193,22 +211,76 @@ def test_the_held_sense_turns_the_long_way_and_releases_when_he_comes_forward():
     assert sense == 0.0 and left > 0.9
 
 
-def test_a_pass_that_gained_nothing_switches_the_plan():
-    """Shaw pp. 112-113: the last pass was one-circle at 4.0 rad angles off; at this pass he
-    is no better off for me (4.0 rad again): switch to two-circle. Had it gained 0.5 rad,
-    keep one-circle."""
+def plan_memory(plan, sense=0.0):
+    """A memory with the target kept and a held plan (plan x angles off at its choice)."""
+    m = memory_of()
+    m["target"] = torch.tensor([[1, 0]])
+    m["plan"] = torch.tensor([[plan, 0.0]])
+    m["sense"] = torch.tensor([[sense, 0.0]])
+    return m
+
+
+def test_the_plan_is_held_across_passes_against_the_energy():
+    """Author 2026-11-26: the plan is chosen once per engagement and kept. A one-circle plan
+    chosen at this same angles off: at the next pass the energy says two-circle (more store),
+    but the plan holds (one-circle: away from his side, right) and its reference is unchanged.
+    Released (no plan) only when the target changes."""
+    passed = ship(-1.0 * RADIUS, 2.0 * RADIUS, heading=math.pi)
+    _, _, probe = committed(ship(), passed, stores=(0.8, 0.3))
+    assert first(probe.sense) == 1.0  # fresh: the energy plan, two-circle (left)
+    angles_off = first(probe.situation.angles_off)
+    sense, left, e = committed(ship(), passed, (0.8, 0.3), memory=plan_memory(-angles_off))
+    assert sense == -1.0 and left < 0.1
+    assert first(e.plan) == -angles_off
+    # The sense released (he came forward) does not release the plan.
+    ahead = ship(2.0 * RADIUS, 1.0 * RADIUS, heading=math.pi)
+    _, _, forward = committed(ship(), ahead, (0.8, 0.3), memory=plan_memory(-angles_off, -1.0))
+    assert first(forward.sense) == 0.0 and first(forward.plan) == -angles_off
+    # A new target: the plan is chosen afresh.
+    other = plan_memory(-angles_off)
+    other["target"] = torch.tensor([[0, 0]])
+    sense, _, fresh = committed(ship(), passed, (0.8, 0.3), memory=other)
+    assert sense == 1.0 and first(fresh.plan) == angles_off
+
+
+def test_a_plan_that_is_clearly_losing_switches():
+    """The switch condition: at a pass, my angles off have grown by more than the switch loss
+    since the plan was chosen (he gained that much angle on me under it): switch, and the
+    reference is the angles off now. Grown by less: keep."""
     passed = ship(-1.0 * RADIUS, 2.0 * RADIUS, heading=math.pi)
     _, _, probe = committed(ship(), passed, stores=(0.3, 0.8))
     angles_off = first(probe.situation.angles_off)
+    loss = ScriptedConfig().values["switch_loss"]
+    for plan, expected in ((-1.0, 1.0), (1.0, -1.0)):
+        chosen = plan * (angles_off - 1.1 * loss)
+        sense, _, e = committed(ship(), passed, (0.3, 0.8), memory=plan_memory(chosen))
+        assert sense == expected
+        assert abs(first(e.plan) - expected * angles_off) < 1e-6
+        kept = plan * (angles_off - 0.9 * loss)
+        sense, _, e = committed(ship(), passed, (0.3, 0.8), memory=plan_memory(kept))
+        assert sense == -expected and first(e.plan) == float(torch.tensor(kept))
 
-    def memory(last):
-        m = memory_of()
-        m["target"] = torch.tensor([[1, 0]])
-        m["last_pass"] = torch.tensor([[last, 0.0]])
-        return m
 
-    stalled, _, _ = committed(ship(), passed, (0.3, 0.8), memory=memory(-angles_off))
-    assert stalled == 1.0  # two-circle: toward his side (left)
-    gaining, _, e = committed(ship(), passed, (0.3, 0.8), memory=memory(-(angles_off + 0.5)))
-    assert gaining == -1.0
-    assert first(e.last_pass) == -angles_off
+def test_the_lean_and_the_personas_keep_a_mix_of_plans():
+    """Author 2026-11-26: the population keeps a mix of one- and two-circle fights. The same
+    offset pass at equal energy over many ships, each with its drawn lean (fresh_memory) and a
+    persona at spread 1: both plans are chosen, each by at least a tenth; with more energy
+    two-circle is chosen more often."""
+    from lean.scripted import fresh_memory, personas
+
+    draws = 300
+    generator = torch.Generator().manual_seed(3)
+    shares = []
+    for stores in ((0.5, 0.5), (0.8, 0.4)):
+        state = placed(ship(), ship(-1.0 * RADIUS, 2.0 * RADIUS, heading=math.pi))
+        state = state.replace(energy=torch.tensor([stores]) * C["max_energy"])
+        two_circle = 0
+        for _ in range(draws):
+            memory = fresh_memory(1, 2, generator, "cpu")
+            persona = personas(ScriptedConfig(), 1, 2, generator, "cpu", 1.0)
+            sense = first(explain(ScriptedConfig(), state, 0, persona, memory).sense)
+            assert sense != 0.0
+            two_circle += sense > 0.0  # two-circle: toward his side (left)
+        shares.append(two_circle / draws)
+    assert 0.1 < shares[0] < 0.9, shares
+    assert shares[1] > shares[0], shares

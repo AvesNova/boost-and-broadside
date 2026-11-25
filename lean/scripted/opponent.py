@@ -47,17 +47,24 @@ def fresh_memory(
       "target" long, the kept target's slot (-1 for none);
       "side" float32, +1 left or -1 right, drawn once per ship per match: the tie-break
         when the plan's turn sense has no side to go by;
+      "plan_lean" float32, uniform on [-1, 1), drawn once per ship per match: its lean
+        toward two-circle (+) or one-circle (-), in `plan_lean` store fractions added to the
+        energy advantage when the plan is chosen (so even the yardstick keeps a mix);
       "sense" float32, the committed turn sense while he is aft of my 3/9 line: +1 left,
         -1 right, 0 none;
-      "last_pass" float32, the plan and the angles off at the last commit: plan (+1
-        two-circle, -1 one-circle) x angles off (radians, > 0); 0 before the first."""
-    left = torch.rand((envs, slots), **random_keywords(generator, device)) < 0.5
+      "plan" float32, the engagement's plan and the angles off when it was chosen or last
+        switched: plan (+1 two-circle, -1 one-circle) x angles off (radians, > 0); 0 with no
+        plan (before the first pass, or once the target changes)."""
+    keywords = random_keywords(generator, device)
+    left = torch.rand((envs, slots), **keywords) < 0.5
+    lean = 2.0 * torch.rand((envs, slots), **keywords) - 1.0
     zeros = torch.zeros((envs, slots), device=device)
     return {
         "target": torch.full((envs, slots), -1, dtype=torch.long, device=device),
         "side": torch.where(left, 1.0, -1.0),
+        "plan_lean": lean,
         "sense": zeros,
-        "last_pass": zeros.clone(),
+        "plan": zeros.clone(),
     }
 
 
@@ -238,7 +245,7 @@ class Explanation:
     stick_error: Tensor  # radians to the wanted direction, positive left
     gun_error: Tensor  # radians to the gun's lead point, positive left
     sense: Tensor  # the committed turn sense after this decision (memory "sense")
-    last_pass: Tensor  # memory "last_pass" after this decision
+    plan: Tensor  # memory "plan" after this decision
 
 
 def _per_other(value: Tensor | float) -> Tensor | float:
@@ -335,17 +342,20 @@ def explain(
         "defensive": behind * (1.0 - astern),
     }
 
-    # The plan for this pass: two-circle (+1) when my energy advantage is above the plan
-    # threshold, else one-circle (-1); after a pass, the last pass's plan, switched when that
-    # pass gained less than the switch gain in angles off (Shaw pp. 112-113: the stalemate
-    # breaker inside the fight). The kept target's last pass only.
+    # The engagement's plan (author 2026-11-26: choose one- or two-circle and stick to it
+    # unless it is obviously wrong). Chosen at the first pass against this target: two-circle
+    # (+1) when my energy advantage plus my lean (memory, drawn per match) is above the plan
+    # threshold, else one-circle (-1). Held for the engagement (while the target is kept);
+    # switched at a pass only when it is clearly losing: my angles off have grown by more than
+    # the switch loss since the plan was chosen (he gained that much angle on me under it).
     same_target = has_target & (fight.target == memory["target"])
-    last_pass = torch.where(same_target, memory["last_pass"], 0.0)
-    energy_plan = torch.where(situation.energy_advantage > read("plan_threshold"), 1.0, -1.0)
-    previous_plan = torch.sign(last_pass)
-    gained = last_pass.abs() - situation.angles_off
-    kept_plan = torch.where(gained < read("switch_gain"), -previous_plan, previous_plan)
-    plan = torch.where(last_pass != 0.0, kept_plan, energy_plan)
+    held_plan = torch.where(same_target, memory["plan"], 0.0)
+    leaning = situation.energy_advantage + memory["plan_lean"] * read("plan_lean")
+    energy_plan = torch.where(leaning > read("plan_threshold"), 1.0, -1.0)
+    previous_plan = torch.sign(held_plan)
+    losing = situation.angles_off - held_plan.abs() > read("switch_loss")
+    kept_plan = torch.where(losing, -previous_plan, previous_plan)
+    plan = torch.where(held_plan != 0.0, kept_plan, energy_plan)
 
     # Speed target, in log space, and the stick cap (the share of the full level folded into
     # the middle one), per tactic:
@@ -354,9 +364,9 @@ def explain(
     # - offensive: the chase speed, the fight speed raised against a turning target by the
     #   ratio of corner to sustained speed (against a straight one the engine closes: no
     #   climb, `no_bank`);
-    # - turning, two-circle (the energy plan, Shaw p. 110): the middle level at the fight
-    #   speed; one-circle: full stick at the fight speed, down to the speed floor inside the
-    #   scissors range (Shaw p. 83);
+    # - turning: full stick (the hard turn after the pass, no cap); two-circle geometry (the
+    #   turn senses' flow) at the fight speed; one-circle at the fight speed, down to the
+    #   speed floor inside the scissors range (Shaw p. 83);
     # - defensive (Shaw pp. 132-134): break (full stick, corner speed).
     # (The spend for a near shot, the two-circle cash and the graded defence were removed
     # after the reach check: rarely reached, small effect there, scripted-reach.md.)
@@ -375,7 +385,10 @@ def explain(
         + weights["turning"] * log_turning
         + weights["defensive"] * log_corner
     )
-    cap = weights["disengaged"] * gate["level_cap"] + weights["turning"] * two_circle
+    # The turn after the pass is a hard turn (author 2026-11-26: full stick at once, no wide
+    # circles), so the turning tactic has no cap (the middle level of the two-circle energy
+    # plan is gone).
+    cap = weights["disengaged"] * gate["level_cap"]
     # Chasing a target that is not turning: no banking (the engine closes).
     no_bank = weights["offensive"] * (1.0 - turning_target)
 
@@ -410,12 +423,9 @@ def explain(
     # The committed turn sense (design B3, decided: hysteresis by concrete rules):
     # - release when he comes forward of my 3/9 line (by the release band), or the target
     #   changes;
-    # - commit when he moves aft with no sense held: the plan's sense. The plan is two-circle
-    #   when my energy advantage is above the plan threshold, else one-circle; at a later pass
-    #   it is the last pass's plan, switched when it gained less than the switch gain in
-    #   angles off (Shaw pp. 112-113: the stalemate breaker inside the fight). Two-circle
-    #   turns his way (toward his side when he is straight), one-circle the other way; the
-    #   drawn side breaks an exact tie.
+    # - commit when he moves aft with no sense held: the engagement plan's sense (above).
+    #   Two-circle turns his way (toward his side when he is straight), one-circle the other
+    #   way; the drawn side breaks an exact tie. A plan is chosen or switched only here.
     line = read("three_nine_line")
     bearing_size = situation.bearing.abs()
     aft = has_target & (bearing_size > line)
@@ -431,7 +441,8 @@ def explain(
     his_side = torch.where(dead_astern, memory["side"], short_way)
     two_circle_sense = torch.where(his_turn != 0.0, his_turn, his_side)
     sense = torch.where(commit, plan * two_circle_sense, held)
-    last_pass = torch.where(commit, plan * situation.angles_off, last_pass)
+    switched = plan != previous_plan
+    plan_memory = torch.where(commit & switched, plan * situation.angles_off, held_plan)
 
     # Stick: P(turn), then the level by two further gates (the cap folding full into
     # middle), the side by the committed sense while he is aft (unless the boundary steer
@@ -518,7 +529,7 @@ def explain(
         stick_error=stick_error,
         gun_error=gun_error,
         sense=sense,
-        last_pass=last_pass,
+        plan=plan_memory,
     )
 
 
@@ -733,8 +744,9 @@ def decide(
     new = {
         "target": torch.where(controlled, parts.target, -1),
         "side": memory["side"],
+        "plan_lean": memory["plan_lean"],
         "sense": torch.where(controlled, reasons.sense, 0.0),
-        "last_pass": torch.where(controlled, reasons.last_pass, 0.0),
+        "plan": torch.where(controlled, reasons.plan, 0.0),
     }
     if team is not None:  # the other team's rows keep their memory
         acting = state.team == team
