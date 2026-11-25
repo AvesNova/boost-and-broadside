@@ -1,5 +1,7 @@
 # Energy duel, decoupled: climb and dive at full stick
 
+> Tested and dropped (author 2026-11-25): the game keeps the coupled climb, and `GameConfig.decoupled_exchange` was never merged; this page is the record. Its follow-up, [exchange45.md](exchange45.md), led to the 45-degree card (`lean/game/tuning.py` `EXCHANGE_ANGLE`).
+
 Question (author, 2026-11-25): the first energy duel ([energy-duel.md](energy-duel.md)) found
 that at full stick a climb gains nothing, because the game gives the climb only the lift the
 turn leaves. What if the climb and the dive are independent of the turn's lift, so a ship can

@@ -1,5 +1,7 @@
 # Energy duel, exchange at 45 degrees
 
+> Adopted (author 2026-11-25): the card now trades at g x sin 45 deg (`lean/game/tuning.py` `EXCHANGE_ANGLE`) with the coupled climb; the decoupled option was dropped ([decoupled.md](decoupled.md)), and `bench/energy_duel.py` no longer has `--decoupled`. The 1 g columns below are the old card.
+
 Question (author, 2026-11-25): the card trades speed and store at 1 g (`exchange_acceleration`
 = `card.GRAVITY`, a vertical zoom or dive; `lean/game/tuning.py` `airframe_row`). What if the
 climb and dive are a single 45 deg flight path, so the trade is g x sin 45 deg = 0.707 g? Both

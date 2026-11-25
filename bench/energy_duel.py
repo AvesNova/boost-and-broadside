@@ -13,8 +13,16 @@ mode's schedule on the circle phase (its heading change since the first merge in
 committed sense, modulo 360 deg). Both fire when the nose is within the gun tolerance of the
 lead point and inside gun range.
 
+--exchange-angle DEG (author 2026-11-25, docs/rewrite/sections/energy-duel/exchange45.md): an
+experiment only. The card's exchange_acceleration (card.GRAVITY x sin(EXCHANGE_ANGLE),
+lean.game.tuning.airframe_row) is replaced for this process by card.GRAVITY x sin(DEG): the
+in-memory card.CARD is replaced before any ship card is built (`override_exchange`), so every
+constant the game derives from it (the dive and climb rows of commanded_table and demand_table)
+follows. The committed card is unchanged. --steady-only writes only the steady rates at corner
+and sustained speed (steady.json) and stops.
+
 Usage (from the repository root): PYTHONPATH=. uv run --no-sync python bench/energy_duel.py
-OUT_DIR [--envs 64] [--ticks 1800]
+OUT_DIR [--envs 64] [--ticks 1800] [--exchange-angle 45] [--steady-only]
 Writes OUT_DIR/results.json, OUT_DIR/traces.pt and the charts (bench/energy_duel_charts.py).
 """
 
@@ -78,6 +86,74 @@ def exchange_rate(constants, speed: Tensor, stick: Tensor, power: Tensor) -> Ten
     full = stick >= FULL_RIGHT
     sign = torch.where(power == DIVE, -1.0, torch.where((power == CLIMB) & ~full, 1.0, 0.0))
     return sign * speed * climb
+
+
+def override_exchange(angle_deg: float) -> float:
+    """Replace the card's exchange_acceleration, in this process only, by card.GRAVITY x
+    sin(angle): a climb or dive along a flight path `angle_deg` above or below the horizon.
+    Must run before any ship card is built; the built caches are cleared to make sure. Returns
+    the new value."""
+    loaded = card.CARD  # derived (lean.game.tuning.load_card) on first use
+    value = card.GRAVITY * math.sin(math.radians(angle_deg))
+    card.CARD = {
+        **loaded,
+        "exchange_acceleration": tuple(value for _ in loaded["exchange_acceleration"]),
+    }
+    core._SHIP_CARDS.clear()
+    return value
+
+
+def _steady_row(p, speed: float, stick: float, power: int) -> dict:
+    rate, speed_rate, store_rate = core.steady_rates(
+        p, torch.tensor([speed]), torch.tensor([stick]), power, 0.5 * p.max_energy
+    )
+    return {
+        "turn_deg": math.degrees(float(rate)),
+        "speed_rate": float(speed_rate),
+        "store_rate": float(store_rate),
+    }
+
+
+def steady_check(config) -> dict:
+    """core.steady_rates at the corner and the sustained-turn speed, half store, full stick:
+    turn rate, d speed / dt and store rate for coast, dive and climb; and how long a half and a
+    full store last diving at corner speed at the rate at the store's middle (without the
+    store's edge taper)."""
+    p = core.per_type_constants(config, torch.tensor([card.TYPE_NAMES.index(config.lineup[0])]))
+    values = core.ship_card(config).uniform
+    out = {
+        "exchange_acceleration": float(p.commanded_table[0, CLIMB]),
+        "exchange_in_g": float(p.commanded_table[0, CLIMB]) / card.GRAVITY,
+        "gravity": card.GRAVITY,
+        "max_store": float(p.max_energy[0]),
+        "store_edge_band": config.store_edge_band,
+    }
+    for label in ("corner", "sustained"):
+        speed = values[f"{label}_speed"]
+        rows = {"speed": speed}
+        for power, name in ((COAST, "coast"), (DIVE, "dive"), (CLIMB, "climb")):
+            rows[name] = _steady_row(p, speed, 1.0, power)
+        out[label] = rows
+    dive = out["corner"]["dive"]["store_rate"]
+    out["corner_dive_half_store_s"] = 0.5 * out["max_store"] / abs(dive)
+    out["corner_dive_full_store_s"] = out["max_store"] / abs(dive)
+    return out
+
+
+def exchange_vs_speed(config) -> list[dict]:
+    """Steady rates (lean.game.core.steady_rates) from the 1 g speed to 3.4 x it at half store:
+    turn rate, d speed / dt and store rate for coast, dive and climb, full stick and straight."""
+    p = core.per_type_constants(config, torch.tensor([card.TYPE_NAMES.index(config.lineup[0])]))
+    one_g = math.sqrt(card.GRAVITY / float(p.lift))
+    rows = []
+    for factor in [1.0 + 0.1 * k for k in range(25)]:
+        speed = one_g * factor
+        row = {"speed": speed}
+        for power, name in ((COAST, "coast"), (DIVE, "dive"), (CLIMB, "climb")):
+            for label, stick in (("full", 1.0), ("straight", 0.0)):
+                row[f"{name}_{label}"] = _steady_row(p, speed, stick, power)
+        rows.append(row)
+    return rows
 
 
 def signed_angle(cos, sin, x, y):
@@ -561,10 +637,23 @@ def main():
     parser.add_argument("--ticks", type=int, default=1800)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--solo-ticks", type=int, default=1500)
+    parser.add_argument("--exchange-angle", type=float, default=None)
+    parser.add_argument("--steady-only", action="store_true")
     args = parser.parse_args()
     torch.set_num_threads(8)
 
+    card_exchange = card.CARD["exchange_acceleration"][0]
+    if args.exchange_angle is not None:
+        override_exchange(args.exchange_angle)
     config = core.GameConfig(field_count=0, fog=False)
+    steady = steady_check(config)
+    steady["card_exchange_acceleration"] = card_exchange
+    steady["exchange_angle_deg"] = args.exchange_angle
+    print(steady, flush=True)
+    if args.steady_only:
+        with open(f"{args.out}/steady.json", "w") as handle:
+            json.dump(steady, handle, indent=1)
+        return
     card_values = core.ship_card(config).uniform
     setup = {
         "start_speed": card_values["sustained_speed"],
@@ -588,6 +677,9 @@ def main():
         "envs": args.envs,
         "ticks": args.ticks,
     }
+    setup["exchange_angle_deg"] = args.exchange_angle
+    setup["exchange_acceleration"] = steady["exchange_acceleration"]
+    setup["card_exchange_acceleration"] = card_exchange
     print(setup, flush=True)
 
     base = run(base_conditions(), args.envs, args.ticks, args.seed, keep_traces=True)
@@ -617,6 +709,8 @@ def main():
                 "solo_balanced_switch_deg": best,
                 "solo_balanced_check": check,
                 "solo_balance_history": history,
+                "exchange_vs_speed": exchange_vs_speed(config),
+                "steady": steady,
             },
             handle,
             indent=1,
