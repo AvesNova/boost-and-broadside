@@ -111,6 +111,14 @@ PARAMETERS: dict[str, Parameter] = {
     "target_size_minimum": Parameter(math.radians(1.0), "radians", meaning="target size clamp"),
     "target_size_maximum": Parameter(math.radians(45.0), "radians", meaning="target size clamp"),
     "ally_clearance": Parameter(2.0, "hit_radius", meaning="a team-mate this near the line blocks"),
+    # The merge's miss offset (author 2026-11-25, collisions): closing on any ship (enemy or
+    # team-mate) faster than my own speed, inside the range, on a straight-line course passing
+    # nearer than the offset: the stick aims this far to one side of its centre (it passes on
+    # the side it is already on); the gun keeps the lead point. 40 m on the P-51D.
+    "merge_miss_offset": Parameter(10.0 / 3.0, "hit_radius",
+                                   meaning="the stick aims this far beside a ship it would hit"),
+    "merge_miss_range": Parameter(1.25, "sustained_radius",
+                                  meaning="the miss offset acts inside this distance"),
     # No shot in a pure head-on (author 2026-11-25): the hit at the predicted aspect must take
     # at least this many ticks of the shooter's shield recharge (or the target's whole shield).
     "fire_worth": Parameter(1.0, "ticks of shield recharge",

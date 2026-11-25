@@ -55,8 +55,9 @@ ln n), `pending (E, N, 3)` long (the action the next tick applies), and with fog
 
 **`StepOut`** (one tick): `damage_taken (E, N)`, `died (E, N)`, `done (E,)`, `result (E,)` (0 or 1
 the winning team, 2 a draw, -1 not done), `shot_outcome (E, N, K)` (-1 none ended, 0 missed, 1
-hit an enemy, 2 hit a team-mate) and `shot_tick`, `hit_damage (E, N, N)` [attacker, target],
-`boundary_damage (E, N)`, `shield_restored (E, N)`.
+hit an enemy, 2 hit a team-mate) and `shot_tick`, `hit_damage (E, N, N)` [attacker, target]
+(real bullets' damage and collisions', each ship's collision damage credited to the other ship of
+the pair), `boundary_damage (E, N)`, `shield_restored (E, N)`.
 
 **`Obs`**: one team's view; under fog an enemy row is its last-seen values.
 

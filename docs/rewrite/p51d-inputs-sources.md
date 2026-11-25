@@ -370,7 +370,7 @@ Browning AN/M2 .50 cal in the wings, represented as one stream of shots.
 - Origin: game v12 (game choice). Full damage inside 5 m, a smoothstep to zero at the hit
   radius.
 
-## Shield, head-on and vision
+## Shield, nose cone and vision
 
 All **copied** from Vizia (`P51D_VALUES`), all game rules. None has a real counterpart.
 
@@ -395,17 +395,12 @@ All **copied** from Vizia (`P51D_VALUES`), all game rules. None has a real count
 - Origin: v2's "placeholder: the standard fighter's". The author kept the old timing after
   flying game v12.
 
-### Head-on damage share
-- 0: no damage dead ahead.
-- Origin: game v12 lethality (game choice).
-
-### Head-on angle
-- 0.785 rad = 45 deg: half damage there.
-- Origin: game v12 (game choice).
-
-### Head-on sharpness
-- 3: "a flatter armoured nose".
-- Origin: game v12 (game choice).
+### Nose cone
+- Inner angle 30 deg, outer angle 45 deg: no bullet damage when the hit angle (the bullet's
+  path against the target's nose) is within 30 deg, full from 45 deg, a smootherstep in the
+  cosine between. The same zone sets a collision's blame.
+- Origin: the author, 2026-11-25 (game choice). It replaced the head-on share, angle and
+  sharpness (game v12).
 
 ## Sources
 

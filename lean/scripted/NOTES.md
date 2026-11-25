@@ -30,7 +30,13 @@ Decisions: `docs/rewrite/core-decisions.md` ("Scripted opponent", "Scripted BFM"
    remembered enemy's distance adds its roam (seconds since seen x its sustained speed); past
    one arena radius of roam it is dropped (25 s at 4,200 m). No target: fly to the centre.
 2. `assess`, and the gun's lead point (drag-law flight time in the medium): the stick's
-   wanted point, unless the boundary steer blends in.
+   wanted point, unless the boundary steer blends in, or the merge's miss offset (`merge_miss`,
+   author 2026-11-25, collisions): of the other ships, enemies or team-mates, closing on me
+   faster than my own speed (head-on or crossing, not a chase) within `merge_miss_range` (1.25
+   sustained radii, 301 m) on a straight-line pass nearer than `merge_miss_offset` (10/3 hit
+   radii, 40 m), the nearest; the stick aims the offset beside its centre on the side it is
+   already on. The gun keeps the lead point. `ally_clearance` only blocks the gun through a
+   team-mate; it does not steer.
 3. The fight's gates in one logistic: engaged (3 gun ranges), front and rear on the 3/9 line,
    scissors, the stick caps, the gun. (The spend for a near shot, the two-circle cash, the
    graded defence and the overshoot reversal were removed after the reach check,
@@ -45,8 +51,8 @@ Decisions: `docs/rewrite/core-decisions.md` ("Scripted opponent", "Scripted BFM"
 7. Control laws: stick (nested gates, the cap, the side by the sense or the short way, the
    boundary steer), power (climb above v* + band, dive below v* - band, each faded at its store
    edge), fire (aligned, in range at the lead point, never through a team-mate, and only when the
-   hit at the predicted aspect, by the game's `aspect_factor`, is worth a tick of the shooter's
-   recharge or empties the target's shield).
+   hit at the predicted aspect, by the game's `aspect_factor` (the nose cone: nothing within 30
+   deg of his nose), is worth a tick of the shooter's recharge or empties the target's shield).
 8. Sample: one uniform per head, the only randomness.
 
 Memory, carried by every caller (`fresh_memory`, a fresh one per match): `target`, `side` (drawn
@@ -72,7 +78,8 @@ experiment arm.
 - Brawl, both teams the yardstick, 256 environments x 5,400 ticks (the clock then; it is 1,800 now): 6.45 kills per
   environment-minute, mean speed 0.72 corner speeds, mean store 0.23, firing 10% of ship-ticks,
   874 games ended, mean length 1,314 ticks, 0.03% of ship-ticks beyond the arena radius.
-- Operations, `act` for both teams, E = 256, 5v5: 386 operations (2026-11-25, with the ghost
+- Operations, `act` for both teams, E = 256, 5v5: 459 operations (2026-11-26, with the merge miss
+  offset: +73); 386 (2026-11-25, with the ghost
   roam and the head-on gun gate; 343 before them, 470 before the lead turn, the yo-yos and the
   no-effect mechanisms went)
   (`docs/rewrite/sections/scoreboard/game_ops.py`).

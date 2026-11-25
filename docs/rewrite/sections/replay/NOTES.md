@@ -40,6 +40,8 @@ Needs matplotlib's Pillow (the `tools` extra) and
   my 3/9 line, I am behind his) with the committed plan 1c / 2c (sign of `last_pass`; none
   before the first commit), BREAK (defensive). "A/B" when the top weight is below 0.6 (B the
   runner-up). A faint line joins a ship to its target unless it is seeking.
+- Collisions (the game's `core.collisions` on each tick's motion): a yellow ring at the pair's
+  midpoint for 1.5 s, labelled with the damage each of the two ships took.
 - Real bullets as dots (ghost bullets are not drawn); fields as discs (warm: higher index,
   slower; cool: lower); the arena edge (yellow) and the end of the damage ramp (red); a 500 m
   grid. The camera follows the living ships (at least 2.2 km wide); the minimap shows the whole

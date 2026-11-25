@@ -161,7 +161,12 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
     gravity = torch.full_like(exchange, card.GRAVITY)
     raw = torch.stack([gravity, card.GRAVITY - exchange, card.GRAVITY + exchange], -1)
     hit_radius = of("hit_radius")
-    head_on_angle = card.HEAD_ON_ANGLE * of("head_on_angle_scale")
+    nose_inner_cos, nose_outer_cos = (
+        torch.cos(of("nose_inner_angle")),
+        torch.cos(of("nose_outer_angle")),
+    )
+    if bool((nose_outer_cos >= nose_inner_cos).any()):
+        raise ValueError("the nose cone's outer angle must be larger than its inner angle")
     values = {
         "lift": lift,
         "max_acceleration": acceleration,
@@ -187,9 +192,8 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "hit_radius": hit_radius,
         "hit_radius_squared": hit_radius * hit_radius,
         "core_radius": of("core_radius"),
-        "head_on": card.HEAD_ON_FRACTION * of("head_on_fraction_scale"),
-        "head_on_sharpness": of("head_on_sharpness"),
-        "inverse_one_minus_cos_head_on": 1.0 / (1.0 - torch.cos(head_on_angle)),
+        "nose_inner_cos": nose_inner_cos,
+        "inverse_nose_width": 1.0 / (nose_inner_cos - nose_outer_cos),
         "max_shield": of("max_shield"),
         "shield_rate": card.SHIELD_RECHARGE_RATE * of("shield_recharge_rate_scale"),
         "shield_delay": card.SHIELD_RECHARGE_DELAY * of("shield_recharge_delay_scale"),
@@ -299,6 +303,8 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
         "middle_stick_speed": corner_speed / math.sqrt(card.MIDDLE_STICK),
         "stick_table": stick_table(count),
         "store_turn": (corner_rate - sustained_rate) * c.max_energy / corner_energy_rate.abs(),
+        # a collision's reference closing speed: two ships head-on at cruise (`collisions`)
+        "inverse_collision_speed": 0.5 / cruise,
     }
 
 
@@ -938,7 +944,13 @@ def step(
     no_damage = filled((E, N), 0.0, bullet_damage.dtype, device)
     hit_taken = no_damage.scatter_add(1, contact.target, bullet_damage)
     boundary = _boundary_damage(config, flown, alive0)
-    total = hit_taken + boundary
+    # Collisions (after the move, with the bullet hits and the boundary, before the shields):
+    # each ship's collision damage is credited to the other ship of the pair.
+    crash = collisions(
+        state, alive0, config.tick_length, flown.x, flown.y, flown.heading_cos, flown.heading_sin
+    ).damage
+    crash_taken = crash.sum(-1)
+    total = hit_taken + boundary + crash_taken
     died, shield, restored, wait = _shields(config, state, total, stick, power, shoot)
     alive = alive0 & ~died
     recharged = shield + restored
@@ -1001,15 +1013,17 @@ def step(
         shot_tick=fired_tick,
         hit_damage=filled((E, N * N), 0.0, bullet_damage.dtype, device)
         .scatter_add(1, index.pair + contact.target, bullet_damage)
-        .reshape(E, N, N),
+        .reshape(E, N, N)
+        + crash.transpose(1, 2),
         boundary_damage=boundary,
         shield_restored=torch.where(alive0, restored, 0.0),
     )
     if config.fog:
-        # A shot or a real bullet's hit reveals the ship for this tick (boundary damage does not).
+        # A shot, a real bullet's hit or a collision reveals the ship for this tick (boundary
+        # damage does not).
         real_hit = (contact.hit & real).to(bullet_damage.dtype)
         real_hits = no_damage.scatter_add(1, contact.target, real_hit)
-        new_state = perceive(new_state, shots.fired | (real_hits > 0.0))
+        new_state = perceive(new_state, shots.fired | (real_hits > 0.0) | (crash_taken > 0.0))
     return new_state, out
 
 
@@ -1179,10 +1193,9 @@ def _damage(
     """Each real bullet's damage on its target, (E, N K) (0 for a miss or a ghost): kinetic (the
     owner's hit damage, the explosive share plus the rest by the squared ratio of the bullet's
     speed to its reference speed) x closeness (the impact parameter, the distance from the
-    target to the bullet's line, across the band between the core and hit radii) x aspect. The
-    aspect's head-on term is written in the hit angle's cosine c: (1 - c) / (1 - cos theta_0)
-    stands for (theta / theta_0)^2, which keeps v2's half-damage angle and differs from v2's
-    curve by at most 0.024."""
+    target to the bullet's line, across the band between the core and hit radii: `graze`) x
+    aspect (the target's nose cone at the hit angle, the bullet's path against its nose:
+    `aspect_factor`)."""
     c = state.constants
     E, _, N, K = bullets.shape
     target = contact.target
@@ -1206,36 +1219,124 @@ def _damage(
         line, target_start_x * target_start_x + target_start_y * target_start_y
     )
     radius, core = _on_target(c["hit_radius"], target), _on_target(c["core_radius"], target)
-    band_width = (
-        (radius - core).clamp_min(1e-6)
-        if isinstance(radius - core, Tensor)
-        else max(radius - core, 1e-6)
-    )
-    band = ((impact_squared.sqrt() - core) / band_width).clamp(0.0, 1.0)
-    closeness = 1.0 - band * band * (3.0 - 2.0 * band)
+    closeness = graze(impact_squared.sqrt(), core, radius)
     hit_cos = -(flat_direction_x * nose_cos + flat_direction_y * nose_sin)  # 1 head-on
     aspect = aspect_factor(
         hit_cos,
-        _on_target(c["head_on"], target),
-        _on_target(c["inverse_one_minus_cos_head_on"], target),
-        _on_target(c["head_on_sharpness"], target),
+        _on_target(c["nose_inner_cos"], target),
+        _on_target(c["inverse_nose_width"], target),
     )
     return torch.where(contact.hit & real, full * closeness * aspect, 0.0)
 
 
+def graze(distance: Tensor, core: Tensor | float, radius: Tensor | float) -> Tensor:
+    """The closeness of a pass `distance` from a centre: 1 inside `core`, a smoothstep down to 0
+    at `radius` (a bullet: the target's core and hit radii; a collision: the two ships' summed
+    core and hit radii)."""
+    width = radius - core
+    width = width.clamp_min(1e-6) if isinstance(width, Tensor) else max(width, 1e-6)
+    band = ((distance - core) / width).clamp(0.0, 1.0)
+    return 1.0 - band * band * (3.0 - 2.0 * band)
+
+
 def aspect_factor(
-    hit_cos: Tensor,
-    head_on: Tensor | float,
-    inverse_one_minus_cos_head_on: Tensor | float,
-    sharpness: Tensor | float,
+    hit_cos: Tensor, nose_inner_cos: Tensor | float, inverse_nose_width: Tensor | float
 ) -> Tensor:
-    """The damage's aspect factor (`_damage`) at the hit angle's cosine `hit_cos` (1 when the
-    bullet strikes the target's nose head-on, -1 from dead astern), with the target's
-    constants of those names: the head-on fraction dead ahead, rising to 1 away from the
-    nose, half-way at the head-on angle. Shared with the scripted opponent's gun."""
-    squared_ratio = ((1.0 - hit_cos) * inverse_one_minus_cos_head_on).clamp_min(0.0)
-    powered = squared_ratio.pow(0.5 * sharpness)
-    return 1.0 - (1.0 - head_on) * torch.exp(-card.LN_2 * powered)
+    """The nose cone (author 2026-11-25) at the cosine `hit_cos` of the angle off the nose (1
+    dead ahead, -1 dead astern), with the ship's constants of those names: 0 inside the inner
+    angle, 1 beyond the outer, a smootherstep of t = (cos inner - c) / (cos inner - cos outer)
+    between (no acos). A bullet's damage factor (`_damage`, the bullet's path against the
+    target's nose) and, as 1 - aspect / 2, a collision's blame (`collisions`). Shared with the
+    scripted opponent's gun."""
+    return smootherstep(((nose_inner_cos - hit_cos) * inverse_nose_width).clamp(0.0, 1.0))
+
+
+class Collisions(NamedTuple):
+    """The collision test per ordered pair (E, me, other)."""
+
+    contact: Tensor  # bool: the pair's closest approach is in this tick, both alive (symmetric)
+    closing: Tensor  # m/s: |w|, the relative speed
+    miss: Tensor  # m: b, the closest approach
+    nose_cos: Tensor  # cos(my nose, the line of centres at first touch, me to the other)
+    blame: Tensor  # 1 - aspect / 2: 1 inside my nose cone's inner angle, 0.5 beyond the outer
+    damage: Tensor  # the damage I take (0 without a contact)
+
+
+@built_once
+def _not_self(slots: int, device: torch.device) -> Tensor:
+    return ~torch.eye(slots, dtype=torch.bool, device=device)
+
+
+def collisions(
+    state: State,
+    alive: Tensor,
+    tick_length: float,
+    end_x: Tensor,
+    end_y: Tensor,
+    nose_cos: Tensor,
+    nose_sin: Tensor,
+) -> Collisions:
+    """Every pair of living ships (any teams), on straight moves from the tick-start positions
+    to (end_x, end_y) (E, N), the noses (nose_cos, nose_sin) after the move (author
+    2026-11-25). The swept test of the bullets: p the gap (other minus me), w the relative
+    move over the tick, tau = -p.w / |w|^2, m = p + clamp(tau, 0, 1) w, b = |m|. A pass is
+    scored on the tick that holds its closest approach, 0 <= tau < 1 unclamped: so once
+    (a closest approach on a tick boundary belongs to the later tick). R the two hit radii,
+    R_core the two core radii; the line of centres at first touch n = m / R - sqrt(max(0, 1 -
+    b^2 / R^2)) u, u = w / |w|; my blame 1 - aspect(nose . n) / 2 (aspect_factor: 1 inside the
+    nose cone's inner angle, 0.5 beyond the outer). I take max shield x (|w| / tick) / (2 x
+    cruise) x graze(b; R_core, R - R_core) x blame: linear in the closing speed, a full
+    shield's worth head-on at cruise with full blame."""
+    c = state.constants
+    N = end_x.shape[1]
+    x, y = state.x, state.y
+    move_x, move_y = end_x - x, end_y - y
+    gap_x = x[:, None, :] - x[:, :, None]  # (E, me, other): other minus me
+    gap_y = y[:, None, :] - y[:, :, None]
+    relative_x = move_x[:, None, :] - move_x[:, :, None]
+    relative_y = move_y[:, None, :] - move_y[:, :, None]
+    relative_squared = (relative_x * relative_x + relative_y * relative_y).clamp_min(1e-12)
+    tau = -(gap_x * relative_x + gap_y * relative_y) / relative_squared
+    clamped = tau.clamp(0.0, 1.0)
+    miss_x, miss_y = gap_x + clamped * relative_x, gap_y + clamped * relative_y
+    miss_squared = miss_x * miss_x + miss_y * miss_y
+    radius, core = c["hit_radius"], c["core_radius"]
+    reach = _pair_sum(radius)
+    core_reach = _pair_sum(core)
+    inverse_reach = 1.0 / reach
+    inverse_relative = torch.rsqrt(relative_squared)
+    inside = (1.0 - miss_squared * inverse_reach * inverse_reach).clamp_min(0.0).sqrt()
+    back = inside * inverse_relative  # along -u, over the relative move's length
+    line_x = miss_x * inverse_reach - back * relative_x
+    line_y = miss_y * inverse_reach - back * relative_y
+    cosine = nose_cos[:, :, None] * line_x + nose_sin[:, :, None] * line_y
+    blame = 1.0 - 0.5 * aspect_factor(
+        cosine, _per_me(c["nose_inner_cos"]), _per_me(c["inverse_nose_width"])
+    )
+    miss = miss_squared.sqrt()
+    closing = relative_squared * inverse_relative / tick_length
+    contact = (
+        (tau >= 0.0)
+        & (tau < 1.0)
+        & (miss < reach)
+        & alive[:, :, None]
+        & alive[:, None, :]
+        & _not_self(N, end_x.device)
+    )
+    scale = _per_me(c["max_shield"] * c["inverse_collision_speed"])
+    closeness = graze(miss, core_reach, reach)
+    damage = scale * closing * closeness * blame
+    return Collisions(contact, closing, miss, cosine, blame, torch.where(contact, damage, 0.0))
+
+
+def _per_me(values: Tensor | float) -> Tensor | float:
+    """A per-ship value (E, N) laid along the "me" axis of (E, me, other) pairs."""
+    return values[:, :, None] if isinstance(values, Tensor) else values
+
+
+def _pair_sum(values: Tensor | float) -> Tensor | float:
+    """A per-ship value summed over each pair (E, me, other); a number doubled."""
+    return values[:, :, None] + values[:, None, :] if isinstance(values, Tensor) else 2.0 * values
 
 
 def _boundary_damage(config: GameConfig, flown: SimpleNamespace, alive: Tensor) -> Tensor:

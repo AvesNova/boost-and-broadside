@@ -13,7 +13,8 @@ turns a game's sums into the stored style (per game and seat, small floats):
 - store: mean store, fraction of full.
 - speed: mean speed, in corner speeds.
 - shots: real shots fired per ship-minute.
-- hits: real bullets' hits on enemies (one per shooter, target and tick).
+- hits: damaging hits on enemies, a real bullet's or a collision's (one per shooter, target
+  and tick; a bullet inside the nose cone does no damage and is not counted).
 - hit_range: mean range at hits (shooter to target at the start of the hit's tick), in gun
   ranges. None without a hit.
 - climb, dive: share of the time with climb or dive applied.
@@ -82,8 +83,8 @@ def nearest_enemy(state) -> tuple[Tensor, Tensor, Tensor, Tensor]:
 def per_ship(state, applied_power: Tensor, fired: Tensor, hit_damage: Tensor) -> Tensor:
     """(E, N, len(SUMS)) float32 for every ship over one tick: `state` at tick start (the one
     the actions were chosen on), `applied_power` (E, N) the power index the tick applied,
-    `fired` (E, N) a real shot this tick, `hit_damage` (E, N, N) StepOut's real-bullet damage
-    by shooter and target. Rows of ships not alive at tick start are zero."""
+    `fired` (E, N) a real shot this tick, `hit_damage` (E, N, N) StepOut's damage (real bullets
+    and collisions) by shooter and target. Rows of ships not alive at tick start are zero."""
     c = state.constants
     sustained = c["sustained_rate"]
     target, _, has_enemy, distance = nearest_enemy(state)

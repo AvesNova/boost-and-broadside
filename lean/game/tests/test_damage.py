@@ -1,4 +1,4 @@
-"""Damage: the head-on term's shape, and StepOut's damage detail (for the reward ledger)."""
+"""Damage: the nose cone, and StepOut's damage detail (for the reward ledger)."""
 
 import math
 
@@ -8,18 +8,58 @@ from lean.contract import POWERS, STICKS
 from lean.game import card, core
 
 torch.set_num_threads(1)
+CPU = torch.device("cpu")
 
 
-def test_head_on_term_is_none_head_on_half_at_the_half_angle_and_full_behind():
-    """The aspect's head-on term in the hit angle's cosine (core._damage): no damage head-on,
-    half at the card's half-damage angle, full from behind."""
+def test_the_nose_cone_is_none_inside_the_inner_angle_full_beyond_the_outer():
+    """The aspect factor (core.aspect_factor) in the hit angle's cosine: 0 up to the card's
+    inner angle, 1 from its outer angle on round to dead astern, the smootherstep in the cosine
+    between (half-way in the cosine, half the damage); the same on either side."""
     c = core.ship_constants(core.GameConfig(), torch.tensor([[0]]))
-    half = card.HEAD_ON_ANGLE * card.CARD["head_on_angle_scale"][0]
-    theta = torch.tensor([0.0, half, math.pi], dtype=torch.float64)
-    ratio = (1.0 - torch.cos(theta)) * float(c["inverse_one_minus_cos_head_on"])
-    curve = 1.0 - torch.exp(-card.LN_2 * ratio ** (0.5 * float(c["head_on_sharpness"])))
-    assert float(curve[0]) == 0.0
-    assert abs(float(curve[1]) - 0.5) < 1e-6 and abs(float(curve[2]) - 1.0) < 1e-5
+    inner, outer = card.CARD["nose_inner_angle"][0], card.CARD["nose_outer_angle"][0]
+    middle = math.acos(0.5 * (math.cos(inner) + math.cos(outer)))
+    angles = [0.0, 0.999 * inner, middle, 1.001 * outer, 0.5 * math.pi, math.pi]
+    hit_cos = torch.tensor([math.cos(angle) for angle in angles])
+    aspect = core.aspect_factor(hit_cos, c["nose_inner_cos"], c["inverse_nose_width"])
+    assert aspect.tolist()[:2] == [0.0, 0.0]
+    assert abs(float(aspect[2]) - 0.5) < 1e-5
+    assert aspect.tolist()[3:] == [1.0, 1.0, 1.0]
+
+
+def shot_at(heading_off_nose: float, side: float = 1.0):
+    """A shooter at the origin flying +x with its gun firing this tick (no spread) at a nearly
+    still target 40 m ahead whose nose is `heading_off_nose` radians off the bullet's path
+    (toward the shooter, to the left for side +1): the bullet's damage on the target."""
+    config = core.GameConfig(field_count=0, fog=False)
+    state = core.reset(config, 1, torch.tensor([[1, 1]]), torch.Generator().manual_seed(0), CPU)
+    nose = math.pi - side * heading_off_nose
+    state = core.with_velocity(
+        state.replace(
+            x=torch.tensor([[0.0, 40.0]]),
+            y=torch.tensor([[0.0, 0.0]]),
+            heading_cos=torch.tensor([[1.0, math.cos(nose)]]),
+            heading_sin=torch.tensor([[0.0, math.sin(nose)]]),
+            speed=torch.tensor([[200.0, 1.0]]),
+            angle=torch.zeros(1, 2),
+            angle_cos=torch.ones(1, 2),
+            angle_sin=torch.zeros(1, 2),
+            nose_rate=torch.zeros(1, 2),
+        )
+    )
+    fire = torch.tensor([[[0, 0, 1], [0, 0, 0]]])
+    state = state.replace(pending=fire)
+    _, out = core.step(config, state, fire, {"spread": torch.zeros(1, 2, 2)})
+    return float(out.hit_damage[0, 0, 1])
+
+
+def test_a_bullet_inside_the_nose_cone_does_nothing_and_beyond_it_full_damage():
+    """Through the step (author 2026-11-25): a bullet 29 degrees off the target's nose does no
+    damage, at 46 degrees as much as from dead astern, on either side."""
+    full = shot_at(math.pi)
+    assert full > 0.0
+    for side in (1.0, -1.0):
+        assert shot_at(math.radians(29.0), side) == 0.0
+        assert abs(shot_at(math.radians(46.0), side) - full) < 1e-5 * full
 
 
 def test_hit_damage_matrix_matches_the_totals():

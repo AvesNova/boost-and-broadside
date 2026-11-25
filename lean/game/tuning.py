@@ -287,7 +287,7 @@ def _gun_range(row: dict, numbers: dict) -> float:
     return math.log1p(drag * launch * row["bullet_life"]) / drag
 
 
-GROUPS = ("Performance", "Airframe", "Flight terms", "Nose", "Guns", "Shield, head-on and vision")
+GROUPS = ("Performance", "Airframe", "Flight terms", "Nose", "Guns", "Shield, nose cone and vision")
 _GRAVITY = lambda: card.GRAVITY  # noqa: E731
 
 
@@ -512,28 +512,27 @@ DESIGN_INPUTS = (
         low=0.2,
         high=4.0,
     ),
+    # The nose cone (author 2026-11-25): no bullet damage inside the inner angle off the
+    # target's nose, full beyond the outer, a smootherstep in the cosine between; the same zone
+    # sets a collision's blame (core.aspect_factor).
     scaled(
-        "head_on_fraction",
-        "head-on damage share",
+        "nose_inner_angle",
+        "nose cone: no damage inside",
         H,
-        "head_on_fraction_scale",
-        lambda: 1.0 / card.HEAD_ON_FRACTION,
+        unit="rad",
         low=0.0,
-        high=1.0,
+        high=1.4,
         relative=False,
     ),
     scaled(
-        "head_on_angle",
-        "head-on angle",
+        "nose_outer_angle",
+        "nose cone: full damage beyond",
         H,
-        "head_on_angle_scale",
-        lambda: 1.0 / card.HEAD_ON_ANGLE,
         unit="rad",
-        low=0.1,
+        low=0.05,
         high=1.57,
         relative=False,
     ),
-    scaled("head_on_sharpness", "head-on sharpness", H, low=0.3, high=3.0),
     scaled(
         "vision_range",
         "vision range",
@@ -711,9 +710,8 @@ P51D_VALUES = dict(
     max_shield=100.0,
     shield_recharge_rate=24.0,
     shield_recharge_delay=3.0,
-    head_on_fraction=0.0,
-    head_on_angle=math.pi / 4.0,
-    head_on_sharpness=3.0,
+    nose_inner_angle=math.radians(30.0),
+    nose_outer_angle=math.radians(45.0),
     vision_range=1500.0,  # author 2026-11-25: two-circle fights reach ~1,260 m apart
     vision_eccentricity=0.0,  # the circle until the author has tested the ellipse (2026-11-25)
 )
@@ -1764,9 +1762,8 @@ CARD_TIME_POWERS = dict(
     bullet_drag_scale=0,
     shield_recharge_rate_scale=0,
     shield_recharge_delay_scale=0,
-    head_on_fraction_scale=0,
-    head_on_angle_scale=0,
-    head_on_sharpness=0,
+    nose_inner_angle=0,
+    nose_outer_angle=0,
     vision_range_scale=0,
     vision_eccentricity=0,
     critical_speed=-1,

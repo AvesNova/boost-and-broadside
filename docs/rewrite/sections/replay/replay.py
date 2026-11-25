@@ -59,6 +59,7 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4)) -> dict:
     agent = scripted.ScriptedConfig()
     frames = []
     deaths = []  # (tick, x, y, team)
+    collisions = []  # (tick, x, y, damage to the pair's two ships): core.collisions' contacts
     result = -1
     while True:
         reasons = explain(agent, state, None, None, memory)
@@ -91,6 +92,25 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4)) -> dict:
                     float(previous.x[0, slot]),
                     float(previous.y[0, slot]),
                     int(state.team[0, slot]),
+                )
+            )
+        crash = core.collisions(
+            previous,
+            previous.alive,
+            config.tick_length,
+            state.x,
+            state.y,
+            state.heading_cos,
+            state.heading_sin,
+        )
+        for i, j in torch.nonzero(torch.triu(crash.contact[0], 1)).tolist():
+            collisions.append(
+                (
+                    int(state.tick[0]),
+                    float(0.5 * (state.x[0, i] + state.x[0, j])),
+                    float(0.5 * (state.y[0, i] + state.y[0, j])),
+                    float(crash.damage[0, i, j]),
+                    float(crash.damage[0, j, i]),
                 )
             )
         if bool(out.done[0]):
@@ -131,6 +151,7 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4)) -> dict:
         "vision_range": per_slot("vision_range"),
         "vision_eccentricity": per_slot("vision_eccentricity"),
         "deaths": deaths,
+        "collisions": collisions,
         "result": result,
         "wiped": wiped,
         "ticks": int(state.tick[0]),
@@ -220,6 +241,7 @@ class Painter:
         self.hud = ImageFont.truetype(BOLD_PATH, 26 * s)
         self.big = ImageFont.truetype(BOLD_PATH, 44 * s)
         self.death_marks = record["deaths"]
+        self.collision_marks = record["collisions"]
 
     def frame(self, t: int, final: bool = False) -> Image.Image:
         s, r = SUPER, self.r
@@ -311,6 +333,18 @@ class Painter:
                 colour = _fade(TEAM_COLOURS[dteam], 0.3)
                 draw.line((px - d, py - d, px + d, py + d), fill=colour, width=3 * s)
                 draw.line((px - d, py + d, px + d, py - d), fill=colour, width=3 * s)
+        # Collision marks: a ring and the damage each ship of the pair took.
+        for tick, cx_, cy_, first, second in self.collision_marks:
+            if tick <= t < tick + DEATH_MARK_TICKS:
+                px, py = to_pixels(cx_, cy_)
+                d = 22 * s
+                draw.ellipse((px - d, py - d, px + d, py + d), outline=(255, 230, 0), width=3 * s)
+                draw.text(
+                    (px + d + 4 * s, py - d),
+                    f"COLLISION {first:.0f} / {second:.0f}",
+                    font=self.font,
+                    fill=(255, 230, 0),
+                )
         # Ships.
         for i in np.nonzero(alive)[0]:
             px, py = to_pixels(xs[t, i], ys[t, i])

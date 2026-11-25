@@ -58,9 +58,8 @@ CARD_FIELDS = (
     "bullet_drag_scale",
     "shield_recharge_rate_scale",
     "shield_recharge_delay_scale",
-    "head_on_fraction_scale",
-    "head_on_angle_scale",
-    "head_on_sharpness",
+    "nose_inner_angle",
+    "nose_outer_angle",
     "vision_range_scale",
     "vision_eccentricity",
     *FLIGHT_TERMS,
@@ -89,8 +88,6 @@ BULLET_SPREAD = 12.0
 DAMAGE_REFERENCE_DISTANCE = (
     300.0  # m: a bullet fired at cruise has the damage reference speed here (v2 rules.toml)
 )
-HEAD_ON_FRACTION = 0.3
-HEAD_ON_ANGLE = 0.737832313317803
 SHIELD_RECHARGE_DELAY = 6.0
 SHIELD_RECHARGE_RATE = 12.0
 BOUNDARY_MAX_DAMAGE = 40.0
