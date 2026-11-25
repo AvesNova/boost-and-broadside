@@ -202,7 +202,7 @@ def test_the_held_sense_turns_the_long_way_and_releases_when_he_comes_forward():
     memory = memory_of()
     memory["target"] = torch.tensor([[1, 0]])
     memory["sense"] = torch.tensor([[-1.0, 0.0]])
-    memory["last_pass"] = torch.tensor([[-4.0, 0.0]])
+    memory["plan"] = torch.tensor([[-4.0, 0.0]])
     aft = ship(-1.0 * RADIUS, 1.5 * RADIUS, heading=math.pi)
     sense, left, _ = committed(ship(), aft, memory=memory)
     assert sense == -1.0 and left < 0.1

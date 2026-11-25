@@ -44,10 +44,12 @@ Decisions: `docs/rewrite/core-decisions.md` ("Scripted opponent", "Scripted BFM"
 4. Tactic weights (sum 1): disengaged, merge, offensive, turning, defensive.
 5. Commands mixed as scalars: speed target v* (log space), stick cap. Offensive, v* is the
    chase speed: the fight speed, raised by corner over sustained speed against a turning target.
-   Turning: two-circle the middle level at the fight speed; one-circle full stick, down to the
-   speed floor inside the scissors range. Defensive: a break (full stick, corner speed).
-6. The committed turn sense (memory): commit at the pass by the plan, hold while he is aft,
-   release when he comes forward or the target changes.
+   Turning: full stick, no cap (the hard turn after the pass, author 2026-11-26); two-circle
+   geometry at the fight speed, one-circle down to the speed floor inside the scissors range. Defensive: a break (full stick, corner speed).
+6. The engagement's plan and the committed turn sense (memory; author 2026-11-26, see "Fight
+   plan" below): the plan is chosen at the first pass against a target and held across passes;
+   the sense is committed at each pass by the plan, held while he is aft, released when he
+   comes forward or the target changes.
 7. Control laws: stick (nested gates, the cap, the side by the sense or the short way, the
    boundary steer), power (climb above v* + band, dive below v* - band, each faded at its store
    edge), fire (aligned, in range at the lead point, never through a team-mate, and only when the
@@ -56,8 +58,29 @@ Decisions: `docs/rewrite/core-decisions.md` ("Scripted opponent", "Scripted BFM"
 8. Sample: one uniform per head, the only randomness.
 
 Memory, carried by every caller (`fresh_memory`, a fresh one per match): `target`, `side` (drawn
-once per match, the dead-astern tie-break), `sense`, `last_pass` (plan x angles off at the last
-commit; a pass that gained under 10 degrees switches the plan).
+once per match, the dead-astern tie-break), `plan_lean` (uniform on [-1, 1), drawn once per
+match), `sense`, `plan` (plan x angles off when it was chosen or last switched; 0 with no plan),
+`plan_passes` (passes flown under it).
+
+## Fight plan (author 2026-11-26, branch scripted-fight-plan)
+
+- **Choice, once per engagement.** At the first pass against a target (the first commit of the
+  turn sense): two-circle when energy advantage + `plan_lean` x 2/3 store fractions is above
+  `plan_threshold` (-0.33, BFM-CMA2), else one-circle. The lean is drawn per ship per match in
+  `fresh_memory` (as the side is), so the yardstick keeps a mix too; personas also sample the
+  threshold. At equal energy a quarter of the ships choose one-circle. Two-circle turns his
+  way (toward his side when he is straight), one-circle the other way. Mixed plans fly a
+  one-circle fight, equal plans a two-circle one (both one-circle planners both turn away).
+- **Held**, through the release of the sense when he comes forward, until the target changes.
+- **Switched only when clearly wrong**, at a pass: losing (angles off grown by more than
+  `switch_loss`, 45 deg, since the plan was chosen), or stalled (`stall_passes`, 3, passes
+  flown and less than `switch_gain`, 10 deg, gained since the choice). The stall rule was
+  added after measuring: without it two equal ships in a two-circle plan at full stick meet
+  head-on after every turn for the whole clock (1v1 draws 41 to 78 of 256; 98% of the drawn
+  games' planned ticks had both ships two-circle).
+- **Hard turn after the pass**: the turning tactic has no stick cap (the two-circle middle
+  level is gone); the stick's level gates on the error carry full stick at once.
+- Numbers: `docs/rewrite/sections/fight-plan/progress.md`.
 
 ## The yardstick's defaults
 
@@ -78,7 +101,8 @@ experiment arm.
 - Brawl, both teams the yardstick, 256 environments x 5,400 ticks (the clock then; it is 1,800 now): 6.45 kills per
   environment-minute, mean speed 0.72 corner speeds, mean store 0.23, firing 10% of ship-ticks,
   874 games ended, mean length 1,314 ticks, 0.03% of ship-ticks beyond the arena radius.
-- Operations, `act` for both teams, E = 256, 5v5: 459 operations (2026-11-26, with the merge miss
+- Operations, `act` for both teams, E = 256, 5v5: 475 operations (2026-11-26, the fight plan:
+  +14 on core's 461); 459 operations (2026-11-26, with the merge miss
   offset: +73); 386 (2026-11-25, with the ghost
   roam and the head-on gun gate; 343 before them, 470 before the lead turn, the yo-yos and the
   no-effect mechanisms went)
@@ -89,7 +113,9 @@ experiment arm.
 `tests/test_scripted.py` (well-formed actions, spread 0 draws nothing, the power cases, kept
 target, drawn side, every number from the game, no shot through a team-mate, one call for both
 teams equals two, competence at spread 1, beats the chaser), `test_situation.py`,
-`test_tactics.py` (one hand-built case per tactic, the commit, hold, release and plan switch),
+`test_tactics.py` (one hand-built case per tactic, the commit, hold, release; the full-stick
+turn after the pass; the plan held across passes, switched when losing or stalled; the mix of
+plans over leans and personas), `test_scripted.py`'s in-play check of the plan rule,
 `test_callers.py` (every caller carries and renews the memory); `lean/game/tests/test_tuning.py`
 holds the references equal to the quasi-steady analysis.
 
@@ -102,7 +128,6 @@ holds the references equal to the quasi-steady analysis.
   experiments") and, after the reach check, the overshoot reversal, the spend terms, the
   two-circle cash, the break relaxation and the defend gate. What survives of the yo-yo is the
   chase speed above and `no_bank` against a straight target.
-- The plan alternates at every neutral pass (Shaw switches after one or two turns).
 - The in-range gate uses the gun range without fields. No retreat or extend (decision 5.7).
 - BFM-CMA2 stays the yardstick, no further search round (morning-notes.md, step 3). The search
   script `scripted-screening/search.py` no longer imports; a round needs new search rows.

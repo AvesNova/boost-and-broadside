@@ -74,7 +74,7 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4)) -> dict:
             "speed": (state.speed / state.constants["corner_speed"])[0],
             "seen": (state.ticks_since_seen[0] == 0) if state.seen is not None else None,
             "weights": weights,
-            "plan": torch.sign(reasons.last_pass[0]),
+            "plan": torch.sign(reasons.plan[0]),
             "target": reasons.marginals.target[0].clone(),
             "bullets": _real_bullets(state),
         }

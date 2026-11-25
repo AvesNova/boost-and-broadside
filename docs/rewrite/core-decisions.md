@@ -774,3 +774,28 @@ These replace the flap, profile and stick-level points above where they disagree
   moves can fall in two ticks or none; fast passes (over 100 m/s) were scored twice 1-4 times
   and missed 1-2 times per 256 4v4 games (nose-cone/progress.md). Scoring on the tick of first
   touch instead would be once per overlap by construction.
+
+## Scripted fight plan (author 2026-11-26, branch scripted-fight-plan)
+
+- **Hard turn after the pass.** The turning tactic has no stick cap: once he is aft of the
+  3/9 line the committed turn is full stick at once (the two-circle middle level is gone).
+- **One plan per engagement.** One- or two-circle is chosen at the first pass against a
+  target from the energy advantage plus a per-ship lean (memory `plan_lean`, uniform on [-1,
+  1) drawn per match like the side, times `plan_lean` 2/3 store fractions) against
+  `plan_threshold` (-0.33, BFM-CMA2; personas also sample it). At equal energy a quarter of
+  the ships choose one-circle. The plan is held across passes until the target changes
+  (memory `plan`, `plan_passes`; `last_pass` is gone).
+- **Switched only when clearly wrong**, at a pass: losing (angles off grown by more than
+  `switch_loss`, 45 deg, since the plan was chosen) or stalled (`stall_passes`, 3, passes
+  without a `switch_gain`, 10 deg, gain). The stall rule is the agent's own addition, from the
+  measurement: with the losing rule alone two equal two-circle ships at full stick met head-on
+  for the whole clock (1v1 draws 41 to 78 of 256). For the author to confirm or drop.
+- Checks: quick tier on lean/scripted and lean/game passed (143), ruff clean; compile check
+  5,930 operations on core to 5,952 (act +15), cold 222.4 to 222.7 s, within the baseline.
+  Sanity (256 scripted games each, before / after): plan switches per engagement 1v1 1.75 /
+  0.66, 4v4 0.22 / 0.10; one-circle plans 3-13% / 22-28%; 1v1 draws 41 / 29, kills per
+  environment-minute 1.66 / 1.42, head-on passes per kill 2.35 / 3.35; 4v4 unchanged within
+  noise. Table: docs/rewrite/sections/fight-plan/progress.md.
+- Open: skill (panel or head to head) not measured; 1v1 kills come about 10-15% slower over
+  three seeds; the store still runs out in the turning fight (scripted-ghosts notes, proposal
+  2, not built).
