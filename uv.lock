@@ -88,6 +88,12 @@ tools = [
     { name = "wandb-workspaces" },
     { name = "websockets" },
 ]
+view = [
+    { name = "glfw" },
+    { name = "imgui-bundle" },
+    { name = "moderngl" },
+    { name = "pillow" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -109,10 +115,14 @@ requires-dist = [
     { name = "cma", marker = "extra == 'tools'", specifier = ">=4.0" },
     { name = "fastapi", marker = "extra == 'tools'", specifier = ">=0.115" },
     { name = "glfw", specifier = ">=2.11.0" },
+    { name = "glfw", marker = "extra == 'view'", specifier = ">=2.11.0" },
     { name = "imgui-bundle", specifier = ">=1.93.0" },
+    { name = "imgui-bundle", marker = "extra == 'view'", specifier = ">=1.93.0" },
     { name = "matplotlib", marker = "extra == 'tools'", specifier = ">=3.10" },
     { name = "moderngl", specifier = ">=5.13.0" },
+    { name = "moderngl", marker = "extra == 'view'", specifier = ">=5.13.0" },
     { name = "numpy", specifier = ">=2.5" },
+    { name = "pillow", marker = "extra == 'view'", specifier = ">=11.0" },
     { name = "platformdirs", specifier = ">=4.3" },
     { name = "safetensors", specifier = ">=0.8.0" },
     { name = "salib", marker = "extra == 'tools'", specifier = ">=1.5" },
@@ -125,7 +135,7 @@ requires-dist = [
     { name = "wandb-workspaces", marker = "extra == 'tools'", specifier = ">=0.4.13" },
     { name = "websockets", marker = "extra == 'tools'", specifier = ">=13" },
 ]
-provides-extras = ["tools"]
+provides-extras = ["tools", "view"]
 
 [package.metadata.requires-dev]
 dev = [
