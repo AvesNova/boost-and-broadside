@@ -486,11 +486,18 @@ def main() -> None:
         action="store_true",
         help="no fields on the map (field_count 0), this render only (default: the game's)",
     )
+    parser.add_argument(
+        "--ships-per-team",
+        type=int,
+        default=4,
+        help="ships on each team, this render only (default: 4; files scripted{N}v{N}_...)",
+    )
     arguments = parser.parse_args()
     torch.set_num_threads(4)
     arguments.out.mkdir(parents=True, exist_ok=True)
     config = core.GameConfig()  # the core game: map, fields, fog, 1,800-tick clock, P-51D
-    stem = "scripted4v4"
+    size = arguments.ships_per_team
+    stem = f"scripted{size}v{size}"
     if arguments.no_fields:
         config = dataclasses.replace(config, field_count=0)
         stem += "_nofields"
@@ -500,9 +507,9 @@ def main() -> None:
     print(f"vision range: {core.ship_card(config).uniform['vision_range']:.1f} m", flush=True)
     for number, seed in enumerate(arguments.seeds, 1):
         started = time.perf_counter()
-        record = simulate(config, seed)
+        record = simulate(config, seed, (size, size))
         simulated = time.perf_counter() - started
-        title = f"game {number} of {len(arguments.seeds)}, seed {seed}, scripted 4v4"
+        title = f"game {number} of {len(arguments.seeds)}, seed {seed}, scripted {size}v{size}"
         if arguments.no_fields:
             title += ", no fields"
         painter = Painter(record, title)
