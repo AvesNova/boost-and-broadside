@@ -463,6 +463,11 @@ def _play(
     ]
     scripted_seats = bool(((queue.net_a < 0) | (queue.net_b < 0)).any())
     cumulative = seat_counts(queue, count)
+    # The most seats a network can hold: E for each seat (A, B) it plays in the queue.
+    ceiling = [
+        envs * (int((queue.net_a == index).any()) + int((queue.net_b == index).any()))
+        for index in range(count)
+    ]
     functions = compiled() if compiled_ else eager()
     model_config = policies[0].config if policies else None
 
@@ -504,12 +509,12 @@ def _play(
     started = time.perf_counter()
     while True:
         # Each network's batch width this segment: its seats in play and those of the games
-        # the segment may start (a bound: no row past it is ever routed).
+        # the segment may start, at most its ceiling (a bound: no row past it is routed).
         end = min(first + deal_rows, limit)
         upcoming = (cumulative[max(end, first)] - cumulative[first]).tolist()
         positions = [
-            torch.arange(max(MINIMUM_WIDTH, held + new), device=device)
-            for held, new in zip(in_play, upcoming, strict=True)
+            torch.arange(max(MINIMUM_WIDTH, min(held + new, most)), device=device)
+            for held, new, most in zip(in_play, upcoming, ceiling, strict=True)
         ]
         active = [index for index in range(count) if in_play[index] + upcoming[index] > 0]
         for _ in range(segment):
