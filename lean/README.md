@@ -50,3 +50,19 @@ run eagerly. The compile tripwire needs the GPU (about 4 minutes on the laptop's
 end of every step that touches `lean/`; it fails on a graph break, a recompile, or a function's
 traced operations growing by more than 10%. Set `OMP_NUM_THREADS` to a few threads for small CPU runs.
 A checkpoint plays in the evaluation as `net:CHECKPOINT[:live|ema|uniform]`.
+
+## Tests read the code's values
+
+A test never copies a number the code defines: it reads it (`GameConfig`, `lean.game.card` and
+`card.CARD`, `lean.game.tuning`'s tables such as `P51D_VALUES`, the game's constants through
+`lean.game.tests.values.game_value`, `lean.scripted.parameters`, `LearnConfig`, `ModelConfig`,
+`lean.contract`) and derives its thresholds from it, so a design change breaks only the tests whose
+rule it really breaks. Four kinds of number appear in tests: (a) a copy of a value the code
+defines (a range, a radius, a speed, a bin count, a share, a size): always read it; (b) a scenario
+input the test chooses (positions, seeds, environments, ticks): fine, unless it silently depends
+on a game value (a distance meant to be inside the vision or gun range, a speed meant to be below
+the top speed), which is then written as a share of that value; (c) an external reference the
+code must reproduce (the P-51D's 375 mph and 3,600 ft/min, a unit conversion, v2's league
+schedule): fixed, but named once (in the code, or as one test-module constant with its source);
+(d) a measured result (the farthest a seed reached): kept only as a bound derived from the game's
+values when it guards something real, never as the current number.
