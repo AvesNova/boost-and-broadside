@@ -249,6 +249,10 @@ class LeanSession(app.Session):
     def take_control(self, ship: int) -> None:
         self.say("Flying a ship: " + DISABLED)
 
+    def offered_overlays(self) -> tuple[str, ...]:
+        # v2's overlays read v2's realtime game and Yemong's heads (lean/view/NOTES.md).
+        return ()
+
     def close(self) -> None:
         self.loop.process.terminate()
         super().close()
