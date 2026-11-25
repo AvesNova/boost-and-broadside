@@ -21,9 +21,13 @@ def test_a_label_lands_on_the_row_its_bullet_left_the_gun(monkeypatch):
     )
     rollout = collect(config, game_config, policy, opponent, state, carry, 40, generator)
     expected = recorder.hit_labels().index_select(1, rollout.seat_environment)
-    # Ghost bullets: a bullet lives up to its bullet_moves ticks (about half a game of 20 ticks)
-    # so about half the rows have one.
-    assert (expected >= 0).float().mean() > 0.3
+    # Not vacuous: both sides of the rule occur (labelled rows and rows whose bullet had not
+    # ended), and labelled rows lie in a later episode than the first (the mapping crosses a
+    # game's end), whatever share of rows the bullet life and the clock give.
+    done = torch.stack(recorder.done).index_select(1, rollout.seat_environment)  # (T, E)
+    later = (done.long().cumsum(0) - done.long()) > 0  # the row is after a game ended
+    assert (expected >= 0).any() and (expected < 0).any()
+    assert ((expected >= 0) & later[..., None]).any()
     assert torch.equal(rollout.hit_label, expected)
 
 
