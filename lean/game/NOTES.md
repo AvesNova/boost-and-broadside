@@ -71,12 +71,43 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   (`standard_spawn_share`) take the standard spawn (full shield, half store, 145.3 m/s).
 - **Flight:** weight always on the wing, the engine drives speed only, dive and climb trade
   store for speed; fields bend paths (a no-fields path for F = 0).
-- **Stick** (author 2026-11-24): a level is a fraction of the most lateral acceleration the
-  ship can give at its speed, sqrt(budget^2 - held^2) with the budget the wing's lift against
-  the g limit (one soft minimum: the corner). Full stick is all of it (the envelope's top line,
-  no tax). The three levels are fixed thirds of it for every type (author 2026-11-24,
-  `card.GRADUAL_STICK`, `MIDDLE_STICK`, `FULL_STICK`; `stick_table`): gradual 1/3, middle 2/3,
-  full 1.
+- **Stick levels** (author 2026-11-26, `card.LEVEL_NAMES`; stick indices unchanged, 1/2
+  Sustain, 3/4 Max, 5/6 Snap; `stick_table`, `sustain_stick_table`, `deep_stall_table`,
+  `stick_level_shape`). The envelope's top line is sqrt(budget^2 - held^2), the budget the
+  wing's maximum lift against the g limit (one soft minimum: the corner).
+  - **Max**: the top line at every speed.
+  - **Snap**: Max's line at and above corner speed. Below it the angle of attack opens past the
+    stall to the card's `deep_stall_angle` (45 deg) by a smootherstep over `deep_stall_band`
+    (0.30) of corner speed; near stall speed it closes back to the stall angle
+    (`_holding_angle`) so Snap never gives up the 1 g.
+  - **Sustain**: the fraction of Max's line whose turn holds energy (Ps = 0) coasting at the
+    spawn store, from a per-type table over speed (`_sustain_table`: 97 speeds, stall speed to
+    cruise speed, read linearly; no solve per tick). 1 (Max) where Max gains energy, 0 at and
+    above cruise speed (no sustained turn there: straight). Dive and climb use the same fraction
+    of their own top line.
+- **Post-stall** (`GameConfig.post_stall`, on; off for comparison): past the stall the lift falls
+  monotonically by a smootherstep in the angle to the flat plate's (`card.POST_STALL_LIFT_FRACTION`
+  0.75 of the maximum) at 45 deg, then C sin(2a), 0 at 90 deg. The post-stall drag rises smoothly
+  from the stall to the card's `post_stall_drag_ratio` (6) x the drag at the stall at 45 deg,
+  bounded at twice that. Past the stall the angle is the wing's whole: the held vertical comes
+  out of the normal force first (`_path_lift`, a smootherstep over `POST_STALL_SHARE_WIDTH`;
+  for Snap once its deep angle opens), and the wing never carries more than its maximum lift
+  against the g limit. No cap at the envelope: near stall speed Snap's thrust turns it a little
+  more than Max.
+- **The 1 g near stall:** what holds the vertical is softmin(C_max v^2 + thrust |sin a|, g limit),
+  a the angle flown (the tick: the current angle; `steady_rates` resolves the setting twice).
+  The turn's budget is unchanged; the wing's share of the hold is softmin(held, budget), so where
+  the thrust carries the rest the turn fades smoothly.
+- **Nose** (`_kick`, `card.NOSE_STIFFNESS`): a spring toward the commanded angle with fixed
+  friction, total damping coefficient 2 nose_damping omega, nose_damping 1/sqrt(3). Going out
+  (the target beyond the angle on its side, or on the other side of centre) the stiffness is
+  1/3, 2/3, 1 x omega^2 for Sustain, Max, Snap: damping ratios 1, 1/sqrt(2), 1/sqrt(3). Going
+  back toward the flight path (a release, a smaller level on the same side, a reversal until the
+  nose crosses centre) it is always the full spring. Chosen per tick, no state.
+- **Firing below stall** (`GameConfig.fire_store_band` 0.1, `_fire`, `_fly`): the thrust a shot
+  withholds is paid by the speed from (1 + band) x stall speed up, by the store at stall speed
+  and below (the withheld thrust's power over the tick), a smootherstep between. With an empty
+  store a ship below (1 + band) x stall speed cannot fire; its gun stays ready.
 - **Separation drag** rises toward the wing's maximum lift and stops there (a transient can
   ask for twice it; P-51D 0.3 at exponent 8, a design input: about +30% lift-dependent drag at
   the maximum lift, starting near 0.8 of it). `steady_rates` / `quasi_steady` evaluate the same
@@ -138,7 +169,8 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   fog. The shield rule is the bullets': the damage empties the shield (clamped at 0), and a ship
   whose shield was already 0 at tick start dies. (Until 2026-11-26 a pass was scored on the tick
   holding its closest approach; with both ships turning that fell in two ticks or none.)
-- **Shields:** recharge after a quiet spell (coast, at most the gradual stick, no trigger).
+- **Shields:** recharge after a quiet spell (coast, straight, no trigger; author 2026-11-26:
+  every turn level restarts the wait, `card.QUIET_STICK_MAX` 0).
 - `StepOut` carries what the learner needs: damage, deaths, done and result, each bullet's
   outcome and firing tick (the hit head's labels), the attacker-by-target damage matrix (real
   bullets and collisions), boundary damage and shield restored (the rewards' ledger).
@@ -193,6 +225,10 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   episodes, 1v1 fields 45 of 252, 4v4 103 of 886, 4v4 fields 120 of 853). That is also most of
   the rise in deaths on a collision tick: a ship at 0 shield now dies at the touch.
 
+- Post-stall flight (2026-11-26, compile check, laptop 4070, cold): the tick's `advance` graph
+  2,856 traced operations (core 2,300, +24%; the new flight terms, not split by cause), total
+  6,503 (core 5,947), cold 233.8 s (core 226.9 s). Lines, nose and hold measurements: docs/rewrite/sections/post-stall/progress.md.
+
 - Ship feature scales, fixed for every type, from scripted 4v4 play with the training spawn
   (`.../scoreboard/feature_ranges.py`, 256 environments x 3,000 ticks, 2026-11-23). Raw 1st / 99th
   percentiles in brackets.
@@ -218,9 +254,12 @@ the cores would meet and a graze between, the credit to the other ship including
 and zero sum, no contact for a wide, later or dead pass),
 fields, fog, ghost bullets, invariants (finite, inert
 padding, team swap), the clock and wipe, both spawn rules, the training spawn, the one-tick delay,
-the stick (full stick the envelope's maximum to 0.1%, every level its fraction of it, the
-levels the fixed thirds), the turn rate
-rising with speed to the corner, the tightest sustained turn 10% slower than the best rate, and
+the levels (Max the envelope's top line to 0.1% and above every fraction of it, Snap equal to Max
+above corner and at the deep angle below its band, Sustain's energy rate about 0 where a
+sustained turn exists, the stick tables by index), the nose (damping ratio per level, the
+overshoot order Sustain < Max < Snap, the full-spring return), Snap held 60 s staying above
+0.95 x stall speed, firing below stall paid from the store and blocked on an empty store, only
+straight keeping the shield quiet, Max's turn rate rising with speed to the corner, the tightest sustained turn 10% slower than the best rate, and
 tuning (the derived card meets its targets: its airframe and engine and the closed inputs; the
 documents' solve meets the flight test; plausible solved coefficients; the cache's key).
 

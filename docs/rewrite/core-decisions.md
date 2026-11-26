@@ -816,3 +816,41 @@ These replace the flap, profile and stick-level points above where they disagree
   Deaths on a collision tick 1v1 24 / 72, 4v4 101 / 115 (fields 112 / 97); mean game length
   1-5% shorter; draws 1v1 41 / 49, 1v1 fields 13 / 30, 4v4 3-4 / 3. Table: lean/game/NOTES.md "Numbers".
 
+
+## Post-stall flight (author 2026-11-26, branch post-stall)
+
+Supersedes "Stick levels (author 2026-11-24)". Every step's decision and measurement:
+docs/rewrite/sections/post-stall/progress.md (steps 1-8); the rules: lean/game/NOTES.md.
+
+- **Three levels, stick indices unchanged**, each all of its own line (`card.LEVEL_NAMES`):
+  Sustain (was gradual) the stick holding Ps = 0 coasting at the spawn store, from a per-type
+  table over speed (Max where Max gains energy, straight from cruise speed up); Max (was middle)
+  the envelope's top line, the wing's maximum lift against the g limit; Snap (was full) Max's
+  line at and above corner, below it the angle of attack opening past the stall to the card's
+  `deep_stall_angle` (45 deg) over `deep_stall_band` (0.30) of corner speed. The 6 g cap and
+  `middle_g_fraction` are gone.
+- **Past the stall** the lift falls smoothly and monotonically to the flat plate's (0.75 of the
+  maximum) at 45 deg, then C sin 2a; the drag rises smoothly to `post_stall_drag_ratio` (6) x
+  the drag at the stall at 45 deg. Gradual lift loss, no asymmetric stall or spin.
+  `GameConfig.post_stall` (on) switches the regime off for comparison.
+- **Snap never gives up the 1 g:** toward stall speed its deep angle closes to the stall angle.
+  The thrust's normal part at the angle flown counts in the 1 g hold, against the g limit. No
+  cap at the envelope: near stall speed Snap's thrust turns it a little more than Max.
+- **Nose spring per level:** going out the stiffness is 1/3, 2/3, 1 of the full spring for
+  Sustain, Max, Snap, the friction fixed (nose_damping 1/sqrt(3)), so the damping ratios are 1,
+  0.707, 0.577; going back toward the flight path always the full spring.
+- **Firing never takes a ship below stall speed:** at and below it the withheld thrust is paid
+  from the store, from 1.1 x stall speed up by the speed, a smootherstep between
+  (`GameConfig.fire_store_band` 0.1); an empty store blocks a shot below 1.1 x stall speed.
+- **Only straight keeps the shield quiet** (`card.QUIET_STICK_MAX` 0): every turn level
+  restarts the recharge wait.
+- **The scripted opponent is out of date** with these levels (its level choices, `fire_worth`
+  and personas were tuned with the old ones) and is redesigned next; until then its competence
+  test is an expected failure (fired share of long-lived ships about 0.957 against the 0.97 bar).
+- Open (progress.md step 8): Snap's 2.37 deg/s rise toward the stall near 96-99 m/s, the
+  far-side overshoot of a reversal into Sustain or Max, the Snap hold's small store drain.
+- Checks (2026-11-26): quick tier on lean/game, lean/tool, lean/scripted tests (one xfail, the
+  scripted competence test); ruff clean. Compile check (laptop 4070, performance profile, cold
+  cache): `advance` 2,856 traced operations (core 2,300, +24%; old baseline 2,220), total 6,503
+  (core 5,947), cold 233.8 s (core 226.9 s), no recompiles or graph breaks. The baseline was
+  reset on this branch (author: each change judged on its own).
