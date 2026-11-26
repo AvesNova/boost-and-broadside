@@ -68,7 +68,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | E1 | Behaviour decisions from imugi-behaviours.md (core-decisions.md "Scripted opponent") | partly done: per-type characteristics, line-of-fire block (worklog 03:17, 03:18); fly-straight rule and manoeuvres wait for A12 |
 | E2 | Basic fighter manoeuvres for the new physics (after A settles) | blocked: A12 |
 | E3 | Reads its team's view, never the state (with fog) | done (worklog 03:45; both teams in one call via `enemy_view`, 06:34) |
-| E5 | Flying straight for a while after the merge before turning (author 2026-11-26): the author reviews replays; a CPU measurement of the time from closest approach to a 30-degree heading change, with the tactic, stick and speed in that window. Simplifying the agent to fundamentals is an option if it is not one rule | open: author reviewing replays |
+| E5 | Flying straight for a while after the merge before turning (author 2026-11-26): the author reviews replays; a CPU measurement of the time from closest approach to a 30-degree heading change, with the tactic, stick and speed in that window. Simplifying the agent to fundamentals is an option if it is not one rule Measured (branch `merge-turn`, docs/rewrite/sections/merge-turn/results.md): never slow in 1v1 without fields; 4.6% of passes slow in 1v1 with fields, 14.5% in 4v4; slow cases mostly have no committed turn sense (target still ahead: a stale fog memory or another enemy) | open: author reviewing replays; scripted work after the physics is locked |
 | E4 | Retreat or extend: none for now (decision 5.7); only a carefully designed rule, if ever (the game should make a badly timed escape from a committed fight fatal) | backlog |
 
 ## F. Documents and gates
