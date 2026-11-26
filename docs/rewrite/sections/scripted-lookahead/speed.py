@@ -1,5 +1,5 @@
-"""GPU time per scripted call (both teams, one call) for the look-ahead agent and the rule-based
-one, against the policy's forward on the training seats (E + E / 2, self-play share 0.5), all
+"""GPU time per scripted call (both teams, one call) for the look-ahead agent, against the
+policy's forward on the training seats (E + E / 2, self-play share 0.5), all
 compiled (lean.contract.compile_dynamic), on a 4v4 state with fields and fog after a short
 scripted warm-up; and each call's peak memory above the state's.
 
@@ -18,8 +18,6 @@ from lean.learn import LearnConfig
 from lean.learn.rollout import seats
 from lean.model import draw_position_offset
 from lean.model.agent import agent_step, seat_view
-from lean.scripted.rule_based import opponent as rule_based
-from lean.scripted.rule_based.parameters import ScriptedConfig as RuleBasedConfig
 
 
 def timed(function, repeats: int) -> tuple[float, float]:
@@ -44,7 +42,6 @@ def main():
     parser.add_argument("--repeats", type=int, default=20)
     parser.add_argument("--skip-policy", action="store_true")
     parser.add_argument("--plain", action="store_true", help="the plain PyTorch pair stage")
-    parser.add_argument("--skip-old", action="store_true", help="skip the rule-based agent")
     parser.add_argument("--look-ahead", default=None, help="points, e.g. 0.25,0.5,1,2")
     parser.add_argument("--retarget", type=int, default=None, help="1 / 0: paths.RETARGET")
     arguments = parser.parse_args()
@@ -67,31 +64,22 @@ def main():
     sizes = torch.full((envs, 2), arguments.size, dtype=torch.long, device=device)
     state = game.reset(config, envs, sizes, generator, device)
     slots = state.x.shape[1]
-    new_config, old_config = scripted.ScriptedConfig(), RuleBasedConfig()
-    memory = rule_based.fresh_memory(envs, slots, generator, device)
-    with torch.no_grad():
-        for _ in range(60):  # into the fight a little, with the old agent (eager, cheap)
-            uniforms = rule_based.draw_uniforms(envs, slots, generator, device)
-            action, memory, _ = rule_based.decide(old_config, state, None, None, uniforms, memory)
-            state, _ = game.step(
-                config, state, action, game.draw_noise(config, envs, slots, generator, device)
-            )
-
-    new_uniforms = scripted.draw_uniforms(envs, slots, generator, device)
-    old_uniforms = rule_based.draw_uniforms(envs, slots, generator, device)
+    new_config = scripted.ScriptedConfig()
 
     def new_call(state, uniforms):
         return scripted.decide(new_config, state, None, None, uniforms)
 
-    def old_call(state, uniforms, memory):
-        return rule_based.decide(old_config, state, None, None, uniforms, memory)
-
-    compiled_new, compiled_old = compile_dynamic(new_call), compile_dynamic(old_call)
+    compiled_new = compile_dynamic(new_call)
     with torch.no_grad():
-        for name, function in (
-            ("look-ahead", lambda: compiled_new(state, new_uniforms)),
-            ("rule-based", lambda: compiled_old(state, old_uniforms, memory)),
-        )[: 1 if arguments.skip_old else 2]:
+        for _ in range(30):  # into the fight a little, with the agent itself (compiled)
+            uniforms = scripted.draw_uniforms(envs, slots, generator, device)
+            action, _ = compiled_new(state, uniforms)
+            state, _ = game.step(
+                config, state, action, game.draw_noise(config, envs, slots, generator, device)
+            )
+    new_uniforms = scripted.draw_uniforms(envs, slots, generator, device)
+    with torch.no_grad():
+        for name, function in (("look-ahead", lambda: compiled_new(state, new_uniforms)),):
             begun = time.perf_counter()
             function()
             torch.cuda.synchronize()

@@ -26,8 +26,6 @@ import numpy as np
 import torch
 
 from lean import game, scripted
-from lean.scripted.rule_based import opponent as rule_based
-from lean.scripted.rule_based.parameters import ScriptedConfig as RuleBasedConfig
 
 SETUPS = {
     "1v1-nofields": (1, False, 256),
@@ -44,7 +42,6 @@ def simulate(agent: str, size: int, fields: bool, envs: int, ticks: int, device,
     sizes = torch.full((envs, 2), size, dtype=torch.long, device=device)
     state = game.reset(config, envs, sizes, generator, device)
     slots = state.x.shape[1]
-    memory = rule_based.fresh_memory(envs, slots, generator, device)
     tracks = {name: [] for name in ("x", "y", "heading", "alive", "over")}
     over = torch.zeros(envs, dtype=torch.bool, device=device)
     team = state.team.cpu().numpy()
@@ -58,14 +55,8 @@ def simulate(agent: str, size: int, fields: bool, envs: int, ticks: int, device,
                 ("over", over),
             ):
                 tracks[name].append(value.cpu().numpy())
-            if agent == "look-ahead":
-                uniforms = scripted.draw_uniforms(envs, slots, generator, device)
-                action = scripted.act(scripted.ScriptedConfig(), state, None, None, uniforms)
-            else:
-                uniforms = rule_based.draw_uniforms(envs, slots, generator, device)
-                action, memory = rule_based.act(
-                    RuleBasedConfig(), state, None, None, uniforms, memory
-                )
+            uniforms = scripted.draw_uniforms(envs, slots, generator, device)
+            action = scripted.act(scripted.ScriptedConfig(), state, None, None, uniforms)
             state, out = game.tick(config, state, action, generator)
             over = over | out.done
             if bool(over.all()):
@@ -146,7 +137,7 @@ def summary(records):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--agent", choices=("look-ahead", "rule-based"), default="look-ahead")
+    parser.add_argument("--agent", choices=("look-ahead",), default="look-ahead")
     parser.add_argument("--ticks", type=int, default=1800)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--only", default=None)

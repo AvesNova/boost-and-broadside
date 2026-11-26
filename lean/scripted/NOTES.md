@@ -5,7 +5,8 @@ teacher, and a population of personas around it. Plus a weaker deterministic cha
 look-ahead scoring agent (author 2026-11-26; design, steps and measurements:
 `docs/rewrite/sections/scripted-lookahead/progress.md`; decisions:
 `docs/rewrite/core-decisions.md` "Scripted look-ahead"). It replaced the rule-based BFM agent
-(`docs/rewrite/scripted-bfm-design.md`, code removed).
+(`docs/rewrite/scripted-bfm-design.md`; its code, kept for comparison through round 2, was
+removed in round 3).
 
 ## Entry points
 
@@ -24,7 +25,9 @@ label is a function of the observation. The sandbox flies against it (`World(opp
   against my own gun (weight 1 by definition).
 - `paths.py`: `predict`, the 7 stick candidates' paths of every ship at its table power at the
   look-ahead points (`LOOK_AHEAD`, a module setting read at call time); `power_outlook`, each
-  ship's speed and store at the 3 powers over the power look (`POWER_LOOK`, 1 to 5 s).
+  ship's speed and store at the 3 powers over the power look (`POWER_LOOK`, 1 to 5 s). Both
+  read the game's steady-flight table (`core.steady_lookup`, round 3), not the flight
+  functions.
 - `opponent.py`: `explain` and its stages; `pair_tables` + `collapse` are the plain twin of the
   kernel.
 - `kernels.py`: `pair_scores`, the pair stage (and the cover) as one Triton kernel (CUDA;
@@ -40,13 +43,16 @@ label is a function of the observation. The sandbox flies against it (`World(opp
    last speed and nose rate for up to 2 s, then straight; `dead_reckon`).
 2. Power (round 2, author 2026-11-26): per ship from the own-ship terms only, over the power
    look (`paths.power_outlook`: speed and store at each power holding the pending stick, from
-   `core.steady_flight` per segment): minus the speed term, plus energy (at `energy_weight`
-   while engaged, `disengaged_energy_weight` while not), discounted by `power_horizon`; its own
+   the game's steady-flight table per segment): minus the speed term, plus energy (at
+   `energy_weight` while engaged, `disengaged_energy_weight` while not), plus the store itself
+   (`store_weight`, round 3: diving trades the store for speed at almost no change in total
+   energy, so without it the store ran nearly empty), discounted by `power_horizon`; its own
    softmax (`power_temperature`) and stickiness (`power_stickiness`) on the pending power. The
    table power: the own ship's pending power; an enemy's (not observable) the power his outlook
    scores best from straight flight with the yardstick's rows.
 3. Candidate paths (`paths.predict`, the 7 sticks at the table power): speed and store stepped
-   per segment from the game's steady-flight rates at the segment's start; the angle of attack
+   per segment from the game's steady-flight rates at the segment's start (its table: below);
+   the angle of attack
    follows the nose spring in closed form per segment (`nose_response`: e'' + 2 sigma e' + k
    omega^2 e = 0 with the tick's stiffness per level going out, the full spring going back, the
    fixed friction; the angle's own rate from `core.current_path_rate`) toward the level's steady
@@ -79,12 +85,27 @@ label is a function of the observation. The sandbox flies against it (`World(opp
    stick.
 8. Stick = softmax(scores / tau_me); flight = stick x power; fire = the trigger now (aim gate at the lead point in
    target sizes x `fire_tolerance`, range gate, the hit worth `fire_worth` ticks of shield
-   recharge or his whole shield, never through a team-mate, the gun ready). Joint = stick (7) x power (3) x fire (2).
+   recharge or his whole shield, never through a team-mate, the gun ready). The hit's worth,
+   here and in the pair tables' gun, is the game's hit model through one call
+   (`hit_worth` -> `core.hit_damage`: kinetic at the distance, the target's nose cone, dead
+   centre), so a change of the hit model in the game reaches the agent without edits (the
+   Triton kernel has its own copy of the gun's worth; the kernel-against-twin test flags a
+   difference). Joint = stick (7) x power (3) x fire (2).
 
 ## Numbers
 
-See `docs/rewrite/sections/scripted-lookahead/progress.md` (speed, usage, entropy, outcomes
-against the rule-based agent, merge turn).
+See `docs/rewrite/sections/scripted-lookahead/progress.md` (speed, usage, entropy, kills,
+draws, duels, merge turn, the grouped stick change).
+
+## The steady-flight table (round 3)
+
+`core.steady_flight` tabulated once per ship type when the ship card is built
+(`core.steady_characteristics`): turn rate, d speed / dt, d store / dt and the angle of attack
+for each stick level, power, 17 store nodes (the store matters only in its edge bands: 9
+sink-room nodes, 9 top-room nodes, `core.store_room`) and 400 speeds (half Sustain's step,
+from a quarter of stall speed). `core.steady_lookup` reads it bilinearly by the ship's type
+(`State.type`); the table rides on `Constants.per_type` (by type, not dealt to slots). Its
+error against the direct functions and the path check: progress.md round 3 step 1.
 
 ## Tests
 

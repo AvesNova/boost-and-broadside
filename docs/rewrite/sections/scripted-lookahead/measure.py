@@ -1,18 +1,19 @@
 """Scripted games for the look-ahead agent's checks: action usage, the teacher's entropy, kills
-per minute, and outcomes against the rule-based agent it replaces.
+per minute, and duels between two look-ahead agents (the rule-based agent it replaced was
+removed in round 3).
 
     PYTHONPATH=. uv run --no-sync python docs/rewrite/sections/scripted-lookahead/measure.py \
         --mode selfplay --size 4 --fields 10 --envs 256 --ticks 5400 --out DIR
 
 Modes: "selfplay" (the look-ahead yardstick on both teams: the 42 actions' counts over living
 ship-ticks, the mean entropy of its joint distribution, kills per environment-minute, mean
-speed and store, games ended); "versus" (look-ahead on team 0 in the first half of the
-environments and team 1 in the second, the rule-based agent on the other team: wins, draws,
-losses by the look-ahead's side); "old" (the rule-based agent on both teams, for the kills and
-usage numbers). Fog on, the default game otherwise (`--fields` fields). Finished games are
-re-dealt. `--set name=value ...` changes look-ahead rows (diagnostics). Every `--report`
-ticks it writes the totals so far to --out (JSON) and prints them with the ETA as a clock
-time. `--compile` compiles the agent's call.
+speed and store, games ended); "duel" (this agent on team 0 in the first half of the
+environments and team 1 in the second, another look-ahead agent (`--other-set`,
+`--other-look-ahead`) on the other team: wins, draws, losses by this agent's side). Fog on,
+the default game otherwise (`--fields` fields). Finished games are re-dealt. `--set
+name=value ...` changes look-ahead rows. Every `--report` ticks it writes the totals so far
+to --out (JSON) and prints them with the ETA as a clock time. `--compile` compiles the
+agent's call.
 """
 
 import argparse
@@ -28,13 +29,11 @@ from lean.contract import FIRES, JOINT, POWERS, STICKS, compile_dynamic, join_ac
 from lean.game import card
 from lean.game.core import steady_lookup
 from lean.scripted import paths
-from lean.scripted.rule_based import opponent as rule_based
-from lean.scripted.rule_based.parameters import ScriptedConfig as RuleBasedConfig
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=("selfplay", "versus", "old", "duel"), default="selfplay")
+    parser.add_argument("--mode", choices=("selfplay", "duel"), default="selfplay")
     parser.add_argument("--size", type=int, default=4)
     parser.add_argument("--fields", type=int, default=10)
     parser.add_argument("--envs", type=int, default=256)
@@ -76,18 +75,13 @@ def main():
     state = game.reset(config, envs, sizes, generator, device)
     slots = state.x.shape[1]
     changes = {item.split("=")[0]: float(item.split("=")[1]) for item in arguments.set}
-    new_config, old_config = scripted.ScriptedConfig().replace(**changes), RuleBasedConfig()
-    old_memory = rule_based.fresh_memory(envs, slots, generator, device)
+    new_config = scripted.ScriptedConfig().replace(**changes)
 
     # Personas drawn per ship at each deal (training's mechanism); None: the yardstick.
     persona = scripted.personas(new_config, envs, slots, generator, device, arguments.spread)
 
     def new_call(state, uniforms, persona):
         return scripted.decide(new_config, state, None, persona, uniforms)
-
-    def old_call(state, uniforms, memory):
-        action, memory, _ = rule_based.decide(old_config, state, None, None, uniforms, memory)
-        return action, memory
 
     other_config = new_config
     if arguments.other_set is not None:
@@ -99,9 +93,9 @@ def main():
         return scripted.decide(other_config, state, None, None, uniforms)[0]
 
     if arguments.compile:
-        new_call, old_call = compile_dynamic(new_call), compile_dynamic(old_call)
+        new_call = compile_dynamic(new_call)
         other_call = compile_dynamic(other_call)
-    # Versus: which team the look-ahead agent flies, per environment (seats alternated).
+    # Duel: which team the look-ahead agent flies, per environment (seats alternated).
     new_team = (torch.arange(envs, device=device) >= envs // 2).long()
     counts = torch.zeros(JOINT, dtype=torch.long, device=device)
     entropy_sum, entropy_count = 0.0, 0
@@ -160,49 +154,48 @@ def main():
     with torch.no_grad():
         for tick in range(1, arguments.ticks + 1):
             living = state.exists & state.alive
-            if arguments.mode != "old":
-                uniforms = scripted.draw_uniforms(envs, slots, generator, device)
-                action, choice = new_call(state, uniforms, persona)
-                joint = choice.joint
-                entropy = -(joint * joint.clamp_min(1e-30).log()).sum(-1)
-                mine = (
-                    living
-                    if arguments.mode == "selfplay"
-                    else living & (state.team == new_team[:, None])
-                )
-                entropy_sum += float(entropy[mine].sum())
-                entropy_count += int(mine.sum())
-                if previous_joint is not None:
-                    both = mine & previous_mine
-                    now_parts = joint.view(envs, slots, STICKS, POWERS, FIRES)
-                    then_parts = previous_joint.view(envs, slots, STICKS, POWERS, FIRES)
-                    for name, now_p, then_p in (
-                        ("joint", joint, previous_joint),
-                        ("stick", now_parts.sum((-1, -2)), then_parts.sum((-1, -2))),
-                        ("power", now_parts.sum((-1, -3)), then_parts.sum((-1, -3))),
-                    ):
-                        distance = 0.5 * (now_p - then_p).abs().sum(-1)
-                        variation[name] += float(distance[both].sum())
-                    variation_count += float(both.sum())
-                    stick_now, stick_then = now_parts.sum((-1, -2)), then_parts.sum((-1, -2))
+            uniforms = scripted.draw_uniforms(envs, slots, generator, device)
+            action, choice = new_call(state, uniforms, persona)
+            joint = choice.joint
+            entropy = -(joint * joint.clamp_min(1e-30).log()).sum(-1)
+            mine = (
+                living
+                if arguments.mode == "selfplay"
+                else living & (state.team == new_team[:, None])
+            )
+            entropy_sum += float(entropy[mine].sum())
+            entropy_count += int(mine.sum())
+            if previous_joint is not None:
+                both = mine & previous_mine
+                now_parts = joint.view(envs, slots, STICKS, POWERS, FIRES)
+                then_parts = previous_joint.view(envs, slots, STICKS, POWERS, FIRES)
+                for name, now_p, then_p in (
+                    ("joint", joint, previous_joint),
+                    ("stick", now_parts.sum((-1, -2)), then_parts.sum((-1, -2))),
+                    ("power", now_parts.sum((-1, -3)), then_parts.sum((-1, -3))),
+                ):
+                    distance = 0.5 * (now_p - then_p).abs().sum(-1)
+                    variation[name] += float(distance[both].sum())
+                variation_count += float(both.sum())
+                stick_now, stick_then = now_parts.sum((-1, -2)), then_parts.sum((-1, -2))
 
-                    def by_side(stick):
-                        return torch.zeros(stick.shape[:-1] + (3,), device=device).index_add_(
-                            -1, side_of_stick, stick
-                        )
+                def by_side(stick):
+                    return torch.zeros(stick.shape[:-1] + (3,), device=device).index_add_(
+                        -1, side_of_stick, stick
+                    )
 
-                    side = 0.5 * (by_side(stick_now) - by_side(stick_then)).abs().sum(-1)
-                    grouped["side"] += float(side[both].sum())
-                    rates = steady_rates_now(state)  # (E, N, STICKS) rad/s, signed
-                    order = rates.argsort(-1)
-                    sorted_rates = rates.gather(-1, order)
-                    gaps = sorted_rates.diff(dim=-1)
-                    cumulative = (stick_now - stick_then).gather(-1, order).cumsum(-1)[..., :-1]
-                    w1 = (cumulative.abs() * gaps).sum(-1)
-                    span = (sorted_rates[..., -1] - sorted_rates[..., 0]).clamp_min(1e-6)
-                    grouped["rate_w1_deg_s"] += float(torch.rad2deg(w1)[both].sum())
-                    grouped["rate_w1_of_span"] += float((w1 / span)[both].sum())
-                previous_joint, previous_mine = joint, mine
+                side = 0.5 * (by_side(stick_now) - by_side(stick_then)).abs().sum(-1)
+                grouped["side"] += float(side[both].sum())
+                rates = steady_rates_now(state)  # (E, N, STICKS) rad/s, signed
+                order = rates.argsort(-1)
+                sorted_rates = rates.gather(-1, order)
+                gaps = sorted_rates.diff(dim=-1)
+                cumulative = (stick_now - stick_then).gather(-1, order).cumsum(-1)[..., :-1]
+                w1 = (cumulative.abs() * gaps).sum(-1)
+                span = (sorted_rates[..., -1] - sorted_rates[..., 0]).clamp_min(1e-6)
+                grouped["rate_w1_deg_s"] += float(torch.rad2deg(w1)[both].sum())
+                grouped["rate_w1_of_span"] += float((w1 / span)[both].sum())
+            previous_joint, previous_mine = joint, mine
             if arguments.mode == "duel":  # the other look-ahead agent on the other team
                 paths.LOOK_AHEAD = other_points or main_points
                 other_uniforms = scripted.draw_uniforms(envs, slots, generator, device)
@@ -210,17 +203,9 @@ def main():
                 paths.LOOK_AHEAD = main_points
                 use_new = (state.team == new_team[:, None])[..., None]
                 action = torch.where(use_new, action, other_action)
-            elif arguments.mode != "selfplay":
-                old_uniforms = rule_based.draw_uniforms(envs, slots, generator, device)
-                old_action, old_memory = old_call(state, old_uniforms, old_memory)
-                if arguments.mode == "old":
-                    action = old_action
-                else:
-                    use_new = (state.team == new_team[:, None])[..., None]
-                    action = torch.where(use_new, action, old_action)
             counts += torch.bincount(join_action(action)[living], minlength=JOINT)
             measured = living & (previous[..., 0] >= 0)
-            if arguments.mode in ("versus", "duel"):
+            if arguments.mode == "duel":
                 measured = measured & (state.team == new_team[:, None])
             power_switches += float((measured & (action[..., 1] != previous[..., 1])).sum())
             stick_switches += float((measured & (action[..., 0] != previous[..., 0])).sum())
@@ -243,11 +228,6 @@ def main():
                 winner_new = result == new_team[done]
                 outcome["wins"] += int(((result < 2) & winner_new).sum())
                 outcome["losses"] += int(((result < 2) & ~winner_new).sum())
-                fresh = rule_based.fresh_memory(envs, slots, generator, device)
-                old_memory = {
-                    name: torch.where(done[:, None], fresh[name], old_memory[name])
-                    for name in old_memory
-                }
                 previous = torch.where(done[:, None, None], -1, previous)
                 if previous_joint is not None:
                     previous_mine = previous_mine & ~done[:, None]
