@@ -540,3 +540,127 @@ but loses the 4v4 duel clearly (334 to 485), costs +1.65 ms and 40% more memory,
 turn and draw rate are the same as 2 s. 1 s is cheapest but slowest at the merge and loses the
 most 1v1 games to the rule-based agent. The 1v1 draw share does not move with the horizon
 (31-35%): the stalemate is not a horizon problem.
+
+## R2 step 6: re-measure (2026-11-27, after merging core: hit damage halved 21 -> 10.5)
+
+Everything in this section is on the merged tree (hit damage 10.5) with the defaults: 2 s
+look-ahead (0.25, 0.5, 1, 1.5, 2), nose retarget, power look 1 / 2.5 / 5 s (cut from 5 points
+to 3 after the first compile check: two fewer steady-flight traces in the graph, decided
+myself). 1v1 runs are **fog off, no fields** (author); 4v4 fog on. Raw:
+`data/lookahead-r2/final/` (a first pass with the old damage and the 5-point power look is
+kept in `data/lookahead-r2/final_before_damage_halved/`; every number before this section was
+taken with hit damage 21).
+
+Cost (`speed.py`, 2,048 envs 4v4, fields, fog, 100 calls, warm cache):
+
+| call | ms per call | peak MiB above the state |
+|---|---|---|
+| look-ahead (both teams) | 5.70 | 134 |
+| rule-based | 0.35 | 3 |
+| policy forward (3,072 seats) | 21.69 | 417 |
+
+The look-ahead is 26% of the policy's forward (round 1: 16.6 ms, 72%).
+
+Compile check (`scoreboard/compile_check.py`, cold, baseline not updated): **fails**. `act`
+7,864 traced operations against the baseline's 1,821 (round 1: 5,396; before the power look
+was cut 8,856); total 12,545; cold **333.0 s** against the 260 s budget (round 1 289.4 s;
+before the cut 357.4 s); `act`'s backend 100.8 s; 4 graphs, no recompiles, no graph breaks.
+The cause: every steady-flight evaluation is about 500 traced operations and the call now
+has 8 (5 path segments, 3 power-look segments; round 1 had 4). Not fixed: reported.
+
+Games (256 envs x 3,600 ticks self-play, re-dealt; spread 1 = personas drawn per ship at
+every deal, the full persona box; training's `persona_spread` default is 0):
+
+| run | games | draws | kills per env-min | entropy | speed/corner | store | power sw/s | stick sw/s | TV joint / stick / power per tick |
+|---|---|---|---|---|---|---|---|---|---|
+| selfplay_1v1_f0_fogoff | 796 | 8 | 1.34 | 1.008 | 0.75 | 0.06 | 0.26 | 11.65 | 0.156 / 0.147 / 0.011 |
+| selfplay_1v1_f0_fogoff_spread1 | 910 | 17 | 1.62 | 1.022 | 0.76 | 0.11 | 0.56 | 11.32 | 0.155 / 0.138 / 0.021 |
+| selfplay_4v4_f0 | 961 | 2 | 10.83 | 0.799 | 0.84 | 0.09 | 0.26 | 9.41 | 0.149 / 0.137 / 0.011 |
+| selfplay_4v4_f10 | 802 | 2 | 9.29 | 0.884 | 0.86 | 0.12 | 0.25 | 10.39 | 0.158 / 0.147 / 0.010 |
+| selfplay_4v4_f10_spread1 | 760 | 4 | 9.02 | 0.916 | 0.86 | 0.16 | 0.53 | 10.39 | 0.158 / 0.140 / 0.020 |
+| old_1v1_f0_fogoff | 612 | 36 | 0.89 | 0.000 | 0.47 | 0.22 | 4.80 | 9.10 | - |
+
+versus_4v4_f10: W/D/L 1433 / 5 / 31 of 1469
+
+versus_1v1_f0_fogoff: W/D/L 2298 / 0 / 139 of 2437
+
+(TV: the mean total variation between a living ship's consecutive-tick distributions;
+switches: sampled action changes per ship-second.) The rule-based row: its own self-play, 1v1
+fog off. Against the rule-based agent (seats alternated, 512 envs x 3,600 ticks; the rule-based
+agent is mistuned for Sustain / Max / Snap, a weak reference): **4v4 fields 1,433 / 5 / 31**
+(W / D / L of 1,469), **1v1 fog off 2,298 / 0 / 139** (of 2,437).
+
+Merge turn (`merge_turn.py`, seconds from the closest approach, median / 75th / 90th; slow =
+over 1.5 s to 30 deg or not reached):
+
+| setup | agent | aircraft | to 30 deg | to 90 deg | slow |
+|---|---|---|---|---|---|
+| 1v1 fog off, no fields | look-ahead | 1,828 | 0.73 / 1.17 / 1.60 | 2.03 / 2.53 / 3.33 | 231 |
+| 1v1 fog off, no fields | rule-based | 1,130 | 0.53 / 1.10 / 1.67 | 2.13 / 3.80 / 5.10 | 148 |
+| 4v4 fields, fog | look-ahead | 1,632 | 0.70 / 1.20 / 2.10 | 2.10 / 3.37 / 5.48 | 267 |
+| 4v4 fields, fog | rule-based | 818 | 0.67 / 1.27 / 2.02 | 2.93 / 4.63 / 7.06 | 157 |
+
+Usage of the 42 actions (share of living ship-ticks, no fire / fire):
+
+| stick | power | selfplay_1v1_f0_fogoff (no fire / fire) | selfplay_4v4_f0 (no fire / fire) | selfplay_4v4_f10 (no fire / fire) |
+|---|---|---|---|---|
+| straight | coast | 6.64% / 0.04% | 9.91% / 0.29% | 8.73% / 0.33% |
+| straight | dive | 8.18% / 0.07% | 16.01% / 0.51% | 14.28% / 0.55% |
+| straight | climb | 0.78% / 0.00% | 1.87% / 0.04% | 2.44% / 0.08% |
+| Sustain R | coast | 6.57% / 0.08% | 5.84% / 0.28% | 5.79% / 0.34% |
+| Sustain R | dive | 9.42% / 0.10% | 11.65% / 0.53% | 10.92% / 0.53% |
+| Sustain R | climb | 1.05% / 0.01% | 0.74% / 0.03% | 1.31% / 0.07% |
+| Sustain L | coast | 6.71% / 0.07% | 5.80% / 0.28% | 5.87% / 0.31% |
+| Sustain L | dive | 9.58% / 0.11% | 11.43% / 0.49% | 10.79% / 0.54% |
+| Sustain L | climb | 1.00% / 0.01% | 0.75% / 0.03% | 1.29% / 0.09% |
+| Max R | coast | 6.01% / 0.07% | 3.35% / 0.13% | 3.34% / 0.13% |
+| Max R | dive | 10.24% / 0.11% | 7.42% / 0.26% | 6.93% / 0.24% |
+| Max R | climb | 1.52% / 0.01% | 0.70% / 0.02% | 0.85% / 0.03% |
+| Max L | coast | 6.12% / 0.06% | 3.38% / 0.13% | 3.45% / 0.13% |
+| Max L | dive | 10.64% / 0.10% | 7.23% / 0.26% | 7.05% / 0.25% |
+| Max L | climb | 1.53% / 0.01% | 0.72% / 0.02% | 0.86% / 0.03% |
+| Snap R | coast | 1.99% / 0.15% | 1.26% / 0.10% | 1.68% / 0.11% |
+| Snap R | dive | 3.57% / 0.22% | 2.97% / 0.21% | 3.56% / 0.22% |
+| Snap R | climb | 0.59% / 0.03% | 0.38% / 0.02% | 0.66% / 0.03% |
+| Snap L | coast | 2.01% / 0.14% | 1.31% / 0.10% | 1.68% / 0.11% |
+| Snap L | dive | 3.65% / 0.23% | 2.95% / 0.21% | 3.50% / 0.22% |
+| Snap L | climb | 0.55% / 0.03% | 0.40% / 0.02% | 0.66% / 0.03% |
+
+selfplay_1v1_f0_fogoff: entropy 1.008 nats, kills per env-minute 1.34, unused actions 0, under 0.1% 14, games 796 (draws 8)
+
+selfplay_4v4_f0: entropy 0.799 nats, kills per env-minute 10.83, unused actions 0, under 0.1% 8, games 961 (draws 2)
+
+selfplay_4v4_f10: entropy 0.884 nats, kills per env-minute 9.29, unused actions 0, under 0.1% 7, games 802 (draws 2)
+
+- Every action is used in every setup; the climb is the least used power (3-6% of
+  ship-ticks), dive the most (55-65%), and the mean store sits low (0.06-0.16 of full; round
+  1: 0.21-0.52): the power look spends the store on speed. Teacher entropy 0.80-1.01 nats
+  (round 1 1.95-2.34: the power is now decided, not near uniform).
+- Power: the distribution barely moves (TV 0.010-0.021 per tick) and samples switch 0.25-0.56
+  times per ship-second (round 1: 15.9). **The stick distribution moves about 0.14-0.15 TV per
+  tick** (the stick marginal shifts by 14% of its mass every tick on average): flagged per the
+  author's rule (the distribution itself jumps, not only the samples); not tuned.
+- 1v1 fog off: 1% draws (8 of 796), yardstick mirror; 2% with personas (17 of 910). The fog-on
+  draws of steps 2-5 (31-35%) were mostly lost sight, not a refusal to engage.
+- Personas (spread 1): kills per minute 1.62 vs 1.34 in 1v1, 9.02 vs 9.29 in 4v4 fields; power
+  switches double (0.53-0.56 per second), still far below round 1.
+
+## R2 step 7: replays (2026-11-27)
+
+`~/avesnova/boost-and-broadside/data/replays-2026-11-26-lookahead-r2/` (look-ahead on both
+teams, CPU, batch 1, merged tree): `scripted1v1_nofields_fogoff_seed0..2.mp4` (the author's
+rule: every 1v1 fog off and no fields, so the brief's "1v1 with fields" replay is a third
+fog-off no-fields seed instead), `scripted4v4_seed0..1.mp4` (default map, fields, fog). Results:
+1v1 seed 0 Blue wipe at 11.6 s, seed 1 to the clock (Blue on shield), seed 2 Red wipe at 46.8 s;
+4v4 seed 0 Red wipe at 36.7 s, seed 1 Blue wipe at 39.1 s. Re-render:
+`CUDA_VISIBLE_DEVICES="" PYTHONPATH=. uv run --no-sync python
+docs/rewrite/sections/replay/replay.py --seeds 0 1 2 --ships-per-team 1 --no-fields --no-fog
+--out DIR` (new `--no-fog`). Seen on contact sheets (a frame every 3-5 s; I cannot play the
+video): the power label holds (mostly dive) instead of changing every tick; in 1v1 seed 1 the
+two open to about 2 km for the first ~20 s before closing, then fight slowly at 0.4-0.6 x
+corner speed near the stall with the store empty; 4v4 fights resolve in pairs and threes.
+
+## R2 step 8: the zero-sum test
+
+`lean/learn/tests/test_rewards.py::test_the_real_game_gives_zero_sum_levels` passes on this
+tree (since step 3; also after the merge), with the quick tier of lean/scripted and lean/learn.
