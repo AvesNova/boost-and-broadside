@@ -42,6 +42,7 @@ def main():
     parser.add_argument(
         "--set", nargs="*", default=[], help="look-ahead parameters name=value (diagnostics)"
     )
+    parser.add_argument("--no-fog", action="store_true", help="fog off (author: 1v1 runs)")
     parser.add_argument("--look-ahead", default=None, help="points, e.g. 0.25,0.5,1,2")
     parser.add_argument(
         "--other-look-ahead", default=None, help="duel: the other look-ahead agent's points"
@@ -56,7 +57,7 @@ def main():
     other_points = points(arguments.other_look_ahead) if arguments.other_look_ahead else None
     paths.LOOK_AHEAD = main_points
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = game.GameConfig(field_count=arguments.fields)
+    config = game.GameConfig(field_count=arguments.fields, fog=not arguments.no_fog)
     envs, size = arguments.envs, arguments.size
     generator = torch.Generator(device).manual_seed(arguments.seed)
     sizes = torch.full((envs, 2), size, dtype=torch.long, device=device)
@@ -164,6 +165,7 @@ def main():
                     "other_look_ahead": other_points,
                     "size": size,
                     "fields": arguments.fields,
+                    "fog": not arguments.no_fog,
                     "envs": envs,
                     "ticks": tick,
                     "usage": (counts.float() / total).tolist(),

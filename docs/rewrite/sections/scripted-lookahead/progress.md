@@ -505,3 +505,38 @@ Cost (`speed.py`, compiled, 2,048 envs 4v4, fields, fog, 200 calls):
   re-linearises the path rate). D (+1.27 ms more): 82 -> 64 m, 53 -> 42 m. **C kept** (decided
   myself: at most 0.5 s per segment, the same rule the horizon sweep uses); D's further 20 m at
   the 90th percentile is not worth another 22%.
+
+## R2 step 5: horizon sweep (2026-11-26)
+
+The stick look-ahead's last point, segments at most 0.5 s: 1 s (0.25, 0.5, 1), 1.5 s (+1.5),
+2 s (+1.5, 2), 3 s (+1.5, 2, 2.5, 3); the discount `horizon` stays 1.5 s. Every 1v1 run of
+this table is **fog on** (the author's fog-off rule came after it; the chosen horizon's 1v1
+numbers are re-run fog off in step 6). Self-play 1v1 without fields 256 envs x 1,800 ticks;
+against the rule-based agent 512 envs x 1,800 ticks, seats alternated (W / D / L by the
+look-ahead agent; the rule-based agent is mistuned for Sustain / Max / Snap, a weak
+reference); merge turn 1v1 without fields (`merge_turn.py --only 1v1-nofields`, seconds from
+the closest approach); cost `speed.py` 100 calls, 2,048 envs 4v4, fields, fog. Duels: the 2 s
+agent against each other horizon on the other team, seats alternated, 512 envs x 1,800 ticks.
+Raw: `data/lookahead-r2/sweep/`.
+
+| look-ahead | 1v1 self-play games / draws (share) | kills per env-min | vs rule-based 4v4 fields W / D / L | vs rule-based 1v1 W / D / L | merge t30 (med / 75 / 90) | t90 | slow | ms per call | peak MiB |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 s | 306 / 106 (35%) | 0.77 | 630 / 4 / 39 | 192 / 287 / 145 | 0.87 / 1.33 / 1.74 | 2.13 / 2.70 / 3.53 | 143 of 896 | 3.87 | 78 |
+| 1.5 s | 305 / 97 (32%) | 0.78 | 636 / 2 / 41 | 210 / 316 / 82 | 0.70 / 1.10 / 1.57 | 1.87 / 2.40 / 3.17 | 103 of 918 | 5.15 | 107 |
+| 2 s | 300 / 97 (32%) | 0.75 | 642 / 3 / 33 | 258 / 309 / 44 | 0.63 / 1.00 / 1.47 | 1.83 / 2.33 / 3.00 | 76 of 860 | 6.33 | 135 |
+| 3 s | 313 / 97 (31%) | 0.80 | 611 / 3 / 37 | 256 / 307 / 21 | 0.63 / 0.90 / 1.40 | 1.83 / 2.30 / 2.85 | 69 of 966 | 7.98 | 188 |
+
+| duel (2 s against) | 4v4 fields W / D / L (2 s's) | 1v1 no fields W / D / L |
+|---|---|---|
+| 1 s | 395 / 1 / 390 | 225 / 186 / 183 |
+| 1.5 s | 388 / 5 / 416 | 226 / 185 / 193 |
+| 3 s | 485 / 1 / 334 | 181 / 194 / 226 |
+
+**Chosen: 2 s** (the default already). Against 1.5 s it loses fewer games to the rule-based
+agent (33 against 41 of about 680 in 4v4; 44 against 82 in 1v1), turns sooner after the merge
+(0.63 against 0.70 s median to 30 deg; 76 against 103 slow), for +1.2 ms; their 4v4 duel is
+388 / 5 / 416 (about one standard error, 14 games). 3 s beats 2 s in the 1v1 duel (226 to 181)
+but loses the 4v4 duel clearly (334 to 485), costs +1.65 ms and 40% more memory, and its merge
+turn and draw rate are the same as 2 s. 1 s is cheapest but slowest at the merge and loses the
+most 1v1 games to the rule-based agent. The 1v1 draw share does not move with the horizon
+(31-35%): the stalemate is not a horizon problem.

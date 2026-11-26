@@ -11,7 +11,7 @@ earlier; the same pair again within 2 s is not a new event. Per aircraft: the ti
 its heading has changed by 30 and by 90 degrees, capped at 10 s (a capped aircraft counts as
 10 s, a lower bound), censored (left out) when it is removed or its match ends first. Matches
 as on merge-turn: `game.reset` with team sizes (S, S), seed 0, the same agent on both teams,
-fog on; 256 environments for 1v1 and 64 for 4v4, 1,800 ticks, no re-deal. Setups: 1v1 without
+fog on (--no-fog-1v1: off in the 1v1 setups); 256 environments for 1v1 and 64 for 4v4, 1,800 ticks, no re-deal. Setups: 1v1 without
 fields, 1v1 with fields, 4v4 with fields. Prints median / 75th / 90th percentiles and writes
 them to DIR/merge_turn_<agent>.json.
 """
@@ -37,8 +37,8 @@ WINDOW = 300  # ticks: 10 s
 FPS = 30
 
 
-def simulate(agent: str, size: int, fields: bool, envs: int, ticks: int, device):
-    config = game.GameConfig() if fields else game.GameConfig(field_count=0)
+def simulate(agent: str, size: int, fields: bool, envs: int, ticks: int, device, fog=True):
+    config = game.GameConfig(fog=fog) if fields else game.GameConfig(field_count=0, fog=fog)
     generator = torch.Generator(device).manual_seed(0)
     sizes = torch.full((envs, 2), size, dtype=torch.long, device=device)
     state = game.reset(config, envs, sizes, generator, device)
@@ -150,6 +150,9 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--only", default=None)
     parser.add_argument("--look-ahead", default=None, help="points, e.g. 0.25,0.5,1,2")
+    parser.add_argument(
+        "--no-fog-1v1", action="store_true", help="fog off in the 1v1 setups (author 2026-11-26)"
+    )
     arguments = parser.parse_args()
     suffix = ""
     if arguments.look_ahead:
@@ -162,7 +165,10 @@ def main():
     for name, (size, fields, envs) in SETUPS.items():
         if arguments.only and name != arguments.only:
             continue
-        tracks, team = simulate(arguments.agent, size, fields, envs, arguments.ticks, device)
+        fog = not (arguments.no_fog_1v1 and size == 1)
+        tracks, team = simulate(
+            arguments.agent, size, fields, envs, arguments.ticks, device, fog=fog
+        )
         results[name] = summary(events_of(tracks, team))
         row = results[name]
         print(
@@ -171,7 +177,10 @@ def main():
             flush=True,
         )
         arguments.out.mkdir(parents=True, exist_ok=True)
-        path = arguments.out / f"merge_turn_{arguments.agent}{suffix}.json"
+        path = arguments.out / (
+            f"merge_turn_{arguments.agent}{suffix}{'_fog_off_1v1' if arguments.no_fog_1v1 else ''}"
+            ".json"
+        )
         path.write_text(json.dumps(results, indent=1))
 
 

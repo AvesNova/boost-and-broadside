@@ -556,6 +556,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--no-fog", action="store_true", help="fog off (every ship seen)")
     parser.add_argument(
         "--still",
         type=int,
@@ -609,6 +610,9 @@ def main() -> None:
     if arguments.no_fields:
         config = dataclasses.replace(config, field_count=0)
         stem += "_nofields"
+    if arguments.no_fog:
+        config = dataclasses.replace(config, fog=False)
+        stem += "_fogoff"
     if arguments.tracking == "off":
         config = dataclasses.replace(config, fog_tracking=False)
         stem += "_trackoff"
@@ -633,6 +637,8 @@ def main() -> None:
         title = f"game {number} of {len(arguments.seeds)}, seed {seed}, scripted {size}v{size}"
         if arguments.no_fields:
             title += ", no fields"
+        if arguments.no_fog:
+            title += ", fog off"
         if arguments.vision_eccentricity is not None:
             title += f", sight ellipse e {arguments.vision_eccentricity:g}"
         if arguments.vision_range is not None:
