@@ -155,3 +155,21 @@ GPU tick, compiled `core.step`, 4070 laptop, performance profile, E 4096, 4v4, f
   off by default (nose_cone 0; the code kept as a hit-model row).
 - Hit radius 12, core 10 m (author). Workbench and views moved to the egg
   (workbench/hitbench.md, apparent_size.png, bullet_paths.png).
+
+## 06:05 step 3: re-measure (laptop 4070, performance profile)
+
+- Cost, compiled `core.step`, E 4096, 4v4, fields and fog (bench_tick.py, median of 3 blocks
+  of 300 ticks): off 0.98 ms, egg 1.58 ms (+0.60 ms, +62%; the old push was +0.24 ms). Eager
+  dispatch calls 2,511 off / 2,792 egg (+11%). (The off timing ran beside a CPU job of mine;
+  the egg timing on a quiet machine.)
+- God mode (shields refilled every tick), the look-ahead agent both sides, 512 games 1v1 (fog
+  off, no fields) and 256 games 4v4 (fields, fog), 60 s each, today's spread:
+
+  | | hit chance / real bullet | hits / pass | passes with no hit | hits in control | hits head-on / side / rear | merge turn 90 deg, median s | friendly-fire share of hits (4v4) |
+  |---|---|---|---|---|---|---|---|
+  | off | 0.752 | 51.7 | 0.18 | 0.80 | 0.09 / 0.52 / 0.39 | 2.57 | 0.045 |
+  | egg | 0.275 | 15.3 | 0.26 | 0.95 | 0.01 / 0.42 / 0.57 | 2.23 | 0.049 |
+
+  Firing share of ship-ticks 1v1 0.15 off / 0.13 egg; 4v4 0.25 / 0.10. A pass is a local
+  minimum of the distance under the gun range, 1 s apart; hits go to the nearest pass.
+- Next: the spread grid (running), compile checks (queued after it).
