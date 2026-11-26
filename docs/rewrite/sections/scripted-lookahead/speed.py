@@ -46,6 +46,7 @@ def main():
     parser.add_argument("--plain", action="store_true", help="the plain PyTorch pair stage")
     parser.add_argument("--skip-old", action="store_true", help="skip the rule-based agent")
     parser.add_argument("--look-ahead", default=None, help="points, e.g. 0.25,0.5,1,2")
+    parser.add_argument("--retarget", type=int, default=None, help="1 / 0: paths.RETARGET")
     arguments = parser.parse_args()
     if arguments.plain:
         from lean.scripted import kernels
@@ -55,6 +56,10 @@ def main():
         from lean.scripted import paths
 
         paths.LOOK_AHEAD = tuple(float(t) for t in arguments.look_ahead.split(","))
+    if arguments.retarget is not None:
+        from lean.scripted import paths
+
+        paths.RETARGET = bool(arguments.retarget)
     device = torch.device("cuda")
     envs = arguments.envs
     config = game.GameConfig()

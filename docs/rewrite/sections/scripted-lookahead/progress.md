@@ -419,3 +419,24 @@ kernel pays clearly (about 11x on the stage, 3.3x on the call) and stays, with i
 Inferred cause: inductor caps a fusion's size (`max_fusion_size`), so the long per-element
 expression (two gun solutions, angles, energy, range, contact per point) is cut into kernels
 that pass intermediates through memory; not changed (a global inductor setting).
+
+### CUDA graphs (coordinator, 2026-11-26; a measurement, not the default)
+
+`cuda_graph.py`, the scripted call (`act`, both teams) at 2,048 envs 4v4, fields, fog, 50 calls
+after 5 warm; two runs (the second on a warm compile cache):
+
+| variant | run 1 ms | run 2 ms | first call (run 1 / run 2) |
+|---|---|---|---|
+| `compile_dynamic` (lean's), no graph | 5.73 | 5.99 | 115.2 / 46.6 s |
+| `torch.compile(dynamic=False)`, no graph | - | 4.09 | - / 46.3 s |
+| `mode="reduce-overhead"`, static shapes (CUDA graph) | 3.41 | 3.91 | 60.6 / 6.8 s |
+
+- Most of the gain is the static shapes (5.99 -> 4.09 ms in the same process), the graph
+  itself only 4.09 -> 3.91 (launch overhead is small: 111 kernels, wall about GPU time). Its
+  output equals the dynamic call's exactly.
+- Constraints hit: a hand capture (`torch.cuda.graph` around the dynamic compiled call) fails:
+  the call builds small constants with `torch.tensor(..., device=cuda)` (the look-ahead times,
+  the level indices), a CPU -> GPU copy that capture refuses unless pinned; reduce-overhead
+  lifts them. reduce-overhead needs static shapes (a recompile per environment count / team
+  size), its outputs live in the graph's pool (must be cloned before the next call), and the
+  uniforms are inputs, so no RNG inside the graph. Not tried on the whole act step.
