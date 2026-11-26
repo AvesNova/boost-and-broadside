@@ -13,7 +13,7 @@ Milestone notes: tried / worked / didn't / next; measured numbers only; ETAs as 
   `card.DEFLECTOR_PRESETS`, `GameConfig.deflector`; (4) workbench; (5) god-mode measurements;
   (6) sandbox sliders; (7) tests and docs. ETA mechanism + runtime constants 03:15 (worst 04:00).
 
-## 02:40 mechanism, runtime hit model, workbench
+## 01:55 mechanism, runtime hit model, workbench
 
 - Worked: the deflector in `core` (hit test contact on b + D, `_damage` via `core.hit_fraction`,
   `_deflect` bends a missing bullet once on the tick holding its closest approach); presets in

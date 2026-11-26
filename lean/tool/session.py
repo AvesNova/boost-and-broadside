@@ -33,8 +33,9 @@ def frame(world: World) -> dict:
             )
         )
     bullets = []
+    slots = s.bullet_x.shape[2]
     for ship in range(2):
-        for k in range(s.bullet_x.shape[2]):
+        for k in range(slots):
             if int(s.bullet_moves_left[0, ship, k]) > 0 and bool(s.bullet_real[0, ship, k]):
                 step = float(s.bullet_speed[0, ship, k]) * world.h
                 bx, by = float(s.bullet_x[0, ship, k]), float(s.bullet_y[0, ship, k])
@@ -45,6 +46,9 @@ def frame(world: World) -> dict:
                         float(s.bullet_dir_x[0, ship, k]) * step,
                         float(s.bullet_dir_y[0, ship, k]) * step,
                         ship,
+                        # the bullet's identity: its slot and firing tick (the page joins a
+                        # bullet's positions tick to tick, so a deflector's bend shows as a kink)
+                        f"{ship * slots + k}:{int(s.bullet_fired_tick[0, ship, k])}",
                     ]
                 )
     return dict(
@@ -71,6 +75,18 @@ def setup(world: World, config: core.GameConfig) -> dict:
         tick=world.h,
         gravity=card.GRAVITY,
         fields=field_list(world.state),
+        **hit_model_message(world),
+    )
+
+
+def hit_model_message(world: World) -> dict:
+    """The hit model's inputs for the sliders (core.HIT_MODEL: name, label, unit, range, the
+    world's value) and the deflector presets (card.DEFLECTOR_PRESETS): the page has no list of
+    its own."""
+    values = core.hit_model_of(world.state.constants)
+    return dict(
+        hit_model=[dict(entry._asdict(), value=values[entry.name]) for entry in core.HIT_MODEL],
+        deflector_presets=card.DEFLECTOR_PRESETS,
     )
 
 
@@ -84,7 +100,8 @@ def run(
 ) -> None:
     """The child's loop: apply the controls the parent sent, tick, send a frame; stop on
     {"stop": true} (or after max_ticks, for tests). Messages: {"side", "level", "power",
-    "fire"} sets the held controls; {"reset": true}; {"opponent": bool}."""
+    "fire"} sets the held controls; {"reset": true}; {"opponent": bool}; {"hit_model": {name:
+    value}} changes hit-model inputs live (World.set_hit_model; answered with the whole model)."""
     import torch
 
     torch.set_num_threads(1)
@@ -102,6 +119,12 @@ def run(
                 if message.get("reset"):
                     world.reset()
                     connection.send(setup(world, config))
+                if "hit_model" in message:
+                    try:
+                        world.set_hit_model(**message["hit_model"])
+                    except (KeyError, ValueError) as error:
+                        connection.send(dict(type="error", message=str(error)))
+                    connection.send(dict(type="hit_model", **hit_model_message(world)))
                 if "opponent" in message and bool(message["opponent"]) != world.opponent_on:
                     world.toggle_opponent()
                 control.update({k: message[k] for k in control if k in message})

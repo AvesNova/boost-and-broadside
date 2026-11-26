@@ -60,9 +60,20 @@ class World:
         return torch.tensor([[self.player_type, self.opponent_type]])
 
     def _constants(self):
-        """Both ships' constants; any type may be flown, so the card is read for every type."""
+        """Both ships' constants; any type may be flown, so the card is read for every type; the
+        hit model's inputs set by `set_hit_model` on top."""
         every_type = dataclasses.replace(self.config, lineup=card.TYPE_NAMES)
-        return core.ship_constants(every_type, self._types())
+        constants = core.ship_constants(every_type, self._types())
+        hit_model = getattr(self, "hit_model", {})
+        return core.with_hit_model(constants, **hit_model) if hit_model else constants
+
+    def set_hit_model(self, **inputs: float) -> dict[str, float]:
+        """Change hit-model inputs (core.HIT_MODEL names) live, for both ships: the next tick
+        uses them (no restart, no recompile); kept across resets. Returns the whole model."""
+        constants = core.with_hit_model(self.state.constants, **inputs)  # raises before keeping
+        self.hit_model = {**getattr(self, "hit_model", {}), **inputs}
+        self.state = self.state.replace(constants=constants)
+        return core.hit_model_of(self.state.constants)
 
     def constant(self, name: str, slot: int) -> float:
         """One ship's constant (a number when equal for every type, else a per-slot row)."""
