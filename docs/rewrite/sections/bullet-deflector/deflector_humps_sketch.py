@@ -69,9 +69,17 @@ def panel(ax, shape_name, act, aspect, title):
     ax.set_yticks([])
 
 
-if __name__ == "__main__":
+def main(edge: float = EDGE) -> None:
+    """The figure and the table for a bubble of half-width `edge` (the egg keeps the 40/18
+    proportions: front length 40/18 x edge, rear length = half-width = edge)."""
+    global EDGE
+    EDGE = prof.EDGE = edge
+    front = 40.0 / 18.0 * edge
+    circle, egg = f"circle {edge:g}", f"egg {front:.0f}/{edge:g}"
+    base.SHAPES[circle] = [(0.0, edge, edge, 0)]
+    base.SHAPES[egg] = [(0.0, front, edge, +1), (0.0, edge, edge, -1)]
     theta_max = 45.0
-    columns = [("circle 18", 0), ("egg 40/18", 0), ("egg 40/18", 90), ("egg 40/18", 180)]
+    columns = [(circle, 0), (egg, 0), (egg, 90), (egg, 180)]
     fig, axs = plt.subplots(
         len(CURVES),
         1 + len(columns),
@@ -94,15 +102,23 @@ if __name__ == "__main__":
                 f"{shape}, {aspect} deg",
             )
     fig.suptitle(
-        f"Turn by impact parameter, 0 at both ends, max {theta_max:g} deg. Orange: the bent path "
-        "passes within the 12 m hit radius (drawn through); blue: misses. Rays 2 m apart.",
+        f"Turn by impact parameter, 0 at both ends, max {theta_max:g} deg, bubble half-width "
+        f"{edge:g} m, s {SOFT:g} m. Orange: the bent path passes within the 12 m hit radius "
+        "(drawn through); blue: misses. Rays 2 m apart.",
         fontsize=10,
     )
-    fig.savefig(base.OUT / "turn_humps.png", dpi=95)
-    print("wrote", base.OUT / "turn_humps.png")
-    print("hit width, m: curve | max turn | circle | egg 0 | egg 90 | egg 180")
-    for name, f in CURVES.items():
+    name = "turn_humps.png" if edge == 18.0 else f"turn_humps_{edge:g}.png"
+    fig.savefig(base.OUT / name, dpi=95)
+    print("wrote", base.OUT / name)
+    print(f"hit width, m: curve | max turn | {circle} | {egg} 0 | 90 | 180")
+    for cname, f in CURVES.items():
         for tm in (30, 45, 60, 90):
             act = prof.profile_turn(f, tm)
-            w = [base.hit_width(base.SHAPES[s], act, a, step=0.05) for s, a in columns]
-            print(f"{name:36s} {tm:3d} " + " ".join(f"{v:5.1f}" for v in w))
+            w = [base.hit_width(base.SHAPES[sh], act, a, step=0.05) for sh, a in columns]
+            print(f"{cname:36s} {tm:3d} " + " ".join(f"{v:5.1f}" for v in w))
+
+
+if __name__ == "__main__":
+    import sys
+
+    main(float(sys.argv[1]) if len(sys.argv) > 1 else 18.0)
