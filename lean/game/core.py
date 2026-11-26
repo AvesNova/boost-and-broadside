@@ -1342,7 +1342,7 @@ def step(
     bullets = _move_bullets(config, state, shots.bullets, flying)
     contact = _hit_test(config, state, flown, shots.bullets, bullets, flying, index)
     real = shots.bullet_real.reshape(E, N * K)
-    bullet_damage = _damage(config, state, flown, bullets, real, contact)
+    bullet_damage = _damage(config, state, flown, shots.bullets, bullets, real, contact)
     if contact.bend_ship is not None:
         bullets, _ = _deflect(state, flown, shots.bullets, bullets, contact)
     no_damage = filled((E, N), 0.0, bullet_damage.dtype, device)
@@ -1566,13 +1566,12 @@ def _move_bullets(config: GameConfig, state: State, start: Tensor, flying: Tenso
 
 
 class Contact(NamedTuple):
-    """The hit test's result, per bullet (E, N K) and per bullet and ship (E, [2,] N K, N)."""
+    """The hit test's result, per bullet (E, N K). The per-pair work stays inside the hit test
+    (its reductions); a later stage that needs a bullet's pass against one ship recomputes it
+    (`_pass_against`)."""
 
     target: Tensor  # (E, N K) long: the ship of the first contact (slot 0 for a miss)
     hit: Tensor  # (E, N K) bool
-    start: Tensor  # (E, 2, N K, N): bullet minus ship at tick start, x and y
-    relative: Tensor  # (E, 2, N K, N): the bullet's move minus the ship's
-    relative_squared: Tensor  # (E, N K, N), clamped away from 0
     # The deflector's bend (`_deflect`; None with the deflector off), per bullet (E, N K): the
     # ship whose field bends it (the first by tau) and its closest approach's tau, inf for none.
     bend_ship: Tensor | None
@@ -1640,9 +1639,25 @@ def _hit_test(
     first_tau = contact_tau.min(-1).values
     tied = contact & (contact_tau <= first_tau[..., None] + 1e-6)
     target = torch.where(tied, miss_squared, torch.inf).argmin(-1)
-    return Contact(
-        target, first_tau < torch.inf, start, relative, relative_squared, bend_ship, bend_tau
-    )
+    return Contact(target, first_tau < torch.inf, bend_ship, bend_tau)
+
+
+def _pass_against(
+    state: State, flown: SimpleNamespace, start_bullets: Tensor, bullets: Tensor, ship: Tensor
+) -> tuple[Tensor, Tensor, Tensor]:
+    """Each bullet's pass against one ship `ship` (E, N K) long, as the hit test computes it:
+    the start (bullet minus ship at tick start) and the relative move, (E, 2, N K) each, and the
+    relative move's squared length (E, N K), clamped away from 0."""
+    E, _, N, K = bullets.shape
+    flat = (E, 2, N * K)
+    ships = state.ships[:, X : Y + 1]
+    at = ship[:, None, :].expand(E, 2, N * K)
+    start_xy = start_bullets[:, BULLET_X : BULLET_Y + 1]
+    start = start_xy.reshape(flat) - ships.gather(2, at)
+    moved = torch.stack([flown.x, flown.y], 1) - ships
+    relative = (bullets[:, BULLET_X : BULLET_Y + 1] - start_xy).reshape(flat)
+    relative = relative - moved.gather(2, at)
+    return start, relative, (relative * relative).sum(1).clamp_min(1e-12)
 
 
 def _per_ship(values: Tensor | float) -> Tensor | float:
@@ -1673,9 +1688,7 @@ def _deflect(
     ship, tau = contact.bend_ship, contact.bend_tau
     bent = (tau < torch.inf) & ~contact.hit  # (E, N K)
     tau = torch.where(bent, tau, 0.0)
-    at = ship[:, None, :, None].expand(E, 2, N * K, 1)
-    start = contact.start.gather(3, at)[..., 0]
-    relative = contact.relative.gather(3, at)[..., 0]
+    start, relative, _ = _pass_against(state, flown, start_bullets, bullets, ship)
     side_x, side_y = (start + tau[:, None] * relative).unbind(1)
     b_squared = side_x * side_x + side_y * side_y
     flat = (E, N * K)
@@ -1721,6 +1734,7 @@ def _damage(
     config: GameConfig,
     state: State,
     flown: SimpleNamespace,
+    start_bullets: Tensor,
     bullets: Tensor,
     real: Tensor,
     contact: Contact,
@@ -1746,11 +1760,11 @@ def _damage(
     kinetic = explosive + (1.0 - explosive) * speed_ratio * speed_ratio
     full = (_per_bullet(c["hit_damage"]) * kinetic).reshape(flat)
     # The swept test's start and relative motion against the target.
-    on_target = target[:, None, :, None].expand(E, 2, -1, 1)
-    target_start_x, target_start_y = contact.start.gather(3, on_target)[..., 0].unbind(1)
-    target_relative_x, target_relative_y = contact.relative.gather(3, on_target)[..., 0].unbind(1)
+    start, relative, relative_squared = _pass_against(state, flown, start_bullets, bullets, target)
+    target_start_x, target_start_y = start.unbind(1)
+    target_relative_x, target_relative_y = relative.unbind(1)
     cross = target_start_x * target_relative_y - target_start_y * target_relative_x
-    line = cross * cross / contact.relative_squared.gather(2, target[..., None])[..., 0]
+    line = cross * cross / relative_squared
     impact_squared = torch.minimum(
         line, target_start_x * target_start_x + target_start_y * target_start_y
     )
