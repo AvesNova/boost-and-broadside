@@ -26,7 +26,8 @@ FULL, STRAIGHT, COAST = 6, 0, 0
 def world(speed: float) -> World:
     config = dataclasses.replace(core.GameConfig(clock_ticks=10**9), field_count=0)
     w = World(config, player_type=0, opponent_on=False)
-    w.state.speed[0, 0] = speed
+    if speed is not None:  # None: the spawn's own speed
+        w.state.speed[0, 0] = speed
     return w
 
 
@@ -37,7 +38,9 @@ def constants():
 def nose():
     p = constants()
     stall = float(p.stall_speed[0])
-    print("nose, full stick from straight: v/stall | peak AoA deg (t s) | peak AoA rate deg/s | time to 30 deg s | AoA at 1 s")
+    print(
+        "nose, full stick from straight: v/stall | peak AoA deg (t s) | peak AoA rate deg/s | time to 30 deg s | AoA at 1 s"
+    )
     for share in (1.0, 1.2, 1.5, 2.0):
         w = world(share * stall)
         angles = []
@@ -57,7 +60,9 @@ def nose():
 def firing():
     p = constants()
     stall, top = float(p.stall_speed[0]), float(p.max_energy[0])
-    print(f"5 s of fire from 1.2 x stall ({1.2 * stall:.1f} m/s; stall {stall:.1f}): speed m/s / store fraction each second, shots")
+    print(
+        f"5 s of fire from 1.2 x stall ({1.2 * stall:.1f} m/s; stall {stall:.1f}): speed m/s / store fraction each second, shots"
+    )
     for stick, name in ((STRAIGHT, "straight"), (FULL, "full stick")):
         w = world(1.2 * stall)
         marks, shots = [], 0
@@ -65,8 +70,14 @@ def firing():
             w.advance(stick, COAST, True)
             shots += int(bool(w.state.fired[0, 0]))
             if (tick + 1) % 30 == 0:
-                marks.append(f"{float(w.state.speed[0, 0]):5.1f}/{float(w.state.energy[0, 0]) / top:.3f}")
-        print(f"  {name:10s} start {1.2 * stall:5.1f}/0.500 | " + " | ".join(marks) + f" | shots {shots}")
+                marks.append(
+                    f"{float(w.state.speed[0, 0]):5.1f}/{float(w.state.energy[0, 0]) / top:.3f}"
+                )
+        print(
+            f"  {name:10s} start {1.2 * stall:5.1f}/0.500 | "
+            + " | ".join(marks)
+            + f" | shots {shots}"
+        )
 
 
 def long_turn():

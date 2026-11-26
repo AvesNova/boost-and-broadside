@@ -134,8 +134,9 @@ QUIET_STICK_MAX = 2  # stick indices 0..2 (straight and the gradual turns) keep 
 # wing's maximum lift against the card's middle_g_fraction of the g limit (the same soft
 # minimum): the envelope at low speed, then that g level. Full: the envelope from
 # deep_stall_start x corner speed up (the g limit above corner); below it the stick asks for
-# the card's deep_stall_angle, opening over deep_stall_band of corner speed, at every lower
-# speed.
+# the card's deep_stall_angle, opening over deep_stall_band of corner speed, closing back to the
+# stall angle between the speed where that angle's lift holds 1 g and stall speed
+# (core._holding_angle).
 GRADUAL_STICK = 1.0 / 3.0
 MIDDLE_STICK = 1.0
 FULL_STICK = 1.0

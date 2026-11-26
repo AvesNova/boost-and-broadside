@@ -81,8 +81,10 @@ def fly(config, speed: float, stick: int):
                 commanded=p.commanded_table[..., COAST],
                 demand=p.demand_table[..., COAST],
             )
-            lateral = core._setting(p, control, speed_t, s.energy[0])[0]
-            commanded = float(core._commanded_angle(p, control, lateral, speed_t, 1.0 / p.lift))
+            lateral, _, vertical, _ = core._setting(p, control, speed_t, s.energy[0])
+            commanded = float(
+                core._commanded_angle(p, control, lateral, speed_t, 1.0 / p.lift, vertical)
+            )
             rows.append(
                 (
                     (tick + 1) * h,
@@ -172,8 +174,8 @@ def sweep():
             commanded=p.commanded_table[..., COAST],
             demand=p.demand_table[..., COAST],
         )
-        lateral = core._setting(p, control, speeds, energy)[0]
-        angle = core._commanded_angle(p, control, lateral, speeds, 1.0 / p.lift)
+        lateral, _, vertical, _ = core._setting(p, control, speeds, energy)
+        angle = core._commanded_angle(p, control, lateral, speeds, 1.0 / p.lift, vertical)
         out[name] = (rate, angle)
         print(
             f"{name}: largest step (0.001 x corner) in rate {math.degrees(float(rate.diff().abs().max())):.3f}"

@@ -121,10 +121,11 @@ class GameConfig:
     fire_store_band: float = 0.1
     # The post-stall regime (author 2026-11-26; `_setting`, `_lift_coefficient`, `_rates`): below
     # corner speed full stick asks for the card's deep_stall_angle (opening from the stall angle
-    # over deep_stall_band of corner speed), the lift past the stall returns toward the flat
-    # plate's and the drag rises toward it. False (for comparison): full stick stays on the top
-    # line, the lift past the stall is the old parabola's tail (0 at twice the stall angle) and
-    # no post-stall drag. Either way the middle stick's shape and the nose's damping are the new.
+    # over deep_stall_band of corner speed, closing to the stall angle toward stall speed), the
+    # lift past the stall returns toward the flat plate's and the drag rises toward it. False
+    # (for comparison): full stick stays on the top line, the lift past the stall is the old
+    # parabola's tail (0 at twice the stall angle) and no post-stall drag. Either way the middle
+    # stick's shape and the nose's damping are the new.
     post_stall: bool = True
     # Fog of war: an enemy is visible in the team's sight (v2's sight test: `sighted_by_enemy`)
     # and on the tick it fires or is hit by a bullet; a hidden enemy is its last-seen row.
@@ -261,6 +262,15 @@ def _post_stall_constants(config: GameConfig, values: dict[str, Tensor]) -> dict
     cap = torch.where(level == 2.0, card_of("middle_g_fraction")[:, None], 1.0)
     deep = (level == 3.0).float()
     stall_cos = torch.cos(stall)
+    stall_speed = torch.sqrt(card.GRAVITY / lift)
+    # The lift at the card's deep angle (`_lift_and_slope` past the stall).
+    deep_angle = card_of("deep_stall_angle")
+    toward = ((deep_angle - stall) / (math.radians(45.0) - stall)).clamp(0.0, 1.0)
+    deep_lift = torch.where(
+        deep_angle > math.radians(45.0),
+        flat * torch.sin(2.0 * deep_angle),
+        lift - (lift - flat) * smootherstep(toward),
+    )
     return {
         "post_stall": on,
         "deep_stall_angle": card_of("deep_stall_angle"),
@@ -268,6 +278,11 @@ def _post_stall_constants(config: GameConfig, values: dict[str, Tensor]) -> dict
         "inverse_stall_speed_squared": lift / card.GRAVITY,
         "deep_stall_start": card_of("deep_stall_start"),
         "inverse_deep_stall_band": 1.0 / card_of("deep_stall_band"),
+        # Full stick's deep angle closes to the stall angle from where its lift is 1 g down to
+        # stall speed (`_holding_angle`).
+        "holding_start_speed": stall_speed,
+        "inverse_holding_span": 1.0
+        / (stall_speed * (torch.sqrt(lift / deep_lift) - 1.0)).clamp_min(1e-6),
         "flat_plate_lift": flat,
         "inverse_tail_span": 1.0 / (math.radians(45.0) - stall),
         "inverse_share_width": torch.full((count,), 1.0 / card.POST_STALL_SHARE_WIDTH),
@@ -412,7 +427,7 @@ def steady_rates(
     inverse_lift = 1.0 / p.lift
     setting = _setting(p, control, speed, energy)
     lateral, _, vertical, thrust = setting
-    angle = _commanded_angle(p, control, lateral, speed, inverse_lift)
+    angle = _commanded_angle(p, control, lateral, speed, inverse_lift, vertical)
     lift = _lift_coefficient(p, angle)
     rate = (
         _path_lift(p, lift, angle, vertical, speed * speed, thrust, thrust * torch.sin(angle))[0]
@@ -835,52 +850,51 @@ def _lift_coefficient(p, angle):
 
 
 def _path_lift(p, lift, angle, vertical, speed_squared, thrust, thrust_normal):
-    """The lateral acceleration of the lift and of the thrust's normal component.
+    """The lateral acceleration of the normal force: the lift plus the thrust's normal part
+    (thrust_normal = thrust x sin angle; the thrust's size never depends on the angle, its part
+    along the path, thrust x cos angle, drives the speed in `_rates`).
 
     Below the stall the angle of attack is the turn's own: lift plus thrust_normal, the held
     vertical carried apart as induced drag. Past it (GameConfig.post_stall) the angle becomes
-    the wing's whole, so the held vertical comes out of the lift: lateral^2 = (C v^2)^2 - taken,
-    taken = share x vertical^2 (share a smootherstep over card.POST_STALL_SHARE_WIDTH past the
-    stall), and at least what keeps the turn inside the envelope, sqrt(budget^2 - vertical^2)
-    (budget: the wing's maximum lift against the g limit, `_setting`'s soft minimum). Where the
-    lift barely carries the vertical the square is floored smoothly, (x + sqrt(x^2 + e^2)) / 2,
-    e = card.PATH_LIFT_SOFTNESS^2 x min(taken, vertical^2) (0 when nothing is taken, so
-    ordinary flight is exact), so the rate has no infinite slope where it reaches 0. The thrust's
-    normal component turns the path in the same share as the lift (lateral over C v^2): with no
-    lift to spare there is no turn. Returns (lateral, that share): the share also scales the
-    path's response to the angle (`_kick`'s kappa). The whole is never more than the envelope's
-    turn at that speed (its lateral lift plus its thrust tilted by its own angle)."""
-    total = lift * speed_squared
+    the wing's whole, so the held vertical comes out of the normal force first, like the lift
+    (author 2026-11-26: one force budget): lateral^2 = normal^2 - share x vertical^2, share a
+    smootherstep over card.POST_STALL_SHARE_WIDTH past the stall; what is left turns the path.
+    Where the normal force barely carries the vertical the square is floored smoothly,
+    (x + sqrt(x^2 + e^2)) / 2, e = card.PATH_LIFT_SOFTNESS^2 x share x vertical^2 (0 below the
+    stall, so ordinary flight is exact), so the rate has no infinite slope where it reaches 0.
+    The turn is never more than the envelope's at that speed (its lateral lift, the wing's
+    maximum lift against the g limit less the held vertical, plus its thrust tilted by its own
+    angle). Returns (lateral, its share of the normal force): the share scales the path's
+    response to the angle (`_kick`'s kappa)."""
+    normal = lift * speed_squared + thrust_normal
     if not _switched_on(p.post_stall):
-        return total + thrust_normal, 1.0
+        return normal, 1.0
     share = smootherstep(((angle.abs() - p.stall) * p.inverse_share_width).clamp(0.0, 1.0))
     held = vertical * vertical
-    squared = total * total
-    most = softmin(p.lift * speed_squared, p.max_acceleration, p.lift_softmin_exponent)
-    taken = torch.maximum(share * held, squared - (most * most - held))
-    left = squared - taken
-    softness = card.PATH_LIFT_SOFTNESS**2 * torch.minimum(taken, held)
+    taken = share * held
+    left = normal * normal - taken
+    softness = card.PATH_LIFT_SOFTNESS**2 * taken
     lateral = torch.sqrt(0.5 * (left + torch.sqrt(left * left + softness * softness)))
-    fraction = (lateral / total.abs().clamp_min(1e-6)).clamp_max(1.0)
-    turn = lateral + thrust_normal.abs() * fraction
     # Never more than the envelope's turn at this speed: its lift's lateral share plus its
     # thrust's (the thrust tilted by the envelope's own angle).
+    most = softmin(p.lift * speed_squared, p.max_acceleration, p.lift_softmin_exponent)
     envelope_lateral = torch.sqrt((most * most - held).clamp_min(0.0))
     reach = (envelope_lateral / (p.lift * speed_squared)).clamp(0.0, 1.0)
     envelope_angle = p.stall * (1.0 - torch.sqrt(1.0 - reach))
-    envelope = envelope_lateral + thrust * torch.sin(envelope_angle)
-    return torch.sign(total) * torch.minimum(turn, envelope), fraction
+    turn = torch.minimum(lateral, envelope_lateral + thrust * torch.sin(envelope_angle))
+    fraction = (turn / normal.abs().clamp_min(1e-6)).clamp_max(1.0)
+    return torch.sign(normal) * turn, fraction
 
 
-def _commanded_angle(p, control, lateral, speed, inverse_lift):
+def _commanded_angle(p, control, lateral, speed, inverse_lift, vertical):
     """The angle of attack the stick asks for (signed): the one whose lift (below the stall)
     gives the setting's lateral acceleration; for full stick (control.deep) below corner it
-    opens toward the card's deep_stall_angle, a smootherstep from deep_stall_start x corner
+    opens toward the deep angle that still holds the vertical (`_holding_angle`: coasting, the
+    card's deep_stall_angle from stall speed / sqrt(POST_STALL_LIFT_FRACTION) up, shrinking
+    smoothly to the stall angle at stall speed), a smootherstep from deep_stall_start x corner
     speed (the lift's angle there, so no jump) down over deep_stall_band of corner speed
-    (GameConfig.post_stall), and stays open at every lower speed: closing it toward the stall
-    would bring the angle back to the maximum lift and the turn up again (2026-11-26). The turn
-    falls toward the stall: the deep angle's lift carries 1 g only from stall speed /
-    sqrt(POST_STALL_LIFT_FRACTION) up (`_path_lift`)."""
+    (GameConfig.post_stall). Full stick never gives up the 1 g (author 2026-11-26). vertical:
+    the setting's held vertical (`_setting`)."""
     reach = (lateral.abs() / (speed * speed) * inverse_lift).clamp(0.0, 1.0)
     angle = p.stall * (1.0 - torch.sqrt(1.0 - reach))
     if _switched_on(p.post_stall):
@@ -888,8 +902,27 @@ def _commanded_angle(p, control, lateral, speed, inverse_lift):
             (p.deep_stall_start - speed * p.inverse_corner_speed) * p.inverse_deep_stall_band
         ).clamp(0.0, 1.0)
         opening = smootherstep(below) * control.deep
-        angle = angle + (p.deep_stall_angle - angle) * opening
+        angle = angle + (_holding_angle(p, speed, vertical) - angle) * opening
     return control.stick_sign * angle
+
+
+def _holding_angle(p, speed, vertical):
+    """Full stick's deep angle at this speed: the card's deep_stall_angle from the speed where
+    that angle's wing lift holds the vertical (coasting 1 g: stall speed x sqrt(C_max / C(deep
+    angle)), stall speed / sqrt(POST_STALL_LIFT_FRACTION) at 45 deg) up, shrinking to the stall
+    angle at the speed where the wing's maximum lift holds it (stall speed coasting) by a
+    smootherstep in speed, the stall angle below (author 2026-11-26: full stick never gives up
+    the 1 g). The vertical is the setting's, at most 1 g (a climb's extra comes after the turn):
+    a dive's lower demand moves the span down by sqrt(vertical / 1 g); with the 1 g span a dive's
+    line rose about 1.2 deg/s toward the stall near 98 m/s (P-51D). In between the normal force
+    (the lift plus thrust x sin angle, `_path_lift`) holds the vertical; the wing alone dips a
+    little below it near the top of the span, where the thrust's part carries the rest. The
+    exact deepest angle whose lift alone holds it has an infinite slope in speed at both ends
+    (the lift past the stall is a smootherstep in the angle), so the turn line had a corner."""
+    held = minimum(vertical, card.GRAVITY).clamp_min(1e-6)
+    equivalent = speed * torch.sqrt(card.GRAVITY / held)  # the coasting speed of the same load
+    closing = ((equivalent - p.holding_start_speed) * p.inverse_holding_span).clamp(0.0, 1.0)
+    return p.stall + (p.deep_stall_angle - p.stall) * smootherstep(closing)
 
 
 def _matrix_exponential(a11, a12, a21, a22, duration):
@@ -959,7 +992,7 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
     if inverse_index is not None:
         omega = omega * inverse_index
     damping = 2.0 * p.nose_damping * omega - kappa
-    step_angle = _commanded_angle(p, control, lateral, speed, inverse_lift) - angle0
+    step_angle = _commanded_angle(p, control, lateral, speed, inverse_lift, vertical) - angle0
     m11, m12, m21, m22 = _matrix_exponential(
         -kappa,
         filled((), 1.0, kappa.dtype, kappa.device).expand_as(kappa),

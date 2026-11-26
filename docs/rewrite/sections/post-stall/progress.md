@@ -268,3 +268,109 @@ the band).
 at every low speed the nose still goes to 45 deg at stall speed. Any shrink of the angle toward
 the maximum lift raises the turn again (above). Options: shrink the angle only below stall
 speed, or slow the nose's swing with a strong damping.
+
+## 2026-11-26, step 7: full stick keeps the 1 g; one force budget for lift and thrust
+
+Author decisions: full stick never gives up the 1 g (below the band the deep angle closes from
+45 deg at about stall speed / sqrt(0.75) to the stall angle at stall speed); thrust's size never
+depends on the angle: the normal force is lift plus thrust x sin(angle), it holds the vertical
+first like the lift, what is left turns the path; thrust x cos(angle) drives speed as before.
+middle_g_fraction 0.75, deep_stall_start 0.85, deep_stall_band 0.30 unchanged.
+Measurements: docs/rewrite/sections/post-stall/lines_check.py.
+
+**Built** (lean/game/core.py):
+
+- `_path_lift`: lateral^2 = (lift v^2 + thrust sin a)^2 - share x vertical^2 (share as before,
+  0 below the stall, so ordinary flight is unchanged). The step-6 "thrust turns in the lift's
+  share" scaling is gone, and so is the lift-only envelope floor on `taken`. Kept: the cap at
+  the envelope's turn (its lateral lift plus its thrust at its own angle). The nose's kappa
+  share is now turn / normal force.
+- `_holding_angle` (full stick's deep angle, `_commanded_angle` opens toward it instead of the
+  fixed deep angle): the deep angle down to the speed where its wing lift holds the vertical
+  (104.4 m/s coasting), a smootherstep in speed down to the stall angle at the speed where the
+  maximum lift holds it (stall speed 90.4 m/s coasting), the stall angle below. The vertical is
+  the setting's (at most 1 g), so a dive's span moves down by sqrt(vertical / 1 g).
+  `_commanded_angle` takes the setting's vertical (callers in core, flight_check.py updated).
+- New constants: `holding_start_speed` (stall speed), `inverse_holding_span`.
+
+**What I decided myself (the author should check):**
+
+- The schedule counts the wing's lift only, not thrust's share. Counting thrust, 45 deg holds
+  1 g at stall speed (normal force 1.18 g there, thrust about 0.61 g at these speeds), and
+  down to about 80 m/s (1.02 g), so "the deepest angle that holds 1 g" would stay 45 deg below
+  stall speed and never shrink. Thrust is in the force budget (the turn), not in the schedule.
+- Not the exact deepest angle: the first version solved C(a) v^2 = 1 g by bisection. Its angle
+  has an infinite slope in speed at both ends (the lift past the stall is a smootherstep in the
+  angle), and the full line's steepest slope was 3.67 deg/s per m/s at 104.4 m/s (a corner).
+  The smootherstep in speed over the same span is smooth and cheap. In the span the wing alone
+  dips to 0.929 g (at 100.0 m/s); the normal force never falls below 1.145 g.
+- The span scales with the held vertical: with the 1 g span the full dive line rose toward the
+  stall by 1.21 deg/s in all (largest 0.085 deg/s per 0.1 m/s step at 97.5 m/s); a linear,
+  smoothstep or later-ending span (up to 1.3 x 104.4 m/s) did not fix it (0.49 to 1.74 deg/s);
+  scaling by the vertical did (0).
+
+**Lines** (quasi-steady, coast unless named, spawn store, 0.1 m/s grid 85-470 m/s; the rise
+toward the stall is measured below each line's peak):
+
+- Largest rise toward the stall: none (at most -0.0000 / -0.0001 deg/s per step) for gradual,
+  middle, full, the envelope, full diving and full climbing.
+- Steepest slope (deg/s per m/s): gradual 0.348 (92.2 m/s), middle 1.054 (92.3), full 1.054
+  (92.3; was 1.69), envelope 1.054, full dive 0.753 (179.5), full climb 1.054.
+- Envelope minus max(middle, full): largest 0.0176 deg/s (187.8 m/s), never over.
+- The thrust question (author's point 2): with the whole normal force the deep turn rises
+  toward the stall, because thrust x sin(a) is up to 0.43 g at these speeds and, as the angle
+  closes, the share of the vertical taken falls: before the envelope cap, full stick turns
+  16.80 deg/s at 100 m/s, 21.73 at 95, 28.29 at 90, 27.09 at 85. The envelope cap holds the
+  line to the envelope there: full = envelope = middle from 85 m/s to about 99 m/s (7.25 deg/s
+  at 90, 12.42 at 95). So the cap throws away up to 23.9 deg/s (at 85 m/s) of the budget's turn
+  near the stall. Above about 100 m/s the cap does not bind (full turns below the envelope,
+  e.g. 19.17 at 104, 24.35 at 120, 29.42 at 140, against the envelope's 19.88, 28.46, 36.20).
+  "The turn there is 0" from stall speed to 104 m/s is not what it does: thrust's spare normal
+  force turns, capped by the envelope.
+
+| v m/s | full commanded deg | wing lift / 1 g | normal force / 1 g | full deg/s | envelope deg/s |
+|---|---|---|---|---|---|
+| 90 | 16.0 | 0.990 | 1.133 | 7.25 | 7.25 |
+| 95 | 23.1 | 1.072 | 1.271 | 12.42 | 12.42 |
+| 98 | 33.3 | 0.972 | 1.246 | 15.25 | 15.25 |
+| 100 | 39.8 | 0.929 | 1.247 | 16.83 | 16.93 |
+| 104 | 45.0 | 0.992 | 1.336 | 19.17 | 19.88 |
+| 120 | 45.0 | 1.320 | 1.640 | 24.35 | 28.46 |
+
+**Held** (World, 60 s from the spawn; speed, turn, AoA, store):
+
+- Full: 96.8 m/s, 14.18 deg/s, 29.1 deg, store 0.453 (was 57.5 m/s, 0.0 deg/s, 45 deg,
+  0.002). Lowest 91.9 m/s. It no longer goes below stall speed, but the store still drains
+  slowly: 0.492 at 10 s, 0.476 at 30 s, 0.453 at 60 s, 0.00073 of the store per second at
+  97 m/s. Cause: `_setting`'s held vertical is the soft minimum of 1 g and the wing's maximum
+  lift (exponent 16): 0.9939 g at 97 m/s, and the shortfall sinks from the store. Not changed
+  (outside this round); counting the thrust's normal part in that hold, or a sharper soft
+  minimum, would stop it.
+- Middle: 148.4 m/s, 39.04 deg/s, 11.4 deg, store 0.500 (unchanged).
+- Gradual: 316.8 m/s, 18.83 deg/s, 1.8 deg, store 0.500, still accelerating at 60 s (quasi-
+  steady 332 m/s).
+
+**Snaps** (full stick from straight; peak AoA (time), speed lost in 0.5 s): 0.6 x corner
+50.1 deg (0.63 s), 15.7 m/s; 0.8 x 18.2 deg (1.00 s), 4.4 m/s; 0.95 x 14.9 deg (0.37 s),
+9.2 m/s. Within 0.2 deg and 0.1 m/s of step 6.
+
+**Nose** (World, full stick from straight, 2 s; commanded at the start speed; peak AoA (time,
+speed); commanded at the peak):
+
+- 1.0 x stall (90.4 m/s): 16.2 deg; 34.7 deg (1.07 s, 96.4 m/s); 27.6 deg.
+- 1.2 x (108.5 m/s): 45.0 deg; 50.3 deg (0.80 s, 97.5 m/s); 31.6 deg.
+- 1.5 x (135.7 m/s): 45.0 deg; 50.7 deg (0.70 s, 115.9 m/s); 45.0 deg.
+
+The command moves with the speed: from 1.0 x stall the ship accelerates into the span and the
+angle follows it up; from 1.2 x it slows into the span while the nose is still swinging toward
+45 deg, so the peak is 19 deg past the command at that moment and comes back.
+
+Chart: docs/rewrite/sections/post-stall/doghouse-p51d.png (game units, 2x). The full line runs
+below the envelope from about 100 to 190 m/s and on it below about 99 m/s; full held marker at
+97 m/s, 14 deg/s. Doghouse flown points: corner 252.5 m/s / 66.6 deg/s, best sustained 167.9 m/s.
+
+**Not run this round** (author's rule): tests, compile check, speed.
+
+**Open for the author:** keep the envelope cap near the stall (it throws away thrust's turn,
+up to 23.9 deg/s at 85 m/s) or let thrust turn past the envelope there; the store's slow drain
+at the full-stick hold (the soft-minimum 1 g).
