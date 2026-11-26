@@ -1765,6 +1765,9 @@ class Contact(NamedTuple):
     shift_x: Tensor | None = None
     shift_y: Tensor | None = None
     bent_hit: Tensor | None = None
+    # The bend ship's average map velocity over the tick (the relative frame's).
+    ship_velocity_x: Tensor | None = None
+    ship_velocity_y: Tensor | None = None
 
 
 def _hit_test(
@@ -1853,6 +1856,8 @@ def _hit_test(
         rest * (move_x * (turn.cos - 1.0) - move_y * turn.sin),
         rest * (move_x * turn.sin + move_y * (turn.cos - 1.0)),
         bent_hit,
+        moved[:, 0].gather(1, bend_ship) / config.tick_length,
+        moved[:, 1].gather(1, bend_ship) / config.tick_length,
     )
 
 
@@ -1976,26 +1981,38 @@ def egg_turn(start_x, start_y, move_x, move_y, entry_tau, half_width, turn_max) 
 
 
 def _deflect(bullets: Tensor, contact: Contact) -> Tensor:
-    """The turned bullets' block: the end moved by the turned rest of the tick's relative move
-    (`Contact.shift`), the direction rotated by the same turn; the speed and the end's cached
-    medium kept (the turned end is metres off the cached one)."""
+    """The turned bullets' block, in the relative frame of the bend ship: the end moved by the
+    turned rest of the tick's relative move (`Contact.shift`), the map velocity relative to the
+    ship (its average over the tick) rotated by the same turn, so the relative speed is kept
+    (the map speed changes by the ship's part); the end's cached medium kept (the turned end is
+    metres off the cached one). The bullet's speed column is its proper speed: map speed x n."""
     E, _, N, K = bullets.shape
     flat = (E, N * K)
-    direction_x = bullets[:, BULLET_DIR_X].reshape(flat)
-    direction_y = bullets[:, BULLET_DIR_Y].reshape(flat)
+    index = torch.exp(bullets[:, BULLET_LOG_INDEX].reshape(flat))
+    map_speed = bullets[:, BULLET_SPEED].reshape(flat) / index
+    relative_x = bullets[:, BULLET_DIR_X].reshape(flat) * map_speed - contact.ship_velocity_x
+    relative_y = bullets[:, BULLET_DIR_Y].reshape(flat) * map_speed - contact.ship_velocity_y
+    velocity_x = contact.ship_velocity_x + (
+        relative_x * contact.turn_cos - relative_y * contact.turn_sin
+    )
+    velocity_y = contact.ship_velocity_y + (
+        relative_x * contact.turn_sin + relative_y * contact.turn_cos
+    )
+    speed = torch.sqrt(velocity_x * velocity_x + velocity_y * velocity_y).clamp_min(1e-9)
     turned = torch.stack(
         [
             bullets[:, BULLET_X].reshape(flat) + contact.shift_x,
             bullets[:, BULLET_Y].reshape(flat) + contact.shift_y,
-            direction_x * contact.turn_cos - direction_y * contact.turn_sin,
-            direction_x * contact.turn_sin + direction_y * contact.turn_cos,
+            velocity_x / speed,
+            velocity_y / speed,
+            speed * index,
         ],
         1,
-    ).reshape(E, 4, N, K)
+    ).reshape(E, 5, N, K)
     head = torch.where(
-        contact.bent.reshape(E, 1, N, K), turned, bullets[:, BULLET_X : BULLET_DIR_Y + 1]
+        contact.bent.reshape(E, 1, N, K), turned, bullets[:, BULLET_X : BULLET_SPEED + 1]
     )
-    return torch.cat([head, bullets[:, BULLET_DIR_Y + 1 :]], 1)
+    return torch.cat([head, bullets[:, BULLET_SPEED + 1 :]], 1)
 
 
 def _damage(

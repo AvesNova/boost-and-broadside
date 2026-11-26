@@ -149,30 +149,39 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   path is within the card's inner angle (30 deg) of the target's nose, full from the outer
   angle (45 deg) round to dead astern, a smootherstep in the cosine between (t = (cos 30 - c) /
   (cos 30 - cos 45), no acos; the card stores the angles, the constants their cosines).
-- **Deflector** (proposal 2026-11-27, branch `bullet-deflector`, unmerged;
-  `GameConfig.deflector`, `card.DEFLECTOR_PRESETS`, `core.deflection`, `core.hit_fraction`,
-  `core._deflect`). A field around every ship, the same for every type and at any shield (shield
-  down included): a bullet whose straight in-tick path passes at b from a ship's centre is
-  treated as passing at b + D, D by the bullet's path against the ship's nose (front D inside the
-  inner angle, side D beyond the outer, the nose cone's smootherstep in the cosine between).
-  Contact: b + D < hit radius (`_hit_test`); damage: `hit_fraction`, graze(b + D; core, hit
-  radius) x the nose cone weighted by the hit model's `nose_cone` (1 keeps the rule, 0 drops it).
-  A bullet that touches nothing and whose pass's closest approach lies in this tick (0 <= tau < 1,
-  so once per pass) inside the field (b < hit radius + D) is pushed at that point by D_eff =
-  min(D, hit radius + D - b) to the side it was passing (the smooth sign m / sqrt(b^2 + eps^2),
-  eps `card.DEFLECTOR_SIGN_SOFTNESS` 0.1 m) and turned away by atan(D_eff / deflector_length): its
-  direction and the rest of its move rotate, its speed is kept (no energy added). Ghosts run the
-  same code. Noted: a second ship later in the same tick sees the unbent path; the bent bullet's
-  cached medium stays the unbent end's (metres off); a bullet within about eps of dead centre is
-  barely pushed or turned (frontal: it passes through with no damage, since contact and damage
-  use |b| + D). Presets: "off" (D 0, nose cone on; also skips the code), "symmetric" (D 3 m
-  everywhere, nose cone on), "frontal" (D 12 m = the hit radius in the front 30 deg, fading to
-  3 m by 45 deg, nose cone off: every frontal bullet glances off). Bend length 48 m in all
-  (frontal glance 14 deg, side push 3.6 deg). The scripted agent's fire-worth reads
-  `hit_fraction` (one call). Measurements: docs/rewrite/sections/bullet-deflector/progress.md.
+- **Deflector** (proposal 2026-11-27, the egg; branch `deflector-lookahead`, unmerged;
+  `GameConfig.deflector`, `card.DEFLECTOR_PRESETS`, `core.egg_entry`, `core.egg_turn`,
+  `core.hump`, `core._deflect`). An invisible egg around every ship, in its frame (nose +x): the
+  front half an ellipse of semi-axis `egg_front` 53.3 m (40/18 x 24) along the nose, the rear
+  half one of `egg_rear` 24 m, both of half-width `egg_half_width` 24 m; the same for every type
+  and at any shield. Not drawn. In the relative frame (bullet minus ship, as the hit test): on
+  the tick a bullet's straight in-tick path first crosses a living ship's egg inward (a path
+  starting inside never enters: a bullet fired from inside, or already turned, flies straight),
+  its direction is turned away from the ship's centre by deflector_turn x hump(b / half-width),
+  b the distance of the straight line from the centre, hump(x) = 27/4 x (1 - x)^2 on x clamped
+  to [0, 1] (0 at both ends, peak 1 at a third; `deflector_turn` 45 deg); the side is the side
+  of the centre the line passes (b = 0 goes straight). The relative speed is kept. The rest of
+  the tick's move uses the turned direction, and the swept hit test runs on that remainder
+  (entry point to tick end) against the hit circle; the bullet's map velocity after the tick is
+  the ship's average velocity over the tick plus the turned relative velocity (its map speed
+  changes by the ship's part; its cached medium is the unturned end's). Once per pass by
+  construction (only inward crossings). Ghosts run the same code. With one egg per bullet and
+  tick: the first egg by tau; the bullet's contacts with other ships in that tick stay on the
+  straight path. Damage: `hit_damage` at the hitting pass's impact parameter (the turned
+  remainder's line for a turned hit) and its path against the nose (the turned direction).
+  Ship hit radius 12 m, core 10 m (a soft 2 m edge, author 2026-11-27). Hit width (the band of
+  aim offsets that hit, a still ship): 24 m with no turn; with the egg about 4.8 m from the side
+  and astern, 2.1 m head-on (`core.hit_widths`, the same numbers as the design sketch
+  deflector_humps_sketch.py, tested). The nose cone's zero-damage rule is kept as the hit
+  model's `nose_cone` weight, 0 by default (`card.NOSE_CONE`); collision blame still uses the
+  nose cone's angles (author 2026-11-27). Presets: "egg" (default), "off" (no turn; also skips
+  the code). The scripted agent reads `hit_widths` (a constants column, `core.hit_width` between
+  its 17 aspects) for its target size and its trigger's hit chance (with the spread and its
+  lead error). Measurements: docs/rewrite/sections/bullet-deflector/progress.md and
+  egg-experiments.md.
 - **The hit model at runtime** (proposal 2026-11-27): every hit-model number (`core.HIT_MODEL`:
-  hit and core radius, hit damage, bullet spread, deflector front/side/angles/length, the nose
-  cone's weight and angles) is a row of the per-slot table (`core.RUNTIME_CONSTANTS`), never a
+  hit and core radius, hit damage, bullet spread, the egg's front, rear and half-width, the
+  largest turn, the nose cone's weight and angles; and the derived hit widths) is a row of the per-slot table (`core.RUNTIME_CONSTANTS`), never a
   Python number baked into the compiled graph: `core.with_hit_model(constants, **inputs)` changes
   it for every ship between calls of the compiled tick with no recompile (tested under
   `torch.compile(fullgraph=True)`). The workbench `python -m lean.tool.hitbench` (effective hit
@@ -281,9 +290,10 @@ phase, one score for a fast pass with both ships turning that the closest-approa
 twice or missed, none while overlapping and again only after separating, full closeness when
 the cores would meet and a graze between, the credit to the other ship including a team-mate
 and zero sum, no contact for a wide, later or dead pass),
-fields, fog, ghost bullets, the deflector (`test_deflector.py`: the pushed distance in damage
-and path, no energy added, one bend per pass, ghosts bend like real bullets, no frontal damage under
-"frontal", the hit model's round trip and no recompile), invariants (finite, inert
+fields, fog, ghost bullets, the deflector (`test_deflector.py`: the hump, one turn per pass,
+the relative speed kept, dead centre straight and full damage, a bullet from inside the egg not
+turned, ghosts like real bullets, the turned path and hit-or-miss equal the design sketch's
+trace_through, the hit widths equal the sketch's, the hit model's round trip and no recompile), invariants (finite, inert
 padding, team swap), the clock and wipe, both spawn rules, the training spawn, the one-tick delay,
 the levels (Max the envelope's top line to 0.1% and above every fraction of it, Snap equal to Max
 above corner and at the deep angle below its band, Sustain's energy rate about 0 where a

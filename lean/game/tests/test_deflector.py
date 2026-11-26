@@ -160,15 +160,25 @@ def _shifted(bullets, starts):
 
 
 def test_the_turn_keeps_the_speed():
-    """No energy added: a turned bullet's speed equals the unturned one's; its direction stays a
-    unit vector."""
+    """No energy added in the relative frame: a turned bullet's speed relative to the ship
+    (its average velocity over the tick) equals the unturned one's; its direction stays a unit
+    vector."""
     offsets = torch.linspace(-30.0, 30.0, 41)
     aspects = torch.linspace(0.0, math.pi, 41)
-    ((on, _),) = run(EGG, crossing(EGG, offsets, aspects, start_x=FAR))
-    ((off, _),) = run(OFF, crossing(OFF, offsets, aspects, start_x=FAR))
-    *_, direction_x, direction_y, speed = bullet(on)
-    assert torch.equal(speed, bullet(off)[4])
-    assert torch.allclose(direction_x**2 + direction_y**2, torch.ones_like(speed), atol=1e-6)
+    start = crossing(EGG, offsets, aspects, start_x=FAR, target_speed=150.0)
+    ((on, _),) = run(EGG, start)
+    ((off, _),) = run(OFF, crossing(OFF, offsets, aspects, start_x=FAR, target_speed=150.0))
+    tick = EGG.tick_length
+    ship_x = (on.x[:, 1] - start.x[:, 1]) / tick
+    ship_y = (on.y[:, 1] - start.y[:, 1]) / tick
+
+    def relative_speed(state):
+        *_, direction_x, direction_y, speed = bullet(state)
+        return torch.hypot(direction_x * speed - ship_x, direction_y * speed - ship_y)
+
+    assert torch.allclose(relative_speed(on), relative_speed(off), rtol=1e-5)
+    *_, direction_x, direction_y, _ = bullet(on)
+    assert torch.allclose(direction_x**2 + direction_y**2, torch.ones_like(direction_x), atol=1e-6)
     assert bool((direction_y.abs() > 1e-3).any())  # some were turned
 
 

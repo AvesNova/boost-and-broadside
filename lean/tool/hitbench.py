@@ -1,19 +1,21 @@
 """The hit-model workbench (proposal 2026-11-27): what a hit model does to one bullet, measured
 with the game's own step on synthetic bullets, on the CPU, in seconds.
 
-    PYTHONPATH=. uv run --no-sync python -m lean.tool.hitbench [--presets off symmetric frontal]
-        [--set hit_radius=14 deflector_front=10 ...] [--sigma 2] [--out DIR]
+    PYTHONPATH=. uv run --no-sync python -m lean.tool.hitbench [--presets egg off]
+        [--set hit_radius=14 deflector_turn_deg=30 bullet_spread=10 ...] [--sigma 2] [--out DIR]
 
-For each preset (card.DEFLECTOR_PRESETS, with the `--set` inputs of core.HIT_MODEL on top), one
-call of core.step on E synthetic environments: a target at the origin flying straight at its
-cruise speed, and one of the shooter's bullets placed so that its pass, relative to the target,
-closes at a given offset in the middle of the tick, at a given aspect (the bullet's path off the
-target's nose, 0 head-on) and range (the bullet's speed is the launch speed, cruise plus muzzle,
-slowed by the game's drag over the range). The damage is the step's `hit_damage`. From it:
+For each preset (card.DEFLECTOR_PRESETS, with the `--set` inputs of core.HIT_MODEL on top), a few
+ticks of core.step on E synthetic environments: a target at the origin flying straight at its
+cruise speed, and one of the shooter's bullets placed outside the target's egg on a straight
+relative line that would pass the target's centre at a given offset, at a given aspect (the
+bullet's path off the target's nose, 0 head-on) and range (the bullet's speed is the launch
+speed, cruise plus muzzle, slowed by the game's drag over the range). The damage is the steps'
+summed `hit_damage` (the deflector turns the bullet at the egg as in play). From it:
 
-- the effective hit radius: the integral of damage over the offset over twice the full damage
-  at that range (a centred hit from astern with the deflector off: hit damage x kinetic), and the
-  target's apparent angular size, 2 x effective radius / range, in milliradians;
+- the hit width: the band of offsets that do damage; the effective hit radius: the integral of
+  damage over the offset over twice the full damage at that range (a centred hit from astern
+  with the deflector off: hit damage x kinetic), and the target's apparent angular size, 2 x
+  effective radius / range, in milliradians;
 - per bullet, against a Gaussian aim error sigma (milliradians, the shooter's) plus the game's
   spread (spread_speed per axis over the launch speed): the hit chance (damage above 0) and the
   expected damage; damage per second while tracking (x the fire rate); the time to kill from a
@@ -42,6 +44,7 @@ OFFSET_STEP = 0.1  # m
 SIGMA_PANEL = 40.0  # mrad: the aim-error panel runs 0 to this
 CONFIG = core.GameConfig(field_count=0, fog=False)
 SLOT = 1  # the test bullet's slot in the shooter's ring
+TICKS = 5  # steps per measurement: the bullet's pass falls inside them at every range
 
 
 @dataclasses.dataclass
@@ -80,9 +83,10 @@ def _place(config, inputs, aspects, ranges, offsets):
     relative_y = -cruise * nose_y
     length = torch.sqrt(relative_x**2 + relative_y**2)
     across_x, across_y = -relative_y / length, relative_x / length
-    tick = config.tick_length
-    start_x = o * across_x - 0.5 * relative_x * tick
-    start_y = o * across_y - 0.5 * relative_y * tick
+    # Back along the relative line from the pass, beyond the egg.
+    back = max(float(inputs["egg_front"]), float(inputs["egg_rear"])) + 20.0
+    start_x = o * across_x - back * relative_x / length
+    start_y = o * across_y - back * relative_y / length
     zeros, ones = torch.zeros(envs), torch.ones(envs)
     state = core.with_velocity(
         state.replace(
@@ -104,7 +108,7 @@ def _place(config, inputs, aspects, ranges, offsets):
     bullets[:, core.BULLET_DIR_X, 0, SLOT] = 1.0
     bullets[:, core.BULLET_SPEED, 0, SLOT] = bullet_speed
     counts = state.bullet_counts.clone()
-    counts[:, core.MOVES_LEFT, 0, SLOT] = 2
+    counts[:, core.MOVES_LEFT, 0, SLOT] = TICKS + 1
     real = state.bullet_real.clone()
     real[:, 0, SLOT] = True
     return state.replace(
@@ -117,20 +121,24 @@ def _place(config, inputs, aspects, ranges, offsets):
 
 def _damage(config, inputs, aspects, ranges, offsets) -> tuple[torch.Tensor, object]:
     state = _place(config, inputs, aspects, ranges, offsets)
+    constants = state.constants
     envs = state.x.shape[0]
     idle = torch.zeros(envs, 2, 3, dtype=torch.long)
-    _, out = core.step(
-        config, state.replace(pending=idle), idle, {"spread": torch.zeros(envs, 2, 2)}
-    )
+    damage = torch.zeros(envs)
+    for _ in range(TICKS):
+        state, out = core.step(
+            config, state.replace(pending=idle), idle, {"spread": torch.zeros(envs, 2, 2)}
+        )
+        damage = damage + out.hit_damage[:, 0, 1]
     shape = (len(aspects), len(ranges), len(offsets))
-    return out.hit_damage[:, 0, 1].reshape(shape), state.constants
+    return damage.reshape(shape), constants
 
 
 def measure(name: str, overrides: dict | None = None) -> Bench:
     """One preset (with `overrides`, core.HIT_MODEL names) measured on the step."""
     inputs = {**card.DEFLECTOR_PRESETS[name], **(overrides or {})}
-    # The deflector's code on for every preset (off's zeros equal the skipped code; tested).
-    config = dataclasses.replace(CONFIG, deflector="symmetric")
+    # The deflector's code on for every preset ("off": no turn, as the skipped code).
+    config = dataclasses.replace(CONFIG, deflector="egg")
     probe = core.reset(config, 1, torch.tensor([[1, 1]]), None, "cpu")
     reach = core.with_hit_model(probe.constants, **inputs)
     radius = _value(reach, "hit_radius")
@@ -139,7 +147,7 @@ def measure(name: str, overrides: dict | None = None) -> Bench:
     ranges = torch.tensor(RANGES)
     damage, constants = _damage(config, inputs, aspects, ranges, offsets)
     # Full damage: a centred hit from astern, the deflector and nose cone off.
-    plain = {**inputs, "deflector_front": 0.0, "deflector_side": 0.0, "nose_cone": 0.0}
+    plain = {**inputs, "deflector_turn": 0.0, "nose_cone": 0.0}
     full, _ = _damage(config, plain, torch.tensor([math.pi]), ranges, torch.zeros(1))
     interval = _value(constants, "fire_interval")
     return Bench(
@@ -154,9 +162,17 @@ def measure(name: str, overrides: dict | None = None) -> Bench:
     )
 
 
+def hit_width(bench: Bench) -> torch.Tensor:
+    """(A, R) metres: the band of offsets that do damage."""
+    return (bench.damage > 0.0).float().sum(-1) * OFFSET_STEP
+
+
 def effective_radius(bench: Bench) -> torch.Tensor:
-    """(A, R) metres: the damage's integral over the offset over twice the full damage."""
-    return bench.damage.sum(-1) * OFFSET_STEP / (2.0 * bench.full)
+    """(A, R) metres: the damage's integral over the offset over twice the centred hit's at
+    that aspect and range (never turned, inside the core: the full damage; the aspect sets the
+    bullet's slowing on the way, the target flying on)."""
+    centre = bench.damage[..., int(bench.offsets.abs().argmin())]
+    return bench.damage.sum(-1) * OFFSET_STEP / (2.0 * centre.clamp_min(1e-9))
 
 
 def per_bullet(bench: Bench, sigma_mrad: float) -> tuple[torch.Tensor, torch.Tensor]:
@@ -195,15 +211,17 @@ def table(bench: Bench, sigma: float, range_index: int = 2) -> str:
         f"{1e3 * bench.inputs['bullet_spread'] / bench.launch_speed:.2f} mrad; full hit "
         f"{float(bench.full[range_index]):.2f}",
         "",
-        "| aspect (deg off nose) | effective radius, m | apparent size, mrad | hit chance "
-        "| damage / bullet | damage / s | time to kill, s |",
-        "|---|---|---|---|---|---|---|",
+        "| aspect (deg off nose) | hit width, m | effective radius, m | apparent size, mrad "
+        "| hit chance | damage / bullet | damage / s | time to kill, s |",
+        "|---|---|---|---|---|---|---|---|",
     ]
+    width = hit_width(bench)
     for i, aspect in enumerate(ASPECTS_DEG):
         effective = float(radius[i, range_index])
         ttk = float(kill[i, range_index])
         lines.append(
-            f"| {aspect} | {effective:.2f} | {2e3 * effective / r:.1f} | "
+            f"| {aspect} | {float(width[i, range_index]):.1f} | {effective:.2f} | "
+            f"{2e3 * effective / r:.1f} | "
             f"{float(chance[i, range_index]):.3f} | {float(expected[i, range_index]):.3f} | "
             f"{float(expected[i, range_index]) * bench.fire_rate:.1f} | "
             f"{'never' if math.isinf(ttk) else f'{ttk:.2f}'} |"
@@ -266,8 +284,7 @@ def figure(benches: list[Bench], sigma: float, path: Path) -> None:
     b.set(
         xlabel="offset of the pass from the target's centre, m",
         ylabel="damage per bullet",
-        title=f"Damage against offset at {r:.0f} m (solid 90 deg, dotted head-on;\n"
-        "presets with equal D off the nose coincide)",
+        title=f"Damage against the aim offset at {r:.0f} m (solid 90 deg, dotted head-on)",
     )
     c.set(
         xlabel="aim error sigma, mrad (plus the game's spread)",

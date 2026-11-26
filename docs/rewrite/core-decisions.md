@@ -920,6 +920,9 @@ lean/scripted/NOTES.md.
   stick TV 0.13-0.14 per tick, by side 0.08-0.09, by steady rate 4-5% of the span.
 
 Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`, unmerged; overnight 2026-11-27)
+- **Superseded** by the egg (author decision 2026-11-27, entry "The egg deflector" below): the
+  closest-approach push, its presets and `hit_fraction` are removed; the runtime hit model and
+  the matrix exponential stay.
 - **Mechanism** (`core.deflection`, `core.hit_fraction`, `core._deflect`; lean/game/NOTES.md
   "Deflector"): a field around every ship, the same at any shield. A bullet passing a ship at b
   is treated as passing at b + D: contact when b + D < hit radius, damage graze(b + D; core, hit
