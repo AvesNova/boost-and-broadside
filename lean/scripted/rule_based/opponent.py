@@ -1,0 +1,742 @@
+"""The scripted opponent: Imugi's combat core without doctrines, memory layers or Frontline.
+
+One decision per living ship per call, read from its team's view of the game (fog on: enemies
+as last seen, `lean.game.core.enemy_view`): the nearest remembered enemy kept with a factor (a
+remembered enemy's distance grows with the time since it was seen, and it is dropped once it
+could have flown out of sight),
+a drag-law lead in the medium, a logistic stick choice toward the lead point, logistic power
+and gun gates, a steer toward the centre near the arena edge, and one ordinary uniform draw
+per action head. Every ship characteristic is read from the game's constants
+(`state.constants`) by its name. Everything is (E, N): E environments, N ship slots.
+
+Action indices follow `lean.contract.State`: stick 0 straight, then (1, 2) gradual, (3, 4)
+middle, (5, 6) full; power 0 coast, 1 dive (store into speed), 2 climb (speed into
+store); fire 0 or 1.
+"""
+
+import math
+from dataclasses import dataclass
+
+import torch
+from torch import Tensor
+
+from lean.contract import random_keywords
+from lean.game.core import aspect_factor, built_once, enemy_view, slot_indices
+
+from .parameters import GATES, STICK_GATES, Gate, ScriptedConfig, value
+from .situation import Situation, assess, signed_angle
+
+COAST, DIVE, CLIMB = 0, 1, 2
+TINY = 1e-6  # keeps lengths and ratios away from zero
+LOGIT_LIMIT = 30.0
+
+
+def draw_uniforms(
+    envs: int, slots: int, generator: torch.Generator | None, device: torch.device | str
+) -> Tensor:
+    """The random draw one `act` call needs: (E, N, 3) float32 uniform on [0, 1), one
+    per action head [stick, power, fire]."""
+    return torch.rand((envs, slots, 3), **random_keywords(generator, device))
+
+
+def fresh_memory(
+    envs: int, slots: int, generator: torch.Generator | None, device: torch.device | str
+) -> dict[str, Tensor]:
+    """The opponent's memory at the start of a match, which the caller carries from call to
+    call (every caller: collect, evaluation, the sandbox), (E, N) each:
+      "target" long, the kept target's slot (-1 for none);
+      "side" float32, +1 left or -1 right, drawn once per ship per match: the tie-break
+        when the plan's turn sense has no side to go by;
+      "sense" float32, the committed turn sense while he is aft of my 3/9 line: +1 left,
+        -1 right, 0 none;
+      "last_pass" float32, the plan and the angles off at the last commit: plan (+1
+        two-circle, -1 one-circle) x angles off (radians, > 0); 0 before the first."""
+    left = torch.rand((envs, slots), **random_keywords(generator, device)) < 0.5
+    zeros = torch.zeros((envs, slots), device=device)
+    return {
+        "target": torch.full((envs, slots), -1, dtype=torch.long, device=device),
+        "side": torch.where(left, 1.0, -1.0),
+        "sense": zeros,
+        "last_pass": zeros.clone(),
+    }
+
+
+def map_velocity(state) -> tuple[Tensor, Tensor, Tensor | None]:
+    """Each ship's velocity over the map (E, N), metres per second: the stored proper velocity
+    over the refractive index n at the ship; and n (E, N), or None without fields (n = 1)."""
+    if state.fields.shape[-1] == 0:
+        return state.velocity_x, state.velocity_y, None
+    index = torch.exp(state.log_index)
+    return state.velocity_x / index, state.velocity_y / index, index
+
+
+@dataclass
+class Engagement:
+    """Each ship's target geometry, (E, N) each; values are arbitrary where
+    `has_target` is False."""
+
+    controlled: Tensor  # bool: rows of the acting team that exist and are alive
+    has_target: Tensor  # bool: controlled and a living enemy is known
+    target: Tensor  # long: the target's slot
+    offset_x: Tensor  # metres, target minus own position
+    offset_y: Tensor
+    distance: Tensor  # metres
+    target_velocity_x: Tensor  # metres per second over the map
+    target_velocity_y: Tensor
+    target_heading_cos: Tensor  # the target's nose direction
+    target_heading_sin: Tensor
+    target_speed: Tensor  # proper speed, metres per second
+    target_nose_rate: Tensor  # radians per second, positive to the left
+    target_energy: Tensor  # its store
+    target_shield: Tensor  # its shield
+    velocity_x: Tensor  # own velocity over the map
+    velocity_y: Tensor
+    ally_in_line: Tensor  # bool: a living team-mate is in the line of fire, nearer than the target
+    index: Tensor | None  # the refractive index at the ship; None without fields (1)
+
+
+def engage(
+    state,
+    team: int | None,
+    weakest_weight: Tensor | float = 0.0,
+    kept_target: Tensor | None = None,
+    keep_factor: float | Tensor = 1.0,
+    clearance: Tensor | float = 24.0,
+    enemies=None,
+    ghost_cutoff: Tensor | float = 1.0,
+) -> Engagement:
+    """Choose each ship's target: the candidate enemy with the smallest score, where the
+    score is the effective distance times (1 + weakest_weight * the enemy's store fraction;
+    skipped when the weight is the number 0). An enemy equal to `kept_target` has its score
+    multiplied by `keep_factor` (below 1), so it is kept unless another scores better by that
+    factor. A team-mate blocks the shot when it is ahead along the nose, nearer than the
+    target, and within `clearance` metres of the line of fire.
+
+    Under fog a remembered enemy is a ghost: its effective distance is the distance to where
+    it was last seen plus how far it could have flown since, the seconds since seen times its
+    sustained speed (the speed of the turning fight, where the yardstick spends its time; the
+    "roam"). A living enemy is a candidate while its roam is at most `ghost_cutoff` times the
+    arena radius: beyond that it could be anywhere in the arena, so its last spot says nothing
+    and it is dropped (seen again, it is a candidate again at once). Without fog, no roam.
+
+    team: the team whose rows act, or None for every ship of both teams (each against the
+    other team). Own ships and team-mates are read from `state`; enemies from `enemies`, the
+    state with every ship as its enemy team knows it (`lean.game.core.enemy_view`; default
+    `state`, as for a team view or with fog off)."""
+    enemies = state if enemies is None else enemies
+    present = state.exists & state.alive
+    controlled = present if team is None else present & (state.team == team)
+    same_team = state.team[:, :, None] == state.team[:, None, :]  # (E, own, other)
+    enemy = (enemies.exists & enemies.alive)[:, None, :] & ~same_team
+    c = state.constants
+    velocity_x, velocity_y, index = map_velocity(state)
+    enemy_x = enemies.x[:, None, :] - state.x[:, :, None]  # (E, own, other)
+    enemy_y = enemies.y[:, None, :] - state.y[:, :, None]
+    if enemies is state:
+        offset_x, offset_y = enemy_x, enemy_y
+    else:
+        offset_x = state.x[:, None, :] - state.x[:, :, None]
+        offset_y = state.y[:, None, :] - state.y[:, :, None]
+    score = torch.sqrt(enemy_x * enemy_x + enemy_y * enemy_y)
+    if state.ticks_since_seen is not None and enemies is not state:
+        seconds = state.ticks_since_seen.to(score.dtype) * c["tick_length"]
+        roam = (seconds * c["sustained_speed"])[:, None, :]  # (E, 1, other)
+        enemy = enemy & (roam <= _last(ghost_cutoff) * c["arena_radius"])
+        score = score + roam
+    if not (isinstance(weakest_weight, float) and weakest_weight == 0.0):
+        store = (enemies.energy * enemies.constants["inverse_max_energy"])[:, None, :]
+        score = score * (1.0 + weakest_weight[..., None] * store)
+    slots = slot_indices(state.x.shape[1], state.x.device).ship
+    if kept_target is not None:
+        score = torch.where(slots == kept_target[..., None], score * _last(keep_factor), score)
+    score = torch.where(enemy, score, math.inf)
+    target = score.argmin(-1)
+    if enemies is state:
+        enemy_velocity_x, enemy_velocity_y = velocity_x, velocity_y
+    else:
+        enemy_velocity_x, enemy_velocity_y, _ = map_velocity(enemies)
+    columns = (
+        enemies.x,
+        enemies.y,
+        enemy_velocity_x,
+        enemy_velocity_y,
+        enemies.heading_cos,
+        enemies.heading_sin,
+        enemies.speed,
+        enemies.nose_rate,
+        enemies.energy,
+        enemies.shield,
+    )
+    features = torch.stack(columns, -1)  # (E, N, 10)
+    chosen = torch.gather(features, 1, target[..., None].expand(-1, -1, len(columns)))
+    (
+        target_x,
+        target_y,
+        target_velocity_x,
+        target_velocity_y,
+        target_heading_cos,
+        target_heading_sin,
+        target_speed,
+        target_nose_rate,
+        target_energy,
+        target_shield,
+    ) = chosen.unbind(-1)
+    target_x = target_x - state.x
+    target_y = target_y - state.y
+    distance = torch.sqrt(target_x * target_x + target_y * target_y)
+    along = offset_x * state.heading_cos[..., None] + offset_y * state.heading_sin[..., None]
+    across = offset_x * state.heading_sin[..., None] - offset_y * state.heading_cos[..., None]
+    ally = present[:, None, :] & same_team & (slots[:, None] != slots[None, :])
+    blocking = ally & (along > 0.0) & (along < distance[..., None]) & (across.abs() < clearance)
+    return Engagement(
+        controlled=controlled,
+        has_target=controlled & enemy.any(-1),
+        target=target,
+        offset_x=target_x,
+        offset_y=target_y,
+        distance=distance,
+        target_velocity_x=target_velocity_x,
+        target_velocity_y=target_velocity_y,
+        target_heading_cos=target_heading_cos,
+        target_heading_sin=target_heading_sin,
+        target_speed=target_speed,
+        target_nose_rate=target_nose_rate,
+        target_energy=target_energy,
+        target_shield=target_shield,
+        velocity_x=velocity_x,
+        velocity_y=velocity_y,
+        ally_in_line=blocking.any(-1),
+        index=index,
+    )
+
+
+@dataclass
+class Marginals:
+    """The three independent action distributions of one decision; they are also the
+    soft labels for behaviour cloning. Rows that are not controlled are arbitrary."""
+
+    stick: Tensor  # (E, N, 7), sums to 1
+    power: Tensor  # (E, N, 3), sums to 1: coast, dive, climb
+    fire: Tensor  # (E, N), probability of firing
+    controlled: Tensor  # (E, N) bool
+    target: Tensor  # (E, N) long, the chosen target's slot
+
+
+TACTICS = ("disengaged", "merge", "offensive", "turning", "defensive")
+
+
+@dataclass
+class Explanation:
+    """One decision with its reasons, (E, N) each: the marginals and what led to them (for
+    tests, measurements and the sandbox)."""
+
+    marginals: Marginals
+    situation: Situation
+    weights: dict[str, Tensor]  # by TACTICS, sum to 1
+    speed_target: Tensor  # v*, metres per second
+    cap: Tensor  # the share of the full stick level folded into the middle one
+    stick_error: Tensor  # radians to the wanted direction, positive left
+    gun_error: Tensor  # radians to the gun's lead point, positive left
+    sense: Tensor  # the committed turn sense after this decision (memory "sense")
+    last_pass: Tensor  # memory "last_pass" after this decision
+
+
+def _per_other(value: Tensor | float) -> Tensor | float:
+    """A per-ship value (E, N) laid along the "other ship" axis of (E, own, other) pairs."""
+    return value[:, None, :] if isinstance(value, Tensor) else value
+
+
+def explain(
+    config: ScriptedConfig,
+    state,
+    team: int | None,
+    persona: dict[str, Tensor] | None,
+    memory: dict[str, Tensor],
+) -> Explanation:
+    """The opponent's action distributions (`marginals`) for the rows of `team`, or of every
+    ship of both teams when `team` is None (one call for both: each ship decides exactly as
+    in its own team's call), with their reasons.
+
+    state: `lean.contract.State`; persona: from `personas` (None: the yardstick); memory:
+    from `fresh_memory`, as `act` last returned it. Under fog each ship reads only its team's
+    view: its own team as it is, enemies at their last sighting (`enemy_view`), none never
+    seen. The stages (docs/rewrite/scripted-bfm-design.md B1):
+    target, assessment, tactic weights, commands mixed as scalars (speed target, stick cap),
+    control laws (stick, power, gun)."""
+    c = state.constants
+    enemies = enemy_view(state)
+    gun_range = c["gun_range"]
+
+    def read(name: str) -> Tensor | float:
+        return value(config, persona, name)
+
+    # Target.
+    fight = engage(
+        state,
+        team,
+        read("weakest_weight"),
+        memory["target"],
+        read("target_keep_factor"),
+        clearance=_per_other(read("ally_clearance") * c["hit_radius"]),
+        enemies=enemies,
+        ghost_cutoff=read("ghost_cutoff"),
+    )
+    has_target = fight.has_target
+    safe_distance = fight.distance.clamp_min(TINY)
+    range_ratio = safe_distance / gun_range
+    situation = assess(state, fight, read("turning_floor"))
+
+    # The gun's lead point: where the target is, relative to the shooter, when a bullet fired
+    # now arrives. The bullet inherits the shooter's velocity, so the relative velocity
+    # carries it. In a medium of index n a bullet's map speed is its proper speed over n, so
+    # its time of flight is n times longer (the shooter's index taken for the whole path).
+    lead_distance = range_ratio.clamp_max(read("lead_cap"))
+    bullet_drag = c["bullet_drag"]
+    flight_time = torch.expm1(bullet_drag * gun_range * lead_distance) * (
+        read("lead_gain") / (bullet_drag * c["bullet_launch_speed"])
+    )
+    if fight.index is not None:
+        flight_time = flight_time * fight.index
+    aim_x = fight.offset_x + (fight.target_velocity_x - fight.velocity_x) * flight_time
+    aim_y = fight.offset_y + (fight.target_velocity_y - fight.velocity_y) * flight_time
+    gun_error = signed_angle(state.heading_cos, state.heading_sin, aim_x, aim_y)
+    turn_needed = gun_error.abs()
+
+    # The fight's gates in one logistic.
+    target_size = (2.0 * torch.atan(c["hit_radius"] / safe_distance)).clamp(
+        read("target_size_minimum"), read("target_size_maximum")
+    )
+    fight_speed = read("fight_speed") * c["sustained_speed"]
+    gate = _gates(
+        config,
+        persona,
+        GATES,
+        {
+            "engaged": range_ratio,
+            "front": situation.bearing.abs(),
+            "rear": situation.aspect,
+            "scissors": safe_distance / c["sustained_radius"],
+            "level_cap": state.speed / c["middle_stick_speed"],
+            "aligned": turn_needed / target_size,
+            "in_range": range_ratio,
+        },
+    )
+
+    # Tactic weights: engaged or not, then the quadrant by the 3/9 line (he is ahead of me;
+    # I am behind his 3/9 line).
+    engaged = torch.where(has_target, gate["engaged"], 0.0)
+    ahead, astern = engaged * gate["front"], gate["rear"]
+    behind = engaged - ahead
+    weights = {
+        "disengaged": 1.0 - engaged,
+        "merge": ahead * (1.0 - astern),
+        "offensive": ahead * astern,
+        "turning": behind * astern,
+        "defensive": behind * (1.0 - astern),
+    }
+
+    # The plan for this pass: two-circle (+1) when my energy advantage is above the plan
+    # threshold, else one-circle (-1); after a pass, the last pass's plan, switched when that
+    # pass gained less than the switch gain in angles off (Shaw pp. 112-113: the stalemate
+    # breaker inside the fight). The kept target's last pass only.
+    same_target = has_target & (fight.target == memory["target"])
+    last_pass = torch.where(same_target, memory["last_pass"], 0.0)
+    energy_plan = torch.where(situation.energy_advantage > read("plan_threshold"), 1.0, -1.0)
+    previous_plan = torch.sign(last_pass)
+    gained = last_pass.abs() - situation.angles_off
+    kept_plan = torch.where(gained < read("switch_gain"), -previous_plan, previous_plan)
+    plan = torch.where(last_pass != 0.0, kept_plan, energy_plan)
+
+    # Speed target, in log space, and the stick cap (the share of the full level folded into
+    # the middle one), per tactic:
+    # - disengaged and merge: the merge speed; disengaged, the cap above the middle stick
+    #   speed (no turn lost there);
+    # - offensive: the chase speed, the fight speed raised against a turning target by the
+    #   ratio of corner to sustained speed (against a straight one the engine closes: no
+    #   climb, `no_bank`);
+    # - turning, two-circle (the energy plan, Shaw p. 110): the middle level at the fight
+    #   speed; one-circle: full stick at the fight speed, down to the speed floor inside the
+    #   scissors range (Shaw p. 83);
+    # - defensive (Shaw pp. 132-134): break (full stick, corner speed).
+    # (The spend for a near shot, the two-circle cash and the graded defence were removed
+    # after the reach check: rarely reached, small effect there, scripted-reach.md.)
+    log_corner = _log(c["corner_speed"])
+    log_fight = _log(fight_speed)
+    log_merge = _log(read("merge_speed") * c["corner_speed"])
+    log_floor = _log(read("speed_floor") * c["stall_speed"])
+    turning_target = situation.target_sense.abs()
+    log_chase_speed = log_fight + turning_target * _log(c["corner_speed"] / c["sustained_speed"])
+    two_circle = 0.5 * (1.0 + situation.flow)
+    log_one_circle = log_fight + gate["scissors"] * (log_floor - log_fight)
+    log_turning = log_one_circle + two_circle * (log_fight - log_one_circle)
+    log_target = (
+        (weights["disengaged"] + weights["merge"]) * log_merge
+        + weights["offensive"] * log_chase_speed
+        + weights["turning"] * log_turning
+        + weights["defensive"] * log_corner
+    )
+    cap = weights["disengaged"] * gate["level_cap"] + weights["turning"] * two_circle
+    # Chasing a target that is not turning: no banking (the engine closes).
+    no_bank = weights["offensive"] * (1.0 - turning_target)
+
+    # Boundary: within a margin of turn radii of the edge and flying outward, blend in a
+    # steer toward the centre. Without a target the wanted direction is the centre.
+    distance_from_centre = torch.sqrt(state.x * state.x + state.y * state.y).clamp_min(TINY)
+    in_corner_speeds = state.speed / c["corner_speed"]
+    turn_radius = c["sustained_radius"] * (in_corner_speeds * in_corner_speeds).clamp_min(1.0)
+    margin = read("boundary_margin") * turn_radius
+    depth = (distance_from_centre - (c["arena_radius"] - margin)) / margin
+    ramp_low = read("boundary_ramp_low")
+    ramp = (depth - ramp_low) / (read("boundary_ramp_high") - ramp_low)
+    outward = state.x * fight.velocity_x + state.y * fight.velocity_y > 0.0
+    centre_weight = torch.where(outward & has_target, ramp.clamp(0.0, 1.0), 0.0)
+    centre_weight = torch.where(has_target, centre_weight, 1.0)
+    steer_x, steer_y = merge_miss(
+        state,
+        enemies,
+        fight,
+        aim_x,
+        aim_y,
+        read("merge_miss_offset") * c["hit_radius"],
+        read("merge_miss_range") * c["sustained_radius"],
+    )
+    point_length = torch.sqrt(steer_x * steer_x + steer_y * steer_y).clamp_min(TINY)
+    point_scale = (1.0 - centre_weight) / point_length
+    centre_scale = centre_weight / distance_from_centre
+    wanted_x = point_scale * steer_x - centre_scale * state.x
+    wanted_y = point_scale * steer_y - centre_scale * state.y
+    stick_error = signed_angle(state.heading_cos, state.heading_sin, wanted_x, wanted_y)
+
+    # The committed turn sense (design B3, decided: hysteresis by concrete rules):
+    # - release when he comes forward of my 3/9 line (by the release band), or the target
+    #   changes;
+    # - commit when he moves aft with no sense held: the plan's sense. The plan is two-circle
+    #   when my energy advantage is above the plan threshold, else one-circle; at a later pass
+    #   it is the last pass's plan, switched when it gained less than the switch gain in
+    #   angles off (Shaw pp. 112-113: the stalemate breaker inside the fight). Two-circle
+    #   turns his way (toward his side when he is straight), one-circle the other way; the
+    #   drawn side breaks an exact tie.
+    line = read("three_nine_line")
+    bearing_size = situation.bearing.abs()
+    aft = has_target & (bearing_size > line)
+    forward = bearing_size < line - read("release_band")
+    held = memory["sense"]
+    held = torch.where(same_target & ~forward, held, 0.0)
+    short_way = torch.where(situation.bearing > 0.0, 1.0, -1.0)
+    commit = aft & (held == 0.0)
+    his_turn = torch.where(
+        situation.target_sense.abs() > 0.5, torch.sign(situation.target_sense), 0.0
+    )
+    dead_astern = math.pi - bearing_size < read("tie_band")
+    his_side = torch.where(dead_astern, memory["side"], short_way)
+    two_circle_sense = torch.where(his_turn != 0.0, his_turn, his_side)
+    sense = torch.where(commit, plan * two_circle_sense, held)
+    last_pass = torch.where(commit, plan * situation.angles_off, last_pass)
+
+    # Stick: P(turn), then the level by two further gates (the cap folding full into
+    # middle), the side by the committed sense while he is aft (unless the boundary steer
+    # dominates), else by the error's sign.
+    turn_size = stick_error.abs()
+    stick_gate = _gates(
+        config,
+        persona,
+        STICK_GATES,
+        {"turn": turn_size, "level_two": turn_size, "level_three": turn_size},
+    )
+    turn, above_one = stick_gate["turn"], stick_gate["level_two"]
+    above_two = stick_gate["level_three"]
+    turn_above_one = turn * above_one
+    full = turn_above_one * above_two * (1.0 - cap)
+    levels = torch.stack([turn - turn_above_one, turn_above_one - full, full], -1)
+    holding = aft & (sense != 0.0) & (centre_weight <= 0.0)
+    turn_left = torch.where(holding, sense > 0.0, stick_error > 0.0)
+    side_floor = read("side_floor")
+    left = torch.where(turn_left, 1.0 - side_floor, side_floor)[..., None]
+    left_levels = left * levels
+    sides = (
+        (left_levels, levels - left_levels)
+        if config.left_is_even
+        else (levels - left_levels, left_levels)
+    )
+    stick = torch.cat(
+        [(1.0 - turn)[..., None], torch.stack([sides[1], sides[0]], -1).flatten(-2)], -1
+    )
+
+    # Power: track the speed target. Climb above v* + band, dive below v* - band, coast
+    # between; the dive only with a purpose (offensive, turning, defensive: not disengaged
+    # nor at the merge, where the engine brings the speed). Each fades over the
+    # store's edge band (the bottom for the dive, the top for the climb), as its effect does.
+    excess = torch.log(state.speed) - log_target
+    band = read("speed_band")
+    sharpness = 1.0 / (read("power_scale") * read("temperature"))
+    climb_dive = torch.sigmoid(torch.stack([excess - band, -excess - band], -1) * _last(sharpness))
+    bottom = state.energy * c["inverse_fade"]
+    top = c["inverse_fade"] / c["inverse_max_energy"] - bottom
+    room = torch.stack([top, bottom], -1).clamp(0.0, 1.0)
+    climb, dive = (climb_dive * room).unbind(-1)
+    climb = climb * (1.0 - no_bank)
+    dive = dive * (weights["offensive"] + weights["turning"] + weights["defensive"])
+    power_floor = _last(read("power_floor"))
+    power = power_floor + (1.0 - 3.0 * power_floor) * torch.stack(
+        [1.0 - dive - climb, dive, climb], -1
+    )
+
+    # Gun: aligned times in range at the lead point, zero without a target or while the gun
+    # cannot fire. A shot costs no store; never shoot through a team-mate (author 2026-11-23).
+    # Worth it (author 2026-11-25: no shot in a pure head-on): the hit's damage at the
+    # predicted aspect (the game's aspect factor x hit damage) is at least the shooter's
+    # shield recharge for `fire_worth` ticks (a shot makes the tick not quiet, so it forgoes
+    # at least that), or at least the target's shield and more than 0 (the hit empties it, or
+    # kills at 0; inside the nose cone it does nothing). The
+    # bullet's direction is the launch's (own velocity plus the muzzle speed along the nose);
+    # the target's nose turns at its nose rate over the flight time.
+    launch_x = state.velocity_x + c["muzzle_speed"] * state.heading_cos
+    launch_y = state.velocity_y + c["muzzle_speed"] * state.heading_sin
+    turned = fight.target_nose_rate * flight_time
+    turned_cos, turned_sin = torch.cos(turned), torch.sin(turned)
+    nose_x = fight.target_heading_cos * turned_cos - fight.target_heading_sin * turned_sin
+    nose_y = fight.target_heading_sin * turned_cos + fight.target_heading_cos * turned_sin
+    hit_cos = -(launch_x * nose_x + launch_y * nose_y) * torch.rsqrt(
+        (launch_x * launch_x + launch_y * launch_y).clamp_min(TINY)
+    )
+    hit = _at_target(c["hit_damage"], fight.target) * aspect_factor(
+        hit_cos,
+        _at_target(c["nose_inner_cos"], fight.target),
+        _at_target(c["inverse_nose_width"], fight.target),
+    )
+    worth = read("fire_worth") * c["shield_rate"] * c["tick_length"]
+    # (A hit inside the nose cone does no damage, and a ship at 0 shield dies only of damage.)
+    worthwhile = (hit >= worth) | ((hit >= fight.target_shield) & (hit > 0.0))
+    ready = (state.cooldown <= 0) & ~fight.ally_in_line & worthwhile
+    fire = torch.where(has_target & ready, gate["aligned"] * gate["in_range"], 0.0)
+    return Explanation(
+        marginals=Marginals(stick, power, fire, fight.controlled, fight.target),
+        situation=situation,
+        weights=weights,
+        speed_target=torch.exp(log_target),
+        cap=cap,
+        stick_error=stick_error,
+        gun_error=gun_error,
+        sense=sense,
+        last_pass=last_pass,
+    )
+
+
+def merge_miss(
+    state,
+    enemies,
+    fight: Engagement,
+    aim_x: Tensor,
+    aim_y: Tensor,
+    offset: Tensor | float,
+    reach: Tensor | float,
+) -> tuple[Tensor, Tensor]:
+    """The stick's aim point (relative to the ship, (E, N)) with the merge's miss offset: of
+    the other ships (team-mates as they are, enemies as the team knows them) closing on me
+    faster than my own speed (head-on or crossing, not a chase) within `reach` metres, whose
+    straight-line pass would come nearer than `offset` metres, the nearest; the stick aims
+    `offset` metres beside its centre, on the side it is already on (him on my left: I aim to
+    his right, so he passes on my left; two ships that see each other on the left both
+    turn away). Otherwise the aim point as it is."""
+    same_team = state.team[:, :, None] == state.team[:, None, :]
+    present = torch.where(
+        same_team,
+        (state.exists & state.alive)[:, None, :],
+        (enemies.exists & enemies.alive)[:, None, :],
+    )
+    slots = slot_indices(state.x.shape[1], state.x.device).ship
+    present = present & (slots[:, None] != slots[None, :])
+    enemy_velocity_x, enemy_velocity_y, _ = map_velocity(enemies)
+    other_x = torch.where(same_team, state.x[:, None, :], enemies.x[:, None, :])
+    other_y = torch.where(same_team, state.y[:, None, :], enemies.y[:, None, :])
+    other_velocity_x = torch.where(
+        same_team, fight.velocity_x[:, None, :], enemy_velocity_x[:, None, :]
+    )
+    other_velocity_y = torch.where(
+        same_team, fight.velocity_y[:, None, :], enemy_velocity_y[:, None, :]
+    )
+    r_x, r_y = other_x - state.x[..., None], other_y - state.y[..., None]
+    w_x = other_velocity_x - fight.velocity_x[..., None]
+    w_y = other_velocity_y - fight.velocity_y[..., None]
+    distance = torch.sqrt(r_x * r_x + r_y * r_y).clamp_min(TINY)
+    approach = -(r_x * w_x + r_y * w_y)  # closing rate x distance
+    w_squared = (w_x * w_x + w_y * w_y).clamp_min(TINY)
+    cross = r_x * w_y - r_y * w_x  # the predicted miss distance x |w|
+    own_speed = torch.sqrt(
+        fight.velocity_x * fight.velocity_x + fight.velocity_y * fight.velocity_y
+    )
+    offset_pair = offset[..., None] if isinstance(offset, Tensor) else offset
+    reach_pair = reach[..., None] if isinstance(reach, Tensor) else reach
+    near = (
+        present
+        & (distance < reach_pair)
+        & (approach > own_speed[..., None] * distance)
+        & (cross * cross < offset_pair * offset_pair * w_squared)
+    )
+    nearest = torch.where(near, distance, math.inf).min(-1)
+    active = torch.isfinite(nearest.values)
+    pick = nearest.indices[..., None]
+    picked_x, picked_y = r_x.gather(-1, pick)[..., 0], r_y.gather(-1, pick)[..., 0]
+    picked_distance = nearest.values.clamp_max(1e30)
+    left = state.heading_cos * picked_y - state.heading_sin * picked_x >= 0.0
+    shift = torch.where(left, offset, -offset) / picked_distance.clamp_min(TINY)
+    point_x = picked_x + shift * picked_y  # beside his centre, across the line of sight
+    point_y = picked_y - shift * picked_x
+    return torch.where(active, point_x, aim_x), torch.where(active, point_y, aim_y)
+
+
+def _log(x: Tensor | float) -> Tensor | float:
+    """The natural log of a number or a tensor."""
+    return torch.log(x) if isinstance(x, Tensor) else math.log(x)
+
+
+def _at_target(value: Tensor | float, target: Tensor) -> Tensor | float:
+    """A per-ship constant (E, N) read at each ship's target (E, N); a number as it is."""
+    return value.gather(1, target) if isinstance(value, Tensor) else value
+
+
+def _last(x: Tensor | float) -> Tensor | float:
+    """A per-ship value (E, N) laid along a last axis (a number as it is)."""
+    return x[..., None] if isinstance(x, Tensor) else x
+
+
+def _gates(
+    config: ScriptedConfig,
+    persona: dict[str, Tensor] | None,
+    gates: dict[str, Gate],
+    quantities: dict[str, Tensor],
+) -> dict[str, Tensor]:
+    """Every gate of `gates` in one logistic, by name: floor + (1 - 2 floor) sigmoid(sharpness
+    ln(quantity / centre)), the quantities stacked in the gates' order."""
+    quantity = torch.stack([quantities[name] for name in gates], -1)
+    centre, sharpness, floor = _gate_tensors(config, persona, gates, quantity.device)
+    logit = sharpness * torch.log(quantity.clamp_min(TINY) / centre)
+    probability = floor + (1.0 - 2.0 * floor) * torch.sigmoid(
+        logit.clamp(-LOGIT_LIMIT, LOGIT_LIMIT)
+    )
+    return dict(zip(gates, probability.unbind(-1), strict=True))
+
+
+def _gate_tensors(
+    config: ScriptedConfig,
+    persona: dict[str, Tensor] | None,
+    gates: dict[str, Gate],
+    device: torch.device,
+) -> tuple[Tensor, Tensor, Tensor]:
+    """The gates' centres, signed sharpness and floors in the order of `gates`: (G,) each for
+    the yardstick, built once; for a persona its centres and sharpness (E, N, G), its
+    temperature dividing the tempered gates' sharpness. A persona's tables read no number of
+    the config that the persona holds, so a compiled graph is not specialised on them."""
+    names = tuple(gates)
+    if persona is None:
+        centres = tuple(config.values[gates[name].centre] for name in names)
+        table = _yardstick_gates(names, centres, config.values["temperature"], device)
+        return table[0], table[1], table[2]
+    floor, plain, tempered = _gate_structure(names, device)
+    temperature = value(config, persona, "temperature")
+    reference = persona[next(iter(persona))]
+    centre = torch.stack(
+        [
+            torch.as_tensor(value(config, persona, gates[name].centre), device=device).expand_as(
+                reference
+            )
+            for name in names
+        ],
+        -1,
+    )
+    if isinstance(temperature, Tensor):
+        sharpness = torch.where(tempered > 0.5, plain / temperature[..., None], plain)
+    else:
+        sharpness = torch.where(tempered > 0.5, plain / temperature, plain).expand_as(centre)
+    return centre, sharpness, floor
+
+
+@built_once
+def _yardstick_gates(
+    names: tuple[str, ...], centres: tuple[float, ...], temperature: float, device: torch.device
+) -> Tensor:
+    """(3, G) float32 for the gates `names` (of GATES or STICK_GATES): the centres, the signed
+    sharpness (1 / (scale x temperature), positive rising; the temperature only where the gate
+    is tempered) and the floors."""
+    gates = [{**GATES, **STICK_GATES}[name] for name in names]
+    rows = [
+        list(centres),
+        [
+            (1.0 if gate.rising else -1.0) / (gate.scale * (temperature if gate.tempered else 1.0))
+            for gate in gates
+        ],
+        [gate.floor for gate in gates],
+    ]
+    return torch.tensor(rows, dtype=torch.float32, device=device)
+
+
+@built_once
+def _gate_structure(names: tuple[str, ...], device: torch.device) -> Tensor:
+    """(3, G) float32 for the gates `names`, from the gates alone: the floors, the signed
+    sharpness without the temperature (1 / scale, positive rising) and 1 where the gate is
+    tempered."""
+    gates = [{**GATES, **STICK_GATES}[name] for name in names]
+    rows = [
+        [gate.floor for gate in gates],
+        [(1.0 if gate.rising else -1.0) / gate.scale for gate in gates],
+        [1.0 if gate.tempered else 0.0 for gate in gates],
+    ]
+    return torch.tensor(rows, dtype=torch.float32, device=device)
+
+
+def sample(parts: Marginals, uniforms: Tensor) -> Tensor:
+    """Draw (E, N, 3) long [stick, power, fire] from the marginals by inverse transform,
+    one uniform (E, N, 3) per head; rows that are not controlled are 0."""
+    stick = (uniforms[..., 0:1] >= parts.stick.cumsum(-1)[..., :-1]).sum(-1)
+    power = (uniforms[..., 1:2] >= parts.power.cumsum(-1)[..., :-1]).sum(-1)
+    fire = (uniforms[..., 2] < parts.fire).long()
+    return torch.stack([stick, power, fire], -1) * parts.controlled[..., None]
+
+
+def act(
+    config: ScriptedConfig,
+    state,
+    team: int | None,
+    persona: dict[str, Tensor] | None,
+    uniforms: Tensor,
+    memory: dict[str, Tensor],
+) -> tuple[Tensor, dict[str, Tensor]]:
+    """The opponent's actions for the rows of `team`, or of every ship of both teams when
+    `team` is None (one call; the same actions as the two single-team calls added).
+
+    state: `lean.contract.State`; persona: from `personas` (None: the yardstick); uniforms:
+    (E, N, 3) float32 on [0, 1) from `draw_uniforms`; memory: from `fresh_memory` (a fresh
+    one for a new match), as the previous call returned it.
+
+    Returns ((E, N, 3) long [stick, power, fire], the new memory). Action rows of the other
+    team (with a `team`) and rows that are dead or do not exist are 0; a dead or absent row's
+    kept target is cleared (-1), the other team's rows keep theirs.
+    """
+    action, memory, _ = decide(config, state, team, persona, uniforms, memory)
+    return action, memory
+
+
+def decide(
+    config: ScriptedConfig,
+    state,
+    team: int | None,
+    persona: dict[str, Tensor] | None,
+    uniforms: Tensor,
+    memory: dict[str, Tensor],
+) -> tuple[Tensor, dict[str, Tensor], Marginals]:
+    """`act`, also returning the marginals the actions were drawn from (the behaviour-cloning
+    teacher's full distribution, lean.learn)."""
+    reasons = explain(config, state, team, persona, memory)
+    parts = reasons.marginals
+    action = sample(parts, uniforms)
+    controlled = parts.controlled
+    new = {
+        "target": torch.where(controlled, parts.target, -1),
+        "side": memory["side"],
+        "sense": torch.where(controlled, reasons.sense, 0.0),
+        "last_pass": torch.where(controlled, reasons.last_pass, 0.0),
+    }
+    if team is not None:  # the other team's rows keep their memory
+        acting = state.team == team
+        new = {name: torch.where(acting, value, memory[name]) for name, value in new.items()}
+    return action, new, parts

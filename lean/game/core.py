@@ -412,7 +412,7 @@ def steady_control(p, speed: Tensor, stick: Tensor, power: int, sustain=0.0, dee
     )
 
 
-def steady_rates(
+def steady_flight(
     p,
     speed: Tensor,
     stick: Tensor,
@@ -421,16 +421,9 @@ def steady_rates(
     sustain: Tensor | float = 0.0,
     deep: Tensor | float = 0.0,
 ):
-    """A ship flying steadily (no field, the nose's lag settled) at `speed` with stick size
-    `stick` (0 to 1) and power index `power` (0 coast, 1 dive, 2 climb) at store `energy`: its
-    turn rate (rad/s), d speed / dt and d store / dt, from the flight functions the tick uses.
-    `p` holds the ship constants broadcastable against `speed` (the action tables with a last
-    axis of width 3). Every quasi-steady analysis (the derived characteristics, lean.game.tuning's
-    performance and envelope) goes through here. By default `stick` is a fraction of the
-    envelope's top line (the wing's maximum lift against the g limit, Max); `sustain` (Sustain's
-    table) and `deep` (Snap's deep angle below corner) give a stick level's own shape
-    (`stick_level_shape`). The thrust's normal part counts in the 1 g hold at the angle flown
-    (`_setting`): the setting is resolved twice, the second time at the first's angle."""
+    """`steady_rates` with the angle of attack flown: (turn rate (rad/s), d speed / dt, d store
+    / dt, the angle of attack (rad, >= 0)), from the flight functions the tick uses. The scripted
+    agent's look-ahead reads the angle as the nose spring's target (lean.scripted.paths)."""
     control = steady_control(p, speed, stick, power, sustain, deep)
     inverse_lift = 1.0 / p.lift
     angle_sin = 0.0
@@ -457,7 +450,45 @@ def steady_rates(
         1.0 / (speed * speed),
         inverse_lift * inverse_lift,
     )
-    return rate, speed_rate, store_rate
+    return rate, speed_rate, store_rate, angle
+
+
+def steady_rates(
+    p,
+    speed: Tensor,
+    stick: Tensor,
+    power: int,
+    energy: Tensor,
+    sustain: Tensor | float = 0.0,
+    deep: Tensor | float = 0.0,
+):
+    """A ship flying steadily (no field, the nose's lag settled) at `speed` with stick size
+    `stick` (0 to 1) and power index `power` (0 coast, 1 dive, 2 climb) at store `energy`: its
+    turn rate (rad/s), d speed / dt and d store / dt, from the flight functions the tick uses.
+    `p` holds the ship constants broadcastable against `speed` (the action tables with a last
+    axis of width 3). Every quasi-steady analysis (the derived characteristics, lean.game.tuning's
+    performance and envelope) goes through here. By default `stick` is a fraction of the
+    envelope's top line (the wing's maximum lift against the g limit, Max); `sustain` (Sustain's
+    table) and `deep` (Snap's deep angle below corner) give a stick level's own shape
+    (`stick_level_shape`). The thrust's normal part counts in the 1 g hold at the angle flown
+    (`_setting`): the setting is resolved twice, the second time at the first's angle
+    (`steady_flight`, which also returns the angle)."""
+    return steady_flight(p, speed, stick, power, energy, sustain, deep)[:3]
+
+
+def current_path_rate(p, speed: Tensor, angle: Tensor, energy: Tensor) -> Tensor:
+    """The flight path's turn rate (rad/s, positive left, no field) of a ship at `speed` and
+    store `energy` whose angle of attack is `angle` now, coasting: the normal force at that angle
+    (`_path_lift`, the 1 g held as the tick holds it) over the speed. With the nose rate it gives
+    the angle's own rate (nose rate - path rate), which the observation does not carry."""
+    control = steady_control(p, speed, torch.zeros_like(speed), 0)
+    angle_sin = torch.sin(angle)
+    _, _, vertical, thrust = _setting(p, control, speed, energy, angle_sin.abs())
+    lift = _lift_coefficient(p, angle)
+    normal = _path_lift(
+        p, lift, angle, vertical, speed * speed, thrust, thrust * angle_sin, torch.zeros_like(speed)
+    )[0]
+    return normal / speed
 
 
 def quasi_steady(
@@ -2173,33 +2204,49 @@ def sight_pairs(state: State, tracked: Tensor | None = None) -> Tensor:
         & state.alive[:, None, :]
         & (state.team[:, :, None] != state.team[:, None, :])
     )
-    count = state.fields.shape[-1]
-    if count > 0:
-
-        def per_field(row: int) -> Tensor:  # (E, 1, F)
-            return state.fields[:, row, None, :]
-
-        radius, half_band = per_field(FIELD_RADIUS), 0.5 * per_field(FIELD_BAND)
-        core = (radius - half_band).clamp_min(0.0)
-        core_squared, outer = core * core, radius + half_band
-        offset_x = x[..., None] - per_field(FIELD_X)  # (E, N, F)
-        offset_y = y[..., None] - per_field(FIELD_Y)
-        distance_squared = offset_x * offset_x + offset_y * offset_y
-        in_core, in_field = distance_squared < core_squared, distance_squared < outer * outer
-        core_target, core_observer = in_core[:, :, None], in_core[:, None]  # (E, N, N, F)
-        ends = (core_target ^ core_observer) & ~(in_field[:, :, None] & in_field[:, None])
-        # u = centre - observer = -(observer's offset); along = u . d, across = u x d.
-        along = -(offset_x[:, None] * line_x[..., None] + offset_y[:, None] * line_y[..., None])
-        across = offset_x[:, None] * line_y[..., None] - offset_y[:, None] * line_x[..., None]
-        length = length_squared[..., None]
-        passes = (
-            ~(core_target | core_observer)
-            & (across * across < core_squared[:, None] * length)
-            & (along > 0.0)
-            & (along < length)
+    if state.fields.shape[-1] > 0:
+        clear = clear & ~field_blocks(
+            state.fields, x[:, :, None], y[:, :, None], x[:, None, :], y[:, None, :]
         )
-        clear = clear & ~(ends | passes).any(-1)
     return clear
+
+
+def field_blocks(fields: Tensor, a_x: Tensor, a_y: Tensor, b_x: Tensor, b_y: Tensor) -> Tensor:
+    """Whether the fields' cores block the line between points a and b (any shapes that
+    broadcast, leading E; fields (E, 5, F), F > 0), as sight is blocked (`sight_pairs`, a the
+    target and b the observer): field i, with core radius max(r - w / 2, 0) and outer radius
+    r + w / 2, blocks when exactly one end is strictly inside its core and the two ends are not
+    both inside its outer disc (core and band see each other), or when neither end is inside its
+    core and the segment passes strictly within the core radius of the centre. Also the scripted
+    agent's cover (lean.scripted.opponent)."""
+    shape = (fields.shape[0],) + (1,) * (max(a_x.dim(), b_x.dim()) - 1) + (fields.shape[-1],)
+
+    def per_field(row: int) -> Tensor:
+        return fields[:, row].reshape(shape)
+
+    radius, half_band = per_field(FIELD_RADIUS), 0.5 * per_field(FIELD_BAND)
+    core = (radius - half_band).clamp_min(0.0)
+    core_squared, outer = core * core, radius + half_band
+    centre_x, centre_y = per_field(FIELD_X), per_field(FIELD_Y)
+    a_offset_x, a_offset_y = a_x[..., None] - centre_x, a_y[..., None] - centre_y
+    b_offset_x, b_offset_y = b_x[..., None] - centre_x, b_y[..., None] - centre_y
+    a_squared = a_offset_x * a_offset_x + a_offset_y * a_offset_y
+    b_squared = b_offset_x * b_offset_x + b_offset_y * b_offset_y
+    core_a, core_b = a_squared < core_squared, b_squared < core_squared
+    field_a, field_b = a_squared < outer * outer, b_squared < outer * outer
+    ends = (core_a ^ core_b) & ~(field_a & field_b)
+    line_x, line_y = (a_x - b_x)[..., None], (a_y - b_y)[..., None]
+    # u = centre - b = -(b's offset); along = u . d, across = u x d.
+    along = -(b_offset_x * line_x + b_offset_y * line_y)
+    across = b_offset_x * line_y - b_offset_y * line_x
+    length = line_x * line_x + line_y * line_y
+    passes = (
+        ~(core_a | core_b)
+        & (across * across < core_squared * length)
+        & (along > 0.0)
+        & (along < length)
+    )
+    return (ends | passes).any(-1)
 
 
 def _snapshot(state: State) -> Tensor:
