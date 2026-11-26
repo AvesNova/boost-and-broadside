@@ -664,3 +664,81 @@ corner speed near the stall with the store empty; 4v4 fights resolve in pairs an
 
 `lean/learn/tests/test_rewards.py::test_the_real_game_gives_zero_sum_levels` passes on this
 tree (since step 3; also after the merge), with the quick tier of lean/scripted and lean/learn.
+
+## R2 step 5b: 4 s and 6 s horizons (author, 2026-11-27; merged tree, damage 10.5)
+
+The author's points (segments up to 2 s): 4 s = 0.25, 0.5, 1, 2, 4; 6 s = ..., 4, 6. The GPU
+time per horizon was about 17 minutes, so only **6 s** was run (the author's rule for over 30
+minutes); 4 s has path errors only. 1v1 fog off, no fields; 4v4 fields, fog; 512 envs x 1,800
+ticks (the 2 s rows from step 6, 3,600 ticks).
+
+| | 2 s (default) | 6 s |
+|---|---|---|
+| vs rule-based 4v4 fields W / D / L | 1,433 / 5 / 31 (2.1% lost) | 556 / 1 / 10 (1.8% lost) |
+| vs rule-based 1v1 W / D / L | 2,298 / 0 / 139 (5.7% lost) | 860 / 0 / 43 (4.8% lost) |
+| duel, 2 s's W / D / L, 4v4 fields | | 514 / 7 / 195 (2 s wins 72%) |
+| duel, 2 s's W / D / L, 1v1 | | 781 / 2 / 160 (2 s wins 83%) |
+| merge turn 1v1, to 30 deg (med / 75 / 90) | 0.73 / 1.17 / 1.60 | 0.77 / 1.20 / 1.63 |
+| to 90 deg | 2.03 / 2.53 / 3.33 | 2.07 / 2.59 / 3.33 |
+| slow | 231 of 1,828 | 238 of 1,932 |
+| ms per call (100 calls) / peak MiB | 5.70 / 134 | 6.87 / 161 |
+
+Path prediction at 2, 4 and 6 s (`path_check.py --look-ahead 0.25,0.5,1,2,4,6`, median /
+90th percentile; `data/lookahead-r2/path_E.md` (4 s), `path_F.md` (6 s)):
+
+| fields | speed / corner | level | error | 2 s | 4 s | 6 s |
+|---|---|---|---|---|---|---|
+| no | 0.6 | straight | position m | 0.3 / 1.2 | 16.3 / 27.1 | 13.0 / 98.7 |
+| no | 0.6 | straight | nose deg | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 |
+| no | 0.6 | Sustain | position m | 17.9 / 21.9 | 25.9 / 37.8 | 40.5 / 41.1 |
+| no | 0.6 | Sustain | nose deg | 4.2 / 4.2 | 4.9 / 5.4 | 4.9 / 5.7 |
+| no | 0.6 | Max | position m | 11.4 / 24.1 | 21.0 / 52.8 | 22.0 / 47.5 |
+| no | 0.6 | Max | nose deg | 3.2 / 7.5 | 4.1 / 8.9 | 4.9 / 11.9 |
+| no | 0.6 | Snap | position m | 19.6 / 29.6 | 66.6 / 66.6 | 91.4 / 91.5 |
+| no | 0.6 | Snap | nose deg | 2.1 / 4.9 | 11.5 / 11.5 | 50.7 / 50.7 |
+| no | 1.0 | straight | position m | 0.4 / 0.8 | 33.0 / 44.2 | 111.9 / 125.1 |
+| no | 1.0 | straight | nose deg | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 |
+| no | 1.0 | Sustain | position m | 5.3 / 5.7 | 35.3 / 60.0 | 75.8 / 186.1 |
+| no | 1.0 | Sustain | nose deg | 1.5 / 3.3 | 2.5 / 4.5 | 5.2 / 21.5 |
+| no | 1.0 | Max | position m | 15.0 / 15.1 | 36.2 / 36.6 | 39.8 / 86.2 |
+| no | 1.0 | Max | nose deg | 0.0 / 0.2 | 5.1 / 5.1 | 2.8 / 30.9 |
+| no | 1.0 | Snap | position m | 11.2 / 11.2 | 110.4 / 110.4 | 216.9 / 266.5 |
+| no | 1.0 | Snap | nose deg | 14.0 / 14.0 | 77.1 / 77.1 | 172.5 / 176.8 |
+| no | 1.5 | straight | position m | 2.8 / 4.9 | 24.0 / 34.2 | 42.3 / 59.2 |
+| no | 1.5 | straight | nose deg | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 |
+| no | 1.5 | Sustain | position m | 4.9 / 12.6 | 34.2 / 50.0 | 59.2 / 71.9 |
+| no | 1.5 | Sustain | nose deg | 0.0 / 4.8 | 0.0 / 0.6 | 0.0 / 4.3 |
+| no | 1.5 | Max | position m | 2.5 / 8.8 | 5.8 / 39.9 | 41.3 / 112.9 |
+| no | 1.5 | Max | nose deg | 0.9 / 1.4 | 5.3 / 5.3 | 11.7 / 12.6 |
+| no | 1.5 | Snap | position m | 6.9 / 15.7 | 12.9 / 48.9 | 53.0 / 123.0 |
+| no | 1.5 | Snap | nose deg | 0.6 / 1.9 | 5.5 / 5.5 | 13.0 / 13.0 |
+| yes | 0.6 | straight | position m | 0.3 / 28.6 | 16.3 / 135.0 | 39.8 / 284.8 |
+| yes | 0.6 | straight | nose deg | 0.0 / 6.0 | 0.0 / 10.7 | 0.0 / 20.1 |
+| yes | 0.6 | Sustain | position m | 17.9 / 32.8 | 25.9 / 106.6 | 40.5 / 202.2 |
+| yes | 0.6 | Sustain | nose deg | 4.2 / 10.6 | 4.9 / 21.7 | 5.0 / 30.5 |
+| yes | 0.6 | Max | position m | 11.4 / 30.0 | 21.0 / 95.0 | 39.2 / 165.2 |
+| yes | 0.6 | Max | nose deg | 3.2 / 11.7 | 4.7 / 31.7 | 6.6 / 38.7 |
+| yes | 0.6 | Snap | position m | 19.6 / 41.1 | 66.6 / 131.4 | 91.4 / 196.2 |
+| yes | 0.6 | Snap | nose deg | 4.9 / 15.9 | 11.5 / 39.1 | 34.5 / 52.4 |
+| yes | 1.0 | straight | position m | 0.4 / 64.6 | 44.2 / 257.4 | 117.1 / 451.6 |
+| yes | 1.0 | straight | nose deg | 0.0 / 9.3 | 0.0 / 21.9 | 1.3 / 42.9 |
+| yes | 1.0 | Sustain | position m | 5.3 / 71.4 | 40.5 / 257.2 | 84.1 / 449.3 |
+| yes | 1.0 | Sustain | nose deg | 1.5 / 15.1 | 4.4 / 36.7 | 9.4 / 52.0 |
+| yes | 1.0 | Max | position m | 15.0 / 50.0 | 36.2 / 143.1 | 41.3 / 231.7 |
+| yes | 1.0 | Max | nose deg | 0.2 / 14.4 | 5.1 / 38.9 | 6.6 / 51.9 |
+| yes | 1.0 | Snap | position m | 11.2 / 66.2 | 110.4 / 202.4 | 216.9 / 340.6 |
+| yes | 1.0 | Snap | nose deg | 14.0 / 21.8 | 58.1 / 77.1 | 93.8 / 176.3 |
+| yes | 1.5 | straight | position m | 4.9 / 123.3 | 39.7 / 448.7 | 120.6 / 919.6 |
+| yes | 1.5 | straight | nose deg | 0.0 / 13.4 | 0.5 / 41.8 | 4.1 / 53.1 |
+| yes | 1.5 | Sustain | position m | 12.6 / 128.5 | 50.0 / 443.9 | 143.0 / 843.7 |
+| yes | 1.5 | Sustain | nose deg | 1.4 / 15.7 | 2.2 / 45.2 | 5.2 / 60.8 |
+| yes | 1.5 | Max | position m | 8.8 / 120.0 | 39.9 / 349.4 | 112.9 / 497.5 |
+| yes | 1.5 | Max | nose deg | 1.4 / 22.9 | 5.3 / 50.6 | 12.6 / 78.5 |
+| yes | 1.5 | Snap | position m | 15.7 / 126.1 | 48.9 / 355.1 | 123.0 / 471.9 |
+| yes | 1.5 | Snap | nose deg | 1.9 / 24.3 | 5.5 / 50.3 | 13.0 / 86.0 |
+
+As expected, a held Snap is far off by 4-6 s (corner speed: nose 77 deg at 4 s, 173 deg at 6 s;
+position 110 / 217 m), and with fields the 90th percentiles reach 450-920 m at 6 s.
+**2 s stays the default**: 6 s loses both head-to-head duels heavily (2 s wins 72% in 4v4 and
+83% in 1v1), is no better against the rule-based agent (within noise) or at the merge, costs
++1.2 ms, and its later points are mostly prediction error.
