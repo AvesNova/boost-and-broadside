@@ -178,3 +178,67 @@ shots, more passes with no hit):
 
 (today's spread; the 20 mrad rows move the same way: egg_runs/tol05, tol025). With free
 shots, spraying wins kills; the aim gate is not the egg's limit.
+
+A duel of `fire_tolerance` 0.5 against the default 1.0 (egg on, 256 games x 180 s): 1v1 612 /
+15 / 636 (0.49, even); 4v4 319 / 2 / 588 (0.35): the tighter gate loses the team fight.
+
+## What works
+
+- **The head-on joust is gone.** With the nose cone's rule off (today's default) and no
+  deflector, the agent jousts: 45% of kills (1v1 and 4v4) are head-on, 67-72% of 1v1 hits
+  come within 30 deg of the target's nose, hits in control are 5-6%, the median time to kill
+  is 0.6-0.8 s and a 1v1 can end at the merge (replay 1v1_off_today seed 0: 2.7 s). With the
+  egg: head-on kills 0.00 in 1v1 and 0.09-0.11 in 4v4 (crossing shots in the melee), head-on
+  hits 5-10%, hits in control 0.68-0.80 (god mode 0.95), rear hits 34-46%. The egg does with
+  one geometric rule what the nose cone did with a damage rule (old rule: head-on kills 0.01,
+  hits in control 0.37-0.39, 93% of hits from the side).
+- **Fights last.** Kills per minute fall by about half (1v1 3.25 -> 1.45, 4v4 11.1 -> 6.6; old
+  rule 1.85 / 8.8); the median time from a full shield to death rises from 0.6-0.9 s (off) and
+  2.5-4.1 s (old rule) to 7-8 s. Draws stay at 0-2%. Merge turn (to 90 deg) 1.8-1.9 s (off) ->
+  2.2 s (egg).
+- **Nothing degenerate measured under the egg:** firing share 2-4% of ship-ticks (never-firing
+  would be 0; a spray would be near 1); stall < 2.5% (4v4); a ship's centre inside an enemy's
+  egg 0.2% (1v1) to 0.9% (4v4), an enemy within 30 m 0.1-0.7%: no hugging, no ramming; the
+  agent's entropy 1.0 (1v1) and 0.8 (4v4) nats, as off; store 0.43-0.46 and power use about
+  0.53/0.25/0.22 (1v1), unchanged by spread. God mode 4v4 shows a stalled ball (stall 16-21%,
+  inside an enemy egg 7%) with the egg and without it: a god-mode artefact (nobody dies).
+- **Friendly fire** stays small: 1.3-1.9% of real bullet hits in 4v4 play with the egg (0.8-0.9%
+  off; 2.0-2.3% with the old rule), 4.9% in god mode (4.5% off).
+- The largest turn sets the pace monotonically: 30 deg 1.56 / 7.79 kills per minute (1v1 / 4v4),
+  45 deg 1.45 / 6.57, 60 deg 1.23 / 5.87; hit chance per bullet 0.37 / 0.25 / 0.19.
+
+## What does not matter (in this agent's play)
+
+- **The spread.** From 1.5 to 20 mrad, kills per minute move by at most 4% (1v1 egg 1.45 ->
+  1.39, 4v4 6.57 -> 6.35; off 3.25 -> 3.23 and 11.1 -> 11.2), the hit chance per bullet not at
+  all (0.25-0.30). The agent fires at about 200 m (median nearest-enemy distance at a shot)
+  and holds fire more at a wide spread (59 -> 50 bullets per kill in 1v1); its misses are aim
+  (the trigger's gate), not dispersion. The spread decides the workbench's TTK at range (the
+  author's band), not this agent's kill rate.
+- **Hit damage** 7 / 10.5 / 14: 1v1 kills per minute 1.23 / 1.45 / 1.48, 4v4 5.95 / 6.57 / 7.12:
+  the kill rate is set by getting into a firing position, not by the hits needed.
+- **Egg front** 24 / 53.3 / 80 m: 1v1 kills per minute 1.53 / 1.45 / 1.39; the shorter egg lets
+  more head-on hits through (18% of hits head-on at 24 m, 9% at 53 m, 7% at 80 m).
+- **The agent's lead error** (0 / 0.25 / 1): no measurable change.
+
+## Open questions
+
+1. The time-to-kill band: the workbench puts hit damage about 8.5 (spread up to about 5 mrad)
+   or 7 (today's spread) in the author's band; today's 10.5 is under the 0.4 s floor (0.33 s).
+   In this agent's play TTK is 7-8 s with any of them (aim and positioning dominate). Which
+   should the band be judged on?
+2. The spread: no play number depends on it with this agent; choose it from the workbench's
+   TTK at range (5 mrad keeps the 500 m burst under 1 s at hit damage 8.5)?
+3. The tick cost of the egg: +0.39 ms (+40%) on the GPU tick (0.98 -> 1.37 ms) after one cut;
+   further cuts not tried (the turned bullets' per-bullet gathers and the bullet block's copy
+   are the next candidates).
+4. `store_crowd`: the situational store weight wins 1v1 (0.60 against 0.25) and is even in
+   4v4; adopt (store_weight 0.5, store_crowd 1) as the yardstick's rows?
+5. `fire_tolerance`: spraying wins (free shots); a shot cost or ammunition would change this
+   (not in scope).
+
+The tables above ran before the hit test's cut (a ship whose egg a bullet enters has no
+straight contact that tick, so the entry and contact reductions run as one pass; it changes
+only a second egg entered in the same tick). Re-run after the cut (egg_runs/recheck_after_cut):
+1v1 egg 1.39 kills per minute (1.45 before), 4v4 6.67 (6.57), god-mode 4v4 friendly fire 4.4%
+(4.9%): within the seed-to-seed spread.
