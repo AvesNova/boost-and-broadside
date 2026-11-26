@@ -92,3 +92,21 @@ section current, and writes the morning summary at the bottom.
 
 - 2026-11-27 launch: both agents started. Stream A in v2-lookahead (`scripted-lookahead` at eeabe98b, GPU units `bnb-la-*`); stream B in v2-deflector (`bullet-deflector` off core 146f2d4a, GPU units `bnb-df-*`). Shared lock `data/gpu.lock`. Soft finish 08:30, morning summary 09:00.
 - 02:56 stream B done (`bullet-deflector` at b3c7ae19, unmerged). Agent's measurements (rule-based scripted, god-mode 1v1, 4 seeds x 128 games x 60 s), off / symmetric / frontal: hits per pass 12.2 / 9.2 / 9.0; damaging hits within 30 deg of the nose 0 / 0 / 0, contacts there 205 / 158 / 0; kills/min 1v1 0.80 / 0.61 / 0.62, 4v4 4.68 / 4.01 / 3.94. Tick 4096 envs 4v4: off 0.97 ms, frontal 1.21 ms. Compile check: `advance` 3,219 ops for frontal against the 2,856 baseline (+13%, over the 10% tripwire); off 2,998. Separate commit f583eb0c (2x2 matrix exponential written out: step 1.76 -> 1.07 ms with the deflector off) for the author to keep or drop. Workbench `python -m lean.tool.hitbench` re-ran here in 2 s (coordinator check). Sandbox sliders not flown by eye. Six open questions in the branch's questions.md.
+- 03:10 stream A done (`scripted-lookahead` at 56f70453, unmerged). Agent's numbers: steady-flight table cut `act` from 7,864 to 4,451 traced ops; cold compile 333.0 -> 280.2 s, still over the 260 s budget. Grouped flicker: raw 0.146/0.148, by side 0.068/0.089 (1v1/4v4). store_weight 0.25: mean store 0.44-0.51 (was 0.07-0.12), dive 23-25% (was 57-60%); beats round 2 68% in 1v1, 57% in 4v4. Weaker speed term tried and rejected (loses to round 2). Rule-based agent removed; hit worth through one call `core.hit_damage`. Cost 5.35 ms per call (was 5.70). Replays in data/replays-2026-11-27-lookahead-r3/ (not watched).
+- Coordinator check: both branches pushed and clean; no `bnb-*` units left; the two branches conflict on merge (core.py, opponent.py, test_scripted.py, core-decisions.md, questions.md): both define a hit-worth function (A `core.hit_damage`, B `core.hit_fraction`) and B edits the rule-based agent A deleted.
+
+## Morning summary
+
+Both streams finished early (02:56 and 03:10). Nothing merged into core. Numbers below are the agents' own measurements unless marked.
+
+Stream B, bullet deflector (`bullet-deflector`): the mechanism, presets off/symmetric/frontal, all hit-model numbers as runtime inputs (no-recompile test passes), workbench `PYTHONPATH=. uv run --no-sync python -m lean.tool.hitbench` (re-ran in 2 s, coordinator), sandbox "Hit model (live)" sliders (not flown by eye). Frontal: 0 bullets reach the ship within 30 deg of the nose; hits per pass 12.2 -> 9.0, the 3 m side push costs about a quarter of hits. Tick +0.24 ms. Compile check fails for frontal (+13%). Separate speed fix f583eb0c (step 1.76 -> 1.07 ms).
+
+Stream A, scripted round 3 (`scripted-lookahead`): all four steps done; compile 280 s still over 260 s; store fixed; rule-based agent removed.
+
+Decisions for the author:
+1. Deflector: bend angle rule, bend near misses too, dead-centre pass-through, side D 3 m or ~1 m, frontal as default, collision blame angles (branch questions.md).
+2. Keep or drop the matrix-exponential speed fix f583eb0c.
+3. Deflector compile +13%: accept, or trim first.
+4. Scripted compile 280 s: paths kernel, 4 segments instead of 5, or a larger budget.
+5. Scripted store_weight: 0.25, or higher (1v1 duels prefer 0.4-0.6, 4v4 even with fewer kills).
+6. Merge order: the branches conflict; suggest merging the deflector first, then rebasing the scripted agent so its fire-worth reads the deflector's hit function.
