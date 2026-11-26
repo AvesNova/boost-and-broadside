@@ -1334,8 +1334,8 @@ def step(
     contact = _hit_test(config, state, flown, shots.bullets, bullets, flying, index)
     real = shots.bullet_real.reshape(E, N * K)
     bullet_damage = _damage(config, state, flown, bullets, real, contact)
-    if contact.deflection is not None:
-        bullets, _ = _deflect(config, state, shots.bullets, bullets, flying, contact, index)
+    if contact.bend_ship is not None:
+        bullets, _ = _deflect(state, flown, shots.bullets, bullets, contact)
     no_damage = filled((E, N), 0.0, bullet_damage.dtype, device)
     hit_taken = no_damage.scatter_add(1, contact.target, bullet_damage)
     boundary = _boundary_damage(config, flown, alive0)
@@ -1564,11 +1564,10 @@ class Contact(NamedTuple):
     start: Tensor  # (E, 2, N K, N): bullet minus ship at tick start, x and y
     relative: Tensor  # (E, 2, N K, N): the bullet's move minus the ship's
     relative_squared: Tensor  # (E, N K, N), clamped away from 0
-    # The deflector's D per bullet and ship, (E, N K, N), metres (None with the deflector off).
-    deflection: Tensor | None
-    # The pass's closest approach, tau = -start.relative / |relative|^2 unclamped (E, N K, N)
-    # (None with the deflector off).
-    closest_tau: Tensor | None
+    # The deflector's bend (`_deflect`; None with the deflector off), per bullet (E, N K): the
+    # ship whose field bends it (the first by tau) and its closest approach's tau, inf for none.
+    bend_ship: Tensor | None
+    bend_tau: Tensor | None
 
 
 def _hit_test(
@@ -1603,8 +1602,9 @@ def _hit_test(
     miss = start + tau[:, None] * relative
     miss_squared = (miss * miss).sum(1)
     radius = c["hit_radius"]
+    candidate = index.other & flying.reshape(E, N * K, 1)
+    bend_ship = bend_tau = None
     if config.deflector == "off":
-        deflection_, closest_tau = None, None
         reach = torch.where(state.alive, radius * radius, -1.0)[:, None, :]
     else:
         direction = bullets[:, BULLET_DIR_X : BULLET_DIR_Y + 1].reshape(E, 2, N * K, 1)
@@ -1615,19 +1615,24 @@ def _hit_test(
         deflection_ = deflection(lambda name: _per_ship(c[name]), hit_cos)
         inside = (_per_ship(radius) - deflection_).clamp_min(0.0)
         reach = torch.where(state.alive[:, None, :], inside * inside, -1.0)
-    contact = (miss_squared < reach) & index.other & flying.reshape(E, N * K, 1)
+        # The field: the pass's closest approach in this tick (0 <= tau < 1: the clamped miss is
+        # the closest point) within hit radius + D of a living ship (`_deflect`).
+        field = _per_ship(radius) + deflection_
+        bends = (
+            (closest_tau >= 0.0)
+            & (closest_tau < 1.0)
+            & (miss_squared < field * field)
+            & state.alive[:, None, :]
+            & candidate
+        )
+        bend_tau, bend_ship = torch.where(bends, closest_tau, torch.inf).min(-1)
+    contact = (miss_squared < reach) & candidate
     contact_tau = torch.where(contact, tau, torch.inf)
     first_tau = contact_tau.min(-1).values
     tied = contact & (contact_tau <= first_tau[..., None] + 1e-6)
     target = torch.where(tied, miss_squared, torch.inf).argmin(-1)
     return Contact(
-        target,
-        first_tau < torch.inf,
-        start,
-        relative,
-        relative_squared,
-        deflection_,
-        closest_tau,
+        target, first_tau < torch.inf, start, relative, relative_squared, bend_ship, bend_tau
     )
 
 
@@ -1637,74 +1642,68 @@ def _per_ship(values: Tensor | float) -> Tensor | float:
 
 
 def _deflect(
-    config: GameConfig,
     state: State,
+    flown: SimpleNamespace,
     start_bullets: Tensor,
     bullets: Tensor,
-    flying: Tensor,
     contact: Contact,
-    index: SimpleNamespace,
 ) -> tuple[Tensor, Tensor]:
     """The deflector's bend (proposal 2026-11-27): every flying bullet that touched nothing this
     tick and whose pass's closest approach lies in this tick (0 <= tau < 1, so once per pass)
-    within a ship's field (b < hit radius + D; a living ship not its owner) is pushed at that
-    point by D_eff = min(D, hit radius + D - b) along the smooth side m / sqrt(b^2 + eps^2) (m
-    the closest point, bullet minus ship; eps card.DEFLECTOR_SIGN_SOFTNESS), and turned away
-    from the ship after it by the angle whose tangent is D_eff |u| / length (u the side's part
-    across the bullet's path): its direction and the rest of its move are rotated, its speed is
-    kept (no energy is added). The first such ship by tau bends it; another ship later in the
-    same tick saw the unbent path (rare). The end position's cached medium is kept (the push is
-    metres; the next tick's start reads it). Returns the bullet block and the bent bullets
-    (E, N, K) bool."""
+    within a ship's field (b < hit radius + D; a living ship not its owner; `_hit_test` finds the
+    first such ship by tau) is pushed at that point by D_eff = min(D, hit radius + D - b) along
+    the smooth side m / sqrt(b^2 + eps^2) (m the closest point, bullet minus ship; eps
+    card.DEFLECTOR_SIGN_SOFTNESS), and turned away from the ship after it by the angle whose
+    tangent is D_eff |u| / length (u the side's part across the bullet's path): its direction and
+    the rest of its move are rotated, its speed is kept (no energy is added). Another ship later
+    in the same tick saw the unbent path (rare). The end position's cached medium is kept (the
+    push is metres; the next tick's start reads it). Per bullet only. Returns the bullet block
+    and the bent bullets (E, N, K) bool."""
     E, _, N, K = bullets.shape
     c = state.constants
-    tau, deflection_ = contact.closest_tau, contact.deflection
-    closest = contact.start + tau[:, None] * contact.relative  # (E, 2, N K, N)
-    closest_squared = (closest * closest).sum(1)
-    field = _per_ship(c["hit_radius"]) + deflection_
-    eligible = (
-        (tau >= 0.0)
-        & (tau < 1.0)
-        & (closest_squared < field * field)
-        & state.alive[:, None, :]
-        & index.other
-        & (flying.reshape(E, N * K) & ~contact.hit)[..., None]
+    ship, tau = contact.bend_ship, contact.bend_tau
+    bent = (tau < torch.inf) & ~contact.hit  # (E, N K)
+    tau = torch.where(bent, tau, 0.0)
+    at = ship[:, None, :, None].expand(E, 2, N * K, 1)
+    start = contact.start.gather(3, at)[..., 0]
+    relative = contact.relative.gather(3, at)[..., 0]
+    side_x, side_y = (start + tau[:, None] * relative).unbind(1)
+    b_squared = side_x * side_x + side_y * side_y
+    flat = (E, N * K)
+    direction_x = bullets[:, BULLET_DIR_X].reshape(flat)
+    direction_y = bullets[:, BULLET_DIR_Y].reshape(flat)
+
+    def at_ship(name: str) -> Tensor | float:
+        return _on_target(c[name], ship)
+
+    hit_cos = -(
+        direction_x * _on_target(flown.heading_cos, ship)
+        + direction_y * _on_target(flown.heading_sin, ship)
     )
-    first_tau, ship = torch.where(eligible, tau, torch.inf).min(-1)
-    bent = first_tau < torch.inf  # (E, N K)
-    at = ship[:, None, :, None]
-    side_x, side_y = closest.gather(3, at.expand(E, 2, N * K, 1))[..., 0].unbind(1)
-    b_squared = closest_squared.gather(2, ship[..., None])[..., 0]
-    distance = b_squared.sqrt()
-    ship_deflection = deflection_.gather(2, ship[..., None])[..., 0]
+    ship_deflection = deflection(at_ship, hit_cos)
     pushed = torch.minimum(
-        ship_deflection, _on_target(c["hit_radius"], ship) + ship_deflection - distance
+        ship_deflection, at_ship("hit_radius") + ship_deflection - b_squared.sqrt()
     ).clamp_min(0.0)
     soft = torch.rsqrt(b_squared + card.DEFLECTOR_SIGN_SOFTNESS**2)
     push_x, push_y = pushed * side_x * soft, pushed * side_y * soft
-    flat = (E, N * K)
     x0, y0 = start_bullets[:, BULLET_X].reshape(flat), start_bullets[:, BULLET_Y].reshape(flat)
     x1, y1 = bullets[:, BULLET_X].reshape(flat), bullets[:, BULLET_Y].reshape(flat)
-    direction_x = bullets[:, BULLET_DIR_X].reshape(flat)
-    direction_y = bullets[:, BULLET_DIR_Y].reshape(flat)
     # The turn: tan = D_eff |u| / length toward the side, u the side's part across the path.
     along = side_x * direction_x + side_y * direction_y
     across_x = (side_x - along * direction_x) * soft
     across_y = (side_y - along * direction_y) * soft
-    turn = pushed / _on_target(c["deflector_length"], ship)
+    turn = pushed / at_ship("deflector_length")
     turned_x, turned_y = direction_x + turn * across_x, direction_y + turn * across_y
     norm = torch.rsqrt(turned_x * turned_x + turned_y * turned_y)
     turned_x, turned_y = turned_x * norm, turned_y * norm
     # The rotation taking the direction to the turned one, applied to the rest of the move.
     rotate_cos = direction_x * turned_x + direction_y * turned_y
     rotate_sin = direction_x * turned_y - direction_y * turned_x
-    tau_first = torch.where(bent, first_tau, 0.0)
-    rest_x, rest_y = (1.0 - tau_first) * (x1 - x0), (1.0 - tau_first) * (y1 - y0)
+    rest_x, rest_y = (1.0 - tau) * (x1 - x0), (1.0 - tau) * (y1 - y0)
     new_x = x1 + push_x + rest_x * (rotate_cos - 1.0) - rest_y * rotate_sin
     new_y = y1 + push_y + rest_x * rotate_sin + rest_y * (rotate_cos - 1.0)
-    shape = (E, N, K)
     moved = torch.stack([new_x, new_y, turned_x, turned_y], 1).reshape(E, 4, N, K)
-    bent = bent.reshape(shape)
+    bent = bent.reshape(E, N, K)
     head = torch.where(bent[:, None], moved, bullets[:, BULLET_X : BULLET_DIR_Y + 1])
     return torch.cat([head, bullets[:, BULLET_DIR_Y + 1 :]], 1), bent
 
@@ -1751,14 +1750,13 @@ def _damage(
     def at(name: str) -> Tensor | float:
         return _on_target(c[name], target)
 
-    if contact.deflection is None:
+    if contact.bend_ship is None:  # the deflector off
         closeness = graze(impact_squared.sqrt(), at("core_radius"), at("hit_radius"))
         fraction = closeness * aspect_factor(
             hit_cos, at("nose_inner_cos"), at("inverse_nose_width")
         )
     else:
-        deflection_ = contact.deflection.gather(2, target[..., None])[..., 0]
-        fraction = hit_fraction(at, hit_cos, impact_squared.sqrt(), deflection_)
+        fraction = hit_fraction(at, hit_cos, impact_squared.sqrt())
     return torch.where(contact.hit & real, full * fraction, 0.0)
 
 
@@ -1795,16 +1793,14 @@ def deflection(at, hit_cos: Tensor) -> Tensor:
     return front + (at("deflector_side") - front) * blend
 
 
-def hit_fraction(at, hit_cos: Tensor, impact: Tensor | float, deflection_=None) -> Tensor:
+def hit_fraction(at, hit_cos: Tensor, impact: Tensor | float) -> Tensor:
     """The share of the hit damage x kinetic a bullet does, from its impact parameter `impact`
     (metres, the distance of its line from the target's centre) and the cosine `hit_cos` of its
     path off the target's nose: graze(impact + D; core, hit radius) x (1 + nose_cone x
-    (aspect_factor - 1)), D the target's `deflection` (given, or computed here). The game's one
+    (aspect_factor - 1)), D the target's `deflection`. The game's one
     hit-worth rule: `_damage` and the scripted opponent's fire-worth read it (with impact 0:
     a centred shot); `at(name)` reads the target's constant."""
-    if deflection_ is None:
-        deflection_ = deflection(at, hit_cos)
-    closeness = graze(impact + deflection_, at("core_radius"), at("hit_radius"))
+    closeness = graze(impact + deflection(at, hit_cos), at("core_radius"), at("hit_radius"))
     cone = aspect_factor(hit_cos, at("nose_inner_cos"), at("inverse_nose_width"))
     return closeness * (1.0 + at("nose_cone") * (cone - 1.0))
 
