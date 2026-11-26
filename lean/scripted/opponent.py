@@ -339,6 +339,17 @@ def pair_tables(mine, his, my_c, his_c, now_rel, weights, horizon, read):
         near = closeness_range / (distance + closeness_range)
         near = near * near / (near * near + (1.0 - near) * (1.0 - near))  # 1 / (1 + (d / r)^2)
         position = near * (weights["angles"] * angles + weights["energy"] * energy)
+        # The engagement range (McGrew): each side's angular score times his range peak.
+        my_peak = torch.exp(
+            -(distance - read("desired_range", 3) * my_c["gun_range"]).abs()
+            / (read("range_width", 3) * my_c["gun_range"])
+        )
+        his_peak = torch.exp(
+            -(distance - read("desired_range", 3) * his_c["gun_range"]).abs()
+            / (read("range_width", 3) * his_c["gun_range"])
+        )
+        my_range = weights["aggression"] * 0.5 * (1.0 + angles) * my_peak
+        his_range = weights["aggression"] * 0.5 * (1.0 - angles) * his_peak
         contact = _contact(
             previous_x,
             previous_y,
@@ -351,8 +362,10 @@ def pair_tables(mine, his, my_c, his_c, now_rel, weights, horizon, read):
         weight = _lay(horizon[..., k], 3)
         discount = _exp(-time / read("horizon", 3))
         collision = weights["collision"] * contact * discount
-        s_me = s_me + weight * (gun - weights["threat"] * threat + position) - collision
-        s_him = s_him + weight * (threat - weights["threat"] * gun - position) - collision
+        s_me = s_me + weight * (gun - weights["threat"] * threat + position + my_range) - collision
+        s_him = (
+            s_him + weight * (threat - weights["threat"] * gun - position + his_range) - collision
+        )
         previous_x, previous_y = rel_x, rel_y
         started = time
     return s_me, s_him
@@ -544,6 +557,7 @@ def explain(config: ScriptedConfig, state, team: int | None, persona) -> Choice:
             "angles": read("angles_weight", 3),
             "energy": read("energy_weight", 3),
             "collision": read("collision_weight", 3),
+            "aggression": read("aggression", 3),
         }
         s_me, s_him = pair_tables(mine, his, my_c, his_c, now_rel, weights, horizon, read)
         s_him = s_him + his_own[..., None, :]

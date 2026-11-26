@@ -59,7 +59,12 @@ PARAMETERS = (
     "boundary_weight",
     "field_weight",
     "preferred_speed",
+    "aggression",
+    "desired_range",
+    "range_width",
 )
+# The column where the time weights start in `parameters`.
+TIMES = tl.constexpr(len(PARAMETERS))
 TINY = 1e-6
 # My candidates per pass of a program (his all at once): a tile of BLOCK_A x 32.
 BLOCK_A = 4
@@ -192,6 +197,11 @@ def _pairs(
     boundary_weight = tl.load(parameters + me * W + 12)
     field_weight = tl.load(parameters + me * W + 13)
     his_log_preferred = tl.log(tl.load(parameters + me * W + 14) * his_corner)
+    aggression = tl.load(parameters + me * W + 15)
+    desired = tl.load(parameters + me * W + 16)
+    inverse_width = 1.0 / tl.load(parameters + me * W + 17)
+    my_desired = desired * my_range
+    his_desired = desired * his_range
     my_lead_reach = lead_cap * my_range
     his_lead_reach = lead_cap * his_range
     my_inverse_range = 1.0 / my_range
@@ -207,7 +217,7 @@ def _pairs(
     # His own-only terms per candidate, with my weights and my preferred speed for his type.
     his_own = tl.zeros((BLOCK_B,), tl.float32)
     for k in tl.static_range(P):
-        weight = tl.load(parameters + me * W + 15 + k)
+        weight = tl.load(parameters + me * W + TIMES + k)
         his_base = paths + (k * ROWS + him_row) * F * C + b
         h_speed = tl.load(his_base + 6 * C, mask=b_ok, other=1.0)
         h_boundary = tl.load(his_base + 10 * C, mask=b_ok, other=0.0)
@@ -222,7 +232,7 @@ def _pairs(
     covered = tl.zeros((BLOCK_B,), tl.float32)
     environment = me // SLOTS
     for k in tl.static_range(P):
-        cover_weight = tl.load(parameters + me * W + 15 + k)
+        cover_weight = tl.load(parameters + me * W + TIMES + k)
         cover_base = paths + (k * ROWS + me_row) * F * C + b
         cover_x = tl.load(cover_base + 0 * C, mask=b_ok, other=0.0)
         cover_y = tl.load(cover_base + 1 * C, mask=b_ok, other=0.0)
@@ -276,8 +286,8 @@ def _pairs(
         started = 0.0
         for k in tl.static_range(P):
             time = tl.load(times + k)
-            weight = tl.load(parameters + me * W + 15 + k)
-            discount = tl.load(parameters + me * W + 15 + P + k)
+            weight = tl.load(parameters + me * W + TIMES + k)
+            discount = tl.load(parameters + me * W + TIMES + P + k)
             inverse_duration = 1.0 / (time - started)
             blur_time = blur * time
             my_base = paths + (k * ROWS + me_row) * F * C + a
@@ -374,6 +384,11 @@ def _pairs(
             ratio = distance * inverse_closeness
             near = 1.0 / (1.0 + ratio * ratio)
             position = near * (angles_weight * angles + energy_weight * energy)
+            # The engagement range (McGrew): each side's angular score times his range peak.
+            my_peak = tl.exp(-tl.abs(distance - my_desired) * my_inverse_range * inverse_width)
+            his_peak = tl.exp(-tl.abs(distance - his_desired) * his_inverse_range * inverse_width)
+            my_engage = aggression * 0.5 * (1.0 + angles) * my_peak
+            his_engage = aggression * 0.5 * (1.0 - angles) * his_peak
             move_x = rel_x - previous_x
             move_y = rel_y - previous_y
             move_squared = move_x * move_x + move_y * move_y + 1e-6
@@ -385,8 +400,8 @@ def _pairs(
             closing = tl.sqrt(move_squared) * inverse_duration
             contact = tl.exp(-closest * inverse_reach_squared) * closing * my_collision
             collision = collision_weight * contact * discount
-            s_me += weight * (gun - threat_weight * threat + position) - collision
-            s_him += weight * (threat - threat_weight * gun - position) - collision
+            s_me += weight * (gun - threat_weight * threat + position + my_engage) - collision
+            s_him += weight * (threat - threat_weight * gun - position + his_engage) - collision
             previous_x = rel_x
             previous_y = rel_y
             started = time

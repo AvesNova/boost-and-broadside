@@ -52,6 +52,12 @@ PARAMETERS: dict[str, Parameter] = {
     "energy_weight": Parameter(0.25, "ratio", LOG, 0.4,
                                "energy advantage (speed^2 / 2 + store) in full stores per "
                                "second, at closeness 1"),
+    # The engagement range (McGrew's form, author 2026-11-26): a rate of McGrew's angular
+    # score 1/2 (1 + angles) (1 on his tail nose on, 1/2 neutral, 0 he on mine) times
+    # exp(-|d - desired range| / range width), so neutral geometry rewards closing to the gun.
+    "aggression": Parameter(0.5, "ratio", LOG, 0.5,
+                            "the engagement range term (angular score x range peak) per "
+                            "second"),
     "speed_weight": Parameter(0.3, "ratio", LOG, 0.4,
                               "|ln(speed / preferred speed)| per second"),
     "collision_weight": Parameter(3.0, "ratio", LOG, 0.3,
@@ -69,7 +75,7 @@ PARAMETERS: dict[str, Parameter] = {
     # score(a) = log(sum_b w e^(beta S_me[a, b])) / beta.
     "reply_temperature": Parameter(0.2, "score seconds", LOG, 0.5,
                                    "tau_him: how sensible I expect his reply (small: his best)"),
-    "caution": Parameter(-2.0, "per score second", LINEAR, 2.0,
+    "caution": Parameter(0.0, "per score second", LINEAR, 2.0,
                          "beta: < 0 weighs his replies that hurt me most, > 0 the ones that "
                          "suit me, 0 the plain mean"),
     "temperature": Parameter(0.05, "score seconds", LOG, 0.4,
@@ -97,6 +103,10 @@ PARAMETERS: dict[str, Parameter] = {
     # Fixed shapes of the terms (not personality).
     "closeness_range": Parameter(3.0, "gun_range",
                                  meaning="the angles and energy terms halve at this distance"),
+    "desired_range": Parameter(0.75, "gun_range",
+                               meaning="the range term's peak (inside the gun's full band)"),
+    "range_width": Parameter(1.0, "gun_range",
+                             meaning="the range term falls by e per this much either side"),
     "aim_blur": Parameter(0.1, "radians per second",
                           meaning="the look-ahead gun's tolerance grows by this with time"),
     "lead_cap": Parameter(2.0, "gun_range", meaning="the lead's distance is capped here"),

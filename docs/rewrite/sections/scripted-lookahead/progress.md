@@ -355,3 +355,25 @@ Fixed (cheap, obvious):
 After: **whole call 12.96 ms** wall (12.79 GPU, 74 kernels; was 16.76), the pair kernel 6.10 ms
 inside it. The paths are still about 6.5 ms inside the call: step 3 (7 sticks at the current
 power) cuts their size by 3 and the table by 9, so they were not tuned further at 21 candidates.
+
+## R2 step 2: engagement range term, caution 0 (2026-11-26)
+
+- Tried: McGrew's form in both pair tables (`aggression` x 1/2 (1 + angles) x exp(-|d - R_d| /
+  w)): McGrew's angular score in cosines (1 on his tail nose on, 1/2 neutral, 0 he on mine)
+  times a range peak; R_d = `desired_range` 0.75 gun range (523 m, inside the gun's full band),
+  w = `range_width` 1 gun range (697 m); his mirror (1/2 (1 - angles), his gun range) in S_him,
+  so neutral geometry rewards closing for both. Not zero-sum on purpose. `caution` default 0
+  (author). Plain twin and kernel alike (the twin test holds).
+- Measured (1v1 without fields, self-play, 256 envs x 1,800 ticks, compiled, `measure.py --set`):
+
+| aggression (caution 0) | games | draws | draw share | kills per env-minute |
+|---|---|---|---|---|
+| 0 (1e-4) | 265 | 153 | 58% | 0.31 |
+| **0.5 (default)** | 300 | 106 | 35% | 0.70 |
+| 1.0 | 281 | 117 | 42% | 0.57 |
+| 2.0 | 289 | 112 | 39% | 0.63 |
+
+  (Round 1, caution -2, no range term: 74% draws over 3,600 ticks, 59% at caution 0.)
+- Didn't: the draws fall from 58% to 35-42% and stop there; more aggression does not lower them
+  further (0.5 to 2.0 are within the noise of 300 games). The rule-based agent draws 6% here.
+  Default 0.5 (LOG law, width 0.5). The rest is looked at again after the power split.

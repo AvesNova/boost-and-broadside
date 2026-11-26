@@ -68,6 +68,9 @@ def main():
     counts = torch.zeros(JOINT, dtype=torch.long, device=device)
     entropy_sum, entropy_count = 0.0, 0
     kills = speed_sum = store_sum = living_ticks = 0.0
+    # Action changes from one tick to the next of a living ship (the power flicker).
+    previous = torch.full((envs, slots, 3), -1, dtype=torch.long, device=device)
+    power_switches = stick_switches = compared = 0.0
     outcome = {"wins": 0, "draws": 0, "losses": 0, "ended": 0, "team_0_wins": 0, "team_1_wins": 0}
     started = time.time()
     tick_length = config.tick_length
@@ -95,6 +98,13 @@ def main():
                     use_new = (state.team == new_team[:, None])[..., None]
                     action = torch.where(use_new, action, old_action)
             counts += torch.bincount(join_action(action)[living], minlength=JOINT)
+            measured = living & (previous[..., 0] >= 0)
+            if arguments.mode == "versus":
+                measured = measured & (state.team == new_team[:, None])
+            power_switches += float((measured & (action[..., 1] != previous[..., 1])).sum())
+            stick_switches += float((measured & (action[..., 0] != previous[..., 0])).sum())
+            compared += float(measured.sum())
+            previous = torch.where(living[..., None], action, -1)
             speed_sum += float((state.speed / state.constants["corner_speed"])[living].sum())
             store_sum += float((state.energy * state.constants["inverse_max_energy"])[living].sum())
             living_ticks += float(living.sum())
@@ -117,6 +127,7 @@ def main():
                     name: torch.where(done[:, None], fresh[name], old_memory[name])
                     for name in old_memory
                 }
+                previous = torch.where(done[:, None, None], -1, previous)
                 state = game.take_deal(
                     state, done, game.deal(config, envs, slots, sizes, generator, device)
                 )
@@ -136,6 +147,12 @@ def main():
                     "kills_per_environment_minute": kills / minutes,
                     "mean_speed_corner": speed_sum / max(living_ticks, 1.0),
                     "mean_store": store_sum / max(living_ticks, 1.0),
+                    "power_switches_per_ship_second": power_switches
+                    / max(compared, 1.0)
+                    / tick_length,
+                    "stick_switches_per_ship_second": stick_switches
+                    / max(compared, 1.0)
+                    / tick_length,
                     **outcome,
                 }
                 arguments.out.parent.mkdir(parents=True, exist_ok=True)
@@ -147,7 +164,9 @@ def main():
                 print(
                     f"tick {tick}: kills/env-min {summary['kills_per_environment_minute']:.2f}"
                     f" entropy {summary['entropy']:.3f} speed {summary['mean_speed_corner']:.2f}"
-                    f" store {summary['mean_store']:.2f} {outcome} ETA {eta}",
+                    f" store {summary['mean_store']:.2f}"
+                    f" power switches/s {summary['power_switches_per_ship_second']:.2f}"
+                    f" {outcome} ETA {eta}",
                     flush=True,
                 )
 
