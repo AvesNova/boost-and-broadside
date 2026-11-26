@@ -89,3 +89,5 @@ section current, and writes the morning summary at the bottom.
 ## Status
 
 (updated overnight)
+
+- 2026-11-27 launch: both agents started. Stream A in v2-lookahead (`scripted-lookahead` at eeabe98b, GPU units `bnb-la-*`); stream B in v2-deflector (`bullet-deflector` off core 146f2d4a, GPU units `bnb-df-*`). Shared lock `data/gpu.lock`. Soft finish 08:30, morning summary 09:00.
