@@ -11,7 +11,8 @@ earlier; the same pair again within 2 s is not a new event. Per aircraft: the ti
 its heading has changed by 30 and by 90 degrees, capped at 10 s (a capped aircraft counts as
 10 s, a lower bound), censored (left out) when it is removed or its match ends first. Matches
 as on merge-turn: `game.reset` with team sizes (S, S), seed 0, the same agent on both teams,
-fog on (--no-fog-1v1: off in the 1v1 setups); 256 environments for 1v1 and 64 for 4v4, 1,800 ticks, no re-deal. Setups: 1v1 without
+fog on (--no-fog-1v1: off in the 1v1 setups);
+256 environments for 1v1 and 64 for 4v4, 1,800 ticks, no re-deal. Setups: 1v1 without
 fields, 1v1 with fields, 4v4 with fields. Prints median / 75th / 90th percentiles and writes
 them to DIR/merge_turn_<agent>.json.
 """

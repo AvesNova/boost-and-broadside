@@ -96,7 +96,7 @@ def main():
     power_switches = stick_switches = compared = 0.0
     # The distribution's own movement: total variation between a ship's consecutive-tick
     # distributions (joint, stick marginal, power marginal), look-ahead ships only.
-    previous_joint = None
+    previous_joint = previous_mine = None
     variation = {"joint": 0.0, "stick": 0.0, "power": 0.0}
     variation_count = 0.0
     outcome = {"wins": 0, "draws": 0, "losses": 0, "ended": 0, "team_0_wins": 0, "team_1_wins": 0}
