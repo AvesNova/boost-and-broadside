@@ -1788,8 +1788,9 @@ def _hit_test(
     The deflector (proposal 2026-11-27, `egg_entry`, `egg_turn`): a bullet whose straight path
     first crosses a living ship's egg inward this tick (the first such ship by tau) is turned
     there, and its contact with that ship is the swept test of the turned remainder (the
-    crossing to the tick's end) against the hit circle; its contacts with the other ships stay
-    on the straight path (a second egg in the same tick is not seen: rare)."""
+    crossing to the tick's end) against the hit circle; its contacts with the ships whose eggs
+    it does not enter stay on the straight path (a second egg entered in the same tick is not
+    seen and gives no contact: rare)."""
     E, _, N, K = bullets.shape
     c = state.constants
     per_bullet = (E, 2, N * K, 1)
@@ -1821,11 +1822,14 @@ def _hit_test(
         _per_ship(c["egg_rear"]),
         _per_ship(c["egg_half_width"]),
     )
-    entry_tau, bend_ship = torch.where(candidate, entry, torch.inf).min(-1)
+    entry = torch.where(candidate, entry, torch.inf)
+    entry_tau, bend_ship = entry.min(-1)
     bent = entry_tau < torch.inf
-    # The bend ship's straight contact is replaced by the turned remainder's.
-    bend_pair = (index.ship[None, None, :] == bend_ship[..., None]) & bent[..., None]
-    target, hit, first_tau = _first_contact(contact & ~bend_pair, tau, miss_squared)
+    # A ship whose egg the bullet enters this tick has no straight contact: the bend ship's is
+    # the turned remainder's (below); a second egg entered in the same tick is not seen (rare).
+    # (Excluding every entered pair, not only the bend ship's, keeps the two reductions over
+    # the pairs independent, so they run as one pass.)
+    target, hit, first_tau = _first_contact(contact & (entry == torch.inf), tau, miss_squared)
     # The turned remainder against the bend ship.
     pass_start, pass_move, _ = _pass_against(state, flown, start_bullets, bullets, bend_ship)
     entry_tau = torch.where(bent, entry_tau, 0.0)
