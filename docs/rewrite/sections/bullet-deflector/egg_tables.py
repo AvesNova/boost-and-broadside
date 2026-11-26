@@ -20,6 +20,7 @@ COLUMNS = (
     ("store", "mean_store", "{:.2f}"),
     ("power coast/dive/climb", None, None),
     ("entropy", "entropy", "{:.2f}"),
+    ("fire dist median m", "fire_distance_median_m", "{:.0f}"),
     ("stall", "stall_share", "{:.3f}"),
     ("in enemy egg", "inside_enemy_egg_share", "{:.3f}"),
     ("enemy <30 m", "enemy_within_30m_share", "{:.3f}"),

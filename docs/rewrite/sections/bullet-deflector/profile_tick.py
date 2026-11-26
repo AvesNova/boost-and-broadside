@@ -1,4 +1,4 @@
-"""Where the deflector's GPU time goes: torch.profiler over the compiled step (off and frontal),
+"""Where the deflector's GPU time goes: torch.profiler over the compiled step (off and egg),
 the top CUDA kernels by total time.
 
     PYTHONPATH=. uv run --no-sync python docs/rewrite/sections/bullet-deflector/profile_tick.py
@@ -20,7 +20,7 @@ def main():
     parser.add_argument("--size", type=int, default=4)
     args = parser.parse_args()
     device = torch.device("cuda")
-    for preset in ("off", "frontal"):
+    for preset in ("off", "egg"):
         torch.compiler.reset()
         config = core.GameConfig(deflector=preset)
         step = torch.compile(core.step, dynamic=True)

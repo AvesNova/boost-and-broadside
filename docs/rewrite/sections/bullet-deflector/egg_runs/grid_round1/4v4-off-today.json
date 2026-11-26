@@ -1,0 +1,36 @@
+{
+ "cell": "4v4-off-today",
+ "size": 4,
+ "envs": 256,
+ "ticks": 1800,
+ "god": false,
+ "model": {
+  "deflector_turn": 0.0,
+  "bullet_spread": 3.084482431411743
+ },
+ "wall_s": 51.5,
+ "kills_per_minute": 11.1328125,
+ "games_ended": 408.0,
+ "draws": 4.0,
+ "draw_share": 0.00980392156862745,
+ "time_to_kill_median_s": 0.616666704416275,
+ "time_to_kill_p25_s": 0.36666667461395264,
+ "time_to_kill_p75_s": 3.5916668176651,
+ "real_bullets_ended": 112327.0,
+ "shots_per_kill": 39.41298245614035,
+ "hit_chance_per_bullet": 0.39696600105050434,
+ "friendly_fire_share": 0.008320251177394034,
+ "head_on_kill_share": 0.4543859649122807,
+ "fire_share": 0.04415723347449162,
+ "mean_store": 0.5509822040045521,
+ "power_use": [
+  0.5365825891494751,
+  0.17119893431663513,
+  0.29221850633621216
+ ],
+ "entropy": 1.0087975498285775,
+ "stall_share": 0.004251807378265668,
+ "inside_enemy_egg_share": 0.0006975147624829555,
+ "enemy_within_30m_share": 0.00043367222189157664,
+ "agent_set": []
+}

@@ -60,6 +60,8 @@ from .paths import CANDIDATES, FLIGHTS, POWER_LOOK, Paths, power_outlook, predic
 
 ENEMIES = 4  # the nearest known enemies each ship scores against
 MATES = 3  # the nearest team-mates whose pending path each ship keeps clear of
+# The crowd's reach for `store_crowd` (gun ranges; round 4, an experiment).
+CROWD_RANGE = 2.0
 TINY = 1e-6
 
 
@@ -555,7 +557,14 @@ def explain(config: ScriptedConfig, state, team: int | None, persona) -> Choice:
         enemies = dead_reckon(enemies, state.ticks_since_seen.to(state.x.dtype) * c["tick_length"])
     enemy_slot, enemy_weight, _ = nearest_enemies(state, enemies, read("roam_cutoff"))
     engaged = enemy_weight.sum(-1).clamp(0.0, 1.0)
-    own_paths, seen_paths, power_scores = _predict_views(c, state, enemies, config, read, engaged)
+    # The crowd (round 4, an experiment): the scored enemies within CROWD_RANGE gun ranges.
+    crowd_x = _at(enemies.x, enemy_slot) - state.x[..., None]
+    crowd_y = _at(enemies.y, enemy_slot) - state.y[..., None]
+    near = (crowd_x * crowd_x + crowd_y * crowd_y) < (CROWD_RANGE * _lay(c["gun_range"], 1)) ** 2
+    crowd = (enemy_weight * near).sum(-1)
+    own_paths, seen_paths, power_scores = _predict_views(
+        c, state, enemies, config, read, engaged, crowd
+    )
     horizon = time_weights(read("horizon"), device)
     if horizon.dim() == 1:
         horizon = horizon.expand(envs, slots, -1)
@@ -673,14 +682,17 @@ PREDICTED = (
 )
 
 
-def power_scores(c, speed, energy, read_or_values, engaged, has_corner) -> Tensor:
+def power_scores(c, speed, energy, read_or_values, engaged, has_corner, crowd=1.0) -> Tensor:
     """The power scores (E, N, POWERS): the own-ship terms over the power look (`POWER_LOOK`):
     minus the speed term (|ln(speed / preferred)|) plus energy (speed^2 / 2 + store, in full
     stores) at the energy weight while engaged and the disengaged energy weight while not, plus
     the store itself (in full stores) at the store weight (round 3: the store held, not only
     its share of the total energy),
     each point's interval discounted by e^(-t / power_horizon). `speed`, `energy` (E, N,
-    POWERS, P); `read_or_values(name)` a row (a number or (E, N)); `engaged` (E, N) 0 to 1."""
+    POWERS, P); `read_or_values(name)` a row (a number or (E, N)); `engaged` (E, N) 0 to 1.
+    The store weight is scaled by (1 + k) / (1 + k x max(crowd, 1)), k the `store_crowd` row
+    (0: off), `crowd` the scored enemies near (round 4, an experiment: more store alone, less
+    in a crowd)."""
     read = read_or_values
     weights = time_weights(read("power_horizon"), speed.device, POWER_LOOK)
     weights = weights[..., None, :] if weights.dim() == 3 else weights
@@ -689,17 +701,22 @@ def power_scores(c, speed, energy, read_or_values, engaged, has_corner) -> Tenso
         1.0 - engaged
     )
     inverse_max_energy = _lay(c["inverse_max_energy"], 2)
+    k = read("store_crowd")
+    crowd = crowd.clamp_min(1.0) if isinstance(crowd, Tensor) else max(crowd, 1.0)
+    crowding = (1.0 + k) / (1.0 + k * crowd)
     stored = (0.5 * speed * speed + energy) * inverse_max_energy
     rate = (
         -_lay(read("speed_weight"), 2)
         * (torch.log(speed.clamp_min(TINY)) - _lay(log_preferred, 2)).abs()
         + _lay(energy_weight, 2) * stored
-        + _lay(read("store_weight"), 2) * energy * inverse_max_energy
+        + _lay(read("store_weight") * crowding, 2) * energy * inverse_max_energy
     )
     return (rate * weights).sum(-1)
 
 
-def _predict_views(c, state, enemies, config, read, engaged) -> tuple[Paths, Paths, Tensor]:
+def _predict_views(
+    c, state, enemies, config, read, engaged, crowd=1.0
+) -> tuple[Paths, Paths, Tensor]:
     """The candidate paths of every ship as it is (own) and as its enemies see it (seen),
     with the own-only components attached, computed in one pass (the two views side by side on
     the slot axis) and materialised once: every field a view of one stacked tensor (P, E, 2 N,
@@ -719,7 +736,7 @@ def _predict_views(c, state, enemies, config, read, engaged) -> tuple[Paths, Pat
     speed, energy = power_outlook(constants, state.fields, ships, outlook_stick)
     corner = _per_ship(c["corner_speed"], state)
     own = power_scores(
-        c, speed[:, :slots], energy[:, :slots], lambda name: read(name), engaged, corner
+        c, speed[:, :slots], energy[:, :slots], lambda name: read(name), engaged, corner, crowd
     )
     seen = power_scores(
         c, speed[:, slots:], energy[:, slots:], lambda name: config.values[name], 1.0, corner

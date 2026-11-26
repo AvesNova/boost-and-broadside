@@ -40,15 +40,20 @@ from lean.game import card, core
 HEAD_ON = math.cos(math.radians(30.0))
 CONTROL_NOSE = math.cos(math.radians(30.0))
 MERGE_NOSE = math.cos(math.radians(60.0))
+FIRE_BIN, FIRE_BINS = 50.0, 30  # m: the nearest enemy's distance at a real shot, histogram
+
+
+_ORIGINAL_CARDS: dict = {}  # by card key: the game's own card, before any cell's model
 
 
 def set_model(config, state, model: dict):
-    """The hit model on the state and on the cached ship card (so a re-deal keeps it)."""
-    ship_card = core.ship_card(config)
+    """The hit model on the state and on the cached ship card (so a re-deal keeps it), each
+    cell from the game's own card (a cell's rows never carry into the next)."""
+    core.ship_card(config)
     for key, value in list(core._SHIP_CARDS.items()):
-        if value is ship_card:
-            core._SHIP_CARDS[key] = core.with_hit_model(value, **model)
-    return state.replace(constants=core.with_hit_model(state.constants, **model))
+        original = _ORIGINAL_CARDS.setdefault(key, value)
+        core._SHIP_CARDS[key] = core.with_hit_model(original, **model)
+    return state.replace(constants=core.ship_constants(config, state.type))
 
 
 def inside_egg(state, egg: dict) -> torch.Tensor:
@@ -99,6 +104,7 @@ def run_cell(name, config, size, envs, ticks, model, egg, god, agent_call, step_
         bullet_damage=0.0,
     )
     power_counts = torch.zeros(POWERS, device=device)
+    fire_distance = torch.zeros(FIRE_BINS, device=device)
     ttk = []
     last_full = torch.zeros(envs, slots, device=device)
     # 1v1 traces for passes, control and merges (CPU at the end).
@@ -132,6 +138,9 @@ def run_cell(name, config, size, envs, ticks, model, egg, god, agent_call, step_
         enemy = (state.team[:, :, None] != state.team[:, None, :]) & living[:, None, :]
         nearest = torch.where(enemy, gap, torch.inf).amin(-1)
         acc["close"] += float(((nearest < 30.0) & living).sum())
+        firing = (action[..., 2] == 1) & living & (state.cooldown <= 0)
+        bins = (nearest[firing] / FIRE_BIN).clamp_max(FIRE_BINS - 1).long()
+        fire_distance += torch.bincount(bins, minlength=FIRE_BINS).float()
         if trace:
             gx, gy = state.x[:, 1] - state.x[:, 0], state.y[:, 1] - state.y[:, 0]
             d = torch.hypot(gx, gy).clamp_min(1e-6)
@@ -221,6 +230,8 @@ def run_cell(name, config, size, envs, ticks, model, egg, god, agent_call, step_
         stall_share=acc["stall"] / living,
         inside_enemy_egg_share=acc["hug"] / living,
         enemy_within_30m_share=acc["close"] / living,
+        fire_distance_histogram_50m=fire_distance.tolist(),
+        fire_distance_median_m=_median(fire_distance),
     )
     if trace:
         out.update(
@@ -232,6 +243,17 @@ def run_cell(name, config, size, envs, ticks, model, egg, god, agent_call, step_
         )
         out["damaging_hits"] = total
     return out
+
+
+def _median(histogram: torch.Tensor) -> float | None:
+    total = float(histogram.sum())
+    if total == 0:
+        return None
+    cumulative = histogram.cumsum(0) / total
+    index = int((cumulative >= 0.5).nonzero()[0])
+    below = float(cumulative[index - 1]) if index else 0.0
+    share = float(histogram[index]) / total
+    return FIRE_BIN * (index + (0.5 - below) / max(share, 1e-9))
 
 
 def passes(distance, hits, control, heading, merge_ok, gun_range, h):
@@ -317,13 +339,16 @@ def plan(name: str, today: float):
             model = dict(deflector_turn=math.radians(degrees), bullet_spread=today)
             for setup in ("1v1", "4v4"):
                 cells.append((f"{setup}-egg{degrees:g}-today", setup, model, False))
-    if name == "extra":
+    if name in ("extra", "all"):
         for damage in (7.0, 14.0):
             model = dict(
                 deflector_turn=egg["deflector_turn"], bullet_spread=today, hit_damage=damage
             )
             for setup in ("1v1", "4v4"):
                 cells.append((f"{setup}-egg-today-damage{damage:g}", setup, model, False))
+        model = dict(deflector_turn=0.0, bullet_spread=today, nose_cone=1.0)
+        for setup in ("1v1", "4v4"):
+            cells.append((f"{setup}-off-today-nosecone", setup, model, False))
         for front in (24.0, 80.0):
             model = dict(deflector_turn=egg["deflector_turn"], bullet_spread=today, egg_front=front)
             for setup in ("1v1", "4v4"):

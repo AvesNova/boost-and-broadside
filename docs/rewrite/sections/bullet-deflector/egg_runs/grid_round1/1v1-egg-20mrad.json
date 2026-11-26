@@ -1,0 +1,48 @@
+{
+ "cell": "1v1-egg-20mrad",
+ "size": 1,
+ "envs": 512,
+ "ticks": 1800,
+ "god": false,
+ "model": {
+  "deflector_turn": 0.7853981633974483,
+  "bullet_spread": 41.681005859375
+ },
+ "wall_s": 5.4,
+ "kills_per_minute": 1.39453125,
+ "games_ended": 765.0,
+ "draws": 8.0,
+ "draw_share": 0.01045751633986928,
+ "time_to_kill_median_s": 6.71666693687439,
+ "time_to_kill_p25_s": 3.633333444595337,
+ "time_to_kill_p75_s": 11.191667318344116,
+ "real_bullets_ended": 35909.0,
+ "shots_per_kill": 50.292717086834735,
+ "hit_chance_per_bullet": 0.28906402294689354,
+ "friendly_fire_share": 0.0,
+ "head_on_kill_share": 0.004201680672268907,
+ "fire_share": 0.0216943359375,
+ "mean_store": 0.43746557142999437,
+ "power_use": [
+  0.5259847044944763,
+  0.2535676956176758,
+  0.2204475849866867
+ ],
+ "entropy": 1.0068102064728737,
+ "stall_share": 0.002694769965277778,
+ "inside_enemy_egg_share": 0.0024365234375,
+ "enemy_within_30m_share": 0.0012120225694444444,
+ "passes": 4059,
+ "hits_per_pass_mean": 2.557280118255728,
+ "passes_with_no_hit": 0.47129834934712983,
+ "hits_in_control_share": 0.7761078998073218,
+ "merge_turn_90_median_s": 2.1666666666666665,
+ "merges": 4643,
+ "hits_by_aspect": {
+  "head_on": 0.04605009779334068,
+  "side": 0.5110790133476257,
+  "rear": 0.4428709149360657
+ },
+ "damaging_hits": 10380.0,
+ "agent_set": []
+}

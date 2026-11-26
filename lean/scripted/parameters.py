@@ -92,6 +92,10 @@ PARAMETERS: dict[str, Parameter] = {
     "store_weight": Parameter(0.25, "ratio", LOG, 0.4,
                               "the store itself in full stores per second, in the power "
                               "choice (on top of the energy term)"),
+    "store_crowd": Parameter(0.0, "ratio",
+                             meaning="the store weight x (1 + k) / (1 + k x enemies within 2 "
+                                     "gun ranges): more store alone, less in a crowd (round 4, "
+                                     "an experiment; 0 off)"),
     "power_horizon": Parameter(3.0, "seconds", LOG, 0.3, "the power look's discount time"),
     "power_temperature": Parameter(0.05, "score seconds", LOG, 0.4,
                                    "the power softmax's temperature"),

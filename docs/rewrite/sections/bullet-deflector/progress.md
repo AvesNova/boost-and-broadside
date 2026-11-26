@@ -173,3 +173,25 @@ GPU tick, compiled `core.step`, 4070 laptop, performance profile, E 4096, 4v4, f
   Firing share of ship-ticks 1v1 0.15 off / 0.13 egg; 4v4 0.25 / 0.10. A pass is a local
   minimum of the distance under the gun range, 1 s apart; hits go to the nearest pass.
 - Next: the spread grid (running), compile checks (queued after it).
+- Compile check (cold, laptop 4070, performance; baseline not updated): `advance` 3,022 traced
+  operations off / 3,302 egg (+280, +9%; +16% over the core baseline 2,856); `act` 4,552 both
+  (look-ahead agent; the core baseline 1,821 predates it; round 3 recorded 4,494, so the hit
+  widths and the hit chance add 58); 4 graphs, 0 graph breaks, no recompiles; cold 287.8 s off,
+  291.6 s egg (budget 260 s; the author raised it provisionally). FAILS the tripwire on act
+  (pre-existing), advance (egg) and the budget; reported, not a blocker (author).
+
+## 06:25 step 4: experiments (round 1 grid, round 2)
+
+- Grid: deflector off / egg x spread today (1.5 mrad), 5, 10, 20 mrad x 1v1 (fog off, no
+  fields, 512 games) and 4v4 (fields, fog, 256 games), 60 s each, re-dealt. Tables in
+  egg-experiments.md. Spread barely moves play numbers: the agent fires at about 200 m
+  (median, egg) and holds fire more at a wide spread (59 -> 50 real bullets per kill in 1v1);
+  its misses are mostly aim, not spread.
+- Didn't: round 2's extra cells (damage 7/14, then nose cone, egg front 24/80) shared the
+  cached ship card, so a cell's rows carried into the next (nose cone and front cells ran with
+  hit damage 14). Fixed (each cell from the game's own card) and those cells re-run; the
+  contaminated records kept apart (data/egg-2026-11-27/round2_contaminated).
+- Replays (mp4) in data/replays-2026-11-27-egg/: 1v1 egg and off (2 seeds), 1v1 egg 20 mrad,
+  4v4 egg and off. 1v1 off seed 0: a head-on joust from the spawn, both firing nose to nose,
+  over in 2.7 s.
+- Next: store_crowd duels (queued), the egg's tick cost (profile).

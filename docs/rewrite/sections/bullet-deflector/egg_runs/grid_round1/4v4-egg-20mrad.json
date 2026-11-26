@@ -1,0 +1,36 @@
+{
+ "cell": "4v4-egg-20mrad",
+ "size": 4,
+ "envs": 256,
+ "ticks": 1800,
+ "god": false,
+ "model": {
+  "deflector_turn": 0.7853981633974483,
+  "bullet_spread": 41.681005859375
+ },
+ "wall_s": 5.4,
+ "kills_per_minute": 6.3515625,
+ "games_ended": 263.0,
+ "draws": 0.0,
+ "draw_share": 0.0,
+ "time_to_kill_median_s": 7.950000524520874,
+ "time_to_kill_p25_s": 3.266666889190674,
+ "time_to_kill_p75_s": 15.658334493637085,
+ "real_bullets_ended": 95874.0,
+ "shots_per_kill": 58.96309963099631,
+ "hit_chance_per_bullet": 0.24743934747689675,
+ "friendly_fire_share": 0.01867386081018421,
+ "head_on_kill_share": 0.08610086100861009,
+ "fire_share": 0.03317433032806855,
+ "mean_store": 0.44373664313848027,
+ "power_use": [
+  0.47129711508750916,
+  0.2800362706184387,
+  0.24866659939289093
+ ],
+ "entropy": 0.7859018670713089,
+ "stall_share": 0.02304834946646933,
+ "inside_enemy_egg_share": 0.00867801419014087,
+ "enemy_within_30m_share": 0.006717472041184208,
+ "agent_set": []
+}
