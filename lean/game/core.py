@@ -28,6 +28,7 @@ from lean.contract import (
     FIELD_FEATURES,
     GLOBAL_FEATURES,
     NO_PENDING,
+    POWERS,
     SHIP_COLUMNS,
     SHIP_FEATURES,
     SHIP_TYPES,
@@ -557,6 +558,131 @@ def _sustain_fraction(p, control, speed):
     return first + (second - first) * share
 
 
+# The steady-flight table (`_steady_table`, `steady_lookup`): speeds on a grid of half Sustain's
+# step, from a quarter of stall speed (STEADY_SPEED_NODES of them: past 1.6 x cruise speed, beyond
+# the terminal dive), its nodes on Sustain's; STEADY_ROOMS store nodes across each edge band.
+STEADY_STEP_OF_SUSTAIN = 0.5
+STEADY_LOWEST = 0.25  # of stall speed
+STEADY_SPEED_NODES = 400
+STEADY_ROOMS = 9
+STEADY_OUTPUTS = 4  # turn rate, d speed / dt, d store / dt, angle of attack
+# Per-type tables (T, ...): kept by card type on the Constants (`Constants.per_type`), read by
+# the ship's type, never dealt to slots (too wide for every slot's row).
+PER_TYPE_TABLES = ("steady_table",)
+
+
+def _steady_store_nodes(rooms: int) -> Tensor:
+    """The store axis's nodes, 2 rooms - 1 of them, as places in the edge bands: the sink room
+    (`store_room`) 0 to 1, then 2 less the top room, 1 to 2. Between the bands (1) the flight
+    does not depend on the store."""
+    return torch.linspace(0.0, 2.0, 2 * rooms - 1)
+
+
+def _inverse_smootherstep(room: Tensor) -> Tensor:
+    """t in [0, 1] with smootherstep(t) = room (bisection; monotonic)."""
+    low, high = torch.zeros_like(room), torch.ones_like(room)
+    for _ in range(40):
+        middle = 0.5 * (low + high)
+        above = smootherstep(middle) > room
+        low, high = torch.where(above, low, middle), torch.where(above, middle, high)
+    return 0.5 * (low + high)
+
+
+def steady_characteristics(values: dict[str, Tensor]) -> dict[str, Tensor]:
+    """The steady-flight table and its speed grid (`_steady_table`) for every type of `values`
+    (`_per_type`'s). Built with the ship card (`ship_card`), not by `_per_type`: the analysis
+    tools that call that often (lean.game.tuning's fits) never read it."""
+    low, step, table = _steady_table(
+        values, values["stall_speed"], 1.0 / values["inverse_sustain_step"]
+    )
+    return {"steady_low_speed": low, "inverse_steady_step": 1.0 / step, "steady_table": table}
+
+
+def _steady_table(values: dict[str, Tensor], stall_speed: Tensor, sustain_step: Tensor):
+    """`steady_flight` tabulated once per type (round 3 of the scripted look-ahead, author
+    2026-11-27: a lookup in place of the flight functions in the agent's graph): (T, levels 4,
+    powers 3, store nodes 2 STEADY_ROOMS - 1, speeds STEADY_SPEED_NODES, STEADY_OUTPUTS) of
+    (turn rate, d speed / dt, d store / dt, angle) for straight, Sustain, Max and Snap (each
+    level's (size, sustain, deep) from the stick tables), no field. The store enters only
+    through its edge rooms (`store_room`), so its axis is the rooms: the sink room's band, then
+    the top room's (`_steady_store_nodes`; between the bands both are 1). Returns (first speed
+    (T,), step (T,), table)."""
+    count = len(stall_speed)
+    column = SimpleNamespace(
+        **{name: value.reshape(count, 1, 1, *value.shape[1:]) for name, value in values.items()}
+    )
+    step = STEADY_STEP_OF_SUSTAIN * sustain_step
+    below = torch.round((1.0 - STEADY_LOWEST) * stall_speed / step)
+    low = stall_speed - below * step
+    nodes = _steady_store_nodes(STEADY_ROOMS)
+    speeds = low[:, None, None] + step[:, None, None] * torch.arange(STEADY_SPEED_NODES)
+    speeds = speeds.expand(count, len(nodes), STEADY_SPEED_NODES)
+    fade = 1.0 / column.inverse_fade[..., 0]  # (T, 1)
+    max_energy = column.max_energy[..., 0]
+    # A node below 1: the store whose sink room is the node; above 1: whose top room is 2 less
+    # the node (`steady_lookup`); 1 itself: any store between the bands.
+    energy = torch.where(
+        nodes < 1.0,
+        fade * _inverse_smootherstep(nodes.clamp_max(1.0)),
+        torch.where(
+            nodes > 1.0,
+            max_energy - fade * _inverse_smootherstep((2.0 - nodes).clamp(0.0, 1.0)),
+            0.5 * max_energy,
+        ),
+    )[..., None].expand_as(speeds)  # (T, store nodes, speeds)
+    first = [int(abs(level)) for level in card.STICK_LEVELS]
+    first_of_level = [first.index(level) for level in range(max(first) + 1)]
+    levels = []
+    with torch.no_grad():
+        for index in first_of_level:
+
+            def shape(name: str) -> Tensor:
+                return values[name][:, index].abs().reshape(-1, 1, 1)
+
+            size, sustain, deep = (
+                shape(name) for name in ("stick_table", "sustain_stick_table", "deep_stall_table")
+            )
+            flown = (size.expand_as(speeds), sustain.expand_as(speeds), deep.expand_as(speeds))
+            powers = [
+                torch.stack(
+                    steady_flight(column, speeds, flown[0], power, energy, flown[1], flown[2]), -1
+                )
+                for power in range(POWERS)
+            ]
+            levels.append(torch.stack(powers, 1))
+    return low, step, torch.stack(levels, 1).contiguous()
+
+
+def steady_lookup(p, table: Tensor, ship_type: Tensor, speed: Tensor, level, power, energy):
+    """`steady_flight`'s (turn rate, d speed / dt, d store / dt, angle) read from the type's
+    steady table (`_steady_table`), linear in the speed and in the store's edge rooms
+    (`store_room`; clamped at the grid's ends). `ship_type`, `level` (stick level 0 to 3), `power`
+    (index) long and `speed`, `energy` broadcast together; `p` the ship constants broadcastable
+    against them (steady_low_speed, inverse_steady_step, inverse_fade, max_energy)."""
+    _, levels, powers, stores, speeds, outputs = table.shape
+    position = ((speed - p.steady_low_speed) * p.inverse_steady_step).clamp(0.0, speeds - 1.001)
+    below = position.long()
+    share = position - below
+    sink_room, top_room = store_room(p, energy)
+    rooms = 0.5 * (stores - 1)
+    place = torch.where(energy < 0.5 * p.max_energy, sink_room, 2.0 - top_room)
+    store = (place * rooms).clamp_max(stores - 1.001)
+    store_below = store.long()
+    store_share = store - store_below
+    row = (((ship_type * levels + level) * powers + power) * stores + store_below) * speeds + below
+    corners = table.view(-1, outputs)[row[..., None] + _corner_offsets(speeds, row.device)]
+    lower, upper = corners[..., :2, :], corners[..., 2:, :]  # (..., 2 speeds, outputs) each
+    along = torch.lerp(lower, upper, store_share[..., None, None])
+    return torch.lerp(along[..., 0, :], along[..., 1, :], share[..., None]).unbind(-1)
+
+
+@built_once
+def _corner_offsets(speeds: int, device: torch.device) -> Tensor:
+    """The four table rows around a point: the store's lower node at the lower and the upper
+    speed, then the store's upper node at both."""
+    return torch.tensor([0, 1, speeds, speeds + 1], device=device)
+
+
 SUSTAINED_GRID = 257  # speeds per search pass
 SUSTAINED_STICK_STEPS = 40  # bisection steps on the stick holding energy
 
@@ -610,8 +736,13 @@ def _build_ship_card(config: GameConfig) -> Constants:
     # The arena's size and the tick's length, for the scripted opponent (it reads every number
     # from the game).
     uniform = {"arena_radius": config.arena_radius, "tick_length": config.tick_length}
-    columns, rows = {}, []
-    for name, values in _per_type(config).items():
+    columns, rows, per_type = {}, [], {}
+    every = _per_type(config)
+    every.update(steady_characteristics(every))
+    for name, values in every.items():
+        if name in PER_TYPE_TABLES:
+            per_type[name] = values.contiguous()
+            continue
         chosen = values[used]
         if name not in ACTION_TABLES and bool((chosen == chosen[0]).all()):
             uniform[name] = chosen[0].item()
@@ -623,7 +754,8 @@ def _build_ship_card(config: GameConfig) -> Constants:
         block = values.reshape(len(card.TYPE_NAMES), -1).T  # (width, T)
         columns[name] = (sum(len(row) for row in rows), block.shape[0])
         rows.append(block)
-    return Constants(uniform, columns, torch.cat(rows, 0)[None].contiguous())  # the tables at least
+    table = torch.cat(rows, 0)[None].contiguous()  # the action tables at least
+    return Constants(uniform, columns, table, per_type)
 
 
 # Built ship cards by (store loops, store edge band, tick length, lineup, arena radius).
@@ -654,6 +786,11 @@ def _card_table(ship_card_: Constants, device: torch.device) -> Tensor:
     return ship_card_.table.to(device)
 
 
+@built_once
+def _card_per_type(ship_card_: Constants, device: torch.device) -> dict[str, Tensor]:
+    return {name: value.to(device) for name, value in ship_card_.per_type.items()}
+
+
 def ship_constants(config: GameConfig, ship_type: Tensor) -> Constants:
     """The per-ship constants of slots of types ship_type (E, N) long, each a type of the lineup:
     the card's uniform numbers, and its per-type rows gathered once into (E, C, N)."""
@@ -662,7 +799,8 @@ def ship_constants(config: GameConfig, ship_type: Tensor) -> Constants:
     envs, slots = ship_type.shape
     rows = table.shape[1]
     gathered = table.expand(envs, rows, -1).gather(2, ship_type[:, None].expand(envs, rows, slots))
-    return Constants(ship_card_.uniform, ship_card_.columns, gathered)
+    per_type = _card_per_type(ship_card_, ship_type.device)
+    return Constants(ship_card_.uniform, ship_card_.columns, gathered, per_type)
 
 
 # --------------------------------------------------------------------------- fixed tensors
@@ -785,6 +923,15 @@ def medium(fields: Tensor, x: Tensor, y: Tensor) -> tuple[Tensor, Tensor, Tensor
 # --------------------------------------------------------------------------- flight
 
 
+def store_room(p, energy):
+    """(sink room, top room), 0 to 1: the store's distance from empty and from full in its edge
+    band (`GameConfig.store_edge_band`), smootherstepped. Dive and a sinking ship need the sink
+    room, a climb the top room (`_setting`)."""
+    sink_room = smootherstep((energy * p.inverse_fade).clamp(0.0, 1.0))
+    top_room = smootherstep(((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0))
+    return sink_room, top_room
+
+
 def _setting(p, control, speed, energy, angle_sin):
     """The controls resolved at a speed and store: signed lateral acceleration, the exchange
     between speed and store, the vertical acceleration held, and thrust.
@@ -809,9 +956,8 @@ def _setting(p, control, speed, energy, angle_sin):
     q = p.lift_softmin_exponent
     # The corner, smooth: the wing's lift against the g limit (the only soft minimum of the turn).
     budget = softmin(p.lift * speed_squared, p.max_acceleration, q).clamp_min(1e-12)
-    sink_room = smootherstep((energy * p.inverse_fade).clamp(0.0, 1.0))
+    sink_room, top_room = store_room(p, energy)
     budget_squared = budget * budget
-    top_room = smootherstep(((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0))
     climbing = control.commanded > 0.0
     room = torch.where(climbing, top_room, torch.where(control.commanded < 0.0, sink_room, 1.0))
     demand = card.GRAVITY + (control.demand - card.GRAVITY) * room

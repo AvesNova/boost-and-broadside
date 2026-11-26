@@ -6,11 +6,13 @@ stick is chosen from the pair tables at the current power, the power from the ow
 Per ship and stick candidate the state at the look-ahead points `LOOK_AHEAD` (seconds):
 position, flight-path direction, nose direction, proper speed, store, and the medium there. The
 speed and store are stepped segment by segment (one segment per point) from the game's
-steady-flight rates (`lean.game.core.steady_flight`) at the segment's start speed and store, so
-a Snap's speed loss shows. The turn is the steady path rate plus the nose's lag: the angle of
-attack follows the game's nose spring toward the level's steady angle in closed form
-(`nose_response`), with the stiffness the tick uses (the level's going out, the full spring
-going back) and its fixed friction, so Sustain, Max and Snap differ in onset; the spring's
+steady-flight rates at the segment's start speed and store, so a Snap's speed loss shows: read
+from the game's steady-flight table (`lean.game.core.steady_lookup`, `core.steady_flight`
+tabulated once per ship type with the card; round 3), not the flight functions themselves.
+The turn is the steady path rate plus the nose's lag: the angle of attack follows the game's
+nose spring toward the level's steady angle in closed form (`nose_response`), with the
+stiffness the tick uses (the level's going out, the full spring going back) and its fixed
+friction, so Sustain, Max and Snap differ in onset; the spring's
 target is the steady angle at each segment's start speed (Snap's deep angle closes as the speed
 bleeds, as the tick's `_holding_angle` does). In a medium every rate is scaled by 1 / n and the
 path bends with the gradient, as in the tick (n and the gradient at each segment's start).
@@ -28,7 +30,7 @@ from torch import Tensor
 
 from lean.contract import POWERS, STICKS
 from lean.game import card
-from lean.game.core import current_path_rate, maximum, medium, steady_flight
+from lean.game.core import current_path_rate, maximum, medium, steady_lookup
 
 # The look-ahead points, seconds from now; each closes one segment of the stepped path. A
 # module setting (read at call time), so a measurement can sweep it.
@@ -94,26 +96,16 @@ def candidate_constants(constants, power: Tensor | None = None) -> SimpleNamespa
     return SimpleNamespace(**laid)
 
 
-def level_shapes(constants) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
-    """Per ship (E, N, LEVELS) the stick levels' (size, sustain, deep, stiffness going out) as
-    the game's tables hold them (`steady_flight` takes the first three), for straight, Sustain,
-    Max and Snap; and (STICKS,) long the |level| of each stick index, (STICKS,) float its side
-    (+1 left, the game's stick table sign: positive is a left turn)."""
+def level_shapes(constants) -> tuple[Tensor, Tensor, Tensor]:
+    """Per ship (E, N, LEVELS) the stick levels' nose stiffness going out (the game's table) for
+    straight, Sustain, Max and Snap; and (STICKS,) long the |level| of each stick index,
+    (STICKS,) float its side (+1 left, the game's stick table sign: positive is a left turn).
+    The levels' flight itself is the game's steady-flight table (`core.steady_lookup`)."""
     device = constants["stick_table"].device
     columns = torch.tensor(FIRST_OF_LEVEL, device=device)
-
-    def table(name: str) -> Tensor:
-        return constants[name].index_select(1, columns).movedim(1, -1)  # (E, N, LEVELS)
-
+    stiffness = constants["nose_stiffness_table"].index_select(1, columns).movedim(1, -1)
     side = torch.sign(torch.tensor(card.STICK_LEVELS, device=device))
-    return (
-        table("stick_table").abs(),
-        table("sustain_stick_table"),
-        table("deep_stall_table"),
-        table("nose_stiffness_table"),
-        torch.tensor(LEVEL_OF_STICK, device=device),
-        side,
-    )
+    return stiffness, torch.tensor(LEVEL_OF_STICK, device=device), side
 
 
 def nose_response(offset, rate, sigma, stiffness, time):
@@ -165,7 +157,7 @@ def predict(constants, fields: Tensor, ships, power: Tensor) -> Paths:
     constants and the environment's fields (E, 5, F)."""
     points_at = LOOK_AHEAD
     p = candidate_constants(constants, power)  # power tables (E, N, 1, 1)
-    size, sustain, deep, out_stiffness, level, side = level_shapes(constants)
+    out_stiffness, level, side = level_shapes(constants)
     has_fields = fields.shape[-1] > 0
     speed0, path0, inverse_index0 = _start(constants, fields, ships)
     angle0 = ships.angle
@@ -179,19 +171,24 @@ def predict(constants, fields: Tensor, ships, power: Tensor) -> Paths:
     path_rate0 = (path_rate0 + bend0) * inverse_index0
     angle_rate0 = ships.nose_rate - path_rate0
 
+    levels = torch.arange(LEVELS, device=speed0.device)[:, None]  # (LEVELS, 1)
+    ship_type = ships.type[..., None, None]
+    table_power = power[..., None, None]
+
     def steady(speed, energy):
         """(rate, d speed / dt, d store / dt, angle) per level, (E, N, LEVELS) each, at the
-        levels' speed and energy (E, N, LEVELS)."""
-        rate, speed_rate, store_rate, angle = steady_flight(
+        levels' speed and energy (E, N, LEVELS): the game's steady-flight table
+        (`core.steady_lookup`) at the table power."""
+        flown = steady_lookup(
             p,
+            constants["steady_table"],
+            ship_type,
             speed[..., None],
-            size[..., None],
-            None,
+            levels,
+            table_power,
             energy[..., None],
-            sustain[..., None],
-            deep[..., None],
         )
-        return rate[..., 0], speed_rate[..., 0], store_rate[..., 0], angle[..., 0]
+        return tuple(value[..., 0] for value in flown)
 
     def per_stick(value: Tensor) -> Tensor:  # (E, N, LEVELS) -> (E, N, STICKS)
         return value.index_select(-1, level)
@@ -306,16 +303,13 @@ def predict(constants, fields: Tensor, ships, power: Tensor) -> Paths:
 def power_outlook(constants, fields: Tensor, ships, stick: Tensor) -> tuple[Tensor, Tensor]:
     """Each ship's speed and store (E, N, POWERS, len(POWER_LOOK)) holding stick index `stick`
     (E, N) long at each of the 3 powers for the power look (`POWER_LOOK`), stepped per segment
-    from the game's steady-flight rates at the segment's start (the medium's 1 / n held at
-    its value now)."""
-    p = candidate_constants(constants)  # power tables (E, N, 1, POWERS)
-    size, sustain, deep, _, level, _ = level_shapes(constants)
-    stick_level = level[stick][..., None]  # (E, N, 1)
-
-    def at_level(table: Tensor) -> Tensor:  # (E, N, LEVELS) -> (E, N, 1, 1)
-        return table.gather(-1, stick_level)[..., None]
-
-    size, sustain, deep = at_level(size), at_level(sustain), at_level(deep)
+    from the game's steady-flight rates (its table) at the segment's start (the medium's 1 / n
+    held at its value now)."""
+    p = candidate_constants(constants)  # columns (E, N, 1, 1)
+    level = torch.tensor(LEVEL_OF_STICK, device=stick.device)
+    stick_level = level[stick][..., None, None]  # (E, N, 1, 1)
+    ship_type = ships.type[..., None, None]
+    powers = torch.arange(POWERS, device=stick.device)
     speed0, _, inverse_index = _start(constants, fields, ships)
     inverse_index = inverse_index[..., None, None]
     speed = speed0[..., None, None].expand(speed0.shape + (1, POWERS))
@@ -324,7 +318,9 @@ def power_outlook(constants, fields: Tensor, ships, stick: Tensor) -> tuple[Tens
     speeds, energies = [], []
     for time in POWER_LOOK:
         duration = time - started
-        _, speed_rate, store_rate, _ = steady_flight(p, speed, size, None, energy, sustain, deep)
+        _, speed_rate, store_rate, _ = steady_lookup(
+            p, constants["steady_table"], ship_type, speed, stick_level, powers, energy
+        )
         speed = (speed + duration * speed_rate * inverse_index).clamp_min(card.SPEED_FLOOR)
         energy = (energy + duration * store_rate * inverse_index).clamp(
             0.0, _grid(constants["max_energy"])

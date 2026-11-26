@@ -63,12 +63,17 @@ def symlog(x: Tensor) -> Tensor:
 
 
 def map_fields(record, function):
-    """A copy of a dataclass with `function` applied to every tensor field."""
-    changes = {
-        field.name: function(getattr(record, field.name))
-        for field in dataclasses.fields(record)
-        if isinstance(getattr(record, field.name), Tensor)
-    }
+    """A copy of a dataclass with `function` applied to every tensor field (and to every tensor
+    of a dict field: Constants.per_type)."""
+    changes = {}
+    for field in dataclasses.fields(record):
+        value = getattr(record, field.name)
+        if isinstance(value, Tensor):
+            changes[field.name] = function(value)
+        elif (
+            isinstance(value, dict) and value and all(isinstance(v, Tensor) for v in value.values())
+        ):
+            changes[field.name] = {name: function(item) for name, item in value.items()}
     return dataclasses.replace(record, **changes)
 
 
@@ -131,15 +136,20 @@ class Constants:
     uniform: dict[str, float | int]
     columns: dict[str, tuple[int, int]]
     table: Tensor
+    # Tables by card type (T, ...), read with a ship's type (State.type), never dealt to slots:
+    # lean.game.core.PER_TYPE_TABLES (the steady-flight table, too wide for every slot's row).
+    per_type: dict[str, Tensor] = dataclasses.field(default_factory=dict)
 
     def __getitem__(self, name: str) -> Tensor | float | int:
         if name in self.uniform:
             return self.uniform[name]
+        if name in self.per_type:
+            return self.per_type[name]
         start, width = self.columns[name]
         return self.table[:, start] if width == 1 else self.table[:, start : start + width]
 
     def __getattr__(self, name: str) -> Tensor | float | int:
-        if name.startswith("__") or name in ("uniform", "columns", "table"):
+        if name.startswith("__") or name in ("uniform", "columns", "table", "per_type"):
             raise AttributeError(name)
         try:
             return self[name]
@@ -147,7 +157,7 @@ class Constants:
             raise AttributeError(name) from None
 
     def __contains__(self, name: str) -> bool:
-        return name in self.uniform or name in self.columns
+        return name in self.uniform or name in self.columns or name in self.per_type
 
 
 # The packed state's rows, by name. Each name reads as an (E, N) view (bullets (E, N, K)).

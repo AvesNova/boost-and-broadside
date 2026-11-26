@@ -762,3 +762,39 @@ field) is discussed. Round 3, with a fresh agent:
    author watches the replays.
 Author notes for it: 1v1 mirror draws are not a target (near-optimal play may draw); judge flicker
 on the distribution, not on sampled actions; 1v1 tests run with fog off and no fields.
+
+# Round 3 (author's go 2026-11-27 ~01:30; overnight plan docs/rewrite/overnight-2026-11-27.md, stream A)
+
+Laptop RTX 4070, performance profile; another agent shares the machine overnight (one GPU job at a
+time via the lock, but its CPU work overlaps: load averages are given with the compile times).
+
+## R3 step 1: steady-flight table (2026-11-27 01:35-02:05)
+
+- Tried: `core.steady_flight` tabulated once per ship type with the card
+  (`core.steady_characteristics`, `_steady_table`): (type, level 4, power 3, store 17, speed 400,
+  4 outputs) = rate, d speed / dt, d store / dt, angle. Speeds on half Sustain's step (1.47 m/s)
+  from a quarter of stall speed, nodes on Sustain's; the store enters only through its edge rooms
+  (`core.store_room`, factored out of `_setting`), so its axis is 9 sink-room nodes then 9
+  top-room nodes (shared middle). Read by `core.steady_lookup` (bilinear, one gather of the 4
+  corner rows). The table is per type, not per slot: a new `Constants.per_type` dict (1.3 MB per
+  type; dealt per slot it would be 1.3 MB x every slot). Ship type from `State.type`. The 5 path
+  segments and the 3 power-look segments read it; no steady-flight evaluation is left in the graph
+  (`current_path_rate` still runs the flight functions once).
+- Table against the direct `steady_flight` (200,000 random points, speeds 30-550 m/s, a quarter
+  of them in the empty band): median errors ~1e-6 rad/s (rate), ~3e-4 m/s^2 (speed rate); 99th
+  percentiles: rate 0.6-2.0e-3 rad/s, speed rate 0.02-0.28 m/s^2, store rate 0.8-2.2 /s, angle
+  1.3e-4 rad (Snap 2.6e-3). Worst points: Snap diving below stall speed inside the empty band
+  (angle up to 0.16 rad, speed rate 6.4 m/s^2), where the steady angle jumps with the room. With
+  5 rooms per band instead of 9 the worst angle was 0.28 rad; 17 rooms 0.07 rad.
+- Path prediction (`path_check.py`, 64 deals, against the tick): unchanged within 0.3 deg / 0.1 m
+  in every cell (`data/lookahead-r3/path_before.md` vs `path_step1.md`).
+- Compile check (cold, baseline not updated; load average 2.9 at start, 5.4 at the end): `act`
+  **4,494** traced operations (round 2: 7,864), backend 73.7 s (100.8 s); cold **311.8 s**
+  (333.0 s). Still over the 260 s budget: **fails**. Traced operations of `scripted.decide` by
+  innermost function after a second trim of the lookup (4v4, fields; 3,368 in all): medium 456,
+  predict 425, steady_lookup 321, nose_response 302, smootherstep 238 (medium's and the store
+  rooms'), _contact 135, _trigger 104. The flight functions are out; what is left is spread over
+  the unrolled segment loop (5 x medium, 5 x nose spring, 8 x lookup). Reaching 260 s needs a
+  structural change (the paths in one kernel, as the pair stage is, or fewer segments): not done,
+  a question for the author.
+- Next: step 2 (grouped distribution check).
