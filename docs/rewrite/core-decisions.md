@@ -855,6 +855,15 @@ docs/rewrite/sections/post-stall/progress.md (steps 1-8); the rules: lean/game/N
   (core 5,947), cold 233.8 s (core 226.9 s), no recompiles or graph breaks. The baseline was
   reset on this branch (author: each change judged on its own).
 
+Hit damage halved (author 2026-11-26)
+- `hit_damage` 21 -> 10.5 on the design row (lean/game/tuning.py). The fire rate stays at 30
+  rounds/s (it looks and feels right). A typical full hit at 300 m now does about 10.5, so a kill
+  (empty the 100-point shield, then one more hit) takes about 11 hits, about 0.4 s of steady
+  fire, instead of 6 hits in 0.2 s: long enough to notice being hit before dying. Measured
+  before the change (look-ahead agent, 1v1, fog off, no fields, nobody able to die, 32 games x
+  60 s): passes every 6.4 s (median); 48% of passes land no hit; one ship landed 11 or more
+  hits in 22% of passes; 79% of hits came while one ship sat behind the other within gun range
+  with its nose within 30 degrees (5.8% of ship-time, median streak 0.47 s, longest 17.5 s).
 
 ## Scripted look-ahead (author 2026-11-26, branch scripted-lookahead)
 
