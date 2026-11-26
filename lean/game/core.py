@@ -137,11 +137,11 @@ class GameConfig:
     # observer's forward reach p / (1 - e), with a clear line. False (an ablation): the ellipse
     # every tick. At e = 0 the circle is the ellipse, so the switch changes nothing there.
     fog_tracking: bool = True
-    # The bullet deflector (proposal 2026-11-27; `deflection`, lean/game/NOTES.md "Deflector"): a
-    # preset of card.DEFLECTOR_PRESETS ("off", "symmetric", "frontal") setting the hit model's
+    # The bullet deflector (proposal 2026-11-27; `egg_entry`, `egg_turn`, lean/game/NOTES.md
+    # "Deflector"): a preset of card.DEFLECTOR_PRESETS ("egg", "off") setting the hit model's
     # deflector inputs at the deal. "off" (an ablation) also skips the deflector's code; under
-    # the others every deflector number is a runtime input (`with_hit_model`), as "off"'s zeros.
-    deflector: str = "frontal"
+    # "egg" every deflector number is a runtime input (`with_hit_model`).
+    deflector: str = "egg"
 
 
 def built_once(build):
@@ -180,14 +180,14 @@ RUNTIME_CONSTANTS = (
     "core_radius",
     "hit_damage",
     "spread_speed",
-    "deflector_front",
-    "deflector_side",
-    "deflector_inner_cos",
-    "deflector_inverse_width",
-    "deflector_length",
+    "egg_front",
+    "egg_rear",
+    "egg_half_width",
+    "deflector_turn",
     "nose_cone",
     "nose_inner_cos",
     "inverse_nose_width",
+    "hit_widths",
 )
 
 
@@ -211,6 +211,7 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
     gravity = torch.full_like(exchange, card.GRAVITY)
     raw = torch.stack([gravity, card.GRAVITY - exchange, card.GRAVITY + exchange], -1)
     hit_radius = of("hit_radius")
+    deflector = {"nose_cone": card.NOSE_CONE, **card.DEFLECTOR_PRESETS[config.deflector]}
     nose_inner_cos, nose_outer_cos = (
         torch.cos(of("nose_inner_angle")),
         torch.cos(of("nose_outer_angle")),
@@ -245,8 +246,9 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "inverse_nose_width": 1.0 / (nose_inner_cos - nose_outer_cos),
         **{
             name: torch.full_like(hit_radius, value)
-            for name, value in hit_model_constants(card.DEFLECTOR_PRESETS[config.deflector]).items()
+            for name, value in hit_model_constants(deflector).items()
         },
+        "hit_widths": hit_widths(hit_radius, deflector),
         "max_shield": of("max_shield"),
         "shield_rate": card.SHIELD_RECHARGE_RATE * of("shield_recharge_rate_scale"),
         "shield_delay": card.SHIELD_RECHARGE_DELAY * of("shield_recharge_delay_scale"),
@@ -1523,9 +1525,9 @@ def step(
     bullets = _move_bullets(config, state, shots.bullets, flying)
     contact = _hit_test(config, state, flown, shots.bullets, bullets, flying, index)
     real = shots.bullet_real.reshape(E, N * K)
-    bullet_damage = _damage(config, state, flown, shots.bullets, bullets, real, contact)
-    if contact.bend_ship is not None:
-        bullets, _ = _deflect(state, flown, shots.bullets, bullets, contact)
+    bullet_damage = _damage(state, flown, bullets, real, contact)
+    if contact.bent is not None:
+        bullets = _deflect(bullets, contact)
     no_damage = filled((E, N), 0.0, bullet_damage.dtype, device)
     hit_taken = no_damage.scatter_add(1, contact.target, bullet_damage)
     boundary = _boundary_damage(config, flown, alive0)
@@ -1747,16 +1749,22 @@ def _move_bullets(config: GameConfig, state: State, start: Tensor, flying: Tenso
 
 
 class Contact(NamedTuple):
-    """The hit test's result, per bullet (E, N K). The per-pair work stays inside the hit test
-    (its reductions); a later stage that needs a bullet's pass against one ship recomputes it
-    (`_pass_against`)."""
+    """The hit test's result, per bullet (E, N K)."""
 
     target: Tensor  # (E, N K) long: the ship of the first contact (slot 0 for a miss)
     hit: Tensor  # (E, N K) bool
-    # The deflector's bend (`_deflect`; None with the deflector off), per bullet (E, N K): the
-    # ship whose field bends it (the first by tau) and its closest approach's tau, inf for none.
-    bend_ship: Tensor | None
-    bend_tau: Tensor | None
+    # The impact parameter of the hitting pass (metres; the distance of its line from the
+    # target's centre, at most the start's distance), any value for a miss.
+    impact: Tensor
+    # The deflector's turn (None with the deflector off), per bullet (E, N K): turned this tick
+    # (`bent`), by the rotation (turn_cos, turn_sin), its end moved by the turned rest of the
+    # move (shift), and whether the hit (if any) is on the turned remainder (`bent_hit`).
+    bent: Tensor | None = None
+    turn_cos: Tensor | None = None
+    turn_sin: Tensor | None = None
+    shift_x: Tensor | None = None
+    shift_y: Tensor | None = None
+    bent_hit: Tensor | None = None
 
 
 def _hit_test(
@@ -1769,13 +1777,16 @@ def _hit_test(
     index: SimpleNamespace,
 ) -> Contact:
     """The swept test between the two straight motions, every bullet against every ship
-    ((E, 2, N K, N), x and y on the second axis). A contact is a closest approach within the hit
-    radius of a ship alive at tick start (a dead ship is no target) that is not the bullet's
-    owner, by a flying bullet; with the deflector, the closest approach pushed out by the
-    ship's D (`deflection`, the bullet's path against the ship's nose after the move) must be
-    within the hit radius (a bullet whose D is at least the hit radius never touches: it
-    glances off, `_deflect`). First contact: the smallest tau, ties within 1e-6 to the closer
-    pass."""
+    ((E, 2, N K, N), x and y on the second axis), in the relative frame (bullet minus ship). A
+    contact is a closest approach within the hit radius of a ship alive at tick start (a dead
+    ship is no target) that is not the bullet's owner, by a flying bullet. First contact: the
+    smallest tau, ties within 1e-6 to the closer pass.
+
+    The deflector (proposal 2026-11-27, `egg_entry`, `egg_turn`): a bullet whose straight path
+    first crosses a living ship's egg inward this tick (the first such ship by tau) is turned
+    there, and its contact with that ship is the swept test of the turned remainder (the
+    crossing to the tick's end) against the hit circle; its contacts with the other ships stay
+    on the straight path (a second egg in the same tick is not seen: rare)."""
     E, _, N, K = bullets.shape
     c = state.constants
     per_bullet = (E, 2, N * K, 1)
@@ -1786,41 +1797,82 @@ def _hit_test(
     relative = (bullets[:, BULLET_X : BULLET_Y + 1] - start_xy).reshape(per_bullet)
     relative = relative - moved[:, :, None, :]
     relative_squared = (relative * relative).sum(1).clamp_min(1e-12)
-    closest_tau = -(start * relative).sum(1) / relative_squared
-    tau = closest_tau.clamp(0.0, 1.0)
+    tau = (-(start * relative).sum(1) / relative_squared).clamp(0.0, 1.0)
     miss = start + tau[:, None] * relative
     miss_squared = (miss * miss).sum(1)
     radius = c["hit_radius"]
-    candidate = index.other & flying.reshape(E, N * K, 1)
-    bend_ship = bend_tau = None
-    if config.deflector == "off":
-        reach = torch.where(state.alive, radius * radius, -1.0)[:, None, :]
-    else:
-        direction = bullets[:, BULLET_DIR_X : BULLET_DIR_Y + 1].reshape(E, 2, N * K, 1)
-        hit_cos = -(
-            direction[:, 0] * flown.heading_cos[:, None, :]
-            + direction[:, 1] * flown.heading_sin[:, None, :]
-        )
-        deflection_ = deflection(lambda name: _per_ship(c[name]), hit_cos)
-        inside = (_per_ship(radius) - deflection_).clamp_min(0.0)
-        reach = torch.where(state.alive[:, None, :], inside * inside, -1.0)
-        # The field: the pass's closest approach in this tick (0 <= tau < 1: the clamped miss is
-        # the closest point) within hit radius + D of a living ship (`_deflect`).
-        field = _per_ship(radius) + deflection_
-        bends = (
-            (closest_tau >= 0.0)
-            & (closest_tau < 1.0)
-            & (miss_squared < field * field)
-            & state.alive[:, None, :]
-            & candidate
-        )
-        bend_tau, bend_ship = torch.where(bends, closest_tau, torch.inf).min(-1)
+    candidate = index.other & flying.reshape(E, N * K, 1) & state.alive[:, None, :]
+    reach = _per_ship(radius * radius)
     contact = (miss_squared < reach) & candidate
+    if config.deflector == "off":
+        target, hit, _ = _first_contact(contact, tau, miss_squared)
+        return Contact(target, hit, _impact(state, flown, start_bullets, bullets, target))
+    entry = egg_entry(
+        start[:, 0],
+        start[:, 1],
+        relative[:, 0],
+        relative[:, 1],
+        flown.heading_cos[:, None, :],
+        flown.heading_sin[:, None, :],
+        _per_ship(c["egg_front"]),
+        _per_ship(c["egg_rear"]),
+        _per_ship(c["egg_half_width"]),
+    )
+    entry_tau, bend_ship = torch.where(candidate, entry, torch.inf).min(-1)
+    bent = entry_tau < torch.inf
+    # The bend ship's straight contact is replaced by the turned remainder's.
+    bend_pair = (index.ship[None, None, :] == bend_ship[..., None]) & bent[..., None]
+    target, hit, first_tau = _first_contact(contact & ~bend_pair, tau, miss_squared)
+    # The turned remainder against the bend ship.
+    pass_start, pass_move, _ = _pass_against(state, flown, start_bullets, bullets, bend_ship)
+    entry_tau = torch.where(bent, entry_tau, 0.0)
+    turn = egg_turn(
+        pass_start[:, 0],
+        pass_start[:, 1],
+        pass_move[:, 0],
+        pass_move[:, 1],
+        entry_tau,
+        _on_target(c["egg_half_width"], bend_ship),
+        _on_target(c["deflector_turn"], bend_ship),
+    )
+    bend_radius = _on_target(radius, bend_ship)
+    bent_hit = bent & (turn.miss_squared < bend_radius * bend_radius)
+    bent_tau = entry_tau + (1.0 - entry_tau) * turn.tau
+    bent_hit = bent_hit & (bent_tau < first_tau)
+    target = torch.where(bent_hit, bend_ship, target)
+    straight_impact = _impact(state, flown, start_bullets, bullets, target)
+    rest = 1.0 - entry_tau
+    move_x, move_y = pass_move.unbind(1)
+    return Contact(
+        target,
+        hit | bent_hit,
+        torch.where(bent_hit, turn.impact, straight_impact),
+        bent,
+        turn.cos,
+        turn.sin,
+        rest * (move_x * (turn.cos - 1.0) - move_y * turn.sin),
+        rest * (move_x * turn.sin + move_y * (turn.cos - 1.0)),
+        bent_hit,
+    )
+
+
+def _first_contact(contact: Tensor, tau: Tensor, miss_squared: Tensor):
+    """The first contact per bullet: (target (E, N K) long, hit bool, its tau, inf for none)."""
     contact_tau = torch.where(contact, tau, torch.inf)
     first_tau = contact_tau.min(-1).values
     tied = contact & (contact_tau <= first_tau[..., None] + 1e-6)
     target = torch.where(tied, miss_squared, torch.inf).argmin(-1)
-    return Contact(target, first_tau < torch.inf, bend_ship, bend_tau)
+    return target, first_tau < torch.inf, first_tau
+
+
+def _impact(state, flown, start_bullets: Tensor, bullets: Tensor, target: Tensor) -> Tensor:
+    """Each bullet's impact parameter against `target` on its straight in-tick pass (the
+    distance of the relative line from the target's centre, at most the start's distance)."""
+    start, relative, relative_squared = _pass_against(state, flown, start_bullets, bullets, target)
+    start_x, start_y = start.unbind(1)
+    cross = start_x * relative[:, 1] - start_y * relative[:, 0]
+    line = cross * cross / relative_squared
+    return torch.minimum(line, start_x * start_x + start_y * start_y).sqrt()
 
 
 def _pass_against(
@@ -1846,93 +1898,128 @@ def _per_ship(values: Tensor | float) -> Tensor | float:
     return values[:, None, :] if isinstance(values, Tensor) else values
 
 
-def _deflect(
-    state: State,
-    flown: SimpleNamespace,
-    start_bullets: Tensor,
-    bullets: Tensor,
-    contact: Contact,
-) -> tuple[Tensor, Tensor]:
-    """The deflector's bend (proposal 2026-11-27): every flying bullet that touched nothing this
-    tick and whose pass's closest approach lies in this tick (0 <= tau < 1, so once per pass)
-    within a ship's field (b < hit radius + D; a living ship not its owner; `_hit_test` finds the
-    first such ship by tau) is pushed at that point by D_eff = min(D, hit radius + D - b) along
-    the smooth side m / sqrt(b^2 + eps^2) (m the closest point, bullet minus ship; eps
-    card.DEFLECTOR_SIGN_SOFTNESS), and turned away from the ship after it by the angle whose
-    tangent is D_eff |u| / length (u the side's part across the bullet's path): its direction and
-    the rest of its move are rotated, its speed is kept (no energy is added). Another ship later
-    in the same tick saw the unbent path (rare). The end position's cached medium is kept (the
-    push is metres; the next tick's start reads it). Per bullet only. Returns the bullet block
-    and the bent bullets (E, N, K) bool."""
+def egg_entry(start_x, start_y, move_x, move_y, nose_cos, nose_sin, front, rear, half_width):
+    """The deflector's egg (proposal 2026-11-27): in the ship's frame (nose +x) the front half an
+    ellipse of semi-axis `front` along the nose, the rear half one of semi-axis `rear`, both of
+    half-width `half_width`. The tau in [0, 1) at which the straight path start + tau move (the
+    bullet relative to the ship's centre, world axes) first crosses the egg inward, inf for
+    none: a path starting inside (a bullet fired from inside, or already turned) never enters.
+    Elementwise; every argument broadcasts."""
+    along = start_x * nose_cos + start_y * nose_sin
+    across = start_y * nose_cos - start_x * nose_sin
+    move_along = move_x * nose_cos + move_y * nose_sin
+    move_across = move_y * nose_cos - move_x * nose_sin
+    inverse_width = 1.0 / half_width
+    scaled_across, scaled_move_across = across * inverse_width, move_across * inverse_width
+
+    def half(semi_axis, front_half: bool):
+        inverse = 1.0 / semi_axis
+        p, d = along * inverse, move_along * inverse
+        qa = (d * d + scaled_move_across * scaled_move_across).clamp_min(1e-12)
+        qb = p * d + scaled_across * scaled_move_across
+        qc = p * p + scaled_across * scaled_across - 1.0
+        disc = qb * qb - qa * qc
+        t = (-qb - disc.clamp_min(0.0).sqrt()) / qa
+        on_half = along + t * move_along
+        on_half = on_half >= 0.0 if front_half else on_half < 0.0
+        valid = (disc > 0.0) & (t >= 0.0) & (t < 1.0) & on_half
+        return torch.where(valid, t, torch.inf), qc > 0.0
+
+    front_t, outside_front = half(front, True)
+    rear_t, outside_rear = half(rear, False)
+    outside = torch.where(along >= 0.0, outside_front, outside_rear)
+    return torch.where(outside, torch.minimum(front_t, rear_t), torch.inf)
+
+
+class Turn(NamedTuple):
+    """`egg_turn`'s result, per path."""
+
+    cos: Tensor  # the rotation of the path's direction
+    sin: Tensor
+    tau: Tensor  # the turned remainder's closest approach, its own tau in [0, 1]
+    miss_squared: Tensor  # the squared distance there from the ship's centre
+    impact: Tensor  # the turned remainder's impact parameter (at most the entry's distance)
+
+
+def hump(x: Tensor) -> Tensor:
+    """The deflector's turn curve (the "early hump", author 2026-11-27): 27/4 x (1 - x)^2 on x
+    clamped to [0, 1]; 0 at both ends, its peak 1 at x = 1/3."""
+    x = x.clamp(0.0, 1.0)
+    return 6.75 * x * (1.0 - x) * (1.0 - x)
+
+
+def egg_turn(start_x, start_y, move_x, move_y, entry_tau, half_width, turn_max) -> Turn:
+    """The deflector's turn at the egg entry (`egg_entry`'s tau) of the straight path start +
+    tau move (relative to the ship's centre): the direction turned away from the centre by
+    turn_max x hump(b / half_width), b the distance of the straight line from the centre (b = 0
+    goes straight); the speed kept; then the swept test of the turned remainder (the entry
+    point to the tick's end, (1 - entry_tau) of the move turned) against the centre."""
+    length_squared = (move_x * move_x + move_y * move_y).clamp_min(1e-12)
+    inverse_length = torch.rsqrt(length_squared)
+    point_x, point_y = start_x + entry_tau * move_x, start_y + entry_tau * move_y
+    # Signed distance of the line from the centre: + when the centre is on the line's right.
+    signed = (move_x * point_y - move_y * point_x) * inverse_length
+    b = signed.abs()
+    angle = turn_max * hump(b / half_width)
+    turn_cos = torch.cos(angle)
+    turn_sin = torch.sin(angle) * signed / b.clamp_min(1e-9)
+    rest = 1.0 - entry_tau
+    rest_x = rest * (move_x * turn_cos - move_y * turn_sin)
+    rest_y = rest * (move_x * turn_sin + move_y * turn_cos)
+    rest_squared = (rest_x * rest_x + rest_y * rest_y).clamp_min(1e-12)
+    tau = (-(point_x * rest_x + point_y * rest_y) / rest_squared).clamp(0.0, 1.0)
+    miss_x, miss_y = point_x + tau * rest_x, point_y + tau * rest_y
+    cross = point_x * rest_y - point_y * rest_x
+    point_squared = point_x * point_x + point_y * point_y
+    impact = torch.minimum(cross * cross / rest_squared, point_squared).sqrt()
+    return Turn(turn_cos, turn_sin, tau, miss_x * miss_x + miss_y * miss_y, impact)
+
+
+def _deflect(bullets: Tensor, contact: Contact) -> Tensor:
+    """The turned bullets' block: the end moved by the turned rest of the tick's relative move
+    (`Contact.shift`), the direction rotated by the same turn; the speed and the end's cached
+    medium kept (the turned end is metres off the cached one)."""
     E, _, N, K = bullets.shape
-    c = state.constants
-    ship, tau = contact.bend_ship, contact.bend_tau
-    bent = (tau < torch.inf) & ~contact.hit  # (E, N K)
-    tau = torch.where(bent, tau, 0.0)
-    start, relative, _ = _pass_against(state, flown, start_bullets, bullets, ship)
-    side_x, side_y = (start + tau[:, None] * relative).unbind(1)
-    b_squared = side_x * side_x + side_y * side_y
     flat = (E, N * K)
     direction_x = bullets[:, BULLET_DIR_X].reshape(flat)
     direction_y = bullets[:, BULLET_DIR_Y].reshape(flat)
-
-    def at_ship(name: str) -> Tensor | float:
-        return _on_target(c[name], ship)
-
-    hit_cos = -(
-        direction_x * _on_target(flown.heading_cos, ship)
-        + direction_y * _on_target(flown.heading_sin, ship)
+    turned = torch.stack(
+        [
+            bullets[:, BULLET_X].reshape(flat) + contact.shift_x,
+            bullets[:, BULLET_Y].reshape(flat) + contact.shift_y,
+            direction_x * contact.turn_cos - direction_y * contact.turn_sin,
+            direction_x * contact.turn_sin + direction_y * contact.turn_cos,
+        ],
+        1,
+    ).reshape(E, 4, N, K)
+    head = torch.where(
+        contact.bent.reshape(E, 1, N, K), turned, bullets[:, BULLET_X : BULLET_DIR_Y + 1]
     )
-    ship_deflection = deflection(at_ship, hit_cos)
-    pushed = torch.minimum(
-        ship_deflection, at_ship("hit_radius") + ship_deflection - b_squared.sqrt()
-    ).clamp_min(0.0)
-    soft = torch.rsqrt(b_squared + card.DEFLECTOR_SIGN_SOFTNESS**2)
-    push_x, push_y = pushed * side_x * soft, pushed * side_y * soft
-    x0, y0 = start_bullets[:, BULLET_X].reshape(flat), start_bullets[:, BULLET_Y].reshape(flat)
-    x1, y1 = bullets[:, BULLET_X].reshape(flat), bullets[:, BULLET_Y].reshape(flat)
-    # The turn: tan = D_eff |u| / length toward the side, u the side's part across the path.
-    along = side_x * direction_x + side_y * direction_y
-    across_x = (side_x - along * direction_x) * soft
-    across_y = (side_y - along * direction_y) * soft
-    turn = pushed / at_ship("deflector_length")
-    turned_x, turned_y = direction_x + turn * across_x, direction_y + turn * across_y
-    norm = torch.rsqrt(turned_x * turned_x + turned_y * turned_y)
-    turned_x, turned_y = turned_x * norm, turned_y * norm
-    # The rotation taking the direction to the turned one, applied to the rest of the move.
-    rotate_cos = direction_x * turned_x + direction_y * turned_y
-    rotate_sin = direction_x * turned_y - direction_y * turned_x
-    rest_x, rest_y = (1.0 - tau) * (x1 - x0), (1.0 - tau) * (y1 - y0)
-    new_x = x1 + push_x + rest_x * (rotate_cos - 1.0) - rest_y * rotate_sin
-    new_y = y1 + push_y + rest_x * rotate_sin + rest_y * (rotate_cos - 1.0)
-    moved = torch.stack([new_x, new_y, turned_x, turned_y], 1).reshape(E, 4, N, K)
-    bent = bent.reshape(E, N, K)
-    head = torch.where(bent[:, None], moved, bullets[:, BULLET_X : BULLET_DIR_Y + 1])
-    return torch.cat([head, bullets[:, BULLET_DIR_Y + 1 :]], 1), bent
+    return torch.cat([head, bullets[:, BULLET_DIR_Y + 1 :]], 1)
 
 
 def _damage(
-    config: GameConfig,
-    state: State,
-    flown: SimpleNamespace,
-    start_bullets: Tensor,
-    bullets: Tensor,
-    real: Tensor,
-    contact: Contact,
+    state: State, flown: SimpleNamespace, bullets: Tensor, real: Tensor, contact: Contact
 ) -> Tensor:
-    """Each real bullet's damage on its target, (E, N K) (0 for a miss or a ghost): kinetic (the
-    owner's hit damage, the explosive share plus the rest by the squared ratio of the bullet's
-    speed to its reference speed) x `hit_damage` at the target: closeness (the impact
-    parameter, the distance from the target to the bullet's line, pushed out by the deflector's
-    D, across the band between the core and hit radii: `graze`) x aspect (the target's nose
-    cone at the hit angle, the bullet's path against its nose: `aspect_factor`, weighted by the
-    hit model's nose_cone)."""
+    """Each real bullet's damage on its target, (E, N K) (0 for a miss or a ghost): `hit_damage`
+    at the hitting pass's impact parameter and its path against the target's nose (the turned
+    direction for a hit on a deflector's turned remainder)."""
     c = state.constants
     E, _, N, K = bullets.shape
     target = contact.target
     flat = (E, N * K)
     direction_x, direction_y, bullet_speed = bullets[:, BULLET_DIR_X : BULLET_SPEED + 1].unbind(1)
-    flat_direction_x, flat_direction_y = direction_x.reshape(flat), direction_y.reshape(flat)
+    direction_x, direction_y = direction_x.reshape(flat), direction_y.reshape(flat)
+    if contact.bent_hit is not None:
+        turned = contact.bent_hit
+        direction_x, direction_y = (
+            torch.where(
+                turned, direction_x * contact.turn_cos - direction_y * contact.turn_sin, direction_x
+            ),
+            torch.where(
+                turned, direction_x * contact.turn_sin + direction_y * contact.turn_cos, direction_y
+            ),
+        )
     nose_cos = _on_target(flown.heading_cos, target)
     nose_sin = _on_target(flown.heading_sin, target)
 
@@ -1942,21 +2029,12 @@ def _damage(
             value[..., None].expand(E, N, K).reshape(flat) if isinstance(value, Tensor) else value
         )
 
-    # The swept test's start and relative motion against the target.
-    start, relative, relative_squared = _pass_against(state, flown, start_bullets, bullets, target)
-    target_start_x, target_start_y = start.unbind(1)
-    target_relative_x, target_relative_y = relative.unbind(1)
-    cross = target_start_x * target_relative_y - target_start_y * target_relative_x
-    line = cross * cross / relative_squared
-    impact_squared = torch.minimum(
-        line, target_start_x * target_start_x + target_start_y * target_start_y
-    )
-    hit_cos = -(flat_direction_x * nose_cos + flat_direction_y * nose_sin)  # 1 head-on
+    hit_cos = -(direction_x * nose_cos + direction_y * nose_sin)  # 1 head-on
     damage = hit_damage(
         {name: per_bullet(name) for name in SHOOTER_HIT_CONSTANTS},
         {name: _on_target(c[name], target) for name in TARGET_HIT_CONSTANTS},
         bullet_speed.reshape(flat),
-        impact_squared.sqrt(),
+        contact.impact,
         hit_cos,
     )
     return torch.where(contact.hit & real, damage, 0.0)
@@ -1970,10 +2048,6 @@ TARGET_HIT_CONSTANTS = (
     "nose_cone",
     "nose_inner_cos",
     "inverse_nose_width",
-    "deflector_front",
-    "deflector_side",
-    "deflector_inner_cos",
-    "deflector_inverse_width",
 )
 
 
@@ -1981,7 +2055,7 @@ def hit_damage(shooter, target, bullet_speed, impact, hit_cos) -> Tensor:
     """The hit model: one bullet's damage on a ship. Kinetic (the shooter's hit damage, the
     explosive share plus the rest by the squared ratio of the bullet's speed to its reference
     speed) x closeness (`graze`: the impact parameter `impact`, the distance from the target to
-    the bullet's line, pushed out by the deflector's D (`deflection`), across the band between
+    the bullet's line (its turned path's after a deflector's turn), across the band between
     the target's core and hit radii) x aspect (the target's nose cone at `hit_cos`, the
     bullet's path against its nose, 1 head-on: `aspect_factor`, weighted by nose_cone).
     `shooter`, `target`: the constants by name (SHOOTER_HIT_CONSTANTS,
@@ -1991,8 +2065,7 @@ def hit_damage(shooter, target, bullet_speed, impact, hit_cos) -> Tensor:
     speed_ratio = bullet_speed * shooter["inverse_reference_bullet_speed"]
     explosive = shooter["explosive_share"]
     kinetic = explosive + (1.0 - explosive) * speed_ratio * speed_ratio
-    deflected = impact + deflection(target.__getitem__, hit_cos)
-    closeness = graze(deflected, target["core_radius"], target["hit_radius"])
+    closeness = graze(impact, target["core_radius"], target["hit_radius"])
     cone = aspect_factor(hit_cos, target["nose_inner_cos"], target["inverse_nose_width"])
     aspect = 1.0 + target["nose_cone"] * (cone - 1.0)
     return shooter["hit_damage"] * kinetic * closeness * aspect
@@ -2020,15 +2093,76 @@ def aspect_factor(
     return smootherstep(((nose_inner_cos - hit_cos) * inverse_nose_width).clamp(0.0, 1.0))
 
 
-def deflection(at, hit_cos: Tensor) -> Tensor:
-    """The deflector's D (metres) at the cosine `hit_cos` of the bullet's path off the ship's
-    nose (1 head-on): the hit model's deflector_front inside its inner angle, deflector_side
-    beyond its outer, the nose cone's smootherstep in the cosine between (`aspect_factor` on
-    the deflector's angles). `at(name)` reads a constant of the ship it is about (the target:
-    `_damage`; every ship: `_hit_test`; the scripted gun's target)."""
-    front = at("deflector_front")
-    blend = aspect_factor(hit_cos, at("deflector_inner_cos"), at("deflector_inverse_width"))
-    return front + (at("deflector_side") - front) * blend
+# The hit widths' aspects (`hit_widths`): HIT_WIDTH_POINTS cosines of the bullet's path off the
+# target's nose, evenly from 1 (head-on) to -1 (from dead astern).
+HIT_WIDTH_POINTS = 17
+# The hit widths' scan: parallel rays this far apart (metres) across the egg.
+HIT_WIDTH_STEP = 0.05
+
+
+def hit_widths(hit_radius: Tensor, inputs: dict[str, float]) -> Tensor:
+    """The deflector's hit width (metres): the band of aim offsets of parallel bullets on a
+    still ship whose turned path passes within the hit radius, (..., HIT_WIDTH_POINTS) at the
+    hit_width cosines, for each `hit_radius` (...) under the hit-model `inputs` (egg_front,
+    egg_rear, egg_half_width, deflector_turn). The game's own `egg_entry` and `egg_turn` on the
+    tick's arithmetic (2 x the hit radius with no turn). Read by the scripted agent's trigger
+    and gun (`hit_width`); a column of the constants, rebuilt by `with_hit_model`."""
+    radius = torch.as_tensor(hit_radius, dtype=torch.float32)
+    hit_cos = torch.linspace(1.0, -1.0, HIT_WIDTH_POINTS, dtype=torch.float64)
+    side = torch.sqrt((1.0 - hit_cos * hit_cos).clamp_min(0.0))
+    # The bullet's direction in the ship's frame: head-on (-1, 0), from astern (1, 0).
+    direction_x, direction_y = -hit_cos, side
+    reach = float(radius.max()) + float(inputs["egg_half_width"]) + 1.0
+    offsets = torch.arange(-reach, reach, HIT_WIDTH_STEP, dtype=torch.float64)
+    far = 4.0 * max(float(inputs["egg_front"]), float(inputs["egg_rear"]), reach)
+    across_x, across_y = -direction_y[:, None], direction_x[:, None]
+    start_x = offsets * across_x - far * direction_x[:, None]
+    start_y = offsets * across_y - far * direction_y[:, None]
+    move_x = (2.0 * far * direction_x[:, None]).expand_as(start_x)
+    move_y = (2.0 * far * direction_y[:, None]).expand_as(start_y)
+    entry = egg_entry(
+        start_x,
+        start_y,
+        move_x,
+        move_y,
+        1.0,
+        0.0,
+        float(inputs["egg_front"]),
+        float(inputs["egg_rear"]),
+        float(inputs["egg_half_width"]),
+    )
+    entered = entry < torch.inf
+    turn = egg_turn(
+        start_x,
+        start_y,
+        move_x,
+        move_y,
+        torch.where(entered, entry, 0.0),
+        float(inputs["egg_half_width"]),
+        torch.tensor(float(inputs["deflector_turn"]), dtype=torch.float64),
+    )
+    # Straight (no entry: a miss of the egg) or turned, against each hit radius.
+    cross = start_x * move_y - start_y * move_x
+    straight_squared = cross * cross / (move_x * move_x + move_y * move_y)
+    squared = torch.where(entered, turn.miss_squared, straight_squared)
+    inside = squared[None] < (radius.reshape(-1, 1, 1).double() ** 2)
+    widths = HIT_WIDTH_STEP * inside.sum(-1).to(torch.float32)
+    return widths.reshape(*radius.shape, HIT_WIDTH_POINTS)
+
+
+def hit_width(widths: Tensor, hit_cos: Tensor) -> Tensor:
+    """The hit width (metres) at the cosine `hit_cos` of the bullet's path off the target's
+    nose (1 head-on), linear between the `hit_widths` points. widths: (..., HIT_WIDTH_POINTS)
+    broadcast against hit_cos (...)."""
+    position = ((1.0 - hit_cos) * (0.5 * (HIT_WIDTH_POINTS - 1))).clamp(0.0, HIT_WIDTH_POINTS - 1.0)
+    low = position.floor().clamp_max(HIT_WIDTH_POINTS - 2.0)
+    fraction = position - low
+    low = low.long()
+    shape = torch.broadcast_shapes(widths.shape[:-1], hit_cos.shape)
+    table = widths.expand(*shape, HIT_WIDTH_POINTS)
+    below = table.gather(-1, low.expand(shape)[..., None])[..., 0]
+    above = table.gather(-1, (low + 1).expand(shape)[..., None])[..., 0]
+    return below + (above - below) * fraction
 
 
 class HitInput(NamedTuple):
@@ -2049,12 +2183,11 @@ HIT_MODEL = (
     HitInput("hit_radius", "hit radius", "m", 2.0, 30.0),
     HitInput("core_radius", "core radius", "m", 0.0, 20.0),
     HitInput("hit_damage", "hit damage", "shield points", 1.0, 40.0),
-    HitInput("bullet_spread", "bullet spread (velocity noise per axis)", "m/s", 0.0, 30.0),
-    HitInput("deflector_front", "deflector D, front", "m", 0.0, 30.0),
-    HitInput("deflector_side", "deflector D, side and rear", "m", 0.0, 15.0),
-    HitInput("deflector_inner_angle", "deflector: front D inside", "rad", 0.0, 1.4),
-    HitInput("deflector_outer_angle", "deflector: side D beyond", "rad", 0.05, 1.57),
-    HitInput("deflector_length", "deflector bend length", "m", 5.0, 400.0),
+    HitInput("bullet_spread", "bullet spread (velocity noise per axis)", "m/s", 0.0, 60.0),
+    HitInput("egg_front", "egg: front semi-axis (along the nose)", "m", 5.0, 120.0),
+    HitInput("egg_rear", "egg: rear semi-axis", "m", 5.0, 80.0),
+    HitInput("egg_half_width", "egg: half-width (the turn's F)", "m", 5.0, 60.0),
+    HitInput("deflector_turn", "deflector: largest turn", "rad", 0.0, 1.57),
     HitInput("nose_cone", "nose cone's damage rule (1 on, 0 off)", "", 0.0, 1.0),
     HitInput("nose_inner_angle", "nose cone: no damage inside", "rad", 0.0, 1.4),
     HitInput("nose_outer_angle", "nose cone: full damage beyond", "rad", 0.05, 1.57),
@@ -2063,11 +2196,14 @@ _HIT_SAME = (
     "hit_radius",
     "core_radius",
     "hit_damage",
-    "deflector_front",
-    "deflector_side",
-    "deflector_length",
+    "egg_front",
+    "egg_rear",
+    "egg_half_width",
+    "deflector_turn",
     "nose_cone",
 )
+# The inputs the hit widths read.
+_WIDTH_INPUTS = ("egg_front", "egg_rear", "egg_half_width", "deflector_turn")
 
 
 def _cone_constants(inner: float, outer: float, what: str) -> tuple[float, float]:
@@ -2078,20 +2214,15 @@ def _cone_constants(inner: float, outer: float, what: str) -> tuple[float, float
 
 
 def hit_model_constants(inputs: dict[str, float]) -> dict[str, float]:
-    """The constants (RUNTIME_CONSTANTS names) of hit-model inputs (`HIT_MODEL` names; an angle
-    pair only when both angles are given)."""
+    """The constants (RUNTIME_CONSTANTS names, except the hit widths) of hit-model inputs
+    (`HIT_MODEL` names; the nose cone's pair only when both angles are given)."""
     out = {name: float(inputs[name]) for name in _HIT_SAME if name in inputs}
     if "bullet_spread" in inputs:
         out["spread_speed"] = float(inputs["bullet_spread"])
-    for prefix, inner_name, width_name in (
-        ("deflector", "deflector_inner_cos", "deflector_inverse_width"),
-        ("nose", "nose_inner_cos", "inverse_nose_width"),
-    ):
-        inner, outer = f"{prefix}_inner_angle", f"{prefix}_outer_angle"
-        if inner in inputs and outer in inputs:
-            out[inner_name], out[width_name] = _cone_constants(
-                float(inputs[inner]), float(inputs[outer]), prefix
-            )
+    if "nose_inner_angle" in inputs and "nose_outer_angle" in inputs:
+        out["nose_inner_cos"], out["inverse_nose_width"] = _cone_constants(
+            float(inputs["nose_inner_angle"]), float(inputs["nose_outer_angle"]), "nose"
+        )
     return out
 
 
@@ -2104,21 +2235,17 @@ def hit_model_of(constants: Constants) -> dict[str, float]:
 
     out = {name: first(name) for name in _HIT_SAME}
     out["bullet_spread"] = first("spread_speed")
-    for prefix, inner_name, width_name in (
-        ("deflector", "deflector_inner_cos", "deflector_inverse_width"),
-        ("nose", "nose_inner_cos", "inverse_nose_width"),
-    ):
-        inner_cos = first(inner_name)
-        outer_cos = inner_cos - 1.0 / first(width_name)
-        out[f"{prefix}_inner_angle"] = math.acos(max(-1.0, min(1.0, inner_cos)))
-        out[f"{prefix}_outer_angle"] = math.acos(max(-1.0, min(1.0, outer_cos)))
+    inner_cos = first("nose_inner_cos")
+    outer_cos = inner_cos - 1.0 / first("inverse_nose_width")
+    out["nose_inner_angle"] = math.acos(max(-1.0, min(1.0, inner_cos)))
+    out["nose_outer_angle"] = math.acos(max(-1.0, min(1.0, outer_cos)))
     return out
 
 
 def with_hit_model(constants: Constants, **inputs: float) -> Constants:
     """`constants` (a state's, or a ship card's) with hit-model inputs (`HIT_MODEL` names)
-    changed for every ship, written into the table's rows: the same shapes, so the compiled
-    tick runs on with no recompile. Raises on an unknown name. Use as
+    changed for every ship, written into the table's rows (the hit widths rebuilt): the same
+    shapes, so the compiled tick runs on with no recompile. Raises on an unknown name. Use as
     `state.replace(constants=with_hit_model(state.constants, hit_radius=14.0))`."""
     known = {entry.name for entry in HIT_MODEL}
     unknown = set(inputs) - known
@@ -2129,6 +2256,10 @@ def with_hit_model(constants: Constants, **inputs: float) -> Constants:
     for name, value in hit_model_constants(merged).items():
         start, _ = constants.columns[name]
         table[:, start] = value
+    start, width = constants.columns["hit_widths"]
+    radius = table[:, constants.columns["hit_radius"][0]]  # (E, N)
+    widths = hit_widths(radius.cpu(), {name: merged[name] for name in _WIDTH_INPUTS})
+    table[:, start : start + width] = widths.movedim(-1, 1).to(table.device)
     return Constants(constants.uniform, constants.columns, table, constants.per_type)
 
 

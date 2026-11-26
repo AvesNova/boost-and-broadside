@@ -100,46 +100,32 @@ POST_STALL_DRAG_ANGLE = math.radians(45.0)
 # (core._path_lift): the softness, a fraction of the held vertical.
 PATH_LIFT_SOFTNESS = 0.25
 
-# The bullet deflector (proposal 2026-11-27, core.deflection; lean/game/NOTES.md "Deflector"): a
-# field around every ship that pushes a passing bullet's closest approach from b out to b + D on
-# the side it was passing, D by the bullet's path against the ship's nose (front inside the inner
-# angle, side beyond the outer, a smootherstep in the cosine between, as the nose cone), and bends
-# it after the closest point by atan(D / length). The same for every type and any shield. nose_cone
-# 1 keeps the nose cone's damage rule (core.aspect_factor), 0 drops it (the deflector does its
-# work). The presets (GameConfig.deflector) set the hit model's deflector inputs (core.HIT_MODEL);
-# "off" also skips the deflector's code in the tick. Metres and radians.
+# The bullet deflector (proposal 2026-11-27, core.egg_entry and core.egg_turn; lean/game/NOTES.md
+# "Deflector"): an invisible egg around every ship in its frame (nose +x), the front half an
+# ellipse of semi-axis egg_front along the nose, the rear half one of egg_rear, both of half-width
+# egg_half_width. A bullet whose straight in-tick path first crosses it inward is turned away from
+# the ship's centre by deflector_turn x hump(b / egg_half_width) (b the line's distance from the
+# centre; core.hump, 0 at both ends, peak at a third), its speed kept. The same for every type and
+# any shield. The presets (GameConfig.deflector) set the hit model's deflector inputs
+# (core.HIT_MODEL); "off" also skips the deflector's code in the tick. Metres and radians.
+EGG_HALF_WIDTH = 24.0
 DEFLECTOR_PRESETS = {
+    "egg": dict(
+        egg_front=40.0 / 18.0 * EGG_HALF_WIDTH,  # 53.3 m: the sketch's 40/18 proportion
+        egg_rear=EGG_HALF_WIDTH,
+        egg_half_width=EGG_HALF_WIDTH,
+        deflector_turn=math.radians(45.0),
+    ),
     "off": dict(
-        deflector_front=0.0,
-        deflector_side=0.0,
-        deflector_inner_angle=math.radians(30.0),
-        deflector_outer_angle=math.radians(45.0),
-        deflector_length=48.0,
-        nose_cone=1.0,
-    ),
-    # D the same at every aspect; the nose cone's damage rule kept.
-    "symmetric": dict(
-        deflector_front=3.0,
-        deflector_side=3.0,
-        deflector_inner_angle=math.radians(30.0),
-        deflector_outer_angle=math.radians(45.0),
-        deflector_length=48.0,
-        nose_cone=1.0,
-    ),
-    # "The samurai sword": D the hit radius (12 m) in the front 30 deg, so every frontal bullet
-    # glances off left or right and does no damage, fading to 3 m by 45 deg; replaces the nose
-    # cone's damage rule.
-    "frontal": dict(
-        deflector_front=12.0,
-        deflector_side=3.0,
-        deflector_inner_angle=math.radians(30.0),
-        deflector_outer_angle=math.radians(45.0),
-        deflector_length=48.0,
-        nose_cone=0.0,
+        egg_front=40.0 / 18.0 * EGG_HALF_WIDTH,
+        egg_rear=EGG_HALF_WIDTH,
+        egg_half_width=EGG_HALF_WIDTH,
+        deflector_turn=0.0,
     ),
 }
-# The smooth sign of the push's side, b / sqrt(b^2 + eps^2): eps in metres.
-DEFLECTOR_SIGN_SOFTNESS = 0.1
+# The nose cone's damage rule (core.aspect_factor; author 2026-11-25): its weight in the hit
+# model, 0 off (author 2026-11-27: off by default, the code kept as a setting), 1 on.
+NOSE_CONE = 0.0
 
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005

@@ -29,12 +29,13 @@ def test_the_nose_cone_is_none_inside_the_inner_angle_full_beyond_the_outer():
     assert aspect.tolist()[3:] == [1.0, 1.0, 1.0]
 
 
-def shot_at(heading_off_nose: float, side: float = 1.0, deflector: str = "off"):
+def shot_at(heading_off_nose: float, side: float = 1.0, deflector: str = "off", nose_cone=1.0):
     """A shooter at the origin flying +x with its gun firing this tick (no spread) at a nearly
     still target 40 m ahead whose nose is `heading_off_nose` radians off the bullet's path
     (toward the shooter, to the left for side +1): the bullet's damage on the target."""
     config = core.GameConfig(field_count=0, fog=False, deflector=deflector)
     state = core.reset(config, 1, torch.tensor([[1, 1]]), torch.Generator().manual_seed(0), CPU)
+    state = state.replace(constants=core.with_hit_model(state.constants, nose_cone=nose_cone))
     nose = math.pi - side * heading_off_nose
     state = core.with_velocity(
         state.replace(
@@ -57,10 +58,14 @@ def shot_at(heading_off_nose: float, side: float = 1.0, deflector: str = "off"):
 
 @pytest.mark.parametrize("deflector", list(card.DEFLECTOR_PRESETS))
 def test_a_bullet_inside_the_nose_cone_does_nothing_and_beyond_it_full_damage(deflector):
-    """Through the step (author 2026-11-25): a bullet 29 degrees off the target's nose does no
-    damage, at 46 degrees as much as from dead astern, on either side: the nose cone ("off",
-    "symmetric") or the frontal deflector (its D the hit radius in the front cone)."""
+    """Through the step (author 2026-11-25), with the nose cone's rule on (nose_cone 1; off by
+    default since 2026-11-27): a bullet 29 degrees off the target's nose does no damage, at 46
+    degrees as much as from dead astern, on either side, with the deflector on or off (a centred
+    shot is never turned). Off (the default), the same bullets all do the
+    full damage."""
     full = shot_at(math.pi, deflector=deflector)
+    for angle in (0.0, 29.0, 46.0):
+        assert abs(shot_at(math.radians(angle), 1.0, deflector, 0.0) - full) < 1e-5 * full
     assert full > 0.0
     for side in (1.0, -1.0):
         assert shot_at(math.radians(29.0), side, deflector) == 0.0
