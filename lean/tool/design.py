@@ -17,10 +17,11 @@ import threading
 import time
 
 import numpy as np
+import torch
 
-from lean.game import card, tuning
+from lean.game import card, core, tuning
 
-from . import flown, units
+from . import flight_config, flown, units
 
 # The solve fails fast (tuning.design_row): after PATIENCE iterations without the error falling
 # by 1%, or after TIME_LIMIT seconds (BNB_SOLVE_TIME_LIMIT; the warm try and the cold retry
@@ -333,8 +334,9 @@ _CHART = None
 
 
 def _stall_speed() -> float:
-    """The card's type 0's 1 g stall speed at the card's time scale."""
-    return math.sqrt(card.GRAVITY / card.CARD["max_lift_coefficient"][0])
+    """The card's type 0's 1 g stall speed at the card's time scale (the game's own derived
+    constant, core.per_type_constants)."""
+    return float(core.per_type_constants(flight_config(), torch.tensor([0])).stall_speed[0])
 
 
 def _key(row: dict, factor: float) -> tuple:

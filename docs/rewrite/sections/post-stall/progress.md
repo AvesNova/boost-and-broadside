@@ -118,3 +118,54 @@ settled; measurements only (docs/rewrite/sections/post-stall/slow_checks.py).
 **Didn't / open:** in the first pull from 0.6 x corner the commanded angle at 1 s is now 33 deg
 (the ship has slowed to about 106 m/s, where the deep angle is fading) while the nose is still
 at 44.6, so it falls back. Compile and test tiers deferred to the branch's end.
+
+## 2026-11-26, step 4: the doghouse from the game's own levels
+
+Author's report: the sandbox flew full held 104 m/s, 5 deg/s, AoA about 30 deg, and middle held
+149 m/s, 39 deg/s, 11 deg; the doghouse disagreed. Cause: the chart side. Its middle line was
+2/3 of the top line and its full line the top line, and the flown checks flew with post_stall off.
+Units were not the problem: the readout and the chart both show game m/s at the chosen time
+scale (2x by default), converted by the same lean.tool.units factors.
+
+**Built:**
+
+- `tuning.level_lines`: each stick level's line from the stick tables (core.stick_level_shape)
+  through core.steady_rates under the given GameConfig, plus where holding the level settles
+  (Ps falls through 0). `tuning.LEVEL_INDICES` names the levels' stick indices from
+  card.STICK_LEVELS.
+- doghouse.py: the full, middle, gradual, dive and climb lines come from level_lines. The corner
+  marker is the full line's peak. New markers show where each level settles when held. The
+  shading stops at the most turn any level flies.
+- One GameConfig for the whole tool: `lean.tool.flight_config()` / `CONFIG_SETTINGS`
+  (BNB_POST_STALL, BNB_FIELDS) feeds the sandbox, the flown checks and the charts. The flown
+  checks no longer force post_stall off.
+- design.py's stall speed is now the game's derived constant, not a re-derived sqrt(g / C).
+- Physics fix found by the chart: below the stall, the deep angle's opening near stall speed
+  gave lift the 1 g already uses (full turned 28.4 deg/s at 97.5 m/s against middle's 14.8).
+  `_path_lift` now never gives more than sqrt((C_max v^2)^2 - vertical^2). After the fix:
+  97.5 m/s full 16.4, middle 14.8. The rest is thrust tilted by the larger angle.
+
+**Matched** (quasi-steady line / the real tick in World, 30 s held from the spawn, coasting):
+
+- Middle held: chart 148.4 m/s, 39.0 deg/s; flown 148.4 m/s, 39.0 deg/s, AoA 11.4 deg.
+- Full held: chart 104.3 m/s, 5.1 deg/s; flown 104.3 m/s, 5.1 deg/s, AoA 28.9 deg, store 0.497.
+- Gradual held: chart 332.1 m/s, 17.9 deg/s.
+- Full line peak (the corner as flown): 249.1 m/s, 68.4 deg/s on a 0.1 m/s grid. Flown corner
+  check: 252.7 m/s, 66.6 deg/s.
+- Best sustained with any stick (the envelope, Ps = 0): chart 169 m/s, 40 deg/s; flown 169.0
+  m/s, 39.9 deg/s at stick 0.88 of the top line. It needs a stick between the levels, so no
+  single level holds it.
+
+**Derived numbers, unchanged:** corner 255.8 m/s / 67.2 deg/s (the top line, where the g limit
+meets the maximum lift: it sets the store and the deep band) and best sustained 167.7 m/s /
+39.9 deg/s (any stick). The chart's corner is now the full line's peak: 249.1 / 68.4.
+
+**Duplication left, bigger than this round:**
+
+- The Ps shading, the sustained curve and the best and tightest sustained points use a
+  continuous stick fraction of the top line, which the game's three levels do not offer.
+- flown.critical_points flies that continuous stick by overwriting the constants' middle-stick
+  table columns, a measurement override.
+- tuning.stick_levels() still returns the card's fractions (tests only).
+- The flown checks fly from the spawn speed, so lowest speeds near stall (full 97.8 m/s)
+  depend on the bleed search.

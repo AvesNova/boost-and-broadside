@@ -832,13 +832,18 @@ def _path_lift(p, lift, angle, vertical, speed_squared):
     (the held vertical is carried apart, as induced drag); past it (GameConfig.post_stall) the
     angle becomes the wing's whole and the held vertical comes out of its lift,
     sqrt((C v^2)^2 - share x vertical^2), the share a smootherstep over
-    card.POST_STALL_DIP_WIDTH past the stall (so a deep stall carries its 1 g)."""
+    card.POST_STALL_DIP_WIDTH past the stall (so a deep stall carries its 1 g); and never more
+    than sqrt((C_max v^2)^2 - vertical^2), what the wing's maximum lift leaves after it."""
     total = lift * speed_squared
     if not _switched_on(p.post_stall):
         return total
     share = smootherstep(((angle.abs() - p.stall) * p.inverse_dip_width).clamp(0.0, 1.0))
-    held = share * vertical * vertical
-    return torch.sign(total) * torch.sqrt((total * total - held).clamp_min(0.0))
+    held = vertical * vertical
+    # Never more than the wing's maximum lift leaves after the held vertical (the deep angle's
+    # opening below the stall would otherwise turn on lift the 1 g already uses).
+    most = p.lift * speed_squared
+    lateral_squared = torch.minimum(total * total - share * held, most * most - held)
+    return torch.sign(total) * torch.sqrt(lateral_squared.clamp_min(0.0))
 
 
 def _commanded_angle(p, control, lateral, speed, inverse_lift):

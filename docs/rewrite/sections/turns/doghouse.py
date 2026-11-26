@@ -42,7 +42,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from sim import THEME  # noqa: E402
 
 from lean.game import card, tuning  # noqa: E402
-from lean.tool import flown, units  # noqa: E402
+from lean.tool import flight_config, flown, units  # noqa: E402
 
 torch.set_num_threads(4)
 OUT = os.path.join(os.path.dirname(__file__), "..", "..")
@@ -84,7 +84,7 @@ TRADE_STYLE = dict(color=INK_2, linewidth=1.1, linestyle="-.")
 PS_ZERO_STYLE = dict(color=INK, linewidth=1.8, linestyle=(0, (6, 3)))
 RADIUS_STYLE = dict(color=MUTED, linewidth=0.7, linestyle=":")
 LOAD_STYLE = dict(color=MUTED, linewidth=0.7, linestyle="--")
-MARKERS = {"corner": "o", "best_sustained": "s", "tightest_sustained": "^"}
+MARKERS = {"corner": "o", "best_sustained": "s", "tightest_sustained": "^", "settled": "D"}
 
 
 def _row() -> dict[str, float]:
@@ -104,16 +104,21 @@ def lowest_speeds() -> dict[str, float]:
 
 
 def key_points(lowest: dict[str, float], fraction=None) -> dict:
-    """The quasi-steady corner, best sustained and tightest sustained points (game units; the
-    sustained ones from the lowest full-stick speed up), from tuning.envelope."""
+    """The quasi-steady corner (the full-stick line's peak, tuning.level_lines), best sustained
+    and tightest sustained points (any stick: tuning.envelope; from the lowest full-stick speed
+    up), game units."""
+    speeds = speed_axis(lowest)
     grid = tuning.envelope(
-        _row(), speed_axis(lowest), STICKS, 0, fraction, minimum_speed=lowest["full"]
+        _row(), speeds, STICKS, 0, fraction, minimum_speed=lowest["full"], config=flight_config()
     )
+    full = tuning.level_lines(_row(), speeds, 0, fraction)["full"]["rate"]
+    peak = int(np.argmax(full))  # the corner: the full-stick line's peak as the game flies it
     return {
+        "corner_speed": float(speeds[peak]),
+        "corner_rate": float(full[peak]),
+    } | {
         name: grid[name]
         for name in (
-            "corner_speed",
-            "corner_rate",
             "best_sustained_speed",
             "best_sustained_rate",
             "tightest_sustained_speed",
@@ -175,29 +180,25 @@ def draw_panel(
     row = _row()
     game_v = speed_axis(lowest, factor)
     v = game_v * sv
-    grid = tuning.envelope(row, game_v, STICKS, 0, fraction, minimum_speed=lowest["full"])
+    grid = tuning.envelope(
+        row, game_v, STICKS, 0, fraction, minimum_speed=lowest["full"], config=flight_config()
+    )
     rate, ps = grid["rate"] * sr, grid["ps"] * sc
+    # The stick levels' lines as the game flies them (tuning.level_lines: the stick tables'
+    # shapes through core.steady_rates, the regime as GameConfig sets it).
+    lines = {
+        name: _from(line["rate"] * sr, game_v, lowest[name])
+        for name, line in tuning.level_lines(
+            row, game_v, 0, fraction, config=flight_config()
+        ).items()
+    }
     style(ax)
-    full = _from(rate[-1], game_v, lowest["full"])
+    full = lines["full"]
     top = float(np.nanmax(full)) * 1.15 if top is None else top
     rate_axis = np.linspace(0.0, top, 300)
     field = tuning.ps_over_rate(grid, rate_axis, rate=rate, ps=ps)
-    # Shade only up to the largest stick flown at each speed: the stick levels' lowest speeds,
-    # linear between them, none below the gradual stick's.
-    stick = tuning.stick_levels()
-    levels = sorted(
-        (
-            (stick["gradual"], lowest["gradual"]),
-            (stick["middle"], lowest["middle"]),
-            (1.0, lowest["full"]),
-        )
-    )
-    level_sticks = [stick for stick, _ in levels]
-    level_speeds = np.maximum.accumulate([speed for _, speed in levels])
-    reach = np.interp(game_v, level_speeds, level_sticks, left=np.nan)
-    reach_rate = np.array(
-        [np.interp(s, STICKS, rate[:, j]) if np.isfinite(s) else -1.0 for j, s in enumerate(reach)]
-    )
+    # Shade only up to the most turn a stick level flies at each speed (none where none flies).
+    reach_rate = np.nan_to_num(np.fmax.reduce(list(lines.values())), nan=-1.0)
     field[rate_axis[:, None] > reach_rate[None, :]] = np.nan
     shared = limit is not None  # a given range: fixed levels, so panels' colours match
     limit = float(np.nanpercentile(np.abs(field), 98)) if limit is None else limit
@@ -248,7 +249,7 @@ def draw_panel(
     ax.plot(v, full, gid="full", **FULL_STYLE)
     span = v[-1] - v[0]
     for name, key in (("middle stick", "middle"), ("gradual stick", "gradual")):
-        level = _from(rate[int(round(stick[key] * (len(STICKS) - 1)))], game_v, lowest[key])
+        level = lines[key]
         ax.plot(v, level, gid=key, **STICK_STYLE)
         at = int(np.searchsorted(v, v[0] + 0.33 * span))
         ax.annotate(
@@ -260,7 +261,10 @@ def draw_panel(
             fontsize=8,
         )
     for power, name, offset in ((1, "dive", (-4, 2)), (2, "climb", (-4, -10))):
-        moved = tuning.envelope(row, game_v, np.array([1.0]), power, fraction)["rate"][-1] * sr
+        moved = (
+            tuning.level_lines(row, game_v, power, fraction, config=flight_config())["full"]["rate"]
+            * sr
+        )
         moved = _from(moved, game_v, lowest[name])
         ax.plot(v, moved, gid=name, **TRADE_STYLE)
         start = int(
@@ -276,7 +280,9 @@ def draw_panel(
             ha="right",
         )
     # The key points, quasi-steady (filled) and flown (hollow, beside them).
-    points = {"corner": (grid["corner_speed"], grid["corner_rate"])}
+    # The corner: the full-stick line's peak (as flown, the post-stall regime included).
+    peak = int(np.nanargmax(full))
+    points = {"corner": (float(game_v[peak]), float(full[peak]) / sr)}
     if grid["best_sustained_speed"] is not None:
         points["best_sustained"] = (grid["best_sustained_speed"], grid["best_sustained_rate"])
         tight = grid["tightest_sustained_speed"]
@@ -318,6 +324,21 @@ def draw_panel(
             fontsize=8.5,
             arrowprops=arrow,
         )
+    # Where holding each level settles (Ps = 0 as speed falls to it), coasting.
+    for name, line in tuning.level_lines(row, game_v, 0, fraction, config=flight_config()).items():
+        for speed, turn in line["settled"]:
+            if speed < lowest[name]:
+                continue
+            x, y = speed * sv, turn * sr
+            ax.plot(x, y, MARKERS["settled"], color=INK, markersize=6)
+            ax.annotate(
+                f"{name} held {x:.0f} {speed_unit}, {y:.0f} deg/s",
+                (x, y),
+                xytext=(6, 4),
+                textcoords="offset points",
+                color=INK,
+                fontsize=8,
+            )
     ax.set_xlim(left, v[-1])
     ax.set_ylim(0, top)
     ax.set_xlabel(f"speed ({speed_unit}{_real_suffix(system)})", color=INK_2)
@@ -346,12 +367,13 @@ def legend(figure, note: str, flown_shown: bool, length_unit: str = "m"):
         sample("full stick", **FULL_STYLE),
         sample("middle and gradual stick", **STICK_STYLE),
         sample("full stick, diving and climbing", **TRADE_STYLE),
-        sample("Ps = 0 (sustained)", **PS_ZERO_STYLE),
+        sample("Ps = 0 (sustained, any stick)", **PS_ZERO_STYLE),
         sample(f"turn radius ({length_unit})", **RADIUS_STYLE),
         sample("load (g)", **LOAD_STYLE),
         point("corner", "o", color=INK),
         point("best sustained (rate)", "s", color=INK),
         point("tightest sustained (radius)", "^", color=INK),
+        point("a stick level held (settles there)", "D", color=INK),
     ]
     if flown_shown:
         handles.append(
@@ -424,7 +446,9 @@ def sustained_curve(lowest: dict[str, float], factor: float = TIME_FACTOR) -> di
     """The card's type 0's sustained turn (Ps >= 0, the largest turn) against speed, from the
     lowest flown full-stick speed (game units, rad/s, m): {speeds, rate, radius}."""
     game_v = speed_axis(lowest, factor)
-    grid = tuning.envelope(_row(), game_v, STICKS, 0, None, minimum_speed=lowest["full"])
+    grid = tuning.envelope(
+        _row(), game_v, STICKS, 0, None, minimum_speed=lowest["full"], config=flight_config()
+    )
     # Per speed, the turn where Ps crosses zero along the stick sweep, interpolated between the
     # grid's sticks (the grid's largest held rate alone steps with the stick grid).
     rate = np.full(len(game_v), np.nan)
@@ -586,7 +610,7 @@ if __name__ == "__main__":
             for real in (False, True):
                 print(doghouse(ship_type, lowest, checks, real=real))
             speeds = speed_axis(lowest)
-            full = tuning.envelope(_row(), speeds, np.array([1.0]))["rate"][-1]
+            full = tuning.level_lines(_row(), speeds, config=flight_config())["full"]["rate"]
             curves.append(
                 dict(
                     name=_name(ship_type),

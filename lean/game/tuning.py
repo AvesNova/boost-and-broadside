@@ -1704,6 +1704,57 @@ def envelope(
     return out
 
 
+# The stick levels by name: their stick indices (one side) in card.STICK_LEVELS.
+LEVEL_INDICES = {
+    name: card.STICK_LEVELS.index(level)
+    for name, level in (("gradual", 1.0), ("middle", 2.0), ("full", 3.0))
+}
+
+
+def level_lines(
+    row: dict[str, float],
+    speeds,
+    power: int = 0,
+    store_fraction: float | None = None,
+    config: core.GameConfig | None = None,
+) -> dict:
+    """Each stick level's quasi-steady line as the game flies it (game units, the nose settled,
+    no fields): the level's own shape from the constants' stick tables (core.stick_level_shape:
+    size, g cap, deep angle) through core.steady_rates, under `config` (default the game's,
+    post-stall regime as configured). {name: {rate (rad/s), ps (m/s altitude-equivalent),
+    speed_rate, store_rate, settled}} for "gradual", "middle" and "full"; settled: the speeds
+    where holding the level settles (Ps falls through 0 as speed rises) as [(speed, rate)]."""
+    import numpy as np
+
+    config = config or core.GameConfig()
+    speeds = torch.as_tensor(speeds, dtype=torch.float32)
+    out = {}
+    with torch.no_grad(), _with_row(row) as index:
+        p = core.per_type_constants(config, torch.full(speeds.shape, index))
+        energy = p.spawn_energy.clone() if store_fraction is None else store_fraction * p.max_energy
+        for name, stick in LEVEL_INDICES.items():
+            size, cap, deep = core.stick_level_shape(p, stick)
+            rate, speed_rate, store_rate = core.steady_rates(
+                p, speeds, torch.full_like(speeds, size), power, energy, cap, deep
+            )
+            rate, speed_rate, store_rate = (x.numpy() for x in (rate, speed_rate, store_rate))
+            axis = speeds.numpy()
+            ps = (axis * speed_rate + store_rate) / card.GRAVITY
+            settled = []
+            for j in np.nonzero((ps[:-1] >= 0.0) & (ps[1:] < 0.0))[0]:
+                share = ps[j] / (ps[j] - ps[j + 1])
+                settled.append(
+                    (
+                        float(axis[j] + share * (axis[j + 1] - axis[j])),
+                        float(rate[j] + share * (rate[j + 1] - rate[j])),
+                    )
+                )
+            out[name] = dict(
+                rate=rate, ps=ps, speed_rate=speed_rate, store_rate=store_rate, settled=settled
+            )
+    return out
+
+
 def stick_levels() -> dict[str, float]:
     """The stick levels as fractions of the most lateral acceleration at each speed (the shared
     thirds, card.GRADUAL_STICK, MIDDLE_STICK, FULL_STICK): {"gradual", "middle", "full"}."""

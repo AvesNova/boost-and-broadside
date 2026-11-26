@@ -26,6 +26,7 @@ import numpy as np
 import torch
 
 from lean.game import card, core
+from lean.tool import flight_config
 
 COAST, DIVE, CLIMB = 0, 1, 2
 STRAIGHT, GRADUAL, MIDDLE, FULL = 0, 2, 4, 6  # stick indices (card.STICK_LEVELS), one side
@@ -77,9 +78,7 @@ def _direction(s) -> SimpleNamespace:
 
 
 def _ships(n: int):
-    # The doghouse draws the envelope's top line as full stick: flown with the post-stall regime
-    # off (full stick then stays on the top line below corner; the deep angle is not charted yet).
-    config = core.GameConfig(post_stall=False)
+    config = flight_config()
     constants = core.ship_constants(config, torch.zeros((n, 1), dtype=torch.long))
     p = core.per_type_constants(config, torch.zeros(n, dtype=torch.long))
     return config, constants, p
