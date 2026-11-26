@@ -14,13 +14,16 @@ from torch.profiler import ProfilerActivity, profile
 from lean.game import core
 
 
+PRESETS = ("off", "egg")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--envs", type=int, default=4096)
     parser.add_argument("--size", type=int, default=4)
     args = parser.parse_args()
     device = torch.device("cuda")
-    for preset in ("off", "egg"):
+    for preset in PRESETS:
         torch.compiler.reset()
         config = core.GameConfig(deflector=preset)
         step = torch.compile(core.step, dynamic=True)
@@ -45,7 +48,7 @@ def main():
         print(f"==== {preset}: 40 ticks")
         print(
             prof.key_averages().table(
-                sort_by="cuda_time_total", row_limit=14, max_name_column_width=70
+                sort_by="cuda_time_total", row_limit=16, max_name_column_width=400
             )
         )
 

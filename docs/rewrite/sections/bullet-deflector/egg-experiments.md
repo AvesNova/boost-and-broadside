@@ -149,3 +149,16 @@ The situational weight takes the 1v1 gain of a larger store weight (0.60 against
 gives none of it back in 4v4 (0.49, even), where a fixed 0.40 loses (0.46). Mean store 0.60
 (1v1) and 0.54 (4v4) of full for the duel's two sides together. Not adopted (decision for the
 author); `store_crowd` stays 0.
+
+## Repeat and the agent's lead error
+
+Seed 1 (the same cells, another deal and draw) reproduces seed 0: kills per minute 1v1 off
+3.30 / egg 1.44 / old rule 1.92 (seed 0: 3.25 / 1.45 / 1.85), 4v4 11.16 / 6.41 / 8.82 (11.13 /
+6.57 / 8.84); hit chance per bullet within 0.01; head-on kills 0.46 / 0.00 / 0.01 in 1v1.
+Records: egg_runs/seed1.
+
+`lead_error` 0 and 1 (the agent's expected lead error in its trigger's hit chance; 0.25 the
+default) change nothing measurable: 1v1 egg kills per minute 1.45 / 1.45 / 1.42, hit chance per
+bullet 0.251 / 0.252 / 0.249; with 20 mrad 1.38 / 1.39 / 1.36 (egg_runs/lead0, lead1). The
+trigger's hit chance is near 1 inside 300 m for today's spread whatever the lead error; the
+misses come from the aim gate (below).
