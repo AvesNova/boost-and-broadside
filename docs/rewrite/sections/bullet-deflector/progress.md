@@ -103,3 +103,17 @@ GPU tick, compiled `core.step`, 4070 laptop, performance profile, E 4096, 4v4, f
   it into the contact reduction without materialising keys (a custom reduction), not tried.
 - CPU eager E 256: about 11-13 ms either way (noise ~1 ms); eager dispatch calls 2,495 off /
   2,701 frontal (+8%).
+
+## 02:55 checks, wrap-up
+
+- Compile check (cold, laptop 4070, performance; `compile_check.py --deflector`): `advance`
+  core baseline 2,856 traced operations; branch off 2,998 (+22 runtime rows, +120 the
+  elementwise matrix exponential); frontal 3,219 (+221 the deflector). Frontal FAILS the
+  tripwire (+13% > 10%); off within. 4 graphs, 0 recompiles, 0 graph breaks; cold 237.0 s off,
+  237.4 s frontal (baseline 231.7 s). Baseline not updated.
+- Quick tier (CPU) on lean/game, lean/scripted, lean/tool: 215 passed, 1 xfailed (the scripted
+  competence test, as on core), 1 xpassed; lean/learn, lean/eval, lean/model 152 passed (before
+  the last two core changes, both bitwise-equal or rounding-only). ruff clean.
+- The god-mode tables were measured before the matrix-exponential commit (float rounding only).
+- Open for the author: docs/rewrite/questions.md (bend angle rule, field reach, dead-centre
+  frontal bullets, the side D's cost, default preset, collision blame angles).
