@@ -46,3 +46,25 @@ Each has the decision-safe choice I made so the work could go on; all of it is a
    bullets visibly glance off (and fly on: they can hit a ship further along).
 6. **Collisions' blame** still uses the nose cone's angles (`aspect_factor`), not the deflector's.
    Under "frontal" the nose cone's damage rule is off but its angles still set the blame.
+
+# Questions for the author (branch `deflector-lookahead`, the egg, 2026-11-27 morning)
+
+Each with the decision-safe choice made meanwhile; all of it is a proposal.
+
+1. **The turned bullet's velocity after the tick.** The turn is in the relative frame (bullet
+   minus ship), so the bullet's new map velocity is the ship's average velocity over the tick
+   plus the turned relative velocity: its speed relative to the ship is kept, its map speed
+   changes by the ship's part (up to about 130 m/s at a 45 deg turn of a ship at cruise). The
+   other choice (rotate the map direction, map speed kept) bends the next ticks' relative path
+   by (R - I) x the ship's velocity: it narrowed the egg's hit width astern at 100-200 m from
+   4.7 to 3.7-3.9 m. Chosen: the relative frame (the sketch's numbers at every range).
+2. **One egg per bullet per tick.** A bullet is turned by the first egg it enters in a tick;
+   its contacts with other ships in that tick stay on the straight path (a second egg in the
+   same 60 m move is not seen). Rare in 1v1; in tight 4v4 formations it can matter. Keep?
+3. **The egg's frame** uses the ship's heading after the tick's move (as the hit angle does).
+4. **The agent's lead error** (`lead_error` 0.25 of the target's sustained turn acceleration,
+   spread over the flight time with the bullet spread into the trigger's hit chance) is a
+   reasoned choice, not tuned; the egg experiments report how often it fires.
+5. **Under GameConfig(deflector="off")** the tick skips the egg's code, but the hit-width
+   column follows the rows (the "off" preset's turn 0: 24 m), so the agent stays consistent;
+   a slider that sets a turn under "off" would make the agent's table disagree with the tick.
