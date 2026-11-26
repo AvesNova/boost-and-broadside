@@ -3,6 +3,7 @@ at the centre (b = 0) and at the bubble's edge (b = F, no seam). Every ray drawn
 the ship (a faint circle); orange: its bent path passes within the 12 m hit radius.
 
     uv run --no-sync python docs/rewrite/sections/bullet-deflector/deflector_humps_sketch.py
+        [half-width, m (18)] [shooter distance, m (parallel rays)]
 """
 
 from __future__ import annotations
@@ -38,12 +39,33 @@ def trace_through(p, d, shape, act):
     return [p, entry, entry + 3 * base.VIEW * new], base.ship_t(entry, new) is not None
 
 
-def panel(ax, shape_name, act, aspect, title):
-    shape = base.SHAPES[shape_name]
+SOURCE = None  # m: the shooter's distance (None: parallel rays from infinity)
+
+
+def ray(aspect, offset):
+    """The start and direction of the ray aimed `offset` across the target's centre: from the
+    shooter at SOURCE (a point), or parallel from far away."""
     d = base.direction(aspect)
     across = np.array([-d[1], d[0]])
+    if SOURCE is None:
+        return offset * across - 200 * d, d
+    start = -SOURCE * d
+    aim = offset * across - start
+    return start, aim / np.linalg.norm(aim)
+
+
+def hit_width(shape, act, aspect, step=0.05):
+    """The band of aim offsets (at the target's centre) whose bent path passes within the hit
+    radius, metres."""
+    return step * sum(
+        trace_through(*ray(aspect, o), shape, act)[1] for o in np.arange(-60, 60, step)
+    )
+
+
+def panel(ax, shape_name, act, aspect, title):
+    shape = base.SHAPES[shape_name]
     for o in np.arange(-40, 40.01, 2.0):
-        points, hit = trace_through(o * across - 200 * d, d, shape, act)
+        points, hit = trace_through(*ray(aspect, o), shape, act)
         xy = np.array(points)
         ax.plot(xy[:, 0], xy[:, 1], color=base.HIT if hit else base.BENT, lw=0.9)
     for cx, a, b, half in shape:
@@ -60,7 +82,7 @@ def panel(ax, shape_name, act, aspect, title):
         xytext=(0, 0),
         arrowprops=dict(arrowstyle="->", color="k", lw=1.2, alpha=0.6),
     )
-    width = base.hit_width(shape, act, aspect)
+    width = hit_width(shape, act, aspect)
     ax.set_title(f"{title}\nhit width {width:.1f} m (no field 24 m)", fontsize=9)
     ax.set_aspect("equal")
     ax.set_xlim(-base.VIEW, base.VIEW)
@@ -103,22 +125,28 @@ def main(edge: float = EDGE) -> None:
             )
     fig.suptitle(
         f"Turn by impact parameter, 0 at both ends, max {theta_max:g} deg, bubble half-width "
-        f"{edge:g} m, s {SOFT:g} m. Orange: the bent path passes within the 12 m hit radius "
+        f"{edge:g} m, s {SOFT:g} m, "
+        + ("parallel rays" if SOURCE is None else f"from a shooter {SOURCE:g} m away")
+        + ". Orange: the bent path passes within the 12 m hit radius "
         "(drawn through); blue: misses. Rays 2 m apart.",
         fontsize=10,
     )
     name = "turn_humps.png" if edge == 18.0 else f"turn_humps_{edge:g}.png"
+    if SOURCE is not None:
+        name = name.replace(".png", f"_from{SOURCE:g}m.png")
     fig.savefig(base.OUT / name, dpi=95)
     print("wrote", base.OUT / name)
     print(f"hit width, m: curve | max turn | {circle} | {egg} 0 | 90 | 180")
     for cname, f in CURVES.items():
         for tm in (30, 45, 60, 90):
             act = prof.profile_turn(f, tm)
-            w = [base.hit_width(base.SHAPES[sh], act, a, step=0.05) for sh, a in columns]
+            w = [hit_width(base.SHAPES[sh], act, a) for sh, a in columns]
             print(f"{cname:36s} {tm:3d} " + " ".join(f"{v:5.1f}" for v in w))
 
 
 if __name__ == "__main__":
     import sys
 
+    if len(sys.argv) > 2:
+        SOURCE = float(sys.argv[2])
     main(float(sys.argv[1]) if len(sys.argv) > 1 else 18.0)
