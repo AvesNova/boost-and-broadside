@@ -115,6 +115,10 @@ PARAMETERS: dict[str, Parameter] = {
     "fire_worth": Parameter(1.0, "ticks of shield recharge",
                             meaning="a hit worth less than this is not fired (or the target's "
                                     "shield)"),
+    "lead_error": Parameter(0.25, "sustained turn acceleration",
+                            meaning="the target's unpredicted sideways acceleration over the "
+                                    "flight (the trigger's hit chance, with the bullet spread; "
+                                    "round 4, a reasoned choice, not tuned)"),
     # Fixed shapes of the terms (not personality).
     "closeness_range": Parameter(3.0, "gun_range",
                                  meaning="the angles and energy terms halve at this distance"),

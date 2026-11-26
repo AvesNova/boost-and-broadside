@@ -373,13 +373,29 @@ def test_turns_toward_an_enemy_on_its_left():
 
 
 def test_fires_at_a_tail_in_range_and_never_inside_his_nose_cone():
-    """Dead astern in range, nose on: it fires. Nose to nose it holds fire, even at an empty
-    shield (inside the nose cone a hit does nothing; author 2026-11-25)."""
+    """Dead astern in range, nose on: it fires. Nose to nose: with the nose cone's damage rule
+    on it holds fire, even at an empty shield (inside the nose cone a hit does nothing; author
+    2026-11-25); with the rule off (the default since 2026-11-27) it fires there too."""
     distance = 0.5 * card_values()["gun_range"]
     astern = placed(ship(), ship(x=distance))
     assert float(choice_of(astern).fire[0, 0]) > 0.5
     nose_to_nose = placed(ship(), ship(x=distance, heading=math.pi), shields=[100.0, 0.0])
-    assert float(choice_of(nose_to_nose).fire[0, 0]) == 0.0
+    assert float(choice_of(nose_to_nose).fire[0, 0]) > 0.5
+    cone = nose_to_nose.replace(
+        constants=core.with_hit_model(nose_to_nose.constants, nose_cone=1.0)
+    )
+    assert float(choice_of(cone).fire[0, 0]) == 0.0
+
+
+def test_the_trigger_weighs_the_hit_chance():
+    """Dead astern near the gun's range, nose on: it fires with the default spread; with a wide
+    spread (the game's hit widths unchanged) the expected hit is below its fire worth and it
+    holds fire (the hit chance, round 4)."""
+    distance = 0.9 * card_values()["gun_range"]
+    astern = placed(ship(), ship(x=distance))
+    assert float(choice_of(astern).fire[0, 0]) > 0.5
+    wide = astern.replace(constants=core.with_hit_model(astern.constants, bullet_spread=60.0))
+    assert float(choice_of(wide).fire[0, 0]) < 0.05
 
 
 def test_never_shoots_through_a_team_mate():
