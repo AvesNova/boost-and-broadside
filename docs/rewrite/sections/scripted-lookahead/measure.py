@@ -42,6 +42,9 @@ def main():
     parser.add_argument(
         "--set", nargs="*", default=[], help="look-ahead parameters name=value (diagnostics)"
     )
+    parser.add_argument(
+        "--spread", type=float, default=0.0, help="persona spread (0: the yardstick on all)"
+    )
     parser.add_argument("--no-fog", action="store_true", help="fog off (author: 1v1 runs)")
     parser.add_argument("--look-ahead", default=None, help="points, e.g. 0.25,0.5,1,2")
     parser.add_argument(
@@ -67,8 +70,11 @@ def main():
     new_config, old_config = scripted.ScriptedConfig().replace(**changes), RuleBasedConfig()
     old_memory = rule_based.fresh_memory(envs, slots, generator, device)
 
-    def new_call(state, uniforms):
-        return scripted.decide(new_config, state, None, None, uniforms)
+    # Personas drawn per ship at each deal (training's mechanism); None: the yardstick.
+    persona = scripted.personas(new_config, envs, slots, generator, device, arguments.spread)
+
+    def new_call(state, uniforms, persona):
+        return scripted.decide(new_config, state, None, persona, uniforms)
 
     def old_call(state, uniforms, memory):
         action, memory, _ = rule_based.decide(old_config, state, None, None, uniforms, memory)
@@ -96,7 +102,7 @@ def main():
             living = state.exists & state.alive
             if arguments.mode != "old":
                 uniforms = scripted.draw_uniforms(envs, slots, generator, device)
-                action, choice = new_call(state, uniforms)
+                action, choice = new_call(state, uniforms, persona)
                 joint = choice.joint
                 entropy = -(joint * joint.clamp_min(1e-30).log()).sum(-1)
                 mine = (
@@ -152,6 +158,14 @@ def main():
                     for name in old_memory
                 }
                 previous = torch.where(done[:, None, None], -1, previous)
+                if persona is not None:
+                    fresh_persona = scripted.personas(
+                        new_config, envs, slots, generator, device, arguments.spread
+                    )
+                    persona = {
+                        name: torch.where(done[:, None], fresh_persona[name], persona[name])
+                        for name in persona
+                    }
                 state = game.take_deal(
                     state, done, game.deal(config, envs, slots, sizes, generator, device)
                 )
@@ -166,6 +180,7 @@ def main():
                     "size": size,
                     "fields": arguments.fields,
                     "fog": not arguments.no_fog,
+                    "spread": arguments.spread,
                     "envs": envs,
                     "ticks": tick,
                     "usage": (counts.float() / total).tolist(),
