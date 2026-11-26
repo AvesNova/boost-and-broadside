@@ -1,0 +1,120 @@
+"""GPU time per scripted call (both teams, one call) for the look-ahead agent and the rule-based
+one, against the policy's forward on the training seats (E + E / 2, self-play share 0.5), all
+compiled (lean.contract.compile_dynamic), on a 4v4 state with fields and fog after a short
+scripted warm-up; and each call's peak memory above the state's.
+
+    PYTHONPATH=. uv run --no-sync python docs/rewrite/sections/scripted-lookahead/speed.py \
+        --envs 2048 --size 4
+"""
+
+import argparse
+import time
+
+import torch
+
+from lean import game, model, scripted
+from lean.contract import compile_dynamic
+from lean.learn import LearnConfig
+from lean.learn.rollout import seats
+from lean.model import draw_position_offset
+from lean.model.agent import agent_step, seat_view
+from lean.scripted.rule_based import opponent as rule_based
+from lean.scripted.rule_based.parameters import ScriptedConfig as RuleBasedConfig
+
+
+def timed(function, repeats: int) -> tuple[float, float]:
+    """(milliseconds per call, peak MiB above the start) over `repeats` calls after 3 warm."""
+    for _ in range(3):
+        function()
+    torch.cuda.synchronize()
+    base = torch.cuda.memory_allocated()
+    torch.cuda.reset_peak_memory_stats()
+    start = time.perf_counter()
+    for _ in range(repeats):
+        function()
+    torch.cuda.synchronize()
+    seconds = (time.perf_counter() - start) / repeats
+    return 1000.0 * seconds, (torch.cuda.max_memory_allocated() - base) / 2**20
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--envs", type=int, default=2048)
+    parser.add_argument("--size", type=int, default=4)
+    parser.add_argument("--repeats", type=int, default=20)
+    parser.add_argument("--skip-policy", action="store_true")
+    arguments = parser.parse_args()
+    device = torch.device("cuda")
+    envs = arguments.envs
+    config = game.GameConfig()
+    generator = torch.Generator(device).manual_seed(0)
+    sizes = torch.full((envs, 2), arguments.size, dtype=torch.long, device=device)
+    state = game.reset(config, envs, sizes, generator, device)
+    slots = state.x.shape[1]
+    new_config, old_config = scripted.ScriptedConfig(), RuleBasedConfig()
+    memory = rule_based.fresh_memory(envs, slots, generator, device)
+    with torch.no_grad():
+        for _ in range(60):  # into the fight a little, with the old agent (eager, cheap)
+            uniforms = rule_based.draw_uniforms(envs, slots, generator, device)
+            action, memory, _ = rule_based.decide(old_config, state, None, None, uniforms, memory)
+            state, _ = game.step(
+                config, state, action, game.draw_noise(config, envs, slots, generator, device)
+            )
+
+    new_uniforms = scripted.draw_uniforms(envs, slots, generator, device)
+    old_uniforms = rule_based.draw_uniforms(envs, slots, generator, device)
+
+    def new_call(state, uniforms):
+        return scripted.decide(new_config, state, None, None, uniforms)
+
+    def old_call(state, uniforms, memory):
+        return rule_based.decide(old_config, state, None, None, uniforms, memory)
+
+    compiled_new, compiled_old = compile_dynamic(new_call), compile_dynamic(old_call)
+    with torch.no_grad():
+        for name, function in (
+            ("look-ahead", lambda: compiled_new(state, new_uniforms)),
+            ("rule-based", lambda: compiled_old(state, old_uniforms, memory)),
+        ):
+            begun = time.perf_counter()
+            function()
+            torch.cuda.synchronize()
+            first = time.perf_counter() - begun
+            milliseconds, peak = timed(function, arguments.repeats)
+            print(
+                f"{name}: {milliseconds:.2f} ms per call, peak {peak:.0f} MiB, first call "
+                f"(compile) {first:.1f} s",
+                flush=True,
+            )
+        if arguments.skip_policy:
+            return
+        learn = LearnConfig()
+        policy = model.Policy(model.ModelConfig()).to(device)
+        self_play = round(learn.self_play_share * envs)
+        learner_team = torch.randint(0, 2, (envs,), generator=generator, device=device)
+        seat_environment, seat_team = seats(learner_team, self_play)
+        views = (game.observe(config, state, 0), game.observe(config, state, 1))
+        observation = seat_view(views, seat_environment, seat_team)
+        carry = policy.initial_carry(envs + self_play, slots, device)
+        offset = draw_position_offset(policy.config, envs + self_play, generator, device)
+
+        def policy_call(observation, carry, offset):
+            return agent_step(policy.step, learn.bf16, observation, carry, offset, None)
+
+        compiled_policy = compile_dynamic(policy_call)
+        begun = time.perf_counter()
+        compiled_policy(observation, carry, offset)
+        torch.cuda.synchronize()
+        first = time.perf_counter() - begun
+        milliseconds, peak = timed(
+            lambda: compiled_policy(observation, carry, offset), arguments.repeats
+        )
+        print(
+            f"policy forward ({envs + self_play} seats): {milliseconds:.2f} ms per call, peak "
+            f"{peak:.0f} MiB, first call (compile) {first:.1f} s",
+            flush=True,
+        )
+
+
+if __name__ == "__main__":
+    main()

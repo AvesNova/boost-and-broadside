@@ -9,8 +9,8 @@ import torch
 from lean.contract import FIRES, POWERS, STICKS
 from lean.game import GameConfig, card, core, draw_noise, observe, reset, step
 from lean.game.tests.values import game_value
-from lean.scripted import ScriptedConfig, act, chaser_act, draw_uniforms, fresh_memory, personas
-from lean.scripted.opponent import engage
+from lean.scripted import ScriptedConfig, act, chaser_act, draw_uniforms, personas
+from lean.scripted.opponent import nearest_enemies
 
 torch.set_num_threads(1)
 
@@ -390,27 +390,26 @@ def test_no_hidden_information_reaches_the_observation():
 
 def test_scripted_opponent_does_not_cheat():
     """Rule: under fog the scripted opponent reads its team's view: its action does not change
-    when a hidden enemy's true state changes (the yardstick with memory and the chaser)."""
+    when a hidden enemy's true state changes (the yardstick at spread 1 and the chaser)."""
     state = hidden_enemy_scene()
     other = perturb_hidden(state, [7, 9])
     config = ScriptedConfig()
     slots = state.x.shape[1]
     persona = personas(config, 1, slots, torch.Generator().manual_seed(1), CPU, 1.0)
     uniforms = draw_uniforms(1, slots, torch.Generator().manual_seed(2), CPU)
-    memory = fresh_memory(1, slots, torch.Generator().manual_seed(3), CPU)
-    first, first_memory = act(config, state, 0, persona, uniforms, memory)
-    second, second_memory = act(config, other, 0, persona, uniforms, memory)
+    first = act(config, state, 0, persona, uniforms)
+    second = act(config, other, 0, persona, uniforms)
     assert torch.equal(first, second)
-    assert torch.equal(first_memory["target"], second_memory["target"])
-    assert torch.equal(chaser_act(config, state, 0), chaser_act(config, other, 0))
-    # With the other seen enemies seen dead, the hidden ship 7 at its last-seen place is every
-    # ship's target, though it is truly elsewhere; never-seen ship 9 is not a target.
+    assert torch.equal(chaser_act(state, 0), chaser_act(other, 0))
+    # With the other seen enemies seen dead, the hidden ship 7 is every ship's nearest scored
+    # enemy, though it is truly elsewhere; never-seen ship 9 is not scored.
     seen = state.seen.clone()
     seen[0, core.SEEN_ALIVE, [5, 6, 8]] = 0.0
     lone = dataclasses.replace(other, seen=seen)
-    fight = engage(core.team_view(lone, 0), 0)
-    assert (fight.target[0, :5] == 7).all()
-    assert torch.allclose(fight.offset_x[0, 0], seen[0, 0, 7] - lone.x[0, 0])
+    view = core.team_view(lone, 0)
+    slot, weight, present = nearest_enemies(view, core.enemy_view(view), 1.0)
+    assert (slot[0, :5, 0] == 7).all() and present[0, :5, 0].all()
+    assert not present[0, :5, 1:].any()
 
 
 # --------------------------------------------------------------------------- the tracking circle

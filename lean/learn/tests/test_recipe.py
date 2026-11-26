@@ -10,7 +10,7 @@ import pytest
 import torch
 
 from lean import model
-from lean.contract import JOINT, LEVEL_NAMES, join_action
+from lean.contract import JOINT, LEVEL_NAMES
 from lean.learn import (
     LearnConfig,
     TeacherTerm,
@@ -24,7 +24,7 @@ from lean.learn import (
     update,
 )
 from lean.learn.returns import advantage_shares, advantage_sums
-from lean.learn.rollout import TEACHER_WIDTH, teacher_joint
+from lean.learn.rollout import TEACHER_WIDTH
 from lean.learn.tests.setting import small
 from lean.learn.training import teacher_cross_entropy
 
@@ -38,50 +38,27 @@ def rollout_of(ticks: int = 8, **overrides):
 # ------------------------------------------------------------------ the teacher's distribution
 
 
-def test_the_teacher_joint_is_the_product_of_its_marginals_in_the_contracts_order():
-    generator = torch.Generator().manual_seed(0)
-    stick = torch.softmax(torch.randn(5, 7, generator=generator), -1)
-    power = torch.softmax(torch.randn(5, 3, generator=generator), -1)
-    fire = torch.rand(5, 1, generator=generator)
-    joint = teacher_joint(torch.cat([stick, power, fire], -1))
-    assert joint.shape == (5, JOINT) and torch.allclose(joint.sum(-1), torch.ones(5))
-    for s in range(7):
-        for p in range(3):
-            for f in range(2):
-                index = int(join_action(torch.tensor([s, p, f])))
-                expected = stick[:, s] * power[:, p] * (fire[:, 0] if f else 1.0 - fire[:, 0])
-                assert torch.allclose(joint[:, index], expected)
-
-
 def test_the_rollout_records_the_teachers_full_distribution():
-    """Rollout.teacher holds the scripted agent's marginals for every ship of the seat's
-    environment, each a distribution; on own rows the joint is a proper distribution."""
+    """Rollout.teacher holds the scripted agent's joint distribution over the 42 actions for
+    every ship of the seat's environment; on own rows a proper distribution."""
     _, _, rollout, _ = rollout_of()
-    assert rollout.teacher.shape[-1] == TEACHER_WIDTH
+    assert rollout.teacher.shape[-1] == TEACHER_WIDTH == JOINT
     own = rollout.observation.own
-    joint = teacher_joint(rollout.teacher[own])
+    joint = rollout.teacher[own].float()
     assert torch.allclose(joint.sum(-1), torch.ones(joint.shape[0]), atol=1e-5)
-    assert (joint.max(-1).values < 0.99).all()  # soft targets: the floors leave no action certain
+    assert (joint.max(-1).values < 0.99).all()  # soft targets: no action certain
 
 
 def test_the_bc_loss_is_the_cross_entropy_on_the_soft_targets():
     """teacher_cross_entropy is -sum p_teacher log q over the 42 joint actions; its minimum
     over the policy is the teacher's entropy (KL zero), reached at the teacher itself."""
     generator = torch.Generator().manual_seed(1)
-    marginals = torch.cat(
-        [
-            torch.softmax(torch.randn(6, 7, generator=generator), -1),
-            torch.softmax(torch.randn(6, 3, generator=generator), -1),
-            torch.rand(6, 1, generator=generator),
-        ],
-        -1,
-    )
-    target = teacher_joint(marginals)
+    target = torch.softmax(torch.randn(6, JOINT, generator=generator), -1)
     log_policy = torch.log_softmax(torch.randn(6, JOINT, generator=generator), -1)
-    cross, entropy = teacher_cross_entropy(log_policy, marginals)
+    cross, entropy = teacher_cross_entropy(log_policy, target)
     assert torch.allclose(cross, -(target * log_policy).sum(-1))
     assert torch.allclose(entropy, -(target * target.log()).sum(-1))
-    at_teacher, _ = teacher_cross_entropy(target.log(), marginals)
+    at_teacher, _ = teacher_cross_entropy(target.log(), target)
     assert torch.allclose(at_teacher, entropy, atol=1e-5) and (cross > entropy).all()
 
 

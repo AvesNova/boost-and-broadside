@@ -69,9 +69,9 @@ def test_both_sides_of_a_self_play_game_are_the_live_policy(monkeypatch):
     decided = []
 
     def decide(*arguments):
-        action, memory, parts = decide_now(*arguments)
+        action, choice = decide_now(*arguments)
         decided.append(action)
-        return action, memory, parts
+        return action, choice
 
     decide_now = scripted.decide
     monkeypatch.setattr(scripted, "decide", decide)

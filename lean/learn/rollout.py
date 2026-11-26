@@ -10,8 +10,7 @@ from torch import Tensor
 from lean import game, scripted
 from lean.contract import (
     EPISODE_CONSTANT,
-    POWERS,
-    STICKS,
+    JOINT,
     Obs,
     random_keywords,
     split_joint,
@@ -32,33 +31,17 @@ from lean.model.agent import (
 from lean.model.value import decode_value
 from lean.scripted import ScriptedConfig
 
-# The teacher's distribution as recorded: the stick's 7 probabilities, the power's 3, then
-# the probability of firing (lean.scripted.Marginals; the three are independent).
-TEACHER_WIDTH = STICKS + POWERS + 1
-
-
-def teacher_marginals(parts) -> Tensor:
-    """A lean.scripted.Marginals as one (E, N, TEACHER_WIDTH) float32 record."""
-    return torch.cat([parts.stick, parts.power, parts.fire[..., None]], -1).float()
-
-
-def teacher_joint(marginals: Tensor) -> Tensor:
-    """The teacher's distribution over the 42 joint actions, (..., JOINT), from its
-    recorded marginals (..., TEACHER_WIDTH): the product of the three, indexed as
-    lean.contract.join_action (stick * 6 + power * 2 + fire)."""
-    stick, power, fire = marginals.split((STICKS, POWERS, 1), -1)
-    fire = torch.cat([1.0 - fire, fire], -1)
-    joint = stick[..., :, None, None] * power[..., None, :, None] * fire[..., None, None, :]
-    return joint.flatten(-3)
+# The teacher's distribution as recorded: its probabilities of the 42 joint actions, indexed as
+# lean.contract.join_action (lean.scripted.Choice.joint).
+TEACHER_WIDTH = JOINT
 
 
 class ScriptedMove(NamedTuple):
     """The scripted agent's decision for every ship of both teams (scripted_actions): `action`
-    (E, N, 3) long, its `memory` after the decision (carried to the next tick) and `teacher`
-    the distribution the actions were drawn from, (E, N, TEACHER_WIDTH) (teacher_marginals)."""
+    (E, N, 3) long and `teacher` the distribution the actions were drawn from, (E, N,
+    TEACHER_WIDTH) (lean.scripted.Choice.joint). The agent keeps no memory."""
 
     action: Tensor
-    memory: dict
     teacher: Tensor
 
 
@@ -127,9 +110,6 @@ class NextEpisodes:
     persona: (
         dict | None
     )  # the scripted agent's per-ship parameters, leading P (None: the yardstick)
-    scripted_memory: (
-        dict  # the scripted agent's memory at a match's start (lean.scripted.fresh_memory)
-    )
     learner_team: Tensor  # (P,) long
     position_offset: Tensor  # (P, 2)
     taken: Tensor  # () long
@@ -155,9 +135,6 @@ class CollectCarry:
     persona: (
         dict | None
     )  # the scripted agent's per-ship parameters, leading E (None: the yardstick)
-    # The scripted agent's memory (kept target, head-on side), leading E: one memory for every
-    # ship, as the one scripted call decides for both teams (teacher and league opponent).
-    scripted_memory: dict
     reset: Tensor  # (E,) bool, the environment was re-dealt before the next tick
     position_offset: Tensor  # (E, 2) the model's position offset of the current match
     ledger: Ledger  # the rewards' outstanding damage per environment (lean.learn.rewards)
@@ -179,8 +156,8 @@ class Rollout:
     the position offset, once per deal (rows r < E: environment r as the segment started;
     E + k: the segment's deal k). A RolloutStore keeps these instead of the per-tick copies.
     action: (T, S, N) long joint actions sampled on that tick's observation. teacher: (T, S,
-    N, TEACHER_WIDTH) the scripted agent's full distribution there (teacher_marginals; the
-    BC target, teacher_joint). The game delays every action by one tick: the
+    N, TEACHER_WIDTH) the scripted agent's full distribution there over the 42 joint actions
+    (the BC target). The game delays every action by one tick: the
     action of tick t is applied on tick t + 1, and the action applied on tick t is the
     observation's pending one (observation.pending, for own living ships). PPO trains on the
     sampled action with log_probability: (T, S, N), its log-probability under the policy on
@@ -266,13 +243,13 @@ def draw_team_sizes(config: LearnConfig, envs: int, generator, device=None) -> T
 
 
 def scripted_actions(
-    scripted_config: ScriptedConfig, state, persona, memory: dict, generator
+    scripted_config: ScriptedConfig, state, persona, generator
 ) -> ScriptedMove:
     """The scripted agent's move for every ship of both teams in one call (ScriptedMove)."""
     envs, slots = state.exists.shape
     uniforms = scripted.draw_uniforms(envs, slots, generator, state.exists.device)
-    action, memory, parts = scripted.decide(scripted_config, state, None, persona, uniforms, memory)
-    return ScriptedMove(action, memory, teacher_marginals(parts))
+    action, choice = scripted.decide(scripted_config, state, None, persona, uniforms)
+    return ScriptedMove(action, choice.joint.float())
 
 
 def self_play_count(config: LearnConfig, envs: int) -> int:
@@ -419,7 +396,6 @@ def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: in
         persona=scripted.personas(
             opponent.scripted_config, envs, slots, generator, device, config.persona_spread
         ),
-        scripted_memory=scripted.fresh_memory(envs, slots, generator, device),
         reset=torch.ones(envs, dtype=torch.bool, device=device),
         position_offset=draw_position_offset(policy.config, envs, generator, device),
         ledger=blank_ledger(envs, slots, device),
@@ -445,7 +421,6 @@ def draw_next_episodes(
         persona=scripted.personas(
             opponent.scripted_config, envs, slots, generator, device, config.persona_spread
         ),
-        scripted_memory=scripted.fresh_memory(envs, slots, generator, device),
         learner_team=torch.randint(0, 2, (envs,), **random_keywords(generator, device)),
         position_offset=draw_position_offset(policy.config, envs, generator, device),
         taken=torch.zeros((), dtype=torch.long, device=device),
@@ -454,10 +429,9 @@ def draw_next_episodes(
 
 def redeal(opponent: Opponent, state, carry: CollectCarry, done: Tensor, generator):
     """Deal the environments in `done` (E,) bool afresh from carry.next_episodes, in order
-    (new team sizes, learner team, personas, the scripted agent's fresh memory and position
-    offset), and draw their league members (from the league's tallies as they stand); both
-    carries zeroed there (within the members' row capacities, League.draw). Nothing is
-    read back."""
+    (new team sizes, learner team, personas and position offset), and draw their league
+    members (from the league's tallies as they stand); both carries zeroed there (within the
+    members' row capacities, League.draw). Nothing is read back."""
     envs = done.shape[0]
     self_play = envs - carry.member.shape[0]
     pool = carry.next_episodes
@@ -480,10 +454,6 @@ def redeal(opponent: Opponent, state, carry: CollectCarry, done: Tensor, generat
         persona=None
         if carry.persona is None
         else {name: take(pool.persona[name], carry.persona[name]) for name in carry.persona},
-        scripted_memory={
-            name: take(pool.scripted_memory[name], carry.scripted_memory[name])
-            for name in carry.scripted_memory
-        },
         reset=done,
         position_offset=take(pool.position_offset, carry.position_offset),
         ledger=clear_ledger(carry.ledger, done),
@@ -572,7 +542,7 @@ def act(
     knee = value_knees(config, value_logits.device)
     value = decode_value(value_logits, centres, knee) * observation.own[..., None]
     move = scripted_actions(
-        opponent.scripted_config, state, carry.persona, carry.scripted_memory, generator
+        opponent.scripted_config, state, carry.persona, generator
     )
     return Decision(
         views=views,
@@ -647,7 +617,6 @@ def advance(
         carry,
         policy=decision.policy_carry,
         opponent=league_move.carry,
-        scripted_memory=decision.scripted.memory,
         ledger=ledger,
     )
     state, carry = redeal(opponent, next_state, carry, done, generator)

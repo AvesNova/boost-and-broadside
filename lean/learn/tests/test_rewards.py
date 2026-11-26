@@ -175,12 +175,11 @@ def test_the_real_game_gives_zero_sum_levels():
     slots = state.exists.shape[1]
     scripted_config = scripted.ScriptedConfig()
     persona = scripted.personas(scripted_config, envs, slots, generator, "cpu", 0.0)
-    memory = scripted.fresh_memory(envs, slots, generator, "cpu")
     ledger = blank_ledger(envs, slots)
     paid = torch.zeros(LEVELS)
     for _ in range(300):
         uniforms = scripted.draw_uniforms(envs, slots, generator, "cpu")
-        action, memory = scripted.act(scripted_config, state, None, persona, uniforms, memory)
+        action = scripted.act(scripted_config, state, None, persona, uniforms)
         next_state, step_out = game.step(
             game_config, state, action, game.draw_noise(game_config, envs, slots, generator, "cpu")
         )

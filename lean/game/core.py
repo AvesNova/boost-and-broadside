@@ -416,15 +416,19 @@ def steady_flight(
     p,
     speed: Tensor,
     stick: Tensor,
-    power: int,
+    power: int | None,
     energy: Tensor,
     sustain: Tensor | float = 0.0,
     deep: Tensor | float = 0.0,
 ):
     """`steady_rates` with the angle of attack flown: (turn rate (rad/s), d speed / dt, d store
-    / dt, the angle of attack (rad, >= 0)), from the flight functions the tick uses. The scripted
-    agent's look-ahead reads the angle as the nose spring's target (lean.scripted.paths)."""
-    control = steady_control(p, speed, stick, power, sustain, deep)
+    / dt, the angle of attack (rad, >= 0)), from the flight functions the tick uses. power None:
+    every power at once, `speed`'s last axis the power index (its width 3; the action tables
+    broadcast along it). The scripted agent's look-ahead reads the angle as the nose spring's
+    target (lean.scripted.paths)."""
+    control = steady_control(p, speed, stick, 0 if power is None else power, sustain, deep)
+    if power is None:
+        control.commanded, control.demand = p.commanded_table, p.demand_table
     inverse_lift = 1.0 / p.lift
     angle_sin = 0.0
     for _ in range(2):

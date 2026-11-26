@@ -36,6 +36,8 @@ LEVEL_OF_STICK = tuple(int(abs(level)) for level in card.STICK_LEVELS)
 LEVELS = max(LEVEL_OF_STICK) + 1
 FIRST_OF_LEVEL = tuple(LEVEL_OF_STICK.index(level) for level in range(LEVELS))
 _SMALL = 1e-6
+# The action tables indexed by power (`core.steady_flight` with every power at once).
+POWER_TABLES = ("commanded_table", "demand_table")
 
 
 @dataclass
@@ -57,13 +59,18 @@ class Paths:
 
 
 def candidate_constants(constants) -> SimpleNamespace:
-    """The per-ship constants laid out for a candidate axis: a number as it is, an (E, N) column
-    as (E, N, 1), an action-indexed (E, width, N) table as (E, N, 1, width), so the game's
-    steady-flight functions broadcast over (E, N, candidates)."""
+    """The per-ship constants laid out for the (level, power) axes: a number as it is, an (E, N)
+    column as (E, N, 1, 1), an action-indexed (E, width, N) table as (E, N, 1, 1, width), so the
+    game's steady-flight functions broadcast over (E, N, levels, powers)."""
     laid = dict(constants.uniform)
     for name, (_, width) in constants.columns.items():
         column = constants[name]
-        laid[name] = column[..., None] if width == 1 else column.movedim(1, -1)[:, :, None, :]
+        if width == 1:
+            laid[name] = column[..., None, None]
+        elif name in POWER_TABLES:  # the power axis is the last: (E, N, 1, POWERS)
+            laid[name] = column.movedim(1, -1)[:, :, None, :]
+        else:
+            laid[name] = column.movedim(1, -1)[:, :, None, None, :]
     return SimpleNamespace(**laid)
 
 
@@ -148,11 +155,9 @@ def predict(constants, fields: Tensor, ships) -> Paths:
     def steady(speed, energy):
         """(rate, d speed / dt, d store / dt, angle) per level and power, (E, N, LEVELS,
         POWERS) each, at speed and energy (E, N, LEVELS, POWERS)."""
-        rows = [
-            steady_flight(p, speed[..., k], size, k, energy[..., k], sustain, deep)
-            for k in range(POWERS)
-        ]
-        return tuple(torch.stack([row[i] for row in rows], -1) for i in range(4))
+        return steady_flight(
+            p, speed, size[..., None], None, energy, sustain[..., None], deep[..., None]
+        )
 
     shape = speed0.shape + (LEVELS, POWERS)
     speed = speed0[..., None, None].expand(shape)
@@ -275,6 +280,8 @@ def _grid(value):
 
 
 def _squeeze(value):
-    """A candidate-laid constant back to the ships' shape: (E, N, 1) to (E, N), a table (E, N,
-    1, width) to (E, N, width); a number as it is."""
-    return value.squeeze(2) if isinstance(value, Tensor) and value.dim() >= 3 else value
+    """A candidate-laid constant back to the ships' shape: (E, N, 1, 1) to (E, N), a table (E,
+    N, 1, 1, width) or a power table (E, N, 1, POWERS) to (E, N, width); a number as it is."""
+    if not isinstance(value, Tensor):
+        return value
+    return value[:, :, 0] if value.dim() == 4 else value[:, :, 0, 0]

@@ -1,7 +1,6 @@
 """The sandbox world, without any drawing: the player (slot 0, team 0) and an optional opponent
 (slot 1, team 1), stepped by lean.game.core.tick at batch size 1 on the CPU. The opponent is
-the scripted opponent (the yardstick, its memory carried from tick to tick as everywhere
-else) or the chaser.
+the scripted opponent (the yardstick) or the chaser.
 
 The player never dies: a lethal tick restores its shield and counts a death. A killed opponent
 comes back two seconds later 1500 m from the player.
@@ -100,9 +99,7 @@ class World:
         )
 
     def _place_opponent(self) -> None:
-        """A new life for the opponent: placed 1500 m from the player, facing it, with a fresh
-        scripted memory (no kept target, a new head-on side), as at a match's start."""
-        self.memory = scripted.fresh_memory(1, 2, self.generator, "cpu")
+        """A new life for the opponent: placed 1500 m from the player, facing it."""
         s = self.state
         bearing = 2.0 * math.pi * float(torch.rand((), generator=self.generator))
         x = float(s.x[0, 0]) + OPPONENT_DISTANCE * math.cos(bearing)
@@ -161,11 +158,9 @@ class World:
         self.previous = self.poses()
         if self.opponent == "scripted":
             uniforms = scripted.draw_uniforms(1, 2, self.generator, "cpu")
-            action, self.memory = scripted.act(
-                self.scripted, self.state, 1, None, uniforms, self.memory
-            )
+            action = scripted.act(self.scripted, self.state, 1, None, uniforms)
         else:
-            action = scripted.chaser_act(self.scripted, self.state, team=1)
+            action = scripted.chaser_act(self.state, team=1)
         action[0, 0] = torch.tensor([stick, power, int(fire)])
         self.state, out = core.tick(self.config, self.state, action, self.generator)
         s = self.state

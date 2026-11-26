@@ -70,17 +70,14 @@ def test_full_rows_at_the_defaults_decide_as_the_yardstick():
     torch.manual_seed(0)
     generator = torch.Generator().manual_seed(1)
     state = game.reset(game.GameConfig(), 4, torch.tensor([[3, 2]] * 4), generator, "cpu")
-    memory = scripted.fresh_memory(4, state.exists.shape[1], generator, "cpu")
     uniforms = scripted.draw_uniforms(4, state.exists.shape[1], generator, "cpu")
     table = torch.tensor([vector(scripted.ScriptedConfig())])
     agent = torch.zeros(state.exists.shape, dtype=torch.long)
     rows = rows_of(table, agent)
     assert set(rows) == set(PARAMETERS)
-    _, _, yardstick = scripted.decide(
-        scripted.ScriptedConfig(), state, None, None, uniforms, memory
-    )
-    _, _, full = scripted.decide(scripted.ScriptedConfig(), state, None, rows, uniforms, memory)
-    for name in ("stick", "power", "fire"):
+    _, yardstick = scripted.decide(scripted.ScriptedConfig(), state, None, None, uniforms)
+    _, full = scripted.decide(scripted.ScriptedConfig(), state, None, rows, uniforms)
+    for name in ("joint", "flight", "fire"):
         torch.testing.assert_close(
             getattr(full, name), getattr(yardstick, name), atol=1e-5, rtol=1e-5
         )
@@ -167,7 +164,6 @@ def test_each_seat_gets_its_own_networks_step():
     seat_action = torch.full((2 * envs + 1, ships, 3), 7)
     slots = runner.Slots(
         torch.tensor([0, 1, 2, -1]),  # the last slot idle
-        scripted.fresh_memory(envs, ships, None, "cpu"),
         carry,
         seat_action,
         torch.randn(2 * envs, 2),

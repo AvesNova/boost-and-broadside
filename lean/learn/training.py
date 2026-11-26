@@ -22,7 +22,7 @@ from lean.learn.returns import (
     value_centres,
     value_knees,
 )
-from lean.learn.rollout import Rollout, teacher_joint
+from lean.learn.rollout import Rollout
 from lean.learn.store import RolloutStore
 from lean.model.agent import precision
 from lean.model.policy import next_state_cross_entropy
@@ -119,10 +119,9 @@ def hit_loss(
 
 def teacher_cross_entropy(log_policy: Tensor, teacher: Tensor) -> tuple[Tensor, Tensor]:
     """Per row, the cross-entropy (nats) of the policy's joint distribution against the
-    teacher's (teacher_joint of the recorded marginals), and the teacher's own entropy (their
-    difference is the KL from the teacher to the policy). log_policy (..., JOINT), teacher
-    (..., TEACHER_WIDTH)."""
-    target = teacher_joint(teacher.float())
+    teacher's (its recorded joint distribution), and the teacher's own entropy (their
+    difference is the KL from the teacher to the policy). log_policy and teacher (..., JOINT)."""
+    target = teacher.float()
     cross_entropy = -(target * log_policy).sum(-1)
     entropy = -(target * torch.log(target.clamp(min=1e-30))).sum(-1)
     return cross_entropy, entropy

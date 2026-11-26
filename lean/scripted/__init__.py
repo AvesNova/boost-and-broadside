@@ -2,7 +2,7 @@
 the chaser baseline."""
 
 from .chaser import ChaserConfig, chaser_act
-from .opponent import Choice, act, decide, draw_uniforms, explain, fresh_memory, sample
+from .opponent import Choice, act, decide, draw_uniforms, explain, sample
 from .parameters import PARAMETERS, Parameter, ScriptedConfig, personas
 
 __all__ = [
@@ -16,7 +16,6 @@ __all__ = [
     "decide",
     "draw_uniforms",
     "explain",
-    "fresh_memory",
     "personas",
     "sample",
 ]
