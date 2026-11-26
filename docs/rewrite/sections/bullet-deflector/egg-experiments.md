@@ -130,3 +130,22 @@ times are within a few per cent of astern, head-on (2 m wide) about 1.4x.
 | god-1v1-off | 3856 | 51.73 | 0.18 | 0.80 | 2.57 | 0.09/0.52/0.39 |
 | god-1v1-egg | 4400 | 15.30 | 0.26 | 0.95 | 2.23 | 0.01/0.42/0.57 |
 
+## Store weight by situation (lower priority; author question 6)
+
+`store_crowd` k (a new look-ahead row, 0 = off, the default): the store weight x (1 + k) /
+(1 + k x the scored enemies within 2 gun ranges). "crowd" = store weight 0.5, k 1: 0.5 with
+one enemy near, 0.33 with two, 0.2 with four. Duels with the egg on (the default game),
+`scripted-lookahead/measure.py --mode duel` (seats alternated), 256 games x 180 s re-dealt;
+1v1 fog off no fields, 4v4 fields and fog. Win share of decided games (standard error about
+1.4 points in 1v1, 1.7 in 4v4):
+
+| duel | 1v1 wins / draws / losses | 1v1 win share | 4v4 wins / draws / losses | 4v4 win share |
+|---|---|---|---|---|
+| crowd vs fixed 0.25 | 722 / 13 / 473 | 0.60 | 439 / 2 / 454 | 0.49 |
+| crowd vs fixed 0.40 | 667 / 17 / 532 | 0.56 | 479 / 3 / 413 | 0.54 |
+| fixed 0.40 vs fixed 0.25 | 701 / 12 / 542 | 0.56 | 431 / 4 / 499 | 0.46 |
+
+The situational weight takes the 1v1 gain of a larger store weight (0.60 against 0.25) and
+gives none of it back in 4v4 (0.49, even), where a fixed 0.40 loses (0.46). Mean store 0.60
+(1v1) and 0.54 (4v4) of full for the duel's two sides together. Not adopted (decision for the
+author); `store_crowd` stays 0.
