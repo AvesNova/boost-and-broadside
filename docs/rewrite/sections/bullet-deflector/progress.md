@@ -32,7 +32,7 @@ Milestone notes: tried / worked / didn't / next; measured numbers only; ETAs as 
   0.37 s off, 0.41 s symmetric/frontal at 300 m; 0.63 / 0.85 s at 650 m.
 - Next: god-mode measurements, cost (compile check off vs on), sandbox sliders, rendering.
 
-## 02:10 god-mode play, sandbox sliders, the bend still
+## 02:05 god-mode play, sandbox sliders, the bend still
 
 - Agent: the rule-based scripted agent on core (lean.scripted, ScriptedConfig(), both sides;
   its fire-worth now reads `core.hit_fraction`). `godmode.py`, CPU, 4 seeds x 128 games x 60 s
