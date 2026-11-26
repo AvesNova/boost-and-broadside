@@ -110,3 +110,8 @@ Decisions for the author:
 4. Scripted compile 280 s: paths kernel, 4 segments instead of 5, or a larger budget.
 5. Scripted store_weight: 0.25, or higher (1v1 duels prefer 0.4-0.6, 4v4 even with fewer kills).
 6. Merge order: the branches conflict; suggest merging the deflector first, then rebasing the scripted agent so its fire-worth reads the deflector's hit function.
+
+## Morning run (05:20 to noon)
+
+Author decisions 2026-11-27 (deflector discussion): bullets turn on entering an invisible egg around the ship (front 53.3 m, rear 24 m, half-width 24 m), by theta_max x 27/4 x (1 - x)^2 of the impact parameter over 24 m, theta_max 45 deg; speed kept; dead centre straight; hit radius 12 m, core 10 m; nose-cone rule kept as code, off; friendly fire as always (never the owner); no drawing of the egg. Sketches on `bullet-deflector` (docs/rewrite/sections/bullet-deflector/sketch/).
+One agent on the new branch `deflector-lookahead` (worktree v2-combined, GPU units `bnb-egg-*`): merge the two branches, replace the deflector, re-measure, then experiments (deflector off/egg x spread x 1v1/4v4) until about 11:30; findings in docs/rewrite/sections/bullet-deflector/egg-experiments.md; report by 11:45.
