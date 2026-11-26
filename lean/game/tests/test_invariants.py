@@ -27,7 +27,7 @@ def floats(tree):
             yield field.name, value
 
 
-@pytest.mark.parametrize("sizes, ticks", [((3, 5), 300), ((20, 20), 45)])
+@pytest.mark.parametrize("sizes, ticks", [((3, 5), 300), ((20, 20), 120)])
 def test_finite_and_padding_inert(sizes, ticks):
     """Catches a division by zero on a padded or dead row, and padding that acts or is hit."""
     generator = torch.Generator().manual_seed(1)
