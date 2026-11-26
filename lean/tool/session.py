@@ -3,12 +3,18 @@ session that flies a tuned design at its own time scale cannot share a process w
 envelope computations. The child ticks lean.sandbox.world.World at 30 Hz and sends a frame per
 tick; the parent forwards controls. No physics here: World runs the real game step."""
 
+import os
 import time
 
 from lean.game import card, core, tuning
 from lean.sandbox.world import World, field_list, stick_index
 
-CONFIG_SETTINGS = {"clock_ticks": 10**9}  # no clock: the game without its time limit
+# No clock: the game without its time limit. BNB_POST_STALL=0 in the server's environment flies
+# with the post-stall regime off (GameConfig.post_stall), for comparison.
+CONFIG_SETTINGS = {
+    "clock_ticks": 10**9,
+    "post_stall": os.environ.get("BNB_POST_STALL", "1") != "0",
+}
 
 
 def frame(world: World) -> dict:
