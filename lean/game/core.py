@@ -1612,7 +1612,7 @@ def _hit_test(
     miss_squared = (miss * miss).sum(1)
     radius = c["hit_radius"]
     candidate = index.other & flying.reshape(E, N * K, 1)
-    bend_ship = bend_tau = bends = None
+    bend_ship = bend_tau = None
     if config.deflector == "off":
         reach = torch.where(state.alive, radius * radius, -1.0)[:, None, :]
     else:
@@ -1634,14 +1634,10 @@ def _hit_test(
             & state.alive[:, None, :]
             & candidate
         )
+        bend_tau, bend_ship = torch.where(bends, closest_tau, torch.inf).min(-1)
     contact = (miss_squared < reach) & candidate
     contact_tau = torch.where(contact, tau, torch.inf)
-    if bends is None:
-        first_tau = contact_tau.min(-1).values
-    else:
-        # One reduction for the first contact and the bending ship (one pass over the pairs).
-        keys = torch.stack([contact_tau, torch.where(bends, closest_tau, torch.inf)], 0)
-        (first_tau, bend_tau), (_, bend_ship) = keys.min(-1)
+    first_tau = contact_tau.min(-1).values
     tied = contact & (contact_tau <= first_tau[..., None] + 1e-6)
     target = torch.where(tied, miss_squared, torch.inf).argmin(-1)
     return Contact(
