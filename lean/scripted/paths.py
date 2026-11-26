@@ -34,7 +34,7 @@ from lean.game.core import current_path_rate, maximum, medium, steady_flight
 # module setting (read at call time), so a measurement can sweep it.
 LOOK_AHEAD = (0.25, 0.5, 1.0, 1.5, 2.0)
 # The power outlook's points (seconds): longer, only speed and store.
-POWER_LOOK = (1.0, 2.0, 3.0, 4.0, 5.0)
+POWER_LOOK = (1.0, 2.5, 5.0)
 # The nose spring's target recomputed at each segment's start from the speed there (Snap's deep
 # angle closes as the speed bleeds); off: the steady angle at the speed now throughout.
 RETARGET = True

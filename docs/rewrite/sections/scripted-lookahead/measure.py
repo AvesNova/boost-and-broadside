@@ -23,7 +23,7 @@ from pathlib import Path
 import torch
 
 from lean import game, scripted
-from lean.contract import JOINT, compile_dynamic, join_action
+from lean.contract import FIRES, JOINT, POWERS, STICKS, compile_dynamic, join_action
 from lean.scripted import paths
 from lean.scripted.rule_based import opponent as rule_based
 from lean.scripted.rule_based.parameters import ScriptedConfig as RuleBasedConfig
@@ -94,6 +94,11 @@ def main():
     # Action changes from one tick to the next of a living ship (the power flicker).
     previous = torch.full((envs, slots, 3), -1, dtype=torch.long, device=device)
     power_switches = stick_switches = compared = 0.0
+    # The distribution's own movement: total variation between a ship's consecutive-tick
+    # distributions (joint, stick marginal, power marginal), look-ahead ships only.
+    previous_joint = None
+    variation = {"joint": 0.0, "stick": 0.0, "power": 0.0}
+    variation_count = 0.0
     outcome = {"wins": 0, "draws": 0, "losses": 0, "ended": 0, "team_0_wins": 0, "team_1_wins": 0}
     started = time.time()
     tick_length = config.tick_length
@@ -112,6 +117,19 @@ def main():
                 )
                 entropy_sum += float(entropy[mine].sum())
                 entropy_count += int(mine.sum())
+                if previous_joint is not None:
+                    both = mine & previous_mine
+                    now_parts = joint.view(envs, slots, STICKS, POWERS, FIRES)
+                    then_parts = previous_joint.view(envs, slots, STICKS, POWERS, FIRES)
+                    for name, now_p, then_p in (
+                        ("joint", joint, previous_joint),
+                        ("stick", now_parts.sum((-1, -2)), then_parts.sum((-1, -2))),
+                        ("power", now_parts.sum((-1, -3)), then_parts.sum((-1, -3))),
+                    ):
+                        distance = 0.5 * (now_p - then_p).abs().sum(-1)
+                        variation[name] += float(distance[both].sum())
+                    variation_count += float(both.sum())
+                previous_joint, previous_mine = joint, mine
             if arguments.mode == "duel":  # the other look-ahead agent on the other team
                 paths.LOOK_AHEAD = other_points
                 other_uniforms = scripted.draw_uniforms(envs, slots, generator, device)
@@ -158,6 +176,8 @@ def main():
                     for name in old_memory
                 }
                 previous = torch.where(done[:, None, None], -1, previous)
+                if previous_joint is not None:
+                    previous_mine = previous_mine & ~done[:, None]
                 if persona is not None:
                     fresh_persona = scripted.personas(
                         new_config, envs, slots, generator, device, arguments.spread
@@ -189,6 +209,9 @@ def main():
                     "kills_per_environment_minute": kills / minutes,
                     "mean_speed_corner": speed_sum / max(living_ticks, 1.0),
                     "mean_store": store_sum / max(living_ticks, 1.0),
+                    "total_variation_per_tick": {
+                        name: total / max(variation_count, 1.0) for name, total in variation.items()
+                    },
                     "power_switches_per_ship_second": power_switches
                     / max(compared, 1.0)
                     / tick_length,
@@ -208,6 +231,7 @@ def main():
                     f" entropy {summary['entropy']:.3f} speed {summary['mean_speed_corner']:.2f}"
                     f" store {summary['mean_store']:.2f}"
                     f" power switches/s {summary['power_switches_per_ship_second']:.2f}"
+                    f" TV {summary['total_variation_per_tick']}"
                     f" {outcome} ETA {eta}",
                     flush=True,
                 )
