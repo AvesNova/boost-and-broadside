@@ -798,3 +798,27 @@ time via the lock, but its CPU work overlaps: load averages are given with the c
   structural change (the paths in one kernel, as the pair stage is, or fewer segments): not done,
   a question for the author.
 - Next: step 2 (grouped distribution check).
+
+## R3 step 2: the stick distribution grouped by effect (2026-11-27 ~02:00)
+
+`measure.py` now also reports, per living ship and tick, the total variation of the stick
+distribution after grouping by side (left / straight / right), and the 1-Wasserstein distance
+between the two ticks' stick distributions on the 7 sticks' signed steady turn rates (at the
+ship's speed, store and pending power now, from the game's steady table; in deg/s, and over the
+span of the 7 rates, a mass fraction times a rate fraction comparable to the total variation).
+Tree 0b7bad03 (step 1 + the hit model through `core.hit_damage`), yardstick, 256 envs x 1,800
+ticks, compiled, finished games re-dealt; 1v1 fog off no fields, 4v4 fields and fog. Raw:
+`data/lookahead-r3/runs/A_*.json`.
+
+| setup | stick TV (raw) | side TV | rate W1 deg/s | rate W1 of span |
+|---|---|---|---|---|
+| 1v1 | 0.146 | 0.068 | 4.41 | 0.042 |
+| 4v4 | 0.148 | 0.089 | 5.13 | 0.045 |
+
+- About half of the raw 0.15 is mass sliding between actions of the same side (Sustain, Max,
+  Snap of one direction); 0.07-0.09 of the mass changes side per tick. Weighted by what the
+  actions do, the distribution's expected-turn movement is 4-5% of the rate span per tick
+  (4.4-5.1 deg/s). Reported only; nothing tuned for it (author: judge flicker on distributions).
+- Other numbers of these runs (for step 3's baseline): 1v1 367 games, 5 draws, 1.31 kills per
+  env-minute, entropy 1.022, store 0.07, coast / dive / climb 37 / 57 / 6%; 4v4 363 games, 0
+  draws, 9.26 kills per env-minute, entropy 0.887, store 0.12, 31 / 60 / 8%.
