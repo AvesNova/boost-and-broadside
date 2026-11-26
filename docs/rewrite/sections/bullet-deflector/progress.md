@@ -76,3 +76,30 @@ Milestone notes: tried / worked / didn't / next; measured numbers only; ETAs as 
   ms, symmetric 2.93, frontal 2.94 (+66%); CPU eager E 256: 16.1 / 15.7 / 15.9 ms (noise);
   eager dispatch calls 2,423 / 2,580 (+6.5%). Moved the pair work into the hit test's
   reductions (bitwise-equal play over 300 ticks); re-measuring (bench2), compile checks queued.
+
+## 02:40 cost: profile, cut work
+
+GPU tick, compiled `core.step`, 4070 laptop, performance profile, E 4096, 4v4, fields and fog
+(`bench_tick.py`, median of 3 blocks of 300 ticks); CUDA time from `profile_tick.py` (40 ticks).
+
+| version | off, ms | frontal, ms | deflector's cost |
+|---|---|---|---|
+| first (pair tensors D and tau out of the hit test) | 1.77 | 2.94 | +1.17 ms (+66%) |
+| D and the bend's ship found inside the hit test's reductions | 1.76 | 2.06 | +0.30 (+17%) |
+| + the flight's 2x2 matrix exponential elementwise (not the deflector) | 1.07 | 1.71 | (merged reduction, below) |
+| merged contact + bend reduction (stacked keys): reverted | 1.07 | 1.71 | +0.64: worse |
+| reverted to separate reductions | 1.07 | 1.37 | +0.31 (+29%) |
+| + no (E, 2, N K, N) pair blocks out of the hit test (`_pass_against`) | 0.97 | 1.21 | +0.24 (+24%) |
+
+- Worked: keeping the pair work inside the hit test's reductions; recomputing one bullet's pass
+  per bullet. Each step bitwise-equal play (300 ticks random 4v4, off and frontal).
+- Didn't: merging the two reductions by stacking their keys (the stack is materialised).
+- Found while profiling (not the deflector): the flight's 2x2 matrix exponential ran as four
+  cuBLAS gemv calls, 43% of the step's CUDA time (35.7 of 82.7 ms / 40 ticks). Written out
+  entry by entry it fuses: the whole step 1.76 -> 1.07 ms with the deflector off (-39%); within
+  8e-6 of the old on entries up to 53; flight tests pass. Its own commit (f583eb0c), to
+  cherry-pick or drop.
+- Left: the bend's reduction is its own kernel (0.17 ms of the 0.24); a further cut would fold
+  it into the contact reduction without materialising keys (a custom reduction), not tried.
+- CPU eager E 256: about 11-13 ms either way (noise ~1 ms); eager dispatch calls 2,495 off /
+  2,701 frontal (+8%).
