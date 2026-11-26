@@ -77,7 +77,9 @@ def _direction(s) -> SimpleNamespace:
 
 
 def _ships(n: int):
-    config = core.GameConfig()
+    # The doghouse draws the envelope's top line as full stick: flown with the post-stall regime
+    # off (full stick then stays on the top line below corner; the deep angle is not charted yet).
+    config = core.GameConfig(post_stall=False)
     constants = core.ship_constants(config, torch.zeros((n, 1), dtype=torch.long))
     p = core.per_type_constants(config, torch.zeros(n, dtype=torch.long))
     return config, constants, p
@@ -106,7 +108,7 @@ def achievable_speeds(tolerance: float = TOLERANCE) -> dict[str, float]:
     max_energy = float(p.max_energy[0])
     s = _fresh(n, card.SPAWN_SPEED, float(p.spawn_energy[0]))
     band = config.store_edge_band
-    level = p.stick_table.gather(1, condition[:, :1])[:, 0].abs()
+    level, cap, deep = _shape(p, condition[:, :1])
     lowest = torch.full((len(names),), math.inf)
     fields = torch.zeros(n, 5, 0)
     with torch.no_grad():
@@ -121,7 +123,7 @@ def achievable_speeds(tolerance: float = TOLERANCE) -> dict[str, float]:
             for power in (COAST, DIVE, CLIMB):
                 quasi = torch.where(
                     condition[:, 1] == power,
-                    core.steady_rates(p, speed, level, power, energy)[0],
+                    core.steady_rates(p, speed, level, power, energy, cap, deep)[0],
                     quasi,
                 )
             store = energy / max_energy
@@ -176,14 +178,14 @@ def random_search(
             measured = _turn_rate(before, s, h)
             speed, energy = s.speed[:, 0], s.energy[:, 0]
             store = energy / max_energy
-            level = p.stick_table.gather(1, control[:, :1])[:, 0].abs()
+            level, cap, deep = _shape(p, control[:, :1])
             for name, (stick, power) in CONDITIONS.items():
                 mask = (control[:, 0] == stick) & (control[:, 1] == power)
                 if power != COAST:
                     mask &= (store > band) & (store < 1.0 - band)
                 if not mask.any():
                     continue
-                quasi = core.steady_rates(p, speed, level, power, energy)[0]
+                quasi = core.steady_rates(p, speed, level, power, energy, cap, deep)[0]
                 mask &= (measured - quasi).abs().le(tolerance * quasi.abs() + math.radians(0.2))
                 if mask.any():
                     lowest[name] = min(lowest[name], float(speed[mask].min()))
@@ -193,6 +195,14 @@ def random_search(
                 k = int(change.sum())
                 chosen[change], left[change] = draw(k), duration(k)
     return lowest
+
+
+def _shape(p, stick: torch.Tensor):
+    """Per ship, a stick index's (size, g cap, deep) as core.steady_rates takes them."""
+    return tuple(
+        table.gather(1, stick)[:, 0].abs()
+        for table in (p.stick_table, p.stick_cap_table, p.deep_stall_table)
+    )
 
 
 def _holding_stick(p, speed: float, energy: float) -> float:
@@ -265,6 +275,9 @@ def critical_points(
     control = torch.full((n, 1), MIDDLE)
     power = torch.full((n, 1), COAST)
     column = constants.columns["stick_table"][0] + MIDDLE
+    # The held stick is a fraction of the envelope's top line: no g cap, no deep angle.
+    constants.table[:, constants.columns["stick_cap_table"][0] + MIDDLE, 0] = 1.0
+    constants.table[:, constants.columns["deep_stall_table"][0] + MIDDLE, 0] = 0.0
     base, target, gain = torch.tensor(sticks), torch.tensor(targets), torch.tensor(gains)
     fields = torch.zeros(n, 5, 0)
     speeds, rates = [], []

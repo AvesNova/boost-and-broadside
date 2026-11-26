@@ -19,6 +19,7 @@ CONFIG = core.GameConfig()
 P51D = card.TYPE_NAMES.index("p51d")
 COAST, DIVE, CLIMB = 0, 1, 2  # the power indices (lean.game.card: 0 coast, 1 dive, 2 climb)
 STRAIGHT, FULL = card.STICK_LEVELS.index(0.0), card.STICK_LEVELS.index(max(card.STICK_LEVELS))
+MIDDLE = card.STICK_LEVELS.index(2.0)
 # The flights' start speeds, as shares of the game's top level speed and corner speed.
 TOP = game_value("cruise_speed", CONFIG)
 CORNER = game_value("corner_speed", CONFIG)
@@ -84,12 +85,21 @@ def test_coasting_straight_holds_altitude():
     assert max(abs(x - 0.5) for x in stores) < 1e-4
 
 
-def test_coasting_at_full_stick_holds_altitude_above_the_one_g_speed():
-    """Altitude wins over the turn: at full stick, coasting, above the 1 g speed, the store holds
-    (the turn is limited instead)."""
-    speeds, stores = fly(1.05 * CORNER, 0.5, FULL, COAST, 10.0)
+def test_coasting_on_the_top_line_holds_altitude_above_the_one_g_speed():
+    """Altitude wins over the turn: at the middle stick (the wing's maximum lift below corner),
+    coasting, above the 1 g speed, the store holds (the turn is limited instead)."""
+    speeds, stores = fly(1.05 * CORNER, 0.5, MIDDLE, COAST, 10.0)
     assert min(speeds) > 1.2 * one_g_speed()
     assert max(abs(x - 0.5) for x in stores) < 2e-3
+
+
+def test_holding_full_stick_below_corner_bleeds_speed():
+    """The post-stall regime (author 2026-11-26): full stick below corner goes to the deep angle,
+    whose drag bleeds speed far faster than the middle stick's maximum lift."""
+    start = 0.8 * CORNER
+    full, _ = fly(start, 0.5, FULL, COAST, 1.0)
+    middle, _ = fly(start, 0.5, MIDDLE, COAST, 1.0)
+    assert start - full[-1] > 3.0 * (start - middle[-1])
 
 
 def test_engine_never_raises_the_store():
@@ -117,6 +127,8 @@ def test_dive_and_climb_are_equal_and_opposite():
             thrust_scale=1.0,
             stick_size=torch.zeros(1, 1),
             stick_sign=torch.ones(1, 1),
+            stick_cap=torch.ones(1, 1),
+            deep=0.0 * torch.ones(1, 1),
             commanded=c.commanded_table[:, power],
             demand=c.demand_table[:, power],
         )
@@ -191,6 +203,8 @@ def test_at_the_edges_dive_and_climb_act_as_coast_on_the_wing():
             thrust_scale=1.0,
             stick_size=torch.ones(1, 1),
             stick_sign=torch.ones(1, 1),
+            stick_cap=torch.ones(1, 1),
+            deep=0.0 * torch.ones(1, 1),
             commanded=c.commanded_table[:, power],
             demand=c.demand_table[:, power],
         )
@@ -257,13 +271,16 @@ def test_turn_rate_never_falls_with_speed_below_corner():
             )
 
 
-def full_stick_lateral(c, speeds, stick=None):
-    """The lateral acceleration `_setting` gives coasting at the spawn store (float64)."""
+def full_stick_lateral(c, speeds, stick=None, cap=1.0):
+    """The lateral acceleration `_setting` gives coasting at the spawn store (float64), at stick
+    size `stick` (default full) and g cap `cap`."""
     stick = torch.ones_like(speeds) if stick is None else stick
     control = SimpleNamespace(
         thrust_scale=1.0,
         stick_size=stick,
         stick_sign=torch.ones_like(speeds),
+        stick_cap=torch.full_like(speeds, cap),
+        deep=0.0 * torch.ones_like(speeds),
         commanded=c.commanded_table[..., COAST],
         demand=c.demand_table[..., COAST],
     )
@@ -298,18 +315,32 @@ def test_full_stick_is_the_envelopes_maximum():
             assert bool((rate <= top + 1e-12).all()), (name, stick)
 
 
-def test_stick_levels_are_fractions_of_the_maximum():
-    """A stick level is its fraction of the full-stick lateral acceleration at every speed (the
-    same shape: lift-limited below corner, g-limited above, the same rounded corner)."""
+def test_stick_levels_shapes():
+    """The levels' shapes (card.GRADUAL_STICK, MIDDLE_STICK; author 2026-11-26): gradual is its
+    fraction of the full-stick lateral acceleration at every speed (the top line: lift-limited
+    below corner, g-limited above, the same rounded corner); middle is the wing's maximum lift
+    (the top line) well below corner and the middle share of the g limit, with 1 g held, well
+    above (to 0.1%)."""
     for ship_type, name in enumerate(card.TYPE_NAMES):
         c = double_constants(ship_type)
-        low, high = 1.1 * one_g_speed(ship_type), 2.0 * float(c.corner_speed[0])
+        corner, g = float(c.corner_speed[0]), card.GRAVITY
+        low, high = 1.1 * one_g_speed(ship_type), 2.0 * corner
         speeds = torch.linspace(low, high, 300, dtype=torch.float64)
         full = full_stick_lateral(c, speeds)
-        for index in (1, 3):
-            level = float(c.stick_table[0, index + 1])
-            part = full_stick_lateral(c, speeds, torch.full_like(speeds, level))
-            assert torch.allclose(part, level * full, rtol=1e-12), (name, index)
+        size, cap, deep = core.stick_level_shape(c, 2)
+        assert (cap, deep) == (1.0, 0.0)
+        part = full_stick_lateral(c, speeds, torch.full_like(speeds, size))
+        assert torch.allclose(part, size * full, rtol=1e-12), name
+        size, cap, deep = core.stick_level_shape(c, 4)
+        assert deep == 0.0
+        assert size == pytest.approx(card.MIDDLE_STICK) and cap == pytest.approx(card.MIDDLE_STICK)
+        below = torch.linspace(low, 0.6 * corner, 200, dtype=torch.float64)
+        middle = full_stick_lateral(c, below, torch.full_like(below, size), cap)
+        assert float((middle / full_stick_lateral(c, below) - 1.0).abs().max()) < 1e-3, name
+        above = torch.linspace(1.25 * corner, 2.0 * corner, 200, dtype=torch.float64)
+        middle = full_stick_lateral(c, above, torch.full_like(above, size), cap)
+        level = cap * float(c.max_acceleration[0])
+        assert float((middle / (level * level - g * g) ** 0.5 - 1.0).abs().max()) < 1e-3, name
 
 
 def test_stick_levels_are_fixed_fractions():
@@ -347,6 +378,8 @@ def test_the_turn_has_precedence_over_the_climb():
                 thrust_scale=1.0,
                 stick_size=torch.full((1, 1), stick),
                 stick_sign=torch.ones(1, 1),
+                stick_cap=torch.ones(1, 1),
+                deep=0.0 * torch.ones(1, 1),
                 commanded=c.commanded_table[:, power],
                 demand=c.demand_table[:, power],
             )

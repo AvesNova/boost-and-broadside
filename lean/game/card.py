@@ -15,8 +15,8 @@ the flight model's source, so a physics change re-solves the rows by itself:
   docs/rewrite/p51d-model.md "Design inputs").
 
 The bullet's damage reference speed is not stored either (core._derived_characteristics).
-The stick levels are shared constants (GRADUAL_STICK, MIDDLE_STICK, FULL_STICK; core.stick_table):
-each is that fraction of the most lateral acceleration the ship can give at its speed.
+The stick levels are shared constants (GRADUAL_STICK, MIDDLE_STICK, FULL_STICK; core.stick_table;
+their shapes below).
 """
 
 import math
@@ -24,7 +24,11 @@ import math
 TYPE_NAMES = ("p51d",)
 
 # The flight terms: the drag rise above critical_speed, the separation drag, the soft minima of
-# lift against the g limit and of thrust against static thrust, and the nose damping.
+# lift against the g limit and of thrust against static thrust, the nose damping (the angle of
+# attack's damping ratio toward the commanded angle) and the post-stall regime (core._setting,
+# _lift_coefficient, _rates): full stick's deepest angle of attack below corner, the band below
+# corner speed (a fraction of it) over which full stick's allowed angle opens from the stall
+# angle to it, and the drag at POST_STALL_DRAG_ANGLE over the drag at the stall.
 FLIGHT_TERMS = (
     "critical_speed",
     "drag_rise_exponent",
@@ -33,6 +37,9 @@ FLIGHT_TERMS = (
     "lift_softmin_exponent",
     "thrust_softmin_exponent",
     "nose_damping",
+    "deep_stall_angle",
+    "deep_stall_band",
+    "post_stall_drag_ratio",
 )
 # The card's columns, in order. engine_power is thrust power per kg; exchange_acceleration the
 # dive and climb trade between speed and store.
@@ -81,6 +88,14 @@ STALL_ANGLE = 0.2617993877991494
 INDUCED_DRAG_FACTOR = 66.348
 NOSE_FREQUENCY_FLOOR = 0.4997135491028137
 SPEED_FLOOR = 1.454166427889188e-06
+# Past the stall (docs/rewrite/sections/post-stall/literature.md): the lift returns toward the
+# flat plate's, POST_STALL_LIFT_FRACTION of the wing's maximum at 45 deg (a flat plate's 1.2 over
+# the P-51D's C_Lmax 1.6), through a dip of width POST_STALL_DIP_WIDTH (radians) past the stall,
+# and is 0 at 90 deg; the drag reaches the card's post_stall_drag_ratio x the drag at the stall
+# at POST_STALL_DRAG_ANGLE.
+POST_STALL_LIFT_FRACTION = 0.75
+POST_STALL_DIP_WIDTH = 0.2
+POST_STALL_DRAG_ANGLE = math.radians(45.0)
 
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005
@@ -108,8 +123,12 @@ LN_2 = math.log(2.0)
 # Stick index to signed level; power index 0 coast, 1 dive, 2 climb.
 STICK_LEVELS = (0.0, -1.0, 1.0, -2.0, 2.0, -3.0, 3.0)
 QUIET_STICK_MAX = 2  # stick indices 0..2 (straight and the gradual turns) keep the shield quiet
-# The stick levels 1, 2, 3 (author 2026-11-24): fixed thirds of full stick, the most lateral
-# acceleration the ship can give at its speed (core._setting), for every type.
+# The stick levels 1, 2, 3 (author 2026-11-24, the middle and full levels 2026-11-26;
+# core._setting). Gradual: GRADUAL_STICK of the envelope's top line (the wing's maximum lift
+# against the g limit, one soft minimum). Middle: the wing's maximum lift against MIDDLE_STICK of
+# the g limit (the same soft minimum): the top line below corner, a lower g level above. Full:
+# the g limit above corner; below it the stick asks for a deep angle of attack (the card's
+# deep_stall_angle), opening from the stall angle at corner speed over deep_stall_band of it.
 GRADUAL_STICK = 1.0 / 3.0
 MIDDLE_STICK = 2.0 / 3.0
 FULL_STICK = 1.0
