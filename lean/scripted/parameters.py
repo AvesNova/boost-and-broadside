@@ -89,7 +89,7 @@ PARAMETERS: dict[str, Parameter] = {
     # Round 3 (author 2026-11-27): the store ran nearly empty (mean 0.06-0.16 of full; dive on
     # 55-65% of ship-ticks): the store held is worth something of its own, beyond its share of
     # the energy term (diving trades it for speed at almost no change in total energy).
-    "store_weight": Parameter(0.0, "ratio", LOG, 0.4,
+    "store_weight": Parameter(0.25, "ratio", LOG, 0.4,
                               "the store itself in full stores per second, in the power "
                               "choice (on top of the energy term)"),
     "power_horizon": Parameter(3.0, "seconds", LOG, 0.3, "the power look's discount time"),

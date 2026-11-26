@@ -822,3 +822,61 @@ ticks, compiled, finished games re-dealt; 1v1 fog off no fields, 4v4 fields and 
 - Other numbers of these runs (for step 3's baseline): 1v1 367 games, 5 draws, 1.31 kills per
   env-minute, entropy 1.022, store 0.07, coast / dive / climb 37 / 57 / 6%; 4v4 363 games, 0
   draws, 9.26 kills per env-minute, entropy 0.887, store 0.12, 31 / 60 / 8%.
+
+## R3 step 3: power and energy (2026-11-27 02:00-02:50)
+
+- Tried: a new row `store_weight` (the store itself in full stores per second, in the power
+  choice, on top of the energy term: diving trades store for speed at almost no change in total
+  energy, so the energy term never held the store) and a weaker speed term (`speed_weight` 0.3
+  -> 0.15). Self-play 256 envs x 1,800 ticks, compiled; duels 512 envs x 1,800 ticks, seats
+  alternated (W / D / L by the first agent). 1v1 fog off no fields, 4v4 fields fog. Raw:
+  `data/lookahead-r3/runs/`, table `data/lookahead-r3/step3_table.md`.
+
+| run | games | draws | kills / env-min | entropy | speed / corner | store | coast / dive / climb |
+|---|---|---|---|---|---|---|---|
+| A 1v1 (store 0, round 2) | 367 | 5 | 1.31 | 1.022 | 0.76 | 0.07 | 37 / 57 / 6% |
+| B 1v1 (store 0.25) | 446 | 1 | 1.63 | 1.021 | 0.72 | 0.44 | 53 / 25 / 22% |
+| C 1v1 (store 0.5, speed 0.15) | 408 | 9 | 1.57 | 1.148 | 0.56 | 0.82 | 37 / 0 / 63% |
+| D 1v1 (store 0.25, speed 0.15) | 475 | 6 | 1.82 | 1.121 | 0.61 | 0.66 | 53 / 6 / 41% |
+| A 4v4 | 363 | 0 | 9.26 | 0.887 | 0.86 | 0.12 | 31 / 60 / 8% |
+| B 4v4 | 350 | 1 | 8.70 | 0.896 | 0.76 | 0.51 | 49 / 23 / 28% |
+| C 4v4 | 310 | 1 | 8.11 | 1.026 | 0.63 | 0.78 | 37 / 3 / 61% |
+| D 4v4 | 320 | 0 | 8.37 | 0.977 | 0.68 | 0.64 | 45 / 11 / 43% |
+
+| duel | 1v1 W / D / L | 4v4 W / D / L |
+|---|---|---|
+| B against A | **584 / 5 / 267 (68%)** | **384 / 3 / 285 (57%)** |
+| D against A | 423 / 2 / 535 (44%) | 325 / 1 / 368 (47%) |
+
+- Worked: `store_weight` 0.25 alone brings the mean store to 0.44-0.51 (round 1: 0.21-0.52;
+  round 2: 0.07-0.12), dive 23-25% of ship-ticks, climb 22-28%, and beats the round-2 power
+  choice in both setups. Kills per env-minute 1v1 1.31 -> 1.63, 4v4 9.26 -> 8.70.
+- Didn't: weakening the speed term (D, C) makes the ships slow (0.56-0.68 corner) and climb on
+  41-63% of ticks; D loses to A in both duels. Not taken (the author's suggestion tried and
+  measured: the speed term stays 0.3).
+- The round-2 slow 1v1 (replay seed 1, fog off, no fields; `data/lookahead-r3/seed1_check.py`):
+  on the step-1 tree (store weight 0) the two drain the store by 10 s (store under 0.05 of full
+  on 76% of ticks; 7% of ticks under 0.6 corner speed) and Red wins at 33.3 s; with store weight
+  0.25 the stores stay at 0.5-1.0 (never under 0.05), 2.9% of ticks under 0.6 corner, and the
+  game ends at 41.5 s with both ships gone (a draw). (Round 2 went to the clock: the merged
+  hit model and the step-1 tree already changed this seed.)
+- Around 0.25 (02:28-02:55; duels 512 envs x 1,800 ticks; self-play 256 x 1,800):
+
+| duel | 1v1 W / D / L | 4v4 W / D / L |
+|---|---|---|
+| 0.15 against 0.25 | 382 / 5 / 510 (43%) | 327 / 0 / 351 (48%) |
+| 0.4 against 0.25 | 533 / 6 / 388 (58%) | 327 / 2 / 326 (50%) |
+| 0.6 against 0.4 | 546 / 5 / 335 (62%) | 302 / 2 / 303 (50%) |
+
+| self-play | kills / env-min | speed / corner | store | coast / dive / climb |
+|---|---|---|---|---|
+| 0.4, 1v1 | 1.90 | 0.68 | 0.68 | 56 / 7 / 37% |
+| 0.4, 4v4 | 8.13 | 0.71 | 0.67 | 52 / 9 / 39% |
+| 0.6, 1v1 | 1.67 | 0.64 | 0.79 | 45 / 1 / 54% |
+
+- In 1v1 the duel keeps rewarding a fuller store (0.4 over 0.25, 0.6 over 0.4); in 4v4 0.25,
+  0.4 and 0.6 are even, while kills per env-minute fall (8.70, 8.13; 0.6's duel 7.92) and the
+  dive goes out of use (23%, 9%, 1-5%). **Chosen: `store_weight` 0.25** (decision-safe: the
+  smallest change that fixes the empty store, the store back at round 1's top (0.44-0.51), all
+  three powers in use, and it beats round 2 in both setups). The 1v1 preference for more is a
+  question for the author (docs/rewrite/questions.md).
