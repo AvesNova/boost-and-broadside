@@ -40,8 +40,15 @@ CPU = torch.device("cpu")
 
 @functools.cache
 def card() -> dict:
-    """The default game's ship card (its speeds, radii and ranges; core.ship_card)."""
-    return core.ship_card(core.GameConfig()).uniform
+    """The default game's ship card (its speeds, radii and ranges; core.ship_card): the numbers
+    equal for every type and the first type's single rows (the hit model is always rows)."""
+    ship_card = core.ship_card(core.GameConfig())
+    rows = {
+        name: float(ship_card[name].flatten()[0])
+        for name, (_, width) in ship_card.columns.items()
+        if width == 1
+    }
+    return {**ship_card.uniform, **rows}
 
 
 def random_state(envs: int, slots: int, seed: int):
@@ -439,7 +446,7 @@ def test_one_call_for_both_teams_equals_the_two_single_team_calls():
         persona = personas(config, envs, slots, generator, CPU, 1.0)
         memory = fresh_memory(envs, slots, generator, CPU)
         deaths = 0
-        for _ in range(120):
+        for _ in range(240):
             uniforms = draw_uniforms(envs, slots, generator, CPU)
             both = explain(config, state, None, persona, memory).marginals
             for team in (0, 1):

@@ -21,7 +21,7 @@ import torch
 from torch import Tensor
 
 from lean.contract import random_keywords
-from lean.game.core import aspect_factor, built_once, enemy_view, slot_indices
+from lean.game.core import built_once, enemy_view, hit_fraction, slot_indices
 
 from .parameters import GATES, STICK_GATES, Gate, ScriptedConfig, value
 from .situation import Situation, assess, signed_angle
@@ -499,10 +499,10 @@ def explain(
     hit_cos = -(launch_x * nose_x + launch_y * nose_y) * torch.rsqrt(
         (launch_x * launch_x + launch_y * launch_y).clamp_min(TINY)
     )
-    hit = _at_target(c["hit_damage"], fight.target) * aspect_factor(
-        hit_cos,
-        _at_target(c["nose_inner_cos"], fight.target),
-        _at_target(c["inverse_nose_width"], fight.target),
+    # The game's hit-worth rule (core.hit_fraction: the nose cone and the deflector) for a
+    # centred shot.
+    hit = _at_target(c["hit_damage"], fight.target) * hit_fraction(
+        lambda name: _at_target(c[name], fight.target), hit_cos, 0.0
     )
     worth = read("fire_worth") * c["shield_rate"] * c["tick_length"]
     # (A hit inside the nose cone does no damage, and a ship at 0 shield dies only of damage.)
