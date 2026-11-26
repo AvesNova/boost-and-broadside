@@ -68,7 +68,7 @@ def main():
     counts = torch.zeros(JOINT, dtype=torch.long, device=device)
     entropy_sum, entropy_count = 0.0, 0
     kills = speed_sum = store_sum = living_ticks = 0.0
-    outcome = {"wins": 0, "draws": 0, "losses": 0, "ended": 0}
+    outcome = {"wins": 0, "draws": 0, "losses": 0, "ended": 0, "team_0_wins": 0, "team_1_wins": 0}
     started = time.time()
     tick_length = config.tick_length
     with torch.no_grad():
@@ -107,6 +107,8 @@ def main():
                 result = out.result[done]
                 outcome["ended"] += int(done.sum())
                 outcome["draws"] += int((result == 2).sum())
+                outcome["team_0_wins"] += int((result == 0).sum())
+                outcome["team_1_wins"] += int((result == 1).sum())
                 winner_new = result == new_team[done]
                 outcome["wins"] += int(((result < 2) & winner_new).sum())
                 outcome["losses"] += int(((result < 2) & ~winner_new).sum())

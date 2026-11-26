@@ -242,9 +242,7 @@ def draw_team_sizes(config: LearnConfig, envs: int, generator, device=None) -> T
     return sizes
 
 
-def scripted_actions(
-    scripted_config: ScriptedConfig, state, persona, generator
-) -> ScriptedMove:
+def scripted_actions(scripted_config: ScriptedConfig, state, persona, generator) -> ScriptedMove:
     """The scripted agent's move for every ship of both teams in one call (ScriptedMove)."""
     envs, slots = state.exists.shape
     uniforms = scripted.draw_uniforms(envs, slots, generator, state.exists.device)
@@ -541,9 +539,7 @@ def act(
     centres = value_centres(config, value_logits.shape[-1], value_logits.device)
     knee = value_knees(config, value_logits.device)
     value = decode_value(value_logits, centres, knee) * observation.own[..., None]
-    move = scripted_actions(
-        opponent.scripted_config, state, carry.persona, generator
-    )
+    move = scripted_actions(opponent.scripted_config, state, carry.persona, generator)
     return Decision(
         views=views,
         observation=observation,

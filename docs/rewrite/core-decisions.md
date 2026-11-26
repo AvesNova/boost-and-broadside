@@ -854,3 +854,36 @@ docs/rewrite/sections/post-stall/progress.md (steps 1-8); the rules: lean/game/N
   cache): `advance` 2,856 traced operations (core 2,300, +24%; old baseline 2,220), total 6,503
   (core 5,947), cold 233.8 s (core 226.9 s), no recompiles or graph breaks. The baseline was
   reset on this branch (author: each change judged on its own).
+
+
+## Scripted look-ahead (author 2026-11-26, branch scripted-lookahead)
+
+Every step and measurement: docs/rewrite/sections/scripted-lookahead/progress.md; the agent:
+lean/scripted/NOTES.md.
+
+- **The scripted opponent is a look-ahead scoring agent** (replaces the rule-based BFM agent in
+  every caller; the old code stays in `lean/scripted/rule_based/` only while the two are
+  compared, then goes). Per ship: the 21 flight actions' paths at 0.25 / 0.5 / 1 / 2 s from the
+  game's steady flight (`core.steady_flight`, new: `steady_rates` plus the angle) and the nose
+  spring per level in closed form; the 4 nearest known enemies' 21 paths each; 21 x 21 pair
+  tables (gun, threat, angles, energy, collisions) in one unit, the score second; his reply
+  collapsed by w = softmax(S_him / tau_him) and (1 / beta) log sum w e^(beta S_me); own-only
+  terms; flight = softmax(score / tau_me) plus stickiness for the pending action; fire by the
+  old worth rule. 16 sampled parameters and 12 fixed shapes, each with a meaning
+  (lean/scripted/parameters.py).
+- **Author additions:** no goal point with no enemy known (an energy preference and a seek toward
+  the freshest dropped last-seen position, both personality values); hidden enemies
+  dead-reckoned from the last sighting (last speed and nose rate up to 2 s, then straight).
+- **Decided by me:** no memory (the stickiness reads the pending action, which Obs carries, so
+  the teacher's label is a function of the observation); `fresh_memory` and the callers' memory
+  plumbing removed. The BC/RL teacher records the joint 42-way distribution (`TEACHER_WIDTH` =
+  42, float16 in the store: 84 bytes per ship-tick instead of 22). The pair stage is a Triton
+  kernel (`lean/scripted/kernels.py`) with the PyTorch path as its twin. `energy_weight` 0.25
+  from the card's `store_turn`. Personas stay per ship, drawn at each deal.
+- **Open, for the author (measured):** (1) cost: 16.6 ms per call at 2,048 envs of 4v4 against
+  the policy's 23.0 ms forward (72%, the estimate was about 13%); cold compile of the call
+  90.5 s. (2) 1v1 stalemate: self-play draws 74% without fields (rule-based 5.7%); no term
+  rewards closing in neutral geometry; parameters alone reach 40% at best. (3) Snap's predicted
+  path at low speed and its nose at 2 s (errors up to 19 m and 24 deg). (4) The power choice is
+  near-indifferent and flickers. 4v4 is strong: 1,404 wins, 9 draws, 68 losses against the
+  rule-based agent.

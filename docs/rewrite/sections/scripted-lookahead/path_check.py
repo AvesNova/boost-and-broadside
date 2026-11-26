@@ -1,7 +1,10 @@
-"""How well the look-ahead's candidate paths (lean.scripted.paths.predict) match the game: every
-ship of a few dealt states holds each of the 21 flight actions for 2 s in the real tick
-(lean.game.step, no fire), and the predicted position, nose and speed at each look-ahead point
-are compared with the flown ones.
+"""How well the look-ahead's candidate paths (lean.scripted.paths.predict) match the game: ships
+flying straight at 0.6, 1.0 and 1.5 x corner speed (half store, random places and headings in
+the default game, with and without fields) hold each of the 21 flight actions in the real tick
+(lean.game.step, no fire) for 2 s; the predicted position, flight-path heading and nose at each
+look-ahead point against the flown ones (the flown state interpolated linearly between the two
+ticks around the point). Prints median / 90th percentile errors by stick level (both sides and
+all powers pooled) and speed, as Markdown.
 
     PYTHONPATH=. uv run --no-sync python docs/rewrite/sections/scripted-lookahead/path_check.py
 """
@@ -13,81 +16,106 @@ import torch
 
 from lean import game
 from lean.contract import POWERS, STICKS
-from lean.scripted.paths import LOOK_AHEAD, predict
+from lean.game import card
+from lean.scripted.paths import LEVEL_OF_STICK, LOOK_AHEAD, predict
+
+SPEEDS = (0.6, 1.0, 1.5)
 
 
-def run(fields: int, envs: int, seed: int):
-    config = game.GameConfig(field_count=fields, training_spawn=True, fog=False)
+def wrapped(angle: torch.Tensor) -> torch.Tensor:
+    return torch.remainder(angle + math.pi, 2 * math.pi) - math.pi
+
+
+def run(fields: int, envs: int, seed: int) -> dict:
+    config = game.GameConfig(field_count=fields, fog=False)
     generator = torch.Generator().manual_seed(seed)
-    sizes = torch.full((envs, 2), 1, dtype=torch.long)
-    state = game.reset(config, envs, sizes, generator, "cpu")
-    # Some turning already: random nose rates and angles from a few ticks of random sticks.
-    for _ in range(10):
-        action = torch.stack(
-            [
-                torch.randint(0, STICKS, (envs, 2), generator=generator),
-                torch.randint(0, POWERS, (envs, 2), generator=generator),
-                torch.zeros(envs, 2, dtype=torch.long),
-            ],
-            -1,
+    state = game.reset(config, envs, torch.ones(envs, 2, dtype=torch.long), generator, "cpu")
+    corner = state.constants["corner_speed"]
+    errors = {}
+    for factor in SPEEDS:
+        zeros = torch.zeros_like(state.x)
+        start = state.replace(
+            speed=torch.full_like(state.x, factor * corner),
+            angle=zeros,
+            angle_cos=torch.ones_like(state.x),
+            angle_sin=zeros,
+            nose_rate=zeros,
         )
-        state, _ = game.step(
-            config, state, action, game.draw_noise(config, envs, 2, generator, "cpu")
-        )
-    paths = predict(state.constants, state.fields, state)
-    errors = {"position": [], "nose": [], "speed": []}
-    ticks = [round(t / config.tick_length) for t in LOOK_AHEAD]
-    for flight in range(STICKS * POWERS):
-        stick, power = divmod(flight, POWERS)
-        flown = state
-        action = torch.zeros(envs, 2, 3, dtype=torch.long)
-        action[..., 0], action[..., 1] = stick, power
-        # The pending action applies next tick: set it now so the hold starts at once.
-        flown = flown.replace(pending=action.clone())
-        for tick in range(1, ticks[-1] + 1):
-            flown, _ = game.step(
-                config, flown, action, game.draw_noise(config, envs, 2, generator, "cpu")
-            )
-            if tick in ticks:
-                k = ticks.index(tick)
-                alive = flown.alive
-                dx = paths.x[..., flight, k] - flown.x
-                dy = paths.y[..., flight, k] - flown.y
-                nose = torch.atan2(
-                    paths.nose_cos[..., flight, k] * flown.heading_sin
-                    - paths.nose_sin[..., flight, k] * flown.heading_cos,
-                    paths.nose_cos[..., flight, k] * flown.heading_cos
-                    + paths.nose_sin[..., flight, k] * flown.heading_sin,
+        if fields:  # the cached medium at the ships' places (the tick reads it)
+            index, gradient_x, gradient_y = game.core.medium(start.fields, start.x, start.y)
+            start = start.replace(log_index=index, gradient_x=gradient_x, gradient_y=gradient_y)
+        start = game.core.with_velocity(start)
+        paths = predict(start.constants, start.fields, start)
+        ticks = [t / config.tick_length for t in LOOK_AHEAD]
+        last = math.ceil(ticks[-1])
+        for flight in range(STICKS * POWERS):
+            stick, power = divmod(flight, POWERS)
+            action = torch.zeros(envs, 2, 3, dtype=torch.long)
+            action[..., 0], action[..., 1] = stick, power
+            flown = start.replace(pending=action.clone())
+            track = [flown]
+            for _ in range(last):
+                noise = game.draw_noise(config, envs, 2, generator, "cpu")
+                flown, _ = game.step(config, flown, action, noise)
+                track.append(flown)
+            for k, count in enumerate(ticks):
+                low = math.floor(count)
+                share = count - low
+                a, b = track[low], track[min(low + 1, last)]
+                x = (1 - share) * a.x + share * b.x
+                y = (1 - share) * a.y + share * b.y
+
+                def angle_at(cos, sin, a=a, b=b, share=share):
+                    first = torch.atan2(getattr(a, sin), getattr(a, cos))
+                    second = torch.atan2(getattr(b, sin), getattr(b, cos))
+                    return first + share * wrapped(second - first)
+
+                nose = angle_at("heading_cos", "heading_sin")
+                velocity = angle_at("velocity_x", "velocity_y")
+                alive = a.alive & b.alive
+                position = torch.hypot(paths.x[..., flight, k] - x, paths.y[..., flight, k] - y)
+                predicted_nose = torch.atan2(
+                    paths.nose_sin[..., flight, k], paths.nose_cos[..., flight, k]
                 )
-                errors["position"].append((k, flight, torch.sqrt(dx * dx + dy * dy)[alive]))
-                errors["nose"].append((k, flight, nose.abs()[alive]))
-                errors["speed"].append(
-                    (k, flight, (paths.speed[..., flight, k] - flown.speed)[alive])
+                predicted_path = torch.atan2(
+                    paths.path_sin[..., flight, k], paths.path_cos[..., flight, k]
                 )
-    print(f"fields {fields}: median / 90th percentile error by look-ahead point")
-    for k, time in enumerate(LOOK_AHEAD):
-        pos = torch.cat([e for kk, _, e in errors["position"] if kk == k])
-        nose = torch.cat([e for kk, _, e in errors["nose"] if kk == k])
-        speed = torch.cat([e for kk, _, e in errors["speed"] if kk == k]).abs()
-        print(
-            f"  t={time:4.2f} s position {pos.median():6.1f} / {pos.quantile(0.9):6.1f} m"
-            f"  nose {math.degrees(nose.median()):5.1f}"
-            f" / {math.degrees(nose.quantile(0.9)):5.1f} deg"
-            f"  speed {speed.median():5.1f} / {speed.quantile(0.9):5.1f} m/s"
-        )
-    print("  by stick level at t=1 s (position median m, nose median deg):")
-    for stick in range(STICKS):
-        pos = torch.cat([e for kk, f, e in errors["position"] if kk == 2 and f // POWERS == stick])
-        nose = torch.cat([e for kk, f, e in errors["nose"] if kk == 2 and f // POWERS == stick])
-        print(f"    stick {stick}: {pos.median():6.1f} m  {math.degrees(nose.median()):5.1f} deg")
+                rows = errors.setdefault((factor, LEVEL_OF_STICK[stick], k), ([], [], []))
+                rows[0].append(position[alive])
+                rows[1].append(wrapped(predicted_path - velocity).abs()[alive])
+                rows[2].append(wrapped(predicted_nose - nose).abs()[alive])
+    return errors
 
 
-if __name__ == "__main__":
+def cell(values: list[torch.Tensor], scale: float = 1.0) -> str:
+    joined = torch.cat(values) * scale
+    return f"{joined.median():.1f} / {joined.quantile(0.9):.1f}"
+
+
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--envs", type=int, default=64)
     parser.add_argument("--seed", type=int, default=0)
     arguments = parser.parse_args()
     torch.set_num_threads(4)
+    names = ("straight",) + card.LEVEL_NAMES
+    quantities = (("position m", 1.0), ("path deg", 180 / math.pi), ("nose deg", 180 / math.pi))
     with torch.no_grad():
         for fields in (0, 10):
-            run(fields, arguments.envs, arguments.seed)
+            errors = run(fields, arguments.envs, arguments.seed)
+            print(f"\n### {'With' if fields else 'Without'} fields\n")
+            heads = " | ".join(f"{t} s" for t in LOOK_AHEAD)
+            print(f"| speed / corner | level | error | {heads} |")
+            print("|---|---|---|" + "---|" * len(LOOK_AHEAD))
+            for factor in SPEEDS:
+                for level, name in enumerate(names):
+                    for index, (quantity, scale) in enumerate(quantities):
+                        cells = " | ".join(
+                            cell(errors[(factor, level, k)][index], scale)
+                            for k in range(len(LOOK_AHEAD))
+                        )
+                        print(f"| {factor} | {name} | {quantity} | {cells} |")
+
+
+if __name__ == "__main__":
+    main()
