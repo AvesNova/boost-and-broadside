@@ -440,3 +440,68 @@ after 5 warm; two runs (the second on a warm compile cache):
   lifts them. reduce-overhead needs static shapes (a recompile per environment count / team
   size), its outputs live in the graph's pool (must be cloned before the next call), and the
   uniforms are inputs, so no RNG inside the graph. Not tried on the whole act step.
+
+## R2 step 4: prediction fixes (2026-11-26)
+
+`path_check.py` (the 7 sticks predicted at each power against the real tick holding each of the
+21 flight actions for 2 s; 64 ships per speed, straight at 0.6 / 1.0 / 1.5 x corner, half
+store; median / 90th percentile), four variants: **A** round 1's prediction (the spring's
+target the steady angle at the speed now; points 0.25, 0.5, 1, 2 s), **B** A with the target
+recomputed per segment from the segment's start speed (`paths.RETARGET`), **C** B with a point
+at 1.5 s (segments at most 0.5 s), **D** C with a point at 0.75 s. (The per-segment spring
+restarts from the carried offset and rate; with a fixed target that is the same closed form.)
+Full tables: `data/lookahead-r2/path_{A,B,C,D}.md`. Excerpt (1 s and 2 s; without fields every
+level but straight, with fields straight and Snap):
+
+| fields | speed | level | error | A 1 s | A 2 s | B 1 s | B 2 s | C 1 s | C 2 s | D 1 s | D 2 s |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| none | 0.6 | Sustain | position m | 5.8 / 7.6 | 17.9 / 26.7 | 5.8 / 6.8 | 17.9 / 21.9 | 5.8 / 6.8 | 18.3 / 21.5 | 6.2 / 7.0 | 18.4 / 18.8 |
+| none | 0.6 | Sustain | nose deg | 3.4 / 3.5 | 4.2 / 4.4 | 3.4 / 3.4 | 4.2 / 4.2 | 3.4 / 3.4 | 4.2 / 4.2 | 3.4 / 3.4 | 4.2 / 4.2 |
+| none | 0.6 | Max | position m | 4.9 / 8.1 | 11.5 / 23.5 | 4.9 / 8.2 | 11.4 / 24.1 | 4.9 / 8.2 | 11.3 / 22.9 | 5.0 / 8.3 | 11.7 / 23.1 |
+| none | 0.6 | Max | nose deg | 2.4 / 4.2 | 3.2 / 7.7 | 2.4 / 4.2 | 3.2 / 7.5 | 2.4 / 4.2 | 3.3 / 6.7 | 2.6 / 4.3 | 3.5 / 6.7 |
+| none | 0.6 | Snap | position m | 18.6 / 18.6 | 18.4 / 29.6 | 18.6 / 18.6 | 19.6 / 29.6 | 18.6 / 18.6 | 20.0 / 28.7 | 18.3 / 18.3 | 19.7 / 28.3 |
+| none | 0.6 | Snap | nose deg | 6.3 / 6.3 | 29.9 / 29.9 | 6.3 / 6.3 | 2.1 / 4.9 | 6.3 / 6.3 | 11.2 / 11.2 | 6.9 / 6.9 | 16.7 / 16.7 |
+| none | 1.0 | Sustain | position m | 1.8 / 2.1 | 4.1 / 6.8 | 1.7 / 2.0 | 5.3 / 5.7 | 1.7 / 2.0 | 5.2 / 5.5 | 1.8 / 2.0 | 4.5 / 5.4 |
+| none | 1.0 | Sustain | nose deg | 0.5 / 0.8 | 1.7 / 3.6 | 0.6 / 0.7 | 1.5 / 3.3 | 0.6 / 0.7 | 0.4 / 1.9 | 0.3 / 0.5 | 0.2 / 1.6 |
+| none | 1.0 | Max | position m | 6.8 / 7.4 | 13.7 / 14.9 | 7.5 / 7.5 | 15.0 / 15.1 | 7.5 / 7.5 | 14.6 / 15.1 | 7.6 / 7.6 | 14.9 / 14.9 |
+| none | 1.0 | Max | nose deg | 2.9 / 2.9 | 1.5 / 1.5 | 2.2 / 2.2 | 0.0 / 0.2 | 2.2 / 2.2 | 1.5 / 1.5 | 2.1 / 2.1 | 2.0 / 2.0 |
+| none | 1.0 | Snap | position m | 4.2 / 4.2 | 15.9 / 15.9 | 5.2 / 5.2 | 11.2 / 11.2 | 5.2 / 5.2 | 14.8 / 14.8 | 5.4 / 5.4 | 14.5 / 14.5 |
+| none | 1.0 | Snap | nose deg | 5.7 / 5.7 | 24.1 / 24.1 | 4.3 / 4.3 | 14.0 / 14.0 | 4.3 / 4.3 | 6.7 / 6.7 | 1.1 / 1.1 | 7.2 / 7.2 |
+| none | 1.5 | Sustain | position m | 0.1 / 0.9 | 2.8 / 4.9 | 0.1 / 0.5 | 4.9 / 12.6 | 0.1 / 0.5 | 1.3 / 13.1 | 0.1 / 0.6 | 1.2 / 7.8 |
+| none | 1.5 | Sustain | nose deg | 0.0 / 0.9 | 0.0 / 3.4 | 0.0 / 1.4 | 0.0 / 4.8 | 0.0 / 1.4 | 0.0 / 3.2 | 0.0 / 0.8 | 0.0 / 2.0 |
+| none | 1.5 | Max | position m | 1.8 / 2.6 | 2.8 / 8.4 | 1.8 / 2.7 | 2.5 / 8.8 | 1.8 / 2.7 | 2.4 / 7.8 | 1.8 / 2.7 | 3.0 / 7.1 |
+| none | 1.5 | Max | nose deg | 0.4 / 0.8 | 1.2 / 1.6 | 0.2 / 0.7 | 0.9 / 1.4 | 0.2 / 0.7 | 0.3 / 0.7 | 0.0 / 0.5 | 0.2 / 0.6 |
+| none | 1.5 | Snap | position m | 4.7 / 5.8 | 7.6 / 15.4 | 4.6 / 5.9 | 6.9 / 15.7 | 4.6 / 5.9 | 6.6 / 14.1 | 4.5 / 5.9 | 7.3 / 13.4 |
+| none | 1.5 | Snap | nose deg | 0.2 / 1.4 | 0.9 / 2.1 | 0.3 / 1.3 | 0.6 / 1.9 | 0.3 / 1.3 | 0.1 / 1.2 | 0.5 / 1.1 | 0.2 / 1.1 |
+| fields | 0.6 | straight | position m | 0.1 / 7.1 | 0.3 / 28.6 | 0.1 / 7.1 | 0.3 / 28.6 | 0.1 / 7.1 | 0.3 / 20.4 | 0.0 / 6.1 | 0.2 / 19.7 |
+| fields | 0.6 | straight | nose deg | 0.0 / 2.5 | 0.0 / 6.0 | 0.0 / 2.5 | 0.0 / 6.0 | 0.0 / 2.5 | 0.0 / 2.4 | 0.0 / 1.3 | 0.0 / 3.8 |
+| fields | 0.6 | Snap | position m | 18.6 / 25.6 | 18.4 / 41.1 | 18.6 / 25.6 | 19.6 / 41.1 | 18.6 / 25.6 | 20.0 / 40.6 | 18.3 / 25.3 | 19.7 / 36.9 |
+| fields | 0.6 | Snap | nose deg | 6.3 / 9.5 | 15.5 / 29.9 | 6.3 / 8.4 | 4.9 / 15.9 | 6.3 / 8.4 | 11.2 / 27.5 | 6.9 / 14.1 | 16.7 / 20.5 |
+| fields | 1.0 | straight | position m | 0.1 / 17.8 | 0.4 / 64.6 | 0.1 / 17.8 | 0.4 / 64.6 | 0.1 / 17.8 | 0.4 / 53.4 | 0.1 / 14.0 | 0.3 / 41.8 |
+| fields | 1.0 | straight | nose deg | 0.0 / 5.0 | 0.0 / 9.3 | 0.0 / 5.0 | 0.0 / 9.3 | 0.0 / 5.0 | 0.0 / 7.4 | 0.0 / 2.1 | 0.0 / 4.9 |
+| fields | 1.0 | Snap | position m | 4.2 / 16.2 | 15.9 / 68.9 | 5.2 / 17.7 | 11.2 / 66.2 | 5.2 / 17.7 | 14.8 / 50.9 | 5.4 / 12.2 | 14.5 / 45.6 |
+| fields | 1.0 | Snap | nose deg | 5.7 / 12.3 | 19.1 / 26.9 | 4.3 / 10.3 | 14.0 / 21.8 | 4.3 / 10.3 | 6.7 / 14.9 | 1.1 / 5.9 | 7.2 / 12.1 |
+| fields | 1.5 | straight | position m | 0.1 / 41.9 | 4.9 / 123.3 | 0.1 / 41.9 | 4.9 / 123.3 | 0.1 / 41.9 | 2.2 / 81.6 | 0.1 / 24.3 | 2.2 / 63.7 |
+| fields | 1.5 | straight | nose deg | 0.0 / 6.2 | 0.0 / 13.4 | 0.0 / 6.2 | 0.0 / 13.4 | 0.0 / 6.2 | 0.0 / 10.9 | 0.0 / 2.3 | 0.0 / 9.9 |
+| fields | 1.5 | Snap | position m | 4.7 / 47.5 | 15.4 / 126.1 | 4.6 / 49.9 | 15.7 / 126.1 | 4.6 / 49.9 | 13.7 / 102.0 | 4.5 / 30.8 | 11.2 / 66.0 |
+| fields | 1.5 | Snap | nose deg | 0.5 / 10.2 | 2.1 / 21.6 | 0.6 / 10.3 | 1.9 / 24.3 | 0.6 / 10.3 | 1.2 / 17.9 | 0.7 / 6.2 | 1.1 / 15.0 |
+
+Cost (`speed.py`, compiled, 2,048 envs 4v4, fields, fog, 200 calls):
+
+| variant | ms per call | peak MiB |
+|---|---|---|
+| A (round 1's) | 4.72 | 80 |
+| B (retarget) | 4.98 | 103 |
+| C (retarget, 5 points) | 5.90 | 135 |
+| D (retarget, 6 points) | 7.17 | 163 |
+
+- Retarget (A -> B, +0.26 ms): Snap's nose at 2 s, 0.6 x corner 29.9 -> 2.1 deg, corner speed
+  24.1 -> 14.0 deg; Snap's position at 2 s at corner 15.9 -> 11.2 m. Snap at 0.6 x corner is
+  still 18.6 m and 6.3 deg off at 1 s in every variant: the first segment's error (the path
+  rate taken linear in the angle, which past the stall it is not), not the target. **Kept.**
+- Shorter steps with fields (B -> C, +0.92 ms, +18%): the 90th percentile position at 2 s,
+  straight at 1.5 x corner 123 -> 82 m, at corner 65 -> 53 m, Snap 126 -> 102 m; Snap's nose at
+  2 s at corner 14.0 -> 6.7 deg, but at 0.6 x corner 2.1 -> 11.2 deg (the extra segment boundary
+  re-linearises the path rate). D (+1.27 ms more): 82 -> 64 m, 53 -> 42 m. **C kept** (decided
+  myself: at most 0.5 s per segment, the same rule the horizon sweep uses); D's further 20 m at
+  the 90th percentile is not worth another 22%.

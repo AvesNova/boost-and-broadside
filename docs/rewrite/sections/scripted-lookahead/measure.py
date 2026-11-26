@@ -24,13 +24,14 @@ import torch
 
 from lean import game, scripted
 from lean.contract import JOINT, compile_dynamic, join_action
+from lean.scripted import paths
 from lean.scripted.rule_based import opponent as rule_based
 from lean.scripted.rule_based.parameters import ScriptedConfig as RuleBasedConfig
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=("selfplay", "versus", "old"), default="selfplay")
+    parser.add_argument("--mode", choices=("selfplay", "versus", "old", "duel"), default="selfplay")
     parser.add_argument("--size", type=int, default=4)
     parser.add_argument("--fields", type=int, default=10)
     parser.add_argument("--envs", type=int, default=256)
@@ -41,8 +42,19 @@ def main():
     parser.add_argument(
         "--set", nargs="*", default=[], help="look-ahead parameters name=value (diagnostics)"
     )
+    parser.add_argument("--look-ahead", default=None, help="points, e.g. 0.25,0.5,1,2")
+    parser.add_argument(
+        "--other-look-ahead", default=None, help="duel: the other look-ahead agent's points"
+    )
     parser.add_argument("--out", type=Path, required=True)
     arguments = parser.parse_args()
+
+    def points(text):
+        return tuple(float(t) for t in text.split(","))
+
+    main_points = points(arguments.look_ahead) if arguments.look_ahead else paths.LOOK_AHEAD
+    other_points = points(arguments.other_look_ahead) if arguments.other_look_ahead else None
+    paths.LOOK_AHEAD = main_points
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config = game.GameConfig(field_count=arguments.fields)
     envs, size = arguments.envs, arguments.size
@@ -61,8 +73,12 @@ def main():
         action, memory, _ = rule_based.decide(old_config, state, None, None, uniforms, memory)
         return action, memory
 
+    def other_call(state, uniforms):
+        return scripted.decide(new_config, state, None, None, uniforms)[0]
+
     if arguments.compile:
         new_call, old_call = compile_dynamic(new_call), compile_dynamic(old_call)
+        other_call = compile_dynamic(other_call)
     # Versus: which team the look-ahead agent flies, per environment (seats alternated).
     new_team = (torch.arange(envs, device=device) >= envs // 2).long()
     counts = torch.zeros(JOINT, dtype=torch.long, device=device)
@@ -89,7 +105,14 @@ def main():
                 )
                 entropy_sum += float(entropy[mine].sum())
                 entropy_count += int(mine.sum())
-            if arguments.mode != "selfplay":
+            if arguments.mode == "duel":  # the other look-ahead agent on the other team
+                paths.LOOK_AHEAD = other_points
+                other_uniforms = scripted.draw_uniforms(envs, slots, generator, device)
+                other_action = other_call(state, other_uniforms)
+                paths.LOOK_AHEAD = main_points
+                use_new = (state.team == new_team[:, None])[..., None]
+                action = torch.where(use_new, action, other_action)
+            elif arguments.mode != "selfplay":
                 old_uniforms = rule_based.draw_uniforms(envs, slots, generator, device)
                 old_action, old_memory = old_call(state, old_uniforms, old_memory)
                 if arguments.mode == "old":
@@ -99,7 +122,7 @@ def main():
                     action = torch.where(use_new, action, old_action)
             counts += torch.bincount(join_action(action)[living], minlength=JOINT)
             measured = living & (previous[..., 0] >= 0)
-            if arguments.mode == "versus":
+            if arguments.mode in ("versus", "duel"):
                 measured = measured & (state.team == new_team[:, None])
             power_switches += float((measured & (action[..., 1] != previous[..., 1])).sum())
             stick_switches += float((measured & (action[..., 0] != previous[..., 0])).sum())
@@ -137,6 +160,8 @@ def main():
                 summary = {
                     "mode": arguments.mode,
                     "set": changes,
+                    "look_ahead": main_points,
+                    "other_look_ahead": other_points,
                     "size": size,
                     "fields": arguments.fields,
                     "envs": envs,

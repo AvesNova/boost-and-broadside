@@ -149,7 +149,14 @@ def main():
     parser.add_argument("--ticks", type=int, default=1800)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--only", default=None)
+    parser.add_argument("--look-ahead", default=None, help="points, e.g. 0.25,0.5,1,2")
     arguments = parser.parse_args()
+    suffix = ""
+    if arguments.look_ahead:
+        from lean.scripted import paths
+
+        paths.LOOK_AHEAD = tuple(float(t) for t in arguments.look_ahead.split(","))
+        suffix = f"_{paths.LOOK_AHEAD[-1]:g}s"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     results = {}
     for name, (size, fields, envs) in SETUPS.items():
@@ -164,7 +171,7 @@ def main():
             flush=True,
         )
         arguments.out.mkdir(parents=True, exist_ok=True)
-        path = arguments.out / f"merge_turn_{arguments.agent}.json"
+        path = arguments.out / f"merge_turn_{arguments.agent}{suffix}.json"
         path.write_text(json.dumps(results, indent=1))
 
 
