@@ -56,6 +56,12 @@ class Paths:
     energy: Tensor  # the store
     log_index: Tensor  # ln n at the point (0 without fields)
     now: SimpleNamespace
+    # The own-only rates per point (lean.scripted.opponent.own_components), once attached.
+    boundary: Tensor | None = None
+    slow: Tensor | None = None
+    # Every field above stacked on a last axis (lean.scripted.opponent.PATH_FIELDS' order),
+    # once materialised: (E, N, C, P, fields).
+    stacked: Tensor | None = None
 
 
 def candidate_constants(constants) -> SimpleNamespace:

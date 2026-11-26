@@ -88,6 +88,11 @@ def _lay(value: Tensor | float, dims: int) -> Tensor | float:
     return value
 
 
+def _per_ship(value, state) -> Tensor:
+    """A constant as an (E, N) tensor."""
+    return torch.as_tensor(value, dtype=state.x.dtype, device=state.x.device).expand_as(state.x)
+
+
 def _exp(value: Tensor | float) -> Tensor | float:
     """e to a tensor or a number."""
     return torch.exp(value) if isinstance(value, Tensor) else math.exp(value)
@@ -101,11 +106,14 @@ def _at(value: Tensor | float, index: Tensor) -> Tensor | float:
     return value.gather(1, index.reshape(envs, slots * count)).view(envs, slots, count)
 
 
+# The path fields the pair stage reads per candidate and point (the kernel's order).
+PATH_FIELDS = kernels.FIELDS
+
+
 def _gather_paths(paths: Paths, index: Tensor) -> dict[str, Tensor]:
     """The candidate paths of slots `index` (E, N, K): each field (E, N, K, C, P)."""
     envs, slots, count = index.shape
-    names = ("x", "y", "path_cos", "path_sin", "nose_cos", "nose_sin", "speed", "world_speed")
-    names = names + ("energy", "log_index")
+    names = PATH_FIELDS
     stacked = torch.stack([getattr(paths, name) for name in names], -1)  # (E, N, C, P, Q)
     flat = stacked.flatten(2)
     picked = flat.gather(1, index.reshape(envs, slots * count, 1).expand(-1, -1, flat.shape[-1]))
@@ -115,8 +123,7 @@ def _gather_paths(paths: Paths, index: Tensor) -> dict[str, Tensor]:
 
 def _own(paths: Paths) -> dict[str, Tensor]:
     """A ship's own candidate paths laid as (E, N, 1, C, P)."""
-    names = ("x", "y", "path_cos", "path_sin", "nose_cos", "nose_sin", "speed", "world_speed")
-    names = names + ("energy", "log_index")
+    names = PATH_FIELDS
     return {name: getattr(paths, name)[:, :, None] for name in names}
 
 
@@ -127,26 +134,36 @@ def time_weights(horizon: Tensor | float, device) -> Tensor:
     return intervals * torch.exp(-times / _lay(horizon, 1))
 
 
-def own_terms(c, paths: dict[str, Tensor], preferred_speed, read) -> dict[str, Tensor]:
-    """Per point the own-only terms' rates (unweighted), each shaped like the paths' fields:
-    speed (|ln(speed / preferred)|), boundary (in the edge band, more flying outward; growing
-    past the edge), slow (ln n in half-octaves where the medium is slow). `c` are the ship's
-    constants laid like the paths."""
-    speed = paths["speed"]
-    distance = torch.sqrt(paths["x"] * paths["x"] + paths["y"] * paths["y"]).clamp_min(TINY)
-    over_corner = speed * c["inverse_corner_speed"]
-    turn_radius = c["sustained_radius"] * (over_corner * over_corner).clamp_min(1.0)
-    margin = read("boundary_margin", turn_radius.dim() - 2) * turn_radius
+def own_components(c, paths: Paths, margin) -> Paths:
+    """The paths with their own-only rates per point (unweighted) attached: boundary (in the
+    edge band, more flying outward; growing past the edge) and slow (ln n in half-octaves where
+    the medium is slow). The speed term reads the paths' speed. `c` the ships' constants
+    ((E, N) rows of the paths' slots); `margin` the boundary margin (turn radii), a number or
+    the slots' own rows (E, N)."""
+    distance = torch.sqrt(paths.x * paths.x + paths.y * paths.y).clamp_min(TINY)
+    over_corner = paths.speed * _lay(c["inverse_corner_speed"], 2)
+    turn_radius = _lay(c["sustained_radius"], 2) * (over_corner * over_corner).clamp_min(1.0)
+    margin = _lay(margin, 2) * turn_radius
     depth = (distance - (c["arena_radius"] - margin)) / margin
-    outward = (paths["x"] * paths["path_cos"] + paths["y"] * paths["path_sin"]) / distance
-    boundary = smootherstep(depth.clamp(0.0, 1.0)) * 0.5 * (1.0 + outward) + (
-        depth - 1.0
-    ).clamp_min(0.0)
-    return {
-        "speed": torch.log(speed.clamp_min(TINY) / preferred_speed).abs(),
-        "boundary": boundary,
-        "slow": paths["log_index"].clamp_min(0.0) / card.LN_SQRT2,
-    }
+    outward = (paths.x * paths.path_cos + paths.y * paths.path_sin) / distance
+    boundary = smootherstep(depth.clamp(0.0, 1.0)) * 0.5 * (1.0 + outward)
+    boundary = boundary + (depth - 1.0).clamp_min(0.0)
+    slow = paths.log_index.clamp_min(0.0) / card.LN_SQRT2
+    return dataclasses.replace(paths, boundary=boundary, slow=slow)
+
+
+def own_score(speed, boundary, slow, log_preferred, weights, point_weight) -> Tensor:
+    """The own-only score per candidate (the points summed): - speed weight x |ln(speed /
+    preferred)| - boundary weight x boundary - field weight x slow, each rate weighted by the
+    points' time weights. Fields (..., P); `weights` (speed, boundary, field) and
+    `log_preferred` laid to broadcast against them."""
+    speed_weight, boundary_weight, field_weight = weights
+    rate = (
+        speed_weight * (torch.log(speed.clamp_min(TINY)) - log_preferred).abs()
+        + boundary_weight * boundary
+        + field_weight * slow
+    )
+    return -(rate * point_weight).sum(-1)
 
 
 def _laid_constants(constants, index: Tensor | None, dims: int) -> dict:
@@ -486,31 +503,37 @@ def explain(config: ScriptedConfig, state, team: int | None, persona) -> Choice:
         """A parameter: a number, or the persona's (E, N) with `dims` trailing axes."""
         return _lay(value(config, persona, name), dims)
 
+    has_fields = state.fields.shape[-1] > 0
     present = state.exists & state.alive
     controlled = present if team is None else present & (state.team == team)
-    if enemies is state:
-        own_paths = seen_paths = predict(c, state.fields, state)
-    else:  # fog: hidden enemies carried forward from their last sighting
+    if enemies is not state:  # fog: hidden enemies carried forward from their last sighting
         enemies = dead_reckon(enemies, state.ticks_since_seen.to(state.x.dtype) * c["tick_length"])
-        own_paths, seen_paths = _predict_both(c, state.fields, state, enemies)
+    own_paths, seen_paths = _predict_views(c, state, enemies, read("boundary_margin"))
     enemy_slot, enemy_weight, _ = nearest_enemies(state, enemies, read("roam_cutoff"))
 
     horizon = time_weights(read("horizon"), device)
     if horizon.dim() == 1:
         horizon = horizon.expand(envs, slots, -1)
-    # His own-only terms (with my weights): his speed, boundary and slow medium.
-    his_paths = _gather_paths(seen_paths, enemy_slot)  # (E, N, K, C, P)
-    his_own_c = _laid_constants(enemies.constants, enemy_slot, 3)
-    his_preferred = read("preferred_speed", 3) * his_own_c["corner_speed"]
-    his_terms = own_terms(his_own_c, his_paths, his_preferred, read)
-    his_own = _own_score(his_terms, read, horizon[:, :, None, None, :])  # (E, N, K, C)
+    own_weights = tuple(read(name) for name in ("speed_weight", "boundary_weight", "field_weight"))
     now_x = _at(enemies.x, enemy_slot) - state.x[..., None]  # (E, N, K): him minus me now
     now_y = _at(enemies.y, enemy_slot) - state.y[..., None]
     if kernels.USE_KERNEL and device.type == "cuda":
-        collapsed = _pair_kernel(
-            c, own_paths, seen_paths, enemy_slot, now_x, now_y, his_own, horizon, read
+        collapsed, cover = _pair_kernel(
+            c, state.fields, own_paths, seen_paths, enemy_slot, now_x, now_y, horizon, read
         )
     else:  # the plain twin: the tables (E, N, ENEMIES, C, C), then the collapse
+        his_paths = _gather_paths(seen_paths, enemy_slot)  # (E, N, K, C, P)
+        # His own-only terms, with my weights and my preferred speed for his type.
+        his_corner = _at(_per_ship(enemies.constants["corner_speed"], state), enemy_slot)
+        log_preferred = torch.log(read("preferred_speed", 1) * his_corner)
+        his_own = own_score(
+            his_paths["speed"],
+            his_paths["boundary"],
+            his_paths["slow"],
+            _lay(log_preferred, 2),
+            tuple(_lay(weight, 3) for weight in own_weights),
+            horizon[:, :, None, None, :],
+        )  # (E, N, K, C)
         mine = {name: item[:, :, :, :, None] for name, item in _own(own_paths).items()}
         his = {name: item[:, :, :, None] for name, item in his_paths.items()}
         my_c = _laid_constants(c, None, 3)
@@ -525,15 +548,22 @@ def explain(config: ScriptedConfig, state, team: int | None, persona) -> Choice:
         s_me, s_him = pair_tables(mine, his, my_c, his_c, now_rel, weights, horizon, read)
         s_him = s_him + his_own[..., None, :]
         collapsed = collapse(s_me, s_him, read("reply_temperature"), read("caution"))
+        cover = covered(state.fields, own_paths, his_paths, horizon) if has_fields else None
     scores = (enemy_weight[..., None] * collapsed).sum(-2)
 
     # My own-only terms.
-    own_c = _laid_constants(c, None, 2)
-    own_fields = {name: getattr(own_paths, name) for name in _own(own_paths)}
-    preferred = _lay(read("preferred_speed"), 2) * own_c["corner_speed"]
-    terms = own_terms(own_c, own_fields, preferred, read)
     point_weight = horizon[:, :, None, :]  # (E, N, 1, P)
-    scores = scores + _own_score(terms, read, point_weight)
+    log_preferred = _lay(
+        torch.log(read("preferred_speed") * _per_ship(c["corner_speed"], state)), 2
+    )
+    scores = scores + own_score(
+        own_paths.speed,
+        own_paths.boundary,
+        own_paths.slow,
+        log_preferred,
+        tuple(_lay(weight, 2) for weight in own_weights),
+        point_weight,
+    )
     # No enemy known (author 2026-11-26): no goal point. A preference for energy (speed^2 / 2 +
     # store, in full stores) and a gentle seek toward the freshest dropped last-seen position.
     disengaged = _lay(1.0 - enemy_weight.sum(-1).clamp(0.0, 1.0), 1)
@@ -548,10 +578,9 @@ def explain(config: ScriptedConfig, state, team: int | None, persona) -> Choice:
     )
     # Cover: behind a field core from an enemy who has the angles on me now (the enemy flying
     # straight on), weighted like the enemy.
-    if state.fields.shape[-1] > 0:
-        scores = scores + _lay(read("field_weight"), 1) * _cover(
-            state, enemies, own_paths, seen_paths, enemy_slot, enemy_weight, point_weight, read
-        )
+    if has_fields:
+        pressure = cover_pressure(state, enemies, enemy_slot, enemy_weight, read)
+        scores = scores + _lay(read("field_weight"), 1) * (pressure[..., None] * cover).sum(-2)
     # Team-mates keep their pending action: keep clear of their paths.
     scores = scores - _lay(read("collision_weight"), 1) * _mate_contacts(state, own_paths, read)
     # Stickiness: the pending flight action (the action chosen on the last tick).
@@ -588,40 +617,52 @@ PREDICTED = (
 )
 
 
-def _predict_both(c, fields: Tensor, state, enemies) -> tuple[Paths, Paths]:
-    """The candidate paths of every ship as it is and as its enemies see it, in one pass over
-    the two laid side by side on the slot axis (one graph, not two)."""
+def _predict_views(c, state, enemies, margin) -> tuple[Paths, Paths]:
+    """The candidate paths of every ship as it is (own) and as its enemies see it (seen; the
+    same with fog off), with the own-only components attached, computed in one pass (the two
+    views side by side on the slot axis under fog) and materialised once: every field a view
+    of one stacked tensor (E, views x N, C, P, len(PATH_FIELDS)), so no consumer recomputes
+    the paths. `margin`: the boundary margin row (a number or (E, N))."""
     slots = state.x.shape[1]
-    both = SimpleNamespace(
-        **{name: torch.cat([getattr(state, name), getattr(enemies, name)], 1) for name in PREDICTED}
-    )
-    doubled = Constants(c.uniform, c.columns, torch.cat([c.table, c.table], -1))
-    paths = predict(doubled, fields, both)
+    if enemies is state:
+        ships, constants, views = state, c, 1
+    else:
+        ships = SimpleNamespace(
+            **{
+                name: torch.cat([getattr(state, name), getattr(enemies, name)], 1)
+                for name in PREDICTED
+            }
+        )
+        constants = Constants(c.uniform, c.columns, torch.cat([c.table, c.table], -1))
+        views = 2
+        if isinstance(margin, Tensor):
+            margin = torch.cat([margin, margin], 1)
+    paths = own_components(constants, predict(constants, state.fields, ships), margin)
+    stacked = torch.stack([getattr(paths, name) for name in PATH_FIELDS], -1)
 
-    def half(item, start):
-        return item.narrow(1, start, slots) if isinstance(item, Tensor) else item
+    def view(start: int) -> Paths:
+        part = stacked.narrow(1, start, slots)
+        fields_ = dict(zip(PATH_FIELDS, part.unbind(-1), strict=True))
+        now = SimpleNamespace(
+            **{
+                name: item.narrow(1, start, slots) if isinstance(item, Tensor) else item
+                for name, item in vars(paths.now).items()
+            }
+        )
+        return Paths(**fields_, now=now, stacked=part)
 
-    def split(start: int) -> Paths:
-        fields_ = {
-            field.name: half(getattr(paths, field.name), start)
-            for field in dataclasses.fields(Paths)
-            if field.name != "now"
-        }
-        now = SimpleNamespace(**{name: half(item, start) for name, item in vars(paths.now).items()})
-        return Paths(**fields_, now=now)
-
-    return split(0), split(slots)
+    own = view(0)
+    return own, (own if views == 1 else view(slots))
 
 
-def _pair_kernel(c, own_paths, seen_paths, enemy_slot, now_x, now_y, his_own, horizon, read):
+def _pair_kernel(c, fields_, own_paths, seen_paths, enemy_slot, now_x, now_y, horizon, read):
     """The collapsed pair scores (E, N, ENEMIES, C) from the fused kernel
     (lean.scripted.kernels.pair_scores), its inputs laid out as it reads them."""
     envs, slots, count = enemy_slot.shape
     ships = envs * slots
 
     def fields(paths: Paths) -> Tensor:  # (ships, C, P, F)
-        stacked = torch.stack([getattr(paths, name) for name in kernels.FIELDS], -1)
-        return stacked.reshape(ships, *stacked.shape[2:]).contiguous()
+        return paths.stacked.reshape(ships, *paths.stacked.shape[2:])
 
     def per_ship(item) -> Tensor:
         return torch.as_tensor(item, dtype=torch.float32, device=now_x.device).expand(envs, slots)
@@ -638,7 +679,7 @@ def _pair_kernel(c, own_paths, seen_paths, enemy_slot, now_x, now_y, his_own, ho
         -1,
     )
     rows = enemy_slot + slots * torch.arange(envs, device=now_x.device)[:, None, None]
-    scores = kernels.pair_scores(
+    scores, cover = kernels.pair_scores(
         fields(own_paths),
         fields(seen_paths),
         constants.reshape(ships, -1).contiguous(),
@@ -646,37 +687,16 @@ def _pair_kernel(c, own_paths, seen_paths, enemy_slot, now_x, now_y, his_own, ho
         times,
         rows.reshape(-1).to(torch.int32),
         torch.stack([now_x, now_y], -1).reshape(-1, 2).contiguous(),
-        his_own.reshape(ships * count, -1).contiguous(),
+        fields_.contiguous(),
         count,
+        slots,
     )
-    return scores.view(envs, slots, count, -1)
+    return scores.view(envs, slots, count, -1), cover.view(envs, slots, count, -1)
 
 
-def _own_score(terms: dict[str, Tensor], read, point_weight: Tensor) -> Tensor:
-    """The own-only terms' score per candidate (the last axis, the points, summed): - speed
-    weight x speed - boundary weight x boundary - field weight x slow, each rate weighted by the
-    points' time weights."""
-    rows = (
-        ("speed", "speed_weight"),
-        ("boundary", "boundary_weight"),
-        ("slow", "field_weight"),
-    )
-    dims = terms["speed"].dim() - 3  # the axes after (E, N) once the points are summed
-    total = 0.0
-    for name, weight in rows:
-        total = total + _lay(read(weight), dims) * (terms[name] * point_weight).sum(-1)
-    return -total
-
-
-def _cover(state, enemies, own_paths, seen_paths, enemy_slot, enemy_weight, point_weight, read):
-    """Per candidate (E, N, C), the time-weighted share of the look-ahead behind a field core
-    (`field_blocks`) from each enemy, flying straight on (candidate 0), times his angular
-    advantage on me now (0 to 1) and his closeness, summed over the enemies by weight."""
-    his = _gather_paths(seen_paths, enemy_slot)
-    straight_x = his["x"][..., 0, :][..., None, :]  # (E, N, K, 1, P)
-    straight_y = his["y"][..., 0, :][..., None, :]
-    my_x, my_y = own_paths.x[:, :, None], own_paths.y[:, :, None]  # (E, N, 1, C, P)
-    blocked = field_blocks(state.fields, my_x, my_y, straight_x, straight_y).float()
+def cover_pressure(state, enemies, enemy_slot, enemy_weight, read) -> Tensor:
+    """Per scored enemy (E, N, ENEMIES): what his cover is worth, his angular advantage on me
+    now (0 to 1) times his closeness and his weight."""
     rel_x = _at(enemies.x, enemy_slot) - state.x[..., None]
     rel_y = _at(enemies.y, enemy_slot) - state.y[..., None]
     distance = torch.sqrt(rel_x * rel_x + rel_y * rel_y + TINY)
@@ -688,8 +708,18 @@ def _cover(state, enemies, own_paths, seen_paths, enemy_slot, enemy_weight, poin
     advantage = (0.5 * (his_off - my_off)).clamp_min(0.0)
     reach = read("closeness_range") * state.constants["gun_range"]
     near = 1.0 / (1.0 + (distance / _lay(reach, 1)) ** 2)
-    pressure = enemy_weight * advantage * near  # (E, N, K)
-    return (pressure[..., None] * (blocked * point_weight[:, :, None]).sum(-1)).sum(-2)
+    return enemy_weight * advantage * near
+
+
+def covered(fields: Tensor, own_paths: Paths, his_paths: dict, horizon: Tensor) -> Tensor:
+    """Per scored enemy and my candidate (E, N, ENEMIES, C): the time-weighted share of the
+    look-ahead points behind a field core (`field_blocks`) from him flying straight on
+    (candidate 0). The plain twin of the kernel's cover."""
+    straight_x = his_paths["x"][..., 0, :][..., None, :]  # (E, N, K, 1, P)
+    straight_y = his_paths["y"][..., 0, :][..., None, :]
+    my_x, my_y = own_paths.x[:, :, None], own_paths.y[:, :, None]  # (E, N, 1, C, P)
+    blocked = field_blocks(fields, my_x, my_y, straight_x, straight_y).float()
+    return (blocked * horizon[:, :, None, None, :]).sum(-1)
 
 
 def _mate_contacts(state, own_paths: Paths, read) -> Tensor:
