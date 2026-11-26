@@ -162,3 +162,19 @@ default) change nothing measurable: 1v1 egg kills per minute 1.45 / 1.45 / 1.42,
 bullet 0.251 / 0.252 / 0.249; with 20 mrad 1.38 / 1.39 / 1.36 (egg_runs/lead0, lead1). The
 trigger's hit chance is near 1 inside 300 m for today's spread whatever the lead error; the
 misses come from the aim gate (below).
+
+## The aim gate (`fire_tolerance`)
+
+Why the hit chance per real bullet stays near 0.25 under the egg at every spread: the trigger
+fires half the time at an aim error of `fire_tolerance` (1.0) target sizes, and firing costs
+nothing, so it sprays. A tighter gate raises the hit chance and lowers the kill rate (fewer
+shots, more passes with no hit):
+
+| fire_tolerance | 1v1 egg kills/min | hit chance | shots/kill | 4v4 egg kills/min | hit chance | 1v1 off kills/min | 1v1 off hit chance |
+|---|---|---|---|---|---|---|---|
+| 1.0 (default) | 1.45 | 0.252 | 59 | 6.57 | 0.238 | 3.25 | 0.508 |
+| 0.5 | 1.25 | 0.333 | 45 | 5.84 | 0.320 | 2.97 | 0.812 |
+| 0.25 | 1.11 | 0.453 | 33 | 4.96 | 0.414 | 2.33 | 0.923 |
+
+(today's spread; the 20 mrad rows move the same way: egg_runs/tol05, tol025). With free
+shots, spraying wins kills; the aim gate is not the egg's limit.
