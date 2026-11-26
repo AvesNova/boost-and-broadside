@@ -88,17 +88,17 @@ STALL_ANGLE = 0.2617993877991494
 INDUCED_DRAG_FACTOR = 66.348
 NOSE_FREQUENCY_FLOOR = 0.4997135491028137
 SPEED_FLOOR = 1.454166427889188e-06
-# Past the stall (docs/rewrite/sections/post-stall/literature.md): the lift returns toward the
-# flat plate's, POST_STALL_LIFT_FRACTION of the wing's maximum at 45 deg (a flat plate's 1.2 over
-# the P-51D's C_Lmax 1.6), through a dip of width POST_STALL_DIP_WIDTH (radians) past the stall,
-# and is 0 at 90 deg; the drag reaches the card's post_stall_drag_ratio x the drag at the stall
-# at POST_STALL_DRAG_ANGLE.
+# Past the stall (docs/rewrite/sections/post-stall/literature.md): the lift falls smoothly and
+# monotonically to the flat plate's, POST_STALL_LIFT_FRACTION of the wing's maximum at 45 deg (a
+# flat plate's 1.2 over the P-51D's C_Lmax 1.6), and is 0 at 90 deg; the held vertical comes out
+# of the lift over POST_STALL_SHARE_WIDTH (radians) past the stall (core._path_lift); the drag
+# reaches the card's post_stall_drag_ratio x the drag at the stall at POST_STALL_DRAG_ANGLE.
 POST_STALL_LIFT_FRACTION = 0.75
-POST_STALL_DIP_WIDTH = 0.2
+POST_STALL_SHARE_WIDTH = 0.2
 POST_STALL_DRAG_ANGLE = math.radians(45.0)
-# Full stick's deep angle fades near stall speed (core._commanded_angle): wholly open from this
-# spare lift fraction 1 - (stall speed / speed)^4 (about 1.5 x stall speed) up, closed at 0.
-DEEP_STALL_SPARE_LIFT = 0.8
+# Full stick's deep angle fades near stall speed (core._commanded_angle): closed at stall speed,
+# wholly open from this multiple of it up, a smootherstep in speed between.
+DEEP_STALL_OPEN_SPEED = 1.8
 
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005

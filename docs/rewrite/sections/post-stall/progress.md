@@ -169,3 +169,42 @@ meets the maximum lift: it sets the store and the deep band) and best sustained 
 - tuning.stick_levels() still returns the card's fractions (tests only).
 - The flown checks fly from the spawn speed, so lowest speeds near stall (full 97.8 m/s)
   depend on the bleed search.
+
+## 2026-11-26, step 5: no cliffs in the full-stick line
+
+Author: the step-4 doghouse's full line had two near-jumps, near 97-104 m/s and 230-248 m/s.
+They were continuous but very steep: the commanded angle crossed the lift dip past the stall at
+the ends of two narrow schedules.
+
+**Changed:**
+
+- Lift past the stall, monotonic with no dip: from the maximum at the stall down to the flat
+  plate's 0.75 at 45 deg by a smootherstep in the angle (zero slope at both ends), then
+  0.75 C_max sin 2a (0 at 90 deg). Lift over the maximum: 20 deg 0.993, 25 0.952, 30 0.879,
+  35 0.805, 45 0.750, 60 0.650.
+- Deep band below corner: `deep_stall_band` 0.15 -> 0.35 (opens from corner down to
+  0.65 x corner).
+- Opening near stall speed: a smootherstep in speed from stall speed to
+  `card.DEEP_STALL_OPEN_SPEED` 1.8 x stall speed, replacing the spare-lift form. Over the same
+  grid it gave the gentler line: the spare-lift form at 0.8 gave a low-end slope of -3.07 deg/s
+  per m/s; the speed form at 1.5 / 1.8 / 2.2 / 2.6 gave 1.52 / 1.01 / 1.00 / 1.00. 1.8 keeps a
+  real deep stall at moderate speed; at 2.6 full held at 137.7 m/s, 36.2 deg/s, close to middle.
+- `card.POST_STALL_DIP_WIDTH` renamed `POST_STALL_SHARE_WIDTH` (it is now only the width over
+  which the held vertical comes out of the lift).
+
+**Steepest slope of the full line** (quasi-steady, 0.1 m/s grid, 95-470 m/s, deg/s per m/s):
+before coast -27.90 at 102.6 m/s, climb -28.17 at 102.6, dive +3.02 at 241.7; after coast +1.01,
+climb +1.01, dive +0.78. For comparison the middle line's steepest is +1.00. One gentle hump
+remains: full rises to 30.2 deg/s at 120 m/s, falls to 28.9 at 140 (steepest fall -0.59), then
+climbs to the corner.
+
+**Held points, quasi-steady = flown in World:** middle 148.4 m/s, 39.0 deg/s, AoA 11.4 deg
+(unchanged); full 122.5 m/s, 31.4 deg/s, AoA 23.3 deg (was 104.3 m/s, 5.1 deg/s, 28.9 deg).
+Full-line peak: 255.6 m/s, 67.2 deg/s (the top line's corner again).
+
+**Snaps** (full stick from straight; peak AoA, speed lost in 0.5 s; before -> after):
+0.6 x corner 50.8 deg, 16.4 m/s -> 48.2 deg, 16.2 m/s; 0.8 x 50.7, 42.2 -> 46.0, 25.7;
+0.95 x 47.0, 14.0 -> 21.8, 9.6. At 0.6 x corner the commanded angle falls from 45 to 19 deg as
+the ship slows (the opening closes toward stall speed), so the nose peaks and comes back.
+
+Chart: docs/rewrite/sections/post-stall/doghouse-p51d.png (game units, 2x).

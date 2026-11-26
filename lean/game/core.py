@@ -238,12 +238,10 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
 
 def _post_stall_constants(config: GameConfig, values: dict[str, Tensor]) -> dict[str, Tensor]:
     """The post-stall regime's constants (GameConfig.post_stall; `_commanded_angle`,
-    `_lift_coefficient`, `_rates`). Past the stall the lift is C sin(2 a) (C the flat plate's,
-    card.POST_STALL_LIFT_FRACTION of the maximum: its value at 45 deg) plus the gap at the stall
-    (maximum less the flat plate's, less the flat plate's slope there times the angle past it)
-    fading as a Gaussian of width card.POST_STALL_DIP_WIDTH: the maximum and zero slope at the
-    stall, a dip below the flat plate (the slope term), the flat plate from about twice the
-    width on. The post-stall drag coefficient: post_stall_drag x 2 u^2 / (1 + u^2), u the angle's
+    `_lift_coefficient`, `_rates`). Past the stall the lift falls from the maximum to the flat
+    plate's C (card.POST_STALL_LIFT_FRACTION of the maximum) at 45 deg by a smootherstep in the
+    angle (monotonic, zero slope at both ends, no dip), then is C sin(2 a) (0 at 90 deg). The
+    post-stall drag coefficient: post_stall_drag x 2 u^2 / (1 + u^2), u the angle's
     (cos stall - cos a) over (cos stall - cos 45 deg); post_stall_drag set so the drag
     coefficient at 45 deg (the flat plate's lift, separated) is post_stall_drag_ratio x the one
     at the stall (both without the drag rise and the held 1 g's induced drag)."""
@@ -267,13 +265,11 @@ def _post_stall_constants(config: GameConfig, values: dict[str, Tensor]) -> dict
         "post_stall": on,
         "deep_stall_angle": card_of("deep_stall_angle"),
         "inverse_corner_speed": torch.sqrt(lift / values["max_acceleration"]),
-        "inverse_stall_speed_squared": lift / card.GRAVITY,
+        "inverse_stall_speed": torch.sqrt(lift / card.GRAVITY),
         "inverse_deep_stall_band": 1.0 / card_of("deep_stall_band"),
         "flat_plate_lift": flat,
-        "stall_flat_plate_lift": flat * torch.sin(2.0 * stall),
-        "stall_flat_plate_slope": 2.0 * flat * torch.cos(2.0 * stall),
-        "inverse_dip_width": torch.full((count,), 1.0 / card.POST_STALL_DIP_WIDTH),
-        "inverse_dip_width_squared": torch.full((count,), 1.0 / card.POST_STALL_DIP_WIDTH**2),
+        "inverse_tail_span": 1.0 / (math.radians(45.0) - stall),
+        "inverse_share_width": torch.full((count,), 1.0 / card.POST_STALL_SHARE_WIDTH),
         "post_stall_drag": post_stall_drag * on,
         "stall_cos": stall_cos,
         "inverse_drag_cos_span": 1.0 / (stall_cos - math.cos(card.POST_STALL_DRAG_ANGLE)),
@@ -807,19 +803,26 @@ def _lift_and_slope(p, angle, slope: bool = True):
     below = p.lift * ratio * (2.0 - size)
     magnitude = angle.abs()
     past_stall = magnitude > p.stall
-    past = (magnitude - p.stall).clamp_min(0.0)
-    gap = p.lift - p.stall_flat_plate_lift - p.stall_flat_plate_slope * past
-    fade = torch.exp(-past * past * p.inverse_dip_width_squared)
+    beyond = magnitude > _FORTY_FIVE
+    toward = ((magnitude - p.stall) * p.inverse_tail_span).clamp(0.0, 1.0)
+    drop = p.lift - p.flat_plate_lift
     double = 2.0 * magnitude
-    tail = p.flat_plate_lift * torch.sin(double) + gap * fade
+    tail = torch.where(
+        beyond, p.flat_plate_lift * torch.sin(double), p.lift - drop * smootherstep(toward)
+    )
     lift = torch.where(past_stall, torch.sign(angle) * tail, below)
     if not slope:
         return lift, None
-    tail_slope = (
-        2.0 * p.flat_plate_lift * torch.cos(double)
-        - (p.stall_flat_plate_slope + 2.0 * past * p.inverse_dip_width_squared * gap) * fade
+    smooth_slope = 30.0 * (toward * (1.0 - toward)) ** 2  # d smootherstep / d t
+    tail_slope = torch.where(
+        beyond,
+        2.0 * p.flat_plate_lift * torch.cos(double),
+        -drop * smooth_slope * p.inverse_tail_span,
     )
     return lift, torch.where(past_stall, tail_slope, steepness * (2.0 - 2.0 * size))
+
+
+_FORTY_FIVE = math.pi / 4.0
 
 
 def _lift_coefficient(p, angle):
@@ -832,12 +835,12 @@ def _path_lift(p, lift, angle, vertical, speed_squared):
     (the held vertical is carried apart, as induced drag); past it (GameConfig.post_stall) the
     angle becomes the wing's whole and the held vertical comes out of its lift,
     sqrt((C v^2)^2 - share x vertical^2), the share a smootherstep over
-    card.POST_STALL_DIP_WIDTH past the stall (so a deep stall carries its 1 g); and never more
+    card.POST_STALL_SHARE_WIDTH past the stall (so a deep stall carries its 1 g); and never more
     than sqrt((C_max v^2)^2 - vertical^2), what the wing's maximum lift leaves after it."""
     total = lift * speed_squared
     if not _switched_on(p.post_stall):
         return total
-    share = smootherstep(((angle.abs() - p.stall) * p.inverse_dip_width).clamp(0.0, 1.0))
+    share = smootherstep(((angle.abs() - p.stall) * p.inverse_share_width).clamp(0.0, 1.0))
     held = vertical * vertical
     # Never more than the wing's maximum lift leaves after the held vertical (the deep angle's
     # opening below the stall would otherwise turn on lift the 1 g already uses).
@@ -852,17 +855,16 @@ def _commanded_angle(p, control, lateral, speed, inverse_lift):
     it opens toward the card's deep_stall_angle, a smootherstep from corner speed (where it is
     the lift's angle, so no jump) to deep_stall_band of it below (GameConfig.post_stall). Near
     stall speed the deep angle fades (author 2026-11-26: all the lift goes to not falling): by
-    a smootherstep of the spare lift fraction 1 - (stall speed / speed)^4 (the wing's lift
-    beyond 1 g, squared, over its whole, below corner) over card.DEEP_STALL_SPARE_LIFT, so at
-    stall speed and below full stick asks for the lift's angle alone."""
-    speed_squared = speed * speed
-    reach = (lateral.abs() / speed_squared * inverse_lift).clamp(0.0, 1.0)
+    a smootherstep in speed from stall speed (closed) to card.DEEP_STALL_OPEN_SPEED x it (open),
+    so at stall speed and below full stick asks for the lift's angle alone."""
+    reach = (lateral.abs() / (speed * speed) * inverse_lift).clamp(0.0, 1.0)
     angle = p.stall * (1.0 - torch.sqrt(1.0 - reach))
     if _switched_on(p.post_stall):
         below = ((1.0 - speed * p.inverse_corner_speed) * p.inverse_deep_stall_band).clamp(0.0, 1.0)
-        weight = 1.0 / (speed_squared * p.inverse_stall_speed_squared)  # 1 g over the wing's lift
-        spare = ((1.0 - weight * weight) * (1.0 / card.DEEP_STALL_SPARE_LIFT)).clamp(0.0, 1.0)
-        opening = smootherstep(below) * smootherstep(spare) * control.deep
+        above = (
+            (speed * p.inverse_stall_speed - 1.0) * (1.0 / (card.DEEP_STALL_OPEN_SPEED - 1.0))
+        ).clamp(0.0, 1.0)
+        opening = smootherstep(below) * smootherstep(above) * control.deep
         angle = angle + (p.deep_stall_angle - angle) * opening
     return control.stick_sign * angle
 
