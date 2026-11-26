@@ -15,10 +15,9 @@ import math
 import matplotlib
 
 matplotlib.use("Agg")
+import deflector_shapes_sketch as base
 import matplotlib.pyplot as plt
 import numpy as np
-
-import deflector_shapes_sketch as base
 
 base.SHAPES["circle 18"] = [(0.0, 18.0, 18.0, 0)]
 base.SHAPES["egg 40/18"] = [(0.0, 40.0, 18.0, +1), (0.0, 18.0, 18.0, -1)]
