@@ -208,3 +208,63 @@ Full-line peak: 255.6 m/s, 67.2 deg/s (the top line's corner again).
 the ship slows (the opening closes toward stall speed), so the nose peaks and comes back.
 
 Chart: docs/rewrite/sections/post-stall/doghouse-p51d.png (game units, 2x).
+
+## 2026-11-26, step 6: envelope on top, middle capped at 6 g, monotonic toward the stall
+
+**Causes of a better turn near the stall** (step 5, full stick):
+
+- The near-stall ramp closed the deep angle back toward the maximum lift: the turn rose from
+  14.3 deg/s at 109 m/s to 18.5 at 102.
+- The thrust's sideways part at a deep angle (thrust x sin(angle) / speed) went into the turn
+  whole: at 57.5 m/s, 45 deg, it alone gave about 17 deg/s (a short-lived version gave
+  9.9 deg/s there).
+- A softness floor in g, not in the held vertical, gave about 4 m/s^2 of lateral below stall.
+- The step-4 cap used the wing's maximum lift, not the envelope's soft minimum: full went
+  0.37 deg/s over the envelope at 0.85 x corner, 1.7 deg/s at 0.4 x corner (thrust).
+
+**Changed:**
+
+- No near-stall angle ramp: below the band full stick asks for the deep angle at every speed.
+  Closing it toward the stall always brings the angle back to the maximum lift, so the turn
+  rises; the "slow nose" variant was tried and dropped (with a weak spring the nose coasted to
+  78 deg as the ship slowed through stall speed).
+- `_path_lift`: the thrust's normal part turns the path in the same share as the lift (lateral
+  over C v^2), so with no lift to spare there is no turn. The whole turn is never more than the
+  envelope's at that speed (its lateral lift plus its thrust at its own angle). The square's
+  smooth floor scales with what is taken (0 in ordinary flight). The same share scales the
+  nose's kappa. `card.PATH_LIFT_SOFTNESS` 0.25.
+- Middle stick: the maximum-lift line against `middle_g_fraction` 0.75 of the g limit (card
+  slider, about 6 of 8 g), the same soft minimum, then that g level. card.MIDDLE_STICK = 1 (all
+  of its own line); derived `middle_stick_speed` = corner x sqrt(0.75) = 221.5 m/s.
+- Full stick: the envelope from `deep_stall_start` 0.85 x corner up (card slider); below, the
+  deep angle opens over `deep_stall_band` 0.30 (open from 0.55 x corner down).
+- Doghouse: the top boundary and the Ps shading are the envelope (any stick, maximum lift
+  against the g limit); the full (orange), middle (blue) and gradual lines are drawn inside it.
+
+**Checks** (quasi-steady, 0.1 m/s grid from 85 m/s up):
+
+- Envelope minus max(middle, full): never short by more than 0.018 deg/s (at 0.735 x corner),
+  never over.
+- Largest rise toward the stall: 0.0000 deg/s for gradual, middle, full and the envelope.
+  At stall speed: envelope = middle 7.65, gradual 2.55, full 1.77 deg/s. The envelope reaches
+  about 0 just below stall speed: 3.19 at 85 m/s, 1.19 at 80, 0.01 at 60. It is not 0 at stall
+  speed itself, because the 1 g held is a soft minimum against the budget there.
+- Steepest slope (deg/s per m/s): envelope 1.05, middle 1.05, gradual 0.35, full 1.69 (at 105 m/s,
+  where the deep angle's lift starts to carry 1 g: stall speed / sqrt(0.75) = 104.4 m/s).
+- Derived numbers: card unchanged; best sustained 167.69 m/s (was 167.72, from the smooth floor).
+
+**Held (flown 60 s in World from the spawn):** middle 148.4 m/s, 39.0 deg/s, AoA 11.4 deg; full
+57.5 m/s, 0.0 deg/s, AoA 45 deg, store 0.50 -> 0.002 (it sinks the whole store); gradual 317.4 m/s,
+18.8 deg/s after 60 s, still accelerating toward its quasi-steady 332.1 m/s, 17.9 deg/s.
+
+**Snaps** (full stick; peak AoA, speed lost in 0.5 s): 0.6 x corner 50.3 deg, 15.7 m/s; 0.8 x
+18.2 deg, 4.4 m/s (the band only starts at 0.85); 0.95 x 14.9 deg, 9.2 m/s (the envelope).
+
+**Nose, full stick from straight** (peak AoA rate, time to 30 deg): 1.0 x stall 98.4 deg/s, 0.43 s;
+1.2 x 116.6, 0.40; 1.5 x 142.0, 0.33; 2.0 x 108.2, 0.47 (2.0 x stall is 0.71 x corner, still in
+the band).
+
+**Open:** "the nose angle you can get shrinks near the stall" is not done. With the deep angle
+at every low speed the nose still goes to 45 deg at stall speed. Any shrink of the angle toward
+the maximum lift raises the turn again (above). Options: shrink the angle only below stall
+speed, or slow the nose's swing with a strong damping.

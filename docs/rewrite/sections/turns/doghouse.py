@@ -78,8 +78,10 @@ matplotlib.rcParams.update(
     }
 )
 # Line styles, shared by the lines and the legend's samples.
-FULL_STYLE = dict(color=INK, linewidth=2.2)
+ENVELOPE_STYLE = dict(color=INK, linewidth=2.6)
+FULL_STYLE = dict(color=SERIES[1], linewidth=1.6)
 STICK_STYLE = dict(color=INK, linewidth=1.0)
+MIDDLE_STYLE = dict(color=SERIES[0], linewidth=1.6)
 TRADE_STYLE = dict(color=INK_2, linewidth=1.1, linestyle="-.")
 PS_ZERO_STYLE = dict(color=INK, linewidth=1.8, linestyle=(0, (6, 3)))
 RADIUS_STYLE = dict(color=MUTED, linewidth=0.7, linestyle=":")
@@ -194,12 +196,14 @@ def draw_panel(
     }
     style(ax)
     full = lines["full"]
-    top = float(np.nanmax(full)) * 1.15 if top is None else top
+    # The aircraft's envelope (the most turn at each speed: the wing's maximum lift against the
+    # g limit, any stick) is the top boundary; the shading is its Ps, from the lowest speed a
+    # stick level is flown.
+    envelope_line = _from(rate[-1], game_v, min(lowest.values()))
+    top = float(np.nanmax(envelope_line)) * 1.15 if top is None else top
     rate_axis = np.linspace(0.0, top, 300)
     field = tuning.ps_over_rate(grid, rate_axis, rate=rate, ps=ps)
-    # Shade only up to the most turn a stick level flies at each speed (none where none flies).
-    reach_rate = np.nan_to_num(np.fmax.reduce(list(lines.values())), nan=-1.0)
-    field[rate_axis[:, None] > reach_rate[None, :]] = np.nan
+    field[:, game_v < min(lowest.values())] = np.nan
     shared = limit is not None  # a given range: fixed levels, so panels' colours match
     limit = float(np.nanpercentile(np.abs(field), 98)) if limit is None else limit
     norm = TwoSlopeNorm(vmin=-limit, vcenter=0.0, vmax=limit)
@@ -246,11 +250,12 @@ def draw_panel(
             ax.text(
                 guide_v[j], line[j], f"{load} g", color=MUTED, fontsize=8, ha="left", va="bottom"
             )
+    ax.plot(v, envelope_line, gid="envelope", **ENVELOPE_STYLE)
     ax.plot(v, full, gid="full", **FULL_STYLE)
     span = v[-1] - v[0]
     for name, key in (("middle stick", "middle"), ("gradual stick", "gradual")):
         level = lines[key]
-        ax.plot(v, level, gid=key, **STICK_STYLE)
+        ax.plot(v, level, gid=key, **(MIDDLE_STYLE if key == "middle" else STICK_STYLE))
         at = int(np.searchsorted(v, v[0] + 0.33 * span))
         ax.annotate(
             name,
@@ -364,8 +369,10 @@ def legend(figure, note: str, flown_shown: bool, length_unit: str = "m"):
         return Line2D([], [], linestyle="none", marker=marker, label=label, markersize=6, **style)
 
     handles = [
+        sample("envelope (maximum lift, g limit)", **ENVELOPE_STYLE),
         sample("full stick", **FULL_STYLE),
-        sample("middle and gradual stick", **STICK_STYLE),
+        sample("middle stick", **MIDDLE_STYLE),
+        sample("gradual stick", **STICK_STYLE),
         sample("full stick, diving and climbing", **TRADE_STYLE),
         sample("Ps = 0 (sustained, any stick)", **PS_ZERO_STYLE),
         sample(f"turn radius ({length_unit})", **RADIUS_STYLE),

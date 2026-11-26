@@ -38,7 +38,9 @@ FLIGHT_TERMS = (
     "thrust_softmin_exponent",
     "nose_damping",
     "deep_stall_angle",
+    "deep_stall_start",
     "deep_stall_band",
+    "middle_g_fraction",
     "post_stall_drag_ratio",
 )
 # The card's columns, in order. engine_power is thrust power per kg; exchange_acceleration the
@@ -96,9 +98,9 @@ SPEED_FLOOR = 1.454166427889188e-06
 POST_STALL_LIFT_FRACTION = 0.75
 POST_STALL_SHARE_WIDTH = 0.2
 POST_STALL_DRAG_ANGLE = math.radians(45.0)
-# Full stick's deep angle fades near stall speed (core._commanded_angle): closed at stall speed,
-# wholly open from this multiple of it up, a smootherstep in speed between.
-DEEP_STALL_OPEN_SPEED = 1.8
+# The lift's turn floors smoothly where the lift barely carries the held vertical
+# (core._path_lift): the softness, a fraction of the held vertical.
+PATH_LIFT_SOFTNESS = 0.25
 
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005
@@ -128,10 +130,12 @@ STICK_LEVELS = (0.0, -1.0, 1.0, -2.0, 2.0, -3.0, 3.0)
 QUIET_STICK_MAX = 2  # stick indices 0..2 (straight and the gradual turns) keep the shield quiet
 # The stick levels 1, 2, 3 (author 2026-11-24, the middle and full levels 2026-11-26;
 # core._setting). Gradual: GRADUAL_STICK of the envelope's top line (the wing's maximum lift
-# against the g limit, one soft minimum). Middle: the wing's maximum lift against MIDDLE_STICK of
-# the g limit (the same soft minimum): the top line below corner, a lower g level above. Full:
-# the g limit above corner; below it the stick asks for a deep angle of attack (the card's
-# deep_stall_angle), opening from the stall angle at corner speed over deep_stall_band of it.
+# against the g limit, one soft minimum). Middle (all of its own line, MIDDLE_STICK 1): the
+# wing's maximum lift against the card's middle_g_fraction of the g limit (the same soft
+# minimum): the envelope at low speed, then that g level. Full: the envelope from
+# deep_stall_start x corner speed up (the g limit above corner); below it the stick asks for
+# the card's deep_stall_angle, opening over deep_stall_band of corner speed, at every lower
+# speed.
 GRADUAL_STICK = 1.0 / 3.0
-MIDDLE_STICK = 2.0 / 3.0
+MIDDLE_STICK = 1.0
 FULL_STICK = 1.0

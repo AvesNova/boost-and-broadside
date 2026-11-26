@@ -37,18 +37,20 @@ def constants():
 def nose():
     p = constants()
     stall = float(p.stall_speed[0])
-    print("nose, full stick from straight: v/stall | peak AoA deg (t s) | peak AoA rate deg/s | AoA at 1 s")
-    for share in (1.0, 1.2, 1.5):
+    print("nose, full stick from straight: v/stall | peak AoA deg (t s) | peak AoA rate deg/s | time to 30 deg s | AoA at 1 s")
+    for share in (1.0, 1.2, 1.5, 2.0):
         w = world(share * stall)
         angles = []
-        for _ in range(30):
+        for _ in range(60):
             w.advance(FULL, COAST, False)
             angles.append(float(w.state.angle[0, 0]))
         rates = [(b - a) * 30.0 for a, b in zip([0.0] + angles, angles)]
-        peak = max(range(30), key=lambda i: angles[i])
+        peak = max(range(60), key=lambda i: angles[i])
+        reach = next((i for i, a in enumerate(angles) if a >= math.radians(30.0)), None)
+        to_30 = f"{(reach + 1) / 30:.2f}" if reach is not None else "never (2 s)"
         print(
             f"  {share:3.1f} | {math.degrees(angles[peak]):5.1f} ({(peak + 1) / 30:.2f}) | "
-            f"{math.degrees(max(rates)):6.1f} | {math.degrees(angles[-1]):5.1f}"
+            f"{math.degrees(max(rates)):6.1f} | {to_30} | {math.degrees(angles[29]):5.1f}"
         )
 
 
