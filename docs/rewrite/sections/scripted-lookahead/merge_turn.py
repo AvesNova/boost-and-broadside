@@ -28,7 +28,11 @@ from lean import game, scripted
 from lean.scripted.rule_based import opponent as rule_based
 from lean.scripted.rule_based.parameters import ScriptedConfig as RuleBasedConfig
 
-SETUPS = {"1v1-nofields": (1, False, 256), "1v1-fields": (1, True, 256), "4v4-fields": (4, True, 64)}
+SETUPS = {
+    "1v1-nofields": (1, False, 256),
+    "1v1-fields": (1, True, 256),
+    "4v4-fields": (4, True, 64),
+}
 WINDOW = 300  # ticks: 10 s
 FPS = 30
 
@@ -58,7 +62,9 @@ def simulate(agent: str, size: int, fields: bool, envs: int, ticks: int, device)
                 action = scripted.act(scripted.ScriptedConfig(), state, None, None, uniforms)
             else:
                 uniforms = rule_based.draw_uniforms(envs, slots, generator, device)
-                action, memory = rule_based.act(RuleBasedConfig(), state, None, None, uniforms, memory)
+                action, memory = rule_based.act(
+                    RuleBasedConfig(), state, None, None, uniforms, memory
+                )
             state, out = game.tick(config, state, action, generator)
             over = over | out.done
             if bool(over.all()):

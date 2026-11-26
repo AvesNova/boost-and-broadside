@@ -13,7 +13,6 @@ import torch
 
 from lean import game
 from lean.contract import POWERS, STICKS
-from lean.game import core
 from lean.scripted.paths import LOOK_AHEAD, predict
 
 
@@ -32,7 +31,9 @@ def run(fields: int, envs: int, seed: int):
             ],
             -1,
         )
-        state, _ = game.step(config, state, action, game.draw_noise(config, envs, 2, generator, "cpu"))
+        state, _ = game.step(
+            config, state, action, game.draw_noise(config, envs, 2, generator, "cpu")
+        )
     paths = predict(state.constants, state.fields, state)
     errors = {"position": [], "nose": [], "speed": []}
     ticks = [round(t / config.tick_length) for t in LOOK_AHEAD]
@@ -44,7 +45,9 @@ def run(fields: int, envs: int, seed: int):
         # The pending action applies next tick: set it now so the hold starts at once.
         flown = flown.replace(pending=action.clone())
         for tick in range(1, ticks[-1] + 1):
-            flown, _ = game.step(config, flown, action, game.draw_noise(config, envs, 2, generator, "cpu"))
+            flown, _ = game.step(
+                config, flown, action, game.draw_noise(config, envs, 2, generator, "cpu")
+            )
             if tick in ticks:
                 k = ticks.index(tick)
                 alive = flown.alive
@@ -58,7 +61,9 @@ def run(fields: int, envs: int, seed: int):
                 )
                 errors["position"].append((k, flight, torch.sqrt(dx * dx + dy * dy)[alive]))
                 errors["nose"].append((k, flight, nose.abs()[alive]))
-                errors["speed"].append((k, flight, (paths.speed[..., flight, k] - flown.speed)[alive]))
+                errors["speed"].append(
+                    (k, flight, (paths.speed[..., flight, k] - flown.speed)[alive])
+                )
     print(f"fields {fields}: median / 90th percentile error by look-ahead point")
     for k, time in enumerate(LOOK_AHEAD):
         pos = torch.cat([e for kk, _, e in errors["position"] if kk == k])
@@ -66,7 +71,8 @@ def run(fields: int, envs: int, seed: int):
         speed = torch.cat([e for kk, _, e in errors["speed"] if kk == k]).abs()
         print(
             f"  t={time:4.2f} s position {pos.median():6.1f} / {pos.quantile(0.9):6.1f} m"
-            f"  nose {math.degrees(nose.median()):5.1f} / {math.degrees(nose.quantile(0.9)):5.1f} deg"
+            f"  nose {math.degrees(nose.median()):5.1f}"
+            f" / {math.degrees(nose.quantile(0.9)):5.1f} deg"
             f"  speed {speed.median():5.1f} / {speed.quantile(0.9):5.1f} m/s"
         )
     print("  by stick level at t=1 s (position median m, nose median deg):")

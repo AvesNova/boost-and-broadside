@@ -91,12 +91,12 @@ observe(config, state, team) -> Obs
 ```python
 ScriptedConfig()                         # the yardstick's values; .replace(name=value)
 personas(config, envs, slots, generator, device, spread) -> dict | None   # None at spread 0
-fresh_memory(envs, slots, generator, device) -> dict[str, Tensor]   # carried by every caller
-draw_uniforms(envs, slots, generator, device) -> Tensor              # (E, N, 3), one per head
-act(config, state, team, persona, uniforms, memory) -> tuple[Tensor, dict]
-    # (E, N, 3) long, rows of other teams 0 (team None: both teams in one call), new memory
-decide(...)                              # act, plus the Marginals (the BC teacher's distribution)
-chaser_act(...)                          # the memoryless floor
+draw_uniforms(envs, slots, generator, device) -> Tensor              # (E, N, 2): flight, fire
+act(config, state, team, persona, uniforms) -> Tensor
+    # (E, N, 3) long, rows of other teams 0 (team None: both teams in one call); no memory
+decide(...) -> tuple[Tensor, Choice]     # act, plus the Choice (Choice.joint: the BC teacher)
+explain(config, state, team, persona) -> Choice
+chaser_act(state, team) -> Tensor        # the memoryless floor
 ```
 
 ## `lean/model`
@@ -128,8 +128,8 @@ Evaluator(Store(path), GameConfig())     # ensure / adaptive / report / elo (lea
 ```
 
 The reward levels are `lean.contract.LEVEL_NAMES`; hit classes 0 missed, 1 enemy, 2 team-mate. The
-BC teacher is `lean.scripted.decide`'s `Marginals` (stick, power, fire), the product of the three
-over the 42 joint actions.
+BC teacher is `lean.scripted.decide`'s `Choice.joint`, its distribution over the 42 joint actions
+(flight x fire), recorded as it is.
 
 ## Rules
 

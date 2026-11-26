@@ -46,7 +46,10 @@ PARAMETERS: dict[str, Parameter] = {
     "angles_weight": Parameter(0.3, "ratio", LOG, 0.4,
                                "angular advantage (+1 on his tail nose on, -1 he on mine) per "
                                "second, at closeness 1"),
-    "energy_weight": Parameter(1.0, "ratio", LOG, 0.4,
+    # A full store buys `store_turn` (about 2.1 rad on the P-51D) of turn beyond the sustained
+    # rate, about 0.75 of the angles term's unit: so a store is worth about 0.75 x the angles
+    # weight.
+    "energy_weight": Parameter(0.25, "ratio", LOG, 0.4,
                                "energy advantage (speed^2 / 2 + store) in full stores per "
                                "second, at closeness 1"),
     "speed_weight": Parameter(0.3, "ratio", LOG, 0.4,

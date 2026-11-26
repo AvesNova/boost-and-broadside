@@ -1,6 +1,6 @@
 """The style counters (lean.eval.style): hand-built turning fights classify as two-circle,
-one-circle or neither as the scripted agent's own assessment does; the other measures read
-the state; the runner's sums start afresh at each deal; the store keeps them per game."""
+one-circle or neither; the other measures read the state; the runner's sums start afresh at
+each deal; the store keeps them per game."""
 
 import sqlite3
 
@@ -11,9 +11,7 @@ from lean import game, scripted
 from lean.eval import Evaluator, Queue, ScriptedAgent, Store, play, style
 from lean.eval.store import STYLE_COLUMNS
 from lean.scripted import ScriptedConfig
-from lean.scripted.opponent import engage
 from lean.scripted.parameters import vector
-from lean.scripted.situation import assess
 from lean.scripted.tests.test_scripted import placed
 
 GAME = game.GameConfig(clock_ticks=20)  # short games
@@ -64,10 +62,6 @@ def test_turning_fight_classification(rates, turning, two_circle):
     for ship in (0, 1):
         assert float(rows[0, ship, COLUMN["turning"]]) == turning
         assert float(rows[0, ship, COLUMN["two_circle"]]) == two_circle
-    # The scripted agent's assessment of the same pair has the same flow sign.
-    flow = assess(state, engage(state, 0), ScriptedConfig().values["turning_floor"]).flow[0, 0]
-    if turning:
-        assert (float(flow) > 0.0) == bool(two_circle)
 
 
 def test_the_other_measures_read_the_state():
@@ -161,7 +155,7 @@ def test_the_store_keeps_styles_per_game(tmp_path):
     evaluator = Evaluator(store, GAME, device="cpu", envs=8, segment=8)
     yardstick, other = (
         ScriptedAgent.of(),
-        ScriptedAgent.of(ScriptedConfig().replace(fight_speed=1.3)),
+        ScriptedAgent.of(ScriptedConfig().replace(preferred_speed=1.1)),
     )
     evaluator.ensure([(yardstick, other, (2, 2), 10)])
     rows = store.connection.execute(

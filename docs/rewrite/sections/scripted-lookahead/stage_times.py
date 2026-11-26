@@ -29,6 +29,7 @@ def main():
             noise = game.draw_noise(config, envs, slots, generator, device)
             state, _ = game.step(config, state, action, noise)
         uniforms = scripted.draw_uniforms(envs, slots, generator, device)
+
         def timed(label, function):
             compiled = compile_dynamic(function)
             compiled()
@@ -49,6 +50,7 @@ def main():
         opponent._mate_contacts = lambda *a, **k: 0.0
         timed("without mates", lambda: scripted.decide(agent, state, None, None, uniforms))
         opponent._mate_contacts = mates
+
 
 if __name__ == "__main__":
     main()

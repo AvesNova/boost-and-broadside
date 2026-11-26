@@ -10,8 +10,9 @@ speed and store, games ended); "versus" (look-ahead on team 0 in the first half 
 environments and team 1 in the second, the rule-based agent on the other team: wins, draws,
 losses by the look-ahead's side); "old" (the rule-based agent on both teams, for the kills and
 usage numbers). Fog on, the default game otherwise (`--fields` fields). Finished games are
-re-dealt. Every `--report` ticks it writes the totals so far to --out (JSON) and prints them
-with the ETA as a clock time. `--compile` compiles the agent's call.
+re-dealt. `--set name=value ...` changes look-ahead rows (diagnostics). Every `--report`
+ticks it writes the totals so far to --out (JSON) and prints them with the ETA as a clock
+time. `--compile` compiles the agent's call.
 """
 
 import argparse
@@ -22,8 +23,7 @@ from pathlib import Path
 import torch
 
 from lean import game, scripted
-from lean.contract import JOINT, join_action
-from lean.contract import compile_dynamic
+from lean.contract import JOINT, compile_dynamic, join_action
 from lean.scripted.rule_based import opponent as rule_based
 from lean.scripted.rule_based.parameters import ScriptedConfig as RuleBasedConfig
 
@@ -38,6 +38,9 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--report", type=int, default=600)
     parser.add_argument("--compile", action="store_true")
+    parser.add_argument(
+        "--set", nargs="*", default=[], help="look-ahead parameters name=value (diagnostics)"
+    )
     parser.add_argument("--out", type=Path, required=True)
     arguments = parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -47,7 +50,8 @@ def main():
     sizes = torch.full((envs, 2), size, dtype=torch.long, device=device)
     state = game.reset(config, envs, sizes, generator, device)
     slots = state.x.shape[1]
-    new_config, old_config = scripted.ScriptedConfig(), RuleBasedConfig()
+    changes = {item.split("=")[0]: float(item.split("=")[1]) for item in arguments.set}
+    new_config, old_config = scripted.ScriptedConfig().replace(**changes), RuleBasedConfig()
     old_memory = rule_based.fresh_memory(envs, slots, generator, device)
 
     def new_call(state, uniforms):
@@ -75,8 +79,10 @@ def main():
                 action, choice = new_call(state, uniforms)
                 joint = choice.joint
                 entropy = -(joint * joint.clamp_min(1e-30).log()).sum(-1)
-                mine = living if arguments.mode == "selfplay" else living & (
-                    state.team == new_team[:, None]
+                mine = (
+                    living
+                    if arguments.mode == "selfplay"
+                    else living & (state.team == new_team[:, None])
                 )
                 entropy_sum += float(entropy[mine].sum())
                 entropy_count += int(mine.sum())
@@ -117,6 +123,7 @@ def main():
                 total = counts.sum().clamp_min(1)
                 summary = {
                     "mode": arguments.mode,
+                    "set": changes,
                     "size": size,
                     "fields": arguments.fields,
                     "envs": envs,

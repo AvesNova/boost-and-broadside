@@ -39,7 +39,7 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   minibatches, micro-batches of 64 views with gradient accumulation, targets once per update.
 - **BC stage** (`update(..., cloning=True)`): the student plays its own games (half self-play,
   half against the scripted agent). Loss: cross-entropy of the 42-way policy against the scripted
-  teacher's full distribution (`Marginals` product) at 1.0, plus value, next-state and hit; no
+  teacher's full distribution (its joint over the 42 actions, `lean.scripted.Choice.joint`) at 1.0, plus value, next-state and hit; no
   surrogate, no entropy. 96 updates (100.7M ticks, v2's 100M-tick stage). The hand-off is the
   stage's EMA, with a fresh optimiser, warm-up, league and averages.
 - **Teacher term in RL:** the same cross-entropy at 0.5 x 0.95^k at RL update k; off for good once
