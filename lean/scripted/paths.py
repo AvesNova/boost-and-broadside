@@ -59,8 +59,8 @@ class Paths:
     # The own-only rates per point (lean.scripted.opponent.own_components), once attached.
     boundary: Tensor | None = None
     slow: Tensor | None = None
-    # Every field above stacked on a last axis (lean.scripted.opponent.PATH_FIELDS' order),
-    # once materialised: (E, N, C, P, fields).
+    # Every field above stacked on a first axis (lean.scripted.opponent.PATH_FIELDS' order),
+    # once materialised: (P, E, views x N, fields, C), the kernel's layout (both views).
     stacked: Tensor | None = None
 
 
@@ -243,8 +243,10 @@ def predict(constants, fields: Tensor, ships) -> Paths:
         path, speed_now, energy_now = new_path, new_speed, new_energy
         started = time
     names = ("x", "y", "path", "nose", "speed", "world_speed", "energy", "log_index")
+    # Laid out point-major, (P, E, N, C) (the kernel's layout; contiguous writes), and read as
+    # (E, N, C, P) views.
     stacked = {
-        name: torch.stack([point[i] for point in points], -1).flatten(2, 3)
+        name: torch.stack([point[i] for point in points], 0).flatten(-2).permute(1, 2, 3, 0)
         for i, name in enumerate(names)
     }
     now = SimpleNamespace(

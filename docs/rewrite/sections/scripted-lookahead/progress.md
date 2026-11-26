@@ -305,3 +305,53 @@ The three 4v4 replays were all Blue wins; a seat check (self-play 4v4 with field
 holds the scripted call) 5,396 traced operations against the baseline's 1,821 (+196%); total
 10,075 (baseline 6,503); cold 289.4 s against the 260 s budget (baseline 231.7 s); `act`'s
 backend 82.1 s; 4 graphs, no recompiles, no graph breaks. The baseline was not updated.
+
+# Round 2 (author decisions 2026-11-26)
+
+Laptop RTX 4070, performance profile, nothing else on the GPU. 2,048 environments of 4v4,
+fields and fog, after 30 scripted ticks, unless stated.
+
+## R2 step 1: profile (2026-11-26)
+
+`profile_kernels.py` (torch.profiler over 20 compiled calls: wall, GPU kernel time, kernels per
+call, each kernel's share), `bench_kernel.py` (the pair kernel alone on captured real inputs,
+`triton.testing.do_bench`, registers and spills from the compiled kernel). Nsight Compute is
+installed but the driver restricts counters to admin (`RmProfilingAdminOnly: 1`, no sudo), so
+occupancy, memory traffic and the transcendental share are **inferred**, not counted.
+
+Measured, round-1 tree:
+
+| stage | wall per call | GPU kernel time | kernels per call |
+|---|---|---|---|
+| paths (both views, compiled alone) | 7.66 ms | 7.61 ms | 62 |
+| whole call | 16.76 ms | 16.66 ms | 71 |
+| pair kernel alone (fields 10 / 0) | 9.82 / 7.26 ms | | 1 |
+
+- Launch overhead is not it: wall = GPU time within 1%, 62-71 kernels per call.
+- The pair kernel: 168 registers, 4 spills. The cover loop is 2.56 ms of its 9.82 (26%): it ran
+  per chunk of 4 of my candidates on a 32-lane warp (7 of 8 lanes idle), 6 times per point.
+  Inferred: at 168 registers x 32 threads a SM holds 12 one-warp programs (25% of 48 warps);
+  the 21 x 21 table is padded to 24 x 32 lanes (57% useful).
+- The paths: the 7.7 ms is inductor's layout, not arithmetic. The stacked tensor had the point
+  and the field axes innermost ((E, N, C, P, 12)); inductor wrote it with cat kernels whose
+  lanes interleave the 4 points (each warp runs every point's masked branch) and stores at a
+  stride of 12 floats. Example: one kernel that only takes cos and sin of 2.75 M angles took
+  0.82 ms (inferred about 200 MB of sector traffic at the laptop's ~256 GB/s, for 22 MB of
+  useful writes). The useful output is 132 MB (12 fields x 2.75 M), a floor of about 0.5 ms.
+  The per-ship work is small; the paths are per ship, but every quantity is per candidate and
+  point (32,768 view-ships x 21 x 4) and the medium is evaluated with 10 fields at each point.
+
+Fixed (cheap, obvious):
+
+1. The cover on all candidates at once (one pass per point on the 32 lanes, before the tile
+   loop): kernel 9.82 -> 7.29 ms, cover 2.56 -> 0.40 ms, registers 168 -> 128, no spills.
+2. Paths laid out (P, E, views x N, fields, C) (every write a run of 21 floats; the kernel's
+   field offsets compile-time multiples of C): kernel 7.29 -> 6.50 ms. A field-major layout
+   (fields, P, E, views x N, C) was tried first: 8.09 ms, 255 registers (runtime field
+   strides), dropped.
+3. Tried and dropped: approximate division (`tl.math.fdiv`, ieee off) for the three per-element
+   divisions: 7.29 -> 7.24 ms (noise).
+
+After: **whole call 12.96 ms** wall (12.79 GPU, 74 kernels; was 16.76), the pair kernel 6.10 ms
+inside it. The paths are still about 6.5 ms inside the call: step 3 (7 sticks at the current
+power) cuts their size by 3 and the table by 9, so they were not tuned further at 21 candidates.

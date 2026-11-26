@@ -27,7 +27,7 @@ CONSTANTS = (
     "inverse_collision_speed",
     "corner_speed",
 )
-# The path fields per candidate and point, in this order (the last axis of `mine`).
+# The path fields per candidate and point, in this order (axis -2 of `paths`).
 FIELDS = (
     "x",
     "y",
@@ -124,18 +124,20 @@ def _bullet(world, path_x, path_y, nose_x, nose_y, muzzle):
 
 @triton.jit
 def _pairs(
-    mine,
-    seen,
+    paths,
     constants,
     parameters,
     times,
-    his_row,
+    his_ship,
     now,
     fields,
     out,
     cover,
     ENEMIES,
     SLOTS,
+    VIEW_SLOTS,
+    SEEN_OFFSET,
+    ROWS,
     FIELDS_COUNT,
     C: tl.constexpr,
     P: tl.constexpr,
@@ -147,7 +149,10 @@ def _pairs(
 ):
     pair = tl.program_id(0)
     me = pair // ENEMIES
-    him = tl.load(his_row + pair)
+    him = tl.load(his_ship + pair)
+    # The path rows: (environment, view x slot), the enemies' view SEEN_OFFSET slots on.
+    me_row = (me // SLOTS) * VIEW_SLOTS + me % SLOTS
+    him_row = (him // SLOTS) * VIEW_SLOTS + SEEN_OFFSET + him % SLOTS
     b = tl.arange(0, BLOCK_B)
     b_ok = b < C
     my_radius = tl.load(constants + me * Q + 0)
@@ -203,15 +208,60 @@ def _pairs(
     his_own = tl.zeros((BLOCK_B,), tl.float32)
     for k in tl.static_range(P):
         weight = tl.load(parameters + me * W + 15 + k)
-        his_base = seen + ((him * C + b) * P + k) * F
-        h_speed = tl.load(his_base + 6, mask=b_ok, other=1.0)
-        h_boundary = tl.load(his_base + 10, mask=b_ok, other=0.0)
-        h_slow = tl.load(his_base + 11, mask=b_ok, other=0.0)
+        his_base = paths + (k * ROWS + him_row) * F * C + b
+        h_speed = tl.load(his_base + 6 * C, mask=b_ok, other=1.0)
+        h_boundary = tl.load(his_base + 10 * C, mask=b_ok, other=0.0)
+        h_slow = tl.load(his_base + 11 * C, mask=b_ok, other=0.0)
         his_own -= weight * (
             speed_weight * tl.abs(tl.log(tl.maximum(h_speed, 1e-6)) - his_log_preferred)
             + boundary_weight * h_boundary
             + field_weight * h_slow
         )
+    # Cover, per my candidate (on the b lanes, all at once): my point behind a field core from
+    # his, flying straight on (candidate 0).
+    covered = tl.zeros((BLOCK_B,), tl.float32)
+    environment = me // SLOTS
+    for k in tl.static_range(P):
+        cover_weight = tl.load(parameters + me * W + 15 + k)
+        cover_base = paths + (k * ROWS + me_row) * F * C + b
+        cover_x = tl.load(cover_base + 0 * C, mask=b_ok, other=0.0)
+        cover_y = tl.load(cover_base + 1 * C, mask=b_ok, other=0.0)
+        straight_x = tl.load(paths + (k * ROWS + him_row) * F * C)
+        straight_y = tl.load(paths + (k * ROWS + him_row) * F * C + C)
+        hidden = tl.zeros((BLOCK_B,), tl.int1)
+        for field in range(0, FIELDS_COUNT):
+            field_row = fields + environment * 5 * FIELDS_COUNT + field
+            centre_x = tl.load(field_row)
+            centre_y = tl.load(field_row + FIELDS_COUNT)
+            radius = tl.load(field_row + 2 * FIELDS_COUNT)
+            half_band = 0.5 * tl.load(field_row + 3 * FIELDS_COUNT)
+            core = tl.maximum(radius - half_band, 0.0)
+            core_squared = core * core
+            outer = radius + half_band
+            c_offset_x = cover_x - centre_x
+            c_offset_y = cover_y - centre_y
+            s_offset_x = straight_x - centre_x
+            s_offset_y = straight_y - centre_y
+            a_squared = c_offset_x * c_offset_x + c_offset_y * c_offset_y
+            b_squared = s_offset_x * s_offset_x + s_offset_y * s_offset_y
+            core_a = a_squared < core_squared
+            core_b = b_squared < core_squared
+            both_in_field = (a_squared < outer * outer) & (b_squared < outer * outer)
+            ends = (core_a ^ core_b) & ~both_in_field
+            sight_x = cover_x - straight_x
+            sight_y = cover_y - straight_y
+            sight_along = -(s_offset_x * sight_x + s_offset_y * sight_y)
+            sight_across = s_offset_x * sight_y - s_offset_y * sight_x
+            sight_length = sight_x * sight_x + sight_y * sight_y
+            passes = (
+                ~(core_a | core_b)
+                & (sight_across * sight_across < core_squared * sight_length)
+                & (sight_along > 0.0)
+                & (sight_along < sight_length)
+            )
+            hidden = hidden | ends | passes
+        covered += cover_weight * hidden.to(tl.float32)
+    tl.store(cover + pair * C + b, covered, mask=b_ok)
     small = tl.abs(caution) < 1e-3
     beta = tl.where(small, 1.0, caution)
     inverse_beta = 1.0 / beta
@@ -219,7 +269,6 @@ def _pairs(
     for chunk in range(0, tl.cdiv(C, BLOCK_A)):
         a = chunk * BLOCK_A + tl.arange(0, BLOCK_A)
         a_ok = a < C
-        covered = tl.zeros((BLOCK_A,), tl.float32)
         previous_x = now_x + tl.zeros((BLOCK_A, BLOCK_B), tl.float32)
         previous_y = now_y + tl.zeros((BLOCK_A, BLOCK_B), tl.float32)
         s_me = tl.zeros((BLOCK_A, BLOCK_B), tl.float32)
@@ -231,65 +280,28 @@ def _pairs(
             discount = tl.load(parameters + me * W + 15 + P + k)
             inverse_duration = 1.0 / (time - started)
             blur_time = blur * time
-            my_base = mine + ((me * C + a) * P + k) * F
-            his_base = seen + ((him * C + b) * P + k) * F
-            mx = tl.load(my_base + 0, mask=a_ok, other=0.0)
-            my = tl.load(my_base + 1, mask=a_ok, other=0.0)
-            m_path_x = tl.load(my_base + 2, mask=a_ok, other=1.0)
-            m_path_y = tl.load(my_base + 3, mask=a_ok, other=0.0)
-            m_nose_x = tl.load(my_base + 4, mask=a_ok, other=1.0)
-            m_nose_y = tl.load(my_base + 5, mask=a_ok, other=0.0)
-            m_speed = tl.load(my_base + 6, mask=a_ok, other=1.0)
-            m_world = tl.load(my_base + 7, mask=a_ok, other=1.0)
-            m_energy = tl.load(my_base + 8, mask=a_ok, other=0.0)
-            m_index = tl.exp(tl.load(my_base + 9, mask=a_ok, other=0.0))
-            hx = tl.load(his_base + 0, mask=b_ok, other=0.0)
-            hy = tl.load(his_base + 1, mask=b_ok, other=0.0)
-            h_path_x = tl.load(his_base + 2, mask=b_ok, other=1.0)
-            h_path_y = tl.load(his_base + 3, mask=b_ok, other=0.0)
-            h_nose_x = tl.load(his_base + 4, mask=b_ok, other=1.0)
-            h_nose_y = tl.load(his_base + 5, mask=b_ok, other=0.0)
-            h_speed = tl.load(his_base + 6, mask=b_ok, other=1.0)
-            h_world = tl.load(his_base + 7, mask=b_ok, other=1.0)
-            h_energy = tl.load(his_base + 8, mask=b_ok, other=0.0)
-            h_index = tl.exp(tl.load(his_base + 9, mask=b_ok, other=0.0))
-            # Cover: my point behind a field core from his, flying straight on (candidate 0).
-            straight_x = tl.load(seen + ((him * C) * P + k) * F + 0)
-            straight_y = tl.load(seen + ((him * C) * P + k) * F + 1)
-            blocked = tl.zeros((BLOCK_A,), tl.int1)
-            environment = me // SLOTS
-            for field in range(0, FIELDS_COUNT):
-                row = fields + environment * 5 * FIELDS_COUNT + field
-                centre_x = tl.load(row)
-                centre_y = tl.load(row + FIELDS_COUNT)
-                radius = tl.load(row + 2 * FIELDS_COUNT)
-                half_band = 0.5 * tl.load(row + 3 * FIELDS_COUNT)
-                core = tl.maximum(radius - half_band, 0.0)
-                core_squared = core * core
-                outer = radius + half_band
-                a_offset_x = mx - centre_x
-                a_offset_y = my - centre_y
-                b_offset_x = straight_x - centre_x
-                b_offset_y = straight_y - centre_y
-                a_squared = a_offset_x * a_offset_x + a_offset_y * a_offset_y
-                b_squared = b_offset_x * b_offset_x + b_offset_y * b_offset_y
-                core_a = a_squared < core_squared
-                core_b = b_squared < core_squared
-                both_in_field = (a_squared < outer * outer) & (b_squared < outer * outer)
-                ends = (core_a ^ core_b) & ~both_in_field
-                sight_x = mx - straight_x
-                sight_y = my - straight_y
-                sight_along = -(b_offset_x * sight_x + b_offset_y * sight_y)
-                sight_across = b_offset_x * sight_y - b_offset_y * sight_x
-                sight_length = sight_x * sight_x + sight_y * sight_y
-                passes = (
-                    ~(core_a | core_b)
-                    & (sight_across * sight_across < core_squared * sight_length)
-                    & (sight_along > 0.0)
-                    & (sight_along < sight_length)
-                )
-                blocked = blocked | ends | passes
-            covered += weight * blocked.to(tl.float32)
+            my_base = paths + (k * ROWS + me_row) * F * C + a
+            his_base = paths + (k * ROWS + him_row) * F * C + b
+            mx = tl.load(my_base + 0 * C, mask=a_ok, other=0.0)
+            my = tl.load(my_base + 1 * C, mask=a_ok, other=0.0)
+            m_path_x = tl.load(my_base + 2 * C, mask=a_ok, other=1.0)
+            m_path_y = tl.load(my_base + 3 * C, mask=a_ok, other=0.0)
+            m_nose_x = tl.load(my_base + 4 * C, mask=a_ok, other=1.0)
+            m_nose_y = tl.load(my_base + 5 * C, mask=a_ok, other=0.0)
+            m_speed = tl.load(my_base + 6 * C, mask=a_ok, other=1.0)
+            m_world = tl.load(my_base + 7 * C, mask=a_ok, other=1.0)
+            m_energy = tl.load(my_base + 8 * C, mask=a_ok, other=0.0)
+            m_index = tl.exp(tl.load(my_base + 9 * C, mask=a_ok, other=0.0))
+            hx = tl.load(his_base + 0 * C, mask=b_ok, other=0.0)
+            hy = tl.load(his_base + 1 * C, mask=b_ok, other=0.0)
+            h_path_x = tl.load(his_base + 2 * C, mask=b_ok, other=1.0)
+            h_path_y = tl.load(his_base + 3 * C, mask=b_ok, other=0.0)
+            h_nose_x = tl.load(his_base + 4 * C, mask=b_ok, other=1.0)
+            h_nose_y = tl.load(his_base + 5 * C, mask=b_ok, other=0.0)
+            h_speed = tl.load(his_base + 6 * C, mask=b_ok, other=1.0)
+            h_world = tl.load(his_base + 7 * C, mask=b_ok, other=1.0)
+            h_energy = tl.load(his_base + 8 * C, mask=b_ok, other=0.0)
+            h_index = tl.exp(tl.load(his_base + 9 * C, mask=b_ok, other=0.0))
             mbx, mby = _bullet(m_world, m_path_x, m_path_y, m_nose_x, m_nose_y, my_muzzle)
             hbx, hby = _bullet(h_world, h_path_x, h_path_y, h_nose_x, h_nose_y, his_muzzle)
             rel_x = hx[None, :] - mx[:, None]
@@ -393,47 +405,50 @@ def _pairs(
         spread = (peak + tl.log(tl.sum(tl.exp(exponent - peak[:, None]), 1))) * inverse_beta
         spread = tl.where(small, 0.5 * caution * variance, spread)
         tl.store(out + pair * C + a, mean + spread, mask=a_ok)
-        tl.store(cover + pair * C + a, covered, mask=a_ok)
 
 
 @torch.library.triton_op("scripted::pair_scores", mutates_args=())
 def pair_scores(
-    mine: torch.Tensor,
-    seen: torch.Tensor,
+    paths: torch.Tensor,
     constants: torch.Tensor,
     parameters: torch.Tensor,
     times: torch.Tensor,
-    his_row: torch.Tensor,
+    his_ship: torch.Tensor,
     now: torch.Tensor,
     fields: torch.Tensor,
     enemies: int,
     slots: int,
+    views: int,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """The collapsed pair scores and the cover, (pairs, C) float32 each. mine, seen: (ships, C,
-    P, F) the own and the enemies' (as seen) paths, fields in FIELDS' order; constants (ships,
-    Q) in CONSTANTS' order; parameters (ships, W): PARAMETERS' order, then the P time weights,
-    then the P discounts; times (P,) seconds; his_row (pairs,) int32 the enemy's ship row
-    (pairs = ships x enemies, pair p belongs to ship p // enemies; ships = environments x
-    slots); now (pairs, 2) him minus me now; fields (E, 5, F) the environments' fields. The
-    cover: per my candidate the time-weighted share of the points behind a field core from
-    him flying straight on (`opponent._cover`'s blocked part)."""
-    ships, candidates, points, width = mine.shape
-    pairs = his_row.shape[0]
-    out = torch.empty(pairs, candidates, dtype=torch.float32, device=mine.device)
-    cover = torch.empty(pairs, candidates, dtype=torch.float32, device=mine.device)
+    """The collapsed pair scores and the cover, (pairs, C) float32 each. paths: (P, E, views x
+    slots, FIELDS, C) contiguous, every ship's candidate paths in FIELDS' order, the own view's
+    slots first and the enemies' view (as seen) after them when views is 2 (one view: both
+    are the same); constants (ships, Q) in CONSTANTS' order; parameters (ships, W): PARAMETERS'
+    order, then the P time weights, then the P discounts; times (P,) seconds; his_ship (pairs,)
+    int32 the enemy's ship index (environment x slots + slot; pairs = ships x enemies, pair p
+    belongs to ship p // enemies; ships = environments x slots); now (pairs, 2) him minus me
+    now; fields (E, 5, F) the environments' fields. The cover: per my candidate the
+    time-weighted share of the points behind a field core from him flying straight on
+    (`opponent.covered`)."""
+    points, envs, view_slots, width, candidates = paths.shape
+    pairs = his_ship.shape[0]
+    out = torch.empty(pairs, candidates, dtype=torch.float32, device=paths.device)
+    cover = torch.empty(pairs, candidates, dtype=torch.float32, device=paths.device)
     torch.library.wrap_triton(_pairs)[(pairs,)](
-        mine,
-        seen,
+        paths,
         constants,
         parameters,
         times,
-        his_row,
+        his_ship,
         now,
         fields,
         out,
         cover,
         enemies,
         slots,
+        view_slots,
+        (views - 1) * slots,
+        envs * view_slots,
         fields.shape[-1],
         C=candidates,
         P=points,

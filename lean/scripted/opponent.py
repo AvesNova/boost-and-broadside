@@ -621,8 +621,8 @@ def _predict_views(c, state, enemies, margin) -> tuple[Paths, Paths]:
     """The candidate paths of every ship as it is (own) and as its enemies see it (seen; the
     same with fog off), with the own-only components attached, computed in one pass (the two
     views side by side on the slot axis under fog) and materialised once: every field a view
-    of one stacked tensor (E, views x N, C, P, len(PATH_FIELDS)), so no consumer recomputes
-    the paths. `margin`: the boundary margin row (a number or (E, N))."""
+    of one stacked tensor (P, E, views x N, len(PATH_FIELDS), C), so every write is a run of
+    C (the kernel's layout), and no consumer recomputes the paths. `margin`: the boundary margin row (a number or (E, N))."""
     slots = state.x.shape[1]
     if enemies is state:
         ships, constants, views = state, c, 1
@@ -638,18 +638,19 @@ def _predict_views(c, state, enemies, margin) -> tuple[Paths, Paths]:
         if isinstance(margin, Tensor):
             margin = torch.cat([margin, margin], 1)
     paths = own_components(constants, predict(constants, state.fields, ships), margin)
-    stacked = torch.stack([getattr(paths, name) for name in PATH_FIELDS], -1)
+    # Materialised once, (P, E, views x N, PATH_FIELDS, C): every write a run of C.
+    stacked = torch.stack([getattr(paths, name).permute(3, 0, 1, 2) for name in PATH_FIELDS], -2)
 
     def view(start: int) -> Paths:
-        part = stacked.narrow(1, start, slots)
-        fields_ = dict(zip(PATH_FIELDS, part.unbind(-1), strict=True))
+        part = stacked.narrow(2, start, slots).permute(3, 1, 2, 4, 0)  # (fields, E, N, C, P)
+        fields_ = dict(zip(PATH_FIELDS, part.unbind(0), strict=True))
         now = SimpleNamespace(
             **{
                 name: item.narrow(1, start, slots) if isinstance(item, Tensor) else item
                 for name, item in vars(paths.now).items()
             }
         )
-        return Paths(**fields_, now=now, stacked=part)
+        return Paths(**fields_, now=now, stacked=stacked)
 
     own = view(0)
     return own, (own if views == 1 else view(slots))
@@ -660,9 +661,7 @@ def _pair_kernel(c, fields_, own_paths, seen_paths, enemy_slot, now_x, now_y, ho
     (lean.scripted.kernels.pair_scores), its inputs laid out as it reads them."""
     envs, slots, count = enemy_slot.shape
     ships = envs * slots
-
-    def fields(paths: Paths) -> Tensor:  # (ships, C, P, F)
-        return paths.stacked.reshape(ships, *paths.stacked.shape[2:])
+    views = 1 if seen_paths is own_paths else 2
 
     def per_ship(item) -> Tensor:
         return torch.as_tensor(item, dtype=torch.float32, device=now_x.device).expand(envs, slots)
@@ -678,18 +677,18 @@ def _pair_kernel(c, fields_, own_paths, seen_paths, enemy_slot, now_x, now_y, ho
         ],
         -1,
     )
-    rows = enemy_slot + slots * torch.arange(envs, device=now_x.device)[:, None, None]
+    his_ship = enemy_slot + slots * torch.arange(envs, device=now_x.device)[:, None, None]
     scores, cover = kernels.pair_scores(
-        fields(own_paths),
-        fields(seen_paths),
+        own_paths.stacked,
         constants.reshape(ships, -1).contiguous(),
         parameters.reshape(ships, -1).contiguous(),
         times,
-        rows.reshape(-1).to(torch.int32),
+        his_ship.reshape(-1).to(torch.int32),
         torch.stack([now_x, now_y], -1).reshape(-1, 2).contiguous(),
         fields_.contiguous(),
         count,
         slots,
+        views,
     )
     return scores.view(envs, slots, count, -1), cover.view(envs, slots, count, -1)
 
