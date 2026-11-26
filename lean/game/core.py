@@ -687,11 +687,6 @@ def filled(
     return torch.full(shape, value, dtype=dtype, device=device)
 
 
-@built_once
-def _eye(dtype: torch.dtype, device: torch.device) -> Tensor:
-    return torch.eye(2, dtype=dtype, device=device)
-
-
 # --------------------------------------------------------------------------- numerics
 
 
@@ -1026,17 +1021,31 @@ def _holding_angle(p, speed, vertical):
 
 
 def _matrix_exponential(a11, a12, a21, a22, duration):
-    """exp(duration * A) for 2x2 A given by its entries (E, N): a degree-4 series, squared once."""
-    b = torch.stack([torch.stack([a11, a12], -1), torch.stack([a21, a22], -1)], -2) * (
-        duration / 2.0
+    """exp(duration * A) for 2x2 A given by its entries (E, N): a degree-4 series, squared once.
+    The 2x2 products are written out entry by entry: elementwise, so the compiled tick fuses
+    them (as batched matrix products they were four small cuBLAS calls, about 40% of the GPU
+    tick; 2026-11-27)."""
+    half = duration / 2.0
+    b = (a11 * half, a12 * half, a21 * half, a22 * half)
+
+    def times_b(h, scale):  # I + (B H) * scale
+        return (
+            1.0 + (b[0] * h[0] + b[1] * h[2]) * scale,
+            (b[0] * h[1] + b[1] * h[3]) * scale,
+            (b[2] * h[0] + b[3] * h[2]) * scale,
+            1.0 + (b[2] * h[1] + b[3] * h[3]) * scale,
+        )
+
+    h = (1.0 + b[0] / 4.0, b[1] / 4.0, b[2] / 4.0, 1.0 + b[3] / 4.0)
+    h = times_b(h, 1.0 / 3.0)
+    h = times_b(h, 1.0 / 2.0)
+    h = times_b(h, 1.0)
+    return (
+        h[0] * h[0] + h[1] * h[2],
+        h[0] * h[1] + h[1] * h[3],
+        h[2] * h[0] + h[3] * h[2],
+        h[2] * h[1] + h[3] * h[3],
     )
-    eye = _eye(b.dtype, b.device)
-    h = eye + b / 4.0
-    h = eye + (b @ h) / 3.0
-    h = eye + (b @ h) / 2.0
-    h = eye + b @ h
-    h = h @ h
-    return h[..., 0, 0], h[..., 0, 1], h[..., 1, 0], h[..., 1, 1]
 
 
 def _nose_frame(s):
