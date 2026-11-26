@@ -27,8 +27,15 @@ RIGHT = [i for i, level in enumerate(card.STICK_LEVELS) if level < 0]
 
 @functools.cache
 def card_values() -> dict:
-    """The default game's ship card (its speeds, radii and ranges; core.ship_card)."""
-    return core.ship_card(core.GameConfig()).uniform
+    """The default game's ship card (its speeds, radii and ranges; core.ship_card): the numbers
+    equal for every type and the first type's single rows (the hit model is always rows)."""
+    ship_card = core.ship_card(core.GameConfig())
+    rows = {
+        name: float(ship_card[name].flatten()[0])
+        for name, (_, width) in ship_card.columns.items()
+        if width == 1
+    }
+    return {**ship_card.uniform, **rows}
 
 
 def flight_of(stick: int, power: int) -> int:

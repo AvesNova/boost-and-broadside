@@ -919,3 +919,59 @@ lean/scripted/NOTES.md.
   1,002 / 914 / 745 (1v1 fog off, 4v4, 4v4 fields); kills per env-minute 1.86 / 10.12 / 8.74;
   stick TV 0.13-0.14 per tick, by side 0.08-0.09, by steady rate 4-5% of the span.
 
+Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`, unmerged; overnight 2026-11-27)
+- **Mechanism** (`core.deflection`, `core.hit_fraction`, `core._deflect`; lean/game/NOTES.md
+  "Deflector"): a field around every ship, the same at any shield. A bullet passing a ship at b
+  is treated as passing at b + D: contact when b + D < hit radius, damage graze(b + D; core, hit
+  radius) x the nose cone weighted by `nose_cone`. A bullet that touches nothing is pushed and
+  bent once per pass, on the tick holding its closest approach (0 <= tau < 1), when inside hit
+  radius + D: pushed D_eff = min(D, R + D - b) to the side it was passing (smooth sign, eps
+  0.1 m), turned away by atan(D_eff / 48 m), speed kept. Ghosts run the same code. A second ship
+  later in the same tick sees the unbent path.
+- **Presets** (`card.DEFLECTOR_PRESETS`, `GameConfig.deflector`, default "frontal"): "off" (D 0,
+  nose cone; skips the code), "symmetric" (D 3 m everywhere, nose cone kept), "frontal" (D 12 m =
+  the hit radius in the front 30 deg, fading to 3 m by 45 deg, nose cone dropped: frontal
+  bullets glance off). Default frontal: equal to symmetric on every measured play number, one
+  mechanism instead of the nose cone's special damage rule, and the glance is visible.
+- **Runtime hit model** (`core.HIT_MODEL`, `core.RUNTIME_CONSTANTS`, `core.with_hit_model`):
+  hit and core radius, hit damage, spread, the deflector's numbers and the nose cone's are rows
+  of the per-slot constants table, never floats baked into the compiled graph; changed between
+  calls with no recompile (test under `torch.compile(fullgraph=True)`, error_on_recompile).
+  Workbench `python -m lean.tool.hitbench` (about 2 s for three presets); sandbox sliders.
+- **The scripted agent's fire-worth** reads `core.hit_fraction` (one call: hit model changes
+  reach it without edits).
+- **Measured** (rule-based scripted agent both sides, CPU, 4 seeds x 128 games x 60 s; god mode
+  1v1 fog off no fields; kills with GameConfig()): damaging hits per minute per game off 50.9 /
+  symmetric 38.4 / frontal 37.4; hits per pass 12.2 / 9.2 / 9.0; passes with no hit 0.30 / 0.30
+  / 0.31; share of hits in control 0.32 for all; frontal (within 30 deg) contacts 205 / 158 / 0,
+  damaging frontal hits 0 for all; kills per minute 1v1 0.80 / 0.61 / 0.62, 4v4 4.68 / 4.01 /
+  3.94. Workbench at 300 m: effective hit radius off the nose 8.5 m (off) and 5.5 m (both
+  deflector presets). The side D (3 m) is what costs hits; open question 4.
+- **Cost** (4070 laptop, E 4096, 4v4, compiled step): off 0.97 ms, frontal 1.21 ms (+0.24 ms,
+  +24%) after two cuts (from +66%). Compile check (cold, laptop 4070, performance):
+  `advance` traced operations core 2,856 (baseline), branch off 2,998 (+22 the runtime rows, +120
+  the elementwise matrix exponential), frontal 3,219 (+221 the deflector): the tripwire FAILS for
+  frontal (+13% over the baseline; off is within it); 4 graphs, no recompiles, no graph breaks;
+  cold 237.0 s off, 237.4 s frontal (baseline 231.7 s). Baseline not updated.
+- **Found on the way** (own commit f583eb0c): the flight's 2x2 matrix exponential as batched
+  matrix products was four cuBLAS calls, 43% of the step's CUDA time; written out elementwise
+  the step is 1.76 -> 1.07 ms (deflector off).
+- Questions for the author: docs/rewrite/questions.md on the branch. Notes and numbers:
+  docs/rewrite/sections/bullet-deflector/progress.md.
+
+## Author decisions 2026-11-27 (~05:40, relayed on branch deflector-lookahead)
+
+1. The flight's 2x2 matrix exponential written out entry by entry (f583eb0c) is kept. Decided.
+2. Compile budget: provisionally raised, to be revisited. Compile checks over the old limit are
+   reported (scripted act; the egg's advance operations and cold compile), not a blocker for
+   this branch; the baseline file is not edited.
+3. Collision blame stays exactly as it is (the nose cone's angles), also with the nose cone's
+   damage rule off: the aggressor stays punished more than the defender.
+4. Time-to-kill target: steady fire from behind with perfect range, lead and aim (every shot
+   hits, close) about 0.4 s is the floor; typical good tracking 0.6-0.8 s; about 1.0 s the
+   upper limit for a well-aimed burst where only dispersion and distance cost hits. The egg
+   experiments report which hit damage x spread combinations land in that band (core
+   defaults unchanged).
+5. Bullet spread: no target yet; decided from the egg experiments' spread grid.
+6. Scripted store_weight: undecided (1v1 prefers 0.4-0.6, 4v4 even with fewer kills);
+   situation-dependent weights may be tried, lower priority than the egg experiments.

@@ -86,7 +86,7 @@ def instrument() -> None:
     torch.compile = compile_counted
 
 
-def run() -> float:
+def run(game_settings: dict) -> float:
     """The miniature run (module docstring); returns seconds from process start to its end."""
     from lean import game, model, scripted
     from lean.learn import League, LearnConfig, Opponent, RolloutStore, WeightAverages, collect, make_optimiser, start
@@ -95,7 +95,7 @@ def run() -> float:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(0)
     config = dataclasses.replace(LearnConfig(), segments_per_update=1, segment_ticks=16, minibatches=2, epochs=1)
-    game_config = game.GameConfig(training_spawn=True)
+    game_config = game.GameConfig(training_spawn=True, **game_settings)
     policy = model.Policy(model.ModelConfig.for_arena(game_config.arena_radius)).to(device)
     league = League(config, device)
     opponent = Opponent(scripted.ScriptedConfig(), league)
@@ -133,9 +133,9 @@ def power_profile() -> str:
         return "unknown"
 
 
-def measure() -> dict:
+def measure(game_settings: dict | None = None) -> dict:
     instrument()
-    cold_s = run()
+    cold_s = run(game_settings or {})
     functions = {}
     for record in GRAPHS:
         entry = functions.setdefault(record["function"], {"graphs": 0, "operations": 0, "aot": [], "backend_s": 0.0})
@@ -190,8 +190,10 @@ def main() -> None:
     parser.add_argument("--time-tolerance", type=float, default=0.25)
     parser.add_argument("--budget", type=float, default=None,
                         help="with --update-baseline: the cold budget in seconds (default: the old baseline's)")
+    parser.add_argument("--deflector", default=None,
+                        help="the game's deflector preset (GameConfig.deflector; default: the game's)")
     arguments = parser.parse_args()
-    now = measure()
+    now = measure({} if arguments.deflector is None else {"deflector": arguments.deflector})
     shutil.rmtree(os.environ["TORCHINDUCTOR_CACHE_DIR"], ignore_errors=True)
     for name, entry in now["functions"].items():
         print(f"{name}: {entry['graphs']} graph(s), {entry['operations']} traced operations, aot {entry['aot']}, "

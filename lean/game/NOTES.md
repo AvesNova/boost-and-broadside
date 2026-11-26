@@ -149,6 +149,35 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   path is within the card's inner angle (30 deg) of the target's nose, full from the outer
   angle (45 deg) round to dead astern, a smootherstep in the cosine between (t = (cos 30 - c) /
   (cos 30 - cos 45), no acos; the card stores the angles, the constants their cosines).
+- **Deflector** (proposal 2026-11-27, branch `bullet-deflector`, unmerged;
+  `GameConfig.deflector`, `card.DEFLECTOR_PRESETS`, `core.deflection`, `core.hit_fraction`,
+  `core._deflect`). A field around every ship, the same for every type and at any shield (shield
+  down included): a bullet whose straight in-tick path passes at b from a ship's centre is
+  treated as passing at b + D, D by the bullet's path against the ship's nose (front D inside the
+  inner angle, side D beyond the outer, the nose cone's smootherstep in the cosine between).
+  Contact: b + D < hit radius (`_hit_test`); damage: `hit_fraction`, graze(b + D; core, hit
+  radius) x the nose cone weighted by the hit model's `nose_cone` (1 keeps the rule, 0 drops it).
+  A bullet that touches nothing and whose pass's closest approach lies in this tick (0 <= tau < 1,
+  so once per pass) inside the field (b < hit radius + D) is pushed at that point by D_eff =
+  min(D, hit radius + D - b) to the side it was passing (the smooth sign m / sqrt(b^2 + eps^2),
+  eps `card.DEFLECTOR_SIGN_SOFTNESS` 0.1 m) and turned away by atan(D_eff / deflector_length): its
+  direction and the rest of its move rotate, its speed is kept (no energy added). Ghosts run the
+  same code. Noted: a second ship later in the same tick sees the unbent path; the bent bullet's
+  cached medium stays the unbent end's (metres off); a bullet within about eps of dead centre is
+  barely pushed or turned (frontal: it passes through with no damage, since contact and damage
+  use |b| + D). Presets: "off" (D 0, nose cone on; also skips the code), "symmetric" (D 3 m
+  everywhere, nose cone on), "frontal" (D 12 m = the hit radius in the front 30 deg, fading to
+  3 m by 45 deg, nose cone off: every frontal bullet glances off). Bend length 48 m in all
+  (frontal glance 14 deg, side push 3.6 deg). The scripted agent's fire-worth reads
+  `hit_fraction` (one call). Measurements: docs/rewrite/sections/bullet-deflector/progress.md.
+- **The hit model at runtime** (proposal 2026-11-27): every hit-model number (`core.HIT_MODEL`:
+  hit and core radius, hit damage, bullet spread, deflector front/side/angles/length, the nose
+  cone's weight and angles) is a row of the per-slot table (`core.RUNTIME_CONSTANTS`), never a
+  Python number baked into the compiled graph: `core.with_hit_model(constants, **inputs)` changes
+  it for every ship between calls of the compiled tick with no recompile (tested under
+  `torch.compile(fullgraph=True)`). The workbench `python -m lean.tool.hitbench` (effective hit
+  radius, apparent size, hit chance against aim error, damage per second, time to kill, from the
+  step on synthetic bullets, about 2 s) and the sandbox's "Hit model (live)" sliders use it.
 - **Collisions** (`collisions`, author 2026-11-25, first touch 2026-11-26; in the step after
   the move, with the bullet hits and the boundary damage, before `_shields`): every pair of
   ships alive at tick start, any teams, on the two straight moves: p the gap, w the relative
@@ -252,7 +281,9 @@ phase, one score for a fast pass with both ships turning that the closest-approa
 twice or missed, none while overlapping and again only after separating, full closeness when
 the cores would meet and a graze between, the credit to the other ship including a team-mate
 and zero sum, no contact for a wide, later or dead pass),
-fields, fog, ghost bullets, invariants (finite, inert
+fields, fog, ghost bullets, the deflector (`test_deflector.py`: the pushed distance in damage
+and path, no energy added, one bend per pass, ghosts bend like real bullets, no frontal damage under
+"frontal", the hit model's round trip and no recompile), invariants (finite, inert
 padding, team swap), the clock and wipe, both spawn rules, the training spawn, the one-tick delay,
 the levels (Max the envelope's top line to 0.1% and above every fraction of it, Snap equal to Max
 above corner and at the deep angle below its band, Sustain's energy rate about 0 where a

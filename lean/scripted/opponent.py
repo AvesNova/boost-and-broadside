@@ -198,6 +198,7 @@ def _laid_constants(constants, index: Tensor | None, dims: int) -> dict:
         "inverse_collision_speed",
         "hit_damage",
         "arena_radius",
+        *(name for name in TARGET_HIT_CONSTANTS if name not in ("hit_radius", "core_radius")),
     )
     laid = {}
     for name in names:

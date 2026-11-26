@@ -100,6 +100,47 @@ POST_STALL_DRAG_ANGLE = math.radians(45.0)
 # (core._path_lift): the softness, a fraction of the held vertical.
 PATH_LIFT_SOFTNESS = 0.25
 
+# The bullet deflector (proposal 2026-11-27, core.deflection; lean/game/NOTES.md "Deflector"): a
+# field around every ship that pushes a passing bullet's closest approach from b out to b + D on
+# the side it was passing, D by the bullet's path against the ship's nose (front inside the inner
+# angle, side beyond the outer, a smootherstep in the cosine between, as the nose cone), and bends
+# it after the closest point by atan(D / length). The same for every type and any shield. nose_cone
+# 1 keeps the nose cone's damage rule (core.aspect_factor), 0 drops it (the deflector does its
+# work). The presets (GameConfig.deflector) set the hit model's deflector inputs (core.HIT_MODEL);
+# "off" also skips the deflector's code in the tick. Metres and radians.
+DEFLECTOR_PRESETS = {
+    "off": dict(
+        deflector_front=0.0,
+        deflector_side=0.0,
+        deflector_inner_angle=math.radians(30.0),
+        deflector_outer_angle=math.radians(45.0),
+        deflector_length=48.0,
+        nose_cone=1.0,
+    ),
+    # D the same at every aspect; the nose cone's damage rule kept.
+    "symmetric": dict(
+        deflector_front=3.0,
+        deflector_side=3.0,
+        deflector_inner_angle=math.radians(30.0),
+        deflector_outer_angle=math.radians(45.0),
+        deflector_length=48.0,
+        nose_cone=1.0,
+    ),
+    # "The samurai sword": D the hit radius (12 m) in the front 30 deg, so every frontal bullet
+    # glances off left or right and does no damage, fading to 3 m by 45 deg; replaces the nose
+    # cone's damage rule.
+    "frontal": dict(
+        deflector_front=12.0,
+        deflector_side=3.0,
+        deflector_inner_angle=math.radians(30.0),
+        deflector_outer_angle=math.radians(45.0),
+        deflector_length=48.0,
+        nose_cone=0.0,
+    ),
+}
+# The smooth sign of the push's side, b / sqrt(b^2 + eps^2): eps in metres.
+DEFLECTOR_SIGN_SOFTNESS = 0.1
+
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005
 BULLET_SPREAD = 12.0
