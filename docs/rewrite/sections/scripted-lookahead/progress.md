@@ -880,3 +880,76 @@ ticks, compiled, finished games re-dealt; 1v1 fog off no fields, 4v4 fields and 
   smallest change that fixes the empty store, the store back at round 1's top (0.44-0.51), all
   three powers in use, and it beats round 2 in both setups). The 1v1 preference for more is a
   question for the author (docs/rewrite/questions.md).
+
+## R3 step 4: final pass (2026-11-27 02:50-03:10)
+
+- Rule-based agent removed: `lean/scripted/rule_based/` deleted (by mistake the deletion landed
+  in the step-2 commit 50e6eea2, so the tools import it in 50e6eea2 and 5a50c713; fixed in
+  ab65a17e); its users were only this section's tools: `measure.py` (modes "versus" and "old"
+  gone; "duel" takes `--other-set`), `speed.py` (warms up with the look-ahead agent itself),
+  `merge_turn.py` (look-ahead only). No test encoded it (no xfails on this branch).
+- The hit model is one game function, `core.hit_damage` (kinetic x graze x aspect, the
+  shooter's and the target's constants by name), read by the tick's `_damage` and by the agent
+  through `opponent.hit_worth` (the trigger's worth rule and the plain pair stage's gun): a
+  change of the hit model in the game reaches the agent without edits. The trigger now counts
+  the kinetic factor (it did not before; 0.67 of full at one gun range, above the 1-tick worth
+  everywhere in range, so the trigger barely changes) and reads my hit damage, not the one at
+  the enemy's slot index (a latent indexing slip, harmless while every ship has one type). The
+  Triton kernel keeps its own copy of the gun's worth; its twin test passes (CUDA).
+- Tests: `lean/game/tests/test_steady_table.py` (the lookup equals `steady_flight` at the grid
+  nodes; between nodes median relative error under 1e-4, 99th percentile under 1%). Quick tier
+  of lean/game/tests, lean/scripted/tests and lean/learn/tests/test_rewards.py: 139 passed, 1
+  skipped (the CUDA kernel test, run separately on the GPU: passed); ruff clean.
+- Compile check (cold, quiet laptop, load 0.8 -> 2.3, baseline not updated): **fails**: `act`
+  4,451 traced operations (round 2 7,864), backend 70.1 s; cold **280.2 s** against 260 s.
+- Cost (`speed.py`, 2,048 envs 4v4, fields, fog, 100 calls): **5.35 ms** per call (round 2:
+  5.70), peak 131 MiB; policy forward 21.71 ms (the look-ahead is 25% of it).
+- Games (256 envs x 3,600 ticks self-play, yardstick, re-dealt; raw
+  `data/lookahead-r3/final/`):
+
+| run | games | draws | kills / env-min | entropy | speed / corner | store | coast / dive / climb | power sw/s | stick TV / side TV / rate W1 of span |
+|---|---|---|---|---|---|---|---|---|---|
+| 1v1 fog off, no fields | 1,002 | 2 | 1.86 | 1.012 | 0.72 | 0.45 | 53 / 25 / 23% | 0.34 | 0.143 / 0.078 / 0.047 |
+| 4v4 no fields, fog | 914 | 2 | 10.12 | 0.802 | 0.74 | 0.47 | 56 / 23 / 21% | 0.31 | 0.131 / 0.082 / 0.042 |
+| 4v4 fields, fog | 745 | 3 | 8.74 | 0.892 | 0.76 | 0.51 | 49 / 23 / 28% | 0.42 | 0.143 / 0.090 / 0.047 |
+
+  Round 2 (same setups): draws 8 / 2 / 2, kills 1.34 / 10.83 / 9.29, store 0.06 / 0.09 / 0.12.
+
+- Merge turn (`merge_turn.py`, seconds from the closest approach, median / 75th / 90th):
+  1v1 fog off no fields: 1,336 aircraft, to 30 deg 0.80 / 1.17 / 1.53, to 90 deg 2.10 / 2.63 /
+  3.60, slow 139 (round 2: 1,828 aircraft, 0.73 / 1.17 / 1.60, 2.03 / 2.53 / 3.33, slow 231);
+  4v4 fields fog: 1,418 aircraft, 0.77 / 1.23 / 2.23, 2.13 / 3.47 / 6.37, slow 246 (round 2:
+  1,632, 0.70 / 1.20 / 2.10, 2.10 / 3.37 / 5.48, slow 267).
+- Usage of the 42 actions (share of living ship-ticks, no fire / fire): every action used in
+  every setup; under 0.1%: 12 (1v1), 5, 4.
+
+| stick | power | selfplay_1v1_f0_fogoff (no fire / fire) | selfplay_4v4_f0 (no fire / fire) | selfplay_4v4_f10 (no fire / fire) |
+|---|---|---|---|---|
+| straight | coast | 16.24% / 0.08% | 22.55% / 0.43% | 17.38% / 0.51% |
+| straight | dive | 2.46% / 0.09% | 4.02% / 0.22% | 4.33% / 0.26% |
+| straight | climb | 5.79% / 0.02% | 8.57% / 0.17% | 9.42% / 0.24% |
+| Sustain R | coast | 9.10% / 0.12% | 9.44% / 0.33% | 8.56% / 0.41% |
+| Sustain R | dive | 3.40% / 0.12% | 3.48% / 0.19% | 3.67% / 0.19% |
+| Sustain R | climb | 3.09% / 0.05% | 3.05% / 0.13% | 4.45% / 0.21% |
+| Sustain L | coast | 9.28% / 0.12% | 9.38% / 0.35% | 8.59% / 0.38% |
+| Sustain L | dive | 3.65% / 0.13% | 3.57% / 0.19% | 3.60% / 0.21% |
+| Sustain L | climb | 3.35% / 0.04% | 3.02% / 0.14% | 4.36% / 0.21% |
+| Max R | coast | 7.56% / 0.08% | 5.65% / 0.15% | 4.93% / 0.15% |
+| Max R | dive | 4.34% / 0.11% | 3.18% / 0.13% | 3.24% / 0.12% |
+| Max R | climb | 4.32% / 0.04% | 2.65% / 0.07% | 3.31% / 0.08% |
+| Max L | coast | 7.56% / 0.07% | 5.56% / 0.16% | 4.93% / 0.14% |
+| Max L | dive | 4.53% / 0.11% | 3.19% / 0.13% | 3.16% / 0.12% |
+| Max L | climb | 4.57% / 0.04% | 2.64% / 0.07% | 3.25% / 0.08% |
+| Snap R | coast | 1.12% / 0.10% | 0.82% / 0.10% | 1.35% / 0.11% |
+| Snap R | dive | 2.51% / 0.23% | 2.01% / 0.21% | 2.01% / 0.17% |
+| Snap R | climb | 0.65% / 0.05% | 0.45% / 0.05% | 1.06% / 0.07% |
+| Snap L | coast | 1.06% / 0.09% | 0.82% / 0.10% | 1.36% / 0.11% |
+| Snap L | dive | 2.72% / 0.24% | 1.94% / 0.20% | 1.96% / 0.17% |
+| Snap L | climb | 0.71% / 0.06% | 0.44% / 0.05% | 1.08% / 0.07% |
+
+- Replays (CPU, batch 1, tree ab65a17e, look-ahead on both teams):
+  `~/avesnova/boost-and-broadside/data/replays-2026-11-27-lookahead-r3/`:
+  `scripted1v1_nofields_fogoff_seed0..1.mp4` (seed 0 Blue wipe at 28.2 s; seed 1 both gone at
+  41.5 s, a draw: round 2's slow seed, see step 3), `scripted4v4_seed0..1.mp4` (default map,
+  fields, fog: Blue wipes at 21.6 s and 51.0 s). Not watched by me (I cannot play video).
+- Not done: the compile budget (question 1 in docs/rewrite/questions.md).

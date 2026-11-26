@@ -896,3 +896,26 @@ lean/scripted/NOTES.md.
   path at low speed and its nose at 2 s (errors up to 19 m and 24 deg). (4) The power choice is
   near-indifferent and flickers. 4v4 is strong: 1,404 wins, 9 draws, 68 losses against the
   rule-based agent.
+
+### Round 3 (author's go 2026-11-27, overnight; unmerged, waits for the author's review)
+
+- **Steady-flight table (decided by me, as planned):** `core.steady_flight` tabulated once per
+  ship type with the card (`core.steady_characteristics`; level x power x 17 store nodes x 400
+  speeds x 4 outputs), read by `core.steady_lookup`; the store axis is its edge rooms
+  (`core.store_room`, factored out of `_setting`). The table rides on a new
+  `Constants.per_type` (by type, read with `State.type`; not dealt to slots). Path prediction
+  unchanged within 0.3 deg; `act` 7,864 -> 4,451 traced operations; cold compile 333 -> 280.2 s,
+  still over the 260 s budget (open: a paths kernel or fewer segments).
+- **Hit model as one game function (coupling with the deflector stream):** `core.hit_damage`
+  (kinetic x graze x aspect), read by the tick's `_damage` and the agent's trigger and gun
+  (`opponent.hit_worth`), so a hit-model change in core reaches the agent without edits.
+- **`store_weight` 0.25 (decided by me, decision-safe; question 2):** the store itself in the
+  power choice. Store mean 0.07-0.12 -> 0.45-0.51 of full, dive 57-60% -> 23-25%, climb 6-8%
+  -> 21-28%; beats the round-2 power choice 68% (1v1) and 57% (4v4). More (0.4, 0.6) wins 1v1
+  duels but ties 4v4 and drops the dive out of use. Weakening the speed term (the author's
+  suggestion) loses (44% / 47%): not taken.
+- **Rule-based agent removed** (code and the tools' comparison modes).
+- Measured on the final tree: 5.35 ms per call (25% of the policy forward); draws 2 / 2 / 3 of
+  1,002 / 914 / 745 (1v1 fog off, 4v4, 4v4 fields); kills per env-minute 1.86 / 10.12 / 8.74;
+  stick TV 0.13-0.14 per tick, by side 0.08-0.09, by steady rate 4-5% of the span.
+

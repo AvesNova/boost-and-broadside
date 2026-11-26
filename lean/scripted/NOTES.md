@@ -118,9 +118,11 @@ against its twin (CUDA), the power from the own-ship terms, games against the ch
 
 ## Open
 
-- Speed: see progress.md (round 2: the paths now cost more than the pair kernel; the kernel
-  measured against the plain PyTorch pair stage and kept, about 11x on the stage).
-- Compile: the cold compile check fails (333 s against 260 s; each steady-flight evaluation
-  is about 500 traced operations, and the call has 8). The stick distribution moves about 0.15
-  total variation per tick (progress.md round 2 step 6).
-- Defaults chosen by reasoning (the energy weight from the card's `store_turn`); no tuning yet.
+- Compile: the cold compile check still fails after round 3's steady-flight table (280.2 s
+  against 260 s on a quiet laptop; `act` 4,451 traced operations, round 2 7,864). What is left
+  is the unrolled path loop (medium, nose spring, lookup per segment); a paths kernel or fewer
+  segments would cut it (docs/rewrite/questions.md on this branch).
+- The stick distribution moves about 0.15 total variation per tick; grouped by side 0.07-0.09,
+  weighted by the steady turn rate 4-5% of the rate span (round 3 step 2). Not tuned.
+- `store_weight` 0.25 (round 3 step 3); 1v1 duels prefer more, 4v4 is even (a question).
+- Defaults otherwise chosen by reasoning (the energy weight from the card's `store_turn`).

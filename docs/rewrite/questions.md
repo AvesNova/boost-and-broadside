@@ -4,8 +4,8 @@ Raised by the round-3 agent; each with the decision-safe choice made meanwhile.
 
 1. **The cold compile is still over the 260 s budget.** The steady-flight table removed every
    flight-function evaluation from the agent's graph (`act` 7,864 -> 4,494 traced operations;
-   cold 333 -> 312 s with another agent's CPU work running). What is left is the unrolled
-   segment loop: per segment the medium (5 x about 90 operations), the nose spring in closed
+   cold 333 -> 280.2 s on a quiet laptop at the final pass; 311.8 s at step 1 with another
+   agent's CPU work running). What is left is the unrolled segment loop: per segment the medium (5 x about 90 operations), the nose spring in closed
    form (5 x 60), the lookup (8 x 40), plus the path arithmetic. Options: (a) the paths as one
    Triton kernel, like the pair stage (the speed order's last step; the largest cut, a day's
    work with its twin and test); (b) fewer path segments (4 instead of 5); (c) a larger budget
