@@ -1,0 +1,44 @@
+[
+ {
+  "god_mode": {
+   "preset": "off",
+   "games": 128,
+   "seconds_each": 60.0,
+   "wall_s": 8.6,
+   "damaging_hits": 6704,
+   "damaging_hits_per_minute_per_game": 52.375,
+   "bullet_damage_per_minute_per_game": 296.90660582901614,
+   "contacts": 6935,
+   "frontal_contacts": 231,
+   "frontal_damaging_hits": 0,
+   "frontal_damage": 0,
+   "passes": 524,
+   "pass_interval_median_s": 11.233333333333333,
+   "hits_per_pass_mean": 12.793893129770993,
+   "passes_with_no_hit": 0.29389312977099236,
+   "passes_with_11_or_more": 0.3950381679389313,
+   "hits_in_control_share": 0.29519689737470167,
+   "control_time_share": 0.04578776041666666,
+   "control_streak_median_s": 0.5,
+   "control_streak_longest_s": 37.833335876464844
+  },
+  "kills_1v1": {
+   "preset": "off",
+   "size": 1,
+   "envs": 128,
+   "wall_s": 12.5,
+   "kills_per_minute": 0.9140625,
+   "games_finished": 149,
+   "draws": 10
+  },
+  "kills_4v4": {
+   "preset": "off",
+   "size": 4,
+   "envs": 128,
+   "wall_s": 17.9,
+   "kills_per_minute": 4.796875,
+   "games_finished": 128,
+   "draws": 1
+  }
+ }
+]
