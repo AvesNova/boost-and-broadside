@@ -2275,7 +2275,8 @@ def with_hit_model(constants: Constants, **inputs: float) -> Constants:
         table[:, start] = value
     start, width = constants.columns["hit_widths"]
     radius = table[:, constants.columns["hit_radius"][0]]  # (E, N)
-    widths = hit_widths(radius.cpu(), {name: merged[name] for name in _WIDTH_INPUTS})
+    unique, inverse = radius.cpu().unique(return_inverse=True)  # built once per radius
+    widths = hit_widths(unique, {name: merged[name] for name in _WIDTH_INPUTS})[inverse]
     table[:, start : start + width] = widths.movedim(-1, 1).to(table.device)
     return Constants(constants.uniform, constants.columns, table, constants.per_type)
 

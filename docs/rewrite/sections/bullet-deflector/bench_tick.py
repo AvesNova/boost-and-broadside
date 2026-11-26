@@ -1,4 +1,4 @@
-"""The deflector's cost: the game step's time per tick, off / symmetric / frontal.
+"""The deflector's cost: the game step's time per tick, off / egg.
 
     PYTHONPATH=. uv run --no-sync python \
         docs/rewrite/sections/bullet-deflector/bench_tick.py OUT.json
@@ -89,7 +89,7 @@ def main():
         profile = "unknown"
     record = dict(power_profile=profile, envs=args.envs, size=args.size, presets={})
     cpu = torch.device("cpu")
-    for preset in ("off", "symmetric", "frontal"):
+    for preset in ("off", "egg"):
         config = core.GameConfig(deflector=preset)
         entry = {}
         generator = torch.Generator().manual_seed(0)

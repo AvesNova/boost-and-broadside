@@ -117,3 +117,41 @@ GPU tick, compiled `core.step`, 4070 laptop, performance profile, E 4096, 4v4, f
 - The god-mode tables were measured before the matrix-exponential commit (float rounding only).
 - Open for the author: docs/rewrite/questions.md (bend angle rule, field reach, dead-centre
   frontal bullets, the side D's cost, default preset, collision blame angles).
+
+# Branch deflector-lookahead (2026-11-27 morning): the egg
+
+## 05:30 step 1: one branch
+
+- Merged origin/bullet-deflector into deflector-lookahead (from scripted-lookahead 56f70453).
+  One hit-worth function: `core.hit_damage` (the tick's damage and the agent's fire-worth);
+  the deflector branch's `hit_fraction` folded in. The rule-based agent stays deleted (its
+  deflector edits dropped); godmode.py switched to the look-ahead agent. Kept: the matrix
+  exponential (f583eb0c, author: decided), the runtime hit rows. Quick tier lean/game,
+  lean/scripted, lean/tool, lean/sandbox: 190 passed, 1 failed (the pair kernel's twin, the
+  kernel still on the old aspect; fixed in step 2). Commit f323531e.
+
+## 05:50 step 2: the egg (author decision 2026-11-27)
+
+- Tried / worked: `core.egg_entry` (the first inward crossing of the egg by the straight
+  in-tick relative path, two half-ellipse quadratics), `core.egg_turn` (the early hump turn,
+  the turned remainder's swept test), `core._deflect` (the turned bullet: end shifted by the
+  turned rest of the relative move; map velocity = the ship's tick-average velocity + the
+  turned relative velocity, so the relative speed is kept). Old push, presets
+  symmetric/frontal, `deflection`, `hit_fraction`, `DEFLECTOR_SIGN_SOFTNESS` removed.
+- First version rotated the world direction (world speed kept): the bench's egg hit width
+  astern at 100-200 m came out 3.7-3.9 m against the still-ship 4.75 m, because the ship's
+  velocity rotated out of the relative frame ((R - I) v_ship, about 130 m/s at 45 deg). The
+  relative-frame velocity fixed it (4.7 m at every range).
+- Hit widths (`core.hit_widths`, a 17-point runtime column by aspect cosine) equal the
+  design sketch (egg 24 m, early hump, 45 deg): head-on 2.05 / side 4.75 / astern 4.75 m
+  against the sketch's 2.05 / 4.75 / 4.75; 24.0 m with no turn. In the step (target at
+  cruise, 300 m): 2.1 / 4.7 / 4.7 m (30 deg: 3.1 / 6.8 / 7.1; 60 deg: 1.5 / 3.5 / 3.5).
+  The ship's motion: within 0.1-0.2 m; the core taper does not change the width (any contact
+  damages: graze is positive up to the hit radius) but the damage near the edge.
+- Agent: target size = half the hit width at the bullet's aspect (gun solution, pair kernel,
+  trigger); trigger's worth = hit damage x kinetic x hit chance, chance = erf(half width /
+  (sqrt 2 sigma)), sigma = flight time x sqrt(spread^2 + (lead_error x 0.5 x his sustained
+  turn acceleration x flight)^2); lead_error 0.25 (a reasoned choice, not tuned). Nose cone
+  off by default (nose_cone 0; the code kept as a hit-model row).
+- Hit radius 12, core 10 m (author). Workbench and views moved to the egg
+  (workbench/hitbench.md, apparent_size.png, bullet_paths.png).
