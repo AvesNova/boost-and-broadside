@@ -21,7 +21,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | A10 | Before and after charts (doghouse, comparison, the five charts) for "core" | done (worklog 02:57) |
 | A11 | Sandbox flies "core" (`--set flight_model=core`); readout shows the model | done (overnight, see worklog 02:43) |
 | A12 | Number tuning (engine power, exchange caps, store size, fire fraction): needs the author's flying | blocked: author |
-| A13 | Post-stall regime (author 2026-11-26): no new stick level; below corner speed full stick goes as deep into the stall as the plane gives, the middle level is about maximum lift before separation, the gradual level less; above corner unchanged (g limit). Gradual lift loss and rapid drag rise past the stall, the nose swinging freely; no asymmetric stall or spin. Literature check on realistic nose offsets first | discussing |
+| A13 | Post-stall regime (author 2026-11-26): no new stick level; below corner speed full stick goes as deep into the stall as the plane gives, the middle level is about maximum lift before separation, the gradual level less; above corner unchanged (g limit). Gradual lift loss and rapid drag rise past the stall, the nose swinging freely; no asymmetric stall or spin. Literature: docs/rewrite/sections/post-stall/literature.md. Rough version: deep angle 45 degrees, loosening over 15% of corner speed below corner, nose damping about 0.59 (10% overshoot) | doing: branch `post-stall`, then the author flies it |
 
 ## B. Game corrections and settings
 
