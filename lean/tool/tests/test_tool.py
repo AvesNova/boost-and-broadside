@@ -21,6 +21,21 @@ from fastapi.testclient import TestClient  # noqa: E402
 from lean.tool.app import app  # noqa: E402
 
 
+def held_one_g_speed() -> float:
+    """The card's type 0's lowest speed at which any stick level can hold 1 g (game units): the
+    wing's maximum lift plus the thrust's normal part at the stall angle (below stall speed no
+    level asks for more than the stall angle: Snap's deep angle closes to it, author
+    2026-11-26) equal to 1 g, by bisection on the game's own constants."""
+    p = core.per_type_constants(core.GameConfig(), torch.tensor([0]))
+    low, high = 0.0, float(p.stall_speed[0])
+    for _ in range(60):
+        speed = 0.5 * (low + high)
+        thrust = core.softmin(p.power / speed, p.static_thrust, p.thrust_softmin_exponent)
+        normal = float((p.lift * speed * speed + thrust * torch.sin(p.stall))[0])
+        low, high = (speed, high) if normal < card.GRAVITY else (low, speed)
+    return high
+
+
 def test_envelope_equals_the_quasi_steady_maths_for_the_p51d():
     """Rate, Ps and the sustained curve of the envelope are the flight code's quasi-steady
     numbers (core.quasi_steady, the independent entry the tuning's performance uses)."""
@@ -65,9 +80,11 @@ def test_server_answers_the_envelope_endpoint():
     assert reply.status_code == 200
     data = reply.json()
     assert math.isfinite(data["design"]["key"]["corner_rate"])
-    assert (
-        data["design"]["lowest"]["full"] > data["design"]["key"]["stall_speed"]
-    )  # lines start above stall
+    # lines start above the lowest speed any level holds 1 g (a share of the stall speed: the
+    # same at every time scale)
+    stall = data["design"]["key"]["stall_speed"]
+    floor = held_one_g_speed() / tuning.performance(tuning.row_of("p51d"))["stall_speed"]
+    assert min(data["design"]["lowest"].values()) > floor * stall
     # the same design at 1x real time has the speeds and rates over the game's time factor
     at_game = client.post("/api/envelope", json={"preset": "p51d"}).json()
     assert data["design"]["key"]["top_speed"] == pytest.approx(
@@ -160,9 +177,9 @@ def test_the_sustained_endpoint_returns_a_png_and_an_unsolvable_design_an_error(
     )
     assert response.status_code == 200
     assert response.content[:8] == b"\x89PNG\r\n\x1a\n"
-    bad = client.post(
-        "/api/doghouse.png", json={"preset": "p51d", "values": {"stall_speed": 400.0}}
-    )
+    # a negative g limit has no design (the solve's "impossible"); the stall speed of 400 m/s
+    # used here before 2026-11-26 solves, and its 422 came from the chart's colour scale
+    bad = client.post("/api/doghouse.png", json={"preset": "p51d", "values": {"g_limit": -1.0}})
     assert bad.status_code == 422 and bad.json()["error"]
 
 
@@ -326,19 +343,20 @@ def p51d_flown():
 
 def test_the_p51d_lines_start_where_the_game_flies_them(p51d_flown):
     """The lowest speeds the game flies each line (flown.achievable_speeds, measured here on the
-    card as it stands, no stored numbers): every line is flown somewhere between the stall speed
-    and the corner speed, and an independent random search of control sequences
-    (flown.random_search) flies no line more than 5 m/s below its measured start, so the
-    search the charts use finds the lowest states near enough (3 m/s before 2026-11-24; with
-    the stick levels as fractions of the top line the then-derived 0.88 level's start was 3.9 m/s
-    above
-    the random search's best)."""
+    card as it stands, no stored numbers): every line is flown somewhere between the lowest speed
+    any level holds 1 g (held_one_g_speed: since 2026-11-26 the thrust's normal part counts in
+    the hold, so a line can start a little below stall speed) and the corner speed, and an
+    independent random search of control sequences (flown.random_search) flies no line more than
+    5 m/s below its measured start, so the search the charts use finds the lowest states near
+    enough (3 m/s before 2026-11-24; with the stick levels as fractions of the top line the
+    then-derived 0.88 level's start was 3.9 m/s above the random search's best)."""
     from lean.tool import flown
 
     lowest, key, _ = p51d_flown
-    stall = tuning.performance(tuning.row_of("p51d"))["stall_speed"]
+    with tuning.flying(tuning.row_of("p51d")):
+        floor = held_one_g_speed()
     for name, speed in lowest.items():
-        assert stall < speed < key["corner_speed"], name
+        assert floor < speed < key["corner_speed"], name
     with tuning.flying(tuning.row_of("p51d")):
         searched = flown.random_search(ships=1024, seconds=40.0, seed=1)
     for name, speed in searched.items():
@@ -370,12 +388,14 @@ def test_no_line_is_drawn_below_its_lowest_flown_speed(p51d_flown):
         with tuning.flying(tuning.row_of("p51d")):
             figure = chart.doghouse_figure("test", lowest, real)
         drawn = {line.get_gid(): line for line in figure.axes[0].lines if line.get_gid()}
-        assert set(drawn) == set(lowest)
+        # the envelope too: the most turn of any level, from the lowest of their starts
+        assert set(drawn) == set(lowest) | {"envelope"}
+        starts = {**lowest, "envelope": min(lowest[name] for name in ("sustain", "max", "snap"))}
         for name, line in drawn.items():
             x, y = np.asarray(line.get_xdata()), np.asarray(line.get_ydata(), dtype=float)
             finite = np.isfinite(y)
             assert finite.any()
-            assert x[finite].min() >= lowest[name] / (tuning.TIME_FACTOR if real else 1.0) - 1e-6, (
+            assert x[finite].min() >= starts[name] / (tuning.TIME_FACTOR if real else 1.0) - 1e-6, (
                 name
             )
         chart.plt.close(figure)

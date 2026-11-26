@@ -89,3 +89,26 @@ def test_hit_damage_matrix_matches_the_totals():
         seen_hits += int((matrix > 0).sum())
         state = core.take_deal(state, out.done, core.deal(config, 32, n, sizes, generator, "cpu"))
     assert seen_hits > 0
+
+
+def test_only_straight_keeps_the_shield_quiet():
+    """The shield's quiet (author 2026-11-26, card.QUIET_STICK_MAX): coasting, no trigger, not
+    hurt, with its wait run out, a ship flying straight recharges and its wait stays run out;
+    every turn level (Sustain, Max, Snap, either side) restarts the wait and recharges nothing."""
+    config = core.GameConfig()
+    state = core.reset(config, 1, torch.tensor([[1, 1]]), torch.Generator().manual_seed(0), CPU)
+    c = state.constants
+    state = state.replace(
+        shield=0.5 * c["max_shield"] * torch.ones(1, 2), shield_wait=torch.zeros(1, 2)
+    )
+    no_damage, coast = torch.zeros(1, 2), torch.zeros(1, 2, dtype=torch.long)
+    no_trigger = torch.zeros(1, 2, dtype=torch.bool)
+    assert card.QUIET_STICK_MAX == card.STICK_LEVELS.index(0.0)
+    for stick in range(len(card.STICK_LEVELS)):
+        sticks = torch.full((1, 2), stick)
+        _, _, restored, wait = core._shields(config, state, no_damage, sticks, coast, no_trigger)
+        if card.STICK_LEVELS[stick] == 0.0:
+            assert bool((restored > 0.0).all()) and bool((wait == 0.0).all()), stick
+        else:
+            assert bool((restored == 0.0).all()), stick
+            assert torch.allclose(wait, torch.full_like(wait, c["shield_delay"])), stick
