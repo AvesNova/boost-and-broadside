@@ -156,12 +156,15 @@ def built_once(build):
 # Constants counted in whole ticks: they must be equal for every type of a run.
 INTEGER_CONSTANTS = ("bullet_moves", "fire_interval")
 # Action-indexed tables (by stick index, by power index): always rows of the per-slot table.
+# The sustain table (`_sustain_fraction`) is wide too: always rows.
 ACTION_TABLES = (
     "stick_table",
-    "stick_cap_table",
+    "sustain_stick_table",
     "deep_stall_table",
+    "nose_stiffness_table",
     "commanded_table",
     "demand_table",
+    "sustain_table",
 )
 
 
@@ -257,9 +260,8 @@ def _post_stall_constants(config: GameConfig, values: dict[str, Tensor]) -> dict
     near = card.POST_STALL_LIFT_FRACTION**2
     reference_drag = zero_lift + induced * flat * flat * (1.0 + separation * near ** (exponent / 2))
     post_stall_drag = (card_of("post_stall_drag_ratio") * stall_drag - reference_drag).clamp_min(0)
-    # By stick index (card.STICK_LEVELS' layout): the middle level's g cap, full stick's deep angle.
+    # By stick index (card.STICK_LEVELS' layout): Snap's deep angle.
     level = torch.tensor(card.STICK_LEVELS).abs().expand(count, -1)
-    cap = torch.where(level == 2.0, card_of("middle_g_fraction")[:, None], 1.0)
     deep = (level == 3.0).float()
     stall_cos = torch.cos(stall)
     stall_speed = torch.sqrt(card.GRAVITY / lift)
@@ -276,9 +278,8 @@ def _post_stall_constants(config: GameConfig, values: dict[str, Tensor]) -> dict
         "deep_stall_angle": card_of("deep_stall_angle"),
         "inverse_corner_speed": torch.sqrt(lift / values["max_acceleration"]),
         "inverse_stall_speed_squared": lift / card.GRAVITY,
-        "deep_stall_start": card_of("deep_stall_start"),
         "inverse_deep_stall_band": 1.0 / card_of("deep_stall_band"),
-        # Full stick's deep angle closes to the stall angle from where its lift is 1 g down to
+        # Snap's deep angle closes to the stall angle from where its lift is 1 g down to
         # stall speed (`_holding_angle`).
         "holding_start_speed": stall_speed,
         "inverse_holding_span": 1.0
@@ -289,7 +290,6 @@ def _post_stall_constants(config: GameConfig, values: dict[str, Tensor]) -> dict
         "post_stall_drag": post_stall_drag * on,
         "stall_cos": stall_cos,
         "inverse_drag_cos_span": 1.0 / (stall_cos - math.cos(card.POST_STALL_DRAG_ANGLE)),
-        "stick_cap_table": cap,
         "deep_stall_table": deep * on[:, None],
     }
 
@@ -300,23 +300,22 @@ def card_of(name: str) -> Tensor:
 
 
 def stick_table(count: int) -> Tensor:
-    """(count, 7) signed stick levels by stick index (card.STICK_LEVELS' layout): straight, the
-    gradual level, the middle level, full stick (card.GRADUAL_STICK, MIDDLE_STICK, FULL_STICK).
-    Each level is that fraction of the most lateral acceleration the ship can give at its speed
-    (`_setting`)."""
-    magnitude = torch.tensor(
-        [
-            0.0,
-            card.GRADUAL_STICK,
-            card.GRADUAL_STICK,
-            card.MIDDLE_STICK,
-            card.MIDDLE_STICK,
-            card.FULL_STICK,
-            card.FULL_STICK,
-        ]
-    )
-    row = torch.sign(torch.tensor(card.STICK_LEVELS)) * magnitude
-    return row.expand(count, -1).clone()
+    """(count, 7) the stick's side by stick index (card.STICK_LEVELS' layout): 0 straight, +1 or
+    -1 for each turn level (Sustain, Max, Snap: each all of its own line, `_setting`)."""
+    return torch.sign(torch.tensor(card.STICK_LEVELS)).expand(count, -1).clone()
+
+
+def sustain_stick_table(count: int) -> Tensor:
+    """(count, 7) 1 at Sustain's stick indices (|level| 1), else 0."""
+    level = torch.tensor(card.STICK_LEVELS).abs()
+    return (level == 1.0).float().expand(count, -1).clone()
+
+
+def nose_stiffness_table(count: int) -> Tensor:
+    """(count, 7) the nose spring's stiffness going out, a factor of the full spring's, by stick
+    index (card.NOSE_STIFFNESS by |level|; `_kick`)."""
+    level = torch.tensor(card.STICK_LEVELS).abs().long()
+    return torch.tensor(card.NOSE_STIFFNESS)[level].expand(count, -1).clone()
 
 
 def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -333,28 +332,20 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
     - the corner rate (full stick at corner speed) and the store's turn: the turn a full store
       buys over the best sustained rate when spent holding corner speed at full stick,
       (corner rate - sustained rate) x full store / |energy rate at corner, full stick|;
-    - the stick levels (`stick_table`: the shared thirds of full stick, card.GRADUAL_STICK,
-      MIDDLE_STICK, FULL_STICK);
-    - the middle stick speed, corner speed / sqrt(middle level): the scripted agent's
-      reference for its level cap (the speed where the middle fraction of the lift-limited
-      line would reach the g limit; the levels are fractions of the top line, so the middle
-      level turns at its fraction of full stick at every speed)."""
+    - the stick tables (`stick_table`, `sustain_stick_table`, `nose_stiffness_table`);
+    - Sustain's table (`_sustain_table`: the stick holding Ps = 0 over speed);
+    - the middle stick speed: the scripted opponent's reference for its level cap, the speed
+      above which Max is on the g limit: corner speed (out of date with the levels of
+      2026-11-26; the scripted opponent is not updated yet)."""
     c = SimpleNamespace(**values)
     count = len(c.lift)  # every row of the card
-    control = SimpleNamespace(
-        thrust_scale=1.0,
-        stick_size=torch.zeros(count),
-        stick_sign=torch.ones(count),
-        stick_cap=torch.ones(count),
-        deep=torch.zeros(count),
-        commanded=c.commanded_table[:, 0],
-        demand=c.demand_table[:, 0],
-    )
+    zero_stick = torch.zeros(count)
+    control = steady_control(c, zero_stick, zero_stick, 0)
     low, high = torch.full((count,), 20.0), torch.full((count,), 1000.0)
     with torch.no_grad():
         for _ in range(60):  # bisection on d speed / dt = 0
             middle = 0.5 * (low + high)
-            setting = _setting(c, control, middle, c.spawn_energy)
+            setting = _setting(c, control, middle, c.spawn_energy, 0.0)
             one, zero = torch.ones_like(middle), torch.zeros_like(middle)
             rate, _ = _rates(
                 c, setting, one, middle, zero, one, 1.0 / (middle * middle), 1.0 / (c.lift * c.lift)
@@ -374,6 +365,7 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
             column, corner, torch.ones_like(corner), 0, column.spawn_energy
         )
     corner_rate, corner_energy_rate = corner_rate[:, 0], corner_energy_rate[:, 0]
+    sustain_low, sustain_step, sustain = _sustain_table(values, stall_speed, cruise)
     return {
         "cruise_speed": cruise,
         "stall_speed": stall_speed,
@@ -388,13 +380,36 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
         "sustained_radius": sustained_speed / sustained_rate,
         "quarter_turn_time": (0.5 * math.pi) / sustained_rate,
         "corner_rate": corner_rate,
-        # the middle stick level reaches its g cap (middle_g_fraction) above this speed
-        "middle_stick_speed": corner_speed * torch.sqrt(c.stick_cap_table[:, 3]),
+        # the scripted opponent's level-cap reference (Max is on the g limit above it)
+        "middle_stick_speed": corner_speed,
         "stick_table": stick_table(count),
+        "sustain_stick_table": sustain_stick_table(count),
+        "nose_stiffness_table": nose_stiffness_table(count),
+        "sustain_low_speed": sustain_low,
+        "inverse_sustain_step": 1.0 / sustain_step,
+        "sustain_table": sustain,
         "store_turn": (corner_rate - sustained_rate) * c.max_energy / corner_energy_rate.abs(),
         # a collision's reference closing speed: two ships head-on at cruise (`collisions`)
         "inverse_collision_speed": 0.5 / cruise,
     }
+
+
+def steady_control(p, speed: Tensor, stick: Tensor, power: int, sustain=0.0, deep=0.0):
+    """The flight functions' control for steady analysis: stick size `stick` (a fraction of the
+    envelope's top line), power index `power`, `sustain` (1: Sustain's table sets the size at
+    each speed, `_sustain_fraction`; a Python 0 skips the table) and `deep` (1: Snap's deep
+    angle below corner), at `speed`'s shape."""
+    uses_table = not (isinstance(sustain, (int, float)) and sustain == 0)
+    return SimpleNamespace(
+        thrust_scale=1.0,
+        stick_size=stick,
+        stick_sign=torch.ones_like(speed),
+        sustain=torch.as_tensor(sustain, dtype=speed.dtype).expand_as(speed),
+        sustain_table=p.sustain_table if uses_table else None,
+        deep=torch.as_tensor(deep, dtype=speed.dtype).expand_as(speed),
+        commanded=p.commanded_table[..., power],
+        demand=p.demand_table[..., power],
+    )
 
 
 def steady_rates(
@@ -403,7 +418,7 @@ def steady_rates(
     stick: Tensor,
     power: int,
     energy: Tensor,
-    cap: Tensor | float = 1.0,
+    sustain: Tensor | float = 0.0,
     deep: Tensor | float = 0.0,
 ):
     """A ship flying steadily (no field, the nose's lag settled) at `speed` with stick size
@@ -412,25 +427,24 @@ def steady_rates(
     `p` holds the ship constants broadcastable against `speed` (the action tables with a last
     axis of width 3). Every quasi-steady analysis (the derived characteristics, lean.game.tuning's
     performance and envelope) goes through here. By default `stick` is a fraction of the
-    envelope's top line (the wing's maximum lift against the g limit); `cap` (the g cap, a
-    fraction of the g limit: the middle level's middle_g_fraction) and `deep` (1: full stick's
-    deep angle below corner) give a stick level's own shape (`stick_level_shape`)."""
-    control = SimpleNamespace(
-        thrust_scale=1.0,
-        stick_size=stick,
-        stick_sign=torch.ones_like(speed),
-        stick_cap=torch.as_tensor(cap, dtype=speed.dtype).expand_as(speed),
-        deep=torch.as_tensor(deep, dtype=speed.dtype).expand_as(speed),
-        commanded=p.commanded_table[..., power],
-        demand=p.demand_table[..., power],
-    )
+    envelope's top line (the wing's maximum lift against the g limit, Max); `sustain` (Sustain's
+    table) and `deep` (Snap's deep angle below corner) give a stick level's own shape
+    (`stick_level_shape`). The thrust's normal part counts in the 1 g hold at the angle flown
+    (`_setting`): the setting is resolved twice, the second time at the first's angle."""
+    control = steady_control(p, speed, stick, power, sustain, deep)
     inverse_lift = 1.0 / p.lift
-    setting = _setting(p, control, speed, energy)
-    lateral, _, vertical, thrust = setting
-    angle = _commanded_angle(p, control, lateral, speed, inverse_lift, vertical)
+    angle_sin = 0.0
+    for _ in range(2):
+        setting = _setting(p, control, speed, energy, angle_sin)
+        lateral, _, vertical, thrust = setting
+        angle = _commanded_angle(p, control, lateral, speed, inverse_lift, vertical)
+        angle_sin = torch.sin(angle).abs()
     lift = _lift_coefficient(p, angle)
+    whole = _deep_opening(p, control, speed)
     rate = (
-        _path_lift(p, lift, angle, vertical, speed * speed, thrust, thrust * torch.sin(angle))[0]
+        _path_lift(
+            p, lift, angle, vertical, speed * speed, thrust, thrust * torch.sin(angle), whole
+        )[0]
         / speed
     )
     speed_rate, store_rate = _rates(
@@ -446,22 +460,66 @@ def steady_rates(
     return rate, speed_rate, store_rate
 
 
-def quasi_steady(p, speed: Tensor, stick: Tensor, power: int, energy: Tensor, cap=1.0, deep=0.0):
+def quasi_steady(
+    p, speed: Tensor, stick: Tensor, power: int, energy: Tensor, sustain=0.0, deep=0.0
+):
     """`steady_rates` with the store's rate folded into the total energy rate: turn rate (rad/s),
     d speed / dt, and speed x d speed / dt + d store / dt."""
-    rate, speed_rate, store_rate = steady_rates(p, speed, stick, power, energy, cap, deep)
+    rate, speed_rate, store_rate = steady_rates(p, speed, stick, power, energy, sustain, deep)
     return rate, speed_rate, speed * speed_rate + store_rate
 
 
 def stick_level_shape(p, index: int) -> tuple[float, float, float]:
-    """A stick index's (stick size, g cap, deep) as `steady_rates` takes them (card.STICK_LEVELS'
-    layout; from the constants' tables, so the post-stall switch is read): straight (0, 1, 0),
-    gradual (GRADUAL_STICK, 1, 0), middle (MIDDLE_STICK, middle_g_fraction, 0), full (1, 1, 1 with
-    GameConfig.post_stall, else 0)."""
+    """A stick index's (stick size, sustain, deep) as `steady_rates` takes them (card.STICK_LEVELS'
+    layout; from the constants' tables, so the post-stall switch is read): straight (0, 0, 0),
+    Sustain (1, 1, 0), Max (1, 0, 0), Snap (1, 0, 1 with GameConfig.post_stall, else 0)."""
     return tuple(
         float(table.reshape(-1, len(card.STICK_LEVELS))[0, index].abs())
-        for table in (p.stick_table, p.stick_cap_table, p.deep_stall_table)
+        for table in (p.stick_table, p.sustain_stick_table, p.deep_stall_table)
     )
+
+
+SUSTAIN_GRID = 97  # Sustain's table: speeds from stall speed to cruise speed
+
+
+def _sustain_table(values: dict[str, Tensor], stall_speed: Tensor, cruise: Tensor):
+    """Sustain's line (author 2026-11-26): per row, on SUSTAIN_GRID speeds from stall speed to
+    cruise speed, the stick (a fraction of the envelope's top line, Max) whose quasi-steady turn
+    holds energy (Ps = 0) coasting at the spawn store: 1 where Max gains energy (below the
+    tightest sustained speed), 0 at cruise speed (no sustained turn above it: the table's end,
+    straight, holds there and beyond). Returns (first speed (T,), step (T,), table (T, grid)).
+    The tick reads it by speed (`_sustain_fraction`), whatever the power: diving and climbing
+    fly the coasting fraction of their own top line."""
+    column = SimpleNamespace(**{name: value[:, None] for name, value in values.items()})
+    energy = column.spawn_energy
+    step = (cruise - stall_speed) / (SUSTAIN_GRID - 1)
+    speeds = stall_speed[:, None] + step[:, None] * torch.arange(SUSTAIN_GRID)
+    with torch.no_grad():
+        zero, one = torch.zeros_like(speeds), torch.ones_like(speeds)
+        low, high = zero, one
+        for _ in range(SUSTAINED_STICK_STEPS):
+            middle = 0.5 * (low + high)
+            gains = quasi_steady(column, speeds, middle, 0, energy)[2] > 0.0
+            low, high = torch.where(gains, middle, low), torch.where(gains, high, middle)
+        max_gains = quasi_steady(column, speeds, one, 0, energy)[2] >= 0.0
+        fraction = torch.where(max_gains, one, 0.5 * (low + high))
+        fraction[:, -1] = 0.0
+    return stall_speed, step, fraction
+
+
+def _sustain_fraction(p, control, speed):
+    """Sustain's stick at this speed: its table (`_sustain_table`) read linearly, clamped at
+    both ends (1 below stall speed, 0 above cruise speed)."""
+    table = control.sustain_table
+    count = table.shape[-1]
+    table = table.expand(*speed.shape, count)
+    position = ((speed - p.sustain_low_speed) * p.inverse_sustain_step).clamp(0.0, count - 1.0)
+    below = position.floor().clamp_max(count - 2.0)
+    share = position - below
+    index = below.long()[..., None]
+    first = table.gather(-1, index)[..., 0]
+    second = table.gather(-1, index + 1)[..., 0]
+    return first + (second - first) * share
 
 
 SUSTAINED_GRID = 257  # speeds per search pass
@@ -692,7 +750,7 @@ def medium(fields: Tensor, x: Tensor, y: Tensor) -> tuple[Tensor, Tensor, Tensor
 # --------------------------------------------------------------------------- flight
 
 
-def _setting(p, control, speed, energy):
+def _setting(p, control, speed, energy, angle_sin):
     """The controls resolved at a speed and store: signed lateral acceleration, the exchange
     between speed and store, the vertical acceleration held, and thrust.
 
@@ -703,12 +761,14 @@ def _setting(p, control, speed, energy):
     diving on the deck, no lost turn from climbing at the top). The engine drives speed only
     (constant power) and never feeds the store; firing scales the thrust on the ticks it fires.
 
-    The stick (author 2026-11-24, the middle level 2026-11-26): a stick level is its size times
-    sqrt(level^2 - held^2) over its g cap, the level the wing's maximum lift against the cap's
-    share of the g limit (one soft minimum: the true corner) and the budget's the same at the
-    full g limit. Gradual and full (cap 1): their fraction of the envelope's top line; middle
-    (size and cap card.MIDDLE_STICK): the wing's maximum lift against two thirds of the g limit.
-    Below corner full stick's angle of attack goes past the stall (`_commanded_angle`).
+    The 1 g is held by the wing's maximum lift plus the thrust's normal part at the angle flown
+    (angle_sin: |sin| of the angle of attack; author 2026-11-26), against the g limit.
+
+    The stick levels (author 2026-11-26): a level is its size times sqrt(budget^2 - held^2),
+    the budget the wing's maximum lift against the g limit (one soft minimum: the true corner):
+    the envelope's top line. Max: all of it. Snap: the same, and below corner its angle of
+    attack goes past the stall (`_commanded_angle`). Sustain: the fraction of it that holds
+    energy at this speed (`_sustain_fraction`).
     """
     speed_squared = speed * speed
     q = p.lift_softmin_exponent
@@ -722,14 +782,21 @@ def _setting(p, control, speed, energy):
     demand = card.GRAVITY + (control.demand - card.GRAVITY) * room
     commanded = control.commanded * room
     first = torch.where(climbing, card.GRAVITY, demand)  # held before the turn
-    held = softmin(first, budget, q)
+    thrust = softmin(p.power / speed, p.static_thrust, p.thrust_softmin_exponent)
+    thrust = thrust * control.thrust_scale
+    # What holds it: the wing's maximum lift and the thrust's normal part, against the g limit.
+    holding = softmin(p.lift * speed_squared + thrust * angle_sin, p.max_acceleration, q)
+    held = softmin(first, holding, q)
     # The stick: its fraction of the most lateral acceleration the ship can give at this speed
-    # (full stick: all of it, the envelope's top line; lift-limited below corner, g-limited
-    # above): the budget with what is held taken first.
-    # A level's own line: the wing's maximum lift against its g cap (the middle's
-    # middle_g_fraction of the g limit; 1 for the others), the same soft minimum.
-    level = softmin(p.lift * speed_squared, control.stick_cap * p.max_acceleration, q)
-    lateral_size = control.stick_size * torch.sqrt((level * level - held * held).clamp_min(0.0))
+    # (Max: all of it, the envelope's top line; lift-limited below corner, g-limited above):
+    # the budget with what is held taken first.
+    size = control.stick_size
+    if control.sustain_table is not None:
+        size = size * torch.where(control.sustain > 0.5, _sustain_fraction(p, control, speed), 1.0)
+    # The wing's share of what is held, never above its budget (the same soft minimum: where
+    # the thrust holds the rest the turn fades smoothly, no infinite slope where it reaches 0).
+    on_wing = softmin(held, budget, q)
+    lateral_size = size * torch.sqrt((budget_squared - on_wing * on_wing).clamp_min(0.0))
     # The climb's extra lift, from what the turn left: never more than its demand.
     room_left = torch.sqrt((budget_squared - lateral_size * lateral_size).clamp_min(0.0))
     left = (room_left - held).clamp_min(0.0)
@@ -741,8 +808,6 @@ def _setting(p, control, speed, energy):
     unmet_climb = torch.where(climbing, unmet, 0.0)
     sinking = (first - vertical).clamp_min(0.0)
     exchange = commanded - unmet_climb - sinking * sink_room
-    thrust = softmin(p.power / speed, p.static_thrust, p.thrust_softmin_exponent)
-    thrust = thrust * control.thrust_scale
     return control.stick_sign * lateral_size, exchange, vertical, thrust
 
 
@@ -849,7 +914,7 @@ def _lift_coefficient(p, angle):
     return _lift_and_slope(p, angle, slope=False)[0]
 
 
-def _path_lift(p, lift, angle, vertical, speed_squared, thrust, thrust_normal):
+def _path_lift(p, lift, angle, vertical, speed_squared, thrust, thrust_normal, whole):
     """The lateral acceleration of the normal force: the lift plus the thrust's normal part
     (thrust_normal = thrust x sin angle; the thrust's size never depends on the angle, its part
     along the path, thrust x cos angle, drives the speed in `_rates`).
@@ -858,32 +923,43 @@ def _path_lift(p, lift, angle, vertical, speed_squared, thrust, thrust_normal):
     vertical carried apart as induced drag. Past it (GameConfig.post_stall) the angle becomes
     the wing's whole, so the held vertical comes out of the normal force first, like the lift
     (author 2026-11-26: one force budget): lateral^2 = normal^2 - share x vertical^2, share a
-    smootherstep over card.POST_STALL_SHARE_WIDTH past the stall; what is left turns the path.
-    Where the normal force barely carries the vertical the square is floored smoothly,
+    smootherstep over card.POST_STALL_SHARE_WIDTH past the stall, at least what keeps the wing's
+    whole load within its maximum lift against the g limit, and at least `whole` (Snap's
+    deep opening, `_deep_opening`: Snap's angle is the wing's whole at any angle once open, so
+    closing it toward the stall near stall speed frees no vertical); what is left turns the
+    path. Where the normal force barely carries the vertical the square is floored smoothly,
     (x + sqrt(x^2 + e^2)) / 2, e = card.PATH_LIFT_SOFTNESS^2 x share x vertical^2 (0 below the
     stall, so ordinary flight is exact), so the rate has no infinite slope where it reaches 0.
-    The turn is never more than the envelope's at that speed (its lateral lift, the wing's
-    maximum lift against the g limit less the held vertical, plus its thrust tilted by its own
-    angle). Returns (lateral, its share of the normal force): the share scales the path's
-    response to the angle (`_kick`'s kappa)."""
+    No cap at the envelope (author 2026-11-26): near stall speed Snap's thrust turns it a little
+    more than Max. Returns (lateral, its share of the normal force): the share scales the
+    path's response to the angle (`_kick`'s kappa)."""
     normal = lift * speed_squared + thrust_normal
     if not _switched_on(p.post_stall):
         return normal, 1.0
     share = smootherstep(((angle.abs() - p.stall) * p.inverse_share_width).clamp(0.0, 1.0))
+    share = torch.maximum(share, whole)
     held = vertical * vertical
-    taken = share * held
-    left = normal * normal - taken
-    softness = card.PATH_LIFT_SOFTNESS**2 * taken
-    lateral = torch.sqrt(0.5 * (left + torch.sqrt(left * left + softness * softness)))
-    # Never more than the envelope's turn at this speed: its lift's lateral share plus its
-    # thrust's (the thrust tilted by the envelope's own angle).
+    # The wing never carries more than its maximum lift against the g limit (`_setting`'s
+    # budget): what it carries apart of the vertical is at most what its lift at this angle
+    # leaves (0 at Max's angle, so ordinary flight is exact; near corner Snap's angle opening
+    # toward the stall would otherwise carry the whole 1 g for free on top of the maximum lift).
     most = softmin(p.lift * speed_squared, p.max_acceleration, p.lift_softmin_exponent)
-    envelope_lateral = torch.sqrt((most * most - held).clamp_min(0.0))
-    reach = (envelope_lateral / (p.lift * speed_squared)).clamp(0.0, 1.0)
-    envelope_angle = p.stall * (1.0 - torch.sqrt(1.0 - reach))
-    turn = torch.minimum(lateral, envelope_lateral + thrust * torch.sin(envelope_angle))
+    wing = lift * speed_squared
+    taken = torch.maximum(share * held, wing * wing + held - most * most)
+    left = normal * normal - taken
+    softness = card.PATH_LIFT_SOFTNESS**2 * torch.minimum(taken.clamp_min(0.0), held)
+    turn = torch.sqrt(0.5 * (left + torch.sqrt(left * left + softness * softness)))
     fraction = (turn / normal.abs().clamp_min(1e-6)).clamp_max(1.0)
     return torch.sign(normal) * turn, fraction
+
+
+def _deep_opening(p, control, speed):
+    """Snap's deep opening (0 to 1): a smootherstep from corner speed down over deep_stall_band
+    of corner speed (GameConfig.post_stall; 0 for the other levels and with the regime off)."""
+    if not _switched_on(p.post_stall):
+        return torch.zeros_like(speed)
+    below = ((1.0 - speed * p.inverse_corner_speed) * p.inverse_deep_stall_band).clamp(0.0, 1.0)
+    return smootherstep(below) * control.deep
 
 
 def _commanded_angle(p, control, lateral, speed, inverse_lift, vertical):
@@ -891,17 +967,14 @@ def _commanded_angle(p, control, lateral, speed, inverse_lift, vertical):
     gives the setting's lateral acceleration; for full stick (control.deep) below corner it
     opens toward the deep angle that still holds the vertical (`_holding_angle`: coasting, the
     card's deep_stall_angle from stall speed / sqrt(POST_STALL_LIFT_FRACTION) up, shrinking
-    smoothly to the stall angle at stall speed), a smootherstep from deep_stall_start x corner
-    speed (the lift's angle there, so no jump) down over deep_stall_band of corner speed
-    (GameConfig.post_stall). Full stick never gives up the 1 g (author 2026-11-26). vertical:
+    smoothly to the stall angle at stall speed) by Snap's deep opening (`_deep_opening`: from
+    corner speed, the lift's angle there, so no jump, down over deep_stall_band of corner speed;
+    GameConfig.post_stall). Full stick never gives up the 1 g (author 2026-11-26). vertical:
     the setting's held vertical (`_setting`)."""
     reach = (lateral.abs() / (speed * speed) * inverse_lift).clamp(0.0, 1.0)
     angle = p.stall * (1.0 - torch.sqrt(1.0 - reach))
     if _switched_on(p.post_stall):
-        below = (
-            (p.deep_stall_start - speed * p.inverse_corner_speed) * p.inverse_deep_stall_band
-        ).clamp(0.0, 1.0)
-        opening = smootherstep(below) * control.deep
+        opening = _deep_opening(p, control, speed)
         angle = angle + (_holding_angle(p, speed, vertical) - angle) * opening
     return control.stick_sign * angle
 
@@ -962,18 +1035,26 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
     safe0 = speed0.clamp_min(floor)
     inverse_lift = 1.0 / p.lift
     inverse_lift_squared = inverse_lift * inverse_lift
-    first = _setting(p, control, safe0, energy)
+    angle_sin = sin0.abs()  # the thrust's normal part in the 1 g hold, at the angle flown
+    first = _setting(p, control, safe0, energy, angle_sin)
     lift0, slope = _lift_and_slope(p, angle0)
     speed_rate0, energy_rate0 = _rates(
         p, first, inverse_index, speed0, lift0, cos0, 1.0 / (safe0 * safe0), inverse_lift_squared
     )
     speed = (speed0 + 0.5 * duration * speed_rate0).clamp_min(floor)
-    current = _setting(p, control, speed, energy + 0.5 * duration * energy_rate0)
+    current = _setting(p, control, speed, energy + 0.5 * duration * energy_rate0, angle_sin)
     lateral, _, vertical, thrust = current
     speed_squared = speed * speed
     inverse_speed_squared = 1.0 / speed_squared
     path_lift, fraction = _path_lift(
-        p, lift0, angle0, vertical, speed_squared, thrust, thrust * sin0
+        p,
+        lift0,
+        angle0,
+        vertical,
+        speed_squared,
+        thrust,
+        thrust * sin0,
+        _deep_opening(p, control, speed),
     )
     if inverse_index is None:
         over = 1.0 / speed
@@ -987,16 +1068,27 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
     # stall). The nose is a spring toward the commanded angle with the angle's total damping
     # ratio the card's nose_damping at every angle (author 2026-11-26, fly-by-wire: the nose's
     # own damping is what the path's response leaves), so it never runs away past the stall.
+    # The spring per level (author 2026-11-26): going out (the target beyond the angle on its
+    # side, or on the other side once past centre) its stiffness is the level's
+    # (card.NOSE_STIFFNESS: Sustain 1/3, Max 2/3, Snap 1) of omega^2; going back toward the
+    # flight path (a release, a smaller level on the same side, a reversal until the nose
+    # crosses centre) all of it. The friction (the total damping coefficient 2 nose_damping
+    # omega) is the same for every level, so the damping ratio is nose_damping / sqrt(stiffness):
+    # Snap 1/sqrt(3), Max 0.707, Sustain 1. Chosen per tick from the target and the angle: no
+    # state; the angle and its rate stay continuous.
     kappa = (slope * speed_squared + thrust * cos0) * fraction * over
     omega = (p.nose_frequency * speed).clamp_min(card.NOSE_FREQUENCY_FLOOR)
     if inverse_index is not None:
         omega = omega * inverse_index
     damping = 2.0 * p.nose_damping * omega - kappa
-    step_angle = _commanded_angle(p, control, lateral, speed, inverse_lift, vertical) - angle0
+    target = _commanded_angle(p, control, lateral, speed, inverse_lift, vertical)
+    step_angle = target - angle0
+    going_out = (target * angle0 >= 0.0) & (target.abs() > angle0.abs())
+    stiffness = torch.where(going_out, control.stiffness, 1.0) * (omega * omega)
     m11, m12, m21, m22 = _matrix_exponential(
         -kappa,
         filled((), 1.0, kappa.dtype, kappa.device).expand_as(kappa),
-        damping * kappa - omega * omega,
+        damping * kappa - stiffness,
         -damping,
         duration,
     )
@@ -1063,8 +1155,10 @@ def flight_tick(
         thrust_scale=thrust_scale,
         stick_size=signed.abs(),
         stick_sign=torch.sign(signed),
-        stick_cap=p.stick_cap_table.gather(1, index)[:, 0],
+        sustain=p.sustain_stick_table.gather(1, index)[:, 0],
+        sustain_table=p.sustain_table.movedim(1, -1),  # (E, N, grid)
         deep=p.deep_stall_table.gather(1, index)[:, 0],
+        stiffness=p.nose_stiffness_table.gather(1, index)[:, 0],
         commanded=p.commanded_table.gather(1, power[:, None])[:, 0],
         demand=p.demand_table.gather(1, power[:, None])[:, 0],
     )
@@ -1647,10 +1741,10 @@ def _shields(
     config: GameConfig, state: State, damage: Tensor, stick: Tensor, power: Tensor, shoot: Tensor
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     """The tick's damage (E, N) against the shields. A living ship hurt with its shield already
-    at 0 dies; the shield takes the damage down to 0; a ship not hurt and quiet (coast, at most
-    the gradual stick, no trigger) recharges once its wait has run out; being hurt or not quiet
-    restarts the wait. Returns died (E, N) bool, the shield after the damage, the recharge
-    (restored) and the wait."""
+    at 0 dies; the shield takes the damage down to 0; a ship not hurt and quiet (coast, straight,
+    no trigger; author 2026-11-26: every turn level resets the wait) recharges once its wait has
+    run out; being hurt or not quiet restarts the wait. Returns died (E, N) bool, the shield
+    after the damage, the recharge (restored) and the wait."""
     c = state.constants
     h = config.tick_length
     quiet = (power == 0) & (stick <= card.QUIET_STICK_MAX) & ~shoot

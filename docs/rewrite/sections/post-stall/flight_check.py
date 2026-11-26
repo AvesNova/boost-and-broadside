@@ -27,7 +27,7 @@ from lean.game import core
 torch.set_num_threads(1)
 SHARES = (0.6, 0.8, 0.95, 1.0, 1.1)
 PULL, RELEASE = 1.0, 1.0  # seconds
-FULL, MIDDLE, STRAIGHT = 6, 4, 0  # stick indices (card.STICK_LEVELS: +3, +2, 0)
+FULL, MIDDLE, STRAIGHT = 6, 4, 0  # stick indices (card.STICK_LEVELS: +3 Snap, +2 Max, 0)
 COAST = 0
 
 
@@ -57,7 +57,7 @@ def fly(config, speed: float, stick: int):
     )
     h = config.tick_length
     power = torch.zeros(1, 1, dtype=torch.long)
-    size, cap, deep = core.stick_level_shape(p, stick)
+    size, sustain, deep = core.stick_level_shape(p, stick)
     rows = []
     with torch.no_grad():
         for tick in range(round((PULL + RELEASE) / h)):
@@ -72,16 +72,17 @@ def fly(config, speed: float, stick: int):
             v = float(s.speed)
             # the commanded angle at this speed (the steady analysis' own function)
             speed_t = torch.tensor([v])
-            control = SimpleNamespace(
-                thrust_scale=1.0,
-                stick_size=torch.tensor([size if held else 0.0]),
-                stick_sign=torch.ones(1),
-                stick_cap=torch.tensor([cap]),
-                deep=torch.tensor([deep if held else 0.0]),
-                commanded=p.commanded_table[..., COAST],
-                demand=p.demand_table[..., COAST],
+            control = core.steady_control(
+                p,
+                speed_t,
+                torch.tensor([size if held else 0.0]),
+                COAST,
+                torch.tensor([sustain if held else 0.0]),
+                torch.tensor([deep if held else 0.0]),
             )
-            lateral, _, vertical, _ = core._setting(p, control, speed_t, s.energy[0])
+            lateral, _, vertical, _ = core._setting(
+                p, control, speed_t, s.energy[0], s.angle_sin[0].abs()
+            )
             commanded = float(
                 core._commanded_angle(p, control, lateral, speed_t, 1.0 / p.lift, vertical)
             )
@@ -161,20 +162,14 @@ def sweep():
     energy = p.spawn_energy.expand_as(speeds)
     out = {}
     for stick, name in ((FULL, "full"), (MIDDLE, "middle")):
-        size, cap, deep = core.stick_level_shape(p, stick)
+        size, sustain, deep = core.stick_level_shape(p, stick)
         rate = core.steady_rates(
-            p, speeds, torch.full_like(speeds, size), COAST, energy, cap, deep
+            p, speeds, torch.full_like(speeds, size), COAST, energy, sustain, deep
         )[0]
-        control = SimpleNamespace(
-            thrust_scale=1.0,
-            stick_size=torch.full_like(speeds, size),
-            stick_sign=torch.ones_like(speeds),
-            stick_cap=torch.full_like(speeds, cap),
-            deep=torch.full_like(speeds, deep),
-            commanded=p.commanded_table[..., COAST],
-            demand=p.demand_table[..., COAST],
+        control = core.steady_control(
+            p, speeds, torch.full_like(speeds, size), COAST, sustain, deep
         )
-        lateral, _, vertical, _ = core._setting(p, control, speeds, energy)
+        lateral, _, vertical, _ = core._setting(p, control, speeds, energy, 0.0)
         angle = core._commanded_angle(p, control, lateral, speeds, 1.0 / p.lift, vertical)
         out[name] = (rate, angle)
         print(
@@ -224,9 +219,9 @@ def lowest_speeds():
     )
     rows = {}
     for stick in (FULL, MIDDLE):
-        size, cap, deep = core.stick_level_shape(p, stick)
+        size, sustain, deep = core.stick_level_shape(p, stick)
         rows[stick] = core.steady_rates(
-            p, speeds, torch.full_like(speeds, size), COAST, energy, cap, deep
+            p, speeds, torch.full_like(speeds, size), COAST, energy, sustain, deep
         )
     top = core.steady_rates(p, speeds, torch.ones_like(speeds), COAST, energy)[0]
     for i, v in enumerate(speeds):

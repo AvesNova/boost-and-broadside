@@ -15,8 +15,8 @@ the flight model's source, so a physics change re-solves the rows by itself:
   docs/rewrite/p51d-model.md "Design inputs").
 
 The bullet's damage reference speed is not stored either (core._derived_characteristics).
-The stick levels are shared constants (GRADUAL_STICK, MIDDLE_STICK, FULL_STICK; core.stick_table;
-their shapes below).
+The stick levels (Sustain, Max, Snap) are shared rules (core.stick_table and its siblings; their
+shapes below).
 """
 
 import math
@@ -25,10 +25,10 @@ TYPE_NAMES = ("p51d",)
 
 # The flight terms: the drag rise above critical_speed, the separation drag, the soft minima of
 # lift against the g limit and of thrust against static thrust, the nose damping (the angle of
-# attack's damping ratio toward the commanded angle) and the post-stall regime (core._setting,
-# _lift_coefficient, _rates): full stick's deepest angle of attack below corner, the band below
-# corner speed (a fraction of it) over which full stick's allowed angle opens from the stall
-# angle to it, and the drag at POST_STALL_DRAG_ANGLE over the drag at the stall.
+# attack's damping ratio toward the commanded angle at Snap's stiffness) and the post-stall regime
+# (core._setting, _lift_coefficient, _rates): Snap's deepest angle of attack below corner, the
+# band below corner speed (a fraction of it) over which Snap's angle opens from the stall angle
+# to it, and the drag at POST_STALL_DRAG_ANGLE over the drag at the stall.
 FLIGHT_TERMS = (
     "critical_speed",
     "drag_rise_exponent",
@@ -38,9 +38,7 @@ FLIGHT_TERMS = (
     "thrust_softmin_exponent",
     "nose_damping",
     "deep_stall_angle",
-    "deep_stall_start",
     "deep_stall_band",
-    "middle_g_fraction",
     "post_stall_drag_ratio",
 )
 # The card's columns, in order. engine_power is thrust power per kg; exchange_acceleration the
@@ -127,16 +125,15 @@ LN_2 = math.log(2.0)
 
 # Stick index to signed level; power index 0 coast, 1 dive, 2 climb.
 STICK_LEVELS = (0.0, -1.0, 1.0, -2.0, 2.0, -3.0, 3.0)
-QUIET_STICK_MAX = 2  # stick indices 0..2 (straight and the gradual turns) keep the shield quiet
-# The stick levels 1, 2, 3 (author 2026-11-24, the middle and full levels 2026-11-26;
-# core._setting). Gradual: GRADUAL_STICK of the envelope's top line (the wing's maximum lift
-# against the g limit, one soft minimum). Middle (all of its own line, MIDDLE_STICK 1): the
-# wing's maximum lift against the card's middle_g_fraction of the g limit (the same soft
-# minimum): the envelope at low speed, then that g level. Full: the envelope from
-# deep_stall_start x corner speed up (the g limit above corner); below it the stick asks for
-# the card's deep_stall_angle, opening over deep_stall_band of corner speed, closing back to the
-# stall angle between the speed where that angle's lift holds 1 g and stall speed
+QUIET_STICK_MAX = 0  # stick index 0 (straight) keeps the shield quiet; every turn level resets it
+# The stick levels 1, 2, 3 (author 2026-11-26; core._setting), each all of its own line:
+# Sustain, the sustained turn (Ps = 0 coasting; the envelope where even it gains energy; a table
+# over speed, core._sustain_table); Max, the envelope's top line (the wing's maximum lift against
+# the g limit, one soft minimum); Snap, the same above corner and below it the card's
+# deep_stall_angle, opening over deep_stall_band of corner speed, closing back to the stall
+# angle between the speed where that angle's lift holds 1 g and stall speed
 # (core._holding_angle).
-GRADUAL_STICK = 1.0 / 3.0
-MIDDLE_STICK = 1.0
-FULL_STICK = 1.0
+LEVEL_NAMES = ("Sustain", "Max", "Snap")
+# The nose spring's stiffness going out, by |level| (straight, Sustain, Max, Snap), a factor of
+# the full spring; going back it is always 1 (core._kick).
+NOSE_STIFFNESS = (1.0, 1.0 / 3.0, 2.0 / 3.0, 1.0)

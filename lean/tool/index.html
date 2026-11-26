@@ -73,7 +73,7 @@
 <div id="sandbox">
   <canvas id="view"></canvas>
   <div id="hud"></div>
-  <div id="status">arrows/WASD turn (middle; shift full, left alt gradual) / up dive / down climb / space fire / C opponent / R reset / +- zoom</div>
+  <div id="status">arrows/WASD turn (Max; shift Snap, left alt Sustain) / up dive / down climb / space fire / C opponent / R reset / +- zoom</div>
 </div>
 
 <script>
@@ -352,7 +352,7 @@ function send(o) { if (socket && socket.readyState === 1) socket.send(JSON.strin
 function controls() {
   const left = keys.has("ArrowLeft") || keys.has("a"), right = keys.has("ArrowRight") || keys.has("d");
   const dive = keys.has("ArrowUp") || keys.has("w"), climb = keys.has("ArrowDown") || keys.has("s");
-  // the turn's level: alone the middle level, with Shift full, with left Alt gradual (Shift wins)
+  // the turn's level: alone Max, with Shift Snap, with left Alt Sustain (Shift wins)
   return { side: +left - +right, level: keys.has("Shift") ? 3 : keys.has("AltLeft") ? 1 : 2,
            power: dive && !climb ? 1 : climb && !dive ? 2 : 0, fire: keys.has(" ") };
 }

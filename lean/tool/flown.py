@@ -2,8 +2,8 @@
 part of core.step), one ship per slot, no fields, for the design the card holds as type 0
 (inside lean.game.tuning.flying, or the card as it stands). Game units at the card's time scale.
 
-- `achievable_speeds`: per flight condition the doghouse draws (full, middle and gradual stick
-  coasting; full stick diving and climbing), the lowest speed at which a ship flown from the
+- `achievable_speeds`: per flight condition the doghouse draws (Snap, Max and Sustain coasting;
+  Snap diving and climbing), the lowest speed at which a ship flown from the
   spawn state actually flies it: the turn it makes (the velocity's direction change per tick)
   within `tolerance` of the quasi-steady rate at that speed and store (the line's value), and
   for dive and climb the store inside the edge bands (outside them dive and climb fade to coast).
@@ -29,14 +29,14 @@ from lean.game import card, core
 from lean.tool import flight_config
 
 COAST, DIVE, CLIMB = 0, 1, 2
-STRAIGHT, GRADUAL, MIDDLE, FULL = 0, 2, 4, 6  # stick indices (card.STICK_LEVELS), one side
+STRAIGHT, SUSTAIN, MAX, SNAP = 0, 2, 4, 6  # stick indices (card.STICK_LEVELS), one side
 # The doghouse's lines: name -> (stick index, power index).
 CONDITIONS = {
-    "full": (FULL, COAST),
-    "middle": (MIDDLE, COAST),
-    "gradual": (GRADUAL, COAST),
-    "dive": (FULL, DIVE),
-    "climb": (FULL, CLIMB),
+    "snap": (SNAP, COAST),
+    "max": (MAX, COAST),
+    "sustain": (SUSTAIN, COAST),
+    "dive": (SNAP, DIVE),
+    "climb": (SNAP, CLIMB),
 }
 TOLERANCE = 0.05  # a measured turn within 5% (and 0.2 deg/s) of the quasi-steady rate
 BLEED_SECONDS, BLEED_STEP, HOLD_SECONDS = 30.0, 0.5, 4.0
@@ -88,9 +88,7 @@ def achievable_speeds(tolerance: float = TOLERANCE) -> dict[str, float]:
     """Per condition (CONDITIONS), the lowest speed (game m/s) at which it is flown (the module
     docstring); inf if never."""
     pairs = [
-        (stick, power)
-        for stick in (STRAIGHT, GRADUAL, MIDDLE, FULL)
-        for power in (COAST, DIVE, CLIMB)
+        (stick, power) for stick in (STRAIGHT, SUSTAIN, MAX, SNAP) for power in (COAST, DIVE, CLIMB)
     ]
     bleeds = np.arange(0.0, BLEED_SECONDS + 1e-9, BLEED_STEP)
     names = list(CONDITIONS)
@@ -107,7 +105,7 @@ def achievable_speeds(tolerance: float = TOLERANCE) -> dict[str, float]:
     max_energy = float(p.max_energy[0])
     s = _fresh(n, card.SPAWN_SPEED, float(p.spawn_energy[0]))
     band = config.store_edge_band
-    level, cap, deep = _shape(p, condition[:, :1])
+    level, sustain, deep = _shape(p, condition[:, :1])
     lowest = torch.full((len(names),), math.inf)
     fields = torch.zeros(n, 5, 0)
     with torch.no_grad():
@@ -122,7 +120,7 @@ def achievable_speeds(tolerance: float = TOLERANCE) -> dict[str, float]:
             for power in (COAST, DIVE, CLIMB):
                 quasi = torch.where(
                     condition[:, 1] == power,
-                    core.steady_rates(p, speed, level, power, energy, cap, deep)[0],
+                    core.steady_rates(p, speed, level, power, energy, sustain, deep)[0],
                     quasi,
                 )
             store = energy / max_energy
@@ -147,7 +145,7 @@ def random_search(
     pairs = torch.tensor(
         [
             (stick, power)
-            for stick in (STRAIGHT, GRADUAL, MIDDLE, FULL)
+            for stick in (STRAIGHT, SUSTAIN, MAX, SNAP)
             for power in (COAST, DIVE, CLIMB)
         ]
     )
@@ -177,14 +175,14 @@ def random_search(
             measured = _turn_rate(before, s, h)
             speed, energy = s.speed[:, 0], s.energy[:, 0]
             store = energy / max_energy
-            level, cap, deep = _shape(p, control[:, :1])
+            level, sustain, deep = _shape(p, control[:, :1])
             for name, (stick, power) in CONDITIONS.items():
                 mask = (control[:, 0] == stick) & (control[:, 1] == power)
                 if power != COAST:
                     mask &= (store > band) & (store < 1.0 - band)
                 if not mask.any():
                     continue
-                quasi = core.steady_rates(p, speed, level, power, energy, cap, deep)[0]
+                quasi = core.steady_rates(p, speed, level, power, energy, sustain, deep)[0]
                 mask &= (measured - quasi).abs().le(tolerance * quasi.abs() + math.radians(0.2))
                 if mask.any():
                     lowest[name] = min(lowest[name], float(speed[mask].min()))
@@ -197,10 +195,10 @@ def random_search(
 
 
 def _shape(p, stick: torch.Tensor):
-    """Per ship, a stick index's (size, g cap, deep) as core.steady_rates takes them."""
+    """Per ship, a stick index's (size, sustain, deep) as core.steady_rates takes them."""
     return tuple(
         table.gather(1, stick)[:, 0].abs()
-        for table in (p.stick_table, p.stick_cap_table, p.deep_stall_table)
+        for table in (p.stick_table, p.sustain_stick_table, p.deep_stall_table)
     )
 
 
@@ -239,8 +237,8 @@ def critical_points(
       smallest radius (tightest) passed through.
 
     Each point: {speed, rate, radius, mode, stick, fixed_stick_speed}; None where the quasi-steady
-    point is None. A held stick is the game's middle-stick entry set per ship each tick (a
-    continuous stick; the agent's actions have three levels)."""
+    point is None. A held stick is the game's Max entry set per ship each tick (a continuous
+    fraction of the top line; the agent's actions have three levels)."""
     _, _, p = _ships(1)
     energy = float(p.spawn_energy[0])
     starts, sticks, targets, gains, groups = [], [], [], [], []
@@ -271,12 +269,11 @@ def critical_points(
     config, constants, _ = _ships(n)
     h = config.tick_length
     s = _fresh(n, torch.tensor(starts), energy)
-    control = torch.full((n, 1), MIDDLE)
+    control = torch.full((n, 1), MAX)
     power = torch.full((n, 1), COAST)
-    column = constants.columns["stick_table"][0] + MIDDLE
-    # The held stick is a fraction of the envelope's top line: no g cap, no deep angle.
-    constants.table[:, constants.columns["stick_cap_table"][0] + MIDDLE, 0] = 1.0
-    constants.table[:, constants.columns["deep_stall_table"][0] + MIDDLE, 0] = 0.0
+    # The held stick is a fraction of the envelope's top line (Max's own shape: no table, no
+    # deep angle).
+    column = constants.columns["stick_table"][0] + MAX
     base, target, gain = torch.tensor(sticks), torch.tensor(targets), torch.tensor(gains)
     fields = torch.zeros(n, 5, 0)
     speeds, rates = [], []

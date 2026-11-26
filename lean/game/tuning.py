@@ -449,14 +449,14 @@ DESIGN_INPUTS = (
         "nose_damping",
         "nose damping ratio",
         N,
-        source="design: 0.59, one 10% overshoot (author 2026-11-26)",
+        source="design: 1/sqrt(3), Snap 10.8% overshoot; Max 0.707, Sustain 1 (2026-11-26)",
         low=0.2,
         high=1.5,
         relative=False,
     ),
     scaled(
         "deep_stall_angle",
-        "full stick's deepest angle of attack",
+        "Snap: deepest angle of attack",
         N,
         unit="rad",
         source="design: 45 deg to start (author 2026-11-26)",
@@ -465,32 +465,13 @@ DESIGN_INPUTS = (
         relative=False,
     ),
     scaled(
-        "deep_stall_start",
-        "full stick: deep angle starts opening at",
-        N,
-        unit="x corner speed",
-        source="design: 0.85, just under the middle cap's speed (author 2026-11-26)",
-        low=0.7,
-        high=1.0,
-        relative=False,
-    ),
-    scaled(
         "deep_stall_band",
-        "full stick: deep angle's opening band",
+        "Snap: deep angle's opening band below corner",
         N,
         unit="of corner speed",
-        source="design: 0.30, open from 0.55 x corner down (author 2026-11-26)",
+        source="design: 0.30, open from 0.70 x corner down (author 2026-11-26)",
         low=0.02,
         high=0.6,
-        relative=False,
-    ),
-    scaled(
-        "middle_g_fraction",
-        "middle stick: g cap (of the g limit)",
-        N,
-        source="design: 0.75, about 6 of 8 g (author 2026-11-26)",
-        low=0.3,
-        high=1.0,
         relative=False,
     ),
     scaled(
@@ -752,11 +733,9 @@ P51D_VALUES = dict(
     separation_exponent=8.0,
     lift_softmin_exponent=16.0,
     thrust_softmin_exponent=2.8304440028908533,
-    nose_damping=0.59,
+    nose_damping=1.0 / math.sqrt(3.0),
     deep_stall_angle=math.radians(45.0),
-    deep_stall_start=0.85,
     deep_stall_band=0.30,
-    middle_g_fraction=0.75,
     post_stall_drag_ratio=6.0,
     corner_nose_frequency=11.23144817352295,
     hit_damage=21.0,
@@ -1728,7 +1707,7 @@ def envelope(
 # The stick levels by name: their stick indices (one side) in card.STICK_LEVELS.
 LEVEL_INDICES = {
     name: card.STICK_LEVELS.index(level)
-    for name, level in (("gradual", 1.0), ("middle", 2.0), ("full", 3.0))
+    for name, level in (("sustain", 1.0), ("max", 2.0), ("snap", 3.0))
 }
 
 
@@ -1741,9 +1720,9 @@ def level_lines(
 ) -> dict:
     """Each stick level's quasi-steady line as the game flies it (game units, the nose settled,
     no fields): the level's own shape from the constants' stick tables (core.stick_level_shape:
-    size, g cap, deep angle) through core.steady_rates, under `config` (default the game's,
+    size, sustain, deep angle) through core.steady_rates, under `config` (default the game's,
     post-stall regime as configured). {name: {rate (rad/s), ps (m/s altitude-equivalent),
-    speed_rate, store_rate, settled}} for "gradual", "middle" and "full"; settled: the speeds
+    speed_rate, store_rate, settled}} for "sustain", "max" and "snap"; settled: the speeds
     where holding the level settles (Ps falls through 0 as speed rises) as [(speed, rate)]."""
     import numpy as np
 
@@ -1754,9 +1733,9 @@ def level_lines(
         p = core.per_type_constants(config, torch.full(speeds.shape, index))
         energy = p.spawn_energy.clone() if store_fraction is None else store_fraction * p.max_energy
         for name, stick in LEVEL_INDICES.items():
-            size, cap, deep = core.stick_level_shape(p, stick)
+            size, sustain, deep = core.stick_level_shape(p, stick)
             rate, speed_rate, store_rate = core.steady_rates(
-                p, speeds, torch.full_like(speeds, size), power, energy, cap, deep
+                p, speeds, torch.full_like(speeds, size), power, energy, sustain, deep
             )
             rate, speed_rate, store_rate = (x.numpy() for x in (rate, speed_rate, store_rate))
             axis = speeds.numpy()
@@ -1774,12 +1753,6 @@ def level_lines(
                 rate=rate, ps=ps, speed_rate=speed_rate, store_rate=store_rate, settled=settled
             )
     return out
-
-
-def stick_levels() -> dict[str, float]:
-    """The stick levels as fractions of the most lateral acceleration at each speed (the shared
-    thirds, card.GRADUAL_STICK, MIDDLE_STICK, FULL_STICK): {"gradual", "middle", "full"}."""
-    return dict(gradual=card.GRADUAL_STICK, middle=card.MIDDLE_STICK, full=card.FULL_STICK)
 
 
 def ps_over_rate(grid: dict, rate_axis, rate=None, ps=None):
@@ -1886,9 +1859,7 @@ CARD_TIME_POWERS = dict(
     thrust_softmin_exponent=0,
     nose_damping=0,
     deep_stall_angle=0,
-    deep_stall_start=0,
     deep_stall_band=0,
-    middle_g_fraction=0,
     post_stall_drag_ratio=0,
 )
 # The rule constants (lean.game.card) with time in their units.

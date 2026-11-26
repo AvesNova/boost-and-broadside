@@ -505,6 +505,6 @@ def sustained_png(
         system = units.system_of(system)
         note = (
             f"Coast, spawn store. {units.describe(system, factor)}"
-            " Each line from the lowest speed the game flies full stick."
+            " Each line from the lowest speed the game flies Snap."
         )
         return _png(chart.sustained_figure(curves, False, factor, note, system=system))

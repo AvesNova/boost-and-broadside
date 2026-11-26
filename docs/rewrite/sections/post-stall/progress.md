@@ -374,3 +374,142 @@ below the envelope from about 100 to 190 m/s and on it below about 99 m/s; full 
 **Open for the author:** keep the envelope cap near the stall (it throws away thrust's turn,
 up to 23.9 deg/s at 85 m/s) or let thrust turn past the envelope there; the store's slow drain
 at the full-stick hold (the soft-minimum 1 g).
+
+## 2026-11-26, step 8: Sustain, Max, Snap; the nose spring per level; thrust in the 1 g hold
+
+Author decisions (all of this round): the three turn levels renamed and redefined (stick
+indices unchanged), a per-level nose spring, only straight keeps the shield quiet, thrust's
+normal part counts in the 1 g hold, no envelope cap near the stall, the doghouse restyled.
+Measurements: docs/rewrite/sections/post-stall/lines_check.py (rewritten for this step; the
+step-7 version is in git history).
+
+**Built:**
+
+- Levels (core.py `_setting`, `stick_table`, `sustain_stick_table`, `steady_control`;
+  card.LEVEL_NAMES):
+  - Sustain (old gradual): Max's line times a per-type table over speed (`_sustain_table`,
+    built with the derived characteristics from core.quasi_steady: 97 speeds from stall speed
+    to cruise speed, the stick fraction whose turn has Ps = 0 coasting at the spawn store, 1
+    where Max gains energy; read linearly in the tick by `_sustain_fraction`, no solve per
+    tick). Above cruise speed (372.1 m/s) no sustained turn exists: the table ends at 0 there,
+    so Sustain flies straight. Diving and climbing use the same coasting fraction of their own
+    top line (one table, not one per power).
+  - Max (old middle): the envelope's top line at every speed. middle_g_fraction and the 6 g
+    cap are gone (card term, slider, stick_cap_table).
+  - Snap (old full): Max's line above corner; below it the deep angle opens from corner speed
+    over deep_stall_band (0.30, slider kept; deep_stall_start removed), with the step-7 1 g
+    holding schedule near the stall.
+- Nose spring (`_kick`, card.NOSE_STIFFNESS, `nose_stiffness_table`): going out (target beyond
+  the angle on its side, or on the other side of centre once past it) the stiffness is
+  1/3, 2/3, 1 x omega^2 for Sustain, Max, Snap; going back always 1. Friction fixed: the total
+  damping coefficient 2 nose_damping omega with nose_damping = 1/sqrt(3) (was 0.59), so the
+  damping ratios going out are 1.000, 0.707, 0.577. Chosen per tick; no new state.
+- Shield: card.QUIET_STICK_MAX = 0 (only straight is quiet).
+- Thrust in the 1 g hold (`_setting`): what holds the vertical is softmin(C_max v^2 +
+  thrust |sin angle|, g limit), the angle the one flown (the tick: the current angle;
+  steady_rates: resolved twice, the second time at the first's commanded angle). The turn's
+  budget is unchanged; the wing's share of the hold is softmin(held, budget) so where thrust
+  carries the rest the turn fades smoothly (a hard floor there gave a slope of 5.3 deg/s per
+  m/s at 85.5 m/s on the first try).
+- `_path_lift`: the envelope cap removed. Two things that cap hid, handled at their cause:
+  Snap's open deep angle is the wing's whole (share at least the deep opening: closing the
+  angle toward the stall near stall speed no longer frees the 1 g; without this the budget
+  gave about 28 deg/s at 90 m/s in step 7), and the wing never carries more than its maximum
+  lift against the g limit (the step-6 floor on what is taken, restored: without it Snap
+  turned up to 1.22 deg/s above Max at 240.5 m/s, just below corner, the opening angle near
+  the stall carrying 1 g for free on top of the maximum lift).
+- Doghouse: envelope black (the most turn of any level, so Snap's rise near the stall shows);
+  Max solid blue #0072b2, Snap dashed vermillion #d55e00, Sustain dotted bluish green #009e73
+  (Okabe-Ito; lighter steps in the dark theme), the dashed lines above the solid; the
+  separate Ps = 0 contour removed; level names in the legend and on the lines. No "held"
+  marker for Sustain (it holds energy at every speed from about 148 m/s up).
+- Names in the tool: flown.CONDITIONS (snap, max, sustain, dive, climb), tuning.LEVEL_INDICES,
+  slider labels ("Snap: ..."), the sandbox's key help.
+
+**Lines** (quasi-steady, coast, spawn store, 0.1 m/s grid 85-470 m/s; deg/s):
+
+| v m/s | Sustain | Max | Snap | envelope |
+|---|---|---|---|---|
+| 85 | 0.56 | 0.56 | 9.12 | 9.12 |
+| 90 | 6.40 | 6.40 | 13.50 | 13.50 |
+| 95 | 12.26 | 12.26 | 18.65 | 18.65 |
+| 100 | 16.91 | 16.91 | 16.76 | 16.91 |
+| 104 | 19.88 | 19.88 | 19.15 | 19.88 |
+| 120 | 28.46 | 28.46 | 24.35 | 28.46 |
+| 167 | 39.94 | 44.91 | 35.39 | 44.91 |
+| 200 | 37.98 | 54.61 | 42.35 | 54.61 |
+| 255 | 31.00 | 67.21 | 67.21 | 67.21 |
+| 350 | 13.34 | 51.09 | 51.09 | 51.09 |
+| 370 | 3.40 | 48.31 | 48.31 | 48.31 |
+
+- Rise toward the stall (below each line's peak): none for Sustain, Max and Snap diving. Snap
+  (coasting and climbing) and so the envelope: 2.37 deg/s in all, 16.63 at 99.4 m/s up to
+  18.99 at 95.9 m/s (largest 0.1 m/s step +0.107 at 97.6). Mostly not thrust: in that span the
+  closing schedule's wing lift goes from 0.937 g (99.4 m/s) back up to 1.078 g (95.9), while
+  thrust's normal part falls from 0.303 g to 0.208 g. Below 95.9 m/s it falls again (13.50 at
+  90, 9.12 at 85). Snap turns more than Max from about 99 m/s down (9.12 against 0.56 at
+  85 m/s: thrust at the open angle).
+- Snap above Max near corner: at most 0.31 deg/s (229.8 m/s), the thrust tilted by Snap's
+  larger angle.
+- Steepest slope (deg/s per m/s): Sustain -1.675 at 369.2 m/s (to 0 at cruise), Max +1.794 at
+  86.8, Snap +1.236 at 93.4, Snap dive +0.900 at 217.9.
+- Sustain's table against a fresh bisection of the Ps = 0 stick, 150-365 m/s: within
+  0.041 deg/s (largest at 365 m/s).
+
+**Nose going out from straight** (flight tick; damping ratio, peak angle over the commanded
+angle at that moment, time to 90% of the commanded angle):
+
+| start | Sustain | Max | Snap |
+|---|---|---|---|
+| 0.8 x corner (204.7 m/s) | 1.000; 6.2 over 6.2 deg, -0.2% (no overshoot); 0.73 s | 0.707; 14.0 over 13.3, +5.4%; 0.37 s | 0.577; 48.1 over 45.0, +6.9%; 0.30 s |
+| 1.5 x stall (135.7 m/s) | 1.000; 10.7 over 11.2, -4.3% (still rising at 1.5 s); 1.20 s | 0.707; 11.3 over 10.9, +3.5%; 0.57 s | 0.577; 50.7 over 45.0, +12.8%; 0.40 s |
+
+Against the linear expectations (0%, 4.3%, 10.8%) Max is 1.1 points over at 0.8 x corner and
+0.8 under at 1.5 x stall, Snap 2.0 over at 1.5 x stall (the commanded angle moves with the
+speed, and the path's response kappa adds to the spring); going back past the target uses the
+full stiffness.
+
+**Reversals** (Snap left held 1.5 s from 0.8 x corner: 45.4 deg, 103.8 m/s at the switch; time
+to cross centre; far side):
+
+- Release: 0.60 s; 5.27 deg past centre (11.6% of the angle at the switch) at 0.87 s.
+- Sustain right: 0.53 s; 11.9 deg at 0.90 s against 6.7 commanded (+77%).
+- Max right: 0.53 s; 12.1 deg at 0.87 s against 6.7 (+82%).
+- Snap right: 0.33 s; 49.5 deg at 0.80 s against 21.5 (+130%; the ship is near stall speed by
+  then, where Snap's angle closes toward the stall).
+
+The back half is the full spring and crosses centre fast; the soft spring going out on the
+far side, with the friction fixed, does not stop that rate, so Sustain and Max overshoot their
+small far-side targets by 6-7 degrees.
+
+**Held** (World, 60 s from the spawn; speed, turn, AoA, store; speed/store at 10, 30, 60 s):
+
+- Sustain: 154.1 m/s, 39.50 deg/s, 10.8 deg, 0.5000 (154.1/0.5000 throughout).
+- Max: 148.4 m/s, 39.04 deg/s, 11.4 deg, 0.5000.
+- Snap: 96.9 m/s, 17.07 deg/s, 32.0 deg, store 0.4975 (98.2/0.4995, 96.6/0.4987,
+  96.9/0.4975). The drain is 0.0025 in 60 s (step 7: 0.047). Not zero: the soft minimum in
+  the hold still leaves the held vertical at 0.9997 g at 95.9 m/s, 0.9923 g at 90 m/s.
+
+Chart: docs/rewrite/sections/post-stall/doghouse-p51d.png. Flown points: corner 252.3 m/s /
+66.3 deg/s, best sustained 168.0 m/s / 39.9 deg/s, tightest 148.4 m/s / 217.8 m.
+
+**The scripted opponent is now out of date** (not changed; lean/scripted/opponent.py):
+
+- Level 1 (its "gradual", the small-error turn) is now Sustain: a size that changes with
+  speed, equal to Max below about 148 m/s, straight above cruise.
+- Level 2 ("middle") is its capped level: the two-circle fight and, disengaged, the level
+  above `middle_stick_speed` ("no turn lost there"). Max is now the envelope; the derived
+  `middle_stick_speed` is now corner speed (kept only for the scripted opponent).
+- Level 3 ("full") for the break at corner speed and the one-circle fight: Snap now opens its
+  deep angle from corner speed (it was 0.85 x corner).
+- The `fire_worth` rule counts a shot as the thing that breaks the shield's quiet tick; now
+  every turn level breaks it too.
+- Its STICK_GATES and personas were tuned with the old levels.
+
+**Not run this round** (author's rule): tests (lean/game/tests/test_flight.py still uses the
+removed stick_cap and GRADUAL/MIDDLE/FULL_STICK), compile check, speed. The tick now does a
+table lookup (Sustain), the stiffness choice and a second soft minimum.
+
+**Open:** Snap's 2.37 deg/s rise near 96-99 m/s comes from the closing schedule's shape (the
+exact 1 g inverse had no rise but a corner of 3.67 deg/s per m/s at 104 m/s, step 7); the
+far-side overshoot of a reversal into Sustain or Max; the Snap hold's small store drain.
