@@ -978,3 +978,25 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
 5. Bullet spread: no target yet; decided from the egg experiments' spread grid.
 6. Scripted store_weight: undecided (1v1 prefers 0.4-0.6, 4v4 even with fewer kills);
    situation-dependent weights may be tried, lower priority than the egg experiments.
+
+## The egg deflector (PROPOSAL, branch `deflector-lookahead`, unmerged; author decision 2026-11-27 for the mechanism)
+
+- **Mechanism** (`core.egg_entry`, `core.egg_turn`, `core.hump`, `core._deflect`; lean/game/NOTES.md
+  "Deflector"): an invisible egg around every ship in its frame (front semi-axis 53.3 m along
+  the nose, rear 24 m, half-width 24 m). In the relative frame, a bullet whose straight in-tick
+  path first crosses the egg inward is turned away from the centre by 45 deg x hump(b / 24 m),
+  hump(x) = 27/4 x (1 - x)^2 (0 at both ends, peak at a third), b the line's distance from the
+  centre; the relative speed kept; the swept hit test on the turned remainder. Once per pass
+  (only inward crossings; a bullet from inside never turns). Ghosts the same. Same at any
+  shield. The old closest-approach push, its presets and `hit_fraction` are removed.
+- **Hit radius 12 m, core 10 m** (author). The nose cone's damage rule kept as the hit-model row
+  `nose_cone`, 0 by default; collision blame unchanged (author).
+- **Presets** "egg" (default) and "off" (`GameConfig.deflector`); every number a runtime row
+  (`core.HIT_MODEL`; no recompile, tested), with the derived `hit_widths` column.
+- **Hit widths** (the game's function, the sketch's numbers): 24 m with no turn; egg 4.75 m side
+  and astern, 2.05 m head-on (30 deg turn: 7.0 / 3.0; 60 deg: 3.5 / 1.6).
+- **Scripted agent**: target size = half the hit width at the aspect; the trigger's worth uses
+  the hit chance (hit width, spread, `lead_error` 0.25, a reasoned choice). One source of truth
+  (the agent reads the column).
+- **Measured**: docs/rewrite/sections/bullet-deflector/egg-experiments.md and progress.md.
+
