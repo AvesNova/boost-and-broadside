@@ -43,7 +43,18 @@ def main():
     parser.add_argument("--size", type=int, default=4)
     parser.add_argument("--repeats", type=int, default=20)
     parser.add_argument("--skip-policy", action="store_true")
+    parser.add_argument("--plain", action="store_true", help="the plain PyTorch pair stage")
+    parser.add_argument("--skip-old", action="store_true", help="skip the rule-based agent")
+    parser.add_argument("--look-ahead", default=None, help="points, e.g. 0.25,0.5,1,2")
     arguments = parser.parse_args()
+    if arguments.plain:
+        from lean.scripted import kernels
+
+        kernels.USE_KERNEL = False
+    if arguments.look_ahead:
+        from lean.scripted import paths
+
+        paths.LOOK_AHEAD = tuple(float(t) for t in arguments.look_ahead.split(","))
     device = torch.device("cuda")
     envs = arguments.envs
     config = game.GameConfig()
@@ -75,7 +86,7 @@ def main():
         for name, function in (
             ("look-ahead", lambda: compiled_new(state, new_uniforms)),
             ("rule-based", lambda: compiled_old(state, old_uniforms, memory)),
-        ):
+        )[: 1 if arguments.skip_old else 2]:
             begun = time.perf_counter()
             function()
             torch.cuda.synchronize()

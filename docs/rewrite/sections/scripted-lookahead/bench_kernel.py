@@ -45,7 +45,9 @@ def main():
         from lean.scripted import opponent
 
         opponent.kernels.pair_scores = capture
-        scripted.decide(agent, state, None, None, scripted.draw_uniforms(envs, slots, generator, device))
+        scripted.decide(
+            agent, state, None, None, scripted.draw_uniforms(envs, slots, generator, device)
+        )
         kernels.pair_scores = original
         args = captured["args"]
         paths, constants, parameters, times, rows, now, fields, count, slots_, views = args
@@ -54,10 +56,21 @@ def main():
             f"views x slots, fields, candidates), game fields {fields.shape[-1]}",
             flush=True,
         )
-        for label, field_tensor in (("fields 10", fields), ("fields 0 (no cover loop)", fields[..., :0])):
+        for label, field_tensor in (
+            ("fields 10", fields),
+            ("fields 0 (no cover loop)", fields[..., :0]),
+        ):
             run = lambda: original(  # noqa: E731
-                paths, constants, parameters, times, rows, now, field_tensor.contiguous(), count,
-                slots_, views,
+                paths,
+                constants,
+                parameters,
+                times,
+                rows,
+                now,
+                field_tensor.contiguous(),
+                count,
+                slots_,
+                views,
             )
             milliseconds = triton.testing.do_bench(run, warmup=50, rep=400)
             print(f"{label}: {milliseconds:.3f} ms", flush=True)

@@ -377,3 +377,45 @@ power) cuts their size by 3 and the table by 9, so they were not tuned further a
 - Didn't: the draws fall from 58% to 35-42% and stop there; more aggression does not lower them
   further (0.5 to 2.0 are within the noise of 300 games). The rule-based agent draws 6% here.
   Default 0.5 (LOG law, width 0.5). The rest is looked at again after the power split.
+
+## R2 step 3: power split (2026-11-26)
+
+- Built: the pair table covers the 7 sticks at each ship's table power (7 x 7 per pair). The
+  own ship's table power is its pending power (in its observation). An enemy's pending power is
+  not observable, so (decided myself) his table power is the power his own outlook scores best
+  (from straight flight, engaged, with the yardstick's rows: none of his persona is read). The
+  power is chosen per ship from the own-ship terms over the power look (`paths.POWER_LOOK` 1, 2,
+  3, 4, 5 s; `paths.power_outlook`: 3 per-ship paths of speed and store only, holding the
+  pending stick, from `core.steady_flight` per segment): minus the speed term, plus energy at
+  the energy weight while engaged and the disengaged energy weight while not, discounted by
+  `power_horizon` 3 s; its own softmax (`power_temperature` 0.05) and stickiness
+  (`power_stickiness` 0.3 = 6 x the temperature: indifferent, a switch on about 0.5% of ticks).
+  Joint = stick (7) x power (3) x fire (2). Both views are always predicted (with fog off too:
+  the enemies' table power differs from the pending one). The seen view's boundary margin is
+  the yardstick's (round 1 read the enemy's persona row there).
+- Look-ahead points now 0.25, 0.5, 1, 1.5, 2 s (a module setting, `paths.LOOK_AHEAD`, read at
+  call time; step 4 and 5 measure it).
+- Measured, 1v1 without fields, self-play, 256 envs x 1,800 ticks: **power switches 15.9 ->
+  0.31 per ship-second**, 300 games, 97 draws (32%), 0.75 kills per env-minute, teacher entropy
+  1.233 nats (the power is now decisive), every one of the 42 actions used (fire 0.00-0.06% of
+  ship-ticks per action, as in round 1's 1v1); power shares coast 27%, dive 50%, climb 22%.
+- Speed (`speed.py`, compiled, 2,048 envs 4v4, fields, fog): **5.77 ms per call** (was 12.96
+  after step 1), peak 135 MiB, cold first call 130.5 s (the extra point and the outlook).
+  Profile: 5.66 ms wall, 5.11 GPU, 111 kernels; the pair kernel 1.29 ms, the paths about 3.5 ms.
+
+### The plain PyTorch pair stage against the kernel (coordinator, 2026-11-26)
+
+Standing decision: keep a custom kernel only if a profile shows it pays. Measured at 7 x 7:
+
+| pair stage | call ms | note |
+|---|---|---|
+| Triton kernel | 5.77 | kernel 1.29 ms of the call |
+| plain, points as a Python loop (round 1's twin) | 19.27 | inductor splits the table into 3 kernels of 4.0-4.4 ms that write many per-point intermediates |
+| plain, points as a tensor axis summed at the end | 27.50 | one 19.9 ms kernel (worse; reverted) |
+| plain, his paths gathered per field (no stacked copy) | (in both rows above) | kept |
+
+The plain pair stage costs about 14.9 ms of a 19.3 ms call against the kernel's 1.3 ms: the
+kernel pays clearly (about 11x on the stage, 3.3x on the call) and stays, with its twin test.
+Inferred cause: inductor caps a fusion's size (`max_fusion_size`), so the long per-element
+expression (two gun solutions, angles, energy, range, contact per point) is cut into kernels
+that pass intermediates through memory; not changed (a global inductor setting).

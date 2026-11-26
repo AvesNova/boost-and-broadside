@@ -24,7 +24,12 @@ def main():
     parser.add_argument("--fields", type=int, default=10)
     parser.add_argument("--top", type=int, default=25)
     parser.add_argument("--stage", choices=("paths", "call", "both"), default="both")
+    parser.add_argument("--plain", action="store_true", help="the plain PyTorch pair stage")
     arguments = parser.parse_args()
+    if arguments.plain:
+        from lean.scripted import kernels
+
+        kernels.USE_KERNEL = False
     device = torch.device("cuda")
     envs = arguments.envs
     config = game.GameConfig(field_count=arguments.fields)
@@ -45,8 +50,15 @@ def main():
         enemies = opponent.dead_reckon(
             game.core.enemy_view(state), state.ticks_since_seen.float() * c["tick_length"]
         )
+        engaged = torch.ones_like(state.x)
+
+        def read(name, dims=0):
+            return agent.values[name]
+
         stages = {
-            "paths": lambda: opponent._predict_views(c, state, enemies, 2.2)[0].stacked,
+            "paths": lambda: (
+                opponent._predict_views(c, state, enemies, agent, read, engaged)[0].stacked
+            ),
             "call": lambda: scripted.decide(agent, state, None, None, uniforms),
         }
         chosen = ("paths", "call") if arguments.stage == "both" else (arguments.stage,)

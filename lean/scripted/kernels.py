@@ -470,7 +470,7 @@ def pair_scores(
         F=width,
         Q=constants.shape[1],
         W=parameters.shape[1],
-        BLOCK_A=BLOCK_A,
+        BLOCK_A=BLOCK_A if candidates > 8 else triton.next_power_of_2(candidates),
         BLOCK_B=triton.next_power_of_2(candidates),
         num_warps=WARPS,
     )

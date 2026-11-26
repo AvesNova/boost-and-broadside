@@ -81,7 +81,16 @@ PARAMETERS: dict[str, Parameter] = {
     "temperature": Parameter(0.05, "score seconds", LOG, 0.4,
                              "tau_me: the flight softmax's temperature"),
     "stickiness": Parameter(0.05, "score seconds", LOG, 0.5,
-                            "bonus for the flight action of the last tick"),
+                            "bonus for the stick of the last tick"),
+    # The power (round 2, author 2026-11-26): chosen per ship from the own-ship terms (speed,
+    # energy) over the power look (lean.scripted.paths.POWER_LOOK, 5 s), its own softmax and
+    # stickiness. Stickiness 6 x the temperature: a ship indifferent between the powers switches
+    # on about 0.5% of ticks (2 e^-6 / (1 + 2 e^-6)).
+    "power_horizon": Parameter(3.0, "seconds", LOG, 0.3, "the power look's discount time"),
+    "power_temperature": Parameter(0.05, "score seconds", LOG, 0.4,
+                                   "the power softmax's temperature"),
+    "power_stickiness": Parameter(0.3, "score seconds", LOG, 0.5,
+                                  "bonus for the power of the last tick"),
     # No enemy known (author 2026-11-26: no goal point, only the own-ship terms and the seek).
     "disengaged_energy_weight": Parameter(0.5, "ratio", LOG, 0.5,
                                           "no enemy known: energy (speed^2 / 2 + store) in "

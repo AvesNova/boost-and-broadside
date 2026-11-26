@@ -51,14 +51,18 @@ from lean.game.core import (
 )
 
 from . import kernels
+from . import paths as paths_module
 from .parameters import ScriptedConfig, value
-from .paths import CANDIDATES, LOOK_AHEAD, Paths, predict
+from .paths import CANDIDATES, FLIGHTS, POWER_LOOK, Paths, power_outlook, predict
 
 ENEMIES = 4  # the nearest known enemies each ship scores against
 MATES = 3  # the nearest team-mates whose pending path each ship keeps clear of
 TINY = 1e-6
-# Each look-ahead point stands for the time since the one before (seconds).
-INTERVALS = tuple(b - a for a, b in zip((0.0,) + LOOK_AHEAD[:-1], LOOK_AHEAD, strict=True))
+
+
+def intervals(points) -> tuple[float, ...]:
+    """Each look-ahead point stands for the time since the one before (seconds)."""
+    return tuple(b - a for a, b in zip((0.0,) + tuple(points[:-1]), points, strict=True))
 
 
 def draw_uniforms(
@@ -73,9 +77,10 @@ class Choice:
     """One decision, (E, N, ...) each; rows that are not controlled are arbitrary."""
 
     joint: Tensor  # (E, N, JOINT): the distribution over the 42 actions (the BC teacher's)
-    flight: Tensor  # (E, N, 21): over flight = stick x 3 + power
+    flight: Tensor  # (E, N, 21): over flight = stick x 3 + power (stick x power)
     fire: Tensor  # (E, N): the probability of firing
-    scores: Tensor  # (E, N, 21): the flight scores, score seconds
+    scores: Tensor  # (E, N, 7): the stick scores, score seconds (at the table power)
+    power_scores: Tensor  # (E, N, 3): the power scores, score seconds (the power look)
     controlled: Tensor  # (E, N) bool
     enemies: Tensor  # (E, N, ENEMIES) long: the enemies scored against (slots)
     enemy_weight: Tensor  # (E, N, ENEMIES): their weights (0: none there)
@@ -111,14 +116,16 @@ PATH_FIELDS = kernels.FIELDS
 
 
 def _gather_paths(paths: Paths, index: Tensor) -> dict[str, Tensor]:
-    """The candidate paths of slots `index` (E, N, K): each field (E, N, K, C, P)."""
+    """The candidate paths of slots `index` (E, N, K): each field (E, N, K, C, P), gathered
+    field by field (an indexed read the consumers fuse; no stacked copy)."""
     envs, slots, count = index.shape
-    names = PATH_FIELDS
-    stacked = torch.stack([getattr(paths, name) for name in names], -1)  # (E, N, C, P, Q)
-    flat = stacked.flatten(2)
-    picked = flat.gather(1, index.reshape(envs, slots * count, 1).expand(-1, -1, flat.shape[-1]))
-    picked = picked.view(envs, slots, count, *stacked.shape[2:])
-    return dict(zip(names, picked.unbind(-1), strict=True))
+    shape = paths.x.shape[2:]
+    rows = index.reshape(envs, slots * count, 1, 1).expand(-1, -1, *shape)
+
+    def gathered(field: Tensor) -> Tensor:
+        return field.gather(1, rows).view(envs, slots, count, *shape)
+
+    return {name: gathered(getattr(paths, name)) for name in PATH_FIELDS}
 
 
 def _own(paths: Paths) -> dict[str, Tensor]:
@@ -127,11 +134,12 @@ def _own(paths: Paths) -> dict[str, Tensor]:
     return {name: getattr(paths, name)[:, :, None] for name in names}
 
 
-def time_weights(horizon: Tensor | float, device) -> Tensor:
-    """(P,) or (E, N, P): each point's weight, its interval discounted by e^(-t / horizon)."""
-    times = torch.tensor(LOOK_AHEAD, device=device)
-    intervals = torch.tensor(INTERVALS, device=device)
-    return intervals * torch.exp(-times / _lay(horizon, 1))
+def time_weights(horizon: Tensor | float, device, points=None) -> Tensor:
+    """(P,) or (E, N, P): each point's weight, its interval discounted by e^(-t / horizon);
+    the look-ahead's points unless `points` are given."""
+    points = paths_module.LOOK_AHEAD if points is None else points
+    times = torch.tensor(points, device=device)
+    return torch.tensor(intervals(points), device=device) * torch.exp(-times / _lay(horizon, 1))
 
 
 def own_components(c, paths: Paths, margin) -> Paths:
@@ -278,7 +286,7 @@ def pair_tables(mine, his, my_c, his_c, now_rel, weights, horizon, read):
     s_me = s_him = 0.0
     previous_x, previous_y = now_rel
     started = 0.0
-    for k, time in enumerate(LOOK_AHEAD):
+    for k, time in enumerate(paths_module.LOOK_AHEAD):
 
         def at(fields, name):
             return fields[name][..., k]
@@ -521,9 +529,9 @@ def explain(config: ScriptedConfig, state, team: int | None, persona) -> Choice:
     controlled = present if team is None else present & (state.team == team)
     if enemies is not state:  # fog: hidden enemies carried forward from their last sighting
         enemies = dead_reckon(enemies, state.ticks_since_seen.to(state.x.dtype) * c["tick_length"])
-    own_paths, seen_paths = _predict_views(c, state, enemies, read("boundary_margin"))
     enemy_slot, enemy_weight, _ = nearest_enemies(state, enemies, read("roam_cutoff"))
-
+    engaged = enemy_weight.sum(-1).clamp(0.0, 1.0)
+    own_paths, seen_paths, power_scores = _predict_views(c, state, enemies, config, read, engaged)
     horizon = time_weights(read("horizon"), device)
     if horizon.dim() == 1:
         horizon = horizon.expand(envs, slots, -1)
@@ -597,12 +605,20 @@ def explain(config: ScriptedConfig, state, team: int | None, persona) -> Choice:
         scores = scores + _lay(read("field_weight"), 1) * (pressure[..., None] * cover).sum(-2)
     # Team-mates keep their pending action: keep clear of their paths.
     scores = scores - _lay(read("collision_weight"), 1) * _mate_contacts(state, own_paths, read)
-    # Stickiness: the pending flight action (the action chosen on the last tick).
-    pending = state.pending[..., 0] * POWERS + state.pending[..., 1]
+    # Stickiness: the pending stick (the one chosen on the last tick).
     candidates = torch.arange(CANDIDATES, device=device)
-    scores = scores + _lay(read("stickiness"), 1) * (candidates == pending[..., None]).float()
-
-    flight = torch.softmax(scores / _lay(read("temperature"), 1), -1)
+    pending_stick, pending_power = state.pending[..., 0], state.pending[..., 1]
+    scores = scores + _lay(read("stickiness"), 1) * (candidates == pending_stick[..., None]).float()
+    stick = torch.softmax(scores / _lay(read("temperature"), 1), -1)
+    # The power from the own-ship terms over the power look, with its own stickiness.
+    powers = torch.arange(POWERS, device=device)
+    held = (powers == pending_power[..., None]).float()
+    power = torch.softmax(
+        (power_scores + _lay(read("power_stickiness"), 1) * held)
+        / _lay(read("power_temperature"), 1),
+        -1,
+    )
+    flight = (stick[..., :, None] * power[..., None, :]).flatten(-2)
     fire = _trigger(state, enemies, enemy_slot, enemy_weight, read) * controlled
     joint = (flight[..., :, None] * torch.stack([1.0 - fire, fire], -1)[..., None, :]).flatten(-2)
     return Choice(
@@ -610,6 +626,7 @@ def explain(config: ScriptedConfig, state, team: int | None, persona) -> Choice:
         flight=flight,
         fire=fire,
         scores=scores,
+        power_scores=power_scores,
         controlled=controlled,
         enemies=enemy_slot,
         enemy_weight=enemy_weight,
@@ -631,28 +648,59 @@ PREDICTED = (
 )
 
 
-def _predict_views(c, state, enemies, margin) -> tuple[Paths, Paths]:
-    """The candidate paths of every ship as it is (own) and as its enemies see it (seen; the
-    same with fog off), with the own-only components attached, computed in one pass (the two
-    views side by side on the slot axis under fog) and materialised once: every field a view
-    of one stacked tensor (P, E, views x N, len(PATH_FIELDS), C), so every write is a run of
-    C (the kernel's layout), and no consumer recomputes the paths. `margin`: the boundary margin row (a number or (E, N))."""
+def power_scores(c, speed, energy, read_or_values, engaged, has_corner) -> Tensor:
+    """The power scores (E, N, POWERS): the own-ship terms over the power look (`POWER_LOOK`):
+    minus the speed term (|ln(speed / preferred)|) plus energy (speed^2 / 2 + store, in full
+    stores) at the energy weight while engaged and the disengaged energy weight while not,
+    each point's interval discounted by e^(-t / power_horizon). `speed`, `energy` (E, N,
+    POWERS, P); `read_or_values(name)` a row (a number or (E, N)); `engaged` (E, N) 0 to 1."""
+    read = read_or_values
+    weights = time_weights(read("power_horizon"), speed.device, POWER_LOOK)
+    weights = weights[..., None, :] if weights.dim() == 3 else weights
+    log_preferred = torch.log(read("preferred_speed") * has_corner)
+    energy_weight = read("energy_weight") * engaged + read("disengaged_energy_weight") * (
+        1.0 - engaged
+    )
+    stored = (0.5 * speed * speed + energy) * _lay(c["inverse_max_energy"], 2)
+    rate = (
+        -_lay(read("speed_weight"), 2)
+        * (torch.log(speed.clamp_min(TINY)) - _lay(log_preferred, 2)).abs()
+        + _lay(energy_weight, 2) * stored
+    )
+    return (rate * weights).sum(-1)
+
+
+def _predict_views(c, state, enemies, config, read, engaged) -> tuple[Paths, Paths, Tensor]:
+    """The candidate paths of every ship as it is (own) and as its enemies see it (seen),
+    with the own-only components attached, computed in one pass (the two views side by side on
+    the slot axis) and materialised once: every field a view of one stacked tensor (P, E, 2 N,
+    len(PATH_FIELDS), C), so every write is a run of C (the kernel's layout) and no consumer
+    recomputes the paths. Each view's table power: the own ship's pending power (in its
+    observation); an enemy's is not observed, so it is the power his outlook scores best with
+    the yardstick's rows (`config`; no persona of his is read), engaged, from straight flight.
+    Also returns the own ships' power scores (E, N, POWERS) from their outlook holding the
+    pending stick, with their own rows (`read`)."""
     slots = state.x.shape[1]
-    if enemies is state:
-        ships, constants, views = state, c, 1
-    else:
-        ships = SimpleNamespace(
-            **{
-                name: torch.cat([getattr(state, name), getattr(enemies, name)], 1)
-                for name in PREDICTED
-            }
-        )
-        constants = Constants(c.uniform, c.columns, torch.cat([c.table, c.table], -1))
-        views = 2
-        if isinstance(margin, Tensor):
-            margin = torch.cat([margin, margin], 1)
-    paths = own_components(constants, predict(constants, state.fields, ships), margin)
-    # Materialised once, (P, E, views x N, PATH_FIELDS, C): every write a run of C.
+    ships = SimpleNamespace(
+        **{name: torch.cat([getattr(state, name), getattr(enemies, name)], 1) for name in PREDICTED}
+    )
+    constants = Constants(c.uniform, c.columns, torch.cat([c.table, c.table], -1))
+    pending_stick, pending_power = state.pending[..., 0], state.pending[..., 1]
+    outlook_stick = torch.cat([pending_stick, torch.zeros_like(pending_stick)], 1)
+    speed, energy = power_outlook(constants, state.fields, ships, outlook_stick)
+    corner = _per_ship(c["corner_speed"], state)
+    own = power_scores(
+        c, speed[:, :slots], energy[:, :slots], lambda name: read(name), engaged, corner
+    )
+    seen = power_scores(
+        c, speed[:, slots:], energy[:, slots:], lambda name: config.values[name], 1.0, corner
+    )
+    table_power = torch.cat([pending_power, seen.argmax(-1)], 1)
+    margin = read("boundary_margin")
+    if isinstance(margin, Tensor):
+        margin = torch.cat([margin, torch.full_like(margin, config.values["boundary_margin"])], 1)
+    paths = own_components(constants, predict(constants, state.fields, ships, table_power), margin)
+    # Materialised once, (P, E, 2 N, PATH_FIELDS, C): every write a run of C.
     stacked = torch.stack([getattr(paths, name).permute(3, 0, 1, 2) for name in PATH_FIELDS], -2)
 
     def view(start: int) -> Paths:
@@ -666,8 +714,7 @@ def _predict_views(c, state, enemies, margin) -> tuple[Paths, Paths]:
         )
         return Paths(**fields_, now=now, stacked=stacked)
 
-    own = view(0)
-    return own, (own if views == 1 else view(slots))
+    return view(0), view(slots), own
 
 
 def _pair_kernel(c, fields_, own_paths, seen_paths, enemy_slot, now_x, now_y, horizon, read):
@@ -675,13 +722,13 @@ def _pair_kernel(c, fields_, own_paths, seen_paths, enemy_slot, now_x, now_y, ho
     (lean.scripted.kernels.pair_scores), its inputs laid out as it reads them."""
     envs, slots, count = enemy_slot.shape
     ships = envs * slots
-    views = 1 if seen_paths is own_paths else 2
+    views = 2
 
     def per_ship(item) -> Tensor:
         return torch.as_tensor(item, dtype=torch.float32, device=now_x.device).expand(envs, slots)
 
     constants = torch.stack([per_ship(c[name]) for name in kernels.CONSTANTS], -1)
-    times = torch.tensor(LOOK_AHEAD, device=now_x.device)
+    times = torch.tensor(paths_module.LOOK_AHEAD, device=now_x.device)
     discounts = torch.exp(-times / read("horizon", 1))
     parameters = torch.cat(
         [
@@ -742,9 +789,8 @@ def _mate_contacts(state, own_paths: Paths, read) -> Tensor:
     c = state.constants
     mate, present = nearest_mates(state)
     envs, slots, _ = mate.shape
-    pending = state.pending[..., 0] * POWERS + state.pending[..., 1]  # (E, N)
-    mate_flight = _at(pending, mate)  # (E, N, MATES)
-    points = len(LOOK_AHEAD)
+    mate_flight = _at(state.pending[..., 0], mate)  # (E, N, MATES): his pending stick
+    points = len(paths_module.LOOK_AHEAD)
 
     def mate_path(field: Tensor) -> Tensor:  # (E, N, C, P) -> (E, N, MATES, P)
         flat = field.flatten(2)  # (E, N, C P)
@@ -768,7 +814,7 @@ def _mate_contacts(state, own_paths: Paths, read) -> Tensor:
     reach = read("collision_margin", 2) * summed
     total = 0.0
     started = 0.0
-    for k, time in enumerate(LOOK_AHEAD):
+    for k, time in enumerate(paths_module.LOOK_AHEAD):
         rel_x, rel_y = mate_x[..., k] - my_x[..., k], mate_y[..., k] - my_y[..., k]
         contact = _contact(
             previous_x,
@@ -896,4 +942,4 @@ def decide(config: ScriptedConfig, state, team: int | None, persona, uniforms: T
     return sample(choice, uniforms), choice
 
 
-assert JOINT == CANDIDATES * FIRES
+assert JOINT == FLIGHTS * FIRES

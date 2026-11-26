@@ -131,7 +131,7 @@ def test_the_joint_is_flight_times_fire_in_the_contracts_order():
     state = random_state(16, 10, seed=2, fog=True, fields=4)
     state = core.perceive(state, torch.zeros_like(state.alive))
     choice = choice_of(state, None)
-    assert choice.joint.shape == (16, 10, JOINT) and CANDIDATES * 2 == JOINT
+    assert choice.joint.shape == (16, 10, JOINT) and CANDIDATES * POWERS * 2 == JOINT
     rows = choice.controlled
     assert torch.allclose(choice.joint.sum(-1)[rows], torch.ones(()), atol=1e-5)
     assert torch.isfinite(choice.joint).all()
@@ -183,27 +183,44 @@ def test_every_sampled_row_has_a_box_and_a_meaning():
 
 
 def test_the_candidate_paths_follow_the_games_tick():
-    """Each of the 21 actions held in the real tick: at the last look-ahead point a whole
-    number of ticks reaches, the predicted positions stay near the flown ones (straight coast
-    within a metre; every action's median within 25 m)."""
+    """Each of the 21 actions held in the real tick (each power's 7 stick paths predicted at
+    that power): at the last look-ahead point a whole number of ticks reaches, the predicted
+    positions stay near the flown ones (straight coast within a metre; every action's median
+    within 25 m)."""
     config = core.GameConfig(field_count=0, fog=False, training_spawn=True)
     generator = torch.Generator().manual_seed(9)
     state = core.reset(config, 16, torch.ones(16, 2, dtype=torch.long), generator, CPU)
-    paths = predict(state.constants, state.fields, state)
     ticks = [time / config.tick_length for time in LOOK_AHEAD]
     last = [k for k, count in enumerate(ticks) if abs(count - round(count)) < 1e-6][-1]
-    for flight in range(CANDIDATES):
-        stick, power = divmod(flight, POWERS)
-        action = torch.zeros(16, 2, 3, dtype=torch.long)
-        action[..., 0], action[..., 1] = stick, power
-        flown = state.replace(pending=action.clone())
-        for _ in range(round(ticks[last])):
-            flown, _ = core.step(config, flown, action, core.draw_noise(config, 16, 2, None, CPU))
-        error = torch.hypot(
-            paths.x[..., flight, last] - flown.x, paths.y[..., flight, last] - flown.y
-        )
-        limit = 1.0 if flight == 0 else 25.0
-        assert float(error.median()) < limit, (stick, power, float(error.median()))
+    for power in range(POWERS):
+        paths = predict(state.constants, state.fields, state, torch.full_like(state.team, power))
+        for stick in range(CANDIDATES):
+            action = torch.zeros(16, 2, 3, dtype=torch.long)
+            action[..., 0], action[..., 1] = stick, power
+            flown = state.replace(pending=action.clone())
+            for _ in range(round(ticks[last])):
+                noise = core.draw_noise(config, 16, 2, None, CPU)
+                flown, _ = core.step(config, flown, action, noise)
+            error = torch.hypot(
+                paths.x[..., stick, last] - flown.x, paths.y[..., stick, last] - flown.y
+            )
+            limit = 1.0 if stick == 0 and power == 0 else 25.0
+            assert float(error.median()) < limit, (stick, power, float(error.median()))
+
+
+def test_the_power_follows_the_own_ship_terms():
+    """Slow against the preferred speed with a store to spend, the power look prefers the dive
+    (store into speed) to the climb; fast with room in the store, the climb."""
+    corner = card_values()["corner_speed"]
+    slow = placed(ship(speed=0.6 * corner), ship(x=3000.0, speed=corner))
+    fast = placed(ship(speed=1.4 * corner), ship(x=3000.0, speed=corner))
+    dive, climb = 1, 2
+    assert float(choice_of(slow).power_scores[0, 0, dive]) > float(
+        choice_of(slow).power_scores[0, 0, climb]
+    )
+    assert float(choice_of(fast).power_scores[0, 0, climb]) > float(
+        choice_of(fast).power_scores[0, 0, dive]
+    )
 
 
 @pytest.mark.parametrize("stiffness", [0.2, 1.0 / 3.0, 1.0])
