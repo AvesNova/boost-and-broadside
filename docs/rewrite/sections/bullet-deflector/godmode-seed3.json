@@ -40,5 +40,89 @@
    "games_finished": 128,
    "draws": 1
   }
+ },
+ {
+  "god_mode": {
+   "preset": "symmetric",
+   "games": 128,
+   "seconds_each": 60.0,
+   "wall_s": 10.1,
+   "damaging_hits": 4575,
+   "damaging_hits_per_minute_per_game": 35.7421875,
+   "bullet_damage_per_minute_per_game": 168.98135614638244,
+   "contacts": 4740,
+   "frontal_contacts": 165,
+   "frontal_damaging_hits": 0,
+   "frontal_damage": 0,
+   "passes": 523,
+   "pass_interval_median_s": 11.933333333333334,
+   "hits_per_pass_mean": 8.747609942638624,
+   "passes_with_no_hit": 0.3135755258126195,
+   "passes_with_11_or_more": 0.31166347992351817,
+   "hits_in_control_share": 0.3182513661202186,
+   "control_time_share": 0.04033203125,
+   "control_streak_median_s": 0.46666669845581055,
+   "control_streak_longest_s": 46.06666946411133
+  },
+  "kills_1v1": {
+   "preset": "symmetric",
+   "size": 1,
+   "envs": 128,
+   "wall_s": 12.1,
+   "kills_per_minute": 0.71875,
+   "games_finished": 140,
+   "draws": 18
+  },
+  "kills_4v4": {
+   "preset": "symmetric",
+   "size": 4,
+   "envs": 128,
+   "wall_s": 19.1,
+   "kills_per_minute": 3.9375,
+   "games_finished": 128,
+   "draws": 1
+  }
+ },
+ {
+  "god_mode": {
+   "preset": "frontal",
+   "games": 128,
+   "seconds_each": 60.0,
+   "wall_s": 9.3,
+   "damaging_hits": 4458,
+   "damaging_hits_per_minute_per_game": 34.828125,
+   "bullet_damage_per_minute_per_game": 167.75309534413918,
+   "contacts": 4458,
+   "frontal_contacts": 0,
+   "frontal_damaging_hits": 0,
+   "frontal_damage": 0,
+   "passes": 520,
+   "pass_interval_median_s": 11.583333333333332,
+   "hits_per_pass_mean": 8.573076923076924,
+   "passes_with_no_hit": 0.3096153846153846,
+   "passes_with_11_or_more": 0.2903846153846154,
+   "hits_in_control_share": 0.28174069089277703,
+   "control_time_share": 0.03523003472222222,
+   "control_streak_median_s": 0.4333333671092987,
+   "control_streak_longest_s": 46.06666946411133
+  },
+  "kills_1v1": {
+   "preset": "frontal",
+   "size": 1,
+   "envs": 128,
+   "wall_s": 12.1,
+   "kills_per_minute": 0.625,
+   "games_finished": 137,
+   "draws": 18
+  },
+  "kills_4v4": {
+   "preset": "frontal",
+   "size": 4,
+   "envs": 128,
+   "wall_s": 19.1,
+   "kills_per_minute": 3.875,
+   "games_finished": 128,
+   "draws": 0
+  }
  }
 ]

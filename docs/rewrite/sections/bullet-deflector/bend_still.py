@@ -1,7 +1,8 @@
 """A still of the deflector's bend: bullets drawn tick to tick (as the sandbox draws them, each
 tick-end position joined to the next), in the target's frame, for the three presets.
 
-    PYTHONPATH=. uv run --no-sync python docs/rewrite/sections/bullet-deflector/bend_still.py OUT.png
+    PYTHONPATH=. uv run --no-sync python \
+        docs/rewrite/sections/bullet-deflector/bend_still.py OUT.png
 
 The game's step on synthetic bullets (lean.tool.hitbench's placement: the target flying at
 cruise, the bullet at the launch speed slowed over 300 m), a fan of offsets from -14 to 14 m,
