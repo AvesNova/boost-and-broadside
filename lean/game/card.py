@@ -96,6 +96,9 @@ SPEED_FLOOR = 1.454166427889188e-06
 POST_STALL_LIFT_FRACTION = 0.75
 POST_STALL_DIP_WIDTH = 0.2
 POST_STALL_DRAG_ANGLE = math.radians(45.0)
+# Full stick's deep angle fades near stall speed (core._commanded_angle): wholly open from this
+# spare lift fraction 1 - (stall speed / speed)^4 (about 1.5 x stall speed) up, closed at 0.
+DEEP_STALL_SPARE_LIFT = 0.8
 
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005

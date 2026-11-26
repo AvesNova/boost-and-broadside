@@ -114,6 +114,11 @@ class GameConfig:
     store_loops: float = 2.0
     store_edge_band: float = 0.05
     fire_thrust_fraction: float = 0.0
+    # Firing never takes a ship below its stall speed (author 2026-11-26; `_fire`, `_fly`): the
+    # thrust a shot withholds is paid from the store instead, wholly at stall speed and below,
+    # wholly by the speed from (1 + fire_store_band) x stall speed up, a smootherstep between.
+    # With an empty store a ship below that speed cannot fire (its gun stays ready).
+    fire_store_band: float = 0.1
     # The post-stall regime (author 2026-11-26; `_setting`, `_lift_coefficient`, `_rates`): below
     # corner speed full stick asks for the card's deep_stall_angle (opening from the stall angle
     # over deep_stall_band of corner speed), the lift past the stall returns toward the flat
@@ -262,6 +267,7 @@ def _post_stall_constants(config: GameConfig, values: dict[str, Tensor]) -> dict
         "post_stall": on,
         "deep_stall_angle": card_of("deep_stall_angle"),
         "inverse_corner_speed": torch.sqrt(lift / values["max_acceleration"]),
+        "inverse_stall_speed_squared": lift / card.GRAVITY,
         "inverse_deep_stall_band": 1.0 / card_of("deep_stall_band"),
         "flat_plate_lift": flat,
         "stall_flat_plate_lift": flat * torch.sin(2.0 * stall),
@@ -839,12 +845,20 @@ def _commanded_angle(p, control, lateral, speed, inverse_lift):
     """The angle of attack the stick asks for (signed): the one whose lift (below the stall)
     gives the setting's lateral acceleration; for full stick (control.deep) below corner speed
     it opens toward the card's deep_stall_angle, a smootherstep from corner speed (where it is
-    the lift's angle, so no jump) to deep_stall_band of it below (GameConfig.post_stall)."""
-    reach = (lateral.abs() / (speed * speed) * inverse_lift).clamp(0.0, 1.0)
+    the lift's angle, so no jump) to deep_stall_band of it below (GameConfig.post_stall). Near
+    stall speed the deep angle fades (author 2026-11-26: all the lift goes to not falling): by
+    a smootherstep of the spare lift fraction 1 - (stall speed / speed)^4 (the wing's lift
+    beyond 1 g, squared, over its whole, below corner) over card.DEEP_STALL_SPARE_LIFT, so at
+    stall speed and below full stick asks for the lift's angle alone."""
+    speed_squared = speed * speed
+    reach = (lateral.abs() / speed_squared * inverse_lift).clamp(0.0, 1.0)
     angle = p.stall * (1.0 - torch.sqrt(1.0 - reach))
     if _switched_on(p.post_stall):
         below = ((1.0 - speed * p.inverse_corner_speed) * p.inverse_deep_stall_band).clamp(0.0, 1.0)
-        angle = angle + (p.deep_stall_angle - angle) * (smootherstep(below) * control.deep)
+        weight = 1.0 / (speed_squared * p.inverse_stall_speed_squared)  # 1 g over the wing's lift
+        spare = ((1.0 - weight * weight) * (1.0 / card.DEEP_STALL_SPARE_LIFT)).clamp(0.0, 1.0)
+        opening = smootherstep(below) * smootherstep(spare) * control.deep
+        angle = angle + (p.deep_stall_angle - angle) * opening
     return control.stick_sign * angle
 
 
@@ -1254,7 +1268,11 @@ def _fire(
     c = state.constants
     E, _, _, K = state.bullets.shape
     alive = state.alive
-    fired = alive & shoot & (state.cooldown == 0)
+    # Below the band's top the store pays (part of) the shot's cost: an empty store blocks it.
+    blocked = (state.speed < c["stall_speed"] * (1.0 + config.fire_store_band)) & (
+        state.energy <= 0.0
+    )
+    fired = alive & shoot & (state.cooldown == 0) & ~blocked
     launch_x = (
         state.velocity_x
         + c["muzzle_speed"] * state.heading_cos
@@ -1293,8 +1311,19 @@ def _fly(
 ) -> SimpleNamespace:
     """Flight for every slot (a slot not alive at tick start is flown too and its row dropped by
     the step's one select; a dead ship's flight is never read: it is no target and takes no
-    boundary damage). Firing scales the thrust by fire_thrust_fraction on the tick it fires."""
-    return flight_tick(
+    boundary damage). Firing withholds 1 - fire_thrust_fraction of the thrust on the tick it
+    fires: paid by the speed (the thrust cut) above the store band, by the store (the thrust
+    kept, the withheld thrust's power x the tick taken from the store) at stall speed and below,
+    split by a smootherstep across the band (GameConfig.fire_store_band)."""
+    c = state.constants
+    stall = c["stall_speed"]
+    over = (state.speed - stall) / (stall * config.fire_store_band)
+    by_speed = smootherstep(over.clamp(0.0, 1.0))
+    withheld = torch.where(fired, 1.0 - config.fire_thrust_fraction, 0.0)
+    speed = state.speed.clamp_min(card.SPEED_FLOOR)
+    thrust = softmin(c["power"] / speed, c["static_thrust"], c["thrust_softmin_exponent"])
+    store_cost = withheld * (1.0 - by_speed) * thrust * speed * config.tick_length
+    flown = flight_tick(
         state.constants,
         state.fields,
         config.tick_length,
@@ -1315,8 +1344,10 @@ def _fly(
         ),
         stick,
         power,
-        thrust_scale=torch.where(fired, config.fire_thrust_fraction, 1.0),
+        thrust_scale=1.0 - withheld * by_speed,
     )
+    flown.energy = (flown.energy - store_cost).clamp_min(0.0)
+    return flown
 
 
 def _move_bullets(config: GameConfig, state: State, start: Tensor, flying: Tensor) -> Tensor:

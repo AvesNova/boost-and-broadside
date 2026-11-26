@@ -9,11 +9,13 @@ import time
 from lean.game import card, core, tuning
 from lean.sandbox.world import World, field_list, stick_index
 
-# No clock: the game without its time limit. BNB_POST_STALL=0 in the server's environment flies
-# with the post-stall regime off (GameConfig.post_stall), for comparison.
+# No clock: the game without its time limit. In the server's environment BNB_POST_STALL=0 flies
+# with the post-stall regime off (GameConfig.post_stall), for comparison, and BNB_FIELDS=0 with
+# no fields (GameConfig.field_count 0).
 CONFIG_SETTINGS = {
     "clock_ticks": 10**9,
     "post_stall": os.environ.get("BNB_POST_STALL", "1") != "0",
+    **({"field_count": 0} if os.environ.get("BNB_FIELDS", "1") == "0" else {}),
 }
 
 
