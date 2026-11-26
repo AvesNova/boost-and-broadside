@@ -195,3 +195,20 @@ GPU tick, compiled `core.step`, 4070 laptop, performance profile, E 4096, 4v4, f
   4v4 egg and off. 1v1 off seed 0: a head-on joust from the spawn, both firing nose to nose,
   over in 2.7 s.
 - Next: store_crowd duels (queued), the egg's tick cost (profile).
+
+## 07:20 step 4 done; the cut; final checks
+
+- Experiments written up in egg-experiments.md (grid, largest turn, damage, egg front, the
+  old rule, god mode, seed 1, lead_error, fire_tolerance, store_crowd duels, TTK band).
+  Worked: the egg ends the head-on joust (head-on kills 0.45 -> 0.00 in 1v1), hits come from
+  control (0.05 -> 0.70), kills per minute halve, nothing degenerate measured. Didn't matter:
+  spread, hit damage, egg front, lead_error, for this agent's kill rate.
+- Cut (speed order: profile, cut work): a ship whose egg a bullet enters this tick has no
+  straight contact, so the entry and contact reductions run as one pass: egg tick 1.58 ->
+  1.37 ms (off 0.98; +0.39 ms, +40%). Play re-checked after it: within the seed spread.
+- Final: quick tier lean/game, scripted, tool, sandbox, learn, eval, model: 342 passed; ruff
+  clean. Compile check egg (after the cut): advance 3,296 traced operations (core baseline
+  2,856, +15%), act 4,590 (store_crowd adds 38), 4 graphs, 0 breaks, cold 293.4 s (budget
+  260 s; author: provisionally raised). Baseline not updated.
+- Replays (11 mp4) in data/replays-2026-11-27-egg/: 1v1 egg, off, old rule (nose cone), egg
+  60 deg, egg 20 mrad; 4v4 egg, off, egg 20 mrad.

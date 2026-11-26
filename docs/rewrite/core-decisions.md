@@ -998,5 +998,12 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
 - **Scripted agent**: target size = half the hit width at the aspect; the trigger's worth uses
   the hit chance (hit width, spread, `lead_error` 0.25, a reasoned choice). One source of truth
   (the agent reads the column).
-- **Measured**: docs/rewrite/sections/bullet-deflector/egg-experiments.md and progress.md.
+- **Cost**: GPU tick (E 4096, 4v4) 0.98 ms off, 1.37 ms egg (+40%, after one cut); compile
+  `advance` 3,296 traced operations (+15% over the core baseline), cold 293.4 s (budget 260 s,
+  provisionally raised). Baseline not updated.
+- **Measured** (look-ahead agent both sides): head-on kills 0.45 -> 0.00 (1v1), hits in
+  control 0.05 -> 0.70, kills per minute 1v1 3.25 -> 1.45 and 4v4 11.1 -> 6.6, TTK median
+  0.8 -> 7.8 s; spread, hit damage and egg front barely move play; workbench TTK band
+  candidates: hit damage about 8.5 with spread up to 5 mrad, or 7 with today's.
+  docs/rewrite/sections/bullet-deflector/egg-experiments.md and progress.md.
 

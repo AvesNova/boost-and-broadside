@@ -13,7 +13,6 @@ from torch.profiler import ProfilerActivity, profile
 
 from lean.game import core
 
-
 PRESETS = ("off", "egg")
 
 
