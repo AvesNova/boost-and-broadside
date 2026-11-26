@@ -726,7 +726,15 @@ def _setting(p, control, speed, energy):
 
 
 def _rates(
-    p, setting, inverse_index, speed, lift, angle_cos, inverse_speed_squared, inverse_lift_squared
+    p,
+    setting,
+    inverse_index,
+    speed,
+    lift,
+    angle_cos,
+    inverse_speed_squared,
+    inverse_lift_squared,
+    post_stall_drag=None,
 ):
     """(d speed / dt, d energy / dt) for a setting, a lift coefficient and an angle of attack.
     inverse_index: 1 / n, or None where there is no medium (n = 1). inverse_lift_squared: 1 over
@@ -736,7 +744,8 @@ def _rates(
     exponent made 2^(exponent / 2) times the separation drag: 2026-11-24, exponent 24, a ship
     stopped dead in one tick). Past the stall (GameConfig.post_stall) the post-stall drag adds
     post_stall_drag x 2 u^2 / (1 + u^2), u = (cos stall - cos angle) / (cos stall - cos 45 deg)
-    (`_post_stall_constants`): smooth from the stall, bounded at twice its 45 deg value."""
+    (`_post_stall_constants`): smooth from the stall, bounded at twice its 45 deg value
+    (`post_stall_drag`: that term when the caller has it, else made here)."""
     _, exchange, vertical, thrust = setting
     induced = vertical * inverse_speed_squared
     load = lift * lift + induced * induced
@@ -744,10 +753,10 @@ def _rates(
     coefficient = p.zero_lift_drag * (
         1.0 + (speed * p.inverse_critical_speed) ** p.drag_rise_exponent
     ) + p.induced_drag * load * (1.0 + p.separation_drag * near**p.half_separation_exponent)
-    if _switched_on(p.post_stall):
-        past = ((p.stall_cos - angle_cos) * p.inverse_drag_cos_span).clamp_min(0.0)
-        past_squared = past * past
-        coefficient = coefficient + p.post_stall_drag * (2.0 * past_squared) / (1.0 + past_squared)
+    if post_stall_drag is None:
+        post_stall_drag = _post_stall_drag(p, angle_cos)
+    if post_stall_drag is not None:
+        coefficient = coefficient + post_stall_drag
     drag = coefficient * speed * speed
     store = speed * exchange
     speed_rate = thrust * angle_cos - drag - exchange
@@ -756,53 +765,60 @@ def _rates(
     return speed_rate * inverse_index, store * inverse_index
 
 
+def _post_stall_drag(p, angle_cos):
+    """The post-stall drag coefficient at an angle's cosine (`_rates`); None with the regime
+    off."""
+    if not _switched_on(p.post_stall):
+        return None
+    past = ((p.stall_cos - angle_cos) * p.inverse_drag_cos_span).clamp_min(0.0)
+    past_squared = past * past
+    return p.post_stall_drag * (2.0 * past_squared) / (1.0 + past_squared)
+
+
 def _switched_on(flag) -> bool:
     """A uniform on/off constant (1.0 or 0.0): a Python number in a run's constants, a tensor of
     equal values in the analysis tools' (`per_type_constants`)."""
     return bool(flag > 0.5) if not isinstance(flag, Tensor) else bool(flag.reshape(-1)[0] > 0.5)
 
 
-def _post_stall_lift(p, magnitude):
-    """Past the stall (`_post_stall_constants`): the lift coefficient at |angle| `magnitude` and
-    the pieces its slope needs (the angle past the stall, the gap, the Gaussian)."""
+def _lift_and_slope(p, angle, slope: bool = True):
+    """(lift coefficient, its slope d C / d angle or None) at an angle of attack: a parabola
+    peaking at the stall angle at the wing's maximum; past the stall the flat plate's return
+    (GameConfig.post_stall, `_post_stall_constants`: a dip, about the flat plate's from twice
+    the dip width on, 0 at 90 deg), or with the regime off the parabola's tail (0 from twice
+    the stall angle; its slope negative past the stall, zero from twice the stall angle: v2's
+    lift_slope, src/bnb/game/physics/flight.py)."""
+    steepness = p.lift * p.inverse_stall
+    if not _switched_on(p.post_stall):
+        ratio = (angle * p.inverse_stall).clamp(-2.0, 2.0)
+        lift = p.lift * (2.0 * ratio - ratio * ratio.abs())
+        if not slope:
+            return lift, None
+        size = ratio.abs()
+        return lift, torch.where(size < 2.0, steepness * (2.0 - 2.0 * size), 0.0)
+    ratio = (angle * p.inverse_stall).clamp(-1.0, 1.0)
+    size = ratio.abs()
+    below = p.lift * ratio * (2.0 - size)
+    magnitude = angle.abs()
+    past_stall = magnitude > p.stall
     past = (magnitude - p.stall).clamp_min(0.0)
     gap = p.lift - p.stall_flat_plate_lift - p.stall_flat_plate_slope * past
     fade = torch.exp(-past * past * p.inverse_dip_width_squared)
     double = 2.0 * magnitude
-    return p.flat_plate_lift * torch.sin(double) + gap * fade, past, gap, fade, double
-
-
-def _lift_coefficient(p, angle):
-    """The lift coefficient at an angle of attack: a parabola peaking at the stall angle at the
-    wing's maximum; past the stall the flat plate's return (GameConfig.post_stall,
-    `_post_stall_constants`: a dip, about the flat plate's from twice the dip width on, 0 at 90
-    deg), or with the regime off the parabola's tail (0 from twice the stall angle)."""
-    if not _switched_on(p.post_stall):
-        ratio = (angle * p.inverse_stall).clamp(-2.0, 2.0)
-        return p.lift * (2.0 * ratio - ratio * ratio.abs())
-    ratio = (angle * p.inverse_stall).clamp(-1.0, 1.0)
-    below = p.lift * (2.0 * ratio - ratio * ratio.abs())
-    magnitude = angle.abs()
-    tail = _post_stall_lift(p, magnitude)[0]
-    return torch.where(magnitude > p.stall, torch.sign(angle) * tail, below)
-
-
-def _lift_and_slope(p, angle):
-    """(lift coefficient, its slope d C / d angle) at an angle of attack (`_lift_coefficient`)."""
-    lift = _lift_coefficient(p, angle)
-    ratio = (angle * p.inverse_stall).abs()
-    if not _switched_on(p.post_stall):
-        # Negative past the stall, zero from twice the stall angle (v2's lift_slope,
-        # src/bnb/game/physics/flight.py).
-        slope = torch.where(ratio < 2.0, (p.lift * p.inverse_stall) * (2.0 - 2.0 * ratio), 0.0)
-        return lift, slope
-    below = (p.lift * p.inverse_stall) * (2.0 - 2.0 * ratio.clamp_max(1.0))
-    _, past, gap, fade, double = _post_stall_lift(p, angle.abs())
-    tail = (
+    tail = p.flat_plate_lift * torch.sin(double) + gap * fade
+    lift = torch.where(past_stall, torch.sign(angle) * tail, below)
+    if not slope:
+        return lift, None
+    tail_slope = (
         2.0 * p.flat_plate_lift * torch.cos(double)
         - (p.stall_flat_plate_slope + 2.0 * past * p.inverse_dip_width_squared * gap) * fade
     )
-    return lift, torch.where(ratio > 1.0, tail, below)
+    return lift, torch.where(past_stall, tail_slope, steepness * (2.0 - 2.0 * size))
+
+
+def _lift_coefficient(p, angle):
+    """The lift coefficient at an angle of attack (`_lift_and_slope`)."""
+    return _lift_and_slope(p, angle, slope=False)[0]
 
 
 def _path_lift(p, lift, angle, vertical, speed_squared):
@@ -816,9 +832,7 @@ def _path_lift(p, lift, angle, vertical, speed_squared):
         return total
     share = smootherstep(((angle.abs() - p.stall) * p.inverse_dip_width).clamp(0.0, 1.0))
     held = share * vertical * vertical
-    return torch.where(
-        share > 0.0, torch.sign(total) * torch.sqrt((total * total - held).clamp_min(0.0)), total
-    )
+    return torch.sign(total) * torch.sqrt((total * total - held).clamp_min(0.0))
 
 
 def _commanded_angle(p, control, lateral, speed, inverse_lift):
@@ -914,6 +928,7 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
     half_cos, half_sin = small_angle_cos_sin(0.5 * turn)
     middle_cos = cos0 * half_cos - sin0 * half_sin
     middle_lift = _lift_coefficient(p, angle0 + 0.5 * turn)
+    middle_drag = _post_stall_drag(p, middle_cos)
     speed_rate1, _ = _rates(
         p,
         current,
@@ -923,6 +938,7 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
         middle_cos,
         inverse_speed_squared,
         inverse_lift_squared,
+        middle_drag,
     )
     speed_rate2, energy_rate2 = _rates(
         p,
@@ -933,6 +949,7 @@ def _kick(p, control, s, inverse_index, gradient_along, gradient_across, duratio
         middle_cos,
         inverse_speed_squared,
         inverse_lift_squared,
+        middle_drag,
     )
     turn_cos, turn_sin = small_angle_cos_sin(turn)
     s.speed = (speed0 + duration * speed_rate2).clamp_min(floor)
