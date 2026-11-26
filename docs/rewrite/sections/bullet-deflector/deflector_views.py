@@ -216,7 +216,9 @@ def stream_figure(path: Path) -> None:
             ax.grid(True, color="#e4e3df", lw=0.6)
     fig.suptitle(
         "Bullet paths past a target (target's frame, 300 m shot, rows 2 m apart). Circle: hit "
-        f"radius {radius:g} m; arrow: nose. x: the bullet stopped on the ship (drawn at the closest point); orange: it did damage, blue with x: no damage (nose cone). "
+        f"radius {radius:g} m; arrow: nose. "
+        "x: the bullet stopped on the ship (drawn at the closest point);\n"
+        "orange: it did damage, blue with x: no damage (nose cone). "
         "Dotted: the push at the closest point. Grey: the straight paths with no deflector.",
         fontsize=10,
     )
