@@ -57,4 +57,19 @@ the card retune after.
 - Drag past the stall still counts the held vertical's induced drag on top of the wing's whole
   lift (double counting, small next to the post-stall drag).
 
-**Next:** compile check, sandbox, then the author flies.
+## 2026-11-26, step 2: compile check and sandbox
+
+**Compile check** (laptop 4070, performance profile, load below 1.5, cold cache; baseline file
+not updated): `advance` 2545 traced operations against core's 2300 measured the same hour
+(+245, +10.7%) and the recorded baseline's 2220 (+15%: the check FAILs at its 10% tolerance;
+core itself is already +3.6% over the file). First version 2605; one lift-and-slope evaluation
+and the middle angle's post-stall drag shared brought it to 2545. act, minibatch_loss and
+slot_actions equal core's. Cold 227.4 s (core 228.6 s), 0 graph breaks, 4 graphs.
+
+**Sandbox:** flies the regime by default (`World` with the default GameConfig);
+`BNB_POST_STALL=0` in the server's environment turns it off. Headless, 150 ticks of full stick
+from the spawn: speed 53.5 m/s, AoA 45.0 deg, 8.1 deg/s (off: 149.5 m/s, 11.5 deg, 39.5 deg/s).
+The Ships tab's sliders include the deep angle, band, drag ratio and nose damping.
+
+**Next:** the author flies; then charts (new middle shape, the deep line), the scripted
+opponent's stick use, and cutting ops if the 10% tripwire matters.
