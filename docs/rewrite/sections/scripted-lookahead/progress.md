@@ -742,3 +742,23 @@ position 110 / 217 m), and with fields the 90th percentiles reach 450-920 m at 6
 **2 s stays the default**: 6 s loses both head-to-head duels heavily (2 s wins 72% in 4v4 and
 83% in 1v1), is no better against the rule-based agent (within noise) or at the merge, costs
 +1.2 ms, and its later points are mostly prediction error.
+
+## Round 3: planned, on hold (coordinator, 2026-11-27)
+
+The author watched the round-2 replays ("looked really good", damage halved) and approved a round 3
+in principle; it waits while the hit model (hit radius, core, dispersion, a possible deflection
+field) is discussed. Round 3, with a fresh agent:
+1. A steady-flight lookup table built once from the game's own functions (speed x stick level x
+   power; the agent interpolates, as the Sustain table does), to cut the compile (cold 333 s
+   against the 260 s budget; `act` 7,864 traced operations) and the path cost.
+2. The stick distribution's tick-to-tick change (total variation 0.14-0.15) measured after
+   grouping actions by effect (left / straight / right, steady turn rate), to tell harmless
+   sliding between equivalent actions (Sustain and Max mid-turn) from real jumping.
+3. Power and energy: the store runs nearly empty (mean 0.06-0.16 of full; dive 55-65% of
+   ship-ticks, climb 3-6%): weight the store more, weaken the preferred-speed term, compare the
+   store with round 1 (0.21-0.52); check the slow near-stall empty-store 1v1 (round-2 replay
+   1v1 seed 1).
+4. Final pass: remove the rule-based agent, tests, compile check, docs; merge into core after the
+   author watches the replays.
+Author notes for it: 1v1 mirror draws are not a target (near-optimal play may draw); judge flicker
+on the distribution, not on sampled actions; 1v1 tests run with fog off and no fields.
