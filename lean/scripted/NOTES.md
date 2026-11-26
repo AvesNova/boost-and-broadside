@@ -99,4 +99,7 @@ against its twin (CUDA), the power from the own-ship terms, games against the ch
 
 - Speed: see progress.md (round 2: the paths now cost more than the pair kernel; the kernel
   measured against the plain PyTorch pair stage and kept, about 11x on the stage).
+- Compile: the cold compile check fails (333 s against 260 s; each steady-flight evaluation
+  is about 500 traced operations, and the call has 8). The stick distribution moves about 0.15
+  total variation per tick (progress.md round 2 step 6).
 - Defaults chosen by reasoning (the energy weight from the card's `store_turn`); no tuning yet.
