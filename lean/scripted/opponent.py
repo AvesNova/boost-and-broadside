@@ -39,9 +39,11 @@ from torch import Tensor
 from lean.contract import FIRES, JOINT, POWERS, Constants, random_keywords
 from lean.game import card
 from lean.game.core import (
-    aspect_factor,
+    SHOOTER_HIT_CONSTANTS,
+    TARGET_HIT_CONSTANTS,
     enemy_view,
     field_blocks,
+    hit_damage,
     maximum,
     medium,
     minimum,
@@ -220,9 +222,10 @@ def gun_solution(rel_x, rel_y, nose_x, nose_y, velocity_x, velocity_y, target, s
     """The shooter's gun solution on the target, (0 to 1): its nose against the lead point
     (the drag law's time of flight in the shooter's medium), the tolerance the target's size
     plus the look-ahead's blur at `time`; inside the gun range (a smoothstep from 0.8 to 1.2
-    gun ranges); the hit's kinetic worth at that distance; the target's nose cone at the
-    bullet's path (`aspect_factor`). rel: target minus shooter; velocity: target minus shooter
-    over the map. `target`, `shooter`: dicts of constants and the paths' nose and log index."""
+    gun ranges); the hit's worth by the game's hit model (`hit_worth`: kinetic at that
+    distance, the target's nose cone at the bullet's path). rel: target minus shooter;
+    velocity: target minus shooter over the map. `target`, `shooter`: dicts of constants and
+    the paths' nose and log index."""
     distance_squared = rel_x * rel_x + rel_y * rel_y
     distance = torch.sqrt(distance_squared + TINY)
     gun_range = shooter["gun_range"]
@@ -239,16 +242,18 @@ def gun_solution(rel_x, rel_y, nose_x, nose_y, velocity_x, velocity_y, target, s
     aligned = torch.exp(-off / (tolerance * tolerance))
     band = ((distance / gun_range - 0.8) / 0.4).clamp(0.0, 1.0)
     in_range = 1.0 - band * band * (3.0 - 2.0 * band)
-    explosive = shooter["explosive_share"]
-    launch_over_reference = (
-        shooter["bullet_launch_speed"] * shooter["inverse_reference_bullet_speed"]
-    )
-    kinetic = explosive + (1.0 - explosive) * (launch_over_reference * launch_over_reference) * (
-        torch.exp(-2.0 * shooter["bullet_drag"] * distance)
-    )
     hit_cos = -(shooter["bullet_x"] * target["nose_cos"] + shooter["bullet_y"] * target["nose_sin"])
-    aspect = aspect_factor(hit_cos, target["nose_inner_cos"], target["inverse_nose_width"])
-    return aligned * in_range * kinetic * aspect
+    return aligned * in_range * hit_worth(shooter, target, distance, hit_cos)
+
+
+def hit_worth(shooter, target, distance, hit_cos) -> Tensor:
+    """A dead-centre hit's damage as a share of the shooter's hit damage, by the game's hit model
+    (`core.hit_damage`, the one call): the bullet launched at the shooter's
+    `bullet_launch_speed` slowed by the drag law over `distance` (speed x e^(-drag d)), the
+    target's nose cone at `hit_cos`. `shooter`, `target`: constants by name, laid to broadcast."""
+    speed = shooter["bullet_launch_speed"] * torch.exp(-shooter["bullet_drag"] * distance)
+    centre = torch.zeros_like(speed)
+    return hit_damage(shooter, target, speed, centre, hit_cos) / shooter["hit_damage"]
 
 
 def _bullet_direction(paths: dict[str, Tensor], c) -> tuple[Tensor, Tensor]:
@@ -652,7 +657,9 @@ PREDICTED = (
 def power_scores(c, speed, energy, read_or_values, engaged, has_corner) -> Tensor:
     """The power scores (E, N, POWERS): the own-ship terms over the power look (`POWER_LOOK`):
     minus the speed term (|ln(speed / preferred)|) plus energy (speed^2 / 2 + store, in full
-    stores) at the energy weight while engaged and the disengaged energy weight while not,
+    stores) at the energy weight while engaged and the disengaged energy weight while not, plus
+    the store itself (in full stores) at the store weight (round 3: the store held, not only
+    its share of the total energy),
     each point's interval discounted by e^(-t / power_horizon). `speed`, `energy` (E, N,
     POWERS, P); `read_or_values(name)` a row (a number or (E, N)); `engaged` (E, N) 0 to 1."""
     read = read_or_values
@@ -662,11 +669,13 @@ def power_scores(c, speed, energy, read_or_values, engaged, has_corner) -> Tenso
     energy_weight = read("energy_weight") * engaged + read("disengaged_energy_weight") * (
         1.0 - engaged
     )
-    stored = (0.5 * speed * speed + energy) * _lay(c["inverse_max_energy"], 2)
+    inverse_max_energy = _lay(c["inverse_max_energy"], 2)
+    stored = (0.5 * speed * speed + energy) * inverse_max_energy
     rate = (
         -_lay(read("speed_weight"), 2)
         * (torch.log(speed.clamp_min(TINY)) - _lay(log_preferred, 2)).abs()
         + _lay(energy_weight, 2) * stored
+        + _lay(read("store_weight"), 2) * energy * inverse_max_energy
     )
     return (rate * weights).sum(-1)
 
@@ -863,7 +872,9 @@ def _trigger(state, enemies, enemy_slot, enemy_weight, read) -> Tensor:
     )
     # Worth it (author 2026-11-25): the hit at the predicted aspect (his nose turned at its rate
     # over the flight time) takes at least fire_worth ticks of my shield recharge, or his whole
-    # shield (and more than 0: inside his nose cone it does nothing).
+    # shield (and more than 0: inside his nose cone it does nothing). The hit by the game's hit
+    # model (`hit_worth`: core.hit_damage, one call; round 3), dead centre, my bullet's launch
+    # speed slowed over the distance.
     launch_x = state.velocity_x[..., None] + _lay(c["muzzle_speed"], 1) * nose_cos
     launch_y = state.velocity_y[..., None] + _lay(c["muzzle_speed"], 1) * nose_sin
     turned = _at(enemies.nose_rate, enemy_slot) * flight
@@ -874,11 +885,10 @@ def _trigger(state, enemies, enemy_slot, enemy_weight, read) -> Tensor:
     hit_cos = -(launch_x * nose_x + launch_y * nose_y) * torch.rsqrt(
         launch_x * launch_x + launch_y * launch_y + TINY
     )
-    hit = _at(c["hit_damage"], enemy_slot) * aspect_factor(
-        hit_cos,
-        _at(enemies.constants["nose_inner_cos"], enemy_slot),
-        _at(enemies.constants["inverse_nose_width"], enemy_slot),
-    )
+    mine = {name: _lay(c[name], 1) for name in SHOOTER_HIT_CONSTANTS + ("bullet_drag",)}
+    mine["bullet_launch_speed"] = torch.sqrt(launch_x * launch_x + launch_y * launch_y + TINY)
+    his = {name: _at(enemies.constants[name], enemy_slot) for name in TARGET_HIT_CONSTANTS}
+    hit = _lay(c["hit_damage"], 1) * hit_worth(mine, his, distance, hit_cos)
     worth = read("fire_worth", 1) * _lay(c["shield_rate"] * c["tick_length"], 1)
     shield = _at(enemies.shield, enemy_slot)
     worthwhile = (hit >= worth) | ((hit >= shield) & (hit > 0.0))

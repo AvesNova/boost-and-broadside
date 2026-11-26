@@ -1769,11 +1769,13 @@ def _damage(
     flat_direction_x, flat_direction_y = direction_x.reshape(flat), direction_y.reshape(flat)
     nose_cos = _on_target(flown.heading_cos, target)
     nose_sin = _on_target(flown.heading_sin, target)
-    # The owner's constants broadcast over its K bullets.
-    speed_ratio = bullet_speed * _per_bullet(c["inverse_reference_bullet_speed"])
-    explosive = _per_bullet(c["explosive_share"])
-    kinetic = explosive + (1.0 - explosive) * speed_ratio * speed_ratio
-    full = (_per_bullet(c["hit_damage"]) * kinetic).reshape(flat)
+
+    def per_bullet(name: str) -> Tensor | float:  # the owner's constant over its K bullets
+        value = c[name]
+        return (
+            value[..., None].expand(E, N, K).reshape(flat) if isinstance(value, Tensor) else value
+        )
+
     # The swept test's start and relative motion against the target.
     on_target = target[:, None, :, None].expand(E, 2, -1, 1)
     target_start_x, target_start_y = contact.start.gather(3, on_target)[..., 0].unbind(1)
@@ -1783,15 +1785,38 @@ def _damage(
     impact_squared = torch.minimum(
         line, target_start_x * target_start_x + target_start_y * target_start_y
     )
-    radius, core = _on_target(c["hit_radius"], target), _on_target(c["core_radius"], target)
-    closeness = graze(impact_squared.sqrt(), core, radius)
     hit_cos = -(flat_direction_x * nose_cos + flat_direction_y * nose_sin)  # 1 head-on
-    aspect = aspect_factor(
+    damage = hit_damage(
+        {name: per_bullet(name) for name in SHOOTER_HIT_CONSTANTS},
+        {name: _on_target(c[name], target) for name in TARGET_HIT_CONSTANTS},
+        bullet_speed.reshape(flat),
+        impact_squared.sqrt(),
         hit_cos,
-        _on_target(c["nose_inner_cos"], target),
-        _on_target(c["inverse_nose_width"], target),
     )
-    return torch.where(contact.hit & real, full * closeness * aspect, 0.0)
+    return torch.where(contact.hit & real, damage, 0.0)
+
+
+# The constants `hit_damage` reads: the shooter's and the target's.
+SHOOTER_HIT_CONSTANTS = ("hit_damage", "explosive_share", "inverse_reference_bullet_speed")
+TARGET_HIT_CONSTANTS = ("hit_radius", "core_radius", "nose_inner_cos", "inverse_nose_width")
+
+
+def hit_damage(shooter, target, bullet_speed, impact, hit_cos) -> Tensor:
+    """The hit model: one bullet's damage on a ship. Kinetic (the shooter's hit damage, the
+    explosive share plus the rest by the squared ratio of the bullet's speed to its reference
+    speed) x closeness (`graze`: the impact parameter `impact`, the distance from the target to
+    the bullet's line, across the band between the target's core and hit radii) x aspect (the
+    target's nose cone at `hit_cos`, the bullet's path against its nose, 1 head-on:
+    `aspect_factor`). `shooter`, `target`: the constants by name (SHOOTER_HIT_CONSTANTS,
+    TARGET_HIT_CONSTANTS; numbers or tensors broadcast with the rest). The tick's damage
+    (`_damage`) and the scripted agent's gun and trigger (lean.scripted.opponent) read it, so a
+    change of the hit model reaches both."""
+    speed_ratio = bullet_speed * shooter["inverse_reference_bullet_speed"]
+    explosive = shooter["explosive_share"]
+    kinetic = explosive + (1.0 - explosive) * speed_ratio * speed_ratio
+    closeness = graze(impact, target["core_radius"], target["hit_radius"])
+    aspect = aspect_factor(hit_cos, target["nose_inner_cos"], target["inverse_nose_width"])
+    return shooter["hit_damage"] * kinetic * closeness * aspect
 
 
 def graze(distance: Tensor, core: Tensor | float, radius: Tensor | float) -> Tensor:

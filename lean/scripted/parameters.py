@@ -86,6 +86,12 @@ PARAMETERS: dict[str, Parameter] = {
     # energy) over the power look (lean.scripted.paths.POWER_LOOK, 5 s), its own softmax and
     # stickiness. Stickiness 6 x the temperature: a ship indifferent between the powers switches
     # on about 0.5% of ticks (2 e^-6 / (1 + 2 e^-6)).
+    # Round 3 (author 2026-11-27): the store ran nearly empty (mean 0.06-0.16 of full; dive on
+    # 55-65% of ship-ticks): the store held is worth something of its own, beyond its share of
+    # the energy term (diving trades it for speed at almost no change in total energy).
+    "store_weight": Parameter(0.0, "ratio", LOG, 0.4,
+                              "the store itself in full stores per second, in the power "
+                              "choice (on top of the energy term)"),
     "power_horizon": Parameter(3.0, "seconds", LOG, 0.3, "the power look's discount time"),
     "power_temperature": Parameter(0.05, "score seconds", LOG, 0.4,
                                    "the power softmax's temperature"),

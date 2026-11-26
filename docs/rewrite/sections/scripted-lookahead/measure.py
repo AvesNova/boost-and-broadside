@@ -19,11 +19,14 @@ import argparse
 import json
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import torch
 
 from lean import game, scripted
 from lean.contract import FIRES, JOINT, POWERS, STICKS, compile_dynamic, join_action
+from lean.game import card
+from lean.game.core import steady_lookup
 from lean.scripted import paths
 from lean.scripted.rule_based import opponent as rule_based
 from lean.scripted.rule_based.parameters import ScriptedConfig as RuleBasedConfig
@@ -49,6 +52,12 @@ def main():
     parser.add_argument("--look-ahead", default=None, help="points, e.g. 0.25,0.5,1,2")
     parser.add_argument(
         "--other-look-ahead", default=None, help="duel: the other look-ahead agent's points"
+    )
+    parser.add_argument(
+        "--other-set",
+        nargs="*",
+        default=None,
+        help="duel: the other agent's rows name=value (default: the same rows as --set)",
     )
     parser.add_argument("--out", type=Path, required=True)
     arguments = parser.parse_args()
@@ -80,8 +89,14 @@ def main():
         action, memory, _ = rule_based.decide(old_config, state, None, None, uniforms, memory)
         return action, memory
 
+    other_config = new_config
+    if arguments.other_set is not None:
+        other_config = scripted.ScriptedConfig().replace(
+            **{item.split("=")[0]: float(item.split("=")[1]) for item in arguments.other_set}
+        )
+
     def other_call(state, uniforms):
-        return scripted.decide(new_config, state, None, None, uniforms)[0]
+        return scripted.decide(other_config, state, None, None, uniforms)[0]
 
     if arguments.compile:
         new_call, old_call = compile_dynamic(new_call), compile_dynamic(old_call)
@@ -98,10 +113,50 @@ def main():
     # distributions (joint, stick marginal, power marginal), look-ahead ships only.
     previous_joint = previous_mine = None
     variation = {"joint": 0.0, "stick": 0.0, "power": 0.0}
+    # Grouped by effect (round 3): the stick distribution over the side (left / straight /
+    # right) and over the signed steady turn rate (the 1-Wasserstein distance between the two
+    # ticks' stick distributions on the 7 sticks' rates at the ship's speed, store and pending
+    # power now, from the game's steady table; in deg/s, and over the span of the 7 rates: a
+    # mass fraction times a rate fraction, comparable to the total variation).
+    grouped = {"side": 0.0, "rate_w1_deg_s": 0.0, "rate_w1_of_span": 0.0}
+    side_of_stick = torch.sign(torch.tensor(card.STICK_LEVELS, device=device)).long() + 1
+    level_of_stick = torch.tensor(paths.LEVEL_OF_STICK, device=device)
+    stick_sign = torch.sign(torch.tensor(card.STICK_LEVELS, device=device))
     variation_count = 0.0
     outcome = {"wins": 0, "draws": 0, "losses": 0, "ended": 0, "team_0_wins": 0, "team_1_wins": 0}
     started = time.time()
     tick_length = config.tick_length
+
+    def steady_rates_now(state):
+        """Each stick's signed steady turn rate (E, N, STICKS) at the ship's speed, store and
+        pending power now (the game's steady-flight table), no field."""
+        c = state.constants
+
+        def laid(value):
+            return value[..., None] if isinstance(value, torch.Tensor) else value
+
+        p = SimpleNamespace(
+            **{
+                name: laid(c[name])
+                for name in (
+                    "steady_low_speed",
+                    "inverse_steady_step",
+                    "inverse_fade",
+                    "max_energy",
+                )
+            }
+        )
+        rate = steady_lookup(
+            p,
+            c["steady_table"],
+            state.type[..., None],
+            state.speed[..., None],
+            level_of_stick,
+            state.pending[..., 1:2],
+            state.energy[..., None],
+        )[0]
+        return rate * stick_sign
+
     with torch.no_grad():
         for tick in range(1, arguments.ticks + 1):
             living = state.exists & state.alive
@@ -129,9 +184,27 @@ def main():
                         distance = 0.5 * (now_p - then_p).abs().sum(-1)
                         variation[name] += float(distance[both].sum())
                     variation_count += float(both.sum())
+                    stick_now, stick_then = now_parts.sum((-1, -2)), then_parts.sum((-1, -2))
+
+                    def by_side(stick):
+                        return torch.zeros(stick.shape[:-1] + (3,), device=device).index_add_(
+                            -1, side_of_stick, stick
+                        )
+
+                    side = 0.5 * (by_side(stick_now) - by_side(stick_then)).abs().sum(-1)
+                    grouped["side"] += float(side[both].sum())
+                    rates = steady_rates_now(state)  # (E, N, STICKS) rad/s, signed
+                    order = rates.argsort(-1)
+                    sorted_rates = rates.gather(-1, order)
+                    gaps = sorted_rates.diff(dim=-1)
+                    cumulative = (stick_now - stick_then).gather(-1, order).cumsum(-1)[..., :-1]
+                    w1 = (cumulative.abs() * gaps).sum(-1)
+                    span = (sorted_rates[..., -1] - sorted_rates[..., 0]).clamp_min(1e-6)
+                    grouped["rate_w1_deg_s"] += float(torch.rad2deg(w1)[both].sum())
+                    grouped["rate_w1_of_span"] += float((w1 / span)[both].sum())
                 previous_joint, previous_mine = joint, mine
             if arguments.mode == "duel":  # the other look-ahead agent on the other team
-                paths.LOOK_AHEAD = other_points
+                paths.LOOK_AHEAD = other_points or main_points
                 other_uniforms = scripted.draw_uniforms(envs, slots, generator, device)
                 other_action = other_call(state, other_uniforms)
                 paths.LOOK_AHEAD = main_points
@@ -197,6 +270,7 @@ def main():
                     "set": changes,
                     "look_ahead": main_points,
                     "other_look_ahead": other_points,
+                    "other_set": arguments.other_set,
                     "size": size,
                     "fields": arguments.fields,
                     "fog": not arguments.no_fog,
@@ -211,6 +285,9 @@ def main():
                     "mean_store": store_sum / max(living_ticks, 1.0),
                     "total_variation_per_tick": {
                         name: total / max(variation_count, 1.0) for name, total in variation.items()
+                    },
+                    "grouped_stick_change_per_tick": {
+                        name: total / max(variation_count, 1.0) for name, total in grouped.items()
                     },
                     "power_switches_per_ship_second": power_switches
                     / max(compared, 1.0)
@@ -232,6 +309,7 @@ def main():
                     f" store {summary['mean_store']:.2f}"
                     f" power switches/s {summary['power_switches_per_ship_second']:.2f}"
                     f" TV {summary['total_variation_per_tick']}"
+                    f" grouped {summary['grouped_stick_change_per_tick']}"
                     f" {outcome} ETA {eta}",
                     flush=True,
                 )
