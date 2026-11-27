@@ -88,3 +88,13 @@ performance profile. Data: ~/avesnova/boost-and-broadside/data/lookahead-persona
   at 16v16 the population scored about 85-90% against crowd-known, where ranking resolution
   falls. Journal lines from generation 17 carry the reference id. Loop bound unchanged
   (60 generations or 05:30); ETA 02:40 (worst 05:30).
+
+### 00:45 redirect: CMA stopped
+- 00:42 CMA stopped after 24 generations on the author's redirect (coordinator 00:35: generation
+  1 was already good enough; over-optimising risks a solution brittle to the yardstick and the
+  conditions). Journal kept (cma/cma.jsonl). No re-centred yardstick from it.
+- 00:45 decision for the redirected study: centre = crowd-known (the screen's configuration),
+  spread-1 boxes around it. Skill: 48 personas + every sampled row at u = -0.5 and 1.5 (half a
+  box past each edge) against crowd-known at 1v1/4v4/16v16, SE 0.03. Behaviour: a state set
+  per size around crowd-known, Saltelli (base 32) JSD to the centre, label blur at 0.25/0.5/1.
+  The old-yardstick data of step 2 (106 agents, three sizes) is reused for the interaction fit.
