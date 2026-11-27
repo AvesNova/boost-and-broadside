@@ -42,3 +42,7 @@ ETA: code + CPU tests 01:30 (worst 03:00); GPU measurements 03:30 (worst 05:00);
   (the static test needed its ticks under no_grad, a test bug). Simulation (CPU, 300 updates):
   numbers below. Next: GPU bench (core vs pool, 0/1/12 snapshots) and the smoke run, queued on
   the GPU lock behind the persona agent's jobs. ETA 22:30 (worst 00:30).
+- 22:00 Bound: the 08:30 target dropped (coordinator); finish when adequately done. GPU bench
+  done (below); smoke run 10 updates done, its resume step exited at once in the job (debugging
+  now). Next: resume fix, BC-stage per-row cost bench, compile check, docs. ETA 23:30 (worst
+  01:30).
