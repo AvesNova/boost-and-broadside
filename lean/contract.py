@@ -162,16 +162,20 @@ def random_keywords(generator: torch.Generator | None, device) -> dict:
     return {"generator": generator, "device": device}
 
 
+FIELDS_OF_CONSTANTS = ("uniform", "columns", "table", "per_type", "ship_type")
+
+
 @dataclass(eq=False)  # compared and hashed by identity (built-once caches key on it)
 class Constants:
     """Per-ship constants of one run, read by name: `constants["lift"]` or `constants.lift`.
 
     A constant equal for every ship of the run (every type in the lineup, or fixed by the
     rules) is a Python number in `uniform`, compiled into the graph. One that differs by ship
-    type is a row of `table` (E, C, N) float32, gathered once per slot at reset; `columns`
-    gives its first row and width (width 1 reads as (E, N), a wider one, an action-indexed
-    table, as (E, width, N)). Action-indexed tables are always rows of `table`. The run's card
-    (lean.game.core.ship_card) is the same with one column per ship type: table (1, C, T).
+    type is a row of `table` (C, T) float32, one column per card type, read through each
+    slot's type `ship_type` (E, N) long (the slot's State.type): `columns` gives its first row
+    and width (width 1 reads as (E, N), a wider one, an action-indexed table, as (E, width,
+    N)). Action-indexed tables are always rows of `table`. The run's card
+    (lean.game.core.ship_card) has no `ship_type`: it reads as (1, T) and (1, width, T).
     """
 
     uniform: dict[str, float | int]
@@ -180,6 +184,7 @@ class Constants:
     # Tables by card type (T, ...), read with a ship's type (State.type), never dealt to slots:
     # lean.game.core.PER_TYPE_TABLES (the steady-flight table, too wide for every slot's row).
     per_type: dict[str, Tensor] = dataclasses.field(default_factory=dict)
+    ship_type: Tensor | None = None
 
     def __getitem__(self, name: str) -> Tensor | float | int:
         if name in self.uniform:
@@ -187,10 +192,15 @@ class Constants:
         if name in self.per_type:
             return self.per_type[name]
         start, width = self.columns[name]
-        return self.table[:, start] if width == 1 else self.table[:, start : start + width]
+        if self.ship_type is None:  # the card: (1, T), (1, width, T)
+            rows = self.table[None, start : start + width]
+            return rows[:, 0] if width == 1 else rows
+        if width == 1:
+            return self.table[start][self.ship_type]
+        return self.table[start : start + width][:, self.ship_type].movedim(0, 1)
 
     def __getattr__(self, name: str) -> Tensor | float | int:
-        if name.startswith("__") or name in ("uniform", "columns", "table", "per_type"):
+        if name.startswith("__") or name in FIELDS_OF_CONSTANTS:
             raise AttributeError(name)
         try:
             return self[name]

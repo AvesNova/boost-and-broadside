@@ -19,6 +19,7 @@ These fly a thousand ticks (seconds of CPU): the tool runs them on demand and ca
 design; the slider path never flies.
 """
 
+import dataclasses
 import math
 from types import SimpleNamespace
 
@@ -80,6 +81,12 @@ def _direction(s) -> SimpleNamespace:
 def _ships(n: int):
     config = flight_config()
     constants = core.ship_constants(config, torch.zeros((n, 1), dtype=torch.long))
+    # A column of the table per ship (a copy of type 0's), so a tool may set one ship's row.
+    constants = dataclasses.replace(
+        constants,
+        table=constants.table[:, torch.zeros(n, dtype=torch.long)].clone(),
+        ship_type=torch.arange(n)[:, None],
+    )
     p = core.per_type_constants(config, torch.zeros(n, dtype=torch.long))
     return config, constants, p
 
@@ -279,7 +286,7 @@ def critical_points(
     speeds, rates = [], []
     with torch.no_grad():
         for _ in range(round(CHECK_SECONDS / h)):
-            constants.table[:, column, 0] = (base + gain * (s.speed[:, 0] - target)).clamp(0.0, 1.0)
+            constants.table[column] = (base + gain * (s.speed[:, 0] - target)).clamp(0.0, 1.0)
             before = _direction(s)
             s = core.flight_tick(constants, fields, h, s, control, power)
             rates.append(_turn_rate(before, s, h).numpy())

@@ -296,7 +296,7 @@ def test_hit_model_round_trip_and_unknown_names():
     read = core.hit_model_of(changed)
     for name, value in values.items():
         assert abs(read[name] - value) < 1e-5, name
-    assert torch.equal(changed.table[:, changed.columns["hit_radius"][0]], torch.full((2, 2), 14.0))
+    assert torch.equal(changed["hit_radius"], torch.full((2, 2), 14.0))
     expected = core.hit_widths(torch.tensor([14.0]), values)[0]
     assert torch.allclose(changed["hit_widths"][0, :, 0], expected)
     with pytest.raises(KeyError):

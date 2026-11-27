@@ -267,3 +267,17 @@ def test_a_placed_ship_spawns_by_the_deals_rule():
     )
     others = ~chosen
     assert torch.equal(spawned.ships.transpose(1, 2)[others], state.ships.transpose(1, 2)[others])
+
+
+def test_a_slots_constants_are_its_types_column_of_the_card():
+    """The per-type table (C, T) read through each slot's type gives every slot its type's
+    column of the card, for every name (one number, or an action table (E, width, N))."""
+    config = GameConfig()
+    generator = torch.Generator().manual_seed(0)
+    state = reset(config, 3, torch.tensor([[2, 3], [1, 1], [3, 2]]), generator, "cpu")
+    constants, card_table = state.constants, core.ship_card(config).table
+    assert torch.equal(constants.ship_type, state.type)
+    for name, (start, width) in constants.columns.items():
+        expected = card_table[start : start + width][:, state.type].movedim(0, 1)  # (E, w, N)
+        read = constants[name]
+        assert torch.equal(read if width > 1 else read[:, None], expected), name

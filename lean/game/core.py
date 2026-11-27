@@ -788,7 +788,7 @@ def _build_ship_card(config: GameConfig) -> Constants:
         block = values.reshape(len(card.TYPE_NAMES), -1).T  # (width, T)
         columns[name] = (sum(len(row) for row in rows), block.shape[0])
         rows.append(block)
-    table = torch.cat(rows, 0)[None].contiguous()  # the action tables at least
+    table = torch.cat(rows, 0).contiguous()  # (C, T): the action tables at least
     return Constants(uniform, columns, table, per_type)
 
 
@@ -798,7 +798,7 @@ _SHIP_CARDS: dict[tuple, Constants] = {}
 
 def ship_card(config: GameConfig) -> Constants:
     """The run's ship card: its constants per ship type, before they are dealt to slots (the
-    table (1, C, T) on the CPU, one column per card type). Built once per flight settings,
+    table (C, T) on the CPU, one column per card type). Built once per flight settings,
     lineup and arena. The build reads numbers back to the host (`.item()`), so it runs eagerly:
     the first deal of a run (`reset`, always before any compiled tick) builds it, and a traced
     deal only looks it up."""
@@ -828,14 +828,12 @@ def _card_per_type(ship_card_: Constants, device: torch.device) -> dict[str, Ten
 
 def ship_constants(config: GameConfig, ship_type: Tensor) -> Constants:
     """The per-ship constants of slots of types ship_type (E, N) long, each a type of the lineup:
-    the card's uniform numbers, and its per-type rows gathered once into (E, C, N)."""
+    the card's uniform numbers and its (C, T) table (shared, never written), read through
+    ship_type."""
     ship_card_ = ship_card(config)
     table = _card_table(ship_card_, ship_type.device)
-    envs, slots = ship_type.shape
-    rows = table.shape[1]
-    gathered = table.expand(envs, rows, -1).gather(2, ship_type[:, None].expand(envs, rows, slots))
     per_type = _card_per_type(ship_card_, ship_type.device)
-    return Constants(ship_card_.uniform, ship_card_.columns, gathered, per_type)
+    return Constants(ship_card_.uniform, ship_card_.columns, table, per_type, ship_type)
 
 
 # --------------------------------------------------------------------------- fixed tensors
@@ -2320,16 +2318,16 @@ def with_hit_model(constants: Constants, **inputs: float) -> Constants:
     if unknown:
         raise KeyError(f"not hit-model inputs: {sorted(unknown)}")
     merged = {**hit_model_of(constants), **inputs}
-    table = constants.table.clone()
+    table = constants.table.clone()  # (C, T)
     for name, value in hit_model_constants(merged).items():
         start, _ = constants.columns[name]
-        table[:, start] = value
+        table[start] = value
     start, width = constants.columns["hit_widths"]
-    radius = table[:, constants.columns["hit_radius"][0]]  # (E, N)
+    radius = table[constants.columns["hit_radius"][0]]  # (T,)
     unique, inverse = radius.cpu().unique(return_inverse=True)  # built once per radius
     widths = hit_widths(unique, {name: merged[name] for name in _WIDTH_INPUTS})[inverse]
-    table[:, start : start + width] = widths.movedim(-1, 1).to(table.device)
-    return Constants(constants.uniform, constants.columns, table, constants.per_type)
+    table[start : start + width] = widths.T.to(table.device)
+    return dataclasses.replace(constants, table=table)
 
 
 class Collisions(NamedTuple):
@@ -2806,8 +2804,10 @@ def take_deal(state: State, done: Tensor, fresh: State, index: Tensor | None = N
         new, old = getattr(fresh, field.name), getattr(state, field.name)
         if new is None:  # fog's fields with fog off
             values[field.name] = None
-        elif field.name == "constants":
-            values[field.name] = dataclasses.replace(old, table=select(new.table, old.table))
+        elif field.name == "constants":  # the card's table is shared: only the slots' types
+            values[field.name] = dataclasses.replace(
+                old, ship_type=select(new.ship_type, old.ship_type)
+            )
         else:
             values[field.name] = select(new, old)
     return State(**values)

@@ -77,7 +77,9 @@ def test_swapping_teams_mirrors_the_outcome():
         "pending": 1,
     }
     mirror = {name: getattr(state, name).flip(axis) for name, axis in slot_axis.items()}
-    mirror["constants"] = dataclasses.replace(state.constants, table=state.constants.table.flip(2))
+    mirror["constants"] = dataclasses.replace(
+        state.constants, ship_type=state.constants.ship_type.flip(1)
+    )
     other = dataclasses.replace(state, **mirror).replace(team=1 - state.team.flip(1))
     finished = torch.zeros(envs, dtype=torch.bool)
     damage = 0.0

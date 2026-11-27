@@ -36,7 +36,7 @@ from types import SimpleNamespace
 import torch
 from torch import Tensor
 
-from lean.contract import FIRES, JOINT, POWERS, Constants, random_keywords
+from lean.contract import FIRES, JOINT, POWERS, random_keywords
 from lean.game import card
 from lean.game.core import (
     SHOOTER_HIT_CONSTANTS,
@@ -730,7 +730,7 @@ def _predict_views(
     ships = SimpleNamespace(
         **{name: torch.cat([getattr(state, name), getattr(enemies, name)], 1) for name in PREDICTED}
     )
-    constants = Constants(c.uniform, c.columns, torch.cat([c.table, c.table], -1), c.per_type)
+    constants = dataclasses.replace(c, ship_type=torch.cat([c.ship_type, c.ship_type], -1))
     pending_stick, pending_power = state.pending[..., 0], state.pending[..., 1]
     outlook_stick = torch.cat([pending_stick, torch.zeros_like(pending_stick)], 1)
     speed, energy = power_outlook(constants, state.fields, ships, outlook_stick)
