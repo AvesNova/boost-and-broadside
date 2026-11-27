@@ -7,7 +7,7 @@ import time
 
 from lean.contract import REAL
 from lean.game import card, core, tuning
-from lean.sandbox.world import World, field_list, stick_index
+from lean.sandbox.world import HitRange, World, field_list, stick_index
 from lean.tool import flight_config
 
 
@@ -30,6 +30,7 @@ def frame(world: World) -> dict:
                 speed=float(s.speed[0, i]),
                 vision_range=world.constant("vision_range", i),
                 vision_eccentricity=world.constant("vision_eccentricity", i),
+                tracking_radius=_tracking_radius(world, i),
                 seen=bool(seen[i]),
             )
         )
@@ -55,6 +56,9 @@ def frame(world: World) -> dict:
                         f"{ship * slots + k}:{int(fired_tick[0, k])}",
                     ]
                 )
+    extra = {}
+    if isinstance(world, HitRange):
+        extra = dict(range=world.range_readout(), egg=world.egg(), finished=world.finished)
     return dict(
         type="frame",
         tick=world.tick,
@@ -64,11 +68,27 @@ def frame(world: World) -> dict:
         deaths=world.deaths,
         kills=world.opponent_kills,
         opponent_on=world.opponent_on,
+        radii=dict(hit=world.constant("hit_radius", 0), core=world.constant("core_radius", 0)),
+        **extra,
+    )
+
+
+def _tracking_radius(world: World, slot: int) -> float | None:
+    """The tracking circle's radius p / (1 - e) (core.sight_pairs: a ship seen on the tick before
+    is held within the observer's forward reach all round) from the game's own rows; None when
+    the game has tracking off (GameConfig.fog_tracking) or fog off."""
+    if not (world.config.fog and world.config.fog_tracking):
+        return None
+    return world.constant("vision_range", slot) / (
+        1.0 - world.constant("vision_eccentricity", slot)
     )
 
 
 def _finite(values: dict) -> dict:
-    return {k: (v if v == v and abs(v) != float("inf") else None) for k, v in values.items()}
+    return {
+        k: (v if v is not None and v == v and abs(v) != float("inf") else None)
+        for k, v in values.items()
+    }
 
 
 def setup(world: World, config: core.GameConfig) -> dict:
@@ -101,18 +121,27 @@ def run(
     opponent: bool = True,
     realtime: bool = True,
     max_ticks: int | None = None,
+    mode: str = "sandbox",
 ) -> None:
     """The child's loop: apply the controls the parent sent, tick, send a frame; stop on
     {"stop": true} (or after max_ticks, for tests). Messages: {"side", "level", "power",
     "fire"} sets the held controls; {"reset": true}; {"opponent": bool}; {"hit_model": {name:
-    value}} changes hit-model inputs live (World.set_hit_model; answered with the whole model)."""
+    value}} changes hit-model inputs live (World.set_hit_model; answered with the whole model).
+    mode "hit_range" runs lean.sandbox.world.HitRange: {"shooter": [x, y], "target_heading":
+    radians} replace the controls and the frame carries the range readouts."""
     import torch
 
     torch.set_num_threads(1)
     with tuning.flying(row, factor):
         config = flight_config()
-        world = World(config, player_type=0, opponent_on=opponent)
+        hit_range = mode == "hit_range"
+        world = (
+            HitRange(config, player_type=0)
+            if hit_range
+            else World(config, player_type=0, opponent_on=opponent)
+        )
         control = dict(side=0, level=3, power=0, fire=False)
+        aim = dict(shooter=[-200.0, 0.0], target_heading=0.0)
         connection.send(setup(world, config))
         due = time.perf_counter()
         while max_ticks is None or world.tick < max_ticks:
@@ -129,14 +158,24 @@ def run(
                     except (KeyError, ValueError) as error:
                         connection.send(dict(type="error", message=str(error)))
                     connection.send(dict(type="hit_model", **hit_model_message(world)))
-                if "opponent" in message and bool(message["opponent"]) != world.opponent_on:
+                aim.update({k: message[k] for k in aim if k in message})
+                if (
+                    "opponent" in message
+                    and not hit_range
+                    and bool(message["opponent"]) != world.opponent_on
+                ):
                     world.toggle_opponent()
                 control.update({k: message[k] for k in control if k in message})
-            world.advance(
-                stick_index(int(control["side"]), int(control["level"])),
-                int(control["power"]),
-                bool(control["fire"]),
-            )
+            if hit_range:
+                world.advance_range(
+                    tuple(aim["shooter"]), float(aim["target_heading"]), bool(control["fire"])
+                )
+            else:
+                world.advance(
+                    stick_index(int(control["side"]), int(control["level"])),
+                    int(control["power"]),
+                    bool(control["fire"]),
+                )
             connection.send(frame(world))
             if realtime:
                 due += world.h

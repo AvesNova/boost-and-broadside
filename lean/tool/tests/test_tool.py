@@ -583,3 +583,44 @@ def test_a_new_message_on_the_solve_socket_cancels_the_solve(monkeypatch):
         while not seen[0].is_set() and time.monotonic() - asked < 2.0:
             time.sleep(0.01)
         assert seen[0].is_set() and time.monotonic() - asked < 0.5
+
+
+def test_hit_range_mode_streams_range_readouts_and_damage():
+    """Hit range: the target pinned at the origin, the shooter 200 m astern of it, Space held."""
+    client = TestClient(app)
+    with client.websocket_connect("/api/sandbox") as socket:
+        socket.send_json({"preset": "p51d", "mode": "hit_range", "ticks": 150})
+        socket.receive_json()  # setup
+        socket.send_json({"shooter": [-200.0, 0.0], "target_heading": 0.0})
+        frames = [socket.receive_json() for _ in range(150)]
+    frames = [f for f in frames if f["type"] == "frame"]
+    last = frames[-1]
+    assert abs(last["range"]["distance"] - 200.0) < 1e-3
+    assert last["range"]["aspect"] < 1.0  # dead astern
+    assert last["egg"]["egg_front"] > last["egg"]["egg_rear"] > 0
+    assert last["range"]["hits"] > 0 and last["range"]["damage_per_second"] > 0
+    assert last["range"]["implied_time_to_kill"] > 0
+    assert last["ships"][0]["tracking_radius"] >= last["ships"][0]["vision_range"]
+    assert last["range"]["spreads"]["straight"]["metres"] > 0
+    assert last["range"]["spreads"]["width"]["metres"] > 0
+    assert any(f["finished"] for f in frames)
+    assert last["ships"][1]["x"] == 0.0 and last["ships"][1]["speed"] == 0.0
+
+
+def test_hit_range_paths_run_the_whole_life_and_colour_from_the_contact():
+    """A bullet that hit keeps flying: its finished path is a whole life (BULLET_SLOTS ticks
+    after the muzzle) with a contact index inside it; a miss has none."""
+    from lean.contract import BULLET_SLOTS
+
+    client = TestClient(app)
+    with client.websocket_connect("/api/sandbox") as socket:
+        socket.send_json({"preset": "p51d", "mode": "hit_range", "ticks": 120})
+        socket.receive_json()
+        socket.send_json({"shooter": [-150.0, 0.0], "target_heading": 0.0})
+        frames = [f for f in (socket.receive_json() for _ in range(120)) if f["type"] == "frame"]
+    flights = [flight for f in frames for flight in f["finished"]]
+    assert flights and all(len(points) == BULLET_SLOTS + 1 for points, _ in flights)
+    contacts = [c for _, c in flights if c is not None]
+    assert contacts and all(0 < c <= BULLET_SLOTS for c in contacts)
+    last = frames[-1]["range"]
+    assert 0 < last["hits"] <= last["shots"]

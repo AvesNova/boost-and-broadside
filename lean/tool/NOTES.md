@@ -128,3 +128,19 @@ server draws with matplotlib (author 2026-11-24: matplotlib is the one charting 
 The card is process-global (`tuning.flying`), which is why the sandbox runs in a child
 process and why chart requests are serialised; `design.PRESET_ROWS` holds the presets as
 imported, since `tuning.row_of` inside `flying` reads the design. Tests: `lean/tool/tests`.
+
+- **Hit range tab** (rough, 2026-11-27). `lean.sandbox.world.HitRange`: the target (slot 1) is
+  pinned at the origin with zero velocity, the shooter (slot 0) at the point you put it, facing
+  due east and always firing; both poses are re-pinned each tick, the step is the real one
+  (guns, spread, drag, egg, damage; no refractive fields). WASD / arrows (shift fast) or
+  click-drag move the shooter, Q / E turn the target, R resets; the hit-model sliders work. 10 s
+  rolling readouts: DPS, hits / shots, implied time to kill (full shield / DPS), actual time to
+  kill (last, and mean over the window; from first damage; the target refills on death), range,
+  aspect (0 = dead astern). 2-sigma (about 95 %) miss at the target, straight (the impact
+  parameter of each bullet's launch line, before the egg) and after the egg (b': the miss of the post-turn line,
+  from `core.egg_entry` / `egg_turn` on the bullet's launch path); the target's half-width from the shooter (half of
+  `core.hit_width` on the constants' `hit_widths`, at the bullets' path off the nose) and the
+  hit radius. Bullets: each real shot's whole path is drawn when its life ends (the ring's
+  12 ticks; a contact makes it CONTACTED and it flies on): orange up to its contact, red from the contact on, all
+  orange for a miss. Shots count real bullets (the step's `fired`; ghosts are not shots), hits the game's
+  `shot_outcome` of those bullets (first contact with the enemy). "True size" draws the hit and core circles with a heading triangle (sandbox too).

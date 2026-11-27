@@ -59,7 +59,7 @@ async def cancelled(_request, _error):
 
 @app.get("/")
 def index():
-    return FileResponse(PAGE)
+    return FileResponse(PAGE, headers={"Cache-Control": "no-store"})
 
 
 SAVED = Path("/home/vizia/avesnova/boost-and-broadside/data/tool-presets")
@@ -343,6 +343,7 @@ async def sandbox(websocket: WebSocket):
                 bool(start.get("opponent", True)),
                 start.get("ticks") is None,
                 start.get("ticks"),
+                start.get("mode", "sandbox"),
             ),
         )
         process.start()
