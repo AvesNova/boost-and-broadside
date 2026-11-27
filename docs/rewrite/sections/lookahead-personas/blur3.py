@@ -27,7 +27,7 @@ from lean.scripted.parameters import vector  # noqa: E402
 
 STATES = Path("/home/vizia/avesnova/boost-and-broadside/data/lookahead-personas-2/behaviour-centre")
 PAIR_STATES = 4096
-PREFIXES = ("gauss25", "gauss50", "gauss100", "box50")
+PREFIXES = ("gauss25", "gauss50", "gauss100", "box50", "gauss50b", "gauss50c")
 
 
 def joint(states, rows):
@@ -61,6 +61,8 @@ def main():
         entry = {"centre_entropy": h0, "ship_states": int(p0.shape[0])}
         for prefix in PREFIXES:
             labels = [k for k in group if k.startswith(prefix + "-")]
+            if not labels:
+                continue
             ps = [joint(states, group[k]) for k in labels]
             mixture = torch.stack(ps).mean(0)
             mean_h = float(torch.stack([divergence.entropy(p).mean() for p in ps]).mean())
@@ -71,15 +73,16 @@ def main():
                 "personas": n,
                 "blur": blur,
                 "blur_share": blur / h0,
-                "from_centre": float(
-                    torch.stack([divergence.js(p, p0).mean() for p in ps]).mean()
-                ),
+                "from_centre": float(torch.stack([divergence.js(p, p0).mean() for p in ps]).mean()),
                 "pairwise_mean": sum(sum(r) for r in pw) / (n * (n - 1)),
             }
-            divergence_log = entry[prefix]
-            print(f"{size}v{size} {prefix}: blur {blur:.4f} ({blur / h0:.1%}), from centre "
-                  f"{divergence_log['from_centre']:.4f}, pairwise {divergence_log['pairwise_mean']:.4f}",
-                  file=sys.stderr, flush=True)
+            e = entry[prefix]
+            print(
+                f"{size}v{size} {prefix}: blur {blur:.4f} ({blur / h0:.1%}), from centre "
+                f"{e['from_centre']:.4f}, pairwise {e['pairwise_mean']:.4f}",
+                file=sys.stderr,
+                flush=True,
+            )
         if a.extra:
             names = [e.split("=", 1)[0] for e in a.extra]
             ps = [joint(states, round3.rows_of(e.split("=", 1)[1])) for e in a.extra]

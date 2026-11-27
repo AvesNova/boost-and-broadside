@@ -27,23 +27,35 @@ def main():
     sampler = surface3.Sampler(space, centre, surface3.hessian_at(space, centre))
     out = {"sd_cap": surface3.SD_CAP, "floor": surface3.FLOOR, "c": {}}
     for target in (25, 50, 100):
-        c = surface3.solve(lambda c: surface3.mean_drop(
-            space, centre, sampler.draw(c, 4000, np.random.default_rng(1))), target)
+        c = surface3.solve(
+            lambda c: surface3.mean_drop(
+                space, centre, sampler.draw(c, 4000, np.random.default_rng(1))
+            ),
+            target,
+        )
         thetas = sampler.draw(c, 4000, np.random.default_rng(2))
         drops = space.g(centre)[0][0] - space.g(thetas)[0]
         out["c"][str(target)] = {
-            "c": c, "capped": int(np.sum(sampler.sds(c) >= surface3.SD_CAP - 1e-9)),
+            "c": c,
+            "capped": int(np.sum(sampler.sds(c) >= surface3.SD_CAP - 1e-9)),
             "predicted_drop_mean": float(drops.mean()),
             "predicted_drop_quantiles": np.quantile(drops, [0.1, 0.5, 0.9]).tolist(),
             "rejected_share": surface3.rejected_share(space, centre, sampler, c),
             "covariance": sampler.covariance(c).tolist(),
             "row_sd": np.sqrt(np.diag(sampler.covariance(c))).tolist(),
         }
-        print(target, round(c, 2), out["c"][str(target)]["capped"],
-              np.round(out["c"][str(target)]["predicted_drop_quantiles"]), file=sys.stderr)
+        print(
+            target,
+            round(c, 2),
+            out["c"][str(target)]["capped"],
+            np.round(out["c"][str(target)]["predicted_drop_quantiles"]),
+            file=sys.stderr,
+        )
     c = out["c"]["50"]["c"]
-    group = {f"gauss50b-{k:02d}": space.config(t)
-             for k, t in enumerate(sampler.draw(c, 24, np.random.default_rng(11)))}
+    group = {
+        f"gauss50b-{k:02d}": space.config(t)
+        for k, t in enumerate(sampler.draw(c, 24, np.random.default_rng(11)))
+    }
     round3.write_group("sampler2", group)
     out["names"], out["free"], out["centre"] = surface3.NAMES, sampler.free, centre.tolist()
     Path(sys.argv[1]).write_text(json.dumps(out, indent=1))

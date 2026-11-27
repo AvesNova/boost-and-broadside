@@ -31,8 +31,17 @@ STORES = surface.STORES + (str(round3.DATA / "round3.sqlite"),)
 INERT = ("boundary_weight", "seek_weight", "field_weight")
 NAMES = list(SAMPLED) + [f"{n}_crowd" for n in surface.CROWD_ROWS] + ["store_crowd"]
 FLAGS = {"shots": 0.5, "speed": 0.8}  # under this x the reference's: flagged
-STYLE_KEYS = ("store", "speed", "climb", "dive", "turning", "two_circle", "shots", "hits",
-              "hit_range")
+STYLE_KEYS = (
+    "store",
+    "speed",
+    "climb",
+    "dive",
+    "turning",
+    "two_circle",
+    "shots",
+    "hits",
+    "hit_range",
+)
 
 
 def mean_elo(entry_by_size):
@@ -131,8 +140,14 @@ def fit_command(a):
     cv = surface.cross_validate(data, 100.0)
     explained = (coin - cv[0]) / (coin - saturated)
     print(f"lambda 100 held-out: per size {explained:.1%}", file=sys.stderr)
-    out = {"lambda": 100.0, "cv_explained": explained, "models": {}, "support": {},
-           "agents": len(data.ids), "games": {str(s): int(g) for s, g in games.items()}}
+    out = {
+        "lambda": 100.0,
+        "cv_explained": explained,
+        "models": {},
+        "support": {},
+        "agents": len(data.ids),
+        "games": {str(s): int(g) for s, g in games.items()},
+    }
     for size in surface.SIZES:
         rows = [r for r in data.rows if r[0] == size]
         beta, covariance = surface.fit_matrix(
@@ -188,14 +203,16 @@ def top_command(a):
     of the mean surface at the peak (eigenvalues, vectors), slices through the peak along
     each row out to 3 box units either side (where it falls 50 / 100 / 200)."""
     surface.load_default = surface.load
+
     def load(stores=STORES):
         pairings, agents = surface.load_default(stores)
         return pairings, {k: v for k, v in agents.items() if positive(v)}
 
     surface.load = load
     surface.Space2 = HeldSpace
-    surface.top_command(argparse.Namespace(surface=a.surface, out=a.out, band=50.0, kappa=1.0,
-                                           steps=a.steps))
+    surface.top_command(
+        argparse.Namespace(surface=a.surface, out=a.out, band=50.0, kappa=1.0, steps=a.steps)
+    )
     top = json.loads(Path(a.out).read_text())
     s = surface.Surface(a.surface)
     space = surface.Space2(s)
@@ -242,8 +259,10 @@ def top_command(a):
     for k in list(order[:4]) + list(order[-4:]):
         v = vectors[:, k]
         main = np.argsort(-np.abs(v))[:3]
-        print(f"eig {values[k]:+.0f}: " + ", ".join(f"{NAMES[m]} {v[m]:+.2f}" for m in main),
-              file=sys.stderr)
+        print(
+            f"eig {values[k]:+.0f}: " + ", ".join(f"{NAMES[m]} {v[m]:+.2f}" for m in main),
+            file=sys.stderr,
+        )
 
 
 # --------------------------------------------------------------------------- step 3
@@ -335,17 +354,26 @@ def sampler_command(a):
     hessian = hessian_at(space, centre)
     sampler = Sampler(space, centre, hessian)
     rng = np.random.default_rng(7)
-    out = {"centre": centre.tolist(), "names": NAMES, "free": sampler.free,
-           "eigenvalues": sampler.values.tolist(), "floor": FLOOR, "sd_cap": SD_CAP, "c": {}}
+    out = {
+        "centre": centre.tolist(),
+        "names": NAMES,
+        "free": sampler.free,
+        "eigenvalues": sampler.values.tolist(),
+        "floor": FLOOR,
+        "sd_cap": SD_CAP,
+        "c": {},
+    }
     group = {}
     for target, count in ((25, 16), (50, 32), (100, 16)):
-        c = solve(lambda c: mean_drop(space, centre, sampler.draw(c, 4000,
-                                                                  np.random.default_rng(1))),
-                  target)
+        c = solve(
+            lambda c: mean_drop(space, centre, sampler.draw(c, 4000, np.random.default_rng(1))),
+            target,
+        )
         thetas = sampler.draw(c, 4000, np.random.default_rng(2))
         drops = space.g(centre)[0][0] - space.g(thetas)[0]
-        per_size = [float(np.mean(space.g(centre)[2][k][0] - space.g(thetas)[2][k]))
-                    for k in range(3)]
+        per_size = [
+            float(np.mean(space.g(centre)[2][k][0] - space.g(thetas)[2][k])) for k in range(3)
+        ]
         out["c"][str(target)] = {
             "c": c,
             "sd_per_direction": sampler.sds(c).tolist(),
@@ -359,11 +387,19 @@ def sampler_command(a):
         }
         for k, theta in enumerate(sampler.draw(c, count, rng)):
             group[f"gauss{target}-{k:02d}"] = space.config(theta)
-        print(f"drop {target}: c {c:.1f}, capped {out['c'][str(target)]['capped']}, "
-              f"predicted per size {np.round(per_size)}", file=sys.stderr)
-    scale = solve(lambda k: mean_drop(space, centre, box_draw(space, centre, k, 2000,
-                                                              np.random.default_rng(4))), 50,
-                  1e-3, 1e2)
+        print(
+            f"drop {target}: c {c:.1f}, capped {out['c'][str(target)]['capped']}, "
+            f"predicted per size {np.round(per_size)}",
+            file=sys.stderr,
+        )
+    scale = solve(
+        lambda k: mean_drop(
+            space, centre, box_draw(space, centre, k, 2000, np.random.default_rng(4))
+        ),
+        50,
+        1e-3,
+        1e2,
+    )
     out["box_scale_50"] = scale
     for k, theta in enumerate(box_draw(space, centre, scale, 32, rng)):
         group[f"box50-{k:02d}"] = space.config(theta)
@@ -379,15 +415,30 @@ def sampler_command(a):
         v = np.zeros(len(NAMES))
         v[sampler.free] = sampler.vectors[:, k]
         for sign in (-1, 1):
-            t = solve(lambda t: space.g(centre)[0][0] - space.g(centre + sign * t * v)[0][0]
-                      if not rejected(space, centre + sign * t * v) else 1e9, 30, 1e-3, LEAGUE_STEP_MAX)
+            t = solve(
+                lambda t: (
+                    space.g(centre)[0][0] - space.g(centre + sign * t * v)[0][0]
+                    if not rejected(space, centre + sign * t * v)
+                    else 1e9
+                ),
+                30,
+                1e-3,
+                LEAGUE_STEP_MAX,
+            )
             theta = centre + sign * t * v
             label = f"flat{k:02d}{'+' if sign > 0 else '-'}"
             group[label] = space.config(theta)
             out["league_directions"].append(
-                {"label": label, "eigenvalue": float(sampler.values[k]), "step": t,
-                 "main": [[NAMES[sampler.free[m]], float(sampler.vectors[m, k])]
-                          for m in np.argsort(-np.abs(sampler.vectors[:, k]))[:4]]})
+                {
+                    "label": label,
+                    "eigenvalue": float(sampler.values[k]),
+                    "step": t,
+                    "main": [
+                        [NAMES[sampler.free[m]], float(sampler.vectors[m, k])]
+                        for m in np.argsort(-np.abs(sampler.vectors[:, k]))[:4]
+                    ],
+                }
+            )
     round3.write_group("sampler", group)
     Path(a.out).write_text(json.dumps(out, indent=1))
 
@@ -415,8 +466,13 @@ def main():
     p.add_argument("out")
     p.add_argument("--directions", type=int, default=6)
     a = parser.parse_args()
-    {"oat": oat_command, "design": design_command, "fit": fit_command, "top": top_command,
-     "sampler": sampler_command}[a.command](a)
+    {
+        "oat": oat_command,
+        "design": design_command,
+        "fit": fit_command,
+        "top": top_command,
+        "sampler": sampler_command,
+    }[a.command](a)
 
 
 if __name__ == "__main__":

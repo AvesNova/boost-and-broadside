@@ -49,3 +49,13 @@ performance profile. Data: `~/avesnova/boost-and-broadside/data/lookahead-person
   Playing 108 agents (16 + 32 + 16 Gaussian, 32 box, 12 along flat directions) against the
   round-3 centre, 128 / 128 / 64 games. ETA 04:06 (worst 04:20); then label blur (no
   games), then the ladder.
+- 04:07 sampler games done. Tried: the curvature Gaussian (cap 0.75) at predicted drops 25 / 50
+  / 100. Didn't: measured drops 104 / 79 / 103 (16v16 141-192); the surface does not predict
+  personas near the top (r 0.04; a local round-3 surface r 0.14). Round 2's box x 1.55: 41.
+- 04:20 ladder done (10 agents, 8,192 games per size): round-3 centre -8 / +102 / +194 against
+  round 2's centre (SE 12-14).
+- 04:23 found: the measured drop follows the temperature offset (r 0.42-0.64): a plateau below
+  the centre, a cliff above, which a quadratic cannot hold. Revised sampler (cap 0.35): drop 77;
+  the same 24 personas with the temperature reflected cold: drop 23, 4% more than 100 down,
+  same style spread and blur. GPU stopped at 04:27 (about 90 minutes in all).
+- 04:35 results-3.md, proposal-3.json written.

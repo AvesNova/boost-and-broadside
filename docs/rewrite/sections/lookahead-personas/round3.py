@@ -185,7 +185,9 @@ def ladder(items, sizes, target, minutes, envs):
             store, skill2.config_of(size), envs=envs, minimum_envs=envs, seed=6600 + size
         )
         pairings = [
-            (agents[a], agents[b], (size, size)) for i, a in enumerate(names) for b in names[i + 1 :]
+            (agents[a], agents[b], (size, size))
+            for i, a in enumerate(names)
+            for b in names[i + 1 :]
         ]
         while True:
             rows = evaluator.adaptive(pairings, target_error=target, budget=8192, round_games=8192)

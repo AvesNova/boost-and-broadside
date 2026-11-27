@@ -1,0 +1,35 @@
+{
+ "1v1": {
+  "centre_entropy": 1.560455322265625,
+  "ship_states": 12012,
+  "gauss50b": {
+   "personas": 24,
+   "blur": 0.22740089893341064,
+   "blur_share": 0.1457272731161872,
+   "from_centre": 0.07002292573451996,
+   "pairwise_mean": 0.16713486953665488
+  }
+ },
+ "4v4": {
+  "centre_entropy": 1.1202592849731445,
+  "ship_states": 21494,
+  "gauss50b": {
+   "personas": 24,
+   "blur": 0.34681642055511475,
+   "blur_share": 0.30958584785434634,
+   "from_centre": 0.11030487716197968,
+   "pairwise_mean": 0.19044309924694075
+  }
+ },
+ "16v16": {
+  "centre_entropy": 0.9200966954231262,
+  "ship_states": 21999,
+  "gauss50b": {
+   "personas": 24,
+   "blur": 0.2124626636505127,
+   "blur_share": 0.23091340802262872,
+   "from_centre": 0.05610526725649834,
+   "pairwise_mean": 0.0941365421631549
+  }
+ }
+}
