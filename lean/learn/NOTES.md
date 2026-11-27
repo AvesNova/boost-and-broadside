@@ -81,11 +81,12 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   ceil(1.25 L / members), members = 3 + snapshot_members = 15 (86 rows at L 1,024); the
   scripted agent L (it takes what the network members cannot while fewer than all members are
   present: early in RL most league games are scripted).
-- Routing: the table is fixed for the run (a training run is static): from the RL stage's start
-  (`League.open`) all K = 2 + 12 + 4 slots, each on W = C rows, an empty slot a placeholder
-  network on no rows. Each tick `slot_actions` runs every slot's network once on its own W rows
-  (one compiled graph, compiled at the stage's first tick) and `merge_league` puts all K
-  slots' rows back in one pass. A dropped snapshot plays its running games to their end in a
+- Routing: the shapes are fixed for the run (a training run is static): every slot on W = C
+  rows, the merge on K = 2 + 12 + 4 entries. Each tick `slot_actions` runs the network of each
+  slot holding weights (members and retiring slots) once on its own W rows (one compiled graph,
+  compiled when the first network member joins); the empty slots are skipped (2026-11-27,
+  author: "static" is a fixed recipe, not identical calls) and `merge_league` puts the rows
+  back in one pass from K entries, a skipped slot's a zero filler no row reads. A dropped snapshot plays its running games to their end in a
   retiring slot (with none free, the games of the slot with the fewest are re-dealt).
 - Snapshots: v2's schedule (5, 10, ... 160M RL steps, then every 30M) and retention (newest 8,
   plus the nearest to each age 2^k back, at most 12).
@@ -102,10 +103,12 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - Loop speed (collect plus update), earlier: 6,670 steps/s in RL before the first snapshot (step L2,
   2026-11-23); BC 6,668. Peak allocated 5.7 GiB. Steady speed with league networks playing is
   not measured under the per-slot routing (the one short run included its compile: 4,852).
-- League side (2026-11-27, fixed table, 18 slots x 86 rows): the RL tick at E 2,048 is 38.6 ms
-  against 24.2 ms without league networks, whatever the snapshots (the placeholder slots' rows
-  are real work); a single vmap call over the stacked slots measured the same (38.9 ms) and was
-  reverted. Tick-audit's varying table cost 30.1 ms (2 slots x 427) to 36.9 ms (11 x 107).
+- League side (2026-11-27, slots x 86 rows, the empty slots skipped): the RL tick at E 2,048 is
+  26.4 ms with 1 snapshot (2 slot calls) and 32.5 ms with 12 (11 calls), against 24.2 ms
+  without league networks; running all 18 slots it was 38.5 and 38.6 ms (the rows are
+  compute-bound work, so a single vmap call over the stacked slots measured the same, 38.9 ms,
+  and was reverted). Tick-audit's varying table cost 30.1 ms (2 slots x 427) to 36.9 ms
+  (11 x 107).
 - Compile: cold start about 240 s; the compile tripwire (`compile_check.py`) fails on any graph
   break, new graph, recompile, or a function's traced operations over 10% above its baseline
   (`docs/rewrite/scoreboard.md` "Compile time"). Run it at the end of every step:

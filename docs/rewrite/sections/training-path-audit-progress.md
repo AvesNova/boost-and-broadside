@@ -30,6 +30,8 @@ initialisation and after 60 BC Adam steps; every gradient saved and compared bet
 | 1 | RL collect, 12 snapshots (ms per tick) | 36.92 / 36.96 (11 calls x 107) | 38.78 / 38.79 (18 calls x 86) | (cost) |
 | 1b | routing merge once (part of 1) | 42.80 / 44.50 | 40.30 / 40.49 | kept |
 | 1c | all slots in one vmap call | 38.78 / 38.79 | 38.92 / 39.01 | dropped |
+| 6 | RL collect, 1 snapshot: skip the empty slots (ms per tick) | 40.34 / 40.84, 38.46 / 38.53 (18 calls) | 26.36 / 26.39, 26.39 / 26.48 (2 calls) | kept |
+| 6 | RL collect, 12 snapshots: same | 39.93 / 40.03, 38.57 / 38.58 (18 calls) | 32.54 / 32.79, 32.53 / 32.52 (11 calls) | kept |
 | 2 | step `reset` instead of reset_carry: advance | 1.838 ms | 0.554 ms | kept |
 | 2 | same: act / whole tick (no league networks) | 22.98 / 25.13 ms | 23.45 / 24.31 ms | kept |
 | 3 | pageable H2D copies in the collect loop | 1.0 a tick (1 sync) | 0 (0 syncs) | kept |
@@ -82,7 +84,7 @@ about 1,177 (12) before. Early in RL the tick is 8.5 ms slower (30.1 -> 38.6 ms)
 the stacked weights, now possible since K and W are fixed; the NOTES' 10.5 against 12.75 ms
 at 8 slots was before) measured no gain (38.78 -> 38.92 ms, 12 snapshots; 38.56 -> 38.67, 1):
 the calls are compute-bound, so the placeholder slots' rows are real work. Dropped (reverted).
-The lever left is not running the empty slots (open point).
+The lever left was not running the empty slots: item 6.
 
 ### 2. reset_carry: kept
 
@@ -149,6 +151,39 @@ change was 1.1e-6), gradients' relative norm difference 1.3e-2 (the scan's 2.1e-
 per-tensor cosine 0.99948. A training-scale A/B would be the test; the decision (2026-11-23)
 keeps the residual float32.
 
+### 6. Skipping the empty league slots: kept (2026-11-27 ~21:00)
+
+The author: "fully static" means as fast as possible with a recipe that never changes mid-run
+(pause, resume and extend aside), not identical calls every tick. So the segment's table
+(`League.prepare`, `NetworkTable`) lists only the slots holding weights (members and retiring
+slots; a slot without weights can have no rows that segment, and prepare raises if one does),
+and the tick calls `slot_actions` once per listed slot. The merge still takes K entries: a
+skipped slot's is a zero action and carry shaped as a slot's output, made once per segment at
+its first tick, never read by any row; so `merge_league` keeps its one graph. With no slot
+holding weights (BC, RL before the first snapshot) there is no table and every league game
+takes the scripted action, as in BC. The placeholder network and `League.open` are gone; the
+routing and the merge compile when the first network member joins (one compile each, then
+fail_on_recompile).
+
+Measured (job `skip`, one locked job, laptop RTX 4070, performance profile at start and end,
+load 1.1 to 1.7 at the row starts; bench_collect.py as item 1, trees exported from aadcad7b and
+48ba393c, the order before, after then after, before at each snapshot count; ms per tick over
+two timed 128-tick segments): 1 snapshot (the EMA and one snapshot, 852 of 1,024 league games
+scripted) 40.34 / 40.84 and 38.46 / 38.53 -> 26.36 / 26.39 and 26.39 / 26.48 (2 calls); 12
+snapshots (11 slots with weights after retention) 39.93 / 40.03 and 38.57 / 38.58 -> 32.54 /
+32.79 and 32.53 / 32.52 (11 calls). The first before rows ran about 1.5 ms slower than the
+second; the after rows did not move. The 12-snapshot tick is close to 24.2 ms plus 11/18 of
+the 18-slot cost (33.0 ms), so the fillers' share of the merge's copy is small; not cut
+further.
+
+Tests: test_skipping_the_empty_slots_changes_no_move (the move from the listed slots equals
+the move from running all 18 with the empty ones on the live policy's weights, each slot's
+sampling seeded by its slot: actions and carry bitwise equal);
+test_the_league_routing_is_static_for_the_whole_run now compiles the routing and the merge
+static (fail_on_recompile) and runs them with no table, then 3, then 5 slots. Quick tier on
+lean/learn (`-m "not slow"`): 85 passed, 1 skipped; the slow compiled learn tests
+(test_compiled.py, CPU): 6 passed; ruff clean on lean/.
+
 ## Final
 
 The final tree (1903d8d7's code, the same as the branch head's lean/), job 4, back to back
@@ -182,10 +217,7 @@ the same at any C.
 
 ## Open points
 
-- The empty league slots: the fixed table runs 18 x 86 rows every tick, 8.5 ms a tick early in
-  RL and 1.8 ms late against tick-audit. Not calling the slots that hold no weights (the host
-  knows them; the same graph, no recompile; compiled at the stage's start by one call) would
-  take back most of it, but makes the number of calls vary: the author's call.
+- The empty league slots: skipped (item 6, the author's call 2026-11-27 ~21:00).
 - The scripted agent's uncapped capacity and the early-RL league mostly scripted (item 1,
   departure 1).
 - One pageable host-to-device copy per micro-batch remains (item 3).

@@ -1067,14 +1067,15 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
 
 - **The league table fixed for the run** (completes "a training run is fully static"): every
   network member's capacity C = ceil(1.25 L / members), members = 3 + snapshot_members (86 rows
-  at L 1,024), the scripted agent's L; all K = 2 + 12 + 4 slots from the RL stage's start
-  (`League.open`), empty ones a placeholder network on no rows; K slot calls on W = C rows every
-  tick, one merge of their rows. The routing compiles once at the stage's first tick; W is no
-  longer dynamic. Departure from "League routing" (2026-11-23), for the author: the scripted
+  at L 1,024), the scripted agent's L; every slot on W = C rows, the merge on K = 2 + 12 + 4
+  entries. The tick calls only the slots holding weights (author 2026-11-27 ~21:00: "static"
+  means a recipe that never changes mid-run, not identical calls); a skipped slot's merge entry
+  is a zero filler no row reads. The routing and the merge compile once, when the first network
+  member joins; W is no longer dynamic. Departure from "League routing" (2026-11-23), for the author: the scripted
   agent is uncapped, so early in RL most league games are scripted (852 of 1,024 with one
-  snapshot), evening out as snapshots join. Cost: 18 x 86 rows every tick, the RL tick 30.1 ->
-  38.6 ms with 1 snapshot, 36.9 -> 38.8 with 12 (a single vmap call gained nothing: the calls
-  are compute-bound).
+  snapshot), evening out as snapshots join. The RL tick: 26.4 ms with 1 snapshot (2 slot
+  calls), 32.5 ms with 12 (11 calls); running all 18 slots it was 38.5 and 38.6 (and
+  tick-audit's varying table 30.1 and 36.9).
 - **The step's reset instead of zeroing the carries each tick**: advance 1.84 -> 0.55 ms.
 - **Constants built once outside the graphs** (the critic's support passed in, the next-state
   support as policy buffers, the scripted agent's tables made on the device): 0 pageable
