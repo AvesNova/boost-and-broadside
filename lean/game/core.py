@@ -925,7 +925,7 @@ def medium(fields: Tensor, x: Tensor, y: Tensor) -> tuple[Tensor, Tensor, Tensor
     weight = profile.sum(-1)
     weighted_target = (profile * target).sum(-1)
     clear = complement.prod(-1)
-    leave_one_out = torch.where(in_band, slope / torch.where(in_band, complement, 1.0), 0.0)
+    leave_one_out = slope / torch.where(in_band, complement, 1.0)  # slope is 0 outside
     coverage_gradient_x = clear * (leave_one_out * offset_x).sum(-1)
     coverage_gradient_y = clear * (leave_one_out * offset_y).sum(-1)
     weight_gradient_x, weight_gradient_y = profile_gradient_x.sum(-1), profile_gradient_y.sum(-1)
