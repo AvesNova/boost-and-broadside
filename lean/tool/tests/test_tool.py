@@ -600,6 +600,7 @@ def test_hit_range_mode_streams_range_readouts_and_damage():
     assert last["egg"]["egg_front"] > last["egg"]["egg_rear"] > 0
     assert last["range"]["hits"] > 0 and last["range"]["damage_per_second"] > 0
     assert last["range"]["implied_time_to_kill"] > 0
+    assert last["ships"][0]["tracking_radius"] >= last["ships"][0]["vision_range"]
     assert last["range"]["spreads"]["straight"]["metres"] > 0
     assert last["range"]["spreads"]["width"]["metres"] > 0
     assert any(f["finished"] for f in frames)
