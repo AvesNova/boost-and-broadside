@@ -10,7 +10,8 @@ from torch import Tensor
 from lean import game, scripted
 from lean.contract import (
     EPISODE_CONSTANT,
-    JOINT,
+    POWERS,
+    STICKS,
     Obs,
     random_keywords,
     split_joint,
@@ -32,15 +33,19 @@ from lean.model.agent import (
 from lean.model.value import decode_value
 from lean.scripted import ScriptedConfig
 
-# The teacher's distribution as recorded: its probabilities of the 42 joint actions, indexed as
-# lean.contract.join_action (lean.scripted.Choice.joint).
-TEACHER_WIDTH = JOINT
+# The teacher's distribution as recorded (Rollout.teacher): its two factors, the flight
+# probabilities over stick x 3 + power (21, lean.scripted.Choice.flight) and the probability of
+# firing (lean.scripted.Choice.fire); the joint over the 42 actions is their product
+# (teacher_joint, lean.contract.join_action's order).
+FLIGHT_WIDTH = STICKS * POWERS
+TEACHER_WIDTH = FLIGHT_WIDTH + 1
 
 
 class ScriptedMove(NamedTuple):
-    """The scripted agent's decision for every ship of both teams (scripted_actions): `action`
-    (E, N, 3) long and `teacher` the distribution the actions were drawn from, (E, N,
-    TEACHER_WIDTH) (lean.scripted.Choice.joint). The agent keeps no memory."""
+    """The scripted agent's decision for every ship of both teams of P environments
+    (scripted_actions): `action` (P, N, 3) long and `teacher` (P, 2, M, TEACHER_WIDTH) float16,
+    per environment and team the distribution of the team's living ships (own_slots' order, M
+    rows; zero past them). The agent keeps no memory."""
 
     action: Tensor
     teacher: Tensor
@@ -69,7 +74,8 @@ class Decision(NamedTuple):
     value: Tensor
     value_centres: Tensor
     policy_carry: Tensor
-    scripted: ScriptedMove
+    scripted_rows: dict | None
+    teacher_row: Tensor
 
 
 @dataclass
@@ -151,12 +157,15 @@ class Rollout:
     the position offset, once per deal (rows r < E: environment r as the segment started;
     E + k: the segment's deal k). A RolloutStore keeps these instead of the per-tick copies.
     action: (T, S, N) long joint actions sampled on that tick's observation. teacher: (T, S,
-    N, TEACHER_WIDTH) the scripted agent's full distribution there over the 42 joint actions
-    (the BC target). The game delays every action by one tick: the
-    action of tick t is applied on tick t + 1, and the action applied on tick t is the
-    observation's pending one (observation.pending, for own living ships). PPO trains on the
-    sampled action with log_probability: (T, S, N), its log-probability under the policy on
-    tick t's observation. value: (T, S, N, LEVELS), zero outside `own`.
+    M, TEACHER_WIDTH) float16 the scripted agent's distribution there on the seat's own rows
+    only (its living ships in own_slots' order, M = LearnConfig.team_size_maximum; zero past
+    them), factored as flight (21) and fire (1), teacher_joint gives the 42-way joint (the BC
+    target); None when collected without the teacher (collect's `teacher` False). The game
+    delays every action by one tick: the action of tick t is applied on tick t + 1, and the
+    action applied on tick t is the observation's pending one (observation.pending, for own
+    living ships). PPO trains on the sampled action with log_probability: (T, S, N), its
+    log-probability under the policy on tick t's observation. value: (T, S, N, LEVELS), zero
+    outside `own`.
     reward: (T, S, N, LEVELS). done: (T, S) the seat's episode ended on this tick.
     reset: (T, S) the seat's environment was re-dealt just before this tick.
     position_offset: (T, S, 2).
@@ -251,12 +260,105 @@ def draw_team_sizes(config: LearnConfig, envs: int, generator, device=None) -> T
     return sizes
 
 
-def scripted_actions(scripted_config: ScriptedConfig, state, persona, generator) -> ScriptedMove:
-    """The scripted agent's move for every ship of both teams in one call (ScriptedMove)."""
+def own_slots(own: Tensor, rows: int) -> Tensor:
+    """(..., rows) long: the slots of the `own` (..., N) bool rows in slot order, then the
+    others in slot order (the compact teacher record's rows, Rollout.teacher)."""
+    slots = own.shape[-1]
+    order = torch.arange(slots, device=own.device)
+    return torch.argsort(torch.where(own, order, order + slots), -1)[..., :rows]
+
+
+def scripted_actions(
+    scripted_config: ScriptedConfig, state, persona, generator, rows: int
+) -> ScriptedMove:
+    """The scripted agent's move for every ship of both teams of the P environments of
+    `state` in one call (ScriptedMove), with each team's teacher record on its `rows` first
+    living ships (own_slots of the team's own rows as lean.game.observe has them)."""
     envs, slots = state.exists.shape
     uniforms = scripted.draw_uniforms(envs, slots, generator, state.exists.device)
     action, choice = scripted.decide(scripted_config, state, None, persona, uniforms)
-    return ScriptedMove(action, choice.joint.float())
+    factors = torch.cat([choice.flight, choice.fire[..., None]], -1)  # (P, N, TEACHER_WIDTH)
+    teams = torch.arange(2, device=state.exists.device)
+    own = (state.team[:, None, :] == teams[None, :, None]) & state.alive[:, None, :]  # (P, 2, N)
+    index = own_slots(own, rows)
+    record = (
+        factors[:, None]
+        .expand(envs, 2, slots, TEACHER_WIDTH)
+        .gather(2, index[..., None].expand(envs, 2, rows, TEACHER_WIDTH))
+        * own.gather(2, index)[..., None]
+    )
+    return ScriptedMove(action, record.to(torch.float16))
+
+
+def teacher_joint(record: Tensor) -> Tensor:
+    """The 42-way joint (..., JOINT) of a teacher record (..., TEACHER_WIDTH): flight x fire in
+    lean.contract.join_action's order (lean.scripted.Choice.joint), in float32."""
+    record = record.float()
+    flight, fire = record[..., :FLIGHT_WIDTH], record[..., FLIGHT_WIDTH:]
+    return (flight[..., :, None] * torch.cat([1.0 - fire, fire], -1)[..., None, :]).flatten(-2)
+
+
+def state_rows(state, first: int, count: int):
+    """The environments first .. first + count - 1 of a game state, as views (the card's
+    table shared, the slots' types sliced)."""
+    part = slice(first, first + count)
+    values = {}
+    for field in dataclasses.fields(state):
+        value = getattr(state, field.name)
+        if field.name == "constants":
+            ship_type = value.ship_type
+            values[field.name] = dataclasses.replace(
+                value, ship_type=None if ship_type is None else ship_type[part]
+            )
+        else:
+            values[field.name] = None if value is None else value[part]
+    return dataclasses.replace(state, **values)
+
+
+def scripted_moves(
+    config: LearnConfig,
+    opponent: Opponent,
+    state,
+    carry: CollectCarry,
+    decision: Decision,
+    teacher: bool,
+    generator,
+    call=None,
+) -> tuple[Tensor, Tensor | None]:
+    """The scripted agent where it is used (audit findings 5 and 6): always on the league
+    environments (their scripted slots' moves; rows playing networks are computed and
+    unused), and on the self-play environments too while `teacher` (the BC target, with the
+    league environments' learner side). Each part is one call (`call`: scripted_actions or
+    its compiled form; the two parts have the same sizes at self_play_share 0.5, so one
+    graph). Returns the league environments' actions (L, N, 3) and, with `teacher`, each
+    seat's teacher record (S, M, TEACHER_WIDTH) (Rollout.teacher), else None."""
+    call = scripted_actions if call is None else call
+    envs, slots = state.exists.shape
+    league_envs = carry.member.shape[0]
+    self_play = envs - league_envs
+    rows = min(config.team_size_maximum, slots)
+    persona = decision.scripted_rows
+
+    def part(first: int, count: int) -> ScriptedMove:
+        persona_part = (
+            None if persona is None else {k: v[first : first + count] for k, v in persona.items()}
+        )
+        return call(
+            opponent.scripted_config, state_rows(state, first, count), persona_part, generator, rows
+        )
+
+    moves = []
+    if teacher and self_play > 0:
+        moves.append(part(0, self_play))
+    if league_envs > 0:
+        moves.append(part(self_play, league_envs))
+        action = moves[-1].action
+    else:
+        action = torch.zeros((0, slots, 3), dtype=torch.long, device=state.exists.device)
+    if not teacher:
+        return action, None
+    records = torch.cat([move.teacher for move in moves]) if len(moves) > 1 else moves[0].teacher
+    return action, records.flatten(0, 1).index_select(0, decision.teacher_row)
 
 
 def self_play_count(config: LearnConfig, envs: int) -> int:
@@ -370,26 +472,11 @@ def merge_league(
     a skipped slot's a filler no row reads, NetworkTable): each league environment whose slot
     plays a network (`network` (K + R + 1,) bool, League.slot_network) takes its slot's action
     and carry (lean.model.agent.merge_routed), the others (scripted slots: the yardstick and
-    the personas) the scripted agent's action, computed with their rows' parameters
-    (scripted_rows), and their carry. One pass over the league environments."""
-    league_envs = carry.member.shape[0]
+    the personas) the scripted agent's action `scripted_action` (L, N, 3), computed with their
+    rows' parameters (scripted_rows), and their carry. One pass over the league environments."""
     routed = torch.where(network.index_select(0, carry.slot.clamp(min=0)), carry.slot, -1)
-    action, new_carry = merge_routed(
-        routed,
-        actions,
-        carries,
-        scripted_action[scripted_action.shape[0] - league_envs :],
-        carry.opponent,
-    )
+    action, new_carry = merge_routed(routed, actions, carries, scripted_action, carry.opponent)
     return LeagueMove(action, new_carry)
-
-
-def league_rows(scripted_action: Tensor, league_envs: int) -> Tensor:
-    """The scripted agent's actions of the league environments (the last `league_envs` rows),
-    as a tensor of their own: a slice is a view, and a compiled graph guards a view's base,
-    so a view here and a graph's output there (no base) would be two graphs (`advance`
-    when the first network member joins)."""
-    return scripted_action[scripted_action.shape[0] - league_envs :].clone()
 
 
 def network_actions(
@@ -440,15 +527,15 @@ def league_actions(
     step=slot_actions,
     merge=merge_league,
 ) -> LeagueMove:
-    """The league side's move in every league environment: the scripted agent's actions
-    (already computed as the BC target) and the unchanged opponent carry while the league has
-    no network table (no network slot holds weights: the BC stage),
-    then network_actions (`step` the per-slot function and `merge`, or their compiled
+    """The league side's move in every league environment: the scripted agent's actions of
+    the league environments `scripted_action` (L, N, 3, scripted_moves) and the unchanged
+    opponent carry while the league has no network table (no network slot holds weights: the
+    BC stage), then network_actions (`step` the per-slot function and `merge`, or their compiled
     forms)."""
     league = opponent.league
     league_envs = carry.member.shape[0]
     if league is None or league.table is None or league_envs == 0:
-        return LeagueMove(league_rows(scripted_action, league_envs), carry.opponent)
+        return LeagueMove(scripted_action, carry.opponent)
     return network_actions(config, league, views, carry, scripted_action, generator, step, merge)
 
 
@@ -633,8 +720,9 @@ def act(
 ) -> Decision:
     """The first half of a tick (Decision): both teams' views, the live policy on every seat
     (lean.model.agent.agent_step, the agent tick the league and evaluation share; its sampled
-    joint action, log-probability and value) and the scripted agent's move for every ship.
-    `support` (returns.value_support) the critic's support on the device, else built here."""
+    joint action, log-probability and value) and the scripted agent's per-ship parameters
+    (its moves are scripted_moves', after this). `support` (returns.value_support) the
+    critic's support on the device, else built here."""
     envs = state.exists.shape[0]
     self_play = envs - carry.member.shape[0]
     seat_environment, seat_team = seats(carry.learner_team, self_play)
@@ -655,9 +743,6 @@ def act(
     if support is None:
         support = value_support(config, value_logits.shape[-1], value_logits.device)
     value = decode_value(value_logits, support.centres, support.knees) * observation.own[..., None]
-    move = scripted_actions(
-        opponent.scripted_config, state, scripted_rows(opponent, state, carry), generator
-    )
     return Decision(
         views=views,
         observation=observation,
@@ -667,7 +752,8 @@ def act(
         value=value,
         value_centres=support.centres,
         policy_carry=step.carry,
-        scripted=move,
+        scripted_rows=scripted_rows(opponent, state, carry),
+        teacher_row=seat_environment * 2 + seat_team,
     )
 
 
@@ -709,7 +795,6 @@ def advance(
     )
     records = {
         "hit_outcome": hit_outcomes_by_age(step_out, state),
-        "teacher": decision.scripted.teacher.index_select(0, seat_environment),
         "reward": reward.index_select(0, seat_environment),
         "done": seat_done,
         "reset": carry.reset.index_select(0, seat_environment),
@@ -767,15 +852,18 @@ def collect(
     compiled: bool = False,
     store=None,
     segment: int = 0,
+    teacher: bool = True,
 ) -> Rollout:
     """Step E environments for `ticks` ticks and record every seat the live policy plays.
 
     Self-play environments (the first E_s) have two live seats, league environments one;
     the league side plays the member `carry.member` (the scripted agent, an average or a
     snapshot) through its slot `carry.slot` (network_actions; League.prepare builds the
-    segment's network table first, with one host read before the loop). The scripted agent's action
-    is computed for every ship every tick: it is
-    the BC target and the scripted member's move. Finished environments are re-dealt at
+    segment's network table first, with one host read before the loop). The scripted agent
+    runs where it is used (scripted_moves): on the league environments every tick (the
+    scripted members' moves), and with `teacher` on the self-play environments too, for the
+    teacher's record on every seat (the BC target; without `teacher` Rollout.teacher is None:
+    RL once the teacher term is off, lean.train). Finished environments are re-dealt at
     once from deals drawn together at the segment's start (NextEpisodes: team sizes, the
     game's deal, personas, learner team, position offset) with a league member drawn as they
     finish, their carries treated as zero by the next step (`reset`); league games that end
@@ -799,12 +887,14 @@ def collect(
         compiled_graphs = graphs(config.compile_shapes)
         act_part, advance_part = compiled_graphs.act, compiled_graphs.advance
         networks, merge = compiled_graphs.slot_actions, compiled_graphs.merge_league
+        scripted_call = compiled_graphs.scripted_actions
         generator = None
         # A fresh state can hold broadcast (stride 0) tensors where a re-dealt one holds
         # whole ones (even empty ones: fields with F = 0).
         state = whole_state(state)
     else:
         act_part, advance_part, networks, merge = act, advance, slot_actions, merge_league
+        scripted_call = scripted_actions
     if opponent.league is not None:
         opponent.league.prepare(carry.member.shape[0], carry.slot)
     carry = dataclasses.replace(
@@ -826,12 +916,15 @@ def collect(
     for index in range(ticks):
         decision = act_part(config, game_config, policy, opponent, state, carry, generator, support)
         deal_row = carry.deal_row.index_select(0, seat_environment)
+        scripted_action, teacher_record = scripted_moves(
+            config, opponent, state, carry, decision, teacher, generator, scripted_call
+        )
         league_move = league_actions(
             config,
             opponent,
             decision.views,
             carry,
-            decision.scripted.action,
+            scripted_action,
             generator,
             networks,
             merge,
@@ -857,6 +950,8 @@ def collect(
             "deal_row": deal_row,
             **tick_records,
         }
+        if teacher:
+            tick_records["teacher"] = teacher_record
         if store is not None:
             store.write_tick(segment, index, tick_records)
         else:
@@ -865,7 +960,7 @@ def collect(
 
     seat_environment, seat_team = seats(carry.learner_team, self_play)
     # The value after the last tick from the tick's first half (one graph fewer to compile;
-    # its samples and the scripted actions are discarded).
+    # its samples are discarded).
     final = act_part(config, game_config, policy, opponent, state, carry, generator, support)
     bootstrap_value = fallen_team_values(
         final.value, final.observation.own, fallen(state, seat_environment, seat_team)
@@ -898,7 +993,10 @@ def collect(
                 for field in dataclasses.fields(Obs)
             }
         )
-        stacked = {name: torch.stack(records[name]) for name in Rollout.TICK_FIELDS}
+        stacked = {
+            name: torch.stack(records[name]) if name in records else None
+            for name in Rollout.TICK_FIELDS
+        }
     return Rollout(
         observation=observation,
         **stacked,

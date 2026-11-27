@@ -16,11 +16,12 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 
 - `config.py`: `LearnConfig` (every number, with its reason), `learning_rate`.
 - `rollout.py`: `start`, `collect`, `abandon`, `Opponent`, `CollectCarry`, `Rollout`; seats, the
-  league side (`slot_actions`, capacity routing, `league_rows`), hit labels, the teacher's
-  distribution. A tick is `act` (returns a `Decision`: views, the live policy's sample through
-  lean.model.agent.agent_step, value, the scripted `ScriptedMove`; the live policy's seats in
-  `policy_step_chunks` chunks, `chunked_step`, each chunk a nested compile region traced once), `league_actions` (a
-  `LeagueMove`) and `advance` (takes both; the game half is lean.game.tick). `advance` returns
+  league side (`slot_actions`, capacity routing), hit labels, the teacher's record. A tick is
+  `act` (returns a `Decision`: views, the live policy's sample through
+  lean.model.agent.agent_step, value, the scripted agent's per-ship parameters; the live
+  policy's seats in `policy_step_chunks` chunks, `chunked_step`, each chunk a nested compile
+  region traced once), `scripted_moves` (the scripted agent where it is used, below),
+  `league_actions` (a `LeagueMove`) and `advance` (the game half is lean.game.tick). `advance` returns
   each ship's bullet outcomes by age; `collect` assembles the segment's hit labels once at its
   end (`assemble_hit_labels`), nothing is written in place in the tick.
 - `store.py`: `RolloutStore`, an update's segments, compact, streamed to pinned host memory on a GPU.
@@ -34,7 +35,8 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - `pool.py`: `League` (the pool of members and tallies, level 1 `allocate`, level 2 `draw` /
   `slot_draws`, draining slots, the persona parameter table), `SnapshotSchedule`, `retained`.
 - `rewards.py`: v2's five reward levels and the damage ledger.
-- `compiled.py`: `graphs(shapes)`: act, advance, slot_actions, merge_league, minibatch_values,
+- `compiled.py`: `graphs(shapes)`: act, advance, scripted_actions (one graph per environment
+  count: one at self_play_share 0.5), slot_actions, merge_league, minibatch_values,
   minibatch_loss. `LearnConfig.compile_shapes`: "static" (the default) compiles
   each for the run's sizes (environments, slots, fields, micro-batch, the league table: all
   fixed in a run) and any second compile raises; "dynamic" compiles once for every size (duck
@@ -57,11 +59,24 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   (initial weights, the compiled rollout's draws) `--seed`.
 - **BC stage** (`update(..., cloning=True)`): the student plays its own games (half self-play,
   half against the scripted agent). Loss: cross-entropy of the 42-way policy against the scripted
-  teacher's full distribution (its joint over the 42 actions, `lean.scripted.Choice.joint`) at 1.0, plus value, next-state and hit; no
+  teacher's full distribution (its joint over the 42 actions, flight x fire, `lean.scripted.Choice`) at 1.0, plus value, next-state and hit; no
   surrogate, no entropy. 96 updates (100.7M ticks, v2's 100M-tick stage). The hand-off is the
   stage's EMA, with a fresh optimiser, warm-up, league and averages.
 - **Teacher term in RL:** the same cross-entropy at 0.5 x 0.95^k at RL update k; off for good once
   the league's win rate against the scripted agent reaches 0.45 or the weight falls below 0.005.
+- **The scripted agent where it is used** (2026-11-28, item 6; audit findings 5 and 6):
+  `rollout.scripted_moves` calls it on the league environments every tick (the scripted slots'
+  moves; rows playing networks are computed and unused) and, while the teacher is used (BC; RL
+  until the term is off for good: `collect(teacher=...)` from lean.train), on the self-play
+  environments too. The two calls are one graph (`scripted_actions`, the same sizes at
+  self_play_share 0.5), both from the first tick, so the term switching off drops a call and
+  compiles nothing. The teacher's record (`Rollout.teacher`, (T, S, M, 22) float16) holds the
+  seat's own rows only (`own_slots`: its living ships in slot order, M = team_size_maximum,
+  zero past them) as the 21 flight probabilities and the fire probability; the loss gathers
+  the policy's own rows and forms the joint in float32 (`teacher_joint`). With the term's
+  weight 0 the record is neither written nor copied (a zero record of the same shape goes into
+  the same loss graph; scoring it costs nothing measurable) and once the term is off the store
+  drops it (`RolloutStore.drop`).
 - **Averages:** an EMA (0.95 per update) and a uniform mean from the end of the warm-up; side
   copies never read by training, saved with the live weights.
 - **Optimiser:** fused Adam, no weight decay, epsilon 1e-5, global clip 1.0, a non-finite step
@@ -129,8 +144,8 @@ until the author decides; numbers in docs/rewrite/sections/league-pool/progress.
   slot; `overflow_games` counts, never seen in the simulations).
 - Compute: each network slot holding weights (loaded or draining) runs once on W = C rows
   (`slot_actions`, one graph; empty slots skipped); scripted slots (yardstick, personas) take the
-  one scripted call over every ship with per-row parameters (`rollout.scripted_rows`: the
-  league side of a persona's game reads its row of `persona_table`, every other ship the
+  scripted call over the league environments with per-row parameters (`rollout.scripted_rows`:
+  the league side of a persona's game reads its row of `persona_table`, every other ship the
   yardstick's), in both stages, so BC and RL share one scripted graph; `merge_league` takes the
   network slots' rows from K + R entries. The EMA plays from RL's first tick, so the routing
   compiles there and never again (`test_the_league_tick_is_static_through_loads_unloads_and_duplicates`).
@@ -183,7 +198,8 @@ until the author decides; numbers in docs/rewrite/sections/league-pool/progress.
 ## Tests
 
 All run the real game, scripted agent and model at tiny sizes (`tests/setting.py`).
-`test_recipe.py` (teacher joint, soft cross-entropy, BC ignores the advantages, the teacher
+`test_recipe.py` (the teacher's compact record, its BC loss equal to the whole joint record's
+within float16 rounding, the scripted calls without the teacher and the weight-0 update, soft cross-entropy, BC ignores the advantages, the teacher
 term's decay and gate, averages, checkpoints, optimiser, warm-up, KL monitor, advantage shares),
 `test_train.py` (BC then RL, checkpoints, an exact resume with the league's slots and debts),
 `test_league.py` (level 2's slot draws, PFSP, level 1's loads and duplicates, drain, share
