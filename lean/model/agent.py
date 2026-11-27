@@ -51,7 +51,7 @@ def seat_view(views: tuple[Obs, Obs], environment: Tensor, team: Tensor) -> Obs:
 
 def reset_carry(carry: Tensor, done: Tensor) -> Tensor:
     """Zero the policy's recurrent carry (blocks, E, 1 + N, 4, width) of the environments
-    (seats) in `done` (E,) bool."""
+    (seats) in `done` (E,) bool. (Training passes the step a `reset` instead.)"""
     return carry * (~done).view(1, -1, 1, 1, 1)
 
 
@@ -71,8 +71,8 @@ class Stepper(nn.Module):
         super().__init__()
         self.policy = policy
 
-    def forward(self, obs, carry, position_offset):
-        return self.policy.step(obs, carry, position_offset)
+    def forward(self, obs, carry, position_offset, reset=None):
+        return self.policy.step(obs, carry, position_offset, reset)
 
 
 _TEMPLATES: dict[str, Stepper] = {}
@@ -141,14 +141,15 @@ class AgentStep(NamedTuple):
 
 
 def agent_step(
-    forward, bf16: bool, view: Obs, carry: Tensor, offset: Tensor, generator
+    forward, bf16: bool, view: Obs, carry: Tensor, offset: Tensor, generator, reset=None
 ) -> AgentStep:
     """The one agent tick every caller shares (training's live policy, the league's networks,
-    the evaluation runner's seats): `forward(view, carry, offset)` -> (logits, value_logits,
-    carry), a Policy.step or network_forward, run in the network's precision (`bf16`), then
-    the joint action sampled from the logits."""
+    the evaluation runner's seats): `forward(view, carry, offset, reset)` -> (logits,
+    value_logits, carry), a Policy.step or network_forward, run in the network's precision
+    (`bf16`), then the joint action sampled from the logits. `reset` (E,) bool: the rows
+    whose carry the step treats as zero (an episode's first tick; Policy.step), or None."""
     with precision(offset.device, bf16):
-        logits, value_logits, new_carry = forward(view, carry, offset)
+        logits, value_logits, new_carry = forward(view, carry, offset, reset)
     logits = logits.float()
     return AgentStep(
         sample_joint(logits, generator), logits, value_logits, new_carry.to(carry.dtype)
@@ -159,19 +160,23 @@ def network_forward(network_: Network):
     """The Network's step as a function of (view, carry, offset): its template run with its
     weights (torch.func.functional_call)."""
 
-    def forward(view: Obs, carry: Tensor, offset: Tensor):
+    def forward(view: Obs, carry: Tensor, offset: Tensor, reset=None):
         return functional_call(
-            network_.template, (network_.parameters, network_.buffers), (view, carry, offset)
+            network_.template,
+            (network_.parameters, network_.buffers),
+            (view, carry, offset, reset),
         )
 
     return forward
 
 
 def network_step(
-    network_: Network, view: Obs, carry: Tensor, offset: Tensor, generator
+    network_: Network, view: Obs, carry: Tensor, offset: Tensor, generator, reset=None
 ) -> AgentStep:
     """One tick of a Network on `view` (rows E): agent_step with its weights and precision."""
-    return agent_step(network_forward(network_), network_.bf16, view, carry, offset, generator)
+    return agent_step(
+        network_forward(network_), network_.bf16, view, carry, offset, generator, reset
+    )
 
 
 def route_rows(mine: Tensor, width: int) -> tuple[Tensor, Tensor]:
@@ -197,13 +202,15 @@ def routed_step(
     generator,
     action: Tensor,
     carry_out: Tensor,
+    reset: Tensor | None = None,
 ) -> tuple[Tensor, Tensor]:
     """One network's moves on its own rows of R (capacity routing, mixture-of-experts style):
     the rows where `mine` (R,) bool take the rows 0, 1, ... of a W-row batch in order (W =
     positions.shape[0], never fewer than the network's rows), the network runs once on those
-    W rows (`view_of(rows)` the view of the R-rows `rows` (W,), `carry` (blocks, R, ...) and
-    `offset` (R, 2) read at them), and each of its rows reads its sampled action (N, 3) and
-    new carry back into `action` (R, N, 3) and `carry_out` (the carry's shape); the other
+    W rows (`view_of(rows)` the view of the R-rows `rows` (W,), `carry` (blocks, R, ...),
+    `offset` (R, 2) and `reset` (R,) bool or None read at them), and each of its rows reads
+    its sampled action (N, 3) and new carry back into `action` (R, N, 3) and `carry_out` (the
+    carry's shape); the other
     rows keep theirs. Padding rows (fewer of the network's rows than W) run on row 0's input
     and are never read. No host read, and one compiled graph for every network, W and R.
     Returns (action, carry_out), the carry contiguous (a compiled graph is specialised on
@@ -212,7 +219,10 @@ def routed_step(
     width = positions.shape[0]
     view = view_of(source)
     rows_carry = carry.index_select(SEAT_AXIS, source)
-    step = network_step(network_, view, rows_carry, offset.index_select(0, source), generator)
+    rows_reset = None if reset is None else reset.index_select(0, source)
+    step = network_step(
+        network_, view, rows_carry, offset.index_select(0, source), generator, rows_reset
+    )
     read = rank.clamp(min=0, max=width - 1)
     sampled = split_joint(step.joint).index_select(0, read)
     new_action = torch.where(mine[:, None, None], sampled, action)

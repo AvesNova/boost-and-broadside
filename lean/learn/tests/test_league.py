@@ -262,12 +262,12 @@ def test_routing_gives_each_environment_its_own_members_step():
         member=chosen,
         slot=league.member_slot[chosen],
         opponent=torch.randn_like(carry.opponent),
+        reset=torch.zeros_like(carry.reset),  # a tick inside the games: the carries count
     )
     league.prepare(8, carry.slot)
     table = league.table
-    capacity = math.ceil(config.league_capacity_factor * 8 / 5)  # 5 members present
-    assert table.positions.shape[0] == capacity
-    assert len(table.slots) == 4  # the EMA's slot and 3 snapshots'
+    assert table.positions.shape[0] == league.width == 8  # C = L in the tests' setting
+    assert len(table.slots) == league.slot_count  # every slot, the empty ones on no rows
     views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
     scripted_action = torch.full((16, state.exists.shape[1], 3), 1)
     action, new_carry = network_actions(config, league, views, carry, scripted_action, generator)

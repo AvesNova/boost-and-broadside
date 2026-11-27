@@ -23,7 +23,6 @@ from lean.model import draw_position_offset, next_state_target
 from lean.model.agent import (
     Network,
     agent_step,
-    reset_carry,
     routed_step,
     seat_view,
     select_environments,
@@ -282,10 +281,10 @@ def slot_actions(
 ) -> LeagueMove:
     """One network slot's moves (lean.model.agent.routed_step, the routing the evaluation
     runner shares): the league environments it plays (carry.slot == `slot`, a 0-d long) run
-    on a W-row batch (W = positions.shape[0], League.prepare's table width: never fewer than
-    the slot's environments) from their league side's view, and read their actions and carry
-    back into `league_move`; the other environments keep theirs. No host read, and one
-    compiled graph for every slot, W and K."""
+    on a W-row batch (W = positions.shape[0], League.prepare's table width, fixed for the run:
+    never fewer than the slot's environments) from their league side's view, and read their
+    actions and carry back into `league_move`; the other environments keep theirs. No host
+    read, and one compiled graph for every slot (an empty slot runs on no rows)."""
     league_envs = carry.member.shape[0]
     envs = carry.learner_team.shape[0]
     first = envs - league_envs
@@ -305,6 +304,7 @@ def slot_actions(
         generator,
         league_move.action,
         league_move.carry,
+        carry.reset[first:],
     )
     return LeagueMove(action, new_carry)
 
@@ -328,7 +328,8 @@ def network_actions(
 ) -> LeagueMove:
     """The league side's move: the scripted agent's `scripted_action` rows, then each slot of
     the league's network table (League.prepare) moves its own environments (`step`:
-    slot_actions or its compiled form), one call per slot holding weights."""
+    slot_actions or its compiled form), one call per slot: all K of them, the empty ones on
+    no rows, so the calls are the same every tick of the run."""
     league_envs = carry.member.shape[0]
     # Copies to write into: an input that aliases another (carry.opponent) would be a second
     # compiled graph, and a view (the scripted rows) is guarded through its base, so the
@@ -350,8 +351,8 @@ def league_actions(
     step=slot_actions,
 ) -> LeagueMove:
     """The league side's move in every league environment: the scripted agent's actions
-    (already computed as the BC target) and the unchanged opponent carry until the league has
-    a network table (League.prepare), then network_actions (`step` the per-slot function,
+    (already computed as the BC target) and the unchanged opponent carry until the league is
+    open (League.open: the RL stage), then network_actions (`step` the per-slot function,
     slot_actions or its compiled form)."""
     league = opponent.league
     league_envs = carry.member.shape[0]
@@ -419,8 +420,10 @@ def draw_next_episodes(
 def redeal(opponent: Opponent, state, carry: CollectCarry, done: Tensor, generator):
     """Deal the environments in `done` (E,) bool afresh from carry.next_episodes, in order
     (new team sizes, learner team, personas and position offset), and draw their league
-    members (from the league's tallies as they stand); both carries zeroed there (within the
-    members' row capacities, League.draw). Nothing is read back."""
+    members (from the league's tallies as they stand, within the members' row capacities,
+    League.draw). The carries are left as they are: `reset` marks the environments, and the
+    next step (Policy.step's reset, as the update's sequence reads it) treats their carry as
+    zero. Nothing is read back."""
     envs = done.shape[0]
     self_play = envs - carry.member.shape[0]
     pool = carry.next_episodes
@@ -435,8 +438,8 @@ def redeal(opponent: Opponent, state, carry: CollectCarry, done: Tensor, generat
     league_done = done[self_play:]
     member, slot = draw_members(opponent, carry.member, carry.slot, league_done, generator)
     carry = CollectCarry(
-        policy=reset_carry(carry.policy, done.index_select(0, seat_environment)),
-        opponent=reset_carry(carry.opponent, league_done),
+        policy=carry.policy,
+        opponent=carry.opponent,
         member=member,
         slot=slot,
         learner_team=take(pool.learner_team, carry.learner_team),
@@ -532,7 +535,15 @@ def act(
     views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
     observation = seat_view(views, seat_environment, seat_team)
     seat_offset = carry.position_offset.index_select(0, seat_environment)
-    step = agent_step(policy.step, config.bf16, observation, carry.policy, seat_offset, generator)
+    step = agent_step(
+        policy.step,
+        config.bf16,
+        observation,
+        carry.policy,
+        seat_offset,
+        generator,
+        carry.reset.index_select(0, seat_environment),
+    )
     log_probability = torch.log_softmax(step.logits, -1).gather(-1, step.joint[..., None])
     value_logits = step.value_logits.float()
     centres = value_centres(config, value_logits.shape[-1], value_logits.device)
@@ -647,8 +658,8 @@ def collect(
     the BC target and the scripted member's move. Finished environments are re-dealt at
     once from deals drawn together at the segment's start (NextEpisodes: team sizes, the
     game's deal, personas, learner team, position offset) with a league member drawn as they
-    finish, and the carries are zeroed there; league games that end are added to the
-    league's tallies.
+    finish, their carries treated as zero by the next step (`reset`); league games that end
+    are added to the league's tallies.
 
     `store` (a lean.learn.store.RolloutStore): each tick's records are streamed into its
     segment `segment` as they are made (asynchronous copies to pinned memory on a GPU) and

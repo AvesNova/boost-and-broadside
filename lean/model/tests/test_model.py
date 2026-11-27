@@ -134,6 +134,24 @@ def test_a_reset_forgets_state_and_convolution_buffer():
     assert not torch.allclose(logits[start - 1], logits[start], atol=1e-3)
 
 
+def test_a_step_with_reset_equals_a_step_from_a_zero_carry():
+    """The rollout passes `reset` to the step instead of zeroing the carry: a reset row's
+    outputs and new carry equal those of a step from a zero carry, the other rows keep
+    theirs."""
+    envs, slots = 4, 4
+    policy = make_policy()
+    obs = make_obs((envs,), slots, live_fraction=2.0)
+    carry = torch.randn(policy.initial_carry(envs, slots, "cpu").shape)
+    reset = torch.tensor([True, False, True, False])
+    zeroed = carry * (~reset).view(1, -1, 1, 1, 1)
+    with torch.no_grad():
+        logits, values, new_carry = policy.step(obs, carry, reset=reset)
+        expected_logits, expected_values, expected_carry = policy.step(obs, zeroed)
+    assert torch.allclose(logits, expected_logits, atol=1e-6)
+    assert torch.allclose(values, expected_values, atol=1e-6)
+    assert torch.allclose(new_carry, expected_carry, atol=1e-6)
+
+
 def test_masked_rows_keep_a_zero_carry():
     """Catches state leaking through a dead or absent slot, in the RG-LRU state or the
     convolution buffer."""

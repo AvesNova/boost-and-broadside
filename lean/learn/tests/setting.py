@@ -16,6 +16,9 @@ SMALL = dict(
     epochs=1,
     warmup_steps=1,
     self_play_share=0.5,
+    # Every network member's capacity the whole league (C = L): the tests place members on
+    # rows by hand; the capacity rule has its own tests (test_league's capacity draws).
+    league_capacity_factor=15.0,
 )
 
 
