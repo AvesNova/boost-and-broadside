@@ -14,28 +14,57 @@ core when sensible (author 2026-11-27).
 
 ## Running
 
-- R1 Persona study round 2 (`personas-2`): 1v1 / 4v4 / 16v16, fields and fog, longer clocks,
-  crowd-dependent parameters; (redirected 00:55) a Bradley-Terry skill surface over the parameters from all games, its robust centre as the proposed yardstick and persona centre, a loose adaptive ladder as validation and as a test of the ladder. Game statistics (not timing-sensitive).
-- R2 Two-level league (`league-pool`): pool, PFSP loader, duplicates, drain, scripted personas
-  in one call, precompiled routing, resume. Includes timings: nothing else timing-sensitive
-  runs beside it.
+- R3 Persona study round 3 (`personas-3`): extend the 7 edge rows to bound the summit, refit
+  the skill surface, a Gaussian persona sampler (covariance proportional to the inverse
+  curvature), league personas re-picked, a loose ladder. Game statistics.
+
+## Done
+
+R1 persona round 2, R2 two-level league, items 1 (merge + compile baselines), 2 (hit-range
+port), 3 (docs cleanup), 7 (correctness review): see the Log.
 
 ## Queue (in order)
 
-1. Merge R1 and R2 into core (after the coordinator's check); league personas from R1 into
-   R2's pool config. Then reset the compile check's baselines to the merged tree (author
-   2026-11-27 ~22:00: cold is about 120 s now, so the budget can come down a lot): op counts
-   per graph as measured, the cold-time budget to about 150 s (25% over the measured cold
-   compile); a new graph needs its own baseline.
-2. Hit-range tool port to the new bullet state (lean/tool, lean/sandbox). Small; budget 1 h.
-3. Docs cleanup before the reviews: stale and duplicate docs (e.g. docs/rewrite/questions.md
-   beside docs/questions.md), closed one-off briefs, stale backlog rows, notes that contradict
-   the code; old docs scripts that no longer run (about 2,450 ruff errors under docs/):
-   delete or fix. Budget 2-3 h.
-4. Second training hot-path review (measurements, report; first priority after the cleanup):
-   - every head's rows: next-state, hit and pairwise losses on all visible enemies, hidden
-     enemies masked (author 2026-11-27 ~22:00); report what the code does today; the fix goes
-     in item 5;
+8a. Correctness fixes (from item 7; fix and report; all on one branch, tests once at the end):
+   - Dead ships (author 2026-11-28 ~04:15, option C): after a ship dies, its value for the
+     return is the mean value of its living team-mates (it has no observation of its own;
+     a perfect critic on every team-mate predicts the same match outcome), so the outcome
+     reaches its earlier ticks at gamma, not (gamma lambda)^k; the death penalty stays. When
+     the whole team is dead the game has ended and the outcome arrives directly. Test with a
+     perfect critic (the review's check: dying 30 / 100 / 300 ticks before the end).
+   - The hit-class prior from today's measured rates (enemy 0.0070, team-mate 0.0015 per
+     bullet), and the stale "four hits of about 21" comment; check value_knee's effect
+     (review: negligible).
+   - Team-shared payments split over living ships only (not dead ones).
+   - Separate seeds for the explicit generator and torch's default generators.
+   - Not a fix (author ~04:15): EMA / uniform slots taking new weights mid-game is fine (the
+     live policy changes mid-game too, and the averages move more slowly).
+8b. After R3: the scripted agent's one-tick action delay (its trigger and candidate paths act
+   as if the action applied now; 22% of fire decisions move more than the target's half
+   width before the shot leaves). Then a quick re-check of the persona centre (Elo of the
+   fixed agent vs the unfixed one at 1v1 / 4v4 / 16v16, loose).
+8c. Heads (author 2026-11-28 ~04:30), one branch:
+   - next-state and hit losses on all visible ships (own and visible enemies); hidden masked.
+   - A pairwise relative-geometry head (representation shaping, current state, exact targets
+     from what the team sees). Per-ship projections (a shared ship-side projection, a
+     type-specific other-side projection: ships, fields, zones later), pairs combined after
+     the projections (u_i + v_j or u_i x v_j, GELU, linear per target); gating only in the
+     per-ship stage. Targets (categorical bins, nats; 32 bins, 16 where coarse enough):
+     ship-ship range, range rate, line-of-sight rate, energy difference (symmetric /
+     antisymmetric: upper triangle only, antisymmetric negated), antenna train angle and gun
+     solution error (both orders; aspect angle and heading crossing angle follow from ATA in
+     both orders, so not predicted). Angles on a circle of bins (HL-Gauss smoothing wraps; no
+     seam); gun error with bins concentrated near zero. Ship-field: signed distance to each
+     field's edge (negative inside), symlog bins. Map edge: signed distance per ship on the
+     per-ship heads. Pairs with a hidden or dead ship masked.
+   - Cost control: a fixed number K of valid pairs sampled per environment-tick (fixed shapes:
+     static compile and CUDA graphs unaffected; the draw is an input), sampled before the
+     pair layers so cost scales with K; unbiased (mean over sampled valid pairs). Measure the
+     logits and step cost at K = 4 / 8 / all.
+   - Tests: targets from the game's own functions; circular bins wrap; symmetry; sampling
+     unbiased; masks.
+4. Second training hot-path review (measurements, report), on the tree with 8a-8c:
+   - every head's rows match the decisions above;
    - activation checkpointing (per block) and selective recompute of cheap element-wise
      results, with a micro-batch size vs memory vs speed curve;
    - compiler-mode grid per graph (default, max-autotune, max-autotune-no-cudagraphs,
@@ -49,22 +78,25 @@ core when sensible (author 2026-11-27).
 6. The scripted teacher only where it is used once the teacher term is off (its league
    lane), and a compact teacher record (own rows, factored flight x fire) while it is on.
    Budget 2 h.
-7. Independent correctness review of the merged tree, including the final review of the
-   scripted agent (E5): silent mistakes (labels, signs, masks, off-by-one ticks), no speed
-   work; ranked report, no changes. May run beside a non-timing item. Budget 3 h.
-8. Fix the review's findings that are bugs (fix and report); anything that is a design
-   question goes to the author.
 9. Eval counters the persona study lacked: bullet hits and collision hits counted
    separately, a tail-chase share of hits. Small.
 
 ## Waiting on the author (not in the queue)
 
-BC persona spread and adopting the re-centred yardstick, persona box and clocks (both need
-R1's results); Muon (tabled); Liger-style kernels (tabled); the BC dry run itself (proposed
-first).
+- After R3: the five persona decisions (yardstick = robust centre with crowd rows on?, persona
+  sampler / box, BC spread, league personas, clocks: 60 s ends only 40/72/68% of games by
+  elimination at 1v1 / 4v4 / 16v16).
+- The value loss averaged over 2 zero-target placeholder levels (effective 0.03 vs the
+  configured 0.05): average over the live levels only, or leave it.
+- Adopting the two-level league as the default league (entry still PROPOSAL); its K and R; whether
+  the personas share one member's PFSP share.
+- Optional: a literature check on team critics / a super-token critic (MAPPO's death masking).
+- Muon (tabled); Liger-style kernels (tabled); the BC dry run itself (proposed first).
 
 Decided 2026-11-27 ~22:00: hidden enemies masked in the per-enemy losses (visible only, to
 start); residual stream stays float32; compile baselines reset after item 1.
+Decided 2026-11-28 ~04:30: dead ships option C; EMA/uniform mid-game reloads fine; the
+scripted delay is a bug; next-state and hit on all visible ships; the pairwise head as in 8c.
 
 ## Log
 
@@ -79,3 +111,4 @@ start); residual stream stays float32; compile baselines reset after item 1.
 - ~03:00 author: extend the persona study to capture the whole summit (box edges were arbitrary) and draw personas from a Gaussian with covariance proportional to the inverse curvature of the Elo surface. R3 started (`personas-3`, game statistics beside the docs cleanup; budget ~1.5 h GPU). The five persona decisions wait for R3.
 - ~03:00 item 3 done: core fast-forwarded to 5b54fccb (docs cleanup: duplicate questions file folded into docs/questions.md; 65 closed briefs/notes and ~80 dead scripts deleted, all still on the v2 branch or a named commit; docs ruff 2,424 -> 0 with a per-file E501 ignore for docs/**/*.py in pyproject.toml; package notes checked against the code; sections/INDEX.md). For the author: value_knee (lean/learn/config.py:166) still derives from a 21-point hit while hit damage is 8. Item 7 (correctness review, read-only, no GPU) started beside R3; item 4 waits for R3 (timing work runs alone).
 - ~04:00 item 7 done (`correctness-review` 2319245f, report docs/rewrite/sections/correctness-review-2026-11-28.md). Findings: (1) a dead ship's outcome target decays by (gamma lambda)^k after death (horizon 33 ticks instead of 3,333): dying early on a losing team avoids the -10 — design call for the author; (2) the enemy-head decision (visible enemies trained, hidden masked) is not built: heads train on own ships only, no pairwise head; (3) EMA/uniform league slots reload weights mid-game; (4) the scripted trigger and paths ignore the one-tick action delay (22% of fire decisions move more than the target's half width); (5) hit-class prior 8x off (0.0547 vs 0.0070 measured), stale "hits of about 21" comment; (6-8) low: dead ships' shares of team payments, value loss averaged over 2 zero-target levels (effective 0.03 vs 0.05), the same seed in two generators. Item 8 (fixes) waits: (4) after R3 (it changes the scripted agent R3 measures); (1) and (7) to the author.
+- ~04:30 author decisions recorded and queue reordered: 8a correctness fixes (dead ships option C, hit prior, team shares, seeds), 8b scripted delay after R3, 8c heads (visible ships, pairwise relative-geometry head with sampled pairs, field and map-edge signed distances), then 4 (training review on that tree), 5, 6, 9.
