@@ -22,6 +22,25 @@ one compiling then one timed 128-tick segment. Profiles: torch.profiler over one
 (3 micro-batches) and one 16-tick segment (17 act calls: the bootstrap act included). "Measured"
 means one of these jobs; an estimate says what it is computed from.
 
+## Summary
+
+- **Profile.** The update is 165.6 ms per micro-batch (150.2 without the geometry heads), GPU
+  busy 98.2%, about 1,000 kernels per micro-batch; GEMMs 28%, pointwise / norm / gate / GELU
+  kernels about half, the scan now 3.3%. The BC tick is 25.34 ms (98.1% busy), the RL tick
+  27.70 ms (97.3%). Host floors: 6.0 ms per micro-batch, 2.94 / 5.23 ms a tick. Both loops are
+  GPU-bound on the laptop; no pageable copy or sync remains per micro-batch or per tick.
+- **Biggest wins found: smaller batches per kernel.** The update is 10.4% faster per view at
+  micro-batches of 16 views and 14.6% at 8 (against 64), with a quarter of the memory; the
+  rollout's live-policy step in 6 seat chunks is 12.1% (BC) / 10.8% (RL) faster a tick. Both
+  within rounding, both a per-GPU setting (likely the 32 MB L2); re-measure on the 5090.
+- **Correctness.** Every head's rows match the decisions; one small selection bias in the hit
+  labels near episode and update ends (misses in flight never report, hits do).
+- **Checkpointing / recompute:** works (memory -35% / -25%) but costs 20% / 15%; not needed.
+- **Compiler modes:** max-autotune(-no-cudagraphs) -1.2% to -1.5% for 6-10x the cold compile
+  (no GEMM autotuning on this GPU's 36 SMs); reduce-overhead fails on both graphs as written.
+- **CUDA graphs:** worth at most the idle 2-3% here; the plan (file by file) is in section 4,
+  to build only if the 5090's RL tick measures host-bound.
+
 ## Profile
 
 ### The update (measured)

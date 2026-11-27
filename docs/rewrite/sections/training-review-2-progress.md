@@ -5,7 +5,7 @@ Branch `review-4` (from core 679a5ada, items 8a-8c merged). Spec: docs/rewrite/q
 training-review-2/. Laptop RTX 4070 (8 GB); every GPU job a `bnb-4-*` unit under the GPU lock,
 power profile and load recorded per job in the raw output.
 
-## Plan (started 05:25; ETA report 09:00, worst 09:30)
+## Plan (started 05:25; ETA report 09:00, worst 09:30; done 06:55)
 
 1. Correctness read of the loss rows (CPU, read-only) - 05:25-05:50.
 2. Profile: a steady update (3 micro-batches) and a steady rollout segment (BC and RL ticks) -
@@ -44,3 +44,22 @@ power profile and load recorded per job in the raw output.
   (ms per 64 views): B 8 140.9, 16 147.8, 24 154.1, 32 158.8, 48 163.0, 64 165.0; B 16 profile:
   GPU busy 95.0%, ~1,000 kernels per micro-batch at every B, GEMMs -19% and pointwise -10-20%
   per view against B 64 (L2 locality, the 4070's 32 MB). The biggest win found so far.
+- 06:23-06:50: loss max-autotune (one micro-batch per minibatch) cold 469.8 s, 163.8 ms (-1.5%);
+  reduce-overhead (same) 165.5 (-0.5%); math attention 170.2 (+2.8%, dropped). Seat chunks in
+  the rollout's live-policy step (found from the micro-batch curve): BC 3 / 6 / 12 / 24 chunks
+  23.60 / 22.27 / 23.17 / 26.26 ms (one call 25.34); RL 6 chunks, slots whole 24.70 (27.70);
+  chunking the slots too 30.71 (worse). Chunked step equals the whole on the CPU (3e-8).
+  collect max-autotune not run (it includes CUDA graphs, which fail on act).
+- Caches under data/review4/cache deleted (6.1 GB). /tmp/torchinductor_vizia untouched (9.3 GB).
+
+## Didn't / dropped
+
+- CUDA-graph prototype of the tick: not built (bound measured at 2-3% here; plan in the report).
+- The rotary-copy fusion (item 8): estimate only, not prototyped.
+- No L2 counters read (the cache explanation of the micro-batch curve is a hypothesis).
+
+## Next (item 5)
+
+Report's ranked list: micro_batch_views per machine (curve on the 5090 too), the hit-label
+bias, seat chunks in act (keeping the compile in budget), the device-built critic support;
+then the grid and the CUDA-graph question from the 5090's numbers.
