@@ -13,7 +13,6 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import analyse2  # noqa: E402
-import surface  # noqa: E402
 
 from lean.scripted import PARAMETERS  # noqa: E402
 from lean.scripted.parameters import SAMPLED  # noqa: E402
@@ -84,7 +83,8 @@ def main():
         + "\n"
     )
     print(
-        "Crowd rows (v): the crowd value is the duel value x e^(2 width v); store_crowd k = e^(2 v).\n"
+        "Crowd rows (v): the crowd value is the duel value x e^(2 width v); "
+        "store_crowd k = e^(2 v).\n"
     )
     # Flat directions: the Hessian's eigenvectors with the smallest |curvature|.
     values = np.array(top["hessian_eigenvalues"])
@@ -117,7 +117,8 @@ def main():
         print(analyse2.table(["row", "S1", "ST", "ST - S1"], rows))
         print(f"\nModel Elo sd over the box: {s['sd']:.0f}.\n")
     print(
-        "## Working ranges: u where f is within 50 / 100 Elo of the row's best (slice through the centre)\n"
+        "## Working ranges: u where f is within 50 / 100 Elo of the row's best "
+        "(slice through the centre)\n"
     )
     rows = []
     for name in SAMPLED:
@@ -125,7 +126,8 @@ def main():
         for size in ("1", "4", "16"):
             r = report["ranges"][size][name]
             cells.append(
-                f"best {r['best_u']:.2f}; {r['u50'][0]:.2f}-{r['u50'][1]:.2f} / {r['u100'][0]:.2f}-{r['u100'][1]:.2f}"
+                f"best {r['best_u']:.2f}; {r['u50'][0]:.2f}-{r['u50'][1]:.2f} / "
+                f"{r['u100'][0]:.2f}-{r['u100'][1]:.2f}"
             )
         rows.append(cells)
     print(analyse2.table(["row", "1v1", "4v4", "16v16"], rows) + "\n")

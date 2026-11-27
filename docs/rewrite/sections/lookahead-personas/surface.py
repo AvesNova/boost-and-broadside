@@ -409,8 +409,6 @@ class Space2:
     def __init__(self, surface):
         self.surface = surface
         self.w = {size: WEIGHT(size, KNOWN, 1.0) for size in SIZES}
-        self.store_shift = {}
-        width = PARAMETERS["store_weight"].width
         self.dimension = D + len(CROWD_ROWS) + 1
 
     def x_at(self, theta, size):
@@ -579,15 +577,19 @@ def top_command(arguments):
     }
     Path(arguments.out).write_text(json.dumps(out, indent=1))
     print(
-        f"peak g {out['peak']['g']:.0f} per size {np.round(out['peak']['per_size'])} sd {out['peak']['sd']:.0f}",
+        f"peak g {out['peak']['g']:.0f} per size {np.round(out['peak']['per_size'])} "
+        f"sd {out['peak']['sd']:.0f}",
         file=sys.stderr,
     )
     print(
-        f"lcb g {out['lcb']['g']:.0f} per size {np.round(out['lcb']['per_size'])} sd {out['lcb']['sd']:.0f}",
+        f"lcb g {out['lcb']['g']:.0f} per size {np.round(out['lcb']['per_size'])} "
+        f"sd {out['lcb']['sd']:.0f}",
         file=sys.stderr,
     )
     print(
-        f"centre g {base:.0f} per size {np.round(out['centre']['per_size'])} sd {out['centre']['sd']:.0f}; region {len(samples)} samples, acceptance {accepted / arguments.steps:.2f}",
+        f"centre g {base:.0f} per size {np.round(out['centre']['per_size'])} "
+        f"sd {out['centre']['sd']:.0f}; region {len(samples)} samples, "
+        f"acceptance {accepted / arguments.steps:.2f}",
         file=sys.stderr,
     )
     flat = np.argsort(np.abs(eigenvalues))[:5]
