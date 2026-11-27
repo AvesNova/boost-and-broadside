@@ -2029,20 +2029,24 @@ def _deflect(bullets: Tensor, contact: Contact) -> Tensor:
         relative_x * contact.turn_sin + relative_y * contact.turn_cos
     )
     speed = torch.sqrt(velocity_x * velocity_x + velocity_y * velocity_y).clamp_min(1e-9)
-    turned = torch.stack(
-        [
-            bullets[:, BULLET_X].reshape(flat) + contact.shift_x,
-            bullets[:, BULLET_Y].reshape(flat) + contact.shift_y,
-            velocity_x / speed,
-            velocity_y / speed,
-            speed * index,
-        ],
-        1,
-    ).reshape(E, 5, N, K)
-    head = torch.where(
-        contact.bent.reshape(E, 1, N, K), turned, bullets[:, BULLET_X : BULLET_SPEED + 1]
+    turned = (
+        bullets[:, BULLET_X].reshape(flat) + contact.shift_x,
+        bullets[:, BULLET_Y].reshape(flat) + contact.shift_y,
+        velocity_x / speed,
+        velocity_y / speed,
+        speed * index,
     )
-    return torch.cat([head, bullets[:, BULLET_SPEED + 1 :]], 1)
+    bent = contact.bent.reshape(E, N, K)
+    # One stack of the columns (no where over the head and cat of the tail: one write of the
+    # block per tick).
+    return torch.stack(
+        [
+            torch.where(bent, column.reshape(E, N, K), bullets[:, BULLET_X + i])
+            for i, column in enumerate(turned)
+        ]
+        + list(bullets[:, BULLET_SPEED + 1 :].unbind(1)),
+        1,
+    )
 
 
 def _damage(
