@@ -108,10 +108,12 @@ def random_states(generator, device) -> dict:
 
 
 def set_random_states(states: dict, generator, device) -> None:
-    generator.set_state(states["generator"])
-    torch.set_rng_state(states["torch"])
+    """The generators' states back; a state is a CPU byte tensor (load_checkpoint maps the
+    checkpoint's tensors to the run's device, so a GPU resume reads them there)."""
+    generator.set_state(states["generator"].cpu())
+    torch.set_rng_state(states["torch"].cpu())
     if "cuda" in states:
-        torch.cuda.set_rng_state(states["cuda"], device)
+        torch.cuda.set_rng_state(states["cuda"].cpu(), device)
 
 
 def save_run(path: Path, stage: Stage, policy, config: LearnConfig, generator, plan: dict) -> None:
