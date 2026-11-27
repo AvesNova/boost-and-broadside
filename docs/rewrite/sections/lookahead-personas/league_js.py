@@ -39,7 +39,8 @@ def main():
         entropy = {n: float(divergence.entropy(p).mean()) for n, p in joints.items()}
         result[f"{size}v{size}"] = {"names": names, "js": matrix.tolist(), "entropy": entropy}
         blur2.log(
-            f"{size}v{size}: JS mean off-diagonal {matrix[np.triu_indices(len(names), 1)].mean():.4f}"
+            f"{size}v{size}: JS mean off-diagonal "
+            f"{matrix[np.triu_indices(len(names), 1)].mean():.4f}"
         )
     out.write_text(json.dumps(result, indent=1))
 
