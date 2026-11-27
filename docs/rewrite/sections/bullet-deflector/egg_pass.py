@@ -62,6 +62,11 @@ def analyse_1v1(tr, gun_range, h, max_shield):
                 if not kept or t - kept[-1] >= merge:
                     kept.append(t)
             seg = lambda x: x[a:b, e]  # noqa: E731
+            # A game that ends on a kill inside the gun range ends the pass there (the distance
+            # has no later tick to turn upward): the last tick is a pass unless one is within 1 s.
+            if died[b - 1, e].sum() > 0 and d[n - 1] < gun_range:
+                if not kept or n - 1 - kept[-1] >= merge:
+                    kept.append(n - 1)
             if not kept:
                 stray["hits"] += float(seg(hits).sum())
                 stray["damage"] += float(seg(dmg).sum())
