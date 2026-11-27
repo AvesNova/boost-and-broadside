@@ -372,6 +372,11 @@ def main():
     top.add_argument("--band", type=float, default=50.0)
     top.add_argument("--kappa", type=float, default=1.0)
     top.add_argument("--steps", type=int, default=40000)
+    report = sub.add_parser("report")
+    report.add_argument("surface")
+    report.add_argument("top")
+    report.add_argument("out")
+    report.add_argument("--league", type=int, default=6)
     arguments = parser.parse_args()
     global ADDITIVE
     ADDITIVE = getattr(arguments, "additive", False)
@@ -379,6 +384,8 @@ def main():
         fit_command(arguments)
     elif arguments.command == "top":
         top_command(arguments)
+    elif arguments.command == "report":
+        report_command(arguments)
 
 
 # --------------------------------------------------------------------------- top (appended)
@@ -593,6 +600,123 @@ def top_command(arguments):
         np.round(eigenvalues[-3:], 0),
         file=sys.stderr,
     )
+
+
+# --------------------------------------------------------------------------- report (appended)
+
+# Round 1's behaviour share per row (the redraw JS share of all rows, 4v4, results.md): the
+# metric for spreading league personas over rows that change behaviour.
+BEHAVIOUR_SHARE = {
+    "temperature": 0.18,
+    "power_stickiness": 0.17,
+    "speed_weight": 0.11,
+    "horizon": 0.09,
+    "store_weight": 0.08,
+    "stickiness": 0.08,
+    "angles_weight": 0.07,
+    "reply_temperature": 0.07,
+    "preferred_speed": 0.06,
+    "energy_weight": 0.06,
+    "caution": 0.05,
+    "power_temperature": 0.05,
+    "power_horizon": 0.04,
+    "aggression": 0.04,
+    "threat_weight": 0.03,
+    "collision_weight": 0.03,
+    "fire_tolerance": 0.02,
+    "field_weight": 0.01,
+    "disengaged_energy_weight": 0.01,
+    "boundary_weight": 0.0,
+    "seek_weight": 0.0,
+}
+
+
+def report_command(arguments):
+    surface = Surface(arguments.surface)
+    top = json.loads(Path(arguments.top).read_text())
+    space = Space2(surface)
+    centre = np.array(top["centre"]["theta"])
+    out = {"products": {}, "sobol": {}, "ranges": {}, "league": {}}
+    rng = np.random.default_rng(3)
+    for size in SIZES:
+        beta = surface.beta[size] * ELO_PER_NAT
+        error = np.sqrt(np.diag(surface.covariance[size])) * ELO_PER_NAT
+        products = beta[2 * D :]
+        order = np.argsort(-np.abs(products))[:8]
+        out["products"][size] = [
+            [
+                SAMPLED[PAIRS[k][0]],
+                SAMPLED[PAIRS[k][1]],
+                float(products[k]),
+                float(error[2 * D + k]),
+            ]
+            for k in order
+        ]
+        # Sobol of f over the spread-1 box (uniform u, no crowd), first and total order.
+        a = rng.random((40000, D)) - 0.5
+        b = rng.random((40000, D)) - 0.5
+        fa, fb = features(a) @ beta, features(b) @ beta
+        variance = np.var(np.concatenate([fa, fb]))
+        first, total = [], []
+        for i in range(D):
+            ab = a.copy()
+            ab[:, i] = b[:, i]
+            fab = features(ab) @ beta
+            first.append(float(np.mean(fb * (fab - fa)) / variance))
+            total.append(float(0.5 * np.mean((fa - fab) ** 2) / variance))
+        out["sobol"][size] = {"first": first, "total": total, "sd": float(np.sqrt(variance))}
+        # Working range: the slice of each row through the centre's effective point at this
+        # size; the u where f is within 50 and 100 Elo of the slice's best, inside the support.
+        x0 = space.x_at(centre, size)[0]
+        low, high = surface.support[size]
+        ranges = {}
+        for i, name in enumerate(SAMPLED):
+            grid = np.linspace(low[i], high[i], 81)
+            xs = np.repeat(x0[None], len(grid), 0)
+            xs[:, i] = grid
+            f = surface.elo(size, xs)[0]
+            best = f.max()
+            within50 = grid[f >= best - 50]
+            within100 = grid[f >= best - 100]
+            ranges[name] = {
+                "best_u": float(grid[np.argmax(f)] + 0.5),
+                "centre_u": float(x0[i] + 0.5),
+                "u50": [float(within50.min() + 0.5), float(within50.max() + 0.5)],
+                "u100": [float(within100.min() + 0.5), float(within100.max() + 0.5)],
+                "support": [float(low[i] + 0.5), float(high[i] + 0.5)],
+                "drop_at_support_edges": [float(best - f[0]), float(best - f[-1])],
+            }
+        out["ranges"][size] = ranges
+    # League personas: farthest-point picks among the top region's samples, distance weighted
+    # by each row's behaviour share (round 1), starting from the sample farthest from the centre.
+    samples = np.array(top["region_samples"])
+    weights = np.array([BEHAVIOUR_SHARE[n] for n in SAMPLED] + [0.05] * (len(CROWD_ROWS) + 1))
+
+    def distance(p, q):
+        return np.sqrt((weights * (p - q) ** 2).sum(-1))
+
+    chosen = [int(np.argmax(distance(samples, centre)))]
+    while len(chosen) < arguments.league:
+        d = np.min([distance(samples, samples[j]) for j in chosen], 0)
+        chosen.append(int(np.argmax(d)))
+    for k, j in enumerate(chosen):
+        g, sd, per = space.g(samples[j])
+        out["league"][f"league{k + 1}"] = {
+            "theta": samples[j].tolist(),
+            "config": space.config(samples[j]),
+            "g": float(g[0]),
+            "per_size": [float(m[0]) for m in per],
+            "sd": float(sd[0]),
+        }
+    Path(arguments.out).write_text(json.dumps(out, indent=1))
+    for size in SIZES:
+        print(
+            f"{size}v{size} largest products:",
+            [(a[:8], b[:8], round(c)) for a, b, c, _ in out["products"][size][:4]],
+            file=sys.stderr,
+        )
+    for k, v in out["league"].items():
+        print(k, round(v["g"]), np.round(v["per_size"]), file=sys.stderr)
 
 
 if __name__ == "__main__":
