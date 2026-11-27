@@ -879,10 +879,19 @@ def maximum(a: Tensor, b: Tensor | float) -> Tensor:
     return torch.maximum(a, b) if isinstance(b, Tensor) else a.clamp_min(b)
 
 
+def power(base: Tensor, exponent: Tensor | float) -> Tensor:
+    """base^exponent for base >= 0: a whole-number Python exponent as multiplications (the
+    compiler's own), any other as exp2(exponent log2 base), two fast special functions where
+    torch's pow is a long accurate sequence (within rounding of it; 0 -> 0 for exponent > 0)."""
+    if isinstance(exponent, (int, float)) and float(exponent).is_integer():
+        return base**exponent
+    return torch.exp2(exponent * torch.log2(base))
+
+
 def softmin(a: Tensor, b: Tensor | float, exponent: Tensor | float) -> Tensor:
     """low (1 + (low / high)^q)^(-1/q) for a, b >= 0: a smooth minimum."""
     low, high = minimum(a, b), maximum(a, b)
-    return low * (1.0 + (low / high.clamp_min(1e-30)) ** exponent) ** (-1.0 / exponent)
+    return low * power(1.0 + power(low / high.clamp_min(1e-30), exponent), -1.0 / exponent)
 
 
 def small_angle_cos_sin(angle: Tensor) -> tuple[Tensor, Tensor]:
@@ -1046,8 +1055,8 @@ def _rates(
     load = lift * lift + induced * induced
     near = (load * inverse_lift_squared).clamp_max(1.0)  # of the wing's maximum, squared
     coefficient = p.zero_lift_drag * (
-        1.0 + (speed * p.inverse_critical_speed) ** p.drag_rise_exponent
-    ) + p.induced_drag * load * (1.0 + p.separation_drag * near**p.half_separation_exponent)
+        1.0 + power(speed * p.inverse_critical_speed, p.drag_rise_exponent)
+    ) + p.induced_drag * load * (1.0 + p.separation_drag * power(near, p.half_separation_exponent))
     if post_stall_drag is None:
         post_stall_drag = _post_stall_drag(p, angle_cos)
     if post_stall_drag is not None:

@@ -579,3 +579,11 @@ def test_the_turn_has_precedence_over_the_climb():
         straight = exchanges["straight"]
         assert -1e-4 * straight <= exchanges["climb"] < 0.05 * straight, ship_type
         assert exchanges["straight"] > 0.9 * float(c.commanded_table[0, CLIMB])
+
+
+def test_power_is_pow_within_rounding():
+    """core.power (exp2 of log2 for a fractional exponent) against torch's pow, base >= 0."""
+    base = torch.cat([torch.zeros(1), torch.logspace(-6, 3, 200)])
+    for exponent in (2.83, 0.5, -1.0 / 16.0, -0.0025, 16.0, torch.tensor(1.7)):
+        expected = base**exponent
+        assert torch.allclose(core.power(base, exponent), expected, rtol=1e-5, atol=0.0), exponent
