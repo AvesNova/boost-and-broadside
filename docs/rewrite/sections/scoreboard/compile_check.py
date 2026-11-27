@@ -94,7 +94,10 @@ def run(game_settings: dict) -> float:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(0)
-    config = dataclasses.replace(LearnConfig(), segments_per_update=1, segment_ticks=16, minibatches=2, epochs=1)
+    # league_capacity_factor 15: every network member's fixed capacity is the whole league (C = L),
+    # so the members placed by hand below fit the table (the graphs are the same at any C).
+    config = dataclasses.replace(LearnConfig(), segments_per_update=1, segment_ticks=16, minibatches=2, epochs=1,
+                                 league_capacity_factor=15.0)
     game_config = game.GameConfig(training_spawn=True, **game_settings)
     policy = model.Policy(model.ModelConfig.for_arena(game_config.arena_radius)).to(device)
     league = League(config, device)
