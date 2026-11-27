@@ -327,12 +327,10 @@ class HitRange(World):
         self._pin()
 
     def _follow_bullets(self, out) -> None:
-        """Follow every real bullet of the shooter: its path (tick-end points), the straight
-        line's miss distance at the target (a: the impact parameter of the line along the bullet's
-        launch direction, before any egg turn, signed by the side it passes) and the closest
-        approach of the actual path (b: segments between tick ends, signed the same way; a turn
-        inside one tick is cut by its chord). A flight that ends this tick (the game's
-        shot_outcome: 1 hit, 0 missed) is moved to `finished` and its numbers to `spreads`."""
+        """Follow every real bullet of the shooter: its path (tick-end points), a: the signed
+        miss distance of its straight launch line from the target's centre, b: the same for the
+        post-turn line (`_after_egg`). A flight that ends this tick (the game's shot_outcome: 1
+        hit, 0 missed) is moved to `finished` and its numbers to `spreads`."""
         s = self.state
         self.finished = []
         sx, sy = self.shooter_xy
@@ -349,19 +347,14 @@ class HitRange(World):
                 dx, dy = float(s.bullet_dir_x[0, 0, k]), float(s.bullet_dir_y[0, 0, k])
                 # the straight line from the muzzle: signed distance of the target (origin) from it
                 a = dx * (-y) - dy * (-x)
-                path = dict(points=[[sx, sy]], a=a, b=None, range=math.hypot(sx, sy))
+                path = dict(
+                    points=[[sx, sy]],
+                    a=a,
+                    b=self._after_egg(x, y, dx, dy, a),
+                    range=math.hypot(sx, sy),
+                )
                 self.paths[ident] = path
-            (px, py) = path["points"][-1]
             path["points"].append([x, y])
-            # closest approach of the segment (p -> q) to the origin, signed by the cross product
-            mx, my = x - px, y - py
-            length = max(mx * mx + my * my, 1e-12)
-            t = min(max(-(px * mx + py * my) / length, 0.0), 1.0)
-            cx, cy = px + t * mx, py + t * my
-            distance = math.hypot(cx, cy)
-            if path["b"] is None or distance < abs(path["b"]):
-                side = mx * (-cy) - my * (-cx)
-                path["b"] = distance if side >= 0 else -distance
             if ended >= 0:
                 self.finished.append([path["points"], ended == 1])
                 self.spreads.append((self.tick, path["a"], path["b"], path["range"]))
@@ -372,6 +365,32 @@ class HitRange(World):
         while self.kill_log and self.kill_log[0][0] <= horizon:
             self.kill_log.popleft()
 
+    def _after_egg(self, x: float, y: float, dx: float, dy: float, straight: float) -> float:
+        """The signed miss distance b' of the bullet's post-turn straight line from the target's
+        centre (same sign convention as the straight line's `straight`): the game's own egg on
+        the bullet's straight path from (x, y) along (dx, dy): `core.egg_entry` finds the entry,
+        `core.egg_turn` the turn (cos, sin) of the direction there; the line through the entry
+        point along the turned direction, extended. A path that never enters the egg keeps its
+        straight miss."""
+        t = lambda v: torch.tensor(float(v), dtype=torch.float64)  # noqa: E731
+        far = 2.0 * (math.hypot(x, y) + self.constant("egg_front", 1)) + 100.0
+        mx, my = far * dx, far * dy
+        heading = self.target_heading
+        half = self.constant("egg_half_width", 1)
+        entry = core.egg_entry(
+            t(x), t(y), t(mx), t(my), t(math.cos(heading)), t(math.sin(heading)),
+            self.constant("egg_front", 1), self.constant("egg_rear", 1), half,
+        )  # fmt: skip
+        if not bool(entry < torch.inf):
+            return straight
+        turn = core.egg_turn(
+            t(x), t(y), t(mx), t(my), entry, half, t(self.constant("deflector_turn", 1))
+        )
+        cos, sin = float(turn.cos), float(turn.sin)
+        px, py = x + float(entry) * mx, y + float(entry) * my
+        ex, ey = dx * cos - dy * sin, dx * sin + dy * cos
+        return ex * (-py) - ey * (-px)
+
     def _sigma(self, values: list[float]) -> float | None:
         if len(values) < 5:
             return None
@@ -381,7 +400,7 @@ class HitRange(World):
     def spread_readout(self) -> dict:
         """2 sigma (SIGMAS) of the signed miss distance at the target over the window, in metres
         and in milliradians (each miss over its own range at the shot): `straight` the line before
-        any egg turn, `turned` the closest approach of the actual path. `width` the target's
+        any egg turn, `turned` the miss distance b' of the post-turn line (`_after_egg`). `width` the target's
         apparent half-width from the shooter: half the game's hit width (core.hit_width over the
         constants' hit_widths row, the agent's own) at the cosine of the bullets' path (due
         east) off the target's nose; `radius` the hit radius with no egg."""
@@ -400,6 +419,8 @@ class HitRange(World):
         radius = self.constant("hit_radius", 1)
         out["radius"] = dict(metres=radius, mrad=1000.0 * radius / distance)
         out["samples"] = len(self.spreads)
+        radius_now = self.constant("hit_radius", 1)
+        out["inside_radius"] = sum(1 for r in self.spreads if abs(r[2]) < radius_now)
         return out
 
     def range_readout(self) -> dict:

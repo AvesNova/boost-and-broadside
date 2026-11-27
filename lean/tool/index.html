@@ -498,7 +498,7 @@ time to kill, implied (full / DPS)  ${r.implied_time_to_kill === null ? "-" : r.
 time to kill, actual: last ${num(r.last_kill_time)} s   mean over window ${num(r.mean_kill_time)} s   kills ${r.kills}
 2-sigma miss at the target (about 95 %, ${sp.samples} bullets in window)
   straight, no egg    ${two(sp.straight, 2)}
-  true, after egg     ${two(sp.turned, 2)}
+  spread after the egg ${two(sp.turned, 2)}
 target half-width seen from the shooter (egg hit width / 2)   ${two(sp.width, 2)}
 hit radius, no egg                                            ${two(sp.radius, 1)}
 WASD / arrows move the shooter (shift fast) or click-drag, Q / E turn the target, wheel zoom`;

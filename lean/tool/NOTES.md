@@ -137,8 +137,8 @@ imported, since `tuning.row_of` inside `flying` reads the design. Tests: `lean/t
   rolling readouts: DPS, hits / shots, implied time to kill (full shield / DPS), actual time to
   kill (last, and mean over the window; from first damage; the target refills on death), range,
   aspect (0 = dead astern). 2-sigma (about 95 %) miss at the target, straight (the impact
-  parameter of each bullet's launch line, before the egg) and true (closest approach of the
-  actual path, tick-end chords); the target's half-width from the shooter (half of
+  parameter of each bullet's launch line, before the egg) and after the egg (b': the miss of the post-turn line,
+  from `core.egg_entry` / `egg_turn` on the bullet's launch path); the target's half-width from the shooter (half of
   `core.hit_width` on the constants' `hit_widths`, at the bullets' path off the nose) and the
   hit radius. Bullets are drawn when their flight ends (the game's `shot_outcome`): red hit,
   orange miss; the game's ghosts end at first contact like real bullets, so nothing continues
