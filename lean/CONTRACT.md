@@ -22,7 +22,8 @@ NO_PENDING = JOINT  # Obs.pending of a row whose pending action is not observed
 LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outcome")
 LEVELS = 5
 SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES  # 18 scalars + 4 flags + type one-hot; 3; 3
-BULLET_SLOTS = 12
+BULLET_SLOTS = 12  # also every bullet's life in ticks: the ring (slot tick mod 12) is its clock
+GHOST, REAL, CONTACTED = 0, 1, 2  # State.bullet_state
 ```
 
 Also here: `symlog`, `map_fields`, `whole_state`, `compile_dynamic` (the one place duck sizing is
@@ -43,19 +44,19 @@ and `state.bullet_x` `(E, N, K)`; `state.replace(name=...)` replaces one.
 
 | Block | Shape | Holds |
 |---|---|---|
-| `ships` | `(E, columns, N)` float32 | x, y, heading cos and sin, speed, angle of attack (and cos, sin), nose rate, energy (the store), shield, shield wait, cooldown, the cached medium (log index, gradient), velocity, next bullet slot |
+| `ships` | `(E, columns, N)` float32 | x, y, heading cos and sin, speed, angle of attack (and cos, sin), nose rate, energy (the store), shield, shield wait, cooldown, the cached medium (log index, gradient), velocity |
 | `flags` | `(E, 3, N)` bool | alive, exists (fixed for an episode), fired (a real bullet last tick) |
 | `identity` | `(E, 2, N)` long | team (0 or 1), type (index into the ship card) |
-| `bullets`, `bullet_counts` | `(E, columns, N, K)` | position, direction, speed, the medium; moves left (0 is inactive) and the tick fired |
-| `bullet_real` | `(E, N, K)` bool | real bullet, or a ghost (no damage; labels the hit head) |
+| `bullets` | `(E, columns, N, K)` float32 | position, direction, speed, the medium |
+| `bullet_state` | `(E, N, K)` uint8 | GHOST (no damage; labels the hit head), REAL, or CONTACTED (touched a ship: no further contact, damage or label; flies on to the end of its 12 ticks) |
 
 Beside the blocks: `constants`, `tick (E,)`, `fields (E, 5, F)` (x, y, radius, band width, target
 ln n), `pending (E, N, 3)` long (the action the next tick applies), and with fog on `seen
 (E, SEEN_COLUMNS, N)` (each ship as its enemy team last saw it) and `ticks_since_seen (E, N)`.
 
 **`StepOut`** (one tick): `damage_taken (E, N)`, `died (E, N)`, `done (E,)`, `result (E,)` (0 or 1
-the winning team, 2 a draw, -1 not done), `shot_outcome (E, N, K)` (-1 none ended, 0 missed, 1
-hit an enemy, 2 hit a team-mate) and `shot_tick`, `hit_damage (E, N, N)` [attacker, target]
+the winning team, 2 a draw, -1 not done), `shot_outcome (E, N, K)` (each bullet once: 1 hit an enemy
+or 2 a team-mate at its first contact, 0 missed on its last tick; -1 otherwise) and `shot_tick`, `hit_damage (E, N, N)` [attacker, target]
 (real bullets' damage and collisions', each ship's collision damage credited to the other ship of
 the pair), `boundary_damage (E, N)`, `shield_restored (E, N)`.
 
