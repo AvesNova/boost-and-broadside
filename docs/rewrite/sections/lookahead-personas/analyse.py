@@ -224,12 +224,14 @@ def skill(path: Path, result: dict) -> list[str]:
             if yard_style:
                 if s["shots"] is not None and s["shots"] < 0.5 * yard_style["shots"]:
                     flags.append("fires under half the yardstick's shots")
-                if s["speed"] is not None and s["speed"] < 0.6:
-                    flags.append("slow (under 0.6 corner)")
+                if s["speed"] is not None and s["speed"] < 0.8 * yard_style["speed"]:
+                    flags.append(f"slow ({s['speed']:.2f} corner, yardstick {yard_style['speed']:.2f})")
                 if s["turning"] is not None and s["turning"] > 1.5 * yard_style["turning"]:
                     flags.append("turning fight 1.5x the yardstick's")
                 if s["store"] is not None and s["store"] < 0.15:
                     flags.append("store nearly empty")
+                if s["hit_range"] is not None and yard_style["hit_range"] and s["hit_range"] > 2.0 * yard_style["hit_range"]:
+                    flags.append("hits from over twice the yardstick's range")
             if entry.get("games") and entry["draws"] / entry["games"] > 0.2:
                 flags.append(f"draws {entry['draws'] / entry['games']:.0%}")
             if entry.get("elo") is not None and entry["elo"] < 800:

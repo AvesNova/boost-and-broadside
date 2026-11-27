@@ -94,7 +94,7 @@ def report(store_path: str, out: str) -> None:
     for label, unit, agent in listed:
         result["agents"].append({"label": label, "id": agent.id,
                                  "unit": None if unit is None else unit.tolist(),
-                                 "values": {name: agent.config.values[name] for name in SAMPLED}})
+                                 "values": {name: agent.config().values[name] for name in SAMPLED}})
     for setup in divergence.SETUPS:
         evaluator = Evaluator(store, setup_config(setup))
         sizes = sizes_of(setup)
