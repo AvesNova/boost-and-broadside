@@ -180,6 +180,7 @@ def cma_search(data, minutes, games, envs, space, popsize, sigma, x0, reference=
                         "cma_mean": list(map(float, mean_z)),
                         "sigma": float(es.sigma),
                         "space": dataclasses.asdict(space),
+                        "reference": (reference or ScriptedAgent.of()).id,
                     }
                 )
                 + "\n"
