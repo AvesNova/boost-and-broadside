@@ -89,13 +89,13 @@ PARAMETERS: dict[str, Parameter] = {
     # Round 3 (author 2026-11-27): the store ran nearly empty (mean 0.06-0.16 of full; dive on
     # 55-65% of ship-ticks): the store held is worth something of its own, beyond its share of
     # the energy term (diving trades it for speed at almost no change in total energy).
-    "store_weight": Parameter(0.25, "ratio", LOG, 0.4,
+    "store_weight": Parameter(0.5, "ratio", LOG, 0.4,
                               "the store itself in full stores per second, in the power "
                               "choice (on top of the energy term)"),
-    "store_crowd": Parameter(0.0, "ratio",
+    "store_crowd": Parameter(1.0, "ratio",
                              meaning="the store weight x (1 + k) / (1 + k x enemies within 2 "
-                                     "gun ranges): more store alone, less in a crowd (round 4, "
-                                     "an experiment; 0 off)"),
+                                     "gun ranges): more store alone, less in a crowd (author "
+                                     "2026-11-27: on, k = 1 with store_weight 0.5; 0 off)"),
     "power_horizon": Parameter(3.0, "seconds", LOG, 0.3, "the power look's discount time"),
     "power_temperature": Parameter(0.05, "score seconds", LOG, 0.4,
                                    "the power softmax's temperature"),

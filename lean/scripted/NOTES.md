@@ -93,7 +93,7 @@ label is a function of the observation. The sandbox flies against it (`World(opp
    so the worth must weigh the chance of landing within the narrow width) = erf(half width /
    (sqrt 2 sigma)), sigma = flight time x sqrt(spread^2 + (`lead_error` x 0.5 x his sustained
    turn acceleration x flight time)^2); `lead_error` 0.25 is a reasoned choice, not tuned.
-   `store_crowd` (0, off): an experiment scaling the store weight by (1 + k) / (1 + k x the
+   `store_crowd` (1, on; author 2026-11-27 with `store_weight` 0.5, from egg-experiments.md; 0 is off): scales the store weight by (1 + k) / (1 + k x the
    scored enemies within 2 gun ranges). The hit's worth,
    here and in the pair tables' gun, is the game's hit model through one call
    (`hit_worth` -> `core.hit_damage`: kinetic at the distance, the target's nose cone, dead
@@ -133,5 +133,6 @@ against its twin (CUDA), the power from the own-ship terms, games against the ch
   segments would cut it (docs/rewrite/questions.md on this branch).
 - The stick distribution moves about 0.15 total variation per tick; grouped by side 0.07-0.09,
   weighted by the steady turn rate 4-5% of the rate span (round 3 step 2). Not tuned.
-- `store_weight` 0.25 (round 3 step 3); 1v1 duels prefer more, 4v4 is even (a question).
+- `store_weight` 0.5 with `store_crowd` 1 (author 2026-11-27; was a fixed 0.25, round 3 step 3): the
+  situational weight won 1v1 (0.60 against 0.25) and is even in 4v4.
 - Defaults otherwise chosen by reasoning (the energy weight from the card's `store_turn`).

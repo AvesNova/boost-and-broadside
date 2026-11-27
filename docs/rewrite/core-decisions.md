@@ -979,7 +979,7 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
 6. Scripted store_weight: undecided (1v1 prefers 0.4-0.6, 4v4 even with fewer kills);
    situation-dependent weights may be tried, lower priority than the egg experiments.
 
-## The egg deflector (PROPOSAL, branch `deflector-lookahead`, unmerged; author decision 2026-11-27 for the mechanism)
+## The egg deflector (decided 2026-11-27, author ~05:20 for the mechanism; branch `deflector-lookahead`)
 
 - **Mechanism** (`core.egg_entry`, `core.egg_turn`, `core.hump`, `core._deflect`; lean/game/NOTES.md
   "Deflector"): an invisible egg around every ship in its frame (front semi-axis 53.3 m along
@@ -995,7 +995,7 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   (`core.HIT_MODEL`; no recompile, tested), with the derived `hit_widths` column.
 - **Hit widths** (the game's function, the sketch's numbers): 24 m with no turn; egg 4.75 m side
   and astern, 2.05 m head-on (30 deg turn: 7.0 / 3.0; 60 deg: 3.5 / 1.6).
-- **Scripted agent**: target size = half the hit width at the aspect; the trigger's worth uses
+- **Scripted agent** (PROPOSAL, not yet approved by the author): target size = half the hit width at the aspect; the trigger's worth uses
   the hit chance (hit width, spread, `lead_error` 0.25, a reasoned choice). One source of truth
   (the agent reads the column).
 - **Cost**: GPU tick (E 4096, 4v4) 0.98 ms off, 1.37 ms egg (+40%, after one cut); compile
@@ -1008,7 +1008,7 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   docs/rewrite/sections/bullet-deflector/egg-experiments.md and progress.md.
 
 
-## Ghost-only bullets (PROPOSAL, branch `ghost-only`, unmerged; author decision 2026-11-27 ~15:20)
+## Ghost-only bullets (decided 2026-11-27, author ~15:20; first-contact labels locked ~16:30; branch `ghost-only`)
 
 - **The ring is the clock** (author): no moves-left countdown. Every ship, alive, dead or not
   existing, writes one bullet a tick into slot `tick mod BULLET_SLOTS` of its ring, so a bullet
@@ -1021,13 +1021,15 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   (`tuning.ring_gun_range`, the range of a 12-tick bullet; the design tests do). Open for the
   author: the tool's gun-range slider (a design input) can now ask for a life the game refuses
   (a clear error at constants build); it could become a read-out of muzzle speed and drag.
+  Closed 2026-11-27 ~16:30: bullet life fixed at the 12-slot ring, the gun range a read-out
+  (entry "Author decisions 2026-11-27: hit damage 8 ..." below).
 - **One uint8 state per bullet** (author; `State.bullet_state`, `contract.GHOST / REAL /
   CONTACTED` = 0 / 1 / 2, replacing `bullet_real` and the `bullet_counts` block): damage only
   from REAL; a contact turns a ghost or a real bullet into CONTACTED and it keeps flying, motion
   unchanged (no stop, no freeze; no further contact, so no egg turn either). A dead or absent
   ship's bullets are ghosts.
-- **Labels: first contact only** (the coordinator's recommendation; the author has not
-  overruled): a bullet reports once, from GHOST or REAL, at its first contact (1 enemy, 2
+- **Labels: first contact only** (the coordinator's recommendation; locked by the author
+  2026-11-27 ~16:30): a bullet reports once, from GHOST or REAL, at its first contact (1 enemy, 2
   team-mate) or as a miss (0) on its last tick; never from CONTACTED. A fresh deal's slots start
   CONTACTED, so they never label (the prototype's parked ghosts labelled passers-by in the first
   12 ticks). `shot_tick` is the ring age: `tick - age` (`core.bullet_ages`). Labels of dead and
@@ -1040,7 +1042,7 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   off 0.973 / 0.973 -> 0.753 / 0.753 ms, egg 1.078 / 1.079 -> 0.880 / 0.925 ms. Kernels:
   docs/rewrite/sections/bullet-deflector/progress.md (2026-11-27 16:00).
 
-## Static training graphs and the hot-path fixes (PROPOSAL, branch `tick-audit`, unmerged; author decisions 2026-11-27 ~16:00)
+## Static training graphs and the hot-path fixes (decided 2026-11-27, author ~16:00 and ~17:30; branch `tick-audit`)
 
 - **A training run is fully static** (author): `LearnConfig.compile_shapes` "static" (default)
   compiles act, advance and the update graphs for the run's sizes (environments, ships, fields,
@@ -1049,12 +1051,14 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   `compile_dynamic` (duck sizing off) for crossover evaluation, as the evaluation runner does.
   This replaces "Dynamic shapes, not fixed" (Deliberate changes, Game) for training. All five
   learner graphs are static; the league routing keeps its table width W symbolic (it follows
-  the league's capacity; a fixed W is separate, later work).
+  the league's capacity; a fixed W is separate, later work: done on `train-audit`, entry "The
+  training-path fixes" below).
 - **Hit labels per segment**: advance returns each ship's bullet outcomes by age and collect
   assembles the labels at the segment's end; nothing is written into a buffer in the tick.
 - **Constants per ship type**: State carries the card's (C, T) table and the slots' types, not
   an (E, C, N) copy; bitwise.
-- **Dropped with numbers** (hot-path-audit-progress.md): the reset cap D = 16 (the whole
+- **Dropped with numbers** (PROPOSAL: the author asked for the reset cap ~16:00; dropping it
+  is not yet approved; hot-path-audit-progress.md): the reset cap D = 16 (the whole
   re-deal costs 0.076 ms per tick now; a capped path cannot beat the fused select without a
   branch), a deal pool (deals cost 0.012 ms per tick), exp2 powers (no gain); not done: sight
   on unordered pairs, fire's block rewrite, the bullet share once a tick.
@@ -1063,24 +1067,40 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   tick at E 2048 31.8 -> 25.2 ms (collect 64.4k -> 81.4k steps/s), advance 3.67 -> 1.84 ms.
   The update at E 2048: 141.0 -> 129.8 s (183.6 -> 169.0 ms per micro-batch).
 
-## The training-path fixes (PROPOSAL, branch `train-audit`, unmerged; author decisions 2026-11-27 ~17:30)
+## Author decisions 2026-11-27 (~16:30): hit damage 8, spread 5 mrad, store_crowd default, fixed 12-tick bullet life (decided; branch `defaults-1127`, off `tick-audit`)
 
-- **The league table fixed for the run** (completes "a training run is fully static"): every
+- **Hit damage 8** (was 10.5): the card's `hit_damage` (`tuning.REAL_AIRCRAFT`).
+- **Bullet spread 5 mrad sigma per axis** (was about 1.6 mrad): the angle as `lean.tool.hitbench`
+  reads it, spread over the launch speed (cruise 372.05 + muzzle 1712 = 2084.05 m/s), so the
+  setting is `bullet_spread` 10.42 m/s (was 3.084); the card carries the speed, the angle is
+  documented beside it and moves with the muzzle or cruise speed. Measured check in the report
+  of the branch (2-sigma lateral spread at 250 m about 2.5 m).
+- **`store_crowd` is the default** in the scripted agent: `store_weight` 0.5 and `store_crowd` 1
+  (the store weight x (1 + k) / (1 + k x enemies within 2 gun ranges), egg-experiments.md),
+  instead of the fixed 0.25.
+- **Fixed 12-tick bullet life**: the design inputs no longer take a life: `gun_range` stays in the
+  table only as a read-out (`DesignInput.readout`; the web tool disables it, `design.solve`
+  rejects it), always `tuning.ring_gun_range`; `_bullet_life` is gone.
+
+## The training-path fixes (branch `train-audit`; author decisions 2026-11-27 ~17:30 and ~21:00; decided where marked, the rest PROPOSAL)
+
+- **The league table fixed for the run, empty slots skipped** (decided 2026-11-27: fixed capacity
+  2026-11-23 "League routing", static recipe and skipping empty slots ~21:00; completes "a training run is fully static"): every
   network member's capacity C = ceil(1.25 L / members), members = 3 + snapshot_members (86 rows
   at L 1,024), the scripted agent's L; every slot on W = C rows, the merge on K = 2 + 12 + 4
   entries. The tick calls only the slots holding weights (author 2026-11-27 ~21:00: "static"
   means a recipe that never changes mid-run, not identical calls); a skipped slot's merge entry
   is a zero filler no row reads. The routing and the merge compile once, when the first network
-  member joins; W is no longer dynamic. Departure from "League routing" (2026-11-23), for the author: the scripted
+  member joins; W is no longer dynamic. Open (PROPOSAL), departure from "League routing" (2026-11-23), for the author: the scripted
   agent is uncapped, so early in RL most league games are scripted (852 of 1,024 with one
   snapshot), evening out as snapshots join. The RL tick: 26.4 ms with 1 snapshot (2 slot
   calls), 32.5 ms with 12 (11 calls); running all 18 slots it was 38.5 and 38.6 (and
   tick-audit's varying table 30.1 and 36.9).
-- **The step's reset instead of zeroing the carries each tick**: advance 1.84 -> 0.55 ms.
-- **Constants built once outside the graphs** (the critic's support passed in, the next-state
+- **The step's reset instead of zeroing the carries each tick** (PROPOSAL): advance 1.84 -> 0.55 ms.
+- **Constants built once outside the graphs** (PROPOSAL; the critic's support passed in, the next-state
   support as policy buffers, the scripted agent's tables made on the device): 0 pageable
   copies in the collect loop (1 before, under the static compile).
-- **One linear scan** (a Triton kernel forward and backward, a custom operator; float32 state)
+- **One linear scan** (decided 2026-11-27, author ~17:30: replace the doubling scan; a Triton kernel forward and backward, a custom operator; float32 state)
   for the RG-LRU and GAE, in place of the doubling scan: the update's micro-batch step 170.0
   -> 146.8 ms (-13.6%), peak 5.12 -> 4.17 GiB, gradients within bf16 rounding of the doubling
   scan's.

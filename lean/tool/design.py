@@ -44,7 +44,8 @@ _PRESET_STALL: dict[str, float] = {}  # preset -> its stall speed at the game's 
 
 def inputs(preset: str, profile: str | None = None) -> list[dict]:
     """The page's sliders, in the profile's table order (default the preset's own profile):
-    name, label, unit, kind, group, method (how it sets the card), source (provenance), value
+    name, label, unit, kind, group, method (how it sets the card), readout (shown, not moved),
+    source (provenance), value
     and reference (the preset's), low, high."""
     reference = tuning.reference(preset, profile)
     out = []
@@ -61,6 +62,7 @@ def inputs(preset: str, profile: str | None = None) -> list[dict]:
                 group=spec.group,
                 method=spec.method,
                 sets=spec.sets,
+                readout=spec.readout,
                 source=spec.source,
                 value=value,
                 reference=value,
@@ -121,6 +123,10 @@ def solve(
     unknown = set(values or {}) - set(reference)
     if unknown:
         raise ValueError(f"not design inputs: {sorted(unknown)}")
+    table = {spec.name: spec for spec in tuning.reference(preset, profile).inputs}
+    readouts = sorted(name for name in values or {} if table[name].readout)
+    if readouts:
+        raise ValueError(f"read-outs, not design inputs to move: {readouts}")
     changed = {
         n: float(v)
         for n, v in (values or {}).items()

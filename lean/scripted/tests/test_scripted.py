@@ -217,16 +217,19 @@ def test_the_candidate_paths_follow_the_games_tick():
 
 def test_the_power_follows_the_own_ship_terms():
     """Slow against the preferred speed with a store to spend, the power look prefers the dive
-    (store into speed) to the climb; fast with room in the store, the climb."""
+    (store into speed) to the climb; fast with room in the store, the climb. The store's own
+    weight (`store_weight`, which values the store held, 0.5 by default) is switched off to
+    isolate the speed and energy terms."""
     corner = card_values()["corner_speed"]
     slow = placed(ship(speed=0.6 * corner), ship(x=3000.0, speed=corner))
     fast = placed(ship(speed=1.4 * corner), ship(x=3000.0, speed=corner))
     dive, climb = 1, 2
-    assert float(choice_of(slow).power_scores[0, 0, dive]) > float(
-        choice_of(slow).power_scores[0, 0, climb]
+    config = ScriptedConfig().replace(store_weight=0.0)
+    assert float(choice_of(slow, config=config).power_scores[0, 0, dive]) > float(
+        choice_of(slow, config=config).power_scores[0, 0, climb]
     )
-    assert float(choice_of(fast).power_scores[0, 0, climb]) > float(
-        choice_of(fast).power_scores[0, 0, dive]
+    assert float(choice_of(fast, config=config).power_scores[0, 0, climb]) > float(
+        choice_of(fast, config=config).power_scores[0, 0, dive]
     )
 
 
