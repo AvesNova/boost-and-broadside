@@ -5,6 +5,8 @@ tree, `src/bnb/`; v1: `origin/main`, read with `git show`). Nothing in the repos
 changed. Scratch scripts and their outputs are in
 `/tmp/claude-0/-home-user-boost-and-broadside/bf4c0758-f091-53dd-a269-e94d54b68e77/scratchpad/next/game-audit-scratch/`
 (listed in the appendix).
+The scripts were later copied to `docs/rewrite/sections/game-audit/` and removed on
+2026-11-28; they are at commit ce27fe64 (`git show ce27fe64:docs/rewrite/sections/game-audit/<name>`).
 
 Conventions in this file:
 
