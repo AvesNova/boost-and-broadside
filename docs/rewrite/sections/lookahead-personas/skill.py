@@ -65,7 +65,8 @@ def play(store_path: str, setup: str, target: float, minutes: float, round_games
               file=sys.stderr, flush=True)
 
     store = Store(store_path)
-    evaluator = Evaluator(store, setup_config(setup), envs=envs, seed=1127, progress=progress)
+    evaluator = Evaluator(store, setup_config(setup), envs=envs, minimum_envs=envs, seed=1127,
+                          progress=progress)
     listed = agents()
     yard = listed[0][2]
     sizes = sizes_of(setup)
