@@ -64,3 +64,19 @@ performance profile. Data: ~/avesnova/boost-and-broadside/data/lookahead-persona
   crowd-own-half) with fresh games at 1, 2, 4, 8, 16 per side, SE 0.02, before any CMA;
   store_crowd kept at 1 (surrogate gain 6 Elo, under the 8 Elo bar).
 - Next: screen ETA 00:00 (worst 00:30; the GPU is shared with the league agent).
+
+### 23:30 screen done (fresh games, SE 0.02, BT over all pairings incl. head-to-head)
+- Elo against the old yardstick (1v1 / 2v2 / 4v4 / 8v8 / 16v16): plain 845 / 967 / 1276 /
+  1666 / 2078; crowd-own 989 / 1131 / 1310 / 1643 / 2019; crowd-known 1084 / 1146 / 1299 /
+  1617 / 2020; crowd-near 1139 / 1122 / 1262 / 1571 / 1975; crowd-own-half 1179 / 1113 / 1191
+  / 1403 / 1712; plain-half 977 / 1035 / 1207 / 1400 / 1671.
+- Worked: every crowd candidate beats plain at 1v1 and 2v2 by 120-290 Elo and keeps 4v4-16v16
+  within 60 Elo of it. Mean over 1v1/4v4/16v16: known 1468, near 1459, own 1439, plain 1400.
+- Didn't: the old yardstick saturates at 8v8/16v16 (scores of 95-99.7%); Elo there rests on
+  the head-to-head games.
+- 23:30 decision: one shared measure, **known enemies** (crowd_measure 1, crowd_half 1): best
+  mean over the three study sizes and over all five.
+- 23:30 decision: CMA rated against crowd-known (at 1000 in the search), not the old yardstick;
+  space: 19 rows (boundary, seek dropped) + 5 crowd ratios (angles, aggression, speed,
+  preferred speed, reply temperature) + store_crowd; popsize 12, 192 games per size, sigma 0.15.
+- Next: CMA, bound 60 generations or 05:30; first generation ETA 23:50.
