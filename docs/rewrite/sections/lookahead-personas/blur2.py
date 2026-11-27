@@ -3,6 +3,7 @@ compile).
 
     blur2.py DATA CENTRE.json states --minutes 10    # the state sets (1v1, 4v4, 16v16)
     blur2.py DATA CENTRE.json blur --minutes 12      # 64 personas at spreads 0.25, 0.5, 1
+    blur2.py DATA CENTRE.json saltelli --base 32     # Sobol indices of JS from the centre
     blur2.py DATA CENTRE.json report OUT.json
 
 CENTRE.json: the centre's rows over the defaults (a JSON object; its crowd rows are fixed rows,
@@ -32,7 +33,7 @@ from lean import game, scripted  # noqa: E402
 from lean.scripted import ScriptedConfig  # noqa: E402
 from lean.scripted.parameters import SAMPLED, box_point, rows_of, vector  # noqa: E402
 
-SIZES = {1: (4096, 12000), 4: (1024, 6000), 16: (256, 2000)}  # envs, snapshots
+SIZES = {1: (4096, 6000), 4: (1024, 3000), 16: (256, 1000)}  # envs, snapshots
 SPREADS = (0.25, 0.5, 1.0)
 POPULATION = 64
 
@@ -163,17 +164,50 @@ def blur(data: Path, centre: ScriptedConfig, minutes: float, drop, tag: str) -> 
             log(f"blur {size}v{size} spread {spread}: {result['blur']:.4f} nats")
 
 
+def saltelli(data: Path, centre: ScriptedConfig, base: int, minutes: float) -> None:
+    """A Saltelli sample (SALib, first and total order) of the spread-1 box around the
+    centre; per size and configuration the mean JS of its joint from the centre's. Written
+    per size (saltelli_{size}v{size}.npz)."""
+    from SALib.sample import sobol as sobol_sample
+
+    problem = {"num_vars": len(SAMPLED), "names": list(SAMPLED), "bounds": [[0, 1]] * len(SAMPLED)}
+    units = sobol_sample.sample(problem, base, calc_second_order=False, seed=20261128)
+    started = time.perf_counter()
+    for size in SIZES:
+        path = data / f"saltelli_{size}v{size}.npz"
+        if path.exists():
+            continue
+        if (time.perf_counter() - started) / 60.0 > minutes:
+            log("saltelli: time bound")
+            return
+        states = States(data, size)
+        centre_joint = states.joint(vector(centre))
+        y = np.array(
+            [
+                float(
+                    divergence.js(
+                        states.joint(persona_vector(centre, u, 1.0, ())), centre_joint
+                    ).mean()
+                )
+                for u in units
+            ]
+        )
+        np.savez(path, units=units, js=y)
+        log(f"saltelli {size}v{size}: {len(y)} configurations, mean JS {y.mean():.4f}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("data", type=Path)
     parser.add_argument("centre")
-    parser.add_argument("command", choices=("states", "blur", "report"))
+    parser.add_argument("command", choices=("states", "blur", "saltelli", "report"))
     parser.add_argument("out", nargs="?")
     parser.add_argument("--minutes", type=float, default=10.0)
     parser.add_argument("--drop", nargs="*", default=[])
     parser.add_argument("--tag", default="")
+    parser.add_argument("--base", type=int, default=32)
     arguments = parser.parse_args()
     data = arguments.data
     data.mkdir(parents=True, exist_ok=True)
@@ -190,6 +224,8 @@ def main():
             state = collect(centre, size, 20261128 + number)
             torch.save(state, path)
             log(f"wrote {path}: {int((state.alive & state.exists).sum())} ship-states")
+    elif arguments.command == "saltelli":
+        saltelli(data, centre, arguments.base, arguments.minutes)
     elif arguments.command == "blur":
         blur(data, centre, arguments.minutes, tuple(arguments.drop), arguments.tag)
     else:
