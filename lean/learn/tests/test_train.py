@@ -121,6 +121,11 @@ def test_checkpoints_every_period_and_a_resume_gives_the_same_next_updates(
     end_b = load_checkpoint(resumed / "checkpoints" / names[1])
     assert torch.equal(end_a["carry"].member, end_b["carry"].member)
     assert torch.allclose(end_a["league"]["games"], end_b["league"]["games"])
+    # The league's two levels resume where they stopped: the same slot loads and debts.
+    for name in ("slot_state", "slot_holder", "slot_source", "stored"):
+        assert end_a["league"][name] == end_b["league"][name], name
+    assert end_a["league"]["debt"] == pytest.approx(end_b["league"]["debt"], abs=1e-6)
+    assert torch.equal(end_a["carry"].slot, end_b["carry"].slot)
     assert torch.allclose(
         end_a["game_state"].ships, end_b["game_state"].ships, rtol=1e-5, atol=1e-4
     )
@@ -130,20 +135,21 @@ def test_a_checkpoint_holds_no_snapshot_weights_and_resume_reads_them_from_the_s
     monkeypatch, tmp_path, capsys
 ):
     """Each snapshot is written once to DIR/snapshots/<steps>.pt; a checkpoint names the
-    snapshots its league holds and carries no slot weights for them or for the averages'
-    slots, and a resume gives the league slots back from the files and the averages."""
+    snapshots its league's pool holds and carries no weights for them, nor any slot's
+    weights, and a resume gives the pool and the slots back from the files and the
+    averages."""
     run(monkeypatch, "--stage", "rl", "--updates", str(UPDATES), "--out", str(tmp_path))
     files = sorted((tmp_path / "snapshots").iterdir())
     assert [file.name for file in files] == [f"{steps:012d}.pt" for steps in SNAPSHOT_STEPS]
     last = tmp_path / "checkpoints" / checkpoint_name(CHECKPOINT_STEPS[-1])
     checkpoint = load_checkpoint(last)
     league = checkpoint["league"]
-    held = [snapshot for snapshot in league["slot_snapshot"] if snapshot is not None]
-    assert sorted(held) == SNAPSHOT_STEPS
-    assert all(weights is None for weights in league["slot_weights"])
+    assert sorted(league["stored"]) == SNAPSHOT_STEPS
+    assert all(weights is None for weights in league["stored"].values())
+    assert "slot_weights" not in league
     size = last.stat().st_size
     # live weights, two averages (float32) and Adam's two moments: about five snapshots, not the
-    # four snapshots and two slots again
+    # four snapshots and the slots again
     assert size < 5.5 * files[0].stat().st_size
     saved = torch.load(files[0], weights_only=True)
     assert all(
@@ -161,15 +167,20 @@ def test_a_checkpoint_holds_no_snapshot_weights_and_resume_reads_them_from_the_s
     averages.load(checkpoint["averages"])
     restored = League(config)
     restored.load(league, policy, averages, tmp_path / "snapshots")
-    for slot, snapshot in enumerate(league["slot_snapshot"]):
-        if snapshot is not None:
+    networks = 0
+    for slot, source in enumerate(league["slot_source"]):
+        if source is None or source[0] == "scripted":
+            continue
+        networks += 1
+        if source[0] == "snapshot":
             for name, value in torch.load(
-                tmp_path / "snapshots" / f"{snapshot:012d}.pt", weights_only=True
+                tmp_path / "snapshots" / f"{source[1]:012d}.pt", weights_only=True
             ).items():
                 assert torch.equal(restored.slot_weights[slot][name], value)
-    for slot, which in ((0, "ema"), (1, "uniform")):
-        for name, value in getattr(averages, which).items():
-            assert torch.equal(restored.slot_weights[slot][f"policy.{name}"], value)
+        else:
+            for name, value in getattr(averages, source[0]).items():
+                assert torch.equal(restored.slot_weights[slot][f"policy.{name}"], value)
+    assert networks > 0
 
 
 def test_a_checkpoint_write_that_fails_leaves_the_previous_file_whole(monkeypatch, tmp_path):
