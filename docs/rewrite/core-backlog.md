@@ -45,7 +45,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | C4 | Field tokens as key/value memory in the same attention operation (needs the Obs contract to carry fields) | done (worklog 02:52, 03:13) |
 | C5 | Gated attention, element-wise, released-code initialisation; no null key | done (worklog 03:13) |
 | C6 | Rotary: drop bands far larger than the map; same layout in both heads; rotate values | done (worklog 03:13) |
-| C7 | Critic: HL-Gauss, linear bins, 64 per level, v2's five levels; range monitoring | bins done (64, linear); v2's five levels with D2 (worklog 03:13) |
+| C7 | Critic: HL-Gauss, linear bins, v2's five levels; range monitoring | done: 63 bins per level (`value.COLUMNS`), v2's five levels with D2 |
 | C8 | MLP width 4x as v1 and v2 (departure audit row) | done (worklog 03:13) |
 | C10 | The model reads fog: `Obs.visible` and `Obs.since_seen` as ship inputs (a last-seen token plus the time since seen); needed before any training under fog | done |
 | C9 | Swappable position code: v2's categorical codes, Fourier hexagonal, grid cells | done (worklog 03:13) |
@@ -59,7 +59,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | D3 | Shaping-field bug (moot once shaping is dropped) | dropped: shaping removed with v2's five levels (worklog 03:49) |
 | D4 | Damage reward unit (departure audit row 2) | done: v2's unit, 2.74 per 100 points (worklog 03:49; lean/learn/config.py) |
 | D5 | Compilation in training | done 2026-11-23; static shapes for training (`compile_shapes`, merged 4bc9b2f7); compile check baselines reset ce27fe64 (cold about 121 s, budget 150 s) |
-| D6 | Batched evaluation across sizes | done: all sizes in rounds of one batch, walk from the previous ratios (learn/NOTES.md "Batched crossover"); the GPU gain is not shown yet |
+| D6 | Batched evaluation across sizes | done: all sizes in rounds of one batch, walk from the previous ratios (lean/eval/matches.py); the GPU gain is not shown yet |
 
 ## E. Scripted opponent
 
