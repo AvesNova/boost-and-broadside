@@ -20,14 +20,15 @@ from lean.learn.pool import (
     RETIRED,
     SCRIPTED,
     UNIFORM,
+    NetworkTable,
     SnapshotSchedule,
     capacity_draws,
     pfsp,
     retained,
 )
-from lean.learn.rollout import network_actions
+from lean.learn.rollout import network_actions, slot_actions
 from lean.learn.tests.setting import StepRecorder, add_snapshots, small
-from lean.model.agent import seat_view
+from lean.model.agent import seat_view, split_weights, stepper_weights
 
 ENVS = 8  # 4 self-play, 4 league
 MILLION = 1_000_000
@@ -69,9 +70,9 @@ def test_both_sides_of_a_self_play_game_are_the_live_policy(monkeypatch):
     decided = []
 
     def decide(*arguments):
-        action, memory, parts = decide_now(*arguments)
+        action, choice = decide_now(*arguments)
         decided.append(action)
-        return action, memory, parts
+        return action, choice
 
     decide_now = scripted.decide
     monkeypatch.setattr(scripted, "decide", decide)
@@ -262,12 +263,12 @@ def test_routing_gives_each_environment_its_own_members_step():
         member=chosen,
         slot=league.member_slot[chosen],
         opponent=torch.randn_like(carry.opponent),
+        reset=torch.zeros_like(carry.reset),  # a tick inside the games: the carries count
     )
     league.prepare(8, carry.slot)
     table = league.table
-    capacity = math.ceil(config.league_capacity_factor * 8 / 5)  # 5 members present
-    assert table.positions.shape[0] == capacity
-    assert len(table.slots) == 4  # the EMA's slot and 3 snapshots'
+    assert table.positions.shape[0] == league.width == 8  # C = L in the tests' setting
+    assert [entry[0] for entry in table.slots] == [0, 2, 3, 4]  # the EMA, the snapshots
     views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
     scripted_action = torch.full((16, state.exists.shape[1], 3), 1)
     action, new_carry = network_actions(config, league, views, carry, scripted_action, generator)
@@ -285,6 +286,56 @@ def test_routing_gives_each_environment_its_own_members_step():
         assert torch.allclose(
             new_carry.select(SEAT_AXIS, row), expected.select(SEAT_AXIS, row), atol=1e-4
         )
+
+
+def test_skipping_the_empty_slots_changes_no_move():
+    """The table runs only the slots holding weights; the merge fills the others with zero
+    fillers. The league side's move must equal the one from running every slot (the empty
+    ones on the live policy's weights, as the fixed table did): the same actions and carry,
+    bitwise, with each slot's sampling seeded by its slot (the random stream is per call)."""
+    torch.manual_seed(0)
+    config, game_config, policy, opponent, state, carry, generator = small(16, league=True)
+    league = opponent.league
+    add_snapshots(league, [model.Policy(model.ModelConfig()) for _ in range(2)])
+    chosen = torch.tensor([0, FIRST_SNAPSHOT, EMA, FIRST_SNAPSHOT + 1, 0, FIRST_SNAPSHOT, 0, EMA])
+    carry = dataclasses.replace(
+        carry,
+        member=chosen,
+        slot=league.member_slot[chosen],
+        opponent=torch.randn_like(carry.opponent),
+        reset=torch.zeros_like(carry.reset),
+    )
+    league.prepare(8, carry.slot)
+    skipped = league.table
+    assert len(skipped.slots) == 3 < skipped.count == league.slot_count
+    every = NetworkTable(
+        [
+            (index, torch.tensor(index), *split_weights(league.template, weights))
+            for index, weights in enumerate(
+                weights if weights is not None else stepper_weights(policy)
+                for weights in league.slot_weights
+            )
+        ],
+        skipped.positions,
+        skipped.count,
+    )
+    views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
+    scripted_action = torch.full((16, state.exists.shape[1], 3), 1)
+
+    def seeded(network_, slot, positions, views, carry, generator):
+        generator.manual_seed(int(slot))
+        return slot_actions(network_, slot, positions, views, carry, generator)
+
+    moves = []
+    for table in (skipped, every):
+        league.table = table
+        moves.append(
+            network_actions(config, league, views, carry, scripted_action, generator, seeded)
+        )
+    (action, new_carry), (every_action, every_carry) = moves
+    assert torch.equal(action, every_action)
+    assert torch.equal(new_carry, every_carry)
+    assert not torch.equal(new_carry[:, 1], carry.opponent[:, 1])  # the networks ran
 
 
 def test_snapshot_members_run_in_collect_and_update():

@@ -12,8 +12,8 @@ Time is the leading axis. The carry of a token is (4, width): row 0 the RG-LRU s
 tick with `fresh` 0 (an episode start) the whole carry is zeroed; after a tick with `keep`
 0 (a row that may not be attended) it is zeroed too; a state starting from zero takes its
 first input unscaled (no sqrt(1 - a^2)). `sequence` (T ticks) and `step` (T = 1) are the
-same code: the convolution reads its taps through the same cuts, and the recurrence is a
-doubling scan.
+same code: the convolution reads its taps through the same cuts, and the recurrence is one
+linear scan in float32 (lean.model.scan).
 """
 
 import math
@@ -22,26 +22,10 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from lean.model.scan import linear_scan
+
 TAPS = 4  # the convolution reads the current input and the 3 before it
 CONTRIBUTION_FLOOR = 1e-6  # v2's floor under 1 - a_t^2
-
-
-def doubling_scan(decay: Tensor, update: Tensor, initial: Tensor) -> tuple[Tensor, Tensor]:
-    """h_t = decay_t h_(t-1) + update_t over the leading axis from h_(-1) = initial, by
-    recursive doubling (log2 T rounds of whole-tensor products, no Python loop over T).
-    decay, update (T, ...); initial (...). Returns every h (T, ...) and the last.
-    Form of docs/rewrite/sections/framework-spike/update_bench.py `doubling_scan`."""
-    steps = update.shape[0]
-    update = torch.cat([decay[:1] * initial + update[:1], update[1:]])
-    distance = 1
-    while distance < steps:
-        update = torch.cat(
-            [update[:distance], update[distance:] + decay[distance:] * update[:-distance]]
-        )
-        if 2 * distance < steps:
-            decay = torch.cat([decay[:distance], decay[distance:] * decay[:-distance]])
-        distance *= 2
-    return update, update[-1]
 
 
 class Temporal(nn.Module):
@@ -139,7 +123,7 @@ class Temporal(nn.Module):
             torch.clamp_min(-torch.expm1(2.0 * log_retention), CONTRIBUTION_FLOOR)
         )
         scale = torch.where(continuing > 0.0, normalised, 1.0)
-        states, state = doubling_scan(
+        states, state = linear_scan(
             retention * fresh * keep, scale * input_gate * convolved * keep, carry[:, :, 0]
         )
 

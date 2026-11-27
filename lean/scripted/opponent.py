@@ -1,742 +1,1003 @@
-"""The scripted opponent: Imugi's combat core without doctrines, memory layers or Frontline.
+"""The scripted opponent: a look-ahead scoring agent (author 2026-11-26, design in
+docs/rewrite/sections/scripted-lookahead/progress.md and core-decisions.md "Scripted look-ahead").
 
-One decision per living ship per call, read from its team's view of the game (fog on: enemies
-as last seen, `lean.game.core.enemy_view`): the nearest remembered enemy kept with a factor (a
-remembered enemy's distance grows with the time since it was seen, and it is dropped once it
-could have flown out of sight),
-a drag-law lead in the medium, a logistic stick choice toward the lead point, logistic power
-and gun gates, a steer toward the centre near the arena edge, and one ordinary uniform draw
-per action head. Every ship characteristic is read from the game's constants
-(`state.constants`) by its name. Everything is (E, N): E environments, N ship slots.
+One decision per living ship per call, from what its team's observation carries (its own team
+as it is, enemies as last seen: `lean.game.core.enemy_view`), every ship characteristic read
+from the game's constants. Per ship:
 
-Action indices follow `lean.contract.State`: stick 0 straight, then (1, 2) gradual, (3, 4)
-middle, (5, 6) full; power 0 coast, 1 dive (store into speed), 2 climb (speed into
-store); fire 0 or 1.
+1. Candidate paths (lean.scripted.paths): the 21 flight actions (7 stick indices x 3 powers)
+   flown for the look-ahead points, for every ship (own ships as they are, enemies as seen).
+2. The nearest `ENEMIES` known enemies (a hidden one's distance grows with its roam; past the
+   roam cutoff it is dropped, and its weight falls linearly toward the cutoff).
+3. Pair tables: for each of them, every (my candidate a, his candidate b) at every point: my
+   score S_me[a, b] and his S_him[a, b] from one geometry pass (`pair_tables`), in score
+   seconds (lean.scripted.parameters): gun, threat, angles, energy, collision; his own-only
+   terms (speed, boundary, slow medium) join S_him.
+4. His reply collapsed per row (`collapse`): w(a, b) = softmax_b S_him[a, b] / tau_him; score(a)
+   = log(sum_b w e^(beta S_me[a, b])) / beta (beta -> 0: the weighted mean). Summed over the
+   enemies by their weights, plus my own-only terms (speed, boundary, fields: slow medium and
+   cover, the search for the centre when no enemy is known, collisions with team-mates who keep
+   their pending action) and the stickiness bonus for the pending flight action.
+5. Flight = softmax over the 21 scores at tau_me; fire = the trigger's probability now (aim and
+   range gates at the lead point, the hit worth firing, never through a team-mate, the gun
+   ready). The joint over the 42 actions is flight x fire; the only randomness is the sampling
+   (two uniforms per ship) and the persona drawn at the deal.
+
+Action indices follow `lean.contract`: stick 0 straight, (1, 2) Sustain, (3, 4) Max, (5, 6)
+Snap, the side by the game's stick table; power 0 coast, 1 dive, 2 climb; fire 0 or 1; joint =
+(stick x 3 + power) x 2 + fire.
 """
 
+import dataclasses
 import math
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import torch
 from torch import Tensor
 
-from lean.contract import random_keywords
-from lean.game.core import aspect_factor, built_once, enemy_view, slot_indices
+from lean.contract import FIRES, JOINT, POWERS, device_constant, random_keywords
+from lean.game import card
+from lean.game.core import (
+    SHOOTER_HIT_CONSTANTS,
+    TARGET_HIT_CONSTANTS,
+    enemy_view,
+    field_blocks,
+    hit_damage,
+    hit_width,
+    maximum,
+    medium,
+    minimum,
+    path_velocity,
+    slot_indices,
+    smootherstep,
+)
 
-from .parameters import GATES, STICK_GATES, Gate, ScriptedConfig, value
-from .situation import Situation, assess, signed_angle
+from . import kernels
+from . import paths as paths_module
+from .parameters import ScriptedConfig, value
+from .paths import CANDIDATES, FLIGHTS, POWER_LOOK, Paths, power_outlook, predict
 
-COAST, DIVE, CLIMB = 0, 1, 2
-TINY = 1e-6  # keeps lengths and ratios away from zero
-LOGIT_LIMIT = 30.0
+ENEMIES = 4  # the nearest known enemies each ship scores against
+MATES = 3  # the nearest team-mates whose pending path each ship keeps clear of
+# The crowd's reach for `store_crowd` (gun ranges; round 4, an experiment).
+CROWD_RANGE = 2.0
+TINY = 1e-6
+
+
+def intervals(points) -> tuple[float, ...]:
+    """Each look-ahead point stands for the time since the one before (seconds)."""
+    return tuple(b - a for a, b in zip((0.0,) + tuple(points[:-1]), points, strict=True))
 
 
 def draw_uniforms(
     envs: int, slots: int, generator: torch.Generator | None, device: torch.device | str
 ) -> Tensor:
-    """The random draw one `act` call needs: (E, N, 3) float32 uniform on [0, 1), one
-    per action head [stick, power, fire]."""
-    return torch.rand((envs, slots, 3), **random_keywords(generator, device))
-
-
-def fresh_memory(
-    envs: int, slots: int, generator: torch.Generator | None, device: torch.device | str
-) -> dict[str, Tensor]:
-    """The opponent's memory at the start of a match, which the caller carries from call to
-    call (every caller: collect, evaluation, the sandbox), (E, N) each:
-      "target" long, the kept target's slot (-1 for none);
-      "side" float32, +1 left or -1 right, drawn once per ship per match: the tie-break
-        when the plan's turn sense has no side to go by;
-      "sense" float32, the committed turn sense while he is aft of my 3/9 line: +1 left,
-        -1 right, 0 none;
-      "last_pass" float32, the plan and the angles off at the last commit: plan (+1
-        two-circle, -1 one-circle) x angles off (radians, > 0); 0 before the first."""
-    left = torch.rand((envs, slots), **random_keywords(generator, device)) < 0.5
-    zeros = torch.zeros((envs, slots), device=device)
-    return {
-        "target": torch.full((envs, slots), -1, dtype=torch.long, device=device),
-        "side": torch.where(left, 1.0, -1.0),
-        "sense": zeros,
-        "last_pass": zeros.clone(),
-    }
-
-
-def map_velocity(state) -> tuple[Tensor, Tensor, Tensor | None]:
-    """Each ship's velocity over the map (E, N), metres per second: the stored proper velocity
-    over the refractive index n at the ship; and n (E, N), or None without fields (n = 1)."""
-    if state.fields.shape[-1] == 0:
-        return state.velocity_x, state.velocity_y, None
-    index = torch.exp(state.log_index)
-    return state.velocity_x / index, state.velocity_y / index, index
+    """The random draw one call needs: (E, N, 2) float32 uniform on [0, 1), [flight, fire]."""
+    return torch.rand((envs, slots, 2), **random_keywords(generator, device))
 
 
 @dataclass
-class Engagement:
-    """Each ship's target geometry, (E, N) each; values are arbitrary where
-    `has_target` is False."""
+class Choice:
+    """One decision, (E, N, ...) each; rows that are not controlled are arbitrary."""
 
-    controlled: Tensor  # bool: rows of the acting team that exist and are alive
-    has_target: Tensor  # bool: controlled and a living enemy is known
-    target: Tensor  # long: the target's slot
-    offset_x: Tensor  # metres, target minus own position
-    offset_y: Tensor
-    distance: Tensor  # metres
-    target_velocity_x: Tensor  # metres per second over the map
-    target_velocity_y: Tensor
-    target_heading_cos: Tensor  # the target's nose direction
-    target_heading_sin: Tensor
-    target_speed: Tensor  # proper speed, metres per second
-    target_nose_rate: Tensor  # radians per second, positive to the left
-    target_energy: Tensor  # its store
-    target_shield: Tensor  # its shield
-    velocity_x: Tensor  # own velocity over the map
-    velocity_y: Tensor
-    ally_in_line: Tensor  # bool: a living team-mate is in the line of fire, nearer than the target
-    index: Tensor | None  # the refractive index at the ship; None without fields (1)
-
-
-def engage(
-    state,
-    team: int | None,
-    weakest_weight: Tensor | float = 0.0,
-    kept_target: Tensor | None = None,
-    keep_factor: float | Tensor = 1.0,
-    clearance: Tensor | float = 24.0,
-    enemies=None,
-    ghost_cutoff: Tensor | float = 1.0,
-) -> Engagement:
-    """Choose each ship's target: the candidate enemy with the smallest score, where the
-    score is the effective distance times (1 + weakest_weight * the enemy's store fraction;
-    skipped when the weight is the number 0). An enemy equal to `kept_target` has its score
-    multiplied by `keep_factor` (below 1), so it is kept unless another scores better by that
-    factor. A team-mate blocks the shot when it is ahead along the nose, nearer than the
-    target, and within `clearance` metres of the line of fire.
-
-    Under fog a remembered enemy is a ghost: its effective distance is the distance to where
-    it was last seen plus how far it could have flown since, the seconds since seen times its
-    sustained speed (the speed of the turning fight, where the yardstick spends its time; the
-    "roam"). A living enemy is a candidate while its roam is at most `ghost_cutoff` times the
-    arena radius: beyond that it could be anywhere in the arena, so its last spot says nothing
-    and it is dropped (seen again, it is a candidate again at once). Without fog, no roam.
-
-    team: the team whose rows act, or None for every ship of both teams (each against the
-    other team). Own ships and team-mates are read from `state`; enemies from `enemies`, the
-    state with every ship as its enemy team knows it (`lean.game.core.enemy_view`; default
-    `state`, as for a team view or with fog off)."""
-    enemies = state if enemies is None else enemies
-    present = state.exists & state.alive
-    controlled = present if team is None else present & (state.team == team)
-    same_team = state.team[:, :, None] == state.team[:, None, :]  # (E, own, other)
-    enemy = (enemies.exists & enemies.alive)[:, None, :] & ~same_team
-    c = state.constants
-    velocity_x, velocity_y, index = map_velocity(state)
-    enemy_x = enemies.x[:, None, :] - state.x[:, :, None]  # (E, own, other)
-    enemy_y = enemies.y[:, None, :] - state.y[:, :, None]
-    if enemies is state:
-        offset_x, offset_y = enemy_x, enemy_y
-    else:
-        offset_x = state.x[:, None, :] - state.x[:, :, None]
-        offset_y = state.y[:, None, :] - state.y[:, :, None]
-    score = torch.sqrt(enemy_x * enemy_x + enemy_y * enemy_y)
-    if state.ticks_since_seen is not None and enemies is not state:
-        seconds = state.ticks_since_seen.to(score.dtype) * c["tick_length"]
-        roam = (seconds * c["sustained_speed"])[:, None, :]  # (E, 1, other)
-        enemy = enemy & (roam <= _last(ghost_cutoff) * c["arena_radius"])
-        score = score + roam
-    if not (isinstance(weakest_weight, float) and weakest_weight == 0.0):
-        store = (enemies.energy * enemies.constants["inverse_max_energy"])[:, None, :]
-        score = score * (1.0 + weakest_weight[..., None] * store)
-    slots = slot_indices(state.x.shape[1], state.x.device).ship
-    if kept_target is not None:
-        score = torch.where(slots == kept_target[..., None], score * _last(keep_factor), score)
-    score = torch.where(enemy, score, math.inf)
-    target = score.argmin(-1)
-    if enemies is state:
-        enemy_velocity_x, enemy_velocity_y = velocity_x, velocity_y
-    else:
-        enemy_velocity_x, enemy_velocity_y, _ = map_velocity(enemies)
-    columns = (
-        enemies.x,
-        enemies.y,
-        enemy_velocity_x,
-        enemy_velocity_y,
-        enemies.heading_cos,
-        enemies.heading_sin,
-        enemies.speed,
-        enemies.nose_rate,
-        enemies.energy,
-        enemies.shield,
-    )
-    features = torch.stack(columns, -1)  # (E, N, 10)
-    chosen = torch.gather(features, 1, target[..., None].expand(-1, -1, len(columns)))
-    (
-        target_x,
-        target_y,
-        target_velocity_x,
-        target_velocity_y,
-        target_heading_cos,
-        target_heading_sin,
-        target_speed,
-        target_nose_rate,
-        target_energy,
-        target_shield,
-    ) = chosen.unbind(-1)
-    target_x = target_x - state.x
-    target_y = target_y - state.y
-    distance = torch.sqrt(target_x * target_x + target_y * target_y)
-    along = offset_x * state.heading_cos[..., None] + offset_y * state.heading_sin[..., None]
-    across = offset_x * state.heading_sin[..., None] - offset_y * state.heading_cos[..., None]
-    ally = present[:, None, :] & same_team & (slots[:, None] != slots[None, :])
-    blocking = ally & (along > 0.0) & (along < distance[..., None]) & (across.abs() < clearance)
-    return Engagement(
-        controlled=controlled,
-        has_target=controlled & enemy.any(-1),
-        target=target,
-        offset_x=target_x,
-        offset_y=target_y,
-        distance=distance,
-        target_velocity_x=target_velocity_x,
-        target_velocity_y=target_velocity_y,
-        target_heading_cos=target_heading_cos,
-        target_heading_sin=target_heading_sin,
-        target_speed=target_speed,
-        target_nose_rate=target_nose_rate,
-        target_energy=target_energy,
-        target_shield=target_shield,
-        velocity_x=velocity_x,
-        velocity_y=velocity_y,
-        ally_in_line=blocking.any(-1),
-        index=index,
-    )
-
-
-@dataclass
-class Marginals:
-    """The three independent action distributions of one decision; they are also the
-    soft labels for behaviour cloning. Rows that are not controlled are arbitrary."""
-
-    stick: Tensor  # (E, N, 7), sums to 1
-    power: Tensor  # (E, N, 3), sums to 1: coast, dive, climb
-    fire: Tensor  # (E, N), probability of firing
+    joint: Tensor  # (E, N, JOINT): the distribution over the 42 actions (the BC teacher's)
+    flight: Tensor  # (E, N, 21): over flight = stick x 3 + power (stick x power)
+    fire: Tensor  # (E, N): the probability of firing
+    scores: Tensor  # (E, N, 7): the stick scores, score seconds (at the table power)
+    power_scores: Tensor  # (E, N, 3): the power scores, score seconds (the power look)
     controlled: Tensor  # (E, N) bool
-    target: Tensor  # (E, N) long, the chosen target's slot
+    enemies: Tensor  # (E, N, ENEMIES) long: the enemies scored against (slots)
+    enemy_weight: Tensor  # (E, N, ENEMIES): their weights (0: none there)
 
 
-TACTICS = ("disengaged", "merge", "offensive", "turning", "defensive")
+def _lay(value: Tensor | float, dims: int) -> Tensor | float:
+    """A per-ship value (E, N) with `dims` trailing axes added; a number as it is."""
+    if isinstance(value, Tensor):
+        return value.reshape(value.shape + (1,) * dims)
+    return value
 
 
-@dataclass
-class Explanation:
-    """One decision with its reasons, (E, N) each: the marginals and what led to them (for
-    tests, measurements and the sandbox)."""
-
-    marginals: Marginals
-    situation: Situation
-    weights: dict[str, Tensor]  # by TACTICS, sum to 1
-    speed_target: Tensor  # v*, metres per second
-    cap: Tensor  # the share of the full stick level folded into the middle one
-    stick_error: Tensor  # radians to the wanted direction, positive left
-    gun_error: Tensor  # radians to the gun's lead point, positive left
-    sense: Tensor  # the committed turn sense after this decision (memory "sense")
-    last_pass: Tensor  # memory "last_pass" after this decision
+def _per_ship(value, state) -> Tensor:
+    """A constant as an (E, N) tensor."""
+    return torch.as_tensor(value, dtype=state.x.dtype, device=state.x.device).expand_as(state.x)
 
 
-def _per_other(value: Tensor | float) -> Tensor | float:
-    """A per-ship value (E, N) laid along the "other ship" axis of (E, own, other) pairs."""
-    return value[:, None, :] if isinstance(value, Tensor) else value
+def _exp(value: Tensor | float) -> Tensor | float:
+    """e to a tensor or a number."""
+    return torch.exp(value) if isinstance(value, Tensor) else math.exp(value)
 
 
-def explain(
-    config: ScriptedConfig,
-    state,
-    team: int | None,
-    persona: dict[str, Tensor] | None,
-    memory: dict[str, Tensor],
-) -> Explanation:
-    """The opponent's action distributions (`marginals`) for the rows of `team`, or of every
-    ship of both teams when `team` is None (one call for both: each ship decides exactly as
-    in its own team's call), with their reasons.
+def _at(value: Tensor | float, index: Tensor) -> Tensor | float:
+    """A per-ship value (E, N) read at slots `index` (E, N, K) -> (E, N, K); a number as it is."""
+    if not isinstance(value, Tensor):
+        return value
+    envs, slots, count = index.shape
+    return value.gather(1, index.reshape(envs, slots * count)).view(envs, slots, count)
 
-    state: `lean.contract.State`; persona: from `personas` (None: the yardstick); memory:
-    from `fresh_memory`, as `act` last returned it. Under fog each ship reads only its team's
-    view: its own team as it is, enemies at their last sighting (`enemy_view`), none never
-    seen. The stages (docs/rewrite/scripted-bfm-design.md B1):
-    target, assessment, tactic weights, commands mixed as scalars (speed target, stick cap),
-    control laws (stick, power, gun)."""
+
+# The path fields the pair stage reads per candidate and point (the kernel's order).
+PATH_FIELDS = kernels.FIELDS
+
+
+def _gather_paths(paths: Paths, index: Tensor) -> dict[str, Tensor]:
+    """The candidate paths of slots `index` (E, N, K): each field (E, N, K, C, P), gathered
+    field by field (an indexed read the consumers fuse; no stacked copy)."""
+    envs, slots, count = index.shape
+    shape = paths.x.shape[2:]
+    rows = index.reshape(envs, slots * count, 1, 1).expand(-1, -1, *shape)
+
+    def gathered(field: Tensor) -> Tensor:
+        return field.gather(1, rows).view(envs, slots, count, *shape)
+
+    return {name: gathered(getattr(paths, name)) for name in PATH_FIELDS}
+
+
+def _own(paths: Paths) -> dict[str, Tensor]:
+    """A ship's own candidate paths laid as (E, N, 1, C, P)."""
+    names = PATH_FIELDS
+    return {name: getattr(paths, name)[:, :, None] for name in names}
+
+
+def time_weights(horizon: Tensor | float, device, points=None) -> Tensor:
+    """(P,) or (E, N, P): each point's weight, its interval discounted by e^(-t / horizon);
+    the look-ahead's points unless `points` are given."""
+    points = paths_module.LOOK_AHEAD if points is None else points
+    times = device_constant(points, device)
+    return device_constant(intervals(points), device) * torch.exp(-times / _lay(horizon, 1))
+
+
+def own_components(c, paths: Paths, margin) -> Paths:
+    """The paths with their own-only rates per point (unweighted) attached: boundary (in the
+    edge band, more flying outward; growing past the edge) and slow (ln n in half-octaves where
+    the medium is slow). The speed term reads the paths' speed. `c` the ships' constants
+    ((E, N) rows of the paths' slots); `margin` the boundary margin (turn radii), a number or
+    the slots' own rows (E, N)."""
+    distance = torch.sqrt(paths.x * paths.x + paths.y * paths.y).clamp_min(TINY)
+    over_corner = paths.speed * _lay(c["inverse_corner_speed"], 2)
+    turn_radius = _lay(c["sustained_radius"], 2) * (over_corner * over_corner).clamp_min(1.0)
+    margin = _lay(margin, 2) * turn_radius
+    depth = (distance - (c["arena_radius"] - margin)) / margin
+    outward = (paths.x * paths.path_cos + paths.y * paths.path_sin) / distance
+    boundary = smootherstep(depth.clamp(0.0, 1.0)) * 0.5 * (1.0 + outward)
+    boundary = boundary + (depth - 1.0).clamp_min(0.0)
+    slow = paths.log_index.clamp_min(0.0) / card.LN_SQRT2
+    return dataclasses.replace(paths, boundary=boundary, slow=slow)
+
+
+def own_score(speed, boundary, slow, log_preferred, weights, point_weight) -> Tensor:
+    """The own-only score per candidate (the points summed): - speed weight x |ln(speed /
+    preferred)| - boundary weight x boundary - field weight x slow, each rate weighted by the
+    points' time weights. Fields (..., P); `weights` (speed, boundary, field) and
+    `log_preferred` laid to broadcast against them."""
+    speed_weight, boundary_weight, field_weight = weights
+    rate = (
+        speed_weight * (torch.log(speed.clamp_min(TINY)) - log_preferred).abs()
+        + boundary_weight * boundary
+        + field_weight * slow
+    )
+    return -(rate * point_weight).sum(-1)
+
+
+def _laid_constants(constants, index: Tensor | None, dims: int) -> dict:
+    """The constants the scores read, per ship (index None: (E, N) + `dims` axes) or at slots
+    `index` (E, N, K) + `dims` - 1 axes."""
+    names = (
+        "hit_radius",
+        "core_radius",
+        "nose_inner_cos",
+        "inverse_nose_width",
+        "inverse_max_energy",
+        "inverse_corner_speed",
+        "corner_speed",
+        "sustained_radius",
+        "sustained_speed",
+        "gun_range",
+        "bullet_drag",
+        "bullet_launch_speed",
+        "muzzle_speed",
+        "inverse_reference_bullet_speed",
+        "explosive_share",
+        "inverse_collision_speed",
+        "hit_damage",
+        "arena_radius",
+        *(name for name in TARGET_HIT_CONSTANTS if name not in ("hit_radius", "core_radius")),
+    )
+    laid = {}
+    for name in names:
+        item = constants[name]
+        if index is not None:
+            item = _at(item, index)
+            laid[name] = _lay(item, dims - 1)
+        else:
+            laid[name] = _lay(item, dims)
+    widths = _widths_at(constants, index)
+    extra = dims - 1 if index is not None else dims
+    laid["hit_widths"] = widths.reshape(widths.shape[:-1] + (1,) * extra + widths.shape[-1:])
+    return laid
+
+
+def _widths_at(constants, index: Tensor | None) -> Tensor:
+    """The game's hit widths by aspect (core.hit_widths, a constants column) per ship, (E, N,
+    POINTS), or at slots `index` (E, N, K): (E, N, K, POINTS)."""
+    widths = constants["hit_widths"].movedim(1, -1)
+    if index is None:
+        return widths
+    envs, slots, count = index.shape
+    flat = index.reshape(envs, slots * count, 1).expand(-1, -1, widths.shape[-1])
+    return widths.gather(1, flat).view(envs, slots, count, -1)
+
+
+def _flight_time(distance, c, cap, index):
+    """The bullet's time of flight to `distance` by the drag law, in a medium of index n (its
+    map speed is its proper speed over n), the distance capped."""
+    drag = c["bullet_drag"]
+    reach = minimum(distance, cap)
+    return torch.expm1(drag * reach) * index / (drag * c["bullet_launch_speed"])
+
+
+def gun_solution(rel_x, rel_y, nose_x, nose_y, velocity_x, velocity_y, target, shooter, time, read):
+    """The shooter's gun solution on the target, (0 to 1): its nose against the lead point
+    (the drag law's time of flight in the shooter's medium), the tolerance the target's size
+    plus the look-ahead's blur at `time`; inside the gun range (a smoothstep from 0.8 to 1.2
+    gun ranges); the hit's worth by the game's hit model (`hit_worth`: kinetic at that
+    distance, the target's nose cone at the bullet's path). rel: target minus shooter;
+    velocity: target minus shooter over the map. `target`, `shooter`: dicts of constants and
+    the paths' nose and log index. The target's size is half the game's hit width at the
+    bullet's aspect (core.hit_width on the hit_widths column: the deflector's turn)."""
+    distance_squared = rel_x * rel_x + rel_y * rel_y
+    distance = torch.sqrt(distance_squared + TINY)
+    gun_range = shooter["gun_range"]
+    dims = distance.dim() - 2
+    flight = _flight_time(
+        distance, shooter, read("lead_cap", dims) * gun_range, torch.exp(shooter["log_index"])
+    )
+    lead_x = rel_x + velocity_x * flight
+    lead_y = rel_y + velocity_y * flight
+    lead_length = torch.sqrt(lead_x * lead_x + lead_y * lead_y + TINY)
+    off = 1.0 - (nose_x * lead_x + nose_y * lead_y) / lead_length  # 1 - cos(aim error)
+    hit_cos = -(shooter["bullet_x"] * target["nose_cos"] + shooter["bullet_y"] * target["nose_sin"])
+    # The target's size: half the game's hit width at the bullet's aspect (the deflector).
+    half_width = 0.5 * hit_width(target["hit_widths"], hit_cos)
+    tolerance = half_width / distance + read("aim_blur", dims) * time
+    tolerance = maximum(tolerance, 0.5 * read("target_size_minimum", dims))
+    aligned = torch.exp(-off / (tolerance * tolerance))
+    band = ((distance / gun_range - 0.8) / 0.4).clamp(0.0, 1.0)
+    in_range = 1.0 - band * band * (3.0 - 2.0 * band)
+    return aligned * in_range * hit_worth(shooter, target, distance, hit_cos)
+
+
+def hit_worth(shooter, target, distance, hit_cos) -> Tensor:
+    """A dead-centre hit's damage as a share of the shooter's hit damage, by the game's hit model
+    (`core.hit_damage`, the one call): the bullet launched at the shooter's
+    `bullet_launch_speed` slowed by the drag law over `distance` (speed x e^(-drag d)), the
+    target's nose cone at `hit_cos`. `shooter`, `target`: constants by name, laid to broadcast."""
+    speed = shooter["bullet_launch_speed"] * torch.exp(-shooter["bullet_drag"] * distance)
+    centre = torch.zeros_like(speed)
+    return hit_damage(shooter, target, speed, centre, hit_cos) / shooter["hit_damage"]
+
+
+def _bullet_direction(paths: dict[str, Tensor], c) -> tuple[Tensor, Tensor]:
+    """The launch direction (the ship's map velocity plus the muzzle speed along the nose)."""
+    launch_x = paths["world_speed"] * paths["path_cos"] + c["muzzle_speed"] * paths["nose_cos"]
+    launch_y = paths["world_speed"] * paths["path_sin"] + c["muzzle_speed"] * paths["nose_sin"]
+    inverse = torch.rsqrt(launch_x * launch_x + launch_y * launch_y + TINY)
+    return launch_x * inverse, launch_y * inverse
+
+
+def _contact(previous_x, previous_y, rel_x, rel_y, duration, reach, inverse_collision_speed):
+    """A predicted contact on one segment: the relative positions at its two ends, straight
+    between; the closest distance's closeness exp(-(d / reach)^2) times the closing speed in
+    collision-damage units (a full shield at 1, `lean.game.core.collisions`)."""
+    move_x, move_y = rel_x - previous_x, rel_y - previous_y
+    move_squared = move_x * move_x + move_y * move_y + TINY
+    along = (-(previous_x * move_x + previous_y * move_y) / move_squared).clamp(0.0, 1.0)
+    closest_x, closest_y = previous_x + along * move_x, previous_y + along * move_y
+    closest_squared = closest_x * closest_x + closest_y * closest_y
+    closing = torch.sqrt(move_squared) / duration
+    return torch.exp(-closest_squared / (reach * reach)) * closing * inverse_collision_speed
+
+
+def pair_tables(mine, his, my_c, his_c, now_rel, weights, horizon, read):
+    """S_me and S_him (E, N, K, C, C), score seconds, summed over the look-ahead points: my
+    candidates on axis -2, his on -1. `mine` (E, N, 1, C, 1, P) and `his` (E, N, K, 1, C, P)
+    path fields; constants laid to broadcast; `now_rel` (E, N, K, 1, 1) x and y of him minus me
+    now (the first segment's start); `weights` the term weights; `horizon` per ship."""
+    my_bullet = _bullet_direction(mine, my_c)
+    his_bullet = _bullet_direction(his, his_c)
+    me_shooting = {**my_c, "bullet_x": my_bullet[0], "bullet_y": my_bullet[1]}
+    him_shooting = {**his_c, "bullet_x": his_bullet[0], "bullet_y": his_bullet[1]}
+    reach = read("collision_margin", 3) * (my_c["hit_radius"] + his_c["hit_radius"])
+    closeness_range = read("closeness_range", 3) * my_c["gun_range"]
+    s_me = s_him = 0.0
+    previous_x, previous_y = now_rel
+    started = 0.0
+    for k, time in enumerate(paths_module.LOOK_AHEAD):
+
+        def at(fields, name):
+            return fields[name][..., k]
+
+        rel_x = at(his, "x") - at(mine, "x")
+        rel_y = at(his, "y") - at(mine, "y")
+        my_velocity_x = at(mine, "world_speed") * at(mine, "path_cos")
+        my_velocity_y = at(mine, "world_speed") * at(mine, "path_sin")
+        his_velocity_x = at(his, "world_speed") * at(his, "path_cos")
+        his_velocity_y = at(his, "world_speed") * at(his, "path_sin")
+        velocity_x, velocity_y = his_velocity_x - my_velocity_x, his_velocity_y - my_velocity_y
+        my_nose = {"nose_cos": at(mine, "nose_cos"), "nose_sin": at(mine, "nose_sin")}
+        his_nose = {"nose_cos": at(his, "nose_cos"), "nose_sin": at(his, "nose_sin")}
+        me_shooting.update(
+            log_index=at(mine, "log_index"),
+            bullet_x=my_bullet[0][..., k],
+            bullet_y=my_bullet[1][..., k],
+        )
+        him_shooting.update(
+            log_index=at(his, "log_index"),
+            bullet_x=his_bullet[0][..., k],
+            bullet_y=his_bullet[1][..., k],
+        )
+        gun = gun_solution(
+            rel_x,
+            rel_y,
+            my_nose["nose_cos"],
+            my_nose["nose_sin"],
+            velocity_x,
+            velocity_y,
+            {**his_c, **his_nose},
+            me_shooting,
+            time,
+            read,
+        )
+        threat = gun_solution(
+            -rel_x,
+            -rel_y,
+            his_nose["nose_cos"],
+            his_nose["nose_sin"],
+            -velocity_x,
+            -velocity_y,
+            {**my_c, **my_nose},
+            him_shooting,
+            time,
+            read,
+        )
+        distance = torch.sqrt(rel_x * rel_x + rel_y * rel_y + TINY)
+        my_off = (my_nose["nose_cos"] * rel_x + my_nose["nose_sin"] * rel_y) / distance
+        his_off = -(his_nose["nose_cos"] * rel_x + his_nose["nose_sin"] * rel_y) / distance
+        angles = 0.5 * (my_off - his_off)  # +1 nose on and on his tail, -1 he on mine
+        my_speed, his_speed = at(mine, "speed"), at(his, "speed")
+        energy = (
+            0.5 * (my_speed * my_speed - his_speed * his_speed)
+            + at(mine, "energy")
+            - at(his, "energy")
+        ) * my_c["inverse_max_energy"]
+        near = closeness_range / (distance + closeness_range)
+        near = near * near / (near * near + (1.0 - near) * (1.0 - near))  # 1 / (1 + (d / r)^2)
+        position = near * (weights["angles"] * angles + weights["energy"] * energy)
+        # The engagement range (McGrew): each side's angular score times his range peak.
+        my_peak = torch.exp(
+            -(distance - read("desired_range", 3) * my_c["gun_range"]).abs()
+            / (read("range_width", 3) * my_c["gun_range"])
+        )
+        his_peak = torch.exp(
+            -(distance - read("desired_range", 3) * his_c["gun_range"]).abs()
+            / (read("range_width", 3) * his_c["gun_range"])
+        )
+        my_range = weights["aggression"] * 0.5 * (1.0 + angles) * my_peak
+        his_range = weights["aggression"] * 0.5 * (1.0 - angles) * his_peak
+        contact = _contact(
+            previous_x,
+            previous_y,
+            rel_x,
+            rel_y,
+            time - started,
+            reach,
+            my_c["inverse_collision_speed"],
+        )
+        weight = _lay(horizon[..., k], 3)
+        discount = _exp(-time / read("horizon", 3))
+        collision = weights["collision"] * contact * discount
+        s_me = s_me + weight * (gun - weights["threat"] * threat + position + my_range) - collision
+        s_him = (
+            s_him + weight * (threat - weights["threat"] * gun - position + his_range) - collision
+        )
+        previous_x, previous_y = rel_x, rel_y
+        started = time
+    return s_me, s_him
+
+
+def collapse(s_me: Tensor, s_him: Tensor, reply_temperature, caution) -> Tensor:
+    """His columns collapsed per row: w(a, b) = softmax over b of S_him[a, b] / tau_him; score(a)
+    = (1 / beta) log(sum_b w(a, b) e^(beta S_me[a, b])), stably: the weighted mean m plus (1 /
+    beta) log sum_b w e^(beta (S_me - m)), and m + beta / 2 x the weighted variance where |beta|
+    is below 1e-3 (its limit). Shapes (..., C, C) -> (..., C); the parameters (E, N) or numbers
+    for (E, N, K, C, C)."""
+    log_w = torch.log_softmax(s_him / _lay(reply_temperature, 3), -1)
+    w = log_w.exp()
+    mean = (w * s_me).sum(-1, keepdim=True)
+    centred = s_me - mean
+    beta = _lay(caution, 2) if isinstance(caution, Tensor) else caution
+    if isinstance(beta, Tensor):
+        beta = beta.expand(mean.shape[:-2] + (1,))
+        small = beta.abs() < 1e-3
+        safe = torch.where(small, 1.0, beta)
+        exact = torch.logsumexp(log_w + safe[..., None] * centred, -1) / safe
+        variance = (w * centred * centred).sum(-1)
+        spread = torch.where(small, 0.5 * beta * variance, exact)
+    elif abs(beta) < 1e-3:
+        spread = 0.5 * beta * (w * centred * centred).sum(-1)
+    else:
+        spread = torch.logsumexp(log_w + beta * centred, -1) / beta
+    return mean[..., 0] + spread
+
+
+RECKON_TURN = 2.0  # seconds: a hidden enemy keeps his last nose rate this long, then flies straight
+
+
+def dead_reckon(enemies, seconds: Tensor):
+    """Every ship as its enemy team knows it, carried forward from its last sighting by
+    `seconds` (E, N) since seen (author 2026-11-26): its last speed and nose rate for up to
+    RECKON_TURN seconds (the arc, as the candidate paths fly one), then straight on; the medium at
+    the new place. A visible ship (0 s) is unchanged. No worst case for the hidden stretch: the
+    caution inside the look-ahead covers that."""
+    turning = seconds.clamp_max(RECKON_TURN)
+    straight = seconds - turning
+    has_fields = enemies.fields.shape[-1] > 0
+    inverse_index = torch.exp(-enemies.log_index) if has_fields else 1.0
+    speed = enemies.speed * inverse_index
+    rate = enemies.nose_rate
+    path = torch.atan2(enemies.heading_sin, enemies.heading_cos) - enemies.angle
+    turned = rate * turning
+    half = 0.5 * turned
+    chord = torch.where(half.abs() < 1e-3, 1.0 - half * half / 6.0, torch.sin(half) / half)
+    arc = speed * turning * chord
+    end = path + turned
+    x = enemies.x + arc * torch.cos(path + half) + speed * straight * torch.cos(end)
+    y = enemies.y + arc * torch.sin(path + half) + speed * straight * torch.sin(end)
+    heading = end + enemies.angle
+    heading_cos, heading_sin = torch.cos(heading), torch.sin(heading)
+    nose_rate = torch.where(seconds > RECKON_TURN, 0.0, rate)
+    changes = dict(x=x, y=y, heading_cos=heading_cos, heading_sin=heading_sin, nose_rate=nose_rate)
+    if has_fields:
+        log_index, gradient_x, gradient_y = medium(enemies.fields, x, y)
+        changes.update(log_index=log_index, gradient_x=gradient_x, gradient_y=gradient_y)
+    velocity_x, velocity_y = path_velocity(
+        enemies.speed, heading_cos, heading_sin, enemies.angle_cos, enemies.angle_sin
+    )
+    return enemies.replace(**changes, velocity_x=velocity_x, velocity_y=velocity_y)
+
+
+def _seek(state, enemies, own_paths: Paths, point_weight: Tensor, read) -> Tensor:
+    """Per candidate (E, N, C): the time-weighted heading toward the freshest dropped enemy's
+    last-seen position (0 to 1 per second: 1 flying straight at it), 0 when none is dropped."""
+    c = state.constants
+    if state.ticks_since_seen is None:
+        return torch.zeros_like(own_paths.x[..., 0])
+    same_team = state.team[:, :, None] == state.team[:, None, :]
+    seen_alive = (enemies.exists & enemies.alive)[:, None, :] & ~same_team
+    seconds = state.ticks_since_seen.to(state.x.dtype) * c["tick_length"]
+    roam = (seconds * c["sustained_speed"])[:, None, :]
+    dropped = seen_alive & (roam > read("roam_cutoff", 1) * c["arena_radius"])
+    freshest = torch.where(dropped, seconds[:, None, :], math.inf).min(-1)
+    has = torch.isfinite(freshest.values)
+    sighted = enemy_view(state)  # the last-seen rows, not reckoned
+    last_x = sighted.x.gather(1, freshest.indices)
+    last_y = sighted.y.gather(1, freshest.indices)
+    to_x = last_x[..., None, None] - own_paths.x
+    to_y = last_y[..., None, None] - own_paths.y
+    length = torch.sqrt(to_x * to_x + to_y * to_y + TINY)
+    toward = (own_paths.path_cos * to_x + own_paths.path_sin * to_y) / length
+    return (0.5 * (1.0 + toward) * point_weight).sum(-1) * has[..., None]
+
+
+def nearest_enemies(state, enemies, roam_cutoff) -> tuple[Tensor, Tensor, Tensor]:
+    """Per ship (E, N, ENEMIES): the nearest known living enemies' slots, their weights, and
+    whether there is one. A hidden enemy's distance is its last-seen distance plus its roam
+    (seconds since seen x its sustained speed); it is a candidate while the roam is at most the
+    cutoff (arena radii) and weighs 1 - roam / (cutoff x arena radius). Fewer than ENEMIES:
+    the rest are absent (weight 0, slot 0). Without fog no roam."""
+    c = state.constants
+    envs, slots = state.x.shape
+    same_team = state.team[:, :, None] == state.team[:, None, :]
+    known = (enemies.exists & enemies.alive)[:, None, :] & ~same_team
+    offset_x = enemies.x[:, None, :] - state.x[:, :, None]
+    offset_y = enemies.y[:, None, :] - state.y[:, :, None]
+    distance = torch.sqrt(offset_x * offset_x + offset_y * offset_y)
+    limit = _lay(roam_cutoff, 1) * c["arena_radius"]
+    if state.ticks_since_seen is not None:
+        seconds = state.ticks_since_seen.to(distance.dtype) * c["tick_length"]
+        roam = (seconds * c["sustained_speed"])[:, None, :].expand_as(distance)
+    else:
+        roam = torch.zeros_like(distance)
+    known = known & (roam <= limit)
+    score = torch.where(known, distance + roam, math.inf)
+    padding = torch.full((envs, slots, ENEMIES), math.inf, device=score.device)
+    nearest = torch.cat([score, padding], -1).topk(ENEMIES, -1, largest=False)
+    present = torch.isfinite(nearest.values)
+    slot = torch.where(present, nearest.indices, 0).clamp_max(slots - 1)
+    roam_there = roam.gather(-1, slot)
+    weight = torch.where(present, (1.0 - roam_there / limit).clamp(0.0, 1.0), 0.0)
+    return slot, weight, present
+
+
+def nearest_mates(state) -> tuple[Tensor, Tensor]:
+    """Per ship (E, N, MATES): the nearest living team-mates' slots and whether there is one."""
+    envs, slots = state.x.shape
+    alive = state.exists & state.alive
+    index = slot_indices(slots, state.x.device).ship
+    mate = (
+        (state.team[:, :, None] == state.team[:, None, :])
+        & alive[:, None, :]
+        & (index[:, None] != index[None, :])
+    )
+    offset_x = state.x[:, None, :] - state.x[:, :, None]
+    offset_y = state.y[:, None, :] - state.y[:, :, None]
+    score = torch.where(mate, offset_x * offset_x + offset_y * offset_y, math.inf)
+    padding = torch.full((envs, slots, MATES), math.inf, device=score.device)
+    nearest = torch.cat([score, padding], -1).topk(MATES, -1, largest=False)
+    present = torch.isfinite(nearest.values)
+    return torch.where(present, nearest.indices, 0).clamp_max(slots - 1), present
+
+
+def explain(config: ScriptedConfig, state, team: int | None, persona) -> Choice:
+    """The look-ahead agent's distributions for the rows of `team`, or of every ship of both
+    teams when `team` is None (each ship decides exactly as in its own team's call)."""
     c = state.constants
     enemies = enemy_view(state)
-    gun_range = c["gun_range"]
+    envs, slots = state.x.shape
+    device = state.x.device
 
-    def read(name: str) -> Tensor | float:
-        return value(config, persona, name)
+    def read(name: str, dims: int = 0):
+        """A parameter: a number, or the persona's (E, N) with `dims` trailing axes."""
+        return _lay(value(config, persona, name), dims)
 
-    # Target.
-    fight = engage(
-        state,
-        team,
-        read("weakest_weight"),
-        memory["target"],
-        read("target_keep_factor"),
-        clearance=_per_other(read("ally_clearance") * c["hit_radius"]),
-        enemies=enemies,
-        ghost_cutoff=read("ghost_cutoff"),
+    has_fields = state.fields.shape[-1] > 0
+    present = state.exists & state.alive
+    controlled = present if team is None else present & (state.team == team)
+    if enemies is not state:  # fog: hidden enemies carried forward from their last sighting
+        enemies = dead_reckon(enemies, state.ticks_since_seen.to(state.x.dtype) * c["tick_length"])
+    enemy_slot, enemy_weight, _ = nearest_enemies(state, enemies, read("roam_cutoff"))
+    engaged = enemy_weight.sum(-1).clamp(0.0, 1.0)
+    # The crowd (round 4, an experiment): the scored enemies within CROWD_RANGE gun ranges.
+    crowd_x = _at(enemies.x, enemy_slot) - state.x[..., None]
+    crowd_y = _at(enemies.y, enemy_slot) - state.y[..., None]
+    near = (crowd_x * crowd_x + crowd_y * crowd_y) < (CROWD_RANGE * _lay(c["gun_range"], 1)) ** 2
+    crowd = (enemy_weight * near).sum(-1)
+    own_paths, seen_paths, power_scores = _predict_views(
+        c, state, enemies, config, read, engaged, crowd
     )
-    has_target = fight.has_target
-    safe_distance = fight.distance.clamp_min(TINY)
-    range_ratio = safe_distance / gun_range
-    situation = assess(state, fight, read("turning_floor"))
+    horizon = time_weights(read("horizon"), device)
+    if horizon.dim() == 1:
+        horizon = horizon.expand(envs, slots, -1)
+    own_weights = tuple(read(name) for name in ("speed_weight", "boundary_weight", "field_weight"))
+    now_x = _at(enemies.x, enemy_slot) - state.x[..., None]  # (E, N, K): him minus me now
+    now_y = _at(enemies.y, enemy_slot) - state.y[..., None]
+    if kernels.USE_KERNEL and device.type == "cuda":
+        collapsed, cover = _pair_kernel(
+            c, state.fields, own_paths, seen_paths, enemy_slot, now_x, now_y, horizon, read
+        )
+    else:  # the plain twin: the tables (E, N, ENEMIES, C, C), then the collapse
+        his_paths = _gather_paths(seen_paths, enemy_slot)  # (E, N, K, C, P)
+        # His own-only terms, with my weights and my preferred speed for his type.
+        his_corner = _at(_per_ship(enemies.constants["corner_speed"], state), enemy_slot)
+        log_preferred = torch.log(read("preferred_speed", 1) * his_corner)
+        his_own = own_score(
+            his_paths["speed"],
+            his_paths["boundary"],
+            his_paths["slow"],
+            _lay(log_preferred, 2),
+            tuple(_lay(weight, 3) for weight in own_weights),
+            horizon[:, :, None, None, :],
+        )  # (E, N, K, C)
+        mine = {name: item[:, :, :, :, None] for name, item in _own(own_paths).items()}
+        his = {name: item[:, :, :, None] for name, item in his_paths.items()}
+        my_c = _laid_constants(c, None, 3)
+        his_c = _laid_constants(enemies.constants, enemy_slot, 3)
+        now_rel = (now_x[..., None, None], now_y[..., None, None])
+        weights = {
+            "threat": read("threat_weight", 3),
+            "angles": read("angles_weight", 3),
+            "energy": read("energy_weight", 3),
+            "collision": read("collision_weight", 3),
+            "aggression": read("aggression", 3),
+        }
+        s_me, s_him = pair_tables(mine, his, my_c, his_c, now_rel, weights, horizon, read)
+        s_him = s_him + his_own[..., None, :]
+        collapsed = collapse(s_me, s_him, read("reply_temperature"), read("caution"))
+        cover = covered(state.fields, own_paths, his_paths, horizon) if has_fields else None
+    scores = (enemy_weight[..., None] * collapsed).sum(-2)
 
-    # The gun's lead point: where the target is, relative to the shooter, when a bullet fired
-    # now arrives. The bullet inherits the shooter's velocity, so the relative velocity
-    # carries it. In a medium of index n a bullet's map speed is its proper speed over n, so
-    # its time of flight is n times longer (the shooter's index taken for the whole path).
-    lead_distance = range_ratio.clamp_max(read("lead_cap"))
-    bullet_drag = c["bullet_drag"]
-    flight_time = torch.expm1(bullet_drag * gun_range * lead_distance) * (
-        read("lead_gain") / (bullet_drag * c["bullet_launch_speed"])
+    # My own-only terms.
+    point_weight = horizon[:, :, None, :]  # (E, N, 1, P)
+    log_preferred = _lay(
+        torch.log(read("preferred_speed") * _per_ship(c["corner_speed"], state)), 2
     )
-    if fight.index is not None:
-        flight_time = flight_time * fight.index
-    aim_x = fight.offset_x + (fight.target_velocity_x - fight.velocity_x) * flight_time
-    aim_y = fight.offset_y + (fight.target_velocity_y - fight.velocity_y) * flight_time
-    gun_error = signed_angle(state.heading_cos, state.heading_sin, aim_x, aim_y)
-    turn_needed = gun_error.abs()
-
-    # The fight's gates in one logistic.
-    target_size = (2.0 * torch.atan(c["hit_radius"] / safe_distance)).clamp(
-        read("target_size_minimum"), read("target_size_maximum")
+    scores = scores + own_score(
+        own_paths.speed,
+        own_paths.boundary,
+        own_paths.slow,
+        log_preferred,
+        tuple(_lay(weight, 2) for weight in own_weights),
+        point_weight,
     )
-    fight_speed = read("fight_speed") * c["sustained_speed"]
-    gate = _gates(
-        config,
-        persona,
-        GATES,
-        {
-            "engaged": range_ratio,
-            "front": situation.bearing.abs(),
-            "rear": situation.aspect,
-            "scissors": safe_distance / c["sustained_radius"],
-            "level_cap": state.speed / c["middle_stick_speed"],
-            "aligned": turn_needed / target_size,
-            "in_range": range_ratio,
-        },
+    # No enemy known (author 2026-11-26): no goal point. A preference for energy (speed^2 / 2 +
+    # store, in full stores) and a gentle seek toward the freshest dropped last-seen position.
+    disengaged = _lay(1.0 - enemy_weight.sum(-1).clamp(0.0, 1.0), 1)
+    stored = (0.5 * own_paths.speed * own_paths.speed + own_paths.energy) * _lay(
+        c["inverse_max_energy"], 2
     )
-
-    # Tactic weights: engaged or not, then the quadrant by the 3/9 line (he is ahead of me;
-    # I am behind his 3/9 line).
-    engaged = torch.where(has_target, gate["engaged"], 0.0)
-    ahead, astern = engaged * gate["front"], gate["rear"]
-    behind = engaged - ahead
-    weights = {
-        "disengaged": 1.0 - engaged,
-        "merge": ahead * (1.0 - astern),
-        "offensive": ahead * astern,
-        "turning": behind * astern,
-        "defensive": behind * (1.0 - astern),
-    }
-
-    # The plan for this pass: two-circle (+1) when my energy advantage is above the plan
-    # threshold, else one-circle (-1); after a pass, the last pass's plan, switched when that
-    # pass gained less than the switch gain in angles off (Shaw pp. 112-113: the stalemate
-    # breaker inside the fight). The kept target's last pass only.
-    same_target = has_target & (fight.target == memory["target"])
-    last_pass = torch.where(same_target, memory["last_pass"], 0.0)
-    energy_plan = torch.where(situation.energy_advantage > read("plan_threshold"), 1.0, -1.0)
-    previous_plan = torch.sign(last_pass)
-    gained = last_pass.abs() - situation.angles_off
-    kept_plan = torch.where(gained < read("switch_gain"), -previous_plan, previous_plan)
-    plan = torch.where(last_pass != 0.0, kept_plan, energy_plan)
-
-    # Speed target, in log space, and the stick cap (the share of the full level folded into
-    # the middle one), per tactic:
-    # - disengaged and merge: the merge speed; disengaged, the cap above the middle stick
-    #   speed (no turn lost there);
-    # - offensive: the chase speed, the fight speed raised against a turning target by the
-    #   ratio of corner to sustained speed (against a straight one the engine closes: no
-    #   climb, `no_bank`);
-    # - turning, two-circle (the energy plan, Shaw p. 110): the middle level at the fight
-    #   speed; one-circle: full stick at the fight speed, down to the speed floor inside the
-    #   scissors range (Shaw p. 83);
-    # - defensive (Shaw pp. 132-134): break (full stick, corner speed).
-    # (The spend for a near shot, the two-circle cash and the graded defence were removed
-    # after the reach check: rarely reached, small effect there, scripted-reach.md.)
-    log_corner = _log(c["corner_speed"])
-    log_fight = _log(fight_speed)
-    log_merge = _log(read("merge_speed") * c["corner_speed"])
-    log_floor = _log(read("speed_floor") * c["stall_speed"])
-    turning_target = situation.target_sense.abs()
-    log_chase_speed = log_fight + turning_target * _log(c["corner_speed"] / c["sustained_speed"])
-    two_circle = 0.5 * (1.0 + situation.flow)
-    log_one_circle = log_fight + gate["scissors"] * (log_floor - log_fight)
-    log_turning = log_one_circle + two_circle * (log_fight - log_one_circle)
-    log_target = (
-        (weights["disengaged"] + weights["merge"]) * log_merge
-        + weights["offensive"] * log_chase_speed
-        + weights["turning"] * log_turning
-        + weights["defensive"] * log_corner
+    scores = scores + disengaged * _lay(read("disengaged_energy_weight"), 1) * (
+        stored * point_weight
+    ).sum(-1)
+    scores = scores + disengaged * _lay(read("seek_weight"), 1) * _seek(
+        state, enemies, own_paths, point_weight, read
     )
-    cap = weights["disengaged"] * gate["level_cap"] + weights["turning"] * two_circle
-    # Chasing a target that is not turning: no banking (the engine closes).
-    no_bank = weights["offensive"] * (1.0 - turning_target)
-
-    # Boundary: within a margin of turn radii of the edge and flying outward, blend in a
-    # steer toward the centre. Without a target the wanted direction is the centre.
-    distance_from_centre = torch.sqrt(state.x * state.x + state.y * state.y).clamp_min(TINY)
-    in_corner_speeds = state.speed / c["corner_speed"]
-    turn_radius = c["sustained_radius"] * (in_corner_speeds * in_corner_speeds).clamp_min(1.0)
-    margin = read("boundary_margin") * turn_radius
-    depth = (distance_from_centre - (c["arena_radius"] - margin)) / margin
-    ramp_low = read("boundary_ramp_low")
-    ramp = (depth - ramp_low) / (read("boundary_ramp_high") - ramp_low)
-    outward = state.x * fight.velocity_x + state.y * fight.velocity_y > 0.0
-    centre_weight = torch.where(outward & has_target, ramp.clamp(0.0, 1.0), 0.0)
-    centre_weight = torch.where(has_target, centre_weight, 1.0)
-    steer_x, steer_y = merge_miss(
-        state,
-        enemies,
-        fight,
-        aim_x,
-        aim_y,
-        read("merge_miss_offset") * c["hit_radius"],
-        read("merge_miss_range") * c["sustained_radius"],
+    # Cover: behind a field core from an enemy who has the angles on me now (the enemy flying
+    # straight on), weighted like the enemy.
+    if has_fields:
+        pressure = cover_pressure(state, enemies, enemy_slot, enemy_weight, read)
+        scores = scores + _lay(read("field_weight"), 1) * (pressure[..., None] * cover).sum(-2)
+    # Team-mates keep their pending action: keep clear of their paths.
+    scores = scores - _lay(read("collision_weight"), 1) * _mate_contacts(state, own_paths, read)
+    # Stickiness: the pending stick (the one chosen on the last tick).
+    candidates = torch.arange(CANDIDATES, device=device)
+    pending_stick, pending_power = state.pending[..., 0], state.pending[..., 1]
+    scores = scores + _lay(read("stickiness"), 1) * (candidates == pending_stick[..., None]).float()
+    stick = torch.softmax(scores / _lay(read("temperature"), 1), -1)
+    # The power from the own-ship terms over the power look, with its own stickiness.
+    powers = torch.arange(POWERS, device=device)
+    held = (powers == pending_power[..., None]).float()
+    power = torch.softmax(
+        (power_scores + _lay(read("power_stickiness"), 1) * held)
+        / _lay(read("power_temperature"), 1),
+        -1,
     )
-    point_length = torch.sqrt(steer_x * steer_x + steer_y * steer_y).clamp_min(TINY)
-    point_scale = (1.0 - centre_weight) / point_length
-    centre_scale = centre_weight / distance_from_centre
-    wanted_x = point_scale * steer_x - centre_scale * state.x
-    wanted_y = point_scale * steer_y - centre_scale * state.y
-    stick_error = signed_angle(state.heading_cos, state.heading_sin, wanted_x, wanted_y)
-
-    # The committed turn sense (design B3, decided: hysteresis by concrete rules):
-    # - release when he comes forward of my 3/9 line (by the release band), or the target
-    #   changes;
-    # - commit when he moves aft with no sense held: the plan's sense. The plan is two-circle
-    #   when my energy advantage is above the plan threshold, else one-circle; at a later pass
-    #   it is the last pass's plan, switched when it gained less than the switch gain in
-    #   angles off (Shaw pp. 112-113: the stalemate breaker inside the fight). Two-circle
-    #   turns his way (toward his side when he is straight), one-circle the other way; the
-    #   drawn side breaks an exact tie.
-    line = read("three_nine_line")
-    bearing_size = situation.bearing.abs()
-    aft = has_target & (bearing_size > line)
-    forward = bearing_size < line - read("release_band")
-    held = memory["sense"]
-    held = torch.where(same_target & ~forward, held, 0.0)
-    short_way = torch.where(situation.bearing > 0.0, 1.0, -1.0)
-    commit = aft & (held == 0.0)
-    his_turn = torch.where(
-        situation.target_sense.abs() > 0.5, torch.sign(situation.target_sense), 0.0
-    )
-    dead_astern = math.pi - bearing_size < read("tie_band")
-    his_side = torch.where(dead_astern, memory["side"], short_way)
-    two_circle_sense = torch.where(his_turn != 0.0, his_turn, his_side)
-    sense = torch.where(commit, plan * two_circle_sense, held)
-    last_pass = torch.where(commit, plan * situation.angles_off, last_pass)
-
-    # Stick: P(turn), then the level by two further gates (the cap folding full into
-    # middle), the side by the committed sense while he is aft (unless the boundary steer
-    # dominates), else by the error's sign.
-    turn_size = stick_error.abs()
-    stick_gate = _gates(
-        config,
-        persona,
-        STICK_GATES,
-        {"turn": turn_size, "level_two": turn_size, "level_three": turn_size},
-    )
-    turn, above_one = stick_gate["turn"], stick_gate["level_two"]
-    above_two = stick_gate["level_three"]
-    turn_above_one = turn * above_one
-    full = turn_above_one * above_two * (1.0 - cap)
-    levels = torch.stack([turn - turn_above_one, turn_above_one - full, full], -1)
-    holding = aft & (sense != 0.0) & (centre_weight <= 0.0)
-    turn_left = torch.where(holding, sense > 0.0, stick_error > 0.0)
-    side_floor = read("side_floor")
-    left = torch.where(turn_left, 1.0 - side_floor, side_floor)[..., None]
-    left_levels = left * levels
-    sides = (
-        (left_levels, levels - left_levels)
-        if config.left_is_even
-        else (levels - left_levels, left_levels)
-    )
-    stick = torch.cat(
-        [(1.0 - turn)[..., None], torch.stack([sides[1], sides[0]], -1).flatten(-2)], -1
-    )
-
-    # Power: track the speed target. Climb above v* + band, dive below v* - band, coast
-    # between; the dive only with a purpose (offensive, turning, defensive: not disengaged
-    # nor at the merge, where the engine brings the speed). Each fades over the
-    # store's edge band (the bottom for the dive, the top for the climb), as its effect does.
-    excess = torch.log(state.speed) - log_target
-    band = read("speed_band")
-    sharpness = 1.0 / (read("power_scale") * read("temperature"))
-    climb_dive = torch.sigmoid(torch.stack([excess - band, -excess - band], -1) * _last(sharpness))
-    bottom = state.energy * c["inverse_fade"]
-    top = c["inverse_fade"] / c["inverse_max_energy"] - bottom
-    room = torch.stack([top, bottom], -1).clamp(0.0, 1.0)
-    climb, dive = (climb_dive * room).unbind(-1)
-    climb = climb * (1.0 - no_bank)
-    dive = dive * (weights["offensive"] + weights["turning"] + weights["defensive"])
-    power_floor = _last(read("power_floor"))
-    power = power_floor + (1.0 - 3.0 * power_floor) * torch.stack(
-        [1.0 - dive - climb, dive, climb], -1
-    )
-
-    # Gun: aligned times in range at the lead point, zero without a target or while the gun
-    # cannot fire. A shot costs no store; never shoot through a team-mate (author 2026-11-23).
-    # Worth it (author 2026-11-25: no shot in a pure head-on): the hit's damage at the
-    # predicted aspect (the game's aspect factor x hit damage) is at least the shooter's
-    # shield recharge for `fire_worth` ticks (a shot makes the tick not quiet, so it forgoes
-    # at least that), or at least the target's shield and more than 0 (the hit empties it, or
-    # kills at 0; inside the nose cone it does nothing). The
-    # bullet's direction is the launch's (own velocity plus the muzzle speed along the nose);
-    # the target's nose turns at its nose rate over the flight time.
-    launch_x = state.velocity_x + c["muzzle_speed"] * state.heading_cos
-    launch_y = state.velocity_y + c["muzzle_speed"] * state.heading_sin
-    turned = fight.target_nose_rate * flight_time
-    turned_cos, turned_sin = torch.cos(turned), torch.sin(turned)
-    nose_x = fight.target_heading_cos * turned_cos - fight.target_heading_sin * turned_sin
-    nose_y = fight.target_heading_sin * turned_cos + fight.target_heading_cos * turned_sin
-    hit_cos = -(launch_x * nose_x + launch_y * nose_y) * torch.rsqrt(
-        (launch_x * launch_x + launch_y * launch_y).clamp_min(TINY)
-    )
-    hit = _at_target(c["hit_damage"], fight.target) * aspect_factor(
-        hit_cos,
-        _at_target(c["nose_inner_cos"], fight.target),
-        _at_target(c["inverse_nose_width"], fight.target),
-    )
-    worth = read("fire_worth") * c["shield_rate"] * c["tick_length"]
-    # (A hit inside the nose cone does no damage, and a ship at 0 shield dies only of damage.)
-    worthwhile = (hit >= worth) | ((hit >= fight.target_shield) & (hit > 0.0))
-    ready = (state.cooldown <= 0) & ~fight.ally_in_line & worthwhile
-    fire = torch.where(has_target & ready, gate["aligned"] * gate["in_range"], 0.0)
-    return Explanation(
-        marginals=Marginals(stick, power, fire, fight.controlled, fight.target),
-        situation=situation,
-        weights=weights,
-        speed_target=torch.exp(log_target),
-        cap=cap,
-        stick_error=stick_error,
-        gun_error=gun_error,
-        sense=sense,
-        last_pass=last_pass,
+    flight = (stick[..., :, None] * power[..., None, :]).flatten(-2)
+    fire = _trigger(state, enemies, enemy_slot, enemy_weight, read) * controlled
+    joint = (flight[..., :, None] * torch.stack([1.0 - fire, fire], -1)[..., None, :]).flatten(-2)
+    return Choice(
+        joint=joint,
+        flight=flight,
+        fire=fire,
+        scores=scores,
+        power_scores=power_scores,
+        controlled=controlled,
+        enemies=enemy_slot,
+        enemy_weight=enemy_weight,
     )
 
 
-def merge_miss(
-    state,
-    enemies,
-    fight: Engagement,
-    aim_x: Tensor,
-    aim_y: Tensor,
-    offset: Tensor | float,
-    reach: Tensor | float,
-) -> tuple[Tensor, Tensor]:
-    """The stick's aim point (relative to the ship, (E, N)) with the merge's miss offset: of
-    the other ships (team-mates as they are, enemies as the team knows them) closing on me
-    faster than my own speed (head-on or crossing, not a chase) within `reach` metres, whose
-    straight-line pass would come nearer than `offset` metres, the nearest; the stick aims
-    `offset` metres beside its centre, on the side it is already on (him on my left: I aim to
-    his right, so he passes on my left; two ships that see each other on the left both
-    turn away). Otherwise the aim point as it is."""
-    same_team = state.team[:, :, None] == state.team[:, None, :]
-    present = torch.where(
-        same_team,
-        (state.exists & state.alive)[:, None, :],
-        (enemies.exists & enemies.alive)[:, None, :],
+PREDICTED = (
+    "x",
+    "y",
+    "heading_cos",
+    "heading_sin",
+    "speed",
+    "angle",
+    "nose_rate",
+    "energy",
+    "log_index",
+    "gradient_x",
+    "gradient_y",
+    "type",  # the ship card row, for the game's steady-flight table (core.steady_lookup)
+)
+
+
+def power_scores(c, speed, energy, read_or_values, engaged, has_corner, crowd=1.0) -> Tensor:
+    """The power scores (E, N, POWERS): the own-ship terms over the power look (`POWER_LOOK`):
+    minus the speed term (|ln(speed / preferred)|) plus energy (speed^2 / 2 + store, in full
+    stores) at the energy weight while engaged and the disengaged energy weight while not, plus
+    the store itself (in full stores) at the store weight (round 3: the store held, not only
+    its share of the total energy),
+    each point's interval discounted by e^(-t / power_horizon). `speed`, `energy` (E, N,
+    POWERS, P); `read_or_values(name)` a row (a number or (E, N)); `engaged` (E, N) 0 to 1.
+    The store weight is scaled by (1 + k) / (1 + k x max(crowd, 1)), k the `store_crowd` row
+    (0: off), `crowd` the scored enemies near (round 4, an experiment: more store alone, less
+    in a crowd)."""
+    read = read_or_values
+    weights = time_weights(read("power_horizon"), speed.device, POWER_LOOK)
+    weights = weights[..., None, :] if weights.dim() == 3 else weights
+    log_preferred = torch.log(read("preferred_speed") * has_corner)
+    energy_weight = read("energy_weight") * engaged + read("disengaged_energy_weight") * (
+        1.0 - engaged
     )
-    slots = slot_indices(state.x.shape[1], state.x.device).ship
-    present = present & (slots[:, None] != slots[None, :])
-    enemy_velocity_x, enemy_velocity_y, _ = map_velocity(enemies)
-    other_x = torch.where(same_team, state.x[:, None, :], enemies.x[:, None, :])
-    other_y = torch.where(same_team, state.y[:, None, :], enemies.y[:, None, :])
-    other_velocity_x = torch.where(
-        same_team, fight.velocity_x[:, None, :], enemy_velocity_x[:, None, :]
+    inverse_max_energy = _lay(c["inverse_max_energy"], 2)
+    k = read("store_crowd")
+    crowd = crowd.clamp_min(1.0) if isinstance(crowd, Tensor) else max(crowd, 1.0)
+    crowding = (1.0 + k) / (1.0 + k * crowd)
+    stored = (0.5 * speed * speed + energy) * inverse_max_energy
+    rate = (
+        -_lay(read("speed_weight"), 2)
+        * (torch.log(speed.clamp_min(TINY)) - _lay(log_preferred, 2)).abs()
+        + _lay(energy_weight, 2) * stored
+        + _lay(read("store_weight") * crowding, 2) * energy * inverse_max_energy
     )
-    other_velocity_y = torch.where(
-        same_team, fight.velocity_y[:, None, :], enemy_velocity_y[:, None, :]
+    return (rate * weights).sum(-1)
+
+
+def _predict_views(
+    c, state, enemies, config, read, engaged, crowd=1.0
+) -> tuple[Paths, Paths, Tensor]:
+    """The candidate paths of every ship as it is (own) and as its enemies see it (seen),
+    with the own-only components attached, computed in one pass (the two views side by side on
+    the slot axis) and materialised once: every field a view of one stacked tensor (P, E, 2 N,
+    len(PATH_FIELDS), C), so every write is a run of C (the kernel's layout) and no consumer
+    recomputes the paths. Each view's table power: the own ship's pending power (in its
+    observation); an enemy's is not observed, so it is the power his outlook scores best with
+    the yardstick's rows (`config`; no persona of his is read), engaged, from straight flight.
+    Also returns the own ships' power scores (E, N, POWERS) from their outlook holding the
+    pending stick, with their own rows (`read`)."""
+    slots = state.x.shape[1]
+    ships = SimpleNamespace(
+        **{name: torch.cat([getattr(state, name), getattr(enemies, name)], 1) for name in PREDICTED}
     )
-    r_x, r_y = other_x - state.x[..., None], other_y - state.y[..., None]
-    w_x = other_velocity_x - fight.velocity_x[..., None]
-    w_y = other_velocity_y - fight.velocity_y[..., None]
-    distance = torch.sqrt(r_x * r_x + r_y * r_y).clamp_min(TINY)
-    approach = -(r_x * w_x + r_y * w_y)  # closing rate x distance
-    w_squared = (w_x * w_x + w_y * w_y).clamp_min(TINY)
-    cross = r_x * w_y - r_y * w_x  # the predicted miss distance x |w|
-    own_speed = torch.sqrt(
-        fight.velocity_x * fight.velocity_x + fight.velocity_y * fight.velocity_y
+    constants = dataclasses.replace(c, ship_type=torch.cat([c.ship_type, c.ship_type], -1))
+    pending_stick, pending_power = state.pending[..., 0], state.pending[..., 1]
+    outlook_stick = torch.cat([pending_stick, torch.zeros_like(pending_stick)], 1)
+    speed, energy = power_outlook(constants, state.fields, ships, outlook_stick)
+    corner = _per_ship(c["corner_speed"], state)
+    own = power_scores(
+        c, speed[:, :slots], energy[:, :slots], lambda name: read(name), engaged, corner, crowd
     )
-    offset_pair = offset[..., None] if isinstance(offset, Tensor) else offset
-    reach_pair = reach[..., None] if isinstance(reach, Tensor) else reach
-    near = (
-        present
-        & (distance < reach_pair)
-        & (approach > own_speed[..., None] * distance)
-        & (cross * cross < offset_pair * offset_pair * w_squared)
+    seen = power_scores(
+        c, speed[:, slots:], energy[:, slots:], lambda name: config.values[name], 1.0, corner
     )
-    nearest = torch.where(near, distance, math.inf).min(-1)
-    active = torch.isfinite(nearest.values)
-    pick = nearest.indices[..., None]
-    picked_x, picked_y = r_x.gather(-1, pick)[..., 0], r_y.gather(-1, pick)[..., 0]
-    picked_distance = nearest.values.clamp_max(1e30)
-    left = state.heading_cos * picked_y - state.heading_sin * picked_x >= 0.0
-    shift = torch.where(left, offset, -offset) / picked_distance.clamp_min(TINY)
-    point_x = picked_x + shift * picked_y  # beside his centre, across the line of sight
-    point_y = picked_y - shift * picked_x
-    return torch.where(active, point_x, aim_x), torch.where(active, point_y, aim_y)
+    table_power = torch.cat([pending_power, seen.argmax(-1)], 1)
+    margin = read("boundary_margin")
+    if isinstance(margin, Tensor):
+        margin = torch.cat([margin, torch.full_like(margin, config.values["boundary_margin"])], 1)
+    paths = own_components(constants, predict(constants, state.fields, ships, table_power), margin)
+    # Materialised once, (P, E, 2 N, PATH_FIELDS, C): every write a run of C.
+    stacked = torch.stack([getattr(paths, name).permute(3, 0, 1, 2) for name in PATH_FIELDS], -2)
+
+    def view(start: int) -> Paths:
+        part = stacked.narrow(2, start, slots).permute(3, 1, 2, 4, 0)  # (fields, E, N, C, P)
+        fields_ = dict(zip(PATH_FIELDS, part.unbind(0), strict=True))
+        now = SimpleNamespace(
+            **{
+                name: item.narrow(1, start, slots) if isinstance(item, Tensor) else item
+                for name, item in vars(paths.now).items()
+            }
+        )
+        return Paths(**fields_, now=now, stacked=stacked)
+
+    return view(0), view(slots), own
 
 
-def _log(x: Tensor | float) -> Tensor | float:
-    """The natural log of a number or a tensor."""
-    return torch.log(x) if isinstance(x, Tensor) else math.log(x)
+def _pair_kernel(c, fields_, own_paths, seen_paths, enemy_slot, now_x, now_y, horizon, read):
+    """The collapsed pair scores (E, N, ENEMIES, C) from the fused kernel
+    (lean.scripted.kernels.pair_scores), its inputs laid out as it reads them."""
+    envs, slots, count = enemy_slot.shape
+    ships = envs * slots
+    views = 2
 
+    def per_ship(item) -> Tensor:
+        return torch.as_tensor(item, dtype=torch.float32, device=now_x.device).expand(envs, slots)
 
-def _at_target(value: Tensor | float, target: Tensor) -> Tensor | float:
-    """A per-ship constant (E, N) read at each ship's target (E, N); a number as it is."""
-    return value.gather(1, target) if isinstance(value, Tensor) else value
-
-
-def _last(x: Tensor | float) -> Tensor | float:
-    """A per-ship value (E, N) laid along a last axis (a number as it is)."""
-    return x[..., None] if isinstance(x, Tensor) else x
-
-
-def _gates(
-    config: ScriptedConfig,
-    persona: dict[str, Tensor] | None,
-    gates: dict[str, Gate],
-    quantities: dict[str, Tensor],
-) -> dict[str, Tensor]:
-    """Every gate of `gates` in one logistic, by name: floor + (1 - 2 floor) sigmoid(sharpness
-    ln(quantity / centre)), the quantities stacked in the gates' order."""
-    quantity = torch.stack([quantities[name] for name in gates], -1)
-    centre, sharpness, floor = _gate_tensors(config, persona, gates, quantity.device)
-    logit = sharpness * torch.log(quantity.clamp_min(TINY) / centre)
-    probability = floor + (1.0 - 2.0 * floor) * torch.sigmoid(
-        logit.clamp(-LOGIT_LIMIT, LOGIT_LIMIT)
-    )
-    return dict(zip(gates, probability.unbind(-1), strict=True))
-
-
-def _gate_tensors(
-    config: ScriptedConfig,
-    persona: dict[str, Tensor] | None,
-    gates: dict[str, Gate],
-    device: torch.device,
-) -> tuple[Tensor, Tensor, Tensor]:
-    """The gates' centres, signed sharpness and floors in the order of `gates`: (G,) each for
-    the yardstick, built once; for a persona its centres and sharpness (E, N, G), its
-    temperature dividing the tempered gates' sharpness. A persona's tables read no number of
-    the config that the persona holds, so a compiled graph is not specialised on them."""
-    names = tuple(gates)
-    if persona is None:
-        centres = tuple(config.values[gates[name].centre] for name in names)
-        table = _yardstick_gates(names, centres, config.values["temperature"], device)
-        return table[0], table[1], table[2]
-    floor, plain, tempered = _gate_structure(names, device)
-    temperature = value(config, persona, "temperature")
-    reference = persona[next(iter(persona))]
-    centre = torch.stack(
+    constants = torch.stack([per_ship(c[name]) for name in kernels.CONSTANTS], -1)
+    constants = torch.cat([constants, _widths_at(c, None).to(constants.dtype)], -1)
+    times = device_constant(paths_module.LOOK_AHEAD, now_x.device)
+    discounts = torch.exp(-times / read("horizon", 1))
+    parameters = torch.cat(
         [
-            torch.as_tensor(value(config, persona, gates[name].centre), device=device).expand_as(
-                reference
-            )
-            for name in names
+            torch.stack([per_ship(read(name)) for name in kernels.PARAMETERS], -1),
+            horizon,
+            discounts.expand(envs, slots, -1),
         ],
         -1,
     )
-    if isinstance(temperature, Tensor):
-        sharpness = torch.where(tempered > 0.5, plain / temperature[..., None], plain)
-    else:
-        sharpness = torch.where(tempered > 0.5, plain / temperature, plain).expand_as(centre)
-    return centre, sharpness, floor
+    his_ship = enemy_slot + slots * torch.arange(envs, device=now_x.device)[:, None, None]
+    scores, cover = kernels.pair_scores(
+        own_paths.stacked,
+        constants.reshape(ships, -1).contiguous(),
+        parameters.reshape(ships, -1).contiguous(),
+        times,
+        his_ship.reshape(-1).to(torch.int32),
+        torch.stack([now_x, now_y], -1).reshape(-1, 2).contiguous(),
+        fields_.contiguous(),
+        count,
+        slots,
+        views,
+    )
+    return scores.view(envs, slots, count, -1), cover.view(envs, slots, count, -1)
 
 
-@built_once
-def _yardstick_gates(
-    names: tuple[str, ...], centres: tuple[float, ...], temperature: float, device: torch.device
-) -> Tensor:
-    """(3, G) float32 for the gates `names` (of GATES or STICK_GATES): the centres, the signed
-    sharpness (1 / (scale x temperature), positive rising; the temperature only where the gate
-    is tempered) and the floors."""
-    gates = [{**GATES, **STICK_GATES}[name] for name in names]
-    rows = [
-        list(centres),
-        [
-            (1.0 if gate.rising else -1.0) / (gate.scale * (temperature if gate.tempered else 1.0))
-            for gate in gates
-        ],
-        [gate.floor for gate in gates],
-    ]
-    return torch.tensor(rows, dtype=torch.float32, device=device)
+def cover_pressure(state, enemies, enemy_slot, enemy_weight, read) -> Tensor:
+    """Per scored enemy (E, N, ENEMIES): what his cover is worth, his angular advantage on me
+    now (0 to 1) times his closeness and his weight."""
+    rel_x = _at(enemies.x, enemy_slot) - state.x[..., None]
+    rel_y = _at(enemies.y, enemy_slot) - state.y[..., None]
+    distance = torch.sqrt(rel_x * rel_x + rel_y * rel_y + TINY)
+    my_off = (
+        state.heading_cos[..., None] * rel_x + state.heading_sin[..., None] * rel_y
+    ) / distance
+    his_cos, his_sin = _at(enemies.heading_cos, enemy_slot), _at(enemies.heading_sin, enemy_slot)
+    his_off = -(his_cos * rel_x + his_sin * rel_y) / distance
+    advantage = (0.5 * (his_off - my_off)).clamp_min(0.0)
+    reach = read("closeness_range") * state.constants["gun_range"]
+    near = 1.0 / (1.0 + (distance / _lay(reach, 1)) ** 2)
+    return enemy_weight * advantage * near
 
 
-@built_once
-def _gate_structure(names: tuple[str, ...], device: torch.device) -> Tensor:
-    """(3, G) float32 for the gates `names`, from the gates alone: the floors, the signed
-    sharpness without the temperature (1 / scale, positive rising) and 1 where the gate is
-    tempered."""
-    gates = [{**GATES, **STICK_GATES}[name] for name in names]
-    rows = [
-        [gate.floor for gate in gates],
-        [(1.0 if gate.rising else -1.0) / gate.scale for gate in gates],
-        [1.0 if gate.tempered else 0.0 for gate in gates],
-    ]
-    return torch.tensor(rows, dtype=torch.float32, device=device)
+def covered(fields: Tensor, own_paths: Paths, his_paths: dict, horizon: Tensor) -> Tensor:
+    """Per scored enemy and my candidate (E, N, ENEMIES, C): the time-weighted share of the
+    look-ahead points behind a field core (`field_blocks`) from him flying straight on
+    (candidate 0). The plain twin of the kernel's cover."""
+    straight_x = his_paths["x"][..., 0, :][..., None, :]  # (E, N, K, 1, P)
+    straight_y = his_paths["y"][..., 0, :][..., None, :]
+    my_x, my_y = own_paths.x[:, :, None], own_paths.y[:, :, None]  # (E, N, 1, C, P)
+    blocked = field_blocks(fields, my_x, my_y, straight_x, straight_y).float()
+    return (blocked * horizon[:, :, None, None, :]).sum(-1)
 
 
-def sample(parts: Marginals, uniforms: Tensor) -> Tensor:
-    """Draw (E, N, 3) long [stick, power, fire] from the marginals by inverse transform,
-    one uniform (E, N, 3) per head; rows that are not controlled are 0."""
-    stick = (uniforms[..., 0:1] >= parts.stick.cumsum(-1)[..., :-1]).sum(-1)
-    power = (uniforms[..., 1:2] >= parts.power.cumsum(-1)[..., :-1]).sum(-1)
-    fire = (uniforms[..., 2] < parts.fire).long()
-    return torch.stack([stick, power, fire], -1) * parts.controlled[..., None]
+def _mate_contacts(state, own_paths: Paths, read) -> Tensor:
+    """Per candidate (E, N, C): predicted contacts with the nearest team-mates, each flying his
+    pending flight action, summed over the segments and the mates (collision-damage units,
+    discounted by the horizon)."""
+    c = state.constants
+    mate, present = nearest_mates(state)
+    envs, slots, _ = mate.shape
+    mate_flight = _at(state.pending[..., 0], mate)  # (E, N, MATES): his pending stick
+    points = len(paths_module.LOOK_AHEAD)
+
+    def mate_path(field: Tensor) -> Tensor:  # (E, N, C, P) -> (E, N, MATES, P)
+        flat = field.flatten(2)  # (E, N, C P)
+        rows = flat.gather(1, mate.reshape(envs, slots * MATES, 1).expand(-1, -1, flat.shape[-1]))
+        rows = rows.view(envs, slots * MATES, CANDIDATES, points)
+        chosen = rows.gather(
+            2, mate_flight.reshape(envs, slots * MATES, 1, 1).expand(-1, -1, 1, points)
+        )
+        return chosen.view(envs, slots, MATES, points)
+
+    mate_x, mate_y = mate_path(own_paths.x)[..., None, :], mate_path(own_paths.y)[..., None, :]
+    my_x, my_y = own_paths.x[:, :, None], own_paths.y[:, :, None]  # (E, N, 1, C, P)
+    previous_x = (_at(state.x, mate) - state.x[..., None])[..., None]
+    previous_y = (_at(state.y, mate) - state.y[..., None])[..., None]
+    radius = c["hit_radius"]
+    summed = (
+        _lay(radius, 2) + _at(radius, mate)[..., None]
+        if isinstance(radius, Tensor)
+        else 2.0 * radius
+    )
+    reach = read("collision_margin", 2) * summed
+    total = 0.0
+    started = 0.0
+    for k, time in enumerate(paths_module.LOOK_AHEAD):
+        rel_x, rel_y = mate_x[..., k] - my_x[..., k], mate_y[..., k] - my_y[..., k]
+        contact = _contact(
+            previous_x,
+            previous_y,
+            rel_x,
+            rel_y,
+            time - started,
+            reach,
+            _lay(c["inverse_collision_speed"], 2),
+        )
+        total = total + contact * _exp(-time / read("horizon", 2))
+        previous_x, previous_y = rel_x, rel_y
+        started = time
+    return (total * present[..., None]).sum(-2)
 
 
-def act(
-    config: ScriptedConfig,
-    state,
-    team: int | None,
-    persona: dict[str, Tensor] | None,
-    uniforms: Tensor,
-    memory: dict[str, Tensor],
-) -> tuple[Tensor, dict[str, Tensor]]:
+def _trigger(state, enemies, enemy_slot, enemy_weight, read) -> Tensor:
+    """The probability of firing now (E, N): the best of the scored enemies' (aligned at the
+    lead point within the trigger's tolerance of the target's size, in range, the hit worth it,
+    no team-mate in the line), with the gun ready."""
+    c = state.constants
+    rel_x = _at(enemies.x, enemy_slot) - state.x[..., None]
+    rel_y = _at(enemies.y, enemy_slot) - state.y[..., None]
+    distance = torch.sqrt(rel_x * rel_x + rel_y * rel_y).clamp_min(TINY)
+    index = torch.exp(state.log_index)[..., None] if state.fields.shape[-1] > 0 else 1.0
+    gun_range = _lay(c["gun_range"], 1)
+    laid = {name: _lay(c[name], 1) for name in ("bullet_drag", "bullet_launch_speed")}
+    flight = _flight_time(distance, laid, read("lead_cap", 1) * gun_range, index)
+    my_velocity_x, my_velocity_y = _map_velocity(state)
+    his_velocity_x, his_velocity_y = _map_velocity(enemies)
+    velocity_x = _at(his_velocity_x, enemy_slot) - my_velocity_x[..., None]
+    velocity_y = _at(his_velocity_y, enemy_slot) - my_velocity_y[..., None]
+    aim_x, aim_y = rel_x + velocity_x * flight, rel_y + velocity_y * flight
+    nose_cos, nose_sin = state.heading_cos[..., None], state.heading_sin[..., None]
+    error = torch.atan2(nose_cos * aim_y - nose_sin * aim_x, nose_cos * aim_x + nose_sin * aim_y)
+    in_range = torch.sigmoid(
+        -torch.log(distance / (read("fire_range", 1) * gun_range)) / read("fire_range_scale", 1)
+    )
+    # Worth it (author 2026-11-25): the expected hit (its damage x its chance, below) at the
+    # predicted aspect (his nose turned at its rate over the flight time) takes at least
+    # fire_worth ticks of my shield recharge, or his whole shield (and more than 0: with the
+    # nose cone's rule on, inside his nose cone it does nothing). The hit by the game's hit
+    # model (`hit_worth`: core.hit_damage, one call; round 3), dead centre, my bullet's launch
+    # speed slowed over the distance.
+    launch_x = state.velocity_x[..., None] + _lay(c["muzzle_speed"], 1) * nose_cos
+    launch_y = state.velocity_y[..., None] + _lay(c["muzzle_speed"], 1) * nose_sin
+    turned = _at(enemies.nose_rate, enemy_slot) * flight
+    his_cos, his_sin = _at(enemies.heading_cos, enemy_slot), _at(enemies.heading_sin, enemy_slot)
+    turned_cos, turned_sin = torch.cos(turned), torch.sin(turned)
+    nose_x = his_cos * turned_cos - his_sin * turned_sin
+    nose_y = his_sin * turned_cos + his_cos * turned_sin
+    hit_cos = -(launch_x * nose_x + launch_y * nose_y) * torch.rsqrt(
+        launch_x * launch_x + launch_y * launch_y + TINY
+    )
+    mine = {name: _lay(c[name], 1) for name in SHOOTER_HIT_CONSTANTS + ("bullet_drag",)}
+    mine["bullet_launch_speed"] = torch.sqrt(launch_x * launch_x + launch_y * launch_y + TINY)
+    his = {name: _at(enemies.constants[name], enemy_slot) for name in TARGET_HIT_CONSTANTS}
+    # The target's size: the game's hit width at that aspect (the deflector's turn narrows it);
+    # the chance a centred shot lands within it: the bullet spread and the lead error (the
+    # target's unpredicted turn, lead_error x his sustained turn acceleration, over the flight)
+    # spread the bullet sideways by a normal of that deviation (round 4, 2026-11-27).
+    half_width = 0.5 * hit_width(_widths_at(enemies.constants, enemy_slot), hit_cos)
+    size = maximum(2.0 * torch.atan(half_width / distance), read("target_size_minimum", 1))
+    size = size.clamp_max(math.radians(45.0))
+    aligned = torch.sigmoid(
+        -torch.log(error.abs().clamp_min(TINY) / (size * read("fire_tolerance", 1)))
+        / read("fire_aim_scale", 1)
+    )
+    his_speed = _at(enemies.constants["sustained_speed"], enemy_slot)
+    his_turn = his_speed * his_speed / _at(enemies.constants["sustained_radius"], enemy_slot)
+    lead = read("lead_error", 1) * 0.5 * his_turn * flight
+    sideways = flight * torch.sqrt(_lay(c["spread_speed"], 1) ** 2 + lead * lead + TINY)
+    chance = torch.erf(half_width / (math.sqrt(2.0) * sideways))
+    hit = _lay(c["hit_damage"], 1) * hit_worth(mine, his, distance, hit_cos) * chance
+    worth = read("fire_worth", 1) * _lay(c["shield_rate"] * c["tick_length"], 1)
+    shield = _at(enemies.shield, enemy_slot)
+    worthwhile = (hit >= worth) | ((hit >= shield) & (hit > 0.0))
+    clear = ~_mate_in_line(state, distance, read)
+    chance = aligned * in_range * (worthwhile & clear & (enemy_weight > 0.0)).float()
+    ready = state.cooldown <= 0
+    return torch.where(ready, chance.amax(-1), 0.0)
+
+
+def _mate_in_line(state, distance: Tensor, read) -> Tensor:
+    """(E, N, ENEMIES) bool: a living team-mate ahead along my nose, nearer than each enemy and
+    within the clearance of the line of fire."""
+    c = state.constants
+    slots = state.x.shape[1]
+    index = slot_indices(slots, state.x.device).ship
+    alive = state.exists & state.alive
+    mate = (
+        (state.team[:, :, None] == state.team[:, None, :])
+        & alive[:, None, :]
+        & (index[:, None] != index[None, :])
+    )
+    offset_x = state.x[:, None, :] - state.x[:, :, None]
+    offset_y = state.y[:, None, :] - state.y[:, :, None]
+    along = offset_x * state.heading_cos[..., None] + offset_y * state.heading_sin[..., None]
+    across = offset_x * state.heading_sin[..., None] - offset_y * state.heading_cos[..., None]
+    clearance = read("ally_clearance", 1) * _lay(c["hit_radius"], 1)
+    near_line = mate & (along > 0.0) & (across.abs() < clearance)  # (E, N, other)
+    nearer = along[:, :, None, :] < distance[..., None]  # (E, N, ENEMIES, other)
+    return (near_line[:, :, None, :] & nearer).any(-1)
+
+
+def _map_velocity(state) -> tuple[Tensor, Tensor]:
+    """Each ship's velocity over the map (E, N): the stored proper velocity over n."""
+    if state.fields.shape[-1] == 0:
+        return state.velocity_x, state.velocity_y
+    index = torch.exp(-state.log_index)
+    return state.velocity_x * index, state.velocity_y * index
+
+
+def sample(choice: Choice, uniforms: Tensor) -> Tensor:
+    """Draw (E, N, 3) long [stick, power, fire] from the choice by inverse transform, one uniform
+    (E, N, 2) per head [flight, fire]; rows that are not controlled are 0."""
+    flight = (uniforms[..., 0:1] >= choice.flight.cumsum(-1)[..., :-1]).sum(-1)
+    fire = (uniforms[..., 1] < choice.fire).long()
+    action = torch.stack([flight // POWERS, flight % POWERS, fire], -1)
+    return action * choice.controlled[..., None]
+
+
+def act(config: ScriptedConfig, state, team: int | None, persona, uniforms: Tensor) -> Tensor:
     """The opponent's actions for the rows of `team`, or of every ship of both teams when
-    `team` is None (one call; the same actions as the two single-team calls added).
-
-    state: `lean.contract.State`; persona: from `personas` (None: the yardstick); uniforms:
-    (E, N, 3) float32 on [0, 1) from `draw_uniforms`; memory: from `fresh_memory` (a fresh
-    one for a new match), as the previous call returned it.
-
-    Returns ((E, N, 3) long [stick, power, fire], the new memory). Action rows of the other
-    team (with a `team`) and rows that are dead or do not exist are 0; a dead or absent row's
-    kept target is cleared (-1), the other team's rows keep theirs.
-    """
-    action, memory, _ = decide(config, state, team, persona, uniforms, memory)
-    return action, memory
+    `team` is None (one call; the same actions as the two single-team calls added): (E, N, 3)
+    long [stick, power, fire]. state: `lean.contract.State`; persona: from `personas` (None:
+    the yardstick); uniforms: (E, N, 2) from `draw_uniforms`. No memory: the stickiness reads
+    the state's pending action."""
+    return decide(config, state, team, persona, uniforms)[0]
 
 
-def decide(
-    config: ScriptedConfig,
-    state,
-    team: int | None,
-    persona: dict[str, Tensor] | None,
-    uniforms: Tensor,
-    memory: dict[str, Tensor],
-) -> tuple[Tensor, dict[str, Tensor], Marginals]:
-    """`act`, also returning the marginals the actions were drawn from (the behaviour-cloning
-    teacher's full distribution, lean.learn)."""
-    reasons = explain(config, state, team, persona, memory)
-    parts = reasons.marginals
-    action = sample(parts, uniforms)
-    controlled = parts.controlled
-    new = {
-        "target": torch.where(controlled, parts.target, -1),
-        "side": memory["side"],
-        "sense": torch.where(controlled, reasons.sense, 0.0),
-        "last_pass": torch.where(controlled, reasons.last_pass, 0.0),
-    }
-    if team is not None:  # the other team's rows keep their memory
-        acting = state.team == team
-        new = {name: torch.where(acting, value, memory[name]) for name, value in new.items()}
-    return action, new, parts
+def decide(config: ScriptedConfig, state, team: int | None, persona, uniforms: Tensor):
+    """`act`, also returning the Choice the actions were drawn from (its `joint` is the
+    behaviour-cloning teacher's full distribution, lean.learn)."""
+    choice = explain(config, state, team, persona)
+    return sample(choice, uniforms), choice
+
+
+assert JOINT == FLIGHTS * FIRES

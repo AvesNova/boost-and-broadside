@@ -137,6 +137,36 @@ def test_session_applies_controls():
     assert card.CARD is not None
 
 
+def test_the_sandbox_changes_the_hit_model_live():
+    """{"hit_model": {...}} reaches the running World (no restart): the answer carries the
+    sliders (core.HIT_MODEL) with the new value, the preset list is card.DEFLECTOR_PRESETS, and
+    the World's next tick flies it; a reset keeps it."""
+    client = TestClient(app)
+    with client.websocket_connect("/api/sandbox") as socket:
+        socket.send_json({"preset": "p51d", "time_scale": 2.0, "opponent": True})
+        setup = socket.receive_json()
+        assert [e["name"] for e in setup["hit_model"]] == [e.name for e in core.HIT_MODEL]
+        assert setup["deflector_presets"] == card.DEFLECTOR_PRESETS
+        socket.send_json({"hit_model": {"egg_rear": 30.0, "hit_radius": 15.0}})
+        while (message := socket.receive_json())["type"] != "hit_model":
+            pass
+        values = {e["name"]: e["value"] for e in message["hit_model"]}
+        assert values["egg_rear"] == 30.0 and values["hit_radius"] == 15.0
+        socket.send_json({"stop": True})
+
+
+def test_the_world_keeps_its_hit_model_across_a_reset():
+    from lean.sandbox.world import World
+
+    world = World(core.GameConfig(), opponent_on=False)
+    world.set_hit_model(deflector_turn=0.5)
+    world.advance(0, 0, False)
+    world.reset()
+    assert core.hit_model_of(world.state.constants)["deflector_turn"] == 0.5
+    with pytest.raises(KeyError):
+        world.set_hit_model(gun_range=1.0)
+
+
 def test_the_sandbox_opponent_spawns_by_the_games_rule():
     """Review B7: the sandbox places its ships through the game's spawn (core.spawn), so a
     respawned opponent has the standard speed over the map wherever it is (it had the

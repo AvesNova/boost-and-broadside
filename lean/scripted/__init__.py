@@ -1,29 +1,21 @@
-"""The scripted opponent (the yardstick and its persona population) and the chaser baseline."""
+"""The scripted opponent (the look-ahead agent, the yardstick and its persona population) and
+the chaser baseline."""
 
 from .chaser import ChaserConfig, chaser_act
-from .opponent import (
-    Marginals,
-    act,
-    decide,
-    draw_uniforms,
-    fresh_memory,
-    sample,
-)
-from .parameters import GATES, PARAMETERS, Gate, Parameter, ScriptedConfig, personas
+from .opponent import Choice, act, decide, draw_uniforms, explain, sample
+from .parameters import PARAMETERS, Parameter, ScriptedConfig, personas
 
 __all__ = [
-    "GATES",
     "PARAMETERS",
-    "Gate",
     "Parameter",
     "ChaserConfig",
-    "Marginals",
+    "Choice",
     "ScriptedConfig",
     "act",
     "chaser_act",
     "decide",
     "draw_uniforms",
-    "fresh_memory",
+    "explain",
     "personas",
     "sample",
 ]

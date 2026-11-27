@@ -1,7 +1,6 @@
 """The sandbox world, without any drawing: the player (slot 0, team 0) and an optional opponent
 (slot 1, team 1), stepped by lean.game.core.tick at batch size 1 on the CPU. The opponent is
-the scripted opponent (the yardstick, its memory carried from tick to tick as everywhere
-else) or the chaser.
+the scripted opponent (the yardstick) or the chaser.
 
 The player never dies: a lethal tick restores its shield and counts a death. A killed opponent
 comes back two seconds later 1500 m from the player.
@@ -14,6 +13,7 @@ from collections import deque
 import torch
 
 from lean import scripted
+from lean.contract import CONTACTED
 from lean.game import card, core
 
 TRAIL_SECONDS = 5.0
@@ -60,9 +60,20 @@ class World:
         return torch.tensor([[self.player_type, self.opponent_type]])
 
     def _constants(self):
-        """Both ships' constants; any type may be flown, so the card is read for every type."""
+        """Both ships' constants; any type may be flown, so the card is read for every type; the
+        hit model's inputs set by `set_hit_model` on top."""
         every_type = dataclasses.replace(self.config, lineup=card.TYPE_NAMES)
-        return core.ship_constants(every_type, self._types())
+        constants = core.ship_constants(every_type, self._types())
+        hit_model = getattr(self, "hit_model", {})
+        return core.with_hit_model(constants, **hit_model) if hit_model else constants
+
+    def set_hit_model(self, **inputs: float) -> dict[str, float]:
+        """Change hit-model inputs (core.HIT_MODEL names) live, for both ships: the next tick
+        uses them (no restart, no recompile); kept across resets. Returns the whole model."""
+        constants = core.with_hit_model(self.state.constants, **inputs)  # raises before keeping
+        self.hit_model = {**getattr(self, "hit_model", {}), **inputs}
+        self.state = self.state.replace(constants=constants)
+        return core.hit_model_of(self.state.constants)
 
     def constant(self, name: str, slot: int) -> float:
         """One ship's constant (a number when equal for every type, else a per-slot row)."""
@@ -100,9 +111,7 @@ class World:
         )
 
     def _place_opponent(self) -> None:
-        """A new life for the opponent: placed 1500 m from the player, facing it, with a fresh
-        scripted memory (no kept target, a new head-on side), as at a match's start."""
-        self.memory = scripted.fresh_memory(1, 2, self.generator, "cpu")
+        """A new life for the opponent: placed 1500 m from the player, facing it."""
         s = self.state
         bearing = 2.0 * math.pi * float(torch.rand((), generator=self.generator))
         x = float(s.x[0, 0]) + OPPONENT_DISTANCE * math.cos(bearing)
@@ -132,7 +141,7 @@ class World:
             self._place_opponent()
         else:
             self.state.alive[0, 1] = False
-            self.state.bullet_moves_left[0, 1] = 0
+            self.state.bullet_state[0, 1] = CONTACTED  # its bullets never touch a ship
         self.opponent_respawn = -1
 
     # ------------------------------------------------------------------ stepping
@@ -161,11 +170,9 @@ class World:
         self.previous = self.poses()
         if self.opponent == "scripted":
             uniforms = scripted.draw_uniforms(1, 2, self.generator, "cpu")
-            action, self.memory = scripted.act(
-                self.scripted, self.state, 1, None, uniforms, self.memory
-            )
+            action = scripted.act(self.scripted, self.state, 1, None, uniforms)
         else:
-            action = scripted.chaser_act(self.scripted, self.state, team=1)
+            action = scripted.chaser_act(self.state, team=1)
         action[0, 0] = torch.tensor([stick, power, int(fire)])
         self.state, out = core.tick(self.config, self.state, action, self.generator)
         s = self.state

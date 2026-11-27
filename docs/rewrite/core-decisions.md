@@ -864,3 +864,230 @@ Hit damage halved (author 2026-11-26)
   60 s): passes every 6.4 s (median); 48% of passes land no hit; one ship landed 11 or more
   hits in 22% of passes; 79% of hits came while one ship sat behind the other within gun range
   with its nose within 30 degrees (5.8% of ship-time, median streak 0.47 s, longest 17.5 s).
+
+## Scripted look-ahead (author 2026-11-26, branch scripted-lookahead)
+
+Every step and measurement: docs/rewrite/sections/scripted-lookahead/progress.md; the agent:
+lean/scripted/NOTES.md.
+
+- **The scripted opponent is a look-ahead scoring agent** (replaces the rule-based BFM agent in
+  every caller; the old code stays in `lean/scripted/rule_based/` only while the two are
+  compared, then goes). Per ship: the 21 flight actions' paths at 0.25 / 0.5 / 1 / 2 s from the
+  game's steady flight (`core.steady_flight`, new: `steady_rates` plus the angle) and the nose
+  spring per level in closed form; the 4 nearest known enemies' 21 paths each; 21 x 21 pair
+  tables (gun, threat, angles, energy, collisions) in one unit, the score second; his reply
+  collapsed by w = softmax(S_him / tau_him) and (1 / beta) log sum w e^(beta S_me); own-only
+  terms; flight = softmax(score / tau_me) plus stickiness for the pending action; fire by the
+  old worth rule. 16 sampled parameters and 12 fixed shapes, each with a meaning
+  (lean/scripted/parameters.py).
+- **Author additions:** no goal point with no enemy known (an energy preference and a seek toward
+  the freshest dropped last-seen position, both personality values); hidden enemies
+  dead-reckoned from the last sighting (last speed and nose rate up to 2 s, then straight).
+- **Decided by me:** no memory (the stickiness reads the pending action, which Obs carries, so
+  the teacher's label is a function of the observation); `fresh_memory` and the callers' memory
+  plumbing removed. The BC/RL teacher records the joint 42-way distribution (`TEACHER_WIDTH` =
+  42, float16 in the store: 84 bytes per ship-tick instead of 22). The pair stage is a Triton
+  kernel (`lean/scripted/kernels.py`) with the PyTorch path as its twin. `energy_weight` 0.25
+  from the card's `store_turn`. Personas stay per ship, drawn at each deal.
+- **Open, for the author (measured):** (1) cost: 16.6 ms per call at 2,048 envs of 4v4 against
+  the policy's 23.0 ms forward (72%, the estimate was about 13%); cold compile of the call
+  90.5 s. (2) 1v1 stalemate: self-play draws 74% without fields (rule-based 5.7%); no term
+  rewards closing in neutral geometry; parameters alone reach 40% at best. (3) Snap's predicted
+  path at low speed and its nose at 2 s (errors up to 19 m and 24 deg). (4) The power choice is
+  near-indifferent and flickers. 4v4 is strong: 1,404 wins, 9 draws, 68 losses against the
+  rule-based agent.
+
+### Round 3 (author's go 2026-11-27, overnight; unmerged, waits for the author's review)
+
+- **Steady-flight table (decided by me, as planned):** `core.steady_flight` tabulated once per
+  ship type with the card (`core.steady_characteristics`; level x power x 17 store nodes x 400
+  speeds x 4 outputs), read by `core.steady_lookup`; the store axis is its edge rooms
+  (`core.store_room`, factored out of `_setting`). The table rides on a new
+  `Constants.per_type` (by type, read with `State.type`; not dealt to slots). Path prediction
+  unchanged within 0.3 deg; `act` 7,864 -> 4,451 traced operations; cold compile 333 -> 280.2 s,
+  still over the 260 s budget (open: a paths kernel or fewer segments).
+- **Hit model as one game function (coupling with the deflector stream):** `core.hit_damage`
+  (kinetic x graze x aspect), read by the tick's `_damage` and the agent's trigger and gun
+  (`opponent.hit_worth`), so a hit-model change in core reaches the agent without edits.
+- **`store_weight` 0.25 (decided by me, decision-safe; question 2):** the store itself in the
+  power choice. Store mean 0.07-0.12 -> 0.45-0.51 of full, dive 57-60% -> 23-25%, climb 6-8%
+  -> 21-28%; beats the round-2 power choice 68% (1v1) and 57% (4v4). More (0.4, 0.6) wins 1v1
+  duels but ties 4v4 and drops the dive out of use. Weakening the speed term (the author's
+  suggestion) loses (44% / 47%): not taken.
+- **Rule-based agent removed** (code and the tools' comparison modes).
+- Measured on the final tree: 5.35 ms per call (25% of the policy forward); draws 2 / 2 / 3 of
+  1,002 / 914 / 745 (1v1 fog off, 4v4, 4v4 fields); kills per env-minute 1.86 / 10.12 / 8.74;
+  stick TV 0.13-0.14 per tick, by side 0.08-0.09, by steady rate 4-5% of the span.
+
+Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`, unmerged; overnight 2026-11-27)
+- **Superseded** by the egg (author decision 2026-11-27, entry "The egg deflector" below): the
+  closest-approach push, its presets and `hit_fraction` are removed; the runtime hit model and
+  the matrix exponential stay.
+- **Mechanism** (`core.deflection`, `core.hit_fraction`, `core._deflect`; lean/game/NOTES.md
+  "Deflector"): a field around every ship, the same at any shield. A bullet passing a ship at b
+  is treated as passing at b + D: contact when b + D < hit radius, damage graze(b + D; core, hit
+  radius) x the nose cone weighted by `nose_cone`. A bullet that touches nothing is pushed and
+  bent once per pass, on the tick holding its closest approach (0 <= tau < 1), when inside hit
+  radius + D: pushed D_eff = min(D, R + D - b) to the side it was passing (smooth sign, eps
+  0.1 m), turned away by atan(D_eff / 48 m), speed kept. Ghosts run the same code. A second ship
+  later in the same tick sees the unbent path.
+- **Presets** (`card.DEFLECTOR_PRESETS`, `GameConfig.deflector`, default "frontal"): "off" (D 0,
+  nose cone; skips the code), "symmetric" (D 3 m everywhere, nose cone kept), "frontal" (D 12 m =
+  the hit radius in the front 30 deg, fading to 3 m by 45 deg, nose cone dropped: frontal
+  bullets glance off). Default frontal: equal to symmetric on every measured play number, one
+  mechanism instead of the nose cone's special damage rule, and the glance is visible.
+- **Runtime hit model** (`core.HIT_MODEL`, `core.RUNTIME_CONSTANTS`, `core.with_hit_model`):
+  hit and core radius, hit damage, spread, the deflector's numbers and the nose cone's are rows
+  of the per-slot constants table, never floats baked into the compiled graph; changed between
+  calls with no recompile (test under `torch.compile(fullgraph=True)`, error_on_recompile).
+  Workbench `python -m lean.tool.hitbench` (about 2 s for three presets); sandbox sliders.
+- **The scripted agent's fire-worth** reads `core.hit_fraction` (one call: hit model changes
+  reach it without edits).
+- **Measured** (rule-based scripted agent both sides, CPU, 4 seeds x 128 games x 60 s; god mode
+  1v1 fog off no fields; kills with GameConfig()): damaging hits per minute per game off 50.9 /
+  symmetric 38.4 / frontal 37.4; hits per pass 12.2 / 9.2 / 9.0; passes with no hit 0.30 / 0.30
+  / 0.31; share of hits in control 0.32 for all; frontal (within 30 deg) contacts 205 / 158 / 0,
+  damaging frontal hits 0 for all; kills per minute 1v1 0.80 / 0.61 / 0.62, 4v4 4.68 / 4.01 /
+  3.94. Workbench at 300 m: effective hit radius off the nose 8.5 m (off) and 5.5 m (both
+  deflector presets). The side D (3 m) is what costs hits; open question 4.
+- **Cost** (4070 laptop, E 4096, 4v4, compiled step): off 0.97 ms, frontal 1.21 ms (+0.24 ms,
+  +24%) after two cuts (from +66%). Compile check (cold, laptop 4070, performance):
+  `advance` traced operations core 2,856 (baseline), branch off 2,998 (+22 the runtime rows, +120
+  the elementwise matrix exponential), frontal 3,219 (+221 the deflector): the tripwire FAILS for
+  frontal (+13% over the baseline; off is within it); 4 graphs, no recompiles, no graph breaks;
+  cold 237.0 s off, 237.4 s frontal (baseline 231.7 s). Baseline not updated.
+- **Found on the way** (own commit f583eb0c): the flight's 2x2 matrix exponential as batched
+  matrix products was four cuBLAS calls, 43% of the step's CUDA time; written out elementwise
+  the step is 1.76 -> 1.07 ms (deflector off).
+- Questions for the author: docs/rewrite/questions.md on the branch. Notes and numbers:
+  docs/rewrite/sections/bullet-deflector/progress.md.
+
+## Author decisions 2026-11-27 (~05:40, relayed on branch deflector-lookahead)
+
+1. The flight's 2x2 matrix exponential written out entry by entry (f583eb0c) is kept. Decided.
+2. Compile budget: provisionally raised, to be revisited. Compile checks over the old limit are
+   reported (scripted act; the egg's advance operations and cold compile), not a blocker for
+   this branch; the baseline file is not edited.
+3. Collision blame stays exactly as it is (the nose cone's angles), also with the nose cone's
+   damage rule off: the aggressor stays punished more than the defender.
+4. Time-to-kill target: steady fire from behind with perfect range, lead and aim (every shot
+   hits, close) about 0.4 s is the floor; typical good tracking 0.6-0.8 s; about 1.0 s the
+   upper limit for a well-aimed burst where only dispersion and distance cost hits. The egg
+   experiments report which hit damage x spread combinations land in that band (core
+   defaults unchanged).
+5. Bullet spread: no target yet; decided from the egg experiments' spread grid.
+6. Scripted store_weight: undecided (1v1 prefers 0.4-0.6, 4v4 even with fewer kills);
+   situation-dependent weights may be tried, lower priority than the egg experiments.
+
+## The egg deflector (PROPOSAL, branch `deflector-lookahead`, unmerged; author decision 2026-11-27 for the mechanism)
+
+- **Mechanism** (`core.egg_entry`, `core.egg_turn`, `core.hump`, `core._deflect`; lean/game/NOTES.md
+  "Deflector"): an invisible egg around every ship in its frame (front semi-axis 53.3 m along
+  the nose, rear 24 m, half-width 24 m). In the relative frame, a bullet whose straight in-tick
+  path first crosses the egg inward is turned away from the centre by 45 deg x hump(b / 24 m),
+  hump(x) = 27/4 x (1 - x)^2 (0 at both ends, peak at a third), b the line's distance from the
+  centre; the relative speed kept; the swept hit test on the turned remainder. Once per pass
+  (only inward crossings; a bullet from inside never turns). Ghosts the same. Same at any
+  shield. The old closest-approach push, its presets and `hit_fraction` are removed.
+- **Hit radius 12 m, core 10 m** (author). The nose cone's damage rule kept as the hit-model row
+  `nose_cone`, 0 by default; collision blame unchanged (author).
+- **Presets** "egg" (default) and "off" (`GameConfig.deflector`); every number a runtime row
+  (`core.HIT_MODEL`; no recompile, tested), with the derived `hit_widths` column.
+- **Hit widths** (the game's function, the sketch's numbers): 24 m with no turn; egg 4.75 m side
+  and astern, 2.05 m head-on (30 deg turn: 7.0 / 3.0; 60 deg: 3.5 / 1.6).
+- **Scripted agent**: target size = half the hit width at the aspect; the trigger's worth uses
+  the hit chance (hit width, spread, `lead_error` 0.25, a reasoned choice). One source of truth
+  (the agent reads the column).
+- **Cost**: GPU tick (E 4096, 4v4) 0.98 ms off, 1.37 ms egg (+40%, after one cut); compile
+  `advance` 3,296 traced operations (+15% over the core baseline), cold 293.4 s (budget 260 s,
+  provisionally raised). Baseline not updated.
+- **Measured** (look-ahead agent both sides): head-on kills 0.45 -> 0.00 (1v1), hits in
+  control 0.05 -> 0.70, kills per minute 1v1 3.25 -> 1.45 and 4v4 11.1 -> 6.6, TTK median
+  0.8 -> 7.8 s; spread, hit damage and egg front barely move play; workbench TTK band
+  candidates: hit damage about 8.5 with spread up to 5 mrad, or 7 with today's.
+  docs/rewrite/sections/bullet-deflector/egg-experiments.md and progress.md.
+
+
+## Ghost-only bullets (PROPOSAL, branch `ghost-only`, unmerged; author decision 2026-11-27 ~15:20)
+
+- **The ring is the clock** (author): no moves-left countdown. Every ship, alive, dead or not
+  existing, writes one bullet a tick into slot `tick mod BULLET_SLOTS` of its ring, so a bullet
+  lives exactly `contract.BULLET_SLOTS` = 12 ticks and moves on every one of them. Bullet life
+  is the slot count: `core._per_type` raises a ValueError when the card's `bullet_life` does not
+  round to 12 ticks (an assertion, not a derivation: the card keeps `bullet_life` from the gun
+  range, and `tuning.time_scaled` sets it to 12 ticks at any time factor, so the gun range there
+  follows the factor). The per-ship `next_slot` column and the `bullet_moves` constant are gone.
+  A design that moves the muzzle speed or the bullet drag must move the gun range with it
+  (`tuning.ring_gun_range`, the range of a 12-tick bullet; the design tests do). Open for the
+  author: the tool's gun-range slider (a design input) can now ask for a life the game refuses
+  (a clear error at constants build); it could become a read-out of muzzle speed and drag.
+- **One uint8 state per bullet** (author; `State.bullet_state`, `contract.GHOST / REAL /
+  CONTACTED` = 0 / 1 / 2, replacing `bullet_real` and the `bullet_counts` block): damage only
+  from REAL; a contact turns a ghost or a real bullet into CONTACTED and it keeps flying, motion
+  unchanged (no stop, no freeze; no further contact, so no egg turn either). A dead or absent
+  ship's bullets are ghosts.
+- **Labels: first contact only** (the coordinator's recommendation; the author has not
+  overruled): a bullet reports once, from GHOST or REAL, at its first contact (1 enemy, 2
+  team-mate) or as a miss (0) on its last tick; never from CONTACTED. A fresh deal's slots start
+  CONTACTED, so they never label (the prototype's parked ghosts labelled passers-by in the first
+  12 ticks). `shot_tick` is the ring age: `tick - age` (`core.bullet_ages`). Labels of dead and
+  absent ships' ghosts land on rows that are not `own` (the hit loss masks them).
+- **Observation**: the bullet share counts REAL bullets (not yet contacted), as before.
+- **Removed** (author: no ablation needed): `GameConfig.ghost_bullets` and the countdown code,
+  with every use (tests, eval runner, tool, sandbox).
+- **Cost** (compiled `core.step`, E 4096, 4v4, fields and fog, laptop 4070, performance
+  profile, load ~1.2-1.6; bench_tick, base b70dcd18 vs this branch, 2 rounds alternating):
+  off 0.973 / 0.973 -> 0.753 / 0.753 ms, egg 1.078 / 1.079 -> 0.880 / 0.925 ms. Kernels:
+  docs/rewrite/sections/bullet-deflector/progress.md (2026-11-27 16:00).
+
+## Static training graphs and the hot-path fixes (PROPOSAL, branch `tick-audit`, unmerged; author decisions 2026-11-27 ~16:00)
+
+- **A training run is fully static** (author): `LearnConfig.compile_shapes` "static" (default)
+  compiles act, advance and the update graphs for the run's sizes (environments, ships, fields,
+  micro-batch) with `dynamic=False` and makes any second compile an error
+  (`lean.contract.compile_graph`, `StaticGraph`, stance fail_on_recompile). "dynamic" keeps
+  `compile_dynamic` (duck sizing off) for crossover evaluation, as the evaluation runner does.
+  This replaces "Dynamic shapes, not fixed" (Deliberate changes, Game) for training. All five
+  learner graphs are static; the league routing keeps its table width W symbolic (it follows
+  the league's capacity; a fixed W is separate, later work).
+- **Hit labels per segment**: advance returns each ship's bullet outcomes by age and collect
+  assembles the labels at the segment's end; nothing is written into a buffer in the tick.
+- **Constants per ship type**: State carries the card's (C, T) table and the slots' types, not
+  an (E, C, N) copy; bitwise.
+- **Dropped with numbers** (hot-path-audit-progress.md): the reset cap D = 16 (the whole
+  re-deal costs 0.076 ms per tick now; a capped path cannot beat the fused select without a
+  branch), a deal pool (deals cost 0.012 ms per tick), exp2 powers (no gain); not done: sight
+  on unordered pairs, fire's block rewrite, the bullet share once a tick.
+- **Cost** (laptop 4070, performance profile): core.step at E 4096, 4v4, egg 1.777 ms on the
+  old trainer path (compile_dynamic) -> 0.766 ms static (off 1.713 -> 0.572); the training
+  tick at E 2048 31.8 -> 25.2 ms (collect 64.4k -> 81.4k steps/s), advance 3.67 -> 1.84 ms.
+  The update at E 2048: 141.0 -> 129.8 s (183.6 -> 169.0 ms per micro-batch).
+
+## The training-path fixes (PROPOSAL, branch `train-audit`, unmerged; author decisions 2026-11-27 ~17:30)
+
+- **The league table fixed for the run** (completes "a training run is fully static"): every
+  network member's capacity C = ceil(1.25 L / members), members = 3 + snapshot_members (86 rows
+  at L 1,024), the scripted agent's L; every slot on W = C rows, the merge on K = 2 + 12 + 4
+  entries. The tick calls only the slots holding weights (author 2026-11-27 ~21:00: "static"
+  means a recipe that never changes mid-run, not identical calls); a skipped slot's merge entry
+  is a zero filler no row reads. The routing and the merge compile once, when the first network
+  member joins; W is no longer dynamic. Departure from "League routing" (2026-11-23), for the author: the scripted
+  agent is uncapped, so early in RL most league games are scripted (852 of 1,024 with one
+  snapshot), evening out as snapshots join. The RL tick: 26.4 ms with 1 snapshot (2 slot
+  calls), 32.5 ms with 12 (11 calls); running all 18 slots it was 38.5 and 38.6 (and
+  tick-audit's varying table 30.1 and 36.9).
+- **The step's reset instead of zeroing the carries each tick**: advance 1.84 -> 0.55 ms.
+- **Constants built once outside the graphs** (the critic's support passed in, the next-state
+  support as policy buffers, the scripted agent's tables made on the device): 0 pageable
+  copies in the collect loop (1 before, under the static compile).
+- **One linear scan** (a Triton kernel forward and backward, a custom operator; float32 state)
+  for the RG-LRU and GAE, in place of the doubling scan: the update's micro-batch step 170.0
+  -> 146.8 ms (-13.6%), peak 5.12 -> 4.17 GiB, gradients within bf16 rounding of the doubling
+  scan's.
+- **Not adopted**: norm outputs in bf16 with float32 residuals (no gain: the next Linear cast
+  them anyway, identical gradients); measured only, the bf16 residual stream: -5.3% of the
+  step, gradient differences 6x the scan's (the residual stays float32, decided 2026-11-23).
+- Numbers and method: docs/rewrite/sections/training-path-audit-progress.md.
+- **Whole branch** (laptop 4070, performance profile): the update at E 2,048 129.7 -> 114.5 s
+  (168.9 -> 149.1 ms per micro-batch); the BC loop 8,255 steps/s (127.0 s per update); the
+  cold compile 135.4 -> 121.0 s.

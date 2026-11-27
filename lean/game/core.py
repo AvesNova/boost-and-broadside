@@ -23,11 +23,13 @@ from torch import Tensor
 
 from lean.contract import (
     BULLET_COLUMNS,
-    BULLET_COUNT_COLUMNS,
     BULLET_SLOTS,
+    CONTACTED,
     FIELD_FEATURES,
     GLOBAL_FEATURES,
     NO_PENDING,
+    POWERS,
+    REAL,
     SHIP_COLUMNS,
     SHIP_FEATURES,
     SHIP_TYPES,
@@ -54,8 +56,6 @@ BULLET_SPEED, BULLET_LOG_INDEX = (
     BULLET_COLUMNS.index("bullet_speed"),
     BULLET_COLUMNS.index("bullet_log_index"),
 )
-MOVES_LEFT = BULLET_COUNT_COLUMNS.index("bullet_moves_left")
-FIRED_TICK = BULLET_COUNT_COLUMNS.index("bullet_fired_tick")
 
 
 @dataclass
@@ -101,11 +101,6 @@ class GameConfig:
     field_band_width: float = 160.0
     field_high_share: float = 0.5
     field_strong_share: float = 0.5
-    # Ghost bullets (the hit head's labels, author 2026-11-22): every living ship puts a bullet
-    # in its ring every tick; only a real shot damages and kills; a ghost ends at its first
-    # contact like a real bullet. Every bullet's outcome is reported when its flight ends.
-    # False (an ablation): real shots only.
-    ghost_bullets: bool = True
     # Flight (docs/rewrite/core-decisions.md "Flight physics"): weight always on the wing, the
     # turn limited unless diving; the engine drives speed only and never feeds the store; a
     # store of `store_loops` vertical loops at corner speed; dive and climb equal and opposite;
@@ -136,6 +131,11 @@ class GameConfig:
     # observer's forward reach p / (1 - e), with a clear line. False (an ablation): the ellipse
     # every tick. At e = 0 the circle is the ellipse, so the switch changes nothing there.
     fog_tracking: bool = True
+    # The bullet deflector (proposal 2026-11-27; `egg_entry`, `egg_turn`, lean/game/NOTES.md
+    # "Deflector"): a preset of card.DEFLECTOR_PRESETS ("egg", "off") setting the hit model's
+    # deflector inputs at the deal. "off" (an ablation) also skips the deflector's code; under
+    # "egg" every deflector number is a runtime input (`with_hit_model`).
+    deflector: str = "egg"
 
 
 def built_once(build):
@@ -154,7 +154,7 @@ def built_once(build):
 # --------------------------------------------------------------------------- constants
 
 # Constants counted in whole ticks: they must be equal for every type of a run.
-INTEGER_CONSTANTS = ("bullet_moves", "fire_interval")
+INTEGER_CONSTANTS = ("fire_interval",)
 # Action-indexed tables (by stick index, by power index): always rows of the per-slot table.
 # The sustain table (`_sustain_fraction`) is wide too: always rows.
 ACTION_TABLES = (
@@ -166,6 +166,27 @@ ACTION_TABLES = (
     "demand_table",
     "sustain_table",
 )
+# The hit model (`HIT_MODEL`): always rows of the per-slot table, never Python numbers, so a
+# change between calls of the compiled tick (`with_hit_model`: the workbench, the sandbox's
+# sliders) needs no recompile.
+RUNTIME_CONSTANTS = (
+    "hit_radius",
+    "core_radius",
+    "hit_damage",
+    "spread_speed",
+    "egg_front",
+    "egg_rear",
+    "egg_half_width",
+    "deflector_turn",
+    # The egg's semi-axes as inverses (derived, written with them): the pair test multiplies.
+    "inverse_egg_front",
+    "inverse_egg_rear",
+    "inverse_egg_half_width",
+    "nose_cone",
+    "nose_inner_cos",
+    "inverse_nose_width",
+    "hit_widths",
+)
 
 
 def _per_type(config: GameConfig) -> dict[str, Tensor]:
@@ -176,6 +197,15 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         return torch.tensor(card.CARD[name], dtype=torch.float32)
 
     lift, acceleration = of("max_lift_coefficient"), of("max_acceleration")
+    # A bullet lives exactly BULLET_SLOTS ticks (its slot is rewritten then: the ring is the
+    # clock), so the card's bullet life must be that (one source of truth: the slot count).
+    life_ticks = torch.round(of("bullet_life") / config.tick_length).long()
+    if bool((life_ticks != BULLET_SLOTS).any()):
+        raise ValueError(
+            f"the card's bullet life is {life_ticks.tolist()} ticks; a bullet lives exactly "
+            f"contract.BULLET_SLOTS = {BULLET_SLOTS} ticks (every ship writes one bullet a tick "
+            "into its ring), so bullet_life must round to that"
+        )
     stall = card.STALL_ANGLE * of("stall_angle_scale")
     # The store: `store_loops` vertical loops at corner speed. A loop climbs twice the corner
     # turn radius, whose sideways acceleration is the g limit with 1 g held on the wing.
@@ -188,6 +218,7 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
     gravity = torch.full_like(exchange, card.GRAVITY)
     raw = torch.stack([gravity, card.GRAVITY - exchange, card.GRAVITY + exchange], -1)
     hit_radius = of("hit_radius")
+    deflector = {"nose_cone": card.NOSE_CONE, **card.DEFLECTOR_PRESETS[config.deflector]}
     nose_inner_cos, nose_outer_cos = (
         torch.cos(of("nose_inner_angle")),
         torch.cos(of("nose_outer_angle")),
@@ -212,15 +243,18 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "muzzle_speed": of("muzzle_speed"),
         "spread_speed": card.BULLET_SPREAD * of("bullet_spread_scale"),
         "bullet_drag": card.BULLET_DRAG * of("bullet_drag_scale"),
-        "bullet_moves": torch.round(of("bullet_life") / config.tick_length).long(),
         "fire_interval": torch.round(1.0 / (config.tick_length * of("fire_rate"))).long(),
         "hit_damage": of("hit_damage"),
         "explosive_share": of("explosive_share"),
         "hit_radius": hit_radius,
-        "hit_radius_squared": hit_radius * hit_radius,
         "core_radius": of("core_radius"),
         "nose_inner_cos": nose_inner_cos,
         "inverse_nose_width": 1.0 / (nose_inner_cos - nose_outer_cos),
+        **{
+            name: torch.full_like(hit_radius, value)
+            for name, value in hit_model_constants(deflector).items()
+        },
+        "hit_widths": hit_widths(hit_radius, deflector),
         "max_shield": of("max_shield"),
         "shield_rate": card.SHIELD_RECHARGE_RATE * of("shield_recharge_rate_scale"),
         "shield_delay": card.SHIELD_RECHARGE_DELAY * of("shield_recharge_delay_scale"),
@@ -353,7 +387,7 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
             low, high = torch.where(rate > 0.0, middle, low), torch.where(rate > 0.0, high, middle)
     cruise = 0.5 * (low + high)
     launch = cruise + c.muzzle_speed
-    life = c.bullet_moves.float() * config.tick_length
+    life = BULLET_SLOTS * config.tick_length
     stall_speed = torch.sqrt(card.GRAVITY / c.lift)
     corner_speed = torch.sqrt(c.max_acceleration / c.lift)
     sustained_rate, sustained_speed = _best_sustained_turn(values, stall_speed, cruise)
@@ -412,26 +446,23 @@ def steady_control(p, speed: Tensor, stick: Tensor, power: int, sustain=0.0, dee
     )
 
 
-def steady_rates(
+def steady_flight(
     p,
     speed: Tensor,
     stick: Tensor,
-    power: int,
+    power: int | None,
     energy: Tensor,
     sustain: Tensor | float = 0.0,
     deep: Tensor | float = 0.0,
 ):
-    """A ship flying steadily (no field, the nose's lag settled) at `speed` with stick size
-    `stick` (0 to 1) and power index `power` (0 coast, 1 dive, 2 climb) at store `energy`: its
-    turn rate (rad/s), d speed / dt and d store / dt, from the flight functions the tick uses.
-    `p` holds the ship constants broadcastable against `speed` (the action tables with a last
-    axis of width 3). Every quasi-steady analysis (the derived characteristics, lean.game.tuning's
-    performance and envelope) goes through here. By default `stick` is a fraction of the
-    envelope's top line (the wing's maximum lift against the g limit, Max); `sustain` (Sustain's
-    table) and `deep` (Snap's deep angle below corner) give a stick level's own shape
-    (`stick_level_shape`). The thrust's normal part counts in the 1 g hold at the angle flown
-    (`_setting`): the setting is resolved twice, the second time at the first's angle."""
-    control = steady_control(p, speed, stick, power, sustain, deep)
+    """`steady_rates` with the angle of attack flown: (turn rate (rad/s), d speed / dt, d store
+    / dt, the angle of attack (rad, >= 0)), from the flight functions the tick uses. power None:
+    every power at once, `speed`'s last axis the power index (its width 3; the action tables
+    broadcast along it). The scripted agent's look-ahead reads the angle as the nose spring's
+    target (lean.scripted.paths)."""
+    control = steady_control(p, speed, stick, 0 if power is None else power, sustain, deep)
+    if power is None:
+        control.commanded, control.demand = p.commanded_table, p.demand_table
     inverse_lift = 1.0 / p.lift
     angle_sin = 0.0
     for _ in range(2):
@@ -457,7 +488,45 @@ def steady_rates(
         1.0 / (speed * speed),
         inverse_lift * inverse_lift,
     )
-    return rate, speed_rate, store_rate
+    return rate, speed_rate, store_rate, angle
+
+
+def steady_rates(
+    p,
+    speed: Tensor,
+    stick: Tensor,
+    power: int,
+    energy: Tensor,
+    sustain: Tensor | float = 0.0,
+    deep: Tensor | float = 0.0,
+):
+    """A ship flying steadily (no field, the nose's lag settled) at `speed` with stick size
+    `stick` (0 to 1) and power index `power` (0 coast, 1 dive, 2 climb) at store `energy`: its
+    turn rate (rad/s), d speed / dt and d store / dt, from the flight functions the tick uses.
+    `p` holds the ship constants broadcastable against `speed` (the action tables with a last
+    axis of width 3). Every quasi-steady analysis (the derived characteristics, lean.game.tuning's
+    performance and envelope) goes through here. By default `stick` is a fraction of the
+    envelope's top line (the wing's maximum lift against the g limit, Max); `sustain` (Sustain's
+    table) and `deep` (Snap's deep angle below corner) give a stick level's own shape
+    (`stick_level_shape`). The thrust's normal part counts in the 1 g hold at the angle flown
+    (`_setting`): the setting is resolved twice, the second time at the first's angle
+    (`steady_flight`, which also returns the angle)."""
+    return steady_flight(p, speed, stick, power, energy, sustain, deep)[:3]
+
+
+def current_path_rate(p, speed: Tensor, angle: Tensor, energy: Tensor) -> Tensor:
+    """The flight path's turn rate (rad/s, positive left, no field) of a ship at `speed` and
+    store `energy` whose angle of attack is `angle` now, coasting: the normal force at that angle
+    (`_path_lift`, the 1 g held as the tick holds it) over the speed. With the nose rate it gives
+    the angle's own rate (nose rate - path rate), which the observation does not carry."""
+    control = steady_control(p, speed, torch.zeros_like(speed), 0)
+    angle_sin = torch.sin(angle)
+    _, _, vertical, thrust = _setting(p, control, speed, energy, angle_sin.abs())
+    lift = _lift_coefficient(p, angle)
+    normal = _path_lift(
+        p, lift, angle, vertical, speed * speed, thrust, thrust * angle_sin, torch.zeros_like(speed)
+    )[0]
+    return normal / speed
 
 
 def quasi_steady(
@@ -522,6 +591,131 @@ def _sustain_fraction(p, control, speed):
     return first + (second - first) * share
 
 
+# The steady-flight table (`_steady_table`, `steady_lookup`): speeds on a grid of half Sustain's
+# step, from a quarter of stall speed (STEADY_SPEED_NODES of them: past 1.6 x cruise speed, beyond
+# the terminal dive), its nodes on Sustain's; STEADY_ROOMS store nodes across each edge band.
+STEADY_STEP_OF_SUSTAIN = 0.5
+STEADY_LOWEST = 0.25  # of stall speed
+STEADY_SPEED_NODES = 400
+STEADY_ROOMS = 9
+STEADY_OUTPUTS = 4  # turn rate, d speed / dt, d store / dt, angle of attack
+# Per-type tables (T, ...): kept by card type on the Constants (`Constants.per_type`), read by
+# the ship's type, never dealt to slots (too wide for every slot's row).
+PER_TYPE_TABLES = ("steady_table",)
+
+
+def _steady_store_nodes(rooms: int) -> Tensor:
+    """The store axis's nodes, 2 rooms - 1 of them, as places in the edge bands: the sink room
+    (`store_room`) 0 to 1, then 2 less the top room, 1 to 2. Between the bands (1) the flight
+    does not depend on the store."""
+    return torch.linspace(0.0, 2.0, 2 * rooms - 1)
+
+
+def _inverse_smootherstep(room: Tensor) -> Tensor:
+    """t in [0, 1] with smootherstep(t) = room (bisection; monotonic)."""
+    low, high = torch.zeros_like(room), torch.ones_like(room)
+    for _ in range(40):
+        middle = 0.5 * (low + high)
+        above = smootherstep(middle) > room
+        low, high = torch.where(above, low, middle), torch.where(above, middle, high)
+    return 0.5 * (low + high)
+
+
+def steady_characteristics(values: dict[str, Tensor]) -> dict[str, Tensor]:
+    """The steady-flight table and its speed grid (`_steady_table`) for every type of `values`
+    (`_per_type`'s). Built with the ship card (`ship_card`), not by `_per_type`: the analysis
+    tools that call that often (lean.game.tuning's fits) never read it."""
+    low, step, table = _steady_table(
+        values, values["stall_speed"], 1.0 / values["inverse_sustain_step"]
+    )
+    return {"steady_low_speed": low, "inverse_steady_step": 1.0 / step, "steady_table": table}
+
+
+def _steady_table(values: dict[str, Tensor], stall_speed: Tensor, sustain_step: Tensor):
+    """`steady_flight` tabulated once per type (round 3 of the scripted look-ahead, author
+    2026-11-27: a lookup in place of the flight functions in the agent's graph): (T, levels 4,
+    powers 3, store nodes 2 STEADY_ROOMS - 1, speeds STEADY_SPEED_NODES, STEADY_OUTPUTS) of
+    (turn rate, d speed / dt, d store / dt, angle) for straight, Sustain, Max and Snap (each
+    level's (size, sustain, deep) from the stick tables), no field. The store enters only
+    through its edge rooms (`store_room`), so its axis is the rooms: the sink room's band, then
+    the top room's (`_steady_store_nodes`; between the bands both are 1). Returns (first speed
+    (T,), step (T,), table)."""
+    count = len(stall_speed)
+    column = SimpleNamespace(
+        **{name: value.reshape(count, 1, 1, *value.shape[1:]) for name, value in values.items()}
+    )
+    step = STEADY_STEP_OF_SUSTAIN * sustain_step
+    below = torch.round((1.0 - STEADY_LOWEST) * stall_speed / step)
+    low = stall_speed - below * step
+    nodes = _steady_store_nodes(STEADY_ROOMS)
+    speeds = low[:, None, None] + step[:, None, None] * torch.arange(STEADY_SPEED_NODES)
+    speeds = speeds.expand(count, len(nodes), STEADY_SPEED_NODES)
+    fade = 1.0 / column.inverse_fade[..., 0]  # (T, 1)
+    max_energy = column.max_energy[..., 0]
+    # A node below 1: the store whose sink room is the node; above 1: whose top room is 2 less
+    # the node (`steady_lookup`); 1 itself: any store between the bands.
+    energy = torch.where(
+        nodes < 1.0,
+        fade * _inverse_smootherstep(nodes.clamp_max(1.0)),
+        torch.where(
+            nodes > 1.0,
+            max_energy - fade * _inverse_smootherstep((2.0 - nodes).clamp(0.0, 1.0)),
+            0.5 * max_energy,
+        ),
+    )[..., None].expand_as(speeds)  # (T, store nodes, speeds)
+    first = [int(abs(level)) for level in card.STICK_LEVELS]
+    first_of_level = [first.index(level) for level in range(max(first) + 1)]
+    levels = []
+    with torch.no_grad():
+        for index in first_of_level:
+
+            def shape(name: str) -> Tensor:
+                return values[name][:, index].abs().reshape(-1, 1, 1)
+
+            size, sustain, deep = (
+                shape(name) for name in ("stick_table", "sustain_stick_table", "deep_stall_table")
+            )
+            flown = (size.expand_as(speeds), sustain.expand_as(speeds), deep.expand_as(speeds))
+            powers = [
+                torch.stack(
+                    steady_flight(column, speeds, flown[0], power, energy, flown[1], flown[2]), -1
+                )
+                for power in range(POWERS)
+            ]
+            levels.append(torch.stack(powers, 1))
+    return low, step, torch.stack(levels, 1).contiguous()
+
+
+def steady_lookup(p, table: Tensor, ship_type: Tensor, speed: Tensor, level, power, energy):
+    """`steady_flight`'s (turn rate, d speed / dt, d store / dt, angle) read from the type's
+    steady table (`_steady_table`), linear in the speed and in the store's edge rooms
+    (`store_room`; clamped at the grid's ends). `ship_type`, `level` (stick level 0 to 3), `power`
+    (index) long and `speed`, `energy` broadcast together; `p` the ship constants broadcastable
+    against them (steady_low_speed, inverse_steady_step, inverse_fade, max_energy)."""
+    _, levels, powers, stores, speeds, outputs = table.shape
+    position = ((speed - p.steady_low_speed) * p.inverse_steady_step).clamp(0.0, speeds - 1.001)
+    below = position.long()
+    share = position - below
+    sink_room, top_room = store_room(p, energy)
+    rooms = 0.5 * (stores - 1)
+    place = torch.where(energy < 0.5 * p.max_energy, sink_room, 2.0 - top_room)
+    store = (place * rooms).clamp_max(stores - 1.001)
+    store_below = store.long()
+    store_share = store - store_below
+    row = (((ship_type * levels + level) * powers + power) * stores + store_below) * speeds + below
+    corners = table.view(-1, outputs)[row[..., None] + _corner_offsets(speeds, row.device)]
+    lower, upper = corners[..., :2, :], corners[..., 2:, :]  # (..., 2 speeds, outputs) each
+    along = torch.lerp(lower, upper, store_share[..., None, None])
+    return torch.lerp(along[..., 0, :], along[..., 1, :], share[..., None]).unbind(-1)
+
+
+@built_once
+def _corner_offsets(speeds: int, device: torch.device) -> Tensor:
+    """The four table rows around a point: the store's lower node at the lower and the upper
+    speed, then the store's upper node at both."""
+    return torch.tensor([0, 1, speeds, speeds + 1], device=device)
+
+
 SUSTAINED_GRID = 257  # speeds per search pass
 SUSTAINED_STICK_STEPS = 40  # bisection steps on the stick holding energy
 
@@ -575,10 +769,16 @@ def _build_ship_card(config: GameConfig) -> Constants:
     # The arena's size and the tick's length, for the scripted opponent (it reads every number
     # from the game).
     uniform = {"arena_radius": config.arena_radius, "tick_length": config.tick_length}
-    columns, rows = {}, []
-    for name, values in _per_type(config).items():
+    columns, rows, per_type = {}, [], {}
+    every = _per_type(config)
+    every.update(steady_characteristics(every))
+    for name, values in every.items():
+        if name in PER_TYPE_TABLES:
+            per_type[name] = values.contiguous()
+            continue
         chosen = values[used]
-        if name not in ACTION_TABLES and bool((chosen == chosen[0]).all()):
+        runtime = name in ACTION_TABLES or name in RUNTIME_CONSTANTS
+        if not runtime and bool((chosen == chosen[0]).all()):
             uniform[name] = chosen[0].item()
             continue
         if name in INTEGER_CONSTANTS:
@@ -588,7 +788,8 @@ def _build_ship_card(config: GameConfig) -> Constants:
         block = values.reshape(len(card.TYPE_NAMES), -1).T  # (width, T)
         columns[name] = (sum(len(row) for row in rows), block.shape[0])
         rows.append(block)
-    return Constants(uniform, columns, torch.cat(rows, 0)[None].contiguous())  # the tables at least
+    table = torch.cat(rows, 0).contiguous()  # (C, T): the action tables at least
+    return Constants(uniform, columns, table, per_type)
 
 
 # Built ship cards by (store loops, store edge band, tick length, lineup, arena radius).
@@ -597,7 +798,7 @@ _SHIP_CARDS: dict[tuple, Constants] = {}
 
 def ship_card(config: GameConfig) -> Constants:
     """The run's ship card: its constants per ship type, before they are dealt to slots (the
-    table (1, C, T) on the CPU, one column per card type). Built once per flight settings,
+    table (C, T) on the CPU, one column per card type). Built once per flight settings,
     lineup and arena. The build reads numbers back to the host (`.item()`), so it runs eagerly:
     the first deal of a run (`reset`, always before any compiled tick) builds it, and a traced
     deal only looks it up."""
@@ -608,6 +809,7 @@ def ship_card(config: GameConfig) -> Constants:
         tuple(config.lineup),
         config.arena_radius,
         config.post_stall,
+        config.deflector,
     )
     if key not in _SHIP_CARDS:
         _SHIP_CARDS[key] = _build_ship_card(config)
@@ -619,15 +821,19 @@ def _card_table(ship_card_: Constants, device: torch.device) -> Tensor:
     return ship_card_.table.to(device)
 
 
+@built_once
+def _card_per_type(ship_card_: Constants, device: torch.device) -> dict[str, Tensor]:
+    return {name: value.to(device) for name, value in ship_card_.per_type.items()}
+
+
 def ship_constants(config: GameConfig, ship_type: Tensor) -> Constants:
     """The per-ship constants of slots of types ship_type (E, N) long, each a type of the lineup:
-    the card's uniform numbers, and its per-type rows gathered once into (E, C, N)."""
+    the card's uniform numbers and its (C, T) table (shared, never written), read through
+    ship_type."""
     ship_card_ = ship_card(config)
     table = _card_table(ship_card_, ship_type.device)
-    envs, slots = ship_type.shape
-    rows = table.shape[1]
-    gathered = table.expand(envs, rows, -1).gather(2, ship_type[:, None].expand(envs, rows, slots))
-    return Constants(ship_card_.uniform, ship_card_.columns, gathered)
+    per_type = _card_per_type(ship_card_, ship_type.device)
+    return Constants(ship_card_.uniform, ship_card_.columns, table, per_type, ship_type)
 
 
 # --------------------------------------------------------------------------- fixed tensors
@@ -658,11 +864,6 @@ def filled(
 ) -> Tensor:
     """A constant tensor (the start of a scatter, a fixed row of a fresh deal), built once."""
     return torch.full(shape, value, dtype=dtype, device=device)
-
-
-@built_once
-def _eye(dtype: torch.dtype, device: torch.device) -> Tensor:
-    return torch.eye(2, dtype=dtype, device=device)
 
 
 # --------------------------------------------------------------------------- numerics
@@ -724,7 +925,7 @@ def medium(fields: Tensor, x: Tensor, y: Tensor) -> tuple[Tensor, Tensor, Tensor
     weight = profile.sum(-1)
     weighted_target = (profile * target).sum(-1)
     clear = complement.prod(-1)
-    leave_one_out = torch.where(in_band, slope / torch.where(in_band, complement, 1.0), 0.0)
+    leave_one_out = slope / torch.where(in_band, complement, 1.0)  # slope is 0 outside
     coverage_gradient_x = clear * (leave_one_out * offset_x).sum(-1)
     coverage_gradient_y = clear * (leave_one_out * offset_y).sum(-1)
     weight_gradient_x, weight_gradient_y = profile_gradient_x.sum(-1), profile_gradient_y.sum(-1)
@@ -748,6 +949,15 @@ def medium(fields: Tensor, x: Tensor, y: Tensor) -> tuple[Tensor, Tensor, Tensor
 
 
 # --------------------------------------------------------------------------- flight
+
+
+def store_room(p, energy):
+    """(sink room, top room), 0 to 1: the store's distance from empty and from full in its edge
+    band (`GameConfig.store_edge_band`), smootherstepped. Dive and a sinking ship need the sink
+    room, a climb the top room (`_setting`)."""
+    sink_room = smootherstep((energy * p.inverse_fade).clamp(0.0, 1.0))
+    top_room = smootherstep(((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0))
+    return sink_room, top_room
 
 
 def _setting(p, control, speed, energy, angle_sin):
@@ -774,9 +984,8 @@ def _setting(p, control, speed, energy, angle_sin):
     q = p.lift_softmin_exponent
     # The corner, smooth: the wing's lift against the g limit (the only soft minimum of the turn).
     budget = softmin(p.lift * speed_squared, p.max_acceleration, q).clamp_min(1e-12)
-    sink_room = smootherstep((energy * p.inverse_fade).clamp(0.0, 1.0))
+    sink_room, top_room = store_room(p, energy)
     budget_squared = budget * budget
-    top_room = smootherstep(((p.max_energy - energy) * p.inverse_fade).clamp(0.0, 1.0))
     climbing = control.commanded > 0.0
     room = torch.where(climbing, top_room, torch.where(control.commanded < 0.0, sink_room, 1.0))
     demand = card.GRAVITY + (control.demand - card.GRAVITY) * room
@@ -999,17 +1208,31 @@ def _holding_angle(p, speed, vertical):
 
 
 def _matrix_exponential(a11, a12, a21, a22, duration):
-    """exp(duration * A) for 2x2 A given by its entries (E, N): a degree-4 series, squared once."""
-    b = torch.stack([torch.stack([a11, a12], -1), torch.stack([a21, a22], -1)], -2) * (
-        duration / 2.0
+    """exp(duration * A) for 2x2 A given by its entries (E, N): a degree-4 series, squared once.
+    The 2x2 products are written out entry by entry: elementwise, so the compiled tick fuses
+    them (as batched matrix products they were four small cuBLAS calls, about 40% of the GPU
+    tick; 2026-11-27)."""
+    half = duration / 2.0
+    b = (a11 * half, a12 * half, a21 * half, a22 * half)
+
+    def times_b(h, scale):  # I + (B H) * scale
+        return (
+            1.0 + (b[0] * h[0] + b[1] * h[2]) * scale,
+            (b[0] * h[1] + b[1] * h[3]) * scale,
+            (b[2] * h[0] + b[3] * h[2]) * scale,
+            1.0 + (b[2] * h[1] + b[3] * h[3]) * scale,
+        )
+
+    h = (1.0 + b[0] / 4.0, b[1] / 4.0, b[2] / 4.0, 1.0 + b[3] / 4.0)
+    h = times_b(h, 1.0 / 3.0)
+    h = times_b(h, 1.0 / 2.0)
+    h = times_b(h, 1.0)
+    return (
+        h[0] * h[0] + h[1] * h[2],
+        h[0] * h[1] + h[1] * h[3],
+        h[2] * h[0] + h[3] * h[2],
+        h[2] * h[1] + h[3] * h[3],
     )
-    eye = _eye(b.dtype, b.device)
-    h = eye + b / 4.0
-    h = eye + (b @ h) / 3.0
-    h = eye + (b @ h) / 2.0
-    h = eye + b @ h
-    h = h @ h
-    return h[..., 0, 0], h[..., 0, 1], h[..., 1, 0], h[..., 1, 1]
 
 
 def _nose_frame(s):
@@ -1302,11 +1525,15 @@ def step(
 
     shots = _fire(config, state, shoot, noise["spread"], index)
     flown = _fly(config, state, stick, power, shots.fired)
-    flying = shots.counts[:, MOVES_LEFT] > 0
-    bullets = _move_bullets(config, state, shots.bullets, flying)
-    contact = _hit_test(state, flown, shots.bullets, bullets, flying, index)
-    real = shots.bullet_real.reshape(E, N * K)
+    # Every bullet moves on every tick of its life (BULLET_SLOTS ticks: the ring); only a ghost
+    # or a real bullet not yet contacted can touch a ship, and only a real one damages.
+    contactable = shots.bullet_state < CONTACTED
+    bullets = _move_bullets(config, state, shots.bullets)
+    contact = _hit_test(config, state, flown, shots.bullets, bullets, contactable, index)
+    real = (shots.bullet_state == REAL).reshape(E, N * K)
     bullet_damage = _damage(state, flown, bullets, real, contact)
+    if contact.bent is not None:
+        bullets = _deflect(bullets, contact)
     no_damage = filled((E, N), 0.0, bullet_damage.dtype, device)
     hit_taken = no_damage.scatter_add(1, contact.target, bullet_damage)
     boundary = _boundary_damage(config, flown, alive0)
@@ -1322,7 +1549,10 @@ def step(
     recharged = shield + restored
     tick, done, result = _end_check(config, state, alive, recharged)
     enemy = state.team[:, index.owner] != _on_target(state.team, contact.target)
-    moves_left, shot_outcome = _bullet_ends(shots.counts, flying, contact.hit, enemy)
+    age = bullet_ages(state.tick, K)
+    bullet_state, shot_outcome = _bullet_ends(
+        shots.bullet_state, contactable, age, contact.hit, enemy
+    )
 
     # Slots not alive at tick start keep their whole row (agreed fix 3: one select, not one per
     # field).
@@ -1353,20 +1583,17 @@ def step(
                     flown.angle_cos,
                     flown.angle_sin,
                 ),
-                shots.next_slot,
             ],
             1,
         ),
         state.ships,
     )
-    fired_tick = shots.counts[:, FIRED_TICK]
     new_state = dataclasses.replace(
         state,
         ships=ships,
         flags=torch.stack([alive, state.exists, shots.fired], 1),
         bullets=bullets,
-        bullet_counts=torch.stack([moves_left, fired_tick], 1),
-        bullet_real=shots.bullet_real,
+        bullet_state=bullet_state,
         tick=tick,
         pending=action,
     )
@@ -1376,7 +1603,7 @@ def step(
         done=done,
         result=result,
         shot_outcome=shot_outcome,
-        shot_tick=fired_tick,
+        shot_tick=(state.tick[:, None] - age)[:, None].expand(E, N, K),
         hit_damage=filled((E, N * N), 0.0, bullet_damage.dtype, device)
         .scatter_add(1, index.pair + contact.target, bullet_damage)
         .reshape(E, N, N)
@@ -1410,20 +1637,19 @@ class Shots(NamedTuple):
 
     fired: Tensor  # (E, N) bool
     bullets: Tensor  # (E, BULLET_COLUMNS, N, K) with the new bullets written
-    counts: Tensor  # (E, BULLET_COUNT_COLUMNS, N, K) long
-    bullet_real: Tensor  # (E, N, K) bool
+    bullet_state: Tensor  # (E, N, K) uint8 with the new bullets written
     cooldown: Tensor  # (E, N), the gun's whole ticks to wait, before this tick's count down
-    next_slot: Tensor  # (E, N)
 
 
 def _fire(
     config: GameConfig, state: State, shoot: Tensor, spread: Tensor, index: SimpleNamespace
 ) -> Shots:
     """Fire, from the tick-start state. A living ship with the trigger held and the gun ready
-    fires a real shot (a shot costs no store). The new bullet goes into the ship's next slot:
-    with ghost bullets every living ship writes one every tick (a ghost unless it fired), else
-    only real shots. A new bullet starts at its ship with the ship's cached medium, at the
-    ship's velocity plus the muzzle speed along the nose and the spread."""
+    fires a real shot (a shot costs no store). Every ship, alive or dead, writes one bullet a
+    tick, into the tick's slot of its ring (tick mod K, overwriting the bullet written K ticks
+    before): a real bullet if it fired, else a ghost. A new bullet starts at its ship with the
+    ship's cached medium, at the ship's velocity plus the muzzle speed along the nose and the
+    spread."""
     c = state.constants
     E, _, _, K = state.bullets.shape
     alive = state.alive
@@ -1443,8 +1669,7 @@ def _fire(
         + c["spread_speed"] * spread[..., 1]
     )
     launch_speed = torch.sqrt(launch_x * launch_x + launch_y * launch_y)
-    emits = alive if config.ghost_bullets else fired
-    written = emits[..., None] & (index.bullet_slot == state.next_slot[..., None])
+    written = (index.bullet_slot == (state.tick % K)[:, None])[:, None]  # (E, 1, K)
     launched = torch.cat(
         [
             state.ships[:, X : Y + 1],
@@ -1453,15 +1678,11 @@ def _fire(
         ],
         1,
     )
-    moves = filled((E,), c["bullet_moves"], torch.long, state.ships.device)
-    new_counts = torch.stack([moves, state.tick], 1)
     return Shots(
         fired=fired,
         bullets=torch.where(written[:, None], launched[..., None], state.bullets),
-        counts=torch.where(written[:, None], new_counts[:, :, None, None], state.bullet_counts),
-        bullet_real=torch.where(written, fired[..., None], state.bullet_real),
+        bullet_state=torch.where(written, fired[..., None].to(torch.uint8), state.bullet_state),
         cooldown=torch.where(fired, c["fire_interval"], state.cooldown),
-        next_slot=torch.where(emits, (state.next_slot + 1) % K, state.next_slot),
     )
 
 
@@ -1509,9 +1730,9 @@ def _fly(
     return flown
 
 
-def _move_bullets(config: GameConfig, state: State, start: Tensor, flying: Tensor) -> Tensor:
-    """Every flying bullet's move (bullet_motion); inactive bullets are frozen. start: the bullet
-    block after the fire stage; returns the block after the move."""
+def _move_bullets(config: GameConfig, state: State, start: Tensor) -> Tensor:
+    """Every bullet's move (bullet_motion), whatever its state. start: the bullet block after the
+    fire stage; returns the block after the move."""
     x, y, direction_x, direction_y, speed = start[:, :BULLET_LOG_INDEX].unbind(1)
     moved = bullet_motion(
         state.fields,
@@ -1524,33 +1745,55 @@ def _move_bullets(config: GameConfig, state: State, start: Tensor, flying: Tenso
         _per_bullet(state.constants["bullet_drag"]),
         start[:, BULLET_LOG_INDEX:].unbind(1),
     )
-    return torch.where(flying[:, None], torch.stack(moved, 1), start)
+    return torch.stack(moved, 1)
 
 
 class Contact(NamedTuple):
-    """The hit test's result, per bullet (E, N K) and per bullet and ship (E, [2,] N K, N)."""
+    """The hit test's result, per bullet (E, N K)."""
 
     target: Tensor  # (E, N K) long: the ship of the first contact (slot 0 for a miss)
     hit: Tensor  # (E, N K) bool
-    start: Tensor  # (E, 2, N K, N): bullet minus ship at tick start, x and y
-    relative: Tensor  # (E, 2, N K, N): the bullet's move minus the ship's
-    relative_squared: Tensor  # (E, N K, N), clamped away from 0
+    # The impact parameter of the hitting pass (metres; the distance of its line from the
+    # target's centre, at most the start's distance), any value for a miss.
+    impact: Tensor
+    # The deflector's turn (None with the deflector off), per bullet (E, N K): turned this tick
+    # (`bent`), by the rotation (turn_cos, turn_sin), its end moved by the turned rest of the
+    # move (shift), and whether the hit (if any) is on the turned remainder (`bent_hit`).
+    bent: Tensor | None = None
+    turn_cos: Tensor | None = None
+    turn_sin: Tensor | None = None
+    shift_x: Tensor | None = None
+    shift_y: Tensor | None = None
+    bent_hit: Tensor | None = None
+    # The bend ship's average map velocity over the tick (the relative frame's).
+    ship_velocity_x: Tensor | None = None
+    ship_velocity_y: Tensor | None = None
 
 
 def _hit_test(
+    config: GameConfig,
     state: State,
     flown: SimpleNamespace,
     start_bullets: Tensor,
     bullets: Tensor,
-    flying: Tensor,
+    contactable: Tensor,
     index: SimpleNamespace,
 ) -> Contact:
     """The swept test between the two straight motions, every bullet against every ship
-    ((E, 2, N K, N), x and y on the second axis). A contact is a closest approach within the hit
-    radius of a ship alive at tick start (a dead ship is no target) that is not the bullet's
-    owner, by a flying bullet. First contact: the smallest tau, ties within 1e-6 to the closer
-    pass."""
+    ((E, 2, N K, N), x and y on the second axis), in the relative frame (bullet minus ship). A
+    contact is a closest approach within the hit radius of a ship alive at tick start (a dead
+    ship is no target) that is not the bullet's owner, by a `contactable` bullet (a ghost or a
+    real bullet not yet contacted: a contacted one flies on without contact). First contact: the
+    smallest tau, ties within 1e-6 to the closer pass.
+
+    The deflector (proposal 2026-11-27, `egg_entry`, `egg_turn`): a bullet whose straight path
+    first crosses a living ship's egg inward this tick (the first such ship by tau) is turned
+    there, and its contact with that ship is the swept test of the turned remainder (the
+    crossing to the tick's end) against the hit circle; its contacts with the ships whose eggs
+    it does not enter stay on the straight path (a second egg entered in the same tick is not
+    seen and gives no contact: rare)."""
     E, _, N, K = bullets.shape
+    c = state.constants
     per_bullet = (E, 2, N * K, 1)
     ships = state.ships[:, X : Y + 1]
     start_xy = start_bullets[:, BULLET_X : BULLET_Y + 1]
@@ -1562,55 +1805,333 @@ def _hit_test(
     tau = (-(start * relative).sum(1) / relative_squared).clamp(0.0, 1.0)
     miss = start + tau[:, None] * relative
     miss_squared = (miss * miss).sum(1)
-    reach = torch.where(state.alive, state.constants["hit_radius_squared"], -1.0)
-    contact = (miss_squared < reach[:, None, :]) & index.other & flying.reshape(E, N * K, 1)
+    radius = c["hit_radius"]
+    candidate = index.other & contactable.reshape(E, N * K, 1) & state.alive[:, None, :]
+    reach = _per_ship(radius * radius)
+    contact = (miss_squared < reach) & candidate
+    if config.deflector == "off":
+        target, hit, _ = _first_contact(contact, tau, miss_squared)
+        return Contact(target, hit, _impact(state, flown, start_bullets, bullets, target))
+    entry = egg_entry(
+        start[:, 0],
+        start[:, 1],
+        relative[:, 0],
+        relative[:, 1],
+        flown.heading_cos[:, None, :],
+        flown.heading_sin[:, None, :],
+        _per_ship(c["inverse_egg_front"]),
+        _per_ship(c["inverse_egg_rear"]),
+        _per_ship(c["inverse_egg_half_width"]),
+    )
+    entry = torch.where(candidate, entry, torch.inf)
+    entry_tau, bend_ship = entry.min(-1)
+    bent = entry_tau < torch.inf
+    # A ship whose egg the bullet enters this tick has no straight contact: the bend ship's is
+    # the turned remainder's (below); a second egg entered in the same tick is not seen (rare).
+    # (Excluding every entered pair, not only the bend ship's, keeps the two reductions over
+    # the pairs independent, so they run as one pass.)
+    target, hit, first_tau = _first_contact(contact & (entry == torch.inf), tau, miss_squared)
+    # The turned remainder against the bend ship: the turn of every pair's pass (cheap
+    # arithmetic in registers), read at the bend ship (`_at`), so no per-bullet gathers.
+    pair_entry = torch.where(entry < torch.inf, entry, 0.0)
+    turn = egg_turn(
+        start[:, 0],
+        start[:, 1],
+        relative[:, 0],
+        relative[:, 1],
+        pair_entry,
+        _per_ship(c["inverse_egg_half_width"]),
+        _per_ship(c["deflector_turn"]),
+    )
+    bend = index.ship == bend_ship[..., None]
+    entry_tau = torch.where(bent, entry_tau, 0.0)
+    rest = 1.0 - entry_tau
+    move_x, move_y = _at(relative[:, 0], bend), _at(relative[:, 1], bend)
+    turn_cos, turn_sin = _at(turn.cos, bend), _at(turn.sin, bend)
+    bent_hit = bent & _at_bool(turn.miss_squared < reach, bend)
+    bent_tau = entry_tau + rest * _at(turn.tau, bend)
+    bent_hit = bent_hit & (bent_tau < first_tau)
+    straight = target[..., None] == index.ship
+    impact = torch.where(
+        bent_hit, _at(turn.impact, bend), _at(_line_impact(start, relative), straight)
+    )
+    return Contact(
+        torch.where(bent_hit, bend_ship, target),
+        hit | bent_hit,
+        impact,
+        bent,
+        turn_cos,
+        turn_sin,
+        rest * (move_x * (turn_cos - 1.0) - move_y * turn_sin),
+        rest * (move_x * turn_sin + move_y * (turn_cos - 1.0)),
+        bent_hit,
+        _at(moved[:, 0, None, :], bend) / config.tick_length,
+        _at(moved[:, 1, None, :], bend) / config.tick_length,
+    )
+
+
+def _at(values: Tensor, chosen: Tensor) -> Tensor:
+    """Per bullet the value of its one chosen pair: values (E, N K, N) (or broadcasting to it),
+    chosen (E, N K, N) bool with one True per bullet; a masked sum over the ships, which stays in
+    the pair reduction's registers (a gather after it would be its own kernel)."""
+    return torch.where(chosen, values, 0.0).sum(-1)
+
+
+def _at_bool(values: Tensor, chosen: Tensor) -> Tensor:
+    """`_at` for a bool pair tensor."""
+    return (values & chosen).any(-1)
+
+
+def _line_impact(start: Tensor, relative: Tensor) -> Tensor:
+    """Every pair's impact parameter on its straight pass (the distance of the relative line
+    from the ship's centre, at most the start's distance): start, relative (E, 2, ...)."""
+    start_x, start_y = start[:, 0], start[:, 1]
+    cross = start_x * relative[:, 1] - start_y * relative[:, 0]
+    relative_squared = (relative * relative).sum(1).clamp_min(1e-12)
+    line = cross * cross / relative_squared
+    return torch.minimum(line, start_x * start_x + start_y * start_y).sqrt()
+
+
+def _first_contact(contact: Tensor, tau: Tensor, miss_squared: Tensor):
+    """The first contact per bullet: (target (E, N K) long, hit bool, its tau, inf for none)."""
     contact_tau = torch.where(contact, tau, torch.inf)
     first_tau = contact_tau.min(-1).values
     tied = contact & (contact_tau <= first_tau[..., None] + 1e-6)
     target = torch.where(tied, miss_squared, torch.inf).argmin(-1)
-    return Contact(target, first_tau < torch.inf, start, relative, relative_squared)
+    return target, first_tau < torch.inf, first_tau
+
+
+def _impact(state, flown, start_bullets: Tensor, bullets: Tensor, target: Tensor) -> Tensor:
+    """Each bullet's impact parameter against `target` on its straight in-tick pass (the
+    distance of the relative line from the target's centre, at most the start's distance)."""
+    start, relative, relative_squared = _pass_against(state, flown, start_bullets, bullets, target)
+    start_x, start_y = start.unbind(1)
+    cross = start_x * relative[:, 1] - start_y * relative[:, 0]
+    line = cross * cross / relative_squared
+    return torch.minimum(line, start_x * start_x + start_y * start_y).sqrt()
+
+
+def _pass_against(
+    state: State, flown: SimpleNamespace, start_bullets: Tensor, bullets: Tensor, ship: Tensor
+) -> tuple[Tensor, Tensor, Tensor]:
+    """Each bullet's pass against one ship `ship` (E, N K) long, as the hit test computes it:
+    the start (bullet minus ship at tick start) and the relative move, (E, 2, N K) each, and the
+    relative move's squared length (E, N K), clamped away from 0."""
+    E, _, N, K = bullets.shape
+    flat = (E, 2, N * K)
+    ships = state.ships[:, X : Y + 1]
+    at = ship[:, None, :].expand(E, 2, N * K)
+    start_xy = start_bullets[:, BULLET_X : BULLET_Y + 1]
+    start = start_xy.reshape(flat) - ships.gather(2, at)
+    moved = torch.stack([flown.x, flown.y], 1) - ships
+    relative = (bullets[:, BULLET_X : BULLET_Y + 1] - start_xy).reshape(flat)
+    relative = relative - moved.gather(2, at)
+    return start, relative, (relative * relative).sum(1).clamp_min(1e-12)
+
+
+def _per_ship(values: Tensor | float) -> Tensor | float:
+    """A per-ship value (E, N) laid along the ship axis of (E, N K, N) bullet-ship pairs."""
+    return values[:, None, :] if isinstance(values, Tensor) else values
+
+
+def egg_entry(
+    start_x,
+    start_y,
+    move_x,
+    move_y,
+    nose_cos,
+    nose_sin,
+    inverse_front,
+    inverse_rear,
+    inverse_half_width,
+):
+    """The deflector's egg (proposal 2026-11-27): in the ship's frame (nose +x) the front half an
+    ellipse of semi-axis `front` along the nose, the rear half one of semi-axis `rear`, both of
+    half-width `half_width`. The tau in [0, 1) at which the straight path start + tau move (the
+    bullet relative to the ship's centre, world axes) first crosses the egg inward, inf for
+    none: a path starting inside (a bullet fired from inside, or already turned) never enters.
+    The semi-axes come as inverses (1 / front, 1 / rear, 1 / half_width: the rows
+    inverse_egg_*), so the pair test multiplies. Elementwise; every argument broadcasts."""
+    along = start_x * nose_cos + start_y * nose_sin
+    across = start_y * nose_cos - start_x * nose_sin
+    move_along = move_x * nose_cos + move_y * nose_sin
+    move_across = move_y * nose_cos - move_x * nose_sin
+    scaled_across = across * inverse_half_width
+    scaled_move_across = move_across * inverse_half_width
+
+    def half(inverse, front_half: bool):
+        p, d = along * inverse, move_along * inverse
+        qa = (d * d + scaled_move_across * scaled_move_across).clamp_min(1e-12)
+        qb = p * d + scaled_across * scaled_move_across
+        qc = p * p + scaled_across * scaled_across - 1.0
+        disc = qb * qb - qa * qc
+        t = (-qb - disc.clamp_min(0.0).sqrt()) / qa
+        on_half = along + t * move_along
+        on_half = on_half >= 0.0 if front_half else on_half < 0.0
+        valid = (disc > 0.0) & (t >= 0.0) & (t < 1.0) & on_half
+        return torch.where(valid, t, torch.inf), qc > 0.0
+
+    front_t, outside_front = half(inverse_front, True)
+    rear_t, outside_rear = half(inverse_rear, False)
+    outside = torch.where(along >= 0.0, outside_front, outside_rear)
+    return torch.where(outside, torch.minimum(front_t, rear_t), torch.inf)
+
+
+class Turn(NamedTuple):
+    """`egg_turn`'s result, per path."""
+
+    cos: Tensor  # the rotation of the path's direction
+    sin: Tensor
+    tau: Tensor  # the turned remainder's closest approach, its own tau in [0, 1]
+    miss_squared: Tensor  # the squared distance there from the ship's centre
+    impact: Tensor  # the turned remainder's impact parameter (at most the entry's distance)
+
+
+def hump(x: Tensor) -> Tensor:
+    """The deflector's turn curve (the "early hump", author 2026-11-27): 27/4 x (1 - x)^2 on x
+    clamped to [0, 1]; 0 at both ends, its peak 1 at x = 1/3."""
+    x = x.clamp(0.0, 1.0)
+    return 6.75 * x * (1.0 - x) * (1.0 - x)
+
+
+def egg_turn(start_x, start_y, move_x, move_y, entry_tau, inverse_half_width, turn_max) -> Turn:
+    """The deflector's turn at the egg entry (`egg_entry`'s tau) of the straight path start +
+    tau move (relative to the ship's centre): the direction turned away from the centre by
+    turn_max x hump(b / half_width) (given as inverse_half_width), b the distance of the
+    straight line from the centre (b = 0 goes straight); the speed kept; then the swept test of
+    the turned remainder (the entry point to the tick's end, (1 - entry_tau) of the move turned)
+    against the centre."""
+    length_squared = (move_x * move_x + move_y * move_y).clamp_min(1e-12)
+    inverse_length = torch.rsqrt(length_squared)
+    point_x, point_y = start_x + entry_tau * move_x, start_y + entry_tau * move_y
+    # Signed distance of the line from the centre: + when the centre is on the line's right.
+    signed = (move_x * point_y - move_y * point_x) * inverse_length
+    b = signed.abs()
+    angle = turn_max * hump(b * inverse_half_width)
+    turn_cos = torch.cos(angle)
+    turn_sin = torch.sin(angle) * signed / b.clamp_min(1e-9)
+    rest = 1.0 - entry_tau
+    rest_x = rest * (move_x * turn_cos - move_y * turn_sin)
+    rest_y = rest * (move_x * turn_sin + move_y * turn_cos)
+    rest_squared = (rest_x * rest_x + rest_y * rest_y).clamp_min(1e-12)
+    tau = (-(point_x * rest_x + point_y * rest_y) / rest_squared).clamp(0.0, 1.0)
+    miss_x, miss_y = point_x + tau * rest_x, point_y + tau * rest_y
+    cross = point_x * rest_y - point_y * rest_x
+    point_squared = point_x * point_x + point_y * point_y
+    impact = torch.minimum(cross * cross / rest_squared, point_squared).sqrt()
+    return Turn(turn_cos, turn_sin, tau, miss_x * miss_x + miss_y * miss_y, impact)
+
+
+def _deflect(bullets: Tensor, contact: Contact) -> Tensor:
+    """The turned bullets' block, in the relative frame of the bend ship: the end moved by the
+    turned rest of the tick's relative move (`Contact.shift`), the map velocity relative to the
+    ship (its average over the tick) rotated by the same turn, so the relative speed is kept
+    (the map speed changes by the ship's part); the end's cached medium kept (the turned end is
+    metres off the cached one). The bullet's speed column is its proper speed: map speed x n."""
+    E, _, N, K = bullets.shape
+    flat = (E, N * K)
+    index = torch.exp(bullets[:, BULLET_LOG_INDEX].reshape(flat))
+    map_speed = bullets[:, BULLET_SPEED].reshape(flat) / index
+    relative_x = bullets[:, BULLET_DIR_X].reshape(flat) * map_speed - contact.ship_velocity_x
+    relative_y = bullets[:, BULLET_DIR_Y].reshape(flat) * map_speed - contact.ship_velocity_y
+    velocity_x = contact.ship_velocity_x + (
+        relative_x * contact.turn_cos - relative_y * contact.turn_sin
+    )
+    velocity_y = contact.ship_velocity_y + (
+        relative_x * contact.turn_sin + relative_y * contact.turn_cos
+    )
+    speed = torch.sqrt(velocity_x * velocity_x + velocity_y * velocity_y).clamp_min(1e-9)
+    turned = (
+        bullets[:, BULLET_X].reshape(flat) + contact.shift_x,
+        bullets[:, BULLET_Y].reshape(flat) + contact.shift_y,
+        velocity_x / speed,
+        velocity_y / speed,
+        speed * index,
+    )
+    bent = contact.bent.reshape(E, N, K)
+    # One stack of the columns (no where over the head and cat of the tail: one write of the
+    # block per tick).
+    return torch.stack(
+        [
+            torch.where(bent, column.reshape(E, N, K), bullets[:, BULLET_X + i])
+            for i, column in enumerate(turned)
+        ]
+        + list(bullets[:, BULLET_SPEED + 1 :].unbind(1)),
+        1,
+    )
 
 
 def _damage(
     state: State, flown: SimpleNamespace, bullets: Tensor, real: Tensor, contact: Contact
 ) -> Tensor:
-    """Each real bullet's damage on its target, (E, N K) (0 for a miss or a ghost): kinetic (the
-    owner's hit damage, the explosive share plus the rest by the squared ratio of the bullet's
-    speed to its reference speed) x closeness (the impact parameter, the distance from the
-    target to the bullet's line, across the band between the core and hit radii: `graze`) x
-    aspect (the target's nose cone at the hit angle, the bullet's path against its nose:
-    `aspect_factor`)."""
+    """Each real bullet's damage on its target, (E, N K) (0 for a miss or a ghost): `hit_damage`
+    at the hitting pass's impact parameter and its path against the target's nose (the turned
+    direction for a hit on a deflector's turned remainder)."""
     c = state.constants
     E, _, N, K = bullets.shape
     target = contact.target
     flat = (E, N * K)
     direction_x, direction_y, bullet_speed = bullets[:, BULLET_DIR_X : BULLET_SPEED + 1].unbind(1)
-    flat_direction_x, flat_direction_y = direction_x.reshape(flat), direction_y.reshape(flat)
+    direction_x, direction_y = direction_x.reshape(flat), direction_y.reshape(flat)
+    if contact.bent_hit is not None:
+        turned = contact.bent_hit
+        direction_x, direction_y = (
+            torch.where(
+                turned, direction_x * contact.turn_cos - direction_y * contact.turn_sin, direction_x
+            ),
+            torch.where(
+                turned, direction_x * contact.turn_sin + direction_y * contact.turn_cos, direction_y
+            ),
+        )
     nose_cos = _on_target(flown.heading_cos, target)
     nose_sin = _on_target(flown.heading_sin, target)
-    # The owner's constants broadcast over its K bullets.
-    speed_ratio = bullet_speed * _per_bullet(c["inverse_reference_bullet_speed"])
-    explosive = _per_bullet(c["explosive_share"])
-    kinetic = explosive + (1.0 - explosive) * speed_ratio * speed_ratio
-    full = (_per_bullet(c["hit_damage"]) * kinetic).reshape(flat)
-    # The swept test's start and relative motion against the target.
-    on_target = target[:, None, :, None].expand(E, 2, -1, 1)
-    target_start_x, target_start_y = contact.start.gather(3, on_target)[..., 0].unbind(1)
-    target_relative_x, target_relative_y = contact.relative.gather(3, on_target)[..., 0].unbind(1)
-    cross = target_start_x * target_relative_y - target_start_y * target_relative_x
-    line = cross * cross / contact.relative_squared.gather(2, target[..., None])[..., 0]
-    impact_squared = torch.minimum(
-        line, target_start_x * target_start_x + target_start_y * target_start_y
-    )
-    radius, core = _on_target(c["hit_radius"], target), _on_target(c["core_radius"], target)
-    closeness = graze(impact_squared.sqrt(), core, radius)
-    hit_cos = -(flat_direction_x * nose_cos + flat_direction_y * nose_sin)  # 1 head-on
-    aspect = aspect_factor(
+
+    def per_bullet(name: str) -> Tensor | float:  # the owner's constant over its K bullets
+        value = c[name]
+        return (
+            value[..., None].expand(E, N, K).reshape(flat) if isinstance(value, Tensor) else value
+        )
+
+    hit_cos = -(direction_x * nose_cos + direction_y * nose_sin)  # 1 head-on
+    damage = hit_damage(
+        {name: per_bullet(name) for name in SHOOTER_HIT_CONSTANTS},
+        {name: _on_target(c[name], target) for name in TARGET_HIT_CONSTANTS},
+        bullet_speed.reshape(flat),
+        contact.impact,
         hit_cos,
-        _on_target(c["nose_inner_cos"], target),
-        _on_target(c["inverse_nose_width"], target),
     )
-    return torch.where(contact.hit & real, full * closeness * aspect, 0.0)
+    return torch.where(contact.hit & real, damage, 0.0)
+
+
+# The constants `hit_damage` reads: the shooter's and the target's.
+SHOOTER_HIT_CONSTANTS = ("hit_damage", "explosive_share", "inverse_reference_bullet_speed")
+TARGET_HIT_CONSTANTS = (
+    "hit_radius",
+    "core_radius",
+    "nose_cone",
+    "nose_inner_cos",
+    "inverse_nose_width",
+)
+
+
+def hit_damage(shooter, target, bullet_speed, impact, hit_cos) -> Tensor:
+    """The hit model: one bullet's damage on a ship. Kinetic (the shooter's hit damage, the
+    explosive share plus the rest by the squared ratio of the bullet's speed to its reference
+    speed) x closeness (`graze`: the impact parameter `impact`, the distance from the target to
+    the bullet's line (its turned path's after a deflector's turn), across the band between
+    the target's core and hit radii) x aspect (the target's nose cone at `hit_cos`, the
+    bullet's path against its nose, 1 head-on: `aspect_factor`, weighted by nose_cone).
+    `shooter`, `target`: the constants by name (SHOOTER_HIT_CONSTANTS,
+    TARGET_HIT_CONSTANTS; numbers or tensors broadcast with the rest). The tick's damage
+    (`_damage`) and the scripted agent's gun and trigger (lean.scripted.opponent) read it, so a
+    change of the hit model reaches both."""
+    speed_ratio = bullet_speed * shooter["inverse_reference_bullet_speed"]
+    explosive = shooter["explosive_share"]
+    kinetic = explosive + (1.0 - explosive) * speed_ratio * speed_ratio
+    closeness = graze(impact, target["core_radius"], target["hit_radius"])
+    cone = aspect_factor(hit_cos, target["nose_inner_cos"], target["inverse_nose_width"])
+    aspect = 1.0 + target["nose_cone"] * (cone - 1.0)
+    return shooter["hit_damage"] * kinetic * closeness * aspect
 
 
 def graze(distance: Tensor, core: Tensor | float, radius: Tensor | float) -> Tensor:
@@ -1633,6 +2154,180 @@ def aspect_factor(
     target's nose) and, as 1 - aspect / 2, a collision's blame (`collisions`). Shared with the
     scripted opponent's gun."""
     return smootherstep(((nose_inner_cos - hit_cos) * inverse_nose_width).clamp(0.0, 1.0))
+
+
+# The hit widths' aspects (`hit_widths`): HIT_WIDTH_POINTS cosines of the bullet's path off the
+# target's nose, evenly from 1 (head-on) to -1 (from dead astern).
+HIT_WIDTH_POINTS = 17
+# The hit widths' scan: parallel rays this far apart (metres) across the egg.
+HIT_WIDTH_STEP = 0.05
+
+
+def hit_widths(hit_radius: Tensor, inputs: dict[str, float]) -> Tensor:
+    """The deflector's hit width (metres): the band of aim offsets of parallel bullets on a
+    still ship whose turned path passes within the hit radius, (..., HIT_WIDTH_POINTS) at the
+    hit_width cosines, for each `hit_radius` (...) under the hit-model `inputs` (egg_front,
+    egg_rear, egg_half_width, deflector_turn). The game's own `egg_entry` and `egg_turn` on the
+    tick's arithmetic (2 x the hit radius with no turn). Read by the scripted agent's trigger
+    and gun (`hit_width`); a column of the constants, rebuilt by `with_hit_model`."""
+    radius = torch.as_tensor(hit_radius, dtype=torch.float32)
+    hit_cos = torch.linspace(1.0, -1.0, HIT_WIDTH_POINTS, dtype=torch.float64)
+    side = torch.sqrt((1.0 - hit_cos * hit_cos).clamp_min(0.0))
+    # The bullet's direction in the ship's frame: head-on (-1, 0), from astern (1, 0).
+    direction_x, direction_y = -hit_cos, side
+    reach = float(radius.max()) + float(inputs["egg_half_width"]) + 1.0
+    offsets = torch.arange(-reach, reach, HIT_WIDTH_STEP, dtype=torch.float64)
+    far = 4.0 * max(float(inputs["egg_front"]), float(inputs["egg_rear"]), reach)
+    across_x, across_y = -direction_y[:, None], direction_x[:, None]
+    start_x = offsets * across_x - far * direction_x[:, None]
+    start_y = offsets * across_y - far * direction_y[:, None]
+    move_x = (2.0 * far * direction_x[:, None]).expand_as(start_x)
+    move_y = (2.0 * far * direction_y[:, None]).expand_as(start_y)
+    entry = egg_entry(
+        start_x,
+        start_y,
+        move_x,
+        move_y,
+        1.0,
+        0.0,
+        1.0 / float(inputs["egg_front"]),
+        1.0 / float(inputs["egg_rear"]),
+        1.0 / float(inputs["egg_half_width"]),
+    )
+    entered = entry < torch.inf
+    turn = egg_turn(
+        start_x,
+        start_y,
+        move_x,
+        move_y,
+        torch.where(entered, entry, 0.0),
+        1.0 / float(inputs["egg_half_width"]),
+        torch.tensor(float(inputs["deflector_turn"]), dtype=torch.float64),
+    )
+    # Straight (no entry: a miss of the egg) or turned, against each hit radius.
+    cross = start_x * move_y - start_y * move_x
+    straight_squared = cross * cross / (move_x * move_x + move_y * move_y)
+    squared = torch.where(entered, turn.miss_squared, straight_squared)
+    inside = squared[None] < (radius.reshape(-1, 1, 1).double() ** 2)
+    widths = HIT_WIDTH_STEP * inside.sum(-1).to(torch.float32)
+    return widths.reshape(*radius.shape, HIT_WIDTH_POINTS)
+
+
+def hit_width(widths: Tensor, hit_cos: Tensor) -> Tensor:
+    """The hit width (metres) at the cosine `hit_cos` of the bullet's path off the target's
+    nose (1 head-on), linear between the `hit_widths` points. widths: (..., HIT_WIDTH_POINTS)
+    broadcast against hit_cos (...)."""
+    position = ((1.0 - hit_cos) * (0.5 * (HIT_WIDTH_POINTS - 1))).clamp(0.0, HIT_WIDTH_POINTS - 1.0)
+    low = position.floor().clamp_max(HIT_WIDTH_POINTS - 2.0)
+    fraction = position - low
+    low = low.long()
+    shape = torch.broadcast_shapes(widths.shape[:-1], hit_cos.shape)
+    table = widths.expand(*shape, HIT_WIDTH_POINTS)
+    below = table.gather(-1, low.expand(shape)[..., None])[..., 0]
+    above = table.gather(-1, (low + 1).expand(shape)[..., None])[..., 0]
+    return below + (above - below) * fraction
+
+
+class HitInput(NamedTuple):
+    """One input of the hit model (`HIT_MODEL`): its name, label, unit and the workbench's and
+    sliders' range."""
+
+    name: str
+    label: str
+    unit: str
+    low: float
+    high: float
+
+
+# The hit model's inputs (proposal 2026-11-27): every number of a bullet's hit and damage, each a
+# runtime row of the constants (RUNTIME_CONSTANTS), changed by `with_hit_model` with no recompile.
+# One hit model for every ship of a state. Angles in radians.
+HIT_MODEL = (
+    HitInput("hit_radius", "hit radius", "m", 2.0, 30.0),
+    HitInput("core_radius", "core radius", "m", 0.0, 20.0),
+    HitInput("hit_damage", "hit damage", "shield points", 1.0, 40.0),
+    HitInput("bullet_spread", "bullet spread (velocity noise per axis)", "m/s", 0.0, 60.0),
+    HitInput("egg_front", "egg: front semi-axis (along the nose)", "m", 5.0, 120.0),
+    HitInput("egg_rear", "egg: rear semi-axis", "m", 5.0, 80.0),
+    HitInput("egg_half_width", "egg: half-width (the turn's F)", "m", 5.0, 60.0),
+    HitInput("deflector_turn", "deflector: largest turn", "rad", 0.0, 1.57),
+    HitInput("nose_cone", "nose cone's damage rule (1 on, 0 off)", "", 0.0, 1.0),
+    HitInput("nose_inner_angle", "nose cone: no damage inside", "rad", 0.0, 1.4),
+    HitInput("nose_outer_angle", "nose cone: full damage beyond", "rad", 0.05, 1.57),
+)
+_HIT_SAME = (
+    "hit_radius",
+    "core_radius",
+    "hit_damage",
+    "egg_front",
+    "egg_rear",
+    "egg_half_width",
+    "deflector_turn",
+    "nose_cone",
+)
+# The inputs the hit widths read.
+_WIDTH_INPUTS = ("egg_front", "egg_rear", "egg_half_width", "deflector_turn")
+
+
+def _cone_constants(inner: float, outer: float, what: str) -> tuple[float, float]:
+    inner_cos, outer_cos = math.cos(inner), math.cos(outer)
+    if outer_cos >= inner_cos:
+        raise ValueError(f"{what}: the outer angle must be larger than the inner angle")
+    return inner_cos, 1.0 / (inner_cos - outer_cos)
+
+
+def hit_model_constants(inputs: dict[str, float]) -> dict[str, float]:
+    """The constants (RUNTIME_CONSTANTS names, except the hit widths) of hit-model inputs
+    (`HIT_MODEL` names; the nose cone's pair only when both angles are given)."""
+    out = {name: float(inputs[name]) for name in _HIT_SAME if name in inputs}
+    for name in ("egg_front", "egg_rear", "egg_half_width"):
+        if name in inputs:
+            out["inverse_" + name] = 1.0 / float(inputs[name])
+    if "bullet_spread" in inputs:
+        out["spread_speed"] = float(inputs["bullet_spread"])
+    if "nose_inner_angle" in inputs and "nose_outer_angle" in inputs:
+        out["nose_inner_cos"], out["inverse_nose_width"] = _cone_constants(
+            float(inputs["nose_inner_angle"]), float(inputs["nose_outer_angle"]), "nose"
+        )
+    return out
+
+
+def hit_model_of(constants: Constants) -> dict[str, float]:
+    """The hit model's inputs (`HIT_MODEL`) as `constants` hold them (the first slot's: one hit
+    model for every ship)."""
+
+    def first(name: str) -> float:
+        return float(torch.as_tensor(constants[name]).flatten()[0])
+
+    out = {name: first(name) for name in _HIT_SAME}
+    out["bullet_spread"] = first("spread_speed")
+    inner_cos = first("nose_inner_cos")
+    outer_cos = inner_cos - 1.0 / first("inverse_nose_width")
+    out["nose_inner_angle"] = math.acos(max(-1.0, min(1.0, inner_cos)))
+    out["nose_outer_angle"] = math.acos(max(-1.0, min(1.0, outer_cos)))
+    return out
+
+
+def with_hit_model(constants: Constants, **inputs: float) -> Constants:
+    """`constants` (a state's, or a ship card's) with hit-model inputs (`HIT_MODEL` names)
+    changed for every ship, written into the table's rows (the hit widths rebuilt): the same
+    shapes, so the compiled tick runs on with no recompile. Raises on an unknown name. Use as
+    `state.replace(constants=with_hit_model(state.constants, hit_radius=14.0))`."""
+    known = {entry.name for entry in HIT_MODEL}
+    unknown = set(inputs) - known
+    if unknown:
+        raise KeyError(f"not hit-model inputs: {sorted(unknown)}")
+    merged = {**hit_model_of(constants), **inputs}
+    table = constants.table.clone()  # (C, T)
+    for name, value in hit_model_constants(merged).items():
+        start, _ = constants.columns[name]
+        table[start] = value
+    start, width = constants.columns["hit_widths"]
+    radius = table[constants.columns["hit_radius"][0]]  # (T,)
+    unique, inverse = radius.cpu().unique(return_inverse=True)  # built once per radius
+    widths = hit_widths(unique, {name: merged[name] for name in _WIDTH_INPUTS})[inverse]
+    table[start : start + width] = widths.T.to(table.device)
+    return dataclasses.replace(constants, table=table)
 
 
 class Collisions(NamedTuple):
@@ -1787,19 +2482,27 @@ def _end_check(
     return tick, done, torch.where(done, torch.where(wiped, wipe_result, clock_result), -1)
 
 
+def bullet_ages(tick: Tensor, slots: int = BULLET_SLOTS) -> Tensor:
+    """(E, K) long: each ring slot's bullet age on the tick `tick` (E,), the bullet written on
+    that tick 0, K - 1 on its last tick; it left the gun on tick - age. A step passes its
+    tick-start count; a state between ticks wrote its newest bullets on state.tick - 1."""
+    return (tick[:, None] - torch.arange(slots, device=tick.device)) % slots
+
+
 def _bullet_ends(
-    counts: Tensor, flying: Tensor, hit: Tensor, enemy: Tensor
+    bullet_state: Tensor, contactable: Tensor, age: Tensor, hit: Tensor, enemy: Tensor
 ) -> tuple[Tensor, Tensor]:
-    """Each bullet's moves left after this tick (0 once it hits), and the outcome of every bullet
-    whose flight ends this tick (its first contact, or its last move without one), (E, N, K):
-    -1 none ended, 0 missed, 1 hit an enemy, 2 hit a team-mate. hit, enemy: (E, N K) bool."""
-    shape = flying.shape
+    """Each bullet's state after this tick (CONTACTED once it touches a ship) and its outcome,
+    reported once, (E, N, K): at its first contact (1 hit an enemy, 2 hit a team-mate) or on
+    its last tick (age K - 1) without one (0 missed); -1 otherwise. A contacted bullet (and
+    every slot of a fresh deal) never reports. bullet_state, contactable (E, N, K); age (E, K);
+    hit, enemy (E, N K) bool."""
+    shape = bullet_state.shape
     hit = hit.reshape(shape)
-    moves_left0 = counts[:, MOVES_LEFT]
-    moves_left = torch.where(hit, 0, torch.where(flying, moves_left0 - 1, moves_left0))
-    ended = hit | (flying & (moves_left == 0))
+    last = (age == shape[-1] - 1)[:, None]
+    ended = hit | (last & contactable)
     outcome = torch.where(hit, torch.where(enemy.reshape(shape), 1, 2), 0)
-    return moves_left, torch.where(ended, outcome, -1)
+    return torch.where(hit, CONTACTED, bullet_state), torch.where(ended, outcome, -1)
 
 
 # --------------------------------------------------------------------------- reset
@@ -1927,7 +2630,8 @@ def _lineup_types(lineup: tuple[str, ...], device: torch.device) -> Tensor:
 
 @built_once
 def _no_bullets(envs: int, slots: int, device: torch.device) -> Tensor:
-    """The bullet block of a fresh deal: every bullet inactive, at the origin, pointing along x."""
+    """The bullet block of a fresh deal: every bullet at the origin, still, pointing along x (its
+    state CONTACTED: it never touches a ship or reports, and is overwritten in its slot's tick)."""
     bullets = torch.zeros((envs, len(BULLET_COLUMNS), slots, BULLET_SLOTS), device=device)
     bullets[:, BULLET_DIR_X] = 1.0
     return bullets
@@ -1987,7 +2691,6 @@ def _spawned(
         "log_index": log_index,
         "gradient_x": gradient_x,
         "gradient_y": gradient_y,
-        "next_slot": zeros,
     }
     # At zero angle of attack the flight path is the nose.
     named["velocity_x"], named["velocity_y"] = speed * heading_cos, speed * heading_sin
@@ -2056,10 +2759,7 @@ def deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generato
         identity=torch.stack([team, ship_type], 1),
         constants=constants,
         bullets=_no_bullets(envs, slots, device),
-        bullet_counts=filled(
-            (envs, len(BULLET_COUNT_COLUMNS), slots, BULLET_SLOTS), 0, torch.long, device
-        ),
-        bullet_real=filled(bullet_shape, False, torch.bool, device),
+        bullet_state=filled(bullet_shape, CONTACTED, torch.uint8, device),
         tick=filled((envs,), 0, torch.long, device),
         fields=fields,
         # The neutral action (straight, coast, no fire) is every ship's first pending action.
@@ -2085,7 +2785,7 @@ def reset(
     slots = int(team_sizes.sum(-1).max())
     state = deal(config, envs, slots, team_sizes, generator, device)
     # The state is the caller's: its own copies of the deal's shared fixed rows.
-    shared = ("bullets", "bullet_counts", "bullet_real", "tick", "pending")
+    shared = ("bullets", "bullet_state", "tick", "pending")
     return dataclasses.replace(state, **{name: getattr(state, name).clone() for name in shared})
 
 
@@ -2104,8 +2804,10 @@ def take_deal(state: State, done: Tensor, fresh: State, index: Tensor | None = N
         new, old = getattr(fresh, field.name), getattr(state, field.name)
         if new is None:  # fog's fields with fog off
             values[field.name] = None
-        elif field.name == "constants":
-            values[field.name] = dataclasses.replace(old, table=select(new.table, old.table))
+        elif field.name == "constants":  # the card's table is shared: only the slots' types
+            values[field.name] = dataclasses.replace(
+                old, ship_type=select(new.ship_type, old.ship_type)
+            )
         else:
             values[field.name] = select(new, old)
     return State(**values)
@@ -2173,40 +2875,56 @@ def sight_pairs(state: State, tracked: Tensor | None = None) -> Tensor:
         & state.alive[:, None, :]
         & (state.team[:, :, None] != state.team[:, None, :])
     )
-    count = state.fields.shape[-1]
-    if count > 0:
-
-        def per_field(row: int) -> Tensor:  # (E, 1, F)
-            return state.fields[:, row, None, :]
-
-        radius, half_band = per_field(FIELD_RADIUS), 0.5 * per_field(FIELD_BAND)
-        core = (radius - half_band).clamp_min(0.0)
-        core_squared, outer = core * core, radius + half_band
-        offset_x = x[..., None] - per_field(FIELD_X)  # (E, N, F)
-        offset_y = y[..., None] - per_field(FIELD_Y)
-        distance_squared = offset_x * offset_x + offset_y * offset_y
-        in_core, in_field = distance_squared < core_squared, distance_squared < outer * outer
-        core_target, core_observer = in_core[:, :, None], in_core[:, None]  # (E, N, N, F)
-        ends = (core_target ^ core_observer) & ~(in_field[:, :, None] & in_field[:, None])
-        # u = centre - observer = -(observer's offset); along = u . d, across = u x d.
-        along = -(offset_x[:, None] * line_x[..., None] + offset_y[:, None] * line_y[..., None])
-        across = offset_x[:, None] * line_y[..., None] - offset_y[:, None] * line_x[..., None]
-        length = length_squared[..., None]
-        passes = (
-            ~(core_target | core_observer)
-            & (across * across < core_squared[:, None] * length)
-            & (along > 0.0)
-            & (along < length)
+    if state.fields.shape[-1] > 0:
+        clear = clear & ~field_blocks(
+            state.fields, x[:, :, None], y[:, :, None], x[:, None, :], y[:, None, :]
         )
-        clear = clear & ~(ends | passes).any(-1)
     return clear
+
+
+def field_blocks(fields: Tensor, a_x: Tensor, a_y: Tensor, b_x: Tensor, b_y: Tensor) -> Tensor:
+    """Whether the fields' cores block the line between points a and b (any shapes that
+    broadcast, leading E; fields (E, 5, F), F > 0), as sight is blocked (`sight_pairs`, a the
+    target and b the observer): field i, with core radius max(r - w / 2, 0) and outer radius
+    r + w / 2, blocks when exactly one end is strictly inside its core and the two ends are not
+    both inside its outer disc (core and band see each other), or when neither end is inside its
+    core and the segment passes strictly within the core radius of the centre. Also the scripted
+    agent's cover (lean.scripted.opponent)."""
+    shape = (fields.shape[0],) + (1,) * (max(a_x.dim(), b_x.dim()) - 1) + (fields.shape[-1],)
+
+    def per_field(row: int) -> Tensor:
+        return fields[:, row].reshape(shape)
+
+    radius, half_band = per_field(FIELD_RADIUS), 0.5 * per_field(FIELD_BAND)
+    core = (radius - half_band).clamp_min(0.0)
+    core_squared, outer = core * core, radius + half_band
+    centre_x, centre_y = per_field(FIELD_X), per_field(FIELD_Y)
+    a_offset_x, a_offset_y = a_x[..., None] - centre_x, a_y[..., None] - centre_y
+    b_offset_x, b_offset_y = b_x[..., None] - centre_x, b_y[..., None] - centre_y
+    a_squared = a_offset_x * a_offset_x + a_offset_y * a_offset_y
+    b_squared = b_offset_x * b_offset_x + b_offset_y * b_offset_y
+    core_a, core_b = a_squared < core_squared, b_squared < core_squared
+    field_a, field_b = a_squared < outer * outer, b_squared < outer * outer
+    ends = (core_a ^ core_b) & ~(field_a & field_b)
+    line_x, line_y = (a_x - b_x)[..., None], (a_y - b_y)[..., None]
+    # u = centre - b = -(b's offset); along = u . d, across = u x d.
+    along = -(b_offset_x * line_x + b_offset_y * line_y)
+    across = b_offset_x * line_y - b_offset_y * line_x
+    length = line_x * line_x + line_y * line_y
+    passes = (
+        ~(core_a | core_b)
+        & (across * across < core_squared * length)
+        & (along > 0.0)
+        & (along < length)
+    )
+    return (ends | passes).any(-1)
 
 
 def _snapshot(state: State) -> Tensor:
     """(E, SEEN_COLUMNS, N) float32: each ship's raw values now, as a sighting records them.
     Columns on the middle axis, so each column read back is an (E, N) slice with unit stride
     along N."""
-    bullet_share = ((state.bullet_moves_left > 0) & state.bullet_real).to(torch.float32).mean(-1)
+    bullet_share = (state.bullet_state == REAL).to(torch.float32).mean(-1)
     alive = state.alive.to(torch.float32)
     return torch.cat(
         [state.ships, torch.stack([bullet_share, alive, torch.ones_like(alive)], 1)], 1
@@ -2242,8 +2960,7 @@ def enemy_view(state: State) -> State:
         ships=state.seen[:, : len(SHIP_COLUMNS)],
         flags=torch.stack([alive, state.exists, state.fired], 1),
         bullets=None,
-        bullet_counts=None,
-        bullet_real=None,
+        bullet_state=None,
         seen=None,
         ticks_since_seen=None,
     )
@@ -2293,9 +3010,9 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     clipped to [-1, 1]; the outward unit direction x, y; heading cos, sin; the share of bullet
     slots in flight], then flags [same team as the viewer, alive, exists, fired last tick], then
     the ship-type one-hot. Rows of slots that do not exist are zero. Fired last tick is the
-    step's stored flag; the share of bullet slots in flight counts real bullets only (ghosts
-    are not observed). Position is not a scalar (Obs.pos carries it, for the position code
-    and the rotary angles).
+    step's stored flag; the share of bullet slots in flight counts real bullets not yet
+    contacted (ghosts and contacted bullets are not observed). Position is not a scalar (Obs.pos
+    carries it, for the position code and the rotary angles).
 
     pending (E, N) long: the joint pending action (the one the next tick applies) of the
     team's own living ships, NO_PENDING for every other row.
@@ -2316,14 +3033,14 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         # Own rows: the live share; enemy rows: as last seen.
         bullet_share = torch.where(
             same_team,
-            ((state.bullet_moves_left > 0) & state.bullet_real).to(torch.float32).mean(-1),
+            (state.bullet_state == REAL).to(torch.float32).mean(-1),
             enemy_seen[:, 0],
         )
         # For the globals: own ships alive, enemies not seen dead (never-seen count as alive).
         counted = torch.where(same_team, state.alive, enemy_seen[:, SEEN_ALIVE - SEEN_SHARE] > 0.5)
     else:
         view = state
-        in_flight = (state.bullet_moves_left > 0) & state.bullet_real
+        in_flight = state.bullet_state == REAL
         bullet_share = in_flight.to(torch.float32).mean(-1)
     exists, alive = state.exists, view.alive
     # World-frame motion, as v2 observes it: the proper speed over the refractive index, so a

@@ -70,17 +70,14 @@ def test_full_rows_at_the_defaults_decide_as_the_yardstick():
     torch.manual_seed(0)
     generator = torch.Generator().manual_seed(1)
     state = game.reset(game.GameConfig(), 4, torch.tensor([[3, 2]] * 4), generator, "cpu")
-    memory = scripted.fresh_memory(4, state.exists.shape[1], generator, "cpu")
     uniforms = scripted.draw_uniforms(4, state.exists.shape[1], generator, "cpu")
     table = torch.tensor([vector(scripted.ScriptedConfig())])
     agent = torch.zeros(state.exists.shape, dtype=torch.long)
     rows = rows_of(table, agent)
     assert set(rows) == set(PARAMETERS)
-    _, _, yardstick = scripted.decide(
-        scripted.ScriptedConfig(), state, None, None, uniforms, memory
-    )
-    _, _, full = scripted.decide(scripted.ScriptedConfig(), state, None, rows, uniforms, memory)
-    for name in ("stick", "power", "fire"):
+    _, yardstick = scripted.decide(scripted.ScriptedConfig(), state, None, None, uniforms)
+    _, full = scripted.decide(scripted.ScriptedConfig(), state, None, rows, uniforms)
+    for name in ("joint", "flight", "fire"):
         torch.testing.assert_close(
             getattr(full, name), getattr(yardstick, name), atol=1e-5, rtol=1e-5
         )
@@ -95,7 +92,7 @@ def test_runner_rolls_through_the_queue_and_plays_every_game_whole():
     table = torch.tensor(
         [
             vector(scripted.ScriptedConfig()),
-            vector(scripted.ScriptedConfig().replace(fight_speed=1.3)),
+            vector(scripted.ScriptedConfig().replace(preferred_speed=1.1)),
         ]
     )
     outcome = play(GAME, queue_of(24), table, envs=8, segment=8)
@@ -167,7 +164,6 @@ def test_each_seat_gets_its_own_networks_step():
     seat_action = torch.full((2 * envs + 1, ships, 3), 7)
     slots = runner.Slots(
         torch.tensor([0, 1, 2, -1]),  # the last slot idle
-        scripted.fresh_memory(envs, ships, None, "cpu"),
         carry,
         seat_action,
         torch.randn(2 * envs, 2),
@@ -222,7 +218,7 @@ def test_one_job_is_one_runner_call_and_keeps_the_stored_orientation(tmp_path, m
     store = Store(tmp_path / "s.sqlite")
     evaluator = Evaluator(store, GAME, device="cpu", envs=4, segment=8)
     yardstick = ScriptedAgent.of()
-    other = ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.3))
+    other = ScriptedAgent.of(scripted.ScriptedConfig().replace(preferred_speed=1.1))
     requests = [
         (yardstick, nets[0], (1, 2), 4),
         (nets[0], nets[1], (2, 1), 4),
@@ -242,7 +238,7 @@ def test_store_reuses_games_and_keeps_conditions_apart(tmp_path, monkeypatch):
     evaluator = Evaluator(store, GAME, device="cpu", envs=8, segment=8)
     yardstick, other = (
         ScriptedAgent.of(),
-        ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.3)),
+        ScriptedAgent.of(scripted.ScriptedConfig().replace(preferred_speed=1.1)),
     )
     first = evaluator.ensure([(yardstick, other, (2, 2), 10)])[0]
     assert first["games"] == 10 and first["wins"] + first["draws"] + first["losses"] == 10
@@ -278,7 +274,8 @@ def test_store_reuses_games_and_keeps_conditions_apart(tmp_path, monkeypatch):
 def test_agent_ids(tmp_path):
     assert ScriptedAgent.of().id == ScriptedAgent.of(scripted.ScriptedConfig()).id
     assert (
-        ScriptedAgent.of().id != ScriptedAgent.of(scripted.ScriptedConfig().replace(turn=0.003)).id
+        ScriptedAgent.of().id
+        != ScriptedAgent.of(scripted.ScriptedConfig().replace(stickiness=0.06)).id
     )
     path = tmp_path / "a.pt"
     path.write_bytes(b"one")
@@ -319,7 +316,7 @@ def test_adaptive_allocation_spreads_over_pairings_without_games(tmp_path, monke
     evenly."""
     evaluator = Evaluator(Store(tmp_path / "s.sqlite"), GAME, device="cpu", envs=8)
     agents = [
-        ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.0 + 0.1 * index))
+        ScriptedAgent.of(scripted.ScriptedConfig().replace(preferred_speed=0.8 + 0.05 * index))
         for index in range(6)
     ]
     pairings = [(agents[0], agent, (2, 2)) for agent in agents[1:]]
@@ -400,7 +397,7 @@ def test_unequal_sizes_are_shared_in_both_orientations(tmp_path):
     store = Store(tmp_path / "s.sqlite")
     evaluator = Evaluator(store, GAME, device="cpu")
     yardstick = ScriptedAgent.of()
-    other = ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.3))
+    other = ScriptedAgent.of(scripted.ScriptedConfig().replace(preferred_speed=1.1))
     for agent in (yardstick, other):
         store.add_agent(agent)
     forward, mirrored = evaluator.conditions((1, 2))
@@ -427,7 +424,7 @@ def test_styles_with_unequal_sizes_keep_each_agent_on_its_own_ships(tmp_path):
     store = Store(tmp_path / "s.sqlite")
     evaluator = Evaluator(store, GAME, device="cpu")
     yardstick = ScriptedAgent.of()
-    other = ScriptedAgent.of(scripted.ScriptedConfig().replace(fight_speed=1.3))
+    other = ScriptedAgent.of(scripted.ScriptedConfig().replace(preferred_speed=1.1))
     forward, mirrored = evaluator.conditions((1, 2))
     width = len(store_module.MEASURES)
 

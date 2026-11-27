@@ -169,18 +169,17 @@ def test_the_real_game_gives_zero_sum_levels():
     """Guards tick_events, the bridge from lean.game's StepOut: with the scripted agent on
     both teams the damage and kill/death levels still cancel over the ships every tick."""
     generator = torch.Generator().manual_seed(2)
-    game_config = game.GameConfig(ghost_bullets=True)
+    game_config = game.GameConfig()
     envs = 8
     state = game.reset(game_config, envs, torch.full((envs, 2), 2), generator, "cpu")
     slots = state.exists.shape[1]
     scripted_config = scripted.ScriptedConfig()
     persona = scripted.personas(scripted_config, envs, slots, generator, "cpu", 0.0)
-    memory = scripted.fresh_memory(envs, slots, generator, "cpu")
     ledger = blank_ledger(envs, slots)
     paid = torch.zeros(LEVELS)
     for _ in range(300):
         uniforms = scripted.draw_uniforms(envs, slots, generator, "cpu")
-        action, memory = scripted.act(scripted_config, state, None, persona, uniforms, memory)
+        action = scripted.act(scripted_config, state, None, persona, uniforms)
         next_state, step_out = game.step(
             game_config, state, action, game.draw_noise(game_config, envs, slots, generator, "cpu")
         )

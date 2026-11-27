@@ -227,23 +227,31 @@ def next_state_centres(config: ModelConfig, device=None) -> Tensor:
     return buffered_centres(low, high, next_state_knees(config), config.bins).to(device)
 
 
-def next_state_distribution(config: ModelConfig, target: Tensor) -> Tensor:
+def next_state_distribution(
+    config: ModelConfig, target: Tensor, centres: Tensor | None = None, knees: Tensor | None = None
+) -> Tensor:
     """HL-Gauss target probabilities of next_state_target's columns: target (..., NEXT_STATE)
-    in target units to (..., NEXT_STATE, BINS), each column in its own bin space."""
+    in target units to (..., NEXT_STATE, BINS), each column in its own bin space. `centres`
+    and `knees` the support already on the device (Policy's buffers), else built here."""
     return hl_gauss_targets(
         target,
-        next_state_centres(config, target.device),
-        next_state_knees(config, target.device),
+        next_state_centres(config, target.device) if centres is None else centres,
+        next_state_knees(config, target.device) if knees is None else knees,
         config.next_state_sigma,
     )
 
 
-def next_state_cross_entropy(config: ModelConfig, logits: Tensor, target: Tensor) -> Tensor:
+def next_state_cross_entropy(
+    config: ModelConfig,
+    logits: Tensor,
+    target: Tensor,
+    centres: Tensor | None = None,
+    knees: Tensor | None = None,
+) -> Tensor:
     """The next-state head's cross-entropy in nats per column, (..., NEXT_STATE): logits
     (..., NEXT_STATE, BINS) against the HL-Gauss distribution of target (..., NEXT_STATE)."""
-    return -(next_state_distribution(config, target) * torch.log_softmax(logits.float(), -1)).sum(
-        -1
-    )
+    distribution = next_state_distribution(config, target, centres, knees)
+    return -(distribution * torch.log_softmax(logits.float(), -1)).sum(-1)
 
 
 def rotate(tensor: Tensor, cos: Tensor, sin: Tensor) -> Tensor:
@@ -482,6 +490,10 @@ class Policy(nn.Module):
             (config.next_state_size * config.bins, config.hit_classes),
             config,
         )
+        # The next-state support on the device, built once (a table made inside a compiled
+        # graph is a host-to-device copy at every call); not in the state dict.
+        self.register_buffer("next_state_centres", next_state_centres(config), persistent=False)
+        self.register_buffer("next_state_knees", next_state_knees(config), persistent=False)
         # The hit head starts at the measured class shares (Lin et al.'s prior bias).
         frequencies = torch.tensor(config.hit_class_frequencies, dtype=torch.float32)
         with torch.no_grad():

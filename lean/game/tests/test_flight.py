@@ -476,8 +476,8 @@ def test_the_nose_returns_on_the_full_spring():
     k = constants()
     start, width = k.columns["nose_stiffness_table"]
     table = k.table.clone()
-    table[:, start : start + width] = 1.0
-    full_spring = type(k)(k.uniform, k.columns, table)
+    table[start : start + width] = 1.0
+    full_spring = dataclasses.replace(k, table=table)
     speed = 0.8 * CORNER
     hold, settle = round(1.0 / CONFIG.tick_length), round(0.3 / CONFIG.tick_length)
     out_level = flown_angles(k, speed, [SUSTAIN] * hold)

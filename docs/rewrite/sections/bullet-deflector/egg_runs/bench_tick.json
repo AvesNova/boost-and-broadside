@@ -1,0 +1,21 @@
+{
+ "power_profile": "performance",
+ "envs": 4096,
+ "size": 4,
+ "presets": {
+  "off": {
+   "eager_dispatch_calls": 2511,
+   "cpu_eager_ms": 10.47704856027849,
+   "gpu_compiled_ms": 0.9771027033760524,
+   "gpu_wall_with_compile_s": 40.1,
+   "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU"
+  },
+  "egg": {
+   "eager_dispatch_calls": 2792,
+   "cpu_eager_ms": 17.252501519978978,
+   "gpu_compiled_ms": 1.5817068699592103,
+   "gpu_wall_with_compile_s": 53.3,
+   "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU"
+  }
+ }
+}

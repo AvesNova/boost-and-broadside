@@ -40,6 +40,14 @@
   canvas { display: block; width: 100vw; height: calc(100vh - 50px); background: #0d1117; }
   #hud { position: absolute; left: 10px; top: 10px; color: #d8dee9; font: 12px ui-monospace, monospace;
          background: #161b22cc; padding: 8px 10px; white-space: pre; pointer-events: none; }
+  #hitpanel { position: absolute; right: 10px; top: 10px; width: 280px; max-height: calc(100vh - 80px); overflow-y: auto;
+              color: #d8dee9; font: 12px system-ui, sans-serif; background: #161b22e6; padding: 8px 10px; border-radius: 4px; }
+  #hitpanel summary { cursor: pointer; font-weight: 600; }
+  #hitpanel label { display: block; margin-top: 6px; }
+  #hitpanel input[type=range] { width: 100%; }
+  #hitpanel .value { float: right; font-variant-numeric: tabular-nums; color: #8b949e; }
+  #hitpanel select { width: 100%; margin-top: 4px; }
+  @media (max-width: 760px) { #hitpanel { width: calc(100vw - 52px); right: 16px; top: auto; bottom: 40px; max-height: 40vh; } }
   #status { position: absolute; left: 10px; bottom: 10px; color: #8b949e; font: 12px ui-monospace, monospace; }
 </style>
 </head>
@@ -73,6 +81,9 @@
 <div id="sandbox">
   <canvas id="view"></canvas>
   <div id="hud"></div>
+  <details id="hitpanel" open><summary>Hit model (live)</summary>
+    <select id="deflector-preset" aria-label="deflector preset"></select>
+    <div id="hit-sliders"></div></details>
   <div id="status">arrows/WASD turn (Max; shift Snap, left alt Sustain) / up dive / down climb / space fire / C opponent / R reset / +- zoom</div>
 </div>
 
@@ -332,7 +343,7 @@ function panels(ship) {                                   // warnings, implied p
 
 // ---- sandbox tab
 const canvas = $("view"), g = canvas.getContext("2d");
-let socket = null, setup = null, prev = null, cur = null, curAt = 0, zoom = 0.6, trail = [];
+let socket = null, setup = null, prev = null, cur = null, curAt = 0, zoom = 0.6, trail = [], bulletTrails = new Map();
 const keys = new Set();
 function stopSandbox() { if (socket) { socket.close(); socket = null; } }
 function startSandbox() {
@@ -342,13 +353,40 @@ function startSandbox() {
   ws.onopen = () => ws.send(JSON.stringify({ preset: base(), profile: $("profile").value, values, fixed: fixedRow, time_scale: +$("factor").value, opponent: true }));
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
-    if (m.type === "setup") { setup = m; trail = []; }
+    if (m.type === "setup") { setup = m; trail = []; bulletTrails = new Map(); hitSliders(m); }
+    else if (m.type === "hit_model") hitSliders(m);
     else if (m.type === "error") $("status").textContent = "no solution for these inputs: " + m.message;
-    else if (m.type === "frame") { prev = cur; cur = m; curAt = performance.now(); trail.push([m.ships[0].x, m.ships[0].y]); if (trail.length > 150) trail.shift(); }
+    else if (m.type === "frame") {
+      prev = cur; cur = m; curAt = performance.now(); trail.push([m.ships[0].x, m.ships[0].y]); if (trail.length > 150) trail.shift();
+      // each bullet's last few tick-end positions, joined by its identity: a bend is a kink
+      const next = new Map();
+      for (const b of m.bullets) { const t = bulletTrails.get(b[5]) || []; t.push([b[0], b[1], b[2], b[3]]); if (t.length > 4) t.shift(); next.set(b[5], t); }
+      bulletTrails = next;
+    }
   };
   ws.onclose = () => { if (socket === ws) socket = null; };
 }
 function send(o) { if (socket && socket.readyState === 1) socket.send(JSON.stringify(o)); }
+// The hit model's sliders (lean.game.core.HIT_MODEL, sent by the server with the values the
+// world flies; angles shown in degrees) and the deflector presets (card.DEFLECTOR_PRESETS):
+// each change goes to the World at once (World.set_hit_model: no restart, no recompile).
+let hitPresets = {};
+function hitShown(e, x) { return e.unit === "rad" ? (x * DEG).toFixed(1) + " deg" : x.toFixed(e.unit === "" ? 2 : 1) + (e.unit ? " " + e.unit : ""); }
+function hitSliders(m) {
+  hitPresets = m.deflector_presets;
+  const select = $("deflector-preset");
+  if (!select.options.length) {
+    select.innerHTML = `<option value="">deflector preset...</option>` + Object.keys(hitPresets).map(k => `<option>${k}</option>`).join("");
+    select.onchange = () => { if (select.value) send({ hit_model: hitPresets[select.value] }); };
+  }
+  $("hit-sliders").innerHTML = m.hit_model.map(e => `<label>${e.label} <span class="value" id="hit-${e.name}-v">${hitShown(e, e.value)}</span>
+    <input type="range" id="hit-${e.name}" min="${e.low}" max="${e.high}" step="${(e.high - e.low) / 200}" value="${e.value}"></label>`).join("");
+  for (const e of m.hit_model) {
+    const input = $("hit-" + e.name);
+    input.oninput = () => { $("hit-" + e.name + "-v").textContent = hitShown(e, +input.value); };
+    input.onchange = () => { $("deflector-preset").value = ""; send({ hit_model: { [e.name]: +input.value } }); };
+  }
+}
 function controls() {
   const left = keys.has("ArrowLeft") || keys.has("a"), right = keys.has("ArrowRight") || keys.has("d");
   const dive = keys.has("ArrowUp") || keys.has("w"), climb = keys.has("ArrowDown") || keys.has("s");
@@ -405,7 +443,19 @@ function frame() {
   for (const [fx, fy, r, band] of setup.fields) { for (const rr of [r - band / 2, r + band / 2]) if (rr > 0) { g.beginPath(); g.arc(sx(fx), sy(fy), rr * zoom, 0, 7); g.stroke(); } }
   g.strokeStyle = "#3b6ea8"; g.lineWidth = 2; g.beginPath(); trail.forEach(([x, y], i) => (i ? g.lineTo(sx(x), sy(y)) : g.moveTo(sx(x), sy(y)))); g.stroke();
   g.strokeStyle = "#ffd166";
-  for (const [x, y, dx, dy] of cur.bullets) { g.beginPath(); g.moveTo(sx(x - dx), sy(y - dy)); g.lineTo(sx(x), sy(y)); g.stroke(); }
+  for (const t of bulletTrails.values()) {
+    const [x, y, dx, dy] = t[0]; g.beginPath();
+    if (t.length === 1) g.moveTo(sx(x - dx), sy(y - dy)); else g.moveTo(sx(x), sy(y));
+    for (const [px, py] of t.slice(1)) g.lineTo(sx(px), sy(py));
+    g.stroke();
+    // a small spark mid-tick where the direction turned by more than a degree in a tick (the
+    // deflector; a field's bend is smaller)
+    for (let i = 1; i < t.length; i++) {
+      const [, , ax, ay] = t[i - 1], [, , bx, by] = t[i];
+      const turn = Math.abs(Math.atan2(ax * by - ay * bx, ax * bx + ay * by));
+      if (turn > 1 / DEG) { g.fillStyle = "#ffffffcc"; g.beginPath(); g.arc(sx((t[i - 1][0] + t[i][0]) / 2), sy((t[i - 1][1] + t[i][1]) / 2), 3, 0, 7); g.fill(); }
+    }
+  }
   // Sight outlines (lean.game.core.sight_pairs): reach p / (1 - e cos a) at angle a off the nose.
   for (const [p, color] of [[foe, "#ff6b6b40"], [me, "#58a6ff40"]]) {
     if (!p.alive) continue;

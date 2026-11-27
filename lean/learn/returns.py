@@ -1,12 +1,14 @@
 """Returns: categorical value helpers, GAE per reward level, advantage normalisation and the
 supports' range monitoring."""
 
+from typing import NamedTuple
+
 import torch
 from torch import Tensor
 
 from lean.contract import LEVEL_NAMES
 from lean.learn.config import LearnConfig
-from lean.model.temporal import doubling_scan
+from lean.model.scan import linear_scan
 from lean.model.value import buffered_centres, symlog
 
 
@@ -22,6 +24,21 @@ def value_centres(config: LearnConfig, bins: int, device=None) -> Tensor:
     return buffered_centres(
         torch.tensor(config.value_low), torch.tensor(config.value_high), value_knees(config), bins
     ).to(device)
+
+
+class ValueSupport(NamedTuple):
+    """The critic's support on the device: `centres` (LEVELS, BINS) (value_centres) and
+    `knees` (LEVELS,) (value_knees). Built once outside the compiled graphs and passed in:
+    a table made with torch.tensor inside a graph is a pageable host-to-device copy (a host
+    wait) at every call."""
+
+    centres: Tensor
+    knees: Tensor
+
+
+def value_support(config: LearnConfig, bins: int, device=None) -> ValueSupport:
+    """The critic's support (ValueSupport), built on the host and copied to `device` once."""
+    return ValueSupport(value_centres(config, bins, device), value_knees(config, device))
 
 
 def generalised_advantages(
@@ -45,14 +62,13 @@ def generalised_advantages(
     Returns (advantage, value target), both (T, E, N, LEVELS).
 
     A_t = delta_t + discount * lambda * (1 - done_t) * A_(t+1) runs backwards in time as
-    lean.model's doubling scan over the reversed ticks (log2 T whole-tensor rounds, no
-    Python loop over T); equal to the tick-by-tick recursion within float32 rounding.
+    lean.model's linear scan over the reversed ticks (one pass, float32).
     """
     alive = (~done).to(reward.dtype)[:, :, None, None]
     next_value = torch.cat([value[1:], bootstrap[None]])
     delta = reward + discounts * next_value * alive - value
     decay = discounts * gae_lambda * alive  # (T, E, 1, LEVELS)
-    reversed_advantage, _ = doubling_scan(decay.flip(0), delta.flip(0), torch.zeros_like(bootstrap))
+    reversed_advantage, _ = linear_scan(decay.flip(0), delta.flip(0), torch.zeros_like(bootstrap))
     advantage = reversed_advantage.flip(0)
     return advantage, advantage + value
 

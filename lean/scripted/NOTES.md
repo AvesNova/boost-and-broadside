@@ -1,108 +1,137 @@
 # lean/scripted
 
-The scripted opponent: the yardstick that the evaluation rates against, the BC teacher, and a
-population of personas around it. Plus a weaker deterministic chaser. Design and review:
-`docs/rewrite/scripted-bfm-design.md`; Shaw's rules against it: `docs/rewrite/shaw-bfm-notes.md`.
-Decisions: `docs/rewrite/core-decisions.md` ("Scripted opponent", "Scripted BFM"). History:
-`docs/rewrite/core-worklog.md`, judgement calls in `docs/rewrite/morning-notes.md` ("E2b").
+The scripted opponent: the yardstick that the evaluation rates against (1000 Elo), the BC
+teacher, and a population of personas around it. Plus a weaker deterministic chaser. A
+look-ahead scoring agent (author 2026-11-26; design, steps and measurements:
+`docs/rewrite/sections/scripted-lookahead/progress.md`; decisions:
+`docs/rewrite/core-decisions.md` "Scripted look-ahead"). It replaced the rule-based BFM agent
+(`docs/rewrite/scripted-bfm-design.md`; its code, kept for comparison through round 2, was
+removed in round 3).
 
 ## Entry points
 
-`from lean import scripted` (API in `lean/CONTRACT.md`):
-`ScriptedConfig()` (the yardstick; `replace(name=value)`), `personas`, `fresh_memory`,
-`draw_uniforms`, `act`, `decide` (also returns the `Marginals`, the BC teacher's distribution),
-`sample`, `chaser_act`. The sandbox flies against it (`World(opponent="scripted" | "chaser")`).
+`from lean import scripted` (API in `lean/CONTRACT.md`): `ScriptedConfig()` (the yardstick;
+`replace(name=value)`), `personas`, `draw_uniforms` ((E, N, 2): flight, fire), `explain` (the
+`Choice`: the joint 42-way distribution, the flight distribution, the fire probability, the
+scores, the scored enemies), `decide` (actions and the `Choice`), `act`, `sample`, `chaser_act`.
+No memory: the stickiness reads the state's pending action, which the observation carries, so a
+label is a function of the observation. The sandbox flies against it (`World(opponent="scripted"
+| "chaser")`).
 
 - `parameters.py`: every parameter is a named row of `PARAMETERS` (default, reference, sampling
-  law, half-width at spread 1), plus the gates and `personas`. A reference is a game constant by
-  its name in `state.constants` (corner, stall and sustained speed, gun range, sustained radius,
-  quarter-turn time, sustained rate, the store) or radians, a store fraction, a probability, a
-  ratio. So a persona transfers across ships and time scales. Adding a parameter is one row.
-- `situation.py`: `assess` (bearing, aspect, angles off, line-of-sight rate, turn senses,
-  flow, energy advantage, store).
-- `opponent.py`: `engage` (target), `explain` (one decision with its reasons), `sample`, `act`,
-  `decide`, the memory.
+  law, half-width at spread 1). The common unit is the **score second**: one second of a full
+  gun solution (my nose on his lead point, in range, the hit at full worth). Every term is a rate
+  in score seconds per second of the look-ahead; a weight says what one unit of its term is worth
+  against my own gun (weight 1 by definition).
+- `paths.py`: `predict`, the 7 stick candidates' paths of every ship at its table power at the
+  look-ahead points (`LOOK_AHEAD`, a module setting read at call time); `power_outlook`, each
+  ship's speed and store at the 3 powers over the power look (`POWER_LOOK`, 1 to 5 s). Both
+  read the game's steady-flight table (`core.steady_lookup`, round 3), not the flight
+  functions.
+- `opponent.py`: `explain` and its stages; `pair_tables` + `collapse` are the plain twin of the
+  kernel.
+- `kernels.py`: `pair_scores`, the pair stage (and the cover) as one Triton kernel (CUDA;
+  `USE_KERNEL`).
 - `chaser.py`: the memoryless floor.
 
-## One decision (`explain`, one pass over (E, N) tensors, no data-dependent branch)
+## One decision (`explain`, one pass over (E, N) tensors, both teams in one call)
 
-1. Target: the nearest known enemy, kept with factor 0.8 (its team's view under fog). A
-   remembered enemy's distance adds its roam (seconds since seen x its sustained speed); past
-   one arena radius of roam it is dropped (25 s at 4,200 m). No target: fly to the centre.
-2. `assess`, and the gun's lead point (drag-law flight time in the medium): the stick's
-   wanted point, unless the boundary steer blends in, or the merge's miss offset (`merge_miss`,
-   author 2026-11-25, collisions): of the other ships, enemies or team-mates, closing on me
-   faster than my own speed (head-on or crossing, not a chase) within `merge_miss_range` (1.25
-   sustained radii, 301 m) on a straight-line pass nearer than `merge_miss_offset` (10/3 hit
-   radii, 40 m), the nearest; the stick aims the offset beside its centre on the side it is
-   already on. The gun keeps the lead point. `ally_clearance` only blocks the gun through a
-   team-mate; it does not steer.
-3. The fight's gates in one logistic: engaged (3 gun ranges), front and rear on the 3/9 line,
-   scissors, the stick caps, the gun. (The spend for a near shot, the two-circle cash, the
-   graded defence and the overshoot reversal were removed after the reach check,
-   docs/rewrite/scripted-reach.md "Trim".)
-4. Tactic weights (sum 1): disengaged, merge, offensive, turning, defensive.
-5. Commands mixed as scalars: speed target v* (log space), stick cap. Offensive, v* is the
-   chase speed: the fight speed, raised by corner over sustained speed against a turning target.
-   Turning: two-circle the middle level at the fight speed; one-circle full stick, down to the
-   speed floor inside the scissors range. Defensive: a break (full stick, corner speed).
-6. The committed turn sense (memory): commit at the pass by the plan, hold while he is aft,
-   release when he comes forward or the target changes.
-7. Control laws: stick (nested gates, the cap, the side by the sense or the short way, the
-   boundary steer), power (climb above v* + band, dive below v* - band, each faded at its store
-   edge), fire (aligned, in range at the lead point, never through a team-mate, and only when the
-   hit at the predicted aspect, by the game's `aspect_factor` (the nose cone: nothing within 30
-   deg of his nose), is worth a tick of the shooter's recharge or empties the target's shield).
-8. Sample: one uniform per head, the only randomness.
+1. Information: the team's view (`core.enemy_view`), reading only what `Obs` carries (positions,
+   headings, proper speed, angle of attack, nose rate, store, shield, cooldown, the pending action
+   of own ships, the time since seen; ln n and its gradient are functions of the position and the
+   fields). A hidden enemy is dead-reckoned from his last sighting by the time since seen (his
+   last speed and nose rate for up to 2 s, then straight; `dead_reckon`).
+2. Power (round 2, author 2026-11-26): per ship from the own-ship terms only, over the power
+   look (`paths.power_outlook`: speed and store at each power holding the pending stick, from
+   the game's steady-flight table per segment): minus the speed term, plus energy (at
+   `energy_weight` while engaged, `disengaged_energy_weight` while not), plus the store itself
+   (`store_weight`, round 3: diving trades the store for speed at almost no change in total
+   energy, so without it the store ran nearly empty), discounted by `power_horizon`; its own
+   softmax (`power_temperature`) and stickiness (`power_stickiness`) on the pending power. The
+   table power: the own ship's pending power; an enemy's (not observable) the power his outlook
+   scores best from straight flight with the yardstick's rows.
+3. Candidate paths (`paths.predict`, the 7 sticks at the table power): speed and store stepped
+   per segment from the game's steady-flight rates at the segment's start (its table: below);
+   the angle of attack
+   follows the nose spring in closed form per segment (`nose_response`: e'' + 2 sigma e' + k
+   omega^2 e = 0 with the tick's stiffness per level going out, the full spring going back, the
+   fixed friction; the angle's own rate from `core.current_path_rate`) toward the level's steady
+   angle at the segment's start speed (`RETARGET`: Snap's deep angle closes as the speed
+   bleeds); the path rate linear in the angle between the segment's start and the steady state;
+   chords per segment; the medium's 1 / n and its bend per segment start. Every ship's paths
+   once, both views in one pass, materialised once ((P, E, 2 N, fields, C), the kernel's
+   layout).
+4. The `ENEMIES` (4) nearest known enemies: distance plus roam (seconds since seen x sustained
+   speed), dropped past `roam_cutoff` arena radii of roam, weight 1 - roam / cutoff.
+5. Pair tables per enemy, 7 x 7 at each point (`pair_tables` / the kernel): my gun on him
+   (nose against the drag-law lead point in my medium, tolerance his angular size (half the
+   game's hit width at the bullet's aspect, `core.hit_width` on the `hit_widths` column: the
+   egg deflector, round 4) plus `aim_blur` x t, a smoothstep range band 0.8 to 1.2 gun
+   ranges, the hit's kinetic worth, his nose cone by `core.aspect_factor` weighted by the hit
+   model's `nose_cone`, 0 by default), his gun on me (mirrored), angles ((cos ATA_me - cos
+   ATA_him) / 2) and energy (speed^2 / 2 + store, in my full stores) both times a closeness 1 /
+   (1 + (d / (3 gun ranges))^2), predicted contacts (closest approach on each straight
+   segment, exp(-(d / (2 summed hit radii))^2) x closing speed in collision-damage units,
+   discounted), and the engagement range (McGrew's form: `aggression` x 1/2 (1 + angles) x
+   exp(-|d - `desired_range`| / `range_width`); his mirror in S_him, so neutral geometry
+   rewards closing for both). S_him is the mirror with my weights, plus his own-only terms.
+6. His reply collapsed per row (`collapse`): w = softmax_b S_him / tau_him; score(a) = log
+   sum_b w e^(beta S_me) / beta, the weighted mean at beta -> 0. Summed over the enemies by
+   weight.
+7. My own-only terms: speed (|ln(v / preferred)|), boundary (in an edge band of
+   `boundary_margin` turn radii, more flying outward, growing past the edge), slow medium (ln n
+   in half-octaves), cover (behind a field core from an enemy flying straight on, worth his
+   angular advantage on me now), team-mates (contacts with the nearest 3 flying their pending
+   action), and with no enemy known (author 2026-11-26: no goal point) an energy preference and
+   a seek toward the freshest dropped last-seen position. The stickiness bonus for the pending
+   stick.
+8. Stick = softmax(scores / tau_me); flight = stick x power; fire = the trigger now (aim gate
+   at the lead point in target sizes x `fire_tolerance`, the size from the game's hit width at
+   the predicted aspect; range gate; the expected hit (damage x hit chance) worth `fire_worth`
+   ticks of shield recharge or his whole shield; never through a team-mate; the gun ready).
+   The hit chance (round 4, 2026-11-27: with the egg a centred shot always does full damage,
+   so the worth must weigh the chance of landing within the narrow width) = erf(half width /
+   (sqrt 2 sigma)), sigma = flight time x sqrt(spread^2 + (`lead_error` x 0.5 x his sustained
+   turn acceleration x flight time)^2); `lead_error` 0.25 is a reasoned choice, not tuned.
+   `store_crowd` (0, off): an experiment scaling the store weight by (1 + k) / (1 + k x the
+   scored enemies within 2 gun ranges). The hit's worth,
+   here and in the pair tables' gun, is the game's hit model through one call
+   (`hit_worth` -> `core.hit_damage`: kinetic at the distance, the target's nose cone, dead
+   centre), so a change of the hit model in the game reaches the agent without edits (the
+   Triton kernel has its own copy of the gun's worth; the kernel-against-twin test flags a
+   difference). Joint = stick (7) x power (3) x fire (2).
 
-Memory, carried by every caller (`fresh_memory`, a fresh one per match): `target`, `side` (drawn
-once per match, the dead-astern tie-break), `sense`, `last_pass` (plan x angles off at the last
-commit; a pass that gained under 10 degrees switches the plan).
+## Numbers
 
-## The yardstick's defaults
+See `docs/rewrite/sections/scripted-lookahead/progress.md` (speed, usage, entropy, kills,
+draws, duels, merge turn, the grouped stick change).
 
-The defaults are BFM-CMA2 (author 2026-11-24, provisional): the values in
-`docs/rewrite/sections/scripted-screening/cma_candidate_round2.json`, a CMA search around the
-earlier defaults. Six rows still in the table differ from those (plan threshold, fight speed,
-aligned, in range, lead gain, temperature); `BFM_DEFAULT_2026_11_24` in `parameters.py` holds
-the earlier values of exactly those rows
-(`ScriptedConfig().replace(**BFM_DEFAULT_2026_11_24)`). The test persona `BFM` in
-`tests/test_tactics.py` (the design's values) stands on the earlier defaults and does not move.
-The default BC teacher is the single narrow yardstick (spread 0); the persona population is an
-experiment arm.
+## The steady-flight table (round 3)
 
-## Numbers (2026-11-24, core game, 4v4, laptop CPU/GPU)
-
-- Against the agent it replaced (code removed; 4v4, seats alternated, 640 games): 0.413 +- 0.019.
-  Against itself the side with more energy wins nearly every offset head-on start.
-- Brawl, both teams the yardstick, 256 environments x 5,400 ticks (the clock then; it is 1,800 now): 6.45 kills per
-  environment-minute, mean speed 0.72 corner speeds, mean store 0.23, firing 10% of ship-ticks,
-  874 games ended, mean length 1,314 ticks, 0.03% of ship-ticks beyond the arena radius.
-- Operations, `act` for both teams, E = 256, 5v5: 459 operations (2026-11-26, with the merge miss
-  offset: +73); 386 (2026-11-25, with the ghost
-  roam and the head-on gun gate; 343 before them, 470 before the lead turn, the yo-yos and the
-  no-effect mechanisms went)
-  (`docs/rewrite/sections/scoreboard/game_ops.py`).
+`core.steady_flight` tabulated once per ship type when the ship card is built
+(`core.steady_characteristics`): turn rate, d speed / dt, d store / dt and the angle of attack
+for each stick level, power, 17 store nodes (the store matters only in its edge bands: 9
+sink-room nodes, 9 top-room nodes, `core.store_room`) and 400 speeds (half Sustain's step,
+from a quarter of stall speed). `core.steady_lookup` reads it bilinearly by the ship's type
+(`State.type`); the table rides on `Constants.per_type` (by type, not dealt to slots). Its
+error against the direct functions and the path check: progress.md round 3 step 1.
 
 ## Tests
 
-`tests/test_scripted.py` (well-formed actions, spread 0 draws nothing, the power cases, kept
-target, drawn side, every number from the game, no shot through a team-mate, one call for both
-teams equals two, competence at spread 1, beats the chaser), `test_situation.py`,
-`test_tactics.py` (one hand-built case per tactic, the commit, hold, release and plan switch),
-`test_callers.py` (every caller carries and renews the memory); `lean/game/tests/test_tuning.py`
-holds the references equal to the quasi-steady analysis.
+`tests/test_scripted.py`: well-formed actions and distributions, the joint in the contract's
+order, the yardstick and full tensor rows alike, randomness only from sampling, one call for
+both teams, the paths against the game's tick, the nose spring's closed form, the collapse's
+limits, roam and cutoff, dead reckoning, no goal point, turning toward an enemy, the gun (tail
+and nose cone, team-mate in the line), collision avoidance, the edge, stickiness, the kernel
+against its twin (CUDA), the power from the own-ship terms, games against the chaser and the persona population (slow).
 
 ## Open
 
-- Not built (Shaw notes): jinks; keeping two-circle after a big bite; the pre-merge offset and
-  merge speed by plan; no banking close to a higher-energy opponent.
-- Removed (author 2026-11-25): the lead turn and the yo-yos
-  (`docs/rewrite/lead-turn-yo-yo-review.md`; `docs/rewrite/author-review-2.md`, "Later
-  experiments") and, after the reach check, the overshoot reversal, the spend terms, the
-  two-circle cash, the break relaxation and the defend gate. What survives of the yo-yo is the
-  chase speed above and `no_bank` against a straight target.
-- The plan alternates at every neutral pass (Shaw switches after one or two turns).
-- The in-range gate uses the gun range without fields. No retreat or extend (decision 5.7).
-- BFM-CMA2 stays the yardstick, no further search round (morning-notes.md, step 3). The search
-  script `scripted-screening/search.py` no longer imports; a round needs new search rows.
+- Compile: the cold compile check still fails after round 3's steady-flight table (280.2 s
+  against 260 s on a quiet laptop; `act` 4,451 traced operations, round 2 7,864). What is left
+  is the unrolled path loop (medium, nose spring, lookup per segment); a paths kernel or fewer
+  segments would cut it (docs/rewrite/questions.md on this branch).
+- The stick distribution moves about 0.15 total variation per tick; grouped by side 0.07-0.09,
+  weighted by the steady turn rate 4-5% of the rate span (round 3 step 2). Not tuned.
+- `store_weight` 0.25 (round 3 step 3); 1v1 duels prefer more, 4v4 is even (a question).
+- Defaults otherwise chosen by reasoning (the energy weight from the card's `store_turn`).

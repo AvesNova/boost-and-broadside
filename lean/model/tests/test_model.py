@@ -20,7 +20,8 @@ from lean.model.policy import (
     next_state_target,
 )
 from lean.model.position import ColourCode, FourierCode, GridCellCode, Rotary, make_position_code
-from lean.model.temporal import Temporal, doubling_scan
+from lean.model.scan import linear_scan
+from lean.model.temporal import Temporal
 from lean.model.value import symlog
 
 ARENA_RADIUS = GameConfig().arena_radius
@@ -132,6 +133,24 @@ def test_a_reset_forgets_state_and_convolution_buffer():
     assert torch.allclose(logits[start:], fresh_logits, atol=1e-5)
     assert torch.allclose(final, fresh_final, atol=1e-5)
     assert not torch.allclose(logits[start - 1], logits[start], atol=1e-3)
+
+
+def test_a_step_with_reset_equals_a_step_from_a_zero_carry():
+    """The rollout passes `reset` to the step instead of zeroing the carry: a reset row's
+    outputs and new carry equal those of a step from a zero carry, the other rows keep
+    theirs."""
+    envs, slots = 4, 4
+    policy = make_policy()
+    obs = make_obs((envs,), slots, live_fraction=2.0)
+    carry = torch.randn(policy.initial_carry(envs, slots, "cpu").shape)
+    reset = torch.tensor([True, False, True, False])
+    zeroed = carry * (~reset).view(1, -1, 1, 1, 1)
+    with torch.no_grad():
+        logits, values, new_carry = policy.step(obs, carry, reset=reset)
+        expected_logits, expected_values, expected_carry = policy.step(obs, zeroed)
+    assert torch.allclose(logits, expected_logits, atol=1e-6)
+    assert torch.allclose(values, expected_values, atol=1e-6)
+    assert torch.allclose(new_carry, expected_carry, atol=1e-6)
 
 
 def test_masked_rows_keep_a_zero_carry():
@@ -326,21 +345,90 @@ def test_same_weights_run_at_any_ship_and_field_count():
         assert torch.isfinite(logits).all() and torch.isfinite(values).all()
 
 
-def test_doubling_scan_equals_the_loop():
-    """Catches an off-by-one in the doubling rounds at any segment length (powers of two
-    and not, and T = 1, the step)."""
+def doubling_scan(decay, update, initial):
+    """The scan the model used before the linear scan (recursive doubling, log2 T rounds of
+    whole-tensor products), kept here as a second reference."""
+    steps = update.shape[0]
+    update = torch.cat([decay[:1] * initial + update[:1], update[1:]])
+    distance = 1
+    while distance < steps:
+        update = torch.cat(
+            [update[:distance], update[distance:] + decay[distance:] * update[:-distance]]
+        )
+        if 2 * distance < steps:
+            decay = torch.cat([decay[:distance], decay[distance:] * decay[:-distance]])
+        distance *= 2
+    return update, update[-1]
+
+
+def scan_cases(device, generator):
+    """(decay, update, initial) at T 1, 2, 3, 5, 128, with resets (decay 0) inside the
+    sequence and at its first tick; decay near 1 as the RG-LRU's."""
+    for ticks in (1, 2, 3, 5, 128):
+        decay = 1.0 - 0.1 * torch.rand(ticks, 3, 5, 7, generator=generator)
+        decay[ticks // 2, 1] = 0.0  # a reset inside the sequence
+        decay[0, 2] = 0.0  # a reset at the first tick
+        update = torch.randn(ticks, 3, 5, 7, generator=generator)
+        initial = torch.randn(3, 5, 7, generator=generator)
+        yield (tensor.to(device) for tensor in (decay, update, initial))
+
+
+def check_scan(device):
     generator = torch.Generator().manual_seed(0)
-    for ticks in (1, 2, 3, 5, 8, 13, 64):
-        decay = torch.rand(ticks, 3, 7, generator=generator, dtype=torch.float64)
-        update = torch.randn(ticks, 3, 7, generator=generator, dtype=torch.float64)
-        initial = torch.randn(3, 7, generator=generator, dtype=torch.float64)
-        state, expected = initial, []
-        for tick in range(ticks):
-            state = decay[tick] * state + update[tick]
+    for decay, update, initial in scan_cases(device, generator):
+        inputs = [tensor.clone().requires_grad_() for tensor in (decay, update, initial)]
+        references = [tensor.double().cpu().requires_grad_() for tensor in (decay, update, initial)]
+        states, last = linear_scan(*inputs)
+        state, expected = references[2], []
+        for tick in range(update.shape[0]):
+            state = references[0][tick] * state + references[1][tick]
             expected.append(state)
-        states, last = doubling_scan(decay, update, initial)
-        assert torch.allclose(states, torch.stack(expected), atol=1e-12)
-        assert torch.equal(last, states[-1])
+        expected = torch.stack(expected)
+        doubled, _ = doubling_scan(decay, update, initial)
+        assert states.dtype == torch.float32 and torch.equal(last, states[-1])
+        assert torch.allclose(states.cpu().double(), expected, rtol=1e-5, atol=1e-5)
+        assert torch.allclose(states, doubled, rtol=1e-5, atol=1e-5)
+        weight = torch.randn(states.shape, generator=generator).to(device)
+        grads = torch.autograd.grad((states * weight).sum() + 2.0 * last.sum(), inputs)
+        reference = torch.autograd.grad(
+            (expected * weight.cpu().double()).sum() + 2.0 * expected[-1].sum(), references
+        )
+        for grad, wanted in zip(grads, reference, strict=True):
+            assert torch.allclose(grad.cpu().double(), wanted, rtol=1e-4, atol=1e-4)
+
+
+def test_linear_scan_equals_the_loop_and_the_doubling_scan():
+    """Catches an off-by-one in the scan or its backward at any length (T = 1, the step),
+    with resets inside the sequence: forward and every input's gradient against the plain
+    loop in float64 and the doubling scan it replaced."""
+    check_scan("cpu")
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="the Triton kernels need a GPU")
+def test_the_scan_kernels_equal_the_loop():
+    """The same on the GPU: the Triton forward and backward kernels."""
+    check_scan("cuda")
+
+
+def test_the_scan_compiles_static_and_dynamic():
+    """The scan is one opaque operator in a compiled graph (static and dynamic), with the
+    same states and gradients as eager."""
+    generator = torch.Generator().manual_seed(1)
+    decay, update, initial = next(iter(scan_cases("cpu", generator)))
+    decay, update = decay.expand(4, -1, -1, -1).clone(), update.expand(4, -1, -1, -1).clone()
+    for dynamic in (False, True):
+        torch._dynamo.reset()
+        inputs = [tensor.clone().requires_grad_() for tensor in (decay, update, initial)]
+        compiled = torch.compile(
+            lambda d, u, i: linear_scan(d.sigmoid(), u * 2.0, i)[0], dynamic=dynamic, fullgraph=True
+        )
+        states = compiled(*inputs)
+        eager = linear_scan(inputs[0].sigmoid(), inputs[1] * 2.0, inputs[2])[0]
+        assert torch.allclose(states, eager, atol=1e-6)
+        grads = torch.autograd.grad(states.sum(), inputs)
+        wanted = torch.autograd.grad(eager.sum(), inputs)
+        for grad, want in zip(grads, wanted, strict=True):
+            assert torch.allclose(grad, want, atol=1e-5)
 
 
 def test_temporal_initialisation_is_griffins():
@@ -570,8 +658,8 @@ def test_bf16_autocast_step_stays_close_to_float32():
 
 
 def test_compiled_step_matches_eager():
-    """Catches a forward that torch.compile cannot trace or traces differently (the doubling
-    scan's Python loop runs over a constant T)."""
+    """Catches a forward that torch.compile cannot trace or traces differently (the scan is
+    a custom operator)."""
     policy = make_policy()
     obs = make_obs((2,), 4, fields=3)
     carry = torch.randn(policy.initial_carry(2, 4, "cpu").shape)

@@ -2,7 +2,8 @@
 with ffmpeg (H.264, yuv420p, faststart). No game or agent code is changed: the game is
 lean.game (deal, tick) at batch size 1 and every ship is the default scripted agent
 (ScriptedConfig(), the yardstick), both teams in one call as in evaluation. The labels are the
-agent's own reasons for the tick's decision (lean.scripted.opponent.explain).
+look-ahead agent's flight action for the tick and its nearest scored enemy
+(lean.scripted.explain).
 
     CUDA_VISIBLE_DEVICES="" PYTHONPATH=.:src uv run --no-sync python \
         docs/rewrite/sections/replay/replay.py --seeds 0 1 2 --out DIR
@@ -23,7 +24,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 from lean import game, scripted
 from lean.game import card, core
-from lean.scripted.opponent import TACTICS, explain
 
 SIZE = 1080  # output frame, square
 SUPER = 2  # drawn at SUPER x and reduced (antialiasing)
@@ -34,13 +34,8 @@ DEATH_MARK_TICKS = 45
 TEAM_COLOURS = ((80, 160, 255), (255, 95, 80))
 TEAM_NAMES = ("Blue", "Red")
 BACKGROUND = (14, 17, 24)
-SHORT = {
-    "disengaged": "SEEK",
-    "merge": "MERGE",
-    "offensive": "OFF",
-    "turning": "TURN",
-    "defensive": "BREAK",
-}
+LEVELS = ("straight",) + card.LEVEL_NAMES
+POWER_NAMES = ("", " dive", " climb")  # coast, dive, climb
 FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 BOLD_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
@@ -55,15 +50,16 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4)) -> dict:
     generator = torch.Generator().manual_seed(seed)
     slots = sum(sizes)
     state = game.deal(config, 1, slots, torch.tensor([list(sizes)]), generator, "cpu")
-    memory = scripted.fresh_memory(1, slots, generator, "cpu")
     agent = scripted.ScriptedConfig()
     frames = []
     deaths = []  # (tick, x, y, team)
     collisions = []  # (tick, x, y, damage to the pair's two ships): core.collisions' contacts
     result = -1
     while True:
-        reasons = explain(agent, state, None, None, memory)
-        weights = torch.stack([reasons.weights[name] for name in TACTICS], -1)[0]  # (N, 5)
+        choice = scripted.explain(agent, state, None, None)
+        uniforms = scripted.draw_uniforms(1, slots, generator, "cpu")
+        action = scripted.sample(choice, uniforms)
+        scored = choice.enemy_weight[0, :, 0] > 0.0
         frame = {
             "x": state.x[0].clone(),
             "y": state.y[0].clone(),
@@ -73,16 +69,15 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4)) -> dict:
             "store": (state.energy * state.constants["inverse_max_energy"])[0],
             "speed": (state.speed / state.constants["corner_speed"])[0],
             "seen": (state.ticks_since_seen[0] == 0) if state.seen is not None else None,
-            "weights": weights,
-            "plan": torch.sign(reasons.last_pass[0]),
-            "target": reasons.marginals.target[0].clone(),
+            "stick": action[0, :, 0].clone(),
+            "power": action[0, :, 1].clone(),
+            "fire": choice.fire[0].clone(),
+            "target": torch.where(scored, choice.enemies[0, :, 0], -1),
             "bullets": _real_bullets(state),
         }
         frames.append(frame)
         if result >= 0:
             break
-        uniforms = scripted.draw_uniforms(1, slots, generator, "cpu")
-        action, memory, _ = scripted.decide(agent, state, None, None, uniforms, memory)
         previous = state
         state, out = game.tick(config, state, action, generator)
         for slot in torch.nonzero(out.died[0]).flatten().tolist():
@@ -131,8 +126,9 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4)) -> dict:
             "shield",
             "store",
             "speed",
-            "weights",
-            "plan",
+            "stick",
+            "power",
+            "fire",
             "target",
         )
     }
@@ -325,11 +321,10 @@ class Painter:
                 draw.line(
                     (*points[k - 1], *points[k]), fill=_fade(colour, 0.25 + 0.7 * age), width=2 * s
                 )
-        # Target lines (from each living ship that is not seeking to its target).
+        # Lines to each living ship's nearest scored enemy.
         for i in np.nonzero(alive)[0]:
-            tactic = int(np.argmax(r["weights"][t, i]))
             j = int(r["target"][t, i])
-            if TACTICS[tactic] != "disengaged" and alive[j] and team[j] != team[i]:
+            if j >= 0 and alive[j] and team[j] != team[i]:
                 draw.line(
                     (*to_pixels(xs[t, i], ys[t, i]), *to_pixels(xs[t, j], ys[t, j])),
                     fill=_fade(TEAM_COLOURS[team[i]], 0.8),
@@ -391,15 +386,16 @@ class Painter:
                 draw.rectangle(
                     (bx, y0, bx + bar_w * float(np.clip(value, 0, 1)), y0 + bar_h), fill=colour_bar
                 )
-            # Label: slot, dominant tactic (and its plan when turning), a runner-up when close.
-            w = r["weights"][t, i]
-            order = np.argsort(-w)
-            name = TACTICS[order[0]]
-            label = SHORT[name]
-            if name == "turning":
-                label += " 2c" if r["plan"][t, i] > 0 else " 1c" if r["plan"][t, i] < 0 else ""
-            if w[order[0]] < 0.6:
-                label += "/" + SHORT[TACTICS[order[1]]]
+            # Label: slot, the flight action flown (level, side, power), the trigger's chance.
+            level = card.STICK_LEVELS[int(r["stick"][t, i])]
+            label = (
+                "straight"
+                if level == 0
+                else f"{LEVELS[int(abs(level))]} {'L' if level > 0 else 'R'}"
+            )
+            label += POWER_NAMES[int(r["power"][t, i])]
+            if r["fire"][t, i] > 0.05:
+                label += f" fire {r['fire'][t, i]:.0%}"
             draw.text(
                 (px + 14 * s, py - 30 * s),
                 f"{i} {label}",
@@ -450,8 +446,8 @@ class Painter:
             (width - 16 * s, 24 * s), self.title, font=self.small, fill=(160, 165, 175), anchor="ra"
         )
         legend = (
-            "labels: OFF chase | TURN 1c/2c | BREAK defend | MERGE | SEEK no fight;  "
-            "bars: shield, store;  vc: speed / corner speed;  hollow: hidden from enemy"
+            "labels: flight action (level, side L/R, power), trigger chance; line: nearest scored "
+            "enemy;  bars: shield, store;  vc: speed / corner speed;  hollow: hidden from enemy"
         )
         draw.text((16 * s, top + 8 * s), legend, font=self.small, fill=(120, 125, 135))
         if final:
@@ -560,6 +556,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--no-fog", action="store_true", help="fog off (every ship seen)")
     parser.add_argument(
         "--still",
         type=int,
@@ -613,6 +610,9 @@ def main() -> None:
     if arguments.no_fields:
         config = dataclasses.replace(config, field_count=0)
         stem += "_nofields"
+    if arguments.no_fog:
+        config = dataclasses.replace(config, fog=False)
+        stem += "_fogoff"
     if arguments.tracking == "off":
         config = dataclasses.replace(config, fog_tracking=False)
         stem += "_trackoff"
@@ -637,6 +637,8 @@ def main() -> None:
         title = f"game {number} of {len(arguments.seeds)}, seed {seed}, scripted {size}v{size}"
         if arguments.no_fields:
             title += ", no fields"
+        if arguments.no_fog:
+            title += ", fog off"
         if arguments.vision_eccentricity is not None:
             title += f", sight ellipse e {arguments.vision_eccentricity:g}"
         if arguments.vision_range is not None:

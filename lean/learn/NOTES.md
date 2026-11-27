@@ -19,7 +19,9 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   league side (`slot_actions`, capacity routing, `league_rows`), hit labels, the teacher's
   distribution. A tick is `act` (returns a `Decision`: views, the live policy's sample through
   lean.model.agent.agent_step, value, the scripted `ScriptedMove`), `league_actions` (a
-  `LeagueMove`) and `advance` (takes both and the `HitLabels`; the game half is lean.game.tick).
+  `LeagueMove`) and `advance` (takes both; the game half is lean.game.tick). `advance` returns
+  each ship's bullet outcomes by age; `collect` assembles the segment's hit labels once at its
+  end (`assemble_hit_labels`), nothing is written in place in the tick.
 - `store.py`: `RolloutStore`, an update's segments, compact, streamed to pinned host memory on a GPU.
 - `returns.py`: GAE per level, chaining across segments, advantage scaling and shares, the value
   supports' range monitoring.
@@ -28,8 +30,13 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - `pool.py`: `League` (members, network slots, capacity draws, tallies, retiring slots),
   `SnapshotSchedule`, `retained`.
 - `rewards.py`: v2's five reward levels and the damage ledger.
-- `compiled.py`: `graphs()`: act, advance, slot_actions, minibatch_values, minibatch_loss, each
-  compiled once with dynamic sizes (no recompile at a new team size, league size or batch size).
+- `compiled.py`: `graphs(shapes)`: act, advance, slot_actions, merge_league, minibatch_values,
+  minibatch_loss. `LearnConfig.compile_shapes` (2026-11-27): "static" (the default) compiles
+  each for the run's sizes (environments, slots, fields, micro-batch, the league table: all
+  fixed in a run) and any second compile raises; "dynamic" compiles once for every size (duck
+  sizing off). The critic's support (`returns.value_support`) is built once per collect and
+  update and passed into the graphs; the next-state support is a policy buffer (a table made
+  with torch.tensor inside a graph is a pageable copy at every call).
 - `lean/train.py`: the stages, checkpoints, `--resume`.
 
 ## The recipe
@@ -39,7 +46,7 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   minibatches, micro-batches of 64 views with gradient accumulation, targets once per update.
 - **BC stage** (`update(..., cloning=True)`): the student plays its own games (half self-play,
   half against the scripted agent). Loss: cross-entropy of the 42-way policy against the scripted
-  teacher's full distribution (`Marginals` product) at 1.0, plus value, next-state and hit; no
+  teacher's full distribution (its joint over the 42 actions, `lean.scripted.Choice.joint`) at 1.0, plus value, next-state and hit; no
   surrogate, no entropy. 96 updates (100.7M ticks, v2's 100M-tick stage). The hand-off is the
   stage's EMA, with a fresh optimiser, warm-up, league and averages.
 - **Teacher term in RL:** the same cross-entropy at 0.5 x 0.95^k at RL update k; off for good once
@@ -70,11 +77,17 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - Members (fixed indices): the scripted agent (0), the EMA (1), the uniform average (2), then up
   to 12 snapshots. Before the first snapshot every league game is against the scripted agent.
 - Draws at a game's end: PFSP (1 - p)^2 with a 1/8 uniform floor (decaying tallies, 0.99 a game,
-  unplayed 0.5), within row capacities ceil(1.25 L / present).
-- Routing: each tick, for each network slot, `slot_actions` takes that slot's environments into a
-  batch, runs the slot's network once and reads the rows back; one compiled graph serves every
-  slot, K and W. A dropped snapshot plays its running games to their end in a retiring slot (2
-  + 12 + 4 slots; with none free, the games of the slot with the fewest are re-dealt).
+  unplayed 0.5), within row capacities fixed for the run (2026-11-27): each network member C =
+  ceil(1.25 L / members), members = 3 + snapshot_members = 15 (86 rows at L 1,024); the
+  scripted agent L (it takes what the network members cannot while fewer than all members are
+  present: early in RL most league games are scripted).
+- Routing: the shapes are fixed for the run (a training run is static): every slot on W = C
+  rows, the merge on K = 2 + 12 + 4 entries. Each tick `slot_actions` runs the network of each
+  slot holding weights (members and retiring slots) once on its own W rows (one compiled graph,
+  compiled when the first network member joins); the empty slots are skipped (2026-11-27,
+  author: "static" is a fixed recipe, not identical calls) and `merge_league` puts the rows
+  back in one pass from K entries, a skipped slot's a zero filler no row reads. A dropped snapshot plays its running games to their end in a
+  retiring slot (with none free, the games of the slot with the fewest are re-dealt).
 - Snapshots: v2's schedule (5, 10, ... 160M RL steps, then every 30M) and retention (newest 8,
   plus the nearest to each age 2^k back, at most 12).
 - Checkpoints: every 10M environment steps, `DIR/checkpoints/<stage>_<steps>.pt`, none deleted:
@@ -85,13 +98,17 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 
 ## Numbers (laptop RTX 4070, performance profile, 2,048 x 4 x 128, compiled, bf16, core game)
 
-- Loop speed (collect plus update): 6,670 steps/s in RL before the first snapshot (step L2,
+- Loop speed 2026-11-27 (train-audit): BC 8,255 steps/s, 127.0 s per update (collect plus
+  update); the update alone 114.5 s (149.1 ms per micro-batch), peak allocated 4.74 GiB.
+- Loop speed (collect plus update), earlier: 6,670 steps/s in RL before the first snapshot (step L2,
   2026-11-23); BC 6,668. Peak allocated 5.7 GiB. Steady speed with league networks playing is
   not measured under the per-slot routing (the one short run included its compile: 4,852).
-- League side per tick at parity, 8 slots, per-slot form: 12.75 ms (vmap form 10.5 ms, which
-  recompiled at every new K and W, so it was dropped); at 256 environments the per-slot form is
-  launch-bound (about 1.35 ms a slot). One CUDA graph over every slot's call gave 10,700 to
-  18,325 steps/s at 256 environments and nothing at parity; reverted (commit 992bb7ef).
+- League side (2026-11-27, slots x 86 rows, the empty slots skipped): the RL tick at E 2,048 is
+  26.4 ms with 1 snapshot (2 slot calls) and 32.5 ms with 12 (11 calls), against 24.2 ms
+  without league networks; running all 18 slots it was 38.5 and 38.6 ms (the rows are
+  compute-bound work, so a single vmap call over the stacked slots measured the same, 38.9 ms,
+  and was reverted). Tick-audit's varying table cost 30.1 ms (2 slots x 427) to 36.9 ms
+  (11 x 107).
 - Compile: cold start about 240 s; the compile tripwire (`compile_check.py`) fails on any graph
   break, new graph, recompile, or a function's traced operations over 10% above its baseline
   (`docs/rewrite/scoreboard.md` "Compile time"). Run it at the end of every step:
@@ -109,7 +126,8 @@ term's decay and gate, averages, checkpoints, optimiser, warm-up, KL monitor, ad
 `test_train.py` (BC then RL, checkpoints, an exact resume), `test_league.py` (capacities, PFSP,
 routing, retiring slots, schedule and retention), `test_learn.py`, `test_hit_head.py`,
 `test_rewards.py`, `test_store.py`; slow, `test_compiled.py` (compiled collect and update, loss
-equal to eager, the routing graph fullgraph and reused at a new K and W).
+equal to eager, the routing graph fullgraph, and static for the whole run: one compile from the
+open league before any snapshot through more snapshots joining).
 
 - The inductor and triton caches default to ~/.cache/bnb-inductor (lean.contract.compile_dynamic, when TORCHINDUCTOR_CACHE_DIR is unset): /tmp is wiped at reboot and the warm cache saves about 140 s.
 

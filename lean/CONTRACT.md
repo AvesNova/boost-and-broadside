@@ -22,11 +22,13 @@ NO_PENDING = JOINT  # Obs.pending of a row whose pending action is not observed
 LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outcome")
 LEVELS = 5
 SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES  # 18 scalars + 4 flags + type one-hot; 3; 3
-BULLET_SLOTS = 12
+BULLET_SLOTS = 12  # also every bullet's life in ticks: the ring (slot tick mod 12) is its clock
+GHOST, REAL, CONTACTED = 0, 1, 2  # State.bullet_state
 ```
 
-Also here: `symlog`, `map_fields`, `whole_state`, `compile_dynamic` (the one place duck sizing is
-turned off), `random_keywords` (a factory's generator keywords; compiled graphs draw from torch's
+Also here: `symlog`, `map_fields`, `whole_state`, `compile_graph` (shapes "static": a training
+run's graphs, specialised to its sizes, a recompile an error; "dynamic": `compile_dynamic`, the one
+place duck sizing is turned off, for evaluation across sizes), `random_keywords` (a factory's generator keywords; compiled graphs draw from torch's
 default generator).
 
 Stick: 0 straight, then (1, 2) gradual, (3, 4) middle, (5, 6) full, one direction odd and the
@@ -34,8 +36,9 @@ other even. Power: 0 coast, 1 dive, 2 climb. Fire: 0 or 1.
 
 **`Constants`**: per-ship constants of one run, read by name (`constants["lift"]` or
 `constants.lift`). A value equal for the whole lineup is a Python number; one that differs by
-ship type is a row of a table `(E, C, N)` gathered at the deal. `lean.game.core.ship_constants`
-builds it.
+ship type is a row of the card's table `(C, T)` (one column per ship type), read through each
+slot's type (`Constants.ship_type`, the state's `type`): `(E, N)`, an action table `(E, width,
+N)`. The table is shared, never copied per slot. `lean.game.core.ship_constants` builds it.
 
 **`State`**: the whole game state, packed by block so per-field work is one operation per block.
 Every quantity named in the `*_COLUMNS` tuples reads by name as a view, `state.x` being `(E, N)`
@@ -43,19 +46,19 @@ and `state.bullet_x` `(E, N, K)`; `state.replace(name=...)` replaces one.
 
 | Block | Shape | Holds |
 |---|---|---|
-| `ships` | `(E, columns, N)` float32 | x, y, heading cos and sin, speed, angle of attack (and cos, sin), nose rate, energy (the store), shield, shield wait, cooldown, the cached medium (log index, gradient), velocity, next bullet slot |
+| `ships` | `(E, columns, N)` float32 | x, y, heading cos and sin, speed, angle of attack (and cos, sin), nose rate, energy (the store), shield, shield wait, cooldown, the cached medium (log index, gradient), velocity |
 | `flags` | `(E, 3, N)` bool | alive, exists (fixed for an episode), fired (a real bullet last tick) |
 | `identity` | `(E, 2, N)` long | team (0 or 1), type (index into the ship card) |
-| `bullets`, `bullet_counts` | `(E, columns, N, K)` | position, direction, speed, the medium; moves left (0 is inactive) and the tick fired |
-| `bullet_real` | `(E, N, K)` bool | real bullet, or a ghost (no damage; labels the hit head) |
+| `bullets` | `(E, columns, N, K)` float32 | position, direction, speed, the medium |
+| `bullet_state` | `(E, N, K)` uint8 | GHOST (no damage; labels the hit head), REAL, or CONTACTED (touched a ship: no further contact, damage or label; flies on to the end of its 12 ticks) |
 
 Beside the blocks: `constants`, `tick (E,)`, `fields (E, 5, F)` (x, y, radius, band width, target
 ln n), `pending (E, N, 3)` long (the action the next tick applies), and with fog on `seen
 (E, SEEN_COLUMNS, N)` (each ship as its enemy team last saw it) and `ticks_since_seen (E, N)`.
 
 **`StepOut`** (one tick): `damage_taken (E, N)`, `died (E, N)`, `done (E,)`, `result (E,)` (0 or 1
-the winning team, 2 a draw, -1 not done), `shot_outcome (E, N, K)` (-1 none ended, 0 missed, 1
-hit an enemy, 2 hit a team-mate) and `shot_tick`, `hit_damage (E, N, N)` [attacker, target]
+the winning team, 2 a draw, -1 not done), `shot_outcome (E, N, K)` (each bullet once: 1 hit an enemy
+or 2 a team-mate at its first contact, 0 missed on its last tick; -1 otherwise) and `shot_tick`, `hit_damage (E, N, N)` [attacker, target]
 (real bullets' damage and collisions', each ship's collision damage credited to the other ship of
 the pair), `boundary_damage (E, N)`, `shield_restored (E, N)`.
 
@@ -91,12 +94,12 @@ observe(config, state, team) -> Obs
 ```python
 ScriptedConfig()                         # the yardstick's values; .replace(name=value)
 personas(config, envs, slots, generator, device, spread) -> dict | None   # None at spread 0
-fresh_memory(envs, slots, generator, device) -> dict[str, Tensor]   # carried by every caller
-draw_uniforms(envs, slots, generator, device) -> Tensor              # (E, N, 3), one per head
-act(config, state, team, persona, uniforms, memory) -> tuple[Tensor, dict]
-    # (E, N, 3) long, rows of other teams 0 (team None: both teams in one call), new memory
-decide(...)                              # act, plus the Marginals (the BC teacher's distribution)
-chaser_act(...)                          # the memoryless floor
+draw_uniforms(envs, slots, generator, device) -> Tensor              # (E, N, 2): flight, fire
+act(config, state, team, persona, uniforms) -> Tensor
+    # (E, N, 3) long, rows of other teams 0 (team None: both teams in one call); no memory
+decide(...) -> tuple[Tensor, Choice]     # act, plus the Choice (Choice.joint: the BC teacher)
+explain(config, state, team, persona) -> Choice
+chaser_act(state, team) -> Tensor        # the memoryless floor
 ```
 
 ## `lean/model`
@@ -128,8 +131,8 @@ Evaluator(Store(path), GameConfig())     # ensure / adaptive / report / elo (lea
 ```
 
 The reward levels are `lean.contract.LEVEL_NAMES`; hit classes 0 missed, 1 enemy, 2 team-mate. The
-BC teacher is `lean.scripted.decide`'s `Marginals` (stick, power, fire), the product of the three
-over the 42 joint actions.
+BC teacher is `lean.scripted.decide`'s `Choice.joint`, its distribution over the 42 joint actions
+(flight x fire), recorded as it is.
 
 ## Rules
 

@@ -19,17 +19,16 @@ turns a game's sums into the stored style (per game and seat, small floats):
   ranges. None without a hit.
 - climb, dive: share of the time with climb or dive applied.
 
-The flow is the one lean/scripted/situation.py assesses (flow = own sense x target sense,
-the sense from the nose rate against a floor of sustained rates), taken here with a hard floor
-(`TURNING_FLOOR`, the yardstick's turning_floor) and the nearest living enemy as the target, so
-that it is one definition for every agent (a network has no target).
+The flow is own sense x target sense (the sense from the nose rate against a floor of
+sustained rates, as the rule-based scripted agent assessed it), with a hard floor
+(`TURNING_FLOOR`) and the nearest living enemy as the target, so that it is one definition for
+every agent (a network has no target).
 """
 
 import torch
 from torch import Tensor
 
-# The nose rate, in sustained rates, below which a ship counts as flying straight (the
-# yardstick's turning_floor, lean.scripted.parameters).
+# The nose rate, in sustained rates, below which a ship counts as flying straight.
 TURNING_FLOOR = 0.25
 # The sums per seat, in this order.
 SUMS = (

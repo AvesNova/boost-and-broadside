@@ -110,12 +110,11 @@ class Outcome:
 
 @dataclass
 class Deals:
-    """The next P games of the queue dealt at once (one segment's starts): the game state, the
-    scripted memory and both seats' position offsets, leading P; `first` the queue index of
+    """The next P games of the queue dealt at once (one segment's starts): the game state and
+    both seats' position offsets, leading P; `first` the queue index of
     row 0 (a 0-d tensor: a new value is data for a compiled graph)."""
 
     state: object
-    memory: dict
     offset_a: Tensor
     offset_b: Tensor
     first: Tensor  # () long
@@ -123,8 +122,8 @@ class Deals:
 
 @dataclass
 class Slots:
-    """The E environments: `game` (E,) long, the queue index each plays (-1 idle), the
-    scripted memory, and `style` (E, 2, len(style.SUMS)) the game's style sums so far. With
+    """The E environments: `game` (E,) long, the queue index each plays (-1 idle), and
+    `style` (E, 2, len(style.SUMS)) the game's style sums so far. With
     networks, per seat (seat A of every environment, then seat B, then one spare row that
     padding rows write to): `carry` (blocks, 2E + 1, ...) the networks' recurrent carry and
     `seat_action` (2E + 1, N, 3) their last moves, both written in place by seat_moves only
@@ -132,7 +131,6 @@ class Slots:
     position offsets."""
 
     game: Tensor
-    memory: dict
     carry: Tensor | None
     seat_action: Tensor | None
     offset: Tensor
@@ -141,14 +139,13 @@ class Slots:
 
 class Decision(NamedTuple):
     """One tick's scripted half and the seats' routing (decide): `action` (E, N, 3) the
-    scripted agent's moves (zero without a scripted seat), its new `memory`, `side` (E,) the
+    scripted agent's moves (zero without a scripted seat), `side` (E,) the
     team seat A plays, `seat_a` (E, N) the ship plays for seat A, `playing` (E,); with
     networks, the two fixed-team `views` and per seat (2E,) its network (`seat_net`,
     SCRIPTED for a scripted or idle seat), environment, team and whether its game starts at
     this tick (`seat_fresh`: the carry is zeroed)."""
 
     action: Tensor
-    memory: dict
     side: Tensor
     seat_a: Tensor
     playing: Tensor
@@ -173,7 +170,7 @@ def draw_deals(game_config, queue: Queue, first: int, count: int, slots: int, mo
         for _ in range(2)
     ]
     first_tensor = torch.tensor(first, dtype=torch.long, device=device)
-    return Deals(state, scripted.fresh_memory(count, slots, None, device), *offsets, first_tensor)
+    return Deals(state, *offsets, first_tensor)
 
 
 def decide(game_config, state, slots: Slots, queue: Queue, table: Tensor, scripted_seats: bool):
@@ -186,16 +183,13 @@ def decide(game_config, state, slots: Slots, queue: Queue, table: Tensor, script
     side = queue.side.index_select(0, current)
     seat_a = state.team == side[:, None]  # (E, N) the ship plays for seat A
     action = torch.zeros((envs, ships, 3), dtype=torch.long, device=device)
-    memory = slots.memory
     if scripted_seats:
         a, b = queue.a.index_select(0, current), queue.b.index_select(0, current)
         agent = torch.where(seat_a, a[:, None], b[:, None])
         uniforms = scripted.draw_uniforms(envs, ships, None, device)
-        action, memory, _ = scripted.decide(
-            FIXED_CONFIG, state, None, rows_of(table, agent), uniforms, memory
-        )
+        action, _ = scripted.decide(FIXED_CONFIG, state, None, rows_of(table, agent), uniforms)
     if slots.carry is None:
-        return Decision(action, memory, side, seat_a, playing, *[None] * 5)
+        return Decision(action, side, seat_a, playing, *[None] * 5)
     views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
     nets = torch.cat([queue.net_a.index_select(0, current), queue.net_b.index_select(0, current)])
     seat_net = torch.where(torch.cat([playing, playing]), nets, SCRIPTED)
@@ -203,7 +197,6 @@ def decide(game_config, state, slots: Slots, queue: Queue, table: Tensor, script
     fresh = state.tick == 0
     return Decision(
         action,
-        memory,
         side,
         seat_a,
         playing,
@@ -296,16 +289,12 @@ def advance(
     pick = row.clamp(0, rows - 1)
     state = game.take_deal(state, start, deals.state, pick)
 
-    def take(fresh: Tensor, old: Tensor) -> Tensor:
-        return torch.where(start.view(-1, *[1] * (old.dim() - 1)), fresh.index_select(0, pick), old)
-
     seats_start = torch.cat([start, start])
     fresh_offset = torch.cat(
         [deals.offset_a.index_select(0, pick), deals.offset_b.index_select(0, pick)]
     )
     slots = Slots(
         game=torch.where(start, next_game, torch.where(want, -1, slots.game)),
-        memory={name: take(deals.memory[name], decision.memory[name]) for name in decision.memory},
         carry=slots.carry,
         seat_action=slots.seat_action,
         offset=torch.where(seats_start[:, None], fresh_offset, slots.offset),
@@ -477,7 +466,7 @@ def _play(
     opening = deals_from(0, envs)
     # The state is the runner's: its own copies of the deal's shared fixed rows, every tensor
     # whole (a compiled graph is specialised on strides).
-    shared = ("bullets", "bullet_counts", "bullet_real", "tick", "pending")
+    shared = ("bullets", "bullet_state", "tick", "pending")
     state = dataclasses.replace(
         opening.state, **{name: getattr(opening.state, name).clone() for name in shared}
     )
@@ -485,7 +474,6 @@ def _play(
     width = len(style_counters.SUMS)
     slots = Slots(
         torch.arange(envs, device=device),
-        opening.memory,
         # The seats' carry and moves, one spare row past the 2E seats (seat_moves).
         policies[0].initial_carry(2 * envs + 1, ships, device) if policies else None,
         torch.zeros((2 * envs + 1, ships, 3), dtype=torch.long, device=device)

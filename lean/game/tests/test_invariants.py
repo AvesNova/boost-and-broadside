@@ -7,7 +7,7 @@ import torch
 
 torch.set_num_threads(1)
 
-from lean.contract import FIRES, POWERS, STICKS  # noqa: E402
+from lean.contract import FIRES, POWERS, REAL, STICKS  # noqa: E402
 from lean.game import GameConfig, deal, draw_noise, observe, reset, step, take_deal  # noqa: E402
 
 CLOSE = GameConfig(arena_radius=700.0, spawn="mixed", clock_ticks=400)
@@ -27,7 +27,7 @@ def floats(tree):
             yield field.name, value
 
 
-@pytest.mark.parametrize("sizes, ticks", [((3, 5), 300), ((20, 20), 30)])
+@pytest.mark.parametrize("sizes, ticks", [((3, 5), 300), ((20, 20), 120)])
 def test_finite_and_padding_inert(sizes, ticks):
     """Catches a division by zero on a padded or dead row, and padding that acts or is hit."""
     generator = torch.Generator().manual_seed(1)
@@ -49,7 +49,7 @@ def test_finite_and_padding_inert(sizes, ticks):
         assert (out.damage_taken[absent] == 0).all() and (out.hit_damage[absent] == 0).all()
         assert not observation.key_mask[absent].any() and not observation.own[absent].any()
         assert not state.alive[absent].any()
-        assert (state.bullet_moves_left[absent] == 0).all()
+        assert (state.bullet_state[absent] != REAL).all()  # an absent ship writes ghosts
         assert ((out.result >= 0) == out.done).all()
         deaths += int(out.died.sum())
         state = take_deal(state, out.done, deal(CLOSE, envs, slots, team_sizes, generator, "cpu"))
@@ -71,14 +71,15 @@ def test_swapping_teams_mirrors_the_outcome():
         "flags": 2,
         "identity": 2,
         "bullets": 2,
-        "bullet_counts": 2,
-        "bullet_real": 1,
+        "bullet_state": 1,
         "seen": 2,
         "ticks_since_seen": 1,
         "pending": 1,
     }
     mirror = {name: getattr(state, name).flip(axis) for name, axis in slot_axis.items()}
-    mirror["constants"] = dataclasses.replace(state.constants, table=state.constants.table.flip(2))
+    mirror["constants"] = dataclasses.replace(
+        state.constants, ship_type=state.constants.ship_type.flip(1)
+    )
     other = dataclasses.replace(state, **mirror).replace(team=1 - state.team.flip(1))
     finished = torch.zeros(envs, dtype=torch.bool)
     damage = 0.0

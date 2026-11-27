@@ -1,0 +1,13 @@
+/home/vizia/avesnova/boost-and-broadside/data/egg-2026-11-27/compile_egg.log:act: 1 graph(s), 4552 traced operations, aot [['forward', 5566]], backend 72.9 s
+/home/vizia/avesnova/boost-and-broadside/data/egg-2026-11-27/compile_egg.log:advance: 1 graph(s), 3302 traced operations, aot [['forward', 3741]], backend 38.0 s
+/home/vizia/avesnova/boost-and-broadside/data/egg-2026-11-27/compile_egg.log:total: 4 graphs, 9669 traced operations, 0 graph breaks, cold 291.6 s (NVIDIA GeForce RTX 4070 Laptop GPU, performance)
+/home/vizia/avesnova/boost-and-broadside/data/egg-2026-11-27/compile_egg.log:FAIL act: 4552 traced operations, baseline 1821 (+150%)
+/home/vizia/avesnova/boost-and-broadside/data/egg-2026-11-27/compile_egg.log:FAIL advance: 3302 traced operations, baseline 2856 (+16%)
+/home/vizia/avesnova/boost-and-broadside/data/egg-2026-11-27/compile_egg.log:FAIL cold compile 291.6 s, over the budget of 260 s
+/home/vizia/avesnova/boost-and-broadside/data/egg-2026-11-27/compile_egg.log:Main processes terminated with: code=exited, status=1/FAILURE
+/home/vizia/avesnova/boost-and-broadside/data/egg-2026-11-27/compile_off.log:act: 1 graph(s), 4552 traced operations, aot [['forward', 5566]], backend 72.8 s
+/home/vizia/avesnova/boost-and-broadside/data/egg-2026-11-27/compile_off.log:advance: 1 graph(s), 3022 traced operations, aot [['forward', 3451]], backend 36.1 s
+/home/vizia/avesnova/boost-and-broadside/data/egg-2026-11-27/compile_off.log:total: 4 graphs, 9389 traced operations, 0 graph breaks, cold 287.8 s (NVIDIA GeForce RTX 4070 Laptop GPU, performance)
+/home/vizia/avesnova/boost-and-broadside/data/egg-2026-11-27/compile_off.log:FAIL act: 4552 traced operations, baseline 1821 (+150%)
+/home/vizia/avesnova/boost-and-broadside/data/egg-2026-11-27/compile_off.log:FAIL cold compile 287.8 s, over the budget of 260 s
+/home/vizia/avesnova/boost-and-broadside/data/egg-2026-11-27/compile_off.log:Main processes terminated with: code=exited, status=1/FAILURE

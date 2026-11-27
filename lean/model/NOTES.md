@@ -15,8 +15,12 @@ Reasons: `docs/rewrite/model-audit.md`, `docs/rewrite/literature-model-choices.m
   `Network` (a weightless `Stepper` template per architecture plus weights; new weights are new
   data, so no recompile), `agent_step` (the one agent tick: precision, forward, the joint
   action's sample; returns an `AgentStep`) for training's live policy (`Policy.step`) and every
-  `Network` (`network_step`), `sample_joint`, `seat_view`, `precision`, `reset_carry`.
-- `temporal.py` (`Temporal`, `doubling_scan`), `position.py` (position codes, `Rotary`),
+  `Network` (`network_step`), `sample_joint`, `seat_view`, `precision`, `reset_carry` (the
+  evaluation runner's; training passes the step `reset`), `routed_step` and `merge_routed`
+  (capacity routing: each network on its own W rows, then one merge).
+- `temporal.py` (`Temporal`), `scan.py` (`linear_scan`: the recurrence in one pass, a custom
+  operator with Triton kernels forward and backward on the GPU, a loop on the CPU, float32),
+  `position.py` (position codes, `Rotary`),
   `value.py` (`symlog`, `symexp`, `buffered_centres`, `hl_gauss_targets`, `decode_value`,
   `value_bin_centres`).
 - `next_state_target(config, state, next_state, step_out, tick_length)` makes the next-state
@@ -41,7 +45,9 @@ The speed of the whole loop is in `lean/learn/NOTES.md`.
   softmax, an element-wise sigmoid gate after the values are rotated back, a gated MLP. No
   biases, no null key.
 - **Temporal:** Griffin's recurrent block (4-tap causal convolution, RG-LRU) by
-  `doubling_scan`, then a gated MLP. Resets and masks are folded into decay and update. A state
+  `linear_scan` (2026-11-27, in place of the doubling scan: the update's micro-batch step 170.0
+  -> 146.8 ms, peak 5.12 -> 4.17 GiB; docs/rewrite/sections/training-path-audit-progress.md),
+  then a gated MLP. Resets and masks are folded into decay and update. A state
   starting from zero takes its first input at scale 1 (recurrentgemma's rule), which makes
   `step` and `sequence` agree without a flag in the carry.
 - **Initialisation:** recurrentgemma's rule for all six residual blocks (input projections

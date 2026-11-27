@@ -1,0 +1,36 @@
+{
+ "cell": "4v4-egg-alwaysfire",
+ "size": 4,
+ "envs": 256,
+ "ticks": 1800,
+ "always_fire": true,
+ "wall_s": 10.2,
+ "kills": 2524.0,
+ "games_ended": 353.0,
+ "kills_per_minute": 9.859375,
+ "time_to_kill": {
+  "n": 2524,
+  "mean": 8.493185871636433,
+  "p25": 2.700000047683716,
+  "median": 6.800000190734863,
+  "p75": 12.200000762939453,
+  "p90": 18.370001411438015
+ },
+ "action_fire_share": 1.0,
+ "shots_per_ship_tick": 0.9982953998448304,
+ "real_bullets_ended": 2793361.0,
+ "hit_chance_per_bullet": 0.013937332124276097,
+ "shots_per_kill": 1106.7198890649763,
+ "total_damage_shields": 3569.460293953419,
+ "total_restored_shields": 0.0,
+ "restored_share_of_damage": 0.0,
+ "kill_lives": {
+  "damage_per_kill_shields": 1.1583146260922004,
+  "restored_per_kill_shields": 0.0,
+  "overkill_per_kill_shields": 0.15831462542719774,
+  "start_shield_per_kill_shields": 1.0,
+  "restored_share": 0.0,
+  "overkill_share": 0.13667670411907246,
+  "counted_share": 0.8633232953068152
+ }
+}

@@ -100,6 +100,33 @@ POST_STALL_DRAG_ANGLE = math.radians(45.0)
 # (core._path_lift): the softness, a fraction of the held vertical.
 PATH_LIFT_SOFTNESS = 0.25
 
+# The bullet deflector (proposal 2026-11-27, core.egg_entry and core.egg_turn; lean/game/NOTES.md
+# "Deflector"): an invisible egg around every ship in its frame (nose +x), the front half an
+# ellipse of semi-axis egg_front along the nose, the rear half one of egg_rear, both of half-width
+# egg_half_width. A bullet whose straight in-tick path first crosses it inward is turned away from
+# the ship's centre by deflector_turn x hump(b / egg_half_width) (b the line's distance from the
+# centre; core.hump, 0 at both ends, peak at a third), its speed kept. The same for every type and
+# any shield. The presets (GameConfig.deflector) set the hit model's deflector inputs
+# (core.HIT_MODEL); "off" also skips the deflector's code in the tick. Metres and radians.
+EGG_HALF_WIDTH = 24.0
+DEFLECTOR_PRESETS = {
+    "egg": dict(
+        egg_front=40.0 / 18.0 * EGG_HALF_WIDTH,  # 53.3 m: the sketch's 40/18 proportion
+        egg_rear=EGG_HALF_WIDTH,
+        egg_half_width=EGG_HALF_WIDTH,
+        deflector_turn=math.radians(45.0),
+    ),
+    "off": dict(
+        egg_front=40.0 / 18.0 * EGG_HALF_WIDTH,
+        egg_rear=EGG_HALF_WIDTH,
+        egg_half_width=EGG_HALF_WIDTH,
+        deflector_turn=0.0,
+    ),
+}
+# The nose cone's damage rule (core.aspect_factor; author 2026-11-25): its weight in the hit
+# model, 0 off (author 2026-11-27: off by default, the code kept as a setting), 1 on.
+NOSE_CONE = 0.0
+
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005
 BULLET_SPREAD = 12.0

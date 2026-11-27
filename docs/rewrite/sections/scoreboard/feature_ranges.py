@@ -14,6 +14,7 @@ import sys
 
 import torch
 
+from lean.contract import REAL
 from lean.game import core
 from lean.scripted import ScriptedConfig, act, draw_uniforms, fresh_memory, personas
 
@@ -37,7 +38,7 @@ def raw(config, state):
         "shield wait (s)": state.shield_wait,
         "gun cooldown (s)": state.cooldown * config.tick_length,
         "inside the boundary (m)": config.arena_radius - distance,
-        "real bullet share": ((state.bullet_moves_left > 0) & state.bullet_real).float().mean(-1),
+        "real bullet share": (state.bullet_state == REAL).float().mean(-1),
     }
 
 

@@ -7,6 +7,7 @@ Layout: batch first, features last. Units: metres, radians, seconds, ticks where
 from __future__ import annotations
 
 import dataclasses
+import math
 import os
 from dataclasses import dataclass
 
@@ -15,6 +16,8 @@ from torch import Tensor
 
 STICKS, POWERS, FIRES = 7, 3, 2
 JOINT = STICKS * POWERS * FIRES
+# A bullet's life in ticks: every ship writes one bullet a tick into its ring of BULLET_SLOTS
+# slots (the slot of tick t is t mod BULLET_SLOTS), so each bullet flies exactly this many ticks.
 BULLET_SLOTS = 12
 SHIP_TYPES = 1  # len(lean.game.card.TYPE_NAMES)
 
@@ -63,13 +66,35 @@ def symlog(x: Tensor) -> Tensor:
 
 
 def map_fields(record, function):
-    """A copy of a dataclass with `function` applied to every tensor field."""
-    changes = {
-        field.name: function(getattr(record, field.name))
-        for field in dataclasses.fields(record)
-        if isinstance(getattr(record, field.name), Tensor)
-    }
+    """A copy of a dataclass with `function` applied to every tensor field (and to every tensor
+    of a dict field: Constants.per_type)."""
+    changes = {}
+    for field in dataclasses.fields(record):
+        value = getattr(record, field.name)
+        if isinstance(value, Tensor):
+            changes[field.name] = function(value)
+        elif (
+            isinstance(value, dict) and value and all(isinstance(v, Tensor) for v in value.values())
+        ):
+            changes[field.name] = {name: function(item) for name, item in value.items()}
     return dataclasses.replace(record, **changes)
+
+
+def device_constant(values, device, dtype=None) -> Tensor:
+    """A small table of Python numbers `values` (a flat or nested sequence) made on `device`
+    without a host copy: inside a compiled graph torch.tensor(..., device=cuda) is a pageable
+    host-to-device copy at every call (the host waits for the stream), while a fill per entry
+    is a constant inside a kernel. The same values as torch.tensor(values, dtype=dtype): the
+    dtype defaults to float32 when any entry is a float, else long."""
+    shape, flat = [], list(values)
+    while flat and isinstance(flat[0], (list, tuple)):
+        shape.append(len(flat))
+        flat = [item for row in flat for item in row]
+    shape.append(len(flat) // max(1, math.prod(shape)))
+    if dtype is None:
+        dtype = torch.float32 if any(isinstance(item, float) for item in flat) else torch.long
+    entries = [torch.full((), item, dtype=dtype, device=device) for item in flat]
+    return torch.stack(entries).view(shape)
 
 
 def whole(tensor: Tensor) -> Tensor:
@@ -85,15 +110,10 @@ def whole_state(state):
     return dataclasses.replace(state, constants=map_fields(state.constants, whole))
 
 
-def compile_dynamic(function):
-    """`function` under torch.compile with dynamic sizes, duck sizing turned off for the
-    process (the one place it is set): with it on, two sizes equal at the first call (ship
-    slots and field slots at 5v5) are tied and a new team size recompiles; off, each graph
-    compiles once for every team size, environment count and batch size
-    (docs/rewrite/scoreboard.md). The inductor and triton caches default to
-    ~/.cache/bnb-inductor when TORCHINDUCTOR_CACHE_DIR is not set."""
-    import torch.fx.experimental._config as fx_config
+COMPILE_SHAPES = ("static", "dynamic")
 
+
+def _default_compile_cache() -> None:
     # /tmp is wiped at reboot, which loses the warm compile cache (93 s against about 230 s
     # cold): default it to the home cache unless the caller (a test, a box) set its own.
     if "TORCHINDUCTOR_CACHE_DIR" not in os.environ:
@@ -101,8 +121,52 @@ def compile_dynamic(function):
         os.environ.setdefault(
             "TRITON_CACHE_DIR", os.path.join(os.environ["TORCHINDUCTOR_CACHE_DIR"], "triton")
         )
+
+
+def compile_dynamic(function):
+    """`function` under torch.compile with dynamic sizes, duck sizing turned off for the
+    process (the one place it is set): with it on, two sizes equal at the first call (ship
+    slots and field slots at 5v5) are tied and a new team size recompiles; off, each graph
+    compiles once for every team size, environment count and batch size
+    (docs/rewrite/scoreboard.md). For evaluation across sizes (crossover); a training run
+    compiles static (compile_graph). The inductor and triton caches default to
+    ~/.cache/bnb-inductor when TORCHINDUCTOR_CACHE_DIR is not set."""
+    import torch.fx.experimental._config as fx_config
+
+    _default_compile_cache()
     fx_config.use_duck_shape = False
     return torch.compile(function, dynamic=True)
+
+
+class StaticGraph:
+    """A function compiled for the sizes, strides and Python numbers of its first call
+    (torch.compile with dynamic=False); every later call that would compile again raises
+    (torch.compiler stance fail_on_recompile) instead of recompiling."""
+
+    def __init__(self, function):
+        self.compiled = torch.compile(function, dynamic=False)
+        self.traced = False
+
+    def __call__(self, *arguments, **keywords):
+        if not self.traced:
+            result = self.compiled(*arguments, **keywords)
+            self.traced = True
+            return result
+        with torch.compiler.set_stance("fail_on_recompile"):
+            return self.compiled(*arguments, **keywords)
+
+
+def compile_graph(function, shapes: str):
+    """`function` under torch.compile, `shapes` one of COMPILE_SHAPES: "static" (a training
+    run: every size is fixed for the run, so the graph is specialised to them, run-uniform
+    Python numbers are folded in, and a second compile is an error, StaticGraph) or
+    "dynamic" (evaluation across sizes, compile_dynamic)."""
+    if shapes == "dynamic":
+        return compile_dynamic(function)
+    if shapes != "static":
+        raise ValueError(f"compile shapes {shapes!r}, expected one of {COMPILE_SHAPES}")
+    _default_compile_cache()
+    return StaticGraph(function)
 
 
 def random_keywords(generator: torch.Generator | None, device) -> dict:
@@ -116,30 +180,45 @@ def random_keywords(generator: torch.Generator | None, device) -> dict:
     return {"generator": generator, "device": device}
 
 
+FIELDS_OF_CONSTANTS = ("uniform", "columns", "table", "per_type", "ship_type")
+
+
 @dataclass(eq=False)  # compared and hashed by identity (built-once caches key on it)
 class Constants:
     """Per-ship constants of one run, read by name: `constants["lift"]` or `constants.lift`.
 
     A constant equal for every ship of the run (every type in the lineup, or fixed by the
     rules) is a Python number in `uniform`, compiled into the graph. One that differs by ship
-    type is a row of `table` (E, C, N) float32, gathered once per slot at reset; `columns`
-    gives its first row and width (width 1 reads as (E, N), a wider one, an action-indexed
-    table, as (E, width, N)). Action-indexed tables are always rows of `table`. The run's card
-    (lean.game.core.ship_card) is the same with one column per ship type: table (1, C, T).
+    type is a row of `table` (C, T) float32, one column per card type, read through each
+    slot's type `ship_type` (E, N) long (the slot's State.type): `columns` gives its first row
+    and width (width 1 reads as (E, N), a wider one, an action-indexed table, as (E, width,
+    N)). Action-indexed tables are always rows of `table`. The run's card
+    (lean.game.core.ship_card) has no `ship_type`: it reads as (1, T) and (1, width, T).
     """
 
     uniform: dict[str, float | int]
     columns: dict[str, tuple[int, int]]
     table: Tensor
+    # Tables by card type (T, ...), read with a ship's type (State.type), never dealt to slots:
+    # lean.game.core.PER_TYPE_TABLES (the steady-flight table, too wide for every slot's row).
+    per_type: dict[str, Tensor] = dataclasses.field(default_factory=dict)
+    ship_type: Tensor | None = None
 
     def __getitem__(self, name: str) -> Tensor | float | int:
         if name in self.uniform:
             return self.uniform[name]
+        if name in self.per_type:
+            return self.per_type[name]
         start, width = self.columns[name]
-        return self.table[:, start] if width == 1 else self.table[:, start : start + width]
+        if self.ship_type is None:  # the card: (1, T), (1, width, T)
+            rows = self.table[None, start : start + width]
+            return rows[:, 0] if width == 1 else rows
+        if width == 1:
+            return self.table[start][self.ship_type]
+        return self.table[start : start + width][:, self.ship_type].movedim(0, 1)
 
     def __getattr__(self, name: str) -> Tensor | float | int:
-        if name.startswith("__") or name in ("uniform", "columns", "table"):
+        if name.startswith("__") or name in FIELDS_OF_CONSTANTS:
             raise AttributeError(name)
         try:
             return self[name]
@@ -147,7 +226,7 @@ class Constants:
             raise AttributeError(name) from None
 
     def __contains__(self, name: str) -> bool:
-        return name in self.uniform or name in self.columns
+        return name in self.uniform or name in self.columns or name in self.per_type
 
 
 # The packed state's rows, by name. Each name reads as an (E, N) view (bullets (E, N, K)).
@@ -175,7 +254,6 @@ SHIP_COLUMNS = (
     # attack), stored by the step once (the world velocity is this over the refractive index).
     "velocity_x",
     "velocity_y",
-    "next_slot",  # the bullet slot the next shot is written to, a whole number
 )
 FLAG_COLUMNS = (
     "alive",
@@ -193,16 +271,15 @@ BULLET_COLUMNS = (
     "bullet_gradient_x",
     "bullet_gradient_y",
 )
-BULLET_COUNT_COLUMNS = (
-    "bullet_moves_left",  # 0 is inactive
-    "bullet_fired_tick",  # the episode tick the bullet left the gun
-)
+# A bullet's state (State.bullet_state, uint8): a ghost (no damage; labels the hit head), a
+# real shot, or contacted (it touched a ship: no further contact or damage; it flies on to the
+# end of its life).
+GHOST, REAL, CONTACTED = 0, 1, 2
 BLOCKS = {
     "ships": SHIP_COLUMNS,
     "flags": FLAG_COLUMNS,
     "identity": IDENTITY_COLUMNS,
     "bullets": BULLET_COLUMNS,
-    "bullet_counts": BULLET_COUNT_COLUMNS,
 }
 COLUMN = {
     name: (block, index) for block, names in BLOCKS.items() for index, name in enumerate(names)
@@ -224,8 +301,7 @@ class State:
     identity: Tensor  # (E, IDENTITY_COLUMNS, N) long
     constants: Constants  # per-ship constants: Python numbers and one table gathered at reset
     bullets: Tensor  # (E, BULLET_COLUMNS, N, K) float32
-    bullet_counts: Tensor  # (E, BULLET_COUNT_COLUMNS, N, K) long
-    bullet_real: Tensor  # (E, N, K) bool: a real bullet (False: a ghost, which does no damage)
+    bullet_state: Tensor  # (E, N, K) uint8: GHOST, REAL or CONTACTED
     tick: Tensor  # (E,) long
     # The environment's refractive fields, (E, 5, F) float32 rows [x, y, radius, band width,
     # target ln n]; F may be 0 (no medium).
@@ -247,7 +323,7 @@ class State:
         constants: Constants,
         tick: Tensor,
         fields: Tensor,
-        bullet_real: Tensor,
+        bullet_state: Tensor,
         pending: Tensor | None = None,
         seen: Tensor | None = None,
         ticks_since_seen: Tensor | None = None,
@@ -263,7 +339,6 @@ class State:
             "flags": torch.bool,
             "identity": torch.long,
             "bullets": torch.float32,
-            "bullet_counts": torch.long,
         }
         blocks = {
             block: torch.stack([named[name].to(dtypes[block]) for name in names], 1)
@@ -278,7 +353,7 @@ class State:
             constants=constants,
             tick=tick,
             fields=fields,
-            bullet_real=bullet_real,
+            bullet_state=bullet_state,
             pending=pending,
             seen=seen,
             ticks_since_seen=ticks_since_seen,
@@ -316,8 +391,9 @@ class StepOut:
     died: Tensor  # (E, N) bool
     done: Tensor  # (E,) bool
     result: Tensor  # (E,) long: 0 or 1 = winning team, 2 = draw, -1 = not done
-    # Bullets whose flight ended this tick (real and ghost alike), per slot (E, N, K):
-    # shot_outcome -1 none ended, 0 missed (ran out of moves), 1 hit an enemy, 2 hit a team-mate;
+    # Each bullet's outcome, once, per slot (E, N, K) (real and ghost alike): at its first
+    # contact (1 hit an enemy, 2 hit a team-mate) or at its last tick without one (0 missed);
+    # -1 none this tick (a contacted bullet flies on but never reports again);
     # shot_tick the episode tick that bullet left the gun (the tick the hit head labels).
     shot_outcome: Tensor
     shot_tick: Tensor

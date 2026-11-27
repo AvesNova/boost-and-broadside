@@ -12,11 +12,11 @@ from lean.learn import League, LearnConfig, Opponent, collect, make_optimiser, s
 from lean.learn.compiled import graphs
 from lean.learn.pool import EMA, FIRST_SNAPSHOT
 from lean.learn.rollout import (
-    HitLabels,
     act,
     advance,
     draw_next_episodes,
     league_actions,
+    merge_league,
     self_play_count,
     slot_actions,
 )
@@ -28,8 +28,14 @@ pytestmark = pytest.mark.slow
 def test_compiled_collect_and_update_run_with_the_real_packages():
     torch.manual_seed(0)
     generator = torch.Generator().manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, minibatches=2, epochs=1)
-    game_config = game.GameConfig(ghost_bullets=True)
+    config = LearnConfig(
+        team_size_minimum=2,
+        team_size_maximum=2,
+        minibatches=2,
+        epochs=1,
+        league_capacity_factor=15.0,  # C = L: members placed by hand below
+    )
+    game_config = game.GameConfig()
     policy = model.Policy(model.ModelConfig())
     league = League(config)
     opponent = Opponent(scripted.ScriptedConfig(), league)
@@ -56,6 +62,18 @@ def test_compiled_collect_and_update_run_with_the_real_packages():
         assert all(value == value for value in metrics.values())
 
 
+def test_a_static_graph_refuses_to_compile_again():
+    """compile_shapes "static" (training): the first call compiles, a call at a new size
+    raises instead of recompiling."""
+    from lean.contract import compile_graph
+
+    graph = compile_graph(lambda x: x * 2.0 + 1.0, "static")
+    assert torch.equal(graph(torch.ones(3)), torch.full((3,), 3.0))
+    assert torch.equal(graph(torch.zeros(3)), torch.ones(3))  # same size: no compile
+    with pytest.raises(RuntimeError, match="recompile"):
+        graph(torch.ones(4))
+
+
 def test_compiled_loss_matches_eager():
     from lean.learn import RolloutStore
     from lean.learn.compiled import graphs
@@ -64,7 +82,7 @@ def test_compiled_loss_matches_eager():
     torch.manual_seed(0)
     generator = torch.Generator().manual_seed(0)
     config = LearnConfig(team_size_minimum=2, team_size_maximum=2)
-    game_config = game.GameConfig(ghost_bullets=True)
+    game_config = game.GameConfig()
     policy = model.Policy(model.ModelConfig())
     opponent = Opponent(scripted.ScriptedConfig())
     state, carry = start(config, game_config, policy, opponent, 4, generator)
@@ -93,7 +111,8 @@ def test_compiled_loss_matches_eager():
     )
     twin = copy.deepcopy(policy)
     eager_loss, eager_measures = minibatch_loss(config, policy, *arguments)
-    compiled_loss, compiled_measures = graphs().minibatch_loss(config, twin, *arguments)
+    # Dynamic: the other tests here compile the same functions at other sizes.
+    compiled_loss, compiled_measures = graphs("dynamic").minibatch_loss(config, twin, *arguments)
     assert torch.allclose(eager_loss, compiled_loss, rtol=1e-4, atol=1e-5)
     for name in eager_measures:
         assert torch.allclose(
@@ -113,11 +132,10 @@ def test_compiled_loss_matches_eager():
 def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
     """The capacity routing (slot_actions, one call per slot) and the tick's second half
     (advance: the tallies and the capacity draws at re-deal) trace as single graphs: no
-    graph break, so no host read in the tick path; and the one routing graph serves every
-    slot and every table width (no recompile when W or K changes)."""
+    graph break, so no host read in the tick path."""
     torch._dynamo.reset()
     torch.manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=2)
+    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, league_capacity_factor=7.5)
     game_config = game.GameConfig(training_spawn=True, clock_ticks=3)
     policy = model.Policy(model.ModelConfig())
     league = League(config)
@@ -127,13 +145,13 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
     chosen = torch.tensor([0, EMA, FIRST_SNAPSHOT, FIRST_SNAPSHOT + 1])
     carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
     league.prepare(4, carry.slot)
+    assert league.width == 2  # ceil(7.5 * 4 / 15)
     slots = state.exists.shape[1]
     deals = draw_next_episodes(config, game_config, policy, opponent, 8, slots, None, "cpu")
     carry = dataclasses.replace(carry, next_episodes=deals)
-    graphs()  # duck sizing off, as in training
+    graphs("dynamic")  # duck sizing off, as in a dynamic compile
     routing = torch.compile(slot_actions, fullgraph=True, dynamic=True)
     second_half = torch.compile(advance, fullgraph=True, dynamic=True)
-    hit_label = torch.full((2 * 4 * 8 * slots + 1,), -1, dtype=torch.long)  # rows for 4 ticks
     for tick in range(4):  # a game ends on the third tick: re-deals draw members within capacity
         decision = act(config, game_config, policy, opponent, state, carry, None)
         league_move = league_actions(
@@ -148,23 +166,52 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
             carry,
             decision,
             league_move,
-            HitLabels(hit_label, torch.tensor(4 + tick)),
             None,
         )
     rows = torch.bincount(carry.member.clamp(min=0), minlength=league.members)
     assert (rows <= league.capacity).all()
-    # A third snapshot playing every league game: one more slot (K) and a wider table (W,
-    # the slot's 4 rows past the capacity); the graph is reused.
-    compiles = torch._dynamo.utils.counters["stats"]["unique_graphs"]
-    width = league.table.positions.shape[0]
-    add_snapshots(league, [model.Policy(model.ModelConfig())])
-    chosen = torch.full((4,), FIRST_SNAPSHOT + 2)
+
+
+def test_the_league_routing_is_static_for_the_whole_run():
+    """The routing's shapes are fixed for the run (lean.learn.pool): every slot on W rows,
+    the merge on K entries (a skipped empty slot's a filler); so under the static compile
+    (training's, a recompile raises) the routing and merge graphs compile when the first
+    network member joins and serve the table unchanged as more join, though the slots run
+    (the ones holding weights) grow from 3 to 5."""
+    torch._dynamo.reset()
+    torch.manual_seed(0)
+    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, league_capacity_factor=7.5)
+    game_config = game.GameConfig(training_spawn=True)
+    policy = model.Policy(model.ModelConfig())
+    league = League(config)
+    opponent = Opponent(scripted.ScriptedConfig(), league)
+    state, carry = start(config, game_config, policy, opponent, 8, None)
+    from lean.contract import compile_graph
+
+    routing = compile_graph(slot_actions, "static")  # its own: graphs() is per process
+    merge = compile_graph(merge_league, "static")
+    shapes = []
+
+    def league_tick(carry):
+        league.prepare(4, carry.slot)
+        table = league.table
+        shapes.append(None if table is None else (len(table.slots), table.positions.shape[0]))
+        decision = act(config, game_config, policy, opponent, state, carry, None)
+        return league_actions(
+            config, opponent, decision.views, carry, decision.scripted.action, None, routing, merge
+        )
+
+    league_tick(carry)  # no snapshot yet: no slot holds weights, every game scripted
+    add_snapshots(league, [policy, model.Policy(model.ModelConfig())])
+    chosen = torch.tensor([0, EMA, FIRST_SNAPSHOT, FIRST_SNAPSHOT + 1])
     carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
-    league.prepare(4, carry.slot)
-    assert len(league.table.slots) == 4 and league.table.positions.shape[0] == 4 != width
-    decision = act(config, game_config, policy, opponent, state, carry, None)
-    league_actions(config, opponent, decision.views, carry, decision.scripted.action, None, routing)
-    assert torch._dynamo.utils.counters["stats"]["unique_graphs"] == compiles
+    move = league_tick(carry)
+    assert not torch.equal(move.carry, carry.opponent)  # the networks ran on their rows
+    add_snapshots(league, [model.Policy(model.ModelConfig())] * 2)
+    chosen = torch.tensor([FIRST_SNAPSHOT + 3, FIRST_SNAPSHOT + 2, 0, FIRST_SNAPSHOT + 3])
+    carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
+    league_tick(carry)  # a recompile here would raise (fail_on_recompile)
+    assert shapes == [None, (3, 2), (5, 2)]
 
 
 def test_the_first_league_networks_do_not_recompile_the_tick():
@@ -182,10 +229,9 @@ def test_the_first_league_networks_do_not_recompile_the_tick():
     opponent = Opponent(scripted.ScriptedConfig(), league)
     state, carry = start(config, game_config, policy, opponent, 8, None)
     slots = state.exists.shape[1]
-    graphs()  # duck sizing off, as in training
+    graphs("dynamic")  # duck sizing off, as in a dynamic compile
     routing = torch.compile(slot_actions, fullgraph=True, dynamic=True)
     second_half = torch.compile(advance, fullgraph=True, dynamic=True)
-    hit_label = torch.full((2 * 4 * 8 * slots + 1,), -1, dtype=torch.long)
 
     def tick(state, carry, row):
         deals = draw_next_episodes(config, game_config, policy, opponent, 8, slots, None, "cpu")
@@ -203,7 +249,6 @@ def test_the_first_league_networks_do_not_recompile_the_tick():
             carry,
             decision,
             league_move,
-            HitLabels(hit_label, torch.tensor(row)),
             None,
         )
         return state, carry
@@ -215,7 +260,7 @@ def test_the_first_league_networks_do_not_recompile_the_tick():
     chosen = torch.tensor([0, EMA, FIRST_SNAPSHOT, FIRST_SNAPSHOT + 1])
     carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
     league.prepare(4, carry.slot)
-    assert len(league.table.slots) == 3
+    assert len(league.table.slots) == 3  # the EMA and the two snapshots
     for row in (5, 6):
         state, carry = tick(state, carry, row)
     stats = torch._dynamo.utils.counters["stats"]
