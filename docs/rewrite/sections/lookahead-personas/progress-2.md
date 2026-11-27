@@ -82,3 +82,9 @@ performance profile. Data: ~/avesnova/boost-and-broadside/data/lookahead-persona
 - Next: CMA, bound 60 generations or 05:30; first generation ETA 23:50.
 - 23:40 CMA running, about 3 minutes per generation; generations 1-3 mean Elo against
   crowd-known 982 / 1028 / 1058. ETA 60 generations 02:40 (worst 05:30, the loop's bound).
+- 00:17 CMA generations 1-16 against crowd-known: population mean 982 -> 1176 (1v1 1087, 4v4
+  1135, 16v16 1308 at generation 16); sigma 0.138 -> 0.172.
+- 00:17 decision: re-reference the search to its generation-16 mean (candidates/cma-mean-g16.json):
+  at 16v16 the population scored about 85-90% against crowd-known, where ranking resolution
+  falls. Journal lines from generation 17 carry the reference id. Loop bound unchanged
+  (60 generations or 05:30); ETA 02:40 (worst 05:30).
