@@ -100,10 +100,10 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - Loop speed (collect plus update): 6,670 steps/s in RL before the first snapshot (step L2,
   2026-11-23); BC 6,668. Peak allocated 5.7 GiB. Steady speed with league networks playing is
   not measured under the per-slot routing (the one short run included its compile: 4,852).
-- League side per tick at parity, 8 slots, per-slot form: 12.75 ms (vmap form 10.5 ms, which
-  recompiled at every new K and W, so it was dropped); at 256 environments the per-slot form is
-  launch-bound (about 1.35 ms a slot). One CUDA graph over every slot's call gave 10,700 to
-  18,325 steps/s at 256 environments and nothing at parity; reverted (commit 992bb7ef).
+- League side (2026-11-27, fixed table, 18 slots x 86 rows): the RL tick at E 2,048 is 38.6 ms
+  against 24.2 ms without league networks, whatever the snapshots (the placeholder slots' rows
+  are real work); a single vmap call over the stacked slots measured the same (38.9 ms) and was
+  reverted. Tick-audit's varying table cost 30.1 ms (2 slots x 427) to 36.9 ms (11 x 107).
 - Compile: cold start about 240 s; the compile tripwire (`compile_check.py`) fails on any graph
   break, new graph, recompile, or a function's traced operations over 10% above its baseline
   (`docs/rewrite/scoreboard.md` "Compile time"). Run it at the end of every step:

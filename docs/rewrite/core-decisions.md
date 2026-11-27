@@ -1062,3 +1062,28 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   old trainer path (compile_dynamic) -> 0.766 ms static (off 1.713 -> 0.572); the training
   tick at E 2048 31.8 -> 25.2 ms (collect 64.4k -> 81.4k steps/s), advance 3.67 -> 1.84 ms.
   The update at E 2048: 141.0 -> 129.8 s (183.6 -> 169.0 ms per micro-batch).
+
+## The training-path fixes (PROPOSAL, branch `train-audit`, unmerged; author decisions 2026-11-27 ~17:30)
+
+- **The league table fixed for the run** (completes "a training run is fully static"): every
+  network member's capacity C = ceil(1.25 L / members), members = 3 + snapshot_members (86 rows
+  at L 1,024), the scripted agent's L; all K = 2 + 12 + 4 slots from the RL stage's start
+  (`League.open`), empty ones a placeholder network on no rows; K slot calls on W = C rows every
+  tick, one merge of their rows. The routing compiles once at the stage's first tick; W is no
+  longer dynamic. Departure from "League routing" (2026-11-23), for the author: the scripted
+  agent is uncapped, so early in RL most league games are scripted (852 of 1,024 with one
+  snapshot), evening out as snapshots join. Cost: 18 x 86 rows every tick, the RL tick 30.1 ->
+  38.6 ms with 1 snapshot, 36.9 -> 38.8 with 12 (a single vmap call gained nothing: the calls
+  are compute-bound).
+- **The step's reset instead of zeroing the carries each tick**: advance 1.84 -> 0.55 ms.
+- **Constants built once outside the graphs** (the critic's support passed in, the next-state
+  support as policy buffers, the scripted agent's tables made on the device): 0 pageable
+  copies in the collect loop (1 before, under the static compile).
+- **One linear scan** (a Triton kernel forward and backward, a custom operator; float32 state)
+  for the RG-LRU and GAE, in place of the doubling scan: the update's micro-batch step 170.0
+  -> 146.8 ms (-13.6%), peak 5.12 -> 4.17 GiB, gradients within bf16 rounding of the doubling
+  scan's.
+- **Not adopted**: norm outputs in bf16 with float32 residuals (no gain: the next Linear cast
+  them anyway, identical gradients); measured only, the bf16 residual stream: -5.3% of the
+  step, gradient differences 6x the scan's (the residual stays float32, decided 2026-11-23).
+- Numbers and method: docs/rewrite/sections/training-path-audit-progress.md.
