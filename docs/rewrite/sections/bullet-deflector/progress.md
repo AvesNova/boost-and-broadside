@@ -380,3 +380,48 @@ occupancy); fewer per-pair operations would need inductor to keep post-reduction
 (2) Off gains 0.06 ms from assembling the moved block column by column (cut C) but the egg
 loses; the ghost-only prototype gets the same off gain (-0.2 ms) for a rule change.
 (3) Fields are the largest single cost (~0.29 ms of ~1.0 off).
+
+## 2026-11-27 16:00 ghost-only bullets, merge-ready (branch ghost-only, off deflector-lookahead b70dcd18)
+
+Author go-ahead ~15:20. Done: the prototype (b3a16e9d) cherry-picked and finished. The ring is
+the clock: the slot written on tick t is t mod 12 for every ship (the per-ship `next_slot`
+column is gone, so a dead ship's ring advances too: in the prototype a dead ship kept rewriting
+one slot while the other eleven flew on and reported a miss every tick). `State.bullet_state`
+uint8 (GHOST / REAL / CONTACTED, in lean.contract) replaces `bullet_real` and the
+`bullet_counts` block; `GameConfig.ghost_bullets`, `bullet_moves` and `_bullet_ends`' countdown
+removed. Fresh slots start CONTACTED at the origin (the prototype parked ghosts on the owner,
+which labelled passers-by). Bullet life: asserted at constants build (`_per_type`), and
+`tuning.ring_gun_range` for designs moving muzzle speed or drag.
+
+Speed (laptop 4070, performance profile, load 1.1-1.6, both trees in one locked job,
+alternating, bench_tick median of 3 x 300 ticks):
+
+| tree | off ms | egg ms |
+|---|---|---|
+| base b70dcd18 | 0.973 / 0.973 | 1.078 / 1.079 |
+| ghost-only | 0.753 / 0.753 | 0.880 / 0.925 |
+
+Kernel time per tick (torch.profiler, 40 ticks, best of 3; two passes alternating): off
+1,003 / 1,087 -> 807 / 884 us, 27 -> 24 launches; egg 1,206 / 1,212 -> 1,023 / 1,038 us,
+28 -> 24 launches. Gone: the frozen-if-not-flying block write (~125 us), the counts kernels
+(~37 + 7 us), one bullet-share kernel (~22 us). The fire kernel 93 -> 85 (off) / 77 -> 71 (egg).
+The egg's pair kernel 264 -> 284 us (+20 us, not the prototype's +100 and no new per-bullet
+kernel): the generated code reads the moved block from memory (inductor stores it once here;
+in the prototype it recomputed the move inside the pair kernel), so the off path's gain
+carries to the egg (-0.17 ms) with no further change.
+
+ncu (one tick, `--cache-control none`, kernels serialised at ncu's clocks; 16:01-16:02, load
+~2-4 from the other agent's job just before; both trees back to back):
+
+| | base b70dcd18 | ghost-only |
+|---|---|---|
+| off: kernels / us / DRAM MB | 27 / 1,218 / 135.5 | 24 / 1,009 / 84.4 |
+| egg: kernels / us / DRAM MB | 28 / 1,357 / 137.7 | 24 / 1,198 / 93.4 |
+
+Changed kernels (us / MB): the frozen-if-not-flying block write (base off 107.3 / 24.4, egg
+104.5 / 23.8) and the counts kernels (36.3 / 8.6 and ~6) are gone, and the bullet share's
+mean kernel 20.7 / 4.5 -> 4.0 us (one uint8 compare instead of the counts and the bool). The fire kernel off 107.1 / 22.6 -> 79.5 /
+18.6, egg 71.3 / 16.6 -> 65.3 / 15.2. The off pair kernel (`_first_contact`) 84.7 / 15.6 ->
+63.6 / 7.9. The egg pair kernel (with `_bullet_ends`, damage and deflect fused) 316.6 / 27.7
+-> 339.5 / 16.7: +23 us, less traffic (compute-bound, as before); the bullet move kernel 230.7
+/ 12.9 -> 230.4 / 19.9 (it now writes the moved block that the pair kernel reads).
