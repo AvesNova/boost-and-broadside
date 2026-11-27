@@ -425,3 +425,16 @@ mean kernel 20.7 / 4.5 -> 4.0 us (one uint8 compare instead of the counts and th
 63.6 / 7.9. The egg pair kernel (with `_bullet_ends`, damage and deflect fused) 316.6 / 27.7
 -> 339.5 / 16.7: +23 us, less traffic (compute-bound, as before); the bullet move kernel 230.7
 / 12.9 -> 230.4 / 19.9 (it now writes the moved block that the pair kernel reads).
+
+Checks: quick tier (`-m "not slow"`) on lean/game, scripted, tool, sandbox, learn, eval, model:
+343 passed (the first run caught two tuning tests whose designs asked for an 11- and a 24-tick
+life; fixed with `tuning.ring_gun_range` and a 12-tick row). Ruff clean. Compile check (cold,
+baseline not updated, 16:03, performance, load ~1.2): advance 3,283 traced operations (3,296
+before, core baseline 2,856), act 4,586 (4,590), 4 graphs, 0 graph breaks, no recompiles, cold
+282.3 s (budget 260 s): the same three tripwire failures as before this branch.
+
+Open: (1) the egg pair kernel is +23 us (ncu) over the base's, compute-bound as before; not
+chased. (2) The tool's gun-range design input can ask for a bullet life other than 12 ticks
+(the core then refuses with a clear error); it could become a read-out of muzzle speed and drag
+(author). (3) Dead and absent ships' ghosts label rows the hit loss masks (not `own`); absent
+ships sit at the centre, so their ghosts can touch ships there (labels only, no damage).
